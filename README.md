@@ -38,46 +38,7 @@ Define your video as HTML with data attributes:
 
 Preview instantly in the browser. Render to MP4 locally. Let AI agents compose videos using tools they already understand.
 
-## Packages
-
-| Package | Description |
-|---------|-------------|
-| `@hyperframes/core` | Types, schema, parsers, compiler, runtime, frame adapters |
-| `@hyperframes/cli` | `npx hyperframes dev \| render \| validate \| init` |
-| `@hyperframes/producer` | Local rendering engine (Node.js + Puppeteer + FFmpeg) |
-| `@hyperframes/studio` | Browser-based preview/editor |
-| `@hyperframes/mcp` | MCP server for AI agent integration |
-| `create-hyperframe` | Project scaffolding (`npx create-hyperframe`) |
-
-## AI Agent Integration
-
-Hyperframes ships with an MCP server that gives AI agents direct access to video composition tools:
-
-```bash
-npx @hyperframes/mcp
-```
-
-Works with Claude Code, Cursor, Windsurf, and any MCP-compatible client. Agents can create projects, add elements, set animations, preview frames, and render videos — all through natural language.
-
-## Comparison with Remotion
-
-| | Remotion | Hyperframes |
-|---|---|---|
-| **Composition model** | React components | HTML + data attributes |
-| **Animation runtime** | React only | Any (GSAP, Lottie, CSS, Three.js) |
-| **AI story** | Added retroactively | AI-native from day 1 |
-| **License** | Custom source-available | MIT |
-| **Rendering** | Puppeteer + FFmpeg + Lambda | Puppeteer + FFmpeg (Docker-optional) |
-
-## Requirements
-
-- Node.js 22+
-- FFmpeg (system install)
-- Chromium (auto-downloaded by Puppeteer)
-
-## Documentation
-
-Visit [hyperframes.dev](https://hyperframes.dev) for full documentation, guides, and API reference.
+<!-- TODO: Add packages table, AI agent integration section, comparison table, requirements, and docs link once packages are ported -->
 
 ## Contributing
 
