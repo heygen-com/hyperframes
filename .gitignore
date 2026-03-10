@@ -1,0 +1,38 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+*.tsbuildinfo
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Test
+coverage/
+
+# Rendered output
+*.mp4
+*.webm
+*.mov
+output/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Temporary
+tmp/
+.tmp/
