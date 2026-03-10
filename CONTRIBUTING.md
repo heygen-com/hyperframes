@@ -19,7 +19,7 @@ Thanks for your interest in contributing to Hyperframes! This guide will help yo
 
 ## Code of Conduct
 
-Be respectful. We're building something together.
+This project follows the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.md). By participating, you are expected to uphold this code.
 
 ## License
 

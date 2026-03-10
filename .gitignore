@@ -22,9 +22,13 @@ Thumbs.db
 
 # Test
 coverage/
+.debug/
 
 # Rendered output (not test fixtures — those use git LFS)
 output/
+
+# npm pack artifacts
+*.tgz
 
 # Logs
 *.log
