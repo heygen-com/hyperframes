@@ -97,10 +97,10 @@ export {
   generateHyperframesStyles,
 } from "./generators/hyperframes";
 
-// Compiler
-export type { UnresolvedElement, ResolvedDuration, ResolvedMediaElement, CompilationResult } from "./compiler";
+// Compiler (timing only — browser-safe, no cheerio/esbuild)
+export type { UnresolvedElement, ResolvedDuration, ResolvedMediaElement, CompilationResult } from "./compiler/timingCompiler";
 
-export { compileTimingAttrs, injectDurations, extractResolvedMedia, clampDurations } from "./compiler";
+export { compileTimingAttrs, injectDurations, extractResolvedMedia, clampDurations } from "./compiler/timingCompiler";
 
 // Lint
 export type {

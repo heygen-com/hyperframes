@@ -483,7 +483,8 @@ export function initSandboxRuntimeModular(): void {
           const alreadyIncluded = existingChildren.some((child) => child === candidate.timeline);
           if (alreadyIncluded) continue;
           try {
-            rootTimeline.add(candidate.timeline, resolveCompositionStartSeconds(candidate.compositionId));
+            const startSec = resolveCompositionStartSeconds(candidate.compositionId);
+            rootTimeline.add(candidate.timeline, startSec);
             addedIds.push(candidate.compositionId);
           } catch {
             // ignore broken child add attempts
@@ -552,6 +553,19 @@ export function initSandboxRuntimeModular(): void {
         rootChildCandidates.length > 0
           ? addMissingChildCandidatesToRootTimeline(rootTimeline, rootChildCandidates)
           : [];
+      // Mark children as bound so the polling loop stops re-resolving
+      if (rootChildCandidates.length > 0 || !document.querySelector("[data-composition-id]:not([data-composition-id='" + rootCompositionId + "'])")) {
+        childrenBound = true;
+      }
+
+      // Force GSAP to render the current frame so child animations show their correct state.
+      // Without this, children added after the root was created may still show initial styles.
+      if (autoNestedChildren.length > 0) {
+        try {
+          const currentTime = rootTimeline.time();
+          rootTimeline.seek(currentTime, false); // false = don't suppress events
+        } catch { /* ignore */ }
+      }
       const rootDurationSeconds = getTimelineDurationSeconds(rootTimeline);
       if (!isUsableTimelineDuration(rootDurationSeconds) && rootChildCandidates.length > 0) {
         const selectedTimelineIds = rootChildCandidates.map((candidate) => candidate.compositionId);
@@ -677,12 +691,22 @@ export function initSandboxRuntimeModular(): void {
     state.currentTime = Math.max(0, nextTime);
   };
 
+  // Track whether child composition timelines have been added to the root.
+  // This prevents the polling loop from skipping rebind when TARGET_DURATION
+  // makes the root "usable" before children register. Assumption: child scripts
+  // must register timelines synchronously or in the immediate microtask queue
+  // (setTimeout(0)). Scripts using requestAnimationFrame or longer delays may
+  // not be discovered.
+  let childrenBound = false;
   const bindRootTimelineIfAvailable = (): boolean => {
     if (!externalCompositionsReady) return false;
     const currentTimeline = state.capturedTimeline;
     const currentDuration = getTimelineDurationSeconds(currentTimeline);
     const currentTimelineUsable = isUsableTimelineDuration(currentDuration);
-    if (currentTimeline && currentTimelineUsable) return false;
+    // Skip rebind ONLY if we already have a usable timeline AND children have been bound.
+    // Without childrenBound check, the TARGET_DURATION spacer makes the timeline "usable"
+    // before child composition timelines are added, causing them to never be discovered.
+    if (currentTimeline && currentTimelineUsable && childrenBound) return false;
     const resolution = resolveRootTimelineFromDocument();
     if (!resolution.timeline) return false;
     if (currentTimeline && currentTimeline === resolution.timeline) {
@@ -981,15 +1005,40 @@ export function initSandboxRuntimeModular(): void {
       playing: state.isPlaying,
       playbackRate: state.playbackRate,
     });
+    const rootCompId = document.querySelector("[data-composition-id]")?.getAttribute("data-composition-id") ?? null;
     const visibilityNodes = Array.from(document.querySelectorAll("[data-start]"));
     for (const rawNode of visibilityNodes) {
       if (!(rawNode instanceof HTMLElement)) continue;
       const tag = rawNode.tagName.toLowerCase();
       if (tag === "script" || tag === "style" || tag === "link" || tag === "meta") continue;
+
+      // Skip elements INSIDE sub-compositions — their visibility is managed by GSAP,
+      // not the global time-based adapter. Only manage visibility for:
+      // 1. Composition host elements (have data-composition-id themselves)
+      // 2. Direct children of root composition (audio, etc.)
+      // Skip: elements whose nearest composition ancestor is NOT the root
+      const ownCompId = rawNode.getAttribute("data-composition-id");
+      if (!ownCompId) {
+        // Not a composition host — check if it's inside a sub-composition
+        const parentComp = rawNode.closest("[data-composition-id]");
+        const parentCompId = parentComp?.getAttribute("data-composition-id") ?? null;
+        if (parentCompId && parentCompId !== rootCompId) continue;
+      }
+
       const start = resolveStartForElement(rawNode, 0);
       const duration = resolveDurationForElement(rawNode);
       const end = duration != null && duration > 0 ? start + duration : Number.POSITIVE_INFINITY;
-      const isVisibleNow = state.currentTime >= start && (Number.isFinite(end) ? state.currentTime < end : true);
+      // For composition hosts, use the composition timeline's duration to compute end
+      let computedEnd = end;
+      const compId = rawNode.getAttribute("data-composition-id");
+      if (compId && !Number.isFinite(end)) {
+        const compTimeline = (window.__timelines ?? {})[compId];
+        if (compTimeline && typeof compTimeline.duration === "function") {
+          const compDur = compTimeline.duration();
+          if (compDur > 0) computedEnd = start + compDur;
+        }
+      }
+      const isVisibleNow = state.currentTime >= start && (Number.isFinite(computedEnd) ? state.currentTime < computedEnd : true);
       rawNode.style.visibility = isVisibleNow ? "visible" : "hidden";
     }
   };
@@ -1181,6 +1230,23 @@ export function initSandboxRuntimeModular(): void {
   bindRootTimelineIfAvailable();
   if (state.capturedTimeline) {
     player._timeline = state.capturedTimeline;
+  }
+
+  // When the bundler inlines compositions, data-composition-src is removed so
+  // loadExternalCompositions() is skipped. But inline scripts registering child
+  // timelines in __timelines haven't executed yet (they run in the browser's next
+  // microtask). Defer a rebinding attempt to catch them.
+  if (externalCompositionsReady) {
+    setTimeout(() => {
+      const prevTimeline = state.capturedTimeline;
+      if (bindRootTimelineIfAvailable() && state.capturedTimeline !== prevTimeline) {
+        player._timeline = state.capturedTimeline;
+      }
+      // Re-run adapters to discover new elements
+      runAdapters("discover", state.currentTime);
+      postTimeline();
+      postState(true);
+    }, 0);
   }
 
   state.deterministicAdapters = [
