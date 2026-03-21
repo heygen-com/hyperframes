@@ -1,0 +1,2 @@
+# Golden baseline videos for regression tests
+packages/producer/tests/*/output/output.mp4 filter=lfs diff=lfs merge=lfs -text

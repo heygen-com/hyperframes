@@ -1,0 +1,138 @@
+<template id="intro-seq-template">
+  <div data-composition-id="intro-seq" data-width="1920" data-height="1080" data-duration="3">
+    <div class="terminal-container">
+      <div id="line1" class="terminal-line"></div>
+      <div id="line2" class="terminal-line"></div>
+    </div>
+
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap');
+
+      [data-composition-id="intro-seq"] {
+        background-color: #0A0A0A;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        font-family: 'Space Mono', monospace;
+        width: 100%;
+        height: 100%;
+        color: #33FF66;
+      }
+
+      [data-composition-id="intro-seq"] .terminal-container {
+        display: flex;
+        flex-direction: column;
+        gap: 30px;
+        width: 80%;
+        max-width: 1200px;
+      }
+
+      [data-composition-id="intro-seq"] .terminal-line {
+        font-size: 72px;
+        font-weight: 700;
+        text-transform: uppercase;
+        min-height: 1.2em;
+        white-space: pre;
+        text-shadow: 0 0 10px rgba(51, 255, 102, 0.6), 0 0 20px rgba(51, 255, 102, 0.2);
+        display: flex;
+        align-items: center;
+      }
+
+      [data-composition-id="intro-seq"] .char {
+        opacity: 0;
+        display: inline-block;
+      }
+
+      [data-composition-id="intro-seq"] .cursor {
+        display: inline-block;
+        width: 0.6em;
+        height: 1.1em;
+        background-color: #33FF66;
+        margin-left: 5px;
+        box-shadow: 0 0 10px rgba(51, 255, 102, 0.8);
+        opacity: 0;
+      }
+    </style>
+
+    <script>
+      (function() {
+        const tl = gsap.timeline({ paused: true });
+        
+        const line1Text = 'SYSTEM BOOTING...';
+        const line2Text = 'EDITOR AGENT v1.0';
+        const charDuration = 0.05;
+        const blinkDuration = 0.1;
+
+        const line1El = document.getElementById('line1');
+        const line2El = document.getElementById('line2');
+
+        function createLine(el, text, startTime) {
+          // Clear and create spans
+          el.innerHTML = '';
+          const chars = text.split('').map(char => {
+            const span = document.createElement('span');
+            span.className = 'char';
+            span.textContent = char === ' ' ? '\u00A0' : char;
+            el.appendChild(span);
+            return span;
+          });
+
+          const cursor = document.createElement('div');
+          cursor.className = 'cursor';
+          el.appendChild(cursor);
+
+          tl.set(cursor, {
+            display: 'inline-block',
+            opacity: 1
+          }, startTime);
+
+          // Animate characters
+          chars.forEach((char, i) => {
+            const time = startTime + (i * charDuration);
+            
+            tl.to(char, {
+              opacity: 1,
+              duration: 0.01,
+              ease: "none"
+            }, time);
+          });
+
+          // Give the cursor a short deterministic settle instead of a repeat/yoyo blink.
+          const lineEndTime = startTime + (chars.length * charDuration);
+          tl.to(cursor, {
+            opacity: 0.25,
+            duration: blinkDuration,
+            ease: "none"
+          }, lineEndTime);
+          tl.to(cursor, {
+            opacity: 1,
+            duration: blinkDuration,
+            ease: "none"
+          }, lineEndTime + blinkDuration);
+          tl.set(cursor, {
+            opacity: 0
+          }, lineEndTime + (blinkDuration * 2));
+
+          return lineEndTime + 0.5;
+        }
+
+        // Line 1
+        const line1End = createLine(line1El, line1Text, 0.2);
+
+        // Line 2
+        createLine(line2El, line2Text, line1End);
+
+        // A subtle one-way settle keeps the intro alive without repeat/yoyo seek edge cases.
+        tl.fromTo('[data-composition-id="intro-seq"] .terminal-container', {
+          opacity: 0.92
+        }, {
+          opacity: 1,
+          duration: 0.6,
+          ease: "none"
+        }, 0);
+
+        window.__timelines["intro-seq"] = tl;
+      })();
+    </script>
+  </div>
+</template>

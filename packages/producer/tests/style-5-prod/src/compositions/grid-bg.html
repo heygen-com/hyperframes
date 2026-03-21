@@ -1,0 +1,87 @@
+<template id="grid-bg-template">
+  <div data-composition-id="grid-bg" data-width="1920" data-height="1080" data-duration="19.04">
+    <div class="bg-container">
+      <div class="grid-overlay"></div>
+      <div class="scan-line"></div>
+    </div>
+
+    <style>
+      [data-composition-id="grid-bg"] .bg-container {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 1920px;
+        height: 1080px;
+        background-color: #0A0A0A;
+        overflow: hidden;
+      }
+
+      [data-composition-id="grid-bg"] .grid-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        /* 40px grid pattern using linear-gradients */
+        background-image: 
+          linear-gradient(to right, rgba(138, 138, 138, 0.1) 1px, transparent 1px),
+          linear-gradient(to bottom, rgba(138, 138, 138, 0.1) 1px, transparent 1px);
+        background-size: 40px 40px;
+        transform-origin: center center;
+      }
+
+      [data-composition-id="grid-bg"] .scan-line {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 2px;
+        background-color: #33FF66;
+        opacity: 0.2;
+        box-shadow: 0 0 10px 1px rgba(51, 255, 102, 0.3);
+        transform: translateY(-10px);
+      }
+    </style>
+
+    <script>
+      (function() {
+        const tl = gsap.timeline({ paused: true });
+        const totalDuration = 19.04;
+        const scanLineSelector = '[data-composition-id="grid-bg"] .scan-line';
+        const gridSelector = '[data-composition-id="grid-bg"] .grid-overlay';
+        const halfDuration = totalDuration / 2;
+        
+        gsap.set(scanLineSelector, { y: -20 });
+        gsap.set(gridSelector, { scale: 1, opacity: 0.9 });
+
+        // 1. Single continuous scan keeps the texture moving without stacked fromTo loops.
+        tl.to(scanLineSelector, {
+          y: 1100,
+          duration: totalDuration,
+          ease: "none"
+        }, 0);
+
+        // 2. Gentle scale breathe across the full composition window.
+        tl.to(gridSelector, {
+          scale: 1.02,
+          duration: halfDuration,
+          ease: "sine.inOut"
+        }, 0);
+        tl.to(gridSelector, {
+          scale: 1,
+          duration: totalDuration - halfDuration,
+          ease: "sine.inOut"
+        }, halfDuration);
+
+        // 3. One-way opacity settle keeps the grid alive without repeat/yoyo artifacts.
+        tl.to(gridSelector, {
+          opacity: 1,
+          duration: 1.2,
+          ease: "none"
+        }, 0);
+
+        window.__timelines["grid-bg"] = tl;
+      })();
+    </script>
+  </div>
+</template>

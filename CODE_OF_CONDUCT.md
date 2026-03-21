@@ -30,7 +30,7 @@ Examples of unacceptable behavior:
 ## Enforcement
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
-reported to the project maintainers at **oss@heygen.com**. All complaints will
+reported to the project maintainers via [GitHub Issues](https://github.com/heygen-com/hyperframes/issues). All complaints will
 be reviewed and investigated promptly and fairly.
 
 ## Attribution

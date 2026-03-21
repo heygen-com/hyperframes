@@ -1,0 +1,100 @@
+<template id="captions-template">
+  <div data-composition-id="captions" data-width="1920" data-height="1080" data-duration="16.04">
+    <div class="captions-container">
+      <div id="caption-1" class="caption-group">WE ASKED WHAT YOU NEEDED.</div>
+      <div id="caption-2" class="caption-group">FORTY-SEVEN PERCENT OF YOU SAID</div>
+      <div id="caption-3" class="caption-group">MOTION GRAPHICS.</div>
+      <div id="caption-4" class="caption-group">SIXTY-TWO PERCENT SAID STATIC</div>
+      <div id="caption-5" class="caption-group">CONTENT WAS COSTING YOU ATTENTION,</div>
+      <div id="caption-6" class="caption-group">AND THREE OUT OF FOUR</div>
+      <div id="caption-7" class="caption-group">SAID YOU KNOW THE LOOK</div>
+      <div id="caption-8" class="caption-group">YOU WANT BUT DON'T HAVE</div>
+      <div id="caption-9" class="caption-group">THE EDITING SKILLS TO GET</div>
+      <div id="caption-10" class="caption-group">THERE.</div>
+      <div id="caption-11" class="caption-group">SO WE BUILT</div>
+      <div id="caption-12" class="caption-group">EDITOR AGENT</div>
+    </div>
+
+    <style>
+      [data-composition-id="captions"] {
+        width: 100%;
+        height: 100%;
+        font-family: 'Inter', sans-serif;
+        overflow: hidden;
+      }
+
+      [data-composition-id="captions"] .captions-container {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        display: flex;
+        justify-content: center;
+        align-items: flex-end;
+        padding-bottom: 15%; /* Positioning: bottom 15% of the screen */
+      }
+
+      [data-composition-id="captions"] .caption-group {
+        position: absolute;
+        opacity: 0;
+        color: #F7F3ED; /* Clean, white typography */
+        font-size: 48px;
+        font-weight: 300; /* weight 300 */
+        text-transform: uppercase; /* uppercase */
+        letter-spacing: 0.2em; /* letter-spacing 0.2em */
+        text-align: center;
+        /* Subtle text-shadow for legibility */
+        text-shadow: 0 2px 10px rgba(0,0,0,0.5);
+        white-space: nowrap;
+        max-width: 90%;
+        /* background-color: rgba(0, 0, 0, 0.5) REMOVED */
+      }
+    </style>
+
+    <script>
+      (function() {
+        const tl = gsap.timeline({ paused: true });
+        
+        const groups = [
+          { id: '#caption-1', start: 0.119, end: 1.819 },
+          { id: '#caption-2', start: 1.839, end: 3.179 },
+          { id: '#caption-3', start: 3.24, end: 4.639 },
+          { id: '#caption-4', start: 4.659, end: 6.399 },
+          { id: '#caption-5', start: 6.46, end: 8.659 },
+          { id: '#caption-6', start: 8.699, end: 9.799 },
+          { id: '#caption-7', start: 9.84, end: 10.699 },
+          { id: '#caption-8', start: 10.739, end: 11.779 },
+          { id: '#caption-9', start: 11.819, end: 13.18 },
+          { id: '#caption-10', start: 13.22, end: 14.22 },
+          { id: '#caption-11', start: 14.239, end: 14.88 },
+          { id: '#caption-12', start: 15.079, end: 16.019 }
+        ];
+
+        const FADE_DURATION = 0.4; // Smooth 400ms fades
+
+        groups.forEach((group, index) => {
+          const nextGroup = groups[index + 1];
+          // Timing: Stay visible until replaced by the next group
+          const displayEnd = nextGroup ? nextGroup.start : group.end;
+          
+          // Fade In
+          tl.to(group.id, {
+            opacity: 1,
+            duration: FADE_DURATION,
+            ease: "power2.out"
+          }, group.start);
+
+          // Fade Out
+          // We start the fade out exactly when the next group starts to fade in
+          // This ensures a smooth transition between groups
+          tl.to(group.id, {
+            opacity: 0,
+            duration: FADE_DURATION,
+            ease: "power2.in"
+          }, displayEnd);
+        });
+
+        window.__timelines["captions"] = tl;
+      })();
+    </script>
+  </div>
+</template>

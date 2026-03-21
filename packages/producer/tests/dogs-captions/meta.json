@@ -1,0 +1,15 @@
+{
+  "name": "Dogs with Captions",
+  "description": "Tests video composition with captions and animations",
+  "tags": ["video", "captions", "animations", "slow"],
+
+  "minPsnr": 30,
+  "maxFrameFailures": 0,
+
+  "minAudioCorrelation": 0.9,
+  "maxAudioLagWindows": 120,
+
+  "renderConfig": {
+    "fps": 30
+  }
+}

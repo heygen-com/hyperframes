@@ -1,0 +1,17 @@
+{
+  "name": "style-16-prod",
+  "description": "Regression fixture imported from normalized style pack style-16-prod",
+  "tags": [
+    "style-regression",
+    "prod-style",
+    "slow",
+    "portrait"
+  ],
+  "minPsnr": 30,
+  "maxFrameFailures": 0,
+  "minAudioCorrelation": 0.9,
+  "maxAudioLagWindows": 120,
+  "renderConfig": {
+    "fps": 30
+  }
+}

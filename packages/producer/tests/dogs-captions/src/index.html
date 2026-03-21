@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dog Safety Video with Captions</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+</head>
+<body>
+    <div id="main" data-composition-id="main-comp" data-start="0" data-width="1080" data-height="1920">
+        <!-- Main Video -->
+        <video id="video-1" 
+               data-start="0" 
+               data-duration="142.36" 
+               data-track-index="0" 
+               src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/uploaded_assets/12ca139c_8bf35a3b61b84ab69251ad5091e4c69b.mp4"
+               crossorigin="anonymous">
+        </video>
+
+        <!-- Captions Composition -->
+        <div id="captions-comp" 
+             data-composition-id="captions" 
+             data-composition-src="compositions/captions.html" 
+             data-start="0" 
+             data-duration="144.36"
+             data-track-index="1">
+        </div>
+
+        <script src="script.js"></script>
+    </div>
+</body>
+</html>

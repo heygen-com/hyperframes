@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Editor Agent Video</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    <style>
+        body,
+        html {
+            margin: 0;
+            padding: 0;
+            background-color: #E8DCC8; /* Newsprint Tan */
+            overflow: hidden;
+            width: 1080px;
+            height: 1920px;
+            font-family: 'Montserrat', 'Arial Black', sans-serif;
+        }
+        #main-comp {
+            position: relative;
+            width: 1080px;
+            height: 1920px;
+            overflow: hidden;
+            background:
+              linear-gradient(180deg, #ECDDCA 0%, #E2D3BE 100%);
+        }
+        #motion-layer,
+        #captions-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 1080px;
+            height: 1920px;
+            pointer-events: none;
+        }
+        #motion-layer {
+            z-index: 20;
+        }
+        #aroll-frame {
+            position: absolute;
+            top: 112px;
+            left: 112px;
+            width: 856px;
+            height: 1328px;
+            overflow: hidden;
+            background: #0D0D0D;
+            border: 3px solid #151515;
+            box-shadow: 16px 16px 0 #CC0000;
+            z-index: 10;
+        }
+        #aroll-frame::before {
+            content: "";
+            position: absolute;
+            inset: 14px;
+            border: 1px solid rgba(232, 220, 200, 0.35);
+            z-index: 3;
+            pointer-events: none;
+        }
+        #aroll-frame::after {
+            content: "EDITOR AGENT / CUT 07";
+            position: absolute;
+            left: 18px;
+            top: 18px;
+            font-size: 18px;
+            letter-spacing: 0.22em;
+            color: rgba(232, 220, 200, 0.92);
+            z-index: 4;
+        }
+        #aroll {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            filter: contrast(1.08) saturate(0.9) brightness(0.98);
+        }
+        #aroll-frame img.__render_frame__,
+        #aroll-frame img.__preview_render_frame__ {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            filter: contrast(1.08) saturate(0.9) brightness(0.98);
+        }
+        #captions-layer {
+            z-index: 30;
+        }
+    </style>
+</head>
+<body>
+    <div id="main-comp" data-composition-id="main" data-width="1080" data-height="1920" data-start="0" data-duration="13.88">
+        <!-- Background/Motion Graphics Layer -->
+        <div id="motion-layer" 
+             data-composition-id="motion-graphics" 
+             data-composition-src="compositions/motion-graphics.html" 
+             data-start="0" 
+             data-duration="13.88" 
+             data-track-index="1">
+        </div>
+
+        <!-- A-roll Video Layer -->
+        <div id="aroll-frame">
+            <video id="aroll" 
+                   data-start="0" 
+                   data-duration="13.88" 
+                   data-track-index="2" 
+                   src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/uploaded_assets/fba9969d_c8c30a7e22ac40029c24c5135d27df04.mp4">
+            </video>
+        </div>
+
+        <!-- Captions Layer -->
+        <div id="captions-layer" 
+             data-composition-id="captions" 
+             data-composition-src="compositions/captions.html" 
+             data-start="0" 
+             data-duration="13.88" 
+             data-track-index="3">
+        </div>
+
+        <script>
+            const tl = gsap.timeline({ paused: true });
+
+            tl.fromTo('#aroll-frame', {
+                scale: 1.03,
+                y: 22
+            }, {
+                scale: 1,
+                y: 0,
+                duration: 0.85,
+                ease: "power2.out"
+            }, 0);
+
+            tl.to('#aroll-frame', {
+                x: 64,
+                duration: 0.65,
+                ease: "power2.inOut"
+            }, 1.5);
+
+            tl.to('#aroll-frame', {
+                x: -52,
+                duration: 0.7,
+                ease: "power2.inOut"
+            }, 4.0);
+
+            tl.to('#aroll-frame', {
+                x: 0,
+                duration: 0.65,
+                ease: "power2.out"
+            }, 7.5);
+            
+            window.__timelines["main"] = tl;
+        </script>
+    </div>
+</body>
+</html>

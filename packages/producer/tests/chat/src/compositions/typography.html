@@ -1,0 +1,226 @@
+<template id="typography-template">
+    <div data-composition-id="typography" data-width="1080" data-height="1920" data-duration="15">
+        <div class="text-container">
+            <div id="scene-1" class="phrase">
+                <span class="word">TEXT</span>
+                <span class="word">ANIMATION</span>
+            </div>
+            <div id="scene-2" class="phrase">
+                <span class="word">WHAT</span>
+                <span class="word">DO</span>
+                <span class="word">YOU</span>
+                <span class="word">WANT</span>
+                <span class="word">TO</span>
+                <span class="word">WRITE?</span>
+            </div>
+            <div id="scene-3" class="phrase">
+                <span class="word">EVERYTHING</span>
+                <span class="word">YOU</span>
+                <span class="word">WANT,</span>
+            </div>
+            <div id="scene-4" class="phrase">
+                <span class="word">STANDING</span>
+                <span class="word">IN</span>
+                <span class="word">FRONT</span>
+                <span class="word">OF</span>
+                <span class="word">YOU.</span>
+            </div>
+            <div id="scene-5" class="phrase">
+                <span class="word">VERY</span>
+                <span class="word">EASY,</span>
+            </div>
+            <div id="scene-6" class="phrase">
+                <span class="word">AND</span>
+                <span class="word">FAST.</span>
+            </div>
+            <div id="scene-7" class="phrase">
+                <span class="word">SIT</span>
+                <span class="word">BACK</span>
+                <span class="word">AND</span>
+                <span class="word">RELAX</span>
+                <span class="cursor">|</span>
+            </div>
+            <div id="scene-8" class="phrase">
+                <span class="word">WHAT</span>
+                <span class="word">YOU</span>
+                <span class="word">ARE</span>
+                <span class="word">LOOKING</span>
+                <span class="word">FOR?</span>
+            </div>
+            <div id="scene-9" class="phrase">
+                <span class="word">THERE</span>
+                <span class="word">YOU</span>
+                <span class="word">HAVE</span>
+                <span class="word">IT!</span>
+            </div>
+            <div id="scene-10" class="phrase thank-you">
+                <span class="word">THANK</span>
+                <span class="word">YOU</span>
+            </div>
+        </div>
+
+        <style>
+            [data-composition-id="typography"] .text-container {
+                width: 100%;
+                height: 100%;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                flex-direction: column;
+                color: white;
+                text-align: center;
+            }
+
+            [data-composition-id="typography"] .phrase {
+                font-size: 100px;
+                font-weight: 500;
+                opacity: 0;
+                position: absolute;
+                text-transform: uppercase;
+                letter-spacing: -2px;
+                width: 90%;
+                display: flex;
+                flex-wrap: wrap;
+                justify-content: center;
+                gap: 20px;
+            }
+
+            [data-composition-id="typography"] .word {
+                opacity: 0;
+                display: inline-block;
+            }
+
+            [data-composition-id="typography"] .glitch-overlay {
+                position: absolute;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                pointer-events: none;
+                mix-blend-mode: screen;
+                opacity: 0;
+            }
+
+            [data-composition-id="typography"] .chromatic {
+                color: #ff00ff;
+                transform: translateX(5px);
+            }
+
+            [data-composition-id="typography"] .chromatic-2 {
+                color: #00ffff;
+                transform: translateX(-5px);
+            }
+
+            [data-composition-id="typography"] .cursor {
+                opacity: 0;
+                margin-left: 10px;
+            }
+
+            [data-composition-id="typography"] .thank-you {
+                font-size: 150px;
+                background: linear-gradient(90deg, #00f2fe 0%, #4facfe 100%);
+                -webkit-background-clip: text;
+                -webkit-text-fill-color: transparent;
+            }
+
+            /* Glitch Effect Classes */
+            .glitch-flicker {
+                animation: flicker 0.1s infinite;
+            }
+
+            @keyframes flicker {
+                0% { opacity: 0.5; transform: skew(2deg); }
+                50% { opacity: 1; transform: skew(-2deg); }
+                100% { opacity: 0.8; transform: skew(0deg); }
+            }
+        </style>
+
+        <script>
+            const tl = gsap.timeline({ paused: true });
+            
+            const scenes = [
+                { id: "#scene-1", start: 0.5, duration: 1.2 },
+                { id: "#scene-2", start: 2.0, duration: 1.8 },
+                { id: "#scene-3", start: 4.0, duration: 1.0 },
+                { id: "#scene-4", start: 5.2, duration: 1.5 },
+                { id: "#scene-5", start: 7.0, duration: 0.8 },
+                { id: "#scene-6", start: 8.0, duration: 0.8 },
+                { id: "#scene-7", start: 9.0, duration: 1.8 },
+                { id: "#scene-8", start: 11.0, duration: 1.5 },
+                { id: "#scene-9", start: 12.8, duration: 1.0 },
+                { id: "#scene-10", start: 14.0, duration: 1.0 }
+            ];
+
+            scenes.forEach((scene, index) => {
+                const startTime = scene.start;
+                const sceneEl = document.querySelector(scene.id);
+                const words = sceneEl.querySelectorAll(".word");
+                
+                // Show scene container
+                tl.set(scene.id, { opacity: 1 }, startTime);
+
+                // Word by word appearance
+                words.forEach((word, wIndex) => {
+                    const wordStart = startTime + (wIndex * 0.2);
+                    
+                    // Creative Animation Variations
+                    if (index % 3 === 0) {
+                        // Fly-in from sides
+                        const xOffset = wIndex % 2 === 0 ? -500 : 500;
+                        tl.fromTo(word, { opacity: 0, x: xOffset, scale: 0.5 }, { opacity: 1, x: 0, scale: 1, duration: 0.4, ease: "back.out(1.7)" }, wordStart);
+                    } else if (index % 3 === 1) {
+                        // Fade-in with scale and rotation
+                        tl.fromTo(word, { opacity: 0, scale: 0, rotation: -45 }, { opacity: 1, scale: 1, rotation: 0, duration: 0.5, ease: "elastic.out(1, 0.5)" }, wordStart);
+                    } else {
+                        // Pop-In & Flicker (Original)
+                        tl.set(word, { opacity: 1, scale: 1.5 }, wordStart);
+                        tl.to(word, { scale: 1, duration: 0.1, ease: "power4.out" }, wordStart);
+                    }
+                    
+                    // Glitch/Chromatic Aberration & Horizontal Displacement on major beats
+                    tl.to(scene.id, { 
+                        x: (wIndex % 2 === 0 ? 15 : -15), 
+                        skewX: (wIndex % 2 === 0 ? 5 : -5),
+                        duration: 0.05, 
+                        repeat: 1, 
+                        yoyo: true,
+                        ease: "none"
+                    }, wordStart);
+
+                    // Color flash for specific words (purple, cyan, teal)
+                    if (word.textContent.includes("ANIMATION") || word.textContent.includes("WRITE") || word.textContent.includes("FAST") || word.textContent.includes("EASY")) {
+                        tl.to(word, { color: "#a855f7", duration: 0.1, repeat: 1, yoyo: true }, wordStart);
+                    }
+                });
+
+                // Typewriter Cursor for Scene 7
+                if (scene.id === "#scene-7") {
+                    const cursor = sceneEl.querySelector(".cursor");
+                    tl.set(cursor, { opacity: 1 }, startTime + (words.length * 0.2));
+                    tl.to(cursor, { opacity: 0, duration: 0.4, repeat: 3, yoyo: true, ease: "steps(1)" }, startTime + (words.length * 0.2));
+                }
+
+                // Outro: Whole line disappears
+                tl.set(scene.id, { opacity: 0 }, startTime + scene.duration);
+            });
+
+            // Special Outro for Thank You
+            tl.to("#scene-10", {
+                filter: "hue-rotate(360deg) drop-shadow(0 0 30px rgba(0, 255, 255, 1))",
+                scale: 1.2,
+                duration: 1.0,
+                ease: "power1.inOut"
+            }, 14.0);
+
+            tl.to("#scene-10 .word", {
+                opacity: 0,
+                y: -50,
+                stagger: 0.1,
+                duration: 0.5,
+                ease: "power2.in"
+            }, 14.5);
+
+            window.__timelines["typography"] = tl;
+        </script>
+    </div>
+</template>

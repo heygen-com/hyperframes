@@ -1,0 +1,112 @@
+<template id="captions-template">
+  <div data-composition-id="captions" data-width="1920" data-height="1080" data-duration="16.7">
+    <div class="bg-gradient"></div>
+    <div class="caption-wrapper">
+      <div id="caption-container">
+        <div id="caption-text"></div>
+      </div>
+    </div>
+
+    <style>
+      [data-composition-id="captions"] {
+        width: 1920px;
+        height: 1080px;
+        position: relative;
+        overflow: hidden;
+      }
+
+      [data-composition-id="captions"] .bg-gradient {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        width: 100%;
+        height: 25%; /* Reduced height to focus on bottom */
+        background: linear-gradient(to top, rgba(0, 0, 0, 0.9) 0%, rgba(0, 0, 0, 0.6) 50%, rgba(0, 0, 0, 0) 100%);
+        pointer-events: none;
+        opacity: 0;
+      }
+
+      [data-composition-id="captions"] .caption-wrapper {
+        position: absolute;
+        bottom: 54px; /* 5% of 1080px */
+        left: 0;
+        width: 100%;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 10;
+      }
+
+      [data-composition-id="captions"] #caption-container {
+        min-width: 400px;
+        max-width: 1600px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        padding: 10px 60px;
+        opacity: 0;
+      }
+
+      [data-composition-id="captions"] #caption-text {
+        color: #FFFFFF;
+        font-family: 'Inter', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+        font-size: 42px;
+        font-weight: 300; /* Light */
+        text-transform: uppercase;
+        letter-spacing: 0.4em; /* Wide letter-spacing, but readable */
+        text-align: center;
+        line-height: 1.4;
+      }
+    </style>
+
+    <script>
+      (function() {
+        const tl = gsap.timeline({ paused: true });
+        const container = document.querySelector('[data-composition-id="captions"] #caption-container');
+        const textElement = document.querySelector('[data-composition-id="captions"] #caption-text');
+        const bgGradient = document.querySelector('[data-composition-id="captions"] .bg-gradient');
+
+        const OFFSET = 0; // Adjusted to 0 as per standard unless specified otherwise by Lyra's context, but keeping logic flexible.
+
+        const captions = [
+          { start: 0.1, end: 1.8, text: "WE ASKED WHAT YOU NEEDED" },
+          { start: 1.8, end: 4.6, text: "47 PERCENT SAID MOTION GRAPHICS" },
+          { start: 4.6, end: 6.9, text: "62 PERCENT SAID STATIC CONTENT" },
+          { start: 6.9, end: 8.6, text: "WAS COSTING YOU ATTENTION" },
+          { start: 8.6, end: 10.0, text: "THREE OUT OF FOUR SAID" },
+          { start: 10.0, end: 11.3, text: "KNOW THE LOOK YOU WANT" },
+          { start: 11.3, end: 12.8, text: "BUT NO EDITING SKILLS" },
+          { start: 12.8, end: 14.2, text: "TO GET THERE" },
+          { start: 14.2, end: 16.2, text: "SO WE BUILT EDITOR AGENT" }
+        ];
+
+        if (captions.length > 0) {
+          const firstStart = captions[0].start + OFFSET;
+          const lastEnd = captions[captions.length - 1].end + OFFSET;
+
+          // Fade in gradient and container
+          tl.to([bgGradient, container], { opacity: 1, duration: 0.5, ease: "power2.out" }, firstStart);
+
+          captions.forEach((cap, index) => {
+            const startTime = cap.start + OFFSET;
+            
+            // Update text
+            tl.set(textElement, { innerText: cap.text }, startTime);
+            
+            // Subtle scale/fade effect for each new line to make it feel modern
+            tl.fromTo(textElement, 
+              { opacity: 0.7, scale: 0.98 }, 
+              { opacity: 1, scale: 1, duration: 0.3, ease: "power1.out" }, 
+              startTime
+            );
+          });
+
+          // Fade out at the very end
+          tl.to([bgGradient, container], { opacity: 0, duration: 0.5, ease: "power2.in" }, lastEnd);
+        }
+
+        window.__timelines["captions"] = tl;
+      })();
+    </script>
+  </div>
+</template>

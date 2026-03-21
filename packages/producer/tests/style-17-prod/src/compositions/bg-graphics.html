@@ -1,0 +1,227 @@
+<template id="bg-graphics-template">
+  <div data-composition-id="bg-graphics" data-width="1080" data-height="1920" data-duration="13.88">
+    <div class="bg-container">
+      <!-- Background Shapes -->
+      <div class="shape shape-1"></div>
+      <div class="shape shape-2"></div>
+      <div class="shape shape-3"></div>
+      
+      <!-- Paper Cut Shapes (SVG) -->
+      <div class="paper-cuts">
+        <svg viewBox="0 0 1080 1920" class="svg-assets">
+          <path id="cut-1" d="M100,200 L400,150 L450,500 L150,550 Z" fill="#FF4500" />
+          <path id="cut-2" d="M600,800 L900,750 L950,1100 L650,1150 Z" fill="#E8A317" />
+          <path id="cut-3" d="M200,1300 L500,1250 L550,1600 L250,1650 Z" fill="#FFF5DC" />
+        </svg>
+      </div>
+
+      <!-- Fragmented Title -->
+      <div class="title-container">
+        <div class="title-part" id="part-E">E</div>
+        <div class="title-part" id="part-D">D</div>
+        <div class="title-part" id="part-I">I</div>
+        <div class="title-part" id="part-T">T</div>
+        <div class="title-part" id="part-O">O</div>
+        <div class="title-part" id="part-R">R</div>
+        <div class="title-space"></div>
+        <div class="title-part" id="part-A">A</div>
+        <div class="title-part" id="part-G">G</div>
+        <div class="title-part" id="part-E2">E</div>
+        <div class="title-part" id="part-N">N</div>
+        <div class="title-part" id="part-T2">T</div>
+      </div>
+
+      <!-- Tear Transitions -->
+      <div class="tear-container" id="tear-1">
+        <svg viewBox="0 0 1080 1920" preserveAspectRatio="none">
+          <path id="tear-path-1" d="M-100,0 L0,0 L50,400 L-20,800 L60,1200 L-10,1600 L40,1920 L-100,1920 Z" fill="#000000" />
+        </svg>
+      </div>
+      <div class="tear-container" id="tear-2">
+        <svg viewBox="0 0 1080 1920" preserveAspectRatio="none">
+          <path id="tear-path-2" d="M1180,0 L1080,0 L1030,400 L1100,800 L1020,1200 L1090,1600 L1040,1920 L1180,1920 Z" fill="#000000" />
+        </svg>
+      </div>
+    </div>
+
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=League+Gothic&display=swap');
+
+      [data-composition-id="bg-graphics"] {
+        width: 1080px;
+        height: 1920px;
+        background-color: transparent; /* Changed to transparent to see A-roll */
+        overflow: hidden;
+        position: relative;
+        font-family: 'League Gothic', sans-serif;
+      }
+
+      [data-composition-id="bg-graphics"] .bg-container {
+        width: 100%;
+        height: 100%;
+        position: absolute;
+        top: 0;
+        left: 0;
+      }
+
+      [data-composition-id="bg-graphics"] .shape {
+        position: absolute;
+        opacity: 0.3; /* Reduced from 0.6 */
+      }
+
+      [data-composition-id="bg-graphics"] .shape-1 {
+        width: 600px;
+        height: 800px;
+        background: #FF4500;
+        top: 10%;
+        left: -10%;
+        clip-path: polygon(10% 0%, 100% 20%, 90% 100%, 0% 80%);
+      }
+
+      [data-composition-id="bg-graphics"] .shape-2 {
+        width: 500px;
+        height: 700px;
+        background: #E8A317;
+        bottom: 15%;
+        right: -5%;
+        clip-path: polygon(0% 15%, 85% 0%, 100% 85%, 15% 100%);
+      }
+
+      [data-composition-id="bg-graphics"] .shape-3 {
+        width: 400px;
+        height: 400px;
+        background: #FFF5DC;
+        top: 40%;
+        left: 30%;
+        clip-path: polygon(20% 0%, 80% 10%, 100% 90%, 0% 100%);
+      }
+
+      [data-composition-id="bg-graphics"] .paper-cuts {
+        position: absolute;
+        width: 100%;
+        height: 100%;
+        top: 0;
+        left: 0;
+        pointer-events: none;
+      }
+
+      [data-composition-id="bg-graphics"] .svg-assets {
+        width: 100%;
+        height: 100%;
+      }
+
+      [data-composition-id="bg-graphics"] .title-container {
+        position: absolute;
+        top: 15%;
+        left: 10%;
+        display: flex;
+        flex-wrap: wrap;
+        width: 800px;
+        gap: 10px;
+        pointer-events: none;
+      }
+
+      [data-composition-id="bg-graphics"] .title-part {
+        font-size: 220px;
+        font-weight: 900;
+        color: #FFF5DC;
+        line-height: 0.8;
+        text-transform: uppercase;
+        filter: url(#rough-filter);
+      }
+
+      [data-composition-id="bg-graphics"] .title-space {
+        width: 100%;
+        height: 40px;
+      }
+
+      [data-composition-id="bg-graphics"] .tear-container {
+        position: absolute;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+        z-index: 100;
+      }
+
+      [data-composition-id="bg-graphics"] #tear-1 { left: 0; }
+      [data-composition-id="bg-graphics"] #tear-2 { left: 0; }
+    </style>
+
+    <svg style="position: absolute; width: 0; height: 0;">
+      <filter id="rough-filter">
+        <feTurbulence type="fractalNoise" baseFrequency="0.05" numOctaves="2" result="noise" />
+        <feDisplacementMap in="SourceGraphic" in2="noise" scale="5" />
+      </filter>
+    </svg>
+
+    <script>
+      (function() {
+        const tl = gsap.timeline({ paused: true });
+        
+        // Deterministic animations added to the timeline
+        tl.to('.shape-1', { x: 30, y: -20, rotation: 2, duration: 4, repeat: 3, yoyo: true, ease: "sine.inOut" }, 0);
+        tl.to('.shape-2', { x: -40, y: 30, rotation: -3, duration: 5, repeat: 2, yoyo: true, ease: "sine.inOut" }, 0);
+        tl.to('.shape-3', { scale: 1.1, rotation: 5, duration: 6, repeat: 2, yoyo: true, ease: "sine.inOut" }, 0);
+
+        tl.from('#cut-1', { x: -1000, y: -500, rotation: -45, duration: 1.5, ease: "power3.out" }, 0);
+        tl.from('#cut-2', { x: 1000, y: 500, rotation: 45, duration: 1.5, ease: "power3.out" }, 0.2);
+        tl.from('#cut-3', { scale: 0, opacity: 0, duration: 1.2, ease: "back.out(1.7)" }, 0.5);
+
+        const titleParts = document.querySelectorAll('.title-part');
+        tl.from(titleParts, {
+          opacity: 0,
+          y: (i) => (i % 2 === 0 ? -100 : 100),
+          x: (i) => (i % 3 === 0 ? -50 : 50),
+          rotation: (i) => (i % 2 === 0 ? -15 : 15),
+          duration: 0.8,
+          stagger: 0.05,
+          ease: "expo.out"
+        }, 1);
+
+        // Improved "snap" for tears
+        tl.to('#tear-path-1', {
+          attr: { d: "M-100,0 L1180,0 L1230,400 L1160,800 L1240,1200 L1170,1600 L1220,1920 L-100,1920 Z" },
+          duration: 0.4,
+          ease: "expo.in"
+        }, 3.4);
+        tl.set('#tear-path-1', { opacity: 0 }, 4.0);
+
+        // Exit Title and Squares after 3 seconds
+        tl.to(titleParts, {
+          opacity: 0,
+          scale: 0.5,
+          y: (i) => (i % 2 === 0 ? -200 : 200),
+          rotation: (i) => (i % 2 === 0 ? -45 : 45),
+          duration: 0.6,
+          stagger: 0.02,
+          ease: "power2.in"
+        }, 3.0);
+
+        tl.to(['#cut-1', '#cut-2', '#cut-3'], {
+          opacity: 0,
+          scale: 0,
+          x: (i) => (i === 0 ? -500 : 500),
+          duration: 0.6,
+          ease: "power2.in"
+        }, 3.0);
+
+        tl.fromTo('#tear-path-2', 
+          { attr: { d: "M1180,0 L1080,0 L1030,400 L1100,800 L1020,1200 L1090,1600 L1040,1920 L1180,1920 Z" }, opacity: 1 },
+          {
+            attr: { d: "M1180,0 L-100,0 L-150,400 L-80,800 L-160,1200 L-90,1600 L-140,1920 L1180,1920 Z" },
+            duration: 0.4,
+            ease: "expo.in"
+          }, 7.0);
+        tl.set('#tear-path-2', { opacity: 0 }, 7.6);
+
+        // Final exit sequence (moved or kept for other elements if any)
+        // Since title and cuts already left at 3s, these are redundant but kept if they target other elements
+        // tl.to(titleParts, { ... }, 12.5); 
+        // tl.to(['#cut-1', '#cut-2', '#cut-3'], { ... }, 12.8);
+
+        window.__timelines["bg-graphics"] = tl;
+      })();
+    </script>
+  </div>
+</template>

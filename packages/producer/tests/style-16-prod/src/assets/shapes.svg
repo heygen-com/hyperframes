@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1920" width="1080" height="1920">
+  <defs>
+    <pattern id="diagonal-grid" width="60" height="60" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <line x1="0" y1="0" x2="0" y2="60" stroke="#7A7A7A" stroke-width="3" />
+      <line x1="0" y1="0" x2="60" y2="0" stroke="#7A7A7A" stroke-width="3" />
+    </pattern>
+  </defs>
+
+  <!-- Background -->
+  <rect id="background" width="1080" height="1920" fill="#F4F4F4" />
+
+  <!-- Grey diagonal grid pattern -->
+  <rect id="grid-pattern" x="140" y="200" width="800" height="1520" fill="url(#diagonal-grid)" />
+
+  <!-- Large black circle -->
+  <circle id="black-circle" cx="650" cy="750" r="420" fill="#000000" />
+
+  <!-- Sharp red wedge pointing towards the center -->
+  <polygon id="red-wedge" points="100,1600 250,1750 750,850" fill="#CC0000" />
+
+  <!-- Stencil-style numbers '47' and '62' in black -->
+  <g id="stencil-numbers">
+    <!-- Number 47 -->
+    <text id="number-47" x="180" y="450" font-family="'Arial Black', Impact, sans-serif" font-size="300" fill="#000000" font-weight="900" letter-spacing="-15">47</text>
+    <!-- Stencil cuts for 47 -->
+    <line x1="150" y1="280" x2="550" y2="280" stroke="#F4F4F4" stroke-width="15" />
+    <line x1="150" y1="360" x2="550" y2="360" stroke="#F4F4F4" stroke-width="15" />
+
+    <!-- Number 62 -->
+    <text id="number-62" x="580" y="1550" font-family="'Arial Black', Impact, sans-serif" font-size="350" fill="#000000" font-weight="900" letter-spacing="-20">62</text>
+    <!-- Stencil cuts for 62 -->
+    <line x1="550" y1="1350" x2="1050" y2="1350" stroke="#F4F4F4" stroke-width="18" />
+    <line x1="550" y1="1450" x2="1050" y2="1450" stroke="#F4F4F4" stroke-width="18" />
+  </g>
+</svg>

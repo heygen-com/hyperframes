@@ -1,0 +1,213 @@
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { createRuntimePlayer } from "./player";
+import type { RuntimeTimelineLike } from "./types";
+
+function createMockTimeline(opts?: { time?: number; duration?: number }): RuntimeTimelineLike {
+  const state = { time: opts?.time ?? 0, duration: opts?.duration ?? 10, paused: false };
+  return {
+    play: vi.fn(() => { state.paused = false; }),
+    pause: vi.fn(() => { state.paused = true; }),
+    seek: vi.fn((t: number) => { state.time = t; }),
+    totalTime: vi.fn((t: number) => { state.time = t; }),
+    time: vi.fn(() => state.time),
+    duration: vi.fn(() => state.duration),
+    add: vi.fn(),
+    paused: vi.fn((p?: boolean) => { if (p !== undefined) state.paused = p; }),
+    timeScale: vi.fn(),
+    set: vi.fn(),
+  };
+}
+
+function createMockDeps(timeline?: RuntimeTimelineLike | null) {
+  let isPlaying = false;
+  let playbackRate = 1;
+  return {
+    getTimeline: vi.fn(() => timeline ?? null),
+    setTimeline: vi.fn(),
+    getIsPlaying: vi.fn(() => isPlaying),
+    setIsPlaying: vi.fn((v: boolean) => { isPlaying = v; }),
+    getPlaybackRate: vi.fn(() => playbackRate),
+    setPlaybackRate: vi.fn((v: number) => { playbackRate = v; }),
+    getCanonicalFps: vi.fn(() => 30),
+    onSyncMedia: vi.fn(),
+    onStatePost: vi.fn(),
+    onDeterministicSeek: vi.fn(),
+    onDeterministicPause: vi.fn(),
+    onDeterministicPlay: vi.fn(),
+    onRenderFrameSeek: vi.fn(),
+    onShowNativeVideos: vi.fn(),
+    getSafeDuration: vi.fn(() => 10),
+  };
+}
+
+describe("createRuntimePlayer", () => {
+  describe("play", () => {
+    it("does nothing without a timeline", () => {
+      const deps = createMockDeps(null);
+      const player = createRuntimePlayer(deps);
+      player.play();
+      expect(deps.setIsPlaying).not.toHaveBeenCalled();
+    });
+
+    it("does nothing if already playing", () => {
+      const timeline = createMockTimeline();
+      const deps = createMockDeps(timeline);
+      deps.getIsPlaying.mockReturnValue(true);
+      const player = createRuntimePlayer(deps);
+      player.play();
+      expect(timeline.play).not.toHaveBeenCalled();
+    });
+
+    it("plays the timeline and updates state", () => {
+      const timeline = createMockTimeline({ time: 2, duration: 10 });
+      const deps = createMockDeps(timeline);
+      const player = createRuntimePlayer(deps);
+      player.play();
+      expect(timeline.play).toHaveBeenCalled();
+      expect(deps.setIsPlaying).toHaveBeenCalledWith(true);
+      expect(deps.onDeterministicPlay).toHaveBeenCalled();
+      expect(deps.onShowNativeVideos).toHaveBeenCalled();
+      expect(deps.onStatePost).toHaveBeenCalledWith(true);
+    });
+
+    it("resets to 0 when at end of timeline", () => {
+      const timeline = createMockTimeline({ time: 10, duration: 10 });
+      const deps = createMockDeps(timeline);
+      deps.getSafeDuration.mockReturnValue(10);
+      const player = createRuntimePlayer(deps);
+      player.play();
+      expect(timeline.seek).toHaveBeenCalledWith(0, false);
+      expect(deps.onDeterministicSeek).toHaveBeenCalledWith(0);
+    });
+
+    it("sets timeScale to playbackRate", () => {
+      const timeline = createMockTimeline({ time: 0, duration: 10 });
+      const deps = createMockDeps(timeline);
+      deps.getPlaybackRate.mockReturnValue(2);
+      const player = createRuntimePlayer(deps);
+      player.play();
+      expect(timeline.timeScale).toHaveBeenCalledWith(2);
+    });
+  });
+
+  describe("pause", () => {
+    it("does nothing without a timeline", () => {
+      const deps = createMockDeps(null);
+      const player = createRuntimePlayer(deps);
+      player.pause();
+      expect(deps.setIsPlaying).not.toHaveBeenCalled();
+    });
+
+    it("pauses the timeline and syncs media", () => {
+      const timeline = createMockTimeline({ time: 5 });
+      const deps = createMockDeps(timeline);
+      const player = createRuntimePlayer(deps);
+      player.pause();
+      expect(timeline.pause).toHaveBeenCalled();
+      expect(deps.setIsPlaying).toHaveBeenCalledWith(false);
+      expect(deps.onDeterministicSeek).toHaveBeenCalledWith(5);
+      expect(deps.onDeterministicPause).toHaveBeenCalled();
+      expect(deps.onSyncMedia).toHaveBeenCalledWith(5, false);
+      expect(deps.onRenderFrameSeek).toHaveBeenCalledWith(5);
+      expect(deps.onStatePost).toHaveBeenCalledWith(true);
+    });
+  });
+
+  describe("seek", () => {
+    it("does nothing without a timeline", () => {
+      const deps = createMockDeps(null);
+      const player = createRuntimePlayer(deps);
+      player.seek(5);
+      expect(deps.onDeterministicSeek).not.toHaveBeenCalled();
+    });
+
+    it("seeks to quantized time and pauses", () => {
+      const timeline = createMockTimeline({ duration: 10 });
+      const deps = createMockDeps(timeline);
+      const player = createRuntimePlayer(deps);
+      player.seek(3);
+      expect(timeline.pause).toHaveBeenCalled();
+      expect(timeline.totalTime).toHaveBeenCalled();
+      expect(deps.setIsPlaying).toHaveBeenCalledWith(false);
+      expect(deps.onSyncMedia).toHaveBeenCalled();
+      expect(deps.onStatePost).toHaveBeenCalledWith(true);
+    });
+
+    it("clamps negative time to 0", () => {
+      const timeline = createMockTimeline({ duration: 10 });
+      const deps = createMockDeps(timeline);
+      const player = createRuntimePlayer(deps);
+      player.seek(-5);
+      expect(deps.onDeterministicSeek).toHaveBeenCalledWith(0);
+    });
+
+    it("handles NaN time", () => {
+      const timeline = createMockTimeline({ duration: 10 });
+      const deps = createMockDeps(timeline);
+      const player = createRuntimePlayer(deps);
+      player.seek(NaN);
+      expect(deps.onDeterministicSeek).toHaveBeenCalledWith(0);
+    });
+  });
+
+  describe("renderSeek", () => {
+    it("seeks deterministically for render pipeline", () => {
+      const timeline = createMockTimeline({ duration: 10 });
+      const deps = createMockDeps(timeline);
+      const player = createRuntimePlayer(deps);
+      player.renderSeek(5);
+      expect(timeline.pause).toHaveBeenCalled();
+      expect(deps.setIsPlaying).toHaveBeenCalledWith(false);
+      expect(deps.onRenderFrameSeek).toHaveBeenCalled();
+    });
+  });
+
+  describe("getters", () => {
+    it("getTime returns timeline time", () => {
+      const timeline = createMockTimeline({ time: 7.5 });
+      const deps = createMockDeps(timeline);
+      const player = createRuntimePlayer(deps);
+      expect(player.getTime()).toBe(7.5);
+    });
+
+    it("getDuration returns timeline duration", () => {
+      const timeline = createMockTimeline({ duration: 30 });
+      const deps = createMockDeps(timeline);
+      const player = createRuntimePlayer(deps);
+      expect(player.getDuration()).toBe(30);
+    });
+
+    it("getTime returns 0 without timeline", () => {
+      const deps = createMockDeps(null);
+      const player = createRuntimePlayer(deps);
+      expect(player.getTime()).toBe(0);
+    });
+
+    it("getDuration returns 0 without timeline", () => {
+      const deps = createMockDeps(null);
+      const player = createRuntimePlayer(deps);
+      expect(player.getDuration()).toBe(0);
+    });
+
+    it("isPlaying delegates to deps", () => {
+      const deps = createMockDeps(null);
+      deps.getIsPlaying.mockReturnValue(true);
+      const player = createRuntimePlayer(deps);
+      expect(player.isPlaying()).toBe(true);
+    });
+
+    it("setPlaybackRate delegates to deps", () => {
+      const deps = createMockDeps(null);
+      const player = createRuntimePlayer(deps);
+      player.setPlaybackRate(1.5);
+      expect(deps.setPlaybackRate).toHaveBeenCalledWith(1.5);
+    });
+
+    it("getPlaybackRate delegates to deps", () => {
+      const deps = createMockDeps(null);
+      deps.getPlaybackRate.mockReturnValue(2);
+      const player = createRuntimePlayer(deps);
+      expect(player.getPlaybackRate()).toBe(2);
+    });
+  });
+});

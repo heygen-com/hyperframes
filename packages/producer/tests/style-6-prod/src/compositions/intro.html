@@ -1,0 +1,131 @@
+<template id="intro-template">
+  <div data-composition-id="intro-anim" data-width="1920" data-height="1080" data-duration="3">
+    <div class="intro-container">
+      <!-- Subtle Background Wipe -->
+      <div class="wipe"></div>
+      
+      <!-- Text Container -->
+      <div class="text-wrapper">
+        <div class="line line-1">WE ASKED</div>
+        <div class="line line-2">WHAT YOU</div>
+        <div class="line line-3">NEEDED.</div>
+      </div>
+    </div>
+
+    <style>
+      [data-composition-id="intro-anim"] {
+        background-color: #000000;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        font-family: 'Oswald', 'Bebas Neue', sans-serif;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+      }
+
+      [data-composition-id="intro-anim"] .intro-container {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+      }
+
+      [data-composition-id="intro-anim"] .wipe {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: #CDFF00; /* Volt */
+        transform: translateX(-100%);
+        z-index: 1;
+        opacity: 0.15; /* Subtle wipe that doesn't block text */
+      }
+
+      [data-composition-id="intro-anim"] .text-wrapper {
+        position: relative;
+        z-index: 2;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+      }
+
+      [data-composition-id="intro-anim"] .line {
+        font-size: 180px;
+        font-weight: 900;
+        line-height: 1.1;
+        color: #FFFFFF;
+        text-transform: uppercase;
+        letter-spacing: -2px;
+        opacity: 0;
+        /* Initial state for entrance */
+        transform: translateY(50px) scale(1.2);
+      }
+
+      [data-composition-id="intro-anim"] .line-2 {
+        color: #CDFF00; /* Volt accent */
+      }
+    </style>
+
+    <script>
+      (function() {
+        const tl = gsap.timeline({ paused: true });
+        
+        // 1. Subtle Wipe Animation
+        tl.to('.wipe', {
+          x: '100%',
+          duration: 1.5,
+          ease: 'power2.inOut'
+        }, 0);
+
+        // 2. Text Entrance Animations based on transcript
+        // "WE ASKED" (We at 0.119, asked at 0.319)
+        tl.to('.line-1', {
+          opacity: 1,
+          y: 0,
+          scale: 1,
+          duration: 0.8,
+          ease: 'expo.out'
+        }, 0.119);
+
+        // "WHAT YOU" (what at 0.519, you at 0.699)
+        tl.to('.line-2', {
+          opacity: 1,
+          y: 0,
+          scale: 1,
+          duration: 0.8,
+          ease: 'expo.out'
+        }, 0.519);
+
+        // "NEEDED." (needed. at 0.859)
+        tl.to('.line-3', {
+          opacity: 1,
+          y: 0,
+          scale: 1,
+          duration: 0.8,
+          ease: 'expo.out'
+        }, 0.859);
+
+        // 3. Ambient Motion (Slow zoom for depth)
+        tl.to('.text-wrapper', {
+          scale: 1.05,
+          duration: 3,
+          ease: 'none'
+        }, 0);
+
+        // 4. Fade-out transition (2.7s to 3s)
+        tl.to('.intro-container', {
+          opacity: 0,
+          duration: 0.3,
+          ease: 'power2.inOut'
+        }, 2.7);
+
+        window.__timelines["intro-anim"] = tl;
+      })();
+    </script>
+  </div>
+</template>

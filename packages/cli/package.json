@@ -1,0 +1,55 @@
+{
+  "name": "hyperframes",
+  "version": "0.1.0",
+  "description": "HyperFrames CLI — create, preview, and render HTML video compositions",
+  "type": "module",
+  "bin": {
+    "hyperframes": "./dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "dev": "tsx src/cli.ts",
+    "build": "pnpm build:studio && tsup && pnpm build:runtime && pnpm build:copy",
+    "build:studio": "cd ../studio/frontend && pnpm build",
+    "build:runtime": "tsx scripts/build-runtime.ts",
+    "build:copy": "mkdir -p dist/studio dist/docs dist/templates && cp -r ../studio/frontend/dist/* dist/studio/ && cp -r src/templates/warm-grain src/templates/play-mode src/templates/swiss-grid src/templates/vignelli dist/templates/ && (cp src/docs/*.md dist/docs/ 2>/dev/null || true)",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.8.0",
+    "@puppeteer/browsers": "^2.13.0",
+    "adm-zip": "^0.5.16",
+    "cheerio": "^1.2.0",
+    "citty": "^0.2.1",
+    "esbuild": "^0.25.0",
+    "hono": "^4.0.0",
+    "mime-types": "^3.0.2",
+    "open": "^10.0.0",
+    "puppeteer-core": "^24.39.1"
+  },
+  "devDependencies": {
+    "@hyperframes/core": "workspace:*",
+    "@hyperframes/studio-backend": "workspace:*",
+    "@clack/prompts": "^1.1.0",
+    "@hono/node-server": "^1.0.0",
+    "@hyperframes/engine": "workspace:*",
+    "@hyperframes/producer": "workspace:*",
+    "@types/adm-zip": "^0.5.7",
+    "@types/mime-types": "^3.0.1",
+    "@types/node": "^22.0.0",
+    "adm-zip": "^0.5.16",
+    "cheerio": "^1.2.0",
+    "hono": "^4.0.0",
+    "linkedom": "^0.18.12",
+    "mime-types": "^3.0.2",
+    "picocolors": "^1.1.1",
+    "tsup": "^8.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

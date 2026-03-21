@@ -1,0 +1,188 @@
+<template id="aroll-template">
+  <div data-composition-id="aroll" data-width="1080" data-height="1920" data-duration="14">
+    <!-- Grid Background -->
+    <div class="grid-container">
+      <div class="grid-line horizontal" style="top: 20%;"></div>
+      <div class="grid-line horizontal" style="top: 40%;"></div>
+      <div class="grid-line horizontal" style="top: 60%;"></div>
+      <div class="grid-line horizontal" style="top: 80%;"></div>
+      <div class="grid-line vertical" style="left: 20%;"></div>
+      <div class="grid-line vertical" style="left: 40%;"></div>
+      <div class="grid-line vertical" style="left: 60%;"></div>
+      <div class="grid-line vertical" style="left: 80%;"></div>
+    </div>
+
+    <!-- Video Container -->
+    <div class="video-frame">
+      <div class="video-mask">
+        <video 
+          id="aroll-video" 
+          src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/uploaded_assets/c10d5d5c_5e0cbe68f361481f8d2c77b028e84504.mp4"
+          data-start="0"
+          data-duration="14"
+          data-track-index="0"
+          crossorigin="anonymous"
+        ></video>
+      </div>
+      <!-- Diagonal Rule Lines for Wipe Effect -->
+      <div class="wipe-line wipe-line-1"></div>
+      <div class="wipe-line wipe-line-2"></div>
+    </div>
+
+    <style>
+      [data-composition-id="aroll"] {
+        background: transparent;
+        font-family: sans-serif;
+        overflow: hidden;
+        width: 1080px;
+        height: 1920px;
+        position: relative;
+      }
+
+      /* Grid Styling */
+      [data-composition-id="aroll"] .grid-container {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        opacity: 0.2;
+        pointer-events: none;
+      }
+
+      [data-composition-id="aroll"] .grid-line {
+        position: absolute;
+        background: #444;
+      }
+
+      [data-composition-id="aroll"] .grid-line.horizontal {
+        width: 100%;
+        height: 1px;
+      }
+
+      [data-composition-id="aroll"] .grid-line.vertical {
+        width: 1px;
+        height: 100%;
+      }
+
+      /* Video Frame Styling */
+      [data-composition-id="aroll"] .video-frame {
+        position: absolute;
+        /* Full width and height for impact, no padding */
+        top: 0;
+        left: 0;
+        width: 100%; 
+        height: 100%;
+        background: #111;
+        overflow: hidden;
+        border: none;
+        transform: translate(0, 0) scale(1);
+        z-index: 10;
+      }
+
+      [data-composition-id="aroll"] .video-mask {
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        position: relative;
+      }
+
+      [data-composition-id="aroll"] video {
+        width: 100%;
+        height: 100%;
+        object-fit: cover; /* Crop portrait video into the frame */
+        display: block;
+      }
+
+      /* Wipe Lines */
+      [data-composition-id="aroll"] .wipe-line {
+        position: absolute;
+        background: #fff;
+        z-index: 10;
+        pointer-events: none;
+        width: 200%;
+        height: 4px;
+        left: -50%;
+        opacity: 0;
+      }
+
+      [data-composition-id="aroll"] .wipe-line-1 {
+        top: 0;
+        transform: rotate(45deg) translateY(-500px);
+      }
+
+      [data-composition-id="aroll"] .wipe-line-2 {
+        bottom: 0;
+        transform: rotate(45deg) translateY(500px);
+      }
+    </style>
+
+    <script>
+      (function() {
+        const tl = gsap.timeline({ paused: true });
+        const frame = document.querySelector('[data-composition-id="aroll"] .video-frame');
+        const wipe1 = document.querySelector('[data-composition-id="aroll"] .wipe-line-1');
+        const wipe2 = document.querySelector('[data-composition-id="aroll"] .wipe-line-2');
+
+        // 1. Entrance & Scale Down (0s - 1.5s)
+        // Starts full screen and scales down slightly to establish the grid
+        tl.fromTo(frame, {
+          scale: 1.1,
+          opacity: 0
+        }, {
+          scale: 1.0, /* Fixed scale to fill frame better */
+          opacity: 1,
+          duration: 1.5,
+          ease: 'power4.out'
+        }, 0);
+
+        tl.fromTo(wipe1, 
+          { opacity: 1, y: -500 }, 
+          { y: 1500, duration: 1.5, ease: 'power2.inOut' }, 
+          0
+        );
+        tl.fromTo(wipe2, 
+          { opacity: 1, y: 500 }, 
+          { y: -1500, duration: 1.5, ease: 'power2.inOut' }, 
+          0.1
+        );
+        tl.to([wipe1, wipe2], { opacity: 0, duration: 0.3 }, 1.5);
+
+        // 2. Ambient Motion (1.5s - 7.319s)
+        tl.to(frame, {
+          y: '+=15',
+          duration: 3,
+          ease: 'sine.inOut',
+          repeat: 1,
+          yoyo: true
+        }, 1.5);
+
+        // 3. Hero Moment Exit (7.319s - 8.319s)
+        tl.to(frame, {
+          scale: 0,
+          opacity: 0,
+          duration: 0.8,
+          ease: 'power3.in'
+        }, 7.319);
+
+        // 4. Hero Moment Return (12.239s - 13.739s)
+        tl.to(frame, {
+          scale: 1.0, /* Fixed return scale */
+          opacity: 1,
+          duration: 1.2,
+          ease: 'back.out(1.2)'
+        }, 12.239);
+
+        // 5. Final Exit (13.8s - 14s)
+        tl.to(frame, {
+          opacity: 0,
+          scale: 0.6,
+          duration: 0.5,
+          ease: 'power2.in'
+        }, 13.5);
+
+        window.__timelines["aroll"] = tl;
+      })();
+    </script>
+  </div>
+</template>

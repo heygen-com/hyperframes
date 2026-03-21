@@ -1,0 +1,107 @@
+<template id="intro-template">
+  <div data-composition-id="intro" data-width="1920" data-height="1080" data-duration="3">
+    <div class="container">
+      <div class="title">EDITOR AGENT</div>
+      <div class="rule"></div>
+    </div>
+
+    <style>
+      [data-composition-id="intro"] {
+        background-color: #000000;
+        width: 1920px;
+        height: 1080px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        font-family: "Helvetica", "Arial", sans-serif;
+        color: #FFFFFF;
+        overflow: hidden;
+      }
+
+      [data-composition-id="intro"] .container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        /* Vignelli style: precise, clean spacing */
+        gap: 40px;
+      }
+
+      [data-composition-id="intro"] .title {
+        font-size: 120px;
+        font-weight: 700; /* Vignelli often used bold Helvetica */
+        text-transform: uppercase;
+        letter-spacing: 1em;
+        /* Offset the last letter's spacing to keep it centered */
+        margin-right: -1em; 
+        display: flex;
+        justify-content: center;
+      }
+
+      [data-composition-id="intro"] .char {
+        display: inline-block;
+        opacity: 0;
+      }
+
+      [data-composition-id="intro"] .rule {
+        width: 800px;
+        height: 4px;
+        background-color: #FFFFFF;
+        transform: scaleX(0);
+        transform-origin: center;
+      }
+    </style>
+
+    <script>
+      (function() {
+        const compId = "intro";
+        const root = document.querySelector(`[data-composition-id="${compId}"]`);
+        const titleEl = root.querySelector('.title');
+        const ruleEl = root.querySelector('.rule');
+        
+        // Split text into spans for staggered animation
+        const text = titleEl.textContent;
+        titleEl.innerHTML = '';
+        [...text].forEach(char => {
+          const span = document.createElement('span');
+          span.textContent = char === ' ' ? '\u00A0' : char;
+          span.className = 'char';
+          titleEl.appendChild(span);
+        });
+
+        const tl = gsap.timeline({ paused: true });
+        
+        // 1. Horizontal rule expands from center
+        tl.to(ruleEl, {
+          scaleX: 1,
+          duration: 1.5,
+          ease: "power4.inOut"
+        }, 0);
+
+        // 2. Tracking animation (letter-spacing: 1em to 0.5em)
+        tl.to(titleEl, {
+          letterSpacing: "0.5em",
+          marginRight: "-0.5em",
+          duration: 3,
+          ease: "power2.out"
+        }, 0);
+
+        // 3. Staggered letter fade-in
+        tl.to(root.querySelectorAll('.char'), {
+          opacity: 1,
+          duration: 0.8,
+          stagger: 0.1,
+          ease: "power1.out"
+        }, 0.2);
+
+        // Ambient motion: subtle scale pulse for the whole container
+        tl.to(root.querySelector('.container'), {
+          scale: 1.05,
+          duration: 3,
+          ease: "none"
+        }, 0);
+
+        window.__timelines[compId] = tl;
+      })();
+    </script>
+  </div>
+</template>

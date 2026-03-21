@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <!--
+    REQUIRED: viewport must match your composition dimensions.
+    Landscape: width=1920, height=1080
+    Portrait:  width=1080, height=1920
+  -->
+    <meta name="viewport" content="width=1920, height=1080" />
+
+    <!--
+    REQUIRED: data-composition-id identifies this composition.
+    Must match the key you register in window.__timelines below.
+    Optional: data-width/data-height help the producer determine resolution.
+  -->
+    <meta data-composition-id="my-video" data-width="1920" data-height="1080" />
+
+    <title>My Video</title>
+
+    <!-- REQUIRED: GSAP for timeline animations -->
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #000;
+      }
+
+      #stage {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+
+      /*
+      REQUIRED: All timed clips need visibility: hidden.
+      The framework toggles visibility based on data-start/data-duration.
+      Never toggle visibility yourself in scripts.
+    */
+      .clip {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        visibility: hidden;
+        object-fit: cover;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="stage">
+      <!--
+      ════════════════════════════════════════════════════
+      VIDEO CLIPS
+      ════════════════════════════════════════════════════
+
+      REQUIRED attributes:
+        data-start       — when the clip appears (seconds)
+        data-duration    — how long the clip stays on screen (seconds)
+                           (optional for video/audio — defaults to source duration)
+        data-track-index — z-stacking order + timeline track grouping
+                           (higher = in front, clips on same track cannot overlap)
+
+      REQUIRED on <video>:
+        muted            — framework manages audio via separate <audio> element
+        playsinline      — prevents fullscreen on mobile
+
+      REQUIRED:
+        class="clip"     — sets visibility: hidden so framework can manage lifecycle
+
+      DO NOT:
+        - Call video.play(), video.pause(), or set video.currentTime in scripts
+        - Toggle visibility in scripts
+        - Use the video element for audio (use a separate <audio> element)
+    -->
+      <video
+        id="el-video"
+        class="clip"
+        data-start="0"
+        data-duration="10"
+        data-track-index="0"
+        src="my-video.mp4"
+        muted
+        playsinline
+      ></video>
+
+      <!--
+      ════════════════════════════════════════════════════
+      IMAGE CLIPS
+      ════════════════════════════════════════════════════
+
+      data-duration is REQUIRED for images (they have no intrinsic duration).
+    -->
+      <img id="el-image" class="clip" data-start="10" data-duration="5" data-track-index="0" src="my-image.png" />
+
+      <!--
+      ════════════════════════════════════════════════════
+      AUDIO
+      ════════════════════════════════════════════════════
+
+      Audio is invisible — no class="clip" needed (no visual to hide).
+      Use a separate <audio> element even if the source is the same .mp4 file.
+      The framework syncs audio playback to the timeline position.
+
+      Optional: data-volume="0.5" (0-1, default 1)
+    -->
+      <audio
+        id="el-audio"
+        data-start="0"
+        data-duration="15"
+        data-track-index="1"
+        data-volume="0.8"
+        src="my-video.mp4"
+      ></audio>
+
+      <!--
+      ════════════════════════════════════════════════════
+      TEXT / HTML OVERLAYS
+      ════════════════════════════════════════════════════
+
+      Any div with data-start becomes a timed clip.
+      Content inside can be freely styled with CSS.
+      Animate visual properties (opacity, transform) with GSAP — fine.
+      Do NOT animate visibility — the framework owns that.
+    -->
+      <div
+        id="el-title"
+        class="clip"
+        data-start="1"
+        data-duration="4"
+        data-track-index="2"
+        style="display: flex; align-items: center; justify-content: center; z-index: 10"
+      >
+        <h1 style="font-family: sans-serif; font-size: 72px; color: white; opacity: 0">Hello World</h1>
+      </div>
+    </div>
+
+    <script>
+      /*
+      ════════════════════════════════════════════════════
+      GSAP TIMELINE
+      ════════════════════════════════════════════════════
+
+      REQUIRED: Create a paused GSAP timeline.
+      REQUIRED: Register it in window.__timelines with the SAME ID
+                as data-composition-id on the <meta> tag.
+
+      Without this registration, NOTHING works — no playback,
+      no seeking, no rendering. This is the #1 mistake.
+    */
+      var tl = gsap.timeline({ paused: true });
+
+      // Animate visual properties only — opacity, transform, color, etc.
+      // The framework handles clip mounting/unmounting and media playback.
+      tl.to("#el-video", { opacity: 1, duration: 0.5 }, 0);
+      tl.to("#el-video", { opacity: 0, duration: 0.5 }, 9.5);
+
+      tl.to("#el-image", { opacity: 1, duration: 0.5 }, 10);
+      tl.to("#el-image", { opacity: 0, duration: 0.5 }, 14.5);
+
+      tl.to("#el-title h1", { opacity: 1, y: 0, duration: 0.8, ease: "power2.out" }, 1);
+      tl.to("#el-title h1", { opacity: 0, duration: 0.5 }, 4);
+
+      // REQUIRED: Register the timeline. The key MUST match data-composition-id.
+      window.__timelines = window.__timelines || {};
+      window.__timelines["my-video"] = tl;
+    </script>
+  </body>
+</html>

@@ -1,0 +1,171 @@
+<template id="captions-template">
+  <div data-composition-id="captions" data-width="1080" data-height="1920" data-duration="16">
+    <div id="captions-container"></div>
+
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@700&display=swap');
+
+      [data-composition-id="captions"] {
+        width: 1080px;
+        height: 1920px;
+        position: relative;
+        display: flex;
+        justify-content: center;
+        align-items: center; /* Centered vertically */
+        font-family: 'Space Mono', monospace;
+      }
+
+      #captions-container {
+        width: 1000px;
+        display: flex;
+        justify-content: center;
+        position: relative;
+      }
+
+      .caption-group {
+        position: absolute;
+        bottom: 0;
+        display: flex;
+        justify-content: center;
+        flex-wrap: wrap;
+        gap: 15px;
+        opacity: 0;
+        width: 100%;
+        padding: 30px 40px;
+        background-color: rgba(26, 26, 26, 0.95); /* Solid high-contrast background */
+        border-radius: 4px;
+        border-left: 8px solid #00FF80;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+      }
+
+      .word {
+        font-size: 54px;
+        font-weight: 700;
+        color: #FFFFFF;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        display: flex;
+        overflow: hidden;
+      }
+
+      .char {
+        display: inline-block;
+        opacity: 0;
+        color: #FFFFFF; /* White for better legibility */
+      }
+
+      .char.revealed {
+        opacity: 1;
+        color: #FFFFFF;
+      }
+
+      /* Glitch effect styles */
+      .glitch-char {
+        position: relative;
+      }
+    </style>
+
+    <script>
+      (function() {
+        const TRANSCRIPT = [{'text': 'We', 'start': 0.14, 'end': 0.239}, {'text': 'asked', 'start': 0.28, 'end': 0.459}, {'text': 'what', 'start': 0.5, 'end': 0.619}, {'text': 'you', 'start': 0.659, 'end': 0.779}, {'text': 'needed.', 'start': 0.8, 'end': 1.179}, {'text': 'Forty-seven', 'start': 1.199, 'end': 1.619}, {'text': 'percent', 'start': 1.699, 'end': 1.96}, {'text': 'of', 'start': 1.979, 'end': 2.059}, {'text': 'you', 'start': 2.099, 'end': 2.299}, {'text': 'said', 'start': 2.319, 'end': 2.499}, {'text': 'motion', 'start': 2.559, 'end': 2.839}, {'text': 'graphics,', 'start': 2.899, 'end': 3.759}, {'text': 'sixty-two', 'start': 3.799, 'end': 4.159}, {'text': 'percent', 'start': 4.239, 'end': 4.559}, {'text': 'said', 'start': 4.639, 'end': 4.799}, {'text': 'static', 'start': 4.859, 'end': 5.199}, {'text': 'content', 'start': 5.239, 'end': 5.639}, {'text': 'was', 'start': 5.679, 'end': 5.779}, {'text': 'costing', 'start': 5.859, 'end': 6.219}, {'text': 'you', 'start': 6.259, 'end': 6.339}, {'text': 'attention,', 'start': 6.379, 'end': 7.299}, {'text': 'and', 'start': 7.319, 'end': 7.439}, {'text': 'three', 'start': 7.48, 'end': 7.599}, {'text': 'out', 'start': 7.679, 'end': 7.779}, {'text': 'of', 'start': 7.799, 'end': 7.879}, {'text': 'four', 'start': 7.94, 'end': 8.139}, {'text': 'said', 'start': 8.279, 'end': 8.46}, {'text': 'you', 'start': 8.519, 'end': 8.6}, {'text': 'know', 'start': 8.619, 'end': 8.739}, {'text': 'the', 'start': 8.8, 'end': 8.88}, {'text': 'look', 'start': 8.92, 'end': 9.079}, {'text': 'you', 'start': 9.119, 'end': 9.259}, {'text': 'want', 'start': 9.279, 'end': 9.619}, {'text': 'but', 'start': 9.779, 'end': 9.88}, {'text': "don't", 'start': 9.92, 'end': 10.1}, {'text': 'have', 'start': 10.159, 'end': 10.3}, {'text': 'the', 'start': 10.3, 'end': 10.42}, {'text': 'editing', 'start': 10.5, 'end': 10.779}, {'text': 'skills', 'start': 10.86, 'end': 11.139}, {'text': 'to', 'start': 11.159, 'end': 11.239}, {'text': 'get', 'start': 11.279, 'end': 11.439}, {'text': 'there.', 'start': 11.46, 'end': 12.239}, {'text': 'So', 'start': 12.3, 'end': 12.38}, {'text': 'we', 'start': 12.399, 'end': 12.519}, {'text': 'built', 'start': 12.539, 'end': 12.759}, {'text': 'Editor', 'start': 12.84, 'end': 13.119}, {'text': 'Agent.', 'start': 13.239, 'end': 13.84}];
+        const container = document.getElementById('captions-container');
+        const tl = gsap.timeline({ paused: true });
+
+        // Group transcript into lines (approx 3-5 words per line)
+        const groups = [];
+        let currentGroup = [];
+        TRANSCRIPT.forEach((word, i) => {
+          currentGroup.push(word);
+          // Grouping logic: max 4 words or end of sentence
+          if (currentGroup.length >= 4 || word.text.includes('.') || word.text.includes('?') || word.text.includes('!') || i === TRANSCRIPT.length - 1) {
+            groups.push([...currentGroup]);
+            currentGroup = [];
+          }
+        });
+
+        groups.forEach((group, groupIndex) => {
+          const groupDiv = document.createElement('div');
+          groupDiv.className = 'caption-group';
+          groupDiv.id = `group-${groupIndex}`;
+          
+          group.forEach((wordData, wordIdx) => {
+            const wordDiv = document.createElement('div');
+            wordDiv.className = 'word';
+            wordDiv.dataset.word = wordData.text;
+            
+            // Split word into characters for typewriter/glitch reveal
+            wordData.text.split('').forEach(char => {
+              const charSpan = document.createElement('span');
+              charSpan.className = 'char';
+              charSpan.textContent = char;
+              wordDiv.appendChild(charSpan);
+            });
+            
+            groupDiv.appendChild(wordDiv);
+          });
+
+          container.appendChild(groupDiv);
+
+          const groupStartTime = group[0].start;
+          const groupEndTime = group[group.length - 1].end;
+
+          // Group Entrance
+          tl.to(groupDiv, { 
+            opacity: 1, 
+            y: 0,
+            duration: 0.2, 
+            ease: "power2.out" 
+          }, groupStartTime);
+
+          // Word/Character Reveal
+          group.forEach((wordData, wordInGroupIndex) => {
+            const wordElement = groupDiv.querySelectorAll('.word')[wordInGroupIndex];
+            const chars = wordElement.querySelectorAll('.char');
+            
+            const wordDuration = wordData.end - wordData.start;
+            const charStagger = wordDuration / (chars.length + 1);
+
+            chars.forEach((char, charIdx) => {
+              const charStartTime = wordData.start + (charIdx * charStagger);
+              const originalChar = char.textContent;
+              const glitchChars = "X01@#%&";
+              
+              // Typewriter + Glitch Reveal
+              tl.to(char, {
+                opacity: 1,
+                x: (charIdx % 2 === 0 ? 4 : -4), // More aggressive horizontal shift
+                duration: 0.1, // Longer glitch state
+                onStart: () => {
+                  char.style.color = '#FFFFFF';
+                  char.style.backgroundColor = '#00FF80';
+                  // Deterministic character cycling
+                  char.textContent = glitchChars[charIdx % glitchChars.length];
+                }
+              }, charStartTime);
+
+              tl.to(char, {
+                backgroundColor: 'transparent',
+                color: '#FFFFFF',
+                x: 0,
+                duration: 0.1,
+                onStart: () => {
+                  char.textContent = originalChar;
+                },
+                ease: "none"
+              }, charStartTime + 0.1);
+            });
+          });
+
+          // Group Exit
+          tl.to(groupDiv, { 
+            opacity: 0, 
+            duration: 0.2, 
+            ease: "power2.in" 
+          }, groupEndTime);
+        });
+
+        window.__timelines["captions"] = tl;
+      })();
+    </script>
+  </div>
+</template>

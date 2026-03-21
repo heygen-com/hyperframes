@@ -6,7 +6,7 @@ If you discover a security vulnerability in Hyperframes, please report it respon
 
 **Do not open a public GitHub issue for security vulnerabilities.**
 
-Instead, email **security@heygen.com** with:
+Instead, open a [GitHub Security Advisory](https://github.com/heygen-com/hyperframes/security/advisories/new) with:
 
 - A description of the vulnerability
 - Steps to reproduce

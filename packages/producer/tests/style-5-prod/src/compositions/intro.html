@@ -1,0 +1,88 @@
+<template id="intro-template">
+  <div data-composition-id="intro" data-width="1920" data-height="1080" data-duration="3">
+    <div class="terminal-container">
+      <div id="terminal-text" class="terminal-text"></div>
+    </div>
+
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
+
+      [data-composition-id="intro"] {
+        background: transparent;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        font-family: 'JetBrains Mono', monospace;
+      }
+
+      [data-composition-id="intro"] .terminal-container {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        width: 100%;
+        height: 100%;
+      }
+
+      [data-composition-id="intro"] .terminal-text {
+        color: #FFFFFF;
+        font-size: 72px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 6px;
+        white-space: pre;
+        /* Subtle glow: #33FF66 at 0.2 opacity */
+        text-shadow: 0 0 15px rgba(51, 255, 102, 0.2);
+        display: flex;
+      }
+
+      [data-composition-id="intro"] .char {
+        opacity: 0;
+        display: inline-block;
+      }
+    </style>
+
+    <script>
+      (function() {
+        const text = "SYSTEM BOOT: EDITOR AGENT";
+        const container = document.getElementById('terminal-text');
+        
+        // Clear and create character spans for precise animation
+        container.innerHTML = '';
+        const chars = text.split('').map(char => {
+          const span = document.createElement('span');
+          span.className = 'char';
+          span.textContent = char === ' ' ? '\u00A0' : char; // Use non-breaking space for layout
+          container.appendChild(span);
+          return span;
+        });
+
+        const charDuration = 0.04; // 40ms per character
+        const tl = gsap.timeline({ paused: true });
+
+        // Character-by-character reveal
+        // Using stagger for a more modern, sophisticated implementation
+        tl.to(chars, {
+          opacity: 1,
+          duration: 0.01, // Instant reveal per character
+          stagger: {
+            each: charDuration,
+            ease: "none" // Linear sequence
+          }
+        }, 0);
+
+        // Add a subtle "flicker" or "pulse" to the glow for sophistication
+        // This adds the "2-3 simultaneous motion sources" requirement
+        tl.to(container, {
+          textShadow: "0 0 25px rgba(51, 255, 102, 0.4)",
+          duration: 1.5,
+          ease: "sine.inOut",
+          yoyo: true,
+          repeat: 1 // Finite repeat to fit 3s duration
+        }, 0);
+
+        // Register the timeline
+        window.__timelines["intro"] = tl;
+      })();
+    </script>
+  </div>
+</template>

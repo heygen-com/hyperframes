@@ -1,0 +1,162 @@
+<template id="background-template">
+  <div data-composition-id="background" data-width="1080" data-height="1920" data-duration="16">
+    <div class="bg-container">
+      <!-- Dot Matrix Grid -->
+      <div class="dot-grid"></div>
+      
+      <!-- Grid Lines -->
+      <div class="grid-lines-h"></div>
+      <div class="grid-lines-v"></div>
+      
+      <!-- Scanline -->
+      <div class="scanline"></div>
+    </div>
+
+    <style>
+      [data-composition-id="background"] .bg-container {
+        width: 1080px;
+        height: 1920px;
+        background-color: #1A1A1A;
+        position: relative;
+        overflow: hidden;
+      }
+
+      /* Dot Matrix */
+      [data-composition-id="background"] .dot-grid {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-image: radial-gradient(#333333 1.5px, transparent 1.5px);
+        background-size: 40px 40px;
+        opacity: 0.45; /* Initial mid-point for breathing */
+        transform-origin: center center;
+      }
+
+      /* Grid Lines */
+      [data-composition-id="background"] .grid-lines-h,
+      [data-composition-id="background"] .grid-lines-v {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+      }
+
+      [data-composition-id="background"] .grid-lines-h {
+        background-image: linear-gradient(to bottom, rgba(0, 255, 128, 0.15) 1px, transparent 1px);
+        background-size: 100% 160px; /* Larger grid for lines */
+      }
+
+      [data-composition-id="background"] .grid-lines-v {
+        background-image: linear-gradient(to right, rgba(0, 255, 128, 0.15) 1px, transparent 1px);
+        background-size: 160px 100%;
+      }
+
+      /* Scanline */
+      [data-composition-id="background"] .scanline {
+        position: absolute;
+        top: -100px;
+        left: 0;
+        width: 100%;
+        height: 100px;
+        background: linear-gradient(to bottom, 
+          transparent, 
+          rgba(0, 255, 128, 0.25) 50%, 
+          transparent
+        );
+        pointer-events: none;
+      }
+    </style>
+
+    <script>
+      (function() {
+        const tl = gsap.timeline({ paused: true });
+        const duration = 16;
+
+        // 1. Breathing Dots Animation
+        // Using a deterministic sine-like wave with multiple steps to simulate breathing
+        // Since we can't use repeat: -1, we'll build the sequence for the full duration
+        const breathingCycle = 2;
+        const breathingSteps = Math.ceil(duration / breathingCycle);
+        for (let i = 0; i < breathingSteps; i++) {
+          tl.to('.dot-grid', {
+            opacity: 0.6,
+            scale: 1.02,
+            duration: 1,
+            ease: "power1.inOut"
+          }, i * breathingCycle);
+          tl.to('.dot-grid', {
+            opacity: 0.3,
+            scale: 0.98,
+            duration: 1,
+            ease: "power1.inOut"
+          }, i * breathingCycle + 1);
+        }
+
+        // 2. Grid Lines Pulse/Glow
+        // Pulse every 2 seconds deterministically
+        const pulseCycle = 2;
+        const pulseSteps = Math.ceil(duration / pulseCycle);
+        for (let i = 0; i < pulseSteps; i++) {
+          const startTime = i * pulseCycle + 0.5; // Offset slightly from breathing
+          tl.to(['.grid-lines-h', '.grid-lines-v'], {
+            opacity: 0.8,
+            filter: "drop-shadow(0 0 5px #00CC66)",
+            duration: 0.1,
+            ease: "none"
+          }, startTime);
+          tl.to(['.grid-lines-h', '.grid-lines-v'], {
+            opacity: 0.1,
+            filter: "drop-shadow(0 0 0px #00CC66)",
+            duration: 0.4,
+            ease: "power2.out"
+          }, startTime + 0.1);
+        }
+
+        // 3. Scanline Movement & Parallax
+        // Moves from top to bottom every 4 seconds
+        const scanlineCycle = 4;
+        const scanlineSteps = Math.ceil(duration / scanlineCycle);
+        for (let i = 0; i < scanlineSteps; i++) {
+          tl.fromTo('.scanline', 
+            { top: -100 },
+            { top: 1920, duration: scanlineCycle, ease: "none" },
+            i * scanlineCycle
+          );
+          
+          // Subtle parallax shift on grid lines
+          tl.to('.grid-lines-h', {
+            y: "+=40",
+            duration: scanlineCycle,
+            ease: "none"
+          }, i * scanlineCycle);
+          
+          tl.to('.grid-lines-v', {
+            x: "+=40",
+            duration: scanlineCycle,
+            ease: "none"
+          }, i * scanlineCycle);
+        }
+
+        // Parallax shift synced with A-roll exit (7.3s to 7.9s)
+        tl.to('.dot-grid', {
+          x: "-=50",
+          duration: 0.6,
+          ease: "expo.inOut"
+        }, 7.3);
+        
+        tl.to('.dot-grid', {
+          x: 0,
+          duration: 0.6,
+          ease: "back.out(1.2)"
+        }, 12.3);
+
+        // Register the timeline
+        window.__timelines["background"] = tl;
+      })();
+    </script>
+  </div>
+</template>

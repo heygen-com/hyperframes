@@ -1,0 +1,220 @@
+<template id="main-video-template">
+  <div data-composition-id="main-video" data-width="1920" data-height="1080" data-duration="19.04">
+    <!-- Background Layer -->
+    <div class="background-container">
+      <div class="abstract-shape shape-1"></div>
+      <div class="abstract-shape shape-2"></div>
+      <div class="abstract-shape shape-3"></div>
+    </div>
+
+    <!-- A-roll Container -->
+    <div class="aroll-wrapper">
+      <video id="aroll-video" 
+             src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/uploaded_assets/c311bdbf_97f959ca3be34382be873d54a405711b.mp4"
+             data-start="3" 
+             data-duration="16.04" 
+             data-track-index="0"
+             crossorigin="anonymous">
+      </video>
+    </div>
+
+    <!-- Stats Layer -->
+    <div class="stats-container">
+      <div id="stat-47" class="stat-text color-red">47%</div>
+      <div id="stat-62" class="stat-text color-gold">62%</div>
+      <div id="stat-75" class="stat-text color-olive">75%</div>
+    </div>
+
+    <style>
+      [data-composition-id="main-video"] {
+        background-color: #1A1A2E; /* charcoal */
+        font-family: 'Inter', sans-serif;
+        overflow: hidden;
+        width: 1920px;
+        height: 1080px;
+        position: relative;
+      }
+
+      [data-composition-id="main-video"] .background-container {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        z-index: 0;
+      }
+
+      [data-composition-id="main-video"] .abstract-shape {
+        position: absolute;
+        background-image: url('assets/abstract_shapes.svg');
+        background-repeat: no-repeat;
+        background-size: contain;
+        opacity: 0.15;
+      }
+
+      [data-composition-id="main-video"] .shape-1 { width: 800px; height: 800px; top: -200px; left: -200px; }
+      [data-composition-id="main-video"] .shape-2 { width: 600px; height: 600px; bottom: -100px; right: -100px; }
+      [data-composition-id="main-video"] .shape-3 { width: 400px; height: 400px; top: 20%; right: 10%; }
+
+      [data-composition-id="main-video"] .aroll-wrapper {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 1920px;
+        height: 1080px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1;
+      }
+
+      [data-composition-id="main-video"] #aroll-video {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        border-radius: 6px;
+        opacity: 0; /* Start hidden for fade in */
+      }
+
+      [data-composition-id="main-video"] .stats-container {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+        z-index: 2;
+      }
+
+      [data-composition-id="main-video"] .stat-text {
+        position: absolute;
+        font-size: 280px;
+        font-weight: 800;
+        opacity: 0;
+        text-shadow: 0 20px 40px rgba(0,0,0,0.4);
+        letter-spacing: -0.05em;
+      }
+
+      [data-composition-id="main-video"] .color-red { color: #E74C3C; }
+      [data-composition-id="main-video"] .color-gold { color: #F1C40F; }
+      [data-composition-id="main-video"] .color-olive { color: #82956D; }
+
+      /* Positioning for stats */
+      [data-composition-id="main-video"] #stat-47,
+      [data-composition-id="main-video"] #stat-62 {
+        right: 12%;
+        top: 50%;
+        transform: translateY(-50%);
+      }
+
+      [data-composition-id="main-video"] #stat-75 {
+        left: 50%;
+        bottom: 8%;
+        transform: translateX(-50%);
+      }
+    </style>
+
+    <script>
+      (function() {
+        const tl = gsap.timeline({ paused: true });
+        const TRANSCRIPT = [{'text': 'We', 'start': 0.119, 'end': 0.259}, {'text': 'asked', 'start': 0.319, 'end': 0.479}, {'text': 'what', 'start': 0.519, 'end': 0.659}, {'text': 'you', 'start': 0.699, 'end': 0.819}, {'text': 'needed.', 'start': 0.859, 'end': 1.819}, {'text': 'Forty-seven', 'start': 1.839, 'end': 2.299}, {'text': 'percent', 'start': 2.399, 'end': 2.679}, {'text': 'of', 'start': 2.7, 'end': 2.799}, {'text': 'you', 'start': 2.839, 'end': 2.939}, {'text': 'said', 'start': 3.039, 'end': 3.179}, {'text': 'motion', 'start': 3.24, 'end': 3.559}, {'text': 'graphics.', 'start': 3.579, 'end': 4.639}, {'text': 'Sixty-two', 'start': 4.659, 'end': 5.179}, {'text': 'percent', 'start': 5.299, 'end': 5.759}, {'text': 'said', 'start': 5.859, 'end': 5.98}, {'text': 'static', 'start': 6.099, 'end': 6.399}, {'text': 'content', 'start': 6.46, 'end': 6.879}, {'text': 'was', 'start': 6.92, 'end': 7.079}, {'text': 'costing', 'start': 7.099, 'end': 7.48}, {'text': 'you', 'start': 7.5, 'end': 7.579}, {'text': 'attention,', 'start': 7.679, 'end': 8.659}, {'text': 'and', 'start': 8.699, 'end': 8.86}, {'text': 'three', 'start': 8.88, 'end': 9.06}, {'text': 'out', 'start': 9.079, 'end': 9.18}, {'text': 'of', 'start': 9.199, 'end': 9.34}, {'text': 'four', 'start': 9.38, 'end': 9.799}, {'text': 'said', 'start': 9.84, 'end': 10.0}, {'text': 'you', 'start': 10.019, 'end': 10.159}, {'text': 'know', 'start': 10.179, 'end': 10.36}, {'text': 'the', 'start': 10.38, 'end': 10.479}, {'text': 'look', 'start': 10.52, 'end': 10.699}, {'text': 'you', 'start': 10.739, 'end': 10.859}, {'text': 'want', 'start': 10.98, 'end': 11.34}, {'text': 'but', 'start': 11.359, 'end': 11.52}, {'text': "don't", 'start': 11.56, 'end': 11.779}, {'text': 'have', 'start': 11.819, 'end': 11.94}, {'text': 'the', 'start': 11.96, 'end': 12.06}, {'text': 'editing', 'start': 12.079, 'end': 12.4}, {'text': 'skills', 'start': 12.52, 'end': 12.86}, {'text': 'to', 'start': 12.88, 'end': 13.0}, {'text': 'get', 'start': 13.019, 'end': 13.18}, {'text': 'there.', 'start': 13.22, 'end': 14.22}, {'text': 'So', 'start': 14.239, 'end': 14.399}, {'text': 'we', 'start': 14.42, 'end': 14.52}, {'text': 'built', 'start': 14.619, 'end': 14.88}, {'text': 'Editor', 'start': 15.079, 'end': 15.42}, {'text': 'Agent', 'start': 15.619, 'end': 16.019}];
+        const AROLL_START = 3; // Master timeline start for A-roll
+        const TOTAL_DURATION = 19.04;
+
+        // 1. A-roll starts (after title card ends at 3s): fades in over 500ms at 100% scale, centered.
+        tl.to('#aroll-video', {
+          opacity: 1,
+          duration: 0.5,
+          ease: 'power2.inOut'
+        }, AROLL_START);
+
+        // 2. First stat (47%): At 1.839s (A-roll playback time), A-roll scales down to 70% and shifts to the left side.
+        // A-roll playback time 1.839s = 3 + 1.839 = 4.839s on master.
+        const STAT_1_TIME = AROLL_START + 1.839;
+        tl.to('#aroll-video', {
+          scale: 0.7,
+          x: -400, // Shift left
+          duration: 0.8,
+          ease: 'expo.out'
+        }, STAT_1_TIME);
+
+        // Graphic 1 (47%): At 1.839s, text "47%" fades in. Stay until 4.639s (A-roll time).
+        // 4.639s A-roll time = 7.639s master.
+        tl.fromTo('#stat-47', 
+          { opacity: 0, scale: 0.8, x: 50 },
+          { opacity: 1, scale: 1, x: 0, duration: 0.8, ease: 'expo.out' }, 
+          STAT_1_TIME
+        );
+        tl.to('#stat-47', {
+          opacity: 0,
+          scale: 1.1,
+          duration: 0.5,
+          ease: 'power2.in'
+        }, AROLL_START + 4.639);
+
+        // 3. Second stat (62%): A-roll remains scaled down/shifted.
+        // Graphic 2 (62%): At 4.659s (A-roll time), text "62%" fades in. Stay until 8.659s (A-roll time).
+        const STAT_2_TIME = AROLL_START + 4.659;
+        tl.fromTo('#stat-62', 
+          { opacity: 0, scale: 0.8, x: 50 },
+          { opacity: 1, scale: 1, x: 0, duration: 0.8, ease: 'expo.out' }, 
+          STAT_2_TIME
+        );
+        tl.to('#stat-62', {
+          opacity: 0,
+          scale: 1.1,
+          duration: 0.5,
+          ease: 'power2.in'
+        }, AROLL_START + 8.659);
+
+        // 4. Third major narrativa beat ("three out of four" = 75%): At 8.88s (A-roll playback time), A-roll scales back up to 100% and recenters.
+        const STAT_3_TIME = AROLL_START + 8.88;
+        tl.to('#aroll-video', {
+          scale: 1,
+          x: 0,
+          duration: 1.0,
+          ease: 'expo.out'
+        }, STAT_3_TIME);
+
+        // Graphic 3 (75%): At 8.88s, text "75%" fades in below the centered A-roll. Stay until 14.22s (A-roll time).
+        tl.fromTo('#stat-75', 
+          { opacity: 0, scale: 0.8, y: 50 },
+          { opacity: 1, scale: 1, y: 0, duration: 0.8, ease: 'expo.out' }, 
+          STAT_3_TIME
+        );
+        tl.to('#stat-75', {
+          opacity: 0,
+          scale: 1.1,
+          duration: 0.5,
+          ease: 'power2.in'
+        }, AROLL_START + 14.22);
+
+        // Ambient Background Motion (Drift throughout entire 19.04s duration)
+        tl.to('.shape-1', {
+          x: 100,
+          y: 60,
+          rotation: 15,
+          duration: TOTAL_DURATION,
+          ease: 'none'
+        }, 0);
+        tl.to('.shape-2', {
+          x: -80,
+          y: -40,
+          rotation: -10,
+          duration: TOTAL_DURATION,
+          ease: 'none'
+        }, 0);
+        tl.to('.shape-3', {
+          scale: 1.3,
+          x: -30,
+          duration: TOTAL_DURATION,
+          ease: 'none'
+        }, 0);
+
+        // Register timeline
+        window.__timelines["main-video"] = tl;
+      })();
+    </script>
+  </div>
+</template>

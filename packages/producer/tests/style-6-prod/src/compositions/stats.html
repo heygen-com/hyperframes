@@ -1,0 +1,316 @@
+<template id="stats-template">
+  <div data-composition-id="stats-graphics" data-width="1920" data-height="1080" data-duration="19.04">
+    <!-- Background Elements (Ambient Motion) -->
+    <div class="bg-container">
+      <div class="slash slash-1"></div>
+      <div class="slash slash-2"></div>
+      <div class="slash slash-3"></div>
+    </div>
+
+    <!-- Video Reveal Container (Entrance at 3s) -->
+    <div class="video-reveal-container">
+      <div class="reveal-bar top"></div>
+      <div class="reveal-bar bottom"></div>
+    </div>
+
+    <!-- Stat 1: 47% -->
+    <div class="stat-container right-side" id="stat-47">
+      <div class="stat-value">47%</div>
+      <div class="stat-label">NEED MOTION GRAPHICS</div>
+      <div class="accent-bar"></div>
+    </div>
+
+    <!-- Stat 2: 62% -->
+    <div class="stat-container right-side" id="stat-62">
+      <div class="stat-value">62%</div>
+      <div class="stat-label">STATIC LOSES ATTENTION</div>
+      <div class="accent-bar"></div>
+    </div>
+
+    <!-- Stat 3: 3 out of 4 -->
+    <div class="stat-container centered-margins" id="stat-3-4">
+      <div class="stat-value-row">
+        <span class="white">3</span>
+        <span class="volt">OUT OF</span>
+        <span class="white">4</span>
+      </div>
+      <div class="stat-label">LACK SKILLS</div>
+      <div class="accent-bar"></div>
+    </div>
+
+    <!-- Title Card: EDITOR AGENT -->
+    <div class="title-card" id="title-card">
+      <div class="title-bg"></div>
+      <div class="title-content">
+        <div class="title-main">EDITOR</div>
+        <div class="title-sub">AGENT</div>
+      </div>
+      <div class="title-accent"></div>
+    </div>
+
+    <style>
+      [data-composition-id="stats-graphics"] {
+        font-family: 'Oswald', 'Bebas Neue', sans-serif;
+        color: white;
+        overflow: hidden;
+        background: transparent;
+        width: 1920px;
+        height: 1080px;
+        position: relative;
+      }
+
+      /* Sport Broadcast Style: Bold Condensed Uppercase */
+      [data-composition-id="stats-graphics"] .stat-value,
+      [data-composition-id="stats-graphics"] .stat-value-row {
+        font-size: 280px;
+        font-weight: 900;
+        line-height: 0.8;
+        letter-spacing: -10px;
+        text-transform: uppercase;
+        font-stretch: condensed;
+        color: #CDFF00; /* Volt */
+        margin-bottom: 20px;
+        filter: drop-shadow(10px 10px 0px rgba(0,0,0,0.5));
+      }
+
+      /* 30px spacing between text layers in 3 out of 4 */
+      [data-composition-id="stats-graphics"] .stat-value-row {
+        display: flex;
+        gap: 30px;
+        align-items: baseline;
+      }
+
+      [data-composition-id="stats-graphics"] .stat-label {
+        font-size: 60px;
+        font-weight: 800;
+        color: white;
+        text-transform: uppercase;
+        letter-spacing: 2px;
+        background: black;
+        padding: 10px 30px;
+        display: inline-block;
+        transform: skewX(-10deg);
+      }
+
+      [data-composition-id="stats-graphics"] .stat-container {
+        position: absolute;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      /* Positioning */
+      [data-composition-id="stats-graphics"] .right-side {
+        right: 100px;
+        top: 50%;
+        transform: translateY(-50%);
+        align-items: flex-end;
+        text-align: right;
+      }
+
+      [data-composition-id="stats-graphics"] .centered-margins {
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        align-items: center;
+        text-align: center;
+        width: 100%;
+      }
+
+      [data-composition-id="stats-graphics"] .stat-value-row .white { color: white; }
+      [data-composition-id="stats-graphics"] .stat-value-row .volt { color: #CDFF00; }
+
+      /* Diagonal Slashes */
+      [data-composition-id="stats-graphics"] .bg-container {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        z-index: -1;
+      }
+
+      [data-composition-id="stats-graphics"] .slash {
+        position: absolute;
+        background: rgba(205, 255, 0, 0.05);
+        width: 150px;
+        height: 200%;
+        transform: rotate(25deg);
+        top: -50%;
+        filter: blur(40px);
+      }
+
+      [data-composition-id="stats-graphics"] .slash-1 { left: 20%; }
+      [data-composition-id="stats-graphics"] .slash-2 { left: 50%; }
+      [data-composition-id="stats-graphics"] .slash-3 { left: 80%; }
+
+      [data-composition-id="stats-graphics"] .accent-bar {
+        width: 100%;
+        height: 15px;
+        background: #CDFF00;
+        margin-top: 10px;
+        transform: skewX(-10deg);
+      }
+
+      /* Video Reveal Bars */
+      [data-composition-id="stats-graphics"] .video-reveal-container {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+        z-index: 2;
+      }
+
+      [data-composition-id="stats-graphics"] .reveal-bar {
+        position: absolute;
+        left: 0;
+        width: 100%;
+        height: 50%;
+        background: black;
+        box-sizing: border-box;
+      }
+
+      [data-composition-id="stats-graphics"] .reveal-bar.top { 
+        top: 0; 
+        border-bottom: 4px solid #CDFF00;
+        box-shadow: 0 10px 30px rgba(205, 255, 0, 0.2);
+      }
+      [data-composition-id="stats-graphics"] .reveal-bar.bottom { 
+        bottom: 0; 
+        border-top: 4px solid #CDFF00;
+        box-shadow: 0 -10px 30px rgba(205, 255, 0, 0.2);
+      }
+
+      /* Title Card Styles */
+      [data-composition-id="stats-graphics"] .title-card {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        width: 1200px;
+        height: 600px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        opacity: 0;
+        pointer-events: none;
+        z-index: 10;
+      }
+
+      [data-composition-id="stats-graphics"] .title-bg {
+        position: absolute;
+        width: 100%;
+        height: 100%;
+        background: black;
+        transform: skewX(-15deg);
+        border: 10px solid #CDFF00;
+        box-shadow: 20px 20px 0px rgba(0,0,0,0.5);
+      }
+
+      [data-composition-id="stats-graphics"] .title-content {
+        position: relative;
+        text-align: center;
+        z-index: 1;
+      }
+
+      [data-composition-id="stats-graphics"] .title-main {
+        font-size: 220px;
+        font-weight: 900;
+        color: white;
+        line-height: 0.8;
+        letter-spacing: -5px;
+        font-stretch: condensed;
+      }
+
+      [data-composition-id="stats-graphics"] .title-sub {
+        font-size: 180px;
+        font-weight: 900;
+        color: #CDFF00;
+        line-height: 0.8;
+        letter-spacing: 10px;
+        font-stretch: condensed;
+      }
+
+      [data-composition-id="stats-graphics"] .title-accent {
+        position: absolute;
+        bottom: -40px;
+        width: 80%;
+        height: 20px;
+        background: #CDFF00;
+        transform: skewX(-15deg);
+      }
+    </style>
+
+    <script>
+      (function() {
+        const tl = gsap.timeline({ paused: true });
+
+        // Ambient Motion: Slashes drifting
+        tl.to('[data-composition-id="stats-graphics"] .slash', {
+          x: 100,
+          duration: 19,
+          ease: 'none'
+        }, 0);
+
+        // 1. Video Entrance Animation (3s)
+        // Reveal bars split open to show the video area
+        tl.to('.reveal-bar.top', { yPercent: -100, duration: 0.8, ease: 'expo.inOut' }, 3);
+        tl.to('.reveal-bar.bottom', { yPercent: 100, duration: 0.8, ease: 'expo.inOut' }, 3);
+
+        // 2. Stat 1: 47% (4.839s)
+        tl.fromTo('#stat-47', 
+          { opacity: 0, scale: 3, x: 500, rotation: 10 },
+          { opacity: 1, scale: 1, x: 0, rotation: 0, duration: 0.4, ease: 'power2.out' },
+          4.839
+        );
+        // Exit before next stat
+        tl.to('#stat-47', { opacity: 0, x: -100, duration: 0.4, ease: 'power2.in' }, 7.2);
+
+        // 3. Stat 2: 62% (7.659s)
+        tl.fromTo('#stat-62', 
+          { opacity: 0, scale: 3, x: 500, rotation: -10 },
+          { opacity: 1, scale: 1, x: 0, rotation: 0, duration: 0.4, ease: 'power2.out' },
+          7.659
+        );
+        // Exit before next stat
+        tl.to('#stat-62', { opacity: 0, x: -100, duration: 0.4, ease: 'power2.in' }, 11.4);
+
+        // 4. Stat 3: 3 out of 4 (11.88s)
+        tl.fromTo('#stat-3-4', 
+          { opacity: 0, scale: 0.5, y: 200 },
+          { opacity: 1, scale: 1, y: 0, duration: 0.8, ease: 'elastic.out(1, 0.75)' },
+          11.88
+        );
+
+        // 5. Slide out '3 out of 4' and show Title Card (14.619s)
+        tl.to('#stat-3-4', { 
+          x: -2000, 
+          opacity: 0, 
+          duration: 0.4, 
+          ease: 'power3.in' 
+        }, 14.619);
+
+        // Show Title Card (14.619s)
+        tl.fromTo('#title-card', 
+          { opacity: 0, scale: 0.8, x: 2000 },
+          { opacity: 1, scale: 1, x: 0, duration: 0.8, ease: 'back.out(1.7)' },
+          14.619
+        );
+
+        // Slide out Title Card (18.5s)
+        tl.to('#title-card', {
+          x: -2000,
+          duration: 0.5,
+          ease: 'power3.in'
+        }, 18.5);
+
+        window.__timelines["stats-graphics"] = tl;
+      })();
+    </script>
+  </div>
+</template>

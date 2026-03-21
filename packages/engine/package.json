@@ -1,0 +1,30 @@
+{
+  "name": "@hyperframes/engine",
+  "version": "0.1.0",
+  "description": "Seekable web page to video rendering engine (Puppeteer + FFmpeg)",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.13.0",
+    "@hyperframes/core": "workspace:*",
+    "hono": "^4.6.0",
+    "linkedom": "^0.18.12",
+    "puppeteer": "^24.0.0",
+    "puppeteer-core": "^24.39.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.1",
+    "typescript": "^5.7.2"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

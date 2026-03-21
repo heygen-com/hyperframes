@@ -1,0 +1,59 @@
+{
+  "timestamp": "2026-03-11T01:22:09.852Z",
+  "platform": "linux x64",
+  "nodeVersion": "v22.17.0",
+  "runsPerFixture": 1,
+  "fixtures": [
+    {
+      "fixture": "missing-host-comp-id",
+      "name": "Missing Host Composition Id",
+      "runs": [
+        {
+          "run": 1,
+          "perfSummary": {
+            "renderId": "0afc2d13-2bc0-4eda-9134-1efeb6a15908",
+            "totalElapsedMs": 5620,
+            "fps": 24,
+            "quality": "high",
+            "workers": 2,
+            "chunkedEncode": false,
+            "chunkSizeFrames": null,
+            "compositionDurationSeconds": 3,
+            "totalFrames": 72,
+            "resolution": {
+              "width": 1080,
+              "height": 1920
+            },
+            "videoCount": 0,
+            "audioCount": 1,
+            "stages": {
+              "compileOnlyMs": 29,
+              "browserProbeMs": 0,
+              "compileMs": 30,
+              "videoExtractMs": 0,
+              "audioProcessMs": 136,
+              "captureMs": 4832,
+              "encodeMs": 528,
+              "assembleMs": 94
+            },
+            "captureAvgMs": 67
+          }
+        }
+      ],
+      "averages": {
+        "totalElapsedMs": 5620,
+        "captureAvgMs": 67,
+        "stages": {
+          "compileOnlyMs": 29,
+          "browserProbeMs": 0,
+          "compileMs": 30,
+          "videoExtractMs": 0,
+          "audioProcessMs": 136,
+          "captureMs": 4832,
+          "encodeMs": 528,
+          "assembleMs": 94
+        }
+      }
+    }
+  ]
+}

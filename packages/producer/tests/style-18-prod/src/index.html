@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Editor Agent - Agnes Martin Style</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background: #F5F0E8; /* Pale Linen */
+      overflow: hidden;
+      width: 1080px;
+      height: 1920px;
+    }
+    #main-container {
+      position: relative;
+      width: 1080px;
+      height: 1920px;
+    }
+    .full-screen {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 1080px;
+      height: 1920px;
+    }
+    #bg-comp,
+    #stats-comp,
+    #captions-comp,
+    #a-roll-frame {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 1080px;
+      height: 1920px;
+    }
+    #bg-comp {
+      z-index: 0;
+    }
+    #a-roll-frame {
+      z-index: 10;
+      overflow: hidden;
+    }
+    #a-roll,
+    #a-roll-frame img.__render_frame__,
+    #a-roll-frame img.__preview_render_frame__ {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    #stats-comp {
+      z-index: 20;
+      pointer-events: none;
+    }
+    #captions-comp {
+      z-index: 30;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="main-comp" data-composition-id="main-comp" data-width="1080" data-height="1920" data-start="0" data-duration="14">
+    
+    <!-- Track 0: Background Grid -->
+    <div id="bg-comp"
+         data-composition-id="background-grid"
+         data-composition-src="compositions/background-grid.html"
+         data-start="0"
+         data-duration="14"
+         data-track-index="0">
+    </div>
+
+    <!-- Track 1: A-Roll Video -->
+    <!-- Single video element for the entire duration to ensure audio persistence -->
+    <div id="a-roll-frame">
+      <video id="a-roll"
+             class="full-screen"
+             data-start="0"
+             data-duration="14"
+             data-track-index="1"
+             src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/uploaded_assets/1dd17e4d_2c60a8b3482744e29584975d2b84164a.mp4">
+      </video>
+    </div>
+
+    <!-- Track 2: Stats Overlay -->
+    <div id="stats-comp"
+         data-composition-id="stats-overlay"
+         data-composition-src="compositions/stats-overlay.html"
+         data-start="0"
+         data-duration="14"
+         data-track-index="2">
+    </div>
+
+    <!-- Track 3: Captions -->
+    <div id="captions-comp"
+         data-composition-id="captions"
+         data-composition-src="compositions/captions.html"
+         data-start="0"
+         data-duration="14"
+         data-track-index="3">
+    </div>
+
+    <script>
+      // Main orchestration timeline
+      const tl = gsap.timeline({ paused: true });
+      
+      // Handle the "full-canvas moment" by animating video opacity
+      // Video is visible initially, fades out at 7.1s, and fades back in at 11.5s
+      tl.set('#a-roll-frame', { opacity: 1 });
+      tl.to('#a-roll-frame', { opacity: 0, duration: 0.5, ease: "power2.inOut" }, 7.1);
+      tl.to('#a-roll-frame', { opacity: 1, duration: 0.5, ease: "power2.inOut" }, 11.5);
+
+      window.__timelines["main-comp"] = tl;
+    </script>
+  </div>
+</body>
+</html>

@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Athletic Bold — Sport Broadcast</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 1920px;
+            height: 1080px;
+            background: #000000;
+            overflow: hidden;
+        }
+        #main-comp {
+            width: 1920px;
+            height: 1080px;
+            position: relative;
+        }
+        #aroll-video {
+            width: 100%;
+            height: 100%;
+            border-radius: 8px;
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            object-fit: cover;
+            z-index: 1;
+        }
+        .composition-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+        #intro-comp { z-index: 2; }
+        #stats-comp { z-index: 3; }
+        #captions-comp { z-index: 4; }
+    </style>
+</head>
+<body>
+    <div id="main-comp" data-composition-id="main" data-width="1920" data-height="1080" data-duration="19.04">
+        
+        <!-- A-roll Video (Starts at 3s, Duration 16.04s) -->
+        <video id="aroll-video" 
+               data-start="3" 
+               data-track-index="1" 
+               src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/uploaded_assets/852b4a6c_22c6186c3b844db1955bc9aaee70d348.mp4"
+               data-duration="16.04"></video>
+
+        <!-- Intro Sequence (0-3s) -->
+        <div id="intro-comp"
+             class="composition-layer"
+             data-composition-id="intro-anim"
+             data-composition-src="compositions/intro.html"
+             data-start="0"
+             data-duration="3"
+             data-track-index="2">
+        </div>
+
+        <!-- Stats Graphics (3s onwards) -->
+        <div id="stats-comp"
+             class="composition-layer"
+             data-composition-id="stats-graphics"
+             data-composition-src="compositions/stats.html"
+             data-start="0"
+             data-duration="19.04"
+             data-track-index="3">
+        </div>
+
+        <!-- Captions (0s onwards, matching transcript) -->
+        <div id="captions-comp"
+             class="composition-layer"
+             data-composition-id="captions"
+             data-composition-src="compositions/captions.html"
+             data-start="0"
+             data-duration="19.04"
+             data-track-index="4">
+        </div>
+
+        <!-- Woosh Sound Effect (3s) -->
+        <audio id="woosh-sfx" 
+               src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/generated_assets/70b67ff2_d2b6d384b6124d01ba8d826bb8c1b43f.mp3" 
+               data-start="3" 
+               data-track-index="5" 
+               data-duration="2"></audio>
+
+        <script>
+            const tl = gsap.timeline({ paused: true });
+
+            // "47%" trigger (transcript 1.839s -> absolute 4.839s)
+            // Scales down and shifts left.
+            tl.fromTo("#aroll-video", { opacity: 0 }, { opacity: 1, duration: 0.5 }, 3);
+
+            tl.to("#aroll-video", {
+                scale: 0.7,
+                x: -400, // Move left (1920 * -0.2 approx)
+                duration: 0.2,
+                ease: "back.out(1.7)"
+            }, 4.839);
+
+            // "3 out of 4" trigger (transcript 8.88s -> absolute 11.88s)
+            // Scales back to 100% and recenters.
+            tl.to("#aroll-video", {
+                scale: 1.0,
+                x: 0,
+                duration: 0.2,
+                ease: "back.out(1.7)"
+            }, 11.88);
+
+            window.__timelines["main"] = tl;
+        </script>
+    </div>
+</body>
+</html>

@@ -1,0 +1,94 @@
+<template id="captions-template">
+  <div data-composition-id="captions" data-width="1920" data-height="1080" data-duration="17">
+    <div id="captions-container"></div>
+
+    <style>
+      [data-composition-id="captions"] {
+        width: 1920px;
+        height: 1080px;
+        position: relative; /* Changed from flex to absolute positioning for precision */
+        pointer-events: none;
+        background: transparent;
+      }
+
+      [data-composition-id="captions"] #captions-container {
+        position: absolute;
+        bottom: 54px; /* 5% of 1080px */
+        left: 0;
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+      }
+
+      [data-composition-id="captions"] .caption-line {
+        position: absolute;
+        bottom: 0;
+        /* No left: 50% here, we rely on the container's flex centering */
+        background-color: #000000; /* Dark solid background strip */
+        color: #FFFFFF; /* White */
+        font-family: 'Futura', 'DIN Alternate', 'Arial Black', sans-serif;
+        font-weight: 900;
+        font-size: 56px;
+        padding: 15px 40px;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        opacity: 0;
+        white-space: nowrap;
+        display: inline-block;
+        z-index: 100;
+      }
+    </style>
+
+    <script>
+      (function() {
+        const TRANSCRIPT = [{'text': 'We', 'start': 0.119, 'end': 0.259}, {'text': 'asked', 'start': 0.319, 'end': 0.479}, {'text': 'what', 'start': 0.519, 'end': 0.659}, {'text': 'you', 'start': 0.699, 'end': 0.819}, {'text': 'needed.', 'start': 0.859, 'end': 1.819}, {'text': 'Forty-seven', 'start': 1.86, 'end': 2.299}, {'text': 'percent', 'start': 2.399, 'end': 2.679}, {'text': 'of', 'start': 2.7, 'end': 2.799}, {'text': 'you', 'start': 2.839, 'end': 2.939}, {'text': 'said', 'start': 3.039, 'end': 3.179}, {'text': 'motion', 'start': 3.24, 'end': 3.559}, {'text': 'graphics,', 'start': 3.579, 'end': 4.599}, {'text': 'sixty-two', 'start': 4.679, 'end': 5.179}, {'text': 'percent', 'start': 5.299, 'end': 5.759}, {'text': 'said', 'start': 5.859, 'end': 5.98}, {'text': 'static', 'start': 6.079, 'end': 6.399}, {'text': 'content', 'start': 6.46, 'end': 6.879}, {'text': 'was', 'start': 6.92, 'end': 7.079}, {'text': 'costing', 'start': 7.099, 'end': 7.48}, {'text': 'you', 'start': 7.5, 'end': 7.579}, {'text': 'attention,', 'start': 7.679, 'end': 8.659}, {'text': 'and', 'start': 8.699, 'end': 8.86}, {'text': 'three', 'start': 8.88, 'end': 9.06}, {'text': 'out', 'start': 9.079, 'end': 9.18}, {'text': 'of', 'start': 9.199, 'end': 9.34}, {'text': 'four', 'start': 9.38, 'end': 9.799}, {'text': 'said', 'start': 9.84, 'end': 10.0}, {'text': 'you', 'start': 10.019, 'end': 10.159}, {'text': 'know', 'start': 10.179, 'end': 10.36}, {'text': 'the', 'start': 10.38, 'end': 10.42}, {'text': 'look', 'start': 10.519, 'end': 10.699}, {'text': 'you', 'start': 10.739, 'end': 10.859}, {'text': 'want,', 'start': 10.98, 'end': 11.34}, {'text': 'but', 'start': 11.359, 'end': 11.52}, {'text': "don't", 'start': 11.56, 'end': 11.779}, {'text': 'have', 'start': 11.819, 'end': 11.94}, {'text': 'the', 'start': 11.96, 'end': 12.06}, {'text': 'editing', 'start': 12.079, 'end': 12.4}, {'text': 'skills', 'start': 12.52, 'end': 12.859}, {'text': 'to', 'start': 12.88, 'end': 13.0}, {'text': 'get', 'start': 13.019, 'end': 13.18}, {'text': 'there.', 'start': 13.22, 'end': 14.22}, {'text': 'So', 'start': 14.239, 'end': 14.399}, {'text': 'we', 'start': 14.42, 'end': 14.52}, {'text': 'built', 'start': 14.619, 'end': 14.88}, {'text': 'Editor', 'start': 15.079, 'end': 15.42}, {'text': 'Agent.', 'start': 15.619, 'end': 16.02}];
+        const container = document.getElementById('captions-container');
+        const tl = gsap.timeline({ paused: true });
+
+        const lines = [];
+        let currentLine = [];
+        
+        TRANSCRIPT.forEach((word, index) => {
+          currentLine.push(word);
+          if (currentLine.length === 5 || index === TRANSCRIPT.length - 1) {
+            lines.push({
+              words: [...currentLine],
+              text: currentLine.map(w => w.text).join(' ').toUpperCase()
+            });
+            currentLine = [];
+          }
+        });
+
+        lines.forEach((line, index) => {
+          const startTime = line.words[0].start;
+          const endTime = line.words[line.words.length - 1].end;
+          
+          const lineEl = document.createElement('div');
+          lineEl.className = 'caption-line';
+          lineEl.textContent = line.text;
+          container.appendChild(lineEl);
+
+          // Center the line element relative to the container
+          gsap.set(lineEl, { left: '50%', xPercent: -50 });
+
+          tl.to(lineEl, {
+            opacity: 1,
+            y: -20,
+            duration: 0.2,
+            ease: 'power2.out'
+          }, startTime);
+
+          tl.to(lineEl, {
+            opacity: 0,
+            y: -40,
+            duration: 0.1,
+            ease: 'power2.in'
+          }, endTime);
+        });
+
+        window.__timelines["captions"] = tl;
+      })();
+    </script>
+  </div>
+</template>

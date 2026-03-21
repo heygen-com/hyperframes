@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="1920" height="1080">
+  <defs>
+    <filter id="soft-edge">
+      <feGaussianBlur stdDeviation="8" />
+    </filter>
+  </defs>
+  
+  <!-- Soft-edged translucent color field -->
+  <path id="color-field" d="M 60 100 C 60 60, 140 50, 150 100 C 160 150, 80 160, 60 100 Z" fill="#4A5568" opacity="0.3" filter="url(#soft-edge)" />
+  
+  <!-- Gestural brushstroke / torn paper fragment -->
+  <path id="brushstroke" d="M 30 140 C 50 110, 90 130, 120 90 C 140 60, 170 80, 180 50 C 175 70, 150 100, 130 120 C 100 150, 60 130, 40 160 Z" fill="#F7F3ED" />
+  
+  <!-- Compositional anchor -->
+  <circle id="anchor" cx="160" cy="150" r="6" fill="#1A1A2E" />
+</svg>

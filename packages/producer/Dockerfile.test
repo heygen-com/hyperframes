@@ -1,0 +1,78 @@
+# HyperFrames Producer - Regression Test Image
+#
+# Matches the production rendering environment (same Chromium, fonts, FFmpeg)
+# but includes the full source + devDependencies for running the test harness.
+#
+# This ensures golden baselines match what production actually renders.
+#
+# Usage:
+#   docker build -f Dockerfile.test -t hyperframes-producer:test ../..
+#   docker run --rm -v ./tests:/app/packages/producer/tests hyperframes-producer:test
+#   docker run --rm -v ./tests:/app/packages/producer/tests hyperframes-producer:test --update
+
+FROM node:22-bookworm-slim
+
+# ── System dependencies (identical to Dockerfile.prod) ──────────────────────
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ffmpeg \
+    chromium \
+    libgbm1 \
+    libnss3 \
+    libatk-bridge2.0-0 \
+    libdrm2 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxrandr2 \
+    libcups2 \
+    libasound2 \
+    libpangocairo-1.0-0 \
+    libxshmfence1 \
+    libgtk-3-0 \
+    # Font support — matches production
+    fonts-liberation \
+    fonts-noto-color-emoji \
+    fonts-noto-cjk \
+    fonts-noto-core \
+    fonts-noto-extra \
+    fonts-noto-ui-core \
+    fonts-freefont-ttf \
+    fonts-dejavu-core \
+    fontconfig \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean \
+    && fc-cache -fv
+
+# Use system Chromium (same as production)
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+ENV CONTAINER=true
+
+# Install chrome-headless-shell for deterministic BeginFrame rendering.
+# This lightweight Chrome binary supports HeadlessExperimental.beginFrame.
+# Install to ~/.cache/puppeteer/ where resolveHeadlessShellPath() looks.
+RUN npx --yes @puppeteer/browsers install chrome-headless-shell@stable \
+      --path /root/.cache/puppeteer \
+    && find /root/.cache/puppeteer/chrome-headless-shell -name "chrome-headless-shell" -type f \
+    && echo "chrome-headless-shell installed"
+
+WORKDIR /app
+
+# Install dependencies (full, including devDependencies for tsx + test harness)
+COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
+COPY packages/core/package.json packages/core/package.json
+COPY packages/engine/package.json packages/engine/package.json
+COPY packages/producer/package.json packages/producer/package.json
+RUN corepack enable && corepack prepare pnpm@10 --activate \
+    && pnpm install --frozen-lockfile
+
+# Copy source
+COPY packages/core/ packages/core/
+COPY packages/engine/ packages/engine/
+COPY packages/producer/ packages/producer/
+
+# Build core runtime artifacts (needed by renderer)
+RUN pnpm --filter @hyperframes/core build:hyperframes-runtime:modular
+
+WORKDIR /app/packages/producer
+
+ENTRYPOINT ["pnpm", "exec", "tsx", "src/regression-harness.ts", "--", "--sequential"]

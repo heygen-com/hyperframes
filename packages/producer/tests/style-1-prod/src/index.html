@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Geometric Bold - Ikko Tanaka Style</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 1920px;
+            height: 1080px;
+            overflow: hidden;
+            background-color: #FFFFFF;
+        }
+
+        #main-canvas {
+            width: 100%;
+            height: 100%;
+            position: relative;
+        }
+
+        .aroll-container {
+            position: absolute;
+            overflow: hidden;
+            border-radius: 12px;
+            background: #000;
+        }
+
+        #aroll-video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        /* Background Shapes Layer */
+        #bg-shapes {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 0;
+        }
+    </style>
+</head>
+<body>
+    <div id="main-canvas" data-composition-id="main-video" data-width="1920" data-height="1080" data-duration="17">
+        
+        <video id="aroll-video" 
+            data-start="0" 
+            data-track-index="1" 
+            class="aroll-container"
+            style="width: 1920px; height: 1080px; top: 0; left: 0; position: absolute; overflow: hidden; border-radius: 12px; object-fit: cover; background: #000;"
+            src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/uploaded_assets/743011f1_e3c6afe3b7aa42369ce01e4961c60e22.mp4">
+        </video>
+
+        <!-- Background Shapes Layer -->
+        <div id="bg-shapes" data-composition-id="bg-layer" data-width="1920" data-height="1080" data-start="0" data-duration="17" data-track-index="0">
+            <script>
+                const bgTl = gsap.timeline({ paused: true });
+                window.__timelines["bg-layer"] = bgTl;
+            </script>
+        </div>
+
+        <!-- Intro / Graphics Layer -->
+        <div id="graphics-layer" 
+             data-composition-id="graphics-comp" 
+             data-composition-src="compositions/graphics.html" 
+             data-start="0" 
+             data-duration="17" 
+             data-track-index="2">
+        </div>
+
+        <!-- Captions Layer -->
+        <div id="captions-layer" 
+             data-composition-id="captions-comp" 
+             data-composition-src="compositions/captions.html" 
+             data-start="0" 
+             data-duration="17" 
+             data-track-index="3">
+        </div>
+
+        <!-- Transition SFX -->
+        <audio id="click-sfx" data-start="0" data-track-index="4" src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/generated_assets/853dda23_70261e8b676444bfbfe147e34803851e.mp3"></audio>
+
+        <script>
+            const tl = gsap.timeline({ paused: true });
+            const aroll = document.getElementById('aroll-video');
+
+            // --- A-ROLL FRAMING LOGIC (LANDSCAPE 1920x1080) ---
+            // 0-3s: Intro - Slide in from right & Scale. Full screen.
+            tl.fromTo(aroll, 
+                { x: 1920, scale: 0.8 }, 
+                { x: 0, scale: 1, duration: 0.3, ease: "power2.out" }, 0);
+
+            // Moment 1: 1.86s (Transition to first stat: "Forty-seven percent")
+            // Scale down to 60%, reposition to right side (next to graphic)
+            tl.to(aroll, { 
+                width: 1152, height: 648, x: 700, y: 216, 
+                duration: 0.3, ease: "power2.out" 
+            }, 1.86);
+
+            // Moment 2: 4.679s (Transition to second stat: "Sixty-two percent")
+            // Shift to left side (next to graphic)
+            tl.to(aroll, { 
+                x: 68, y: 216, 
+                duration: 0.3, ease: "power2.out" 
+            }, 4.679);
+
+            // Moment 3: 8.88s (Transition to third stat: "Three out of four")
+            // Center and scale down (graphic will be above/below)
+            tl.to(aroll, { 
+                width: 960, height: 540, x: 480, y: 450,
+                duration: 0.3, ease: "power2.out" 
+            }, 8.88);
+
+            // Moment 4: 14.239s (Closing/Editor Agent Reveal: "So we built...")
+            // Full screen zoom center
+            tl.to(aroll, { 
+                width: 1920, height: 1080, x: 0, y: 0, scale: 1,
+                duration: 0.3, ease: "power2.out" 
+            }, 14.239);
+
+            window.__timelines["main-video"] = tl;
+        </script>
+    </div>
+</body>
+</html>

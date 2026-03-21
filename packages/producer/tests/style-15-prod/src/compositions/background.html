@@ -1,0 +1,144 @@
+<template id="background-template">
+  <div data-composition-id="background" data-width="1080" data-height="1920" data-duration="14">
+    <div class="paper-texture"></div>
+    
+    <!-- Grid Lines Container -->
+    <div class="grid-container">
+      <!-- Horizontal Lines -->
+      <div class="line horizontal h1" style="top: 15%; height: 2px;"></div>
+      <div class="line horizontal h2" style="top: 45%; height: 6px;"></div>
+      <div class="line horizontal h3" style="top: 85%; height: 1px;"></div>
+      
+      <!-- Vertical Lines -->
+      <div class="line vertical v1" style="left: 20%; width: 4px;"></div>
+      <div class="line vertical v2" style="left: 65%; width: 2px;"></div>
+      <div class="line vertical v3" style="left: 80%; width: 8px;"></div>
+    </div>
+
+    <!-- Bauhaus Red Circle -->
+    <div class="circle-element"></div>
+
+    <style>
+      [data-composition-id="background"] {
+        width: 1080px;
+        height: 1920px;
+        background-color: transparent;
+        position: relative;
+        overflow: hidden;
+        font-family: 'Helvetica', 'Arial', sans-serif;
+      }
+
+      /* Subtle Paper Texture */
+      [data-composition-id="background"] .paper-texture {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        opacity: 0.1; /* Increased for tactile feel */
+        pointer-events: none;
+        background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+      }
+
+      [data-composition-id="background"] .grid-container {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+      }
+
+      [data-composition-id="background"] .line {
+        position: absolute;
+        background-color: #000000;
+      }
+
+      [data-composition-id="background"] .horizontal {
+        width: 100%;
+        left: 0;
+        transform: scaleX(0);
+        transform-origin: left center;
+      }
+
+      [data-composition-id="background"] .vertical {
+        height: 100%;
+        top: 0;
+        transform: scaleY(0);
+        transform-origin: center top;
+      }
+
+      [data-composition-id="background"] .circle-element {
+        position: absolute;
+        width: 400px;
+        height: 400px;
+        background-color: #BE1E2D;
+        border-radius: 50%;
+        top: 25%;
+        left: 60%;
+        transform: scale(0);
+        z-index: 10;
+      }
+    </style>
+
+    <script>
+      (function() {
+        const tl = gsap.timeline({ paused: true });
+
+        // 1. Grid Lines Animation (0s - 1s)
+        // Staggered entrance for horizontal lines
+        tl.to('[data-composition-id="background"] .horizontal', {
+          scaleX: 1,
+          duration: 0.8,
+          stagger: 0.15,
+          ease: "power4.inOut"
+        }, 0);
+
+        // Staggered entrance for vertical lines
+        tl.to('[data-composition-id="background"] .vertical', {
+          scaleY: 1,
+          duration: 0.8,
+          stagger: 0.1,
+          ease: "power4.inOut"
+        }, 0.2);
+
+        // 2. Circular Element Animation (0.5s - 1.2s)
+        tl.to('[data-composition-id="background"] .circle-element', {
+          scale: 1,
+          duration: 0.7,
+          ease: "circ.out"
+        }, 0.5);
+
+        // 3. Ambient Motion (1s - 14s)
+        // Subtle drift for the circle
+        tl.to('[data-composition-id="background"] .circle-element', {
+          x: -30,
+          y: 20,
+          duration: 6.5,
+          yoyo: true,
+          repeat: 1,
+          ease: "sine.inOut"
+        }, 1);
+
+        // Subtle weight shift for lines (simulating paper expansion/contraction or focus shift)
+        tl.to('[data-composition-id="background"] .h2', {
+          height: "8px",
+          duration: 6,
+          yoyo: true,
+          repeat: 1,
+          ease: "sine.inOut"
+        }, 1);
+
+        tl.to('[data-composition-id="background"] .v3', {
+          width: "12px",
+          duration: 5,
+          yoyo: true,
+          repeat: 1,
+          ease: "sine.inOut"
+        }, 3);
+
+        // Register the timeline
+        window.__timelines["background"] = tl;
+      })();
+    </script>
+  </div>
+</template>

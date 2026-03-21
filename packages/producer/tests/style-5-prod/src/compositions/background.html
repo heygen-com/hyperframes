@@ -1,0 +1,111 @@
+<template id="background-template">
+  <div data-composition-id="background" data-width="1920" data-height="1080" data-duration="19.04">
+    <div class="grid-container">
+      <div class="modular-grid"></div>
+      <div class="dot-matrix"></div>
+      <div class="scan-line"></div>
+    </div>
+
+    <style>
+      [data-composition-id="background"] {
+        width: 1920px;
+        height: 1080px;
+        background-color: #0A0A0A;
+        overflow: hidden;
+        position: relative;
+      }
+
+      [data-composition-id="background"] .grid-container {
+        width: 100%;
+        height: 100%;
+        position: absolute;
+        top: 0;
+        left: 0;
+      }
+
+      /* Modular Grid Lines - Subtle and Technical */
+      [data-composition-id="background"] .modular-grid {
+        width: calc(100% + 100px); /* Extra width for drift */
+        height: 100%;
+        position: absolute;
+        top: 0;
+        left: 0;
+        background-image: 
+          linear-gradient(to right, rgba(138, 138, 138, 0.05) 1px, transparent 1px),
+          linear-gradient(to bottom, rgba(138, 138, 138, 0.05) 1px, transparent 1px);
+        background-size: 60px 60px;
+      }
+
+      /* Dot Matrix Pattern - Finer and Sophisticated */
+      [data-composition-id="background"] .dot-matrix {
+        width: 100%;
+        height: 100%;
+        position: absolute;
+        top: 0;
+        left: 0;
+        background-image: radial-gradient(rgba(138, 138, 138, 0.1) 1px, transparent 1px);
+        background-size: 20px 20px;
+      }
+
+      /* Scan Line - Subtle Texture */
+      [data-composition-id="background"] .scan-line {
+        width: 100%;
+        height: 100px; /* Taller for a softer gradient feel */
+        background: linear-gradient(to bottom, 
+          transparent, 
+          rgba(26, 26, 26, 0.1) 50%, 
+          transparent
+        );
+        position: absolute;
+        top: -100px;
+        left: 0;
+        z-index: 10;
+        pointer-events: none;
+      }
+    </style>
+
+    <script>
+      (function() {
+        const tl = gsap.timeline({ paused: true });
+        const duration = 19.04;
+        
+        // 1. Subtle Grid Drift
+        // Move 60px (one grid unit) horizontally over the full duration
+        tl.to('[data-composition-id="background"] .modular-grid', {
+          x: -60,
+          duration: duration,
+          ease: "none"
+        }, 0);
+
+        // 2. Subtle Scan Line Texture
+        // Dark gray/blue (#1A1A1A) at 0.1 opacity
+        const scanCycle = 8; // Slower, more sophisticated movement
+        const cycles = Math.ceil(duration / scanCycle);
+        
+        for (let i = 0; i < cycles; i++) {
+          tl.fromTo('[data-composition-id="background"] .scan-line', 
+            { y: -100 }, 
+            { 
+              y: 1180, 
+              duration: scanCycle, 
+              ease: "none" 
+            }, 
+            i * scanCycle
+          );
+        }
+
+        // 3. Ambient Opacity Pulse
+        // Very subtle breathing effect for the dot matrix
+        tl.to('[data-composition-id="background"] .dot-matrix', {
+          opacity: 0.6,
+          duration: duration / 2,
+          ease: "sine.inOut",
+          yoyo: true,
+          repeat: 1
+        }, 0);
+
+        window.__timelines["background"] = tl;
+      })();
+    </script>
+  </div>
+</template>

@@ -1,0 +1,172 @@
+<template id="overlays-template">
+  <div data-composition-id="overlays" data-width="1080" data-height="1920" data-duration="10.24">
+    <div id="graphic-1" class="vignelli-container">
+      <div class="white-box">
+        <div class="text-black">PRUEBA</div>
+      </div>
+    </div>
+
+    <div id="graphic-2" class="vignelli-container">
+      <div class="white-box">
+        <div class="text-black">GRABAR<br>CONTENIDO</div>
+      </div>
+    </div>
+
+    <div id="graphic-3" class="vignelli-full">
+      <div class="charcoal-bg"></div>
+      <div class="full-content">
+        <div class="text-white">SER YO<br>MISMA</div>
+      </div>
+    </div>
+
+    <style>
+      [data-composition-id="overlays"] {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 1080px;
+        height: 1920px;
+        font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+        overflow: hidden;
+      }
+
+      .vignelli-container {
+        position: absolute;
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        padding-left: 100px;
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      .white-box {
+        background-color: #FFFFFF;
+        padding: 40px 60px;
+        border-left: 30px solid #CC0000;
+        position: relative;
+      }
+
+      .text-black {
+        color: #1A1A1A;
+        font-size: 100px;
+        font-weight: 900;
+        line-height: 0.9;
+        text-transform: uppercase;
+      }
+
+      #graphic-1 {
+        top: 200px;
+      }
+
+      #graphic-1 .text-black {
+        font-size: 140px;
+      }
+
+      #graphic-2 {
+        top: 1150px;
+      }
+
+      .vignelli-full {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        display: flex;
+        justify-content: flex-start;
+        align-items: center;
+        padding-left: 100px;
+        pointer-events: none;
+      }
+
+      .charcoal-bg {
+        position: absolute;
+        top: 0;
+        left: 100%;
+        width: 100%;
+        height: 100%;
+        background-color: #1A1A1A;
+      }
+
+      .full-content {
+        position: relative;
+        z-index: 2;
+        opacity: 0;
+        text-align: left;
+        border-left: 30px solid #CC0000;
+        padding-left: 60px;
+      }
+
+      .full-content .text-white {
+        color: #FFFFFF;
+        font-size: 180px;
+        font-weight: 900;
+        line-height: 0.85;
+        text-transform: uppercase;
+      }
+    </style>
+
+    <script>
+      (function() {
+        const tl = gsap.timeline({ paused: true });
+
+        const G1_IN = 1.22;
+        const G1_OUT = 4.23;
+        const G2_IN = 4.67;
+        const G2_OUT = 8.09;
+        const G3_IN = 8.3;
+        const G3_OUT = 10.24;
+
+        tl.fromTo(
+          '#graphic-1',
+          { opacity: 0, x: -100 },
+          { opacity: 1, x: 0, duration: 0.8, ease: "power3.out" },
+          G1_IN
+        );
+
+        tl.to(
+          '#graphic-1',
+          { opacity: 0, x: 100, duration: 0.4, ease: "power3.in" },
+          G1_OUT - 0.4
+        );
+
+        tl.fromTo(
+          '#graphic-2',
+          { opacity: 0, x: -100 },
+          { opacity: 1, x: 0, duration: 0.8, ease: "power3.out" },
+          G2_IN
+        );
+
+        tl.to(
+          '#graphic-2',
+          { opacity: 0, x: 100, duration: 0.4, ease: "power3.in" },
+          G2_OUT - 0.4
+        );
+
+        tl.to(
+          '.charcoal-bg',
+          { left: 0, duration: 0.8, ease: "power3.inOut" },
+          G3_IN
+        );
+
+        tl.fromTo(
+          '.full-content',
+          { opacity: 0, x: -50 },
+          { opacity: 1, x: 0, duration: 0.8, ease: "back.out(1.2)" },
+          G3_IN + 0.4
+        );
+
+        tl.to(
+          '#graphic-3',
+          { opacity: 0, duration: 0.24 },
+          G3_OUT - 0.24
+        );
+
+        window.__timelines = window.__timelines || {};
+        window.__timelines["overlays"] = tl;
+      })();
+    </script>
+  </div>
+</template>

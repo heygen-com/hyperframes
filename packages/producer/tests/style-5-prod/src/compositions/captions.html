@@ -1,0 +1,101 @@
+<template id="captions-template">
+  <div data-composition-id="captions" data-width="1920" data-height="1080" data-duration="16.04">
+    <div id="captions-container"></div>
+
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@700&display=swap');
+
+      [data-composition-id="captions"] {
+        width: 1920px;
+        height: 1080px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        pointer-events: none;
+        background: transparent;
+      }
+
+      [data-composition-id="captions"] #captions-container {
+        width: 100%;
+        height: 100%;
+        position: relative;
+        display: flex;
+        justify-content: center;
+        align-items: flex-end; /* Align to bottom */
+        padding-bottom: 100px; /* Offset from the very bottom edge */
+      }
+
+      .caption-line {
+        position: absolute;
+        bottom: 15%; /* Positioned in the bottom 3rd */
+        left: 50%;
+        transform: translateX(-50%);
+        width: 90%; /* Prevent bleeding */
+        max-width: 1728px; /* 1920 * 0.9 */
+        font-family: 'Space Mono', monospace;
+        font-weight: 700;
+        font-size: 64px;
+        color: #33FF66;
+        text-transform: uppercase;
+        text-align: center;
+        opacity: 0;
+        line-height: 1.2;
+        white-space: normal; /* Allow wrapping if necessary, though groups are short */
+        word-wrap: break-word;
+      }
+    </style>
+
+    <script>
+      (function() {
+        const TRANSCRIPT = [{'text': 'We', 'start': 0.119, 'end': 0.259}, {'text': 'asked', 'start': 0.319, 'end': 0.479}, {'text': 'what', 'start': 0.519, 'end': 0.659}, {'text': 'you', 'start': 0.699, 'end': 0.819}, {'text': 'needed.', 'start': 0.859, 'end': 1.819}, {'text': 'Forty-seven', 'start': 1.839, 'end': 2.299}, {'text': 'percent', 'start': 2.399, 'end': 2.679}, {'text': 'of', 'start': 2.7, 'end': 2.799}, {'text': 'you', 'start': 2.839, 'end': 2.939}, {'text': 'said', 'start': 3.039, 'end': 3.179}, {'text': 'motion', 'start': 3.24, 'end': 3.559}, {'text': 'graphics.', 'start': 3.579, 'end': 4.639}, {'text': 'Sixty-two', 'start': 4.659, 'end': 5.179}, {'text': 'percent', 'start': 5.299, 'end': 5.759}, {'text': 'said', 'start': 5.859, 'end': 5.98}, {'text': 'static', 'start': 6.099, 'end': 6.399}, {'text': 'content', 'start': 6.46, 'end': 6.879}, {'text': 'was', 'start': 6.92, 'end': 7.079}, {'text': 'costing', 'start': 7.099, 'end': 7.48}, {'text': 'you', 'start': 7.5, 'end': 7.579}, {'text': 'attention,', 'start': 7.679, 'end': 8.659}, {'text': 'and', 'start': 8.699, 'end': 8.86}, {'text': 'three', 'start': 8.88, 'end': 9.06}, {'text': 'out', 'start': 9.079, 'end': 9.18}, {'text': 'of', 'start': 9.199, 'end': 9.34}, {'text': 'four', 'start': 9.38, 'end': 9.799}, {'text': 'said', 'start': 9.84, 'end': 10.0}, {'text': 'you', 'start': 10.019, 'end': 10.159}, {'text': 'know', 'start': 10.179, 'end': 10.36}, {'text': 'the', 'start': 10.38, 'end': 10.479}, {'text': 'look', 'start': 10.52, 'end': 10.699}, {'text': 'you', 'start': 10.739, 'end': 10.859}, {'text': 'want', 'start': 10.98, 'end': 11.34}, {'text': 'but', 'start': 11.359, 'end': 11.52}, {'text': "don't", 'start': 11.56, 'end': 11.779}, {'text': 'have', 'start': 11.819, 'end': 11.94}, {'text': 'the', 'start': 11.96, 'end': 12.06}, {'text': 'editing', 'start': 12.079, 'end': 12.4}, {'text': 'skills', 'start': 12.52, 'end': 12.86}, {'text': 'to', 'start': 12.88, 'end': 13.0}, {'text': 'get', 'start': 13.019, 'end': 13.18}, {'text': 'there.', 'start': 13.22, 'end': 14.22}, {'text': 'So', 'start': 14.239, 'end': 14.399}, {'text': 'we', 'start': 14.42, 'end': 14.52}, {'text': 'built', 'start': 14.619, 'end': 14.88}, {'text': 'Editor', 'start': 15.079, 'end': 15.42}, {'text': 'Agent', 'start': 15.619, 'end': 16.019}];
+        const container = document.getElementById('captions-container');
+        const tl = gsap.timeline({ paused: true });
+
+        // Grouping logic based on the provided transcript and timing
+        // We use the transcript token directly to ensure deterministic behavior
+        // and sync with the actual audio.
+        
+        const captionGroups = [
+          { text: 'WE ASKED WHAT YOU NEEDED.', start: 0.119, end: 1.839 },
+          { text: 'FORTY-SEVEN PERCENT OF YOU SAID', start: 1.839, end: 3.24 },
+          { text: 'MOTION GRAPHICS.', start: 3.24, end: 4.659 },
+          { text: 'SIXTY-TWO PERCENT SAID STATIC', start: 4.659, end: 6.46 },
+          { text: 'CONTENT WAS COSTING YOU ATTENTION,', start: 6.46, end: 8.699 },
+          { text: 'AND THREE OUT OF FOUR', start: 8.699, end: 9.84 },
+          { text: 'SAID YOU KNOW THE LOOK', start: 9.84, end: 10.739 },
+          { text: 'YOU WANT BUT DON\'T HAVE', start: 10.739, end: 11.96 },
+          { text: 'THE EDITING SKILLS TO GET', start: 11.96, end: 13.22 },
+          { text: 'THERE. SO WE BUILT EDITOR', start: 13.22, end: 15.619 },
+          { text: 'AGENT', start: 15.619, end: 16.019 }
+        ];
+
+        captionGroups.forEach((group, index) => {
+          const div = document.createElement('div');
+          div.className = 'caption-line';
+          div.id = `caption-${index}`;
+          div.textContent = group.text;
+          container.appendChild(div);
+
+          // Show the caption
+          // Using a very short duration for a "cut" effect, or 0 for instant
+          tl.to(div, {
+            opacity: 1,
+            duration: 0.05,
+            ease: "none"
+          }, group.start);
+
+          // Hide the caption when the next one starts, or at its end if it's the last one
+          const hideTime = (index < captionGroups.length - 1) ? captionGroups[index + 1].start : group.end;
+          
+          tl.to(div, {
+            opacity: 0,
+            duration: 0.05,
+            ease: "none"
+          }, hideTime);
+        });
+
+        window.__timelines["captions"] = tl;
+      })();
+    </script>
+  </div>
+</template>

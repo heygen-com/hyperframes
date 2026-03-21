@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Editor Agent - Henryk Tomaszewski Style</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100;300;800&display=swap" rel="stylesheet">
+    <style>
+        body { margin: 0; padding: 0; background-color: #1A1A2E; overflow: hidden; width: 1920px; height: 1080px; }
+        #master-composition { width: 1920px; height: 1080px; position: relative; }
+    </style>
+</head>
+<body>
+    <div id="master-composition" data-composition-id="editor-agent" data-width="1920" data-height="1080" data-duration="19.04">
+        
+        <!-- Main Video & A-roll -->
+        <div id="main-video-comp"
+             data-composition-id="main-video"
+             data-composition-src="compositions/main-video.html"
+             data-start="0"
+             data-duration="19.04"
+             data-track-index="0">
+        </div>
+
+        <!-- Title Card (0-3s) -->
+        <div id="title-card-comp"
+             data-composition-id="title-card"
+             data-composition-src="compositions/title-card.html"
+             data-start="0"
+             data-duration="3"
+             data-track-index="1">
+        </div>
+
+        <!-- Captions (Overlay) -->
+        <div id="captions-comp"
+             data-composition-id="captions"
+             data-composition-src="compositions/captions.html"
+             data-start="3"
+             data-duration="16.04"
+             data-track-index="2">
+        </div>
+
+    </div>
+
+    <script>
+        (function() {
+            const tl = gsap.timeline({ paused: true });
+            window.__timelines["editor-agent"] = tl;
+        })();
+    </script>
+</body>
+</html>

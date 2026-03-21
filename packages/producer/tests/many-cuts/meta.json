@@ -1,0 +1,15 @@
+{
+  "name": "Magic Cut - Many Rapid Transitions",
+  "description": "Tests composition with rapid text transitions and synchronized audio clicks",
+  "tags": ["animations", "audio", "timing", "cuts", "transitions"],
+
+  "minPsnr": 30,
+  "maxFrameFailures": 0,
+
+  "minAudioCorrelation": 0.9,
+  "maxAudioLagWindows": 120,
+
+  "renderConfig": {
+    "fps": 30
+  }
+}

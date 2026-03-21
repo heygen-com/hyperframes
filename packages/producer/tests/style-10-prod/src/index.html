@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ahn Sang-soo Play Mode Video</title>
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 1080px;
+            height: 1920px;
+        }
+
+        body {
+            background-color: #000;
+            overflow: hidden;
+        }
+
+        #master-root {
+            width: 1080px;
+            height: 1920px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        #main-layer,
+        #graphics-layer,
+        #captions-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        #main-layer {
+            z-index: 0;
+        }
+
+        #graphics-layer {
+            z-index: 10;
+        }
+
+        #captions-layer {
+            z-index: 20;
+        }
+    </style>
+</head>
+<body>
+    <div id="master-root" data-composition-id="master" data-width="1080" data-height="1920" data-duration="16.04">
+        
+        <!-- Main Orchestration: Background and A-roll -->
+        <div id="main-layer"
+             data-composition-id="main-orchestration"
+             data-composition-src="compositions/main-orchestration.html"
+             data-start="0"
+             data-duration="16.04"
+             data-track-index="0">
+        </div>
+
+        <!-- Graphics Overlay: Stats and Titles -->
+        <div id="graphics-layer"
+             data-composition-id="graphics"
+             data-composition-src="compositions/graphics.html"
+             data-start="0"
+             data-duration="16.04"
+             data-track-index="1">
+        </div>
+
+        <!-- Captions Overlay: Topmost Layer -->
+        <div id="captions-layer"
+             data-composition-id="captions"
+             data-composition-src="compositions/captions.html"
+             data-start="0"
+             data-duration="16.04"
+             data-track-index="2">
+        </div>
+
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    <script>
+        // Master conductor timeline - framework handles nesting automatically
+        const masterTL = gsap.timeline({ paused: true });
+        window.__timelines = window.__timelines || {};
+        window.__timelines["master"] = masterTL;
+    </script>
+</body>
+</html>

@@ -1,0 +1,226 @@
+<template id="mograph-overlays-template">
+  <div data-composition-id="mograph-overlays" data-width="1080" data-height="1920" data-duration="14">
+    <div id="mograph-container">
+      <!-- Ambient Elements -->
+      <div class="diagonal-line line-1"></div>
+      <div class="diagonal-line line-2"></div>
+      <div class="marker marker-tl"></div>
+      <div class="marker marker-tr"></div>
+      <div class="marker marker-bl"></div>
+      <div class="marker marker-br"></div>
+      
+      <!-- Alignment Indicators -->
+      <div class="alignment-h"></div>
+      <div class="alignment-v"></div>
+    </div>
+
+    <style>
+      [data-composition-id="mograph-overlays"] {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 1080px;
+        height: 1920px;
+        overflow: hidden;
+        font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+        color: #000000;
+      }
+
+      [data-composition-id="mograph-overlays"] #mograph-container {
+        position: relative;
+        width: 100%;
+        height: 100%;
+      }
+
+      /* Diagonal Lines - Modernist Red */
+      [data-composition-id="mograph-overlays"] .diagonal-line {
+        position: absolute;
+        background: #BE1E2D;
+        height: 1px;
+        opacity: 0.2;
+      }
+
+      [data-composition-id="mograph-overlays"] .line-1 {
+        width: 600px;
+        top: 150px;
+        left: -150px;
+        transform: rotate(45deg);
+      }
+
+      [data-composition-id="mograph-overlays"] .line-2 {
+        width: 800px;
+        bottom: 200px;
+        right: -200px;
+        transform: rotate(-45deg);
+      }
+
+      /* Geometric Markers - Clean Lines */
+      [data-composition-id="mograph-overlays"] .marker {
+        position: absolute;
+        width: 30px;
+        height: 30px;
+        border: 1px solid #000000;
+        opacity: 0.4;
+      }
+
+      [data-composition-id="mograph-overlays"] .marker-tl { top: 60px; left: 60px; border-right: 0; border-bottom: 0; }
+      [data-composition-id="mograph-overlays"] .marker-tr { top: 60px; right: 60px; border-left: 0; border-bottom: 0; }
+      [data-composition-id="mograph-overlays"] .marker-bl { bottom: 60px; left: 60px; border-right: 0; border-top: 0; }
+      [data-composition-id="mograph-overlays"] .marker-br { bottom: 60px; right: 60px; border-left: 0; border-top: 0; }
+
+      /* Alignment Indicators - Subtle Grid */
+      [data-composition-id="mograph-overlays"] .alignment-h {
+        position: absolute;
+        top: 50%;
+        left: 80px;
+        right: 80px;
+        height: 1px;
+        background: rgba(0,0,0,0.05);
+      }
+
+      [data-composition-id="mograph-overlays"] .alignment-v {
+        position: absolute;
+        left: 50%;
+        top: 80px;
+        bottom: 80px;
+        width: 1px;
+        background: rgba(0,0,0,0.05);
+      }
+
+      /* Dynamic Graphic - Modernist Museum Style */
+      [data-composition-id="mograph-overlays"] .dynamic-graphic {
+        position: absolute;
+        opacity: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        padding: 20px;
+      }
+
+      [data-composition-id="mograph-overlays"] .graphic-value {
+        font-size: 80px;
+        font-weight: 300; /* Lighter weight for museum feel */
+        line-height: 0.9;
+        color: #000000;
+        letter-spacing: -0.04em;
+      }
+
+      [data-composition-id="mograph-overlays"] .graphic-label {
+        font-size: 18px;
+        font-weight: 500;
+        letter-spacing: 6px;
+        margin-top: 15px;
+        color: #BE1E2D; /* Accent color for label */
+        text-transform: uppercase;
+      }
+
+      [data-composition-id="mograph-overlays"] .graphic-line {
+        width: 0;
+        height: 1px;
+        background: #000000;
+        margin-top: 10px;
+      }
+    </style>
+
+    <script>
+      (function() {
+        const TRANSCRIPT = [{'text': 'We', 'start': 0.14, 'end': 0.239}, {'text': 'asked', 'start': 0.28, 'end': 0.459}, {'text': 'what', 'start': 0.5, 'end': 0.619}, {'text': 'you', 'start': 0.659, 'end': 0.779}, {'text': 'needed.', 'start': 0.8, 'end': 1.179}, {'text': 'Forty-seven', 'start': 1.199, 'end': 1.619}, {'text': 'percent', 'start': 1.699, 'end': 1.96}, {'text': 'of', 'start': 1.979, 'end': 2.059}, {'text': 'you', 'start': 2.099, 'end': 2.299}, {'text': 'said', 'start': 2.319, 'end': 2.499}, {'text': 'motion', 'start': 2.559, 'end': 2.839}, {'text': 'graphics,', 'start': 2.899, 'end': 3.759}, {'text': 'sixty-two', 'start': 3.799, 'end': 4.159}, {'text': 'percent', 'start': 4.239, 'end': 4.559}, {'text': 'said', 'start': 4.639, 'end': 4.799}, {'text': 'static', 'start': 4.859, 'end': 5.199}, {'text': 'content', 'start': 5.239, 'end': 5.639}, {'text': 'was', 'start': 5.679, 'end': 5.779}, {'text': 'costing', 'start': 5.859, 'end': 6.219}, {'text': 'you', 'start': 6.259, 'end': 6.339}, {'text': 'attention,', 'start': 6.379, 'end': 7.299}, {'text': 'and', 'start': 7.319, 'end': 7.439}, {'text': 'three', 'start': 7.48, 'end': 7.599}, {'text': 'out', 'start': 7.679, 'end': 7.779}, {'text': 'of', 'start': 7.799, 'end': 7.879}, {'text': 'four', 'start': 7.94, 'end': 8.139}, {'text': 'said', 'start': 8.279, 'end': 8.46}, {'text': 'you', 'start': 8.519, 'end': 8.6}, {'text': 'know', 'start': 8.619, 'end': 8.739}, {'text': 'the', 'start': 8.8, 'end': 8.88}, {'text': 'look', 'start': 8.92, 'end': 9.079}, {'text': 'you', 'start': 9.119, 'end': 9.259}, {'text': 'want', 'start': 9.279, 'end': 9.619}, {'text': 'but', 'start': 9.779, 'end': 9.88}, {'text': "don't", 'start': 9.92, 'end': 10.1}, {'text': 'have', 'start': 10.159, 'end': 10.3}, {'text': 'the', 'start': 10.3, 'end': 10.42}, {'text': 'editing', 'start': 10.5, 'end': 10.779}, {'text': 'skills', 'start': 10.86, 'end': 11.139}, {'text': 'to', 'start': 11.159, 'end': 11.239}, {'text': 'get', 'start': 11.279, 'end': 11.439}, {'text': 'there.', 'start': 11.46, 'end': 12.239}, {'text': 'So', 'start': 12.3, 'end': 12.38}, {'text': 'we', 'start': 12.399, 'end': 12.519}, {'text': 'built', 'start': 12.539, 'end': 12.759}, {'text': 'Editor', 'start': 12.84, 'end': 13.119}, {'text': 'Agent.', 'start': 13.239, 'end': 13.84}];
+        const tl = gsap.timeline({ paused: true });
+        
+        // Face Avoidance Area: x:300-776, y:320-796
+        // Safe zones: Right side (x > 800), Top (y < 300), Bottom (y > 800)
+        
+        // 1. Ambient Motion (Continuous & Subtle)
+        tl.to('.line-1', { x: 30, y: 10, duration: 14, ease: 'none' }, 0);
+        tl.to('.line-2', { x: -30, y: -10, duration: 14, ease: 'none' }, 0);
+        
+        tl.from('.marker', { 
+          scale: 0.9, 
+          opacity: 0, 
+          duration: 1.5, 
+          stagger: 0.3, 
+          ease: 'power2.out' 
+        }, 0);
+
+        // 2. Transcript-Synced Graphics
+        // Updated content based on design review
+        const triggerWords = [
+          { word: "47%", label: "USER SURVEY" },
+          { word: "static", label: "CONTENT ENGAGEMENT" },
+          { word: "editing", label: "TECHNICAL SKILLS" },
+          { word: "Editor", label: "SYSTEM ARCHITECTURE" }
+        ];
+
+        triggerWords.forEach((trigger, index) => {
+          const wordData = TRANSCRIPT.find(w => w.text.toLowerCase().includes(trigger.word.toLowerCase()));
+          if (wordData) {
+            const startTime = wordData.start;
+            const duration = 3.0;
+            
+            // Deterministic positioning outside face area (Vertical Safe Zones)
+            // Face: x:300-776, y:320-796 (approx in vertical)
+            const positions = [
+              { x: 50, y: 1500 },  // Bottom Left
+              { x: 600, y: 1600 }, // Bottom Right
+              { x: 100, y: 100 },  // Top Left
+              { x: 500, y: 50 }    // Top Right
+            ];
+            const pos = positions[index % positions.length];
+
+            // Create a unique graphic for each trigger
+            const graphicId = `graphic-${index}`;
+            const graphicHtml = `
+              <div id="${graphicId}" class="dynamic-graphic" style="left: ${pos.x}px; top: ${pos.y}px;">
+                <div class="graphic-value">${trigger.word.toUpperCase()}</div>
+                <div class="graphic-label">${trigger.label}</div>
+                <div class="graphic-line"></div>
+              </div>
+            `;
+            document.getElementById('mograph-container').insertAdjacentHTML('beforeend', graphicHtml);
+
+            const graphicSelector = `#${graphicId}`;
+            
+            // Entrance - Clean and Sophisticated
+            tl.to(graphicSelector, { 
+              opacity: 1, 
+              duration: 1.0, 
+              ease: 'power3.out' 
+            }, startTime);
+            
+            tl.from(`${graphicSelector} .graphic-value`, { 
+              x: -20, 
+              opacity: 0, 
+              duration: 1.2, 
+              ease: 'power4.out' 
+            }, startTime + 0.1);
+            
+            tl.to(`${graphicSelector} .graphic-line`, { 
+              width: 250, 
+              duration: 1.5, 
+              ease: 'expo.out' 
+            }, startTime + 0.4);
+            
+            // Exit - Smooth Fade
+            tl.to(graphicSelector, { 
+              opacity: 0, 
+              x: 20, 
+              duration: 0.8, 
+              ease: 'power2.in' 
+            }, startTime + duration);
+          }
+        });
+
+        // 3. Subtle Grid/Alignment pulses
+        tl.to('.alignment-h, .alignment-v', {
+          opacity: 0.2,
+          duration: 0.5,
+          repeat: 3,
+          yoyo: true,
+          ease: 'power1.inOut'
+        }, 1);
+
+        window.__timelines["mograph-overlays"] = tl;
+      })();
+    </script>
+  </div>
+</template>

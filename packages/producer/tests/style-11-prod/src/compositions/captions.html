@@ -1,0 +1,108 @@
+<template id="captions-template">
+  <div data-composition-id="captions-comp" data-width="1080" data-height="1920" data-duration="13.88">
+    <div id="captions-rail">
+      <div id="captions-kicker">Narration</div>
+      <div id="captions-container"></div>
+    </div>
+
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@700;900&display=swap');
+
+      [data-composition-id="captions-comp"] {
+        width: 1080px;
+        height: 1920px;
+        position: relative;
+        pointer-events: none;
+      }
+
+      [data-composition-id="captions-comp"] #captions-rail {
+        position: absolute;
+        left: 108px;
+        bottom: 118px;
+        width: 864px;
+        min-height: 258px;
+        border-top: 2px solid #1E1E1E;
+        padding-top: 18px;
+        background: linear-gradient(180deg, rgba(245, 241, 234, 0) 0%, rgba(245, 241, 234, 0.88) 18%, rgba(245, 241, 234, 0.97) 100%);
+      }
+
+      [data-composition-id="captions-comp"] #captions-kicker {
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 18px;
+        font-weight: 700;
+        letter-spacing: 0.24em;
+        text-transform: uppercase;
+        color: rgba(30, 30, 30, 0.64);
+      }
+
+      [data-composition-id="captions-comp"] #captions-container {
+        position: relative;
+        margin-top: 18px;
+        width: 100%;
+        min-height: 184px;
+      }
+
+      [data-composition-id="captions-comp"] .caption-line {
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 56px;
+        font-weight: 900;
+        color: #1E1E1E;
+        opacity: 0;
+        position: absolute;
+        left: 0;
+        width: 96%;
+        line-height: 1.06;
+        text-transform: uppercase;
+      }
+
+      [data-composition-id="captions-comp"] .word {
+        display: inline-block;
+        margin: 0 6px 0 0;
+      }
+    </style>
+
+    <script>
+      (function() {
+        const container = document.getElementById('captions-container');
+        const tl = gsap.timeline({ paused: true });
+
+        const groups = [
+          { text: "We asked what you needed.", start: 0.14, end: 1.179 },
+          { text: "Forty-seven percent of you said motion graphics,", start: 1.199, end: 3.759 },
+          { text: "sixty-two percent said static content", start: 3.799, end: 5.639 },
+          { text: "was costing you attention,", start: 5.679, end: 7.299 },
+          { text: "and three out of four said you know", start: 7.319, end: 8.739 },
+          { text: "the look you want but don't have", start: 8.8, end: 10.3 },
+          { text: "the editing skills to get there.", start: 10.5, end: 12.239 },
+          { text: "So we built Editor Agent.", start: 12.3, end: 13.84 }
+        ];
+
+        groups.forEach(group => {
+          const el = document.createElement('div');
+          el.className = 'caption-line';
+          el.innerHTML = group.text.split(' ').map(word => `<span class="word">${word}</span>`).join(' ');
+          container.appendChild(el);
+
+          tl.fromTo(el, {
+            opacity: 0,
+            y: 26
+          }, {
+            opacity: 1,
+            y: 0,
+            duration: 0.18,
+            ease: "power2.out"
+          }, group.start);
+
+          tl.to(el, {
+            opacity: 0,
+            y: -12,
+            duration: 0.12,
+            ease: "power2.in"
+          }, group.end);
+        });
+
+        window.__timelines["captions-comp"] = tl;
+      })();
+    </script>
+  </div>
+</template>

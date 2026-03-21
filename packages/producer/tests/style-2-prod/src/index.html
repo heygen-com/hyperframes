@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Swiss Grid Video</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 1920px;
+            height: 1080px;
+            background-color: #F2F2F2;
+            overflow: hidden;
+            font-family: 'Helvetica', Arial, sans-serif;
+        }
+
+        #main-comp {
+            position: relative;
+            width: 1920px;
+            height: 1080px;
+            background-color: #F2F2F2;
+        }
+
+        #aroll-frame {
+            position: absolute;
+            border-radius: 8px;
+            z-index: 1;
+            transform-origin: center center;
+            overflow: hidden;
+            background: #000;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.1);
+        }
+
+        #aroll,
+        #aroll-frame > img.__render_frame__,
+        #aroll-frame > img.__preview_render_frame__ {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            object-position: center;
+            display: block;
+        }
+
+        /* Modular Grid Lines (Visual Only) */
+        .grid-line {
+            position: absolute;
+            background-color: rgba(26, 26, 26, 0.15);
+            z-index: 1;
+        }
+        .grid-v { width: 1px; height: 100%; top: 0; }
+        .grid-h { height: 1px; width: 100%; left: 0; }
+
+        /* Background Watermark */
+        .watermark {
+            position: absolute;
+            font-size: 600px;
+            font-weight: 900;
+            color: rgba(26, 26, 26, 0.03);
+            z-index: 0;
+            white-space: nowrap;
+            pointer-events: none;
+            left: 5%;
+            top: 20%;
+        }
+
+        #intro-comp,
+        #stats-comp,
+        #captions-comp {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+        }
+
+        #intro-comp { z-index: 5; }
+        #stats-comp { z-index: 6; }
+        #captions-comp { z-index: 10; }
+    </style>
+</head>
+<body>
+    <div id="main-comp" data-composition-id="main-comp" data-width="1920" data-height="1080" data-duration="17">
+        
+        <div class="watermark">2026</div>
+        <div class="grid-line grid-v" style="left: 10%;"></div>
+        <div class="grid-line grid-v" style="left: 20%;"></div>
+        <div class="grid-line grid-v" style="left: 30%;"></div>
+        <div class="grid-line grid-v" style="left: 40%;"></div>
+        <div class="grid-line grid-v" style="left: 50%;"></div>
+        <div class="grid-line grid-v" style="left: 60%;"></div>
+        <div class="grid-line grid-v" style="left: 70%;"></div>
+        <div class="grid-line grid-v" style="left: 80%;"></div>
+        <div class="grid-line grid-v" style="left: 90%;"></div>
+
+        <div class="grid-line grid-h" style="top: 10%;"></div>
+        <div class="grid-line grid-h" style="top: 20%;"></div>
+        <div class="grid-line grid-h" style="top: 30%;"></div>
+        <div class="grid-line grid-h" style="top: 40%;"></div>
+        <div class="grid-line grid-h" style="top: 50%;"></div>
+        <div class="grid-line grid-h" style="top: 60%;"></div>
+        <div class="grid-line grid-h" style="top: 70%;"></div>
+        <div class="grid-line grid-h" style="top: 80%;"></div>
+        <div class="grid-line grid-h" style="top: 90%;"></div>
+
+        <!-- A-roll Video -->
+        <div id="aroll-frame" style="width: 1920px; height: 1080px; left: 0; top: 0;">
+            <video id="aroll" 
+                   src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/uploaded_assets/57704cd3_8424a748578a497084fd1278949184fc.mp4"
+                   data-start="0"
+                   data-duration="17"
+                   data-track-index="1">
+            </video>
+        </div>
+
+        <!-- Sub-compositions -->
+        <div id="intro-comp" 
+             data-composition-id="intro" 
+             data-composition-src="compositions/intro.html" 
+             data-start="0" 
+             data-duration="4" 
+             data-track-index="5">
+        </div>
+
+        <div id="stats-comp" 
+             data-composition-id="stats" 
+             data-composition-src="compositions/stats.html" 
+             data-start="0" 
+             data-duration="17" 
+             data-track-index="6">
+        </div>
+
+        <div id="captions-comp" 
+             data-composition-id="captions" 
+             data-composition-src="compositions/captions.html" 
+             data-start="0" 
+             data-duration="17" 
+             data-track-index="10">
+        </div>
+
+    </div>
+
+    <script>
+        const tl = gsap.timeline({ paused: true });
+
+        // Initial state: Off-screen bottom
+        gsap.set('#aroll-frame', { y: 1080 });
+
+        // 0-1.5s: Slide in from bottom
+        tl.to('#aroll-frame', { y: 0, duration: 1.5, ease: "expo.out" }, 0.5);
+
+        // A-roll Framing Shifts
+        // 5s: Scale down and move left
+        tl.to('#aroll-frame', { 
+            scale: 0.6, 
+            x: -384, // Align to grid (20% offset)
+            duration: 0.25, 
+            ease: "expo.out" 
+        }, 4.8);
+
+        // 8.5s: Shift to Right (Before 75% stat at 8.88s)
+        tl.to('#aroll-frame', { 
+            x: 384, 
+            scale: 0.65,
+            duration: 0.25, 
+            ease: "expo.out" 
+        }, 8.5);
+
+        // 14.5s: Center and Scale Up
+        tl.to('#aroll-frame', { 
+            x: 0, 
+            scale: 0.85,
+            duration: 0.25, 
+            ease: "expo.out" 
+        }, 14.3);
+
+        window.__timelines["main-comp"] = tl;
+    </script>
+</body>
+</html>

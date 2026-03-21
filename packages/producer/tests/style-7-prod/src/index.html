@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Editor Agent - Velvet Standard</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 1920px;
+            height: 1080px;
+            overflow: hidden;
+            background-color: #000;
+        }
+        #viewport {
+            width: 1920px;
+            height: 1080px;
+            position: relative;
+        }
+    </style>
+</head>
+<body>
+    <div id="viewport" 
+         data-composition-id="root" 
+         data-width="1920" 
+         data-height="1080" 
+         data-duration="16.7">
+        
+        <!-- Intro Sequence (0-3s) -->
+        <div id="intro-layer" 
+             data-composition-src="compositions/intro.html" 
+             data-composition-id="intro"
+             data-start="0"
+             data-duration="3"
+             data-width="1920"
+             data-height="1080"
+             data-track-index="10"
+             style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10;">
+        </div>
+
+        <!-- Main A-roll and Stats (3s - End) -->
+        <div id="main-layer" 
+             data-composition-src="compositions/main.html" 
+             data-composition-id="main"
+             data-start="0"
+             data-duration="16.7"
+             data-width="1920"
+             data-height="1080"
+             data-track-index="5"
+             style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 5;">
+        </div>
+
+        <!-- Captions (3s - End) -->
+        <div id="captions-layer" 
+             data-composition-src="compositions/captions.html" 
+             data-composition-id="captions"
+             data-start="0"
+             data-duration="16.7"
+             data-width="1920"
+             data-height="1080"
+             data-track-index="20"
+             style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 20;">
+        </div>
+
+        <!-- Background Audio (A-roll Audio) -->
+        <audio id="aroll-audio" 
+               src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/uploaded_assets/70648f53_abe84fb9991841ae8ba82ee21ba6d37e.mp4"
+               data-start="0" 
+               data-duration="16.7"
+               data-track-index="1">
+        </audio>
+    </div>
+
+    <script>
+        window.__timelines = {};
+        const mainTimeline = gsap.timeline({ paused: true });
+        window.__timelines["root"] = mainTimeline;
+    </script>
+</body>
+</html>

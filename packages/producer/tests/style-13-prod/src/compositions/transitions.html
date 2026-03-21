@@ -1,0 +1,107 @@
+<template id="transitions-template">
+  <div data-composition-id="transitions" data-width="1080" data-height="1920" data-duration="16">
+    <div class="scanline-container">
+      <div class="scanline" id="scanline-1">
+        <div class="grid-pattern"></div>
+        <div class="accent-line"></div>
+      </div>
+      <div class="scanline" id="scanline-2">
+        <div class="grid-pattern"></div>
+        <div class="accent-line"></div>
+      </div>
+    </div>
+
+    <style>
+      [data-composition-id="transitions"] {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 1080px;
+        height: 1920px;
+        pointer-events: none;
+        overflow: hidden;
+      }
+
+      [data-composition-id="transitions"] .scanline-container {
+        position: relative;
+        width: 100%;
+        height: 100%;
+      }
+
+      [data-composition-id="transitions"] .scanline {
+        position: absolute;
+        left: 0;
+        width: 100%;
+        height: 320px; /* Slightly taller for more presence */
+        background-color: rgba(18, 18, 18, 0.95); /* Dark Charcoal - more sophisticated */
+        opacity: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 0 100px rgba(0, 0, 0, 0.9);
+        z-index: 100;
+        border-left: 0;
+        border-right: 0;
+      }
+
+      /* Subtle dark charcoal grid pattern */
+      [data-composition-id="transitions"] .grid-pattern {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-image: 
+          linear-gradient(to right, rgba(18, 18, 18, 0.3) 1px, transparent 1px),
+          linear-gradient(to bottom, rgba(18, 18, 18, 0.3) 1px, transparent 1px);
+        background-size: 40px 40px;
+      }
+
+      /* Orange accent line - sophisticated highlight */
+      [data-composition-id="transitions"] .accent-line {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        width: 100%;
+        height: 2px; /* More subtle accent */
+        background-color: #FF6600; /* Signal Orange */
+        box-shadow: 0 0 10px rgba(255, 102, 0, 0.4);
+      }
+
+      /* Reverse direction accent for upward sweep */
+      [data-composition-id="transitions"] #scanline-2 .accent-line {
+        top: 0;
+        bottom: auto;
+      }
+    </style>
+
+    <script>
+      (function() {
+        const tl = gsap.timeline({ paused: true });
+
+        // Sweep 1: At 7.3s (when A-roll exits)
+        // Top to Bottom
+        tl.set("#scanline-1", { y: -320, opacity: 1 }, 7.0);
+        tl.to("#scanline-1", {
+          y: 1920,
+          duration: 0.9,
+          ease: "power3.inOut"
+        }, 7.0);
+        tl.set("#scanline-1", { opacity: 0 }, 7.9);
+
+        // Sweep 2: At 12.3s (when A-roll returns)
+        // Bottom to Top
+        tl.set("#scanline-2", { y: 1920, opacity: 1 }, 12.0);
+        tl.to("#scanline-2", {
+          y: -320,
+          duration: 0.9,
+          ease: "power3.inOut"
+        }, 12.0);
+        tl.set("#scanline-2", { opacity: 0 }, 12.9);
+
+        window.__timelines["transitions"] = tl;
+      })();
+    </script>
+  </div>
+</template>

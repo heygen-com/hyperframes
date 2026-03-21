@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Editor Agent - Saul Bass Style</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 1080px;
+            height: 1920px;
+            background: #000000;
+            overflow: hidden;
+        }
+        #main-composition {
+            width: 1080px;
+            height: 1920px;
+            position: relative;
+        }
+        video {
+            width: 1080px;
+            height: 1920px;
+            object-fit: cover;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+    </style>
+</head>
+<body>
+    <div id="main-composition" data-composition-id="main-video" data-width="1080" data-height="1920" data-duration="13.88">
+        <!-- Background Graphics (Track 1) -->
+        <div id="bg-layer" 
+             data-composition-id="bg-graphics" 
+             data-composition-src="compositions/bg-graphics.html" 
+             data-start="0" 
+             data-duration="13.88" 
+             data-track-index="1">
+        </div>
+
+        <!-- Continuous A-roll Video (Track 0 - Base Layer) -->
+        <video id="aroll-continuous" 
+               data-start="0" 
+               data-duration="13.88" 
+               data-track-index="0" 
+               src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/uploaded_assets/64b11740_ce531703293e4dbfa1de029a692e93e4.mp4">
+        </video>
+
+        <!-- Data Visualization Overlay (Track 2 - Covers A-roll 3.7s-7.3s) -->
+        <div id="data-layer" 
+             data-composition-id="data-viz" 
+             data-composition-src="compositions/data-viz.html" 
+             data-start="3.7" 
+             data-duration="3.6" 
+             data-track-index="2">
+        </div>
+
+        <!-- Captions Layer (Track 3) -->
+        <div id="captions-layer" 
+             data-composition-id="captions" 
+             data-composition-src="compositions/captions.html" 
+             data-start="0" 
+             data-duration="13.88" 
+             data-track-index="3">
+        </div>
+    </div>
+
+    <script>
+        const tl = gsap.timeline({ paused: true });
+        // Main orchestration timeline
+        window.__timelines["main-video"] = tl;
+    </script>
+</body>
+</html>

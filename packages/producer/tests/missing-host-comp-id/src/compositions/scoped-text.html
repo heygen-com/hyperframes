@@ -1,0 +1,36 @@
+<template id="scoped-text-template">
+  <div
+    data-composition-id="scoped-text"
+    data-width="1080"
+    data-height="1920"
+    data-duration="3"
+  >
+    <div class="label">Scoped Text Should Stay Styled</div>
+
+    <style>
+      [data-composition-id="scoped-text"] {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgb(12, 12, 12);
+      }
+
+      [data-composition-id="scoped-text"] .label {
+        color: rgb(255, 214, 10);
+        font-family: Helvetica, Arial, sans-serif;
+        font-size: 88px;
+        font-weight: 700;
+        letter-spacing: -0.04em;
+      }
+    </style>
+
+    <script>
+      const tl = gsap.timeline({ paused: true });
+      tl.to({}, { duration: 3 });
+      window.__timelines = window.__timelines || {};
+      window.__timelines["scoped-text"] = tl;
+    </script>
+  </div>
+</template>

@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Digital Grid — Wim Crouwel Style</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 1920px;
+            height: 1080px;
+            background-color: #0A0A0A;
+            overflow: hidden;
+            font-family: 'Courier New', Courier, monospace;
+        }
+
+        #master-composition {
+            position: relative;
+            width: 1920px;
+            height: 1080px;
+        }
+
+        #aroll-video {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 1920px;
+            height: 1080px;
+            border-radius: 4px;
+            object-fit: cover;
+            clip-path: inset(0 100% 0 0); /* For left-to-right wipe */
+        }
+    </style>
+</head>
+<body>
+    <div id="master-composition" data-composition-id="master" data-width="1920" data-height="1080" data-duration="19.04">
+        
+        <!-- Persistent Grid Background -->
+        <div id="grid-bg-comp"
+             data-composition-id="grid-bg"
+             data-composition-src="compositions/grid-bg.html"
+             data-start="0"
+             data-track-index="0">
+        </div>
+
+        <!-- Intro Sequence (0-3s) -->
+        <div id="intro-seq-comp"
+             data-composition-id="intro-seq"
+             data-composition-src="compositions/intro-seq.html"
+             data-start="0"
+             data-track-index="1"
+             data-duration="3">
+        </div>
+
+        <!-- Data Graphics Layer -->
+        <div id="data-graphics-comp"
+             data-composition-id="data-graphics"
+             data-composition-src="compositions/data-graphics.html"
+             data-start="3"
+             data-track-index="2">
+        </div>
+
+        <!-- A-roll Video (Starts after intro) -->
+        <video id="aroll-video"
+               data-start="3"
+               data-duration="16.04"
+               data-track-index="3"
+               src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/uploaded_assets/3053bdbd_3b610ff665ee4d11858cba59dbf47b8c.mp4">
+        </video>
+
+        <!-- Captions Layer -->
+        <div id="captions-comp"
+             data-composition-id="captions"
+             data-composition-src="compositions/captions.html"
+             data-start="3"
+             data-track-index="4">
+        </div>
+
+    </div>
+
+    <script>
+        (function() {
+            const tl = gsap.timeline({ paused: true });
+            const video = document.getElementById('aroll-video');
+
+            // 1. A-roll entrance: Clean left-to-right wipe reveal at 3s
+            tl.to(video, {
+                clipPath: 'inset(0 0% 0 0)',
+                duration: 0.5,
+                ease: "power2.inOut"
+            }, 3);
+
+            // 2. First stat (47%) at 3 + 1.839 = 4.839s
+            // Trigger: A-roll scales down and shifts to left
+            tl.to(video, {
+                scale: 0.6,
+                x: -400,
+                duration: 0.4,
+                ease: "power2.inOut"
+            }, 4.839);
+
+            // 3. Second stat (62%) at 3 + 4.659 = 7.659s
+            // Stays scaled down
+
+            // 4. Next major narrative beat (75% lack skills) at 3 + 13.22 = 16.22s
+            // Trigger: A-roll scales back up to 100% and recenters after "editing skills to get there"
+            tl.to(video, {
+                scale: 1,
+                x: 0,
+                duration: 0.4,
+                ease: "power2.inOut"
+            }, 16.22);
+
+            // 5. Final beat (Editor Agent) at 3 + 14.22 = 17.22s
+            // Scale down again for final reveal? Or stay centered. 
+            // Prompt says: "When the next major narrative beat begins: A-roll scales back up to 100% and recenters."
+            // "A-roll remains visible and on screen through the end of the video."
+            
+            window.__timelines["master"] = tl;
+        })();
+    </script>
+</body>
+</html>

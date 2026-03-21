@@ -1,0 +1,300 @@
+<template id="hero-moment-template">
+  <div data-composition-id="hero-moment" data-width="1080" data-height="1920" data-duration="14">
+    <div class="background">
+      <div class="paper-texture"></div>
+      <div class="grid-lines"></div>
+      <div class="accent-circle"></div>
+    </div>
+
+    <div class="content-layer">
+      <div class="stat-container">
+        <div class="stat-number">75%</div>
+        <div class="stat-fraction">(3 out of 4)</div>
+      </div>
+      
+      <div class="text-container">
+        <div class="line line-1">LACK</div>
+        <div class="line line-2">THE ESSENTIAL</div>
+        <div class="line line-3">SKILLS</div>
+      </div>
+
+      <div class="geometric-elements">
+        <div class="rule-line horizontal"></div>
+        <div class="rule-line vertical"></div>
+        <div class="square-accent"></div>
+      </div>
+    </div>
+
+    <style>
+      [data-composition-id="hero-moment"] {
+        background-color: transparent;
+        color: #000000;
+        font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+        overflow: hidden;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        width: 1080px;
+        height: 1920px;
+        position: relative;
+      }
+
+      [data-composition-id="hero-moment"] .paper-texture {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        opacity: 0.05; /* Standardized to 0.05 */
+        pointer-events: none;
+        background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+        z-index: 0;
+      }
+
+      [data-composition-id="hero-moment"] .background {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        z-index: 0;
+      }
+
+      [data-composition-id="hero-moment"] .grid-lines {
+        position: absolute;
+        width: 200%;
+        height: 200%;
+        top: -50%;
+        left: -50%;
+        background-image: 
+          linear-gradient(to right, rgba(0,0,0,0.05) 1px, transparent 1px),
+          linear-gradient(to bottom, rgba(0,0,0,0.05) 1px, transparent 1px);
+        background-size: 100px 100px;
+        transform: rotate(-15deg);
+      }
+
+      [data-composition-id="hero-moment"] .accent-circle {
+        position: absolute;
+        width: 800px;
+        height: 800px;
+        border: 2px solid #BE1E2D;
+        border-radius: 50%;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%) scale(0);
+        opacity: 0;
+      }
+
+      [data-composition-id="hero-moment"] .content-layer {
+        position: relative;
+        z-index: 1;
+        width: 900px;
+        height: 1600px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+      }
+
+      [data-composition-id="hero-moment"] .stat-container {
+        position: absolute;
+        top: 10%;
+        left: 50%;
+        transform: translateX(-50%);
+        text-align: center;
+      }
+
+      [data-composition-id="hero-moment"] .stat-number {
+        font-size: 280px; /* Reduced massiveness for better hierarchy */
+        font-weight: 300; /* Slightly more weight for legibility */
+        line-height: 0.8;
+        color: #BE1E2D;
+        letter-spacing: -10px;
+        opacity: 0;
+      }
+
+      [data-composition-id="hero-moment"] .stat-fraction {
+        font-size: 48px; /* Slightly larger supporting text */
+        font-weight: 300;
+        margin-top: 10px;
+        letter-spacing: 12px; /* More tracking */
+        text-transform: uppercase;
+        opacity: 0;
+      }
+
+      [data-composition-id="hero-moment"] .text-container {
+        position: absolute;
+        bottom: 15%;
+        left: 50%;
+        transform: translateX(-50%);
+        text-align: center;
+        width: 100%;
+      }
+
+      [data-composition-id="hero-moment"] .line {
+        font-size: 120px; /* Increased for impact */
+        font-weight: 800;
+        line-height: 0.8; /* Tighter line height */
+        margin-bottom: 10px;
+        letter-spacing: 4px; /* More tracking */
+        opacity: 0;
+      }
+
+      [data-composition-id="hero-moment"] .line-2 {
+        font-size: 60px;
+        font-weight: 400;
+        color: #BE1E2D;
+      }
+
+      [data-composition-id="hero-moment"] .geometric-elements {
+        position: absolute;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+        top: 0;
+        left: 0;
+      }
+
+      [data-composition-id="hero-moment"] .rule-line {
+        position: absolute;
+        background-color: #000000;
+        opacity: 0;
+      }
+
+      [data-composition-id="hero-moment"] .rule-line.horizontal {
+        width: 0%;
+        height: 4px;
+        top: 45%;
+        left: 0;
+      }
+
+      [data-composition-id="hero-moment"] .rule-line.vertical {
+        width: 4px;
+        height: 0%;
+        top: 0;
+        left: 50%;
+      }
+
+      [data-composition-id="hero-moment"] .square-accent {
+        position: absolute;
+        width: 60px;
+        height: 60px;
+        background-color: #BE1E2D;
+        top: 43.5%;
+        left: 47.5%;
+        transform: scale(0);
+        opacity: 0;
+      }
+    </style>
+
+    <script>
+      (function() {
+        const TRANSCRIPT = [{'text': 'We', 'start': 0.14, 'end': 0.239}, {'text': 'asked', 'start': 0.28, 'end': 0.459}, {'text': 'what', 'start': 0.5, 'end': 0.619}, {'text': 'you', 'start': 0.659, 'end': 0.779}, {'text': 'needed.', 'start': 0.8, 'end': 1.179}, {'text': 'Forty-seven', 'start': 1.199, 'end': 1.619}, {'text': 'percent', 'start': 1.699, 'end': 1.96}, {'text': 'of', 'start': 1.979, 'end': 2.059}, {'text': 'you', 'start': 2.099, 'end': 2.299}, {'text': 'said', 'start': 2.319, 'end': 2.499}, {'text': 'motion', 'start': 2.559, 'end': 2.839}, {'text': 'graphics,', 'start': 2.899, 'end': 3.759}, {'text': 'sixty-two', 'start': 3.799, 'end': 4.159}, {'text': 'percent', 'start': 4.239, 'end': 4.559}, {'text': 'said', 'start': 4.639, 'end': 4.799}, {'text': 'static', 'start': 4.859, 'end': 5.199}, {'text': 'content', 'start': 5.239, 'end': 5.639}, {'text': 'was', 'start': 5.679, 'end': 5.779}, {'text': 'costing', 'start': 5.859, 'end': 6.219}, {'text': 'you', 'start': 6.259, 'end': 6.339}, {'text': 'attention,', 'start': 6.379, 'end': 7.299}, {'text': 'and', 'start': 7.319, 'end': 7.439}, {'text': 'three', 'start': 7.48, 'end': 7.599}, {'text': 'out', 'start': 7.679, 'end': 7.779}, {'text': 'of', 'start': 7.799, 'end': 7.879}, {'text': 'four', 'start': 7.94, 'end': 8.139}, {'text': 'said', 'start': 8.279, 'end': 8.46}, {'text': 'you', 'start': 8.519, 'end': 8.6}, {'text': 'know', 'start': 8.619, 'end': 8.739}, {'text': 'the', 'start': 8.8, 'end': 8.88}, {'text': 'look', 'start': 8.92, 'end': 9.079}, {'text': 'you', 'start': 9.119, 'end': 9.259}, {'text': 'want', 'start': 9.279, 'end': 9.619}, {'text': 'but', 'start': 9.779, 'end': 9.88}, {'text': "don't", 'start': 9.92, 'end': 10.1}, {'text': 'have', 'start': 10.159, 'end': 10.3}, {'text': 'the', 'start': 10.3, 'end': 10.42}, {'text': 'editing', 'start': 10.5, 'end': 10.779}, {'text': 'skills', 'start': 10.86, 'end': 11.139}, {'text': 'to', 'start': 11.159, 'end': 11.239}, {'text': 'get', 'start': 11.279, 'end': 11.439}, {'text': 'there.', 'start': 11.46, 'end': 12.239}, {'text': 'So', 'start': 12.3, 'end': 12.38}, {'text': 'we', 'start': 12.399, 'end': 12.519}, {'text': 'built', 'start': 12.539, 'end': 12.759}, {'text': 'Editor', 'start': 12.84, 'end': 13.119}, {'text': 'Agent.', 'start': 13.239, 'end': 13.84}];
+        const tl = gsap.timeline({ paused: true });
+
+        // Helper to find word timing
+        function getWordTime(word) {
+          const found = TRANSCRIPT.find(w => w.text.toLowerCase().replace(/[^\w]/g, '') === word.toLowerCase());
+          return found ? found.start : 0;
+        }
+
+        // 1. Entrance (Starts at 7.319s)
+        tl.to('[data-composition-id="hero-moment"] .accent-circle', { 
+          opacity: 0.2, 
+          scale: 1.2, 
+          duration: 1, 
+          ease: 'power2.out' 
+        }, 7.319);
+
+        tl.to('[data-composition-id="hero-moment"] .rule-line.horizontal', { 
+          width: '100%', 
+          opacity: 0.3, 
+          duration: 0.8, 
+          ease: 'expo.out' 
+        }, 7.4);
+
+        tl.to('[data-composition-id="hero-moment"] .rule-line.vertical', { 
+          height: '100%', 
+          opacity: 0.3, 
+          duration: 0.8, 
+          ease: 'expo.out' 
+        }, 7.5);
+
+        tl.to('[data-composition-id="hero-moment"] .square-accent', { 
+          scale: 1, 
+          opacity: 1, 
+          duration: 0.5, 
+          ease: 'back.out(1.7)' 
+        }, 7.8);
+
+        // 2. Kinetic Typography synced to transcript
+        // "75%" (three out of four)
+        const timeThree = getWordTime('three');
+        tl.to('[data-composition-id="hero-moment"] .stat-number', { 
+          opacity: 1, 
+          duration: 0.8, 
+          ease: 'power4.out' 
+        }, timeThree);
+
+        tl.to('[data-composition-id="hero-moment"] .stat-fraction', { 
+          opacity: 0.8, 
+          duration: 0.8, 
+          ease: 'power2.out' 
+        }, timeThree + 0.2);
+
+        // "lack"
+        const timeSkills = getWordTime('skills');
+        tl.to('[data-composition-id="hero-moment"] .line-1', { 
+          opacity: 1, 
+          duration: 0.6, 
+          ease: 'back.out(1.2)' 
+        }, timeSkills - 0.4);
+
+        // "essential"
+        tl.to('[data-composition-id="hero-moment"] .line-2', { 
+          opacity: 1, 
+          duration: 0.6, 
+          ease: 'back.out(1.2)' 
+        }, timeSkills - 0.2);
+
+        // "skills"
+        tl.to('[data-composition-id="hero-moment"] .line-3', { 
+          opacity: 1, 
+          duration: 0.6, 
+          ease: 'back.out(1.2)' 
+        }, timeSkills);
+
+        // 3. Ambient Motion (Continuous)
+        tl.to('[data-composition-id="hero-moment"] .grid-lines', {
+          x: '+=50',
+          y: '+=50',
+          duration: 14,
+          ease: 'none'
+        }, 0);
+
+        tl.to('[data-composition-id="hero-moment"] .accent-circle', {
+          scale: 1.3,
+          duration: 14,
+          ease: 'sine.inOut'
+        }, 0);
+
+        // 4. Exit (Starts at 12.239s)
+        tl.to('[data-composition-id="hero-moment"] .content-layer, [data-composition-id="hero-moment"] .geometric-elements', {
+          opacity: 0,
+          y: 50,
+          duration: 0.6,
+          ease: 'power3.in'
+        }, 12.239);
+
+        tl.to('[data-composition-id="hero-moment"] .accent-circle', {
+          scale: 2,
+          opacity: 0,
+          duration: 0.8,
+          ease: 'power2.in'
+        }, 12.239);
+
+        window.__timelines["hero-moment"] = tl;
+      })();
+    </script>
+  </div>
+</template>

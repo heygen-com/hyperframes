@@ -1,0 +1,15 @@
+{
+  "name": "Vignelli Video Stacking",
+  "description": "Tests that producer video frame swapping preserves authored stacking so overlays and captions stay above the a-roll video.",
+  "tags": ["video", "captions", "stacking", "z-index", "animations"],
+
+  "minPsnr": 30,
+  "maxFrameFailures": 0,
+
+  "minAudioCorrelation": 0.9,
+  "maxAudioLagWindows": 120,
+
+  "renderConfig": {
+    "fps": 30
+  }
+}

@@ -1,0 +1,114 @@
+<template id="captions-template">
+  <div data-composition-id="captions" data-width="1080" data-height="1920" data-duration="10.24">
+    <div id="captions-container"></div>
+
+    <style>
+      [data-composition-id="captions"] {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 1080px;
+        height: 1920px;
+        background-color: transparent;
+        font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+        text-transform: uppercase;
+        overflow: hidden;
+      }
+
+      [data-composition-id="captions"] .caption-group {
+        position: absolute;
+        top: 1528px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 900px;
+        background-color: #FFFFFF;
+        color: #000000;
+        padding: 60px;
+        border-top: 8px solid #CC0000;
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        align-items: center;
+        opacity: 0;
+        box-sizing: border-box;
+      }
+
+      [data-composition-id="captions"] .word {
+        font-weight: 700;
+        font-size: 72px;
+        letter-spacing: -0.02em;
+        margin: 0 10px;
+        display: inline-block;
+      }
+    </style>
+
+    <script>
+      (function() {
+        const TRANSCRIPT = [
+          { text: 'Hola,', start: 1.22, end: 1.879 },
+          { text: 'esto', start: 1.919, end: 2.119 },
+          { text: 'es', start: 2.139, end: 2.199 },
+          { text: 'una', start: 2.24, end: 2.46 },
+          { text: 'prueba.', start: 2.46, end: 4.239 },
+          { text: 'Yo', start: 4.279, end: 4.619 },
+          { text: 'quiero', start: 4.679, end: 4.979 },
+          { text: 'definitivamente', start: 5.0, end: 6.539 },
+          { text: 'poder', start: 6.559, end: 6.879 },
+          { text: 'grabar', start: 6.899, end: 7.279 },
+          { text: 'contenido,', start: 7.299, end: 8.099 },
+          { text: 'pero', start: 8.119, end: 8.3 },
+          { text: 'ser', start: 8.399, end: 8.519 },
+          { text: 'yo', start: 8.6, end: 8.74 },
+          { text: 'misma', start: 8.76, end: 9.14 },
+          { text: 'también', start: 9.159, end: 10.26 }
+        ];
+
+        const container = document.getElementById('captions-container');
+        const tl = gsap.timeline({ paused: true });
+        const chunks = [];
+        let currentChunk = [];
+
+        TRANSCRIPT.forEach((word, index) => {
+          currentChunk.push(word);
+          if (currentChunk.length >= 3 || index === TRANSCRIPT.length - 1) {
+            chunks.push([...currentChunk]);
+            currentChunk = [];
+          }
+        });
+
+        chunks.forEach((chunk, i) => {
+          const group = document.createElement('div');
+          group.className = 'caption-group';
+          group.id = `group-${i}`;
+
+          chunk.forEach((wordData) => {
+            const span = document.createElement('span');
+            span.className = 'word';
+            span.textContent = wordData.text;
+            group.appendChild(span);
+          });
+
+          container.appendChild(group);
+
+          const startTime = chunk[0].start;
+          const endTime = chunk[chunk.length - 1].end;
+
+          tl.fromTo(
+            group,
+            { opacity: 0, y: 20 },
+            { opacity: 1, y: 0, duration: 0.3, ease: "power2.out" },
+            startTime
+          );
+
+          tl.to(
+            group,
+            { opacity: 0, y: -10, duration: 0.2, ease: "power2.in" },
+            endTime
+          );
+        });
+
+        window.__timelines["captions"] = tl;
+      })();
+    </script>
+  </div>
+</template>

@@ -1,0 +1,80 @@
+<template id="captions-template">
+  <div data-composition-id="captions" data-width="1920" data-height="1080" data-duration="20">
+    <div class="captions-container">
+      <div id="caption-text" class="caption-text"></div>
+    </div>
+
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@700&display=swap');
+
+      [data-composition-id="captions"] {
+        width: 1920px;
+        height: 1080px;
+        display: flex;
+        justify-content: center;
+        align-items: flex-end;
+        padding-bottom: 150px; /* Position towards bottom 20% */
+      }
+
+      [data-composition-id="captions"] .captions-container {
+        width: 100%;
+        display: flex;
+        justify-content: center;
+        text-align: center;
+      }
+
+      [data-composition-id="captions"] .caption-text {
+        font-family: 'Oswald', sans-serif;
+        font-weight: 700;
+        font-size: 80px;
+        color: white;
+        text-transform: uppercase;
+        text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.9);
+        line-height: 1.2;
+        max-width: 80%;
+        opacity: 0;
+      }
+    </style>
+
+    <script>
+      (function() {
+        const tl = gsap.timeline({ paused: true });
+        const captionEl = document.getElementById('caption-text');
+        const OFFSET = 3;
+
+        const groups = [
+          { text: "WE ASKED WHAT YOU NEEDED.", start: 0.119, end: 1.839 },
+          { text: "FORTY-SEVEN PERCENT OF YOU SAID", start: 1.839, end: 3.24 },
+          { text: "MOTION GRAPHICS.", start: 3.24, end: 4.659 },
+          { text: "SIXTY-TWO PERCENT SAID", start: 4.659, end: 6.099 },
+          { text: "STATIC CONTENT WAS COSTING YOU", start: 6.099, end: 7.679 },
+          { text: "ATTENTION, AND THREE OUT OF", start: 7.679, end: 9.38 },
+          { text: "FOUR SAID YOU KNOW THE", start: 9.38, end: 10.52 },
+          { text: "LOOK YOU WANT BUT DON'T", start: 10.52, end: 11.819 },
+          { text: "HAVE THE EDITING SKILLS TO", start: 11.819, end: 13.019 },
+          { text: "GET THERE.", start: 13.019, end: 14.239 },
+          { text: "SO WE BUILT", start: 14.239, end: 15.079 },
+          { text: "EDITOR AGENT", start: 15.079, end: 17.2 } // End at 17.2 as requested
+        ];
+
+        groups.forEach((group, index) => {
+          const startTime = group.start + OFFSET;
+          const endTime = group.end + OFFSET;
+
+          // Show caption
+          tl.set(captionEl, { 
+            innerHTML: group.text, 
+            opacity: 1 
+          }, startTime);
+
+          // If it's the last group, hide it at the end
+          if (index === groups.length - 1) {
+            tl.set(captionEl, { opacity: 0 }, endTime);
+          }
+        });
+
+        window.__timelines["captions"] = tl;
+      })();
+    </script>
+  </div>
+</template>

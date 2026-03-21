@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Editor Agent - Sol LeWitt Style</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 1080px;
+            height: 1920px;
+            background-color: #F5F1EA;
+            overflow: hidden;
+            font-family: 'IBM Plex Mono', 'Courier New', Courier, monospace;
+        }
+
+        #main-canvas {
+            width: 1080px;
+            height: 1920px;
+            position: relative;
+            overflow: hidden;
+            background: linear-gradient(180deg, #F6F1E8 0%, #EFE8DE 100%);
+        }
+
+        #bg-grid-comp,
+        #mg-overlays-comp,
+        #captions-comp,
+        #aroll-frame {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 1080px;
+            height: 1920px;
+        }
+
+        #bg-grid-comp {
+            z-index: 0;
+        }
+
+        #aroll-frame {
+            top: 188px;
+            left: 108px;
+            width: 756px;
+            height: 1180px;
+            background: #111111;
+            overflow: hidden;
+            border: 2px solid #1D1D1D;
+            box-shadow: 0 22px 48px rgba(17, 17, 17, 0.16);
+            z-index: 10;
+        }
+
+        #aroll-frame::before {
+            content: "";
+            position: absolute;
+            inset: 14px;
+            border: 1px solid rgba(255, 255, 255, 0.28);
+            pointer-events: none;
+            z-index: 3;
+        }
+
+        #aroll-video,
+        #aroll-frame img.__render_frame__,
+        #aroll-frame img.__preview_render_frame__ {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            filter: saturate(0.88) contrast(1.06) brightness(0.97);
+        }
+
+        .frame-meta {
+            position: absolute;
+            left: 18px;
+            right: 18px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 18px;
+            letter-spacing: 0.18em;
+            text-transform: uppercase;
+            z-index: 4;
+            pointer-events: none;
+        }
+
+        .frame-meta.top {
+            top: 18px;
+        }
+
+        .frame-meta.bottom {
+            bottom: 18px;
+        }
+
+        #mg-overlays-comp {
+            z-index: 20;
+        }
+
+        #captions-comp {
+            z-index: 30;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="main-canvas" data-composition-id="main-comp" data-width="1080" data-height="1920" data-start="0" data-duration="13.88">
+        <div id="bg-grid-comp" 
+             data-composition-id="bg-grid-comp" 
+             data-composition-src="compositions/bg-grid.html" 
+             data-start="0" 
+             data-duration="13.88" 
+             data-track-index="1">
+        </div>
+
+        <div id="aroll-frame">
+            <div class="frame-meta top">
+                <span>Editor Agent</span>
+                <span>Portrait System</span>
+            </div>
+            <video id="aroll-video" 
+                   data-start="0" 
+                   data-duration="13.88" 
+                   data-track-index="2" 
+                   src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/uploaded_assets/a8bed725_8ae955c61e3141e09d9eadb97e0eef93.mp4">
+            </video>
+            <div class="frame-meta bottom">
+                <span>Survey Cut</span>
+                <span>13.88s</span>
+            </div>
+        </div>
+
+        <div id="mg-overlays-comp" 
+             data-composition-id="mg-overlays-comp" 
+             data-composition-src="compositions/mg-overlays.html" 
+             data-start="0" 
+             data-duration="13.88" 
+             data-track-index="3">
+        </div>
+
+        <div id="captions-comp" 
+             data-composition-id="captions-comp" 
+             data-composition-src="compositions/captions.html" 
+             data-start="0" 
+             data-duration="13.88" 
+             data-track-index="4">
+        </div>
+
+        <script>
+            const tl = gsap.timeline({ paused: true });
+
+            tl.fromTo('#aroll-frame', {
+                y: 18,
+                scale: 1.02
+            }, {
+                y: 0,
+                scale: 1,
+                duration: 0.9,
+                ease: "power2.out"
+            }, 0);
+
+            window.__timelines["main-comp"] = tl;
+        </script>
+    </div>
+</body>
+</html>

@@ -1,0 +1,15 @@
+{
+  "name": "Chat Interface",
+  "description": "Tests chat interface composition with animations",
+  "tags": ["chat", "ui", "animations"],
+
+  "minPsnr": 30,
+  "maxFrameFailures": 0,
+
+  "minAudioCorrelation": 0.9,
+  "maxAudioLagWindows": 120,
+
+  "renderConfig": {
+    "fps": 30
+  }
+}

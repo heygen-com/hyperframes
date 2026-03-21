@@ -1,0 +1,67 @@
+{
+  "name": "@hyperframes/producer",
+  "version": "0.1.0",
+  "description": "HTML-to-video rendering engine using Chrome's BeginFrame API",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./server": {
+      "import": "./dist/public-server.js"
+    }
+  },
+  "files": [
+    "dist/"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "pnpm -w build:hyperframes-runtime:modular && node build.mjs",
+    "typecheck": "tsc --noEmit",
+    "parity:check": "tsx src/parity-harness.ts",
+    "parity:fixtures": "tsx src/parity-fixtures.ts",
+    "parity:fixtures:ci": "tsx src/parity-fixtures.ts",
+    "parity:check:ci": "tsx src/parity-harness.ts --preview-url \"http://127.0.0.1:4173/minimal-wysiwyg.html\" --producer-url \"http://127.0.0.1:4173/minimal-wysiwyg.html?mode=producer\" --checkpoints \"0,0.5,1,1.5\" --allow-mismatch-ratio 0 --emulate-producer-swap true --artifacts-dir \".debug/parity-harness-ci\"",
+    "perf:gate": "tsx src/perf-gate.ts",
+    "check:runtime-conformance": "tsx src/runtime-conformance.ts",
+    "benchmark": "tsx src/benchmark.ts",
+    "test": "tsx src/regression-harness.ts",
+    "test:update": "tsx src/regression-harness.ts --update",
+    "prepublishOnly": "pnpm build"
+  },
+  "dependencies": {
+    "@hyperframes/core": "workspace:*",
+    "@hyperframes/engine": "workspace:*",
+    "@fontsource/archivo-black": "^5.2.8",
+    "@fontsource/eb-garamond": "^5.2.7",
+    "@fontsource/ibm-plex-mono": "^5.2.7",
+    "@fontsource/inter": "^5.2.8",
+    "@fontsource/jetbrains-mono": "^5.2.8",
+    "@fontsource/league-gothic": "^5.2.8",
+    "@fontsource/montserrat": "^5.2.8",
+    "@fontsource/nunito": "^5.2.7",
+    "@fontsource/oswald": "^5.2.8",
+    "@fontsource/outfit": "^5.2.8",
+    "@fontsource/space-mono": "^5.2.9",
+    "@hono/node-server": "^1.13.0",
+    "hono": "^4.6.0",
+    "linkedom": "^0.18.12",
+    "puppeteer": "^24.0.0",
+    "puppeteer-core": "^24.39.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.1",
+    "esbuild": "^0.27.2",
+    "tsx": "^4.7.0",
+    "typescript": "^5.7.2"
+  }
+}
