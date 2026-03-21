@@ -5,12 +5,8 @@
   "scripts": {
     "dev": "pnpm studio",
     "build": "pnpm -r build",
-    "build:producer": "pnpm --filter @hyperframes/producer build",
-    "build:hyperframes-runtime": "pnpm --filter @hyperframes/core build:hyperframes-runtime",
-    "build:hyperframes-runtime:modular": "pnpm --filter @hyperframes/core build:hyperframes-runtime:modular",
-    "studio": "concurrently \"pnpm --filter @hyperframes/studio-backend dev\" \"pnpm --filter @hyperframes/studio-frontend dev\"",
-    "studio-backend": "pnpm --filter @hyperframes/studio-backend dev",
-    "studio-frontend": "pnpm --filter @hyperframes/studio-frontend dev"
+    "studio": "pnpm --filter @hyperframes/studio dev",
+    "build:hyperframes-runtime": "pnpm --filter @hyperframes/core build:hyperframes-runtime"
   },
   "devDependencies": {
     "@types/node": "^25.0.10",
