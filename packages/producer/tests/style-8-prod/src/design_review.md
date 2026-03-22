@@ -1,4 +1,4 @@
-# Cerberus Design Review
+# HyperFrames Design Review
 
 ## First Impression
 This looks like a corporate PowerPoint presentation from 2012 trying to be "edgy" with a dark theme. It’s static, the typography is uninspired, and the layout is as predictable as a dial-tone.

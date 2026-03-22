@@ -1,4 +1,4 @@
-# Cerberus Design Review
+# HyperFrames Design Review
 
 ## First Impression
 This looks like a "hacker" template from a 2014 stock asset site. It’s trying so hard to be "digital" and "techy" that it forgets to be actually sophisticated. The neon green on black is the most tired trope in the industry.

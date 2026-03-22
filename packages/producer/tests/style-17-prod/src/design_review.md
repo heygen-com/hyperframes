@@ -1,4 +1,4 @@
-# Cerberus Design Review
+# HyperFrames Design Review
 
 ## First Impression
 This looks like a Saul Bass tribute act that forgot the "tribute" and went straight to "parody." It’s a chaotic mess of paper-cut aesthetics that lacks the sophisticated restraint of the master.

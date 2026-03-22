@@ -1,4 +1,4 @@
-# Cerberus Design Review
+# HyperFrames Design Review
 
 ## First Impression
 This looks like a "Swiss Style" template that someone found in a dumpster and tried to glue back together. It’s a clinical, soulless mess that mistakes "minimalism" for "I didn't have time to finish the design."

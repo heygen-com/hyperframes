@@ -14,10 +14,7 @@ let _bundler: ((dir: string) => Promise<string>) | null = null;
 
 /** Minimal project API for standalone dev mode */
 function devProjectApi(): Plugin {
-  // Read from archive's project data — prefer legacy path (has existing data), fallback to new layout
-  const legacyDir = resolve(__dirname, "../../archive/backend/data/projects");
-  const archiveDir = resolve(__dirname, "../archive/backend/data/projects");
-  const dataDir = existsSync(legacyDir) ? legacyDir : existsSync(archiveDir) ? archiveDir : resolve(__dirname, "backend/data/projects");
+  const dataDir = resolve(__dirname, "data/projects");
 
   return {
     name: "studio-dev-api",
@@ -39,40 +36,10 @@ function devProjectApi(): Plugin {
       server.middlewares.use(async (req, res, next) => {
         if (!req.url?.startsWith("/api/")) return next();
 
-        // Proxy render endpoints to archive backend
+        // Render endpoints — not yet wired up in standalone studio
         if (req.url.startsWith("/api/render/") || (req.method === "POST" && req.url.match(/\/api\/projects\/[^/]+\/render/))) {
-          const archiveUrl = `http://localhost:5180${req.url}`;
-          try {
-            if (req.method === "POST") {
-              let body = "";
-              req.on("data", (chunk: Buffer) => { body += chunk.toString(); });
-              await new Promise<void>((resolve) => req.on("end", resolve));
-              const archiveRes = await fetch(archiveUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body });
-              const data = await archiveRes.text();
-              res.writeHead(archiveRes.status, { "Content-Type": "application/json" });
-              res.end(data);
-            } else {
-              // SSE proxy for progress
-              const archiveRes = await fetch(archiveUrl);
-              res.writeHead(archiveRes.status, Object.fromEntries(archiveRes.headers.entries()));
-              const reader = archiveRes.body?.getReader();
-              if (reader) {
-                const pump = async () => {
-                  while (true) {
-                    const { done, value } = await reader.read();
-                    if (done) { res.end(); break; }
-                    res.write(value);
-                  }
-                };
-                pump().catch(() => res.end());
-              } else {
-                res.end(await archiveRes.text());
-              }
-            }
-          } catch {
-            res.writeHead(502, { "Content-Type": "application/json" });
-            res.end(JSON.stringify({ error: "Archive backend not running. Start it with: pnpm dev" }));
-          }
+          res.writeHead(501, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "Render not available in standalone studio mode" }));
           return;
         }
 

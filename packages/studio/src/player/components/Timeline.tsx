@@ -22,7 +22,7 @@ interface TrackStyle {
   icon: ReactNode;
 }
 
-/* ── Icons from Figma Motion Cut design system ── */
+/* ── Icons from Figma HyperFrames design system ── */
 const ICON_BASE = "/icons/timeline";
 function TimelineIcon({ src }: { src: string }) {
   return <img src={src} alt="" width={12} height={12} style={{ filter: "brightness(0) invert(1)" }} draggable={false} />;
@@ -269,7 +269,7 @@ export const Timeline = memo(function Timeline({ onSeek, onDrillDown }: Timeline
           const ts = trackStyles.get(trackNum) ?? DEFAULT;
           return (
             <div key={trackNum} className="relative flex" style={{ height: TRACK_H, backgroundColor: ts.row }}>
-              {/* Gutter: colored icon badge (Figma Motion Cut style) */}
+              {/* Gutter: colored icon badge (Figma HyperFrames style) */}
               <div className="flex-shrink-0 flex items-center justify-center" style={{ width: GUTTER }}>
                 <div
                   className="flex items-center justify-center"

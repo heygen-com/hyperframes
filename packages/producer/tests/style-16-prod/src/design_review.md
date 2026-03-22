@@ -1,4 +1,4 @@
-# Cerberus Design Review
+# HyperFrames Design Review
 
 ## First Impression
 This looks like a high-budget punk-rock zine collided with a modern data visualization, and I don't hate it. The "Newsprint Tan" and aggressive red/black palette is a bold choice that actually has some soul, unlike the usual corporate blue-and-white garbage.

@@ -1,4 +1,4 @@
-# Cerberus Design Review
+# HyperFrames Design Review
 
 ## First Impression
 This looks like a PowerPoint presentation from a 2010 corporate retreat that's trying way too hard to be "modern." It’s a chaotic mess of geometric shapes and primary colors that lacks any sense of sophisticated art direction.

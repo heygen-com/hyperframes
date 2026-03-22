@@ -1,4 +1,4 @@
-# Cerberus Design Review
+# HyperFrames Design Review
 
 ## First Impression
 This looks like a high-end museum exhibit had a baby with a spreadsheet, and then someone forgot to turn the lights on. It’s "Agnes Martin" inspired, which is a polite way of saying it's dangerously close to being invisible.

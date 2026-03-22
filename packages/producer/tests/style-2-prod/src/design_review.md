@@ -1,4 +1,4 @@
-# Cerberus Design Review
+# HyperFrames Design Review
 
 ## First Impression
 This looks like a Swiss Design student's first attempt at a "modern" video, and they've clearly prioritized the grid over the actual content. It's clean, sure, but it's also sterile, predictable, and lacks the punch required for a 2026 audience.

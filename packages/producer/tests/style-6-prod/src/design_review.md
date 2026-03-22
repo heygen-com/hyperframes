@@ -1,4 +1,4 @@
-# Cerberus Design Review
+# HyperFrames Design Review
 
 ## First Impression
 This looks like a high-energy sports broadcast package that's trying way too hard to be "extreme" but ends up feeling like a template from a 2012 "Epic Sports Opener" pack. The "Volt" green is doing all the heavy lifting while the layout and typography are just shouting into the void.

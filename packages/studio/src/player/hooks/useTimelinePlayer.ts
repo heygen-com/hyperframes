@@ -136,7 +136,7 @@ function unmutePreviewMedia(iframe: HTMLIFrameElement | null): void {
     );
     // Fallback for CDN runtime that still uses the old source name
     iframe.contentWindow?.postMessage(
-      { source: "magic-edit-parent", type: "control", action: "set-muted", muted: false },
+      { source: "hf-parent", type: "control", action: "set-muted", muted: false },
       "*",
     );
   } catch {
@@ -206,7 +206,7 @@ export function useTimelinePlayer() {
     if (!iframe) return;
     // Send to runtime via bridge (works with both new and CDN runtime)
     iframe.contentWindow?.postMessage({ source: "hf-parent", type: "control", action: "set-playback-rate", playbackRate: rate }, "*");
-    iframe.contentWindow?.postMessage({ source: "magic-edit-parent", type: "control", action: "set-playback-rate", playbackRate: rate }, "*");
+    iframe.contentWindow?.postMessage({ source: "hf-parent", type: "control", action: "set-playback-rate", playbackRate: rate }, "*");
     // Also set directly on GSAP timeline if accessible
     try {
       const win = iframe.contentWindow as IframeWindow | null;
@@ -429,7 +429,7 @@ export function useTimelinePlayer() {
     // so we get the complete clip list (not just the first few).
     const handleMessage = (e: MessageEvent) => {
       const data = e.data;
-      if ((data?.source === "hf-preview" || data?.source === "magic-edit-preview") && data?.type === "timeline" && Array.isArray(data.clips)) {
+      if ((data?.source === "hf-preview" || data?.source === "hf-preview") && data?.type === "timeline" && Array.isArray(data.clips)) {
         processTimelineMessageRef.current(data);
         // Update duration only if the new value is longer (don't downgrade during generation)
         if (data.durationInFrames > 0) {

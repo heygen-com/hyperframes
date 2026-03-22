@@ -64,7 +64,7 @@
     "test:hyperframe-linter": "tsx scripts/test-hyperframe-linter.ts",
     "test:hyperframe-runtime-ci": "pnpm build:hyperframes-runtime && pnpm test:hyperframe-runtime-contract && pnpm test:hyperframe-runtime-behavior && pnpm test:hyperframe-runtime-seek && pnpm test:hyperframe-runtime-duration-guards && pnpm test:hyperframe-runtime-parity && pnpm test:hyperframe-runtime-security",
     "check:hyperframe-html": "tsx scripts/check-hyperframe-static.ts",
-    "debug:timeline": "tsx scripts/debug-magic-edit-timeline.ts",
+    "debug:timeline": "tsx scripts/debug-timeline.ts",
     "prepublishOnly": "pnpm build"
   },
   "optionalDependencies": {

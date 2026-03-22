@@ -1,4 +1,4 @@
-# Cerberus Design Review
+# HyperFrames Design Review
 
 ## First Impression
 This looks like a "Sol LeWitt" tribute act performed by someone who only saw a thumbnail of his work on a broken phone. It’s a sterile, confused mess that tries to be "minimalist" but ends up just being "unfinished."

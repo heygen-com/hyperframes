@@ -1,4 +1,4 @@
-# Cerberus Design Review
+# HyperFrames Design Review
 
 ## First Impression
 This looks like a corporate HR training video had a mid-life crisis and tried to dress like a TikTok influencer. It’s a confused mess of "safe" professional choices and "edgy" motion that doesn't land.

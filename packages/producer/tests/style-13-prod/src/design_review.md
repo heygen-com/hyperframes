@@ -1,4 +1,4 @@
-# Cerberus Design Review
+# HyperFrames Design Review
 
 ## First Impression
 This looks like a "hacker aesthetic" template from a 2014 YouTube tutorial. It’s trying so hard to be "techy" with its scanlines and dot grids that it forgets to actually be legible or modern.

@@ -1,4 +1,4 @@
-# Cerberus Design Review
+# HyperFrames Design Review
 
 ## First Impression
 This looks like a Bauhaus-inspired museum exhibit had a head-on collision with a TikTok ad. It’s trying to be Jan Tschichold, but it’s currently closer to "I just discovered the Helvetica font and the color red."

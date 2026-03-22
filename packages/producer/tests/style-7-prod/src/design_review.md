@@ -1,4 +1,4 @@
-# Cerberus Design Review
+# HyperFrames Design Review
 
 ## First Impression
 This looks like a "minimalist" template designed by someone who thinks Helvetica and a black background are a substitute for actual creative direction. It's safe, it's sterile, and it's dangerously close to being completely forgettable.

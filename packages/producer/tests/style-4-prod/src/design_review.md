@@ -1,4 +1,4 @@
-# Cerberus Design Review
+# HyperFrames Design Review
 
 ## First Impression
 This looks like a "warm and cozy" template that's trying too hard to be organic and ends up feeling like a corporate HR presentation from 2018. The "grain" is a lazy attempt at personality, and the layout is a chaotic mess of shifting boxes that lack any real editorial rhythm.

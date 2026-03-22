@@ -34,7 +34,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(({ projectId, d
     // Listen for stage-size messages from the runtime
     const handleMessage = (e: MessageEvent) => {
       const data = e.data;
-      if ((data?.source === "hf-preview" || data?.source === "magic-edit-preview") && data?.type === "stage-size" && data.width > 0 && data.height > 0) {
+      if ((data?.source === "hf-preview" || data?.source === "hf-preview") && data?.type === "stage-size" && data.width > 0 && data.height > 0) {
         if (dimsRef.current.w !== data.width || dimsRef.current.h !== data.height) {
           dimsRef.current = { w: data.width, h: data.height };
           setDims(dimsRef.current);

@@ -1,4 +1,4 @@
-# Cerberus Design Review
+# HyperFrames Design Review
 
 ## First Impression
 This looks like a Piet Mondrian painting had a mid-life crisis and tried to become a TikTok influencer. It’s a bold concept, but the execution is currently a cluttered mess of competing geometries and muddy colors.

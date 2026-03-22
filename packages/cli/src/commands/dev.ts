@@ -76,7 +76,7 @@ async function runDevMode(dir: string): Promise<void> {
   const repoRoot = resolve(dirname(thisFile), "..", "..", "..", "..");
 
   // Symlink project into the studio's data directory
-  const projectsDir = join(repoRoot, "packages", "archive", "backend", "data", "projects");
+  const projectsDir = join(repoRoot, "packages", "studio", "data", "projects");
   const projectName = basename(dir);
   const symlinkPath = join(projectsDir, projectName);
 

@@ -1,4 +1,4 @@
-# Cerberus Design Review
+# HyperFrames Design Review
 
 ## First Impression
 This looks like a high-energy, "MrBeast-lite" social media ad that's trying way too hard to be "fun" but ends up feeling like a chaotic sticker book. It's loud, it's pink, and it's visually exhausting.

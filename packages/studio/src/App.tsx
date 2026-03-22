@@ -396,7 +396,7 @@ export function StudioApp() {
     setRenderProgress(0);
     setRenderError(null);
     try {
-      // Start render via archive backend (proxied through studio dev server)
+      // Start render via studio backend
       const res = await fetch(`/api/projects/${pid}/render`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
