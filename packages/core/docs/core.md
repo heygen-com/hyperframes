@@ -241,7 +241,7 @@ Full-screen or positioned video clips. Videos sync their playback to the timelin
   data-start="0"
   data-duration="15"
   data-track-index="0"
-  src="http://localhost:3001/api/projects/xxx/assets/yyy/stream"
+  src="./assets/video.mp4"
 ></video>
 ```
 
@@ -258,7 +258,7 @@ Static images that appear for a duration.
   data-start="5"
   data-duration="4"
   data-track-index="1"
-  src="http://localhost:3001/api/projects/xxx/assets/yyy/stream"
+  src="./assets/video.mp4"
 />
 ```
 
@@ -272,7 +272,7 @@ Background music or sound effects. Audio clips are invisible.
   data-start="0"
   data-duration="30"
   data-track-index="2"
-  src="http://localhost:3001/api/audio-library/stream/music/track.mp3"
+  src="./assets/music.mp3"
 ></audio>
 ```
 

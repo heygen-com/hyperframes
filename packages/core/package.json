@@ -13,6 +13,10 @@
       "import": "./src/lint/index.ts",
       "types": "./src/lint/index.ts"
     },
+    "./compiler": {
+      "import": "./src/compiler/index.ts",
+      "types": "./src/compiler/index.ts"
+    },
     "./runtime": "./dist/hyperframe.runtime.iife.js"
   },
   "files": [
@@ -33,6 +37,10 @@
         "import": "./dist/lint/index.js",
         "types": "./dist/lint/index.d.ts"
       },
+      "./compiler": {
+        "import": "./dist/compiler/index.js",
+        "types": "./dist/compiler/index.d.ts"
+      },
       "./runtime": "./dist/hyperframe.runtime.iife.js"
     }
   },
@@ -46,7 +54,7 @@
     "build:hyperframes-runtime": "tsx scripts/build-hyperframes-runtime-artifact.ts",
     "build:hyperframes-runtime:modular": "SANDBOX_RUNTIME_VARIANT=modular tsx scripts/build-hyperframes-runtime-artifact.ts",
     "build:hyperframe-runtime": "tsx scripts/build-hyperframes-runtime-artifact.ts",
-    "publish:hyperframe-runtime": "pnpm build:hyperframes-runtime && tsx scripts/publish-hyperframe-runtime.ts",
+
     "test:hyperframe-runtime-contract": "tsx scripts/test-hyperframe-runtime-contract.ts",
     "test:hyperframe-runtime-behavior": "tsx scripts/test-hyperframe-runtime-behavior.ts",
     "test:hyperframe-runtime-seek": "tsx scripts/test-hyperframe-runtime-seek.ts",
@@ -59,11 +67,14 @@
     "debug:timeline": "tsx scripts/debug-magic-edit-timeline.ts",
     "prepublishOnly": "pnpm build"
   },
+  "optionalDependencies": {
+    "cheerio": "^1.2.0",
+    "esbuild": "^0.25.12"
+  },
   "devDependencies": {
     "@types/jsdom": "^28.0.0",
     "@types/node": "^24.10.13",
     "@vitest/coverage-v8": "^3.2.4",
-    "esbuild": "^0.25.12",
     "jsdom": "^29.0.0",
     "tsx": "^4.21.0",
     "typescript": "^5.0.0",

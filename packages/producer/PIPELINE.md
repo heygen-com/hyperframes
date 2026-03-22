@@ -1,6 +1,6 @@
 # Producer Pipeline
 
-Renders sandbox-studio HTML/GSAP compositions into MP4 video.
+Renders HyperFrames studio HTML/GSAP compositions into MP4 video.
 
 ## Architecture
 
@@ -9,7 +9,7 @@ Renders sandbox-studio HTML/GSAP compositions into MP4 video.
 │  ENTRY POINTS                                                           │
 │                                                                         │
 │  ┌──────────────┐   ┌──────────────┐   ┌──────────────────────────────┐ │
-│  │  Frontend UI  │   │   CLI (host)  │   │  Backend API (sandbox-studio)│ │
+│  │  Frontend UI  │   │   CLI (host)  │   │  Backend API (studio)        │ │
 │  │  useRender()  │──▶│   cli.ts      │   │  routes/render.ts           │ │
 │  │  api/render   │   │              │   │                              │ │
 │  └──────┬───────┘   └──────┬───────┘   └──────────────┬───────────────┘ │
@@ -279,7 +279,7 @@ Falls back to 1920x1080 if attributes are missing.
 
 The file server injects two scripts into the served `index.html`:
 
-1. **Interceptor script** — The same one sandbox-studio uses. Sets up `window.__player`
+1. **Interceptor script** — The same one studio uses. Sets up `window.__player`
    with play/pause/seek, manages GSAP timeline registration, syncs media elements.
 
 2. **Render mode script** — Adds `window.__player.renderSeek(time)` which:

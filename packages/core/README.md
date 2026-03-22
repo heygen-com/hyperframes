@@ -41,10 +41,6 @@ For AI agents and developers working with HyperFrames:
 | [Motion Design Guide](docs/guides/motion-design/guide.md) | Creating and editing motion designs    |
 | [Caption Guide](docs/guides/motion-design/captions.md)    | Adding captions to videos              |
 
-### Developer Documentation
-
-For building HyperFrames viewers and tools, see [`deprecated_studio/docs/`](../deprecated_studio/docs/).
-
 ---
 
 ## Quick Start
@@ -56,9 +52,7 @@ pnpm install
 pnpm dev
 ```
 
-This starts:
-
-- **Vault API** at `http://localhost:3001`
+This starts the studio dev server.
 
 ### Writing Compositions Manually
 

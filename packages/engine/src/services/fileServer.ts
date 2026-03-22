@@ -44,8 +44,8 @@ function stripEmbeddedRuntimeScripts(html: string): string {
   ];
   const runtimeInlineMarkers = [
     "__hyperframeRuntimeBootstrapped",
-    "__magicEditRuntime",
-    "__magicEditRuntimeTeardown",
+    "__hyperframeRuntime",
+    "__hyperframeRuntimeTeardown",
     "window.__player =",
     "window.__playerReady",
     "window.__renderReady",

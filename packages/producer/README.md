@@ -74,7 +74,7 @@ Use the parity harness to compare preview and producer at deterministic checkpoi
 
 ```bash
 pnpm parity:check \
-  --preview-url "http://localhost:3002/api/projects/<id>/serve/index.html?parity=1" \
+  --preview-url "http://localhost:<PORT>/api/projects/<id>/serve/index.html?parity=1" \
   --producer-url "http://localhost:8787/index.html" \
   --checkpoints "0,1,2,3,5" \
   --fps 30 \

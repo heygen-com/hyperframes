@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
- * Build script for @hyperframes/producer
+ * Build script for @hyperframes/producer (public OSS package)
  *
- * Bundles src/index.ts → dist/index.js and src/server.ts → dist/public-server.js.
+ * Bundles src/server.ts → dist/public-server.js (standalone server).
  */
 
 import { build } from "esbuild";

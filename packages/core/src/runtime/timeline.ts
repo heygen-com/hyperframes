@@ -223,6 +223,7 @@ export function collectRuntimeTimelinePayload(params: {
         node.getAttribute("data-label") ??
         node.getAttribute("aria-label") ??
         (node as HTMLElement).id ??
+        (node as HTMLElement).className?.split(" ")[0] ??
         kind,
       start,
       duration,

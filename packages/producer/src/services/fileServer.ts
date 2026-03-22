@@ -183,13 +183,13 @@ function stripEmbeddedRuntimeScripts(html: string): string {
   const scriptRe = /<script\b[^>]*>[\s\S]*?<\/script>/gi;
   const runtimeSrcMarkers = [
     "hyperframe.runtime.iife.js",
-    "sandbox-interceptor.modular-runtime.inline.js",
+    "hyperframe-runtime.modular-runtime.inline.js",
     "data-hyperframes-preview-runtime",
   ];
   const runtimeInlineMarkers = [
     "__hyperframeRuntimeBootstrapped",
-    "__magicEditRuntime",
-    "__magicEditRuntimeTeardown",
+    "__hyperframeRuntime",
+    "__hyperframeRuntimeTeardown",
     "window.__player =",
     "window.__playerReady",
     "window.__renderReady",
