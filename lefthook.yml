@@ -3,12 +3,12 @@ pre-commit:
   commands:
     lint:
       glob: "*.{js,jsx,ts,tsx}"
-      run: oxlint {staged_files}
+      run: npx oxlint {staged_files}
     format:
       glob: "*.{js,jsx,ts,tsx,json,css,md,yaml,yml}"
-      run: oxfmt --check {staged_files}
+      run: npx oxfmt --check {staged_files}
 
 commit-msg:
   commands:
     commitlint:
-      run: commitlint --edit "{1}"
+      run: npx commitlint --edit "{1}"

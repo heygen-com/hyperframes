@@ -26,6 +26,23 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
 
+  lint-and-format:
+    name: Lint & Format
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm format:check
+
   typecheck:
     name: Typecheck
     runs-on: ubuntu-latest
