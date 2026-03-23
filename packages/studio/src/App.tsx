@@ -209,7 +209,7 @@ export function StudioApp() {
     "idle",
   );
   const [renderProgress, setRenderProgress] = useState(0);
-  const [renderError, setRenderError] = useState<string | null>(null);
+  const [_renderError, setRenderError] = useState<string | null>(null);
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const projectIdRef = useRef(projectId);
 

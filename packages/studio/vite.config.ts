@@ -141,7 +141,7 @@ function devProjectApi(): Plugin {
             const bundled = bundler ? await bundler(projectDir) : readFileSync(join(projectDir, "index.html"), "utf-8");
             res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
             res.end(bundled);
-          } catch (err) {
+          } catch {
             // Fallback to raw HTML if bundling fails
             const file = join(projectDir, "index.html");
             if (existsSync(file)) {

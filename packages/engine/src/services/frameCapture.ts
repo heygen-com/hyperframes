@@ -121,7 +121,7 @@ export async function createCaptureSession(
 }
 
 export async function initializeSession(session: CaptureSession): Promise<void> {
-  const { page, serverUrl, options } = session;
+  const { page, serverUrl } = session;
 
   // Forward browser console to host with [Browser] prefix
   page.on("console", (msg: ConsoleMessage) => {

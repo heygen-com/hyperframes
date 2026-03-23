@@ -298,7 +298,7 @@ export function validateCompilation(
   }
 
   // Check for missing elements (in golden but not in actual)
-  for (const [id, goldenEl] of goldenMap) {
+  for (const [id] of goldenMap) {
     if (!actualMap.has(id)) {
       errors.push(
         `Missing element [${id}] (present in golden, not in actual)`

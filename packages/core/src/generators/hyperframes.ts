@@ -280,7 +280,6 @@ export function generateHyperframesHtml(
     includeStyles = false,
   } = options;
 
-  const { width, height } = CANVAS_DIMENSIONS[resolution];
   // Include zoom keyframes in duration calculation
   const maxZoomTime =
     stageZoomKeyframes && stageZoomKeyframes.length > 0 ? Math.max(...stageZoomKeyframes.map((kf) => kf.time)) : 0;

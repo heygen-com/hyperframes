@@ -70,14 +70,6 @@ function logPretty(message: string, emoji = "•") {
   console.error(`${emoji} ${message}`);
 }
 
-function formatDuration(ms: number): string {
-  if (ms < 1000) return `${ms}ms`;
-  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
-  const minutes = Math.floor(ms / 60000);
-  const seconds = Math.floor((ms % 60000) / 1000);
-  return `${minutes}m ${seconds}s`;
-}
-
 function parseArgs(argv: string[]): CliOptions {
   const testNames: string[] = [];
   const excludeTags: string[] = [];
@@ -464,7 +456,7 @@ function saveFailureDetails(
             join(framesDir, `expected_${timeStr}s.png`),
             suite.meta.renderConfig.fps
           );
-        } catch (error) {
+        } catch {
           logPretty(`  Warning: Could not extract frame at ${checkpoint.time}s`, "⚠️");
         }
       }

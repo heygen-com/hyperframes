@@ -388,6 +388,7 @@ export function useTimelinePlayer() {
         console.warn("Could not find __player, __timeline, or __timelines on iframe after 5s");
       }
     }, 200);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- setElements is a stable zustand setter
   }, [getAdapter, setDuration, setCurrentTime, setTimelineReady, setIsPlaying, processTimelineMessage]);
 
   /** Save the current playback time so the next onIframeLoad restores it. */

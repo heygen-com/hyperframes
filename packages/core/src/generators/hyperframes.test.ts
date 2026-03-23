@@ -4,7 +4,7 @@
 import { describe, it, expect } from "vitest";
 import { generateHyperframesHtml, generateGsapTimelineScript, generateHyperframesStyles } from "./hyperframes.js";
 import { GSAP_CDN } from "../templates/constants.js";
-import type { TimelineTextElement, TimelineMediaElement, TimelineCompositionElement } from "../core.types";
+import type { TimelineTextElement, TimelineMediaElement } from "../core.types";
 
 function makeTextElement(overrides: Partial<TimelineTextElement> = {}): TimelineTextElement {
   return {

@@ -1,6 +1,5 @@
 import { defineCommand } from "citty";
 import { execSync } from "node:child_process";
-import { existsSync } from "node:fs";
 import { c } from "../ui/colors.js";
 import { findBrowser } from "../browser/manager.js";
 import { findFFmpeg } from "../browser/ffmpeg.js";

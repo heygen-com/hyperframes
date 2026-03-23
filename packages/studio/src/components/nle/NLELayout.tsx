@@ -126,6 +126,7 @@ export const NLELayout = memo(function NLELayout({
         return [...prev, { id: resolvedPath, label, previewUrl }];
       });
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- iframeRef_ is a stable ref; .current mutates and should not be a dep
     [projectId, compIdToSrc],
   );
 
