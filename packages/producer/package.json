@@ -39,8 +39,8 @@
     "prepublishOnly": "pnpm build"
   },
   "dependencies": {
-    "@hyperframes/core": "workspace:*",
-    "@hyperframes/engine": "workspace:*",
+    "@hyperframes/core": "workspace:^",
+    "@hyperframes/engine": "workspace:^",
     "@fontsource/archivo-black": "^5.2.8",
     "@fontsource/eb-garamond": "^5.2.7",
     "@fontsource/ibm-plex-mono": "^5.2.7",

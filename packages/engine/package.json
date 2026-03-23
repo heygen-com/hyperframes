@@ -15,7 +15,7 @@
   },
   "dependencies": {
     "@hono/node-server": "^1.13.0",
-    "@hyperframes/core": "workspace:*",
+    "@hyperframes/core": "workspace:^",
     "hono": "^4.6.0",
     "linkedom": "^0.18.12",
     "puppeteer": "^24.0.0",
