@@ -115,6 +115,20 @@ export function createRuntimeStartTimeResolver(params: {
     try {
       const expression = parseStartExpression(element.getAttribute("data-start"));
       if (!expression) {
+        // If this element is a loaded composition inner root (has data-composition-id
+        // but no data-start), walk up to the host parent which carries the actual
+        // timing. This happens when the host uses a different data-composition-id
+        // than the loaded file — e.g. host="montage" but file has "scene-10".
+        // Check both data-composition-src (runtime) and data-composition-id (bundled,
+        // where data-composition-src is stripped after inlining).
+        if (element.hasAttribute("data-composition-id")) {
+          const parent = element.parentElement;
+          if (parent && (parent.hasAttribute("data-composition-src") || parent.hasAttribute("data-composition-id"))) {
+            const parentStart = resolveStartForElementInternal(parent, fallback);
+            startCache.set(element, parentStart);
+            return parentStart;
+          }
+        }
         startCache.set(element, fallback);
         return fallback;
       }

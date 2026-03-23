@@ -57,6 +57,22 @@ await Promise.all([
   }),
 ]);
 
+// Copy core runtime artifacts so the producer can find them at dist/
+import { copyFileSync, existsSync, readFileSync } from "fs";
+const coreDistDir = resolve(scriptDir, "../core/dist");
+try {
+  const manifestSrc = resolve(coreDistDir, "hyperframe.manifest.json");
+  if (existsSync(manifestSrc)) {
+    copyFileSync(manifestSrc, "dist/hyperframe.manifest.json");
+    const manifest = JSON.parse(readFileSync(manifestSrc, "utf8"));
+    const runtimeIife = manifest?.artifacts?.iife || "hyperframe.runtime.iife.js";
+    copyFileSync(resolve(coreDistDir, runtimeIife), `dist/${runtimeIife}`);
+    console.log(`[Build] Copied runtime: hyperframe.manifest.json, ${runtimeIife}`);
+  }
+} catch (e) {
+  console.warn("[Build] Warning: Could not copy runtime artifacts:", e.message);
+}
+
 // Generate .d.ts declarations (esbuild doesn't emit them)
 import { execSync } from "child_process";
 execSync("tsc --emitDeclarationOnly --declaration --declarationMap", {

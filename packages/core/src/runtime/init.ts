@@ -177,19 +177,22 @@ export function initSandboxRuntimeModular(): void {
   };
 
   const resolveRootCompositionElement = (): HTMLElement | null => {
-    const mainComp = document.getElementById("main-comp");
-    if (mainComp instanceof HTMLElement && mainComp.hasAttribute("data-composition-id")) {
-      return mainComp;
-    }
+    // 1. Explicit root marker takes priority
     const explicitRoot = document.querySelector('[data-composition-id][data-root="true"]');
     if (explicitRoot instanceof HTMLElement) {
       return explicitRoot;
     }
+    // 2. Find the topmost composition element (one that is not nested inside another)
     const compositionNodes = Array.from(document.querySelectorAll("[data-composition-id]")) as HTMLElement[];
     if (compositionNodes.length === 0) return null;
-    return (
-      compositionNodes.find((node) => !node.parentElement?.closest("[data-composition-id]")) ?? compositionNodes[0]
-    );
+    const topLevel = compositionNodes.find((node) => !node.parentElement?.closest("[data-composition-id]"));
+    if (topLevel) return topLevel;
+    // 3. Legacy fallback: #main-comp (only if no hierarchy is detectable)
+    const mainComp = document.getElementById("main-comp");
+    if (mainComp instanceof HTMLElement && mainComp.hasAttribute("data-composition-id")) {
+      return mainComp;
+    }
+    return compositionNodes[0];
   };
 
   const applyCompositionSizing = () => {
@@ -212,7 +215,29 @@ export function initSandboxRuntimeModular(): void {
       // Preserve explicit root duration so timeline payload can distinguish
       // authored finite duration from loop-inflated timeline duration.
       if (rootEl && node === rootEl) continue;
-      // Non-root compositions derive duration from timeline.
+      // Preserve data-duration on composition hosts whose GSAP timeline is
+      // shorter than the declared duration. The host's data-duration is the
+      // authored window length; stripping it causes the visibility system to
+      // fall back to the (potentially tiny) GSAP timeline duration, hiding
+      // the composition prematurely.
+      const compId = node.getAttribute("data-composition-id");
+      const declaredDur = Number(node.getAttribute("data-duration"));
+      if (compId && Number.isFinite(declaredDur) && declaredDur > 0) {
+        const tl = (window.__timelines ?? {} as Record<string, RuntimeTimelineLike | undefined>)[compId];
+        if (!tl || typeof tl.duration !== "function") continue;
+        try {
+          const tlDur = Number(tl.duration());
+          // Only strip if the timeline duration is at least as long as declared
+          if (Number.isFinite(tlDur) && tlDur >= declaredDur) {
+            node.removeAttribute("data-duration");
+          }
+          // Otherwise keep data-duration — it's the authored visibility window
+        } catch {
+          // keep data-duration if timeline access fails
+        }
+        continue;
+      }
+      // Non-root compositions without explicit duration derive from timeline.
       node.removeAttribute("data-duration");
     }
   };

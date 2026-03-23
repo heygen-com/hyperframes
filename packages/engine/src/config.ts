@@ -66,6 +66,16 @@ export interface EngineConfig {
   /** Custom manifest path for Hyperframe runtime. */
   runtimeManifestPath?: string;
 
+  // ── Render Seek ────────────────────────────────────────────────────
+  /** Seek strategy for frame-accurate rendering. */
+  renderSeekMode: "preview-phase" | "strict-boundary";
+  /** Emit seek diagnostics to console. */
+  renderSeekDiagnostics: boolean;
+  /** Time step (seconds) for seek resolution. */
+  renderSeekStep: number;
+  /** Fractional offset within a frame for seek positioning. */
+  renderSeekOffsetFraction: number;
+
   // ── Debug ────────────────────────────────────────────────────────────
   debug: boolean;
 }
@@ -103,6 +113,11 @@ export const DEFAULT_CONFIG: EngineConfig = {
   renderReadyTimeout: 15_000,
 
   verifyRuntime: true,
+
+  renderSeekMode: "preview-phase",
+  renderSeekDiagnostics: false,
+  renderSeekStep: 1 / 120,
+  renderSeekOffsetFraction: 0.5,
 
   debug: false,
 };
@@ -163,6 +178,16 @@ export function resolveConfig(overrides?: Partial<EngineConfig>): EngineConfig {
 
     verifyRuntime: env("PRODUCER_VERIFY_HYPERFRAME_RUNTIME") !== "false",
     runtimeManifestPath: env("PRODUCER_HYPERFRAME_MANIFEST_PATH"),
+
+    renderSeekMode: env("PRODUCER_RUNTIME_RENDER_SEEK_MODE") === "strict-boundary"
+      ? "strict-boundary" as const
+      : DEFAULT_CONFIG.renderSeekMode,
+    renderSeekDiagnostics: envBool("PRODUCER_DEBUG_SEEK_DIAGNOSTICS", DEFAULT_CONFIG.renderSeekDiagnostics),
+    renderSeekStep: Math.max(1 / 600, envNum("PRODUCER_RENDER_SEEK_STEP", DEFAULT_CONFIG.renderSeekStep)),
+    renderSeekOffsetFraction: Math.max(
+      0,
+      Math.min(0.95, envNum("PRODUCER_RUNTIME_RENDER_SEEK_OFFSET_FRACTION", DEFAULT_CONFIG.renderSeekOffsetFraction)),
+    ),
   };
 
   // Remove undefined values so they don't override defaults

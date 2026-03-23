@@ -56,7 +56,13 @@ async function resolveMediaDuration(
 
   if (isHttpUrl(src)) {
     if (!existsSync(downloadDir)) mkdirSync(downloadDir, { recursive: true });
-    filePath = await downloadToTemp(src, downloadDir);
+    try {
+      filePath = await downloadToTemp(src, downloadDir);
+    } catch {
+      // Download failed (e.g. 404 placeholder URL) — skip gracefully.
+      // The element will get duration 0 and be excluded from the render.
+      return { duration: 0, resolvedPath: src };
+    }
   } else if (!filePath.startsWith("/")) {
     filePath = join(baseDir, filePath);
   }
@@ -551,9 +557,10 @@ function inlineSubCompositions(
       const existing = host.getAttribute("style") || "";
       const needsWidth = !existing.includes("width");
       const needsHeight = !existing.includes("height");
-      const needsPosition = !existing.includes("position");
+      // Don't inject position — the host's CSS class determines positioning.
+      // Injecting position:relative breaks overlay compositions (captions,
+      // foreground-ui) that use position:absolute via their CSS class.
       const additions = [
-        needsPosition ? "position:relative" : "",
         needsWidth ? `width:${hostW}px` : "",
         needsHeight ? `height:${hostH}px` : "",
       ].filter(Boolean).join(";");
@@ -585,6 +592,24 @@ function inlineSubCompositions(
  * Returns everything the orchestrator needs: compiled HTML, all media elements,
  * dimensions, and static duration.
  */
+/**
+ * Ensure the HTML is a full document (has <html>, <head>, <body>).
+ * When index.html is a fragment (e.g. just a <div>), linkedom.parseHTML()
+ * returns a document with null head/body, causing inlineSubCompositions to
+ * silently discard all collected composition styles and scripts.
+ */
+function ensureFullDocument(html: string): string {
+  const trimmed = html.trim();
+  if (/^<!DOCTYPE\s+html/i.test(trimmed) || /^<html/i.test(trimmed)) {
+    return html;
+  }
+  return `<!DOCTYPE html>\n<html>\n<head>\n  <meta charset="UTF-8">\n</head>\n<body>\n${html}\n</body>\n</html>`;
+}
+
+/**
+ * Compile an HTML composition project into a single self-contained HTML string
+ * with all media metadata resolved.
+ */
 export async function compileForRender(
   projectDir: string,
   htmlPath: string,
@@ -598,10 +623,16 @@ export async function compileForRender(
   const { videos: subVideos, audios: subAudios, subCompositions } =
     await parseSubCompositions(compiledHtml, projectDir, downloadDir);
 
+  // Ensure the HTML is a full document before inlining sub-compositions.
+  // When index.html is a fragment (no <html>/<head>/<body>), linkedom.parseHTML()
+  // returns a document with null head/body, which causes inlineSubCompositions to
+  // silently discard all collected composition styles and scripts.
+  const fullHtml = ensureFullDocument(compiledHtml);
+
   // Inline sub-compositions into the main HTML so the runtime takes the same
   // synchronous code path as the bundled preview (no async fetch of
   // data-composition-src). This mirrors what htmlBundler.ts does for preview.
-  const inlinedHtml = inlineSubCompositions(compiledHtml, subCompositions, projectDir);
+  const inlinedHtml = inlineSubCompositions(fullHtml, subCompositions, projectDir);
 
   const html = injectDeterministicFontFaces(
     coalesceHeadStylesAndBodyScripts(promoteCssImportsToLinkTags(inlinedHtml)),

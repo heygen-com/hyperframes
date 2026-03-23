@@ -265,11 +265,11 @@ export function lintHyperframeHtml(html: string, options: HyperframeLinterOption
         continue;
       }
       pushFinding({
-        code: "suspicious_global_gsap_selector",
+        code: "unscoped_gsap_selector",
         severity: "warning",
-        message: `Timeline "${localTimelineCompId}" uses a global selector "${window.targetSelector}" that may escape composition scope.`,
+        message: `Timeline "${localTimelineCompId}" uses unscoped selector "${window.targetSelector}" that will target elements in ALL compositions when bundled, causing data loss (opacity, transforms, etc.).`,
         selector: window.targetSelector,
-        fixHint: `Scope the selector like \`[data-composition-id="${localTimelineCompId}"] ${window.targetSelector}\` or use a unique id.`,
+        fixHint: `Scope the selector: \`[data-composition-id="${localTimelineCompId}"] ${window.targetSelector}\` or use a unique id.`,
         snippet: truncateSnippet(window.raw),
       });
     }
@@ -328,6 +328,75 @@ export function lintHyperframeHtml(html: string, options: HyperframeLinterOption
           break; // Only report once per video
         }
       }
+    }
+  }
+
+  // #3.5: Self-closing <audio .../> or <video .../> — CRITICAL
+  // In HTML5, <audio> and <video> are NOT void elements. The browser silently
+  // ignores the "/>", leaving the tag open. All subsequent sibling elements
+  // become invisible fallback content inside the media tag, making entire
+  // compositions disappear. This is the #1 cause of "black preview" bugs.
+  {
+    const selfClosingMediaRe = /<(audio|video)\b[^>]*\/>/gi;
+    let scMatch: RegExpExecArray | null;
+    while ((scMatch = selfClosingMediaRe.exec(source)) !== null) {
+      const tagName = scMatch[1] || "audio";
+      const elementId = readAttr(scMatch[0], "id") || undefined;
+      pushFinding({
+        code: "self_closing_media_tag",
+        severity: "error",
+        message: `Self-closing <${tagName}/> is invalid HTML. The browser will leave the tag open, swallowing all subsequent elements as invisible fallback content. This makes compositions INVISIBLE.`,
+        elementId,
+        fixHint: `Change <${tagName} .../> to <${tagName} ...></${tagName}> — media elements MUST have explicit closing tags.`,
+        snippet: truncateSnippet(scMatch[0]),
+      });
+    }
+  }
+
+  // #3.6: Placeholder/fake media URLs — CRITICAL
+  // Agents sometimes fabricate URLs (placehold.co, placeholder.com, example.com)
+  // instead of using fetch_media or generate_image. These 404 at render time.
+  {
+    const PLACEHOLDER_DOMAINS = /\b(placehold\.co|placeholder\.com|placekitten\.com|picsum\.photos|example\.com|via\.placeholder\.com|dummyimage\.com)\b/i;
+    for (const tag of tags) {
+      if (!isMediaTag(tag.name)) continue;
+      const src = readAttr(tag.raw, "src");
+      if (!src) continue;
+      if (PLACEHOLDER_DOMAINS.test(src)) {
+        const elementId = readAttr(tag.raw, "id") || undefined;
+        pushFinding({
+          code: "placeholder_media_url",
+          severity: "error",
+          message: `<${tag.name}${elementId ? ` id="${elementId}"` : ""}> uses a placeholder URL that will 404 at render time: ${src.slice(0, 80)}`,
+          elementId,
+          fixHint: "Use fetch_media to find real stock media, or generate_image/generate_video for AI-generated content.",
+          snippet: truncateSnippet(tag.raw),
+        });
+      }
+    }
+  }
+
+  // #3.7: Fabricated inline base64 media — CRITICAL
+  // Agents sometimes embed fake base64 audio/video data instead of using fetch_media.
+  // Even small base64 data URIs for audio are almost always fabricated garbage that
+  // won't play. Real audio files are 100KB+ when base64-encoded.
+  {
+    const base64MediaRe = /src\s*=\s*["'](data:(?:audio|video)\/[^;]+;base64,([A-Za-z0-9+/=]{100,}))["']/gi;
+    let b64Match: RegExpExecArray | null;
+    while ((b64Match = base64MediaRe.exec(source)) !== null) {
+      // Check if it's suspiciously repetitive (fake data has long runs of repeated chars)
+      const sample = (b64Match[2] || "").slice(0, 200);
+      const uniqueChars = new Set(sample.replace(/[A-Za-z0-9+/=]/g, (c) => c)).size;
+      const dataSize = Math.round(((b64Match[2] || "").length * 3) / 4);
+      const isSuspicious = uniqueChars < 15 || (dataSize > 1000 && dataSize < 50000);
+      // Any embedded base64 audio is suspicious — real audio should be a file
+      pushFinding({
+        code: "fabricated_inline_media",
+        severity: "error",
+        message: `Embedded base64 ${isSuspicious ? "FABRICATED" : ""} media detected (${(dataSize / 1024).toFixed(0)} KB). Inline base64 audio/video is almost always fake data that won't play. Use fetch_media or extract_audio to get real audio files.`,
+        fixHint: "Remove the data: URI. Use fetch_media to search for stock music, or extract_audio to get audio from a video.",
+        snippet: truncateSnippet((b64Match[1] ?? "").slice(0, 80) + "..."),
+      });
     }
   }
 

@@ -1,61 +1,36 @@
 /**
  * File Server for Render Mode
  *
- * Lightweight HTTP server that serves the project directory inside Docker.
- * Key responsibility: inject the verified Hyperframe runtime + render mode extension
- * into index.html on-the-fly, so Puppeteer can load the composition with
- * all relative URLs (compositions, CSS, JS, assets) resolving correctly.
+ * Wraps @hyperframes/engine's generic file server with producer-specific
+ * defaults: the verified Hyperframe runtime injected into <head>, and the
+ * render-mode extension (renderSeek + __hf bridge) injected before </body>.
+ *
+ * Render-seek configuration is read from EngineConfig (which itself resolves
+ * PRODUCER_* env vars as backward-compatible fallbacks).
  */
 
-import { Hono } from "hono";
-import { serve } from "@hono/node-server";
-import { readFileSync, existsSync, statSync } from "node:fs";
-import { join, extname } from "node:path";
+import {
+  createFileServer as createEngineFileServer,
+  type FileServerOptions as EngineFileServerOptions,
+  type FileServerHandle,
+  resolveConfig,
+  type EngineConfig,
+} from "@hyperframes/engine";
 import { getVerifiedHyperframeRuntimeSource } from "./hyperframeRuntimeLoader.js";
 
-const MIME_TYPES: Record<string, string> = {
-  ".html": "text/html; charset=utf-8",
-  ".css": "text/css; charset=utf-8",
-  ".js": "application/javascript; charset=utf-8",
-  ".json": "application/json; charset=utf-8",
-  ".png": "image/png",
-  ".jpg": "image/jpeg",
-  ".jpeg": "image/jpeg",
-  ".gif": "image/gif",
-  ".svg": "image/svg+xml",
-  ".webp": "image/webp",
-  ".mp4": "video/mp4",
-  ".webm": "video/webm",
-  ".mp3": "audio/mpeg",
-  ".wav": "audio/wav",
-  ".ogg": "audio/ogg",
-  ".aac": "audio/aac",
-  ".woff": "font/woff",
-  ".woff2": "font/woff2",
-  ".ttf": "font/ttf",
-  ".otf": "font/otf",
-};
+// ── Script builders ─────────────────────────────────────────────────────────
 
 /**
- * Render mode extension -- adds renderSeek() for frame-accurate seeking
- * without media sync (videos are replaced with frame images during render).
+ * Build the render-mode extension script from config values.
+ * Adds renderSeek() for frame-accurate seeking without media sync
+ * (videos are replaced with frame images during render).
  */
-const RENDER_SEEK_MODE =
-  process.env.PRODUCER_RUNTIME_RENDER_SEEK_MODE === "strict-boundary"
-    ? "strict-boundary"
-    : "preview-phase";
-const RENDER_SEEK_DIAGNOSTICS = process.env.PRODUCER_DEBUG_SEEK_DIAGNOSTICS === "true";
-const RENDER_SEEK_STEP = Math.max(1 / 600, Number(process.env.PRODUCER_RENDER_SEEK_STEP || 1 / 120));
-const RENDER_SEEK_OFFSET_FRACTION = Math.max(
-  0,
-  Math.min(0.95, Number(process.env.PRODUCER_RUNTIME_RENDER_SEEK_OFFSET_FRACTION || 0.5)),
-);
-
-const RENDER_MODE_SCRIPT = `(function() {
-  var __seekMode = ${JSON.stringify(RENDER_SEEK_MODE)};
-  var __seekDiagnostics = ${RENDER_SEEK_DIAGNOSTICS ? "true" : "false"};
-  var __seekStep = ${RENDER_SEEK_STEP};
-  var __seekOffsetFraction = ${RENDER_SEEK_OFFSET_FRACTION};
+function buildRenderModeScript(config: EngineConfig): string {
+  return `(function() {
+  var __seekMode = ${JSON.stringify(config.renderSeekMode)};
+  var __seekDiagnostics = ${config.renderSeekDiagnostics ? "true" : "false"};
+  var __seekStep = ${config.renderSeekStep};
+  var __seekOffsetFraction = ${config.renderSeekOffsetFraction};
   window.__HF_EXPORT_RENDER_SEEK_CONFIG = {
     mode: __seekMode,
     diagnostics: __seekDiagnostics,
@@ -155,9 +130,10 @@ const RENDER_MODE_SCRIPT = `(function() {
   }
   waitForPlayer();
 })();`;
+}
 
 /**
- * Bridge script: maps window.__player (Hyperframe runtime) → window.__hf (engine protocol).
+ * Bridge script: maps window.__player (Hyperframe runtime) -> window.__hf (engine protocol).
  * Injected after RENDER_MODE_SCRIPT so the engine's frameCapture can find window.__hf.
  */
 const HF_BRIDGE_SCRIPT = `(function() {
@@ -178,75 +154,7 @@ const HF_BRIDGE_SCRIPT = `(function() {
   }, 50);
 })();`;
 
-function stripEmbeddedRuntimeScripts(html: string): string {
-  if (!html) return html;
-  const scriptRe = /<script\b[^>]*>[\s\S]*?<\/script>/gi;
-  const runtimeSrcMarkers = [
-    "hyperframe.runtime.iife.js",
-    "hyperframe-runtime.modular-runtime.inline.js",
-    "data-hyperframes-preview-runtime",
-  ];
-  const runtimeInlineMarkers = [
-    "__hyperframeRuntimeBootstrapped",
-    "__hyperframeRuntime",
-    "__hyperframeRuntimeTeardown",
-    "window.__player =",
-    "window.__playerReady",
-    "window.__renderReady",
-  ];
-
-  const shouldStrip = (block: string): boolean => {
-    const lowered = block.toLowerCase();
-    for (const marker of runtimeSrcMarkers) {
-      if (lowered.includes(marker.toLowerCase())) {
-        return true;
-      }
-    }
-    for (const marker of runtimeInlineMarkers) {
-      if (block.includes(marker)) {
-        return true;
-      }
-    }
-    return false;
-  };
-
-  return html.replace(scriptRe, (block) => (shouldStrip(block) ? "" : block));
-}
-
-function injectScriptsIntoHtml(
-  html: string,
-  headScripts: string[],
-  bodyScripts: string[],
-  stripEmbedded: boolean,
-): string {
-  if (stripEmbedded) {
-    html = stripEmbeddedRuntimeScripts(html);
-  }
-
-  if (headScripts.length > 0) {
-    const headTags = headScripts.map((src) => `<script>${src}</script>`).join("\n");
-    if (html.includes("</head>")) {
-      // Use function replacement to avoid $& interpolation in runtime source
-      html = html.replace("</head>", () => `${headTags}\n</head>`);
-    } else if (html.includes("<body")) {
-      html = html.replace("<body", () => `${headTags}\n<body`);
-    } else {
-      html = headTags + "\n" + html;
-    }
-  }
-
-  if (bodyScripts.length > 0) {
-    const bodyTags = bodyScripts.map((src) => `<script>${src}</script>`).join("\n");
-    if (html.includes("</body>")) {
-      // Use function replacement to avoid $& interpolation in runtime source
-      html = html.replace("</body>", () => `${bodyTags}\n</body>`);
-    } else {
-      html = html + "\n" + bodyTags;
-    }
-  }
-
-  return html;
-}
+// ── Public API ──────────────────────────────────────────────────────────────
 
 export interface FileServerOptions {
   projectDir: string;
@@ -254,73 +162,34 @@ export interface FileServerOptions {
   port?: number;
   /** Scripts injected into <head> of index.html. Default: verified Hyperframe runtime. */
   headScripts?: string[];
-  /** Scripts injected before </body> of index.html. Default: render mode extension. */
+  /** Scripts injected before </body> of index.html. Default: render mode extension + __hf bridge. */
   bodyScripts?: string[];
   /** Strip embedded runtime scripts from HTML before injection. Default: true. */
   stripEmbeddedRuntime?: boolean;
 }
 
-export interface FileServerHandle {
-  url: string;
-  port: number;
-  close: () => void;
-}
+export type { FileServerHandle };
 
+/**
+ * Create a file server for render mode.
+ *
+ * Wraps the engine's generic file server with producer-specific defaults:
+ * - headScripts: verified Hyperframe runtime source
+ * - bodyScripts: render-mode extension (renderSeek config from EngineConfig) + __hf bridge
+ */
 export function createFileServer(options: FileServerOptions): Promise<FileServerHandle> {
-  const { projectDir, compiledDir, port = 0, stripEmbeddedRuntime = true } = options;
-
-  // Default scripts: Hyperframe runtime in <head>, render mode in </body>
+  const config = resolveConfig();
   const headScripts = options.headScripts ?? [getVerifiedHyperframeRuntimeSource()];
-  const bodyScripts = options.bodyScripts ?? [RENDER_MODE_SCRIPT, HF_BRIDGE_SCRIPT];
+  const bodyScripts = options.bodyScripts ?? [buildRenderModeScript(config), HF_BRIDGE_SCRIPT];
 
+  const engineOptions: EngineFileServerOptions = {
+    projectDir: options.projectDir,
+    compiledDir: options.compiledDir,
+    port: options.port,
+    headScripts,
+    bodyScripts,
+    stripEmbeddedRuntime: options.stripEmbeddedRuntime,
+  };
 
-  const app = new Hono();
-
-  app.get("/*", (c) => {
-    let requestPath = c.req.path;
-    if (requestPath === "/") requestPath = "/index.html";
-
-    // Remove leading slash
-    const relativePath = requestPath.replace(/^\//, "");
-    const compiledPath = compiledDir ? join(compiledDir, relativePath) : null;
-    const hasCompiledFile = Boolean(
-      compiledPath && existsSync(compiledPath) && statSync(compiledPath).isFile()
-    );
-    const filePath = hasCompiledFile ? (compiledPath as string) : join(projectDir, relativePath);
-
-    if (!existsSync(filePath) || !statSync(filePath).isFile()) {
-      return c.text("Not found", 404);
-    }
-
-    const ext = extname(filePath).toLowerCase();
-    const contentType = MIME_TYPES[ext] || "application/octet-stream";
-
-    if (ext === ".html") {
-      const rawHtml = readFileSync(filePath, "utf-8");
-      const isIndex = relativePath === "index.html";
-      const html = isIndex
-        ? injectScriptsIntoHtml(rawHtml, headScripts, bodyScripts, stripEmbeddedRuntime)
-        : rawHtml;
-      return c.text(html, 200, { "Content-Type": contentType });
-    }
-
-    const content = readFileSync(filePath);
-    return new Response(content, {
-      status: 200,
-      headers: { "Content-Type": contentType },
-    });
-  });
-
-  return new Promise((resolve) => {
-    const server = serve({ fetch: app.fetch, port }, (info) => {
-      const actualPort = info.port;
-      const url = `http://localhost:${actualPort}`;
-
-      resolve({
-        url,
-        port: actualPort,
-        close: () => server.close(),
-      });
-    });
-  });
+  return createEngineFileServer(engineOptions);
 }
