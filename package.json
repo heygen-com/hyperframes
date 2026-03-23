@@ -9,11 +9,26 @@
     "studio": "pnpm --filter @hyperframes/studio dev",
     "build:hyperframes-runtime": "pnpm --filter @hyperframes/core build:hyperframes-runtime",
     "build:hyperframes-runtime:modular": "pnpm --filter @hyperframes/core build:hyperframes-runtime:modular",
-    "set-version": "tsx scripts/set-version.ts"
+    "set-version": "tsx scripts/set-version.ts",
+    "lint": "oxlint .",
+    "lint:fix": "oxlint --fix .",
+    "format": "oxfmt .",
+    "format:check": "oxfmt --check .",
+    "knip": "knip",
+    "prepare": "lefthook install"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["lefthook"]
   },
   "devDependencies": {
+    "@commitlint/cli": "^20.5.0",
+    "@commitlint/config-conventional": "^20.5.0",
     "@types/node": "^25.0.10",
     "concurrently": "^8.2.0",
+    "knip": "^6.0.3",
+    "lefthook": "^2.1.4",
+    "oxfmt": "^0.41.0",
+    "oxlint": "^1.56.0",
     "tsx": "^4.21.0",
     "typescript": "^5.0.0"
   }
