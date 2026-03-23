@@ -16,6 +16,8 @@ pnpm install        # Install all dependencies
 pnpm dev            # Run the studio (composition editor)
 pnpm build          # Build all packages
 pnpm -r typecheck   # Type-check all packages
+pnpm lint           # Lint all packages
+pnpm format:check   # Check formatting
 ```
 
 ### Running Tests
@@ -26,9 +28,20 @@ pnpm --filter @hyperframes/engine test        # Engine unit tests (vitest)
 pnpm --filter @hyperframes/core test:hyperframe-runtime-ci  # Runtime contract tests
 ```
 
+### Linting & Formatting
+
+```bash
+pnpm lint            # Run oxlint
+pnpm lint:fix        # Run oxlint with auto-fix
+pnpm format          # Format all files with oxfmt
+pnpm format:check    # Check formatting without writing
+```
+
+Git hooks (via [lefthook](https://github.com/evilmartians/lefthook)) run automatically after `pnpm install` and enforce linting + formatting on staged files before each commit.
+
 ## Pull Requests
 
-- Use [conventional commit](https://www.conventionalcommits.org/) format for PR titles (e.g., `feat: add timeline export`, `fix: resolve seek overflow`)
+- Use [conventional commit](https://www.conventionalcommits.org/) format for **all commits** (e.g., `feat: add timeline export`, `fix: resolve seek overflow`). Enforced by a git hook.
 - CI must pass before merge (build, typecheck, tests, semantic PR title)
 - PRs require at least 1 approval
 
