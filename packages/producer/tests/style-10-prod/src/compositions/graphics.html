@@ -1,17 +1,17 @@
 <template id="graphics-template">
   <div data-composition-id="graphics" data-width="1080" data-height="1920" data-duration="16.04">
     <!-- Composition 1: 47% needed motion graphics (1.8s - 4.6s) -->
-    <div id="graphic-1" class="graphic-container" style="left: 540px; top: 1360px;">
+    <div id="graphic-1" class="graphic-container" style="left: 540px; top: 1360px">
       <div class="sticker-container">
         <div class="content-wrapper">
           <div class="stat-text blue-text">47%</div>
-          <div class="sub-text blue-text">NEEDED<br>MOTION<br>GRAPHICS</div>
+          <div class="sub-text blue-text">NEEDED<br />MOTION<br />GRAPHICS</div>
         </div>
       </div>
     </div>
 
     <!-- Composition 2: 62% attention (4.6s - 8.6s) -->
-    <div id="graphic-2" class="graphic-container" style="left: 540px; top: 1360px;">
+    <div id="graphic-2" class="graphic-container" style="left: 540px; top: 1360px">
       <div class="sticker-container">
         <div class="content-wrapper">
           <div class="stat-text pink-text">62%</div>
@@ -23,17 +23,17 @@
     </div>
 
     <!-- Composition 3: 75% lack skills (8.8s - 13.2s) -->
-    <div id="graphic-3" class="graphic-container" style="left: 540px; top: 560px;">
+    <div id="graphic-3" class="graphic-container" style="left: 540px; top: 560px">
       <div class="sticker-container">
         <div class="content-wrapper">
           <div class="stat-text green-text">75%</div>
-          <div class="sub-text blue-text">SKILL<br>GAP</div>
+          <div class="sub-text blue-text">SKILL<br />GAP</div>
         </div>
       </div>
     </div>
 
     <!-- Finale: EDITOR AGENT (14.2s - 16s) -->
-    <div id="graphic-finale" class="graphic-container" style="left: 540px; top: 1500px;">
+    <div id="graphic-finale" class="graphic-container" style="left: 540px; top: 1500px">
       <div class="sticker-container pink-bg">
         <div class="content-wrapper">
           <div class="finale-text blue-text">EDITOR AGENT</div>
@@ -42,10 +42,10 @@
     </div>
 
     <style>
-      @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;700;900&display=swap');
+      @import url("https://fonts.googleapis.com/css2?family=Nunito:wght@400;700;900&display=swap");
 
       [data-composition-id="graphics"] {
-        font-family: 'Nunito', sans-serif;
+        font-family: "Nunito", sans-serif;
         width: 1080px;
         height: 1920px;
         position: relative;
@@ -68,7 +68,7 @@
         border: 4px solid white;
         border-radius: 20px;
         backdrop-filter: blur(10px);
-        box-shadow: 0 20px 50px rgba(0,0,0,0.2);
+        box-shadow: 0 20px 50px rgba(0, 0, 0, 0.2);
         display: flex;
         flex-direction: column;
         align-items: center;
@@ -77,7 +77,7 @@
 
       .sticker-container.pink-bg {
         background-color: rgba(255, 45, 138, 0.9);
-        border-color: #FF2D8A;
+        border-color: #ff2d8a;
       }
 
       .content-wrapper {
@@ -124,41 +124,110 @@
         letter-spacing: 2px;
       }
 
-      .blue-text { color: #0033CC; }
-      .pink-text { color: #FF2D8A; }
-      .green-text { color: #A3E635; }
-      .white-text { color: white; }
-      .blue-bg { background-color: #0033CC; }
+      .blue-text {
+        color: #0033cc;
+      }
+      .pink-text {
+        color: #ff2d8a;
+      }
+      .green-text {
+        color: #a3e635;
+      }
+      .white-text {
+        color: white;
+      }
+      .blue-bg {
+        background-color: #0033cc;
+      }
     </style>
 
     <script>
-      (function() {
-        const TRANSCRIPT = [{'text': 'We', 'start': 0.119, 'end': 0.259}, {'text': 'asked', 'start': 0.319, 'end': 0.479}, {'text': 'what', 'start': 0.519, 'end': 0.659}, {'text': 'you', 'start': 0.699, 'end': 0.819}, {'text': 'needed.', 'start': 0.859, 'end': 1.819}, {'text': 'Forty-seven', 'start': 1.839, 'end': 2.299}, {'text': 'percent', 'start': 2.399, 'end': 2.679}, {'text': 'of', 'start': 2.7, 'end': 2.799}, {'text': 'you', 'start': 2.839, 'end': 2.939}, {'text': 'said', 'start': 3.039, 'end': 3.179}, {'text': 'motion', 'start': 3.24, 'end': 3.559}, {'text': 'graphics.', 'start': 3.579, 'end': 4.639}, {'text': 'Sixty-two', 'start': 4.659, 'end': 5.179}, {'text': 'percent', 'start': 5.299, 'end': 5.759}, {'text': 'said', 'start': 5.859, 'end': 5.98}, {'text': 'static', 'start': 6.099, 'end': 6.399}, {'text': 'content', 'start': 6.46, 'end': 6.879}, {'text': 'was', 'start': 6.92, 'end': 7.079}, {'text': 'costing', 'start': 7.099, 'end': 7.48}, {'text': 'you', 'start': 7.5, 'end': 7.579}, {'text': 'attention,', 'start': 7.679, 'end': 8.659}, {'text': 'and', 'start': 8.699, 'end': 8.86}, {'text': 'three', 'start': 8.88, 'end': 9.06}, {'text': 'out', 'start': 9.079, 'end': 9.18}, {'text': 'of', 'start': 9.199, 'end': 9.34}, {'text': 'four', 'start': 9.38, 'end': 9.799}, {'text': 'said', 'start': 9.84, 'end': 10.0}, {'text': 'you', 'start': 10.019, 'end': 10.159}, {'text': 'know', 'start': 10.179, 'end': 10.36}, {'text': 'the', 'start': 10.38, 'end': 10.479}, {'text': 'look', 'start': 10.52, 'end': 10.699}, {'text': 'you', 'start': 10.739, 'end': 10.859}, {'text': 'want', 'start': 10.98, 'end': 11.34}, {'text': 'but', 'start': 11.359, 'end': 11.52}, {'text': "don't", 'start': 11.56, 'end': 11.779}, {'text': 'have', 'start': 11.819, 'end': 11.94}, {'text': 'the', 'start': 11.96, 'end': 12.06}, {'text': 'editing', 'start': 12.079, 'end': 12.4}, {'text': 'skills', 'start': 12.52, 'end': 12.86}, {'text': 'to', 'start': 12.88, 'end': 13.0}, {'text': 'get', 'start': 13.019, 'end': 13.18}, {'text': 'there.', 'start': 13.22, 'end': 14.22}, {'text': 'So', 'start': 14.239, 'end': 14.399}, {'text': 'we', 'start': 14.42, 'end': 14.52}, {'text': 'built', 'start': 14.619, 'end': 14.88}, {'text': 'Editor', 'start': 15.079, 'end': 15.42}, {'text': 'Agent', 'start': 15.619, 'end': 16.019}];
+      (function () {
+        const TRANSCRIPT = [
+          { text: "We", start: 0.119, end: 0.259 },
+          { text: "asked", start: 0.319, end: 0.479 },
+          { text: "what", start: 0.519, end: 0.659 },
+          { text: "you", start: 0.699, end: 0.819 },
+          { text: "needed.", start: 0.859, end: 1.819 },
+          { text: "Forty-seven", start: 1.839, end: 2.299 },
+          { text: "percent", start: 2.399, end: 2.679 },
+          { text: "of", start: 2.7, end: 2.799 },
+          { text: "you", start: 2.839, end: 2.939 },
+          { text: "said", start: 3.039, end: 3.179 },
+          { text: "motion", start: 3.24, end: 3.559 },
+          { text: "graphics.", start: 3.579, end: 4.639 },
+          { text: "Sixty-two", start: 4.659, end: 5.179 },
+          { text: "percent", start: 5.299, end: 5.759 },
+          { text: "said", start: 5.859, end: 5.98 },
+          { text: "static", start: 6.099, end: 6.399 },
+          { text: "content", start: 6.46, end: 6.879 },
+          { text: "was", start: 6.92, end: 7.079 },
+          { text: "costing", start: 7.099, end: 7.48 },
+          { text: "you", start: 7.5, end: 7.579 },
+          { text: "attention,", start: 7.679, end: 8.659 },
+          { text: "and", start: 8.699, end: 8.86 },
+          { text: "three", start: 8.88, end: 9.06 },
+          { text: "out", start: 9.079, end: 9.18 },
+          { text: "of", start: 9.199, end: 9.34 },
+          { text: "four", start: 9.38, end: 9.799 },
+          { text: "said", start: 9.84, end: 10.0 },
+          { text: "you", start: 10.019, end: 10.159 },
+          { text: "know", start: 10.179, end: 10.36 },
+          { text: "the", start: 10.38, end: 10.479 },
+          { text: "look", start: 10.52, end: 10.699 },
+          { text: "you", start: 10.739, end: 10.859 },
+          { text: "want", start: 10.98, end: 11.34 },
+          { text: "but", start: 11.359, end: 11.52 },
+          { text: "don't", start: 11.56, end: 11.779 },
+          { text: "have", start: 11.819, end: 11.94 },
+          { text: "the", start: 11.96, end: 12.06 },
+          { text: "editing", start: 12.079, end: 12.4 },
+          { text: "skills", start: 12.52, end: 12.86 },
+          { text: "to", start: 12.88, end: 13.0 },
+          { text: "get", start: 13.019, end: 13.18 },
+          { text: "there.", start: 13.22, end: 14.22 },
+          { text: "So", start: 14.239, end: 14.399 },
+          { text: "we", start: 14.42, end: 14.52 },
+          { text: "built", start: 14.619, end: 14.88 },
+          { text: "Editor", start: 15.079, end: 15.42 },
+          { text: "Agent", start: 15.619, end: 16.019 },
+        ];
         const tl = gsap.timeline({ paused: true });
-        
+
         // Helper for pop-in animation
         function popIn(id, startTime) {
-          tl.to(`#${id}`, {
-            opacity: 1,
-            scale: 1.1,
-            duration: 0.4,
-            ease: "power4.out"
-          }, startTime)
-          .to(`#${id}`, {
-            scale: 1,
-            duration: 0.2,
-            ease: "power2.out"
-          }, startTime + 0.4);
+          tl.to(
+            `#${id}`,
+            {
+              opacity: 1,
+              scale: 1.1,
+              duration: 0.4,
+              ease: "power4.out",
+            },
+            startTime,
+          ).to(
+            `#${id}`,
+            {
+              scale: 1,
+              duration: 0.2,
+              ease: "power2.out",
+            },
+            startTime + 0.4,
+          );
         }
 
         // Helper for exit animation
         function exit(id, endTime) {
-          tl.to(`#${id}`, {
-            scale: 0,
-            opacity: 0,
-            duration: 0.3,
-            ease: "power4.in"
-          }, endTime);
+          tl.to(
+            `#${id}`,
+            {
+              scale: 0,
+              opacity: 0,
+              duration: 0.3,
+              ease: "power4.in",
+            },
+            endTime,
+          );
         }
 
         // 1. 47% needed motion graphics (1.8s - 4.6s)
@@ -181,24 +250,48 @@
         const graphics = ["graphic-1", "graphic-2", "graphic-3", "graphic-finale"];
         graphics.forEach((id, index) => {
           // Subtle floating motion
-          tl.to(`#${id} .sticker-container`, {
-            y: "+=20",
-            rotation: index % 2 === 0 ? "+=2" : "-=2",
-            duration: 2.5 + (index * 0.2),
-            repeat: 10, // Finite repeat to cover duration
-            yoyo: true,
-            ease: "sine.inOut"
-          }, 0);
+          tl.to(
+            `#${id} .sticker-container`,
+            {
+              y: "+=20",
+              rotation: index % 2 === 0 ? "+=2" : "-=2",
+              duration: 2.5 + index * 0.2,
+              repeat: 10, // Finite repeat to cover duration
+              yoyo: true,
+              ease: "sine.inOut",
+            },
+            0,
+          );
         });
 
         window.__timelines["graphics"] = tl;
       })();
     </script>
-    
+
     <!-- SFX Clips -->
-    <audio id="sfx-1" data-start="1.8" data-track-index="10" src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/generated_assets/5a6b802e_a03d12a382bd40a3a6e70de32fbbcfc3.mp3"></audio>
-    <audio id="sfx-2" data-start="4.6" data-track-index="10" src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/generated_assets/5a6b802e_a03d12a382bd40a3a6e70de32fbbcfc3.mp3"></audio>
-    <audio id="sfx-3" data-start="8.8" data-track-index="10" src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/generated_assets/5a6b802e_a03d12a382bd40a3a6e70de32fbbcfc3.mp3"></audio>
-    <audio id="sfx-4" data-start="14.2" data-track-index="10" src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/generated_assets/5a6b802e_a03d12a382bd40a3a6e70de32fbbcfc3.mp3"></audio>
+    <audio
+      id="sfx-1"
+      data-start="1.8"
+      data-track-index="10"
+      src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/generated_assets/5a6b802e_a03d12a382bd40a3a6e70de32fbbcfc3.mp3"
+    ></audio>
+    <audio
+      id="sfx-2"
+      data-start="4.6"
+      data-track-index="10"
+      src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/generated_assets/5a6b802e_a03d12a382bd40a3a6e70de32fbbcfc3.mp3"
+    ></audio>
+    <audio
+      id="sfx-3"
+      data-start="8.8"
+      data-track-index="10"
+      src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/generated_assets/5a6b802e_a03d12a382bd40a3a6e70de32fbbcfc3.mp3"
+    ></audio>
+    <audio
+      id="sfx-4"
+      data-start="14.2"
+      data-track-index="10"
+      src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/generated_assets/5a6b802e_a03d12a382bd40a3a6e70de32fbbcfc3.mp3"
+    ></audio>
   </div>
 </template>

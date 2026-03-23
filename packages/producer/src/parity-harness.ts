@@ -44,7 +44,7 @@ function parseArgs(argv: string[]): ParityHarnessOptions {
   const producerUrl = args.get("producer-url") || "";
   if (!previewUrl || !producerUrl) {
     throw new Error(
-      'Missing required args. Usage: --preview-url "<url>" --producer-url "<url>" [--checkpoints "0,1,2"] [--fps 30] [--width 1920] [--height 1080] [--allow-mismatch-ratio 0]'
+      'Missing required args. Usage: --preview-url "<url>" --producer-url "<url>" [--checkpoints "0,1,2"] [--fps 30] [--width 1920] [--height 1080] [--allow-mismatch-ratio 0]',
     );
   }
 
@@ -66,11 +66,10 @@ function parseArgs(argv: string[]): ParityHarnessOptions {
     checkpoints,
     allowMismatchRatio: Math.max(
       0,
-      Math.min(1, parseNumberArg(args.get("allow-mismatch-ratio"), 0))
+      Math.min(1, parseNumberArg(args.get("allow-mismatch-ratio"), 0)),
     ),
     artifactsDir: resolve(args.get("artifacts-dir") || ".debug/parity-harness"),
-    emulateProducerSwap:
-      (args.get("emulate-producer-swap") || "false").toLowerCase() === "true",
+    emulateProducerSwap: (args.get("emulate-producer-swap") || "false").toLowerCase() === "true",
   };
 }
 
@@ -80,7 +79,7 @@ async function waitForParityReady(page: Page): Promise<void> {
       const win = window as unknown as { __playerReady?: boolean; __renderReady?: boolean };
       return Boolean(win.__playerReady && win.__renderReady);
     },
-    { timeout: 30_000 }
+    { timeout: 30_000 },
   );
   await page.evaluate(() => document.fonts.ready);
 }
@@ -126,99 +125,109 @@ function writeImageDiff(basePath: string, comparePath: string, outputPath: strin
 }
 
 async function captureStyleSnapshot(page: Page): Promise<Record<string, unknown>> {
-  return page.evaluate((properties: string[]) => {
-    const targets = Array.from(
-      document.querySelectorAll("video[data-start], img.__render_frame__, img.__preview_render_frame__, img.__parity_render_frame__"),
-    ) as HTMLElement[];
-    return {
-      location: window.location.href,
-      viewport: {
-        width: window.innerWidth,
-        height: window.innerHeight,
-        dpr: window.devicePixelRatio,
-      },
-      media: targets.map((el) => {
-        const style = window.getComputedStyle(el);
-        const values: Record<string, string> = {};
-        for (const property of properties) {
-          values[property] = style.getPropertyValue(property);
-        }
-        return {
-          id: el.id || null,
-          tagName: el.tagName.toLowerCase(),
-          className: el.className || null,
-          values,
-        };
-      }),
-    };
-  }, [...MEDIA_VISUAL_STYLE_PROPERTIES]);
+  return page.evaluate(
+    (properties: string[]) => {
+      const targets = Array.from(
+        document.querySelectorAll(
+          "video[data-start], img.__render_frame__, img.__preview_render_frame__, img.__parity_render_frame__",
+        ),
+      ) as HTMLElement[];
+      return {
+        location: window.location.href,
+        viewport: {
+          width: window.innerWidth,
+          height: window.innerHeight,
+          dpr: window.devicePixelRatio,
+        },
+        media: targets.map((el) => {
+          const style = window.getComputedStyle(el);
+          const values: Record<string, string> = {};
+          for (const property of properties) {
+            values[property] = style.getPropertyValue(property);
+          }
+          return {
+            id: el.id || null,
+            tagName: el.tagName.toLowerCase(),
+            className: el.className || null,
+            values,
+          };
+        }),
+      };
+    },
+    [...MEDIA_VISUAL_STYLE_PROPERTIES],
+  );
 }
 
 async function emulateProducerVideoSwap(page: Page): Promise<void> {
-  await page.evaluate((properties: string[]) => {
-    const videos = Array.from(document.querySelectorAll("video[data-start]")) as HTMLVideoElement[];
-    for (const video of videos) {
-      let img = video.nextElementSibling as HTMLImageElement | null;
-      if (!img || !img.classList.contains("__parity_render_frame__")) {
-        img = document.createElement("img");
-        img.className = "__parity_render_frame__";
-        video.parentNode?.insertBefore(img, video.nextSibling);
-      }
+  await page.evaluate(
+    (properties: string[]) => {
+      const videos = Array.from(
+        document.querySelectorAll("video[data-start]"),
+      ) as HTMLVideoElement[];
+      for (const video of videos) {
+        let img = video.nextElementSibling as HTMLImageElement | null;
+        if (!img || !img.classList.contains("__parity_render_frame__")) {
+          img = document.createElement("img");
+          img.className = "__parity_render_frame__";
+          video.parentNode?.insertBefore(img, video.nextSibling);
+        }
 
-      const style = window.getComputedStyle(video);
-      const sourceIsStatic = !style.position || style.position === "static";
-      if (!sourceIsStatic) {
-        img.style.position = style.position;
-        img.style.top = style.top;
-        img.style.left = style.left;
-        img.style.right = style.right;
-        img.style.bottom = style.bottom;
-      } else {
-        img.style.position = "absolute";
-        img.style.top = "0px";
-        img.style.left = "0px";
-        img.style.right = "0px";
-        img.style.bottom = "0px";
-      }
-      for (const property of properties) {
-        if (
-          sourceIsStatic &&
-          (property === "top" ||
-            property === "left" ||
-            property === "right" ||
-            property === "bottom" ||
-            property === "inset")
-        ) {
-          continue;
+        const style = window.getComputedStyle(video);
+        const sourceIsStatic = !style.position || style.position === "static";
+        if (!sourceIsStatic) {
+          img.style.position = style.position;
+          img.style.top = style.top;
+          img.style.left = style.left;
+          img.style.right = style.right;
+          img.style.bottom = style.bottom;
+        } else {
+          img.style.position = "absolute";
+          img.style.top = "0px";
+          img.style.left = "0px";
+          img.style.right = "0px";
+          img.style.bottom = "0px";
         }
-        const value = style.getPropertyValue(property);
-        if (value) {
-          img.style.setProperty(property, value);
+        for (const property of properties) {
+          if (
+            sourceIsStatic &&
+            (property === "top" ||
+              property === "left" ||
+              property === "right" ||
+              property === "bottom" ||
+              property === "inset")
+          ) {
+            continue;
+          }
+          const value = style.getPropertyValue(property);
+          if (value) {
+            img.style.setProperty(property, value);
+          }
         }
-      }
-      img.style.pointerEvents = "none";
-      img.style.visibility = "visible";
+        img.style.pointerEvents = "none";
+        img.style.visibility = "visible";
 
-      try {
-        const width = Math.max(2, video.videoWidth || video.clientWidth || 2);
-        const height = Math.max(2, video.videoHeight || video.clientHeight || 2);
-        const canvas = document.createElement("canvas");
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext("2d", { alpha: false });
-        if (!ctx) {
-          continue;
+        try {
+          const width = Math.max(2, video.videoWidth || video.clientWidth || 2);
+          const height = Math.max(2, video.videoHeight || video.clientHeight || 2);
+          const canvas = document.createElement("canvas");
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext("2d", { alpha: false });
+          if (!ctx) {
+            continue;
+          }
+          ctx.drawImage(video, 0, 0, width, height);
+          img.src = canvas.toDataURL("image/png");
+          video.style.setProperty("visibility", "hidden", "important");
+          video.style.setProperty("opacity", "0", "important");
+        } catch {
+          video.style.removeProperty("visibility");
+          video.style.removeProperty("opacity");
         }
-        ctx.drawImage(video, 0, 0, width, height);
-        img.src = canvas.toDataURL("image/png");
-        video.style.setProperty("visibility", "hidden", "important");
-        video.style.setProperty("opacity", "0", "important");
-      } catch {
-        video.style.removeProperty("visibility");
-        video.style.removeProperty("opacity");
       }
-    }
-  }, [...MEDIA_VISUAL_STYLE_PROPERTIES]);
+    },
+    [...MEDIA_VISUAL_STYLE_PROPERTIES],
+  );
 }
 
 async function captureCheckpoint(
@@ -254,8 +263,7 @@ async function captureCheckpoint(
     await emulateProducerVideoSwap(page);
   }
   await page.evaluate(
-    () =>
-      new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+    () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
   );
   return (await page.screenshot({ type: "png" })) as Buffer;
 }
@@ -297,8 +305,14 @@ async function run(): Promise<void> {
     const producerPage = await browser.newPage();
 
     await Promise.all([
-      previewPage.goto(options.previewUrl, { waitUntil: ["load", "networkidle2"], timeout: 60_000 }),
-      producerPage.goto(options.producerUrl, { waitUntil: ["load", "networkidle2"], timeout: 60_000 }),
+      previewPage.goto(options.previewUrl, {
+        waitUntil: ["load", "networkidle2"],
+        timeout: 60_000,
+      }),
+      producerPage.goto(options.producerUrl, {
+        waitUntil: ["load", "networkidle2"],
+        timeout: 60_000,
+      }),
     ]);
     await Promise.all([waitForParityReady(previewPage), waitForParityReady(producerPage)]);
 
@@ -321,12 +335,7 @@ async function run(): Promise<void> {
       ensureDir(artifactDir);
       const [previewBuffer, producerBuffer] = await Promise.all([
         captureCheckpoint(previewPage, checkpointSec, options.fps, false),
-        captureCheckpoint(
-          producerPage,
-          checkpointSec,
-          options.fps,
-          options.emulateProducerSwap,
-        ),
+        captureCheckpoint(producerPage, checkpointSec, options.fps, options.emulateProducerSwap),
       ]);
       const previewHash = sha256(previewBuffer);
       const producerHash = sha256(producerBuffer);

@@ -9,7 +9,7 @@
 
     <style>
       /* Import a rounded humanist sans-serif font */
-      @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600&display=swap');
+      @import url("https://fonts.googleapis.com/css2?family=Outfit:wght@400;600&display=swap");
 
       [data-composition-id="intro"] .container {
         width: 100%;
@@ -18,15 +18,15 @@
         justify-content: flex-start; /* Align to left for speaker card */
         align-items: center;
         padding-left: 5%;
-        font-family: 'Outfit', sans-serif;
+        font-family: "Outfit", sans-serif;
         background: transparent;
       }
 
       [data-composition-id="intro"] .title-card {
-        background-color: #3B5E3A; /* Forest Green for contrast */
+        background-color: #3b5e3a; /* Forest Green for contrast */
         padding: 40px 60px;
         border-radius: 30px;
-        box-shadow: 0 15px 40px rgba(0,0,0,0.2);
+        box-shadow: 0 15px 40px rgba(0, 0, 0, 0.2);
         text-align: left;
         opacity: 0;
         transform: translateX(-100%); /* Start off-screen left */
@@ -35,7 +35,7 @@
       [data-composition-id="intro"] .title {
         font-size: 100px;
         font-weight: 600;
-        color: #F5F0E0; /* Cream text on green card */
+        color: #f5f0e0; /* Cream text on green card */
         margin: 0;
         line-height: 1.1;
         letter-spacing: -2px;
@@ -44,31 +44,39 @@
       [data-composition-id="intro"] .subtitle {
         font-size: 50px;
         font-weight: 400;
-        color: #CC8832; /* Ochre accent */
+        color: #cc8832; /* Ochre accent */
         margin: 10px 0 0 0;
         line-height: 1.2;
       }
     </style>
 
     <script>
-      (function() {
+      (function () {
         const tl = gsap.timeline({ paused: true });
-        
+
         // Animation: Speaker card slides in from the left
-        tl.to('[data-composition-id="intro"] .title-card', {
-          opacity: 1,
-          x: 0,
-          duration: 0.8,
-          ease: 'power2.out'
-        }, 0.2);
+        tl.to(
+          '[data-composition-id="intro"] .title-card',
+          {
+            opacity: 1,
+            x: 0,
+            duration: 0.8,
+            ease: "power2.out",
+          },
+          0.2,
+        );
 
         // Exit: Slide off left at 1.8s (synced with 47% graphic)
-        tl.to('[data-composition-id="intro"] .title-card', {
-          x: '-120%',
-          opacity: 0,
-          duration: 0.6,
-          ease: 'power2.in'
-        }, 1.8);
+        tl.to(
+          '[data-composition-id="intro"] .title-card',
+          {
+            x: "-120%",
+            opacity: 0,
+            duration: 0.6,
+            ease: "power2.in",
+          },
+          1.8,
+        );
 
         window.__timelines["intro"] = tl;
       })();

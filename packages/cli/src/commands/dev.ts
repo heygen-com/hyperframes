@@ -1,13 +1,6 @@
 import { defineCommand } from "citty";
 import { spawn } from "node:child_process";
-import {
-  existsSync,
-  lstatSync,
-  symlinkSync,
-  unlinkSync,
-  readlinkSync,
-  mkdirSync,
-} from "node:fs";
+import { existsSync, lstatSync, symlinkSync, unlinkSync, readlinkSync, mkdirSync } from "node:fs";
 import { resolve, dirname, basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import * as clack from "@clack/prompts";
@@ -181,6 +174,10 @@ async function runDevMode(dir: string): Promise<void> {
  * TODO: Migrate to use @hyperframes/studio's built-in Vite server for published CLI.
  */
 async function runEmbeddedMode(_dir: string, _port: number): Promise<void> {
-  console.error(c.error("Embedded mode not yet available. Run from the monorepo root with: hyperframes dev <dir>"));
+  console.error(
+    c.error(
+      "Embedded mode not yet available. Run from the monorepo root with: hyperframes dev <dir>",
+    ),
+  );
   process.exit(1);
 }

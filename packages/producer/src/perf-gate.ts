@@ -17,7 +17,12 @@ function main(): void {
   const baselineRaw = readFileSync(baselinePath, "utf-8");
   const baseline = JSON.parse(baselineRaw) as PerfBaseline;
   const maxMs = Math.round(baseline.parityFixtureMaxMs * (1 + baseline.allowedRegressionRatio));
-  const payload = { baselinePath, measuredMs, parityFixtureMaxMs: baseline.parityFixtureMaxMs, maxMs };
+  const payload = {
+    baselinePath,
+    measuredMs,
+    parityFixtureMaxMs: baseline.parityFixtureMaxMs,
+    maxMs,
+  };
   console.log(`[PerfGate] ${JSON.stringify(payload)}`);
   if (measuredMs > maxMs) {
     throw new Error(`[PerfGate] Regression detected measured=${measuredMs}ms max=${maxMs}ms`);

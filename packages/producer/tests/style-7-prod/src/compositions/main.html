@@ -1,14 +1,15 @@
 <template id="main-template">
   <div data-composition-id="main" data-width="1920" data-height="1080" data-duration="16.7">
     <!-- A-roll Video -->
-    <video id="aroll" 
-           src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/uploaded_assets/70648f53_abe84fb9991841ae8ba82ee21ba6d37e.mp4"
-           data-start="0" 
-           data-duration="16.7" 
-           data-track-index="1"
-           muted
-           crossorigin="anonymous">
-    </video>
+    <video
+      id="aroll"
+      src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/uploaded_assets/70648f53_abe84fb9991841ae8ba82ee21ba6d37e.mp4"
+      data-start="0"
+      data-duration="16.7"
+      data-track-index="1"
+      muted
+      crossorigin="anonymous"
+    ></video>
 
     <!-- Statistics Overlay -->
     <div class="stats-container">
@@ -38,7 +39,7 @@
     <style>
       [data-composition-id="main"] {
         background-color: #000000;
-        font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+        font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
         overflow: hidden;
         width: 1920px;
         height: 1080px;
@@ -79,7 +80,7 @@
         display: flex;
         flex-direction: column;
         align-items: center;
-        bottom: 15%; 
+        bottom: 15%;
         left: 50%;
         transform: translateX(-50%);
       }
@@ -108,80 +109,108 @@
       [data-composition-id="main"] .stat-value {
         font-size: 180px; /* Large, centered, and precise */
         font-weight: 900;
-        color: #6B0F1A; /* Deep Burgundy for emphasis */
+        color: #6b0f1a; /* Deep Burgundy for emphasis */
         line-height: 0.9;
         letter-spacing: -5px;
-        text-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        text-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
       }
 
       [data-composition-id="main"] .stat-subtext {
         font-size: 60px;
         font-weight: 700;
-        color: #FFFFFF;
+        color: #ffffff;
         letter-spacing: 4px;
         margin-top: 10px;
         text-transform: uppercase;
-        text-shadow: 0 5px 15px rgba(0,0,0,0.5);
+        text-shadow: 0 5px 15px rgba(0, 0, 0, 0.5);
       }
     </style>
 
     <script>
-      (function() {
+      (function () {
         const tl = gsap.timeline({ paused: true });
-        const aroll = '#aroll';
-        
+        const aroll = "#aroll";
+
         // 1. At 3.0s: A-roll fades in smoothly (500ms) at 100% scale, centered.
-        tl.to(aroll, {
-          opacity: 1,
-          duration: 0.5,
-          ease: 'power2.inOut'
-        }, 3.0);
+        tl.to(
+          aroll,
+          {
+            opacity: 1,
+            duration: 0.5,
+            ease: "power2.inOut",
+          },
+          3.0,
+        );
 
         // 2. Stat 1 (1.8s - 4.6s)
-        tl.to('#stat-1', {
-          opacity: 1,
-          y: -20,
-          duration: 0.8,
-          ease: 'expo.out'
-        }, 1.8);
+        tl.to(
+          "#stat-1",
+          {
+            opacity: 1,
+            y: -20,
+            duration: 0.8,
+            ease: "expo.out",
+          },
+          1.8,
+        );
 
         // 3. At 4.6s (Stat 2): Cross-dissolve Stat 1 to Stat 2
-        tl.to('#stat-1', {
-          opacity: 0,
-          y: -40,
-          duration: 0.5,
-          ease: 'power2.inOut'
-        }, 4.6);
+        tl.to(
+          "#stat-1",
+          {
+            opacity: 0,
+            y: -40,
+            duration: 0.5,
+            ease: "power2.inOut",
+          },
+          4.6,
+        );
 
-        tl.to('#stat-2', {
-          opacity: 1,
-          y: -20,
-          duration: 0.8,
-          ease: 'expo.out'
-        }, 4.6);
+        tl.to(
+          "#stat-2",
+          {
+            opacity: 1,
+            y: -20,
+            duration: 0.8,
+            ease: "expo.out",
+          },
+          4.6,
+        );
 
         // 4. At 8.6s (Stat 3): Cross-dissolve Stat 2 to Stat 3
-        tl.to('#stat-2', {
-          opacity: 0,
-          y: -40,
-          duration: 0.5,
-          ease: 'power2.inOut'
-        }, 8.6);
+        tl.to(
+          "#stat-2",
+          {
+            opacity: 0,
+            y: -40,
+            duration: 0.5,
+            ease: "power2.inOut",
+          },
+          8.6,
+        );
 
-        tl.to('#stat-3', {
-          opacity: 1,
-          y: -20,
-          duration: 0.8,
-          ease: 'expo.out'
-        }, 8.6);
+        tl.to(
+          "#stat-3",
+          {
+            opacity: 1,
+            y: -20,
+            duration: 0.8,
+            ease: "expo.out",
+          },
+          8.6,
+        );
 
         // 5. At 14.2s: Stat 3 fades out.
-        tl.to('#stat-3', {
-          opacity: 0,
-          y: -40,
-          duration: 0.5,
-          ease: 'power2.inOut'
-        }, 14.2);
+        tl.to(
+          "#stat-3",
+          {
+            opacity: 0,
+            y: -40,
+            duration: 0.5,
+            ease: "power2.inOut",
+          },
+          14.2,
+        );
 
         window.__timelines["main"] = tl;
       })();

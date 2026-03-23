@@ -17,9 +17,6 @@
     "knip": "knip",
     "prepare": "lefthook install"
   },
-  "pnpm": {
-    "onlyBuiltDependencies": ["lefthook"]
-  },
   "devDependencies": {
     "@commitlint/cli": "^20.5.0",
     "@commitlint/config-conventional": "^20.5.0",
@@ -31,5 +28,10 @@
     "oxlint": "^1.56.0",
     "tsx": "^4.21.0",
     "typescript": "^5.0.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "lefthook"
+    ]
   }
 }

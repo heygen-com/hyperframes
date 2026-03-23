@@ -33,8 +33,7 @@ const LOG_LEVEL_PRIORITY: Record<LogLevel, number> = {
 export function createConsoleLogger(level: LogLevel = "info"): ProducerLogger {
   const threshold = LOG_LEVEL_PRIORITY[level];
 
-  const shouldLog = (msgLevel: LogLevel): boolean =>
-    LOG_LEVEL_PRIORITY[msgLevel] <= threshold;
+  const shouldLog = (msgLevel: LogLevel): boolean => LOG_LEVEL_PRIORITY[msgLevel] <= threshold;
 
   const formatMeta = (meta?: Record<string, unknown>): string =>
     meta ? ` ${JSON.stringify(meta)}` : "";

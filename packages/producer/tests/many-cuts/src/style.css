@@ -1,147 +1,148 @@
 * {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
 }
 
-html, body {
-    width: 1080px;
-    height: 1920px;
-    overflow: hidden;
-    background-color: #000; /* Black */
+html,
+body {
+  width: 1080px;
+  height: 1920px;
+  overflow: hidden;
+  background-color: #000; /* Black */
 }
 
 #container {
-    width: 100%;
-    height: 100%;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  position: relative;
 }
 
 .text-variant {
-    position: absolute;
-    width: 100%;
-    left: 0;
-    top: 50%;
-    transform: translateY(-50%);
-    text-align: center;
-    opacity: 0;
-    font-size: 120px;
-    text-transform: uppercase;
-    padding: 20px;
+  position: absolute;
+  width: 100%;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  text-align: center;
+  opacity: 0;
+  font-size: 120px;
+  text-transform: uppercase;
+  padding: 20px;
 }
 
 #v1 {
-    font-family: 'Montserrat', sans-serif;
-    color: #FFF;
-    font-weight: 900;
+  font-family: "Montserrat", sans-serif;
+  color: #fff;
+  font-weight: 900;
 }
 
 #v2 {
-    font-family: 'Bangers', cursive;
-    color: #FFD700; /* Gold */
+  font-family: "Bangers", cursive;
+  color: #ffd700; /* Gold */
 }
 
 #v3 {
-    font-family: 'Press Start 2P', cursive;
-    color: #00FF00; /* Neon Green */
-    font-size: 80px;
+  font-family: "Press Start 2P", cursive;
+  color: #00ff00; /* Neon Green */
+  font-size: 80px;
 }
 
 #v4 {
-    font-family: 'Lobster', cursive;
-    color: #FF69B4; /* Hot Pink */
-    text-transform: none;
+  font-family: "Lobster", cursive;
+  color: #ff69b4; /* Hot Pink */
+  text-transform: none;
 }
 
 #v5 {
-    font-family: 'Syncopate', sans-serif;
-    color: #00FFFF; /* Cyan */
-    font-weight: 700;
+  font-family: "Syncopate", sans-serif;
+  color: #00ffff; /* Cyan */
+  font-weight: 700;
 }
 
 #v6 {
-    font-family: 'Playfair Display', serif;
-    color: #FF4500; /* OrangeRed */
-    font-style: italic;
+  font-family: "Playfair Display", serif;
+  color: #ff4500; /* OrangeRed */
+  font-style: italic;
 }
 
 #v7 {
-    font-family: 'Montserrat', sans-serif;
-    color: #ADFF2F; /* GreenYellow */
-    font-weight: 300;
+  font-family: "Montserrat", sans-serif;
+  color: #adff2f; /* GreenYellow */
+  font-weight: 300;
 }
 
 #v8 {
-    font-family: 'Bangers', cursive;
-    color: #DA70D6; /* Orchid */
+  font-family: "Bangers", cursive;
+  color: #da70d6; /* Orchid */
 }
 
 #v9 {
-    font-family: 'Press Start 2P', cursive;
-    color: #F0E68C; /* Khaki */
-    font-size: 80px;
+  font-family: "Press Start 2P", cursive;
+  color: #f0e68c; /* Khaki */
+  font-size: 80px;
 }
 
 #v10 {
-    font-family: 'Lobster', cursive;
-    color: #7FFFD4; /* Aquamarine */
-    text-transform: none;
+  font-family: "Lobster", cursive;
+  color: #7fffd4; /* Aquamarine */
+  text-transform: none;
 }
 
 #v11 {
-    font-family: 'Syncopate', sans-serif;
-    color: #FFB6C1; /* LightPink */
-    font-weight: 700;
+  font-family: "Syncopate", sans-serif;
+  color: #ffb6c1; /* LightPink */
+  font-weight: 700;
 }
 
 #v12 {
-    font-family: 'Playfair Display', serif;
-    color: #E0FFFF; /* LightCyan */
-    font-style: normal;
-    font-weight: 900;
+  font-family: "Playfair Display", serif;
+  color: #e0ffff; /* LightCyan */
+  font-style: normal;
+  font-weight: 900;
 }
 
 #v13 {
-    font-family: 'Montserrat', sans-serif;
-    color: #FFA500; /* Orange */
-    font-weight: 900;
+  font-family: "Montserrat", sans-serif;
+  color: #ffa500; /* Orange */
+  font-weight: 900;
 }
 
 #final-message {
-    position: absolute;
-    width: 100%;
-    left: 0;
-    top: 50%;
-    transform: translateY(-50%) scale(0.8);
-    text-align: center;
-    opacity: 0;
-    font-size: 120px; /* Bigger */
-    font-family: 'Montserrat', sans-serif;
-    color: #FFF;
-    font-weight: 900;
-    padding: 40px;
-    letter-spacing: -2px;
-    z-index: 10;
+  position: absolute;
+  width: 100%;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%) scale(0.8);
+  text-align: center;
+  opacity: 0;
+  font-size: 120px; /* Bigger */
+  font-family: "Montserrat", sans-serif;
+  color: #fff;
+  font-weight: 900;
+  padding: 40px;
+  letter-spacing: -2px;
+  z-index: 10;
 }
 
 #particles-container {
-    position: absolute;
-    width: 100%;
-    height: 100%;
-    left: 0;
-    top: 0;
-    pointer-events: none;
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  left: 0;
+  top: 0;
+  pointer-events: none;
 }
 
 .particle {
-    position: absolute;
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    opacity: 0;
-    left: 0;
-    top: 0;
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  opacity: 0;
+  left: 0;
+  top: 0;
 }

@@ -45,7 +45,10 @@ const RENDER_SEEK_MODE =
     ? "strict-boundary"
     : "preview-phase";
 const RENDER_SEEK_DIAGNOSTICS = process.env.PRODUCER_DEBUG_SEEK_DIAGNOSTICS === "true";
-const RENDER_SEEK_STEP = Math.max(1 / 600, Number(process.env.PRODUCER_RENDER_SEEK_STEP || 1 / 120));
+const RENDER_SEEK_STEP = Math.max(
+  1 / 600,
+  Number(process.env.PRODUCER_RENDER_SEEK_STEP || 1 / 120),
+);
 const RENDER_SEEK_OFFSET_FRACTION = Math.max(
   0,
   Math.min(0.95, Number(process.env.PRODUCER_RUNTIME_RENDER_SEEK_OFFSET_FRACTION || 0.5)),
@@ -273,7 +276,6 @@ export function createFileServer(options: FileServerOptions): Promise<FileServer
   const headScripts = options.headScripts ?? [getVerifiedHyperframeRuntimeSource()];
   const bodyScripts = options.bodyScripts ?? [RENDER_MODE_SCRIPT, HF_BRIDGE_SCRIPT];
 
-
   const app = new Hono();
 
   app.get("/*", (c) => {
@@ -284,7 +286,7 @@ export function createFileServer(options: FileServerOptions): Promise<FileServer
     const relativePath = requestPath.replace(/^\//, "");
     const compiledPath = compiledDir ? join(compiledDir, relativePath) : null;
     const hasCompiledFile = Boolean(
-      compiledPath && existsSync(compiledPath) && statSync(compiledPath).isFile()
+      compiledPath && existsSync(compiledPath) && statSync(compiledPath).isFile(),
     );
     const filePath = hasCompiledFile ? (compiledPath as string) : join(projectDir, relativePath);
 

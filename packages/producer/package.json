@@ -2,6 +2,9 @@
   "name": "@hyperframes/producer",
   "version": "0.1.1",
   "description": "HTML-to-video rendering engine using Chrome's BeginFrame API",
+  "files": [
+    "dist/"
+  ],
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -14,15 +17,9 @@
       "import": "./dist/public-server.js"
     }
   },
-  "files": [
-    "dist/"
-  ],
   "publishConfig": {
     "access": "public",
     "registry": "https://registry.npmjs.org/"
-  },
-  "engines": {
-    "node": ">=22"
   },
   "scripts": {
     "build": "pnpm -w build:hyperframes-runtime:modular && node build.mjs",
@@ -39,8 +36,6 @@
     "prepublishOnly": "pnpm build"
   },
   "dependencies": {
-    "@hyperframes/core": "workspace:^",
-    "@hyperframes/engine": "workspace:^",
     "@fontsource/archivo-black": "^5.2.8",
     "@fontsource/eb-garamond": "^5.2.7",
     "@fontsource/ibm-plex-mono": "^5.2.7",
@@ -53,6 +48,8 @@
     "@fontsource/outfit": "^5.2.8",
     "@fontsource/space-mono": "^5.2.9",
     "@hono/node-server": "^1.13.0",
+    "@hyperframes/core": "workspace:^",
+    "@hyperframes/engine": "workspace:^",
     "hono": "^4.6.0",
     "linkedom": "^0.18.12",
     "puppeteer": "^24.0.0",
@@ -63,5 +60,8 @@
     "esbuild": "^0.27.2",
     "tsx": "^4.7.0",
     "typescript": "^5.7.2"
+  },
+  "engines": {
+    "node": ">=22"
   }
 }

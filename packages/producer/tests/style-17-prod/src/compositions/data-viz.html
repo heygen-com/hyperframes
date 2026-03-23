@@ -3,7 +3,7 @@
     <div class="canvas-container">
       <div class="bg-shape shape-1"></div>
       <div class="bg-shape shape-2"></div>
-      
+
       <div class="content-wrapper">
         <div class="stat-container">
           <div class="number-wrapper">
@@ -22,15 +22,15 @@
     </div>
 
     <style>
-      @import url('https://fonts.googleapis.com/css2?family=League+Gothic&display=swap');
+      @import url("https://fonts.googleapis.com/css2?family=League+Gothic&display=swap");
 
       [data-composition-id="data-viz"] {
         width: 1080px;
         height: 1920px;
         background-color: transparent; /* Changed to transparent to see A-roll */
         overflow: hidden;
-        font-family: 'League Gothic', sans-serif;
-        color: #FFF5DC;
+        font-family: "League Gothic", sans-serif;
+        color: #fff5dc;
       }
 
       [data-composition-id="data-viz"] .canvas-container {
@@ -41,7 +41,7 @@
 
       [data-composition-id="data-viz"] .bg-shape {
         position: absolute;
-        background-color: #FF4500;
+        background-color: #ff4500;
         opacity: 0.4; /* Reduced from 0.8 */
       }
 
@@ -59,7 +59,7 @@
         height: 600px;
         bottom: 5%;
         right: -5%;
-        background-color: #E8A317;
+        background-color: #e8a317;
         transform: rotate(10deg);
         clip-path: polygon(5% 10%, 95% 0%, 100% 90%, 10% 100%);
       }
@@ -88,7 +88,7 @@
         display: flex;
         font-size: 300px; /* Reduced from 400px */
         font-weight: 900;
-        color: #FFF5DC; 
+        color: #fff5dc;
         line-height: 1;
       }
 
@@ -98,13 +98,17 @@
         padding: 0 10px;
       }
 
-      [data-composition-id="data-viz"] .frag-1 { transform: rotate(-5deg) translateY(20px); }
-      [data-composition-id="data-viz"] .frag-2 { transform: rotate(3deg) translateY(-10px); }
-      [data-composition-id="data-viz"] .frag-3 { 
-        font-size: 200px; 
-        align-self: flex-end; 
+      [data-composition-id="data-viz"] .frag-1 {
+        transform: rotate(-5deg) translateY(20px);
+      }
+      [data-composition-id="data-viz"] .frag-2 {
+        transform: rotate(3deg) translateY(-10px);
+      }
+      [data-composition-id="data-viz"] .frag-3 {
+        font-size: 200px;
+        align-self: flex-end;
         margin-bottom: 40px;
-        color: #E8A317;
+        color: #e8a317;
       }
 
       [data-composition-id="data-viz"] .text-container {
@@ -117,7 +121,7 @@
       [data-composition-id="data-viz"] .text-line {
         font-size: 84px;
         font-weight: bold;
-        background-color: #FFF5DC;
+        background-color: #fff5dc;
         color: #000000;
         padding: 10px 30px;
         transform: rotate(-2deg);
@@ -125,7 +129,7 @@
       }
 
       [data-composition-id="data-viz"] .line-2 {
-        background-color: #E8A317;
+        background-color: #e8a317;
         transform: rotate(1.5deg) translateY(60px); /* Added translateY to move it lower */
         font-size: 62px;
       }
@@ -143,30 +147,74 @@
     </style>
 
     <script>
-      (function() {
+      (function () {
         const tl = gsap.timeline({ paused: true });
-        
-        tl.to('[data-composition-id="data-viz"] .tear-overlay', {
-          duration: 0.6,
-          clipPath: 'polygon(0% 0%, 0% 0%, 0% 100%, 0% 100%)',
-          ease: 'power4.inOut'
-        }, 0);
 
-        tl.to('[data-composition-id="data-viz"] .shape-1', { rotation: -12, x: 20, y: -10, duration: 3.6, ease: 'none' }, 0);
-        tl.to('[data-composition-id="data-viz"] .shape-2', { rotation: 13, x: -15, y: 15, duration: 3.6, ease: 'none' }, 0);
+        tl.to(
+          '[data-composition-id="data-viz"] .tear-overlay',
+          {
+            duration: 0.6,
+            clipPath: "polygon(0% 0%, 0% 0%, 0% 100%, 0% 100%)",
+            ease: "power4.inOut",
+          },
+          0,
+        );
 
-        tl.set('[data-composition-id="data-viz"] .number-fragment', { opacity: 0, scale: 1.5, y: 100 }, 0);
-        tl.to('[data-composition-id="data-viz"] .frag-1', { opacity: 1, scale: 1, y: 20, duration: 0.5, ease: 'back.out(1.7)' }, 0.099);
-        tl.to('[data-composition-id="data-viz"] .frag-2', { opacity: 1, scale: 1, y: -10, duration: 0.5, ease: 'back.out(1.7)' }, 0.199);
-        tl.to('[data-composition-id="data-viz"] .frag-3', { opacity: 1, scale: 1, y: 0, duration: 0.5, ease: 'back.out(1.7)' }, 0.299);
+        tl.to(
+          '[data-composition-id="data-viz"] .shape-1',
+          { rotation: -12, x: 20, y: -10, duration: 3.6, ease: "none" },
+          0,
+        );
+        tl.to(
+          '[data-composition-id="data-viz"] .shape-2',
+          { rotation: 13, x: -15, y: 15, duration: 3.6, ease: "none" },
+          0,
+        );
 
-        tl.set('[data-composition-id="data-viz"] .line-1', { opacity: 0, x: -100, rotation: -10 }, 0);
-        tl.to('[data-composition-id="data-viz"] .line-1', { opacity: 1, x: 0, rotation: -2, duration: 0.6, ease: 'power3.out' }, 1.159);
+        tl.set(
+          '[data-composition-id="data-viz"] .number-fragment',
+          { opacity: 0, scale: 1.5, y: 100 },
+          0,
+        );
+        tl.to(
+          '[data-composition-id="data-viz"] .frag-1',
+          { opacity: 1, scale: 1, y: 20, duration: 0.5, ease: "back.out(1.7)" },
+          0.099,
+        );
+        tl.to(
+          '[data-composition-id="data-viz"] .frag-2',
+          { opacity: 1, scale: 1, y: -10, duration: 0.5, ease: "back.out(1.7)" },
+          0.199,
+        );
+        tl.to(
+          '[data-composition-id="data-viz"] .frag-3',
+          { opacity: 1, scale: 1, y: 0, duration: 0.5, ease: "back.out(1.7)" },
+          0.299,
+        );
+
+        tl.set(
+          '[data-composition-id="data-viz"] .line-1',
+          { opacity: 0, x: -100, rotation: -10 },
+          0,
+        );
+        tl.to(
+          '[data-composition-id="data-viz"] .line-1',
+          { opacity: 1, x: 0, rotation: -2, duration: 0.6, ease: "power3.out" },
+          1.159,
+        );
 
         tl.set('[data-composition-id="data-viz"] .line-2', { opacity: 0, x: 100, rotation: 10 }, 0);
-        tl.to('[data-composition-id="data-viz"] .line-2', { opacity: 1, x: 0, y: 60, rotation: 1.5, duration: 0.6, ease: 'power3.out' }, 2.159);
+        tl.to(
+          '[data-composition-id="data-viz"] .line-2',
+          { opacity: 1, x: 0, y: 60, rotation: 1.5, duration: 0.6, ease: "power3.out" },
+          2.159,
+        );
 
-        tl.to('[data-composition-id="data-viz"] .content-wrapper', { opacity: 0, scale: 0.9, duration: 0.3, ease: 'power2.in' }, 3.3);
+        tl.to(
+          '[data-composition-id="data-viz"] .content-wrapper',
+          { opacity: 0, scale: 0.9, duration: 0.3, ease: "power2.in" },
+          3.3,
+        );
 
         window.__timelines["data-viz"] = tl;
       })();

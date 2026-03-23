@@ -1,5 +1,10 @@
 <template id="stats-template">
-  <div data-composition-id="stats-graphics" data-width="1920" data-height="1080" data-duration="19.04">
+  <div
+    data-composition-id="stats-graphics"
+    data-width="1920"
+    data-height="1080"
+    data-duration="19.04"
+  >
     <!-- Background Elements (Ambient Motion) -->
     <div class="bg-container">
       <div class="slash slash-1"></div>
@@ -50,7 +55,7 @@
 
     <style>
       [data-composition-id="stats-graphics"] {
-        font-family: 'Oswald', 'Bebas Neue', sans-serif;
+        font-family: "Oswald", "Bebas Neue", sans-serif;
         color: white;
         overflow: hidden;
         background: transparent;
@@ -68,9 +73,9 @@
         letter-spacing: -10px;
         text-transform: uppercase;
         font-stretch: condensed;
-        color: #CDFF00; /* Volt */
+        color: #cdff00; /* Volt */
         margin-bottom: 20px;
-        filter: drop-shadow(10px 10px 0px rgba(0,0,0,0.5));
+        filter: drop-shadow(10px 10px 0px rgba(0, 0, 0, 0.5));
       }
 
       /* 30px spacing between text layers in 3 out of 4 */
@@ -119,8 +124,12 @@
         width: 100%;
       }
 
-      [data-composition-id="stats-graphics"] .stat-value-row .white { color: white; }
-      [data-composition-id="stats-graphics"] .stat-value-row .volt { color: #CDFF00; }
+      [data-composition-id="stats-graphics"] .stat-value-row .white {
+        color: white;
+      }
+      [data-composition-id="stats-graphics"] .stat-value-row .volt {
+        color: #cdff00;
+      }
 
       /* Diagonal Slashes */
       [data-composition-id="stats-graphics"] .bg-container {
@@ -142,14 +151,20 @@
         filter: blur(40px);
       }
 
-      [data-composition-id="stats-graphics"] .slash-1 { left: 20%; }
-      [data-composition-id="stats-graphics"] .slash-2 { left: 50%; }
-      [data-composition-id="stats-graphics"] .slash-3 { left: 80%; }
+      [data-composition-id="stats-graphics"] .slash-1 {
+        left: 20%;
+      }
+      [data-composition-id="stats-graphics"] .slash-2 {
+        left: 50%;
+      }
+      [data-composition-id="stats-graphics"] .slash-3 {
+        left: 80%;
+      }
 
       [data-composition-id="stats-graphics"] .accent-bar {
         width: 100%;
         height: 15px;
-        background: #CDFF00;
+        background: #cdff00;
         margin-top: 10px;
         transform: skewX(-10deg);
       }
@@ -174,14 +189,14 @@
         box-sizing: border-box;
       }
 
-      [data-composition-id="stats-graphics"] .reveal-bar.top { 
-        top: 0; 
-        border-bottom: 4px solid #CDFF00;
+      [data-composition-id="stats-graphics"] .reveal-bar.top {
+        top: 0;
+        border-bottom: 4px solid #cdff00;
         box-shadow: 0 10px 30px rgba(205, 255, 0, 0.2);
       }
-      [data-composition-id="stats-graphics"] .reveal-bar.bottom { 
-        bottom: 0; 
-        border-top: 4px solid #CDFF00;
+      [data-composition-id="stats-graphics"] .reveal-bar.bottom {
+        bottom: 0;
+        border-top: 4px solid #cdff00;
         box-shadow: 0 -10px 30px rgba(205, 255, 0, 0.2);
       }
 
@@ -208,8 +223,8 @@
         height: 100%;
         background: black;
         transform: skewX(-15deg);
-        border: 10px solid #CDFF00;
-        box-shadow: 20px 20px 0px rgba(0,0,0,0.5);
+        border: 10px solid #cdff00;
+        box-shadow: 20px 20px 0px rgba(0, 0, 0, 0.5);
       }
 
       [data-composition-id="stats-graphics"] .title-content {
@@ -230,7 +245,7 @@
       [data-composition-id="stats-graphics"] .title-sub {
         font-size: 180px;
         font-weight: 900;
-        color: #CDFF00;
+        color: #cdff00;
         line-height: 0.8;
         letter-spacing: 10px;
         font-stretch: condensed;
@@ -241,73 +256,89 @@
         bottom: -40px;
         width: 80%;
         height: 20px;
-        background: #CDFF00;
+        background: #cdff00;
         transform: skewX(-15deg);
       }
     </style>
 
     <script>
-      (function() {
+      (function () {
         const tl = gsap.timeline({ paused: true });
 
         // Ambient Motion: Slashes drifting
-        tl.to('[data-composition-id="stats-graphics"] .slash', {
-          x: 100,
-          duration: 19,
-          ease: 'none'
-        }, 0);
+        tl.to(
+          '[data-composition-id="stats-graphics"] .slash',
+          {
+            x: 100,
+            duration: 19,
+            ease: "none",
+          },
+          0,
+        );
 
         // 1. Video Entrance Animation (3s)
         // Reveal bars split open to show the video area
-        tl.to('.reveal-bar.top', { yPercent: -100, duration: 0.8, ease: 'expo.inOut' }, 3);
-        tl.to('.reveal-bar.bottom', { yPercent: 100, duration: 0.8, ease: 'expo.inOut' }, 3);
+        tl.to(".reveal-bar.top", { yPercent: -100, duration: 0.8, ease: "expo.inOut" }, 3);
+        tl.to(".reveal-bar.bottom", { yPercent: 100, duration: 0.8, ease: "expo.inOut" }, 3);
 
         // 2. Stat 1: 47% (4.839s)
-        tl.fromTo('#stat-47', 
+        tl.fromTo(
+          "#stat-47",
           { opacity: 0, scale: 3, x: 500, rotation: 10 },
-          { opacity: 1, scale: 1, x: 0, rotation: 0, duration: 0.4, ease: 'power2.out' },
-          4.839
+          { opacity: 1, scale: 1, x: 0, rotation: 0, duration: 0.4, ease: "power2.out" },
+          4.839,
         );
         // Exit before next stat
-        tl.to('#stat-47', { opacity: 0, x: -100, duration: 0.4, ease: 'power2.in' }, 7.2);
+        tl.to("#stat-47", { opacity: 0, x: -100, duration: 0.4, ease: "power2.in" }, 7.2);
 
         // 3. Stat 2: 62% (7.659s)
-        tl.fromTo('#stat-62', 
+        tl.fromTo(
+          "#stat-62",
           { opacity: 0, scale: 3, x: 500, rotation: -10 },
-          { opacity: 1, scale: 1, x: 0, rotation: 0, duration: 0.4, ease: 'power2.out' },
-          7.659
+          { opacity: 1, scale: 1, x: 0, rotation: 0, duration: 0.4, ease: "power2.out" },
+          7.659,
         );
         // Exit before next stat
-        tl.to('#stat-62', { opacity: 0, x: -100, duration: 0.4, ease: 'power2.in' }, 11.4);
+        tl.to("#stat-62", { opacity: 0, x: -100, duration: 0.4, ease: "power2.in" }, 11.4);
 
         // 4. Stat 3: 3 out of 4 (11.88s)
-        tl.fromTo('#stat-3-4', 
+        tl.fromTo(
+          "#stat-3-4",
           { opacity: 0, scale: 0.5, y: 200 },
-          { opacity: 1, scale: 1, y: 0, duration: 0.8, ease: 'elastic.out(1, 0.75)' },
-          11.88
+          { opacity: 1, scale: 1, y: 0, duration: 0.8, ease: "elastic.out(1, 0.75)" },
+          11.88,
         );
 
         // 5. Slide out '3 out of 4' and show Title Card (14.619s)
-        tl.to('#stat-3-4', { 
-          x: -2000, 
-          opacity: 0, 
-          duration: 0.4, 
-          ease: 'power3.in' 
-        }, 14.619);
+        tl.to(
+          "#stat-3-4",
+          {
+            x: -2000,
+            opacity: 0,
+            duration: 0.4,
+            ease: "power3.in",
+          },
+          14.619,
+        );
 
         // Show Title Card (14.619s)
-        tl.fromTo('#title-card', 
+        tl.fromTo(
+          "#title-card",
           { opacity: 0, scale: 0.8, x: 2000 },
-          { opacity: 1, scale: 1, x: 0, duration: 0.8, ease: 'back.out(1.7)' },
-          14.619
+          { opacity: 1, scale: 1, x: 0, duration: 0.8, ease: "back.out(1.7)" },
+          14.619,
         );
 
         // Slide out Title Card (18.5s)
-        tl.to('#title-card', {
-          x: -2000,
-          duration: 0.5,
-          ease: 'power3.in'
-        }, 18.5);
+        tl.to(
+          "#title-card",
+          {
+            x: -2000,
+            duration: 0.5,
+            ease: "power3.in",
+          },
+          18.5,
+        );
 
         window.__timelines["stats-graphics"] = tl;
       })();

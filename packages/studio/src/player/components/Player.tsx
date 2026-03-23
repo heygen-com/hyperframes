@@ -11,110 +11,120 @@ interface PlayerProps {
   portrait?: boolean;
 }
 
-export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(({ projectId, directUrl, onLoad, portrait }, ref) => {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [scale, setScale] = useState(1);
-  const dimsRef = useRef({ w: portrait ? NATIVE_H : NATIVE_W, h: portrait ? NATIVE_W : NATIVE_H });
-  const [dims, setDims] = useState(dimsRef.current);
-  const loadCountRef = useRef(0);
+export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
+  ({ projectId, directUrl, onLoad, portrait }, ref) => {
+    const containerRef = useRef<HTMLDivElement>(null);
+    const [scale, setScale] = useState(1);
+    const dimsRef = useRef({
+      w: portrait ? NATIVE_H : NATIVE_W,
+      h: portrait ? NATIVE_W : NATIVE_H,
+    });
+    const [dims, setDims] = useState(dimsRef.current);
+    const loadCountRef = useRef(0);
 
-  const updateScale = useCallback(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const rect = el.getBoundingClientRect();
-    const d = dimsRef.current;
-    setScale(Math.min(rect.width / d.w, rect.height / d.h));
-  }, []);
+    const updateScale = useCallback(() => {
+      const el = containerRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      const d = dimsRef.current;
+      setScale(Math.min(rect.width / d.w, rect.height / d.h));
+    }, []);
 
-  useMountEffect(() => {
-    updateScale();
-    const ro = new ResizeObserver(updateScale);
-    if (containerRef.current) ro.observe(containerRef.current);
+    useMountEffect(() => {
+      updateScale();
+      const ro = new ResizeObserver(updateScale);
+      if (containerRef.current) ro.observe(containerRef.current);
 
-    // Listen for stage-size messages from the runtime
-    const handleMessage = (e: MessageEvent) => {
-      const data = e.data;
-      if ((data?.source === "hf-preview" || data?.source === "hf-preview") && data?.type === "stage-size" && data.width > 0 && data.height > 0) {
-        if (dimsRef.current.w !== data.width || dimsRef.current.h !== data.height) {
-          dimsRef.current = { w: data.width, h: data.height };
-          setDims(dimsRef.current);
-          updateScale();
-        }
-      }
-    };
-    window.addEventListener("message", handleMessage);
-
-    return () => {
-      ro.disconnect();
-      window.removeEventListener("message", handleMessage);
-    };
-  });
-
-  const handleLoad = useCallback(() => {
-    loadCountRef.current++;
-
-    // Auto-detect dimensions from the composition's data-width/data-height
-    try {
-      const iframeEl = typeof ref === "function" ? null : ref?.current;
-      const doc = iframeEl?.contentDocument;
-      if (doc) {
-        const root = doc.querySelector("[data-composition-id]");
-        if (root) {
-          const dw = parseInt(root.getAttribute("data-width") || "0", 10);
-          const dh = parseInt(root.getAttribute("data-height") || "0", 10);
-          if (dw > 0 && dh > 0 && (dw !== dimsRef.current.w || dh !== dimsRef.current.h)) {
-            dimsRef.current = { w: dw, h: dh };
+      // Listen for stage-size messages from the runtime
+      const handleMessage = (e: MessageEvent) => {
+        const data = e.data;
+        if (
+          (data?.source === "hf-preview" || data?.source === "hf-preview") &&
+          data?.type === "stage-size" &&
+          data.width > 0 &&
+          data.height > 0
+        ) {
+          if (dimsRef.current.w !== data.width || dimsRef.current.h !== data.height) {
+            dimsRef.current = { w: data.width, h: data.height };
             setDims(dimsRef.current);
-            // Recalc scale with new dims
-            const el = containerRef.current;
-            if (el) {
-              const rect = el.getBoundingClientRect();
-              setScale(Math.min(rect.width / dw, rect.height / dh));
+            updateScale();
+          }
+        }
+      };
+      window.addEventListener("message", handleMessage);
+
+      return () => {
+        ro.disconnect();
+        window.removeEventListener("message", handleMessage);
+      };
+    });
+
+    const handleLoad = useCallback(() => {
+      loadCountRef.current++;
+
+      // Auto-detect dimensions from the composition's data-width/data-height
+      try {
+        const iframeEl = typeof ref === "function" ? null : ref?.current;
+        const doc = iframeEl?.contentDocument;
+        if (doc) {
+          const root = doc.querySelector("[data-composition-id]");
+          if (root) {
+            const dw = parseInt(root.getAttribute("data-width") || "0", 10);
+            const dh = parseInt(root.getAttribute("data-height") || "0", 10);
+            if (dw > 0 && dh > 0 && (dw !== dimsRef.current.w || dh !== dimsRef.current.h)) {
+              dimsRef.current = { w: dw, h: dh };
+              setDims(dimsRef.current);
+              // Recalc scale with new dims
+              const el = containerRef.current;
+              if (el) {
+                const rect = el.getBoundingClientRect();
+                setScale(Math.min(rect.width / dw, rect.height / dh));
+              }
             }
           }
         }
+      } catch {
+        // Cross-origin
       }
-    } catch {
-      // Cross-origin
-    }
 
-    if (loadCountRef.current > 1) {
-      const el = containerRef.current;
-      if (el) {
-        el.classList.remove("preview-revealing");
-        void el.offsetWidth;
-        el.classList.add("preview-revealing");
-        const onEnd = () => el.classList.remove("preview-revealing");
-        el.addEventListener("animationend", onEnd, { once: true });
+      if (loadCountRef.current > 1) {
+        const el = containerRef.current;
+        if (el) {
+          el.classList.remove("preview-revealing");
+          void el.offsetWidth;
+          el.classList.add("preview-revealing");
+          const onEnd = () => el.classList.remove("preview-revealing");
+          el.addEventListener("animationend", onEnd, { once: true });
+        }
       }
-    }
-    onLoad();
-  }, [onLoad, ref]);
+      onLoad();
+    }, [onLoad, ref]);
 
-  return (
-    <div
-      ref={containerRef}
-      className="w-full h-full max-w-full max-h-full overflow-hidden shadow-float border border-neutral-800 bg-black flex items-center justify-center rounded-card-inner"
-    >
-      <iframe
-        ref={ref}
-        src={directUrl || `/api/projects/${projectId}/preview`}
-        onLoad={handleLoad}
-        sandbox="allow-scripts allow-same-origin"
-        allow="autoplay; fullscreen"
-        referrerPolicy="no-referrer"
-        title="Project Preview"
-        style={{
-          width: dims.w,
-          height: dims.h,
-          border: "none",
-          transform: `scale(${scale})`,
-          transformOrigin: "center center",
-          flexShrink: 0,
-        }}
-      />
-    </div>
-  );
-});
+    return (
+      <div
+        ref={containerRef}
+        className="w-full h-full max-w-full max-h-full overflow-hidden shadow-float border border-neutral-800 bg-black flex items-center justify-center rounded-card-inner"
+      >
+        <iframe
+          ref={ref}
+          src={directUrl || `/api/projects/${projectId}/preview`}
+          onLoad={handleLoad}
+          sandbox="allow-scripts allow-same-origin"
+          allow="autoplay; fullscreen"
+          referrerPolicy="no-referrer"
+          title="Project Preview"
+          style={{
+            width: dims.w,
+            height: dims.h,
+            border: "none",
+            transform: `scale(${scale})`,
+            transformOrigin: "center center",
+            flexShrink: 0,
+          }}
+        />
+      </div>
+    );
+  },
+);
 
 Player.displayName = "Player";

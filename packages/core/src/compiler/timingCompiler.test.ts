@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { compileTimingAttrs, injectDurations, extractResolvedMedia, clampDurations } from "./timingCompiler.js";
+import {
+  compileTimingAttrs,
+  injectDurations,
+  extractResolvedMedia,
+  clampDurations,
+} from "./timingCompiler.js";
 
 describe("compileTimingAttrs", () => {
   it("adds data-end when data-start and data-duration are present on a video", () => {

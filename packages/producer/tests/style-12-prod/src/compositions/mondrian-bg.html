@@ -1,22 +1,22 @@
 <template id="mondrian-bg-template">
   <div data-composition-id="mondrian-bg" data-width="1080" data-height="1920" data-duration="14">
     <div class="mondrian-container">
-      <div class="grid-line horizontal primary" style="top: 248px; height: 4px;"></div>
-      <div class="grid-line horizontal primary" style="top: 898px; height: 4px;"></div>
-      <div class="grid-line horizontal secondary" style="top: 1510px; height: 2px;"></div>
-      <div class="grid-line vertical primary" style="left: 246px; width: 4px;"></div>
-      <div class="grid-line vertical primary" style="left: 834px; width: 4px;"></div>
-      <div class="grid-line vertical secondary" style="left: 960px; width: 2px;"></div>
+      <div class="grid-line horizontal primary" style="top: 248px; height: 4px"></div>
+      <div class="grid-line horizontal primary" style="top: 898px; height: 4px"></div>
+      <div class="grid-line horizontal secondary" style="top: 1510px; height: 2px"></div>
+      <div class="grid-line vertical primary" style="left: 246px; width: 4px"></div>
+      <div class="grid-line vertical primary" style="left: 834px; width: 4px"></div>
+      <div class="grid-line vertical secondary" style="left: 960px; width: 2px"></div>
 
-      <div class="sliding-bar horizontal bar-1" style="top: 248px; height: 4px;"></div>
-      <div class="sliding-bar vertical bar-2" style="left: 834px; width: 4px;"></div>
-      <div class="sliding-bar horizontal bar-3" style="top: 898px; height: 4px;"></div>
-      <div class="sliding-bar vertical bar-4" style="left: 246px; width: 4px;"></div>
+      <div class="sliding-bar horizontal bar-1" style="top: 248px; height: 4px"></div>
+      <div class="sliding-bar vertical bar-2" style="left: 834px; width: 4px"></div>
+      <div class="sliding-bar horizontal bar-3" style="top: 898px; height: 4px"></div>
+      <div class="sliding-bar vertical bar-4" style="left: 246px; width: 4px"></div>
     </div>
 
     <style>
       [data-composition-id="mondrian-bg"] {
-        background-color: #FFFFFF;
+        background-color: #ffffff;
         width: 1080px;
         height: 1920px;
         position: relative;
@@ -64,13 +64,13 @@
     </style>
 
     <script>
-      (function() {
+      (function () {
         const tl = gsap.timeline({ paused: true });
 
-        tl.to('.bar-1', { left: '100%', duration: 0.45, ease: 'expo.out' }, 1.1);
-        tl.to('.bar-2', { top: '100%', duration: 0.55, ease: 'expo.out' }, 4.05);
-        tl.to('.bar-3', { left: '100%', duration: 0.48, ease: 'expo.out' }, 7.35);
-        tl.to('.bar-4', { top: '100%', duration: 0.55, ease: 'expo.out' }, 10.25);
+        tl.to(".bar-1", { left: "100%", duration: 0.45, ease: "expo.out" }, 1.1);
+        tl.to(".bar-2", { top: "100%", duration: 0.55, ease: "expo.out" }, 4.05);
+        tl.to(".bar-3", { left: "100%", duration: 0.48, ease: "expo.out" }, 7.35);
+        tl.to(".bar-4", { top: "100%", duration: 0.55, ease: "expo.out" }, 10.25);
 
         window.__timelines["mondrian-bg"] = tl;
       })();

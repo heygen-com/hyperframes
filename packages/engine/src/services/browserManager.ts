@@ -40,7 +40,9 @@ export interface AcquiredBrowser {
  * Checks config.chromePath, then PRODUCER_HEADLESS_SHELL_PATH env var,
  * then scans Puppeteer's managed cache at ~/.cache/puppeteer/chrome-headless-shell/.
  */
-export function resolveHeadlessShellPath(config?: Partial<Pick<EngineConfig, "chromePath">>): string | undefined {
+export function resolveHeadlessShellPath(
+  config?: Partial<Pick<EngineConfig, "chromePath">>,
+): string | undefined {
   if (config?.chromePath) {
     return config.chromePath;
   }
@@ -78,7 +80,10 @@ export const ENABLE_BROWSER_POOL = DEFAULT_CONFIG.enableBrowserPool;
 export async function acquireBrowser(
   chromeArgs: string[],
   config?: Partial<
-    Pick<EngineConfig, "browserTimeout" | "protocolTimeout" | "enableBrowserPool" | "chromePath" | "forceScreenshot">
+    Pick<
+      EngineConfig,
+      "browserTimeout" | "protocolTimeout" | "enableBrowserPool" | "chromePath" | "forceScreenshot"
+    >
   >,
 ): Promise<AcquiredBrowser> {
   const enablePool = config?.enableBrowserPool ?? DEFAULT_CONFIG.enableBrowserPool;

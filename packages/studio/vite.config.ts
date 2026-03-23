@@ -1,6 +1,14 @@
 import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
-import { readFileSync, readdirSync, existsSync, statSync, writeFileSync, lstatSync, realpathSync } from "node:fs";
+import {
+  readFileSync,
+  readdirSync,
+  existsSync,
+  statSync,
+  writeFileSync,
+  lstatSync,
+  realpathSync,
+} from "node:fs";
 import { join, resolve, sep } from "node:path";
 
 /** Reject paths that escape the project directory. */
@@ -37,7 +45,10 @@ function devProjectApi(): Plugin {
         if (!req.url?.startsWith("/api/")) return next();
 
         // Render endpoints — not yet wired up in standalone studio
-        if (req.url.startsWith("/api/render/") || (req.method === "POST" && req.url.match(/\/api\/projects\/[^/]+\/render/))) {
+        if (
+          req.url.startsWith("/api/render/") ||
+          (req.method === "POST" && req.url.match(/\/api\/projects\/[^/]+\/render/))
+        ) {
           res.writeHead(501, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ error: "Render not available in standalone studio mode" }));
           return;
@@ -53,14 +64,23 @@ function devProjectApi(): Plugin {
               try {
                 const raw = JSON.parse(readFileSync(join(sessionsDir, file), "utf-8"));
                 if (raw.projectId) {
-                  sessionMap.set(raw.projectId, { sessionId: file.replace(".json", ""), title: raw.title || "Untitled" });
+                  sessionMap.set(raw.projectId, {
+                    sessionId: file.replace(".json", ""),
+                    title: raw.title || "Untitled",
+                  });
                 }
-              } catch { /* skip corrupt */ }
+              } catch {
+                /* skip corrupt */
+              }
             }
           }
 
           const projects = readdirSync(dataDir, { withFileTypes: true })
-            .filter((d) => (d.isDirectory() || d.isSymbolicLink()) && existsSync(join(dataDir, d.name, "index.html")))
+            .filter(
+              (d) =>
+                (d.isDirectory() || d.isSymbolicLink()) &&
+                existsSync(join(dataDir, d.name, "index.html")),
+            )
             .map((d) => {
               const session = sessionMap.get(d.name);
               return { id: d.name, title: session?.title ?? d.name, sessionId: session?.sessionId };
@@ -84,7 +104,9 @@ function devProjectApi(): Plugin {
                 res.end(JSON.stringify({ projectId: raw.projectId, title: raw.title }));
                 return;
               }
-            } catch { /* ignore */ }
+            } catch {
+              /* ignore */
+            }
           }
           res.writeHead(404, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ error: "Session not found" }));
@@ -108,7 +130,9 @@ function devProjectApi(): Plugin {
                 projectId = session.projectId;
                 projectDir = join(dataDir, projectId);
               }
-            } catch { /* ignore */ }
+            } catch {
+              /* ignore */
+            }
           }
         }
 
@@ -138,8 +162,13 @@ function devProjectApi(): Plugin {
         if (req.method === "GET" && rest === "/preview") {
           try {
             const bundler = await getBundler();
-            const bundled = bundler ? await bundler(projectDir) : readFileSync(join(projectDir, "index.html"), "utf-8");
-            res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
+            const bundled = bundler
+              ? await bundler(projectDir)
+              : readFileSync(join(projectDir, "index.html"), "utf-8");
+            res.writeHead(200, {
+              "Content-Type": "text/html; charset=utf-8",
+              "Cache-Control": "no-store",
+            });
             res.end(bundled);
           } catch {
             // Fallback to raw HTML if bundling fails
@@ -148,7 +177,8 @@ function devProjectApi(): Plugin {
               res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
               res.end(readFileSync(file, "utf-8"));
             } else {
-              res.writeHead(404); res.end("not found");
+              res.writeHead(404);
+              res.end("not found");
             }
           }
           return;
@@ -158,7 +188,15 @@ function devProjectApi(): Plugin {
         if (req.method === "GET" && rest.startsWith("/preview/comp/")) {
           const compPath = decodeURIComponent(rest.replace("/preview/comp/", "").split("?")[0]);
           const compFile = resolve(projectDir, compPath);
-          if (!isSafePath(projectDir, compFile) || !existsSync(compFile) || !statSync(compFile).isFile()) { res.writeHead(404); res.end("not found"); return; }
+          if (
+            !isSafePath(projectDir, compFile) ||
+            !existsSync(compFile) ||
+            !statSync(compFile).isFile()
+          ) {
+            res.writeHead(404);
+            res.end("not found");
+            return;
+          }
 
           let rawComp = readFileSync(compFile, "utf-8");
 
@@ -179,16 +217,31 @@ function devProjectApi(): Plugin {
               const styles: string[] = [];
               const scripts: string[] = [];
               let body = nestedContent
-                .replace(/<style[^>]*>([\s\S]*?)<\/style>/gi, (_, css) => { styles.push(css); return ""; })
-                .replace(/<script[^>]*>([\s\S]*?)<\/script>/gi, (_, js) => { scripts.push(js); return ""; });
+                .replace(/<style[^>]*>([\s\S]*?)<\/style>/gi, (_, css) => {
+                  styles.push(css);
+                  return "";
+                })
+                .replace(/<script[^>]*>([\s\S]*?)<\/script>/gi, (_, js) => {
+                  scripts.push(js);
+                  return "";
+                });
               // Find the inner root with data-composition-id and use its children
-              const innerRootMatch = body.match(/<([a-z][a-z0-9]*)\b[^>]*data-composition-id[^>]*>([\s\S]*)<\/\1>/i);
+              const innerRootMatch = body.match(
+                /<([a-z][a-z0-9]*)\b[^>]*data-composition-id[^>]*>([\s\S]*)<\/\1>/i,
+              );
               const innerHTML = innerRootMatch ? innerRootMatch[2] : body;
               // Keep data-composition-src on the host for drill-down URL resolution
-              return before + srcAttr + after.replace(/>$/, ">") + innerHTML +
+              return (
+                before +
+                srcAttr +
+                after.replace(/>$/, ">") +
+                innerHTML +
                 (styles.length ? `<style>${styles.join("\n")}</style>` : "") +
-                (scripts.length ? `<script>${scripts.map(s => `(function(){try{${s}}catch(e){}})();`).join("\n")}</script>` : "");
-            }
+                (scripts.length
+                  ? `<script>${scripts.map((s) => `(function(){try{${s}}catch(e){}})();`).join("\n")}</script>`
+                  : "")
+              );
+            },
           );
 
           // Build a standalone HTML page with GSAP + runtime
@@ -203,7 +256,10 @@ function devProjectApi(): Plugin {
 ${content}
 </body>
 </html>`;
-          res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
+          res.writeHead(200, {
+            "Content-Type": "text/html; charset=utf-8",
+            "Cache-Control": "no-store",
+          });
           res.end(standalone);
           return;
         }
@@ -212,9 +268,19 @@ ${content}
         if (req.method === "GET" && rest.startsWith("/preview/")) {
           const subPath = decodeURIComponent(rest.replace("/preview/", "").split("?")[0]);
           const file = resolve(projectDir, subPath);
-          if (!isSafePath(projectDir, file) || !existsSync(file) || !statSync(file).isFile()) { res.writeHead(404); res.end("not found"); return; }
+          if (!isSafePath(projectDir, file) || !existsSync(file) || !statSync(file).isFile()) {
+            res.writeHead(404);
+            res.end("not found");
+            return;
+          }
           const isText = /\.(html|css|js|json|svg|txt)$/i.test(subPath);
-          const contentType = subPath.endsWith(".html") ? "text/html" : subPath.endsWith(".js") ? "text/javascript" : subPath.endsWith(".css") ? "text/css" : "application/octet-stream";
+          const contentType = subPath.endsWith(".html")
+            ? "text/html"
+            : subPath.endsWith(".js")
+              ? "text/javascript"
+              : subPath.endsWith(".css")
+                ? "text/css"
+                : "application/octet-stream";
           res.writeHead(200, { "Content-Type": contentType });
           res.end(readFileSync(file, isText ? "utf-8" : undefined));
           return;
@@ -224,7 +290,11 @@ ${content}
         if (req.method === "GET" && rest.startsWith("/files/")) {
           const filePath = decodeURIComponent(rest.replace("/files/", ""));
           const file = resolve(projectDir, filePath);
-          if (!isSafePath(projectDir, file) || !existsSync(file)) { res.writeHead(404); res.end("not found"); return; }
+          if (!isSafePath(projectDir, file) || !existsSync(file)) {
+            res.writeHead(404);
+            res.end("not found");
+            return;
+          }
           const content = readFileSync(file, "utf-8");
           res.writeHead(200, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ filename: filePath, content }));
@@ -241,7 +311,9 @@ ${content}
             return;
           }
           let body = "";
-          req.on("data", (chunk: Buffer) => { body += chunk.toString(); });
+          req.on("data", (chunk: Buffer) => {
+            body += chunk.toString();
+          });
           req.on("end", () => {
             writeFileSync(file, body, "utf-8");
             res.writeHead(200, { "Content-Type": "application/json" });
@@ -263,14 +335,21 @@ ${content}
             const real = lstatSync(full).isSymbolicLink() ? realpathSync(full) : full;
             realProjectPaths.push(real);
             server.watcher.add(real);
-          } catch { /* skip broken symlinks */ }
+          } catch {
+            /* skip broken symlinks */
+          }
         }
-      } catch { /* dataDir doesn't exist yet */ }
+      } catch {
+        /* dataDir doesn't exist yet */
+      }
 
       // When a project file changes, send HMR event to refresh the preview
       server.watcher.on("change", (filePath: string) => {
         const isProjectFile = realProjectPaths.some((p) => filePath.startsWith(p));
-        if (isProjectFile && (filePath.endsWith(".html") || filePath.endsWith(".css") || filePath.endsWith(".js"))) {
+        if (
+          isProjectFile &&
+          (filePath.endsWith(".html") || filePath.endsWith(".css") || filePath.endsWith(".js"))
+        ) {
           console.log(`[Studio] File changed: ${filePath}`);
           server.ws.send({ type: "custom", event: "hf:file-change", data: {} });
         }

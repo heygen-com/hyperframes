@@ -36,7 +36,11 @@ export function initSandboxRuntimeModular(): void {
   const registerRuntimeCleanup = (callback: () => void) => {
     runtimeCleanupCallbacks.push(callback);
   };
-  const postRuntimeDiagnosticOnce = (code: string, details: Record<string, RuntimeJson>, dedupeKey?: string) => {
+  const postRuntimeDiagnosticOnce = (
+    code: string,
+    details: Record<string, RuntimeJson>,
+    dedupeKey?: string,
+  ) => {
     const key = dedupeKey ?? `${code}:${JSON.stringify(details)}`;
     if (postedDiagnosticKeys.has(key)) {
       return;
@@ -157,7 +161,10 @@ export function initSandboxRuntimeModular(): void {
     category: string;
   } => {
     const message = rawMessage.toLowerCase();
-    if (message.includes("cannot read properties of null") || message.includes("cannot set properties of null")) {
+    if (
+      message.includes("cannot read properties of null") ||
+      message.includes("cannot set properties of null")
+    ) {
       return { code: "runtime_null_dom_access", category: "dom-null-access" };
     }
     if (message.includes("failed to execute 'queryselector'")) {
@@ -185,10 +192,13 @@ export function initSandboxRuntimeModular(): void {
     if (explicitRoot instanceof HTMLElement) {
       return explicitRoot;
     }
-    const compositionNodes = Array.from(document.querySelectorAll("[data-composition-id]")) as HTMLElement[];
+    const compositionNodes = Array.from(
+      document.querySelectorAll("[data-composition-id]"),
+    ) as HTMLElement[];
     if (compositionNodes.length === 0) return null;
     return (
-      compositionNodes.find((node) => !node.parentElement?.closest("[data-composition-id]")) ?? compositionNodes[0]
+      compositionNodes.find((node) => !node.parentElement?.closest("[data-composition-id]")) ??
+      compositionNodes[0]
     );
   };
 
@@ -278,12 +288,18 @@ export function initSandboxRuntimeModular(): void {
         el.style.position = "absolute";
       }
       const hasExplicitVerticalAnchor =
-        Boolean(el.style.top) || Boolean(el.style.bottom) || computed.top !== "auto" || computed.bottom !== "auto";
+        Boolean(el.style.top) ||
+        Boolean(el.style.bottom) ||
+        computed.top !== "auto" ||
+        computed.bottom !== "auto";
       if (!hasExplicitVerticalAnchor) {
         el.style.top = "0";
       }
       const hasExplicitHorizontalAnchor =
-        Boolean(el.style.left) || Boolean(el.style.right) || computed.left !== "auto" || computed.right !== "auto";
+        Boolean(el.style.left) ||
+        Boolean(el.style.right) ||
+        computed.left !== "auto" ||
+        computed.right !== "auto";
       if (!hasExplicitHorizontalAnchor) {
         el.style.left = "0";
       }
@@ -312,14 +328,20 @@ export function initSandboxRuntimeModular(): void {
 
   const resolveStartForElement = (element: Element, fallback = 0): number => {
     const resolver = createRuntimeStartTimeResolver({
-      timelineRegistry: (window.__timelines ?? {}) as Record<string, RuntimeTimelineLike | undefined>,
+      timelineRegistry: (window.__timelines ?? {}) as Record<
+        string,
+        RuntimeTimelineLike | undefined
+      >,
     });
     return resolver.resolveStartForElement(element, fallback);
   };
 
   const resolveDurationForElement = (element: Element): number | null => {
     const resolver = createRuntimeStartTimeResolver({
-      timelineRegistry: (window.__timelines ?? {}) as Record<string, RuntimeTimelineLike | undefined>,
+      timelineRegistry: (window.__timelines ?? {}) as Record<
+        string,
+        RuntimeTimelineLike | undefined
+      >,
     });
     return resolver.resolveDurationForElement(element);
   };
@@ -399,13 +421,20 @@ export function initSandboxRuntimeModular(): void {
     if (!isUsableTimelineDuration(mediaDurationFloorSeconds)) {
       return MIN_VALID_TIMELINE_DURATION_SECONDS;
     }
-    return Math.max(MIN_VALID_TIMELINE_DURATION_SECONDS, mediaDurationFloorSeconds * TIMELINE_FLOOR_COVERAGE_RATIO);
+    return Math.max(
+      MIN_VALID_TIMELINE_DURATION_SECONDS,
+      mediaDurationFloorSeconds * TIMELINE_FLOOR_COVERAGE_RATIO,
+    );
   };
 
-  const getSafeTimelineDurationSeconds = (timeline: RuntimeTimelineLike | null, fallback = 0): number => {
+  const getSafeTimelineDurationSeconds = (
+    timeline: RuntimeTimelineLike | null,
+    fallback = 0,
+  ): number => {
     const timelineDuration = getTimelineDurationSeconds(timeline);
     const mediaFloor = resolveMediaDurationFloorSeconds();
-    const fallbackDuration = Number.isFinite(fallback) && fallback > MIN_VALID_TIMELINE_DURATION_SECONDS ? fallback : 0;
+    const fallbackDuration =
+      Number.isFinite(fallback) && fallback > MIN_VALID_TIMELINE_DURATION_SECONDS ? fallback : 0;
     let safeDuration = 0;
     // Timeline is the source of truth for authored composition duration.
     if (isUsableTimelineDuration(timelineDuration)) {
@@ -423,20 +452,30 @@ export function initSandboxRuntimeModular(): void {
     const timelines = (window.__timelines ?? {}) as Record<string, RuntimeTimelineLike | undefined>;
     const startResolver = createRuntimeStartTimeResolver({ timelineRegistry: timelines });
     const mediaDurationFloorSeconds = resolveMediaDurationFloorSeconds();
-    const minCandidateDurationSeconds = resolveMinCandidateDurationSeconds(mediaDurationFloorSeconds);
+    const minCandidateDurationSeconds =
+      resolveMinCandidateDurationSeconds(mediaDurationFloorSeconds);
     const resolveCompositionStartSeconds = (compositionId: string): number => {
-      const node = document.querySelector(`[data-composition-id="${CSS.escape(compositionId)}"]`) as Element | null;
+      const node = document.querySelector(
+        `[data-composition-id="${CSS.escape(compositionId)}"]`,
+      ) as Element | null;
       if (!node) return 0;
       return startResolver.resolveStartForElement(node, 0);
     };
     const createCompositeTimelineFromCandidates = (
-      candidates: Array<{ compositionId: string; timeline: RuntimeTimelineLike; durationSeconds: number }>,
+      candidates: Array<{
+        compositionId: string;
+        timeline: RuntimeTimelineLike;
+        durationSeconds: number;
+      }>,
     ): RuntimeTimelineLike | null => {
       const gsapApi = window.gsap;
       if (!gsapApi || typeof gsapApi.timeline !== "function") return null;
       const compositeTimeline = gsapApi.timeline({ paused: true }) as RuntimeTimelineLike;
       for (const candidate of candidates) {
-        compositeTimeline.add(candidate.timeline, resolveCompositionStartSeconds(candidate.compositionId));
+        compositeTimeline.add(
+          candidate.timeline,
+          resolveCompositionStartSeconds(candidate.compositionId),
+        );
       }
       return compositeTimeline;
     };
@@ -469,7 +508,11 @@ export function initSandboxRuntimeModular(): void {
     };
     const addMissingChildCandidatesToRootTimeline = (
       rootTimeline: RuntimeTimelineLike,
-      candidates: Array<{ compositionId: string; timeline: RuntimeTimelineLike; durationSeconds: number }>,
+      candidates: Array<{
+        compositionId: string;
+        timeline: RuntimeTimelineLike;
+        durationSeconds: number;
+      }>,
     ): string[] => {
       const rootWithChildren = rootTimeline as RuntimeTimelineLike & {
         getChildren?: (...args: unknown[]) => unknown[];
@@ -509,7 +552,11 @@ export function initSandboxRuntimeModular(): void {
       if (!rootCompositionNode) return [];
       const seen = new Set<string>();
       const childNodes = Array.from(rootCompositionNode.querySelectorAll("[data-composition-id]"));
-      const candidates: Array<{ compositionId: string; timeline: RuntimeTimelineLike; durationSeconds: number }> = [];
+      const candidates: Array<{
+        compositionId: string;
+        timeline: RuntimeTimelineLike;
+        durationSeconds: number;
+      }> = [];
       for (const childNode of childNodes) {
         const childId = childNode.getAttribute("data-composition-id");
         if (!childId || childId === rootCompositionId) continue;
@@ -517,7 +564,10 @@ export function initSandboxRuntimeModular(): void {
         seen.add(childId);
         const candidateTimeline = timelines[childId] ?? null;
         if (!candidateTimeline) continue;
-        if (typeof candidateTimeline.play !== "function" || typeof candidateTimeline.pause !== "function") {
+        if (
+          typeof candidateTimeline.play !== "function" ||
+          typeof candidateTimeline.pause !== "function"
+        ) {
           continue;
         }
         const candidateDuration = getTimelineDurationSeconds(candidateTimeline);
@@ -531,7 +581,11 @@ export function initSandboxRuntimeModular(): void {
     };
     const rootChildCandidates = collectRootChildCandidates();
     const ensureChildCandidatesActive = (
-      candidates: Array<{ compositionId: string; timeline: RuntimeTimelineLike; durationSeconds: number }>,
+      candidates: Array<{
+        compositionId: string;
+        timeline: RuntimeTimelineLike;
+        durationSeconds: number;
+      }>,
     ): void => {
       for (const candidate of candidates) {
         const timelineWithPaused = candidate.timeline as RuntimeTimelineLike & {
@@ -554,7 +608,12 @@ export function initSandboxRuntimeModular(): void {
           ? addMissingChildCandidatesToRootTimeline(rootTimeline, rootChildCandidates)
           : [];
       // Mark children as bound so the polling loop stops re-resolving
-      if (rootChildCandidates.length > 0 || !document.querySelector("[data-composition-id]:not([data-composition-id='" + rootCompositionId + "'])")) {
+      if (
+        rootChildCandidates.length > 0 ||
+        !document.querySelector(
+          "[data-composition-id]:not([data-composition-id='" + rootCompositionId + "'])",
+        )
+      ) {
         childrenBound = true;
       }
 
@@ -564,7 +623,9 @@ export function initSandboxRuntimeModular(): void {
         try {
           const currentTime = rootTimeline.time();
           rootTimeline.seek(currentTime, false); // false = don't suppress events
-        } catch { /* ignore */ }
+        } catch {
+          /* ignore */
+        }
       }
       const rootDurationSeconds = getTimelineDurationSeconds(rootTimeline);
       if (!isUsableTimelineDuration(rootDurationSeconds) && rootChildCandidates.length > 0) {
@@ -592,7 +653,10 @@ export function initSandboxRuntimeModular(): void {
             },
           };
         }
-        const durationFloorTimeline = createDurationFloorTimeline(mediaDurationFloorSeconds ?? 0, rootTimeline);
+        const durationFloorTimeline = createDurationFloorTimeline(
+          mediaDurationFloorSeconds ?? 0,
+          rootTimeline,
+        );
         const durationFloorSeconds = getTimelineDurationSeconds(durationFloorTimeline);
         if (durationFloorTimeline && isUsableTimelineDuration(durationFloorSeconds)) {
           return {
@@ -616,7 +680,10 @@ export function initSandboxRuntimeModular(): void {
         }
       }
       if (!isUsableTimelineDuration(rootDurationSeconds) && rootChildCandidates.length === 0) {
-        const durationFloorTimeline = createDurationFloorTimeline(mediaDurationFloorSeconds ?? 0, rootTimeline);
+        const durationFloorTimeline = createDurationFloorTimeline(
+          mediaDurationFloorSeconds ?? 0,
+          rootTimeline,
+        );
         const durationFloorSeconds = getTimelineDurationSeconds(durationFloorTimeline);
         if (durationFloorTimeline && isUsableTimelineDuration(durationFloorSeconds)) {
           return {
@@ -750,9 +817,15 @@ export function initSandboxRuntimeModular(): void {
     const declaredHeight = Number(rootNode.getAttribute("data-height"));
     const computedStyle = window.getComputedStyle(rootNode);
     const hasDeclaredDimensions =
-      Number.isFinite(declaredWidth) && declaredWidth > 0 && Number.isFinite(declaredHeight) && declaredHeight > 0;
+      Number.isFinite(declaredWidth) &&
+      declaredWidth > 0 &&
+      Number.isFinite(declaredHeight) &&
+      declaredHeight > 0;
     const looksCollapsed =
-      rect.width <= 0 || rect.height <= 0 || rootNode.clientWidth <= 0 || rootNode.clientHeight <= 0;
+      rect.width <= 0 ||
+      rect.height <= 0 ||
+      rootNode.clientWidth <= 0 ||
+      rootNode.clientHeight <= 0;
     if (!hasDeclaredDimensions || !looksCollapsed) {
       return;
     }
@@ -811,7 +884,10 @@ export function initSandboxRuntimeModular(): void {
       });
     };
     runtimeUnhandledRejectionListener = (event: PromiseRejectionEvent) => {
-      const normalized = normalizeDiagnosticMessage(event.reason).slice(0, MAX_DIAGNOSTIC_MESSAGE_LENGTH);
+      const normalized = normalizeDiagnosticMessage(event.reason).slice(
+        0,
+        MAX_DIAGNOSTIC_MESSAGE_LENGTH,
+      );
       if (!normalized) {
         return;
       }
@@ -831,22 +907,31 @@ export function initSandboxRuntimeModular(): void {
   };
 
   const installAssetFailureDiagnostics = () => {
-    const assetNodes = Array.from(document.querySelectorAll("img, video, audio, source, link[rel='stylesheet']"));
+    const assetNodes = Array.from(
+      document.querySelectorAll("img, video, audio, source, link[rel='stylesheet']"),
+    );
     for (const node of assetNodes) {
       const onError = () => {
         if (!(node instanceof Element)) {
           return;
         }
         const tagName = node.tagName.toLowerCase();
-        const assetUrl = node.getAttribute("src") ?? node.getAttribute("href") ?? node.getAttribute("poster") ?? null;
-        const diagnosticCode = tagName === "link" ? "runtime_stylesheet_load_failed" : "runtime_asset_load_failed";
+        const assetUrl =
+          node.getAttribute("src") ??
+          node.getAttribute("href") ??
+          node.getAttribute("poster") ??
+          null;
+        const diagnosticCode =
+          tagName === "link" ? "runtime_stylesheet_load_failed" : "runtime_asset_load_failed";
         postRuntimeDiagnosticOnce(
           diagnosticCode,
           {
             tagName,
             assetUrl,
             currentSrc:
-              node instanceof HTMLImageElement || node instanceof HTMLMediaElement ? node.currentSrc || null : null,
+              node instanceof HTMLImageElement || node instanceof HTMLMediaElement
+                ? node.currentSrc || null
+                : null,
             readyState: node instanceof HTMLMediaElement ? node.readyState : null,
             networkState: node instanceof HTMLMediaElement ? node.networkState : null,
           },
@@ -890,7 +975,10 @@ export function initSandboxRuntimeModular(): void {
       });
   };
 
-  const rebindTimelineFromResolution = (resolution: TimelineResolution, reason: "loop_guard" | "manual"): boolean => {
+  const rebindTimelineFromResolution = (
+    resolution: TimelineResolution,
+    reason: "loop_guard" | "manual",
+  ): boolean => {
     if (!resolution.timeline) return false;
     const previousTimeline = state.capturedTimeline;
     if (previousTimeline && previousTimeline === resolution.timeline) {
@@ -940,7 +1028,9 @@ export function initSandboxRuntimeModular(): void {
       metadataRebindDebounceTimerId = null;
       const resolution = resolveRootTimelineFromDocument();
       if (!resolution.timeline) return;
-      const hasResolvedMediaFloor = isUsableTimelineDuration(resolution.mediaDurationFloorSeconds ?? null);
+      const hasResolvedMediaFloor = isUsableTimelineDuration(
+        resolution.mediaDurationFloorSeconds ?? null,
+      );
       if (!hasResolvedMediaFloor) return;
       if (!state.capturedTimeline) {
         if (bindRootTimelineIfAvailable()) {
@@ -951,7 +1041,8 @@ export function initSandboxRuntimeModular(): void {
       }
       if (metadataRebindApplied) return;
       const currentDuration = getTimelineDurationSeconds(state.capturedTimeline);
-      const nextDuration = resolution.selectedDurationSeconds ?? getTimelineDurationSeconds(resolution.timeline);
+      const nextDuration =
+        resolution.selectedDurationSeconds ?? getTimelineDurationSeconds(resolution.timeline);
       const isBetterCandidate =
         isUsableTimelineDuration(nextDuration) &&
         (!isUsableTimelineDuration(currentDuration) ||
@@ -1005,7 +1096,8 @@ export function initSandboxRuntimeModular(): void {
       playing: state.isPlaying,
       playbackRate: state.playbackRate,
     });
-    const rootCompId = document.querySelector("[data-composition-id]")?.getAttribute("data-composition-id") ?? null;
+    const rootCompId =
+      document.querySelector("[data-composition-id]")?.getAttribute("data-composition-id") ?? null;
     const visibilityNodes = Array.from(document.querySelectorAll("[data-start]"));
     for (const rawNode of visibilityNodes) {
       if (!(rawNode instanceof HTMLElement)) continue;
@@ -1038,7 +1130,9 @@ export function initSandboxRuntimeModular(): void {
           if (compDur > 0) computedEnd = start + compDur;
         }
       }
-      const isVisibleNow = state.currentTime >= start && (Number.isFinite(computedEnd) ? state.currentTime < computedEnd : true);
+      const isVisibleNow =
+        state.currentTime >= start &&
+        (Number.isFinite(computedEnd) ? state.currentTime < computedEnd : true);
       rawNode.style.visibility = isVisibleNow ? "visible" : "hidden";
     }
   };
@@ -1203,12 +1297,19 @@ export function initSandboxRuntimeModular(): void {
   initRuntimeAnalytics(postRuntimeMessage as (payload: unknown) => void);
   emitAnalyticsEvent("composition_loaded", {
     duration: player.getDuration(),
-    compositionId: document.querySelector("[data-composition-id]")?.getAttribute("data-composition-id") ?? null,
+    compositionId:
+      document.querySelector("[data-composition-id]")?.getAttribute("data-composition-id") ?? null,
   });
 
   state.controlBridgeHandler = installRuntimeControlBridge({
-    onPlay: () => { player.play(); emitAnalyticsEvent("composition_played", { time: player.getTime() }); },
-    onPause: () => { player.pause(); emitAnalyticsEvent("composition_paused", { time: player.getTime() }); },
+    onPlay: () => {
+      player.play();
+      emitAnalyticsEvent("composition_played", { time: player.getTime() });
+    },
+    onPause: () => {
+      player.pause();
+      emitAnalyticsEvent("composition_paused", { time: player.getTime() });
+    },
     onSeek: (frame, _seekMode) => {
       const time = Math.max(0, frame) / state.canonicalFps;
       player.seek(time);
@@ -1280,7 +1381,9 @@ export function initSandboxRuntimeModular(): void {
       state.isPlaying &&
       state.capturedTimeline != null &&
       Math.max(0, state.currentTime || 0) < PLAY_REBIND_HOLD_SECONDS;
-    const timelineBoundThisTick = shouldHoldRebindDuringEarlyPlay ? false : bindRootTimelineIfAvailable();
+    const timelineBoundThisTick = shouldHoldRebindDuringEarlyPlay
+      ? false
+      : bindRootTimelineIfAvailable();
     if (state.capturedTimeline && !player._timeline) {
       player._timeline = state.capturedTimeline;
     }

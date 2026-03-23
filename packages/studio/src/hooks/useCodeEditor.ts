@@ -52,19 +52,25 @@ export function useCodeEditor(): UseCodeEditorReturn {
   const updateContent = useCallback(
     (content: string) => {
       setOpenFiles((prev) =>
-        prev.map((f) => (f.path === activeFilePath ? { ...f, content, isDirty: content !== f.savedContent } : f)),
+        prev.map((f) =>
+          f.path === activeFilePath ? { ...f, content, isDirty: content !== f.savedContent } : f,
+        ),
       );
     },
     [activeFilePath],
   );
 
   const markSaved = useCallback((path: string) => {
-    setOpenFiles((prev) => prev.map((f) => (f.path === path ? { ...f, savedContent: f.content, isDirty: false } : f)));
+    setOpenFiles((prev) =>
+      prev.map((f) => (f.path === path ? { ...f, savedContent: f.content, isDirty: false } : f)),
+    );
   }, []);
 
   const externalUpdate = useCallback((path: string, content: string) => {
     setOpenFiles((prev) =>
-      prev.map((f) => (f.path === path ? { ...f, savedContent: content, content, isDirty: false } : f)),
+      prev.map((f) =>
+        f.path === path ? { ...f, savedContent: content, content, isDirty: false } : f,
+      ),
     );
   }, []);
 

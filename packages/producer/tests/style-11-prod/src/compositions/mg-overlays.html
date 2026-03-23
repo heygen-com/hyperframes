@@ -1,64 +1,137 @@
 <template id="mg-overlays-template">
-  <div data-composition-id="mg-overlays-comp" data-width="1080" data-height="1920" data-duration="13.88">
+  <div
+    data-composition-id="mg-overlays-comp"
+    data-width="1080"
+    data-height="1920"
+    data-duration="13.88"
+  >
     <div class="overlay-container">
       <div id="system-kicker">Editor Agent / Survey System</div>
 
       <svg id="drawing-canvas" viewBox="0 0 1080 1920" preserveAspectRatio="xMidYMid slice">
         <defs>
-          <pattern id="gridPattern" width="108" height="106.66666666666667" patternUnits="userSpaceOnUse">
-            <path d="M 108 0 L 0 0 0 106.66666666666667" fill="none" stroke="#1E1E1E" stroke-width="1" opacity="0.12"/>
+          <pattern
+            id="gridPattern"
+            width="108"
+            height="106.66666666666667"
+            patternUnits="userSpaceOnUse"
+          >
+            <path
+              d="M 108 0 L 0 0 0 106.66666666666667"
+              fill="none"
+              stroke="#1E1E1E"
+              stroke-width="1"
+              opacity="0.12"
+            />
           </pattern>
         </defs>
 
         <rect class="ambient-grid" width="100%" height="100%" fill="url(#gridPattern)" />
 
         <g id="structure-1" class="structure" transform="translate(108, 1108)">
-          <rect class="draw-line" x="0" y="0" width="324" height="245.33" fill="none" stroke="#CC3333" stroke-width="2" />
-          <rect class="fill-box red" x="0" y="0" width="324" height="245.33" fill="#CC3333" opacity="0" />
+          <rect
+            class="draw-line"
+            x="0"
+            y="0"
+            width="324"
+            height="245.33"
+            fill="none"
+            stroke="#CC3333"
+            stroke-width="2"
+          />
+          <rect
+            class="fill-box red"
+            x="0"
+            y="0"
+            width="324"
+            height="245.33"
+            fill="#CC3333"
+            opacity="0"
+          />
         </g>
 
         <g id="structure-2" class="structure" transform="translate(864, 214)">
-          <rect class="draw-line" x="-270" y="0" width="270" height="224" fill="none" stroke="#3377BB" stroke-width="2" />
-          <rect class="fill-box blue" x="-270" y="0" width="270" height="224" fill="#3377BB" opacity="0" />
+          <rect
+            class="draw-line"
+            x="-270"
+            y="0"
+            width="270"
+            height="224"
+            fill="none"
+            stroke="#3377BB"
+            stroke-width="2"
+          />
+          <rect
+            class="fill-box blue"
+            x="-270"
+            y="0"
+            width="270"
+            height="224"
+            fill="#3377BB"
+            opacity="0"
+          />
         </g>
 
         <g id="structure-3" class="structure" transform="translate(540, 1328)">
-          <rect class="draw-line" x="0" y="0" width="432" height="245.33" fill="none" stroke="#1E1E1E" stroke-width="2" />
-          <rect class="fill-box gray" x="0" y="0" width="432" height="245.33" fill="#1E1E1E" opacity="0" />
+          <rect
+            class="draw-line"
+            x="0"
+            y="0"
+            width="432"
+            height="245.33"
+            fill="none"
+            stroke="#1E1E1E"
+            stroke-width="2"
+          />
+          <rect
+            class="fill-box gray"
+            x="0"
+            y="0"
+            width="432"
+            height="245.33"
+            fill="#1E1E1E"
+            opacity="0"
+          />
         </g>
       </svg>
 
-      <div id="content-1" class="content-block" style="top: 1128px; left: 108px; width: 352px;">
+      <div id="content-1" class="content-block" style="top: 1128px; left: 108px; width: 352px">
         <div class="eyebrow">Need motion</div>
         <div class="stat-number">47%</div>
         <div class="stat-label">Asked for motion graphics</div>
         <div class="stat-note">Sharper pacing, clearer transitions, more visual energy.</div>
       </div>
 
-      <div id="content-2" class="content-block align-right" style="top: 238px; left: 864px; width: 270px; transform: translateX(-100%);">
+      <div
+        id="content-2"
+        class="content-block align-right"
+        style="top: 238px; left: 864px; width: 270px; transform: translateX(-100%)"
+      >
         <div class="eyebrow">Attention drop</div>
         <div class="stat-number">62%</div>
         <div class="stat-label">Were stuck with static content</div>
         <div class="stat-note">The message was right. The cut was not landing.</div>
       </div>
 
-      <div id="content-3" class="content-block" style="top: 1348px; left: 540px; width: 432px;">
+      <div id="content-3" class="content-block" style="top: 1348px; left: 540px; width: 432px">
         <div class="eyebrow">Execution gap</div>
         <div class="stat-number">75%</div>
         <div class="stat-label">Knew the look, needed the edit</div>
-        <div class="stat-note">The direction was clear. The hands-on workflow was the bottleneck.</div>
+        <div class="stat-note">
+          The direction was clear. The hands-on workflow was the bottleneck.
+        </div>
       </div>
     </div>
 
     <style>
-      @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;700&display=swap');
+      @import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;700&display=swap");
 
       [data-composition-id="mg-overlays-comp"] .overlay-container {
         width: 1080px;
         height: 1920px;
         position: relative;
-        color: #1E1E1E;
-        font-family: 'IBM Plex Mono', monospace;
+        color: #1e1e1e;
+        font-family: "IBM Plex Mono", monospace;
         pointer-events: none;
       }
 
@@ -85,7 +158,7 @@
         opacity: 0;
         z-index: 100;
         padding-top: 18px;
-        border-top: 2px solid #1E1E1E;
+        border-top: 2px solid #1e1e1e;
       }
 
       [data-composition-id="mg-overlays-comp"] .content-block.align-right {
@@ -93,7 +166,7 @@
       }
 
       [data-composition-id="mg-overlays-comp"] #content-2 {
-        border-top-color: #3377BB;
+        border-top-color: #3377bb;
       }
 
       [data-composition-id="mg-overlays-comp"] .eyebrow {
@@ -108,7 +181,7 @@
         font-size: 132px;
         font-weight: 700;
         line-height: 0.92;
-        color: #1E1E1E;
+        color: #1e1e1e;
       }
 
       [data-composition-id="mg-overlays-comp"] .stat-label {
@@ -132,11 +205,11 @@
       }
 
       [data-composition-id="mg-overlays-comp"] #content-1 .stat-number {
-        color: #CC3333;
+        color: #cc3333;
       }
 
       [data-composition-id="mg-overlays-comp"] #content-2 .stat-number {
-        color: #3377BB;
+        color: #3377bb;
       }
 
       [data-composition-id="mg-overlays-comp"] #content-2 .stat-label {
@@ -150,59 +223,73 @@
     </style>
 
     <script>
-      (function() {
+      (function () {
         const tl = gsap.timeline({ paused: true });
 
-        const revealStat = ({
-          start,
-          end,
-          structure,
-          fill,
-          content,
-          fromX = 0,
-          fromY = 0,
-        }) => {
-          tl.to(`${structure} .draw-line`, {
-            strokeDashoffset: 0,
-            duration: 0.75,
-            ease: "power2.out"
-          }, start);
+        const revealStat = ({ start, end, structure, fill, content, fromX = 0, fromY = 0 }) => {
+          tl.to(
+            `${structure} .draw-line`,
+            {
+              strokeDashoffset: 0,
+              duration: 0.75,
+              ease: "power2.out",
+            },
+            start,
+          );
 
-          tl.to(fill, {
-            opacity: 0.1,
-            duration: 0.32,
-            ease: "power2.out"
-          }, start + 0.26);
+          tl.to(
+            fill,
+            {
+              opacity: 0.1,
+              duration: 0.32,
+              ease: "power2.out",
+            },
+            start + 0.26,
+          );
 
-          tl.fromTo(content, {
-            opacity: 0,
-            x: fromX,
-            y: fromY
-          }, {
-            opacity: 1,
-            x: 0,
-            y: 0,
-            duration: 0.55,
-            ease: "power3.out"
-          }, start + 0.18);
+          tl.fromTo(
+            content,
+            {
+              opacity: 0,
+              x: fromX,
+              y: fromY,
+            },
+            {
+              opacity: 1,
+              x: 0,
+              y: 0,
+              duration: 0.55,
+              ease: "power3.out",
+            },
+            start + 0.18,
+          );
 
-          tl.to([content, structure], {
-            opacity: 0,
-            y: -10,
-            duration: 0.28,
-            ease: "power2.in"
-          }, end - 0.28);
+          tl.to(
+            [content, structure],
+            {
+              opacity: 0,
+              y: -10,
+              duration: 0.28,
+              ease: "power2.in",
+            },
+            end - 0.28,
+          );
         };
 
-        tl.fromTo("#system-kicker", {
-          opacity: 0,
-          y: -18
-        }, {
-          opacity: 1,
-          y: 0,
-          duration: 0.5,
-          ease: "power2.out"
-        }, 0.35);
+        tl.fromTo(
+          "#system-kicker",
+          {
+            opacity: 0,
+            y: -18,
+          },
+          {
+            opacity: 1,
+            y: 0,
+            duration: 0.5,
+            ease: "power2.out",
+          },
+          0.35,
+        );
 
         revealStat({
           start: 1.199,
@@ -210,7 +297,7 @@
           structure: "#structure-1",
           fill: "#structure-1 .fill-box.red",
           content: "#content-1",
-          fromY: 22
+          fromY: 22,
         });
 
         revealStat({
@@ -219,7 +306,7 @@
           structure: "#structure-2",
           fill: "#structure-2 .fill-box.blue",
           content: "#content-2",
-          fromX: 26
+          fromX: 26,
         });
 
         revealStat({
@@ -228,26 +315,38 @@
           structure: "#structure-3",
           fill: "#structure-3 .fill-box.gray",
           content: "#content-3",
-          fromY: -22
+          fromY: -22,
         });
 
-        tl.to(".ambient-grid", {
-          opacity: 0.22,
-          duration: 4.6,
-          ease: "sine.inOut"
-        }, 0);
+        tl.to(
+          ".ambient-grid",
+          {
+            opacity: 0.22,
+            duration: 4.6,
+            ease: "sine.inOut",
+          },
+          0,
+        );
 
-        tl.to(".ambient-grid", {
-          opacity: 0.1,
-          duration: 4.64,
-          ease: "sine.inOut"
-        }, 4.6);
+        tl.to(
+          ".ambient-grid",
+          {
+            opacity: 0.1,
+            duration: 4.64,
+            ease: "sine.inOut",
+          },
+          4.6,
+        );
 
-        tl.to(".ambient-grid", {
-          opacity: 0.2,
-          duration: 4.64,
-          ease: "sine.inOut"
-        }, 9.24);
+        tl.to(
+          ".ambient-grid",
+          {
+            opacity: 0.2,
+            duration: 4.64,
+            ease: "sine.inOut",
+          },
+          9.24,
+        );
 
         window.__timelines["mg-overlays-comp"] = tl;
       })();

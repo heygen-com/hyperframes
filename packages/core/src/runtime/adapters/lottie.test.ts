@@ -21,7 +21,11 @@ function createLottieWebAnim(opts?: { totalFrames?: number; frameRate?: number }
   };
 }
 
-function createDotLottiePlayer(opts?: { totalFrames?: number; frameRate?: number; duration?: number }) {
+function createDotLottiePlayer(opts?: {
+  totalFrames?: number;
+  frameRate?: number;
+  duration?: number;
+}) {
   return {
     play: vi.fn(),
     pause: vi.fn(),

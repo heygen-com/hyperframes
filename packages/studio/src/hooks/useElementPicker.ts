@@ -99,7 +99,8 @@ export function useElementPicker(
       // Accept events from either the primary iframe or the active override
       const activeIframe = getActiveIframe();
       if (!activeIframe) return;
-      if (e.source !== activeIframe.contentWindow && e.source !== iframeRef.current?.contentWindow) return;
+      if (e.source !== activeIframe.contentWindow && e.source !== iframeRef.current?.contentWindow)
+        return;
 
       if (data.type === "element-picked") {
         const el = data.elementInfo;
@@ -192,7 +193,11 @@ export function useElementPicker(
           // Persist to source file
           if (pickedElement.id) {
             // ID-based patching — surgical edit of just the element's style
-            syncToSource(pickedElement.id, pickedElement.selector, { type: "inline-style", property: prop, value });
+            syncToSource(pickedElement.id, pickedElement.selector, {
+              type: "inline-style",
+              property: prop,
+              value,
+            });
           } else {
             // No ID — save the full composition HTML from the iframe
             // This captures ALL inline style changes, not just the targeted one
@@ -203,9 +208,13 @@ export function useElementPicker(
                 const src = activeIframe.getAttribute("src") ?? "";
                 const compMatch = src.match(/\/comp\/(.+?)(?:\?|$)/);
                 const filePath = compMatch ? compMatch[1] : "index.html";
-                optionsRef.current.onSyncFiles({ [filePath]: `<!DOCTYPE html>\n<html>${fullHtml.replace(/<html[^>]*>/, "")}`  });
+                optionsRef.current.onSyncFiles({
+                  [filePath]: `<!DOCTYPE html>\n<html>${fullHtml.replace(/<html[^>]*>/, "")}`,
+                });
               }
-            } catch { /* cross-origin */ }
+            } catch {
+              /* cross-origin */
+            }
           }
         }
       } catch {
@@ -234,7 +243,11 @@ export function useElementPicker(
           );
           // Persist to source file immediately
           if (pickedElement.id) {
-            syncToSource(pickedElement.id, pickedElement.selector, { type: "attribute", property: attr, value });
+            syncToSource(pickedElement.id, pickedElement.selector, {
+              type: "attribute",
+              property: attr,
+              value,
+            });
           }
         }
       } catch {

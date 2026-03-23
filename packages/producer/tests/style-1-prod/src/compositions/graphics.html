@@ -41,12 +41,14 @@
         left: 0;
         width: 1920px;
         height: 1080px;
-        font-family: 'Futura', 'DIN Alternate', 'Arial Black', sans-serif;
+        font-family: "Futura", "DIN Alternate", "Arial Black", sans-serif;
         overflow: hidden;
       }
 
       /* Common Styles */
-      .intro-container, .stat-container, .outro-container {
+      .intro-container,
+      .stat-container,
+      .outro-container {
         position: absolute;
         top: 0;
         left: 0;
@@ -87,7 +89,7 @@
       .intro-text {
         font-size: 100px;
         font-weight: 900;
-        color: #D0021B;
+        color: #d0021b;
         z-index: 2;
         text-align: center;
         width: 1000px;
@@ -97,14 +99,14 @@
       .stat-1 .vermillion-square {
         width: 600px;
         height: 600px;
-        background-color: #D0021B;
+        background-color: #d0021b;
         position: absolute;
         left: 50px;
         top: 240px;
       }
 
       .stat-1 .stat-number {
-        color: #FFFFFF;
+        color: #ffffff;
         position: absolute;
         left: 100px;
         top: 400px;
@@ -126,7 +128,7 @@
       .stat-2 .white-circle {
         width: 550px; /* Scaled down from 650px to avoid clipping */
         height: 550px;
-        background-color: #D0021B; /* Vermillion background */
+        background-color: #d0021b; /* Vermillion background */
         border-radius: 50%;
         position: absolute;
         right: 100px; /* Moved further right to avoid A-roll */
@@ -139,7 +141,7 @@
 
       .stat-2 .stat-number {
         color: #000000; /* Black text */
-        position: relative; 
+        position: relative;
         right: auto;
         top: auto;
         font-size: 180px; /* Slightly adjusted for better fit in circle */
@@ -165,13 +167,13 @@
       }
 
       .stat-3 .stat-number {
-        color: #D0021B;
+        color: #d0021b;
         position: absolute;
         top: 100px;
       }
 
       .stat-3 .stat-subtext {
-        color: #FFFFFF;
+        color: #ffffff;
         top: 300px;
       }
 
@@ -179,7 +181,7 @@
       .outro-circle {
         width: 900px;
         height: 900px;
-        background-color: #D0021B;
+        background-color: #d0021b;
         border-radius: 50%;
         position: absolute;
       }
@@ -195,42 +197,118 @@
     </style>
 
     <script>
-      (function() {
-        const TRANSCRIPT = [{'text': 'We', 'start': 0.119, 'end': 0.259}, {'text': 'asked', 'start': 0.319, 'end': 0.479}, {'text': 'what', 'start': 0.519, 'end': 0.659}, {'text': 'you', 'start': 0.699, 'end': 0.819}, {'text': 'needed.', 'start': 0.859, 'end': 1.819}, {'text': 'Forty-seven', 'start': 1.86, 'end': 2.299}, {'text': 'percent', 'start': 2.399, 'end': 2.679}, {'text': 'of', 'start': 2.7, 'end': 2.799}, {'text': 'you', 'start': 2.839, 'end': 2.939}, {'text': 'said', 'start': 3.039, 'end': 3.179}, {'text': 'motion', 'start': 3.24, 'end': 3.559}, {'text': 'graphics,', 'start': 3.579, 'end': 4.599}, {'text': 'sixty-two', 'start': 4.679, 'end': 5.179}, {'text': 'percent', 'start': 5.299, 'end': 5.759}, {'text': 'said', 'start': 5.859, 'end': 5.98}, {'text': 'static', 'start': 6.079, 'end': 6.399}, {'text': 'content', 'start': 6.46, 'end': 6.879}, {'text': 'was', 'start': 6.92, 'end': 7.079}, {'text': 'costing', 'start': 7.099, 'end': 7.48}, {'text': 'you', 'start': 7.5, 'end': 7.579}, {'text': 'attention,', 'start': 7.679, 'end': 8.659}, {'text': 'and', 'start': 8.699, 'end': 8.86}, {'text': 'three', 'start': 8.88, 'end': 9.06}, {'text': 'out', 'start': 9.079, 'end': 9.18}, {'text': 'of', 'start': 9.199, 'end': 9.34}, {'text': 'four', 'start': 9.38, 'end': 9.799}, {'text': 'said', 'start': 9.84, 'end': 10.0}, {'text': 'you', 'start': 10.019, 'end': 10.159}, {'text': 'know', 'start': 10.179, 'end': 10.36}, {'text': 'the', 'start': 10.38, 'end': 10.42}, {'text': 'look', 'start': 10.519, 'end': 10.699}, {'text': 'you', 'start': 10.739, 'end': 10.859}, {'text': 'want,', 'start': 10.98, 'end': 11.34}, {'text': 'but', 'start': 11.359, 'end': 11.52}, {'text': "don't", 'start': 11.56, 'end': 11.779}, {'text': 'have', 'start': 11.819, 'end': 11.94}, {'text': 'the', 'start': 11.96, 'end': 12.06}, {'text': 'editing', 'start': 12.079, 'end': 12.4}, {'text': 'skills', 'start': 12.52, 'end': 12.859}, {'text': 'to', 'start': 12.88, 'end': 13.0}, {'text': 'get', 'start': 13.019, 'end': 13.18}, {'text': 'there.', 'start': 13.22, 'end': 14.22}, {'text': 'So', 'start': 14.239, 'end': 14.399}, {'text': 'we', 'start': 14.42, 'end': 14.52}, {'text': 'built', 'start': 14.619, 'end': 14.88}, {'text': 'Editor', 'start': 15.079, 'end': 15.42}, {'text': 'Agent.', 'start': 15.619, 'end': 16.02}];
+      (function () {
+        const TRANSCRIPT = [
+          { text: "We", start: 0.119, end: 0.259 },
+          { text: "asked", start: 0.319, end: 0.479 },
+          { text: "what", start: 0.519, end: 0.659 },
+          { text: "you", start: 0.699, end: 0.819 },
+          { text: "needed.", start: 0.859, end: 1.819 },
+          { text: "Forty-seven", start: 1.86, end: 2.299 },
+          { text: "percent", start: 2.399, end: 2.679 },
+          { text: "of", start: 2.7, end: 2.799 },
+          { text: "you", start: 2.839, end: 2.939 },
+          { text: "said", start: 3.039, end: 3.179 },
+          { text: "motion", start: 3.24, end: 3.559 },
+          { text: "graphics,", start: 3.579, end: 4.599 },
+          { text: "sixty-two", start: 4.679, end: 5.179 },
+          { text: "percent", start: 5.299, end: 5.759 },
+          { text: "said", start: 5.859, end: 5.98 },
+          { text: "static", start: 6.079, end: 6.399 },
+          { text: "content", start: 6.46, end: 6.879 },
+          { text: "was", start: 6.92, end: 7.079 },
+          { text: "costing", start: 7.099, end: 7.48 },
+          { text: "you", start: 7.5, end: 7.579 },
+          { text: "attention,", start: 7.679, end: 8.659 },
+          { text: "and", start: 8.699, end: 8.86 },
+          { text: "three", start: 8.88, end: 9.06 },
+          { text: "out", start: 9.079, end: 9.18 },
+          { text: "of", start: 9.199, end: 9.34 },
+          { text: "four", start: 9.38, end: 9.799 },
+          { text: "said", start: 9.84, end: 10.0 },
+          { text: "you", start: 10.019, end: 10.159 },
+          { text: "know", start: 10.179, end: 10.36 },
+          { text: "the", start: 10.38, end: 10.42 },
+          { text: "look", start: 10.519, end: 10.699 },
+          { text: "you", start: 10.739, end: 10.859 },
+          { text: "want,", start: 10.98, end: 11.34 },
+          { text: "but", start: 11.359, end: 11.52 },
+          { text: "don't", start: 11.56, end: 11.779 },
+          { text: "have", start: 11.819, end: 11.94 },
+          { text: "the", start: 11.96, end: 12.06 },
+          { text: "editing", start: 12.079, end: 12.4 },
+          { text: "skills", start: 12.52, end: 12.859 },
+          { text: "to", start: 12.88, end: 13.0 },
+          { text: "get", start: 13.019, end: 13.18 },
+          { text: "there.", start: 13.22, end: 14.22 },
+          { text: "So", start: 14.239, end: 14.399 },
+          { text: "we", start: 14.42, end: 14.52 },
+          { text: "built", start: 14.619, end: 14.88 },
+          { text: "Editor", start: 15.079, end: 15.42 },
+          { text: "Agent.", start: 15.619, end: 16.02 },
+        ];
         const tl = gsap.timeline({ paused: true });
 
         // 1. Intro (0-1.8s)
-        tl.set('.intro-container', { opacity: 1 }, 0);
-        tl.from('.black-circle', { scale: 0, duration: 0.3, ease: 'power2.out' }, 0);
-        tl.from('.intro-text', { x: -100, opacity: 0, duration: 0.3, ease: 'power2.out' }, 0.1);
-        tl.set('.intro-container', { opacity: 0 }, 1.8);
+        tl.set(".intro-container", { opacity: 1 }, 0);
+        tl.from(".black-circle", { scale: 0, duration: 0.3, ease: "power2.out" }, 0);
+        tl.from(".intro-text", { x: -100, opacity: 0, duration: 0.3, ease: "power2.out" }, 0.1);
+        tl.set(".intro-container", { opacity: 0 }, 1.8);
 
         // 2. Stat 1 (1.86s - 4.6s) - "Forty-seven percent"
         const stat1Time = 1.86;
-        tl.set('.stat-1', { opacity: 1 }, stat1Time);
-        tl.from('.stat-1 .vermillion-square', { x: -1000, duration: 0.3, ease: 'power2.out' }, stat1Time);
-        tl.from('.stat-1 .stat-number', { opacity: 0, scale: 0.8, duration: 0.2, ease: 'power2.out' }, stat1Time + 0.1);
-        tl.from('.stat-1 .stat-subtext', { opacity: 0, y: 20, duration: 0.2, ease: 'power2.out' }, stat1Time + 0.2);
-        tl.set('.stat-1', { opacity: 0 }, 4.6);
+        tl.set(".stat-1", { opacity: 1 }, stat1Time);
+        tl.from(
+          ".stat-1 .vermillion-square",
+          { x: -1000, duration: 0.3, ease: "power2.out" },
+          stat1Time,
+        );
+        tl.from(
+          ".stat-1 .stat-number",
+          { opacity: 0, scale: 0.8, duration: 0.2, ease: "power2.out" },
+          stat1Time + 0.1,
+        );
+        tl.from(
+          ".stat-1 .stat-subtext",
+          { opacity: 0, y: 20, duration: 0.2, ease: "power2.out" },
+          stat1Time + 0.2,
+        );
+        tl.set(".stat-1", { opacity: 0 }, 4.6);
 
         // 3. Stat 2 (4.679s - 8.8s) - "Sixty-two percent"
         const stat2Time = 4.679;
-        tl.set('.stat-2', { opacity: 1 }, stat2Time);
-        tl.from('.stat-2 .white-circle', { scale: 0, duration: 0.3, ease: 'power2.out' }, stat2Time);
-        tl.set('.stat-2', { opacity: 0 }, 8.8);
+        tl.set(".stat-2", { opacity: 1 }, stat2Time);
+        tl.from(
+          ".stat-2 .white-circle",
+          { scale: 0, duration: 0.3, ease: "power2.out" },
+          stat2Time,
+        );
+        tl.set(".stat-2", { opacity: 0 }, 8.8);
 
         // 4. Stat 3 (8.88s - 14.2s) - "Three out of four"
         const stat3Time = 8.88;
-        tl.set('.stat-3', { opacity: 1 }, stat3Time);
-        tl.from('.stat-3 .black-rectangle', { width: 0, duration: 0.3, ease: 'power2.out' }, stat3Time);
-        tl.from('.stat-3 .stat-number', { opacity: 0, y: -30, duration: 0.2, ease: 'power2.out' }, stat3Time + 0.1);
-        tl.from('.stat-3 .stat-subtext', { opacity: 0, y: 20, duration: 0.2, ease: 'power2.out' }, stat3Time + 0.2);
-        tl.set('.stat-3', { opacity: 0 }, 14.2);
+        tl.set(".stat-3", { opacity: 1 }, stat3Time);
+        tl.from(
+          ".stat-3 .black-rectangle",
+          { width: 0, duration: 0.3, ease: "power2.out" },
+          stat3Time,
+        );
+        tl.from(
+          ".stat-3 .stat-number",
+          { opacity: 0, y: -30, duration: 0.2, ease: "power2.out" },
+          stat3Time + 0.1,
+        );
+        tl.from(
+          ".stat-3 .stat-subtext",
+          { opacity: 0, y: 20, duration: 0.2, ease: "power2.out" },
+          stat3Time + 0.2,
+        );
+        tl.set(".stat-3", { opacity: 0 }, 14.2);
 
         // 5. Outro (14.239s - 17s) - "So we built Editor Agent"
-        tl.set('.outro-container', { opacity: 1 }, 14.239);
-        tl.from('.outro-circle', { scale: 0, duration: 0.3, ease: 'power2.out' }, 14.239);
-        tl.from('.outro-text', { scale: 1.5, opacity: 0, duration: 0.3, ease: 'power2.out' }, 14.3);
+        tl.set(".outro-container", { opacity: 1 }, 14.239);
+        tl.from(".outro-circle", { scale: 0, duration: 0.3, ease: "power2.out" }, 14.239);
+        tl.from(".outro-text", { scale: 1.5, opacity: 0, duration: 0.3, ease: "power2.out" }, 14.3);
 
         window.__timelines["graphics-comp"] = tl;
       })();

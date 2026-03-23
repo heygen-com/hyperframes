@@ -194,7 +194,10 @@ describe("collectRuntimeTimelinePayload", () => {
     clip.setAttribute("data-duration", "5000");
     root.appendChild(clip);
 
-    const result = collectRuntimeTimelinePayload({ canonicalFps: 30, maxTimelineDurationSeconds: 60 });
+    const result = collectRuntimeTimelinePayload({
+      canonicalFps: 30,
+      maxTimelineDurationSeconds: 60,
+    });
     expect(result.durationInFrames).toBeLessThanOrEqual(60 * 30);
   });
 
@@ -263,13 +266,31 @@ describe("collectRuntimeTimelinePayload", () => {
     root.appendChild(comp);
 
     (window as any).__timelines = {
-      "main": { duration: () => 15, time: () => 0, play: () => {}, pause: () => {}, seek: () => {}, add: () => {}, paused: () => {}, set: () => {} },
-      "scene-1": { duration: () => 8, time: () => 0, play: () => {}, pause: () => {}, seek: () => {}, add: () => {}, paused: () => {}, set: () => {} },
+      main: {
+        duration: () => 15,
+        time: () => 0,
+        play: () => {},
+        pause: () => {},
+        seek: () => {},
+        add: () => {},
+        paused: () => {},
+        set: () => {},
+      },
+      "scene-1": {
+        duration: () => 8,
+        time: () => 0,
+        play: () => {},
+        pause: () => {},
+        seek: () => {},
+        add: () => {},
+        paused: () => {},
+        set: () => {},
+      },
     };
 
     const result = collectRuntimeTimelinePayload(defaultParams);
     // scene-1 should get duration 8 from timeline registry
-    const sceneClip = result.clips.find(c => c.compositionId === "scene-1");
+    const sceneClip = result.clips.find((c) => c.compositionId === "scene-1");
     expect(sceneClip).toBeDefined();
     expect(sceneClip?.duration).toBe(8);
   });

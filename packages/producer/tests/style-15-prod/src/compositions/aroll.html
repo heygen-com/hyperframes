@@ -2,21 +2,21 @@
   <div data-composition-id="aroll" data-width="1080" data-height="1920" data-duration="14">
     <!-- Grid Background -->
     <div class="grid-container">
-      <div class="grid-line horizontal" style="top: 20%;"></div>
-      <div class="grid-line horizontal" style="top: 40%;"></div>
-      <div class="grid-line horizontal" style="top: 60%;"></div>
-      <div class="grid-line horizontal" style="top: 80%;"></div>
-      <div class="grid-line vertical" style="left: 20%;"></div>
-      <div class="grid-line vertical" style="left: 40%;"></div>
-      <div class="grid-line vertical" style="left: 60%;"></div>
-      <div class="grid-line vertical" style="left: 80%;"></div>
+      <div class="grid-line horizontal" style="top: 20%"></div>
+      <div class="grid-line horizontal" style="top: 40%"></div>
+      <div class="grid-line horizontal" style="top: 60%"></div>
+      <div class="grid-line horizontal" style="top: 80%"></div>
+      <div class="grid-line vertical" style="left: 20%"></div>
+      <div class="grid-line vertical" style="left: 40%"></div>
+      <div class="grid-line vertical" style="left: 60%"></div>
+      <div class="grid-line vertical" style="left: 80%"></div>
     </div>
 
     <!-- Video Container -->
     <div class="video-frame">
       <div class="video-mask">
-        <video 
-          id="aroll-video" 
+        <video
+          id="aroll-video"
           src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/uploaded_assets/c10d5d5c_5e0cbe68f361481f8d2c77b028e84504.mp4"
           data-start="0"
           data-duration="14"
@@ -71,7 +71,7 @@
         /* Full width and height for impact, no padding */
         top: 0;
         left: 0;
-        width: 100%; 
+        width: 100%;
         height: 100%;
         background: #111;
         overflow: hidden;
@@ -118,7 +118,7 @@
     </style>
 
     <script>
-      (function() {
+      (function () {
         const tl = gsap.timeline({ paused: true });
         const frame = document.querySelector('[data-composition-id="aroll"] .video-frame');
         const wipe1 = document.querySelector('[data-composition-id="aroll"] .wipe-line-1');
@@ -126,60 +126,83 @@
 
         // 1. Entrance & Scale Down (0s - 1.5s)
         // Starts full screen and scales down slightly to establish the grid
-        tl.fromTo(frame, {
-          scale: 1.1,
-          opacity: 0
-        }, {
-          scale: 1.0, /* Fixed scale to fill frame better */
-          opacity: 1,
-          duration: 1.5,
-          ease: 'power4.out'
-        }, 0);
-
-        tl.fromTo(wipe1, 
-          { opacity: 1, y: -500 }, 
-          { y: 1500, duration: 1.5, ease: 'power2.inOut' }, 
-          0
+        tl.fromTo(
+          frame,
+          {
+            scale: 1.1,
+            opacity: 0,
+          },
+          {
+            scale: 1.0 /* Fixed scale to fill frame better */,
+            opacity: 1,
+            duration: 1.5,
+            ease: "power4.out",
+          },
+          0,
         );
-        tl.fromTo(wipe2, 
-          { opacity: 1, y: 500 }, 
-          { y: -1500, duration: 1.5, ease: 'power2.inOut' }, 
-          0.1
+
+        tl.fromTo(
+          wipe1,
+          { opacity: 1, y: -500 },
+          { y: 1500, duration: 1.5, ease: "power2.inOut" },
+          0,
+        );
+        tl.fromTo(
+          wipe2,
+          { opacity: 1, y: 500 },
+          { y: -1500, duration: 1.5, ease: "power2.inOut" },
+          0.1,
         );
         tl.to([wipe1, wipe2], { opacity: 0, duration: 0.3 }, 1.5);
 
         // 2. Ambient Motion (1.5s - 7.319s)
-        tl.to(frame, {
-          y: '+=15',
-          duration: 3,
-          ease: 'sine.inOut',
-          repeat: 1,
-          yoyo: true
-        }, 1.5);
+        tl.to(
+          frame,
+          {
+            y: "+=15",
+            duration: 3,
+            ease: "sine.inOut",
+            repeat: 1,
+            yoyo: true,
+          },
+          1.5,
+        );
 
         // 3. Hero Moment Exit (7.319s - 8.319s)
-        tl.to(frame, {
-          scale: 0,
-          opacity: 0,
-          duration: 0.8,
-          ease: 'power3.in'
-        }, 7.319);
+        tl.to(
+          frame,
+          {
+            scale: 0,
+            opacity: 0,
+            duration: 0.8,
+            ease: "power3.in",
+          },
+          7.319,
+        );
 
         // 4. Hero Moment Return (12.239s - 13.739s)
-        tl.to(frame, {
-          scale: 1.0, /* Fixed return scale */
-          opacity: 1,
-          duration: 1.2,
-          ease: 'back.out(1.2)'
-        }, 12.239);
+        tl.to(
+          frame,
+          {
+            scale: 1.0 /* Fixed return scale */,
+            opacity: 1,
+            duration: 1.2,
+            ease: "back.out(1.2)",
+          },
+          12.239,
+        );
 
         // 5. Final Exit (13.8s - 14s)
-        tl.to(frame, {
-          opacity: 0,
-          scale: 0.6,
-          duration: 0.5,
-          ease: 'power2.in'
-        }, 13.5);
+        tl.to(
+          frame,
+          {
+            opacity: 0,
+            scale: 0.6,
+            duration: 0.5,
+            ease: "power2.in",
+          },
+          13.5,
+        );
 
         window.__timelines["aroll"] = tl;
       })();

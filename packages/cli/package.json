@@ -2,13 +2,13 @@
   "name": "hyperframes",
   "version": "0.1.1",
   "description": "HyperFrames CLI — create, preview, and render HTML video compositions",
-  "type": "module",
   "bin": {
     "hyperframes": "./dist/cli.js"
   },
   "files": [
     "dist"
   ],
+  "type": "module",
   "scripts": {
     "dev": "tsx src/cli.ts",
     "build": "pnpm build:studio && tsup && pnpm build:runtime && pnpm build:copy",
@@ -30,9 +30,9 @@
     "puppeteer-core": "^24.39.1"
   },
   "devDependencies": {
-    "@hyperframes/core": "workspace:*",
     "@clack/prompts": "^1.1.0",
     "@hono/node-server": "^1.0.0",
+    "@hyperframes/core": "workspace:*",
     "@hyperframes/engine": "workspace:*",
     "@hyperframes/producer": "workspace:*",
     "@types/adm-zip": "^0.5.7",

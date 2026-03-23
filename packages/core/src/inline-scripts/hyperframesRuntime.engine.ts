@@ -11,10 +11,15 @@ export type HyperframesRuntimeBuildOptions = {
 function applyDefaultParityMode(script: string, enabled: boolean): string {
   const parityFlagPattern = /var\s+_parityModeEnabled\s*=\s*(?:true|false)\s*;/;
   if (!parityFlagPattern.test(script)) return script;
-  return script.replace(parityFlagPattern, `var _parityModeEnabled = ${enabled ? "true" : "false"};`);
+  return script.replace(
+    parityFlagPattern,
+    `var _parityModeEnabled = ${enabled ? "true" : "false"};`,
+  );
 }
 
-export function buildHyperframesRuntimeScript(options: HyperframesRuntimeBuildOptions = {}): string {
+export function buildHyperframesRuntimeScript(
+  options: HyperframesRuntimeBuildOptions = {},
+): string {
   const entryPath = resolve(dirname(fileURLToPath(import.meta.url)), "../runtime/entry.ts");
   const result = buildSync({
     entryPoints: [entryPath],

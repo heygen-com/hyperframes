@@ -252,10 +252,20 @@ export async function extractAllVideoFrames(
     }
   }
 
-  return { success: errors.length === 0, extracted, errors, totalFramesExtracted, durationMs: Date.now() - startTime };
+  return {
+    success: errors.length === 0,
+    extracted,
+    errors,
+    totalFramesExtracted,
+    durationMs: Date.now() - startTime,
+  };
 }
 
-export function getFrameAtTime(extracted: ExtractedFrames, globalTime: number, videoStart: number): string | null {
+export function getFrameAtTime(
+  extracted: ExtractedFrames,
+  globalTime: number,
+  videoStart: number,
+): string | null {
   const localTime = globalTime - videoStart;
   if (localTime < 0) return null;
   const frameIndex = Math.floor(localTime * extracted.fps);
@@ -344,7 +354,9 @@ export class FrameLookupTable {
     this.lastTime = globalTime;
   }
 
-  getActiveFramePayloads(globalTime: number): Map<string, { framePath: string; frameIndex: number }> {
+  getActiveFramePayloads(
+    globalTime: number,
+  ): Map<string, { framePath: string; frameIndex: number }> {
     const frames = new Map<string, { framePath: string; frameIndex: number }>();
     this.refreshActiveSet(globalTime);
     for (const videoId of this.activeVideoIds) {
@@ -381,7 +393,10 @@ export class FrameLookupTable {
   }
 }
 
-export function createFrameLookupTable(videos: VideoElement[], extracted: ExtractedFrames[]): FrameLookupTable {
+export function createFrameLookupTable(
+  videos: VideoElement[],
+  extracted: ExtractedFrames[],
+): FrameLookupTable {
   const table = new FrameLookupTable();
   const extractedMap = new Map<string, ExtractedFrames>();
   for (const ext of extracted) extractedMap.set(ext.videoId, ext);

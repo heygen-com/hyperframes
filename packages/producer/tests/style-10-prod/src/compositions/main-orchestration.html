@@ -1,26 +1,58 @@
 <template id="main-orchestration-template">
-  <div data-composition-id="main-orchestration" data-width="1080" data-height="1920" data-duration="16.04">
+  <div
+    data-composition-id="main-orchestration"
+    data-width="1080"
+    data-height="1920"
+    data-duration="16.04"
+  >
     <!-- Background Layer -->
     <div class="background"></div>
     <div class="bg-pattern"></div>
 
     <!-- A-roll Layer -->
     <div class="a-roll-container">
-      <video id="short_mag_cut" src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/uploaded_assets/45a6a87b_ccb8e5b8362f48129491b55141ca3cb3.mp4" data-start="0" data-duration="16.04" data-track-index="0" crossorigin="anonymous"></video>
+      <video
+        id="short_mag_cut"
+        src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/uploaded_assets/45a6a87b_ccb8e5b8362f48129491b55141ca3cb3.mp4"
+        data-start="0"
+        data-duration="16.04"
+        data-track-index="0"
+        crossorigin="anonymous"
+      ></video>
     </div>
 
     <!-- SFX Layer (Invisible) -->
-    <audio id="sfx-bounce" src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/generated_assets/731894a4_d2374e83720e4b339b6b71ceec1337d7.mp3" data-start="0" data-track-index="1"></audio>
-    <audio id="sfx-shift-1" src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/generated_assets/9e9b7f8a_b36aec8bcce6491f8da430e7e189f1a5.mp3" data-start="3" data-track-index="1"></audio>
-    <audio id="sfx-shift-2" src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/generated_assets/9e9b7f8a_b36aec8bcce6491f8da430e7e189f1a5.mp3" data-start="8.6" data-track-index="1"></audio>
-    <audio id="sfx-pop" src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/generated_assets/3a7e8a33_f7ebce6d456345779477498996aa0f74.mp3" data-start="14" data-track-index="1"></audio>
+    <audio
+      id="sfx-bounce"
+      src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/generated_assets/731894a4_d2374e83720e4b339b6b71ceec1337d7.mp3"
+      data-start="0"
+      data-track-index="1"
+    ></audio>
+    <audio
+      id="sfx-shift-1"
+      src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/generated_assets/9e9b7f8a_b36aec8bcce6491f8da430e7e189f1a5.mp3"
+      data-start="3"
+      data-track-index="1"
+    ></audio>
+    <audio
+      id="sfx-shift-2"
+      src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/generated_assets/9e9b7f8a_b36aec8bcce6491f8da430e7e189f1a5.mp3"
+      data-start="8.6"
+      data-track-index="1"
+    ></audio>
+    <audio
+      id="sfx-pop"
+      src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/generated_assets/3a7e8a33_f7ebce6d456345779477498996aa0f74.mp3"
+      data-start="14"
+      data-track-index="1"
+    ></audio>
 
     <style>
       [data-composition-id="main-orchestration"] {
         width: 1080px;
         height: 1920px;
         overflow: hidden;
-        background-color: #F8F9FA;
+        background-color: #f8f9fa;
         position: relative;
       }
 
@@ -31,7 +63,7 @@
         width: 100%;
         height: 100%;
         z-index: 0;
-        background-color: #F8F9FA;
+        background-color: #f8f9fa;
       }
 
       [data-composition-id="main-orchestration"] .bg-pattern {
@@ -42,7 +74,7 @@
         height: 100%;
         z-index: 1;
         opacity: 0;
-        background-image: radial-gradient(#001F3F 3px, transparent 3px);
+        background-image: radial-gradient(#001f3f 3px, transparent 3px);
         background-size: 80px 80px;
         background-position: 0 0;
       }
@@ -66,82 +98,107 @@
         object-fit: cover;
         border-radius: 40px;
         transform-origin: center center;
-        box-shadow: 0 40px 80px rgba(0,0,0,0.5);
+        box-shadow: 0 40px 80px rgba(0, 0, 0, 0.5);
       }
     </style>
 
     <script>
-      (function() {
+      (function () {
         const tl = gsap.timeline({ paused: true });
         const bg = document.querySelector('[data-composition-id="main-orchestration"] .background');
-        const pattern = document.querySelector('[data-composition-id="main-orchestration"] .bg-pattern');
+        const pattern = document.querySelector(
+          '[data-composition-id="main-orchestration"] .bg-pattern',
+        );
         const video = document.querySelector('[data-composition-id="main-orchestration"] video');
 
         // --- Background Color Logic (Pop Cuts) ---
         // 0-3s: Light Gray #F8F9FA
         // 3-8.6s: Deep Navy Gradient
-        tl.set(bg, { background: 'linear-gradient(135deg, #001F3F 0%, #0033CC 100%)' }, 3);
+        tl.set(bg, { background: "linear-gradient(135deg, #001F3F 0%, #0033CC 100%)" }, 3);
         tl.to(pattern, { opacity: 0.2, duration: 0.3 }, 3);
 
         // 8.6-14s: Light Gray #F8F9FA
-        tl.set(bg, { background: '#F8F9FA' }, 8.6);
+        tl.set(bg, { background: "#F8F9FA" }, 8.6);
         tl.to(pattern, { opacity: 0, duration: 0.3 }, 8.6);
 
         // 14-16.04s: Deep Navy Gradient
-        tl.set(bg, { background: 'linear-gradient(135deg, #001F3F 0%, #0033CC 100%)' }, 14);
+        tl.set(bg, { background: "linear-gradient(135deg, #001F3F 0%, #0033CC 100%)" }, 14);
         tl.to(pattern, { opacity: 0.2, duration: 0.3 }, 14);
 
         // --- Background Pattern Animation ---
-        tl.to(pattern, {
-          backgroundPosition: "60px 60px",
-          duration: 16.04,
-          ease: "none"
-        }, 0);
+        tl.to(
+          pattern,
+          {
+            backgroundPosition: "60px 60px",
+            duration: 16.04,
+            ease: "none",
+          },
+          0,
+        );
 
         // --- A-roll Animation Logic ---
-        
+
         // Initial State: 10% off-screen top (1920 * 0.1 = 192)
         gsap.set(video, { y: -192, scale: 0.8, x: 0, rotation: 0 });
 
         // 0-3s: Bounce in from top with elastic overshoot. Position: Centered, scale 1.2.
-        tl.to(video, {
-          y: 0,
-          scale: 1.2,
-          duration: 1.2,
-          ease: "elastic.out(1, 0.75)"
-        }, 0);
+        tl.to(
+          video,
+          {
+            y: 0,
+            scale: 1.2,
+            duration: 1.2,
+            ease: "elastic.out(1, 0.75)",
+          },
+          0,
+        );
 
         // 3-8.6s: Shift to Top (y: -400). Whip pan / Pop with bounce.
-        tl.to(video, {
-          y: -400,
-          scale: 1.0,
-          rotation: -3,
-          duration: 0.5,
-          ease: "back.out(1.7)"
-        }, 3);
+        tl.to(
+          video,
+          {
+            y: -400,
+            scale: 1.0,
+            rotation: -3,
+            duration: 0.5,
+            ease: "back.out(1.7)",
+          },
+          3,
+        );
 
         // 8.6-14s: Shift to Bottom (y: 400).
-        tl.to(video, {
-          y: 400,
-          scale: 1.0,
-          rotation: 3,
-          duration: 0.5,
-          ease: "power4.inOut"
-        }, 8.6)
-        .to(video, {
-          scale: 1.0,
-          duration: 0.2,
-          ease: "back.out(1.2)"
-        }, 8.9);
+        tl.to(
+          video,
+          {
+            y: 400,
+            scale: 1.0,
+            rotation: 3,
+            duration: 0.5,
+            ease: "power4.inOut",
+          },
+          8.6,
+        ).to(
+          video,
+          {
+            scale: 1.0,
+            duration: 0.2,
+            ease: "back.out(1.2)",
+          },
+          8.9,
+        );
 
         // 14-16.04s: Zoom in to Center (scale 1.3).
-        tl.to(video, {
-          y: 0,
-          scale: 1.3,
-          rotation: 0,
-          duration: 0.4,
-          ease: "back.out(1.5)"
-        }, 14);
+        tl.to(
+          video,
+          {
+            y: 0,
+            scale: 1.3,
+            rotation: 0,
+            duration: 0.4,
+            ease: "back.out(1.5)",
+          },
+          14,
+        );
 
         window.__timelines["main-orchestration"] = tl;
       })();

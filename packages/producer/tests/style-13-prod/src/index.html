@@ -1,106 +1,124 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Editor Agent - Wim Crouwel Style</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
     <style>
-        body, html {
-            margin: 0;
-            padding: 0;
-            width: 1080px;
-            height: 1920px;
-            background-color: #1A1A1A;
-            overflow: hidden;
-            font-family: monospace; /* Fallback for grid style */
-        }
-        #main-canvas {
-            width: 1080px;
-            height: 1920px;
-            position: relative;
-        }
-        #aroll-video {
-            width: 1080px;
-            height: 1920px;
-            object-fit: cover;
-            position: absolute;
-            top: 0;
-            left: 0;
-        }
+      body,
+      html {
+        margin: 0;
+        padding: 0;
+        width: 1080px;
+        height: 1920px;
+        background-color: #1a1a1a;
+        overflow: hidden;
+        font-family: monospace; /* Fallback for grid style */
+      }
+      #main-canvas {
+        width: 1080px;
+        height: 1920px;
+        position: relative;
+      }
+      #aroll-video {
+        width: 1080px;
+        height: 1920px;
+        object-fit: cover;
+        position: absolute;
+        top: 0;
+        left: 0;
+      }
     </style>
-</head>
-<body>
-    <div id="main-canvas" data-composition-id="main-video" data-width="1080" data-height="1920" data-duration="16">
-        
-        <!-- Background Layer -->
-        <div id="bg-comp" 
-             data-composition-id="background" 
-             data-composition-src="compositions/background.html" 
-             data-start="0" 
-             data-duration="16" 
-             data-track-index="0">
-        </div>
+  </head>
+  <body>
+    <div
+      id="main-canvas"
+      data-composition-id="main-video"
+      data-width="1080"
+      data-height="1920"
+      data-duration="16"
+    >
+      <!-- Background Layer -->
+      <div
+        id="bg-comp"
+        data-composition-id="background"
+        data-composition-src="compositions/background.html"
+        data-start="0"
+        data-duration="16"
+        data-track-index="0"
+      ></div>
 
-        <!-- A-Roll Video -->
-        <video id="aroll-video" 
-               src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/uploaded_assets/f82d6e98_9076b56b449e44ac95a2099375863f91.mp4" 
-               data-start="0" 
-               data-duration="16" 
-               data-track-index="1">
-        </video>
+      <!-- A-Roll Video -->
+      <video
+        id="aroll-video"
+        src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/uploaded_assets/f82d6e98_9076b56b449e44ac95a2099375863f91.mp4"
+        data-start="0"
+        data-duration="16"
+        data-track-index="1"
+      ></video>
 
-        <!-- Overlays Layer (Stats/Graphics) -->
-        <div id="overlays-comp" 
-             data-composition-id="overlays" 
-             data-composition-src="compositions/overlays.html" 
-             data-start="0" 
-             data-duration="16" 
-             data-track-index="2">
-        </div>
+      <!-- Overlays Layer (Stats/Graphics) -->
+      <div
+        id="overlays-comp"
+        data-composition-id="overlays"
+        data-composition-src="compositions/overlays.html"
+        data-start="0"
+        data-duration="16"
+        data-track-index="2"
+      ></div>
 
-        <!-- Captions Layer -->
-        <div id="captions-comp" 
-             data-composition-id="captions" 
-             data-composition-src="compositions/captions.html" 
-             data-start="0" 
-             data-duration="16" 
-             data-track-index="3">
-        </div>
+      <!-- Captions Layer -->
+      <div
+        id="captions-comp"
+        data-composition-id="captions"
+        data-composition-src="compositions/captions.html"
+        data-start="0"
+        data-duration="16"
+        data-track-index="3"
+      ></div>
 
-        <!-- Transitions Layer (Scanlines) -->
-        <div id="transitions-comp" 
-             data-composition-id="transitions" 
-             data-composition-src="compositions/transitions.html" 
-             data-start="0" 
-             data-duration="16" 
-             data-track-index="4">
-        </div>
-
+      <!-- Transitions Layer (Scanlines) -->
+      <div
+        id="transitions-comp"
+        data-composition-id="transitions"
+        data-composition-src="compositions/transitions.html"
+        data-start="0"
+        data-duration="16"
+        data-track-index="4"
+      ></div>
     </div>
 
     <script>
-        const tl = gsap.timeline({ paused: true });
-        
-        // A-roll exit and return logic
-        // Leave at 7.3s (after "attention") and return at 12.3s (before "So we built")
-        tl.to("#aroll-video", { 
-            x: -1080, 
-            scale: 0.9,
-            rotation: -5,
-            duration: 0.6, 
-            ease: "expo.inOut" 
-        }, 7.3);
-        
-        tl.to("#aroll-video", { 
-            x: 0, 
-            scale: 1,
-            rotation: 0,
-            duration: 0.6, 
-            ease: "back.out(1.2)" /* Slight overshoot for more "soul" */
-        }, 12.3);
+      const tl = gsap.timeline({ paused: true });
 
-        window.__timelines["main-video"] = tl;
+      // A-roll exit and return logic
+      // Leave at 7.3s (after "attention") and return at 12.3s (before "So we built")
+      tl.to(
+        "#aroll-video",
+        {
+          x: -1080,
+          scale: 0.9,
+          rotation: -5,
+          duration: 0.6,
+          ease: "expo.inOut",
+        },
+        7.3,
+      );
+
+      tl.to(
+        "#aroll-video",
+        {
+          x: 0,
+          scale: 1,
+          rotation: 0,
+          duration: 0.6,
+          ease: "back.out(1.2)" /* Slight overshoot for more "soul" */,
+        },
+        12.3,
+      );
+
+      window.__timelines["main-video"] = tl;
     </script>
-</body>
+  </body>
 </html>

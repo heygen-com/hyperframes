@@ -71,7 +71,10 @@ export function createVideoFrameInjector(
 ): BeforeCaptureHook | null {
   if (!frameLookup) return null;
 
-  const cacheLimit = Math.max(32, config?.frameDataUriCacheLimit ?? DEFAULT_CONFIG.frameDataUriCacheLimit);
+  const cacheLimit = Math.max(
+    32,
+    config?.frameDataUriCacheLimit ?? DEFAULT_CONFIG.frameDataUriCacheLimit,
+  );
   const frameCache = createFrameDataUriCache(cacheLimit);
   const lastInjectedFrameByVideo = new Map<string, number>();
 
@@ -81,13 +84,16 @@ export function createVideoFrameInjector(
     const updates: Array<{ videoId: string; dataUri: string; frameIndex: number }> = [];
     const activeIds = new Set<string>();
     if (activePayloads.size > 0) {
-      const pendingReads: Array<Promise<{ videoId: string; dataUri: string; frameIndex: number }>> = [];
+      const pendingReads: Array<Promise<{ videoId: string; dataUri: string; frameIndex: number }>> =
+        [];
       for (const [videoId, payload] of activePayloads) {
         activeIds.add(videoId);
         const lastFrameIndex = lastInjectedFrameByVideo.get(videoId);
         if (lastFrameIndex === payload.frameIndex) continue;
         pendingReads.push(
-          frameCache.get(payload.framePath).then((dataUri) => ({ videoId, dataUri, frameIndex: payload.frameIndex })),
+          frameCache
+            .get(payload.framePath)
+            .then((dataUri) => ({ videoId, dataUri, frameIndex: payload.frameIndex })),
         );
       }
       updates.push(...(await Promise.all(pendingReads)));

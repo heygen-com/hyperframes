@@ -8,14 +8,14 @@
 
     <div id="graphic-2" class="vignelli-container">
       <div class="white-box">
-        <div class="text-black">GRABAR<br>CONTENIDO</div>
+        <div class="text-black">GRABAR<br />CONTENIDO</div>
       </div>
     </div>
 
     <div id="graphic-3" class="vignelli-full">
       <div class="charcoal-bg"></div>
       <div class="full-content">
-        <div class="text-white">SER YO<br>MISMA</div>
+        <div class="text-white">SER YO<br />MISMA</div>
       </div>
     </div>
 
@@ -26,7 +26,7 @@
         left: 0;
         width: 1080px;
         height: 1920px;
-        font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+        font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
         overflow: hidden;
       }
 
@@ -42,14 +42,14 @@
       }
 
       .white-box {
-        background-color: #FFFFFF;
+        background-color: #ffffff;
         padding: 40px 60px;
-        border-left: 30px solid #CC0000;
+        border-left: 30px solid #cc0000;
         position: relative;
       }
 
       .text-black {
-        color: #1A1A1A;
+        color: #1a1a1a;
         font-size: 100px;
         font-weight: 900;
         line-height: 0.9;
@@ -87,7 +87,7 @@
         left: 100%;
         width: 100%;
         height: 100%;
-        background-color: #1A1A1A;
+        background-color: #1a1a1a;
       }
 
       .full-content {
@@ -95,12 +95,12 @@
         z-index: 2;
         opacity: 0;
         text-align: left;
-        border-left: 30px solid #CC0000;
+        border-left: 30px solid #cc0000;
         padding-left: 60px;
       }
 
       .full-content .text-white {
-        color: #FFFFFF;
+        color: #ffffff;
         font-size: 180px;
         font-weight: 900;
         line-height: 0.85;
@@ -109,7 +109,7 @@
     </style>
 
     <script>
-      (function() {
+      (function () {
         const tl = gsap.timeline({ paused: true });
 
         const G1_IN = 1.22;
@@ -120,49 +120,33 @@
         const G3_OUT = 10.24;
 
         tl.fromTo(
-          '#graphic-1',
+          "#graphic-1",
           { opacity: 0, x: -100 },
           { opacity: 1, x: 0, duration: 0.8, ease: "power3.out" },
-          G1_IN
+          G1_IN,
         );
 
-        tl.to(
-          '#graphic-1',
-          { opacity: 0, x: 100, duration: 0.4, ease: "power3.in" },
-          G1_OUT - 0.4
-        );
+        tl.to("#graphic-1", { opacity: 0, x: 100, duration: 0.4, ease: "power3.in" }, G1_OUT - 0.4);
 
         tl.fromTo(
-          '#graphic-2',
+          "#graphic-2",
           { opacity: 0, x: -100 },
           { opacity: 1, x: 0, duration: 0.8, ease: "power3.out" },
-          G2_IN
+          G2_IN,
         );
 
-        tl.to(
-          '#graphic-2',
-          { opacity: 0, x: 100, duration: 0.4, ease: "power3.in" },
-          G2_OUT - 0.4
-        );
+        tl.to("#graphic-2", { opacity: 0, x: 100, duration: 0.4, ease: "power3.in" }, G2_OUT - 0.4);
 
-        tl.to(
-          '.charcoal-bg',
-          { left: 0, duration: 0.8, ease: "power3.inOut" },
-          G3_IN
-        );
+        tl.to(".charcoal-bg", { left: 0, duration: 0.8, ease: "power3.inOut" }, G3_IN);
 
         tl.fromTo(
-          '.full-content',
+          ".full-content",
           { opacity: 0, x: -50 },
           { opacity: 1, x: 0, duration: 0.8, ease: "back.out(1.2)" },
-          G3_IN + 0.4
+          G3_IN + 0.4,
         );
 
-        tl.to(
-          '#graphic-3',
-          { opacity: 0, duration: 0.24 },
-          G3_OUT - 0.24
-        );
+        tl.to("#graphic-3", { opacity: 0, duration: 0.24 }, G3_OUT - 0.24);
 
         window.__timelines = window.__timelines || {};
         window.__timelines["overlays"] = tl;

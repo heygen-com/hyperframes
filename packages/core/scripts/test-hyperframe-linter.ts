@@ -58,7 +58,9 @@ function testDetectsOverlappingGsapTweens() {
   `;
 
   const result = lintHyperframeHtml(html);
-  const overlapFinding = result.findings.find((finding) => finding.code === "overlapping_gsap_tweens");
+  const overlapFinding = result.findings.find(
+    (finding) => finding.code === "overlapping_gsap_tweens",
+  );
 
   assert.ok(overlapFinding, "expected an overlapping GSAP tween warning");
   assert.equal(overlapFinding?.severity, "warning");
@@ -67,10 +69,14 @@ function testDetectsOverlappingGsapTweens() {
 function testCliJsonOutput() {
   const fixturePath = path.join(ROOT, "src/tests/chat-project-9/index.html");
   const tsxBin = path.join(ROOT, "node_modules/.bin/tsx");
-  const stdout = execFileSync(tsxBin, ["scripts/check-hyperframe-static.ts", "--json", fixturePath], {
-    cwd: ROOT,
-    encoding: "utf8",
-  });
+  const stdout = execFileSync(
+    tsxBin,
+    ["scripts/check-hyperframe-static.ts", "--json", fixturePath],
+    {
+      cwd: ROOT,
+      encoding: "utf8",
+    },
+  );
   const payload = JSON.parse(stdout);
 
   assert.equal(payload.ok, true);

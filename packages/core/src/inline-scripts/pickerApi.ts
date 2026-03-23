@@ -22,9 +22,21 @@ export type HyperframePickerApi = {
   isActive: () => boolean;
   getHovered: () => HyperframePickerElementInfo | null;
   getSelected: () => HyperframePickerElementInfo | null;
-  getCandidatesAtPoint: (clientX: number, clientY: number, limit?: number) => HyperframePickerElementInfo[];
-  pickAtPoint: (clientX: number, clientY: number, index?: number) => HyperframePickerElementInfo | null;
-  pickManyAtPoint: (clientX: number, clientY: number, indexes?: number[]) => HyperframePickerElementInfo[];
+  getCandidatesAtPoint: (
+    clientX: number,
+    clientY: number,
+    limit?: number,
+  ) => HyperframePickerElementInfo[];
+  pickAtPoint: (
+    clientX: number,
+    clientY: number,
+    index?: number,
+  ) => HyperframePickerElementInfo | null;
+  pickManyAtPoint: (
+    clientX: number,
+    clientY: number,
+    indexes?: number[],
+  ) => HyperframePickerElementInfo[];
 };
 
 declare global {

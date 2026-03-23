@@ -30,14 +30,14 @@
     </div>
 
     <style>
-      @import url('https://fonts.googleapis.com/css2?family=Archivo+Black&family=Space+Mono:wght@700&display=swap');
+      @import url("https://fonts.googleapis.com/css2?family=Archivo+Black&family=Space+Mono:wght@700&display=swap");
 
       [data-composition-id="overlays"] {
         width: 1080px;
         height: 1920px;
         position: relative;
         color: white;
-        font-family: 'Space Mono', monospace;
+        font-family: "Space Mono", monospace;
         overflow: hidden;
       }
 
@@ -91,7 +91,7 @@
       .dot {
         width: 100%;
         height: 100%;
-        background-color: #00FF80; /* Brighter Green for better contrast */
+        background-color: #00ff80; /* Brighter Green for better contrast */
         border-radius: 2px;
         opacity: 0;
       }
@@ -103,8 +103,8 @@
       }
 
       .label-text {
-        color: #00FF80; /* Brighter Green */
-        font-family: 'Space Mono', monospace; /* Mono for supporting text */
+        color: #00ff80; /* Brighter Green */
+        font-family: "Space Mono", monospace; /* Mono for supporting text */
         font-size: 24px; /* Smaller */
         font-weight: 400; /* Lighter */
         letter-spacing: 1px;
@@ -114,7 +114,7 @@
       }
 
       .label-text.large {
-        font-family: 'Archivo Black', sans-serif; /* Keep headers bold */
+        font-family: "Archivo Black", sans-serif; /* Keep headers bold */
         font-size: 48px;
         font-weight: 900;
         text-transform: uppercase;
@@ -127,138 +127,132 @@
         left: 0;
         width: 100%;
         height: 4px;
-        background-color: #FF6600; /* Signal Orange for small UI detail */
-        box-shadow: 0 0 10px #FF6600;
+        background-color: #ff6600; /* Signal Orange for small UI detail */
+        box-shadow: 0 0 10px #ff6600;
         transform: translateY(-100%);
         pointer-events: none;
       }
     </style>
 
     <script>
-      (function() {
-        const TRANSCRIPT = [{'text': 'We', 'start': 0.14, 'end': 0.239}, {'text': 'asked', 'start': 0.28, 'end': 0.459}, {'text': 'what', 'start': 0.5, 'end': 0.619}, {'text': 'you', 'start': 0.659, 'end': 0.779}, {'text': 'needed.', 'start': 0.8, 'end': 1.179}, {'text': 'Forty-seven', 'start': 1.199, 'end': 1.619}, {'text': 'percent', 'start': 1.699, 'end': 1.96}, {'text': 'of', 'start': 1.979, 'end': 2.059}, {'text': 'you', 'start': 2.099, 'end': 2.299}, {'text': 'said', 'start': 2.319, 'end': 2.499}, {'text': 'motion', 'start': 2.559, 'end': 2.839}, {'text': 'graphics,', 'start': 2.899, 'end': 3.759}, {'text': 'sixty-two', 'start': 3.799, 'end': 4.159}, {'text': 'percent', 'start': 4.239, 'end': 4.559}, {'text': 'said', 'start': 4.639, 'end': 4.799}, {'text': 'static', 'start': 4.859, 'end': 5.199}, {'text': 'content', 'start': 5.239, 'end': 5.639}, {'text': 'was', 'start': 5.679, 'end': 5.779}, {'text': 'costing', 'start': 5.859, 'end': 6.219}, {'text': 'you', 'start': 6.259, 'end': 6.339}, {'text': 'attention,', 'start': 6.379, 'end': 7.299}, {'text': 'and', 'start': 7.319, 'end': 7.439}, {'text': 'three', 'start': 7.48, 'end': 7.599}, {'text': 'out', 'start': 7.679, 'end': 7.779}, {'text': 'of', 'start': 7.799, 'end': 7.879}, {'text': 'four', 'start': 7.94, 'end': 8.139}, {'text': 'said', 'start': 8.279, 'end': 8.46}, {'text': 'you', 'start': 8.519, 'end': 8.6}, {'text': 'know', 'start': 8.619, 'end': 8.739}, {'text': 'the', 'start': 8.8, 'end': 8.88}, {'text': 'look', 'start': 8.92, 'end': 9.079}, {'text': 'you', 'start': 9.119, 'end': 9.259}, {'text': 'want', 'start': 9.279, 'end': 9.619}, {'text': 'but', 'start': 9.779, 'end': 9.88}, {'text': "don't", 'start': 9.92, 'end': 10.1}, {'text': 'have', 'start': 10.159, 'end': 10.3}, {'text': 'the', 'start': 10.3, 'end': 10.42}, {'text': 'editing', 'start': 10.5, 'end': 10.779}, {'text': 'skills', 'start': 10.86, 'end': 11.139}, {'text': 'to', 'start': 11.159, 'end': 11.239}, {'text': 'get', 'start': 11.279, 'end': 11.439}, {'text': 'there.', 'start': 11.46, 'end': 12.239}, {'text': 'So', 'start': 12.3, 'end': 12.38}, {'text': 'we', 'start': 12.399, 'end': 12.519}, {'text': 'built', 'start': 12.539, 'end': 12.759}, {'text': 'Editor', 'start': 12.84, 'end': 13.119}, {'text': 'Agent.', 'start': 13.239, 'end': 13.84}];
+      (function () {
+        const TRANSCRIPT = [
+          { text: "We", start: 0.14, end: 0.239 },
+          { text: "asked", start: 0.28, end: 0.459 },
+          { text: "what", start: 0.5, end: 0.619 },
+          { text: "you", start: 0.659, end: 0.779 },
+          { text: "needed.", start: 0.8, end: 1.179 },
+          { text: "Forty-seven", start: 1.199, end: 1.619 },
+          { text: "percent", start: 1.699, end: 1.96 },
+          { text: "of", start: 1.979, end: 2.059 },
+          { text: "you", start: 2.099, end: 2.299 },
+          { text: "said", start: 2.319, end: 2.499 },
+          { text: "motion", start: 2.559, end: 2.839 },
+          { text: "graphics,", start: 2.899, end: 3.759 },
+          { text: "sixty-two", start: 3.799, end: 4.159 },
+          { text: "percent", start: 4.239, end: 4.559 },
+          { text: "said", start: 4.639, end: 4.799 },
+          { text: "static", start: 4.859, end: 5.199 },
+          { text: "content", start: 5.239, end: 5.639 },
+          { text: "was", start: 5.679, end: 5.779 },
+          { text: "costing", start: 5.859, end: 6.219 },
+          { text: "you", start: 6.259, end: 6.339 },
+          { text: "attention,", start: 6.379, end: 7.299 },
+          { text: "and", start: 7.319, end: 7.439 },
+          { text: "three", start: 7.48, end: 7.599 },
+          { text: "out", start: 7.679, end: 7.779 },
+          { text: "of", start: 7.799, end: 7.879 },
+          { text: "four", start: 7.94, end: 8.139 },
+          { text: "said", start: 8.279, end: 8.46 },
+          { text: "you", start: 8.519, end: 8.6 },
+          { text: "know", start: 8.619, end: 8.739 },
+          { text: "the", start: 8.8, end: 8.88 },
+          { text: "look", start: 8.92, end: 9.079 },
+          { text: "you", start: 9.119, end: 9.259 },
+          { text: "want", start: 9.279, end: 9.619 },
+          { text: "but", start: 9.779, end: 9.88 },
+          { text: "don't", start: 9.92, end: 10.1 },
+          { text: "have", start: 10.159, end: 10.3 },
+          { text: "the", start: 10.3, end: 10.42 },
+          { text: "editing", start: 10.5, end: 10.779 },
+          { text: "skills", start: 10.86, end: 11.139 },
+          { text: "to", start: 11.159, end: 11.239 },
+          { text: "get", start: 11.279, end: 11.439 },
+          { text: "there.", start: 11.46, end: 12.239 },
+          { text: "So", start: 12.3, end: 12.38 },
+          { text: "we", start: 12.399, end: 12.519 },
+          { text: "built", start: 12.539, end: 12.759 },
+          { text: "Editor", start: 12.84, end: 13.119 },
+          { text: "Agent.", start: 13.239, end: 13.84 },
+        ];
         const tl = gsap.timeline({ paused: true });
 
         // Wim Crouwel inspired grid definitions (11x15 grid)
         const GRIDS = {
-          '4': [
-            0,0,0,0,0,0,0,1,1,0,0,
-            0,0,0,0,0,0,1,1,1,0,0,
-            0,0,0,0,0,1,1,1,1,0,0,
-            0,0,0,0,1,1,0,1,1,0,0,
-            0,0,0,1,1,0,0,1,1,0,0,
-            0,0,1,1,0,0,0,1,1,0,0,
-            0,1,1,0,0,0,0,1,1,0,0,
-            1,1,1,1,1,1,1,1,1,1,1,
-            1,1,1,1,1,1,1,1,1,1,1,
-            0,0,0,0,0,0,0,1,1,0,0,
-            0,0,0,0,0,0,0,1,1,0,0,
-            0,0,0,0,0,0,0,1,1,0,0,
-            0,0,0,0,0,0,0,1,1,0,0,
-            0,0,0,0,0,0,0,1,1,0,0,
-            0,0,0,0,0,0,0,1,1,0,0
+          4: [
+            0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 1,
+            1, 1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 1, 1, 0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 0, 0, 1,
+            1, 0, 0, 0, 1, 1, 0, 0, 0, 1, 1, 0, 0, 0, 0, 1, 1, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+            1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0,
           ],
-          '7': [
-            1,1,1,1,1,1,1,1,1,1,1,
-            1,1,1,1,1,1,1,1,1,1,1,
-            0,0,0,0,0,0,0,0,1,1,0,
-            0,0,0,0,0,0,0,1,1,0,0,
-            0,0,0,0,0,0,1,1,0,0,0,
-            0,0,0,0,0,1,1,0,0,0,0,
-            0,0,0,0,1,1,0,0,0,0,0,
-            0,0,0,1,1,0,0,0,0,0,0,
-            0,0,1,1,0,0,0,0,0,0,0,
-            0,1,1,0,0,0,0,0,0,0,0,
-            1,1,0,0,0,0,0,0,0,0,0,
-            1,1,0,0,0,0,0,0,0,0,0,
-            1,1,0,0,0,0,0,0,0,0,0,
-            1,1,0,0,0,0,0,0,0,0,0,
-            1,1,0,0,0,0,0,0,0,0,0
+          7: [
+            1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0,
+            0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0,
+            0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0,
+            0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0,
           ],
-          '6': [
-            0,0,0,1,1,1,1,1,0,0,0,
-            0,0,1,1,1,1,1,1,1,0,0,
-            0,1,1,0,0,0,0,0,1,1,0,
-            1,1,0,0,0,0,0,0,0,0,0,
-            1,1,0,0,1,1,1,1,0,0,0,
-            1,1,1,1,1,1,1,1,1,0,0,
-            1,1,1,0,0,0,0,0,1,1,0,
-            1,1,0,0,0,0,0,0,1,1,0,
-            1,1,0,0,0,0,0,0,1,1,0,
-            1,1,0,0,0,0,0,0,1,1,0,
-            1,1,0,0,0,0,0,0,1,1,0,
-            0,1,1,0,0,0,0,0,1,1,0,
-            0,0,1,1,1,1,1,1,1,0,0,
-            0,0,0,1,1,1,1,1,0,0,0,
-            0,0,0,0,0,0,0,0,0,0,0
+          6: [
+            0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1, 1, 0, 0, 0, 0,
+            0, 1, 1, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1,
+            1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 1, 1, 0, 1, 1, 0, 0, 0, 0, 0, 0, 1, 1,
+            0, 1, 1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 1, 1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 1, 1, 0, 0, 0, 0,
+            0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0,
+            0, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
           ],
-          '2': [
-            0,0,1,1,1,1,1,1,1,0,0,
-            0,1,1,1,1,1,1,1,1,1,0,
-            1,1,0,0,0,0,0,0,1,1,0,
-            0,0,0,0,0,0,0,0,1,1,0,
-            0,0,0,0,0,0,0,1,1,0,0,
-            0,0,0,0,0,0,1,1,0,0,0,
-            0,0,0,0,0,1,1,0,0,0,0,
-            0,0,0,0,1,1,0,0,0,0,0,
-            0,0,0,1,1,0,0,0,0,0,0,
-            0,0,1,1,0,0,0,0,0,0,0,
-            0,1,1,0,0,0,0,0,0,0,0,
-            1,1,0,0,0,0,0,0,0,0,0,
-            1,1,1,1,1,1,1,1,1,1,1,
-            1,1,1,1,1,1,1,1,1,1,1,
-            0,0,0,0,0,0,0,0,0,0,0
+          2: [
+            0, 0, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 0, 0, 0, 0, 0,
+            0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0,
+            0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0,
+            0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0,
+            0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+            1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
           ],
-          '5': [
-            1,1,1,1,1,1,1,1,1,1,1,
-            1,1,1,1,1,1,1,1,1,1,1,
-            1,1,0,0,0,0,0,0,0,0,0,
-            1,1,0,0,0,0,0,0,0,0,0,
-            1,1,1,1,1,1,1,1,0,0,0,
-            1,1,1,1,1,1,1,1,1,0,0,
-            0,0,0,0,0,0,0,0,1,1,0,
-            0,0,0,0,0,0,0,0,1,1,0,
-            0,0,0,0,0,0,0,0,1,1,0,
-            0,0,0,0,0,0,0,0,1,1,0,
-            1,1,0,0,0,0,0,0,1,1,0,
-            1,1,0,0,0,0,0,1,1,1,0,
-            0,1,1,1,1,1,1,1,1,0,0,
-            0,0,1,1,1,1,1,1,0,0,0,
-            0,0,0,0,0,0,0,0,0,0,0
+          5: [
+            1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1,
+            1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 1, 1, 0, 0, 0, 0,
+            0, 0, 1, 1, 0, 1, 1, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0,
+            1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
           ],
-          '%': [
-            1,1,0,0,0,0,0,0,1,1,0,
-            1,1,0,0,0,0,0,1,1,0,0,
-            0,0,0,0,0,0,1,1,0,0,0,
-            0,0,0,0,0,1,1,0,0,0,0,
-            0,0,0,0,1,1,0,0,0,0,0,
-            0,0,0,1,1,0,0,0,0,0,0,
-            0,0,1,1,0,0,0,0,0,0,0,
-            0,1,1,0,0,0,0,0,0,0,0,
-            1,1,0,0,0,0,0,0,1,1,0,
-            0,0,0,0,0,0,0,1,1,1,1,
-            0,0,0,0,0,0,0,1,1,1,1,
-            0,0,0,0,0,0,0,1,1,1,1,
-            0,0,0,0,0,0,0,1,1,1,1,
-            0,0,0,0,0,0,0,0,0,0,0,
-            0,0,0,0,0,0,0,0,0,0,0
-          ]
+          "%": [
+            1, 1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 1, 1, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1,
+            1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0,
+            1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0,
+            0, 1, 1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0,
+            0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+          ],
         };
 
         function createNumber(containerId, digits) {
           const container = document.getElementById(containerId);
-          digits.split('').forEach((digit, dIdx) => {
-            const grid = document.createElement('div');
-            grid.className = 'number-grid';
-            
-            const pattern = GRIDS[digit] || GRIDS['%'];
+          digits.split("").forEach((digit, dIdx) => {
+            const grid = document.createElement("div");
+            grid.className = "number-grid";
+
+            const pattern = GRIDS[digit] || GRIDS["%"];
             pattern.forEach((val, i) => {
-              const dot = document.createElement('div');
-              dot.className = 'dot dot-' + containerId + '-' + dIdx + '-' + i;
+              const dot = document.createElement("div");
+              dot.className = "dot dot-" + containerId + "-" + dIdx + "-" + i;
               if (val === 1) {
-                dot.style.opacity = '0';
+                dot.style.opacity = "0";
               } else {
-                dot.style.visibility = 'hidden';
+                dot.style.visibility = "hidden";
               }
               grid.appendChild(dot);
             });
@@ -266,43 +260,49 @@
           });
         }
 
-        createNumber('num-1', '47%');
-        createNumber('num-2', '62%');
-        createNumber('num-3', '75%');
+        createNumber("num-1", "47%");
+        createNumber("num-2", "62%");
+        createNumber("num-3", "75%");
 
         function animateStat(id, start, end) {
-          const stat = document.querySelector('#' + id);
-          const label = stat.querySelector('.label-text');
-          const scanline = stat.querySelector('.scanline');
-          const dots = stat.querySelectorAll('.dot');
+          const stat = document.querySelector("#" + id);
+          const label = stat.querySelector(".label-text");
+          const scanline = stat.querySelector(".scanline");
+          const dots = stat.querySelectorAll(".dot");
 
           // Entrance
           tl.to(stat, { opacity: 1, duration: 0.1 }, start);
-          
+
           // Number assembly (dots)
           // Using a deterministic stagger pattern
-          tl.to(dots, {
-            opacity: 1,
-            duration: 0.6,
-            stagger: {
-              each: 0.003,
-              from: "start",
-              grid: [15, 11]
+          tl.to(
+            dots,
+            {
+              opacity: 1,
+              duration: 0.6,
+              stagger: {
+                each: 0.003,
+                from: "start",
+                grid: [15, 11],
+              },
+              ease: "expo.out",
             },
-            ease: "expo.out"
-          }, start);
+            start,
+          );
 
           // Scanline sweep for text
-          tl.fromTo(scanline, 
+          tl.fromTo(
+            scanline,
             { translateY: "-100%" },
-            { translateY: "100%", duration: 0.8, ease: "none" }, 
-            start + 0.3
+            { translateY: "100%", duration: 0.8, ease: "none" },
+            start + 0.3,
           );
           tl.to(label, { opacity: 1, duration: 0.1 }, start + 0.3);
-          tl.fromTo(label, 
+          tl.fromTo(
+            label,
             { clipPath: "inset(0 0 100% 0)" },
             { clipPath: "inset(0 0 0% 0)", duration: 0.8, ease: "none" },
-            start + 0.3
+            start + 0.3,
           );
 
           // Exit
@@ -311,30 +311,34 @@
 
         // Sync with transcript timings
         // 1. "47% NEED MOTION GRAPHICS" (1.199s to 3.759s)
-        animateStat('stat-1', 1.199, 3.759);
+        animateStat("stat-1", 1.199, 3.759);
 
         // 2. "62% STATIC CONTENT REDUCES ENGAGEMENT" (3.799s to 7.299s)
-        animateStat('stat-2', 3.799, 7.299);
+        animateStat("stat-2", 3.799, 7.299);
 
         // 3. "75% LACK TECHNICAL SKILLS" (7.48s to 12.239s)
-        animateStat('stat-3', 7.48, 12.239);
+        animateStat("stat-3", 7.48, 12.239);
 
         // Ambient motion: subtle grid pulse
         // Deterministic loop for exact duration (13.88s)
         const pulseDuration = 2;
         const totalDuration = 16;
         for (let t = 0; t < totalDuration; t += pulseDuration * 2) {
-          tl.to('.dot', {
-            scale: 1.1,
-            duration: pulseDuration,
-            yoyo: true,
-            repeat: 1,
-            ease: "sine.inOut",
-            stagger: {
-              each: 0.01,
-              from: "center"
-            }
-          }, t);
+          tl.to(
+            ".dot",
+            {
+              scale: 1.1,
+              duration: pulseDuration,
+              yoyo: true,
+              repeat: 1,
+              ease: "sine.inOut",
+              stagger: {
+                each: 0.01,
+                from: "center",
+              },
+            },
+            t,
+          );
         }
 
         window.__timelines["overlays"] = tl;

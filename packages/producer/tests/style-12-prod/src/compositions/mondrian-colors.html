@@ -1,5 +1,10 @@
 <template id="mondrian-colors-template">
-  <div data-composition-id="mondrian-colors" data-width="1080" data-height="1920" data-duration="14">
+  <div
+    data-composition-id="mondrian-colors"
+    data-width="1080"
+    data-height="1920"
+    data-duration="14"
+  >
     <div class="mondrian-grid">
       <div class="block block-1 border-right border-bottom">
         <div class="color-fill red"></div>
@@ -69,7 +74,7 @@
       [data-composition-id="mondrian-colors"] .block-text {
         position: relative;
         z-index: 2;
-        font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+        font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
         font-weight: 900;
         opacity: 0;
         transform: scale(0.7);
@@ -88,63 +93,199 @@
       }
 
       [data-composition-id="mondrian-colors"] .light {
-        color: #FFFFFF;
+        color: #ffffff;
       }
 
       [data-composition-id="mondrian-colors"] .dark {
         color: #000000;
       }
 
-      [data-composition-id="mondrian-colors"] .red { background-color: #FF1A1A; }
-      [data-composition-id="mondrian-colors"] .yellow { background-color: #FFEA00; }
-      [data-composition-id="mondrian-colors"] .blue { background-color: #0A36FF; }
+      [data-composition-id="mondrian-colors"] .red {
+        background-color: #ff1a1a;
+      }
+      [data-composition-id="mondrian-colors"] .yellow {
+        background-color: #ffea00;
+      }
+      [data-composition-id="mondrian-colors"] .blue {
+        background-color: #0a36ff;
+      }
 
-      [data-composition-id="mondrian-colors"] .border-right { border-right: 4px solid #000; }
-      [data-composition-id="mondrian-colors"] .border-bottom { border-bottom: 4px solid #000; }
+      [data-composition-id="mondrian-colors"] .border-right {
+        border-right: 4px solid #000;
+      }
+      [data-composition-id="mondrian-colors"] .border-bottom {
+        border-bottom: 4px solid #000;
+      }
 
-      [data-composition-id="mondrian-colors"] .block-1 { grid-column: 1 / 2; grid-row: 1 / 2; }
-      [data-composition-id="mondrian-colors"] .block-2 { grid-column: 2 / 4; grid-row: 1 / 2; }
-      [data-composition-id="mondrian-colors"] .block-3 { grid-column: 1 / 2; grid-row: 2 / 3; }
-      [data-composition-id="mondrian-colors"] .block-empty { grid-column: 2 / 3; grid-row: 2 / 3; background-color: transparent; pointer-events: none; }
-      [data-composition-id="mondrian-colors"] .block-4 { grid-column: 3 / 4; grid-row: 2 / 3; border-left: 4px solid #000; }
-      [data-composition-id="mondrian-colors"] .block-5 { grid-column: 1 / 3; grid-row: 3 / 4; justify-content: flex-start; padding-left: 56px; }
-      [data-composition-id="mondrian-colors"] .block-6 { grid-column: 3 / 4; grid-row: 3 / 4; }
+      [data-composition-id="mondrian-colors"] .block-1 {
+        grid-column: 1 / 2;
+        grid-row: 1 / 2;
+      }
+      [data-composition-id="mondrian-colors"] .block-2 {
+        grid-column: 2 / 4;
+        grid-row: 1 / 2;
+      }
+      [data-composition-id="mondrian-colors"] .block-3 {
+        grid-column: 1 / 2;
+        grid-row: 2 / 3;
+      }
+      [data-composition-id="mondrian-colors"] .block-empty {
+        grid-column: 2 / 3;
+        grid-row: 2 / 3;
+        background-color: transparent;
+        pointer-events: none;
+      }
+      [data-composition-id="mondrian-colors"] .block-4 {
+        grid-column: 3 / 4;
+        grid-row: 2 / 3;
+        border-left: 4px solid #000;
+      }
+      [data-composition-id="mondrian-colors"] .block-5 {
+        grid-column: 1 / 3;
+        grid-row: 3 / 4;
+        justify-content: flex-start;
+        padding-left: 56px;
+      }
+      [data-composition-id="mondrian-colors"] .block-6 {
+        grid-column: 3 / 4;
+        grid-row: 3 / 4;
+      }
     </style>
 
     <script>
-      (function() {
-        const TRANSCRIPT = [{'text': 'We', 'start': 0.14, 'end': 0.239}, {'text': 'asked', 'start': 0.28, 'end': 0.459}, {'text': 'what', 'start': 0.5, 'end': 0.619}, {'text': 'you', 'start': 0.659, 'end': 0.779}, {'text': 'needed.', 'start': 0.8, 'end': 1.179}, {'text': 'Forty-seven', 'start': 1.199, 'end': 1.619}, {'text': 'percent', 'start': 1.699, 'end': 1.96}, {'text': 'of', 'start': 1.979, 'end': 2.059}, {'text': 'you', 'start': 2.099, 'end': 2.299}, {'text': 'said', 'start': 2.319, 'end': 2.499}, {'text': 'motion', 'start': 2.559, 'end': 2.839}, {'text': 'graphics,', 'start': 2.899, 'end': 3.759}, {'text': 'sixty-two', 'start': 3.799, 'end': 4.159}, {'text': 'percent', 'start': 4.239, 'end': 4.559}, {'text': 'said', 'start': 4.639, 'end': 4.799}, {'text': 'static', 'start': 4.859, 'end': 5.199}, {'text': 'content', 'start': 5.239, 'end': 5.639}, {'text': 'was', 'start': 5.679, 'end': 5.779}, {'text': 'costing', 'start': 5.859, 'end': 6.219}, {'text': 'you', 'start': 6.259, 'end': 6.339}, {'text': 'attention,', 'start': 6.379, 'end': 7.299}, {'text': 'and', 'start': 7.319, 'end': 7.439}, {'text': 'three', 'start': 7.48, 'end': 7.599}, {'text': 'out', 'start': 7.679, 'end': 7.779}, {'text': 'of', 'start': 7.799, 'end': 7.879}, {'text': 'four', 'start': 7.94, 'end': 8.139}, {'text': 'said', 'start': 8.279, 'end': 8.46}, {'text': 'you', 'start': 8.519, 'end': 8.6}, {'text': 'know', 'start': 8.619, 'end': 8.739}, {'text': 'the', 'start': 8.8, 'end': 8.88}, {'text': 'look', 'start': 8.92, 'end': 9.079}, {'text': 'you', 'start': 9.119, 'end': 9.259}, {'text': 'want', 'start': 9.279, 'end': 9.619}, {'text': 'but', 'start': 9.779, 'end': 9.88}, {'text': "don't", 'start': 9.92, 'end': 10.1}, {'text': 'have', 'start': 10.159, 'end': 10.3}, {'text': 'the', 'start': 10.3, 'end': 10.42}, {'text': 'editing', 'start': 10.5, 'end': 10.779}, {'text': 'skills', 'start': 10.86, 'end': 11.139}, {'text': 'to', 'start': 11.159, 'end': 11.239}, {'text': 'get', 'start': 11.279, 'end': 11.439}, {'text': 'there.', 'start': 11.46, 'end': 12.239}, {'text': 'So', 'start': 12.3, 'end': 12.38}, {'text': 'we', 'start': 12.399, 'end': 12.519}, {'text': 'built', 'start': 12.539, 'end': 12.759}, {'text': 'Editor', 'start': 12.84, 'end': 13.119}, {'text': 'Agent.', 'start': 13.239, 'end': 13.84}];
+      (function () {
+        const TRANSCRIPT = [
+          { text: "We", start: 0.14, end: 0.239 },
+          { text: "asked", start: 0.28, end: 0.459 },
+          { text: "what", start: 0.5, end: 0.619 },
+          { text: "you", start: 0.659, end: 0.779 },
+          { text: "needed.", start: 0.8, end: 1.179 },
+          { text: "Forty-seven", start: 1.199, end: 1.619 },
+          { text: "percent", start: 1.699, end: 1.96 },
+          { text: "of", start: 1.979, end: 2.059 },
+          { text: "you", start: 2.099, end: 2.299 },
+          { text: "said", start: 2.319, end: 2.499 },
+          { text: "motion", start: 2.559, end: 2.839 },
+          { text: "graphics,", start: 2.899, end: 3.759 },
+          { text: "sixty-two", start: 3.799, end: 4.159 },
+          { text: "percent", start: 4.239, end: 4.559 },
+          { text: "said", start: 4.639, end: 4.799 },
+          { text: "static", start: 4.859, end: 5.199 },
+          { text: "content", start: 5.239, end: 5.639 },
+          { text: "was", start: 5.679, end: 5.779 },
+          { text: "costing", start: 5.859, end: 6.219 },
+          { text: "you", start: 6.259, end: 6.339 },
+          { text: "attention,", start: 6.379, end: 7.299 },
+          { text: "and", start: 7.319, end: 7.439 },
+          { text: "three", start: 7.48, end: 7.599 },
+          { text: "out", start: 7.679, end: 7.779 },
+          { text: "of", start: 7.799, end: 7.879 },
+          { text: "four", start: 7.94, end: 8.139 },
+          { text: "said", start: 8.279, end: 8.46 },
+          { text: "you", start: 8.519, end: 8.6 },
+          { text: "know", start: 8.619, end: 8.739 },
+          { text: "the", start: 8.8, end: 8.88 },
+          { text: "look", start: 8.92, end: 9.079 },
+          { text: "you", start: 9.119, end: 9.259 },
+          { text: "want", start: 9.279, end: 9.619 },
+          { text: "but", start: 9.779, end: 9.88 },
+          { text: "don't", start: 9.92, end: 10.1 },
+          { text: "have", start: 10.159, end: 10.3 },
+          { text: "the", start: 10.3, end: 10.42 },
+          { text: "editing", start: 10.5, end: 10.779 },
+          { text: "skills", start: 10.86, end: 11.139 },
+          { text: "to", start: 11.159, end: 11.239 },
+          { text: "get", start: 11.279, end: 11.439 },
+          { text: "there.", start: 11.46, end: 12.239 },
+          { text: "So", start: 12.3, end: 12.38 },
+          { text: "we", start: 12.399, end: 12.519 },
+          { text: "built", start: 12.539, end: 12.759 },
+          { text: "Editor", start: 12.84, end: 13.119 },
+          { text: "Agent.", start: 13.239, end: 13.84 },
+        ];
         const tl = gsap.timeline({ paused: true });
 
         function getWordTime(text) {
-          const word = TRANSCRIPT.find(w => w.text.toLowerCase().includes(text.toLowerCase()));
+          const word = TRANSCRIPT.find((w) => w.text.toLowerCase().includes(text.toLowerCase()));
           return word ? word.start : null;
         }
 
-        const time47 = getWordTime('forty-seven');
-        const time62 = getWordTime('sixty-two');
-        const time75 = getWordTime('three');
+        const time47 = getWordTime("forty-seven");
+        const time62 = getWordTime("sixty-two");
+        const time75 = getWordTime("three");
 
         if (time47 !== null) {
-          tl.to('.block-1 .color-fill', { opacity: 0.96, scale: 1, duration: 0.24, ease: 'power2.out' }, time47);
-          tl.to('.block-1 .block-text', { opacity: 1, scale: 1, duration: 0.24, ease: 'power2.out' }, time47 + 0.06);
-          tl.to('.block-2 .color-fill', { opacity: 0.92, scale: 1, duration: 0.24, ease: 'power2.out' }, time47 + 0.08);
+          tl.to(
+            ".block-1 .color-fill",
+            { opacity: 0.96, scale: 1, duration: 0.24, ease: "power2.out" },
+            time47,
+          );
+          tl.to(
+            ".block-1 .block-text",
+            { opacity: 1, scale: 1, duration: 0.24, ease: "power2.out" },
+            time47 + 0.06,
+          );
+          tl.to(
+            ".block-2 .color-fill",
+            { opacity: 0.92, scale: 1, duration: 0.24, ease: "power2.out" },
+            time47 + 0.08,
+          );
         }
 
         if (time62 !== null) {
-          tl.to('.block-3 .color-fill', { opacity: 0.96, scale: 1, duration: 0.24, ease: 'power2.out' }, time62);
-          tl.to('.block-3 .block-text', { opacity: 1, scale: 1, duration: 0.24, ease: 'power2.out' }, time62 + 0.06);
-          tl.to('.block-4 .color-fill', { opacity: 0.96, scale: 1, duration: 0.24, ease: 'power2.out' }, time62 + 0.08);
-          tl.to('.block-1 .color-fill', { opacity: 0.18, duration: 0.24, ease: 'power2.out' }, time62 + 0.42);
-          tl.to('.block-1 .block-text', { opacity: 0.22, duration: 0.24, ease: 'power2.out' }, time62 + 0.42);
+          tl.to(
+            ".block-3 .color-fill",
+            { opacity: 0.96, scale: 1, duration: 0.24, ease: "power2.out" },
+            time62,
+          );
+          tl.to(
+            ".block-3 .block-text",
+            { opacity: 1, scale: 1, duration: 0.24, ease: "power2.out" },
+            time62 + 0.06,
+          );
+          tl.to(
+            ".block-4 .color-fill",
+            { opacity: 0.96, scale: 1, duration: 0.24, ease: "power2.out" },
+            time62 + 0.08,
+          );
+          tl.to(
+            ".block-1 .color-fill",
+            { opacity: 0.18, duration: 0.24, ease: "power2.out" },
+            time62 + 0.42,
+          );
+          tl.to(
+            ".block-1 .block-text",
+            { opacity: 0.22, duration: 0.24, ease: "power2.out" },
+            time62 + 0.42,
+          );
         }
 
         if (time75 !== null) {
-          tl.to('.block-5 .color-fill', { opacity: 0.92, scale: 1, duration: 0.24, ease: 'power2.out' }, time75);
-          tl.to('.block-5 .block-text', { opacity: 1, scale: 1, duration: 0.24, ease: 'power2.out' }, time75 + 0.06);
-          tl.to('.block-6 .color-fill', { opacity: 0.96, scale: 1, duration: 0.24, ease: 'power2.out' }, time75 + 0.08);
-          tl.to('.block-3 .color-fill', { opacity: 0.18, duration: 0.24, ease: 'power2.out' }, time75 + 0.42);
-          tl.to('.block-3 .block-text', { opacity: 0.22, duration: 0.24, ease: 'power2.out' }, time75 + 0.42);
+          tl.to(
+            ".block-5 .color-fill",
+            { opacity: 0.92, scale: 1, duration: 0.24, ease: "power2.out" },
+            time75,
+          );
+          tl.to(
+            ".block-5 .block-text",
+            { opacity: 1, scale: 1, duration: 0.24, ease: "power2.out" },
+            time75 + 0.06,
+          );
+          tl.to(
+            ".block-6 .color-fill",
+            { opacity: 0.96, scale: 1, duration: 0.24, ease: "power2.out" },
+            time75 + 0.08,
+          );
+          tl.to(
+            ".block-3 .color-fill",
+            { opacity: 0.18, duration: 0.24, ease: "power2.out" },
+            time75 + 0.42,
+          );
+          tl.to(
+            ".block-3 .block-text",
+            { opacity: 0.22, duration: 0.24, ease: "power2.out" },
+            time75 + 0.42,
+          );
         }
 
         window.__timelines["mondrian-colors"] = tl;

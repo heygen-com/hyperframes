@@ -131,26 +131,44 @@ export function resolveConfig(overrides?: Partial<EngineConfig>): EngineConfig {
     concurrency: env("PRODUCER_MAX_WORKERS") ? Number(env("PRODUCER_MAX_WORKERS")) : undefined,
     coresPerWorker: envNum("PRODUCER_CORES_PER_WORKER", DEFAULT_CONFIG.coresPerWorker),
     minParallelFrames: envNum("PRODUCER_MIN_PARALLEL_FRAMES", DEFAULT_CONFIG.minParallelFrames),
-    largeRenderThreshold: envNum("PRODUCER_LARGE_RENDER_THRESHOLD", DEFAULT_CONFIG.largeRenderThreshold),
+    largeRenderThreshold: envNum(
+      "PRODUCER_LARGE_RENDER_THRESHOLD",
+      DEFAULT_CONFIG.largeRenderThreshold,
+    ),
 
     chromePath: env("PRODUCER_HEADLESS_SHELL_PATH"),
     disableGpu: envBool("PRODUCER_DISABLE_GPU", DEFAULT_CONFIG.disableGpu),
     enableBrowserPool: envBool("PRODUCER_ENABLE_BROWSER_POOL", DEFAULT_CONFIG.enableBrowserPool),
     browserTimeout: envNum("PRODUCER_PUPPETEER_LAUNCH_TIMEOUT_MS", DEFAULT_CONFIG.browserTimeout),
-    protocolTimeout: envNum("PRODUCER_PUPPETEER_PROTOCOL_TIMEOUT_MS", DEFAULT_CONFIG.protocolTimeout),
+    protocolTimeout: envNum(
+      "PRODUCER_PUPPETEER_PROTOCOL_TIMEOUT_MS",
+      DEFAULT_CONFIG.protocolTimeout,
+    ),
     expectedChromiumMajor: env("PRODUCER_EXPECTED_CHROMIUM_MAJOR")
       ? Number(env("PRODUCER_EXPECTED_CHROMIUM_MAJOR"))
       : undefined,
 
     forceScreenshot: envBool("PRODUCER_FORCE_SCREENSHOT", DEFAULT_CONFIG.forceScreenshot),
 
-    enableChunkedEncode: envBool("PRODUCER_ENABLE_CHUNKED_ENCODE", DEFAULT_CONFIG.enableChunkedEncode),
-    chunkSizeFrames: Math.max(120, envNum("PRODUCER_CHUNK_SIZE_FRAMES", DEFAULT_CONFIG.chunkSizeFrames)),
-    enableStreamingEncode: envBool("PRODUCER_ENABLE_STREAMING_ENCODE", DEFAULT_CONFIG.enableStreamingEncode),
+    enableChunkedEncode: envBool(
+      "PRODUCER_ENABLE_CHUNKED_ENCODE",
+      DEFAULT_CONFIG.enableChunkedEncode,
+    ),
+    chunkSizeFrames: Math.max(
+      120,
+      envNum("PRODUCER_CHUNK_SIZE_FRAMES", DEFAULT_CONFIG.chunkSizeFrames),
+    ),
+    enableStreamingEncode: envBool(
+      "PRODUCER_ENABLE_STREAMING_ENCODE",
+      DEFAULT_CONFIG.enableStreamingEncode,
+    ),
 
     ffmpegEncodeTimeout: envNum("FFMPEG_ENCODE_TIMEOUT_MS", DEFAULT_CONFIG.ffmpegEncodeTimeout),
     ffmpegProcessTimeout: envNum("FFMPEG_PROCESS_TIMEOUT_MS", DEFAULT_CONFIG.ffmpegProcessTimeout),
-    ffmpegStreamingTimeout: envNum("FFMPEG_STREAMING_TIMEOUT_MS", DEFAULT_CONFIG.ffmpegStreamingTimeout),
+    ffmpegStreamingTimeout: envNum(
+      "FFMPEG_STREAMING_TIMEOUT_MS",
+      DEFAULT_CONFIG.ffmpegStreamingTimeout,
+    ),
 
     audioGain: envNum("PRODUCER_AUDIO_GAIN", DEFAULT_CONFIG.audioGain),
     frameDataUriCacheLimit: Math.max(
@@ -158,8 +176,14 @@ export function resolveConfig(overrides?: Partial<EngineConfig>): EngineConfig {
       envNum("PRODUCER_FRAME_DATA_URI_CACHE_LIMIT", DEFAULT_CONFIG.frameDataUriCacheLimit),
     ),
 
-    playerReadyTimeout: envNum("PRODUCER_PLAYER_READY_TIMEOUT_MS", DEFAULT_CONFIG.playerReadyTimeout),
-    renderReadyTimeout: envNum("PRODUCER_RENDER_READY_TIMEOUT_MS", DEFAULT_CONFIG.renderReadyTimeout),
+    playerReadyTimeout: envNum(
+      "PRODUCER_PLAYER_READY_TIMEOUT_MS",
+      DEFAULT_CONFIG.playerReadyTimeout,
+    ),
+    renderReadyTimeout: envNum(
+      "PRODUCER_RENDER_READY_TIMEOUT_MS",
+      DEFAULT_CONFIG.renderReadyTimeout,
+    ),
 
     verifyRuntime: env("PRODUCER_VERIFY_HYPERFRAME_RUNTIME") !== "false",
     runtimeManifestPath: env("PRODUCER_HYPERFRAME_MANIFEST_PATH"),

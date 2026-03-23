@@ -5,7 +5,7 @@
     </div>
 
     <style>
-      @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@700&display=swap');
+      @import url("https://fonts.googleapis.com/css2?family=Oswald:wght@700&display=swap");
 
       [data-composition-id="captions"] {
         width: 1920px;
@@ -24,7 +24,7 @@
       }
 
       [data-composition-id="captions"] .caption-text {
-        font-family: 'Oswald', sans-serif;
+        font-family: "Oswald", sans-serif;
         font-weight: 700;
         font-size: 80px;
         color: white;
@@ -37,9 +37,9 @@
     </style>
 
     <script>
-      (function() {
+      (function () {
         const tl = gsap.timeline({ paused: true });
-        const captionEl = document.getElementById('caption-text');
+        const captionEl = document.getElementById("caption-text");
         const OFFSET = 3;
 
         const groups = [
@@ -54,7 +54,7 @@
           { text: "HAVE THE EDITING SKILLS TO", start: 11.819, end: 13.019 },
           { text: "GET THERE.", start: 13.019, end: 14.239 },
           { text: "SO WE BUILT", start: 14.239, end: 15.079 },
-          { text: "EDITOR AGENT", start: 15.079, end: 17.2 } // End at 17.2 as requested
+          { text: "EDITOR AGENT", start: 15.079, end: 17.2 }, // End at 17.2 as requested
         ];
 
         groups.forEach((group, index) => {
@@ -62,10 +62,14 @@
           const endTime = group.end + OFFSET;
 
           // Show caption
-          tl.set(captionEl, { 
-            innerHTML: group.text, 
-            opacity: 1 
-          }, startTime);
+          tl.set(
+            captionEl,
+            {
+              innerHTML: group.text,
+              opacity: 1,
+            },
+            startTime,
+          );
 
           // If it's the last group, hide it at the end
           if (index === groups.length - 1) {

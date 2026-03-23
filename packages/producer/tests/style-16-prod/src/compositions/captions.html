@@ -17,7 +17,7 @@
         justify-content: center;
         align-items: center;
         pointer-events: none;
-        font-family: 'Montserrat', 'Impact', 'Arial Black', sans-serif;
+        font-family: "Montserrat", "Impact", "Arial Black", sans-serif;
         text-transform: uppercase;
         overflow: hidden;
       }
@@ -30,7 +30,7 @@
         min-height: 278px;
         background: rgba(232, 220, 200, 0.96);
         border: 3px solid #000000;
-        box-shadow: 14px 14px 0 #CC0000;
+        box-shadow: 14px 14px 0 #cc0000;
         box-sizing: border-box;
         padding: 20px 24px 26px;
       }
@@ -58,66 +58,126 @@
         margin: 6px 10px 6px 0;
         padding: 8px 14px;
         background-color: #000000;
-        color: #FFFFFF;
+        color: #ffffff;
         font-size: 54px;
         line-height: 1;
-        box-shadow: 6px 6px 0px #CC0000;
+        box-shadow: 6px 6px 0px #cc0000;
       }
 
       [data-composition-id="captions"] .word-wrapper.highlight {
-        background-color: #CC0000;
+        background-color: #cc0000;
         color: #000000;
         box-shadow: 6px 6px 0px #000000;
       }
-
     </style>
 
     <script>
-      (function() {
-        const TRANSCRIPT = [{'text': 'We', 'start': 0.14, 'end': 0.239}, {'text': 'asked', 'start': 0.28, 'end': 0.459}, {'text': 'what', 'start': 0.5, 'end': 0.619}, {'text': 'you', 'start': 0.659, 'end': 0.779}, {'text': 'needed.', 'start': 0.8, 'end': 1.179}, {'text': 'Forty-seven', 'start': 1.199, 'end': 1.619}, {'text': 'percent', 'start': 1.699, 'end': 1.96}, {'text': 'of', 'start': 1.979, 'end': 2.059}, {'text': 'you', 'start': 2.099, 'end': 2.299}, {'text': 'said', 'start': 2.319, 'end': 2.499}, {'text': 'motion', 'start': 2.559, 'end': 2.839}, {'text': 'graphics,', 'start': 2.899, 'end': 3.759}, {'text': 'sixty-two', 'start': 3.799, 'end': 4.159}, {'text': 'percent', 'start': 4.239, 'end': 4.559}, {'text': 'said', 'start': 4.639, 'end': 4.799}, {'text': 'static', 'start': 4.859, 'end': 5.199}, {'text': 'content', 'start': 5.239, 'end': 5.639}, {'text': 'was', 'start': 5.679, 'end': 5.779}, {'text': 'costing', 'start': 5.859, 'end': 6.219}, {'text': 'you', 'start': 6.259, 'end': 6.339}, {'text': 'attention,', 'start': 6.379, 'end': 7.299}, {'text': 'and', 'start': 7.319, 'end': 7.439}, {'text': 'three', 'start': 7.48, 'end': 7.599}, {'text': 'out', 'start': 7.679, 'end': 7.779}, {'text': 'of', 'start': 7.799, 'end': 7.879}, {'text': 'four', 'start': 7.94, 'end': 8.139}, {'text': 'said', 'start': 8.279, 'end': 8.46}, {'text': 'you', 'start': 8.519, 'end': 8.6}, {'text': 'know', 'start': 8.619, 'end': 8.739}, {'text': 'the', 'start': 8.8, 'end': 8.88}, {'text': 'look', 'start': 8.92, 'end': 9.079}, {'text': 'you', 'start': 9.119, 'end': 9.259}, {'text': 'want', 'start': 9.279, 'end': 9.619}, {'text': 'but', 'start': 9.779, 'end': 9.88}, {'text': "don't", 'start': 9.92, 'end': 10.1}, {'text': 'have', 'start': 10.159, 'end': 10.3}, {'text': 'the', 'start': 10.3, 'end': 10.42}, {'text': 'editing', 'start': 10.5, 'end': 10.779}, {'text': 'skills', 'start': 10.86, 'end': 11.139}, {'text': 'to', 'start': 11.159, 'end': 11.239}, {'text': 'get', 'start': 11.279, 'end': 11.439}, {'text': 'there.', 'start': 11.46, 'end': 12.239}, {'text': 'So', 'start': 12.3, 'end': 12.38}, {'text': 'we', 'start': 12.399, 'end': 12.519}, {'text': 'built', 'start': 12.539, 'end': 12.759}, {'text': 'Editor', 'start': 12.84, 'end': 13.119}, {'text': 'Agent.', 'start': 13.239, 'end': 13.84}];
-        const container = document.getElementById('captions-container');
+      (function () {
+        const TRANSCRIPT = [
+          { text: "We", start: 0.14, end: 0.239 },
+          { text: "asked", start: 0.28, end: 0.459 },
+          { text: "what", start: 0.5, end: 0.619 },
+          { text: "you", start: 0.659, end: 0.779 },
+          { text: "needed.", start: 0.8, end: 1.179 },
+          { text: "Forty-seven", start: 1.199, end: 1.619 },
+          { text: "percent", start: 1.699, end: 1.96 },
+          { text: "of", start: 1.979, end: 2.059 },
+          { text: "you", start: 2.099, end: 2.299 },
+          { text: "said", start: 2.319, end: 2.499 },
+          { text: "motion", start: 2.559, end: 2.839 },
+          { text: "graphics,", start: 2.899, end: 3.759 },
+          { text: "sixty-two", start: 3.799, end: 4.159 },
+          { text: "percent", start: 4.239, end: 4.559 },
+          { text: "said", start: 4.639, end: 4.799 },
+          { text: "static", start: 4.859, end: 5.199 },
+          { text: "content", start: 5.239, end: 5.639 },
+          { text: "was", start: 5.679, end: 5.779 },
+          { text: "costing", start: 5.859, end: 6.219 },
+          { text: "you", start: 6.259, end: 6.339 },
+          { text: "attention,", start: 6.379, end: 7.299 },
+          { text: "and", start: 7.319, end: 7.439 },
+          { text: "three", start: 7.48, end: 7.599 },
+          { text: "out", start: 7.679, end: 7.779 },
+          { text: "of", start: 7.799, end: 7.879 },
+          { text: "four", start: 7.94, end: 8.139 },
+          { text: "said", start: 8.279, end: 8.46 },
+          { text: "you", start: 8.519, end: 8.6 },
+          { text: "know", start: 8.619, end: 8.739 },
+          { text: "the", start: 8.8, end: 8.88 },
+          { text: "look", start: 8.92, end: 9.079 },
+          { text: "you", start: 9.119, end: 9.259 },
+          { text: "want", start: 9.279, end: 9.619 },
+          { text: "but", start: 9.779, end: 9.88 },
+          { text: "don't", start: 9.92, end: 10.1 },
+          { text: "have", start: 10.159, end: 10.3 },
+          { text: "the", start: 10.3, end: 10.42 },
+          { text: "editing", start: 10.5, end: 10.779 },
+          { text: "skills", start: 10.86, end: 11.139 },
+          { text: "to", start: 11.159, end: 11.239 },
+          { text: "get", start: 11.279, end: 11.439 },
+          { text: "there.", start: 11.46, end: 12.239 },
+          { text: "So", start: 12.3, end: 12.38 },
+          { text: "we", start: 12.399, end: 12.519 },
+          { text: "built", start: 12.539, end: 12.759 },
+          { text: "Editor", start: 12.84, end: 13.119 },
+          { text: "Agent.", start: 13.239, end: 13.84 },
+        ];
+        const container = document.getElementById("captions-container");
         const tl = gsap.timeline({ paused: true });
 
         const groups = [];
         let currentGroup = [];
-        
+
         TRANSCRIPT.forEach((word, index) => {
           currentGroup.push(word);
-          if (currentGroup.length >= 4 || word.text.includes('.') || word.text.includes('?') || index === TRANSCRIPT.length - 1) {
+          if (
+            currentGroup.length >= 4 ||
+            word.text.includes(".") ||
+            word.text.includes("?") ||
+            index === TRANSCRIPT.length - 1
+          ) {
             groups.push([...currentGroup]);
             currentGroup = [];
           }
         });
 
         groups.forEach((group, gIndex) => {
-          const groupEl = document.createElement('div');
-          groupEl.className = 'caption-group';
+          const groupEl = document.createElement("div");
+          groupEl.className = "caption-group";
           groupEl.id = `group-${gIndex}`;
 
           group.forEach((word, wIndex) => {
-            const wordWrapper = document.createElement('div');
-            wordWrapper.className = 'word-wrapper';
+            const wordWrapper = document.createElement("div");
+            wordWrapper.className = "word-wrapper";
 
-            wordWrapper.textContent = word.text.replace(/[.,?!]/g, '');
+            wordWrapper.textContent = word.text.replace(/[.,?!]/g, "");
             wordWrapper.id = `word-${gIndex}-${wIndex}`;
             groupEl.appendChild(wordWrapper);
 
             // Word highlight animation
-            tl.to(wordWrapper, {
-              backgroundColor: '#CC0000',
-              color: '#000000',
-              boxShadow: '6px 6px 0px #000000',
-              duration: 0.1,
-              ease: 'none'
-            }, word.start);
+            tl.to(
+              wordWrapper,
+              {
+                backgroundColor: "#CC0000",
+                color: "#000000",
+                boxShadow: "6px 6px 0px #000000",
+                duration: 0.1,
+                ease: "none",
+              },
+              word.start,
+            );
 
-            tl.to(wordWrapper, {
-              backgroundColor: '#000000',
-              color: '#FFFFFF',
-              boxShadow: '6px 6px 0px #CC0000',
-              duration: 0.1,
-              ease: 'none'
-            }, word.end);
+            tl.to(
+              wordWrapper,
+              {
+                backgroundColor: "#000000",
+                color: "#FFFFFF",
+                boxShadow: "6px 6px 0px #CC0000",
+                duration: 0.1,
+                ease: "none",
+              },
+              word.end,
+            );
           });
 
           container.appendChild(groupEl);
@@ -126,22 +186,31 @@
           const groupStart = group[0].start;
           const groupEnd = group[group.length - 1].end;
 
-          tl.fromTo(groupEl, {
-            opacity: 0,
-            y: 18
-          }, {
-            opacity: 1,
-            y: 0,
-            duration: 0.22,
-            ease: 'power2.out'
-          }, groupStart);
+          tl.fromTo(
+            groupEl,
+            {
+              opacity: 0,
+              y: 18,
+            },
+            {
+              opacity: 1,
+              y: 0,
+              duration: 0.22,
+              ease: "power2.out",
+            },
+            groupStart,
+          );
 
-          tl.to(groupEl, {
-            opacity: 0,
-            y: -10,
-            duration: 0.14,
-            ease: 'power2.in'
-          }, groupEnd);
+          tl.to(
+            groupEl,
+            {
+              opacity: 0,
+              y: -10,
+              duration: 0.14,
+              ease: "power2.in",
+            },
+            groupEnd,
+          );
         });
 
         window.__timelines["captions"] = tl;

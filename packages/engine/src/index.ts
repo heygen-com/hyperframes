@@ -27,7 +27,7 @@
  * - **Optional lookups return `T | undefined` or `T | null`.**
  *   Functions that may legitimately find nothing (resolveHeadlessShellPath,
  *   getFrameAtTime, detectGpuEncoder) return a nullable value instead of throwing.
- * 
+ *
  */
 
 // ── Protocol types ─────────────────────────────────────────────────────────────
@@ -90,11 +90,7 @@ export {
   ENCODER_PRESETS,
   type GpuEncoder,
 } from "./services/chunkEncoder.js";
-export type {
-  EncoderOptions,
-  EncodeResult,
-  MuxResult,
-} from "./services/chunkEncoder.types.js";
+export type { EncoderOptions, EncodeResult, MuxResult } from "./services/chunkEncoder.types.js";
 
 export {
   spawnStreamingEncoder,
@@ -121,15 +117,8 @@ export {
 
 export { createVideoFrameInjector } from "./services/videoFrameInjector.js";
 
-export {
-  parseAudioElements,
-  processCompositionAudio,
-} from "./services/audioMixer.js";
-export type {
-  AudioElement,
-  AudioTrack,
-  MixResult,
-} from "./services/audioMixer.types.js";
+export { parseAudioElements, processCompositionAudio } from "./services/audioMixer.js";
+export type { AudioElement, AudioTrack, MixResult } from "./services/audioMixer.types.js";
 
 // ── Parallel rendering ─────────────────────────────────────────────────────────
 export {
@@ -144,11 +133,20 @@ export {
 } from "./services/parallelCoordinator.js";
 
 // ── File server ────────────────────────────────────────────────────────────────
-export { createFileServer, type FileServerOptions, type FileServerHandle } from "./services/fileServer.js";
+export {
+  createFileServer,
+  type FileServerOptions,
+  type FileServerHandle,
+} from "./services/fileServer.js";
 
 // ── Utilities ──────────────────────────────────────────────────────────────────
 export { quantizeTimeToFrame, MEDIA_VISUAL_STYLE_PROPERTIES } from "@hyperframes/core";
 
-export { extractVideoMetadata, extractAudioMetadata, type VideoMetadata, type AudioMetadata } from "./utils/ffprobe.js";
+export {
+  extractVideoMetadata,
+  extractAudioMetadata,
+  type VideoMetadata,
+  type AudioMetadata,
+} from "./utils/ffprobe.js";
 
 export { downloadToTemp, isHttpUrl } from "./utils/urlDownloader.js";

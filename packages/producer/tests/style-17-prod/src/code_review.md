@@ -1,14 +1,17 @@
 # HyperFrame Schema Compliance Review
 
 ## Executive Summary
+
 - Total files reviewed: 4
 - Critical issues: 0
 - Overall compliance status: PASS
 
 ## Critical Issues
+
 None found.
 
 ## Compliance Checklist
+
 - [x] All compositions have `data-width` and `data-height` attributes
 - [x] All timelines are finite with duration > 0
 - [x] All compositions registered in `window.__timelines`
@@ -26,25 +29,33 @@ None found.
 - [x] No infinite or zero-duration timelines
 
 ### index.html
+
 **Status**: COMPLIANT
 
 **Issues Found**:
+
 - None.
 
 ### compositions/bg-graphics.html
+
 **Status**: COMPLIANT
 
 **Issues Found**:
+
 - None.
 
 ### compositions/data-viz.html
+
 **Status**: COMPLIANT
 
 **Issues Found**:
+
 - None.
 
 ### compositions/captions.html
+
 **Status**: COMPLIANT
 
 **Issues Found**:
+
 - None.

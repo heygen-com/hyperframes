@@ -3,11 +3,11 @@
     <div class="bg-container">
       <!-- Dot Matrix Grid -->
       <div class="dot-grid"></div>
-      
+
       <!-- Grid Lines -->
       <div class="grid-lines-h"></div>
       <div class="grid-lines-v"></div>
-      
+
       <!-- Scanline -->
       <div class="scanline"></div>
     </div>
@@ -16,7 +16,7 @@
       [data-composition-id="background"] .bg-container {
         width: 1080px;
         height: 1920px;
-        background-color: #1A1A1A;
+        background-color: #1a1a1a;
         position: relative;
         overflow: hidden;
       }
@@ -62,9 +62,10 @@
         left: 0;
         width: 100%;
         height: 100px;
-        background: linear-gradient(to bottom, 
-          transparent, 
-          rgba(0, 255, 128, 0.25) 50%, 
+        background: linear-gradient(
+          to bottom,
+          transparent,
+          rgba(0, 255, 128, 0.25) 50%,
           transparent
         );
         pointer-events: none;
@@ -72,7 +73,7 @@
     </style>
 
     <script>
-      (function() {
+      (function () {
         const tl = gsap.timeline({ paused: true });
         const duration = 16;
 
@@ -82,18 +83,26 @@
         const breathingCycle = 2;
         const breathingSteps = Math.ceil(duration / breathingCycle);
         for (let i = 0; i < breathingSteps; i++) {
-          tl.to('.dot-grid', {
-            opacity: 0.6,
-            scale: 1.02,
-            duration: 1,
-            ease: "power1.inOut"
-          }, i * breathingCycle);
-          tl.to('.dot-grid', {
-            opacity: 0.3,
-            scale: 0.98,
-            duration: 1,
-            ease: "power1.inOut"
-          }, i * breathingCycle + 1);
+          tl.to(
+            ".dot-grid",
+            {
+              opacity: 0.6,
+              scale: 1.02,
+              duration: 1,
+              ease: "power1.inOut",
+            },
+            i * breathingCycle,
+          );
+          tl.to(
+            ".dot-grid",
+            {
+              opacity: 0.3,
+              scale: 0.98,
+              duration: 1,
+              ease: "power1.inOut",
+            },
+            i * breathingCycle + 1,
+          );
         }
 
         // 2. Grid Lines Pulse/Glow
@@ -102,18 +111,26 @@
         const pulseSteps = Math.ceil(duration / pulseCycle);
         for (let i = 0; i < pulseSteps; i++) {
           const startTime = i * pulseCycle + 0.5; // Offset slightly from breathing
-          tl.to(['.grid-lines-h', '.grid-lines-v'], {
-            opacity: 0.8,
-            filter: "drop-shadow(0 0 5px #00CC66)",
-            duration: 0.1,
-            ease: "none"
-          }, startTime);
-          tl.to(['.grid-lines-h', '.grid-lines-v'], {
-            opacity: 0.1,
-            filter: "drop-shadow(0 0 0px #00CC66)",
-            duration: 0.4,
-            ease: "power2.out"
-          }, startTime + 0.1);
+          tl.to(
+            [".grid-lines-h", ".grid-lines-v"],
+            {
+              opacity: 0.8,
+              filter: "drop-shadow(0 0 5px #00CC66)",
+              duration: 0.1,
+              ease: "none",
+            },
+            startTime,
+          );
+          tl.to(
+            [".grid-lines-h", ".grid-lines-v"],
+            {
+              opacity: 0.1,
+              filter: "drop-shadow(0 0 0px #00CC66)",
+              duration: 0.4,
+              ease: "power2.out",
+            },
+            startTime + 0.1,
+          );
         }
 
         // 3. Scanline Movement & Parallax
@@ -121,38 +138,55 @@
         const scanlineCycle = 4;
         const scanlineSteps = Math.ceil(duration / scanlineCycle);
         for (let i = 0; i < scanlineSteps; i++) {
-          tl.fromTo('.scanline', 
+          tl.fromTo(
+            ".scanline",
             { top: -100 },
             { top: 1920, duration: scanlineCycle, ease: "none" },
-            i * scanlineCycle
+            i * scanlineCycle,
           );
-          
+
           // Subtle parallax shift on grid lines
-          tl.to('.grid-lines-h', {
-            y: "+=40",
-            duration: scanlineCycle,
-            ease: "none"
-          }, i * scanlineCycle);
-          
-          tl.to('.grid-lines-v', {
-            x: "+=40",
-            duration: scanlineCycle,
-            ease: "none"
-          }, i * scanlineCycle);
+          tl.to(
+            ".grid-lines-h",
+            {
+              y: "+=40",
+              duration: scanlineCycle,
+              ease: "none",
+            },
+            i * scanlineCycle,
+          );
+
+          tl.to(
+            ".grid-lines-v",
+            {
+              x: "+=40",
+              duration: scanlineCycle,
+              ease: "none",
+            },
+            i * scanlineCycle,
+          );
         }
 
         // Parallax shift synced with A-roll exit (7.3s to 7.9s)
-        tl.to('.dot-grid', {
-          x: "-=50",
-          duration: 0.6,
-          ease: "expo.inOut"
-        }, 7.3);
-        
-        tl.to('.dot-grid', {
-          x: 0,
-          duration: 0.6,
-          ease: "back.out(1.2)"
-        }, 12.3);
+        tl.to(
+          ".dot-grid",
+          {
+            x: "-=50",
+            duration: 0.6,
+            ease: "expo.inOut",
+          },
+          7.3,
+        );
+
+        tl.to(
+          ".dot-grid",
+          {
+            x: 0,
+            duration: 0.6,
+            ease: "back.out(1.2)",
+          },
+          12.3,
+        );
 
         // Register the timeline
         window.__timelines["background"] = tl;

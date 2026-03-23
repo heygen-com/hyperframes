@@ -10,12 +10,20 @@
       [data-composition-id="title-card"] {
         width: 1920px;
         height: 1080px;
-        background-color: #4A5568;
+        background-color: #4a5568;
         display: flex;
         justify-content: center;
         align-items: center;
         overflow: hidden;
-        font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        font-family:
+          "Inter",
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          Roboto,
+          Helvetica,
+          Arial,
+          sans-serif;
       }
 
       [data-composition-id="title-card"] .background {
@@ -24,7 +32,7 @@
         left: 0;
         width: 100%;
         height: 100%;
-        background: radial-gradient(circle at 50% 50%, #5A677C 0%, #4A5568 100%);
+        background: radial-gradient(circle at 50% 50%, #5a677c 0%, #4a5568 100%);
         pointer-events: none;
       }
 
@@ -32,7 +40,7 @@
         position: absolute;
         width: 400px;
         height: 400px;
-        background-color: #F7F3ED;
+        background-color: #f7f3ed;
         border-radius: 45% 55% 70% 30% / 30% 40% 60% 70%;
         filter: blur(20px);
         opacity: 0;
@@ -46,7 +54,7 @@
       }
 
       [data-composition-id="title-card"] .title {
-        color: #F7F3ED;
+        color: #f7f3ed;
         font-size: 84px;
         font-weight: 100;
         letter-spacing: 0.4em;
@@ -57,30 +65,34 @@
     </style>
 
     <script>
-      (function() {
+      (function () {
         const tl = gsap.timeline({ paused: true });
         const compSelector = '[data-composition-id="title-card"]';
 
         // Title Animation: Fade in over 1.5s and slight drift
-        tl.fromTo(`${compSelector} .title`, 
+        tl.fromTo(
+          `${compSelector} .title`,
           {
             opacity: 0,
-            y: 20
+            y: 20,
           },
           {
             opacity: 1,
             y: 0,
             duration: 1.5,
-            ease: "power3.out"
-          }, 0);
+            ease: "power3.out",
+          },
+          0,
+        );
 
         // Fragment Animation: Drift in and increase opacity to 0.3
-        tl.fromTo(`${compSelector} .fragment`, 
-          { 
-            x: -100, 
-            y: 50, 
+        tl.fromTo(
+          `${compSelector} .fragment`,
+          {
+            x: -100,
+            y: 50,
             opacity: 0,
-            scale: 0.9
+            scale: 0.9,
           },
           {
             x: 0,
@@ -88,15 +100,21 @@
             opacity: 0.3,
             scale: 1,
             duration: 3,
-            ease: "power2.out"
-          }, 0);
+            ease: "power2.out",
+          },
+          0,
+        );
 
         // Ambient drift for the title throughout the 3s
-        tl.to(`${compSelector} .title`, {
-          y: -10,
-          duration: 3,
-          ease: "none"
-        }, 0);
+        tl.to(
+          `${compSelector} .title`,
+          {
+            y: -10,
+            duration: 3,
+            ease: "none",
+          },
+          0,
+        );
 
         window.__timelines["title-card"] = tl;
       })();

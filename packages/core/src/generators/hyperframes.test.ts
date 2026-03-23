@@ -2,7 +2,11 @@
  * @vitest-environment jsdom
  */
 import { describe, it, expect } from "vitest";
-import { generateHyperframesHtml, generateGsapTimelineScript, generateHyperframesStyles } from "./hyperframes.js";
+import {
+  generateHyperframesHtml,
+  generateGsapTimelineScript,
+  generateHyperframesStyles,
+} from "./hyperframes.js";
 import { GSAP_CDN } from "../templates/constants.js";
 import type { TimelineTextElement, TimelineMediaElement } from "../core.types";
 
@@ -274,7 +278,11 @@ describe("generateHyperframesStyles", () => {
 
   it("includes custom CSS when provided", () => {
     const elements = [makeTextElement()];
-    const { customCss } = generateHyperframesStyles(elements, "landscape", ".custom { color: blue; }");
+    const { customCss } = generateHyperframesStyles(
+      elements,
+      "landscape",
+      ".custom { color: blue; }",
+    );
 
     expect(customCss).toContain(".custom { color: blue; }");
   });

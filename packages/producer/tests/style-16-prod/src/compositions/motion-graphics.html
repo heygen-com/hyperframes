@@ -1,5 +1,10 @@
 <template id="motion-graphics-template">
-  <div data-composition-id="motion-graphics" data-width="1080" data-height="1920" data-duration="13.88">
+  <div
+    data-composition-id="motion-graphics"
+    data-width="1080"
+    data-height="1920"
+    data-duration="13.88"
+  >
     <!-- Background Base -->
     <div class="bg-base"></div>
     <div class="newsprint-texture"></div>
@@ -22,7 +27,7 @@
       <div class="text-container">
         <div class="kicker">Survey signal</div>
         <div class="stencil-text percent-47">47%</div>
-        <div class="bold-text">OF YOU NEED<br>MOTION GRAPHICS</div>
+        <div class="bold-text">OF YOU NEED<br />MOTION GRAPHICS</div>
       </div>
     </div>
 
@@ -34,7 +39,7 @@
       <div class="text-container">
         <div class="kicker">Engagement drop</div>
         <div class="stencil-text percent-62">62%</div>
-        <div class="bold-text">SAID STATIC CONTENT<br>REDUCES ENGAGEMENT</div>
+        <div class="bold-text">SAID STATIC CONTENT<br />REDUCES ENGAGEMENT</div>
       </div>
     </div>
 
@@ -45,7 +50,7 @@
         height: 1920px;
         background-color: transparent;
         overflow: hidden;
-        font-family: 'Montserrat', 'Arial Black', sans-serif;
+        font-family: "Montserrat", "Arial Black", sans-serif;
       }
 
       [data-composition-id="motion-graphics"] .bg-base {
@@ -55,7 +60,7 @@
         width: 856px;
         height: 1328px;
         background: transparent;
-        box-shadow: 0 0 0 9999px #E8DCC8;
+        box-shadow: 0 0 0 9999px #e8dcc8;
       }
 
       [data-composition-id="motion-graphics"] .newsprint-texture {
@@ -83,7 +88,7 @@
       }
 
       [data-composition-id="motion-graphics"] .frame-shadow {
-        box-shadow: 16px 16px 0 #CC0000;
+        box-shadow: 16px 16px 0 #cc0000;
         z-index: 11;
       }
 
@@ -96,7 +101,7 @@
 
       [data-composition-id="motion-graphics"] .bg-shape {
         position: absolute;
-        background-color: #7A7A7A;
+        background-color: #7a7a7a;
         opacity: 0.3;
       }
 
@@ -113,7 +118,7 @@
         height: 0;
         border-left: 86px solid transparent;
         border-right: 86px solid transparent;
-        border-bottom: 240px solid #CC0000;
+        border-bottom: 240px solid #cc0000;
         opacity: 0.16;
         bottom: 240px;
         right: 18px;
@@ -132,7 +137,7 @@
       [data-composition-id="motion-graphics"] .bg-line-2 {
         width: 2000px;
         height: 4px;
-        background-color: #CC0000;
+        background-color: #cc0000;
         top: 70%;
         left: -500px;
         transform: rotate(10deg);
@@ -174,7 +179,7 @@
         left: 50%;
         width: 100px;
         height: 100px;
-        background-color: #CC0000;
+        background-color: #cc0000;
         border-radius: 50%;
         transform: translate(-50%, -50%) scale(0);
         z-index: 5;
@@ -187,7 +192,7 @@
         height: 0;
         border-left: 180px solid transparent;
         border-right: 180px solid transparent;
-        border-bottom: 700px solid #CC0000;
+        border-bottom: 700px solid #cc0000;
         top: 640px;
         left: 44px;
         transform: rotate(-18deg) scale(0);
@@ -201,9 +206,9 @@
         right: 24px;
         width: 520px;
         height: 540px;
-        background-image: 
-          linear-gradient(45deg, #7A7A7A 1px, transparent 1px),
-          linear-gradient(-45deg, #7A7A7A 1px, transparent 1px);
+        background-image:
+          linear-gradient(45deg, #7a7a7a 1px, transparent 1px),
+          linear-gradient(-45deg, #7a7a7a 1px, transparent 1px);
         background-size: 88px 88px;
         opacity: 0.22;
         z-index: 6;
@@ -250,14 +255,14 @@
       }
 
       [data-composition-id="motion-graphics"] .section-1 .stencil-text {
-        color: #E8DCC8;
-        -webkit-text-fill-color: #E8DCC8;
+        color: #e8dcc8;
+        -webkit-text-fill-color: #e8dcc8;
         text-shadow: 4px 4px 0px #000000;
       }
 
       [data-composition-id="motion-graphics"] .section-2 .stencil-text {
-        color: #CC0000;
-        -webkit-text-fill-color: #CC0000;
+        color: #cc0000;
+        -webkit-text-fill-color: #cc0000;
       }
 
       [data-composition-id="motion-graphics"] .bold-text {
@@ -265,7 +270,7 @@
         text-transform: uppercase;
         letter-spacing: 0.08em;
         background-color: #000000;
-        color: #E8DCC8;
+        color: #e8dcc8;
         padding: 14px 18px;
         display: inline-block;
       }
@@ -277,117 +282,178 @@
     </style>
 
     <script>
-      (function() {
+      (function () {
         const tl = gsap.timeline({ paused: true });
 
-        tl.to('.bg-circle-1', {
-          y: 88,
-          x: 42,
-          duration: 13.88,
-          ease: 'none'
-        }, 0);
-        tl.to('.bg-wedge-1', {
-          rotation: 72,
-          y: -120,
-          duration: 13.88,
-          ease: 'none'
-        }, 0);
-        tl.to('.bg-line-1', {
-          y: 140,
-          duration: 13.88,
-          ease: 'none'
-        }, 0);
-        tl.to('.bg-line-2', {
-          y: -160,
-          duration: 13.88,
-          ease: 'none'
-        }, 0);
-        tl.to('.newsprint-texture', {
-          x: 18,
-          y: -14,
-          duration: 13.88,
-          ease: 'none'
-        }, 0);
-
-        tl.to('.burst-1', {
-          scale: 16,
-          opacity: 0,
-          duration: 0.7,
-          ease: 'expo.out'
-        }, 1.5);
-
-        tl.to('.section-1', { opacity: 1, duration: 0.1 }, 1.5);
-        
-        tl.fromTo('.wedge-thrust', 
-          { scale: 0, x: -220, y: 520 },
-          { scale: 1, x: 0, y: 0, duration: 0.95, ease: 'power4.out' }, 
-          1.5
+        tl.to(
+          ".bg-circle-1",
+          {
+            y: 88,
+            x: 42,
+            duration: 13.88,
+            ease: "none",
+          },
+          0,
+        );
+        tl.to(
+          ".bg-wedge-1",
+          {
+            rotation: 72,
+            y: -120,
+            duration: 13.88,
+            ease: "none",
+          },
+          0,
+        );
+        tl.to(
+          ".bg-line-1",
+          {
+            y: 140,
+            duration: 13.88,
+            ease: "none",
+          },
+          0,
+        );
+        tl.to(
+          ".bg-line-2",
+          {
+            y: -160,
+            duration: 13.88,
+            ease: "none",
+          },
+          0,
+        );
+        tl.to(
+          ".newsprint-texture",
+          {
+            x: 18,
+            y: -14,
+            duration: 13.88,
+            ease: "none",
+          },
+          0,
         );
 
-        tl.from('.stat-panel-left', {
-          x: -420,
-          duration: 0.8,
-          ease: 'expo.out'
-        }, 1.56);
+        tl.to(
+          ".burst-1",
+          {
+            scale: 16,
+            opacity: 0,
+            duration: 0.7,
+            ease: "expo.out",
+          },
+          1.5,
+        );
 
-        tl.from('.section-1 .text-container', {
-          opacity: 0,
-          x: -70,
-          duration: 0.65,
-          ease: 'power3.out'
-        }, 1.72);
+        tl.to(".section-1", { opacity: 1, duration: 0.1 }, 1.5);
 
-        tl.to('.section-1', {
-          opacity: 0,
-          x: -220,
-          duration: 0.45,
-          ease: 'power2.in'
-        }, 3.8);
+        tl.fromTo(
+          ".wedge-thrust",
+          { scale: 0, x: -220, y: 520 },
+          { scale: 1, x: 0, y: 0, duration: 0.95, ease: "power4.out" },
+          1.5,
+        );
 
-        tl.to('.section-2', { opacity: 1, duration: 0.1 }, 4.0);
+        tl.from(
+          ".stat-panel-left",
+          {
+            x: -420,
+            duration: 0.8,
+            ease: "expo.out",
+          },
+          1.56,
+        );
 
-        tl.from('.stat-panel-top', {
-          x: 420,
-          duration: 0.8,
-          ease: 'expo.out'
-        }, 4.0);
+        tl.from(
+          ".section-1 .text-container",
+          {
+            opacity: 0,
+            x: -70,
+            duration: 0.65,
+            ease: "power3.out",
+          },
+          1.72,
+        );
 
-        tl.from('.diagonal-grid', {
-          opacity: 0,
-          x: 140,
-          scale: 1.15,
-          duration: 0.9,
-          ease: 'power2.out'
-        }, 4.0);
+        tl.to(
+          ".section-1",
+          {
+            opacity: 0,
+            x: -220,
+            duration: 0.45,
+            ease: "power2.in",
+          },
+          3.8,
+        );
 
-        tl.from('.section-2 .text-container', {
-          opacity: 0,
-          x: 90,
-          duration: 0.7,
-          ease: 'power3.out'
-        }, 4.24);
+        tl.to(".section-2", { opacity: 1, duration: 0.1 }, 4.0);
 
-        tl.to('.burst-2', {
-          scale: 18,
-          opacity: 0,
-          duration: 0.85,
-          ease: 'expo.out'
-        }, 7.5);
+        tl.from(
+          ".stat-panel-top",
+          {
+            x: 420,
+            duration: 0.8,
+            ease: "expo.out",
+          },
+          4.0,
+        );
 
-        tl.to('.section-2', {
-          opacity: 0,
-          x: 260,
-          duration: 0.5,
-          ease: 'power2.in'
-        }, 7.5);
+        tl.from(
+          ".diagonal-grid",
+          {
+            opacity: 0,
+            x: 140,
+            scale: 1.15,
+            duration: 0.9,
+            ease: "power2.out",
+          },
+          4.0,
+        );
 
-        tl.to('.bg-shape', {
-          scale: 1.05,
-          duration: 2.1,
-          repeat: 1,
-          yoyo: true,
-          ease: 'sine.inOut'
-        }, 7.5);
+        tl.from(
+          ".section-2 .text-container",
+          {
+            opacity: 0,
+            x: 90,
+            duration: 0.7,
+            ease: "power3.out",
+          },
+          4.24,
+        );
+
+        tl.to(
+          ".burst-2",
+          {
+            scale: 18,
+            opacity: 0,
+            duration: 0.85,
+            ease: "expo.out",
+          },
+          7.5,
+        );
+
+        tl.to(
+          ".section-2",
+          {
+            opacity: 0,
+            x: 260,
+            duration: 0.5,
+            ease: "power2.in",
+          },
+          7.5,
+        );
+
+        tl.to(
+          ".bg-shape",
+          {
+            scale: 1.05,
+            duration: 2.1,
+            repeat: 1,
+            yoyo: true,
+            ease: "sine.inOut",
+          },
+          7.5,
+        );
 
         window.__timelines["motion-graphics"] = tl;
       })();

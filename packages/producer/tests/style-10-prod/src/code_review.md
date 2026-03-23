@@ -1,14 +1,17 @@
 # HyperFrame Schema Compliance Review
 
 ## Executive Summary
+
 - Total files reviewed: 4
 - Critical issues: 0
 - Overall compliance status: PASS
 
 ## Critical Issues
+
 None found. All compositions follow the core schema rules for determinism, finite timelines, and registration.
 
 ## Compliance Checklist
+
 - [x] All compositions have `data-width` and `data-height` attributes
 - [x] All timelines are finite with duration > 0
 - [x] All compositions registered in `window.__timelines`
@@ -28,14 +31,18 @@ None found. All compositions follow the core schema rules for determinism, finit
 ## File-by-File Analysis
 
 ### index.html
+
 **Status**: COMPLIANT
+
 - Correctly defines the master composition with `data-composition-id="master"`.
 - Uses portrait dimensions (1080x1920).
 - Loads sub-compositions using `data-composition-src`.
 - Registers `master` timeline in `window.__timelines`.
 
 ### compositions/main-orchestration.html
+
 **Status**: COMPLIANT
+
 - Correctly uses `<template>` and `data-composition-id`.
 - Registers `main-orchestration` timeline.
 - Deterministic GSAP animations for background and video.
@@ -43,14 +50,18 @@ None found. All compositions follow the core schema rules for determinism, finit
 - **Note**: Ensure audio files do not overlap on track 1 if their duration exceeds the gap between start times.
 
 ### compositions/captions.html
+
 **Status**: COMPLIANT
+
 - Correctly handles dynamic caption generation within a composition.
 - Registers `captions` timeline.
 - Uses deterministic logic for word animations based on a fixed transcript.
 - Correctly uses `data-width` and `data-height`.
 
 ### compositions/graphics.html
+
 **Status**: COMPLIANT
+
 - Correctly uses `<template>` and `data-composition-id`.
 - Registers `graphics` timeline.
 - Uses deterministic pop-in and exit animations.

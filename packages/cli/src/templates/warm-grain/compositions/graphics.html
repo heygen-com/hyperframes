@@ -17,7 +17,10 @@
     <div id="moment-3" class="moment rect-stat">
       <div class="icon-shape">
         <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-          <path d="M20,20 Q50,0 80,20 Q100,50 80,80 Q50,100 20,80 Q0,50 20,20" fill="currentColor" />
+          <path
+            d="M20,20 Q50,0 80,20 Q100,50 80,80 Q50,100 20,80 Q0,50 20,20"
+            fill="currentColor"
+          />
         </svg>
       </div>
       <div class="stat-text">Editing Skills</div>
@@ -28,7 +31,7 @@
         position: relative;
         width: 1920px;
         height: 1080px;
-        font-family: 'Outfit', sans-serif;
+        font-family: "Outfit", sans-serif;
         color: white;
         overflow: hidden;
       }
@@ -46,7 +49,7 @@
       [data-composition-id="graphics"] #moment-1 {
         width: 500px;
         height: 500px;
-        background-color: #3B5E3A;
+        background-color: #3b5e3a;
         border-radius: 50%;
         left: 1400px;
         top: 540px;
@@ -72,7 +75,7 @@
       [data-composition-id="graphics"] #moment-2 {
         width: 500px;
         height: 220px;
-        background-color: #CC8832;
+        background-color: #cc8832;
         border-radius: 110px;
         left: 960px;
         top: 200px;
@@ -83,7 +86,7 @@
       [data-composition-id="graphics"] #moment-3 {
         width: 550px;
         height: 180px;
-        background-color: #C45D3E;
+        background-color: #c45d3e;
         border-radius: 40px;
         left: 400px;
         top: 540px;
@@ -117,38 +120,41 @@
     </style>
 
     <script>
-      (function() {
+      (function () {
         const tl = gsap.timeline({ paused: true });
 
         // Moment 1: 1.8s - 4.5s
         // Gentle drift into place and settle
-        tl.fromTo('#moment-1', 
-          { opacity: 0, x: '+=40', y: '+=15', scale: 0.8 },
-          { opacity: 1, x: 0, y: 0, scale: 1, duration: 1.2, ease: 'back.out(1.7)' },
-          1.8
+        tl.fromTo(
+          "#moment-1",
+          { opacity: 0, x: "+=40", y: "+=15", scale: 0.8 },
+          { opacity: 1, x: 0, y: 0, scale: 1, duration: 1.2, ease: "back.out(1.7)" },
+          1.8,
         );
         // Hold until 4.5s, then fade out
-        tl.to('#moment-1', { opacity: 0, scale: 0.8, duration: 0.3, ease: 'power2.in' }, 4.2);
+        tl.to("#moment-1", { opacity: 0, scale: 0.8, duration: 0.3, ease: "power2.in" }, 4.2);
 
         // Moment 2: 4.6s - 8.6s
         // Gentle drift into place and settle
-        tl.fromTo('#moment-2',
-          { opacity: 0, y: '-=40', x: '+=10', scale: 0.8 },
-          { opacity: 1, y: 0, x: 0, scale: 1, duration: 1.2, ease: 'back.out(1.7)' },
-          4.6
+        tl.fromTo(
+          "#moment-2",
+          { opacity: 0, y: "-=40", x: "+=10", scale: 0.8 },
+          { opacity: 1, y: 0, x: 0, scale: 1, duration: 1.2, ease: "back.out(1.7)" },
+          4.6,
         );
         // Hold until 8.6s, then fade out
-        tl.to('#moment-2', { opacity: 0, scale: 0.8, duration: 0.3, ease: 'power2.in' }, 8.3);
+        tl.to("#moment-2", { opacity: 0, scale: 0.8, duration: 0.3, ease: "power2.in" }, 8.3);
 
         // Moment 3: 8.8s - 14s
         // Gentle drift into place and settle
-        tl.fromTo('#moment-3',
-          { opacity: 0, x: '-=40', y: '-=10', scale: 0.8 },
-          { opacity: 1, x: 0, y: 0, scale: 1, duration: 1.2, ease: 'back.out(1.7)' },
-          8.8
+        tl.fromTo(
+          "#moment-3",
+          { opacity: 0, x: "-=40", y: "-=10", scale: 0.8 },
+          { opacity: 1, x: 0, y: 0, scale: 1, duration: 1.2, ease: "back.out(1.7)" },
+          8.8,
         );
         // Hold until end (14s)
-        tl.to('#moment-3', { opacity: 0, duration: 0.5, ease: 'power2.in' }, 13.5);
+        tl.to("#moment-3", { opacity: 0, duration: 0.5, ease: "power2.in" }, 13.5);
 
         window.__timelines["graphics"] = tl;
       })();

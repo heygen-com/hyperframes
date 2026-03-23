@@ -98,9 +98,19 @@ export {
 } from "./generators/hyperframes";
 
 // Compiler (timing only — browser-safe, no cheerio/esbuild)
-export type { UnresolvedElement, ResolvedDuration, ResolvedMediaElement, CompilationResult } from "./compiler/timingCompiler";
+export type {
+  UnresolvedElement,
+  ResolvedDuration,
+  ResolvedMediaElement,
+  CompilationResult,
+} from "./compiler/timingCompiler";
 
-export { compileTimingAttrs, injectDurations, extractResolvedMedia, clampDurations } from "./compiler/timingCompiler";
+export {
+  compileTimingAttrs,
+  injectDurations,
+  extractResolvedMedia,
+  clampDurations,
+} from "./compiler/timingCompiler";
 
 // Lint
 export type {

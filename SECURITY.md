@@ -18,7 +18,7 @@ We will acknowledge receipt within 48 hours and aim to provide a fix or mitigati
 ## Supported Versions
 
 | Version | Supported |
-|---------|-----------|
+| ------- | --------- |
 | 0.x     | Yes       |
 
 ## Scope

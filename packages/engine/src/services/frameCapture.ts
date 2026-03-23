@@ -22,7 +22,12 @@ import {
 } from "./browserManager.js";
 import { beginFrameCapture, getCdpSession, pageScreenshotCapture } from "./screenshotService.js";
 import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
-import type { CaptureOptions, CaptureResult, CaptureBufferResult, CapturePerfSummary } from "../types.js";
+import type {
+  CaptureOptions,
+  CaptureResult,
+  CaptureBufferResult,
+  CapturePerfSummary,
+} from "../types.js";
 
 export type { CaptureOptions, CaptureResult, CaptureBufferResult, CapturePerfSummary };
 
@@ -72,8 +77,12 @@ export async function createCaptureSession(
   const headlessShell = resolveHeadlessShellPath(config);
   const isLinux = process.platform === "linux";
   const forceScreenshot = config?.forceScreenshot ?? DEFAULT_CONFIG.forceScreenshot;
-  const preMode: CaptureMode = headlessShell && isLinux && !forceScreenshot ? "beginframe" : "screenshot";
-  const chromeArgs = buildChromeArgs({ width: options.width, height: options.height, captureMode: preMode }, config);
+  const preMode: CaptureMode =
+    headlessShell && isLinux && !forceScreenshot ? "beginframe" : "screenshot";
+  const chromeArgs = buildChromeArgs(
+    { width: options.width, height: options.height, captureMode: preMode },
+    config,
+  );
 
   const { browser, captureMode } = await acquireBrowser(chromeArgs, config);
 
@@ -81,7 +90,10 @@ export async function createCaptureSession(
   const browserVersion = await browser.version();
   const expectedMajor = config?.expectedChromiumMajor;
   if (Number.isFinite(expectedMajor)) {
-    const actualChromiumMajor = Number.parseInt((browserVersion.match(/(\d+)\./) || [])[1] || "", 10);
+    const actualChromiumMajor = Number.parseInt(
+      (browserVersion.match(/(\d+)\./) || [])[1] || "",
+      10,
+    );
     if (Number.isFinite(actualChromiumMajor) && actualChromiumMajor !== expectedMajor) {
       throw new Error(
         `[FrameCapture] Chromium major mismatch expected=${expectedMajor} actual=${actualChromiumMajor} raw=${browserVersion}`,
@@ -127,7 +139,8 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
   page.on("console", (msg: ConsoleMessage) => {
     const type = msg.type();
     const text = msg.text();
-    const prefix = type === "error" ? "[Browser:ERROR]" : type === "warn" ? "[Browser:WARN]" : "[Browser]";
+    const prefix =
+      type === "error" ? "[Browser:ERROR]" : type === "warn" ? "[Browser:WARN]" : "[Browser]";
     console.log(`${prefix} ${text}`);
 
     session.browserConsoleBuffer.push(`${prefix} ${text}`);
@@ -151,7 +164,8 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
     // Screenshot mode: standard navigation, rAF works normally
     await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
 
-    const pageReadyTimeout = session.config?.playerReadyTimeout ?? DEFAULT_CONFIG.playerReadyTimeout;
+    const pageReadyTimeout =
+      session.config?.playerReadyTimeout ?? DEFAULT_CONFIG.playerReadyTimeout;
     await page.waitForFunction(
       `!!(window.__hf && typeof window.__hf.seek === "function" && window.__hf.duration > 0)`,
       { timeout: pageReadyTimeout },
@@ -230,7 +244,8 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
 
   // Wait for all video elements to have loaded metadata (dimensions + duration).
   // Without this, frame 0 captures videos at their 300x150 default size.
-  const videoDeadline = Date.now() + (session.config?.playerReadyTimeout ?? DEFAULT_CONFIG.playerReadyTimeout);
+  const videoDeadline =
+    Date.now() + (session.config?.playerReadyTimeout ?? DEFAULT_CONFIG.playerReadyTimeout);
   while (Date.now() < videoDeadline) {
     const videosReady = await page.evaluate(
       `document.querySelectorAll("video").length === 0 || Array.from(document.querySelectorAll("video")).every(v => v.readyState >= 1)`,
@@ -341,14 +356,24 @@ async function captureFrameCore(
   const startTime = Date.now();
 
   try {
-    const { quantizedTime, seekMs, beforeCaptureMs } = await prepareFrameForCapture(session, frameIndex, time);
+    const { quantizedTime, seekMs, beforeCaptureMs } = await prepareFrameForCapture(
+      session,
+      frameIndex,
+      time,
+    );
 
     const screenshotStart = Date.now();
     let screenshotBuffer: Buffer;
 
     if (session.captureMode === "beginframe") {
-      const frameTimeTicks = session.beginFrameTimeTicks + frameIndex * session.beginFrameIntervalMs;
-      const result = await beginFrameCapture(page, options, frameTimeTicks, session.beginFrameIntervalMs);
+      const frameTimeTicks =
+        session.beginFrameTimeTicks + frameIndex * session.beginFrameIntervalMs;
+      const result = await beginFrameCapture(
+        page,
+        options,
+        frameTimeTicks,
+        session.beginFrameIntervalMs,
+      );
       if (result.hasDamage) session.beginFrameHasDamageCount++;
       else session.beginFrameNoDamageCount++;
       screenshotBuffer = result.buffer;
@@ -379,9 +404,17 @@ async function captureFrameCore(
   }
 }
 
-export async function captureFrame(session: CaptureSession, frameIndex: number, time: number): Promise<CaptureResult> {
+export async function captureFrame(
+  session: CaptureSession,
+  frameIndex: number,
+  time: number,
+): Promise<CaptureResult> {
   const { options, outputDir } = session;
-  const { buffer, quantizedTime, captureTimeMs } = await captureFrameCore(session, frameIndex, time);
+  const { buffer, quantizedTime, captureTimeMs } = await captureFrameCore(
+    session,
+    frameIndex,
+    time,
+  );
 
   const ext = options.format === "png" ? "png" : "jpg";
   const frameName = `frame_${String(frameIndex).padStart(6, "0")}.${ext}`;

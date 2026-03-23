@@ -156,7 +156,11 @@ export function createLottieAdapter(): RuntimeDeterministicAdapter {
 // ── Type guards ────────────────────────────────────────────────────────────────
 
 function isLottieWebAnimation(anim: unknown): anim is LottieWebAnimation {
-  return typeof anim === "object" && anim !== null && typeof (anim as LottieWebAnimation).goToAndStop === "function";
+  return (
+    typeof anim === "object" &&
+    anim !== null &&
+    typeof (anim as LottieWebAnimation).goToAndStop === "function"
+  );
 }
 
 function isDotLottiePlayer(anim: unknown): anim is DotLottiePlayer {

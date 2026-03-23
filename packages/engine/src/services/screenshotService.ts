@@ -203,7 +203,10 @@ export async function injectVideoFramesBatch(
   );
 }
 
-export async function syncVideoFrameVisibility(page: Page, activeVideoIds: string[]): Promise<void> {
+export async function syncVideoFrameVisibility(
+  page: Page,
+  activeVideoIds: string[],
+): Promise<void> {
   await page.evaluate((ids: string[]) => {
     const active = new Set(ids);
     const videos = Array.from(document.querySelectorAll("video[data-start]")) as HTMLVideoElement[];

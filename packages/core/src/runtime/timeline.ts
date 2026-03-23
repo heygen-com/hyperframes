@@ -1,4 +1,9 @@
-import type { RuntimeTimelineClip, RuntimeTimelineMessage, RuntimeTimelineScene, RuntimeTimelineLike } from "./types";
+import type {
+  RuntimeTimelineClip,
+  RuntimeTimelineMessage,
+  RuntimeTimelineScene,
+  RuntimeTimelineLike,
+} from "./types";
 import { createRuntimeStartTimeResolver } from "./startResolver";
 
 function parseNum(value: string | null | undefined): number | null {
@@ -50,22 +55,26 @@ export function collectRuntimeTimelinePayload(params: {
       return null;
     }
   };
-  const resolveMediaElementDurationSeconds = (mediaEl: HTMLVideoElement | HTMLAudioElement): number | null => {
+  const resolveMediaElementDurationSeconds = (
+    mediaEl: HTMLVideoElement | HTMLAudioElement,
+  ): number | null => {
     const declaredDuration = parseNum(mediaEl.getAttribute("data-duration"));
     if (declaredDuration != null && declaredDuration > 0) {
       return declaredDuration;
     }
     const playbackStart =
-      parseNum(mediaEl.getAttribute("data-playback-start")) ?? parseNum(mediaEl.getAttribute("data-media-start")) ?? 0;
+      parseNum(mediaEl.getAttribute("data-playback-start")) ??
+      parseNum(mediaEl.getAttribute("data-media-start")) ??
+      0;
     if (Number.isFinite(mediaEl.duration) && mediaEl.duration > playbackStart) {
       return Math.max(0, mediaEl.duration - playbackStart);
     }
     return null;
   };
   const resolveMediaWindowEndSeconds = (): number | null => {
-    const mediaNodes = Array.from(document.querySelectorAll("video[data-start], audio[data-start]")) as Array<
-      HTMLVideoElement | HTMLAudioElement
-    >;
+    const mediaNodes = Array.from(
+      document.querySelectorAll("video[data-start], audio[data-start]"),
+    ) as Array<HTMLVideoElement | HTMLAudioElement>;
     if (mediaNodes.length === 0) return null;
     let maxWindowEndSeconds = 0;
     for (const mediaNode of mediaNodes) {
@@ -137,11 +146,15 @@ export function collectRuntimeTimelinePayload(params: {
       ? rootDurationFromTimeline
       : null;
   const attrDurationCandidate =
-    typeof rootDurationFromAttr === "number" && Number.isFinite(rootDurationFromAttr) && rootDurationFromAttr > 0
+    typeof rootDurationFromAttr === "number" &&
+    Number.isFinite(rootDurationFromAttr) &&
+    rootDurationFromAttr > 0
       ? rootDurationFromAttr
       : null;
   const mediaWindowDurationCandidate =
-    typeof mediaWindowDuration === "number" && Number.isFinite(mediaWindowDuration) && mediaWindowDuration > 0
+    typeof mediaWindowDuration === "number" &&
+    Number.isFinite(mediaWindowDuration) &&
+    mediaWindowDuration > 0
       ? mediaWindowDuration
       : null;
   const timelineLooksLoopInflated =
@@ -156,8 +169,11 @@ export function collectRuntimeTimelinePayload(params: {
       ? mediaWindowDurationCandidate
       : (timelineDurationCandidate ?? mediaWindowDurationCandidate));
   const rootCompositionDuration =
-    preferredRootDuration != null ? Math.min(preferredRootDuration, params.maxTimelineDurationSeconds) : null;
-  const rootCompositionEnd = rootCompositionDuration != null ? rootCompositionStart + rootCompositionDuration : null;
+    preferredRootDuration != null
+      ? Math.min(preferredRootDuration, params.maxTimelineDurationSeconds)
+      : null;
+  const rootCompositionEnd =
+    rootCompositionDuration != null ? rootCompositionStart + rootCompositionDuration : null;
   const timelineWindowEnd =
     rootCompositionEnd ??
     (typeof mediaWindowEnd === "number" && Number.isFinite(mediaWindowEnd) && mediaWindowEnd > 0
@@ -177,17 +193,27 @@ export function collectRuntimeTimelinePayload(params: {
   for (let i = 0; i < nodes.length; i += 1) {
     const node = nodes[i];
     if (node === root) continue;
-    if (["SCRIPT", "STYLE", "LINK", "META", "TEMPLATE", "NOSCRIPT"].includes(node.tagName)) continue;
+    if (["SCRIPT", "STYLE", "LINK", "META", "TEMPLATE", "NOSCRIPT"].includes(node.tagName))
+      continue;
     const compositionContext = resolveNearestCompositionContext(node, root);
-    const start = startResolver.resolveStartForElement(node, compositionContext.inheritedStart ?? 0);
+    const start = startResolver.resolveStartForElement(
+      node,
+      compositionContext.inheritedStart ?? 0,
+    );
     const nodeCompositionId = node.getAttribute("data-composition-id");
     let duration = parseNum(node.getAttribute("data-duration"));
-    if ((duration == null || duration <= 0) && nodeCompositionId && nodeCompositionId !== rootCompositionId) {
+    if (
+      (duration == null || duration <= 0) &&
+      nodeCompositionId &&
+      nodeCompositionId !== rootCompositionId
+    ) {
       duration = resolveTimelineDurationSeconds(nodeCompositionId);
     }
     if ((duration == null || duration <= 0) && node instanceof HTMLMediaElement) {
       const mediaStart =
-        parseNum(node.getAttribute("data-playback-start")) ?? parseNum(node.getAttribute("data-media-start")) ?? 0;
+        parseNum(node.getAttribute("data-playback-start")) ??
+        parseNum(node.getAttribute("data-media-start")) ??
+        0;
       if (Number.isFinite(node.duration) && node.duration > 0) {
         duration = Math.max(0, node.duration - mediaStart);
       }
@@ -228,7 +254,10 @@ export function collectRuntimeTimelinePayload(params: {
       start,
       duration,
       track:
-        Number.parseInt(node.getAttribute("data-track-index") ?? node.getAttribute("data-track") ?? String(i), 10) || 0,
+        Number.parseInt(
+          node.getAttribute("data-track-index") ?? node.getAttribute("data-track") ?? String(i),
+          10,
+        ) || 0,
       kind,
       tagName: tag,
       compositionId: node.getAttribute("data-composition-id"),
@@ -250,7 +279,8 @@ export function collectRuntimeTimelinePayload(params: {
     const start = startResolver.resolveStartForElement(compositionNode, 0);
     const durationFromAttr = parseNum(compositionNode.getAttribute("data-duration"));
     const durationFromTimeline = resolveTimelineDurationSeconds(compositionId);
-    const duration = durationFromAttr && durationFromAttr > 0 ? durationFromAttr : durationFromTimeline;
+    const duration =
+      durationFromAttr && durationFromAttr > 0 ? durationFromAttr : durationFromTimeline;
     if (duration == null || duration <= 0) continue;
     const clampedDuration = clampDurationToRootWindow(start, duration);
     if (clampedDuration <= 0) continue;

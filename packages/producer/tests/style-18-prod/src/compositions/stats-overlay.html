@@ -54,7 +54,7 @@
 
       [data-composition-id="stats-overlay"] .line {
         position: absolute;
-        background-color: #E5D9B0; /* Pale Gold */
+        background-color: #e5d9b0; /* Pale Gold */
         opacity: 0.6; /* Increased opacity for visibility */
       }
 
@@ -69,10 +69,18 @@
       }
 
       /* Positioning lines to create a subtle grid */
-      [data-composition-id="stats-overlay"] .h1 { top: 20%; }
-      [data-composition-id="stats-overlay"] .h2 { bottom: 20%; }
-      [data-composition-id="stats-overlay"] .v1 { left: 15%; }
-      [data-composition-id="stats-overlay"] .v2 { right: 15%; }
+      [data-composition-id="stats-overlay"] .h1 {
+        top: 20%;
+      }
+      [data-composition-id="stats-overlay"] .h2 {
+        bottom: 20%;
+      }
+      [data-composition-id="stats-overlay"] .v1 {
+        left: 15%;
+      }
+      [data-composition-id="stats-overlay"] .v2 {
+        right: 15%;
+      }
 
       [data-composition-id="stats-overlay"] .stat-group {
         position: absolute;
@@ -116,14 +124,14 @@
       [data-composition-id="stats-overlay"] .subtitle {
         font-size: 64px; /* Increased from 32px for better hierarchy */
         font-style: italic;
-        color: #C29B8A; /* Darkened Blush for better contrast */
+        color: #c29b8a; /* Darkened Blush for better contrast */
         text-transform: lowercase;
         letter-spacing: 0.05em;
       }
 
       #stat-3 .number {
         font-size: 320px; /* Slightly increased from 280px */
-        color: #C29B8A; /* Darkened Blush */
+        color: #c29b8a; /* Darkened Blush */
       }
 
       #stat-3 .subtitle {
@@ -133,13 +141,61 @@
     </style>
 
     <script>
-      (function() {
-        const TRANSCRIPT = [{'text': 'We', 'start': 0.14, 'end': 0.239}, {'text': 'asked', 'start': 0.28, 'end': 0.459}, {'text': 'what', 'start': 0.5, 'end': 0.619}, {'text': 'you', 'start': 0.659, 'end': 0.779}, {'text': 'needed.', 'start': 0.8, 'end': 1.179}, {'text': 'Forty-seven', 'start': 1.199, 'end': 1.619}, {'text': 'percent', 'start': 1.699, 'end': 1.96}, {'text': 'of', 'start': 1.979, 'end': 2.059}, {'text': 'you', 'start': 2.099, 'end': 2.299}, {'text': 'said', 'start': 2.319, 'end': 2.499}, {'text': 'motion', 'start': 2.559, 'end': 2.839}, {'text': 'graphics,', 'start': 2.899, 'end': 3.759}, {'text': 'sixty-two', 'start': 3.799, 'end': 4.159}, {'text': 'percent', 'start': 4.239, 'end': 4.559}, {'text': 'said', 'start': 4.639, 'end': 4.799}, {'text': 'static', 'start': 4.859, 'end': 5.199}, {'text': 'content', 'start': 5.239, 'end': 5.639}, {'text': 'was', 'start': 5.679, 'end': 5.779}, {'text': 'costing', 'start': 5.859, 'end': 6.219}, {'text': 'you', 'start': 6.259, 'end': 6.339}, {'text': 'attention,', 'start': 6.379, 'end': 7.299}, {'text': 'and', 'start': 7.319, 'end': 7.439}, {'text': 'three', 'start': 7.48, 'end': 7.599}, {'text': 'out', 'start': 7.679, 'end': 7.779}, {'text': 'of', 'start': 7.799, 'end': 7.879}, {'text': 'four', 'start': 7.94, 'end': 8.139}, {'text': 'said', 'start': 8.279, 'end': 8.46}, {'text': 'you', 'start': 8.519, 'end': 8.6}, {'text': 'know', 'start': 8.619, 'end': 8.739}, {'text': 'the', 'start': 8.8, 'end': 8.88}, {'text': 'look', 'start': 8.92, 'end': 9.079}, {'text': 'you', 'start': 9.119, 'end': 9.259}, {'text': 'want', 'start': 9.279, 'end': 9.619}, {'text': 'but', 'start': 9.779, 'end': 9.88}, {'text': "don't", 'start': 9.92, 'end': 10.1}, {'text': 'have', 'start': 10.159, 'end': 10.3}, {'text': 'the', 'start': 10.3, 'end': 10.42}, {'text': 'editing', 'start': 10.5, 'end': 10.779}, {'text': 'skills', 'start': 10.86, 'end': 11.139}, {'text': 'to', 'start': 11.159, 'end': 11.239}, {'text': 'get', 'start': 11.279, 'end': 11.439}, {'text': 'there.', 'start': 11.46, 'end': 12.239}, {'text': 'So', 'start': 12.3, 'end': 12.38}, {'text': 'we', 'start': 12.399, 'end': 12.519}, {'text': 'built', 'start': 12.539, 'end': 12.759}, {'text': 'Editor', 'start': 12.84, 'end': 13.119}, {'text': 'Agent', 'start': 13.239, 'end': 13.839}];
+      (function () {
+        const TRANSCRIPT = [
+          { text: "We", start: 0.14, end: 0.239 },
+          { text: "asked", start: 0.28, end: 0.459 },
+          { text: "what", start: 0.5, end: 0.619 },
+          { text: "you", start: 0.659, end: 0.779 },
+          { text: "needed.", start: 0.8, end: 1.179 },
+          { text: "Forty-seven", start: 1.199, end: 1.619 },
+          { text: "percent", start: 1.699, end: 1.96 },
+          { text: "of", start: 1.979, end: 2.059 },
+          { text: "you", start: 2.099, end: 2.299 },
+          { text: "said", start: 2.319, end: 2.499 },
+          { text: "motion", start: 2.559, end: 2.839 },
+          { text: "graphics,", start: 2.899, end: 3.759 },
+          { text: "sixty-two", start: 3.799, end: 4.159 },
+          { text: "percent", start: 4.239, end: 4.559 },
+          { text: "said", start: 4.639, end: 4.799 },
+          { text: "static", start: 4.859, end: 5.199 },
+          { text: "content", start: 5.239, end: 5.639 },
+          { text: "was", start: 5.679, end: 5.779 },
+          { text: "costing", start: 5.859, end: 6.219 },
+          { text: "you", start: 6.259, end: 6.339 },
+          { text: "attention,", start: 6.379, end: 7.299 },
+          { text: "and", start: 7.319, end: 7.439 },
+          { text: "three", start: 7.48, end: 7.599 },
+          { text: "out", start: 7.679, end: 7.779 },
+          { text: "of", start: 7.799, end: 7.879 },
+          { text: "four", start: 7.94, end: 8.139 },
+          { text: "said", start: 8.279, end: 8.46 },
+          { text: "you", start: 8.519, end: 8.6 },
+          { text: "know", start: 8.619, end: 8.739 },
+          { text: "the", start: 8.8, end: 8.88 },
+          { text: "look", start: 8.92, end: 9.079 },
+          { text: "you", start: 9.119, end: 9.259 },
+          { text: "want", start: 9.279, end: 9.619 },
+          { text: "but", start: 9.779, end: 9.88 },
+          { text: "don't", start: 9.92, end: 10.1 },
+          { text: "have", start: 10.159, end: 10.3 },
+          { text: "the", start: 10.3, end: 10.42 },
+          { text: "editing", start: 10.5, end: 10.779 },
+          { text: "skills", start: 10.86, end: 11.139 },
+          { text: "to", start: 11.159, end: 11.239 },
+          { text: "get", start: 11.279, end: 11.439 },
+          { text: "there.", start: 11.46, end: 12.239 },
+          { text: "So", start: 12.3, end: 12.38 },
+          { text: "we", start: 12.399, end: 12.519 },
+          { text: "built", start: 12.539, end: 12.759 },
+          { text: "Editor", start: 12.84, end: 13.119 },
+          { text: "Agent", start: 13.239, end: 13.839 },
+        ];
         const tl = gsap.timeline({ paused: true });
 
         // Helper to find transcript times
-        function getWordTime(text, type = 'start') {
-          const word = TRANSCRIPT.find(w => w.text.toLowerCase().includes(text.toLowerCase()));
+        function getWordTime(text, type = "start") {
+          const word = TRANSCRIPT.find((w) => w.text.toLowerCase().includes(text.toLowerCase()));
           return word ? word[type] : null;
         }
 
@@ -147,66 +203,94 @@
         const start1 = 1.2;
         const end1 = 3.7;
 
-        tl.to('#stat-1', {
-          opacity: 1,
-          scale: 1.05,
-          duration: 1.5,
-          ease: "power2.out"
-        }, start1);
+        tl.to(
+          "#stat-1",
+          {
+            opacity: 1,
+            scale: 1.05,
+            duration: 1.5,
+            ease: "power2.out",
+          },
+          start1,
+        );
 
-        tl.to('#stat-1', {
-          opacity: 0,
-          duration: 0.5,
-          ease: "power2.in"
-        }, end1);
+        tl.to(
+          "#stat-1",
+          {
+            opacity: 0,
+            duration: 0.5,
+            ease: "power2.in",
+          },
+          end1,
+        );
 
         // 2. "62% Static Content" (3.8s to 7.3s)
         const start2 = 3.8;
         const end2 = 7.3;
 
-        tl.to('#stat-2', {
-          opacity: 1,
-          scale: 1.05,
-          duration: 1.5,
-          ease: "power2.out"
-        }, start2);
+        tl.to(
+          "#stat-2",
+          {
+            opacity: 1,
+            scale: 1.05,
+            duration: 1.5,
+            ease: "power2.out",
+          },
+          start2,
+        );
 
-        tl.to('#stat-2', {
-          opacity: 0,
-          duration: 0.5,
-          ease: "power2.in"
-        }, end2);
+        tl.to(
+          "#stat-2",
+          {
+            opacity: 0,
+            duration: 0.5,
+            ease: "power2.in",
+          },
+          end2,
+        );
 
         // 3. "75% Editing Skills" (7.4s to 12.2s) - Full Canvas Moment
         const start3 = 7.4;
         const end3 = 12.2;
 
         // Animate grid lines expanding for the full canvas moment
-        tl.to('.h1', { top: '10%', duration: 1, ease: "power2.out" }, start3);
-        tl.to('.h2', { bottom: '10%', duration: 1, ease: "power2.out" }, start3);
-        tl.to('.v1', { left: '5%', duration: 1, ease: "power2.out" }, start3);
-        tl.to('.v2', { right: '5%', duration: 1, ease: "power2.out" }, start3);
+        tl.to(".h1", { top: "10%", duration: 1, ease: "power2.out" }, start3);
+        tl.to(".h2", { bottom: "10%", duration: 1, ease: "power2.out" }, start3);
+        tl.to(".v1", { left: "5%", duration: 1, ease: "power2.out" }, start3);
+        tl.to(".v2", { right: "5%", duration: 1, ease: "power2.out" }, start3);
 
-        tl.to('#stat-3', {
-          opacity: 1,
-          scale: 1.1,
-          duration: 2,
-          ease: "power2.out"
-        }, start3);
+        tl.to(
+          "#stat-3",
+          {
+            opacity: 1,
+            scale: 1.1,
+            duration: 2,
+            ease: "power2.out",
+          },
+          start3,
+        );
 
         // Subtle background line animation during the big moment
-        tl.to('.line', {
-          opacity: 0.8,
-          duration: 2,
-          stagger: 0.2,
-          ease: "sine.inOut"
-        }, start3);
+        tl.to(
+          ".line",
+          {
+            opacity: 0.8,
+            duration: 2,
+            stagger: 0.2,
+            ease: "sine.inOut",
+          },
+          start3,
+        );
 
-        tl.to('#stat-3', {
-          opacity: 0,
-          duration: 0.8,
-          ease: "power2.in"
-        }, end3);
+        tl.to(
+          "#stat-3",
+          {
+            opacity: 0,
+            duration: 0.8,
+            ease: "power2.in",
+          },
+          end3,
+        );
 
         // Buffer at the end - Removed redundant empty tween
 

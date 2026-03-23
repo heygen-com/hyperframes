@@ -49,22 +49,18 @@ export function parseAudioElements(html: string): AudioElement[] {
 
     const durationMatch = fullTag.match(/data-duration=["']([^"']+)["']/);
     const endMatch = fullTag.match(/data-end=["']([^"']+)["']/);
-    const mediaStartMatch = fullTag.match(
-      /data-media-start=["']([^"']+)["']/
-    );
+    const mediaStartMatch = fullTag.match(/data-media-start=["']([^"']+)["']/);
     const volumeMatch = fullTag.match(/data-volume=["']([^"']+)["']/);
     const parsedVolume = volumeMatch ? parseFloat(volumeMatch[1] ?? "") : 1.0;
     const safeVolume = Number.isFinite(parsedVolume) ? parsedVolume : 1.0;
-    const durationFromDuration = durationMatch
-      ? parseFloat(durationMatch[1] ?? "")
-      : NaN;
+    const durationFromDuration = durationMatch ? parseFloat(durationMatch[1] ?? "") : NaN;
     const end = endMatch ? parseFloat(endMatch[1] ?? "") : NaN;
     const duration =
       !isNaN(durationFromDuration) && durationFromDuration > 0
         ? durationFromDuration
         : !isNaN(end) && end > start
-        ? end - start
-        : 0;
+          ? end - start
+          : 0;
 
     elements.push({
       id: idMatch?.[1] || `media-${elements.length}`,
@@ -96,9 +92,7 @@ function runFFmpeg(args: string[]): Promise<void> {
       if (code === 0) {
         resolve();
       } else {
-        reject(
-          new Error(`FFmpeg failed (code ${code}): ${stderr.slice(-500)}`)
-        );
+        reject(new Error(`FFmpeg failed (code ${code}): ${stderr.slice(-500)}`));
       }
     });
 
@@ -115,7 +109,7 @@ async function extractAudioTrack(
   srcPath: string,
   outputPath: string,
   playbackStart: number,
-  duration: number
+  duration: number,
 ): Promise<boolean> {
   const outputDir = dirname(outputPath);
   if (!existsSync(outputDir)) {
@@ -143,7 +137,7 @@ async function extractAudioTrack(
     "-ac",
     "2",
     "-y",
-    outputPath
+    outputPath,
   );
 
   try {
@@ -153,7 +147,7 @@ async function extractAudioTrack(
     console.warn(
       `[AudioExtractor] Failed to extract audio from ${srcPath}: ${
         err instanceof Error ? err.message : err
-      }`
+      }`,
     );
     return false;
   }
@@ -162,10 +156,7 @@ async function extractAudioTrack(
 /**
  * Generate a silence audio file.
  */
-async function generateSilence(
-  outputPath: string,
-  duration: number
-): Promise<void> {
+async function generateSilence(outputPath: string, duration: number): Promise<void> {
   const outputDir = dirname(outputPath);
   if (!existsSync(outputDir)) {
     mkdirSync(outputDir, { recursive: true });
@@ -191,7 +182,7 @@ async function generateSilence(
 async function mixTracks(
   tracks: AudioTrack[],
   outputPath: string,
-  totalDuration: number
+  totalDuration: number,
 ): Promise<void> {
   if (tracks.length === 0) {
     await generateSilence(outputPath, totalDuration);
@@ -213,7 +204,7 @@ async function mixTracks(
     const trimDuration = track.duration > 0 ? track.duration : totalDuration;
 
     filterParts.push(
-      `[${i}:a]atrim=0:${trimDuration},volume=${track.volume},adelay=${delayMs}|${delayMs},apad=whole_dur=${totalDuration}[a${i}]`
+      `[${i}:a]atrim=0:${trimDuration},volume=${track.volume},adelay=${delayMs}|${delayMs},apad=whole_dur=${totalDuration}[a${i}]`,
     );
   });
 
@@ -255,7 +246,7 @@ export async function processAudio(
   projectDir: string,
   workDir: string,
   outputPath: string,
-  totalDuration: number
+  totalDuration: number,
 ): Promise<boolean> {
   const html = readFileSync(htmlPath, "utf-8");
   const elements = parseAudioElements(html);
@@ -265,9 +256,7 @@ export async function processAudio(
     return false;
   }
 
-  console.log(
-    `[AudioExtractor] Processing ${elements.length} audio element(s)...`
-  );
+  console.log(`[AudioExtractor] Processing ${elements.length} audio element(s)...`);
 
   if (!existsSync(workDir)) {
     mkdirSync(workDir, { recursive: true });
@@ -292,7 +281,7 @@ export async function processAudio(
       srcPath,
       extractedPath,
       element.mediaStart,
-      element.duration
+      element.duration,
     );
 
     if (success) {
@@ -307,9 +296,7 @@ export async function processAudio(
     }
   }
 
-  console.log(
-    `[AudioExtractor] Mixing ${tracks.length} track(s) into final audio...`
-  );
+  console.log(`[AudioExtractor] Mixing ${tracks.length} track(s) into final audio...`);
   await mixTracks(tracks, outputPath, totalDuration);
 
   // Clean up work directory

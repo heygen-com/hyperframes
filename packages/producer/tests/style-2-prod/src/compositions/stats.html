@@ -1,6 +1,5 @@
 <template id="stats-template">
   <div data-composition-id="stats" data-width="1920" data-height="1080" data-duration="17">
-    
     <!-- Stat 1: 47% MOTION GRAPHICS -->
     <div id="stat-1" class="stat-container right-align">
       <div class="stat-number">47%</div>
@@ -23,9 +22,24 @@
     </div>
 
     <!-- Audio triggers -->
-    <audio id="audio-1" src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/generated_assets/a5bd8b8b_86b432b7de4c4fa6937b6a9cd37c67db.mp3" data-start="1.86" data-track-index="1"></audio>
-    <audio id="audio-2" src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/generated_assets/a5bd8b8b_86b432b7de4c4fa6937b6a9cd37c67db.mp3" data-start="4.679" data-track-index="2"></audio>
-    <audio id="audio-3" src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/generated_assets/a5bd8b8b_86b432b7de4c4fa6937b6a9cd37c67db.mp3" data-start="8.88" data-track-index="3"></audio>
+    <audio
+      id="audio-1"
+      src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/generated_assets/a5bd8b8b_86b432b7de4c4fa6937b6a9cd37c67db.mp3"
+      data-start="1.86"
+      data-track-index="1"
+    ></audio>
+    <audio
+      id="audio-2"
+      src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/generated_assets/a5bd8b8b_86b432b7de4c4fa6937b6a9cd37c67db.mp3"
+      data-start="4.679"
+      data-track-index="2"
+    ></audio>
+    <audio
+      id="audio-3"
+      src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/generated_assets/a5bd8b8b_86b432b7de4c4fa6937b6a9cd37c67db.mp3"
+      data-start="8.88"
+      data-track-index="3"
+    ></audio>
 
     <style>
       [data-composition-id="stats"] {
@@ -34,8 +48,8 @@
         left: 0;
         width: 1920px;
         height: 1080px;
-        font-family: 'Helvetica', Arial, sans-serif;
-        color: #1A1A1A;
+        font-family: "Helvetica", Arial, sans-serif;
+        color: #1a1a1a;
         overflow: hidden;
       }
 
@@ -62,7 +76,7 @@
       [data-composition-id="stats"] .stat-number {
         font-size: 220px;
         font-weight: 900; /* Helvetica Black */
-        color: #E2001A;
+        color: #e2001a;
         line-height: 0.8;
         letter-spacing: -0.06em;
         margin-bottom: 20px;
@@ -71,7 +85,7 @@
       [data-composition-id="stats"] .stat-divider {
         width: 100%;
         height: 2px;
-        background-color: #1A1A1A;
+        background-color: #1a1a1a;
         margin: 10px 0;
       }
 
@@ -85,50 +99,92 @@
         font-size: 42px;
         font-weight: 300; /* Helvetica Light */
         letter-spacing: 0.15em;
-        color: #1A1A1A;
+        color: #1a1a1a;
       }
     </style>
 
     <script>
-      (function() {
-        const TRANSCRIPT = [{'text': 'We', 'start': 0.119, 'end': 0.259}, {'text': 'asked', 'start': 0.319, 'end': 0.479}, {'text': 'what', 'start': 0.519, 'end': 0.659}, {'text': 'you', 'start': 0.699, 'end': 0.819}, {'text': 'needed.', 'start': 0.859, 'end': 1.819}, {'text': 'Forty-seven', 'start': 1.86, 'end': 2.299}, {'text': 'percent', 'start': 2.399, 'end': 2.679}, {'text': 'of', 'start': 2.7, 'end': 2.799}, {'text': 'you', 'start': 2.839, 'end': 2.939}, {'text': 'said', 'start': 3.039, 'end': 3.179}, {'text': 'motion', 'start': 3.24, 'end': 3.559}, {'text': 'graphics,', 'start': 3.579, 'end': 4.599}, {'text': 'sixty-two', 'start': 4.679, 'end': 5.179}, {'text': 'percent', 'start': 5.299, 'end': 5.759}, {'text': 'said', 'start': 5.859, 'end': 5.98}, {'text': 'static', 'start': 6.079, 'end': 6.399}, {'text': 'content', 'start': 6.46, 'end': 6.879}, {'text': 'was', 'start': 6.92, 'end': 7.079}, {'text': 'costing', 'start': 7.099, 'end': 7.48}, {'text': 'you', 'start': 7.5, 'end': 7.579}, {'text': 'attention,', 'start': 7.679, 'end': 8.659}, {'text': 'and', 'start': 8.699, 'end': 8.86}, {'text': 'three', 'start': 8.88, 'end': 9.06}, {'text': 'out', 'start': 9.079, 'end': 9.18}, {'text': 'of', 'start': 9.199, 'end': 9.34}, {'text': 'four', 'start': 9.38, 'end': 9.799}, {'text': 'said', 'start': 9.84, 'end': 10.0}, {'text': 'you', 'start': 10.019, 'end': 10.159}, {'text': 'know', 'start': 10.179, 'end': 10.36}, {'text': 'the', 'start': 10.38, 'end': 10.42}, {'text': 'look', 'start': 10.519, 'end': 10.699}, {'text': 'you', 'start': 10.739, 'end': 10.859}, {'text': 'want,', 'start': 10.98, 'end': 11.34}, {'text': 'but', 'start': 11.359, 'end': 11.52}, {'text': "don't", 'start': 11.56, 'end': 11.779}, {'text': 'have', 'start': 11.819, 'end': 11.94}, {'text': 'the', 'start': 11.96, 'end': 12.06}, {'text': 'editing', 'start': 12.079, 'end': 12.4}, {'text': 'skills', 'start': 12.52, 'end': 12.859}, {'text': 'to', 'start': 12.88, 'end': 13.0}, {'text': 'get', 'start': 13.019, 'end': 13.18}, {'text': 'there.', 'start': 13.22, 'end': 14.22}, {'text': 'So', 'start': 14.239, 'end': 14.399}, {'text': 'we', 'start': 14.42, 'end': 14.52}, {'text': 'built', 'start': 14.619, 'end': 14.88}, {'text': 'Editor', 'start': 15.079, 'end': 15.42}, {'text': 'Agent.', 'start': 15.619, 'end': 16.02}];
+      (function () {
+        const TRANSCRIPT = [
+          { text: "We", start: 0.119, end: 0.259 },
+          { text: "asked", start: 0.319, end: 0.479 },
+          { text: "what", start: 0.519, end: 0.659 },
+          { text: "you", start: 0.699, end: 0.819 },
+          { text: "needed.", start: 0.859, end: 1.819 },
+          { text: "Forty-seven", start: 1.86, end: 2.299 },
+          { text: "percent", start: 2.399, end: 2.679 },
+          { text: "of", start: 2.7, end: 2.799 },
+          { text: "you", start: 2.839, end: 2.939 },
+          { text: "said", start: 3.039, end: 3.179 },
+          { text: "motion", start: 3.24, end: 3.559 },
+          { text: "graphics,", start: 3.579, end: 4.599 },
+          { text: "sixty-two", start: 4.679, end: 5.179 },
+          { text: "percent", start: 5.299, end: 5.759 },
+          { text: "said", start: 5.859, end: 5.98 },
+          { text: "static", start: 6.079, end: 6.399 },
+          { text: "content", start: 6.46, end: 6.879 },
+          { text: "was", start: 6.92, end: 7.079 },
+          { text: "costing", start: 7.099, end: 7.48 },
+          { text: "you", start: 7.5, end: 7.579 },
+          { text: "attention,", start: 7.679, end: 8.659 },
+          { text: "and", start: 8.699, end: 8.86 },
+          { text: "three", start: 8.88, end: 9.06 },
+          { text: "out", start: 9.079, end: 9.18 },
+          { text: "of", start: 9.199, end: 9.34 },
+          { text: "four", start: 9.38, end: 9.799 },
+          { text: "said", start: 9.84, end: 10.0 },
+          { text: "you", start: 10.019, end: 10.159 },
+          { text: "know", start: 10.179, end: 10.36 },
+          { text: "the", start: 10.38, end: 10.42 },
+          { text: "look", start: 10.519, end: 10.699 },
+          { text: "you", start: 10.739, end: 10.859 },
+          { text: "want,", start: 10.98, end: 11.34 },
+          { text: "but", start: 11.359, end: 11.52 },
+          { text: "don't", start: 11.56, end: 11.779 },
+          { text: "have", start: 11.819, end: 11.94 },
+          { text: "the", start: 11.96, end: 12.06 },
+          { text: "editing", start: 12.079, end: 12.4 },
+          { text: "skills", start: 12.52, end: 12.859 },
+          { text: "to", start: 12.88, end: 13.0 },
+          { text: "get", start: 13.019, end: 13.18 },
+          { text: "there.", start: 13.22, end: 14.22 },
+          { text: "So", start: 14.239, end: 14.399 },
+          { text: "we", start: 14.42, end: 14.52 },
+          { text: "built", start: 14.619, end: 14.88 },
+          { text: "Editor", start: 15.079, end: 15.42 },
+          { text: "Agent.", start: 15.619, end: 16.02 },
+        ];
         const tl = gsap.timeline({ paused: true });
 
         // Stat 1: 47% MOTION GRAPHICS
         // Start: 1.86s, End: 4.5s
-        tl.fromTo('#stat-1', 
-          { x: 200, opacity: 0 }, 
-          { x: 0, opacity: 1, duration: 0.4, ease: "power2.out" }, 
-          1.86
+        tl.fromTo(
+          "#stat-1",
+          { x: 200, opacity: 0 },
+          { x: 0, opacity: 1, duration: 0.4, ease: "power2.out" },
+          1.86,
         );
-        tl.to('#stat-1', 
-          { x: 200, opacity: 0, duration: 0.3, ease: "power2.in" }, 
-          4.2
-        );
+        tl.to("#stat-1", { x: 200, opacity: 0, duration: 0.3, ease: "power2.in" }, 4.2);
 
         // Stat 2: 62% ATTENTION LOSS
         // Start: 4.679s, End: 8.6s
-        tl.fromTo('#stat-2', 
-          { x: 200, opacity: 0 }, 
-          { x: 0, opacity: 1, duration: 0.4, ease: "power2.out" }, 
-          4.679
+        tl.fromTo(
+          "#stat-2",
+          { x: 200, opacity: 0 },
+          { x: 0, opacity: 1, duration: 0.4, ease: "power2.out" },
+          4.679,
         );
-        tl.to('#stat-2', 
-          { x: 200, opacity: 0, duration: 0.3, ease: "power2.in" }, 
-          8.3
-        );
+        tl.to("#stat-2", { x: 200, opacity: 0, duration: 0.3, ease: "power2.in" }, 8.3);
 
         // Stat 3: 75% SKILL GAP
         // Start: 8.88s, End: 14s
-        tl.fromTo('#stat-3', 
-          { x: -200, opacity: 0 }, 
-          { x: 0, opacity: 1, duration: 0.4, ease: "power2.out" }, 
-          8.88
+        tl.fromTo(
+          "#stat-3",
+          { x: -200, opacity: 0 },
+          { x: 0, opacity: 1, duration: 0.4, ease: "power2.out" },
+          8.88,
         );
-        tl.to('#stat-3', 
-          { x: -200, opacity: 0, duration: 0.3, ease: "power2.in" }, 
-          13.7
-        );
+        tl.to("#stat-3", { x: -200, opacity: 0, duration: 0.3, ease: "power2.in" }, 13.7);
 
         window.__timelines["stats"] = tl;
       })();

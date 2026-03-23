@@ -218,7 +218,10 @@ describe("gsapAnimationsToKeyframes", () => {
         targetSelector: "#el1",
         method: "to",
         position: 0,
-        properties: { opacity: 1, x: 50, someUnsupportedProp: "value" } as Record<string, number | string>,
+        properties: { opacity: 1, x: 50, someUnsupportedProp: "value" } as Record<
+          string,
+          number | string
+        >,
         duration: 1,
       },
     ];
@@ -229,7 +232,9 @@ describe("gsapAnimationsToKeyframes", () => {
     expect(keyframes[0].properties.opacity).toBe(1);
     expect(keyframes[0].properties.x).toBe(50);
     // String values are skipped (typeof value !== "number" check)
-    expect((keyframes[0].properties as Record<string, unknown>).someUnsupportedProp).toBeUndefined();
+    expect(
+      (keyframes[0].properties as Record<string, unknown>).someUnsupportedProp,
+    ).toBeUndefined();
   });
 
   it("skips base set keyframes at time 0 when skipBaseSet is true", () => {
@@ -337,9 +342,7 @@ describe("keyframesToGsapAnimations", () => {
   });
 
   it("applies base x/y/scale offsets", () => {
-    const keyframes: Keyframe[] = [
-      { id: "kf-1", time: 0, properties: { x: 10, y: 20, scale: 2 } },
-    ];
+    const keyframes: Keyframe[] = [{ id: "kf-1", time: 0, properties: { x: 10, y: 20, scale: 2 } }];
 
     const animations = keyframesToGsapAnimations("el1", keyframes, 0, {
       x: 50,
@@ -491,8 +494,22 @@ describe("getAnimationsForElement", () => {
   it("filters animations by element id", () => {
     const animations: GsapAnimation[] = [
       { id: "a1", targetSelector: "#el1", method: "set", position: 0, properties: { opacity: 0 } },
-      { id: "a2", targetSelector: "#el2", method: "to", position: 0, properties: { opacity: 1 }, duration: 1 },
-      { id: "a3", targetSelector: "#el1", method: "to", position: 1, properties: { opacity: 1 }, duration: 0.5 },
+      {
+        id: "a2",
+        targetSelector: "#el2",
+        method: "to",
+        position: 0,
+        properties: { opacity: 1 },
+        duration: 1,
+      },
+      {
+        id: "a3",
+        targetSelector: "#el1",
+        method: "to",
+        position: 1,
+        properties: { opacity: 1 },
+        duration: 0.5,
+      },
     ];
 
     const result = getAnimationsForElement(animations, "el1");

@@ -1,77 +1,92 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-<meta charset="utf-8"/>
-<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-<title>Font Variant Numeric Test</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
-<style>
-  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap');
+  <head>
+    <meta charset="utf-8" />
+    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+    <title>Font Variant Numeric Test</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    <style>
+      @import url("https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap");
 
-  body, html {
-    margin: 0;
-    padding: 0;
-    width: 1080px;
-    height: 1920px;
-    background: #0F172A;
-    overflow: hidden;
-    font-family: 'Space Mono', monospace;
-  }
+      body,
+      html {
+        margin: 0;
+        padding: 0;
+        width: 1080px;
+        height: 1920px;
+        background: #0f172a;
+        overflow: hidden;
+        font-family: "Space Mono", monospace;
+      }
 
-  #main-comp {
-    position: relative;
-    width: 1080px;
-    height: 1920px;
-  }
+      #main-comp {
+        position: relative;
+        width: 1080px;
+        height: 1920px;
+      }
 
-  .counter {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    font-family: 'Space Mono', monospace;
-    font-size: 120px;
-    font-weight: 700;
-    color: #6366F1;
-    /* This is the CSS property that was crashing document.fonts.check() */
-    font-variant-numeric: tabular-nums;
-  }
+      .counter {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        font-family: "Space Mono", monospace;
+        font-size: 120px;
+        font-weight: 700;
+        color: #6366f1;
+        /* This is the CSS property that was crashing document.fonts.check() */
+        font-variant-numeric: tabular-nums;
+      }
 
-  .label {
-    position: absolute;
-    top: 35%;
-    left: 50%;
-    transform: translateX(-50%);
-    font-size: 24px;
-    letter-spacing: 4px;
-    color: #94A3B8;
-    text-transform: uppercase;
-  }
-</style>
-</head>
-<body>
-<div id="main-comp" data-composition-id="main-comp" data-width="1080" data-height="1920" data-start="0" data-duration="3">
-  <div class="label">COUNTER</div>
-  <div class="counter" id="counter-value">0000</div>
-  <!-- Silent audio to satisfy regression harness audio comparison -->
-  <audio id="silence" src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/generated_assets/f87f97d4_0c49f6fa95224cc3bd4f5ea3a0d937c5.wav" data-start="0" data-duration="3" data-volume="0" data-track-index="0"></audio>
-</div>
+      .label {
+        position: absolute;
+        top: 35%;
+        left: 50%;
+        transform: translateX(-50%);
+        font-size: 24px;
+        letter-spacing: 4px;
+        color: #94a3b8;
+        text-transform: uppercase;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="main-comp"
+      data-composition-id="main-comp"
+      data-width="1080"
+      data-height="1920"
+      data-start="0"
+      data-duration="3"
+    >
+      <div class="label">COUNTER</div>
+      <div class="counter" id="counter-value">0000</div>
+      <!-- Silent audio to satisfy regression harness audio comparison -->
+      <audio
+        id="silence"
+        src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/generated_assets/f87f97d4_0c49f6fa95224cc3bd4f5ea3a0d937c5.wav"
+        data-start="0"
+        data-duration="3"
+        data-volume="0"
+        data-track-index="0"
+      ></audio>
+    </div>
 
-<script>
-  const tl = gsap.timeline({ paused: true });
-  window.__timelines = window.__timelines || {};
-  window.__timelines["main-comp"] = tl;
+    <script>
+      const tl = gsap.timeline({ paused: true });
+      window.__timelines = window.__timelines || {};
+      window.__timelines["main-comp"] = tl;
 
-  const counterEl = document.getElementById("counter-value");
-  const obj = { val: 0 };
-  tl.to(obj, {
-    val: 9999,
-    duration: 3,
-    ease: "none",
-    onUpdate: () => {
-      counterEl.textContent = String(Math.round(obj.val)).padStart(4, "0");
-    }
-  });
-</script>
-</body>
+      const counterEl = document.getElementById("counter-value");
+      const obj = { val: 0 };
+      tl.to(obj, {
+        val: 9999,
+        duration: 3,
+        ease: "none",
+        onUpdate: () => {
+          counterEl.textContent = String(Math.round(obj.val)).padStart(4, "0");
+        },
+      });
+    </script>
+  </body>
 </html>

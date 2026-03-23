@@ -1,86 +1,106 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Jan Tschichold Typography Video</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
     <style>
-        body, html {
-            margin: 0;
-            padding: 0;
-            width: 1080px;
-            height: 1920px;
-            overflow: hidden;
-            background-color: #FAF5E8;
-        }
-        #master-composition {
-            width: 1080px;
-            height: 1920px;
-            position: relative;
-            z-index: 0;
-        }
-        #bg-comp { z-index: 1; }
-        #aroll-comp { z-index: 2; }
-        #hero-comp { z-index: 3; }
-        #mograph-comp { z-index: 4; }
-        #captions-comp { z-index: 5; }
+      body,
+      html {
+        margin: 0;
+        padding: 0;
+        width: 1080px;
+        height: 1920px;
+        overflow: hidden;
+        background-color: #faf5e8;
+      }
+      #master-composition {
+        width: 1080px;
+        height: 1920px;
+        position: relative;
+        z-index: 0;
+      }
+      #bg-comp {
+        z-index: 1;
+      }
+      #aroll-comp {
+        z-index: 2;
+      }
+      #hero-comp {
+        z-index: 3;
+      }
+      #mograph-comp {
+        z-index: 4;
+      }
+      #captions-comp {
+        z-index: 5;
+      }
     </style>
-</head>
-<body>
-    <div id="master-composition" data-composition-id="master" data-width="1080" data-height="1920" data-duration="14">
-        
-        <!-- Background Layer -->
-        <div id="bg-comp" 
-             data-composition-id="background" 
-             data-composition-src="compositions/background.html" 
-             data-start="0" 
-             data-duration="14" 
-             data-track-index="0">
-        </div>
+  </head>
+  <body>
+    <div
+      id="master-composition"
+      data-composition-id="master"
+      data-width="1080"
+      data-height="1920"
+      data-duration="14"
+    >
+      <!-- Background Layer -->
+      <div
+        id="bg-comp"
+        data-composition-id="background"
+        data-composition-src="compositions/background.html"
+        data-start="0"
+        data-duration="14"
+        data-track-index="0"
+      ></div>
 
-        <!-- A-Roll Video Layer -->
-        <div id="aroll-comp" 
-             data-composition-id="aroll" 
-             data-composition-src="compositions/aroll.html" 
-             data-start="0" 
-             data-duration="14" 
-             data-track-index="1">
-        </div>
+      <!-- A-Roll Video Layer -->
+      <div
+        id="aroll-comp"
+        data-composition-id="aroll"
+        data-composition-src="compositions/aroll.html"
+        data-start="0"
+        data-duration="14"
+        data-track-index="1"
+      ></div>
 
-        <!-- Hero Moment (Full Canvas) -->
-        <div id="hero-comp" 
-             data-composition-id="hero-moment" 
-             data-composition-src="compositions/hero_moment.html" 
-             data-start="0" 
-             data-duration="14" 
-             data-track-index="2">
-        </div>
+      <!-- Hero Moment (Full Canvas) -->
+      <div
+        id="hero-comp"
+        data-composition-id="hero-moment"
+        data-composition-src="compositions/hero_moment.html"
+        data-start="0"
+        data-duration="14"
+        data-track-index="2"
+      ></div>
 
-        <!-- Motion Graphic Overlays -->
-        <div id="mograph-comp" 
-             data-composition-id="mograph-overlays" 
-             data-composition-src="compositions/mograph_overlays.html" 
-             data-start="0" 
-             data-duration="14" 
-             data-track-index="3">
-        </div>
+      <!-- Motion Graphic Overlays -->
+      <div
+        id="mograph-comp"
+        data-composition-id="mograph-overlays"
+        data-composition-src="compositions/mograph_overlays.html"
+        data-start="0"
+        data-duration="14"
+        data-track-index="3"
+      ></div>
 
-        <!-- Captions Layer -->
-        <div id="captions-comp" 
-             data-composition-id="captions" 
-             data-composition-src="compositions/captions.html" 
-             data-start="0" 
-             data-duration="14" 
-             data-track-index="4">
-        </div>
-
+      <!-- Captions Layer -->
+      <div
+        id="captions-comp"
+        data-composition-id="captions"
+        data-composition-src="compositions/captions.html"
+        data-start="0"
+        data-duration="14"
+        data-track-index="4"
+      ></div>
     </div>
 
     <script>
-        window.__timelines = {};
-        const masterTL = gsap.timeline({ paused: true });
-        window.__timelines["master"] = masterTL;
+      window.__timelines = {};
+      const masterTL = gsap.timeline({ paused: true });
+      window.__timelines["master"] = masterTL;
     </script>
-</body>
+  </body>
 </html>

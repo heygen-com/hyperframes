@@ -1,24 +1,25 @@
 * {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
 }
 
-html, body {
-    width: 100vw;
-    height: 100vh;
-    overflow: hidden;
-    background-color: #000;
-    font-family: 'Montserrat', sans-serif;
+html,
+body {
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background-color: #000;
+  font-family: "Montserrat", sans-serif;
 }
 
-@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@500;900&display=swap');
+@import url("https://fonts.googleapis.com/css2?family=Montserrat:wght@500;900&display=swap");
 
 #main {
-    width: 1080px;
-    height: 1920px;
-    position: relative;
-    display: flex;
-    justify-content: center;
-    align-items: center;
+  width: 1080px;
+  height: 1920px;
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: center;
 }

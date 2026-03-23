@@ -51,17 +51,29 @@ import { randomUUID } from "crypto";
 import { freemem } from "os";
 import { fileURLToPath } from "url";
 import { createFileServer, type FileServerHandle } from "./fileServer.js";
-import { compileForRender, resolveCompositionDurations, recompileWithResolutions, discoverMediaFromBrowser, type CompiledComposition } from "./htmlCompiler.js";
+import {
+  compileForRender,
+  resolveCompositionDurations,
+  recompileWithResolutions,
+  discoverMediaFromBrowser,
+  type CompiledComposition,
+} from "./htmlCompiler.js";
 import { defaultLogger, type ProducerLogger } from "../logger.js";
 
 /**
  * Wrap a cleanup operation so it never throws, but logs any failure.
  */
-async function safeCleanup(label: string, fn: () => Promise<void> | void, log: ProducerLogger = defaultLogger): Promise<void> {
+async function safeCleanup(
+  label: string,
+  fn: () => Promise<void> | void,
+  log: ProducerLogger = defaultLogger,
+): Promise<void> {
   try {
     await fn();
   } catch (err) {
-    log.debug(`Cleanup failed (${label})`, { error: err instanceof Error ? err.message : String(err) });
+    log.debug(`Cleanup failed (${label})`, {
+      error: err instanceof Error ? err.message : String(err),
+    });
   }
 }
 
@@ -135,7 +147,10 @@ export type ProgressCallback = (job: RenderJob, message: string) => void;
 
 export class RenderCancelledError extends Error {
   reason: "user_cancelled" | "timeout" | "aborted";
-  constructor(message: string = "render_cancelled", reason: "user_cancelled" | "timeout" | "aborted" = "aborted") {
+  constructor(
+    message: string = "render_cancelled",
+    reason: "user_cancelled" | "timeout" | "aborted" = "aborted",
+  ) {
     super(message);
     this.name = "RenderCancelledError";
     this.reason = reason;
@@ -155,7 +170,7 @@ function updateJobStatus(
   status: RenderStatus,
   stage: string,
   progress: number,
-  onProgress?: ProgressCallback
+  onProgress?: ProgressCallback,
 ): void {
   job.status = status;
   job.currentStage = stage;
@@ -171,15 +186,29 @@ function installDebugLogger(logPath: string, log: ProducerLogger = defaultLogger
 
   const write = (prefix: string, args: unknown[]) => {
     const ts = new Date().toISOString();
-    const line = `[${ts}] ${prefix} ${args.map(a => typeof a === "string" ? a : JSON.stringify(a)).join(" ")}\n`;
-    try { appendFileSync(logPath, line); } catch (err) {
-      log.debug("Debug log write failed", { logPath, error: err instanceof Error ? err.message : String(err) });
+    const line = `[${ts}] ${prefix} ${args.map((a) => (typeof a === "string" ? a : JSON.stringify(a))).join(" ")}\n`;
+    try {
+      appendFileSync(logPath, line);
+    } catch (err) {
+      log.debug("Debug log write failed", {
+        logPath,
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
   };
 
-  console.log = (...args: unknown[]) => { write("LOG", args); origLog(...args); };
-  console.error = (...args: unknown[]) => { write("ERR", args); origError(...args); };
-  console.warn = (...args: unknown[]) => { write("WRN", args); origWarn(...args); };
+  console.log = (...args: unknown[]) => {
+    write("LOG", args);
+    origLog(...args);
+  };
+  console.error = (...args: unknown[]) => {
+    write("ERR", args);
+    origError(...args);
+  };
+  console.warn = (...args: unknown[]) => {
+    write("WRN", args);
+    origWarn(...args);
+  };
 
   return () => {
     console.log = origLog;
@@ -191,7 +220,11 @@ function installDebugLogger(logPath: string, log: ProducerLogger = defaultLogger
 /**
  * Write compiled HTML and sub-compositions to the work directory.
  */
-function writeCompiledArtifacts(compiled: CompiledComposition, workDir: string, includeSummary: boolean): void {
+function writeCompiledArtifacts(
+  compiled: CompiledComposition,
+  workDir: string,
+  includeSummary: boolean,
+): void {
   const compileDir = join(workDir, "compiled");
   mkdirSync(compileDir, { recursive: true });
 
@@ -209,10 +242,18 @@ function writeCompiledArtifacts(compiled: CompiledComposition, workDir: string, 
       height: compiled.height,
       staticDuration: compiled.staticDuration,
       videos: compiled.videos.map((v) => ({
-        id: v.id, src: v.src, start: v.start, end: v.end, mediaStart: v.mediaStart,
+        id: v.id,
+        src: v.src,
+        start: v.start,
+        end: v.end,
+        mediaStart: v.mediaStart,
       })),
       audios: compiled.audios.map((a) => ({
-        id: a.id, src: a.src, start: a.start, end: a.end, mediaStart: a.mediaStart,
+        id: a.id,
+        src: a.src,
+        start: a.start,
+        end: a.end,
+        mediaStart: a.mediaStart,
       })),
       subCompositions: Array.from(compiled.subCompositions.keys()),
     };
@@ -306,13 +347,30 @@ export async function executeRenderJob(
     if (needsBrowser) {
       const reasons = [];
       if (composition.duration <= 0) reasons.push("root duration unknown");
-      if (compiled.unresolvedCompositions.length > 0) reasons.push(`${compiled.unresolvedCompositions.length} unresolved composition(s)`);
+      if (compiled.unresolvedCompositions.length > 0)
+        reasons.push(`${compiled.unresolvedCompositions.length} unresolved composition(s)`);
 
-      fileServer = await createFileServer({ projectDir, compiledDir: join(workDir, "compiled"), port: 0 });
+      fileServer = await createFileServer({
+        projectDir,
+        compiledDir: join(workDir, "compiled"),
+        port: 0,
+      });
       assertNotAborted();
 
-      const captureOpts: CaptureOptions = { width, height, fps: job.config.fps, format: "jpeg", quality: 80 };
-      probeSession = await createCaptureSession(fileServer.url, join(workDir, "probe"), captureOpts, null, cfg);
+      const captureOpts: CaptureOptions = {
+        width,
+        height,
+        fps: job.config.fps,
+        format: "jpeg",
+        quality: 80,
+      };
+      probeSession = await createCaptureSession(
+        fileServer.url,
+        join(workDir, "probe"),
+        captureOpts,
+        null,
+        cfg,
+      );
       await initializeSession(probeSession);
       assertNotAborted();
       lastBrowserConsole = probeSession.browserConsoleBuffer;
@@ -326,10 +384,18 @@ export async function executeRenderJob(
 
       // Resolve unresolved composition durations via window.__timelines
       if (compiled.unresolvedCompositions.length > 0) {
-        const resolutions = await resolveCompositionDurations(probeSession.page, compiled.unresolvedCompositions);
+        const resolutions = await resolveCompositionDurations(
+          probeSession.page,
+          compiled.unresolvedCompositions,
+        );
         assertNotAborted();
         if (resolutions.length > 0) {
-          compiled = await recompileWithResolutions(compiled, resolutions, projectDir, join(workDir, "downloads"));
+          compiled = await recompileWithResolutions(
+            compiled,
+            resolutions,
+            projectDir,
+            join(workDir, "downloads"),
+          );
           assertNotAborted();
           // Update composition metadata with re-parsed media
           composition.videos = compiled.videos;
@@ -342,79 +408,87 @@ export async function executeRenderJob(
       const browserMedia = await discoverMediaFromBrowser(probeSession.page);
       assertNotAborted();
       if (browserMedia.length > 0) {
-        const existingVideoIds = new Set(composition.videos.map(v => v.id));
-        const existingAudioIds = new Set(composition.audios.map(a => a.id));
+        const existingVideoIds = new Set(composition.videos.map((v) => v.id));
+        const existingAudioIds = new Set(composition.audios.map((a) => a.id));
 
         for (const el of browserMedia) {
           if (!el.src || el.src === "about:blank") continue;
 
-            // Convert absolute localhost URLs back to relative paths
-            let src = el.src;
-            if (fileServer && src.startsWith(fileServer.url)) {
-              src = src.slice(fileServer.url.length).replace(/^\//, "");
-            }
+          // Convert absolute localhost URLs back to relative paths
+          let src = el.src;
+          if (fileServer && src.startsWith(fileServer.url)) {
+            src = src.slice(fileServer.url.length).replace(/^\//, "");
+          }
 
-            if (el.tagName === "video") {
-              if (existingVideoIds.has(el.id)) {
-                // Reconcile to browser/runtime media metadata (runtime src can differ from static HTML).
-                const existing = composition.videos.find(v => v.id === el.id);
-                if (existing) {
-                  if (existing.src !== src) {
-                    existing.src = src;
-                  }
-                  if (el.end > 0 && (existing.end <= 0 || Math.abs(existing.end - el.end) > 0.0001)) {
-                    existing.end = el.end;
-                  }
-                  if (el.mediaStart > 0 && (existing.mediaStart <= 0 || Math.abs(existing.mediaStart - el.mediaStart) > 0.0001)) {
-                    existing.mediaStart = el.mediaStart;
-                  }
-                  if (el.hasAudio && !existing.hasAudio) {
-                    existing.hasAudio = true;
-                  }
+          if (el.tagName === "video") {
+            if (existingVideoIds.has(el.id)) {
+              // Reconcile to browser/runtime media metadata (runtime src can differ from static HTML).
+              const existing = composition.videos.find((v) => v.id === el.id);
+              if (existing) {
+                if (existing.src !== src) {
+                  existing.src = src;
                 }
-              } else {
-                // New video discovered from browser
-                composition.videos.push({
-                  id: el.id,
-                  src,
-                  start: el.start,
-                  end: el.end,
-                  mediaStart: el.mediaStart,
-                  hasAudio: el.hasAudio,
-                });
-                existingVideoIds.add(el.id);
-              }
-            } else if (el.tagName === "audio") {
-              if (existingAudioIds.has(el.id)) {
-                const existing = composition.audios.find(a => a.id === el.id);
-                if (existing) {
-                  if (existing.src !== src) {
-                    existing.src = src;
-                  }
-                  if (el.end > 0 && (existing.end <= 0 || Math.abs(existing.end - el.end) > 0.0001)) {
-                    existing.end = el.end;
-                  }
-                  if (el.mediaStart > 0 && (existing.mediaStart <= 0 || Math.abs(existing.mediaStart - el.mediaStart) > 0.0001)) {
-                    existing.mediaStart = el.mediaStart;
-                  }
-                  if (el.volume > 0 && Math.abs((existing.volume ?? 1) - el.volume) > 0.0001) {
-                    existing.volume = el.volume;
-                  }
+                if (el.end > 0 && (existing.end <= 0 || Math.abs(existing.end - el.end) > 0.0001)) {
+                  existing.end = el.end;
                 }
-              } else {
-                composition.audios.push({
-                  id: el.id,
-                  src,
-                  start: el.start,
-                  end: el.end,
-                  mediaStart: el.mediaStart,
-                  layer: 0,
-                  volume: el.volume,
-                  type: "audio",
-                });
-                existingAudioIds.add(el.id);
+                if (
+                  el.mediaStart > 0 &&
+                  (existing.mediaStart <= 0 ||
+                    Math.abs(existing.mediaStart - el.mediaStart) > 0.0001)
+                ) {
+                  existing.mediaStart = el.mediaStart;
+                }
+                if (el.hasAudio && !existing.hasAudio) {
+                  existing.hasAudio = true;
+                }
               }
+            } else {
+              // New video discovered from browser
+              composition.videos.push({
+                id: el.id,
+                src,
+                start: el.start,
+                end: el.end,
+                mediaStart: el.mediaStart,
+                hasAudio: el.hasAudio,
+              });
+              existingVideoIds.add(el.id);
             }
+          } else if (el.tagName === "audio") {
+            if (existingAudioIds.has(el.id)) {
+              const existing = composition.audios.find((a) => a.id === el.id);
+              if (existing) {
+                if (existing.src !== src) {
+                  existing.src = src;
+                }
+                if (el.end > 0 && (existing.end <= 0 || Math.abs(existing.end - el.end) > 0.0001)) {
+                  existing.end = el.end;
+                }
+                if (
+                  el.mediaStart > 0 &&
+                  (existing.mediaStart <= 0 ||
+                    Math.abs(existing.mediaStart - el.mediaStart) > 0.0001)
+                ) {
+                  existing.mediaStart = el.mediaStart;
+                }
+                if (el.volume > 0 && Math.abs((existing.volume ?? 1) - el.volume) > 0.0001) {
+                  existing.volume = el.volume;
+                }
+              }
+            } else {
+              composition.audios.push({
+                id: el.id,
+                src,
+                start: el.start,
+                end: el.end,
+                mediaStart: el.mediaStart,
+                layer: 0,
+                volume: el.volume,
+                type: "audio",
+              });
+              existingAudioIds.add(el.id);
+            }
+          }
         }
       }
     }
@@ -424,7 +498,11 @@ export async function executeRenderJob(
     job.totalFrames = Math.ceil(composition.duration * job.config.fps);
 
     if (job.duration <= 0) {
-      throw new Error("Invalid composition duration: " + job.duration + ". Check that GSAP timelines are registered.");
+      throw new Error(
+        "Invalid composition duration: " +
+          job.duration +
+          ". Check that GSAP timelines are registered.",
+      );
     }
 
     perfStages.compileMs = Date.now() - stage1Start;
@@ -436,7 +514,6 @@ export async function executeRenderJob(
     let frameLookup: FrameLookupTable | null = null;
 
     if (composition.videos.length > 0) {
-
       const extractionResult = await extractAllVideoFrames(
         composition.videos,
         projectDir,
@@ -446,19 +523,16 @@ export async function executeRenderJob(
       assertNotAborted();
 
       if (extractionResult.extracted.length > 0) {
-        frameLookup = createFrameLookupTable(
-          composition.videos,
-          extractionResult.extracted,
-        );
+        frameLookup = createFrameLookupTable(composition.videos, extractionResult.extracted);
       }
 
       perfStages.videoExtractMs = Date.now() - stage2Start;
 
       // Auto-detect audio from video files via ffprobe metadata
-      const existingAudioSrcs = new Set(composition.audios.map(a => a.src));
+      const existingAudioSrcs = new Set(composition.audios.map((a) => a.src));
       for (const ext of extractionResult.extracted) {
         if (ext.metadata.hasAudio) {
-          const video = composition.videos.find(v => v.id === ext.videoId);
+          const video = composition.videos.find((v) => v.id === ext.videoId);
           if (video && !existingAudioSrcs.has(video.src)) {
             composition.audios.push({
               id: `${video.id}-audio`,
@@ -486,7 +560,6 @@ export async function executeRenderJob(
     let hasAudio = false;
 
     if (composition.audios.length > 0) {
-
       const audioResult = await processCompositionAudio(
         composition.audios,
         projectDir,
@@ -509,7 +582,11 @@ export async function executeRenderJob(
 
     // Start file server (may already be running from duration discovery)
     if (!fileServer) {
-      fileServer = await createFileServer({ projectDir, compiledDir: join(workDir, "compiled"), port: 0 });
+      fileServer = await createFileServer({
+        projectDir,
+        compiledDir: join(workDir, "compiled"),
+        port: 0,
+      });
       assertNotAborted();
     }
 
@@ -528,7 +605,6 @@ export async function executeRenderJob(
 
     const videoOnlyPath = join(workDir, "video-only.mp4");
     const preset = ENCODER_PRESETS[job.config.quality];
-
 
     job.framesRendered = 0;
 
@@ -590,7 +666,7 @@ export async function executeRenderJob(
                 "rendering",
                 `Streaming frame ${progress.capturedFrames}/${progress.totalFrames} (${workerCount} workers)`,
                 Math.round(progressPct),
-                onProgress
+                onProgress,
               );
             }
           },
@@ -607,13 +683,15 @@ export async function executeRenderJob(
         // Sequential capture → streaming encode
 
         const videoInjector = createVideoFrameInjector(frameLookup);
-        const session = probeSession ?? await createCaptureSession(
-          fileServer.url,
-          framesDir,
-          captureOptions,
-          videoInjector,
-          cfg,
-        );
+        const session =
+          probeSession ??
+          (await createCaptureSession(
+            fileServer.url,
+            framesDir,
+            captureOptions,
+            videoInjector,
+            cfg,
+          ));
         if (probeSession) {
           prepareCaptureSessionForReuse(session, framesDir, videoInjector);
           probeSession = null;
@@ -643,7 +721,7 @@ export async function executeRenderJob(
               "rendering",
               `Streaming frame ${i + 1}/${job.totalFrames}`,
               Math.round(progress),
-              onProgress
+              onProgress,
             );
           }
         } finally {
@@ -689,7 +767,7 @@ export async function executeRenderJob(
                 "rendering",
                 `Capturing frame ${progress.capturedFrames}/${progress.totalFrames} (${workerCount} workers)`,
                 Math.round(progressPct),
-                onProgress
+                onProgress,
               );
             }
           },
@@ -707,13 +785,15 @@ export async function executeRenderJob(
         // Sequential capture
 
         const videoInjector = createVideoFrameInjector(frameLookup);
-        const session = probeSession ?? await createCaptureSession(
-          fileServer.url,
-          framesDir,
-          captureOptions,
-          videoInjector,
-          cfg,
-        );
+        const session =
+          probeSession ??
+          (await createCaptureSession(
+            fileServer.url,
+            framesDir,
+            captureOptions,
+            videoInjector,
+            cfg,
+          ));
         if (probeSession) {
           prepareCaptureSessionForReuse(session, framesDir, videoInjector);
           probeSession = null;
@@ -740,7 +820,7 @@ export async function executeRenderJob(
               "rendering",
               `Capturing frame ${i + 1}/${job.totalFrames}`,
               Math.round(progress),
-              onProgress
+              onProgress,
             );
           }
         } finally {
@@ -854,14 +934,20 @@ export async function executeRenderJob(
       videoCount: composition.videos.length,
       audioCount: composition.audios.length,
       stages: perfStages,
-      captureAvgMs: job.totalFrames! > 0 ? Math.round((perfStages.captureMs ?? 0) / job.totalFrames!) : undefined,
+      captureAvgMs:
+        job.totalFrames! > 0
+          ? Math.round((perfStages.captureMs ?? 0) / job.totalFrames!)
+          : undefined,
     };
     job.perfSummary = perfSummary;
     if (job.config.debug) {
       try {
         writeFileSync(perfOutputPath, JSON.stringify(perfSummary, null, 2), "utf-8");
       } catch (err) {
-        log.debug("Failed to write perf summary", { perfOutputPath, error: err instanceof Error ? err.message : String(err) });
+        log.debug("Failed to write perf summary", {
+          perfOutputPath,
+          error: err instanceof Error ? err.message : String(err),
+        });
       }
     }
 
@@ -873,7 +959,13 @@ export async function executeRenderJob(
         copyFileSync(outputPath, debugOutput);
       }
     } else {
-      await safeCleanup("remove workDir", () => { rmSync(workDir, { recursive: true, force: true }); }, log);
+      await safeCleanup(
+        "remove workDir",
+        () => {
+          rmSync(workDir, { recursive: true, force: true });
+        },
+        log,
+      );
     }
 
     if (restoreLogger) restoreLogger();
@@ -883,30 +975,36 @@ export async function executeRenderJob(
       updateJobStatus(job, "cancelled", "Render cancelled", job.progress, onProgress);
       if (fileServer) {
         const fs = fileServer;
-        await safeCleanup("close file server (cancel)", () => { fs.close(); }, log);
+        await safeCleanup(
+          "close file server (cancel)",
+          () => {
+            fs.close();
+          },
+          log,
+        );
       }
       if (probeSession) {
         const session = probeSession;
         await safeCleanup("close probe session (cancel)", () => closeCaptureSession(session), log);
       }
       if (!job.config.debug) {
-        await safeCleanup("remove workDir (cancel)", () => {
-          rmSync(workDir, { recursive: true, force: true });
-        }, log);
+        await safeCleanup(
+          "remove workDir (cancel)",
+          () => {
+            rmSync(workDir, { recursive: true, force: true });
+          },
+          log,
+        );
       }
       if (restoreLogger) restoreLogger();
-      throw error instanceof RenderCancelledError ? error : new RenderCancelledError("render_cancelled");
+      throw error instanceof RenderCancelledError
+        ? error
+        : new RenderCancelledError("render_cancelled");
     }
     const errorMessage = error instanceof Error ? error.message : String(error);
     const errorStack = error instanceof Error ? error.stack : undefined;
     job.error = errorMessage;
-    updateJobStatus(
-      job,
-      "failed",
-      `Failed: ${errorMessage}`,
-      job.progress,
-      onProgress
-    );
+    updateJobStatus(job, "failed", `Failed: ${errorMessage}`, job.progress, onProgress);
 
     // Diagnostic summary
     const elapsed = Date.now() - pipelineStart;
@@ -923,11 +1021,16 @@ export async function executeRenderJob(
       perfStages: Object.keys(perfStages).length > 0 ? { ...perfStages } : undefined,
     };
 
-
     // Cleanup
     if (fileServer) {
       const fs = fileServer;
-      await safeCleanup("close file server (error)", () => { fs.close(); }, log);
+      await safeCleanup(
+        "close file server (error)",
+        () => {
+          fs.close();
+        },
+        log,
+      );
     }
     if (probeSession) {
       const session = probeSession;
@@ -935,9 +1038,13 @@ export async function executeRenderJob(
     }
 
     if (!job.config.debug) {
-      await safeCleanup("remove workDir (error)", () => {
-        if (existsSync(workDir)) rmSync(workDir, { recursive: true, force: true });
-      }, log);
+      await safeCleanup(
+        "remove workDir (error)",
+        () => {
+          if (existsSync(workDir)) rmSync(workDir, { recursive: true, force: true });
+        },
+        log,
+      );
     }
 
     if (restoreLogger) restoreLogger();

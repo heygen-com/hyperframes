@@ -55,9 +55,7 @@ export default defineCommand({
 
     // ── Resolve output path ───────────────────────────────────────────────
     const rendersDir = resolve("renders");
-    const outputPath = args.output
-      ? resolve(args.output)
-      : join(rendersDir, `${project.name}.mp4`);
+    const outputPath = args.output ? resolve(args.output) : join(rendersDir, `${project.name}.mp4`);
 
     // Ensure output directory exists
     const outputDir = dirname(outputPath);
@@ -73,8 +71,15 @@ export default defineCommand({
     const workerCount = workers ?? 4;
     if (!quiet) {
       console.log("");
-      console.log(c.accent("\u25C6") + "  Rendering " + c.accent(project.name) + c.dim(" \u2192 " + outputPath));
-      console.log(c.dim("   " + fps + "fps \u00B7 " + quality + " \u00B7 " + workerCount + " workers"));
+      console.log(
+        c.accent("\u25C6") +
+          "  Rendering " +
+          c.accent(project.name) +
+          c.dim(" \u2192 " + outputPath),
+      );
+      console.log(
+        c.dim("   " + fps + "fps \u00B7 " + quality + " \u00B7 " + workerCount + " workers"),
+      );
       console.log("");
     }
 
@@ -102,7 +107,9 @@ export default defineCommand({
           onProgress: (downloaded, total) => {
             if (total <= 0) return;
             const pct = Math.floor((downloaded / total) * 100);
-            s.message(`Downloading Chrome... ${c.progress(pct + "%")} ${c.dim("(" + formatBytes(downloaded) + " / " + formatBytes(total) + ")")}`);
+            s.message(
+              `Downloading Chrome... ${c.progress(pct + "%")} ${c.dim("(" + formatBytes(downloaded) + " / " + formatBytes(total) + ")")}`,
+            );
           },
         });
         s.stop(c.dim(`Browser: ${info.source}`));

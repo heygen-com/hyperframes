@@ -48,7 +48,11 @@ export function resolveSourceFile(
   if (classMatch) {
     const cls = classMatch[1];
     for (const [path, content] of Object.entries(files)) {
-      if (content.includes(`class="${cls}"`) || content.includes(`class="${cls} `) || content.includes(` ${cls}"`)) {
+      if (
+        content.includes(`class="${cls}"`) ||
+        content.includes(`class="${cls} `) ||
+        content.includes(` ${cls}"`)
+      ) {
         return path;
       }
     }

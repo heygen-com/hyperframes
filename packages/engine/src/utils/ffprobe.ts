@@ -59,7 +59,15 @@ export async function extractVideoMetadata(filePath: string): Promise<VideoMetad
   }
 
   const probePromise = new Promise<VideoMetadata>((resolve, reject) => {
-    const args = ["-v", "quiet", "-print_format", "json", "-show_format", "-show_streams", filePath];
+    const args = [
+      "-v",
+      "quiet",
+      "-print_format",
+      "json",
+      "-show_format",
+      "-show_streams",
+      filePath,
+    ];
 
     const ffprobe = spawn("ffprobe", args);
     let stdout = "";
@@ -87,7 +95,8 @@ export async function extractVideoMetadata(filePath: string): Promise<VideoMetad
         }
 
         const hasAudio = output.streams.some((s) => s.codec_type === "audio");
-        const fps = parseFrameRate(videoStream.avg_frame_rate) || parseFrameRate(videoStream.r_frame_rate);
+        const fps =
+          parseFrameRate(videoStream.avg_frame_rate) || parseFrameRate(videoStream.r_frame_rate);
         const durationSeconds = output.format.duration ? parseFloat(output.format.duration) : 0;
 
         const metadata: VideoMetadata = {
@@ -100,7 +109,11 @@ export async function extractVideoMetadata(filePath: string): Promise<VideoMetad
         };
         resolve(metadata);
       } catch (parseError: unknown) {
-        reject(new Error(`[FFmpeg] Failed to parse ffprobe output: ${parseError instanceof Error ? parseError.message : parseError}`));
+        reject(
+          new Error(
+            `[FFmpeg] Failed to parse ffprobe output: ${parseError instanceof Error ? parseError.message : parseError}`,
+          ),
+        );
       }
     });
 
@@ -128,7 +141,15 @@ export async function extractAudioMetadata(filePath: string): Promise<AudioMetad
   }
 
   const probePromise = new Promise<AudioMetadata>((resolve, reject) => {
-    const args = ["-v", "quiet", "-print_format", "json", "-show_format", "-show_streams", filePath];
+    const args = [
+      "-v",
+      "quiet",
+      "-print_format",
+      "json",
+      "-show_format",
+      "-show_streams",
+      filePath,
+    ];
 
     const ffprobe = spawn("ffprobe", args);
     let stdout = "";

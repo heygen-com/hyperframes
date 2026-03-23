@@ -44,9 +44,7 @@ describe("loadExternalCompositions", () => {
       </body></html>
     `;
 
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(compositionHtml, { status: 200 })
-    );
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(compositionHtml, { status: 200 }));
 
     await loadExternalCompositions({ ...defaultParams });
 
@@ -68,9 +66,7 @@ describe("loadExternalCompositions", () => {
       </body></html>
     `;
 
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(compositionHtml, { status: 200 })
-    );
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(compositionHtml, { status: 200 }));
 
     const injectedStyles: HTMLStyleElement[] = [];
     await loadExternalCompositions({
@@ -102,7 +98,7 @@ describe("loadExternalCompositions", () => {
           hostCompositionSrc: "https://example.com/broken.html",
           errorMessage: "Network error",
         }),
-      })
+      }),
     );
   });
 
@@ -111,9 +107,7 @@ describe("loadExternalCompositions", () => {
     host.setAttribute("data-composition-src", "https://example.com/404.html");
     document.body.appendChild(host);
 
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response("Not Found", { status: 404 })
-    );
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("Not Found", { status: 404 }));
 
     const onDiagnostic = vi.fn();
     await loadExternalCompositions({
@@ -124,7 +118,7 @@ describe("loadExternalCompositions", () => {
     expect(onDiagnostic).toHaveBeenCalledWith(
       expect.objectContaining({
         code: "external_composition_load_failed",
-      })
+      }),
     );
   });
 
@@ -165,9 +159,7 @@ describe("loadExternalCompositions", () => {
     document.body.appendChild(host);
 
     const compositionHtml = `<html><body><p>New</p></body></html>`;
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(compositionHtml, { status: 200 })
-    );
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(compositionHtml, { status: 200 }));
 
     await loadExternalCompositions({ ...defaultParams });
     expect(host.querySelector("span")).toBeNull();
@@ -186,9 +178,7 @@ describe("loadExternalCompositions", () => {
       </body></html>
     `;
 
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(compositionHtml, { status: 200 })
-    );
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(compositionHtml, { status: 200 }));
 
     const injectedScripts: HTMLScriptElement[] = [];
     await loadExternalCompositions({

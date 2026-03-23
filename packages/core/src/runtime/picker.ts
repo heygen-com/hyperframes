@@ -77,7 +77,8 @@ export function createPickerModule(deps: PickerModuleDeps): PickerModule {
     const trimLabel = (value: string, maxChars: number) =>
       value.length > maxChars ? `${value.slice(0, maxChars - 1)}…` : value;
     if (tag === "h1" || tag === "h2" || tag === "h3") return "Heading";
-    if (tag === "p" || tag === "span" || tag === "div") return text.length > 0 ? trimLabel(text, 56) : "Text";
+    if (tag === "p" || tag === "span" || tag === "div")
+      return text.length > 0 ? trimLabel(text, 56) : "Text";
     if (tag === "img") return "Image";
     if (tag === "video") return "Video";
     if (tag === "audio") return "Audio";
@@ -132,7 +133,11 @@ export function createPickerModule(deps: PickerModuleDeps): PickerModule {
     };
   }
 
-  function getPickInfosFromPoint(clientX: number, clientY: number, limit?: number): RuntimePickerElementInfo[] {
+  function getPickInfosFromPoint(
+    clientX: number,
+    clientY: number,
+    limit?: number,
+  ): RuntimePickerElementInfo[] {
     return getPickCandidatesFromPoint(clientX, clientY, limit).map(extractElementInfo);
   }
 
@@ -217,7 +222,9 @@ export function createPickerModule(deps: PickerModuleDeps): PickerModule {
       getHovered: () => pickLastHoveredInfo,
       getSelected: () => pickLastSelectedInfo,
       getCandidatesAtPoint: (clientX, clientY, limit) =>
-        Number.isFinite(clientX) && Number.isFinite(clientY) ? getPickInfosFromPoint(clientX, clientY, limit) : [],
+        Number.isFinite(clientX) && Number.isFinite(clientY)
+          ? getPickInfosFromPoint(clientX, clientY, limit)
+          : [],
       pickAtPoint: (clientX, clientY, index) => {
         if (!Number.isFinite(clientX) || !Number.isFinite(clientY)) return null;
         const infos = getPickInfosFromPoint(clientX, clientY, 8);
@@ -240,12 +247,18 @@ export function createPickerModule(deps: PickerModuleDeps): PickerModule {
           const idx = Math.max(0, Math.min(infos.length - 1, Math.floor(Number(rawIndex))));
           const info = infos[idx];
           if (!info) continue;
-          const duplicate = selected.some((item) => item.selector === info.selector && item.tagName === info.tagName);
+          const duplicate = selected.some(
+            (item) => item.selector === info.selector && item.tagName === info.tagName,
+          );
           if (!duplicate) selected.push(info);
         }
         if (!selected.length) return [];
         setLastSelectedInfo(selected[0] ?? null);
-        deps.postMessage({ source: "hf-preview", type: "element-picked-many", elementInfos: selected });
+        deps.postMessage({
+          source: "hf-preview",
+          type: "element-picked-many",
+          elementInfos: selected,
+        });
         disablePickMode();
         return selected;
       },

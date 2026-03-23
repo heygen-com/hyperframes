@@ -1,6 +1,11 @@
 {
   "name": "@hyperframes/core",
   "version": "0.1.1",
+  "files": [
+    "dist",
+    "docs",
+    "README.md"
+  ],
   "type": "module",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
@@ -19,15 +24,8 @@
     },
     "./runtime": "./dist/hyperframe.runtime.iife.js"
   },
-  "files": [
-    "dist",
-    "docs",
-    "README.md"
-  ],
   "publishConfig": {
     "access": "public",
-    "main": "./dist/index.js",
-    "types": "./dist/index.d.ts",
     "exports": {
       ".": {
         "import": "./dist/index.js",
@@ -42,7 +40,9 @@
         "types": "./dist/compiler/index.d.ts"
       },
       "./runtime": "./dist/hyperframe.runtime.iife.js"
-    }
+    },
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts"
   },
   "scripts": {
     "build": "tsc && pnpm build:hyperframes-runtime",
@@ -66,10 +66,6 @@
     "debug:timeline": "tsx scripts/debug-timeline.ts",
     "prepublishOnly": "pnpm build"
   },
-  "optionalDependencies": {
-    "cheerio": "^1.2.0",
-    "esbuild": "^0.25.12"
-  },
   "devDependencies": {
     "@types/jsdom": "^28.0.0",
     "@types/node": "^24.10.13",
@@ -78,5 +74,9 @@
     "tsx": "^4.21.0",
     "typescript": "^5.0.0",
     "vitest": "^3.2.4"
+  },
+  "optionalDependencies": {
+    "cheerio": "^1.2.0",
+    "esbuild": "^0.25.12"
   }
 }

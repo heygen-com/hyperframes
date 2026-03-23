@@ -127,7 +127,12 @@ export interface EnumVariable extends CompositionVariableBase {
   options: { value: string; label: string }[];
 }
 
-export type CompositionVariable = StringVariable | NumberVariable | ColorVariable | BooleanVariable | EnumVariable;
+export type CompositionVariable =
+  | StringVariable
+  | NumberVariable
+  | ColorVariable
+  | BooleanVariable
+  | EnumVariable;
 
 export interface CompositionSpec {
   id: string;
@@ -155,7 +160,10 @@ export function isEnumVariable(v: CompositionVariable): v is EnumVariable {
   return v.type === "enum";
 }
 
-export type TimelineElement = TimelineMediaElement | TimelineTextElement | TimelineCompositionElement;
+export type TimelineElement =
+  | TimelineMediaElement
+  | TimelineTextElement
+  | TimelineCompositionElement;
 
 export function isTextElement(el: TimelineElement): el is TimelineTextElement {
   return el.type === "text";
@@ -225,7 +233,7 @@ export interface PlayerAPI {
       id: string;
       time: number;
       properties: { x?: number; y?: number };
-    }> | null
+    }> | null,
   ): void;
   setElementScale(elementId: string, scale: number): void;
   setElementFontSize(elementId: string, fontSize: number): void;
@@ -235,7 +243,13 @@ export interface PlayerAPI {
   setElementTextFontWeight(elementId: string, weight: number): void;
   setElementTextFontFamily(elementId: string, fontFamily: string): void;
   setElementTextOutline(elementId: string, enabled: boolean, color?: string, width?: number): void;
-  setElementTextHighlight(elementId: string, enabled: boolean, color?: string, padding?: number, radius?: number): void;
+  setElementTextHighlight(
+    elementId: string,
+    enabled: boolean,
+    color?: string,
+    padding?: number,
+    radius?: number,
+  ): void;
   setElementVolume(elementId: string, volume: number): void;
   setStageZoom(scale: number, focusX: number, focusY: number): void;
   getStageZoom(): { scale: number; focusX: number; focusY: number };
@@ -245,7 +259,7 @@ export interface PlayerAPI {
       time: number;
       zoom: { scale: number; focusX: number; focusY: number };
       ease?: string;
-    }> | null
+    }> | null,
   ): void;
   getStageZoomKeyframes(): Array<{
     id: string;
@@ -256,7 +270,12 @@ export interface PlayerAPI {
   addElement(data: AddElementData): boolean;
   removeElement(elementId: string): boolean;
   updateElementTiming(elementId: string, start?: number, end?: number): boolean;
-  setElementTiming(elementId: string, startTime: number, duration: number, mediaStartTime?: number): void;
+  setElementTiming(
+    elementId: string,
+    startTime: number,
+    duration: number,
+    mediaStartTime?: number,
+  ): void;
   updateElementSrc(elementId: string, src: string): boolean;
   updateElementLayer(elementId: string, zIndex: number): boolean;
   updateElementBasePosition(elementId: string, x?: number, y?: number, scale?: number): boolean;
@@ -269,7 +288,13 @@ export interface PlayerAPI {
   renderSeek(time: number): void;
   getElementVisibility(elementId: string): { visible: boolean; opacity?: number };
   getVisibleElements(): Array<{ id: string; tagName: string; start: number; end: number }>;
-  getRenderState(): { time: number; duration: number; isPlaying: boolean; renderMode: boolean; timelineDirty: boolean };
+  getRenderState(): {
+    time: number;
+    duration: number;
+    isPlaying: boolean;
+    renderMode: boolean;
+    timelineDirty: boolean;
+  };
 }
 
 export interface AddElementData {

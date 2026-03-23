@@ -40,7 +40,14 @@ function getElementType(el: Element): TimelineElementType | null {
   if (dataType === "composition") return "composition";
   if (dataType === "text") return "text";
   // Fall back to tag-based detection for backwards compatibility
-  if (tag === "div" || tag === "p" || tag === "h1" || tag === "h2" || tag === "h3" || tag === "span") {
+  if (
+    tag === "div" ||
+    tag === "p" ||
+    tag === "h1" ||
+    tag === "h2" ||
+    tag === "h3" ||
+    tag === "span"
+  ) {
     return "text";
   }
   return null;
@@ -89,13 +96,17 @@ function parseResolutionFromCss(doc: Document, cssText: string | null): CanvasRe
   }
 
   if (cssText) {
-    const stageMatch = cssText.match(/#stage\s*\{[^}]*width:\s*(\d+)px[^}]*height:\s*(\d+)px[^}]*\}/);
+    const stageMatch = cssText.match(
+      /#stage\s*\{[^}]*width:\s*(\d+)px[^}]*height:\s*(\d+)px[^}]*\}/,
+    );
     if (stageMatch) {
       const w = parseInt(stageMatch[1] ?? "", 10);
       const h = parseInt(stageMatch[2] ?? "", 10);
       return w > h ? "landscape" : "portrait";
     }
-    const stageMatchReverse = cssText.match(/#stage\s*\{[^}]*height:\s*(\d+)px[^}]*width:\s*(\d+)px[^}]*\}/);
+    const stageMatchReverse = cssText.match(
+      /#stage\s*\{[^}]*height:\s*(\d+)px[^}]*width:\s*(\d+)px[^}]*\}/,
+    );
     if (stageMatchReverse) {
       const h = parseInt(stageMatchReverse[1] ?? "", 10);
       const w = parseInt(stageMatchReverse[2] ?? "", 10);
@@ -205,16 +216,22 @@ export function parseHtml(html: string): ParsedHtml {
       const textOutline = textOutlineAttr === "true" ? true : undefined;
       const textOutlineColor = el.getAttribute("data-text-outline-color") || undefined;
       const textOutlineWidthAttr = el.getAttribute("data-text-outline-width");
-      const textOutlineWidth = textOutlineWidthAttr ? parseInt(textOutlineWidthAttr, 10) : undefined;
+      const textOutlineWidth = textOutlineWidthAttr
+        ? parseInt(textOutlineWidthAttr, 10)
+        : undefined;
 
       // Parse highlight properties
       const textHighlightAttr = el.getAttribute("data-text-highlight");
       const textHighlight = textHighlightAttr === "true" ? true : undefined;
       const textHighlightColor = el.getAttribute("data-text-highlight-color") || undefined;
       const textHighlightPaddingAttr = el.getAttribute("data-text-highlight-padding");
-      const textHighlightPadding = textHighlightPaddingAttr ? parseInt(textHighlightPaddingAttr, 10) : undefined;
+      const textHighlightPadding = textHighlightPaddingAttr
+        ? parseInt(textHighlightPaddingAttr, 10)
+        : undefined;
       const textHighlightRadiusAttr = el.getAttribute("data-text-highlight-radius");
-      const textHighlightRadius = textHighlightRadiusAttr ? parseInt(textHighlightRadiusAttr, 10) : undefined;
+      const textHighlightRadius = textHighlightRadiusAttr
+        ? parseInt(textHighlightRadiusAttr, 10)
+        : undefined;
 
       const textElement: TimelineTextElement = {
         id,
@@ -375,7 +392,9 @@ export function parseHtml(html: string): ParsedHtml {
       .filter(Boolean)
       .join("\n\n") || null;
 
-  const customStyleTags = Array.from(styleTags).filter((s) => s.getAttribute("data-hf-custom") === "true");
+  const customStyleTags = Array.from(styleTags).filter(
+    (s) => s.getAttribute("data-hf-custom") === "true",
+  );
   const customStylesFromTags =
     customStyleTags
       .map((s) => s.textContent?.trim())
@@ -463,7 +482,9 @@ function parseStageZoomKeyframes(doc: Document): StageZoomKeyframe[] {
  * Extract x/y positions and scale from GSAP set() calls at position 0
  * Returns a map of elementId -> { x, y, scale }
  */
-function extractPositionsFromGsap(script: string): Map<string, { x?: number; y?: number; scale?: number }> {
+function extractPositionsFromGsap(
+  script: string,
+): Map<string, { x?: number; y?: number; scale?: number }> {
   const positionMap = new Map<string, { x?: number; y?: number; scale?: number }>();
 
   try {
@@ -482,7 +503,11 @@ function extractPositionsFromGsap(script: string): Map<string, { x?: number; y?:
         const scale = typeof anim.properties.scale === "number" ? anim.properties.scale : undefined;
 
         // Only add to map if x, y, or scale is defined and non-default
-        if ((x !== undefined && x !== 0) || (y !== undefined && y !== 0) || (scale !== undefined && scale !== 1)) {
+        if (
+          (x !== undefined && x !== 0) ||
+          (y !== undefined && y !== 0) ||
+          (scale !== undefined && scale !== 1)
+        ) {
           const existing = positionMap.get(elementId) || {};
           positionMap.set(elementId, {
             x: x !== undefined ? x : existing.x,
@@ -499,7 +524,12 @@ function extractPositionsFromGsap(script: string): Map<string, { x?: number; y?:
   return positionMap;
 }
 
-function normalizeKeyframes(keyframes: Keyframe[], baseX: number, baseY: number, baseScale: number): Keyframe[] {
+function normalizeKeyframes(
+  keyframes: Keyframe[],
+  baseX: number,
+  baseY: number,
+  baseScale: number,
+): Keyframe[] {
   const timeEpsilon = 0.001;
   const valueEpsilon = 0.00001;
 
@@ -543,7 +573,11 @@ function normalizeKeyframes(keyframes: Keyframe[], baseX: number, baseY: number,
   });
 }
 
-export function updateElementInHtml(html: string, elementId: string, updates: Partial<TimelineElement>): string {
+export function updateElementInHtml(
+  html: string,
+  elementId: string,
+  updates: Partial<TimelineElement>,
+): string {
   const parser = new DOMParser();
   const doc = parser.parseFromString(html, "text/html");
 
@@ -732,7 +766,8 @@ export function extractCompositionMetadata(html: string): CompositionMetadata {
 
   return {
     compositionId,
-    compositionDuration: compositionDuration && isFinite(compositionDuration) ? compositionDuration : null,
+    compositionDuration:
+      compositionDuration && isFinite(compositionDuration) ? compositionDuration : null,
     variables,
   };
 }
@@ -833,7 +868,11 @@ function extractGsapScript(doc: Document): string | null {
   const scripts = doc.querySelectorAll("script");
   for (const script of scripts) {
     const content = script.textContent || "";
-    if (content.includes("gsap.timeline") || content.includes(".set(") || content.includes(".to(")) {
+    if (
+      content.includes("gsap.timeline") ||
+      content.includes(".set(") ||
+      content.includes(".to(")
+    ) {
       return content;
     }
   }

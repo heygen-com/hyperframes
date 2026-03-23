@@ -39,12 +39,12 @@
     </div>
 
     <style>
-      @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;800&display=swap');
+      @import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;800&display=swap");
 
       [data-composition-id="stats"] {
-        font-family: 'JetBrains Mono', monospace;
+        font-family: "JetBrains Mono", monospace;
         text-transform: uppercase;
-        color: #FFFFFF;
+        color: #ffffff;
         background: transparent;
         width: 1920px;
         height: 1080px;
@@ -82,14 +82,14 @@
       [data-composition-id="stats"] .stat-value {
         font-size: 80px;
         font-weight: 800;
-        color: #FFFFFF;
+        color: #ffffff;
         line-height: 1;
       }
 
       [data-composition-id="stats"] .stat-label {
         font-size: 32px;
         font-weight: 400;
-        color: #8A8A8A;
+        color: #8a8a8a;
         letter-spacing: 1px;
         max-width: 500px;
       }
@@ -98,13 +98,13 @@
       [data-composition-id="stats"] .progress-bar-container {
         width: 600px;
         height: 12px;
-        background: #0A0A0A;
+        background: #0a0a0a;
       }
 
       [data-composition-id="stats"] .progress-bar-fill {
         width: 0%;
         height: 100%;
-        background: #FFFFFF;
+        background: #ffffff;
       }
 
       /* Stat 2: Circular Ring */
@@ -119,13 +119,13 @@
 
       [data-composition-id="stats"] .ring-bg {
         fill: none;
-        stroke: #0A0A0A;
+        stroke: #0a0a0a;
         stroke-width: 24;
       }
 
       [data-composition-id="stats"] .ring-fill {
         fill: none;
-        stroke: #FFFFFF;
+        stroke: #ffffff;
         stroke-width: 24;
         stroke-dasharray: 502.65; /* 2 * PI * 80 */
         stroke-dashoffset: 502.65;
@@ -136,27 +136,27 @@
       [data-composition-id="stats"] .bar-chart-container {
         width: 60px;
         height: 240px;
-        background: #0A0A0A;
+        background: #0a0a0a;
         position: relative;
       }
 
       [data-composition-id="stats"] .bar-chart-fill {
         width: 100%;
         height: 0%;
-        background: #FFFFFF;
+        background: #ffffff;
         position: absolute;
         bottom: 0;
       }
     </style>
 
     <script>
-      (function() {
+      (function () {
         const tl = gsap.timeline({ paused: true });
-        
+
         // Timestamps (relative to composition start at 3s)
         const T1 = 1.839; // 4.839 - 3
         const T2 = 4.659; // 7.659 - 3
-        const T3 = 8.88;  // 11.88 - 3
+        const T3 = 8.88; // 11.88 - 3
         const END = 16.04; // 19.04 - 3
         const FADE_DUR = 0.2;
         const SLIDE_DUR = 0.3;
@@ -165,48 +165,56 @@
         // Helper for number animation
         function animateNumber(id, targetVal, startTime) {
           const obj = { val: 0 };
-          tl.to(obj, {
-            val: targetVal,
-            duration: FILL_DUR,
-            ease: 'none',
-            onUpdate: function() {
-              const valEl = document.getElementById(id);
-              if (valEl) valEl.innerText = Math.floor(obj.val) + '%';
-            }
-          }, startTime);
+          tl.to(
+            obj,
+            {
+              val: targetVal,
+              duration: FILL_DUR,
+              ease: "none",
+              onUpdate: function () {
+                const valEl = document.getElementById(id);
+                if (valEl) valEl.innerText = Math.floor(obj.val) + "%";
+              },
+            },
+            startTime,
+          );
         }
 
         // Stat 1 Animation
-        tl.to('#stat-1', { opacity: 1, duration: FADE_DUR, ease: 'none' }, T1);
-        tl.to('#stat-1', { x: 0, duration: SLIDE_DUR, ease: 'none' }, T1);
-        tl.to('#fill-1', { width: '47%', duration: FILL_DUR, ease: 'none' }, T1);
-        animateNumber('val-1', 47, T1);
-        
+        tl.to("#stat-1", { opacity: 1, duration: FADE_DUR, ease: "none" }, T1);
+        tl.to("#stat-1", { x: 0, duration: SLIDE_DUR, ease: "none" }, T1);
+        tl.to("#fill-1", { width: "47%", duration: FILL_DUR, ease: "none" }, T1);
+        animateNumber("val-1", 47, T1);
+
         // Hide Stat 1 when Stat 2 starts
-        tl.to('#stat-1', { opacity: 0, x: -20, duration: FADE_DUR, ease: 'none' }, T2);
+        tl.to("#stat-1", { opacity: 0, x: -20, duration: FADE_DUR, ease: "none" }, T2);
 
         // Stat 2 Animation
         const ringCircumference = 2 * Math.PI * 80;
-        tl.to('#stat-2', { opacity: 1, duration: FADE_DUR, ease: 'none' }, T2);
-        tl.to('#stat-2', { x: 0, duration: SLIDE_DUR, ease: 'none' }, T2);
-        tl.to('#fill-2', { 
-          strokeDashoffset: ringCircumference * (1 - 0.62), 
-          duration: FILL_DUR, 
-          ease: 'none' 
-        }, T2);
-        animateNumber('val-2', 62, T2);
-        
+        tl.to("#stat-2", { opacity: 1, duration: FADE_DUR, ease: "none" }, T2);
+        tl.to("#stat-2", { x: 0, duration: SLIDE_DUR, ease: "none" }, T2);
+        tl.to(
+          "#fill-2",
+          {
+            strokeDashoffset: ringCircumference * (1 - 0.62),
+            duration: FILL_DUR,
+            ease: "none",
+          },
+          T2,
+        );
+        animateNumber("val-2", 62, T2);
+
         // Hide Stat 2 when Stat 3 starts
-        tl.to('#stat-2', { opacity: 0, x: -20, duration: FADE_DUR, ease: 'none' }, T3);
+        tl.to("#stat-2", { opacity: 0, x: -20, duration: FADE_DUR, ease: "none" }, T3);
 
         // Stat 3 Animation
-        tl.to('#stat-3', { opacity: 1, duration: FADE_DUR, ease: 'none' }, T3);
-        tl.to('#stat-3', { x: 0, duration: SLIDE_DUR, ease: 'none' }, T3);
-        tl.to('#fill-3', { height: '75%', duration: FILL_DUR, ease: 'none' }, T3);
-        animateNumber('val-3', 75, T3);
-        
+        tl.to("#stat-3", { opacity: 1, duration: FADE_DUR, ease: "none" }, T3);
+        tl.to("#stat-3", { x: 0, duration: SLIDE_DUR, ease: "none" }, T3);
+        tl.to("#fill-3", { height: "75%", duration: FILL_DUR, ease: "none" }, T3);
+        animateNumber("val-3", 75, T3);
+
         // Hide Stat 3 at the end
-        tl.to('#stat-3', { opacity: 0, x: -20, duration: FADE_DUR, ease: 'none' }, END - 0.5);
+        tl.to("#stat-3", { opacity: 0, x: -20, duration: FADE_DUR, ease: "none" }, END - 0.5);
 
         window.__timelines["stats"] = tl;
       })();

@@ -16,7 +16,11 @@ interface PlayerControlsProps {
   onSeek: (time: number) => void;
 }
 
-export const PlayerControls = memo(function PlayerControls({ onTogglePlay, onSeek, ...overrides }: PlayerControlsProps) {
+export const PlayerControls = memo(function PlayerControls({
+  onTogglePlay,
+  onSeek,
+  ...overrides
+}: PlayerControlsProps) {
   // Subscribe to only the fields we render — each selector prevents cascading re-renders
   const storeIsPlaying = usePlayerStore((s) => s.isPlaying);
   const storeDuration = usePlayerStore((s) => s.duration);
@@ -165,9 +169,14 @@ export const PlayerControls = memo(function PlayerControls({ onTogglePlay, onSee
             {SPEED_OPTIONS.map((rate) => (
               <button
                 key={rate}
-                onClick={() => { setPlaybackRate(rate); setShowSpeedMenu(false); }}
+                onClick={() => {
+                  setPlaybackRate(rate);
+                  setShowSpeedMenu(false);
+                }}
                 className={`block w-full px-3 py-1 text-xs text-left font-mono tabular-nums transition-colors ${
-                  rate === playbackRate ? "text-white bg-neutral-800" : "text-neutral-400 hover:text-white hover:bg-neutral-800"
+                  rate === playbackRate
+                    ? "text-white bg-neutral-800"
+                    : "text-neutral-400 hover:text-white hover:bg-neutral-800"
                 }`}
               >
                 {rate}x

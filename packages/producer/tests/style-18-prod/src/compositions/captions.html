@@ -5,7 +5,7 @@
     </div>
 
     <style>
-      @import url('https://fonts.googleapis.com/css2?family=EB+Garamond:wght@400&display=swap');
+      @import url("https://fonts.googleapis.com/css2?family=EB+Garamond:wght@400&display=swap");
 
       [data-composition-id="captions"] {
         width: 1080px;
@@ -14,7 +14,7 @@
         justify-content: center;
         align-items: flex-start;
         background: transparent;
-        font-family: 'EB Garamond', serif;
+        font-family: "EB Garamond", serif;
         text-transform: lowercase;
         color: #999999; /* Soft Graphite */
       }
@@ -43,22 +43,28 @@
     </style>
 
     <script>
-      (function() {
+      (function () {
         const tl = gsap.timeline({ paused: true });
-        const container = document.querySelector('[data-composition-id="captions"] #captions-container');
+        const container = document.querySelector(
+          '[data-composition-id="captions"] #captions-container',
+        );
 
         const captionGroups = [
           { text: "we asked what you needed.", start: 0.14, end: 1.18 },
-          { text: "forty-seven percent of you said motion graphics,", start: 1.20, end: 3.76 },
-          { text: "sixty-two percent said static content was costing you attention,", start: 3.80, end: 7.30 },
+          { text: "forty-seven percent of you said motion graphics,", start: 1.2, end: 3.76 },
+          {
+            text: "sixty-two percent said static content was costing you attention,",
+            start: 3.8,
+            end: 7.3,
+          },
           { text: "and three out of four said you know the look you want", start: 7.32, end: 9.62 },
           { text: "but don't have the editing skills to get there.", start: 9.78, end: 12.24 },
-          { text: "so we built editor agent", start: 12.30, end: 13.84 }
+          { text: "so we built editor agent", start: 12.3, end: 13.84 },
         ];
 
         captionGroups.forEach((group, index) => {
-          const div = document.createElement('div');
-          div.className = 'caption-group';
+          const div = document.createElement("div");
+          div.className = "caption-group";
           div.id = `group-${index}`;
           div.textContent = group.text;
           container.appendChild(div);
@@ -66,18 +72,26 @@
           const fadeDuration = 0.2;
 
           // Fade in
-          tl.to(div, {
-            opacity: 1,
-            duration: fadeDuration,
-            ease: "power2.out"
-          }, group.start);
+          tl.to(
+            div,
+            {
+              opacity: 1,
+              duration: fadeDuration,
+              ease: "power2.out",
+            },
+            group.start,
+          );
 
           // Fade out
-          tl.to(div, {
-            opacity: 0,
-            duration: fadeDuration,
-            ease: "power2.in"
-          }, group.end - fadeDuration);
+          tl.to(
+            div,
+            {
+              opacity: 0,
+              duration: fadeDuration,
+              ease: "power2.in",
+            },
+            group.end - fadeDuration,
+          );
         });
 
         window.__timelines["captions"] = tl;

@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 const PRODUCER_DIR = dirname(fileURLToPath(import.meta.url));
 const MODULE_RELATIVE_MANIFEST_PATH = resolve(
   PRODUCER_DIR,
-  "../../../core/dist/hyperframe.manifest.json"
+  "../../../core/dist/hyperframe.manifest.json",
 );
 const CWD_RELATIVE_MANIFEST_PATHS = [
   resolve(process.cwd(), "../core/dist/hyperframe.manifest.json"),
@@ -49,7 +49,7 @@ export function resolveVerifiedHyperframeRuntime(): ResolvedHyperframeRuntime {
   const manifestPath = resolveHyperframeManifestPath();
   if (!existsSync(manifestPath)) {
     throw new Error(
-      `[HyperframeRuntimeLoader] Missing manifest at ${manifestPath}. Build core runtime artifacts before rendering.`
+      `[HyperframeRuntimeLoader] Missing manifest at ${manifestPath}. Build core runtime artifacts before rendering.`,
     );
   }
 
@@ -58,7 +58,7 @@ export function resolveVerifiedHyperframeRuntime(): ResolvedHyperframeRuntime {
   const runtimeFileName = manifest.artifacts?.iife;
   if (!runtimeFileName || !manifest.sha256) {
     throw new Error(
-      `[HyperframeRuntimeLoader] Invalid manifest at ${manifestPath}; missing iife artifact or sha256.`
+      `[HyperframeRuntimeLoader] Invalid manifest at ${manifestPath}; missing iife artifact or sha256.`,
     );
   }
 
@@ -71,7 +71,7 @@ export function resolveVerifiedHyperframeRuntime(): ResolvedHyperframeRuntime {
   const runtimeSha = createHash("sha256").update(runtimeSource, "utf8").digest("hex");
   if (runtimeSha !== manifest.sha256) {
     throw new Error(
-      `[HyperframeRuntimeLoader] Runtime checksum mismatch. expected=${manifest.sha256} actual=${runtimeSha}`
+      `[HyperframeRuntimeLoader] Runtime checksum mismatch. expected=${manifest.sha256} actual=${runtimeSha}`,
     );
   }
   return {
@@ -82,4 +82,3 @@ export function resolveVerifiedHyperframeRuntime(): ResolvedHyperframeRuntime {
     runtimeSource,
   };
 }
-

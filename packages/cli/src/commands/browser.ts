@@ -30,9 +30,7 @@ async function runEnsure(): Promise<void> {
   s.stop("No browser found — downloading");
 
   const downloadSpinner = clack.spinner();
-  downloadSpinner.start(
-    `Downloading Chrome Headless Shell ${c.dim("v" + CHROME_VERSION)}...`,
-  );
+  downloadSpinner.start(`Downloading Chrome Headless Shell ${c.dim("v" + CHROME_VERSION)}...`);
 
   let lastPct = -1;
   const result = await ensureBrowser({
@@ -66,9 +64,7 @@ async function runPath(): Promise<void> {
       const ensured = await ensureBrowser();
       process.stdout.write(ensured.executablePath + "\n");
     } catch (err: unknown) {
-      console.error(
-        err instanceof Error ? err.message : "Failed to find browser",
-      );
+      console.error(err instanceof Error ? err.message : "Failed to find browser");
       process.exit(1);
     }
     return;
@@ -81,9 +77,7 @@ function runClear(): void {
 
   const removed = clearBrowser();
   if (removed) {
-    clack.outro(
-      c.success("Removed cached browser from ") + c.dim(CACHE_DIR),
-    );
+    clack.outro(c.success("Removed cached browser from ") + c.dim(CACHE_DIR));
   } else {
     clack.outro(c.dim("No cached browser to remove."));
   }
@@ -92,7 +86,11 @@ function runClear(): void {
 export default defineCommand({
   meta: { name: "browser", description: "Manage the Chrome browser used for rendering" },
   args: {
-    subcommand: { type: "positional", description: "Subcommand: ensure, path, clear", required: false },
+    subcommand: {
+      type: "positional",
+      description: "Subcommand: ensure, path, clear",
+      required: false,
+    },
   },
   async run({ args }) {
     const subcommand = args.subcommand;

@@ -135,7 +135,9 @@ export function createFileServer(options: FileServerOptions): Promise<FileServer
     // Remove leading slash
     const relativePath = requestPath.replace(/^\//, "");
     const compiledPath = compiledDir ? join(compiledDir, relativePath) : null;
-    const hasCompiledFile = Boolean(compiledPath && existsSync(compiledPath) && statSync(compiledPath).isFile());
+    const hasCompiledFile = Boolean(
+      compiledPath && existsSync(compiledPath) && statSync(compiledPath).isFile(),
+    );
     const filePath = hasCompiledFile ? (compiledPath as string) : join(projectDir, relativePath);
 
     if (!existsSync(filePath) || !statSync(filePath).isFile()) {

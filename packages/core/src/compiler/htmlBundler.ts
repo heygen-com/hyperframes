@@ -71,17 +71,31 @@ function injectInterceptor(html: string): string {
 
 function isRelativeUrl(url: string): boolean {
   if (!url) return false;
-  return !url.startsWith("http://") && !url.startsWith("https://") && !url.startsWith("//") && !url.startsWith("data:") && !isAbsolute(url);
+  return (
+    !url.startsWith("http://") &&
+    !url.startsWith("https://") &&
+    !url.startsWith("//") &&
+    !url.startsWith("data:") &&
+    !isAbsolute(url)
+  );
 }
 
 function safeReadFile(filePath: string): string | null {
   if (!existsSync(filePath)) return null;
-  try { return readFileSync(filePath, "utf-8"); } catch { return null; }
+  try {
+    return readFileSync(filePath, "utf-8");
+  } catch {
+    return null;
+  }
 }
 
 function safeReadFileBuffer(filePath: string): Buffer | null {
   if (!existsSync(filePath)) return null;
-  try { return readFileSync(filePath); } catch { return null; }
+  try {
+    return readFileSync(filePath);
+  } catch {
+    return null;
+  }
 }
 
 function splitUrlSuffix(urlValue: string): { basePath: string; suffix: string } {
@@ -99,7 +113,8 @@ function appendSuffixToUrl(baseUrl: string, suffix: string): string {
     const queryWithOptionalHash = suffix.slice(1);
     if (!queryWithOptionalHash) return baseUrl;
     const hashIdx = queryWithOptionalHash.indexOf("#");
-    const queryPart = hashIdx >= 0 ? queryWithOptionalHash.slice(0, hashIdx) : queryWithOptionalHash;
+    const queryPart =
+      hashIdx >= 0 ? queryWithOptionalHash.slice(0, hashIdx) : queryWithOptionalHash;
     const hashPart = hashIdx >= 0 ? queryWithOptionalHash.slice(hashIdx) : "";
     if (!queryPart) return `${baseUrl}${hashPart}`;
     const joiner = baseUrl.includes("?") ? "&" : "?";
@@ -137,15 +152,18 @@ function maybeInlineRelativeAssetUrl(urlValue: string, projectDir: string): stri
 
 function rewriteSrcsetWithInlinedAssets(srcsetValue: string, projectDir: string): string {
   if (!srcsetValue) return srcsetValue;
-  return srcsetValue.split(",").map((rawCandidate) => {
-    const candidate = rawCandidate.trim();
-    if (!candidate) return candidate;
-    const parts = candidate.split(/\s+/);
-    if (parts.length === 0) return candidate;
-    const maybeInlined = maybeInlineRelativeAssetUrl(parts[0] ?? "", projectDir);
-    if (maybeInlined) parts[0] = maybeInlined;
-    return parts.join(" ");
-  }).join(", ");
+  return srcsetValue
+    .split(",")
+    .map((rawCandidate) => {
+      const candidate = rawCandidate.trim();
+      if (!candidate) return candidate;
+      const parts = candidate.split(/\s+/);
+      if (parts.length === 0) return candidate;
+      const maybeInlined = maybeInlineRelativeAssetUrl(parts[0] ?? "", projectDir);
+      if (maybeInlined) parts[0] = maybeInlined;
+      return parts.join(" ");
+    })
+    .join(", ");
 }
 
 function rewriteCssUrlsWithInlinedAssets(cssText: string, projectDir: string): string {
@@ -178,9 +196,14 @@ function enforceCompositionPixelSizing($: cheerio.CheerioAPI): void {
     let modified = false;
     for (const [compId, { w, h }] of sizeMap) {
       const escaped = compId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      const blockRe = new RegExp(`(\\[data-composition-id=["']${escaped}["']\\]\\s*\\{)([^}]*)(})`, "g");
+      const blockRe = new RegExp(
+        `(\\[data-composition-id=["']${escaped}["']\\]\\s*\\{)([^}]*)(})`,
+        "g",
+      );
       css = css.replace(blockRe, (_, open, body, close) => {
-        const newBody = body.replace(/(\bwidth\s*:\s*)100%/g, `$1${w}px`).replace(/(\bheight\s*:\s*)100%/g, `$1${h}px`);
+        const newBody = body
+          .replace(/(\bwidth\s*:\s*)100%/g, `$1${w}px`)
+          .replace(/(\bheight\s*:\s*)100%/g, `$1${h}px`);
         if (newBody !== body) modified = true;
         return open + newBody + close;
       });
@@ -234,7 +257,10 @@ function coalesceHeadStylesAndBodyScripts($: cheerio.CheerioAPI): void {
       if (!raw) continue;
       const nonImportCss = raw.replace(importRe, (match) => {
         const cleaned = match.trim();
-        if (!seenImports.has(cleaned)) { seenImports.add(cleaned); imports.push(cleaned); }
+        if (!seenImports.has(cleaned)) {
+          seenImports.add(cleaned);
+          imports.push(cleaned);
+        }
         return "";
       });
       const trimmed = nonImportCss.trim();
@@ -247,14 +273,20 @@ function coalesceHeadStylesAndBodyScripts($: cheerio.CheerioAPI): void {
     }
   }
 
-  const bodyInlineScripts = $("body script").toArray().filter((el) => {
-    const src = ($(el).attr("src") || "").trim();
-    if (src) return false;
-    const type = ($(el).attr("type") || "").trim().toLowerCase();
-    return !type || type === "text/javascript" || type === "application/javascript";
-  });
+  const bodyInlineScripts = $("body script")
+    .toArray()
+    .filter((el) => {
+      const src = ($(el).attr("src") || "").trim();
+      if (src) return false;
+      const type = ($(el).attr("type") || "").trim().toLowerCase();
+      return !type || type === "text/javascript" || type === "application/javascript";
+    });
   if (bodyInlineScripts.length > 0) {
-    const mergedJs = bodyInlineScripts.map((el) => ($(el).html() || "").trim()).filter(Boolean).join("\n;\n").trim();
+    const mergedJs = bodyInlineScripts
+      .map((el) => ($(el).html() || "").trim())
+      .filter(Boolean)
+      .join("\n;\n")
+      .trim();
     for (const el of bodyInlineScripts) $(el).remove();
     if (mergedJs) {
       const stripped = stripJsCommentsParserSafe(mergedJs);
@@ -268,7 +300,9 @@ function stripJsCommentsParserSafe(source: string): string {
   try {
     const result = transformSync(source, { loader: "js", minify: false, legalComments: "none" });
     return result.code.trim();
-  } catch { return source; }
+  } catch {
+    return source;
+  }
 }
 
 export interface BundleOptions {
@@ -285,7 +319,10 @@ export interface BundleOptions {
  * - Inlines sub-composition HTML fragments (data-composition-src)
  * - Inlines small textual assets as data URLs
  */
-export async function bundleToSingleHtml(projectDir: string, options?: BundleOptions): Promise<string> {
+export async function bundleToSingleHtml(
+  projectDir: string,
+  options?: BundleOptions,
+): Promise<string> {
   const indexPath = join(projectDir, "index.html");
   if (!existsSync(indexPath)) throw new Error("index.html not found in project directory");
 
@@ -294,7 +331,9 @@ export async function bundleToSingleHtml(projectDir: string, options?: BundleOpt
 
   const staticGuard = validateHyperframeHtmlContract(compiled);
   if (!staticGuard.isValid) {
-    console.warn(`[StaticGuard] Invalid HyperFrame contract: ${staticGuard.missingKeys.join("; ")}`);
+    console.warn(
+      `[StaticGuard] Invalid HyperFrame contract: ${staticGuard.missingKeys.join("; ")}`,
+    );
   }
 
   const withInterceptor = injectInterceptor(compiled);
@@ -310,11 +349,17 @@ export async function bundleToSingleHtml(projectDir: string, options?: BundleOpt
     const css = cssPath ? safeReadFile(cssPath) : null;
     if (css == null) return;
     localCssChunks.push(css);
-    if (!cssAnchorPlaced) { $(el).replaceWith('<style data-hf-bundled-local-css="1"></style>'); cssAnchorPlaced = true; } else { $(el).remove(); }
+    if (!cssAnchorPlaced) {
+      $(el).replaceWith('<style data-hf-bundled-local-css="1"></style>');
+      cssAnchorPlaced = true;
+    } else {
+      $(el).remove();
+    }
   });
   if (localCssChunks.length > 0) {
     const $anchor = $('style[data-hf-bundled-local-css="1"]').first();
-    if ($anchor.length) $anchor.removeAttr("data-hf-bundled-local-css").text(localCssChunks.join("\n\n"));
+    if ($anchor.length)
+      $anchor.removeAttr("data-hf-bundled-local-css").text(localCssChunks.join("\n\n"));
     else $("head").append(`<style>${localCssChunks.join("\n\n")}</style>`);
   }
 
@@ -328,11 +373,17 @@ export async function bundleToSingleHtml(projectDir: string, options?: BundleOpt
     const js = jsPath ? safeReadFile(jsPath) : null;
     if (js == null) return;
     localJsChunks.push(js);
-    if (!jsAnchorPlaced) { $(el).replaceWith('<script data-hf-bundled-local-js="1"></script>'); jsAnchorPlaced = true; } else { $(el).remove(); }
+    if (!jsAnchorPlaced) {
+      $(el).replaceWith('<script data-hf-bundled-local-js="1"></script>');
+      jsAnchorPlaced = true;
+    } else {
+      $(el).remove();
+    }
   });
   if (localJsChunks.length > 0) {
     const $anchor = $('script[data-hf-bundled-local-js="1"]').first();
-    if ($anchor.length) $anchor.removeAttr("data-hf-bundled-local-js").text(localJsChunks.join("\n;\n"));
+    if ($anchor.length)
+      $anchor.removeAttr("data-hf-bundled-local-js").text(localJsChunks.join("\n;\n"));
     else $("body").append(`<script>${localJsChunks.join("\n;\n")}</script>`);
   }
 
@@ -344,18 +395,30 @@ export async function bundleToSingleHtml(projectDir: string, options?: BundleOpt
     if (!src || !isRelativeUrl(src)) return;
     const compPath = safePath(projectDir, src);
     const compHtml = compPath ? safeReadFile(compPath) : null;
-    if (compHtml == null) { console.warn(`[Bundler] Composition file not found: ${src}`); return; }
+    if (compHtml == null) {
+      console.warn(`[Bundler] Composition file not found: ${src}`);
+      return;
+    }
 
     const $comp = cheerio.load(compHtml);
     const compId = $(hostEl).attr("data-composition-id");
     const $contentRoot = $comp("template").first();
-    const contentHtml = $contentRoot.length ? $contentRoot.html() || "" : $comp("body").html() || "";
+    const contentHtml = $contentRoot.length
+      ? $contentRoot.html() || ""
+      : $comp("body").html() || "";
     const $content = cheerio.load(contentHtml);
-    const $innerRoot = compId ? $content(`[data-composition-id="${compId}"]`).first() : $content("[data-composition-id]").first();
+    const $innerRoot = compId
+      ? $content(`[data-composition-id="${compId}"]`).first()
+      : $content("[data-composition-id]").first();
 
-    $content("style").each((_, s) => { compStyleChunks.push($content(s).html() || ""); $content(s).remove(); });
+    $content("style").each((_, s) => {
+      compStyleChunks.push($content(s).html() || "");
+      $content(s).remove();
+    });
     $content("script").each((_, s) => {
-      compScriptChunks.push(`(function(){ try { ${$content(s).html() || ""} } catch (_err) { console.error('[HyperFrames] composition script error:', _err); } })();`);
+      compScriptChunks.push(
+        `(function(){ try { ${$content(s).html() || ""} } catch (_err) { console.error('[HyperFrames] composition script error:', _err); } })();`,
+      );
       $content(s).remove();
     });
 
@@ -363,7 +426,8 @@ export async function bundleToSingleHtml(projectDir: string, options?: BundleOpt
       const innerCompId = $innerRoot.attr("data-composition-id");
       const innerW = $innerRoot.attr("data-width");
       const innerH = $innerRoot.attr("data-height");
-      if (innerCompId && !$(hostEl).attr("data-composition-id")) $(hostEl).attr("data-composition-id", innerCompId);
+      if (innerCompId && !$(hostEl).attr("data-composition-id"))
+        $(hostEl).attr("data-composition-id", innerCompId);
       if (innerW && !$(hostEl).attr("data-width")) $(hostEl).attr("data-width", innerW);
       if (innerH && !$(hostEl).attr("data-height")) $(hostEl).attr("data-height", innerH);
       $innerRoot.find("style, script").remove();
@@ -376,7 +440,8 @@ export async function bundleToSingleHtml(projectDir: string, options?: BundleOpt
   });
 
   if (compStyleChunks.length) $("head").append(`<style>${compStyleChunks.join("\n\n")}</style>`);
-  if (compScriptChunks.length) $("body").append(`<script>${compScriptChunks.join("\n;\n")}</script>`);
+  if (compScriptChunks.length)
+    $("body").append(`<script>${compScriptChunks.join("\n;\n")}</script>`);
 
   enforceCompositionPixelSizing($);
   autoHealMissingCompositionIds($);
@@ -395,8 +460,12 @@ export async function bundleToSingleHtml(projectDir: string, options?: BundleOpt
     const srcset = $(el).attr("srcset");
     if (srcset) $(el).attr("srcset", rewriteSrcsetWithInlinedAssets(srcset, projectDir));
   });
-  $("style").each((_, el) => { $(el).text(rewriteCssUrlsWithInlinedAssets($(el).html() || "", projectDir)); });
-  $("[style]").each((_, el) => { $(el).attr("style", rewriteCssUrlsWithInlinedAssets($(el).attr("style") || "", projectDir)); });
+  $("style").each((_, el) => {
+    $(el).text(rewriteCssUrlsWithInlinedAssets($(el).html() || "", projectDir));
+  });
+  $("[style]").each((_, el) => {
+    $(el).attr("style", rewriteCssUrlsWithInlinedAssets($(el).attr("style") || "", projectDir));
+  });
 
   return $.html();
 }

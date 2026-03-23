@@ -5,14 +5,24 @@ import type { RuntimeTimelineLike } from "./types";
 function createMockTimeline(opts?: { time?: number; duration?: number }): RuntimeTimelineLike {
   const state = { time: opts?.time ?? 0, duration: opts?.duration ?? 10, paused: false };
   return {
-    play: vi.fn(() => { state.paused = false; }),
-    pause: vi.fn(() => { state.paused = true; }),
-    seek: vi.fn((t: number) => { state.time = t; }),
-    totalTime: vi.fn((t: number) => { state.time = t; }),
+    play: vi.fn(() => {
+      state.paused = false;
+    }),
+    pause: vi.fn(() => {
+      state.paused = true;
+    }),
+    seek: vi.fn((t: number) => {
+      state.time = t;
+    }),
+    totalTime: vi.fn((t: number) => {
+      state.time = t;
+    }),
     time: vi.fn(() => state.time),
     duration: vi.fn(() => state.duration),
     add: vi.fn(),
-    paused: vi.fn((p?: boolean) => { if (p !== undefined) state.paused = p; }),
+    paused: vi.fn((p?: boolean) => {
+      if (p !== undefined) state.paused = p;
+    }),
     timeScale: vi.fn(),
     set: vi.fn(),
   };
@@ -25,9 +35,13 @@ function createMockDeps(timeline?: RuntimeTimelineLike | null) {
     getTimeline: vi.fn(() => timeline ?? null),
     setTimeline: vi.fn(),
     getIsPlaying: vi.fn(() => isPlaying),
-    setIsPlaying: vi.fn((v: boolean) => { isPlaying = v; }),
+    setIsPlaying: vi.fn((v: boolean) => {
+      isPlaying = v;
+    }),
     getPlaybackRate: vi.fn(() => playbackRate),
-    setPlaybackRate: vi.fn((v: number) => { playbackRate = v; }),
+    setPlaybackRate: vi.fn((v: number) => {
+      playbackRate = v;
+    }),
     getCanonicalFps: vi.fn(() => 30),
     onSyncMedia: vi.fn(),
     onStatePost: vi.fn(),

@@ -46,11 +46,7 @@ export {
 export { createVideoFrameInjector } from "./services/videoFrameInjector.js";
 
 // ── Configuration ───────────────────────────────────────────────────────────
-export {
-  resolveConfig,
-  DEFAULT_CONFIG,
-  type ProducerConfig,
-} from "./config.js";
+export { resolveConfig, DEFAULT_CONFIG, type ProducerConfig } from "./config.js";
 
 // ── Logger ──────────────────────────────────────────────────────────────────
 export {
@@ -72,10 +68,7 @@ export {
 
 // ── Utilities ───────────────────────────────────────────────────────────────
 export { quantizeTimeToFrame } from "./utils/parityContract.js";
-export {
-  resolveRenderPaths,
-  type RenderPaths,
-} from "./utils/paths.js";
+export { resolveRenderPaths, type RenderPaths } from "./utils/paths.js";
 
 export {
   prepareHyperframeLintBody,

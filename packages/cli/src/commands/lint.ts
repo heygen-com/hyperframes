@@ -38,7 +38,9 @@ export default defineCommand({
     }
 
     const summaryIcon = result.errorCount > 0 ? c.error("◇") : c.success("◇");
-    console.log(`\n${summaryIcon}  ${result.errorCount} error(s), ${result.warningCount} warning(s)`);
+    console.log(
+      `\n${summaryIcon}  ${result.errorCount} error(s), ${result.warningCount} warning(s)`,
+    );
     process.exit(result.errorCount > 0 ? 1 : 0);
   },
 });

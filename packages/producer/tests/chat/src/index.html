@@ -1,29 +1,43 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Kinetic Typography Sequence</title>
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="style.css" />
     <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
-</head>
-<body>
-    <div id="main" data-composition-id="main-comp" data-width="1080" data-height="1920" data-start="0" data-duration="15">
-        <!-- Audio Asset -->
-        <audio id="bg-music" src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/generated_assets/f87f97d4_0c49f6fa95224cc3bd4f5ea3a0d937c5.wav" data-start="0" data-duration="15" data-track-index="0"></audio>
+  </head>
+  <body>
+    <div
+      id="main"
+      data-composition-id="main-comp"
+      data-width="1080"
+      data-height="1920"
+      data-start="0"
+      data-duration="15"
+    >
+      <!-- Audio Asset -->
+      <audio
+        id="bg-music"
+        src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/generated_assets/f87f97d4_0c49f6fa95224cc3bd4f5ea3a0d937c5.wav"
+        data-start="0"
+        data-duration="15"
+        data-track-index="0"
+      ></audio>
 
-        <!-- Typography Composition -->
-        <div id="typography-layer" 
-             data-composition-id="typography" 
-             data-composition-src="compositions/typography.html" 
-             data-start="0" 
-             data-track-index="1">
-        </div>
+      <!-- Typography Composition -->
+      <div
+        id="typography-layer"
+        data-composition-id="typography"
+        data-composition-src="compositions/typography.html"
+        data-start="0"
+        data-track-index="1"
+      ></div>
     </div>
 
     <script>
-        const masterTL = gsap.timeline({ paused: true });
-        window.__timelines["main-comp"] = masterTL;
+      const masterTL = gsap.timeline({ paused: true });
+      window.__timelines["main-comp"] = masterTL;
     </script>
-</body>
+  </body>
 </html>

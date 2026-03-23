@@ -1,47 +1,156 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Magic Cut Intro</title>
-    <link rel="stylesheet" href="style.css">
-    <link href="https://fonts.googleapis.com/css2?family=Bangers&family=Lobster&family=Montserrat:wght@900&family=Playfair+Display:ital,wght@1,900&family=Press+Start+2P&family=Syncopate:wght@700&display=swap" rel="stylesheet">
-</head>
-<body>
-    <div id="container" data-composition-id="magic-cut-intro" data-width="1080" data-height="1920" data-start="0" data-duration="5.6" data-track-index="1">
-        <div class="text-variant" id="v1">Magic Cut</div>
-        <div class="text-variant" id="v2">Magic Cut</div>
-        <div class="text-variant" id="v3">Magic Cut</div>
-        <div class="text-variant" id="v4">Magic Cut</div>
-        <div class="text-variant" id="v5">Magic Cut</div>
-        <div class="text-variant" id="v6">Magic Cut</div>
-        <div class="text-variant" id="v7">Magic Cut</div>
-        <div class="text-variant" id="v8">Magic Cut</div>
-        <div class="text-variant" id="v9">Magic Cut</div>
-        <div class="text-variant" id="v10">Magic Cut</div>
-        <div class="text-variant" id="v11">Magic Cut</div>
-        <div class="text-variant" id="v12">Magic Cut</div>
-        <div class="text-variant" id="v13">Magic Cut</div>
-        <div id="final-message">Meet your Editing Agent</div>
-        <div id="particles-container"></div>
+    <link rel="stylesheet" href="style.css" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bangers&family=Lobster&family=Montserrat:wght@900&family=Playfair+Display:ital,wght@1,900&family=Press+Start+2P&family=Syncopate:wght@700&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <div
+      id="container"
+      data-composition-id="magic-cut-intro"
+      data-width="1080"
+      data-height="1920"
+      data-start="0"
+      data-duration="5.6"
+      data-track-index="1"
+    >
+      <div class="text-variant" id="v1">Magic Cut</div>
+      <div class="text-variant" id="v2">Magic Cut</div>
+      <div class="text-variant" id="v3">Magic Cut</div>
+      <div class="text-variant" id="v4">Magic Cut</div>
+      <div class="text-variant" id="v5">Magic Cut</div>
+      <div class="text-variant" id="v6">Magic Cut</div>
+      <div class="text-variant" id="v7">Magic Cut</div>
+      <div class="text-variant" id="v8">Magic Cut</div>
+      <div class="text-variant" id="v9">Magic Cut</div>
+      <div class="text-variant" id="v10">Magic Cut</div>
+      <div class="text-variant" id="v11">Magic Cut</div>
+      <div class="text-variant" id="v12">Magic Cut</div>
+      <div class="text-variant" id="v13">Magic Cut</div>
+      <div id="final-message">Meet your Editing Agent</div>
+      <div id="particles-container"></div>
 
-        <!-- 9 Audio clicks synced with first 9 cuts -->
-        <audio id="click1" src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/generated_assets/52be8a19_b6ad2cf680444264933b185ff8295074.mp3" data-start="0" data-duration="0.2" data-track-index="2" crossorigin="anonymous"></audio>
-        <audio id="click2" src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/generated_assets/52be8a19_b6ad2cf680444264933b185ff8295074.mp3" data-start="0.2" data-duration="0.2" data-track-index="3" crossorigin="anonymous"></audio>
-        <audio id="click3" src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/generated_assets/52be8a19_b6ad2cf680444264933b185ff8295074.mp3" data-start="0.4" data-duration="0.2" data-track-index="4" crossorigin="anonymous"></audio>
-        <audio id="click4" src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/generated_assets/52be8a19_b6ad2cf680444264933b185ff8295074.mp3" data-start="0.6" data-duration="0.2" data-track-index="5" crossorigin="anonymous"></audio>
-        <audio id="click5" src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/generated_assets/52be8a19_b6ad2cf680444264933b185ff8295074.mp3" data-start="0.8" data-duration="0.2" data-track-index="6" crossorigin="anonymous"></audio>
-        <audio id="click6" src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/generated_assets/52be8a19_b6ad2cf680444264933b185ff8295074.mp3" data-start="1.0" data-duration="0.2" data-track-index="7" crossorigin="anonymous"></audio>
-        <audio id="click7" src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/generated_assets/52be8a19_b6ad2cf680444264933b185ff8295074.mp3" data-start="1.2" data-duration="0.2" data-track-index="8" crossorigin="anonymous"></audio>
-        <audio id="click8" src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/generated_assets/52be8a19_b6ad2cf680444264933b185ff8295074.mp3" data-start="1.4" data-duration="0.2" data-track-index="9" crossorigin="anonymous"></audio>
-        <audio id="click9" src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/generated_assets/52be8a19_b6ad2cf680444264933b185ff8295074.mp3" data-start="1.6" data-duration="0.2" data-track-index="10" crossorigin="anonymous"></audio>
-        <audio id="click10" src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/generated_assets/52be8a19_b6ad2cf680444264933b185ff8295074.mp3" data-start="1.8" data-duration="0.2" data-track-index="11" crossorigin="anonymous"></audio>
-        <audio id="click11" src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/generated_assets/52be8a19_b6ad2cf680444264933b185ff8295074.mp3" data-start="2.0" data-duration="0.2" data-track-index="12" crossorigin="anonymous"></audio>
-        <audio id="click12" src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/generated_assets/52be8a19_b6ad2cf680444264933b185ff8295074.mp3" data-start="2.2" data-duration="0.2" data-track-index="13" crossorigin="anonymous"></audio>
-        <audio id="click13" src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/generated_assets/52be8a19_b6ad2cf680444264933b185ff8295074.mp3" data-start="2.4" data-duration="0.2" data-track-index="14" crossorigin="anonymous"></audio>
-        <audio id="epic-boom" src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/generated_assets/02937d93_65b31a3a3d1f4568b0516b66343245d6.mp3" data-start="2.6" data-duration="3.0" data-track-index="15" crossorigin="anonymous"></audio>
+      <!-- 9 Audio clicks synced with first 9 cuts -->
+      <audio
+        id="click1"
+        src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/generated_assets/52be8a19_b6ad2cf680444264933b185ff8295074.mp3"
+        data-start="0"
+        data-duration="0.2"
+        data-track-index="2"
+        crossorigin="anonymous"
+      ></audio>
+      <audio
+        id="click2"
+        src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/generated_assets/52be8a19_b6ad2cf680444264933b185ff8295074.mp3"
+        data-start="0.2"
+        data-duration="0.2"
+        data-track-index="3"
+        crossorigin="anonymous"
+      ></audio>
+      <audio
+        id="click3"
+        src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/generated_assets/52be8a19_b6ad2cf680444264933b185ff8295074.mp3"
+        data-start="0.4"
+        data-duration="0.2"
+        data-track-index="4"
+        crossorigin="anonymous"
+      ></audio>
+      <audio
+        id="click4"
+        src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/generated_assets/52be8a19_b6ad2cf680444264933b185ff8295074.mp3"
+        data-start="0.6"
+        data-duration="0.2"
+        data-track-index="5"
+        crossorigin="anonymous"
+      ></audio>
+      <audio
+        id="click5"
+        src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/generated_assets/52be8a19_b6ad2cf680444264933b185ff8295074.mp3"
+        data-start="0.8"
+        data-duration="0.2"
+        data-track-index="6"
+        crossorigin="anonymous"
+      ></audio>
+      <audio
+        id="click6"
+        src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/generated_assets/52be8a19_b6ad2cf680444264933b185ff8295074.mp3"
+        data-start="1.0"
+        data-duration="0.2"
+        data-track-index="7"
+        crossorigin="anonymous"
+      ></audio>
+      <audio
+        id="click7"
+        src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/generated_assets/52be8a19_b6ad2cf680444264933b185ff8295074.mp3"
+        data-start="1.2"
+        data-duration="0.2"
+        data-track-index="8"
+        crossorigin="anonymous"
+      ></audio>
+      <audio
+        id="click8"
+        src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/generated_assets/52be8a19_b6ad2cf680444264933b185ff8295074.mp3"
+        data-start="1.4"
+        data-duration="0.2"
+        data-track-index="9"
+        crossorigin="anonymous"
+      ></audio>
+      <audio
+        id="click9"
+        src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/generated_assets/52be8a19_b6ad2cf680444264933b185ff8295074.mp3"
+        data-start="1.6"
+        data-duration="0.2"
+        data-track-index="10"
+        crossorigin="anonymous"
+      ></audio>
+      <audio
+        id="click10"
+        src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/generated_assets/52be8a19_b6ad2cf680444264933b185ff8295074.mp3"
+        data-start="1.8"
+        data-duration="0.2"
+        data-track-index="11"
+        crossorigin="anonymous"
+      ></audio>
+      <audio
+        id="click11"
+        src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/generated_assets/52be8a19_b6ad2cf680444264933b185ff8295074.mp3"
+        data-start="2.0"
+        data-duration="0.2"
+        data-track-index="12"
+        crossorigin="anonymous"
+      ></audio>
+      <audio
+        id="click12"
+        src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/generated_assets/52be8a19_b6ad2cf680444264933b185ff8295074.mp3"
+        data-start="2.2"
+        data-duration="0.2"
+        data-track-index="13"
+        crossorigin="anonymous"
+      ></audio>
+      <audio
+        id="click13"
+        src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/generated_assets/52be8a19_b6ad2cf680444264933b185ff8295074.mp3"
+        data-start="2.4"
+        data-duration="0.2"
+        data-track-index="14"
+        crossorigin="anonymous"
+      ></audio>
+      <audio
+        id="epic-boom"
+        src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/generated_assets/02937d93_65b31a3a3d1f4568b0516b66343245d6.mp3"
+        data-start="2.6"
+        data-duration="3.0"
+        data-track-index="15"
+        crossorigin="anonymous"
+      ></audio>
     </div>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
     <script src="script.js"></script>
-</body>
+  </body>
 </html>

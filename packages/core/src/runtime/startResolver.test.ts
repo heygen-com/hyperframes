@@ -7,8 +7,7 @@ beforeAll(() => {
     (globalThis as any).CSS = {};
   }
   if (typeof CSS.escape !== "function") {
-    CSS.escape = (value: string) =>
-      value.replace(/([^\w-])/g, "\\$1");
+    CSS.escape = (value: string) => value.replace(/([^\w-])/g, "\\$1");
   }
 });
 
@@ -191,7 +190,16 @@ describe("createRuntimeStartTimeResolver", () => {
       el.setAttribute("data-composition-id", "comp-1");
       document.body.appendChild(el);
 
-      const mockTimeline = { duration: () => 12, time: () => 0, play: () => {}, pause: () => {}, seek: () => {}, add: () => {}, paused: () => {}, set: () => {} };
+      const mockTimeline = {
+        duration: () => 12,
+        time: () => 0,
+        play: () => {},
+        pause: () => {},
+        seek: () => {},
+        add: () => {},
+        paused: () => {},
+        set: () => {},
+      };
       const resolver = createRuntimeStartTimeResolver({
         timelineRegistry: { "comp-1": mockTimeline as any },
       });
@@ -204,7 +212,16 @@ describe("createRuntimeStartTimeResolver", () => {
       el.setAttribute("data-duration", "5");
       document.body.appendChild(el);
 
-      const mockTimeline = { duration: () => 12, time: () => 0, play: () => {}, pause: () => {}, seek: () => {}, add: () => {}, paused: () => {}, set: () => {} };
+      const mockTimeline = {
+        duration: () => 12,
+        time: () => 0,
+        play: () => {},
+        pause: () => {},
+        seek: () => {},
+        add: () => {},
+        paused: () => {},
+        set: () => {},
+      };
       const resolver = createRuntimeStartTimeResolver({
         timelineRegistry: { "comp-1": mockTimeline as any },
       });

@@ -1,40 +1,40 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Missing Host Composition Id</title>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
-</head>
-<body>
-  <div
-    id="main-comp"
-    data-composition-id="master"
-    data-width="1080"
-    data-height="1920"
-    data-duration="3"
-  >
-    <audio
-      id="silence-track"
-      src="silence.wav"
-      data-start="0"
-      data-duration="3"
-      data-track-index="0"
-    ></audio>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Missing Host Composition Id</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+  </head>
+  <body>
     <div
-      id="scoped-text-host"
-      data-composition-src="compositions/scoped-text.html"
-      data-start="0"
+      id="main-comp"
+      data-composition-id="master"
+      data-width="1080"
+      data-height="1920"
       data-duration="3"
-      data-track-index="1"
-    ></div>
-  </div>
+    >
+      <audio
+        id="silence-track"
+        src="silence.wav"
+        data-start="0"
+        data-duration="3"
+        data-track-index="0"
+      ></audio>
+      <div
+        id="scoped-text-host"
+        data-composition-src="compositions/scoped-text.html"
+        data-start="0"
+        data-duration="3"
+        data-track-index="1"
+      ></div>
+    </div>
 
-  <script>
-    const masterTl = gsap.timeline({ paused: true });
-    masterTl.to({}, { duration: 3 });
-    window.__timelines = window.__timelines || {};
-    window.__timelines["master"] = masterTl;
-  </script>
-</body>
+    <script>
+      const masterTl = gsap.timeline({ paused: true });
+      masterTl.to({}, { duration: 3 });
+      window.__timelines = window.__timelines || {};
+      window.__timelines["master"] = masterTl;
+    </script>
+  </body>
 </html>

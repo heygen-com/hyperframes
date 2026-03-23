@@ -52,7 +52,7 @@
         left: 0;
         width: 100%;
         height: 100%;
-        background-image: 
+        background-image:
           linear-gradient(to right, rgba(18, 18, 18, 0.3) 1px, transparent 1px),
           linear-gradient(to bottom, rgba(18, 18, 18, 0.3) 1px, transparent 1px);
         background-size: 40px 40px;
@@ -65,7 +65,7 @@
         left: 0;
         width: 100%;
         height: 2px; /* More subtle accent */
-        background-color: #FF6600; /* Signal Orange */
+        background-color: #ff6600; /* Signal Orange */
         box-shadow: 0 0 10px rgba(255, 102, 0, 0.4);
       }
 
@@ -77,27 +77,35 @@
     </style>
 
     <script>
-      (function() {
+      (function () {
         const tl = gsap.timeline({ paused: true });
 
         // Sweep 1: At 7.3s (when A-roll exits)
         // Top to Bottom
         tl.set("#scanline-1", { y: -320, opacity: 1 }, 7.0);
-        tl.to("#scanline-1", {
-          y: 1920,
-          duration: 0.9,
-          ease: "power3.inOut"
-        }, 7.0);
+        tl.to(
+          "#scanline-1",
+          {
+            y: 1920,
+            duration: 0.9,
+            ease: "power3.inOut",
+          },
+          7.0,
+        );
         tl.set("#scanline-1", { opacity: 0 }, 7.9);
 
         // Sweep 2: At 12.3s (when A-roll returns)
         // Bottom to Top
         tl.set("#scanline-2", { y: 1920, opacity: 1 }, 12.0);
-        tl.to("#scanline-2", {
-          y: -320,
-          duration: 0.9,
-          ease: "power3.inOut"
-        }, 12.0);
+        tl.to(
+          "#scanline-2",
+          {
+            y: -320,
+            duration: 0.9,
+            ease: "power3.inOut",
+          },
+          12.0,
+        );
         tl.set("#scanline-2", { opacity: 0 }, 12.9);
 
         window.__timelines["transitions"] = tl;

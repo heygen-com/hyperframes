@@ -21,7 +21,12 @@ import {
   type UnresolvedElement,
 } from "@hyperframes/core";
 import { extractVideoMetadata, extractAudioMetadata } from "../utils/ffprobe.js";
-import { parseVideoElements, type VideoElement, parseAudioElements, type AudioElement } from "@hyperframes/engine";
+import {
+  parseVideoElements,
+  type VideoElement,
+  parseAudioElements,
+  type AudioElement,
+} from "@hyperframes/engine";
 import { downloadToTemp, isHttpUrl } from "../utils/urlDownloader.js";
 import type { Page } from "puppeteer-core";
 import { injectDeterministicFontFaces } from "./deterministicFonts.js";
@@ -50,7 +55,7 @@ async function resolveMediaDuration(
   mediaStart: number,
   baseDir: string,
   downloadDir: string,
-  tagName: string
+  tagName: string,
 ): Promise<{ duration: number; resolvedPath: string }> {
   let filePath = src;
 
@@ -65,9 +70,10 @@ async function resolveMediaDuration(
     return { duration: 0, resolvedPath: filePath };
   }
 
-  const metadata = tagName === "video"
-    ? await extractVideoMetadata(filePath)
-    : await extractAudioMetadata(filePath);
+  const metadata =
+    tagName === "video"
+      ? await extractVideoMetadata(filePath)
+      : await extractAudioMetadata(filePath);
 
   const fileDuration = metadata.durationSeconds;
   const effectiveDuration = fileDuration - mediaStart;
@@ -83,30 +89,28 @@ async function resolveMediaDuration(
 async function compileHtmlFile(
   html: string,
   baseDir: string,
-  downloadDir: string
+  downloadDir: string,
 ): Promise<{ html: string; unresolvedCompositions: UnresolvedElement[] }> {
   const { html: staticCompiled, unresolved } = compileTimingAttrs(html);
 
   const mediaUnresolved = unresolved.filter(
-    (el) => (el.tagName === "video" || el.tagName === "audio") && el.src
+    (el) => (el.tagName === "video" || el.tagName === "audio") && el.src,
   );
 
-  const unresolvedCompositions = unresolved.filter(
-    (el) => el.tagName === "div"
-  );
+  const unresolvedCompositions = unresolved.filter((el) => el.tagName === "div");
 
   // Phase 1: Resolve missing durations (parallel ffprobe)
   const resolvedResults = await Promise.all(
     mediaUnresolved.map((el) =>
-      resolveMediaDuration(el.src!, el.mediaStart, baseDir, downloadDir, el.tagName)
-        .then(({ duration }) => ({ id: el.id, duration }))
-    )
+      resolveMediaDuration(el.src!, el.mediaStart, baseDir, downloadDir, el.tagName).then(
+        ({ duration }) => ({ id: el.id, duration }),
+      ),
+    ),
   );
   const resolutions: ResolvedDuration[] = resolvedResults.filter((r) => r.duration > 0);
 
-  let compiledHtml = resolutions.length > 0
-    ? injectDurations(staticCompiled, resolutions)
-    : staticCompiled;
+  let compiledHtml =
+    resolutions.length > 0 ? injectDurations(staticCompiled, resolutions) : staticCompiled;
 
   // Phase 2: Validate pre-resolved media — clamp data-duration to actual source duration (parallel ffprobe)
   const preResolved = extractResolvedMedia(compiledHtml);
@@ -115,10 +119,14 @@ async function compileHtmlFile(
       .filter((el) => !!el.src)
       .map(async (el) => {
         const { duration: maxDuration } = await resolveMediaDuration(
-          el.src!, el.mediaStart, baseDir, downloadDir, el.tagName
+          el.src!,
+          el.mediaStart,
+          baseDir,
+          downloadDir,
+          el.tagName,
         );
         return { id: el.id, duration: el.duration, maxDuration, src: el.src! };
-      })
+      }),
   );
   const clampList: ResolvedDuration[] = [];
   for (const r of clampResults) {
@@ -145,7 +153,7 @@ async function parseSubCompositions(
   downloadDir: string,
   parentOffset: number = 0,
   parentEnd: number = Infinity,
-  visited: Set<string> = new Set()
+  visited: Set<string> = new Set(),
 ): Promise<{
   videos: VideoElement[];
   audios: AudioElement[];
@@ -177,10 +185,7 @@ async function parseSubCompositions(
     const elEnd = elEndRaw ? parseFloat(elEndRaw) : Infinity;
 
     const absoluteStart = parentOffset + elStart;
-    const absoluteEnd = Math.min(
-      parentEnd,
-      isFinite(elEnd) ? parentOffset + elEnd : Infinity
-    );
+    const absoluteEnd = Math.min(parentEnd, isFinite(elEnd) ? parentOffset + elEnd : Infinity);
 
     const filePath = resolve(projectDir, srcPath);
 
@@ -203,18 +208,34 @@ async function parseSubCompositions(
   // Parallelize file compilation + recursive parsing
   const results = await Promise.all(
     workItems.map(async (item) => {
-      const { html: compiledSub } = await compileHtmlFile(item.rawSubHtml, dirname(item.filePath), downloadDir);
+      const { html: compiledSub } = await compileHtmlFile(
+        item.rawSubHtml,
+        dirname(item.filePath),
+        downloadDir,
+      );
 
       const nested = await parseSubCompositions(
-        compiledSub, projectDir, downloadDir,
-        item.absoluteStart, item.absoluteEnd, item.nestedVisited
+        compiledSub,
+        projectDir,
+        downloadDir,
+        item.absoluteStart,
+        item.absoluteEnd,
+        item.nestedVisited,
       );
 
       const subVideos = parseVideoElements(compiledSub);
       const subAudios = parseAudioElements(compiledSub);
 
-      return { srcPath: item.srcPath, compiledSub, nested, subVideos, subAudios, absoluteStart: item.absoluteStart, absoluteEnd: item.absoluteEnd };
-    })
+      return {
+        srcPath: item.srcPath,
+        compiledSub,
+        nested,
+        subVideos,
+        subAudios,
+        absoluteStart: item.absoluteStart,
+        absoluteEnd: item.absoluteEnd,
+      };
+    }),
   );
 
   // Merge results
@@ -249,7 +270,12 @@ async function parseSubCompositions(
       }
     }
 
-    if (r.subVideos.length > 0 || r.subAudios.length > 0 || r.nested.videos.length > 0 || r.nested.audios.length > 0) {
+    if (
+      r.subVideos.length > 0 ||
+      r.subAudios.length > 0 ||
+      r.nested.videos.length > 0 ||
+      r.nested.audios.length > 0
+    ) {
     }
   }
 
@@ -332,28 +358,25 @@ function scopeCssToComposition(css: string, compositionId: string): string {
   const scope = `[data-composition-id="${compositionId}"]`;
   // Split on top-level rule boundaries. Simple regex approach:
   // scope each selector in rule blocks while preserving at-rules.
-  return css.replace(
-    /([^{}@]+)\{/g,
-    (match, selectors: string) => {
-      const trimmed = selectors.trim();
-      // Skip @-rule headers (they don't have selectors to scope)
-      if (trimmed.startsWith("@")) return match;
-      // Skip if already scoped to this composition
-      if (trimmed.includes(`data-composition-id="${compositionId}"`)) return match;
-      // Scope each comma-separated selector
-      const scoped = trimmed
-        .split(",")
-        .map((s: string) => {
-          const sel = s.trim();
-          if (!sel) return sel;
-          // Don't scope :root, html, body, or * alone — they're global
-          if (/^(html|body|:root|\*)$/i.test(sel)) return sel;
-          return `${scope} ${sel}`;
-        })
-        .join(", ");
-      return `${scoped} {`;
-    },
-  );
+  return css.replace(/([^{}@]+)\{/g, (match, selectors: string) => {
+    const trimmed = selectors.trim();
+    // Skip @-rule headers (they don't have selectors to scope)
+    if (trimmed.startsWith("@")) return match;
+    // Skip if already scoped to this composition
+    if (trimmed.includes(`data-composition-id="${compositionId}"`)) return match;
+    // Scope each comma-separated selector
+    const scoped = trimmed
+      .split(",")
+      .map((s: string) => {
+        const sel = s.trim();
+        if (!sel) return sel;
+        // Don't scope :root, html, body, or * alone — they're global
+        if (/^(html|body|:root|\*)$/i.test(sel)) return sel;
+        return `${scope} ${sel}`;
+      })
+      .join(", ");
+    return `${scoped} {`;
+  });
 }
 
 function coalesceHeadStylesAndBodyScripts(html: string): string {
@@ -434,7 +457,7 @@ function coalesceHeadStylesAndBodyScripts(html: string): string {
 function inlineSubCompositions(
   html: string,
   subCompositions: Map<string, string>,
-  projectDir: string
+  projectDir: string,
 ): string {
   const { document } = parseHTML(html);
   const head = document.querySelector("head");
@@ -467,9 +490,9 @@ function inlineSubCompositions(
     const templateEl = compDoc.querySelector("template");
     const bodyEl = compDoc.querySelector("body");
     const contentHtml = templateEl
-      ? (templateEl.innerHTML || "")
+      ? templateEl.innerHTML || ""
       : bodyEl
-        ? (bodyEl.innerHTML || "")
+        ? bodyEl.innerHTML || ""
         : compDoc.toString();
 
     const contentDoc = parseHTML(contentHtml).document;
@@ -556,12 +579,13 @@ function inlineSubCompositions(
         needsPosition ? "position:relative" : "",
         needsWidth ? `width:${hostW}px` : "",
         needsHeight ? `height:${hostH}px` : "",
-      ].filter(Boolean).join(";");
+      ]
+        .filter(Boolean)
+        .join(";");
       if (additions) {
         host.setAttribute("style", existing ? `${existing};${additions}` : additions);
       }
     }
-
   }
 
   if (collectedStyles.length && head) {
@@ -588,15 +612,21 @@ function inlineSubCompositions(
 export async function compileForRender(
   projectDir: string,
   htmlPath: string,
-  downloadDir: string
+  downloadDir: string,
 ): Promise<CompiledComposition> {
-
   const rawHtml = readFileSync(htmlPath, "utf-8");
-  const { html: compiledHtml, unresolvedCompositions } = await compileHtmlFile(rawHtml, projectDir, downloadDir);
+  const { html: compiledHtml, unresolvedCompositions } = await compileHtmlFile(
+    rawHtml,
+    projectDir,
+    downloadDir,
+  );
 
   // Parse sub-compositions first (extracts media + compiled HTML for each)
-  const { videos: subVideos, audios: subAudios, subCompositions } =
-    await parseSubCompositions(compiledHtml, projectDir, downloadDir);
+  const {
+    videos: subVideos,
+    audios: subAudios,
+    subCompositions,
+  } = await parseSubCompositions(compiledHtml, projectDir, downloadDir);
 
   // Inline sub-compositions into the main HTML so the runtime takes the same
   // synchronous code path as the bundled preview (no async fetch of
@@ -618,24 +648,28 @@ export async function compileForRender(
   const { document } = parseHTML(html);
   const rootEl = document.querySelector("[data-composition-id]");
 
-  const width = rootEl
-    ? parseInt(rootEl.getAttribute("data-width") || "1080", 10)
-    : 1080;
-  const height = rootEl
-    ? parseInt(rootEl.getAttribute("data-height") || "1920", 10)
-    : 1920;
+  const width = rootEl ? parseInt(rootEl.getAttribute("data-width") || "1080", 10) : 1080;
+  const height = rootEl ? parseInt(rootEl.getAttribute("data-height") || "1920", 10) : 1920;
 
   // Static duration (may be 0 if set at runtime by GSAP)
   const staticDuration = rootEl
     ? parseFloat(
-      rootEl.getAttribute("data-duration")
-        || rootEl.getAttribute("data-composition-duration")
-        || "0",
-    )
+        rootEl.getAttribute("data-duration") ||
+          rootEl.getAttribute("data-composition-duration") ||
+          "0",
+      )
     : 0;
 
-
-  return { html, subCompositions, videos, audios, unresolvedCompositions, width, height, staticDuration };
+  return {
+    html,
+    subCompositions,
+    videos,
+    audios,
+    unresolvedCompositions,
+    width,
+    height,
+    staticDuration,
+  };
 }
 
 /**
@@ -656,10 +690,7 @@ export interface BrowserMediaElement {
   volume: number;
 }
 
-export async function discoverMediaFromBrowser(
-  page: Page
-): Promise<BrowserMediaElement[]> {
-
+export async function discoverMediaFromBrowser(page: Page): Promise<BrowserMediaElement[]> {
   const elements = await page.evaluate(() => {
     const results: {
       id: string;
@@ -712,12 +743,11 @@ export async function discoverMediaFromBrowser(
  */
 export async function resolveCompositionDurations(
   page: Page,
-  unresolved: UnresolvedElement[]
+  unresolved: UnresolvedElement[],
 ): Promise<ResolvedDuration[]> {
   if (unresolved.length === 0) return [];
 
-
-  const ids = unresolved.map(el => el.id);
+  const ids = unresolved.map((el) => el.id);
 
   const results = await page.evaluate((compIds: string[]) => {
     const win = window as unknown as { __timelines?: Record<string, { duration(): number }> };
@@ -738,7 +768,8 @@ export async function resolveCompositionDurations(
       // Fallback: check for authored duration on the element itself
       const el = document.getElementById(id);
       if (el) {
-        const compDurAttr = el.getAttribute("data-duration") || el.getAttribute("data-composition-duration");
+        const compDurAttr =
+          el.getAttribute("data-duration") || el.getAttribute("data-composition-duration");
         if (compDurAttr) {
           const dur = parseFloat(compDurAttr);
           if (dur > 0) {
@@ -772,16 +803,18 @@ export async function recompileWithResolutions(
   compiled: CompiledComposition,
   resolutions: ResolvedDuration[],
   projectDir: string,
-  downloadDir: string
+  downloadDir: string,
 ): Promise<CompiledComposition> {
   if (resolutions.length === 0) return compiled;
-
 
   const html = injectDurations(compiled.html, resolutions);
 
   // Re-parse sub-compositions with the updated parent bounds
-  const { videos: subVideos, audios: subAudios, subCompositions } =
-    await parseSubCompositions(html, projectDir, downloadDir);
+  const {
+    videos: subVideos,
+    audios: subAudios,
+    subCompositions,
+  } = await parseSubCompositions(html, projectDir, downloadDir);
 
   const mainVideos = parseVideoElements(html);
   const mainAudios = parseAudioElements(html);
@@ -790,9 +823,8 @@ export async function recompileWithResolutions(
   const audios = dedupeElementsById([...subAudios, ...mainAudios]);
 
   const remaining = compiled.unresolvedCompositions.filter(
-    c => !resolutions.some(r => r.id === c.id)
+    (c) => !resolutions.some((r) => r.id === c.id),
   );
-
 
   return {
     ...compiled,

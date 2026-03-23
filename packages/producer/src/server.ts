@@ -12,7 +12,15 @@
  *   GET  /outputs/:token — download rendered MP4
  */
 
-import { existsSync, mkdirSync, statSync, mkdtempSync, writeFileSync, rmSync, createReadStream } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  statSync,
+  mkdtempSync,
+  writeFileSync,
+  rmSync,
+  createReadStream,
+} from "node:fs";
 import { resolve, dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { parseArgs } from "node:util";
@@ -70,7 +78,9 @@ interface PreparedRenderInput {
 
 function parseRenderOptions(body: Record<string, unknown>): Omit<RenderInput, "projectDir"> {
   const fps = ([24, 30, 60].includes(body.fps as number) ? body.fps : 30) as 24 | 30 | 60;
-  const quality = (["draft", "standard", "high"].includes(body.quality as string) ? body.quality : "high") as "draft" | "standard" | "high";
+  const quality = (
+    ["draft", "standard", "high"].includes(body.quality as string) ? body.quality : "high"
+  ) as "draft" | "standard" | "high";
   const workers = typeof body.workers === "number" ? body.workers : undefined;
   const useGpu = body.gpu === true;
   const debug = body.debug === true;
@@ -84,7 +94,9 @@ function parseRenderOptions(body: Record<string, unknown>): Omit<RenderInput, "p
   return { outputPath, fps, quality, workers, useGpu, debug };
 }
 
-async function prepareRenderBody(body: Record<string, unknown>): Promise<{ prepared: PreparedRenderInput } | { error: string }> {
+async function prepareRenderBody(
+  body: Record<string, unknown>,
+): Promise<{ prepared: PreparedRenderInput } | { error: string }> {
   const options = parseRenderOptions(body);
   const projectDir = typeof body.projectDir === "string" ? body.projectDir : undefined;
   if (projectDir) {
@@ -113,7 +125,9 @@ async function prepareRenderBody(body: Record<string, unknown>): Promise<{ prepa
       }
       htmlContent = await response.text();
     } catch (error) {
-      return { error: `Failed to fetch previewUrl: ${error instanceof Error ? error.message : String(error)}` };
+      return {
+        error: `Failed to fetch previewUrl: ${error instanceof Error ? error.message : String(error)}`,
+      };
     }
   }
 
@@ -131,7 +145,12 @@ async function prepareRenderBody(body: Record<string, unknown>): Promise<{ prepa
   };
 }
 
-function resolveOutputPath(projectDir: string, outputCandidate: string | null | undefined, rendersDir: string, log: ProducerLogger): string {
+function resolveOutputPath(
+  projectDir: string,
+  outputCandidate: string | null | undefined,
+  rendersDir: string,
+  log: ProducerLogger,
+): string {
   try {
     return resolveRenderPaths(projectDir, outputCandidate, rendersDir).absoluteOutputPath;
   } catch (error) {
@@ -210,15 +229,21 @@ export interface RenderHandlers {
  */
 export function createRenderHandlers(options: HandlerOptions = {}): RenderHandlers {
   const log = options.logger ?? defaultLogger;
-  const getRequestId = options.getRequestId ?? ((c: Context) => c.req.header("x-request-id") || crypto.randomUUID());
+  const getRequestId =
+    options.getRequestId ?? ((c: Context) => c.req.header("x-request-id") || crypto.randomUUID());
   const outputUrlPrefix = options.outputUrlPrefix ?? "/outputs";
   const rendersDir = options.rendersDir ?? process.env.PRODUCER_RENDERS_DIR ?? "/tmp";
-  const artifactTtlMs = options.artifactTtlMs ?? Number(process.env.PRODUCER_OUTPUT_ARTIFACT_TTL_MS || 15 * 60 * 1000);
+  const artifactTtlMs =
+    options.artifactTtlMs ?? Number(process.env.PRODUCER_OUTPUT_ARTIFACT_TTL_MS || 15 * 60 * 1000);
   const store = createArtifactStore(artifactTtlMs);
   const startTime = Date.now();
 
   const health = (c: Context): Response =>
-    c.json({ status: "ok", uptime: Math.floor((Date.now() - startTime) / 1000), timestamp: new Date().toISOString() });
+    c.json({
+      status: "ok",
+      uptime: Math.floor((Date.now() - startTime) / 1000),
+      timestamp: new Date().toISOString(),
+    });
 
   const lint = async (c: Context): Promise<Response> => {
     const requestId = getRequestId(c);
@@ -270,13 +295,30 @@ export function createRenderHandlers(options: HandlerOptions = {}): RenderHandle
     }
 
     const { input, cleanupProjectDir } = preparedResult.prepared;
-    const absoluteOutputPath = resolveOutputPath(input.projectDir, input.outputPath, rendersDir, log);
+    const absoluteOutputPath = resolveOutputPath(
+      input.projectDir,
+      input.outputPath,
+      rendersDir,
+      log,
+    );
     const outputDir = dirname(absoluteOutputPath);
     if (!existsSync(outputDir)) mkdirSync(outputDir, { recursive: true });
 
-    log.info("render started", { requestId, projectDir: input.projectDir, fps: input.fps, quality: input.quality });
+    log.info("render started", {
+      requestId,
+      projectDir: input.projectDir,
+      fps: input.fps,
+      quality: input.quality,
+    });
 
-    const job = createRenderJob({ fps: input.fps, quality: input.quality, workers: input.workers, useGpu: input.useGpu, debug: input.debug, logger: log });
+    const job = createRenderJob({
+      fps: input.fps,
+      quality: input.quality,
+      workers: input.workers,
+      useGpu: input.useGpu,
+      debug: input.debug,
+      logger: log,
+    });
 
     let lastLoggedPct = -10;
     try {
@@ -292,14 +334,44 @@ export function createRenderHandlers(options: HandlerOptions = {}): RenderHandle
       const durationMs = Date.now() - t0;
       const outputToken = store.register(absoluteOutputPath);
       const outputUrl = `${outputUrlPrefix}/${outputToken}`;
-      log.info("render completed", { requestId, durationMs, fileSize, perf: job.perfSummary ?? null });
+      log.info("render completed", {
+        requestId,
+        durationMs,
+        fileSize,
+        perf: job.perfSummary ?? null,
+      });
 
-      return c.json({ success: true, requestId, outputPath: absoluteOutputPath, outputToken, outputUrl, fileSize, durationMs, videoDurationSeconds: job.duration ?? null, perf: job.perfSummary ?? null });
+      return c.json({
+        success: true,
+        requestId,
+        outputPath: absoluteOutputPath,
+        outputToken,
+        outputUrl,
+        fileSize,
+        durationMs,
+        videoDurationSeconds: job.duration ?? null,
+        perf: job.perfSummary ?? null,
+      });
     } catch (error) {
       const durationMs = Date.now() - t0;
       const errorMsg = error instanceof Error ? error.message : String(error);
-      log.error("render failed", { requestId, durationMs, error: errorMsg, stage: job.currentStage });
-      return c.json({ success: false, requestId, error: errorMsg, stage: job.currentStage, durationMs, errorDetails: job.errorDetails ?? null }, 500);
+      log.error("render failed", {
+        requestId,
+        durationMs,
+        error: errorMsg,
+        stage: job.currentStage,
+      });
+      return c.json(
+        {
+          success: false,
+          requestId,
+          error: errorMsg,
+          stage: job.currentStage,
+          durationMs,
+          errorDetails: job.errorDetails ?? null,
+        },
+        500,
+      );
     } finally {
       cleanupTempDir(cleanupProjectDir, log);
     }
@@ -314,49 +386,91 @@ export function createRenderHandlers(options: HandlerOptions = {}): RenderHandle
       try {
         body = await c.req.json();
       } catch {
-        await stream.writeSSE({ data: JSON.stringify({ type: "error", requestId, error: "Invalid JSON body", stage: "validation" }) });
+        await stream.writeSSE({
+          data: JSON.stringify({
+            type: "error",
+            requestId,
+            error: "Invalid JSON body",
+            stage: "validation",
+          }),
+        });
         return;
       }
 
       const preparedResult = await prepareRenderBody(body);
       if ("error" in preparedResult) {
-        await stream.writeSSE({ data: JSON.stringify({ type: "error", requestId, error: preparedResult.error, stage: "validation" }) });
+        await stream.writeSSE({
+          data: JSON.stringify({
+            type: "error",
+            requestId,
+            error: preparedResult.error,
+            stage: "validation",
+          }),
+        });
         return;
       }
 
       const { input, cleanupProjectDir } = preparedResult.prepared;
-      const absoluteOutputPath = resolveOutputPath(input.projectDir, input.outputPath, rendersDir, log);
+      const absoluteOutputPath = resolveOutputPath(
+        input.projectDir,
+        input.outputPath,
+        rendersDir,
+        log,
+      );
       const outputDir = dirname(absoluteOutputPath);
       if (!existsSync(outputDir)) mkdirSync(outputDir, { recursive: true });
 
       log.info("render-stream started", { requestId, projectDir: input.projectDir });
 
-      const job = createRenderJob({ fps: input.fps, quality: input.quality, workers: input.workers, useGpu: input.useGpu, debug: input.debug, logger: log });
+      const job = createRenderJob({
+        fps: input.fps,
+        quality: input.quality,
+        workers: input.workers,
+        useGpu: input.useGpu,
+        debug: input.debug,
+        logger: log,
+      });
       const abortController = new AbortController();
-      const onRequestAbort = () => abortController.abort(new RenderCancelledError("request_aborted"));
+      const onRequestAbort = () =>
+        abortController.abort(new RenderCancelledError("request_aborted"));
       c.req.raw.signal.addEventListener("abort", onRequestAbort, { once: true });
 
       try {
-        await executeRenderJob(job, input.projectDir, absoluteOutputPath, async (j, message) => {
-          await stream.writeSSE({
-            data: JSON.stringify({
-              type: "progress",
-              requestId,
-              stage: j.currentStage,
-              progress: j.progress,
-              framesRendered: j.framesRendered ?? 0,
-              totalFrames: j.totalFrames ?? 0,
-              message,
-            }),
-          });
-        }, abortController.signal);
+        await executeRenderJob(
+          job,
+          input.projectDir,
+          absoluteOutputPath,
+          async (j, message) => {
+            await stream.writeSSE({
+              data: JSON.stringify({
+                type: "progress",
+                requestId,
+                stage: j.currentStage,
+                progress: j.progress,
+                framesRendered: j.framesRendered ?? 0,
+                totalFrames: j.totalFrames ?? 0,
+                message,
+              }),
+            });
+          },
+          abortController.signal,
+        );
 
         const fileSize = existsSync(absoluteOutputPath) ? statSync(absoluteOutputPath).size : 0;
         const outputToken = store.register(absoluteOutputPath);
         const outputUrl = `${outputUrlPrefix}/${outputToken}`;
         log.info("render-stream completed", { requestId, fileSize, perf: job.perfSummary ?? null });
         await stream.writeSSE({
-          data: JSON.stringify({ type: "complete", requestId, outputPath: absoluteOutputPath, outputToken, outputUrl, fileSize, videoDurationSeconds: job.duration ?? null, perf: job.perfSummary ?? null }),
+          data: JSON.stringify({
+            type: "complete",
+            requestId,
+            outputPath: absoluteOutputPath,
+            outputToken,
+            outputUrl,
+            fileSize,
+            videoDurationSeconds: job.duration ?? null,
+            perf: job.perfSummary ?? null,
+          }),
         });
       } catch (error) {
         if (error instanceof RenderCancelledError) {
@@ -372,7 +486,12 @@ export function createRenderHandlers(options: HandlerOptions = {}): RenderHandle
         }
         const errorMsg = error instanceof Error ? error.message : String(error);
         const elapsedMs = Date.now() - t0;
-        log.error("render-stream failed", { requestId, elapsedMs, error: errorMsg, stage: job.currentStage });
+        log.error("render-stream failed", {
+          requestId,
+          elapsedMs,
+          error: errorMsg,
+          stage: job.currentStage,
+        });
         await stream.writeSSE({
           data: JSON.stringify({
             type: "error",
@@ -479,8 +598,8 @@ export function startServer(options: ServerOptions = {}) {
 // In esbuild bundles, import.meta.url is shared across inlined modules,
 // so we check argv[1] against known public server filenames.
 const entryScript = process.argv[1] ? resolve(process.argv[1]) : "";
-const isPublicServerEntry = entryScript.endsWith("/public-server.js") ||
-  entryScript.endsWith("/src/server.ts");
+const isPublicServerEntry =
+  entryScript.endsWith("/public-server.js") || entryScript.endsWith("/src/server.ts");
 
 if (isPublicServerEntry) {
   const { values } = parseArgs({

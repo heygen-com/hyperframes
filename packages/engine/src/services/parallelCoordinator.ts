@@ -57,7 +57,12 @@ const MIN_FRAMES_PER_WORKER = 30;
 export function calculateOptimalWorkers(
   totalFrames: number,
   requested?: number,
-  config?: Partial<Pick<EngineConfig, "concurrency" | "coresPerWorker" | "minParallelFrames" | "largeRenderThreshold">>,
+  config?: Partial<
+    Pick<
+      EngineConfig,
+      "concurrency" | "coresPerWorker" | "minParallelFrames" | "largeRenderThreshold"
+    >
+  >,
 ): number {
   // Resolve effective values: config overrides → DEFAULT_CONFIG fallback.
   const effectiveMaxWorkers = (() => {
@@ -69,7 +74,8 @@ export function calculateOptimalWorkers(
   })();
   const effectiveCoresPerWorker = config?.coresPerWorker ?? DEFAULT_CONFIG.coresPerWorker;
   const effectiveMinParallelFrames = config?.minParallelFrames ?? DEFAULT_CONFIG.minParallelFrames;
-  const effectiveLargeRenderThreshold = config?.largeRenderThreshold ?? DEFAULT_CONFIG.largeRenderThreshold;
+  const effectiveLargeRenderThreshold =
+    config?.largeRenderThreshold ?? DEFAULT_CONFIG.largeRenderThreshold;
 
   if (requested !== undefined) {
     return Math.max(MIN_WORKERS, Math.min(effectiveMaxWorkers, requested));
@@ -107,7 +113,11 @@ export function calculateOptimalWorkers(
   return finalWorkers;
 }
 
-export function distributeFrames(totalFrames: number, workerCount: number, workDir: string): WorkerTask[] {
+export function distributeFrames(
+  totalFrames: number,
+  workerCount: number,
+  workDir: string,
+): WorkerTask[] {
   const tasks: WorkerTask[] = [];
   const framesPerWorker = Math.ceil(totalFrames / workerCount);
 
@@ -146,7 +156,13 @@ async function executeWorkerTask(
   let perf: CapturePerfSummary | undefined;
 
   try {
-    session = await createCaptureSession(serverUrl, task.outputDir, captureOptions, createBeforeCaptureHook(), config);
+    session = await createCaptureSession(
+      serverUrl,
+      task.outputDir,
+      captureOptions,
+      createBeforeCaptureHook(),
+      config,
+    );
     await initializeSession(session);
 
     for (let i = task.startFrame; i < task.endFrame; i++) {
@@ -248,7 +264,11 @@ export async function executeParallelCapture(
   return results;
 }
 
-export async function mergeWorkerFrames(workDir: string, tasks: WorkerTask[], outputDir: string): Promise<number> {
+export async function mergeWorkerFrames(
+  workDir: string,
+  tasks: WorkerTask[],
+  outputDir: string,
+): Promise<number> {
   if (!existsSync(outputDir)) mkdirSync(outputDir, { recursive: true });
 
   let totalFrames = 0;

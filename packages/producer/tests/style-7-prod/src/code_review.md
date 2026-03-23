@@ -1,14 +1,17 @@
 # HyperFrame Schema Compliance Review
 
 ## Executive Summary
+
 - Total files reviewed: 4
 - Critical issues: 0
 - Overall compliance status: PASS
 
 ## Critical Issues
+
 None found. All compositions follow the deterministic and finite timeline requirements.
 
 ## Compliance Checklist
+
 - [x] All compositions have `data-width` and `data-height` attributes
 - [x] All timelines are finite with duration > 0
 - [x] All compositions registered in `window.__timelines`
@@ -28,36 +31,44 @@ None found. All compositions follow the deterministic and finite timeline requir
 ## File-by-File Analysis
 
 ### index.html
+
 **Status**: COMPLIANT
 
 **Observations**:
+
 - Correctly defines the root composition with `data-composition-id="root"`.
 - Properly loads sub-compositions using `data-composition-src`.
 - Registers the root timeline in `window.__timelines`.
 - Audio clip has all required attributes (`id`, `data-start`, `data-duration`, `data-track`).
 
 ### compositions/intro.html
+
 **Status**: COMPLIANT
 
 **Observations**:
+
 - Uses `<template>` tag correctly.
 - Composition root has `data-width`, `data-height`, and `data-duration`.
 - Script is deterministic (uses string splitting and fixed durations).
 - Timeline is correctly registered.
 
 ### compositions/captions.html
+
 **Status**: COMPLIANT
 
 **Observations**:
+
 - Uses `<template>` tag correctly.
 - Composition root has `data-width`, `data-height`, and `data-duration`.
 - Script is deterministic, iterating over a fixed array of caption data.
 - Timeline is correctly registered.
 
 ### compositions/main.html
+
 **Status**: COMPLIANT
 
 **Observations**:
+
 - Uses `<template>` tag correctly.
 - Composition root has `data-width`, `data-height`, and `data-duration`.
 - Video clip has all required attributes (`id`, `data-start`, `data-duration`, `data-track`).
@@ -65,4 +76,5 @@ None found. All compositions follow the deterministic and finite timeline requir
 - Timeline is correctly registered.
 
 ## Actionable Fixes
+
 No fixes required. The project structure and implementation are in full accordance with the HyperFrame schema.

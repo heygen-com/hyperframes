@@ -1,12 +1,7 @@
 {
   "name": "style-5-prod",
   "description": "Regression fixture imported from normalized style pack style-5-prod",
-  "tags": [
-    "style-regression",
-    "prod-style",
-    "slow",
-    "landscape"
-  ],
+  "tags": ["style-regression", "prod-style", "slow", "landscape"],
   "minPsnr": 30,
   "maxFrameFailures": 0,
   "minAudioCorrelation": 0.9,

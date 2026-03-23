@@ -1,9 +1,4 @@
-import type {
-  TimelineElement,
-  CanvasResolution,
-  Keyframe,
-  StageZoomKeyframe,
-} from "../core.types";
+import type { TimelineElement, CanvasResolution, Keyframe, StageZoomKeyframe } from "../core.types";
 import {
   CANVAS_DIMENSIONS,
   isTextElement,
@@ -130,7 +125,8 @@ function generateElementStyles(element: TimelineElement): string {
     const fontWeight = element.fontWeight ?? 700;
     const fontFamily = element.fontFamily ?? "Inter";
     const color = element.color ?? "white";
-    const textShadow = element.textShadow !== false ? "text-shadow: 2px 2px 4px rgba(0,0,0,0.8);" : "";
+    const textShadow =
+      element.textShadow !== false ? "text-shadow: 2px 2px 4px rgba(0,0,0,0.8);" : "";
 
     // Text outline using -webkit-text-stroke
     const textOutline = element.textOutline
@@ -191,12 +187,18 @@ export function generateGsapTimelineScript(
     for (const element of sortedElements) {
       const elementKeyframes = keyframes[element.id];
       if (elementKeyframes && elementKeyframes.length > 0) {
-        const baseScale = isMediaElement(element) || isCompositionElement(element) ? (element.scale ?? 1) : 1;
-        const converted = keyframesToGsapAnimations(element.id, elementKeyframes, element.startTime, {
-          x: element.x ?? 0,
-          y: element.y ?? 0,
-          scale: baseScale,
-        });
+        const baseScale =
+          isMediaElement(element) || isCompositionElement(element) ? (element.scale ?? 1) : 1;
+        const converted = keyframesToGsapAnimations(
+          element.id,
+          elementKeyframes,
+          element.startTime,
+          {
+            x: element.x ?? 0,
+            y: element.y ?? 0,
+            scale: baseScale,
+          },
+        );
         keyframeAnimations = keyframeAnimations.concat(converted);
       }
     }
@@ -211,7 +213,10 @@ export function generateGsapTimelineScript(
 
   // Generate visibility animations for elements without keyframes
   // When using keyframes path, elements without keyframes need explicit visibility
-  const visibilityAnimations = generateVisibilityForElementsWithoutKeyframes(sortedElements, keyframes);
+  const visibilityAnimations = generateVisibilityForElementsWithoutKeyframes(
+    sortedElements,
+    keyframes,
+  );
 
   let gsapScript: string;
   if (animations && animations.length > 0) {
@@ -221,7 +226,9 @@ export function generateGsapTimelineScript(
       includeMediaSync: hasMedia,
     });
     // Prepend initial positions and visibility for elements without keyframes, append zoom animations
-    const prependAnimations = [initialPositionSets, visibilityAnimations].filter(Boolean).join("\n");
+    const prependAnimations = [initialPositionSets, visibilityAnimations]
+      .filter(Boolean)
+      .join("\n");
     if (prependAnimations) {
       gsapScript = gsapScript.replace(
         "const tl = gsap.timeline({ paused: true });",
@@ -237,7 +244,9 @@ export function generateGsapTimelineScript(
       includeMediaSync: hasMedia,
     });
     // Prepend initial positions and visibility for elements without keyframes, append zoom animations
-    const prependAnimations = [initialPositionSets, visibilityAnimations].filter(Boolean).join("\n");
+    const prependAnimations = [initialPositionSets, visibilityAnimations]
+      .filter(Boolean)
+      .join("\n");
     if (prependAnimations) {
       gsapScript = gsapScript.replace(
         "const tl = gsap.timeline({ paused: true });",
@@ -248,7 +257,13 @@ export function generateGsapTimelineScript(
       gsapScript += "\n" + zoomAnimations;
     }
   } else if (generateDefaultAnimations) {
-    gsapScript = generateDefaultGsapAnimations(sortedElements, totalDuration, stageZoomKeyframes, width, height);
+    gsapScript = generateDefaultGsapAnimations(
+      sortedElements,
+      totalDuration,
+      stageZoomKeyframes,
+      width,
+      height,
+    );
   } else {
     gsapScript = `
     const tl = gsap.timeline({ paused: true });
@@ -282,7 +297,9 @@ export function generateHyperframesHtml(
 
   // Include zoom keyframes in duration calculation
   const maxZoomTime =
-    stageZoomKeyframes && stageZoomKeyframes.length > 0 ? Math.max(...stageZoomKeyframes.map((kf) => kf.time)) : 0;
+    stageZoomKeyframes && stageZoomKeyframes.length > 0
+      ? Math.max(...stageZoomKeyframes.map((kf) => kf.time))
+      : 0;
 
   const calculatedDuration =
     elements.length > 0
@@ -291,7 +308,9 @@ export function generateHyperframesHtml(
 
   const sortedElements = sortElements(elements);
 
-  const elementsHtml = sortedElements.map((el) => generateElementHtml(el, keyframes?.[el.id])).join("\n      ");
+  const elementsHtml = sortedElements
+    .map((el) => generateElementHtml(el, keyframes?.[el.id]))
+    .join("\n      ");
 
   const customStyles = styles || "";
 
@@ -301,7 +320,11 @@ export function generateHyperframesHtml(
       ? ` data-zoom-keyframes='${JSON.stringify(stageZoomKeyframes).replace(/'/g, "&#39;")}'`
       : "";
 
-  const { coreCss, customCss, googleFontsLink } = generateHyperframesStyles(sortedElements, resolution, customStyles);
+  const { coreCss, customCss, googleFontsLink } = generateHyperframesStyles(
+    sortedElements,
+    resolution,
+    customStyles,
+  );
 
   const gsapScript = includeScripts
     ? generateGsapTimelineScript(sortedElements, totalDuration, {
@@ -575,7 +598,10 @@ function generateElementHtml(element: TimelineElement, keyframes?: Keyframe[]): 
  * _initializeElementCentering(), so we only set x, y, scale here.
  * This keeps generated timeline code clean (no repeated xPercent/yPercent).
  */
-function generateInitialPositionSets(elements: TimelineElement[], keyframes?: Record<string, Keyframe[]>): string {
+function generateInitialPositionSets(
+  elements: TimelineElement[],
+  keyframes?: Record<string, Keyframe[]>,
+): string {
   const sets: string[] = [];
   const timeEpsilon = 0.001;
 
@@ -584,7 +610,9 @@ function generateInitialPositionSets(elements: TimelineElement[], keyframes?: Re
     const hasBaseKeyframe = elementKeyframes?.some(
       (kf) =>
         Math.abs(kf.time) <= timeEpsilon &&
-        (kf.properties.x !== undefined || kf.properties.y !== undefined || kf.properties.scale !== undefined),
+        (kf.properties.x !== undefined ||
+          kf.properties.y !== undefined ||
+          kf.properties.scale !== undefined),
     );
 
     const xVal = el.x ?? 0;
@@ -629,7 +657,8 @@ function generateVisibilityForElementsWithoutKeyframes(
 
   for (const el of elements) {
     const elementKeyframes = keyframes?.[el.id];
-    const opacityKeyframes = elementKeyframes?.filter((kf) => kf.properties.opacity !== undefined) || [];
+    const opacityKeyframes =
+      elementKeyframes?.filter((kf) => kf.properties.opacity !== undefined) || [];
     const start = el.startTime;
     const end = el.startTime + el.duration;
 
@@ -647,7 +676,9 @@ function generateVisibilityForElementsWithoutKeyframes(
     // Only include opacity in visibility bookend if non-default or has opacity keyframes
     const needsOpacity = elementOpacity !== 1 || opacityKeyframes.length > 0;
     if (needsOpacity) {
-      animations.push(`    tl.set("#${el.id}", { visibility: "visible", opacity: ${elementOpacity} }, ${start});`);
+      animations.push(
+        `    tl.set("#${el.id}", { visibility: "visible", opacity: ${elementOpacity} }, ${start});`,
+      );
     } else {
       animations.push(`    tl.set("#${el.id}", { visibility: "visible" }, ${start});`);
     }
@@ -690,7 +721,9 @@ function generateDefaultGsapAnimations(
     animations.push(`    tl.set("#${el.id}", { visibility: "hidden" }, 0);`);
     // Only include opacity if non-default
     if (elementOpacity !== 1) {
-      animations.push(`    tl.set("#${el.id}", { visibility: "visible", opacity: ${elementOpacity} }, ${start});`);
+      animations.push(
+        `    tl.set("#${el.id}", { visibility: "visible", opacity: ${elementOpacity} }, ${start});`,
+      );
     } else {
       animations.push(`    tl.set("#${el.id}", { visibility: "visible" }, ${start});`);
     }

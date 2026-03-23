@@ -8,7 +8,7 @@ function createMockPostMessage() {
 describe("createPickerModule", () => {
   afterEach(() => {
     document.body.innerHTML = "";
-    document.head.querySelectorAll("style").forEach(s => s.remove());
+    document.head.querySelectorAll("style").forEach((s) => s.remove());
     document.body.classList.remove("__hf-pick-active");
   });
 
@@ -33,15 +33,15 @@ describe("createPickerModule", () => {
       const picker = createPickerModule({ postMessage: createMockPostMessage() });
       picker.enablePickMode();
       const styles = document.head.querySelectorAll("style");
-      const hasPickStyle = Array.from(styles).some(s =>
-        s.textContent?.includes("__hf-pick-highlight")
+      const hasPickStyle = Array.from(styles).some((s) =>
+        s.textContent?.includes("__hf-pick-highlight"),
       );
       expect(hasPickStyle).toBe(true);
 
       picker.disablePickMode();
       const stylesAfter = document.head.querySelectorAll("style");
-      const hasPickStyleAfter = Array.from(stylesAfter).some(s =>
-        s.textContent?.includes("__hf-pick-highlight")
+      const hasPickStyleAfter = Array.from(stylesAfter).some((s) =>
+        s.textContent?.includes("__hf-pick-highlight"),
       );
       expect(hasPickStyleAfter).toBe(false);
     });
@@ -137,7 +137,7 @@ describe("createPickerModule", () => {
         expect.objectContaining({
           source: "hf-preview",
           type: "pick-mode-cancelled",
-        })
+        }),
       );
     });
 

@@ -28,11 +28,11 @@ const servicesDir = resolve(fileURLToPath(new URL("./services", import.meta.url)
 const fileServerSource = readFileSync(resolve(servicesDir, "fileServer.ts"), "utf8");
 assert(
   fileServerSource.includes("getVerifiedHyperframeRuntimeSource"),
-  "Producer file server must inject runtime via getVerifiedHyperframeRuntimeSource"
+  "Producer file server must inject runtime via getVerifiedHyperframeRuntimeSource",
 );
 assert(
   !fileServerSource.includes("loadHyperframeRuntimeSource"),
-  "Producer file server must not inject runtime via loadHyperframeRuntimeSource"
+  "Producer file server must not inject runtime via loadHyperframeRuntimeSource",
 );
 
 console.log(
@@ -40,6 +40,5 @@ console.log(
     event: "producer_runtime_conformance_ok",
     manifestPath,
     runtimeSha256: sourceSha,
-  })
+  }),
 );
-

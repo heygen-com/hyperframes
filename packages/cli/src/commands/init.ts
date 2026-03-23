@@ -13,10 +13,7 @@ import { fileURLToPath } from "node:url";
 import { execSync, execFileSync, spawn } from "node:child_process";
 import * as clack from "@clack/prompts";
 import { c } from "../ui/colors.js";
-import {
-  TEMPLATES,
-  type TemplateId,
-} from "../templates/generators.js";
+import { TEMPLATES, type TemplateId } from "../templates/generators.js";
 
 const ALL_TEMPLATE_IDS = TEMPLATES.map((t) => t.id);
 
@@ -53,7 +50,14 @@ function probeVideo(filePath: string): VideoMeta | undefined {
     );
 
     const parsed: {
-      streams?: { codec_type?: string; codec_name?: string; width?: number; height?: number; r_frame_rate?: string; avg_frame_rate?: string }[];
+      streams?: {
+        codec_type?: string;
+        codec_name?: string;
+        width?: number;
+        height?: number;
+        r_frame_rate?: string;
+        avg_frame_rate?: string;
+      }[];
       format?: { duration?: string };
     } = JSON.parse(raw);
 
@@ -75,8 +79,7 @@ function probeVideo(filePath: string): VideoMeta | undefined {
     }
 
     const durationStr = parsed.format?.duration;
-    const durationSeconds =
-      durationStr !== undefined ? parseFloat(durationStr) : 5;
+    const durationSeconds = durationStr !== undefined ? parseFloat(durationStr) : 5;
 
     return {
       durationSeconds: Number.isNaN(durationSeconds) ? 5 : durationSeconds,
@@ -106,12 +109,26 @@ function hasFFmpeg(): boolean {
 
 function transcodeToMp4(inputPath: string, outputPath: string): Promise<boolean> {
   return new Promise((resolvePromise) => {
-    const child = spawn("ffmpeg", [
-      "-i", inputPath,
-      "-c:v", "libx264", "-preset", "fast", "-crf", "18",
-      "-c:a", "aac", "-b:a", "192k",
-      "-y", outputPath,
-    ], { stdio: "pipe" });
+    const child = spawn(
+      "ffmpeg",
+      [
+        "-i",
+        inputPath,
+        "-c:v",
+        "libx264",
+        "-preset",
+        "fast",
+        "-crf",
+        "18",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "192k",
+        "-y",
+        outputPath,
+      ],
+      { stdio: "pipe" },
+    );
 
     child.on("close", (code) => resolvePromise(code === 0));
     child.on("error", () => resolvePromise(false));
@@ -133,8 +150,8 @@ function getStaticTemplateDir(templateId: string): string {
 
 function patchVideoSrc(dir: string, videoFilename: string | undefined): void {
   const htmlFiles = readdirSync(dir, { withFileTypes: true, recursive: true })
-    .filter(e => e.isFile() && e.name.endsWith(".html"))
-    .map(e => join(e.parentPath ?? e.path, e.name));
+    .filter((e) => e.isFile() && e.name.endsWith(".html"))
+    .map((e) => join(e.parentPath ?? e.path, e.name));
 
   for (const file of htmlFiles) {
     let content = readFileSync(file, "utf-8");
@@ -319,7 +336,11 @@ export default defineCommand({
   meta: { name: "init", description: "Scaffold a new composition project" },
   args: {
     name: { type: "positional", description: "Project name", required: false },
-    template: { type: "string", description: `Template: ${ALL_TEMPLATE_IDS.join(", ")}`, alias: "t" },
+    template: {
+      type: "string",
+      description: `Template: ${ALL_TEMPLATE_IDS.join(", ")}`,
+      alias: "t",
+    },
     video: { type: "string", description: "Path to a source video file", alias: "V" },
   },
   async run({ args }) {
@@ -340,9 +361,7 @@ export default defineCommand({
       const destDir = resolve(name);
 
       if (existsSync(destDir) && readdirSync(destDir).length > 0) {
-        console.error(
-          c.error(`Directory already exists and is not empty: ${name}`),
-        );
+        console.error(c.error(`Directory already exists and is not empty: ${name}`));
         process.exit(1);
       }
 
@@ -482,10 +501,7 @@ export default defineCommand({
     scaffoldProject(destDir, name, templateId, localVideoName);
 
     const files = readdirSync(destDir);
-    clack.note(
-      files.map((f) => c.accent(f)).join("\n"),
-      c.success(`Created ${name}/`),
-    );
+    clack.note(files.map((f) => c.accent(f)).join("\n"), c.success(`Created ${name}/`));
 
     await nextStepLoop(destDir);
   },

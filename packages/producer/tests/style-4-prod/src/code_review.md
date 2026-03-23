@@ -1,14 +1,17 @@
 # HyperFrame Schema Compliance Review
 
 ## Executive Summary
+
 - Total files reviewed: 4
 - Critical issues: 0
 - Overall compliance status: PASS
 
 ## Critical Issues
+
 None found. The compositions follow the deterministic requirements and structural rules of the HyperFrame schema.
 
 ## Compliance Checklist
+
 - [x] All compositions have `data-width` and `data-height` attributes
 - [x] All timelines are finite with duration > 0
 - [x] All compositions registered in `window.__timelines`
@@ -28,9 +31,11 @@ None found. The compositions follow the deterministic requirements and structura
 ## File Analysis
 
 ### index.html
+
 **Status**: COMPLIANT
 
 **Observations**:
+
 - Correctly defines the root composition `main-video`.
 - Uses `data-composition-src` to load sub-compositions.
 - Properly registers the master timeline in `window.__timelines`.
@@ -38,27 +43,33 @@ None found. The compositions follow the deterministic requirements and structura
 - Note: The `grain-overlay` is defined as an inline composition, which is acceptable for simple effects.
 
 ### compositions/intro.html
+
 **Status**: COMPLIANT
 
 **Observations**:
+
 - Uses `<template>` tag as required.
 - Root element has `data-composition-id`, `data-width`, `data-height`, and `data-duration`.
 - Timeline is correctly registered and scoped within an IIFE.
 - Animation is deterministic.
 
 ### compositions/captions.html
+
 **Status**: COMPLIANT
 
 **Observations**:
+
 - Uses `<template>` tag.
 - Correctly handles dynamic caption generation within a composition.
 - Timeline registration is correct.
 - Deterministic timing based on a static script array.
 
 ### compositions/graphics.html
+
 **Status**: COMPLIANT
 
 **Observations**:
+
 - Uses `<template>` tag.
 - Root element has all required data attributes.
 - GSAP animations are deterministic and use explicit durations.

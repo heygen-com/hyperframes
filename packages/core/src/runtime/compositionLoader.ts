@@ -88,10 +88,13 @@ async function mountCompositionContent(params: {
 }): Promise<void> {
   let innerRoot: Element | null = null;
   if (params.hostCompositionId) {
-    const candidateRoots = Array.from(params.sourceNode.querySelectorAll<Element>("[data-composition-id]"));
+    const candidateRoots = Array.from(
+      params.sourceNode.querySelectorAll<Element>("[data-composition-id]"),
+    );
     innerRoot =
-      candidateRoots.find((candidate) => candidate.getAttribute("data-composition-id") === params.hostCompositionId) ??
-      null;
+      candidateRoots.find(
+        (candidate) => candidate.getAttribute("data-composition-id") === params.hostCompositionId,
+      ) ?? null;
   }
   const contentNode = innerRoot ?? params.sourceNode;
 
@@ -188,7 +191,9 @@ async function mountCompositionContent(params: {
   }
 }
 
-export async function loadExternalCompositions(params: LoadExternalCompositionsParams): Promise<void> {
+export async function loadExternalCompositions(
+  params: LoadExternalCompositionsParams,
+): Promise<void> {
   const hosts = Array.from(document.querySelectorAll("[data-composition-src]"));
   if (hosts.length === 0) return;
 
@@ -207,7 +212,9 @@ export async function loadExternalCompositions(params: LoadExternalCompositionsP
         const hostCompositionId = host.getAttribute("data-composition-id");
         const localTemplate =
           hostCompositionId != null
-            ? document.querySelector<HTMLTemplateElement>(`template#${CSS.escape(hostCompositionId)}-template`)
+            ? document.querySelector<HTMLTemplateElement>(
+                `template#${CSS.escape(hostCompositionId)}-template`,
+              )
             : null;
         if (localTemplate) {
           await mountCompositionContent({
@@ -234,7 +241,9 @@ export async function loadExternalCompositions(params: LoadExternalCompositionsP
         const doc = parser.parseFromString(html, "text/html");
         const template =
           (hostCompositionId
-            ? doc.querySelector<HTMLTemplateElement>(`template#${CSS.escape(hostCompositionId)}-template`)
+            ? doc.querySelector<HTMLTemplateElement>(
+                `template#${CSS.escape(hostCompositionId)}-template`,
+              )
             : null) ?? doc.querySelector<HTMLTemplateElement>("template");
         const sourceNode = template ? template.content : doc.body;
         await mountCompositionContent({

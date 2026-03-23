@@ -10,7 +10,7 @@
       [data-composition-id="background"] {
         width: 1920px;
         height: 1080px;
-        background-color: #0A0A0A;
+        background-color: #0a0a0a;
         overflow: hidden;
         position: relative;
       }
@@ -30,7 +30,7 @@
         position: absolute;
         top: 0;
         left: 0;
-        background-image: 
+        background-image:
           linear-gradient(to right, rgba(138, 138, 138, 0.05) 1px, transparent 1px),
           linear-gradient(to bottom, rgba(138, 138, 138, 0.05) 1px, transparent 1px);
         background-size: 60px 60px;
@@ -51,11 +51,7 @@
       [data-composition-id="background"] .scan-line {
         width: 100%;
         height: 100px; /* Taller for a softer gradient feel */
-        background: linear-gradient(to bottom, 
-          transparent, 
-          rgba(26, 26, 26, 0.1) 50%, 
-          transparent
-        );
+        background: linear-gradient(to bottom, transparent, rgba(26, 26, 26, 0.1) 50%, transparent);
         position: absolute;
         top: -100px;
         left: 0;
@@ -65,44 +61,53 @@
     </style>
 
     <script>
-      (function() {
+      (function () {
         const tl = gsap.timeline({ paused: true });
         const duration = 19.04;
-        
+
         // 1. Subtle Grid Drift
         // Move 60px (one grid unit) horizontally over the full duration
-        tl.to('[data-composition-id="background"] .modular-grid', {
-          x: -60,
-          duration: duration,
-          ease: "none"
-        }, 0);
+        tl.to(
+          '[data-composition-id="background"] .modular-grid',
+          {
+            x: -60,
+            duration: duration,
+            ease: "none",
+          },
+          0,
+        );
 
         // 2. Subtle Scan Line Texture
         // Dark gray/blue (#1A1A1A) at 0.1 opacity
         const scanCycle = 8; // Slower, more sophisticated movement
         const cycles = Math.ceil(duration / scanCycle);
-        
+
         for (let i = 0; i < cycles; i++) {
-          tl.fromTo('[data-composition-id="background"] .scan-line', 
-            { y: -100 }, 
-            { 
-              y: 1180, 
-              duration: scanCycle, 
-              ease: "none" 
-            }, 
-            i * scanCycle
+          tl.fromTo(
+            '[data-composition-id="background"] .scan-line',
+            { y: -100 },
+            {
+              y: 1180,
+              duration: scanCycle,
+              ease: "none",
+            },
+            i * scanCycle,
           );
         }
 
         // 3. Ambient Opacity Pulse
         // Very subtle breathing effect for the dot matrix
-        tl.to('[data-composition-id="background"] .dot-matrix', {
-          opacity: 0.6,
-          duration: duration / 2,
-          ease: "sine.inOut",
-          yoyo: true,
-          repeat: 1
-        }, 0);
+        tl.to(
+          '[data-composition-id="background"] .dot-matrix',
+          {
+            opacity: 0.6,
+            duration: duration / 2,
+            ease: "sine.inOut",
+            yoyo: true,
+            repeat: 1,
+          },
+          0,
+        );
 
         window.__timelines["background"] = tl;
       })();

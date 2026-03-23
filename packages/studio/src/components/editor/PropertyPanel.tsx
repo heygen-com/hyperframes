@@ -14,7 +14,15 @@ interface PropertyPanelProps {
   onSetText?: (text: string) => void;
 }
 
-function PropertyRow({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+function PropertyRow({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+}) {
   return (
     <div className="flex items-center gap-2">
       <span className="text-2xs text-neutral-600 w-16 flex-shrink-0 text-right">{label}</span>
@@ -28,12 +36,23 @@ function PropertyRow({ label, value, onChange }: { label: string; value: string;
   );
 }
 
-function ColorRow({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+function ColorRow({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+}) {
   return (
     <div className="flex items-center gap-2">
       <span className="text-2xs text-neutral-600 w-16 flex-shrink-0 text-right">{label}</span>
       <div className="flex items-center gap-1 flex-1">
-        <div className="w-5 h-5 rounded border border-neutral-700 flex-shrink-0" style={{ backgroundColor: value }} />
+        <div
+          className="w-5 h-5 rounded border border-neutral-700 flex-shrink-0"
+          style={{ backgroundColor: value }}
+        />
         <input
           type="text"
           value={value}
@@ -49,7 +68,9 @@ function SectionHeader({ icon: Icon, label }: { icon: typeof Move; label: string
   return (
     <div className="flex items-center gap-1.5 mt-2 mb-1">
       <Icon size={10} className="text-neutral-600" />
-      <span className="text-2xs font-medium text-neutral-500 uppercase tracking-wider">{label}</span>
+      <span className="text-2xs font-medium text-neutral-500 uppercase tracking-wider">
+        {label}
+      </span>
     </div>
   );
 }
@@ -98,7 +119,12 @@ export const PropertyPanel = memo(function PropertyPanel({
             onClick={isPickMode ? onDisablePick : onEnablePick}
             className={isPickMode ? "text-blue-400 bg-blue-500/10" : ""}
           />
-          <IconButton icon={<X size={11} />} aria-label="Clear selection" size="sm" onClick={onClearPick} />
+          <IconButton
+            icon={<X size={11} />}
+            aria-label="Clear selection"
+            size="sm"
+            onClick={onClearPick}
+          />
         </div>
       </div>
 
@@ -113,10 +139,26 @@ export const PropertyPanel = memo(function PropertyPanel({
         {/* Position & Size */}
         <SectionHeader icon={Move} label="Position & Size" />
         <div className="grid grid-cols-2 gap-1">
-          <PropertyRow label="X" value={s["left"] ?? "auto"} onChange={(v) => onSetStyle("left", v)} />
-          <PropertyRow label="Y" value={s["top"] ?? "auto"} onChange={(v) => onSetStyle("top", v)} />
-          <PropertyRow label="W" value={s["width"] ?? "auto"} onChange={(v) => onSetStyle("width", v)} />
-          <PropertyRow label="H" value={s["height"] ?? "auto"} onChange={(v) => onSetStyle("height", v)} />
+          <PropertyRow
+            label="X"
+            value={s["left"] ?? "auto"}
+            onChange={(v) => onSetStyle("left", v)}
+          />
+          <PropertyRow
+            label="Y"
+            value={s["top"] ?? "auto"}
+            onChange={(v) => onSetStyle("top", v)}
+          />
+          <PropertyRow
+            label="W"
+            value={s["width"] ?? "auto"}
+            onChange={(v) => onSetStyle("width", v)}
+          />
+          <PropertyRow
+            label="H"
+            value={s["height"] ?? "auto"}
+            onChange={(v) => onSetStyle("height", v)}
+          />
         </div>
 
         {/* Typography */}
@@ -127,8 +169,16 @@ export const PropertyPanel = memo(function PropertyPanel({
           element.tagName === "h2") && (
           <>
             <SectionHeader icon={Type} label="Typography" />
-            <PropertyRow label="Size" value={s["font-size"] ?? ""} onChange={(v) => onSetStyle("font-size", v)} />
-            <PropertyRow label="Weight" value={s["font-weight"] ?? ""} onChange={(v) => onSetStyle("font-weight", v)} />
+            <PropertyRow
+              label="Size"
+              value={s["font-size"] ?? ""}
+              onChange={(v) => onSetStyle("font-size", v)}
+            />
+            <PropertyRow
+              label="Weight"
+              value={s["font-weight"] ?? ""}
+              onChange={(v) => onSetStyle("font-weight", v)}
+            />
             <PropertyRow
               label="Family"
               value={s["font-family"]?.split(",")[0] ?? ""}
@@ -139,7 +189,11 @@ export const PropertyPanel = memo(function PropertyPanel({
 
         {/* Colors */}
         <SectionHeader icon={Palette} label="Colors" />
-        <ColorRow label="Color" value={s["color"] ?? "#fff"} onChange={(v) => onSetStyle("color", v)} />
+        <ColorRow
+          label="Color"
+          value={s["color"] ?? "#fff"}
+          onChange={(v) => onSetStyle("color", v)}
+        />
         <ColorRow
           label="Background"
           value={s["background-color"] ?? "transparent"}
@@ -148,14 +202,26 @@ export const PropertyPanel = memo(function PropertyPanel({
 
         {/* Appearance */}
         <SectionHeader icon={Eye} label="Appearance" />
-        <PropertyRow label="Opacity" value={s["opacity"] ?? "1"} onChange={(v) => onSetStyle("opacity", v)} />
+        <PropertyRow
+          label="Opacity"
+          value={s["opacity"] ?? "1"}
+          onChange={(v) => onSetStyle("opacity", v)}
+        />
         <PropertyRow
           label="Radius"
           value={s["border-radius"] ?? "0"}
           onChange={(v) => onSetStyle("border-radius", v)}
         />
-        <PropertyRow label="Z-index" value={s["z-index"] ?? "auto"} onChange={(v) => onSetStyle("z-index", v)} />
-        <PropertyRow label="Transform" value={s["transform"] ?? "none"} onChange={(v) => onSetStyle("transform", v)} />
+        <PropertyRow
+          label="Z-index"
+          value={s["z-index"] ?? "auto"}
+          onChange={(v) => onSetStyle("z-index", v)}
+        />
+        <PropertyRow
+          label="Transform"
+          value={s["transform"] ?? "none"}
+          onChange={(v) => onSetStyle("transform", v)}
+        />
 
         {/* Timing */}
         {(element.dataAttributes["start"] || element.dataAttributes["duration"]) && (

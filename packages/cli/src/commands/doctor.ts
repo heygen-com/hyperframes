@@ -19,8 +19,8 @@ function checkFFmpeg(): CheckResult {
   const path = findFFmpeg();
   if (path) {
     try {
-      const version = execSync("ffmpeg -version", { encoding: "utf-8", timeout: 5000 })
-        .split("\n")[0] ?? "";
+      const version =
+        execSync("ffmpeg -version", { encoding: "utf-8", timeout: 5000 }).split("\n")[0] ?? "";
       return { ok: true, detail: version.trim() };
     } catch {
       return { ok: true, detail: path };
@@ -88,7 +88,6 @@ function checkNode(): CheckResult {
   return { ok: true, detail: `${process.version} (${process.platform} ${process.arch})` };
 }
 
-
 export default defineCommand({
   meta: { name: "doctor", description: "Check system dependencies and environment" },
   args: {},
@@ -112,7 +111,9 @@ export default defineCommand({
       const result = await check.run();
       const icon = result.ok ? c.success("\u2713") : c.error("\u2717");
       const name = check.name.padEnd(16);
-      console.log(`  ${icon} ${c.bold(name)} ${result.ok ? c.dim(result.detail) : c.error(result.detail)}`);
+      console.log(
+        `  ${icon} ${c.bold(name)} ${result.ok ? c.dim(result.detail) : c.error(result.detail)}`,
+      );
       if (!result.ok && result.hint) {
         console.log(`  ${" ".repeat(19)}${c.accent(result.hint)}`);
       }

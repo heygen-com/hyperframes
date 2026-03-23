@@ -34,13 +34,13 @@ pnpm --filter @hyperframes/core test:hyperframe-runtime-ci  # Runtime contract t
 
 ## Packages
 
-| Package | Description |
-|---|---|
-| `@hyperframes/core` | Types, HTML generation, runtime, linter |
-| `@hyperframes/engine` | Seekable page-to-video capture engine |
-| `@hyperframes/producer` | Full rendering pipeline (capture + encode) |
-| `@hyperframes/studio` | Composition editor UI |
-| `hyperframes` | CLI for creating, previewing, and rendering |
+| Package                 | Description                                 |
+| ----------------------- | ------------------------------------------- |
+| `@hyperframes/core`     | Types, HTML generation, runtime, linter     |
+| `@hyperframes/engine`   | Seekable page-to-video capture engine       |
+| `@hyperframes/producer` | Full rendering pipeline (capture + encode)  |
+| `@hyperframes/studio`   | Composition editor UI                       |
+| `hyperframes`           | CLI for creating, previewing, and rendering |
 
 ## Releasing (Maintainers)
 

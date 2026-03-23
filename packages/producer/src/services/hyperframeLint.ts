@@ -38,7 +38,10 @@ function pickEntryFile(files: Record<string, string>, preferredEntryFile?: strin
   return null;
 }
 
-function readProjectEntryFile(projectDir: string, preferredEntryFile?: string): PreparedHyperframeLintInput | { error: string } {
+function readProjectEntryFile(
+  projectDir: string,
+  preferredEntryFile?: string,
+): PreparedHyperframeLintInput | { error: string } {
   const absProjectDir = resolve(projectDir);
   if (!existsSync(absProjectDir) || !statSync(absProjectDir).isDirectory()) {
     return { error: `Project directory not found: ${absProjectDir}` };
@@ -62,14 +65,18 @@ function readProjectEntryFile(projectDir: string, preferredEntryFile?: string): 
     }
   }
 
-  return { error: `No HTML entry file found in project directory: ${join(absProjectDir, preferredEntryFile || "index.html")}` };
+  return {
+    error: `No HTML entry file found in project directory: ${join(absProjectDir, preferredEntryFile || "index.html")}`,
+  };
 }
 
 export function prepareHyperframeLintBody(
   body: Record<string, unknown>,
 ): { prepared: PreparedHyperframeLintInput } | { error: string } {
   const requestedEntryFile =
-    typeof body.entryFile === "string" && body.entryFile.trim().length > 0 ? body.entryFile.trim() : undefined;
+    typeof body.entryFile === "string" && body.entryFile.trim().length > 0
+      ? body.entryFile.trim()
+      : undefined;
 
   if (typeof body.projectDir === "string" && body.projectDir.trim().length > 0) {
     const prepared = readProjectEntryFile(body.projectDir, requestedEntryFile);

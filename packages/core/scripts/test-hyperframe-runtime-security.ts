@@ -78,11 +78,17 @@ const blockedMessages = [
 ];
 
 for (const fixture of allowedMessages) {
-  assert(isGuardedPreviewMessage(fixture), `Expected message fixture to pass guard: ${JSON.stringify(fixture)}`);
+  assert(
+    isGuardedPreviewMessage(fixture),
+    `Expected message fixture to pass guard: ${JSON.stringify(fixture)}`,
+  );
 }
 
 for (const fixture of blockedMessages) {
-  assert(!isGuardedPreviewMessage(fixture), `Expected message fixture to fail guard: ${JSON.stringify(fixture)}`);
+  assert(
+    !isGuardedPreviewMessage(fixture),
+    `Expected message fixture to fail guard: ${JSON.stringify(fixture)}`,
+  );
 }
 
 console.log(

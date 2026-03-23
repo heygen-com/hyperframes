@@ -38,8 +38,7 @@ export default defineCommand({
       (max, el) => Math.max(max, el.startTime + el.duration),
       0,
     );
-    const resolution =
-      parsed.resolution === "portrait" ? "1080x1920" : "1920x1080";
+    const resolution = parsed.resolution === "portrait" ? "1080x1920" : "1920x1080";
     const size = totalSize(project.dir);
 
     const typeCounts: Record<string, number> = {};
@@ -51,17 +50,23 @@ export default defineCommand({
       .join(", ");
 
     if (args.json) {
-      console.log(JSON.stringify({
-        name: project.name,
-        resolution: parsed.resolution,
-        width: parsed.resolution === "portrait" ? 1080 : 1920,
-        height: parsed.resolution === "portrait" ? 1920 : 1080,
-        duration: maxEnd,
-        elements: parsed.elements.length,
-        tracks: tracks.size,
-        types: typeCounts,
-        size,
-      }, null, 2));
+      console.log(
+        JSON.stringify(
+          {
+            name: project.name,
+            resolution: parsed.resolution,
+            width: parsed.resolution === "portrait" ? 1080 : 1920,
+            height: parsed.resolution === "portrait" ? 1920 : 1080,
+            duration: maxEnd,
+            elements: parsed.elements.length,
+            tracks: tracks.size,
+            types: typeCounts,
+            size,
+          },
+          null,
+          2,
+        ),
+      );
       return;
     }
 

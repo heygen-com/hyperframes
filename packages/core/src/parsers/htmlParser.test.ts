@@ -2,7 +2,14 @@
  * @vitest-environment jsdom
  */
 import { describe, it, expect } from "vitest";
-import { parseHtml, updateElementInHtml, addElementToHtml, removeElementFromHtml, validateCompositionHtml, extractCompositionMetadata } from "./htmlParser.js";
+import {
+  parseHtml,
+  updateElementInHtml,
+  addElementToHtml,
+  removeElementFromHtml,
+  validateCompositionHtml,
+  extractCompositionMetadata,
+} from "./htmlParser.js";
 
 describe("parseHtml", () => {
   it("extracts elements with data-start and data-end", () => {
@@ -457,7 +464,9 @@ describe("validateCompositionHtml", () => {
 
     const result = validateCompositionHtml(html);
     expect(result.valid).toBe(false);
-    expect(result.errors).toContain("Missing data-composition-duration attribute on <html> element");
+    expect(result.errors).toContain(
+      "Missing data-composition-duration attribute on <html> element",
+    );
   });
 
   it("reports error for missing #stage", () => {

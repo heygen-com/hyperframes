@@ -86,18 +86,22 @@ describe("installRuntimeControlBridge", () => {
   it("ignores messages from wrong source", () => {
     const deps = createMockDeps();
     const handler = installRuntimeControlBridge(deps);
-    handler(new MessageEvent("message", {
-      data: { source: "other", type: "control", action: "play" },
-    }));
+    handler(
+      new MessageEvent("message", {
+        data: { source: "other", type: "control", action: "play" },
+      }),
+    );
     expect(deps.onPlay).not.toHaveBeenCalled();
   });
 
   it("ignores messages with wrong type", () => {
     const deps = createMockDeps();
     const handler = installRuntimeControlBridge(deps);
-    handler(new MessageEvent("message", {
-      data: { source: "hf-parent", type: "state", action: "play" },
-    }));
+    handler(
+      new MessageEvent("message", {
+        data: { source: "hf-parent", type: "state", action: "play" },
+      }),
+    );
     expect(deps.onPlay).not.toHaveBeenCalled();
   });
 
@@ -112,7 +116,7 @@ describe("installRuntimeControlBridge", () => {
     const deps = createMockDeps();
     const handler = installRuntimeControlBridge(deps);
     expect(() =>
-      handler(makeControlMessage("flash-elements", { selectors: [".test"], duration: 500 }))
+      handler(makeControlMessage("flash-elements", { selectors: [".test"], duration: 500 })),
     ).not.toThrow();
   });
 });

@@ -3,7 +3,7 @@
     <div id="captions-container"></div>
 
     <style>
-      @import url('https://fonts.googleapis.com/css2?family=League+Gothic&display=swap');
+      @import url("https://fonts.googleapis.com/css2?family=League+Gothic&display=swap");
 
       [data-composition-id="captions"] {
         width: 1080px;
@@ -52,36 +52,93 @@
         display: inline-block;
         transform: rotate(var(--rotation));
         clip-path: polygon(
-          0% 10%, 20% 0%, 50% 5%, 80% 0%, 100% 10%, 
-          95% 40%, 100% 70%, 90% 100%, 50% 95%, 10% 100%, 
-          0% 70%, 5% 40%
+          0% 10%,
+          20% 0%,
+          50% 5%,
+          80% 0%,
+          100% 10%,
+          95% 40%,
+          100% 70%,
+          90% 100%,
+          50% 95%,
+          10% 100%,
+          0% 70%,
+          5% 40%
         ); /* Simplified clip-path for legibility */
-        box-shadow: 5px 5px 0px rgba(0,0,0,0.3);
+        box-shadow: 5px 5px 0px rgba(0, 0, 0, 0.3);
       }
 
       .word-text {
-        font-family: 'League Gothic', sans-serif;
+        font-family: "League Gothic", sans-serif;
         font-size: 110px;
         text-transform: uppercase;
         letter-spacing: -2px;
         line-height: 0.9;
-        color: #FFF5DC;
+        color: #fff5dc;
       }
 
       .word-text.mustard {
-        color: #E8A317;
+        color: #e8a317;
       }
     </style>
 
     <script>
-      (function() {
-        const TRANSCRIPT = [{'text': 'We', 'start': 0.14, 'end': 0.239}, {'text': 'asked', 'start': 0.28, 'end': 0.459}, {'text': 'what', 'start': 0.5, 'end': 0.619}, {'text': 'you', 'start': 0.659, 'end': 0.779}, {'text': 'needed.', 'start': 0.8, 'end': 1.179}, {'text': 'Forty-seven', 'start': 1.199, 'end': 1.619}, {'text': 'percent', 'start': 1.699, 'end': 1.96}, {'text': 'of', 'start': 1.979, 'end': 2.059}, {'text': 'you', 'start': 2.099, 'end': 2.299}, {'text': 'said', 'start': 2.319, 'end': 2.499}, {'text': 'motion', 'start': 2.559, 'end': 2.839}, {'text': 'graphics,', 'start': 2.899, 'end': 3.759}, {'text': 'sixty-two', 'start': 3.799, 'end': 4.159}, {'text': 'percent', 'start': 4.239, 'end': 4.559}, {'text': 'said', 'start': 4.639, 'end': 4.799}, {'text': 'static', 'start': 4.859, 'end': 5.199}, {'text': 'content', 'start': 5.239, 'end': 5.639}, {'text': 'was', 'start': 5.679, 'end': 5.779}, {'text': 'costing', 'start': 5.859, 'end': 6.219}, {'text': 'you', 'start': 6.259, 'end': 6.339}, {'text': 'attention,', 'start': 6.379, 'end': 7.299}, {'text': 'and', 'start': 7.319, 'end': 7.439}, {'text': 'three', 'start': 7.48, 'end': 7.599}, {'text': 'out', 'start': 7.679, 'end': 7.779}, {'text': 'of', 'start': 7.799, 'end': 7.879}, {'text': 'four', 'start': 7.94, 'end': 8.139}, {'text': 'said', 'start': 8.279, 'end': 8.46}, {'text': 'you', 'start': 8.519, 'end': 8.6}, {'text': 'know', 'start': 8.619, 'end': 8.739}, {'text': 'the', 'start': 8.8, 'end': 8.88}, {'text': 'look', 'start': 8.92, 'end': 9.079}, {'text': 'you', 'start': 9.119, 'end': 9.259}, {'text': 'want', 'start': 9.279, 'end': 9.619}, {'text': 'but', 'start': 9.779, 'end': 9.88}, {'text': "don't", 'start': 9.92, 'end': 10.1}, {'text': 'have', 'start': 10.159, 'end': 10.3}, {'text': 'the', 'start': 10.3, 'end': 10.42}, {'text': 'editing', 'start': 10.5, 'end': 10.779}, {'text': 'skills', 'start': 10.86, 'end': 11.139}, {'text': 'to', 'start': 11.159, 'end': 11.239}, {'text': 'get', 'start': 11.279, 'end': 11.439}, {'text': 'there.', 'start': 11.46, 'end': 12.239}, {'text': 'So', 'start': 12.3, 'end': 12.38}, {'text': 'we', 'start': 12.399, 'end': 12.519}, {'text': 'built', 'start': 12.539, 'end': 12.759}, {'text': 'Editor', 'start': 12.84, 'end': 13.119}, {'text': 'Agent.', 'start': 13.239, 'end': 13.84}];
-        const container = document.getElementById('captions-container');
+      (function () {
+        const TRANSCRIPT = [
+          { text: "We", start: 0.14, end: 0.239 },
+          { text: "asked", start: 0.28, end: 0.459 },
+          { text: "what", start: 0.5, end: 0.619 },
+          { text: "you", start: 0.659, end: 0.779 },
+          { text: "needed.", start: 0.8, end: 1.179 },
+          { text: "Forty-seven", start: 1.199, end: 1.619 },
+          { text: "percent", start: 1.699, end: 1.96 },
+          { text: "of", start: 1.979, end: 2.059 },
+          { text: "you", start: 2.099, end: 2.299 },
+          { text: "said", start: 2.319, end: 2.499 },
+          { text: "motion", start: 2.559, end: 2.839 },
+          { text: "graphics,", start: 2.899, end: 3.759 },
+          { text: "sixty-two", start: 3.799, end: 4.159 },
+          { text: "percent", start: 4.239, end: 4.559 },
+          { text: "said", start: 4.639, end: 4.799 },
+          { text: "static", start: 4.859, end: 5.199 },
+          { text: "content", start: 5.239, end: 5.639 },
+          { text: "was", start: 5.679, end: 5.779 },
+          { text: "costing", start: 5.859, end: 6.219 },
+          { text: "you", start: 6.259, end: 6.339 },
+          { text: "attention,", start: 6.379, end: 7.299 },
+          { text: "and", start: 7.319, end: 7.439 },
+          { text: "three", start: 7.48, end: 7.599 },
+          { text: "out", start: 7.679, end: 7.779 },
+          { text: "of", start: 7.799, end: 7.879 },
+          { text: "four", start: 7.94, end: 8.139 },
+          { text: "said", start: 8.279, end: 8.46 },
+          { text: "you", start: 8.519, end: 8.6 },
+          { text: "know", start: 8.619, end: 8.739 },
+          { text: "the", start: 8.8, end: 8.88 },
+          { text: "look", start: 8.92, end: 9.079 },
+          { text: "you", start: 9.119, end: 9.259 },
+          { text: "want", start: 9.279, end: 9.619 },
+          { text: "but", start: 9.779, end: 9.88 },
+          { text: "don't", start: 9.92, end: 10.1 },
+          { text: "have", start: 10.159, end: 10.3 },
+          { text: "the", start: 10.3, end: 10.42 },
+          { text: "editing", start: 10.5, end: 10.779 },
+          { text: "skills", start: 10.86, end: 11.139 },
+          { text: "to", start: 11.159, end: 11.239 },
+          { text: "get", start: 11.279, end: 11.439 },
+          { text: "there.", start: 11.46, end: 12.239 },
+          { text: "So", start: 12.3, end: 12.38 },
+          { text: "we", start: 12.399, end: 12.519 },
+          { text: "built", start: 12.539, end: 12.759 },
+          { text: "Editor", start: 12.84, end: 13.119 },
+          { text: "Agent.", start: 13.239, end: 13.84 },
+        ];
+        const container = document.getElementById("captions-container");
         const tl = gsap.timeline({ paused: true });
 
         const groups = [];
         let currentGroup = [];
-        
+
         TRANSCRIPT.forEach((word, index) => {
           currentGroup.push(word);
           if (currentGroup.length === 3 || index === TRANSCRIPT.length - 1) {
@@ -91,39 +148,39 @@
         });
 
         groups.forEach((group, groupIndex) => {
-          const groupEl = document.createElement('div');
-          groupEl.className = 'caption-group';
+          const groupEl = document.createElement("div");
+          groupEl.className = "caption-group";
           groupEl.id = `group-${groupIndex}`;
-          
+
           group.forEach((wordData, wordIndex) => {
-            const wrapper = document.createElement('div');
-            wrapper.className = 'word-wrapper';
-            
-            const paper = document.createElement('div');
-            paper.className = 'paper-cut';
-            
+            const wrapper = document.createElement("div");
+            wrapper.className = "word-wrapper";
+
+            const paper = document.createElement("div");
+            paper.className = "paper-cut";
+
             const rotation = ((groupIndex * 7 + wordIndex * 13) % 4) - 2; // Reduced rotation variance to +/- 2 deg
-            paper.style.setProperty('--rotation', `${rotation}deg`);
-            
-            const text = document.createElement('span');
-            text.className = 'word-text';
+            paper.style.setProperty("--rotation", `${rotation}deg`);
+
+            const text = document.createElement("span");
+            text.className = "word-text";
             if ((groupIndex + wordIndex) % 3 === 0) {
-              text.classList.add('mustard');
+              text.classList.add("mustard");
             }
-            text.textContent = wordData.text.replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g,"");
-            
+            text.textContent = wordData.text.replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, "");
+
             paper.appendChild(text);
             wrapper.appendChild(paper);
             groupEl.appendChild(wrapper);
           });
-          
+
           container.appendChild(groupEl);
 
           const startTime = group[0].start;
           const endTime = group[group.length - 1].end;
 
           tl.set(groupEl, { opacity: 1 }, startTime);
-          
+
           // Add vertical movement to avoid blocking graphics
           // 0-3s: Title/Squares are at top (15%)
           // 3.7-7.3s: Data Viz is at center
@@ -134,17 +191,21 @@
           } else {
             tl.to(groupEl, { y: 0, duration: 0.4, ease: "power2.inOut" }, startTime);
           }
-          
-          const words = groupEl.querySelectorAll('.word-wrapper');
+
+          const words = groupEl.querySelectorAll(".word-wrapper");
           words.forEach((word, i) => {
-            tl.from(word, {
-              scale: 0,
-              rotation: (i % 2 === 0 ? 45 : -45),
-              x: (i % 2 === 0 ? -100 : 100),
-              y: (i % 2 === 0 ? 50 : -50),
-              duration: 0.4,
-              ease: "back.out(1.7)"
-            }, startTime + (i * 0.05));
+            tl.from(
+              word,
+              {
+                scale: 0,
+                rotation: i % 2 === 0 ? 45 : -45,
+                x: i % 2 === 0 ? -100 : 100,
+                y: i % 2 === 0 ? 50 : -50,
+                duration: 0.4,
+                ease: "back.out(1.7)",
+              },
+              startTime + i * 0.05,
+            );
           });
 
           tl.set(groupEl, { opacity: 0 }, endTime);

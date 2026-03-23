@@ -8,7 +8,13 @@
       </div>
     </div>
 
-    <audio id="snap-sound" src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/generated_assets/a5bd8b8b_86b432b7de4c4fa6937b6a9cd37c67db.mp3" data-start="0.5" data-duration="1" data-track-index="1"></audio>
+    <audio
+      id="snap-sound"
+      src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/generated_assets/a5bd8b8b_86b432b7de4c4fa6937b6a9cd37c67db.mp3"
+      data-start="0.5"
+      data-duration="1"
+      data-track-index="1"
+    ></audio>
 
     <style>
       [data-composition-id="intro"] .container {
@@ -21,7 +27,7 @@
         flex-direction: column;
         justify-content: center;
         padding-left: 10%; /* Align to 10% grid column */
-        font-family: 'Helvetica Bold', 'Helvetica', Arial, sans-serif;
+        font-family: "Helvetica Bold", "Helvetica", Arial, sans-serif;
         font-weight: bold;
       }
 
@@ -31,7 +37,7 @@
         top: 0;
         width: 8px;
         height: 100%;
-        background-color: #E2001A;
+        background-color: #e2001a;
         transform: scaleY(0);
         transform-origin: top;
       }
@@ -43,7 +49,7 @@
 
       [data-composition-id="intro"] .title {
         font-size: 120px;
-        color: #E2001A;
+        color: #e2001a;
         margin: 0;
         line-height: 1;
         transform: translateX(-110%);
@@ -51,7 +57,7 @@
 
       [data-composition-id="intro"] .subtitle {
         font-size: 48px;
-        color: #1A1A1A;
+        color: #1a1a1a;
         margin: 10px 0 0 0;
         line-height: 1;
         transform: translateX(-110%);
@@ -59,43 +65,63 @@
     </style>
 
     <script>
-      (function() {
+      (function () {
         const tl = gsap.timeline({ paused: true });
 
         // 0.5s: Grid line snaps in
-        tl.to('.grid-accent', {
-          scaleY: 1,
-          duration: 0.2,
-          ease: "expo.out"
-        }, 0.5);
+        tl.to(
+          ".grid-accent",
+          {
+            scaleY: 1,
+            duration: 0.2,
+            ease: "expo.out",
+          },
+          0.5,
+        );
 
         // 0.5s: Title and subtitle slide in horizontally from the left
         // Mechanical, sharp ease-out (150-250ms)
-        tl.to('.title', {
-          x: 0,
-          duration: 0.25,
-          ease: "power2.out"
-        }, 0.5);
+        tl.to(
+          ".title",
+          {
+            x: 0,
+            duration: 0.25,
+            ease: "power2.out",
+          },
+          0.5,
+        );
 
-        tl.to('.subtitle', {
-          x: 0,
-          duration: 0.2,
-          ease: "power2.out"
-        }, 0.6);
+        tl.to(
+          ".subtitle",
+          {
+            x: 0,
+            duration: 0.2,
+            ease: "power2.out",
+          },
+          0.6,
+        );
 
         // Exit animation (around 3s)
-        tl.to('.text-content', {
-          opacity: 0,
-          x: -50,
-          duration: 0.3,
-          ease: "power2.in"
-        }, 3.2);
+        tl.to(
+          ".text-content",
+          {
+            opacity: 0,
+            x: -50,
+            duration: 0.3,
+            ease: "power2.in",
+          },
+          3.2,
+        );
 
-        tl.to('.grid-accent', {
-          scaleY: 0,
-          duration: 0.3,
-          ease: "power2.in"
-        }, 3.3);
+        tl.to(
+          ".grid-accent",
+          {
+            scaleY: 0,
+            duration: 0.3,
+            ease: "power2.in",
+          },
+          3.3,
+        );
 
         window.__timelines["intro"] = tl;
       })();

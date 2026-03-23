@@ -1,119 +1,539 @@
 <template id="captions-template">
-    <div data-composition-id="captions" data-width="1080" data-height="1920">
-        <div id="captions-container"></div>
+  <div data-composition-id="captions" data-width="1080" data-height="1920">
+    <div id="captions-container"></div>
 
-        <style>
-            [data-composition-id="captions"] {
-                position: absolute;
-                top: 0;
-                left: 0;
-                width: 1080px;
-                height: 1920px;
-                display: flex;
-                justify-content: center;
-                align-items: flex-end;
-                padding-bottom: 400px; /* Position in lower third */
-                pointer-events: none;
-            }
+    <style>
+      [data-composition-id="captions"] {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 1080px;
+        height: 1920px;
+        display: flex;
+        justify-content: center;
+        align-items: flex-end;
+        padding-bottom: 400px; /* Position in lower third */
+        pointer-events: none;
+      }
 
-            #captions-container {
-                width: 900px;
-                text-align: center;
-                font-family: 'Arial', sans-serif; /* Fallback to system sans-serif */
-                font-weight: 900;
-                font-size: 72px;
-                color: white;
-                text-shadow: 4px 4px 8px rgba(0, 0, 0, 0.8);
-                display: flex;
-                flex-wrap: wrap;
-                justify-content: center;
-            }
+      #captions-container {
+        width: 900px;
+        text-align: center;
+        font-family: "Arial", sans-serif; /* Fallback to system sans-serif */
+        font-weight: 900;
+        font-size: 72px;
+        color: white;
+        text-shadow: 4px 4px 8px rgba(0, 0, 0, 0.8);
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+      }
 
-            .word {
-                margin: 0 10px;
-                opacity: 0;
-                display: inline-block;
-            }
+      .word {
+        margin: 0 10px;
+        opacity: 0;
+        display: inline-block;
+      }
 
-            .highlight {
-                color: #ffff00; /* Yellow highlight */
-            }
-        </style>
+      .highlight {
+        color: #ffff00; /* Yellow highlight */
+      }
+    </style>
 
-        <script>
-            (function() {
-                const TRANSCRIPT = [{'text': 'Dogs', 'start': 0.08, 'end': 0.44}, {'text': 'sleep', 'start': 0.52, 'end': 0.78}, {'text': 'in', 'start': 0.86, 'end': 0.93}, {'text': 'their', 'start': 0.98, 'end': 1.08}, {'text': 'humans', 'start': 1.14, 'end': 1.56}, {'text': 'bed', 'start': 1.66, 'end': 1.92}, {'text': 'for', 'start': 1.96, 'end': 2.05}, {'text': 'three', 'start': 2.18, 'end': 2.5}, {'text': 'powerful', 'start': 2.68, 'end': 3.11}, {'text': 'reasons', 'start': 3.16, 'end': 3.84}, {'text': 'And', 'start': 3.849, 'end': 3.94}, {'text': 'if', 'start': 4.0, 'end': 4.08}, {'text': 'you', 'start': 4.12, 'end': 4.26}, {'text': 'dont', 'start': 4.3, 'end': 4.47}, {'text': 'understand', 'start': 4.54, 'end': 5.06}, {'text': 'these', 'start': 5.12, 'end': 5.62}, {'text': 'youre', 'start': 5.66, 'end': 5.78}, {'text': 'probably', 'start': 5.82, 'end': 6.26}, {'text': 'missing', 'start': 6.32, 'end': 6.62}, {'text': 'the', 'start': 6.66, 'end': 6.8}, {'text': 'biggest', 'start': 6.84, 'end': 7.11}, {'text': 'danger', 'start': 7.22, 'end': 7.6}, {'text': 'hiding', 'start': 7.64, 'end': 7.96}, {'text': 'right', 'start': 8.0, 'end': 8.14}, {'text': 'under', 'start': 8.18, 'end': 8.38}, {'text': 'your', 'start': 8.42, 'end': 8.52}, {'text': 'nose', 'start': 8.56, 'end': 9.28}, {'text': 'First', 'start': 9.36, 'end': 9.98}, {'text': 'for', 'start': 10.02, 'end': 10.17}, {'text': 'your', 'start': 10.2, 'end': 10.32}, {'text': 'dog', 'start': 10.33, 'end': 10.78}, {'text': 'youre', 'start': 10.82, 'end': 10.92}, {'text': 'not', 'start': 10.93, 'end': 11.19}, {'text': 'their', 'start': 11.22, 'end': 11.36}, {'text': 'owner', 'start': 11.42, 'end': 11.93}, {'text': 'Youre', 'start': 11.98, 'end': 12.14}, {'text': 'their', 'start': 12.15, 'end': 12.3}, {'text': 'entire', 'start': 12.36, 'end': 12.94}, {'text': 'universe', 'start': 13.02, 'end': 13.89}, {'text': 'Sleeping', 'start': 13.9, 'end': 14.35}, {'text': 'beside', 'start': 14.4, 'end': 14.88}, {'text': 'you', 'start': 14.94, 'end': 15.04}, {'text': 'is', 'start': 15.1, 'end': 15.23}, {'text': 'the', 'start': 15.26, 'end': 15.34}, {'text': 'closest', 'start': 15.4, 'end': 15.86}, {'text': 'they', 'start': 15.9, 'end': 16.0}, {'text': 'ever', 'start': 16.059, 'end': 16.309}, {'text': 'feel', 'start': 16.34, 'end': 16.64}, {'text': 'to', 'start': 16.66, 'end': 16.8}, {'text': 'safety', 'start': 16.84, 'end': 17.73}, {'text': 'family', 'start': 17.78, 'end': 18.41}, {'text': 'and', 'start': 18.44, 'end': 18.55}, {'text': 'home', 'start': 18.68, 'end': 19.27}, {'text': 'That', 'start': 19.3, 'end': 19.45}, {'text': 'quiet', 'start': 19.5, 'end': 19.88}, {'text': 'nudge', 'start': 19.94, 'end': 20.2}, {'text': 'at', 'start': 20.24, 'end': 20.34}, {'text': 'night', 'start': 20.36, 'end': 20.96}, {'text': 'thats', 'start': 20.98, 'end': 21.24}, {'text': 'them', 'start': 21.25, 'end': 21.48}, {'text': 'saying', 'start': 21.56, 'end': 22.22}, {'text': '"Where', 'start': 22.23, 'end': 22.44}, {'text': 'you', 'start': 22.5, 'end': 22.6}, {'text': 'are', 'start': 22.7, 'end': 23.22}, {'text': 'thats', 'start': 23.26, 'end': 23.48}, {'text': 'where', 'start': 23.52, 'end': 23.64}, {'text': 'I', 'start': 23.76, 'end': 23.82}, {'text': 'belong"', 'start': 23.86, 'end': 24.7}, {'text': 'Second', 'start': 24.78, 'end': 25.48}, {'text': 'your', 'start': 25.54, 'end': 25.63}, {'text': 'warmth', 'start': 25.76, 'end': 26.36}, {'text': 'your', 'start': 26.4, 'end': 26.58}, {'text': 'scent', 'start': 26.64, 'end': 27.2}, {'text': 'your', 'start': 27.26, 'end': 27.39}, {'text': 'breathing', 'start': 27.42, 'end': 28.06}, {'text': 'your', 'start': 28.1, 'end': 28.23}, {'text': 'presence', 'start': 28.26, 'end': 28.68}, {'text': 'literally', 'start': 28.8, 'end': 29.18}, {'text': 'tell', 'start': 29.22, 'end': 29.4}, {'text': 'their', 'start': 29.42, 'end': 29.56}, {'text': 'nervous', 'start': 29.62, 'end': 29.94}, {'text': 'system', 'start': 29.98, 'end': 30.38}, {'text': '"Stand', 'start': 30.39, 'end': 30.74}, {'text': 'down', 'start': 30.8, 'end': 31.22}, {'text': 'Youre', 'start': 31.26, 'end': 31.4}, {'text': 'safe', 'start': 31.48, 'end': 31.74}, {'text': 'now"', 'start': 31.84, 'end': 32.4}, {'text': 'Thats', 'start': 32.42, 'end': 32.68}, {'text': 'why', 'start': 32.74, 'end': 32.88}, {'text': 'the', 'start': 32.92, 'end': 33.0}, {'text': 'moment', 'start': 33.04, 'end': 33.32}, {'text': 'you', 'start': 33.36, 'end': 33.44}, {'text': 'lie', 'start': 33.5, 'end': 33.65}, {'text': 'down', 'start': 33.74, 'end': 34.04}, {'text': 'your', 'start': 34.08, 'end': 34.24}, {'text': 'bed', 'start': 34.26, 'end': 34.46}, {'text': 'becomes', 'start': 34.54, 'end': 34.91}, {'text': 'the', 'start': 34.94, 'end': 35.0}, {'text': 'most', 'start': 35.06, 'end': 35.269}, {'text': 'valuable', 'start': 35.3, 'end': 35.74}, {'text': 'place', 'start': 35.78, 'end': 36.04}, {'text': 'in', 'start': 36.08, 'end': 36.17}, {'text': 'the', 'start': 36.2, 'end': 36.26}, {'text': 'house', 'start': 36.32, 'end': 36.99}, {'text': 'But', 'start': 37.0, 'end': 37.129}, {'text': 'heres', 'start': 37.18, 'end': 37.4}, {'text': 'the', 'start': 37.44, 'end': 37.54}, {'text': 'part', 'start': 37.58, 'end': 37.78}, {'text': 'most', 'start': 38.0, 'end': 38.25}, {'text': 'people', 'start': 38.26, 'end': 38.58}, {'text': 'dont', 'start': 38.62, 'end': 38.83}, {'text': 'realize', 'start': 38.86, 'end': 39.47}, {'text': 'Even', 'start': 39.52, 'end': 39.73}, {'text': 'in', 'start': 39.78, 'end': 39.86}, {'text': 'deep', 'start': 39.94, 'end': 40.129}, {'text': 'sleep', 'start': 40.26, 'end': 40.56}, {'text': 'dogs', 'start': 40.629, 'end': 40.9}, {'text': 'stay', 'start': 40.96, 'end': 41.16}, {'text': 'half-alert', 'start': 41.2, 'end': 41.84}, {'text': 'Their', 'start': 41.86, 'end': 42.04}, {'text': 'brain', 'start': 42.06, 'end': 42.32}, {'text': 'is', 'start': 42.34, 'end': 42.52}, {'text': 'wired', 'start': 42.58, 'end': 42.9}, {'text': 'to', 'start': 42.98, 'end': 43.04}, {'text': 'protect', 'start': 43.1, 'end': 43.54}, {'text': 'you', 'start': 43.6, 'end': 43.76}, {'text': 'If', 'start': 43.78, 'end': 43.9}, {'text': 'anything', 'start': 43.94, 'end': 44.28}, {'text': 'felt', 'start': 44.42, 'end': 44.64}, {'text': 'off', 'start': 44.68, 'end': 44.88}, {'text': 'a', 'start': 44.9, 'end': 44.96}, {'text': 'noise', 'start': 45.04, 'end': 45.44}, {'text': 'a', 'start': 45.46, 'end': 45.52}, {'text': 'movement', 'start': 45.62, 'end': 46.08}, {'text': 'a', 'start': 46.12, 'end': 46.22}, {'text': 'change', 'start': 46.3, 'end': 46.64}, {'text': 'in', 'start': 46.68, 'end': 46.76}, {'text': 'your', 'start': 46.8, 'end': 46.92}, {'text': 'breathing', 'start': 46.96, 'end': 47.72}, {'text': 'your', 'start': 47.76, 'end': 47.84}, {'text': 'dog', 'start': 47.92, 'end': 48.18}, {'text': 'would', 'start': 48.22, 'end': 48.34}, {'text': 'wake', 'start': 48.4, 'end': 48.58}, {'text': 'up', 'start': 48.64, 'end': 48.76}, {'text': 'before', 'start': 48.78, 'end': 49.08}, {'text': 'you', 'start': 49.12, 'end': 49.18}, {'text': 'ever', 'start': 49.22, 'end': 49.44}, {'text': 'did', 'start': 49.48, 'end': 50.06}, {'text': 'Thats', 'start': 50.08, 'end': 50.3}, {'text': 'the', 'start': 50.34, 'end': 50.4}, {'text': 'level', 'start': 50.52, 'end': 50.72}, {'text': 'of', 'start': 50.8, 'end': 50.88}, {'text': 'loyalty', 'start': 50.94, 'end': 51.42}, {'text': 'were', 'start': 51.5, 'end': 51.62}, {'text': 'talking', 'start': 51.64, 'end': 52.04}, {'text': 'about', 'start': 52.08, 'end': 52.38}, {'text': 'And', 'start': 52.4, 'end': 52.5}, {'text': 'this', 'start': 52.54, 'end': 52.66}, {'text': 'is', 'start': 52.72, 'end': 52.82}, {'text': 'exactly', 'start': 52.86, 'end': 53.46}, {'text': 'why', 'start': 53.56, 'end': 53.83}, {'text': 'the', 'start': 54.02, 'end': 54.1}, {'text': 'next', 'start': 54.16, 'end': 54.34}, {'text': 'part', 'start': 54.46, 'end': 54.72}, {'text': 'matters', 'start': 54.96, 'end': 55.28}, {'text': 'so', 'start': 55.36, 'end': 55.46}, {'text': 'much', 'start': 55.56, 'end': 55.78}, {'text': 'because', 'start': 55.84, 'end': 56.12}, {'text': 'dogs', 'start': 56.18, 'end': 56.46}, {'text': 'give', 'start': 56.54, 'end': 56.66}, {'text': 'us', 'start': 56.7, 'end': 56.88}, {'text': 'unfiltered', 'start': 56.94, 'end': 57.54}, {'text': 'love', 'start': 57.6, 'end': 58.14}, {'text': 'but', 'start': 58.18, 'end': 58.3}, {'text': 'they', 'start': 58.32, 'end': 58.48}, {'text': 'hide', 'start': 58.54, 'end': 58.82}, {'text': 'their', 'start': 58.84, 'end': 59.019}, {'text': 'pain', 'start': 59.08, 'end': 59.64}, {'text': 'They', 'start': 59.66, 'end': 59.76}, {'text': 'dont', 'start': 59.8, 'end': 60.02}, {'text': 'complain', 'start': 60.06, 'end': 60.88}, {'text': 'They', 'start': 60.9, 'end': 61.01}, {'text': 'dont', 'start': 61.06, 'end': 61.3}, {'text': 'tell', 'start': 61.31, 'end': 61.56}, {'text': 'you', 'start': 61.68, 'end': 61.9}, {'text': 'when', 'start': 61.91, 'end': 62.14}, {'text': 'something', 'start': 62.22, 'end': 62.54}, {'text': 'is', 'start': 62.6, 'end': 62.74}, {'text': 'wrong', 'start': 62.76, 'end': 63.12}, {'text': 'They', 'start': 63.14, 'end': 63.22}, {'text': 'just', 'start': 63.34, 'end': 63.56}, {'text': 'keep', 'start': 63.62, 'end': 63.82}, {'text': 'loving', 'start': 63.88, 'end': 64.18}, {'text': 'you', 'start': 64.28, 'end': 64.739}, {'text': 'even', 'start': 64.819, 'end': 65.06}, {'text': 'while', 'start': 65.099, 'end': 65.26}, {'text': 'their', 'start': 65.3, 'end': 65.459}, {'text': 'body', 'start': 65.5, 'end': 65.82}, {'text': 'is', 'start': 65.88, 'end': 66.0}, {'text': 'taking', 'start': 66.04, 'end': 66.35}, {'text': 'damage', 'start': 66.46, 'end': 67.08}, {'text': 'And', 'start': 67.1, 'end': 67.2}, {'text': 'one', 'start': 67.26, 'end': 67.36}, {'text': 'of', 'start': 67.4, 'end': 67.46}, {'text': 'the', 'start': 67.5, 'end': 67.6}, {'text': 'biggest', 'start': 67.62, 'end': 67.96}, {'text': 'hidden', 'start': 68.0, 'end': 68.22}, {'text': 'threats', 'start': 68.34, 'end': 68.74}, {'text': 'doesnt', 'start': 68.94, 'end': 69.28}, {'text': 'come', 'start': 69.34, 'end': 69.66}, {'text': 'from', 'start': 69.7, 'end': 69.85}, {'text': 'where', 'start': 69.88, 'end': 70.04}, {'text': 'most', 'start': 70.1, 'end': 70.36}, {'text': 'people', 'start': 70.38, 'end': 70.7}, {'text': 'think', 'start': 70.74, 'end': 71.1}, {'text': 'It', 'start': 71.14, 'end': 71.24}, {'text': 'comes', 'start': 71.3, 'end': 71.53}, {'text': 'from', 'start': 71.58, 'end': 71.74}, {'text': 'what', 'start': 71.8, 'end': 71.89}, {'text': 'we', 'start': 72.0, 'end': 72.16}, {'text': 'spray', 'start': 72.24, 'end': 72.62}, {'text': 'on', 'start': 72.7, 'end': 72.84}, {'text': 'them', 'start': 72.88, 'end': 73.26}, {'text': 'Most', 'start': 73.32, 'end': 73.58}, {'text': 'flea', 'start': 73.7, 'end': 73.88}, {'text': 'and', 'start': 73.92, 'end': 74.0}, {'text': 'tick', 'start': 74.1, 'end': 74.26}, {'text': 'products', 'start': 74.34, 'end': 74.72}, {'text': 'rely', 'start': 74.78, 'end': 75.04}, {'text': 'on', 'start': 75.08, 'end': 75.18}, {'text': 'harsh', 'start': 75.22, 'end': 75.44}, {'text': 'chemicals', 'start': 75.54, 'end': 76.12}, {'text': 'neurotoxins', 'start': 76.2, 'end': 77.08}, {'text': 'pesticides', 'start': 77.12, 'end': 78.1}, {'text': 'stuff', 'start': 78.22, 'end': 78.42}, {'text': 'designed', 'start': 78.48, 'end': 78.96}, {'text': 'to', 'start': 79.0, 'end': 79.06}, {'text': 'kill', 'start': 79.16, 'end': 79.34}, {'text': 'living', 'start': 79.4, 'end': 79.66}, {'text': 'organisms', 'start': 79.72, 'end': 80.34}, {'text': 'on', 'start': 80.4, 'end': 80.56}, {'text': 'contact', 'start': 80.6, 'end': 81.62}, {'text': 'And', 'start': 81.64, 'end': 81.74}, {'text': 'over', 'start': 81.8, 'end': 81.94}, {'text': 'time', 'start': 82.06, 'end': 82.62}, {'text': 'those', 'start': 82.66, 'end': 82.86}, {'text': 'chemicals', 'start': 82.9, 'end': 83.35}, {'text': 'dont', 'start': 83.44, 'end': 83.62}, {'text': 'just', 'start': 83.68, 'end': 83.86}, {'text': 'disappear', 'start': 83.9, 'end': 84.82}, {'text': 'They', 'start': 84.86, 'end': 84.96}, {'text': 'get', 'start': 85.0, 'end': 85.1}, {'text': 'absorbed', 'start': 85.16, 'end': 85.64}, {'text': 'through', 'start': 85.68, 'end': 85.86}, {'text': 'the', 'start': 85.92, 'end': 86.02}, {'text': 'skin', 'start': 86.08, 'end': 86.68}, {'text': 'inhaled', 'start': 86.78, 'end': 87.28}, {'text': 'and', 'start': 87.32, 'end': 87.45}, {'text': 'stored', 'start': 87.54, 'end': 87.8}, {'text': 'in', 'start': 87.84, 'end': 87.92}, {'text': 'the', 'start': 87.94, 'end': 88.04}, {'text': 'body', 'start': 88.06, 'end': 88.98}, {'text': 'Slowly', 'start': 89.04, 'end': 89.81}, {'text': 'quietly', 'start': 89.86, 'end': 90.64}, {'text': 'they', 'start': 90.7, 'end': 90.83}, {'text': 'can', 'start': 90.84, 'end': 90.95}, {'text': 'impact', 'start': 91.0, 'end': 91.36}, {'text': 'the', 'start': 91.42, 'end': 91.54}, {'text': 'liver', 'start': 91.56, 'end': 92.16}, {'text': 'breathing', 'start': 92.18, 'end': 92.98}, {'text': 'the', 'start': 92.99, 'end': 93.08}, {'text': 'nervous', 'start': 93.14, 'end': 93.38}, {'text': 'system', 'start': 93.48, 'end': 94.14}, {'text': 'hormones', 'start': 94.24, 'end': 95.28}, {'text': 'and', 'start': 95.32, 'end': 95.39}, {'text': 'even', 'start': 95.46, 'end': 95.74}, {'text': 'shorten', 'start': 95.82, 'end': 96.2}, {'text': 'lifespan', 'start': 96.32, 'end': 97.26}, {'text': 'And', 'start': 97.28, 'end': 97.38}, {'text': 'youd', 'start': 97.42, 'end': 97.54}, {'text': 'never', 'start': 97.58, 'end': 97.8}, {'text': 'notice', 'start': 97.86, 'end': 98.14}, {'text': 'it', 'start': 98.2, 'end': 98.28}, {'text': 'happening', 'start': 98.32, 'end': 99.1}, {'text': 'because', 'start': 99.14, 'end': 99.52}, {'text': 'dogs', 'start': 99.56, 'end': 99.94}, {'text': 'dont', 'start': 99.96, 'end': 100.16}, {'text': 'show', 'start': 100.2, 'end': 100.4}, {'text': 'pain', 'start': 100.46, 'end': 100.7}, {'text': 'the', 'start': 100.74, 'end': 100.8}, {'text': 'way', 'start': 100.84, 'end': 101.0}, {'text': 'humans', 'start': 101.06, 'end': 101.39}, {'text': 'do', 'start': 101.4, 'end': 101.98}, {'text': 'So', 'start': 102.04, 'end': 102.12}, {'text': 'whats', 'start': 102.24, 'end': 102.48}, {'text': 'the', 'start': 102.49, 'end': 102.61}, {'text': 'safer', 'start': 102.68, 'end': 103.06}, {'text': 'option', 'start': 103.14, 'end': 103.8}, {'text': 'Not', 'start': 103.84, 'end': 104.04}, {'text': 'leaving', 'start': 104.08, 'end': 104.36}, {'text': 'your', 'start': 104.4, 'end': 104.48}, {'text': 'dog', 'start': 104.56, 'end': 104.78}, {'text': 'unprotected', 'start': 104.86, 'end': 105.82}, {'text': 'because', 'start': 105.86, 'end': 106.12}, {'text': 'fleas', 'start': 106.22, 'end': 106.5}, {'text': 'and', 'start': 106.52, 'end': 106.6}, {'text': 'ticks', 'start': 106.7, 'end': 107.0}, {'text': 'absolutely', 'start': 107.1, 'end': 107.64}, {'text': 'carry', 'start': 107.7, 'end': 107.96}, {'text': 'parasites', 'start': 108.02, 'end': 108.56}, {'text': 'and', 'start': 108.58, 'end': 108.67}, {'text': 'disease', 'start': 108.72, 'end': 109.54}, {'text': 'but', 'start': 109.58, 'end': 109.68}, {'text': 'also', 'start': 109.76, 'end': 110.16}, {'text': 'not', 'start': 110.3, 'end': 110.539}, {'text': 'flooding', 'start': 110.64, 'end': 110.96}, {'text': 'your', 'start': 111.0, 'end': 111.1}, {'text': 'dogs', 'start': 111.14, 'end': 111.48}, {'text': 'body', 'start': 111.52, 'end': 111.78}, {'text': 'with', 'start': 111.9, 'end': 112.05}, {'text': 'chemicals', 'start': 112.08, 'end': 112.58}, {'text': 'just', 'start': 112.64, 'end': 112.78}, {'text': 'to', 'start': 112.8, 'end': 112.93}, {'text': 'solve', 'start': 112.96, 'end': 113.24}, {'text': 'one', 'start': 113.34, 'end': 113.5}, {'text': 'problem', 'start': 113.52, 'end': 114.05}, {'text': 'The', 'start': 114.05, 'end': 114.16}, {'text': 'smarter', 'start': 114.24, 'end': 114.58}, {'text': 'choice', 'start': 114.62, 'end': 114.94}, {'text': 'is', 'start': 115.0, 'end': 115.15}, {'text': 'natural', 'start': 115.18, 'end': 115.55}, {'text': 'protection', 'start': 115.56, 'end': 116.13}, {'text': 'that', 'start': 116.18, 'end': 116.3}, {'text': 'repels', 'start': 116.32, 'end': 116.82}, {'text': 'pests', 'start': 116.86, 'end': 117.23}, {'text': 'without', 'start': 117.26, 'end': 117.59}, {'text': 'compromising', 'start': 117.62, 'end': 118.31}, {'text': 'health', 'start': 118.36, 'end': 118.88}, {'text': 'Thats', 'start': 118.94, 'end': 119.14}, {'text': 'why', 'start': 119.18, 'end': 119.29}, {'text': 'I', 'start': 119.29, 'end': 119.42}, {'text': 'recommend', 'start': 119.48, 'end': 119.9}, {'text': 'a', 'start': 119.94, 'end': 120.02}, {'text': 'natural', 'start': 120.04, 'end': 120.57}, {'text': 'essential', 'start': 120.6, 'end': 121.21}, {'text': 'oil-based', 'start': 121.26, 'end': 121.9}, {'text': 'flea', 'start': 121.94, 'end': 122.16}, {'text': 'spray', 'start': 122.2, 'end': 122.54}, {'text': 'instead', 'start': 122.86, 'end': 123.14}, {'text': 'of', 'start': 123.18, 'end': 123.26}, {'text': 'chemical', 'start': 123.28, 'end': 123.64}, {'text': 'treatments', 'start': 123.74, 'end': 124.54}, {'text': 'Protect', 'start': 124.56, 'end': 124.9}, {'text': 'your', 'start': 124.94, 'end': 125.02}, {'text': 'dog', 'start': 125.08, 'end': 125.48}, {'text': 'but', 'start': 125.52, 'end': 125.6}, {'text': 'dont', 'start': 125.66, 'end': 125.9}, {'text': 'poison', 'start': 125.96, 'end': 126.26}, {'text': 'them', 'start': 126.28, 'end': 126.4}, {'text': 'in', 'start': 126.46, 'end': 126.5}, {'text': 'the', 'start': 126.54, 'end': 126.62}, {'text': 'process', 'start': 126.66, 'end': 127.66}, {'text': 'And', 'start': 127.7, 'end': 127.8}, {'text': 'for', 'start': 127.84, 'end': 127.94}, {'text': 'anyone', 'start': 128.0, 'end': 128.24}, {'text': 'watching', 'start': 128.32, 'end': 128.66}, {'text': 'this', 'start': 128.72, 'end': 128.88}, {'text': 'online', 'start': 129.08, 'end': 129.94}, {'text': 'Bug', 'start': 129.979, 'end': 130.16}, {'text': 'MD', 'start': 130.28, 'end': 130.58}, {'text': 'Flea', 'start': 130.699, 'end': 130.94}, {'text': '&', 'start': 131.0, 'end': 131.06}, {'text': 'Tick', 'start': 131.18, 'end': 131.52}, {'text': 'is', 'start': 131.58, 'end': 131.66}, {'text': 'available', 'start': 131.7, 'end': 132.16}, {'text': 'on', 'start': 132.18, 'end': 132.34}, {'text': 'Amazon', 'start': 132.36, 'end': 133.26}, {'text': 'And', 'start': 133.269, 'end': 133.36}, {'text': 'Ive', 'start': 133.42, 'end': 133.52}, {'text': 'also', 'start': 133.58, 'end': 133.84}, {'text': 'linked', 'start': 133.86, 'end': 134.1}, {'text': 'it', 'start': 134.14, 'end': 134.22}, {'text': 'in', 'start': 134.3, 'end': 134.36}, {'text': 'my', 'start': 134.4, 'end': 134.5}, {'text': 'Instagram', 'start': 134.56, 'end': 134.98}, {'text': 'profile', 'start': 135.06, 'end': 135.74}, {'text': 'If', 'start': 135.82, 'end': 135.88}, {'text': 'youre', 'start': 135.9, 'end': 136.0}, {'text': 'watching', 'start': 136.06, 'end': 136.34}, {'text': 'online', 'start': 136.4, 'end': 136.84}, {'text': 'and', 'start': 136.92, 'end': 137.04}, {'text': 'want', 'start': 137.12, 'end': 137.3}, {'text': 'my', 'start': 137.36, 'end': 137.5}, {'text': 'exact', 'start': 137.54, 'end': 138.12}, {'text': 'natural', 'start': 138.4, 'end': 138.769}, {'text': 'flea', 'start': 138.88, 'end': 139.08}, {'text': 'spray', 'start': 139.14, 'end': 139.38}, {'text': 'recipe', 'start': 139.46, 'end': 140.08}, {'text': 'comment', 'start': 140.14, 'end': 140.48}, {'text': 'fleas', 'start': 140.56, 'end': 141.04}, {'text': 'and', 'start': 141.1, 'end': 141.18}, {'text': 'Ill', 'start': 141.22, 'end': 141.359}, {'text': 'send', 'start': 141.42, 'end': 141.6}, {'text': 'it', 'start': 141.64, 'end': 141.72}, {'text': 'to', 'start': 141.78, 'end': 141.88}, {'text': 'you', 'start': 141.94, 'end': 142.32}];
-                const container = document.getElementById('captions-container');
-                const tl = gsap.timeline({ paused: true });
+    <script>
+      (function () {
+        const TRANSCRIPT = [
+          { text: "Dogs", start: 0.08, end: 0.44 },
+          { text: "sleep", start: 0.52, end: 0.78 },
+          { text: "in", start: 0.86, end: 0.93 },
+          { text: "their", start: 0.98, end: 1.08 },
+          { text: "humans", start: 1.14, end: 1.56 },
+          { text: "bed", start: 1.66, end: 1.92 },
+          { text: "for", start: 1.96, end: 2.05 },
+          { text: "three", start: 2.18, end: 2.5 },
+          { text: "powerful", start: 2.68, end: 3.11 },
+          { text: "reasons", start: 3.16, end: 3.84 },
+          { text: "And", start: 3.849, end: 3.94 },
+          { text: "if", start: 4.0, end: 4.08 },
+          { text: "you", start: 4.12, end: 4.26 },
+          { text: "dont", start: 4.3, end: 4.47 },
+          { text: "understand", start: 4.54, end: 5.06 },
+          { text: "these", start: 5.12, end: 5.62 },
+          { text: "youre", start: 5.66, end: 5.78 },
+          { text: "probably", start: 5.82, end: 6.26 },
+          { text: "missing", start: 6.32, end: 6.62 },
+          { text: "the", start: 6.66, end: 6.8 },
+          { text: "biggest", start: 6.84, end: 7.11 },
+          { text: "danger", start: 7.22, end: 7.6 },
+          { text: "hiding", start: 7.64, end: 7.96 },
+          { text: "right", start: 8.0, end: 8.14 },
+          { text: "under", start: 8.18, end: 8.38 },
+          { text: "your", start: 8.42, end: 8.52 },
+          { text: "nose", start: 8.56, end: 9.28 },
+          { text: "First", start: 9.36, end: 9.98 },
+          { text: "for", start: 10.02, end: 10.17 },
+          { text: "your", start: 10.2, end: 10.32 },
+          { text: "dog", start: 10.33, end: 10.78 },
+          { text: "youre", start: 10.82, end: 10.92 },
+          { text: "not", start: 10.93, end: 11.19 },
+          { text: "their", start: 11.22, end: 11.36 },
+          { text: "owner", start: 11.42, end: 11.93 },
+          { text: "Youre", start: 11.98, end: 12.14 },
+          { text: "their", start: 12.15, end: 12.3 },
+          { text: "entire", start: 12.36, end: 12.94 },
+          { text: "universe", start: 13.02, end: 13.89 },
+          { text: "Sleeping", start: 13.9, end: 14.35 },
+          { text: "beside", start: 14.4, end: 14.88 },
+          { text: "you", start: 14.94, end: 15.04 },
+          { text: "is", start: 15.1, end: 15.23 },
+          { text: "the", start: 15.26, end: 15.34 },
+          { text: "closest", start: 15.4, end: 15.86 },
+          { text: "they", start: 15.9, end: 16.0 },
+          { text: "ever", start: 16.059, end: 16.309 },
+          { text: "feel", start: 16.34, end: 16.64 },
+          { text: "to", start: 16.66, end: 16.8 },
+          { text: "safety", start: 16.84, end: 17.73 },
+          { text: "family", start: 17.78, end: 18.41 },
+          { text: "and", start: 18.44, end: 18.55 },
+          { text: "home", start: 18.68, end: 19.27 },
+          { text: "That", start: 19.3, end: 19.45 },
+          { text: "quiet", start: 19.5, end: 19.88 },
+          { text: "nudge", start: 19.94, end: 20.2 },
+          { text: "at", start: 20.24, end: 20.34 },
+          { text: "night", start: 20.36, end: 20.96 },
+          { text: "thats", start: 20.98, end: 21.24 },
+          { text: "them", start: 21.25, end: 21.48 },
+          { text: "saying", start: 21.56, end: 22.22 },
+          { text: '"Where', start: 22.23, end: 22.44 },
+          { text: "you", start: 22.5, end: 22.6 },
+          { text: "are", start: 22.7, end: 23.22 },
+          { text: "thats", start: 23.26, end: 23.48 },
+          { text: "where", start: 23.52, end: 23.64 },
+          { text: "I", start: 23.76, end: 23.82 },
+          { text: 'belong"', start: 23.86, end: 24.7 },
+          { text: "Second", start: 24.78, end: 25.48 },
+          { text: "your", start: 25.54, end: 25.63 },
+          { text: "warmth", start: 25.76, end: 26.36 },
+          { text: "your", start: 26.4, end: 26.58 },
+          { text: "scent", start: 26.64, end: 27.2 },
+          { text: "your", start: 27.26, end: 27.39 },
+          { text: "breathing", start: 27.42, end: 28.06 },
+          { text: "your", start: 28.1, end: 28.23 },
+          { text: "presence", start: 28.26, end: 28.68 },
+          { text: "literally", start: 28.8, end: 29.18 },
+          { text: "tell", start: 29.22, end: 29.4 },
+          { text: "their", start: 29.42, end: 29.56 },
+          { text: "nervous", start: 29.62, end: 29.94 },
+          { text: "system", start: 29.98, end: 30.38 },
+          { text: '"Stand', start: 30.39, end: 30.74 },
+          { text: "down", start: 30.8, end: 31.22 },
+          { text: "Youre", start: 31.26, end: 31.4 },
+          { text: "safe", start: 31.48, end: 31.74 },
+          { text: 'now"', start: 31.84, end: 32.4 },
+          { text: "Thats", start: 32.42, end: 32.68 },
+          { text: "why", start: 32.74, end: 32.88 },
+          { text: "the", start: 32.92, end: 33.0 },
+          { text: "moment", start: 33.04, end: 33.32 },
+          { text: "you", start: 33.36, end: 33.44 },
+          { text: "lie", start: 33.5, end: 33.65 },
+          { text: "down", start: 33.74, end: 34.04 },
+          { text: "your", start: 34.08, end: 34.24 },
+          { text: "bed", start: 34.26, end: 34.46 },
+          { text: "becomes", start: 34.54, end: 34.91 },
+          { text: "the", start: 34.94, end: 35.0 },
+          { text: "most", start: 35.06, end: 35.269 },
+          { text: "valuable", start: 35.3, end: 35.74 },
+          { text: "place", start: 35.78, end: 36.04 },
+          { text: "in", start: 36.08, end: 36.17 },
+          { text: "the", start: 36.2, end: 36.26 },
+          { text: "house", start: 36.32, end: 36.99 },
+          { text: "But", start: 37.0, end: 37.129 },
+          { text: "heres", start: 37.18, end: 37.4 },
+          { text: "the", start: 37.44, end: 37.54 },
+          { text: "part", start: 37.58, end: 37.78 },
+          { text: "most", start: 38.0, end: 38.25 },
+          { text: "people", start: 38.26, end: 38.58 },
+          { text: "dont", start: 38.62, end: 38.83 },
+          { text: "realize", start: 38.86, end: 39.47 },
+          { text: "Even", start: 39.52, end: 39.73 },
+          { text: "in", start: 39.78, end: 39.86 },
+          { text: "deep", start: 39.94, end: 40.129 },
+          { text: "sleep", start: 40.26, end: 40.56 },
+          { text: "dogs", start: 40.629, end: 40.9 },
+          { text: "stay", start: 40.96, end: 41.16 },
+          { text: "half-alert", start: 41.2, end: 41.84 },
+          { text: "Their", start: 41.86, end: 42.04 },
+          { text: "brain", start: 42.06, end: 42.32 },
+          { text: "is", start: 42.34, end: 42.52 },
+          { text: "wired", start: 42.58, end: 42.9 },
+          { text: "to", start: 42.98, end: 43.04 },
+          { text: "protect", start: 43.1, end: 43.54 },
+          { text: "you", start: 43.6, end: 43.76 },
+          { text: "If", start: 43.78, end: 43.9 },
+          { text: "anything", start: 43.94, end: 44.28 },
+          { text: "felt", start: 44.42, end: 44.64 },
+          { text: "off", start: 44.68, end: 44.88 },
+          { text: "a", start: 44.9, end: 44.96 },
+          { text: "noise", start: 45.04, end: 45.44 },
+          { text: "a", start: 45.46, end: 45.52 },
+          { text: "movement", start: 45.62, end: 46.08 },
+          { text: "a", start: 46.12, end: 46.22 },
+          { text: "change", start: 46.3, end: 46.64 },
+          { text: "in", start: 46.68, end: 46.76 },
+          { text: "your", start: 46.8, end: 46.92 },
+          { text: "breathing", start: 46.96, end: 47.72 },
+          { text: "your", start: 47.76, end: 47.84 },
+          { text: "dog", start: 47.92, end: 48.18 },
+          { text: "would", start: 48.22, end: 48.34 },
+          { text: "wake", start: 48.4, end: 48.58 },
+          { text: "up", start: 48.64, end: 48.76 },
+          { text: "before", start: 48.78, end: 49.08 },
+          { text: "you", start: 49.12, end: 49.18 },
+          { text: "ever", start: 49.22, end: 49.44 },
+          { text: "did", start: 49.48, end: 50.06 },
+          { text: "Thats", start: 50.08, end: 50.3 },
+          { text: "the", start: 50.34, end: 50.4 },
+          { text: "level", start: 50.52, end: 50.72 },
+          { text: "of", start: 50.8, end: 50.88 },
+          { text: "loyalty", start: 50.94, end: 51.42 },
+          { text: "were", start: 51.5, end: 51.62 },
+          { text: "talking", start: 51.64, end: 52.04 },
+          { text: "about", start: 52.08, end: 52.38 },
+          { text: "And", start: 52.4, end: 52.5 },
+          { text: "this", start: 52.54, end: 52.66 },
+          { text: "is", start: 52.72, end: 52.82 },
+          { text: "exactly", start: 52.86, end: 53.46 },
+          { text: "why", start: 53.56, end: 53.83 },
+          { text: "the", start: 54.02, end: 54.1 },
+          { text: "next", start: 54.16, end: 54.34 },
+          { text: "part", start: 54.46, end: 54.72 },
+          { text: "matters", start: 54.96, end: 55.28 },
+          { text: "so", start: 55.36, end: 55.46 },
+          { text: "much", start: 55.56, end: 55.78 },
+          { text: "because", start: 55.84, end: 56.12 },
+          { text: "dogs", start: 56.18, end: 56.46 },
+          { text: "give", start: 56.54, end: 56.66 },
+          { text: "us", start: 56.7, end: 56.88 },
+          { text: "unfiltered", start: 56.94, end: 57.54 },
+          { text: "love", start: 57.6, end: 58.14 },
+          { text: "but", start: 58.18, end: 58.3 },
+          { text: "they", start: 58.32, end: 58.48 },
+          { text: "hide", start: 58.54, end: 58.82 },
+          { text: "their", start: 58.84, end: 59.019 },
+          { text: "pain", start: 59.08, end: 59.64 },
+          { text: "They", start: 59.66, end: 59.76 },
+          { text: "dont", start: 59.8, end: 60.02 },
+          { text: "complain", start: 60.06, end: 60.88 },
+          { text: "They", start: 60.9, end: 61.01 },
+          { text: "dont", start: 61.06, end: 61.3 },
+          { text: "tell", start: 61.31, end: 61.56 },
+          { text: "you", start: 61.68, end: 61.9 },
+          { text: "when", start: 61.91, end: 62.14 },
+          { text: "something", start: 62.22, end: 62.54 },
+          { text: "is", start: 62.6, end: 62.74 },
+          { text: "wrong", start: 62.76, end: 63.12 },
+          { text: "They", start: 63.14, end: 63.22 },
+          { text: "just", start: 63.34, end: 63.56 },
+          { text: "keep", start: 63.62, end: 63.82 },
+          { text: "loving", start: 63.88, end: 64.18 },
+          { text: "you", start: 64.28, end: 64.739 },
+          { text: "even", start: 64.819, end: 65.06 },
+          { text: "while", start: 65.099, end: 65.26 },
+          { text: "their", start: 65.3, end: 65.459 },
+          { text: "body", start: 65.5, end: 65.82 },
+          { text: "is", start: 65.88, end: 66.0 },
+          { text: "taking", start: 66.04, end: 66.35 },
+          { text: "damage", start: 66.46, end: 67.08 },
+          { text: "And", start: 67.1, end: 67.2 },
+          { text: "one", start: 67.26, end: 67.36 },
+          { text: "of", start: 67.4, end: 67.46 },
+          { text: "the", start: 67.5, end: 67.6 },
+          { text: "biggest", start: 67.62, end: 67.96 },
+          { text: "hidden", start: 68.0, end: 68.22 },
+          { text: "threats", start: 68.34, end: 68.74 },
+          { text: "doesnt", start: 68.94, end: 69.28 },
+          { text: "come", start: 69.34, end: 69.66 },
+          { text: "from", start: 69.7, end: 69.85 },
+          { text: "where", start: 69.88, end: 70.04 },
+          { text: "most", start: 70.1, end: 70.36 },
+          { text: "people", start: 70.38, end: 70.7 },
+          { text: "think", start: 70.74, end: 71.1 },
+          { text: "It", start: 71.14, end: 71.24 },
+          { text: "comes", start: 71.3, end: 71.53 },
+          { text: "from", start: 71.58, end: 71.74 },
+          { text: "what", start: 71.8, end: 71.89 },
+          { text: "we", start: 72.0, end: 72.16 },
+          { text: "spray", start: 72.24, end: 72.62 },
+          { text: "on", start: 72.7, end: 72.84 },
+          { text: "them", start: 72.88, end: 73.26 },
+          { text: "Most", start: 73.32, end: 73.58 },
+          { text: "flea", start: 73.7, end: 73.88 },
+          { text: "and", start: 73.92, end: 74.0 },
+          { text: "tick", start: 74.1, end: 74.26 },
+          { text: "products", start: 74.34, end: 74.72 },
+          { text: "rely", start: 74.78, end: 75.04 },
+          { text: "on", start: 75.08, end: 75.18 },
+          { text: "harsh", start: 75.22, end: 75.44 },
+          { text: "chemicals", start: 75.54, end: 76.12 },
+          { text: "neurotoxins", start: 76.2, end: 77.08 },
+          { text: "pesticides", start: 77.12, end: 78.1 },
+          { text: "stuff", start: 78.22, end: 78.42 },
+          { text: "designed", start: 78.48, end: 78.96 },
+          { text: "to", start: 79.0, end: 79.06 },
+          { text: "kill", start: 79.16, end: 79.34 },
+          { text: "living", start: 79.4, end: 79.66 },
+          { text: "organisms", start: 79.72, end: 80.34 },
+          { text: "on", start: 80.4, end: 80.56 },
+          { text: "contact", start: 80.6, end: 81.62 },
+          { text: "And", start: 81.64, end: 81.74 },
+          { text: "over", start: 81.8, end: 81.94 },
+          { text: "time", start: 82.06, end: 82.62 },
+          { text: "those", start: 82.66, end: 82.86 },
+          { text: "chemicals", start: 82.9, end: 83.35 },
+          { text: "dont", start: 83.44, end: 83.62 },
+          { text: "just", start: 83.68, end: 83.86 },
+          { text: "disappear", start: 83.9, end: 84.82 },
+          { text: "They", start: 84.86, end: 84.96 },
+          { text: "get", start: 85.0, end: 85.1 },
+          { text: "absorbed", start: 85.16, end: 85.64 },
+          { text: "through", start: 85.68, end: 85.86 },
+          { text: "the", start: 85.92, end: 86.02 },
+          { text: "skin", start: 86.08, end: 86.68 },
+          { text: "inhaled", start: 86.78, end: 87.28 },
+          { text: "and", start: 87.32, end: 87.45 },
+          { text: "stored", start: 87.54, end: 87.8 },
+          { text: "in", start: 87.84, end: 87.92 },
+          { text: "the", start: 87.94, end: 88.04 },
+          { text: "body", start: 88.06, end: 88.98 },
+          { text: "Slowly", start: 89.04, end: 89.81 },
+          { text: "quietly", start: 89.86, end: 90.64 },
+          { text: "they", start: 90.7, end: 90.83 },
+          { text: "can", start: 90.84, end: 90.95 },
+          { text: "impact", start: 91.0, end: 91.36 },
+          { text: "the", start: 91.42, end: 91.54 },
+          { text: "liver", start: 91.56, end: 92.16 },
+          { text: "breathing", start: 92.18, end: 92.98 },
+          { text: "the", start: 92.99, end: 93.08 },
+          { text: "nervous", start: 93.14, end: 93.38 },
+          { text: "system", start: 93.48, end: 94.14 },
+          { text: "hormones", start: 94.24, end: 95.28 },
+          { text: "and", start: 95.32, end: 95.39 },
+          { text: "even", start: 95.46, end: 95.74 },
+          { text: "shorten", start: 95.82, end: 96.2 },
+          { text: "lifespan", start: 96.32, end: 97.26 },
+          { text: "And", start: 97.28, end: 97.38 },
+          { text: "youd", start: 97.42, end: 97.54 },
+          { text: "never", start: 97.58, end: 97.8 },
+          { text: "notice", start: 97.86, end: 98.14 },
+          { text: "it", start: 98.2, end: 98.28 },
+          { text: "happening", start: 98.32, end: 99.1 },
+          { text: "because", start: 99.14, end: 99.52 },
+          { text: "dogs", start: 99.56, end: 99.94 },
+          { text: "dont", start: 99.96, end: 100.16 },
+          { text: "show", start: 100.2, end: 100.4 },
+          { text: "pain", start: 100.46, end: 100.7 },
+          { text: "the", start: 100.74, end: 100.8 },
+          { text: "way", start: 100.84, end: 101.0 },
+          { text: "humans", start: 101.06, end: 101.39 },
+          { text: "do", start: 101.4, end: 101.98 },
+          { text: "So", start: 102.04, end: 102.12 },
+          { text: "whats", start: 102.24, end: 102.48 },
+          { text: "the", start: 102.49, end: 102.61 },
+          { text: "safer", start: 102.68, end: 103.06 },
+          { text: "option", start: 103.14, end: 103.8 },
+          { text: "Not", start: 103.84, end: 104.04 },
+          { text: "leaving", start: 104.08, end: 104.36 },
+          { text: "your", start: 104.4, end: 104.48 },
+          { text: "dog", start: 104.56, end: 104.78 },
+          { text: "unprotected", start: 104.86, end: 105.82 },
+          { text: "because", start: 105.86, end: 106.12 },
+          { text: "fleas", start: 106.22, end: 106.5 },
+          { text: "and", start: 106.52, end: 106.6 },
+          { text: "ticks", start: 106.7, end: 107.0 },
+          { text: "absolutely", start: 107.1, end: 107.64 },
+          { text: "carry", start: 107.7, end: 107.96 },
+          { text: "parasites", start: 108.02, end: 108.56 },
+          { text: "and", start: 108.58, end: 108.67 },
+          { text: "disease", start: 108.72, end: 109.54 },
+          { text: "but", start: 109.58, end: 109.68 },
+          { text: "also", start: 109.76, end: 110.16 },
+          { text: "not", start: 110.3, end: 110.539 },
+          { text: "flooding", start: 110.64, end: 110.96 },
+          { text: "your", start: 111.0, end: 111.1 },
+          { text: "dogs", start: 111.14, end: 111.48 },
+          { text: "body", start: 111.52, end: 111.78 },
+          { text: "with", start: 111.9, end: 112.05 },
+          { text: "chemicals", start: 112.08, end: 112.58 },
+          { text: "just", start: 112.64, end: 112.78 },
+          { text: "to", start: 112.8, end: 112.93 },
+          { text: "solve", start: 112.96, end: 113.24 },
+          { text: "one", start: 113.34, end: 113.5 },
+          { text: "problem", start: 113.52, end: 114.05 },
+          { text: "The", start: 114.05, end: 114.16 },
+          { text: "smarter", start: 114.24, end: 114.58 },
+          { text: "choice", start: 114.62, end: 114.94 },
+          { text: "is", start: 115.0, end: 115.15 },
+          { text: "natural", start: 115.18, end: 115.55 },
+          { text: "protection", start: 115.56, end: 116.13 },
+          { text: "that", start: 116.18, end: 116.3 },
+          { text: "repels", start: 116.32, end: 116.82 },
+          { text: "pests", start: 116.86, end: 117.23 },
+          { text: "without", start: 117.26, end: 117.59 },
+          { text: "compromising", start: 117.62, end: 118.31 },
+          { text: "health", start: 118.36, end: 118.88 },
+          { text: "Thats", start: 118.94, end: 119.14 },
+          { text: "why", start: 119.18, end: 119.29 },
+          { text: "I", start: 119.29, end: 119.42 },
+          { text: "recommend", start: 119.48, end: 119.9 },
+          { text: "a", start: 119.94, end: 120.02 },
+          { text: "natural", start: 120.04, end: 120.57 },
+          { text: "essential", start: 120.6, end: 121.21 },
+          { text: "oil-based", start: 121.26, end: 121.9 },
+          { text: "flea", start: 121.94, end: 122.16 },
+          { text: "spray", start: 122.2, end: 122.54 },
+          { text: "instead", start: 122.86, end: 123.14 },
+          { text: "of", start: 123.18, end: 123.26 },
+          { text: "chemical", start: 123.28, end: 123.64 },
+          { text: "treatments", start: 123.74, end: 124.54 },
+          { text: "Protect", start: 124.56, end: 124.9 },
+          { text: "your", start: 124.94, end: 125.02 },
+          { text: "dog", start: 125.08, end: 125.48 },
+          { text: "but", start: 125.52, end: 125.6 },
+          { text: "dont", start: 125.66, end: 125.9 },
+          { text: "poison", start: 125.96, end: 126.26 },
+          { text: "them", start: 126.28, end: 126.4 },
+          { text: "in", start: 126.46, end: 126.5 },
+          { text: "the", start: 126.54, end: 126.62 },
+          { text: "process", start: 126.66, end: 127.66 },
+          { text: "And", start: 127.7, end: 127.8 },
+          { text: "for", start: 127.84, end: 127.94 },
+          { text: "anyone", start: 128.0, end: 128.24 },
+          { text: "watching", start: 128.32, end: 128.66 },
+          { text: "this", start: 128.72, end: 128.88 },
+          { text: "online", start: 129.08, end: 129.94 },
+          { text: "Bug", start: 129.979, end: 130.16 },
+          { text: "MD", start: 130.28, end: 130.58 },
+          { text: "Flea", start: 130.699, end: 130.94 },
+          { text: "&", start: 131.0, end: 131.06 },
+          { text: "Tick", start: 131.18, end: 131.52 },
+          { text: "is", start: 131.58, end: 131.66 },
+          { text: "available", start: 131.7, end: 132.16 },
+          { text: "on", start: 132.18, end: 132.34 },
+          { text: "Amazon", start: 132.36, end: 133.26 },
+          { text: "And", start: 133.269, end: 133.36 },
+          { text: "Ive", start: 133.42, end: 133.52 },
+          { text: "also", start: 133.58, end: 133.84 },
+          { text: "linked", start: 133.86, end: 134.1 },
+          { text: "it", start: 134.14, end: 134.22 },
+          { text: "in", start: 134.3, end: 134.36 },
+          { text: "my", start: 134.4, end: 134.5 },
+          { text: "Instagram", start: 134.56, end: 134.98 },
+          { text: "profile", start: 135.06, end: 135.74 },
+          { text: "If", start: 135.82, end: 135.88 },
+          { text: "youre", start: 135.9, end: 136.0 },
+          { text: "watching", start: 136.06, end: 136.34 },
+          { text: "online", start: 136.4, end: 136.84 },
+          { text: "and", start: 136.92, end: 137.04 },
+          { text: "want", start: 137.12, end: 137.3 },
+          { text: "my", start: 137.36, end: 137.5 },
+          { text: "exact", start: 137.54, end: 138.12 },
+          { text: "natural", start: 138.4, end: 138.769 },
+          { text: "flea", start: 138.88, end: 139.08 },
+          { text: "spray", start: 139.14, end: 139.38 },
+          { text: "recipe", start: 139.46, end: 140.08 },
+          { text: "comment", start: 140.14, end: 140.48 },
+          { text: "fleas", start: 140.56, end: 141.04 },
+          { text: "and", start: 141.1, end: 141.18 },
+          { text: "Ill", start: 141.22, end: 141.359 },
+          { text: "send", start: 141.42, end: 141.6 },
+          { text: "it", start: 141.64, end: 141.72 },
+          { text: "to", start: 141.78, end: 141.88 },
+          { text: "you", start: 141.94, end: 142.32 },
+        ];
+        const container = document.getElementById("captions-container");
+        const tl = gsap.timeline({ paused: true });
 
-                if (!TRANSCRIPT || TRANSCRIPT.length === 0) {
-                    window.__timelines["captions"] = tl;
-                    return;
-                }
+        if (!TRANSCRIPT || TRANSCRIPT.length === 0) {
+          window.__timelines["captions"] = tl;
+          return;
+        }
 
-                // Group words into chunks of 3-5 words for better readability
-                const chunks = [];
-                let currentChunk = [];
-                for (let i = 0; i < TRANSCRIPT.length; i++) {
-                    currentChunk.push(TRANSCRIPT[i]);
-                    if (currentChunk.length >= 4 || i === TRANSCRIPT.length - 1) {
-                        chunks.push([...currentChunk]);
-                        currentChunk = [];
-                    }
-                }
+        // Group words into chunks of 3-5 words for better readability
+        const chunks = [];
+        let currentChunk = [];
+        for (let i = 0; i < TRANSCRIPT.length; i++) {
+          currentChunk.push(TRANSCRIPT[i]);
+          if (currentChunk.length >= 4 || i === TRANSCRIPT.length - 1) {
+            chunks.push([...currentChunk]);
+            currentChunk = [];
+          }
+        }
 
-                chunks.forEach((chunk, chunkIndex) => {
-                    const chunkStartTime = chunk[0].start;
-                    const chunkEndTime = chunk[chunk.length - 1].end;
+        chunks.forEach((chunk, chunkIndex) => {
+          const chunkStartTime = chunk[0].start;
+          const chunkEndTime = chunk[chunk.length - 1].end;
 
-                    // Create a div for this chunk
-                    const chunkDiv = document.createElement('div');
-                    chunkDiv.className = 'chunk';
-                    chunkDiv.style.position = 'absolute';
-                    chunkDiv.style.opacity = 0;
-                    chunkDiv.style.width = '100%';
-                    chunkDiv.style.display = 'flex';
-                    chunkDiv.style.flexWrap = 'wrap';
-                    chunkDiv.style.justifyContent = 'center';
-                    container.appendChild(chunkDiv);
+          // Create a div for this chunk
+          const chunkDiv = document.createElement("div");
+          chunkDiv.className = "chunk";
+          chunkDiv.style.position = "absolute";
+          chunkDiv.style.opacity = 0;
+          chunkDiv.style.width = "100%";
+          chunkDiv.style.display = "flex";
+          chunkDiv.style.flexWrap = "wrap";
+          chunkDiv.style.justifyContent = "center";
+          container.appendChild(chunkDiv);
 
-                    // Show chunk
-                    tl.to(chunkDiv, { opacity: 1, duration: 0.1 }, chunkStartTime);
+          // Show chunk
+          tl.to(chunkDiv, { opacity: 1, duration: 0.1 }, chunkStartTime);
 
-                    chunk.forEach((wordData, wordIndex) => {
-                        const wordSpan = document.createElement('span');
-                        wordSpan.className = 'word';
-                        wordSpan.innerText = wordData.text.toUpperCase();
-                        chunkDiv.appendChild(wordSpan);
+          chunk.forEach((wordData, wordIndex) => {
+            const wordSpan = document.createElement("span");
+            wordSpan.className = "word";
+            wordSpan.innerText = wordData.text.toUpperCase();
+            chunkDiv.appendChild(wordSpan);
 
-                        // Animate word appearance
-                        tl.to(wordSpan, { 
-                            opacity: 1, 
-                            scale: 1.1, 
-                            duration: 0.1 
-                        }, wordData.start);
+            // Animate word appearance
+            tl.to(
+              wordSpan,
+              {
+                opacity: 1,
+                scale: 1.1,
+                duration: 0.1,
+              },
+              wordData.start,
+            );
 
-                        // Highlight current word
-                        tl.to(wordSpan, { 
-                            color: '#ffff00', 
-                            duration: 0.05 
-                        }, wordData.start);
+            // Highlight current word
+            tl.to(
+              wordSpan,
+              {
+                color: "#ffff00",
+                duration: 0.05,
+              },
+              wordData.start,
+            );
 
-                        // Remove highlight when next word starts or chunk ends
-                        const nextTime = (wordIndex < chunk.length - 1) ? chunk[wordIndex + 1].start : chunkEndTime;
-                        tl.to(wordSpan, { 
-                            color: '#ffffff', 
-                            scale: 1.0,
-                            duration: 0.05 
-                        }, nextTime);
-                    });
+            // Remove highlight when next word starts or chunk ends
+            const nextTime =
+              wordIndex < chunk.length - 1 ? chunk[wordIndex + 1].start : chunkEndTime;
+            tl.to(
+              wordSpan,
+              {
+                color: "#ffffff",
+                scale: 1.0,
+                duration: 0.05,
+              },
+              nextTime,
+            );
+          });
 
-                    // Hide chunk
-                    tl.to(chunkDiv, { opacity: 0, duration: 0.1 }, chunkEndTime);
-                });
+          // Hide chunk
+          tl.to(chunkDiv, { opacity: 0, duration: 0.1 }, chunkEndTime);
+        });
 
-                window.__timelines["captions"] = tl;
-            })();
-        </script>
-    </div>
+        window.__timelines["captions"] = tl;
+      })();
+    </script>
+  </div>
 </template>

@@ -35,7 +35,7 @@ export interface CompilationResult {
 
 function getAttr(tag: string, attr: string): string | null {
   const match = tag.match(new RegExp(`${attr}=["']([^"']+)["']`));
-  return match ? match[1] ?? null : null;
+  return match ? (match[1] ?? null) : null;
 }
 
 function hasAttr(tag: string, attr: string): boolean {
@@ -46,7 +46,10 @@ function injectAttr(tag: string, attr: string, value: string): string {
   return tag.replace(/>$/, ` ${attr}="${value}">`);
 }
 
-function compileTag(tag: string, isVideo: boolean): { tag: string; unresolved: UnresolvedElement | null } {
+function compileTag(
+  tag: string,
+  isVideo: boolean,
+): { tag: string; unresolved: UnresolvedElement | null } {
   let result = tag;
   let unresolved: UnresolvedElement | null = null;
   const id = getAttr(result, "id");
@@ -190,18 +193,12 @@ export function clampDurations(html: string, clamps: ResolvedDuration[]): string
 
     html = html.replace(idPattern, (tag) => {
       // Replace data-duration value
-      tag = tag.replace(
-        /data-duration=["'][^"']*["']/,
-        `data-duration="${duration}"`
-      );
+      tag = tag.replace(/data-duration=["'][^"']*["']/, `data-duration="${duration}"`);
 
       // Recompute data-end from data-start + clamped duration
       const startStr = getAttr(tag, "data-start");
       const start = startStr ? parseFloat(startStr) : 0;
-      tag = tag.replace(
-        /data-end=["'][^"']*["']/,
-        `data-end="${start + duration}"`
-      );
+      tag = tag.replace(/data-end=["'][^"']*["']/, `data-end="${start + duration}"`);
 
       return tag;
     });
@@ -209,4 +206,3 @@ export function clampDurations(html: string, clamps: ResolvedDuration[]): string
 
   return html;
 }
-

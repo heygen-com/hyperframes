@@ -10,7 +10,7 @@
 
     <style>
       [data-composition-id="intro"] {
-        background-color: #F5F5F5; /* Off-white */
+        background-color: #f5f5f5; /* Off-white */
         width: 1920px;
         height: 1080px;
         display: flex;
@@ -36,7 +36,7 @@
         top: 50%;
         width: 0px;
         height: 12px;
-        background-color: #0A1E3D; /* Navy */
+        background-color: #0a1e3d; /* Navy */
         transform: translateY(-180px); /* Positioned above the text */
       }
 
@@ -48,7 +48,7 @@
       }
 
       [data-composition-id="intro"] .title {
-        color: #0A1E3D;
+        color: #0a1e3d;
         font-size: 180px;
         font-weight: 900; /* Black weight */
         line-height: 0.9;
@@ -59,7 +59,7 @@
       }
 
       [data-composition-id="intro"] .subtitle {
-        color: #0A1E3D;
+        color: #0a1e3d;
         font-size: 64px;
         font-weight: 300; /* Lighter weight for contrast */
         line-height: 1.2;
@@ -72,7 +72,7 @@
     </style>
 
     <script>
-      (function() {
+      (function () {
         const tl = gsap.timeline({ paused: true });
 
         // Mechanical timing: 200ms (0.2s)
@@ -80,32 +80,48 @@
         const STAGGER = 0.1;
 
         // 1. Animate the grid line first
-        tl.to('.grid-line', {
-          width: '1200px',
-          duration: 0.4,
-          ease: 'power4.out'
-        }, 0.2);
+        tl.to(
+          ".grid-line",
+          {
+            width: "1200px",
+            duration: 0.4,
+            ease: "power4.out",
+          },
+          0.2,
+        );
 
         // 2. Slide in the title
-        tl.to('.title', {
-          x: 0,
-          duration: MECHANICAL_DURATION,
-          ease: 'power2.inOut'
-        }, 0.5);
+        tl.to(
+          ".title",
+          {
+            x: 0,
+            duration: MECHANICAL_DURATION,
+            ease: "power2.inOut",
+          },
+          0.5,
+        );
 
         // 3. Slide in the subtitle with a slight stagger
-        tl.to('.subtitle', {
-          x: 0,
-          duration: MECHANICAL_DURATION,
-          ease: 'power2.inOut'
-        }, 0.5 + STAGGER);
+        tl.to(
+          ".subtitle",
+          {
+            x: 0,
+            duration: MECHANICAL_DURATION,
+            ease: "power2.inOut",
+          },
+          0.5 + STAGGER,
+        );
 
         // 4. Subtle ambient motion (slow drift) to keep it alive
-        tl.to('.text-wrapper', {
-          x: 30,
-          duration: 1.16, // Adjusted to fit 1.86s total
-          ease: 'none'
-        }, 0.7);
+        tl.to(
+          ".text-wrapper",
+          {
+            x: 30,
+            duration: 1.16, // Adjusted to fit 1.86s total
+            ease: "none",
+          },
+          0.7,
+        );
 
         window.__timelines["intro"] = tl;
       })();

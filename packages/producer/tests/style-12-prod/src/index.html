@@ -1,143 +1,162 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=1080, height=1920">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1080, height=1920" />
     <title>Editor Agent - De Stijl Edition</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
     <style>
-        body, html {
-            margin: 0;
-            padding: 0;
-            width: 1080px;
-            height: 1920px;
-            background-color: #FFFFFF;
-            overflow: hidden;
-        }
+      body,
+      html {
+        margin: 0;
+        padding: 0;
+        width: 1080px;
+        height: 1920px;
+        background-color: #ffffff;
+        overflow: hidden;
+      }
 
-        #main-comp {
-            width: 1080px;
-            height: 1920px;
-            position: relative;
-            overflow: hidden;
-            background: #FFFFFF;
-        }
+      #main-comp {
+        width: 1080px;
+        height: 1920px;
+        position: relative;
+        overflow: hidden;
+        background: #ffffff;
+      }
 
-        #bg-layer,
-        #colors-layer,
-        #captions-layer,
-        #a-roll-frame {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 1080px;
-            height: 1920px;
-        }
+      #bg-layer,
+      #colors-layer,
+      #captions-layer,
+      #a-roll-frame {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 1080px;
+        height: 1920px;
+      }
 
-        #bg-layer {
-            z-index: 0;
-        }
+      #bg-layer {
+        z-index: 0;
+      }
 
-        #a-roll-frame {
-            z-index: 10;
-            overflow: hidden;
-            background: #111111;
-        }
+      #a-roll-frame {
+        z-index: 10;
+        overflow: hidden;
+        background: #111111;
+      }
 
-        #a-roll-video,
-        #a-roll-frame img.__render_frame__,
-        #a-roll-frame img.__preview_render_frame__ {
-            position: absolute;
-            inset: 0;
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            filter: saturate(0.9) contrast(1.04);
-        }
+      #a-roll-video,
+      #a-roll-frame img.__render_frame__,
+      #a-roll-frame img.__preview_render_frame__ {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        filter: saturate(0.9) contrast(1.04);
+      }
 
-        #colors-layer {
-            z-index: 20;
-            pointer-events: none;
-        }
+      #colors-layer {
+        z-index: 20;
+        pointer-events: none;
+      }
 
-        #captions-layer {
-            z-index: 30;
-            pointer-events: none;
-        }
+      #captions-layer {
+        z-index: 30;
+        pointer-events: none;
+      }
     </style>
-</head>
-<body>
-    <div id="main-comp" 
-         data-composition-id="main-video" 
-         data-width="1080" 
-         data-height="1920" 
-         data-start="0" 
-         data-duration="14">
+  </head>
+  <body>
+    <div
+      id="main-comp"
+      data-composition-id="main-video"
+      data-width="1080"
+      data-height="1920"
+      data-start="0"
+      data-duration="14"
+    >
+      <!-- 1. Background Grid Layer -->
+      <div
+        id="bg-layer"
+        data-composition-id="mondrian-bg"
+        data-composition-src="compositions/mondrian-bg.html"
+        data-start="0"
+        data-track-index="1"
+        data-duration="14"
+      ></div>
 
-        <!-- 1. Background Grid Layer -->
-        <div id="bg-layer"
-             data-composition-id="mondrian-bg"
-             data-composition-src="compositions/mondrian-bg.html"
-             data-start="0"
-             data-track-index="1"
-             data-duration="14">
-        </div>
+      <!-- 2. A-roll Video Layer -->
+      <div id="a-roll-frame">
+        <video
+          id="a-roll-video"
+          src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/uploaded_assets/61ae9527_715ce519da784c0daae4f3aade82ee56.mp4"
+          data-start="0"
+          data-duration="14"
+          data-track-index="2"
+        ></video>
+      </div>
 
-        <!-- 2. A-roll Video Layer -->
-        <div id="a-roll-frame">
-            <video id="a-roll-video" 
-                   src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/uploaded_assets/61ae9527_715ce519da784c0daae4f3aade82ee56.mp4" 
-                   data-start="0" 
-                   data-duration="14" 
-                   data-track-index="2">
-            </video>
-        </div>
+      <!-- 3. Color Block Reaction Layer -->
+      <div
+        id="colors-layer"
+        data-composition-id="mondrian-colors"
+        data-composition-src="compositions/mondrian-colors.html"
+        data-start="0"
+        data-track-index="3"
+        data-duration="14"
+      ></div>
 
-        <!-- 3. Color Block Reaction Layer -->
-        <div id="colors-layer"
-             data-composition-id="mondrian-colors"
-             data-composition-src="compositions/mondrian-colors.html"
-             data-start="0"
-             data-track-index="3"
-             data-duration="14">
-        </div>
+      <!-- 4. Captions Layer -->
+      <div
+        id="captions-layer"
+        data-composition-id="mondrian-captions"
+        data-composition-src="compositions/mondrian-captions.html"
+        data-start="0"
+        data-track-index="4"
+        data-duration="14"
+      ></div>
 
-        <!-- 4. Captions Layer -->
-        <div id="captions-layer"
-             data-composition-id="mondrian-captions"
-             data-composition-src="compositions/mondrian-captions.html"
-             data-start="0"
-             data-track-index="4"
-             data-duration="14">
-        </div>
+      <script>
+        (function () {
+          const tl = gsap.timeline({ paused: true });
 
-        <script>
-            (function() {
-                const tl = gsap.timeline({ paused: true });
+          tl.fromTo(
+            "#a-roll-frame",
+            {
+              scale: 1.02,
+            },
+            {
+              scale: 1,
+              duration: 0.8,
+              ease: "power2.out",
+            },
+            0,
+          );
 
-                tl.fromTo('#a-roll-frame', {
-                    scale: 1.02
-                }, {
-                    scale: 1,
-                    duration: 0.8,
-                    ease: 'power2.out'
-                }, 0);
+          tl.to(
+            "#a-roll-frame",
+            {
+              opacity: 0.34,
+              duration: 0.35,
+              ease: "power2.inOut",
+            },
+            7.4,
+          );
 
-                tl.to('#a-roll-frame', {
-                    opacity: 0.34,
-                    duration: 0.35,
-                    ease: 'power2.inOut'
-                }, 7.4);
+          tl.to(
+            "#a-roll-frame",
+            {
+              opacity: 1,
+              duration: 0.4,
+              ease: "power2.inOut",
+            },
+            10.5,
+          );
 
-                tl.to('#a-roll-frame', {
-                    opacity: 1,
-                    duration: 0.4,
-                    ease: 'power2.inOut'
-                }, 10.5);
-
-                window.__timelines["main-video"] = tl;
-            })();
-        </script>
+          window.__timelines["main-video"] = tl;
+        })();
+      </script>
     </div>
-</body>
+  </body>
 </html>

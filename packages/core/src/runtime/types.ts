@@ -1,4 +1,10 @@
-export type RuntimeJson = string | number | boolean | null | RuntimeJson[] | { [key: string]: RuntimeJson };
+export type RuntimeJson =
+  | string
+  | number
+  | boolean
+  | null
+  | RuntimeJson[]
+  | { [key: string]: RuntimeJson };
 
 export type RuntimeBridgeControlAction =
   | "play"

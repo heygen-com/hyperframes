@@ -32,7 +32,13 @@ export const NLELayout = memo(function NLELayout({
   activeCompositionPath,
   onIframeRef,
 }: NLELayoutProps) {
-  const { iframeRef, togglePlay, seek, onIframeLoad: baseOnIframeLoad, saveSeekPosition } = useTimelinePlayer();
+  const {
+    iframeRef,
+    togglePlay,
+    seek,
+    onIframeLoad: baseOnIframeLoad,
+    saveSeekPosition,
+  } = useTimelinePlayer();
 
   // Preserve seek position when refreshKey changes (iframe will remount via key prop).
   const prevRefreshKeyRef = useRef(refreshKey);
@@ -55,7 +61,8 @@ export const NLELayout = memo(function NLELayout({
       .then((data: { content?: string }) => {
         const html = data.content || "";
         const map = new Map<string, string>();
-        const re = /data-composition-id=["']([^"']+)["'][^>]*data-composition-src=["']([^"']+)["']|data-composition-src=["']([^"']+)["'][^>]*data-composition-id=["']([^"']+)["']/g;
+        const re =
+          /data-composition-id=["']([^"']+)["'][^>]*data-composition-src=["']([^"']+)["']|data-composition-src=["']([^"']+)["'][^>]*data-composition-id=["']([^"']+)["']/g;
         let match;
         while ((match = re.exec(html)) !== null) {
           const id = match[1] || match[4];
@@ -98,12 +105,16 @@ export const NLELayout = memo(function NLELayout({
         try {
           const doc = iframeRef_.current?.contentDocument;
           if (doc) {
-            const host = doc.querySelector(`[data-composition-id="${compId}"][data-composition-src]`);
+            const host = doc.querySelector(
+              `[data-composition-id="${compId}"][data-composition-src]`,
+            );
             if (host) {
               resolvedPath = host.getAttribute("data-composition-src") || undefined;
             }
           }
-        } catch { /* cross-origin */ }
+        } catch {
+          /* cross-origin */
+        }
       }
       if (!resolvedPath) {
         // Strip full URL to relative path if needed
@@ -121,7 +132,11 @@ export const NLELayout = memo(function NLELayout({
           return prev.slice(0, -1);
         }
         // Extract a clean label from the path (strip directories and extension)
-        const label = resolvedPath.split("/").pop()?.replace(/\.html$/, "") || resolvedPath;
+        const label =
+          resolvedPath
+            .split("/")
+            .pop()
+            ?.replace(/\.html$/, "") || resolvedPath;
         const previewUrl = `/api/projects/${projectId}/preview/comp/${resolvedPath}`;
         return [...prev, { id: resolvedPath, label, previewUrl }];
       });
@@ -131,13 +146,10 @@ export const NLELayout = memo(function NLELayout({
   );
 
   // Navigate back to a specific breadcrumb level
-  const handleNavigateComposition = useCallback(
-    (index: number) => {
-      usePlayerStore.getState().setElements([]);
-      setCompositionStack((prev) => prev.slice(0, index + 1));
-    },
-    [],
-  );
+  const handleNavigateComposition = useCallback((index: number) => {
+    usePlayerStore.getState().setElements([]);
+    setCompositionStack((prev) => prev.slice(0, index + 1));
+  }, []);
 
   // Navigate to a composition when activeCompositionPath changes
   const prevActiveCompRef = useRef<string | null>(null);
@@ -145,7 +157,7 @@ export const NLELayout = memo(function NLELayout({
     prevActiveCompRef.current = activeCompositionPath;
     queueMicrotask(() => usePlayerStore.getState().setElements([]));
     if (activeCompositionPath === "index.html") {
-      setCompositionStack((prev) => prev.length > 1 ? [prev[0]] : prev);
+      setCompositionStack((prev) => (prev.length > 1 ? [prev[0]] : prev));
     } else if (activeCompositionPath.startsWith("compositions/")) {
       const label = activeCompositionPath.replace(/^compositions\//, "").replace(/\.html$/, "");
       const previewUrl = `/api/projects/${projectId}/preview/comp/${activeCompositionPath}`;
@@ -229,7 +241,10 @@ export const NLELayout = memo(function NLELayout({
         {/* Breadcrumb + Player controls */}
         <div className="bg-neutral-950 border-t border-neutral-800/50 flex-shrink-0">
           {compositionStack.length > 1 && (
-            <CompositionBreadcrumb stack={compositionStack} onNavigate={handleNavigateComposition} />
+            <CompositionBreadcrumb
+              stack={compositionStack}
+              onNavigate={handleNavigateComposition}
+            />
           )}
           <PlayerControls onTogglePlay={togglePlay} onSeek={seek} />
         </div>

@@ -119,7 +119,9 @@ function autoHealMissingCompositionIds(doc: Document): void {
   for (const compId of referencedIds) {
     if (compId === "root" || existingIds.has(compId)) continue;
     const host =
-      doc.getElementById(`${compId}-layer`) || doc.getElementById(`${compId}-comp`) || doc.getElementById(compId);
+      doc.getElementById(`${compId}-layer`) ||
+      doc.getElementById(`${compId}-comp`) ||
+      doc.getElementById(compId);
     if (!host) continue;
     if (!host.getAttribute("data-composition-id")) {
       host.setAttribute("data-composition-id", compId);
@@ -205,19 +207,30 @@ export function useTimelinePlayer() {
     const iframe = iframeRef.current;
     if (!iframe) return;
     // Send to runtime via bridge (works with both new and CDN runtime)
-    iframe.contentWindow?.postMessage({ source: "hf-parent", type: "control", action: "set-playback-rate", playbackRate: rate }, "*");
-    iframe.contentWindow?.postMessage({ source: "hf-parent", type: "control", action: "set-playback-rate", playbackRate: rate }, "*");
+    iframe.contentWindow?.postMessage(
+      { source: "hf-parent", type: "control", action: "set-playback-rate", playbackRate: rate },
+      "*",
+    );
+    iframe.contentWindow?.postMessage(
+      { source: "hf-parent", type: "control", action: "set-playback-rate", playbackRate: rate },
+      "*",
+    );
     // Also set directly on GSAP timeline if accessible
     try {
       const win = iframe.contentWindow as IframeWindow | null;
       if (win?.__timelines) {
         for (const tl of Object.values(win.__timelines)) {
-          if (tl && typeof (tl as unknown as { timeScale?: (v: number) => void }).timeScale === "function") {
+          if (
+            tl &&
+            typeof (tl as unknown as { timeScale?: (v: number) => void }).timeScale === "function"
+          ) {
             (tl as unknown as { timeScale: (v: number) => void }).timeScale(rate);
           }
         }
       }
-    } catch { /* cross-origin */ }
+    } catch {
+      /* cross-origin */
+    }
   }, []);
 
   const play = useCallback(() => {
@@ -388,13 +401,22 @@ export function useTimelinePlayer() {
         console.warn("Could not find __player, __timeline, or __timelines on iframe after 5s");
       }
     }, 200);
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- setElements is a stable zustand setter
-  }, [getAdapter, setDuration, setCurrentTime, setTimelineReady, setIsPlaying, processTimelineMessage]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- setElements is a stable zustand setter
+  }, [
+    getAdapter,
+    setDuration,
+    setCurrentTime,
+    setTimelineReady,
+    setIsPlaying,
+    processTimelineMessage,
+  ]);
 
   /** Save the current playback time so the next onIframeLoad restores it. */
   const saveSeekPosition = useCallback(() => {
     const adapter = getAdapter();
-    pendingSeekRef.current = adapter ? adapter.getTime() : (usePlayerStore.getState().currentTime ?? 0);
+    pendingSeekRef.current = adapter
+      ? adapter.getTime()
+      : (usePlayerStore.getState().currentTime ?? 0);
     isRefreshingRef.current = true;
     stopRAFLoop();
     setIsPlaying(false);
@@ -430,7 +452,11 @@ export function useTimelinePlayer() {
     // so we get the complete clip list (not just the first few).
     const handleMessage = (e: MessageEvent) => {
       const data = e.data;
-      if ((data?.source === "hf-preview" || data?.source === "hf-preview") && data?.type === "timeline" && Array.isArray(data.clips)) {
+      if (
+        (data?.source === "hf-preview" || data?.source === "hf-preview") &&
+        data?.type === "timeline" &&
+        Array.isArray(data.clips)
+      ) {
         processTimelineMessageRef.current(data);
         // Update duration only if the new value is longer (don't downgrade during generation)
         if (data.durationInFrames > 0) {

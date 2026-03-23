@@ -32,11 +32,15 @@ const TIMELINE_REGISTRY_INIT_PATTERN =
   /window\.__timelines\s*=\s*window\.__timelines\s*\|\|\s*\{\}|window\.__timelines\s*=\s*\{\}|window\.__timelines\s*\?\?=\s*\{\}/i;
 const TIMELINE_REGISTRY_ASSIGN_PATTERN = /window\.__timelines\[[^\]]+\]\s*=/i;
 const INVALID_SCRIPT_CLOSE_PATTERN = /<script[^>]*>[\s\S]*?<\s*\/\s*script(?!>)/i;
-const WINDOW_TIMELINE_ASSIGN_PATTERN = /window\.__timelines\[\s*["']([^"']+)["']\s*\]\s*=\s*([A-Za-z_$][\w$]*)/i;
+const WINDOW_TIMELINE_ASSIGN_PATTERN =
+  /window\.__timelines\[\s*["']([^"']+)["']\s*\]\s*=\s*([A-Za-z_$][\w$]*)/i;
 
 const META_GSAP_KEYS = new Set(["duration", "ease", "repeat", "yoyo", "overwrite", "delay"]);
 
-export function lintHyperframeHtml(html: string, options: HyperframeLinterOptions = {}): HyperframeLintResult {
+export function lintHyperframeHtml(
+  html: string,
+  options: HyperframeLinterOptions = {},
+): HyperframeLintResult {
   const source = html || "";
   const filePath = options.filePath;
   const findings: HyperframeLintFinding[] = [];
@@ -86,7 +90,10 @@ export function lintHyperframeHtml(html: string, options: HyperframeLinterOption
     });
   }
 
-  if (!TIMELINE_REGISTRY_INIT_PATTERN.test(source) && !TIMELINE_REGISTRY_ASSIGN_PATTERN.test(source)) {
+  if (
+    !TIMELINE_REGISTRY_INIT_PATTERN.test(source) &&
+    !TIMELINE_REGISTRY_ASSIGN_PATTERN.test(source)
+  ) {
     pushFinding({
       code: "missing_timeline_registry",
       severity: "error",
@@ -157,7 +164,8 @@ export function lintHyperframeHtml(html: string, options: HyperframeLinterOption
       severity: "warning",
       message: `Scoped CSS targets composition "${compId}" but no matching wrapper exists in this HTML.`,
       selector: `[data-composition-id="${compId}"]`,
-      fixHint: "Preserve the matching composition wrapper or align the CSS scope to an existing wrapper.",
+      fixHint:
+        "Preserve the matching composition wrapper or align the CSS scope to an existing wrapper.",
     });
   }
 
@@ -191,7 +199,8 @@ export function lintHyperframeHtml(html: string, options: HyperframeLinterOption
       severity: "error",
       message: `Media id "${elementId}" is defined multiple times.`,
       elementId,
-      fixHint: "Give each media element a unique id so preview and producer discover the same media graph.",
+      fixHint:
+        "Give each media element a unique id so preview and producer discover the same media graph.",
       snippet: truncateSnippet(mediaTags[0]?.raw || ""),
     });
   }
@@ -206,7 +215,9 @@ export function lintHyperframeHtml(html: string, options: HyperframeLinterOption
       severity: "warning",
       message: `Detected ${count} matching ${tagName} entries with the same source/start/duration.`,
       fixHint: "Avoid duplicated media nodes that can be discovered twice during compilation.",
-      snippet: truncateSnippet(`${tagName} src=${src} data-start=${dataStart} data-duration=${dataDuration}`),
+      snippet: truncateSnippet(
+        `${tagName} src=${src} data-start=${dataStart} data-duration=${dataDuration}`,
+      ),
     });
   }
 
@@ -302,7 +313,11 @@ export function lintHyperframeHtml(html: string, options: HyperframeLinterOption
   for (const tag of tags) {
     if (tag.name === "video" || tag.name === "audio") continue;
     if (readAttr(tag.raw, "data-start")) {
-      timedTagPositions.push({ name: tag.name, start: tag.index, id: readAttr(tag.raw, "id") || undefined });
+      timedTagPositions.push({
+        name: tag.name,
+        start: tag.index,
+        id: readAttr(tag.raw, "id") || undefined,
+      });
     }
   }
   for (const tag of tags) {
@@ -424,7 +439,7 @@ function extractBlocks(source: string, pattern: RegExp): ExtractedBlock[] {
 
 function findRootTag(source: string): OpenTag | null {
   const bodyMatch = source.match(/<body\b[^>]*>([\s\S]*?)<\/body>/i);
-  const bodyContent = bodyMatch ? bodyMatch[1] ?? source : source;
+  const bodyContent = bodyMatch ? (bodyMatch[1] ?? source) : source;
   const bodyTags = extractOpenTags(bodyContent);
   for (const tag of bodyTags) {
     if (["script", "style", "meta", "link", "title"].includes(tag.name)) {
@@ -517,7 +532,10 @@ function extractGsapWindows(script: string): GsapWindow[] {
 
   const windows: GsapWindow[] = [];
   const timelineVar = parsed.timelineVar;
-  const methodPattern = new RegExp(`${timelineVar}\\.(set|to|from|fromTo)\\s*\\(([^)]+(?:\\{[^}]*\\}[^)]*)+)\\)`, "g");
+  const methodPattern = new RegExp(
+    `${timelineVar}\\.(set|to|from|fromTo)\\s*\\(([^)]+(?:\\{[^}]*\\}[^)]*)+)\\)`,
+    "g",
+  );
 
   let match: RegExpExecArray | null;
   let index = 0;
@@ -620,7 +638,10 @@ function parseLooseObjectLiteral(source: string): Record<string, string | number
     if (!key || rawValue == null) {
       continue;
     }
-    if ((rawValue.startsWith('"') && rawValue.endsWith('"')) || (rawValue.startsWith("'") && rawValue.endsWith("'"))) {
+    if (
+      (rawValue.startsWith('"') && rawValue.endsWith('"')) ||
+      (rawValue.startsWith("'") && rawValue.endsWith("'"))
+    ) {
       result[key] = rawValue.slice(1, -1);
       continue;
     }

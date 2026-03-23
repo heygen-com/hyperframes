@@ -67,7 +67,10 @@ function main() {
       process.exit(1);
     }
 
-    execSync(`git add ${PACKAGES.map((p) => join(p, "package.json")).join(" ")}`, { cwd: ROOT, stdio: "inherit" });
+    execSync(`git add ${PACKAGES.map((p) => join(p, "package.json")).join(" ")}`, {
+      cwd: ROOT,
+      stdio: "inherit",
+    });
     execSync(`git commit -m "chore: release v${version}"`, { cwd: ROOT, stdio: "inherit" });
     execSync(`git tag v${version}`, { cwd: ROOT, stdio: "inherit" });
     console.log(`\nCreated commit and tag v${version}`);

@@ -36,7 +36,10 @@ const DEFAULT_CONFIGS: BenchmarkConfig[] = [
 ];
 
 export default defineCommand({
-  meta: { name: "benchmark", description: "Run multiple render configurations and compare results" },
+  meta: {
+    name: "benchmark",
+    description: "Run multiple render configurations and compare results",
+  },
   args: {
     dir: { type: "positional", description: "Project directory", required: false },
     runs: { type: "string", description: "Number of runs per config", default: "3" },
@@ -64,7 +67,9 @@ export default defineCommand({
       producer = await loadProducer();
     } catch {
       if (jsonOutput) {
-        console.log(JSON.stringify({ error: "Producer module not available. Is the project built?" }));
+        console.log(
+          JSON.stringify({ error: "Producer module not available. Is the project built?" }),
+        );
       } else {
         errorBox(
           "Producer module not available",
@@ -99,7 +104,10 @@ export default defineCommand({
 
       for (let i = 0; i < runsPerConfig; i++) {
         s?.message(`${config.label} — run ${i + 1}/${runsPerConfig}`);
-        const outputPath = join(benchDir, `${config.label.replace(/[^a-zA-Z0-9]/g, "_")}_run${i}.mp4`);
+        const outputPath = join(
+          benchDir,
+          `${config.label.replace(/[^a-zA-Z0-9]/g, "_")}_run${i}.mp4`,
+        );
 
         try {
           const startTime = Date.now();
@@ -176,12 +184,9 @@ export default defineCommand({
     console.log(separator);
 
     for (const result of results) {
-      const timeStr =
-        result.avgTime != null ? formatDuration(result.avgTime) : c.dim("failed");
-      const sizeStr =
-        result.avgSize != null ? formatBytes(result.avgSize) : c.dim("n/a");
-      const failStr =
-        result.failures > 0 ? c.warn(` (${result.failures} failed)`) : "";
+      const timeStr = result.avgTime != null ? formatDuration(result.avgTime) : c.dim("failed");
+      const sizeStr = result.avgSize != null ? formatBytes(result.avgSize) : c.dim("n/a");
+      const failStr = result.failures > 0 ? c.warn(` (${result.failures} failed)`) : "";
 
       console.log(
         "   " +
@@ -215,8 +220,7 @@ export default defineCommand({
     } else {
       console.log("");
       console.log(
-        c.error("\u2717") +
-          "  All configurations failed. Ensure the rendering pipeline is set up.",
+        c.error("\u2717") + "  All configurations failed. Ensure the rendering pipeline is set up.",
       );
     }
 

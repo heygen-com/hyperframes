@@ -65,7 +65,8 @@ function createPlayer(timeline: RuntimeTimelineLike) {
 
 function testSeekUsesDeterministicGsapPath(): void {
   const { calls, timeline } = createTimeline(true);
-  const { player, deterministicSeekCalls, syncMediaCalls, renderFrameSeekCalls } = createPlayer(timeline);
+  const { player, deterministicSeekCalls, syncMediaCalls, renderFrameSeekCalls } =
+    createPlayer(timeline);
   const quantizedTime = 2;
 
   player.seek(2.017);
@@ -81,7 +82,11 @@ function testSeekUsesDeterministicGsapPath(): void {
     "player.seek() should notify adapters with the quantized time",
   );
   assert.deepEqual(syncMediaCalls, [quantizedTime], "media sync should use quantized time");
-  assert.deepEqual(renderFrameSeekCalls, [quantizedTime], "render frame seek should use quantized time");
+  assert.deepEqual(
+    renderFrameSeekCalls,
+    [quantizedTime],
+    "render frame seek should use quantized time",
+  );
 }
 
 function testGsapAdapterPreservesTotalTime(): void {

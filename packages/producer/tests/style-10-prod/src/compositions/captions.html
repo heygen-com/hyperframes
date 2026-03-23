@@ -3,7 +3,7 @@
     <div id="captions-container"></div>
 
     <style>
-      @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@900&display=swap');
+      @import url("https://fonts.googleapis.com/css2?family=Nunito:wght@900&display=swap");
 
       [data-composition-id="captions"] {
         width: 1080px;
@@ -12,7 +12,7 @@
         justify-content: center;
         align-items: flex-start;
         padding-top: 200px;
-        font-family: 'Nunito', sans-serif;
+        font-family: "Nunito", sans-serif;
         font-weight: 900;
         pointer-events: none;
         background: transparent;
@@ -27,7 +27,7 @@
       }
 
       .caption-group {
-        background-color: #FF2D8A;
+        background-color: #ff2d8a;
         border-radius: 40px;
         padding: 20px 40px;
         display: flex;
@@ -45,7 +45,7 @@
       }
 
       .word {
-        color: #FFFFFF;
+        color: #ffffff;
         font-size: 60px;
         text-transform: uppercase;
         display: inline-block;
@@ -55,9 +55,57 @@
     </style>
 
     <script>
-      (function() {
-        const TRANSCRIPT = [{'text': 'We', 'start': 0.119, 'end': 0.259}, {'text': 'asked', 'start': 0.319, 'end': 0.479}, {'text': 'what', 'start': 0.519, 'end': 0.659}, {'text': 'you', 'start': 0.699, 'end': 0.819}, {'text': 'needed.', 'start': 0.859, 'end': 1.819}, {'text': 'Forty-seven', 'start': 1.839, 'end': 2.299}, {'text': 'percent', 'start': 2.399, 'end': 2.679}, {'text': 'of', 'start': 2.7, 'end': 2.799}, {'text': 'you', 'start': 2.839, 'end': 2.939}, {'text': 'said', 'start': 3.039, 'end': 3.179}, {'text': 'motion', 'start': 3.24, 'end': 3.559}, {'text': 'graphics.', 'start': 3.579, 'end': 4.639}, {'text': 'Sixty-two', 'start': 4.659, 'end': 5.179}, {'text': 'percent', 'start': 5.299, 'end': 5.759}, {'text': 'said', 'start': 5.859, 'end': 5.98}, {'text': 'static', 'start': 6.099, 'end': 6.399}, {'text': 'content', 'start': 6.46, 'end': 6.879}, {'text': 'was', 'start': 6.92, 'end': 7.079}, {'text': 'costing', 'start': 7.099, 'end': 7.48}, {'text': 'you', 'start': 7.5, 'end': 7.579}, {'text': 'attention,', 'start': 7.679, 'end': 8.659}, {'text': 'and', 'start': 8.699, 'end': 8.86}, {'text': 'three', 'start': 8.88, 'end': 9.06}, {'text': 'out', 'start': 9.079, 'end': 9.18}, {'text': 'of', 'start': 9.199, 'end': 9.34}, {'text': 'four', 'start': 9.38, 'end': 9.799}, {'text': 'said', 'start': 9.84, 'end': 10.0}, {'text': 'you', 'start': 10.019, 'end': 10.159}, {'text': 'know', 'start': 10.179, 'end': 10.36}, {'text': 'the', 'start': 10.38, 'end': 10.479}, {'text': 'look', 'start': 10.52, 'end': 10.699}, {'text': 'you', 'start': 10.739, 'end': 10.859}, {'text': 'want', 'start': 10.98, 'end': 11.34}, {'text': 'but', 'start': 11.359, 'end': 11.52}, {'text': "don't", 'start': 11.56, 'end': 11.779}, {'text': 'have', 'start': 11.819, 'end': 11.94}, {'text': 'the', 'start': 11.96, 'end': 12.06}, {'text': 'editing', 'start': 12.079, 'end': 12.4}, {'text': 'skills', 'start': 12.52, 'end': 12.86}, {'text': 'to', 'start': 12.88, 'end': 13.0}, {'text': 'get', 'start': 13.019, 'end': 13.18}, {'text': 'there.', 'start': 13.22, 'end': 14.22}, {'text': 'So', 'start': 14.239, 'end': 14.399}, {'text': 'we', 'start': 14.42, 'end': 14.52}, {'text': 'built', 'start': 14.619, 'end': 14.88}, {'text': 'Editor', 'start': 15.079, 'end': 15.42}, {'text': 'Agent', 'start': 15.619, 'end': 16.019}];
-        const container = document.getElementById('captions-container');
+      (function () {
+        const TRANSCRIPT = [
+          { text: "We", start: 0.119, end: 0.259 },
+          { text: "asked", start: 0.319, end: 0.479 },
+          { text: "what", start: 0.519, end: 0.659 },
+          { text: "you", start: 0.699, end: 0.819 },
+          { text: "needed.", start: 0.859, end: 1.819 },
+          { text: "Forty-seven", start: 1.839, end: 2.299 },
+          { text: "percent", start: 2.399, end: 2.679 },
+          { text: "of", start: 2.7, end: 2.799 },
+          { text: "you", start: 2.839, end: 2.939 },
+          { text: "said", start: 3.039, end: 3.179 },
+          { text: "motion", start: 3.24, end: 3.559 },
+          { text: "graphics.", start: 3.579, end: 4.639 },
+          { text: "Sixty-two", start: 4.659, end: 5.179 },
+          { text: "percent", start: 5.299, end: 5.759 },
+          { text: "said", start: 5.859, end: 5.98 },
+          { text: "static", start: 6.099, end: 6.399 },
+          { text: "content", start: 6.46, end: 6.879 },
+          { text: "was", start: 6.92, end: 7.079 },
+          { text: "costing", start: 7.099, end: 7.48 },
+          { text: "you", start: 7.5, end: 7.579 },
+          { text: "attention,", start: 7.679, end: 8.659 },
+          { text: "and", start: 8.699, end: 8.86 },
+          { text: "three", start: 8.88, end: 9.06 },
+          { text: "out", start: 9.079, end: 9.18 },
+          { text: "of", start: 9.199, end: 9.34 },
+          { text: "four", start: 9.38, end: 9.799 },
+          { text: "said", start: 9.84, end: 10.0 },
+          { text: "you", start: 10.019, end: 10.159 },
+          { text: "know", start: 10.179, end: 10.36 },
+          { text: "the", start: 10.38, end: 10.479 },
+          { text: "look", start: 10.52, end: 10.699 },
+          { text: "you", start: 10.739, end: 10.859 },
+          { text: "want", start: 10.98, end: 11.34 },
+          { text: "but", start: 11.359, end: 11.52 },
+          { text: "don't", start: 11.56, end: 11.779 },
+          { text: "have", start: 11.819, end: 11.94 },
+          { text: "the", start: 11.96, end: 12.06 },
+          { text: "editing", start: 12.079, end: 12.4 },
+          { text: "skills", start: 12.52, end: 12.86 },
+          { text: "to", start: 12.88, end: 13.0 },
+          { text: "get", start: 13.019, end: 13.18 },
+          { text: "there.", start: 13.22, end: 14.22 },
+          { text: "So", start: 14.239, end: 14.399 },
+          { text: "we", start: 14.42, end: 14.52 },
+          { text: "built", start: 14.619, end: 14.88 },
+          { text: "Editor", start: 15.079, end: 15.42 },
+          { text: "Agent", start: 15.619, end: 16.019 },
+        ];
+        const container = document.getElementById("captions-container");
         const tl = gsap.timeline({ paused: true });
 
         // Group transcript into lines based on word count and character count
@@ -67,8 +115,8 @@
         const MAX_WORDS = 3;
         const MAX_CHARS = 20;
 
-        TRANSCRIPT.forEach(word => {
-          if (currentGroup.length >= MAX_WORDS || (currentChars + word.text.length) > MAX_CHARS) {
+        TRANSCRIPT.forEach((word) => {
+          if (currentGroup.length >= MAX_WORDS || currentChars + word.text.length > MAX_CHARS) {
             groups.push(currentGroup);
             currentGroup = [];
             currentChars = 0;
@@ -81,13 +129,16 @@
         }
 
         groups.forEach((group, groupIndex) => {
-          const groupEl = document.createElement('div');
-          groupEl.className = 'caption-group';
+          const groupEl = document.createElement("div");
+          groupEl.className = "caption-group";
           groupEl.id = `group-${groupIndex}`;
           container.appendChild(groupEl);
 
           const groupStart = group[0].start;
-          const nextGroupStart = (groupIndex < groups.length - 1) ? groups[groupIndex + 1][0].start : group[group.length - 1].end + 0.5;
+          const nextGroupStart =
+            groupIndex < groups.length - 1
+              ? groups[groupIndex + 1][0].start
+              : group[group.length - 1].end + 0.5;
           const groupEnd = nextGroupStart;
 
           // Show group
@@ -95,8 +146,8 @@
 
           group.forEach((wordData, wordIndex) => {
             // 2. Create Word Element
-            const wordEl = document.createElement('span');
-            wordEl.className = 'word';
+            const wordEl = document.createElement("span");
+            wordEl.className = "word";
             wordEl.textContent = wordData.text;
             groupEl.appendChild(wordEl);
 
@@ -105,13 +156,17 @@
             const staggerDelay = wordIndex * 0.05;
             const startTime = wordData.start + staggerDelay;
 
-            tl.to(wordEl, {
-              opacity: 1,
-              y: 0,
-              scale: 1,
-              duration: 0.4,
-              ease: "power4.out"
-            }, startTime);
+            tl.to(
+              wordEl,
+              {
+                opacity: 1,
+                y: 0,
+                scale: 1,
+                duration: 0.4,
+                ease: "power4.out",
+              },
+              startTime,
+            );
           });
 
           // Hide group

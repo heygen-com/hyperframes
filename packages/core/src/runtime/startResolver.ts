@@ -49,7 +49,10 @@ export function createRuntimeStartTimeResolver(params: {
   const findReferenceTarget = (refId: string): Element | null => {
     const byId = document.getElementById(refId);
     if (byId) return byId;
-    return (document.querySelector(`[data-composition-id="${CSS.escape(refId)}"]`) as Element | null) ?? null;
+    return (
+      (document.querySelector(`[data-composition-id="${CSS.escape(refId)}"]`) as Element | null) ??
+      null
+    );
   };
 
   const resolveDurationForElement = (element: Element): number | null => {

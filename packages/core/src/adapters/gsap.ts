@@ -20,7 +20,8 @@ export function createGSAPFrameAdapter(options: CreateGSAPFrameAdapterOptions): 
   const adapterId = options.id ?? "gsap";
 
   const getDurationSeconds = (): number => {
-    const totalDuration = typeof timeline.totalDuration === "function" ? timeline.totalDuration() : timeline.duration();
+    const totalDuration =
+      typeof timeline.totalDuration === "function" ? timeline.totalDuration() : timeline.duration();
     return Number.isFinite(totalDuration) && totalDuration > 0 ? totalDuration : 0;
   };
 

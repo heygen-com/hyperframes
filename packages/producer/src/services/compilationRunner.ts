@@ -8,10 +8,7 @@ import { readFileSync, writeFileSync, existsSync, mkdtempSync, rmSync, mkdirSync
 import { join } from "path";
 import { tmpdir } from "os";
 import { compileForRender } from "./htmlCompiler.js";
-import {
-  validateCompilation,
-  type CompilationValidationResult,
-} from "./compilationTester.js";
+import { validateCompilation, type CompilationValidationResult } from "./compilationTester.js";
 
 export interface CompilationTestResult {
   testId: string;
@@ -35,7 +32,7 @@ interface TestSuite {
  */
 export async function runCompilationTest(
   suite: TestSuite,
-  keepTemp: boolean
+  keepTemp: boolean,
 ): Promise<CompilationTestResult> {
   const startTime = Date.now();
 
@@ -49,11 +46,7 @@ export async function runCompilationTest(
       throw new Error(`Input HTML not found: ${inputHtmlPath}`);
     }
 
-    const compiled = await compileForRender(
-      suite.srcDir,
-      inputHtmlPath,
-      tempDir
-    );
+    const compiled = await compileForRender(suite.srcDir, inputHtmlPath, tempDir);
 
     const actualHtml = compiled.html;
 
@@ -86,8 +79,7 @@ export async function runCompilationTest(
     };
   } catch (error) {
     const compilationTimeMs = Date.now() - startTime;
-    const errorMessage =
-      error instanceof Error ? error.message : String(error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
 
     return {
       testId: suite.id,
@@ -113,9 +105,7 @@ export async function runCompilationTest(
  * Generate or update compiled.html golden file for a test suite.
  * Compiles src/index.html and writes to compiled.html.
  */
-export async function updateCompiledGolden(
-  suite: TestSuite
-): Promise<void> {
+export async function updateCompiledGolden(suite: TestSuite): Promise<void> {
   console.log(`[${suite.id}] Updating compiled.html golden file...`);
 
   // Create temp directory for downloads
@@ -128,11 +118,7 @@ export async function updateCompiledGolden(
     }
 
     // Compile the input HTML
-    const compiled = await compileForRender(
-      suite.srcDir,
-      inputHtmlPath,
-      tempDir
-    );
+    const compiled = await compileForRender(suite.srcDir, inputHtmlPath, tempDir);
 
     // Write to output/compiled.html
     const outputDir = join(suite.dir, "output");
@@ -142,10 +128,11 @@ export async function updateCompiledGolden(
     const goldenPath = join(outputDir, "compiled.html");
     writeFileSync(goldenPath, compiled.html, "utf-8");
 
-    console.log(`[${suite.id}] ✓ Updated output/compiled.html (${compiled.videos.length} video(s), ${compiled.audios.length} audio(s))`);
+    console.log(
+      `[${suite.id}] ✓ Updated output/compiled.html (${compiled.videos.length} video(s), ${compiled.audios.length} audio(s))`,
+    );
   } catch (error) {
-    const errorMessage =
-      error instanceof Error ? error.message : String(error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
     console.error(`[${suite.id}] ✗ Failed to update compiled.html: ${errorMessage}`);
     throw error;
   } finally {

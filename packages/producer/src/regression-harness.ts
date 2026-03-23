@@ -1,4 +1,14 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync, copyFileSync, rmSync, statSync, cpSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+  copyFileSync,
+  rmSync,
+  statSync,
+  cpSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, resolve, join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -118,7 +128,11 @@ function validateMetadata(meta: unknown): TestMetadata {
   if (typeof m.maxFrameFailures !== "number" || m.maxFrameFailures < 0) {
     throw new Error("meta.json: 'maxFrameFailures' must be a non-negative number");
   }
-  if (typeof m.minAudioCorrelation !== "number" || m.minAudioCorrelation < 0 || m.minAudioCorrelation > 1) {
+  if (
+    typeof m.minAudioCorrelation !== "number" ||
+    m.minAudioCorrelation < 0 ||
+    m.minAudioCorrelation > 1
+  ) {
     throw new Error("meta.json: 'minAudioCorrelation' must be between 0 and 1");
   }
   if (typeof m.maxAudioLagWindows !== "number" || m.maxAudioLagWindows < 1) {
@@ -140,7 +154,11 @@ function validateMetadata(meta: unknown): TestMetadata {
   return m as TestMetadata;
 }
 
-function discoverTestSuites(testsDir: string, filterNames: string[], excludeTags: string[] = []): TestSuite[] {
+function discoverTestSuites(
+  testsDir: string,
+  filterNames: string[],
+  excludeTags: string[] = [],
+): TestSuite[] {
   if (!existsSync(testsDir)) {
     throw new Error(`Tests directory not found: ${testsDir}`);
   }
@@ -181,13 +199,18 @@ function discoverTestSuites(testsDir: string, filterNames: string[], excludeTags
       const metaRaw = JSON.parse(readFileSync(metaPath, "utf-8"));
       meta = validateMetadata(metaRaw);
     } catch (error) {
-      console.warn(`⚠️  Skipping ${entry}: invalid meta.json - ${error instanceof Error ? error.message : String(error)}`);
+      console.warn(
+        `⚠️  Skipping ${entry}: invalid meta.json - ${error instanceof Error ? error.message : String(error)}`,
+      );
       continue;
     }
 
     // Skip tests with excluded tags
-    if (excludeTags.length > 0 && meta.tags.some(t => excludeTags.includes(t))) {
-      logPretty(`Skipping ${entry}: excluded by tags [${meta.tags.filter(t => excludeTags.includes(t)).join(", ")}]`, "⏭️");
+    if (excludeTags.length > 0 && meta.tags.some((t) => excludeTags.includes(t))) {
+      logPretty(
+        `Skipping ${entry}: excluded by tags [${meta.tags.filter((t) => excludeTags.includes(t)).join(", ")}]`,
+        "⏭️",
+      );
       continue;
     }
 
@@ -238,7 +261,7 @@ function extractFrameAsImage(
       "-y",
       outputPath,
     ],
-    `Frame extraction at ${timeSeconds}s`
+    `Frame extraction at ${timeSeconds}s`,
   );
 }
 
@@ -392,7 +415,7 @@ function saveFailureDetails(
         "=== COMPILATION FAILURE ===",
         "",
         "Errors:",
-        ...result.compilation.errors.map(e => `  - ${e}`),
+        ...result.compilation.errors.map((e) => `  - ${e}`),
         "",
         "Files saved for comparison:",
         `  - actual.html (what was compiled)`,
@@ -410,7 +433,7 @@ function saveFailureDetails(
 
   // Save visual failures
   if (result.visual && !result.visual.passed && result.visual.checkpoints.length > 0) {
-    const failedCheckpoints = result.visual.checkpoints.filter(c => !c.passed);
+    const failedCheckpoints = result.visual.checkpoints.filter((c) => !c.passed);
 
     const visualReport = {
       summary: {
@@ -418,7 +441,7 @@ function saveFailureDetails(
         failedCheckpoints: failedCheckpoints.length,
         threshold: suite.meta.minPsnr,
       },
-      failedFrames: failedCheckpoints.map(c => ({
+      failedFrames: failedCheckpoints.map((c) => ({
         time: c.time,
         psnr: c.psnr,
         belowThresholdBy: suite.meta.minPsnr - c.psnr,
@@ -428,7 +451,7 @@ function saveFailureDetails(
     writeFileSync(
       join(failuresDir, "visual-failures.json"),
       JSON.stringify(visualReport, null, 2),
-      "utf-8"
+      "utf-8",
     );
 
     // Extract images for first 10 failed frames
@@ -448,13 +471,13 @@ function saveFailureDetails(
             renderedVideoPath,
             checkpoint.time,
             join(framesDir, `actual_${timeStr}s.png`),
-            suite.meta.renderConfig.fps
+            suite.meta.renderConfig.fps,
           );
           extractFrameAsImage(
             snapshotVideoPath,
             checkpoint.time,
             join(framesDir, `expected_${timeStr}s.png`),
-            suite.meta.renderConfig.fps
+            suite.meta.renderConfig.fps,
           );
         } catch {
           logPretty(`  Warning: Could not extract frame at ${checkpoint.time}s`, "⚠️");
@@ -483,7 +506,7 @@ function saveFailureDetails(
     writeFileSync(
       join(failuresDir, "audio-failures.json"),
       JSON.stringify(audioReport, null, 2),
-      "utf-8"
+      "utf-8",
     );
 
     logPretty(`Saved audio failure details to ${failuresDir}/`, "💾");
@@ -497,7 +520,7 @@ async function runTestSuite(
   options: {
     update: boolean;
     keepTemp: boolean;
-  }
+  },
 ): Promise<TestResult> {
   // Use predictable temp location: /tmp/hyperframes-tests/{test-id}/
   const testsRoot = join(tmpdir(), "hyperframes-tests");
@@ -545,12 +568,20 @@ async function runTestSuite(
         mkdirSync(snapshotDir, { recursive: true });
       }
       writeFileSync(snapshotCompiledPath, compiled.html, "utf-8");
-      console.log(JSON.stringify({ event: "snapshot_updated", suite: suite.id, file: "output/compiled.html" }));
+      console.log(
+        JSON.stringify({
+          event: "snapshot_updated",
+          suite: suite.id,
+          file: "output/compiled.html",
+        }),
+      );
       result.compilation = { passed: true, errors: [], warnings: [] };
     } else {
       // Test mode: compare against snapshot
       if (!existsSync(snapshotCompiledPath)) {
-        throw new Error(`Snapshot not found: ${snapshotCompiledPath}. Run with --update to create it.`);
+        throw new Error(
+          `Snapshot not found: ${snapshotCompiledPath}. Run with --update to create it.`,
+        );
       }
 
       snapshotHtml = readFileSync(snapshotCompiledPath, "utf-8");
@@ -562,20 +593,24 @@ async function runTestSuite(
         warnings: validation.warnings,
       };
 
-      console.log(JSON.stringify({
-        event: "compilation_complete",
-        suite: suite.id,
-        passed: validation.passed,
-        errors: validation.errors.length,
-        warnings: validation.warnings.length,
-      }));
+      console.log(
+        JSON.stringify({
+          event: "compilation_complete",
+          suite: suite.id,
+          passed: validation.passed,
+          errors: validation.errors.length,
+          warnings: validation.warnings.length,
+        }),
+      );
 
       if (!validation.passed) {
-        console.error(JSON.stringify({
-          event: "compilation_failed",
-          suite: suite.id,
-          errors: validation.errors,
-        }));
+        console.error(
+          JSON.stringify({
+            event: "compilation_failed",
+            suite: suite.id,
+            errors: validation.errors,
+          }),
+        );
         result.passed = false;
         return result;
       }
@@ -607,7 +642,9 @@ async function runTestSuite(
         mkdirSync(snapshotDir, { recursive: true });
       }
       copyFileSync(renderedOutputPath, snapshotVideoPath);
-      console.log(JSON.stringify({ event: "snapshot_updated", suite: suite.id, file: "output/output.mp4" }));
+      console.log(
+        JSON.stringify({ event: "snapshot_updated", suite: suite.id, file: "output/output.mp4" }),
+      );
       result.visual = { passed: true, failedFrames: 0, checkpoints: [] };
       result.audio = { passed: true, correlation: 1, lagWindows: 0 };
       result.passed = true;
@@ -627,7 +664,12 @@ async function runTestSuite(
     const visualCheckpoints: Array<{ time: number; psnr: number; passed: boolean }> = [];
     for (let i = 0; i < 100; i++) {
       const time = (videoDuration * i) / 100;
-      const psnr = psnrAtCheckpoint(renderedOutputPath, snapshotVideoPath, time, suite.meta.renderConfig.fps);
+      const psnr = psnrAtCheckpoint(
+        renderedOutputPath,
+        snapshotVideoPath,
+        time,
+        suite.meta.renderConfig.fps,
+      );
       visualCheckpoints.push({
         time,
         psnr,
@@ -649,18 +691,26 @@ async function runTestSuite(
       checkpoints: visualCheckpoints,
     };
 
-    console.log(JSON.stringify({
-      event: "visual_comparison_complete",
-      suite: suite.id,
-      passed: visualPassed,
-      failedFrames,
-      checkpoints: visualCheckpoints,
-    }));
+    console.log(
+      JSON.stringify({
+        event: "visual_comparison_complete",
+        suite: suite.id,
+        passed: visualPassed,
+        failedFrames,
+        checkpoints: visualCheckpoints,
+      }),
+    );
 
     if (visualPassed) {
-      logPretty(`Visual quality: PASSED (${failedFrames} failed frames, threshold: ${suite.meta.maxFrameFailures})`, "✓");
+      logPretty(
+        `Visual quality: PASSED (${failedFrames} failed frames, threshold: ${suite.meta.maxFrameFailures})`,
+        "✓",
+      );
     } else {
-      logPretty(`Visual quality: FAILED (${failedFrames} failed frames, threshold: ${suite.meta.maxFrameFailures})`, "✗");
+      logPretty(
+        `Visual quality: FAILED (${failedFrames} failed frames, threshold: ${suite.meta.maxFrameFailures})`,
+        "✗",
+      );
     }
 
     // Audio comparison
@@ -675,7 +725,11 @@ async function runTestSuite(
     if (renderedAudio.length > 0 && snapshotAudio.length > 0) {
       const renderedEnvelope = buildRmsEnvelope(renderedAudio);
       const snapshotEnvelope = buildRmsEnvelope(snapshotAudio);
-      const audio = bestEnvelopeCorrelation(renderedEnvelope, snapshotEnvelope, suite.meta.maxAudioLagWindows);
+      const audio = bestEnvelopeCorrelation(
+        renderedEnvelope,
+        snapshotEnvelope,
+        suite.meta.maxAudioLagWindows,
+      );
       audioCorrelation = audio.correlation;
       audioLagWindows = audio.lagWindows;
       audioPassed = audio.correlation >= suite.meta.minAudioCorrelation;
@@ -687,18 +741,26 @@ async function runTestSuite(
       lagWindows: audioLagWindows,
     };
 
-    console.log(JSON.stringify({
-      event: "audio_comparison_complete",
-      suite: suite.id,
-      passed: audioPassed,
-      correlation: audioCorrelation,
-      lagWindows: audioLagWindows,
-    }));
+    console.log(
+      JSON.stringify({
+        event: "audio_comparison_complete",
+        suite: suite.id,
+        passed: audioPassed,
+        correlation: audioCorrelation,
+        lagWindows: audioLagWindows,
+      }),
+    );
 
     if (audioPassed) {
-      logPretty(`Audio quality: PASSED (correlation: ${audioCorrelation.toFixed(3)}, lag: ${audioLagWindows})`, "✓");
+      logPretty(
+        `Audio quality: PASSED (correlation: ${audioCorrelation.toFixed(3)}, lag: ${audioLagWindows})`,
+        "✓",
+      );
     } else {
-      logPretty(`Audio quality: FAILED (correlation: ${audioCorrelation.toFixed(3)}, threshold: ${suite.meta.minAudioCorrelation})`, "✗");
+      logPretty(
+        `Audio quality: FAILED (correlation: ${audioCorrelation.toFixed(3)}, threshold: ${suite.meta.minAudioCorrelation})`,
+        "✗",
+      );
     }
 
     // Overall test passes if all checks passed
@@ -716,11 +778,13 @@ async function runTestSuite(
     const errorMessage = error instanceof Error ? error.message : String(error);
     result.passed = false;
 
-    console.error(JSON.stringify({
-      event: "test_error",
-      suite: suite.id,
-      error: errorMessage,
-    }));
+    console.error(
+      JSON.stringify({
+        event: "test_error",
+        suite: suite.id,
+        error: errorMessage,
+      }),
+    );
 
     return result;
   } finally {
@@ -733,10 +797,13 @@ async function runTestSuite(
           renderedOutputPath,
           snapshotVideoPath,
           compiledHtml,
-          snapshotHtml
+          snapshotHtml,
         );
       } catch (error) {
-        logPretty(`Warning: Could not save failure details: ${error instanceof Error ? error.message : String(error)}`, "⚠️");
+        logPretty(
+          `Warning: Could not save failure details: ${error instanceof Error ? error.message : String(error)}`,
+          "⚠️",
+        );
       }
     }
 
@@ -766,13 +833,18 @@ async function run(): Promise<void> {
     throw new Error(`No test suites found in ${testsDir}`);
   }
 
-  console.log(JSON.stringify({
-    event: "test_suite_start",
-    totalSuites: suites.length,
-    parallel: !options.sequential
-  }));
+  console.log(
+    JSON.stringify({
+      event: "test_suite_start",
+      totalSuites: suites.length,
+      parallel: !options.sequential,
+    }),
+  );
 
-  logPretty(`Starting ${suites.length} test suite(s) - ${options.sequential ? "sequential" : "parallel"} mode`, "🚀");
+  logPretty(
+    `Starting ${suites.length} test suite(s) - ${options.sequential ? "sequential" : "parallel"} mode`,
+    "🚀",
+  );
 
   let results: TestResult[] = [];
 
@@ -783,18 +855,20 @@ async function run(): Promise<void> {
         const result = await runTestSuite(suite, options);
         results.push(result);
       } catch (error) {
-        console.error(JSON.stringify({
-          event: "test_failed",
-          suite: suite.id,
-          error: error instanceof Error ? error.message : String(error),
-        }));
+        console.error(
+          JSON.stringify({
+            event: "test_failed",
+            suite: suite.id,
+            error: error instanceof Error ? error.message : String(error),
+          }),
+        );
         process.exitCode = 1;
       }
     }
   } else {
     // Parallel execution (default)
     const settledResults = await Promise.allSettled(
-      suites.map(suite => runTestSuite(suite, options))
+      suites.map((suite) => runTestSuite(suite, options)),
     );
 
     results = settledResults.map((settled, index) => {
@@ -802,11 +876,14 @@ async function run(): Promise<void> {
       if (settled.status === "fulfilled") {
         return settled.value;
       } else {
-        console.error(JSON.stringify({
-          event: "test_failed",
-          suite: matchingSuite?.id ?? "unknown",
-          error: settled.reason instanceof Error ? settled.reason.message : String(settled.reason),
-        }));
+        console.error(
+          JSON.stringify({
+            event: "test_failed",
+            suite: matchingSuite?.id ?? "unknown",
+            error:
+              settled.reason instanceof Error ? settled.reason.message : String(settled.reason),
+          }),
+        );
         process.exitCode = 1;
         if (!matchingSuite) {
           throw new Error(`No matching suite at index ${index}`);
@@ -821,35 +898,41 @@ async function run(): Promise<void> {
 
   // Summary
   if (options.update) {
-    console.log(JSON.stringify({
-      event: "snapshots_updated",
-      total: results.length,
-    }));
+    console.log(
+      JSON.stringify({
+        event: "snapshots_updated",
+        total: results.length,
+      }),
+    );
     logPretty(`Updated ${results.length} snapshot(s)`, "📸");
   } else {
     const passed = results.filter((r) => r.passed).length;
     const failed = results.filter((r) => !r.passed).length;
-    const failedAtCompilation = results.filter((r) => r.compilation && !r.compilation.passed).length;
+    const failedAtCompilation = results.filter(
+      (r) => r.compilation && !r.compilation.passed,
+    ).length;
     const failedAtVisual = results.filter((r) => r.visual && !r.visual.passed).length;
     const failedAtAudio = results.filter((r) => r.audio && !r.audio.passed).length;
 
-    console.log(JSON.stringify({
-      event: "test_suite_summary",
-      total: results.length,
-      passed,
-      failed,
-      failedAtCompilation,
-      failedAtVisual,
-      failedAtAudio,
-      results: results.map((r) => ({
-        suite: r.suite.id,
-        name: r.suite.meta.name,
-        passed: r.passed,
-        compilation: r.compilation?.passed,
-        visual: r.visual?.passed,
-        audio: r.audio?.passed,
-      })),
-    }));
+    console.log(
+      JSON.stringify({
+        event: "test_suite_summary",
+        total: results.length,
+        passed,
+        failed,
+        failedAtCompilation,
+        failedAtVisual,
+        failedAtAudio,
+        results: results.map((r) => ({
+          suite: r.suite.id,
+          name: r.suite.meta.name,
+          passed: r.passed,
+          compilation: r.compilation?.passed,
+          visual: r.visual?.passed,
+          audio: r.audio?.passed,
+        })),
+      }),
+    );
 
     // Pretty summary
     logPretty("═══════════════════════════════════════", "");

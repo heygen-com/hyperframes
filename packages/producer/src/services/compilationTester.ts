@@ -161,7 +161,7 @@ function validateElementTiming(element: CompiledElement, label: string): string[
       const computed = element.dataStart + element.dataDuration;
       if (Math.abs(element.dataEnd - computed) > EPSILON) {
         errors.push(
-          `${label} [${element.id}]: data-end (${element.dataEnd}) != data-start (${element.dataStart}) + data-duration (${element.dataDuration}) = ${computed}`
+          `${label} [${element.id}]: data-end (${element.dataEnd}) != data-start (${element.dataStart}) + data-duration (${element.dataDuration}) = ${computed}`,
         );
       }
     }
@@ -179,16 +179,13 @@ function validateElementTiming(element: CompiledElement, label: string): string[
  * Compare two elements and return differences.
  * Compares timing attributes with epsilon tolerance.
  */
-function compareElements(
-  actual: CompiledElement,
-  golden: CompiledElement
-): string[] {
+function compareElements(actual: CompiledElement, golden: CompiledElement): string[] {
   const errors: string[] = [];
 
   // Compare tag names
   if (actual.tagName !== golden.tagName) {
     errors.push(
-      `[${actual.id}]: tagName mismatch (actual: ${actual.tagName}, golden: ${golden.tagName})`
+      `[${actual.id}]: tagName mismatch (actual: ${actual.tagName}, golden: ${golden.tagName})`,
     );
     return errors; // Don't continue if tag mismatch
   }
@@ -196,7 +193,7 @@ function compareElements(
   // Compare data-start (should be exact)
   if (Math.abs(actual.dataStart - golden.dataStart) > EPSILON) {
     errors.push(
-      `[${actual.id}]: data-start mismatch (actual: ${actual.dataStart}, golden: ${golden.dataStart})`
+      `[${actual.id}]: data-start mismatch (actual: ${actual.dataStart}, golden: ${golden.dataStart})`,
     );
   }
 
@@ -206,7 +203,7 @@ function compareElements(
       errors.push(`[${actual.id}]: missing data-end (golden has: ${golden.dataEnd})`);
     } else if (Math.abs(actual.dataEnd - golden.dataEnd) > EPSILON) {
       errors.push(
-        `[${actual.id}]: data-end mismatch (actual: ${actual.dataEnd}, golden: ${golden.dataEnd})`
+        `[${actual.id}]: data-end mismatch (actual: ${actual.dataEnd}, golden: ${golden.dataEnd})`,
       );
     }
   }
@@ -214,12 +211,10 @@ function compareElements(
   // Compare data-duration with epsilon tolerance
   if (golden.dataDuration !== null) {
     if (actual.dataDuration === null) {
-      errors.push(
-        `[${actual.id}]: missing data-duration (golden has: ${golden.dataDuration})`
-      );
+      errors.push(`[${actual.id}]: missing data-duration (golden has: ${golden.dataDuration})`);
     } else if (Math.abs(actual.dataDuration - golden.dataDuration) > EPSILON) {
       errors.push(
-        `[${actual.id}]: data-duration mismatch (actual: ${actual.dataDuration}, golden: ${golden.dataDuration})`
+        `[${actual.id}]: data-duration mismatch (actual: ${actual.dataDuration}, golden: ${golden.dataDuration})`,
       );
     }
   }
@@ -228,7 +223,7 @@ function compareElements(
   if (actual.tagName === "video") {
     if (actual.dataHasAudio !== golden.dataHasAudio) {
       errors.push(
-        `[${actual.id}]: data-has-audio mismatch (actual: ${actual.dataHasAudio}, golden: ${golden.dataHasAudio})`
+        `[${actual.id}]: data-has-audio mismatch (actual: ${actual.dataHasAudio}, golden: ${golden.dataHasAudio})`,
       );
     }
   }
@@ -236,7 +231,7 @@ function compareElements(
   // Compare composition-src (composition only)
   if (actual.tagName === "div" && actual.compositionSrc !== golden.compositionSrc) {
     errors.push(
-      `[${actual.id}]: data-composition-src mismatch (actual: ${actual.compositionSrc}, golden: ${golden.compositionSrc})`
+      `[${actual.id}]: data-composition-src mismatch (actual: ${actual.compositionSrc}, golden: ${golden.compositionSrc})`,
     );
   }
 
@@ -249,7 +244,7 @@ function compareElements(
  */
 export function validateCompilation(
   actualHtml: string,
-  goldenHtml: string
+  goldenHtml: string,
 ): CompilationValidationResult {
   const actualElements = extractTimedElements(actualHtml);
   const goldenElements = extractTimedElements(goldenHtml);
@@ -269,9 +264,7 @@ export function validateCompilation(
   for (const element of goldenElements) {
     const timingErrors = validateElementTiming(element, "golden");
     if (timingErrors.length > 0) {
-      warnings.push(
-        `Golden file has invalid timing: ${timingErrors.join(", ")}`
-      );
+      warnings.push(`Golden file has invalid timing: ${timingErrors.join(", ")}`);
     }
   }
 
@@ -300,9 +293,7 @@ export function validateCompilation(
   // Check for missing elements (in golden but not in actual)
   for (const [id] of goldenMap) {
     if (!actualMap.has(id)) {
-      errors.push(
-        `Missing element [${id}] (present in golden, not in actual)`
-      );
+      errors.push(`Missing element [${id}] (present in golden, not in actual)`);
     }
   }
 
@@ -310,7 +301,7 @@ export function validateCompilation(
   for (const [id, actualEl] of actualMap) {
     if (!goldenMap.has(id)) {
       warnings.push(
-        `Extra element [${id}] <${actualEl.tagName}> (present in actual, not in golden)`
+        `Extra element [${id}] <${actualEl.tagName}> (present in actual, not in golden)`,
       );
     }
   }

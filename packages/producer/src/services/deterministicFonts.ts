@@ -35,42 +35,23 @@ const GENERIC_FAMILIES = new Set([
 const CANONICAL_FONTS: Record<string, CanonicalFontSpec> = {
   inter: {
     packageName: "@fontsource/inter",
-    faces: [
-      { weight: "400" },
-      { weight: "700" },
-      { weight: "900" },
-    ],
+    faces: [{ weight: "400" }, { weight: "700" }, { weight: "900" }],
   },
   montserrat: {
     packageName: "@fontsource/montserrat",
-    faces: [
-      { weight: "400" },
-      { weight: "700" },
-      { weight: "900" },
-    ],
+    faces: [{ weight: "400" }, { weight: "700" }, { weight: "900" }],
   },
   outfit: {
     packageName: "@fontsource/outfit",
-    faces: [
-      { weight: "400" },
-      { weight: "700" },
-      { weight: "900" },
-    ],
+    faces: [{ weight: "400" }, { weight: "700" }, { weight: "900" }],
   },
   nunito: {
     packageName: "@fontsource/nunito",
-    faces: [
-      { weight: "400" },
-      { weight: "700" },
-      { weight: "900" },
-    ],
+    faces: [{ weight: "400" }, { weight: "700" }, { weight: "900" }],
   },
   oswald: {
     packageName: "@fontsource/oswald",
-    faces: [
-      { weight: "400" },
-      { weight: "700" },
-    ],
+    faces: [{ weight: "400" }, { weight: "700" }],
   },
   "league-gothic": {
     packageName: "@fontsource/league-gothic",
@@ -82,31 +63,19 @@ const CANONICAL_FONTS: Record<string, CanonicalFontSpec> = {
   },
   "space-mono": {
     packageName: "@fontsource/space-mono",
-    faces: [
-      { weight: "400" },
-      { weight: "700" },
-    ],
+    faces: [{ weight: "400" }, { weight: "700" }],
   },
   "ibm-plex-mono": {
     packageName: "@fontsource/ibm-plex-mono",
-    faces: [
-      { weight: "400" },
-      { weight: "700" },
-    ],
+    faces: [{ weight: "400" }, { weight: "700" }],
   },
   "jetbrains-mono": {
     packageName: "@fontsource/jetbrains-mono",
-    faces: [
-      { weight: "400" },
-      { weight: "700" },
-    ],
+    faces: [{ weight: "400" }, { weight: "700" }],
   },
   "eb-garamond": {
     packageName: "@fontsource/eb-garamond",
-    faces: [
-      { weight: "400" },
-      { weight: "700" },
-    ],
+    faces: [{ weight: "400" }, { weight: "700" }],
   },
 };
 
@@ -139,7 +108,11 @@ const PACKAGE_ROOT_CACHE = new Map<string, string>();
 const FONT_DATA_URI_CACHE = new Map<string, string>();
 
 function normalizeFamilyName(family: string): string {
-  return family.trim().replace(/^['"]|['"]$/g, "").trim().toLowerCase();
+  return family
+    .trim()
+    .replace(/^['"]|['"]$/g, "")
+    .trim()
+    .toLowerCase();
 }
 
 function packageRoot(packageName: string): string {
@@ -154,7 +127,11 @@ function packageRoot(packageName: string): string {
   return root;
 }
 
-function resolveFontFile(packageName: string, weight: string, style: "normal" | "italic" = "normal"): string {
+function resolveFontFile(
+  packageName: string,
+  weight: string,
+  style: "normal" | "italic" = "normal",
+): string {
   const root = packageRoot(packageName);
   const filesDir = join(root, "files");
   const slug = packageName.replace("@fontsource/", "");
@@ -172,10 +149,16 @@ function resolveFontFile(packageName: string, weight: string, style: "normal" | 
     return join(filesDir, relaxed);
   }
 
-  throw new Error(`No deterministic font asset found for ${packageName} weight=${weight} style=${style}`);
+  throw new Error(
+    `No deterministic font asset found for ${packageName} weight=${weight} style=${style}`,
+  );
 }
 
-function fontDataUri(packageName: string, weight: string, style: "normal" | "italic" = "normal"): string {
+function fontDataUri(
+  packageName: string,
+  weight: string,
+  style: "normal" | "italic" = "normal",
+): string {
   const key = `${packageName}:${weight}:${style}`;
   const cached = FONT_DATA_URI_CACHE.get(key);
   if (cached) {
@@ -206,7 +189,10 @@ function extractRequestedFontFamilies(html: string): Map<string, string> {
   const requested = new Map<string, string>();
   const addFamilyList = (value: string) => {
     for (const family of value.split(",")) {
-      const originalCase = family.trim().replace(/^['"]|['"]$/g, "").trim();
+      const originalCase = family
+        .trim()
+        .replace(/^['"]|['"]$/g, "")
+        .trim();
       const normalized = originalCase.toLowerCase();
       if (!normalized || GENERIC_FAMILIES.has(normalized)) {
         continue;
@@ -230,7 +216,10 @@ function extractRequestedFontFamilies(html: string): Map<string, string> {
   return requested;
 }
 
-function buildFontFaceCss(requestedFamilies: Map<string, string>): { css: string; unresolved: string[] } {
+function buildFontFaceCss(requestedFamilies: Map<string, string>): {
+  css: string;
+  unresolved: string[];
+} {
   const rules: string[] = [];
   const unresolved: string[] = [];
 
@@ -300,7 +289,9 @@ export function injectDeterministicFontFaces(html: string): string {
   styleEl.textContent = css;
   head.insertBefore(styleEl, head.firstChild);
 
-  console.log(`[Compiler] Injected deterministic @font-face rules for ${pendingFamilies.size - unresolved.length} requested font families`);
+  console.log(
+    `[Compiler] Injected deterministic @font-face rules for ${pendingFamilies.size - unresolved.length} requested font families`,
+  );
   if (unresolved.length > 0) {
     console.warn(`[Compiler] Unresolved font families left dynamic: ${unresolved.join(", ")}`);
   }

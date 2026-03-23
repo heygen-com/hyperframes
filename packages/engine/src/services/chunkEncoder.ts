@@ -289,7 +289,18 @@ export async function encodeFramesChunkedConcat(
   const concatInput = chunkPaths.map((path) => `file '${path.replace(/'/g, "'\\''")}'`).join("\n");
   writeFileSync(concatListPath, concatInput, "utf-8");
 
-  const concatArgs = ["-f", "concat", "-safe", "0", "-i", concatListPath, "-c", "copy", "-y", outputPath];
+  const concatArgs = [
+    "-f",
+    "concat",
+    "-safe",
+    "0",
+    "-i",
+    concatListPath,
+    "-c",
+    "copy",
+    "-y",
+    outputPath,
+  ];
   const concatResult = await new Promise<{ success: boolean; error?: string }>((resolve) => {
     const ffmpeg = spawn("ffmpeg", concatArgs);
     let stderr = "";
@@ -358,7 +369,12 @@ export async function muxVideoWithAudio(
   const result = await runFfmpeg(args, { signal, timeout: processTimeout });
 
   if (signal?.aborted) {
-    return { success: false, outputPath, durationMs: result.durationMs, error: "FFmpeg mux cancelled" };
+    return {
+      success: false,
+      outputPath,
+      durationMs: result.durationMs,
+      error: "FFmpeg mux cancelled",
+    };
   }
   return {
     success: result.success,
@@ -384,7 +400,12 @@ export async function applyFaststart(
   const result = await runFfmpeg(args, { signal, timeout: processTimeout });
 
   if (signal?.aborted) {
-    return { success: false, outputPath, durationMs: result.durationMs, error: "FFmpeg faststart cancelled" };
+    return {
+      success: false,
+      outputPath,
+      durationMs: result.durationMs,
+      error: "FFmpeg faststart cancelled",
+    };
   }
   return {
     success: result.success,

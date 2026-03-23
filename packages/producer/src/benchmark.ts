@@ -12,11 +12,23 @@
  *   pnpm benchmark -- --exclude-tags slow
  */
 
-import { readdirSync, readFileSync, writeFileSync, existsSync, mkdirSync, cpSync, rmSync } from "node:fs";
+import {
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+  existsSync,
+  mkdirSync,
+  cpSync,
+  rmSync,
+} from "node:fs";
 import { join, resolve, dirname } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
-import { createRenderJob, executeRenderJob, type RenderPerfSummary } from "./services/renderOrchestrator.js";
+import {
+  createRenderJob,
+  executeRenderJob,
+  type RenderPerfSummary,
+} from "./services/renderOrchestrator.js";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const testsDir = resolve(scriptDir, "../tests");
@@ -73,7 +85,10 @@ function parseArgs(): { runs: number; only: string | null; excludeTags: string[]
   return { runs, only, excludeTags };
 }
 
-function discoverFixtures(only: string | null, excludeTags: string[]): Array<{ id: string; dir: string; meta: TestMeta }> {
+function discoverFixtures(
+  only: string | null,
+  excludeTags: string[],
+): Array<{ id: string; dir: string; meta: TestMeta }> {
   const fixtures: Array<{ id: string; dir: string; meta: TestMeta }> = [];
 
   for (const entry of readdirSync(testsDir)) {
@@ -139,13 +154,17 @@ async function runBenchmark(): Promise<void> {
         console.error(`  ❌ Run ${r + 1} failed: ${err instanceof Error ? err.message : err}`);
         continue;
       } finally {
-        try { rmSync(tmpRoot, { recursive: true, force: true }); } catch {}
+        try {
+          rmSync(tmpRoot, { recursive: true, force: true });
+        } catch {}
       }
 
       if (job.perfSummary) {
         fixtureRuns.push({ run: r + 1, perfSummary: job.perfSummary });
         const ps = job.perfSummary;
-        console.log(`  ✓ ${ps.totalElapsedMs}ms total | capture avg ${ps.captureAvgMs ?? "?"}ms/frame | ${ps.totalFrames} frames`);
+        console.log(
+          `  ✓ ${ps.totalElapsedMs}ms total | capture avg ${ps.captureAvgMs ?? "?"}ms/frame | ${ps.totalFrames} frames`,
+        );
       }
     }
 
@@ -173,7 +192,12 @@ async function runBenchmark(): Promise<void> {
       runs: fixtureRuns,
       averages: {
         totalElapsedMs: avg(fixtureRuns.map((r) => r.perfSummary.totalElapsedMs)),
-        captureAvgMs: avg(fixtureRuns.filter((r) => r.perfSummary.captureAvgMs != null).map((r) => r.perfSummary.captureAvgMs!)) || null,
+        captureAvgMs:
+          avg(
+            fixtureRuns
+              .filter((r) => r.perfSummary.captureAvgMs != null)
+              .map((r) => r.perfSummary.captureAvgMs!),
+          ) || null,
         stages: avgStages,
       },
     };
@@ -205,12 +229,12 @@ async function runBenchmark(): Promise<void> {
   console.log("═".repeat(80));
   console.log(
     "Fixture".padEnd(25) +
-    "Total".padStart(10) +
-    "Compile".padStart(10) +
-    "Extract".padStart(10) +
-    "Audio".padStart(10) +
-    "Capture".padStart(10) +
-    "Encode".padStart(10)
+      "Total".padStart(10) +
+      "Compile".padStart(10) +
+      "Extract".padStart(10) +
+      "Audio".padStart(10) +
+      "Capture".padStart(10) +
+      "Encode".padStart(10),
   );
   console.log("─".repeat(80));
 
@@ -218,12 +242,12 @@ async function runBenchmark(): Promise<void> {
     const s = f.averages.stages;
     console.log(
       f.fixture.padEnd(25) +
-      `${f.averages.totalElapsedMs}ms`.padStart(10) +
-      `${s.compileMs ?? "-"}ms`.padStart(10) +
-      `${s.videoExtractMs ?? "-"}ms`.padStart(10) +
-      `${s.audioProcessMs ?? "-"}ms`.padStart(10) +
-      `${s.captureMs ?? "-"}ms`.padStart(10) +
-      `${s.encodeMs ?? "-"}ms`.padStart(10)
+        `${f.averages.totalElapsedMs}ms`.padStart(10) +
+        `${s.compileMs ?? "-"}ms`.padStart(10) +
+        `${s.videoExtractMs ?? "-"}ms`.padStart(10) +
+        `${s.audioProcessMs ?? "-"}ms`.padStart(10) +
+        `${s.captureMs ?? "-"}ms`.padStart(10) +
+        `${s.encodeMs ?? "-"}ms`.padStart(10),
     );
   }
 

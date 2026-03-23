@@ -1,8 +1,13 @@
 <template id="data-graphics-template">
-  <div data-composition-id="data-graphics" data-width="1920" data-height="1080" data-duration="16.04">
+  <div
+    data-composition-id="data-graphics"
+    data-width="1920"
+    data-height="1080"
+    data-duration="16.04"
+  >
     <div class="grid-container">
       <!-- Graphic 1: 47% NEED MOTION GRAPHICS -->
-      <div id="graphic-1" class="graphic-box" style="opacity: 0;">
+      <div id="graphic-1" class="graphic-box" style="opacity: 0">
         <div class="label">47% NEED MOTION GRAPHICS</div>
         <div class="progress-bar-container">
           <div class="progress-bar-bg"></div>
@@ -12,7 +17,7 @@
       </div>
 
       <!-- Graphic 2: 62% LOSE ATTENTION -->
-      <div id="graphic-2" class="graphic-box" style="opacity: 0;">
+      <div id="graphic-2" class="graphic-box" style="opacity: 0">
         <div class="label">62% LOSE ATTENTION</div>
         <div class="chart-container">
           <div class="bar-group">
@@ -28,7 +33,7 @@
       </div>
 
       <!-- Graphic 3: 75% LACK SKILLS -->
-      <div id="graphic-3" class="graphic-box" style="opacity: 0;">
+      <div id="graphic-3" class="graphic-box" style="opacity: 0">
         <div class="label">75% LACK SKILLS</div>
         <div class="radial-container">
           <div class="radial-svg-wrapper">
@@ -43,13 +48,13 @@
     </div>
 
     <style>
-      @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap');
+      @import url("https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap");
 
       [data-composition-id="data-graphics"] {
         background: transparent;
-        font-family: 'Space Mono', monospace;
+        font-family: "Space Mono", monospace;
         text-transform: uppercase;
-        color: #8A8A8A;
+        color: #8a8a8a;
         overflow: hidden;
         width: 1920px;
         height: 1080px;
@@ -82,9 +87,17 @@
         box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
       }
 
-      [data-composition-id="data-graphics"] #graphic-1 { grid-row: 2 / 5; margin-bottom: 10px; }
-      [data-composition-id="data-graphics"] #graphic-2 { grid-row: 5 / 8; margin-bottom: 10px; }
-      [data-composition-id="data-graphics"] #graphic-3 { grid-row: 8 / 11; }
+      [data-composition-id="data-graphics"] #graphic-1 {
+        grid-row: 2 / 5;
+        margin-bottom: 10px;
+      }
+      [data-composition-id="data-graphics"] #graphic-2 {
+        grid-row: 5 / 8;
+        margin-bottom: 10px;
+      }
+      [data-composition-id="data-graphics"] #graphic-3 {
+        grid-row: 8 / 11;
+      }
 
       [data-composition-id="data-graphics"] .label {
         font-size: 20px;
@@ -122,7 +135,13 @@
         left: 0;
         width: 100%;
         height: 100%;
-        background: repeating-linear-gradient(90deg, rgba(138, 138, 138, 0.2), rgba(138, 138, 138, 0.2) 2px, transparent 2px, transparent 12px);
+        background: repeating-linear-gradient(
+          90deg,
+          rgba(138, 138, 138, 0.2),
+          rgba(138, 138, 138, 0.2) 2px,
+          transparent 2px,
+          transparent 12px
+        );
       }
 
       [data-composition-id="data-graphics"] .progress-bar-fill {
@@ -172,8 +191,12 @@
         height: 0%;
       }
 
-      [data-composition-id="data-graphics"] .bar-fill.green { background: rgba(51, 255, 102, 0.8); }
-      [data-composition-id="data-graphics"] .bar-fill.gray { background: rgba(138, 138, 138, 0.5); }
+      [data-composition-id="data-graphics"] .bar-fill.green {
+        background: rgba(51, 255, 102, 0.8);
+      }
+      [data-composition-id="data-graphics"] .bar-fill.gray {
+        background: rgba(138, 138, 138, 0.5);
+      }
 
       /* Radial Styles */
       [data-composition-id="data-graphics"] .radial-container {
@@ -212,14 +235,14 @@
     </style>
 
     <script>
-      (function() {
+      (function () {
         const tl = gsap.timeline({ paused: true });
         const REVEAL_DURATION = 0.8;
         const EASE = "power2.out";
         const graphicSelectors = [
           '[data-composition-id="data-graphics"] #graphic-1',
           '[data-composition-id="data-graphics"] #graphic-2',
-          '[data-composition-id="data-graphics"] #graphic-3'
+          '[data-composition-id="data-graphics"] #graphic-3',
         ];
 
         // Helper for counter animation
@@ -227,97 +250,141 @@
           const obj = { val: 0 };
           const el = document.querySelector(`[data-composition-id="data-graphics"] #${id}`);
           if (!el) return;
-          
-          tl.to(obj, {
-            val: target,
-            duration: duration,
-            ease: EASE,
-            onUpdate: () => {
-              el.innerText = Math.floor(obj.val).toString().padStart(2, '0') + '%';
-            }
-          }, startTime);
+
+          tl.to(
+            obj,
+            {
+              val: target,
+              duration: duration,
+              ease: EASE,
+              onUpdate: () => {
+                el.innerText = Math.floor(obj.val).toString().padStart(2, "0") + "%";
+              },
+            },
+            startTime,
+          );
         }
 
         gsap.set(graphicSelectors, { x: 24 });
 
         // 1. 47% NEED MOTION GRAPHICS at 1.839s
-        tl.to('[data-composition-id="data-graphics"] #graphic-1', { 
-          opacity: 1, 
-          x: 0,
-          duration: 0.5, 
-          ease: "power2.out" 
-        }, 1.839);
-        
-        tl.to('[data-composition-id="data-graphics"] #bar-1', { 
-          width: '47%', 
-          duration: REVEAL_DURATION, 
-          ease: EASE 
-        }, 1.839 + 0.2);
-        
-        animateCounter('counter-1', 47, REVEAL_DURATION, 1.839 + 0.2);
+        tl.to(
+          '[data-composition-id="data-graphics"] #graphic-1',
+          {
+            opacity: 1,
+            x: 0,
+            duration: 0.5,
+            ease: "power2.out",
+          },
+          1.839,
+        );
+
+        tl.to(
+          '[data-composition-id="data-graphics"] #bar-1',
+          {
+            width: "47%",
+            duration: REVEAL_DURATION,
+            ease: EASE,
+          },
+          1.839 + 0.2,
+        );
+
+        animateCounter("counter-1", 47, REVEAL_DURATION, 1.839 + 0.2);
 
         // 2. 62% LOSE ATTENTION at 4.659s
-        tl.to('[data-composition-id="data-graphics"] #graphic-2', { 
-          opacity: 1, 
-          duration: 0.5, 
-          ease: "power2.out" 
-        }, 4.659);
-        
-        tl.to('[data-composition-id="data-graphics"] #bar-2-static', { 
-          height: '30%', 
-          duration: REVEAL_DURATION, 
-          ease: EASE 
-        }, 4.659 + 0.2);
-        
-        tl.to('[data-composition-id="data-graphics"] #bar-2-motion', { 
-          height: '62%', 
-          duration: REVEAL_DURATION, 
-          ease: EASE 
-        }, 4.659 + 0.4);
-        
-        animateCounter('counter-2', 62, REVEAL_DURATION, 4.659 + 0.4);
+        tl.to(
+          '[data-composition-id="data-graphics"] #graphic-2',
+          {
+            opacity: 1,
+            duration: 0.5,
+            ease: "power2.out",
+          },
+          4.659,
+        );
+
+        tl.to(
+          '[data-composition-id="data-graphics"] #bar-2-static',
+          {
+            height: "30%",
+            duration: REVEAL_DURATION,
+            ease: EASE,
+          },
+          4.659 + 0.2,
+        );
+
+        tl.to(
+          '[data-composition-id="data-graphics"] #bar-2-motion',
+          {
+            height: "62%",
+            duration: REVEAL_DURATION,
+            ease: EASE,
+          },
+          4.659 + 0.4,
+        );
+
+        animateCounter("counter-2", 62, REVEAL_DURATION, 4.659 + 0.4);
 
         // 3. 75% LACK SKILLS at 8.88s
-        tl.to('[data-composition-id="data-graphics"] #graphic-3', { 
-          opacity: 1, 
-          duration: 0.5, 
-          ease: "power2.out" 
-        }, 8.88);
-        
+        tl.to(
+          '[data-composition-id="data-graphics"] #graphic-3',
+          {
+            opacity: 1,
+            duration: 0.5,
+            ease: "power2.out",
+          },
+          8.88,
+        );
+
         const circumference = 282.74;
-        const offset = circumference - (0.75 * circumference);
-        
-        tl.to('[data-composition-id="data-graphics"] #radial-fill', { 
-          strokeDashoffset: offset, 
-          duration: REVEAL_DURATION, 
-          ease: EASE 
-        }, 8.88 + 0.2);
-        
-        animateCounter('counter-3', 75, REVEAL_DURATION, 8.88 + 0.2);
+        const offset = circumference - 0.75 * circumference;
+
+        tl.to(
+          '[data-composition-id="data-graphics"] #radial-fill',
+          {
+            strokeDashoffset: offset,
+            duration: REVEAL_DURATION,
+            ease: EASE,
+          },
+          8.88 + 0.2,
+        );
+
+        animateCounter("counter-3", 75, REVEAL_DURATION, 8.88 + 0.2);
 
         // A one-way settle keeps the UI alive without repeat/yoyo timeline noise.
         const greenElements = [
           '[data-composition-id="data-graphics"] .progress-bar-fill',
           '[data-composition-id="data-graphics"] .bar-fill.green',
           '[data-composition-id="data-graphics"] .radial-progress',
-          '[data-composition-id="data-graphics"] .counter'
+          '[data-composition-id="data-graphics"] .counter',
         ];
 
         gsap.set(greenElements, { opacity: 0.85 });
-        tl.to(greenElements, {
-          opacity: 1,
-          duration: 1.2,
-          stagger: 0.08,
-          ease: "none"
-        }, 2);
+        tl.to(
+          greenElements,
+          {
+            opacity: 1,
+            duration: 1.2,
+            stagger: 0.08,
+            ease: "none",
+          },
+          2,
+        );
 
         // Outro: Fade all out near the end
-        tl.to(['[data-composition-id="data-graphics"] #graphic-1', '[data-composition-id="data-graphics"] #graphic-2', '[data-composition-id="data-graphics"] #graphic-3'], { 
-          opacity: 0, 
-          y: 20,
-          duration: 0.5, 
-          ease: "power2.in" 
-        }, 15.5);
+        tl.to(
+          [
+            '[data-composition-id="data-graphics"] #graphic-1',
+            '[data-composition-id="data-graphics"] #graphic-2',
+            '[data-composition-id="data-graphics"] #graphic-3',
+          ],
+          {
+            opacity: 0,
+            y: 20,
+            duration: 0.5,
+            ease: "power2.in",
+          },
+          15.5,
+        );
 
         window.__timelines["data-graphics"] = tl;
       })();

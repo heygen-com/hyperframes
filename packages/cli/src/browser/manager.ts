@@ -2,12 +2,7 @@ import { execSync } from "node:child_process";
 import { existsSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import {
-  Browser,
-  detectBrowserPlatform,
-  getInstalledBrowsers,
-  install,
-} from "@puppeteer/browsers";
+import { Browser, detectBrowserPlatform, getInstalledBrowsers, install } from "@puppeteer/browsers";
 
 const CHROME_VERSION = "131.0.6778.85";
 const CACHE_DIR = join(homedir(), ".cache", "hyperframes", "chrome");
@@ -18,11 +13,7 @@ export function setBrowserPath(path: string): void {
   _browserPathOverride = path;
 }
 
-export type BrowserSource =
-  | "env"
-  | "cache"
-  | "system"
-  | "download";
+export type BrowserSource = "env" | "cache" | "system" | "download";
 
 export interface BrowserResult {
   executablePath: string;
@@ -76,9 +67,7 @@ async function findFromCache(): Promise<BrowserResult | undefined> {
   }
 
   const installed = await getInstalledBrowsers({ cacheDir: CACHE_DIR });
-  const match = installed.find(
-    (b) => b.browser === Browser.CHROMEHEADLESSSHELL,
-  );
+  const match = installed.find((b) => b.browser === Browser.CHROMEHEADLESSSHELL);
   if (match) {
     return { executablePath: match.executablePath, source: "cache" };
   }
@@ -93,8 +82,7 @@ function findFromSystem(): BrowserResult | undefined {
     }
   }
 
-  const fromWhich =
-    whichBinary("google-chrome") ?? whichBinary("chromium");
+  const fromWhich = whichBinary("google-chrome") ?? whichBinary("chromium");
   if (fromWhich) {
     return { executablePath: fromWhich, source: "system" };
   }
@@ -122,17 +110,13 @@ export async function findBrowser(): Promise<BrowserResult | undefined> {
  * Find or download a browser.
  * Resolution: env var -> cached download -> system Chrome -> auto-download.
  */
-export async function ensureBrowser(
-  options?: EnsureBrowserOptions,
-): Promise<BrowserResult> {
+export async function ensureBrowser(options?: EnsureBrowserOptions): Promise<BrowserResult> {
   const existing = await findBrowser();
   if (existing) return existing;
 
   const platform = detectBrowserPlatform();
   if (!platform) {
-    throw new Error(
-      `Unsupported platform: ${process.platform} ${process.arch}`,
-    );
+    throw new Error(`Unsupported platform: ${process.platform} ${process.arch}`);
   }
 
   const installed = await install({

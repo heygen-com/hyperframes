@@ -1,5 +1,11 @@
 import { useRef, useCallback, memo } from "react";
-import { EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter } from "@codemirror/view";
+import {
+  EditorView,
+  keymap,
+  lineNumbers,
+  highlightActiveLine,
+  highlightActiveLineGutter,
+} from "@codemirror/view";
 import { EditorState } from "@codemirror/state";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { bracketMatching, foldGutter, indentOnInput } from "@codemirror/language";
@@ -90,12 +96,7 @@ export const SourceEditor = memo(function SourceEditor({
           bracketMatching(),
           closeBrackets(),
           highlightSelectionMatches(),
-          keymap.of([
-            ...closeBracketsKeymap,
-            ...defaultKeymap,
-            ...searchKeymap,
-            ...historyKeymap,
-          ]),
+          keymap.of([...closeBracketsKeymap, ...defaultKeymap, ...searchKeymap, ...historyKeymap]),
           getLanguageExtension(lang),
           oneDark,
           updateListener,

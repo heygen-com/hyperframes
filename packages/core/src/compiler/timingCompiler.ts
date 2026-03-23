@@ -50,7 +50,7 @@ export interface CompilationResult {
 
 function getAttr(tag: string, attr: string): string | null {
   const match = tag.match(new RegExp(`${attr}=["']([^"']+)["']`));
-  return match ? match[1] ?? null : null;
+  return match ? (match[1] ?? null) : null;
 }
 
 function hasAttr(tag: string, attr: string): boolean {
@@ -63,7 +63,10 @@ function injectAttr(tag: string, attr: string, value: string): string {
 
 // ── Core compilation ─────────────────────────────────────────────────────
 
-function compileTag(tag: string, isVideo: boolean): { tag: string; unresolved: UnresolvedElement | null } {
+function compileTag(
+  tag: string,
+  isVideo: boolean,
+): { tag: string; unresolved: UnresolvedElement | null } {
   let result = tag;
   let unresolved: UnresolvedElement | null = null;
 

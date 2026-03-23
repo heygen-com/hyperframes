@@ -40,7 +40,10 @@ export function createRuntimePlayer(deps: PlayerDeps): RuntimePlayer {
     play: () => {
       const timeline = deps.getTimeline();
       if (!timeline || deps.getIsPlaying()) return;
-      const safeDuration = Math.max(0, Number(deps.getSafeDuration?.() ?? timeline.duration() ?? 0) || 0);
+      const safeDuration = Math.max(
+        0,
+        Number(deps.getSafeDuration?.() ?? timeline.duration() ?? 0) || 0,
+      );
       if (safeDuration > 0) {
         const currentTime = Math.max(0, Number(timeline.time()) || 0);
         if (currentTime >= safeDuration) {
@@ -87,7 +90,11 @@ export function createRuntimePlayer(deps: PlayerDeps): RuntimePlayer {
     renderSeek: (timeSeconds: number) => {
       const timeline = deps.getTimeline();
       if (!timeline) return;
-      const quantized = seekTimelineDeterministically(timeline, timeSeconds, deps.getCanonicalFps());
+      const quantized = seekTimelineDeterministically(
+        timeline,
+        timeSeconds,
+        deps.getCanonicalFps(),
+      );
       deps.onDeterministicSeek(quantized);
       deps.setIsPlaying(false);
       deps.onSyncMedia(quantized, false);

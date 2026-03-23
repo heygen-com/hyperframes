@@ -1,5 +1,10 @@
 <template id="bg-grid-template">
-  <div data-composition-id="bg-grid-comp" data-width="1080" data-height="1920" data-duration="13.88">
+  <div
+    data-composition-id="bg-grid-comp"
+    data-width="1080"
+    data-height="1920"
+    data-duration="13.88"
+  >
     <div class="grid-container" id="grid-container"></div>
     <div class="wash-container" id="wash-container"></div>
     <div class="cubes-container" id="cubes-container"></div>
@@ -10,7 +15,7 @@
         height: 1920px;
         background:
           linear-gradient(180deg, rgba(255, 255, 255, 0.42) 0%, rgba(255, 255, 255, 0) 24%),
-          linear-gradient(180deg, #F7F2E9 0%, #EFE8DD 100%);
+          linear-gradient(180deg, #f7f2e9 0%, #efe8dd 100%);
         position: relative;
         overflow: hidden;
       }
@@ -35,7 +40,7 @@
 
       [data-composition-id="bg-grid-comp"] .grid-line {
         position: absolute;
-        background-color: #1E1E1E;
+        background-color: #1e1e1e;
         opacity: 0;
       }
 
@@ -71,7 +76,7 @@
 
       [data-composition-id="bg-grid-comp"] .cube-path {
         fill: none;
-        stroke: #1E1E1E;
+        stroke: #1e1e1e;
         stroke-width: 1.8;
         stroke-linecap: round;
         stroke-linejoin: round;
@@ -83,7 +88,7 @@
     </style>
 
     <script>
-      (function() {
+      (function () {
         const compId = "bg-grid-comp";
         const width = 1080;
         const height = 1920;
@@ -92,76 +97,88 @@
         const cellW = width / cols;
         const cellH = height / rows;
 
-        const container = document.getElementById('grid-container');
-        const washContainer = document.getElementById('wash-container');
-        const cubesContainer = document.getElementById('cubes-container');
+        const container = document.getElementById("grid-container");
+        const washContainer = document.getElementById("wash-container");
+        const cubesContainer = document.getElementById("cubes-container");
         const tl = gsap.timeline({ paused: true });
 
         const washBands = [
-          { x: 0, y: 213.33, w: 324, h: 320, color: 'rgba(204, 51, 51, 0.08)' },
-          { x: 648, y: 0, w: 432, h: 426.67, color: 'rgba(51, 119, 187, 0.08)' },
-          { x: 756, y: 1280, w: 324, h: 320, color: 'rgba(51, 119, 187, 0.05)' },
-          { x: 0, y: 1493.33, w: 432, h: 426.67, color: 'rgba(30, 30, 30, 0.05)' }
+          { x: 0, y: 213.33, w: 324, h: 320, color: "rgba(204, 51, 51, 0.08)" },
+          { x: 648, y: 0, w: 432, h: 426.67, color: "rgba(51, 119, 187, 0.08)" },
+          { x: 756, y: 1280, w: 324, h: 320, color: "rgba(51, 119, 187, 0.05)" },
+          { x: 0, y: 1493.33, w: 432, h: 426.67, color: "rgba(30, 30, 30, 0.05)" },
         ];
 
         washBands.forEach((band, index) => {
-          const el = document.createElement('div');
-          el.className = 'wash-band';
-          el.style.left = band.x + 'px';
-          el.style.top = band.y + 'px';
-          el.style.width = band.w + 'px';
-          el.style.height = band.h + 'px';
+          const el = document.createElement("div");
+          el.className = "wash-band";
+          el.style.left = band.x + "px";
+          el.style.top = band.y + "px";
+          el.style.width = band.w + "px";
+          el.style.height = band.h + "px";
           el.style.background = band.color;
           washContainer.appendChild(el);
 
-          tl.to(el, {
-            opacity: 1,
-            duration: 0.7,
-            ease: "power2.out"
-          }, 0.2 + (index * 0.28));
+          tl.to(
+            el,
+            {
+              opacity: 1,
+              duration: 0.7,
+              ease: "power2.out",
+            },
+            0.2 + index * 0.28,
+          );
         });
 
         for (let i = 0; i <= rows; i++) {
-          const line = document.createElement('div');
-          line.className = 'grid-line horizontal';
-          line.style.top = (i * cellH) + 'px';
+          const line = document.createElement("div");
+          line.className = "grid-line horizontal";
+          line.style.top = i * cellH + "px";
           container.appendChild(line);
 
-          tl.to(line, {
-            opacity: 0.24,
-            duration: 0.7,
-            ease: "expo.out"
-          }, (i / rows) * 0.48);
+          tl.to(
+            line,
+            {
+              opacity: 0.24,
+              duration: 0.7,
+              ease: "expo.out",
+            },
+            (i / rows) * 0.48,
+          );
         }
 
         for (let j = 0; j <= cols; j++) {
-          const line = document.createElement('div');
-          line.className = 'grid-line vertical';
-          line.style.left = (j * cellW) + 'px';
+          const line = document.createElement("div");
+          line.className = "grid-line vertical";
+          line.style.left = j * cellW + "px";
           container.appendChild(line);
 
-          tl.to(line, {
-            opacity: 0.24,
-            duration: 0.7,
-            ease: "expo.out"
-          }, (j / cols) * 0.48 + 0.18);
+          tl.to(
+            line,
+            {
+              opacity: 0.24,
+              duration: 0.7,
+              ease: "expo.out",
+            },
+            (j / cols) * 0.48 + 0.18,
+          );
         }
 
         const cubeCells = [
-          { r: 2, c: 2, color: '#3377BB' },
-          { r: 4, c: 7, color: '#CC3333' },
-          { r: 8, c: 3, color: '#3377BB' },
-          { r: 11, c: 6, color: '#CC3333' },
-          { r: 15, c: 8, color: '#3377BB' }
+          { r: 2, c: 2, color: "#3377BB" },
+          { r: 4, c: 7, color: "#CC3333" },
+          { r: 8, c: 3, color: "#3377BB" },
+          { r: 11, c: 6, color: "#CC3333" },
+          { r: 15, c: 8, color: "#3377BB" },
         ];
 
         cubeCells.forEach((cell, index) => {
-          const cellDiv = document.createElement('div');
-          cellDiv.className = 'cube-cell';
-          cellDiv.style.width = cellW + 'px';
-          cellDiv.style.height = cellH + 'px';
-          cellDiv.style.left = (cell.c * cellW) + 'px';
-          cellDiv.style.top = (cell.r * cellH) + 'px';
+          const cellDiv = document.createElement("div");
+          cellDiv.className = "cube-cell";
+          cellDiv.style.width = cellW + "px";
+          cellDiv.style.height = cellH + "px";
+          cellDiv.style.left = cell.c * cellW + "px";
+          cellDiv.style.top = cell.r * cellH + "px";
 
           const svg = `
             <svg viewBox="0 0 100 100" class="cube-svg">
@@ -176,65 +193,93 @@
           cellDiv.innerHTML = svg;
           cubesContainer.appendChild(cellDiv);
 
-          const paths = cellDiv.querySelectorAll('.cube-path');
-          const faces = cellDiv.querySelectorAll('.cube-face');
+          const paths = cellDiv.querySelectorAll(".cube-path");
+          const faces = cellDiv.querySelectorAll(".cube-face");
 
-          paths.forEach(path => {
+          paths.forEach((path) => {
             const length = path.getTotalLength();
             gsap.set(path, { strokeDasharray: length, strokeDashoffset: length });
           });
 
-          const startTime = 1.45 + (index * 1.4);
+          const startTime = 1.45 + index * 1.4;
 
           paths.forEach((path, pIndex) => {
-            tl.to(path, {
-              strokeDashoffset: 0,
-              duration: 0.95,
-              ease: "power2.inOut"
-            }, startTime + (pIndex * 0.2));
+            tl.to(
+              path,
+              {
+                strokeDashoffset: 0,
+                duration: 0.95,
+                ease: "power2.inOut",
+              },
+              startTime + pIndex * 0.2,
+            );
           });
 
           faces.forEach((face, fIndex) => {
-            const faceTime = startTime + 0.8 + (fIndex * 0.1);
-            tl.to(face, {
-              opacity: 0.24,
-              duration: 0.45,
-              ease: "power2.out"
-            }, faceTime);
+            const faceTime = startTime + 0.8 + fIndex * 0.1;
+            tl.to(
+              face,
+              {
+                opacity: 0.24,
+                duration: 0.45,
+                ease: "power2.out",
+              },
+              faceTime,
+            );
 
-            tl.to(face, {
-              opacity: 0.06,
-              duration: 1.2,
-              ease: "sine.out"
-            }, faceTime + 0.45);
+            tl.to(
+              face,
+              {
+                opacity: 0.06,
+                duration: 1.2,
+                ease: "sine.out",
+              },
+              faceTime + 0.45,
+            );
           });
 
-          tl.to(cellDiv, {
-            y: -12,
-            duration: 2.6,
-            ease: "sine.inOut"
-          }, startTime + 0.35);
+          tl.to(
+            cellDiv,
+            {
+              y: -12,
+              duration: 2.6,
+              ease: "sine.inOut",
+            },
+            startTime + 0.35,
+          );
 
-          tl.to(cellDiv, {
-            y: -4,
-            duration: 2.8,
-            ease: "sine.inOut"
-          }, startTime + 2.95);
+          tl.to(
+            cellDiv,
+            {
+              y: -4,
+              duration: 2.8,
+              ease: "sine.inOut",
+            },
+            startTime + 2.95,
+          );
         });
 
-        tl.to(container, {
-          x: 8,
-          y: 8,
-          duration: 13.88,
-          ease: "none"
-        }, 0);
+        tl.to(
+          container,
+          {
+            x: 8,
+            y: 8,
+            duration: 13.88,
+            ease: "none",
+          },
+          0,
+        );
 
-        tl.to(cubesContainer, {
-          x: -6,
-          y: 4,
-          duration: 13.88,
-          ease: "none"
-        }, 0);
+        tl.to(
+          cubesContainer,
+          {
+            x: -6,
+            y: 4,
+            duration: 13.88,
+            ease: "none",
+          },
+          0,
+        );
 
         window.__timelines[compId] = tl;
       })();

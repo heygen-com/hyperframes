@@ -98,14 +98,20 @@ async function extractAudioFromVideo(
   const result = await runFfmpeg(args, { signal, timeout: ffmpegProcessTimeout });
 
   if (signal?.aborted) {
-    return { success: false, outputPath, durationMs: result.durationMs, error: "Audio extract cancelled" };
+    return {
+      success: false,
+      outputPath,
+      durationMs: result.durationMs,
+      error: "Audio extract cancelled",
+    };
   }
   if (!result.success) {
     return {
       success: false,
       outputPath,
       durationMs: result.durationMs,
-      error: result.exitCode !== null ? `FFmpeg exited with code ${result.exitCode}` : result.stderr,
+      error:
+        result.exitCode !== null ? `FFmpeg exited with code ${result.exitCode}` : result.stderr,
     };
   }
   return { success: true, outputPath, durationMs: result.durationMs };
@@ -143,7 +149,12 @@ async function prepareAudioTrack(
   const result = await runFfmpeg(args, { signal, timeout: ffmpegProcessTimeout });
 
   if (signal?.aborted) {
-    return { success: false, outputPath, durationMs: result.durationMs, error: "Audio prepare cancelled" };
+    return {
+      success: false,
+      outputPath,
+      durationMs: result.durationMs,
+      error: "Audio prepare cancelled",
+    };
   }
   return {
     success: result.success,
@@ -183,7 +194,12 @@ async function generateSilence(
   const result = await runFfmpeg(args, { signal, timeout: ffmpegProcessTimeout });
 
   if (signal?.aborted) {
-    return { success: false, outputPath, durationMs: result.durationMs, error: "Silence generation cancelled" };
+    return {
+      success: false,
+      outputPath,
+      durationMs: result.durationMs,
+      error: "Silence generation cancelled",
+    };
   }
   return {
     success: result.success,
@@ -272,10 +288,16 @@ async function mixAudioTracks(
       outputPath,
       durationMs: result.durationMs,
       tracksProcessed: 0,
-      error: result.exitCode !== null ? `FFmpeg exited with code ${result.exitCode}` : result.stderr,
+      error:
+        result.exitCode !== null ? `FFmpeg exited with code ${result.exitCode}` : result.stderr,
     };
   }
-  return { success: true, outputPath, durationMs: result.durationMs, tracksProcessed: tracks.length };
+  return {
+    success: true,
+    outputPath,
+    durationMs: result.durationMs,
+    tracksProcessed: tracks.length,
+  };
 }
 
 export async function processCompositionAudio(
@@ -309,7 +331,9 @@ export async function processCompositionAudio(
           try {
             srcPath = await downloadToTemp(srcPath, workDir);
           } catch (err: unknown) {
-            errors.push(`Download failed: ${element.id} — ${err instanceof Error ? err.message : String(err)}`);
+            errors.push(
+              `Download failed: ${element.id} — ${err instanceof Error ? err.message : String(err)}`,
+            );
             return;
           }
         }
@@ -323,7 +347,8 @@ export async function processCompositionAudio(
         if (element.end - element.start <= 0) {
           const metadata = await extractAudioMetadata(srcPath);
           const effectiveDuration = metadata.durationSeconds - element.mediaStart;
-          element.end = element.start + (effectiveDuration > 0 ? effectiveDuration : metadata.durationSeconds);
+          element.end =
+            element.start + (effectiveDuration > 0 ? effectiveDuration : metadata.durationSeconds);
         }
 
         let audioSrcPath = srcPath;

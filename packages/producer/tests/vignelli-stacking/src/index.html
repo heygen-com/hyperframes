@@ -1,74 +1,101 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Vignelli Style Video</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
     <script src=""></script>
     <style>
-        body {
-            margin: 0;
-            padding: 0;
-            background: #FFFFFF;
-            overflow: hidden;
-            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
-        }
+      body {
+        margin: 0;
+        padding: 0;
+        background: #ffffff;
+        overflow: hidden;
+        font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+      }
 
-        #main-composition {
-            position: relative;
-            width: 1080px;
-            height: 1920px;
-            background: #FFFFFF;
-        }
+      #main-composition {
+        position: relative;
+        width: 1080px;
+        height: 1920px;
+        background: #ffffff;
+      }
 
-        #a-roll-wrapper {
-            position: absolute;
-            width: 100%;
-            height: 100%;
-            z-index: 1;
-            overflow: hidden;
-        }
+      #a-roll-wrapper {
+        position: absolute;
+        width: 100%;
+        height: 100%;
+        z-index: 1;
+        overflow: hidden;
+      }
 
-        video {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-        }
+      video {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
 
-        [data-composition-id="overlays"] {
-            position: absolute;
-            top: 0;
-            left: 0;
-            z-index: 2;
-        }
+      [data-composition-id="overlays"] {
+        position: absolute;
+        top: 0;
+        left: 0;
+        z-index: 2;
+      }
 
-        [data-composition-id="captions"] {
-            position: absolute;
-            top: 0;
-            left: 0;
-            z-index: 3;
-        }
+      [data-composition-id="captions"] {
+        position: absolute;
+        top: 0;
+        left: 0;
+        z-index: 3;
+      }
     </style>
-</head>
-<body>
-    <div id="main-composition" data-composition-id="main-comp" data-width="1080" data-height="1920" data-duration="10.24">
-        <div id="a-roll-wrapper">
-            <video id="a-roll" src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/uploaded_assets/f140a7f9_c8ae0ae2698f4a6895110bb9cbaadd74.mp4" data-start="0" data-duration="10.24" data-track-index="0">
-            </video>
-        </div>
+  </head>
+  <body>
+    <div
+      id="main-composition"
+      data-composition-id="main-comp"
+      data-width="1080"
+      data-height="1920"
+      data-duration="10.24"
+    >
+      <div id="a-roll-wrapper">
+        <video
+          id="a-roll"
+          src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/uploaded_assets/f140a7f9_c8ae0ae2698f4a6895110bb9cbaadd74.mp4"
+          data-start="0"
+          data-duration="10.24"
+          data-track-index="0"
+        ></video>
+      </div>
 
-        <div id="overlays-comp" data-composition-src="compositions/overlays.html" data-composition-id="overlays" data-start="0" data-duration="10.24" data-track-index="2" data-width="1080" data-height="1920">
-        </div>
+      <div
+        id="overlays-comp"
+        data-composition-src="compositions/overlays.html"
+        data-composition-id="overlays"
+        data-start="0"
+        data-duration="10.24"
+        data-track-index="2"
+        data-width="1080"
+        data-height="1920"
+      ></div>
 
-        <div id="captions-comp" data-composition-src="compositions/captions.html" data-composition-id="captions" data-start="0" data-duration="10.24" data-track-index="3" data-width="1080" data-height="1920">
-        </div>
+      <div
+        id="captions-comp"
+        data-composition-src="compositions/captions.html"
+        data-composition-id="captions"
+        data-start="0"
+        data-duration="10.24"
+        data-track-index="3"
+        data-width="1080"
+        data-height="1920"
+      ></div>
     </div>
 
-<script>
-    const tl = gsap.timeline({ paused: true });
-    window.__timelines = window.__timelines || {};
-    window.__timelines["main-comp"] = tl;
-</script>
-</body>
+    <script>
+      const tl = gsap.timeline({ paused: true });
+      window.__timelines = window.__timelines || {};
+      window.__timelines["main-comp"] = tl;
+    </script>
+  </body>
 </html>

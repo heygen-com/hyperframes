@@ -14,7 +14,11 @@ function getFilenameFromUrl(url: string): string {
   return `download_${hash}${ext}`;
 }
 
-export async function downloadToTemp(url: string, destDir: string, timeoutMs: number = 300000): Promise<string> {
+export async function downloadToTemp(
+  url: string,
+  destDir: string,
+  timeoutMs: number = 300000,
+): Promise<string> {
   const cachedPath = downloadPathCache.get(url);
   if (cachedPath && existsSync(cachedPath)) {
     return cachedPath;

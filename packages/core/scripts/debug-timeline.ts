@@ -108,7 +108,8 @@ function normalizeDurationSeconds(
   maxDuration: number,
 ): number {
   const safeFallback = fallbackDuration != null && fallbackDuration > 0 ? fallbackDuration : 0;
-  const safeRaw = rawDuration != null && Number.isFinite(rawDuration) && rawDuration > 0 ? rawDuration : 0;
+  const safeRaw =
+    rawDuration != null && Number.isFinite(rawDuration) && rawDuration > 0 ? rawDuration : 0;
   if (safeRaw > 0) return Math.min(safeRaw, maxDuration);
   if (safeFallback > 0) return Math.min(safeFallback, maxDuration);
   return 0;
@@ -116,10 +117,19 @@ function normalizeDurationSeconds(
 
 function shouldIncludeTimelineNode(tag: ParsedTag, rootCompositionId: string | null): boolean {
   const attrs = tag.attrs;
-  if (attrs["data-composition-id"] && rootCompositionId && attrs["data-composition-id"] === rootCompositionId) {
+  if (
+    attrs["data-composition-id"] &&
+    rootCompositionId &&
+    attrs["data-composition-id"] === rootCompositionId
+  ) {
     return false;
   }
-  if (tag.tagName === "script" || tag.tagName === "style" || tag.tagName === "link" || tag.tagName === "meta") {
+  if (
+    tag.tagName === "script" ||
+    tag.tagName === "style" ||
+    tag.tagName === "link" ||
+    tag.tagName === "meta"
+  ) {
     return false;
   }
   if ((attrs.class || "").split(/\s+/).includes("__preview_render_frame__")) return false;
@@ -133,7 +143,8 @@ function shouldIncludeTimelineNode(tag: ParsedTag, rootCompositionId: string | n
 function inferClipDuration(tag: ParsedTag, start: number, maxDuration: number): number | null {
   const attrs = tag.attrs;
   const durationAttr = parseNum(attrs["data-duration"]);
-  if (durationAttr != null && durationAttr > 0) return normalizeDurationSeconds(durationAttr, null, maxDuration);
+  if (durationAttr != null && durationAttr > 0)
+    return normalizeDurationSeconds(durationAttr, null, maxDuration);
 
   const endAttr = parseNum(attrs["data-end"]);
   if (endAttr != null && endAttr > start) {
@@ -142,9 +153,14 @@ function inferClipDuration(tag: ParsedTag, start: number, maxDuration: number): 
 
   if (tag.tagName === "video" || tag.tagName === "audio") {
     const sourceDuration = parseNum(attrs["data-source-duration"]);
-    const playbackStart = parseNum(attrs["data-playback-start"]) ?? parseNum(attrs["data-playbackStart"]) ?? 0;
+    const playbackStart =
+      parseNum(attrs["data-playback-start"]) ?? parseNum(attrs["data-playbackStart"]) ?? 0;
     if (sourceDuration != null && sourceDuration > 0) {
-      return normalizeDurationSeconds(Math.max(0, sourceDuration - playbackStart), null, maxDuration);
+      return normalizeDurationSeconds(
+        Math.max(0, sourceDuration - playbackStart),
+        null,
+        maxDuration,
+      );
     }
   }
 
@@ -206,7 +222,9 @@ function main() {
   const rootDurationRaw =
     parseNum(root?.attrs["data-composition-duration"]) ??
     parseNum(root?.attrs["data-duration"]) ??
-    parseNum(tags.find((tag) => tag.tagName === "html")?.attrs["data-composition-duration"] ?? null);
+    parseNum(
+      tags.find((tag) => tag.tagName === "html")?.attrs["data-composition-duration"] ?? null,
+    );
   const rootDuration = normalizeDurationSeconds(rootDurationRaw, null, maxDuration);
 
   const nodes = tags.filter((tag) => shouldIncludeTimelineNode(tag, rootCompositionId));
@@ -220,7 +238,9 @@ function main() {
     const start = Math.max(0, parseNum(attrs["data-start"]) ?? 0);
     const inferredDuration = inferClipDuration(node, start, maxDuration);
     const hasDeterministicDuration = inferredDuration != null && inferredDuration > 0;
-    let duration = hasDeterministicDuration ? normalizeDurationSeconds(inferredDuration, 0, maxDuration) : 0;
+    let duration = hasDeterministicDuration
+      ? normalizeDurationSeconds(inferredDuration, 0, maxDuration)
+      : 0;
     let durationSource: "deterministic" | "fallback" = "deterministic";
     if (duration <= 0 && rootDuration > start) {
       duration = normalizeDurationSeconds(rootDuration - start, 0, maxDuration);
@@ -261,7 +281,8 @@ function main() {
 
   let effectiveDuration = 0;
   if (maxEnd > 0) effectiveDuration = normalizeDurationSeconds(maxEnd, 0, maxDuration);
-  if (effectiveDuration <= 0) effectiveDuration = normalizeDurationSeconds(rootDuration, 1, maxDuration);
+  if (effectiveDuration <= 0)
+    effectiveDuration = normalizeDurationSeconds(rootDuration, 1, maxDuration);
   if (effectiveDuration <= 0) effectiveDuration = 1;
 
   const compositionWidth = parseNum(root?.attrs["data-width"]) ?? 1920;

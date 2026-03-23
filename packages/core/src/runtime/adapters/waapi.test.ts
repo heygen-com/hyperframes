@@ -54,7 +54,9 @@ describe("waapi adapter", () => {
 
   it("handles animation that throws on pause", () => {
     const mockAnim = {
-      pause: vi.fn(() => { throw new Error("invalid state"); }),
+      pause: vi.fn(() => {
+        throw new Error("invalid state");
+      }),
       currentTime: 0,
     };
     (document as any).getAnimations = vi.fn(() => [mockAnim]);

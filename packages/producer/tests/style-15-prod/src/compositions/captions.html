@@ -7,7 +7,8 @@
     <style>
       [data-composition-id="captions"] {
         background: transparent;
-        font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; /* Akzidenz-Grotesk/Futura vibe */
+        font-family:
+          "Helvetica Neue", Helvetica, Arial, sans-serif; /* Akzidenz-Grotesk/Futura vibe */
         color: #000000;
         display: flex;
         justify-content: center;
@@ -57,7 +58,7 @@
       [data-composition-id="captions"] .word.bold {
         font-size: 120px; /* Reduced scale variance for better fit */
         font-weight: 900;
-        color: #BE1E2D; /* Bauhaus Red for emphasis */
+        color: #be1e2d; /* Bauhaus Red for emphasis */
       }
 
       /* Extreme weight for emphasis on keywords */
@@ -87,31 +88,89 @@
     </style>
 
     <script>
-      (function() {
-        const TRANSCRIPT = [{'text': 'We', 'start': 0.14, 'end': 0.239}, {'text': 'asked', 'start': 0.28, 'end': 0.459}, {'text': 'what', 'start': 0.5, 'end': 0.619}, {'text': 'you', 'start': 0.659, 'end': 0.779}, {'text': 'needed.', 'start': 0.8, 'end': 1.179}, {'text': 'Forty-seven', 'start': 1.199, 'end': 1.619}, {'text': 'percent', 'start': 1.699, 'end': 1.96}, {'text': 'of', 'start': 1.979, 'end': 2.059}, {'text': 'you', 'start': 2.099, 'end': 2.299}, {'text': 'said', 'start': 2.319, 'end': 2.499}, {'text': 'motion', 'start': 2.559, 'end': 2.839}, {'text': 'graphics,', 'start': 2.899, 'end': 3.759}, {'text': 'sixty-two', 'start': 3.799, 'end': 4.159}, {'text': 'percent', 'start': 4.239, 'end': 4.559}, {'text': 'said', 'start': 4.639, 'end': 4.799}, {'text': 'static', 'start': 4.859, 'end': 5.199}, {'text': 'content', 'start': 5.239, 'end': 5.639}, {'text': 'was', 'start': 5.679, 'end': 5.779}, {'text': 'costing', 'start': 5.859, 'end': 6.219}, {'text': 'you', 'start': 6.259, 'end': 6.339}, {'text': 'attention,', 'start': 6.379, 'end': 7.299}, {'text': 'and', 'start': 7.319, 'end': 7.439}, {'text': 'three', 'start': 7.48, 'end': 7.599}, {'text': 'out', 'start': 7.679, 'end': 7.779}, {'text': 'of', 'start': 7.799, 'end': 7.879}, {'text': 'four', 'start': 7.94, 'end': 8.139}, {'text': 'said', 'start': 8.279, 'end': 8.46}, {'text': 'you', 'start': 8.519, 'end': 8.6}, {'text': 'know', 'start': 8.619, 'end': 8.739}, {'text': 'the', 'start': 8.8, 'end': 8.88}, {'text': 'look', 'start': 8.92, 'end': 9.079}, {'text': 'you', 'start': 9.119, 'end': 9.259}, {'text': 'want', 'start': 9.279, 'end': 9.619}, {'text': 'but', 'start': 9.779, 'end': 9.88}, {'text': "don't", 'start': 9.92, 'end': 10.1}, {'text': 'have', 'start': 10.159, 'end': 10.3}, {'text': 'the', 'start': 10.3, 'end': 10.42}, {'text': 'editing', 'start': 10.5, 'end': 10.779}, {'text': 'skills', 'start': 10.86, 'end': 11.139}, {'text': 'to', 'start': 11.159, 'end': 11.239}, {'text': 'get', 'start': 11.279, 'end': 11.439}, {'text': 'there.', 'start': 11.46, 'end': 12.239}, {'text': 'So', 'start': 12.3, 'end': 12.38}, {'text': 'we', 'start': 12.399, 'end': 12.519}, {'text': 'built', 'start': 12.539, 'end': 12.759}, {'text': 'Editor', 'start': 12.84, 'end': 13.119}, {'text': 'Agent.', 'start': 13.239, 'end': 13.84}];
+      (function () {
+        const TRANSCRIPT = [
+          { text: "We", start: 0.14, end: 0.239 },
+          { text: "asked", start: 0.28, end: 0.459 },
+          { text: "what", start: 0.5, end: 0.619 },
+          { text: "you", start: 0.659, end: 0.779 },
+          { text: "needed.", start: 0.8, end: 1.179 },
+          { text: "Forty-seven", start: 1.199, end: 1.619 },
+          { text: "percent", start: 1.699, end: 1.96 },
+          { text: "of", start: 1.979, end: 2.059 },
+          { text: "you", start: 2.099, end: 2.299 },
+          { text: "said", start: 2.319, end: 2.499 },
+          { text: "motion", start: 2.559, end: 2.839 },
+          { text: "graphics,", start: 2.899, end: 3.759 },
+          { text: "sixty-two", start: 3.799, end: 4.159 },
+          { text: "percent", start: 4.239, end: 4.559 },
+          { text: "said", start: 4.639, end: 4.799 },
+          { text: "static", start: 4.859, end: 5.199 },
+          { text: "content", start: 5.239, end: 5.639 },
+          { text: "was", start: 5.679, end: 5.779 },
+          { text: "costing", start: 5.859, end: 6.219 },
+          { text: "you", start: 6.259, end: 6.339 },
+          { text: "attention,", start: 6.379, end: 7.299 },
+          { text: "and", start: 7.319, end: 7.439 },
+          { text: "three", start: 7.48, end: 7.599 },
+          { text: "out", start: 7.679, end: 7.779 },
+          { text: "of", start: 7.799, end: 7.879 },
+          { text: "four", start: 7.94, end: 8.139 },
+          { text: "said", start: 8.279, end: 8.46 },
+          { text: "you", start: 8.519, end: 8.6 },
+          { text: "know", start: 8.619, end: 8.739 },
+          { text: "the", start: 8.8, end: 8.88 },
+          { text: "look", start: 8.92, end: 9.079 },
+          { text: "you", start: 9.119, end: 9.259 },
+          { text: "want", start: 9.279, end: 9.619 },
+          { text: "but", start: 9.779, end: 9.88 },
+          { text: "don't", start: 9.92, end: 10.1 },
+          { text: "have", start: 10.159, end: 10.3 },
+          { text: "the", start: 10.3, end: 10.42 },
+          { text: "editing", start: 10.5, end: 10.779 },
+          { text: "skills", start: 10.86, end: 11.139 },
+          { text: "to", start: 11.159, end: 11.239 },
+          { text: "get", start: 11.279, end: 11.439 },
+          { text: "there.", start: 11.46, end: 12.239 },
+          { text: "So", start: 12.3, end: 12.38 },
+          { text: "we", start: 12.399, end: 12.519 },
+          { text: "built", start: 12.539, end: 12.759 },
+          { text: "Editor", start: 12.84, end: 13.119 },
+          { text: "Agent.", start: 13.239, end: 13.84 },
+        ];
         const groups = [
           { text: "We asked what you needed.", start: 0.14, end: 1.179 },
           { text: "Forty-seven percent of you said motion graphics,", start: 1.199, end: 3.759 },
-          { text: "sixty-two percent said static content was costing you attention,", start: 3.799, end: 7.299 },
-          { text: "and three out of four said you know the look you want", start: 7.319, end: 9.619 },
+          {
+            text: "sixty-two percent said static content was costing you attention,",
+            start: 3.799,
+            end: 7.299,
+          },
+          {
+            text: "and three out of four said you know the look you want",
+            start: 7.319,
+            end: 9.619,
+          },
           { text: "but don't have the editing skills to get there.", start: 9.779, end: 12.239 },
-          { text: "So we built Editor Agent.", start: 12.3, end: 13.84 }
+          { text: "So we built Editor Agent.", start: 12.3, end: 13.84 },
         ];
 
-        const container = document.querySelector('[data-composition-id="captions"] .captions-container');
+        const container = document.querySelector(
+          '[data-composition-id="captions"] .captions-container',
+        );
         const tl = gsap.timeline({ paused: true });
 
         // Add background "rails" for Tschichold aesthetic - reduced to 2-3 strategic lines
         const railPositions = [
-          { type: 'h', pos: '30%' },
-          { type: 'h', pos: '70%' },
-          { type: 'v', pos: '25%' }
+          { type: "h", pos: "30%" },
+          { type: "h", pos: "70%" },
+          { type: "v", pos: "25%" },
         ];
 
-        railPositions.forEach(rail => {
-          const el = document.createElement('div');
+        railPositions.forEach((rail) => {
+          const el = document.createElement("div");
           el.className = `rail rail-${rail.type}`;
-          if (rail.type === 'h') {
+          if (rail.type === "h") {
             el.style.top = rail.pos;
           } else {
             el.style.left = rail.pos;
@@ -119,20 +178,37 @@
           container.appendChild(el);
         });
 
-        const keywords = ["asked", "needed", "forty-seven", "percent", "motion", "graphics", "sixty-two", "static", "content", "attention", "three", "four", "editing", "skills", "editor", "agent"];
+        const keywords = [
+          "asked",
+          "needed",
+          "forty-seven",
+          "percent",
+          "motion",
+          "graphics",
+          "sixty-two",
+          "static",
+          "content",
+          "attention",
+          "three",
+          "four",
+          "editing",
+          "skills",
+          "editor",
+          "agent",
+        ];
 
         groups.forEach((group, index) => {
-          const groupEl = document.createElement('div');
-          groupEl.className = 'caption-group';
-          groupEl.id = 'group-' + index;
-          
-          const words = group.text.split(' ');
-          words.forEach(wordText => {
-            const span = document.createElement('span');
-            span.className = 'word';
-            const cleanWord = wordText.toLowerCase().replace(/[^\w]/g, '');
+          const groupEl = document.createElement("div");
+          groupEl.className = "caption-group";
+          groupEl.id = "group-" + index;
+
+          const words = group.text.split(" ");
+          words.forEach((wordText) => {
+            const span = document.createElement("span");
+            span.className = "word";
+            const cleanWord = wordText.toLowerCase().replace(/[^\w]/g, "");
             if (keywords.includes(cleanWord)) {
-              span.classList.add('bold');
+              span.classList.add("bold");
             }
             span.textContent = wordText;
             groupEl.appendChild(span);
@@ -140,45 +216,61 @@
 
           container.appendChild(groupEl);
 
-          const groupWords = groupEl.querySelectorAll('.word');
-          
+          const groupWords = groupEl.querySelectorAll(".word");
+
           // Entrance
-          tl.set(groupEl, { visibility: 'visible' }, group.start);
+          tl.set(groupEl, { visibility: "visible" }, group.start);
           tl.to(groupEl, { opacity: 1, duration: 0.1 }, group.start);
-          
+
           // Words slide into alignment along "rails"
-          tl.from(groupWords, {
-            x: (i) => (i % 2 === 0 ? -150 : 150),
-            opacity: 0,
-            duration: 0.8,
-            stagger: 0.04,
-            ease: "power4.out"
-          }, group.start);
+          tl.from(
+            groupWords,
+            {
+              x: (i) => (i % 2 === 0 ? -150 : 150),
+              opacity: 0,
+              duration: 0.8,
+              stagger: 0.04,
+              ease: "power4.out",
+            },
+            group.start,
+          );
 
           // Exit
           const exitTime = group.end;
-          tl.to(groupEl, { 
-            opacity: 0, 
-            duration: 0.2,
-            ease: "power2.in"
-          }, exitTime);
-          tl.set(groupEl, { visibility: 'hidden' }, exitTime + 0.2);
+          tl.to(
+            groupEl,
+            {
+              opacity: 0,
+              duration: 0.2,
+              ease: "power2.in",
+            },
+            exitTime,
+          );
+          tl.set(groupEl, { visibility: "hidden" }, exitTime + 0.2);
         });
 
         // Ambient motion for the rails
-        tl.to('.rail-h', {
-          scaleX: 0.9,
-          opacity: 0.03,
-          duration: 14,
-          ease: "none"
-        }, 0);
-        
-        tl.to('.rail-v', {
-          scaleY: 0.9,
-          opacity: 0.03,
-          duration: 14,
-          ease: "none"
-        }, 0);
+        tl.to(
+          ".rail-h",
+          {
+            scaleX: 0.9,
+            opacity: 0.03,
+            duration: 14,
+            ease: "none",
+          },
+          0,
+        );
+
+        tl.to(
+          ".rail-v",
+          {
+            scaleY: 0.9,
+            opacity: 0.03,
+            duration: 14,
+            ease: "none",
+          },
+          0,
+        );
 
         window.__timelines["captions"] = tl;
       })();

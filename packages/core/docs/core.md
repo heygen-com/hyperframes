@@ -217,11 +217,23 @@ Add `+ N` or `- N` after the ID to offset from the end of the referenced clip:
 
 ```html
 <!-- intro ends at 10. "intro + 2" = 10 + 2 = starts at second 12 (2s gap) -->
-<video id="scene-a" data-start="intro + 2" data-duration="20" data-track-index="0" src="..."></video>
+<video
+  id="scene-a"
+  data-start="intro + 2"
+  data-duration="20"
+  data-track-index="0"
+  src="..."
+></video>
 
 <!-- intro ends at 10. "intro - 0.5" = 10 - 0.5 = starts at second 9.5 (0.5s overlap for crossfade) -->
 <!-- Different track because clips on the same track cannot overlap -->
-<video id="scene-b" data-start="intro - 0.5" data-duration="20" data-track-index="1" src="..."></video>
+<video
+  id="scene-b"
+  data-start="intro - 0.5"
+  data-duration="20"
+  data-track-index="1"
+  src="..."
+></video>
 ```
 
 ### Rules
@@ -253,13 +265,7 @@ Full-screen or positioned video clips. Videos sync their playback to the timelin
 Static images that appear for a duration.
 
 ```html
-<img
-  id="el-2"
-  data-start="5"
-  data-duration="4"
-  data-track-index="1"
-  src="./assets/video.mp4"
-/>
+<img id="el-2" data-start="5" data-duration="4" data-track-index="1" src="./assets/video.mp4" />
 ```
 
 ## Audio Clips

@@ -21,10 +21,10 @@
         left: 50%;
         transform: translateX(-50%);
         width: 900px;
-        background-color: #FFFFFF;
+        background-color: #ffffff;
         color: #000000;
         padding: 60px;
-        border-top: 8px solid #CC0000;
+        border-top: 8px solid #cc0000;
         display: flex;
         flex-wrap: wrap;
         justify-content: center;
@@ -43,27 +43,27 @@
     </style>
 
     <script>
-      (function() {
+      (function () {
         const TRANSCRIPT = [
-          { text: 'Hola,', start: 1.22, end: 1.879 },
-          { text: 'esto', start: 1.919, end: 2.119 },
-          { text: 'es', start: 2.139, end: 2.199 },
-          { text: 'una', start: 2.24, end: 2.46 },
-          { text: 'prueba.', start: 2.46, end: 4.239 },
-          { text: 'Yo', start: 4.279, end: 4.619 },
-          { text: 'quiero', start: 4.679, end: 4.979 },
-          { text: 'definitivamente', start: 5.0, end: 6.539 },
-          { text: 'poder', start: 6.559, end: 6.879 },
-          { text: 'grabar', start: 6.899, end: 7.279 },
-          { text: 'contenido,', start: 7.299, end: 8.099 },
-          { text: 'pero', start: 8.119, end: 8.3 },
-          { text: 'ser', start: 8.399, end: 8.519 },
-          { text: 'yo', start: 8.6, end: 8.74 },
-          { text: 'misma', start: 8.76, end: 9.14 },
-          { text: 'también', start: 9.159, end: 10.26 }
+          { text: "Hola,", start: 1.22, end: 1.879 },
+          { text: "esto", start: 1.919, end: 2.119 },
+          { text: "es", start: 2.139, end: 2.199 },
+          { text: "una", start: 2.24, end: 2.46 },
+          { text: "prueba.", start: 2.46, end: 4.239 },
+          { text: "Yo", start: 4.279, end: 4.619 },
+          { text: "quiero", start: 4.679, end: 4.979 },
+          { text: "definitivamente", start: 5.0, end: 6.539 },
+          { text: "poder", start: 6.559, end: 6.879 },
+          { text: "grabar", start: 6.899, end: 7.279 },
+          { text: "contenido,", start: 7.299, end: 8.099 },
+          { text: "pero", start: 8.119, end: 8.3 },
+          { text: "ser", start: 8.399, end: 8.519 },
+          { text: "yo", start: 8.6, end: 8.74 },
+          { text: "misma", start: 8.76, end: 9.14 },
+          { text: "también", start: 9.159, end: 10.26 },
         ];
 
-        const container = document.getElementById('captions-container');
+        const container = document.getElementById("captions-container");
         const tl = gsap.timeline({ paused: true });
         const chunks = [];
         let currentChunk = [];
@@ -77,13 +77,13 @@
         });
 
         chunks.forEach((chunk, i) => {
-          const group = document.createElement('div');
-          group.className = 'caption-group';
+          const group = document.createElement("div");
+          group.className = "caption-group";
           group.id = `group-${i}`;
 
           chunk.forEach((wordData) => {
-            const span = document.createElement('span');
-            span.className = 'word';
+            const span = document.createElement("span");
+            span.className = "word";
             span.textContent = wordData.text;
             group.appendChild(span);
           });
@@ -97,14 +97,10 @@
             group,
             { opacity: 0, y: 20 },
             { opacity: 1, y: 0, duration: 0.3, ease: "power2.out" },
-            startTime
+            startTime,
           );
 
-          tl.to(
-            group,
-            { opacity: 0, y: -10, duration: 0.2, ease: "power2.in" },
-            endTime
-          );
+          tl.to(group, { opacity: 0, y: -10, duration: 0.2, ease: "power2.in" }, endTime);
         });
 
         window.__timelines["captions"] = tl;

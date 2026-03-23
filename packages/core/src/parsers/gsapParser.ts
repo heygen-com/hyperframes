@@ -78,7 +78,10 @@ function parseObjectLiteral(str: string): Record<string, number | string> {
     let value: string | number = match[2] ?? "";
 
     if (typeof value === "string") {
-      if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+      if (
+        (value.startsWith('"') && value.endsWith('"')) ||
+        (value.startsWith("'") && value.endsWith("'"))
+      ) {
         value = value.slice(1, -1);
       } else if (!isNaN(Number(value))) {
         value = Number(value);
@@ -108,14 +111,21 @@ export function parseGsapScript(script: string): ParsedGsap {
   let idCounter = 0;
 
   const timelineMatch = script.match(/(?:const|let|var)\s+(\w+)\s*=\s*gsap\.timeline/);
-  const timelineVar = timelineMatch ? timelineMatch[1] ?? "tl" : "tl";
+  const timelineVar = timelineMatch ? (timelineMatch[1] ?? "tl") : "tl";
 
   const preambleMatch = script.match(
-    new RegExp(`^[\\s\\S]*?(?:const|let|var)\\s+${timelineVar}\\s*=\\s*gsap\\.timeline\\s*\\([^)]*\\)\\s*;?`),
+    new RegExp(
+      `^[\\s\\S]*?(?:const|let|var)\\s+${timelineVar}\\s*=\\s*gsap\\.timeline\\s*\\([^)]*\\)\\s*;?`,
+    ),
   );
-  const preamble = preambleMatch ? preambleMatch[0] : `const ${timelineVar} = gsap.timeline({ paused: true });`;
+  const preamble = preambleMatch
+    ? preambleMatch[0]
+    : `const ${timelineVar} = gsap.timeline({ paused: true });`;
 
-  const methodPattern = new RegExp(`${timelineVar}\\.(set|to|from|fromTo)\\s*\\(([^)]+(?:\\{[^}]*\\}[^)]*)+)\\)`, "g");
+  const methodPattern = new RegExp(
+    `${timelineVar}\\.(set|to|from|fromTo)\\s*\\(([^)]+(?:\\{[^}]*\\}[^)]*)+)\\)`,
+    "g",
+  );
 
   let match;
   while ((match = methodPattern.exec(script)) !== null) {
@@ -286,7 +296,11 @@ function serializeObject(obj: Record<string, number | string>): string {
   return `{ ${entries.join(", ")} }`;
 }
 
-export function updateAnimationInScript(script: string, animationId: string, updates: Partial<GsapAnimation>): string {
+export function updateAnimationInScript(
+  script: string,
+  animationId: string,
+  updates: Partial<GsapAnimation>,
+): string {
   const parsed = parseGsapScript(script);
 
   const updated = parsed.animations.map((anim) => {
@@ -322,7 +336,10 @@ export function removeAnimationFromScript(script: string, animationId: string): 
   return serializeGsapAnimations(filtered, parsed.timelineVar);
 }
 
-export function getAnimationsForElement(animations: GsapAnimation[], elementId: string): GsapAnimation[] {
+export function getAnimationsForElement(
+  animations: GsapAnimation[],
+  elementId: string,
+): GsapAnimation[] {
   const selector = `#${elementId}`;
   return animations.filter((a) => a.targetSelector === selector);
 }
@@ -478,7 +495,8 @@ export function gsapAnimationsToKeyframes(
           } else if (key === "y") {
             (properties as Record<string, number>).y = value - baseY;
           } else if (key === "scale") {
-            (properties as Record<string, number>).scale = baseScale !== 0 ? value / baseScale : value;
+            (properties as Record<string, number>).scale =
+              baseScale !== 0 ? value / baseScale : value;
           } else {
             (properties as Record<string, number>)[key] = value;
           }

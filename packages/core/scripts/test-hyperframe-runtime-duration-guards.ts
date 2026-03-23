@@ -16,7 +16,10 @@ const initSource = readFileSync(initPath, "utf8");
 const timelineSource = readFileSync(timelinePath, "utf8");
 
 // Guard against regressions where preview duration gets capped by earliest video.
-assert(!initSource.includes("resolveMainVideoDurationSeconds"), "init.ts should not use first-video duration helper");
+assert(
+  !initSource.includes("resolveMainVideoDurationSeconds"),
+  "init.ts should not use first-video duration helper",
+);
 assert(
   !initSource.includes("Math.max(0, Math.min(safeDuration, mediaFloor))"),
   "init.ts should not hard-clamp safe duration to media floor",
