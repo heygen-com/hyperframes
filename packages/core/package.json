@@ -64,7 +64,7 @@
     "test:hyperframe-runtime-ci": "bun run build:hyperframes-runtime && bun run test:hyperframe-runtime-contract && bun run test:hyperframe-runtime-behavior && bun run test:hyperframe-runtime-seek && bun run test:hyperframe-runtime-duration-guards && bun run test:hyperframe-runtime-parity && bun run test:hyperframe-runtime-security",
     "check:hyperframe-html": "tsx scripts/check-hyperframe-static.ts",
     "debug:timeline": "tsx scripts/debug-timeline.ts",
-    "prepublishOnly": "bun run build"
+    "prepublishOnly": "echo skip"
   },
   "devDependencies": {
     "@types/jsdom": "^28.0.0",

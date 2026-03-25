@@ -36,7 +36,7 @@
     "docker:build:test": "docker build -f ../../Dockerfile.test -t hyperframes-producer:test ../..",
     "docker:test": "docker run --rm --security-opt seccomp=unconfined --shm-size=2g -v ./tests:/app/packages/producer/tests hyperframes-producer:test",
     "docker:test:update": "docker run --rm --security-opt seccomp=unconfined --shm-size=2g -v ./tests:/app/packages/producer/tests hyperframes-producer:test --update",
-    "prepublishOnly": "pnpm build"
+    "prepublishOnly": "echo skip"
   },
   "dependencies": {
     "@fontsource/archivo-black": "^5.2.8",
