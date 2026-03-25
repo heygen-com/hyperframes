@@ -25,31 +25,37 @@ jobs:
       - run: bun run build
 
       - name: Publish @hyperframes/core
+        continue-on-error: true
         run: npm --workspace packages/core publish --access public --no-git-checks
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish @hyperframes/engine
+        continue-on-error: true
         run: npm --workspace packages/engine publish --access public --no-git-checks
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish @hyperframes/producer
+        continue-on-error: true
         run: npm --workspace packages/producer publish --access public --no-git-checks
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish @hyperframes/studio
+        continue-on-error: true
         run: npm --workspace packages/studio publish --access public --no-git-checks
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish hyperframes (CLI)
+        continue-on-error: true
         run: npm --workspace packages/cli publish --access public --no-git-checks
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Create GitHub Release
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
