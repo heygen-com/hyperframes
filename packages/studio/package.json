@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/studio",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "files": [
     "src",
     "dist"
@@ -15,7 +15,9 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.1",
@@ -38,9 +40,12 @@
     "@vitejs/plugin-react": "^4.0.0",
     "autoprefixer": "^10.4.0",
     "postcss": "^8.4.0",
+    "puppeteer-core": "^24.40.0",
     "tailwindcss": "^3.4.0",
     "typescript": "^5.0.0",
-    "vite": "^5.0.0"
+    "vite": "^5.0.0",
+    "vitest": "^3.2.4",
+    "zustand": "^5.0.0"
   },
   "peerDependencies": {
     "react": "^18.0.0 || ^19.0.0",
