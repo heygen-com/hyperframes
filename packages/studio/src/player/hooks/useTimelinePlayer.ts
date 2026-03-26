@@ -81,6 +81,71 @@ function wrapTimeline(tl: TimelineLike): PlaybackAdapter {
   };
 }
 
+/**
+ * Parse [data-start] elements from a Document into TimelineElement[].
+ * Shared helper — used by onIframeLoad fallback, handleMessage, and enrichMissingCompositions.
+ */
+function parseTimelineFromDOM(doc: Document, rootDuration: number): TimelineElement[] {
+  const rootComp = doc.querySelector("[data-composition-id]");
+  const nodes = doc.querySelectorAll("[data-start]");
+  const els: TimelineElement[] = [];
+  let trackCounter = 0;
+
+  nodes.forEach((node) => {
+    if (node === rootComp) return;
+    const el = node as HTMLElement;
+    const startStr = el.getAttribute("data-start");
+    if (startStr == null) return;
+    const start = parseFloat(startStr);
+    if (isNaN(start)) return;
+
+    const tagLower = el.tagName.toLowerCase();
+    let dur = 0;
+    const durStr = el.getAttribute("data-duration");
+    if (durStr != null) dur = parseFloat(durStr);
+    if (isNaN(dur) || dur <= 0) dur = Math.max(0, rootDuration - start);
+
+    const trackStr = el.getAttribute("data-track-index");
+    const track = trackStr != null ? parseInt(trackStr, 10) : trackCounter++;
+    const entry: TimelineElement = {
+      id: el.id || el.className?.split(" ")[0] || tagLower,
+      tag: tagLower,
+      start,
+      duration: dur,
+      track: isNaN(track) ? 0 : track,
+    };
+
+    // Media elements
+    if (tagLower === "video" || tagLower === "audio" || tagLower === "img") {
+      const src = el.getAttribute("src");
+      if (src) entry.src = src;
+      const ms = el.getAttribute("data-media-start");
+      if (ms) entry.playbackStart = parseFloat(ms);
+      const vol = el.getAttribute("data-volume");
+      if (vol) entry.volume = parseFloat(vol);
+    }
+
+    // Sub-compositions
+    const compSrc =
+      el.getAttribute("data-composition-src") || el.getAttribute("data-composition-file");
+    const compId = el.getAttribute("data-composition-id");
+    if (compSrc) {
+      entry.compositionSrc = compSrc;
+    } else if (compId && compId !== rootComp?.getAttribute("data-composition-id")) {
+      // Inline composition — expose inner video for thumbnails
+      const innerVideo = el.querySelector("video[src]");
+      if (innerVideo) {
+        entry.src = innerVideo.getAttribute("src") || undefined;
+        entry.tag = "video";
+      }
+    }
+
+    els.push(entry);
+  });
+
+  return els;
+}
+
 function normalizePreviewViewport(doc: Document, win: Window): void {
   if (doc.documentElement) {
     doc.documentElement.style.overflow = "hidden";
@@ -136,13 +201,8 @@ function unmutePreviewMedia(iframe: HTMLIFrameElement | null): void {
       { source: "hf-parent", type: "control", action: "set-muted", muted: false },
       "*",
     );
-    // Fallback for CDN runtime that still uses the old source name
-    iframe.contentWindow?.postMessage(
-      { source: "hf-parent", type: "control", action: "set-muted", muted: false },
-      "*",
-    );
-  } catch {
-    /* ignore */
+  } catch (err) {
+    console.warn("[useTimelinePlayer] Failed to unmute preview media", err);
   }
 }
 
@@ -155,7 +215,7 @@ export function useTimelinePlayer() {
 
   // ZERO store subscriptions — this hook never causes re-renders.
   // All reads use getState() (point-in-time), all writes use the stable setters.
-  const { setIsPlaying, setCurrentTime, setDuration, setTimelineReady, setElements, reset } =
+  const { setIsPlaying, setCurrentTime, setDuration, setTimelineReady, setElements } =
     usePlayerStore.getState();
 
   const getAdapter = useCallback((): PlaybackAdapter | null => {
@@ -175,7 +235,8 @@ export function useTimelinePlayer() {
       }
 
       return null;
-    } catch {
+    } catch (err) {
+      console.warn("[useTimelinePlayer] Could not get playback adapter (cross-origin)", err);
       return null;
     }
   }, []);
@@ -211,10 +272,6 @@ export function useTimelinePlayer() {
       { source: "hf-parent", type: "control", action: "set-playback-rate", playbackRate: rate },
       "*",
     );
-    iframe.contentWindow?.postMessage(
-      { source: "hf-parent", type: "control", action: "set-playback-rate", playbackRate: rate },
-      "*",
-    );
     // Also set directly on GSAP timeline if accessible
     try {
       const win = iframe.contentWindow as IframeWindow | null;
@@ -228,8 +285,8 @@ export function useTimelinePlayer() {
           }
         }
       }
-    } catch {
-      /* cross-origin */
+    } catch (err) {
+      console.warn("[useTimelinePlayer] Could not set playback rate (cross-origin)", err);
     }
   }, []);
 
@@ -250,9 +307,10 @@ export function useTimelinePlayer() {
     const adapter = getAdapter();
     if (!adapter) return;
     adapter.pause();
+    setCurrentTime(adapter.getTime()); // sync store so Split/Delete have accurate time
     setIsPlaying(false);
     stopRAFLoop();
-  }, [getAdapter, setIsPlaying, stopRAFLoop]);
+  }, [getAdapter, setCurrentTime, setIsPlaying, stopRAFLoop]);
 
   const togglePlay = useCallback(() => {
     if (usePlayerStore.getState().isPlaying) {
@@ -268,40 +326,197 @@ export function useTimelinePlayer() {
       if (!adapter) return;
       adapter.seek(time);
       liveTime.notify(time); // Direct DOM updates (playhead, timecode, progress) — no re-render
+      setCurrentTime(time); // sync store so Split/Delete have accurate time
       stopRAFLoop();
       // Only update store if state actually changes (avoids unnecessary re-renders)
       if (usePlayerStore.getState().isPlaying) setIsPlaying(false);
     },
-    [getAdapter, setIsPlaying, stopRAFLoop],
+    [getAdapter, setCurrentTime, setIsPlaying, stopRAFLoop],
   );
 
   // Convert a runtime timeline message (from iframe postMessage) into TimelineElements
   const processTimelineMessage = useCallback(
     (data: { clips: ClipManifestClip[]; durationInFrames: number }) => {
-      if (!data.clips || data.clips.length === 0) return;
+      if (!data.clips || data.clips.length === 0) {
+        return;
+      }
 
-      // Show only root-level clips: those with no parentCompositionId (direct children of root).
-      // Sub-composition children (parentCompositionId !== null) belong to the drill-down view.
-      const els: TimelineElement[] = data.clips
-        .filter((clip) => !clip.parentCompositionId)
-        .map((clip) => {
-          const entry: TimelineElement = {
-            id: clip.id || clip.label || clip.tagName || "element",
-            tag: clip.tagName || clip.kind,
-            start: clip.start,
-            duration: clip.duration,
-            track: clip.track,
-          };
-          if (clip.assetUrl) entry.src = clip.assetUrl;
-          if (clip.kind === "composition" && clip.compositionId) {
-            entry.compositionSrc = clip.compositionSrc || `compositions/${clip.compositionId}.html`;
+      // Show root-level clips: no parentCompositionId, OR parent is a "phantom wrapper"
+      const clipCompositionIds = new Set(data.clips.map((c) => c.compositionId).filter(Boolean));
+      const filtered = data.clips.filter(
+        (clip) => !clip.parentCompositionId || !clipCompositionIds.has(clip.parentCompositionId),
+      );
+      const els: TimelineElement[] = filtered.map((clip) => {
+        const entry: TimelineElement = {
+          id: clip.id || clip.label || clip.tagName || "element",
+          tag: clip.tagName || clip.kind,
+          start: clip.start,
+          duration: clip.duration,
+          track: clip.track,
+        };
+        if (clip.assetUrl) entry.src = clip.assetUrl;
+        if (clip.kind === "composition" && clip.compositionId) {
+          // The bundler renames data-composition-src to data-composition-file
+          // after inlining, so the clip manifest may not have compositionSrc.
+          // Fall back to reading data-composition-file from the DOM.
+          let resolvedSrc = clip.compositionSrc;
+          let hostEl: Element | null = null;
+          if (!resolvedSrc) {
+            try {
+              const iframeDoc = iframeRef.current?.contentDocument;
+              hostEl =
+                iframeDoc?.querySelector(`[data-composition-id="${clip.compositionId}"]`) ?? null;
+              resolvedSrc = hostEl?.getAttribute("data-composition-file") ?? null;
+            } catch {
+              /* cross-origin */
+            }
           }
-          return entry;
-        });
+          if (resolvedSrc) {
+            entry.compositionSrc = resolvedSrc;
+          } else if (hostEl) {
+            // Inline composition (no external file) — expose inner video for thumbnails
+            const innerVideo = hostEl.querySelector("video[src]");
+            if (innerVideo) {
+              entry.src = innerVideo.getAttribute("src") || undefined;
+              entry.tag = "video";
+            }
+          }
+        }
+        return entry;
+      });
+      // Don't downgrade: if we already have more elements with a longer duration,
+      // skip updates that would show fewer clips (transient runtime state).
+      const currentElements = usePlayerStore.getState().elements;
+      const currentDuration = usePlayerStore.getState().duration;
+      const rawDuration = data.durationInFrames / 30;
+      // Clamp non-finite or absurdly large durations — the runtime can emit
+      // Infinity when it detects a loop-inflated GSAP timeline without an
+      // explicit data-duration on the root composition.
+      const newDuration = Number.isFinite(rawDuration) ? rawDuration : 0;
+      if (currentElements.length > els.length && newDuration <= currentDuration) {
+        return; // skip transient downgrade
+      }
       setElements(els);
+      // Ensure duration covers the furthest clip end so fit-zoom shows everything
+      if (els.length > 0) {
+        const maxEnd = Math.max(...els.map((e) => e.start + e.duration));
+        const effectiveDur = Math.max(newDuration, maxEnd);
+        if (Number.isFinite(effectiveDur) && effectiveDur > currentDuration)
+          setDuration(effectiveDur);
+      }
+      if (els.length > 0) setTimelineReady(true);
     },
-    [setElements],
+    [setElements, setTimelineReady, setDuration],
   );
+
+  /**
+   * Scan the iframe DOM for composition hosts missing from the current
+   * timeline elements and add them.  The CDN runtime often fails to resolve
+   * element-reference starts (`data-start="intro"`) so composition hosts
+   * are silently dropped from `__clipManifest`.  This pass reads the DOM +
+   * GSAP timeline registry directly to fill the gaps.
+   */
+  const enrichMissingCompositions = useCallback(() => {
+    try {
+      const iframe = iframeRef.current;
+      const doc = iframe?.contentDocument;
+      const iframeWin = iframe?.contentWindow as IframeWindow | null;
+      if (!doc || !iframeWin) return;
+
+      const currentEls = usePlayerStore.getState().elements;
+      const existingIds = new Set(currentEls.map((e) => e.id));
+      const rootComp = doc.querySelector("[data-composition-id]");
+      const rootCompId = rootComp?.getAttribute("data-composition-id");
+      // Use [data-composition-id][data-start] — the composition loader strips
+      // data-composition-src after loading, so we can't rely on it.
+      const hosts = doc.querySelectorAll("[data-composition-id][data-start]");
+      const missing: TimelineElement[] = [];
+
+      hosts.forEach((host) => {
+        const el = host as HTMLElement;
+        const compId = el.getAttribute("data-composition-id");
+        if (!compId || compId === rootCompId) return;
+        if (existingIds.has(el.id) || existingIds.has(compId)) return;
+
+        // Resolve start: numeric or element-reference
+        const startAttr = el.getAttribute("data-start") ?? "0";
+        let start = parseFloat(startAttr);
+        if (isNaN(start)) {
+          const ref =
+            doc.getElementById(startAttr) ||
+            doc.querySelector(`[data-composition-id="${startAttr}"]`);
+          if (ref) {
+            const refStartAttr = ref.getAttribute("data-start") ?? "0";
+            let refStart = parseFloat(refStartAttr);
+            // Recursively resolve one level of reference for the ref's own start
+            if (isNaN(refStart)) {
+              const refRef =
+                doc.getElementById(refStartAttr) ||
+                doc.querySelector(`[data-composition-id="${refStartAttr}"]`);
+              const rrStart = parseFloat(refRef?.getAttribute("data-start") ?? "0") || 0;
+              const rrCompId = refRef?.getAttribute("data-composition-id");
+              const rrDur =
+                parseFloat(refRef?.getAttribute("data-duration") ?? "") ||
+                (rrCompId
+                  ? ((
+                      iframeWin.__timelines?.[rrCompId] as TimelineLike | undefined
+                    )?.duration?.() ?? 0)
+                  : 0);
+              refStart = rrStart + rrDur;
+            }
+            const refCompId = ref.getAttribute("data-composition-id");
+            const refDur =
+              parseFloat(ref.getAttribute("data-duration") ?? "") ||
+              (refCompId
+                ? ((iframeWin.__timelines?.[refCompId] as TimelineLike | undefined)?.duration?.() ??
+                  0)
+                : 0);
+            start = refStart + refDur;
+          } else {
+            start = 0;
+          }
+        }
+
+        // Resolve duration from data-duration or GSAP timeline
+        let dur = parseFloat(el.getAttribute("data-duration") ?? "");
+        if (isNaN(dur) || dur <= 0) {
+          dur = (iframeWin.__timelines?.[compId] as TimelineLike | undefined)?.duration?.() ?? 0;
+        }
+        if (!Number.isFinite(dur) || dur <= 0) return;
+        if (!Number.isFinite(start)) start = 0;
+
+        const trackStr = el.getAttribute("data-track-index");
+        const track = trackStr != null ? parseInt(trackStr, 10) : 0;
+        const compSrc =
+          el.getAttribute("data-composition-src") || el.getAttribute("data-composition-file");
+        const entry: TimelineElement = {
+          id: el.id || compId,
+          tag: el.tagName.toLowerCase(),
+          start,
+          duration: dur,
+          track: isNaN(track) ? 0 : track,
+        };
+        if (compSrc) {
+          entry.compositionSrc = compSrc;
+        } else {
+          // Inline composition — expose inner video for thumbnails
+          const innerVideo = el.querySelector("video[src]");
+          if (innerVideo) {
+            entry.src = innerVideo.getAttribute("src") || undefined;
+            entry.tag = "video";
+          }
+        }
+        missing.push(entry);
+      });
+
+      if (missing.length > 0) {
+        setElements([...currentEls, ...missing]);
+        setTimelineReady(true);
+      }
+    } catch (err) {
+      console.warn("[useTimelinePlayer] enrichMissingCompositions failed", err);
+    }
+  }, [setElements, setTimelineReady]);
 
   const onIframeLoad = useCallback(() => {
     unmutePreviewMedia(iframeRef.current);
@@ -323,7 +538,8 @@ export function useTimelinePlayer() {
         const startTime = seekTo != null ? Math.min(seekTo, adapter.getDuration()) : 0;
 
         adapter.seek(startTime);
-        setDuration(adapter.getDuration());
+        const adapterDur = adapter.getDuration();
+        if (Number.isFinite(adapterDur) && adapterDur > 0) setDuration(adapterDur);
         setCurrentTime(startTime);
         if (!isRefreshingRef.current) {
           setTimelineReady(true);
@@ -343,55 +559,57 @@ export function useTimelinePlayer() {
           const manifest = iframeWin?.__clipManifest;
           if (manifest && manifest.clips.length > 0) {
             processTimelineMessage(manifest);
-          } else if (doc) {
+          }
+          // Enrich: fill in composition hosts the manifest missed
+          enrichMissingCompositions();
+
+          // Run DOM fallback if still no elements were populated
+          // (manifest may exist but all clips filtered out by parentCompositionId logic)
+          if (usePlayerStore.getState().elements.length === 0 && doc) {
             // Fallback: parse data-start elements directly from DOM (raw HTML without runtime)
+            const els = parseTimelineFromDOM(doc, adapter.getDuration());
+            if (els.length > 0) {
+              setElements(els);
+              setTimelineReady(true);
+            }
+          }
+
+          // Final fallback for standalone composition previews: if still no
+          // elements, build timeline entries from the DOM inside the root
+          // composition. This ensures the timeline always shows content when
+          // viewing a single composition (where elements lack data-start).
+          if (usePlayerStore.getState().elements.length === 0 && doc) {
             const rootComp = doc.querySelector("[data-composition-id]");
-            const nodes = doc.querySelectorAll("[data-start]");
-            const els: TimelineElement[] = [];
-            let trackCounter = 0;
             const rootDuration = adapter.getDuration();
-            nodes.forEach((node) => {
-              if (node === rootComp) return;
-              const el = node as HTMLElement;
-              const startStr = el.getAttribute("data-start");
-              if (startStr == null) return;
-              const start = parseFloat(startStr);
-              if (isNaN(start)) return;
-
-              const tagLower = el.tagName.toLowerCase();
-              let dur = 0;
-              const durStr = el.getAttribute("data-duration");
-              if (durStr != null) dur = parseFloat(durStr);
-              if (isNaN(dur) || dur <= 0) dur = Math.max(0, rootDuration - start);
-
-              const trackStr = el.getAttribute("data-track-index");
-              const track = trackStr != null ? parseInt(trackStr, 10) : trackCounter++;
-              const entry: TimelineElement = {
-                id: el.id || el.className?.split(" ")[0] || tagLower,
-                tag: tagLower,
-                start,
-                duration: dur,
-                track: isNaN(track) ? 0 : track,
-              };
-              if (tagLower === "video" || tagLower === "audio" || tagLower === "img") {
-                const src = el.getAttribute("src");
-                if (src) entry.src = src;
-              }
-              // Detect sub-compositions
-              const compSrc = el.getAttribute("data-composition-src");
-              const compId = el.getAttribute("data-composition-id");
-              if (compSrc || (compId && compId !== rootComp?.getAttribute("data-composition-id"))) {
-                entry.compositionSrc = compSrc || `compositions/${compId}.html`;
-              }
-              els.push(entry);
-            });
-            if (els.length > 0) setElements(els);
+            if (rootComp && rootDuration > 0) {
+              const rootId = rootComp.getAttribute("data-composition-id") || "composition";
+              // Derive compositionSrc from the iframe URL for thumbnail rendering.
+              // URL pattern: /api/projects/{id}/preview/comp/{path}
+              const iframeSrc = iframeRef.current?.src || "";
+              const compPathMatch = iframeSrc.match(/\/preview\/comp\/(.+?)(?:\?|$)/);
+              const compositionSrc = compPathMatch
+                ? decodeURIComponent(compPathMatch[1])
+                : undefined;
+              // Always show the root composition as a single clip — guarantees
+              // the timeline is never empty when a valid composition is loaded.
+              setElements([
+                {
+                  id: rootId,
+                  tag: (rootComp as HTMLElement).tagName?.toLowerCase() || "div",
+                  start: 0,
+                  duration: rootDuration,
+                  track: 0,
+                  compositionSrc,
+                },
+              ]);
+              setTimelineReady(true);
+            }
           }
           // The runtime will also postMessage the full timeline after all compositions load.
           // That message is handled by the window listener below, which will update elements
           // with the complete data (including async-loaded compositions).
-        } catch {
-          // Cross-origin or DOM access error
+        } catch (err) {
+          console.warn("[useTimelinePlayer] Could not read timeline elements from iframe", err);
         }
 
         return;
@@ -401,7 +619,7 @@ export function useTimelinePlayer() {
         console.warn("Could not find __player, __timeline, or __timelines on iframe after 5s");
       }
     }, 200);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- setElements is a stable zustand setter
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     getAdapter,
     setDuration,
@@ -409,6 +627,7 @@ export function useTimelinePlayer() {
     setTimelineReady,
     setIsPlaying,
     processTimelineMessage,
+    enrichMissingCompositions,
   ]);
 
   /** Save the current playback time so the next onIframeLoad restores it. */
@@ -436,8 +655,12 @@ export function useTimelinePlayer() {
 
   const togglePlayRef = useRef(togglePlay);
   togglePlayRef.current = togglePlay;
+  const getAdapterRef = useRef(getAdapter);
+  getAdapterRef.current = getAdapter;
   const processTimelineMessageRef = useRef(processTimelineMessage);
   processTimelineMessageRef.current = processTimelineMessage;
+  const enrichMissingCompositionsRef = useRef(enrichMissingCompositions);
+  enrichMissingCompositionsRef.current = enrichMissingCompositions;
 
   useMountEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -452,32 +675,94 @@ export function useTimelinePlayer() {
     // so we get the complete clip list (not just the first few).
     const handleMessage = (e: MessageEvent) => {
       const data = e.data;
-      if (
-        (data?.source === "hf-preview" || data?.source === "hf-preview") &&
-        data?.type === "timeline" &&
-        Array.isArray(data.clips)
-      ) {
+      // Only process messages from the main preview iframe — ignore MediaPanel/ClipThumbnail iframes
+      if (e.source && iframeRef.current && e.source !== iframeRef.current.contentWindow) {
+        return;
+      }
+      // Also handle the runtime's state message which includes timeline data
+      if (data?.source === "hf-preview" && data?.type === "state") {
+        // State message means the runtime is alive — check for elements
+        try {
+          if (usePlayerStore.getState().elements.length === 0) {
+            const iframe = iframeRef.current;
+            const iframeWin = iframe?.contentWindow as IframeWindow | null;
+            const manifest = iframeWin?.__clipManifest;
+            if (manifest && manifest.clips.length > 0) {
+              processTimelineMessageRef.current(manifest);
+            }
+          }
+          // Always try to enrich — timelines may have registered since the last check
+          enrichMissingCompositionsRef.current();
+        } catch (err) {
+          console.warn("[useTimelinePlayer] Could not read clip manifest from iframe", err);
+        }
+      }
+      if (data?.source === "hf-preview" && data?.type === "timeline" && Array.isArray(data.clips)) {
         processTimelineMessageRef.current(data);
+        // Fill in composition hosts the manifest missed (element-reference starts)
+        enrichMissingCompositionsRef.current();
         // Update duration only if the new value is longer (don't downgrade during generation)
-        if (data.durationInFrames > 0) {
+        if (data.durationInFrames > 0 && Number.isFinite(data.durationInFrames)) {
           const fps = 30;
           const dur = data.durationInFrames / fps;
           const currentDur = usePlayerStore.getState().duration;
           if (dur > currentDur) usePlayerStore.getState().setDuration(dur);
+        }
+        // If manifest produced 0 elements after filtering, try DOM fallback
+        if (usePlayerStore.getState().elements.length === 0) {
+          try {
+            const iframe = iframeRef.current;
+            const doc = iframe?.contentDocument;
+            const adapter = getAdapter();
+            if (doc && adapter) {
+              const els = parseTimelineFromDOM(doc, adapter.getDuration());
+              if (els.length > 0) {
+                setElements(els);
+                setTimelineReady(true);
+              }
+            }
+          } catch (err) {
+            console.warn(
+              "[useTimelinePlayer] Could not read timeline elements on navigate (cross-origin)",
+              err,
+            );
+          }
+        }
+      }
+    };
+
+    // Pause video when tab loses focus (user switches away)
+    const handleVisibilityChange = () => {
+      if (document.hidden && usePlayerStore.getState().isPlaying) {
+        const adapter = getAdapterRef.current?.();
+        if (adapter) {
+          adapter.pause();
+          setIsPlaying(false);
+          stopRAFLoop();
         }
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     window.addEventListener("message", handleMessage);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("message", handleMessage);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
       stopRAFLoop();
       if (probeIntervalRef.current) clearInterval(probeIntervalRef.current);
-      reset();
+      // Don't reset() on cleanup — preserve timeline elements across iframe refreshes
+      // to prevent blink. New data will replace old when the iframe reloads.
     };
   });
+
+  /** Reset the player store (elements, duration, etc.) — call when switching sessions. */
+  const resetPlayer = useCallback(() => {
+    stopRAFLoop();
+    if (probeIntervalRef.current) clearInterval(probeIntervalRef.current);
+    usePlayerStore.getState().reset();
+  }, [stopRAFLoop]);
 
   return {
     iframeRef,
@@ -488,5 +773,6 @@ export function useTimelinePlayer() {
     onIframeLoad,
     refreshPlayer,
     saveSeekPosition,
+    resetPlayer,
   };
 }

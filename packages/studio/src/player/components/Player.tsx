@@ -39,7 +39,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
       const handleMessage = (e: MessageEvent) => {
         const data = e.data;
         if (
-          (data?.source === "hf-preview" || data?.source === "hf-preview") &&
+          data?.source === "hf-preview" &&
           data?.type === "stage-size" &&
           data.width > 0 &&
           data.height > 0
@@ -83,8 +83,8 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
             }
           }
         }
-      } catch {
-        // Cross-origin
+      } catch (err) {
+        console.warn("[Player] Could not read iframe dimensions (cross-origin)", err);
       }
 
       if (loadCountRef.current > 1) {
@@ -103,7 +103,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
     return (
       <div
         ref={containerRef}
-        className="w-full h-full max-w-full max-h-full overflow-hidden shadow-float border border-neutral-800 bg-black flex items-center justify-center rounded-card-inner"
+        className="w-full h-full max-w-full max-h-full overflow-hidden bg-black flex items-center justify-center"
       >
         <iframe
           ref={ref}
@@ -117,6 +117,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
             width: dims.w,
             height: dims.h,
             border: "none",
+            outline: "1px solid black",
             transform: `scale(${scale})`,
             transformOrigin: "center center",
             flexShrink: 0,
