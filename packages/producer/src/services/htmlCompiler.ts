@@ -633,7 +633,10 @@ function ensureFullDocument(html: string): string {
   if (/^<!DOCTYPE\s+html/i.test(trimmed) || /^<html/i.test(trimmed)) {
     return html;
   }
-  return `<!DOCTYPE html>\n<html>\n<head>\n  <meta charset="UTF-8">\n</head>\n<body>\n${html}\n</body>\n</html>`;
+  // Wrap fragment with a proper document including margin/padding reset.
+  // Without this, Chrome applies default body { margin: 8px } which creates
+  // visible white lines at the edges of rendered video.
+  return `<!DOCTYPE html>\n<html>\n<head>\n  <meta charset="UTF-8">\n  <style>*{margin:0;padding:0;box-sizing:border-box}body{overflow:hidden;background:#000}</style>\n</head>\n<body style="margin:0;overflow:hidden">\n${html}\n</body>\n</html>`;
 }
 
 /**
