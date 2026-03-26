@@ -54,7 +54,7 @@ export const TimelineClip = memo(function TimelineClip({
             ? `repeating-linear-gradient(135deg, transparent, transparent 3px, rgba(255,255,255,0.08) 3px, rgba(255,255,255,0.08) 6px)`
             : undefined,
         border: isSelected
-          ? "2px solid rgba(255,255,255,0.9)"
+          ? `2px solid rgba(255,255,255,0.9)`
           : `1px solid rgba(255,255,255,${isHovered ? 0.3 : 0.15})`,
         boxShadow: isSelected
           ? `0 0 0 1px ${style.clip}, 0 2px 8px rgba(0,0,0,0.4)`
@@ -63,7 +63,6 @@ export const TimelineClip = memo(function TimelineClip({
             : "none",
         transition: "border-color 120ms, box-shadow 120ms",
         zIndex: isSelected ? 10 : isHovered ? 5 : 1,
-        cursor: "pointer",
       }}
       title={
         isComposition
