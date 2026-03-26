@@ -27,9 +27,6 @@ export { FileTree } from "./components/editor/FileTree";
 // App
 export { StudioApp } from "./App";
 
-// Timeline toolbar
-export { TimelineToolbar } from "./components/timeline/TimelineToolbar";
-
 // Hooks
 export { useCodeEditor } from "./hooks/useCodeEditor";
 export type { OpenFile, UseCodeEditorReturn } from "./hooks/useCodeEditor";

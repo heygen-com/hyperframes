@@ -2,6 +2,7 @@ import { useRef, useMemo, useCallback, useState, memo, type ReactNode, useEffect
 import { usePlayerStore, liveTime } from "../store/playerStore";
 import { useMountEffect } from "../lib/useMountEffect";
 import { TimelineClip } from "./TimelineClip";
+import { EditPopover } from "../../components/timeline/EditModal";
 
 /* ── Layout ─────────────────────────────────────────────────────── */
 const GUTTER = 32;
@@ -197,6 +198,28 @@ export const Timeline = memo(function Timeline({
   const scrollRef = useRef<HTMLDivElement>(null);
   const [hoveredClip, setHoveredClip] = useState<string | null>(null);
   const isDragging = useRef(false);
+  // Range selection (Shift+drag)
+  const [shiftHeld, setShiftHeld] = useState(false);
+  useEffect(() => {
+    const down = (e: KeyboardEvent) => e.key === "Shift" && setShiftHeld(true);
+    const up = (e: KeyboardEvent) => e.key === "Shift" && setShiftHeld(false);
+    window.addEventListener("keydown", down);
+    window.addEventListener("keyup", up);
+    window.addEventListener("blur", () => setShiftHeld(false));
+    return () => {
+      window.removeEventListener("keydown", down);
+      window.removeEventListener("keyup", up);
+    };
+  }, []);
+  const isRangeSelecting = useRef(false);
+  const rangeAnchorTime = useRef(0);
+  const [rangeSelection, setRangeSelection] = useState<{
+    start: number;
+    end: number;
+    anchorX: number;
+    anchorY: number;
+  } | null>(null);
+  const [showPopover, setShowPopover] = useState(false);
   const [viewportWidth, setViewportWidth] = useState(0);
   const roRef = useRef<ResizeObserver | null>(null);
 
@@ -328,21 +351,61 @@ export const Timeline = memo(function Timeline({
     (e: React.PointerEvent) => {
       if ((e.target as HTMLElement).closest("[data-clip]")) return;
       if (e.button !== 0) return;
-      isDragging.current = true;
       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+
+      // Shift+click starts range selection
+      if (e.shiftKey) {
+        isRangeSelecting.current = true;
+        setShowPopover(false);
+        const rect = scrollRef.current?.getBoundingClientRect();
+        if (rect) {
+          const x = e.clientX - rect.left + (scrollRef.current?.scrollLeft ?? 0) - GUTTER;
+          const time = Math.max(0, x / pps);
+          rangeAnchorTime.current = time;
+          setRangeSelection({ start: time, end: time, anchorX: e.clientX, anchorY: e.clientY });
+        }
+        return;
+      }
+
+      isDragging.current = true;
+      setRangeSelection(null);
+      setShowPopover(false);
       seekFromX(e.clientX);
     },
-    [seekFromX],
+    [seekFromX, pps],
   );
   const handlePointerMove = useCallback(
     (e: React.PointerEvent) => {
+      if (isRangeSelecting.current) {
+        const rect = scrollRef.current?.getBoundingClientRect();
+        if (rect) {
+          const x = e.clientX - rect.left + (scrollRef.current?.scrollLeft ?? 0) - GUTTER;
+          const time = Math.max(0, x / pps);
+          setRangeSelection((prev) =>
+            prev ? { ...prev, end: time, anchorX: e.clientX, anchorY: e.clientY } : null,
+          );
+        }
+        return;
+      }
       if (!isDragging.current) return;
       seekFromX(e.clientX);
       autoScrollDuringDrag(e.clientX);
     },
-    [seekFromX, autoScrollDuringDrag],
+    [seekFromX, autoScrollDuringDrag, pps],
   );
   const handlePointerUp = useCallback(() => {
+    if (isRangeSelecting.current) {
+      isRangeSelecting.current = false;
+      // Show popover if range is meaningful (> 0.2s)
+      setRangeSelection((prev) => {
+        if (prev && Math.abs(prev.end - prev.start) > 0.2) {
+          setShowPopover(true);
+          return prev;
+        }
+        return null;
+      });
+      return;
+    }
     isDragging.current = false;
     cancelAnimationFrame(dragScrollRaf.current);
   }, []);
@@ -471,7 +534,7 @@ export const Timeline = memo(function Timeline({
     <div
       ref={setContainerRef}
       aria-label="Timeline"
-      className="border-t border-neutral-800/50 bg-[#0a0a0b] select-none cursor-crosshair h-full overflow-hidden"
+      className={`border-t border-neutral-800/50 bg-[#0a0a0b] select-none h-full overflow-hidden ${shiftHeld ? "cursor-crosshair" : "cursor-default"}`}
       style={{ touchAction: "pan-x pan-y" }}
     >
       <div
@@ -510,6 +573,14 @@ export const Timeline = memo(function Timeline({
             className="relative border-b border-neutral-800/40 overflow-hidden"
             style={{ height: RULER_H, marginLeft: GUTTER, width: trackContentWidth }}
           >
+            {/* Shift hint */}
+            {shiftHeld && !rangeSelection && (
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
+                <span className="text-[9px] text-blue-400/60 font-medium">
+                  Drag to select range
+                </span>
+              </div>
+            )}
             {minor.map((t) => (
               <div key={`m-${t}`} className="absolute bottom-0" style={{ left: t * pps }}>
                 <div className="w-px h-[3px] bg-neutral-700/40" />
@@ -627,6 +698,23 @@ export const Timeline = memo(function Timeline({
             );
           })}
 
+          {/* Range selection highlight */}
+          {rangeSelection && (
+            <div
+              className="absolute pointer-events-none"
+              style={{
+                left: GUTTER + Math.min(rangeSelection.start, rangeSelection.end) * pps,
+                width: Math.abs(rangeSelection.end - rangeSelection.start) * pps,
+                top: RULER_H,
+                bottom: 0,
+                backgroundColor: "rgba(59, 130, 246, 0.12)",
+                borderLeft: "1px solid rgba(59, 130, 246, 0.4)",
+                borderRight: "1px solid rgba(59, 130, 246, 0.4)",
+                zIndex: 50,
+              }}
+            />
+          )}
+
           {/* Playhead — z-[100] to stay above all clips (which use z-1 to z-10) */}
           <div
             ref={playheadRef}
@@ -661,6 +749,32 @@ export const Timeline = memo(function Timeline({
           </div>
         </div>
       </div>
+
+      {/* Keyboard shortcut hint — always visible */}
+      {!showPopover && !rangeSelection && (
+        <div className="absolute bottom-2 right-3 pointer-events-none">
+          <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-neutral-800/50 border border-neutral-700/20">
+            <kbd className="text-[9px] font-mono text-neutral-500 bg-neutral-700/40 px-1 py-0.5 rounded">
+              Shift
+            </kbd>
+            <span className="text-[9px] text-neutral-600">+ drag to edit range</span>
+          </div>
+        </div>
+      )}
+
+      {/* Edit range popover */}
+      {showPopover && rangeSelection && (
+        <EditPopover
+          rangeStart={rangeSelection.start}
+          rangeEnd={rangeSelection.end}
+          anchorX={rangeSelection.anchorX}
+          anchorY={rangeSelection.anchorY}
+          onClose={() => {
+            setShowPopover(false);
+            setRangeSelection(null);
+          }}
+        />
+      )}
     </div>
   );
 });
