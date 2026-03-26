@@ -580,6 +580,18 @@ function inlineSubCompositions(
 
     host.removeAttribute("data-composition-src");
 
+    // Propagate data-start from the host element to the inner composition
+    // element so the runtime can resolve the correct start offset when nesting
+    // sub-timelines into the root. After inlining, data-start lives on the
+    // host while data-composition-id lives on the inner element.
+    const hostDataStart = host.getAttribute("data-start");
+    if (hostDataStart != null) {
+      const innerComp = host.querySelector("[data-composition-id]");
+      if (innerComp && !innerComp.getAttribute("data-start")) {
+        innerComp.setAttribute("data-start", hostDataStart);
+      }
+    }
+
     // Set explicit pixel dimensions on the host element so children using
     // width/height: 100% resolve correctly. The runtime does this
     // automatically but compiled HTML needs it inline.
