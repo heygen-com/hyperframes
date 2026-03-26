@@ -43,17 +43,15 @@ describe("formatTime", () => {
     expect(formatTime(609)).toBe("10:09");
   });
 
-  it("handles negative values", () => {
-    // Math.floor(-1/60) = -1, Math.floor(-1%60) = -1
-    // padStart(2, "0") on "-1" is "-1" (already length 2)
-    expect(formatTime(-1)).toBe("-1:-1");
+  it("guards against negative values", () => {
+    expect(formatTime(-1)).toBe("0:00");
   });
 
-  it("handles NaN", () => {
-    expect(formatTime(NaN)).toBe("NaN:NaN");
+  it("guards against NaN", () => {
+    expect(formatTime(NaN)).toBe("0:00");
   });
 
-  it("handles Infinity", () => {
-    expect(formatTime(Infinity)).toBe("Infinity:NaN");
+  it("guards against Infinity", () => {
+    expect(formatTime(Infinity)).toBe("0:00");
   });
 });
