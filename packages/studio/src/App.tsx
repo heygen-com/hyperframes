@@ -3,6 +3,8 @@ import { NLELayout } from "./components/nle/NLELayout";
 import { SourceEditor } from "./components/editor/SourceEditor";
 import { FileTree } from "./components/editor/FileTree";
 import { CompositionThumbnail } from "./player/components/CompositionThumbnail";
+import { TimelineToolbar } from "./components/timeline/TimelineToolbar";
+import { EditModal } from "./components/timeline/EditModal";
 import { VideoThumbnail } from "./player/components/VideoThumbnail";
 import type { TimelineElement } from "./player/store/playerStore";
 import {
@@ -297,6 +299,7 @@ export function StudioApp() {
     [compIdToSrc],
   );
   const [lintModal, setLintModal] = useState<LintFinding[] | null>(null);
+  const [editModalOpen, setEditModalOpen] = useState(false);
   const [linting, setLinting] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [renderState, setRenderState] = useState<"idle" | "rendering" | "complete" | "error">(
@@ -555,6 +558,7 @@ export function StudioApp() {
           onIframeRef={(iframe) => {
             previewIframeRef.current = iframe;
           }}
+          timelineToolbar={<TimelineToolbar onEdit={() => setEditModalOpen(true)} />}
         />
       </div>
 
@@ -649,6 +653,9 @@ export function StudioApp() {
 
       {/* Lint modal */}
       {lintModal !== null && <LintModal findings={lintModal} onClose={() => setLintModal(null)} />}
+
+      {/* Edit modal */}
+      {editModalOpen && <EditModal onClose={() => setEditModalOpen(false)} />}
     </div>
   );
 }
