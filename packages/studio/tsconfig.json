@@ -13,8 +13,14 @@
     "sourceMap": true,
     "outDir": "dist",
     "rootDir": "src",
-    "types": ["vite/client"]
+    "types": ["vite/client"],
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "allowJs": true,
+    "noEmit": true,
+    "incremental": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true
   },
   "include": ["src"],
-  "exclude": ["dist", "node_modules", "src/dev-server.ts"]
+  "exclude": ["dist", "node_modules", "src/**/*.test.ts"]
 }

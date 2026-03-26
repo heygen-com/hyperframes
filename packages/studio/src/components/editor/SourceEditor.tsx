@@ -26,7 +26,9 @@ function getLanguageExtension(language: string) {
     case "js":
     case "typescript":
     case "ts":
-      return javascript({ typescript: language === "typescript" || language === "ts" });
+      return javascript({
+        typescript: language === "typescript" || language === "ts",
+      });
     default:
       return html();
   }

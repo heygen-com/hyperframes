@@ -8,6 +8,7 @@ import {
   writeFileSync,
   lstatSync,
   realpathSync,
+  createReadStream,
 } from "node:fs";
 import { join, resolve, sep } from "node:path";
 
@@ -19,6 +20,50 @@ function isSafePath(base: string, resolved: string): boolean {
 
 // Lazy-load the bundler via Vite's SSR module loader (resolves .ts imports correctly)
 let _bundler: ((dir: string) => Promise<string>) | null = null;
+
+// Shared Puppeteer browser instance — lazy-init, reused across thumbnail requests
+let _browser: import("puppeteer-core").Browser | null = null;
+let _browserLaunchPromise: Promise<import("puppeteer-core").Browser> | null = null;
+
+async function getSharedBrowser(): Promise<import("puppeteer-core").Browser | null> {
+  if (_browser?.connected) return _browser;
+  if (_browserLaunchPromise) return _browserLaunchPromise;
+  _browserLaunchPromise = (async () => {
+    const puppeteer = await import("puppeteer-core");
+    const executablePath = [
+      "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+      "/usr/bin/google-chrome",
+      "/usr/bin/chromium-browser",
+    ].find((p) => existsSync(p));
+    if (!executablePath) return null;
+    _browser = await puppeteer.default.launch({
+      headless: true,
+      executablePath,
+      args: ["--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage"],
+    });
+    _browserLaunchPromise = null;
+    return _browser;
+  })();
+  return _browserLaunchPromise;
+}
+
+// Render job store with TTL cleanup (fixes globalThis memory leak)
+const renderJobs = new Map<
+  string,
+  { id: string; status: string; progress: number; outputPath: string }
+>();
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, job] of renderJobs) {
+    // Remove completed/failed jobs after 5 minutes
+    if (
+      (job.status === "complete" || job.status === "failed") &&
+      now - parseInt(key.split("-").pop() || "0") > 300_000
+    ) {
+      renderJobs.delete(key);
+    }
+  }
+}, 60_000);
 
 /** Minimal project API for standalone dev mode */
 function devProjectApi(): Plugin {
@@ -44,26 +89,146 @@ function devProjectApi(): Plugin {
       server.middlewares.use(async (req, res, next) => {
         if (!req.url?.startsWith("/api/")) return next();
 
-        // Render endpoints — not yet wired up in standalone studio
-        if (
-          req.url.startsWith("/api/render/") ||
-          (req.method === "POST" && req.url.match(/\/api\/projects\/[^/]+\/render/))
-        ) {
-          res.writeHead(501, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: "Render not available in standalone studio mode" }));
+        // ── Render endpoints ──────────────────────────────────────────
+        const PRODUCER_URL = (process.env.PRODUCER_SERVER_URL || "http://127.0.0.1:9847").replace(
+          /\/+$/,
+          "",
+        );
+
+        // POST /api/projects/:id/render — start a render job via producer
+        const renderMatch =
+          req.method === "POST" && req.url.match(/\/api\/projects\/([^/]+)\/render/);
+        if (renderMatch) {
+          const pid = renderMatch[1];
+          const pDir = join(dataDir, pid);
+          if (!existsSync(pDir)) {
+            res.writeHead(404, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "Project not found" }));
+            return;
+          }
+          const jobId = `${pid}-${Date.now()}`;
+          const outputDir = resolve(dataDir, "../renders");
+          if (!existsSync(outputDir)) {
+            const { mkdirSync: mk } = await import("fs");
+            mk(outputDir, { recursive: true });
+          }
+          const outputPath = join(outputDir, `${jobId}.mp4`);
+          // Store job state — referenced by the SSE progress endpoint and the fetch callback below
+          const _jobState = { id: jobId, status: "rendering", progress: 0, outputPath };
+          renderJobs.set(jobId, _jobState);
+
+          // Start render in background
+          fetch(`${PRODUCER_URL}/render/stream`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ projectDir: pDir, outputPath, fps: 30, quality: "standard" }),
+          })
+            .then(async (resp) => {
+              if (!resp.ok || !resp.body) {
+                _jobState.status = "failed";
+                return;
+              }
+              const reader = resp.body.getReader();
+              const decoder = new TextDecoder();
+              let buffer = "";
+              while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                buffer += decoder.decode(value, { stream: true });
+                const blocks = buffer.split("\n\n");
+                buffer = blocks.pop() || "";
+                for (const block of blocks) {
+                  const data = block
+                    .split("\n")
+                    .filter((l) => l.startsWith("data:"))
+                    .map((l) => l.slice(5).trim())
+                    .join("");
+                  if (!data) continue;
+                  try {
+                    const evt = JSON.parse(data);
+                    if (evt.type === "progress") {
+                      _jobState.progress = evt.progress;
+                    }
+                    if (evt.type === "complete") {
+                      _jobState.status = "complete";
+                      _jobState.outputPath = evt.outputPath || outputPath;
+                    }
+                    if (evt.type === "error") {
+                      _jobState.status = "failed";
+                    }
+                  } catch {}
+                }
+              }
+              if (_jobState.status === "rendering") _jobState.status = "complete";
+            })
+            .catch(() => {
+              _jobState.status = "failed";
+            });
+
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ jobId, status: "rendering" }));
           return;
         }
 
-        // GET /api/runtime.js — serve the HyperFrames runtime
-        if (req.method === "GET" && req.url === "/api/runtime.js") {
-          const cliRuntime = resolve(__dirname, "..", "cli", "dist", "hyperframe-runtime.js");
-          if (existsSync(cliRuntime)) {
-            res.writeHead(200, { "Content-Type": "text/javascript", "Cache-Control": "no-store" });
-            res.end(readFileSync(cliRuntime, "utf-8"));
-          } else {
-            res.writeHead(404);
-            res.end("runtime not built");
+        // GET /api/render/:jobId/progress — SSE progress stream
+        if (
+          req.method === "GET" &&
+          req.url.startsWith("/api/render/") &&
+          req.url.endsWith("/progress")
+        ) {
+          const jobId = req.url.replace("/api/render/", "").replace("/progress", "");
+          res.writeHead(200, {
+            "Content-Type": "text/event-stream",
+            "Cache-Control": "no-cache",
+            Connection: "keep-alive",
+          });
+          const interval = setInterval(() => {
+            const state = renderJobs.get(jobId) as { status: string; progress: number } | undefined;
+            if (!state) {
+              clearInterval(interval);
+              res.end();
+              return;
+            }
+            res.write(
+              `event: progress\ndata: ${JSON.stringify({ status: state.status, progress: state.progress })}\n\n`,
+            );
+            if (state.status === "complete" || state.status === "failed") {
+              clearInterval(interval);
+              setTimeout(() => res.end(), 100);
+            }
+          }, 500);
+          req.on("close", () => clearInterval(interval));
+          return;
+        }
+
+        // GET /api/render/:jobId/download — serve the rendered MP4
+        if (
+          req.method === "GET" &&
+          req.url.startsWith("/api/render/") &&
+          req.url.endsWith("/download")
+        ) {
+          const jobId = req.url.replace("/api/render/", "").replace("/download", "");
+          const jobState = renderJobs.get(jobId) as
+            | { outputPath?: string; status: string }
+            | undefined;
+          if (
+            !jobState ||
+            jobState.status !== "complete" ||
+            !jobState.outputPath ||
+            !existsSync(jobState.outputPath)
+          ) {
+            res.writeHead(404, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "Render not ready or not found" }));
+            return;
           }
+          const fileStat = statSync(jobState.outputPath);
+          res.writeHead(200, {
+            "Content-Type": "video/mp4",
+            "Content-Length": String(fileStat.size),
+            "Content-Disposition": `attachment; filename="${jobId}.mp4"`,
+          });
+          const stream = createReadStream(jobState.outputPath);
+          stream.pipe(res);
           return;
         }
 
@@ -158,8 +323,10 @@ function devProjectApi(): Plugin {
         // GET /api/projects/:id
         if (req.method === "GET" && !rest) {
           const files: string[] = [];
+          const IGNORE_DIRS = new Set([".thumbnails", "node_modules", ".git"]);
           function walk(d: string, prefix: string) {
             for (const entry of readdirSync(d, { withFileTypes: true })) {
+              if (IGNORE_DIRS.has(entry.name)) continue;
               const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
               if (entry.isDirectory()) walk(join(d, entry.name), rel);
               else files.push(rel);
@@ -178,21 +345,25 @@ function devProjectApi(): Plugin {
             let bundled = bundler
               ? await bundler(projectDir)
               : readFileSync(join(projectDir, "index.html"), "utf-8");
-            // Inject <base> so relative asset paths resolve through /preview/ route
-            const baseTag = `<base href="/api/projects/${projectId}/preview/">`;
-            if (bundled.includes("<head>")) {
-              bundled = bundled.replace("<head>", `<head>${baseTag}`);
-            } else {
-              bundled = baseTag + bundled;
+
+            // Inject runtime if not already present
+            const runtimeUrl =
+              "https://cdn.jsdelivr.net/npm/@hyperframes/core/dist/hyperframe.runtime.iife.js";
+            if (!bundled.includes("hyperframe.runtime")) {
+              const runtimeTag = `<script src="${runtimeUrl}"></script>`;
+              if (bundled.includes("</body>")) {
+                bundled = bundled.replace("</body>", `${runtimeTag}\n</body>`);
+              } else {
+                bundled += `\n${runtimeTag}`;
+              }
             }
-            // Inject runtime if available and not already set
-            const cliRuntime = resolve(__dirname, "..", "cli", "dist", "hyperframe-runtime.js");
-            if (existsSync(cliRuntime) && bundled.includes('src=""')) {
-              bundled = bundled.replace(
-                'data-hyperframes-preview-runtime="1" src=""',
-                'data-hyperframes-preview-runtime="1" src="/api/runtime.js"',
-              );
+
+            // Inject <base> for relative asset resolution
+            const baseHref = `/api/projects/${projectId}/preview/`;
+            if (!bundled.includes("<base")) {
+              bundled = bundled.replace(/<head>/i, `<head><base href="${baseHref}">`);
             }
+
             res.writeHead(200, {
               "Content-Type": "text/html; charset=utf-8",
               "Cache-Control": "no-store",
@@ -273,15 +444,9 @@ function devProjectApi(): Plugin {
           );
 
           // Build a standalone HTML page with GSAP + runtime
-          // Resolve runtime: env var → built CLI dist → empty (no runtime)
-          let runtimeUrl = (process.env.HYPERFRAME_RUNTIME_URL || "").trim();
-          if (!runtimeUrl) {
-            // In dev: serve the built runtime from the CLI dist
-            const cliRuntime = resolve(__dirname, "..", "cli", "dist", "hyperframe-runtime.js");
-            if (existsSync(cliRuntime)) {
-              runtimeUrl = `/api/runtime.js`;
-            }
-          }
+          const runtimeUrl =
+            (process.env.HYPERFRAME_RUNTIME_URL || "").trim() ||
+            "https://cdn.jsdelivr.net/npm/@hyperframes/core/dist/hyperframe.runtime.iife.js";
           const standalone = `<!DOCTYPE html>
 <html>
 <head>
@@ -300,6 +465,105 @@ ${content}
           return;
         }
 
+        // GET /api/projects/:id/thumbnail/* — generate JPEG thumbnail via Puppeteer
+        if (req.method === "GET" && rest.startsWith("/thumbnail/")) {
+          const compPath = decodeURIComponent(rest.replace("/thumbnail/", "").split("?")[0]);
+          const url = new URL(req.url!, `http://${req.headers.host}`);
+          const seekTime = parseFloat(url.searchParams.get("t") || "0.5") || 0.5;
+          const vpWidth = parseInt(url.searchParams.get("w") || "0") || 0;
+          const vpHeight = parseInt(url.searchParams.get("h") || "0") || 0;
+
+          // Determine the preview URL for this composition
+          const previewUrl =
+            compPath === "index.html"
+              ? `http://${req.headers.host}/api/projects/${projectId}/preview`
+              : `http://${req.headers.host}/api/projects/${projectId}/preview/comp/${compPath}`;
+
+          // Cache path
+          const cacheDir = join(projectDir, ".thumbnails");
+          const cacheKey = `${compPath.replace(/\//g, "_")}_${seekTime.toFixed(2)}.jpg`;
+          const cachePath = join(cacheDir, cacheKey);
+
+          // Return cached thumbnail if available
+          if (existsSync(cachePath)) {
+            res.writeHead(200, {
+              "Content-Type": "image/jpeg",
+              "Cache-Control": "public, max-age=60",
+            });
+            res.end(readFileSync(cachePath));
+            return;
+          }
+
+          try {
+            const browser = await getSharedBrowser();
+            if (!browser) {
+              res.writeHead(501, { "Content-Type": "application/json" });
+              res.end(JSON.stringify({ error: "Chrome not found for thumbnails" }));
+              return;
+            }
+            // Detect composition dimensions from the HTML file
+            let compW = vpWidth || 1920;
+            let compH = vpHeight || 1080;
+            if (!vpWidth) {
+              const htmlFile = join(projectDir, compPath);
+              if (existsSync(htmlFile)) {
+                const html = readFileSync(htmlFile, "utf-8");
+                const wMatch = html.match(/data-width=["'](\d+)["']/);
+                const hMatch = html.match(/data-height=["'](\d+)["']/);
+                if (wMatch) compW = parseInt(wMatch[1]);
+                if (hMatch) compH = parseInt(hMatch[1]);
+              }
+            }
+
+            const page = await browser.newPage();
+            await page.setViewport({ width: compW, height: compH, deviceScaleFactor: 0.5 });
+            await page.goto(previewUrl, { waitUntil: "domcontentloaded", timeout: 10000 });
+
+            // Wait for GSAP + seek
+            await page
+              .waitForFunction(
+                `!!(window.__timelines && Object.keys(window.__timelines).length > 0)`,
+                { timeout: 5000 },
+              )
+              .catch(() => {});
+            await page.evaluate((t: number) => {
+              const w = window as Window & {
+                __timelines?: Record<string, { seek: (t: number) => void; pause: () => void }>;
+              };
+              if (w.__timelines) {
+                const tl = Object.values(w.__timelines)[0];
+                if (tl) {
+                  tl.seek(t);
+                  tl.pause();
+                }
+              }
+            }, seekTime);
+            await page.evaluate("document.fonts?.ready");
+            await new Promise((r) => setTimeout(r, 100));
+
+            const buffer = await page.screenshot({ type: "jpeg", quality: 75 });
+            await page.close();
+
+            // Cache
+            if (!existsSync(cacheDir)) {
+              const { mkdirSync } = await import("fs");
+              mkdirSync(cacheDir, { recursive: true });
+            }
+            writeFileSync(cachePath, buffer);
+
+            res.writeHead(200, {
+              "Content-Type": "image/jpeg",
+              "Cache-Control": "public, max-age=60",
+            });
+            res.end(buffer);
+          } catch (err) {
+            console.warn("[Studio] Thumbnail generation failed:", err);
+            res.writeHead(500, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "Thumbnail generation failed" }));
+          }
+          return;
+        }
+
         // GET /api/projects/:id/preview/* — serve static assets (images, audio, etc.)
         if (req.method === "GET" && rest.startsWith("/preview/")) {
           const subPath = decodeURIComponent(rest.replace("/preview/", "").split("?")[0]);
@@ -310,29 +574,13 @@ ${content}
             return;
           }
           const isText = /\.(html|css|js|json|svg|txt)$/i.test(subPath);
-          const mimeTypes: Record<string, string> = {
-            ".html": "text/html",
-            ".js": "text/javascript",
-            ".css": "text/css",
-            ".json": "application/json",
-            ".svg": "image/svg+xml",
-            ".png": "image/png",
-            ".jpg": "image/jpeg",
-            ".jpeg": "image/jpeg",
-            ".webp": "image/webp",
-            ".gif": "image/gif",
-            ".mp4": "video/mp4",
-            ".webm": "video/webm",
-            ".mp3": "audio/mpeg",
-            ".wav": "audio/wav",
-            ".m4a": "audio/mp4",
-            ".ogg": "audio/ogg",
-            ".woff2": "font/woff2",
-            ".woff": "font/woff",
-            ".ttf": "font/ttf",
-          };
-          const ext = "." + subPath.split(".").pop()?.toLowerCase();
-          const contentType = mimeTypes[ext] ?? "application/octet-stream";
+          const contentType = subPath.endsWith(".html")
+            ? "text/html"
+            : subPath.endsWith(".js")
+              ? "text/javascript"
+              : subPath.endsWith(".css")
+                ? "text/css"
+                : "application/octet-stream";
           res.writeHead(200, { "Content-Type": contentType });
           res.end(readFileSync(file, isText ? "utf-8" : undefined));
           return;

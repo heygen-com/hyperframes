@@ -1,7 +1,10 @@
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect, type ReactNode } from "react";
 import { NLELayout } from "./components/nle/NLELayout";
 import { SourceEditor } from "./components/editor/SourceEditor";
 import { FileTree } from "./components/editor/FileTree";
+import { CompositionThumbnail } from "./player/components/CompositionThumbnail";
+import { VideoThumbnail } from "./player/components/VideoThumbnail";
+import type { TimelineElement } from "./player/store/playerStore";
 import {
   XIcon,
   CodeIcon,
@@ -80,6 +83,24 @@ function LintModal({ findings, onClose }: { findings: LintFinding[]; onClose: ()
   const errors = findings.filter((f) => f.severity === "error");
   const warnings = findings.filter((f) => f.severity === "warning");
   const hasIssues = findings.length > 0;
+  const [copied, setCopied] = useState(false);
+
+  const handleCopyToAgent = async () => {
+    const lines = findings.map((f) => {
+      let line = `[${f.severity}] ${f.message}`;
+      if (f.file) line += `\n  File: ${f.file}`;
+      if (f.fixHint) line += `\n  Fix: ${f.fixHint}`;
+      return line;
+    });
+    const text = `Fix these HyperFrames lint issues:\n\n${lines.join("\n\n")}`;
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // ignore
+    }
+  };
 
   return (
     <div
@@ -98,8 +119,8 @@ function LintModal({ findings, onClose }: { findings: LintFinding[]; onClose: ()
                 <WarningIcon size={18} className="text-red-400" weight="fill" />
               </div>
             ) : (
-              <div className="w-8 h-8 rounded-full bg-green-500/10 flex items-center justify-center">
-                <CheckCircleIcon size={18} className="text-green-400" weight="fill" />
+              <div className="w-8 h-8 rounded-full bg-[#3CE6AC]/10 flex items-center justify-center">
+                <CheckCircleIcon size={18} className="text-[#3CE6AC]" weight="fill" />
               </div>
             )}
             <div>
@@ -119,7 +140,19 @@ function LintModal({ findings, onClose }: { findings: LintFinding[]; onClose: ()
           </button>
         </div>
 
-        {/* Findings */}
+        {/* Copy to agent + findings */}
+        {hasIssues && (
+          <div className="flex items-center justify-end px-5 py-2 border-b border-neutral-800/50">
+            <button
+              onClick={handleCopyToAgent}
+              className={`px-3 py-1 text-xs font-medium rounded-lg transition-colors ${
+                copied ? "bg-green-600 text-white" : "bg-blue-600 hover:bg-blue-500 text-white"
+              }`}
+            >
+              {copied ? "Copied!" : "Copy to Agent"}
+            </button>
+          </div>
+        )}
         <div className="flex-1 overflow-y-auto px-5 py-3">
           {!hasIssues && (
             <div className="py-8 text-center text-neutral-500 text-sm">
@@ -139,8 +172,8 @@ function LintModal({ findings, onClose }: { findings: LintFinding[]; onClose: ()
                   {f.file && <p className="text-xs text-neutral-600 font-mono mt-0.5">{f.file}</p>}
                   {f.fixHint && (
                     <div className="flex items-start gap-1 mt-1.5">
-                      <CaretRightIcon size={10} className="text-blue-400 flex-shrink-0 mt-0.5" />
-                      <p className="text-xs text-blue-400">{f.fixHint}</p>
+                      <CaretRightIcon size={10} className="text-[#3CE6AC] flex-shrink-0 mt-0.5" />
+                      <p className="text-xs text-[#3CE6AC]">{f.fixHint}</p>
                     </div>
                   )}
                 </div>
@@ -156,8 +189,8 @@ function LintModal({ findings, onClose }: { findings: LintFinding[]; onClose: ()
                   {f.file && <p className="text-xs text-neutral-600 font-mono mt-0.5">{f.file}</p>}
                   {f.fixHint && (
                     <div className="flex items-start gap-1 mt-1.5">
-                      <CaretRightIcon size={10} className="text-blue-400 flex-shrink-0 mt-0.5" />
-                      <p className="text-xs text-blue-400">{f.fixHint}</p>
+                      <CaretRightIcon size={10} className="text-[#3CE6AC] flex-shrink-0 mt-0.5" />
+                      <p className="text-xs text-[#3CE6AC]">{f.fixHint}</p>
                     </div>
                   )}
                 </div>
@@ -202,6 +235,67 @@ export function StudioApp() {
   const [editingFile, setEditingFile] = useState<EditingFile | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [fileTree, setFileTree] = useState<string[]>([]);
+  const [compIdToSrc, setCompIdToSrc] = useState<Map<string, string>>(new Map());
+
+  const renderClipContent = useCallback(
+    (el: TimelineElement, style: { clip: string; label: string }): ReactNode => {
+      const pid = projectIdRef.current;
+      if (!pid) return null;
+
+      // Resolve composition source path using the compIdToSrc map
+      let compSrc = el.compositionSrc;
+      if (compSrc && compIdToSrc.size > 0) {
+        const resolved =
+          compIdToSrc.get(el.id) ||
+          compIdToSrc.get(compSrc.replace(/^compositions\//, "").replace(/\.html$/, ""));
+        if (resolved) compSrc = resolved;
+      }
+
+      if (compSrc) {
+        const previewUrl = `/api/projects/${pid}/preview/comp/${compSrc}`;
+        return (
+          <CompositionThumbnail
+            previewUrl={previewUrl}
+            label={el.id || el.tag}
+            labelColor={style.label}
+            seekTime={el.start}
+            duration={el.duration}
+          />
+        );
+      }
+
+      if ((el.tag === "video" || el.tag === "img") && el.src) {
+        const mediaSrc = el.src.startsWith("http")
+          ? el.src
+          : `/api/projects/${pid}/preview/${el.src}`;
+        return (
+          <VideoThumbnail
+            videoSrc={mediaSrc}
+            label={el.id || el.tag}
+            labelColor={style.label}
+            duration={el.duration}
+          />
+        );
+      }
+
+      // HTML scene divs — render from index.html at the scene's time
+      if (el.tag === "div" && el.duration > 0) {
+        const previewUrl = `/api/projects/${pid}/preview`;
+        return (
+          <CompositionThumbnail
+            previewUrl={previewUrl}
+            label={el.id || el.tag}
+            labelColor={style.label}
+            seekTime={el.start}
+            duration={el.duration}
+          />
+        );
+      }
+
+      return null;
+    },
+    [compIdToSrc],
+  );
   const [lintModal, setLintModal] = useState<LintFinding[] | null>(null);
   const [linting, setLinting] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -212,6 +306,7 @@ export function StudioApp() {
   const [_renderError, setRenderError] = useState<string | null>(null);
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const projectIdRef = useRef(projectId);
+  const previewIframeRef = useRef<HTMLIFrameElement | null>(null);
 
   // Listen for external file changes (user editing HTML outside the editor)
   useEffect(() => {
@@ -455,9 +550,11 @@ export function StudioApp() {
         <NLELayout
           projectId={projectId}
           refreshKey={refreshKey}
-          activeCompositionPath={
-            editingFile?.path?.startsWith("compositions/") ? editingFile.path : null
-          }
+          renderClipContent={renderClipContent}
+          onCompIdToSrcChange={setCompIdToSrc}
+          onIframeRef={(iframe) => {
+            previewIframeRef.current = iframe;
+          }}
         />
       </div>
 
@@ -481,7 +578,7 @@ export function StudioApp() {
           <button
             onClick={handleRender}
             disabled={renderState === "rendering"}
-            className="h-8 px-3 rounded-lg bg-blue-600 border border-blue-500 text-xs font-semibold text-white hover:bg-blue-500 transition-colors disabled:opacity-60 tabular-nums"
+            className="h-8 px-3 rounded-lg text-xs font-semibold text-[#09090B] bg-gradient-to-br from-[#3CE6AC] to-[#2BBFA0] hover:brightness-110 active:scale-[0.97] transition-colors disabled:opacity-60 tabular-nums"
           >
             {renderState === "rendering"
               ? `${Math.round(renderProgress)}%`
@@ -510,7 +607,7 @@ export function StudioApp() {
               <button
                 onClick={handleRender}
                 disabled={renderState === "rendering"}
-                className="px-2 py-1 rounded text-[11px] font-semibold text-blue-400 hover:text-blue-300 transition-colors disabled:opacity-60 tabular-nums"
+                className="px-2 py-1 rounded text-[11px] font-semibold text-[#3CE6AC] hover:text-[#5EEFC0] transition-colors disabled:opacity-60 tabular-nums"
               >
                 {renderState === "rendering" ? `${Math.round(renderProgress)}%` : "Export MP4"}
               </button>

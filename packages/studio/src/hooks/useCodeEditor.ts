@@ -16,7 +16,7 @@ export interface UseCodeEditorReturn {
   setActiveFile: (path: string) => void;
   updateContent: (content: string) => void;
   markSaved: (path: string) => void;
-  /** External update from agent — updates saved content, shows reload indicator */
+  /** External update — updates saved content, shows reload indicator */
   externalUpdate: (path: string, content: string) => void;
 }
 
