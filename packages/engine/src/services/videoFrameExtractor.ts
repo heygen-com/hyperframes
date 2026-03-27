@@ -52,11 +52,17 @@ export function parseVideoElements(html: string): VideoElement[] {
   const videos: VideoElement[] = [];
   const { document } = parseHTML(html);
 
-  const videoEls = document.querySelectorAll("video[id][src]");
+  const videoEls = document.querySelectorAll("video[src]");
+  let autoIdCounter = 0;
   for (const el of videoEls) {
-    const id = el.getAttribute("id");
     const src = el.getAttribute("src");
-    if (!id || !src) continue;
+    if (!src) continue;
+    // Generate a stable ID for videos without one — the producer needs IDs
+    // to track extracted frames and composite them during encoding.
+    const id = el.getAttribute("id") || `__auto_video_${autoIdCounter++}`;
+    if (!el.getAttribute("id")) {
+      el.setAttribute("id", id);
+    }
 
     const startAttr = el.getAttribute("data-start");
     const endAttr = el.getAttribute("data-end");
