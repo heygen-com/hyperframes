@@ -2,6 +2,7 @@ import { useState, useCallback, useRef, useEffect, type ReactNode } from "react"
 import { NLELayout } from "./components/nle/NLELayout";
 import { SourceEditor } from "./components/editor/SourceEditor";
 import { FileTree } from "./components/editor/FileTree";
+import { LeftSidebar } from "./components/sidebar/LeftSidebar";
 import { CompositionThumbnail } from "./player/components/CompositionThumbnail";
 import { VideoThumbnail } from "./player/components/VideoThumbnail";
 import type { TimelineElement } from "./player/store/playerStore";
@@ -15,7 +16,7 @@ import {
 
 interface EditingFile {
   path: string;
-  content: string;
+  content: string | null;
 }
 
 interface ProjectEntry {
@@ -550,8 +551,37 @@ export function StudioApp() {
     return <ProjectPicker onSelect={handleSelectProject} />;
   }
 
+  const compositions = fileTree.filter((f) => f === "index.html" || f.startsWith("compositions/"));
+  const assets = fileTree.filter(
+    (f) => !f.endsWith(".html") && !f.endsWith(".md") && !f.endsWith(".json"),
+  );
+
   return (
     <div className="flex h-screen w-screen bg-neutral-950">
+      {/* Left sidebar: Compositions + Assets */}
+      <LeftSidebar
+        projectId={projectId}
+        compositions={compositions}
+        assets={assets}
+        activeComposition={editingFile?.path ?? null}
+        onSelectComposition={(comp) => {
+          // Open code editor for this composition
+          const controller = new AbortController();
+          setEditingFile({ path: comp, content: null });
+          fetch(`/api/projects/${projectId}/files/${comp}`, { signal: controller.signal })
+            .then((r) => r.json())
+            .then((data) => {
+              // Only update if the path still matches (race condition guard)
+              setEditingFile((prev) =>
+                prev?.path === comp ? { path: comp, content: data.content } : prev,
+              );
+            })
+            .catch((err) => {
+              if (err.name !== "AbortError") console.warn("Failed to load composition:", err);
+            });
+        }}
+      />
+
       {/* NLE: Preview + Timeline */}
       <div className="flex-1 relative min-w-0">
         <NLELayout
@@ -559,6 +589,9 @@ export function StudioApp() {
           refreshKey={refreshKey}
           renderClipContent={renderClipContent}
           onCompIdToSrcChange={setCompIdToSrc}
+          activeCompositionPath={
+            editingFile?.path?.startsWith("compositions/") ? editingFile.path : null
+          }
           onIframeRef={(iframe) => {
             previewIframeRef.current = iframe;
           }}
@@ -641,7 +674,7 @@ export function StudioApp() {
           <div className="flex-1 overflow-hidden">
             {editingFile ? (
               <SourceEditor
-                content={editingFile.content}
+                content={editingFile.content ?? ""}
                 filePath={editingFile.path}
                 onChange={handleContentChange}
               />
