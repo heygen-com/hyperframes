@@ -217,4 +217,117 @@ describe("lintScriptUrls", () => {
 
     vi.unstubAllGlobals();
   });
+
+  // ── gsap_css_transform_conflict ──────────────────────────────────────────
+
+  it("reports error when tl.to animates x on an element with CSS translateX", () => {
+    const html = `
+<html><body>
+  <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
+    <div id="title" style=""></div>
+  </div>
+  <style>
+    #title { position: absolute; top: 240px; left: 50%; transform: translateX(-50%); }
+  </style>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.to("#title", { x: 0, opacity: 1, duration: 0.4 }, 0.5);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "gsap_css_transform_conflict");
+    expect(finding).toBeDefined();
+    expect(finding?.severity).toBe("error");
+    expect(finding?.selector).toBe("#title");
+    expect(finding?.fixHint).toMatch(/fromTo/);
+    expect(finding?.fixHint).toMatch(/xPercent/);
+  });
+
+  it("reports error when tl.to animates scale on an element with CSS scale transform", () => {
+    const html = `
+<html><body>
+  <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
+    <div id="hero"></div>
+  </div>
+  <style>
+    #hero { transform: scale(0.8); opacity: 0; }
+  </style>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.to("#hero", { opacity: 1, scale: 1, duration: 0.5 }, 1.0);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "gsap_css_transform_conflict");
+    expect(finding).toBeDefined();
+    expect(finding?.severity).toBe("error");
+    expect(finding?.selector).toBe("#hero");
+  });
+
+  it("does NOT report error when tl.to animates x on element WITHOUT CSS transform", () => {
+    const html = `
+<html><body>
+  <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
+    <div id="card"></div>
+  </div>
+  <style>
+    #card { position: absolute; top: 100px; left: 100px; opacity: 0; }
+  </style>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.fromTo("#card", { x: 120, opacity: 0 }, { x: 0, opacity: 1, duration: 0.3 }, 0);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = lintHyperframeHtml(html);
+    const conflict = result.findings.find((f) => f.code === "gsap_css_transform_conflict");
+    expect(conflict).toBeUndefined();
+  });
+
+  // ── sequential_clips_different_tracks ────────────────────────────────────
+
+  it("reports warning when sequential scene clips are on different track indices", () => {
+    const html = `
+<html><body>
+  <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
+    <div id="s1" class="clip" data-start="0"  data-duration="8"  data-track-index="1"></div>
+    <div id="s2" class="clip" data-start="8"  data-duration="8"  data-track-index="2"></div>
+    <div id="s3" class="clip" data-start="16" data-duration="8"  data-track-index="3"></div>
+  </div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "sequential_clips_different_tracks");
+    expect(finding).toBeDefined();
+    expect(finding?.severity).toBe("warning");
+    expect(finding?.fixHint).toMatch(/data-track-index="1"/);
+  });
+
+  it("does NOT report warning when sequential clips are all on the same track", () => {
+    const html = `
+<html><body>
+  <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
+    <div id="s1" class="clip" data-start="0"  data-duration="8"  data-track-index="1"></div>
+    <div id="s2" class="clip" data-start="8"  data-duration="8"  data-track-index="1"></div>
+    <div id="s3" class="clip" data-start="16" data-duration="8"  data-track-index="1"></div>
+  </div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "sequential_clips_different_tracks");
+    expect(finding).toBeUndefined();
+  });
 });

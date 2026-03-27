@@ -502,6 +502,134 @@ export function lintHyperframeHtml(
     }
   }
 
+  // ── Rule: gsap_css_transform_conflict ─────────────────────────────────────
+  // Detects elements whose CSS sets `transform: translate*` or `transform: scale*`
+  // that are also targeted by a GSAP tl.to/from tween animating x, y, xPercent,
+  // yPercent, or scale. GSAP's x/y properties overwrite the *entire* CSS transform,
+  // silently discarding translateX(-50%) centering and similar positioning tricks.
+  //
+  // Safe pattern (fromTo with explicit xPercent/yPercent) is allowed and not flagged.
+  {
+    // Collect CSS id/class selectors that have a `transform: translate*` or `transform: scale*`
+    const cssTranslateSelectors = new Map<string, string>(); // selector → transform value
+    const cssScaleSelectors = new Map<string, string>();
+
+    for (const style of styles) {
+      for (const [, selector, body] of style.content.matchAll(
+        /([#.][a-zA-Z0-9_-]+)\s*\{([^}]+)\}/g,
+      )) {
+        const tMatch = body?.match(/transform\s*:\s*([^;]+)/);
+        if (!tMatch || !tMatch[1]) continue;
+        const transformVal = tMatch[1].trim();
+        if (/translate/i.test(transformVal)) {
+          cssTranslateSelectors.set((selector ?? "").trim(), transformVal);
+        }
+        if (/scale/i.test(transformVal)) {
+          cssScaleSelectors.set((selector ?? "").trim(), transformVal);
+        }
+      }
+    }
+
+    if (cssTranslateSelectors.size > 0 || cssScaleSelectors.size > 0) {
+      for (const script of scripts) {
+        if (!/gsap\.timeline/.test(script.content)) continue;
+        const windows = extractGsapWindows(script.content);
+
+        for (const win of windows) {
+          const sel = win.targetSelector;
+          const cssKey = sel.startsWith("#") || sel.startsWith(".") ? sel : `#${sel}`;
+
+          // translate conflict (x, y, xPercent, yPercent)
+          const translateProps = win.properties.filter((p) =>
+            ["x", "y", "xPercent", "yPercent"].includes(p),
+          );
+          if (translateProps.length > 0 && cssTranslateSelectors.has(cssKey)) {
+            const cssVal = cssTranslateSelectors.get(cssKey);
+            pushFinding({
+              code: "gsap_css_transform_conflict",
+              severity: "error",
+              message:
+                `"${sel}" has CSS \`transform: ${cssVal}\` and a GSAP tween animates ` +
+                `${translateProps.join("/")}. GSAP will overwrite the full CSS transform, ` +
+                `discarding any translateX(-50%) centering or positioning.`,
+              selector: sel,
+              fixHint:
+                `Use tl.fromTo('${sel}', { xPercent: -50, x: -1000 }, { xPercent: -50, x: 0 }) ` +
+                `and remove the translateX from CSS so GSAP owns the full transform state.`,
+              snippet: truncateSnippet(win.raw),
+            });
+          }
+
+          // scale conflict
+          const scaleProps = win.properties.filter((p) => p === "scale");
+          if (scaleProps.length > 0 && cssScaleSelectors.has(cssKey)) {
+            const cssVal = cssScaleSelectors.get(cssKey);
+            pushFinding({
+              code: "gsap_css_transform_conflict",
+              severity: "error",
+              message:
+                `"${sel}" has CSS \`transform: ${cssVal}\` and a GSAP tween animates scale. ` +
+                `GSAP will overwrite the full CSS transform, discarding the CSS scale value.`,
+              selector: sel,
+              fixHint:
+                `Remove scale from CSS and use tl.fromTo('${sel}', { scale: 0.8 }, { scale: 1 }) ` +
+                `so GSAP owns the transform entirely.`,
+              snippet: truncateSnippet(win.raw),
+            });
+          }
+        }
+      }
+    }
+  }
+
+  // ── Rule: sequential_clips_different_tracks ────────────────────────────────
+  // Sequential scene clips (non-overlapping time ranges) that are spread across
+  // different data-track-index values may not auto-mount/unmount correctly.
+  // The framework only manages exclusive visibility for clips on the SAME track.
+  // Clips on different tracks are always present in the DOM; only GSAP opacity
+  // controls their visibility, which can silently break at seek time.
+  {
+    type ClipInfo = { id?: string; start: number; end: number; track: number };
+    const clips: ClipInfo[] = [];
+
+    for (const tag of tags) {
+      const classAttr = readAttr(tag.raw, "class") || "";
+      if (!classAttr.split(/\s+/).includes("clip")) continue;
+      const start = parseFloat(readAttr(tag.raw, "data-start") || "NaN");
+      const dur = parseFloat(readAttr(tag.raw, "data-duration") || "NaN");
+      const track = parseInt(readAttr(tag.raw, "data-track-index") || "-1", 10);
+      if (!isNaN(start) && !isNaN(dur) && track >= 0) {
+        clips.push({
+          id: readAttr(tag.raw, "id") || undefined,
+          start,
+          end: start + dur,
+          track,
+        });
+      }
+    }
+
+    if (clips.length > 1) {
+      const sorted = [...clips].sort((a, b) => a.start - b.start);
+      const isSequential = sorted.every((c, i) => i === 0 || sorted[i - 1]!.end <= c.start + 0.01);
+      const tracksUsed = new Set(sorted.map((c) => c.track));
+
+      if (isSequential && tracksUsed.size > 1) {
+        pushFinding({
+          code: "sequential_clips_different_tracks",
+          severity: "warning",
+          message:
+            `${clips.length} sequential class="clip" elements span ${tracksUsed.size} different ` +
+            `track indices (${[...tracksUsed].join(", ")}). The framework only auto-mounts/unmounts ` +
+            `clips on the same track. Clips on different tracks are always present in the DOM — ` +
+            `only GSAP opacity controls their visibility, which can silently fail at seek time.`,
+          fixHint:
+            `Set data-track-index="1" on all sequential scene clips so the framework manages ` +
+            `their exclusive visibility automatically.`,
+        });
+      }
+    }
+  }
+
   const errorCount = findings.filter((finding) => finding.severity === "error").length;
   const warningCount = findings.length - errorCount;
 
