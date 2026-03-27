@@ -164,13 +164,22 @@ const RENDER_MODE_SCRIPT = `(function() {
  * Injected after RENDER_MODE_SCRIPT so the engine's frameCapture can find window.__hf.
  */
 const HF_BRIDGE_SCRIPT = `(function() {
+  function getDeclaredDuration() {
+    var root = document.querySelector('[data-composition-id]');
+    if (!root) return 0;
+    var d = Number(root.getAttribute('data-duration'));
+    return Number.isFinite(d) && d > 0 ? d : 0;
+  }
   function bridge() {
     var p = window.__player;
     if (!p || typeof p.renderSeek !== "function" || typeof p.getDuration !== "function") {
       return false;
     }
     window.__hf = {
-      get duration() { return p.getDuration(); },
+      get duration() {
+        var d = p.getDuration();
+        return d > 0 ? d : getDeclaredDuration();
+      },
       seek: function(t) { p.renderSeek(t); },
     };
     return true;
