@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/cli",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "HyperFrames CLI — create, preview, and render HTML video compositions",
   "bin": {
     "hyperframes": "./dist/cli.js"
