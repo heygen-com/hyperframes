@@ -356,7 +356,12 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
           // Continue without — acquireBrowser will try its own resolution
         }
 
+        const { trackRenderComplete } = await import("../telemetry/events.js");
+        const { bytesToMb } = await import("../telemetry/system.js");
+        const { freemem } = await import("node:os");
+
         const job = createRenderJob({ fps: 30, quality: "standard" });
+        const startTime = Date.now();
         const onProgress = (j: { progress: number }) => {
           const entry = renderJobs.get(jobId);
           if (entry) entry.progress = j.progress;
@@ -367,7 +372,48 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
           entry.status = "complete";
           entry.progress = 100;
         }
+
+        const elapsed = Date.now() - startTime;
+        const perf = job.perfSummary;
+        const compositionDurationMs = perf
+          ? Math.round(perf.compositionDurationSeconds * 1000)
+          : undefined;
+        trackRenderComplete({
+          durationMs: elapsed,
+          fps: 30,
+          quality: "standard",
+          workers: perf?.workers ?? 1,
+          docker: false,
+          gpu: false,
+          compositionDurationMs,
+          compositionWidth: perf?.resolution.width,
+          compositionHeight: perf?.resolution.height,
+          totalFrames: perf?.totalFrames,
+          speedRatio:
+            compositionDurationMs && compositionDurationMs > 0 && elapsed > 0
+              ? Math.round((compositionDurationMs / elapsed) * 100) / 100
+              : undefined,
+          captureAvgMs: perf?.captureAvgMs,
+          capturePeakMs: perf?.capturePeakMs,
+          peakMemoryMb: bytesToMb(process.memoryUsage.rss()),
+          memoryFreeMb: bytesToMb(freemem()),
+        });
       } catch (err) {
+        try {
+          const { trackRenderError } = await import("../telemetry/events.js");
+          const { bytesToMb } = await import("../telemetry/system.js");
+          const { freemem } = await import("node:os");
+          trackRenderError({
+            fps: 30,
+            quality: "standard",
+            docker: false,
+            errorMessage: err instanceof Error ? err.message : String(err),
+            peakMemoryMb: bytesToMb(process.memoryUsage.rss()),
+            memoryFreeMb: bytesToMb(freemem()),
+          });
+        } catch {
+          // Telemetry must never break the studio
+        }
         const entry = renderJobs.get(jobId);
         if (entry) {
           entry.status = "failed";
