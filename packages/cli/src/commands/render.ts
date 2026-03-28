@@ -306,6 +306,7 @@ function handleRenderError(
   docker: boolean,
   hint: string,
 ): never {
+  const message = error instanceof Error ? error.message : String(error);
   trackRenderError({
     fps: options.fps,
     quality: options.quality,
@@ -313,9 +314,9 @@ function handleRenderError(
     workers: options.workers,
     gpu: options.gpu,
     elapsedMs: Date.now() - startTime,
+    errorMessage: message,
     ...getMemorySnapshot(),
   });
-  const message = error instanceof Error ? error.message : String(error);
   errorBox("Render failed", message, hint);
   process.exit(1);
 }
