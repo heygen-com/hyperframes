@@ -7,7 +7,15 @@
 
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
-import { existsSync, readFileSync, readdirSync, statSync, writeFileSync, mkdirSync } from "node:fs";
+import {
+  existsSync,
+  readFileSync,
+  readdirSync,
+  statSync,
+  writeFileSync,
+  mkdirSync,
+  unlinkSync,
+} from "node:fs";
 import { resolve, join, sep, basename, dirname, extname } from "node:path";
 import { createProjectWatcher, type ProjectWatcher } from "./fileWatcher.js";
 
@@ -224,6 +232,35 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
     return c.json({ id: projectId, files });
   });
 
+  // ── API: lint ───────────────────────────────────────────────────────
+  app.get("/api/projects/:id/lint", async (c) => {
+    const id = c.req.param("id");
+    if (id !== projectId) return c.json({ error: "not found" }, 404);
+    try {
+      const { lintHyperframeHtml } = await import("@hyperframes/core/lint");
+      const htmlFiles = walkDir(projectDir).filter((f: string) => f.endsWith(".html"));
+      const allFindings: Array<{
+        severity: string;
+        message: string;
+        file?: string;
+        fixHint?: string;
+      }> = [];
+      for (const file of htmlFiles) {
+        const content = readFileSync(join(projectDir, file), "utf-8");
+        const result = lintHyperframeHtml(content, { filePath: file });
+        if (result?.findings) {
+          for (const f of result.findings) {
+            allFindings.push({ ...f, file });
+          }
+        }
+      }
+      return c.json({ findings: allFindings });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return c.json({ error: `Lint failed: ${msg}` }, 500);
+    }
+  });
+
   // ── API: preview — bundled composition ────────────────────────────────
   app.get("/api/projects/:id/preview", async (c) => {
     const id = c.req.param("id");
@@ -326,17 +363,32 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
   // In-memory job store for active renders
   const renderJobs = new Map<
     string,
-    { status: string; progress: number; error?: string; outputPath?: string }
+    { status: string; progress: number; stage?: string; error?: string; outputPath?: string }
   >();
 
   app.post("/api/projects/:id/render", async (c) => {
     const id = c.req.param("id");
     if (id !== projectId) return c.json({ error: "not found" }, 404);
 
-    const jobId = Math.random().toString(36).slice(2, 10);
+    const body = (await c.req.json().catch(() => ({}))) as {
+      fps?: number;
+      quality?: string;
+      format?: string;
+    };
+    const format = body.format === "webm" ? "webm" : "mp4";
+    const fps: 24 | 30 | 60 = body.fps === 24 || body.fps === 60 ? body.fps : 30;
+    const quality = ["draft", "standard", "high"].includes(body.quality ?? "")
+      ? (body.quality as "draft" | "standard" | "high")
+      : "standard";
+
+    const now = new Date();
+    const datePart = now.toISOString().slice(0, 10);
+    const timePart = now.toTimeString().slice(0, 8).replace(/:/g, "-");
+    const jobId = `${projectId}_${datePart}_${timePart}`;
     const outputDir = join(projectDir, "renders");
     if (!existsSync(outputDir)) mkdirSync(outputDir, { recursive: true });
-    const outputPath = join(outputDir, `${projectId}.mp4`);
+    const ext = format === "webm" ? ".webm" : ".mp4";
+    const outputPath = join(outputDir, `${jobId}${ext}`);
 
     renderJobs.set(jobId, { status: "rendering", progress: 0, outputPath });
 
@@ -356,15 +408,14 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
           // Continue without — acquireBrowser will try its own resolution
         }
 
-        const { trackRenderComplete } = await import("../telemetry/events.js");
-        const { bytesToMb } = await import("../telemetry/system.js");
-        const { freemem } = await import("node:os");
-
-        const job = createRenderJob({ fps: 30, quality: "standard" });
+        const job = createRenderJob({ fps, quality, format });
         const startTime = Date.now();
-        const onProgress = (j: { progress: number }) => {
+        const onProgress = (j: { progress: number; currentStage?: string }) => {
           const entry = renderJobs.get(jobId);
-          if (entry) entry.progress = j.progress;
+          if (entry) {
+            entry.progress = j.progress;
+            if (j.currentStage) entry.stage = j.currentStage;
+          }
         };
         await executeRenderJob(job, projectDir, outputPath, onProgress);
         const entry = renderJobs.get(jobId);
@@ -372,52 +423,22 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
           entry.status = "complete";
           entry.progress = 100;
         }
-
-        const elapsed = Date.now() - startTime;
-        const perf = job.perfSummary;
-        const compositionDurationMs = perf
-          ? Math.round(perf.compositionDurationSeconds * 1000)
-          : undefined;
-        trackRenderComplete({
-          durationMs: elapsed,
-          fps: 30,
-          quality: "standard",
-          workers: perf?.workers ?? 1,
-          docker: false,
-          gpu: false,
-          compositionDurationMs,
-          compositionWidth: perf?.resolution.width,
-          compositionHeight: perf?.resolution.height,
-          totalFrames: perf?.totalFrames,
-          speedRatio:
-            compositionDurationMs && compositionDurationMs > 0 && elapsed > 0
-              ? Math.round((compositionDurationMs / elapsed) * 100) / 100
-              : undefined,
-          captureAvgMs: perf?.captureAvgMs,
-          capturePeakMs: perf?.capturePeakMs,
-          peakMemoryMb: bytesToMb(process.memoryUsage.rss()),
-          memoryFreeMb: bytesToMb(freemem()),
-        });
+        const metaPath = outputPath.replace(/\.(mp4|webm)$/, ".meta.json");
+        writeFileSync(
+          metaPath,
+          JSON.stringify({ status: "complete", durationMs: Date.now() - startTime }),
+        );
       } catch (err) {
-        try {
-          const { trackRenderError } = await import("../telemetry/events.js");
-          const { bytesToMb } = await import("../telemetry/system.js");
-          const { freemem } = await import("node:os");
-          trackRenderError({
-            fps: 30,
-            quality: "standard",
-            docker: false,
-            errorMessage: err instanceof Error ? err.message : String(err),
-            peakMemoryMb: bytesToMb(process.memoryUsage.rss()),
-            memoryFreeMb: bytesToMb(freemem()),
-          });
-        } catch {
-          // Telemetry must never break the studio
-        }
         const entry = renderJobs.get(jobId);
         if (entry) {
           entry.status = "failed";
           entry.error = err instanceof Error ? err.message : String(err);
+        }
+        try {
+          const metaPath = outputPath.replace(/\.(mp4|webm)$/, ".meta.json");
+          writeFileSync(metaPath, JSON.stringify({ status: "failed" }));
+        } catch {
+          /* ignore */
         }
       }
     })();
@@ -439,6 +460,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
           data: JSON.stringify({
             progress: current.progress,
             status: current.status,
+            stage: current.stage,
             error: current.error,
           }),
         });
@@ -454,13 +476,65 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
     if (!job?.outputPath || !existsSync(job.outputPath)) {
       return c.json({ error: "not found" }, 404);
     }
+    const isWebm = job.outputPath.endsWith(".webm");
+    const contentType = isWebm ? "video/webm" : "video/mp4";
+    const filename = job.outputPath.split("/").pop() ?? `${projectId}.mp4`;
     const content = readFileSync(job.outputPath);
     return new Response(content, {
       headers: {
-        "Content-Type": "video/mp4",
-        "Content-Disposition": `attachment; filename="${projectId}.mp4"`,
+        "Content-Type": contentType,
+        "Content-Disposition": `attachment; filename="${filename}"`,
       },
     });
+  });
+
+  // ── API: renders listing ──────────────────────────────────────────────
+  app.get("/api/projects/:id/renders", (c) => {
+    const id = c.req.param("id");
+    if (id !== projectId) return c.json({ error: "not found" }, 404);
+    const rendersDir = join(projectDir, "renders");
+    if (!existsSync(rendersDir)) return c.json({ renders: [] });
+    const files = readdirSync(rendersDir)
+      .filter((f: string) => f.endsWith(".mp4") || f.endsWith(".webm"))
+      .map((f: string) => {
+        const fp = join(rendersDir, f);
+        const stat = statSync(fp);
+        const rid = f.replace(/\.(mp4|webm)$/, "");
+        const metaPath = join(rendersDir, `${rid}.meta.json`);
+        let status: "complete" | "failed" = "complete";
+        let durationMs: number | undefined;
+        if (existsSync(metaPath)) {
+          try {
+            const meta = JSON.parse(readFileSync(metaPath, "utf-8"));
+            if (meta.status === "failed") status = "failed";
+            if (meta.durationMs) durationMs = meta.durationMs;
+          } catch {
+            /* ignore */
+          }
+        }
+        return {
+          id: rid,
+          filename: f,
+          size: stat.size,
+          createdAt: stat.mtimeMs,
+          status,
+          durationMs,
+        };
+      })
+      .sort((a: { createdAt: number }, b: { createdAt: number }) => b.createdAt - a.createdAt);
+    return c.json({ renders: files });
+  });
+
+  // ── API: delete render ───────────────────────────────────────────────
+  app.delete("/api/render/:jobId", (c) => {
+    const { jobId } = c.req.param();
+    const rendersDir = join(projectDir, "renders");
+    for (const ext of [".mp4", ".webm", ".meta.json"]) {
+      const fp = join(rendersDir, `${jobId}${ext}`);
+      if (existsSync(fp)) unlinkSync(fp);
+    }
+    renderJobs.delete(jobId);
+    return c.json({ deleted: true });
   });
 
   // ── Studio SPA static files ───────────────────────────────────────────

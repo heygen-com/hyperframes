@@ -27,13 +27,23 @@ export function useRenderQueue(projectId: string | null) {
           const existing = new Set(prev.map((j) => j.id));
           const fromServer: RenderJob[] = data.renders
             .filter((r: { id: string }) => !existing.has(r.id))
-            .map((r: { id: string; filename: string; createdAt: number; size: number }) => ({
-              id: r.id,
-              status: "complete" as const,
-              progress: 100,
-              filename: r.filename,
-              createdAt: r.createdAt,
-            }));
+            .map(
+              (r: {
+                id: string;
+                filename: string;
+                createdAt: number;
+                size: number;
+                status?: string;
+                durationMs?: number;
+              }) => ({
+                id: r.id,
+                status: (r.status === "failed" ? "failed" : "complete") as "complete" | "failed",
+                progress: 100,
+                filename: r.filename,
+                createdAt: r.createdAt,
+                durationMs: r.durationMs,
+              }),
+            );
           return [...prev, ...fromServer];
         });
       }

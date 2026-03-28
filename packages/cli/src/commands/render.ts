@@ -118,9 +118,12 @@ Examples:
     // ── Resolve output path ───────────────────────────────────────────────
     const rendersDir = resolve("renders");
     const ext = format === "webm" ? ".webm" : ".mp4";
+    const now = new Date();
+    const datePart = now.toISOString().slice(0, 10);
+    const timePart = now.toTimeString().slice(0, 8).replace(/:/g, "-");
     const outputPath = args.output
       ? resolve(args.output)
-      : join(rendersDir, `${project.name}${ext}`);
+      : join(rendersDir, `${project.name}_${datePart}_${timePart}${ext}`);
 
     // Ensure output directory exists
     mkdirSync(dirname(outputPath), { recursive: true });

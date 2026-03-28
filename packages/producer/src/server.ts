@@ -66,6 +66,7 @@ interface RenderInput {
   outputPath?: string | null;
   fps: 24 | 30 | 60;
   quality: "draft" | "standard" | "high";
+  format?: "mp4" | "webm";
   workers?: number;
   useGpu: boolean;
   debug: boolean;
@@ -97,7 +98,12 @@ function parseRenderOptions(body: Record<string, unknown>): Omit<RenderInput, "p
       ? body.entryFile.trim()
       : undefined;
 
-  return { outputPath, fps, quality, workers, useGpu, debug, entryFile };
+  const format = (["mp4", "webm"].includes(body.format as string) ? body.format : undefined) as
+    | "mp4"
+    | "webm"
+    | undefined;
+
+  return { outputPath, fps, quality, workers, useGpu, debug, entryFile, format };
 }
 
 async function prepareRenderBody(
@@ -321,6 +327,7 @@ export function createRenderHandlers(options: HandlerOptions = {}): RenderHandle
     const job = createRenderJob({
       fps: input.fps,
       quality: input.quality,
+      format: input.format,
       workers: input.workers,
       useGpu: input.useGpu,
       debug: input.debug,
@@ -433,6 +440,7 @@ export function createRenderHandlers(options: HandlerOptions = {}): RenderHandle
       const job = createRenderJob({
         fps: input.fps,
         quality: input.quality,
+        format: input.format,
         workers: input.workers,
         useGpu: input.useGpu,
         debug: input.debug,

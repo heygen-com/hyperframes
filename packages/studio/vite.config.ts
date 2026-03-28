@@ -139,6 +139,7 @@ function devProjectApi(): Plugin {
           }
           const outputPath = join(outputDir, `${jobId}.mp4`);
           // Store job state — referenced by the SSE progress endpoint and the fetch callback below
+          const startTime = Date.now();
           const _jobState = { id: jobId, status: "rendering", progress: 0, outputPath };
           renderJobs.set(jobId, _jobState);
 
@@ -186,17 +187,37 @@ function devProjectApi(): Plugin {
                     if (evt.type === "complete") {
                       _jobState.status = "complete";
                       _jobState.outputPath = evt.outputPath || outputPath;
+                      const metaPath = outputPath.replace(/\.(mp4|webm)$/, ".meta.json");
+                      writeFileSync(
+                        metaPath,
+                        JSON.stringify({ status: "complete", durationMs: Date.now() - startTime }),
+                      );
                     }
                     if (evt.type === "error") {
                       _jobState.status = "failed";
+                      const metaPath = outputPath.replace(/\.(mp4|webm)$/, ".meta.json");
+                      writeFileSync(metaPath, JSON.stringify({ status: "failed" }));
                     }
                   } catch {}
                 }
               }
-              if (_jobState.status === "rendering") _jobState.status = "complete";
+              if (_jobState.status === "rendering") {
+                _jobState.status = "complete";
+                const metaPath = outputPath.replace(/\.(mp4|webm)$/, ".meta.json");
+                writeFileSync(
+                  metaPath,
+                  JSON.stringify({ status: "complete", durationMs: Date.now() - startTime }),
+                );
+              }
             })
             .catch(() => {
               _jobState.status = "failed";
+              const metaPath = outputPath.replace(/\.(mp4|webm)$/, ".meta.json");
+              try {
+                writeFileSync(metaPath, JSON.stringify({ status: "failed" }));
+              } catch {
+                /* ignore */
+              }
             });
 
           res.writeHead(200, { "Content-Type": "application/json" });
@@ -284,11 +305,27 @@ function devProjectApi(): Plugin {
             .map((f: string) => {
               const fp = join(rendersDir, f);
               const stat = statSync(fp);
+              const id = f.replace(/\.(mp4|webm)$/, "");
+              // Read meta.json for status (failed renders persist as small files)
+              const metaPath = join(rendersDir, `${id}.meta.json`);
+              let status: "complete" | "failed" = "complete";
+              let durationMs: number | undefined;
+              if (existsSync(metaPath)) {
+                try {
+                  const meta = JSON.parse(readFileSync(metaPath, "utf-8"));
+                  if (meta.status === "failed") status = "failed";
+                  if (meta.durationMs) durationMs = meta.durationMs;
+                } catch {
+                  /* ignore corrupt meta */
+                }
+              }
               return {
-                id: f.replace(/\.(mp4|webm)$/, ""),
+                id,
                 filename: f,
                 size: stat.size,
                 createdAt: stat.mtimeMs,
+                status,
+                durationMs,
               };
             })
             .sort(
@@ -305,7 +342,7 @@ function devProjectApi(): Plugin {
         if (deleteRenderMatch) {
           const jobId = deleteRenderMatch[1];
           const rendersDir = resolve(dataDir, "../renders");
-          for (const ext of [".mp4", ".webm"]) {
+          for (const ext of [".mp4", ".webm", ".meta.json"]) {
             const fp = join(rendersDir, `${jobId}${ext}`);
             if (existsSync(fp)) unlinkSync(fp);
           }
