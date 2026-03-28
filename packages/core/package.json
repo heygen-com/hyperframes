@@ -28,7 +28,11 @@
       "import": "./src/compiler/index.ts",
       "types": "./src/compiler/index.ts"
     },
-    "./runtime": "./dist/hyperframe.runtime.iife.js"
+    "./runtime": "./dist/hyperframe.runtime.iife.js",
+    "./studio-api": {
+      "import": "./src/studio-api/index.ts",
+      "types": "./src/studio-api/index.ts"
+    }
   },
   "publishConfig": {
     "access": "public",
@@ -45,7 +49,11 @@
         "import": "./dist/compiler/index.js",
         "types": "./dist/compiler/index.d.ts"
       },
-      "./runtime": "./dist/hyperframe.runtime.iife.js"
+      "./runtime": "./dist/hyperframe.runtime.iife.js",
+      "./studio-api": {
+        "import": "./dist/studio-api/index.js",
+        "types": "./dist/studio-api/index.d.ts"
+      }
     },
     "main": "./dist/index.js",
     "types": "./dist/index.d.ts"
@@ -80,6 +88,14 @@
     "tsx": "^4.21.0",
     "typescript": "^5.0.0",
     "vitest": "^3.2.4"
+  },
+  "peerDependencies": {
+    "hono": "^4.0.0"
+  },
+  "peerDependenciesMeta": {
+    "hono": {
+      "optional": true
+    }
   },
   "optionalDependencies": {
     "cheerio": "^1.2.0",

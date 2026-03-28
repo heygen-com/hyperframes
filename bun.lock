@@ -71,6 +71,12 @@
         "cheerio": "^1.2.0",
         "esbuild": "^0.25.12",
       },
+      "peerDependencies": {
+        "hono": "^4.0.0",
+      },
+      "optionalPeers": [
+        "hono",
+      ],
     },
     "packages/engine": {
       "name": "@hyperframes/engine",
