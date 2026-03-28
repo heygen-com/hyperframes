@@ -42,7 +42,11 @@ export function lintHyperframeHtml(
   html: string,
   options: HyperframeLinterOptions = {},
 ): HyperframeLintResult {
-  const source = html || "";
+  // Strip <template> wrapper if present — composition files are often wrapped in
+  // <template id="..."> tags that the runtime extracts at load time.
+  let source = html || "";
+  const templateMatch = source.match(/<template[^>]*>([\s\S]*)<\/template>/i);
+  if (templateMatch?.[1]) source = templateMatch[1];
   const filePath = options.filePath;
   const findings: HyperframeLintFinding[] = [];
   const seen = new Set<string>();
@@ -456,21 +460,31 @@ export function lintHyperframeHtml(
   }
 
   // #4: Timed element missing visibility:hidden (no class="clip" or equivalent)
+  // Skip: elements with data-composition-id (managed by runtime), elements with
+  // opacity:0 in style (will be animated in by GSAP), and composition host elements.
+  // Most HyperFrames compositions use GSAP to manage element visibility via opacity
+  // animations, so this check is only relevant for elements that truly need to be
+  // hidden before the timeline starts.
   for (const tag of tags) {
     if (tag.name === "audio" || tag.name === "script" || tag.name === "style") continue;
     if (!readAttr(tag.raw, "data-start")) continue;
+    // Skip composition roots and hosts — the runtime manages their lifecycle
+    if (readAttr(tag.raw, "data-composition-id")) continue;
+    if (readAttr(tag.raw, "data-composition-src")) continue;
     const classAttr = readAttr(tag.raw, "class") || "";
     const styleAttr = readAttr(tag.raw, "style") || "";
     const hasClip = classAttr.split(/\s+/).includes("clip");
-    const hasHiddenStyle = /visibility\s*:\s*hidden/i.test(styleAttr);
+    const hasHiddenStyle =
+      /visibility\s*:\s*hidden/i.test(styleAttr) || /opacity\s*:\s*0/i.test(styleAttr);
     if (!hasClip && !hasHiddenStyle) {
       const elementId = readAttr(tag.raw, "id") || undefined;
       pushFinding({
         code: "timed_element_missing_visibility_hidden",
-        severity: "warning",
-        message: `<${tag.name}${elementId ? ` id="${elementId}"` : ""}> has data-start but no class="clip" or visibility:hidden. The framework needs elements to start hidden so it can manage their lifecycle.`,
+        severity: "info",
+        message: `<${tag.name}${elementId ? ` id="${elementId}"` : ""}> has data-start but no class="clip", visibility:hidden, or opacity:0. Consider adding initial hidden state if the element should not be visible before its start time.`,
         elementId,
-        fixHint: 'Add class="clip" to the element (with CSS: .clip { visibility: hidden; }).',
+        fixHint:
+          'Add class="clip" (with CSS: .clip { visibility: hidden; }) or style="opacity:0" if the element should start hidden.',
         snippet: truncateSnippet(tag.raw),
       });
     }

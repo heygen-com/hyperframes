@@ -1,4 +1,4 @@
-export type HyperframeLintSeverity = "error" | "warning";
+export type HyperframeLintSeverity = "error" | "warning" | "info";
 
 export type HyperframeLintFinding = {
   code: string;
