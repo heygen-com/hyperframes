@@ -2,6 +2,7 @@ import { readConfig, writeConfig } from "./config.js";
 import { VERSION } from "../version.js";
 import { c } from "../ui/colors.js";
 import { isDevMode } from "../utils/env.js";
+import { getSystemMeta } from "./system.js";
 
 // This is a public project API key — safe to embed in client-side code.
 // It only allows writing events, not reading data.
@@ -66,6 +67,7 @@ export function shouldTrack(): boolean {
 export function trackEvent(event: string, properties: EventProperties = {}): void {
   if (!shouldTrack()) return;
 
+  const sys = getSystemMeta();
   eventQueue.push({
     event,
     properties: {
@@ -74,6 +76,16 @@ export function trackEvent(event: string, properties: EventProperties = {}): voi
       os: process.platform,
       arch: process.arch,
       node_version: process.version,
+      os_release: sys.os_release,
+      cpu_count: sys.cpu_count,
+      cpu_model: sys.cpu_model ?? undefined,
+      cpu_speed: sys.cpu_speed ?? undefined,
+      memory_total_mb: sys.memory_total_mb,
+      is_docker: sys.is_docker,
+      is_ci: sys.is_ci,
+      ci_name: sys.ci_name ?? undefined,
+      is_wsl: sys.is_wsl,
+      is_tty: sys.is_tty,
     },
     timestamp: new Date().toISOString(),
   });

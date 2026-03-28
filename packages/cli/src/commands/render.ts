@@ -1,6 +1,6 @@
 import { defineCommand } from "citty";
 import { existsSync, mkdirSync, statSync } from "node:fs";
-import { cpus } from "node:os";
+import { cpus, freemem } from "node:os";
 import { resolve, dirname, join } from "node:path";
 import { resolveProject } from "../utils/project.js";
 import { loadProducer } from "../utils/producer.js";
@@ -8,6 +8,8 @@ import { c } from "../ui/colors.js";
 import { formatBytes, formatDuration, errorBox } from "../ui/format.js";
 import { renderProgress } from "../ui/progress.js";
 import { trackRenderComplete, trackRenderError } from "../telemetry/events.js";
+import { bytesToMb } from "../telemetry/system.js";
+import type { RenderJob } from "@hyperframes/producer";
 
 const VALID_FPS = new Set([24, 30, 60]);
 const VALID_QUALITY = new Set(["draft", "standard", "high"]);
@@ -230,8 +232,9 @@ async function renderDocker(
   const producer = await loadProducer();
   const startTime = Date.now();
 
+  let job: RenderJob;
   try {
-    const job = producer.createRenderJob({
+    job = producer.createRenderJob({
       fps: options.fps,
       quality: options.quality,
       format: options.format,
@@ -240,25 +243,11 @@ async function renderDocker(
     });
     await producer.executeRenderJob(job, projectDir, outputPath);
   } catch (error: unknown) {
-    trackRenderError({
-      fps: options.fps,
-      quality: options.quality,
-      docker: true,
-    });
-    const message = error instanceof Error ? error.message : String(error);
-    errorBox("Render failed", message, "Check Docker is running: docker info");
-    process.exit(1);
+    handleRenderError(error, options, startTime, true, "Check Docker is running: docker info");
   }
 
   const elapsed = Date.now() - startTime;
-  trackRenderComplete({
-    durationMs: elapsed,
-    fps: options.fps,
-    quality: options.quality,
-    workers: options.workers,
-    docker: true,
-    gpu: options.gpu,
-  });
+  trackRenderMetrics(job, elapsed, options, true);
   printRenderComplete(outputPath, elapsed, options.quiet);
 }
 
@@ -295,26 +284,77 @@ async function renderLocal(
   try {
     await producer.executeRenderJob(job, projectDir, outputPath, onProgress);
   } catch (error: unknown) {
-    trackRenderError({
-      fps: options.fps,
-      quality: options.quality,
-      docker: false,
-    });
-    const message = error instanceof Error ? error.message : String(error);
-    errorBox("Render failed", message, "Try --docker for containerized rendering");
-    process.exit(1);
+    handleRenderError(error, options, startTime, false, "Try --docker for containerized rendering");
   }
 
   const elapsed = Date.now() - startTime;
+  trackRenderMetrics(job, elapsed, options, false);
+  printRenderComplete(outputPath, elapsed, options.quiet);
+}
+
+function getMemorySnapshot() {
+  return {
+    peakMemoryMb: bytesToMb(process.memoryUsage.rss()),
+    memoryFreeMb: bytesToMb(freemem()),
+  };
+}
+
+function handleRenderError(
+  error: unknown,
+  options: RenderOptions,
+  startTime: number,
+  docker: boolean,
+  hint: string,
+): never {
+  trackRenderError({
+    fps: options.fps,
+    quality: options.quality,
+    docker,
+    workers: options.workers,
+    gpu: options.gpu,
+    elapsedMs: Date.now() - startTime,
+    ...getMemorySnapshot(),
+  });
+  const message = error instanceof Error ? error.message : String(error);
+  errorBox("Render failed", message, hint);
+  process.exit(1);
+}
+
+/**
+ * Extract rich metrics from the completed render job and send to telemetry.
+ * speed_ratio = render_time / composition_duration — values < 1 mean faster than realtime.
+ */
+function trackRenderMetrics(
+  job: RenderJob,
+  elapsedMs: number,
+  options: RenderOptions,
+  docker: boolean,
+): void {
+  const perf = job.perfSummary;
+  const compositionDurationMs = perf
+    ? Math.round(perf.compositionDurationSeconds * 1000)
+    : undefined;
+  const speedRatio =
+    compositionDurationMs && compositionDurationMs > 0
+      ? Math.round((elapsedMs / compositionDurationMs) * 100) / 100
+      : undefined;
+
   trackRenderComplete({
-    durationMs: elapsed,
+    durationMs: elapsedMs,
     fps: options.fps,
     quality: options.quality,
     workers: options.workers,
-    docker: false,
+    docker,
     gpu: options.gpu,
+    compositionDurationMs,
+    compositionWidth: perf?.resolution.width,
+    compositionHeight: perf?.resolution.height,
+    totalFrames: perf?.totalFrames,
+    speedRatio,
+    captureAvgMs: perf?.captureAvgMs,
+    capturePeakMs: perf?.capturePeakMs,
+    ...getMemorySnapshot(),
   });
-  printRenderComplete(outputPath, elapsed, options.quiet);
 }
 
 function printRenderComplete(outputPath: string, elapsedMs: number, quiet: boolean): void {
