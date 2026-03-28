@@ -322,7 +322,7 @@ function handleRenderError(
 
 /**
  * Extract rich metrics from the completed render job and send to telemetry.
- * speed_ratio = render_time / composition_duration — values < 1 mean faster than realtime.
+ * speed_ratio = composition_duration / render_time — higher is better, >1 means faster than realtime.
  */
 function trackRenderMetrics(
   job: RenderJob,
@@ -335,8 +335,8 @@ function trackRenderMetrics(
     ? Math.round(perf.compositionDurationSeconds * 1000)
     : undefined;
   const speedRatio =
-    compositionDurationMs && compositionDurationMs > 0
-      ? Math.round((elapsedMs / compositionDurationMs) * 100) / 100
+    compositionDurationMs && compositionDurationMs > 0 && elapsedMs > 0
+      ? Math.round((compositionDurationMs / elapsedMs) * 100) / 100
       : undefined;
 
   trackRenderComplete({
