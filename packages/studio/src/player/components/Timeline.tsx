@@ -1,8 +1,9 @@
-import { useRef, useMemo, useCallback, useState, memo, type ReactNode, useEffect } from "react";
+import { useRef, useMemo, useCallback, useState, memo, type ReactNode } from "react";
 import { usePlayerStore, liveTime } from "../store/playerStore";
-import { useMountEffect } from "../lib/useMountEffect";
+import { useMountEffect } from "../../hooks/useMountEffect";
+import { formatTime } from "../lib/time";
 import { TimelineClip } from "./TimelineClip";
-import { EditPopover } from "../../components/timeline/EditModal";
+import { EditPopover } from "./EditModal";
 
 /* ── Layout ─────────────────────────────────────────────────────── */
 const GUTTER = 32;
@@ -151,11 +152,8 @@ export function generateTicks(duration: number): { major: number[]; minor: numbe
   return { major, minor };
 }
 
-export function formatTick(s: number): string {
-  const m = Math.floor(s / 60);
-  const sec = Math.floor(s % 60);
-  return `${m}:${sec.toString().padStart(2, "0")}`;
-}
+/** @deprecated Use formatTime from '../lib/time' instead */
+export const formatTick = formatTime;
 
 /* ── Component ──────────────────────────────────────────────────── */
 interface TimelineProps {
@@ -200,17 +198,19 @@ export const Timeline = memo(function Timeline({
   const isDragging = useRef(false);
   // Range selection (Shift+drag)
   const [shiftHeld, setShiftHeld] = useState(false);
-  useEffect(() => {
+  useMountEffect(() => {
     const down = (e: KeyboardEvent) => e.key === "Shift" && setShiftHeld(true);
     const up = (e: KeyboardEvent) => e.key === "Shift" && setShiftHeld(false);
+    const blur = () => setShiftHeld(false);
     window.addEventListener("keydown", down);
     window.addEventListener("keyup", up);
-    window.addEventListener("blur", () => setShiftHeld(false));
+    window.addEventListener("blur", blur);
     return () => {
       window.removeEventListener("keydown", down);
       window.removeEventListener("keyup", up);
+      window.removeEventListener("blur", blur);
     };
-  }, []);
+  });
   const isRangeSelecting = useRef(false);
   const rangeAnchorTime = useRef(0);
   const [rangeSelection, setRangeSelection] = useState<{
@@ -242,12 +242,9 @@ export const Timeline = memo(function Timeline({
   }, []);
 
   // Clean up ResizeObserver on unmount
-  useEffect(
-    () => () => {
-      roRef.current?.disconnect();
-    },
-    [],
-  );
+  useMountEffect(() => () => {
+    roRef.current?.disconnect();
+  });
 
   // Effective duration: max of store duration and the furthest element end.
   // processTimelineMessage updates elements but not duration, so elements can
@@ -593,7 +590,7 @@ export const Timeline = memo(function Timeline({
                 style={{ left: t * pps }}
               >
                 <span className="text-[9px] text-neutral-500 font-mono tabular-nums leading-none mb-0.5">
-                  {formatTick(t)}
+                  {formatTime(t)}
                 </span>
                 <div className="w-px h-[5px] bg-neutral-600/60" />
               </div>

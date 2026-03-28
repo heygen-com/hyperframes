@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, memo, type ReactNode } from "react";
+import { useState, useCallback, useRef, useEffect, memo, type ReactNode } from "react";
 import { useMountEffect } from "../../hooks/useMountEffect";
 import { useTimelinePlayer, PlayerControls, Timeline, usePlayerStore } from "../../player";
 import type { TimelineElement } from "../../player";
@@ -54,15 +54,16 @@ export const NLELayout = memo(function NLELayout({
     seek,
     onIframeLoad: baseOnIframeLoad,
     saveSeekPosition,
-    resetPlayer,
   } = useTimelinePlayer();
 
   // Reset timeline state when the project changes to prevent stale data from a
   // previous project leaking into the new one.
-  const prevProjectIdRef = useRef<string | null>(null);
+  const prevProjectIdRef = useRef(projectId);
   if (prevProjectIdRef.current !== projectId) {
     prevProjectIdRef.current = projectId;
-    resetPlayer();
+    // Only reset Zustand state during render (safe — pure state update).
+    // Imperative cleanup (RAF, intervals) happens in resetPlayer's store reset.
+    usePlayerStore.getState().reset();
   }
 
   // Preserve seek position when refreshKey changes (iframe will remount via key prop).
@@ -100,6 +101,49 @@ export const NLELayout = memo(function NLELayout({
       .catch(() => {});
   });
 
+  // Patch elements with compositionSrc whenever elements or compIdToSrc change.
+  // The runtime strips data-composition-src from the DOM after loading, so elements
+  // arrive without it. This bridges the gap using the map built from raw HTML.
+  // Map keys are composition IDs (e.g. "dark-intro"), while element IDs may be
+  // DOM IDs with suffixes (e.g. "dark-intro-host"), so we try multiple lookups.
+  const compIdToSrcRef = useRef(compIdToSrc);
+  compIdToSrcRef.current = compIdToSrc;
+  // eslint-disable-next-line no-restricted-syntax
+  useEffect(() => {
+    if (compIdToSrc.size === 0) return;
+    const patchElements = (elements: TimelineElement[]): TimelineElement[] | null => {
+      const map = compIdToSrcRef.current;
+      if (map.size === 0) return null;
+      let patched = false;
+      const updated = elements.map((el) => {
+        if (el.compositionSrc) return el;
+        // Try exact match, then strip common suffixes (-host, -comp, -layer)
+        const src = map.get(el.id) ?? map.get(el.id.replace(/-(host|comp|layer)$/, ""));
+        if (src) {
+          patched = true;
+          return { ...el, compositionSrc: src };
+        }
+        return el;
+      });
+      return patched ? updated : null;
+    };
+    // Patch current elements immediately
+    const patched = patchElements(usePlayerStore.getState().elements);
+    if (patched) usePlayerStore.getState().setElements(patched);
+    // Subscribe for future element updates — use a flag to prevent re-entrant patching
+    let patching = false;
+    return usePlayerStore.subscribe((state, prev) => {
+      if (patching) return;
+      if (state.elements === prev.elements || state.elements.length === 0) return;
+      // Skip if all elements already have compositionSrc
+      if (state.elements.every((el) => el.compositionSrc)) return;
+      patching = true;
+      const result = patchElements(state.elements);
+      if (result) state.setElements(result);
+      patching = false;
+    });
+  }, [compIdToSrc]);
+
   // Composition drill-down stack
   const [compositionStack, setCompositionStack] = useState<CompositionLevel[]>([
     { id: "master", label: "Master", previewUrl: `/api/projects/${projectId}/preview` },
@@ -126,11 +170,18 @@ export const NLELayout = memo(function NLELayout({
   const currentLevel = compositionStack[compositionStack.length - 1];
   const directUrl = compositionStack.length > 1 ? currentLevel.previewUrl : undefined;
 
+  // Save master seek position before drilling down so we can restore it on back-navigation.
+  // saveSeekPosition() sets pendingSeekRef in useTimelinePlayer which onIframeLoad reads.
+  const masterSeekRef = useRef(0);
+
   // Drill-down: push a sub-composition onto the stack
   const iframeRef_ = iframeRef; // stable ref for the callback
   const handleDrillDown = useCallback(
     (element: TimelineElement) => {
       if (!element.compositionSrc) return;
+      // Save current master playback position for back-navigation
+      masterSeekRef.current = usePlayerStore.getState().currentTime;
+      saveSeekPosition();
       // compositionSrc may be a full URL (from runtime manifest) or a relative path
       // Extract the element's composition ID from its timeline ID
       const compId = element.id;
@@ -185,33 +236,39 @@ export const NLELayout = memo(function NLELayout({
 
   // Navigate back to a specific breadcrumb level
   const handleNavigateComposition = useCallback((index: number) => {
+    // When going back to master (index 0), restore the saved master position
+    if (index === 0 && masterSeekRef.current > 0) {
+      usePlayerStore.getState().setCurrentTime(masterSeekRef.current);
+    }
+    saveSeekPosition();
     usePlayerStore.getState().setElements([]);
     updateCompositionStack((prev) => prev.slice(0, index + 1));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Navigate to a composition when activeCompositionPath changes
-  const prevActiveCompRef = useRef<string | null>(null);
-  if (activeCompositionPath && activeCompositionPath !== prevActiveCompRef.current) {
-    prevActiveCompRef.current = activeCompositionPath;
-    queueMicrotask(() => usePlayerStore.getState().setElements([]));
+  // Navigate to a composition when activeCompositionPath changes.
+  // Uses useEffect to ensure state updates happen after render commit,
+  // avoiding render-time mutations that React can swallow during batching.
+  // eslint-disable-next-line no-restricted-syntax
+  useEffect(() => {
     if (activeCompositionPath === "index.html") {
+      usePlayerStore.getState().setElements([]);
       updateCompositionStack((prev) => (prev.length > 1 ? [prev[0]] : prev));
-    } else if (activeCompositionPath.startsWith("compositions/")) {
+    } else if (activeCompositionPath && activeCompositionPath.startsWith("compositions/")) {
       const label = activeCompositionPath.replace(/^compositions\//, "").replace(/\.html$/, "");
       const previewUrl = `/api/projects/${projectId}/preview/comp/${activeCompositionPath}`;
+      usePlayerStore.getState().setElements([]);
       updateCompositionStack((prev) => {
-        if (prev[prev.length - 1].id === activeCompositionPath) return prev;
+        if (prev[prev.length - 1]?.id === activeCompositionPath) return prev;
         return [
           { id: "master", label: "Master", previewUrl: `/api/projects/${projectId}/preview` },
           { id: activeCompositionPath, label, previewUrl },
         ];
       });
+    } else if (!activeCompositionPath) {
+      usePlayerStore.getState().setElements([]);
     }
-  } else if (!activeCompositionPath && prevActiveCompRef.current) {
-    prevActiveCompRef.current = null;
-    queueMicrotask(() => usePlayerStore.getState().setElements([]));
-  }
+  }, [activeCompositionPath, projectId, updateCompositionStack]);
 
   // Resize divider handlers
   const handleDividerPointerDown = useCallback((e: React.PointerEvent) => {

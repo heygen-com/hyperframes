@@ -1,5 +1,5 @@
 import { forwardRef, useRef, useState, useCallback } from "react";
-import { useMountEffect } from "../lib/useMountEffect";
+import { useMountEffect } from "../../hooks/useMountEffect";
 
 const NATIVE_W = 1920;
 const NATIVE_H = 1080;

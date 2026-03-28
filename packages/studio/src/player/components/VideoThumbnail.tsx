@@ -1,4 +1,5 @@
 import { memo, useRef, useState, useCallback, useEffect } from "react";
+import { useMountEffect } from "../../hooks/useMountEffect";
 
 interface VideoThumbnailProps {
   videoSrc: string;
@@ -55,15 +56,15 @@ export const VideoThumbnail = memo(function VideoThumbnail({
     roRef.current.observe(target);
   }, []);
 
-  useEffect(
-    () => () => {
-      ioRef.current?.disconnect();
-      roRef.current?.disconnect();
-    },
-    [],
-  );
+  useMountEffect(() => () => {
+    ioRef.current?.disconnect();
+    roRef.current?.disconnect();
+  });
 
-  // Extract frames progressively — each frame appears as soon as it's ready
+  // Extract frames progressively — each frame appears as soon as it's ready.
+  // Note: useEffect with deps is acceptable — syncs with external video element API,
+  // requires cleanup (cancel extraction, revoke URLs) when inputs change.
+  // eslint-disable-next-line no-restricted-syntax
   useEffect(() => {
     if (!visible || extractingRef.current) return;
     extractingRef.current = true;

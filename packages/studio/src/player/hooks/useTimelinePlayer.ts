@@ -1,8 +1,8 @@
 import { useRef, useCallback } from "react";
 import { usePlayerStore, liveTime, type TimelineElement } from "../store/playerStore";
-import { useMountEffect } from "../lib/useMountEffect";
+import { useMountEffect } from "../../hooks/useMountEffect";
 
-interface PlayerAPI {
+interface PlaybackAdapter {
   play: () => void;
   pause: () => void;
   seek: (time: number) => void;
@@ -41,31 +41,11 @@ interface ClipManifest {
 }
 
 type IframeWindow = Window & {
-  __player?: PlayerAPI;
+  __player?: PlaybackAdapter;
   __timeline?: TimelineLike;
   __timelines?: Record<string, TimelineLike>;
   __clipManifest?: ClipManifest;
 };
-
-interface PlaybackAdapter {
-  play: () => void;
-  pause: () => void;
-  seek: (time: number) => void;
-  getTime: () => number;
-  getDuration: () => number;
-  isPlaying: () => boolean;
-}
-
-function wrapPlayer(p: PlayerAPI): PlaybackAdapter {
-  return {
-    play: () => p.play(),
-    pause: () => p.pause(),
-    seek: (t) => p.seek(t),
-    getTime: () => p.getTime(),
-    getDuration: () => p.getDuration(),
-    isPlaying: () => p.isPlaying(),
-  };
-}
 
 function wrapTimeline(tl: TimelineLike): PlaybackAdapter {
   return {
@@ -224,7 +204,7 @@ export function useTimelinePlayer() {
       if (!win) return null;
 
       if (win.__player && typeof win.__player.play === "function") {
-        return wrapPlayer(win.__player);
+        return win.__player;
       }
 
       if (win.__timeline) return wrapTimeline(win.__timeline);
@@ -366,7 +346,10 @@ export function useTimelinePlayer() {
               const iframeDoc = iframeRef.current?.contentDocument;
               hostEl =
                 iframeDoc?.querySelector(`[data-composition-id="${clip.compositionId}"]`) ?? null;
-              resolvedSrc = hostEl?.getAttribute("data-composition-file") ?? null;
+              resolvedSrc =
+                hostEl?.getAttribute("data-composition-src") ??
+                hostEl?.getAttribute("data-composition-file") ??
+                null;
             } catch {
               /* cross-origin */
             }
@@ -392,7 +375,7 @@ export function useTimelinePlayer() {
       // Clamp non-finite or absurdly large durations — the runtime can emit
       // Infinity when it detects a loop-inflated GSAP timeline without an
       // explicit data-duration on the root composition.
-      const newDuration = Number.isFinite(rawDuration) ? rawDuration : 0;
+      const newDuration = Number.isFinite(rawDuration) && rawDuration < 7200 ? rawDuration : 0;
       if (currentElements.length > els.length && newDuration <= currentDuration) {
         return; // skip transient downgrade
       }
@@ -509,8 +492,29 @@ export function useTimelinePlayer() {
         missing.push(entry);
       });
 
-      if (missing.length > 0) {
-        setElements([...currentEls, ...missing]);
+      // Patch existing elements that are missing compositionSrc
+      let patched = false;
+      const updatedEls = currentEls.map((existing) => {
+        if (existing.compositionSrc) return existing;
+        // Find the matching DOM host by element id or composition id
+        const host =
+          doc.getElementById(existing.id) ??
+          doc.querySelector(`[data-composition-id="${existing.id}"]`);
+        if (!host) return existing;
+        const compSrc =
+          host.getAttribute("data-composition-src") || host.getAttribute("data-composition-file");
+        if (compSrc) {
+          patched = true;
+          return { ...existing, compositionSrc: compSrc };
+        }
+        return existing;
+      });
+
+      if (missing.length > 0 || patched) {
+        // Dedup: ensure no missing element duplicates an existing one
+        const finalIds = new Set(updatedEls.map((e) => e.id));
+        const dedupedMissing = missing.filter((m) => !finalIds.has(m.id));
+        setElements([...updatedEls, ...dedupedMissing]);
         setTimelineReady(true);
       }
     } catch (err) {
@@ -539,7 +543,9 @@ export function useTimelinePlayer() {
 
         adapter.seek(startTime);
         const adapterDur = adapter.getDuration();
-        if (Number.isFinite(adapterDur) && adapterDur > 0) setDuration(adapterDur);
+        // Cap at 7200s (2h) to guard against loop-inflated GSAP timelines
+        if (Number.isFinite(adapterDur) && adapterDur > 0 && adapterDur < 7200)
+          setDuration(adapterDur);
         setCurrentTime(startTime);
         if (!isRefreshingRef.current) {
           setTimelineReady(true);

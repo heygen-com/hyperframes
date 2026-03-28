@@ -38,7 +38,8 @@
     "@codemirror/view": "^6.40.0",
     "@hyperframes/core": "workspace:*",
     "@phosphor-icons/react": "^2.1.10",
-    "codemirror": "^6.0.1"
+    "codemirror": "^6.0.1",
+    "motion": "^12.38.0"
   },
   "devDependencies": {
     "@types/react": "^19.0.0",

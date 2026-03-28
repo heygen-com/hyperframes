@@ -1,4 +1,5 @@
-import { useRef, useState, useCallback, useEffect, memo } from "react";
+import { useRef, useState, useCallback, memo } from "react";
+import { useMountEffect } from "../../hooks/useMountEffect";
 import { formatTime } from "../lib/time";
 import { usePlayerStore, liveTime } from "../store/playerStore";
 
@@ -30,7 +31,7 @@ export const PlayerControls = memo(function PlayerControls({
 
   const durationRef = useRef(duration);
   durationRef.current = duration;
-  useEffect(() => {
+  useMountEffect(() => {
     const updateProgress = (t: number) => {
       currentTimeRef.current = t;
       const dur = durationRef.current;
@@ -57,7 +58,7 @@ export const PlayerControls = memo(function PlayerControls({
       unsub();
       clearInterval(interval);
     };
-  }, []);
+  });
 
   const seekFromClientX = useCallback(
     (clientX: number) => {

@@ -1,4 +1,5 @@
-import { memo, useState, useCallback, useEffect } from "react";
+import { memo, useState, useCallback } from "react";
+import { useMountEffect } from "../../hooks/useMountEffect";
 import { CompositionsTab } from "./CompositionsTab";
 import { AssetsTab } from "./AssetsTab";
 
@@ -12,6 +13,7 @@ function getPersistedTab(): SidebarTab {
 }
 
 interface LeftSidebarProps {
+  width?: number;
   projectId: string;
   compositions: string[];
   assets: string[];
@@ -21,6 +23,7 @@ interface LeftSidebarProps {
 }
 
 export const LeftSidebar = memo(function LeftSidebar({
+  width = 240,
   projectId,
   compositions,
   assets,
@@ -36,7 +39,7 @@ export const LeftSidebar = memo(function LeftSidebar({
   }, []);
 
   // Keyboard shortcuts: Cmd+1 for Compositions, Cmd+2 for Assets
-  useEffect(() => {
+  useMountEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (!e.metaKey && !e.ctrlKey) return;
       if (e.key === "1") {
@@ -50,12 +53,12 @@ export const LeftSidebar = memo(function LeftSidebar({
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [selectTab]);
+  });
 
   return (
     <div
       className="flex flex-col h-full bg-neutral-950 border-r border-neutral-800/50"
-      style={{ width: 240 }}
+      style={{ width }}
     >
       {/* Tabs */}
       <div className="flex border-b border-neutral-800/50 flex-shrink-0">

@@ -1,6 +1,7 @@
-import { useState, useCallback, useMemo, useEffect, useRef } from "react";
-import { usePlayerStore } from "../../player/store/playerStore";
-import { formatTime } from "../../player/lib/time";
+import { useState, useCallback, useMemo, useRef } from "react";
+import { useMountEffect } from "../../hooks/useMountEffect";
+import { usePlayerStore } from "../store/playerStore";
+import { formatTime } from "../lib/time";
 
 interface EditPopoverProps {
   rangeStart: number;
@@ -27,19 +28,19 @@ export function EditPopover({ rangeStart, rangeEnd, anchorX, anchorY, onClose }:
     });
   }, [elements, start, end]);
 
-  useEffect(() => {
+  useMountEffect(() => {
     setTimeout(() => textareaRef.current?.focus(), 50);
-  }, []);
+  });
 
-  useEffect(() => {
+  useMountEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [onClose]);
+  });
 
-  useEffect(() => {
+  useMountEffect(() => {
     const handleClick = (e: MouseEvent) => {
       if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
         onClose();
@@ -47,7 +48,7 @@ export function EditPopover({ rangeStart, rangeEnd, anchorX, anchorY, onClose }:
     };
     setTimeout(() => window.addEventListener("mousedown", handleClick), 100);
     return () => window.removeEventListener("mousedown", handleClick);
-  }, [onClose]);
+  });
 
   const buildClipboardText = useCallback(() => {
     const elementLines = elementsInRange

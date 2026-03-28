@@ -1,18 +1,15 @@
 import { useState, useCallback, useRef, useEffect, type ReactNode } from "react";
+import { useMountEffect } from "./hooks/useMountEffect";
 import { NLELayout } from "./components/nle/NLELayout";
 import { SourceEditor } from "./components/editor/SourceEditor";
 import { FileTree } from "./components/editor/FileTree";
 import { LeftSidebar } from "./components/sidebar/LeftSidebar";
-import { CompositionThumbnail } from "./player/components/CompositionThumbnail";
-import { VideoThumbnail } from "./player/components/VideoThumbnail";
-import type { TimelineElement } from "./player/store/playerStore";
-import {
-  XIcon,
-  CodeIcon,
-  WarningIcon,
-  CheckCircleIcon,
-  CaretRightIcon,
-} from "@phosphor-icons/react";
+import { RenderQueue } from "./components/renders/RenderQueue";
+import { useRenderQueue } from "./components/renders/useRenderQueue";
+import { CompositionThumbnail, VideoThumbnail } from "./player";
+import { AudioWaveform } from "./player/components/AudioWaveform";
+import type { TimelineElement } from "./player";
+import { XIcon, WarningIcon, CheckCircleIcon, CaretRightIcon } from "@phosphor-icons/react";
 
 interface EditingFile {
   path: string;
@@ -32,13 +29,251 @@ interface LintFinding {
   fixHint?: string;
 }
 
+import { ExpandOnHover } from "./components/ui/ExpandOnHover";
+
+// ── Media file detection and preview ──
+
+const IMAGE_EXT = /\.(jpg|jpeg|png|gif|webp|svg|ico)$/i;
+const VIDEO_EXT = /\.(mp4|webm|mov)$/i;
+const AUDIO_EXT = /\.(mp3|wav|ogg|m4a|aac)$/i;
+const FONT_EXT = /\.(woff|woff2|ttf|otf|eot)$/i;
+
+function isMediaFile(path: string): boolean {
+  return (
+    IMAGE_EXT.test(path) || VIDEO_EXT.test(path) || AUDIO_EXT.test(path) || FONT_EXT.test(path)
+  );
+}
+
+function MediaPreview({ projectId, filePath }: { projectId: string; filePath: string }) {
+  const serveUrl = `/api/projects/${projectId}/preview/${filePath}`;
+  const name = filePath.split("/").pop() ?? filePath;
+
+  if (IMAGE_EXT.test(filePath)) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full p-4 bg-neutral-950">
+        <img
+          src={serveUrl}
+          alt={name}
+          className="max-w-full max-h-[70%] object-contain rounded border border-neutral-800"
+        />
+        <span className="mt-3 text-[11px] text-neutral-500 font-mono">{filePath}</span>
+      </div>
+    );
+  }
+
+  if (VIDEO_EXT.test(filePath)) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full p-4 bg-neutral-950">
+        <video
+          src={serveUrl}
+          controls
+          className="max-w-full max-h-[70%] rounded border border-neutral-800"
+        />
+        <span className="mt-3 text-[11px] text-neutral-500 font-mono">{filePath}</span>
+      </div>
+    );
+  }
+
+  if (AUDIO_EXT.test(filePath)) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full p-4 bg-neutral-950 gap-3">
+        <svg
+          width="48"
+          height="48"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          className="text-neutral-600"
+        >
+          <path d="M9 18V5l12-2v13" strokeLinecap="round" strokeLinejoin="round" />
+          <circle cx="6" cy="18" r="3" />
+          <circle cx="18" cy="16" r="3" />
+        </svg>
+        <audio src={serveUrl} controls className="w-full max-w-[280px]" />
+        <span className="text-[11px] text-neutral-500 font-mono">{filePath}</span>
+      </div>
+    );
+  }
+
+  // Fonts and other binary — show info instead of binary dump
+  return (
+    <div className="flex flex-col items-center justify-center h-full p-4 bg-neutral-950 gap-2">
+      <svg
+        width="40"
+        height="40"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        className="text-neutral-600"
+      >
+        <path
+          d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <polyline points="14 2 14 8 20 8" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+      <span className="text-sm text-neutral-400 font-medium">{name}</span>
+      <span className="text-[11px] text-neutral-600 font-mono">{filePath}</span>
+      <span className="text-[10px] text-neutral-600">Binary file — preview not available</span>
+    </div>
+  );
+}
+
+// ── Project Card with hover-to-preview ──
+
+function ExpandedPreviewIframe({ src }: { src: string }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const [dims, setDims] = useState({ w: 1920, h: 1080 });
+  const [scale, setScale] = useState(1);
+
+  // Recalculate scale when container resizes or dims change.
+  // Note: useEffect with [dims] dep — syncs with ResizeObserver (external system).
+  // eslint-disable-next-line no-restricted-syntax
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const update = () => {
+      const cw = el.clientWidth;
+      const ch = el.clientHeight;
+      // Fit the composition inside the container (contain, not cover)
+      const s = Math.min(cw / dims.w, ch / dims.h);
+      setScale(s);
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [dims]);
+
+  // After iframe loads: detect composition dimensions, seek, and play
+  const handleLoad = useCallback(() => {
+    const iframe = iframeRef.current;
+    if (!iframe) return;
+    let attempts = 0;
+    const interval = setInterval(() => {
+      try {
+        const doc = iframe.contentDocument;
+        if (doc) {
+          const comp = doc.querySelector("[data-composition-id]") as HTMLElement | null;
+          if (comp) {
+            const w = parseInt(comp.getAttribute("data-width") ?? "0", 10);
+            const h = parseInt(comp.getAttribute("data-height") ?? "0", 10);
+            if (w > 0 && h > 0) setDims({ w, h });
+          }
+        }
+        const win = iframe.contentWindow as Window & {
+          __player?: { seek: (t: number) => void; play: () => void };
+        };
+        if (win?.__player) {
+          win.__player.seek(2);
+          win.__player.play();
+          clearInterval(interval);
+        }
+      } catch {
+        /* cross-origin */
+      }
+      if (++attempts > 25) clearInterval(interval);
+    }, 200);
+  }, []);
+
+  // Center the scaled iframe
+  const offsetX = containerRef.current
+    ? (containerRef.current.clientWidth - dims.w * scale) / 2
+    : 0;
+  const offsetY = containerRef.current
+    ? (containerRef.current.clientHeight - dims.h * scale) / 2
+    : 0;
+
+  return (
+    <div ref={containerRef} className="w-full h-full relative overflow-hidden bg-black">
+      <iframe
+        ref={iframeRef}
+        src={src}
+        sandbox="allow-scripts allow-same-origin"
+        onLoad={handleLoad}
+        className="absolute border-none"
+        style={{
+          left: Math.max(0, offsetX),
+          top: Math.max(0, offsetY),
+          width: dims.w,
+          height: dims.h,
+          transformOrigin: "0 0",
+          transform: `scale(${scale})`,
+        }}
+      />
+    </div>
+  );
+}
+
+function ProjectCard({ project: p, onSelect }: { project: ProjectEntry; onSelect: () => void }) {
+  const thumbnailUrl = `/api/projects/${p.id}/thumbnail/index.html?t=0.5`;
+  const previewUrl = `/api/projects/${p.id}/preview`;
+
+  const card = (
+    <div className="rounded-xl overflow-hidden bg-neutral-900 border border-neutral-800/60 hover:border-[#3CE6AC]/30 hover:shadow-lg hover:shadow-[#3CE6AC]/5 transition-all duration-200 cursor-pointer">
+      <div className="aspect-video bg-neutral-950 relative overflow-hidden flex items-center justify-center">
+        <img
+          src={thumbnailUrl}
+          alt={p.title ?? p.id}
+          loading="lazy"
+          className="max-w-full max-h-full object-contain"
+          onError={(e) => {
+            (e.target as HTMLImageElement).style.display = "none";
+          }}
+        />
+      </div>
+      <div className="px-3.5 py-3">
+        <div className="text-sm font-medium text-neutral-200 truncate">{p.title ?? p.id}</div>
+        <div className="text-[10px] text-neutral-600 font-mono truncate mt-0.5">{p.id}</div>
+      </div>
+    </div>
+  );
+
+  return (
+    <ExpandOnHover
+      expandedContent={(closeExpand) => (
+        <div className="w-full h-full bg-neutral-950 rounded-[16px] overflow-hidden flex flex-col">
+          <div className="flex-1 min-h-0">
+            <ExpandedPreviewIframe src={previewUrl} />
+          </div>
+          <div className="px-5 py-3 bg-neutral-900 border-t border-neutral-800/50 flex items-center justify-between flex-shrink-0">
+            <div>
+              <div className="text-sm font-medium text-neutral-200">{p.title ?? p.id}</div>
+              <div className="text-[10px] text-neutral-600 font-mono mt-0.5">{p.id}</div>
+            </div>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                closeExpand();
+                onSelect();
+              }}
+              className="px-4 py-1.5 text-xs font-semibold text-[#09090B] bg-[#3CE6AC] rounded-lg hover:brightness-110 transition-colors"
+            >
+              Open
+            </button>
+          </div>
+        </div>
+      )}
+      onClick={onSelect}
+      expandScale={0.6}
+      delay={400}
+    >
+      {card}
+    </ExpandOnHover>
+  );
+}
+
 // ── Project Picker ──
 
 function ProjectPicker({ onSelect }: { onSelect: (id: string) => void }) {
   const [projects, setProjects] = useState<ProjectEntry[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
+  useMountEffect(() => {
     fetch("/api/projects")
       .then((r) => r.json())
       .then((data: { projects?: ProjectEntry[] }) => {
@@ -46,30 +281,79 @@ function ProjectPicker({ onSelect }: { onSelect: (id: string) => void }) {
         setLoading(false);
       })
       .catch(() => setLoading(false));
-  }, []);
+  });
 
   return (
     <div className="h-screen w-screen bg-neutral-950 overflow-y-auto">
-      <div className="max-w-lg w-full mx-auto px-4 py-12">
-        <h1 className="text-xl font-semibold text-neutral-200 mb-1">HyperFrames Studio</h1>
-        <p className="text-sm text-neutral-500 mb-6">Select a project to open</p>
+      {/* Header */}
+      <div className="max-w-4xl mx-auto px-6 pt-16 pb-8">
+        <div className="flex items-center gap-3 mb-2">
+          <svg width="32" height="32" viewBox="0 0 512 512" className="flex-shrink-0">
+            <rect width="512" height="512" rx="115" fill="#1A1913" />
+            <g strokeLinecap="round" strokeLinejoin="round">
+              <polyline
+                points="156,176 76,256 156,336"
+                fill="none"
+                stroke="#7B7568"
+                strokeWidth="32"
+              />
+              <line x1="206" y1="346" x2="286" y2="166" stroke="#D8D3C5" strokeWidth="32" />
+              <polygon
+                points="336,176 436,256 336,336"
+                fill="#3CE6AC"
+                stroke="#3CE6AC"
+                strokeWidth="32"
+              />
+            </g>
+          </svg>
+          <h1 className="text-2xl font-bold text-neutral-100 tracking-tight">HyperFrames Studio</h1>
+        </div>
+        <p className="text-sm text-neutral-500 ml-11">Your projects</p>
+      </div>
+
+      {/* Project grid */}
+      <div className="max-w-4xl mx-auto px-6 pb-16">
         {loading ? (
-          <div className="text-sm text-neutral-600">Loading projects...</div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="aspect-video rounded-xl bg-neutral-900 animate-pulse" />
+            ))}
+          </div>
         ) : projects.length === 0 ? (
-          <div className="text-sm text-neutral-600">No projects found.</div>
+          <div className="flex flex-col items-center justify-center py-24 gap-4">
+            <svg width="48" height="48" viewBox="0 0 512 512" className="opacity-20">
+              <rect width="512" height="512" rx="115" fill="#1A1913" />
+              <g strokeLinecap="round" strokeLinejoin="round">
+                <polyline
+                  points="156,176 76,256 156,336"
+                  fill="none"
+                  stroke="#7B7568"
+                  strokeWidth="32"
+                />
+                <line x1="206" y1="346" x2="286" y2="166" stroke="#D8D3C5" strokeWidth="32" />
+                <polygon
+                  points="336,176 436,256 336,336"
+                  fill="#3CE6AC"
+                  stroke="#3CE6AC"
+                  strokeWidth="32"
+                />
+              </g>
+            </svg>
+            <div className="text-center">
+              <p className="text-sm text-neutral-400 font-medium">No projects yet</p>
+              <p className="text-xs text-neutral-600 mt-1">
+                Run{" "}
+                <code className="px-1.5 py-0.5 rounded bg-neutral-800 text-[#3CE6AC] text-[11px]">
+                  hyperframes init
+                </code>{" "}
+                to create one
+              </p>
+            </div>
+          </div>
         ) : (
-          <div className="flex flex-col gap-1.5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
             {projects.map((p) => (
-              <button
-                key={p.id}
-                onClick={() => onSelect(p.id)}
-                className="text-left px-4 py-3 rounded-lg bg-neutral-900 border border-neutral-800 hover:border-neutral-600 hover:bg-neutral-800/80 transition-all group"
-              >
-                <div className="text-sm text-neutral-200 truncate">{p.title ?? p.id}</div>
-                <div className="text-[11px] text-neutral-600 font-mono truncate mt-0.5 group-hover:text-neutral-500">
-                  {p.id}
-                </div>
-              </button>
+              <ProjectCard key={p.id} project={p} onSelect={() => onSelect(p.id)} />
             ))}
           </div>
         )}
@@ -80,7 +364,15 @@ function ProjectPicker({ onSelect }: { onSelect: (id: string) => void }) {
 
 // ── Lint Modal ──
 
-function LintModal({ findings, onClose }: { findings: LintFinding[]; onClose: () => void }) {
+function LintModal({
+  findings,
+  projectId,
+  onClose,
+}: {
+  findings: LintFinding[];
+  projectId: string;
+  onClose: () => void;
+}) {
   const errors = findings.filter((f) => f.severity === "error");
   const warnings = findings.filter((f) => f.severity === "warning");
   const hasIssues = findings.length > 0;
@@ -93,7 +385,7 @@ function LintModal({ findings, onClose }: { findings: LintFinding[]; onClose: ()
       if (f.fixHint) line += `\n  Fix: ${f.fixHint}`;
       return line;
     });
-    const text = `Fix these HyperFrames lint issues:\n\n${lines.join("\n\n")}`;
+    const text = `Fix these HyperFrames lint issues for project "${projectId}":\n\nProject path: ${window.location.href}\n\n${lines.join("\n\n")}`;
     try {
       await navigator.clipboard.writeText(text);
       setCopied(true);
@@ -147,7 +439,7 @@ function LintModal({ findings, onClose }: { findings: LintFinding[]; onClose: ()
             <button
               onClick={handleCopyToAgent}
               className={`px-3 py-1 text-xs font-medium rounded-lg transition-colors ${
-                copied ? "bg-green-600 text-white" : "bg-blue-600 hover:bg-blue-500 text-white"
+                copied ? "bg-green-600 text-white" : "bg-[#3CE6AC] hover:bg-[#3CE6AC]/80 text-white"
               }`}
             >
               {copied ? "Copied!" : "Copy to Agent"}
@@ -210,7 +502,7 @@ export function StudioApp() {
   const [projectId, setProjectId] = useState<string | null>(null);
   const [resolving, setResolving] = useState(true);
 
-  useEffect(() => {
+  useMountEffect(() => {
     const hash = window.location.hash;
     const projectMatch = hash.match(/project\/([^/]+)/);
     const sessionMatch = hash.match(/session\/([^/]+)/);
@@ -231,12 +523,28 @@ export function StudioApp() {
     } else {
       setResolving(false);
     }
-  }, []);
+  });
 
   const [editingFile, setEditingFile] = useState<EditingFile | null>(null);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [rightTab, setRightTab] = useState<"code" | "renders">("code");
+  const [activeCompPath, setActiveCompPath] = useState<string | null>(null);
   const [fileTree, setFileTree] = useState<string[]>([]);
   const [compIdToSrc, setCompIdToSrc] = useState<Map<string, string>>(new Map());
+  const renderQueue = useRenderQueue(projectId);
+
+  // Resizable and collapsible panel widths
+  const [leftWidth, setLeftWidth] = useState(240);
+  const [rightWidth, setRightWidth] = useState(400);
+  const [leftCollapsed, setLeftCollapsed] = useState(false);
+  const [rightCollapsed, setRightCollapsed] = useState(false);
+  const panelDragRef = useRef<{ side: "left" | "right"; startX: number; startW: number } | null>(
+    null,
+  );
+
+  // Derive active preview URL from composition path (for drilled-down thumbnails)
+  const activePreviewUrl = activeCompPath
+    ? `/api/projects/${projectId}/preview/comp/${activeCompPath}`
+    : null;
 
   const renderClipContent = useCallback(
     (el: TimelineElement, style: { clip: string; label: string }): ReactNode => {
@@ -252,16 +560,44 @@ export function StudioApp() {
         if (resolved) compSrc = resolved;
       }
 
+      // Composition clips — always use the comp's own preview URL for thumbnails.
+      // This renders the composition in isolation so we get clean frames
+      // instead of capturing the master at a time when the comp is fading in.
       if (compSrc) {
-        const previewUrl = `/api/projects/${pid}/preview/comp/${compSrc}`;
         return (
           <CompositionThumbnail
-            previewUrl={previewUrl}
+            previewUrl={`/api/projects/${pid}/preview/comp/${compSrc}`}
+            label={el.id || el.tag}
+            labelColor={style.label}
+            seekTime={0}
+            duration={el.duration}
+          />
+        );
+      }
+
+      // When drilled into a composition, render all inner elements via
+      // CompositionThumbnail at their start time — most accurate visual.
+      if (activePreviewUrl && el.duration > 0) {
+        return (
+          <CompositionThumbnail
+            previewUrl={activePreviewUrl}
             label={el.id || el.tag}
             labelColor={style.label}
             seekTime={el.start}
             duration={el.duration}
           />
+        );
+      }
+
+      // Audio clips — waveform visualization
+      if (el.tag === "audio") {
+        const audioUrl = el.src
+          ? el.src.startsWith("http")
+            ? el.src
+            : `/api/projects/${pid}/preview/${el.src}`
+          : "";
+        return (
+          <AudioWaveform audioUrl={audioUrl} label={el.id || el.tag} labelColor={style.label} />
         );
       }
 
@@ -279,7 +615,7 @@ export function StudioApp() {
         );
       }
 
-      // HTML scene divs — render from index.html at the scene's time
+      // HTML scene elements — render from the master preview at the scene's time
       if (el.tag === "div" && el.duration > 0) {
         const previewUrl = `/api/projects/${pid}/preview`;
         return (
@@ -295,23 +631,18 @@ export function StudioApp() {
 
       return null;
     },
-    [compIdToSrc],
+    [compIdToSrc, activePreviewUrl],
   );
   const [lintModal, setLintModal] = useState<LintFinding[] | null>(null);
   const [linting, setLinting] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
-  const [renderState, setRenderState] = useState<"idle" | "rendering" | "complete" | "error">(
-    "idle",
-  );
-  const [renderProgress, setRenderProgress] = useState(0);
-  const [_renderError, setRenderError] = useState<string | null>(null);
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const projectIdRef = useRef(projectId);
   const previewIframeRef = useRef<HTMLIFrameElement | null>(null);
 
   // Listen for external file changes (user editing HTML outside the editor).
   // In dev: use Vite HMR. In embedded/production: use SSE from /api/events.
-  useEffect(() => {
+  useMountEffect(() => {
     const handler = () => {
       if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
       refreshTimerRef.current = setTimeout(() => setRefreshKey((k) => k + 1), 400);
@@ -324,35 +655,50 @@ export function StudioApp() {
     const es = new EventSource("/api/events");
     es.addEventListener("file-change", handler);
     return () => es.close();
-  }, []);
+  });
   projectIdRef.current = projectId;
 
-  // Load file tree when projectId changes
-  const prevProjectIdRef = useRef<string | null>(null);
-  if (projectId && projectId !== prevProjectIdRef.current) {
-    prevProjectIdRef.current = projectId;
+  // Load file tree when projectId changes.
+  // Note: This is one of the few places where useEffect with deps is acceptable —
+  // it's data fetching tied to a prop change. Ideally this would use a data-fetching
+  // library (useQuery/useSWR) or the parent component would own the fetch.
+  // eslint-disable-next-line no-restricted-syntax
+  useEffect(() => {
+    if (!projectId) return;
+    let cancelled = false;
     fetch(`/api/projects/${projectId}`)
       .then((r) => r.json())
       .then((data: { files?: string[] }) => {
-        if (data.files) setFileTree(data.files);
+        if (!cancelled && data.files) setFileTree(data.files);
       })
       .catch(() => {});
-  }
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId]);
 
   const handleSelectProject = useCallback((id: string) => {
     window.location.hash = `#project/${id}`;
     setProjectId(id);
+    setActiveCompPath(null);
+    setEditingFile(null);
+    setCompIdToSrc(new Map());
+    setFileTree([]);
   }, []);
 
   const handleFileSelect = useCallback((path: string) => {
     const pid = projectIdRef.current;
     if (!pid) return;
+    // Skip fetching binary content for media files — just set the path for preview
+    if (isMediaFile(path)) {
+      setEditingFile({ path, content: null });
+      return;
+    }
     fetch(`/api/projects/${pid}/files/${encodeURIComponent(path)}`)
       .then((r) => r.json())
       .then((data: { content?: string }) => {
         if (data.content != null) {
           setEditingFile({ path, content: data.content });
-          setSidebarOpen(true);
         }
       })
       .catch(() => {});
@@ -384,105 +730,16 @@ export function StudioApp() {
     if (!pid) return;
     setLinting(true);
     try {
-      // Fetch all HTML files and lint them client-side using the core linter
-      const res = await fetch(`/api/projects/${pid}`);
+      const res = await fetch(`/api/projects/${pid}/lint`);
       const data = await res.json();
-      const files: string[] = data.files?.filter((f: string) => f.endsWith(".html")) ?? [];
-
-      const findings: LintFinding[] = [];
-      for (const file of files) {
-        const fileRes = await fetch(`/api/projects/${pid}/files/${encodeURIComponent(file)}`);
-        const fileData = await fileRes.json();
-        if (!fileData.content) continue;
-
-        // Basic lint checks (subset of the full linter)
-        const html = fileData.content as string;
-
-        if (file === "index.html") {
-          // Check for root composition
-          if (!html.includes("data-composition-id")) {
-            findings.push({
-              severity: "error",
-              message: "No element with `data-composition-id` found.",
-              file,
-              fixHint: "Add `data-composition-id` to the root composition wrapper.",
-            });
-          }
-          // Check for timeline registration
-          if (!html.includes("__timelines")) {
-            findings.push({
-              severity: "error",
-              message: "Missing `window.__timelines` registration.",
-              file,
-              fixHint: 'Add: window.__timelines["compositionId"] = tl;',
-            });
-          }
-          // Check for TARGET_DURATION
-          if (
-            html.includes("gsap.timeline") &&
-            !html.includes("TARGET_DURATION") &&
-            !html.includes("tl.set({}, {},")
-          ) {
-            findings.push({
-              severity: "warning",
-              message: "No TARGET_DURATION spacer found. Video may be shorter than intended.",
-              file,
-              fixHint:
-                "Add: const TARGET_DURATION = 30; if (tl.duration() < TARGET_DURATION) { tl.set({}, {}, TARGET_DURATION); }",
-            });
-          }
-        }
-
-        // Check for composition hosts missing dimensions
-        const hostRe = /data-composition-src=["']([^"']+)["']/g;
-        let hostMatch;
-        while ((hostMatch = hostRe.exec(html)) !== null) {
-          const surrounding = html.slice(
-            Math.max(0, hostMatch.index - 300),
-            hostMatch.index + hostMatch[0].length + 50,
-          );
-          const hasDataDims =
-            /data-width\s*=/i.test(surrounding) && /data-height\s*=/i.test(surrounding);
-          const hasStyleDims = /style\s*=.*width:\s*\d+px.*height:\s*\d+px/i.test(surrounding);
-          if (!hasDataDims && !hasStyleDims) {
-            findings.push({
-              severity: "warning",
-              message: `Composition host for "${hostMatch[1]}" missing data-width/data-height. May render with zero dimensions.`,
-              file,
-              fixHint:
-                'Add data-width="1920" data-height="1080" style="position:relative;width:1920px;height:1080px"',
-            });
-          }
-        }
-
-        // Check for repeat: -1
-        if (/repeat\s*:\s*-\s*1/.test(html)) {
-          findings.push({
-            severity: "error",
-            message: "GSAP `repeat: -1` found — infinite loop breaks timeline duration.",
-            file,
-            fixHint: "Use a finite repeat count or CSS animation.",
-          });
-        }
-
-        // Check script syntax
-        const scriptRe = /<script\b(?![^>]*\bsrc\s*=)[^>]*>([\s\S]*?)<\/script>/gi;
-        let scriptMatch;
-        while ((scriptMatch = scriptRe.exec(html)) !== null) {
-          const js = scriptMatch[1]?.trim();
-          if (!js) continue;
-          try {
-            new Function(js);
-          } catch (e) {
-            findings.push({
-              severity: "error",
-              message: `Script syntax error: ${e instanceof Error ? e.message : String(e)}`,
-              file,
-            });
-          }
-        }
-      }
-
+      const findings: LintFinding[] = (data.findings ?? []).map(
+        (f: { severity?: string; message?: string; file?: string; fixHint?: string }) => ({
+          severity: f.severity === "error" ? ("error" as const) : ("warning" as const),
+          message: f.message ?? "",
+          file: f.file,
+          fixHint: f.fixHint,
+        }),
+      );
       setLintModal(findings);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -492,52 +749,35 @@ export function StudioApp() {
     }
   }, []);
 
-  const handleRender = useCallback(async () => {
-    const pid = projectIdRef.current;
-    if (!pid || renderState === "rendering") return;
-    setRenderState("rendering");
-    setRenderProgress(0);
-    setRenderError(null);
-    try {
-      // Start render via studio backend
-      const res = await fetch(`/api/projects/${pid}/render`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
-      });
-      if (!res.ok) throw new Error(`Render failed: ${res.status}`);
-      const { jobId } = await res.json();
-
-      // Subscribe to progress via SSE
-      const eventSource = new EventSource(`/api/render/${jobId}/progress`);
-      eventSource.addEventListener("progress", (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          setRenderProgress(data.progress ?? 0);
-          if (data.status === "complete") {
-            setRenderState("complete");
-            eventSource.close();
-            // Auto-download
-            window.open(`/api/render/${jobId}/download`, "_blank");
-          } else if (data.status === "failed") {
-            setRenderState("error");
-            setRenderError(data.error || "Render failed");
-            eventSource.close();
-          }
-        } catch {
-          /* ignore */
-        }
-      });
-      eventSource.onerror = () => {
-        setRenderState("error");
-        setRenderError("Lost connection to render server");
-        eventSource.close();
+  // Panel resize via pointer events (works for both left sidebar and right panel)
+  const handlePanelResizeStart = useCallback(
+    (side: "left" | "right", e: React.PointerEvent) => {
+      e.preventDefault();
+      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+      panelDragRef.current = {
+        side,
+        startX: e.clientX,
+        startW: side === "left" ? leftWidth : rightWidth,
       };
-    } catch (err) {
-      setRenderState("error");
-      setRenderError(err instanceof Error ? err.message : "Render failed");
-    }
-  }, [renderState]);
+    },
+    [leftWidth, rightWidth],
+  );
+
+  const handlePanelResizeMove = useCallback((e: React.PointerEvent) => {
+    const drag = panelDragRef.current;
+    if (!drag) return;
+    const delta = e.clientX - drag.startX;
+    const newW = Math.max(
+      160,
+      Math.min(600, drag.startW + (drag.side === "left" ? delta : -delta)),
+    );
+    if (drag.side === "left") setLeftWidth(newW);
+    else setRightWidth(newW);
+  }, []);
+
+  const handlePanelResizeEnd = useCallback(() => {
+    panelDragRef.current = null;
+  }, []);
 
   if (resolving) {
     return (
@@ -557,138 +797,241 @@ export function StudioApp() {
   );
 
   return (
-    <div className="flex h-screen w-screen bg-neutral-950">
-      {/* Left sidebar: Compositions + Assets */}
-      <LeftSidebar
-        projectId={projectId}
-        compositions={compositions}
-        assets={assets}
-        activeComposition={editingFile?.path ?? null}
-        onSelectComposition={(comp) => {
-          // Open code editor for this composition
-          const controller = new AbortController();
-          setEditingFile({ path: comp, content: null });
-          fetch(`/api/projects/${projectId}/files/${comp}`, { signal: controller.signal })
-            .then((r) => r.json())
-            .then((data) => {
-              // Only update if the path still matches (race condition guard)
-              setEditingFile((prev) =>
-                prev?.path === comp ? { path: comp, content: data.content } : prev,
-              );
-            })
-            .catch((err) => {
-              if (err.name !== "AbortError") console.warn("Failed to load composition:", err);
-            });
-        }}
-      />
-
-      {/* NLE: Preview + Timeline */}
-      <div className="flex-1 relative min-w-0">
-        <NLELayout
-          projectId={projectId}
-          refreshKey={refreshKey}
-          renderClipContent={renderClipContent}
-          onCompIdToSrcChange={setCompIdToSrc}
-          activeCompositionPath={
-            editingFile?.path?.startsWith("compositions/") ? editingFile.path : null
-          }
-          onIframeRef={(iframe) => {
-            previewIframeRef.current = iframe;
-          }}
-        />
-      </div>
-
-      {/* Action buttons — positioned based on sidebar state */}
-      {!sidebarOpen && (
-        <div className="absolute top-3 right-3 z-50 flex items-center gap-1.5">
+    <div className="flex flex-col h-screen w-screen bg-neutral-950">
+      {/* Header bar */}
+      <div className="flex items-center justify-between h-10 px-3 bg-neutral-900 border-b border-neutral-800 flex-shrink-0">
+        {/* Left: back button + project name */}
+        <div className="flex items-center gap-2">
           <button
-            onClick={() => setSidebarOpen(true)}
-            className="h-8 px-3 rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-500 hover:text-neutral-200 transition-colors flex items-center justify-center"
-            title="Source editor"
+            onClick={() => {
+              window.location.hash = "";
+              setProjectId(null);
+            }}
+            className="flex items-center gap-1.5 px-2 py-1 rounded-md text-neutral-500 hover:text-neutral-200 hover:bg-neutral-800 transition-colors"
           >
-            <CodeIcon size={16} />
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <polyline points="15 18 9 12 15 6" />
+            </svg>
+            <span className="text-xs">Projects</span>
+          </button>
+          <span className="text-[11px] text-neutral-600">/</span>
+          <span className="text-[11px] font-medium text-neutral-300">{projectId}</span>
+        </div>
+        {/* Right: toolbar buttons */}
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={() => setLeftCollapsed((v) => !v)}
+            className={`h-7 w-7 flex items-center justify-center rounded-md border transition-colors ${
+              leftCollapsed
+                ? "bg-neutral-800 border-neutral-700 text-neutral-300"
+                : "bg-transparent border-transparent text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800"
+            }`}
+            title={leftCollapsed ? "Show sidebar" : "Hide sidebar"}
+          >
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <rect x="3" y="3" width="18" height="18" rx="2" />
+              <path d="M9 3v18" />
+            </svg>
           </button>
           <button
             onClick={handleLint}
             disabled={linting}
-            className="h-8 px-3 rounded-lg bg-neutral-900 border border-neutral-800 text-xs font-medium text-neutral-400 hover:text-amber-300 hover:border-amber-800/50 transition-colors disabled:opacity-40"
+            className="h-7 px-2.5 rounded-md text-[11px] font-medium text-neutral-500 hover:text-amber-300 hover:bg-neutral-800 transition-colors disabled:opacity-40"
           >
             {linting ? "Linting..." : "Lint"}
           </button>
           <button
-            onClick={handleRender}
-            disabled={renderState === "rendering"}
-            className="h-8 px-3 rounded-lg text-xs font-semibold text-[#09090B] bg-gradient-to-br from-[#3CE6AC] to-[#2BBFA0] hover:brightness-110 active:scale-[0.97] transition-colors disabled:opacity-60 tabular-nums"
+            onClick={() => setRightCollapsed((v) => !v)}
+            className={`h-7 w-7 flex items-center justify-center rounded-md border transition-colors ${
+              rightCollapsed
+                ? "bg-neutral-800 border-neutral-700 text-neutral-300"
+                : "bg-transparent border-transparent text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800"
+            }`}
+            title={rightCollapsed ? "Show code panel" : "Hide code panel"}
           >
-            {renderState === "rendering"
-              ? `${Math.round(renderProgress)}%`
-              : renderState === "complete"
-                ? "Done!"
-                : "Export MP4"}
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <rect x="3" y="3" width="18" height="18" rx="2" />
+              <path d="M15 3v18" />
+            </svg>
           </button>
         </div>
-      )}
+      </div>
 
-      {/* Source editor sidebar */}
-      {sidebarOpen && (
-        <div className="w-[420px] flex flex-col border-l border-neutral-800 bg-neutral-900">
-          <div className="flex items-center justify-between px-3 py-2 border-b border-neutral-800 gap-2">
-            <span className="text-xs font-medium text-neutral-500 truncate min-w-0 flex-1">
-              {editingFile?.path ?? "Source"}
-            </span>
-            <div className="flex items-center gap-1.5 flex-shrink-0">
+      {/* Main content: sidebar + preview + right panel */}
+      <div className="flex flex-1 min-h-0">
+        {/* Left sidebar: Compositions + Assets (resizable, collapsible) */}
+        {!leftCollapsed && (
+          <LeftSidebar
+            width={leftWidth}
+            projectId={projectId}
+            compositions={compositions}
+            assets={assets}
+            activeComposition={editingFile?.path ?? null}
+            onSelectComposition={(comp) => {
+              // Set active composition for preview drill-down
+              // Don't increment refreshKey — that reloads the master iframe and
+              // overrides the composition navigation. Let activeCompositionPath
+              // handle the preview change via the composition stack.
+              setActiveCompPath(
+                comp === "index.html" || comp.startsWith("compositions/") ? comp : null,
+              );
+              // Load file content for code editor
+              setEditingFile({ path: comp, content: null });
+              fetch(`/api/projects/${projectId}/files/${comp}`)
+                .then((r) => r.json())
+                .then((data) => setEditingFile({ path: comp, content: data.content }))
+                .catch(() => {});
+            }}
+          />
+        )}
+
+        {/* Left resize handle */}
+        {!leftCollapsed && (
+          <div
+            className="w-1 flex-shrink-0 bg-neutral-800 hover:bg-blue-500 cursor-col-resize transition-colors active:bg-blue-400"
+            style={{ touchAction: "none" }}
+            onPointerDown={(e) => handlePanelResizeStart("left", e)}
+            onPointerMove={handlePanelResizeMove}
+            onPointerUp={handlePanelResizeEnd}
+          />
+        )}
+
+        {/* Center: Preview */}
+        <div className="flex-1 relative min-w-0">
+          <NLELayout
+            projectId={projectId}
+            refreshKey={refreshKey}
+            activeCompositionPath={activeCompPath}
+            renderClipContent={renderClipContent}
+            onCompIdToSrcChange={setCompIdToSrc}
+            onCompositionChange={(compPath) => {
+              // Sync activeCompPath when user drills down via timeline double-click
+              // or navigates back via breadcrumb — keeps sidebar + thumbnails in sync.
+              setActiveCompPath(compPath);
+            }}
+            onIframeRef={(iframe) => {
+              previewIframeRef.current = iframe;
+            }}
+          />
+        </div>
+
+        {/* Right resize handle */}
+        {!rightCollapsed && (
+          <div
+            className="w-1 flex-shrink-0 bg-neutral-800 hover:bg-blue-500 cursor-col-resize transition-colors active:bg-blue-400"
+            style={{ touchAction: "none" }}
+            onPointerDown={(e) => handlePanelResizeStart("right", e)}
+            onPointerMove={handlePanelResizeMove}
+            onPointerUp={handlePanelResizeEnd}
+          />
+        )}
+
+        {/* Right panel: Code + Renders tabs (resizable, collapsible) */}
+        {!rightCollapsed && (
+          <div
+            className="flex flex-col border-l border-neutral-800 bg-neutral-900 flex-shrink-0"
+            style={{ width: rightWidth }}
+          >
+            {/* Tab bar */}
+            <div className="flex items-center border-b border-neutral-800 flex-shrink-0">
               <button
-                onClick={handleLint}
-                disabled={linting}
-                className="px-2 py-1 rounded text-[11px] font-medium text-neutral-500 hover:text-amber-300 transition-colors disabled:opacity-40"
+                onClick={() => setRightTab("code")}
+                className={`flex-1 py-2 text-[11px] font-medium transition-colors ${
+                  rightTab === "code"
+                    ? "text-neutral-200 border-b-2 border-[#3CE6AC]"
+                    : "text-neutral-500 hover:text-neutral-400"
+                }`}
               >
-                {linting ? "..." : "Lint"}
+                Code
               </button>
               <button
-                onClick={handleRender}
-                disabled={renderState === "rendering"}
-                className="px-2 py-1 rounded text-[11px] font-semibold text-[#3CE6AC] hover:text-[#5EEFC0] transition-colors disabled:opacity-60 tabular-nums"
+                onClick={() => setRightTab("renders")}
+                className={`flex-1 py-2 text-[11px] font-medium transition-colors ${
+                  rightTab === "renders"
+                    ? "text-neutral-200 border-b-2 border-[#3CE6AC]"
+                    : "text-neutral-500 hover:text-neutral-400"
+                }`}
               >
-                {renderState === "rendering" ? `${Math.round(renderProgress)}%` : "Export MP4"}
-              </button>
-              <button
-                onClick={() => setSidebarOpen(false)}
-                className="p-1 rounded text-neutral-600 hover:text-neutral-200 hover:bg-neutral-800 transition-colors"
-                title="Close source panel"
-              >
-                <XIcon size={14} />
+                Renders{renderQueue.jobs.length > 0 ? ` (${renderQueue.jobs.length})` : ""}
               </button>
             </div>
-          </div>
 
-          {fileTree.length > 0 && (
-            <div className="border-b border-neutral-800 max-h-40 overflow-y-auto">
-              <FileTree
-                files={fileTree}
-                activeFile={editingFile?.path ?? null}
-                onSelectFile={handleFileSelect}
-              />
-            </div>
-          )}
-
-          <div className="flex-1 overflow-hidden">
-            {editingFile ? (
-              <SourceEditor
-                content={editingFile.content ?? ""}
-                filePath={editingFile.path}
-                onChange={handleContentChange}
-              />
-            ) : (
-              <div className="flex items-center justify-center h-full text-neutral-600 text-sm">
-                Select a file to edit
+            {/* Tab content */}
+            {rightTab === "code" ? (
+              <div className="flex flex-1 min-h-0">
+                {/* File tree sidebar */}
+                {fileTree.length > 0 && (
+                  <div className="w-[140px] flex-shrink-0 border-r border-neutral-800 overflow-y-auto">
+                    <FileTree
+                      files={fileTree}
+                      activeFile={editingFile?.path ?? null}
+                      onSelectFile={handleFileSelect}
+                    />
+                  </div>
+                )}
+                {/* Code editor or media preview */}
+                <div className="flex-1 overflow-hidden min-w-0">
+                  {editingFile ? (
+                    isMediaFile(editingFile.path) ? (
+                      <MediaPreview projectId={projectId} filePath={editingFile.path} />
+                    ) : (
+                      <SourceEditor
+                        content={editingFile.content ?? ""}
+                        filePath={editingFile.path}
+                        onChange={handleContentChange}
+                      />
+                    )
+                  ) : (
+                    <div className="flex items-center justify-center h-full text-neutral-600 text-sm">
+                      Select a file to edit
+                    </div>
+                  )}
+                </div>
               </div>
+            ) : (
+              <RenderQueue
+                jobs={renderQueue.jobs}
+                onDelete={renderQueue.deleteRender}
+                onClearCompleted={renderQueue.clearCompleted}
+                onStartRender={(format) => renderQueue.startRender(30, "standard", format)}
+                isRendering={renderQueue.isRendering}
+              />
             )}
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Lint modal */}
-      {lintModal !== null && <LintModal findings={lintModal} onClose={() => setLintModal(null)} />}
+      {lintModal !== null && (
+        <LintModal findings={lintModal} projectId={projectId} onClose={() => setLintModal(null)} />
+      )}
     </div>
   );
 }

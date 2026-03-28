@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { generateTicks, formatTick } from "./Timeline";
+import { generateTicks } from "./Timeline";
+import { formatTime } from "../lib/time";
 
 describe("generateTicks", () => {
   it("returns empty arrays for duration <= 0", () => {
@@ -70,40 +71,40 @@ describe("generateTicks", () => {
   });
 });
 
-describe("formatTick", () => {
+describe("formatTime", () => {
   it("formats 0 seconds as 0:00", () => {
-    expect(formatTick(0)).toBe("0:00");
+    expect(formatTime(0)).toBe("0:00");
   });
 
   it("formats seconds below a minute", () => {
-    expect(formatTick(5)).toBe("0:05");
-    expect(formatTick(30)).toBe("0:30");
-    expect(formatTick(59)).toBe("0:59");
+    expect(formatTime(5)).toBe("0:05");
+    expect(formatTime(30)).toBe("0:30");
+    expect(formatTime(59)).toBe("0:59");
   });
 
   it("formats exactly one minute", () => {
-    expect(formatTick(60)).toBe("1:00");
+    expect(formatTime(60)).toBe("1:00");
   });
 
   it("formats minutes and seconds", () => {
-    expect(formatTick(90)).toBe("1:30");
-    expect(formatTick(125)).toBe("2:05");
+    expect(formatTime(90)).toBe("1:30");
+    expect(formatTime(125)).toBe("2:05");
   });
 
   it("floors fractional seconds", () => {
-    expect(formatTick(5.7)).toBe("0:05");
-    expect(formatTick(59.9)).toBe("0:59");
-    expect(formatTick(90.5)).toBe("1:30");
+    expect(formatTime(5.7)).toBe("0:05");
+    expect(formatTime(59.9)).toBe("0:59");
+    expect(formatTime(90.5)).toBe("1:30");
   });
 
   it("handles large values", () => {
-    expect(formatTick(600)).toBe("10:00");
-    expect(formatTick(3661)).toBe("61:01");
+    expect(formatTime(600)).toBe("10:00");
+    expect(formatTime(3661)).toBe("61:01");
   });
 
   it("zero-pads seconds to two digits", () => {
-    expect(formatTick(1)).toBe("0:01");
-    expect(formatTick(9)).toBe("0:09");
-    expect(formatTick(61)).toBe("1:01");
+    expect(formatTime(1)).toBe("0:01");
+    expect(formatTime(9)).toBe("0:09");
+    expect(formatTime(61)).toBe("1:01");
   });
 });

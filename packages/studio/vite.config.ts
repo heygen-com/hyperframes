@@ -47,6 +47,9 @@ async function getSharedBrowser(): Promise<import("puppeteer-core").Browser | nu
   return _browserLaunchPromise;
 }
 
+// In-flight thumbnail dedup — prevents parallel Puppeteer pages for the same URL
+const _thumbnailInflight = new Map<string, Promise<Buffer>>();
+
 // Render job store with TTL cleanup (fixes globalThis memory leak)
 const renderJobs = new Map<
   string,
@@ -109,7 +112,26 @@ function devProjectApi(): Plugin {
             res.end(JSON.stringify({ error: "Project not found" }));
             return;
           }
-          const jobId = `${pid}-${Date.now()}`;
+          // Parse request body for format option
+          let bodyStr = "";
+          for await (const chunk of req) bodyStr += chunk;
+          let reqBody: { format?: string; fps?: number; quality?: string } = {};
+          try {
+            reqBody = bodyStr ? JSON.parse(bodyStr) : {};
+          } catch {
+            /* ignore */
+          }
+          const format = reqBody.format === "webm" ? "webm" : "mp4";
+          const fps = [24, 30, 60].includes(reqBody.fps ?? 0) ? reqBody.fps! : 30;
+          const quality = ["draft", "standard", "high"].includes(reqBody.quality ?? "")
+            ? reqBody.quality!
+            : "standard";
+
+          // Human-readable render name: project-name_2026-03-27_14-30-45
+          const now = new Date();
+          const datePart = now.toISOString().slice(0, 10);
+          const timePart = now.toTimeString().slice(0, 8).replace(/:/g, "-");
+          const jobId = `${pid}_${datePart}_${timePart}`;
           const outputDir = resolve(dataDir, "../renders");
           if (!existsSync(outputDir)) {
             const { mkdirSync: mk } = await import("fs");
@@ -124,7 +146,13 @@ function devProjectApi(): Plugin {
           fetch(`${PRODUCER_URL}/render/stream`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ projectDir: pDir, outputPath, fps: 30, quality: "standard" }),
+            body: JSON.stringify({
+              projectDir: pDir,
+              outputPath,
+              fps,
+              quality,
+              format,
+            }),
           })
             .then(async (resp) => {
               if (!resp.ok || !resp.body) {
@@ -151,6 +179,9 @@ function devProjectApi(): Plugin {
                     const evt = JSON.parse(data);
                     if (evt.type === "progress") {
                       _jobState.progress = evt.progress;
+                      if (evt.stage || evt.message) {
+                        (_jobState as Record<string, unknown>).stage = evt.stage || evt.message;
+                      }
                     }
                     if (evt.type === "complete") {
                       _jobState.status = "complete";
@@ -193,7 +224,7 @@ function devProjectApi(): Plugin {
               return;
             }
             res.write(
-              `event: progress\ndata: ${JSON.stringify({ status: state.status, progress: state.progress })}\n\n`,
+              `event: progress\ndata: ${JSON.stringify({ status: state.status, progress: state.progress, stage: (state as Record<string, unknown>).stage })}\n\n`,
             );
             if (state.status === "complete" || state.status === "failed") {
               clearInterval(interval);
@@ -225,13 +256,62 @@ function devProjectApi(): Plugin {
             return;
           }
           const fileStat = statSync(jobState.outputPath);
+          const isWebm = jobState.outputPath.endsWith(".webm");
+          const contentType = isWebm ? "video/webm" : "video/mp4";
+          const ext = isWebm ? ".webm" : ".mp4";
           res.writeHead(200, {
-            "Content-Type": "video/mp4",
+            "Content-Type": contentType,
             "Content-Length": String(fileStat.size),
-            "Content-Disposition": `attachment; filename="${jobId}.mp4"`,
+            "Content-Disposition": `attachment; filename="${jobId}${ext}"`,
           });
           const stream = createReadStream(jobState.outputPath);
           stream.pipe(res);
+          return;
+        }
+
+        // GET /api/projects/:id/renders — list render outputs for a project
+        const rendersMatch =
+          req.method === "GET" && req.url?.match(/^\/api\/projects\/([^/]+)\/renders/);
+        if (rendersMatch) {
+          const rendersDir = resolve(dataDir, "../renders");
+          if (!existsSync(rendersDir)) {
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ renders: [] }));
+            return;
+          }
+          const files = readdirSync(rendersDir)
+            .filter((f: string) => f.endsWith(".mp4") || f.endsWith(".webm"))
+            .map((f: string) => {
+              const fp = join(rendersDir, f);
+              const stat = statSync(fp);
+              return {
+                id: f.replace(/\.(mp4|webm)$/, ""),
+                filename: f,
+                size: stat.size,
+                createdAt: stat.mtimeMs,
+              };
+            })
+            .sort(
+              (a: { createdAt: number }, b: { createdAt: number }) => b.createdAt - a.createdAt,
+            );
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ renders: files }));
+          return;
+        }
+
+        // DELETE /api/render/:jobId — delete a render output
+        const deleteRenderMatch =
+          req.method === "DELETE" && req.url?.match(/^\/api\/render\/([^/]+)$/);
+        if (deleteRenderMatch) {
+          const jobId = deleteRenderMatch[1];
+          const rendersDir = resolve(dataDir, "../renders");
+          for (const ext of [".mp4", ".webm"]) {
+            const fp = join(rendersDir, `${jobId}${ext}`);
+            if (existsSync(fp)) unlinkSync(fp);
+          }
+          renderJobs.delete(jobId);
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ deleted: true }));
           return;
         }
 
@@ -323,6 +403,57 @@ function devProjectApi(): Plugin {
           return;
         }
 
+        // GET /api/projects/:id/lint — run the core linter on project HTML files
+        if (req.method === "GET" && rest === "/lint") {
+          try {
+            const lintMod = await server.ssrLoadModule("@hyperframes/core/lint");
+            const lintFn = lintMod.lintHyperframeHtml as (
+              html: string,
+              opts?: { filePath?: string },
+            ) => {
+              findings: Array<{
+                severity: string;
+                message: string;
+                file?: string;
+                fixHint?: string;
+              }>;
+            };
+            const htmlFiles: string[] = [];
+            const IGNORE = new Set([".thumbnails", "node_modules", ".git"]);
+            function walkLint(d: string, prefix: string) {
+              for (const entry of readdirSync(d, { withFileTypes: true })) {
+                if (IGNORE.has(entry.name)) continue;
+                const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
+                if (entry.isDirectory()) walkLint(join(d, entry.name), rel);
+                else if (entry.name.endsWith(".html")) htmlFiles.push(rel);
+              }
+            }
+            walkLint(projectDir, "");
+            const allFindings: Array<{
+              severity: string;
+              message: string;
+              file?: string;
+              fixHint?: string;
+            }> = [];
+            for (const file of htmlFiles) {
+              const content = readFileSync(join(projectDir, file), "utf-8");
+              const result = lintFn(content, { filePath: file });
+              if (result?.findings) {
+                for (const f of result.findings) {
+                  allFindings.push({ ...f, file });
+                }
+              }
+            }
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ findings: allFindings }));
+          } catch (err) {
+            console.warn("[Studio] Lint failed:", err);
+            res.writeHead(500, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "Lint failed" }));
+          }
+          return;
+        }
+
         // GET /api/projects/:id
         if (req.method === "GET" && !rest) {
           const files: string[] = [];
@@ -400,63 +531,46 @@ function devProjectApi(): Plugin {
             return;
           }
 
-          let rawComp = readFileSync(compFile, "utf-8");
+          const rawComp = readFileSync(compFile, "utf-8");
 
-          // Extract content from <template> if present
-          const templateMatch = rawComp.match(/<template>([\s\S]*)<\/template>/i);
-          let content = templateMatch ? templateMatch[1] : rawComp;
+          // Extract content from <template> wrapper (compositions are always templates)
+          const templateMatch = rawComp.match(/<template[^>]*>([\s\S]*)<\/template>/i);
+          const content = templateMatch ? templateMatch[1] : rawComp;
 
-          // Inline nested data-composition-src references (keep the attr for drill-down navigation)
-          content = content.replace(
-            /(<[^>]*?)(data-composition-src=["']([^"']+)["'])([^>]*>)/g,
-            (_match, before, srcAttr, src, after) => {
-              const nestedFile = join(projectDir, src);
-              if (!existsSync(nestedFile)) return before + srcAttr + after;
-              const nestedRaw = readFileSync(nestedFile, "utf-8");
-              const nestedTemplate = nestedRaw.match(/<template>([\s\S]*)<\/template>/i);
-              const nestedContent = nestedTemplate ? nestedTemplate[1] : nestedRaw;
-              // Extract styles, scripts, and body from nested content
-              const styles: string[] = [];
-              const scripts: string[] = [];
-              let body = nestedContent
-                .replace(/<style[^>]*>([\s\S]*?)<\/style>/gi, (_, css) => {
-                  styles.push(css);
-                  return "";
-                })
-                .replace(/<script[^>]*>([\s\S]*?)<\/script>/gi, (_, js) => {
-                  scripts.push(js);
-                  return "";
-                });
-              // Find the inner root with data-composition-id and use its children
-              const innerRootMatch = body.match(
-                /<([a-z][a-z0-9]*)\b[^>]*data-composition-id[^>]*>([\s\S]*)<\/\1>/i,
-              );
-              const innerHTML = innerRootMatch ? innerRootMatch[2] : body;
-              // Keep data-composition-src on the host for drill-down URL resolution
-              return (
-                before +
-                srcAttr +
-                after.replace(/>$/, ">") +
-                innerHTML +
-                (styles.length ? `<style>${styles.join("\n")}</style>` : "") +
-                (scripts.length
-                  ? `<script>${scripts.map((s) => `(function(){try{${s}}catch(e){}})();`).join("\n")}</script>`
-                  : "")
-              );
-            },
-          );
+          // Use the project's index.html <head> to preserve all dependencies
+          // (GSAP, fonts, Lottie, reset styles, runtime) instead of building from scratch
+          const indexPath = join(projectDir, "index.html");
+          let headContent = "";
+          if (existsSync(indexPath)) {
+            const indexHtml = readFileSync(indexPath, "utf-8");
+            const headMatch = indexHtml.match(/<head[^>]*>([\s\S]*?)<\/head>/i);
+            headContent = headMatch ? headMatch[1] : "";
+          }
 
-          // Build a standalone HTML page with GSAP + runtime
+          // Inject <base> for relative asset resolution
+          const baseHref = `/api/projects/${projectId}/preview/`;
+          if (!headContent.includes("<base")) {
+            headContent = `<base href="${baseHref}">\n${headContent}`;
+          }
+
+          // Ensure runtime is present
           const runtimeUrl =
             (process.env.HYPERFRAME_RUNTIME_URL || "").trim() ||
             "https://cdn.jsdelivr.net/npm/@hyperframes/core/dist/hyperframe.runtime.iife.js";
+          if (
+            !headContent.includes("hyperframe.runtime") &&
+            !headContent.includes("hyperframes-preview-runtime")
+          ) {
+            headContent += `\n<script data-hyperframes-preview-runtime="1" src="${runtimeUrl}"></script>`;
+          }
+
           const standalone = `<!DOCTYPE html>
 <html>
 <head>
-<script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
-<script data-hyperframes-preview-runtime="1" src="${runtimeUrl}"></script>
+${headContent}
 </head>
 <body>
+<script>window.__timelines=window.__timelines||{};</script>
 ${content}
 </body>
 </html>`;
@@ -498,62 +612,71 @@ ${content}
           }
 
           try {
-            const browser = await getSharedBrowser();
-            if (!browser) {
-              res.writeHead(501, { "Content-Type": "application/json" });
-              res.end(JSON.stringify({ error: "Chrome not found for thumbnails" }));
-              return;
-            }
-            // Detect composition dimensions from the HTML file
-            let compW = vpWidth || 1920;
-            let compH = vpHeight || 1080;
-            if (!vpWidth) {
-              const htmlFile = join(projectDir, compPath);
-              if (existsSync(htmlFile)) {
-                const html = readFileSync(htmlFile, "utf-8");
-                const wMatch = html.match(/data-width=["'](\d+)["']/);
-                const hMatch = html.match(/data-height=["'](\d+)["']/);
-                if (wMatch) compW = parseInt(wMatch[1]);
-                if (hMatch) compH = parseInt(hMatch[1]);
-              }
-            }
-
-            const page = await browser.newPage();
-            await page.setViewport({ width: compW, height: compH, deviceScaleFactor: 0.5 });
-            await page.goto(previewUrl, { waitUntil: "domcontentloaded", timeout: 10000 });
-
-            // Wait for GSAP + seek
-            await page
-              .waitForFunction(
-                `!!(window.__timelines && Object.keys(window.__timelines).length > 0)`,
-                { timeout: 5000 },
-              )
-              .catch(() => {});
-            await page.evaluate((t: number) => {
-              const w = window as Window & {
-                __timelines?: Record<string, { seek: (t: number) => void; pause: () => void }>;
-              };
-              if (w.__timelines) {
-                const tl = Object.values(w.__timelines)[0];
-                if (tl) {
-                  tl.seek(t);
-                  tl.pause();
+            // Dedup in-flight requests — multiple frames from the same comp+time
+            // share a single Puppeteer page instead of spawning parallel ones.
+            let bufferPromise = _thumbnailInflight.get(cacheKey);
+            if (!bufferPromise) {
+              bufferPromise = (async () => {
+                const browser = await getSharedBrowser();
+                if (!browser) throw new Error("Chrome not found");
+                let compW = vpWidth || 1920;
+                let compH = vpHeight || 1080;
+                if (!vpWidth) {
+                  const htmlFile = join(projectDir, compPath);
+                  if (existsSync(htmlFile)) {
+                    const html = readFileSync(htmlFile, "utf-8");
+                    const wMatch = html.match(/data-width=["'](\d+)["']/);
+                    const hMatch = html.match(/data-height=["'](\d+)["']/);
+                    if (wMatch) compW = parseInt(wMatch[1]);
+                    if (hMatch) compH = parseInt(hMatch[1]);
+                  }
                 }
-              }
-            }, seekTime);
-            await page.evaluate("document.fonts?.ready");
-            await new Promise((r) => setTimeout(r, 100));
-
-            const buffer = await page.screenshot({ type: "jpeg", quality: 75 });
-            await page.close();
-
-            // Cache
-            if (!existsSync(cacheDir)) {
-              const { mkdirSync } = await import("fs");
-              mkdirSync(cacheDir, { recursive: true });
+                const page = await browser.newPage();
+                await page.setViewport({ width: compW, height: compH, deviceScaleFactor: 0.5 });
+                await page.goto(previewUrl, { waitUntil: "domcontentloaded", timeout: 10000 });
+                // Dark background prevents white edges bleeding through in thumbnails
+                await page.evaluate(() => {
+                  document.documentElement.style.background = "#000";
+                  document.body.style.background = "#000";
+                  document.body.style.margin = "0";
+                  document.body.style.overflow = "hidden";
+                });
+                await page
+                  .waitForFunction(
+                    `!!(window.__timelines && Object.keys(window.__timelines).length > 0)`,
+                    { timeout: 5000 },
+                  )
+                  .catch(() => {});
+                await page.evaluate((t: number) => {
+                  const w = window as Window & {
+                    __timelines?: Record<
+                      string,
+                      { seek: (t: number) => void; pause: (t?: number) => void }
+                    >;
+                    gsap?: { ticker: { tick: () => void } };
+                  };
+                  if (w.__timelines) {
+                    for (const tl of Object.values(w.__timelines)) {
+                      if (tl) tl.pause(t);
+                    }
+                    if (w.gsap?.ticker) w.gsap.ticker.tick();
+                  }
+                }, seekTime);
+                await page.evaluate("document.fonts?.ready");
+                await new Promise((r) => setTimeout(r, 200));
+                const buf = await page.screenshot({ type: "jpeg", quality: 75 });
+                await page.close();
+                if (!existsSync(cacheDir)) {
+                  const { mkdirSync } = await import("fs");
+                  mkdirSync(cacheDir, { recursive: true });
+                }
+                writeFileSync(cachePath, buf);
+                return buf as Buffer;
+              })();
+              _thumbnailInflight.set(cacheKey, bufferPromise);
+              bufferPromise.finally(() => _thumbnailInflight.delete(cacheKey));
             }
-            writeFileSync(cachePath, buffer);
-
+            const buffer = await bufferPromise;
             res.writeHead(200, {
               "Content-Type": "image/jpeg",
               "Cache-Control": "public, max-age=60",
