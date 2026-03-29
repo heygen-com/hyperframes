@@ -93,7 +93,7 @@ export const DEFAULT_CONFIG: EngineConfig = {
 
   enableChunkedEncode: false,
   chunkSizeFrames: 360,
-  enableStreamingEncode: false,
+  enableStreamingEncode: true,
 
   ffmpegEncodeTimeout: 600_000,
   ffmpegProcessTimeout: 300_000,
