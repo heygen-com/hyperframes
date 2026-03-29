@@ -12,7 +12,13 @@ export function renderProgress(percent: number, stage: string, row?: number): vo
 
   if (row !== undefined && stdout.isTTY) {
     stdout.write(`\x1b[${row};1H\x1b[2K${line}`);
-  } else {
+  } else if (stdout.isTTY) {
     stdout.write(`\r\x1b[2K${line}`);
+  } else {
+    // Non-TTY: write clean lines without escape codes, throttled to avoid spam
+    const rounded = Math.round(percent);
+    if (rounded % 10 === 0 || rounded === 100) {
+      stdout.write(`  ${rounded}%  ${stage}\n`);
+    }
   }
 }
