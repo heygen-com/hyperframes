@@ -56,6 +56,7 @@ import {
   type StreamingEncoder,
   detectGpuHardware,
   getCachedGpuEncoder,
+  estimatePerformance,
 } from "@hyperframes/engine";
 import { join, dirname, resolve } from "path";
 import { randomUUID } from "crypto";
@@ -382,16 +383,23 @@ export async function executeRenderJob(
     }
   }
 
-  // Log GPU detection and optimization flags
-  const gpuInfo = detectGpuHardware();
-  log.info("GPU detection", {
-    hasGpu: gpuInfo.hasGpu,
-    gpuType: gpuInfo.gpuType,
-    renderer: gpuInfo.renderer,
+  // Log performance estimate and hardware detection
+  const perfEstimate = await estimatePerformance();
+  log.info("Performance estimate", {
+    hasGpu: perfEstimate.hardware.gpu.hasGpu,
+    gpuType: perfEstimate.hardware.gpu.gpuType,
+    renderer: perfEstimate.hardware.gpu.renderer,
+    gpuEncoder: perfEstimate.hardware.gpuEncoder,
+    captureMsPerFrame: perfEstimate.estimates.captureMsPerFrame,
+    encodeSpeedup: perfEstimate.estimates.encodeSpeedup,
+    overallSpeedup: perfEstimate.estimates.overallSpeedup,
     pipelinedCapture: cfg.enablePipelinedCapture,
     streamingEncode: cfg.enableStreamingEncode,
     autoGpuEncoding: cfg.autoDetectGpuEncoding,
   });
+  for (const rec of perfEstimate.recommendations) {
+    log.info(`Recommendation: ${rec}`);
+  }
 
   try {
     const assertNotAborted = () => {
