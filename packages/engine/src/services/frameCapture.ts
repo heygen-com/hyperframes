@@ -20,7 +20,7 @@ import {
   resolveHeadlessShellPath,
   type CaptureMode,
 } from "./browserManager.js";
-import { beginFrameCapture, getCdpSession, pageScreenshotCapture } from "./screenshotService.js";
+import { beginFrameCapture, getCdpSession, pageScreenshotCapture, pipelinedBeginFrameCapture } from "./screenshotService.js";
 import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
 import type {
   CaptureOptions,
@@ -364,40 +364,72 @@ async function captureFrameCore(
 ): Promise<{ buffer: Buffer; quantizedTime: number; captureTimeMs: number }> {
   const { page, options } = session;
   const startTime = Date.now();
+  const usePipelined = session.config?.enablePipelinedCapture ?? DEFAULT_CONFIG.enablePipelinedCapture;
 
   try {
-    const { quantizedTime, seekMs, beforeCaptureMs } = await prepareFrameForCapture(
-      session,
-      frameIndex,
-      time,
-    );
-
-    const screenshotStart = Date.now();
     let screenshotBuffer: Buffer;
+    let seekMs = 0;
+    let beforeCaptureMs = 0;
+    const quantizedTime = quantizeTimeToFrame(time, options.fps);
 
-    if (session.captureMode === "beginframe") {
+    if (usePipelined && session.captureMode === "beginframe") {
+      // Pipelined path: seek + beginFrame overlap IPC
+      // Run before-capture hook first (video frame injection needs completed seek)
+      // but skip the separate seek — it's embedded in pipelinedBeginFrameCapture
       const frameTimeTicks =
         session.beginFrameTimeTicks + frameIndex * session.beginFrameIntervalMs;
-      const result = await beginFrameCapture(
+
+      const screenshotStart = Date.now();
+      const result = await pipelinedBeginFrameCapture(
         page,
         options,
         frameTimeTicks,
         session.beginFrameIntervalMs,
+        quantizedTime,
       );
       if (result.hasDamage) session.beginFrameHasDamageCount++;
       else session.beginFrameNoDamageCount++;
       screenshotBuffer = result.buffer;
+      const screenshotMs = Date.now() - screenshotStart;
+
+      // Before-capture hook runs after for pipelined mode (seek already happened)
+      const beforeCaptureStart = Date.now();
+      if (session.onBeforeCapture) {
+        await session.onBeforeCapture(page, quantizedTime);
+      }
+      beforeCaptureMs = Date.now() - beforeCaptureStart;
+
+      session.capturePerf.screenshotMs += screenshotMs;
     } else {
-      screenshotBuffer = await pageScreenshotCapture(page, options);
+      // Standard path: separate seek → optional hook → screenshot
+      const prep = await prepareFrameForCapture(session, frameIndex, time);
+      seekMs = prep.seekMs;
+      beforeCaptureMs = prep.beforeCaptureMs;
+
+      const screenshotStart = Date.now();
+      if (session.captureMode === "beginframe") {
+        const frameTimeTicks =
+          session.beginFrameTimeTicks + frameIndex * session.beginFrameIntervalMs;
+        const result = await beginFrameCapture(
+          page,
+          options,
+          frameTimeTicks,
+          session.beginFrameIntervalMs,
+        );
+        if (result.hasDamage) session.beginFrameHasDamageCount++;
+        else session.beginFrameNoDamageCount++;
+        screenshotBuffer = result.buffer;
+      } else {
+        screenshotBuffer = await pageScreenshotCapture(page, options);
+      }
+      session.capturePerf.screenshotMs += Date.now() - screenshotStart;
     }
 
-    const screenshotMs = Date.now() - screenshotStart;
     const captureTimeMs = Date.now() - startTime;
 
     session.capturePerf.frames += 1;
     session.capturePerf.seekMs += seekMs;
     session.capturePerf.beforeCaptureMs += beforeCaptureMs;
-    session.capturePerf.screenshotMs += screenshotMs;
     session.capturePerf.totalMs += captureTimeMs;
 
     return { buffer: screenshotBuffer, quantizedTime, captureTimeMs };
