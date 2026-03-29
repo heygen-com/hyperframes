@@ -1,0 +1,28 @@
+{
+  "name": "@hyperframes/renderer",
+  "version": "0.1.0",
+  "description": "High-performance HTML-to-video renderer with pipelined CDP and streaming encode",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/heygen-com/hyperframes",
+    "directory": "packages/renderer"
+  },
+  "type": "module",
+  "main": "./src/node-bridge.ts",
+  "types": "./src/node-bridge.ts",
+  "exports": {
+    ".": "./src/node-bridge.ts"
+  },
+  "dependencies": {
+    "puppeteer": "^24.0.0",
+    "puppeteer-core": "^24.39.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.1",
+    "tsx": "^4.7.0",
+    "typescript": "^5.7.2"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
