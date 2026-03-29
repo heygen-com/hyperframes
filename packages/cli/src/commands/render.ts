@@ -256,7 +256,13 @@ async function renderDocker(
     });
     await producer.executeRenderJob(job, projectDir, outputPath);
   } catch (error: unknown) {
-    handleRenderError(error, options, startTime, true, "Check Docker is running: docker info");
+    handleRenderError(
+      error,
+      options,
+      startTime,
+      true,
+      renderHintForError(error, "Check Docker is running: docker info"),
+    );
   }
 
   const elapsed = Date.now() - startTime;
@@ -297,7 +303,13 @@ async function renderLocal(
   try {
     await producer.executeRenderJob(job, projectDir, outputPath, onProgress);
   } catch (error: unknown) {
-    handleRenderError(error, options, startTime, false, "Try --docker for containerized rendering");
+    handleRenderError(
+      error,
+      options,
+      startTime,
+      false,
+      renderHintForError(error, "Try --docker for containerized rendering"),
+    );
   }
 
   const elapsed = Date.now() - startTime;
@@ -310,6 +322,14 @@ function getMemorySnapshot() {
     peakMemoryMb: bytesToMb(process.memoryUsage.rss()),
     memoryFreeMb: bytesToMb(freemem()),
   };
+}
+
+function renderHintForError(error: unknown, fallback: string): string {
+  const message = error instanceof Error ? error.message : String(error);
+  if (message.includes("__hf not ready")) {
+    return "Composition may have zero duration. Add data-duration to the root element or ensure the GSAP timeline has tweens.";
+  }
+  return fallback;
 }
 
 function handleRenderError(
