@@ -45,6 +45,8 @@ export interface EngineConfig {
   enableChunkedEncode: boolean;
   chunkSizeFrames: number;
   enableStreamingEncode: boolean;
+  /** Auto-detect and use GPU encoding (NVENC/VAAPI) when available. */
+  autoDetectGpuEncoding: boolean;
 
   // ── FFmpeg timeouts ──────────────────────────────────────────────────
   /** Timeout for FFmpeg frame encoding (ms). Default: 600_000 */
@@ -94,6 +96,7 @@ export const DEFAULT_CONFIG: EngineConfig = {
   enableChunkedEncode: false,
   chunkSizeFrames: 360,
   enableStreamingEncode: true,
+  autoDetectGpuEncoding: true,
 
   ffmpegEncodeTimeout: 600_000,
   ffmpegProcessTimeout: 300_000,
@@ -166,6 +169,7 @@ export function resolveConfig(overrides?: Partial<EngineConfig>): EngineConfig {
       "PRODUCER_ENABLE_STREAMING_ENCODE",
       DEFAULT_CONFIG.enableStreamingEncode,
     ),
+    autoDetectGpuEncoding: envBool("PRODUCER_AUTO_GPU_ENCODING", DEFAULT_CONFIG.autoDetectGpuEncoding),
 
     ffmpegEncodeTimeout: envNum("FFMPEG_ENCODE_TIMEOUT_MS", DEFAULT_CONFIG.ffmpegEncodeTimeout),
     ffmpegProcessTimeout: envNum("FFMPEG_PROCESS_TIMEOUT_MS", DEFAULT_CONFIG.ffmpegProcessTimeout),

@@ -92,6 +92,7 @@ export {
   getEncoderPreset,
   type GpuEncoder,
 } from "./services/chunkEncoder.js";
+export { getCachedGpuEncoder } from "./utils/gpuEncoder.js";
 export type { EncoderOptions, EncodeResult, MuxResult } from "./services/chunkEncoder.types.js";
 
 export {

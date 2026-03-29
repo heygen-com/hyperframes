@@ -54,6 +54,8 @@ import {
   spawnStreamingEncoder,
   createFrameReorderBuffer,
   type StreamingEncoder,
+  detectGpuHardware,
+  getCachedGpuEncoder,
 } from "@hyperframes/engine";
 import { join, dirname, resolve } from "path";
 import { randomUUID } from "crypto";
@@ -366,6 +368,14 @@ export async function executeRenderJob(
   const enableChunkedEncode = cfg.enableChunkedEncode;
   const chunkedEncodeSize = cfg.chunkSizeFrames;
   const enableStreamingEncode = cfg.enableStreamingEncode;
+
+  // Auto-detect GPU encoding if not explicitly configured
+  if (cfg.autoDetectGpuEncoding && job.config.useGpu === undefined) {
+    const gpuEncoder = await getCachedGpuEncoder();
+    if (gpuEncoder) {
+      job.config.useGpu = true;
+    }
+  }
 
   try {
     const assertNotAborted = () => {
