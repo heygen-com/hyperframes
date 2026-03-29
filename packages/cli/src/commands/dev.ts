@@ -63,34 +63,39 @@ export default defineCommand({
     port: { type: "string", description: "Port to run the dev server on", default: "3002" },
   },
   async run({ args }) {
-    const dir = resolve(args.dir ?? ".");
+    const rawArg = args.dir;
+    const dir = resolve(rawArg ?? ".");
     const startPort = parseInt(args.port ?? "3002", 10);
 
+    // Compute display name: preserve symlink/CWD name when user runs "hyperframes dev ."
+    const isImplicitCwd = !rawArg || rawArg === "." || rawArg === "./";
+    const projectName = isImplicitCwd ? basename(process.env.PWD ?? dir) : basename(dir);
+
     if (isDevMode()) {
-      return runDevMode(dir);
+      return runDevMode(dir, projectName);
     }
 
     // If @hyperframes/studio is installed locally, use Vite for full HMR
     if (hasLocalStudio(dir)) {
-      return runLocalStudioMode(dir);
+      return runLocalStudioMode(dir, projectName);
     }
 
-    return runEmbeddedMode(dir, startPort);
+    return runEmbeddedMode(dir, startPort, projectName);
   },
 });
 
 /**
  * Dev mode: spawn pnpm studio from the monorepo (existing behavior).
  */
-async function runDevMode(dir: string): Promise<void> {
+async function runDevMode(dir: string, projectName?: string): Promise<void> {
   // Find monorepo root by navigating from packages/cli/src/commands/
   const thisFile = fileURLToPath(import.meta.url);
   const repoRoot = resolve(dirname(thisFile), "..", "..", "..", "..");
 
   // Symlink project into the studio's data directory
   const projectsDir = join(repoRoot, "packages", "studio", "data", "projects");
-  const projectName = basename(dir);
-  const symlinkPath = join(projectsDir, projectName);
+  const pName = projectName ?? basename(dir);
+  const symlinkPath = join(projectsDir, pName);
 
   mkdirSync(projectsDir, { recursive: true });
 
@@ -140,13 +145,13 @@ async function runDevMode(dir: string): Promise<void> {
       frontendUrl = localMatch[1] ?? "";
       s.stop(c.success("Studio running"));
       console.log();
-      console.log(`  ${c.dim("Project")}   ${c.accent(projectName)}`);
+      console.log(`  ${c.dim("Project")}   ${c.accent(pName)}`);
       console.log(`  ${c.dim("Studio")}    ${c.accent(frontendUrl)}`);
       console.log();
       console.log(`  ${c.dim("Press Ctrl+C to stop")}`);
       console.log();
 
-      const urlToOpen = `${frontendUrl}#/project/${projectName}`;
+      const urlToOpen = `${frontendUrl}#/project/${pName}`;
       import("open").then((mod) => mod.default(urlToOpen)).catch(() => {});
 
       child.stdout?.removeListener("data", handleOutput);
@@ -197,14 +202,14 @@ function hasLocalStudio(dir: string): boolean {
  * Local studio mode: spawn Vite using a locally installed @hyperframes/studio.
  * Provides full Vite HMR and the complete studio experience.
  */
-async function runLocalStudioMode(dir: string): Promise<void> {
+async function runLocalStudioMode(dir: string, projectName?: string): Promise<void> {
   const req = createRequire(join(dir, "package.json"));
   const studioPkgPath = dirname(req.resolve("@hyperframes/studio/package.json"));
-  const projectName = basename(dir);
+  const pName = projectName ?? basename(dir);
 
   // Symlink project into studio's data directory
   const projectsDir = join(studioPkgPath, "data", "projects");
-  const symlinkPath = join(projectsDir, projectName);
+  const symlinkPath = join(projectsDir, pName);
   mkdirSync(projectsDir, { recursive: true });
 
   let createdSymlink = false;
@@ -239,12 +244,12 @@ async function runLocalStudioMode(dir: string): Promise<void> {
       const url = localMatch[1] ?? "";
       s.stop(c.success("Studio running"));
       console.log();
-      console.log(`  ${c.dim("Project")}   ${c.accent(projectName)}`);
+      console.log(`  ${c.dim("Project")}   ${c.accent(pName)}`);
       console.log(`  ${c.dim("Studio")}    ${c.accent(url)}`);
       console.log();
       console.log(`  ${c.dim("Press Ctrl+C to stop")}`);
       console.log();
-      import("open").then((mod) => mod.default(`${url}#project/${projectName}`)).catch(() => {});
+      import("open").then((mod) => mod.default(`${url}#project/${pName}`)).catch(() => {});
     }
   }
 
@@ -274,11 +279,15 @@ async function runLocalStudioMode(dir: string): Promise<void> {
  * Embedded mode: serve the pre-built studio SPA with a standalone Hono server.
  * Works without any additional dependencies — the studio is bundled in dist/.
  */
-async function runEmbeddedMode(dir: string, startPort: number): Promise<void> {
+async function runEmbeddedMode(
+  dir: string,
+  startPort: number,
+  projectName?: string,
+): Promise<void> {
   const { createStudioServer } = await import("../server/studioServer.js");
 
-  const projectName = basename(dir);
-  const { app } = createStudioServer({ projectDir: dir });
+  const pName = projectName ?? basename(dir);
+  const { app } = createStudioServer({ projectDir: dir, projectName: pName });
 
   clack.intro(c.bold("hyperframes dev"));
   const s = clack.spinner();
@@ -303,7 +312,7 @@ async function runEmbeddedMode(dir: string, startPort: number): Promise<void> {
     console.log(`  ${c.warn(`Port ${startPort} is in use, using ${actualPort} instead`)}`);
     console.log();
   }
-  console.log(`  ${c.dim("Project")}   ${c.accent(projectName)}`);
+  console.log(`  ${c.dim("Project")}   ${c.accent(pName)}`);
   console.log(`  ${c.dim("Studio")}    ${c.accent(url)}`);
   console.log();
   console.log(`  ${c.dim("Edit with your AI agent — it has HyperFrames skills installed.")}`);
@@ -311,7 +320,7 @@ async function runEmbeddedMode(dir: string, startPort: number): Promise<void> {
   console.log();
   console.log(`  ${c.dim("Press Ctrl+C to stop")}`);
   console.log();
-  import("open").then((mod) => mod.default(`${url}#project/${projectName}`)).catch(() => {});
+  import("open").then((mod) => mod.default(`${url}#project/${pName}`)).catch(() => {});
 
   // Block until the process is killed. Ctrl+C (SIGINT) uses Node's default
   // behavior — exit immediately. The OS reclaims the port and file handles.

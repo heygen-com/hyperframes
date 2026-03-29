@@ -48,6 +48,8 @@ function resolveRuntimePath(): string {
 
 export interface StudioServerOptions {
   projectDir: string;
+  /** Display name for the project. Defaults to basename of projectDir. */
+  projectName?: string;
 }
 
 export interface StudioServer {
@@ -56,8 +58,8 @@ export interface StudioServer {
 }
 
 export function createStudioServer(options: StudioServerOptions): StudioServer {
-  const { projectDir } = options;
-  const projectId = basename(projectDir);
+  const { projectDir, projectName } = options;
+  const projectId = projectName || basename(projectDir);
   const studioDir = resolveDistDir();
   const runtimePath = resolveRuntimePath();
   const watcher = createProjectWatcher(projectDir);
