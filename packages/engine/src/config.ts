@@ -38,6 +38,8 @@ export interface EngineConfig {
   expectedChromiumMajor?: number;
   /** Force screenshot capture mode (skip BeginFrame even on Linux). */
   forceScreenshot: boolean;
+  /** Use pipelined CDP capture: overlap seek IPC with beginFrame for ~30% faster per-frame capture. */
+  enablePipelinedCapture: boolean;
 
   // ── Encoding ─────────────────────────────────────────────────────────
   enableChunkedEncode: boolean;
@@ -87,6 +89,7 @@ export const DEFAULT_CONFIG: EngineConfig = {
   browserTimeout: 120_000,
   protocolTimeout: 300_000,
   forceScreenshot: false,
+  enablePipelinedCapture: true,
 
   enableChunkedEncode: false,
   chunkSizeFrames: 360,
@@ -149,6 +152,7 @@ export function resolveConfig(overrides?: Partial<EngineConfig>): EngineConfig {
       : undefined,
 
     forceScreenshot: envBool("PRODUCER_FORCE_SCREENSHOT", DEFAULT_CONFIG.forceScreenshot),
+    enablePipelinedCapture: envBool("PRODUCER_ENABLE_PIPELINED_CAPTURE", DEFAULT_CONFIG.enablePipelinedCapture),
 
     enableChunkedEncode: envBool(
       "PRODUCER_ENABLE_CHUNKED_ENCODE",
