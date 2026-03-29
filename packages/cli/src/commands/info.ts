@@ -34,12 +34,20 @@ export default defineCommand({
     ensureDOMParser();
     const parsed = parseHtml(html);
 
+    // Read actual dimensions from root composition element via DOM query
+    // (same approach as compositions.ts — avoids regex matching wrong element)
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, "text/html");
+    const root = doc.querySelector("[data-composition-id]");
+    const width = parseInt(root?.getAttribute("data-width") ?? "1920", 10);
+    const height = parseInt(root?.getAttribute("data-height") ?? "1080", 10);
+    const resolution = width > height ? "landscape" : "portrait";
+
     const tracks = new Set(parsed.elements.map((el) => el.zIndex));
     const maxEnd = parsed.elements.reduce(
       (max, el) => Math.max(max, el.startTime + el.duration),
       0,
     );
-    const resolution = parsed.resolution === "portrait" ? "1080x1920" : "1920x1080";
     const size = totalSize(project.dir);
 
     const typeCounts: Record<string, number> = {};
@@ -55,9 +63,9 @@ export default defineCommand({
         JSON.stringify(
           withMeta({
             name: project.name,
-            resolution: parsed.resolution,
-            width: parsed.resolution === "portrait" ? 1080 : 1920,
-            height: parsed.resolution === "portrait" ? 1920 : 1080,
+            resolution: resolution as "landscape" | "portrait",
+            width,
+            height,
             duration: maxEnd,
             elements: parsed.elements.length,
             tracks: tracks.size,
@@ -72,7 +80,7 @@ export default defineCommand({
     }
 
     console.log(`${c.success("◇")}  ${c.accent(project.name)}`);
-    console.log(label("Resolution", resolution));
+    console.log(label("Resolution", `${width}x${height}`));
     console.log(label("Duration", `${maxEnd.toFixed(1)}s`));
     console.log(label("Elements", `${parsed.elements.length}${typeStr ? ` (${typeStr})` : ""}`));
     console.log(label("Tracks", `${tracks.size}`));
