@@ -126,7 +126,17 @@ Examples:
       : join(rendersDir, `${project.name}_${datePart}_${timePart}${ext}`);
 
     // Ensure output directory exists
-    mkdirSync(dirname(outputPath), { recursive: true });
+    try {
+      mkdirSync(dirname(outputPath), { recursive: true });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      errorBox(
+        "Cannot create output directory",
+        `${dirname(outputPath)}`,
+        message,
+      );
+      process.exit(1);
+    }
 
     const useDocker = args.docker ?? false;
     const useGpu = args.gpu ?? false;
