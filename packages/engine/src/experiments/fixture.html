@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Benchmark Fixture</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      width: 1080px;
+      height: 1920px;
+      overflow: hidden;
+      background: #1a1a2e;
+      font-family: Arial, sans-serif;
+    }
+    .container {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      position: relative;
+    }
+    .text-block {
+      position: absolute;
+      font-size: 72px;
+      font-weight: 700;
+      color: white;
+      text-align: center;
+    }
+    .progress-bar {
+      position: absolute;
+      bottom: 100px;
+      left: 50px;
+      width: 980px;
+      height: 8px;
+      background: rgba(255,255,255,0.2);
+      border-radius: 4px;
+    }
+    .progress-fill {
+      height: 100%;
+      background: #4facfe;
+      border-radius: 4px;
+      transition: none;
+    }
+    .counter {
+      position: absolute;
+      top: 60px;
+      right: 60px;
+      font-size: 36px;
+      color: rgba(255,255,255,0.5);
+      font-variant-numeric: tabular-nums;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="text-block" id="text">FRAME 0</div>
+    <div class="counter" id="counter">00:00.000</div>
+    <div class="progress-bar">
+      <div class="progress-fill" id="progress"></div>
+    </div>
+  </div>
+
+  <script>
+    // Lightweight deterministic composition.
+    // Minimal DOM manipulation per seek to isolate IPC overhead.
+    var DURATION = 15;
+
+    var textEl = document.getElementById("text");
+    var counterEl = document.getElementById("counter");
+    var progressEl = document.getElementById("progress");
+
+    var phrases = [
+      "HELLO WORLD",
+      "HYPERFRAMES",
+      "RENDERING...",
+      "FAST VIDEO",
+      "FROM HTML",
+      "BENCHMARK",
+      "ALMOST DONE",
+      "THANK YOU"
+    ];
+
+    function seek(time) {
+      // Update text based on time segment
+      var segIdx = Math.min(Math.floor(time / (DURATION / phrases.length)), phrases.length - 1);
+      textEl.textContent = phrases[segIdx];
+
+      // Opacity pulse
+      var pulse = 0.7 + 0.3 * Math.sin(time * 4);
+      textEl.style.opacity = String(pulse);
+
+      // Y offset
+      var yOff = Math.sin(time * 2) * 20;
+      textEl.style.transform = "translateY(" + yOff + "px)";
+
+      // Background hue shift
+      var hue = Math.floor((time / DURATION) * 60);
+      document.body.style.background = "hsl(" + (240 + hue) + ", 40%, 12%)";
+
+      // Progress bar
+      var pct = Math.min(100, (time / DURATION) * 100);
+      progressEl.style.width = pct + "%";
+
+      // Time counter
+      var mins = Math.floor(time / 60);
+      var secs = Math.floor(time % 60);
+      var ms = Math.floor((time % 1) * 1000);
+      counterEl.textContent =
+        String(mins).padStart(2, "0") + ":" +
+        String(secs).padStart(2, "0") + "." +
+        String(ms).padStart(3, "0");
+    }
+
+    window.__hf = {
+      duration: DURATION,
+      seek: seek,
+    };
+
+    seek(0);
+  </script>
+</body>
+</html>
