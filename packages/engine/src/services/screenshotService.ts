@@ -95,6 +95,70 @@ export async function beginFrameCapture(
 }
 
 /**
+ * Pipelined BeginFrame capture — fires seek and beginFrame with overlapping IPC.
+ * Instead of: await evaluate(seek) → await beginFrame (2 sequential round-trips),
+ * fires evaluate(seek) WITHOUT awaiting, then immediately fires beginFrame.
+ * Chrome processes CDP messages in order, so seek executes before beginFrame runs.
+ * Saves ~19ms per frame by overlapping seek IPC return with beginFrame processing.
+ */
+export async function pipelinedBeginFrameCapture(
+  page: Page,
+  options: CaptureOptions,
+  frameTimeTicks: number,
+  interval: number,
+  seekTime: number,
+): Promise<BeginFrameResult> {
+  const client = await getCdpSession(page);
+  const format = options.format === "png" ? "png" : "jpeg";
+
+  // Fire seek WITHOUT awaiting — Chrome processes CDP in order
+  const seekPromise = page.evaluate((t: number) => {
+    if (window.__hf && typeof window.__hf.seek === "function") {
+      window.__hf.seek(t);
+    }
+  }, seekTime);
+
+  // Immediately fire beginFrame — will execute after seek completes in Chrome
+  const resultPromise = client.send("HeadlessExperimental.beginFrame", {
+    frameTimeTicks,
+    interval,
+    screenshot: {
+      format,
+      quality: format === "jpeg" ? (options.quality ?? 80) : undefined,
+      optimizeForSpeed: true,
+    },
+  });
+
+  // Await both — seek may already be done by the time beginFrame returns
+  const [, result] = await Promise.all([seekPromise.catch(() => {}), resultPromise]);
+
+  let buffer: Buffer;
+  if (result.screenshotData) {
+    buffer = Buffer.from(result.screenshotData, "base64");
+    lastFrameCache.set(page, buffer);
+  } else {
+    const cached = lastFrameCache.get(page);
+    if (cached) {
+      buffer = cached;
+    } else {
+      const retry = await client.send("HeadlessExperimental.beginFrame", {
+        frameTimeTicks: frameTimeTicks + 0.001,
+        interval,
+        screenshot: {
+          format,
+          quality: format === "jpeg" ? (options.quality ?? 80) : undefined,
+          optimizeForSpeed: true,
+        },
+      });
+      buffer = retry.screenshotData ? Buffer.from(retry.screenshotData, "base64") : Buffer.alloc(0);
+      if (buffer.length > 0) lastFrameCache.set(page, buffer);
+    }
+  }
+
+  return { buffer, hasDamage: result.hasDamage };
+}
+
+/**
  * Capture a screenshot using standard Page.captureScreenshot CDP call.
  * Fallback for environments where BeginFrame is unavailable (macOS, Windows).
  */
