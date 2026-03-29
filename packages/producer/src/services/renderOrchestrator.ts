@@ -369,11 +369,16 @@ export async function executeRenderJob(
   const chunkedEncodeSize = cfg.chunkSizeFrames;
   const enableStreamingEncode = cfg.enableStreamingEncode;
 
-  // Auto-detect GPU encoding if not explicitly configured
+  // Auto-detect GPU encoding if not explicitly configured.
+  // Requires both: (1) actual GPU hardware detected AND (2) a matching FFmpeg encoder.
+  // FFmpeg may list h264_nvenc even without a GPU, so hardware check is essential.
   if (cfg.autoDetectGpuEncoding && job.config.useGpu === undefined) {
-    const gpuEncoder = await getCachedGpuEncoder();
-    if (gpuEncoder) {
-      job.config.useGpu = true;
+    const gpuHw = detectGpuHardware();
+    if (gpuHw.hasGpu) {
+      const gpuEncoder = await getCachedGpuEncoder();
+      if (gpuEncoder) {
+        job.config.useGpu = true;
+      }
     }
   }
 
