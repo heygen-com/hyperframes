@@ -97,16 +97,22 @@ export async function acquireBrowser(
   const headlessShell = resolveHeadlessShellPath(config);
 
   // BeginFrame requires chrome-headless-shell AND Linux (crashes on macOS/Windows).
+  // System Chrome (google-chrome, chromium) does NOT support the
+  // HeadlessExperimental.beginFrame CDP command — only the dedicated
+  // chrome-headless-shell binary does.  Passing system Chrome as the
+  // executable causes a 120-second silent hang followed by a timeout.
   const isLinux = process.platform === "linux";
   const forceScreenshot = config?.forceScreenshot ?? DEFAULT_CONFIG.forceScreenshot;
+  const isHeadlessShellBinary = headlessShell ? /chrome-headless-shell/.test(headlessShell) : false;
   let captureMode: CaptureMode;
   let executablePath: string | undefined;
 
-  if (headlessShell && isLinux && !forceScreenshot) {
+  if (headlessShell && isLinux && isHeadlessShellBinary && !forceScreenshot) {
     captureMode = "beginframe";
     executablePath = headlessShell;
   } else {
-    // Screenshot mode with renderSeek: works on all platforms.
+    // Screenshot mode with renderSeek: works on all platforms, and
+    // as a fallback when system Chrome is the only available binary.
     captureMode = "screenshot";
     executablePath = headlessShell ?? undefined;
   }

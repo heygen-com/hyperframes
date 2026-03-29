@@ -107,12 +107,23 @@ export async function findBrowser(): Promise<BrowserResult | undefined> {
 }
 
 /**
- * Find or download a browser.
- * Resolution: env var -> cached download -> system Chrome -> auto-download.
+ * Find or download a browser suitable for rendering.
+ * Resolution: env var -> cached headless-shell -> auto-download.
+ *
+ * System Chrome is NOT used for rendering because it does not support
+ * the HeadlessExperimental.beginFrame CDP command required for
+ * deterministic frame capture, and older system Chrome versions are
+ * often incompatible with the version of puppeteer-core bundled in
+ * the engine (protocol mismatch → silent 120s timeout).
  */
 export async function ensureBrowser(options?: EnsureBrowserOptions): Promise<BrowserResult> {
-  const existing = await findBrowser();
-  if (existing) return existing;
+  // Env override and cached headless-shell are trusted.
+  // System Chrome is skipped — it causes silent render timeouts.
+  const fromEnv = findFromEnv();
+  if (fromEnv) return fromEnv;
+
+  const fromCache = await findFromCache();
+  if (fromCache) return fromCache;
 
   const platform = detectBrowserPlatform();
   if (!platform) {
