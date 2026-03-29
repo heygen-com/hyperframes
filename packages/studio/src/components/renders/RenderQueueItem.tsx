@@ -78,6 +78,10 @@ export const RenderQueueItem = memo(function RenderQueueItem({
             </div>
           )}
 
+          {job.status === "failed" && job.error && (
+            <span className="text-[9px] text-red-400 mt-0.5 block">{job.error}</span>
+          )}
+
           {job.status !== "rendering" && (
             <span className="text-[9px] text-neutral-600">{formatTimeAgo(job.createdAt)}</span>
           )}

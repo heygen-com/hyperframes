@@ -5,6 +5,7 @@ export interface RenderJob {
   status: "rendering" | "complete" | "failed" | "cancelled";
   progress: number;
   stage?: string;
+  error?: string;
   filename: string;
   createdAt: number;
   durationMs?: number;
@@ -62,12 +63,37 @@ export function useRenderQueue(projectId: string | null) {
       if (!projectId) return;
 
       const startTime = Date.now();
-      const res = await fetch(`/api/projects/${projectId}/render`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fps, quality, format }),
-      });
-      if (!res.ok) return;
+      let res: Response;
+      try {
+        res = await fetch(`/api/projects/${projectId}/render`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ fps, quality, format }),
+        });
+      } catch {
+        const failedJob: RenderJob = {
+          id: crypto.randomUUID(),
+          status: "failed",
+          progress: 0,
+          error: "Could not reach render server. Use `hyperframes render` from the CLI instead.",
+          filename: "Export failed",
+          createdAt: startTime,
+        };
+        setJobs((prev) => [...prev, failedJob]);
+        return;
+      }
+      if (!res.ok) {
+        const failedJob: RenderJob = {
+          id: crypto.randomUUID(),
+          status: "failed",
+          progress: 0,
+          error: `Server error (${res.status}). Check the terminal for details.`,
+          filename: "Export failed",
+          createdAt: startTime,
+        };
+        setJobs((prev) => [...prev, failedJob]);
+        return;
+      }
       const { jobId } = await res.json();
 
       const ext = format === "webm" ? ".webm" : ".mp4";
@@ -119,7 +145,13 @@ export function useRenderQueue(projectId: string | null) {
         es.close();
         setJobs((prev) =>
           prev.map((j) =>
-            j.id === jobId && j.status === "rendering" ? { ...j, status: "failed" } : j,
+            j.id === jobId && j.status === "rendering"
+              ? {
+                  ...j,
+                  status: "failed" as const,
+                  error: "Connection lost. Is the render server running?",
+                }
+              : j,
           ),
         );
         activeJobRef.current = null;
