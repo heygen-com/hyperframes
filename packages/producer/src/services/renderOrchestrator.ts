@@ -377,6 +377,17 @@ export async function executeRenderJob(
     }
   }
 
+  // Log GPU detection and optimization flags
+  const gpuInfo = detectGpuHardware();
+  log.info("GPU detection", {
+    hasGpu: gpuInfo.hasGpu,
+    gpuType: gpuInfo.gpuType,
+    renderer: gpuInfo.renderer,
+    pipelinedCapture: cfg.enablePipelinedCapture,
+    streamingEncode: cfg.enableStreamingEncode,
+    autoGpuEncoding: cfg.autoDetectGpuEncoding,
+  });
+
   try {
     const assertNotAborted = () => {
       if (abortSignal?.aborted) {
