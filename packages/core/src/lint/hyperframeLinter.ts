@@ -636,12 +636,14 @@ export function lintHyperframeHtml(
   }
 
   const errorCount = findings.filter((finding) => finding.severity === "error").length;
-  const warningCount = findings.length - errorCount;
+  const warningCount = findings.filter((finding) => finding.severity === "warning").length;
+  const infoCount = findings.filter((finding) => finding.severity === "info").length;
 
   return {
     ok: errorCount === 0,
     errorCount,
     warningCount,
+    infoCount,
     findings,
   };
 }
