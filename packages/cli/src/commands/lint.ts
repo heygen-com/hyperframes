@@ -1,6 +1,9 @@
 import { defineCommand } from "citty";
 import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { lintHyperframeHtml } from "@hyperframes/core/lint";
+import type { HyperframeLintFinding } from "@hyperframes/core/lint";
+import { walkDir } from "@hyperframes/core/studio-api";
 import { c } from "../ui/colors.js";
 import { resolveProject } from "../utils/project.js";
 import { withMeta } from "../utils/updateCheck.js";
@@ -13,35 +16,62 @@ export default defineCommand({
   },
   async run({ args }) {
     const project = resolveProject(args.dir);
-    const html = readFileSync(project.indexPath, "utf-8");
-    const result = lintHyperframeHtml(html, { filePath: project.indexPath });
+    const htmlFiles = walkDir(project.dir).filter((f) => f.endsWith(".html"));
 
-    if (args.json) {
-      console.log(JSON.stringify(withMeta(result), null, 2));
-      process.exit(result.ok ? 0 : 1);
+    const allFindings: (HyperframeLintFinding & { file: string })[] = [];
+    let totalErrors = 0;
+    let totalWarnings = 0;
+
+    for (const file of htmlFiles) {
+      const html = readFileSync(join(project.dir, file), "utf-8");
+      const result = lintHyperframeHtml(html, { filePath: file });
+      for (const f of result.findings) {
+        allFindings.push({ ...f, file });
+      }
+      totalErrors += result.errorCount;
+      totalWarnings += result.warningCount;
     }
 
-    console.log(`${c.accent("◆")}  Linting ${c.accent(project.name + "/index.html")}`);
+    if (args.json) {
+      console.log(
+        JSON.stringify(
+          withMeta({
+            ok: totalErrors === 0,
+            findings: allFindings,
+            errorCount: totalErrors,
+            warningCount: totalWarnings,
+            filesScanned: htmlFiles.length,
+          }),
+          null,
+          2,
+        ),
+      );
+      process.exit(totalErrors > 0 ? 1 : 0);
+    }
+
+    console.log(
+      `${c.accent("◆")}  Linting ${c.accent(project.name)} (${htmlFiles.length} HTML files)`,
+    );
     console.log();
 
-    if (result.ok) {
+    if (allFindings.length === 0) {
       console.log(`${c.success("◇")}  ${c.success("0 errors, 0 warnings")}`);
       return;
     }
 
-    for (const finding of result.findings) {
+    for (const finding of allFindings) {
       const prefix = finding.severity === "error" ? c.error("✗") : c.warn("⚠");
       const loc = finding.elementId ? ` ${c.accent(`[${finding.elementId}]`)}` : "";
-      console.log(`${prefix}  ${c.bold(finding.code)}${loc}: ${finding.message}`);
+      console.log(
+        `${prefix}  ${c.bold(finding.code)}${loc}: ${finding.message} ${c.dim(finding.file)}`,
+      );
       if (finding.fixHint) {
         console.log(`   ${c.dim(`Fix: ${finding.fixHint}`)}`);
       }
     }
 
-    const summaryIcon = result.errorCount > 0 ? c.error("◇") : c.success("◇");
-    console.log(
-      `\n${summaryIcon}  ${result.errorCount} error(s), ${result.warningCount} warning(s)`,
-    );
-    process.exit(result.errorCount > 0 ? 1 : 0);
+    const summaryIcon = totalErrors > 0 ? c.error("◇") : c.success("◇");
+    console.log(`\n${summaryIcon}  ${totalErrors} error(s), ${totalWarnings} warning(s)`);
+    process.exit(totalErrors > 0 ? 1 : 0);
   },
 });
