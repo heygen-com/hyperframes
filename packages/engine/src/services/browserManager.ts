@@ -10,6 +10,7 @@ import { existsSync, readdirSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
 import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
+import { detectGpuHardware } from "../utils/gpuDetector.js";
 
 let _puppeteer: PuppeteerNode | undefined;
 
@@ -166,8 +167,6 @@ export function buildChromeArgs(
     "--disable-dev-shm-usage",
     "--enable-webgl",
     "--ignore-gpu-blocklist",
-    "--use-gl=angle",
-    "--use-angle=swiftshader",
     "--font-render-hinting=none",
     "--force-color-profile=srgb",
     `--window-size=${options.width},${options.height}`,
@@ -196,6 +195,10 @@ export function buildChromeArgs(
     // Disable features that add overhead
     "--disable-features=AudioServiceOutOfProcess,IsolateOrigins,site-per-process,Translate,BackForwardCache,IntensiveWakeUpThrottling",
   ];
+
+  // GPU-aware GL flags — auto-detect hardware and use optimal renderer
+  const gpuInfo = detectGpuHardware();
+  chromeArgs.push(...gpuInfo.chromeGlFlags);
 
   // BeginFrame flags — only when using chrome-headless-shell on Linux
   if (options.captureMode !== "screenshot") {

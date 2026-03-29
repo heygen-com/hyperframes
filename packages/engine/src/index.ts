@@ -152,3 +152,5 @@ export {
 } from "./utils/ffprobe.js";
 
 export { downloadToTemp, isHttpUrl } from "./utils/urlDownloader.js";
+
+export { detectGpuHardware, type GpuHardwareInfo } from "./utils/gpuDetector.js";
