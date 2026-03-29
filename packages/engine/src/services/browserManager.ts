@@ -200,6 +200,15 @@ export function buildChromeArgs(
   const gpuInfo = detectGpuHardware();
   chromeArgs.push(...gpuInfo.chromeGlFlags);
 
+  if (gpuInfo.hasGpu) {
+    chromeArgs.push(
+      "--enable-accelerated-2d-canvas",
+      "--enable-gpu-memory-buffer-compositor-resources",
+      "--enable-native-gpu-memory-buffers",
+      "--canvas-oop-rasterization",
+    );
+  }
+
   // BeginFrame flags — only when using chrome-headless-shell on Linux
   if (options.captureMode !== "screenshot") {
     chromeArgs.push(
