@@ -34,12 +34,18 @@ export default defineCommand({
     ensureDOMParser();
     const parsed = parseHtml(html);
 
+    // Parse actual dimensions from HTML root composition element
+    const widthMatch = html.match(/data-width\s*=\s*["'](\d+)["']/);
+    const heightMatch = html.match(/data-height\s*=\s*["'](\d+)["']/);
+    const width = widthMatch ? parseInt(widthMatch[1], 10) : 1920;
+    const height = heightMatch ? parseInt(heightMatch[1], 10) : 1080;
+    const resolution = `${width}x${height}`;
+
     const tracks = new Set(parsed.elements.map((el) => el.zIndex));
     const maxEnd = parsed.elements.reduce(
       (max, el) => Math.max(max, el.startTime + el.duration),
       0,
     );
-    const resolution = parsed.resolution === "portrait" ? "1080x1920" : "1920x1080";
     const size = totalSize(project.dir);
 
     const typeCounts: Record<string, number> = {};
@@ -55,9 +61,9 @@ export default defineCommand({
         JSON.stringify(
           withMeta({
             name: project.name,
-            resolution: parsed.resolution,
-            width: parsed.resolution === "portrait" ? 1080 : 1920,
-            height: parsed.resolution === "portrait" ? 1920 : 1080,
+            resolution,
+            width,
+            height,
             duration: maxEnd,
             elements: parsed.elements.length,
             tracks: tracks.size,
