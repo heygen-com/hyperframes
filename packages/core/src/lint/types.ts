@@ -15,6 +15,7 @@ export type HyperframeLintResult = {
   ok: boolean;
   errorCount: number;
   warningCount: number;
+  infoCount: number;
   findings: HyperframeLintFinding[];
 };
 
