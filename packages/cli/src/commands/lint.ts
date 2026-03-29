@@ -22,6 +22,7 @@ export default defineCommand({
       const allFindings: (HyperframeLintFinding & { file: string })[] = [];
       let totalErrors = 0;
       let totalWarnings = 0;
+      let totalInfos = 0;
 
       for (const file of htmlFiles) {
         const html = readFileSync(join(project.dir, file), "utf-8");
@@ -31,6 +32,7 @@ export default defineCommand({
         }
         totalErrors += result.errorCount;
         totalWarnings += result.warningCount;
+        totalInfos += result.infoCount;
       }
 
       if (args.json) {
@@ -41,6 +43,7 @@ export default defineCommand({
               findings: allFindings,
               errorCount: totalErrors,
               warningCount: totalWarnings,
+              infoCount: totalInfos,
               filesScanned: htmlFiles.length,
             }),
             null,
@@ -61,7 +64,12 @@ export default defineCommand({
       }
 
       for (const finding of allFindings) {
-        const prefix = finding.severity === "error" ? c.error("✗") : c.warn("⚠");
+        const prefix =
+          finding.severity === "error"
+            ? c.error("✗")
+            : finding.severity === "warning"
+              ? c.warn("⚠")
+              : c.dim("ℹ");
         const loc = finding.elementId ? ` ${c.accent(`[${finding.elementId}]`)}` : "";
         console.log(
           `${prefix}  ${c.bold(finding.code)}${loc}: ${finding.message} ${c.dim(finding.file)}`,
@@ -72,7 +80,11 @@ export default defineCommand({
       }
 
       const summaryIcon = totalErrors > 0 ? c.error("◇") : c.success("◇");
-      console.log(`\n${summaryIcon}  ${totalErrors} error(s), ${totalWarnings} warning(s)`);
+      const summaryParts = [`${totalErrors} error(s)`, `${totalWarnings} warning(s)`];
+      if (totalInfos > 0) {
+        summaryParts.push(`${totalInfos} info(s)`);
+      }
+      console.log(`\n${summaryIcon}  ${summaryParts.join(", ")}`);
       process.exit(totalErrors > 0 ? 1 : 0);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
@@ -85,6 +97,7 @@ export default defineCommand({
               findings: [],
               errorCount: 0,
               warningCount: 0,
+              infoCount: 0,
               filesScanned: 0,
             }),
             null,
