@@ -155,3 +155,5 @@ export {
 export { downloadToTemp, isHttpUrl } from "./utils/urlDownloader.js";
 
 export { detectGpuHardware, type GpuHardwareInfo } from "./utils/gpuDetector.js";
+
+export { estimatePerformance, type PerfEstimate } from "./utils/perfEstimator.js";
