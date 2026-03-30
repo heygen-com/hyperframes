@@ -54,7 +54,8 @@
               "guides/templates",
               "guides/rendering",
               "guides/common-mistakes",
-              "guides/troubleshooting"
+              "guides/troubleshooting",
+              "guides/testing-local-changes"
             ]
           }
         ]

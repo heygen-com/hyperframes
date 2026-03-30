@@ -1,0 +1,128 @@
+---
+title: Testing Local CLI Changes
+description: How to test unreleased CLI changes outside the monorepo using your local build.
+---
+
+When you modify the CLI or any package it bundles (core, engine, producer, studio), you need to test those changes against real projects _outside_ the monorepo — the same way an end user would run `hyperframes dev`.
+
+## Prerequisites
+
+Build the monorepo first. Every time you change source files, rebuild before testing.
+
+```bash
+# From the monorepo root
+pnpm build
+```
+
+## Option 1: pnpm link (recommended)
+
+`pnpm link --global` makes the `hyperframes` binary in your `$PATH` point at your local build. It survives across terminal sessions and auto-picks up new builds without re-linking.
+
+```bash
+# One-time setup
+cd packages/cli
+pnpm link --global
+
+# Verify — should print your local version
+hyperframes --version
+```
+
+Now use `hyperframes` normally in any directory:
+
+```bash
+cd ~/my-video-project
+hyperframes dev .
+```
+
+**After every `pnpm build`** the linked binary is already up to date — no re-linking needed.
+
+To restore the published release when you're done:
+
+```bash
+pnpm unlink --global hyperframes
+npm install -g hyperframes@latest
+```
+
+## Option 2: node alias (no PATH changes)
+
+If you don't want to touch your global `$PATH`, add a shell alias or call `node` directly:
+
+```bash
+# Temporary alias for your current shell session
+alias hyperframes="node /path/to/hyperframes-oss/packages/cli/dist/cli.js"
+
+# Or invoke directly
+node /path/to/hyperframes-oss/packages/cli/dist/cli.js dev .
+```
+
+Replace `/path/to/hyperframes-oss` with your actual monorepo path.
+
+## Option 3: npm pack (test the exact published artifact)
+
+Use this when you want to verify what would actually ship in a release, including the bundled studio and templates.
+
+```bash
+cd packages/cli
+npm pack
+# Creates: hyperframes-<version>.tgz
+
+# Test it in an isolated directory
+mkdir /tmp/pack-test && cd /tmp/pack-test
+npx /path/to/hyperframes-oss/packages/cli/hyperframes-<version>.tgz init my-video
+cd my-video
+npx /path/to/hyperframes-oss/packages/cli/hyperframes-<version>.tgz dev .
+```
+
+## Testing the fix branches
+
+When validating a specific bug fix, extract one of the test project archives and run through the scenario:
+
+```bash
+# Example: testing audio-after-seek fix
+unzip golden-lyric-video.zip && cd golden-lyric-video
+hyperframes dev .
+# 1. Press Play — confirm audio plays
+# 2. Drag the timeline scrubber to a different position
+# 3. Press Play again — audio should resume from the seeked position
+```
+
+Common test scenarios:
+
+| Bug | Project | Steps |
+|---|---|---|
+| Audio silent after seek | `golden-lyric-video` | Play → seek → play again, verify audio |
+| Render stuck at 0% | any | Renders tab → Export → watch progress bar |
+| Download 404 after restart | any | Complete a render → `Ctrl+C` → restart → Download |
+| Timeline stops early | `intro-vid` | Play → should reach `0:05`, not stop at `0:03` |
+| Lottie missing | `hyperframe-build-up-demo` | Play → rocket visible during 0–2 s |
+| Blank thumbnails | any | Compositions sidebar should show previews |
+
+## Troubleshooting
+
+**Changes not reflected after `pnpm build`**
+
+The CLI binary is a single bundled file at `packages/cli/dist/cli.js`. If your change is in `@hyperframes/core` or another workspace package, make sure `pnpm build` rebuilt _all_ packages — the CLI bundles its dependencies at build time.
+
+**`hyperframes` still shows the old version**
+
+Check which binary is active:
+
+```bash
+which hyperframes
+hyperframes --version
+```
+
+If it points to a global npm installation rather than your link, uninstall the npm version first:
+
+```bash
+npm uninstall -g hyperframes
+cd packages/cli && pnpm link --global
+```
+
+**Port already in use**
+
+`hyperframes dev` defaults to port 3002 and auto-increments if it's taken. Pass `--port` to use a specific port:
+
+```bash
+hyperframes dev . --port 4000
+```
