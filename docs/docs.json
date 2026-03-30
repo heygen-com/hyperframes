@@ -54,8 +54,7 @@
               "guides/templates",
               "guides/rendering",
               "guides/common-mistakes",
-              "guides/troubleshooting",
-              "guides/testing-local-changes"
+              "guides/troubleshooting"
             ]
           }
         ]
@@ -83,8 +82,8 @@
             "pages": ["reference/html-schema"]
           },
           {
-            "group": "Community",
-            "pages": ["contributing"]
+            "group": "Contributing",
+            "pages": ["contributing", "contributing/testing-local-changes"]
           }
         ]
       }
