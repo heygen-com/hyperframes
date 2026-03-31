@@ -65,7 +65,7 @@ RUN curl -fsSL https://bun.sh/install | bash
 ENV PATH="/root/.bun/bin:$PATH"
 
 # Install dependencies (full, including devDependencies for tsx + test harness)
-COPY package.json bun.lock pnpm-workspace.yaml ./
+COPY package.json bun.lock ./
 COPY packages/core/package.json packages/core/package.json
 COPY packages/engine/package.json packages/engine/package.json
 COPY packages/producer/package.json packages/producer/package.json
