@@ -1,6 +1,6 @@
 import type { HyperframeLintFinding, HyperframeLintResult, HyperframeLinterOptions } from "./types";
 import { buildLintContext } from "./context";
-import { readAttr } from "./utils";
+import { readAttr, truncateSnippet } from "./utils";
 import { coreRules } from "./rules/core";
 import { mediaRules } from "./rules/media";
 import { gsapRules } from "./rules/gsap";
@@ -79,7 +79,7 @@ function extractMediaUrls(html: string): Array<{
         url: src,
         tagName,
         elementId: readAttr(raw, "id") || undefined,
-        snippet: raw.length > 120 ? raw.slice(0, 117) + "..." : raw,
+        snippet: truncateSnippet(raw) ?? "",
       });
     }
   }
@@ -159,7 +159,7 @@ function extractScriptUrls(html: string): Array<{ url: string; snippet: string }
     if (/^https?:\/\//i.test(src)) {
       results.push({
         url: src,
-        snippet: raw.length > 120 ? raw.slice(0, 117) + "..." : raw,
+        snippet: truncateSnippet(raw) ?? "",
       });
     }
   }

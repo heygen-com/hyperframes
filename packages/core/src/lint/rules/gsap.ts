@@ -1,7 +1,7 @@
 import { parseGsapScript } from "../../parsers/gsapParser";
 import type { LintContext, HyperframeLintFinding } from "../context";
 import type { OpenTag } from "../utils";
-import { readAttr, truncateSnippet } from "../utils";
+import { readAttr, truncateSnippet, WINDOW_TIMELINE_ASSIGN_PATTERN } from "../utils";
 
 // ── GSAP-specific types ────────────────────────────────────────────────────
 
@@ -16,8 +16,6 @@ type GsapWindow = {
 };
 
 const META_GSAP_KEYS = new Set(["duration", "ease", "repeat", "yoyo", "overwrite", "delay"]);
-const WINDOW_TIMELINE_ASSIGN_PATTERN =
-  /window\.__timelines\[\s*["']([^"']+)["']\s*\]\s*=\s*([A-Za-z_$][\w$]*)/i;
 
 // ── GSAP parsing utilities ─────────────────────────────────────────────────
 

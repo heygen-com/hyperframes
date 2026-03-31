@@ -63,7 +63,7 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
   },
 
   // template_literal_selector
-  ({ scripts, options }) => {
+  ({ scripts }) => {
     const findings: HyperframeLintFinding[] = [];
     for (const script of scripts) {
       const templateLiteralSelectorPattern =
@@ -76,7 +76,6 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
           message:
             "querySelector uses a template literal variable (e.g. `${compId}`). " +
             "The HTML bundler's CSS parser crashes on these. Use a hardcoded string instead.",
-          file: options.filePath,
           fixHint:
             "Replace the template literal variable with a hardcoded string. The bundler's CSS parser cannot handle interpolated variables in script content.",
           snippet: truncateSnippet(tlMatch[0]),
