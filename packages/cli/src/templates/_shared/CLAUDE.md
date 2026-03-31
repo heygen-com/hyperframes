@@ -7,7 +7,7 @@
 | Skill                    | Command                 | When to use                                                                                            |
 | ------------------------ | ----------------------- | ------------------------------------------------------------------------------------------------------ |
 | **hyperframes-compose**  | `/hyperframes-compose`  | Creating or editing ANY HTML composition — videos, animations, title cards, overlays, sub-compositions |
-| **hyperframes-captions** | `/hyperframes-captions` | Any text synced to audio: captions, subtitles, lyrics, karaoke. Also covers transcription strategy.   |
+| **hyperframes-captions** | `/hyperframes-captions` | Any text synced to audio: captions, subtitles, lyrics, karaoke. Also covers transcription strategy.    |
 | **gsap-core**            | `/gsap-core`            | GSAP tweens: `gsap.to()`, `from()`, `fromTo()`, easing, stagger, defaults                              |
 | **gsap-timeline**        | `/gsap-timeline`        | Timeline sequencing, position parameter, labels, nesting                                               |
 | **gsap-performance**     | `/gsap-performance`     | Animation performance — transforms over layout props, will-change, batching                            |
