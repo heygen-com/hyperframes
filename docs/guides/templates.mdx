@@ -5,6 +5,10 @@ description: "Built-in templates for common video patterns."
 
 Hyperframes includes starter templates to help you scaffold compositions quickly. Each template gives you a working project with the correct [composition structure](/concepts/compositions), [data attributes](/concepts/data-attributes), and a [GSAP timeline](/guides/gsap-animation) already wired up.
 
+<Info>
+  See all templates visually in the [Template Gallery](/guides/gallery).
+</Info>
+
 ## Using Templates
 
 ```bash Terminal
@@ -19,7 +23,7 @@ You can also run `npx hyperframes init` without `--template` to choose interacti
 
 <Tabs>
   <Tab title="blank">
-    ### blank
+    ### blank {#blank}
 
     An empty composition with just the scaffolding — a video element, audio track, captions sub-composition, and an empty GSAP timeline. Start from scratch.
 
@@ -41,7 +45,11 @@ You can also run `npx hyperframes init` without `--template` to choose interacti
     ```
   </Tab>
   <Tab title="warm-grain">
-    ### warm-grain
+    ### warm-grain {#warm-grain}
+
+    <Frame>
+      <img src="/images/templates/warm-grain.png" alt="Warm Grain template preview" />
+    </Frame>
 
     A cream-toned aesthetic with grain texture overlay. Warm, organic feel suited for lifestyle and branding videos.
 
@@ -66,7 +74,11 @@ You can also run `npx hyperframes init` without `--template` to choose interacti
     ```
   </Tab>
   <Tab title="play-mode">
-    ### play-mode
+    ### play-mode {#play-mode}
+
+    <Frame>
+      <img src="/images/templates/play-mode.png" alt="Play Mode template preview" />
+    </Frame>
 
     Playful elastic animations with bold, energetic motion.
 
@@ -91,7 +103,11 @@ You can also run `npx hyperframes init` without `--template` to choose interacti
     ```
   </Tab>
   <Tab title="swiss-grid">
-    ### swiss-grid
+    ### swiss-grid {#swiss-grid}
+
+    <Frame>
+      <img src="/images/templates/swiss-grid.png" alt="Swiss Grid template preview" />
+    </Frame>
 
     Structured grid layout inspired by Swiss/International Typographic Style.
 
@@ -116,7 +132,11 @@ You can also run `npx hyperframes init` without `--template` to choose interacti
     ```
   </Tab>
   <Tab title="vignelli">
-    ### vignelli
+    ### vignelli {#vignelli}
+
+    <Frame>
+      <img src="/images/templates/vignelli.png" alt="Vignelli template preview" />
+    </Frame>
 
     Bold typography with red accents, inspired by Massimo Vignelli's design philosophy.
 
@@ -139,6 +159,116 @@ You can also run `npx hyperframes init` without `--template` to choose interacti
     └── assets/
     ```
   </Tab>
+  <Tab title="decision-tree">
+    ### decision-tree {#decision-tree}
+
+    <Frame>
+      <img src="/images/templates/decision-tree.png" alt="Decision Tree template preview" />
+    </Frame>
+
+    Animated flowchart with branching paths and progressive reveal.
+
+    **What it produces:** A composition that animates a decision tree, revealing nodes and branches step by step. Great for explaining processes or choices.
+
+    **When to use it:** You want to walk viewers through a decision process, algorithm, or branching logic visually.
+
+    ```bash Terminal
+    npx hyperframes init my-video --template decision-tree
+    ```
+
+    **What you get:**
+    ```
+    my-video/
+    ├── meta.json
+    ├── index.html
+    └── compositions/
+        └── decision_tree.html
+    ```
+  </Tab>
+  <Tab title="kinetic-type">
+    ### kinetic-type {#kinetic-type}
+
+    <Frame>
+      <img src="/images/templates/kinetic-type.png" alt="Kinetic Type template preview" />
+    </Frame>
+
+    Bold kinetic typography promo with dramatic text animations.
+
+    **What it produces:** A dark composition with large, impactful text that animates in with bold transitions. Designed for short-form promos and title cards.
+
+    **When to use it:** You want a dramatic text-forward opener — great for intros, promos, or social media hooks.
+
+    ```bash Terminal
+    npx hyperframes init my-video --template kinetic-type
+    ```
+
+    **What you get:**
+    ```
+    my-video/
+    ├── meta.json
+    ├── index.html
+    └── compositions/
+        └── main-graphics.html
+    ```
+  </Tab>
+  <Tab title="product-promo">
+    ### product-promo {#product-promo}
+
+    <Frame>
+      <img src="/images/templates/product-promo.png" alt="Product Promo template preview" />
+    </Frame>
+
+    Multi-scene product showcase with SVG assets and scene transitions.
+
+    **What it produces:** A multi-scene composition with logo intro, feature canvases, and outro. Includes SVG assets and structured scene transitions.
+
+    **When to use it:** You want a polished product demo or launch video with multiple scenes and branded assets.
+
+    ```bash Terminal
+    npx hyperframes init my-video --template product-promo
+    ```
+
+    **What you get:**
+    ```
+    my-video/
+    ├── meta.json
+    ├── index.html
+    ├── compositions/
+    │   ├── scene1-logo-intro.html
+    │   ├── scene2-4-canvas.html
+    │   └── scene5-logo-outro.html
+    └── assets/
+        ├── figma-cursors.svg
+        ├── figma-logo-pieces.svg
+        └── figma-logo-pills.svg
+    ```
+  </Tab>
+  <Tab title="nyt-graph">
+    ### nyt-graph {#nyt-graph}
+
+    <Frame>
+      <img src="/images/templates/nyt-graph.png" alt="NYT Graph template preview" />
+    </Frame>
+
+    Animated data chart in print editorial style.
+
+    **What it produces:** A composition with animated bar charts and line graphs styled after newspaper data visualizations. Clean typography with serif fonts.
+
+    **When to use it:** You want to present data in a polished, editorial format — great for reports, presentations, or data storytelling.
+
+    ```bash Terminal
+    npx hyperframes init my-video --template nyt-graph
+    ```
+
+    **What you get:**
+    ```
+    my-video/
+    ├── meta.json
+    ├── index.html
+    └── compositions/
+        └── nyt-chart.html
+    ```
+  </Tab>
 </Tabs>
 
 ## Choosing a Template
@@ -150,6 +280,10 @@ You can also run `npx hyperframes init` without `--template` to choose interacti
 | `play-mode` | Energetic, elastic | Social media, product launches |
 | `swiss-grid` | Clean, structured | Corporate, data, technical |
 | `vignelli` | Bold, typographic | Headlines, announcements |
+| `decision-tree` | Diagrammatic | Explainers, tutorials |
+| `kinetic-type` | Dramatic type | Promos, intros, title cards |
+| `product-promo` | Multi-scene | Product showcases, demos |
+| `nyt-graph` | Editorial data | Data stories, reports |
 
 <Tip>
   If you are new to Hyperframes, start with `warm-grain` or `play-mode` to see working animations and sub-compositions in action. Use `blank` when you want minimal scaffolding and full control. Run `npx hyperframes init` without `--template` to preview all options interactively.

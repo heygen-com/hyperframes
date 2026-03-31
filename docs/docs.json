@@ -51,6 +51,7 @@
             "group": "Guides",
             "pages": [
               "guides/gsap-animation",
+              "guides/gallery",
               "guides/templates",
               "guides/rendering",
               "guides/common-mistakes",
