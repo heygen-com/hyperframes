@@ -7,7 +7,7 @@
 | Skill                    | Command                 | When to use                                                                                            |
 | ------------------------ | ----------------------- | ------------------------------------------------------------------------------------------------------ |
 | **hyperframes-compose**  | `/hyperframes-compose`  | Creating or editing ANY HTML composition — videos, animations, title cards, overlays, sub-compositions |
-| **hyperframes-captions** | `/hyperframes-captions` | Building captions from whisper transcripts — style detection, per-word styling                         |
+| **hyperframes-captions** | `/hyperframes-captions` | Any text synced to audio: captions, subtitles, lyrics, karaoke. Also covers transcription strategy.   |
 | **gsap-core**            | `/gsap-core`            | GSAP tweens: `gsap.to()`, `from()`, `fromTo()`, easing, stagger, defaults                              |
 | **gsap-timeline**        | `/gsap-timeline`        | Timeline sequencing, position parameter, labels, nesting                                               |
 | **gsap-performance**     | `/gsap-performance`     | Animation performance — transforms over layout props, will-change, batching                            |
@@ -47,6 +47,16 @@ https://hyperframes.heygen.com/llms.txt
 - `compositions/` — sub-compositions referenced via `data-composition-src`
 - `meta.json` — project metadata (id, name)
 - `transcript.json` — whisper word-level transcript (if generated)
+
+## Linting — ALWAYS RUN AFTER CHANGES
+
+After creating or editing any `.html` composition, **always** run the linter before considering the task complete:
+
+```bash
+npx hyperframes lint
+```
+
+Fix all errors before presenting the result. Warnings are informational and usually safe to ignore.
 
 ## Key Rules
 

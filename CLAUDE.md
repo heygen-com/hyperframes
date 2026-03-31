@@ -34,6 +34,7 @@ The skills encode HyperFrames-specific patterns (e.g., required `class="clip"` o
 - When creating a video from audio (music video, lyric video, audio visualizer with text) → invoke BOTH `/hyperframes-compose` AND `/hyperframes-captions`
 - When writing GSAP animations → invoke `/gsap-core` and `/gsap-timeline` BEFORE writing any code
 - When optimizing animation performance → invoke `/gsap-performance` BEFORE making changes
+- After creating or editing any `.html` composition → run `npx hyperframes lint` and fix all errors before considering the task complete
 
 ### Installing skills
 
