@@ -485,8 +485,10 @@ export function StudioApp() {
         if (e.currentTarget === e.target) setGlobalDragOver(false);
       }}
       onDrop={(e) => {
-        e.preventDefault();
         setGlobalDragOver(false);
+        // Skip if a child (e.g. AssetsTab) already handled the drop
+        if (e.defaultPrevented) return;
+        e.preventDefault();
         if (e.dataTransfer.files.length) handleImportFiles(e.dataTransfer.files);
       }}
     >
