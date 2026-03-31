@@ -1,0 +1,58 @@
+{
+  "templates": [
+    {
+      "id": "blank",
+      "label": "Blank",
+      "hint": "Empty composition — just the scaffolding",
+      "bundled": true
+    },
+    {
+      "id": "warm-grain",
+      "label": "Warm Grain",
+      "hint": "Cream aesthetic with grain texture",
+      "bundled": false
+    },
+    {
+      "id": "play-mode",
+      "label": "Play Mode",
+      "hint": "Playful elastic animations",
+      "bundled": false
+    },
+    {
+      "id": "swiss-grid",
+      "label": "Swiss Grid",
+      "hint": "Structured grid layout",
+      "bundled": false
+    },
+    {
+      "id": "vignelli",
+      "label": "Vignelli",
+      "hint": "Bold typography with red accents",
+      "bundled": false
+    },
+    {
+      "id": "decision-tree",
+      "label": "Decision Tree",
+      "hint": "Animated flowchart with branching paths",
+      "bundled": false
+    },
+    {
+      "id": "kinetic-type",
+      "label": "Kinetic Type",
+      "hint": "Bold kinetic typography promo",
+      "bundled": false
+    },
+    {
+      "id": "product-promo",
+      "label": "Product Promo",
+      "hint": "Multi-scene product showcase with SVG assets",
+      "bundled": false
+    },
+    {
+      "id": "nyt-graph",
+      "label": "NYT Graph",
+      "hint": "Animated data chart in print editorial style",
+      "bundled": false
+    }
+  ]
+}
