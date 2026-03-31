@@ -56,6 +56,7 @@ export function StudioApp() {
   const [rightWidth, setRightWidth] = useState(400);
   const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [rightCollapsed, setRightCollapsed] = useState(true);
+  const [globalDragOver, setGlobalDragOver] = useState(false);
   const [timelineVisible, setTimelineVisible] = useState(false);
   const panelDragRef = useRef<{
     side: "left" | "right";
@@ -368,6 +369,32 @@ export function StudioApp() {
 
   const handleMoveFile = handleRenameFile;
 
+  const handleImportFiles = useCallback(
+    async (files: FileList) => {
+      const pid = projectIdRef.current;
+      if (!pid || files.length === 0) return;
+
+      const formData = new FormData();
+      for (const file of Array.from(files)) {
+        formData.append("file", file);
+      }
+
+      try {
+        const res = await fetch(`/api/projects/${pid}/upload`, {
+          method: "POST",
+          body: formData,
+        });
+        if (res.ok) {
+          await refreshFileTree();
+          setRefreshKey((k) => k + 1);
+        }
+      } catch {
+        // ignore
+      }
+    },
+    [refreshFileTree],
+  );
+
   const handleLint = useCallback(async () => {
     const pid = projectIdRef.current;
     if (!pid) return;
@@ -447,7 +474,22 @@ export function StudioApp() {
   // At this point projectId is guaranteed non-null (narrowed by the guard above)
 
   return (
-    <div className="flex flex-col h-screen w-screen bg-neutral-950">
+    <div
+      className="flex flex-col h-screen w-screen bg-neutral-950 relative"
+      onDragOver={(e) => {
+        e.preventDefault();
+        setGlobalDragOver(true);
+      }}
+      onDragLeave={(e) => {
+        // Only reset when leaving the root container
+        if (e.currentTarget === e.target) setGlobalDragOver(false);
+      }}
+      onDrop={(e) => {
+        e.preventDefault();
+        setGlobalDragOver(false);
+        if (e.dataTransfer.files.length) handleImportFiles(e.dataTransfer.files);
+      }}
+    >
       {/* Header bar */}
       <div className="flex items-center justify-between h-10 px-3 bg-neutral-900 border-b border-neutral-800 flex-shrink-0">
         {/* Left: project name */}
@@ -561,6 +603,7 @@ export function StudioApp() {
             onRenameFile={handleRenameFile}
             onDuplicateFile={handleDuplicateFile}
             onMoveFile={handleMoveFile}
+            onImportFiles={handleImportFiles}
             codeChildren={
               editingFile ? (
                 isMediaFile(editingFile.path) ? (
@@ -641,6 +684,32 @@ export function StudioApp() {
       {/* Lint modal */}
       {lintModal !== null && projectId && (
         <LintModal findings={lintModal} projectId={projectId} onClose={() => setLintModal(null)} />
+      )}
+
+      {/* Global drag-drop overlay */}
+      {globalDragOver && (
+        <div className="absolute inset-0 z-[90] flex items-center justify-center bg-black/50 backdrop-blur-sm pointer-events-none">
+          <div className="flex flex-col items-center gap-3 px-8 py-6 rounded-xl border-2 border-dashed border-studio-accent/60 bg-studio-accent/[0.06]">
+            <svg
+              width="32"
+              height="32"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="text-studio-accent"
+            >
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="7 10 12 15 17 10" />
+              <line x1="12" y1="15" x2="12" y2="3" />
+            </svg>
+            <span className="text-sm font-medium text-studio-accent">
+              Drop files to import into project
+            </span>
+          </div>
+        </div>
       )}
     </div>
   );

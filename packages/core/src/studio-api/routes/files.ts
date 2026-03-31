@@ -238,4 +238,43 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
 
     return c.json({ ok: true, path: copyPath }, 201);
   });
+
+  // ── Upload (binary assets via multipart form) ──
+
+  api.post("/projects/:id/upload", async (c) => {
+    const project = await adapter.resolveProject(c.req.param("id"));
+    if (!project) return c.json({ error: "not found" }, 404);
+
+    const formData = await c.req.formData();
+    const uploaded: string[] = [];
+
+    for (const [, value] of formData.entries()) {
+      if (!(value instanceof File)) continue;
+
+      const name = value.name;
+      if (!name || name.includes("\0") || name.includes("..")) continue;
+
+      const destPath = resolve(project.dir, name);
+      if (!isSafePath(project.dir, destPath)) continue;
+
+      // Don't overwrite — append (2), (3), etc.
+      let finalPath = destPath;
+      let finalName = name;
+      if (existsSync(finalPath)) {
+        const ext = name.includes(".") ? "." + name.split(".").pop() : "";
+        const base = ext ? name.slice(0, -ext.length) : name;
+        let n = 2;
+        while (existsSync(resolve(project.dir, `${base} (${n})${ext}`))) n++;
+        finalName = `${base} (${n})${ext}`;
+        finalPath = resolve(project.dir, finalName);
+      }
+
+      ensureDir(finalPath);
+      const buffer = Buffer.from(await value.arrayBuffer());
+      writeFileSync(finalPath, buffer);
+      uploaded.push(finalName);
+    }
+
+    return c.json({ ok: true, files: uploaded }, 201);
+  });
 }
