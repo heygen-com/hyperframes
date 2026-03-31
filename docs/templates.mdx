@@ -1,0 +1,270 @@
+---
+title: Templates
+description: "Built-in templates for common video patterns. Hover to preview animations."
+---
+
+Hyperframes includes starter templates to help you scaffold compositions quickly. Each template gives you a working project with the correct [composition structure](/concepts/compositions), [data attributes](/concepts/data-attributes), and a [GSAP timeline](/guides/gsap-animation) already wired up.
+
+```bash Terminal
+npx hyperframes init my-video --template <name>
+```
+
+## Landscape Templates
+
+<div className="not-prose grid grid-cols-2 gap-4 my-6">
+  <div className="tpl-card relative rounded-xl overflow-hidden bg-zinc-900 transition-transform hover:-translate-y-0.5 hover:shadow-xl">
+    <video className="w-full aspect-video object-cover block" src="/images/templates/warm-grain.mp4" poster="/images/templates/warm-grain.png" muted loop playsInline preload="metadata" />
+    <div className="absolute bottom-0 left-0 right-0 pt-6 pb-2 px-3" style={{background: "linear-gradient(transparent, rgba(0,0,0,0.7))"}}><strong className="text-sm font-semibold text-white block">Warm Grain</strong><span className="text-xs text-zinc-300">Branding & lifestyle</span></div>
+  </div>
+  <div className="tpl-card relative rounded-xl overflow-hidden bg-zinc-900 transition-transform hover:-translate-y-0.5 hover:shadow-xl">
+    <video className="w-full aspect-video object-cover block" src="/images/templates/play-mode.mp4" poster="/images/templates/play-mode.png" muted loop playsInline preload="metadata" />
+    <div className="absolute bottom-0 left-0 right-0 pt-6 pb-2 px-3" style={{background: "linear-gradient(transparent, rgba(0,0,0,0.75))"}}><strong className="text-sm font-semibold text-white block">Play Mode</strong><span className="text-xs text-zinc-300">Social media</span></div>
+  </div>
+  <div className="tpl-card relative rounded-xl overflow-hidden bg-zinc-900 transition-transform hover:-translate-y-0.5 hover:shadow-xl">
+    <video className="w-full aspect-video object-cover block" src="/images/templates/swiss-grid.mp4" poster="/images/templates/swiss-grid.png" muted loop playsInline preload="metadata" />
+    <div className="absolute bottom-0 left-0 right-0 pt-6 pb-2 px-3" style={{background: "linear-gradient(transparent, rgba(0,0,0,0.75))"}}><strong className="text-sm font-semibold text-white block">Swiss Grid</strong><span className="text-xs text-zinc-300">Corporate & technical</span></div>
+  </div>
+  <div className="tpl-card relative rounded-xl overflow-hidden bg-zinc-900 transition-transform hover:-translate-y-0.5 hover:shadow-xl">
+    <video className="w-full aspect-video object-cover block" src="/images/templates/kinetic-type.mp4" poster="/images/templates/kinetic-type.png" muted loop playsInline preload="metadata" />
+    <div className="absolute bottom-0 left-0 right-0 pt-6 pb-2 px-3" style={{background: "linear-gradient(transparent, rgba(0,0,0,0.75))"}}><strong className="text-sm font-semibold text-white block">Kinetic Type</strong><span className="text-xs text-zinc-300">Promos & title cards</span></div>
+  </div>
+  <div className="tpl-card relative rounded-xl overflow-hidden bg-zinc-900 transition-transform hover:-translate-y-0.5 hover:shadow-xl">
+    <video className="w-full aspect-video object-cover block" src="/images/templates/decision-tree.mp4" poster="/images/templates/decision-tree.png" muted loop playsInline preload="metadata" />
+    <div className="absolute bottom-0 left-0 right-0 pt-6 pb-2 px-3" style={{background: "linear-gradient(transparent, rgba(0,0,0,0.75))"}}><strong className="text-sm font-semibold text-white block">Decision Tree</strong><span className="text-xs text-zinc-300">Explainers & tutorials</span></div>
+  </div>
+  <div className="tpl-card relative rounded-xl overflow-hidden bg-zinc-900 transition-transform hover:-translate-y-0.5 hover:shadow-xl">
+    <video className="w-full aspect-video object-cover block" src="/images/templates/product-promo.mp4" poster="/images/templates/product-promo.png" muted loop playsInline preload="metadata" />
+    <div className="absolute bottom-0 left-0 right-0 pt-6 pb-2 px-3" style={{background: "linear-gradient(transparent, rgba(0,0,0,0.75))"}}><strong className="text-sm font-semibold text-white block">Product Promo</strong><span className="text-xs text-zinc-300">Product showcases</span></div>
+  </div>
+  <div className="tpl-card relative rounded-xl overflow-hidden bg-zinc-900 transition-transform hover:-translate-y-0.5 hover:shadow-xl">
+    <video className="w-full aspect-video object-cover block" src="/images/templates/nyt-graph.mp4" poster="/images/templates/nyt-graph.png" muted loop playsInline preload="metadata" />
+    <div className="absolute bottom-0 left-0 right-0 pt-6 pb-2 px-3" style={{background: "linear-gradient(transparent, rgba(0,0,0,0.75))"}}><strong className="text-sm font-semibold text-white block">NYT Graph</strong><span className="text-xs text-zinc-300">Data stories</span></div>
+  </div>
+</div>
+
+## Portrait Templates
+
+<div className="not-prose grid grid-cols-3 gap-3 my-6">
+  <div className="tpl-card relative rounded-xl overflow-hidden bg-zinc-900 transition-transform hover:-translate-y-0.5 hover:shadow-xl">
+    <video className="w-full object-cover block" style={{aspectRatio: "9/16"}} src="/images/templates/vignelli.mp4" poster="/images/templates/vignelli.png" muted loop playsInline preload="metadata" />
+    <div className="absolute bottom-0 left-0 right-0 pt-6 pb-2 px-3" style={{background: "linear-gradient(transparent, rgba(0,0,0,0.75))"}}><strong className="text-sm font-semibold text-white block">Vignelli</strong><span className="text-xs text-zinc-300">Headlines & announcements</span></div>
+  </div>
+</div>
+
+<Tip>
+  Looking for a minimal starting point? Use **blank** — it gives you an empty composition with just the scaffolding, no visual design.
+
+  ```bash Terminal
+  npx hyperframes init my-video --template blank
+  ```
+</Tip>
+
+## Choosing a Template
+
+| Template | Style | Format | Best for |
+|----------|-------|--------|----------|
+| `warm-grain` | Organic, textured | Landscape | Lifestyle, branding, editorial |
+| `play-mode` | Energetic, elastic | Landscape | Social media, product launches |
+| `swiss-grid` | Clean, structured | Landscape | Corporate, data, technical |
+| `kinetic-type` | Dramatic type | Landscape | Promos, intros, title cards |
+| `decision-tree` | Diagrammatic | Landscape | Explainers, tutorials |
+| `product-promo` | Multi-scene | Landscape | Product showcases, demos |
+| `nyt-graph` | Editorial data | Landscape | Data stories, reports |
+| `vignelli` | Bold, typographic | Portrait | Headlines, announcements |
+| `blank` | Minimal scaffolding | — | Full control, agent-generated |
+
+## Template Details
+
+<Tabs>
+  <Tab title="warm-grain">
+    ### warm-grain
+
+    Cream-toned aesthetic with grain texture overlay.
+
+    **What it produces:** A composition with warm color grading, textured grain, and smooth transitions. Includes an intro sub-composition and captions support.
+
+    ```
+    my-video/
+    ├── meta.json
+    ├── index.html
+    ├── compositions/
+    │   ├── intro.html
+    │   ├── graphics.html
+    │   └── captions.html
+    └── assets/
+    ```
+  </Tab>
+  <Tab title="play-mode">
+    ### play-mode
+
+    Playful elastic animations with bold, energetic motion.
+
+    ```
+    my-video/
+    ├── meta.json
+    ├── index.html
+    ├── compositions/
+    │   ├── intro.html
+    │   ├── stats.html
+    │   └── captions.html
+    └── assets/
+    ```
+  </Tab>
+  <Tab title="swiss-grid">
+    ### swiss-grid
+
+    Structured grid layout inspired by Swiss/International Typographic Style.
+
+    ```
+    my-video/
+    ├── meta.json
+    ├── index.html
+    ├── compositions/
+    │   ├── intro.html
+    │   ├── graphics.html
+    │   └── captions.html
+    └── assets/
+    ```
+  </Tab>
+  <Tab title="vignelli">
+    ### vignelli
+
+    Bold typography with red accents (1080×1920 portrait).
+
+    ```
+    my-video/
+    ├── meta.json
+    ├── index.html
+    ├── compositions/
+    │   ├── overlays.html
+    │   └── captions.html
+    └── assets/
+    ```
+  </Tab>
+  <Tab title="kinetic-type">
+    ### kinetic-type
+
+    Bold kinetic typography promo with dramatic text animations.
+
+    ```
+    my-video/
+    ├── meta.json
+    ├── index.html
+    └── compositions/
+        └── main-graphics.html
+    ```
+  </Tab>
+  <Tab title="decision-tree">
+    ### decision-tree
+
+    Animated flowchart with branching paths and progressive reveal.
+
+    ```
+    my-video/
+    ├── meta.json
+    ├── index.html
+    └── compositions/
+        └── decision_tree.html
+    ```
+  </Tab>
+  <Tab title="product-promo">
+    ### product-promo
+
+    Multi-scene product showcase with SVG assets.
+
+    ```
+    my-video/
+    ├── meta.json
+    ├── index.html
+    ├── compositions/
+    │   ├── scene1-logo-intro.html
+    │   ├── scene2-4-canvas.html
+    │   └── scene5-logo-outro.html
+    └── assets/
+        ├── figma-cursors.svg
+        ├── figma-logo-pieces.svg
+        └── figma-logo-pills.svg
+    ```
+  </Tab>
+  <Tab title="nyt-graph">
+    ### nyt-graph
+
+    Animated data chart in print editorial style.
+
+    ```
+    my-video/
+    ├── meta.json
+    ├── index.html
+    └── compositions/
+        └── nyt-chart.html
+    ```
+  </Tab>
+  <Tab title="blank">
+    ### blank
+
+    Empty composition with just the scaffolding.
+
+    ```
+    my-video/
+    ├── meta.json
+    ├── index.html
+    └── compositions/
+        └── captions.html
+    ```
+  </Tab>
+</Tabs>
+
+## Passing a Source Video
+
+```bash Terminal
+npx hyperframes init my-video --template warm-grain --video ./my-clip.mp4
+```
+
+The CLI will probe the video for duration, resolution, and codec. If the video uses an incompatible codec, it will be automatically transcoded to H.264 MP4 if FFmpeg is available.
+
+## Custom Templates
+
+Any directory with an `index.html` can serve as a template. Your custom template needs:
+
+1. An `index.html` with a [`data-composition-id`](/concepts/data-attributes#composition-attributes) root element
+2. A [GSAP timeline](/guides/gsap-animation) registered in `window.__timelines`
+3. Any assets in the same directory or a subdirectory
+
+```html index.html
+<div id="root" data-composition-id="my-template"
+     data-start="0" data-width="1920" data-height="1080">
+
+  <!-- Your elements here -->
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+  <script>
+    const tl = gsap.timeline({ paused: true });
+    // Add your animations...
+    window.__timelines = window.__timelines || {};
+    window.__timelines["my-template"] = tl;
+  </script>
+</div>
+```
+
+After creating a custom template, validate it with the [linter](/packages/cli#lint):
+
+```bash Terminal
+npx hyperframes lint
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Create, preview, and render your first video
+  </Card>
+  <Card title="GSAP Animation" icon="wand-magic-sparkles" href="/guides/gsap-animation">
+    Add animations to your template
+  </Card>
+  <Card title="Compositions" icon="layer-group" href="/concepts/compositions">
+    Understand the composition data model
+  </Card>
+  <Card title="Rendering" icon="film" href="/guides/rendering">
+    Render your composition to MP4
+  </Card>
+</CardGroup>

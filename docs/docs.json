@@ -36,7 +36,7 @@
         "groups": [
           {
             "group": "Getting Started",
-            "pages": ["introduction", "quickstart"]
+            "pages": ["introduction", "quickstart", "templates"]
           },
           {
             "group": "Concepts",
@@ -51,8 +51,6 @@
             "group": "Guides",
             "pages": [
               "guides/gsap-animation",
-              "guides/gallery",
-              "guides/templates",
               "guides/rendering",
               "guides/common-mistakes",
               "guides/troubleshooting"

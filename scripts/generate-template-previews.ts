@@ -1,13 +1,16 @@
 #!/usr/bin/env tsx
 /**
- * Generate Template Preview Images
+ * Generate Template Preview Images + Videos
  *
- * Uses @hyperframes/producer to render PNG thumbnails of each built-in template.
- * Output: docs/images/templates/<id>.png
+ * Uses @hyperframes/producer to render PNG thumbnails and short MP4 preview
+ * videos of each built-in template.
+ *
+ * Output: docs/images/templates/<id>.png + <id>.mp4
  *
  * Usage:
- *   pnpm generate:previews              # all templates
+ *   pnpm generate:previews                  # all templates (PNG + MP4)
  *   pnpm generate:previews -- --only warm-grain
+ *   pnpm generate:previews -- --skip-video  # thumbnails only (faster)
  */
 
 import {
@@ -29,6 +32,8 @@ import {
   captureFrame,
   getCompositionDuration,
   closeCaptureSession,
+  createRenderJob,
+  executeRenderJob,
 } from "@hyperframes/producer";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
@@ -37,7 +42,6 @@ const bundledTemplatesDir = resolve(repoRoot, "packages/cli/src/templates");
 const examplesDir = resolve(repoRoot, "examples");
 const outputDir = resolve(repoRoot, "docs/images/templates");
 
-// Point the producer at the monorepo's built core manifest
 if (!process.env.PRODUCER_HYPERFRAME_MANIFEST_PATH) {
   process.env.PRODUCER_HYPERFRAME_MANIFEST_PATH = resolve(
     repoRoot,
@@ -45,25 +49,12 @@ if (!process.env.PRODUCER_HYPERFRAME_MANIFEST_PATH) {
   );
 }
 
-// Templates to skip — blank is just empty scaffolding (black screen without a video)
 const SKIP_TEMPLATES = new Set(["blank"]);
-
-// Template metadata: dimensions and best capture time for visual interest
+const DEFAULT_CONFIG = { width: 1920, height: 1080, captureTime: 2.0 };
 const TEMPLATE_CONFIG: Record<string, { width: number; height: number; captureTime: number }> = {
-  "warm-grain": { width: 1920, height: 1080, captureTime: 2.0 },
-  "play-mode": { width: 1920, height: 1080, captureTime: 2.0 },
-  "swiss-grid": { width: 1920, height: 1080, captureTime: 2.0 },
   vignelli: { width: 1080, height: 1920, captureTime: 2.0 },
-  "decision-tree": { width: 1920, height: 1080, captureTime: 2.0 },
-  "kinetic-type": { width: 1920, height: 1080, captureTime: 2.0 },
-  "product-promo": { width: 1920, height: 1080, captureTime: 2.0 },
-  "nyt-graph": { width: 1920, height: 1080, captureTime: 2.0 },
 };
 
-/**
- * Patch template HTML: remove __VIDEO_SRC__ placeholders and set duration.
- * Same logic as init.ts patchVideoSrc() with no video file.
- */
 function patchTemplateHtml(dir: string, durationSeconds: number): void {
   const htmlFiles = readdirSync(dir, { withFileTypes: true, recursive: true })
     .filter((e) => e.isFile() && e.name.endsWith(".html"))
@@ -71,7 +62,6 @@ function patchTemplateHtml(dir: string, durationSeconds: number): void {
 
   for (const file of htmlFiles) {
     let content = readFileSync(file, "utf-8");
-    // Remove video/audio elements with placeholder src
     content = content.replace(/<video[^>]*src="__VIDEO_SRC__"[^>]*>[\s\S]*?<\/video>/g, "");
     content = content.replace(/<video[^>]*src="__VIDEO_SRC__"[^>]*>/g, "");
     content = content.replace(/<audio[^>]*src="__VIDEO_SRC__"[^>]*>[\s\S]*?<\/audio>/g, "");
@@ -82,23 +72,24 @@ function patchTemplateHtml(dir: string, durationSeconds: number): void {
   }
 }
 
-function parseArgs(): { only: string | null } {
+function parseArgs(): { only: string | null; skipVideo: boolean } {
   let only: string | null = null;
+  let skipVideo = false;
   for (let i = 2; i < process.argv.length; i++) {
     if (process.argv[i] === "--only" && process.argv[i + 1]) {
       i++;
       only = process.argv[i] ?? null;
     }
+    if (process.argv[i] === "--skip-video") skipVideo = true;
   }
-  return { only };
+  return { only, skipVideo };
 }
 
-/** Resolve the on-disk directory for a template (bundled or examples). */
 function resolveTemplateDir(templateId: string): string | null {
-  const bundled = join(bundledTemplatesDir, templateId);
-  if (existsSync(join(bundled, "index.html"))) return bundled;
-  const example = join(examplesDir, templateId);
-  if (existsSync(join(example, "index.html"))) return example;
+  for (const base of [bundledTemplatesDir, examplesDir]) {
+    const dir = join(base, templateId);
+    if (existsSync(join(dir, "index.html"))) return dir;
+  }
   return null;
 }
 
@@ -106,7 +97,6 @@ function discoverTemplates(only: string | null): string[] {
   const seen = new Set<string>();
   const all: string[] = [];
 
-  // Scan bundled templates
   for (const dir of [bundledTemplatesDir, examplesDir]) {
     if (!existsSync(dir)) continue;
     for (const e of readdirSync(dir, { withFileTypes: true })) {
@@ -124,89 +114,91 @@ function discoverTemplates(only: string | null): string[] {
   }
 
   if (only) {
-    const match = all.find((t) => t === only);
-    if (!match) {
+    if (!all.includes(only)) {
       console.error(`Template "${only}" not found. Available: ${all.join(", ")}`);
       process.exit(1);
     }
-    return [match];
+    return [only];
   }
   return all;
 }
 
-async function generatePreview(templateId: string): Promise<void> {
-  const config = TEMPLATE_CONFIG[templateId] ?? {
-    width: 1920,
-    height: 1080,
-    captureTime: 2.0,
-  };
-
-  // Copy template to temp dir
+function prepareTemplateDir(templateId: string): string {
   const tmpDir = join(tmpdir(), `hf-preview-${templateId}-${Date.now()}`);
   mkdirSync(tmpDir, { recursive: true });
+  const src = resolveTemplateDir(templateId);
+  if (!src) throw new Error(`Template directory not found for "${templateId}"`);
+  cpSync(src, tmpDir, { recursive: true });
+  patchTemplateHtml(tmpDir, 5);
+  return tmpDir;
+}
 
-  const templateSrc = resolveTemplateDir(templateId);
-  if (!templateSrc) throw new Error(`Template directory not found for "${templateId}"`);
-  cpSync(templateSrc, tmpDir, { recursive: true });
+async function generateThumbnail(templateId: string, projectDir: string): Promise<void> {
+  const config = TEMPLATE_CONFIG[templateId] ?? DEFAULT_CONFIG;
 
-  // Patch out video/audio placeholders, set 10s duration
-  patchTemplateHtml(tmpDir, 10);
+  const framesDir = join(projectDir, "_thumb_frames");
+  mkdirSync(framesDir, { recursive: true });
 
-  const fileServer = await createFileServer({ projectDir: tmpDir, port: 0 });
-
+  const fileServer = await createFileServer({ projectDir, port: 0 });
   try {
-    const framesDir = join(tmpDir, "_frames");
-    mkdirSync(framesDir, { recursive: true });
-
     const session = await createCaptureSession(fileServer.url, framesDir, {
       width: config.width,
       height: config.height,
       fps: 30,
       format: "png",
     });
-
     await initializeSession(session);
 
-    // Query actual duration in case template declares something different
     let duration: number;
     try {
       duration = await getCompositionDuration(session);
     } catch {
-      duration = 10;
+      duration = 5;
     }
 
-    // Capture at the configured time, clamped to composition duration
-    const captureTime = Math.min(config.captureTime, duration * 0.8);
-    const result = await captureFrame(session, 0, captureTime);
-
-    // Copy to output
-    const outPath = join(outputDir, `${templateId}.png`);
-    cpSync(result.path, outPath);
-
-    console.log(
-      `  ✓ ${templateId} → ${outPath} (${config.width}x${config.height} @ ${captureTime.toFixed(1)}s, ${result.captureTimeMs}ms)`,
-    );
+    const t = Math.min(config.captureTime, duration * 0.8);
+    const result = await captureFrame(session, 0, t);
+    cpSync(result.path, join(outputDir, `${templateId}.png`));
+    console.log(`  ✓ ${templateId}.png (${result.captureTimeMs}ms)`);
 
     await closeCaptureSession(session);
   } finally {
     fileServer.close();
-    rmSync(tmpDir, { recursive: true, force: true });
+    rmSync(framesDir, { recursive: true, force: true });
   }
 }
 
+async function generateVideo(templateId: string, projectDir: string): Promise<void> {
+  const outMp4 = join(outputDir, `${templateId}.mp4`);
+  const job = createRenderJob({
+    fps: 24,
+    quality: "draft",
+    format: "mp4",
+  });
+  await executeRenderJob(job, projectDir, outMp4);
+  console.log(`  ✓ ${templateId}.mp4`);
+}
+
 async function main(): Promise<void> {
-  const { only } = parseArgs();
+  const { only, skipVideo } = parseArgs();
   const templates = discoverTemplates(only);
 
-  console.log(`Generating previews for ${templates.length} templates...\n`);
-
+  console.log(
+    `Generating previews for ${templates.length} templates${skipVideo ? " (thumbnails only)" : " + videos"}...\n`,
+  );
   mkdirSync(outputDir, { recursive: true });
 
   for (const templateId of templates) {
+    const projectDir = prepareTemplateDir(templateId);
     try {
-      await generatePreview(templateId);
+      await generateThumbnail(templateId, projectDir);
+      if (!skipVideo) {
+        await generateVideo(templateId, projectDir);
+      }
     } catch (err) {
       console.error(`  ✗ ${templateId}: ${err instanceof Error ? err.message : err}`);
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
     }
   }
 
