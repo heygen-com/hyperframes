@@ -490,6 +490,7 @@ function inlineSubCompositions(
 
   const collectedStyles: string[] = [];
   const collectedScripts: string[] = [];
+  const collectedExternalScriptSrcs: string[] = [];
 
   for (const host of hosts) {
     const srcPath = host.getAttribute("data-composition-src");
@@ -541,7 +542,15 @@ function inlineSubCompositions(
 
     for (const scriptEl of contentDoc.querySelectorAll("script")) {
       const src = (scriptEl.getAttribute("src") || "").trim();
-      if (src) continue;
+      if (src) {
+        // External CDN/remote script — collect for deduped hoisting into the
+        // parent document, mirroring the core bundler's behavior.
+        if (!collectedExternalScriptSrcs.includes(src)) {
+          collectedExternalScriptSrcs.push(src);
+        }
+        scriptEl.remove();
+        continue;
+      }
       const content = (scriptEl.textContent || "").trim();
       if (content) {
         const scriptMountCompId = compId || inferredCompId || "";
@@ -567,6 +576,36 @@ function inlineSubCompositions(
 })()`);
       }
       scriptEl.remove();
+    }
+
+    // Rewrite relative asset paths (src, href) so they resolve correctly after
+    // inlining. A sub-composition at "compositions/scene.html" referencing
+    // "../icon.svg" means the project root — but after inlining into root
+    // index.html, "../" escapes the project. Resolve each relative path
+    // against the sub-composition's directory, then normalize to project root.
+    const compDir = dirname(srcPath);
+    if (compDir && compDir !== ".") {
+      const rewriteTarget = innerRoot || contentDoc;
+      for (const el of rewriteTarget.querySelectorAll("[src], [href]")) {
+        for (const attr of ["src", "href"] as const) {
+          const val = (el.getAttribute(attr) || "").trim();
+          if (
+            !val ||
+            val.startsWith("http://") ||
+            val.startsWith("https://") ||
+            val.startsWith("//") ||
+            val.startsWith("data:") ||
+            val.startsWith("#")
+          ) {
+            continue;
+          }
+          const resolved = join(compDir, val);
+          const normalized = resolve("/", resolved).slice(1);
+          if (normalized !== val) {
+            el.setAttribute(attr, normalized);
+          }
+        }
+      }
     }
 
     if (innerRoot) {
@@ -622,6 +661,25 @@ function inlineSubCompositions(
     const styleEl = document.createElement("style");
     styleEl.textContent = collectedStyles.join("\n\n");
     head.appendChild(styleEl);
+  }
+
+  // Inject hoisted external CDN scripts before inline scripts so plugins
+  // (e.g. TextPlugin, ScrollTrigger) are registered before composition code
+  // runs. Deduplicate against scripts already present in the document.
+  if (collectedExternalScriptSrcs.length && body) {
+    const existingScriptSrcs = new Set(
+      Array.from(document.querySelectorAll("script[src]")).map((el) =>
+        (el.getAttribute("src") || "").trim(),
+      ),
+    );
+    for (const src of collectedExternalScriptSrcs) {
+      if (!existingScriptSrcs.has(src)) {
+        const scriptEl = document.createElement("script");
+        scriptEl.setAttribute("src", src);
+        body.appendChild(scriptEl);
+        existingScriptSrcs.add(src);
+      }
+    }
   }
 
   if (collectedScripts.length && body) {
