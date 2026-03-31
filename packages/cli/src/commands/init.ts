@@ -733,7 +733,7 @@ Examples:
     } else {
       // Resolve full template list (bundled + remote)
       const allTemplates = await resolveTemplateList();
-      const defaultTemplate = isAudioOnly ? "warm-grain" : "blank";
+      const defaultTemplate = "blank";
       const templateResult = await clack.select({
         message: "Pick a template",
         options: allTemplates.map((t: TemplateOption) => ({
