@@ -1,23 +1,5 @@
 import { listRemoteTemplates, type RemoteTemplateInfo } from "./remote.js";
 
-/**
- * All known template IDs (bundled + remote).
- * Used for --template validation and help text.
- */
-export const ALL_TEMPLATE_IDS = [
-  "blank",
-  "warm-grain",
-  "play-mode",
-  "swiss-grid",
-  "vignelli",
-  "decision-tree",
-  "kinetic-type",
-  "product-promo",
-  "nyt-graph",
-] as const;
-
-export type TemplateId = (typeof ALL_TEMPLATE_IDS)[number];
-
 export type TemplateSource = "bundled" | "remote";
 
 export interface TemplateOption {
@@ -39,7 +21,8 @@ export const BUNDLED_TEMPLATES: TemplateOption[] = [
 
 /**
  * Resolve the full template list by merging bundled and remote templates.
- * If remote fetch fails (offline), returns only bundled templates.
+ * Fetches templates.json from GitHub (cached 24h). No CLI release needed to add templates.
+ * If offline, returns only bundled templates.
  */
 export async function resolveTemplateList(): Promise<TemplateOption[]> {
   const bundled = [...BUNDLED_TEMPLATES];

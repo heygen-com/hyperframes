@@ -15,7 +15,7 @@ import * as clack from "@clack/prompts";
 import { c } from "../ui/colors.js";
 import { printBanner } from "../ui/banner.js";
 import {
-  ALL_TEMPLATE_IDS,
+  BUNDLED_TEMPLATES,
   resolveTemplateList,
   type TemplateOption,
 } from "../templates/generators.js";
@@ -366,13 +366,12 @@ async function scaffoldProject(
   templateId: string,
   localVideoName: string | undefined,
   durationSeconds?: number,
-  forceRemote?: boolean,
 ): Promise<void> {
   mkdirSync(destDir, { recursive: true });
 
-  // Try local bundled template first, fall back to remote fetch
+  // Use bundled template if available, otherwise fetch from GitHub
   const templateDir = getStaticTemplateDir(templateId);
-  if (!forceRemote && existsSync(templateDir)) {
+  if (existsSync(templateDir)) {
     cpSync(templateDir, destDir, { recursive: true });
   } else {
     await fetchRemoteTemplate(templateId, destDir);
@@ -433,20 +432,14 @@ Examples:
   hyperframes init my-video                            # interactive wizard
   hyperframes init my-video --template warm-grain      # pick a template
   hyperframes init my-video --video video.mp4          # with video file
-  hyperframes init my-video --example warm-grain         # fetch template from GitHub
   hyperframes init my-video --non-interactive           # skip prompts (CI/agents)`,
   },
   args: {
     name: { type: "positional", description: "Project name", required: false },
     template: {
       type: "string",
-      description: `Template (${ALL_TEMPLATE_IDS.join(", ")})`,
+      description: "Template name (e.g. warm-grain, swiss-grid, blank)",
       alias: "t",
-    },
-    example: {
-      type: "string",
-      description: "Fetch a template from GitHub (e.g. warm-grain)",
-      alias: "e",
     },
     video: {
       type: "string",
@@ -483,7 +476,6 @@ Examples:
   },
   async run({ args }) {
     const templateFlag = args.template;
-    const exampleFlag = args.example;
     const videoFlag = args.video;
     const audioFlag = args.audio;
     const skipSkills = args["skip-skills"] === true;
@@ -493,23 +485,11 @@ Examples:
     const languageFlag = args.language;
     const interactive = !nonInteractive && process.stdout.isTTY === true;
 
-    // --example always forces remote fetch
-    const forceRemote = exampleFlag !== undefined;
-    const effectiveTemplate = exampleFlag ?? templateFlag;
-
     // -----------------------------------------------------------------------
     // Non-interactive mode — all inputs from flags, defaults where missing
     // -----------------------------------------------------------------------
     if (!interactive) {
-      const resolvedTemplate = effectiveTemplate ?? "blank";
-      // For --example, any template ID is valid (fetched from GitHub)
-      if (!forceRemote && !(ALL_TEMPLATE_IDS as readonly string[]).includes(resolvedTemplate)) {
-        console.error(c.error(`Unknown template: ${resolvedTemplate}`));
-        console.error(`Available: ${ALL_TEMPLATE_IDS.join(", ")}`);
-        console.error(c.dim("Tip: use --example to fetch any template from GitHub"));
-        process.exit(1);
-      }
-      const templateId = resolvedTemplate;
+      const templateId = templateFlag ?? "blank";
       const name = args.name ?? "my-video";
       const destDir = resolve(name);
 
@@ -579,9 +559,6 @@ Examples:
       }
 
       // Scaffold
-      if (forceRemote) {
-        console.log(`Downloading template ${c.accent(templateId)} from GitHub...`);
-      }
       try {
         await scaffoldProject(
           destDir,
@@ -589,19 +566,14 @@ Examples:
           templateId,
           localVideoName,
           videoDuration,
-          forceRemote,
         );
       } catch (err) {
         console.error(
           c.error(
-            `Failed to fetch template "${templateId}": ${err instanceof Error ? err.message : err}`,
+            `Failed to scaffold template "${templateId}": ${err instanceof Error ? err.message : err}`,
           ),
         );
-        if (forceRemote) {
-          console.error(
-            c.dim("Check your network connection or use --template blank for offline use."),
-          );
-        }
+        console.error(c.dim("Use --template blank for offline use."));
         process.exit(1);
       }
       trackInitTemplate(templateId);
@@ -753,20 +725,12 @@ Examples:
       }
     }
 
-    // 3. Pick template — skip prompt if --template or --example was provided
+    // 3. Pick template — skip prompt if --template was provided
     let templateId: string;
-    let useRemote = forceRemote;
 
-    if (exampleFlag) {
-      templateId = exampleFlag;
-      useRemote = true;
-    } else if (templateFlag && (ALL_TEMPLATE_IDS as readonly string[]).includes(templateFlag)) {
+    if (templateFlag) {
       templateId = templateFlag;
     } else {
-      if (templateFlag) {
-        clack.log.warn(`Unknown template "${templateFlag}" — pick from the list below`);
-      }
-
       // Resolve full template list (bundled + remote)
       const allTemplates = await resolveTemplateList();
       const defaultTemplate = isAudioOnly ? "warm-grain" : "blank";
@@ -784,30 +748,27 @@ Examples:
         process.exit(0);
       }
       templateId = templateResult;
-
-      // Check if the selected template needs remote fetch
-      const selected = allTemplates.find((t: TemplateOption) => t.id === templateId);
-      if (selected?.source === "remote") {
-        useRemote = true;
-      }
     }
 
-    // 4. Copy template and patch
-    if (useRemote) {
-      const spin = clack.spinner();
+    // 4. Scaffold project (bundled templates are instant, remote templates download from GitHub)
+    const spin = clack.spinner();
+    const isBundled = BUNDLED_TEMPLATES.some((t) => t.id === templateId);
+    if (!isBundled) {
       spin.start(`Downloading template ${c.accent(templateId)}...`);
-      try {
-        await scaffoldProject(destDir, name, templateId, localVideoName, videoDuration, true);
-        spin.stop(c.success(`Downloaded ${templateId}`));
-      } catch (err) {
-        spin.stop(c.error(`Failed to download template`));
-        clack.log.error(
-          `${err instanceof Error ? err.message : err}\n${c.dim("Check your network connection or use --template blank for offline use.")}`,
-        );
-        process.exit(1);
-      }
-    } else {
+    }
+    try {
       await scaffoldProject(destDir, name, templateId, localVideoName, videoDuration);
+      if (!isBundled) {
+        spin.stop(c.success(`Downloaded ${templateId}`));
+      }
+    } catch (err) {
+      if (!isBundled) {
+        spin.stop(c.error("Download failed"));
+      }
+      clack.log.error(
+        `${err instanceof Error ? err.message : err}\n${c.dim("Use --template blank for offline use.")}`,
+      );
+      process.exit(1);
     }
     trackInitTemplate(templateId);
 
