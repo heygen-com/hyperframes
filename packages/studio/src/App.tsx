@@ -385,11 +385,17 @@ export function StudioApp() {
           body: formData,
         });
         if (res.ok) {
+          const data = await res.json();
+          if (data.skipped?.length) {
+            console.warn(`Skipped files (too large): ${data.skipped.join(", ")}`);
+          }
           await refreshFileTree();
           setRefreshKey((k) => k + 1);
+        } else {
+          console.error(`Upload failed: ${res.status}`);
         }
-      } catch {
-        // ignore
+      } catch (err) {
+        console.error("Upload error:", err);
       }
     },
     [refreshFileTree],
@@ -477,6 +483,8 @@ export function StudioApp() {
     <div
       className="flex flex-col h-screen w-screen bg-neutral-950 relative"
       onDragOver={(e) => {
+        // Only show overlay for external file drags (not internal tree reorders)
+        if (!e.dataTransfer.types.includes("Files")) return;
         e.preventDefault();
         setGlobalDragOver(true);
       }}

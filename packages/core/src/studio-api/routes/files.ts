@@ -241,18 +241,28 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
 
   // ── Upload (binary assets via multipart form) ──
 
+  const MAX_UPLOAD_BYTES = 500 * 1024 * 1024; // 500 MB per file
+
   api.post("/projects/:id/upload", async (c) => {
     const project = await adapter.resolveProject(c.req.param("id"));
     if (!project) return c.json({ error: "not found" }, 404);
 
     const formData = await c.req.formData();
     const uploaded: string[] = [];
+    const skipped: string[] = [];
 
     for (const [, value] of formData.entries()) {
       if (!(value instanceof File)) continue;
 
-      const name = value.name;
+      // Strip path separators — browsers may include directory components
+      const name = value.name.split("/").pop()?.split("\\").pop() ?? "";
       if (!name || name.includes("\0") || name.includes("..")) continue;
+
+      // Reject files that exceed the size limit
+      if (value.size > MAX_UPLOAD_BYTES) {
+        skipped.push(name);
+        continue;
+      }
 
       const destPath = resolve(project.dir, name);
       if (!isSafePath(project.dir, destPath)) continue;
@@ -261,10 +271,12 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       let finalPath = destPath;
       let finalName = name;
       if (existsSync(finalPath)) {
-        const ext = name.includes(".") ? "." + name.split(".").pop() : "";
-        const base = ext ? name.slice(0, -ext.length) : name;
+        // Handle dotfiles correctly: .gitignore → ext="", base=".gitignore"
+        const dotIdx = name.indexOf(".", name.startsWith(".") ? 1 : 0);
+        const ext = dotIdx > 0 ? name.slice(dotIdx) : "";
+        const base = dotIdx > 0 ? name.slice(0, dotIdx) : name;
         let n = 2;
-        while (existsSync(resolve(project.dir, `${base} (${n})${ext}`))) n++;
+        while (n < 10000 && existsSync(resolve(project.dir, `${base} (${n})${ext}`))) n++;
         finalName = `${base} (${n})${ext}`;
         finalPath = resolve(project.dir, finalName);
       }
@@ -275,6 +287,6 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       uploaded.push(finalName);
     }
 
-    return c.json({ ok: true, files: uploaded }, 201);
+    return c.json({ ok: true, files: uploaded, skipped }, 201);
   });
 }
