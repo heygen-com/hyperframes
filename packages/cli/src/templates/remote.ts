@@ -2,7 +2,7 @@
  * Remote Template Fetching
  *
  * Downloads templates from the hyperframes GitHub repository using giget.
- * Templates live in the `examples/` directory of the repo.
+ * Templates live in the `templates/` directory of the repo.
  */
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
@@ -10,7 +10,7 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 
 const REPO = "heygen-com/hyperframes";
-const EXAMPLES_DIR = "examples";
+const TEMPLATES_DIR = "templates";
 const MANIFEST_FILENAME = "templates.json";
 
 /** Cache directory for remote template metadata. */
@@ -48,7 +48,7 @@ export async function listRemoteTemplates(): Promise<RemoteTemplateInfo[]> {
   }
 
   // Fetch from GitHub raw content
-  const url = `https://raw.githubusercontent.com/${REPO}/main/${EXAMPLES_DIR}/${MANIFEST_FILENAME}`;
+  const url = `https://raw.githubusercontent.com/${REPO}/main/${TEMPLATES_DIR}/${MANIFEST_FILENAME}`;
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(5_000) });
     if (!res.ok) {
@@ -80,7 +80,7 @@ export async function fetchRemoteTemplate(
 ): Promise<void> {
   const { downloadTemplate } = await import("giget");
   const ref = options?.ref ?? "main";
-  const source = `github:${REPO}/${EXAMPLES_DIR}/${templateId}#${ref}`;
+  const source = `github:${REPO}/${TEMPLATES_DIR}/${templateId}#${ref}`;
 
   await downloadTemplate(source, {
     dir: destDir,
