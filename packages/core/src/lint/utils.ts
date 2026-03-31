@@ -22,12 +22,14 @@ export const COMPOSITION_ID_IN_CSS_PATTERN = /\[data-composition-id=["']([^"']+)
 export const TIMELINE_REGISTRY_INIT_PATTERN =
   /window\.__timelines\s*=\s*window\.__timelines\s*\|\|\s*\{\}|window\.__timelines\s*=\s*\{\}|window\.__timelines\s*\?\?=\s*\{\}/i;
 export const TIMELINE_REGISTRY_ASSIGN_PATTERN = /window\.__timelines\[[^\]]+\]\s*=/i;
+export const WINDOW_TIMELINE_ASSIGN_PATTERN =
+  /window\.__timelines\[\s*["']([^"']+)["']\s*\]\s*=\s*([A-Za-z_$][\w$]*)/i;
 export const INVALID_SCRIPT_CLOSE_PATTERN = /<script[^>]*>[\s\S]*?<\s*\/\s*script(?!>)/i;
 
 export function extractOpenTags(source: string): OpenTag[] {
   const tags: OpenTag[] = [];
   let match: RegExpExecArray | null;
-  const pattern = /<([a-z][\w:-]*)(\s[^<>]*?)?>/gi;
+  const pattern = new RegExp(TAG_PATTERN.source, TAG_PATTERN.flags);
   while ((match = pattern.exec(source)) !== null) {
     const raw = match[0];
     if (raw.startsWith("</") || raw.startsWith("<!")) continue;
@@ -44,7 +46,8 @@ export function extractOpenTags(source: string): OpenTag[] {
 export function extractBlocks(source: string, pattern: RegExp): ExtractedBlock[] {
   const blocks: ExtractedBlock[] = [];
   let match: RegExpExecArray | null;
-  while ((match = pattern.exec(source)) !== null) {
+  const p = new RegExp(pattern.source, pattern.flags);
+  while ((match = p.exec(source)) !== null) {
     blocks.push({
       attrs: match[1] || "",
       content: match[2] || "",
@@ -85,7 +88,10 @@ export function collectCompositionIds(tags: OpenTag[]): Set<string> {
 export function extractCompositionIdsFromCss(css: string): string[] {
   const ids = new Set<string>();
   let match: RegExpExecArray | null;
-  const pattern = /\[data-composition-id=["']([^"']+)["']\]/g;
+  const pattern = new RegExp(
+    COMPOSITION_ID_IN_CSS_PATTERN.source,
+    COMPOSITION_ID_IN_CSS_PATTERN.flags,
+  );
   while ((match = pattern.exec(css)) !== null) {
     if (match[1]) ids.add(match[1]);
   }
