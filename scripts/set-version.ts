@@ -4,10 +4,13 @@
  * then create a git commit and tag.
  *
  * Usage:
- *   bun run set-version 0.1.1          # bump, commit, and tag
+ *   bun run set-version 0.1.1          # stable release → npm "latest" tag
+ *   bun run set-version 0.1.1-alpha.1  # pre-release  → npm "alpha" tag
  *   bun run set-version 0.1.1 --no-tag # bump only (no commit or tag)
  *
  * All packages share a single version number (fixed versioning).
+ * Pre-release suffixes (-alpha, -beta, -rc, etc.) are detected by the
+ * publish workflow and published to the corresponding npm dist-tag.
  */
 
 import { readFileSync, writeFileSync } from "fs";
@@ -79,7 +82,16 @@ function main() {
   execSync(`git commit -m "chore: release v${version}"`, { cwd: ROOT, stdio: "inherit" });
   execSync(`git tag v${version}`, { cwd: ROOT, stdio: "inherit" });
   console.log(`\nCreated commit and tag v${version}`);
-  console.log(`Run 'git push origin main --tags' to trigger the publish workflow.`);
+
+  const isPrerelease = version.includes("-");
+  if (isPrerelease) {
+    const distTag = version.replace(/^.*-([a-zA-Z]+).*$/, "$1");
+    console.log(`\nThis is a pre-release — npm dist-tag will be "${distTag}" (not "latest").`);
+    console.log(`Consumers install with: npm install @hyperframes/core@${distTag}`);
+    console.log(`\nRun 'git push origin v${version}' to trigger the publish workflow.`);
+  } else {
+    console.log(`Run 'git push origin main --tags' to trigger the publish workflow.`);
+  }
 }
 
 main();

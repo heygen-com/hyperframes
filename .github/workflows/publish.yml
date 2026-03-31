@@ -29,11 +29,23 @@ jobs:
         id: version
         run: |
           if [ "${{ github.event_name }}" = "push" ]; then
-            echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+            VERSION="${GITHUB_REF_NAME#v}"
           else
             BRANCH="${{ github.event.pull_request.head.ref }}"
-            echo "version=${BRANCH#release/v}" >> "$GITHUB_OUTPUT"
+            VERSION="${BRANCH#release/v}"
           fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+          # Detect pre-release tag (e.g. 0.1.16-alpha.1 → alpha, 0.1.16-beta.2 → beta)
+          if [[ "$VERSION" =~ -([a-zA-Z]+) ]]; then
+            DIST_TAG="${BASH_REMATCH[1]}"
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            DIST_TAG="latest"
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "dist_tag=${DIST_TAG}" >> "$GITHUB_OUTPUT"
+          echo "Resolved version=${VERSION} dist_tag=${DIST_TAG}"
 
       - name: Create release tag
         if: github.event_name == 'pull_request'
@@ -56,6 +68,7 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           VERSION="${{ steps.version.outputs.version }}"
+          DIST_TAG="${{ steps.version.outputs.dist_tag }}"
           FAILED=0
 
           publish_pkg() {
@@ -69,7 +82,7 @@ jobs:
             fi
 
             echo "📦 Publishing ${name}@${VERSION}..."
-            if pnpm --filter "$filter" publish --access public --no-git-checks; then
+            if pnpm --filter "$filter" publish --access public --no-git-checks --tag "$DIST_TAG"; then
               echo "✅ ${name}@${VERSION} published"
             else
               echo "❌ ${name}@${VERSION} failed to publish"
@@ -96,7 +109,7 @@ jobs:
               fs.writeFileSync(p, JSON.stringify(pkg, null, 2) + '\n');
             "
             echo "📦 Publishing hyperframes@${VERSION}..."
-            if (cd packages/cli && npm publish --access public); then
+            if (cd packages/cli && npm publish --access public --tag "$DIST_TAG"); then
               echo "✅ hyperframes@${VERSION} published"
             else
               echo "❌ hyperframes@${VERSION} failed to publish"
@@ -114,12 +127,14 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION="${{ steps.version.outputs.version }}"
+          PRERELEASE="${{ steps.version.outputs.prerelease }}"
           # Skip if release already exists (idempotent re-runs)
           if gh release view "v${VERSION}" --repo "${{ github.repository }}" >/dev/null 2>&1; then
             echo "Release v${VERSION} already exists — skipping"
           else
-            gh release create "v${VERSION}" \
-              --repo "${{ github.repository }}" \
-              --title "v${VERSION}" \
-              --generate-notes
+            FLAGS=(--repo "${{ github.repository }}" --title "v${VERSION}" --generate-notes)
+            if [ "$PRERELEASE" = "true" ]; then
+              FLAGS+=(--prerelease)
+            fi
+            gh release create "v${VERSION}" "${FLAGS[@]}"
           fi

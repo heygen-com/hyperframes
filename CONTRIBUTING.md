@@ -59,12 +59,34 @@ Git hooks (via [lefthook](https://github.com/evilmartians/lefthook)) run automat
 
 All packages use **fixed versioning** — every release bumps all packages to the same version.
 
+### Stable releases
+
 ```bash
 bun run set-version 0.2.0            # bumps all packages, commits, and creates git tag
 git push origin main --tags           # triggers the publish workflow
 ```
 
 The `set-version` script automatically creates a `chore: release v<version>` commit and a `v<version>` git tag. Pushing the tag triggers CI to publish all packages to npm and create a GitHub Release.
+
+### Pre-releases (alpha / beta / rc)
+
+Use a pre-release suffix to publish to a named npm dist-tag instead of `latest`:
+
+```bash
+bun run set-version 0.2.0-alpha.1    # first alpha
+git push origin v0.2.0-alpha.1       # publishes to npm with --tag alpha
+
+bun run set-version 0.2.0-alpha.2    # iterate
+bun run set-version 0.2.0-beta.1     # promote to beta (--tag beta)
+bun run set-version 0.2.0-rc.1       # release candidate (--tag rc)
+bun run set-version 0.2.0            # final stable release (--tag latest)
+```
+
+Consumers install pre-releases with `npm install @hyperframes/core@alpha` (or `@beta`, `@rc`). The `latest` tag is never touched by pre-releases, so `npm install @hyperframes/core` always gets the last stable version.
+
+Pre-releases also create GitHub Releases marked as **pre-release**.
+
+### Options
 
 If you need to bump versions without committing (e.g., for a release PR), pass `--no-tag`:
 
