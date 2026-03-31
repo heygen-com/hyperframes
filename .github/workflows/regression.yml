@@ -23,7 +23,6 @@ jobs:
               - "packages/core/**"
               - "packages/producer/**"
               - "packages/engine/**"
-              - "scripts/**"
               - "Dockerfile*"
 
   regression-shards:
