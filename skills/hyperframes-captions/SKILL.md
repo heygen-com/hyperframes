@@ -193,7 +193,7 @@ Group size affects pacing. Fast content needs fast caption turnover.
 - **Conversational:** 3-5 words per group. Natural phrase length.
 - **Measured/calm:** 4-6 words per group. Longer groups match slower pace.
 
-Break groups on sentence boundaries (`.` `?` `!`), pauses (>150ms gap), or max word count — whichever comes first.
+Break groups on sentence boundaries (period, question mark, exclamation), pauses (150ms+ gap), or max word count — whichever comes first.
 
 ## Positioning
 
