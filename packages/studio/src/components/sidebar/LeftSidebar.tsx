@@ -22,7 +22,7 @@ interface LeftSidebarProps {
   assets: string[];
   activeComposition: string | null;
   onSelectComposition: (comp: string) => void;
-  onImportFiles?: (files: FileList) => void;
+  onImportFiles?: (files: FileList, dir?: string) => void;
   fileTree?: string[];
   editingFile?: { path: string; content: string | null } | null;
   onSelectFile?: (path: string) => void;

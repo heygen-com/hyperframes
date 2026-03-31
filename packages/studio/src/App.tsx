@@ -57,7 +57,9 @@ export function StudioApp() {
   const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [rightCollapsed, setRightCollapsed] = useState(true);
   const [globalDragOver, setGlobalDragOver] = useState(false);
+  const [uploadToast, setUploadToast] = useState<string | null>(null);
   const [timelineVisible, setTimelineVisible] = useState(false);
+  const dragCounterRef = useRef(0);
   const panelDragRef = useRef<{
     side: "left" | "right";
     startX: number;
@@ -369,8 +371,13 @@ export function StudioApp() {
 
   const handleMoveFile = handleRenameFile;
 
+  const showUploadToast = useCallback((msg: string) => {
+    setUploadToast(msg);
+    setTimeout(() => setUploadToast(null), 4000);
+  }, []);
+
   const handleImportFiles = useCallback(
-    async (files: FileList) => {
+    async (files: FileList, dir?: string) => {
       const pid = projectIdRef.current;
       if (!pid || files.length === 0) return;
 
@@ -379,26 +386,29 @@ export function StudioApp() {
         formData.append("file", file);
       }
 
+      const qs = dir ? `?dir=${encodeURIComponent(dir)}` : "";
       try {
-        const res = await fetch(`/api/projects/${pid}/upload`, {
+        const res = await fetch(`/api/projects/${pid}/upload${qs}`, {
           method: "POST",
           body: formData,
         });
         if (res.ok) {
           const data = await res.json();
           if (data.skipped?.length) {
-            console.warn(`Skipped files (too large): ${data.skipped.join(", ")}`);
+            showUploadToast(`Skipped (too large): ${data.skipped.join(", ")}`);
           }
           await refreshFileTree();
           setRefreshKey((k) => k + 1);
+        } else if (res.status === 413) {
+          showUploadToast("Upload rejected: payload too large");
         } else {
-          console.error(`Upload failed: ${res.status}`);
+          showUploadToast(`Upload failed (${res.status})`);
         }
-      } catch (err) {
-        console.error("Upload error:", err);
+      } catch {
+        showUploadToast("Upload failed: network error");
       }
     },
-    [refreshFileTree],
+    [refreshFileTree, showUploadToast],
   );
 
   const handleLint = useCallback(async () => {
@@ -483,16 +493,21 @@ export function StudioApp() {
     <div
       className="flex flex-col h-screen w-screen bg-neutral-950 relative"
       onDragOver={(e) => {
-        // Only show overlay for external file drags (not internal tree reorders)
         if (!e.dataTransfer.types.includes("Files")) return;
         e.preventDefault();
+      }}
+      onDragEnter={(e) => {
+        if (!e.dataTransfer.types.includes("Files")) return;
+        e.preventDefault();
+        dragCounterRef.current++;
         setGlobalDragOver(true);
       }}
-      onDragLeave={(e) => {
-        // Only reset when leaving the root container
-        if (e.currentTarget === e.target) setGlobalDragOver(false);
+      onDragLeave={() => {
+        dragCounterRef.current--;
+        if (dragCounterRef.current === 0) setGlobalDragOver(false);
       }}
       onDrop={(e) => {
+        dragCounterRef.current = 0;
         setGlobalDragOver(false);
         // Skip if a child (e.g. AssetsTab) already handled the drop
         if (e.defaultPrevented) return;
@@ -719,6 +734,11 @@ export function StudioApp() {
               Drop files to import into project
             </span>
           </div>
+        </div>
+      )}
+      {uploadToast && (
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[91] px-4 py-2 rounded-lg bg-red-900/90 border border-red-700/50 text-sm text-red-200 shadow-lg animate-in fade-in slide-in-from-bottom-2">
+          {uploadToast}
         </div>
       )}
     </div>

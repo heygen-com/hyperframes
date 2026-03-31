@@ -1,4 +1,5 @@
 import type { Hono } from "hono";
+import { bodyLimit } from "hono/body-limit";
 import {
   existsSync,
   readFileSync,
@@ -243,50 +244,66 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
 
   const MAX_UPLOAD_BYTES = 500 * 1024 * 1024; // 500 MB per file
 
-  api.post("/projects/:id/upload", async (c) => {
-    const project = await adapter.resolveProject(c.req.param("id"));
-    if (!project) return c.json({ error: "not found" }, 404);
+  api.post(
+    "/projects/:id/upload",
+    bodyLimit({
+      maxSize: MAX_UPLOAD_BYTES,
+      onError: (c) => c.json({ error: "payload too large" }, 413),
+    }),
+    async (c) => {
+      const project = await adapter.resolveProject(c.req.param("id"));
+      if (!project) return c.json({ error: "not found" }, 404);
 
-    const formData = await c.req.formData();
-    const uploaded: string[] = [];
-    const skipped: string[] = [];
+      // Optional subdirectory within the project (e.g. "assets/audio")
+      const subDir = c.req.query("dir") ?? "";
+      const targetDir = subDir ? resolve(project.dir, subDir) : project.dir;
+      if (!isSafePath(project.dir, targetDir)) return c.json({ error: "forbidden" }, 403);
+      if (subDir && !existsSync(targetDir)) mkdirSync(targetDir, { recursive: true });
 
-    for (const [, value] of formData.entries()) {
-      if (!(value instanceof File)) continue;
+      const formData = await c.req.formData();
+      const uploaded: string[] = [];
+      const skipped: string[] = [];
 
-      // Strip path separators — browsers may include directory components
-      const name = value.name.split("/").pop()?.split("\\").pop() ?? "";
-      if (!name || name.includes("\0") || name.includes("..")) continue;
+      for (const [, value] of formData.entries()) {
+        if (!(value instanceof File)) continue;
 
-      // Reject files that exceed the size limit
-      if (value.size > MAX_UPLOAD_BYTES) {
-        skipped.push(name);
-        continue;
+        // Strip path separators — browsers may include directory components
+        const name = value.name.split("/").pop()?.split("\\").pop() ?? "";
+        if (!name || name.includes("\0") || name.includes("..")) continue;
+
+        // Reject individual files that exceed the size limit
+        if (value.size > MAX_UPLOAD_BYTES) {
+          skipped.push(name);
+          continue;
+        }
+
+        const destPath = resolve(targetDir, name);
+        if (!isSafePath(project.dir, destPath)) continue;
+
+        // Don't overwrite — append (2), (3), etc.
+        let finalPath = destPath;
+        let finalName = name;
+        if (existsSync(finalPath)) {
+          // Handle dotfiles correctly: .gitignore → ext="", base=".gitignore"
+          const dotIdx = name.indexOf(".", name.startsWith(".") ? 1 : 0);
+          const ext = dotIdx > 0 ? name.slice(dotIdx) : "";
+          const base = dotIdx > 0 ? name.slice(0, dotIdx) : name;
+          let n = 2;
+          while (n < 10000 && existsSync(resolve(targetDir, `${base} (${n})${ext}`))) n++;
+          if (n >= 10000) {
+            skipped.push(name);
+            continue;
+          }
+          finalName = `${base} (${n})${ext}`;
+          finalPath = resolve(targetDir, finalName);
+        }
+
+        const buffer = Buffer.from(await value.arrayBuffer());
+        writeFileSync(finalPath, buffer);
+        uploaded.push(subDir ? join(subDir, finalName) : finalName);
       }
 
-      const destPath = resolve(project.dir, name);
-      if (!isSafePath(project.dir, destPath)) continue;
-
-      // Don't overwrite — append (2), (3), etc.
-      let finalPath = destPath;
-      let finalName = name;
-      if (existsSync(finalPath)) {
-        // Handle dotfiles correctly: .gitignore → ext="", base=".gitignore"
-        const dotIdx = name.indexOf(".", name.startsWith(".") ? 1 : 0);
-        const ext = dotIdx > 0 ? name.slice(dotIdx) : "";
-        const base = dotIdx > 0 ? name.slice(0, dotIdx) : name;
-        let n = 2;
-        while (n < 10000 && existsSync(resolve(project.dir, `${base} (${n})${ext}`))) n++;
-        finalName = `${base} (${n})${ext}`;
-        finalPath = resolve(project.dir, finalName);
-      }
-
-      ensureDir(finalPath);
-      const buffer = Buffer.from(await value.arrayBuffer());
-      writeFileSync(finalPath, buffer);
-      uploaded.push(finalName);
-    }
-
-    return c.json({ ok: true, files: uploaded, skipped }, 201);
-  });
+      return c.json({ ok: true, files: uploaded, skipped }, 201);
+    },
+  );
 }

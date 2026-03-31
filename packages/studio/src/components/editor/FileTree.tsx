@@ -39,7 +39,7 @@ export interface FileTreeProps {
   onRenameFile?: (oldPath: string, newPath: string) => void;
   onDuplicateFile?: (path: string) => void;
   onMoveFile?: (oldPath: string, newPath: string) => void;
-  onImportFiles?: (files: FileList) => void;
+  onImportFiles?: (files: FileList, dir?: string) => void;
 }
 
 interface TreeNode {
@@ -773,10 +773,10 @@ export const FileTree = memo(function FileTree({
 
   const handleDrop = useCallback(
     (e: React.DragEvent, folderPath: string) => {
-      // External files from desktop — import them
+      // External files from desktop — import into the target folder
       if (e.dataTransfer.files.length > 0 && !dragSourceRef.current) {
         e.preventDefault();
-        onImportFiles?.(e.dataTransfer.files);
+        onImportFiles?.(e.dataTransfer.files, folderPath || undefined);
         setDragOverFolder(null);
         return;
       }
