@@ -39,6 +39,7 @@ export interface FileTreeProps {
   onRenameFile?: (oldPath: string, newPath: string) => void;
   onDuplicateFile?: (path: string) => void;
   onMoveFile?: (oldPath: string, newPath: string) => void;
+  onImportFiles?: (files: FileList) => void;
 }
 
 interface TreeNode {
@@ -638,6 +639,7 @@ export const FileTree = memo(function FileTree({
   onRenameFile,
   onDuplicateFile,
   onMoveFile,
+  onImportFiles,
 }: FileTreeProps) {
   const tree = useMemo(() => buildTree(files), [files]);
   const children = useMemo(() => sortChildren(tree.children), [tree]);
@@ -770,7 +772,15 @@ export const FileTree = memo(function FileTree({
   }, []);
 
   const handleDrop = useCallback(
-    (_e: React.DragEvent, folderPath: string) => {
+    (e: React.DragEvent, folderPath: string) => {
+      // External files from desktop — import them
+      if (e.dataTransfer.files.length > 0 && !dragSourceRef.current) {
+        e.preventDefault();
+        onImportFiles?.(e.dataTransfer.files);
+        setDragOverFolder(null);
+        return;
+      }
+
       const sourcePath = dragSourceRef.current;
       if (!sourcePath || !onMoveFile) {
         setDragOverFolder(null);
@@ -788,7 +798,7 @@ export const FileTree = memo(function FileTree({
       setDragOverFolder(null);
       dragSourceRef.current = null;
     },
-    [onMoveFile],
+    [onMoveFile, onImportFiles],
   );
 
   const handleDragLeave = useCallback(() => {
@@ -836,7 +846,20 @@ export const FileTree = memo(function FileTree({
         </div>
       )}
 
-      <div className="flex-1 overflow-y-auto py-1" onContextMenu={handleRootContextMenu}>
+      <div
+        className="flex-1 overflow-y-auto py-1"
+        onContextMenu={handleRootContextMenu}
+        onDragOver={(e) => {
+          // Allow external file drops on the root area
+          if (e.dataTransfer.types.includes("Files")) e.preventDefault();
+        }}
+        onDrop={(e) => {
+          if (e.dataTransfer.files.length > 0 && !dragSourceRef.current) {
+            e.preventDefault();
+            onImportFiles?.(e.dataTransfer.files);
+          }
+        }}
+      >
         {/* Root-level inline input for new file/folder */}
         {inlineInput &&
           (inlineInput.mode === "new-file" || inlineInput.mode === "new-folder") &&

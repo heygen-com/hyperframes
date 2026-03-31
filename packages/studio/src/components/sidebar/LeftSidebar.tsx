@@ -156,6 +156,7 @@ export const LeftSidebar = memo(function LeftSidebar({
                 onRenameFile={onRenameFile}
                 onDuplicateFile={onDuplicateFile}
                 onMoveFile={onMoveFile}
+                onImportFiles={onImportFiles}
               />
             </div>
           )}
