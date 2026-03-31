@@ -19,7 +19,7 @@
     },
     "packages/cli": {
       "name": "@hyperframes/cli",
-      "version": "0.1.10",
+      "version": "0.1.13",
       "bin": {
         "hyperframes": "./dist/cli.js",
       },
@@ -53,11 +53,15 @@
         "tsup": "^8.0.0",
         "tsx": "^4.0.0",
         "typescript": "^5.0.0",
+        "vitest": "^3.2.4",
       },
     },
     "packages/core": {
       "name": "@hyperframes/core",
-      "version": "0.1.10",
+      "version": "0.1.13",
+      "dependencies": {
+        "@chenglou/pretext": "^0.0.3",
+      },
       "devDependencies": {
         "@types/jsdom": "^28.0.0",
         "@types/node": "^24.10.13",
@@ -80,7 +84,7 @@
     },
     "packages/engine": {
       "name": "@hyperframes/engine",
-      "version": "0.1.6",
+      "version": "0.1.13",
       "dependencies": {
         "@hono/node-server": "^1.13.0",
         "@hyperframes/core": "workspace:^",
@@ -97,7 +101,7 @@
     },
     "packages/producer": {
       "name": "@hyperframes/producer",
-      "version": "0.1.6",
+      "version": "0.1.13",
       "dependencies": {
         "@fontsource/archivo-black": "^5.2.8",
         "@fontsource/eb-garamond": "^5.2.7",
@@ -127,7 +131,7 @@
     },
     "packages/studio": {
       "name": "@hyperframes/studio",
-      "version": "0.1.10",
+      "version": "0.1.13",
       "dependencies": {
         "@codemirror/autocomplete": "^6.20.1",
         "@codemirror/commands": "^6.10.3",
@@ -218,6 +222,8 @@
     "@bcoe/v8-coverage": ["@bcoe/v8-coverage@1.0.2", "", {}, "sha512-6zABk/ECA/QYSCQ1NGiVwwbQerUCZ+TQbp64Q3AgmfNvurHH0j8TtXa1qbShXA6qqkpAj4V5W8pP6mLe1mcMqA=="],
 
     "@bramus/specificity": ["@bramus/specificity@2.4.2", "", { "dependencies": { "css-tree": "3.2.1" }, "bin": { "specificity": "bin/cli.js" } }, "sha512-ctxtJ/eA+t+6q2++vj5j7FYX3nRu311q1wfYH3xjlLOsczhlhxAg2FWNUXhpGvAw3BWo1xBcvOV6/YLc2r5FJw=="],
+
+    "@chenglou/pretext": ["@chenglou/pretext@0.0.3", "", {}, "sha512-RQmqMqUAPRCyv4R3LlRi/ao6KbNWYclqLA+V1HS7sWgyUUbjn3JmmlfXZSY/BjM4rbmIaMSyIVisYocYGYftiQ=="],
 
     "@clack/core": ["@clack/core@1.1.0", "", { "dependencies": { "sisteransi": "1.0.5" } }, "sha512-SVcm4Dqm2ukn64/8Gub2wnlA5nS2iWJyCkdNHcvNHPIeBTGojpdJ+9cZKwLfmqy7irD4N5qLteSilJlE0WLAtA=="],
 

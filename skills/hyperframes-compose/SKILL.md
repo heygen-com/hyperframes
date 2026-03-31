@@ -133,6 +133,7 @@ Video must be `muted playsinline`. Audio is always a separate `<audio>` element:
 - Use `font-display: block` for local fonts — renderer needs fonts loaded before capturing
 - Add `crossorigin="anonymous"` to media loaded from external URLs
 - Minimum readable text: 20px landscape, 18px portrait
+- For dynamic text that may overflow its container, use `window.__hyperframes.fitTextFontSize(text, { maxWidth, fontFamily, fontWeight })` to compute the largest font size that fits on one line. Returns `{ fontSize, fits }`. Options: `baseFontSize` (default 78), `minFontSize` (default 42), `step` (default 2). `fontFamily` and `fontWeight` must match the CSS applied to the element.
 - All files (video, audio, fonts, images) live at the project root alongside `index.html`
 - From sub-compositions, use `../` to reference root files
 

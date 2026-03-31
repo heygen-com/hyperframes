@@ -205,17 +205,47 @@ Break groups on sentence boundaries (`.` `?` `!`), pauses (>150ms gap), or max w
 
 ## Text Overflow Prevention
 
-Captions must never clip off-screen. Apply these rules:
+Use `window.__hyperframes.fitTextFontSize()` to measure actual rendered text width and compute the correct font size. This replaces character-count heuristics with pixel-accurate measurement powered by [pretext](https://github.com/chenglou/pretext).
 
-- Set `max-width: 1600px` (landscape) or `max-width: 900px` (portrait) on caption container
-- Add `overflow: hidden` as a safety net
-- **Auto-scale font size** based on character count:
-  - ≤18 chars → full size (e.g., 78px)
-  - 19–25 chars → reduce ~15% (e.g., 68px)
-  - 26+ chars → reduce ~25% (e.g., 58px)
-- Reduce `letter-spacing` for long text (switch from `-0.02em` to `-0.04em`)
-- Give the caption container an explicit `height` (e.g., `200px`) — don't rely on content sizing with absolute children
-- Use `position: absolute` on all caption elements — `position: relative` causes overflow
+**Usage in composition scripts:**
+
+```js
+GROUPS.forEach(function (group, gi) {
+  // Measure with text-transform applied (captions typically uppercase)
+  var result = window.__hyperframes.fitTextFontSize(group.text.toUpperCase(), {
+    fontFamily: "Outfit",
+    fontWeight: 900,
+    maxWidth: 1600,
+  });
+
+  // Apply computed font size to all word spans
+  wordEls.forEach(function (el) {
+    el.style.fontSize = result.fontSize + "px";
+  });
+
+  // If result.fits is false, text exceeds minFontSize — overflow: hidden catches it
+});
+```
+
+**Options:**
+
+| Option         | Default    | Description                                          |
+| -------------- | ---------- | ---------------------------------------------------- |
+| `maxWidth`     | `1600`     | Container width in px (1600 landscape, 900 portrait) |
+| `baseFontSize` | `78`       | Starting font size — used when text fits             |
+| `minFontSize`  | `42`       | Floor — never shrink below this                      |
+| `fontWeight`   | `900`      | Must match the CSS font-weight                       |
+| `fontFamily`   | `"Outfit"` | Must match the CSS font-family                       |
+| `step`         | `2`        | Decrement step in px per iteration                   |
+
+**Important:** The `fontWeight` and `fontFamily` options must match the CSS applied to the text elements exactly, or measurements will be inaccurate.
+
+**Safety nets (still required in CSS):**
+
+- `max-width: 1600px` (landscape) or `max-width: 900px` (portrait) on caption container
+- `overflow: hidden` as a fallback for `fits: false` edge cases
+- `position: absolute` on all caption elements
+- Explicit `height` on caption container (e.g., `200px`)
 
 ## Caption Exit Guarantee
 
@@ -238,6 +268,32 @@ tl.set(groupEl, { opacity: 0, visibility: "hidden" }, group.end);
 - Timeline scrubbing lands between the exit start and end
 
 The `tl.set` at `group.end` is a deterministic kill — it fires at an exact time, doesn't animate, and can't be overridden by other tweens at different times.
+
+**Self-lint rule:** After building the timeline, verify every caption group has a hard kill. Run this check before registering the timeline:
+
+```js
+// Caption lint: verify every group has a hard kill
+GROUPS.forEach(function (group, gi) {
+  var el = document.getElementById("cg-" + gi);
+  if (!el) return;
+  tl.seek(group.end + 0.01);
+  var computed = window.getComputedStyle(el);
+  if (computed.opacity !== "0" && computed.visibility !== "hidden") {
+    console.warn(
+      "[caption-lint] group " +
+        gi +
+        " ('" +
+        group.text +
+        "') still visible at t=" +
+        (group.end + 0.01).toFixed(2) +
+        "s",
+    );
+  }
+});
+tl.seek(0); // reset after lint
+```
+
+Place this **before** `window.__timelines[id] = tl` so it runs at composition init. Warnings appear in the browser console during `hyperframes dev`.
 
 ## Constraints
 

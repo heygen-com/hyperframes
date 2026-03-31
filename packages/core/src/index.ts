@@ -154,3 +154,7 @@ export type {
 export type { FrameAdapter, FrameAdapterContext } from "./adapters/types";
 export type { GSAPTimelineLike, CreateGSAPFrameAdapterOptions } from "./adapters/gsap";
 export { createGSAPFrameAdapter } from "./adapters/gsap";
+
+// Text measurement
+export { fitTextFontSize } from "./text/index.js";
+export type { FitTextOptions, FitTextResult } from "./text/index.js";

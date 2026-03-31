@@ -32,6 +32,10 @@
     "./studio-api": {
       "import": "./src/studio-api/index.ts",
       "types": "./src/studio-api/index.ts"
+    },
+    "./text": {
+      "import": "./src/text/index.ts",
+      "types": "./src/text/index.ts"
     }
   },
   "publishConfig": {
@@ -53,6 +57,10 @@
       "./studio-api": {
         "import": "./dist/studio-api/index.js",
         "types": "./dist/studio-api/index.d.ts"
+      },
+      "./text": {
+        "import": "./dist/text/index.js",
+        "types": "./dist/text/index.d.ts"
       }
     },
     "main": "./dist/index.js",
@@ -79,6 +87,9 @@
     "check:hyperframe-html": "tsx scripts/check-hyperframe-static.ts",
     "debug:timeline": "tsx scripts/debug-timeline.ts",
     "prepublishOnly": "echo skip"
+  },
+  "dependencies": {
+    "@chenglou/pretext": "^0.0.3"
   },
   "devDependencies": {
     "@types/jsdom": "^28.0.0",
