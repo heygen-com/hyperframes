@@ -476,6 +476,8 @@ function TreeFolder({
   return (
     <>
       <button
+        draggable
+        onDragStart={(e) => onDragStart(e, node.fullPath)}
         onClick={toggle}
         onContextMenu={(e) => {
           e.preventDefault();
@@ -847,17 +849,23 @@ export const FileTree = memo(function FileTree({
       )}
 
       <div
-        className="flex-1 overflow-y-auto py-1"
+        className={`flex-1 overflow-y-auto py-1 transition-colors ${
+          dragOverFolder === ""
+            ? "bg-[#3CE6AC]/5 outline outline-1 outline-[#3CE6AC]/30 -outline-offset-1"
+            : ""
+        }`}
         onContextMenu={handleRootContextMenu}
         onDragOver={(e) => {
-          // Allow external file drops on the root area
-          if (e.dataTransfer.types.includes("Files")) e.preventDefault();
+          e.preventDefault();
+          // Show root highlight when dragging over the background (not a child folder)
+          if (e.target === e.currentTarget) setDragOverFolder("");
+        }}
+        onDragLeave={(e) => {
+          if (e.target === e.currentTarget) setDragOverFolder(null);
         }}
         onDrop={(e) => {
-          if (e.dataTransfer.files.length > 0 && !dragSourceRef.current) {
-            e.preventDefault();
-            onImportFiles?.(e.dataTransfer.files);
-          }
+          e.preventDefault();
+          handleDrop(e, "");
         }}
       >
         {/* Root-level inline input for new file/folder */}
