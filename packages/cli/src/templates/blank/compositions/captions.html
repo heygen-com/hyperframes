@@ -37,6 +37,8 @@
           0 2px 8px rgba(0, 0, 0, 0.8),
           0 0 2px rgba(0, 0, 0, 0.9);
         white-space: nowrap;
+        max-width: 1600px;
+        overflow: hidden;
       }
     </style>
 
@@ -83,6 +85,7 @@
             index < lines.length - 1 ? Math.min(line.end, lines[index + 1].start) : line.end;
 
           tl.to(el, { opacity: 0, y: -10, duration: 0.25, ease: "power2.in" }, hideTime - 0.25);
+          tl.set(el, { opacity: 0, visibility: "hidden" }, hideTime);
         });
 
         window.__timelines["captions"] = tl;
