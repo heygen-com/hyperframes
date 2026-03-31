@@ -1,5 +1,7 @@
 # Hyperframes
 
+[![npm version](https://img.shields.io/npm/v/hyperframes.svg?style=flat)](https://www.npmjs.com/package/hyperframes)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D22-brightgreen)](https://nodejs.org)
 
 **Write HTML. Render video. Built for agents.**
@@ -18,11 +20,20 @@ Hyperframes is an open-source video rendering framework that lets you create, pr
 ```bash
 npx hyperframes init my-video
 cd my-video
-npx hyperframes dev      # preview in browser
+```
+
+Then open the project with your AI coding agent (Claude Code, Cursor, etc.) — it has HyperFrames skills installed and knows how to create and edit compositions.
+
+```bash
+npx hyperframes preview      # preview in browser (live reload)
 npx hyperframes render   # render to MP4
 ```
 
 **Requirements:** Node.js >= 22, FFmpeg
+
+## Documentation
+
+Full documentation at **[hyperframes.heygen.com](https://hyperframes.heygen.com)** — start with the [Quickstart](https://hyperframes.heygen.com/quickstart), then explore guides, concepts, API reference, and package docs.
 
 ## How It Works
 
@@ -63,9 +74,39 @@ Preview instantly in the browser. Render to MP4 locally. Let AI agents compose v
 | [`@hyperframes/producer`](packages/producer) | Full rendering pipeline (capture + encode + audio mix)      |
 | [`@hyperframes/studio`](packages/studio)     | Browser-based composition editor UI                         |
 
-## Documentation
+## AI Agent Skills
 
-Full docs at [hyperframes.heygen.com](https://hyperframes.heygen.com) — includes guides, concepts, API reference, and package documentation.
+HyperFrames ships skills that teach AI coding agents (Claude Code, Gemini CLI, Codex, Cursor) how to write correct compositions and GSAP animations. **Use these instead of writing from scratch — they encode framework-specific patterns that generic docs don't cover.**
+
+### Install via CLI (recommended)
+
+```bash
+# Install all skills (HyperFrames + GSAP) — runs automatically during `hyperframes init`
+npx hyperframes skills
+
+# Or install to a specific agent
+npx hyperframes skills --claude
+npx hyperframes skills --cursor
+```
+
+### Or via `npx skills add`
+
+```bash
+# HyperFrames skills (hyperframes-compose, hyperframes-captions)
+npx skills add heygen-com/hyperframes
+
+# GSAP skills (gsap-core, gsap-timeline, gsap-scrolltrigger, gsap-plugins, gsap-performance, gsap-utils, gsap-react, gsap-frameworks)
+npx skills add greensock/gsap-skills
+```
+
+### Installed Skills
+
+| Source                                               | Skills                                                                                                                                | What they teach                                                                                                     |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| **HyperFrames**                                      | `hyperframes-compose`, `hyperframes-captions`                                                                                         | HTML composition structure, `class="clip"` rules, `data-*` attributes, timeline registration, rendering constraints |
+| **[GSAP](https://github.com/greensock/gsap-skills)** | `gsap-core`, `gsap-timeline`, `gsap-performance`, `gsap-plugins`, `gsap-scrolltrigger`, `gsap-utils`, `gsap-react`, `gsap-frameworks` | Core API, timeline sequencing, ScrollTrigger, plugin usage, performance best practices                              |
+
+In Claude Code, invoke with `/hyperframes-compose`, `/hyperframes-captions`, `/gsap-core`, etc.
 
 ## Contributing
 

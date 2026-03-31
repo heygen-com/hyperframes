@@ -1,24 +1,30 @@
 #!/usr/bin/env node
 
-import { defineCommand, runMain } from "citty";
+// ── Fast-path exits ─────────────────────────────────────────────────────────
+// Check --version before importing anything heavy. This makes
+// `hyperframes --version` near-instant (~10ms vs ~80ms).
 import { VERSION } from "./version.js";
-import {
-  showTelemetryNotice,
-  flush,
-  flushSync,
-  shouldTrack,
-  trackCommand,
-  incrementCommandCount,
-} from "./telemetry/index.js";
-import { checkForUpdate, printUpdateNotice } from "./utils/updateCheck.js";
+
+if (process.argv.includes("--version") || process.argv.includes("-V")) {
+  console.log(VERSION);
+  process.exit(0);
+}
+
+// ── Lazy imports ────────────────────────────────────────────────────────────
+// Telemetry, update checks, and heavy modules are imported only when needed.
+// For --help we skip telemetry entirely.
+
+import { defineCommand, runMain } from "citty";
+
+const isHelp = process.argv.includes("--help") || process.argv.includes("-h");
 
 // ---------------------------------------------------------------------------
-// CLI definition
+// CLI definition — all commands are lazy-loaded via dynamic import()
 // ---------------------------------------------------------------------------
 
 const subCommands = {
   init: () => import("./commands/init.js").then((m) => m.default),
-  dev: () => import("./commands/dev.js").then((m) => m.default),
+  preview: () => import("./commands/preview.js").then((m) => m.default),
   render: () => import("./commands/render.js").then((m) => m.default),
   lint: () => import("./commands/lint.js").then((m) => m.default),
   info: () => import("./commands/info.js").then((m) => m.default),
@@ -26,6 +32,7 @@ const subCommands = {
   benchmark: () => import("./commands/benchmark.js").then((m) => m.default),
   browser: () => import("./commands/browser.js").then((m) => m.default),
   skills: () => import("./commands/install-skills.js").then((m) => m.default),
+  transcribe: () => import("./commands/transcribe.js").then((m) => m.default),
   docs: () => import("./commands/docs.js").then((m) => m.default),
   doctor: () => import("./commands/doctor.js").then((m) => m.default),
   upgrade: () => import("./commands/upgrade.js").then((m) => m.default),
@@ -42,42 +49,46 @@ const main = defineCommand({
 });
 
 // ---------------------------------------------------------------------------
-// Telemetry — detect command from argv, track it, flush on exit
+// Telemetry — lazy-loaded, captured references for exit handlers
 // ---------------------------------------------------------------------------
 
 const commandArg = process.argv[2];
-const isHelpOrVersion =
-  process.argv.includes("--help") ||
-  process.argv.includes("--version") ||
-  process.argv.includes("-h");
 const command = commandArg && commandArg in subCommands ? commandArg : "unknown";
+const hasJsonFlag = process.argv.includes("--json");
 
-if (command !== "telemetry" && command !== "unknown" && !isHelpOrVersion) {
-  showTelemetryNotice();
-  trackCommand(command);
-  if (shouldTrack()) {
-    incrementCommandCount();
-  }
+// Captured references — populated when the lazy imports resolve.
+// Used in exit handlers where dynamic import() is unsafe (beforeExit loops,
+// exit handler is synchronous-only).
+let _flush: (() => Promise<void>) | undefined;
+let _flushSync: (() => void) | undefined;
+let _printUpdateNotice: (() => void) | undefined;
+
+if (!isHelp && command !== "telemetry" && command !== "unknown") {
+  import("./telemetry/index.js").then((mod) => {
+    _flush = mod.flush;
+    _flushSync = mod.flushSync;
+    mod.showTelemetryNotice();
+    mod.trackCommand(command);
+    if (mod.shouldTrack()) mod.incrementCommandCount();
+  });
 }
 
-// Fire background update check (non-blocking, populates cache for printUpdateNotice)
-const hasJsonFlag = process.argv.includes("--json");
-if (!isHelpOrVersion && !hasJsonFlag && command !== "upgrade") {
-  checkForUpdate().catch(() => {});
+if (!isHelp && !hasJsonFlag && command !== "upgrade") {
+  import("./utils/updateCheck.js").then((mod) => {
+    _printUpdateNotice = mod.printUpdateNotice;
+    mod.checkForUpdate().catch(() => {});
+  });
 }
 
 // Async flush for normal exit (beforeExit fires when the event loop drains)
 process.on("beforeExit", () => {
-  flush().catch(() => {});
-  // Print update notice after command output (stderr, skipped in CI/non-TTY)
-  if (!hasJsonFlag) {
-    printUpdateNotice();
-  }
+  _flush?.().catch(() => {});
+  if (!hasJsonFlag) _printUpdateNotice?.();
 });
 
 // Sync flush for process.exit() calls (exit event only allows synchronous code)
 process.on("exit", () => {
-  flushSync();
+  _flushSync?.();
 });
 
 runMain(main);

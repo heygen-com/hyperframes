@@ -191,6 +191,47 @@ async function mountCompositionContent(params: {
   }
 }
 
+export async function loadInlineTemplateCompositions(
+  params: LoadExternalCompositionsParams,
+): Promise<void> {
+  // Find all elements with data-composition-id but WITHOUT data-composition-src
+  // that are empty (no children) and have a matching <template id="[compId]-template">
+  const hosts = Array.from(
+    document.querySelectorAll<Element>("[data-composition-id]:not([data-composition-src])"),
+  ).filter((host) => {
+    // Only process empty hosts (no meaningful content)
+    if (host.children.length > 0) return false;
+    const compId = host.getAttribute("data-composition-id");
+    if (!compId) return false;
+    // Check for matching template
+    return !!document.querySelector(`template#${CSS.escape(compId)}-template`);
+  });
+
+  if (hosts.length === 0) return;
+
+  for (const host of hosts) {
+    const compId = host.getAttribute("data-composition-id")!;
+    const template = document.querySelector<HTMLTemplateElement>(
+      `template#${CSS.escape(compId)}-template`,
+    )!;
+
+    resetCompositionHost(host);
+    await mountCompositionContent({
+      host,
+      hostCompositionId: compId,
+      hostCompositionSrc: `template#${compId}-template`,
+      sourceNode: template.content,
+      hasTemplate: true,
+      fallbackBodyInnerHtml: "",
+      compositionUrl: null,
+      injectedStyles: params.injectedStyles,
+      injectedScripts: params.injectedScripts,
+      parseDimensionPx: params.parseDimensionPx,
+      onDiagnostic: params.onDiagnostic,
+    });
+  }
+}
+
 export async function loadExternalCompositions(
   params: LoadExternalCompositionsParams,
 ): Promise<void> {

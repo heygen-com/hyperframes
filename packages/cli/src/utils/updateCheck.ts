@@ -42,7 +42,10 @@ export async function checkForUpdate(force?: boolean): Promise<UpdateCheckResult
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-    const res = await fetch(NPM_REGISTRY_URL, { signal: controller.signal });
+    const res = await fetch(NPM_REGISTRY_URL, {
+      signal: controller.signal,
+      headers: { Connection: "close" },
+    });
     clearTimeout(timeout);
 
     if (!res.ok) return fallbackResult(config.latestVersion);

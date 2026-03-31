@@ -156,7 +156,11 @@ export function useElementPicker(
     (
       elementId: string,
       selector: string,
-      op: { type: "inline-style" | "attribute" | "text-content"; property: string; value: string },
+      op: {
+        type: "inline-style" | "attribute" | "text-content";
+        property: string;
+        value: string;
+      },
     ) => {
       const opts = optionsRef.current;
       if (!opts?.workspaceFiles || !opts.onSyncFiles || !elementId) return;

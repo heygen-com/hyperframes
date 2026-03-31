@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Polaroid Speaker</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&display=swap');
+        body { margin: 0; background: #000; overflow: hidden; font-family: 'Montserrat', sans-serif; }
+        #main-comp { position: relative; width: 1080px; height: 1920px; }
+        
+        /* Speaker Background Video */
+        #speaker-video {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            filter: blur(5px) brightness(0.6); /* Reduced blur, slightly brighter */
+            z-index: 0;
+        }
+
+        #polaroid-comp {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            z-index: 10;
+        }
+    </style>
+</head>
+<body>
+    <div id="main-comp" data-composition-id="main-comp" data-width="1080" data-height="1920" data-duration="13">
+        <!-- Background Layer -->
+        <video id="speaker-video" 
+               data-start="0" 
+               data-track-index="0" 
+               src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/uploaded_assets/fb7e48ac_f6bf2ab079394d7ebd0491e7008a9242.mp4">
+        </video>
+
+        <!-- Polaroid Composition Layer -->
+        <div id="polaroid-comp"
+             data-composition-id="polaroid"
+             data-composition-src="compositions/polaroid.html"
+             data-start="0"
+             data-track-index="1">
+        </div>
+
+        <script>
+            const tl = gsap.timeline({ paused: true });
+            // Subtle Ken Burns effect on background
+            tl.fromTo('#speaker-video', { scale: 1.1 }, { scale: 1, duration: 13, ease: 'none' }, 0);
+            window.__timelines["main-comp"] = tl;
+        </script>
+    </div>
+</body>
+</html>

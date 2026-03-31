@@ -3,6 +3,7 @@ import { join, resolve, isAbsolute, sep } from "path";
 import * as cheerio from "cheerio";
 import { transformSync } from "esbuild";
 import { compileHtml, type MediaDurationProber } from "./htmlCompiler";
+import { rewriteAssetPaths } from "./rewriteSubCompPaths";
 import { validateHyperframeHtmlContract } from "./staticGuard";
 
 /** Resolve a relative path within projectDir, rejecting traversal outside it. */
@@ -390,6 +391,7 @@ export async function bundleToSingleHtml(
   // Inline sub-compositions
   const compStyleChunks: string[] = [];
   const compScriptChunks: string[] = [];
+  const compExternalScriptSrcs: string[] = [];
   $("[data-composition-src]").each((_, hostEl) => {
     const src = $(hostEl).attr("data-composition-src");
     if (!src || !isRelativeUrl(src)) return;
@@ -416,11 +418,34 @@ export async function bundleToSingleHtml(
       $content(s).remove();
     });
     $content("script").each((_, s) => {
-      compScriptChunks.push(
-        `(function(){ try { ${$content(s).html() || ""} } catch (_err) { console.error('[HyperFrames] composition script error:', _err); } })();`,
-      );
+      const externalSrc = ($content(s).attr("src") || "").trim();
+      if (externalSrc) {
+        // External CDN/remote script — collect for deduped injection into the document.
+        // Do NOT try to inline the content (external scripts have no innerHTML).
+        if (!compExternalScriptSrcs.includes(externalSrc)) {
+          compExternalScriptSrcs.push(externalSrc);
+        }
+      } else {
+        compScriptChunks.push(
+          `(function(){ try { ${$content(s).html() || ""} } catch (_err) { console.error('[HyperFrames] composition script error:', _err); } })();`,
+        );
+      }
       $content(s).remove();
     });
+
+    // Rewrite relative asset paths before inlining so ../foo.svg from
+    // compositions/ resolves correctly when the content moves to root.
+    const $assetEls = $innerRoot.length
+      ? $innerRoot.find("[src], [href]")
+      : $content("[src], [href]");
+    rewriteAssetPaths(
+      $assetEls.toArray(),
+      src,
+      (el, attr) => $content(el).attr(attr),
+      (el, attr, val) => {
+        $content(el).attr(attr, val);
+      },
+    );
 
     if ($innerRoot.length) {
       const innerCompId = $innerRoot.attr("data-composition-id");
@@ -438,6 +463,91 @@ export async function bundleToSingleHtml(
     }
     $(hostEl).removeAttr("data-composition-src");
   });
+
+  // Inline template compositions: inject <template id="X-template"> content into
+  // matching empty host elements with data-composition-id="X" (no data-composition-src)
+  $("template[id]").each((_, templateEl) => {
+    const templateId = $(templateEl).attr("id") || "";
+    const match = templateId.match(/^(.+)-template$/);
+    if (!match) return;
+    const compId = match[1];
+
+    // Find the matching host element (must have data-composition-id, no data-composition-src,
+    // and must NOT be inside a <template> element). In cheerio, elements inside <template>
+    // have a detached parent chain (parents().length === 0), so we filter those out.
+    const hostSelector = `[data-composition-id="${compId}"]:not([data-composition-src])`;
+    const $candidates = $(hostSelector).filter((__, el) => $(el).parents().length > 0);
+    const $host = $candidates.first();
+    if ($host.length === 0) return;
+    if ($host.children().length > 0) return; // already has content
+
+    // Get template content and inject into host
+    const templateHtml = $(templateEl).html() || "";
+    const $inner = cheerio.load(templateHtml, { xml: false });
+    const $innerRoot = $inner(`[data-composition-id="${compId}"]`).first();
+
+    if ($innerRoot.length > 0) {
+      // Hoist styles into the collected style chunks
+      $innerRoot.find("style").each((__, styleEl) => {
+        compStyleChunks.push($inner(styleEl).html() || "");
+        $inner(styleEl).remove();
+      });
+      // Hoist scripts into the collected script chunks
+      $innerRoot.find("script").each((__, scriptEl) => {
+        const externalSrc = ($inner(scriptEl).attr("src") || "").trim();
+        if (externalSrc) {
+          if (!compExternalScriptSrcs.includes(externalSrc)) {
+            compExternalScriptSrcs.push(externalSrc);
+          }
+        } else {
+          compScriptChunks.push(
+            `(function(){ try { ${$inner(scriptEl).html() || ""} } catch (_err) { console.error('[HyperFrames] composition script error:', _err); } })();`,
+          );
+        }
+        $inner(scriptEl).remove();
+      });
+
+      // Copy dimension attributes from inner root to host if not already set
+      const innerW = $innerRoot.attr("data-width");
+      const innerH = $innerRoot.attr("data-height");
+      if (innerW && !$host.attr("data-width")) $host.attr("data-width", innerW);
+      if (innerH && !$host.attr("data-height")) $host.attr("data-height", innerH);
+
+      // Set host content from inner root
+      $host.html($innerRoot.html() || "");
+    } else {
+      // No matching inner root — inject all template content directly
+      $inner("style").each((__, styleEl) => {
+        compStyleChunks.push($inner(styleEl).html() || "");
+        $inner(styleEl).remove();
+      });
+      $inner("script").each((__, scriptEl) => {
+        const externalSrc = ($inner(scriptEl).attr("src") || "").trim();
+        if (externalSrc) {
+          if (!compExternalScriptSrcs.includes(externalSrc)) {
+            compExternalScriptSrcs.push(externalSrc);
+          }
+        } else {
+          compScriptChunks.push(
+            `(function(){ try { ${$inner(scriptEl).html() || ""} } catch (_err) { console.error('[HyperFrames] composition script error:', _err); } })();`,
+          );
+        }
+        $inner(scriptEl).remove();
+      });
+      $host.html($inner.html() || "");
+    }
+
+    // Remove the template element from the document
+    $(templateEl).remove();
+  });
+
+  // Inject external scripts from sub-compositions (e.g., Lottie CDN)
+  // that aren't already present in the main document.
+  for (const extSrc of compExternalScriptSrcs) {
+    if (!$(`script[src="${extSrc}"]`).length) {
+      $("body").append(`<script src="${extSrc}"></script>`);
+    }
+  }
 
   if (compStyleChunks.length) $("head").append(`<style>${compStyleChunks.join("\n\n")}</style>`);
   if (compScriptChunks.length)

@@ -5,6 +5,7 @@
  * Works in both Node.js and browser (no dependencies, regex-based).
  *
  * Guarantees every timed element gets:
+ * - id on media elements when missing
  * - data-end (computed from data-start + data-duration when possible)
  * - data-has-audio="true" on <video> elements
  *
@@ -66,11 +67,16 @@ function injectAttr(tag: string, attr: string, value: string): string {
 function compileTag(
   tag: string,
   isVideo: boolean,
+  generateId: () => number,
 ): { tag: string; unresolved: UnresolvedElement | null } {
   let result = tag;
   let unresolved: UnresolvedElement | null = null;
 
-  const id = getAttr(result, "id");
+  let id = getAttr(result, "id");
+  if (!id) {
+    id = `${isVideo ? "hf-video" : "hf-audio"}-${generateId()}`;
+    result = injectAttr(result, "id", id);
+  }
   const startStr = getAttr(result, "data-start");
   const start = startStr !== null ? parseFloat(startStr) : 0;
   const mediaStartStr = getAttr(result, "data-media-start");
@@ -114,17 +120,19 @@ function compileTag(
  */
 export function compileTimingAttrs(html: string): CompilationResult {
   const unresolved: UnresolvedElement[] = [];
+  let nextVideoId = 0;
+  let nextAudioId = 0;
 
   // Process <video ...> tags
   html = html.replace(/<video[^>]*>/gi, (match) => {
-    const { tag, unresolved: u } = compileTag(match, true);
+    const { tag, unresolved: u } = compileTag(match, true, () => nextVideoId++);
     if (u) unresolved.push(u);
     return tag;
   });
 
   // Process <audio ...> tags
   html = html.replace(/<audio[^>]*>/gi, (match) => {
-    const { tag, unresolved: u } = compileTag(match, false);
+    const { tag, unresolved: u } = compileTag(match, false, () => nextAudioId++);
     if (u) unresolved.push(u);
     return tag;
   });

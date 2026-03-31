@@ -3,7 +3,7 @@ title: Quickstart
 description: "Create, preview, and render your first Hyperframes video in under two minutes."
 ---
 
-Go from zero to a rendered MP4 in four steps: scaffold a project, preview it live, customize the composition, and render.
+Go from zero to a rendered MP4: scaffold a project, edit with your AI agent, preview live, and render.
 
 ## What you'll build
 
@@ -58,17 +58,17 @@ A 1920x1080 video with an animated title that fades in from above — rendered t
 <Steps>
   <Step title="Scaffold the project">
     ```bash
-    npx hyperframes init my-video --template blank
+    npx hyperframes init my-video
     cd my-video
     ```
 
-    The CLI is non-interactive by default — pass `--template` to select a template. For interactive mode with prompts and menus, add `--human-friendly`:
+    This starts an interactive wizard that walks you through template selection and media import. To skip prompts (e.g. in CI or from an agent), use `--non-interactive`:
 
     ```bash
-    npx hyperframes init --human-friendly
+    npx hyperframes init my-video --non-interactive --template blank
     ```
 
-    See [Templates](/guides/templates) for all available templates.
+    See [Templates](/templates) for all available templates.
 
     This generates a project structure like:
 
@@ -102,7 +102,7 @@ A 1920x1080 video with an animated title that fades in from above — rendered t
 
   <Step title="Preview in the browser">
     ```bash
-    npx hyperframes dev
+    npx hyperframes preview
     ```
 
     This starts the Hyperframes Studio and opens your composition in the browser. Edits to `index.html` reload automatically.
@@ -113,7 +113,9 @@ A 1920x1080 video with an animated title that fades in from above — rendered t
   </Step>
 
   <Step title="Edit the composition">
-    Open `index.html` and replace it with this composition:
+    Open the project with your AI coding agent (Claude Code, Cursor, etc.) — HyperFrames skills are installed automatically and your agent knows how to create and edit compositions.
+
+    Or edit `index.html` directly — here's a minimal composition:
 
     ```html index.html
     <div id="root" data-composition-id="my-video"
@@ -181,7 +183,7 @@ A 1920x1080 video with an animated title that fades in from above — rendered t
   <Card title="GSAP Animation" icon="wand-magic-sparkles" href="/guides/gsap-animation">
     Add fade, slide, scale, and custom animations to your videos
   </Card>
-  <Card title="Templates" icon="grid-2" href="/guides/templates">
+  <Card title="Templates" icon="grid-2" href="/templates">
     Start from built-in templates like Warm Grain and Swiss Grid
   </Card>
   <Card title="Rendering" icon="film" href="/guides/rendering">

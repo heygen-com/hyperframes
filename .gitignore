@@ -48,3 +48,5 @@ packages/producer/src/services/fontData.generated.ts
 # Test artifacts
 my-video/
 packages/studio/data/
+.desloppify/
+.worktrees/

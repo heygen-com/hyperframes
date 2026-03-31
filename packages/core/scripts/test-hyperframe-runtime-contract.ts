@@ -18,6 +18,8 @@ const requiredSnippets = [
   "hf-preview",
   "hf-parent",
   "renderSeek",
+  "__hyperframes",
+  "fitTextFontSize",
 ];
 
 for (const snippet of requiredSnippets) {

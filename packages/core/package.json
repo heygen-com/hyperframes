@@ -1,6 +1,12 @@
 {
   "name": "@hyperframes/core",
-  "version": "0.1.6",
+  "version": "0.1.15",
+  "description": "",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/heygen-com/hyperframes",
+    "directory": "packages/core"
+  },
   "files": [
     "dist",
     "docs",
@@ -22,7 +28,15 @@
       "import": "./src/compiler/index.ts",
       "types": "./src/compiler/index.ts"
     },
-    "./runtime": "./dist/hyperframe.runtime.iife.js"
+    "./runtime": "./dist/hyperframe.runtime.iife.js",
+    "./studio-api": {
+      "import": "./src/studio-api/index.ts",
+      "types": "./src/studio-api/index.ts"
+    },
+    "./text": {
+      "import": "./src/text/index.ts",
+      "types": "./src/text/index.ts"
+    }
   },
   "publishConfig": {
     "access": "public",
@@ -39,7 +53,15 @@
         "import": "./dist/compiler/index.js",
         "types": "./dist/compiler/index.d.ts"
       },
-      "./runtime": "./dist/hyperframe.runtime.iife.js"
+      "./runtime": "./dist/hyperframe.runtime.iife.js",
+      "./studio-api": {
+        "import": "./dist/studio-api/index.js",
+        "types": "./dist/studio-api/index.d.ts"
+      },
+      "./text": {
+        "import": "./dist/text/index.js",
+        "types": "./dist/text/index.d.ts"
+      }
     },
     "main": "./dist/index.js",
     "types": "./dist/index.d.ts"
@@ -66,6 +88,9 @@
     "debug:timeline": "tsx scripts/debug-timeline.ts",
     "prepublishOnly": "echo skip"
   },
+  "dependencies": {
+    "@chenglou/pretext": "^0.0.3"
+  },
   "devDependencies": {
     "@types/jsdom": "^28.0.0",
     "@types/node": "^24.10.13",
@@ -74,6 +99,14 @@
     "tsx": "^4.21.0",
     "typescript": "^5.0.0",
     "vitest": "^3.2.4"
+  },
+  "peerDependencies": {
+    "hono": "^4.0.0"
+  },
+  "peerDependenciesMeta": {
+    "hono": {
+      "optional": true
+    }
   },
   "optionalDependencies": {
     "cheerio": "^1.2.0",

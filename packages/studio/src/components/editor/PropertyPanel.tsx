@@ -94,7 +94,7 @@ export const PropertyPanel = memo(function PropertyPanel({
           variant="secondary"
           size="sm"
           onClick={isPickMode ? onDisablePick : onEnablePick}
-          className={`mt-3 ${isPickMode ? "bg-blue-500/20 text-blue-400 border-blue-500/30" : ""}`}
+          className={`mt-3 ${isPickMode ? "bg-studio-accent/20 text-studio-accent border-studio-accent/30" : ""}`}
         >
           {isPickMode ? "Pick mode active..." : "Enable Pick Mode"}
         </Button>
@@ -109,7 +109,7 @@ export const PropertyPanel = memo(function PropertyPanel({
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-neutral-800 flex-shrink-0">
         <div className="flex items-center gap-1.5 min-w-0">
-          <span className="text-2xs font-mono text-blue-400 truncate">{element.selector}</span>
+          <span className="text-2xs font-mono text-studio-accent truncate">{element.selector}</span>
         </div>
         <div className="flex items-center gap-1">
           <IconButton
@@ -117,7 +117,7 @@ export const PropertyPanel = memo(function PropertyPanel({
             aria-label={isPickMode ? "Disable pick mode" : "Enable pick mode"}
             size="sm"
             onClick={isPickMode ? onDisablePick : onEnablePick}
-            className={isPickMode ? "text-blue-400 bg-blue-500/10" : ""}
+            className={isPickMode ? "text-studio-accent bg-studio-accent/10" : ""}
           />
           <IconButton
             icon={<X size={11} />}

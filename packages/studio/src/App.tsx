@@ -1,173 +1,21 @@
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo, type ReactNode } from "react";
+import { useMountEffect } from "./hooks/useMountEffect";
 import { NLELayout } from "./components/nle/NLELayout";
 import { SourceEditor } from "./components/editor/SourceEditor";
-import { FileTree } from "./components/editor/FileTree";
-import {
-  XIcon,
-  CodeIcon,
-  WarningIcon,
-  CheckCircleIcon,
-  CaretRightIcon,
-} from "@phosphor-icons/react";
+import { LeftSidebar } from "./components/sidebar/LeftSidebar";
+import { RenderQueue } from "./components/renders/RenderQueue";
+import { useRenderQueue } from "./components/renders/useRenderQueue";
+import { CompositionThumbnail, VideoThumbnail } from "./player";
+import { AudioWaveform } from "./player/components/AudioWaveform";
+import type { TimelineElement } from "./player";
+import { LintModal } from "./components/LintModal";
+import type { LintFinding } from "./components/LintModal";
+import { MediaPreview } from "./components/MediaPreview";
+import { isMediaFile } from "./utils/mediaTypes";
 
 interface EditingFile {
   path: string;
-  content: string;
-}
-
-interface ProjectEntry {
-  id: string;
-  title?: string;
-  sessionId?: string;
-}
-
-interface LintFinding {
-  severity: "error" | "warning";
-  message: string;
-  file?: string;
-  fixHint?: string;
-}
-
-// ── Project Picker ──
-
-function ProjectPicker({ onSelect }: { onSelect: (id: string) => void }) {
-  const [projects, setProjects] = useState<ProjectEntry[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    fetch("/api/projects")
-      .then((r) => r.json())
-      .then((data: { projects?: ProjectEntry[] }) => {
-        setProjects(data.projects ?? []);
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
-  }, []);
-
-  return (
-    <div className="h-screen w-screen bg-neutral-950 overflow-y-auto">
-      <div className="max-w-lg w-full mx-auto px-4 py-12">
-        <h1 className="text-xl font-semibold text-neutral-200 mb-1">HyperFrames Studio</h1>
-        <p className="text-sm text-neutral-500 mb-6">Select a project to open</p>
-        {loading ? (
-          <div className="text-sm text-neutral-600">Loading projects...</div>
-        ) : projects.length === 0 ? (
-          <div className="text-sm text-neutral-600">No projects found.</div>
-        ) : (
-          <div className="flex flex-col gap-1.5">
-            {projects.map((p) => (
-              <button
-                key={p.id}
-                onClick={() => onSelect(p.id)}
-                className="text-left px-4 py-3 rounded-lg bg-neutral-900 border border-neutral-800 hover:border-neutral-600 hover:bg-neutral-800/80 transition-all group"
-              >
-                <div className="text-sm text-neutral-200 truncate">{p.title ?? p.id}</div>
-                <div className="text-[11px] text-neutral-600 font-mono truncate mt-0.5 group-hover:text-neutral-500">
-                  {p.id}
-                </div>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ── Lint Modal ──
-
-function LintModal({ findings, onClose }: { findings: LintFinding[]; onClose: () => void }) {
-  const errors = findings.filter((f) => f.severity === "error");
-  const warnings = findings.filter((f) => f.severity === "warning");
-  const hasIssues = findings.length > 0;
-
-  return (
-    <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm"
-      onClick={onClose}
-    >
-      <div
-        className="bg-neutral-950 border border-neutral-800 rounded-xl shadow-2xl w-full max-w-xl max-h-[80vh] flex flex-col overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-neutral-800">
-          <div className="flex items-center gap-3">
-            {hasIssues ? (
-              <div className="w-8 h-8 rounded-full bg-red-500/10 flex items-center justify-center">
-                <WarningIcon size={18} className="text-red-400" weight="fill" />
-              </div>
-            ) : (
-              <div className="w-8 h-8 rounded-full bg-green-500/10 flex items-center justify-center">
-                <CheckCircleIcon size={18} className="text-green-400" weight="fill" />
-              </div>
-            )}
-            <div>
-              <h2 className="text-sm font-semibold text-neutral-200">
-                {hasIssues
-                  ? `${errors.length} error${errors.length !== 1 ? "s" : ""}, ${warnings.length} warning${warnings.length !== 1 ? "s" : ""}`
-                  : "All checks passed"}
-              </h2>
-              <p className="text-xs text-neutral-500">HyperFrame Lint Results</p>
-            </div>
-          </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg text-neutral-500 hover:text-neutral-200 hover:bg-neutral-800 transition-colors"
-          >
-            <XIcon size={16} />
-          </button>
-        </div>
-
-        {/* Findings */}
-        <div className="flex-1 overflow-y-auto px-5 py-3">
-          {!hasIssues && (
-            <div className="py-8 text-center text-neutral-500 text-sm">
-              No errors or warnings found. Your composition looks good!
-            </div>
-          )}
-          {errors.map((f, i) => (
-            <div key={`e-${i}`} className="py-3 border-b border-neutral-800/50 last:border-0">
-              <div className="flex items-start gap-2">
-                <WarningIcon
-                  size={14}
-                  className="text-red-400 flex-shrink-0 mt-0.5"
-                  weight="fill"
-                />
-                <div className="min-w-0">
-                  <p className="text-sm text-neutral-200">{f.message}</p>
-                  {f.file && <p className="text-xs text-neutral-600 font-mono mt-0.5">{f.file}</p>}
-                  {f.fixHint && (
-                    <div className="flex items-start gap-1 mt-1.5">
-                      <CaretRightIcon size={10} className="text-blue-400 flex-shrink-0 mt-0.5" />
-                      <p className="text-xs text-blue-400">{f.fixHint}</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          ))}
-          {warnings.map((f, i) => (
-            <div key={`w-${i}`} className="py-3 border-b border-neutral-800/50 last:border-0">
-              <div className="flex items-start gap-2">
-                <WarningIcon size={14} className="text-amber-400 flex-shrink-0 mt-0.5" />
-                <div className="min-w-0">
-                  <p className="text-sm text-neutral-300">{f.message}</p>
-                  {f.file && <p className="text-xs text-neutral-600 font-mono mt-0.5">{f.file}</p>}
-                  {f.fixHint && (
-                    <div className="flex items-start gap-1 mt-1.5">
-                      <CaretRightIcon size={10} className="text-blue-400 flex-shrink-0 mt-0.5" />
-                      <p className="text-xs text-blue-400">{f.fixHint}</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
+  content: string | null;
 }
 
 // ── Main App ──
@@ -176,46 +24,151 @@ export function StudioApp() {
   const [projectId, setProjectId] = useState<string | null>(null);
   const [resolving, setResolving] = useState(true);
 
-  useEffect(() => {
-    const hash = window.location.hash;
-    const projectMatch = hash.match(/project\/([^/]+)/);
-    const sessionMatch = hash.match(/session\/([^/]+)/);
-    if (projectMatch) {
-      setProjectId(projectMatch[1]);
+  useMountEffect(() => {
+    const hashMatch = window.location.hash.match(/^#project\/([^/]+)/);
+    if (hashMatch) {
+      setProjectId(hashMatch[1]);
       setResolving(false);
-    } else if (sessionMatch) {
-      fetch(`/api/resolve-session/${sessionMatch[1]}`)
-        .then((r) => r.json())
-        .then((data: { projectId?: string }) => {
-          if (data.projectId) {
-            window.location.hash = `#project/${data.projectId}`;
-            setProjectId(data.projectId);
-          }
-          setResolving(false);
-        })
-        .catch(() => setResolving(false));
-    } else {
-      setResolving(false);
+      return;
     }
-  }, []);
+    // No hash — auto-select first available project
+    fetch("/api/projects")
+      .then((r) => r.json())
+      .then((data) => {
+        const first = (data.projects ?? [])[0];
+        if (first) {
+          setProjectId(first.id);
+          window.location.hash = `#project/${first.id}`;
+        }
+      })
+      .catch(() => {})
+      .finally(() => setResolving(false));
+  });
 
   const [editingFile, setEditingFile] = useState<EditingFile | null>(null);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [activeCompPath, setActiveCompPath] = useState<string | null>(null);
   const [fileTree, setFileTree] = useState<string[]>([]);
+  const [compIdToSrc, setCompIdToSrc] = useState<Map<string, string>>(new Map());
+  const renderQueue = useRenderQueue(projectId);
+
+  // Resizable and collapsible panel widths
+  const [leftWidth, setLeftWidth] = useState(240);
+  const [rightWidth, setRightWidth] = useState(400);
+  const [leftCollapsed, setLeftCollapsed] = useState(false);
+  const [rightCollapsed, setRightCollapsed] = useState(true);
+  const [globalDragOver, setGlobalDragOver] = useState(false);
+  const [uploadToast, setUploadToast] = useState<string | null>(null);
+  const [timelineVisible, setTimelineVisible] = useState(false);
+  const dragCounterRef = useRef(0);
+  const panelDragRef = useRef<{
+    side: "left" | "right";
+    startX: number;
+    startW: number;
+  } | null>(null);
+
+  // Derive active preview URL from composition path (for drilled-down thumbnails)
+  const activePreviewUrl = activeCompPath
+    ? `/api/projects/${projectId}/preview/comp/${activeCompPath}`
+    : null;
+
+  const renderClipContent = useCallback(
+    (el: TimelineElement, style: { clip: string; label: string }): ReactNode => {
+      const pid = projectIdRef.current;
+      if (!pid) return null;
+
+      // Resolve composition source path using the compIdToSrc map
+      let compSrc = el.compositionSrc;
+      if (compSrc && compIdToSrc.size > 0) {
+        const resolved =
+          compIdToSrc.get(el.id) ||
+          compIdToSrc.get(compSrc.replace(/^compositions\//, "").replace(/\.html$/, ""));
+        if (resolved) compSrc = resolved;
+      }
+
+      // Composition clips — always use the comp's own preview URL for thumbnails.
+      // This renders the composition in isolation so we get clean frames
+      // instead of capturing the master at a time when the comp is fading in.
+      if (compSrc) {
+        return (
+          <CompositionThumbnail
+            previewUrl={`/api/projects/${pid}/preview/comp/${compSrc}`}
+            label={el.id || el.tag}
+            labelColor={style.label}
+            seekTime={0}
+            duration={el.duration}
+          />
+        );
+      }
+
+      // When drilled into a composition, render all inner elements via
+      // CompositionThumbnail at their start time — most accurate visual.
+      if (activePreviewUrl && el.duration > 0) {
+        return (
+          <CompositionThumbnail
+            previewUrl={activePreviewUrl}
+            label={el.id || el.tag}
+            labelColor={style.label}
+            seekTime={el.start}
+            duration={el.duration}
+          />
+        );
+      }
+
+      // Audio clips — waveform visualization
+      if (el.tag === "audio") {
+        const audioUrl = el.src
+          ? el.src.startsWith("http")
+            ? el.src
+            : `/api/projects/${pid}/preview/${el.src}`
+          : "";
+        return (
+          <AudioWaveform audioUrl={audioUrl} label={el.id || el.tag} labelColor={style.label} />
+        );
+      }
+
+      if ((el.tag === "video" || el.tag === "img") && el.src) {
+        const mediaSrc = el.src.startsWith("http")
+          ? el.src
+          : `/api/projects/${pid}/preview/${el.src}`;
+        return (
+          <VideoThumbnail
+            videoSrc={mediaSrc}
+            label={el.id || el.tag}
+            labelColor={style.label}
+            duration={el.duration}
+          />
+        );
+      }
+
+      // HTML scene elements — render from the master preview at the scene's time
+      if (el.tag === "div" && el.duration > 0) {
+        const previewUrl = `/api/projects/${pid}/preview`;
+        return (
+          <CompositionThumbnail
+            previewUrl={previewUrl}
+            label={el.id || el.tag}
+            labelColor={style.label}
+            seekTime={el.start}
+            duration={el.duration}
+          />
+        );
+      }
+
+      return null;
+    },
+    [compIdToSrc, activePreviewUrl],
+  );
   const [lintModal, setLintModal] = useState<LintFinding[] | null>(null);
   const [linting, setLinting] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
-  const [renderState, setRenderState] = useState<"idle" | "rendering" | "complete" | "error">(
-    "idle",
-  );
-  const [renderProgress, setRenderProgress] = useState(0);
-  const [_renderError, setRenderError] = useState<string | null>(null);
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const projectIdRef = useRef(projectId);
+  const previewIframeRef = useRef<HTMLIFrameElement | null>(null);
 
   // Listen for external file changes (user editing HTML outside the editor).
   // In dev: use Vite HMR. In embedded/production: use SSE from /api/events.
-  useEffect(() => {
+  useMountEffect(() => {
     const handler = () => {
       if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
       refreshTimerRef.current = setTimeout(() => setRefreshKey((k) => k + 1), 400);
@@ -228,35 +181,43 @@ export function StudioApp() {
     const es = new EventSource("/api/events");
     es.addEventListener("file-change", handler);
     return () => es.close();
-  }, []);
+  });
   projectIdRef.current = projectId;
 
-  // Load file tree when projectId changes
-  const prevProjectIdRef = useRef<string | null>(null);
-  if (projectId && projectId !== prevProjectIdRef.current) {
-    prevProjectIdRef.current = projectId;
+  // Load file tree when projectId changes.
+  // Note: This is one of the few places where useEffect with deps is acceptable —
+  // it's data fetching tied to a prop change. Ideally this would use a data-fetching
+  // library (useQuery/useSWR) or the parent component would own the fetch.
+  // eslint-disable-next-line no-restricted-syntax
+  useEffect(() => {
+    if (!projectId) return;
+    let cancelled = false;
     fetch(`/api/projects/${projectId}`)
       .then((r) => r.json())
       .then((data: { files?: string[] }) => {
-        if (data.files) setFileTree(data.files);
+        if (!cancelled && data.files) setFileTree(data.files);
       })
       .catch(() => {});
-  }
-
-  const handleSelectProject = useCallback((id: string) => {
-    window.location.hash = `#project/${id}`;
-    setProjectId(id);
-  }, []);
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId]);
 
   const handleFileSelect = useCallback((path: string) => {
     const pid = projectIdRef.current;
     if (!pid) return;
+    // Expand left panel to 50vw when opening a file in Code tab
+    setLeftWidth((prev) => Math.max(prev, Math.floor(window.innerWidth * 0.5)));
+    // Skip fetching binary content for media files — just set the path for preview
+    if (isMediaFile(path)) {
+      setEditingFile({ path, content: null });
+      return;
+    }
     fetch(`/api/projects/${pid}/files/${encodeURIComponent(path)}`)
       .then((r) => r.json())
       .then((data: { content?: string }) => {
         if (data.content != null) {
           setEditingFile({ path, content: data.content });
-          setSidebarOpen(true);
         }
       })
       .catch(() => {});
@@ -267,126 +228,204 @@ export function StudioApp() {
 
   const handleContentChange = useCallback((content: string) => {
     const pid = projectIdRef.current;
+    if (!pid) return;
     const path = editingPathRef.current;
-    if (!pid || !path) return;
-    // Don't update editingFile state — the editor manages its own content.
-    // Only save to disk and refresh the preview.
-    fetch(`/api/projects/${pid}/files/${encodeURIComponent(path)}`, {
-      method: "PUT",
-      headers: { "Content-Type": "text/plain" },
-      body: content,
-    })
-      .then(() => {
-        if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
-        refreshTimerRef.current = setTimeout(() => setRefreshKey((k) => k + 1), 600);
+    if (!path) return;
+
+    // Debounce the server write (600ms)
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      fetch(`/api/projects/${pid}/files/${encodeURIComponent(path)}`, {
+        method: "PUT",
+        headers: { "Content-Type": "text/plain" },
+        body: content,
       })
-      .catch(() => {});
+        .then(() => {
+          if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
+          refreshTimerRef.current = setTimeout(() => setRefreshKey((k) => k + 1), 600);
+        })
+        .catch(() => {});
+    }, 600);
   }, []);
+
+  // ── File Management Handlers ──
+
+  const refreshFileTree = useCallback(async () => {
+    const pid = projectIdRef.current;
+    if (!pid) return;
+    const res = await fetch(`/api/projects/${pid}`);
+    const data = await res.json();
+    if (data.files) setFileTree(data.files);
+  }, []);
+
+  const handleCreateFile = useCallback(
+    async (path: string) => {
+      const pid = projectIdRef.current;
+      if (!pid) return;
+      let content = "";
+      if (path.endsWith(".html")) {
+        content =
+          '<!DOCTYPE html>\n<html>\n<head>\n  <meta charset="UTF-8">\n</head>\n<body>\n\n</body>\n</html>\n';
+      }
+      const res = await fetch(`/api/projects/${pid}/files/${encodeURIComponent(path)}`, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain" },
+        body: content,
+      });
+      if (res.ok) {
+        await refreshFileTree();
+        handleFileSelect(path);
+      } else {
+        const err = await res.json().catch(() => ({ error: "unknown" }));
+        console.error(`Create file failed: ${err.error}`);
+      }
+    },
+    [refreshFileTree, handleFileSelect],
+  );
+
+  const handleCreateFolder = useCallback(
+    async (path: string) => {
+      const pid = projectIdRef.current;
+      if (!pid) return;
+      // Create a .gitkeep inside the folder so it appears in the tree
+      const res = await fetch(
+        `/api/projects/${pid}/files/${encodeURIComponent(path + "/.gitkeep")}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "text/plain" },
+          body: "",
+        },
+      );
+      if (res.ok) {
+        await refreshFileTree();
+      } else {
+        const err = await res.json().catch(() => ({ error: "unknown" }));
+        console.error(`Create folder failed: ${err.error}`);
+      }
+    },
+    [refreshFileTree],
+  );
+
+  const handleDeleteFile = useCallback(
+    async (path: string) => {
+      const pid = projectIdRef.current;
+      if (!pid) return;
+      const res = await fetch(`/api/projects/${pid}/files/${encodeURIComponent(path)}`, {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        if (editingPathRef.current === path) setEditingFile(null);
+        await refreshFileTree();
+      } else {
+        const err = await res.json().catch(() => ({ error: "unknown" }));
+        console.error(`Delete failed: ${err.error}`);
+      }
+    },
+    [refreshFileTree],
+  );
+
+  const handleRenameFile = useCallback(
+    async (oldPath: string, newPath: string) => {
+      const pid = projectIdRef.current;
+      if (!pid) return;
+      const res = await fetch(`/api/projects/${pid}/files/${encodeURIComponent(oldPath)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ newPath }),
+      });
+      if (res.ok) {
+        if (editingPathRef.current === oldPath) {
+          handleFileSelect(newPath);
+        }
+        await refreshFileTree();
+        // Refresh preview — references in compositions may have been updated
+        setRefreshKey((k) => k + 1);
+      } else {
+        const err = await res.json().catch(() => ({ error: "unknown" }));
+        console.error(`Rename failed: ${err.error}`);
+      }
+    },
+    [refreshFileTree, handleFileSelect],
+  );
+
+  const handleDuplicateFile = useCallback(
+    async (path: string) => {
+      const pid = projectIdRef.current;
+      if (!pid) return;
+      const res = await fetch(`/api/projects/${pid}/duplicate-file`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        await refreshFileTree();
+        if (data.path) handleFileSelect(data.path);
+      } else {
+        const err = await res.json().catch(() => ({ error: "unknown" }));
+        console.error(`Duplicate failed: ${err.error}`);
+      }
+    },
+    [refreshFileTree, handleFileSelect],
+  );
+
+  const handleMoveFile = handleRenameFile;
+
+  const showUploadToast = useCallback((msg: string) => {
+    setUploadToast(msg);
+    setTimeout(() => setUploadToast(null), 4000);
+  }, []);
+
+  const handleImportFiles = useCallback(
+    async (files: FileList, dir?: string) => {
+      const pid = projectIdRef.current;
+      if (!pid || files.length === 0) return;
+
+      const formData = new FormData();
+      for (const file of Array.from(files)) {
+        formData.append("file", file);
+      }
+
+      const qs = dir ? `?dir=${encodeURIComponent(dir)}` : "";
+      try {
+        const res = await fetch(`/api/projects/${pid}/upload${qs}`, {
+          method: "POST",
+          body: formData,
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.skipped?.length) {
+            showUploadToast(`Skipped (too large): ${data.skipped.join(", ")}`);
+          }
+          await refreshFileTree();
+          setRefreshKey((k) => k + 1);
+        } else if (res.status === 413) {
+          showUploadToast("Upload rejected: payload too large");
+        } else {
+          showUploadToast(`Upload failed (${res.status})`);
+        }
+      } catch {
+        showUploadToast("Upload failed: network error");
+      }
+    },
+    [refreshFileTree, showUploadToast],
+  );
 
   const handleLint = useCallback(async () => {
     const pid = projectIdRef.current;
     if (!pid) return;
     setLinting(true);
     try {
-      // Fetch all HTML files and lint them client-side using the core linter
-      const res = await fetch(`/api/projects/${pid}`);
+      const res = await fetch(`/api/projects/${pid}/lint`);
       const data = await res.json();
-      const files: string[] = data.files?.filter((f: string) => f.endsWith(".html")) ?? [];
-
-      const findings: LintFinding[] = [];
-      for (const file of files) {
-        const fileRes = await fetch(`/api/projects/${pid}/files/${encodeURIComponent(file)}`);
-        const fileData = await fileRes.json();
-        if (!fileData.content) continue;
-
-        // Basic lint checks (subset of the full linter)
-        const html = fileData.content as string;
-
-        if (file === "index.html") {
-          // Check for root composition
-          if (!html.includes("data-composition-id")) {
-            findings.push({
-              severity: "error",
-              message: "No element with `data-composition-id` found.",
-              file,
-              fixHint: "Add `data-composition-id` to the root composition wrapper.",
-            });
-          }
-          // Check for timeline registration
-          if (!html.includes("__timelines")) {
-            findings.push({
-              severity: "error",
-              message: "Missing `window.__timelines` registration.",
-              file,
-              fixHint: 'Add: window.__timelines["compositionId"] = tl;',
-            });
-          }
-          // Check for TARGET_DURATION
-          if (
-            html.includes("gsap.timeline") &&
-            !html.includes("TARGET_DURATION") &&
-            !html.includes("tl.set({}, {},")
-          ) {
-            findings.push({
-              severity: "warning",
-              message: "No TARGET_DURATION spacer found. Video may be shorter than intended.",
-              file,
-              fixHint:
-                "Add: const TARGET_DURATION = 30; if (tl.duration() < TARGET_DURATION) { tl.set({}, {}, TARGET_DURATION); }",
-            });
-          }
-        }
-
-        // Check for composition hosts missing dimensions
-        const hostRe = /data-composition-src=["']([^"']+)["']/g;
-        let hostMatch;
-        while ((hostMatch = hostRe.exec(html)) !== null) {
-          const surrounding = html.slice(
-            Math.max(0, hostMatch.index - 300),
-            hostMatch.index + hostMatch[0].length + 50,
-          );
-          const hasDataDims =
-            /data-width\s*=/i.test(surrounding) && /data-height\s*=/i.test(surrounding);
-          const hasStyleDims = /style\s*=.*width:\s*\d+px.*height:\s*\d+px/i.test(surrounding);
-          if (!hasDataDims && !hasStyleDims) {
-            findings.push({
-              severity: "warning",
-              message: `Composition host for "${hostMatch[1]}" missing data-width/data-height. May render with zero dimensions.`,
-              file,
-              fixHint:
-                'Add data-width="1920" data-height="1080" style="position:relative;width:1920px;height:1080px"',
-            });
-          }
-        }
-
-        // Check for repeat: -1
-        if (/repeat\s*:\s*-\s*1/.test(html)) {
-          findings.push({
-            severity: "error",
-            message: "GSAP `repeat: -1` found — infinite loop breaks timeline duration.",
-            file,
-            fixHint: "Use a finite repeat count or CSS animation.",
-          });
-        }
-
-        // Check script syntax
-        const scriptRe = /<script\b(?![^>]*\bsrc\s*=)[^>]*>([\s\S]*?)<\/script>/gi;
-        let scriptMatch;
-        while ((scriptMatch = scriptRe.exec(html)) !== null) {
-          const js = scriptMatch[1]?.trim();
-          if (!js) continue;
-          try {
-            new Function(js);
-          } catch (e) {
-            findings.push({
-              severity: "error",
-              message: `Script syntax error: ${e instanceof Error ? e.message : String(e)}`,
-              file,
-            });
-          }
-        }
-      }
-
+      const findings: LintFinding[] = (data.findings ?? []).map(
+        (f: { severity?: string; message?: string; file?: string; fixHint?: string }) => ({
+          severity: f.severity === "error" ? ("error" as const) : ("warning" as const),
+          message: f.message ?? "",
+          file: f.file,
+          fixHint: f.fixHint,
+        }),
+      );
       setLintModal(findings);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -396,169 +435,312 @@ export function StudioApp() {
     }
   }, []);
 
-  const handleRender = useCallback(async () => {
-    const pid = projectIdRef.current;
-    if (!pid || renderState === "rendering") return;
-    setRenderState("rendering");
-    setRenderProgress(0);
-    setRenderError(null);
-    try {
-      // Start render via studio backend
-      const res = await fetch(`/api/projects/${pid}/render`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
-      });
-      if (!res.ok) throw new Error(`Render failed: ${res.status}`);
-      const { jobId } = await res.json();
-
-      // Subscribe to progress via SSE
-      const eventSource = new EventSource(`/api/render/${jobId}/progress`);
-      eventSource.addEventListener("progress", (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          setRenderProgress(data.progress ?? 0);
-          if (data.status === "complete") {
-            setRenderState("complete");
-            eventSource.close();
-            // Auto-download
-            window.open(`/api/render/${jobId}/download`, "_blank");
-          } else if (data.status === "failed") {
-            setRenderState("error");
-            setRenderError(data.error || "Render failed");
-            eventSource.close();
-          }
-        } catch {
-          /* ignore */
-        }
-      });
-      eventSource.onerror = () => {
-        setRenderState("error");
-        setRenderError("Lost connection to render server");
-        eventSource.close();
+  // Panel resize via pointer events (works for both left sidebar and right panel)
+  const handlePanelResizeStart = useCallback(
+    (side: "left" | "right", e: React.PointerEvent) => {
+      e.preventDefault();
+      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+      panelDragRef.current = {
+        side,
+        startX: e.clientX,
+        startW: side === "left" ? leftWidth : rightWidth,
       };
-    } catch (err) {
-      setRenderState("error");
-      setRenderError(err instanceof Error ? err.message : "Render failed");
-    }
-  }, [renderState]);
+    },
+    [leftWidth, rightWidth],
+  );
 
-  if (resolving) {
+  const handlePanelResizeMove = useCallback((e: React.PointerEvent) => {
+    const drag = panelDragRef.current;
+    if (!drag) return;
+    const delta = e.clientX - drag.startX;
+    const maxLeft = Math.floor(window.innerWidth * 0.5);
+    const newW = Math.max(
+      160,
+      Math.min(
+        drag.side === "left" ? maxLeft : 600,
+        drag.startW + (drag.side === "left" ? delta : -delta),
+      ),
+    );
+    if (drag.side === "left") setLeftWidth(newW);
+    else setRightWidth(newW);
+  }, []);
+
+  const handlePanelResizeEnd = useCallback(() => {
+    panelDragRef.current = null;
+  }, []);
+
+  const compositions = useMemo(
+    () => fileTree.filter((f) => f === "index.html" || f.startsWith("compositions/")),
+    [fileTree],
+  );
+  const assets = useMemo(
+    () =>
+      fileTree.filter((f) => !f.endsWith(".html") && !f.endsWith(".md") && !f.endsWith(".json")),
+    [fileTree],
+  );
+
+  if (resolving || !projectId) {
     return (
       <div className="h-screen w-screen bg-neutral-950 flex items-center justify-center">
-        <div className="text-sm text-neutral-500">Loading...</div>
+        <div className="w-4 h-4 rounded-full bg-studio-accent animate-pulse" />
       </div>
     );
   }
 
-  if (!projectId) {
-    return <ProjectPicker onSelect={handleSelectProject} />;
-  }
+  // At this point projectId is guaranteed non-null (narrowed by the guard above)
 
   return (
-    <div className="flex h-screen w-screen bg-neutral-950">
-      {/* NLE: Preview + Timeline */}
-      <div className="flex-1 relative min-w-0">
-        <NLELayout
-          projectId={projectId}
-          refreshKey={refreshKey}
-          activeCompositionPath={
-            editingFile?.path?.startsWith("compositions/") ? editingFile.path : null
-          }
-        />
+    <div
+      className="flex flex-col h-screen w-screen bg-neutral-950 relative"
+      onDragOver={(e) => {
+        if (!e.dataTransfer.types.includes("Files")) return;
+        e.preventDefault();
+      }}
+      onDragEnter={(e) => {
+        if (!e.dataTransfer.types.includes("Files")) return;
+        e.preventDefault();
+        dragCounterRef.current++;
+        setGlobalDragOver(true);
+      }}
+      onDragLeave={() => {
+        dragCounterRef.current--;
+        if (dragCounterRef.current === 0) setGlobalDragOver(false);
+      }}
+      onDrop={(e) => {
+        dragCounterRef.current = 0;
+        setGlobalDragOver(false);
+        // Skip if a child (e.g. AssetsTab) already handled the drop
+        if (e.defaultPrevented) return;
+        e.preventDefault();
+        if (e.dataTransfer.files.length) handleImportFiles(e.dataTransfer.files);
+      }}
+    >
+      {/* Header bar */}
+      <div className="flex items-center justify-between h-10 px-3 bg-neutral-900 border-b border-neutral-800 flex-shrink-0">
+        {/* Left: project name */}
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] font-medium text-neutral-400">{projectId}</span>
+        </div>
+        {/* Right: toolbar buttons */}
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={() => setLeftCollapsed((v) => !v)}
+            className={`h-7 w-7 flex items-center justify-center rounded-md border transition-colors ${
+              !leftCollapsed
+                ? "text-studio-accent bg-studio-accent/10 border-studio-accent/30"
+                : "bg-transparent border-transparent text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800"
+            }`}
+            title={leftCollapsed ? "Show sidebar" : "Hide sidebar"}
+          >
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <rect x="3" y="3" width="18" height="18" rx="2" />
+              <path d="M9 3v18" />
+            </svg>
+          </button>
+          <button
+            onClick={() => setTimelineVisible((v) => !v)}
+            className={`h-7 w-7 flex items-center justify-center rounded-md border transition-colors ${
+              timelineVisible
+                ? "text-studio-accent bg-studio-accent/10 border-studio-accent/30"
+                : "bg-transparent border-transparent text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800"
+            }`}
+            title={timelineVisible ? "Hide timeline" : "Show timeline"}
+          >
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+            >
+              <rect x="3" y="13" width="18" height="8" rx="1" />
+              <line x1="3" y1="9" x2="21" y2="9" />
+              <line x1="3" y1="5" x2="21" y2="5" />
+            </svg>
+          </button>
+          <button
+            onClick={() => setRightCollapsed((v) => !v)}
+            className={`h-7 flex items-center gap-1.5 px-2.5 rounded-md text-[11px] font-medium border transition-colors ${
+              !rightCollapsed
+                ? "text-studio-accent bg-studio-accent/10 border-studio-accent/30"
+                : "text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800 border-transparent"
+            }`}
+          >
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
+              <circle cx="12" cy="12" r="10" />
+              <polygon points="10 8 16 12 10 16" fill="currentColor" stroke="none" />
+            </svg>
+            Renders
+            {renderQueue.jobs.length > 0 ? ` (${renderQueue.jobs.length})` : ""}
+          </button>
+        </div>
       </div>
 
-      {/* Action buttons — positioned based on sidebar state */}
-      {!sidebarOpen && (
-        <div className="absolute top-3 right-3 z-50 flex items-center gap-1.5">
-          <button
-            onClick={() => setSidebarOpen(true)}
-            className="h-8 px-3 rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-500 hover:text-neutral-200 transition-colors flex items-center justify-center"
-            title="Source editor"
-          >
-            <CodeIcon size={16} />
-          </button>
-          <button
-            onClick={handleLint}
-            disabled={linting}
-            className="h-8 px-3 rounded-lg bg-neutral-900 border border-neutral-800 text-xs font-medium text-neutral-400 hover:text-amber-300 hover:border-amber-800/50 transition-colors disabled:opacity-40"
-          >
-            {linting ? "Linting..." : "Lint"}
-          </button>
-          <button
-            onClick={handleRender}
-            disabled={renderState === "rendering"}
-            className="h-8 px-3 rounded-lg bg-blue-600 border border-blue-500 text-xs font-semibold text-white hover:bg-blue-500 transition-colors disabled:opacity-60 tabular-nums"
-          >
-            {renderState === "rendering"
-              ? `${Math.round(renderProgress)}%`
-              : renderState === "complete"
-                ? "Done!"
-                : "Export MP4"}
-          </button>
+      {/* Main content: sidebar + preview + right panel */}
+      <div className="flex flex-1 min-h-0">
+        {/* Left sidebar: Compositions + Assets (resizable, collapsible) */}
+        {!leftCollapsed && (
+          <LeftSidebar
+            width={leftWidth}
+            projectId={projectId}
+            compositions={compositions}
+            assets={assets}
+            activeComposition={editingFile?.path ?? null}
+            onSelectComposition={(comp) => {
+              // Set active composition for preview drill-down
+              // Don't increment refreshKey — that reloads the master iframe and
+              // overrides the composition navigation. Let activeCompositionPath
+              // handle the preview change via the composition stack.
+              setActiveCompPath(
+                comp === "index.html" || comp.startsWith("compositions/") ? comp : null,
+              );
+              // Load file content for code editor
+              setEditingFile({ path: comp, content: null });
+              fetch(`/api/projects/${projectId}/files/${comp}`)
+                .then((r) => r.json())
+                .then((data) => setEditingFile({ path: comp, content: data.content }))
+                .catch(() => {});
+            }}
+            fileTree={fileTree}
+            editingFile={editingFile}
+            onSelectFile={handleFileSelect}
+            onCreateFile={handleCreateFile}
+            onCreateFolder={handleCreateFolder}
+            onDeleteFile={handleDeleteFile}
+            onRenameFile={handleRenameFile}
+            onDuplicateFile={handleDuplicateFile}
+            onMoveFile={handleMoveFile}
+            onImportFiles={handleImportFiles}
+            codeChildren={
+              editingFile ? (
+                isMediaFile(editingFile.path) ? (
+                  <MediaPreview projectId={projectId ?? ""} filePath={editingFile.path} />
+                ) : (
+                  <SourceEditor
+                    content={editingFile.content ?? ""}
+                    filePath={editingFile.path}
+                    onChange={handleContentChange}
+                  />
+                )
+              ) : undefined
+            }
+            onLint={handleLint}
+            linting={linting}
+          />
+        )}
+
+        {/* Left resize handle */}
+        {!leftCollapsed && (
+          <div
+            className="w-1 flex-shrink-0 bg-neutral-800 hover:bg-studio-accent cursor-col-resize transition-colors active:bg-studio-accent/80"
+            style={{ touchAction: "none" }}
+            onPointerDown={(e) => handlePanelResizeStart("left", e)}
+            onPointerMove={handlePanelResizeMove}
+            onPointerUp={handlePanelResizeEnd}
+          />
+        )}
+
+        {/* Center: Preview */}
+        <div className="flex-1 relative min-w-0">
+          <NLELayout
+            projectId={projectId}
+            refreshKey={refreshKey}
+            activeCompositionPath={activeCompPath}
+            renderClipContent={renderClipContent}
+            onCompIdToSrcChange={setCompIdToSrc}
+            onCompositionChange={(compPath) => {
+              // Sync activeCompPath when user drills down via timeline double-click
+              // or navigates back via breadcrumb — keeps sidebar + thumbnails in sync.
+              setActiveCompPath(compPath);
+            }}
+            onIframeRef={(iframe) => {
+              previewIframeRef.current = iframe;
+            }}
+            timelineVisible={timelineVisible}
+            onToggleTimeline={() => setTimelineVisible((v) => !v)}
+          />
         </div>
-      )}
 
-      {/* Source editor sidebar */}
-      {sidebarOpen && (
-        <div className="w-[420px] flex flex-col border-l border-neutral-800 bg-neutral-900">
-          <div className="flex items-center justify-between px-3 py-2 border-b border-neutral-800 gap-2">
-            <span className="text-xs font-medium text-neutral-500 truncate min-w-0 flex-1">
-              {editingFile?.path ?? "Source"}
-            </span>
-            <div className="flex items-center gap-1.5 flex-shrink-0">
-              <button
-                onClick={handleLint}
-                disabled={linting}
-                className="px-2 py-1 rounded text-[11px] font-medium text-neutral-500 hover:text-amber-300 transition-colors disabled:opacity-40"
-              >
-                {linting ? "..." : "Lint"}
-              </button>
-              <button
-                onClick={handleRender}
-                disabled={renderState === "rendering"}
-                className="px-2 py-1 rounded text-[11px] font-semibold text-blue-400 hover:text-blue-300 transition-colors disabled:opacity-60 tabular-nums"
-              >
-                {renderState === "rendering" ? `${Math.round(renderProgress)}%` : "Export MP4"}
-              </button>
-              <button
-                onClick={() => setSidebarOpen(false)}
-                className="p-1 rounded text-neutral-600 hover:text-neutral-200 hover:bg-neutral-800 transition-colors"
-                title="Close source panel"
-              >
-                <XIcon size={14} />
-              </button>
-            </div>
-          </div>
-
-          {fileTree.length > 0 && (
-            <div className="border-b border-neutral-800 max-h-40 overflow-y-auto">
-              <FileTree
-                files={fileTree}
-                activeFile={editingFile?.path ?? null}
-                onSelectFile={handleFileSelect}
+        {/* Right panel: Renders-only (resizable, collapsible via header Renders button) */}
+        {!rightCollapsed && (
+          <>
+            <div
+              className="w-1 flex-shrink-0 bg-neutral-800 hover:bg-studio-accent cursor-col-resize transition-colors active:bg-studio-accent/80"
+              style={{ touchAction: "none" }}
+              onPointerDown={(e) => handlePanelResizeStart("right", e)}
+              onPointerMove={handlePanelResizeMove}
+              onPointerUp={handlePanelResizeEnd}
+            />
+            <div
+              className="flex flex-col border-l border-neutral-800 bg-neutral-900 flex-shrink-0"
+              style={{ width: rightWidth }}
+            >
+              <RenderQueue
+                jobs={renderQueue.jobs}
+                projectId={projectId}
+                onDelete={renderQueue.deleteRender}
+                onClearCompleted={renderQueue.clearCompleted}
+                onStartRender={(format) => renderQueue.startRender(30, "standard", format)}
+                isRendering={renderQueue.isRendering}
               />
             </div>
-          )}
-
-          <div className="flex-1 overflow-hidden">
-            {editingFile ? (
-              <SourceEditor
-                content={editingFile.content}
-                filePath={editingFile.path}
-                onChange={handleContentChange}
-              />
-            ) : (
-              <div className="flex items-center justify-center h-full text-neutral-600 text-sm">
-                Select a file to edit
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+          </>
+        )}
+      </div>
 
       {/* Lint modal */}
-      {lintModal !== null && <LintModal findings={lintModal} onClose={() => setLintModal(null)} />}
+      {lintModal !== null && projectId && (
+        <LintModal findings={lintModal} projectId={projectId} onClose={() => setLintModal(null)} />
+      )}
+
+      {/* Global drag-drop overlay */}
+      {globalDragOver && (
+        <div className="absolute inset-0 z-[90] flex items-center justify-center bg-black/50 backdrop-blur-sm pointer-events-none">
+          <div className="flex flex-col items-center gap-3 px-8 py-6 rounded-xl border-2 border-dashed border-studio-accent/60 bg-studio-accent/[0.06]">
+            <svg
+              width="32"
+              height="32"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="text-studio-accent"
+            >
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="7 10 12 15 17 10" />
+              <line x1="12" y1="15" x2="12" y2="3" />
+            </svg>
+            <span className="text-sm font-medium text-studio-accent">
+              Drop files to import into project
+            </span>
+          </div>
+        </div>
+      )}
+      {uploadToast && (
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[91] px-4 py-2 rounded-lg bg-red-900/90 border border-red-700/50 text-sm text-red-200 shadow-lg animate-in fade-in slide-in-from-bottom-2">
+          {uploadToast}
+        </div>
+      )}
     </div>
   );
 }

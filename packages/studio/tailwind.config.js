@@ -15,7 +15,7 @@ export default {
           border: "#262626",
           text: "#e5e5e5",
           muted: "#737373",
-          accent: "#00E3FF",
+          accent: "#3CE6AC",
         },
       },
     },

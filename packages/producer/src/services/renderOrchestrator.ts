@@ -1114,6 +1114,22 @@ export async function executeRenderJob(
     }
     const errorMessage = error instanceof Error ? error.message : String(error);
     const errorStack = error instanceof Error ? error.stack : undefined;
+
+    // Suggest single-worker retry on parallel capture timeout.
+    // Video-heavy compositions often cause multi-worker timeouts because
+    // Chrome can't seek multiple video elements simultaneously.
+    const isTimeoutError =
+      errorMessage.includes("Waiting failed") ||
+      errorMessage.includes("timeout exceeded") ||
+      errorMessage.includes("Navigation timeout");
+    const wasParallel = job.config.workers !== 1;
+    if (isTimeoutError && wasParallel) {
+      log.warn(
+        `Parallel capture timed out with ${job.config.workers ?? "auto"} workers. ` +
+          `Video-heavy compositions often need sequential capture. Retry with --workers 1`,
+      );
+    }
+
     job.error = errorMessage;
     updateJobStatus(job, "failed", `Failed: ${errorMessage}`, job.progress, onProgress);
 

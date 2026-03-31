@@ -6,7 +6,7 @@ import { get as httpsGet } from "node:https";
 import { pipeline } from "node:stream/promises";
 
 const MODELS_DIR = join(homedir(), ".cache", "hyperframes", "whisper", "models");
-const DEFAULT_MODEL = "base.en";
+const DEFAULT_MODEL = "small.en";
 
 export type WhisperSource = "env" | "system" | "brew" | "build";
 

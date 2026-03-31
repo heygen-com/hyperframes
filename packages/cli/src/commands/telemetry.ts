@@ -53,7 +53,7 @@ ${c.bold("SUBCOMMANDS:")}
   ${c.accent("disable")}   ${c.dim("Disable anonymous telemetry")}
 
 ${c.bold("WHAT WE COLLECT:")}
-  ${c.dim("\u2022")} Command names (init, render, dev, etc.)
+  ${c.dim("\u2022")} Command names (init, render, preview, etc.)
   ${c.dim("\u2022")} Render performance (duration, fps, quality)
   ${c.dim("\u2022")} Template choices
   ${c.dim("\u2022")} OS, architecture, Node.js version, CLI version

@@ -17,12 +17,12 @@ npm install @hyperframes/studio
 - Extend the editor with custom panels, toolbars, or integrations
 
 **Use a different package if you want to:**
-- Preview compositions during development — use the [CLI](/packages/cli) (`npx hyperframes dev`), which launches the studio for you
+- Preview compositions during development — use the [CLI](/packages/cli) (`npx hyperframes preview`), which launches the studio for you
 - Render compositions to MP4 — use the [CLI](/packages/cli) or [producer](/packages/producer)
 - Capture frames programmatically — use the [engine](/packages/engine)
 
 <Tip>
-  **For most development workflows, you do not need to install the studio directly.** Running `npx hyperframes dev` starts the studio automatically with hot reload. Install `@hyperframes/studio` only if you are embedding the editor into your own application.
+  **For most development workflows, you do not need to install the studio directly.** Running `npx hyperframes preview` starts the studio automatically with hot reload. Install `@hyperframes/studio` only if you are embedding the editor into your own application.
 </Tip>
 
 ## Running the Studio
@@ -30,7 +30,7 @@ npm install @hyperframes/studio
 ### Via the CLI (recommended)
 
 ```bash
-npx hyperframes dev
+npx hyperframes preview
 ```
 
 This starts the studio development server, opens your composition in the browser, and watches for file changes. This is the easiest way to get a live preview.
@@ -239,7 +239,7 @@ export default {
 
 <CardGroup cols={2}>
   <Card title="CLI" icon="terminal" href="/packages/cli">
-    Launches the studio via `npx hyperframes dev` — the easiest way to preview compositions.
+    Launches the studio via `npx hyperframes preview` — the easiest way to preview compositions.
   </Card>
   <Card title="Core" icon="cube" href="/packages/core">
     Types, parsing, and runtime that the studio uses for preview and timeline rendering.

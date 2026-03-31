@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "timeout": 180,
+            "statusMessage": "Running build + lint + typecheck before commit…",
+            "command": "node -e \"\nconst chunks = [];\nprocess.stdin.on('data', d => chunks.push(d));\nprocess.stdin.on('end', () => {\n  const input = JSON.parse(Buffer.concat(chunks).toString());\n  const cmd = input.tool_input?.command || '';\n  if (!/git\\\\s+commit\\\\b/.test(cmd)) process.exit(0);\n  const { execSync } = require('child_process');\n  const cwd = process.env.PWD || process.cwd();\n  const steps = [\n    ['pnpm build', 'Build'],\n    ['pnpm run -w lint', 'Lint'],\n    ['bun run --filter \\'*\\' typecheck 2>&1 | grep -v \\'vitest\\\\|test\\\\.ts\\' || true', 'Typecheck'],\n  ];\n  const failures = [];\n  for (const [script, label] of steps) {\n    try { execSync(script, { cwd, stdio: 'pipe' }); }\n    catch (e) {\n      failures.push(label + ':\\\\n' + (e.stdout?.toString() || e.message).slice(0, 400));\n    }\n  }\n  if (failures.length > 0) {\n    process.stdout.write(JSON.stringify({\n      continue: false,\n      stopReason: '\\u274c Pre-commit checks failed:\\\\n\\\\n' + failures.join('\\\\n\\\\n') + '\\\\n\\\\nFix the issues above before committing.',\n    }));\n  }\n});\""
+          }
+        ]
+      }
+    ]
+  }
+}

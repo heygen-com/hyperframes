@@ -129,23 +129,6 @@ export function createLottieAdapter(): RuntimeDeterministicAdapter {
       }
     },
 
-    play: () => {
-      const instances = (window as LottieWindow).__hfLottie;
-      if (!instances || instances.length === 0) return;
-
-      for (const anim of instances) {
-        try {
-          if (isLottieWebAnimation(anim)) {
-            anim.play();
-          } else if (isDotLottiePlayer(anim)) {
-            anim.play();
-          }
-        } catch {
-          // ignore
-        }
-      }
-    },
-
     revert: () => {
       // Don't clear __hfLottie — the animation objects are owned by the composition.
       // Just let them be garbage collected naturally.

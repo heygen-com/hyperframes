@@ -13,7 +13,13 @@ import { fileURLToPath } from "node:url";
 import { execFileSync, spawn } from "node:child_process";
 import * as clack from "@clack/prompts";
 import { c } from "../ui/colors.js";
-import { TEMPLATES, type TemplateId } from "../templates/generators.js";
+import { printBanner } from "../ui/banner.js";
+import {
+  BUNDLED_TEMPLATES,
+  resolveTemplateList,
+  type TemplateOption,
+} from "../templates/generators.js";
+import { fetchRemoteTemplate } from "../templates/remote.js";
 import { trackInitTemplate } from "../telemetry/events.js";
 import { hasFFmpeg } from "../whisper/manager.js";
 
@@ -53,7 +59,9 @@ async function installSkills(interactive: boolean): Promise<void> {
     const spin = interactive ? clack.spinner() : null;
     spin?.start("Installing AI coding skills...");
 
-    const result = await installAllSkills(selectedTargets);
+    const result = await installAllSkills(selectedTargets, {
+      onProgress: (msg) => spin?.message(msg),
+    });
     if (result.count > 0) {
       const msg = `${result.count} skills installed (${result.targets.join(", ")})`;
       if (spin) {
@@ -78,8 +86,6 @@ async function installSkills(interactive: boolean): Promise<void> {
     }
   }
 }
-
-const ALL_TEMPLATE_IDS = TEMPLATES.map((t) => t.id);
 
 interface VideoMeta {
   durationSeconds: number;
@@ -196,13 +202,26 @@ function transcodeToMp4(inputPath: string, outputPath: string): Promise<boolean>
 // Static template helpers
 // ---------------------------------------------------------------------------
 
-function getStaticTemplateDir(templateId: string): string {
-  const dir = dirname(fileURLToPath(import.meta.url));
-  // In dev: cli/src/commands/ → ../templates = cli/src/templates/
-  // In built: cli/dist/ → templates = cli/dist/templates/
-  const devPath = resolve(dir, "..", "templates", templateId);
-  const builtPath = resolve(dir, "templates", templateId);
+/** Resolve an asset directory that differs between dev (src/) and built (dist/). */
+function resolveAssetDir(devSegments: string[], builtSegments: string[]): string {
+  const base = dirname(fileURLToPath(import.meta.url));
+  const devPath = resolve(base, ...devSegments);
+  const builtPath = resolve(base, ...builtSegments);
   return existsSync(devPath) ? devPath : builtPath;
+}
+
+function getStaticTemplateDir(templateId: string): string {
+  return resolveAssetDir(["..", "templates", templateId], ["templates", templateId]);
+}
+
+function getSharedTemplateDir(): string {
+  return resolveAssetDir(["..", "templates", "_shared"], ["templates", "_shared"]);
+}
+
+function getBundledSkillsDir(): string {
+  // In dev: cli/src/commands/ → repo root skills/
+  // In built: cli/dist/ → cli/dist/skills/
+  return resolveAssetDir(["..", "..", "..", "..", "skills"], ["skills"]);
 }
 
 function patchVideoSrc(
@@ -233,60 +252,11 @@ function patchVideoSrc(
   }
 }
 
-function patchTranscript(dir: string, transcriptPath: string): void {
-  // Read the whisper transcript and normalize to [{text, start, end}]
-  const raw = JSON.parse(readFileSync(transcriptPath, "utf-8"));
-  const words: { text: string; start: number; end: number }[] = [];
-  for (const seg of raw.transcription ?? []) {
-    for (const token of seg.tokens ?? []) {
-      const text = (token.text ?? "").trim();
-      if (!text || text.startsWith("[_") || text.startsWith("[BLANK")) continue;
-
-      // Merge punctuation with the previous word
-      const isPunctuation = /^[.,!?;:'")\]}>…–—-]+$/.test(text);
-      const lastWord = words[words.length - 1];
-      if (isPunctuation && lastWord) {
-        lastWord.text += text;
-        lastWord.end = Math.round(((token.offsets?.to ?? 0) / 1000) * 1000) / 1000;
-        continue;
-      }
-
-      words.push({
-        text,
-        start: Math.round(((token.offsets?.from ?? 0) / 1000) * 1000) / 1000,
-        end: Math.round(((token.offsets?.to ?? 0) / 1000) * 1000) / 1000,
-      });
-    }
-  }
-
+async function patchTranscript(dir: string, transcriptPath: string): Promise<void> {
+  const { loadTranscript, patchCaptionHtml } = await import("../whisper/normalize.js");
+  const { words } = loadTranscript(transcriptPath);
   if (words.length === 0) return;
-
-  const wordsJson = JSON.stringify(words, null, 10)
-    .replace(/^\[/, "[")
-    .replace(/\n {10}/g, "\n          ");
-
-  // Find captions HTML files and replace the hardcoded script array
-  const htmlFiles = readdirSync(dir, { withFileTypes: true, recursive: true })
-    .filter((e) => e.isFile() && e.name.endsWith(".html"))
-    .map((e) => join(e.parentPath ?? e.path, e.name));
-
-  for (const file of htmlFiles) {
-    let content = readFileSync(file, "utf-8");
-    // Match within <script> blocks only to avoid crossing block boundaries
-    const scriptBlocks = content.match(/<script>[\s\S]*?<\/script>/g) ?? [];
-    let scriptMatch: RegExpMatchArray | null = null;
-    let transcriptMatch: RegExpMatchArray | null = null;
-    for (const block of scriptBlocks) {
-      scriptMatch = scriptMatch ?? block.match(/const script = \[[\s\S]*?\];/);
-      transcriptMatch = transcriptMatch ?? block.match(/const TRANSCRIPT = \[[\s\S]*?\];/);
-    }
-    const match = scriptMatch ?? transcriptMatch;
-    if (match) {
-      const varName = scriptMatch ? "script" : "TRANSCRIPT";
-      content = content.replace(match[0], `const ${varName} = ${wordsJson};`);
-      writeFileSync(file, content, "utf-8");
-    }
-  }
+  patchCaptionHtml(dir, words);
 }
 
 // ---------------------------------------------------------------------------
@@ -336,8 +306,16 @@ async function handleVideoFile(
         const transcode = await clack.select({
           message: "Transcode to H.264 MP4 for browser playback?",
           options: [
-            { value: "yes", label: "Yes, transcode", hint: "converts to H.264 MP4" },
-            { value: "no", label: "No, keep original", hint: "video won't play in browser" },
+            {
+              value: "yes",
+              label: "Yes, transcode",
+              hint: "converts to H.264 MP4",
+            },
+            {
+              value: "no",
+              label: "No, keep original",
+              hint: "video won't play in browser",
+            },
           ],
         });
         if (clack.isCancel(transcode)) {
@@ -384,17 +362,22 @@ async function handleVideoFile(
 // scaffoldProject — copy template, patch video refs, write meta.json
 // ---------------------------------------------------------------------------
 
-function scaffoldProject(
+async function scaffoldProject(
   destDir: string,
   name: string,
-  templateId: TemplateId,
+  templateId: string,
   localVideoName: string | undefined,
   durationSeconds?: number,
-): void {
+): Promise<void> {
   mkdirSync(destDir, { recursive: true });
 
+  // Use bundled template if available, otherwise fetch from GitHub
   const templateDir = getStaticTemplateDir(templateId);
-  cpSync(templateDir, destDir, { recursive: true });
+  if (existsSync(templateDir)) {
+    cpSync(templateDir, destDir, { recursive: true });
+  } else {
+    await fetchRemoteTemplate(templateId, destDir);
+  }
   patchVideoSrc(destDir, localVideoName, durationSeconds);
 
   writeFileSync(
@@ -410,45 +393,31 @@ function scaffoldProject(
     ),
     "utf-8",
   );
-}
 
-// ---------------------------------------------------------------------------
-// nextStepLoop — "What do you want to do?" loop after scaffolding
-// ---------------------------------------------------------------------------
-
-async function nextStepLoop(destDir: string): Promise<void> {
-  while (true) {
-    const next = await clack.select({
-      message: "What do you want to do?",
-      options: [
-        { value: "dev", label: "Open in studio", hint: "full editor with timeline" },
-        { value: "render", label: "Render to MP4", hint: "export video now" },
-        { value: "done", label: "Done for now" },
-      ],
-    });
-
-    if (clack.isCancel(next) || next === "done") {
-      clack.outro(c.success("Happy editing!"));
-      return;
-    }
-
-    // Hand off to the selected command — use explicit imports so the
-    // bundler can resolve them (dynamic import with a variable fails in bundles)
-    try {
-      if (next === "dev") {
-        const devCmd = await import("./dev.js").then((m) => m.default);
-        await runCommand(devCmd, { rawArgs: [destDir] });
-      } else if (next === "render") {
-        const renderCmd = await import("./render.js").then((m) => m.default);
-        await runCommand(renderCmd, { rawArgs: [destDir] });
+  // Copy shared files (CLAUDE.md, AGENTS.md) for AI agent context
+  const sharedDir = getSharedTemplateDir();
+  if (existsSync(sharedDir)) {
+    for (const entry of readdirSync(sharedDir, { withFileTypes: true })) {
+      const src = join(sharedDir, entry.name);
+      const dest = resolve(destDir, entry.name);
+      if (entry.isFile() || entry.isSymbolicLink()) {
+        copyFileSync(src, dest);
       }
-    } catch {
-      // Command may throw on Ctrl+C — that's fine, loop back
     }
+  }
 
-    // Wait a tick so any lingering SIGINT state clears before Clack prompts again
-    await new Promise((r) => setTimeout(r, 100));
-    console.log();
+  // Copy project-level skills (.claude/skills/) for immediate availability
+  const skillsSrcDir = getBundledSkillsDir();
+  if (existsSync(skillsSrcDir)) {
+    const projectSkills = ["hyperframes-compose", "hyperframes-captions", "hyperframes-cli"];
+    for (const skill of projectSkills) {
+      const src = join(skillsSrcDir, skill);
+      if (existsSync(src)) {
+        const dest = resolve(destDir, ".claude", "skills", skill);
+        mkdirSync(dest, { recursive: true });
+        cpSync(src, dest, { recursive: true });
+      }
+    }
   }
 }
 
@@ -462,23 +431,50 @@ export default defineCommand({
     description: `Scaffold a new composition project
 
 Examples:
-  hyperframes init my-video --template blank --video video.mp4
-  hyperframes init podcast --template warm-grain --audio episode.mp3
-  hyperframes init my-video --template blank --skip-skills --skip-transcribe
-  hyperframes init --human-friendly                    # interactive mode`,
+  hyperframes init my-video                            # interactive wizard
+  hyperframes init my-video --template warm-grain      # pick a template
+  hyperframes init my-video --video video.mp4          # with video file
+  hyperframes init my-video --non-interactive           # skip prompts (CI/agents)`,
   },
   args: {
     name: { type: "positional", description: "Project name", required: false },
     template: {
       type: "string",
-      description: `Template (${ALL_TEMPLATE_IDS.join(", ")})`,
+      description: "Template name (e.g. warm-grain, swiss-grid, blank)",
       alias: "t",
     },
-    video: { type: "string", description: "Path to a video file (MP4, WebM, MOV)", alias: "V" },
-    audio: { type: "string", description: "Path to an audio file (MP3, WAV, M4A)", alias: "a" },
-    "skip-skills": { type: "boolean", description: "Skip AI coding skills installation" },
-    "skip-transcribe": { type: "boolean", description: "Skip whisper transcription" },
-    "human-friendly": { type: "boolean", description: "Enable interactive terminal UI" },
+    video: {
+      type: "string",
+      description: "Path to a video file (MP4, WebM, MOV)",
+      alias: "V",
+    },
+    audio: {
+      type: "string",
+      description: "Path to an audio file (MP3, WAV, M4A)",
+      alias: "a",
+    },
+    "skip-skills": {
+      type: "boolean",
+      description: "Skip AI coding skills installation",
+    },
+    "skip-transcribe": {
+      type: "boolean",
+      description: "Skip whisper transcription",
+    },
+    model: {
+      type: "string",
+      description:
+        "Whisper model for transcription (e.g. tiny.en, base.en, small.en, medium.en, large)",
+    },
+    language: {
+      type: "string",
+      description:
+        "Language code for transcription (e.g. en, es, ja). Filters out non-target speech.",
+    },
+    "non-interactive": {
+      type: "boolean",
+      description: "Disable interactive prompts (for CI/agents)",
+    },
   },
   async run({ args }) {
     const templateFlag = args.template;
@@ -486,24 +482,16 @@ Examples:
     const audioFlag = args.audio;
     const skipSkills = args["skip-skills"] === true;
     const skipTranscribe = args["skip-transcribe"] === true;
-    const humanFriendly = args["human-friendly"] === true;
+    const nonInteractive = args["non-interactive"] === true;
+    const modelFlag = args.model;
+    const languageFlag = args.language;
+    const interactive = !nonInteractive && process.stdout.isTTY === true;
 
     // -----------------------------------------------------------------------
-    // Non-interactive mode (default) — all inputs from flags
+    // Non-interactive mode — all inputs from flags, defaults where missing
     // -----------------------------------------------------------------------
-    if (!humanFriendly) {
-      if (!templateFlag) {
-        console.error(c.error("Missing required flag: --template"));
-        console.error(`Available: ${ALL_TEMPLATE_IDS.join(", ")}`);
-        console.error(`\nExample: hyperframes init my-video --template blank --video video.mp4`);
-        process.exit(1);
-      }
-      if (!ALL_TEMPLATE_IDS.includes(templateFlag as TemplateId)) {
-        console.error(c.error(`Unknown template: ${templateFlag}`));
-        console.error(`Available: ${ALL_TEMPLATE_IDS.join(", ")}`);
-        process.exit(1);
-      }
-      const templateId = templateFlag as TemplateId;
+    if (!interactive) {
+      const templateId = templateFlag ?? "blank";
       const name = args.name ?? "my-video";
       const destDir = resolve(name);
 
@@ -517,6 +505,11 @@ Examples:
       let localVideoName: string | undefined;
       let videoDuration: number | undefined;
       let sourceFilePath: string | undefined;
+
+      if (videoFlag && audioFlag) {
+        console.error(c.error("Cannot use --video and --audio together"));
+        process.exit(1);
+      }
 
       // Handle video
       if (videoFlag) {
@@ -551,10 +544,13 @@ Examples:
         try {
           const { ensureWhisper, ensureModel } = await import("../whisper/manager.js");
           await ensureWhisper();
-          await ensureModel();
+          await ensureModel(modelFlag);
           console.log("Transcribing...");
           const { transcribe: runTranscribe } = await import("../whisper/transcribe.js");
-          const result = await runTranscribe(sourceFilePath, destDir);
+          const result = await runTranscribe(sourceFilePath, destDir, {
+            model: modelFlag,
+            language: languageFlag,
+          });
           console.log(
             `Transcribed: ${result.wordCount} words (${result.durationSeconds.toFixed(1)}s)`,
           );
@@ -565,11 +561,27 @@ Examples:
       }
 
       // Scaffold
-      scaffoldProject(destDir, basename(destDir), templateId, localVideoName, videoDuration);
+      try {
+        await scaffoldProject(
+          destDir,
+          basename(destDir),
+          templateId,
+          localVideoName,
+          videoDuration,
+        );
+      } catch (err) {
+        console.error(
+          c.error(
+            `Failed to scaffold template "${templateId}": ${err instanceof Error ? err.message : err}`,
+          ),
+        );
+        console.error(c.dim("Use --template blank for offline use."));
+        process.exit(1);
+      }
       trackInitTemplate(templateId);
       const transcriptFile = resolve(destDir, "transcript.json");
       if (existsSync(transcriptFile)) {
-        patchTranscript(destDir, transcriptFile);
+        await patchTranscript(destDir, transcriptFile);
       }
 
       // Skills
@@ -578,15 +590,34 @@ Examples:
       }
 
       console.log(c.success(`Created ${c.accent(name + "/")}`));
-      for (const f of readdirSync(destDir)) {
+      for (const f of readdirSync(destDir).filter((f) => !f.startsWith("."))) {
         console.log(`  ${c.accent(f)}`);
       }
+      console.log();
+      console.log("Get started:");
+      console.log();
+      console.log(`  ${c.accent("1.")} Open this project with your AI coding agent:`);
+      console.log(
+        `     ${c.accent(`cd ${name}`)} then start ${c.accent("Claude Code")}, ${c.accent("Cursor")}, or your preferred agent`,
+      );
+      console.log(
+        `     ${c.dim("AI skills are installed — your agent knows how to create and edit compositions.")}`,
+      );
+      console.log();
+      console.log(`  ${c.accent("2.")} Preview in the browser:`);
+      console.log(`     ${c.accent(`cd ${name}`)} && ${c.accent("npx hyperframes preview")}`);
+      console.log();
+      console.log(`  ${c.accent("3.")} Render to MP4 when ready:`);
+      console.log(`     ${c.accent(`cd ${name}`)} && ${c.accent("npx hyperframes render")}`);
+      console.log();
+      console.log(`  ${c.dim("Full docs: hyperframes.heygen.com")}`);
       return;
     }
 
     // -----------------------------------------------------------------------
     // Interactive mode
     // -----------------------------------------------------------------------
+    printBanner();
     clack.intro("Create a new HyperFrames project");
 
     // 1. Project name
@@ -620,11 +651,10 @@ Examples:
       }
     }
 
-    // 2. Got a video or audio file?
+    // 2. Video/audio file handling (only via --video/--audio flags, no interactive prompt)
     let localVideoName: string | undefined;
     let sourceFilePath: string | undefined;
     let videoDuration: number | undefined;
-    let isAudioOnly = false;
 
     if (videoFlag) {
       const videoPath = resolve(videoFlag);
@@ -638,55 +668,20 @@ Examples:
       const result = await handleVideoFile(videoPath, destDir, true);
       localVideoName = result.localVideoName;
       videoDuration = result.meta.durationSeconds;
-    } else {
-      const mediaChoice = await clack.select({
-        message: "Got a video or audio file?",
-        options: [
-          { value: "video", label: "Video", hint: "MP4, WebM, MOV" },
-          { value: "audio", label: "Audio only", hint: "MP3, WAV, M4A" },
-          { value: "no", label: "No", hint: "Start with motion graphics or text" },
-        ],
-        initialValue: "no" as "video" | "audio" | "no",
-      });
-      if (clack.isCancel(mediaChoice)) {
+    } else if (audioFlag) {
+      const audioPath = resolve(audioFlag);
+      if (!existsSync(audioPath)) {
+        clack.log.error(`File not found: ${audioFlag}`);
         clack.cancel("Setup cancelled.");
-        process.exit(0);
+        process.exit(1);
       }
-
-      if (mediaChoice === "video" || mediaChoice === "audio") {
-        const pathResult = await clack.text({
-          message: `Path to your ${mediaChoice} file (drag and drop or paste)`,
-          placeholder: mediaChoice === "video" ? "/path/to/video.mp4" : "/path/to/audio.mp3",
-          validate(val) {
-            const trimmed = val?.trim();
-            if (!trimmed) return "Please enter a file path";
-            if (!existsSync(resolve(trimmed))) return "File not found";
-            return undefined;
-          },
-        });
-        if (clack.isCancel(pathResult)) {
-          clack.cancel("Setup cancelled.");
-          process.exit(0);
-        }
-
-        const filePath = resolve(String(pathResult).trim());
-        sourceFilePath = filePath;
-        mkdirSync(destDir, { recursive: true });
-
-        if (mediaChoice === "video") {
-          const result = await handleVideoFile(filePath, destDir, true);
-          localVideoName = result.localVideoName;
-          videoDuration = result.meta.durationSeconds;
-        } else {
-          // Audio file — copy to project root
-          isAudioOnly = true;
-          copyFileSync(filePath, resolve(destDir, basename(filePath)));
-          clack.log.info(`Audio copied to ${c.accent(basename(filePath))}`);
-        }
-      }
+      mkdirSync(destDir, { recursive: true });
+      sourceFilePath = audioPath;
+      copyFileSync(audioPath, resolve(destDir, basename(audioPath)));
+      clack.log.info(`Audio copied to ${c.accent(basename(audioPath))}`);
     }
 
-    // 2b. Transcribe if we have a source file with audio
+    // 2b. Transcribe if we have a source file with audio (via flags)
     if (sourceFilePath) {
       const transcribeChoice = await clack.confirm({
         message: "Generate captions from audio?",
@@ -710,11 +705,15 @@ Examples:
           await ensureWhisper({
             onProgress: (msg) => spin.message(msg),
           });
-          await ensureModel(undefined, { onProgress: (msg) => spin.message(msg) });
+          await ensureModel(modelFlag, {
+            onProgress: (msg) => spin.message(msg),
+          });
 
           spin.message("Transcribing audio...");
           const { transcribe: runTranscribe } = await import("../whisper/transcribe.js");
           const transcribeResult = await runTranscribe(sourceFilePath, destDir, {
+            model: modelFlag,
+            language: languageFlag,
             onProgress: (msg) => spin.message(msg),
           });
           spin.stop(
@@ -728,32 +727,57 @@ Examples:
       }
     }
 
-    // 3. Pick template — default depends on media type
-    const defaultTemplate = isAudioOnly ? "warm-grain" : "blank";
-    const templateResult = await clack.select({
-      message: "Pick a template",
-      options: TEMPLATES.map((t) => ({
-        value: t.id,
-        label: t.label,
-        hint: t.hint,
-      })),
-      initialValue: defaultTemplate as TemplateId,
-    });
-    if (clack.isCancel(templateResult)) {
-      clack.cancel("Setup cancelled.");
-      process.exit(0);
+    // 3. Pick template — skip prompt if --template was provided
+    let templateId: string;
+
+    if (templateFlag) {
+      templateId = templateFlag;
+    } else {
+      // Resolve full template list (bundled + remote)
+      const allTemplates = await resolveTemplateList();
+      const defaultTemplate = "blank";
+      const templateResult = await clack.select({
+        message: "Pick a template",
+        options: allTemplates.map((t: TemplateOption) => ({
+          value: t.id,
+          label: t.label,
+          hint: t.source === "remote" ? `${t.hint} (download)` : t.hint,
+        })),
+        initialValue: defaultTemplate,
+      });
+      if (clack.isCancel(templateResult)) {
+        clack.cancel("Setup cancelled.");
+        process.exit(0);
+      }
+      templateId = templateResult;
     }
 
-    const templateId: TemplateId = templateResult;
-
-    // 4. Copy template and patch
-    scaffoldProject(destDir, name, templateId, localVideoName, videoDuration);
+    // 4. Scaffold project (bundled templates are instant, remote templates download from GitHub)
+    const spin = clack.spinner();
+    const isBundled = BUNDLED_TEMPLATES.some((t) => t.id === templateId);
+    if (!isBundled) {
+      spin.start(`Downloading template ${c.accent(templateId)}...`);
+    }
+    try {
+      await scaffoldProject(destDir, name, templateId, localVideoName, videoDuration);
+      if (!isBundled) {
+        spin.stop(c.success(`Downloaded ${templateId}`));
+      }
+    } catch (err) {
+      if (!isBundled) {
+        spin.stop(c.error("Download failed"));
+      }
+      clack.log.error(
+        `${err instanceof Error ? err.message : err}\n${c.dim("Use --template blank for offline use.")}`,
+      );
+      process.exit(1);
+    }
     trackInitTemplate(templateId);
 
     // 4b. Patch captions with transcript if available
     const transcriptFile = resolve(destDir, "transcript.json");
     if (existsSync(transcriptFile)) {
-      patchTranscript(destDir, transcriptFile);
+      await patchTranscript(destDir, transcriptFile);
     }
 
     // 5. Install AI coding skills
@@ -764,6 +788,18 @@ Examples:
     const files = readdirSync(destDir);
     clack.note(files.map((f) => c.accent(f)).join("\n"), c.success(`Created ${name}/`));
 
-    await nextStepLoop(destDir);
+    clack.log.message(
+      `${c.dim("Tip:")} Open this project with ${c.accent("Claude Code")}, ${c.accent("Cursor")}, or your preferred AI agent.\n` +
+        `${c.dim("     AI skills are installed — your agent knows how to create and edit compositions.")}`,
+    );
+
+    // Auto-launch studio preview
+    clack.log.info("Opening studio preview...");
+    try {
+      const previewCmd = await import("./preview.js").then((m) => m.default);
+      await runCommand(previewCmd, { rawArgs: [destDir] });
+    } catch {
+      // Ctrl+C or error — that's fine
+    }
   },
 });

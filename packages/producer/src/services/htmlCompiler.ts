@@ -19,6 +19,7 @@ import {
   clampDurations,
   type ResolvedDuration,
   type UnresolvedElement,
+  rewriteAssetPaths,
 } from "@hyperframes/core";
 import { extractVideoMetadata, extractAudioMetadata } from "../utils/ffprobe.js";
 import {
@@ -26,6 +27,7 @@ import {
   type VideoElement,
   parseAudioElements,
   type AudioElement,
+  analyzeKeyframeIntervals,
 } from "@hyperframes/engine";
 import { downloadToTemp, isHttpUrl } from "../utils/urlDownloader.js";
 import type { Page } from "puppeteer-core";
@@ -144,6 +146,12 @@ async function compileHtmlFile(
   if (clampList.length > 0) {
     compiledHtml = clampDurations(compiledHtml, clampList);
   }
+
+  // Strip crossorigin from video elements: the render pipeline replaces them with
+  // injected frame images, so the browser never needs to load the source.
+  // Without this, videos with crossorigin="anonymous" targeting CORS-restricted
+  // origins (e.g. S3 without CORS headers) keep readyState=0, blocking page setup.
+  compiledHtml = compiledHtml.replace(/(<video\b[^>]*)\s+crossorigin(?:=["'][^"']*["'])?/gi, "$1");
 
   return { html: compiledHtml, unresolvedCompositions };
 }
@@ -483,6 +491,7 @@ function inlineSubCompositions(
 
   const collectedStyles: string[] = [];
   const collectedScripts: string[] = [];
+  const collectedExternalScriptSrcs: string[] = [];
 
   for (const host of hosts) {
     const srcPath = host.getAttribute("data-composition-src");
@@ -534,7 +543,15 @@ function inlineSubCompositions(
 
     for (const scriptEl of contentDoc.querySelectorAll("script")) {
       const src = (scriptEl.getAttribute("src") || "").trim();
-      if (src) continue;
+      if (src) {
+        // External CDN/remote script — collect for deduped injection into the
+        // parent document, mirroring the bundler's hoisting behavior.
+        if (!collectedExternalScriptSrcs.includes(src)) {
+          collectedExternalScriptSrcs.push(src);
+        }
+        scriptEl.remove();
+        continue;
+      }
       const content = (scriptEl.textContent || "").trim();
       if (content) {
         const scriptMountCompId = compId || inferredCompId || "";
@@ -561,6 +578,16 @@ function inlineSubCompositions(
       }
       scriptEl.remove();
     }
+
+    // Rewrite relative asset paths before inlining so ../foo.svg from
+    // compositions/ resolves correctly when the content moves to root.
+    const rewriteTarget = innerRoot || contentDoc;
+    rewriteAssetPaths(
+      rewriteTarget.querySelectorAll("[src], [href]"),
+      srcPath,
+      (el, attr) => (el.getAttribute(attr) || "").trim(),
+      (el, attr, val) => el.setAttribute(attr, val),
+    );
 
     if (innerRoot) {
       const innerW = innerRoot.getAttribute("data-width");
@@ -615,6 +642,25 @@ function inlineSubCompositions(
     const styleEl = document.createElement("style");
     styleEl.textContent = collectedStyles.join("\n\n");
     head.appendChild(styleEl);
+  }
+
+  // Inject external CDN scripts before inline scripts so plugins (e.g.
+  // TextPlugin, ScrollTrigger) are registered before composition code runs.
+  // Deduplicate against scripts already present in the document.
+  if (collectedExternalScriptSrcs.length && body) {
+    const existingScriptSrcs = new Set(
+      Array.from(document.querySelectorAll("script[src]")).map((el) =>
+        (el.getAttribute("src") || "").trim(),
+      ),
+    );
+    for (const src of collectedExternalScriptSrcs) {
+      if (!existingScriptSrcs.has(src)) {
+        const scriptEl = document.createElement("script");
+        scriptEl.setAttribute("src", src);
+        body.appendChild(scriptEl);
+        existingScriptSrcs.add(src);
+      }
+    }
   }
 
   if (collectedScripts.length && body) {
@@ -683,16 +729,49 @@ export async function compileForRender(
   // data-composition-src). This mirrors what htmlBundler.ts does for preview.
   const inlinedHtml = inlineSubCompositions(fullHtml, subCompositions, projectDir);
 
+  // Strip preload="none" from media elements — the renderer needs to load all
+  // media upfront for frame capture. Users add this to reduce browser memory in
+  // preview, but it causes the headless renderer to never load the media, leading
+  // to 45s timeout failures.
+  const sanitizedHtml = inlinedHtml.replace(
+    /(<(?:video|audio)\b[^>]*?)\s+preload\s*=\s*["']none["']/gi,
+    "$1",
+  );
+
   const html = injectDeterministicFontFaces(
-    coalesceHeadStylesAndBodyScripts(promoteCssImportsToLinkTags(inlinedHtml)),
+    coalesceHeadStylesAndBodyScripts(promoteCssImportsToLinkTags(sanitizedHtml)),
   );
 
   // Parse main HTML elements
   const mainVideos = parseVideoElements(html);
   const mainAudios = parseAudioElements(html);
 
-  const videos = dedupeElementsById([...subVideos, ...mainVideos]);
-  const audios = dedupeElementsById([...subAudios, ...mainAudios]);
+  const videos = dedupeElementsById([...mainVideos, ...subVideos]);
+  const audios = dedupeElementsById([...mainAudios, ...subAudios]);
+
+  // Advisory video checks (sparse keyframes, VFR). Fire-and-forget — these spawn
+  // ffprobe subprocesses and should not block compilation since they only produce warnings.
+  for (const video of videos) {
+    if (isHttpUrl(video.src)) continue;
+    const videoPath = resolve(projectDir, video.src);
+    const reencode = `ffmpeg -i "${video.src}" -c:v libx264 -r 30 -g 30 -keyint_min 30 -movflags +faststart -c:a copy output.mp4`;
+    Promise.all([analyzeKeyframeIntervals(videoPath), extractVideoMetadata(videoPath)])
+      .then(([analysis, metadata]) => {
+        if (analysis.isProblematic) {
+          console.warn(
+            `[Compiler] WARNING: Video "${video.id}" has sparse keyframes (max interval: ${analysis.maxIntervalSeconds}s). ` +
+              `This causes seek failures and frame freezing. Re-encode with: ${reencode}`,
+          );
+        }
+        if (metadata.isVFR) {
+          console.warn(
+            `[Compiler] WARNING: Video "${video.id}" is variable frame rate (VFR). ` +
+              `Screen recordings and phone videos are often VFR, which causes stuttering and frame skipping in renders. Re-encode with: ${reencode}`,
+          );
+        }
+      })
+      .catch(() => {});
+  }
 
   // Read dimensions from root composition element using DOM parser
   const { document } = parseHTML(html);
@@ -869,8 +948,8 @@ export async function recompileWithResolutions(
   const mainVideos = parseVideoElements(html);
   const mainAudios = parseAudioElements(html);
 
-  const videos = dedupeElementsById([...subVideos, ...mainVideos]);
-  const audios = dedupeElementsById([...subAudios, ...mainAudios]);
+  const videos = dedupeElementsById([...mainVideos, ...subVideos]);
+  const audios = dedupeElementsById([...mainAudios, ...subAudios]);
 
   const remaining = compiled.unresolvedCompositions.filter(
     (c) => !resolutions.some((r) => r.id === c.id),

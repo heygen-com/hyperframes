@@ -54,7 +54,7 @@ Run `npx hyperframes render --output demo.mp4` and this produces an MP4 with det
     Define your video as an HTML document. Each element gets data attributes for timing (`data-start`, `data-duration`) and layout (`data-track-index`). Add animations with GSAP, Lottie, CSS transitions, or any seekable runtime via the Frame Adapter pattern.
   </Step>
   <Step title="Preview in the browser">
-    Run `npx hyperframes dev` to open a live preview in your browser. Edit your HTML and see changes instantly — no build step, no compilation.
+    Run `npx hyperframes preview` to open a live preview in your browser. Edit your HTML and see changes instantly — no build step, no compilation.
   </Step>
   <Step title="Render to MP4">
     Run `npx hyperframes render --output output.mp4` to produce a final video. The engine seeks each frame in headless Chrome, captures it with `beginFrame`, and pipes the result through FFmpeg. Run locally or in Docker for fully reproducible output.

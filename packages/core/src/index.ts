@@ -120,6 +120,7 @@ export type {
   HyperframeLinterOptions,
 } from "./lint/types";
 export { lintHyperframeHtml } from "./lint/hyperframeLinter";
+export { rewriteAssetPaths, rewriteAssetPath } from "./compiler/rewriteSubCompPaths";
 
 // Inline scripts
 export {
@@ -154,3 +155,7 @@ export type {
 export type { FrameAdapter, FrameAdapterContext } from "./adapters/types";
 export type { GSAPTimelineLike, CreateGSAPFrameAdapterOptions } from "./adapters/gsap";
 export { createGSAPFrameAdapter } from "./adapters/gsap";
+
+// Text measurement
+export { fitTextFontSize } from "./text/index.js";
+export type { FitTextOptions, FitTextResult } from "./text/index.js";

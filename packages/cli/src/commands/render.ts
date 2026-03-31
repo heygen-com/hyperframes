@@ -1,16 +1,28 @@
 import { defineCommand } from "citty";
 import { existsSync, mkdirSync, statSync } from "node:fs";
+import { cpus, freemem } from "node:os";
 import { resolve, dirname, join } from "node:path";
 import { resolveProject } from "../utils/project.js";
+import { lintProject, shouldBlockRender } from "../utils/lintProject.js";
+import { formatLintFindings } from "../utils/lintFormat.js";
 import { loadProducer } from "../utils/producer.js";
 import { c } from "../ui/colors.js";
 import { formatBytes, formatDuration, errorBox } from "../ui/format.js";
 import { renderProgress } from "../ui/progress.js";
 import { trackRenderComplete, trackRenderError } from "../telemetry/events.js";
+import { bytesToMb } from "../telemetry/system.js";
+import type { RenderJob } from "@hyperframes/producer";
 
 const VALID_FPS = new Set([24, 30, 60]);
 const VALID_QUALITY = new Set(["draft", "standard", "high"]);
 const VALID_FORMAT = new Set(["mp4", "webm"]);
+
+const CPU_CORE_COUNT = cpus().length;
+
+/** Half of CPU cores, capped at 4. Each worker spawns a Chrome process (~256 MB). */
+function defaultWorkerCount(): number {
+  return Math.max(1, Math.min(Math.floor(CPU_CORE_COUNT / 2), 4));
+}
 
 export default defineCommand({
   meta: {
@@ -24,19 +36,57 @@ Examples:
   hyperframes render --docker --output deterministic.mp4`,
   },
   args: {
-    dir: { type: "positional", description: "Project directory", required: false },
-    output: { type: "string", description: "Output path (default: renders/<name>.mp4)" },
-    fps: { type: "string", description: "Frame rate: 24, 30, 60", default: "30" },
-    quality: { type: "string", description: "Quality: draft, standard, high", default: "standard" },
+    dir: {
+      type: "positional",
+      description: "Project directory",
+      required: false,
+    },
+    output: {
+      type: "string",
+      description: "Output path (default: renders/<name>.mp4)",
+    },
+    fps: {
+      type: "string",
+      description: "Frame rate: 24, 30, 60",
+      default: "30",
+    },
+    quality: {
+      type: "string",
+      description: "Quality: draft, standard, high",
+      default: "standard",
+    },
     format: {
       type: "string",
       description: "Output format: mp4, webm (WebM renders with transparency)",
       default: "mp4",
     },
-    workers: { type: "string", description: "Parallel workers 1-8" },
-    docker: { type: "boolean", description: "Use Docker for deterministic render", default: false },
+    workers: {
+      type: "string",
+      description:
+        "Parallel render workers (1-8 or 'auto'). Default: half your CPU cores, max 4. " +
+        "Each worker launches a separate Chrome process.",
+    },
+    docker: {
+      type: "boolean",
+      description: "Use Docker for deterministic render",
+      default: false,
+    },
     gpu: { type: "boolean", description: "Use GPU encoding", default: false },
-    quiet: { type: "boolean", description: "Suppress verbose output", default: false },
+    quiet: {
+      type: "boolean",
+      description: "Suppress verbose output",
+      default: false,
+    },
+    strict: {
+      type: "boolean",
+      description: "Fail render on lint errors",
+      default: false,
+    },
+    "strict-all": {
+      type: "boolean",
+      description: "Fail render on lint errors AND warnings",
+      default: false,
+    },
   },
   async run({ args }) {
     // ── Resolve project ────────────────────────────────────────────────────
@@ -68,10 +118,10 @@ Examples:
 
     // ── Validate workers ──────────────────────────────────────────────────
     let workers: number | undefined;
-    if (args.workers != null) {
+    if (args.workers != null && args.workers !== "auto") {
       const parsed = parseInt(args.workers, 10);
       if (isNaN(parsed) || parsed < 1 || parsed > 8) {
-        errorBox("Invalid workers", `Got "${args.workers}". Must be between 1 and 8.`);
+        errorBox("Invalid workers", `Got "${args.workers}". Must be 1-8 or "auto".`);
         process.exit(1);
       }
       workers = parsed;
@@ -80,23 +130,29 @@ Examples:
     // ── Resolve output path ───────────────────────────────────────────────
     const rendersDir = resolve("renders");
     const ext = format === "webm" ? ".webm" : ".mp4";
+    const now = new Date();
+    const datePart = now.toISOString().slice(0, 10);
+    const timePart = now.toTimeString().slice(0, 8).replace(/:/g, "-");
     const outputPath = args.output
       ? resolve(args.output)
-      : join(rendersDir, `${project.name}${ext}`);
+      : join(rendersDir, `${project.name}_${datePart}_${timePart}${ext}`);
 
     // Ensure output directory exists
-    const outputDir = dirname(outputPath);
-    if (!existsSync(outputDir)) {
-      mkdirSync(outputDir, { recursive: true });
-    }
+    mkdirSync(dirname(outputPath), { recursive: true });
 
     const useDocker = args.docker ?? false;
     const useGpu = args.gpu ?? false;
     const quiet = args.quiet ?? false;
+    const strictAll = args["strict-all"] ?? false;
+    const strictErrors = (args.strict ?? false) || strictAll;
 
     // ── Print render plan ─────────────────────────────────────────────────
-    const workerCount = workers ?? 4;
+    const workerCount = workers ?? defaultWorkerCount();
     if (!quiet) {
+      const workerLabel =
+        args.workers != null
+          ? `${workerCount} workers`
+          : `${workerCount} workers (auto \u2014 half of ${CPU_CORE_COUNT} cores)`;
       console.log("");
       console.log(
         c.accent("\u25C6") +
@@ -104,9 +160,7 @@ Examples:
           c.accent(project.name) +
           c.dim(" \u2192 " + outputPath),
       );
-      console.log(
-        c.dim("   " + fps + "fps \u00B7 " + quality + " \u00B7 " + workerCount + " workers"),
-      );
+      console.log(c.dim("   " + fps + "fps \u00B7 " + quality + " \u00B7 " + workerLabel));
       console.log("");
     }
 
@@ -153,13 +207,38 @@ Examples:
       }
     }
 
+    // ── Pre-render lint ──────────────────────────────────────────────────
+    {
+      const lintResult = lintProject(project);
+      if (!quiet && (lintResult.totalErrors > 0 || lintResult.totalWarnings > 0)) {
+        console.log("");
+        for (const line of formatLintFindings(lintResult, { errorsFirst: true })) console.log(line);
+        if (
+          shouldBlockRender(
+            strictErrors,
+            strictAll,
+            lintResult.totalErrors,
+            lintResult.totalWarnings,
+          )
+        ) {
+          const mode = strictAll ? "--strict-all" : "--strict";
+          console.log("");
+          console.log(c.error(`  Aborting render due to lint issues (${mode} mode).`));
+          console.log("");
+          process.exit(1);
+        }
+        console.log(c.dim("  Continuing render despite lint issues. Use --strict to block."));
+        console.log("");
+      }
+    }
+
     // ── Render ────────────────────────────────────────────────────────────
     if (useDocker) {
       await renderDocker(project.dir, outputPath, {
         fps,
         quality,
         format,
-        workers,
+        workers: workerCount,
         gpu: useGpu,
         quiet,
       });
@@ -168,7 +247,7 @@ Examples:
         fps,
         quality,
         format,
-        workers,
+        workers: workerCount,
         gpu: useGpu,
         quiet,
         browserPath,
@@ -181,7 +260,7 @@ interface RenderOptions {
   fps: 24 | 30 | 60;
   quality: "draft" | "standard" | "high";
   format: "mp4" | "webm";
-  workers?: number;
+  workers: number;
   gpu: boolean;
   quiet: boolean;
   browserPath?: string;
@@ -195,8 +274,9 @@ async function renderDocker(
   const producer = await loadProducer();
   const startTime = Date.now();
 
+  let job: RenderJob;
   try {
-    const job = producer.createRenderJob({
+    job = producer.createRenderJob({
       fps: options.fps,
       quality: options.quality,
       format: options.format,
@@ -205,21 +285,11 @@ async function renderDocker(
     });
     await producer.executeRenderJob(job, projectDir, outputPath);
   } catch (error: unknown) {
-    trackRenderError({ fps: options.fps, quality: options.quality, docker: true });
-    const message = error instanceof Error ? error.message : String(error);
-    errorBox("Render failed", message, "Check Docker is running: docker info");
-    process.exit(1);
+    handleRenderError(error, options, startTime, true, "Check Docker is running: docker info");
   }
 
   const elapsed = Date.now() - startTime;
-  trackRenderComplete({
-    durationMs: elapsed,
-    fps: options.fps,
-    quality: options.quality,
-    workers: options.workers ?? 4,
-    docker: true,
-    gpu: options.gpu,
-  });
+  trackRenderMetrics(job, elapsed, options, true);
   printRenderComplete(outputPath, elapsed, options.quiet);
 }
 
@@ -256,22 +326,78 @@ async function renderLocal(
   try {
     await producer.executeRenderJob(job, projectDir, outputPath, onProgress);
   } catch (error: unknown) {
-    trackRenderError({ fps: options.fps, quality: options.quality, docker: false });
-    const message = error instanceof Error ? error.message : String(error);
-    errorBox("Render failed", message, "Try --docker for containerized rendering");
-    process.exit(1);
+    handleRenderError(error, options, startTime, false, "Try --docker for containerized rendering");
   }
 
   const elapsed = Date.now() - startTime;
-  trackRenderComplete({
-    durationMs: elapsed,
+  trackRenderMetrics(job, elapsed, options, false);
+  printRenderComplete(outputPath, elapsed, options.quiet);
+}
+
+function getMemorySnapshot() {
+  return {
+    peakMemoryMb: bytesToMb(process.memoryUsage.rss()),
+    memoryFreeMb: bytesToMb(freemem()),
+  };
+}
+
+function handleRenderError(
+  error: unknown,
+  options: RenderOptions,
+  startTime: number,
+  docker: boolean,
+  hint: string,
+): never {
+  const message = error instanceof Error ? error.message : String(error);
+  trackRenderError({
     fps: options.fps,
     quality: options.quality,
-    workers: options.workers ?? 4,
-    docker: false,
+    docker,
+    workers: options.workers,
     gpu: options.gpu,
+    elapsedMs: Date.now() - startTime,
+    errorMessage: message,
+    ...getMemorySnapshot(),
   });
-  printRenderComplete(outputPath, elapsed, options.quiet);
+  errorBox("Render failed", message, hint);
+  process.exit(1);
+}
+
+/**
+ * Extract rich metrics from the completed render job and send to telemetry.
+ * speed_ratio = composition_duration / render_time — higher is better, >1 means faster than realtime.
+ */
+function trackRenderMetrics(
+  job: RenderJob,
+  elapsedMs: number,
+  options: RenderOptions,
+  docker: boolean,
+): void {
+  const perf = job.perfSummary;
+  const compositionDurationMs = perf
+    ? Math.round(perf.compositionDurationSeconds * 1000)
+    : undefined;
+  const speedRatio =
+    compositionDurationMs && compositionDurationMs > 0 && elapsedMs > 0
+      ? Math.round((compositionDurationMs / elapsedMs) * 100) / 100
+      : undefined;
+
+  trackRenderComplete({
+    durationMs: elapsedMs,
+    fps: options.fps,
+    quality: options.quality,
+    workers: options.workers,
+    docker,
+    gpu: options.gpu,
+    compositionDurationMs,
+    compositionWidth: perf?.resolution.width,
+    compositionHeight: perf?.resolution.height,
+    totalFrames: perf?.totalFrames,
+    speedRatio,
+    captureAvgMs: perf?.captureAvgMs,
+    capturePeakMs: perf?.capturePeakMs,
+    ...getMemorySnapshot(),
+  });
 }
 
 function printRenderComplete(outputPath: string, elapsedMs: number, quiet: boolean): void {

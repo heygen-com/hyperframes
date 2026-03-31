@@ -1,7 +1,12 @@
 {
   "name": "@hyperframes/cli",
-  "version": "0.1.6",
+  "version": "0.1.15",
   "description": "HyperFrames CLI — create, preview, and render HTML video compositions",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/heygen-com/hyperframes",
+    "directory": "packages/cli"
+  },
   "bin": {
     "hyperframes": "./dist/cli.js"
   },
@@ -10,12 +15,13 @@
   ],
   "type": "module",
   "scripts": {
+    "test": "vitest run",
     "dev": "tsx src/cli.ts",
     "build": "bun run build:fonts && bun run build:studio && tsup && bun run build:runtime && bun run build:copy",
     "build:fonts": "cd ../producer && tsx scripts/generate-font-data.ts",
     "build:studio": "cd ../studio && bun run build",
     "build:runtime": "tsx scripts/build-runtime.ts",
-    "build:copy": "mkdir -p dist/studio dist/docs dist/templates && cp -r ../studio/dist/* dist/studio/ && cp -r src/templates/blank src/templates/warm-grain src/templates/play-mode src/templates/swiss-grid src/templates/vignelli dist/templates/ && (cp src/docs/*.md dist/docs/ 2>/dev/null || true)",
+    "build:copy": "mkdir -p dist/studio dist/docs dist/templates dist/skills && cp -r ../studio/dist/* dist/studio/ && cp -r src/templates/blank src/templates/_shared dist/templates/ && cp -r ../../skills/hyperframes-compose ../../skills/hyperframes-captions dist/skills/ && (cp src/docs/*.md dist/docs/ 2>/dev/null || true)",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -25,6 +31,7 @@
     "cheerio": "^1.2.0",
     "citty": "^0.2.1",
     "esbuild": "^0.25.0",
+    "giget": "^3.2.0",
     "hono": "^4.0.0",
     "mime-types": "^3.0.2",
     "open": "^10.0.0",
@@ -47,7 +54,8 @@
     "picocolors": "^1.1.1",
     "tsup": "^8.0.0",
     "tsx": "^4.0.0",
-    "typescript": "^5.0.0"
+    "typescript": "^5.0.0",
+    "vitest": "^3.2.4"
   },
   "engines": {
     "node": ">=22"

@@ -90,7 +90,7 @@ window.__timelines["my-video"] = tl;
 After CLI commands, show what the user should see:
 
 ```bash
-npx hyperframes dev
+npx hyperframes preview
 # ✓ Server running at http://localhost:3000
 # ✓ Watching for changes...
 ```

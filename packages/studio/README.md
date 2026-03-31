@@ -19,7 +19,7 @@ The studio is a React application with:
 
 ## Development
 
-The studio is embedded in the `hyperframes dev` command. To develop the studio UI itself:
+The studio is embedded in the `hyperframes preview` command. To develop the studio UI itself:
 
 ```bash
 cd packages/studio
@@ -43,4 +43,4 @@ Full documentation: [hyperframes.heygen.com/packages/studio](https://hyperframes
 ## Related packages
 
 - [`@hyperframes/core`](../core) — types and parsers used by the editor
-- [`hyperframes`](../cli) — CLI that serves the studio via `hyperframes dev`
+- [`hyperframes`](../cli) — CLI that serves the studio via `hyperframes preview`

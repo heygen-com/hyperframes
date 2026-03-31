@@ -1,7 +1,12 @@
 {
   "name": "@hyperframes/engine",
-  "version": "0.1.6",
+  "version": "0.1.15",
   "description": "Seekable web page to video rendering engine (Puppeteer + FFmpeg)",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/heygen-com/hyperframes",
+    "directory": "packages/engine"
+  },
   "type": "module",
   "main": "./src/index.ts",
   "types": "./src/index.ts",

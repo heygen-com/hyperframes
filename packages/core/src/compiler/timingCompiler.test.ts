@@ -35,6 +35,18 @@ describe("compileTimingAttrs", () => {
     expect(unresolved[0].start).toBe(1);
   });
 
+  it("auto-assigns ids to id-less videos so unresolved duration resolution can target them", () => {
+    const html = '<video src="a.mp4" data-start="1">';
+    const { html: compiled, unresolved } = compileTimingAttrs(html);
+
+    expect(compiled).toContain('id="hf-video-0"');
+    expect(compiled).toContain('data-has-audio="true"');
+    expect(unresolved).toHaveLength(1);
+    expect(unresolved[0].id).toBe("hf-video-0");
+    expect(unresolved[0].tagName).toBe("video");
+    expect(unresolved[0].start).toBe(1);
+  });
+
   it("compiles audio tags the same as video (minus data-has-audio)", () => {
     const html = '<audio id="a1" src="music.mp3" data-start="0" data-duration="10">';
     const { html: compiled } = compileTimingAttrs(html);
@@ -68,6 +80,15 @@ describe("injectDurations", () => {
 
     expect(result).toContain('data-duration="4"');
     expect(result).toContain('data-end="6"');
+  });
+
+  it("injects durations for auto-assigned media ids", () => {
+    const { html, unresolved } = compileTimingAttrs('<video src="a.mp4" data-start="1">');
+    const result = injectDurations(html, [{ id: unresolved[0]!.id, duration: 4 }]);
+
+    expect(result).toContain('id="hf-video-0"');
+    expect(result).toContain('data-duration="4"');
+    expect(result).toContain('data-end="5"');
   });
 
   it("does not overwrite existing data-duration", () => {

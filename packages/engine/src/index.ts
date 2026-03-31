@@ -146,8 +146,10 @@ export { quantizeTimeToFrame, MEDIA_VISUAL_STYLE_PROPERTIES } from "@hyperframes
 export {
   extractVideoMetadata,
   extractAudioMetadata,
+  analyzeKeyframeIntervals,
   type VideoMetadata,
   type AudioMetadata,
+  type KeyframeAnalysis,
 } from "./utils/ffprobe.js";
 
 export { downloadToTemp, isHttpUrl } from "./utils/urlDownloader.js";

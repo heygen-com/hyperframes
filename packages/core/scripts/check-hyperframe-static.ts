@@ -3,11 +3,20 @@ import path from "node:path";
 import { lintHyperframeHtml } from "../src/lint/hyperframeLinter";
 import type { HyperframeLintResult } from "../src/lint/types";
 
+function formatCounts(result: HyperframeLintResult): string {
+  const parts = [`${result.warningCount} warning${result.warningCount === 1 ? "" : "s"}`];
+  if (result.infoCount > 0) {
+    parts.push(`${result.infoCount} info${result.infoCount === 1 ? "" : "s"}`);
+  }
+  return parts.join(", ");
+}
+
 function formatHumanOutput(result: HyperframeLintResult, resolvedPath: string): string {
+  const counts = result.ok
+    ? formatCounts(result)
+    : `${result.errorCount} error${result.errorCount === 1 ? "" : "s"}, ${formatCounts(result)}`;
   const lines = [
-    result.ok
-      ? `PASS ${resolvedPath} (${result.warningCount} warning${result.warningCount === 1 ? "" : "s"})`
-      : `FAIL ${resolvedPath} (${result.errorCount} error${result.errorCount === 1 ? "" : "s"}, ${result.warningCount} warning${result.warningCount === 1 ? "" : "s"})`,
+    result.ok ? `PASS ${resolvedPath} (${counts})` : `FAIL ${resolvedPath} (${counts})`,
   ];
 
   for (const finding of result.findings) {

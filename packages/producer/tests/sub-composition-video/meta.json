@@ -1,0 +1,12 @@
+{
+  "name": "Sub-composition video in photo area",
+  "description": "Tests that video elements inside sub-compositions (lacking explicit id attributes) render correctly. Regression for: parseVideoElements selector only matched video[id][src], silently dropping id-less videos; end derived from data-end only (not data-duration); compiled HTML did not persist auto-assigned ids.",
+  "tags": ["video", "sub-composition", "regression"],
+  "minPsnr": 25,
+  "maxFrameFailures": 5,
+  "minAudioCorrelation": 0.0,
+  "maxAudioLagWindows": 120,
+  "renderConfig": {
+    "fps": 30
+  }
+}

@@ -1,27 +1,31 @@
 /**
- * Embedded studio server for `hyperframes dev` outside the monorepo.
+ * Embedded studio server for `hyperframes preview` outside the monorepo.
  *
- * Serves the pre-built studio SPA and implements the project API that the
- * studio expects. Ports the API logic from packages/studio/vite.config.ts.
+ * Uses the shared studio API module from @hyperframes/core/studio-api,
+ * providing a CLI-specific adapter for single-project, in-process rendering.
  */
 
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
-import { existsSync, readFileSync, readdirSync, statSync, writeFileSync, mkdirSync } from "node:fs";
-import { resolve, join, sep, basename, dirname, extname } from "node:path";
+import { existsSync, readFileSync, writeFileSync, statSync } from "node:fs";
+import { resolve, join, basename } from "node:path";
 import { createProjectWatcher, type ProjectWatcher } from "./fileWatcher.js";
+import {
+  createStudioApi,
+  getMimeType,
+  type StudioApiAdapter,
+  type ResolvedProject,
+  type RenderJobState,
+} from "@hyperframes/core/studio-api";
 
 // ── Path resolution ─────────────────────────────────────────────────────────
 
 function resolveDistDir(): string {
-  // __dirname is injected by tsup banner — points to dist/ in the built CLI.
-  // In dev mode (tsx), it points to src/server/.
   const builtPath = resolve(__dirname, "studio");
   if (existsSync(resolve(builtPath, "index.html"))) return builtPath;
-  // Fallback for dev mode: built studio is at packages/studio/dist
   const devPath = resolve(__dirname, "..", "..", "..", "studio", "dist");
   if (existsSync(resolve(devPath, "index.html"))) return devPath;
-  return builtPath; // let it fail with a clear 404
+  return builtPath;
 }
 
 function resolveRuntimePath(): string {
@@ -40,138 +44,56 @@ function resolveRuntimePath(): string {
   return builtPath;
 }
 
-// ── Safety ──────────────────────────────────────────────────────────────────
+// ── Shared thumbnail browser (singleton per process) ────────────────────────
+// One browser instance is reused across all composition thumbnail requests.
+// Spawning a new Puppeteer process per request adds 2-5s overhead and causes
+// contention when the sidebar requests multiple thumbnails simultaneously.
 
-function isSafePath(base: string, resolved: string): boolean {
-  const norm = resolve(base) + sep;
-  return resolved.startsWith(norm) || resolved === resolve(base);
-}
+let _thumbnailBrowser: import("puppeteer-core").Browser | null = null;
+let _thumbnailBrowserInitializing: Promise<import("puppeteer-core").Browser | null> | null = null;
 
-// ── MIME types ──────────────────────────────────────────────────────────────
+async function getThumbnailBrowser(): Promise<import("puppeteer-core").Browser | null> {
+  if (_thumbnailBrowser?.connected) return _thumbnailBrowser;
+  if (_thumbnailBrowserInitializing) return _thumbnailBrowserInitializing;
 
-const MIME_TYPES: Record<string, string> = {
-  ".html": "text/html",
-  ".js": "text/javascript",
-  ".css": "text/css",
-  ".json": "application/json",
-  ".svg": "image/svg+xml",
-  ".png": "image/png",
-  ".jpg": "image/jpeg",
-  ".jpeg": "image/jpeg",
-  ".webp": "image/webp",
-  ".gif": "image/gif",
-  ".mp4": "video/mp4",
-  ".webm": "video/webm",
-  ".mp3": "audio/mpeg",
-  ".wav": "audio/wav",
-  ".m4a": "audio/mp4",
-  ".ogg": "audio/ogg",
-  ".woff2": "font/woff2",
-  ".woff": "font/woff",
-  ".ttf": "font/ttf",
-};
+  _thumbnailBrowserInitializing = (async () => {
+    try {
+      const { ensureBrowser } = await import("../browser/manager.js");
+      const { acquireBrowser, buildChromeArgs } = await import("@hyperframes/engine");
 
-function getMimeType(filePath: string): string {
-  const ext = extname(filePath).toLowerCase();
-  return MIME_TYPES[ext] ?? "application/octet-stream";
-}
+      try {
+        const b = await ensureBrowser();
+        if (b.executablePath && !process.env.PRODUCER_HEADLESS_SHELL_PATH) {
+          process.env.PRODUCER_HEADLESS_SHELL_PATH = b.executablePath;
+        }
+      } catch {
+        /* continue — acquireBrowser will try its own resolution */
+      }
 
-// ── File helpers ────────────────────────────────────────────────────────────
-
-function walkDir(dir: string, prefix: string = ""): string[] {
-  const files: string[] = [];
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
-    if (entry.isDirectory()) {
-      files.push(...walkDir(join(dir, entry.name), rel));
-    } else {
-      files.push(rel);
+      const acquired = await acquireBrowser(buildChromeArgs({ width: 1920, height: 1080 }), {
+        enableBrowserPool: false,
+      });
+      _thumbnailBrowser = acquired.browser;
+      _thumbnailBrowser.on("disconnected", () => {
+        _thumbnailBrowser = null;
+        _thumbnailBrowserInitializing = null;
+      });
+      return _thumbnailBrowser;
+    } catch {
+      _thumbnailBrowserInitializing = null;
+      return null;
     }
-  }
-  return files;
-}
+  })();
 
-function serveStaticFile(filePath: string): Response | null {
-  if (!existsSync(filePath) || !statSync(filePath).isFile()) return null;
-  const mime = getMimeType(filePath);
-  const content = readFileSync(filePath);
-  return new Response(content, {
-    headers: { "Content-Type": mime, "Cache-Control": "no-store" },
-  });
-}
-
-// ── Sub-composition builder ─────────────────────────────────────────────────
-// Ports vite.config.ts lines 216-301
-
-function buildSubCompositionHtml(
-  projectDir: string,
-  compPath: string,
-  runtimeUrl: string,
-): string | null {
-  const compFile = resolve(projectDir, compPath);
-  if (!isSafePath(projectDir, compFile) || !existsSync(compFile) || !statSync(compFile).isFile()) {
-    return null;
-  }
-
-  let rawComp = readFileSync(compFile, "utf-8");
-
-  // Extract content from <template> if present
-  const templateMatch = rawComp.match(/<template>([\s\S]*)<\/template>/i);
-  let content = (templateMatch ? templateMatch[1] : rawComp) ?? rawComp;
-
-  // Inline nested data-composition-src references
-  content = content.replace(
-    /(<[^>]*?)(data-composition-src=["']([^"']+)["'])([^>]*>)/g,
-    (_match, before, srcAttr, src, after) => {
-      const nestedFile = join(projectDir, src);
-      if (!existsSync(nestedFile)) return before + srcAttr + after;
-      const nestedRaw = readFileSync(nestedFile, "utf-8");
-      const nestedTemplate = nestedRaw.match(/<template>([\s\S]*)<\/template>/i);
-      const nestedContent = (nestedTemplate ? nestedTemplate[1] : nestedRaw) ?? nestedRaw;
-      const styles: string[] = [];
-      const scripts: string[] = [];
-      let body = nestedContent
-        .replace(/<style[^>]*>([\s\S]*?)<\/style>/gi, (_, css) => {
-          styles.push(css);
-          return "";
-        })
-        .replace(/<script[^>]*>([\s\S]*?)<\/script>/gi, (_, js) => {
-          scripts.push(js);
-          return "";
-        });
-      const innerRootMatch = body.match(
-        /<([a-z][a-z0-9]*)\b[^>]*data-composition-id[^>]*>([\s\S]*)<\/\1>/i,
-      );
-      const innerHTML = innerRootMatch ? innerRootMatch[2] : body;
-      return (
-        before +
-        srcAttr +
-        after.replace(/>$/, ">") +
-        innerHTML +
-        (styles.length ? `<style>${styles.join("\n")}</style>` : "") +
-        (scripts.length
-          ? `<script>${scripts.map((s) => `(function(){try{${s}}catch(e){}})();`).join("\n")}</script>`
-          : "")
-      );
-    },
-  );
-
-  return `<!DOCTYPE html>
-<html>
-<head>
-<script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
-<script data-hyperframes-preview-runtime="1" src="${runtimeUrl}"></script>
-</head>
-<body>
-${content}
-</body>
-</html>`;
+  return _thumbnailBrowserInitializing;
 }
 
 // ── Server factory ──────────────────────────────────────────────────────────
 
 export interface StudioServerOptions {
   projectDir: string;
+  /** Display name for the project. Defaults to basename of projectDir. */
+  projectName?: string;
 }
 
 export interface StudioServer {
@@ -180,15 +102,145 @@ export interface StudioServer {
 }
 
 export function createStudioServer(options: StudioServerOptions): StudioServer {
-  const { projectDir } = options;
-  const projectId = basename(projectDir);
+  const { projectDir, projectName } = options;
+  const projectId = projectName || basename(projectDir);
   const studioDir = resolveDistDir();
   const runtimePath = resolveRuntimePath();
   const watcher = createProjectWatcher(projectDir);
 
+  // ── CLI adapter for the shared studio API ──────────────────────────────
+
+  const project: ResolvedProject = { id: projectId, dir: projectDir, title: projectId };
+
+  const adapter: StudioApiAdapter = {
+    listProjects: () => [project],
+
+    resolveProject: (id: string) => (id === projectId ? project : null),
+
+    async bundle(dir: string): Promise<string | null> {
+      try {
+        const { bundleToSingleHtml } = await import("@hyperframes/core/compiler");
+        let html = await bundleToSingleHtml(dir);
+        // Fix empty runtime src from bundler — point to the local runtime endpoint
+        html = html.replace(
+          'data-hyperframes-preview-runtime="1" src=""',
+          'data-hyperframes-preview-runtime="1" src="/api/runtime.js"',
+        );
+        return html;
+      } catch {
+        return null;
+      }
+    },
+
+    async lint(html: string, opts?: { filePath?: string }) {
+      const { lintHyperframeHtml } = await import("@hyperframes/core/lint");
+      return lintHyperframeHtml(html, opts);
+    },
+
+    runtimeUrl: "/api/runtime.js",
+
+    rendersDir: () => join(projectDir, "renders"),
+
+    startRender(opts): RenderJobState {
+      const state: RenderJobState = {
+        id: opts.jobId,
+        status: "rendering",
+        progress: 0,
+        outputPath: opts.outputPath,
+      };
+
+      // Run render asynchronously, mutating the state object
+      (async () => {
+        try {
+          const { createRenderJob, executeRenderJob } = await import("@hyperframes/producer");
+          const { ensureBrowser } = await import("../browser/manager.js");
+
+          try {
+            const browser = await ensureBrowser();
+            if (browser.executablePath && !process.env.PRODUCER_HEADLESS_SHELL_PATH) {
+              process.env.PRODUCER_HEADLESS_SHELL_PATH = browser.executablePath;
+            }
+          } catch {
+            // Continue without — acquireBrowser will try its own resolution
+          }
+
+          const job = createRenderJob({
+            fps: opts.fps as 24 | 30 | 60,
+            quality: opts.quality as "draft" | "standard" | "high",
+            format: opts.format,
+          });
+          const startTime = Date.now();
+          const onProgress = (j: { progress: number; currentStage?: string }) => {
+            state.progress = j.progress;
+            if (j.currentStage) state.stage = j.currentStage;
+          };
+          await executeRenderJob(job, opts.project.dir, opts.outputPath, onProgress);
+          state.status = "complete";
+          state.progress = 100;
+          const metaPath = opts.outputPath.replace(/\.(mp4|webm)$/, ".meta.json");
+          writeFileSync(
+            metaPath,
+            JSON.stringify({ status: "complete", durationMs: Date.now() - startTime }),
+          );
+        } catch (err) {
+          state.status = "failed";
+          state.error = err instanceof Error ? err.message : String(err);
+          try {
+            const metaPath = opts.outputPath.replace(/\.(mp4|webm)$/, ".meta.json");
+            writeFileSync(metaPath, JSON.stringify({ status: "failed" }));
+          } catch {
+            /* ignore */
+          }
+        }
+      })();
+
+      return state;
+    },
+
+    async generateThumbnail(opts): Promise<Buffer | null> {
+      // Reuse a single browser across all thumbnail requests for this server
+      // instance — avoids paying the ~2s Puppeteer startup cost per composition.
+      // The browser is created lazily and kept alive until the process exits.
+      const browser = await getThumbnailBrowser();
+      if (!browser) return null;
+      let page: import("puppeteer-core").Page | null = null;
+      try {
+        page = await browser.newPage();
+        await page.setViewport({ width: opts.width || 1920, height: opts.height || 1080 });
+        // domcontentloaded instead of networkidle2 — CDN scripts (GSAP, Lottie,
+        // fonts) never reach "idle" and cause a 15s timeout per thumbnail.
+        await page.goto(opts.previewUrl, { waitUntil: "domcontentloaded", timeout: 10000 });
+        // Wait for the runtime to register timelines (up to 5s, non-fatal).
+        await page
+          .waitForFunction(() => !!(window as any).__timelines || !!(window as any).__playerReady, {
+            timeout: 5000,
+          })
+          .catch(() => {});
+        await page.evaluate((t: number) => {
+          const win = window as any;
+          if (win.__player?.seek) win.__player.seek(t);
+          else if (win.__timeline?.seek) {
+            win.__timeline.pause();
+            win.__timeline.seek(t);
+          }
+        }, opts.seekTime);
+        // Let the seek render settle.
+        await new Promise((r) => setTimeout(r, 200));
+        const screenshot = (await page.screenshot({ type: "jpeg", quality: 80 })) as Buffer;
+        return screenshot;
+      } catch {
+        return null;
+      } finally {
+        await page?.close().catch(() => {});
+      }
+    },
+  };
+
+  // ── Build the Hono app ─────────────────────────────────────────────────
+
   const app = new Hono();
 
-  // ── API: runtime.js ───────────────────────────────────────────────────
+  // CLI-specific routes (before shared API)
   app.get("/api/runtime.js", (c) => {
     if (!existsSync(runtimePath)) return c.text("runtime not built", 404);
     return c.body(readFileSync(runtimePath, "utf-8"), 200, {
@@ -197,240 +249,55 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
     });
   });
 
-  // ── API: SSE events ───────────────────────────────────────────────────
   app.get("/api/events", (c) => {
     return streamSSE(c, async (stream) => {
       const listener = () => {
         stream.writeSSE({ event: "file-change", data: "{}" }).catch(() => {});
       };
       watcher.addListener(listener);
-      // Keep connection alive until client disconnects
       while (true) {
         await stream.sleep(30000);
       }
     });
   });
 
-  // ── API: project listing ──────────────────────────────────────────────
-  app.get("/api/projects", (c) => {
-    return c.json({ projects: [{ id: projectId, title: projectId }] });
-  });
-
-  // ── API: project file tree ────────────────────────────────────────────
-  app.get("/api/projects/:id", (c) => {
-    const id = c.req.param("id");
-    if (id !== projectId) return c.json({ error: "not found" }, 404);
-    const files = walkDir(projectDir);
-    return c.json({ id: projectId, files });
-  });
-
-  // ── API: preview — bundled composition ────────────────────────────────
-  app.get("/api/projects/:id/preview", async (c) => {
-    const id = c.req.param("id");
-    if (id !== projectId) return c.json({ error: "not found" }, 404);
-
-    let bundled: string;
-    try {
-      const { bundleToSingleHtml } = await import("@hyperframes/core/compiler");
-      bundled = await bundleToSingleHtml(projectDir);
-    } catch {
-      // Fallback to raw HTML
-      const file = join(projectDir, "index.html");
-      if (!existsSync(file)) return c.text("not found", 404);
-      bundled = readFileSync(file, "utf-8");
-    }
-
-    // Inject <base> so relative asset paths resolve through /preview/ route
-    const baseTag = `<base href="/api/projects/${projectId}/preview/">`;
-    if (bundled.includes("<head>")) {
-      bundled = bundled.replace("<head>", `<head>${baseTag}`);
-    } else {
-      bundled = baseTag + bundled;
-    }
-
-    // Fix empty runtime src if present
-    bundled = bundled.replace(
-      'data-hyperframes-preview-runtime="1" src=""',
-      'data-hyperframes-preview-runtime="1" src="/api/runtime.js"',
-    );
-
-    return c.html(bundled);
-  });
-
-  // ── API: sub-composition preview ──────────────────────────────────────
-  app.get("/api/projects/:id/preview/comp/*", (c) => {
-    const id = c.req.param("id");
-    if (id !== projectId) return c.json({ error: "not found" }, 404);
-    const compPath = c.req.path.replace(`/api/projects/${id}/preview/comp/`, "");
-    const html = buildSubCompositionHtml(
-      projectDir,
-      decodeURIComponent(compPath),
-      "/api/runtime.js",
-    );
-    if (!html) return c.text("not found", 404);
-    return c.html(html);
-  });
-
-  // ── API: preview static assets ────────────────────────────────────────
-  app.get("/api/projects/:id/preview/*", (c) => {
-    const id = c.req.param("id");
-    if (id !== projectId) return c.json({ error: "not found" }, 404);
-    const subPath = decodeURIComponent(
-      c.req.path.replace(`/api/projects/${id}/preview/`, "").split("?")[0] ?? "",
-    );
-    const file = resolve(projectDir, subPath);
-    if (!isSafePath(projectDir, file) || !existsSync(file) || !statSync(file).isFile()) {
-      return c.text("not found", 404);
-    }
-    const mime = getMimeType(file);
-    const content = readFileSync(file);
-    return new Response(content, {
-      headers: { "Content-Type": mime, "Cache-Control": "no-store" },
+  // Mount the shared studio API at /api.
+  // Use fetch() forwarding (not .route()) so the sub-app sees paths without
+  // the /api prefix — the shared module's path extraction uses c.req.path.
+  const api = createStudioApi(adapter);
+  app.all("/api/*", async (c) => {
+    const url = new URL(c.req.url);
+    url.pathname = url.pathname.slice(4); // Strip "/api" prefix
+    const forwardReq = new Request(url.toString(), {
+      method: c.req.method,
+      headers: c.req.raw.headers,
+      body: c.req.raw.body,
+      // @ts-expect-error -- Node needs duplex for streaming bodies
+      duplex: "half",
     });
+    return api.fetch(forwardReq);
   });
 
-  // ── API: file read ────────────────────────────────────────────────────
-  app.get("/api/projects/:id/files/*", (c) => {
-    const id = c.req.param("id");
-    if (id !== projectId) return c.json({ error: "not found" }, 404);
-    const filePath = decodeURIComponent(c.req.path.replace(`/api/projects/${id}/files/`, ""));
-    const file = resolve(projectDir, filePath);
-    if (!isSafePath(projectDir, file) || !existsSync(file)) {
-      return c.text("not found", 404);
-    }
-    const content = readFileSync(file, "utf-8");
-    return c.json({ filename: filePath, content });
-  });
-
-  // ── API: file write ───────────────────────────────────────────────────
-  app.put("/api/projects/:id/files/*", async (c) => {
-    const id = c.req.param("id");
-    if (id !== projectId) return c.json({ error: "not found" }, 404);
-    const filePath = decodeURIComponent(c.req.path.replace(`/api/projects/${id}/files/`, ""));
-    const file = resolve(projectDir, filePath);
-    if (!isSafePath(projectDir, file)) {
-      return c.json({ error: "forbidden" }, 403);
-    }
-    // Ensure parent directory exists
-    const dir = dirname(file);
-    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-    const body = await c.req.text();
-    writeFileSync(file, body, "utf-8");
-    return c.json({ ok: true });
-  });
-
-  // ── API: stub endpoints ───────────────────────────────────────────────
-  app.get("/api/resolve-session/:id", (c) => c.json({ error: "not available" }, 404));
-
-  // ── API: render ─────────────────────────────────────────────────────
-  // In-memory job store for active renders
-  const renderJobs = new Map<
-    string,
-    { status: string; progress: number; error?: string; outputPath?: string }
-  >();
-
-  app.post("/api/projects/:id/render", async (c) => {
-    const id = c.req.param("id");
-    if (id !== projectId) return c.json({ error: "not found" }, 404);
-
-    const jobId = Math.random().toString(36).slice(2, 10);
-    const outputDir = join(projectDir, "renders");
-    if (!existsSync(outputDir)) mkdirSync(outputDir, { recursive: true });
-    const outputPath = join(outputDir, `${projectId}.mp4`);
-
-    renderJobs.set(jobId, { status: "rendering", progress: 0, outputPath });
-
-    // Run render asynchronously
-    (async () => {
-      try {
-        const { createRenderJob, executeRenderJob } = await import("@hyperframes/producer");
-        const { ensureBrowser } = await import("../browser/manager.js");
-
-        // Ensure browser is available and pass path to producer
-        try {
-          const browser = await ensureBrowser();
-          if (browser.executablePath && !process.env.PRODUCER_HEADLESS_SHELL_PATH) {
-            process.env.PRODUCER_HEADLESS_SHELL_PATH = browser.executablePath;
-          }
-        } catch {
-          // Continue without — acquireBrowser will try its own resolution
-        }
-
-        const job = createRenderJob({ fps: 30, quality: "standard" });
-        const onProgress = (j: { progress: number }) => {
-          const entry = renderJobs.get(jobId);
-          if (entry) entry.progress = j.progress;
-        };
-        await executeRenderJob(job, projectDir, outputPath, onProgress);
-        const entry = renderJobs.get(jobId);
-        if (entry) {
-          entry.status = "complete";
-          entry.progress = 100;
-        }
-      } catch (err) {
-        const entry = renderJobs.get(jobId);
-        if (entry) {
-          entry.status = "failed";
-          entry.error = err instanceof Error ? err.message : String(err);
-        }
-      }
-    })();
-
-    return c.json({ jobId });
-  });
-
-  app.get("/api/render/:jobId/progress", (c) => {
-    const { jobId } = c.req.param();
-    const job = renderJobs.get(jobId);
-    if (!job) return c.json({ error: "not found" }, 404);
-
-    return streamSSE(c, async (stream) => {
-      while (true) {
-        const current = renderJobs.get(jobId);
-        if (!current) break;
-        await stream.writeSSE({
-          event: "progress",
-          data: JSON.stringify({
-            progress: current.progress,
-            status: current.status,
-            error: current.error,
-          }),
-        });
-        if (current.status === "complete" || current.status === "failed") break;
-        await stream.sleep(500);
-      }
-    });
-  });
-
-  app.get("/api/render/:jobId/download", (c) => {
-    const { jobId } = c.req.param();
-    const job = renderJobs.get(jobId);
-    if (!job?.outputPath || !existsSync(job.outputPath)) {
-      return c.json({ error: "not found" }, 404);
-    }
-    const content = readFileSync(job.outputPath);
-    return new Response(content, {
-      headers: {
-        "Content-Type": "video/mp4",
-        "Content-Disposition": `attachment; filename="${projectId}.mp4"`,
-      },
-    });
-  });
-
-  // ── Studio SPA static files ───────────────────────────────────────────
+  // Studio SPA static files
   app.get("/assets/*", (c) => {
-    const filePath = resolve(studioDir, c.req.path.slice(1)); // strip leading /
-    const resp = serveStaticFile(filePath);
-    return resp ?? c.text("not found", 404);
+    const filePath = resolve(studioDir, c.req.path.slice(1));
+    if (!existsSync(filePath) || !statSync(filePath).isFile()) return c.text("not found", 404);
+    const content = readFileSync(filePath);
+    return new Response(content, {
+      headers: { "Content-Type": getMimeType(filePath), "Cache-Control": "no-store" },
+    });
   });
 
   app.get("/icons/*", (c) => {
     const filePath = resolve(studioDir, c.req.path.slice(1));
-    const resp = serveStaticFile(filePath);
-    return resp ?? c.text("not found", 404);
+    if (!existsSync(filePath) || !statSync(filePath).isFile()) return c.text("not found", 404);
+    const content = readFileSync(filePath);
+    return new Response(content, {
+      headers: { "Content-Type": getMimeType(filePath), "Cache-Control": "no-store" },
+    });
   });
 
-  // ── SPA fallback — serve index.html for all unmatched routes ──────────
+  // SPA fallback
   app.get("*", (c) => {
     const indexPath = resolve(studioDir, "index.html");
     if (!existsSync(indexPath)) {

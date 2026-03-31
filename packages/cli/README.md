@@ -27,15 +27,15 @@ npx hyperframes init my-video
 cd my-video
 ```
 
-### `dev`
+### `preview`
 
 Start the live preview studio in your browser:
 
 ```bash
-npx hyperframes dev
+npx hyperframes preview
 # Studio running at http://localhost:3002
 
-npx hyperframes dev --port 4567
+npx hyperframes preview --port 4567
 ```
 
 ### `render`
@@ -51,8 +51,12 @@ npx hyperframes render ./my-composition.html -o output.mp4
 Validate your Hyperframes HTML:
 
 ```bash
-npx hyperframes lint ./my-composition.html
+npx hyperframes lint ./my-composition
+npx hyperframes lint ./my-composition --json      # JSON output for CI/tooling
+npx hyperframes lint ./my-composition --verbose   # Include info-level findings
 ```
+
+By default only errors and warnings are shown. Use `--verbose` to also display informational findings (e.g., external script dependency notices). Use `--json` for machine-readable output with `errorCount`, `warningCount`, `infoCount`, and a `findings` array.
 
 ### `compositions`
 

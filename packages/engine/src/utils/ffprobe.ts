@@ -1,5 +1,44 @@
 import { spawn } from "child_process";
 
+/** Spawn ffprobe with given args, return stdout. Throws on non-zero exit or missing binary. */
+function runFfprobe(args: string[]): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const proc = spawn("ffprobe", args);
+    let stdout = "";
+    let stderr = "";
+    proc.stdout.on("data", (data) => {
+      stdout += data.toString();
+    });
+    proc.stderr.on("data", (data) => {
+      stderr += data.toString();
+    });
+    proc.on("close", (code) => {
+      if (code !== 0) {
+        reject(new Error(`[FFmpeg] ffprobe exited with code ${code}: ${stderr}`));
+      } else {
+        resolve(stdout);
+      }
+    });
+    proc.on("error", (err) => {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+        reject(new Error("[FFmpeg] ffprobe not found. Please install FFmpeg."));
+      } else {
+        reject(err);
+      }
+    });
+  });
+}
+
+function parseProbeJson(stdout: string): FFProbeOutput {
+  try {
+    return JSON.parse(stdout);
+  } catch (e) {
+    throw new Error(
+      `[FFmpeg] Failed to parse ffprobe output: ${e instanceof Error ? e.message : e}`,
+    );
+  }
+}
+
 const videoMetadataCache = new Map<string, Promise<VideoMetadata>>();
 const audioMetadataCache = new Map<string, Promise<AudioMetadata>>();
 
@@ -10,6 +49,8 @@ export interface VideoMetadata {
   fps: number;
   videoCodec: string;
   hasAudio: boolean;
+  /** True when r_frame_rate and avg_frame_rate differ significantly (>10%), indicating variable frame rate. */
+  isVFR: boolean;
 }
 
 export interface AudioMetadata {
@@ -54,12 +95,10 @@ function parseFrameRate(frameRateStr: string | undefined): number {
 
 export async function extractVideoMetadata(filePath: string): Promise<VideoMetadata> {
   const cached = videoMetadataCache.get(filePath);
-  if (cached) {
-    return cached;
-  }
+  if (cached) return cached;
 
-  const probePromise = new Promise<VideoMetadata>((resolve, reject) => {
-    const args = [
+  const probePromise = (async (): Promise<VideoMetadata> => {
+    const stdout = await runFfprobe([
       "-v",
       "quiet",
       "-print_format",
@@ -67,64 +106,28 @@ export async function extractVideoMetadata(filePath: string): Promise<VideoMetad
       "-show_format",
       "-show_streams",
       filePath,
-    ];
+    ]);
+    const output = parseProbeJson(stdout);
+    const videoStream = output.streams.find((s) => s.codec_type === "video");
+    if (!videoStream) throw new Error("[FFmpeg] No video stream found");
 
-    const ffprobe = spawn("ffprobe", args);
-    let stdout = "";
-    let stderr = "";
+    const rFps = parseFrameRate(videoStream.r_frame_rate);
+    const avgFps = parseFrameRate(videoStream.avg_frame_rate);
+    const fps = avgFps || rFps;
+    // VFR: r_frame_rate (max/nominal) differs from avg_frame_rate (actual average) by >10%
+    const isVFR = rFps > 0 && avgFps > 0 && Math.abs(rFps - avgFps) / Math.max(rFps, avgFps) > 0.1;
 
-    ffprobe.stdout.on("data", (data) => {
-      stdout += data.toString();
-    });
-    ffprobe.stderr.on("data", (data) => {
-      stderr += data.toString();
-    });
+    return {
+      durationSeconds: output.format.duration ? parseFloat(output.format.duration) : 0,
+      width: videoStream.width || 0,
+      height: videoStream.height || 0,
+      fps,
+      videoCodec: videoStream.codec_name || "unknown",
+      hasAudio: output.streams.some((s) => s.codec_type === "audio"),
+      isVFR,
+    };
+  })();
 
-    ffprobe.on("close", (code) => {
-      if (code !== 0) {
-        reject(new Error(`[FFmpeg] ffprobe exited with code ${code}: ${stderr}`));
-        return;
-      }
-
-      try {
-        const output: FFProbeOutput = JSON.parse(stdout);
-        const videoStream = output.streams.find((s) => s.codec_type === "video");
-        if (!videoStream) {
-          reject(new Error("[FFmpeg] No video stream found"));
-          return;
-        }
-
-        const hasAudio = output.streams.some((s) => s.codec_type === "audio");
-        const fps =
-          parseFrameRate(videoStream.avg_frame_rate) || parseFrameRate(videoStream.r_frame_rate);
-        const durationSeconds = output.format.duration ? parseFloat(output.format.duration) : 0;
-
-        const metadata: VideoMetadata = {
-          durationSeconds,
-          width: videoStream.width || 0,
-          height: videoStream.height || 0,
-          fps,
-          videoCodec: videoStream.codec_name || "unknown",
-          hasAudio,
-        };
-        resolve(metadata);
-      } catch (parseError: unknown) {
-        reject(
-          new Error(
-            `[FFmpeg] Failed to parse ffprobe output: ${parseError instanceof Error ? parseError.message : parseError}`,
-          ),
-        );
-      }
-    });
-
-    ffprobe.on("error", (err) => {
-      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-        reject(new Error("[FFmpeg] ffprobe not found. Please install FFmpeg."));
-      } else {
-        reject(err);
-      }
-    });
-  });
   videoMetadataCache.set(filePath, probePromise);
   probePromise.catch(() => {
     if (videoMetadataCache.get(filePath) === probePromise) {
@@ -136,12 +139,10 @@ export async function extractVideoMetadata(filePath: string): Promise<VideoMetad
 
 export async function extractAudioMetadata(filePath: string): Promise<AudioMetadata> {
   const cached = audioMetadataCache.get(filePath);
-  if (cached) {
-    return cached;
-  }
+  if (cached) return cached;
 
-  const probePromise = new Promise<AudioMetadata>((resolve, reject) => {
-    const args = [
+  const probePromise = (async (): Promise<AudioMetadata> => {
+    const stdout = await runFfprobe([
       "-v",
       "quiet",
       "-print_format",
@@ -149,60 +150,22 @@ export async function extractAudioMetadata(filePath: string): Promise<AudioMetad
       "-show_format",
       "-show_streams",
       filePath,
-    ];
+    ]);
+    const output = parseProbeJson(stdout);
+    const audioStream = output.streams.find((s) => s.codec_type === "audio");
+    if (!audioStream) throw new Error("[FFmpeg] No audio stream found");
 
-    const ffprobe = spawn("ffprobe", args);
-    let stdout = "";
-    let stderr = "";
+    const durationSeconds = output.format.duration ? parseFloat(output.format.duration) : 0;
 
-    ffprobe.stdout.on("data", (data) => {
-      stdout += data.toString();
-    });
-    ffprobe.stderr.on("data", (data) => {
-      stderr += data.toString();
-    });
+    return {
+      durationSeconds,
+      sampleRate: audioStream.sample_rate ? parseInt(audioStream.sample_rate) : 44100,
+      channels: audioStream.channels || 2,
+      audioCodec: audioStream.codec_name || "unknown",
+      bitrate: output.format.bit_rate ? parseInt(output.format.bit_rate) : undefined,
+    };
+  })();
 
-    ffprobe.on("close", (code) => {
-      if (code !== 0) {
-        reject(new Error(`[FFmpeg] ffprobe exited with code ${code}: ${stderr}`));
-        return;
-      }
-
-      try {
-        const output: FFProbeOutput = JSON.parse(stdout);
-        const audioStream = output.streams.find((s) => s.codec_type === "audio");
-        if (!audioStream) {
-          reject(new Error("[FFmpeg] No audio stream found"));
-          return;
-        }
-
-        const durationSeconds = output.format.duration ? parseFloat(output.format.duration) : 0;
-
-        const metadata: AudioMetadata = {
-          durationSeconds,
-          sampleRate: audioStream.sample_rate ? parseInt(audioStream.sample_rate) : 44100,
-          channels: audioStream.channels || 2,
-          audioCodec: audioStream.codec_name || "unknown",
-          bitrate: output.format.bit_rate ? parseInt(output.format.bit_rate) : undefined,
-        };
-        resolve(metadata);
-      } catch (parseError: unknown) {
-        reject(
-          new Error(
-            `[FFmpeg] Failed to parse ffprobe output: ${parseError instanceof Error ? parseError.message : parseError}`,
-          ),
-        );
-      }
-    });
-
-    ffprobe.on("error", (err) => {
-      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-        reject(new Error("[FFmpeg] ffprobe not found. Please install FFmpeg."));
-      } else {
-        reject(err);
-      }
-    });
-  });
   audioMetadataCache.set(filePath, probePromise);
   probePromise.catch(() => {
     if (audioMetadataCache.get(filePath) === probePromise) {
@@ -210,4 +173,78 @@ export async function extractAudioMetadata(filePath: string): Promise<AudioMetad
     }
   });
   return probePromise;
+}
+
+export interface KeyframeAnalysis {
+  avgIntervalSeconds: number;
+  maxIntervalSeconds: number;
+  keyframeCount: number;
+  isProblematic: boolean;
+}
+
+const keyframeCache = new Map<string, Promise<KeyframeAnalysis>>();
+
+/**
+ * Check keyframe intervals in a video file. Intervals > 2s cause seeking
+ * issues in the headless renderer and audio/video desync. Videos from
+ * yt-dlp --download-sections or screen recordings often have sparse keyframes.
+ */
+export async function analyzeKeyframeIntervals(filePath: string): Promise<KeyframeAnalysis> {
+  const cached = keyframeCache.get(filePath);
+  if (cached) return cached;
+
+  const promise = analyzeKeyframeIntervalsUncached(filePath);
+  keyframeCache.set(filePath, promise);
+  promise.catch(() => {
+    if (keyframeCache.get(filePath) === promise) {
+      keyframeCache.delete(filePath);
+    }
+  });
+  return promise;
+}
+
+async function analyzeKeyframeIntervalsUncached(filePath: string): Promise<KeyframeAnalysis> {
+  const stdout = await runFfprobe([
+    "-v",
+    "quiet",
+    "-select_streams",
+    "v:0",
+    "-skip_frame",
+    "nokey",
+    "-show_entries",
+    "frame=pts_time",
+    "-of",
+    "csv=p=0",
+    filePath,
+  ]);
+
+  const timestamps = stdout
+    .split("\n")
+    .map((line) => parseFloat(line.trim()))
+    .filter((t) => Number.isFinite(t));
+
+  if (timestamps.length < 2) {
+    return {
+      avgIntervalSeconds: 0,
+      maxIntervalSeconds: 0,
+      keyframeCount: timestamps.length,
+      isProblematic: false,
+    };
+  }
+
+  let maxInterval = 0;
+  let totalInterval = 0;
+  for (let i = 1; i < timestamps.length; i++) {
+    const interval = (timestamps[i] ?? 0) - (timestamps[i - 1] ?? 0);
+    totalInterval += interval;
+    if (interval > maxInterval) maxInterval = interval;
+  }
+
+  const avgInterval = totalInterval / (timestamps.length - 1);
+  return {
+    avgIntervalSeconds: Math.round(avgInterval * 100) / 100,
+    maxIntervalSeconds: Math.round(maxInterval * 100) / 100,
+    keyframeCount: timestamps.length,
+    isProblematic: maxInterval > 2,
+  };
 }

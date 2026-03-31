@@ -100,13 +100,13 @@ This is suppressed in CI environments, non-TTY shells, and when `HYPERFRAMES_NO_
     ```bash
     npx hyperframes init my-video --template warm-grain
     ```
-    See [Templates](/guides/templates) for all available templates.
+    See [Templates](/templates) for all available templates.
   </Step>
   <Step title="Preview in browser">
     Start the development server with live hot reload:
     ```bash
     cd my-video
-    npx hyperframes dev
+    npx hyperframes preview
     ```
     The Hyperframes Studio opens in your browser. Edit `index.html` and the preview updates instantly.
   </Step>
@@ -116,8 +116,9 @@ This is suppressed in CI environments, non-TTY shells, and when `HYPERFRAMES_NO_
     npx hyperframes lint
     ```
     ```
-    Linting index.html...
-    No issues found.
+    ◆  Linting my-project/index.html
+
+    ◇  0 errors, 0 warnings
     ```
   </Step>
   <Step title="Render to MP4">
@@ -155,6 +156,8 @@ This is suppressed in CI environments, non-TTY shells, and when `HYPERFRAMES_NO_
     | `--audio, -a` | Path to an audio file (MP3, WAV, M4A) |
     | `--skip-skills` | Skip AI coding skills installation |
     | `--skip-transcribe` | Skip automatic whisper transcription |
+    | `--model` | Whisper model for transcription (e.g. `small.en`, `medium.en`, `large-v3`) |
+    | `--language` | Language code for transcription (e.g. `en`, `es`, `ja`). Filters non-target speech. |
     | `--human-friendly` | Enable interactive terminal UI with prompts |
 
     | Template | Description |
@@ -169,7 +172,7 @@ This is suppressed in CI environments, non-TTY shells, and when `HYPERFRAMES_NO_
 
     After scaffolding, the CLI installs AI coding skills for Claude Code, Gemini CLI, and Codex CLI (use `--skip-skills` to disable). See [`skills`](#skills) command.
 
-    See [Templates](/guides/templates) for full details.
+    See [Templates](/templates) for full details.
 
     ### `compositions`
 
@@ -184,24 +187,63 @@ This is suppressed in CI environments, non-TTY shells, and when `HYPERFRAMES_NO_
     | `--json` | Output as JSON |
 
     Shows each composition's ID, duration, resolution, and element count.
-  </Tab>
-  <Tab title="Develop">
-    ### `dev`
 
-    Start a live preview server with hot reload:
+    ### `transcribe`
+
+    Transcribe audio/video to word-level timestamps, or import an existing transcript:
 
     ```bash
-    npx hyperframes dev [dir]
-    npx hyperframes dev --port 4567
+    # Transcribe audio/video with local whisper.cpp
+    npx hyperframes transcribe audio.mp3
+    npx hyperframes transcribe video.mp4 --model medium.en --language en
+
+    # Import existing transcripts from other tools
+    npx hyperframes transcribe subtitles.srt
+    npx hyperframes transcribe captions.vtt
+    npx hyperframes transcribe openai-response.json
     ```
 
     | Flag | Description |
     |------|-------------|
-    | `--port` | Port to run the dev server on (default: 3002) |
+    | `--dir, -d` | Project directory (default: current directory) |
+    | `--model, -m` | Whisper model (default: `small.en`). Options: `tiny.en`, `base.en`, `small.en`, `medium.en`, `large-v3` |
+    | `--language, -l` | Language code (e.g. `en`, `es`, `ja`). Filters out non-target language speech. |
+    | `--json` | Output result as JSON |
+
+    The command auto-detects the input type. Audio/video files are transcribed with whisper.cpp. Transcript files (`.json`, `.srt`, `.vtt`) are normalized and imported.
+
+    **Supported transcript formats:**
+
+    | Format | Source |
+    |--------|--------|
+    | whisper.cpp JSON | `hyperframes init --video`, `hyperframes transcribe` |
+    | OpenAI Whisper API JSON | `openai.audio.transcriptions.create()` with word timestamps |
+    | SRT subtitles | Video editors, YouTube, subtitle tools |
+    | VTT subtitles | Web players, YouTube, transcription services |
+
+    All formats are normalized to a standard `[{text, start, end}]` word array and saved as `transcript.json`. If the project has caption HTML files, they are automatically patched with the transcript data.
+
+    <Tip>
+      For music or noisy audio, use `--model medium.en` for better accuracy. For the best results with production content, transcribe via the OpenAI or Groq Whisper API and import the JSON.
+    </Tip>
+  </Tab>
+  <Tab title="Preview">
+    ### `preview`
+
+    Start a live preview server with hot reload:
+
+    ```bash
+    npx hyperframes preview [dir]
+    npx hyperframes preview --port 4567
+    ```
+
+    | Flag | Description |
+    |------|-------------|
+    | `--port` | Port to run the preview server on (default: 3002) |
 
     Opens your composition in the Hyperframes Studio with live preview. Edits to `index.html` and any referenced sub-compositions are reflected automatically. The preview uses the same Hyperframes runtime as production rendering, so what you see is what you get.
 
-    The dev server runs in three modes, auto-detected:
+    The preview server runs in three modes, auto-detected:
 
     1. **Embedded mode** (default for `npx`) — runs a standalone server with the studio bundled in the CLI. Zero extra dependencies.
     2. **Local studio mode** — if `@hyperframes/studio` is installed in your project's `node_modules`, spawns Vite with full HMR for faster iteration.
@@ -213,22 +255,31 @@ This is suppressed in CI environments, non-TTY shells, and when `HYPERFRAMES_NO_
 
     ```bash
     npx hyperframes lint [dir]
+    npx hyperframes lint [dir] --verbose   # include info-level findings
+    npx hyperframes lint [dir] --json      # machine-readable JSON output
     ```
     ```
-    Linting index.html...
+    ◆  Linting my-project/index.html
 
-    WARNING  unmuted-video
-      Video element 'clip-1' should have the 'muted' attribute for reliable autoplay.
-      at index.html:5
+      ✗ missing_gsap_script: Composition uses GSAP but no GSAP script is loaded.
+      ⚠ unmuted-video [clip-1]: Video should have the 'muted' attribute for reliable autoplay.
 
-    1 issue found (0 errors, 1 warning)
+    ◇  1 error(s), 1 warning(s)
     ```
+
+    By default only **errors** and **warnings** are printed. Info-level findings (e.g., external script dependency notices) are hidden to keep output clean for agents and CI. Use `--verbose` to include them.
 
     | Flag | Description |
     |------|-------------|
-    | `--json` | Output findings as JSON |
+    | `--json` | Output findings as JSON (includes `errorCount`, `warningCount`, `infoCount`, and `findings` array) |
+    | `--verbose` | Include info-level findings in output (hidden by default) |
 
-    The linter detects missing attributes, deprecated names, structural problems, and more. See [Common Mistakes](/guides/common-mistakes) for details on each rule.
+    **Severity levels:**
+    - **Error** (`✗`) — must fix before rendering (e.g., missing adapter library, invalid attributes)
+    - **Warning** (`⚠`) — likely issues that may cause unexpected behavior
+    - **Info** (`ℹ`) — informational notices, shown only with `--verbose`
+
+    The linter detects missing attributes, missing adapter libraries (GSAP, Lottie, Three.js), structural problems, and more. See [Common Mistakes](/guides/common-mistakes) for details on each rule.
   </Tab>
   <Tab title="Build">
     ### `render`
@@ -431,7 +482,7 @@ This is suppressed in CI environments, non-TTY shells, and when `HYPERFRAMES_NO_
     The rendering pipeline the CLI calls under the hood. Use directly for programmatic rendering.
   </Card>
   <Card title="Studio" icon="palette" href="/packages/studio">
-    The editor UI that powers `hyperframes dev`. Use directly to embed in your own app.
+    The editor UI that powers `hyperframes preview`. Use directly to embed in your own app.
   </Card>
   <Card title="Core" icon="cube" href="/packages/core">
     Types, linter, and runtime. Use directly for custom tooling and integrations.

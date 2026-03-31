@@ -9,7 +9,7 @@ If your issue is about a specific coding mistake (animations not working, video 
   <Accordion title='"No composition found"'>
     Your directory needs an `index.html` with a valid [composition](/concepts/compositions). The root element must have a [`data-composition-id`](/concepts/data-attributes#composition-attributes) attribute.
 
-    **Fix:** Run `npx hyperframes init` to create a composition from a [template](/guides/templates), or verify your `index.html` has the correct structure:
+    **Fix:** Run `npx hyperframes init` to create a composition from a [template](/templates), or verify your `index.html` has the correct structure:
 
     ```html index.html
     <div id="root" data-composition-id="my-video"
@@ -61,12 +61,12 @@ If your issue is about a specific coding mistake (animations not working, video 
   </Accordion>
 
   <Accordion title="Preview not updating">
-    Make sure you are editing the `index.html` in the project directory. The [preview server](/packages/cli#dev) watches for file changes and auto-reloads.
+    Make sure you are editing the `index.html` in the project directory. The [preview server](/packages/cli#preview) watches for file changes and auto-reloads.
 
     If changes still do not appear:
 
-    1. Check the terminal for errors from the dev server
-    2. Stop and restart `npx hyperframes dev`
+    1. Check the terminal for errors from the preview server
+    2. Stop and restart `npx hyperframes preview`
     3. Hard-refresh the browser: **Ctrl+Shift+R** (Windows/Linux) or **Cmd+Shift+R** (macOS)
     4. Clear the browser cache if CSS changes are not reflected
   </Accordion>

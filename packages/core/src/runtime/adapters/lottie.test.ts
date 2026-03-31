@@ -141,16 +141,6 @@ describe("lottie adapter", () => {
     });
   });
 
-  describe("play", () => {
-    it("plays lottie-web animation", () => {
-      const anim = createLottieWebAnim();
-      lottieWindow.__hfLottie = [anim];
-      const adapter = createLottieAdapter();
-      adapter.play!();
-      expect(anim.play).toHaveBeenCalled();
-    });
-  });
-
   describe("revert", () => {
     it("does not throw", () => {
       const adapter = createLottieAdapter();

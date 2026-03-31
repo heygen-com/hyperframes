@@ -36,6 +36,7 @@ const __dirname = __hf_dirname(__filename);`,
     "mime-types",
     "adm-zip",
     "esbuild",
+    "giget",
   ],
   noExternal: [
     "@hyperframes/core",

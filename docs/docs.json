@@ -12,6 +12,23 @@
     "dark": "/logo/dark.svg"
   },
   "favicon": "/favicon.svg",
+  "contextual": {
+    "options": [
+      "copy",
+      "claude",
+      "cursor",
+      "vscode",
+      "windsurf",
+      "mcp",
+      {
+        "title": "Open an issue",
+        "description": "Report a bug or request a feature",
+        "icon": "github",
+        "iconType": "brands",
+        "href": "https://github.com/heygen-com/hyperframes/issues/new"
+      }
+    ]
+  },
   "navigation": {
     "tabs": [
       {
@@ -19,7 +36,7 @@
         "groups": [
           {
             "group": "Getting Started",
-            "pages": ["introduction", "quickstart"]
+            "pages": ["introduction", "quickstart", "templates"]
           },
           {
             "group": "Concepts",
@@ -34,7 +51,6 @@
             "group": "Guides",
             "pages": [
               "guides/gsap-animation",
-              "guides/templates",
               "guides/rendering",
               "guides/common-mistakes",
               "guides/troubleshooting"
@@ -65,8 +81,8 @@
             "pages": ["reference/html-schema"]
           },
           {
-            "group": "Community",
-            "pages": ["contributing"]
+            "group": "Contributing",
+            "pages": ["contributing", "contributing/testing-local-changes"]
           }
         ]
       }

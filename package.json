@@ -1,6 +1,10 @@
 {
   "name": "hyperframes-monorepo",
   "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/heygen-com/hyperframes"
+  },
   "workspaces": [
     "packages/*"
   ],
@@ -14,11 +18,13 @@
     "build:hyperframes-runtime:modular": "bun run --filter @hyperframes/core build:hyperframes-runtime:modular",
     "verify:packed-manifests": "node scripts/verify-packed-manifests.mjs",
     "set-version": "tsx scripts/set-version.ts",
-    "lint": "oxlint .",
+    "lint": "oxlint . && tsx scripts/lint-skills.ts",
+    "lint:skills": "tsx scripts/lint-skills.ts",
     "lint:fix": "oxlint --fix .",
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",
     "knip": "knip",
+    "generate:previews": "tsx scripts/generate-template-previews.ts",
     "prepare": "test -d .git && lefthook install || true"
   },
   "devDependencies": {

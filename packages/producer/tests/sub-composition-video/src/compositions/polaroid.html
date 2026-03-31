@@ -1,0 +1,211 @@
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+<template id="polaroid-template">
+  <div data-composition-id="polaroid" data-width="1080" data-height="1920" data-duration="13">
+    <!-- Main Container for Floating Animation -->
+    <div class="polaroid-wrapper">
+      <!-- The Polaroid Frame -->
+      <div class="polaroid-frame">
+        <!-- Photo Area -->
+        <div class="photo-area">
+          <video 
+            src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/uploaded_assets/fb7e48ac_f6bf2ab079394d7ebd0491e7008a9242.mp4"
+            data-start="0"
+            data-track-index="0"
+            crossorigin="anonymous"
+          ></video>
+        </div>
+        <!-- Bottom Margin for Captions -->
+        <div class="caption-area">
+          <div id="caption-container"></div>
+        </div>
+      </div>
+    </div>
+
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Caveat:wght@400;700&display=swap');
+
+      [data-composition-id="polaroid"] {
+        width: 1080px;
+        height: 1920px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        background: transparent;
+        perspective: 1000px;
+      }
+
+      [data-composition-id="polaroid"] .polaroid-wrapper {
+        width: 800px;
+        height: 1000px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        opacity: 0; /* Start hidden for fade-in */
+        transform: translateY(100px); /* Start lower for slide-up */
+      }
+
+      [data-composition-id="polaroid"] .polaroid-frame {
+        width: 100%;
+        height: 100%;
+        background: #fdfdfd;
+        padding: 40px 40px 160px 40px;
+        box-shadow: 0 20px 50px rgba(0,0,0,0.3);
+        transform: rotate(2.5deg); /* Slight rotation for physical feel */
+        display: flex;
+        flex-direction: column;
+        position: relative;
+      }
+
+      [data-composition-id="polaroid"] .photo-area {
+        width: 100%;
+        flex-grow: 1;
+        background: #222;
+        overflow: hidden;
+        position: relative;
+      }
+
+      [data-composition-id="polaroid"] .photo-area video {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        object-position: center;
+      }
+
+      [data-composition-id="polaroid"] .caption-area {
+        height: 120px;
+        margin-top: 20px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        padding: 0 20px;
+        position: relative;
+      }
+
+      [data-composition-id="polaroid"] #caption-container {
+        font-family: 'Caveat', cursive;
+        font-size: 54px;
+        color: #1a2a4a; /* Dark blue ink style */
+        text-align: center;
+        line-height: 1.2;
+        width: 100%;
+        height: 100%;
+        position: relative;
+      }
+
+      [data-composition-id="polaroid"] .caption-word {
+        display: inline-block;
+        margin: 0 6px;
+        opacity: 0;
+      }
+    </style>
+
+    <script>
+      (function() {
+        const TRANSCRIPT = [{'text': 'Also', 'start': 0.099, 'end': 0.299}, {'text': 'ich', 'start': 0.379, 'end': 0.479}, {'text': 'hab', 'start': 0.519, 'end': 0.659}, {'text': 'dieses', 'start': 0.699, 'end': 0.979}, {'text': 'AI-Tool', 'start': 1.12, 'end': 1.699}, {'text': 'letzte', 'start': 1.74, 'end': 1.979}, {'text': 'Woche', 'start': 2.059, 'end': 2.259}, {'text': 'gefunden', 'start': 2.299, 'end': 2.74}, {'text': 'und', 'start': 2.799, 'end': 2.98}, {'text': 'ehrlich?', 'start': 3.039, 'end': 3.539}, {'text': 'Es', 'start': 4.179, 'end': 4.279}, {'text': 'ist', 'start': 4.339, 'end': 4.519}, {'text': 'krass.', 'start': 4.559, 'end': 4.979}, {'text': 'Früher', 'start': 5.5, 'end': 5.819}, {'text': 'hab', 'start': 5.859, 'end': 5.96}, {'text': 'ich', 'start': 6.019, 'end': 6.119}, {'text': 'stundenlang', 'start': 6.179, 'end': 6.799}, {'text': 'Videos', 'start': 6.899, 'end': 7.259}, {'text': 'bearbeitet,', 'start': 7.339, 'end': 8.039}, {'text': 'jetzt', 'start': 8.399, 'end': 8.599}, {'text': 'dauert', 'start': 8.639, 'end': 8.88}, {'text': 'es', 'start': 8.92, 'end': 9.0}, {'text': 'fünf', 'start': 9.079, 'end': 9.279}, {'text': 'Minuten.', 'start': 9.359, 'end': 9.819}, {'text': 'Wenn', 'start': 10.359, 'end': 10.46}, {'text': 'du', 'start': 10.539, 'end': 10.619}, {'text': 'das', 'start': 10.659, 'end': 10.8}, {'text': 'noch', 'start': 10.84, 'end': 10.96}, {'text': 'nicht', 'start': 11.019, 'end': 11.159}, {'text': 'nutzt,', 'start': 11.239, 'end': 11.519}, {'text': 'bist', 'start': 11.599, 'end': 11.759}, {'text': 'du', 'start': 11.8, 'end': 11.979}, {'text': 'echt', 'start': 12.059, 'end': 12.259}, {'text': 'verrückt.', 'start': 12.3, 'end': 12.779}];
+        const DURATION = 13;
+        const tl = gsap.timeline({ paused: true });
+
+        // 1. Entrance Animation
+        tl.to('.polaroid-wrapper', {
+          opacity: 1,
+          y: 0,
+          duration: 1.2,
+          ease: 'power3.out'
+        }, 0);
+
+        // 2. Floating/Breathing Animation (Deterministic)
+        const floatTl = gsap.timeline();
+        const steps = 4;
+        const stepDuration = DURATION / steps;
+        
+        floatTl.to('.polaroid-frame', {
+          y: -15,
+          rotation: 3.5,
+          scale: 1.02,
+          duration: stepDuration,
+          ease: 'sine.inOut'
+        })
+        .to('.polaroid-frame', {
+          y: 0,
+          rotation: 2.5,
+          scale: 1,
+          duration: stepDuration,
+          ease: 'sine.inOut'
+        })
+        .to('.polaroid-frame', {
+          y: 15,
+          rotation: 1.5,
+          scale: 0.98,
+          duration: stepDuration,
+          ease: 'sine.inOut'
+        })
+        .to('.polaroid-frame', {
+          y: 0,
+          rotation: 2.5,
+          scale: 1,
+          duration: stepDuration,
+          ease: 'sine.inOut'
+        });
+
+        tl.add(floatTl, 0);
+
+        // 3. Caption Logic
+        const container = document.getElementById('caption-container');
+        
+        let currentGroup = [];
+        const groups = [];
+        
+        TRANSCRIPT.forEach((word, i) => {
+          currentGroup.push(word);
+          const nextWord = TRANSCRIPT[i+1];
+          const isGap = nextWord && (nextWord.start - word.end > 0.8);
+          if (currentGroup.length >= 5 || isGap || !nextWord) {
+            groups.push([...currentGroup]);
+            currentGroup = [];
+          }
+        });
+
+        groups.forEach((group, gIndex) => {
+          const groupDiv = document.createElement('div');
+          groupDiv.style.position = 'absolute';
+          groupDiv.style.width = '100%';
+          groupDiv.style.opacity = 0;
+          groupDiv.style.top = '50%';
+          groupDiv.style.left = '50%';
+          groupDiv.style.transform = 'translate(-50%, -50%)';
+          container.appendChild(groupDiv);
+
+          group.forEach((word, wIndex) => {
+            const span = document.createElement('span');
+            span.className = 'caption-word';
+            span.style.opacity = 0;
+            span.textContent = word.text;
+            groupDiv.appendChild(span);
+
+            tl.to(span, {
+              opacity: 1,
+              duration: 0.1,
+              ease: 'none'
+            }, word.start);
+          });
+
+          tl.to(groupDiv, {
+            opacity: 1,
+            duration: 0.1
+          }, group[0].start);
+
+          const nextGroup = groups[gIndex + 1];
+          const exitTime = nextGroup ? nextGroup[0].start - 0.1 : DURATION - 0.2;
+          tl.to(groupDiv, {
+            opacity: 0,
+            duration: 0.2
+          }, exitTime);
+        });
+
+        tl.to({}, { duration: 2 }, DURATION); 
+
+        window.__timelines["polaroid"] = tl;
+      })();
+    </script>
+  </div>
+</template>
