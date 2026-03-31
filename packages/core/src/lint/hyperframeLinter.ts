@@ -710,6 +710,79 @@ export function lintHyperframeHtml(
     }
   }
 
+  // ── Caption lint rules ──────────────────────────────────────────────────
+
+  // Rule: caption_exit_missing_hard_kill
+  // Exit tweens (tl.to with opacity: 0) can fail when karaoke word-level tweens
+  // conflict, leaving captions stuck on screen. A hard tl.set kill is needed.
+  for (const script of scripts) {
+    const content = script.content;
+    const hasExitTween = /\.to\s*\([^,]+,\s*\{[^}]*opacity\s*:\s*0/.test(content);
+    const hasHardKill =
+      /\.set\s*\([^,]+,\s*\{[^}]*(?:visibility\s*:\s*["']hidden["']|opacity\s*:\s*0)/.test(content);
+    const hasCaptionLoop =
+      /forEach|\.forEach\s*\(/.test(content) && /createElement|caption|group|cg-/.test(content);
+
+    if (hasCaptionLoop && hasExitTween && !hasHardKill) {
+      pushFinding({
+        code: "caption_exit_missing_hard_kill",
+        severity: "warning",
+        message:
+          "Caption exit animations (tl.to with opacity: 0) detected without a hard tl.set kill. " +
+          "Exit tweens can fail when karaoke word-level tweens conflict, leaving captions stuck on screen.",
+        fixHint:
+          'Add `tl.set(groupEl, { opacity: 0, visibility: "hidden" }, group.end)` after every ' +
+          "exit tl.to animation as a deterministic kill.",
+      });
+    }
+  }
+
+  // Rule: caption_text_overflow_risk
+  // Captions with nowrap text and no max-width will clip off-screen.
+  for (const style of styles) {
+    const content = style.content;
+    const captionBlocks = content.matchAll(
+      /(\.caption[-_]?(?:group|container|text|line|word)|#caption[-_]?container)\s*\{([^}]+)\}/gi,
+    );
+    for (const [, selector, body] of captionBlocks) {
+      if (!body) continue;
+      const hasNowrap = /white-space\s*:\s*nowrap/i.test(body);
+      const hasMaxWidth = /max-width/i.test(body);
+
+      if (hasNowrap && !hasMaxWidth) {
+        pushFinding({
+          code: "caption_text_overflow_risk",
+          severity: "warning",
+          selector: (selector ?? "").trim(),
+          message: `Caption selector "${(selector ?? "").trim()}" has white-space: nowrap but no max-width. Long phrases will clip off-screen.`,
+          fixHint:
+            "Add max-width: 1600px (landscape) or max-width: 900px (portrait) and overflow: hidden.",
+        });
+      }
+    }
+  }
+
+  // Rule: caption_container_relative_position
+  // position: relative on caption containers causes overflow and stacking issues.
+  for (const style of styles) {
+    const content = style.content;
+    const captionBlocks = content.matchAll(
+      /(\.caption[-_]?(?:group|container|text|line)|#caption[-_]?container)\s*\{([^}]+)\}/gi,
+    );
+    for (const [, selector, body] of captionBlocks) {
+      if (!body) continue;
+      if (/position\s*:\s*relative/i.test(body)) {
+        pushFinding({
+          code: "caption_container_relative_position",
+          severity: "warning",
+          selector: (selector ?? "").trim(),
+          message: `Caption selector "${(selector ?? "").trim()}" uses position: relative which causes overflow and breaks caption stacking.`,
+          fixHint: "Use position: absolute for all caption elements.",
+        });
+      }
+    }
+  }
+
   // ── External CDN script dependency check ────────────────────────────────
   // Compositions that load CDN libraries via <script src="https://..."> work
   // correctly in bundled mode (bundleToSingleHtml auto-hoists them to the parent

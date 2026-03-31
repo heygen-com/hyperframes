@@ -246,60 +246,11 @@ function patchVideoSrc(
   }
 }
 
-function patchTranscript(dir: string, transcriptPath: string): void {
-  // Read the whisper transcript and normalize to [{text, start, end}]
-  const raw = JSON.parse(readFileSync(transcriptPath, "utf-8"));
-  const words: { text: string; start: number; end: number }[] = [];
-  for (const seg of raw.transcription ?? []) {
-    for (const token of seg.tokens ?? []) {
-      const text = (token.text ?? "").trim();
-      if (!text || text.startsWith("[_") || text.startsWith("[BLANK")) continue;
-
-      // Merge punctuation with the previous word
-      const isPunctuation = /^[.,!?;:'")\]}>…–—-]+$/.test(text);
-      const lastWord = words[words.length - 1];
-      if (isPunctuation && lastWord) {
-        lastWord.text += text;
-        lastWord.end = Math.round(((token.offsets?.to ?? 0) / 1000) * 1000) / 1000;
-        continue;
-      }
-
-      words.push({
-        text,
-        start: Math.round(((token.offsets?.from ?? 0) / 1000) * 1000) / 1000,
-        end: Math.round(((token.offsets?.to ?? 0) / 1000) * 1000) / 1000,
-      });
-    }
-  }
-
+async function patchTranscript(dir: string, transcriptPath: string): Promise<void> {
+  const { loadTranscript, patchCaptionHtml } = await import("../whisper/normalize.js");
+  const { words } = loadTranscript(transcriptPath);
   if (words.length === 0) return;
-
-  const wordsJson = JSON.stringify(words, null, 10)
-    .replace(/^\[/, "[")
-    .replace(/\n {10}/g, "\n          ");
-
-  // Find captions HTML files and replace the hardcoded script array
-  const htmlFiles = readdirSync(dir, { withFileTypes: true, recursive: true })
-    .filter((e) => e.isFile() && e.name.endsWith(".html"))
-    .map((e) => join(e.parentPath ?? e.path, e.name));
-
-  for (const file of htmlFiles) {
-    let content = readFileSync(file, "utf-8");
-    // Match within <script> blocks only to avoid crossing block boundaries
-    const scriptBlocks = content.match(/<script>[\s\S]*?<\/script>/g) ?? [];
-    let scriptMatch: RegExpMatchArray | null = null;
-    let transcriptMatch: RegExpMatchArray | null = null;
-    for (const block of scriptBlocks) {
-      scriptMatch = scriptMatch ?? block.match(/const script = \[[\s\S]*?\];/);
-      transcriptMatch = transcriptMatch ?? block.match(/const TRANSCRIPT = \[[\s\S]*?\];/);
-    }
-    const match = scriptMatch ?? transcriptMatch;
-    if (match) {
-      const varName = scriptMatch ? "script" : "TRANSCRIPT";
-      content = content.replace(match[0], `const ${varName} = ${wordsJson};`);
-      writeFileSync(file, content, "utf-8");
-    }
-  }
+  patchCaptionHtml(dir, words);
 }
 
 // ---------------------------------------------------------------------------
@@ -543,6 +494,16 @@ Examples:
       type: "boolean",
       description: "Skip whisper transcription",
     },
+    model: {
+      type: "string",
+      description:
+        "Whisper model for transcription (e.g. tiny.en, base.en, small.en, medium.en, large)",
+    },
+    language: {
+      type: "string",
+      description:
+        "Language code for transcription (e.g. en, es, ja). Filters out non-target speech.",
+    },
     "non-interactive": {
       type: "boolean",
       description: "Disable interactive prompts (for CI/agents)",
@@ -555,6 +516,8 @@ Examples:
     const skipSkills = args["skip-skills"] === true;
     const skipTranscribe = args["skip-transcribe"] === true;
     const nonInteractive = args["non-interactive"] === true;
+    const modelFlag = args.model;
+    const languageFlag = args.language;
     const interactive = !nonInteractive && process.stdout.isTTY === true;
 
     // -----------------------------------------------------------------------
@@ -615,10 +578,13 @@ Examples:
         try {
           const { ensureWhisper, ensureModel } = await import("../whisper/manager.js");
           await ensureWhisper();
-          await ensureModel();
+          await ensureModel(modelFlag);
           console.log("Transcribing...");
           const { transcribe: runTranscribe } = await import("../whisper/transcribe.js");
-          const result = await runTranscribe(sourceFilePath, destDir);
+          const result = await runTranscribe(sourceFilePath, destDir, {
+            model: modelFlag,
+            language: languageFlag,
+          });
           console.log(
             `Transcribed: ${result.wordCount} words (${result.durationSeconds.toFixed(1)}s)`,
           );
@@ -633,7 +599,7 @@ Examples:
       trackInitTemplate(templateId);
       const transcriptFile = resolve(destDir, "transcript.json");
       if (existsSync(transcriptFile)) {
-        patchTranscript(destDir, transcriptFile);
+        await patchTranscript(destDir, transcriptFile);
       }
 
       // Skills
@@ -796,13 +762,15 @@ Examples:
           await ensureWhisper({
             onProgress: (msg) => spin.message(msg),
           });
-          await ensureModel(undefined, {
+          await ensureModel(modelFlag, {
             onProgress: (msg) => spin.message(msg),
           });
 
           spin.message("Transcribing audio...");
           const { transcribe: runTranscribe } = await import("../whisper/transcribe.js");
           const transcribeResult = await runTranscribe(sourceFilePath, destDir, {
+            model: modelFlag,
+            language: languageFlag,
             onProgress: (msg) => spin.message(msg),
           });
           spin.stop(

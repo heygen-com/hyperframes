@@ -1,6 +1,7 @@
 ---
 name: hyperframes-captions
-description: Build tone-adaptive captions from whisper transcripts. Detects script energy (hype, corporate, tutorial, storytelling, social) and applies matching typography, color, and animation. Supports per-word styling for brand names, ALL CAPS, numbers, and CTAs. Use when adding captions or subtitles to a HyperFrames composition.
+description: Build tone-adaptive captions from whisper transcripts. Detects script energy (hype, corporate, tutorial, storytelling, social) and applies matching typography, color, and animation. Supports per-word styling for brand names, ALL CAPS, numbers, and CTAs. Use when adding captions, subtitles, or lyrics to a HyperFrames composition. Lyric videos ARE captions — any text synced to audio uses this skill.
+trigger: Use this skill whenever a task involves syncing text to audio timing. This includes captions, subtitles, lyrics, karaoke, transcription overlays, and any word-level or phrase-level text timed to speech or music.
 ---
 
 # Captions
@@ -9,41 +10,113 @@ Analyze the spoken content to determine caption style. If the user specifies a s
 
 ## Transcript Source
 
-The project's `transcript.json` contains word-level timestamps from whisper.cpp (`--output-json-full` with `--dtw`):
+The project's `transcript.json` contains a normalized word array with word-level timestamps:
 
 ```json
-{
-  "transcription": [
-    {
-      "offsets": { "from": 0, "to": 5000 },
-      "text": " Hello world.",
-      "tokens": [
-        { "text": " Hello", "offsets": { "from": 0, "to": 1000 }, "p": 0.98 },
-        { "text": " world", "offsets": { "from": 1000, "to": 2000 }, "p": 0.95 }
-      ]
-    }
-  ]
-}
+[
+  { "text": "Hello", "start": 0.0, "end": 0.5 },
+  { "text": "world.", "start": 0.6, "end": 1.2 }
+]
 ```
 
-Normalize tokens into a word array before grouping:
+This is the only format the captions composition consumes. Use it directly:
 
 ```js
-const words = [];
-for (const segment of transcript.transcription) {
-  for (const token of segment.tokens || []) {
-    const text = token.text.trim();
-    if (!text) continue;
-    words.push({
-      text,
-      start: token.offsets.from / 1000,
-      end: token.offsets.to / 1000,
-    });
-  }
-}
+const words = JSON.parse(transcriptJson); // [{ text, start, end }]
 ```
 
-If no `transcript.json` exists, check for `.srt` or `.vtt` files. If no transcript is available, ask the user to provide one or run `hyperframes transcribe` (when available).
+### How transcripts are generated
+
+`hyperframes transcribe` handles both transcription and format conversion:
+
+```bash
+# Transcribe audio/video (uses whisper.cpp locally, no API key needed)
+npx hyperframes transcribe audio.mp3
+
+# Use a larger model for better accuracy
+npx hyperframes transcribe audio.mp3 --model medium.en
+
+# Filter to English only (skips non-English speech)
+npx hyperframes transcribe audio.mp3 --language en
+
+# Import an existing transcript from another tool
+npx hyperframes transcribe captions.srt
+npx hyperframes transcribe captions.vtt
+npx hyperframes transcribe openai-response.json
+```
+
+### Supported input formats
+
+The CLI auto-detects and normalizes these formats:
+
+| Format                | Extension | Source                                                                      | Word-level?       |
+| --------------------- | --------- | --------------------------------------------------------------------------- | ----------------- |
+| whisper.cpp JSON      | `.json`   | `hyperframes init --video`, `hyperframes transcribe`                        | Yes               |
+| OpenAI Whisper API    | `.json`   | `openai.audio.transcriptions.create({ timestamp_granularities: ["word"] })` | Yes               |
+| SRT subtitles         | `.srt`    | Video editors, subtitle tools, YouTube                                      | No (phrase-level) |
+| VTT subtitles         | `.vtt`    | Web players, YouTube, transcription services                                | No (phrase-level) |
+| Normalized word array | `.json`   | Pre-processed by any tool                                                   | Yes               |
+
+**Word-level timestamps produce better captions.** SRT/VTT give phrase-level timing, which works but can't do per-word animation effects.
+
+### Whisper model guide
+
+The default model (`small.en`) balances accuracy and speed. For better results, use a larger model:
+
+| Model       | Size   | Speed    | Accuracy  | When to use                           |
+| ----------- | ------ | -------- | --------- | ------------------------------------- |
+| `tiny.en`   | 75 MB  | Fastest  | Low       | Quick previews, testing pipeline      |
+| `base.en`   | 142 MB | Fast     | Fair      | Short clips, clear audio              |
+| `small.en`  | 466 MB | Moderate | Good      | **Default** — good for most content   |
+| `medium.en` | 1.5 GB | Slow     | Very good | Important content, noisy audio, music |
+| `large-v3`  | 3.1 GB | Slowest  | Best      | Multilingual, production captions     |
+
+`.en` models are English-only and more accurate for English. Drop the `.en` suffix for multilingual (e.g., `medium` instead of `medium.en`).
+
+**Music and vocals over instrumentation**: `small.en` will misidentify lyrics — use `medium.en` as the minimum, or import lyrics manually. Even `medium.en` struggles with heavily produced tracks; for music videos, providing known lyrics as an SRT/VTT and importing with `hyperframes transcribe lyrics.srt` will always beat automated transcription.
+
+### Using external transcription APIs
+
+For the best accuracy, use an external API and import the result:
+
+**OpenAI Whisper API** (recommended for quality):
+
+```bash
+# Generate with word timestamps, then import
+curl https://api.openai.com/v1/audio/transcriptions \
+  -H "Authorization: Bearer $OPENAI_API_KEY" \
+  -F file=@audio.mp3 -F model=whisper-1 \
+  -F response_format=verbose_json \
+  -F "timestamp_granularities[]=word" \
+  -o transcript-openai.json
+
+npx hyperframes transcribe transcript-openai.json
+```
+
+**Groq Whisper API** (fast, free tier available):
+
+```bash
+curl https://api.groq.com/openai/v1/audio/transcriptions \
+  -H "Authorization: Bearer $GROQ_API_KEY" \
+  -F file=@audio.mp3 -F model=whisper-large-v3 \
+  -F response_format=verbose_json \
+  -F "timestamp_granularities[]=word" \
+  -o transcript-groq.json
+
+npx hyperframes transcribe transcript-groq.json
+```
+
+### If no transcript exists
+
+1. Check the project root for `transcript.json`, `.srt`, or `.vtt` files
+2. If none found, ask the user to provide one or run:
+   ```bash
+   npx hyperframes transcribe <audio-or-video-file>
+   ```
+3. If transcription quality is poor (words at wrong times, gibberish), suggest upgrading the model:
+   ```bash
+   npx hyperframes transcribe audio.mp3 --model medium.en
+   ```
 
 ## Style Detection (Default — When No Style Is Specified)
 
@@ -130,9 +203,46 @@ Break groups on sentence boundaries (`.` `?` `!`), pauses (>150ms gap), or max w
 - Use `position: absolute` — never relative (causes overflow)
 - One caption group visible at a time
 
+## Text Overflow Prevention
+
+Captions must never clip off-screen. Apply these rules:
+
+- Set `max-width: 1600px` (landscape) or `max-width: 900px` (portrait) on caption container
+- Add `overflow: hidden` as a safety net
+- **Auto-scale font size** based on character count:
+  - ≤18 chars → full size (e.g., 78px)
+  - 19–25 chars → reduce ~15% (e.g., 68px)
+  - 26+ chars → reduce ~25% (e.g., 58px)
+- Reduce `letter-spacing` for long text (switch from `-0.02em` to `-0.04em`)
+- Give the caption container an explicit `height` (e.g., `200px`) — don't rely on content sizing with absolute children
+- Use `position: absolute` on all caption elements — `position: relative` causes overflow
+
+## Caption Exit Guarantee
+
+Captions that stick on screen are the most common caption bug. Every caption group **must** have a hard kill after its exit animation.
+
+**The pattern:**
+
+```js
+// Animate exit (soft — can fail if tweens conflict)
+tl.to(groupEl, { opacity: 0, scale: 0.95, duration: 0.12, ease: "power2.in" }, group.end - 0.12);
+
+// Hard kill at group.end (deterministic — guarantees invisible)
+tl.set(groupEl, { opacity: 0, visibility: "hidden" }, group.end);
+```
+
+**Why both?** The `tl.to` exit can fail to fully hide a group when:
+
+- Karaoke word-level tweens (`scale`, `color`) on child elements conflict with the parent exit tween
+- `fromTo` entrance tweens lock start/end values that override later tweens on the same property
+- Timeline scrubbing lands between the exit start and end
+
+The `tl.set` at `group.end` is a deterministic kill — it fires at an exact time, doesn't animate, and can't be overridden by other tweens at different times.
+
 ## Constraints
 
 - **Deterministic.** No `Math.random()`, no `Date.now()`.
 - **Sync to transcript timestamps.** Words appear when spoken.
 - **One group visible at a time.** No overlapping caption groups.
+- **Every caption group must have a hard `tl.set` kill at `group.end`.** Exit animations alone are not sufficient.
 - **Check project root** for font files before defaulting to Google Fonts.

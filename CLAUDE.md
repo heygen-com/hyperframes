@@ -9,7 +9,7 @@ This repo ships skills that are installed globally via `npx hyperframes skills` 
 | Skill                    | Invoke with             | When to use                                                                                                                                                                           |
 | ------------------------ | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **hyperframes-compose**  | `/hyperframes-compose`  | Creating ANY HTML composition — videos, animations, title cards, overlays. Contains required HTML structure, `class="clip"` rules, GSAP timeline patterns, and rendering constraints. |
-| **hyperframes-captions** | `/hyperframes-captions` | Building tone-adaptive captions from whisper transcripts — style detection, per-word styling, positioning.                                                                            |
+| **hyperframes-captions** | `/hyperframes-captions` | Any task involving text synced to audio: captions, subtitles, lyrics, lyric videos, karaoke. Also covers transcription strategy (whisper model selection, transcript format).         |
 
 ### GSAP Skills (from [greensock/gsap-skills](https://github.com/greensock/gsap-skills))
 
@@ -29,7 +29,9 @@ The skills encode HyperFrames-specific patterns (e.g., required `class="clip"` o
 ### Rules
 
 - When creating or modifying HTML compositions → invoke `/hyperframes-compose` BEFORE writing any code
-- When adding captions → invoke `/hyperframes-captions` BEFORE writing any code
+- When adding captions, subtitles, lyrics, or any text synced to audio → invoke `/hyperframes-captions` BEFORE writing any code
+- When transcribing audio or choosing a whisper model → invoke `/hyperframes-captions` BEFORE running any transcription tool
+- When creating a video from audio (music video, lyric video, audio visualizer with text) → invoke BOTH `/hyperframes-compose` AND `/hyperframes-captions`
 - When writing GSAP animations → invoke `/gsap-core` and `/gsap-timeline` BEFORE writing any code
 - When optimizing animation performance → invoke `/gsap-performance` BEFORE making changes
 
@@ -68,3 +70,48 @@ pnpm test       # Run tests
 - **Frame Adapters** bridge animation runtimes (GSAP, Lottie, CSS) to the capture engine
 - **Producer** orchestrates capture → encode → audio mix into final MP4
 - **BeginFrame rendering** uses `HeadlessExperimental.beginFrame` for deterministic frame capture
+
+## Transcription
+
+HyperFrames uses word-level timestamps for captions. The `hyperframes transcribe` command handles both transcription and format conversion.
+
+### Quick reference
+
+```bash
+# Transcribe audio/video (local whisper.cpp, no API key)
+npx hyperframes transcribe audio.mp3
+npx hyperframes transcribe video.mp4 --model medium.en --language en
+
+# Import existing transcript from another tool
+npx hyperframes transcribe subtitles.srt
+npx hyperframes transcribe subtitles.vtt
+npx hyperframes transcribe openai-response.json
+```
+
+### Whisper models
+
+Default is `small.en`. Upgrade for better accuracy:
+
+| Model       | Size   | Use case                         |
+| ----------- | ------ | -------------------------------- |
+| `tiny.en`   | 75 MB  | Quick testing                    |
+| `base.en`   | 142 MB | Short clips, clear audio         |
+| `small.en`  | 466 MB | **Default** — most content       |
+| `medium.en` | 1.5 GB | Important content, noisy audio   |
+| `large-v3`  | 3.1 GB | Multilingual, production quality |
+
+Use `.en` suffix for English-only (more accurate). Drop it for multilingual content.
+
+### Supported transcript formats
+
+The CLI auto-detects and normalizes: whisper.cpp JSON, OpenAI Whisper API JSON, SRT, VTT, and pre-normalized `[{text, start, end}]` arrays.
+
+### Improving transcription quality
+
+If captions are inaccurate (wrong words, bad timing):
+
+1. **Upgrade the model**: `--model medium.en` or `--model large-v3`
+2. **Set language**: `--language en` to filter non-target speech
+3. **Use an external API**: Transcribe via OpenAI or Groq Whisper API, then import the JSON with `hyperframes transcribe response.json`
+
+See the `/hyperframes-captions` skill for full details on model selection and API usage.

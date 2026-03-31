@@ -9,6 +9,7 @@ const VIDEO_EXTENSIONS = new Set([".mp4", ".webm", ".mov", ".mkv", ".avi"]);
 
 export interface TranscribeOptions {
   model?: string;
+  language?: string;
   onProgress?: (message: string) => void;
 }
 
@@ -125,21 +126,22 @@ export async function transcribe(
   const outputBase = join(outputDir, "transcript");
   mkdirSync(outputDir, { recursive: true });
 
-  execFileSync(
-    whisper.executablePath,
-    [
-      "--model",
-      modelPath,
-      "--output-json-full",
-      "--output-file",
-      outputBase,
-      "--dtw",
-      model,
-      "--suppress-nst",
-      wavPath,
-    ],
-    { stdio: "ignore", timeout: 300_000 },
-  );
+  const whisperArgs = [
+    "--model",
+    modelPath,
+    "--output-json-full",
+    "--output-file",
+    outputBase,
+    "--dtw",
+    model,
+    "--suppress-nst",
+  ];
+  if (options?.language) {
+    whisperArgs.push("--language", options.language);
+  }
+  whisperArgs.push(wavPath);
+
+  execFileSync(whisper.executablePath, whisperArgs, { stdio: "ignore", timeout: 300_000 });
 
   // 5. Read and validate output
   const transcriptPath = `${outputBase}.json`;
