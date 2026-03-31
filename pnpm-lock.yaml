@@ -93,6 +93,9 @@ importers:
       '@types/node':
         specifier: ^22.0.0
         version: 22.19.15
+      giget:
+        specifier: ^3.2.0
+        version: 3.2.0
       linkedom:
         specifier: ^0.18.12
         version: 0.18.12
@@ -117,6 +120,9 @@ importers:
       '@chenglou/pretext':
         specifier: ^0.0.3
         version: 0.0.3
+      hono:
+        specifier: ^4.0.0
+        version: 4.12.9
     devDependencies:
       '@types/jsdom':
         specifier: ^28.0.0
@@ -2447,6 +2453,10 @@ packages:
   get-uri@6.0.5:
     resolution: {integrity: sha512-b1O07XYq8eRuVzBNgJLstU6FYc1tS6wnMtF1I1D9lE8LxZSOGZ7LhxN54yPP6mGw5f2CkXY2BQUL9Fx41qvcIg==}
     engines: {node: '>= 14'}
+
+  giget@3.2.0:
+    resolution: {integrity: sha512-GvHTWcykIR/fP8cj8dMpuMMkvaeJfPvYnhq0oW+chSeIr+ldX21ifU2Ms6KBoyKZQZmVaUAAhQ2EZ68KJF8a7A==}
+    hasBin: true
 
   git-raw-commits@5.0.1:
     resolution: {integrity: sha512-Y+csSm2GD/PCSh6Isd/WiMjNAydu0VBiG9J7EdQsNA5P9uXvLayqjmTsNlK5Gs9IhblFZqOU0yid5Il5JPoLiQ==}
@@ -5449,6 +5459,8 @@ snapshots:
       debug: 4.4.3
     transitivePeerDependencies:
       - supports-color
+
+  giget@3.2.0: {}
 
   git-raw-commits@5.0.1(conventional-commits-parser@6.3.0):
     dependencies:
