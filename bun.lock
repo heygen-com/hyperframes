@@ -19,7 +19,7 @@
     },
     "packages/cli": {
       "name": "@hyperframes/cli",
-      "version": "0.1.13",
+      "version": "0.1.15",
       "bin": {
         "hyperframes": "./dist/cli.js",
       },
@@ -30,6 +30,7 @@
         "cheerio": "^1.2.0",
         "citty": "^0.2.1",
         "esbuild": "^0.25.0",
+        "giget": "^3.2.0",
         "hono": "^4.0.0",
         "mime-types": "^3.0.2",
         "open": "^10.0.0",
@@ -58,7 +59,7 @@
     },
     "packages/core": {
       "name": "@hyperframes/core",
-      "version": "0.1.13",
+      "version": "0.1.15",
       "dependencies": {
         "@chenglou/pretext": "^0.0.3",
       },
@@ -84,7 +85,7 @@
     },
     "packages/engine": {
       "name": "@hyperframes/engine",
-      "version": "0.1.13",
+      "version": "0.1.15",
       "dependencies": {
         "@hono/node-server": "^1.13.0",
         "@hyperframes/core": "workspace:^",
@@ -101,7 +102,7 @@
     },
     "packages/producer": {
       "name": "@hyperframes/producer",
-      "version": "0.1.13",
+      "version": "0.1.15",
       "dependencies": {
         "@fontsource/archivo-black": "^5.2.8",
         "@fontsource/eb-garamond": "^5.2.7",
@@ -131,7 +132,7 @@
     },
     "packages/studio": {
       "name": "@hyperframes/studio",
-      "version": "0.1.13",
+      "version": "0.1.15",
       "dependencies": {
         "@codemirror/autocomplete": "^6.20.1",
         "@codemirror/commands": "^6.10.3",
@@ -954,6 +955,8 @@
     "get-tsconfig": ["get-tsconfig@4.13.7", "", { "dependencies": { "resolve-pkg-maps": "1.0.0" } }, "sha512-7tN6rFgBlMgpBML5j8typ92BKFi2sFQvIdpAqLA2beia5avZDrMs0FLZiM5etShWq5irVyGcGMEA1jcDaK7A/Q=="],
 
     "get-uri": ["get-uri@6.0.5", "", { "dependencies": { "basic-ftp": "5.2.0", "data-uri-to-buffer": "6.0.2", "debug": "4.4.3" } }, "sha512-b1O07XYq8eRuVzBNgJLstU6FYc1tS6wnMtF1I1D9lE8LxZSOGZ7LhxN54yPP6mGw5f2CkXY2BQUL9Fx41qvcIg=="],
+
+    "giget": ["giget@3.2.0", "", { "bin": { "giget": "dist/cli.mjs" } }, "sha512-GvHTWcykIR/fP8cj8dMpuMMkvaeJfPvYnhq0oW+chSeIr+ldX21ifU2Ms6KBoyKZQZmVaUAAhQ2EZ68KJF8a7A=="],
 
     "git-raw-commits": ["git-raw-commits@5.0.1", "", { "dependencies": { "@conventional-changelog/git-client": "2.6.0", "meow": "13.2.0" }, "bin": { "git-raw-commits": "src/cli.js" } }, "sha512-Y+csSm2GD/PCSh6Isd/WiMjNAydu0VBiG9J7EdQsNA5P9uXvLayqjmTsNlK5Gs9IhblFZqOU0yid5Il5JPoLiQ=="],
 

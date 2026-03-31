@@ -59,6 +59,9 @@ importers:
       esbuild:
         specifier: ^0.25.0
         version: 0.25.12
+      giget:
+        specifier: ^3.2.0
+        version: 3.2.0
       hono:
         specifier: ^4.0.0
         version: 4.12.9
@@ -93,9 +96,6 @@ importers:
       '@types/node':
         specifier: ^22.0.0
         version: 22.19.15
-      giget:
-        specifier: ^3.2.0
-        version: 3.2.0
       linkedom:
         specifier: ^0.18.12
         version: 0.18.12
