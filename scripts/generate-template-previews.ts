@@ -39,7 +39,7 @@ import {
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
 const bundledTemplatesDir = resolve(repoRoot, "packages/cli/src/templates");
-const examplesDir = resolve(repoRoot, "examples");
+const remoteTemplatesDir = resolve(repoRoot, "templates");
 const outputDir = resolve(repoRoot, "docs/images/templates");
 
 if (!process.env.PRODUCER_HYPERFRAME_MANIFEST_PATH) {
@@ -86,7 +86,7 @@ function parseArgs(): { only: string | null; skipVideo: boolean } {
 }
 
 function resolveTemplateDir(templateId: string): string | null {
-  for (const base of [bundledTemplatesDir, examplesDir]) {
+  for (const base of [bundledTemplatesDir, remoteTemplatesDir]) {
     const dir = join(base, templateId);
     if (existsSync(join(dir, "index.html"))) return dir;
   }
@@ -97,7 +97,7 @@ function discoverTemplates(only: string | null): string[] {
   const seen = new Set<string>();
   const all: string[] = [];
 
-  for (const dir of [bundledTemplatesDir, examplesDir]) {
+  for (const dir of [bundledTemplatesDir, remoteTemplatesDir]) {
     if (!existsSync(dir)) continue;
     for (const e of readdirSync(dir, { withFileTypes: true })) {
       if (
