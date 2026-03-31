@@ -155,6 +155,8 @@ This is suppressed in CI environments, non-TTY shells, and when `HYPERFRAMES_NO_
     | `--audio, -a` | Path to an audio file (MP3, WAV, M4A) |
     | `--skip-skills` | Skip AI coding skills installation |
     | `--skip-transcribe` | Skip automatic whisper transcription |
+    | `--model` | Whisper model for transcription (e.g. `small.en`, `medium.en`, `large-v3`) |
+    | `--language` | Language code for transcription (e.g. `en`, `es`, `ja`). Filters non-target speech. |
     | `--human-friendly` | Enable interactive terminal UI with prompts |
 
     | Template | Description |
@@ -184,6 +186,45 @@ This is suppressed in CI environments, non-TTY shells, and when `HYPERFRAMES_NO_
     | `--json` | Output as JSON |
 
     Shows each composition's ID, duration, resolution, and element count.
+
+    ### `transcribe`
+
+    Transcribe audio/video to word-level timestamps, or import an existing transcript:
+
+    ```bash
+    # Transcribe audio/video with local whisper.cpp
+    npx hyperframes transcribe audio.mp3
+    npx hyperframes transcribe video.mp4 --model medium.en --language en
+
+    # Import existing transcripts from other tools
+    npx hyperframes transcribe subtitles.srt
+    npx hyperframes transcribe captions.vtt
+    npx hyperframes transcribe openai-response.json
+    ```
+
+    | Flag | Description |
+    |------|-------------|
+    | `--dir, -d` | Project directory (default: current directory) |
+    | `--model, -m` | Whisper model (default: `small.en`). Options: `tiny.en`, `base.en`, `small.en`, `medium.en`, `large-v3` |
+    | `--language, -l` | Language code (e.g. `en`, `es`, `ja`). Filters out non-target language speech. |
+    | `--json` | Output result as JSON |
+
+    The command auto-detects the input type. Audio/video files are transcribed with whisper.cpp. Transcript files (`.json`, `.srt`, `.vtt`) are normalized and imported.
+
+    **Supported transcript formats:**
+
+    | Format | Source |
+    |--------|--------|
+    | whisper.cpp JSON | `hyperframes init --video`, `hyperframes transcribe` |
+    | OpenAI Whisper API JSON | `openai.audio.transcriptions.create()` with word timestamps |
+    | SRT subtitles | Video editors, YouTube, subtitle tools |
+    | VTT subtitles | Web players, YouTube, transcription services |
+
+    All formats are normalized to a standard `[{text, start, end}]` word array and saved as `transcript.json`. If the project has caption HTML files, they are automatically patched with the transcript data.
+
+    <Tip>
+      For music or noisy audio, use `--model medium.en` for better accuracy. For the best results with production content, transcribe via the OpenAI or Groq Whisper API and import the JSON.
+    </Tip>
   </Tab>
   <Tab title="Develop">
     ### `dev`
