@@ -78,12 +78,26 @@ export async function fetchRemoteTemplate(
   destDir: string,
   options?: { ref?: string },
 ): Promise<void> {
+  // Validate against manifest before downloading
+  const known = await listRemoteTemplates();
+  if (known.length > 0 && !known.some((t) => t.id === templateId)) {
+    const available = known.map((t) => t.id).join(", ");
+    throw new Error(`Template "${templateId}" not found. Available: ${available}`);
+  }
+
   const { downloadTemplate } = await import("giget");
   const ref = options?.ref ?? "main";
   const source = `github:${REPO}/${TEMPLATES_DIR}/${templateId}#${ref}`;
 
   await downloadTemplate(source, {
     dir: destDir,
-    force: true, // overwrite if dir exists
+    force: true,
   });
+
+  // Safety check — giget can succeed with empty dir if path doesn't exist
+  if (!existsSync(join(destDir, "index.html"))) {
+    throw new Error(
+      `Template "${templateId}" downloaded but missing index.html. The template may be malformed.`,
+    );
+  }
 }
