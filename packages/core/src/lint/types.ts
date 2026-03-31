@@ -22,3 +22,7 @@ export type HyperframeLintResult = {
 export type HyperframeLinterOptions = {
   filePath?: string;
 };
+
+// A rule is a pure function: receives parsed context, returns zero or more findings.
+// Import LintContext from "./context" in rule modules.
+export type LintRule<TContext> = (ctx: TContext) => HyperframeLintFinding[];
