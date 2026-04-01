@@ -592,7 +592,6 @@ export function StudioApp() {
                 const store = useCaptionStore.getState();
                 if (store.isEditMode) {
                   store.reset();
-                  captionSync.clearCache();
                   return;
                 }
                 const pid = projectIdRef.current;
@@ -616,7 +615,7 @@ export function StudioApp() {
                 store.setSourceFilePath(activeCompPath);
                 store.setEditMode(true);
                 setRightCollapsed(false);
-                captionSync.cacheOriginalSource();
+                captionSync.loadOverrides();
               }}
               className={`h-7 flex items-center gap-1.5 px-2.5 rounded-md text-[11px] font-medium border transition-colors ${
                 captionEditMode

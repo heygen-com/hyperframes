@@ -255,59 +255,7 @@ export function parseCaptionComposition(
     }
   }
 
-  // Step 8: Parse existing editor overrides from the source and apply to segments
-  parseExistingOverrides(source, model);
-
   return model;
-}
-
-/**
- * Parse existing Caption Editor Override gsap.set() calls from the source
- * and apply them to the model's segment styles. This preserves edits across
- * edit mode re-entries.
- */
-function parseExistingOverrides(source: string, model: CaptionModel): void {
-  // Match both formats:
-  //   gsap.set("#w-0-1", { x: 10.0, ... });
-  //   gsap.set(el_w_0_1, { x: 10.0, ... });
-  const setPattern = /gsap\.set\((?:"#w-(\d+)-(\d+)"|el_w_(\d+)_(\d+)),\s*\{([^}]+)\}\)/g;
-  let match;
-  while ((match = setPattern.exec(source)) !== null) {
-    // Groups 1,2 for "#w-gi-wi" format; groups 3,4 for el_w_gi_wi format
-    const gi = parseInt(match[1] ?? match[3], 10);
-    const wi = parseInt(match[2] ?? match[4], 10);
-    const propsStr = match[5];
-    if (isNaN(gi) || isNaN(wi) || !propsStr) continue;
-
-    // Find the segment
-    const groupId = model.groupOrder[gi];
-    if (!groupId) continue;
-    const group = model.groups.get(groupId);
-    if (!group || wi >= group.segmentIds.length) continue;
-    const segId = group.segmentIds[wi];
-    const seg = model.segments.get(segId);
-    if (!seg) continue;
-
-    // Parse individual properties
-    const style: Partial<CaptionStyle> = {};
-    const xMatch = propsStr.match(/\bx:\s*(-?[\d.]+)/);
-    const yMatch = propsStr.match(/\by:\s*(-?[\d.]+)/);
-    const scaleMatch = propsStr.match(/\bscale:\s*(-?[\d.]+)/);
-    const rotMatch = propsStr.match(/\brotation:\s*(-?[\d.]+)/);
-    const colorMatch = propsStr.match(/\bcolor:\s*"([^"]+)"/);
-    const opacityMatch = propsStr.match(/\bopacity:\s*(-?[\d.]+)/);
-
-    if (xMatch) style.x = parseFloat(xMatch[1]);
-    if (yMatch) style.y = parseFloat(yMatch[1]);
-    if (scaleMatch) { style.scaleX = parseFloat(scaleMatch[1]); style.scaleY = parseFloat(scaleMatch[1]); }
-    if (rotMatch) style.rotation = parseFloat(rotMatch[1]);
-    if (colorMatch) style.color = colorMatch[1];
-    if (opacityMatch) style.opacity = parseFloat(opacityMatch[1]);
-
-    if (Object.keys(style).length > 0) {
-      model.segments.set(segId, { ...seg, style: { ...seg.style, ...style } });
-    }
-  }
 }
 
 /**

@@ -12,6 +12,7 @@ import { createRuntimeState } from "./state";
 import { collectRuntimeTimelinePayload } from "./timeline";
 import { createRuntimeStartTimeResolver } from "./startResolver";
 import { loadExternalCompositions, loadInlineTemplateCompositions } from "./compositionLoader";
+import { applyCaptionOverrides } from "./captionOverrides";
 import type { RuntimeDeterministicAdapter, RuntimeJson, RuntimeTimelineLike } from "./types";
 import type { PlayerAPI } from "../core.types";
 
@@ -1316,6 +1317,7 @@ export function initSandboxRuntimeModular(): void {
         runAdapters("discover", state.currentTime);
         bindMediaMetadataListeners();
         installAssetFailureDiagnostics();
+        applyCaptionOverrides();
         postTimeline();
         postState(true);
       });
