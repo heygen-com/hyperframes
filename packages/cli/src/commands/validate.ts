@@ -109,8 +109,9 @@ async function validateInBrowser(
     });
 
     // Capture uncaught exceptions
-    page.on("pageerror", (err: Error) => {
-      errors.push({ level: "error", text: err.message });
+    page.on("pageerror", (err) => {
+      const message = err instanceof Error ? err.message : String(err);
+      errors.push({ level: "error", text: message });
     });
 
     // Capture failed network requests for project assets (skip favicon, data: URIs)
