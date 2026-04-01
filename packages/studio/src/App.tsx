@@ -12,6 +12,9 @@ import { LintModal } from "./components/LintModal";
 import type { LintFinding } from "./components/LintModal";
 import { MediaPreview } from "./components/MediaPreview";
 import { isMediaFile } from "./utils/mediaTypes";
+import { CaptionOverlay } from "./captions/components/CaptionOverlay";
+import { useCaptionStore } from "./captions/store";
+import { useCaptionSync } from "./captions/hooks/useCaptionSync";
 
 interface EditingFile {
   path: string;
@@ -50,6 +53,8 @@ export function StudioApp() {
   const [fileTree, setFileTree] = useState<string[]>([]);
   const [compIdToSrc, setCompIdToSrc] = useState<Map<string, string>>(new Map());
   const renderQueue = useRenderQueue(projectId);
+  const captionEditMode = useCaptionStore((s) => s.isEditMode);
+  useCaptionSync(projectId);
 
   // Resizable and collapsible panel widths
   const [leftWidth, setLeftWidth] = useState(240);
@@ -569,6 +574,37 @@ export function StudioApp() {
               <line x1="3" y1="5" x2="21" y2="5" />
             </svg>
           </button>
+          {activeCompPath?.includes("captions") && (
+            <button
+              onClick={() => {
+                const store = useCaptionStore.getState();
+                if (store.isEditMode) {
+                  store.reset();
+                } else {
+                  store.setEditMode(true);
+                  store.setSourceFilePath(activeCompPath);
+                }
+              }}
+              className={`h-7 flex items-center gap-1.5 px-2.5 rounded-md text-[11px] font-medium border transition-colors ${
+                captionEditMode
+                  ? "text-studio-accent bg-studio-accent/10 border-studio-accent/30"
+                  : "text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800 border-transparent"
+              }`}
+            >
+              <svg
+                width="12"
+                height="12"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <rect x="1" y="15" width="22" height="6" rx="1" />
+                <path d="M3 18h4M9 18h2M13 18h5" />
+              </svg>
+              {captionEditMode ? "Exit Captions" : "Edit Captions"}
+            </button>
+          )}
           <button
             onClick={() => setRightCollapsed((v) => !v)}
             className={`h-7 flex items-center gap-1.5 px-2.5 rounded-md text-[11px] font-medium border transition-colors ${
@@ -674,6 +710,11 @@ export function StudioApp() {
             onIframeRef={(iframe) => {
               previewIframeRef.current = iframe;
             }}
+            previewOverlay={
+              captionEditMode ? (
+                <CaptionOverlay iframeRef={previewIframeRef} scale={1} offsetX={0} offsetY={0} />
+              ) : undefined
+            }
             timelineVisible={timelineVisible}
             onToggleTimeline={() => setTimelineVisible((v) => !v)}
           />
