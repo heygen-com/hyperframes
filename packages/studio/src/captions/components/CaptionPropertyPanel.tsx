@@ -171,7 +171,6 @@ export const CaptionPropertyPanel = memo(function CaptionPropertyPanel({
       // Build list of word elements to update
       const targetEls: HTMLElement[] = [];
       for (const segId of selectedSegmentIds) {
-        // Find which group and word index
         for (let gi = 0; gi < model.groupOrder.length; gi++) {
           const group = model.groups.get(model.groupOrder[gi]);
           if (!group) continue;
@@ -179,59 +178,58 @@ export const CaptionPropertyPanel = memo(function CaptionPropertyPanel({
           if (wi < 0) continue;
           const groupEl = groupEls[gi];
           if (!groupEl) continue;
-          const wordEl = groupEl.querySelectorAll<HTMLElement>(":scope > span")[wi];
-          if (wordEl) targetEls.push(wordEl);
+          // Resolve word span, handling wrappers
+          const children = groupEl.children;
+          let idx = 0;
+          for (const child of children) {
+            const c = child as HTMLElement;
+            if (c.dataset.captionWrapper === "true") {
+              const inner = c.querySelector<HTMLElement>(":scope > span");
+              if (inner && idx === wi) { targetEls.push(inner); break; }
+            } else if (c.tagName === "SPAN") {
+              if (idx === wi) { targetEls.push(c); break; }
+            }
+            idx++;
+          }
           break;
         }
       }
 
-      // Apply CSS updates
-      for (const el of targetEls) {
-        if (updates.fontFamily !== undefined) el.style.fontFamily = updates.fontFamily;
-        if (updates.fontSize !== undefined) el.style.fontSize = `${updates.fontSize}px`;
-        if (updates.fontWeight !== undefined) el.style.fontWeight = String(updates.fontWeight);
-        if (updates.fontStyle !== undefined) el.style.fontStyle = updates.fontStyle;
-        if (updates.textDecoration !== undefined) el.style.textDecoration = updates.textDecoration;
-        if (updates.textTransform !== undefined) el.style.textTransform = updates.textTransform;
-        if (updates.letterSpacing !== undefined) el.style.letterSpacing = `${updates.letterSpacing}px`;
-        // For activeColor/dimColor, modify GSAP tweens by timeline order
-        if (updates.activeColor !== undefined || updates.dimColor !== undefined) {
-          try {
-            const iframeGsap = (iframeRef.current?.contentWindow as unknown as {
-              gsap?: { getTweensOf: (el: HTMLElement) => Array<{ vars: Record<string, unknown>; startTime(): number }> };
-            })?.gsap;
-            if (iframeGsap) {
-              const colorTweens = iframeGsap.getTweensOf(el)
-                .filter((tw) => tw.vars.color !== undefined)
-                .sort((a, b) => a.startTime() - b.startTime());
-              for (let i = 0; i < colorTweens.length; i++) {
-                if (i === 0 && updates.dimColor) {
-                  colorTweens[i].vars.color = updates.dimColor;
-                } else if (i === 1 && updates.activeColor) {
-                  colorTweens[i].vars.color = updates.activeColor;
-                } else if (i >= 2 && updates.dimColor) {
-                  colorTweens[i].vars.color = updates.dimColor;
-                }
+      // Apply transform updates via gsap.set on the WRAPPER (not the word span)
+      const hasTransform = updates.x !== undefined || updates.y !== undefined ||
+        updates.scaleX !== undefined || updates.scaleY !== undefined || updates.rotation !== undefined;
+
+      if (hasTransform) {
+        try {
+          const iframeGsap = (iframeRef.current?.contentWindow as unknown as {
+            gsap?: { set: (el: HTMLElement, props: Record<string, unknown>) => void;
+                     getProperty: (el: HTMLElement, prop: string) => number };
+          })?.gsap;
+          if (iframeGsap) {
+            for (const el of targetEls) {
+              // Get or create wrapper
+              let wrapper = el.parentElement;
+              if (!wrapper || wrapper.dataset.captionWrapper !== "true") {
+                wrapper = doc.createElement("span") as HTMLElement;
+                wrapper.style.display = "inline-block";
+                wrapper.dataset.captionWrapper = "true";
+                el.parentNode?.insertBefore(wrapper, el);
+                wrapper.appendChild(el);
               }
+              // Read current wrapper state and merge with updates
+              const curX = iframeGsap.getProperty(wrapper, "x") || 0;
+              const curY = iframeGsap.getProperty(wrapper, "y") || 0;
+              const curScale = iframeGsap.getProperty(wrapper, "scale") || 1;
+              const curRotation = iframeGsap.getProperty(wrapper, "rotation") || 0;
+              iframeGsap.set(wrapper, {
+                x: updates.x ?? curX,
+                y: updates.y ?? curY,
+                scale: updates.scaleX ?? curScale,
+                rotation: updates.rotation ?? curRotation,
+              });
             }
-          } catch { /* cross-origin */ }
-          if (updates.dimColor) el.style.color = updates.dimColor;
-          if (updates.activeColor) el.style.color = updates.activeColor;
-        }
-        if (updates.opacity !== undefined) el.style.opacity = String(updates.opacity);
-        if (updates.strokeWidth !== undefined || updates.strokeColor !== undefined) {
-          const sw = updates.strokeWidth ?? effectiveStyle.strokeWidth ?? 0;
-          const sc = updates.strokeColor ?? effectiveStyle.strokeColor ?? "#000";
-          el.style.setProperty("-webkit-text-stroke", `${sw}px ${sc}`);
-        }
-        if (updates.rotation !== undefined) {
-          el.style.transform = `rotate(${updates.rotation}deg)`;
-        }
-        if (updates.scaleX !== undefined || updates.scaleY !== undefined) {
-          const sx = updates.scaleX ?? effectiveStyle.scaleX ?? 1;
-          const sy = updates.scaleY ?? effectiveStyle.scaleY ?? 1;
-          el.style.transform = `scale(${sx}, ${sy})`;
-        }
+          }
+        } catch { /* cross-origin */ }
       }
     },
     [iframeRef, model, selectedSegmentIds, effectiveStyle.strokeWidth, effectiveStyle.strokeColor, effectiveStyle.scaleX, effectiveStyle.scaleY],
