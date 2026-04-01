@@ -57,6 +57,7 @@ export function StudioApp() {
   const [compIdToSrc, setCompIdToSrc] = useState<Map<string, string>>(new Map());
   const renderQueue = useRenderQueue(projectId);
   const captionEditMode = useCaptionStore((s) => s.isEditMode);
+  const captionHasSelection = useCaptionStore((s) => s.selectedSegmentIds.size > 0);
   const captionSync = useCaptionSync(projectId);
 
   // Resizable and collapsible panel widths
@@ -64,6 +65,46 @@ export function StudioApp() {
   const [rightWidth, setRightWidth] = useState(400);
   const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [rightCollapsed, setRightCollapsed] = useState(true);
+  // Auto-enter caption edit mode when viewing a captions composition
+  // eslint-disable-next-line no-restricted-syntax
+  useEffect(() => {
+    if (!activeCompPath?.includes("captions") || !projectId) {
+      // Exited captions composition — reset edit mode
+      if (captionEditMode) useCaptionStore.getState().reset();
+      return;
+    }
+    if (captionEditMode) return; // already active
+
+    // Enter edit mode
+    (async () => {
+      const pid = projectId;
+      const res = await fetch(`/api/projects/${pid}/files/${encodeURIComponent(activeCompPath)}`);
+      const data = await res.json();
+      if (!data.content) return;
+      const iframe = previewIframeRef.current;
+      const doc = iframe?.contentDocument;
+      const win = iframe?.contentWindow;
+      if (!doc || !win) return;
+      const root = doc.querySelector("[data-composition-id]");
+      const w = parseInt(root?.getAttribute("data-width") ?? "1920", 10);
+      const h = parseInt(root?.getAttribute("data-height") ?? "1080", 10);
+      const dur = parseFloat(root?.getAttribute("data-duration") ?? "0");
+      const model = parseCaptionComposition(doc, win, data.content, w, h, dur);
+      if (!model) return;
+      const store = useCaptionStore.getState();
+      store.setModel(model);
+      store.setSourceFilePath(activeCompPath);
+      store.setEditMode(true);
+      captionSync.loadOverrides();
+    })();
+  }, [activeCompPath, projectId]);
+
+  // Auto-expand right panel when a caption word is selected
+  const prevCaptionHasSelection = useRef(false);
+  if (captionEditMode && captionHasSelection && !prevCaptionHasSelection.current && rightCollapsed) {
+    setRightCollapsed(false);
+  }
+  prevCaptionHasSelection.current = captionHasSelection;
   const [globalDragOver, setGlobalDragOver] = useState(false);
   const [uploadToast, setUploadToast] = useState<string | null>(null);
   const [timelineVisible, setTimelineVisible] = useState(false);
@@ -580,57 +621,6 @@ export function StudioApp() {
               <line x1="3" y1="5" x2="21" y2="5" />
             </svg>
           </button>
-          {activeCompPath?.includes("captions") && (
-            <button
-              onClick={async () => {
-                const store = useCaptionStore.getState();
-                if (store.isEditMode) {
-                  store.reset();
-                  return;
-                }
-                const pid = projectIdRef.current;
-                if (!pid || !activeCompPath) return;
-                const res = await fetch(
-                  `/api/projects/${pid}/files/${encodeURIComponent(activeCompPath)}`,
-                );
-                const data = await res.json();
-                if (!data.content) return;
-                const iframe = previewIframeRef.current;
-                const doc = iframe?.contentDocument;
-                const win = iframe?.contentWindow;
-                if (!doc || !win) return;
-                const root = doc.querySelector("[data-composition-id]");
-                const w = parseInt(root?.getAttribute("data-width") ?? "1920", 10);
-                const h = parseInt(root?.getAttribute("data-height") ?? "1080", 10);
-                const dur = parseFloat(root?.getAttribute("data-duration") ?? "0");
-                const model = parseCaptionComposition(doc, win, data.content, w, h, dur);
-                if (!model) return;
-                store.setModel(model);
-                store.setSourceFilePath(activeCompPath);
-                store.setEditMode(true);
-                setRightCollapsed(false);
-                captionSync.loadOverrides();
-              }}
-              className={`h-7 flex items-center gap-1.5 px-2.5 rounded-md text-[11px] font-medium border transition-colors ${
-                captionEditMode
-                  ? "text-studio-accent bg-studio-accent/10 border-studio-accent/30"
-                  : "text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800 border-transparent"
-              }`}
-            >
-              <svg
-                width="12"
-                height="12"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-              >
-                <rect x="1" y="15" width="22" height="6" rx="1" />
-                <path d="M3 18h4M9 18h2M13 18h5" />
-              </svg>
-              {captionEditMode ? "Exit Captions" : "Edit Captions"}
-            </button>
-          )}
           <button
             onClick={() => setRightCollapsed((v) => !v)}
             className={`h-7 flex items-center gap-1.5 px-2.5 rounded-md text-[11px] font-medium border transition-colors ${
