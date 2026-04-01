@@ -140,6 +140,7 @@ Video must be `muted playsinline`. Audio is always a separate `<audio>` element:
 For PiP, title cards, and slide show patterns, see [patterns.md](./patterns.md).
 For data, stats, and infographics, see [data-in-motion.md](./data-in-motion.md).
 For typewriter text and other GSAP animation effects, see the `gsap-effects` skill.
+For audio-driven animation (beat sync, glow, pulse), see the `audio-reactive` skill.
 
 ## Output Checklist
 

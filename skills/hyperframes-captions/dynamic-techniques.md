@@ -276,46 +276,13 @@ group.words.forEach(function (word, wi) {
 });
 ```
 
-## Audio-Reactive Captions
-
-When audio data is available (extracted via `extract-audio-data.py`), tie caption properties to the music. Captions pulse, glow, and shift with the beat.
-
-```js
-// Load audio data alongside the transcript
-var AUDIO_DATA = /* loaded from audio-data.json */;
-
-for (var f = 0; f < AUDIO_DATA.totalFrames; f++) {
-  tl.call(function (frameIdx) {
-    return function () {
-      var frame = AUDIO_DATA.frames[frameIdx];
-      if (!frame) return;
-      // Find the currently visible caption group
-      var activeGroup = document.querySelector('.caption-group[data-active="true"]');
-      if (!activeGroup) return;
-      var words = activeGroup.querySelectorAll("span");
-
-      // Bass drives scale pulse on the whole group
-      var bassPulse = 1 + frame.bands[0] * 0.06;
-      gsap.set(activeGroup, { scale: bassPulse });
-
-      // Treble drives glow intensity
-      var treble = Math.max(frame.bands[12] || 0, frame.bands[13] || 0, frame.bands[14] || 0);
-      var glow = Math.round(treble * 15);
-      gsap.set(activeGroup, { textShadow: "0 0 " + glow + "px rgba(255,255,255," + (treble * 0.6) + ")" });
-    };
-  }(f), [], f / AUDIO_DATA.fps);
-}
-```
-
-Keep audio reactivity subtle for captions — 3-6% scale variation and soft glow. Heavy pulsing makes text unreadable. Audio reactivity works best as a background texture, not the main event.
-
 ## Combining Techniques
 
 The best dynamic captions layer 2-3 techniques together. A few combinations that work:
 
 | Combination                              | Energy      | Best for                        |
 | ---------------------------------------- | ----------- | ------------------------------- |
-| Karaoke highlight + bass pulse           | Medium-high | Music videos, lyric videos      |
+| Karaoke highlight + audio reactivity     | Medium-high | Music videos, lyric videos      |
 | Staggered entrance + scatter exit        | High        | Hype content, trailers          |
 | Clip-path reveal + fade exit             | Medium      | Corporate, storytelling         |
 | Slam heroes + elastic others + drop exit | Very high   | Product launches, announcements |
