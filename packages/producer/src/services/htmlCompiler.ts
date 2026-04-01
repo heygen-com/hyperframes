@@ -41,6 +41,8 @@ export interface CompiledComposition {
   videos: VideoElement[];
   audios: AudioElement[];
   unresolvedCompositions: UnresolvedElement[];
+  /** Assets that resolve outside projectDir. Keys are the path used in HTML, values are absolute filesystem paths. */
+  externalAssets: Map<string, string>;
   width: number;
   height: number;
   staticDuration: number;
@@ -748,6 +750,92 @@ async function inlineExternalScripts(html: string): Promise<string> {
 }
 
 /**
+ * Scan compiled HTML for asset references that resolve outside projectDir.
+ * For each, map the normalized in-HTML path to the real filesystem path so
+ * the orchestrator can copy them into the compiled output directory.
+ *
+ * Handles: src/href attributes, CSS url(), inline style url().
+ */
+function collectExternalAssets(
+  html: string,
+  projectDir: string,
+): { html: string; externalAssets: Map<string, string> } {
+  const absProjectDir = resolve(projectDir);
+  const externalAssets = new Map<string, string>();
+  const CSS_URL_RE = /\burl\(\s*(["']?)([^)"']+)\1\s*\)/g;
+
+  function processPath(rawPath: string): string | null {
+    const trimmed = rawPath.trim();
+    if (
+      !trimmed ||
+      trimmed.startsWith("http://") ||
+      trimmed.startsWith("https://") ||
+      trimmed.startsWith("//") ||
+      trimmed.startsWith("data:") ||
+      trimmed.startsWith("#")
+    ) {
+      return null;
+    }
+    const absPath = resolve(absProjectDir, trimmed);
+    if (absPath.startsWith(absProjectDir + "/") || absPath === absProjectDir) {
+      return null; // inside projectDir, file server handles this
+    }
+    if (!existsSync(absPath)) return null;
+    // Map to a flat path inside a .hf-assets/ namespace to avoid collisions
+    const safeKey = "hf-ext/" + absPath.replace(/^\//, "").replace(/\.\.\//g, "");
+    externalAssets.set(safeKey, absPath);
+    return safeKey;
+  }
+
+  const { document } = parseHTML(html);
+
+  // Rewrite src and href attributes
+  for (const el of document.querySelectorAll("[src], [href]")) {
+    for (const attr of ["src", "href"]) {
+      const val = (el.getAttribute(attr) || "").trim();
+      if (!val) continue;
+      const rewritten = processPath(val);
+      if (rewritten) el.setAttribute(attr, rewritten);
+    }
+  }
+
+  // Rewrite CSS url() in <style> blocks
+  for (const styleEl of document.querySelectorAll("style")) {
+    const css = styleEl.textContent || "";
+    if (!css.includes("url(")) continue;
+    const rewritten = css.replace(CSS_URL_RE, (full, quote: string, rawUrl: string) => {
+      const result = processPath((rawUrl || "").trim());
+      if (!result) return full;
+      return `url(${quote || ""}${result}${quote || ""})`;
+    });
+    if (rewritten !== css) styleEl.textContent = rewritten;
+  }
+
+  // Rewrite inline style url() on elements
+  for (const el of document.querySelectorAll("[style]")) {
+    const style = el.getAttribute("style") || "";
+    if (!style.includes("url(")) continue;
+    const rewritten = style.replace(CSS_URL_RE, (full, quote: string, rawUrl: string) => {
+      const result = processPath((rawUrl || "").trim());
+      if (!result) return full;
+      return `url(${quote || ""}${result}${quote || ""})`;
+    });
+    if (rewritten !== style) el.setAttribute("style", rewritten);
+  }
+
+  if (externalAssets.size > 0) {
+    console.log(
+      `[Compiler] Found ${externalAssets.size} asset(s) outside project directory — will copy to render output`,
+    );
+  }
+
+  return {
+    html: externalAssets.size > 0 ? document.toString() : html,
+    externalAssets,
+  };
+}
+
+/**
  * Compile an HTML composition project into a single self-contained HTML string
  * with all media metadata resolved.
  */
@@ -795,9 +883,14 @@ export async function compileForRender(
   // restricted environments that cause silent all-black renders.
   const offlineHtml = await inlineExternalScripts(sanitizedHtml);
 
-  const html = injectDeterministicFontFaces(
+  const assembledHtml = injectDeterministicFontFaces(
     coalesceHeadStylesAndBodyScripts(promoteCssImportsToLinkTags(offlineHtml)),
   );
+
+  // Collect assets that resolve outside projectDir (e.g. ../shared-assets/hero.png).
+  // These can't be served by the file server, so we map them to paths the
+  // orchestrator will copy into the compiled output directory.
+  const { html, externalAssets } = collectExternalAssets(assembledHtml, projectDir);
 
   // Parse main HTML elements
   const mainVideos = parseVideoElements(html);
@@ -855,6 +948,7 @@ export async function compileForRender(
     videos,
     audios,
     unresolvedCompositions,
+    externalAssets,
     width,
     height,
     staticDuration,

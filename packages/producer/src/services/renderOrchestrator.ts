@@ -249,6 +249,14 @@ function writeCompiledArtifacts(
     writeFileSync(outPath, html, "utf-8");
   }
 
+  // Copy external assets (files outside projectDir) into the compiled directory
+  // so the file server can serve them.
+  for (const [relativePath, absolutePath] of compiled.externalAssets) {
+    const outPath = join(compileDir, relativePath);
+    mkdirSync(dirname(outPath), { recursive: true });
+    copyFileSync(absolutePath, outPath);
+  }
+
   if (includeSummary) {
     const summary = {
       width: compiled.width,
