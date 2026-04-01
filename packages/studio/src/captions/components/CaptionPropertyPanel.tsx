@@ -194,27 +194,27 @@ export const CaptionPropertyPanel = memo(function CaptionPropertyPanel({
         if (updates.textDecoration !== undefined) el.style.textDecoration = updates.textDecoration;
         if (updates.textTransform !== undefined) el.style.textTransform = updates.textTransform;
         if (updates.letterSpacing !== undefined) el.style.letterSpacing = `${updates.letterSpacing}px`;
-        // For activeColor/dimColor, modify GSAP tweens on this element
+        // For activeColor/dimColor, modify GSAP tweens by timeline order
         if (updates.activeColor !== undefined || updates.dimColor !== undefined) {
           try {
             const iframeGsap = (iframeRef.current?.contentWindow as unknown as {
-              gsap?: { getTweensOf: (el: HTMLElement) => Array<{ vars: Record<string, unknown> }> };
+              gsap?: { getTweensOf: (el: HTMLElement) => Array<{ vars: Record<string, unknown>; startTime(): number }> };
             })?.gsap;
             if (iframeGsap) {
-              const tweens = iframeGsap.getTweensOf(el);
-              for (const tw of tweens) {
-                if (tw.vars.color === undefined) continue;
-                const colorVal = String(tw.vars.color);
-                const isDim = colorVal.includes("0.25") || colorVal.includes("0.3") || colorVal.includes("0.2");
-                if (isDim && updates.dimColor) {
-                  tw.vars.color = updates.dimColor;
-                } else if (!isDim && updates.activeColor) {
-                  tw.vars.color = updates.activeColor;
+              const colorTweens = iframeGsap.getTweensOf(el)
+                .filter((tw) => tw.vars.color !== undefined)
+                .sort((a, b) => a.startTime() - b.startTime());
+              for (let i = 0; i < colorTweens.length; i++) {
+                if (i === 0 && updates.dimColor) {
+                  colorTweens[i].vars.color = updates.dimColor;
+                } else if (i === 1 && updates.activeColor) {
+                  colorTweens[i].vars.color = updates.activeColor;
+                } else if (i >= 2 && updates.dimColor) {
+                  colorTweens[i].vars.color = updates.dimColor;
                 }
               }
             }
           } catch { /* cross-origin */ }
-          // Set current visible color
           if (updates.dimColor) el.style.color = updates.dimColor;
           if (updates.activeColor) el.style.color = updates.activeColor;
         }
@@ -390,163 +390,10 @@ export const CaptionPropertyPanel = memo(function CaptionPropertyPanel({
       {/* Animation tab */}
       {activeTab === "animation" && <CaptionAnimationPanel />}
 
-      {/* Style tab — Scrollable content */}
+      {/* Style tab — Transform only */}
       {activeTab === "style" && (
         <div className="flex-1 overflow-y-auto px-3 py-2">
-          {/* Typography */}
-          <Section label="Typography">
-            <Row label="Family">
-              <input
-                type="text"
-                value={fontFamily}
-                onChange={(e) => handleStyleChange({ fontFamily: e.target.value })}
-                className={inputCls}
-              />
-            </Row>
-
-            <Row label="Size">
-              <input
-                type="number"
-                value={fontSize}
-                onChange={(e) => handleStyleChange({ fontSize: Number(e.target.value) })}
-                className={inputCls}
-              />
-            </Row>
-
-            <Row label="Weight">
-              <div className="flex items-center gap-2">
-                <input
-                  type="range"
-                  min={100}
-                  max={900}
-                  step={100}
-                  value={fontWeight}
-                  onChange={(e) => handleStyleChange({ fontWeight: Number(e.target.value) })}
-                  className="flex-1 accent-studio-accent"
-                />
-                <span className="text-2xs text-neutral-400 font-mono w-8 text-right flex-shrink-0">
-                  {fontWeight}
-                </span>
-              </div>
-            </Row>
-
-            <Row label="Style">
-              <div className="flex items-center gap-1">
-                <ToggleButton
-                  active={isItalic}
-                  onClick={() =>
-                    handleStyleChange({
-                      fontStyle: isItalic ? "normal" : "italic",
-                    })
-                  }
-                  label="I"
-                  italic
-                />
-                <ToggleButton
-                  active={isUnderline}
-                  onClick={() =>
-                    handleStyleChange({
-                      textDecoration: buildTextDecoration(!isUnderline, isStrikethrough),
-                    })
-                  }
-                  label="U"
-                  underline
-                />
-                <ToggleButton
-                  active={isStrikethrough}
-                  onClick={() =>
-                    handleStyleChange({
-                      textDecoration: buildTextDecoration(isUnderline, !isStrikethrough),
-                    })
-                  }
-                  label="S"
-                  strikethrough
-                />
-              </div>
-            </Row>
-
-            <Row label="Transform">
-              <select
-                value={textTransform}
-                onChange={(e) =>
-                  handleStyleChange({
-                    textTransform: e.target.value as CaptionStyle["textTransform"],
-                  })
-                }
-                className={inputCls}
-              >
-                <option value="none">none</option>
-                <option value="uppercase">uppercase</option>
-                <option value="lowercase">lowercase</option>
-                <option value="capitalize">capitalize</option>
-              </select>
-            </Row>
-
-            <Row label="Spacing">
-              <input
-                type="number"
-                value={letterSpacing}
-                step={0.5}
-                onChange={(e) => handleStyleChange({ letterSpacing: Number(e.target.value) })}
-                className={inputCls}
-              />
-            </Row>
-          </Section>
-
-          {/* Color & Fill */}
-          <Section label="Color & Fill">
-            <Row label="Active">
-              <ColorInput
-                value={effectiveStyle.activeColor ?? "#ffffff"}
-                onChange={(v) => handleStyleChange({ activeColor: v })}
-              />
-            </Row>
-
-            <Row label="Dim">
-              <ColorInput
-                value={effectiveStyle.dimColor ?? "rgba(255,255,255,0.3)"}
-                onChange={(v) => handleStyleChange({ dimColor: v })}
-              />
-            </Row>
-
-            <Row label="Opacity">
-              <div className="flex items-center gap-2">
-                <input
-                  type="range"
-                  min={0}
-                  max={1}
-                  step={0.05}
-                  value={opacity}
-                  onChange={(e) => handleStyleChange({ opacity: Number(e.target.value) })}
-                  className="flex-1 accent-studio-accent"
-                />
-                <span className="text-2xs text-neutral-400 font-mono w-8 text-right flex-shrink-0">
-                  {Math.round(opacity * 100)}%
-                </span>
-              </div>
-            </Row>
-
-            <Row label="Stroke W">
-              <input
-                type="number"
-                value={strokeWidth}
-                step={1}
-                min={0}
-                onChange={(e) => handleStyleChange({ strokeWidth: Number(e.target.value) })}
-                className={inputCls}
-              />
-            </Row>
-
-            <Row label="Stroke C">
-              <ColorInput
-                value={strokeColor}
-                onChange={(v) => handleStyleChange({ strokeColor: v })}
-              />
-            </Row>
-          </Section>
-
-          {/* Transform */}
-          <Section label="Transform">
+          <Section label="Position">
             <Row label="X">
               <input
                 type="number"
@@ -564,16 +411,9 @@ export const CaptionPropertyPanel = memo(function CaptionPropertyPanel({
                 className={inputCls}
               />
             </Row>
+          </Section>
 
-            <Row label="Rotation">
-              <input
-                type="number"
-                value={rotation}
-                onChange={(e) => handleStyleChange({ rotation: Number(e.target.value) })}
-                className={inputCls}
-              />
-            </Row>
-
+          <Section label="Transform">
             <Row label="Scale">
               <input
                 type="number"
@@ -588,51 +428,16 @@ export const CaptionPropertyPanel = memo(function CaptionPropertyPanel({
                 className={inputCls}
               />
             </Row>
+
+            <Row label="Rotation">
+              <input
+                type="number"
+                value={rotation}
+                onChange={(e) => handleStyleChange({ rotation: Number(e.target.value) })}
+                className={inputCls}
+              />
+            </Row>
           </Section>
-
-          {/* Background — group-level only */}
-          {activeGroupId && containerStyle && (
-            <Section label="Background">
-              <Row label="Color">
-                <ColorInput
-                  value={containerStyle.backgroundColor}
-                  onChange={(v) => handleContainerChange({ backgroundColor: v })}
-                />
-              </Row>
-
-              <Row label="Padding">
-                <input
-                  type="number"
-                  value={containerStyle.paddingTop}
-                  min={0}
-                  onChange={(e) => {
-                    const v = Number(e.target.value);
-                    handleContainerChange({
-                      paddingTop: v,
-                      paddingRight: v,
-                      paddingBottom: v,
-                      paddingLeft: v,
-                    });
-                  }}
-                  className={inputCls}
-                />
-              </Row>
-
-              <Row label="Radius">
-                <input
-                  type="number"
-                  value={containerStyle.borderRadius}
-                  min={0}
-                  onChange={(e) =>
-                    handleContainerChange({
-                      borderRadius: Number(e.target.value),
-                    })
-                  }
-                  className={inputCls}
-                />
-              </Row>
-            </Section>
-          )}
         </div>
       )}
     </div>

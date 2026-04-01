@@ -29,6 +29,7 @@ export interface CaptionOverride {
 
 interface GsapTween {
   vars: Record<string, unknown>;
+  startTime(): number;
 }
 
 interface GsapStatic {
@@ -82,22 +83,29 @@ export function applyCaptionOverrides(): void {
         if (override.fontWeight !== undefined) styleProps.fontWeight = override.fontWeight;
         if (override.fontFamily !== undefined) styleProps.fontFamily = override.fontFamily;
 
-        // Replace color values in existing GSAP tweens for this element.
-        // Tweens that set color to dim/spoken/after states get their values swapped.
+        // Replace color values in existing GSAP tweens by timeline order.
+        // For any word, color tweens follow: dim (setup) → active (spoken) → after.
+        // Sort by startTime and assign by position, not by content heuristics.
         if (override.activeColor || override.dimColor) {
-          const tweens = gsap.getTweensOf(el);
-          for (const tw of tweens) {
-            if (tw.vars.color === undefined) continue;
-            const colorVal = String(tw.vars.color);
-            // Heuristic: dim colors have low alpha or match common dim patterns
-            const isDim = colorVal.includes("0.25") || colorVal.includes("0.3") || colorVal.includes("0.2");
-            if (isDim && override.dimColor) {
-              tw.vars.color = override.dimColor;
-            } else if (!isDim && override.activeColor) {
-              tw.vars.color = override.activeColor;
+          const allTweens = gsap.getTweensOf(el);
+          const colorTweens = allTweens
+            .filter((tw) => tw.vars.color !== undefined)
+            .sort((a, b) => a.startTime() - b.startTime());
+
+          for (let i = 0; i < colorTweens.length; i++) {
+            if (i === 0 && override.dimColor) {
+              // First color tween = dim setup
+              colorTweens[i].vars.color = override.dimColor;
+            } else if (i === 1 && override.activeColor) {
+              // Second color tween = active/spoken
+              colorTweens[i].vars.color = override.activeColor;
+            } else if (i >= 2 && override.dimColor) {
+              // Third+ = after/deactivate (use dim color)
+              colorTweens[i].vars.color = override.dimColor;
             }
           }
-          // Also set the current inline color
+
+          // Set current visible color (words start in dim state)
           if (override.dimColor) {
             gsap.set(el, { color: override.dimColor });
           }
