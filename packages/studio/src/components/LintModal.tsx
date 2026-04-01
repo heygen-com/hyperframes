@@ -12,14 +12,10 @@ export function LintModal({
   findings,
   projectId,
   onClose,
-  title,
-  subtitle,
 }: {
   findings: LintFinding[];
   projectId: string;
   onClose: () => void;
-  title?: string;
-  subtitle?: string;
 }) {
   const errors = findings.filter((f) => f.severity === "error");
   const warnings = findings.filter((f) => f.severity === "warning");
@@ -66,12 +62,11 @@ export function LintModal({
             )}
             <div>
               <h2 className="text-sm font-semibold text-neutral-200">
-                {title ??
-                  (hasIssues
-                    ? `${errors.length} error${errors.length !== 1 ? "s" : ""}, ${warnings.length} warning${warnings.length !== 1 ? "s" : ""}`
-                    : "All checks passed")}
+                {hasIssues
+                  ? `${errors.length} error${errors.length !== 1 ? "s" : ""}, ${warnings.length} warning${warnings.length !== 1 ? "s" : ""}`
+                  : "All checks passed"}
               </h2>
-              <p className="text-xs text-neutral-500">{subtitle ?? "HyperFrame Lint Results"}</p>
+              <p className="text-xs text-neutral-500">HyperFrame Lint Results</p>
             </div>
           </div>
           <button
