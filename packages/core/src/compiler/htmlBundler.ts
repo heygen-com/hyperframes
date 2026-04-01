@@ -3,7 +3,7 @@ import { join, resolve, isAbsolute, sep } from "path";
 import * as cheerio from "cheerio";
 import { transformSync } from "esbuild";
 import { compileHtml, type MediaDurationProber } from "./htmlCompiler";
-import { rewriteAssetPaths } from "./rewriteSubCompPaths";
+import { rewriteAssetPaths, rewriteCssAssetUrls } from "./rewriteSubCompPaths";
 import { validateHyperframeHtmlContract } from "./staticGuard";
 
 /** Resolve a relative path within projectDir, rejecting traversal outside it. */
@@ -414,7 +414,7 @@ export async function bundleToSingleHtml(
       : $content("[data-composition-id]").first();
 
     $content("style").each((_, s) => {
-      compStyleChunks.push($content(s).html() || "");
+      compStyleChunks.push(rewriteCssAssetUrls($content(s).html() || "", src));
       $content(s).remove();
     });
     $content("script").each((_, s) => {

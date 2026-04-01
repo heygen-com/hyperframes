@@ -195,4 +195,36 @@ describe("bundleToSingleHtml", () => {
     expect(bundled).toContain('data-height="600"');
     expect(bundled).toContain("Sized content");
   });
+
+  it("rewrites CSS url(...) asset paths from sub-compositions when styles are hoisted", async () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html>
+<html><head></head><body>
+  <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+    <div
+      data-composition-id="hero"
+      data-composition-src="compositions/hero.html"
+      data-start="0"
+      data-duration="2"></div>
+  </div>
+  <script>window.__timelines={};</script>
+</body></html>`,
+      "compositions/hero.html": `<template id="hero-template">
+  <div data-composition-id="hero" data-width="1920" data-height="1080">
+    <style>
+      @font-face {
+        font-family: "Brand Sans";
+        src: url("../fonts/brand.woff2") format("woff2");
+      }
+    </style>
+    <p>Hello</p>
+  </div>
+</template>`,
+    });
+
+    const bundled = await bundleToSingleHtml(dir);
+
+    expect(bundled).toContain('url("fonts/brand.woff2")');
+    expect(bundled).not.toContain('url("../fonts/brand.woff2")');
+  });
 });

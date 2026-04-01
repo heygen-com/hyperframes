@@ -1,5 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import * as cheerio from "cheerio";
+import { rewriteAssetPaths, rewriteCssAssetUrls } from "../../compiler/rewriteSubCompPaths.js";
 
 /**
  * Build a standalone HTML page for a sub-composition.
@@ -22,6 +24,21 @@ export function buildSubCompositionHtml(
   // Extract content from <template> wrapper (compositions are always templates)
   const templateMatch = rawComp.match(/<template[^>]*>([\s\S]*)<\/template>/i);
   const content = templateMatch?.[1] ?? rawComp;
+  const $content = cheerio.load(content, {}, false);
+
+  rewriteAssetPaths(
+    $content("[src], [href]").toArray(),
+    compPath,
+    (el, attr) => $content(el).attr(attr),
+    (el, attr, value) => {
+      $content(el).attr(attr, value);
+    },
+  );
+  $content("style").each((_, styleEl) => {
+    $content(styleEl).text(rewriteCssAssetUrls($content(styleEl).html() || "", compPath));
+  });
+
+  const rewrittenContent = $content.root().html() || content;
 
   // Use the project's index.html <head> to preserve all dependencies
   const indexPath = join(projectDir, "index.html");
@@ -58,7 +75,7 @@ ${headContent}
 </head>
 <body>
 <script>window.__timelines=window.__timelines||{};</script>
-${content}
+${rewrittenContent}
 </body>
 </html>`;
 }

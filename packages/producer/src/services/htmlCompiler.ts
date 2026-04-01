@@ -20,6 +20,7 @@ import {
   type ResolvedDuration,
   type UnresolvedElement,
   rewriteAssetPaths,
+  rewriteCssAssetUrls,
 } from "@hyperframes/core";
 import { extractVideoMetadata, extractAudioMetadata } from "../utils/ffprobe.js";
 import {
@@ -527,7 +528,7 @@ function inlineSubCompositions(
     const inferredCompId = innerRoot?.getAttribute("data-composition-id")?.trim() || null;
 
     for (const styleEl of contentDoc.querySelectorAll("style")) {
-      const css = styleEl.textContent || "";
+      const css = rewriteCssAssetUrls(styleEl.textContent || "", srcPath);
       const scopeId = compId || inferredCompId;
       if (scopeId && css.trim()) {
         // Scope sub-composition styles to their composition ID to prevent

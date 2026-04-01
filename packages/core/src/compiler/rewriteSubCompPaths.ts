@@ -16,6 +16,7 @@ import { join, resolve, dirname } from "path";
 
 /** Attributes that may contain relative asset paths. */
 const PATH_ATTRS = ["src", "href"] as const;
+const CSS_URL_RE = /\burl\(\s*(["']?)([^)"']+)\1\s*\)/g;
 
 /** Protocols and prefixes that should never be rewritten. */
 function isAbsoluteOrSpecial(val: string): boolean {
@@ -89,4 +90,18 @@ export function rewriteAssetPaths<T>(
       }
     }
   }
+}
+
+/**
+ * Rewrite CSS url(...) references in a sub-composition's inline styles so
+ * ../foo.woff2 remains valid after the CSS is hoisted into the root document.
+ */
+export function rewriteCssAssetUrls(cssText: string, compSrcPath: string): string {
+  if (!cssText) return cssText;
+  return cssText.replace(CSS_URL_RE, (full, quote: string, rawUrl: string) => {
+    const urlValue = (rawUrl || "").trim();
+    const rewritten = rewriteAssetPath(compSrcPath, urlValue);
+    if (rewritten === urlValue) return full;
+    return `url(${quote || ""}${rewritten}${quote || ""})`;
+  });
 }
