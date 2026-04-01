@@ -10,7 +10,8 @@ interface CaptionOverrideEntry {
   y?: number;
   scale?: number;
   rotation?: number;
-  color?: string;
+  activeColor?: string;
+  dimColor?: string;
   opacity?: number;
   fontSize?: number;
   fontWeight?: number;
@@ -38,7 +39,8 @@ function buildOverrides(model: {
         if (s.y !== undefined) entry.y = s.y;
         if (s.scaleX !== undefined) entry.scale = s.scaleX;
         if (s.rotation !== undefined) entry.rotation = s.rotation;
-        if (s.color !== undefined) entry.color = s.color;
+        if (s.activeColor !== undefined) entry.activeColor = s.activeColor;
+        if (s.dimColor !== undefined) entry.dimColor = s.dimColor;
         if (s.opacity !== undefined) entry.opacity = s.opacity;
         if (s.fontSize !== undefined) entry.fontSize = s.fontSize;
         if (s.fontWeight !== undefined) entry.fontWeight = s.fontWeight as number;
@@ -131,7 +133,8 @@ export function useCaptionSync(projectId: string | null) {
         if (override.y !== undefined) style.y = override.y;
         if (override.scale !== undefined) { style.scaleX = override.scale; style.scaleY = override.scale; }
         if (override.rotation !== undefined) style.rotation = override.rotation;
-        if (override.color !== undefined) style.color = override.color;
+        if (override.activeColor !== undefined) style.activeColor = override.activeColor;
+        if (override.dimColor !== undefined) style.dimColor = override.dimColor;
         if (override.opacity !== undefined) style.opacity = override.opacity;
         if (override.fontSize !== undefined) style.fontSize = override.fontSize;
         if (override.fontWeight !== undefined) style.fontWeight = override.fontWeight;

@@ -42,6 +42,10 @@ export interface CaptionStyle {
 
   // Color / fill
   color: string;
+  /** Color when the word is being spoken (karaoke active) */
+  activeColor: string;
+  /** Color before/after the word is spoken (dim/inactive) */
+  dimColor: string;
   opacity: number; // 0–1
   gradientFill: CaptionGradient | null;
 
@@ -154,6 +158,8 @@ export const DEFAULT_STYLE: CaptionStyle = {
   letterSpacing: 0,
   lineHeight: 1.2,
   color: "#ffffff",
+  activeColor: "#ffffff",
+  dimColor: "rgba(255, 255, 255, 0.3)",
   opacity: 1,
   gradientFill: null,
   strokeWidth: 0,

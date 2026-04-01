@@ -194,7 +194,30 @@ export const CaptionPropertyPanel = memo(function CaptionPropertyPanel({
         if (updates.textDecoration !== undefined) el.style.textDecoration = updates.textDecoration;
         if (updates.textTransform !== undefined) el.style.textTransform = updates.textTransform;
         if (updates.letterSpacing !== undefined) el.style.letterSpacing = `${updates.letterSpacing}px`;
-        if (updates.color !== undefined) el.style.color = updates.color;
+        // For activeColor/dimColor, modify GSAP tweens on this element
+        if (updates.activeColor !== undefined || updates.dimColor !== undefined) {
+          try {
+            const iframeGsap = (iframeRef.current?.contentWindow as unknown as {
+              gsap?: { getTweensOf: (el: HTMLElement) => Array<{ vars: Record<string, unknown> }> };
+            })?.gsap;
+            if (iframeGsap) {
+              const tweens = iframeGsap.getTweensOf(el);
+              for (const tw of tweens) {
+                if (tw.vars.color === undefined) continue;
+                const colorVal = String(tw.vars.color);
+                const isDim = colorVal.includes("0.25") || colorVal.includes("0.3") || colorVal.includes("0.2");
+                if (isDim && updates.dimColor) {
+                  tw.vars.color = updates.dimColor;
+                } else if (!isDim && updates.activeColor) {
+                  tw.vars.color = updates.activeColor;
+                }
+              }
+            }
+          } catch { /* cross-origin */ }
+          // Set current visible color
+          if (updates.dimColor) el.style.color = updates.dimColor;
+          if (updates.activeColor) el.style.color = updates.activeColor;
+        }
         if (updates.opacity !== undefined) el.style.opacity = String(updates.opacity);
         if (updates.strokeWidth !== undefined || updates.strokeColor !== undefined) {
           const sw = updates.strokeWidth ?? effectiveStyle.strokeWidth ?? 0;
@@ -472,8 +495,18 @@ export const CaptionPropertyPanel = memo(function CaptionPropertyPanel({
 
           {/* Color & Fill */}
           <Section label="Color & Fill">
-            <Row label="Color">
-              <ColorInput value={color} onChange={(v) => handleStyleChange({ color: v })} />
+            <Row label="Active">
+              <ColorInput
+                value={effectiveStyle.activeColor ?? "#ffffff"}
+                onChange={(v) => handleStyleChange({ activeColor: v })}
+              />
+            </Row>
+
+            <Row label="Dim">
+              <ColorInput
+                value={effectiveStyle.dimColor ?? "rgba(255,255,255,0.3)"}
+                onChange={(v) => handleStyleChange({ dimColor: v })}
+              />
             </Row>
 
             <Row label="Opacity">

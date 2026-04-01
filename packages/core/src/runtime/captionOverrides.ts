@@ -17,15 +17,24 @@ export interface CaptionOverride {
   y?: number;
   scale?: number;
   rotation?: number;
-  color?: string;
+  /** Color when the word is being spoken (karaoke active state) */
+  activeColor?: string;
+  /** Color before and after the word is spoken (dim/inactive state) */
+  dimColor?: string;
   opacity?: number;
   fontSize?: number;
   fontWeight?: number;
   fontFamily?: string;
 }
 
+interface GsapTween {
+  vars: Record<string, unknown>;
+}
+
 interface GsapStatic {
   set: (target: Element, vars: Record<string, unknown>) => void;
+  killTweensOf: (target: Element, props: string) => void;
+  getTweensOf: (target: Element) => GsapTween[];
 }
 
 export function applyCaptionOverrides(): void {
@@ -60,8 +69,7 @@ export function applyCaptionOverrides(): void {
         }
         if (!el || !(el instanceof HTMLElement)) continue;
 
-        // Split overrides into transform props (applied to wrapper)
-        // and style props (applied directly to the word span)
+        // Split into transform props (wrapper) and style props (word span)
         const transformProps: Record<string, unknown> = {};
         const styleProps: Record<string, unknown> = {};
 
@@ -69,13 +77,33 @@ export function applyCaptionOverrides(): void {
         if (override.y !== undefined) transformProps.y = override.y;
         if (override.scale !== undefined) transformProps.scale = override.scale;
         if (override.rotation !== undefined) transformProps.rotation = override.rotation;
-        if (override.color !== undefined) styleProps.color = override.color;
         if (override.opacity !== undefined) styleProps.opacity = override.opacity;
         if (override.fontSize !== undefined) styleProps.fontSize = `${override.fontSize}px`;
         if (override.fontWeight !== undefined) styleProps.fontWeight = override.fontWeight;
         if (override.fontFamily !== undefined) styleProps.fontFamily = override.fontFamily;
 
-        // Apply non-transform style props directly to the word (no conflict with GSAP tweens)
+        // Replace color values in existing GSAP tweens for this element.
+        // Tweens that set color to dim/spoken/after states get their values swapped.
+        if (override.activeColor || override.dimColor) {
+          const tweens = gsap.getTweensOf(el);
+          for (const tw of tweens) {
+            if (tw.vars.color === undefined) continue;
+            const colorVal = String(tw.vars.color);
+            // Heuristic: dim colors have low alpha or match common dim patterns
+            const isDim = colorVal.includes("0.25") || colorVal.includes("0.3") || colorVal.includes("0.2");
+            if (isDim && override.dimColor) {
+              tw.vars.color = override.dimColor;
+            } else if (!isDim && override.activeColor) {
+              tw.vars.color = override.activeColor;
+            }
+          }
+          // Also set the current inline color
+          if (override.dimColor) {
+            gsap.set(el, { color: override.dimColor });
+          }
+        }
+
+        // Apply non-color style props
         if (Object.keys(styleProps).length > 0) {
           gsap.set(el, styleProps);
         }
