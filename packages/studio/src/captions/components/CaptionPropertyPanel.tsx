@@ -147,7 +147,7 @@ export const CaptionPropertyPanel = memo(function CaptionPropertyPanel({
   // Container style for background section
   const activeGroupId = selectedGroupId ?? ownerGroupId;
   const containerStyle = activeGroupId
-    ? model?.groups.get(activeGroupId)?.container
+    ? model?.groups.get(activeGroupId)?.containerStyle
     : undefined;
 
   /**

@@ -7,6 +7,9 @@ pre-commit:
     format:
       glob: "*.{js,jsx,ts,tsx,json,css,md,yaml,yml}"
       run: bunx oxfmt --check {staged_files}
+    typecheck:
+      glob: "*.{ts,tsx}"
+      run: cd packages/core && bunx tsc --noEmit && cd ../studio && bunx tsc --noEmit
 
 commit-msg:
   commands:
