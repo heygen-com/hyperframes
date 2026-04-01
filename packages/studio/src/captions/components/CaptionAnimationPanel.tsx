@@ -221,42 +221,42 @@ export const CaptionAnimationPanel = memo(function CaptionAnimationPanel() {
   }
 
   const group = resolvedGroupId ? model?.groups.get(resolvedGroupId) : undefined;
+  const animation = group?.animation;
 
-  // Empty state
-  if (!group || !resolvedGroupId) {
-    return (
-      <div className="flex items-center justify-center h-full px-4 text-center">
-        <p className="text-xs text-neutral-500">Select a caption group to edit animations</p>
-      </div>
-    );
-  }
-
-  const animation = group.animation;
-
+  // All hooks must be called before any early return
   const handleEntranceChange = useCallback(
     (update: Partial<CaptionAnimation>) => {
-      updateGroupAnimation(resolvedGroupId as string, "entrance", update);
+      if (resolvedGroupId) updateGroupAnimation(resolvedGroupId, "entrance", update);
     },
     [resolvedGroupId, updateGroupAnimation],
   );
 
   const handleHighlightChange = useCallback(
     (update: Partial<CaptionAnimation>) => {
-      updateGroupAnimation(resolvedGroupId as string, "highlight", update);
+      if (resolvedGroupId) updateGroupAnimation(resolvedGroupId, "highlight", update);
     },
     [resolvedGroupId, updateGroupAnimation],
   );
 
   const handleExitChange = useCallback(
     (update: Partial<CaptionAnimation>) => {
-      updateGroupAnimation(resolvedGroupId as string, "exit", update);
+      if (resolvedGroupId) updateGroupAnimation(resolvedGroupId, "exit", update);
     },
     [resolvedGroupId, updateGroupAnimation],
   );
 
   const handleApplyToAll = useCallback(() => {
-    applyAnimationToAll(animation);
+    if (animation) applyAnimationToAll(animation);
   }, [animation, applyAnimationToAll]);
+
+  // Empty state — after all hooks
+  if (!group || !resolvedGroupId || !animation) {
+    return (
+      <div className="flex items-center justify-center h-full px-4 text-center">
+        <p className="text-xs text-neutral-500">Select a caption group to edit animations</p>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-full min-h-0">

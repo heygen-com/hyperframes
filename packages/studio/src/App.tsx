@@ -134,19 +134,20 @@ export function StudioApp() {
 
       if (!captionSrcPath) return;
 
-      fetch(`/api/projects/${projectId}/files/${encodeURIComponent(captionSrcPath)}`)
+      const srcPath = captionSrcPath;
+      fetch(`/api/projects/${projectId}/files/${encodeURIComponent(srcPath)}`)
         .then((r) => r.json())
         .then((data: { content?: string }) => {
-          if (!data.content || useCaptionStore.getState().isEditMode) return;
-          const model = parseCaptionComposition(doc!, win!, data.content,
-            parseInt(doc!.querySelector("[data-composition-id]")?.getAttribute("data-width") ?? "1920", 10),
-            parseInt(doc!.querySelector("[data-composition-id]")?.getAttribute("data-height") ?? "1080", 10),
-            parseFloat(doc!.querySelector("[data-composition-id]")?.getAttribute("data-duration") ?? "0"),
-          );
+          if (!data.content || !doc || !win || useCaptionStore.getState().isEditMode) return;
+          const root = doc.querySelector("[data-composition-id]");
+          const w = parseInt(root?.getAttribute("data-width") ?? "1920", 10);
+          const h = parseInt(root?.getAttribute("data-height") ?? "1080", 10);
+          const dur = parseFloat(root?.getAttribute("data-duration") ?? "0");
+          const model = parseCaptionComposition(doc, win, data.content, w, h, dur);
           if (!model) return;
           const store = useCaptionStore.getState();
           store.setModel(model);
-          store.setSourceFilePath(captionSrcPath!);
+          store.setSourceFilePath(srcPath);
           store.setEditMode(true);
           captionSync.loadOverrides();
         })
