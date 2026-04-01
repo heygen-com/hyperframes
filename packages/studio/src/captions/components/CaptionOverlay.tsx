@@ -53,10 +53,20 @@ function readWordBoxes(
     if (!groupEl) continue;
     const computed = win.getComputedStyle(groupEl);
     if (parseFloat(computed.opacity) <= 0.01 || computed.visibility === "hidden") continue;
-    const wordEls = groupEl.querySelectorAll<HTMLElement>(":scope > span");
+    // Find word spans — may be direct children or inside wrappers
+    const resolvedWordEls: HTMLElement[] = [];
+    for (const child of groupEl.children) {
+      const c = child as HTMLElement;
+      if (c.dataset.captionWrapper === "true") {
+        const inner = c.querySelector<HTMLElement>(":scope > span");
+        if (inner) resolvedWordEls.push(inner);
+      } else if (c.tagName === "SPAN") {
+        resolvedWordEls.push(c);
+      }
+    }
     for (let wi = 0; wi < group.segmentIds.length; wi++) {
       const segId = group.segmentIds[wi];
-      const wordEl = wordEls[wi] as HTMLElement | undefined;
+      const wordEl = resolvedWordEls[wi] as HTMLElement | undefined;
       if (!wordEl) continue;
       const rect = wordEl.getBoundingClientRect();
       boxes.push({
@@ -77,7 +87,21 @@ function getWordEl(iframe: HTMLIFrameElement, groupIndex: number, wordIndex: num
   if (!doc) return null;
   const groupEl = doc.querySelectorAll<HTMLElement>(".caption-group")[groupIndex];
   if (!groupEl) return null;
-  return groupEl.querySelectorAll<HTMLElement>(":scope > span")[wordIndex] ?? null;
+  // Find word spans — they may be direct children or inside wrapper spans.
+  // Word spans have class "word" or an id starting with "w".
+  // Wrappers have data-caption-wrapper="true".
+  const wordEls: HTMLElement[] = [];
+  for (const child of groupEl.children) {
+    const el = child as HTMLElement;
+    if (el.dataset.captionWrapper === "true") {
+      // Wrapped word — get the inner span
+      const inner = el.querySelector<HTMLElement>(":scope > span");
+      if (inner) wordEls.push(inner);
+    } else if (el.tagName === "SPAN") {
+      wordEls.push(el);
+    }
+  }
+  return wordEls[wordIndex] ?? null;
 }
 
 /**
@@ -112,8 +136,12 @@ function readGsapTransform(el: HTMLElement, iframeWin: Window): { x: number; y: 
  * Transforms are applied to the wrapper so the word's GSAP animations are preserved.
  */
 function getOrCreateWrapper(el: HTMLElement): HTMLElement {
+  // If el IS a wrapper, return it
+  if (el.dataset.captionWrapper === "true") return el;
+  // If el's parent is a wrapper, return the parent
   const parent = el.parentElement;
   if (parent && parent.dataset.captionWrapper === "true") return parent;
+  // Create new wrapper
   const doc = el.ownerDocument;
   const wrapper = doc.createElement("span");
   wrapper.style.display = "inline-block";

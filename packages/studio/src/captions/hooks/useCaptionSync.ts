@@ -66,7 +66,6 @@ export function useCaptionSync(projectId: string | null) {
     if (!pid) return;
 
     const overrides = buildOverrides(state.model);
-    // Write to project root — the runtime fetches relative to <base href> which is the project root
     const overridesPath = "caption-overrides.json";
 
     await fetch(
