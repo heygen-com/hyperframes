@@ -637,19 +637,6 @@ export function StudioApp() {
               {captionEditMode ? "Exit Captions" : "Edit Captions"}
             </button>
           )}
-          {captionEditMode && (
-            <button
-              onClick={() => captionSync.save()}
-              className="h-7 flex items-center gap-1.5 px-2.5 rounded-md text-[11px] font-medium border transition-colors text-neutral-300 bg-studio-accent/20 border-studio-accent/40 hover:bg-studio-accent/30"
-            >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
-                <polyline points="17 21 17 13 7 13 7 21" />
-                <polyline points="7 3 7 8 15 8" />
-              </svg>
-              Save
-            </button>
-          )}
           <button
             onClick={() => setRightCollapsed((v) => !v)}
             className={`h-7 flex items-center gap-1.5 px-2.5 rounded-md text-[11px] font-medium border transition-colors ${

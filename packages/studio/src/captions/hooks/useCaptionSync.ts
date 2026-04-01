@@ -1,5 +1,6 @@
 import { useCallback, useRef } from "react";
 import { useCaptionStore } from "../store";
+import { useMountEffect } from "../../hooks/useMountEffect";
 import type { CaptionStyle } from "../types";
 
 interface CaptionOverrideEntry {
@@ -52,27 +53,45 @@ function buildOverrides(model: {
 }
 
 /**
- * Provides save/load for caption overrides as a JSON data file.
- * Writes caption-overrides.json next to the composition — never modifies the HTML source.
+ * Auto-saves caption overrides to caption-overrides.json on every model change.
+ * Also provides loadOverrides for reading existing overrides on edit mode entry.
  */
 export function useCaptionSync(projectId: string | null) {
   const projectIdRef = useRef(projectId);
   projectIdRef.current = projectId;
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const save = useCallback(async () => {
+  const save = useCallback(() => {
     const state = useCaptionStore.getState();
-    if (!state.model || !state.sourceFilePath) return;
+    if (!state.model || !state.sourceFilePath || !state.isEditMode) return;
     const pid = projectIdRef.current;
     if (!pid) return;
 
     const overrides = buildOverrides(state.model);
-    const overridesPath = "caption-overrides.json";
 
-    await fetch(
-      `/api/projects/${pid}/files/${encodeURIComponent(overridesPath)}`,
+    fetch(
+      `/api/projects/${pid}/files/${encodeURIComponent("caption-overrides.json")}`,
       { method: "PUT", headers: { "Content-Type": "text/plain" }, body: JSON.stringify(overrides, null, 2) },
     ).catch(() => {});
   }, []);
+
+  // Auto-save on model changes with 800ms debounce
+  useMountEffect(() => {
+    let prevModel = useCaptionStore.getState().model;
+
+    const unsub = useCaptionStore.subscribe((state) => {
+      if (!state.isEditMode || state.model === prevModel || !state.model) return;
+      prevModel = state.model;
+
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      debounceRef.current = setTimeout(save, 800);
+    });
+
+    return () => {
+      unsub();
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  });
 
   const loadOverrides = useCallback(async () => {
     const state = useCaptionStore.getState();
@@ -80,11 +99,9 @@ export function useCaptionSync(projectId: string | null) {
     const pid = projectIdRef.current;
     if (!pid) return;
 
-    const overridesPath = "caption-overrides.json";
-
     try {
       const res = await fetch(
-        `/api/projects/${pid}/files/${encodeURIComponent(overridesPath)}`,
+        `/api/projects/${pid}/files/${encodeURIComponent("caption-overrides.json")}`,
       );
       const data = await res.json();
       if (!data.content) return;
