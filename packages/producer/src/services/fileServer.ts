@@ -301,6 +301,9 @@ export function createFileServer(options: FileServerOptions): Promise<FileServer
     const filePath = hasCompiledFile ? (compiledPath as string) : join(projectDir, relativePath);
 
     if (!existsSync(filePath) || !statSync(filePath).isFile()) {
+      if (!/favicon\.ico$/i.test(requestPath)) {
+        console.warn(`[FileServer] 404 Not Found: ${requestPath}`);
+      }
       return c.text("Not found", 404);
     }
 
