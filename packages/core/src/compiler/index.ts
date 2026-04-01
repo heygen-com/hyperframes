@@ -13,7 +13,7 @@ export {
 // HTML compiler (Node.js — requires fs)
 export { compileHtml, type MediaDurationProber } from "./htmlCompiler";
 
-// HTML bundler (Node.js — requires fs, cheerio, esbuild)
+// HTML bundler (Node.js — requires fs, linkedom, esbuild)
 export { bundleToSingleHtml, type BundleOptions } from "./htmlBundler";
 
 // Static guard

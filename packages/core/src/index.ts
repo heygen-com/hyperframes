@@ -97,7 +97,7 @@ export {
   generateHyperframesStyles,
 } from "./generators/hyperframes";
 
-// Compiler (timing only — browser-safe, no cheerio/esbuild)
+// Compiler (timing only — browser-safe, no linkedom/esbuild)
 export type {
   UnresolvedElement,
   ResolvedDuration,

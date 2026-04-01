@@ -109,7 +109,7 @@
     }
   },
   "optionalDependencies": {
-    "cheerio": "^1.2.0",
-    "esbuild": "^0.25.12"
+    "esbuild": "^0.25.12",
+    "linkedom": "^0.18.12"
   }
 }

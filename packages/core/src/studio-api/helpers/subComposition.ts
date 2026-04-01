@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import * as cheerio from "cheerio";
+import { parseHTML } from "linkedom";
 import { rewriteAssetPaths, rewriteCssAssetUrls } from "../../compiler/rewriteSubCompPaths.js";
 
 /**
@@ -24,21 +24,23 @@ export function buildSubCompositionHtml(
   // Extract content from <template> wrapper (compositions are always templates)
   const templateMatch = rawComp.match(/<template[^>]*>([\s\S]*)<\/template>/i);
   const content = templateMatch?.[1] ?? rawComp;
-  const $content = cheerio.load(content, {}, false);
+  const { document: contentDoc } = parseHTML(
+    `<!DOCTYPE html><html><head></head><body>${content}</body></html>`,
+  );
 
   rewriteAssetPaths(
-    $content("[src], [href]").toArray(),
+    contentDoc.querySelectorAll("[src], [href]"),
     compPath,
-    (el, attr) => $content(el).attr(attr),
-    (el, attr, value) => {
-      $content(el).attr(attr, value);
+    (el: Element, attr: string) => el.getAttribute(attr),
+    (el: Element, attr: string, value: string) => {
+      el.setAttribute(attr, value);
     },
   );
-  $content("style").each((_, styleEl) => {
-    $content(styleEl).html(rewriteCssAssetUrls($content(styleEl).html() || "", compPath));
-  });
+  for (const styleEl of contentDoc.querySelectorAll("style")) {
+    styleEl.textContent = rewriteCssAssetUrls(styleEl.textContent || "", compPath);
+  }
 
-  const rewrittenContent = $content.root().html() || content;
+  const rewrittenContent = contentDoc.body.innerHTML || content;
 
   // Use the project's index.html <head> to preserve all dependencies
   const indexPath = join(projectDir, "index.html");

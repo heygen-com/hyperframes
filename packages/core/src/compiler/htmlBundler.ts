@@ -1,10 +1,23 @@
 import { readFileSync, existsSync } from "fs";
 import { join, resolve, isAbsolute, sep } from "path";
-import * as cheerio from "cheerio";
+import { parseHTML } from "linkedom";
 import { transformSync } from "esbuild";
 import { compileHtml, type MediaDurationProber } from "./htmlCompiler";
 import { rewriteAssetPaths, rewriteCssAssetUrls } from "./rewriteSubCompPaths";
 import { validateHyperframeHtmlContract } from "./staticGuard";
+
+/**
+ * Parse an HTML string into a document. Fragments (without a full document
+ * structure) are wrapped in `<!DOCTYPE html><html><head></head><body>…</body></html>`
+ * so that linkedom places the content inside `document.body`.
+ */
+function parseHTMLContent(html: string): Document {
+  const trimmed = html.trimStart().toLowerCase();
+  if (trimmed.startsWith("<!") || trimmed.startsWith("<html")) {
+    return parseHTML(html).document;
+  }
+  return parseHTML(`<!DOCTYPE html><html><head></head><body>${html}</body></html>`).document;
+}
 
 /** Resolve a relative path within projectDir, rejecting traversal outside it. */
 function safePath(projectDir: string, relativePath: string): string | null {
@@ -179,21 +192,33 @@ function rewriteCssUrlsWithInlinedAssets(cssText: string, projectDir: string): s
   );
 }
 
-function enforceCompositionPixelSizing($: cheerio.CheerioAPI): void {
-  const compositionEls = $("[data-composition-id][data-width][data-height]").toArray();
+/** Check whether an element is nested inside a <template> element. */
+function isInsideTemplate(el: Element): boolean {
+  let parent = el.parentElement;
+  while (parent) {
+    if (parent.tagName === "TEMPLATE") return true;
+    parent = parent.parentElement;
+  }
+  return false;
+}
+
+function enforceCompositionPixelSizing(document: Document): void {
+  const compositionEls = [
+    ...document.querySelectorAll("[data-composition-id][data-width][data-height]"),
+  ];
   if (compositionEls.length === 0) return;
   const sizeMap = new Map<string, { w: number; h: number }>();
   for (const el of compositionEls) {
-    const compId = $(el).attr("data-composition-id");
-    const w = Number($(el).attr("data-width"));
-    const h = Number($(el).attr("data-height"));
+    const compId = el.getAttribute("data-composition-id");
+    const w = Number(el.getAttribute("data-width"));
+    const h = Number(el.getAttribute("data-height"));
     if (compId && Number.isFinite(w) && Number.isFinite(h) && w > 0 && h > 0) {
       sizeMap.set(compId, { w, h });
     }
   }
   if (sizeMap.size === 0) return;
-  $("style").each((_, styleEl) => {
-    let css = $(styleEl).html() || "";
+  for (const styleEl of document.querySelectorAll("style")) {
+    let css = styleEl.textContent || "";
     let modified = false;
     for (const [compId, { w, h }] of sizeMap) {
       const escaped = compId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -209,52 +234,52 @@ function enforceCompositionPixelSizing($: cheerio.CheerioAPI): void {
         return open + newBody + close;
       });
     }
-    if (modified) $(styleEl).text(css);
-  });
+    if (modified) styleEl.textContent = css;
+  }
 }
 
-function autoHealMissingCompositionIds($: cheerio.CheerioAPI): void {
+function autoHealMissingCompositionIds(document: Document): void {
   const compositionIdRe = /data-composition-id=["']([^"']+)["']/gi;
   const referencedIds = new Set<string>();
-  $("style, script").each((_, el) => {
-    const text = ($(el).html() || "").trim();
-    if (!text) return;
+  for (const el of document.querySelectorAll("style, script")) {
+    const text = (el.textContent || "").trim();
+    if (!text) continue;
     let match: RegExpExecArray | null;
     while ((match = compositionIdRe.exec(text)) !== null) {
       const compId = (match[1] || "").trim();
       if (compId) referencedIds.add(compId);
     }
-  });
+  }
   if (referencedIds.size === 0) return;
 
   const existingIds = new Set<string>();
-  $("[data-composition-id]").each((_, el) => {
-    const id = ($(el).attr("data-composition-id") || "").trim();
+  for (const el of document.querySelectorAll("[data-composition-id]")) {
+    const id = (el.getAttribute("data-composition-id") || "").trim();
     if (id) existingIds.add(id);
-  });
+  }
 
   for (const compId of referencedIds) {
     if (compId === "root" || existingIds.has(compId)) continue;
     const candidates = [`${compId}-layer`, `${compId}-comp`, compId];
     for (const targetId of candidates) {
-      const match = $(`#${targetId}`).first();
-      if (match.length > 0 && !match.attr("data-composition-id")) {
-        match.attr("data-composition-id", compId);
+      const found = document.getElementById(targetId);
+      if (found && !found.getAttribute("data-composition-id")) {
+        found.setAttribute("data-composition-id", compId);
         break;
       }
     }
   }
 }
 
-function coalesceHeadStylesAndBodyScripts($: cheerio.CheerioAPI): void {
-  const headStyleEls = $("head style").toArray();
+function coalesceHeadStylesAndBodyScripts(document: Document): void {
+  const headStyleEls = [...document.querySelectorAll("head style")];
   if (headStyleEls.length > 1) {
     const importRe = /@import\s+url\([^)]*\)\s*;|@import\s+["'][^"']+["']\s*;/gi;
     const imports: string[] = [];
     const cssParts: string[] = [];
     const seenImports = new Set<string>();
     for (const el of headStyleEls) {
-      const raw = ($(el).html() || "").trim();
+      const raw = (el.textContent || "").trim();
       if (!raw) continue;
       const nonImportCss = raw.replace(importRe, (match) => {
         const cleaned = match.trim();
@@ -269,29 +294,27 @@ function coalesceHeadStylesAndBodyScripts($: cheerio.CheerioAPI): void {
     }
     const merged = [...imports, ...cssParts].join("\n\n").trim();
     if (merged) {
-      $(headStyleEls[0]).text(merged);
-      for (let i = 1; i < headStyleEls.length; i++) $(headStyleEls[i]).remove();
+      headStyleEls[0]!.textContent = merged;
+      for (let i = 1; i < headStyleEls.length; i++) headStyleEls[i]!.remove();
     }
   }
 
-  const bodyInlineScripts = $("body script")
-    .toArray()
-    .filter((el) => {
-      const src = ($(el).attr("src") || "").trim();
-      if (src) return false;
-      const type = ($(el).attr("type") || "").trim().toLowerCase();
-      return !type || type === "text/javascript" || type === "application/javascript";
-    });
+  const bodyInlineScripts = [...document.querySelectorAll("body script")].filter((el) => {
+    const src = (el.getAttribute("src") || "").trim();
+    if (src) return false;
+    const type = (el.getAttribute("type") || "").trim().toLowerCase();
+    return !type || type === "text/javascript" || type === "application/javascript";
+  });
   if (bodyInlineScripts.length > 0) {
     const mergedJs = bodyInlineScripts
-      .map((el) => ($(el).html() || "").trim())
+      .map((el) => (el.textContent || "").trim())
       .filter(Boolean)
       .join("\n;\n")
       .trim();
-    for (const el of bodyInlineScripts) $(el).remove();
+    for (const el of bodyInlineScripts) el.remove();
     if (mergedJs) {
       const stripped = stripJsCommentsParserSafe(mergedJs);
-      $("body").append(`<script>${stripped}</script>`);
+      document.body.insertAdjacentHTML("beforeend", `<script>${stripped}</script>`);
     }
   }
 }
@@ -338,87 +361,99 @@ export async function bundleToSingleHtml(
   }
 
   const withInterceptor = injectInterceptor(compiled);
-  const $ = cheerio.load(withInterceptor);
+  const { document } = parseHTML(withInterceptor);
 
   // Inline local CSS
   const localCssChunks: string[] = [];
   let cssAnchorPlaced = false;
-  $('link[rel="stylesheet"]').each((_, el) => {
-    const href = $(el).attr("href");
-    if (!href || !isRelativeUrl(href)) return;
+  for (const el of [...document.querySelectorAll('link[rel="stylesheet"]')]) {
+    const href = el.getAttribute("href");
+    if (!href || !isRelativeUrl(href)) continue;
     const cssPath = safePath(projectDir, href);
     const css = cssPath ? safeReadFile(cssPath) : null;
-    if (css == null) return;
+    if (css == null) continue;
     localCssChunks.push(css);
     if (!cssAnchorPlaced) {
-      $(el).replaceWith('<style data-hf-bundled-local-css="1"></style>');
+      const anchor = document.createElement("style");
+      anchor.setAttribute("data-hf-bundled-local-css", "1");
+      el.replaceWith(anchor);
       cssAnchorPlaced = true;
     } else {
-      $(el).remove();
+      el.remove();
     }
-  });
+  }
   if (localCssChunks.length > 0) {
-    const $anchor = $('style[data-hf-bundled-local-css="1"]').first();
-    if ($anchor.length)
-      $anchor.removeAttr("data-hf-bundled-local-css").text(localCssChunks.join("\n\n"));
-    else $("head").append(`<style>${localCssChunks.join("\n\n")}</style>`);
+    const anchor = document.querySelector('style[data-hf-bundled-local-css="1"]');
+    if (anchor) {
+      anchor.removeAttribute("data-hf-bundled-local-css");
+      anchor.textContent = localCssChunks.join("\n\n");
+    } else {
+      const style = document.createElement("style");
+      style.textContent = localCssChunks.join("\n\n");
+      document.head.appendChild(style);
+    }
   }
 
   // Inline local JS
   const localJsChunks: string[] = [];
   let jsAnchorPlaced = false;
-  $("script[src]").each((_, el) => {
-    const src = $(el).attr("src");
-    if (!src || !isRelativeUrl(src)) return;
+  for (const el of [...document.querySelectorAll("script[src]")]) {
+    const src = el.getAttribute("src");
+    if (!src || !isRelativeUrl(src)) continue;
     const jsPath = safePath(projectDir, src);
     const js = jsPath ? safeReadFile(jsPath) : null;
-    if (js == null) return;
+    if (js == null) continue;
     localJsChunks.push(js);
     if (!jsAnchorPlaced) {
-      $(el).replaceWith('<script data-hf-bundled-local-js="1"></script>');
+      const anchor = document.createElement("script");
+      anchor.setAttribute("data-hf-bundled-local-js", "1");
+      el.replaceWith(anchor);
       jsAnchorPlaced = true;
     } else {
-      $(el).remove();
+      el.remove();
     }
-  });
+  }
   if (localJsChunks.length > 0) {
-    const $anchor = $('script[data-hf-bundled-local-js="1"]').first();
-    if ($anchor.length)
-      $anchor.removeAttr("data-hf-bundled-local-js").text(localJsChunks.join("\n;\n"));
-    else $("body").append(`<script>${localJsChunks.join("\n;\n")}</script>`);
+    const anchor = document.querySelector('script[data-hf-bundled-local-js="1"]');
+    if (anchor) {
+      anchor.removeAttribute("data-hf-bundled-local-js");
+      anchor.textContent = localJsChunks.join("\n;\n");
+    } else {
+      const script = document.createElement("script");
+      script.textContent = localJsChunks.join("\n;\n");
+      document.body.appendChild(script);
+    }
   }
 
   // Inline sub-compositions
   const compStyleChunks: string[] = [];
   const compScriptChunks: string[] = [];
   const compExternalScriptSrcs: string[] = [];
-  $("[data-composition-src]").each((_, hostEl) => {
-    const src = $(hostEl).attr("data-composition-src");
-    if (!src || !isRelativeUrl(src)) return;
+  for (const hostEl of [...document.querySelectorAll("[data-composition-src]")]) {
+    const src = hostEl.getAttribute("data-composition-src");
+    if (!src || !isRelativeUrl(src)) continue;
     const compPath = safePath(projectDir, src);
     const compHtml = compPath ? safeReadFile(compPath) : null;
     if (compHtml == null) {
       console.warn(`[Bundler] Composition file not found: ${src}`);
-      return;
+      continue;
     }
 
-    const $comp = cheerio.load(compHtml);
-    const compId = $(hostEl).attr("data-composition-id");
-    const $contentRoot = $comp("template").first();
-    const contentHtml = $contentRoot.length
-      ? $contentRoot.html() || ""
-      : $comp("body").html() || "";
-    const $content = cheerio.load(contentHtml);
-    const $innerRoot = compId
-      ? $content(`[data-composition-id="${compId}"]`).first()
-      : $content("[data-composition-id]").first();
+    const compDoc = parseHTMLContent(compHtml);
+    const compId = hostEl.getAttribute("data-composition-id");
+    const contentRoot = compDoc.querySelector("template");
+    const contentHtml = contentRoot ? contentRoot.innerHTML || "" : compDoc.body.innerHTML || "";
+    const contentDoc = parseHTMLContent(contentHtml);
+    const innerRoot = compId
+      ? contentDoc.querySelector(`[data-composition-id="${compId}"]`)
+      : contentDoc.querySelector("[data-composition-id]");
 
-    $content("style").each((_, s) => {
-      compStyleChunks.push(rewriteCssAssetUrls($content(s).html() || "", src));
-      $content(s).remove();
-    });
-    $content("script").each((_, s) => {
-      const externalSrc = ($content(s).attr("src") || "").trim();
+    for (const s of [...contentDoc.querySelectorAll("style")]) {
+      compStyleChunks.push(rewriteCssAssetUrls(s.textContent || "", src));
+      s.remove();
+    }
+    for (const s of [...contentDoc.querySelectorAll("script")]) {
+      const externalSrc = (s.getAttribute("src") || "").trim();
       if (externalSrc) {
         // External CDN/remote script — collect for deduped injection into the document.
         // Do NOT try to inline the content (external scripts have no innerHTML).
@@ -427,155 +462,167 @@ export async function bundleToSingleHtml(
         }
       } else {
         compScriptChunks.push(
-          `(function(){ try { ${$content(s).html() || ""} } catch (_err) { console.error('[HyperFrames] composition script error:', _err); } })();`,
+          `(function(){ try { ${s.textContent || ""} } catch (_err) { console.error('[HyperFrames] composition script error:', _err); } })();`,
         );
       }
-      $content(s).remove();
-    });
+      s.remove();
+    }
 
     // Rewrite relative asset paths before inlining so ../foo.svg from
     // compositions/ resolves correctly when the content moves to root.
-    const $assetEls = $innerRoot.length
-      ? $innerRoot.find("[src], [href]")
-      : $content("[src], [href]");
+    const assetEls = innerRoot
+      ? innerRoot.querySelectorAll("[src], [href]")
+      : contentDoc.querySelectorAll("[src], [href]");
     rewriteAssetPaths(
-      $assetEls.toArray(),
+      assetEls,
       src,
-      (el, attr) => $content(el).attr(attr),
-      (el, attr, val) => {
-        $content(el).attr(attr, val);
+      (el: Element, attr: string) => el.getAttribute(attr),
+      (el: Element, attr: string, val: string) => {
+        el.setAttribute(attr, val);
       },
     );
 
-    if ($innerRoot.length) {
-      const innerCompId = $innerRoot.attr("data-composition-id");
-      const innerW = $innerRoot.attr("data-width");
-      const innerH = $innerRoot.attr("data-height");
-      if (innerCompId && !$(hostEl).attr("data-composition-id"))
-        $(hostEl).attr("data-composition-id", innerCompId);
-      if (innerW && !$(hostEl).attr("data-width")) $(hostEl).attr("data-width", innerW);
-      if (innerH && !$(hostEl).attr("data-height")) $(hostEl).attr("data-height", innerH);
-      $innerRoot.find("style, script").remove();
-      $(hostEl).html($innerRoot.html() || "");
+    if (innerRoot) {
+      const innerCompId = innerRoot.getAttribute("data-composition-id");
+      const innerW = innerRoot.getAttribute("data-width");
+      const innerH = innerRoot.getAttribute("data-height");
+      if (innerCompId && !hostEl.getAttribute("data-composition-id"))
+        hostEl.setAttribute("data-composition-id", innerCompId);
+      if (innerW && !hostEl.getAttribute("data-width")) hostEl.setAttribute("data-width", innerW);
+      if (innerH && !hostEl.getAttribute("data-height")) hostEl.setAttribute("data-height", innerH);
+      for (const child of [...innerRoot.querySelectorAll("style, script")]) child.remove();
+      hostEl.innerHTML = innerRoot.innerHTML || "";
     } else {
-      $content("style, script").remove();
-      $(hostEl).html($content.html() || "");
+      for (const child of [...contentDoc.querySelectorAll("style, script")]) child.remove();
+      hostEl.innerHTML = contentDoc.body.innerHTML || "";
     }
-    $(hostEl).removeAttr("data-composition-src");
-  });
+    hostEl.removeAttribute("data-composition-src");
+  }
 
   // Inline template compositions: inject <template id="X-template"> content into
   // matching empty host elements with data-composition-id="X" (no data-composition-src)
-  $("template[id]").each((_, templateEl) => {
-    const templateId = $(templateEl).attr("id") || "";
+  for (const templateEl of [...document.querySelectorAll("template[id]")]) {
+    const templateId = templateEl.getAttribute("id") || "";
     const match = templateId.match(/^(.+)-template$/);
-    if (!match) return;
+    if (!match) continue;
     const compId = match[1];
 
     // Find the matching host element (must have data-composition-id, no data-composition-src,
-    // and must NOT be inside a <template> element). In cheerio, elements inside <template>
-    // have a detached parent chain (parents().length === 0), so we filter those out.
+    // and must NOT be inside a <template> element).
     const hostSelector = `[data-composition-id="${compId}"]:not([data-composition-src])`;
-    const $candidates = $(hostSelector).filter((__, el) => $(el).parents().length > 0);
-    const $host = $candidates.first();
-    if ($host.length === 0) return;
-    if ($host.children().length > 0) return; // already has content
+    const candidates = [...document.querySelectorAll(hostSelector)].filter(
+      (el) => !isInsideTemplate(el),
+    );
+    const host = candidates[0];
+    if (!host) continue;
+    if (host.children.length > 0) continue; // already has content
 
     // Get template content and inject into host
-    const templateHtml = $(templateEl).html() || "";
-    const $inner = cheerio.load(templateHtml, { xml: false });
-    const $innerRoot = $inner(`[data-composition-id="${compId}"]`).first();
+    const templateHtml = templateEl.innerHTML || "";
+    const innerDoc = parseHTMLContent(templateHtml);
+    const innerRoot = innerDoc.querySelector(`[data-composition-id="${compId}"]`);
 
-    if ($innerRoot.length > 0) {
+    if (innerRoot) {
       // Hoist styles into the collected style chunks
-      $innerRoot.find("style").each((__, styleEl) => {
-        compStyleChunks.push($inner(styleEl).html() || "");
-        $inner(styleEl).remove();
-      });
+      for (const styleEl of [...innerRoot.querySelectorAll("style")]) {
+        compStyleChunks.push(styleEl.textContent || "");
+        styleEl.remove();
+      }
       // Hoist scripts into the collected script chunks
-      $innerRoot.find("script").each((__, scriptEl) => {
-        const externalSrc = ($inner(scriptEl).attr("src") || "").trim();
+      for (const scriptEl of [...innerRoot.querySelectorAll("script")]) {
+        const externalSrc = (scriptEl.getAttribute("src") || "").trim();
         if (externalSrc) {
           if (!compExternalScriptSrcs.includes(externalSrc)) {
             compExternalScriptSrcs.push(externalSrc);
           }
         } else {
           compScriptChunks.push(
-            `(function(){ try { ${$inner(scriptEl).html() || ""} } catch (_err) { console.error('[HyperFrames] composition script error:', _err); } })();`,
+            `(function(){ try { ${scriptEl.textContent || ""} } catch (_err) { console.error('[HyperFrames] composition script error:', _err); } })();`,
           );
         }
-        $inner(scriptEl).remove();
-      });
+        scriptEl.remove();
+      }
 
       // Copy dimension attributes from inner root to host if not already set
-      const innerW = $innerRoot.attr("data-width");
-      const innerH = $innerRoot.attr("data-height");
-      if (innerW && !$host.attr("data-width")) $host.attr("data-width", innerW);
-      if (innerH && !$host.attr("data-height")) $host.attr("data-height", innerH);
+      const innerW = innerRoot.getAttribute("data-width");
+      const innerH = innerRoot.getAttribute("data-height");
+      if (innerW && !host.getAttribute("data-width")) host.setAttribute("data-width", innerW);
+      if (innerH && !host.getAttribute("data-height")) host.setAttribute("data-height", innerH);
 
       // Set host content from inner root
-      $host.html($innerRoot.html() || "");
+      host.innerHTML = innerRoot.innerHTML || "";
     } else {
       // No matching inner root — inject all template content directly
-      $inner("style").each((__, styleEl) => {
-        compStyleChunks.push($inner(styleEl).html() || "");
-        $inner(styleEl).remove();
-      });
-      $inner("script").each((__, scriptEl) => {
-        const externalSrc = ($inner(scriptEl).attr("src") || "").trim();
+      for (const styleEl of [...innerDoc.querySelectorAll("style")]) {
+        compStyleChunks.push(styleEl.textContent || "");
+        styleEl.remove();
+      }
+      for (const scriptEl of [...innerDoc.querySelectorAll("script")]) {
+        const externalSrc = (scriptEl.getAttribute("src") || "").trim();
         if (externalSrc) {
           if (!compExternalScriptSrcs.includes(externalSrc)) {
             compExternalScriptSrcs.push(externalSrc);
           }
         } else {
           compScriptChunks.push(
-            `(function(){ try { ${$inner(scriptEl).html() || ""} } catch (_err) { console.error('[HyperFrames] composition script error:', _err); } })();`,
+            `(function(){ try { ${scriptEl.textContent || ""} } catch (_err) { console.error('[HyperFrames] composition script error:', _err); } })();`,
           );
         }
-        $inner(scriptEl).remove();
-      });
-      $host.html($inner.html() || "");
+        scriptEl.remove();
+      }
+      host.innerHTML = innerDoc.body.innerHTML || "";
     }
 
     // Remove the template element from the document
-    $(templateEl).remove();
-  });
+    templateEl.remove();
+  }
 
   // Inject external scripts from sub-compositions (e.g., Lottie CDN)
   // that aren't already present in the main document.
   for (const extSrc of compExternalScriptSrcs) {
-    if (!$(`script[src="${extSrc}"]`).length) {
-      $("body").append(`<script src="${extSrc}"></script>`);
+    if (!document.querySelector(`script[src="${extSrc}"]`)) {
+      document.body.insertAdjacentHTML("beforeend", `<script src="${extSrc}"></script>`);
     }
   }
 
-  if (compStyleChunks.length) $("head").append(`<style>${compStyleChunks.join("\n\n")}</style>`);
-  if (compScriptChunks.length)
-    $("body").append(`<script>${compScriptChunks.join("\n;\n")}</script>`);
+  if (compStyleChunks.length) {
+    const style = document.createElement("style");
+    style.textContent = compStyleChunks.join("\n\n");
+    document.head.appendChild(style);
+  }
+  if (compScriptChunks.length) {
+    document.body.insertAdjacentHTML(
+      "beforeend",
+      `<script>${compScriptChunks.join("\n;\n")}</script>`,
+    );
+  }
 
-  enforceCompositionPixelSizing($);
-  autoHealMissingCompositionIds($);
-  coalesceHeadStylesAndBodyScripts($);
+  enforceCompositionPixelSizing(document);
+  autoHealMissingCompositionIds(document);
+  coalesceHeadStylesAndBodyScripts(document);
 
   // Inline textual assets
-  $("[src], [href], [poster], [xlink\\:href]").each((_, el) => {
+  for (const el of [...document.querySelectorAll("[src], [href], [poster], [xlink\\:href]")]) {
     for (const attr of ["src", "href", "poster", "xlink:href"] as const) {
-      const value = $(el).attr(attr);
+      const value = el.getAttribute(attr);
       if (!value) continue;
       const inlined = maybeInlineRelativeAssetUrl(value, projectDir);
-      if (inlined) $(el).attr(attr, inlined);
+      if (inlined) el.setAttribute(attr, inlined);
     }
-  });
-  $("[srcset]").each((_, el) => {
-    const srcset = $(el).attr("srcset");
-    if (srcset) $(el).attr("srcset", rewriteSrcsetWithInlinedAssets(srcset, projectDir));
-  });
-  $("style").each((_, el) => {
-    $(el).text(rewriteCssUrlsWithInlinedAssets($(el).html() || "", projectDir));
-  });
-  $("[style]").each((_, el) => {
-    $(el).attr("style", rewriteCssUrlsWithInlinedAssets($(el).attr("style") || "", projectDir));
-  });
+  }
+  for (const el of [...document.querySelectorAll("[srcset]")]) {
+    const srcset = el.getAttribute("srcset");
+    if (srcset) el.setAttribute("srcset", rewriteSrcsetWithInlinedAssets(srcset, projectDir));
+  }
+  for (const styleEl of document.querySelectorAll("style")) {
+    styleEl.textContent = rewriteCssUrlsWithInlinedAssets(styleEl.textContent || "", projectDir);
+  }
+  for (const el of [...document.querySelectorAll("[style]")]) {
+    el.setAttribute(
+      "style",
+      rewriteCssUrlsWithInlinedAssets(el.getAttribute("style") || "", projectDir),
+    );
+  }
 
-  return $.html();
+  return document.toString();
 }
