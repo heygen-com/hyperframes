@@ -150,3 +150,5 @@ For typewriter text and other GSAP animation effects, see the `gsap-effects` ski
 - [ ] `window.__timelines` registered for every composition
 - [ ] 100% deterministic — no randomness
 - [ ] Each composition includes GSAP: `<script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>`
+- [ ] `npx hyperframes lint` passes with 0 errors
+- [ ] `npx hyperframes validate` passes with 0 errors (run both before opening the studio)
