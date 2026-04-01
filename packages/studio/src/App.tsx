@@ -862,8 +862,6 @@ export function StudioApp() {
         <LintModal
           findings={consoleErrors}
           projectId={projectId}
-          title={`${consoleErrors.length} console error${consoleErrors.length !== 1 ? "s" : ""}`}
-          subtitle="Runtime errors from composition preview"
           onClose={() => setConsoleErrors(null)}
         />
       )}

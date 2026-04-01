@@ -1,13 +1,19 @@
 /**
  * Caption Overrides — applies per-word style overrides from a JSON data file.
  *
- * When a project has a caption-overrides.json, the runtime loads it after all
- * timelines are registered and applies gsap.set() to each overridden word
- * element, matched by word index in DOM traversal order.
+ * Matching strategy (in priority order):
+ * 1. `wordId` — matches by element ID (e.g. document.getElementById("w0"))
+ * 2. `wordIndex` — fallback, matches by DOM traversal order across .caption-group > span
+ *
+ * Using wordId is preferred because it's stable across grouping changes.
+ * wordIndex is supported for backwards compat with older override files.
  */
 
 export interface CaptionOverride {
-  wordIndex: number;
+  /** Stable word ID from transcript.json (e.g. "w0", "w42"). Preferred lookup key. */
+  wordId?: string;
+  /** Fallback: positional index across all .caption-group > span elements. */
+  wordIndex?: number;
   x?: number;
   y?: number;
   scale?: number;
@@ -21,6 +27,7 @@ export interface CaptionOverride {
 
 interface GsapStatic {
   set: (target: Element, vars: Record<string, unknown>) => void;
+  killTweensOf: (target: Element, props: string) => void;
 }
 
 export function applyCaptionOverrides(): void {
@@ -35,6 +42,7 @@ export function applyCaptionOverrides(): void {
     .then((data: CaptionOverride[] | null) => {
       if (!data || !Array.isArray(data) || data.length === 0) return;
 
+      // Build word element index for wordIndex fallback
       const wordEls: Element[] = [];
       const groups = document.querySelectorAll(".caption-group");
       for (const group of groups) {
@@ -43,10 +51,16 @@ export function applyCaptionOverrides(): void {
           wordEls.push(span);
         }
       }
-      if (wordEls.length === 0) return;
 
       for (const override of data) {
-        const el = wordEls[override.wordIndex];
+        // Resolve element: prefer wordId, fall back to wordIndex
+        let el: Element | null = null;
+        if (override.wordId) {
+          el = document.getElementById(override.wordId);
+        }
+        if (!el && override.wordIndex !== undefined) {
+          el = wordEls[override.wordIndex] ?? null;
+        }
         if (!el) continue;
 
         const props: Record<string, unknown> = {};
@@ -60,9 +74,19 @@ export function applyCaptionOverrides(): void {
         if (override.fontWeight !== undefined) props.fontWeight = override.fontWeight;
         if (override.fontFamily !== undefined) props.fontFamily = override.fontFamily;
 
-        if (Object.keys(props).length > 0) {
-          gsap.set(el, props);
+        if (Object.keys(props).length === 0) continue;
+
+        // Kill conflicting transform tweens before applying overrides
+        const killProps: string[] = [];
+        if (props.x !== undefined) killProps.push("x");
+        if (props.y !== undefined) killProps.push("y");
+        if (props.scale !== undefined) killProps.push("scale");
+        if (props.rotation !== undefined) killProps.push("rotation");
+        if (killProps.length > 0) {
+          gsap.killTweensOf(el, killProps.join(","));
         }
+
+        gsap.set(el, props);
       }
     })
     .catch(() => {});

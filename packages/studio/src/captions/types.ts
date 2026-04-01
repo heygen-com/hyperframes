@@ -107,6 +107,8 @@ export interface CaptionAnimationSet {
 /** A single timed word / token within a caption group. */
 export interface CaptionSegment {
   id: string;
+  /** Stable word ID from transcript.json (e.g. "w0"). Used for caption-overrides.json. */
+  wordId?: string;
   text: string;
   start: number; // seconds
   end: number; // seconds

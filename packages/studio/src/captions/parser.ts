@@ -14,6 +14,7 @@ import {
 } from "./types.js";
 
 export interface TranscriptWord {
+  id?: string;
   text: string;
   start: number;
   end: number;
@@ -53,6 +54,7 @@ export function buildCaptionModel(
       const segmentId = `segment-${groupIdx + wordIdx}`;
       const segment: CaptionSegment = {
         id: segmentId,
+        wordId: word.id ?? `w${groupIdx + wordIdx}`,
         text: word.text,
         start: word.start,
         end: word.end,

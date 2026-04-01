@@ -2,6 +2,10 @@ import { readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { extname, join } from "node:path";
 
 export interface Word {
+  /** Stable identifier for referencing this word in overrides and compositions.
+   *  Assigned during normalization as `w{index}`. Optional for backwards compat
+   *  with existing transcript.json files that predate this field. */
+  id?: string;
   text: string;
   start: number;
   end: number;
@@ -280,23 +284,36 @@ export function loadTranscript(filePath: string): { words: Word[]; format: Trans
   const ext = extname(filePath).toLowerCase();
   const content = readFileSync(filePath, "utf-8");
 
-  if (ext === ".srt") return { words: parseSrt(content), format: "srt" };
-  if (ext === ".vtt") return { words: parseVtt(content), format: "vtt" };
+  if (ext === ".srt") {
+    const words = parseSrt(content).map((w, i) => ({ ...w, id: w.id ?? `w${i}` }));
+    return { words, format: "srt" };
+  }
+  if (ext === ".vtt") {
+    const words = parseVtt(content).map((w, i) => ({ ...w, id: w.id ?? `w${i}` }));
+    return { words, format: "vtt" };
+  }
 
   // JSON formats — parse once, detect, then extract words
   const parsed = JSON.parse(content);
   const format = detectJsonFormat(parsed);
 
-  const words =
+  const rawWords =
     format === "whisper-cpp"
       ? parseWhisperCpp(parsed)
       : format === "openai"
         ? parseOpenAI(parsed)
         : (parsed as Word[]).map((w) => ({
+            id: w.id ?? "",
             text: w.text.trim(),
             start: round3(w.start),
             end: round3(w.end),
           }));
+
+  // Assign stable word IDs for caption override referencing
+  const words = rawWords.map((w, i) => ({
+    ...w,
+    id: w.id ?? `w${i}`,
+  }));
 
   return { words, format };
 }
