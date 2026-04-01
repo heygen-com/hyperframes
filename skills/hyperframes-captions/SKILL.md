@@ -27,17 +27,15 @@ The project's `transcript.json` contains a normalized word array with word-level
 
 ```json
 [
-  { "id": "w0", "text": "Hello", "start": 0.0, "end": 0.5 },
-  { "id": "w1", "text": "world.", "start": 0.6, "end": 1.2 }
+  { "text": "Hello", "start": 0.0, "end": 0.5 },
+  { "text": "world.", "start": 0.6, "end": 1.2 }
 ]
 ```
-
-The `id` field is a stable word identifier assigned during normalization. It enables the caption override system and the Studio caption editor. If `id` is missing (older transcripts), the system falls back to positional index.
 
 This is the only format the captions composition consumes. Use it directly:
 
 ```js
-const words = JSON.parse(transcriptJson); // [{ id, text, start, end }]
+const words = JSON.parse(transcriptJson); // [{ text, start, end }]
 ```
 
 ## Required DOM Structure
@@ -46,19 +44,17 @@ Caption compositions **must** use this DOM convention for compatibility with the
 
 - **Group containers**: `<div>` with `className = "caption-group"`
 - **Word elements**: `<span>` children of the group, one per word
-- **Word IDs**: Set `span.id = word.id` (from the transcript) when available
 
 ```js
 group.words.forEach(function (word) {
   var span = document.createElement("span");
   span.className = "word";
-  if (word.id) span.id = word.id;
   span.textContent = word.text;
   groupEl.appendChild(span);
 });
 ```
 
-This structure allows the runtime to apply `caption-overrides.json` overrides by wrapping individual word spans in transform containers, preserving all GSAP animations.
+The runtime applies `caption-overrides.json` overrides by matching words via positional index across all `.caption-group > span` elements in DOM order. Re-transcription deletes the overrides file automatically.
 
 For transcription commands, whisper model selection, external APIs (OpenAI, Groq), and supported input formats, see [transcript-guide.md](./transcript-guide.md). **After every transcription, read the transcript and run the quality check** — bad transcripts (music tokens, garbled words) must be retried with a larger model before proceeding.
 

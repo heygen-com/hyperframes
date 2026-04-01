@@ -1,5 +1,5 @@
 import { defineCommand } from "citty";
-import { existsSync, writeFileSync } from "node:fs";
+import { existsSync, unlinkSync, writeFileSync } from "node:fs";
 import { resolve, join, extname } from "node:path";
 import * as clack from "@clack/prompts";
 import { c } from "../ui/colors.js";
@@ -82,6 +82,12 @@ async function importTranscript(inputPath: string, dir: string, json: boolean): 
   writeFileSync(outPath, JSON.stringify(words, null, 2));
   patchCaptionHtml(dir, words);
 
+  // Delete caption overrides — word indices are no longer valid after re-transcription
+  const overridesPath = join(dir, "caption-overrides.json");
+  if (existsSync(overridesPath)) {
+    unlinkSync(overridesPath);
+  }
+
   if (json) {
     console.log(
       JSON.stringify({ ok: true, format, wordCount: words.length, transcriptPath: outPath }),
@@ -132,6 +138,12 @@ async function transcribeAudio(
 
     writeFileSync(result.transcriptPath, JSON.stringify(words, null, 2));
     patchCaptionHtml(dir, words);
+
+    // Delete caption overrides — word indices are no longer valid after re-transcription
+    const overridesPath = join(dir, "caption-overrides.json");
+    if (existsSync(overridesPath)) {
+      unlinkSync(overridesPath);
+    }
 
     if (opts.json) {
       console.log(

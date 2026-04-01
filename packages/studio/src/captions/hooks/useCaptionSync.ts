@@ -4,7 +4,6 @@ import { useMountEffect } from "../../hooks/useMountEffect";
 import type { CaptionStyle } from "../types";
 
 interface CaptionOverrideEntry {
-  wordId?: string;
   wordIndex: number;
   x?: number;
   y?: number;
@@ -21,7 +20,7 @@ interface CaptionOverrideEntry {
 function buildOverrides(model: {
   groupOrder: string[];
   groups: Map<string, { segmentIds: string[] }>;
-  segments: Map<string, { wordId?: string; style: Partial<CaptionStyle> }>;
+  segments: Map<string, { style: Partial<CaptionStyle> }>;
 }): CaptionOverrideEntry[] {
   const entries: CaptionOverrideEntry[] = [];
   let globalWordIndex = 0;
@@ -33,7 +32,6 @@ function buildOverrides(model: {
       const seg = model.segments.get(segId);
       if (seg && Object.keys(seg.style).length > 0) {
         const entry: CaptionOverrideEntry = { wordIndex: globalWordIndex };
-        if (seg.wordId) entry.wordId = seg.wordId;
         const s = seg.style;
         if (s.x !== undefined) entry.x = s.x;
         if (s.y !== undefined) entry.y = s.y;
