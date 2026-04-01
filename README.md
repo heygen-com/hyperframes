@@ -1,7 +1,7 @@
 # Hyperframes
 
 [![npm version](https://img.shields.io/npm/v/hyperframes.svg?style=flat)](https://www.npmjs.com/package/hyperframes)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D22-brightgreen)](https://nodejs.org)
 
 **Write HTML. Render video. Built for agents.**
