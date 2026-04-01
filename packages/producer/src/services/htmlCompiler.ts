@@ -698,7 +698,7 @@ function ensureFullDocument(html: string): string {
  * Download external CDN scripts and inline them into the HTML so rendering
  * works without network access (Docker, CI, restricted environments).
  */
-async function inlineExternalScripts(html: string): Promise<string> {
+export async function inlineExternalScripts(html: string): Promise<string> {
   const { document } = parseHTML(html);
   const scripts = document.querySelectorAll("script[src]");
   const externalScripts: { el: Element; src: string }[] = [];
@@ -757,7 +757,7 @@ async function inlineExternalScripts(html: string): Promise<string> {
  *
  * Handles: src/href attributes, CSS url(), inline style url().
  */
-function collectExternalAssets(
+export function collectExternalAssets(
   html: string,
   projectDir: string,
 ): { html: string; externalAssets: Map<string, string> } {
