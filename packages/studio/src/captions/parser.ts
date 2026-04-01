@@ -1,0 +1,94 @@
+// Caption Parser — Extract Transcript
+// Parses a caption composition's JavaScript source to extract the transcript word array.
+
+export interface TranscriptWord {
+  text: string;
+  start: number;
+  end: number;
+}
+
+/**
+ * Extracts a transcript word array from caption composition source code.
+ *
+ * Looks for `const TRANSCRIPT = [...]` or `const script = [...]` (also let/var)
+ * and parses each `{ text, start, end }` object into TranscriptWord objects.
+ *
+ * Returns an empty array if no transcript is found or if parsing fails.
+ */
+export function extractTranscript(source: string): TranscriptWord[] {
+  // Match: (const|let|var) (TRANSCRIPT|script) = [...]
+  // The array may span multiple lines and contain trailing commas.
+  const varPattern = /(?:const|let|var)\s+(?:TRANSCRIPT|script)\s*=\s*(\[[\s\S]*?\]);/;
+  const match = source.match(varPattern);
+
+  if (!match) {
+    return [];
+  }
+
+  const arrayLiteral = match[1];
+
+  try {
+    return parseTranscriptArray(arrayLiteral);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Parses a JS array literal containing `{ text, start, end }` objects.
+ *
+ * Handles:
+ * - Double-quoted and single-quoted string values
+ * - Trailing commas after the last element or property
+ * - Unquoted property keys (standard JS object literal syntax)
+ * - Numeric values for start/end
+ */
+function parseTranscriptArray(arrayLiteral: string): TranscriptWord[] {
+  // Normalize single-quoted strings to double-quoted for JSON.parse compatibility.
+  // Strategy: convert the array literal to valid JSON by:
+  // 1. Converting single-quoted string values to double-quoted
+  // 2. Quoting unquoted object keys
+  // 3. Removing trailing commas before ] or }
+
+  let normalized = arrayLiteral;
+
+  // Step 1: Quote unquoted keys (e.g. text: → "text":)
+  normalized = normalized.replace(/([{,]\s*)([a-zA-Z_$][a-zA-Z0-9_$]*)\s*:/g, '$1"$2":');
+
+  // Step 2: Convert single-quoted string values to double-quoted.
+  // Match 'value' where value does not contain unescaped single quotes.
+  normalized = normalized.replace(/'((?:[^'\\]|\\.)*)'/g, (_match, inner) => {
+    // Escape any double quotes inside, unescape single quotes
+    const escaped = inner.replace(/\\'/g, "'").replace(/"/g, '\\"');
+    return `"${escaped}"`;
+  });
+
+  // Step 3: Remove trailing commas before } or ]
+  normalized = normalized.replace(/,(\s*[}\]])/g, "$1");
+
+  const parsed: unknown = JSON.parse(normalized);
+
+  if (!Array.isArray(parsed)) {
+    return [];
+  }
+
+  const words: TranscriptWord[] = [];
+  for (const item of parsed) {
+    if (
+      item !== null &&
+      typeof item === "object" &&
+      typeof (item as Record<string, unknown>).text === "string" &&
+      typeof (item as Record<string, unknown>).start === "number" &&
+      typeof (item as Record<string, unknown>).end === "number"
+    ) {
+      const entry = item as Record<string, unknown>;
+      words.push({
+        text: entry.text as string,
+        start: entry.start as number,
+        end: entry.end as number,
+      });
+    }
+  }
+
+  return words;
+}
