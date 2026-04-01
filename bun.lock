@@ -120,6 +120,7 @@
         "@hyperframes/engine": "workspace:^",
         "hono": "^4.6.0",
         "linkedom": "^0.18.12",
+        "postcss": "^8.4.0",
         "puppeteer": "^24.0.0",
         "puppeteer-core": "^24.39.1",
       },
