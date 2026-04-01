@@ -254,4 +254,42 @@ describe("GSAP rules", () => {
     const finding = result.findings.find((f) => f.code === "missing_gsap_script");
     expect(finding).toBeUndefined();
   });
+
+  it("does not report missing_gsap_script when GSAP is bundled inline", () => {
+    // Simulate a large inline GSAP bundle (>5KB) with GreenSock marker
+    const fakeGsapLib = "/* GreenSock GSAP */" + " ".repeat(6000);
+    const html = `
+<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080"></div>
+  <script>${fakeGsapLib}</script>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.to("#box", { x: 100, duration: 1 }, 0);
+    window.__timelines["main"] = tl;
+  </script>
+</body></html>`;
+    const result = lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "missing_gsap_script");
+    expect(finding).toBeUndefined();
+  });
+
+  it("does not report missing_gsap_script when producer inlined CDN script", () => {
+    const html = `
+<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080"></div>
+  <script>/* inlined: https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js */
+    !function(t,e){t.gsap=e()}(this,function(){return {}});
+  </script>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.to("#box", { x: 100, duration: 1 }, 0);
+    window.__timelines["main"] = tl;
+  </script>
+</body></html>`;
+    const result = lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "missing_gsap_script");
+    expect(finding).toBeUndefined();
+  });
 });
