@@ -66,8 +66,8 @@ export function useCaptionSync(projectId: string | null) {
     if (!pid) return;
 
     const overrides = buildOverrides(state.model);
-    const dir = state.sourceFilePath.replace(/[^/]+$/, "");
-    const overridesPath = `${dir}caption-overrides.json`;
+    // Write to project root — the runtime fetches relative to <base href> which is the project root
+    const overridesPath = "caption-overrides.json";
 
     await fetch(
       `/api/projects/${pid}/files/${encodeURIComponent(overridesPath)}`,
@@ -81,8 +81,7 @@ export function useCaptionSync(projectId: string | null) {
     const pid = projectIdRef.current;
     if (!pid) return;
 
-    const dir = state.sourceFilePath.replace(/[^/]+$/, "");
-    const overridesPath = `${dir}caption-overrides.json`;
+    const overridesPath = "caption-overrides.json";
 
     try {
       const res = await fetch(

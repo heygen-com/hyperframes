@@ -1321,6 +1321,9 @@ export function initSandboxRuntimeModular(): void {
         postTimeline();
         postState(true);
       });
+  } else {
+    // No external/inline compositions to load — apply caption overrides immediately
+    applyCaptionOverrides();
   }
 
   const picker = createPickerModule({
