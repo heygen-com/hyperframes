@@ -693,6 +693,61 @@ function ensureFullDocument(html: string): string {
 }
 
 /**
+ * Download external CDN scripts and inline them into the HTML so rendering
+ * works without network access (Docker, CI, restricted environments).
+ */
+async function inlineExternalScripts(html: string): Promise<string> {
+  const { document } = parseHTML(html);
+  const scripts = document.querySelectorAll("script[src]");
+  const externalScripts: { el: Element; src: string }[] = [];
+
+  for (const el of scripts) {
+    const src = (el.getAttribute("src") || "").trim();
+    if (src && isHttpUrl(src)) {
+      externalScripts.push({ el: el as unknown as Element, src });
+    }
+  }
+
+  if (externalScripts.length === 0) return html;
+
+  const downloads = await Promise.allSettled(
+    externalScripts.map(async ({ src }) => {
+      const response = await fetch(src, {
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status} for ${src}`);
+      return { src, text: await response.text() };
+    }),
+  );
+
+  let result = html;
+  for (let i = 0; i < downloads.length; i++) {
+    const download = downloads[i]!;
+    const { src } = externalScripts[i]!;
+    if (download.status === "fulfilled") {
+      const escapedSrc = src.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const scriptTagRe = new RegExp(
+        `<script\\b[^>]*\\bsrc=["']${escapedSrc}["'][^>]*>\\s*</script>`,
+        "i",
+      );
+      result = result.replace(
+        scriptTagRe,
+        `<script>/* inlined: ${src} */\n${download.value.text}\n</script>`,
+      );
+      console.log(`[Compiler] Inlined CDN script: ${src}`);
+    } else {
+      console.warn(
+        `[Compiler] WARNING: Failed to download CDN script: ${src} — ${download.reason}. ` +
+          `The render may fail if this script is required (e.g. GSAP). ` +
+          `Consider bundling it locally in your project.`,
+      );
+    }
+  }
+
+  return result;
+}
+
+/**
  * Compile an HTML composition project into a single self-contained HTML string
  * with all media metadata resolved.
  */
@@ -735,8 +790,13 @@ export async function compileForRender(
     "$1",
   );
 
+  // Download CDN scripts and inline them so the headless browser doesn't need
+  // network access. This prevents GSAP/Lottie 404s in Docker, CI, and
+  // restricted environments that cause silent all-black renders.
+  const offlineHtml = await inlineExternalScripts(sanitizedHtml);
+
   const html = injectDeterministicFontFaces(
-    coalesceHeadStylesAndBodyScripts(promoteCssImportsToLinkTags(sanitizedHtml)),
+    coalesceHeadStylesAndBodyScripts(promoteCssImportsToLinkTags(offlineHtml)),
   );
 
   // Parse main HTML elements
