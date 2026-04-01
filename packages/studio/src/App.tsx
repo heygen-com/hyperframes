@@ -172,8 +172,8 @@ export function StudioApp() {
   // Auto-expand right panel when a caption word is selected
   // eslint-disable-next-line no-restricted-syntax
   useEffect(() => {
-    if (captionEditMode && captionHasSelection) {
-      setRightCollapsed(false);
+    if (captionEditMode) {
+      setRightCollapsed(!captionHasSelection);
     }
   }, [captionHasSelection, captionEditMode]);
   const [globalDragOver, setGlobalDragOver] = useState(false);
