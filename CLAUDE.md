@@ -69,6 +69,18 @@ pnpm build      # Build all packages
 pnpm test       # Run tests
 ```
 
+### Linting & Formatting
+
+This project uses **oxlint** and **oxfmt** (not biome, not eslint, not prettier).
+
+```bash
+bunx oxlint <files>        # Lint
+bunx oxfmt <files>         # Format (write)
+bunx oxfmt --check <files> # Format (check only, used by pre-commit hook)
+```
+
+Always run both on changed files before committing. The lefthook pre-commit hook runs `bunx oxlint` and `bunx oxfmt --check` automatically.
+
 ## Key Concepts
 
 - **Compositions** are HTML files with `data-*` attributes defining timeline, tracks, and media
