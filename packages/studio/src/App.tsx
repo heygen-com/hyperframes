@@ -139,21 +139,24 @@ export function StudioApp() {
     };
 
     window.addEventListener("message", handleMessage);
-    // Also try immediately in case compositions are already loaded
+    // Try immediately in case compositions are already loaded
     tryActivateCaptions();
+    // Fallback poll — runtime messages can fire before listener is attached on first load
+    const pollId = setInterval(tryActivateCaptions, 500);
 
     return () => {
       window.removeEventListener("message", handleMessage);
-      if (useCaptionStore.getState().isEditMode) useCaptionStore.getState().reset();
+      clearInterval(pollId);
     };
   }, [activeCompPath, projectId]);
 
   // Auto-expand right panel when a caption word is selected
-  const prevCaptionHasSelection = useRef(false);
-  if (captionEditMode && captionHasSelection && !prevCaptionHasSelection.current && rightCollapsed) {
-    setRightCollapsed(false);
-  }
-  prevCaptionHasSelection.current = captionHasSelection;
+  // eslint-disable-next-line no-restricted-syntax
+  useEffect(() => {
+    if (captionEditMode && captionHasSelection) {
+      setRightCollapsed(false);
+    }
+  }, [captionHasSelection, captionEditMode]);
   const [globalDragOver, setGlobalDragOver] = useState(false);
   const [uploadToast, setUploadToast] = useState<string | null>(null);
   const [timelineVisible, setTimelineVisible] = useState(false);
