@@ -55,6 +55,48 @@ export const captionRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> 
     return findings;
   },
 
+  // caption_word_structure — enforces .caption-group > span convention for caption override compatibility
+  ({ scripts }) => {
+    const findings: HyperframeLintFinding[] = [];
+    for (const script of scripts) {
+      const content = script.content;
+      // Only check scripts that look like caption compositions
+      const isCaptionScript =
+        /TRANSCRIPT|caption.group|caption-group/i.test(content) &&
+        /createElement|appendChild/.test(content);
+      if (!isCaptionScript) continue;
+
+      // Check that word elements use <span> inside .caption-group
+      const createsSpans = /createElement\s*\(\s*["']span["']\s*\)/.test(content);
+      const usesGroupClass = /className\s*=\s*["'][^"']*caption.group|class.*caption.group/i.test(content);
+
+      if (!createsSpans) {
+        findings.push({
+          code: "caption_word_structure",
+          severity: "warning",
+          message:
+            "Caption word elements should be <span> tags for compatibility with the caption " +
+            "override system. Use document.createElement(\"span\") for each word.",
+          fixHint:
+            "Change word element creation to use <span> tags: " +
+            'document.createElement("span").',
+        });
+      }
+      if (!usesGroupClass) {
+        findings.push({
+          code: "caption_word_structure",
+          severity: "warning",
+          message:
+            'Caption groups should use className "caption-group" for compatibility with the ' +
+            "caption override system and the Studio caption editor.",
+          fixHint:
+            'Set className = "caption-group" on each group container element.',
+        });
+      }
+    }
+    return findings;
+  },
+
   // caption_container_relative_position
   ({ styles }) => {
     const findings: HyperframeLintFinding[] = [];
