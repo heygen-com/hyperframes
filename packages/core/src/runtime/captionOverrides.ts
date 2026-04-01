@@ -121,6 +121,7 @@ export function applyCaptionOverrides(): void {
         if (Object.keys(transformProps).length > 0) {
           const wrapper = document.createElement("span");
           wrapper.style.display = "inline-block";
+          wrapper.dataset.captionWrapper = "true";
           el.parentNode?.insertBefore(wrapper, el);
           wrapper.appendChild(el);
           gsap.set(wrapper, transformProps);

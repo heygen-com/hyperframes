@@ -63,6 +63,9 @@ export function useCaptionSync(projectId: string | null) {
   projectIdRef.current = projectId;
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Flag to suppress auto-save during loadOverrides
+  const suppressSaveRef = useRef(false);
+
   const save = useCallback(() => {
     const state = useCaptionStore.getState();
     if (!state.model || !state.sourceFilePath || !state.isEditMode) return;
@@ -84,6 +87,12 @@ export function useCaptionSync(projectId: string | null) {
     const unsub = useCaptionStore.subscribe((state) => {
       if (!state.isEditMode || state.model === prevModel || !state.model) return;
       prevModel = state.model;
+
+      // Skip save when loadOverrides just updated the model
+      if (suppressSaveRef.current) {
+        suppressSaveRef.current = false;
+        return;
+      }
 
       if (debounceRef.current) clearTimeout(debounceRef.current);
       debounceRef.current = setTimeout(save, 800);
@@ -143,6 +152,7 @@ export function useCaptionSync(projectId: string | null) {
         newSegments.set(segId, { ...seg, style });
       }
 
+      suppressSaveRef.current = true;
       useCaptionStore.getState().setModel({ ...model, segments: newSegments });
     } catch {
       // No overrides file

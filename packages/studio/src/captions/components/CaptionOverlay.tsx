@@ -165,13 +165,19 @@ function writeTransform(el: HTMLElement, iframeWin: Window, x: number, y: number
   }
 }
 
-/** Sync canvas state back to the Zustand store so the property panel reflects it */
+/** Sync canvas state back to the Zustand store so the property panel reflects it.
+ *  Only writes non-default values to avoid creating spurious overrides. */
 function syncToStore(segmentId: string, el: HTMLElement, iframeWin: Window) {
   const wrapper = getOrCreateWrapper(el);
   const { x, y, scale, rotation } = readGsapTransform(wrapper, iframeWin);
-  useCaptionStore.getState().updateSegmentStyle(segmentId, {
-    x, y, rotation, scaleX: scale, scaleY: scale,
-  });
+  const style: Record<string, number> = {};
+  if (Math.abs(x) > 0.5) style.x = x;
+  if (Math.abs(y) > 0.5) style.y = y;
+  if (Math.abs(scale - 1) > 0.001) { style.scaleX = scale; style.scaleY = scale; }
+  if (Math.abs(rotation) > 0.1) style.rotation = rotation;
+  if (Object.keys(style).length > 0) {
+    useCaptionStore.getState().updateSegmentStyle(segmentId, style);
+  }
 }
 
 const HANDLE = 8;
