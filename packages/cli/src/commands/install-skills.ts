@@ -20,7 +20,7 @@ function execFileAsync(
 }
 
 // ---------------------------------------------------------------------------
-// Target CLI tools — each has a global skills directory
+// Target CLI tools — each has a skills directory (global or project-level)
 // ---------------------------------------------------------------------------
 
 interface Target {
@@ -29,15 +29,19 @@ interface Target {
   /** Agent name for `npx skills add -a <agent>` */
   skillsAgent: string;
   dir: string;
+  /** Global targets install to ~/.<agent>/skills/; project targets install to ./<agent>/skills/ */
+  isGlobal: boolean;
   defaultEnabled: boolean;
 }
 
 const TARGETS: Target[] = [
+  // -- Global targets (enabled by default) --
   {
     name: "Claude Code",
     flag: "claude",
     skillsAgent: "claude-code",
     dir: join(homedir(), ".claude", "skills"),
+    isGlobal: true,
     defaultEnabled: true,
   },
   {
@@ -45,6 +49,7 @@ const TARGETS: Target[] = [
     flag: "gemini",
     skillsAgent: "gemini-cli",
     dir: join(homedir(), ".gemini", "skills"),
+    isGlobal: true,
     defaultEnabled: true,
   },
   {
@@ -52,8 +57,10 @@ const TARGETS: Target[] = [
     flag: "codex",
     skillsAgent: "codex",
     dir: join(homedir(), ".codex", "skills"),
+    isGlobal: true,
     defaultEnabled: true,
   },
+  // -- Project-level targets (opt-in via flag) --
   {
     name: "Cursor",
     flag: "cursor",
@@ -61,6 +68,47 @@ const TARGETS: Target[] = [
     get dir() {
       return join(process.cwd(), ".cursor", "skills");
     },
+    isGlobal: false,
+    defaultEnabled: false,
+  },
+  {
+    name: "Windsurf",
+    flag: "windsurf",
+    skillsAgent: "windsurf",
+    get dir() {
+      return join(process.cwd(), ".windsurf", "skills");
+    },
+    isGlobal: false,
+    defaultEnabled: false,
+  },
+  {
+    name: "Cline",
+    flag: "cline",
+    skillsAgent: "cline",
+    get dir() {
+      return join(process.cwd(), ".cline", "skills");
+    },
+    isGlobal: false,
+    defaultEnabled: false,
+  },
+  {
+    name: "Roo Code",
+    flag: "roo",
+    skillsAgent: "roo",
+    get dir() {
+      return join(process.cwd(), ".roo", "skills");
+    },
+    isGlobal: false,
+    defaultEnabled: false,
+  },
+  {
+    name: "Trae",
+    flag: "trae",
+    skillsAgent: "trae",
+    get dir() {
+      return join(process.cwd(), ".trae", "skills");
+    },
+    isGlobal: false,
     defaultEnabled: false,
   },
 ];
@@ -235,6 +283,29 @@ async function fallbackInstall(targets: Target[]): Promise<{
 }
 
 // ---------------------------------------------------------------------------
+// Shared helpers
+// ---------------------------------------------------------------------------
+
+function splitAgents(targets: Target[]): { global: string[]; project: string[] } {
+  return {
+    global: targets.filter((t) => t.isGlobal).map((t) => t.skillsAgent),
+    project: targets.filter((t) => !t.isGlobal).map((t) => t.skillsAgent),
+  };
+}
+
+async function installSource(
+  repo: string,
+  agents: { global: string[]; project: string[] },
+): Promise<void> {
+  if (agents.global.length > 0) {
+    await runSkillsAdd(repo, agents.global, true);
+  }
+  if (agents.project.length > 0) {
+    await runSkillsAdd(repo, agents.project, false);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Programmatic API — used by init command
 // ---------------------------------------------------------------------------
 
@@ -247,8 +318,8 @@ export async function installAllSkills(
   const targets = targetNames
     ? TARGETS.filter((t) => targetNames.includes(t.flag))
     : TARGETS.filter((t) => t.defaultEnabled);
-  const agents = targets.map((t) => t.skillsAgent);
   const progress = options?.onProgress;
+  const agents = splitAgents(targets);
 
   // Try npx skills add first
   if (hasNpx()) {
@@ -257,7 +328,7 @@ export async function installAllSkills(
     for (const source of SOURCES) {
       try {
         progress?.(`Installing ${source.name} skills...`);
-        await runSkillsAdd(source.repo, agents, true);
+        await installSource(source.repo, agents);
         count += 1;
       } catch {
         skipped.push(source.name);
@@ -294,7 +365,7 @@ async function runInstall({ args }: { args: Record<string, unknown> }): Promise<
   clack.intro(c.bold("hyperframes skills"));
 
   const targets = resolveTargets(args);
-  const agents = targets.map((t) => t.skillsAgent);
+  const agents = splitAgents(targets);
 
   // Try npx skills add
   if (hasNpx()) {
@@ -305,7 +376,7 @@ async function runInstall({ args }: { args: Record<string, unknown> }): Promise<
       const spinner = clack.spinner();
       spinner.start(`Installing ${source.name} skills...`);
       try {
-        await runSkillsAdd(source.repo, agents, true);
+        await installSource(source.repo, agents);
         installed.push(source.name);
         spinner.stop(c.success(`${source.name} skills installed`));
       } catch {
@@ -366,11 +437,23 @@ export default defineCommand({
     name: "skills",
     description: `Install HyperFrames and GSAP skills for AI coding tools
 
+Global targets (enabled by default):
+  --claude    Claude Code (~/.claude/skills/)
+  --gemini    Gemini CLI (~/.gemini/skills/)
+  --codex     Codex CLI (~/.codex/skills/)
+
+Project-level targets (opt-in):
+  --cursor    Cursor (.cursor/skills/)
+  --windsurf  Windsurf (.windsurf/skills/)
+  --cline     Cline (.cline/skills/)
+  --roo       Roo Code (.roo/skills/)
+  --trae      Trae (.trae/skills/)
+
 Examples:
   hyperframes skills                      # install to Claude, Gemini, Codex
-  hyperframes skills --claude             # install to Claude Code only
-  hyperframes skills --cursor             # install to Cursor (project-level)
-  hyperframes skills --claude --gemini    # install to specific tools`,
+  hyperframes skills --windsurf           # install to Windsurf (project-level)
+  hyperframes skills --cursor --cline     # install to Cursor + Cline
+  hyperframes skills --claude --windsurf  # mix global + project targets`,
   },
   args: {
     claude: { type: "boolean", description: "Install to Claude Code (~/.claude/skills/)" },
@@ -379,6 +462,22 @@ Examples:
     cursor: {
       type: "boolean",
       description: "Install to Cursor (.cursor/skills/ in current project)",
+    },
+    windsurf: {
+      type: "boolean",
+      description: "Install to Windsurf (.windsurf/skills/ in current project)",
+    },
+    cline: {
+      type: "boolean",
+      description: "Install to Cline (.cline/skills/ in current project)",
+    },
+    roo: {
+      type: "boolean",
+      description: "Install to Roo Code (.roo/skills/ in current project)",
+    },
+    trae: {
+      type: "boolean",
+      description: "Install to Trae (.trae/skills/ in current project)",
     },
     "human-friendly": { type: "boolean", description: "Enable interactive terminal UI" },
   },

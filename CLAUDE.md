@@ -39,10 +39,14 @@ The skills encode HyperFrames-specific patterns (e.g., required `class="clip"` o
 ### Installing skills
 
 ```bash
-npx hyperframes skills          # install all to Claude, Gemini, Codex
-npx hyperframes skills --claude # Claude Code only
+npx hyperframes skills            # install to Claude, Gemini, Codex (global)
+npx hyperframes skills --claude   # Claude Code only
+npx hyperframes skills --windsurf # Windsurf (project-level)
+npx hyperframes skills --cursor --cline --roo --trae  # multiple project targets
 npx skills add greensock/gsap-skills  # alternative: via skills CLI
 ```
+
+Supported targets: Claude Code, Gemini CLI, Codex CLI (global, enabled by default), Cursor, Windsurf, Cline, Roo Code, Trae (project-level, opt-in via flag).
 
 ## Project Overview
 

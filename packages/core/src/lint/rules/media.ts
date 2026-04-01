@@ -82,7 +82,7 @@ export const mediaRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = 
     const timedTagPositions: Array<{ name: string; start: number; id?: string }> = [];
     for (const tag of tags) {
       if (tag.name === "video" || tag.name === "audio") continue;
-      if (readAttr(tag.raw, "data-start")) {
+      if (readAttr(tag.raw, "data-start") && !readAttr(tag.raw, "data-composition-id")) {
         timedTagPositions.push({
           name: tag.name,
           start: tag.index,
