@@ -1,0 +1,336 @@
+<template id="scene1-heygen-hero-template">
+  <div
+    data-composition-id="scene1-heygen-hero"
+    data-width="1920"
+    data-height="1080"
+    data-duration="5"
+  >
+    <div class="scene">
+      <div class="halo halo-left"></div>
+      <div class="halo halo-right"></div>
+      <div class="mesh"></div>
+
+      <div class="nav-shell">
+        <div class="nav-pill">
+          <img class="nav-logo" src="../heygen-logo.png" alt="HeyGen" />
+          <div class="nav-links">
+            <span>Platform</span>
+            <span>Use cases</span>
+            <span>Pricing</span>
+            <span>Enterprise</span>
+          </div>
+          <div class="nav-action">Sign in</div>
+        </div>
+      </div>
+
+      <div class="copy">
+        <div class="eyebrow">HEYGEN / AI VIDEO GENERATOR</div>
+        <h1>
+          <span class="dark">Create studio-quality</span>
+          <span class="blue">AI videos</span>
+          <span class="dark">in minutes.</span>
+        </h1>
+        <p class="subhead">
+          Turn scripts, avatars, photos, and multilingual dubbing into polished videos with one
+          fast workflow built for teams.
+        </p>
+        <div class="actions">
+          <div class="cta primary">Get Started for Free</div>
+          <div class="cta secondary">heygen.com</div>
+        </div>
+      </div>
+
+      <div class="visuals">
+        <div class="browser-frame">
+          <div class="browser-top">
+            <div class="dots">
+              <span></span><span></span><span></span>
+            </div>
+            <div class="browser-url">www.heygen.com</div>
+          </div>
+          <img class="browser-shot" src="../heygen-homepage.png" alt="HeyGen homepage" />
+        </div>
+        <img class="prism" src="../hero-prism.png" alt="HeyGen avatars" />
+      </div>
+    </div>
+
+    <style>
+      @font-face {
+        font-family: "TT Norms Pro";
+        font-style: normal;
+        font-weight: 400;
+        font-display: block;
+        src: url("../TT_Norms_Pro_Normal.woff2") format("woff2");
+      }
+      @font-face {
+        font-family: "TT Norms Pro";
+        font-style: normal;
+        font-weight: 500;
+        font-display: block;
+        src: url("../TT_Norms_Pro_Medium.woff2") format("woff2");
+      }
+      @font-face {
+        font-family: "TT Norms Pro";
+        font-style: normal;
+        font-weight: 700;
+        font-display: block;
+        src: url("../TT_Norms_Pro_Bold.woff2") format("woff2");
+      }
+      @font-face {
+        font-family: "ABC Solar Display";
+        font-style: normal;
+        font-weight: 700;
+        font-display: block;
+        src: url("../ABCSolarDisplay-Bold.woff2") format("woff2");
+      }
+
+      [data-composition-id="scene1-heygen-hero"] {
+        position: relative;
+        overflow: hidden;
+        background: #fcfcfd;
+      }
+
+      .scene {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background:
+          radial-gradient(circle at 22% 30%, rgba(0, 195, 255, 0.12), transparent 26%),
+          radial-gradient(circle at 78% 22%, rgba(191, 127, 255, 0.12), transparent 24%),
+          linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
+        font-family: "TT Norms Pro", Arial, sans-serif;
+        color: #333333;
+      }
+
+      .halo,
+      .mesh {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+      }
+
+      .halo {
+        filter: blur(38px);
+      }
+
+      .halo-left {
+        background: radial-gradient(circle at 20% 30%, rgba(0, 195, 255, 0.18), transparent 24%);
+      }
+
+      .halo-right {
+        background: radial-gradient(circle at 80% 20%, rgba(191, 127, 255, 0.16), transparent 24%);
+      }
+
+      .mesh {
+        opacity: 0.22;
+        background-image:
+          linear-gradient(rgba(0, 195, 255, 0.08) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(191, 127, 255, 0.06) 1px, transparent 1px);
+        background-size: 96px 96px;
+        mask-image: linear-gradient(180deg, black 20%, rgba(0, 0, 0, 0.25) 100%);
+      }
+
+      .nav-shell,
+      .copy,
+      .visuals {
+        position: absolute;
+      }
+
+      .nav-shell {
+        left: 42px;
+        top: 24px;
+        width: 1836px;
+      }
+
+      .nav-pill {
+        height: 74px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 24px;
+        border-radius: 28px;
+        background:
+          linear-gradient(#ffffff, #ffffff) padding-box,
+          linear-gradient(90deg, rgba(0, 195, 255, 0.55), rgba(191, 127, 255, 0.45)) border-box;
+        border: 1px solid transparent;
+        box-shadow: 0 10px 30px rgba(51, 51, 51, 0.06);
+      }
+
+      .nav-logo {
+        width: 96px;
+        height: auto;
+        object-fit: contain;
+      }
+
+      .nav-links {
+        display: flex;
+        gap: 42px;
+        margin-left: auto;
+        margin-right: 22px;
+        font-size: 25px;
+        font-weight: 500;
+      }
+
+      .nav-action {
+        padding: 14px 24px;
+        border-radius: 20px;
+        background: #111111;
+        color: #ffffff;
+        font-size: 23px;
+        font-weight: 700;
+      }
+
+      .copy {
+        left: 86px;
+        top: 182px;
+        width: 820px;
+      }
+
+      .eyebrow {
+        font-size: 22px;
+        font-weight: 700;
+        letter-spacing: 0.18em;
+        color: rgba(51, 51, 51, 0.56);
+      }
+
+      h1 {
+        margin-top: 34px;
+        font-size: 108px;
+        line-height: 0.9;
+        letter-spacing: -0.05em;
+      }
+
+      h1 span {
+        display: block;
+      }
+
+      .dark {
+        font-family: "ABC Solar Display", "TT Norms Pro", Arial, sans-serif;
+        color: #333333;
+      }
+
+      .blue {
+        font-family: "ABC Solar Display", "TT Norms Pro", Arial, sans-serif;
+        color: #00c3ff;
+      }
+
+      .subhead {
+        margin-top: 34px;
+        width: 700px;
+        font-size: 34px;
+        line-height: 1.22;
+        color: rgba(51, 51, 51, 0.72);
+      }
+
+      .actions {
+        margin-top: 42px;
+        display: flex;
+        gap: 18px;
+      }
+
+      .cta {
+        border-radius: 22px;
+        padding: 18px 28px;
+        font-size: 28px;
+        font-weight: 700;
+        line-height: 1;
+      }
+
+      .primary {
+        background: #00c3ff;
+        color: #333333;
+        box-shadow: 0 18px 40px rgba(0, 195, 255, 0.28);
+      }
+
+      .secondary {
+        background: rgba(255, 255, 255, 0.9);
+        color: rgba(51, 51, 51, 0.72);
+        border: 1px solid rgba(51, 51, 51, 0.12);
+      }
+
+      .visuals {
+        right: 60px;
+        top: 130px;
+        width: 940px;
+        height: 860px;
+      }
+
+      .browser-frame {
+        position: absolute;
+        left: 22px;
+        top: 188px;
+        width: 680px;
+        height: 456px;
+        border-radius: 28px;
+        overflow: hidden;
+        background: #ffffff;
+        box-shadow: 0 28px 80px rgba(35, 43, 62, 0.16);
+      }
+
+      .browser-top {
+        height: 52px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 18px;
+        border-bottom: 1px solid rgba(51, 51, 51, 0.08);
+        background: rgba(255, 255, 255, 0.96);
+      }
+
+      .dots {
+        display: flex;
+        gap: 8px;
+      }
+
+      .dots span {
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+        background: rgba(51, 51, 51, 0.14);
+      }
+
+      .browser-url {
+        font-size: 18px;
+        color: rgba(51, 51, 51, 0.54);
+      }
+
+      .browser-shot {
+        width: 100%;
+        height: calc(100% - 52px);
+        object-fit: cover;
+        object-position: center top;
+      }
+
+      .prism {
+        position: absolute;
+        right: 0;
+        top: 10px;
+        width: 720px;
+        height: auto;
+        object-fit: contain;
+        filter: drop-shadow(0 28px 60px rgba(0, 195, 255, 0.18));
+      }
+    </style>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      window.__timelines = window.__timelines || {};
+      const root = document.currentScript.parentElement;
+      const tl = gsap.timeline({ paused: true });
+
+      tl.from(root.querySelector(".nav-pill"), { y: -36, opacity: 0, duration: 0.75, ease: "power3.out" }, 0);
+      tl.from(root.querySelector(".eyebrow"), { y: 20, opacity: 0, duration: 0.5, ease: "power2.out" }, 0.2);
+      tl.from(root.querySelectorAll("h1 span"), { yPercent: 110, opacity: 0, duration: 1, ease: "power4.out", stagger: 0.1 }, 0.28);
+      tl.from(root.querySelector(".subhead"), { y: 28, opacity: 0, duration: 0.8, ease: "power2.out" }, 0.7);
+      tl.from(root.querySelectorAll(".cta"), { y: 22, opacity: 0, scale: 0.96, duration: 0.7, ease: "back.out(1.3)", stagger: 0.08 }, 0.92);
+      tl.from(root.querySelector(".browser-frame"), { x: 140, y: 40, rotate: -5, opacity: 0, duration: 1, ease: "power3.out" }, 0.45);
+      tl.from(root.querySelector(".prism"), { x: 160, y: -40, rotate: 8, opacity: 0, duration: 1.1, ease: "power3.out" }, 0.6);
+      tl.to(root.querySelector(".browser-frame"), { y: -16, duration: 5, ease: "sine.inOut" }, 0);
+      tl.to(root.querySelector(".prism"), { y: 10, rotation: -3, duration: 5, ease: "sine.inOut" }, 0);
+      tl.to(root.querySelectorAll(".halo"), { scale: 1.08, duration: 5, ease: "sine.inOut" }, 0);
+
+      window.__timelines["scene1-heygen-hero"] = tl;
+    </script>
+  </div>
+</template>

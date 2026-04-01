@@ -1,0 +1,288 @@
+<template id="scene3-heygen-cta-template">
+  <div
+    data-composition-id="scene3-heygen-cta"
+    data-width="1920"
+    data-height="1080"
+    data-duration="5"
+  >
+    <div class="scene">
+      <div class="bg-orb left"></div>
+      <div class="bg-orb right"></div>
+      <div class="grid"></div>
+
+      <div class="card">
+        <div class="brand-row">
+          <img class="logo" src="../heygen-logo.png" alt="HeyGen" />
+          <div class="tag">Used by 100,000+ teams</div>
+        </div>
+
+        <div class="content">
+          <div class="copy">
+            <div class="eyebrow">HEYGEN / START CREATING</div>
+            <h2>Fast to prompt.<br />Faster to publish.</h2>
+            <p>
+              Create AI videos with avatars, dubbing, and text-first editing in one polished
+              workflow built to move at team speed.
+            </p>
+
+            <div class="actions">
+              <div class="cta primary">Get Started for Free</div>
+              <div class="cta secondary">heygen.com</div>
+            </div>
+          </div>
+
+          <div class="stack">
+            <div class="mini browser">
+              <img src="../heygen-homepage.png" alt="HeyGen homepage" />
+            </div>
+            <div class="mini prism-shell">
+              <img src="../hero-prism.png" alt="HeyGen prism" />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <style>
+      @font-face {
+        font-family: "TT Norms Pro";
+        font-style: normal;
+        font-weight: 400;
+        font-display: block;
+        src: url("../TT_Norms_Pro_Normal.woff2") format("woff2");
+      }
+      @font-face {
+        font-family: "TT Norms Pro";
+        font-style: normal;
+        font-weight: 500;
+        font-display: block;
+        src: url("../TT_Norms_Pro_Medium.woff2") format("woff2");
+      }
+      @font-face {
+        font-family: "TT Norms Pro";
+        font-style: normal;
+        font-weight: 700;
+        font-display: block;
+        src: url("../TT_Norms_Pro_Bold.woff2") format("woff2");
+      }
+      @font-face {
+        font-family: "ABC Solar Display";
+        font-style: normal;
+        font-weight: 700;
+        font-display: block;
+        src: url("../ABCSolarDisplay-Bold.woff2") format("woff2");
+      }
+
+      [data-composition-id="scene3-heygen-cta"] {
+        position: relative;
+        overflow: hidden;
+        background: linear-gradient(135deg, #0b1018 0%, #111827 48%, #0a0f16 100%);
+        font-family: "TT Norms Pro", Arial, sans-serif;
+        color: #ffffff;
+      }
+
+      .scene {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+
+      .bg-orb,
+      .grid {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+      }
+
+      .bg-orb {
+        filter: blur(46px);
+      }
+
+      .left {
+        background: radial-gradient(circle at 16% 24%, rgba(0, 195, 255, 0.26), transparent 26%);
+      }
+
+      .right {
+        background: radial-gradient(circle at 84% 22%, rgba(191, 127, 255, 0.22), transparent 26%);
+      }
+
+      .grid {
+        opacity: 0.14;
+        background-image:
+          linear-gradient(rgba(255, 255, 255, 0.06) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255, 255, 255, 0.06) 1px, transparent 1px);
+        background-size: 84px 84px;
+      }
+
+      .card {
+        position: absolute;
+        left: 60px;
+        top: 56px;
+        width: 1800px;
+        height: 968px;
+        padding: 42px 46px;
+        border-radius: 36px;
+        background: linear-gradient(180deg, rgba(17, 24, 39, 0.88), rgba(10, 16, 24, 0.94));
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        box-shadow: 0 24px 80px rgba(0, 0, 0, 0.28);
+      }
+
+      .brand-row,
+      .content {
+        position: absolute;
+      }
+
+      .brand-row {
+        left: 46px;
+        right: 46px;
+        top: 38px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+
+      .logo {
+        width: 112px;
+        height: auto;
+        object-fit: contain;
+      }
+
+      .tag {
+        padding: 14px 22px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.06);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        font-size: 22px;
+        color: rgba(255, 255, 255, 0.78);
+      }
+
+      .content {
+        left: 46px;
+        right: 46px;
+        top: 144px;
+        bottom: 46px;
+        display: flex;
+        justify-content: space-between;
+      }
+
+      .copy {
+        width: 920px;
+      }
+
+      .eyebrow {
+        font-size: 21px;
+        letter-spacing: 0.18em;
+        font-weight: 700;
+        color: rgba(255, 255, 255, 0.58);
+      }
+
+      h2 {
+        margin-top: 26px;
+        font-family: "ABC Solar Display", "TT Norms Pro", Arial, sans-serif;
+        font-size: 112px;
+        line-height: 0.9;
+        letter-spacing: -0.06em;
+      }
+
+      p {
+        margin-top: 28px;
+        width: 760px;
+        font-size: 32px;
+        line-height: 1.22;
+        color: rgba(255, 255, 255, 0.74);
+      }
+
+      .actions {
+        margin-top: 40px;
+        display: flex;
+        gap: 18px;
+      }
+
+      .cta {
+        padding: 20px 30px;
+        border-radius: 24px;
+        font-size: 28px;
+        font-weight: 700;
+      }
+
+      .primary {
+        background: #00c3ff;
+        color: #333333;
+        box-shadow: 0 20px 46px rgba(0, 195, 255, 0.28);
+      }
+
+      .secondary {
+        color: rgba(255, 255, 255, 0.76);
+        background: rgba(255, 255, 255, 0.06);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+      }
+
+      .stack {
+        position: relative;
+        width: 620px;
+        height: 700px;
+      }
+
+      .mini {
+        position: absolute;
+        border-radius: 30px;
+        overflow: hidden;
+        box-shadow: 0 22px 64px rgba(0, 0, 0, 0.3);
+      }
+
+      .browser {
+        right: 0;
+        top: 26px;
+        width: 560px;
+        height: 360px;
+        background: #ffffff;
+      }
+
+      .browser img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        object-position: center top;
+      }
+
+      .prism-shell {
+        left: 0;
+        bottom: 20px;
+        width: 500px;
+        height: 340px;
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02));
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .prism-shell img {
+        width: 520px;
+        height: auto;
+        object-fit: contain;
+      }
+    </style>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      window.__timelines = window.__timelines || {};
+      const root = document.currentScript.parentElement;
+      const tl = gsap.timeline({ paused: true });
+
+      tl.from(root.querySelector(".card"), { opacity: 0, y: 28, scale: 0.985, duration: 0.8, ease: "power3.out" }, 0);
+      tl.from(root.querySelector(".brand-row"), { y: -20, opacity: 0, duration: 0.55, ease: "power2.out" }, 0.16);
+      tl.from(root.querySelector(".eyebrow"), { y: 16, opacity: 0, duration: 0.45, ease: "power2.out" }, 0.28);
+      tl.from(root.querySelector("h2"), { y: 34, opacity: 0, duration: 0.8, ease: "power3.out" }, 0.38);
+      tl.from(root.querySelector("p"), { y: 22, opacity: 0, duration: 0.7, ease: "power2.out" }, 0.58);
+      tl.from(root.querySelectorAll(".cta"), { y: 24, opacity: 0, scale: 0.96, duration: 0.65, ease: "back.out(1.25)", stagger: 0.08 }, 0.82);
+      tl.from(root.querySelector(".browser"), { x: 120, y: -18, rotate: 4, opacity: 0, duration: 1, ease: "power3.out" }, 0.48);
+      tl.from(root.querySelector(".prism-shell"), { x: 90, y: 42, rotate: -4, opacity: 0, duration: 1, ease: "power3.out" }, 0.64);
+      tl.to(root.querySelector(".browser"), { y: -14, duration: 5, ease: "sine.inOut" }, 0);
+      tl.to(root.querySelector(".prism-shell"), { y: 10, duration: 5, ease: "sine.inOut" }, 0);
+      tl.to(root.querySelectorAll(".bg-orb"), { scale: 1.08, duration: 5, ease: "sine.inOut" }, 0);
+
+      window.__timelines["scene3-heygen-cta"] = tl;
+    </script>
+  </div>
+</template>

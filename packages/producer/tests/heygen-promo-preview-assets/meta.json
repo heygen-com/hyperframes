@@ -1,0 +1,12 @@
+{
+  "name": "heygen-promo-preview-assets",
+  "description": "Regression fixture using the HeyGen promo composition with sub-composition images and local brand fonts referenced via ../ paths. Guards against broken asset rewriting in compiled output and rendered snapshots.",
+  "tags": ["regression", "sub-composition", "preview-assets", "prod-style", "slow"],
+  "minPsnr": 30,
+  "maxFrameFailures": 0,
+  "minAudioCorrelation": 0,
+  "maxAudioLagWindows": 120,
+  "renderConfig": {
+    "fps": 30
+  }
+}

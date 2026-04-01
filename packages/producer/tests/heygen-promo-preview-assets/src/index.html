@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>HeyGen Promo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #ffffff;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="16"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div
+        id="scene-1"
+        data-composition-id="scene1-heygen-hero"
+        data-composition-src="compositions/scene1-heygen-hero.html"
+        data-start="0"
+        data-duration="5"
+        data-track-index="0"
+        data-width="1920"
+        data-height="1080"
+      ></div>
+      <div
+        id="scene-2"
+        data-composition-id="scene2-heygen-showcase"
+        data-composition-src="compositions/scene2-heygen-showcase.html"
+        data-start="5"
+        data-duration="6"
+        data-track-index="0"
+        data-width="1920"
+        data-height="1080"
+      ></div>
+      <div
+        id="scene-3"
+        data-composition-id="scene3-heygen-cta"
+        data-composition-src="compositions/scene3-heygen-cta.html"
+        data-start="11"
+        data-duration="5"
+        data-track-index="0"
+        data-width="1920"
+        data-height="1080"
+      ></div>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines["main"] = gsap.timeline({ paused: true });
+    </script>
+  </body>
+</html>
