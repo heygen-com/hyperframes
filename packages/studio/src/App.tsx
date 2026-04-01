@@ -176,17 +176,11 @@ export function StudioApp() {
   const previewIframeRef = useRef<HTMLIFrameElement | null>(null);
   const consoleErrorsRef = useRef<LintFinding[]>([]);
 
-  // Ref for caption edit mode — used by file change handler to suppress refreshes
-  const captionEditModeRef = useRef(captionEditMode);
-  captionEditModeRef.current = captionEditMode;
 
   // Listen for external file changes (user editing HTML outside the editor).
   // In dev: use Vite HMR. In embedded/production: use SSE from /api/events.
   useMountEffect(() => {
     const handler = () => {
-      // Suppress preview refresh while caption editor is active — saves write
-      // to the file but we don't want the iframe to reload mid-edit.
-      if (captionEditModeRef.current) return;
       if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
       refreshTimerRef.current = setTimeout(() => setRefreshKey((k) => k + 1), 400);
     };
