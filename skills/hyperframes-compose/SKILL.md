@@ -151,3 +151,5 @@ For audio-driven animation (beat sync, glow, pulse), see the `audio-reactive` sk
 - [ ] `window.__timelines` registered for every composition
 - [ ] 100% deterministic — no randomness
 - [ ] Each composition includes GSAP: `<script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>`
+- [ ] `npx hyperframes lint` passes with 0 errors
+- [ ] `npx hyperframes validate` passes with 0 errors (run both before opening the studio)
