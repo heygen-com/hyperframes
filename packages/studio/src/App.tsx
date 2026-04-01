@@ -76,11 +76,7 @@ export function StudioApp() {
     const tryActivateCaptions = () => {
       if (useCaptionStore.getState().isEditMode) return;
 
-      // Try the ref first, fall back to querying the DOM for the preview iframe
-      let iframe = previewIframeRef.current;
-      if (!iframe) {
-        iframe = document.querySelector('iframe[title="Project Preview"]') as HTMLIFrameElement | null;
-      }
+      const iframe = previewIframeRef.current;
       let doc: Document | null = null;
       let win: Window | null = null;
       try {
@@ -92,8 +88,12 @@ export function StudioApp() {
       const groups = doc.querySelectorAll(".caption-group");
       if (groups.length === 0) return;
 
-      // Find the captions composition source path
+      // Find the captions composition source path.
+      // The runtime strips data-composition-src after loading, so also check
+      // data-composition-file (set by the bundler) and the compIdToSrc map.
       let captionSrcPath: string | null = null;
+
+      // Strategy 1: data-composition-src or data-composition-file attributes
       const compHosts = doc.querySelectorAll("[data-composition-src], [data-composition-file]");
       for (const host of compHosts) {
         const src = host.getAttribute("data-composition-src") || host.getAttribute("data-composition-file");
@@ -102,17 +102,31 @@ export function StudioApp() {
           break;
         }
       }
+
+      // Strategy 2: compIdToSrc map (built from raw index.html before runtime strips attrs)
+      if (!captionSrcPath) {
+        for (const [id, src] of compIdToSrc) {
+          if (id.includes("caption") || src.includes("caption")) {
+            captionSrcPath = src;
+            break;
+          }
+        }
+      }
+
+      // Strategy 3: activeCompPath if viewing captions directly
       if (!captionSrcPath && activeCompPath?.includes("captions")) {
         captionSrcPath = activeCompPath;
       }
+
+      // Strategy 4: find composition element with "caption" in its ID
       if (!captionSrcPath) {
         const captionComp = doc.querySelector('[data-composition-id*="caption"]');
         if (captionComp) {
-          captionSrcPath = captionComp.getAttribute("data-composition-src") ||
-                           captionComp.getAttribute("data-composition-file") ||
-                           null;
+          const compId = captionComp.getAttribute("data-composition-id") || "";
+          captionSrcPath = compIdToSrc.get(compId) || null;
         }
       }
+
       if (!captionSrcPath) return;
 
       fetch(`/api/projects/${projectId}/files/${encodeURIComponent(captionSrcPath)}`)
@@ -153,7 +167,7 @@ export function StudioApp() {
       window.removeEventListener("message", handleMessage);
       clearInterval(pollId);
     };
-  }, [activeCompPath, projectId]);
+  }, [activeCompPath, projectId, compIdToSrc]);
 
   // Auto-expand right panel when a caption word is selected
   // eslint-disable-next-line no-restricted-syntax
