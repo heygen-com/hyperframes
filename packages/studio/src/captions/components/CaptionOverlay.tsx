@@ -1,6 +1,7 @@
 import { memo, useState, useCallback, useRef } from "react";
 import { useCaptionStore } from "../store";
 import { useMountEffect } from "../../hooks/useMountEffect";
+import { useCaptionDrag } from "../hooks/useCaptionDrag";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -90,6 +91,8 @@ export const CaptionOverlay = memo(function CaptionOverlay({
   const selectSegment = useCaptionStore((s) => s.selectSegment);
   const clearSelection = useCaptionStore((s) => s.clearSelection);
 
+  const { onPointerDown, onPointerMove, onPointerUp } = useCaptionDrag(scale);
+
   const [wordBoxes, setWordBoxes] = useState<WordBox[]>([]);
 
   // Keep latest props in a ref so the interval callback always sees fresh values
@@ -132,18 +135,37 @@ export const CaptionOverlay = memo(function CaptionOverlay({
           <div
             key={box.segmentId}
             className={[
-              "absolute cursor-pointer rounded-sm transition-[box-shadow] duration-75",
-              isSelected ? "ring-2 ring-studio-accent" : "hover:ring-1 hover:ring-white/30",
+              "absolute rounded-sm transition-[box-shadow] duration-75",
+              isSelected
+                ? "ring-2 ring-studio-accent cursor-move"
+                : "cursor-pointer hover:ring-1 hover:ring-white/30",
             ].join(" ")}
             style={{
               left: box.x,
               top: box.y,
               width: box.width,
               height: box.height,
+              touchAction: "none",
             }}
             onClick={(e) => {
               e.stopPropagation();
               selectSegment(box.segmentId, e.shiftKey);
+            }}
+            onPointerDown={(e) => {
+              if (isSelected) {
+                e.stopPropagation();
+                onPointerDown(box.segmentId, e);
+              }
+            }}
+            onPointerMove={(e) => {
+              if (isSelected) {
+                onPointerMove(e);
+              }
+            }}
+            onPointerUp={() => {
+              if (isSelected) {
+                onPointerUp();
+              }
             }}
           />
         );
