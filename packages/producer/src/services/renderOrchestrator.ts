@@ -623,35 +623,41 @@ export async function executeRenderJob(
     job.totalFrames = Math.ceil(composition.duration * job.config.fps);
 
     if (job.duration <= 0) {
-      // Gather diagnostics to help users understand why the render would produce a black video
+      // Gather diagnostics to help users understand why the render would produce a black video.
+      // Wrapped in try/catch because the browser tab may have crashed (which could be
+      // WHY duration is 0), and we don't want a Puppeteer error to mask the real message.
       const diagnostics: string[] = [];
-      if (probeSession) {
-        const timelinesInfo = await probeSession.page.evaluate(() => {
-          const tl = (window as any).__timelines;
-          const hf = (window as any).__hf;
-          return {
-            timelineKeys: tl ? Object.keys(tl) : [],
-            hfDuration: hf?.duration ?? null,
-            gsapLoaded: typeof (window as any).gsap !== "undefined",
-          };
-        });
-        if (!timelinesInfo.gsapLoaded) {
-          diagnostics.push(
-            "GSAP is not loaded — CDN script may have failed to download. " +
-              "Bundle GSAP locally in your project instead of using a CDN <script src>.",
-          );
-        } else if (timelinesInfo.timelineKeys.length === 0) {
-          diagnostics.push(
-            "GSAP is loaded but no timelines were registered on window.__timelines. " +
-              "Ensure your script creates a timeline and assigns it: " +
-              'window.__timelines["main"] = gsap.timeline({ paused: true });',
-          );
-        }
-        for (const line of probeSession.browserConsoleBuffer) {
-          if (/\[Browser:ERROR\]|\[Browser:PAGEERROR\]|404|net::ERR_/i.test(line)) {
-            diagnostics.push(`Browser: ${line}`);
+      try {
+        if (probeSession) {
+          const timelinesInfo = await probeSession.page.evaluate(() => {
+            const tl = (window as any).__timelines;
+            const hf = (window as any).__hf;
+            return {
+              timelineKeys: tl ? Object.keys(tl) : [],
+              hfDuration: hf?.duration ?? null,
+              gsapLoaded: typeof (window as any).gsap !== "undefined",
+            };
+          });
+          if (!timelinesInfo.gsapLoaded) {
+            diagnostics.push(
+              "GSAP is not loaded — CDN script may have failed to download. " +
+                "Bundle GSAP locally in your project instead of using a CDN <script src>.",
+            );
+          } else if (timelinesInfo.timelineKeys.length === 0) {
+            diagnostics.push(
+              "GSAP is loaded but no timelines were registered on window.__timelines. " +
+                "Ensure your script creates a timeline and assigns it: " +
+                'window.__timelines["main"] = gsap.timeline({ paused: true });',
+            );
+          }
+          for (const line of probeSession.browserConsoleBuffer) {
+            if (/\[Browser:ERROR\]|\[Browser:PAGEERROR\]|404|net::ERR_/i.test(line)) {
+              diagnostics.push(`Browser: ${line}`);
+            }
           }
         }
+      } catch {
+        diagnostics.push("(Could not gather browser diagnostics — page may have crashed)");
       }
       const hint =
         diagnostics.length > 0

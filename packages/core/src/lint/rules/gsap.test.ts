@@ -292,4 +292,21 @@ describe("GSAP rules", () => {
     const finding = result.findings.find((f) => f.code === "missing_gsap_script");
     expect(finding).toBeUndefined();
   });
+
+  it("still reports missing_gsap_script for small inline scripts that use but don't bundle GSAP", () => {
+    const html = `
+<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080"></div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.to("#box", { x: 100, duration: 1 }, 0);
+    window.__timelines["main"] = tl;
+  </script>
+</body></html>`;
+    const result = lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "missing_gsap_script");
+    expect(finding).toBeDefined();
+    expect(finding?.severity).toBe("error");
+  });
 });
