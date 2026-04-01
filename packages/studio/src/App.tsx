@@ -67,22 +67,14 @@ export function StudioApp() {
   const [rightCollapsed, setRightCollapsed] = useState(true);
   // Auto-enter caption edit mode when viewing a captions composition
   // Auto-enter caption edit mode when the iframe contains .caption-group elements.
-  // Works from index.html (master) or a sub-composition — doesn't require drilling down.
-  const captionInitRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Listens for the runtime's postMessage events (state/timeline) which fire after
+  // all compositions are loaded, then checks for caption groups.
   // eslint-disable-next-line no-restricted-syntax
   useEffect(() => {
-    if (captionInitRef.current) {
-      clearInterval(captionInitRef.current);
-      captionInitRef.current = null;
-    }
     if (!projectId) return;
 
-    captionInitRef.current = setInterval(() => {
-      if (useCaptionStore.getState().isEditMode) {
-        clearInterval(captionInitRef.current!);
-        captionInitRef.current = null;
-        return;
-      }
+    const tryActivateCaptions = () => {
+      if (useCaptionStore.getState().isEditMode) return;
 
       const iframe = previewIframeRef.current;
       let doc: Document | null = null;
@@ -93,49 +85,41 @@ export function StudioApp() {
       } catch { return; }
       if (!doc || !win) return;
 
-      // Check if caption groups exist in the DOM
       const groups = doc.querySelectorAll(".caption-group");
       if (groups.length === 0) return;
 
-      // Find the captions composition source file
-      // Look for a host element with data-composition-src containing "captions"
+      // Find the captions composition source path
       let captionSrcPath: string | null = null;
-      const compHosts = doc.querySelectorAll("[data-composition-src]");
+      const compHosts = doc.querySelectorAll("[data-composition-src], [data-composition-file]");
       for (const host of compHosts) {
-        const src = host.getAttribute("data-composition-src");
+        const src = host.getAttribute("data-composition-src") || host.getAttribute("data-composition-file");
         if (src && src.includes("captions")) {
           captionSrcPath = src;
           break;
         }
       }
-      // If viewing captions directly (no host), use activeCompPath
       if (!captionSrcPath && activeCompPath?.includes("captions")) {
         captionSrcPath = activeCompPath;
       }
-      // Fallback: look for any composition with "captions" in its ID
       if (!captionSrcPath) {
         const captionComp = doc.querySelector('[data-composition-id*="caption"]');
         if (captionComp) {
-          const src = captionComp.getAttribute("data-composition-src") ||
-                      captionComp.getAttribute("data-composition-file");
-          if (src) captionSrcPath = src;
+          captionSrcPath = captionComp.getAttribute("data-composition-src") ||
+                           captionComp.getAttribute("data-composition-file") ||
+                           null;
         }
       }
       if (!captionSrcPath) return;
 
-      clearInterval(captionInitRef.current!);
-      captionInitRef.current = null;
-
-      // Fetch the captions source and build the model
       fetch(`/api/projects/${projectId}/files/${encodeURIComponent(captionSrcPath)}`)
         .then((r) => r.json())
         .then((data: { content?: string }) => {
-          if (!data.content) return;
-          const root = doc!.querySelector("[data-composition-id]");
-          const w = parseInt(root?.getAttribute("data-width") ?? "1920", 10);
-          const h = parseInt(root?.getAttribute("data-height") ?? "1080", 10);
-          const dur = parseFloat(root?.getAttribute("data-duration") ?? "0");
-          const model = parseCaptionComposition(doc!, win!, data.content, w, h, dur);
+          if (!data.content || useCaptionStore.getState().isEditMode) return;
+          const model = parseCaptionComposition(doc!, win!, data.content,
+            parseInt(doc!.querySelector("[data-composition-id]")?.getAttribute("data-width") ?? "1920", 10),
+            parseInt(doc!.querySelector("[data-composition-id]")?.getAttribute("data-height") ?? "1080", 10),
+            parseFloat(doc!.querySelector("[data-composition-id]")?.getAttribute("data-duration") ?? "0"),
+          );
           if (!model) return;
           const store = useCaptionStore.getState();
           store.setModel(model);
@@ -144,13 +128,23 @@ export function StudioApp() {
           captionSync.loadOverrides();
         })
         .catch(() => {});
-    }, 500);
+    };
+
+    // Listen for runtime messages that signal composition loading is complete
+    const handleMessage = (e: MessageEvent) => {
+      const data = e.data;
+      if (data?.source === "hf-preview" && (data?.type === "state" || data?.type === "timeline")) {
+        tryActivateCaptions();
+      }
+    };
+
+    window.addEventListener("message", handleMessage);
+    // Also try immediately in case compositions are already loaded
+    tryActivateCaptions();
 
     return () => {
-      if (captionInitRef.current) {
-        clearInterval(captionInitRef.current);
-        captionInitRef.current = null;
-      }
+      window.removeEventListener("message", handleMessage);
+      if (useCaptionStore.getState().isEditMode) useCaptionStore.getState().reset();
     };
   }, [activeCompPath, projectId]);
 
