@@ -146,7 +146,7 @@ function createViteAdapter(dataDir: string, server: ViteDevServer): StudioApiAda
       return mod.lintHyperframeHtml(html, opts);
     },
 
-    runtimeUrl: "https://cdn.jsdelivr.net/npm/@hyperframes/core/dist/hyperframe.runtime.iife.js",
+    runtimeUrl: "/api/runtime.js",
 
     rendersDir: () => resolve(dataDir, "../renders"),
 
@@ -362,6 +362,22 @@ function devProjectApi(): Plugin {
         }
         return _api;
       };
+
+      // Serve the local runtime IIFE so compositions don't depend on CDN
+      const runtimePath = resolve(__dirname, "../core/dist/hyperframe.runtime.iife.js");
+      server.middlewares.use((req, res, next) => {
+        if (req.url !== "/api/runtime.js") return next();
+        if (!existsSync(runtimePath)) {
+          res.writeHead(404);
+          res.end("runtime not built — run pnpm build in packages/core");
+          return;
+        }
+        res.writeHead(200, {
+          "Content-Type": "text/javascript",
+          "Cache-Control": "no-store",
+        });
+        res.end(readFileSync(runtimePath, "utf-8"));
+      });
 
       server.middlewares.use(async (req, res, next) => {
         if (!req.url?.startsWith("/api/")) return next();
