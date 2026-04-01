@@ -48,7 +48,65 @@ The default model (`small.en`) balances accuracy and speed. For better results, 
 
 `.en` models are English-only and more accurate for English. Drop the `.en` suffix for multilingual (e.g., `medium` instead of `medium.en`).
 
+**Critical: `.en` models translate non-English audio into English** — they don't transcribe it. If the audio might not be English, always use a model without the `.en` suffix and pass `--language` to specify the source language. If you're unsure of the language, use `small` (not `small.en`) without `--language` — whisper will auto-detect.
+
+```bash
+# Spanish audio
+npx hyperframes transcribe audio.mp3 --model small --language es
+
+# Unknown language — let whisper auto-detect
+npx hyperframes transcribe audio.mp3 --model small
+```
+
 **Music and vocals over instrumentation**: `small.en` will misidentify lyrics — use `medium.en` as the minimum, or import lyrics manually. Even `medium.en` struggles with heavily produced tracks; for music videos, providing known lyrics as an SRT/VTT and importing with `hyperframes transcribe lyrics.srt` will always beat automated transcription.
+
+## Transcript Quality Check (Mandatory)
+
+After every transcription, **read the transcript and check for quality issues before proceeding.** Bad transcripts produce nonsensical captions. Never skip this step.
+
+### What to look for
+
+| Signal                       | Example                                | Cause                                                                        |
+| ---------------------------- | -------------------------------------- | ---------------------------------------------------------------------------- |
+| Music note tokens (`♪`, `�`) | `{ "text": "♪" }` or `{ "text": "�" }` | Whisper detected music, not speech                                           |
+| Garbled / nonsense words     | "Do a chin", "Get so gay", "huh"       | Model misheard lyrics or background noise                                    |
+| Long gaps with no words      | 20+ seconds of only `♪` tokens         | Instrumental section — expected, but high ratio means speech is being missed |
+| Repeated filler              | Many "huh", "uh", "oh" entries         | Model is hallucinating on music                                              |
+| Very short word spans        | Words with `end - start < 0.05`        | Unreliable timestamp alignment                                               |
+
+### Automatic retry rules
+
+**If more than 20% of entries are `♪`/`�` tokens, or the transcript contains obvious nonsense words, the transcription failed.** Do not proceed with the bad transcript. Instead:
+
+1. **Retry with `medium.en`** if the original used `small.en` or smaller:
+   ```bash
+   npx hyperframes transcribe audio.mp3 --model medium.en
+   ```
+2. **If `medium.en` also fails** (still >20% music tokens or garbled), tell the user the audio is too noisy for local transcription and suggest:
+   - Providing lyrics manually as an SRT/VTT file
+   - Using an external API (OpenAI or Groq Whisper — see below)
+3. **Always clean the transcript** before building captions — filter out `♪`/`�` tokens and entries where `text` is a single non-word character. Only real words should reach the caption composition.
+
+### Cleaning a transcript
+
+After transcription (even with a good model), strip non-word entries:
+
+```js
+var raw = JSON.parse(transcriptJson);
+var words = raw.filter(function (w) {
+  if (!w.text || w.text.trim().length === 0) return false;
+  if (/^[♪�\u266a\u266b\u266c\u266d\u266e\u266f]+$/.test(w.text)) return false;
+  if (/^(huh|uh|um|ah|oh)$/i.test(w.text) && w.end - w.start < 0.1) return false;
+  return true;
+});
+```
+
+### When to use which model (decision tree)
+
+1. **Is this speech over silence/light background?** → `small.en` is fine
+2. **Is this speech over music, or music with vocals?** → Start with `medium.en`
+3. **Is this a produced music track (vocals + full instrumentation)?** → Start with `medium.en`, expect to need manual lyrics or an external API
+4. **Is this multilingual?** → Use `medium` or `large-v3` (no `.en` suffix)
 
 ## Using External Transcription APIs
 
@@ -84,11 +142,10 @@ npx hyperframes transcribe transcript-groq.json
 ## If No Transcript Exists
 
 1. Check the project root for `transcript.json`, `.srt`, or `.vtt` files
-2. If none found, ask the user to provide one or run:
+2. If none found, run transcription — pick the starting model based on the content type:
+   - Speech/voiceover → `small.en`
+   - Music with vocals → `medium.en`
    ```bash
-   npx hyperframes transcribe <audio-or-video-file>
+   npx hyperframes transcribe <audio-or-video-file> --model medium.en
    ```
-3. If transcription quality is poor (words at wrong times, gibberish), suggest upgrading the model:
-   ```bash
-   npx hyperframes transcribe audio.mp3 --model medium.en
-   ```
+3. **Read the transcript and run the quality check** (see above). If it fails, retry with a larger model or suggest manual lyrics.
