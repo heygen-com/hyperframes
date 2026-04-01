@@ -13,8 +13,10 @@ import type { LintFinding } from "./components/LintModal";
 import { MediaPreview } from "./components/MediaPreview";
 import { isMediaFile } from "./utils/mediaTypes";
 import { CaptionOverlay } from "./captions/components/CaptionOverlay";
+import { CaptionPropertyPanel } from "./captions/components/CaptionPropertyPanel";
 import { useCaptionStore } from "./captions/store";
 import { useCaptionSync } from "./captions/hooks/useCaptionSync";
+import { parseCaptionComposition } from "./captions/parser";
 
 interface EditingFile {
   path: string;
@@ -576,14 +578,33 @@ export function StudioApp() {
           </button>
           {activeCompPath?.includes("captions") && (
             <button
-              onClick={() => {
+              onClick={async () => {
                 const store = useCaptionStore.getState();
                 if (store.isEditMode) {
                   store.reset();
-                } else {
-                  store.setEditMode(true);
-                  store.setSourceFilePath(activeCompPath);
+                  return;
                 }
+                const pid = projectIdRef.current;
+                if (!pid || !activeCompPath) return;
+                const res = await fetch(
+                  `/api/projects/${pid}/files/${encodeURIComponent(activeCompPath)}`,
+                );
+                const data = await res.json();
+                if (!data.content) return;
+                const iframe = previewIframeRef.current;
+                const doc = iframe?.contentDocument;
+                const win = iframe?.contentWindow;
+                if (!doc || !win) return;
+                const root = doc.querySelector("[data-composition-id]");
+                const w = parseInt(root?.getAttribute("data-width") ?? "1920", 10);
+                const h = parseInt(root?.getAttribute("data-height") ?? "1080", 10);
+                const dur = parseFloat(root?.getAttribute("data-duration") ?? "0");
+                const model = parseCaptionComposition(doc, win, data.content, w, h, dur);
+                if (!model) return;
+                store.setModel(model);
+                store.setSourceFilePath(activeCompPath);
+                store.setEditMode(true);
+                setRightCollapsed(false);
               }}
               className={`h-7 flex items-center gap-1.5 px-2.5 rounded-md text-[11px] font-medium border transition-colors ${
                 captionEditMode
@@ -734,14 +755,18 @@ export function StudioApp() {
               className="flex flex-col border-l border-neutral-800 bg-neutral-900 flex-shrink-0"
               style={{ width: rightWidth }}
             >
-              <RenderQueue
-                jobs={renderQueue.jobs}
-                projectId={projectId}
-                onDelete={renderQueue.deleteRender}
-                onClearCompleted={renderQueue.clearCompleted}
-                onStartRender={(format) => renderQueue.startRender(30, "standard", format)}
-                isRendering={renderQueue.isRendering}
-              />
+              {captionEditMode ? (
+                <CaptionPropertyPanel />
+              ) : (
+                <RenderQueue
+                  jobs={renderQueue.jobs}
+                  projectId={projectId}
+                  onDelete={renderQueue.deleteRender}
+                  onClearCompleted={renderQueue.clearCompleted}
+                  onStartRender={(format) => renderQueue.startRender(30, "standard", format)}
+                  isRendering={renderQueue.isRendering}
+                />
+              )}
             </div>
           </>
         )}
