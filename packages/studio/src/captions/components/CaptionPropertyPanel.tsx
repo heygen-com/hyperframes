@@ -232,7 +232,7 @@ export const CaptionPropertyPanel = memo(function CaptionPropertyPanel({
         } catch { /* cross-origin */ }
       }
     },
-    [iframeRef, model, selectedSegmentIds, effectiveStyle.strokeWidth, effectiveStyle.strokeColor, effectiveStyle.scaleX, effectiveStyle.scaleY],
+    [iframeRef, model, selectedSegmentIds],
   );
 
   /**

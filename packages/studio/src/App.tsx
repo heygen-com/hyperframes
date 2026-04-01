@@ -73,8 +73,13 @@ export function StudioApp() {
   useEffect(() => {
     if (!projectId) return;
 
+    let pollId: ReturnType<typeof setInterval> | null = null;
+
     const tryActivateCaptions = () => {
-      if (useCaptionStore.getState().isEditMode) return;
+      if (useCaptionStore.getState().isEditMode) {
+        if (pollId) { clearInterval(pollId); pollId = null; }
+        return;
+      }
 
       const iframe = previewIframeRef.current;
       let doc: Document | null = null;
@@ -159,13 +164,12 @@ export function StudioApp() {
     window.addEventListener("message", handleMessage);
     // Try immediately in case compositions are already loaded
     tryActivateCaptions();
-    // Poll frequently until captions are detected — sub-composition scripts
-    // run asynchronously after loadExternalCompositions injects the HTML
-    const pollId = setInterval(tryActivateCaptions, 200);
+    // Poll until captions are detected — sub-composition scripts run async
+    pollId = setInterval(tryActivateCaptions, 200);
 
     return () => {
       window.removeEventListener("message", handleMessage);
-      clearInterval(pollId);
+      if (pollId) clearInterval(pollId);
     };
   }, [activeCompPath, projectId, compIdToSrc]);
 
