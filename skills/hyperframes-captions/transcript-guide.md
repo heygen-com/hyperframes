@@ -40,13 +40,13 @@ The default model (`small.en`) balances accuracy and speed. For better results, 
 
 | Model       | Size   | Speed    | Accuracy  | When to use                           |
 | ----------- | ------ | -------- | --------- | ------------------------------------- |
-| `tiny.en`   | 75 MB  | Fastest  | Low       | Quick previews, testing pipeline      |
-| `base.en`   | 142 MB | Fast     | Fair      | Short clips, clear audio              |
-| `small.en`  | 466 MB | Moderate | Good      | **Default** — good for most content   |
-| `medium.en` | 1.5 GB | Slow     | Very good | Important content, noisy audio, music |
-| `large-v3`  | 3.1 GB | Slowest  | Best      | Multilingual, production captions     |
+| `tiny`      | 75 MB  | Fastest  | Low       | Quick previews, testing pipeline      |
+| `base`      | 142 MB | Fast     | Fair      | Short clips, clear audio              |
+| `small`     | 466 MB | Moderate | Good      | **Default** — good for most content   |
+| `medium`    | 1.5 GB | Slow     | Very good | Important content, noisy audio, music |
+| `large-v3`  | 3.1 GB | Slowest  | Best      | Production quality                    |
 
-`.en` models are English-only and more accurate for English. Drop the `.en` suffix for multilingual (e.g., `medium` instead of `medium.en`).
+**Only add `.en` suffix when the user explicitly says the audio is English.** `.en` models are slightly more accurate for English but will TRANSLATE non-English audio instead of transcribing it.
 
 **Critical: `.en` models translate non-English audio into English** — they don't transcribe it. If the audio might not be English, always use a model without the `.en` suffix and pass `--language` to specify the source language. If you're unsure of the language, use `small` (not `small.en`) without `--language` — whisper will auto-detect.
 
