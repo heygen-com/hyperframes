@@ -359,6 +359,132 @@ function promoteCssImportsToLinkTags(html: string): string {
  * export, preventing font-loading and animation-ordering regressions.
  */
 
+function findMatchingCssBrace(source: string, openIndex: number): number {
+  let depth = 1;
+
+  for (let i = openIndex + 1; i < source.length; i++) {
+    const char = source[i];
+    if (char === "'" || char === '"') {
+      const quote = char;
+      i += 1;
+      while (i < source.length) {
+        if (source[i] === "\\") {
+          i += 2;
+          continue;
+        }
+        if (source[i] === quote) break;
+        i += 1;
+      }
+      continue;
+    }
+    if (char === "/" && source[i + 1] === "*") {
+      i += 2;
+      while (i < source.length && !(source[i] === "*" && source[i + 1] === "/")) i += 1;
+      i += 1;
+      continue;
+    }
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return i;
+    }
+  }
+
+  return -1;
+}
+
+function extractGlobalAtRuleBlocks(
+  css: string,
+  atRuleNames: Set<string>,
+): {
+  css: string;
+  blocks: string[];
+} {
+  const blocks: string[] = [];
+  let output = "";
+
+  for (let i = 0; i < css.length; i++) {
+    const char = css[i];
+
+    if (char === "'" || char === '"') {
+      const quote = char;
+      const start = i;
+      i += 1;
+      while (i < css.length) {
+        if (css[i] === "\\") {
+          i += 2;
+          continue;
+        }
+        if (css[i] === quote) break;
+        i += 1;
+      }
+      output += css.slice(start, Math.min(i + 1, css.length));
+      continue;
+    }
+
+    if (char === "/" && css[i + 1] === "*") {
+      const start = i;
+      i += 2;
+      while (i < css.length && !(css[i] === "*" && css[i + 1] === "/")) i += 1;
+      output += css.slice(start, Math.min(i + 2, css.length));
+      i += 1;
+      continue;
+    }
+
+    if (char === "@") {
+      let nameEnd = i + 1;
+      while (nameEnd < css.length && /[a-z-]/i.test(css[nameEnd] || "")) nameEnd += 1;
+      const atRuleName = css.slice(i + 1, nameEnd).toLowerCase();
+
+      if (atRuleNames.has(atRuleName)) {
+        let braceIndex = -1;
+        for (let j = nameEnd; j < css.length; j++) {
+          const token = css[j];
+          if (token === "'" || token === '"') {
+            const quote = token;
+            j += 1;
+            while (j < css.length) {
+              if (css[j] === "\\") {
+                j += 2;
+                continue;
+              }
+              if (css[j] === quote) break;
+              j += 1;
+            }
+            continue;
+          }
+          if (token === "/" && css[j + 1] === "*") {
+            j += 2;
+            while (j < css.length && !(css[j] === "*" && css[j + 1] === "/")) j += 1;
+            j += 1;
+            continue;
+          }
+          if (token === "{") {
+            braceIndex = j;
+            break;
+          }
+          if (token === ";") break;
+        }
+
+        if (braceIndex !== -1) {
+          const endIndex = findMatchingCssBrace(css, braceIndex);
+          if (endIndex !== -1) {
+            const placeholder = `__HF_GLOBAL_AT_RULE_${blocks.length}__`;
+            blocks.push(css.slice(i, endIndex + 1));
+            output += placeholder;
+            i = endIndex;
+            continue;
+          }
+        }
+      }
+    }
+
+    output += char;
+  }
+
+  return { css: output, blocks };
+}
+
 /**
  * Scope CSS rules to a specific composition by prepending each selector
  * with `[data-composition-id="<id>"]`. This prevents class name collisions
@@ -379,28 +505,39 @@ function scopeCssToComposition(css: string, compositionId: string): string {
     imports.push(match.trim());
     return "";
   });
+  const { css: cssWithoutGlobalAtRules, blocks: globalAtRuleBlocks } = extractGlobalAtRuleBlocks(
+    cssWithoutImports,
+    new Set(["font-face", "keyframes", "-webkit-keyframes"]),
+  );
   // Split on top-level rule boundaries. Simple regex approach:
   // scope each selector in rule blocks while preserving at-rules.
-  const scoped = cssWithoutImports.replace(/([^{}@]+)\{/g, (match, selectors: string) => {
-    const trimmed = selectors.trim();
-    // Skip @-rule headers (they don't have selectors to scope)
-    if (trimmed.startsWith("@")) return match;
-    // Skip if already scoped to this composition
-    if (trimmed.includes(`data-composition-id="${compositionId}"`)) return match;
-    // Scope each comma-separated selector
-    const scopedSelectors = trimmed
-      .split(",")
-      .map((s: string) => {
-        const sel = s.trim();
-        if (!sel) return sel;
-        // Don't scope :root, html, body, or * alone — they're global
-        if (/^(html|body|:root|\*)$/i.test(sel)) return sel;
-        return `${scope} ${sel}`;
-      })
-      .join(", ");
-    return `${scopedSelectors} {`;
-  });
-  return imports.length > 0 ? imports.join("\n") + "\n\n" + scoped : scoped;
+  const scoped = cssWithoutGlobalAtRules.replace(
+    /(?<!@)([^{}@]+)\{/g,
+    (match, selectors: string) => {
+      const trimmed = selectors.trim();
+      // Skip @-rule headers (they don't have selectors to scope)
+      if (trimmed.startsWith("@")) return match;
+      // Skip if already scoped to this composition
+      if (trimmed.includes(`data-composition-id="${compositionId}"`)) return match;
+      // Scope each comma-separated selector
+      const scopedSelectors = trimmed
+        .split(",")
+        .map((s: string) => {
+          const sel = s.trim();
+          if (!sel) return sel;
+          // Don't scope :root, html, body, or * alone — they're global
+          if (/^(html|body|:root|\*)$/i.test(sel)) return sel;
+          return `${scope} ${sel}`;
+        })
+        .join(", ");
+      return `${scopedSelectors} {`;
+    },
+  );
+  const restored = globalAtRuleBlocks.reduce(
+    (result, block, index) => result.replace(`__HF_GLOBAL_AT_RULE_${index}__`, block),
+    scoped,
+  );
+  return imports.length > 0 ? imports.join("\n") + "\n\n" + restored : restored;
 }
 
 function coalesceHeadStylesAndBodyScripts(html: string): string {
@@ -747,6 +884,9 @@ export async function compileForRender(
   const mainVideos = parseVideoElements(html);
   const mainAudios = parseAudioElements(html);
 
+  // Keep inlined sub-composition media authoritative on ID collisions.
+  // inlineSubCompositions() hoists those nodes into the final HTML, so the
+  // producer should follow the same precedence the runtime sees in the merged DOM.
   const videos = dedupeElementsById([...mainVideos, ...subVideos]);
   const audios = dedupeElementsById([...mainAudios, ...subAudios]);
 
@@ -949,6 +1089,7 @@ export async function recompileWithResolutions(
   const mainVideos = parseVideoElements(html);
   const mainAudios = parseAudioElements(html);
 
+  // Keep inlined sub-composition media authoritative on ID collisions.
   const videos = dedupeElementsById([...mainVideos, ...subVideos]);
   const audios = dedupeElementsById([...mainAudios, ...subAudios]);
 

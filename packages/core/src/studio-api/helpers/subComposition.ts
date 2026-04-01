@@ -35,7 +35,7 @@ export function buildSubCompositionHtml(
     },
   );
   $content("style").each((_, styleEl) => {
-    $content(styleEl).text(rewriteCssAssetUrls($content(styleEl).html() || "", compPath));
+    $content(styleEl).html(rewriteCssAssetUrls($content(styleEl).html() || "", compPath));
   });
 
   const rewrittenContent = $content.root().html() || content;
