@@ -14,6 +14,7 @@ import { MediaPreview } from "./components/MediaPreview";
 import { isMediaFile } from "./utils/mediaTypes";
 import { CaptionOverlay } from "./captions/components/CaptionOverlay";
 import { CaptionPropertyPanel } from "./captions/components/CaptionPropertyPanel";
+import { CaptionTimeline } from "./captions/components/CaptionTimeline";
 import { useCaptionStore } from "./captions/store";
 import { useCaptionSync } from "./captions/hooks/useCaptionSync";
 import { parseCaptionComposition } from "./captions/parser";
@@ -734,6 +735,18 @@ export function StudioApp() {
             previewOverlay={
               captionEditMode ? (
                 <CaptionOverlay iframeRef={previewIframeRef} scale={1} offsetX={0} offsetY={0} />
+              ) : undefined
+            }
+            timelineFooter={
+              captionEditMode ? (
+                <div className="border-t border-neutral-800/30">
+                  <div className="flex items-center gap-1.5 px-2 py-1">
+                    <span className="text-[9px] font-medium text-neutral-500 uppercase tracking-wider">
+                      Captions
+                    </span>
+                  </div>
+                  <CaptionTimeline pixelsPerSecond={100} />
+                </div>
               ) : undefined
             }
             timelineVisible={timelineVisible}
