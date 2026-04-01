@@ -880,14 +880,16 @@ export async function compileForRender(
     "$1",
   );
 
-  // Download CDN scripts and inline them so the headless browser doesn't need
-  // network access. This prevents GSAP/Lottie 404s in Docker, CI, and
-  // restricted environments that cause silent all-black renders.
-  const offlineHtml = await inlineExternalScripts(sanitizedHtml);
-
-  const assembledHtml = injectDeterministicFontFaces(
-    coalesceHeadStylesAndBodyScripts(promoteCssImportsToLinkTags(offlineHtml)),
+  const coalescedHtml = injectDeterministicFontFaces(
+    coalesceHeadStylesAndBodyScripts(promoteCssImportsToLinkTags(sanitizedHtml)),
   );
+
+  // Download CDN scripts and inline them AFTER coalescing. This order matters:
+  // coalesceHeadStylesAndBodyScripts merges inline scripts and appends them at
+  // the end of <body>. If we inlined CDN scripts first, the GSAP library would
+  // become an inline script that gets moved after local <script src="script.js">
+  // tags that depend on it, causing "gsap is not defined" errors.
+  const assembledHtml = await inlineExternalScripts(coalescedHtml);
 
   // Collect assets that resolve outside projectDir (e.g. ../shared-assets/hero.png).
   // These can't be served by the file server, so we map them to paths the
