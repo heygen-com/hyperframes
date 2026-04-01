@@ -76,7 +76,11 @@ export function StudioApp() {
     const tryActivateCaptions = () => {
       if (useCaptionStore.getState().isEditMode) return;
 
-      const iframe = previewIframeRef.current;
+      // Try the ref first, fall back to querying the DOM for the preview iframe
+      let iframe = previewIframeRef.current;
+      if (!iframe) {
+        iframe = document.querySelector('iframe[title="Project Preview"]') as HTMLIFrameElement | null;
+      }
       let doc: Document | null = null;
       let win: Window | null = null;
       try {
@@ -141,8 +145,9 @@ export function StudioApp() {
     window.addEventListener("message", handleMessage);
     // Try immediately in case compositions are already loaded
     tryActivateCaptions();
-    // Fallback poll — runtime messages can fire before listener is attached on first load
-    const pollId = setInterval(tryActivateCaptions, 500);
+    // Poll frequently until captions are detected — sub-composition scripts
+    // run asynchronously after loadExternalCompositions injects the HTML
+    const pollId = setInterval(tryActivateCaptions, 200);
 
     return () => {
       window.removeEventListener("message", handleMessage);
