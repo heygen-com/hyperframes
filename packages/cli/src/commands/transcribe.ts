@@ -103,7 +103,8 @@ async function transcribeAudio(
   opts: { model?: string; language?: string; json?: boolean },
 ): Promise<void> {
   const { transcribe } = await import("../whisper/transcribe.js");
-  const { loadTranscript, patchCaptionHtml } = await import("../whisper/normalize.js");
+  const { loadTranscript, patchCaptionHtml, stripBeforeOnset } =
+    await import("../whisper/normalize.js");
 
   const model = opts.model ?? DEFAULT_MODEL;
   const spin = opts.json ? null : clack.spinner();
@@ -116,7 +117,19 @@ async function transcribeAudio(
       onProgress: spin ? (msg) => spin.message(msg) : undefined,
     });
 
-    const { words } = loadTranscript(result.transcriptPath);
+    let { words } = loadTranscript(result.transcriptPath);
+
+    if (result.speechOnsetSeconds != null) {
+      const before = words.length;
+      words = stripBeforeOnset(words, result.speechOnsetSeconds);
+      const stripped = before - words.length;
+      if (stripped > 0 && !opts.json) {
+        spin?.message(
+          `Stripped ${stripped} words before speech onset at ${result.speechOnsetSeconds.toFixed(1)}s`,
+        );
+      }
+    }
+
     writeFileSync(result.transcriptPath, JSON.stringify(words, null, 2));
     patchCaptionHtml(dir, words);
 
@@ -127,13 +140,18 @@ async function transcribeAudio(
           model,
           wordCount: words.length,
           durationSeconds: result.durationSeconds,
+          speechOnsetSeconds: result.speechOnsetSeconds,
           transcriptPath: result.transcriptPath,
         }),
       );
     } else {
-      spin!.stop(
+      const onsetNote =
+        result.speechOnsetSeconds != null
+          ? ` — speech detected at ${result.speechOnsetSeconds.toFixed(1)}s`
+          : "";
+      spin?.stop(
         c.success(
-          `Transcribed ${c.accent(String(words.length))} words (${result.durationSeconds.toFixed(1)}s)`,
+          `Transcribed ${c.accent(String(words.length))} words (${result.durationSeconds.toFixed(1)}s${onsetNote})`,
         ),
       );
     }
@@ -142,7 +160,7 @@ async function transcribeAudio(
     if (opts.json) {
       console.log(JSON.stringify({ ok: false, error: message }));
     } else {
-      spin!.stop(c.error(`Transcription failed: ${message}`));
+      spin?.stop(c.error(`Transcription failed: ${message}`));
     }
     process.exit(1);
   }

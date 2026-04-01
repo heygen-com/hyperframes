@@ -43,6 +43,67 @@ function detectJsonFormat(raw: unknown): TranscriptFormat {
 // Parsers
 // ---------------------------------------------------------------------------
 
+/**
+ * Rejoin word fragments that whisper splits across tokens:
+ * - Single capital + lowercase continuation: C + aught -> Caught, G + onna -> Gonna
+ * - Word ending in consonant + in': shin + in' -> shinin', hid + in' -> hidin'
+ */
+function mergeFragments(words: Word[]): void {
+  for (let i = 0; i < words.length - 1; i++) {
+    const curr = words[i];
+    const next = words[i + 1];
+    if (!curr || !next) continue;
+    const isSingleLetterFragment =
+      curr.text.length === 1 &&
+      /^[A-Z]$/.test(curr.text) &&
+      !/^[IAO]$/.test(curr.text) &&
+      /^[a-z]/.test(next.text);
+    const shouldMerge =
+      isSingleLetterFragment || (/[a-z]$/.test(curr.text) && /^in'$/i.test(next.text));
+    if (shouldMerge) {
+      curr.text += next.text;
+      curr.end = next.end;
+      words.splice(i + 1, 1);
+      i--;
+    }
+  }
+}
+
+/**
+ * Distribute timestamps evenly across zero-duration word clusters.
+ * Whisper sometimes assigns identical start/end to sequences of words,
+ * making karaoke highlights flash through them instantly.
+ *
+ * Also handles malformed timestamps where start > end — these are treated
+ * the same as zero-duration and get interpolated from surrounding words.
+ */
+function interpolateZeroDuration(words: Word[]): void {
+  for (let i = 0; i < words.length; i++) {
+    const wi = words[i];
+    if (!wi || wi.start < wi.end) continue;
+    let j = i;
+    while (j < words.length) {
+      const wj = words[j];
+      if (!wj || wj.start < wj.end) break;
+      j++;
+    }
+    const clusterLen = j - i;
+    const prev = i > 0 ? words[i - 1] : undefined;
+    const prevEnd = prev ? prev.end : wi.start;
+    const nextWord = j < words.length ? words[j] : undefined;
+    const nextStart = nextWord ? nextWord.start : prevEnd + clusterLen * 0.3;
+    const span = nextStart - prevEnd;
+    const perWord = span / clusterLen;
+    for (let k = i; k < j; k++) {
+      const wk = words[k];
+      if (!wk) continue;
+      wk.start = round3(prevEnd + (k - i) * perWord);
+      wk.end = round3(prevEnd + (k - i + 1) * perWord);
+    }
+    i = j - 1;
+  }
+}
+
 function parseWhisperCpp(data: Record<string, unknown>): Word[] {
   const words: Word[] = [];
   const transcription = data.transcription as Array<{
@@ -54,13 +115,21 @@ function parseWhisperCpp(data: Record<string, unknown>): Word[] {
 
   for (const seg of transcription ?? []) {
     for (const token of seg.tokens ?? []) {
-      const text = (token.text ?? "").trim();
+      const rawText = token.text ?? "";
+      const text = rawText.trim();
       if (!text || text.startsWith("[_") || text.startsWith("[BLANK")) continue;
 
-      // Merge punctuation with the previous word
-      const isPunctuation = /^[.,!?;:'")\]}>…–—-]+$/.test(text);
       const lastWord = words[words.length - 1];
-      if (isPunctuation && lastWord) {
+
+      // Merge into previous word when the token is a sub-word continuation,
+      // trailing punctuation, or a contraction suffix.
+      // Whisper uses leading spaces to mark word boundaries in all languages.
+      const shouldMerge =
+        lastWord &&
+        (!rawText.startsWith(" ") ||
+          /^[.,!?;:'")\]}>…–—¡¿-]+$/.test(text) ||
+          /^'(t|m|s|ve|re|ll|d)$/i.test(text));
+      if (shouldMerge) {
         lastWord.text += text;
         lastWord.end = round3((token.offsets?.to ?? 0) / 1000);
         continue;
@@ -73,6 +142,10 @@ function parseWhisperCpp(data: Record<string, unknown>): Word[] {
       });
     }
   }
+
+  mergeFragments(words);
+  interpolateZeroDuration(words);
+
   return words;
 }
 
@@ -229,9 +302,15 @@ export function loadTranscript(filePath: string): { words: Word[]; format: Trans
 }
 
 /**
- * Patch caption HTML files in a project directory with transcript words.
- * Replaces `const script = [...]` or `const TRANSCRIPT = [...]` in <script> blocks.
+ * Remove words that fall before the detected speech onset.
+ * Whisper can hallucinate words over non-speech sections at the start of audio.
  */
+export function stripBeforeOnset(words: Word[], onsetSeconds: number): Word[] {
+  // 0.5s tolerance: keep words whose timestamps straddle the onset boundary,
+  // since whisper may assign a slightly early start to the first spoken word.
+  return words.filter((w) => w.start >= onsetSeconds - 0.5);
+}
+
 export function patchCaptionHtml(dir: string, words: Word[]): void {
   if (words.length === 0) return;
 
