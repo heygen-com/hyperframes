@@ -1,10 +1,95 @@
-// Caption Parser — Extract Transcript
-// Parses a caption composition's JavaScript source to extract the transcript word array.
+// Caption Parser — Extract Transcript & Build Caption Model
+// Parses a caption composition's JavaScript source to extract the transcript word array,
+// and builds a CaptionModel from a TranscriptWord array.
+
+import {
+  CaptionModel,
+  CaptionSegment,
+  CaptionGroup,
+  DEFAULT_STYLE,
+  DEFAULT_CONTAINER,
+  DEFAULT_ANIMATION_SET,
+} from "./types.js";
 
 export interface TranscriptWord {
   text: string;
   start: number;
   end: number;
+}
+
+export interface BuildOptions {
+  width: number;
+  height: number;
+  duration: number;
+  wordsPerGroup?: number; // default 5
+}
+
+/**
+ * Builds a CaptionModel from a transcript word array and composition dimensions.
+ *
+ * Words are grouped into chunks of `wordsPerGroup` (default 5). Each word becomes a
+ * CaptionSegment with its original timing. Each chunk becomes a CaptionGroup with
+ * DEFAULT_STYLE, DEFAULT_ANIMATION_SET, and DEFAULT_CONTAINER.
+ */
+export function buildCaptionModel(
+  transcript: TranscriptWord[],
+  options: BuildOptions,
+): CaptionModel {
+  const { width, height, duration, wordsPerGroup = 5 } = options;
+
+  const segments = new Map<string, CaptionSegment>();
+  const groups = new Map<string, CaptionGroup>();
+  const groupOrder: string[] = [];
+
+  // Chunk the transcript into groups of wordsPerGroup
+  for (let groupIdx = 0; groupIdx < transcript.length; groupIdx += wordsPerGroup) {
+    const chunk = transcript.slice(groupIdx, groupIdx + wordsPerGroup);
+    const groupId = `group-${groupIdx / wordsPerGroup}`;
+    const segmentIds: string[] = [];
+
+    chunk.forEach((word, wordIdx) => {
+      const segmentId = `segment-${groupIdx + wordIdx}`;
+      const segment: CaptionSegment = {
+        id: segmentId,
+        text: word.text,
+        start: word.start,
+        end: word.end,
+        groupIndex: wordIdx,
+        style: {},
+        animation: {},
+      };
+      segments.set(segmentId, segment);
+      segmentIds.push(segmentId);
+    });
+
+    const group: CaptionGroup = {
+      id: groupId,
+      segmentIds,
+      style: { ...DEFAULT_STYLE },
+      animation: {
+        entrance: { ...DEFAULT_ANIMATION_SET.entrance },
+        highlight: DEFAULT_ANIMATION_SET.highlight,
+        exit: { ...DEFAULT_ANIMATION_SET.exit },
+      },
+      containerStyle: { ...DEFAULT_CONTAINER },
+    };
+    groups.set(groupId, group);
+    groupOrder.push(groupId);
+  }
+
+  return {
+    width,
+    height,
+    duration,
+    segments,
+    groups,
+    groupOrder,
+    defaultAnimation: {
+      entrance: { ...DEFAULT_ANIMATION_SET.entrance },
+      highlight: DEFAULT_ANIMATION_SET.highlight,
+      exit: { ...DEFAULT_ANIMATION_SET.exit },
+    },
+  };
 }
 
 /**

@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { describe, it, expect } from "vitest";
-import { extractTranscript } from "./parser.js";
+import { extractTranscript, buildCaptionModel, TranscriptWord } from "./parser.js";
+import { DEFAULT_STYLE, DEFAULT_CONTAINER, DEFAULT_ANIMATION_SET } from "./types.js";
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -174,6 +175,203 @@ describe("extractTranscript", () => {
       expect(words).toHaveLength(3);
       expect(words[0].text).toBe("graphics,");
       expect(words[2].text).toBe("attention.");
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildCaptionModel tests
+// ---------------------------------------------------------------------------
+
+const SEVEN_WORDS: TranscriptWord[] = [
+  { text: "We", start: 0.1, end: 0.3 },
+  { text: "asked", start: 0.4, end: 0.6 },
+  { text: "what", start: 0.7, end: 0.9 },
+  { text: "you", start: 1.0, end: 1.2 },
+  { text: "needed.", start: 1.3, end: 1.8 },
+  { text: "Forty-seven", start: 1.9, end: 2.3 },
+  { text: "percent", start: 2.4, end: 2.7 },
+];
+
+describe("buildCaptionModel", () => {
+  describe("grouping", () => {
+    it("produces 2 groups for 7 words with wordsPerGroup=5 (5 + 2)", () => {
+      const model = buildCaptionModel(SEVEN_WORDS, {
+        width: 1920,
+        height: 1080,
+        duration: 10,
+        wordsPerGroup: 5,
+      });
+      expect(model.groupOrder).toHaveLength(2);
+      expect(model.groups.size).toBe(2);
+    });
+
+    it("first group has 5 segments and second group has 2 segments", () => {
+      const model = buildCaptionModel(SEVEN_WORDS, {
+        width: 1920,
+        height: 1080,
+        duration: 10,
+        wordsPerGroup: 5,
+      });
+      const firstGroupId = model.groupOrder[0];
+      const secondGroupId = model.groupOrder[1];
+      expect(model.groups.get(firstGroupId)?.segmentIds).toHaveLength(5);
+      expect(model.groups.get(secondGroupId)?.segmentIds).toHaveLength(2);
+    });
+
+    it("uses default wordsPerGroup of 5 when not specified", () => {
+      const model = buildCaptionModel(SEVEN_WORDS, {
+        width: 1280,
+        height: 720,
+        duration: 5,
+      });
+      expect(model.groupOrder).toHaveLength(2);
+    });
+  });
+
+  describe("segments", () => {
+    it("segments have correct text matching the transcript words", () => {
+      const model = buildCaptionModel(SEVEN_WORDS, {
+        width: 1920,
+        height: 1080,
+        duration: 10,
+        wordsPerGroup: 5,
+      });
+      expect(model.segments.size).toBe(7);
+
+      const firstGroupId = model.groupOrder[0];
+      const firstGroup = model.groups.get(firstGroupId);
+      const firstSegmentId = firstGroup?.segmentIds[0];
+      const firstSegment = firstSegmentId ? model.segments.get(firstSegmentId) : undefined;
+      expect(firstSegment?.text).toBe("We");
+
+      const secondGroupId = model.groupOrder[1];
+      const secondGroup = model.groups.get(secondGroupId);
+      const sixthSegmentId = secondGroup?.segmentIds[0];
+      const sixthSegment = sixthSegmentId ? model.segments.get(sixthSegmentId) : undefined;
+      expect(sixthSegment?.text).toBe("Forty-seven");
+    });
+
+    it("segments have correct start and end timing from the transcript", () => {
+      const model = buildCaptionModel(SEVEN_WORDS, {
+        width: 1920,
+        height: 1080,
+        duration: 10,
+        wordsPerGroup: 5,
+      });
+      const firstGroupId = model.groupOrder[0];
+      const firstGroup = model.groups.get(firstGroupId);
+      const segId = firstGroup?.segmentIds[4];
+      const fifthSegment = segId ? model.segments.get(segId) : undefined;
+      expect(fifthSegment?.start).toBe(1.3);
+      expect(fifthSegment?.end).toBe(1.8);
+      expect(fifthSegment?.text).toBe("needed.");
+    });
+
+    it("segments have correct groupIndex reflecting position within their group", () => {
+      const model = buildCaptionModel(SEVEN_WORDS, {
+        width: 1920,
+        height: 1080,
+        duration: 10,
+        wordsPerGroup: 5,
+      });
+      const secondGroupId = model.groupOrder[1];
+      const secondGroup = model.groups.get(secondGroupId);
+      const segId = secondGroup?.segmentIds[1];
+      const segment = segId ? model.segments.get(segId) : undefined;
+      expect(segment?.groupIndex).toBe(1);
+    });
+  });
+
+  describe("model dimensions", () => {
+    it("stores correct width, height, and duration on the model", () => {
+      const model = buildCaptionModel(SEVEN_WORDS, {
+        width: 1920,
+        height: 1080,
+        duration: 30.5,
+        wordsPerGroup: 5,
+      });
+      expect(model.width).toBe(1920);
+      expect(model.height).toBe(1080);
+      expect(model.duration).toBe(30.5);
+    });
+  });
+
+  describe("default styles", () => {
+    it("groups have DEFAULT_STYLE applied", () => {
+      const model = buildCaptionModel(SEVEN_WORDS, {
+        width: 1920,
+        height: 1080,
+        duration: 10,
+        wordsPerGroup: 5,
+      });
+      const firstGroupId = model.groupOrder[0];
+      const group = model.groups.get(firstGroupId);
+      expect(group?.style).toEqual(DEFAULT_STYLE);
+    });
+
+    it("groups have DEFAULT_CONTAINER applied", () => {
+      const model = buildCaptionModel(SEVEN_WORDS, {
+        width: 1920,
+        height: 1080,
+        duration: 10,
+        wordsPerGroup: 5,
+      });
+      const firstGroupId = model.groupOrder[0];
+      const group = model.groups.get(firstGroupId);
+      expect(group?.containerStyle).toEqual(DEFAULT_CONTAINER);
+    });
+
+    it("groups have DEFAULT_ANIMATION_SET applied", () => {
+      const model = buildCaptionModel(SEVEN_WORDS, {
+        width: 1920,
+        height: 1080,
+        duration: 10,
+        wordsPerGroup: 5,
+      });
+      const firstGroupId = model.groupOrder[0];
+      const group = model.groups.get(firstGroupId);
+      expect(group?.animation.entrance).toEqual(DEFAULT_ANIMATION_SET.entrance);
+      expect(group?.animation.highlight).toBe(DEFAULT_ANIMATION_SET.highlight);
+      expect(group?.animation.exit).toEqual(DEFAULT_ANIMATION_SET.exit);
+    });
+
+    it("model defaultAnimation matches DEFAULT_ANIMATION_SET", () => {
+      const model = buildCaptionModel(SEVEN_WORDS, {
+        width: 1920,
+        height: 1080,
+        duration: 10,
+        wordsPerGroup: 5,
+      });
+      expect(model.defaultAnimation.entrance).toEqual(DEFAULT_ANIMATION_SET.entrance);
+      expect(model.defaultAnimation.highlight).toBe(DEFAULT_ANIMATION_SET.highlight);
+      expect(model.defaultAnimation.exit).toEqual(DEFAULT_ANIMATION_SET.exit);
+    });
+  });
+
+  describe("edge cases", () => {
+    it("handles an empty transcript returning a model with no segments or groups", () => {
+      const model = buildCaptionModel([], {
+        width: 1920,
+        height: 1080,
+        duration: 10,
+        wordsPerGroup: 5,
+      });
+      expect(model.segments.size).toBe(0);
+      expect(model.groups.size).toBe(0);
+      expect(model.groupOrder).toHaveLength(0);
+    });
+
+    it("handles transcript with exactly wordsPerGroup words producing 1 group", () => {
+      const fiveWords = SEVEN_WORDS.slice(0, 5);
+      const model = buildCaptionModel(fiveWords, {
+        width: 1920,
+        height: 1080,
+        duration: 10,
+        wordsPerGroup: 5,
+      });
+      expect(model.groupOrder).toHaveLength(1);
+      expect(model.segments.size).toBe(5);
     });
   });
 });
