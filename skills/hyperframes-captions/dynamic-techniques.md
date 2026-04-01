@@ -22,10 +22,13 @@ You are here because SKILL.md told you to read this file before writing animatio
 
 This is the one pattern that requires HyperFrames-specific wiring — the async loading and timeline registration order matters.
 
-**Critical: register the timeline inside the fetch callback**, not before. If the timeline is registered before the audio `tl.call()` entries are added, they won't fire.
+**Critical: register the timeline synchronously** (`window.__timelines["id"] = tl`) before the fetch. The player needs the timeline immediately to start playback. GSAP timelines are mutable — `tl.call()` entries added later in the fetch callback will fire when the player seeks to those times.
 
 ```js
-fetch("../audio-data.json")
+// Register BEFORE fetch so the player can find the timeline
+window.__timelines["captions"] = tl;
+
+fetch("audio-data.json")
   .then(function (r) {
     return r.json();
   })
@@ -50,12 +53,9 @@ fetch("../audio-data.json")
         f / AUDIO.fps,
       );
     }
-    // Register timeline AFTER audio calls are added
-    window.__timelines["captions"] = tl;
   })
   .catch(function () {
-    // No audio data — register without reactivity
-    window.__timelines["captions"] = tl;
+    // No audio data — continue without reactivity
   });
 ```
 
