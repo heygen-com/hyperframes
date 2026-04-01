@@ -210,7 +210,46 @@ export const CaptionOverlay = memo(function CaptionOverlay({
     };
     const id = setInterval(tick, 66);
     tick();
-    return () => clearInterval(id);
+
+    // Arrow key nudge for selected words
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const { selectedSegmentIds: sel, model: m } = useCaptionStore.getState();
+      if (sel.size === 0 || !m) return;
+      const arrow = e.key;
+      if (!["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(arrow)) return;
+
+      e.preventDefault();
+      const step = e.shiftKey ? 10 : 1;
+      const dx = arrow === "ArrowLeft" ? -step : arrow === "ArrowRight" ? step : 0;
+      const dy = arrow === "ArrowUp" ? -step : arrow === "ArrowDown" ? step : 0;
+
+      const iframe = iframeRef.current;
+      const win = iframe?.contentWindow;
+      if (!iframe || !win) return;
+
+      for (const segId of sel) {
+        // Find group/word index for this segment
+        for (let gi = 0; gi < m.groupOrder.length; gi++) {
+          const group = m.groups.get(m.groupOrder[gi]);
+          if (!group) continue;
+          const wi = group.segmentIds.indexOf(segId);
+          if (wi < 0) continue;
+          const wordEl = getWordEl(iframe, gi, wi);
+          if (!wordEl) continue;
+          const wrapper = getOrCreateWrapper(wordEl);
+          const state = readGsapTransform(wrapper, win);
+          writeTransform(wordEl, win, state.x + dx, state.y + dy, state.scale, state.rotation);
+          syncToStore(segId, wordEl, win);
+          break;
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      clearInterval(id);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
   });
 
   const getCssScale = useCallback(() => {
