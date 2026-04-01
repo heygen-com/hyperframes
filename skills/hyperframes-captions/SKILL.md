@@ -215,4 +215,6 @@ Place this **before** `window.__timelines[id] = tl` so it runs at composition in
 - **Sync to transcript timestamps.** Words appear when spoken.
 - **One group visible at a time.** No overlapping caption groups.
 - **Every caption group must have a hard `tl.set` kill at `group.end`.** Exit animations alone are not sufficient.
+- **Never `overflow: hidden` on caption containers or groups.** Glow, shadow, and scale effects paint outside the box — clipping them creates hard visual cutoffs. Always use `overflow: visible`.
+- **Music requires audio-reactive captions.** If the source audio is music (any genre, any energy level), extract audio data with `extract-audio-data.py` and wire bass/treble reactivity into the composition. See [dynamic-techniques.md](./dynamic-techniques.md). This is not optional.
 - **Check project root** for font files before defaulting to Google Fonts.
