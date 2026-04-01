@@ -103,13 +103,13 @@ async function validateInBrowser(
         // We capture those separately via response/requestfailed events.
         if (text.startsWith("Failed to load resource")) return;
         errors.push({ level: "error", text, url: loc.url, line: loc.lineNumber });
-      } else if (type === "warning") {
+      } else if (type === "warn") {
         warnings.push({ level: "warning", text, url: loc.url, line: loc.lineNumber });
       }
     });
 
     // Capture uncaught exceptions
-    page.on("pageerror", (err) => {
+    page.on("pageerror", (err: Error) => {
       errors.push({ level: "error", text: err.message });
     });
 
