@@ -730,12 +730,11 @@ async function inlineExternalScripts(html: string): Promise<string> {
       const escapedSrc = src.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       const scriptTagRe = new RegExp(
         `<script\\b[^>]*\\bsrc=["']${escapedSrc}["'][^>]*>\\s*</script>`,
-        "i",
+        "is",
       );
-      result = result.replace(
-        scriptTagRe,
-        `<script>/* inlined: ${src} */\n${download.value.text}\n</script>`,
-      );
+      // Escape </script in downloaded content to prevent premature tag closure
+      const safeText = download.value.text.replace(/<\/script/gi, "<\\/script");
+      result = result.replace(scriptTagRe, `<script>/* inlined: ${src} */\n${safeText}\n</script>`);
       console.log(`[Compiler] Inlined CDN script: ${src}`);
     } else {
       console.warn(
@@ -781,8 +780,8 @@ function collectExternalAssets(
       return null; // inside projectDir, file server handles this
     }
     if (!existsSync(absPath)) return null;
-    // Map to a flat path inside a .hf-assets/ namespace to avoid collisions
-    const safeKey = "hf-ext/" + absPath.replace(/^\//, "").replace(/\.\.\//g, "");
+    // resolve() already canonicalizes the path (no .. components remain)
+    const safeKey = "hf-ext/" + absPath.replace(/^\//, "");
     externalAssets.set(safeKey, absPath);
     return safeKey;
   }

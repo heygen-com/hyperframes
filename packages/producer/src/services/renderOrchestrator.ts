@@ -252,7 +252,11 @@ function writeCompiledArtifacts(
   // Copy external assets (files outside projectDir) into the compiled directory
   // so the file server can serve them.
   for (const [relativePath, absolutePath] of compiled.externalAssets) {
-    const outPath = join(compileDir, relativePath);
+    const outPath = resolve(join(compileDir, relativePath));
+    if (!outPath.startsWith(compileDir + "/")) {
+      console.warn(`[Render] Skipping external asset with unsafe path: ${relativePath}`);
+      continue;
+    }
     mkdirSync(dirname(outPath), { recursive: true });
     copyFileSync(absolutePath, outPath);
   }
@@ -644,7 +648,7 @@ export async function executeRenderJob(
           );
         }
         for (const line of probeSession.browserConsoleBuffer) {
-          if (/error|fail|404|ERR_/i.test(line)) {
+          if (/\[Browser:ERROR\]|\[Browser:PAGEERROR\]|404|net::ERR_/i.test(line)) {
             diagnostics.push(`Browser: ${line}`);
           }
         }
