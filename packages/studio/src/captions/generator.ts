@@ -224,7 +224,7 @@ function shadowToCss(shadow: CaptionShadow): string {
 
 function glowToCss(glow: CaptionGlow): string {
   // Glow is represented as a spread text-shadow with opacity applied to color
-  return `0 0 ${glow.blur}px ${applyOpacityToColor(glow.color, glow.opacity)}`;
+  return `0 0 ${glow.blur}px ${hexToRgba(glow.color, glow.opacity)}`;
 }
 
 /** Converts a hex color and opacity into rgba(...) for CSS */
@@ -249,11 +249,6 @@ function hexToRgba(color: string, opacity: number): string {
     return `rgba(${r}, ${g}, ${b}, ${opacity})`;
   }
   return color;
-}
-
-/** Applies opacity to a hex color, returning rgba string */
-function applyOpacityToColor(color: string, opacity: number): string {
-  return hexToRgba(color, opacity);
 }
 
 // ---------------------------------------------------------------------------

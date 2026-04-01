@@ -207,12 +207,18 @@ export const CaptionOverlay = memo(function CaptionOverlay({
 
   useMountEffect(() => {
     if (!isEditMode) return;
+    let prevBoxes: WordBox[] = [];
     const tick = () => {
       const iframe = iframeRef.current;
       const m = modelRef.current;
       const overlay = overlayRef.current;
       if (!iframe || !m || !overlay) return;
-      setWordBoxes(readWordBoxes(iframe, m, overlay));
+      const next = readWordBoxes(iframe, m, overlay);
+      // Skip state update if nothing changed (avoids re-render every 66ms)
+      if (next.length === prevBoxes.length &&
+          next.every((b, i) => Math.abs(b.x - prevBoxes[i].x) < 0.5 && Math.abs(b.y - prevBoxes[i].y) < 0.5)) return;
+      prevBoxes = next;
+      setWordBoxes(next);
     };
     const id = setInterval(tick, 66);
     tick();

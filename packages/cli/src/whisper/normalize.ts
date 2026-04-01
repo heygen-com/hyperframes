@@ -150,13 +150,13 @@ function parseWhisperCpp(data: Record<string, unknown>): Word[] {
 }
 
 function parseOpenAI(data: Record<string, unknown>): Word[] {
-  const rawWords = (data.words ?? []) as Array<{
+  const words = (data.words ?? []) as Array<{
     word?: string;
     text?: string;
     start?: number;
     end?: number;
   }>;
-  return rawWords
+  return words
     .map((w) => ({
       text: (w.word ?? w.text ?? "").trim(),
       start: round3(w.start ?? 0),
@@ -287,7 +287,7 @@ export function loadTranscript(filePath: string): { words: Word[]; format: Trans
   const parsed = JSON.parse(content);
   const format = detectJsonFormat(parsed);
 
-  const rawWords =
+  const words =
     format === "whisper-cpp"
       ? parseWhisperCpp(parsed)
       : format === "openai"
@@ -298,7 +298,7 @@ export function loadTranscript(filePath: string): { words: Word[]; format: Trans
             end: round3(w.end),
           }));
 
-  return { words: rawWords, format };
+  return { words: words, format };
 }
 
 /**

@@ -74,9 +74,10 @@ export function StudioApp() {
     if (!projectId) return;
 
     let pollId: ReturnType<typeof setInterval> | null = null;
+    let activating = false;
 
     const tryActivateCaptions = () => {
-      if (useCaptionStore.getState().isEditMode) {
+      if (useCaptionStore.getState().isEditMode || activating) {
         if (pollId) { clearInterval(pollId); pollId = null; }
         return;
       }
@@ -134,6 +135,7 @@ export function StudioApp() {
 
       if (!captionSrcPath) return;
 
+      activating = true;
       const srcPath = captionSrcPath;
       fetch(`/api/projects/${projectId}/files/${encodeURIComponent(srcPath)}`)
         .then((r) => r.json())
@@ -151,7 +153,8 @@ export function StudioApp() {
           store.setEditMode(true);
           captionSync.loadOverrides();
         })
-        .catch(() => {});
+        .catch(() => {})
+        .finally(() => { activating = false; });
     };
 
     // Listen for runtime messages that signal composition loading is complete
