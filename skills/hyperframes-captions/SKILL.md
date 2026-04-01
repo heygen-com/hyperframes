@@ -6,6 +6,19 @@ trigger: Use this skill whenever a task involves syncing text to audio timing. T
 
 # Captions
 
+## Language Rule (Non-Negotiable)
+
+**Never use `.en` models unless the user explicitly states the audio is English.** `.en` models (small.en, medium.en) TRANSLATE non-English audio into English instead of transcribing it. This silently destroys the original language.
+
+When transcribing:
+1. If the user says the language → use `--model small --language <code>` (no `.en` suffix)
+2. If the user says it's English → use `--model small.en`
+3. If the language is unknown → use `--model small` (no `.en`, no `--language`) — whisper auto-detects
+
+**Default model is `small` (not `small.en`).** Only add `.en` when explicitly told the audio is English.
+
+---
+
 Analyze the spoken content to determine caption style. If the user specifies a style, use that. Otherwise, detect tone from the transcript.
 
 ## Transcript Source

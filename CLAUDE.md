@@ -111,13 +111,13 @@ Default is `small.en`. Upgrade for better accuracy:
 
 | Model       | Size   | Use case                         |
 | ----------- | ------ | -------------------------------- |
-| `tiny.en`   | 75 MB  | Quick testing                    |
-| `base.en`   | 142 MB | Short clips, clear audio         |
-| `small.en`  | 466 MB | **Default** — most content       |
-| `medium.en` | 1.5 GB | Important content, noisy audio   |
-| `large-v3`  | 3.1 GB | Multilingual, production quality |
+| `tiny`      | 75 MB  | Quick testing                    |
+| `base`      | 142 MB | Short clips, clear audio         |
+| `small`     | 466 MB | **Default** — most content       |
+| `medium`    | 1.5 GB | Important content, noisy audio   |
+| `large-v3`  | 3.1 GB | Production quality               |
 
-Use `.en` suffix for English-only (more accurate). Drop it for multilingual content.
+**Only use `.en` suffix when you know the audio is English.** `.en` models translate non-English audio into English instead of transcribing it.
 
 ### Supported transcript formats
 
