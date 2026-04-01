@@ -57,7 +57,7 @@ export function StudioApp() {
   const [compIdToSrc, setCompIdToSrc] = useState<Map<string, string>>(new Map());
   const renderQueue = useRenderQueue(projectId);
   const captionEditMode = useCaptionStore((s) => s.isEditMode);
-  useCaptionSync(projectId);
+  const captionSync = useCaptionSync(projectId);
 
   // Resizable and collapsible panel widths
   const [leftWidth, setLeftWidth] = useState(240);
@@ -167,17 +167,26 @@ export function StudioApp() {
     [compIdToSrc, activePreviewUrl],
   );
   const [lintModal, setLintModal] = useState<LintFinding[] | null>(null);
+  const [consoleErrors, setConsoleErrors] = useState<LintFinding[] | null>(null);
   const [linting, setLinting] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const projectIdRef = useRef(projectId);
   const previewIframeRef = useRef<HTMLIFrameElement | null>(null);
+  const consoleErrorsRef = useRef<LintFinding[]>([]);
+
+  // Ref for caption edit mode — used by file change handler to suppress refreshes
+  const captionEditModeRef = useRef(captionEditMode);
+  captionEditModeRef.current = captionEditMode;
 
   // Listen for external file changes (user editing HTML outside the editor).
   // In dev: use Vite HMR. In embedded/production: use SSE from /api/events.
   useMountEffect(() => {
     const handler = () => {
+      // Suppress preview refresh while caption editor is active — saves write
+      // to the file but we don't want the iframe to reload mid-edit.
+      if (captionEditModeRef.current) return;
       if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
       refreshTimerRef.current = setTimeout(() => setRefreshKey((k) => k + 1), 400);
     };
@@ -583,6 +592,7 @@ export function StudioApp() {
                 const store = useCaptionStore.getState();
                 if (store.isEditMode) {
                   store.reset();
+                  captionSync.clearCache();
                   return;
                 }
                 const pid = projectIdRef.current;
@@ -606,6 +616,7 @@ export function StudioApp() {
                 store.setSourceFilePath(activeCompPath);
                 store.setEditMode(true);
                 setRightCollapsed(false);
+                captionSync.cacheOriginalSource();
               }}
               className={`h-7 flex items-center gap-1.5 px-2.5 rounded-md text-[11px] font-medium border transition-colors ${
                 captionEditMode
@@ -625,6 +636,19 @@ export function StudioApp() {
                 <path d="M3 18h4M9 18h2M13 18h5" />
               </svg>
               {captionEditMode ? "Exit Captions" : "Edit Captions"}
+            </button>
+          )}
+          {captionEditMode && (
+            <button
+              onClick={() => captionSync.save()}
+              className="h-7 flex items-center gap-1.5 px-2.5 rounded-md text-[11px] font-medium border transition-colors text-neutral-300 bg-studio-accent/20 border-studio-accent/40 hover:bg-studio-accent/30"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+                <polyline points="17 21 17 13 7 13 7 21" />
+                <polyline points="7 3 7 8 15 8" />
+              </svg>
+              Save
             </button>
           )}
           <button
@@ -731,10 +755,54 @@ export function StudioApp() {
             }}
             onIframeRef={(iframe) => {
               previewIframeRef.current = iframe;
+              consoleErrorsRef.current = [];
+              setConsoleErrors(null);
+              if (!iframe) return;
+
+              // Attach error capture after each iframe load (content resets on navigation)
+              const attachErrorCapture = () => {
+                try {
+                  const win = iframe.contentWindow as (Window & typeof globalThis) | null;
+                  if (!win) return;
+                  // Guard against double-patching
+                  if ((win as unknown as Record<string, unknown>).__hfErrorCapture) return;
+                  (win as unknown as Record<string, unknown>).__hfErrorCapture = true;
+                  const origError = win.console.error.bind(win.console);
+                  win.console.error = function (...args: unknown[]) {
+                    origError(...args);
+                    const text = args
+                      .map((a) => (a instanceof Error ? a.message : String(a)))
+                      .join(" ");
+                    if (text.includes("favicon")) return;
+                    consoleErrorsRef.current = [
+                      ...consoleErrorsRef.current,
+                      { severity: "error", message: text },
+                    ];
+                    setConsoleErrors([...consoleErrorsRef.current]);
+                  };
+                  win.addEventListener("error", (e: ErrorEvent) => {
+                    const text = e.message || String(e);
+                    consoleErrorsRef.current = [
+                      ...consoleErrorsRef.current,
+                      { severity: "error", message: text },
+                    ];
+                    setConsoleErrors([...consoleErrorsRef.current]);
+                  });
+                } catch {
+                  // cross-origin — can't attach
+                }
+              };
+              // Attach now (iframe may already be loaded) and on future loads
+              attachErrorCapture();
+              iframe.addEventListener("load", () => {
+                consoleErrorsRef.current = [];
+                setConsoleErrors(null);
+                attachErrorCapture();
+              });
             }}
             previewOverlay={
               captionEditMode ? (
-                <CaptionOverlay iframeRef={previewIframeRef} scale={1} offsetX={0} offsetY={0} />
+                <CaptionOverlay iframeRef={previewIframeRef} />
               ) : undefined
             }
             timelineFooter={
@@ -769,7 +837,7 @@ export function StudioApp() {
               style={{ width: rightWidth }}
             >
               {captionEditMode ? (
-                <CaptionPropertyPanel />
+                <CaptionPropertyPanel iframeRef={previewIframeRef} />
               ) : (
                 <RenderQueue
                   jobs={renderQueue.jobs}
@@ -788,6 +856,17 @@ export function StudioApp() {
       {/* Lint modal */}
       {lintModal !== null && projectId && (
         <LintModal findings={lintModal} projectId={projectId} onClose={() => setLintModal(null)} />
+      )}
+
+      {/* Console errors modal — auto-shows when composition has runtime errors */}
+      {consoleErrors !== null && consoleErrors.length > 0 && projectId && (
+        <LintModal
+          findings={consoleErrors}
+          projectId={projectId}
+          title={`${consoleErrors.length} console error${consoleErrors.length !== 1 ? "s" : ""}`}
+          subtitle="Runtime errors from composition preview"
+          onClose={() => setConsoleErrors(null)}
+        />
       )}
 
       {/* Global drag-drop overlay */}

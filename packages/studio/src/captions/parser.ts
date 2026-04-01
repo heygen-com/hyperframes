@@ -255,7 +255,59 @@ export function parseCaptionComposition(
     }
   }
 
+  // Step 8: Parse existing editor overrides from the source and apply to segments
+  parseExistingOverrides(source, model);
+
   return model;
+}
+
+/**
+ * Parse existing Caption Editor Override gsap.set() calls from the source
+ * and apply them to the model's segment styles. This preserves edits across
+ * edit mode re-entries.
+ */
+function parseExistingOverrides(source: string, model: CaptionModel): void {
+  // Match both formats:
+  //   gsap.set("#w-0-1", { x: 10.0, ... });
+  //   gsap.set(el_w_0_1, { x: 10.0, ... });
+  const setPattern = /gsap\.set\((?:"#w-(\d+)-(\d+)"|el_w_(\d+)_(\d+)),\s*\{([^}]+)\}\)/g;
+  let match;
+  while ((match = setPattern.exec(source)) !== null) {
+    // Groups 1,2 for "#w-gi-wi" format; groups 3,4 for el_w_gi_wi format
+    const gi = parseInt(match[1] ?? match[3], 10);
+    const wi = parseInt(match[2] ?? match[4], 10);
+    const propsStr = match[5];
+    if (isNaN(gi) || isNaN(wi) || !propsStr) continue;
+
+    // Find the segment
+    const groupId = model.groupOrder[gi];
+    if (!groupId) continue;
+    const group = model.groups.get(groupId);
+    if (!group || wi >= group.segmentIds.length) continue;
+    const segId = group.segmentIds[wi];
+    const seg = model.segments.get(segId);
+    if (!seg) continue;
+
+    // Parse individual properties
+    const style: Partial<CaptionStyle> = {};
+    const xMatch = propsStr.match(/\bx:\s*(-?[\d.]+)/);
+    const yMatch = propsStr.match(/\by:\s*(-?[\d.]+)/);
+    const scaleMatch = propsStr.match(/\bscale:\s*(-?[\d.]+)/);
+    const rotMatch = propsStr.match(/\brotation:\s*(-?[\d.]+)/);
+    const colorMatch = propsStr.match(/\bcolor:\s*"([^"]+)"/);
+    const opacityMatch = propsStr.match(/\bopacity:\s*(-?[\d.]+)/);
+
+    if (xMatch) style.x = parseFloat(xMatch[1]);
+    if (yMatch) style.y = parseFloat(yMatch[1]);
+    if (scaleMatch) { style.scaleX = parseFloat(scaleMatch[1]); style.scaleY = parseFloat(scaleMatch[1]); }
+    if (rotMatch) style.rotation = parseFloat(rotMatch[1]);
+    if (colorMatch) style.color = colorMatch[1];
+    if (opacityMatch) style.opacity = parseFloat(opacityMatch[1]);
+
+    if (Object.keys(style).length > 0) {
+      model.segments.set(segId, { ...seg, style: { ...seg.style, ...style } });
+    }
+  }
 }
 
 /**
@@ -268,29 +320,21 @@ export function parseCaptionComposition(
  * - Numeric values for start/end
  */
 function parseTranscriptArray(arrayLiteral: string): TranscriptWord[] {
-  // Normalize single-quoted strings to double-quoted for JSON.parse compatibility.
-  // Strategy: convert the array literal to valid JSON by:
-  // 1. Converting single-quoted string values to double-quoted
-  // 2. Quoting unquoted object keys
-  // 3. Removing trailing commas before ] or }
-
-  let normalized = arrayLiteral;
-
-  // Step 1: Quote unquoted keys (e.g. text: → "text":)
-  normalized = normalized.replace(/([{,]\s*)([a-zA-Z_$][a-zA-Z0-9_$]*)\s*:/g, '$1"$2":');
-
-  // Step 2: Convert single-quoted string values to double-quoted.
-  // Match 'value' where value does not contain unescaped single quotes.
-  normalized = normalized.replace(/'((?:[^'\\]|\\.)*)'/g, (_match, inner) => {
-    // Escape any double quotes inside, unescape single quotes
-    const escaped = inner.replace(/\\'/g, "'").replace(/"/g, '\\"');
-    return `"${escaped}"`;
-  });
-
-  // Step 3: Remove trailing commas before } or ]
-  normalized = normalized.replace(/,(\s*[}\]])/g, "$1");
-
-  const parsed: unknown = JSON.parse(normalized);
+  // Try parsing as-is first (handles already-valid JSON)
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(arrayLiteral);
+  } catch {
+    // Not valid JSON — normalize single quotes, unquoted keys, trailing commas
+    let normalized = arrayLiteral;
+    normalized = normalized.replace(/([{,]\s*)([a-zA-Z_$][a-zA-Z0-9_$]*)\s*:/g, '$1"$2":');
+    normalized = normalized.replace(/'((?:[^'\\]|\\.)*)'/g, (_match, inner) => {
+      const escaped = inner.replace(/\\'/g, "'").replace(/"/g, '\\"');
+      return `"${escaped}"`;
+    });
+    normalized = normalized.replace(/,(\s*[}\]])/g, "$1");
+    parsed = JSON.parse(normalized);
+  }
 
   if (!Array.isArray(parsed)) {
     return [];

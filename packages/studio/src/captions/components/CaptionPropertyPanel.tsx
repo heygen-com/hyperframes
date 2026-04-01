@@ -100,7 +100,13 @@ function ColorInput({ value, onChange }: { value: string; onChange: (v: string) 
 // Main component
 // ---------------------------------------------------------------------------
 
-export const CaptionPropertyPanel = memo(function CaptionPropertyPanel() {
+interface CaptionPropertyPanelProps {
+  iframeRef: React.RefObject<HTMLIFrameElement | null>;
+}
+
+export const CaptionPropertyPanel = memo(function CaptionPropertyPanel({
+  iframeRef,
+}: CaptionPropertyPanelProps) {
   const model = useCaptionStore((s) => s.model);
   const selectedSegmentIds = useCaptionStore((s) => s.selectedSegmentIds);
   const selectedGroupId = useCaptionStore((s) => s.selectedGroupId);
@@ -110,25 +116,20 @@ export const CaptionPropertyPanel = memo(function CaptionPropertyPanel() {
 
   const [activeTab, setActiveTab] = useState<"style" | "animation">("style");
 
-  // Empty state
-  if (selectedSegmentIds.size === 0) {
-    return (
-      <div className="flex items-center justify-center h-full px-4 text-center">
-        <p className="text-xs text-neutral-500">Select caption words to edit their style</p>
-      </div>
-    );
-  }
-
   // Resolve effective style for the first selected segment
-  const firstSegmentId = [...selectedSegmentIds][0];
+  const firstSegmentId = selectedSegmentIds.size > 0 ? [...selectedSegmentIds][0] : undefined;
   const firstSegment = model?.segments.get(firstSegmentId ?? "");
 
   // Find the group that owns the first segment
   let ownerGroupId: string | null = null;
+  let ownerGroupIndex = -1;
   if (model && firstSegmentId) {
-    for (const [gid, group] of model.groups) {
-      if (group.segmentIds.includes(firstSegmentId)) {
+    for (let gi = 0; gi < model.groupOrder.length; gi++) {
+      const gid = model.groupOrder[gi];
+      const group = model.groups.get(gid);
+      if (group && group.segmentIds.includes(firstSegmentId)) {
         ownerGroupId = gid;
+        ownerGroupIndex = gi;
         break;
       }
     }
@@ -146,22 +147,120 @@ export const CaptionPropertyPanel = memo(function CaptionPropertyPanel() {
   // Container style for background section
   const activeGroupId = selectedGroupId ?? ownerGroupId;
   const containerStyle = activeGroupId
-    ? model?.groups.get(activeGroupId)?.containerStyle
+    ? model?.groups.get(activeGroupId)?.container
     : undefined;
 
-  // ---------------------------------------------------------------------------
-  // Handlers
-  // ---------------------------------------------------------------------------
+  /**
+   * Apply a CSS style change to selected word elements in the iframe DOM in real time.
+   * Maps CaptionStyle property names to CSS properties.
+   */
+  const applyToIframeDom = useCallback(
+    (updates: Partial<CaptionStyle>) => {
+      const iframe = iframeRef.current;
+      if (!iframe || !model) return;
+      let doc: Document | null = null;
+      try {
+        doc = iframe.contentDocument;
+      } catch {
+        return;
+      }
+      if (!doc) return;
 
+      const groupEls = doc.querySelectorAll<HTMLElement>(".caption-group");
+
+      // Build list of word elements to update
+      const targetEls: HTMLElement[] = [];
+      for (const segId of selectedSegmentIds) {
+        // Find which group and word index
+        for (let gi = 0; gi < model.groupOrder.length; gi++) {
+          const group = model.groups.get(model.groupOrder[gi]);
+          if (!group) continue;
+          const wi = group.segmentIds.indexOf(segId);
+          if (wi < 0) continue;
+          const groupEl = groupEls[gi];
+          if (!groupEl) continue;
+          const wordEl = groupEl.querySelectorAll<HTMLElement>(":scope > span")[wi];
+          if (wordEl) targetEls.push(wordEl);
+          break;
+        }
+      }
+
+      // Apply CSS updates
+      for (const el of targetEls) {
+        if (updates.fontFamily !== undefined) el.style.fontFamily = updates.fontFamily;
+        if (updates.fontSize !== undefined) el.style.fontSize = `${updates.fontSize}px`;
+        if (updates.fontWeight !== undefined) el.style.fontWeight = String(updates.fontWeight);
+        if (updates.fontStyle !== undefined) el.style.fontStyle = updates.fontStyle;
+        if (updates.textDecoration !== undefined) el.style.textDecoration = updates.textDecoration;
+        if (updates.textTransform !== undefined) el.style.textTransform = updates.textTransform;
+        if (updates.letterSpacing !== undefined) el.style.letterSpacing = `${updates.letterSpacing}px`;
+        if (updates.color !== undefined) el.style.color = updates.color;
+        if (updates.opacity !== undefined) el.style.opacity = String(updates.opacity);
+        if (updates.strokeWidth !== undefined || updates.strokeColor !== undefined) {
+          const sw = updates.strokeWidth ?? effectiveStyle.strokeWidth ?? 0;
+          const sc = updates.strokeColor ?? effectiveStyle.strokeColor ?? "#000";
+          el.style.setProperty("-webkit-text-stroke", `${sw}px ${sc}`);
+        }
+        if (updates.rotation !== undefined) {
+          el.style.transform = `rotate(${updates.rotation}deg)`;
+        }
+        if (updates.scaleX !== undefined || updates.scaleY !== undefined) {
+          const sx = updates.scaleX ?? effectiveStyle.scaleX ?? 1;
+          const sy = updates.scaleY ?? effectiveStyle.scaleY ?? 1;
+          el.style.transform = `scale(${sx}, ${sy})`;
+        }
+      }
+    },
+    [iframeRef, model, selectedSegmentIds, effectiveStyle.strokeWidth, effectiveStyle.strokeColor, effectiveStyle.scaleX, effectiveStyle.scaleY],
+  );
+
+  /**
+   * Apply container style changes to the group element in the iframe DOM.
+   */
+  const applyContainerToIframeDom = useCallback(
+    (updates: Partial<CaptionContainerStyle>) => {
+      const iframe = iframeRef.current;
+      if (!iframe || ownerGroupIndex < 0) return;
+      let doc: Document | null = null;
+      try {
+        doc = iframe.contentDocument;
+      } catch {
+        return;
+      }
+      if (!doc) return;
+
+      const groupEls = doc.querySelectorAll<HTMLElement>(".caption-group");
+      const groupEl = groupEls[ownerGroupIndex];
+      if (!groupEl) return;
+
+      if (updates.backgroundColor !== undefined) groupEl.style.backgroundColor = updates.backgroundColor;
+      if (updates.backgroundOpacity !== undefined) groupEl.style.opacity = String(updates.backgroundOpacity);
+      if (updates.borderRadius !== undefined) groupEl.style.borderRadius = `${updates.borderRadius}px`;
+      if (updates.paddingTop !== undefined || updates.paddingRight !== undefined ||
+          updates.paddingBottom !== undefined || updates.paddingLeft !== undefined) {
+        const pt = updates.paddingTop ?? containerStyle?.paddingTop ?? 0;
+        const pr = updates.paddingRight ?? containerStyle?.paddingRight ?? 0;
+        const pb = updates.paddingBottom ?? containerStyle?.paddingBottom ?? 0;
+        const pl = updates.paddingLeft ?? containerStyle?.paddingLeft ?? 0;
+        groupEl.style.padding = `${pt}px ${pr}px ${pb}px ${pl}px`;
+      }
+    },
+    [iframeRef, ownerGroupIndex, containerStyle],
+  );
+
+  // All hooks must be called before any early return
   const handleStyleChange = useCallback(
     (updates: Partial<CaptionStyle>) => {
+      // Update model (for persistence)
       if (selectedGroupId) {
         updateGroupStyle(selectedGroupId, updates);
       } else {
         updateSelectedStyle(updates);
       }
+      // Update iframe DOM (for real-time feedback)
+      applyToIframeDom(updates);
     },
-    [selectedGroupId, updateGroupStyle, updateSelectedStyle],
+    [selectedGroupId, updateGroupStyle, updateSelectedStyle, applyToIframeDom],
   );
 
   const handleContainerChange = useCallback(
@@ -169,9 +268,19 @@ export const CaptionPropertyPanel = memo(function CaptionPropertyPanel() {
       if (activeGroupId) {
         updateGroupContainer(activeGroupId, updates);
       }
+      applyContainerToIframeDom(updates);
     },
-    [activeGroupId, updateGroupContainer],
+    [activeGroupId, updateGroupContainer, applyContainerToIframeDom],
   );
+
+  // Empty state — after all hooks
+  if (selectedSegmentIds.size === 0) {
+    return (
+      <div className="flex items-center justify-center h-full px-4 text-center">
+        <p className="text-xs text-neutral-500">Select caption words to edit their style</p>
+      </div>
+    );
+  }
 
   // ---------------------------------------------------------------------------
   // Derived style values with fallbacks
