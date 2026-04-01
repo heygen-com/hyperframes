@@ -1,18 +1,17 @@
 /**
  * Caption Overrides — applies per-word style overrides from a JSON data file.
  *
- * Matching strategy (in priority order):
- * 1. `wordId` — matches by element ID (e.g. document.getElementById("w0"))
- * 2. `wordIndex` — fallback, matches by DOM traversal order across .caption-group > span
+ * Strategy: wrap each overridden word span in an inline-block wrapper span,
+ * then apply transforms to the wrapper. The inner span keeps all its original
+ * GSAP animations (entrance, karaoke, exit) untouched. No tweens are killed.
  *
- * Using wordId is preferred because it's stable across grouping changes.
- * wordIndex is supported for backwards compat with older override files.
+ * Matching (in priority order):
+ * 1. `wordId` — matches by element ID (document.getElementById)
+ * 2. `wordIndex` — fallback, DOM traversal order across .caption-group > span
  */
 
 export interface CaptionOverride {
-  /** Stable word ID from transcript.json (e.g. "w0", "w42"). Preferred lookup key. */
   wordId?: string;
-  /** Fallback: positional index across all .caption-group > span elements. */
   wordIndex?: number;
   x?: number;
   y?: number;
@@ -27,7 +26,6 @@ export interface CaptionOverride {
 
 interface GsapStatic {
   set: (target: Element, vars: Record<string, unknown>) => void;
-  killTweensOf: (target: Element, props: string) => void;
 }
 
 export function applyCaptionOverrides(): void {
@@ -53,7 +51,6 @@ export function applyCaptionOverrides(): void {
       }
 
       for (const override of data) {
-        // Resolve element: prefer wordId, fall back to wordIndex
         let el: Element | null = null;
         if (override.wordId) {
           el = document.getElementById(override.wordId);
@@ -61,32 +58,37 @@ export function applyCaptionOverrides(): void {
         if (!el && override.wordIndex !== undefined) {
           el = wordEls[override.wordIndex] ?? null;
         }
-        if (!el) continue;
+        if (!el || !(el instanceof HTMLElement)) continue;
 
-        const props: Record<string, unknown> = {};
-        if (override.x !== undefined) props.x = override.x;
-        if (override.y !== undefined) props.y = override.y;
-        if (override.scale !== undefined) props.scale = override.scale;
-        if (override.rotation !== undefined) props.rotation = override.rotation;
-        if (override.color !== undefined) props.color = override.color;
-        if (override.opacity !== undefined) props.opacity = override.opacity;
-        if (override.fontSize !== undefined) props.fontSize = `${override.fontSize}px`;
-        if (override.fontWeight !== undefined) props.fontWeight = override.fontWeight;
-        if (override.fontFamily !== undefined) props.fontFamily = override.fontFamily;
+        // Split overrides into transform props (applied to wrapper)
+        // and style props (applied directly to the word span)
+        const transformProps: Record<string, unknown> = {};
+        const styleProps: Record<string, unknown> = {};
 
-        if (Object.keys(props).length === 0) continue;
+        if (override.x !== undefined) transformProps.x = override.x;
+        if (override.y !== undefined) transformProps.y = override.y;
+        if (override.scale !== undefined) transformProps.scale = override.scale;
+        if (override.rotation !== undefined) transformProps.rotation = override.rotation;
+        if (override.color !== undefined) styleProps.color = override.color;
+        if (override.opacity !== undefined) styleProps.opacity = override.opacity;
+        if (override.fontSize !== undefined) styleProps.fontSize = `${override.fontSize}px`;
+        if (override.fontWeight !== undefined) styleProps.fontWeight = override.fontWeight;
+        if (override.fontFamily !== undefined) styleProps.fontFamily = override.fontFamily;
 
-        // Kill conflicting transform tweens before applying overrides
-        const killProps: string[] = [];
-        if (props.x !== undefined) killProps.push("x");
-        if (props.y !== undefined) killProps.push("y");
-        if (props.scale !== undefined) killProps.push("scale");
-        if (props.rotation !== undefined) killProps.push("rotation");
-        if (killProps.length > 0) {
-          gsap.killTweensOf(el, killProps.join(","));
+        // Apply non-transform style props directly to the word (no conflict with GSAP tweens)
+        if (Object.keys(styleProps).length > 0) {
+          gsap.set(el, styleProps);
         }
 
-        gsap.set(el, props);
+        // Wrap the word in an inline-block span and apply transforms to the wrapper.
+        // This preserves all GSAP entrance/exit/karaoke animations on the inner span.
+        if (Object.keys(transformProps).length > 0) {
+          const wrapper = document.createElement("span");
+          wrapper.style.display = "inline-block";
+          el.parentNode?.insertBefore(wrapper, el);
+          wrapper.appendChild(el);
+          gsap.set(wrapper, transformProps);
+        }
       }
     })
     .catch(() => {});

@@ -108,22 +108,39 @@ function readGsapTransform(el: HTMLElement, iframeWin: Window): { x: number; y: 
 }
 
 /**
- * Write transform values using gsap.set() so GSAP tracks them properly.
- * This prevents GSAP from overwriting our changes on next timeline tick.
+ * Get or create an inline-block wrapper span around a word element.
+ * Transforms are applied to the wrapper so the word's GSAP animations are preserved.
+ */
+function getOrCreateWrapper(el: HTMLElement): HTMLElement {
+  const parent = el.parentElement;
+  if (parent && parent.dataset.captionWrapper === "true") return parent;
+  const doc = el.ownerDocument;
+  const wrapper = doc.createElement("span");
+  wrapper.style.display = "inline-block";
+  wrapper.dataset.captionWrapper = "true";
+  el.parentNode?.insertBefore(wrapper, el);
+  wrapper.appendChild(el);
+  return wrapper;
+}
+
+/**
+ * Write transform values to a wrapper span around the word element.
+ * The word keeps its GSAP animations; the wrapper handles editor transforms.
  */
 function writeTransform(el: HTMLElement, iframeWin: Window, x: number, y: number, scale: number, rotation: number) {
+  const wrapper = getOrCreateWrapper(el);
   const gsap = (iframeWin as unknown as { gsap?: { set?: (el: HTMLElement, props: Record<string, number>) => void } }).gsap;
   if (gsap && gsap.set) {
-    gsap.set(el, { x, y, scale, rotation });
+    gsap.set(wrapper, { x, y, scale, rotation });
   } else {
-    // Fallback
-    el.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) rotate(${rotation.toFixed(1)}deg) scale(${scale.toFixed(3)})`;
+    wrapper.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) rotate(${rotation.toFixed(1)}deg) scale(${scale.toFixed(3)})`;
   }
 }
 
 /** Sync canvas state back to the Zustand store so the property panel reflects it */
 function syncToStore(segmentId: string, el: HTMLElement, iframeWin: Window) {
-  const { x, y, scale, rotation } = readGsapTransform(el, iframeWin);
+  const wrapper = getOrCreateWrapper(el);
+  const { x, y, scale, rotation } = readGsapTransform(wrapper, iframeWin);
   useCaptionStore.getState().updateSegmentStyle(segmentId, {
     x, y, rotation, scaleX: scale, scaleY: scale,
   });
@@ -185,7 +202,7 @@ export const CaptionOverlay = memo(function CaptionOverlay({
     const wordEl = getWordEl(iframe, groupIndex, wordIndex);
     const win = iframe.contentWindow;
     if (!wordEl || !win) return;
-    const state = readGsapTransform(wordEl, win);
+    const state = readGsapTransform(getOrCreateWrapper(wordEl), win);
     interactionRef.current = {
       type: "move", wordEl, segmentId,
       startMX: e.clientX, startMY: e.clientY,
@@ -205,7 +222,7 @@ export const CaptionOverlay = memo(function CaptionOverlay({
     const win = iframe.contentWindow;
     if (!wordEl || !win) return;
     const rect = wordEl.getBoundingClientRect();
-    const state = readGsapTransform(wordEl, win);
+    const state = readGsapTransform(getOrCreateWrapper(wordEl), win);
     interactionRef.current = {
       type: "scale", wordEl, segmentId,
       startMX: e.clientX, startWidth: rect.width,
@@ -227,7 +244,7 @@ export const CaptionOverlay = memo(function CaptionOverlay({
     const cx = box.x + box.width / 2;
     const cy = box.y + box.height / 2;
     const startAngle = Math.atan2(e.clientY - cy, e.clientX - cx) * (180 / Math.PI);
-    const state = readGsapTransform(wordEl, win);
+    const state = readGsapTransform(getOrCreateWrapper(wordEl), win);
     interactionRef.current = {
       type: "rotate", wordEl, segmentId: box.segmentId,
       centerX: cx, centerY: cy,
