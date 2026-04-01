@@ -3,6 +3,7 @@
 
 import type {
   CaptionModel,
+  CaptionSegment,
   CaptionStyle,
   CaptionContainerStyle,
   CaptionShadow,
@@ -283,28 +284,35 @@ function generateJs(model: CaptionModel): string {
     const className = groupId.replace(/[^a-zA-Z0-9-_]/g, "-");
 
     // Compute group start/end from its segments
-    const groupSegments = group.segmentIds.map((id) => model.segments.get(id)).filter(Boolean);
+    const groupSegments = group.segmentIds
+      .map((id) => model.segments.get(id))
+      .filter((s): s is CaptionSegment => s !== undefined);
 
     if (groupSegments.length === 0) continue;
 
-    const groupStart = groupSegments[0]!.start;
-    const groupEnd = groupSegments[groupSegments.length - 1]!.end;
+    const firstSeg = groupSegments[0];
+    const lastSeg = groupSegments[groupSegments.length - 1];
+    const groupStart = firstSeg.start;
+    const groupEnd = lastSeg.end;
+
+    const groupVar = className.replace(/[^a-zA-Z0-9_]/g, "_");
 
     // Build word spans
     const wordLines: string[] = groupSegments.map((seg) => {
-      const escaped = seg!.text.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+      const escaped = seg.text.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+      const segVar = `w_${seg.id.replace(/[^a-zA-Z0-9_]/g, "_")}`;
       return (
-        `  const w_${seg!.id.replace(/[^a-zA-Z0-9_]/g, "_")} = document.createElement('span');` +
-        `\n  w_${seg!.id.replace(/[^a-zA-Z0-9_]/g, "_")}.className = 'word clip';` +
-        `\n  w_${seg!.id.replace(/[^a-zA-Z0-9_]/g, "_")}.textContent = '${escaped}';` +
-        `\n  w_${seg!.id.replace(/[^a-zA-Z0-9_]/g, "_")}.dataset.start = '${seg!.start}';` +
-        `\n  w_${seg!.id.replace(/[^a-zA-Z0-9_]/g, "_")}.dataset.end = '${seg!.end}';` +
-        `\n  groupEl_${className.replace(/[^a-zA-Z0-9_]/g, "_")}.appendChild(w_${seg!.id.replace(/[^a-zA-Z0-9_]/g, "_")});`
+        `  const ${segVar} = document.createElement('span');` +
+        `\n  ${segVar}.className = 'word clip';` +
+        `\n  ${segVar}.textContent = '${escaped}';` +
+        `\n  ${segVar}.dataset.start = '${seg.start}';` +
+        `\n  ${segVar}.dataset.end = '${seg.end}';` +
+        `\n  groupEl_${groupVar}.appendChild(${segVar});`
       );
     });
 
     // Position: if x/y non-zero, use absolute with left/top; otherwise center
-    const groupVarName = `groupEl_${className.replace(/[^a-zA-Z0-9_]/g, "_")}`;
+    const groupVarName = `groupEl_${groupVar}`;
     const hasExplicitPosition = group.style.x !== 0 || group.style.y !== 0;
 
     let positionLines: string;

@@ -1,6 +1,6 @@
 import { memo, useCallback, useState } from "react";
 import { useCaptionStore } from "../store";
-import type { CaptionStyle, CaptionContainerStyle } from "../types";
+import type { CaptionStyle } from "../types";
 import { CaptionAnimationPanel } from "./CaptionAnimationPanel";
 
 // ---------------------------------------------------------------------------
@@ -29,72 +29,8 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
   );
 }
 
-function ToggleButton({
-  active,
-  onClick,
-  label,
-  italic,
-  underline,
-  strikethrough,
-}: {
-  active: boolean;
-  onClick: () => void;
-  label: string;
-  italic?: boolean;
-  underline?: boolean;
-  strikethrough?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label={label}
-      aria-pressed={active}
-      className={[
-        "w-7 h-7 flex items-center justify-center rounded border text-xs font-mono transition-colors",
-        active
-          ? "bg-studio-accent/20 border-studio-accent/50 text-studio-accent"
-          : "bg-neutral-900 border-neutral-800 text-neutral-400 hover:border-neutral-600 hover:text-neutral-200",
-      ].join(" ")}
-      style={{
-        fontStyle: italic ? "italic" : undefined,
-        textDecoration: underline ? "underline" : strikethrough ? "line-through" : undefined,
-      }}
-    >
-      {label}
-    </button>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Shared input class
-// ---------------------------------------------------------------------------
-
 const inputCls =
   "w-full bg-neutral-900 border border-neutral-800 rounded px-1.5 py-0.5 text-2xs text-neutral-200 font-mono outline-none focus:border-neutral-600";
-
-// ---------------------------------------------------------------------------
-// Color + text input combo
-// ---------------------------------------------------------------------------
-
-function ColorInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  return (
-    <div className="flex items-center gap-1.5">
-      <input
-        type="color"
-        value={value.startsWith("#") ? value : "#000000"}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-6 h-6 rounded border border-neutral-700 bg-transparent cursor-pointer flex-shrink-0 p-0"
-      />
-      <input
-        type="text"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className={inputCls}
-      />
-    </div>
-  );
-}
 
 // ---------------------------------------------------------------------------
 // Main component
@@ -112,7 +48,6 @@ export const CaptionPropertyPanel = memo(function CaptionPropertyPanel({
   const selectedGroupId = useCaptionStore((s) => s.selectedGroupId);
   const updateSelectedStyle = useCaptionStore((s) => s.updateSelectedStyle);
   const updateGroupStyle = useCaptionStore((s) => s.updateGroupStyle);
-  const updateGroupContainer = useCaptionStore((s) => s.updateGroupContainer);
 
   const [activeTab, setActiveTab] = useState<"style" | "animation">("style");
 
@@ -122,14 +57,11 @@ export const CaptionPropertyPanel = memo(function CaptionPropertyPanel({
 
   // Find the group that owns the first segment
   let ownerGroupId: string | null = null;
-  let ownerGroupIndex = -1;
   if (model && firstSegmentId) {
-    for (let gi = 0; gi < model.groupOrder.length; gi++) {
-      const gid = model.groupOrder[gi];
+    for (const gid of model.groupOrder) {
       const group = model.groups.get(gid);
       if (group && group.segmentIds.includes(firstSegmentId)) {
         ownerGroupId = gid;
-        ownerGroupIndex = gi;
         break;
       }
     }
@@ -144,11 +76,6 @@ export const CaptionPropertyPanel = memo(function CaptionPropertyPanel({
     ...segmentOverrides,
   };
 
-  // Container style for background section
-  const activeGroupId = selectedGroupId ?? ownerGroupId;
-  const containerStyle = activeGroupId
-    ? model?.groups.get(activeGroupId)?.containerStyle
-    : undefined;
 
   /**
    * Apply a CSS style change to selected word elements in the iframe DOM in real time.
@@ -235,63 +162,17 @@ export const CaptionPropertyPanel = memo(function CaptionPropertyPanel({
     [iframeRef, model, selectedSegmentIds],
   );
 
-  /**
-   * Apply container style changes to the group element in the iframe DOM.
-   */
-  const applyContainerToIframeDom = useCallback(
-    (updates: Partial<CaptionContainerStyle>) => {
-      const iframe = iframeRef.current;
-      if (!iframe || ownerGroupIndex < 0) return;
-      let doc: Document | null = null;
-      try {
-        doc = iframe.contentDocument;
-      } catch {
-        return;
-      }
-      if (!doc) return;
-
-      const groupEls = doc.querySelectorAll<HTMLElement>(".caption-group");
-      const groupEl = groupEls[ownerGroupIndex];
-      if (!groupEl) return;
-
-      if (updates.backgroundColor !== undefined) groupEl.style.backgroundColor = updates.backgroundColor;
-      if (updates.backgroundOpacity !== undefined) groupEl.style.opacity = String(updates.backgroundOpacity);
-      if (updates.borderRadius !== undefined) groupEl.style.borderRadius = `${updates.borderRadius}px`;
-      if (updates.paddingTop !== undefined || updates.paddingRight !== undefined ||
-          updates.paddingBottom !== undefined || updates.paddingLeft !== undefined) {
-        const pt = updates.paddingTop ?? containerStyle?.paddingTop ?? 0;
-        const pr = updates.paddingRight ?? containerStyle?.paddingRight ?? 0;
-        const pb = updates.paddingBottom ?? containerStyle?.paddingBottom ?? 0;
-        const pl = updates.paddingLeft ?? containerStyle?.paddingLeft ?? 0;
-        groupEl.style.padding = `${pt}px ${pr}px ${pb}px ${pl}px`;
-      }
-    },
-    [iframeRef, ownerGroupIndex, containerStyle],
-  );
-
   // All hooks must be called before any early return
   const handleStyleChange = useCallback(
     (updates: Partial<CaptionStyle>) => {
-      // Update model (for persistence)
       if (selectedGroupId) {
         updateGroupStyle(selectedGroupId, updates);
       } else {
         updateSelectedStyle(updates);
       }
-      // Update iframe DOM (for real-time feedback)
       applyToIframeDom(updates);
     },
     [selectedGroupId, updateGroupStyle, updateSelectedStyle, applyToIframeDom],
-  );
-
-  const handleContainerChange = useCallback(
-    (updates: Partial<CaptionContainerStyle>) => {
-      if (activeGroupId) {
-        updateGroupContainer(activeGroupId, updates);
-      }
-      applyContainerToIframeDom(updates);
-    },
-    [activeGroupId, updateGroupContainer, applyContainerToIframeDom],
   );
 
   // Empty state — after all hooks
@@ -307,44 +188,15 @@ export const CaptionPropertyPanel = memo(function CaptionPropertyPanel({
   // Derived style values with fallbacks
   // ---------------------------------------------------------------------------
 
-  const fontFamily = effectiveStyle.fontFamily ?? "sans-serif";
-  const fontSize = effectiveStyle.fontSize ?? 48;
-  const fontWeight =
-    typeof effectiveStyle.fontWeight === "number"
-      ? effectiveStyle.fontWeight
-      : Number(effectiveStyle.fontWeight ?? 700);
-  const isItalic = effectiveStyle.fontStyle === "italic";
-  const textDecoration = effectiveStyle.textDecoration ?? "none";
-  const isUnderline = textDecoration.includes("underline");
-  const isStrikethrough = textDecoration.includes("line-through");
-  const textTransform = effectiveStyle.textTransform ?? "none";
-  const letterSpacing = effectiveStyle.letterSpacing ?? 0;
-  const color = effectiveStyle.color ?? "#ffffff";
-  const opacity = effectiveStyle.opacity ?? 1;
-  const strokeWidth = effectiveStyle.strokeWidth ?? 0;
-  const strokeColor = effectiveStyle.strokeColor ?? "#000000";
   const x = effectiveStyle.x ?? 0;
   const y = effectiveStyle.y ?? 0;
   const rotation = effectiveStyle.rotation ?? 0;
   const scaleX = effectiveStyle.scaleX ?? 1;
 
-  // Compute combined textDecoration string
-  const buildTextDecoration = (
-    underline: boolean,
-    strike: boolean,
-  ): CaptionStyle["textDecoration"] => {
-    if (underline && strike) return "underline line-through";
-    if (underline) return "underline";
-    if (strike) return "line-through";
-    return "none";
-  };
-
   // Count label
-  const countLabel =
-    selectedSegmentIds.size === 1
-      ? "1 segment selected"
-      : `${selectedSegmentIds.size} segments selected`;
-  const groupLabel = selectedGroupId ? " (group)" : "";
+  const countLabel = selectedSegmentIds.size === 1
+    ? "1 word"
+    : `${selectedSegmentIds.size} words`;
 
   return (
     <div className="flex flex-col h-full min-h-0">
@@ -353,7 +205,6 @@ export const CaptionPropertyPanel = memo(function CaptionPropertyPanel({
         <div className="flex items-center justify-between mb-1.5">
           <span className="text-2xs text-neutral-500">
             {countLabel}
-            {groupLabel}
           </span>
         </div>
         {/* Tab switcher */}
