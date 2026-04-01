@@ -58,6 +58,16 @@ npx hyperframes transcribe audio.mp3 --model small --language es
 npx hyperframes transcribe audio.mp3 --model small
 ```
 
+**Critical: `.en` models translate non-English audio into English** — they don't transcribe it. If the audio might not be English, always use a model without the `.en` suffix and pass `--language` to specify the source language. If you're unsure of the language, use `small` (not `small.en`) without `--language` — whisper will auto-detect.
+
+```bash
+# Spanish audio
+npx hyperframes transcribe audio.mp3 --model small --language es
+
+# Unknown language — let whisper auto-detect
+npx hyperframes transcribe audio.mp3 --model small
+```
+
 **Music and vocals over instrumentation**: `small.en` will misidentify lyrics — use `medium.en` as the minimum, or import lyrics manually. Even `medium.en` struggles with heavily produced tracks; for music videos, providing known lyrics as an SRT/VTT and importing with `hyperframes transcribe lyrics.srt` will always beat automated transcription.
 
 ## Transcript Quality Check (Mandatory)

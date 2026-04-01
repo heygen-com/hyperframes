@@ -16,19 +16,14 @@ You are here because SKILL.md told you to read this file before writing animatio
 
 **Emphasis words always break the pattern.** When a word is flagged as emphasis (emotional keyword, ALL CAPS, brand name), give it a stronger animation than surrounding words (larger scale, accent color, overshoot ease). This creates contrast.
 
-## Audio-Reactive Captions (Mandatory for Music)
+## Audio-Reactive Captions
 
-**If the source audio is music (vocals over instrumentation, beats, any musical content), you MUST extract audio data and add audio-reactive animations.** This is not optional — music without audio reactivity looks disconnected. Even low-energy ballads get subtle bass pulse and treble glow.
+When audio data is available, tie caption properties to the music. This is the one pattern that requires HyperFrames-specific wiring — the async loading and timeline registration order matters.
 
-This is the one pattern that requires HyperFrames-specific wiring — the async loading and timeline registration order matters.
-
-**Critical: register the timeline synchronously** (`window.__timelines["id"] = tl`) before the fetch. The player needs the timeline immediately to start playback. GSAP timelines are mutable — `tl.call()` entries added later in the fetch callback will fire when the player seeks to those times.
+**Critical: register the timeline inside the fetch callback**, not before. If the timeline is registered before the audio `tl.call()` entries are added, they won't fire.
 
 ```js
-// Register BEFORE fetch so the player can find the timeline
-window.__timelines["captions"] = tl;
-
-fetch("audio-data.json")
+fetch("../audio-data.json")
   .then(function (r) {
     return r.json();
   })
@@ -53,9 +48,12 @@ fetch("audio-data.json")
         f / AUDIO.fps,
       );
     }
+    // Register timeline AFTER audio calls are added
+    window.__timelines["captions"] = tl;
   })
   .catch(function () {
-    // No audio data — continue without reactivity
+    // No audio data — register without reactivity
+    window.__timelines["captions"] = tl;
   });
 ```
 
