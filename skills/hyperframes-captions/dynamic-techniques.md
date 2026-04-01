@@ -16,9 +16,11 @@ You are here because SKILL.md told you to read this file before writing animatio
 
 **Emphasis words always break the pattern.** When a word is flagged as emphasis (emotional keyword, ALL CAPS, brand name), give it a stronger animation than surrounding words (larger scale, accent color, overshoot ease). This creates contrast.
 
-## Audio-Reactive Captions
+## Audio-Reactive Captions (Mandatory for Music)
 
-When audio data is available, tie caption properties to the music. This is the one pattern that requires HyperFrames-specific wiring — the async loading and timeline registration order matters.
+**If the source audio is music (vocals over instrumentation, beats, any musical content), you MUST extract audio data and add audio-reactive animations.** This is not optional — music without audio reactivity looks disconnected. Even low-energy ballads get subtle bass pulse and treble glow.
+
+This is the one pattern that requires HyperFrames-specific wiring — the async loading and timeline registration order matters.
 
 **Critical: register the timeline inside the fetch callback**, not before. If the timeline is registered before the audio `tl.call()` entries are added, they won't fire.
 
