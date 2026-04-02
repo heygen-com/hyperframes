@@ -1,7 +1,7 @@
 ---
 name: hyperframes-captions
-description: Build tone-adaptive captions from whisper transcripts. Detects script energy (hype, corporate, tutorial, storytelling, social) and applies matching typography, color, and animation. Supports per-word styling for brand names, ALL CAPS, numbers, and CTAs. Use when adding captions, subtitles, or lyrics to a HyperFrames composition. Lyric videos ARE captions — any text synced to audio uses this skill.
-trigger: Use this skill whenever a task involves syncing text to audio timing. This includes captions, subtitles, lyrics, karaoke, transcription overlays, and any word-level or phrase-level text timed to speech or music.
+description: Captions, subtitles, lyrics, and karaoke synced to audio in HyperFrames. Tone-adaptive — detects script energy and applies matching typography, color, and animation with per-word styling.
+trigger: Syncing text to audio timing — captions, subtitles, lyrics, karaoke, transcription overlays, word-level or phrase-level text timed to speech or music.
 ---
 
 # Captions
@@ -11,6 +11,7 @@ trigger: Use this skill whenever a task involves syncing text to audio timing. T
 **Never use `.en` models unless the user explicitly states the audio is English.** `.en` models (small.en, medium.en) TRANSLATE non-English audio into English instead of transcribing it. This silently destroys the original language.
 
 When transcribing:
+
 1. If the user says the language → use `--model small --language <code>` (no `.en` suffix)
 2. If the user says it's English → use `--model small.en`
 3. If the language is unknown → use `--model small` (no `.en`, no `--language`) — whisper auto-detects

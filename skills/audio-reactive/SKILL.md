@@ -1,7 +1,7 @@
 ---
 name: audio-reactive
-description: Drive any visual element in a HyperFrames composition from audio data — captions, backgrounds, shapes, overlays, anything GSAP can animate. Use when a composition should respond to music, voice, or sound.
-trigger: Use when a composition involves music, beat-synced animation, audio visualization, or any visual element that should react to sound.
+description: Audio-reactive animation — drive visuals from music, voice, or sound in HyperFrames. Maps frequency bands and amplitude to any GSAP-animatable property.
+trigger: Use when a composition involves music, beat-synced animation, audio visualization, or any visual reacting to sound.
 ---
 
 # Audio-Reactive Animation

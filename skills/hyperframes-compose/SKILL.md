@@ -1,6 +1,6 @@
 ---
 name: hyperframes-compose
-description: Create HyperFrames HTML video compositions. Use when asked to create a video, build an animation, make a composition, add a title card, or generate any HTML-based video content for HyperFrames.
+description: Create video compositions, animations, title cards, or overlays in HyperFrames HTML. Use when asked to build any HTML-based video content.
 ---
 
 # Compose Video

@@ -1,6 +1,6 @@
 ---
 name: hyperframes-cli
-description: Use when the user mentions "hyperframes", wants to preview a composition in the studio, render to MP4/WebM, scaffold a new video project, lint or validate a composition, or troubleshoot rendering. Also use after finishing a composition with compose-video — lint and preview are the natural next steps.
+description: Preview, render, lint, validate, scaffold, or troubleshoot HyperFrames compositions. Also use after finishing a composition — lint and preview are the natural next steps.
 ---
 
 # HyperFrames CLI
