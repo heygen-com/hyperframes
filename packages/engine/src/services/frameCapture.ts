@@ -149,6 +149,11 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
   page.on("console", (msg: ConsoleMessage) => {
     const type = msg.type();
     const text = msg.text();
+
+    // Suppress font-loading 404s — these are expected when deterministic font
+    // injection replaces Google Fonts @import URLs with embedded base64 data.
+    if (type === "error" && text.startsWith("Failed to load resource")) return;
+
     const prefix =
       type === "error" ? "[Browser:ERROR]" : type === "warn" ? "[Browser:WARN]" : "[Browser]";
     console.log(`${prefix} ${text}`);
