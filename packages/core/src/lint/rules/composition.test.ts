@@ -94,4 +94,147 @@ describe("composition rules", () => {
     const finding = result.findings.find((f) => f.code === "template_literal_selector");
     expect(finding).toBeUndefined();
   });
+
+  describe("timed_element_missing_clip_class", () => {
+    it("flags element with data-start but no class='clip'", () => {
+      const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <div id="box" data-start="0" data-duration="2">Hello</div>
+  </div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    window.__timelines["c1"] = gsap.timeline({ paused: true });
+  </script>
+</body></html>`;
+      const result = lintHyperframeHtml(html);
+      const finding = result.findings.find((f) => f.code === "timed_element_missing_clip_class");
+      expect(finding).toBeDefined();
+      expect(finding?.severity).toBe("warning");
+    });
+
+    it("does not flag element that has class='clip'", () => {
+      const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <div id="box" class="clip" data-start="0" data-duration="2">Hello</div>
+  </div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    window.__timelines["c1"] = gsap.timeline({ paused: true });
+  </script>
+</body></html>`;
+      const result = lintHyperframeHtml(html);
+      const finding = result.findings.find((f) => f.code === "timed_element_missing_clip_class");
+      expect(finding).toBeUndefined();
+    });
+
+    it("does not flag audio or video elements", () => {
+      const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <audio data-start="0" data-duration="5" src="music.mp3"></audio>
+    <video data-start="0" data-duration="5" src="clip.mp4"></video>
+  </div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    window.__timelines["c1"] = gsap.timeline({ paused: true });
+  </script>
+</body></html>`;
+      const result = lintHyperframeHtml(html);
+      const finding = result.findings.find((f) => f.code === "timed_element_missing_clip_class");
+      expect(finding).toBeUndefined();
+    });
+  });
+
+  describe("overlapping_clips_same_track", () => {
+    it("flags overlapping clips on the same track", () => {
+      const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <div class="clip" data-start="0" data-duration="3" data-track-index="0">A</div>
+    <div class="clip" data-start="2" data-duration="3" data-track-index="0">B</div>
+  </div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    window.__timelines["c1"] = gsap.timeline({ paused: true });
+  </script>
+</body></html>`;
+      const result = lintHyperframeHtml(html);
+      const finding = result.findings.find((f) => f.code === "overlapping_clips_same_track");
+      expect(finding).toBeDefined();
+      expect(finding?.severity).toBe("error");
+    });
+
+    it("does not flag clips on different tracks", () => {
+      const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <div class="clip" data-start="0" data-duration="3" data-track-index="0">A</div>
+    <div class="clip" data-start="1" data-duration="3" data-track-index="1">B</div>
+  </div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    window.__timelines["c1"] = gsap.timeline({ paused: true });
+  </script>
+</body></html>`;
+      const result = lintHyperframeHtml(html);
+      const finding = result.findings.find((f) => f.code === "overlapping_clips_same_track");
+      expect(finding).toBeUndefined();
+    });
+
+    it("does not flag sequential clips on the same track", () => {
+      const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <div class="clip" data-start="0" data-duration="2" data-track-index="0">A</div>
+    <div class="clip" data-start="2" data-duration="2" data-track-index="0">B</div>
+  </div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    window.__timelines["c1"] = gsap.timeline({ paused: true });
+  </script>
+</body></html>`;
+      const result = lintHyperframeHtml(html);
+      const finding = result.findings.find((f) => f.code === "overlapping_clips_same_track");
+      expect(finding).toBeUndefined();
+    });
+  });
+
+  describe("requestanimationframe_in_composition", () => {
+    it("flags requestAnimationFrame usage in script content", () => {
+      const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080"></div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    requestAnimationFrame(() => { console.log("tick"); });
+    window.__timelines["c1"] = gsap.timeline({ paused: true });
+  </script>
+</body></html>`;
+      const result = lintHyperframeHtml(html);
+      const finding = result.findings.find(
+        (f) => f.code === "requestanimationframe_in_composition",
+      );
+      expect(finding).toBeDefined();
+      expect(finding?.severity).toBe("warning");
+    });
+
+    it("does not flag requestAnimationFrame in comments", () => {
+      const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080"></div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    // requestAnimationFrame(() => { });
+    window.__timelines["c1"] = gsap.timeline({ paused: true });
+  </script>
+</body></html>`;
+      const result = lintHyperframeHtml(html);
+      const finding = result.findings.find(
+        (f) => f.code === "requestanimationframe_in_composition",
+      );
+      expect(finding).toBeUndefined();
+    });
+  });
 });

@@ -106,4 +106,108 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
     }
     return findings;
   },
+
+  // timed_element_missing_clip_class
+  ({ tags }) => {
+    const findings: HyperframeLintFinding[] = [];
+    const skipTags = new Set(["audio", "video", "script", "style", "template"]);
+    for (const tag of tags) {
+      if (skipTags.has(tag.name)) continue;
+      // Skip composition hosts
+      if (readAttr(tag.raw, "data-composition-id")) continue;
+      if (readAttr(tag.raw, "data-composition-src")) continue;
+
+      const hasStart = readAttr(tag.raw, "data-start") !== null;
+      const hasDuration = readAttr(tag.raw, "data-duration") !== null;
+      const hasTrackIndex = readAttr(tag.raw, "data-track-index") !== null;
+      if (!hasStart && !hasDuration && !hasTrackIndex) continue;
+
+      const classAttr = readAttr(tag.raw, "class") || "";
+      const hasClip = classAttr.split(/\s+/).includes("clip");
+      if (hasClip) continue;
+
+      const elementId = readAttr(tag.raw, "id") || undefined;
+      findings.push({
+        code: "timed_element_missing_clip_class",
+        severity: "warning",
+        message: `<${tag.name}${elementId ? ` id="${elementId}"` : ""}> has timing attributes but no class="clip". The element will be visible for the entire composition instead of only during its scheduled time range.`,
+        elementId,
+        fixHint:
+          'Add class="clip" to the element. The HyperFrames runtime uses .clip to control visibility based on data-start/data-duration.',
+        snippet: truncateSnippet(tag.raw),
+      });
+    }
+    return findings;
+  },
+
+  // overlapping_clips_same_track
+  ({ tags }) => {
+    const findings: HyperframeLintFinding[] = [];
+
+    type ClipInfo = { start: number; end: number; elementId?: string; snippet: string };
+    const trackMap = new Map<string, ClipInfo[]>();
+
+    for (const tag of tags) {
+      const startStr = readAttr(tag.raw, "data-start");
+      const durationStr = readAttr(tag.raw, "data-duration");
+      const trackStr = readAttr(tag.raw, "data-track-index");
+      if (!startStr || !durationStr || !trackStr) continue;
+
+      const start = Number(startStr);
+      const duration = Number(durationStr);
+      const track = trackStr;
+
+      // Skip non-numeric (relative timing references like "intro-comp")
+      if (Number.isNaN(start) || Number.isNaN(duration)) continue;
+
+      const clips = trackMap.get(track) || [];
+      clips.push({
+        start,
+        end: start + duration,
+        elementId: readAttr(tag.raw, "id") || undefined,
+        snippet: truncateSnippet(tag.raw) || "",
+      });
+      trackMap.set(track, clips);
+    }
+
+    for (const [track, clips] of trackMap) {
+      clips.sort((a, b) => a.start - b.start);
+      for (let i = 0; i < clips.length - 1; i++) {
+        const current = clips[i]!;
+        const next = clips[i + 1]!;
+        if (current.end > next.start) {
+          findings.push({
+            code: "overlapping_clips_same_track",
+            severity: "error",
+            message: `Track ${track}: clip ending at ${current.end}s overlaps with clip starting at ${next.start}s. Overlapping clips on the same track cause rendering conflicts.`,
+            fixHint:
+              "Adjust data-start or data-duration so clips on the same track do not overlap, or move one clip to a different data-track-index.",
+          });
+        }
+      }
+    }
+
+    return findings;
+  },
+
+  // requestanimationframe_in_composition
+  ({ scripts }) => {
+    const findings: HyperframeLintFinding[] = [];
+    for (const script of scripts) {
+      // Strip single-line comments to avoid false positives
+      const stripped = script.content.replace(/\/\/.*$/gm, "");
+      if (/requestAnimationFrame\s*\(/.test(stripped)) {
+        findings.push({
+          code: "requestanimationframe_in_composition",
+          severity: "warning",
+          message:
+            "`requestAnimationFrame` runs on wall-clock time, not the GSAP timeline. It will not sync with frame capture and may cause flickering or missed frames during rendering.",
+          fixHint:
+            "Use GSAP tweens or onUpdate callbacks instead of requestAnimationFrame for animation logic.",
+          snippet: truncateSnippet(script.content),
+        });
+      }
+    }
+    return findings;
+  },
 ];

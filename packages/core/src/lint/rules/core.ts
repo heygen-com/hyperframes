@@ -166,4 +166,53 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
     }
     return findings;
   },
+
+  // non_deterministic_code
+  ({ scripts }) => {
+    const findings: HyperframeLintFinding[] = [];
+    const patterns: Array<{ pattern: RegExp; label: string; hint: string }> = [
+      {
+        pattern: /Math\.random\s*\(/,
+        label: "Math.random()",
+        hint: "Use a seeded PRNG (e.g. a simple mulberry32) so renders are deterministic across frames.",
+      },
+      {
+        pattern: /Date\.now\s*\(/,
+        label: "Date.now()",
+        hint: "Remove time-dependent code. Use GSAP timeline position instead of wall-clock time.",
+      },
+      {
+        pattern: /new\s+Date\s*\(/,
+        label: "new Date()",
+        hint: "Remove time-dependent code. Use GSAP timeline position instead of wall-clock time.",
+      },
+      {
+        pattern: /performance\.now\s*\(/,
+        label: "performance.now()",
+        hint: "Remove time-dependent code. Use GSAP timeline position instead of wall-clock time.",
+      },
+      {
+        pattern: /crypto\.getRandomValues\s*\(/,
+        label: "crypto.getRandomValues()",
+        hint: "Remove time-dependent code. Use a seeded PRNG for deterministic renders.",
+      },
+    ];
+
+    for (const script of scripts) {
+      // Strip single-line comments to avoid false positives
+      const stripped = script.content.replace(/\/\/.*$/gm, "");
+      for (const { pattern, label, hint } of patterns) {
+        if (pattern.test(stripped)) {
+          findings.push({
+            code: "non_deterministic_code",
+            severity: "error",
+            message: `Script contains \`${label}\` which produces non-deterministic output. Renders may differ between frames or runs.`,
+            fixHint: hint,
+            snippet: truncateSnippet(script.content),
+          });
+        }
+      }
+    }
+    return findings;
+  },
 ];
