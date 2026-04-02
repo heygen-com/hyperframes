@@ -97,6 +97,7 @@ For each detected word, specify:
 - Color override (specific hex value)
 - Weight/style change (bolder, italic)
 - Animation variant (overshoot entrance, glow pulse, scale pop)
+- **Marker highlight mode** — for visual emphasis beyond color/scale, add a marker-style effect: highlight sweep behind the word, hand-drawn circle around it, burst lines radiating from it, or scribble underline beneath it. See the `/marker-highlight` skill for patterns and the energy-to-mode mapping table.
 
 ## Script-to-Style Mapping
 
@@ -197,6 +198,8 @@ Place this **before** `window.__timelines[id] = tl` so it runs at composition in
 ## References
 
 For dynamic animation techniques (karaoke, clip-path reveals, slam words, scatter exits, elastic entrances, 3D rotation, audio-reactive captions, pretext-based positioning and grouping), see [dynamic-techniques.md](./dynamic-techniques.md).
+
+For animated text emphasis (highlight sweeps, hand-drawn circles, burst lines, scribble underlines, sketchout effects) that pairs with per-word styling, see the `/marker-highlight` skill.
 
 For transcription commands, whisper models, external APIs, and troubleshooting, see [transcript-guide.md](./transcript-guide.md).
 

@@ -115,6 +115,7 @@ export function useCaptionSync(projectId: string | null) {
       const res = await fetch(
         `/api/projects/${pid}/files/${encodeURIComponent("caption-overrides.json")}`,
       );
+      if (!res.ok) return;
       const data = await res.json();
       if (!data.content) return;
 

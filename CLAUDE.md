@@ -11,6 +11,7 @@ This repo ships skills that are installed globally via `npx hyperframes skills` 
 | **hyperframes-compose**  | `/hyperframes-compose`  | Creating ANY HTML composition — videos, animations, title cards, overlays. Contains required HTML structure, `class="clip"` rules, GSAP timeline patterns, and rendering constraints. |
 | **hyperframes-captions** | `/hyperframes-captions` | Any task involving text synced to audio: captions, subtitles, lyrics, lyric videos, karaoke. Also covers transcription strategy (whisper model selection, transcript format).         |
 | **hyperframes-tts**      | `/hyperframes-tts`      | Generating speech from text: narration, voiceovers, text-to-speech. Voice selection, speed control, and combining TTS output with compositions.                                       |
+| **marker-highlight**     | `/marker-highlight`     | Animated text highlighting — marker sweeps, hand-drawn circles, burst lines, scribble, sketchout. Use with captions for dynamic emphasis.                                             |
 
 ### GSAP Skills (from [greensock/gsap-skills](https://github.com/greensock/gsap-skills))
 
@@ -36,6 +37,7 @@ The skills encode HyperFrames-specific patterns (e.g., required `class="clip"` o
 - When creating a video from audio (music video, lyric video, audio visualizer with text) → invoke BOTH `/hyperframes-compose` AND `/hyperframes-captions`
 - When writing GSAP animations → invoke `/gsap-core` and `/gsap-timeline` BEFORE writing any code
 - When optimizing animation performance → invoke `/gsap-performance` BEFORE making changes
+- When adding animated text emphasis (highlight sweeps, circles, bursts, scribbles) → invoke `/marker-highlight` BEFORE writing any code
 - After creating or editing any `.html` composition → run `npx hyperframes lint` and `npx hyperframes validate` in parallel, fix all errors before opening the studio or considering the task complete. `lint` checks the HTML structure statically; `validate` loads the composition in headless Chrome and catches runtime JS errors, missing assets, and failed network requests. Always validate before `npx hyperframes preview`.
 
 ### Installing skills

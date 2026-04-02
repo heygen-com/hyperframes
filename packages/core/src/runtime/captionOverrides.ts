@@ -42,6 +42,9 @@ export function applyCaptionOverrides(): void {
   const gsap = (window as unknown as { gsap?: GsapStatic }).gsap;
   if (!gsap) return;
 
+  // Only fetch overrides if the composition has caption groups
+  if (document.querySelectorAll(".caption-group").length === 0) return;
+
   fetch("caption-overrides.json")
     .then((r) => {
       if (!r.ok) return null;

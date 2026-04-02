@@ -1,6 +1,7 @@
-import { memo, useCallback } from "react";
+import { memo, useCallback, useState } from "react";
 import { useCaptionStore } from "../store";
 import type { CaptionStyle } from "../types";
+import { CaptionAnimationPanel } from "./CaptionAnimationPanel";
 import { Section, Row, inputCls } from "./shared";
 
 // ---------------------------------------------------------------------------
@@ -19,6 +20,8 @@ export const CaptionPropertyPanel = memo(function CaptionPropertyPanel({
   const selectedGroupId = useCaptionStore((s) => s.selectedGroupId);
   const updateSelectedStyle = useCaptionStore((s) => s.updateSelectedStyle);
   const updateGroupStyle = useCaptionStore((s) => s.updateGroupStyle);
+
+  const [activeTab, setActiveTab] = useState<"style" | "animation">("style");
 
   // Resolve effective style for the first selected segment
   const firstSegmentId = selectedSegmentIds.size > 0 ? [...selectedSegmentIds][0] : undefined;
@@ -184,54 +187,89 @@ export const CaptionPropertyPanel = memo(function CaptionPropertyPanel({
     <div className="flex flex-col h-full min-h-0">
       {/* Header */}
       <div className="px-3 py-2 border-b border-neutral-800 flex-shrink-0">
-        <span className="text-2xs text-neutral-500">{countLabel}</span>
+        <div className="flex items-center justify-between mb-1.5">
+          <span className="text-2xs text-neutral-500">{countLabel}</span>
+        </div>
+        {/* Tab switcher */}
+        <div className="flex gap-1">
+          <button
+            type="button"
+            onClick={() => setActiveTab("style")}
+            className={[
+              "flex-1 py-0.5 rounded text-2xs font-medium transition-colors",
+              activeTab === "style"
+                ? "bg-studio-accent/20 text-studio-accent border border-studio-accent/50"
+                : "text-neutral-500 border border-neutral-800 hover:text-neutral-300 hover:border-neutral-600",
+            ].join(" ")}
+          >
+            Style
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("animation")}
+            className={[
+              "flex-1 py-0.5 rounded text-2xs font-medium transition-colors",
+              activeTab === "animation"
+                ? "bg-studio-accent/20 text-studio-accent border border-studio-accent/50"
+                : "text-neutral-500 border border-neutral-800 hover:text-neutral-300 hover:border-neutral-600",
+            ].join(" ")}
+          >
+            Animation
+          </button>
+        </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-3 py-2">
-        <Section label="Position">
-          <Row label="X">
-            <input
-              type="number"
-              value={x}
-              onChange={(e) => handleStyleChange({ x: Number(e.target.value) })}
-              className={inputCls}
-            />
-          </Row>
-          <Row label="Y">
-            <input
-              type="number"
-              value={y}
-              onChange={(e) => handleStyleChange({ y: Number(e.target.value) })}
-              className={inputCls}
-            />
-          </Row>
-        </Section>
+      {/* Animation tab */}
+      {activeTab === "animation" && <CaptionAnimationPanel />}
 
-        <Section label="Transform">
-          <Row label="Scale">
-            <input
-              type="number"
-              value={scaleX}
-              step={0.1}
-              onChange={(e) =>
-                handleStyleChange({
-                  scaleX: Number(e.target.value),
-                  scaleY: Number(e.target.value),
-                })
-              }
-              className={inputCls}
-            />
-          </Row>
-          <Row label="Rotation">
-            <input
-              type="number"
-              value={rotation}
-              onChange={(e) => handleStyleChange({ rotation: Number(e.target.value) })}
-              className={inputCls}
-            />
-          </Row>
-        </Section>
-      </div>
+      {/* Style tab — Transform only */}
+      {activeTab === "style" && (
+        <div className="flex-1 overflow-y-auto px-3 py-2">
+          <Section label="Position">
+            <Row label="X">
+              <input
+                type="number"
+                value={x}
+                onChange={(e) => handleStyleChange({ x: Number(e.target.value) })}
+                className={inputCls}
+              />
+            </Row>
+            <Row label="Y">
+              <input
+                type="number"
+                value={y}
+                onChange={(e) => handleStyleChange({ y: Number(e.target.value) })}
+                className={inputCls}
+              />
+            </Row>
+          </Section>
+
+          <Section label="Transform">
+            <Row label="Scale">
+              <input
+                type="number"
+                value={scaleX}
+                step={0.1}
+                onChange={(e) =>
+                  handleStyleChange({
+                    scaleX: Number(e.target.value),
+                    scaleY: Number(e.target.value),
+                  })
+                }
+                className={inputCls}
+              />
+            </Row>
+            <Row label="Rotation">
+              <input
+                type="number"
+                value={rotation}
+                onChange={(e) => handleStyleChange({ rotation: Number(e.target.value) })}
+                className={inputCls}
+              />
+            </Row>
+          </Section>
+        </div>
+      )}
     </div>
   );
 });
