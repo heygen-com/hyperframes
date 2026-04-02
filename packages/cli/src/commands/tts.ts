@@ -1,5 +1,15 @@
 import { defineCommand } from "citty";
+import type { Example } from "./_examples.js";
 import { existsSync, readFileSync } from "node:fs";
+
+export const examples: Example[] = [
+  ["Generate speech from text", 'hyperframes tts "Welcome to HyperFrames"'],
+  ["Choose a voice", 'hyperframes tts "Hello world" --voice am_adam'],
+  ["Save to a specific file", 'hyperframes tts "Intro" --voice bf_emma --output narration.wav'],
+  ["Adjust speech speed", 'hyperframes tts "Slow and clear" --speed 0.8'],
+  ["Read text from a file", "hyperframes tts script.txt"],
+  ["List available voices", "hyperframes tts --list"],
+];
 import { resolve, extname } from "node:path";
 import * as clack from "@clack/prompts";
 import { c } from "../ui/colors.js";

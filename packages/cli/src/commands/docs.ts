@@ -1,5 +1,13 @@
 import { defineCommand } from "citty";
+import type { Example } from "./_examples.js";
 import { readFileSync, existsSync } from "node:fs";
+
+export const examples: Example[] = [
+  ["List all available topics", "hyperframes docs"],
+  ["Read about data attributes", "hyperframes docs data-attributes"],
+  ["Read about rendering", "hyperframes docs rendering"],
+  ["Read about GSAP integration", "hyperframes docs gsap"],
+];
 import { resolve, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { c } from "../ui/colors.js";

@@ -1,5 +1,11 @@
 import { defineCommand } from "citty";
+import type { Example } from "./_examples.js";
 import { readFileSync, readdirSync, statSync } from "node:fs";
+
+export const examples: Example[] = [
+  ["Show project metadata", "hyperframes info"],
+  ["Output as JSON", "hyperframes info --json"],
+];
 import { join } from "node:path";
 import { parseHtml } from "@hyperframes/core";
 import { c } from "../ui/colors.js";

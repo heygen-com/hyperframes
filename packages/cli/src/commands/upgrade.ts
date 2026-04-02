@@ -1,6 +1,13 @@
 import { defineCommand } from "citty";
+import type { Example } from "./_examples.js";
 import * as clack from "@clack/prompts";
 import { c } from "../ui/colors.js";
+
+export const examples: Example[] = [
+  ["Check for updates interactively", "hyperframes upgrade"],
+  ["Check for updates without prompting", "hyperframes upgrade --check"],
+  ["Show upgrade commands directly", "hyperframes upgrade --yes"],
+];
 import { VERSION } from "../version.js";
 import { checkForUpdate, withMeta } from "../utils/updateCheck.js";
 

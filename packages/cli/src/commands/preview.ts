@@ -1,5 +1,12 @@
 import { defineCommand } from "citty";
+import type { Example } from "./_examples.js";
 import { spawn } from "node:child_process";
+
+export const examples: Example[] = [
+  ["Preview the current project", "hyperframes preview"],
+  ["Preview a specific project directory", "hyperframes preview ./my-video"],
+  ["Use a custom port", "hyperframes preview --port 8080"],
+];
 import { existsSync, lstatSync, symlinkSync, unlinkSync, readlinkSync, mkdirSync } from "node:fs";
 import { resolve, dirname, basename, join } from "node:path";
 import { fileURLToPath } from "node:url";

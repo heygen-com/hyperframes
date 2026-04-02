@@ -1,5 +1,8 @@
 import { defineCommand } from "citty";
+import type { Example } from "./_examples.js";
 import { execSync } from "node:child_process";
+
+export const examples: Example[] = [["Check system dependencies", "hyperframes doctor"]];
 import { freemem, platform } from "node:os";
 import { c } from "../ui/colors.js";
 import { findBrowser } from "../browser/manager.js";

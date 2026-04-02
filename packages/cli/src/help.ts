@@ -62,7 +62,7 @@ const GROUPS: Group[] = [
 ];
 
 // ── Root-level examples ────────────────────────────────────────────────────
-type Example = [comment: string, command: string];
+import type { Example } from "./commands/_examples.js";
 
 const ROOT_EXAMPLES: Example[] = [
   ["Create a new project", "hyperframes init my-video"],
@@ -73,92 +73,25 @@ const ROOT_EXAMPLES: Example[] = [
   ["Check system dependencies", "hyperframes doctor"],
 ];
 
-// ── Per-command examples (comment + command style: comment + command) ────────────────
-const COMMAND_EXAMPLES: Record<string, Example[]> = {
-  init: [
-    ["Create a project with the interactive wizard", "hyperframes init my-video"],
-    ["Pick a starter template", "hyperframes init my-video --template warm-grain"],
-    ["Start from an existing video file", "hyperframes init my-video --video clip.mp4"],
-    ["Start from an audio file", "hyperframes init my-video --audio track.mp3"],
-    ["Non-interactive mode (for CI or AI agents)", "hyperframes init my-video --non-interactive"],
-  ],
-  preview: [
-    ["Preview the current project", "hyperframes preview"],
-    ["Preview a specific project directory", "hyperframes preview ./my-video"],
-    ["Use a custom port", "hyperframes preview --port 8080"],
-  ],
-  render: [
-    ["Render to MP4", "hyperframes render --output output.mp4"],
-    ["Render transparent WebM overlay", "hyperframes render --format webm --output overlay.webm"],
-    ["High quality at 60fps", "hyperframes render --fps 60 --quality high --output hd.mp4"],
-    ["Deterministic render via Docker", "hyperframes render --docker --output deterministic.mp4"],
-    ["Parallel rendering with 4 workers", "hyperframes render --workers 4 --output fast.mp4"],
-  ],
-  lint: [
-    ["Lint the current project", "hyperframes lint"],
-    ["Lint a specific directory", "hyperframes lint ./my-video"],
-    ["Output findings as JSON", "hyperframes lint --json"],
-    ["Include info-level findings", "hyperframes lint --verbose"],
-  ],
-  info: [
-    ["Show project metadata", "hyperframes info"],
-    ["Output as JSON", "hyperframes info --json"],
-  ],
-  compositions: [
-    ["List compositions in the current project", "hyperframes compositions"],
-    ["Output as JSON", "hyperframes compositions --json"],
-  ],
-  benchmark: [
-    ["Run benchmarks with default settings (3 runs)", "hyperframes benchmark"],
-    ["Run 5 iterations per config", "hyperframes benchmark --runs 5"],
-    ["Output results as JSON", "hyperframes benchmark --json"],
-  ],
-  browser: [
-    ["Find or download Chrome for rendering", "hyperframes browser ensure"],
-    ["Print the Chrome executable path", "hyperframes browser path"],
-    ["Remove cached Chrome download", "hyperframes browser clear"],
-  ],
+// ── Per-command examples loaded from command files ────────────────────────
+// Each command file exports `examples: Example[]`. This function dynamically
+// imports them so examples live next to the command they document.
+async function loadExamples(name: string): Promise<Example[] | undefined> {
+  try {
+    const mod = await import(`./commands/${name}.js`);
+    return mod.examples;
+  } catch {
+    return undefined;
+  }
+}
+
+// Commands without their own file (e.g. listed in help but not yet a real command)
+const STATIC_EXAMPLES: Record<string, Example[]> = {
   skills: [
     ["Install skills to all supported AI tools", "hyperframes skills"],
     ["Install to Claude Code only", "hyperframes skills --claude"],
     ["Install to Cursor (project-level)", "hyperframes skills --cursor"],
     ["Install to specific tools", "hyperframes skills --claude --gemini"],
-  ],
-  tts: [
-    ["Generate speech from text", 'hyperframes tts "Welcome to HyperFrames"'],
-    ["Choose a voice", 'hyperframes tts "Hello world" --voice am_adam'],
-    ["Save to a specific file", 'hyperframes tts "Intro" --voice bf_emma --output narration.wav'],
-    ["Adjust speech speed", 'hyperframes tts "Slow and clear" --speed 0.8'],
-    ["Read text from a file", "hyperframes tts script.txt"],
-    ["List available voices", "hyperframes tts --list"],
-  ],
-  transcribe: [
-    ["Transcribe an audio file", "hyperframes transcribe audio.mp3"],
-    ["Transcribe a video file", "hyperframes transcribe video.mp4"],
-    [
-      "Use a larger model for better accuracy",
-      "hyperframes transcribe audio.mp3 --model medium.en",
-    ],
-    ["Set language to filter non-target speech", "hyperframes transcribe audio.mp3 --language en"],
-    ["Import an existing SRT file", "hyperframes transcribe subtitles.srt"],
-    ["Import an OpenAI Whisper JSON response", "hyperframes transcribe response.json"],
-  ],
-  docs: [
-    ["List all available topics", "hyperframes docs"],
-    ["Read about data attributes", "hyperframes docs data-attributes"],
-    ["Read about rendering", "hyperframes docs rendering"],
-    ["Read about GSAP integration", "hyperframes docs gsap"],
-  ],
-  doctor: [["Check system dependencies", "hyperframes doctor"]],
-  upgrade: [
-    ["Check for updates interactively", "hyperframes upgrade"],
-    ["Check for updates without prompting", "hyperframes upgrade --check"],
-    ["Show upgrade commands directly", "hyperframes upgrade --yes"],
-  ],
-  telemetry: [
-    ["Check current telemetry status", "hyperframes telemetry status"],
-    ["Disable telemetry", "hyperframes telemetry disable"],
-    ["Enable telemetry", "hyperframes telemetry enable"],
   ],
 };
 
@@ -218,7 +151,10 @@ export async function showUsage(cmd: CommandDef, parent?: CommandDef): Promise<v
   console.log(usage + "\n");
 
   const name = meta?.name;
-  if (name && COMMAND_EXAMPLES[name]) {
-    console.log(formatExamples(COMMAND_EXAMPLES[name]) + "\n");
+  if (name) {
+    const examples = STATIC_EXAMPLES[name] ?? (await loadExamples(name));
+    if (examples) {
+      console.log(formatExamples(examples) + "\n");
+    }
   }
 }

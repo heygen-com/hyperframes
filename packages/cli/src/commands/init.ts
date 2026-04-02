@@ -1,4 +1,13 @@
 import { defineCommand, runCommand } from "citty";
+import type { Example } from "./_examples.js";
+
+export const examples: Example[] = [
+  ["Create a project with the interactive wizard", "hyperframes init my-video"],
+  ["Pick a starter template", "hyperframes init my-video --template warm-grain"],
+  ["Start from an existing video file", "hyperframes init my-video --video clip.mp4"],
+  ["Start from an audio file", "hyperframes init my-video --audio track.mp3"],
+  ["Non-interactive mode (for CI or AI agents)", "hyperframes init my-video --non-interactive"],
+];
 import {
   existsSync,
   mkdirSync,

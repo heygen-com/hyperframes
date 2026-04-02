@@ -1,5 +1,12 @@
 import { defineCommand } from "citty";
+import type { Example } from "./_examples.js";
 import { existsSync, statSync } from "node:fs";
+
+export const examples: Example[] = [
+  ["Run benchmarks with default settings (3 runs)", "hyperframes benchmark"],
+  ["Run 5 iterations per config", "hyperframes benchmark --runs 5"],
+  ["Output results as JSON", "hyperframes benchmark --json"],
+];
 import { resolve, join } from "node:path";
 import { resolveProject } from "../utils/project.js";
 import { loadProducer } from "../utils/producer.js";

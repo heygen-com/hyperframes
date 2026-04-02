@@ -1,6 +1,13 @@
 import { defineCommand } from "citty";
+import type { Example } from "./_examples.js";
 import * as clack from "@clack/prompts";
 import { c } from "../ui/colors.js";
+
+export const examples: Example[] = [
+  ["Find or download Chrome for rendering", "hyperframes browser ensure"],
+  ["Print the Chrome executable path", "hyperframes browser path"],
+  ["Remove cached Chrome download", "hyperframes browser clear"],
+];
 import { formatBytes } from "../ui/format.js";
 import {
   ensureBrowser,

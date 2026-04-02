@@ -1,5 +1,12 @@
 import { defineCommand } from "citty";
+import type { Example } from "./_examples.js";
 import { c } from "../ui/colors.js";
+
+export const examples: Example[] = [
+  ["Check current telemetry status", "hyperframes telemetry status"],
+  ["Disable telemetry", "hyperframes telemetry disable"],
+  ["Enable telemetry", "hyperframes telemetry enable"],
+];
 import { readConfig, writeConfig, CONFIG_PATH } from "../telemetry/config.js";
 
 function runEnable(): void {

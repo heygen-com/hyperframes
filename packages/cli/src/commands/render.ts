@@ -1,5 +1,14 @@
 import { defineCommand } from "citty";
+import type { Example } from "./_examples.js";
 import { existsSync, mkdirSync, statSync } from "node:fs";
+
+export const examples: Example[] = [
+  ["Render to MP4", "hyperframes render --output output.mp4"],
+  ["Render transparent WebM overlay", "hyperframes render --format webm --output overlay.webm"],
+  ["High quality at 60fps", "hyperframes render --fps 60 --quality high --output hd.mp4"],
+  ["Deterministic render via Docker", "hyperframes render --docker --output deterministic.mp4"],
+  ["Parallel rendering with 4 workers", "hyperframes render --workers 4 --output fast.mp4"],
+];
 import { cpus, freemem } from "node:os";
 import { resolve, dirname, join } from "node:path";
 import { resolveProject } from "../utils/project.js";

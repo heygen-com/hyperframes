@@ -1,5 +1,13 @@
 import { defineCommand } from "citty";
+import type { Example } from "./_examples.js";
 import { c } from "../ui/colors.js";
+
+export const examples: Example[] = [
+  ["Lint the current project", "hyperframes lint"],
+  ["Lint a specific directory", "hyperframes lint ./my-video"],
+  ["Output findings as JSON", "hyperframes lint --json"],
+  ["Include info-level findings", "hyperframes lint --verbose"],
+];
 import { formatLintFindings } from "../utils/lintFormat.js";
 import { lintProject } from "../utils/lintProject.js";
 import { resolveProject } from "../utils/project.js";
