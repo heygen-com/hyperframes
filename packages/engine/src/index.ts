@@ -72,6 +72,7 @@ export {
 // ── Screenshot (BeginFrame) ─────────────────────────────────────────────────────
 export {
   beginFrameCapture,
+  canvasDrawElementCapture,
   pageScreenshotCapture,
   getCdpSession,
   injectVideoFramesBatch,

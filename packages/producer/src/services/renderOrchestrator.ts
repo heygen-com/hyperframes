@@ -106,6 +106,8 @@ export interface RenderConfig {
   debug?: boolean;
   /** Entry HTML file relative to projectDir. Defaults to "index.html". */
   entryFile?: string;
+  /** Use experimental CanvasDrawElement API for frame capture. Requires Chrome 146+. */
+  experimentalCanvas?: boolean;
   /** Full producer config. When provided, env vars are not read. */
   producerConfig?: EngineConfig;
   /** Custom logger. Defaults to console-based defaultLogger. */
@@ -374,6 +376,10 @@ export async function executeRenderJob(
   // WebM/transparency requires screenshot mode — beginFrame doesn't support alpha channel
   if (isWebm) {
     cfg.forceScreenshot = true;
+  }
+  // Wire experimentalCanvas from RenderConfig into EngineConfig
+  if (job.config.experimentalCanvas) {
+    cfg.experimentalCanvas = true;
   }
   const enableChunkedEncode = cfg.enableChunkedEncode;
   const chunkedEncodeSize = cfg.chunkSizeFrames;

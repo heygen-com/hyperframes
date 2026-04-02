@@ -81,6 +81,11 @@ export default defineCommand({
       description: "Fail render on lint errors AND warnings",
       default: false,
     },
+    "experimental-canvas": {
+      type: "boolean",
+      description: "Use experimental CanvasDrawElement renderer (Chrome 146+)",
+      default: false,
+    },
   },
   async run({ args }) {
     // ── Resolve project ────────────────────────────────────────────────────
@@ -139,6 +144,7 @@ export default defineCommand({
     const quiet = args.quiet ?? false;
     const strictAll = args["strict-all"] ?? false;
     const strictErrors = (args.strict ?? false) || strictAll;
+    const experimentalCanvas = args["experimental-canvas"] ?? false;
 
     // ── Print render plan ─────────────────────────────────────────────────
     const workerCount = workers ?? defaultWorkerCount();
@@ -235,6 +241,7 @@ export default defineCommand({
         workers: workerCount,
         gpu: useGpu,
         quiet,
+        experimentalCanvas,
       });
     } else {
       await renderLocal(project.dir, outputPath, {
@@ -245,6 +252,7 @@ export default defineCommand({
         gpu: useGpu,
         quiet,
         browserPath,
+        experimentalCanvas,
       });
     }
   },
@@ -255,6 +263,7 @@ interface RenderOptions {
   quality: "draft" | "standard" | "high";
   format: "mp4" | "webm";
   workers: number;
+  experimentalCanvas: boolean;
   gpu: boolean;
   quiet: boolean;
   browserPath?: string;
@@ -276,6 +285,7 @@ async function renderDocker(
       format: options.format,
       workers: options.workers,
       useGpu: options.gpu,
+      experimentalCanvas: options.experimentalCanvas,
     });
     await producer.executeRenderJob(job, projectDir, outputPath);
   } catch (error: unknown) {
@@ -309,6 +319,7 @@ async function renderLocal(
     format: options.format,
     workers: options.workers,
     useGpu: options.gpu,
+    experimentalCanvas: options.experimentalCanvas,
   });
 
   const onProgress = options.quiet

@@ -28,7 +28,8 @@ async function getPuppeteer(): Promise<PuppeteerNode> {
 
 // "beginframe" = atomic compositor control via HeadlessExperimental.beginFrame (Linux only)
 // "screenshot" = renderSeek + Page.captureScreenshot (all platforms)
-export type CaptureMode = "beginframe" | "screenshot";
+// "canvas" = drawElementImage() composites DOM to canvas, then CDP screenshot (Chrome 146+)
+export type CaptureMode = "beginframe" | "screenshot" | "canvas";
 
 export interface AcquiredBrowser {
   browser: Browser;
@@ -82,7 +83,12 @@ export async function acquireBrowser(
   config?: Partial<
     Pick<
       EngineConfig,
-      "browserTimeout" | "protocolTimeout" | "enableBrowserPool" | "chromePath" | "forceScreenshot"
+      | "browserTimeout"
+      | "protocolTimeout"
+      | "enableBrowserPool"
+      | "chromePath"
+      | "forceScreenshot"
+      | "experimentalCanvas"
     >
   >,
 ): Promise<AcquiredBrowser> {
@@ -99,10 +105,15 @@ export async function acquireBrowser(
   // BeginFrame requires chrome-headless-shell AND Linux (crashes on macOS/Windows).
   const isLinux = process.platform === "linux";
   const forceScreenshot = config?.forceScreenshot ?? DEFAULT_CONFIG.forceScreenshot;
+  const experimentalCanvas = config?.experimentalCanvas ?? DEFAULT_CONFIG.experimentalCanvas;
   let captureMode: CaptureMode;
   let executablePath: string | undefined;
 
-  if (headlessShell && isLinux && !forceScreenshot) {
+  if (experimentalCanvas) {
+    // Canvas mode: drawElementImage() + CDP screenshot. Works on all platforms with Chrome 146+.
+    captureMode = "canvas";
+    executablePath = headlessShell ?? undefined;
+  } else if (headlessShell && isLinux && !forceScreenshot) {
     captureMode = "beginframe";
     executablePath = headlessShell;
   } else {
@@ -198,7 +209,7 @@ export function buildChromeArgs(
   ];
 
   // BeginFrame flags — only when using chrome-headless-shell on Linux
-  if (options.captureMode !== "screenshot") {
+  if (options.captureMode === "beginframe") {
     chromeArgs.push(
       "--deterministic-mode",
       "--enable-begin-frame-control",
@@ -210,6 +221,11 @@ export function buildChromeArgs(
       "--disable-image-animation-resync",
       "--enable-surface-synchronization",
     );
+  }
+
+  // Canvas mode: enable experimental CanvasDrawElement API (Chrome 146+)
+  if (options.captureMode === "canvas") {
+    chromeArgs.push("--enable-blink-features=CanvasDrawElement");
   }
 
   const gpuDisabled = config?.disableGpu ?? DEFAULT_CONFIG.disableGpu;

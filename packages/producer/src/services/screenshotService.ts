@@ -4,6 +4,7 @@
  */
 export {
   beginFrameCapture,
+  canvasDrawElementCapture,
   pageScreenshotCapture,
   getCdpSession,
   injectVideoFramesBatch,

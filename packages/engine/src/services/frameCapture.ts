@@ -20,7 +20,12 @@ import {
   resolveHeadlessShellPath,
   type CaptureMode,
 } from "./browserManager.js";
-import { beginFrameCapture, getCdpSession, pageScreenshotCapture } from "./screenshotService.js";
+import {
+  beginFrameCapture,
+  canvasDrawElementCapture,
+  getCdpSession,
+  pageScreenshotCapture,
+} from "./screenshotService.js";
 import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
 import type {
   CaptureOptions,
@@ -77,8 +82,12 @@ export async function createCaptureSession(
   const headlessShell = resolveHeadlessShellPath(config);
   const isLinux = process.platform === "linux";
   const forceScreenshot = config?.forceScreenshot ?? DEFAULT_CONFIG.forceScreenshot;
-  const preMode: CaptureMode =
-    headlessShell && isLinux && !forceScreenshot ? "beginframe" : "screenshot";
+  const experimentalCanvas = config?.experimentalCanvas ?? DEFAULT_CONFIG.experimentalCanvas;
+  const preMode: CaptureMode = experimentalCanvas
+    ? "canvas"
+    : headlessShell && isLinux && !forceScreenshot
+      ? "beginframe"
+      : "screenshot";
   const chromeArgs = buildChromeArgs(
     { width: options.width, height: options.height, captureMode: preMode },
     config,
@@ -175,8 +184,8 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
 
   // Navigate to the file server
   const url = `${serverUrl}/index.html`;
-  if (session.captureMode === "screenshot") {
-    // Screenshot mode: standard navigation, rAF works normally
+  if (session.captureMode === "screenshot" || session.captureMode === "canvas") {
+    // Screenshot/Canvas mode: standard navigation, rAF works normally
     await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
 
     const pageReadyTimeout =
@@ -194,6 +203,28 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
     );
 
     await page.evaluate(`document.fonts?.ready`);
+
+    // Canvas mode: inject <canvas layoutsubtree> wrapper around composition root
+    if (session.captureMode === "canvas") {
+      await page.evaluate(
+        (w: number, h: number) => {
+          const root = document.querySelector("[data-composition-id]") as HTMLElement | null;
+          if (!root) return;
+
+          const canvas = document.createElement("canvas");
+          canvas.width = w;
+          canvas.height = h;
+          canvas.setAttribute("layoutsubtree", "");
+          canvas.style.cssText = `width:${w}px;height:${h}px;position:absolute;top:0;left:0;`;
+
+          // Move root inside canvas
+          root.parentNode?.insertBefore(canvas, root);
+          canvas.appendChild(root);
+        },
+        session.options.width ?? 1920,
+        session.options.height ?? 1080,
+      );
+    }
 
     session.isInitialized = true;
     return;
@@ -392,6 +423,8 @@ async function captureFrameCore(
       if (result.hasDamage) session.beginFrameHasDamageCount++;
       else session.beginFrameNoDamageCount++;
       screenshotBuffer = result.buffer;
+    } else if (session.captureMode === "canvas") {
+      screenshotBuffer = await canvasDrawElementCapture(page, options);
     } else {
       screenshotBuffer = await pageScreenshotCapture(page, options);
     }

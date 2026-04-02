@@ -38,6 +38,8 @@ export interface EngineConfig {
   expectedChromiumMajor?: number;
   /** Force screenshot capture mode (skip BeginFrame even on Linux). */
   forceScreenshot: boolean;
+  /** Use experimental CanvasDrawElement API for frame capture. Requires Chrome 146+. */
+  experimentalCanvas: boolean;
 
   // ── Encoding ─────────────────────────────────────────────────────────
   enableChunkedEncode: boolean;
@@ -87,6 +89,7 @@ export const DEFAULT_CONFIG: EngineConfig = {
   browserTimeout: 120_000,
   protocolTimeout: 300_000,
   forceScreenshot: false,
+  experimentalCanvas: false,
 
   enableChunkedEncode: false,
   chunkSizeFrames: 360,

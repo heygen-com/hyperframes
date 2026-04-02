@@ -111,6 +111,34 @@ export async function pageScreenshotCapture(page: Page, options: CaptureOptions)
   return Buffer.from(result.data, "base64");
 }
 
+/**
+ * Capture a frame using the experimental CanvasDrawElement API.
+ * Requires Chrome launched with --enable-blink-features=CanvasDrawElement.
+ *
+ * The composition root must be a child of a <canvas layoutsubtree> element.
+ * drawElementImage() composites DOM to canvas (~0.02ms), then CDP captures
+ * the canvas content via Page.captureScreenshot.
+ */
+export async function canvasDrawElementCapture(
+  page: Page,
+  options: CaptureOptions,
+): Promise<Buffer> {
+  // First, draw the composition onto the canvas
+  await page.evaluate(() => {
+    const canvas = document.querySelector("canvas[layoutsubtree]") as HTMLCanvasElement | null;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx || typeof (ctx as any).drawElementImage !== "function") return;
+    const scene = canvas.firstElementChild as HTMLElement | null;
+    if (!scene) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    (ctx as any).drawElementImage(scene, 0, 0, canvas.width, canvas.height);
+  });
+
+  // Then capture via standard CDP screenshot
+  return pageScreenshotCapture(page, options);
+}
+
 export async function injectVideoFramesBatch(
   page: Page,
   updates: Array<{ videoId: string; dataUri: string }>,
