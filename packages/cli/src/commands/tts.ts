@@ -16,6 +16,7 @@ export default defineCommand({
     input: {
       type: "positional",
       description: "Text to speak, or path to a .txt file",
+      required: false,
     },
     output: {
       type: "string",
