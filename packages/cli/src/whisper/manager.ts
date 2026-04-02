@@ -1,9 +1,8 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, createWriteStream, rmSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { homedir, platform } from "node:os";
 import { join } from "node:path";
-import { get as httpsGet } from "node:https";
-import { pipeline } from "node:stream/promises";
+import { downloadFile } from "../utils/download.js";
 
 const MODELS_DIR = join(homedir(), ".cache", "hyperframes", "whisper", "models");
 const DEFAULT_MODEL = "small.en";
@@ -13,31 +12,6 @@ export type WhisperSource = "env" | "system" | "brew" | "build";
 export interface WhisperResult {
   executablePath: string;
   source: WhisperSource;
-}
-
-// --- Download helper --------------------------------------------------------
-
-function downloadFile(url: string, dest: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const follow = (u: string) => {
-      httpsGet(u, (res) => {
-        if (res.statusCode === 301 || res.statusCode === 302) {
-          const location = res.headers.location;
-          if (location) {
-            follow(location);
-            return;
-          }
-        }
-        if (res.statusCode !== 200) {
-          reject(new Error(`Download failed: HTTP ${res.statusCode}`));
-          return;
-        }
-        const file = createWriteStream(dest);
-        pipeline(res, file).then(resolve).catch(reject);
-      }).on("error", reject);
-    };
-    follow(url);
-  });
 }
 
 function getModelUrl(model: string): string {

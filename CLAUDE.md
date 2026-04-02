@@ -10,6 +10,7 @@ This repo ships skills that are installed globally via `npx hyperframes skills` 
 | ------------------------ | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **hyperframes-compose**  | `/hyperframes-compose`  | Creating ANY HTML composition — videos, animations, title cards, overlays. Contains required HTML structure, `class="clip"` rules, GSAP timeline patterns, and rendering constraints. |
 | **hyperframes-captions** | `/hyperframes-captions` | Any task involving text synced to audio: captions, subtitles, lyrics, lyric videos, karaoke. Also covers transcription strategy (whisper model selection, transcript format).         |
+| **hyperframes-tts**      | `/hyperframes-tts`      | Generating speech from text: narration, voiceovers, text-to-speech. Voice selection, speed control, and combining TTS output with compositions.                                       |
 
 ### GSAP Skills (from [greensock/gsap-skills](https://github.com/greensock/gsap-skills))
 
@@ -31,6 +32,7 @@ The skills encode HyperFrames-specific patterns (e.g., required `class="clip"` o
 - When creating or modifying HTML compositions → invoke `/hyperframes-compose` BEFORE writing any code
 - When adding captions, subtitles, lyrics, or any text synced to audio → invoke `/hyperframes-captions` BEFORE writing any code
 - When transcribing audio or choosing a whisper model → invoke `/hyperframes-captions` BEFORE running any transcription tool
+- When generating speech from text (narration, voiceover, TTS) → invoke `/hyperframes-tts` BEFORE running any TTS command
 - When creating a video from audio (music video, lyric video, audio visualizer with text) → invoke BOTH `/hyperframes-compose` AND `/hyperframes-captions`
 - When writing GSAP animations → invoke `/gsap-core` and `/gsap-timeline` BEFORE writing any code
 - When optimizing animation performance → invoke `/gsap-performance` BEFORE making changes
@@ -129,3 +131,46 @@ If captions are inaccurate (wrong words, bad timing):
 3. **Use an external API**: Transcribe via OpenAI or Groq Whisper API, then import the JSON with `hyperframes transcribe response.json`
 
 See the `/hyperframes-captions` skill for full details on model selection and API usage.
+
+## Text-to-Speech
+
+Generate speech audio locally using Kokoro-82M (no API key, runs on CPU). Useful for adding voiceovers to compositions.
+
+### Quick reference
+
+```bash
+# Generate speech from text
+npx hyperframes tts "Welcome to HyperFrames"
+
+# Choose a voice and output path
+npx hyperframes tts "Hello world" --voice am_adam --output narration.wav
+
+# Read text from a file
+npx hyperframes tts script.txt --voice bf_emma
+
+# Adjust speech speed
+npx hyperframes tts "Fast narration" --speed 1.2
+
+# List available voices
+npx hyperframes tts --list
+```
+
+### Voices
+
+Default voice is `af_heart`. The model ships with 54 voices across 8 languages:
+
+| Voice ID     | Name    | Language | Gender |
+| ------------ | ------- | -------- | ------ |
+| `af_heart`   | Heart   | en-US    | Female |
+| `af_nova`    | Nova    | en-US    | Female |
+| `am_adam`    | Adam    | en-US    | Male   |
+| `am_michael` | Michael | en-US    | Male   |
+| `bf_emma`    | Emma    | en-GB    | Female |
+| `bm_george`  | George  | en-GB    | Male   |
+
+Use `npx hyperframes tts --list` for the full set, or pass any valid Kokoro voice ID.
+
+### Requirements
+
+- Python 3.8+ (auto-installs `kokoro-onnx` package on first run)
+- Model downloads automatically on first use (~311 MB model + ~27 MB voices, cached in `~/.cache/hyperframes/tts/`)

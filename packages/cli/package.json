@@ -21,7 +21,7 @@
     "build:fonts": "cd ../producer && tsx scripts/generate-font-data.ts",
     "build:studio": "cd ../studio && bun run build",
     "build:runtime": "tsx scripts/build-runtime.ts",
-    "build:copy": "mkdir -p dist/studio dist/docs dist/templates dist/skills && cp -r ../studio/dist/* dist/studio/ && cp -r src/templates/blank src/templates/_shared dist/templates/ && cp -r ../../skills/hyperframes-compose ../../skills/hyperframes-captions dist/skills/ && (cp src/docs/*.md dist/docs/ 2>/dev/null || true)",
+    "build:copy": "mkdir -p dist/studio dist/docs dist/templates dist/skills && cp -r ../studio/dist/* dist/studio/ && cp -r src/templates/blank src/templates/_shared dist/templates/ && cp -r ../../skills/hyperframes-compose ../../skills/hyperframes-captions ../../skills/hyperframes-tts dist/skills/ && (cp src/docs/*.md dist/docs/ 2>/dev/null || true)",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
