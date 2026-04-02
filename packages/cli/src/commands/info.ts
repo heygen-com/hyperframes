@@ -46,13 +46,13 @@ export default defineCommand({
     const heightMatch =
       html.match(/data-composition-id[^>]*data-height=["'](\d+)["']/) ||
       html.match(/data-height=["'](\d+)["'][^>]*data-composition-id/);
-    const width = widthMatch
-      ? parseInt(widthMatch[1]!, 10)
+    const width = widthMatch?.[1]
+      ? parseInt(widthMatch[1], 10)
       : parsed.resolution === "portrait"
         ? 1080
         : 1920;
-    const height = heightMatch
-      ? parseInt(heightMatch[1]!, 10)
+    const height = heightMatch?.[1]
+      ? parseInt(heightMatch[1], 10)
       : parsed.resolution === "portrait"
         ? 1920
         : 1080;
