@@ -73,6 +73,27 @@ npx hyperframes tts script.txt --voice bf_emma --output narration.wav
 
 The model handles long text well but very long inputs (>5 minutes of speech) may benefit from splitting into segments.
 
+## Using External TTS
+
+Kokoro-82M is the built-in default, but users can bring any TTS source. Guide them when:
+
+- **They need a specific voice or voice clone** — ElevenLabs, PlayHT, or HeyGen's API offer custom/cloned voices
+- **They need a language Kokoro doesn't support well** — Azure, Google Cloud TTS, or Amazon Polly have broader language coverage
+- **They need higher quality for production** — cloud TTS APIs (ElevenLabs, OpenAI TTS) can produce more natural speech for high-stakes content
+- **They already have audio** — any `.wav` or `.mp3` file works; no TTS command needed
+
+To use external TTS, generate the audio however they prefer and drop it into the project:
+
+```bash
+# Use the audio file directly in a composition — no hyperframes tts needed
+# Just reference it as src="narration.wav" in the <audio> element
+
+# If captions are needed, transcribe the external audio:
+npx hyperframes transcribe narration.wav
+```
+
+The rest of the workflow (composition, captions) is identical regardless of TTS source.
+
 ## Requirements
 
 - Python 3.8+ with `kokoro-onnx` and `soundfile` installed (`pip install kokoro-onnx soundfile`)
