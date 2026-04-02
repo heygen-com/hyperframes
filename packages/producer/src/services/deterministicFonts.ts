@@ -73,6 +73,34 @@ const CANONICAL_FONTS: Record<string, CanonicalFontSpec> = {
     packageName: "@fontsource/eb-garamond",
     faces: [{ weight: "400" }, { weight: "700" }],
   },
+  "playfair-display": {
+    packageName: "@fontsource/playfair-display",
+    faces: [{ weight: "400" }, { weight: "700" }, { weight: "900" }],
+  },
+  "source-code-pro": {
+    packageName: "@fontsource/source-code-pro",
+    faces: [{ weight: "400" }, { weight: "700" }],
+  },
+  "noto-sans-jp": {
+    packageName: "@fontsource/noto-sans-jp",
+    faces: [{ weight: "400" }, { weight: "700" }],
+  },
+  roboto: {
+    packageName: "@fontsource/roboto",
+    faces: [{ weight: "400" }, { weight: "700" }, { weight: "900" }],
+  },
+  "open-sans": {
+    packageName: "@fontsource/open-sans",
+    faces: [{ weight: "400" }, { weight: "700" }],
+  },
+  lato: {
+    packageName: "@fontsource/lato",
+    faces: [{ weight: "400" }, { weight: "700" }, { weight: "900" }],
+  },
+  poppins: {
+    packageName: "@fontsource/poppins",
+    faces: [{ weight: "400" }, { weight: "700" }, { weight: "900" }],
+  },
 };
 
 const FONT_ALIASES: Record<string, keyof typeof CANONICAL_FONTS> = {
@@ -98,6 +126,15 @@ const FONT_ALIASES: Record<string, keyof typeof CANONICAL_FONTS> = {
   courier: "jetbrains-mono",
   "eb garamond": "eb-garamond",
   garamond: "eb-garamond",
+  "playfair display": "playfair-display",
+  "source code pro": "source-code-pro",
+  "noto sans jp": "noto-sans-jp",
+  "noto sans japanese": "noto-sans-jp",
+  roboto: "roboto",
+  "open sans": "open-sans",
+  lato: "lato",
+  poppins: "poppins",
+  "segoe ui": "roboto",
 };
 
 function normalizeFamilyName(family: string): string {
