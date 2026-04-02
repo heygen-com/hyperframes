@@ -124,6 +124,14 @@ const COMMAND_EXAMPLES: Record<string, Example[]> = {
     ["Install to Cursor (project-level)", "hyperframes skills --cursor"],
     ["Install to specific tools", "hyperframes skills --claude --gemini"],
   ],
+  tts: [
+    ["Generate speech from text", 'hyperframes tts "Welcome to HyperFrames"'],
+    ["Choose a voice", 'hyperframes tts "Hello world" --voice am_adam'],
+    ["Save to a specific file", 'hyperframes tts "Intro" --voice bf_emma --output narration.wav'],
+    ["Adjust speech speed", 'hyperframes tts "Slow and clear" --speed 0.8'],
+    ["Read text from a file", "hyperframes tts script.txt"],
+    ["List available voices", "hyperframes tts --list"],
+  ],
   transcribe: [
     ["Transcribe an audio file", "hyperframes transcribe audio.mp3"],
     ["Transcribe a video file", "hyperframes transcribe video.mp4"],
