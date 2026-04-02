@@ -37,6 +37,7 @@ const subCommands = {
   docs: () => import("./commands/docs.js").then((m) => m.default),
   doctor: () => import("./commands/doctor.js").then((m) => m.default),
   upgrade: () => import("./commands/upgrade.js").then((m) => m.default),
+  skills: () => import("./commands/skills.js").then((m) => m.default),
   telemetry: () => import("./commands/telemetry.js").then((m) => m.default),
   validate: () => import("./commands/validate.js").then((m) => m.default),
 };
