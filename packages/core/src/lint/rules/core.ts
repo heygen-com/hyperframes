@@ -199,8 +199,8 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
     ];
 
     for (const script of scripts) {
-      // Strip single-line comments to avoid false positives
-      const stripped = script.content.replace(/\/\/.*$/gm, "");
+      // Strip comments to avoid false positives
+      const stripped = script.content.replace(/\/\/.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "");
       for (const { pattern, label, hint } of patterns) {
         if (pattern.test(stripped)) {
           findings.push({

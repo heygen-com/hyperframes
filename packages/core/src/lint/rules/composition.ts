@@ -173,8 +173,9 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
     for (const [track, clips] of trackMap) {
       clips.sort((a, b) => a.start - b.start);
       for (let i = 0; i < clips.length - 1; i++) {
-        const current = clips[i]!;
-        const next = clips[i + 1]!;
+        const current = clips[i];
+        const next = clips[i + 1];
+        if (!current || !next) continue;
         if (current.end > next.start) {
           findings.push({
             code: "overlapping_clips_same_track",
@@ -194,8 +195,8 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
   ({ scripts }) => {
     const findings: HyperframeLintFinding[] = [];
     for (const script of scripts) {
-      // Strip single-line comments to avoid false positives
-      const stripped = script.content.replace(/\/\/.*$/gm, "");
+      // Strip comments to avoid false positives
+      const stripped = script.content.replace(/\/\/.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "");
       if (/requestAnimationFrame\s*\(/.test(stripped)) {
         findings.push({
           code: "requestanimationframe_in_composition",
