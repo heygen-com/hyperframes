@@ -31,7 +31,6 @@ const subCommands = {
   compositions: () => import("./commands/compositions.js").then((m) => m.default),
   benchmark: () => import("./commands/benchmark.js").then((m) => m.default),
   browser: () => import("./commands/browser.js").then((m) => m.default),
-  skills: () => import("./commands/install-skills.js").then((m) => m.default),
   transcribe: () => import("./commands/transcribe.js").then((m) => m.default),
   docs: () => import("./commands/docs.js").then((m) => m.default),
   doctor: () => import("./commands/doctor.js").then((m) => m.default),
