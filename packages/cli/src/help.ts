@@ -87,9 +87,7 @@ async function loadExamples(name: string): Promise<Example[] | undefined> {
 
 // Commands without their own file (e.g. listed in help but not yet a real command)
 const STATIC_EXAMPLES: Record<string, Example[]> = {
-  skills: [
-    ["Install all skills to all supported AI tools", "hyperframes skills"],
-  ],
+  skills: [["Install all skills to all supported AI tools", "hyperframes skills"]],
 };
 
 // ── Render root help ───────────────────────────────────────────────────────

@@ -1,5 +1,5 @@
 import { defineCommand } from "citty";
-import { execFileSync, execFile } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import * as clack from "@clack/prompts";
 import { c } from "../ui/colors.js";
 
@@ -12,20 +12,17 @@ function hasNpx(): boolean {
   }
 }
 
-function runSkillsAdd(repo: string, extraArgs: string[]): Promise<void> {
+function runSkillsAdd(repo: string): Promise<void> {
   return new Promise((resolve, reject) => {
-    execFile(
-      "npx",
-      ["skills", "add", repo, "--all", "-g", ...extraArgs],
-      {
-        stdio: "ignore",
-        timeout: 120_000,
-      },
-      (error) => {
-        if (error) reject(error);
-        else resolve();
-      },
-    );
+    const child = spawn("npx", ["skills", "add", repo, "--all", "-g"], {
+      stdio: "ignore",
+      timeout: 120_000,
+    });
+    child.on("close", (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(`npx skills add exited with code ${code}`));
+    });
+    child.on("error", reject);
   });
 }
 
@@ -56,7 +53,7 @@ export default defineCommand({
       const spinner = clack.spinner();
       spinner.start(`Installing ${source.name} skills...`);
       try {
-        await runSkillsAdd(source.repo, []);
+        await runSkillsAdd(source.repo);
         installed.push(source.name);
         spinner.stop(c.success(`${source.name} skills installed`));
       } catch {
