@@ -80,6 +80,15 @@ bunx oxfmt --check <files> # Format (check only, used by pre-commit hook)
 
 Always run both on changed files before committing. The lefthook pre-commit hook runs `bunx oxlint` and `bunx oxfmt --check` automatically.
 
+### Adding CLI Commands
+
+When adding a new CLI command:
+
+1. Define the command in `packages/cli/src/commands/<name>.ts` using `defineCommand` from citty
+2. Register it in `packages/cli/src/cli.ts` under `subCommands` (lazy-loaded)
+3. **Add examples to `packages/cli/src/help.ts`** in the `COMMAND_EXAMPLES` record — every command must have `--help` examples
+4. Validate by running `npx tsx packages/cli/src/cli.ts <name> --help` and verifying the examples section appears
+
 ## Key Concepts
 
 - **Compositions** are HTML files with `data-*` attributes defining timeline, tracks, and media
