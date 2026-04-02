@@ -19,7 +19,7 @@
     },
     "packages/cli": {
       "name": "@hyperframes/cli",
-      "version": "0.1.15",
+      "version": "0.2.1",
       "bin": {
         "hyperframes": "./dist/cli.js",
       },
@@ -29,6 +29,7 @@
         "adm-zip": "^0.5.16",
         "cheerio": "^1.2.0",
         "citty": "^0.2.1",
+        "compare-versions": "^6.1.1",
         "esbuild": "^0.25.0",
         "giget": "^3.2.0",
         "hono": "^4.0.0",
@@ -59,7 +60,7 @@
     },
     "packages/core": {
       "name": "@hyperframes/core",
-      "version": "0.1.15",
+      "version": "0.2.1",
       "dependencies": {
         "@chenglou/pretext": "^0.0.3",
       },
@@ -85,7 +86,7 @@
     },
     "packages/engine": {
       "name": "@hyperframes/engine",
-      "version": "0.1.15",
+      "version": "0.2.1",
       "dependencies": {
         "@hono/node-server": "^1.13.0",
         "@hyperframes/core": "workspace:^",
@@ -102,7 +103,7 @@
     },
     "packages/producer": {
       "name": "@hyperframes/producer",
-      "version": "0.1.15",
+      "version": "0.2.1",
       "dependencies": {
         "@fontsource/archivo-black": "^5.2.8",
         "@fontsource/eb-garamond": "^5.2.7",
@@ -133,7 +134,7 @@
     },
     "packages/studio": {
       "name": "@hyperframes/studio",
-      "version": "0.1.15",
+      "version": "0.2.1",
       "dependencies": {
         "@codemirror/autocomplete": "^6.20.1",
         "@codemirror/commands": "^6.10.3",
@@ -806,6 +807,8 @@
     "commander": ["commander@4.1.1", "", {}, "sha512-NOKm8xhkzAjzFx8B2v5OAHT+u5pRQc2UCa2Vq9jYL/31o2wi9mxBA7LIFs3sV5VSC49z6pEhfbMULvShKj26WA=="],
 
     "compare-func": ["compare-func@2.0.0", "", { "dependencies": { "array-ify": "1.0.0", "dot-prop": "5.3.0" } }, "sha512-zHig5N+tPWARooBnb0Zx1MFcdfpyJrfTJ3Y5L+IFvUm8rM74hHz66z0gw0x4tijh5CorKkKUCnW82R2vmpeCRA=="],
+
+    "compare-versions": ["compare-versions@6.1.1", "", {}, "sha512-4hm4VPpIecmlg59CHXnRDnqGplJFrbLG4aFEl5vl6cK1u76ws3LLvX7ikFnTDl5vo39sjWD6AaDPYodJp/NNHg=="],
 
     "concurrently": ["concurrently@8.2.2", "", { "dependencies": { "chalk": "4.1.2", "date-fns": "2.30.0", "lodash": "4.17.23", "rxjs": "7.8.2", "shell-quote": "1.8.3", "spawn-command": "0.0.2", "supports-color": "8.1.1", "tree-kill": "1.2.2", "yargs": "17.7.2" }, "bin": { "conc": "dist/bin/concurrently.js", "concurrently": "dist/bin/concurrently.js" } }, "sha512-1dP4gpXFhei8IOtlXRE/T/4H88ElHgTiUzh71YUmtjTEHMSRS2Z/fgOxHSxxusGHogsRfxNq1vyAwxSC+EVyDg=="],
 
