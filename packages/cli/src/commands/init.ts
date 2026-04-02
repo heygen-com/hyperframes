@@ -23,70 +23,6 @@ import { fetchRemoteTemplate } from "../templates/remote.js";
 import { trackInitTemplate } from "../telemetry/events.js";
 import { hasFFmpeg } from "../whisper/manager.js";
 
-// ---------------------------------------------------------------------------
-// Install skills silently after scaffolding
-// ---------------------------------------------------------------------------
-
-async function installSkills(interactive: boolean): Promise<void> {
-  try {
-    const { installAllSkills, TARGETS } = await import("./install-skills.js");
-
-    let selectedTargets: string[] | undefined;
-
-    if (interactive) {
-      const choices = await clack.multiselect({
-        message: "Install skills for:",
-        options: TARGETS.map((t) => ({
-          value: t.flag,
-          label: t.name,
-          hint: t.dir,
-        })),
-        initialValues: TARGETS.filter((t) => t.defaultEnabled).map((t) => t.flag),
-        required: false,
-      });
-
-      if (clack.isCancel(choices)) {
-        return;
-      }
-
-      selectedTargets = choices as string[];
-      if (selectedTargets.length === 0) {
-        clack.log.info(c.dim("Skipping skills installation"));
-        return;
-      }
-    }
-
-    const spin = interactive ? clack.spinner() : null;
-    spin?.start("Installing AI coding skills...");
-
-    const result = await installAllSkills(selectedTargets, {
-      onProgress: (msg) => spin?.message(msg),
-    });
-    if (result.count > 0) {
-      const msg = `${result.count} skills installed (${result.targets.join(", ")})`;
-      if (spin) {
-        spin.stop(c.success(msg));
-      } else {
-        console.log(c.success(msg));
-      }
-      if (result.skipped.length > 0) {
-        const skipMsg = `Skipped: ${result.skipped.join(", ")} (repo not accessible)`;
-        if (interactive) {
-          clack.log.warn(c.dim(skipMsg));
-        } else {
-          console.log(c.dim(`  ${skipMsg}`));
-        }
-      }
-    } else {
-      spin?.stop(c.dim("No skills installed"));
-    }
-  } catch {
-    if (interactive) {
-      clack.log.warn(c.dim("Skills install skipped (no git or network)"));
-    }
-  }
-}
-
 interface VideoMeta {
   durationSeconds: number;
   width: number;
@@ -216,12 +152,6 @@ function getStaticTemplateDir(templateId: string): string {
 
 function getSharedTemplateDir(): string {
   return resolveAssetDir(["..", "templates", "_shared"], ["templates", "_shared"]);
-}
-
-function getBundledSkillsDir(): string {
-  // In dev: cli/src/commands/ → repo root skills/
-  // In built: cli/dist/ → cli/dist/skills/
-  return resolveAssetDir(["..", "..", "..", "..", "skills"], ["skills"]);
 }
 
 function patchVideoSrc(
@@ -405,20 +335,6 @@ async function scaffoldProject(
       }
     }
   }
-
-  // Copy project-level skills (.claude/skills/) for immediate availability
-  const skillsSrcDir = getBundledSkillsDir();
-  if (existsSync(skillsSrcDir)) {
-    const projectSkills = ["hyperframes-compose", "hyperframes-captions", "hyperframes-cli"];
-    for (const skill of projectSkills) {
-      const src = join(skillsSrcDir, skill);
-      if (existsSync(src)) {
-        const dest = resolve(destDir, ".claude", "skills", skill);
-        mkdirSync(dest, { recursive: true });
-        cpSync(src, dest, { recursive: true });
-      }
-    }
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -453,10 +369,6 @@ Examples:
       description: "Path to an audio file (MP3, WAV, M4A)",
       alias: "a",
     },
-    "skip-skills": {
-      type: "boolean",
-      description: "Skip AI coding skills installation",
-    },
     "skip-transcribe": {
       type: "boolean",
       description: "Skip whisper transcription",
@@ -480,7 +392,6 @@ Examples:
     const templateFlag = args.template;
     const videoFlag = args.video;
     const audioFlag = args.audio;
-    const skipSkills = args["skip-skills"] === true;
     const skipTranscribe = args["skip-transcribe"] === true;
     const nonInteractive = args["non-interactive"] === true;
     const modelFlag = args.model;
@@ -584,11 +495,6 @@ Examples:
         await patchTranscript(destDir, transcriptFile);
       }
 
-      // Skills
-      if (!skipSkills) {
-        await installSkills(false);
-      }
-
       console.log(c.success(`Created ${c.accent(name + "/")}`));
       for (const f of readdirSync(destDir).filter((f) => !f.startsWith("."))) {
         console.log(`  ${c.accent(f)}`);
@@ -596,18 +502,18 @@ Examples:
       console.log();
       console.log("Get started:");
       console.log();
-      console.log(`  ${c.accent("1.")} Open this project with your AI coding agent:`);
+      console.log(`  ${c.accent("1.")} Install AI coding skills (one-time):`);
+      console.log(`     ${c.accent("npx skills add heygen-com/hyperframes")}`);
+      console.log();
+      console.log(`  ${c.accent("2.")} Open this project with your AI coding agent:`);
       console.log(
         `     ${c.accent(`cd ${name}`)} then start ${c.accent("Claude Code")}, ${c.accent("Cursor")}, or your preferred agent`,
       );
-      console.log(
-        `     ${c.dim("AI skills are installed — your agent knows how to create and edit compositions.")}`,
-      );
       console.log();
-      console.log(`  ${c.accent("2.")} Preview in the browser:`);
+      console.log(`  ${c.accent("3.")} Preview in the browser:`);
       console.log(`     ${c.accent(`cd ${name}`)} && ${c.accent("npx hyperframes preview")}`);
       console.log();
-      console.log(`  ${c.accent("3.")} Render to MP4 when ready:`);
+      console.log(`  ${c.accent("4.")} Render to MP4 when ready:`);
       console.log(`     ${c.accent(`cd ${name}`)} && ${c.accent("npx hyperframes render")}`);
       console.log();
       console.log(`  ${c.dim("Full docs: hyperframes.heygen.com")}`);
@@ -780,17 +686,12 @@ Examples:
       await patchTranscript(destDir, transcriptFile);
     }
 
-    // 5. Install AI coding skills
-    if (!skipSkills) {
-      await installSkills(true);
-    }
-
     const files = readdirSync(destDir);
     clack.note(files.map((f) => c.accent(f)).join("\n"), c.success(`Created ${name}/`));
 
     clack.log.message(
-      `${c.dim("Tip:")} Open this project with ${c.accent("Claude Code")}, ${c.accent("Cursor")}, or your preferred AI agent.\n` +
-        `${c.dim("     AI skills are installed — your agent knows how to create and edit compositions.")}`,
+      `${c.dim("Tip:")} Install AI coding skills: ${c.accent("npx skills add heygen-com/hyperframes")}\n` +
+        `${c.dim("     Then open this project with")} ${c.accent("Claude Code")}${c.dim(",")} ${c.accent("Cursor")}${c.dim(", or your preferred agent.")}`,
     );
 
     // Auto-launch studio preview
