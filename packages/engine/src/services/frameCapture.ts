@@ -150,13 +150,17 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
     const type = msg.type();
     const text = msg.text();
 
-    // Suppress font-loading 404s — these are expected when deterministic font
-    // injection replaces Google Fonts @import URLs with embedded base64 data.
-    if (type === "error" && text.startsWith("Failed to load resource")) return;
+    // Downgrade "Failed to load resource" to buffer-only — these are typically
+    // font 404s from @import URLs replaced by deterministic font injection.
+    // Real asset failures are caught by the file server's own 404 logging.
+    // Still stored in browserConsoleBuffer for diagnostics if needed.
+    const isResourceLoadError = type === "error" && text.startsWith("Failed to load resource");
 
     const prefix =
       type === "error" ? "[Browser:ERROR]" : type === "warn" ? "[Browser:WARN]" : "[Browser]";
-    console.log(`${prefix} ${text}`);
+    if (!isResourceLoadError) {
+      console.log(`${prefix} ${text}`);
+    }
 
     session.browserConsoleBuffer.push(`${prefix} ${text}`);
     if (session.browserConsoleBuffer.length > BROWSER_CONSOLE_BUFFER_SIZE) {
