@@ -1,3 +1,4 @@
+import { compareVersions } from "compare-versions";
 import { readConfig, writeConfig } from "../telemetry/config.js";
 import { VERSION } from "../version.js";
 import { isDevMode } from "./env.js";
@@ -6,14 +7,13 @@ const NPM_REGISTRY_URL = "https://registry.npmjs.org/hyperframes/latest";
 const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
 const FETCH_TIMEOUT_MS = 3000;
 
+/** Returns true if `a` is newer than `b` per semver (handles alpha, beta, rc). */
 function isNewerSemver(a: string, b: string): boolean {
-  const pa = a.split(".").map(Number);
-  const pb = b.split(".").map(Number);
-  for (let i = 0; i < 3; i++) {
-    if ((pa[i] ?? 0) > (pb[i] ?? 0)) return true;
-    if ((pa[i] ?? 0) < (pb[i] ?? 0)) return false;
+  try {
+    return compareVersions(a, b) > 0;
+  } catch {
+    return a !== b;
   }
-  return false;
 }
 
 export interface UpdateCheckResult {
