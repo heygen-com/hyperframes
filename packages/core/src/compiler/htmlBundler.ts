@@ -13,7 +13,7 @@ import { validateHyperframeHtmlContract } from "./staticGuard";
  */
 function parseHTMLContent(html: string): Document {
   const trimmed = html.trimStart().toLowerCase();
-  if (trimmed.startsWith("<!") || trimmed.startsWith("<html")) {
+  if (trimmed.startsWith("<!doctype") || trimmed.startsWith("<html")) {
     return parseHTML(html).document;
   }
   return parseHTML(`<!DOCTYPE html><html><head></head><body>${html}</body></html>`).document;
@@ -192,16 +192,6 @@ function rewriteCssUrlsWithInlinedAssets(cssText: string, projectDir: string): s
   );
 }
 
-/** Check whether an element is nested inside a <template> element. */
-function isInsideTemplate(el: Element): boolean {
-  let parent = el.parentElement;
-  while (parent) {
-    if (parent.tagName === "TEMPLATE") return true;
-    parent = parent.parentElement;
-  }
-  return false;
-}
-
 function enforceCompositionPixelSizing(document: Document): void {
   const compositionEls = [
     ...document.querySelectorAll("[data-composition-id][data-width][data-height]"),
@@ -314,7 +304,9 @@ function coalesceHeadStylesAndBodyScripts(document: Document): void {
     for (const el of bodyInlineScripts) el.remove();
     if (mergedJs) {
       const stripped = stripJsCommentsParserSafe(mergedJs);
-      document.body.insertAdjacentHTML("beforeend", `<script>${stripped}</script>`);
+      const inlineScript = document.createElement("script");
+      inlineScript.textContent = stripped;
+      document.body.appendChild(inlineScript);
     }
   }
 }
@@ -510,10 +502,9 @@ export async function bundleToSingleHtml(
     // Find the matching host element (must have data-composition-id, no data-composition-src,
     // and must NOT be inside a <template> element).
     const hostSelector = `[data-composition-id="${compId}"]:not([data-composition-src])`;
-    const candidates = [...document.querySelectorAll(hostSelector)].filter(
-      (el) => !isInsideTemplate(el),
-    );
-    const host = candidates[0];
+    // linkedom follows the DOM spec: querySelectorAll does not reach inside <template>
+    // content, so no isInsideTemplate filter is needed.
+    const host = document.querySelector(hostSelector);
     if (!host) continue;
     if (host.children.length > 0) continue; // already has content
 
@@ -581,7 +572,9 @@ export async function bundleToSingleHtml(
   // that aren't already present in the main document.
   for (const extSrc of compExternalScriptSrcs) {
     if (!document.querySelector(`script[src="${extSrc}"]`)) {
-      document.body.insertAdjacentHTML("beforeend", `<script src="${extSrc}"></script>`);
+      const extScript = document.createElement("script");
+      extScript.setAttribute("src", extSrc);
+      document.body.appendChild(extScript);
     }
   }
 
@@ -591,10 +584,9 @@ export async function bundleToSingleHtml(
     document.head.appendChild(style);
   }
   if (compScriptChunks.length) {
-    document.body.insertAdjacentHTML(
-      "beforeend",
-      `<script>${compScriptChunks.join("\n;\n")}</script>`,
-    );
+    const compScript = document.createElement("script");
+    compScript.textContent = compScriptChunks.join("\n;\n");
+    document.body.appendChild(compScript);
   }
 
   enforceCompositionPixelSizing(document);
