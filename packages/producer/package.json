@@ -66,6 +66,13 @@
     "puppeteer-core": "^24.39.1"
   },
   "devDependencies": {
+    "@fontsource/lato": "^5.2.7",
+    "@fontsource/noto-sans-jp": "^5.2.9",
+    "@fontsource/open-sans": "^5.2.7",
+    "@fontsource/playfair-display": "^5.2.8",
+    "@fontsource/poppins": "^5.2.7",
+    "@fontsource/roboto": "^5.2.10",
+    "@fontsource/source-code-pro": "^5.2.7",
     "@types/node": "^22.10.1",
     "esbuild": "^0.27.2",
     "tsx": "^4.7.0",

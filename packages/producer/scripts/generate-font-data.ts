@@ -66,6 +66,34 @@ const CANONICAL_FONTS: Record<string, CanonicalFontSpec> = {
     packageName: "@fontsource/eb-garamond",
     faces: [{ weight: "400" }, { weight: "700" }],
   },
+  "playfair-display": {
+    packageName: "@fontsource/playfair-display",
+    faces: [{ weight: "400" }, { weight: "700" }, { weight: "900" }],
+  },
+  "source-code-pro": {
+    packageName: "@fontsource/source-code-pro",
+    faces: [{ weight: "400" }, { weight: "700" }],
+  },
+  "noto-sans-jp": {
+    packageName: "@fontsource/noto-sans-jp",
+    faces: [{ weight: "400" }, { weight: "700" }],
+  },
+  roboto: {
+    packageName: "@fontsource/roboto",
+    faces: [{ weight: "400" }, { weight: "700" }, { weight: "900" }],
+  },
+  "open-sans": {
+    packageName: "@fontsource/open-sans",
+    faces: [{ weight: "400" }, { weight: "700" }],
+  },
+  lato: {
+    packageName: "@fontsource/lato",
+    faces: [{ weight: "400" }, { weight: "700" }, { weight: "900" }],
+  },
+  poppins: {
+    packageName: "@fontsource/poppins",
+    faces: [{ weight: "400" }, { weight: "700" }, { weight: "900" }],
+  },
 };
 
 function packageRoot(packageName: string): string {
