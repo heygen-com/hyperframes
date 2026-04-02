@@ -39,14 +39,11 @@ The skills encode HyperFrames-specific patterns (e.g., required `class="clip"` o
 ### Installing skills
 
 ```bash
-npx hyperframes skills            # install to Claude, Gemini, Codex (global)
-npx hyperframes skills --claude   # Claude Code only
-npx hyperframes skills --windsurf # Windsurf (project-level)
-npx hyperframes skills --cursor --cline --roo --trae  # multiple project targets
-npx skills add greensock/gsap-skills  # alternative: via skills CLI
+npx skills add heygen-com/hyperframes   # HyperFrames skills
+npx skills add greensock/gsap-skills     # GSAP skills
 ```
 
-Supported targets: Claude Code, Gemini CLI, Codex CLI (global, enabled by default), Cursor, Windsurf, Cline, Roo Code, Trae (project-level, opt-in via flag).
+Uses [vercel-labs/skills](https://github.com/vercel-labs/skills). Installs to Claude Code, Gemini CLI, and Codex CLI by default. Pass `-a <agent>` for other targets.
 
 ## Project Overview
 
@@ -109,13 +106,13 @@ npx hyperframes transcribe openai-response.json
 
 Default is `small.en`. Upgrade for better accuracy:
 
-| Model       | Size   | Use case                         |
-| ----------- | ------ | -------------------------------- |
-| `tiny`      | 75 MB  | Quick testing                    |
-| `base`      | 142 MB | Short clips, clear audio         |
-| `small`     | 466 MB | **Default** — most content       |
-| `medium`    | 1.5 GB | Important content, noisy audio   |
-| `large-v3`  | 3.1 GB | Production quality               |
+| Model      | Size   | Use case                       |
+| ---------- | ------ | ------------------------------ |
+| `tiny`     | 75 MB  | Quick testing                  |
+| `base`     | 142 MB | Short clips, clear audio       |
+| `small`    | 466 MB | **Default** — most content     |
+| `medium`   | 1.5 GB | Important content, noisy audio |
+| `large-v3` | 3.1 GB | Production quality             |
 
 **Only use `.en` suffix when you know the audio is English.** `.en` models translate non-English audio into English instead of transcribing it.
 
