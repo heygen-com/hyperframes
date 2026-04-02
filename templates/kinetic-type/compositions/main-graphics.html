@@ -215,7 +215,6 @@
         display: flex;
         padding: 40px;
         color: black;
-        transform: translateX(100%);
         z-index: 2;
       }
       .swiss-grid {
@@ -492,6 +491,7 @@
       }
     </style>
 
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
     <script>
       const tl = gsap.timeline({ paused: true });
 
@@ -523,8 +523,9 @@
       tl.to("#white-wipe", { xPercent: 100, duration: 0.2, ease: "power2.out" }, 2.2);
 
       // --- Scene 2: Swiss Style (2.0s - 5.0s) ---
+      gsap.set(".swiss-panel", { xPercent: 100 });
       tl.to("#scene-2", { opacity: 1, duration: 0.1 }, 2.2);
-      tl.to(".swiss-panel", { x: 0, duration: 0.8, ease: "expo.out" }, 2.3);
+      tl.to(".swiss-panel", { xPercent: 0, duration: 0.8, ease: "expo.out" }, 2.3);
       tl.to(".swiss-title", { opacity: 1, duration: 0.1 }, 2.5);
       tl.to(".swiss-subtitle", { opacity: 1, y: 0, duration: 0.4 }, 2.7);
       tl.to(
@@ -534,7 +535,7 @@
       );
       tl.to(".swiss-circle", { opacity: 1, scale: 1.2, duration: 0.6, ease: "back.out" }, 3.2);
       tl.to(".swiss-square", { opacity: 1, rotation: 45, duration: 0.6, ease: "back.out" }, 3.4);
-      tl.to(".swiss-panel", { x: "120%", duration: 0.7, ease: "expo.in" }, 4.7);
+      tl.to(".swiss-panel", { xPercent: 120, duration: 0.7, ease: "expo.in" }, 4.7);
       tl.to("#scene-2", { opacity: 0, duration: 0.1 }, 5.0);
 
       // --- Scene 3: Figma Config Style (5.3s - 9.6s) ---

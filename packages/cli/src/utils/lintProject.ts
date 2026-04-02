@@ -130,6 +130,7 @@ function lintAudioSrcNotFound(projectDir: string, htmlSources: string[]): Hyperf
     while ((match = audioSrcRe.exec(html)) !== null) {
       const src = match[1]!;
       if (/^(https?:|data:|blob:)/i.test(src)) continue;
+      if (/^__[A-Z_]+__$/.test(src)) continue; // Skip template placeholders
       const resolved = resolve(projectDir, src);
       if (!existsSync(resolved)) {
         missingSrcs.push(src);

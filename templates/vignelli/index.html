@@ -108,27 +108,6 @@
       data-start="0"
       data-duration="__VIDEO_DURATION__"
     >
-      <!-- A-Roll -->
-      <div id="a-roll-wrapper">
-        <video
-          id="a-roll"
-          src="__VIDEO_SRC__"
-          muted
-          playsinline
-          data-start="0"
-          data-duration="__VIDEO_DURATION__"
-          data-track-index="0"
-        ></video>
-      </div>
-      <audio
-        id="a-roll-audio"
-        src="__VIDEO_SRC__"
-        data-start="0"
-        data-duration="__VIDEO_DURATION__"
-        data-track-index="5"
-        data-volume="1"
-      ></audio>
-
       <!-- Transitions -->
       <div id="curtain-black" class="curtain"></div>
       <div id="curtain-red" class="curtain red"></div>
@@ -186,5 +165,26 @@
         window.__timelines["main-comp"] = tl;
       </script>
     </div>
+
+    <!-- A-Roll (direct child of body to avoid video_nested_in_timed_element) -->
+    <div id="a-roll-wrapper">
+      <video
+        id="a-roll"
+        src="__VIDEO_SRC__"
+        muted
+        playsinline
+        data-start="0"
+        data-duration="__VIDEO_DURATION__"
+        data-track-index="0"
+      ></video>
+    </div>
+    <audio
+      id="a-roll-audio"
+      src="__VIDEO_SRC__"
+      data-start="0"
+      data-duration="__VIDEO_DURATION__"
+      data-track-index="5"
+      data-volume="1"
+    ></audio>
   </body>
 </html>
