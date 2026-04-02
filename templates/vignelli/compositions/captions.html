@@ -50,9 +50,12 @@
         display: inline-block;
         letter-spacing: -0.02em; /* Tight Helvetica spacing */
         white-space: nowrap; /* Prevent wrapping at the element level */
+        max-width: 900px;
+        overflow: hidden;
       }
     </style>
 
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
     <script>
       (function () {
         const TRANSCRIPT = [
@@ -171,6 +174,9 @@
             },
             group.end - 0.3,
           );
+
+          // Hard kill to ensure caption is hidden
+          tl.set(div, { opacity: 0, visibility: "hidden" }, group.end);
         });
 
         window.__timelines = window.__timelines || {};

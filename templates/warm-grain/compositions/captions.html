@@ -43,9 +43,12 @@
         text-align: center;
         line-height: 1.2;
         white-space: nowrap;
+        max-width: 1600px;
+        overflow: hidden;
       }
     </style>
 
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
     <script>
       (function () {
         const script = [
@@ -114,6 +117,7 @@
 
         lines.forEach((line, index) => {
           // Fade in and set text
+          tl.set(box, { visibility: "visible" }, line.start);
           tl.to(
             box,
             {
@@ -137,6 +141,9 @@
             },
             line.end,
           );
+
+          // Hard kill to ensure caption is hidden
+          tl.set(box, { opacity: 0, visibility: "hidden" }, line.end + 0.1);
         });
 
         window.__timelines = window.__timelines || {};

@@ -132,7 +132,6 @@
         left: 50%;
         width: 1440px;
         height: 900px;
-        transform: translate(-50%, -50%) scale(0);
         background: white;
         border: 1px solid rgba(255, 255, 255, 0.2);
         box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3);
@@ -235,19 +234,16 @@
         font-size: 14px;
         font-weight: 600;
         border-radius: 4px;
-        transform: scale(0);
       }
 
       .width-label {
         top: -30px;
         left: 50%;
-        transform: translateX(-50%) scale(0);
       }
 
       .height-label {
         right: -45px;
         top: 50%;
-        transform: translateY(-50%) rotate(90deg) scale(0);
       }
 
       .selection-handles {
@@ -296,7 +292,6 @@
         backdrop-filter: blur(12px);
         -webkit-backdrop-filter: blur(12px);
         border-right: 1px solid rgba(255, 255, 255, 0.1);
-        transform: translateX(-320px);
         padding: 24px;
         z-index: 10;
         box-shadow: 4px 0 24px rgba(0, 0, 0, 0.2);
@@ -421,7 +416,6 @@
         white-space: nowrap;
         box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
         opacity: 0;
-        transform: translateX(-10px);
       }
 
       .cursor {
@@ -455,6 +449,7 @@
       }
     </style>
 
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
     <script>
       (function () {
         const tl = gsap.timeline({ paused: true });
@@ -462,6 +457,11 @@
         // Organic Cursor Ease
         const cursorEase = "back.out(1.2)";
 
+        gsap.set(".web-frame", { xPercent: -50, yPercent: -50, scale: 0 });
+        gsap.set(".width-label", { xPercent: -50, scale: 0 });
+        gsap.set(".height-label", { yPercent: -50, rotation: 90, scale: 0 });
+        gsap.set(".comment-bubble", { x: -10 });
+        gsap.set(".assets-panel", { x: -320 });
         gsap.set(".designer-cursor", { x: 200, y: 200 });
         gsap.set(".engineer-cursor", { x: -100, y: 500 });
         gsap.set(".pm-cursor", { x: 2000, y: 1100 });
@@ -489,7 +489,11 @@
         // Collaboration
         tl.to(".engineer-cursor", { x: 400, y: 400, duration: 1.2, ease: cursorEase }, 3.5);
         tl.to(".pm-cursor", { x: 1500, y: 800, duration: 1.5, ease: cursorEase }, 3.7);
-        tl.to(".engineer-cursor", { x: 960, y: 680, duration: 0.9, ease: cursorEase }, 4.5);
+        tl.to(
+          ".engineer-cursor",
+          { x: 960, y: 680, duration: 0.9, ease: cursorEase, overwrite: "auto" },
+          4.5,
+        );
         tl.to(".selection-handles", { opacity: 1, duration: 0.2 }, 5.3);
         tl.to(".cta-button", { outline: "2px solid #1ABCFE", duration: 0.1 }, 5.3);
 

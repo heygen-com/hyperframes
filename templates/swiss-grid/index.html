@@ -85,36 +85,7 @@
       data-duration="__VIDEO_DURATION__"
     >
       <!-- Background Grid -->
-      <img
-        id="bg-grid"
-        class="background-grid"
-        src="assets/swiss-grid.svg"
-        alt="Grid"
-        data-start="0"
-        data-duration="__VIDEO_DURATION__"
-        data-track-index="0"
-      />
-
-      <!-- A-roll Video -->
-      <div id="short_mag_cut_frame">
-        <video
-          id="short_mag_cut"
-          src="__VIDEO_SRC__"
-          muted
-          playsinline
-          data-start="0"
-          data-duration="__VIDEO_DURATION__"
-          data-track-index="1"
-        ></video>
-      </div>
-      <audio
-        id="a-roll-audio"
-        src="__VIDEO_SRC__"
-        data-start="0"
-        data-duration="__VIDEO_DURATION__"
-        data-track-index="5"
-        data-volume="1"
-      ></audio>
+      <img id="bg-grid" class="background-grid" src="assets/swiss-grid.svg" alt="Grid" />
 
       <!-- Intro Sub-composition -->
       <div
@@ -148,12 +119,6 @@
         data-duration="__VIDEO_DURATION__"
         data-track-index="4"
       ></div>
-
-      <!-- Sound Effects (src set dynamically; omitted to avoid 404s) -->
-      <audio id="sfx-intro" data-start="0" data-track-index="5" data-duration="1"></audio>
-      <audio id="sfx-stat1" data-start="1.86" data-track-index="5" data-duration="1"></audio>
-      <audio id="sfx-stat2" data-start="4.68" data-track-index="5" data-duration="1"></audio>
-      <audio id="sfx-stat3" data-start="8.88" data-track-index="5" data-duration="1"></audio>
 
       <script>
         window.__timelines = window.__timelines || {};
@@ -230,5 +195,26 @@
         window.__timelines["master"] = masterTL;
       </script>
     </div>
+
+    <!-- A-roll Video (direct child of body to avoid video_nested_in_timed_element) -->
+    <div id="short_mag_cut_frame">
+      <video
+        id="short_mag_cut"
+        src="__VIDEO_SRC__"
+        muted
+        playsinline
+        data-start="0"
+        data-duration="__VIDEO_DURATION__"
+        data-track-index="1"
+      ></video>
+    </div>
+    <audio
+      id="a-roll-audio"
+      src="__VIDEO_SRC__"
+      data-start="0"
+      data-duration="__VIDEO_DURATION__"
+      data-track-index="5"
+      data-volume="1"
+    ></audio>
   </body>
 </html>

@@ -272,6 +272,7 @@
       }
     </style>
 
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
     <script>
       (function () {
         const tl = gsap.timeline({ paused: true });
@@ -358,13 +359,21 @@
         }, "hold3+=1");
 
         // Visual click feedback
-        tl.to("#cursor", { scale: 0.8, duration: 0.05, yoyo: true, repeat: 1 }, "hold3+=1");
+        tl.to(
+          "#cursor",
+          { scale: 0.8, duration: 0.05, yoyo: true, repeat: 1, overwrite: "auto" },
+          "hold3+=1",
+        );
 
         // 11. Hold 0.3s
         tl.addLabel("hold4", "+=0.3");
 
         // 12. Cursor double-clicks "Pythom" — highlight in blue
-        tl.to("#cursor", { scale: 0.8, duration: 0.05, yoyo: true, repeat: 3 }, "hold4");
+        tl.to(
+          "#cursor",
+          { scale: 0.8, duration: 0.05, yoyo: true, repeat: 3, overwrite: "auto" },
+          "hold4",
+        );
         tl.add(() => {
           const textEl = document.querySelector("#python-text");
           if (!textEl) return;
@@ -400,8 +409,12 @@
         tl.addLabel("hold6", typingEnd + 0.5);
 
         // 16. Cursor moves slightly and clicks away to deselect
-        tl.to("#cursor", { left: 500, top: 580, duration: 0.3 }, "hold6");
-        tl.to("#cursor", { scale: 0.8, duration: 0.05, yoyo: true, repeat: 1 }, "hold6+=0.3");
+        tl.to("#cursor", { left: 500, top: 580, duration: 0.3, overwrite: "auto" }, "hold6");
+        tl.to(
+          "#cursor",
+          { scale: 0.8, duration: 0.05, yoyo: true, repeat: 1, overwrite: "auto" },
+          "hold6+=0.3",
+        );
         tl.to(".selection-border", { opacity: 0, duration: 0.1 }, "hold6+=0.3");
 
         // 17. 👍 emoji pops in
@@ -413,6 +426,7 @@
         // 19. Fade entire screen to white over 0.5s
         tl.to("#fade-overlay", { opacity: 1, duration: 0.5 }, "hold7");
 
+        window.__timelines = window.__timelines || {};
         window.__timelines["decision-tree"] = tl;
       })();
     </script>
