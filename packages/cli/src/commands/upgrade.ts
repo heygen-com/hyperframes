@@ -1,12 +1,13 @@
 import { defineCommand } from "citty";
 import type { Example } from "./_examples.js";
 import * as clack from "@clack/prompts";
+import { execSync } from "node:child_process";
 import { c } from "../ui/colors.js";
 
 export const examples: Example[] = [
   ["Check for updates interactively", "hyperframes upgrade"],
   ["Check for updates without prompting", "hyperframes upgrade --check"],
-  ["Show upgrade commands directly", "hyperframes upgrade --yes"],
+  ["Upgrade non-interactively", "hyperframes upgrade --yes"],
 ];
 import { VERSION } from "../version.js";
 import { checkForUpdate, withMeta } from "../utils/updateCheck.js";
@@ -66,12 +67,26 @@ export default defineCommand({
       }
     }
 
-    console.log();
-    console.log(`   ${c.accent("npm install -g hyperframes@" + result.latest)}`);
-    console.log(`   ${c.dim("or")}`);
-    console.log(`   ${c.accent("npx hyperframes@" + result.latest + " --version")}`);
-    console.log();
-
-    clack.outro(c.success("Run one of the commands above to upgrade."));
+    const installCmd = `npm install -g hyperframes@${result.latest}`;
+    if (autoYes) {
+      console.log();
+      console.log(`   ${c.dim("Running:")} ${c.accent(installCmd)}`);
+      console.log();
+      try {
+        execSync(installCmd, { stdio: "inherit" });
+        clack.outro(c.success(`Upgraded to v${result.latest}`));
+      } catch {
+        clack.outro(c.dim("Install failed. Try running manually:"));
+        console.log(`   ${c.accent(installCmd)}`);
+        process.exitCode = 1;
+      }
+    } else {
+      console.log();
+      console.log(`   ${c.accent(installCmd)}`);
+      console.log(`   ${c.dim("or")}`);
+      console.log(`   ${c.accent("npx hyperframes@" + result.latest + " --version")}`);
+      console.log();
+      clack.outro(c.success("Run one of the commands above to upgrade."));
+    }
   },
 });

@@ -150,17 +150,26 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
     const type = msg.type();
     const text = msg.text();
 
-    // Suppress font-loading 404s only. These are expected when deterministic
+    // Suppress font-loading 404s entirely. These are expected when deterministic
     // font injection replaces Google Fonts @import URLs with embedded base64.
-    // Narrowed to font CDN domains and font file extensions to avoid hiding
-    // real asset failures (images, scripts, videos).
     const isFontLoadError =
       type === "error" &&
       text.startsWith("Failed to load resource") &&
       /fonts\.googleapis|fonts\.gstatic|\.woff2?(\b|$)/i.test(text);
 
-    const prefix =
-      type === "error" ? "[Browser:ERROR]" : type === "warn" ? "[Browser:WARN]" : "[Browser]";
+    // Other "Failed to load resource" 404s are typically non-blocking (e.g.
+    // favicon, sourcemaps, optional assets). Prefix them so users know they
+    // are harmless and don't confuse them with real render errors.
+    const isResourceLoadError =
+      type === "error" && text.startsWith("Failed to load resource") && !isFontLoadError;
+
+    const prefix = isResourceLoadError
+      ? "[non-blocking]"
+      : type === "error"
+        ? "[Browser:ERROR]"
+        : type === "warn"
+          ? "[Browser:WARN]"
+          : "[Browser]";
     if (!isFontLoadError) {
       console.log(`${prefix} ${text}`);
     }

@@ -184,6 +184,44 @@ function getSingleClassSelector(selector: string): string | null {
   return match?.groups?.name || null;
 }
 
+function cssTransformToGsapProps(cssTransform: string): string | null {
+  const parts: string[] = [];
+
+  // translate(-50%, -50%) or translate(X, Y)
+  const translateMatch = cssTransform.match(
+    /translate\(\s*(-?[\d.]+)(%|px)?\s*,\s*(-?[\d.]+)(%|px)?\s*\)/,
+  );
+  if (translateMatch) {
+    const [, xVal, xUnit, yVal, yUnit] = translateMatch;
+    if (xUnit === "%") parts.push(`xPercent: ${xVal}`);
+    else parts.push(`x: ${xVal}`);
+    if (yUnit === "%") parts.push(`yPercent: ${yVal}`);
+    else parts.push(`y: ${yVal}`);
+  }
+
+  // translateX(-50%) or translateX(px)
+  const txMatch = cssTransform.match(/translateX\(\s*(-?[\d.]+)(%|px)?\s*\)/);
+  if (txMatch) {
+    const [, val, unit] = txMatch;
+    parts.push(unit === "%" ? `xPercent: ${val}` : `x: ${val}`);
+  }
+
+  // translateY(-50%) or translateY(px)
+  const tyMatch = cssTransform.match(/translateY\(\s*(-?[\d.]+)(%|px)?\s*\)/);
+  if (tyMatch) {
+    const [, val, unit] = tyMatch;
+    parts.push(unit === "%" ? `yPercent: ${val}` : `y: ${val}`);
+  }
+
+  // scale(N)
+  const scaleMatch = cssTransform.match(/scale\(\s*([\d.]+)\s*\)/);
+  if (scaleMatch) {
+    parts.push(`scale: ${scaleMatch[1]}`);
+  }
+
+  return parts.length > 0 ? parts.join(", ") : null;
+}
+
 // ── GSAP rules ─────────────────────────────────────────────────────────────
 
 export const gsapRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
@@ -334,6 +372,14 @@ export const gsapRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
 
       for (const [sel, { cssTransform, props, raw }] of conflicts) {
         const propList = [...props].join("/");
+        const gsapEquivalent = cssTransformToGsapProps(cssTransform);
+        const fixHint = gsapEquivalent
+          ? `Remove \`transform: ${cssTransform}\` from CSS and replace with GSAP properties: ${gsapEquivalent}. ` +
+            `Example: tl.fromTo('${sel}', { ${gsapEquivalent} }, { ${gsapEquivalent}, ...yourAnimation }). ` +
+            `tl.fromTo is exempt from this rule.`
+          : `Remove the transform from CSS and use tl.fromTo('${sel}', ` +
+            `{ xPercent: -50, x: -1000 }, { xPercent: -50, x: 0 }) so GSAP owns ` +
+            `the full transform state. tl.fromTo is exempt from this rule.`;
         findings.push({
           code: "gsap_css_transform_conflict",
           severity: "warning",
@@ -342,10 +388,7 @@ export const gsapRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
             `${propList}. GSAP will overwrite the full CSS transform, discarding any ` +
             `translateX(-50%) centering or CSS scale value.`,
           selector: sel,
-          fixHint:
-            `Remove the transform from CSS and use tl.fromTo('${sel}', ` +
-            `{ xPercent: -50, x: -1000 }, { xPercent: -50, x: 0 }) so GSAP owns ` +
-            `the full transform state. tl.fromTo is exempt from this rule.`,
+          fixHint,
           snippet: truncateSnippet(raw),
         });
       }

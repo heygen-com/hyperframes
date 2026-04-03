@@ -243,6 +243,26 @@ function buildFontFaceCss(requestedFamilies: Map<string, string>): {
   };
 }
 
+function warnUnresolvedFonts(unresolved: string[]): void {
+  const mapped = Object.entries(FONT_ALIASES)
+    .reduce<string[]>((acc, [alias, canonical]) => {
+      const display = alias === canonical ? alias : `${alias} → ${canonical}`;
+      if (!acc.includes(display)) acc.push(display);
+      return acc;
+    }, [])
+    .sort();
+  console.warn(
+    `[Compiler] No deterministic font mapping for: ${unresolved.join(", ")}\n` +
+      `  Mapped fonts: ${mapped.join(", ")}\n` +
+      `  To fix, pick one:\n` +
+      `    1. Use a mapped font name instead (see list above)\n` +
+      `    2. Add a @font-face block in your HTML with a local or hosted font file\n` +
+      `    3. Install the font locally on the render machine (Docker: add to Dockerfile)\n` +
+      `    4. Add an alias to FONT_ALIASES in deterministicFonts.ts (for contributors)\n` +
+      `  Docs: https://hyperframes.heygen.com/docs/fonts`,
+  );
+}
+
 export function injectDeterministicFontFaces(html: string): string {
   const existingFaces = extractExistingFontFaces(html);
   const requestedFamilies = extractRequestedFontFamilies(html);
@@ -261,7 +281,7 @@ export function injectDeterministicFontFaces(html: string): string {
   const { css, unresolved } = buildFontFaceCss(pendingFamilies);
   if (!css) {
     if (unresolved.length > 0) {
-      console.warn(`[Compiler] No deterministic font mapping for: ${unresolved.join(", ")}`);
+      warnUnresolvedFonts(unresolved);
     }
     return html;
   }
@@ -281,7 +301,7 @@ export function injectDeterministicFontFaces(html: string): string {
     `[Compiler] Injected deterministic @font-face rules for ${pendingFamilies.size - unresolved.length} requested font families`,
   );
   if (unresolved.length > 0) {
-    console.warn(`[Compiler] Unresolved font families left dynamic: ${unresolved.join(", ")}`);
+    warnUnresolvedFonts(unresolved);
   }
 
   return document.toString();

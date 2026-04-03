@@ -7,7 +7,7 @@ export const examples: Example[] = [
   ["Render transparent WebM overlay", "hyperframes render --format webm --output overlay.webm"],
   ["High quality at 60fps", "hyperframes render --fps 60 --quality high --output hd.mp4"],
   ["Deterministic render via Docker", "hyperframes render --docker --output deterministic.mp4"],
-  ["Parallel rendering with 4 workers", "hyperframes render --workers 4 --output fast.mp4"],
+  ["Parallel rendering with 6 workers", "hyperframes render --concurrency 6 --output fast.mp4"],
 ];
 import { cpus, freemem } from "node:os";
 import { resolve, dirname, join } from "node:path";
@@ -28,9 +28,9 @@ const VALID_FORMAT = new Set(["mp4", "webm"]);
 
 const CPU_CORE_COUNT = cpus().length;
 
-/** Half of CPU cores, capped at 4. Each worker spawns a Chrome process (~256 MB). */
+/** 3/4 of CPU cores, capped at 6. Each worker spawns a Chrome process (~256 MB). */
 function defaultWorkerCount(): number {
-  return Math.max(1, Math.min(Math.floor(CPU_CORE_COUNT / 2), 4));
+  return Math.max(1, Math.min(Math.floor((CPU_CORE_COUNT * 3) / 4), 6));
 }
 
 export default defineCommand({
@@ -65,8 +65,9 @@ export default defineCommand({
     },
     workers: {
       type: "string",
+      alias: "concurrency",
       description:
-        "Parallel render workers (1-8 or 'auto'). Default: half your CPU cores, max 4. " +
+        "Parallel render workers (1-8 or 'auto'). Default: 3/4 of your CPU cores, max 6. " +
         "Each worker launches a separate Chrome process.",
     },
     docker: {
@@ -155,7 +156,7 @@ export default defineCommand({
       const workerLabel =
         args.workers != null
           ? `${workerCount} workers`
-          : `${workerCount} workers (auto \u2014 half of ${CPU_CORE_COUNT} cores)`;
+          : `${workerCount} workers (auto — ${CPU_CORE_COUNT} cores detected)`;
       console.log("");
       console.log(
         c.accent("\u25C6") +

@@ -48,21 +48,20 @@
         data-volume="1"
       ></audio>
 
-      <div
-        id="captions-comp"
-        data-composition-id="captions"
-        data-composition-src="compositions/captions.html"
-        data-start="0"
-        data-duration="__VIDEO_DURATION__"
-        data-track-index="3"
-        data-width="1920"
-        data-height="1080"
-      ></div>
+      <!--
+        ANIMATION PATTERN: The clip div controls timing/visibility.
+        Always put your content in a CHILD element and animate THAT.
+
+        <div class="clip" ...>        ← timing only, don't animate this
+          <div id="my-title">...</div> ← animate this with GSAP
+        </div>
+      -->
     </div>
 
     <script>
       window.__timelines = window.__timelines || {};
       const tl = gsap.timeline({ paused: true });
+      // tl.from("#my-title", { opacity: 0, y: -50, duration: 1 }, 0);
       window.__timelines["main"] = tl;
     </script>
   </body>
