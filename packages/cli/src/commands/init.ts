@@ -7,6 +7,7 @@ export const examples: Example[] = [
   ["Start from an existing video file", "hyperframes init my-video --video clip.mp4"],
   ["Start from an audio file", "hyperframes init my-video --audio track.mp3"],
   ["Non-interactive mode (for CI or AI agents)", "hyperframes init my-video --non-interactive"],
+  ["Skip AI coding skills installation", "hyperframes init my-video --skip-skills"],
 ];
 import {
   existsSync,
@@ -390,12 +391,17 @@ export default defineCommand({
       type: "boolean",
       description: "Disable interactive prompts (for CI/agents)",
     },
+    "skip-skills": {
+      type: "boolean",
+      description: "Skip AI coding skills installation",
+    },
   },
   async run({ args }) {
     const templateFlag = args.template;
     const videoFlag = args.video;
     const audioFlag = args.audio;
     const skipTranscribe = args["skip-transcribe"] === true;
+    const skipSkills = args["skip-skills"] === true;
     const nonInteractive = args["non-interactive"] === true;
     const modelFlag = args.model;
     const languageFlag = args.language;
@@ -693,17 +699,19 @@ export default defineCommand({
     clack.note(files.map((f) => c.accent(f)).join("\n"), c.success(`Created ${name}/`));
 
     // Offer to install AI coding skills
-    const installSkills = await clack.confirm({
-      message: "Install AI coding skills? (for Claude Code, Cursor, Codex, etc.)",
-      initialValue: true,
-    });
-    if (clack.isCancel(installSkills)) {
-      clack.cancel("Setup cancelled.");
-      process.exit(0);
-    }
-    if (installSkills) {
-      const skillsCmd = await import("./skills.js").then((m) => m.default);
-      await runCommand(skillsCmd, { rawArgs: [] });
+    if (!skipSkills) {
+      const installSkills = await clack.confirm({
+        message: "Install AI coding skills? (for Claude Code, Cursor, Codex, etc.)",
+        initialValue: true,
+      });
+      if (clack.isCancel(installSkills)) {
+        clack.cancel("Setup cancelled.");
+        process.exit(0);
+      }
+      if (installSkills) {
+        const skillsCmd = await import("./skills.js").then((m) => m.default);
+        await runCommand(skillsCmd, { rawArgs: [] });
+      }
     }
 
     // Auto-launch studio preview
