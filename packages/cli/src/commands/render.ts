@@ -7,7 +7,7 @@ export const examples: Example[] = [
   ["Render transparent WebM overlay", "hyperframes render --format webm --output overlay.webm"],
   ["High quality at 60fps", "hyperframes render --fps 60 --quality high --output hd.mp4"],
   ["Deterministic render via Docker", "hyperframes render --docker --output deterministic.mp4"],
-  ["Parallel rendering with 6 workers", "hyperframes render --concurrency 6 --output fast.mp4"],
+  ["Parallel rendering with 6 workers", "hyperframes render --workers 6 --output fast.mp4"],
 ];
 import { cpus, freemem } from "node:os";
 import { resolve, dirname, join } from "node:path";
@@ -28,9 +28,9 @@ const VALID_FORMAT = new Set(["mp4", "webm"]);
 
 const CPU_CORE_COUNT = cpus().length;
 
-/** 3/4 of CPU cores, capped at 6. Each worker spawns a Chrome process (~256 MB). */
+/** 3/4 of CPU cores, capped at 8. Each worker spawns a Chrome process (~256 MB). */
 function defaultWorkerCount(): number {
-  return Math.max(1, Math.min(Math.floor((CPU_CORE_COUNT * 3) / 4), 6));
+  return Math.max(1, Math.min(Math.floor((CPU_CORE_COUNT * 3) / 4), 8));
 }
 
 export default defineCommand({
@@ -65,10 +65,9 @@ export default defineCommand({
     },
     workers: {
       type: "string",
-      alias: "concurrency",
       description:
-        "Parallel render workers (1-8 or 'auto'). Default: 3/4 of your CPU cores, max 6. " +
-        "Each worker launches a separate Chrome process.",
+        "Parallel render workers (number or 'auto'). Default: auto. " +
+        "Each worker launches a separate Chrome process (~256 MB RAM).",
     },
     docker: {
       type: "boolean",
@@ -124,8 +123,8 @@ export default defineCommand({
     let workers: number | undefined;
     if (args.workers != null && args.workers !== "auto") {
       const parsed = parseInt(args.workers, 10);
-      if (isNaN(parsed) || parsed < 1 || parsed > 8) {
-        errorBox("Invalid workers", `Got "${args.workers}". Must be 1-8 or "auto".`);
+      if (isNaN(parsed) || parsed < 1) {
+        errorBox("Invalid workers", `Got "${args.workers}". Must be a positive number or "auto".`);
         process.exit(1);
       }
       workers = parsed;
