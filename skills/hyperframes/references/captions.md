@@ -87,7 +87,9 @@ el.style.fontSize = result.fontSize + "px";
 
 Options: `maxWidth` (1600 landscape, 900 portrait), `baseFontSize` (78), `minFontSize` (42), `fontWeight`, `fontFamily`, `step` (2).
 
-CSS safety nets: `max-width`, `overflow: hidden`, `position: absolute`, explicit `height`.
+CSS safety nets: `max-width` on container, `overflow: visible` (**not** `hidden` — hidden clips scaled emphasis words and glow effects), `position: absolute`, explicit `height`. When per-word styling uses `scale > 1.0`, compute `maxWidth = safeWidth / maxScale` to leave headroom.
+
+**Container pattern:** Full-width absolute container, centered. Do **not** use `left: 50%; transform: translateX(-50%)` — causes clipping at composition edges.
 
 ## Caption Exit Guarantee
 
@@ -98,14 +100,19 @@ tl.to(groupEl, { opacity: 0, scale: 0.95, duration: 0.12, ease: "power2.in" }, g
 tl.set(groupEl, { opacity: 0, visibility: "hidden" }, group.end); // deterministic kill
 ```
 
-Self-lint after building timeline:
+Self-lint after building timeline — place **before** `window.__timelines[id] = tl` so it runs at composition init:
 
 ```js
 GROUPS.forEach(function (group, gi) {
   var el = document.getElementById("cg-" + gi);
+  if (!el) return;
   tl.seek(group.end + 0.01);
-  if (window.getComputedStyle(el).opacity !== "0")
-    console.warn("[caption-lint] group " + gi + " visible");
+  var computed = window.getComputedStyle(el);
+  if (computed.opacity !== "0" && computed.visibility !== "hidden") {
+    console.warn(
+      "[caption-lint] group " + gi + " still visible at t=" + (group.end + 0.01).toFixed(2) + "s",
+    );
+  }
 });
 tl.seek(0);
 ```

@@ -101,9 +101,74 @@ function backspace(tl, selector, word, startTime, cps) {
 }
 ```
 
+### Spacing with Static Text
+
+When a typewriter word sits next to static text, use `margin-left` on a wrapper span. Don't use flex gap (spaces cursor from text) or trailing space in static text (collapses when dynamic is empty).
+
+```html
+<div style="display:flex; align-items:baseline;">
+  <span style="font-size:40px; color:#555;">Ship something</span>
+  <span style="margin-left:14px;"><span id="word"></span><span id="cursor">|</span></span>
+</div>
+```
+
 ### Word Rotation
 
-Type → hold → backspace → next word. Cursor blinks during every idle moment.
+Type → hold → backspace → next word. Cursor blinks during every idle moment (holds, after backspace).
+
+```js
+words.forEach((word, i) => {
+  const typeDur = word.length / 10;
+  // Solid while typing
+  tl.call(() => cursor.classList.replace("cursor-blink", "cursor-solid"), [], offset);
+  tl.to("#typed-text", { text: { value: word }, duration: typeDur, ease: "none" }, offset);
+  // Blink during hold
+  tl.call(() => cursor.classList.replace("cursor-solid", "cursor-blink"), [], offset + typeDur);
+  offset += typeDur + 1.5; // hold
+
+  if (i < words.length - 1) {
+    tl.call(() => cursor.classList.replace("cursor-blink", "cursor-solid"), [], offset);
+    const clearDur = backspace(tl, el, word, offset, 20);
+    tl.call(() => cursor.classList.replace("cursor-solid", "cursor-blink"), [], offset + clearDur);
+    offset += clearDur + 0.3;
+  }
+});
+```
+
+### Appending Words
+
+Build a sentence word-by-word into the same element:
+
+```js
+let accumulated = "";
+words.forEach((word) => {
+  const target = accumulated + (accumulated ? " " : "") + word;
+  const newChars = target.length - accumulated.length;
+  tl.to("#typed-text", { text: { value: target }, duration: newChars / 10, ease: "none" }, offset);
+  accumulated = target;
+  offset += newChars / 10 + 0.3;
+});
+```
+
+### Multi-Line Cursor Handoff
+
+When handing off between typewriter lines: hide previous → blink new → pause → solid when typing. Never go hidden→solid (skips idle state).
+
+```js
+tl.call(
+  () => {
+    prevCursor.classList.replace("cursor-blink", "cursor-hide");
+    nextCursor.classList.replace("cursor-hide", "cursor-blink");
+  },
+  [],
+  handoffTime,
+);
+
+const typeStart = handoffTime + 0.5; // brief blink pause
+tl.call(() => nextCursor.classList.replace("cursor-blink", "cursor-solid"), [], typeStart);
+tl.to("#next-text", { text: { value: text }, duration: dur, ease: "none" }, typeStart);
+tl.call(() => nextCursor.classList.replace("cursor-solid", "cursor-blink"), [], typeStart + dur);
+```
 
 ### Timing Guide
 
@@ -141,7 +206,33 @@ Requires ffmpeg and numpy.
 - **rms** (0-1): overall loudness, normalized across track
 - **bands[]** (0-1): frequency magnitudes. Index 0 = bass, higher = treble. Each normalized independently.
 
-### Drive Rendering
+### Loading the Data
+
+```js
+// Option A: inline (small files, under ~500KB)
+const AUDIO_DATA = {
+  /* paste audio-data.json contents */
+};
+setupTimeline(AUDIO_DATA);
+
+// Option B: fetch (large files)
+fetch("audio-data.json")
+  .then((r) => r.json())
+  .then((data) => setupTimeline(data));
+
+function setupTimeline(AUDIO_DATA) {
+  // IMPORTANT: all tl.call() setup must be inside this callback
+  for (let f = 0; f < AUDIO_DATA.totalFrames; f++) {
+    tl.call(() => draw(AUDIO_DATA.frames[f]), [], f / AUDIO_DATA.fps);
+  }
+}
+```
+
+With fetch, wrap all timeline setup inside the callback so `AUDIO_DATA` is available.
+
+### Rendering Approaches
+
+**Canvas 2D** (most common — bars, waveforms, circles, gradients):
 
 ```js
 for (let f = 0; f < AUDIO_DATA.totalFrames; f++) {
@@ -156,6 +247,16 @@ for (let f = 0; f < AUDIO_DATA.totalFrames; f++) {
   );
 }
 ```
+
+**WebGL / Three.js** — HyperFrames patches `THREE.Clock` for deterministic time. Update uniforms from audio data each frame.
+
+**DOM Elements** — fine for < 20 elements, less performant than Canvas for many.
+
+### Spatial Mapping
+
+- **Horizontal**: bass left, treble right (iterate bands left-to-right)
+- **Vertical**: bass bottom, treble top
+- **Circular**: bass at 12 o'clock, wrap clockwise; mirror for full circle
 
 ### Smoothing
 
@@ -192,3 +293,12 @@ function smooth(f) {
 | 8     | Medium    | Bar charts, basic spectrum |
 | 16    | High      | Detailed EQ (default)      |
 | 32    | Very high | Dense radial layouts       |
+
+### Layering
+
+Layer multiple canvases with CSS z-index for depth — a background layer driven by bass/rms and a foreground layer driven by individual bands creates depth without complexity.
+
+```html
+<canvas id="bg-layer" style="position:absolute;top:0;left:0;z-index:1;"></canvas>
+<canvas id="main-layer" style="position:absolute;top:0;left:0;z-index:2;"></canvas>
+```

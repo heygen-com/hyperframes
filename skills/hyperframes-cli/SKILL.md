@@ -62,16 +62,17 @@ npx hyperframes render --format webm                  # transparent WebM
 npx hyperframes render --docker                       # byte-identical
 ```
 
-| Flag        | Options               | Default                    | Notes                      |
-| ----------- | --------------------- | -------------------------- | -------------------------- |
-| `--output`  | path                  | renders/name_timestamp.mp4 | Output path                |
-| `--fps`     | 24, 30, 60            | 30                         | 60fps doubles render time  |
-| `--quality` | draft, standard, high | standard                   | draft for iterating        |
-| `--format`  | mp4, webm             | mp4                        | WebM supports transparency |
-| `--workers` | 1-8 or auto           | auto                       | Each spawns Chrome         |
-| `--docker`  | flag                  | off                        | Reproducible output        |
-| `--gpu`     | flag                  | off                        | GPU-accelerated encoding   |
-| `--strict`  | flag                  | off                        | Fail on lint errors        |
+| Flag           | Options               | Default                    | Notes                       |
+| -------------- | --------------------- | -------------------------- | --------------------------- |
+| `--output`     | path                  | renders/name_timestamp.mp4 | Output path                 |
+| `--fps`        | 24, 30, 60            | 30                         | 60fps doubles render time   |
+| `--quality`    | draft, standard, high | standard                   | draft for iterating         |
+| `--format`     | mp4, webm             | mp4                        | WebM supports transparency  |
+| `--workers`    | 1-8 or auto           | auto                       | Each spawns Chrome          |
+| `--docker`     | flag                  | off                        | Reproducible output         |
+| `--gpu`        | flag                  | off                        | GPU-accelerated encoding    |
+| `--strict`     | flag                  | off                        | Fail on lint errors         |
+| `--strict-all` | flag                  | off                        | Fail on errors AND warnings |
 
 **Quality guidance:** `draft` while iterating, `standard` for review, `high` for final delivery.
 
