@@ -19,7 +19,7 @@
     },
     "packages/cli": {
       "name": "@hyperframes/cli",
-      "version": "0.2.1",
+      "version": "0.2.2",
       "bin": {
         "hyperframes": "./dist/cli.js",
       },
@@ -59,7 +59,7 @@
     },
     "packages/core": {
       "name": "@hyperframes/core",
-      "version": "0.2.1",
+      "version": "0.2.2",
       "dependencies": {
         "@chenglou/pretext": "^0.0.3",
       },
@@ -85,7 +85,7 @@
     },
     "packages/engine": {
       "name": "@hyperframes/engine",
-      "version": "0.2.1",
+      "version": "0.2.2",
       "dependencies": {
         "@hono/node-server": "^1.13.0",
         "@hyperframes/core": "workspace:^",
@@ -100,9 +100,18 @@
         "vitest": "^3.2.4",
       },
     },
+    "packages/player": {
+      "name": "@hyperframes/player",
+      "version": "0.2.2",
+      "devDependencies": {
+        "tsup": "^8.0.0",
+        "typescript": "^5.0.0",
+        "vitest": "^3.2.4",
+      },
+    },
     "packages/producer": {
       "name": "@hyperframes/producer",
-      "version": "0.2.1",
+      "version": "0.2.2",
       "dependencies": {
         "@fontsource/archivo-black": "^5.2.8",
         "@fontsource/eb-garamond": "^5.2.7",
@@ -140,7 +149,7 @@
     },
     "packages/studio": {
       "name": "@hyperframes/studio",
-      "version": "0.2.1",
+      "version": "0.2.2",
       "dependencies": {
         "@codemirror/autocomplete": "^6.20.1",
         "@codemirror/commands": "^6.10.3",
@@ -411,6 +420,8 @@
     "@hyperframes/core": ["@hyperframes/core@workspace:packages/core"],
 
     "@hyperframes/engine": ["@hyperframes/engine@workspace:packages/engine"],
+
+    "@hyperframes/player": ["@hyperframes/player@workspace:packages/player"],
 
     "@hyperframes/producer": ["@hyperframes/producer@workspace:packages/producer"],
 

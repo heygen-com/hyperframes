@@ -66,6 +66,7 @@
             "pages": [
               "packages/core",
               "packages/engine",
+              "packages/player",
               "packages/producer",
               "packages/studio",
               "packages/cli"

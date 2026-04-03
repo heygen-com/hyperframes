@@ -284,19 +284,24 @@ export const gsapRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
         }
       }
 
-      // gsap_animates_clip_element
+      // gsap_animates_clip_element — only error when GSAP animates visibility/display
       for (const win of gsapWindows) {
         const sel = win.targetSelector;
         const clipInfo = clipIds.get(sel) || clipClasses.get(sel);
         if (!clipInfo) continue;
+        const conflictingProps = win.properties.filter(
+          (p) => p === "visibility" || p === "display",
+        );
+        if (conflictingProps.length === 0) continue;
         const elDesc = `<${clipInfo.tag}${clipInfo.id ? ` id="${clipInfo.id}"` : ""} class="${clipInfo.classes}">`;
         findings.push({
           code: "gsap_animates_clip_element",
           severity: "error",
-          message: `GSAP animation targets a clip element. Selector "${sel}" resolves to element ${elDesc}. The framework manages clip visibility — animate an inner wrapper instead.`,
+          message: `GSAP animation sets ${conflictingProps.join(", ")} on a clip element. Selector "${sel}" resolves to element ${elDesc}. The framework manages clip visibility via ${conflictingProps.join("/")} — do not animate these properties on clip elements.`,
           selector: sel,
           elementId: clipInfo.id || undefined,
-          fixHint: "Wrap content in a child <div> and target that with GSAP.",
+          fixHint:
+            "Remove the visibility/display tween, or move the content into a child <div> and target that instead.",
           snippet: truncateSnippet(win.raw),
         });
       }

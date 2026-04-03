@@ -58,6 +58,7 @@ packages/
   cli/       → hyperframes CLI (create, preview, lint, render)
   core/      → Types, parsers, generators, linter, runtime, frame adapters
   engine/    → Seekable page-to-video capture engine (Puppeteer + FFmpeg)
+  player/    → Embeddable <hyperframes-player> web component
   producer/  → Full rendering pipeline (capture + encode + audio mix)
   studio/    → Browser-based composition editor UI
 ```
@@ -94,6 +95,7 @@ When adding a new CLI command:
 ## Key Concepts
 
 - **Compositions** are HTML files with `data-*` attributes defining timeline, tracks, and media
+- **Clips** can be animated directly with GSAP. The only restriction: don't animate `visibility` or `display` on clip elements — the runtime manages those.
 - **Frame Adapters** bridge animation runtimes (GSAP, Lottie, CSS) to the capture engine
 - **Producer** orchestrates capture → encode → audio mix into final MP4
 - **BeginFrame rendering** uses `HeadlessExperimental.beginFrame` for deterministic frame capture
@@ -185,3 +187,29 @@ Use `npx hyperframes tts --list` for the full set, or pass any valid Kokoro voic
 
 - Python 3.8+ (auto-installs `kokoro-onnx` package on first run)
 - Model downloads automatically on first use (~311 MB model + ~27 MB voices, cached in `~/.cache/hyperframes/tts/`)
+
+## Embeddable Player
+
+The `@hyperframes/player` package provides a `<hyperframes-player>` web component for embedding
+compositions in any web page. Zero dependencies, works with any framework.
+
+### Quick reference
+
+```html
+<!-- Load the player (CDN or npm) -->
+<script src="https://cdn.jsdelivr.net/npm/@hyperframes/player"></script>
+
+<!-- Embed a composition -->
+<hyperframes-player src="./my-composition/index.html" controls></hyperframes-player>
+```
+
+### JavaScript API
+
+```js
+const player = document.querySelector("hyperframes-player");
+player.play();
+player.pause();
+player.seek(2.5);
+console.log(player.currentTime, player.duration, player.paused);
+player.addEventListener("ready", (e) => console.log("Duration:", e.detail.duration));
+```

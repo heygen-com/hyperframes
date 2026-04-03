@@ -68,6 +68,7 @@ ENV PATH="/root/.bun/bin:$PATH"
 COPY package.json bun.lock ./
 COPY packages/core/package.json packages/core/package.json
 COPY packages/engine/package.json packages/engine/package.json
+COPY packages/player/package.json packages/player/package.json
 COPY packages/producer/package.json packages/producer/package.json
 COPY packages/cli/package.json packages/cli/package.json
 COPY packages/studio/package.json packages/studio/package.json

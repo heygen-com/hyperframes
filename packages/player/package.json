@@ -1,0 +1,33 @@
+{
+  "name": "@hyperframes/player",
+  "version": "0.2.2",
+  "description": "Embeddable web component for HyperFrames compositions",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/heygen-com/hyperframes",
+    "directory": "packages/player"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "main": "./dist/hyperframes-player.js",
+  "types": "./dist/hyperframes-player.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/hyperframes-player.js",
+      "require": "./dist/hyperframes-player.cjs",
+      "script": "./dist/hyperframes-player.global.js"
+    }
+  },
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "tsup": "^8.0.0",
+    "typescript": "^5.0.0",
+    "vitest": "^3.2.4"
+  }
+}

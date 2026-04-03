@@ -49,11 +49,10 @@
       ></audio>
 
       <!--
-        ANIMATION PATTERN: The clip div controls timing/visibility.
-        Always put your content in a CHILD element and animate THAT.
-
-        <div class="clip" ...>        ← timing only, don't animate this
-          <div id="my-title">...</div> ← animate this with GSAP
+        Add your clips here. Example:
+        <div id="title" class="clip" data-start="0" data-duration="5" data-track-index="1"
+             style="font-size: 64px; color: #fff; padding: 40px">
+          Hello World
         </div>
       -->
     </div>
@@ -61,7 +60,7 @@
     <script>
       window.__timelines = window.__timelines || {};
       const tl = gsap.timeline({ paused: true });
-      // tl.from("#my-title", { opacity: 0, y: -50, duration: 1 }, 0);
+      // Example: tl.from("#title", { opacity: 0, y: -50, duration: 1 }, 0);
       window.__timelines["main"] = tl;
     </script>
   </body>

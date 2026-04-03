@@ -1,0 +1,175 @@
+---
+title: "@hyperframes/player"
+description: "Embeddable web component for playing HyperFrames compositions in any web page."
+---
+
+The player package provides a `<hyperframes-player>` custom element that embeds a HyperFrames composition anywhere — in any framework or plain HTML. Zero dependencies, 3KB gzipped.
+
+```bash
+npm install @hyperframes/player
+```
+
+## When to Use
+
+**Use `@hyperframes/player` when you need to:**
+- Embed a rendered composition in a website, dashboard, or app
+- Add a video-like player to a landing page or product demo
+- Show compositions in documentation or blog posts
+
+**Use a different package if you want to:**
+- Edit compositions interactively — use the [studio](/packages/studio)
+- Preview during development — use the [CLI](/packages/cli) (`npx hyperframes preview`)
+- Render to MP4 — use the [CLI](/packages/cli) or [producer](/packages/producer)
+
+## Quick Start
+
+### Via CDN
+
+```html
+<script src="https://cdn.jsdelivr.net/npm/@hyperframes/player"></script>
+
+<hyperframes-player
+  src="./my-composition/index.html"
+  controls
+  autoplay
+  muted
+  style="width: 100%; max-width: 800px; aspect-ratio: 16/9"
+></hyperframes-player>
+```
+
+### Via npm
+
+```js
+import '@hyperframes/player';
+```
+
+```html
+<hyperframes-player src="/compositions/intro.html" controls></hyperframes-player>
+```
+
+## HTML Attributes
+
+| Attribute | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `src` | string | required | URL or relative path to composition HTML |
+| `width` | number | 1920 | Composition width in pixels |
+| `height` | number | 1080 | Composition height in pixels |
+| `controls` | boolean | false | Show playback controls overlay |
+| `autoplay` | boolean | false | Start playing on load |
+| `loop` | boolean | false | Loop playback |
+| `muted` | boolean | true | Mute audio (required for autoplay in most browsers) |
+| `poster` | string | — | Image URL to show before first play |
+| `playback-rate` | number | 1 | Playback speed multiplier |
+
+## JavaScript API
+
+The player mirrors the native `<video>` element API:
+
+```js
+const player = document.querySelector('hyperframes-player');
+
+// Playback
+player.play();
+player.pause();
+player.seek(2.5); // seek to 2.5 seconds
+
+// Properties
+player.currentTime;     // number — current position in seconds
+player.currentTime = 5; // seek to 5 seconds
+player.duration;        // number — total duration
+player.paused;          // boolean
+player.ready;           // boolean — true after composition loads
+player.playbackRate;    // number — get/set speed
+player.muted;           // boolean — get/set mute
+player.loop;            // boolean — get/set loop
+```
+
+## Events
+
+```js
+const player = document.querySelector('hyperframes-player');
+
+player.addEventListener('ready', (e) => {
+  console.log('Duration:', e.detail.duration);
+});
+
+player.addEventListener('timeupdate', (e) => {
+  console.log('Time:', e.detail.currentTime);
+});
+
+player.addEventListener('play', () => console.log('Playing'));
+player.addEventListener('pause', () => console.log('Paused'));
+player.addEventListener('ended', () => console.log('Ended'));
+player.addEventListener('error', (e) => console.error(e.detail.message));
+```
+
+| Event | Detail | Description |
+|-------|--------|-------------|
+| `ready` | `{ duration }` | Composition loaded and timeline discovered |
+| `timeupdate` | `{ currentTime }` | Fires during playback (~30fps) |
+| `play` | — | Playback started |
+| `pause` | — | Playback paused |
+| `ended` | — | Playback reached end |
+| `error` | `{ message }` | Load or runtime error |
+
+## Framework Examples
+
+### React
+
+```jsx
+import '@hyperframes/player';
+
+function VideoPreview({ src }) {
+  return (
+    <hyperframes-player
+      src={src}
+      controls
+      style={{ width: '100%', maxWidth: 800 }}
+    />
+  );
+}
+```
+
+### Vue
+
+```vue
+<template>
+  <hyperframes-player :src="compositionUrl" controls />
+</template>
+
+<script setup>
+import '@hyperframes/player';
+const compositionUrl = './compositions/intro.html';
+</script>
+```
+
+### Programmatic
+
+```js
+import '@hyperframes/player';
+
+const player = document.createElement('hyperframes-player');
+player.src = './my-composition/index.html';
+player.controls = true;
+player.addEventListener('ready', () => player.play());
+document.getElementById('player-container').appendChild(player);
+```
+
+## Architecture
+
+The player uses an iframe inside a Shadow DOM container. This provides:
+
+- **Isolation** — composition CSS/JS can't leak into or conflict with your page
+- **Security** — iframe sandbox restricts composition capabilities
+- **Scaling** — auto-scales the composition to fit the player's container via CSS transforms
+
+The player communicates with the composition via the HyperFrames runtime bridge protocol (`postMessage`). Existing compositions work without modification.
+
+## Controls
+
+When the `controls` attribute is present, a minimal overlay appears at the bottom:
+
+- **Play/Pause** button (left)
+- **Scrub bar** with drag support (mouse + touch)
+- **Time display** showing current / total duration (right)
+- Auto-hides after 3 seconds of inactivity, reappears on hover

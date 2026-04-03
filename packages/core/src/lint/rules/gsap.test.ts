@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { lintHyperframeHtml } from "../hyperframeLinter.js";
 
 describe("GSAP rules", () => {
-  it("reports error when GSAP targets a clip element by id", () => {
+  it("does NOT error when GSAP animates opacity on a clip element (by id)", () => {
     const html = `
 <html><body>
   <div data-composition-id="c1" data-width="1920" data-height="1080">
@@ -19,13 +19,10 @@ describe("GSAP rules", () => {
 </body></html>`;
     const result = lintHyperframeHtml(html);
     const finding = result.findings.find((f) => f.code === "gsap_animates_clip_element");
-    expect(finding).toBeDefined();
-    expect(finding?.severity).toBe("error");
-    expect(finding?.selector).toBe("#overlay");
-    expect(finding?.message).toContain("inner wrapper");
+    expect(finding).toBeUndefined();
   });
 
-  it("reports error when GSAP targets a clip element by class", () => {
+  it("does NOT error when GSAP targets a clip element with safe properties (by class)", () => {
     const html = `
 <html><body>
   <div data-composition-id="c1" data-width="1920" data-height="1080">
@@ -42,8 +39,7 @@ describe("GSAP rules", () => {
 </body></html>`;
     const result = lintHyperframeHtml(html);
     const finding = result.findings.find((f) => f.code === "gsap_animates_clip_element");
-    expect(finding).toBeDefined();
-    expect(finding?.selector).toBe(".my-card");
+    expect(finding).toBeUndefined();
   });
 
   it("does NOT flag GSAP targeting a child of a clip element", () => {
@@ -86,7 +82,7 @@ describe("GSAP rules", () => {
     expect(finding).toBeUndefined();
   });
 
-  it("reports error when GSAP targets a clip element with no id (class-only)", () => {
+  it("does NOT error when GSAP targets a clip element with safe properties (class-only, no id)", () => {
     const html = `
 <html><body>
   <div data-composition-id="c1" data-width="1920" data-height="1080">
@@ -103,9 +99,115 @@ describe("GSAP rules", () => {
 </body></html>`;
     const result = lintHyperframeHtml(html);
     const finding = result.findings.find((f) => f.code === "gsap_animates_clip_element");
+    expect(finding).toBeUndefined();
+  });
+
+  it("does NOT error when GSAP animates opacity on a clip element", () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <div id="title" class="clip" data-start="0" data-duration="5" data-track-index="0">
+      <h1>Title</h1>
+    </div>
+  </div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.from("#title", { opacity: 0, y: -50, duration: 0.5 }, 0);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "gsap_animates_clip_element");
+    expect(finding).toBeUndefined();
+  });
+
+  it("does NOT error when GSAP animates transform props on a clip element", () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <div id="box" class="clip" data-start="0" data-duration="5" data-track-index="0">
+      <div>Box</div>
+    </div>
+  </div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.to("#box", { scale: 1.2, x: 100, rotation: 45, duration: 0.5 }, 0);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "gsap_animates_clip_element");
+    expect(finding).toBeUndefined();
+  });
+
+  it("ERRORS when GSAP animates visibility on a clip element", () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <div id="overlay" class="clip" data-start="0" data-duration="5" data-track-index="0">
+      <p>Overlay</p>
+    </div>
+  </div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.to("#overlay", { visibility: "hidden", duration: 0.3 }, 2.0);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "gsap_animates_clip_element");
     expect(finding).toBeDefined();
-    expect(finding?.selector).toBe(".scene-card");
-    expect(finding?.elementId).toBeUndefined();
+    expect(finding?.severity).toBe("error");
+    expect(finding?.selector).toBe("#overlay");
+    expect(finding?.message).toContain("visibility");
+  });
+
+  it("ERRORS when GSAP animates display on a clip element", () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <div id="card" class="clip" data-start="0" data-duration="5" data-track-index="0">
+      <p>Card</p>
+    </div>
+  </div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.to("#card", { display: "none", duration: 0.3 }, 3.0);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "gsap_animates_clip_element");
+    expect(finding).toBeDefined();
+    expect(finding?.severity).toBe("error");
+    expect(finding?.selector).toBe("#card");
+    expect(finding?.message).toContain("display");
+  });
+
+  it("ERRORS when GSAP tween mixes safe properties with visibility on a clip element", () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <div id="overlay" class="clip" data-start="0" data-duration="5" data-track-index="0">
+      <h1>Hello</h1>
+    </div>
+  </div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.to("#overlay", { opacity: 0, visibility: "hidden", duration: 0.3 }, 2.0);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "gsap_animates_clip_element");
+    expect(finding).toBeDefined();
+    expect(finding?.severity).toBe("error");
+    expect(finding?.message).toContain("visibility");
   });
 
   it("warns when tl.to animates x on an element with CSS translateX", () => {
