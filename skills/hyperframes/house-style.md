@@ -71,14 +71,6 @@ Structure compositions in three phases — don't front-load everything:
 
 Don't crowd the build phase. If you have 6 elements, let 2-3 enter, breathe, then bring in the rest. Layers of reveals beat a single wave.
 
-### Multi-Scene Compositions
-
-When a composition has sequential scenes (scene 1 exits → scene 2 enters), each on the same canvas:
-
-- **Hard visibility kills.** After a scene's exit tweens complete, add `tl.set("#scene-layer", { visibility: "hidden" }, exitEndTime)`. Opacity tweens alone can leave scenes partially visible when scrubbing or when tween conflicts prevent full fade-out.
-- **Vertical zones.** When captions run throughout, keep scene content above y:800px (bottom 280px reserved for captions). Don't let scene elements and captions compete for the same space.
-- **Scene overlap prevention.** Don't rely on opacity alone to separate scenes. If scene 1 exits at t=7 and scene 2 enters at t=7.5, the 0.5s gap needs a hard kill on scene 1 — otherwise both are visible during the gap when scrubbing.
-
 ## Sizing
 
 - **Text scale contrast** — headings at 3–5x body size, not 1.5x. Big contrast reads as cinematic.

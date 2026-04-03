@@ -1,22 +1,11 @@
 ---
-name: hyperframes-compose
-description: Create video compositions, animations, title cards, or overlays in HyperFrames HTML. Use when asked to build any HTML-based video content.
+name: hyperframes
+description: Create video compositions, animations, title cards, overlays, captions, voiceovers, and audio-reactive visuals in HyperFrames HTML. Use when asked to build any HTML-based video content, add captions or subtitles synced to audio, generate text-to-speech narration, create audio-reactive animation (beat sync, glow, pulse driven by music), or add animated text highlighting (marker sweeps, hand-drawn circles, burst lines, scribble, sketchout). Covers composition authoring, timing, media, and the full video production workflow. For CLI commands (init, lint, preview, render, transcribe, tts) see the hyperframes-cli skill.
 ---
 
-# Compose Video
+# HyperFrames
 
-HTML is the source of truth for video. A composition is an HTML file with `data-*` attributes for timing, a GSAP timeline for animation, and CSS for appearance. The framework handles clip visibility, media playback, and timeline sync.
-
-## Approach
-
-Before writing HTML, think at a high level:
-
-1. **What** — what should the viewer experience? Identify the narrative arc, key moments, and emotional beats.
-2. **Structure** — how many compositions, which are sub-compositions vs inline, what tracks carry what (video, audio, overlays, captions).
-3. **Timing** — which clips drive the duration, where do transitions land, what's the pacing.
-4. **Execute** — then implement using the rules below.
-
-For small edits (fix a color, adjust timing, add one element), skip straight to the rules.
+HTML is the source of truth for video. A composition is an HTML file with `data-*` attributes for timing, a GSAP timeline for animation, and CSS for appearance.
 
 When no `visual-style.md` or animation direction is provided, follow [house-style.md](./house-style.md) for motion defaults, sizing, and color palettes.
 
@@ -29,7 +18,7 @@ When no `visual-style.md` or animation direction is provided, follow [house-styl
 | `id`               | Yes                               | Unique identifier                                      |
 | `data-start`       | Yes                               | Seconds or clip ID reference (`"el-1"`, `"intro + 2"`) |
 | `data-duration`    | Required for img/div/compositions | Seconds. Video/audio defaults to media duration.       |
-| `data-track-index` | Yes                               | Integer. Same-track clips **cannot overlap**.          |
+| `data-track-index` | Yes                               | Integer. Same-track clips cannot overlap.              |
 | `data-media-start` | No                                | Trim offset into source (seconds)                      |
 | `data-volume`      | No                                | 0-1 (default 1)                                        |
 
@@ -46,7 +35,7 @@ When no `visual-style.md` or animation direction is provided, follow [house-styl
 
 ## Composition Structure
 
-Every composition is a `<template>` wrapping a `<div>` with `data-composition-id`. Each must include its own GSAP script and register its timeline:
+Every composition is a `<template>` wrapping a `<div>` with `data-composition-id`:
 
 ```html
 <template id="my-comp-template">
@@ -100,15 +89,14 @@ Video must be `muted playsinline`. Audio is always a separate `<audio>` element:
 - Register every timeline: `window.__timelines["<composition-id>"] = tl`
 - Framework auto-nests sub-timelines — do NOT manually add them
 - Duration comes from `data-duration`, not from GSAP timeline length
-- Never create empty tweens to set duration
 
 ## Rules (Non-Negotiable)
 
-**Deterministic:** No `Math.random()`, `Date.now()`, or time-based logic. The renderer must produce identical output every time.
+**Deterministic:** No `Math.random()`, `Date.now()`, or time-based logic.
 
 **GSAP:** Only animate visual properties (`opacity`, `x`, `y`, `scale`, `rotation`, `color`, `backgroundColor`, `borderRadius`, transforms). Do NOT animate `visibility`, `display`, or call `video.play()`/`audio.play()`.
 
-**Animation conflicts:** Never animate the same property on the same element from multiple timelines simultaneously — causes flickering in headless renders.
+**Animation conflicts:** Never animate the same property on the same element from multiple timelines simultaneously.
 
 **Never do:**
 
@@ -120,36 +108,43 @@ Video must be `muted playsinline`. Audio is always a separate `<audio>` element:
 6. Call play/pause/seek on media — framework owns playback
 7. Create a top-level container without `data-composition-id`
 
+## Typography and Assets
+
+- Every composition loads its own fonts (`@import` or `@font-face`)
+- Use `font-display: block` for local fonts
+- Add `crossorigin="anonymous"` to external media
+- Minimum readable text: 20px landscape, 18px portrait
+- For dynamic text overflow, use `window.__hyperframes.fitTextFontSize(text, { maxWidth, fontFamily, fontWeight })` — returns `{ fontSize, fits }`
+- All files live at the project root alongside `index.html`; sub-compositions use `../`
+
 ## Editing Existing Compositions
 
 - Read the full composition first — match existing fonts, colors, animation patterns
-- Only change what was requested — don't rewrite untouched sections
-- Don't rewrite entire files for small changes
+- Only change what was requested
 - Preserve timing of unrelated clips
-
-## Typography and Assets
-
-- Every composition loads its own fonts (`@import` or `@font-face` in `<style>`)
-- Use `font-display: block` for local fonts — renderer needs fonts loaded before capturing
-- Add `crossorigin="anonymous"` to media loaded from external URLs
-- Minimum readable text: 20px landscape, 18px portrait
-- For dynamic text that may overflow its container, use `window.__hyperframes.fitTextFontSize(text, { maxWidth, fontFamily, fontWeight })` to compute the largest font size that fits on one line. Returns `{ fontSize, fits }`. Options: `baseFontSize` (default 78), `minFontSize` (default 42), `step` (default 2). `fontFamily` and `fontWeight` must match the CSS applied to the element.
-- All files (video, audio, fonts, images) live at the project root alongside `index.html`
-- From sub-compositions, use `../` to reference root files
-
-For PiP, title cards, and slide show patterns, see [patterns.md](./patterns.md).
-For data, stats, and infographics, see [data-in-motion.md](./data-in-motion.md).
-For typewriter text and other GSAP animation effects, see the `gsap-effects` skill.
-For audio-driven animation (beat sync, glow, pulse), see the `audio-reactive` skill.
 
 ## Output Checklist
 
-- [ ] Every top-level container has `data-composition-id`
-- [ ] Every composition has `data-width`, `data-height`, `data-duration`
+- [ ] Every top-level container has `data-composition-id`, `data-width`, `data-height`, `data-duration`
 - [ ] Compositions in own HTML files, loaded via `data-composition-src`
 - [ ] `<template>` wrapper on sub-compositions
 - [ ] `window.__timelines` registered for every composition
-- [ ] 100% deterministic — no randomness
-- [ ] Each composition includes GSAP: `<script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>`
-- [ ] `npx hyperframes lint` passes with 0 errors
-- [ ] `npx hyperframes validate` passes with 0 errors (run both before opening the studio)
+- [ ] 100% deterministic
+- [ ] Each composition includes GSAP script tag
+- [ ] `npx hyperframes lint` and `npx hyperframes validate` both pass
+
+---
+
+## References (loaded on demand)
+
+- **[references/captions.md](references/captions.md)** — Captions, subtitles, lyrics, karaoke synced to audio. Tone-adaptive style detection, per-word styling, text overflow prevention, caption exit guarantees, word grouping. Read when adding any text synced to audio timing.
+- **[references/tts.md](references/tts.md)** — Text-to-speech with Kokoro-82M. Voice selection, speed tuning, TTS+captions workflow. Read when generating narration or voiceover.
+- **[references/audio-reactive.md](references/audio-reactive.md)** — Audio-reactive animation: map frequency bands and amplitude to GSAP properties. Read when visuals should respond to music, voice, or sound.
+- **[references/marker-highlight.md](references/marker-highlight.md)** — Animated text highlighting via canvas overlays: marker pen, circle, burst, scribble, sketchout. Read when adding visual emphasis to text.
+- **[house-style.md](house-style.md)** — Default motion, sizing, and color palettes when no style is specified.
+- **[patterns.md](patterns.md)** — PiP, title cards, slide show patterns.
+- **[data-in-motion.md](data-in-motion.md)** — Data, stats, and infographic patterns.
+- **[references/transcript-guide.md](references/transcript-guide.md)** — Transcription commands, whisper models, external APIs, troubleshooting.
+- **[references/dynamic-techniques.md](references/dynamic-techniques.md)** — Dynamic caption animation techniques (karaoke, clip-path, slam, scatter, elastic, 3D).
+
+GSAP patterns and effects are in the `/gsap` skill.

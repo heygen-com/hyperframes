@@ -4,40 +4,22 @@
 
 This repo ships skills that are installed globally via `npx hyperframes skills` (runs automatically during `hyperframes init`). **Always use the appropriate skill instead of writing code from scratch or fetching external docs.**
 
-### HyperFrames Skills (from this repo)
+### Skills
 
-| Skill                    | Invoke with             | When to use                                                                                                                                                                           |
-| ------------------------ | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **hyperframes-compose**  | `/hyperframes-compose`  | Creating ANY HTML composition — videos, animations, title cards, overlays. Contains required HTML structure, `class="clip"` rules, GSAP timeline patterns, and rendering constraints. |
-| **hyperframes-captions** | `/hyperframes-captions` | Any task involving text synced to audio: captions, subtitles, lyrics, lyric videos, karaoke. Also covers transcription strategy (whisper model selection, transcript format).         |
-| **hyperframes-tts**      | `/hyperframes-tts`      | Generating speech from text: narration, voiceovers, text-to-speech. Voice selection, speed control, and combining TTS output with compositions.                                       |
-| **marker-highlight**     | `/marker-highlight`     | Animated text highlighting — marker sweeps, hand-drawn circles, burst lines, scribble, sketchout. Use with captions for dynamic emphasis.                                             |
-
-### GSAP Skills (from [greensock/gsap-skills](https://github.com/greensock/gsap-skills))
-
-| Skill                  | Invoke with           | When to use                                                                      |
-| ---------------------- | --------------------- | -------------------------------------------------------------------------------- |
-| **gsap-core**          | `/gsap-core`          | `gsap.to()`, `from()`, `fromTo()`, easing, duration, stagger, defaults           |
-| **gsap-timeline**      | `/gsap-timeline`      | Timeline sequencing, position parameter, labels, nesting, playback               |
-| **gsap-performance**   | `/gsap-performance`   | Performance best practices — transforms over layout props, will-change, batching |
-| **gsap-plugins**       | `/gsap-plugins`       | ScrollTrigger, Flip, Draggable, SplitText, and other GSAP plugins                |
-| **gsap-scrolltrigger** | `/gsap-scrolltrigger` | Scroll-linked animations, pinning, scrub, triggers                               |
-| **gsap-utils**         | `/gsap-utils`         | `gsap.utils` helpers — clamp, mapRange, snap, toArray, wrap, pipe                |
+| Skill               | Invoke with        | When to use                                                                                                                                         |
+| ------------------- | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **hyperframes**     | `/hyperframes`     | Creating or editing HTML compositions, captions/subtitles, TTS narration, audio-reactive animation, marker highlights. Composition authoring rules. |
+| **hyperframes-cli** | `/hyperframes-cli` | CLI commands: init, lint, preview, render, transcribe, tts, doctor. Use when scaffolding, validating, previewing, or rendering.                     |
+| **gsap**            | `/gsap`            | GSAP animations — tweens, timelines, easing, ScrollTrigger, plugins (Flip, Draggable, SplitText, etc.), React/Vue/Svelte, performance optimization. |
 
 ### Why this matters
 
-The skills encode HyperFrames-specific patterns (e.g., required `class="clip"` on all timed elements, GSAP timeline registration via `window.__GSAP_TIMELINE`, `data-*` attribute semantics) that are NOT in generic web docs. Skipping the skills and writing from scratch will produce broken compositions.
+The skills encode HyperFrames-specific patterns (e.g., required `class="clip"` on all timed elements, GSAP timeline registration via `window.__timelines`, `data-*` attribute semantics) that are NOT in generic web docs. Skipping the skills and writing from scratch will produce broken compositions.
 
 ### Rules
 
-- When creating or modifying HTML compositions → invoke `/hyperframes-compose` BEFORE writing any code
-- When adding captions, subtitles, lyrics, or any text synced to audio → invoke `/hyperframes-captions` BEFORE writing any code
-- When transcribing audio or choosing a whisper model → invoke `/hyperframes-captions` BEFORE running any transcription tool
-- When generating speech from text (narration, voiceover, TTS) → invoke `/hyperframes-tts` BEFORE running any TTS command
-- When creating a video from audio (music video, lyric video, audio visualizer with text) → invoke BOTH `/hyperframes-compose` AND `/hyperframes-captions`
-- When writing GSAP animations → invoke `/gsap-core` and `/gsap-timeline` BEFORE writing any code
-- When optimizing animation performance → invoke `/gsap-performance` BEFORE making changes
-- When adding animated text emphasis (highlight sweeps, circles, bursts, scribbles) → invoke `/marker-highlight` BEFORE writing any code
+- When creating or modifying HTML compositions, captions, TTS, audio-reactive, or marker highlights → invoke `/hyperframes` BEFORE writing any code
+- When writing GSAP animations (tweens, timelines, ScrollTrigger, plugins) → invoke `/gsap` BEFORE writing any code
 - After creating or editing any `.html` composition → run `npx hyperframes lint` and `npx hyperframes validate` in parallel, fix all errors before opening the studio or considering the task complete. `lint` checks the HTML structure statically; `validate` loads the composition in headless Chrome and catches runtime JS errors, missing assets, and failed network requests. Always validate before `npx hyperframes preview`.
 
 ### Installing skills
@@ -141,7 +123,7 @@ If captions are inaccurate (wrong words, bad timing):
 2. **Set language**: `--language en` to filter non-target speech
 3. **Use an external API**: Transcribe via OpenAI or Groq Whisper API, then import the JSON with `hyperframes transcribe response.json`
 
-See the `/hyperframes-captions` skill for full details on model selection and API usage.
+See the `/hyperframes` skill (references/captions.md and references/transcript-guide.md) for full details on model selection and API usage.
 
 ## Text-to-Speech
 
