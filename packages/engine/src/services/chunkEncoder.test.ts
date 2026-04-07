@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { ENCODER_PRESETS, getEncoderPreset } from "./chunkEncoder.js";
+import { ENCODER_PRESETS, getEncoderPreset, buildEncoderArgs } from "./chunkEncoder.js";
 
 describe("ENCODER_PRESETS", () => {
   it("has draft, standard, and high presets", () => {
@@ -60,5 +60,75 @@ describe("getEncoderPreset", () => {
     const preset = getEncoderPreset("standard");
     expect(preset.codec).toBe("h264");
     expect(preset.pixelFormat).toBe("yuv420p");
+  });
+});
+
+describe("buildEncoderArgs anti-banding", () => {
+  const baseOptions = { fps: 30, width: 1920, height: 1080 };
+
+  it("adds aq-mode=3 x264-params for h264 CPU encoding", () => {
+    const args = buildEncoderArgs(
+      { ...baseOptions, codec: "h264", preset: "medium", quality: 23 },
+      ["-framerate", "30", "-i", "frames/%04d.png"],
+      "out.mp4",
+    );
+    const paramIdx = args.indexOf("-x264-params");
+    expect(paramIdx).toBeGreaterThan(-1);
+    expect(args[paramIdx + 1]).toContain("aq-mode=3");
+  });
+
+  it("adds aq-mode=3 x265-params for h265 CPU encoding", () => {
+    const args = buildEncoderArgs(
+      { ...baseOptions, codec: "h265", preset: "medium", quality: 23 },
+      ["-framerate", "30", "-i", "frames/%04d.png"],
+      "out.mp4",
+    );
+    const paramIdx = args.indexOf("-x265-params");
+    expect(paramIdx).toBeGreaterThan(-1);
+    expect(args[paramIdx + 1]).toContain("aq-mode=3");
+  });
+
+  it("includes deblock for non-ultrafast presets", () => {
+    for (const preset of ["medium", "slow"]) {
+      const args = buildEncoderArgs(
+        { ...baseOptions, codec: "h264", preset, quality: 23 },
+        ["-framerate", "30", "-i", "frames/%04d.png"],
+        "out.mp4",
+      );
+      const paramIdx = args.indexOf("-x264-params");
+      expect(args[paramIdx + 1]).toContain("deblock=1,1");
+    }
+  });
+
+  it("omits deblock for ultrafast (draft) preset", () => {
+    const args = buildEncoderArgs(
+      { ...baseOptions, codec: "h264", preset: "ultrafast", quality: 28 },
+      ["-framerate", "30", "-i", "frames/%04d.png"],
+      "out.mp4",
+    );
+    const paramIdx = args.indexOf("-x264-params");
+    expect(paramIdx).toBeGreaterThan(-1);
+    expect(args[paramIdx + 1]).toBe("aq-mode=3");
+    expect(args[paramIdx + 1]).not.toContain("deblock");
+  });
+
+  it("does not add x264-params for GPU encoding", () => {
+    const args = buildEncoderArgs(
+      { ...baseOptions, codec: "h264", preset: "medium", quality: 23, useGpu: true },
+      ["-framerate", "30", "-i", "frames/%04d.png"],
+      "out.mp4",
+      "nvenc",
+    );
+    expect(args.indexOf("-x264-params")).toBe(-1);
+  });
+
+  it("does not add x264-params for VP9 encoding", () => {
+    const args = buildEncoderArgs(
+      { ...baseOptions, codec: "vp9", preset: "good", quality: 23 },
+      ["-framerate", "30", "-i", "frames/%04d.png"],
+      "out.webm",
+    );
+    expect(args.indexOf("-x264-params")).toBe(-1);
+    expect(args.indexOf("-x265-params")).toBe(-1);
   });
 });

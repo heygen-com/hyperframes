@@ -168,6 +168,15 @@ function buildStreamingArgs(
       args.push("-c:v", encoderName, "-preset", preset);
       if (bitrate) args.push("-b:v", bitrate);
       else args.push("-crf", String(quality));
+
+      // Anti-banding: aq-mode=3 redistributes bits to dark flat areas (gradients),
+      // deblock smooths quantization boundaries that cause visible bands.
+      const xParamsFlag = codec === "h264" ? "-x264-params" : "-x265-params";
+      if (preset === "ultrafast") {
+        args.push(xParamsFlag, "aq-mode=3");
+      } else {
+        args.push(xParamsFlag, "aq-mode=3:aq-strength=0.8:deblock=1,1");
+      }
     }
   } else if (codec === "vp9") {
     args.push("-c:v", "libvpx-vp9", "-b:v", bitrate || "0", "-crf", String(quality));
