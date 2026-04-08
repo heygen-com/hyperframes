@@ -1,11 +1,26 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "name": "Hyperframes",
-  "theme": "mint",
+  "name": "HyperFrames",
+  "theme": "maple",
   "colors": {
-    "primary": "#00C4FF",
-    "light": "#00C4FF",
-    "dark": "#00A8E1"
+    "primary": "#0a0a0a",
+    "light": "#f6f5f1",
+    "dark": "#0a0a0a"
+  },
+  "background": {
+    "color": {
+      "light": "#f6f5f1",
+      "dark": "#0a0a0a"
+    }
+  },
+  "fonts": {
+    "family": "Inter",
+    "heading": {
+      "family": "Inter"
+    }
+  },
+  "appearance": {
+    "default": "light"
   },
   "logo": {
     "light": "/logo/light.svg",

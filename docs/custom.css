@@ -1,0 +1,99 @@
+/* HyperFrames Design System — Mintlify Theme Overrides */
+
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+/* ── Light mode (default) ── */
+
+:root {
+  --background: #f6f5f1;
+  --background-light: #ffffff;
+  --surface2: #eeedea;
+  --border-color: #e0dfdb;
+  --border-color-light: #d0cfcb;
+  --text: #1a1a1a;
+  --text-secondary: #6b6b6b;
+  --text-tertiary: #999999;
+  --heading: #0a0a0a;
+  --code-bg: #ffffff;
+
+  --accent-green: #1a7a0a;
+  --accent-green-light: rgba(26, 122, 10, 0.07);
+  --accent-green-border: rgba(26, 122, 10, 0.25);
+  --accent-blue: #2563eb;
+  --accent-blue-light: rgba(37, 99, 235, 0.06);
+  --accent-blue-border: rgba(37, 99, 235, 0.2);
+  --accent-purple: #7c3aed;
+  --accent-purple-light: rgba(124, 58, 237, 0.06);
+  --accent-purple-border: rgba(124, 58, 237, 0.2);
+
+  --selection-bg: rgba(128, 128, 128, 0.2);
+}
+
+/* ── Dark mode ── */
+
+.dark,
+[data-theme="dark"] {
+  --background: #0a0a0a;
+  --background-light: #141414;
+  --surface2: #1a1a1a;
+  --border-color: #2a2a2a;
+  --border-color-light: #3a3a3a;
+  --text: #e5e5e5;
+  --text-secondary: #a0a0a0;
+  --text-tertiary: #666666;
+  --heading: #f5f5f5;
+  --code-bg: #141414;
+
+  --accent-green: #22c55e;
+  --accent-green-light: rgba(34, 197, 94, 0.1);
+  --accent-green-border: rgba(34, 197, 94, 0.3);
+  --accent-blue: #3b82f6;
+  --accent-blue-light: rgba(59, 130, 246, 0.1);
+  --accent-blue-border: rgba(59, 130, 246, 0.3);
+  --accent-purple: #a78bfa;
+  --accent-purple-light: rgba(167, 139, 250, 0.1);
+  --accent-purple-border: rgba(167, 139, 250, 0.3);
+
+  --selection-bg: rgba(255, 255, 255, 0.15);
+}
+
+/* ── Typography ── */
+
+h1, h2 {
+  letter-spacing: -0.02em;
+}
+
+h3 {
+  letter-spacing: -0.01em;
+}
+
+/* Code font — IBM Plex Mono (loaded via Google Fonts above) */
+code, pre, pre code, kbd,
+[class*="code"],
+[class*="Code"] {
+  font-family: 'IBM Plex Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+/* ── Code blocks ── */
+
+pre {
+  background: var(--code-bg) !important;
+  border: 1px solid var(--border-color) !important;
+  border-radius: 8px !important;
+}
+
+/* ── Selection ── */
+
+::selection {
+  background: var(--selection-bg);
+}
+
+/* ── Links ── */
+
+a:not([class]) {
+  color: var(--accent-blue);
+}
+
+a:not([class]):hover {
+  opacity: 0.85;
+}

@@ -9,6 +9,7 @@ on:
     branches: [main]
     paths:
       - "docs/**"
+      - "DOCS_GUIDELINES.md"
 
 concurrency:
   group: docs-${{ github.ref }}
