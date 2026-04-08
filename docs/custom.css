@@ -2,6 +2,14 @@
 
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap');
 
+/* ── Logo sizing (match website ~15.2px rendered height) ── */
+
+#navbar img[alt="light logo"],
+#navbar img[alt="dark logo"] {
+  height: 18px;
+  width: auto;
+}
+
 /* ── Light mode (default) ── */
 
 :root {
