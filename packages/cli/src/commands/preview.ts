@@ -7,6 +7,8 @@ export const examples: Example[] = [
   ["Preview a specific project directory", "hyperframes preview ./my-video"],
   ["Use a custom port", "hyperframes preview --port 8080"],
   ["Force a new server even if one is already running", "hyperframes preview --force-new"],
+  ["List all active preview servers", "hyperframes preview --list"],
+  ["Kill all active preview servers", "hyperframes preview --kill-all"],
 ];
 import { existsSync, lstatSync, symlinkSync, unlinkSync, readlinkSync, mkdirSync } from "node:fs";
 import { resolve, dirname, basename, join } from "node:path";
@@ -17,7 +19,12 @@ import { c } from "../ui/colors.js";
 import { isDevMode } from "../utils/env.js";
 import { lintProject } from "../utils/lintProject.js";
 import { formatLintFindings } from "../utils/lintFormat.js";
-import { findPortAndServe, type FindPortResult } from "../server/portUtils.js";
+import {
+  findPortAndServe,
+  scanActiveServers,
+  killActiveServers,
+  type FindPortResult,
+} from "../server/portUtils.js";
 
 export default defineCommand({
   meta: { name: "preview", description: "Start the studio for previewing compositions" },
@@ -29,11 +36,52 @@ export default defineCommand({
       description: "Start a new server even if one is already running for this project",
       default: false,
     },
+    list: {
+      type: "boolean",
+      description: "List all active preview servers and exit",
+      default: false,
+    },
+    "kill-all": {
+      type: "boolean",
+      description: "Kill all active preview servers and exit",
+      default: false,
+    },
   },
   async run({ args }) {
+    const startPort = parseInt(args.port ?? "3002", 10);
+
+    // --list: scan and display active servers
+    if (args.list) {
+      const servers = await scanActiveServers(startPort);
+      if (servers.length === 0) {
+        console.log("\n  No active preview servers found.\n");
+        return;
+      }
+      console.log(`\n  ${c.bold("Active preview servers:")}\n`);
+      for (const s of servers) {
+        const pidStr = s.pid ? c.dim(` (PID ${s.pid})`) : "";
+        console.log(
+          `  ${c.accent(`Port ${s.port}`)}  ${s.projectName}  ${c.dim(s.projectDir)}${pidStr}`,
+        );
+      }
+      console.log(`\n  ${servers.length} server${servers.length === 1 ? "" : "s"} running.\n`);
+      return;
+    }
+
+    // --kill-all: kill all active servers
+    if (args["kill-all"]) {
+      const servers = await scanActiveServers(startPort);
+      if (servers.length === 0) {
+        console.log("\n  No active preview servers to kill.\n");
+        return;
+      }
+      const killed = await killActiveServers(startPort);
+      console.log(`\n  Killed ${killed} preview server${killed === 1 ? "" : "s"}.\n`);
+      return;
+    }
+
     const rawArg = args.dir;
     const dir = resolve(rawArg ?? ".");
-    const startPort = parseInt(args.port ?? "3002", 10);
 
     // Compute display name: preserve symlink/CWD name when user runs "hyperframes preview ."
     const isImplicitCwd = !rawArg || rawArg === "." || rawArg === "./";

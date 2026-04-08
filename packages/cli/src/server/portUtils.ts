@@ -160,6 +160,117 @@ export async function getProcessOnPort(port: number): Promise<string | null> {
   }
 }
 
+// ── Server discovery ───────────────────────────────────────────────────────
+
+export interface ActiveServer {
+  port: number;
+  projectName: string;
+  projectDir: string;
+  version: string;
+  pid: string | null;
+}
+
+/**
+ * Probe a single port for a HyperFrames config response.
+ * Returns the full config or null if not a HyperFrames server.
+ */
+function probePort(port: number): Promise<HyperframesConfigResponse | null> {
+  return new Promise<HyperframesConfigResponse | null>((resolveResult) => {
+    const req = http.get(
+      { hostname: "127.0.0.1", port, path: "/__hyperframes_config", timeout: PROBE_TIMEOUT_MS },
+      (res) => {
+        if (res.statusCode !== 200) {
+          res.resume();
+          return resolveResult(null);
+        }
+        let data = "";
+        let bytes = 0;
+        res.on("data", (chunk: Buffer | string) => {
+          bytes += typeof chunk === "string" ? chunk.length : chunk.byteLength;
+          if (bytes > PROBE_MAX_BYTES) {
+            req.destroy();
+            return resolveResult(null);
+          }
+          data += chunk;
+        });
+        res.on("error", () => resolveResult(null));
+        res.on("end", () => {
+          try {
+            const json = JSON.parse(data) as HyperframesConfigResponse;
+            resolveResult(json.isHyperframes === true ? json : null);
+          } catch {
+            resolveResult(null);
+          }
+        });
+      },
+    );
+    req.on("error", () => resolveResult(null));
+    req.on("timeout", () => {
+      req.destroy();
+      resolveResult(null);
+    });
+  });
+}
+
+/**
+ * Scan the default port range for active HyperFrames preview servers.
+ * Probes ports in parallel batches for speed.
+ */
+export async function scanActiveServers(startPort = 3002): Promise<ActiveServer[]> {
+  const endPort = startPort + MAX_PORT_SCAN - 1;
+  const servers: ActiveServer[] = [];
+
+  // Probe in batches of 20 to avoid too many concurrent connections
+  const batchSize = 20;
+  for (let batchStart = startPort; batchStart <= endPort; batchStart += batchSize) {
+    const batchEnd = Math.min(batchStart + batchSize - 1, endPort);
+    const ports = Array.from({ length: batchEnd - batchStart + 1 }, (_, i) => batchStart + i);
+
+    const results = await Promise.all(
+      ports.map(async (port) => {
+        const config = await probePort(port);
+        if (!config) return null;
+        const pid = await getProcessOnPort(port);
+        return {
+          port,
+          projectName: config.projectName,
+          projectDir: config.projectDir,
+          version: config.version,
+          pid,
+        };
+      }),
+    );
+
+    for (const r of results) {
+      if (r) servers.push(r);
+    }
+  }
+
+  return servers;
+}
+
+/**
+ * Kill all active HyperFrames preview servers by sending SIGTERM to their PIDs.
+ * Returns the number of servers killed.
+ */
+export async function killActiveServers(startPort = 3002): Promise<number> {
+  const servers = await scanActiveServers(startPort);
+  let killed = 0;
+
+  for (const server of servers) {
+    if (server.pid) {
+      try {
+        process.kill(parseInt(server.pid, 10), "SIGTERM");
+        killed++;
+      } catch {
+        // Process may have already exited
+      }
+    }
+  }
+
+  return killed;
+}
+
 // ── Smart port selection ───────────────────────────────────────────────────
 
 export type FindPortResult =
