@@ -6,6 +6,7 @@ export const examples: Example[] = [
   ["Preview the current project", "hyperframes preview"],
   ["Preview a specific project directory", "hyperframes preview ./my-video"],
   ["Use a custom port", "hyperframes preview --port 8080"],
+  ["Force a new server even if one is already running", "hyperframes preview --force-new"],
 ];
 import { existsSync, lstatSync, symlinkSync, unlinkSync, readlinkSync, mkdirSync } from "node:fs";
 import { resolve, dirname, basename, join } from "node:path";
@@ -16,60 +17,18 @@ import { c } from "../ui/colors.js";
 import { isDevMode } from "../utils/env.js";
 import { lintProject } from "../utils/lintProject.js";
 import { formatLintFindings } from "../utils/lintFormat.js";
-
-/**
- * Try to start a server on the given port, auto-incrementing up to maxAttempts
- * times if the port is already in use. Returns the running server and actual port.
- *
- * Uses createAdaptorServer (no auto-listen) so we control the bind and can
- * retry on EADDRINUSE without TOCTOU races.
- */
-async function serveWithPortFallback(
-  fetch: Parameters<typeof import("@hono/node-server").serve>[0]["fetch"],
-  startPort: number,
-  maxAttempts = 10,
-): Promise<{ server: import("@hono/node-server").ServerType; port: number }> {
-  const { createAdaptorServer } = await import("@hono/node-server");
-
-  const server = createAdaptorServer({ fetch });
-
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    const port = startPort + attempt;
-    try {
-      await new Promise<void>((resolveListener, rejectListener) => {
-        const onError = (err: NodeJS.ErrnoException): void => {
-          server.removeListener("listening", onListening);
-          rejectListener(err);
-        };
-        const onListening = (): void => {
-          server.removeListener("error", onError);
-          resolveListener();
-        };
-        server.once("error", onError);
-        server.once("listening", onListening);
-        server.listen(port);
-      });
-      return { server, port };
-    } catch (err: unknown) {
-      const code = (err as NodeJS.ErrnoException).code;
-      if (code === "EADDRINUSE") {
-        continue; // try next port
-      }
-      throw err; // unexpected error — don't swallow it
-    }
-  }
-
-  const lastPort = startPort + maxAttempts - 1;
-  throw new Error(
-    `Ports ${startPort}–${lastPort} are all in use. Use --port to specify a different port.`,
-  );
-}
+import { findPortAndServe, type FindPortResult } from "../server/portUtils.js";
 
 export default defineCommand({
   meta: { name: "preview", description: "Start the studio for previewing compositions" },
   args: {
     dir: { type: "positional", description: "Project directory", required: false },
     port: { type: "string", description: "Port to run the preview server on", default: "3002" },
+    "force-new": {
+      type: "boolean",
+      description: "Start a new server even if one is already running for this project",
+      default: false,
+    },
   },
   async run({ args }) {
     const rawArg = args.dir;
@@ -102,7 +61,8 @@ export default defineCommand({
       return runLocalStudioMode(dir, projectName);
     }
 
-    return runEmbeddedMode(dir, startPort, projectName);
+    const forceNew = !!args["force-new"];
+    return runEmbeddedMode(dir, startPort, projectName, forceNew);
   },
 });
 
@@ -300,11 +260,15 @@ async function runLocalStudioMode(dir: string, projectName?: string): Promise<vo
 /**
  * Embedded mode: serve the pre-built studio SPA with a standalone Hono server.
  * Works without any additional dependencies — the studio is bundled in dist/.
+ *
+ * If an existing HyperFrames server for the same project is detected,
+ * reuses it instead of starting a new one (unless --force-new is set).
  */
 async function runEmbeddedMode(
   dir: string,
   startPort: number,
   projectName?: string,
+  forceNew = false,
 ): Promise<void> {
   const { createStudioServer } = await import("../server/studioServer.js");
 
@@ -315,9 +279,9 @@ async function runEmbeddedMode(
   const s = clack.spinner();
   s.start("Starting studio...");
 
-  let actualPort: number;
+  let result: FindPortResult;
   try {
-    ({ port: actualPort } = await serveWithPortFallback(app.fetch, startPort));
+    result = await findPortAndServe(app.fetch, startPort, dir, forceNew);
   } catch (err: unknown) {
     s.stop(c.error("Failed to start studio"));
     console.error();
@@ -327,11 +291,26 @@ async function runEmbeddedMode(
     return;
   }
 
-  const url = `http://localhost:${actualPort}`;
+  if (result.type === "already-running") {
+    const url = `http://localhost:${result.port}`;
+    s.stop(c.success("Already running"));
+    console.log();
+    console.log(`  ${c.dim("Project")}   ${c.accent(pName)}`);
+    console.log(`  ${c.dim("Studio")}    ${c.accent(url)}`);
+    console.log();
+    console.log(
+      `  ${c.dim("Reusing existing server. Use --force-new to start a fresh instance.")}`,
+    );
+    console.log();
+    import("open").then((mod) => mod.default(`${url}#project/${pName}`)).catch(() => {});
+    return;
+  }
+
+  const url = `http://localhost:${result.port}`;
   s.stop(c.success("Studio running"));
   console.log();
-  if (actualPort !== startPort) {
-    console.log(`  ${c.warn(`Port ${startPort} is in use, using ${actualPort} instead`)}`);
+  if (result.port !== startPort) {
+    console.log(`  ${c.warn(`Port ${startPort} is in use, using ${result.port} instead`)}`);
     console.log();
   }
   console.log(`  ${c.dim("Project")}   ${c.accent(pName)}`);

@@ -1,0 +1,245 @@
+/**
+ * Port utilities for the HyperFrames preview server.
+ *
+ * Implements Remotion-style port handling:
+ * - Multi-host availability testing (catches port-forwarding ghosts)
+ * - HTTP probe for detecting existing HyperFrames instances
+ * - PID detection for actionable conflict logging
+ * - Smart port selection with instance reuse
+ */
+
+import net from "node:net";
+import http from "node:http";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { resolve } from "node:path";
+import { c } from "../ui/colors.js";
+
+const execFileAsync = promisify(execFile);
+
+/** Max ports to scan before giving up. */
+const MAX_PORT_SCAN = 100;
+
+/** Localhost HTTP probe timeout — HyperFrames responds in <1ms, so 300ms is generous. */
+const PROBE_TIMEOUT_MS = 300;
+
+/** Max bytes to read from HTTP probe response (guards against malicious servers). */
+const PROBE_MAX_BYTES = 4096;
+
+// ── Port availability ──────────────────────────────────────────────────────
+
+/**
+ * Test whether a port is free on a specific host.
+ * Returns false (unavailable) only for EADDRINUSE. Other errors (e.g.,
+ * EADDRNOTAVAIL when IPv6 is disabled) are treated as "this host doesn't
+ * apply" and return true.
+ */
+function isPortAvailableOnHost(port: number, host: string): Promise<boolean> {
+  return new Promise<boolean>((resolve) => {
+    const server = net.createServer();
+    server.unref();
+    server.on("error", (err: NodeJS.ErrnoException) => {
+      resolve(err.code !== "EADDRINUSE");
+    });
+    server.listen({ port, host }, () => {
+      server.close(() => {
+        resolve(true);
+      });
+    });
+  });
+}
+
+/**
+ * Test a port across IPv4 and IPv6 interfaces in parallel. A port is only
+ * unavailable if ANY host reports EADDRINUSE. This catches the devbox bug
+ * where a port is free on localhost but occupied on 0.0.0.0 via SSH forwarding.
+ */
+export async function testPortOnAllHosts(port: number): Promise<boolean> {
+  const hosts = ["127.0.0.1", "0.0.0.0", "::1", "::"];
+  const results = await Promise.all(hosts.map((h) => isPortAvailableOnHost(port, h)));
+  return results.every(Boolean);
+}
+
+// ── Existing instance detection ────────────────────────────────────────────
+
+interface HyperframesConfigResponse {
+  isHyperframes: boolean;
+  projectName: string;
+  projectDir: string;
+  version: string;
+}
+
+export type DetectionResult =
+  | { type: "match" }
+  | { type: "mismatch"; projectName: string }
+  | { type: "not-hyperframes" };
+
+/**
+ * Probe an occupied port to check if it's running a HyperFrames preview server.
+ * HTTP GET to /__hyperframes_config with a short timeout.
+ */
+export function detectHyperframesServer(
+  port: number,
+  normalizedProjectDir: string,
+): Promise<DetectionResult> {
+  return new Promise<DetectionResult>((resolveResult) => {
+    const req = http.get(
+      {
+        hostname: "127.0.0.1",
+        port,
+        path: "/__hyperframes_config",
+        timeout: PROBE_TIMEOUT_MS,
+      },
+      (res) => {
+        if (res.statusCode !== 200) {
+          res.resume();
+          return resolveResult({ type: "not-hyperframes" });
+        }
+
+        let data = "";
+        let bytes = 0;
+        res.on("data", (chunk: Buffer | string) => {
+          bytes += typeof chunk === "string" ? chunk.length : chunk.byteLength;
+          if (bytes > PROBE_MAX_BYTES) {
+            req.destroy();
+            return resolveResult({ type: "not-hyperframes" });
+          }
+          data += chunk;
+        });
+        res.on("error", () => {
+          resolveResult({ type: "not-hyperframes" });
+        });
+        res.on("end", () => {
+          try {
+            const json = JSON.parse(data) as HyperframesConfigResponse;
+            if (json.isHyperframes !== true) {
+              return resolveResult({ type: "not-hyperframes" });
+            }
+
+            const normalize = (p: string) => resolve(p).replace(/\\/g, "/").toLowerCase();
+
+            if (normalize(json.projectDir) === normalizedProjectDir) {
+              return resolveResult({ type: "match" });
+            }
+
+            return resolveResult({ type: "mismatch", projectName: json.projectName });
+          } catch {
+            resolveResult({ type: "not-hyperframes" });
+          }
+        });
+      },
+    );
+
+    req.on("error", () => {
+      resolveResult({ type: "not-hyperframes" });
+    });
+
+    req.on("timeout", () => {
+      req.destroy();
+      resolveResult({ type: "not-hyperframes" });
+    });
+  });
+}
+
+// ── PID detection ──────────────────────────────────────────────────────────
+
+/**
+ * Get the PID of the process listening on a port (macOS/Linux only).
+ * Returns null on Windows or if detection fails.
+ */
+export async function getProcessOnPort(port: number): Promise<string | null> {
+  if (process.platform === "win32") return null;
+  try {
+    const { stdout } = await execFileAsync("lsof", [`-ti:${port}`, "-sTCP:LISTEN"], {
+      timeout: 2000,
+    });
+    const pid = stdout.trim().split("\n")[0]?.trim();
+    return pid || null;
+  } catch {
+    return null;
+  }
+}
+
+// ── Smart port selection ───────────────────────────────────────────────────
+
+export type FindPortResult =
+  | { type: "started"; server: import("@hono/node-server").ServerType; port: number }
+  | { type: "already-running"; port: number };
+
+/**
+ * Smart port selection with instance reuse (Remotion-style).
+ *
+ * For each port in the scan range:
+ *   1. Test availability on multiple hosts (catches port-forwarding ghosts)
+ *   2. If available → bind the server and return
+ *   3. If occupied and !forceNew → HTTP-probe for an existing HyperFrames server
+ *      - Same project → return "already-running" (caller reopens browser)
+ *      - Different project or non-HyperFrames → log and skip to next port
+ *   4. If bind still fails with EADDRINUSE (race) → retry next port
+ */
+export async function findPortAndServe(
+  fetch: Parameters<typeof import("@hono/node-server").serve>[0]["fetch"],
+  startPort: number,
+  projectDir: string,
+  forceNew: boolean,
+): Promise<FindPortResult> {
+  const { createAdaptorServer } = await import("@hono/node-server");
+  const normalizedDir = resolve(projectDir).replace(/\\/g, "/").toLowerCase();
+  const endPort = startPort + MAX_PORT_SCAN - 1;
+
+  let server: import("@hono/node-server").ServerType | null = null;
+
+  for (let port = startPort; port <= endPort; port++) {
+    const available = await testPortOnAllHosts(port);
+
+    if (available) {
+      // Lazily create server on first available port
+      if (!server) server = createAdaptorServer({ fetch });
+
+      try {
+        await new Promise<void>((resolveListener, rejectListener) => {
+          const onError = (err: NodeJS.ErrnoException): void => {
+            server!.removeListener("listening", onListening);
+            rejectListener(err);
+          };
+          const onListening = (): void => {
+            server!.removeListener("error", onError);
+            resolveListener();
+          };
+          server!.once("error", onError);
+          server!.once("listening", onListening);
+          server!.listen(port);
+        });
+        return { type: "started", server, port };
+      } catch (err: unknown) {
+        if ((err as NodeJS.ErrnoException).code === "EADDRINUSE") {
+          continue;
+        }
+        throw err;
+      }
+    }
+
+    // Port is occupied — probe for existing HyperFrames instance
+    if (!forceNew) {
+      const detection = await detectHyperframesServer(port, normalizedDir);
+      if (detection.type === "match") {
+        return { type: "already-running", port };
+      }
+      if (detection.type === "mismatch") {
+        console.log(
+          `  ${c.dim(`Port ${port} in use by HyperFrames project "${detection.projectName}" — skipping`)}`,
+        );
+        continue;
+      }
+    }
+
+    const pid = await getProcessOnPort(port);
+    if (pid) {
+      console.log(`  ${c.dim(`Port ${port} in use by PID ${pid} — skipping`)}`);
+    }
+  }
+
+  throw new Error(
+    `Ports ${startPort}–${endPort} are all in use. Use --port to specify a different starting port.`,
+  );
+}

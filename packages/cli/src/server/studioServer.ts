@@ -10,6 +10,7 @@ import { streamSSE } from "hono/streaming";
 import { existsSync, readFileSync, writeFileSync, statSync } from "node:fs";
 import { resolve, join, basename } from "node:path";
 import { createProjectWatcher, type ProjectWatcher } from "./fileWatcher.js";
+import { VERSION as version } from "../version.js";
 import {
   createStudioApi,
   getMimeType,
@@ -239,6 +240,18 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
   // ── Build the Hono app ─────────────────────────────────────────────────
 
   const app = new Hono();
+
+  // Config probe endpoint — used by port detection to identify existing
+  // HyperFrames instances and reuse them instead of spawning duplicates.
+  // See portUtils.ts detectHyperframesServer() for the consumer.
+  app.get("/__hyperframes_config", (c) => {
+    return c.json({
+      isHyperframes: true,
+      projectName: projectId,
+      projectDir: projectDir,
+      version,
+    });
+  });
 
   // CLI-specific routes (before shared API)
   app.get("/api/runtime.js", (c) => {
