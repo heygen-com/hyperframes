@@ -1,14 +1,20 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 28">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 95 23">
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@600&amp;display=swap');
+    @font-face {
+      font-family: 'ABC Solar Display';
+      src: url('https://www-static-assets.heygen.com/fonts/solar-display/ABCSolarDisplay-Bold.woff2') format('woff2'),
+           url('https://www-static-assets.heygen.com/fonts/solar-display/ABCSolarDisplay-Bold.woff') format('woff');
+      font-weight: 700;
+      font-style: normal;
+    }
   </style>
   <text
     x="0"
-    y="21"
-    font-family="'Inter', -apple-system, BlinkMacSystemFont, sans-serif"
+    y="16"
+    font-family="'ABC Solar Display', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif"
     font-weight="600"
-    font-size="20"
-    letter-spacing="-0.2"
+    font-size="15.2"
+    letter-spacing="-0.15"
     fill="#0a0a0a"
   >HyperFrames</text>
 </svg>

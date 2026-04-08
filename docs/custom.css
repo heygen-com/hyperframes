@@ -2,6 +2,15 @@
 
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap');
 
+@font-face {
+  font-family: 'ABC Solar Display';
+  src: url('https://www-static-assets.heygen.com/fonts/solar-display/ABCSolarDisplay-Bold.woff2') format('woff2'),
+       url('https://www-static-assets.heygen.com/fonts/solar-display/ABCSolarDisplay-Bold.woff') format('woff');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
 /* ── Light mode (default) ── */
 
 :root {

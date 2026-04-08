@@ -5,7 +5,7 @@ pre-commit:
       glob: "*.{js,jsx,ts,tsx}"
       run: bunx oxlint {staged_files}
     format:
-      glob: "*.{js,jsx,ts,tsx,json,css,md,yaml,yml}"
+      glob: "*.{js,jsx,ts,tsx,json,md,yaml,yml}"
       run: bunx oxfmt --check {staged_files}
     typecheck:
       glob: "*.{ts,tsx}"
