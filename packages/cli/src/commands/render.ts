@@ -95,6 +95,10 @@ export default defineCommand({
       description: "Fail render on lint errors AND warnings",
       default: false,
     },
+    "max-concurrent-renders": {
+      type: "string",
+      description: "Max concurrent renders when using the producer server (1-10). Default: 2.",
+    },
   },
   async run({ args }) {
     // ── Resolve project ────────────────────────────────────────────────────
@@ -133,6 +137,19 @@ export default defineCommand({
         process.exit(1);
       }
       workers = parsed;
+    }
+
+    // ── Validate max-concurrent-renders ─────────────────────────────────
+    if (args["max-concurrent-renders"] != null) {
+      const parsed = parseInt(args["max-concurrent-renders"], 10);
+      if (isNaN(parsed) || parsed < 1 || parsed > 10) {
+        errorBox(
+          "Invalid max-concurrent-renders",
+          `Got "${args["max-concurrent-renders"]}". Must be a number between 1 and 10.`,
+        );
+        process.exit(1);
+      }
+      process.env.PRODUCER_MAX_CONCURRENT_RENDERS = String(parsed);
     }
 
     // ── Resolve output path ───────────────────────────────────────────────

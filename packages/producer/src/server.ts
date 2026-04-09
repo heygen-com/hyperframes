@@ -7,6 +7,7 @@
  * Routes:
  *   POST /render         — blocking render, returns JSON
  *   POST /render/stream  — SSE streaming render with progress
+ *   GET  /render/queue   — current render queue status
  *   POST /lint           — blocking Hyperframe lint
  *   GET  /health         — health check
  *   GET  /outputs/:token — download rendered MP4
@@ -36,6 +37,7 @@ import {
 import { prepareHyperframeLintBody, runHyperframeLint } from "./services/hyperframeLint.js";
 import { resolveRenderPaths } from "./utils/paths.js";
 import { defaultLogger, type ProducerLogger } from "./logger.js";
+import { Semaphore } from "./utils/semaphore.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -51,6 +53,8 @@ export interface HandlerOptions {
   outputUrlPrefix?: string;
   /** TTL for output artifact download tokens (ms). Default: 15 minutes. */
   artifactTtlMs?: number;
+  /** Max renders that execute simultaneously. Queued requests wait FIFO. Default: 2. */
+  maxConcurrentRenders?: number;
 }
 
 export interface ServerOptions extends HandlerOptions {
@@ -232,6 +236,7 @@ export interface RenderHandlers {
   lint: (c: Context) => Promise<Response>;
   health: (c: Context) => Response;
   outputs: (c: Context) => Response;
+  queue: (c: Context) => Response;
 }
 
 /**
@@ -248,6 +253,9 @@ export function createRenderHandlers(options: HandlerOptions = {}): RenderHandle
   const artifactTtlMs =
     options.artifactTtlMs ?? Number(process.env.PRODUCER_OUTPUT_ARTIFACT_TTL_MS || 15 * 60 * 1000);
   const store = createArtifactStore(artifactTtlMs);
+  const maxConcurrentRenders =
+    options.maxConcurrentRenders ?? Number(process.env.PRODUCER_MAX_CONCURRENT_RENDERS || 2);
+  const renderSemaphore = new Semaphore(maxConcurrentRenders);
   const startTime = Date.now();
 
   const health = (c: Context): Response =>
@@ -315,6 +323,8 @@ export function createRenderHandlers(options: HandlerOptions = {}): RenderHandle
     );
     const outputDir = dirname(absoluteOutputPath);
     if (!existsSync(outputDir)) mkdirSync(outputDir, { recursive: true });
+
+    const release = await renderSemaphore.acquire();
 
     log.info("render started", {
       requestId,
@@ -387,6 +397,7 @@ export function createRenderHandlers(options: HandlerOptions = {}): RenderHandle
         500,
       );
     } finally {
+      release();
       cleanupTempDir(cleanupProjectDir, log);
     }
   };
@@ -450,6 +461,17 @@ export function createRenderHandlers(options: HandlerOptions = {}): RenderHandle
       const onRequestAbort = () =>
         abortController.abort(new RenderCancelledError("request_aborted"));
       c.req.raw.signal.addEventListener("abort", onRequestAbort, { once: true });
+
+      if (renderSemaphore.activeCount >= maxConcurrentRenders) {
+        await stream.writeSSE({
+          data: JSON.stringify({
+            type: "queued",
+            requestId,
+            position: renderSemaphore.waitingCount,
+          }),
+        });
+      }
+      const release = await renderSemaphore.acquire();
 
       try {
         await executeRenderJob(
@@ -519,6 +541,7 @@ export function createRenderHandlers(options: HandlerOptions = {}): RenderHandle
           }),
         });
       } finally {
+        release();
         c.req.raw.signal.removeEventListener("abort", onRequestAbort);
         cleanupTempDir(cleanupProjectDir, log);
       }
@@ -545,7 +568,14 @@ export function createRenderHandlers(options: HandlerOptions = {}): RenderHandle
     });
   };
 
-  return { render, renderStream, lint, health, outputs };
+  const queue = (c: Context): Response =>
+    c.json({
+      maxConcurrentRenders,
+      activeRenders: renderSemaphore.activeCount,
+      queuedRenders: renderSemaphore.waitingCount,
+    });
+
+  return { render, renderStream, lint, health, outputs, queue };
 }
 
 // ---------------------------------------------------------------------------
@@ -562,6 +592,7 @@ export function createProducerApp(options: HandlerOptions = {}): Hono {
   app.get("/health", handlers.health);
   app.post("/render", handlers.render);
   app.post("/render/stream", handlers.renderStream);
+  app.get("/render/queue", handlers.queue);
   app.post("/lint", handlers.lint);
   app.get("/outputs/:token", handlers.outputs);
 

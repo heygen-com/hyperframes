@@ -118,6 +118,7 @@ Render your Hyperframes [compositions](/concepts/compositions) to MP4, MOV, or W
 | `--fps` | 24, 30, 60 | 30 | Frames per second |
 | `--quality` | draft, standard, high | standard | Encoding quality preset |
 | `--workers` | 1-8 or `auto` | auto | Parallel render workers (see [Workers](#workers) below) |
+| `--max-concurrent-renders` | 1-10 | 2 | Max simultaneous renders via the producer server (see [Concurrent Renders](#concurrent-renders) below) |
 | `--gpu` | — | off | GPU encoding (NVENC, VideoToolbox, VAAPI) |
 | `--docker` | — | off | Use Docker for [deterministic rendering](/concepts/determinism) |
 | `--quiet` | — | off | Suppress verbose output |
@@ -167,6 +168,61 @@ npx hyperframes render --workers 8 --output output.mp4
 - Long compositions (30+ seconds) on a machine with 8+ cores and 16+ GB RAM
 - Dedicated render machines or CI runners
 - Docker mode on a well-provisioned host
+
+## Concurrent Renders
+
+When multiple render requests hit the producer server simultaneously (common with AI agents), each render spawns its own set of Chrome worker processes. Too many concurrent renders can exhaust CPU and cause failures.
+
+The producer server uses a **request-level semaphore** to queue renders. Only `maxConcurrentRenders` renders execute at a time — additional requests wait in a FIFO queue until a slot opens.
+
+### Configuration
+
+```bash Terminal
+# CLI flag
+npx hyperframes render --max-concurrent-renders 2 --output output.mp4
+
+# Environment variable (for the producer server)
+PRODUCER_MAX_CONCURRENT_RENDERS=2
+```
+
+The default is **2** concurrent renders, which works well on 8-core machines where each render uses 2-3 workers.
+
+### Queue status
+
+The producer server exposes a `GET /render/queue` endpoint that returns the current state:
+
+```json
+{
+  "maxConcurrentRenders": 2,
+  "activeRenders": 1,
+  "queuedRenders": 3
+}
+```
+
+AI agents can poll this endpoint to decide whether to submit a render or wait.
+
+### SSE queue events
+
+When using the streaming endpoint (`POST /render/stream`), queued requests receive a `queued` event before rendering begins:
+
+```json
+{"type": "queued", "requestId": "...", "position": 2}
+```
+
+This lets agents report "waiting in queue" to users rather than appearing stuck.
+
+### Choosing a concurrency limit
+
+| Machine | CPU cores | Recommended limit |
+|---------|-----------|------------------|
+| 4-core VM | 4 | 1 |
+| 8-core workstation | 8 | 2 |
+| 16-core server | 16 | 3-4 |
+| 32-core render box | 32 | 5-6 |
+
+<Tip>
+  When in doubt, use 1. Renders will queue up and execute sequentially, but each one gets full CPU and finishes as fast as possible. This is better than 3 renders fighting for CPU and all finishing slowly — or failing.
+</Tip>
 
 ## Transparent Video
 
