@@ -31,6 +31,16 @@ export const PLAYER_STYLES = /* css */ `
     pointer-events: none;
   }
 
+  /* ── Theming via CSS custom properties ──
+   *
+   * Override from outside the shadow DOM:
+   *   hyperframes-player {
+   *     --hfp-controls-bg: linear-gradient(transparent, rgba(0,0,0,0.9));
+   *     --hfp-accent: #ff6b6b;
+   *     --hfp-font: "Inter", sans-serif;
+   *   }
+   */
+
   .hfp-controls {
     position: absolute;
     bottom: 0;
@@ -38,12 +48,12 @@ export const PLAYER_STYLES = /* css */ `
     right: 0;
     display: flex;
     align-items: center;
-    gap: 12px;
-    padding: 8px 16px;
-    background: linear-gradient(transparent, rgba(0, 0, 0, 0.7));
-    color: #fff;
-    font-family: system-ui, -apple-system, sans-serif;
-    font-size: 13px;
+    gap: var(--hfp-controls-gap, 12px);
+    padding: var(--hfp-controls-padding, 8px 16px);
+    background: var(--hfp-controls-bg, linear-gradient(transparent, rgba(0, 0, 0, 0.7)));
+    color: var(--hfp-color, #fff);
+    font-family: var(--hfp-font, system-ui, -apple-system, sans-serif);
+    font-size: var(--hfp-font-size, 13px);
     z-index: 10;
     pointer-events: auto;
     opacity: 1;
@@ -59,7 +69,7 @@ export const PLAYER_STYLES = /* css */ `
   .hfp-play-btn {
     background: none;
     border: none;
-    color: #fff;
+    color: var(--hfp-color, #fff);
     cursor: pointer;
     padding: 8px;
     display: flex;
@@ -82,15 +92,15 @@ export const PLAYER_STYLES = /* css */ `
 
   .hfp-scrubber {
     flex: 1;
-    height: 4px;
-    background: rgba(255, 255, 255, 0.3);
-    border-radius: 2px;
+    height: var(--hfp-scrubber-height, 4px);
+    background: var(--hfp-scrubber-bg, rgba(255, 255, 255, 0.3));
+    border-radius: var(--hfp-scrubber-radius, 2px);
     cursor: pointer;
     position: relative;
   }
 
   .hfp-scrubber:hover {
-    height: 6px;
+    height: var(--hfp-scrubber-height-hover, 6px);
   }
 
   .hfp-progress {
@@ -98,8 +108,8 @@ export const PLAYER_STYLES = /* css */ `
     top: 0;
     left: 0;
     height: 100%;
-    background: #fff;
-    border-radius: 2px;
+    background: var(--hfp-accent, #fff);
+    border-radius: var(--hfp-scrubber-radius, 2px);
     pointer-events: none;
   }
 
@@ -107,6 +117,83 @@ export const PLAYER_STYLES = /* css */ `
     flex-shrink: 0;
     font-variant-numeric: tabular-nums;
     opacity: 0.9;
+  }
+
+  .hfp-speed-wrap {
+    position: relative;
+    flex-shrink: 0;
+  }
+
+  .hfp-speed-btn {
+    background: var(--hfp-speed-btn-bg, rgba(255, 255, 255, 0.15));
+    border: none;
+    border-radius: var(--hfp-speed-btn-radius, 4px);
+    color: var(--hfp-color, #fff);
+    cursor: pointer;
+    font-family: var(--hfp-font, system-ui, -apple-system, sans-serif);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    padding: 4px 8px;
+    min-width: 40px;
+    text-align: center;
+    transition: background 0.15s ease;
+  }
+
+  .hfp-speed-btn:hover {
+    background: var(--hfp-speed-btn-bg-hover, rgba(255, 255, 255, 0.3));
+  }
+
+  .hfp-speed-menu {
+    position: absolute;
+    bottom: calc(100% + 8px);
+    right: 0;
+    background: var(--hfp-menu-bg, rgba(20, 20, 20, 0.95));
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--hfp-menu-border, rgba(255, 255, 255, 0.1));
+    border-radius: var(--hfp-menu-radius, 8px);
+    padding: 4px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 80px;
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(4px);
+    transition: opacity 0.15s ease, transform 0.15s ease, visibility 0.15s;
+    box-shadow: var(--hfp-menu-shadow, 0 8px 24px rgba(0, 0, 0, 0.4));
+  }
+
+  .hfp-speed-menu.hfp-open {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+  }
+
+  .hfp-speed-option {
+    background: none;
+    border: none;
+    border-radius: 4px;
+    color: var(--hfp-menu-color, rgba(255, 255, 255, 0.7));
+    cursor: pointer;
+    font-family: var(--hfp-font, system-ui, -apple-system, sans-serif);
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+    padding: 6px 12px;
+    text-align: left;
+    transition: background 0.1s ease, color 0.1s ease;
+    white-space: nowrap;
+  }
+
+  .hfp-speed-option:hover {
+    background: var(--hfp-menu-hover-bg, rgba(255, 255, 255, 0.1));
+    color: var(--hfp-color, #fff);
+  }
+
+  .hfp-speed-option.hfp-active {
+    color: var(--hfp-accent, #fff);
+    font-weight: 600;
   }
 `;
 

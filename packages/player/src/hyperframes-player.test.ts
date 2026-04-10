@@ -1,5 +1,29 @@
 import { describe, it, expect } from "vitest";
-import { formatTime } from "./controls.js";
+import { formatTime, formatSpeed, SPEED_PRESETS } from "./controls.js";
+
+describe("SPEED_PRESETS", () => {
+  it("contains logarithmic speed steps", () => {
+    expect(SPEED_PRESETS).toEqual([0.25, 0.5, 1, 1.5, 2, 4]);
+  });
+
+  it("includes 1x as default speed", () => {
+    expect(SPEED_PRESETS).toContain(1);
+  });
+});
+
+describe("formatSpeed", () => {
+  it("formats integer speeds", () => {
+    expect(formatSpeed(1)).toBe("1x");
+    expect(formatSpeed(2)).toBe("2x");
+    expect(formatSpeed(4)).toBe("4x");
+  });
+
+  it("formats fractional speeds", () => {
+    expect(formatSpeed(0.25)).toBe("0.25x");
+    expect(formatSpeed(0.5)).toBe("0.5x");
+    expect(formatSpeed(1.5)).toBe("1.5x");
+  });
+});
 
 describe("formatTime", () => {
   it("formats 0 seconds", () => {

@@ -16,9 +16,9 @@
   "exports": {
     ".": {
       "types": "./src/hyperframes-player.ts",
+      "script": "./dist/hyperframes-player.global.js",
       "import": "./src/hyperframes-player.ts",
-      "require": "./dist/hyperframes-player.cjs",
-      "script": "./dist/hyperframes-player.global.js"
+      "require": "./dist/hyperframes-player.cjs"
     }
   },
   "scripts": {

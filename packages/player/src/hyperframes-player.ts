@@ -1,4 +1,4 @@
-import { createControls, type ControlsCallbacks } from "./controls.js";
+import { createControls, SPEED_PRESETS, type ControlsCallbacks } from "./controls.js";
 import { PLAYER_STYLES } from "./styles.js";
 
 const DEFAULT_FPS = 30;
@@ -105,9 +105,13 @@ class HyperframesPlayer extends HTMLElement {
       case "poster":
         this._setupPoster();
         break;
-      case "playback-rate":
-        this._sendControl("set-playback-rate", { playbackRate: parseFloat(val || "1") });
+      case "playback-rate": {
+        const rate = parseFloat(val || "1");
+        this._sendControl("set-playback-rate", { playbackRate: rate });
+        this.controlsApi?.updateSpeed(rate);
+        this.dispatchEvent(new Event("ratechange"));
         break;
+      }
       case "muted":
         this._sendControl("set-muted", { muted: val !== null });
         break;
@@ -367,8 +371,18 @@ class HyperframesPlayer extends HTMLElement {
       onPlay: () => this.play(),
       onPause: () => this.pause(),
       onSeek: (fraction) => this.seek(fraction * this._duration),
+      onSpeedChange: (speed) => {
+        this.playbackRate = speed;
+      },
     };
-    this.controlsApi = createControls(this.shadow, callbacks);
+    const presetsAttr = this.getAttribute("speed-presets");
+    const speedPresets = presetsAttr
+      ? presetsAttr
+          .split(",")
+          .map(Number)
+          .filter((n) => !isNaN(n) && n > 0)
+      : undefined;
+    this.controlsApi = createControls(this.shadow, callbacks, { speedPresets });
   }
 
   private _setupPoster() {
@@ -397,4 +411,5 @@ if (!customElements.get("hyperframes-player")) {
 }
 
 export { HyperframesPlayer };
-export { formatTime } from "./controls.js";
+export { formatTime, formatSpeed, SPEED_PRESETS } from "./controls.js";
+export type { ControlsCallbacks, ControlsOptions } from "./controls.js";
