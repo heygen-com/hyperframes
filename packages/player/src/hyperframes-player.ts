@@ -284,6 +284,11 @@ class HyperframesPlayer extends HTMLElement {
           return; // Wait for runtime to load and initialize
         }
 
+        // Runtime was injected but hasn't loaded yet — keep waiting
+        if (this._runtimeInjected && !hasRuntime) {
+          return;
+        }
+
         const getAdapter = () => {
           if (win.__player && typeof win.__player.getDuration === "function") return win.__player;
           if (win.__timelines) {
