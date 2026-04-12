@@ -500,9 +500,40 @@ export const gsapRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
           message:
             "GSAP tween uses `repeat: -1` (infinite). Infinite repeats break the deterministic " +
             "capture engine which seeks to exact frame times. Use a finite repeat count calculated " +
-            "from the composition duration: `repeat: Math.ceil(duration / cycleDuration) - 1`.",
+            "from the composition duration: `repeat: Math.floor(duration / cycleDuration) - 1`.",
           fixHint:
-            "Replace `repeat: -1` with a finite count, e.g. `repeat: Math.ceil(totalDuration / singleCycleDuration) - 1`.",
+            "Replace `repeat: -1` with a finite count, e.g. `repeat: Math.floor(totalDuration / singleCycleDuration) - 1`. " +
+            "Use Math.floor (not Math.ceil) to ensure the animation fits within the total duration.",
+          snippet: truncateSnippet(snippet),
+        });
+      }
+    }
+    return findings;
+  },
+
+  // gsap_repeat_ceil_overshoot
+  ({ scripts }) => {
+    const findings: HyperframeLintFinding[] = [];
+    for (const script of scripts) {
+      const content = script.content;
+      // Match patterns like: repeat: Math.ceil(duration / X) - 1
+      // or repeat: Math.ceil(totalDuration / cycleDuration) - 1
+      const pattern = /repeat\s*:\s*Math\.ceil\s*\([^)]+\)\s*-\s*1/g;
+      let match: RegExpExecArray | null;
+      while ((match = pattern.exec(content)) !== null) {
+        const contextStart = Math.max(0, match.index - 40);
+        const contextEnd = Math.min(content.length, match.index + match[0].length + 40);
+        const snippet = content.slice(contextStart, contextEnd).trim();
+        findings.push({
+          code: "gsap_repeat_ceil_overshoot",
+          severity: "warning",
+          message:
+            "GSAP repeat calculation uses `Math.ceil` which can overshoot the composition duration. " +
+            "For example, Math.ceil(10.5 / 2) - 1 = 5 repeats → 6 cycles × 2s = 12s, exceeding 10.5s.",
+          fixHint:
+            "Use `Math.floor` instead of `Math.ceil` to ensure the animation fits within the duration: " +
+            "`repeat: Math.floor(totalDuration / cycleDuration) - 1`. " +
+            "Math.floor(10.5 / 2) - 1 = 4 repeats → 5 cycles × 2s = 10s ✓",
           snippet: truncateSnippet(snippet),
         });
       }

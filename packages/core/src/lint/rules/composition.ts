@@ -210,6 +210,26 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
     return findings;
   },
 
+  // root_composition_missing_data_duration
+  ({ rootTag }) => {
+    const findings: HyperframeLintFinding[] = [];
+    if (!rootTag) return findings;
+    const compId = readAttr(rootTag.raw, "data-composition-id");
+    if (!compId) return findings;
+    const hasDuration = readAttr(rootTag.raw, "data-duration") !== null;
+    if (!hasDuration) {
+      findings.push({
+        code: "root_composition_missing_data_duration",
+        severity: "warning",
+        message: `Root composition "${compId}" is missing data-duration. Without an explicit duration, the runtime may infer Infinity for compositions with repeating animations, causing playback issues.`,
+        fixHint:
+          'Add data-duration="X" to the root composition element, where X is the total duration in seconds.',
+        snippet: truncateSnippet(rootTag.raw),
+      });
+    }
+    return findings;
+  },
+
   // standalone_composition_wrapped_in_template
   ({ rawSource, options }) => {
     const findings: HyperframeLintFinding[] = [];
