@@ -11,47 +11,49 @@ A 1920x1080 video with an animated title that fades in from above — rendered t
 
 ## Prerequisites
 
-<Steps>
-  <Step title="Install Node.js 22+">
-    Hyperframes requires Node.js 22 or later. Check your version:
+<Accordion title="Node.js 22+ & FFmpeg (expand for install instructions)">
+  <Steps>
+    <Step title="Install Node.js 22+">
+      Hyperframes requires Node.js 22 or later. Check your version:
 
-    ```bash
-    node --version
-    ```
+      ```bash
+      node --version
+      ```
 
-    ```bash Expected output
-    v22.0.0   # or any version >= 22
-    ```
-  </Step>
+      ```bash Expected output
+      v22.0.0   # or any version >= 22
+      ```
+    </Step>
 
-  <Step title="Install FFmpeg">
-    FFmpeg is required for local video rendering (encoding captured frames into MP4).
+    <Step title="Install FFmpeg">
+      FFmpeg is required for local video rendering (encoding captured frames into MP4).
 
-    <CodeGroup>
-    ```bash macOS
-    brew install ffmpeg
-    ```
-    ```bash Ubuntu / Debian
-    sudo apt install ffmpeg
-    ```
-    ```bash Windows
-    # Download from https://ffmpeg.org/download.html
-    # or install via winget:
-    winget install ffmpeg
-    ```
-    </CodeGroup>
+      <CodeGroup>
+      ```bash macOS
+      brew install ffmpeg
+      ```
+      ```bash Ubuntu / Debian
+      sudo apt install ffmpeg
+      ```
+      ```bash Windows
+      # Download from https://ffmpeg.org/download.html
+      # or install via winget:
+      winget install ffmpeg
+      ```
+      </CodeGroup>
 
-    Verify the installation:
+      Verify the installation:
 
-    ```bash
-    ffmpeg -version
-    ```
+      ```bash
+      ffmpeg -version
+      ```
 
-    ```bash Expected output
-    ffmpeg version 7.x ...
-    ```
-  </Step>
-</Steps>
+      ```bash Expected output
+      ffmpeg version 7.x ...
+      ```
+    </Step>
+  </Steps>
+</Accordion>
 
 ## Create your first video
 
