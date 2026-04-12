@@ -242,8 +242,12 @@ class HyperframesPlayer extends HTMLElement {
     }
 
     if (data.type === "timeline" && data.durationInFrames > 0) {
-      this._duration = data.durationInFrames / DEFAULT_FPS;
-      this.controlsApi?.updateTime(this._currentTime, this._duration);
+      // Ignore Infinity duration from runtime (caused by loop-inflated timelines without data-duration)
+      // The player already has duration from the initial probe, so keep that.
+      if (Number.isFinite(data.durationInFrames)) {
+        this._duration = data.durationInFrames / DEFAULT_FPS;
+        this.controlsApi?.updateTime(this._currentTime, this._duration);
+      }
     }
 
     if (data.type === "stage-size" && data.width > 0 && data.height > 0) {
