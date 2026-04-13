@@ -4,5 +4,13 @@
     "correctness": "error"
   },
   "plugins": ["react", "typescript"],
+  "rules": {
+    "no-explicit-any": "error",
+    "no-unnecessary-type-assertion": "error",
+    "no-non-null-asserted-optional-chain": "error",
+    "no-non-null-assertion": "warn",
+    "no-confusing-non-null-assertion": "warn",
+    "prefer-as-const": "error"
+  },
   "ignorePatterns": ["dist/", "coverage/", "node_modules/"]
 }

@@ -155,6 +155,66 @@ player.addEventListener('ready', () => player.play());
 document.getElementById('player-container').appendChild(player);
 ```
 
+## Advanced: iframe access
+
+The composition runs inside a sandboxed `<iframe>` in the player's Shadow DOM. For most use cases you don't need direct access — the JavaScript API and events above are sufficient. But if you're building an editor, recorder, or custom timeline on top of the player, you'll need to inspect the composition's DOM or read its `__player` / `__timelines` runtime objects. The `iframeElement` getter exposes the inner iframe for these consumers:
+
+```js
+const player = document.querySelector('hyperframes-player');
+const iframe = player.iframeElement;
+
+// Reach into the composition's DOM
+iframe.contentDocument.querySelectorAll('[data-composition-id]');
+
+// Read the runtime (GSAP timelines, element registry, etc.)
+iframe.contentWindow.__timelines;
+```
+
+This is the canonical way to bridge the player into editor tools like [`@hyperframes/studio`](/packages/studio). The studio exports a `resolveIframe` helper that handles both direct iframe refs and web-component refs:
+
+```ts
+import { useTimelinePlayer, resolveIframe } from '@hyperframes/studio';
+
+const { iframeRef } = useTimelinePlayer();
+const player = document.createElement('hyperframes-player');
+player.setAttribute('src', src);
+container.appendChild(player);
+
+// Forward the inner iframe so useTimelinePlayer can drive play/pause/seek.
+iframeRef.current = resolveIframe(player);
+```
+
+### React: declarative ref pattern
+
+If you prefer JSX over imperative element creation, attach a ref to the web component and resolve the iframe inside an effect:
+
+```tsx
+import '@hyperframes/player';
+import type { HyperframesPlayer } from '@hyperframes/player';
+import { useTimelinePlayer, resolveIframe } from '@hyperframes/studio';
+
+function StudioPreview({ src }: { src: string }) {
+  const { iframeRef, onIframeLoad } = useTimelinePlayer();
+  const playerRef = useRef<HyperframesPlayer>(null);
+
+  useEffect(() => {
+    iframeRef.current = resolveIframe(playerRef.current);
+  });
+
+  return (
+    <hyperframes-player
+      ref={playerRef}
+      src={src}
+      onLoad={onIframeLoad}
+    />
+  );
+}
+```
+
+<Warning>
+  **Common gotcha** — if you pass the `<hyperframes-player>` element itself (not `iframeElement`) into a hook or API that expects an `<iframe>`, every `.contentWindow` / `.contentDocument` access returns `null` because the iframe lives inside the player's Shadow DOM. Timeline seek, play, pause, and DOM inspection all silently no-op. **Always extract `iframeElement` first**, or use `resolveIframe` from `@hyperframes/studio` which handles both iframe and web-component hosts transparently.
+</Warning>
+
 ## Architecture
 
 The player uses an iframe inside a Shadow DOM container. This provides:

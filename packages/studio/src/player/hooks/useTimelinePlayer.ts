@@ -186,8 +186,34 @@ function unmutePreviewMedia(iframe: HTMLIFrameElement | null): void {
   }
 }
 
+/**
+ * Resolve the underlying iframe from any host element. Supports:
+ * - Direct `<iframe>` element (most common — studio's own `Player.tsx`)
+ * - Custom elements (e.g. `<hyperframes-player>`) whose shadow DOM contains an iframe
+ * - Wrapper elements whose light DOM contains a descendant iframe
+ *
+ * Exported so web-component consumers can pre-resolve the iframe before
+ * assigning it to `iframeRef` returned by `useTimelinePlayer`. Returns `null`
+ * when the element has no associated iframe yet.
+ *
+ * @example
+ * ```tsx
+ * const { iframeRef } = useTimelinePlayer();
+ * const playerElRef = useRef<HyperframesPlayer>(null);
+ *
+ * useEffect(() => {
+ *   iframeRef.current = resolveIframe(playerElRef.current);
+ * }, [iframeRef]);
+ * ```
+ */
+export function resolveIframe(el: Element | null): HTMLIFrameElement | null {
+  if (!el) return null;
+  if (el instanceof HTMLIFrameElement) return el;
+  return el.shadowRoot?.querySelector("iframe") ?? el.querySelector("iframe") ?? null;
+}
+
 export function useTimelinePlayer() {
-  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const rafRef = useRef<number>(0);
   const probeIntervalRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
   const pendingSeekRef = useRef<number | null>(null);
@@ -200,7 +226,8 @@ export function useTimelinePlayer() {
 
   const getAdapter = useCallback((): PlaybackAdapter | null => {
     try {
-      const win = iframeRef.current?.contentWindow as IframeWindow | null;
+      const iframe = iframeRef.current;
+      const win = iframe?.contentWindow as IframeWindow | null;
       if (!win) return null;
 
       if (win.__player && typeof win.__player.play === "function") {
@@ -554,8 +581,9 @@ export function useTimelinePlayer() {
         setIsPlaying(false);
 
         try {
-          const doc = iframeRef.current?.contentDocument;
-          const iframeWin = iframeRef.current?.contentWindow as IframeWindow | null;
+          const iframe = iframeRef.current;
+          const doc = iframe?.contentDocument;
+          const iframeWin = iframe?.contentWindow as IframeWindow | null;
           if (doc && iframeWin) {
             normalizePreviewViewport(doc, iframeWin);
             autoHealMissingCompositionIds(doc);
@@ -591,7 +619,7 @@ export function useTimelinePlayer() {
               const rootId = rootComp.getAttribute("data-composition-id") || "composition";
               // Derive compositionSrc from the iframe URL for thumbnail rendering.
               // URL pattern: /api/projects/{id}/preview/comp/{path}
-              const iframeSrc = iframeRef.current?.src || "";
+              const iframeSrc = iframe?.src || "";
               const compPathMatch = iframeSrc.match(/\/preview\/comp\/(.+?)(?:\?|$)/);
               const compositionSrc = compPathMatch
                 ? decodeURIComponent(compPathMatch[1])
@@ -682,7 +710,8 @@ export function useTimelinePlayer() {
     const handleMessage = (e: MessageEvent) => {
       const data = e.data;
       // Only process messages from the main preview iframe — ignore MediaPanel/ClipThumbnail iframes
-      if (e.source && iframeRef.current && e.source !== iframeRef.current.contentWindow) {
+      const ourIframe = iframeRef.current;
+      if (e.source && ourIframe && e.source !== ourIframe.contentWindow) {
         return;
       }
       // Also handle the runtime's state message which includes timeline data
@@ -690,8 +719,7 @@ export function useTimelinePlayer() {
         // State message means the runtime is alive — check for elements
         try {
           if (usePlayerStore.getState().elements.length === 0) {
-            const iframe = iframeRef.current;
-            const iframeWin = iframe?.contentWindow as IframeWindow | null;
+            const iframeWin = ourIframe?.contentWindow as IframeWindow | null;
             const manifest = iframeWin?.__clipManifest;
             if (manifest && manifest.clips.length > 0) {
               processTimelineMessageRef.current(manifest);
@@ -717,8 +745,7 @@ export function useTimelinePlayer() {
         // If manifest produced 0 elements after filtering, try DOM fallback
         if (usePlayerStore.getState().elements.length === 0) {
           try {
-            const iframe = iframeRef.current;
-            const doc = iframe?.contentDocument;
+            const doc = ourIframe?.contentDocument;
             const adapter = getAdapter();
             if (doc && adapter) {
               const els = parseTimelineFromDOM(doc, adapter.getDuration());

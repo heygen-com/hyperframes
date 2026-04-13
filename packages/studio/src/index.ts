@@ -12,6 +12,7 @@ export {
   VideoThumbnail,
   CompositionThumbnail,
   useTimelinePlayer,
+  resolveIframe,
   usePlayerStore,
   liveTime,
   formatTime,

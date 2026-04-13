@@ -120,7 +120,27 @@ class HyperframesPlayer extends HTMLElement {
 
   // ── Public API ──
 
-  /** Access the inner iframe element (for advanced consumers like the studio). */
+  /**
+   * Access the inner `<iframe>` element rendering the composition.
+   *
+   * Use this when integrating the player with editors, recorders, or
+   * timeline tools (e.g. `@hyperframes/studio`) that need to inspect
+   * the composition's DOM or read its `__player` / `__timelines`
+   * runtime objects.
+   *
+   * **Common pitfall:** the iframe lives inside the player's Shadow DOM.
+   * Passing the `<hyperframes-player>` element itself to code that expects
+   * an `<iframe>` will silently break — `.contentWindow` returns `null`.
+   * Always extract `iframeElement` first:
+   *
+   * ```ts
+   * // ❌ Wrong — element ref doesn't expose contentWindow
+   * iframeRef.current = playerRef.current;
+   *
+   * // ✓ Right — bridge the actual iframe
+   * iframeRef.current = playerRef.current.iframeElement;
+   * ```
+   */
   get iframeElement(): HTMLIFrameElement {
     return this.iframe;
   }

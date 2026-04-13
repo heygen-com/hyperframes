@@ -6,7 +6,7 @@ export { VideoThumbnail } from "./components/VideoThumbnail";
 export { CompositionThumbnail } from "./components/CompositionThumbnail";
 
 // Hooks
-export { useTimelinePlayer } from "./hooks/useTimelinePlayer";
+export { useTimelinePlayer, resolveIframe } from "./hooks/useTimelinePlayer";
 
 // Store
 export { usePlayerStore, liveTime } from "./store/playerStore";

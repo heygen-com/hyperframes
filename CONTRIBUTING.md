@@ -39,6 +39,28 @@ bun run format:check    # Check formatting without writing
 
 Git hooks (via [lefthook](https://github.com/evilmartians/lefthook)) run automatically after `bun install` and enforce linting + formatting on staged files before each commit.
 
+#### Type-safety conventions
+
+We aim for honest types — code that lies to the compiler eventually lies to users. The lint config enforces this, but the underlying convention is:
+
+- **No `any`.** Use `unknown` and narrow it. `no-explicit-any` is `error`.
+- **Avoid `as T` type assertions.** They suppress type-checker warnings without telling the compiler anything new. Prefer:
+  - Type guards (`function isFoo(x): x is Foo`)
+  - `instanceof` / `typeof` narrowing
+  - Centralized narrowing helpers (e.g. `resolveIframe`)
+  - Properly-typed interfaces at the source
+- **Acceptable `as` use, with a comment explaining why:**
+  - `as const` — literal narrowing; always safe
+  - `as unknown as T` — explicit double-cast at hard type-system boundaries (e.g. parsing untrusted JSON, FFI/postMessage). Pair with a one-line justification.
+- **Avoid `!` non-null assertions** outside of post-`if`-checked code paths. `no-non-null-assertion` is `warn`. Use `??` defaults or guard clauses instead.
+
+If you must add a cast, add a comment:
+
+```ts
+// `postMessage` data is `unknown`; the runtime guarantees this shape.
+const event = data as unknown as RuntimeEvent;
+```
+
 ## Pull Requests
 
 - Use [conventional commit](https://www.conventionalcommits.org/) format for **all commits** (e.g., `feat: add timeline export`, `fix: resolve seek overflow`). Enforced by a git hook.
