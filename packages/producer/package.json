@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/producer",
-  "version": "0.2.5",
+  "version": "0.3.0",
   "description": "HTML-to-video rendering engine using Chrome's BeginFrame API",
   "repository": {
     "type": "git",
