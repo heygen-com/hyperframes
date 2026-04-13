@@ -1,7 +1,9 @@
 import { forwardRef, useRef } from "react";
 import { useMountEffect } from "../../hooks/useMountEffect";
 import type { HyperframesPlayer } from "@hyperframes/player";
-import "@hyperframes/player"; // registers <hyperframes-player> custom element
+// NOTE: importing "@hyperframes/player" registers a class extending HTMLElement
+// at module load, which throws under SSR. Defer the import to the mount effect
+// so it only runs in the browser.
 
 interface PlayerProps {
   projectId?: string;
@@ -27,55 +29,68 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
       const container = containerRef.current;
       if (!container) return;
 
-      // Create the web component imperatively to avoid JSX custom-element typing.
-      const player = document.createElement("hyperframes-player") as HyperframesPlayer;
-      const src = directUrl || `/api/projects/${projectId}/preview`;
-      player.setAttribute("src", src);
-      player.setAttribute("width", String(portrait ? 1080 : 1920));
-      player.setAttribute("height", String(portrait ? 1920 : 1080));
-      player.style.width = "100%";
-      player.style.height = "100%";
-      player.style.display = "block";
-      container.appendChild(player);
+      let canceled = false;
+      let cleanup: (() => void) | undefined;
 
-      // Bridge the inner iframe to the forwarded ref for useTimelinePlayer.
-      const iframe = player.iframeElement;
-      if (typeof ref === "function") {
-        ref(iframe);
-      } else if (ref) {
-        (ref as React.MutableRefObject<HTMLIFrameElement | null>).current = iframe;
-      }
+      // Dynamic import registers the custom element in the browser only.
+      import("@hyperframes/player").then(() => {
+        if (canceled) return;
 
-      // Prevent the web component's built-in click-to-toggle behavior.
-      // The studio manages playback exclusively via useTimelinePlayer.
-      const preventToggle = (e: Event) => e.stopImmediatePropagation();
-      player.addEventListener("click", preventToggle, { capture: true });
+        // Create the web component imperatively to avoid JSX custom-element typing.
+        const player = document.createElement("hyperframes-player") as HyperframesPlayer;
+        const src = directUrl || `/api/projects/${projectId}/preview`;
+        player.setAttribute("src", src);
+        player.setAttribute("width", String(portrait ? 1080 : 1920));
+        player.setAttribute("height", String(portrait ? 1920 : 1080));
+        player.style.width = "100%";
+        player.style.height = "100%";
+        player.style.display = "block";
+        container.appendChild(player);
 
-      // Forward the iframe's native load event to the studio's onIframeLoad.
-      const handleLoad = () => {
-        loadCountRef.current++;
-        // Reveal animation on reload (hot-reload, composition switch)
-        if (loadCountRef.current > 1) {
-          container.classList.remove("preview-revealing");
-          void container.offsetWidth;
-          container.classList.add("preview-revealing");
-          const onEnd = () => container.classList.remove("preview-revealing");
-          container.addEventListener("animationend", onEnd, { once: true });
+        // Bridge the inner iframe to the forwarded ref for useTimelinePlayer.
+        const iframe = player.iframeElement;
+        if (typeof ref === "function") {
+          ref(iframe);
+        } else if (ref) {
+          (ref as React.MutableRefObject<HTMLIFrameElement | null>).current = iframe;
         }
-        onLoad();
-      };
-      iframe.addEventListener("load", handleLoad);
+
+        // Prevent the web component's built-in click-to-toggle behavior.
+        // The studio manages playback exclusively via useTimelinePlayer.
+        const preventToggle = (e: Event) => e.stopImmediatePropagation();
+        player.addEventListener("click", preventToggle, { capture: true });
+
+        // Forward the iframe's native load event to the studio's onIframeLoad.
+        const handleLoad = () => {
+          loadCountRef.current++;
+          // Reveal animation on reload (hot-reload, composition switch)
+          if (loadCountRef.current > 1) {
+            container.classList.remove("preview-revealing");
+            void container.offsetWidth;
+            container.classList.add("preview-revealing");
+            const onEnd = () => container.classList.remove("preview-revealing");
+            container.addEventListener("animationend", onEnd, { once: true });
+          }
+          onLoad();
+        };
+        iframe.addEventListener("load", handleLoad);
+
+        cleanup = () => {
+          iframe.removeEventListener("load", handleLoad);
+          player.removeEventListener("click", preventToggle, { capture: true });
+          container.removeChild(player);
+          // Clear the forwarded ref
+          if (typeof ref === "function") {
+            ref(null);
+          } else if (ref) {
+            (ref as React.MutableRefObject<HTMLIFrameElement | null>).current = null;
+          }
+        };
+      });
 
       return () => {
-        iframe.removeEventListener("load", handleLoad);
-        player.removeEventListener("click", preventToggle, { capture: true });
-        container.removeChild(player);
-        // Clear the forwarded ref
-        if (typeof ref === "function") {
-          ref(null);
-        } else if (ref) {
-          (ref as React.MutableRefObject<HTMLIFrameElement | null>).current = null;
-        }
+        canceled = true;
+        cleanup?.();
       };
     });
 
