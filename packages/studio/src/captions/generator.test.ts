@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, it, expect } from "vitest";
-import { generateCaptionHtml } from "./generator.js";
-import { buildCaptionModel, TranscriptWord } from "./parser.js";
+import { generateCaptionHtml } from "./generator";
+import { buildCaptionModel, TranscriptWord } from "./parser";
 
 // ---------------------------------------------------------------------------
 // Fixtures

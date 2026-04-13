@@ -8,7 +8,7 @@ import type {
   CaptionContainerStyle,
   CaptionShadow,
   CaptionGlow,
-} from "./types.js";
+} from "./types";
 
 // ---------------------------------------------------------------------------
 // Public API

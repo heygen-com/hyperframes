@@ -11,7 +11,7 @@ import {
   DEFAULT_STYLE,
   DEFAULT_CONTAINER,
   DEFAULT_ANIMATION_SET,
-} from "./types.js";
+} from "./types";
 
 export interface TranscriptWord {
   id?: string;

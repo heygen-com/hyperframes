@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, it, expect } from "vitest";
-import { extractTranscript, buildCaptionModel, TranscriptWord } from "./parser.js";
-import { DEFAULT_STYLE, DEFAULT_CONTAINER, DEFAULT_ANIMATION_SET } from "./types.js";
+import { extractTranscript, buildCaptionModel, TranscriptWord } from "./parser";
+import { DEFAULT_STYLE, DEFAULT_CONTAINER, DEFAULT_ANIMATION_SET } from "./types";
 
 // ---------------------------------------------------------------------------
 // Fixtures
