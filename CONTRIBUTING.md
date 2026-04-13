@@ -41,9 +41,9 @@ Git hooks (via [lefthook](https://github.com/evilmartians/lefthook)) run automat
 
 #### Type-safety conventions
 
-We aim for honest types — code that lies to the compiler eventually lies to users. The lint config enforces this, but the underlying convention is:
+We aim for honest types — code that lies to the compiler eventually lies to users. The underlying convention is:
 
-- **No `any`.** Use `unknown` and narrow it. `no-explicit-any` is `error`.
+- **Avoid `any`.** Use `unknown` and narrow it where possible.
 - **Avoid `as T` type assertions.** They suppress type-checker warnings without telling the compiler anything new. Prefer:
   - Type guards (`function isFoo(x): x is Foo`)
   - `instanceof` / `typeof` narrowing
@@ -52,7 +52,7 @@ We aim for honest types — code that lies to the compiler eventually lies to us
 - **Acceptable `as` use, with a comment explaining why:**
   - `as const` — literal narrowing; always safe
   - `as unknown as T` — explicit double-cast at hard type-system boundaries (e.g. parsing untrusted JSON, FFI/postMessage). Pair with a one-line justification.
-- **Avoid `!` non-null assertions** outside of post-`if`-checked code paths. `no-non-null-assertion` is `warn`. Use `??` defaults or guard clauses instead.
+- **Avoid `!` non-null assertions** outside of post-`if`-checked code paths. Use `??` defaults or guard clauses instead.
 
 If you must add a cast, add a comment:
 
