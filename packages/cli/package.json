@@ -31,6 +31,7 @@
     "citty": "^0.2.1",
     "compare-versions": "^6.1.1",
     "esbuild": "^0.25.0",
+    "giget": "^3.2.0",
     "hono": "^4.0.0",
     "mime-types": "^3.0.2",
     "open": "^10.0.0",
