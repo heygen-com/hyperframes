@@ -38,8 +38,11 @@ function detectProvider(): ClipboardProvider | undefined {
   return undefined;
 }
 
+let cachedProvider: ClipboardProvider | undefined | null = null;
+
 export function copyToClipboard(text: string): boolean {
-  const provider = detectProvider();
+  if (cachedProvider === null) cachedProvider = detectProvider();
+  const provider = cachedProvider;
   if (!provider) return false;
   try {
     const res = spawnSync(provider.cmd, provider.args, {

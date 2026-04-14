@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { RegistryItem, RegistryManifest } from "@hyperframes/core";
@@ -173,7 +173,6 @@ describe("runAdd (integration, mocked registry)", () => {
         registry: baseUrl,
         paths: { blocks: "compositions", components: "compositions/components", assets: "assets" },
       };
-      const { writeFileSync } = await import("node:fs");
       writeFileSync(join(dir, "hyperframes.json"), JSON.stringify(cfg), "utf-8");
 
       const result = await runAdd({ name: "my-block", projectDir: dir, skipClipboard: true });
@@ -200,7 +199,6 @@ describe("runAdd (integration, mocked registry)", () => {
         registry: baseUrl,
         paths: { blocks: "compositions", components: "src/fx", assets: "assets" },
       };
-      const { writeFileSync } = await import("node:fs");
       writeFileSync(join(dir, "hyperframes.json"), JSON.stringify(cfg), "utf-8");
 
       const result = await runAdd({
@@ -221,7 +219,6 @@ describe("runAdd (integration, mocked registry)", () => {
     const dir = tmp();
     try {
       const baseUrl = uniqueBase();
-      const { writeFileSync } = await import("node:fs");
       writeFileSync(
         join(dir, "hyperframes.json"),
         JSON.stringify({
@@ -249,7 +246,6 @@ describe("runAdd (integration, mocked registry)", () => {
     const dir = tmp();
     try {
       const baseUrl = uniqueBase();
-      const { writeFileSync } = await import("node:fs");
       writeFileSync(
         join(dir, "hyperframes.json"),
         JSON.stringify({

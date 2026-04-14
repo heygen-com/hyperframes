@@ -7,7 +7,7 @@
  * point at custom registries or reshape their project layout.
  */
 
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { DEFAULT_REGISTRY_URL } from "../registry/index.js";
 
@@ -49,11 +49,11 @@ export function projectConfigPath(projectDir: string): string {
 /** Read `hyperframes.json` from a project directory. */
 export function readProjectConfig(projectDir: string): ProjectConfig | undefined {
   const path = projectConfigPath(projectDir);
-  if (!existsSync(path)) return undefined;
   try {
     const parsed = JSON.parse(readFileSync(path, "utf-8")) as Partial<ProjectConfig>;
     return normalizeConfig(parsed);
   } catch {
+    // Missing file or corrupt JSON → no config.
     return undefined;
   }
 }

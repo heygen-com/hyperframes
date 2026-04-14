@@ -33,9 +33,12 @@ export function remapTarget(
   paths: { blocks: string; components: string },
 ): string {
   if (item.type === "hyperframes:block") {
+    // Anchored to the default target prefix from DEFAULT_PROJECT_CONFIG.paths.blocks.
+    // Targets that don't start with "compositions/" pass through unchanged.
     return originalTarget.replace(/^compositions\//, `${paths.blocks}/`);
   }
   if (item.type === "hyperframes:component") {
+    // Anchored to the default target prefix from DEFAULT_PROJECT_CONFIG.paths.components.
     return originalTarget.replace(/^compositions\/components\//, `${paths.components}/`);
   }
   // Examples are installed by `init`, not `add` — no remapping.
@@ -62,7 +65,6 @@ export interface RunAddArgs {
   name: string;
   projectDir: string;
   skipClipboard?: boolean;
-  json?: boolean;
 }
 
 export interface RunAddResult {
