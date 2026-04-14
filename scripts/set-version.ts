@@ -20,7 +20,9 @@ import { execSync } from "child_process";
 const PACKAGES = [
   "packages/core",
   "packages/engine",
+  "packages/player",
   "packages/producer",
+  "packages/shader-transitions",
   "packages/studio",
   "packages/cli",
 ];

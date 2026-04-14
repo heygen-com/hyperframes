@@ -94,6 +94,7 @@ jobs:
           publish_pkg "@hyperframes/engine" "@hyperframes/engine"
           publish_pkg "@hyperframes/player" "@hyperframes/player"
           publish_pkg "@hyperframes/producer" "@hyperframes/producer"
+          publish_pkg "@hyperframes/shader-transitions" "@hyperframes/shader-transitions"
           publish_pkg "@hyperframes/studio" "@hyperframes/studio"
 
           # CLI is @hyperframes/cli in the monorepo but published as unscoped "hyperframes" on npm.
