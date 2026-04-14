@@ -31,11 +31,6 @@
       "type": "array",
       "items": { "type": "string" }
     },
-    "version": {
-      "type": "string",
-      "pattern": "^\\d+\\.\\d+\\.\\d+(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$",
-      "description": "Semver per SemVer 2.0.0."
-    },
     "author": {
       "type": "string",
       "minLength": 1
@@ -108,8 +103,7 @@
               "hyperframes:asset",
               "hyperframes:snippet",
               "hyperframes:style",
-              "hyperframes:timeline",
-              "hyperframes:demo"
+              "hyperframes:timeline"
             ]
           }
         }
@@ -131,6 +125,7 @@
   "allOf": [
     {
       "if": {
+        "required": ["type"],
         "properties": { "type": { "const": "hyperframes:component" } }
       },
       "then": {

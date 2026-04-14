@@ -212,13 +212,12 @@ describe("registry types", () => {
       expect(true).toBe(true);
     });
 
-    it("optional metadata fields are accepted (version, author, license, deprecated, minCliVersion)", () => {
+    it("optional metadata fields are accepted (author, license, deprecated, minCliVersion)", () => {
       const item: ComponentItem = {
         name: "shader-wipe",
         type: "hyperframes:component",
         title: "Shader Wipe",
         description: "d",
-        version: "1.2.0",
         author: "heygen",
         license: "Apache-2.0",
         minCliVersion: "0.4.0",
@@ -231,7 +230,7 @@ describe("registry types", () => {
           },
         ],
       };
-      expect(item.version).toBe("1.2.0");
+      expect(item.author).toBe("heygen");
     });
   });
 });

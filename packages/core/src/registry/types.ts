@@ -10,8 +10,7 @@ export type FileType =
   | "hyperframes:asset"
   | "hyperframes:snippet"
   | "hyperframes:style"
-  | "hyperframes:timeline"
-  | "hyperframes:demo";
+  | "hyperframes:timeline";
 
 /** A single file to install as part of a registry item. */
 export interface FileTarget {
@@ -47,8 +46,6 @@ interface RegistryItemBase {
   description: string;
   /** Filter tags (e.g. `["social", "portrait", "card"]`). */
   tags?: string[];
-  /** Semver (e.g. `1.2.0`). */
-  version?: string;
   /** Item author / maintainer. */
   author?: string;
   /** SPDX license identifier. */
@@ -132,7 +129,6 @@ export const FILE_TYPES = [
   "hyperframes:snippet",
   "hyperframes:style",
   "hyperframes:timeline",
-  "hyperframes:demo",
 ] as const satisfies readonly FileType[];
 
 // Compile-time exhaustiveness: every member of the TS union appears in the constant.
