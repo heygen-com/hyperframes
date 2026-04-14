@@ -14,6 +14,7 @@ function tmpProject(name: string): string {
 function validHtml(compId = "main"): string {
   return `<html><body>
   <div data-composition-id="${compId}" data-width="1920" data-height="1080"></div>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
   <script>window.__timelines = window.__timelines || {}; window.__timelines["${compId}"] = gsap.timeline({ paused: true });</script>
 </body></html>`;
 }

@@ -153,8 +153,8 @@ How are you
     const { words, format } = loadTranscript(path);
     expect(format).toBe("srt");
     expect(words).toEqual([
-      { text: "Hello world", start: 1.0, end: 3.5 },
-      { text: "How are you", start: 4.0, end: 6.0 },
+      { text: "Hello world", start: 1.0, end: 3.5, id: "w0" },
+      { text: "How are you", start: 4.0, end: 6.0, id: "w1" },
     ]);
   });
 
@@ -171,8 +171,8 @@ How are you
     const { words, format } = loadTranscript(path);
     expect(format).toBe("vtt");
     expect(words).toEqual([
-      { text: "Hello world", start: 1.0, end: 3.5 },
-      { text: "How are you", start: 4.0, end: 6.0 },
+      { text: "Hello world", start: 1.0, end: 3.5, id: "w0" },
+      { text: "How are you", start: 4.0, end: 6.0, id: "w1" },
     ]);
   });
 
@@ -206,7 +206,10 @@ Short format
     const path = tmpFile("normalized.json", JSON.stringify(input));
     const { words, format } = loadTranscript(path);
     expect(format).toBe("words-json");
-    expect(words).toEqual(input);
+    expect(words).toEqual([
+      { text: "Hello", start: 0, end: 0.5, id: "" },
+      { text: "world", start: 0.6, end: 1.2, id: "" },
+    ]);
   });
 });
 
