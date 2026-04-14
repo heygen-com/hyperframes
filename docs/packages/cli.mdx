@@ -174,6 +174,37 @@ This is suppressed in CI environments, non-TTY shells, and when `HYPERFRAMES_NO_
 
     See [Templates](/templates) for full details.
 
+    ### `add`
+
+    Install a **block** or **component** from the registry into an existing project. Examples (full projects) are scaffolded with [`init`](#init); blocks and components are smaller units you add to a composition you already have.
+
+    ```bash
+    # Add a block (sub-composition scene)
+    npx hyperframes add claude-code-window
+
+    # Add a component (effect / snippet)
+    npx hyperframes add shader-wipe
+
+    # Target a different project dir
+    npx hyperframes add shader-wipe --dir ./my-video
+
+    # Headless / CI (skip clipboard; also: --json for a machine-readable result)
+    npx hyperframes add shader-wipe --no-clipboard --json
+    ```
+
+    | Flag | Description |
+    |------|-------------|
+    | `<name>` (positional) | Registry item name (e.g. `claude-code-window`, `shader-wipe`) |
+    | `--dir` | Project directory (defaults to the current working directory) |
+    | `--no-clipboard` | Skip copying the include snippet to the clipboard |
+    | `--json` | Print a machine-readable summary (written files + snippet) to stdout |
+
+    `add` reads [`hyperframes.json`](#hyperframes-json) at the project root to know which registry to pull from and where to drop files. If the file is missing but the directory looks like a Hyperframes project (has `index.html`), a default `hyperframes.json` is written the first time you run `add`.
+
+    Output for a block or component is a set of files plus a **paste snippet** — the `<iframe>` tag (for blocks) or the fragment path (for components) to include in your host composition. The snippet is copied to the clipboard by default; add `--no-clipboard` for CI or headless environments.
+
+    Trying `add` with an example's name (e.g. `hyperframes add warm-grain`) emits a clear error pointing you at `init --example`.
+
     ### `compositions`
 
     List all compositions in the current project:
@@ -510,6 +541,31 @@ This is suppressed in CI environments, non-TTY shells, and when `HYPERFRAMES_NO_
     Skills are fetched from GitHub and include composition authoring, GSAP animation patterns, and other domain-specific knowledge. The `init` command also offers to install skills automatically after scaffolding a project.
   </Tab>
 </Tabs>
+
+## hyperframes.json
+
+`hyperframes init` writes a `hyperframes.json` file at the root of every new project. `hyperframes add` reads it to know which registry to pull items from and where to drop them. Edit the file (or delete it to fall back to defaults) to reshape your project layout or point at a custom registry.
+
+```json
+{
+  "$schema": "https://hyperframes.heygen.com/schema/hyperframes.json",
+  "registry": "https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry",
+  "paths": {
+    "blocks": "compositions",
+    "components": "compositions/components",
+    "assets": "assets"
+  }
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `registry` | Base URL of the registry `add` pulls from. Defaults to the public Hyperframes registry. |
+| `paths.blocks` | Where block `.html` files land (relative to project root). |
+| `paths.components` | Where component files land (relative to project root). |
+| `paths.assets` | Where referenced asset files (images, fonts) land. |
+
+Missing fields are filled with defaults — you only need to specify what you want to override.
 
 ## Related Packages
 

@@ -338,6 +338,14 @@ async function scaffoldProject(
     "utf-8",
   );
 
+  // Write hyperframes.json so `hyperframes add` knows which registry to use
+  // and where to drop block/component files. Overwritten only if absent.
+  if (!existsSync(resolve(destDir, "hyperframes.json"))) {
+    const { writeProjectConfig, DEFAULT_PROJECT_CONFIG } =
+      await import("../utils/projectConfig.js");
+    writeProjectConfig(destDir, DEFAULT_PROJECT_CONFIG);
+  }
+
   // Copy shared files (CLAUDE.md, AGENTS.md) for AI agent context
   const sharedDir = getSharedTemplateDir();
   if (existsSync(sharedDir)) {

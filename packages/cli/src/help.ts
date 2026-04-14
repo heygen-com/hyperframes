@@ -20,6 +20,7 @@ const GROUPS: Group[] = [
     title: "Getting Started",
     commands: [
       ["init", "Scaffold a new composition project"],
+      ["add", "Install a block or component from the registry"],
       ["preview", "Start the studio for previewing compositions"],
       ["render", "Render a composition to MP4 or WebM"],
     ],
