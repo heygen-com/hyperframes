@@ -46,7 +46,7 @@ export async function fetchRemoteTemplate(templateId: string, destDir: string): 
   // Safety check — an item with no index.html isn't a valid example.
   if (!existsSync(join(destDir, "index.html"))) {
     throw new Error(
-      `Template "${templateId}" installed but missing index.html. The registry item may be malformed.`,
+      `Example "${templateId}" installed but missing index.html. The registry item may be malformed.`,
     );
   }
 }

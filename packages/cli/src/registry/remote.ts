@@ -48,6 +48,7 @@ function cachePath(baseUrl: string, key: string): string {
 function readCache<T>(path: string): T | undefined {
   try {
     const entry = JSON.parse(readFileSync(path, "utf-8")) as CacheEntry<T>;
+    if (typeof entry.fetchedAt !== "number") return undefined;
     if (Date.now() - entry.fetchedAt > CACHE_TTL_MS) return undefined;
     return entry.data;
   } catch {
@@ -122,6 +123,10 @@ export async function fetchItemFile(
   destPath: string,
   baseUrl: string = DEFAULT_REGISTRY_URL,
 ): Promise<void> {
+  // Reject path-traversal in file.path (mirrors assertSafeTarget for file.target).
+  if (/(^|[/\\])\.\.([/\\]|$)/.test(file.path)) {
+    throw new Error(`Unsafe file.path "${file.path}": path segments may not contain "..".`);
+  }
   const url = `${baseUrl}/${ITEM_TYPE_DIRS[item.type]}/${item.name}/${file.path}`;
   const res = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
   if (!res.ok) {

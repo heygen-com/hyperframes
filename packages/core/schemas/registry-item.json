@@ -29,7 +29,7 @@
     },
     "tags": {
       "type": "array",
-      "items": { "type": "string" }
+      "items": { "type": "string", "minLength": 1 }
     },
     "author": {
       "type": "string",

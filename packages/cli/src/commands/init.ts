@@ -383,6 +383,7 @@ export default defineCommand({
     template: {
       type: "string",
       description: "[renamed] Use --example instead.",
+      alias: "t",
       hidden: true,
     },
     video: {

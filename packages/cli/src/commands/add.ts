@@ -54,7 +54,8 @@ export function remapTarget(
 
 export function buildSnippet(item: RegistryItem, relativeTarget: string): string {
   if (item.type === "hyperframes:block") {
-    return `<iframe src="${relativeTarget}" data-start="0" data-duration="${item.duration}"></iframe>`;
+    // data-start omitted — adjust to your timeline position after pasting.
+    return `<iframe src="${relativeTarget}" data-duration="${item.duration}"></iframe>`;
   }
   if (item.type === "hyperframes:component") {
     return `<!-- paste from ${relativeTarget} into your composition -->`;
