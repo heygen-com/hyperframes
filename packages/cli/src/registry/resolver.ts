@@ -63,7 +63,14 @@ export async function loadAllItems(
   return items;
 }
 
-/** Resolve a single item by name. Throws if unknown or unreachable. */
+/**
+ * Resolve a single item by name. Throws if unknown or unreachable.
+ *
+ * TODO: walk registryDependencies transitively and return a topo-sorted
+ * list of items. Today examples have no deps so this returns a single item.
+ * Blocks and components will need transitive resolution once they ship with
+ * deps (seed items in Phase B).
+ */
 export async function resolveItem(
   name: string,
   options: ResolveOptions = {},

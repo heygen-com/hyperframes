@@ -41,7 +41,7 @@ describe("hyperframes init flag rename", () => {
     const target = join(dir, "proj");
     try {
       const res = runInit([target, "--template", "blank", "--non-interactive", "--skip-skills"]);
-      expect(res.status).not.toBe(0);
+      expect(res.status).toBe(1);
       expect(res.stderr).toContain("--template flag was renamed to --example");
       expect(res.stderr).toContain(`--example "blank"`);
       expect(existsSync(target)).toBe(false);

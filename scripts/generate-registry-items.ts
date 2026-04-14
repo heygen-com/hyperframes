@@ -47,9 +47,30 @@ interface LegacyManifest {
 }
 
 function readLegacyManifest(): LegacyTemplateEntry[] {
-  const raw = readFileSync(legacyManifestPath, "utf-8");
-  const parsed = JSON.parse(raw) as LegacyManifest;
-  return parsed.templates;
+  try {
+    const raw = readFileSync(legacyManifestPath, "utf-8");
+    const parsed = JSON.parse(raw) as LegacyManifest;
+    return parsed.templates;
+  } catch {
+    // templates.json was the bootstrap source and has been deleted. Fall back
+    // to scanning existing registry-item.json files and reconstructing entries.
+    return scanExistingItems();
+  }
+}
+
+function scanExistingItems(): LegacyTemplateEntry[] {
+  const entries: LegacyTemplateEntry[] = [];
+  for (const dir of readdirSync(examplesDir, { withFileTypes: true })) {
+    if (!dir.isDirectory()) continue;
+    const itemPath = join(examplesDir, dir.name, "registry-item.json");
+    try {
+      const item = JSON.parse(readFileSync(itemPath, "utf-8")) as RegistryItem;
+      entries.push({ id: item.name, label: item.title, hint: item.description, bundled: false });
+    } catch {
+      // No manifest — skip.
+    }
+  }
+  return entries;
 }
 
 function extractAttr(html: string, attr: string): string | undefined {

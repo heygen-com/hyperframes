@@ -21,7 +21,7 @@ Lint before preview — catches missing `data-composition-id`, overlapping track
 
 ```bash
 npx hyperframes init my-video                        # interactive wizard
-npx hyperframes init my-video --template warm-grain   # pick a template
+npx hyperframes init my-video --example warm-grain   # pick an example
 npx hyperframes init my-video --video clip.mp4        # with video file
 npx hyperframes init my-video --audio track.mp3       # with audio file
 npx hyperframes init my-video --non-interactive       # skip prompts (CI/agents)
