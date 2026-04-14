@@ -46,17 +46,33 @@ Show a static image before playback starts:
 
 ## Attributes
 
-| Attribute       | Type    | Default | Description                                 |
-| --------------- | ------- | ------- | ------------------------------------------- |
-| `src`           | string  | —       | URL to the composition HTML file            |
-| `width`         | number  | 1920    | Composition width in pixels (aspect ratio)  |
-| `height`        | number  | 1080    | Composition height in pixels (aspect ratio) |
-| `controls`      | boolean | false   | Show play/pause, scrubber, and time display |
-| `muted`         | boolean | false   | Mute audio playback                         |
-| `poster`        | string  | —       | Image URL shown before playback starts      |
-| `playback-rate` | number  | 1       | Speed multiplier (0.5 = half, 2 = double)   |
-| `autoplay`      | boolean | false   | Start playing when ready                    |
-| `loop`          | boolean | false   | Restart when the composition ends           |
+| Attribute       | Type    | Default | Description                                  |
+| --------------- | ------- | ------- | -------------------------------------------- |
+| `src`           | string  | —       | URL to the composition HTML file             |
+| `audio-src`     | string  | —       | Audio URL for parent-frame playback (mobile) |
+| `width`         | number  | 1920    | Composition width in pixels (aspect ratio)   |
+| `height`        | number  | 1080    | Composition height in pixels (aspect ratio)  |
+| `controls`      | boolean | false   | Show play/pause, scrubber, and time display  |
+| `muted`         | boolean | false   | Mute audio playback                          |
+| `poster`        | string  | —       | Image URL shown before playback starts       |
+| `playback-rate` | number  | 1       | Speed multiplier (0.5 = half, 2 = double)    |
+| `autoplay`      | boolean | false   | Start playing when ready                     |
+| `loop`          | boolean | false   | Restart when the composition ends            |
+
+### Mobile audio
+
+Mobile browsers block `audio.play()` inside iframes when the user gesture happened in the parent frame (the [User Activation spec](https://html.spec.whatwg.org/multipage/interaction.html#tracking-user-activation) does not propagate activation across frame boundaries via `postMessage`).
+
+The player handles this automatically for same-origin iframes (the default — `sandbox` includes `allow-same-origin`):
+
+1. When the composition is ready, the player extracts all timed media (`audio[data-start]`, `video[data-start]`) from the iframe DOM and creates parent-frame copies.
+2. The iframe originals are disabled (`src` and `data-start` removed) so the runtime doesn't try to play them.
+3. When `play()` is called (from a user gesture), parent media `.play()` runs synchronously in the gesture call stack, satisfying mobile autoplay policy.
+4. Both parent media and the GSAP timeline start simultaneously and free-run — no active sync needed since both are real-time systems.
+
+No changes are required by consumers — this works out of the box.
+
+The optional `audio-src` attribute can be used to start preloading a primary audio track before the iframe loads (useful on slow connections), but is not required for mobile playback.
 
 ## JavaScript API
 

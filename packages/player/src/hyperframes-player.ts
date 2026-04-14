@@ -7,7 +7,7 @@ const RUNTIME_CDN_URL =
 
 class HyperframesPlayer extends HTMLElement {
   static get observedAttributes() {
-    return ["src", "width", "height", "controls", "muted", "poster", "playback-rate"];
+    return ["src", "width", "height", "controls", "muted", "poster", "playback-rate", "audio-src"];
   }
 
   private shadow: ShadowRoot;
@@ -25,6 +25,21 @@ class HyperframesPlayer extends HTMLElement {
   private _compositionHeight = 1080;
   private _probeInterval: ReturnType<typeof setInterval> | null = null;
   private _lastUpdateMs = 0;
+
+  /**
+   * Parent-frame media elements for mobile playback.
+   *
+   * Mobile browsers block media.play() inside iframes when the user gesture
+   * happened in the parent frame — postMessage doesn't transfer user activation
+   * (per the User Activation v2 spec). We extract ALL media sources from the
+   * iframe's timed elements (audio/video with data-start), play them in the
+   * parent frame (where the gesture lives), and disable the iframe copies.
+   */
+  private _parentMedia: Array<{
+    el: HTMLMediaElement;
+    start: number;
+    duration: number;
+  }> = [];
 
   constructor() {
     super();
@@ -68,6 +83,8 @@ class HyperframesPlayer extends HTMLElement {
 
     if (this.hasAttribute("controls")) this._setupControls();
     if (this.hasAttribute("poster")) this._setupPoster();
+    if (this.hasAttribute("audio-src"))
+      this._setupParentAudioFromUrl(this.getAttribute("audio-src")!);
     if (this.hasAttribute("src")) this.iframe.src = this.getAttribute("src")!;
   }
 
@@ -77,6 +94,11 @@ class HyperframesPlayer extends HTMLElement {
     this.iframe.removeEventListener("load", this._onIframeLoad);
     if (this._probeInterval) clearInterval(this._probeInterval);
     this.controlsApi?.destroy();
+    for (const m of this._parentMedia) {
+      m.el.pause();
+      m.el.src = "";
+    }
+    this._parentMedia = [];
   }
 
   attributeChangedCallback(name: string, _old: string | null, val: string | null) {
@@ -107,13 +129,18 @@ class HyperframesPlayer extends HTMLElement {
         break;
       case "playback-rate": {
         const rate = parseFloat(val || "1");
+        for (const m of this._parentMedia) m.el.playbackRate = rate;
         this._sendControl("set-playback-rate", { playbackRate: rate });
         this.controlsApi?.updateSpeed(rate);
         this.dispatchEvent(new Event("ratechange"));
         break;
       }
       case "muted":
+        for (const m of this._parentMedia) m.el.muted = val !== null;
         this._sendControl("set-muted", { muted: val !== null });
+        break;
+      case "audio-src":
+        if (val) this._setupParentAudioFromUrl(val);
         break;
     }
   }
@@ -147,6 +174,7 @@ class HyperframesPlayer extends HTMLElement {
 
   play() {
     this._hidePoster();
+    this._playParentMedia();
     this._sendControl("play");
     this._paused = false;
     this.controlsApi?.updatePlaying(true);
@@ -154,6 +182,7 @@ class HyperframesPlayer extends HTMLElement {
   }
 
   pause() {
+    this._pauseParentMedia();
     this._sendControl("pause");
     this._paused = true;
     this.controlsApi?.updatePlaying(false);
@@ -164,6 +193,15 @@ class HyperframesPlayer extends HTMLElement {
     const frame = Math.round(timeInSeconds * DEFAULT_FPS);
     this._sendControl("seek", { frame });
     this._currentTime = timeInSeconds;
+
+    // Sync parent media positions (accounting for each element's start offset)
+    for (const m of this._parentMedia) {
+      const relTime = timeInSeconds - m.start;
+      if (relTime >= 0 && relTime < m.duration) {
+        m.el.currentTime = relTime;
+      }
+    }
+
     this._paused = true;
     this.controlsApi?.updatePlaying(false);
     this.controlsApi?.updateTime(this._currentTime, this._duration);
@@ -238,6 +276,14 @@ class HyperframesPlayer extends HTMLElement {
       const wasPlaying = !this._paused;
       this._paused = !data.isPlaying;
 
+      // Sync parent media on runtime play/pause transitions (e.g. browser
+      // throttling, visibility change, or scrubber interaction in the iframe).
+      if (wasPlaying && this._paused) {
+        this._pauseParentMedia();
+      } else if (!wasPlaying && !this._paused) {
+        this._playParentMedia();
+      }
+
       // Throttle UI updates and event dispatch to ~10fps to avoid excessive re-renders
       const now = performance.now();
       if (now - this._lastUpdateMs > 100 || this._paused !== wasPlaying) {
@@ -250,6 +296,7 @@ class HyperframesPlayer extends HTMLElement {
       }
 
       if (this._currentTime >= this._duration && !this._paused) {
+        this._pauseParentMedia();
         if (this.loop) {
           this.seek(0);
           this.play();
@@ -351,6 +398,8 @@ class HyperframesPlayer extends HTMLElement {
             }
           }
 
+          this._setupParentMedia();
+
           if (this.hasAttribute("autoplay")) {
             this.play();
           }
@@ -436,6 +485,79 @@ class HyperframesPlayer extends HTMLElement {
       this.shadow.appendChild(this.posterEl);
     }
     this.posterEl.src = url;
+  }
+
+  private _playParentMedia() {
+    for (const m of this._parentMedia) {
+      if (m.el.src) m.el.play().catch(() => {});
+    }
+  }
+
+  private _pauseParentMedia() {
+    for (const m of this._parentMedia) m.el.pause();
+  }
+
+  /** Create a parent-frame media element, configure it, and start preloading. */
+  private _createParentMedia(src: string, tag: "audio" | "video", start: number, duration: number) {
+    // Deduplicate — browsers normalize URLs so we compare on the element after assignment
+    if (this._parentMedia.some((m) => m.el.src === src)) return;
+
+    const el = tag === "video" ? document.createElement("video") : new Audio();
+    el.preload = "auto";
+    el.src = src;
+    el.load();
+    el.muted = this.muted;
+    if (this.playbackRate !== 1) el.playbackRate = this.playbackRate;
+
+    this._parentMedia.push({ el, start, duration });
+  }
+
+  /**
+   * Set up a single parent-frame audio from an explicit URL (via `audio-src`).
+   * Convenience for the common single-narration case — starts preloading
+   * immediately without waiting for the iframe to load.
+   */
+  private _setupParentAudioFromUrl(audioSrc: string) {
+    this._createParentMedia(audioSrc, "audio", 0, Infinity);
+  }
+
+  /**
+   * Extract ALL timed media (audio/video with data-start) from the iframe's
+   * DOM and create parent-frame copies. Disables the iframe originals so the
+   * runtime doesn't try to play them (which would fail on mobile and cause
+   * double playback on desktop).
+   *
+   * If `audio-src` was already set, this just disables the iframe media.
+   */
+  private _setupParentMedia() {
+    try {
+      const doc = this.iframe.contentDocument;
+      if (!doc) return;
+
+      // Find all timed media — matches the runtime's media.ts selector
+      const mediaEls = doc.querySelectorAll<HTMLMediaElement>(
+        "audio[data-start], video[data-start]",
+      );
+
+      for (const iframeEl of mediaEls) {
+        const src = iframeEl.getAttribute("src") || iframeEl.querySelector("source")?.src;
+        if (!src) continue;
+
+        const start = parseFloat(iframeEl.getAttribute("data-start") || "0");
+        const duration = parseFloat(iframeEl.getAttribute("data-duration") || "Infinity");
+        const tag = iframeEl.tagName === "VIDEO" ? ("video" as const) : ("audio" as const);
+
+        this._createParentMedia(src, tag, start, duration);
+
+        // Disable the iframe element so the runtime ignores it
+        iframeEl.removeAttribute("src");
+        iframeEl.removeAttribute("data-start");
+        iframeEl.removeAttribute("data-duration");
+        iframeEl.querySelectorAll("source").forEach((s) => s.remove());
+      }
+    } catch {
+      // Cross-origin iframe — can't access DOM, fall back to iframe media
+    }
   }
 
   private _hidePoster() {

@@ -89,8 +89,8 @@ jobs:
       - run: bun run build
       - run: bun run --filter '*' typecheck
 
-  test-core:
-    name: "Test: core"
+  test:
+    name: Test
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
@@ -102,22 +102,24 @@ jobs:
         with:
           node-version: 22
       - run: bun install --frozen-lockfile
-      - run: bun run --filter @hyperframes/core test -- --coverage
+      - run: bun run --filter '!@hyperframes/producer' test
 
-  test-engine:
-    name: "Test: engine"
-    needs: changes
+  test-producer:
+    name: "Test: producer"
+    needs: [changes, build]
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - run: bun install --frozen-lockfile
-      - run: bun run --filter @hyperframes/engine test
+      - run: bun run build
+      - run: bun run --filter @hyperframes/producer test
 
   test-runtime-contract:
     name: "Test: runtime contract"

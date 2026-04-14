@@ -22,6 +22,7 @@
     "lint:skills": "tsx scripts/lint-skills.ts",
     "lint:fix": "oxlint --fix .",
     "format": "oxfmt .",
+    "test": "bun run --filter '*' test",
     "format:check": "oxfmt --check .",
     "knip": "knip",
     "generate:previews": "tsx scripts/generate-template-previews.ts",
@@ -30,8 +31,10 @@
   "devDependencies": {
     "@commitlint/cli": "^20.5.0",
     "@commitlint/config-conventional": "^20.5.0",
+    "@hyperframes/player": "workspace:*",
     "@types/node": "^25.0.10",
     "concurrently": "^8.2.0",
+    "happy-dom": "^20.9.0",
     "knip": "^6.0.3",
     "lefthook": "^2.1.4",
     "oxfmt": "^0.41.0",
