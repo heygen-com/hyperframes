@@ -192,7 +192,7 @@ export default defineCommand({
     const hasConfigBefore = existsSync(projectConfigPath(projectDir));
 
     try {
-      const result = await runAdd({ name: args.name, projectDir, skipClipboard, json });
+      const result = await runAdd({ name: args.name, projectDir, skipClipboard });
       const wroteConfig = !hasConfigBefore && existsSync(projectConfigPath(projectDir));
 
       if (json) {
