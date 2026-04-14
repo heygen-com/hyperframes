@@ -112,6 +112,8 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          lfs: true
       - uses: oven-sh/setup-bun@v2
       - uses: actions/setup-node@v4
         with:
