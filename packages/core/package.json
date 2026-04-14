@@ -10,6 +10,7 @@
   "files": [
     "dist",
     "docs",
+    "schemas",
     "README.md"
   ],
   "type": "module",
@@ -36,7 +37,13 @@
     "./text": {
       "import": "./src/text/index.ts",
       "types": "./src/text/index.ts"
-    }
+    },
+    "./registry": {
+      "import": "./src/registry/index.ts",
+      "types": "./src/registry/index.ts"
+    },
+    "./schemas/registry.json": "./schemas/registry.json",
+    "./schemas/registry-item.json": "./schemas/registry-item.json"
   },
   "publishConfig": {
     "access": "public",
@@ -61,7 +68,13 @@
       "./text": {
         "import": "./dist/text/index.js",
         "types": "./dist/text/index.d.ts"
-      }
+      },
+      "./registry": {
+        "import": "./dist/registry/index.js",
+        "types": "./dist/registry/index.d.ts"
+      },
+      "./schemas/registry.json": "./schemas/registry.json",
+      "./schemas/registry-item.json": "./schemas/registry-item.json"
     },
     "main": "./dist/index.js",
     "types": "./dist/index.d.ts"

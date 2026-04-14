@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hyperframes.heygen.com/schema/registry.json",
+  "title": "Hyperframes Registry Manifest",
+  "description": "Top-level manifest describing all items in a Hyperframes registry.",
+  "type": "object",
+  "required": ["name", "homepage", "items"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "format": "uri"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Registry name (e.g. \"hyperframes\")."
+    },
+    "homepage": {
+      "type": "string",
+      "format": "uri",
+      "description": "Registry homepage URL."
+    },
+    "items": {
+      "type": "array",
+      "description": "Items in this registry. Each entry is a shorthand reference; the full item manifest lives at <type-dir>/<name>/registry-item.json.",
+      "items": {
+        "type": "object",
+        "required": ["name", "type"],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?$",
+            "description": "Item name in kebab-case, must start and end with alphanumeric."
+          },
+          "type": {
+            "type": "string",
+            "enum": ["hyperframes:example", "hyperframes:block", "hyperframes:component"]
+          }
+        }
+      }
+    }
+  }
+}

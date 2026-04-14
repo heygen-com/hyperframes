@@ -163,3 +163,26 @@ export { createGSAPFrameAdapter } from "./adapters/gsap";
 // Text measurement
 export { fitTextFontSize } from "./text/index.js";
 export type { FitTextOptions, FitTextResult } from "./text/index.js";
+
+// Registry
+export type {
+  ItemType,
+  FileType,
+  FileTarget,
+  RegistryItemDimensions,
+  RegistryItemPreview,
+  RegistryItem,
+  ExampleItem,
+  BlockItem,
+  ComponentItem,
+  RegistryManifestEntry,
+  RegistryManifest,
+} from "./registry/index.js";
+
+export {
+  ITEM_TYPES,
+  FILE_TYPES,
+  isExampleItem,
+  isBlockItem,
+  isComponentItem,
+} from "./registry/index.js";
