@@ -1,9 +1,9 @@
 ---
-title: Templates
-description: "Built-in templates for common video patterns. Hover to preview animations."
+title: Examples
+description: "Built-in examples for common video patterns. Hover to preview animations."
 ---
 
-Hyperframes includes starter templates to help you scaffold compositions quickly. Each template gives you a working project with the correct [composition structure](/concepts/compositions), [data attributes](/concepts/data-attributes), and a [GSAP timeline](/guides/gsap-animation) already wired up.
+Hyperframes includes starter examples to help you scaffold compositions quickly. Each example gives you a working project with the correct [composition structure](/concepts/compositions), [data attributes](/concepts/data-attributes), and a [GSAP timeline](/guides/gsap-animation) already wired up.
 
 ```bash Terminal
 npx hyperframes init my-video --example <name>
@@ -59,9 +59,9 @@ npx hyperframes init my-video --example <name>
   ```
 </Tip>
 
-## Choosing a Template
+## Choosing an Example
 
-| Template | Style | Format | Best for |
+| Example | Style | Format | Best for |
 |----------|-------|--------|----------|
 | `warm-grain` | Organic, textured | Landscape | Lifestyle, branding, editorial |
 | `play-mode` | Energetic, elastic | Landscape | Social media, product launches |
@@ -73,7 +73,7 @@ npx hyperframes init my-video --example <name>
 | `vignelli` | Bold, typographic | Portrait | Headlines, announcements |
 | `blank` | Minimal scaffolding | — | Full control, agent-generated |
 
-## Template Details
+## Example Details
 
 <Tabs>
   <Tab title="warm-grain">
@@ -222,16 +222,16 @@ npx hyperframes init my-video --example warm-grain --video ./my-clip.mp4
 
 The CLI will probe the video for duration, resolution, and codec. If the video uses an incompatible codec, it will be automatically transcoded to H.264 MP4 if FFmpeg is available.
 
-## Custom Templates
+## Custom Examples
 
-Any directory with an `index.html` can serve as a template. Your custom template needs:
+Any directory with an `index.html` can serve as an example. Your custom example needs:
 
 1. An `index.html` with a [`data-composition-id`](/concepts/data-attributes#composition-attributes) root element
 2. A [GSAP timeline](/guides/gsap-animation) registered in `window.__timelines`
 3. Any assets in the same directory or a subdirectory
 
 ```html index.html
-<div id="root" data-composition-id="my-template"
+<div id="root" data-composition-id="my-example"
      data-start="0" data-width="1920" data-height="1080">
 
   <!-- Your elements here -->
@@ -241,12 +241,12 @@ Any directory with an `index.html` can serve as a template. Your custom template
     const tl = gsap.timeline({ paused: true });
     // Add your animations...
     window.__timelines = window.__timelines || {};
-    window.__timelines["my-template"] = tl;
+    window.__timelines["my-example"] = tl;
   </script>
 </div>
 ```
 
-After creating a custom template, validate it with the [linter](/packages/cli#lint):
+After creating a custom example, validate it with the [linter](/packages/cli#lint):
 
 ```bash Terminal
 npx hyperframes lint
@@ -259,7 +259,7 @@ npx hyperframes lint
     Create, preview, and render your first video
   </Card>
   <Card title="GSAP Animation" icon="wand-magic-sparkles" href="/guides/gsap-animation">
-    Add animations to your template
+    Add animations to your example
   </Card>
   <Card title="Compositions" icon="layer-group" href="/concepts/compositions">
     Understand the composition data model

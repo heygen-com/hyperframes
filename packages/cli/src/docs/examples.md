@@ -16,4 +16,4 @@ Video element with trimming, audio, and track controls. Starting point for video
 
 ## Custom Templates
 
-Any directory with an `index.html` can serve as a template. Copy it manually or build your own init workflow.
+Any directory with an `index.html` can serve as an example. Copy it manually or build your own init workflow.

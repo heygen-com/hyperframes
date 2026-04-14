@@ -33,7 +33,7 @@ npx hyperframes docs <topic> # reference docs in terminal
 npx hyperframes docs <topic>
 ```
 
-Topics: `data-attributes`, `gsap`, `compositions`, `rendering`, `templates`, `troubleshooting`
+Topics: `data-attributes`, `gsap`, `compositions`, `rendering`, `examples`, `troubleshooting`
 
 **For full documentation**, discover pages via the machine-readable index — do NOT guess URLs:
 

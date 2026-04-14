@@ -22,9 +22,9 @@ const TOPICS: Record<string, TopicEntry> = {
     file: "data-attributes.md",
     description: "Timing, media, and composition attributes",
   },
-  templates: {
-    file: "templates.md",
-    description: "Built-in project templates for init",
+  examples: {
+    file: "examples.md",
+    description: "Built-in project examples for init",
   },
   rendering: {
     file: "rendering.md",

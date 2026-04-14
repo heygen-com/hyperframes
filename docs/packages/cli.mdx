@@ -14,7 +14,7 @@ npx hyperframes <command>
 ## When to Use
 
 **Use the CLI when you want to:**
-- Create a new composition project from a template
+- Create a new composition project from an example
 - Preview compositions with live hot reload during development
 - Render compositions to MP4 (locally or in Docker)
 - Lint compositions for structural issues
@@ -92,7 +92,7 @@ This is suppressed in CI environments, non-TTY shells, and when `HYPERFRAMES_NO_
 
 <Steps>
   <Step title="Create a project">
-    Scaffold a new composition from a template:
+    Scaffold a new composition from an example:
     ```bash
     npx hyperframes init --example warm-grain
     ```
@@ -100,7 +100,7 @@ This is suppressed in CI environments, non-TTY shells, and when `HYPERFRAMES_NO_
     ```bash
     npx hyperframes init my-video --example warm-grain
     ```
-    See [Templates](/templates) for all available templates.
+    See [Examples](/examples) for all available examples.
   </Step>
   <Step title="Preview in browser">
     Start the development server with live hot reload:
@@ -139,7 +139,7 @@ This is suppressed in CI environments, non-TTY shells, and when `HYPERFRAMES_NO_
   <Tab title="Create">
     ### `init`
 
-    Create a new composition project from a template:
+    Create a new composition project from an example:
 
     ```bash
     # Agent mode (default) — --example is required
@@ -172,7 +172,7 @@ This is suppressed in CI environments, non-TTY shells, and when `HYPERFRAMES_NO_
 
     After scaffolding, the CLI installs AI coding skills for Claude Code, Gemini CLI, and Codex CLI (use `--skip-skills` to disable). See [`skills`](#skills) command.
 
-    See [Templates](/templates) for full details.
+    See [Examples](/examples) for full details.
 
     ### `add`
 
@@ -503,7 +503,7 @@ This is suppressed in CI environments, non-TTY shells, and when `HYPERFRAMES_NO_
     npx hyperframes docs [topic]
     ```
 
-    Available topics: `data-attributes`, `templates`, `rendering`, `gsap`, `troubleshooting`, `compositions`. Run without a topic to see the full list.
+    Available topics: `data-attributes`, `examples`, `rendering`, `gsap`, `troubleshooting`, `compositions`. Run without a topic to see the full list.
 
     ### `telemetry`
 
@@ -515,7 +515,7 @@ This is suppressed in CI environments, non-TTY shells, and when `HYPERFRAMES_NO_
     npx hyperframes telemetry status
     ```
 
-    Telemetry collects command names, render performance, template choices, and system info. It does **not** collect file paths, project names, video content, or personally identifiable information. Disable with `HYPERFRAMES_NO_TELEMETRY=1` or the command above.
+    Telemetry collects command names, render performance, example choices, and system info. It does **not** collect file paths, project names, video content, or personally identifiable information. Disable with `HYPERFRAMES_NO_TELEMETRY=1` or the command above.
 
     ### `skills`
 

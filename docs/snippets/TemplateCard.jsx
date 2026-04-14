@@ -17,7 +17,7 @@ export function TemplateCard({ id, title, description, href, portrait }) {
       >
         <img
           src={imgSrc}
-          alt={`${title} template`}
+          alt={`${title} example`}
           className="absolute inset-0 w-full h-full object-cover"
           style={{
             opacity: hovering ? 0 : 1,

@@ -51,7 +51,7 @@
         "groups": [
           {
             "group": "Getting Started",
-            "pages": ["introduction", "quickstart", "templates"]
+            "pages": ["introduction", "quickstart", "examples"]
           },
           {
             "group": "Concepts",
