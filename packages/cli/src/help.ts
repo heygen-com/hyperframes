@@ -21,6 +21,7 @@ const GROUPS: Group[] = [
     commands: [
       ["init", "Scaffold a new composition project"],
       ["add", "Install a block or component from the registry"],
+      ["catalog", "Browse and install blocks and components"],
       ["preview", "Start the studio for previewing compositions"],
       ["render", "Render a composition to MP4 or WebM"],
     ],

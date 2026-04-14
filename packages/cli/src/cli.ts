@@ -26,6 +26,7 @@ const isHelp = process.argv.includes("--help") || process.argv.includes("-h");
 const subCommands = {
   init: () => import("./commands/init.js").then((m) => m.default),
   add: () => import("./commands/add.js").then((m) => m.default),
+  catalog: () => import("./commands/catalog.js").then((m) => m.default),
   play: () => import("./commands/play.js").then((m) => m.default),
   preview: () => import("./commands/preview.js").then((m) => m.default),
   render: () => import("./commands/render.js").then((m) => m.default),

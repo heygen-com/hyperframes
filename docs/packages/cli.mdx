@@ -205,6 +205,34 @@ This is suppressed in CI environments, non-TTY shells, and when `HYPERFRAMES_NO_
 
     Trying `add` with an example's name (e.g. `hyperframes add warm-grain`) emits a clear error pointing you at `init --example`.
 
+    ### `catalog`
+
+    Browse the registry — list available blocks and components with optional filters:
+
+    ```bash
+    # List everything (default: table output)
+    npx hyperframes catalog
+
+    # Filter by type or tag
+    npx hyperframes catalog --type block
+    npx hyperframes catalog --type block --tag social
+
+    # Machine-readable JSON
+    npx hyperframes catalog --json
+
+    # Interactive picker — select to install
+    npx hyperframes catalog --human-friendly
+    ```
+
+    | Flag | Description |
+    |------|-------------|
+    | `--type` | Filter by `block` or `component` |
+    | `--tag` | Filter by tag (e.g. `social`, `transition`, `text`) |
+    | `--json` | Print matching items as JSON (non-interactive) |
+    | `--human-friendly` | Interactive picker — select an item to install it |
+
+    Default output is a table listing name, type, description, and tags — designed for agents to parse. `--json` produces structured output. `--human-friendly` opens an interactive picker that runs `add` on selection.
+
     ### `compositions`
 
     List all compositions in the current project:
