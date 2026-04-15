@@ -8,40 +8,50 @@
 
 <p align="center">
   <a href="https://www.npmjs.com/package/hyperframes"><img src="https://img.shields.io/npm/v/hyperframes.svg?style=flat" alt="npm version"></a>
+  <a href="https://www.npmjs.com/package/hyperframes"><img src="https://img.shields.io/npm/dm/hyperframes.svg?style=flat" alt="npm downloads"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue.svg" alt="License"></a>
   <a href="https://nodejs.org"><img src="https://img.shields.io/badge/node-%3E%3D22-brightgreen" alt="Node.js"></a>
 </p>
 
-**Write HTML. Render video. Built for agents.**
+<p align="center"><b>Write HTML. Render video. Built for agents.</b></p>
 
-Hyperframes is an open-source video rendering framework that lets you create, preview, and render HTML-based video compositions — with first-class support for AI agents via MCP.
-
-## Why Hyperframes?
-
-- **HTML-native** — AI agents already speak HTML. No React required.
-- **Frame Adapter pattern** — bring your own animation runtime (GSAP, Lottie, CSS, Three.js).
-- **Deterministic rendering** — same input = identical output. Built for automated pipelines.
-- **AI-first design** — not a bolted-on afterthought.
+Hyperframes is an open-source video rendering framework that lets you create, preview, and render HTML-based video compositions — with first-class support for AI agents.
 
 ## Quick Start
+
+### Option 1: With an AI coding agent (recommended)
+
+Install the HyperFrames skills, then describe the video you want:
+
+```bash
+npx skills add heygen-com/hyperframes
+```
+
+This teaches your agent (Claude Code, Cursor, Gemini CLI, Codex) how to write correct compositions and GSAP animations. Then just prompt it:
+
+> "Create a 10-second product intro video with a fade-in title, a background video, and background music"
+
+The agent handles scaffolding, animation, and rendering.
+
+### Option 2: Start a project manually
 
 ```bash
 npx hyperframes init my-video
 cd my-video
-```
-
-Then open the project with your AI coding agent (Claude Code, Cursor, etc.) — it has HyperFrames skills installed and knows how to create and edit compositions.
-
-```bash
 npx hyperframes preview      # preview in browser (live reload)
-npx hyperframes render   # render to MP4
+npx hyperframes render       # render to MP4
 ```
+
+`hyperframes init` installs skills automatically, so you can hand off to your AI agent at any point.
 
 **Requirements:** Node.js >= 22, FFmpeg
 
-## Documentation
+## Why Hyperframes?
 
-Full documentation at **[hyperframes.heygen.com](https://hyperframes.heygen.com)** — start with the [Quickstart](https://hyperframes.heygen.com/quickstart), then explore guides, concepts, API reference, and package docs.
+- **HTML-native** — compositions are HTML files with data attributes. No React, no proprietary DSL.
+- **AI-first** — agents already speak HTML. The CLI is non-interactive by default, designed for agent-driven workflows.
+- **Deterministic rendering** — same input = identical output. Built for automated pipelines.
+- **Frame Adapter pattern** — bring your own animation runtime (GSAP, Lottie, CSS, Three.js).
 
 ## How It Works
 
@@ -53,24 +63,47 @@ Define your video as HTML with data attributes:
     id="clip-1"
     data-start="0"
     data-duration="5"
-    data-track="0"
+    data-track-index="0"
     src="intro.mp4"
     muted
     playsinline
   ></video>
-  <img id="overlay" data-start="2" data-duration="3" data-track="1" src="logo.png" />
+  <img
+    id="overlay"
+    class="clip"
+    data-start="2"
+    data-duration="3"
+    data-track-index="1"
+    src="logo.png"
+  />
   <audio
     id="bg-music"
     data-start="0"
     data-duration="9"
-    data-track="2"
+    data-track-index="2"
     data-volume="0.5"
     src="music.wav"
   ></audio>
 </div>
 ```
 
-Preview instantly in the browser. Render to MP4 locally. Let AI agents compose videos using tools they already understand.
+Preview instantly in the browser. Render to MP4 locally or in Docker.
+
+## Catalog
+
+50+ ready-to-use blocks and components — social overlays, shader transitions, data visualizations, and cinematic effects:
+
+```bash
+npx hyperframes add flash-through-white   # shader transition
+npx hyperframes add instagram-follow      # social overlay
+npx hyperframes add data-chart            # animated chart
+```
+
+Browse the full catalog at **[hyperframes.heygen.com/catalog](https://hyperframes.heygen.com/catalog/blocks/data-chart)**.
+
+## Documentation
+
+Full documentation at **[hyperframes.heygen.com](https://hyperframes.heygen.com)** — [Quickstart](https://hyperframes.heygen.com/quickstart) | [Guides](https://hyperframes.heygen.com/guides/gsap-animation) | [API Reference](https://hyperframes.heygen.com/packages/core) | [Catalog](https://hyperframes.heygen.com/catalog/blocks/data-chart)
 
 ## Packages
 
@@ -81,45 +114,28 @@ Preview instantly in the browser. Render to MP4 locally. Let AI agents compose v
 | [`@hyperframes/engine`](packages/engine)     | Seekable page-to-video capture engine (Puppeteer + FFmpeg)  |
 | [`@hyperframes/producer`](packages/producer) | Full rendering pipeline (capture + encode + audio mix)      |
 | [`@hyperframes/studio`](packages/studio)     | Browser-based composition editor UI                         |
+| [`@hyperframes/player`](packages/player)     | Embeddable `<hyperframes-player>` web component             |
 
-## AI Agent Skills
+## Skills
 
-HyperFrames ships skills that teach AI coding agents (Claude Code, Gemini CLI, Codex, Cursor) how to write correct compositions and GSAP animations. **Use these instead of writing from scratch — they encode framework-specific patterns that generic docs don't cover.**
-
-### Install via CLI (recommended)
-
-```bash
-# Install all skills (HyperFrames + GSAP) — runs automatically during `hyperframes init`
-npx hyperframes skills
-
-# Or install to a specific agent
-npx hyperframes skills --claude
-npx hyperframes skills --cursor
-```
-
-### Or via `npx skills add`
+HyperFrames ships [skills](https://github.com/vercel-labs/skills) that teach AI agents framework-specific patterns that generic docs don't cover.
 
 ```bash
-# HyperFrames skills (hyperframes-compose, hyperframes-captions)
-npx skills add heygen-com/hyperframes
-
-# GSAP skills (gsap-core, gsap-timeline, gsap-scrolltrigger, gsap-plugins, gsap-performance, gsap-utils, gsap-react, gsap-frameworks)
-npx skills add greensock/gsap-skills
+npx skills add heygen-com/hyperframes    # HyperFrames skills
+npx skills add greensock/gsap-skills     # GSAP animation skills
 ```
 
-### Installed Skills
-
-| Source                                               | Skills                                                                                                                                | What they teach                                                                                                                                                  |
-| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **HyperFrames**                                      | `hyperframes-compose`, `hyperframes-captions`, `hyperframes-registry`                                                                 | HTML composition structure, `class="clip"` rules, `data-*` attributes, timeline registration, rendering constraints, registry block/component install and wiring |
-| **[GSAP](https://github.com/greensock/gsap-skills)** | `gsap-core`, `gsap-timeline`, `gsap-performance`, `gsap-plugins`, `gsap-scrolltrigger`, `gsap-utils`, `gsap-react`, `gsap-frameworks` | Core API, timeline sequencing, ScrollTrigger, plugin usage, performance best practices                                                                           |
-
-In Claude Code, invoke with `/hyperframes-compose`, `/hyperframes-captions`, `/gsap-core`, etc.
+| Skill                                             | What it teaches                                                        |
+| ------------------------------------------------- | ---------------------------------------------------------------------- |
+| `hyperframes-compose`                             | HTML composition structure, `data-*` attributes, timeline registration |
+| `hyperframes-captions`                            | Caption/subtitle authoring and transcript integration                  |
+| `hyperframes-registry`                            | Block and component installation via `hyperframes add`                 |
+| `gsap-core`, `gsap-timeline`, `gsap-plugins`, ... | GSAP animation API, sequencing, ScrollTrigger, performance             |
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on how to contribute.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ## License
 
-See [LICENSE](LICENSE) for details.
+[Apache 2.0](LICENSE)

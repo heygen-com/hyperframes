@@ -11,26 +11,25 @@ Build the monorepo first. Every time you change source files, rebuild before tes
 
 ```bash
 # From the monorepo root
-pnpm build
+bun run build
 ```
 
-## Option 1: pnpm link (recommended)
+## Option 1: bun link (recommended)
 
-`pnpm link --global` makes the `hyperframes` binary in your `$PATH` point at your local build. It survives across terminal sessions and auto-picks up new builds without re-linking.
+`bun link` makes the `hyperframes` binary in your `$PATH` point at your local build. It survives across terminal sessions and auto-picks up new builds without re-linking.
 
 ```bash
 # If you previously installed hyperframes globally, remove it first —
-# a global install takes priority over pnpm link and shadows your local build.
-pnpm remove -g hyperframes 2>/dev/null || npm uninstall -g hyperframes 2>/dev/null
+# a global install takes priority over bun link and shadows your local build.
+npm uninstall -g hyperframes 2>/dev/null
 
 # Link your local build
 cd packages/cli
-pnpm link --global
+bun link
 
 # Verify — should print your local version AND point to the monorepo
 hyperframes --version
 which hyperframes
-# The path should contain your monorepo, NOT pnpm/global/.pnpm/hyperframes@...
 ```
 
 Now use `hyperframes` normally in any directory:
@@ -40,12 +39,12 @@ cd ~/my-video-project
 hyperframes preview .
 ```
 
-**After every `pnpm build`** the linked binary is already up to date — no re-linking needed.
+**After every `bun run build`** the linked binary is already up to date — no re-linking needed.
 
 To restore the published release when you're done:
 
 ```bash
-pnpm unlink --global hyperframes
+bun unlink hyperframes
 npm install -g hyperframes@latest
 ```
 
@@ -55,13 +54,13 @@ If you don't want to touch your global `$PATH`, add a shell alias or call `node`
 
 ```bash
 # Temporary alias for your current shell session
-alias hyperframes="node /path/to/hyperframes-oss/packages/cli/dist/cli.js"
+alias hyperframes="node /path/to/hyperframes/packages/cli/dist/cli.js"
 
 # Or invoke directly
-node /path/to/hyperframes-oss/packages/cli/dist/cli.js preview .
+node /path/to/hyperframes/packages/cli/dist/cli.js preview .
 ```
 
-Replace `/path/to/hyperframes-oss` with your actual monorepo path.
+Replace `/path/to/hyperframes` with your actual monorepo path.
 
 ## Option 3: npm pack (test the exact published artifact)
 
@@ -74,9 +73,9 @@ npm pack
 
 # Test it in an isolated directory
 mkdir /tmp/pack-test && cd /tmp/pack-test
-npx /path/to/hyperframes-oss/packages/cli/hyperframes-<version>.tgz init my-video
+npx /path/to/hyperframes/packages/cli/hyperframes-<version>.tgz init my-video
 cd my-video
-npx /path/to/hyperframes-oss/packages/cli/hyperframes-<version>.tgz preview .
+npx /path/to/hyperframes/packages/cli/hyperframes-<version>.tgz preview .
 ```
 
 ## Testing the fix branches
@@ -105,26 +104,23 @@ Common test scenarios:
 
 ## Troubleshooting
 
-**Changes not reflected after `pnpm build`**
+**Changes not reflected after `bun run build`**
 
-The CLI binary is a single bundled file at `packages/cli/dist/cli.js`. If your change is in `@hyperframes/core` or another workspace package, make sure `pnpm build` rebuilt _all_ packages — the CLI bundles its dependencies at build time.
+The CLI binary is a single bundled file at `packages/cli/dist/cli.js`. If your change is in `@hyperframes/core` or another workspace package, make sure `bun run build` rebuilt _all_ packages — the CLI bundles its dependencies at build time.
 
 **`hyperframes` still shows the old version / old UI**
 
-A globally installed `hyperframes` package shadows `pnpm link`. Check which binary is active:
+A globally installed `hyperframes` package shadows `bun link`. Check which binary is active:
 
 ```bash
 which hyperframes
-# BAD:  /Users/you/Library/pnpm/hyperframes → pnpm/global/.pnpm/hyperframes@0.x.x/...
-# GOOD: /Users/you/Library/pnpm/hyperframes → your-monorepo/packages/cli/dist/cli.js
 ```
 
-If it points to the global store, remove the global install and re-link:
+If it points to a global store rather than your monorepo, remove the global install and re-link:
 
 ```bash
-pnpm remove -g hyperframes
-npm uninstall -g hyperframes   # in case it was installed via npm
-cd packages/cli && pnpm link --global
+npm uninstall -g hyperframes
+cd packages/cli && bun link
 ```
 
 **Port already in use**
