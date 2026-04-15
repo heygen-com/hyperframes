@@ -103,18 +103,19 @@ Browse the full catalog at **[hyperframes.heygen.com/catalog](https://hyperframe
 
 ## Documentation
 
-Full documentation at **[hyperframes.heygen.com](https://hyperframes.heygen.com)** — [Quickstart](https://hyperframes.heygen.com/quickstart) | [Guides](https://hyperframes.heygen.com/guides/gsap-animation) | [API Reference](https://hyperframes.heygen.com/packages/core) | [Catalog](https://hyperframes.heygen.com/catalog/blocks/data-chart)
+Full documentation at **[hyperframes.heygen.com/introduction](https://hyperframes.heygen.com/introduction)** — [Quickstart](https://hyperframes.heygen.com/quickstart) | [Guides](https://hyperframes.heygen.com/guides/gsap-animation) | [API Reference](https://hyperframes.heygen.com/packages/core) | [Catalog](https://hyperframes.heygen.com/catalog/blocks/data-chart)
 
 ## Packages
 
-| Package                                      | Description                                                 |
-| -------------------------------------------- | ----------------------------------------------------------- |
-| [`hyperframes`](packages/cli)                | CLI — create, preview, lint, and render compositions        |
-| [`@hyperframes/core`](packages/core)         | Types, parsers, generators, linter, runtime, frame adapters |
-| [`@hyperframes/engine`](packages/engine)     | Seekable page-to-video capture engine (Puppeteer + FFmpeg)  |
-| [`@hyperframes/producer`](packages/producer) | Full rendering pipeline (capture + encode + audio mix)      |
-| [`@hyperframes/studio`](packages/studio)     | Browser-based composition editor UI                         |
-| [`@hyperframes/player`](packages/player)     | Embeddable `<hyperframes-player>` web component             |
+| Package                                                          | Description                                                 |
+| ---------------------------------------------------------------- | ----------------------------------------------------------- |
+| [`hyperframes`](packages/cli)                                    | CLI — create, preview, lint, and render compositions        |
+| [`@hyperframes/core`](packages/core)                             | Types, parsers, generators, linter, runtime, frame adapters |
+| [`@hyperframes/engine`](packages/engine)                         | Seekable page-to-video capture engine (Puppeteer + FFmpeg)  |
+| [`@hyperframes/producer`](packages/producer)                     | Full rendering pipeline (capture + encode + audio mix)      |
+| [`@hyperframes/studio`](packages/studio)                         | Browser-based composition editor UI                         |
+| [`@hyperframes/player`](packages/player)                         | Embeddable `<hyperframes-player>` web component             |
+| [`@hyperframes/shader-transitions`](packages/shader-transitions) | WebGL shader transitions for compositions                   |
 
 ## Skills
 
