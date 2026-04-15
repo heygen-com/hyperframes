@@ -3,13 +3,29 @@ title: Quickstart
 description: "Create, preview, and render your first Hyperframes video in under two minutes."
 ---
 
-Go from zero to a rendered MP4: scaffold a project, edit with your AI agent, preview live, and render.
+Go from zero to a rendered MP4 — either by prompting your AI agent or by starting a project manually.
 
-## What you'll build
+## Option 1: With an AI coding agent (recommended)
 
-A 1920x1080 video with an animated title that fades in from above — rendered to MP4 on your local machine. The entire composition is a single HTML file.
+Install the HyperFrames skills, then describe the video you want:
 
-## Prerequisites
+```bash
+npx skills add heygen-com/hyperframes
+```
+
+This teaches your agent (Claude Code, Cursor, Gemini CLI, Codex) how to write correct compositions and GSAP animations. Then prompt it:
+
+> "Create a 10-second product intro with a fade-in title over a dark background and subtle background music"
+
+The agent handles scaffolding, animation, and rendering. You can iterate by describing changes ("make the title bigger", "add a slide-in lower third at 3 seconds").
+
+<Tip>
+  Skills encode HyperFrames-specific patterns — like required `class="clip"` on timed elements, GSAP timeline registration, and `data-*` attribute semantics — that are not in generic web docs. Using skills produces correct compositions from the start.
+</Tip>
+
+## Option 2: Start a project manually
+
+### Prerequisites
 
 - **Node.js 22+** — runtime for the CLI and dev server
 - **FFmpeg** — video encoding for local renders
@@ -58,7 +74,7 @@ A 1920x1080 video with an animated title that fades in from above — rendered t
   </Steps>
 </Accordion>
 
-## Create your first video
+### Create your first video
 
 <Steps>
   <Step title="Scaffold the project">
@@ -103,6 +119,8 @@ A 1920x1080 video with an animated title that fades in from above — rendered t
     ```bash
     npx hyperframes init my-video --example warm-grain --video ./intro.mp4
     ```
+
+    `hyperframes init` installs AI agent skills automatically, so you can hand off to your AI agent at any point.
   </Step>
 
   <Step title="Preview in the browser">
@@ -118,7 +136,7 @@ A 1920x1080 video with an animated title that fades in from above — rendered t
   </Step>
 
   <Step title="Edit the composition">
-    Open the project with your AI coding agent (Claude Code, Cursor, etc.) — HyperFrames skills are installed automatically and your agent knows how to create and edit compositions.
+    Open the project with your AI coding agent (Claude Code, Cursor, etc.) — skills are installed automatically and your agent knows how to create and edit compositions.
 
     Or edit `index.html` directly — here's a minimal composition:
 
@@ -182,13 +200,13 @@ A 1920x1080 video with an animated title that fades in from above — rendered t
 ## Next steps
 
 <CardGroup cols={2}>
-  <Card title="Compositions" icon="layer-group" href="/concepts/compositions">
-    Learn how compositions, clips, and nested timelines work together
+  <Card title="Browse the Catalog" icon="grid-2" href="/catalog/blocks/data-chart">
+    50+ ready-to-use blocks — transitions, overlays, data visualizations, and effects
   </Card>
   <Card title="GSAP Animation" icon="wand-magic-sparkles" href="/guides/gsap-animation">
     Add fade, slide, scale, and custom animations to your videos
   </Card>
-  <Card title="Examples" icon="grid-2" href="/examples">
+  <Card title="Examples" icon="rocket" href="/examples">
     Start from built-in examples like Warm Grain and Swiss Grid
   </Card>
   <Card title="Rendering" icon="film" href="/guides/rendering">
