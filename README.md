@@ -124,6 +124,11 @@ HyperFrames ships [skills](https://github.com/vercel-labs/skills) that teach AI 
 ```bash
 npx skills add heygen-com/hyperframes    # HyperFrames skills
 npx skills add greensock/gsap-skills     # GSAP animation skills
+
+# Or install via the CLI (also runs automatically during `hyperframes init`)
+npx hyperframes skills
+npx hyperframes skills --claude          # install to a specific agent
+npx hyperframes skills --cursor
 ```
 
 | Skill                                             | What it teaches                                                        |
