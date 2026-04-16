@@ -4,7 +4,12 @@ Expand a sparse user prompt into a full production prompt. Runs AFTER `design.md
 
 ## Prerequisites
 
-- `design.md` exists in the project root. If not, run Step 0a (Design system) first. Expansion without a design context produces generic scene breakdowns that later agents ignore.
+Read before generating:
+
+- `design.md` — palette, typography, energy, mood. The expansion quotes these values; it does not invent any.
+- [../house-style.md](../house-style.md) — its rules for Background Layer (2-5 decoratives), Color, Motion, Typography apply to every scene. The expansion does NOT re-state those rules; it writes output that conforms to them.
+
+If `design.md` doesn't exist yet, run Step 0a (Design system) first. Expansion without a design context produces generic scene breakdowns that later agents ignore.
 
 ## When to expand
 
@@ -20,16 +25,16 @@ Expand into a full production prompt with these sections:
 
 1. **Title + style block** — cite design.md's palette (bg/fg/accent hex values), typography pairing, energy level, and mood. Do NOT invent a palette — quote the design.md values.
 2. **Global animation rules** — parallax layers, micro-motion requirements, kinetic typography, pacing rules, transition style. Align energy with design.md (calm → slow eases, high energy → snappy eases).
-3. **Scene-by-scene breakdown** — for each scene:
+3. **Scene-by-scene breakdown** — for each scene, three layers:
    - Time range and title
-   - **Background layer (REQUIRED, 2-5 decoratives)** — pick from house-style's decorative list (radial glow / oversized ghost type / accent hairline rules / grid patterns / thematic decoratives) AND confirm each uses design.md's palette values. "Single ambient motion per scene" means one LOOPING MOTION applied to these decoratives, not one element total.
-   - **Midground (content)** — specific visual elements (not generic — "alien claw slides across wall" not "scary things happen")
-   - **Foreground (text + accents)** — text/typography with animation style
+   - Background layer — list the decoratives (per the prerequisite rules)
+   - Midground — the specific content elements (not generic: "alien claw slides across wall" not "scary things happen")
+   - Foreground — text and typography with their animation style
    - Transition to next scene as a specific morph (what object becomes what)
 4. **Recurring motifs** — visual threads that appear across multiple scenes, always drawn from design.md's palette and typography.
 5. **Transition rules** — every scene-to-scene connection described as object morphing. Transition duration/ease should match design.md's energy level.
 6. **Pacing curve** — where energy builds, peaks, and releases.
-7. **Negative prompt** — what to avoid. Always include: "no colors outside design.md palette, no fonts outside design.md typography pair".
+7. **Negative prompt** — what to avoid for this specific composition.
 
 ## Output
 
