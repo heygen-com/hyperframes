@@ -36,7 +36,11 @@ Do NOT begin prompt expansion or scene authoring without a `design.md`. Design d
 
 ### Step 0b: Prompt expansion
 
-If the user's prompt lacks scene-by-scene structure, expand it into a full production prompt. Read [references/prompt-expansion.md](references/prompt-expansion.md) for the full process and output format. The expanded prompt must cite design.md's palette, typography, and mood — not repeat them as generic defaults. Present the expanded prompt to the user for approval before proceeding.
+Always run on every composition (except single-scene pieces and trivial edits). This step grounds the user's intent against `design.md` and `house-style.md` and produces a consistent intermediate that every downstream agent — scene subagents, assembler, lint — reads the same way.
+
+Read [references/prompt-expansion.md](references/prompt-expansion.md) for the full process and output format. The expanded prompt quotes design.md's palette hex values, typography pair, and motion energy verbatim — it does not re-state generic defaults. Present the expanded prompt to the user for approval before proceeding.
+
+If the user's prompt is already scene-by-scene, the expansion is mostly pass-through, but it still binds the prompt to design.md and house-style — which is the contract the downstream steps depend on.
 
 ### Step 1: Plan
 Before writing HTML, think at a high level:

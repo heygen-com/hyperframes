@@ -1,6 +1,8 @@
 # Prompt Expansion
 
-Expand a sparse user prompt into a full production prompt. Runs AFTER `design.md` is established (Step 0a) — the expansion consumes design.md and produces output that cites its palette, typography, and motion energy.
+Run on every composition. Expansion is not about lengthening a short prompt — it's about grounding the user's intent against `design.md` and `house-style.md` and producing a consistent intermediate that every downstream agent reads the same way.
+
+Runs AFTER `design.md` is established (Step 0a). The expansion consumes design.md and produces output that cites its palette, typography, and motion energy verbatim.
 
 ## Prerequisites
 
@@ -11,13 +13,18 @@ Read before generating:
 
 If `design.md` doesn't exist yet, run Step 0a (Design system) first. Expansion without a design context produces generic scene breakdowns that later agents ignore.
 
-## When to expand
+## Why always run it
 
-A prompt needs expansion if it lacks: scene-by-scene structure, specific visual elements per scene, transition descriptions, or timing.
+A detailed user prompt can still be ambiguous or under-specified in ways only the expansion step surfaces:
 
-**Sparse:** "make me a trailer about a killer alien on a spaceship" or "coconut water promo, tropical, 45 seconds"
+- The user's color words ("warm", "cinematic") get resolved to design.md's exact hex values.
+- Decorative layers that the user forgot to mention get added explicitly, per house-style.
+- Transitions vaguely described ("cut", "crossfade") get specified as morph operations with duration and ease tied to design.md's energy.
+- Per-scene timing gets verified to sum to the stated total.
 
-**Already expanded:** Has numbered scenes with timing, specific elements, transition rules, and animation direction — skip this step.
+If the user's prompt is already scene-by-scene, the expansion is shorter and largely pass-through, but it still binds the prompt to design.md and house-style — which is the contract the scene subagents and assembler depend on.
+
+**Do not skip.** Single-scene compositions and trivial edits are the only exceptions.
 
 ## What to generate
 
