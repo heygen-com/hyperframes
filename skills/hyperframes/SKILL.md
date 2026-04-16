@@ -9,6 +9,36 @@ HTML is the source of truth for video. A composition is an HTML file with `data-
 
 ## Approach
 
+### Step 0a: Design system (always required, first)
+
+Run this BEFORE prompt expansion. Design direction shapes expansion output (atmosphere layers, motion energy, typography), so expanding first produces generic breakdowns that later ignore the palette.
+
+Every composition MUST have a `design.md` in the project root before construction. It is the source of truth for colors, typography, motion, spacing, and mood — every later step (expansion output, scene subagents, assembler) reads it.
+
+**Resolution order:**
+
+1. **Exists** — if `design.md` is already in the project root, read it and proceed to Step 1.
+2. **Build one via the `visual-style` skill** — invoke the `/visual-style` skill (Skill tool, `skill: "visual-style"`) in "Create" mode. Ask the user the batched vibe questions the skill prescribes (mood, palette, typography, energy), then have it emit a full design spec. Save the result to `design.md` in the project root.
+3. **Interactive picker (fallback)** — if the user prefers pre-built options instead of a guided build, read [references/design-picker.md](references/design-picker.md) and serve the picker.
+4. **House-style defaults (last resort)** — only if the user explicitly says "skip design" or this is a tiny edit to an existing composition without a design.md. In that case, follow [house-style.md](./house-style.md) and write its palette + typography into `design.md` so downstream steps have a file to read.
+
+Do NOT begin prompt expansion or scene authoring without a `design.md`. Design direction affects expansion output (atmosphere layers, motion energy, typography choices) — expansion before design produces generic scene breakdowns that later ignore the palette.
+
+### Using design.md during construction
+
+`design.md` is the source of truth for all visual decisions. Use only the values it defines — colors, fonts, spacing, corners, depth, component treatments, and any other fields the user has added. Do not invent new colors, substitute fonts, or override its rules. If the composition needs a value the design.md doesn't cover, follow [house-style.md](./house-style.md) for that specific decision.
+
+**Passing design.md downstream:**
+
+- **Prompt expansion** — include the palette, typography, and mood/energy from design.md in the expanded prompt's style block. Every scene breakdown should reference the palette and note which decorative motifs belong.
+- **Scene subagents** — each subagent receives the full `design.md` (or a tight summary of its values). Fragment authors apply only these values; house-style decoratives are added WITHIN the design.md's palette constraints.
+- **Assembler** — reads design.md to populate any global CSS variables in the scaffold.
+
+### Step 0b: Prompt expansion
+
+If the user's prompt lacks scene-by-scene structure, expand it into a full production prompt. Read [references/prompt-expansion.md](references/prompt-expansion.md) for the full process and output format. The expanded prompt must cite design.md's palette, typography, and mood — not repeat them as generic defaults. Present the expanded prompt to the user for approval before proceeding.
+
+### Step 1: Plan
 Before writing HTML, think at a high level:
 
 1. **What** — what should the viewer experience? Identify the narrative arc, key moments, and emotional beats.
