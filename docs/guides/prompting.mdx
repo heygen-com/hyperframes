@@ -11,7 +11,6 @@ Install the skills in your project (or globally for your agent):
 
 ```bash
 npx skills add heygen-com/hyperframes
-npx skills add greensock/gsap-skills    # optional, for richer animation help
 ```
 
 In Claude Code, restart the session after installing. Skills register as **slash commands**:
@@ -214,7 +213,7 @@ The skills enforce these automatically, but if you hand-edit compositions or deb
 
 1. **Register all timelines** on `window.__timelines` — the renderer can't seek animations it doesn't know about.
 2. **Video elements must be `muted`** — audio goes in separate `<audio>` elements so the renderer can mix it.
-3. **No `Math.random()`** — random values produce different frames on each render, breaking determinism.
+3. **No `Math.random()`** — random values produce different frames on each render, breaking determinism. Use a seeded PRNG (e.g. mulberry32) if you need pseudo-random values.
 4. **Synchronous timeline construction** — no `async`/`await` or `fetch()` during GSAP timeline setup.
 5. **Timed elements need `class="clip"`** — plus `data-start`, `data-duration`, and `data-track-index`.
 6. **Add entrance animations to every scene** — elements appearing without animation feel broken on video.

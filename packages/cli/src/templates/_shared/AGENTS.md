@@ -5,8 +5,7 @@
 This project uses AI agent skills for framework-specific patterns. Install them if not already present:
 
 ```bash
-npx skills add heygen-com/hyperframes   # HyperFrames composition skills
-npx skills add greensock/gsap-skills     # GSAP animation skills
+npx skills add heygen-com/hyperframes
 ```
 
 Skills encode patterns like `window.__timelines` registration, `data-*` attribute semantics, and shader-compatible CSS rules that are not in generic web docs. Using them produces correct compositions from the start.

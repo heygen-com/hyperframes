@@ -11,8 +11,7 @@
 | **gsap**            | `/gsap`            | GSAP animations for HyperFrames — tweens, timelines, easing, performance                          |
 
 > **Skills not available?** Ask the user to run `npx hyperframes skills` and restart their
-> agent session, or install manually: `npx skills add heygen-com/hyperframes` and
-> `npx skills add greensock/gsap-skills`.
+> agent session, or install manually: `npx skills add heygen-com/hyperframes`.
 
 ## Commands
 

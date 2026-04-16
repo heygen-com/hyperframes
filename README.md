@@ -150,8 +150,7 @@ Full documentation at **[hyperframes.heygen.com/introduction](https://hyperframe
 HyperFrames ships [skills](https://github.com/vercel-labs/skills) that teach AI agents framework-specific patterns that generic docs don't cover.
 
 ```bash
-npx skills add heygen-com/hyperframes    # HyperFrames skills
-npx skills add greensock/gsap-skills     # GSAP animation skills
+npx skills add heygen-com/hyperframes
 ```
 
 | Skill                  | What it teaches                                                                              |

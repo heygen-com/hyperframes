@@ -27,15 +27,12 @@ function runSkillsAdd(repo: string): Promise<void> {
   });
 }
 
-const SOURCES = [
-  { name: "HyperFrames", repo: "heygen-com/hyperframes" },
-  { name: "GSAP", repo: "greensock/gsap-skills" },
-];
+const SOURCES = [{ name: "HyperFrames", repo: "heygen-com/hyperframes" }];
 
 export default defineCommand({
   meta: {
     name: "skills",
-    description: "Install HyperFrames and GSAP skills for AI coding tools",
+    description: "Install HyperFrames skills for AI coding tools",
   },
   args: {},
   async run() {
