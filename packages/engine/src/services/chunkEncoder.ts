@@ -17,8 +17,8 @@ export type { EncoderOptions, EncodeResult, MuxResult } from "./chunkEncoder.typ
 
 export const ENCODER_PRESETS = {
   draft: { preset: "ultrafast", quality: 28, codec: "h264" as const },
-  standard: { preset: "medium", quality: 23, codec: "h264" as const },
-  high: { preset: "slow", quality: 18, codec: "h264" as const },
+  standard: { preset: "medium", quality: 18, codec: "h264" as const },
+  high: { preset: "slow", quality: 15, codec: "h264" as const },
 };
 
 /**

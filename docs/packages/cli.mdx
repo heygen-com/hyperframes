@@ -398,9 +398,11 @@ This is suppressed in CI environments, non-TTY shells, and when `HYPERFRAMES_NO_
     | Flag | Values | Default | Description |
     |------|--------|---------|-------------|
     | `--output` | path | `renders/<name>.mp4` | Output file path |
-    | `--format` | mp4, webm | mp4 | Output format (WebM renders with transparency) |
+    | `--format` | mp4, webm, mov | mp4 | Output format (WebM/MOV render with transparency) |
     | `--fps` | 24, 30, 60 | 30 | Frames per second |
     | `--quality` | draft, standard, high | standard | Encoding quality preset |
+    | `--crf` | 0–51 | — | Override CRF (lower = higher quality). Cannot combine with `--video-bitrate` |
+    | `--video-bitrate` | e.g. `10M`, `5000k` | — | Target bitrate encoding. Cannot combine with `--crf` |
     | `--workers` | 1-8 | 4 | Parallel render workers |
     | `--gpu` | — | off | GPU encoding (NVENC, VideoToolbox, VAAPI) |
     | `--docker` | — | off | Use Docker for [deterministic rendering](/concepts/determinism) |

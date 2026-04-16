@@ -893,7 +893,7 @@ export function StudioApp() {
                   projectId={projectId}
                   onDelete={renderQueue.deleteRender}
                   onClearCompleted={renderQueue.clearCompleted}
-                  onStartRender={(format) => renderQueue.startRender(30, "standard", format)}
+                  onStartRender={(format, quality) => renderQueue.startRender(30, quality, format)}
                   isRendering={renderQueue.isRendering}
                 />
               )}

@@ -59,7 +59,11 @@ export function useRenderQueue(projectId: string | null) {
 
   // Start a render and track progress via SSE
   const startRender = useCallback(
-    async (fps = 30, quality = "standard", format: "mp4" | "webm" | "mov" = "mp4") => {
+    async (
+      fps = 30,
+      quality: "draft" | "standard" | "high" = "standard",
+      format: "mp4" | "webm" | "mov" = "mp4",
+    ) => {
       if (!projectId) return;
 
       const startTime = Date.now();

@@ -7,7 +7,7 @@ interface RenderQueueProps {
   projectId: string;
   onDelete: (jobId: string) => void;
   onClearCompleted: () => void;
-  onStartRender: (format: "mp4" | "webm" | "mov") => void;
+  onStartRender: (format: "mp4" | "webm" | "mov", quality: "draft" | "standard" | "high") => void;
   isRendering: boolean;
 }
 
@@ -57,7 +57,7 @@ function FormatInfoTooltip({ format }: { format: "mp4" | "webm" | "mov" }) {
         <line x1="12" y1="17" x2="12.01" y2="17" />
       </svg>
       {open && (
-        <div className="absolute bottom-full right-0 mb-1.5 w-52 p-2 rounded bg-neutral-900 border border-neutral-700 shadow-lg z-50">
+        <div className="absolute top-full right-0 mt-1.5 w-52 p-2 rounded bg-neutral-900 border border-neutral-700 shadow-lg z-50">
           <p className="text-[10px] font-semibold text-neutral-200 mb-0.5">{info.label}</p>
           <p className="text-[9px] text-neutral-400 leading-tight">{info.desc}</p>
           <div className="mt-1.5 pt-1.5 border-t border-neutral-800">
@@ -77,30 +77,59 @@ function FormatInfoTooltip({ format }: { format: "mp4" | "webm" | "mov" }) {
   );
 }
 
+const QUALITY_OPTIONS: {
+  value: "draft" | "standard" | "high";
+  label: string;
+  title: string;
+}[] = [
+  { value: "draft", label: "Draft", title: "Fast render, smaller file" },
+  { value: "standard", label: "Standard", title: "Good quality, balanced file size" },
+  { value: "high", label: "High Quality", title: "Best quality, larger file" },
+];
+
 function FormatExportButton({
   onStartRender,
   isRendering,
 }: {
-  onStartRender: (format: "mp4" | "webm" | "mov") => void;
+  onStartRender: (format: "mp4" | "webm" | "mov", quality: "draft" | "standard" | "high") => void;
   isRendering: boolean;
 }) {
   const [format, setFormat] = useState<"mp4" | "webm" | "mov">("mp4");
+  const [quality, setQuality] = useState<"draft" | "standard" | "high">("standard");
+
+  // MOV (ProRes) is a fixed-quality codec — quality selector has no effect.
+  const showQuality = format !== "mov";
 
   return (
     <div className="flex items-center gap-1">
       <FormatInfoTooltip format={format} />
+      {showQuality && (
+        <select
+          value={quality}
+          onChange={(e) => setQuality(e.target.value as "draft" | "standard" | "high")}
+          disabled={isRendering}
+          title={QUALITY_OPTIONS.find((q) => q.value === quality)?.title}
+          className="h-5 px-1 text-[10px] rounded-l bg-neutral-800 border border-neutral-700 text-neutral-300 outline-none disabled:opacity-50"
+        >
+          {QUALITY_OPTIONS.map((q) => (
+            <option key={q.value} value={q.value} title={q.title}>
+              {q.label}
+            </option>
+          ))}
+        </select>
+      )}
       <select
         value={format}
         onChange={(e) => setFormat(e.target.value as "mp4" | "webm" | "mov")}
         disabled={isRendering}
-        className="h-5 px-1 text-[10px] rounded-l bg-neutral-800 border border-neutral-700 text-neutral-300 outline-none disabled:opacity-50"
+        className={`h-5 px-1 text-[10px] bg-neutral-800 border border-neutral-700 text-neutral-300 outline-none disabled:opacity-50 ${showQuality ? "" : "rounded-l"}`}
       >
         <option value="mp4">MP4</option>
         <option value="mov">MOV</option>
         <option value="webm">WebM</option>
       </select>
       <button
-        onClick={() => onStartRender(format)}
+        onClick={() => onStartRender(format, quality)}
         disabled={isRendering}
         className="flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold rounded-r bg-studio-accent text-[#09090B] hover:brightness-110 transition-colors disabled:opacity-50"
       >

@@ -117,11 +117,35 @@ Render your Hyperframes [compositions](/concepts/compositions) to MP4, MOV, or W
 | `--format` | mp4, mov, webm | mp4 | Output format (see [Transparent Video](#transparent-video) below) |
 | `--fps` | 24, 30, 60 | 30 | Frames per second |
 | `--quality` | draft, standard, high | standard | Encoding quality preset |
+| `--crf` | 0–51 | — | Override CRF (lower = higher quality). Cannot combine with `--video-bitrate` |
+| `--video-bitrate` | e.g. `10M`, `5000k` | — | Target bitrate encoding. Cannot combine with `--crf` |
 | `--workers` | 1-8 or `auto` | auto | Parallel render workers (see [Workers](#workers) below) |
 | `--max-concurrent-renders` | 1-10 | 2 | Max simultaneous renders via the producer server (see [Concurrent Renders](#concurrent-renders) below) |
 | `--gpu` | — | off | GPU encoding (NVENC, VideoToolbox, VAAPI) |
 | `--docker` | — | off | Use Docker for [deterministic rendering](/concepts/determinism) |
 | `--quiet` | — | off | Suppress verbose output |
+
+## Quality and Encoding
+
+The `--quality` flag selects a preset that controls the H.264 CRF (Constant Rate Factor) and encoder speed:
+
+| Preset | CRF | x264 Preset | Best For |
+|--------|-----|-------------|----------|
+| `draft` | 28 | ultrafast | Quick previews, iteration |
+| `standard` | 18 | medium | General use — visually lossless at 1080p |
+| `high` | 15 | slow | Final delivery, near-lossless quality |
+
+For finer control, use `--crf` or `--video-bitrate` to override the preset:
+
+```bash
+# Near-lossless quality (CRF 15 = very high quality, large file)
+npx hyperframes render --crf 15 --output pristine.mp4
+
+# Target a specific bitrate (useful for size-constrained delivery)
+npx hyperframes render --video-bitrate 10M --output controlled.mp4
+```
+
+**Tip**: The default `standard` preset (CRF 18) is visually lossless at 1080p — most people cannot distinguish it from the source. Use `--quality draft` for faster iteration, or `--quality high` / `--crf 10` when file size is no concern.
 
 ## Workers
 

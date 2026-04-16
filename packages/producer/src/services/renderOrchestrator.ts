@@ -110,6 +110,19 @@ export interface RenderConfig {
   producerConfig?: EngineConfig;
   /** Custom logger. Defaults to console-based defaultLogger. */
   logger?: ProducerLogger;
+  /**
+   * Override CRF (Constant Rate Factor) for the video encoder.
+   * Lower values = higher quality / larger files. Range: 0–51 for H.264.
+   * When set, overrides the CRF from the quality preset.
+   * Mutually exclusive with `videoBitrate`.
+   */
+  crf?: number;
+  /**
+   * Target video bitrate (e.g. "10M", "5000k").
+   * When set, uses bitrate-based encoding instead of CRF.
+   * Mutually exclusive with `crf`.
+   */
+  videoBitrate?: string;
 }
 
 export interface RenderPerfSummary {
@@ -793,6 +806,23 @@ export async function executeRenderJob(
     const videoOnlyPath = join(workDir, `video-only${videoExt}`);
     const preset = getEncoderPreset(job.config.quality, outputFormat);
 
+    // User-level CRF/bitrate overrides take precedence over presets.
+    const effectiveQuality = job.config.crf ?? preset.quality;
+    const effectiveBitrate = job.config.videoBitrate;
+
+    // Shared encoder options used by both streaming and chunk encode paths.
+    const baseEncoderOpts = {
+      fps: job.config.fps,
+      width,
+      height,
+      codec: preset.codec,
+      preset: preset.preset,
+      quality: effectiveQuality,
+      bitrate: effectiveBitrate,
+      pixelFormat: preset.pixelFormat,
+      useGpu: job.config.useGpu,
+    };
+
     job.framesRendered = 0;
 
     // Streaming encode mode: pipe frame buffers directly to FFmpeg stdin,
@@ -803,14 +833,7 @@ export async function executeRenderJob(
       streamingEncoder = await spawnStreamingEncoder(
         videoOnlyPath,
         {
-          fps: job.config.fps,
-          width,
-          height,
-          codec: preset.codec,
-          preset: preset.preset,
-          quality: preset.quality,
-          pixelFormat: preset.pixelFormat,
-          useGpu: job.config.useGpu,
+          ...baseEncoderOpts,
           imageFormat: captureOptions.format || "jpeg",
         },
         abortSignal,
@@ -1025,16 +1048,7 @@ export async function executeRenderJob(
 
       const frameExt = needsAlpha ? "png" : "jpg";
       const framePattern = `frame_%06d.${frameExt}`;
-      const encoderOpts = {
-        fps: job.config.fps,
-        width,
-        height,
-        codec: preset.codec,
-        preset: preset.preset,
-        quality: preset.quality,
-        pixelFormat: preset.pixelFormat,
-        useGpu: job.config.useGpu,
-      };
+      const encoderOpts = baseEncoderOpts;
       const encodeResult = enableChunkedEncode
         ? await encodeFramesChunkedConcat(
             framesDir,
