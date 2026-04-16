@@ -1,0 +1,116 @@
+---
+title: Prompting Hyperframes
+description: "How to prompt Claude Code, Cursor, Codex, and other AI agents to author Hyperframes compositions — with copy-pasteable examples."
+---
+
+Hyperframes is built for AI agents — compositions are plain HTML, the CLI is non-interactive, and the framework ships [skills](https://github.com/vercel-labs/skills) that teach agents the patterns docs alone don't cover. This guide shows how to prompt agents effectively once skills are installed.
+
+<Note>
+  This guide is a starting point. A full prompt cookbook is in the works — until then, use these patterns and iterate.
+</Note>
+
+## One-time setup
+
+Install the skills in your project (or globally for your agent):
+
+```bash
+npx skills add heygen-com/hyperframes
+npx skills add greensock/gsap-skills    # optional, for richer animation help
+```
+
+In Claude Code, restart the session after installing. Skills register as **slash commands**:
+
+| Slash command       | What it loads                                                                |
+| ------------------- | ---------------------------------------------------------------------------- |
+| `/hyperframes`      | Composition authoring — HTML structure, timing, captions, TTS, transitions   |
+| `/hyperframes-cli`  | CLI commands — `init`, `lint`, `preview`, `render`, `transcribe`, `tts`      |
+| `/gsap`             | GSAP animation API — timelines, easing, ScrollTrigger, plugins               |
+
+<Tip>
+  Always prefix Hyperframes prompts with `/hyperframes` (or invoke the skill another way for non-Claude agents). This loads the skill context explicitly so the agent gets composition rules right the first time, instead of relying on whatever it remembers about web video.
+</Tip>
+
+## The two prompt shapes
+
+Most successful Hyperframes prompts fall into one of two shapes.
+
+### Cold start — describe the video
+
+You tell the agent what you want from scratch. Best for greenfield work where you have the creative direction in your head.
+
+> Using `/hyperframes`, create a 10-second product intro with a fade-in title over a dark background and subtle background music.
+
+> Make a 9:16 TikTok-style hook video about [topic] using `/hyperframes`, with bouncy captions synced to a TTS narration.
+
+Cold-start prompts work best when you specify:
+
+- **Duration** (e.g. "10 seconds", "30s", "5 scenes of 3s each")
+- **Aspect ratio** ("16:9", "9:16 vertical", "1:1 square") — defaults to 1920x1080 otherwise
+- **Mood / style** ("minimal Swiss grid", "warm grain analog", "high-energy social")
+- **Key elements** (title, lower third, captions, background video, music)
+
+### Warm start — turn context into a video
+
+You give the agent something to work with — a URL, a doc, a CSV, a transcript — and ask it to synthesize that into a video. This is where Hyperframes shines because the agent does the research/summarization step *and* the production step in one flow.
+
+> Take a look at this GitHub repo https://github.com/saffron-health/libretto and explain its uses and architecture to me using `/hyperframes`.
+
+> Summarize the attached PDF into a 45-second pitch video using `/hyperframes`.
+
+> Read this changelog and turn the top three changes into a 30-second release announcement video using `/hyperframes`.
+
+> Turn this CSV into an animated bar chart race using `/hyperframes`.
+
+Warm-start prompts produce richer, more grounded videos because the agent is writing about *something specific* instead of inventing copy.
+
+## Iterating
+
+Hyperframes is a conversation. After the first render, talk to the agent the way you'd talk to a video editor — don't re-prompt from scratch:
+
+> Make the title 2x bigger.
+
+> Swap to dark mode.
+
+> Add a fade-out at the end and a lower third at 0:03 with my name and title.
+
+> The captions are too small and they overlap the lower third. Move them up and shrink them.
+
+> Replace the background music with `assets/track.mp3`.
+
+The agent already has the composition open and the skills loaded — small targeted edits produce better results than long re-specifications.
+
+## Anti-patterns
+
+Things that cause friction (or wrong output):
+
+- **Don't ask for React / Vue components.** Hyperframes compositions are plain HTML with `data-*` attributes and a GSAP timeline. Asking for "a React component for the intro" forces the agent to translate later.
+- **Don't ask for 4K or 60fps unless you need it.** Defaults (1920×1080, 30fps) render fast and look great. Higher specs slow rendering meaningfully.
+- **Don't skip the slash command.** Without `/hyperframes`, the agent may guess at HTML video conventions instead of using the framework's actual rules (`class="clip"` on timed elements, `window.__timelines` registration, etc.).
+- **Don't paste long error logs into the prompt without context.** Run `npx hyperframes lint` first — it catches most issues with a clear message the agent can act on.
+- **Don't assume the agent knows your assets.** Mention file paths explicitly (`assets/intro.mp4`, `assets/logo.png`) — the agent will check what's there but a hint speeds it up.
+
+## Recommended workflow
+
+1. `npx hyperframes init my-video` — scaffold a project (skills install automatically)
+2. Open the project in Claude Code (or Cursor / Codex)
+3. Prompt with `/hyperframes` and one of the shapes above
+4. `npx hyperframes preview` — watch in the browser as the agent edits
+5. Iterate with small targeted prompts
+6. `npx hyperframes render --output final.mp4` when you're happy
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Build and render your first video
+  </Card>
+  <Card title="Common Mistakes" icon="circle-exclamation" href="/guides/common-mistakes">
+    Pitfalls the linter can't catch
+  </Card>
+  <Card title="GSAP Animation" icon="wand-magic-sparkles" href="/guides/gsap-animation">
+    Add fade, slide, scale, and custom animations
+  </Card>
+  <Card title="Catalog" icon="grid-2" href="/catalog/blocks/data-chart">
+    50+ ready-to-use blocks and components
+  </Card>
+</CardGroup>

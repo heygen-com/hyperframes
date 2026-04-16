@@ -552,10 +552,16 @@ export default defineCommand({
         `     ${c.accent(`cd ${name}`)} then start ${c.accent("Claude Code")}, ${c.accent("Cursor")}, or your preferred agent`,
       );
       console.log();
-      console.log(`  ${c.accent("3.")} Preview in the browser:`);
+      console.log(`  ${c.accent("3.")} Try a starter prompt:`);
+      console.log(
+        `     ${c.dim('"Using /hyperframes, create a 15-second intro about [your topic]"')}`,
+      );
+      console.log(`     ${c.dim("More patterns: hyperframes.heygen.com/guides/prompting")}`);
+      console.log();
+      console.log(`  ${c.accent("4.")} Preview in the browser:`);
       console.log(`     ${c.accent(`cd ${name}`)} && ${c.accent("npx hyperframes preview")}`);
       console.log();
-      console.log(`  ${c.accent("4.")} Render to MP4 when ready:`);
+      console.log(`  ${c.accent("5.")} Render to MP4 when ready:`);
       console.log(`     ${c.accent(`cd ${name}`)} && ${c.accent("npx hyperframes render")}`);
       console.log();
       console.log(`  ${c.dim("Full docs: hyperframes.heygen.com")}`);

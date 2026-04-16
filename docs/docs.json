@@ -69,6 +69,7 @@
           {
             "group": "Guides",
             "pages": [
+              "guides/prompting",
               "guides/gsap-animation",
               "guides/rendering",
               "guides/common-mistakes",
