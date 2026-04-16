@@ -43,7 +43,7 @@ Copy any of these into your agent to get started. The `/hyperframes` prefix load
 
 **Warm start — turn existing context into a video:**
 
-> Take a look at this GitHub repo https://github.com/saffron-health/libretto and explain its uses and architecture to me using `/hyperframes`.
+> Take a look at this GitHub repo https://github.com/heygen-com/hyperframes and explain its uses and architecture to me using `/hyperframes`.
 
 > Summarize the attached PDF into a 45-second pitch video using `/hyperframes`.
 
