@@ -8,6 +8,7 @@ body:
         Thanks for taking the time to report a bug! Before filing, please:
         - Search [existing issues](https://github.com/heygen-com/hyperframes/issues) to avoid duplicates
         - Make sure the issue reproduces without custom extensions or plugins
+        - Test on the latest version (`npx hyperframes upgrade`)
 
   - type: textarea
     id: description
@@ -17,13 +18,27 @@ body:
     validations:
       required: true
 
+  - type: input
+    id: reproduction-link
+    attributes:
+      label: Link to reproduction
+      description: |
+        A link to a **public** GitHub repository with a minimal reproduction of the issue.
+
+        Start from a clean project with `npx hyperframes init repro --non-interactive --example blank`, make only the changes needed to demonstrate the bug, push to a public repo, and paste the link here.
+
+        **Issues without a minimal reproduction may be closed.** A reproduction helps us diagnose and fix your issue faster — often in hours instead of days.
+      placeholder: "https://github.com/username/my-hyperframes-repro"
+    validations:
+      required: true
+
   - type: textarea
     id: reproduction
     attributes:
       label: Steps to reproduce
-      description: Minimal steps to reproduce the behavior.
+      description: Step-by-step instructions using the linked reproduction.
       placeholder: |
-        1. Create a composition with...
+        1. Clone the repo above
         2. Run `npx hyperframes render`
         3. See error...
     validations:
@@ -45,40 +60,17 @@ body:
     validations:
       required: true
 
-  - type: dropdown
-    id: os
+  - type: textarea
+    id: environment
     attributes:
-      label: Operating System
-      options:
-        - macOS
-        - Linux (Ubuntu/Debian)
-        - Linux (Other)
-        - Windows
-        - Other
-    validations:
-      required: true
-
-  - type: input
-    id: node-version
-    attributes:
-      label: Node.js version
-      placeholder: "e.g., 22.12.0"
-    validations:
-      required: true
-
-  - type: input
-    id: ffmpeg-version
-    attributes:
-      label: FFmpeg version
-      placeholder: "e.g., 7.1"
-    validations:
-      required: true
-
-  - type: input
-    id: hyperframes-version
-    attributes:
-      label: Hyperframes version
-      placeholder: "e.g., 0.1.0"
+      label: Environment
+      description: Run `npx hyperframes info` and paste the output here.
+      render: shell
+      placeholder: |
+        hyperframes: 0.x.x
+        node: 22.x.x
+        ffmpeg: 7.x
+        os: macOS / Linux / Windows
     validations:
       required: true
 
