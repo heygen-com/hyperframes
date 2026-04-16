@@ -64,13 +64,13 @@ body:
     id: environment
     attributes:
       label: Environment
-      description: Run `npx hyperframes info` and paste the output here.
+      description: Run `npx hyperframes doctor` and paste the output here.
       render: shell
       placeholder: |
-        hyperframes: 0.x.x
-        node: 22.x.x
-        ffmpeg: 7.x
-        os: macOS / Linux / Windows
+        ✓ Version          0.x.x (latest)
+        ✓ Node.js          v22.x.x (darwin arm64)
+        ✓ FFmpeg           ffmpeg version 7.x ...
+        ✓ Chrome           bundled: /path/to/chrome
     validations:
       required: true
 
