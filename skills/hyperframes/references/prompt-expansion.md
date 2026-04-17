@@ -77,6 +77,64 @@ If the composition is about a specific, named, real-world artifact — a photogr
 
 These are the exceptions. The default is: use what's real.
 
+## Pre-plan the persistent-subject choreography
+
+When R4 applies (a subject persists across scenes via shared overlay), the subject's position, size, and role across scenes **must be pre-planned by the expansion**, not left for scene subagents to improvise. Without a pre-plan, two failures happen:
+
+1. **Semantic-mismatch positions** — scene 2's layout puts the subject somewhere that fits scene 2 alone, but the path from scene 1's position to scene 2's position doesn't read as a coherent camera/lens move.
+2. **Size collisions** — scene 2 is authored with its own typography and metadata in regions that the subject will later occupy (because the scaffold scales it up mid-transition). The result: the scaled-up subject blocks the scene's content.
+
+The root cause of both: scene subagents currently author their scenes without knowing how big the subject will be in THEIR scene, or what region they must leave empty for it.
+
+### What the expansion must produce
+
+Before the per-scene breakdown, emit a **choreography plan** for each persistent subject. Per scene, specify:
+
+- **position** — center coordinates `{ x, y }` in the 1920×1080 frame.
+- **scale** — the subject's on-screen scale when the scene is at its hold.
+- **size_envelope** — actual bounding box `{ w, h }` reflecting the SETTLED size in this scene (if the subject scales up or down during the scene, use the largest size it reaches).
+- **role** — the subject's semantic role in this scene: _focal subject_, _background anchor_, _data-point in a row_, _glyph-slot_, _map pin_, _frame margin ornament_, etc.
+- **reserved_region** — rectangular region `{ x: [min,max], y: [min,max] }` the scene subagent must leave empty. If the element fills the frame at this scale, the region fills the frame and typography must live in narrow margins or overlay-over-subject.
+- **scene_must_avoid** — a short instruction for the scene subagent, e.g. "do not place other content in the reserved region" or "typography goes to top-left + bottom-left margins only; no right-column meta at this scale."
+
+Example for a Vermeer painting scene 2 where the painting zooms to 2.1×:
+
+```yaml
+persistent_subject:
+  id: "#painting"
+  form: "<img src='girl-with-pearl-earring.jpg' />"
+
+choreography:
+  scene1:
+    position: { x: 1380, y: 540 }
+    scale: 1.0
+    size_envelope: { w: 540, h: 680 }
+    role: focal subject, held still on the right third
+    reserved_region: { x: [1100, 1920], y: [180, 900] }
+    scene_must_avoid: title/byline typography lives in the left column only
+  scene2:
+    position: { x: 960, y: 540 }
+    scale: 2.1
+    size_envelope: { w: 1134, h: 1428 }
+    role: zoom focus on the pearl/jaw; the painting IS the frame
+    reserved_region: { x: [240, 1680], y: [-250, 1250] }
+    scene_must_avoid: typography goes to top-left + bottom-left margins only; NO right-column meta at this scale
+  scene3:
+    position: { x: 620, y: 540 }
+    scale: 0.85
+    size_envelope: { w: 460, h: 580 }
+    role: closing subject, held left-of-center
+    reserved_region: { x: [380, 860], y: [250, 830] }
+    scene_must_avoid: closing stanza goes to right column
+```
+
+### Invariants
+
+- **Size envelope reflects the settled state.** If the subject enters scene 2 at scale 1 and tweens up to scale 2.1, the envelope for scene 2 is at scale 2.1. Scenes reserve for the FINAL state, not the entry state.
+- **The choreography plan traces a visually-coherent path.** Scene-to-scene positions should read like a deliberate camera/lens move (push-in, pull-back, pan, reposition), not a leapfrog.
+- **Role changes drive reserved-region size.** When the subject is _focal_, the reserved region is large (the subject dominates). When _background anchor_, the region is small or corner-pinned.
+- **Scene subagents receive their scene's choreography block.** See `multi-scene.md` for the dispatch contract.
+
 ## What to generate
 
 Expand into a full production prompt with these sections:
