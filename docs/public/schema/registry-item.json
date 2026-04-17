@@ -1,0 +1,141 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "title": "Hyperframes Registry Item",
+  "description": "Manifest for a single distributable item (example, block, or component).",
+  "type": "object",
+  "required": ["name", "type", "title", "description", "files"],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "format": "uri"
+    },
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?$",
+      "description": "Item name in kebab-case, must start and end with alphanumeric."
+    },
+    "type": {
+      "type": "string",
+      "enum": ["hyperframes:example", "hyperframes:block", "hyperframes:component"]
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1
+    },
+    "tags": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "author": {
+      "type": "string",
+      "minLength": 1
+    },
+    "license": {
+      "type": "string",
+      "minLength": 1,
+      "description": "SPDX license identifier (e.g. \"Apache-2.0\", \"MIT\")."
+    },
+    "minCliVersion": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$",
+      "description": "Minimum `hyperframes` CLI version required to install this item."
+    },
+    "deprecated": {
+      "type": "string",
+      "minLength": 1,
+      "description": "If set, the item is deprecated; the value is the reason or migration note."
+    },
+    "dimensions": {
+      "type": "object",
+      "required": ["width", "height"],
+      "additionalProperties": false,
+      "properties": {
+        "width": { "type": "integer", "minimum": 1 },
+        "height": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "duration": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "Duration in seconds. Must be > 0."
+    },
+    "registryDependencies": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?$"
+      }
+    },
+    "files": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["path", "target", "type"],
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Source path, relative to registry-item.json."
+          },
+          "target": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Destination path in the user's project, relative to project root. Must not traverse outside the project (no `..` segments, no absolute paths).",
+            "not": {
+              "anyOf": [
+                { "pattern": "(^|[/\\\\])\\.\\.([/\\\\]|$)" },
+                { "pattern": "^[/\\\\]" },
+                { "pattern": "^[A-Za-z]:[/\\\\]" }
+              ]
+            }
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "hyperframes:composition",
+              "hyperframes:asset",
+              "hyperframes:snippet",
+              "hyperframes:style",
+              "hyperframes:timeline"
+            ]
+          }
+        }
+      }
+    },
+    "preview": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "video": { "type": "string" },
+        "poster": { "type": "string" }
+      }
+    },
+    "relatedSkill": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "required": ["type"],
+        "properties": { "type": { "const": "hyperframes:component" } }
+      },
+      "then": {
+        "not": {
+          "anyOf": [{ "required": ["dimensions"] }, { "required": ["duration"] }]
+        }
+      },
+      "else": {
+        "required": ["dimensions", "duration"]
+      }
+    }
+  ]
+}

@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hyperframes.heygen.com/schema/hyperframes.json",
+  "title": "Hyperframes Project Config",
+  "description": "Per-project configuration created by `hyperframes init`. Lives at the repo root as `hyperframes.json` and controls which registry `hyperframes add` pulls from and where each item type lands in the project tree.",
+  "type": "object",
+  "required": [
+    "registry",
+    "paths"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL of this JSON Schema. Enables IDE autocompletion and validation."
+    },
+    "registry": {
+      "type": "string",
+      "format": "uri",
+      "description": "Base URL of the registry to pull items from (e.g. the default Hyperframes registry or a private one)."
+    },
+    "paths": {
+      "type": "object",
+      "required": [
+        "blocks",
+        "components",
+        "assets"
+      ],
+      "additionalProperties": false,
+      "description": "Target paths for each item type, relative to project root.",
+      "properties": {
+        "blocks": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Where `hyperframes:block` items land, relative to project root."
+        },
+        "components": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Where `hyperframes:component` items land, relative to project root."
+        },
+        "assets": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Where asset files (images, fonts, videos) land, relative to project root."
+        }
+      }
+    }
+  }
+}
