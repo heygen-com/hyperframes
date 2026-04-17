@@ -9,6 +9,8 @@
  * - Components: renders the component's demo.html via a wrapper index.html
  *
  * Output: docs/images/catalog/<type>/<name>.png + <name>.mp4
+ *   (docs/images/ is gitignored — files are served from the CDN. After running
+ *   this script, run `bun run upload:docs-images` to publish.)
  *
  * Usage:
  *   npx tsx scripts/generate-catalog-previews.ts                      # all items

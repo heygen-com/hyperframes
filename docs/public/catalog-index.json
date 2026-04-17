@@ -10,7 +10,7 @@
       "3d"
     ],
     "href": "/catalog/blocks/app-showcase",
-    "preview": "/images/catalog/blocks/app-showcase.png"
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/app-showcase.png"
   },
   {
     "name": "chromatic-radial-split",
@@ -22,7 +22,7 @@
       "shader"
     ],
     "href": "/catalog/blocks/chromatic-radial-split",
-    "preview": "/images/catalog/blocks/chromatic-radial-split.png"
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/chromatic-radial-split.png"
   },
   {
     "name": "cinematic-zoom",
@@ -34,7 +34,7 @@
       "shader"
     ],
     "href": "/catalog/blocks/cinematic-zoom",
-    "preview": "/images/catalog/blocks/cinematic-zoom.png"
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/cinematic-zoom.png"
   },
   {
     "name": "cross-warp-morph",
@@ -46,7 +46,7 @@
       "shader"
     ],
     "href": "/catalog/blocks/cross-warp-morph",
-    "preview": "/images/catalog/blocks/cross-warp-morph.png"
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/cross-warp-morph.png"
   },
   {
     "name": "data-chart",
@@ -59,7 +59,7 @@
       "statistics"
     ],
     "href": "/catalog/blocks/data-chart",
-    "preview": "/images/catalog/blocks/data-chart.png"
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/data-chart.png"
   },
   {
     "name": "domain-warp-dissolve",
@@ -71,7 +71,7 @@
       "shader"
     ],
     "href": "/catalog/blocks/domain-warp-dissolve",
-    "preview": "/images/catalog/blocks/domain-warp-dissolve.png"
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/domain-warp-dissolve.png"
   },
   {
     "name": "flash-through-white",
@@ -83,7 +83,7 @@
       "shader"
     ],
     "href": "/catalog/blocks/flash-through-white",
-    "preview": "/images/catalog/blocks/flash-through-white.png"
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/flash-through-white.png"
   },
   {
     "name": "flowchart",
@@ -96,7 +96,7 @@
       "interactive"
     ],
     "href": "/catalog/blocks/flowchart",
-    "preview": "/images/catalog/blocks/flowchart.png"
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/flowchart.png"
   },
   {
     "name": "glitch",
@@ -108,7 +108,7 @@
       "shader"
     ],
     "href": "/catalog/blocks/glitch",
-    "preview": "/images/catalog/blocks/glitch.png"
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/glitch.png"
   },
   {
     "name": "grain-overlay",
@@ -122,7 +122,7 @@
       "film"
     ],
     "href": "/catalog/components/grain-overlay",
-    "preview": "/images/catalog/components/grain-overlay.png"
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/grain-overlay.png"
   },
   {
     "name": "gravitational-lens",
@@ -134,7 +134,7 @@
       "shader"
     ],
     "href": "/catalog/blocks/gravitational-lens",
-    "preview": "/images/catalog/blocks/gravitational-lens.png"
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/gravitational-lens.png"
   },
   {
     "name": "grid-pixelate-wipe",
@@ -148,7 +148,7 @@
       "pixelate"
     ],
     "href": "/catalog/components/grid-pixelate-wipe",
-    "preview": "/images/catalog/components/grid-pixelate-wipe.png"
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/grid-pixelate-wipe.png"
   },
   {
     "name": "instagram-follow",
@@ -161,7 +161,7 @@
       "instagram"
     ],
     "href": "/catalog/blocks/instagram-follow",
-    "preview": "/images/catalog/blocks/instagram-follow.png"
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/instagram-follow.png"
   },
   {
     "name": "light-leak",
@@ -173,7 +173,7 @@
       "shader"
     ],
     "href": "/catalog/blocks/light-leak",
-    "preview": "/images/catalog/blocks/light-leak.png"
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/light-leak.png"
   },
   {
     "name": "logo-outro",
@@ -186,7 +186,7 @@
       "logo"
     ],
     "href": "/catalog/blocks/logo-outro",
-    "preview": "/images/catalog/blocks/logo-outro.png"
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/logo-outro.png"
   },
   {
     "name": "macos-notification",
@@ -199,7 +199,7 @@
       "notification"
     ],
     "href": "/catalog/blocks/macos-notification",
-    "preview": "/images/catalog/blocks/macos-notification.png"
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/macos-notification.png"
   },
   {
     "name": "reddit-post",
@@ -212,7 +212,7 @@
       "reddit"
     ],
     "href": "/catalog/blocks/reddit-post",
-    "preview": "/images/catalog/blocks/reddit-post.png"
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/reddit-post.png"
   },
   {
     "name": "ridged-burn",
@@ -224,7 +224,7 @@
       "shader"
     ],
     "href": "/catalog/blocks/ridged-burn",
-    "preview": "/images/catalog/blocks/ridged-burn.png"
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/ridged-burn.png"
   },
   {
     "name": "ripple-waves",
@@ -236,7 +236,7 @@
       "shader"
     ],
     "href": "/catalog/blocks/ripple-waves",
-    "preview": "/images/catalog/blocks/ripple-waves.png"
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/ripple-waves.png"
   },
   {
     "name": "sdf-iris",
@@ -248,7 +248,7 @@
       "shader"
     ],
     "href": "/catalog/blocks/sdf-iris",
-    "preview": "/images/catalog/blocks/sdf-iris.png"
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/sdf-iris.png"
   },
   {
     "name": "shimmer-sweep",
@@ -262,7 +262,7 @@
       "effect"
     ],
     "href": "/catalog/components/shimmer-sweep",
-    "preview": "/images/catalog/components/shimmer-sweep.png"
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/shimmer-sweep.png"
   },
   {
     "name": "spotify-card",
@@ -275,7 +275,7 @@
       "spotify"
     ],
     "href": "/catalog/blocks/spotify-card",
-    "preview": "/images/catalog/blocks/spotify-card.png"
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/spotify-card.png"
   },
   {
     "name": "swirl-vortex",
@@ -287,7 +287,7 @@
       "shader"
     ],
     "href": "/catalog/blocks/swirl-vortex",
-    "preview": "/images/catalog/blocks/swirl-vortex.png"
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/swirl-vortex.png"
   },
   {
     "name": "thermal-distortion",
@@ -299,7 +299,7 @@
       "shader"
     ],
     "href": "/catalog/blocks/thermal-distortion",
-    "preview": "/images/catalog/blocks/thermal-distortion.png"
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/thermal-distortion.png"
   },
   {
     "name": "tiktok-follow",
@@ -312,7 +312,7 @@
       "tiktok"
     ],
     "href": "/catalog/blocks/tiktok-follow",
-    "preview": "/images/catalog/blocks/tiktok-follow.png"
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/tiktok-follow.png"
   },
   {
     "name": "transitions-3d",
@@ -324,7 +324,7 @@
       "showcase"
     ],
     "href": "/catalog/blocks/transitions-3d",
-    "preview": "/images/catalog/blocks/transitions-3d.png"
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/transitions-3d.png"
   },
   {
     "name": "transitions-blur",
@@ -336,7 +336,7 @@
       "showcase"
     ],
     "href": "/catalog/blocks/transitions-blur",
-    "preview": "/images/catalog/blocks/transitions-blur.png"
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/transitions-blur.png"
   },
   {
     "name": "transitions-cover",
@@ -348,7 +348,7 @@
       "showcase"
     ],
     "href": "/catalog/blocks/transitions-cover",
-    "preview": "/images/catalog/blocks/transitions-cover.png"
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/transitions-cover.png"
   },
   {
     "name": "transitions-destruction",
@@ -360,7 +360,7 @@
       "showcase"
     ],
     "href": "/catalog/blocks/transitions-destruction",
-    "preview": "/images/catalog/blocks/transitions-destruction.png"
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/transitions-destruction.png"
   },
   {
     "name": "transitions-dissolve",
@@ -372,7 +372,7 @@
       "showcase"
     ],
     "href": "/catalog/blocks/transitions-dissolve",
-    "preview": "/images/catalog/blocks/transitions-dissolve.png"
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/transitions-dissolve.png"
   },
   {
     "name": "transitions-distortion",
@@ -384,7 +384,7 @@
       "showcase"
     ],
     "href": "/catalog/blocks/transitions-distortion",
-    "preview": "/images/catalog/blocks/transitions-distortion.png"
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/transitions-distortion.png"
   },
   {
     "name": "transitions-grid",
@@ -396,7 +396,7 @@
       "showcase"
     ],
     "href": "/catalog/blocks/transitions-grid",
-    "preview": "/images/catalog/blocks/transitions-grid.png"
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/transitions-grid.png"
   },
   {
     "name": "transitions-light",
@@ -408,7 +408,7 @@
       "showcase"
     ],
     "href": "/catalog/blocks/transitions-light",
-    "preview": "/images/catalog/blocks/transitions-light.png"
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/transitions-light.png"
   },
   {
     "name": "transitions-mechanical",
@@ -420,7 +420,7 @@
       "showcase"
     ],
     "href": "/catalog/blocks/transitions-mechanical",
-    "preview": "/images/catalog/blocks/transitions-mechanical.png"
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/transitions-mechanical.png"
   },
   {
     "name": "transitions-other",
@@ -432,7 +432,7 @@
       "showcase"
     ],
     "href": "/catalog/blocks/transitions-other",
-    "preview": "/images/catalog/blocks/transitions-other.png"
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/transitions-other.png"
   },
   {
     "name": "transitions-push",
@@ -444,7 +444,7 @@
       "showcase"
     ],
     "href": "/catalog/blocks/transitions-push",
-    "preview": "/images/catalog/blocks/transitions-push.png"
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/transitions-push.png"
   },
   {
     "name": "transitions-radial",
@@ -456,7 +456,7 @@
       "showcase"
     ],
     "href": "/catalog/blocks/transitions-radial",
-    "preview": "/images/catalog/blocks/transitions-radial.png"
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/transitions-radial.png"
   },
   {
     "name": "transitions-scale",
@@ -468,7 +468,7 @@
       "showcase"
     ],
     "href": "/catalog/blocks/transitions-scale",
-    "preview": "/images/catalog/blocks/transitions-scale.png"
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/transitions-scale.png"
   },
   {
     "name": "ui-3d-reveal",
@@ -481,7 +481,7 @@
       "reveal"
     ],
     "href": "/catalog/blocks/ui-3d-reveal",
-    "preview": "/images/catalog/blocks/ui-3d-reveal.png"
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/ui-3d-reveal.png"
   },
   {
     "name": "whip-pan",
@@ -493,7 +493,7 @@
       "shader"
     ],
     "href": "/catalog/blocks/whip-pan",
-    "preview": "/images/catalog/blocks/whip-pan.png"
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/whip-pan.png"
   },
   {
     "name": "x-post",
@@ -506,7 +506,7 @@
       "twitter"
     ],
     "href": "/catalog/blocks/x-post",
-    "preview": "/images/catalog/blocks/x-post.png"
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/x-post.png"
   },
   {
     "name": "yt-lower-third",
@@ -519,6 +519,6 @@
       "youtube"
     ],
     "href": "/catalog/blocks/yt-lower-third",
-    "preview": "/images/catalog/blocks/yt-lower-third.png"
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/yt-lower-third.png"
   }
 ]

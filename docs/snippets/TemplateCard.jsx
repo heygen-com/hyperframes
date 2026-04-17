@@ -1,8 +1,8 @@
 export function TemplateCard({ id, title, description, href, portrait }) {
   const [hovering, setHovering] = React.useState(false);
 
-  const imgSrc = `/images/templates/${id}.png`;
-  const videoSrc = `/images/templates/${id}.mp4`;
+  const imgSrc = `https://static.heygen.ai/hyperframes-oss/docs/images/templates/${id}.png`;
+  const videoSrc = `https://static.heygen.ai/hyperframes-oss/docs/images/templates/${id}.mp4`;
 
   return (
     <a

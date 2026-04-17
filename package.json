@@ -26,6 +26,8 @@
     "format:check": "oxfmt --check .",
     "knip": "knip",
     "generate:previews": "tsx scripts/generate-template-previews.ts",
+    "generate:catalog-previews": "tsx scripts/generate-catalog-previews.ts",
+    "upload:docs-images": "bash scripts/upload-docs-images.sh",
     "prepare": "test -d .git && lefthook install || true"
   },
   "devDependencies": {

@@ -6,11 +6,13 @@
  * videos of each built-in template.
  *
  * Output: docs/images/templates/<id>.png + <id>.mp4
+ *   (docs/images/ is gitignored — files are served from the CDN. After running
+ *   this script, run `bun run upload:docs-images` to publish.)
  *
  * Usage:
- *   pnpm generate:previews                  # all templates (PNG + MP4)
- *   pnpm generate:previews -- --only warm-grain
- *   pnpm generate:previews -- --skip-video  # thumbnails only (faster)
+ *   bun run generate:previews                 # all templates (PNG + MP4)
+ *   bun run generate:previews --only warm-grain
+ *   bun run generate:previews --skip-video    # thumbnails only (faster)
  */
 
 import {
