@@ -99,8 +99,8 @@ export type RenderStatus =
 export interface RenderConfig {
   fps: 24 | 30 | 60;
   quality: "draft" | "standard" | "high";
-  /** Output container format. WebM uses VP9+alpha, MOV uses ProRes 4444+alpha for transparency. */
-  format?: "mp4" | "webm" | "mov";
+  /** Output container format. WebM uses VP9+alpha, MOV uses ProRes 4444+alpha for transparency, GIF uses 256-color palette. */
+  format?: "mp4" | "webm" | "mov" | "gif";
   workers?: number;
   useGpu?: boolean;
   debug?: boolean;
@@ -382,10 +382,11 @@ export async function executeRenderJob(
   const perfStages: Record<string, number> = {};
   const perfOutputPath = join(workDir, "perf-summary.json");
   const cfg = { ...(job.config.producerConfig ?? resolveConfig()) };
-  const outputFormat = (job.config.format ?? "mp4") as "mp4" | "webm" | "mov";
+  const outputFormat = (job.config.format ?? "mp4") as "mp4" | "webm" | "mov" | "gif";
   const isWebm = outputFormat === "webm";
   const isMov = outputFormat === "mov";
-  const needsAlpha = isWebm || isMov;
+  const isGif = outputFormat === "gif";
+  const needsAlpha = isWebm || isMov || isGif;
   // Transparency requires screenshot mode — beginFrame doesn't support alpha channel
   if (needsAlpha) {
     cfg.forceScreenshot = true;
@@ -801,7 +802,12 @@ export async function executeRenderJob(
 
     const workerCount = calculateOptimalWorkers(job.totalFrames!, job.config.workers, cfg);
 
-    const FORMAT_EXT: Record<string, string> = { mp4: ".mp4", webm: ".webm", mov: ".mov" };
+    const FORMAT_EXT: Record<string, string> = {
+      mp4: ".mp4",
+      webm: ".webm",
+      mov: ".mov",
+      gif: ".gif",
+    };
     const videoExt = FORMAT_EXT[outputFormat] ?? ".mp4";
     const videoOnlyPath = join(workDir, `video-only${videoExt}`);
     const preset = getEncoderPreset(job.config.quality, outputFormat);
@@ -1091,7 +1097,10 @@ export async function executeRenderJob(
     const stage6Start = Date.now();
     updateJobStatus(job, "assembling", "Assembling final video", 90, onProgress);
 
-    if (hasAudio) {
+    if (isGif) {
+      // GIF doesn't support audio and doesn't need faststart.
+      copyFileSync(videoOnlyPath, outputPath);
+    } else if (hasAudio) {
       const muxResult = await muxVideoWithAudio(
         videoOnlyPath,
         audioOutputPath,

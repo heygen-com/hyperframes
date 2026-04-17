@@ -72,7 +72,7 @@ export interface StreamingEncoderOptions {
   fps: number;
   width: number;
   height: number;
-  codec?: "h264" | "h265" | "vp9" | "prores";
+  codec?: "h264" | "h265" | "vp9" | "prores" | "gif";
   preset?: string;
   quality?: number;
   bitrate?: string;
@@ -191,6 +191,10 @@ function buildStreamingArgs(
   } else if (codec === "prores") {
     args.push("-c:v", "prores_ks", "-profile:v", preset, "-vendor", "apl0");
     args.push("-pix_fmt", pixelFormat);
+    return [...args, "-y", outputPath];
+  } else if (codec === "gif") {
+    // High-quality GIF generation using palettegen and paletteuse.
+    args.push("-lavfi", "split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse");
     return [...args, "-y", outputPath];
   }
 

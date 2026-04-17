@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Cinematic Code Terminal | Hyperframes Block</title>
+    <meta name="description" content="Premium animated code window for Hyperframes compositions. Features macOS aesthetics and syntax highlighting." />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Inter:wght@400;600&display=block"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.2/dist/gsap.min.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet" />
+    <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-javascript.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-typescript.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-css.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background-color: transparent;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="code-terminal"
+      data-composition-id="code-terminal"
+      data-width="1920"
+      data-height="1080"
+      data-duration="10"
+    >
+      <div class="terminal-window">
+        <div class="terminal-header">
+          <div class="traffic-lights">
+            <div class="light red"></div>
+            <div class="light yellow"></div>
+            <div class="light green"></div>
+          </div>
+          <div class="terminal-title">antigravity.ts</div>
+        </div>
+        <div class="terminal-body">
+          <pre class="language-typescript"><code id="code-content"></code></pre>
+          <div class="cursor"></div>
+        </div>
+      </div>
+
+      <style>
+        [data-composition-id="code-terminal"] {
+          width: 100%;
+          height: 100%;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          font-family: 'Inter', sans-serif;
+          perspective: 1000px;
+        }
+
+        .terminal-window {
+          width: 1200px;
+          height: 800px;
+          background: #1e1e1e;
+          border-radius: 12px;
+          box-shadow: 0 50px 100px rgba(0, 0, 0, 0.5);
+          overflow: hidden;
+          display: flex;
+          flex-direction: column;
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          transform: rotateX(5deg);
+          opacity: 0;
+        }
+
+        .terminal-header {
+          height: 48px;
+          background: #2d2d2d;
+          display: flex;
+          align-items: center;
+          padding: 0 16px;
+          position: relative;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .traffic-lights {
+          display: flex;
+          gap: 8px;
+        }
+
+        .light {
+          width: 12px;
+          height: 12px;
+          border-radius: 50%;
+        }
+
+        .red { background: #ff5f56; }
+        .yellow { background: #ffbd2e; }
+        .green { background: #27c93f; }
+
+        .terminal-title {
+          position: absolute;
+          left: 50%;
+          transform: translateX(-50%);
+          color: #999;
+          font-size: 14px;
+        }
+
+        .terminal-body {
+          flex: 1;
+          padding: 24px;
+          position: relative;
+          background: #161616;
+          overflow: hidden;
+        }
+
+        pre {
+          margin: 0 !important;
+          background: transparent !important;
+          font-family: 'JetBrains Mono', monospace !important;
+          font-size: 20px !important;
+          line-height: 1.6 !important;
+          white-space: pre-wrap !important;
+        }
+
+        .cursor {
+          position: absolute;
+          width: 12px;
+          height: 24px;
+          background: #fff;
+          opacity: 0;
+          pointer-events: none;
+        }
+
+        .token.comment, .token.prolog, .token.doctype, .token.cdata { color: #6a9955; }
+        .token.punctuation { color: #d4d4d4; }
+        .token.namespace { opacity: .7; }
+        .token.property, .token.tag, .token.boolean, .token.number, .token.constant, .token.symbol, .token.deleted { color: #b5cea8; }
+        .token.selector, .token.attr-name, .token.string, .token.char, .token.builtin, .token.inserted { color: #ce9178; }
+        .token.operator, .token.entity, .token.url, .language-css .token.string, .style .token.string { color: #d4d4d4; }
+        .token.atrule, .token.attr-value, .token.keyword { color: #569cd6; }
+        .token.function, .token.class-name { color: #dcdcaa; }
+        .token.regex, .token.important, .token.variable { color: #d16969; }
+      </style>
+
+      <script>
+        (function() {
+          const code = `async function hyperframes() {
+  const engine = await core.init();
+
+  // Create high-performance composition
+  const sequence = engine.createSequence({
+    fps: 60,
+    dimensions: [1920, 1080]
+  });
+
+  return await sequence.render();
+}`;
+
+          const codeEl = document.getElementById('code-content');
+          const cursor = document.querySelector('.cursor');
+          const windowEl = document.querySelector('.terminal-window');
+          
+          const tl = gsap.timeline({ paused: true });
+
+          // Initial entrance
+          tl.to(windowEl, {
+            opacity: 1,
+            y: 0,
+            rotateX: 0,
+            duration: 1.5,
+            ease: 'expo.out'
+          }, 0);
+
+          // Typewriter effect
+          const typeDuration = 6;
+          const dummy = { charCount: 0 };
+          
+          tl.to(dummy, {
+            charCount: code.length,
+            duration: typeDuration,
+            ease: 'none',
+            onUpdate: () => {
+              const count = Math.floor(dummy.charCount);
+              const currentText = code.substring(0, count);
+              codeEl.textContent = currentText;
+              Prism.highlightElement(codeEl);
+              
+              // Position cursor
+              const lastChar = codeEl.lastChild;
+              if (lastChar) {
+                // Approximate cursor position (hard to get exact in pre-wrap)
+                // We'll just show it at the end of the text
+                cursor.style.opacity = 1;
+              }
+            }
+          }, 1);
+
+          // Cursor blink
+          tl.to(cursor, {
+            opacity: 0,
+            repeat: -1,
+            duration: 0.5,
+            yoyo: true,
+            ease: 'steps(1)'
+          }, 0);
+
+          window.__timelines = window.__timelines || {};
+          window.__timelines["code-terminal"] = tl;
+        })();
+      </script>
+    </div>
+  </body>
+</html>

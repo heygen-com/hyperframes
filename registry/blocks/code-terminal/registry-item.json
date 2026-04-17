@@ -1,0 +1,19 @@
+{
+  "name": "code-terminal",
+  "type": "hyperframes:block",
+  "title": "Cinematic Code Terminal",
+  "description": "A high-fidelity macOS-style dev console for cinematic code showcases. Features frame-accurate typing animations, sapphire-dark aesthetics, and real-time Prism.js syntax highlighting.",
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 10,
+  "files": [
+    {
+      "path": "code-terminal.html",
+      "target": "compositions/code-terminal.html",
+      "type": "hyperframes:composition"
+    }
+  ],
+  "registryDependencies": []
+}

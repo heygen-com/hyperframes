@@ -202,6 +202,10 @@
     {
       "name": "transitions-scale",
       "type": "hyperframes:block"
+    },
+    {
+      "name": "code-terminal",
+      "type": "hyperframes:block"
     }
   ]
 }

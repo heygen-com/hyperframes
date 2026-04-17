@@ -64,26 +64,61 @@ export async function loadAllItems(
 }
 
 /**
+ * Resolve a single item by name along with all its transitive dependencies.
+ * Returns a topo-sorted list of items (dependencies first).
+ */
+export async function resolveItemWithDeps(
+  name: string,
+  options: ResolveOptions = {},
+): Promise<RegistryItem[]> {
+  const entries = await listRegistryItems(undefined, options);
+  const resolved = new Map<string, RegistryItem>();
+  const visiting = new Set<string>();
+
+  async function walk(itemName: string): Promise<void> {
+    if (resolved.has(itemName)) return;
+    if (visiting.has(itemName)) {
+      throw new Error(`Circular dependency detected: ${itemName} is already being visited.`);
+    }
+
+    visiting.add(itemName);
+
+    const entry = entries.find((e) => e.name === itemName);
+    if (!entry) {
+      const available = entries.map((e) => e.name).join(", ");
+      throw new Error(
+        available.length > 0
+          ? `Item "${itemName}" not found in registry. Available: ${available}`
+          : `Item "${itemName}" not found — registry unreachable or empty.`,
+      );
+    }
+
+    const item = await fetchItemManifest(entry.name, entry.type, options.baseUrl);
+
+    // Resolve dependencies first (topo-sort)
+    if (item.registryDependencies && item.registryDependencies.length > 0) {
+      for (const depName of item.registryDependencies) {
+        await walk(depName);
+      }
+    }
+
+    resolved.set(itemName, item);
+    visiting.delete(itemName);
+  }
+
+  await walk(name);
+  return Array.from(resolved.values());
+}
+
+/**
  * Resolve a single item by name. Throws if unknown or unreachable.
- *
- * TODO: walk registryDependencies transitively and return a topo-sorted
- * list of items. Today examples have no deps so this returns a single item.
- * Blocks and components will need transitive resolution once they ship with
- * deps (seed items in Phase B).
+ * For transitive resolution, use `resolveItemWithDeps`.
  */
 export async function resolveItem(
   name: string,
   options: ResolveOptions = {},
 ): Promise<RegistryItem> {
-  const entries = await listRegistryItems(undefined, options);
-  const entry = entries.find((e) => e.name === name);
-  if (!entry) {
-    const available = entries.map((e) => e.name).join(", ");
-    throw new Error(
-      available.length > 0
-        ? `Item "${name}" not found in registry. Available: ${available}`
-        : `Item "${name}" not found — registry unreachable or empty.`,
-    );
-  }
-  return fetchItemManifest(entry.name, entry.type, options.baseUrl);
+  const items = await resolveItemWithDeps(name, options);
+  // The requested item is the last one in a topo-sorted list.
+  return items[items.length - 1]!;
 }

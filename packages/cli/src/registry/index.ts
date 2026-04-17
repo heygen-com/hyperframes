@@ -5,7 +5,13 @@ export {
   fetchItemFile,
 } from "./remote.js";
 
-export { listRegistryItems, loadAllItems, resolveItem, type ResolveOptions } from "./resolver.js";
+export {
+  listRegistryItems,
+  loadAllItems,
+  resolveItem,
+  resolveItemWithDeps,
+  type ResolveOptions,
+} from "./resolver.js";
 
 export {
   installItem,

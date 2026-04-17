@@ -12,7 +12,7 @@ import { existsSync } from "node:fs";
 import { resolve, relative } from "node:path";
 import { ITEM_TYPE_DIRS, type RegistryItem } from "@hyperframes/core";
 import { c } from "../ui/colors.js";
-import { installItem, resolveItem } from "../registry/index.js";
+import { installItem, resolveItemWithDeps } from "../registry/index.js";
 import {
   DEFAULT_PROJECT_CONFIG,
   loadProjectConfig,
@@ -106,58 +106,65 @@ export async function runAdd(opts: RunAddArgs): Promise<RunAddResult> {
     config = DEFAULT_PROJECT_CONFIG;
   }
 
-  // 2. Resolve the item from the registry.
-  let item: RegistryItem;
+  // 2. Resolve the item and its dependencies from the registry.
+  let items: RegistryItem[];
   try {
-    item = await resolveItem(opts.name, { baseUrl: config.registry });
+    items = await resolveItemWithDeps(opts.name, { baseUrl: config.registry });
   } catch (err) {
     throw new AddError(err instanceof Error ? err.message : String(err), "unknown-item");
   }
 
-  if (item.type === "hyperframes:example") {
+  const targetItem = items[items.length - 1]!;
+  if (targetItem.type === "hyperframes:example") {
     throw new AddError(
-      `"${item.name}" is an example — use \`hyperframes init <dir> --example ${item.name}\` instead.`,
+      `"${targetItem.name}" is an example — use \`hyperframes init <dir> --example ${targetItem.name}\` instead.`,
       "example-type",
     );
   }
 
-  // 3. Remap targets per project config.
-  const remappedFiles = item.files.map((f) => ({
-    ...f,
-    target: remapTarget(item, f.target, config.paths),
-  }));
-  const itemForInstall: RegistryItem = { ...item, files: remappedFiles };
+  // 3. Install all items in order (dependencies first).
+  const allWritten: string[] = [];
+  for (const item of items) {
+    // Examples are installed by `init`, not `add`. Skip if they appear as deps
+    if (item.type === "hyperframes:example") continue;
 
-  // 4. Install — the installer validates every target before any write.
-  let written: string[];
-  try {
-    const result = await installItem(itemForInstall, {
-      destDir: projectDir,
-      baseUrl: config.registry,
-    });
-    written = result.written;
-  } catch (err) {
-    throw new AddError(
-      `Install failed: ${err instanceof Error ? err.message : String(err)}`,
-      "install-failed",
-    );
+    const remappedFiles = item.files.map((f) => ({
+      ...f,
+      target: remapTarget(item, f.target, config.paths),
+    }));
+    const itemForInstall: RegistryItem = { ...item, files: remappedFiles };
+
+    try {
+      const result = await installItem(itemForInstall, {
+        destDir: projectDir,
+        baseUrl: config.registry,
+      });
+      allWritten.push(...result.written);
+    } catch (err) {
+      throw new AddError(
+        `Install failed for "${item.name}": ${err instanceof Error ? err.message : String(err)}`,
+        "install-failed",
+      );
+    }
   }
 
-  // 5. Build include snippet + clipboard copy.
+  // 4. Build include snippet + clipboard copy for the TARGET item only.
   const primaryFile =
-    itemForInstall.files.find((f) => f.type === "hyperframes:snippet") ??
-    itemForInstall.files.find((f) => f.type === "hyperframes:composition") ??
-    itemForInstall.files[0];
-  const snippetTargetRel = primaryFile?.target ?? "";
-  const snippet = buildSnippet(item, snippetTargetRel);
+    targetItem.files.find((f) => f.type === "hyperframes:snippet") ??
+    targetItem.files.find((f) => f.type === "hyperframes:composition") ??
+    targetItem.files[0];
+
+  // We need to remap the target again for the snippet building
+  const snippetTargetRel = remapTarget(targetItem, primaryFile?.target ?? "", config.paths);
+  const snippet = buildSnippet(targetItem, snippetTargetRel);
   const clipboardCopied = !opts.skipClipboard && snippet ? copyToClipboard(snippet) : false;
 
   return {
     ok: true,
-    name: item.name,
-    type: item.type,
-    typeDir: ITEM_TYPE_DIRS[item.type],
-    written,
+    name: targetItem.name,
+    type: targetItem.type,
+    typeDir: ITEM_TYPE_DIRS[targetItem.type],
+    written: allWritten,
     snippet,
     clipboardCopied,
   };

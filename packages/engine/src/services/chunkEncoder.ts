@@ -28,9 +28,22 @@ export const ENCODER_PRESETS = {
  */
 export function getEncoderPreset(
   quality: "draft" | "standard" | "high",
-  format: "mp4" | "webm" | "mov" = "mp4",
-): { preset: string; quality: number; codec: "h264" | "vp9" | "prores"; pixelFormat: string } {
+  format: "mp4" | "webm" | "mov" | "gif" = "mp4",
+): {
+  preset: string;
+  quality: number;
+  codec: "h264" | "vp9" | "prores" | "gif";
+  pixelFormat: string;
+} {
   const base = ENCODER_PRESETS[quality];
+  if (format === "gif") {
+    return {
+      preset: "medium", // ignore for GIF
+      quality: base.quality,
+      codec: "gif",
+      pixelFormat: "rgb24",
+    };
+  }
   if (format === "webm") {
     return {
       preset: base.preset === "ultrafast" ? "realtime" : "good",
@@ -131,6 +144,11 @@ export function buildEncoderArgs(
   } else if (codec === "prores") {
     args.push("-c:v", "prores_ks", "-profile:v", preset, "-vendor", "apl0");
     args.push("-pix_fmt", pixelFormat);
+    return [...args, "-y", outputPath];
+  } else if (codec === "gif") {
+    // High-quality GIF generation using palettegen and paletteuse.
+    // split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse
+    args.push("-lavfi", "split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse");
     return [...args, "-y", outputPath];
   }
 
