@@ -142,6 +142,27 @@ export async function createCaptureSession(
   };
 }
 
+/**
+ * Classify a console "Failed to load resource" error as a font-load failure.
+ *
+ * These are expected when deterministic font injection replaces Google Fonts
+ * @import URLs with embedded base64 — or when the render environment has no
+ * network access to Google Fonts. Suppressing them reduces noise in render
+ * output without hiding real asset failures (images, videos, scripts, etc.).
+ *
+ * Chrome's `msg.text()` for a failed resource is typically just
+ * `"Failed to load resource: net::ERR_FAILED"` — the URL is only on
+ * `msg.location().url`. We match against both so the filter works regardless
+ * of which form Chrome emits.
+ */
+export function isFontResourceError(type: string, text: string, locationUrl: string): boolean {
+  if (type !== "error") return false;
+  if (!text.startsWith("Failed to load resource")) return false;
+  return /fonts\.googleapis|fonts\.gstatic|\.(woff2?|ttf|otf)(\b|$)/i.test(
+    `${locationUrl} ${text}`,
+  );
+}
+
 export async function initializeSession(session: CaptureSession): Promise<void> {
   const { page, serverUrl } = session;
 
@@ -149,13 +170,8 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
   page.on("console", (msg: ConsoleMessage) => {
     const type = msg.type();
     const text = msg.text();
-
-    // Suppress font-loading 404s entirely. These are expected when deterministic
-    // font injection replaces Google Fonts @import URLs with embedded base64.
-    const isFontLoadError =
-      type === "error" &&
-      text.startsWith("Failed to load resource") &&
-      /fonts\.googleapis|fonts\.gstatic|\.woff2?(\b|$)/i.test(text);
+    const locationUrl = msg.location()?.url ?? "";
+    const isFontLoadError = isFontResourceError(type, text, locationUrl);
 
     // Other "Failed to load resource" 404s are typically non-blocking (e.g.
     // favicon, sourcemaps, optional assets). Prefix them so users know they
