@@ -120,6 +120,75 @@ These are mistakes that cannot be caught by the linter. For automated checks, ru
     </Note>
   </Accordion>
 
+  <Accordion title="Oversized source images">
+    **Symptom:** Preview stutters during scenes with images on screen. Render is slower than expected.
+
+    **Cause:** Source images at much higher resolution than the canvas. Chrome decodes images to raw RGBA bitmaps before displaying them, and bitmap size is `width × height × 4` bytes — independent of file size on disk. A 7000×5000 JPEG is 140MB decoded, even if the file is only 2MB.
+
+    Displaying such an image in a 384×1080 region wastes memory and forces the compositor to resample a huge texture every frame.
+
+    **Before (bloated):**
+
+    ```html index.html
+    <!-- 7000x5000 source, ~140MB decoded -->
+    <img class="clip" data-start="0" data-duration="3"
+         src="./assets/hero-scene.jpg" />
+    ```
+
+    **After (sized to the canvas):**
+
+    ```bash Terminal
+    # Resize a batch of images to fit within 3840x3840, preserving aspect ratio
+    mkdir -p assets/resized
+    mogrify -path assets/resized -resize 3840x3840\> assets/*.jpg
+    ```
+
+    ```html index.html
+    <!-- ~3840x2560 source, ~40MB decoded -->
+    <img class="clip" data-start="0" data-duration="3"
+         src="./assets/resized/hero-scene.jpg" />
+    ```
+
+    **Rule of thumb:** source images at most 2x the canvas dimensions. For a 1920×1080 composition, 3840×2160 is already plenty. See [Performance: Image sizing](/guides/performance#image-sizing).
+  </Accordion>
+
+  <Accordion title="Heavy backdrop-filter stacks">
+    **Symptom:** Specific scenes drop to 5-10fps in preview. The composition is fine elsewhere.
+
+    **Cause:** `backdrop-filter: blur()` on large elements, especially stacked at high radii. Each blur layer forces the compositor to sample pixels behind the element, run a blur kernel, and composite the result. Stacked layers multiply the cost.
+
+    **Before (expensive):**
+
+    ```css
+    /* 8 layers per side = 16 blur passes every frame */
+    .pb-1 { backdrop-filter: blur(1px); }
+    .pb-2 { backdrop-filter: blur(2px); }
+    .pb-3 { backdrop-filter: blur(4px); }
+    .pb-4 { backdrop-filter: blur(8px); }
+    .pb-5 { backdrop-filter: blur(16px); }
+    .pb-6 { backdrop-filter: blur(32px); }
+    .pb-7 { backdrop-filter: blur(64px); }
+    .pb-8 { backdrop-filter: blur(128px); }
+    ```
+
+    **After (3 tuned layers):**
+
+    ```css
+    /* Fewer passes with hand-picked radii — visually similar, much cheaper */
+    .pb-1 { backdrop-filter: blur(4px); }
+    .pb-2 { backdrop-filter: blur(16px); }
+    .pb-3 { backdrop-filter: blur(48px); }
+    ```
+
+    **Guidelines:**
+
+    - Keep stacked `backdrop-filter` layers to 2-3 per region
+    - Avoid radii above 64px over large areas — the biggest radii dominate the total cost
+    - For a static blur effect, pre-render it into a PNG once and overlay with a regular `<img>`
+
+    See [Performance: backdrop-filter: blur()](/guides/performance#backdrop-filter-blur) for the full breakdown.
+  </Accordion>
+
   <Accordion title="Timeline key doesn't match data-composition-id">
     **Symptom:** Animations don't play. The composition appears static.
 

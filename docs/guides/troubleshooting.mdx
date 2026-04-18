@@ -71,6 +71,31 @@ If your issue is about a specific coding mistake (animations not working, video 
     4. Clear the browser cache if CSS changes are not reflected
   </Accordion>
 
+  <Accordion title="Preview stutters or plays at a low frame rate">
+    **Symptom:** Preview playback is jerky or skips frames, but the rendered mp4 looks fine.
+
+    **Cause:** Individual frames are taking longer than 16-33ms to paint. Render hides this (it captures frames one at a time), preview does not.
+
+    **Common culprits, most to least frequent:**
+
+    - Stacked `backdrop-filter: blur()` layers, especially at radii above 32px
+    - Source images at very high resolution (above 4K) displayed in small regions
+    - `filter: blur()` or `filter: drop-shadow()` on large elements
+    - Many elements with `box-shadow` or `text-shadow` that also animate
+
+    **First thing to check:** does the stutter happen only during specific scenes, or throughout? Scene-specific stutter usually points at an element, often a blur overlay, that becomes visible in that scene.
+
+    **How to diagnose:** open Chrome DevTools, switch to the Performance tab, record a few seconds of playback, and look for long tasks labeled "Composite Layers" or "Paint". See [Performance: Measuring a slow composition](/guides/performance#measuring-a-slow-composition) for the full walkthrough.
+
+    **Temporary workaround:** render to mp4 and watch the output. Render is accurate regardless of per-frame cost.
+
+    ```bash Terminal
+    npx hyperframes render --quality draft --output preview.mp4
+    ```
+
+    See [Performance](/guides/performance) for the full guide on expensive CSS patterns and how to fix them.
+  </Accordion>
+
   <Accordion title="Render looks different from preview">
     Use `--docker` mode for [deterministic output](/concepts/determinism). Local renders may differ due to:
 

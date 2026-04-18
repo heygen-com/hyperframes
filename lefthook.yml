@@ -6,7 +6,9 @@ pre-commit:
       run: bunx oxlint {staged_files}
     format:
       glob: "*.{js,jsx,ts,tsx,json,md,yaml,yml}"
-      run: bunx oxfmt --check {staged_files}
+      # --no-error-on-unmatched-pattern: don't fail when staged files all
+      # fall under .prettierignore (e.g. docs-only changes to docs/docs.json).
+      run: bunx oxfmt --check --no-error-on-unmatched-pattern {staged_files}
     typecheck:
       glob: "*.{ts,tsx}"
       run: cd packages/core && bunx tsc --noEmit && cd ../studio && bunx tsc --noEmit

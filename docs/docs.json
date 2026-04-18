@@ -73,6 +73,7 @@
               "guides/prompting",
               "guides/gsap-animation",
               "guides/rendering",
+              "guides/performance",
               "guides/common-mistakes",
               "guides/troubleshooting"
             ]

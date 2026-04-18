@@ -1,0 +1,119 @@
+---
+title: Performance
+description: "How to keep preview playback smooth and diagnose expensive compositions."
+---
+
+Preview plays your composition in real time, so any frame that takes longer than 33ms (at 30fps) shows up as stutter. This page covers the patterns that blow that budget and how to spot them.
+
+## Preview vs. render
+
+Render captures frames one at a time and stitches them into a video. Slow frames make the render take longer, but you never see the pauses — you watch the finished mp4.
+
+Preview does the same work in real time. If a frame takes 200ms to paint, you see a 200ms freeze.
+
+This is why "render looks fine, preview stutters" is expected for paint-heavy compositions. It doesn't mean preview is broken — it means individual frames are too expensive for real-time playback.
+
+## Expensive CSS patterns
+
+These are the patterns that most often cause preview to drop below 30fps.
+
+### backdrop-filter: blur()
+
+Each `backdrop-filter: blur(radius)` sampled over a large area forces the compositor to read pixels from behind the element, run a blur kernel across them, and composite the result. Cost scales with both the blurred area and the radius.
+
+Stacked blur layers multiply the cost. Eight layers at progressively larger radii (1, 2, 4, 8, 16, 32, 64, 128px) will happily take 200ms per frame over a 1920x1080 region on mid-tier GPUs.
+
+**What to do:**
+- Keep stacked layers to 2-3 maximum, with manually tuned radii
+- Avoid `blur(128px)` or `blur(64px)` over large areas — the biggest radii dominate the cost
+- For a static blur, render it once into a PNG and use a regular `<img>` overlay
+
+### filter: blur() and filter: drop-shadow()
+
+Same story as `backdrop-filter` but applied to the element itself rather than behind it. Fine on small elements, expensive on large ones.
+
+### Shadows on many elements
+
+`box-shadow` and `text-shadow` on a few elements are fine. On dozens of elements that also animate, the compositor re-rasterizes each shadowed layer on every frame.
+
+### Large gradients with mask-image
+
+Combined with `backdrop-filter`, `mask-image` can force additional compositor passes. If you have both on the same element, consider whether you need both.
+
+## Image sizing
+
+Image source resolution matters more than file size. Chrome decodes JPEGs and PNGs to raw RGBA bitmaps before displaying them — a decoded bitmap is:
+
+```
+bitmap_bytes = width × height × 4
+```
+
+A 7000×5000 source image is 140MB decoded, regardless of whether the JPEG on disk is 2MB or 5MB.
+
+**Rule of thumb:** resize source images to at most 2x the canvas dimensions. For a 1920x1080 canvas, 3840x2160 source images are already overkill. Anything above that is paying for memory and texture-upload cost that never shows on screen.
+
+```bash Terminal
+# ImageMagick one-liner to downsize a directory of images
+mogrify -path resized -resize 3840x3840\> *.jpg
+```
+
+## Measuring a slow composition
+
+Don't guess — measure. Chrome DevTools has everything you need.
+
+<Steps>
+  <Step title="Run preview">
+    Start the preview server and open it in Chrome:
+
+    ```bash Terminal
+    npx hyperframes preview
+    ```
+  </Step>
+  <Step title="Open DevTools → Performance">
+    `Cmd+Option+I` (macOS) or `Ctrl+Shift+I` (Linux/Windows), then switch to the **Performance** tab.
+  </Step>
+  <Step title="Record during playback">
+    Hit the record button, click play in the preview, let it run 3-5 seconds through the jank-prone scene, then stop recording.
+  </Step>
+  <Step title="Read the main thread track">
+    Look for long tasks (red-flagged in the timeline). Expand the tallest bars and check what Chrome labels them:
+
+    - **Composite Layers / Paint** with a large duration = compositor cost (backdrop-filter, shadows, large textures)
+    - **Decode Image** = image decode on first paint (rare in Chrome 131+, images decode off-thread by default)
+    - **Layout / Recalculate Style** = layout thrashing from script
+    - **Script** = JS work (rare for compositions, check author scripts)
+  </Step>
+</Steps>
+
+Once you know which category dominates, you know what to change.
+
+<Tip>
+  A composition that runs at 60fps in isolation but stutters only during specific scenes is usually a composite-cost problem. Check which layers become visible during those scenes.
+</Tip>
+
+## When preview is unavoidable slow
+
+Some compositions are legitimately too expensive for real-time playback. If you've reduced what you can and preview still stutters, render-to-mp4 and watch the output is a fine workflow — render is still accurate.
+
+```bash Terminal
+npx hyperframes render --quality draft --output preview.mp4
+```
+
+Draft quality renders fast and is visually close to the final render for everything except encoder-level detail.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Troubleshooting" icon="wrench" href="/guides/troubleshooting">
+    Environment, tooling, and rendering issues
+  </Card>
+  <Card title="Common Mistakes" icon="triangle-exclamation" href="/guides/common-mistakes">
+    Composition pitfalls that break rendering
+  </Card>
+  <Card title="Rendering" icon="film" href="/guides/rendering">
+    Rendering modes, options, and flags
+  </Card>
+  <Card title="CLI Reference" icon="terminal" href="/packages/cli">
+    Full list of CLI commands
+  </Card>
+</CardGroup>
