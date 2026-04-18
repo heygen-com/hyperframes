@@ -804,12 +804,16 @@ export function collectExternalAssets(
       return null;
     }
     const absPath = resolve(absProjectDir, trimmed);
-    if (absPath.startsWith(absProjectDir + "/") || absPath === absProjectDir) {
+    // Normalize to forward slashes so path comparisons and URL routing
+    // work on Windows, where path.resolve() returns backslash paths.
+    const normAbsPath = absPath.replace(/\\/g, "/");
+    const normProjectDir = absProjectDir.replace(/\\/g, "/");
+    if (normAbsPath.startsWith(normProjectDir + "/") || normAbsPath === normProjectDir) {
       return null; // inside projectDir, file server handles this
     }
     if (!existsSync(absPath)) return null;
     // resolve() already canonicalizes the path (no .. components remain)
-    const safeKey = "hf-ext/" + absPath.replace(/^\//, "");
+    const safeKey = "hf-ext/" + normAbsPath.replace(/^\//, "");
     externalAssets.set(safeKey, absPath);
     return safeKey;
   }
