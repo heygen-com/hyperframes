@@ -70,6 +70,8 @@ The browser preview and the rendered MP4 should match. Hyperframes achieves this
 - **Producer-canonical behavior** -- the [producer's](/packages/producer) seek semantics are the source of truth
 - **Readiness gates** -- `__playerReady` and `__renderReady` ensure the [composition](/concepts/compositions) is fully loaded before any frame is captured
 
+Parity here means **visual fidelity** — every frame looks the same. It does *not* mean performance parity. Preview plays in real time in a browser, so frame-rate limits are bound by your hardware. Render is seek-driven and frame-at-a-time, so it never drops frames regardless of per-frame cost. A composition can stutter in preview and render perfectly. See [Performance](/guides/performance) for why.
+
 <Note>
   Local rendering (without Docker) may show slight differences due to platform-specific font rendering and Chrome version. Use Docker mode when exact reproducibility matters.
 </Note>

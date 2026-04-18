@@ -373,6 +373,10 @@ This is suppressed in CI environments, non-TTY shells, and when `HYPERFRAMES_NO_
 
     Opens your composition in the Hyperframes Studio with live preview. Edits to `index.html` and any referenced sub-compositions are reflected automatically. The preview uses the same Hyperframes runtime as production rendering, so what you see is what you get.
 
+    <Note>
+      Visual output matches render exactly. Playback *performance* does not: preview plays in real time in your browser, so paint-heavy compositions (large images, stacked `backdrop-filter` layers, many shadowed elements) may stutter depending on your hardware. The rendered mp4 is always accurate regardless — render captures frames one at a time, so per-frame cost shows up as longer render duration, not dropped frames. See [Performance](/guides/performance) for details.
+    </Note>
+
     The preview server runs in three modes, auto-detected:
 
     1. **Embedded mode** (default for `npx`) — runs a standalone server with the studio bundled in the CLI. Zero extra dependencies.

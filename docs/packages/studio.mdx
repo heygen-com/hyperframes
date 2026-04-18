@@ -185,6 +185,10 @@ The studio renders your composition in an iframe using the Hyperframes runtime. 
 
 Changes to your HTML are picked up automatically through hot reload, so you can edit `index.html` in your editor and see the result in the browser within milliseconds.
 
+<Note>
+  The *visual* output of preview matches render exactly. Real-time *playback smoothness* depends on your hardware, because preview actually plays the composition in your browser at 30/60fps. Render doesn't have that constraint — it captures each frame individually via a seek-driven pipeline, so expensive frames make the render slower but never drop. If you see stutter in preview but the rendered mp4 is clean, that's expected. See [Performance](/guides/performance) for the patterns that most often cause it.
+</Note>
+
 ### Timeline View
 
 The timeline panel provides a visual representation of your composition's structure:
