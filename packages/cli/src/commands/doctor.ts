@@ -6,7 +6,7 @@ export const examples: Example[] = [["Check system dependencies", "hyperframes d
 import { freemem, platform } from "node:os";
 import { c } from "../ui/colors.js";
 import { findBrowser } from "../browser/manager.js";
-import { findFFmpeg } from "../browser/ffmpeg.js";
+import { findFFmpeg, getFFmpegInstallHint } from "../browser/ffmpeg.js";
 import { VERSION } from "../version.js";
 import { getUpdateMeta } from "../utils/updateCheck.js";
 import { getSystemMeta, getShmSizeMb, getFreeDiskMb, bytesToMb } from "../telemetry/system.js";
@@ -36,19 +36,22 @@ function checkFFmpeg(): CheckResult {
   return {
     ok: false,
     detail: "Not found",
-    hint: process.platform === "darwin" ? "brew install ffmpeg" : "sudo apt install ffmpeg",
+    hint: getFFmpegInstallHint(),
   };
 }
 
 function checkFFprobe(): CheckResult {
+  // `ffprobe -version` works cross-platform if it's on PATH — no need for
+  // `which`/`where` shell detection, which differs by OS.
   try {
-    const result = execSync("which ffprobe", { encoding: "utf-8", timeout: 5000 }).trim();
-    return { ok: true, detail: result };
+    const version =
+      execSync("ffprobe -version", { encoding: "utf-8", timeout: 5000 }).split("\n")[0] ?? "";
+    return { ok: true, detail: version.trim() };
   } catch {
     return {
       ok: false,
       detail: "Not found",
-      hint: "Installed with ffmpeg",
+      hint: `Installed with ffmpeg — ${getFFmpegInstallHint()}`,
     };
   }
 }
