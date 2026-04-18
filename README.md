@@ -81,6 +81,18 @@ npx hyperframes render       # render to MP4
 - **Deterministic rendering** — same input = identical output. Built for automated pipelines.
 - **Frame Adapter pattern** — bring your own animation runtime (GSAP, Lottie, CSS, Three.js).
 
+## Hyperframes vs Remotion
+
+Hyperframes and [Remotion](https://www.remotion.dev) both turn code into video using a browser and offline rendering, and some low-level ideas (for example stable Chrome flags and FFmpeg pipelines) follow similar patterns. They differ mainly in **how you author** the video and **what stack you want to commit to**.
+
+| | **Hyperframes** | **Remotion** |
+| --- | --- | --- |
+| **Authoring model** | Plain HTML with `data-*` timing — like marking up a page | React + TypeScript components, hooks, and the composition API |
+| **Pros** | No React required; familiar web/CSS layout; non-interactive CLI defaults for agents and CI; [skills](https://github.com/vercel-labs/skills) for AI authoring; deterministic, seek-driven render | Large ecosystem and community; mature docs and templates; [Remotion Player](https://www.remotion.dev/docs/player) for in-app preview; [serverless rendering](https://www.remotion.dev/docs/lambda) on AWS Lambda |
+| **Cons** | Smaller ecosystem than Remotion; you bring animation via GSAP/Lottie/CSS and frame adapters | React/TypeScript is mandatory; less natural if you want markup-only, non-React workflows |
+
+**Rough guide:** choose Hyperframes when you want HTML-first compositions and agent-heavy or automation-first pipelines; choose Remotion when you are already committed to React and want the broadest tooling around that model.
+
 ## How It Works
 
 Define your video as HTML with data attributes:
