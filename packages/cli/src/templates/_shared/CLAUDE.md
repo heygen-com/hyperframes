@@ -4,11 +4,13 @@
 
 **Always invoke the relevant skill before writing or modifying compositions.** Skills encode framework-specific patterns (e.g., `window.__timelines` registration, `data-*` attribute semantics, shader-compatible CSS rules) that are NOT in generic web docs. Skipping them produces broken compositions.
 
-| Skill               | Command            | When to use                                                                                       |
-| ------------------- | ------------------ | ------------------------------------------------------------------------------------------------- |
-| **hyperframes**     | `/hyperframes`     | Creating or editing HTML compositions, captions, TTS, audio-reactive animation, marker highlights |
-| **hyperframes-cli** | `/hyperframes-cli` | CLI commands: init, lint, preview, render, transcribe, tts                                        |
-| **gsap**            | `/gsap`            | GSAP animations for HyperFrames — tweens, timelines, easing, performance                          |
+| Skill                      | Command                   | When to use                                                                                       |
+| -------------------------- | ------------------------- | ------------------------------------------------------------------------------------------------- |
+| **hyperframes**            | `/hyperframes`            | Creating or editing HTML compositions, captions, TTS, audio-reactive animation, marker highlights |
+| **hyperframes-cli**        | `/hyperframes-cli`        | CLI commands: init, lint, preview, render, transcribe, tts                                        |
+| **hyperframes-registry**   | `/hyperframes-registry`   | Installing blocks and components via `hyperframes add`                                            |
+| **website-to-hyperframes** | `/website-to-hyperframes` | Capturing a URL and turning it into a video — full website-to-video pipeline                      |
+| **gsap**                   | `/gsap`                   | GSAP animations for HyperFrames — tweens, timelines, easing, performance                          |
 
 > **Skills not available?** Ask the user to run `npx hyperframes skills` and restart their
 > agent session, or install manually: `npx skills add heygen-com/hyperframes`.

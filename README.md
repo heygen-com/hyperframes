@@ -153,12 +153,13 @@ HyperFrames ships [skills](https://github.com/vercel-labs/skills) that teach AI 
 npx skills add heygen-com/hyperframes
 ```
 
-| Skill                  | What it teaches                                                                              |
-| ---------------------- | -------------------------------------------------------------------------------------------- |
-| `hyperframes`          | HTML composition authoring, captions, TTS, audio-reactive animation, transitions             |
-| `hyperframes-cli`      | CLI commands: init, lint, preview, render, transcribe, tts, doctor                           |
-| `hyperframes-registry` | Block and component installation via `hyperframes add`                                       |
-| `gsap`                 | GSAP animation API, timelines, easing, ScrollTrigger, plugins, React/Vue/Svelte, performance |
+| Skill                    | What it teaches                                                                              |
+| ------------------------ | -------------------------------------------------------------------------------------------- |
+| `hyperframes`            | HTML composition authoring, captions, TTS, audio-reactive animation, transitions             |
+| `hyperframes-cli`        | CLI commands: init, lint, preview, render, transcribe, tts, doctor                           |
+| `hyperframes-registry`   | Block and component installation via `hyperframes add`                                       |
+| `website-to-hyperframes` | Capture a URL and turn it into a video — full website-to-video pipeline                      |
+| `gsap`                   | GSAP animation API, timelines, easing, ScrollTrigger, plugins, React/Vue/Svelte, performance |
 
 ## Contributing
 

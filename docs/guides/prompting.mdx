@@ -15,11 +15,13 @@ npx skills add heygen-com/hyperframes
 
 In Claude Code, restart the session after installing. Skills register as **slash commands**:
 
-| Slash command       | What it loads                                                                |
-| ------------------- | ---------------------------------------------------------------------------- |
-| `/hyperframes`      | Composition authoring — HTML structure, timing, captions, TTS, transitions   |
-| `/hyperframes-cli`  | CLI commands — `init`, `lint`, `preview`, `render`, `transcribe`, `tts`      |
-| `/gsap`             | GSAP animation API — timelines, easing, ScrollTrigger, plugins               |
+| Slash command              | What it loads                                                              |
+| -------------------------- | -------------------------------------------------------------------------- |
+| `/hyperframes`             | Composition authoring — HTML structure, timing, captions, TTS, transitions |
+| `/hyperframes-cli`         | CLI commands — `init`, `lint`, `preview`, `render`, `transcribe`, `tts`    |
+| `/hyperframes-registry`    | Block and component installation via `hyperframes add`                     |
+| `/website-to-hyperframes`  | Capture a URL and turn it into a video — full website-to-video pipeline    |
+| `/gsap`                    | GSAP animation API — timelines, easing, ScrollTrigger, plugins             |
 
 <Tip>
   Always prefix Hyperframes prompts with `/hyperframes` (or invoke the skill another way for non-Claude agents). This loads the skill context explicitly so the agent gets composition rules right the first time, instead of relying on whatever it remembers about web video.

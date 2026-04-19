@@ -47,4 +47,4 @@ When adding a new CLI command:
 
 ## Skills
 
-Composition authoring (not repo development) is guided by skills installed via `npx skills add heygen-com/hyperframes`. See `skills/` for source. Invoke `/hyperframes`, `/hyperframes-cli`, or `/gsap` when authoring compositions. When a user provides a website URL and wants a video, invoke `/website-to-hyperframes` — it runs the full 7-step capture-to-video pipeline.
+Composition authoring (not repo development) is guided by skills installed via `npx skills add heygen-com/hyperframes`. See `skills/` for source. Invoke `/hyperframes`, `/hyperframes-cli`, `/hyperframes-registry`, or `/gsap` when authoring compositions. When a user provides a website URL and wants a video, invoke `/website-to-hyperframes` — it runs the full 7-step capture-to-video pipeline.
