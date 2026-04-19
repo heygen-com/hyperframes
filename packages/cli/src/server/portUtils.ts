@@ -1,7 +1,9 @@
 /**
  * Port utilities for the HyperFrames preview server.
  *
- * Implements Remotion-style port handling:
+ * The multi-host availability probe and instance-reuse port selection are
+ * inspired by Remotion's approach to dev-server port management.
+ *
  * - Multi-host availability testing (catches port-forwarding ghosts)
  * - HTTP probe for detecting existing HyperFrames instances
  * - PID detection for actionable conflict logging
@@ -30,23 +32,32 @@ const PROBE_MAX_BYTES = 4096;
 
 /**
  * Test whether a port is free on a specific host.
- * Returns false (unavailable) only for EADDRINUSE. Other errors (e.g.,
- * EADDRNOTAVAIL when IPv6 is disabled) are treated as "this host doesn't
- * apply" and return true.
+ *
+ * Attempts an ephemeral bind-and-release with `net.createServer()`. Only
+ * `EADDRINUSE` means "genuinely occupied" — other errnos (EADDRNOTAVAIL when
+ * IPv6 is disabled, EACCES for privileged ports, EAFNOSUPPORT for missing
+ * address families) mean "this host doesn't apply to our probe", and we treat
+ * the port as free for this host rather than poisoning the whole scan.
  */
-function isPortAvailableOnHost(port: number, host: string): Promise<boolean> {
-  return new Promise<boolean>((resolve) => {
-    const server = net.createServer();
-    server.unref();
-    server.on("error", (err: NodeJS.ErrnoException) => {
-      resolve(err.code !== "EADDRINUSE");
-    });
-    server.listen({ port, host }, () => {
-      server.close(() => {
-        resolve(true);
-      });
+async function isPortAvailableOnHost(port: number, host: string): Promise<boolean> {
+  const probe = net.createServer();
+  probe.unref();
+
+  const bindError = await new Promise<NodeJS.ErrnoException | null>((settle) => {
+    const handleError = (err: NodeJS.ErrnoException): void => settle(err);
+    probe.once("error", handleError);
+    probe.listen({ port, host }, () => {
+      probe.removeListener("error", handleError);
+      settle(null);
     });
   });
+
+  if (bindError !== null) {
+    return bindError.code !== "EADDRINUSE";
+  }
+
+  await new Promise<void>((done) => probe.close(() => done()));
+  return true;
 }
 
 export const PORT_PROBE_HOSTS = ["127.0.0.1", "0.0.0.0", "::1", "::"] as const;
@@ -300,7 +311,8 @@ export type FindPortResult =
   | { type: "already-running"; port: number };
 
 /**
- * Smart port selection with instance reuse (Remotion-style).
+ * Smart port selection with instance reuse (inspired by Remotion's dev-server
+ * port handling).
  *
  * For each port in the scan range:
  *   1. Test availability on multiple hosts (catches port-forwarding ghosts)
