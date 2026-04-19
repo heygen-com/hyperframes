@@ -244,8 +244,10 @@ export function buildChromeArgs(
   options: BuildChromeArgsOptions,
   config?: Partial<Pick<EngineConfig, "disableGpu" | "chromePath">>,
 ): string[] {
-  // Chrome flags tuned for headless rendering performance.
-  // Based on Remotion's open-browser.ts flags with additions for our use case.
+  // Chrome flags tuned for headless rendering performance. The set below is a
+  // fairly standard "headless-for-capture" configuration — similar profiles
+  // appear in Puppeteer's defaults, Playwright, Remotion, and Chrome's own
+  // headless-shell guidance.
   const chromeArgs = [
     "--no-sandbox",
     "--disable-setuid-sandbox",
@@ -257,7 +259,8 @@ export function buildChromeArgs(
     "--font-render-hinting=none",
     "--force-color-profile=srgb",
     `--window-size=${options.width},${options.height}`,
-    // Remotion perf flags — prevent Chrome from throttling background tabs/timers
+    // Prevent Chrome from throttling background tabs/timers — critical when the
+    // page is offscreen during headless capture
     "--disable-background-timer-throttling",
     "--disable-backgrounding-occluded-windows",
     "--disable-renderer-backgrounding",

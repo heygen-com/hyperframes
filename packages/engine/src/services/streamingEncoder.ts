@@ -1,9 +1,9 @@
 /**
  * Streaming Encoder Service
  *
- * Pipes frame screenshot buffers directly to FFmpeg's stdin instead of writing
- * them to disk and reading them back in a separate encode stage.  Follows the
- * Remotion pattern of image2pipe → FFmpeg.
+ * Pipes frame screenshot buffers directly to FFmpeg's stdin via `-f image2pipe`
+ * instead of writing them to disk and reading them back in a separate encode
+ * stage. Inspired by Remotion's approach to browser-based video rendering.
  *
  * Two building blocks:
  *   1. Frame reorder buffer – ensures out-of-order parallel workers feed
@@ -25,8 +25,16 @@ import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
 export type { EncoderOptions } from "./chunkEncoder.types.js";
 
 // ---------------------------------------------------------------------------
-// 1. Frame reorder buffer (based on Remotion's ensure-frames-in-order.ts)
+// 1. Frame reorder buffer — ordered async barrier
 // ---------------------------------------------------------------------------
+//
+// Parallel workers produce frames out of order; FFmpeg's stdin expects them in
+// strict sequential order. Each worker calls `waitForFrame(n)` to block until
+// its turn, writes, then calls `advanceTo(n + 1)` to release the next waiter.
+//
+// `pending` holds an array per frame index (not a single resolver) so that
+// `waitForAllDone` can coexist with the writer still waiting on the final
+// frame without one clobbering the other.
 
 export interface FrameReorderBuffer {
   waitForFrame: (frame: number) => Promise<void>;
@@ -35,34 +43,49 @@ export interface FrameReorderBuffer {
 }
 
 export function createFrameReorderBuffer(startFrame: number, endFrame: number): FrameReorderBuffer {
-  let nextFrame = startFrame;
-  let waiters: Array<{ frame: number; resolve: () => void }> = [];
+  let cursor = startFrame;
+  const pending = new Map<number, Array<() => void>>();
 
-  const resolveWaiters = () => {
-    for (const waiter of waiters.slice()) {
-      if (waiter.frame === nextFrame) {
-        waiter.resolve();
-        waiters = waiters.filter((w) => w !== waiter);
-      }
+  const enqueueAt = (frame: number, resolve: () => void): void => {
+    const list = pending.get(frame);
+    if (list === undefined) {
+      pending.set(frame, [resolve]);
+    } else {
+      list.push(resolve);
     }
   };
 
-  return {
-    waitForFrame: (frame: number) =>
-      new Promise<void>((resolve) => {
-        waiters.push({ frame, resolve });
-        resolveWaiters();
-      }),
-    advanceTo: (frame: number) => {
-      nextFrame = frame;
-      resolveWaiters();
-    },
-    waitForAllDone: () =>
-      new Promise<void>((resolve) => {
-        waiters.push({ frame: endFrame, resolve });
-        resolveWaiters();
-      }),
+  const flushAt = (frame: number): void => {
+    const list = pending.get(frame);
+    if (list === undefined) return;
+    pending.delete(frame);
+    for (const resolve of list) resolve();
   };
+
+  const waitForFrame = (frame: number): Promise<void> =>
+    new Promise<void>((resolve) => {
+      if (frame === cursor) {
+        resolve();
+        return;
+      }
+      enqueueAt(frame, resolve);
+    });
+
+  const advanceTo = (frame: number): void => {
+    cursor = frame;
+    flushAt(frame);
+  };
+
+  const waitForAllDone = (): Promise<void> =>
+    new Promise<void>((resolve) => {
+      if (cursor >= endFrame) {
+        resolve();
+        return;
+      }
+      enqueueAt(endFrame, resolve);
+    });
+
+  return { waitForFrame, advanceTo, waitForAllDone };
 }
 
 // ---------------------------------------------------------------------------

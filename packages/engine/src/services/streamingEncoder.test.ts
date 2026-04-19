@@ -11,7 +11,11 @@
 
 import { describe, expect, it } from "vitest";
 
-import { buildStreamingArgs, type StreamingEncoderOptions } from "./streamingEncoder.js";
+import {
+  buildStreamingArgs,
+  createFrameReorderBuffer,
+  type StreamingEncoderOptions,
+} from "./streamingEncoder.js";
 import { DEFAULT_HDR10_MASTERING } from "../utils/hdr.js";
 
 const baseHdrPq: StreamingEncoderOptions = {
@@ -156,5 +160,69 @@ describe("buildStreamingArgs", () => {
       expect(args[args.length - 2]).toBe("-y");
       expect(args[args.length - 1]).toBe("/tmp/some-output.mp4");
     });
+  });
+});
+
+describe("createFrameReorderBuffer", () => {
+  it("fast-paths waitForFrame(cursor) without queueing", async () => {
+    const buf = createFrameReorderBuffer(0, 3);
+    await buf.waitForFrame(0);
+  });
+
+  it("gates out-of-order writers into cursor order", async () => {
+    const buf = createFrameReorderBuffer(0, 4);
+    const writeOrder: number[] = [];
+
+    const writer = async (frame: number) => {
+      await buf.waitForFrame(frame);
+      writeOrder.push(frame);
+      buf.advanceTo(frame + 1);
+    };
+
+    const p3 = writer(3);
+    const p1 = writer(1);
+    const p2 = writer(2);
+    const p0 = writer(0);
+
+    await Promise.all([p0, p1, p2, p3]);
+    expect(writeOrder).toEqual([0, 1, 2, 3]);
+  });
+
+  it("supports multiple waiters registered for the same frame", async () => {
+    const buf = createFrameReorderBuffer(0, 2);
+    const resolved: string[] = [];
+
+    const a = buf.waitForFrame(1).then(() => resolved.push("a"));
+    const b = buf.waitForFrame(1).then(() => resolved.push("b"));
+
+    buf.advanceTo(0);
+    await Promise.resolve();
+    expect(resolved).toEqual([]);
+
+    buf.advanceTo(1);
+    await Promise.all([a, b]);
+    expect(resolved.sort()).toEqual(["a", "b"]);
+  });
+
+  it("waitForAllDone resolves when cursor reaches endFrame", async () => {
+    const buf = createFrameReorderBuffer(0, 3);
+    let done = false;
+    const allDone = buf.waitForAllDone().then(() => {
+      done = true;
+    });
+
+    buf.advanceTo(1);
+    await Promise.resolve();
+    expect(done).toBe(false);
+
+    buf.advanceTo(3);
+    await allDone;
+    expect(done).toBe(true);
+  });
+
+  it("waitForAllDone fast-paths when cursor already past endFrame", async () => {
+    const buf = createFrameReorderBuffer(0, 3);
+    buf.advanceTo(5);
+    await buf.waitForAllDone();
   });
 });
