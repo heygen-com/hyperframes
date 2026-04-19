@@ -31,9 +31,10 @@ function detectProvider(): ClipboardProvider | undefined {
     { cmd: "xclip", args: ["-selection", "clipboard"] },
     { cmd: "xsel", args: ["--clipboard", "--input"] },
   ];
+  const cmd = process.platform === "win32" ? "where" : "which";
   for (const p of candidates) {
-    const which = spawnSync("which", [p.cmd], { stdio: "ignore" });
-    if (which.status === 0) return p;
+    const result = spawnSync(cmd, [p.cmd], { stdio: "ignore" });
+    if (result.status === 0) return p;
   }
   return undefined;
 }

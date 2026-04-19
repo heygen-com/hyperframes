@@ -11,20 +11,26 @@ import { ensureModel, ensureVoices, DEFAULT_VOICE } from "./manager.js";
 function findPython(): string | undefined {
   for (const name of ["python3", "python"]) {
     try {
-      const result = execFileSync("which", [name], {
+      const cmd = process.platform === "win32" ? "where" : "which";
+      const output = execFileSync(cmd, [name], {
         encoding: "utf-8",
         stdio: ["pipe", "pipe", "pipe"],
         timeout: 5000,
-      }).trim();
+      });
+      const first = output
+        .split(/\r?\n/)
+        .map((s) => s.trim())
+        .find(Boolean);
+      if (!first) continue;
 
       // Verify it's Python 3
-      const version = execFileSync(result, ["--version"], {
+      const version = execFileSync(first, ["--version"], {
         encoding: "utf-8",
         stdio: ["pipe", "pipe", "pipe"],
         timeout: 5000,
       }).trim();
 
-      if (version.includes("Python 3")) return result;
+      if (version.includes("Python 3")) return first;
     } catch {
       // not found or not Python 3
     }

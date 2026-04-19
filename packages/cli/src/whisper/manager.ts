@@ -22,12 +22,17 @@ function getModelUrl(model: string): string {
 
 function whichBinary(name: string): string | undefined {
   try {
-    const result = execFileSync("which", [name], {
+    const cmd = process.platform === "win32" ? "where" : "which";
+    const output = execFileSync(cmd, [name], {
       encoding: "utf-8",
       stdio: ["pipe", "pipe", "pipe"],
       timeout: 5000,
-    }).trim();
-    return result || undefined;
+    });
+    const first = output
+      .split(/\r?\n/)
+      .map((s) => s.trim())
+      .find(Boolean);
+    return first || undefined;
   } catch {
     return undefined;
   }
