@@ -38,7 +38,8 @@ const SYSTEM_CHROME_PATHS: ReadonlyArray<string> =
 
 function whichBinary(name: string): string | undefined {
   try {
-    const result = execSync(`which ${name}`, {
+    const cmd = process.platform === "win32" ? `where ${name}` : `which ${name}`;
+    const result = execSync(cmd, {
       encoding: "utf-8",
       stdio: ["pipe", "pipe", "pipe"],
       timeout: 5000,

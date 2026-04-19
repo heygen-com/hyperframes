@@ -2,7 +2,8 @@ import { execSync } from "node:child_process";
 
 export function findFFmpeg(): string | undefined {
   try {
-    const result = execSync("which ffmpeg", {
+    const cmd = process.platform === "win32" ? "where ffmpeg" : "which ffmpeg";
+    const result = execSync(cmd, {
       encoding: "utf-8",
       stdio: ["pipe", "pipe", "pipe"],
       timeout: 5000,
