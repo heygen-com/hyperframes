@@ -45,6 +45,7 @@
         "@hyperframes/core": "workspace:*",
         "@hyperframes/engine": "workspace:*",
         "@hyperframes/producer": "workspace:*",
+        "@hyperframes/studio": "workspace:*",
         "@types/adm-zip": "^0.5.7",
         "@types/mime-types": "^3.0.1",
         "@types/node": "^22.0.0",

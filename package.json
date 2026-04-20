@@ -11,7 +11,7 @@
   "type": "module",
   "scripts": {
     "dev": "bun run studio",
-    "build": "bun run --filter '*' build",
+    "build": "bun run --filter '!@hyperframes/cli' build && bun run --filter @hyperframes/cli build",
     "build:producer": "bun run --filter @hyperframes/producer build",
     "studio": "bun run --filter @hyperframes/studio dev",
     "build:hyperframes-runtime": "bun run --filter @hyperframes/core build:hyperframes-runtime",
