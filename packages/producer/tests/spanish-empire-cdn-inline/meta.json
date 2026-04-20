@@ -1,0 +1,13 @@
+{
+  "name": "spanish-empire-cdn-inline",
+  "description": "Regression guard for the Spanish Empire composition, trimmed to the first 8 seconds so the suite stays practical while still exercising D3, TopoJSON, and GSAP loaded from CDNs. The fixture vendors world-atlas locally so the render remains deterministic while covering the CDN script inlining path that previously corrupted third-party bundles.",
+  "tags": ["regression", "cdn-inline", "prod-style", "slow"],
+  "minPsnr": 30,
+  "maxFrameFailures": 0,
+  "minAudioCorrelation": 0,
+  "maxAudioLagWindows": 1,
+  "renderConfig": {
+    "fps": 30,
+    "workers": 1
+  }
+}

@@ -1,0 +1,1201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>The Rise and Reach of the Spanish Empire</title>
+</head>
+<body>
+<div id="comp-root"
+  data-composition-id="spanish-empire"
+  data-start="0" data-duration="8"
+  data-width="1920" data-height="1080"
+  style="width:1920px;height:1080px;position:relative;overflow:hidden;background:#0B1729;">
+
+  <!-- ── Full-duration visual clip ── -->
+  <div id="el-scenes" class="clip"
+    data-start="0" data-duration="8" data-track-index="1"
+    style="width:1920px;height:1080px;position:absolute;top:0;left:0;">
+
+    <!-- ═══════════════════════════════════════
+         SCENE 1 · Opening Hook · 0–5 s
+    ═══════════════════════════════════════ -->
+    <div class="scene" id="s1">
+      <div class="s1-glow-left"></div>
+      <div class="s1-glow-right"></div>
+      <!-- D3 map injected here -->
+      <svg id="s1-map-svg" style="position:absolute;top:0;left:0;width:1920px;height:1080px;"></svg>
+      <!-- Route overlay (populated by D3 at build time) -->
+      <svg id="s1-route-svg" style="position:absolute;top:0;left:0;width:1920px;height:1080px;z-index:3;"></svg>
+      <!-- Dark gradient scrim behind bottom text for readability -->
+      <div style="position:absolute;bottom:0;left:0;width:100%;height:350px;background:linear-gradient(to top,rgba(7,14,26,0.85) 0%,rgba(7,14,26,0) 100%);pointer-events:none;z-index:4;"></div>
+      <div class="s1-content">
+        <p id="s1-sub" class="scene-label">CIRCA 1492 — 1821</p>
+        <h1 id="s1-title" class="s1-headline">At one point in history…</h1>
+        <h2 id="s1-subtitle" class="s1-subheadline">one empire connected almost the entire world.</h2>
+      </div>
+      <div class="vignette"></div>
+    </div>
+
+    <!-- ═══════════════════════════════════════
+         SCENE 2 · Discovery Era · 5–12 s
+    ═══════════════════════════════════════ -->
+    <div class="scene" id="s2">
+      <div class="s2-warm-bg"></div>
+      <div class="s2-glow-center"></div>
+      <div class="s2-ghost-text">1492</div>
+
+      <!-- Inset globe showing Spain + Atlantic -->
+      <div class="s2-inset-wrap" id="s2-inset">
+        <svg id="s2-inset-globe" style="width:500px;height:400px;"></svg>
+        <div class="s2-inset-label">ATLANTIC CROSSING</div>
+      </div>
+
+      <!-- Ship SVG -->
+      <svg id="s2-ship-svg" class="s2-ship-svg" viewBox="0 0 600 350">
+        <g id="s2-waves">
+          <path d="M0,200 Q75,180 150,200 Q225,220 300,200 Q375,180 450,200 Q525,220 600,200" fill="none" stroke="#D4A24C" stroke-width="2" opacity="0.35"/>
+          <path d="M0,220 Q75,200 150,220 Q225,240 300,220 Q375,200 450,220 Q525,240 600,220" fill="none" stroke="#D4A24C" stroke-width="1.5" opacity="0.25"/>
+          <path d="M0,240 Q75,225 150,240 Q225,255 300,240 Q375,225 450,240 Q525,255 600,240" fill="none" stroke="#D4A24C" stroke-width="1" opacity="0.18"/>
+        </g>
+        <path d="M100,195 L500,195 L480,230 L120,230 Z" fill="#1B2D4A" stroke="#D4A24C" stroke-width="1.5" opacity="0.9"/>
+        <line x1="300" y1="55" x2="300" y2="200" stroke="#D4A24C" stroke-width="2.5" opacity="0.85"/>
+        <path d="M300,60 L300,160 L195,155 Z" fill="#D4A24C" opacity="0.55"/>
+        <path d="M300,75 L300,155 L395,150 Z" fill="#D4A24C" opacity="0.38"/>
+        <path d="M300,55 L335,68 L300,82 Z" fill="#F0C75E" opacity="0.9"/>
+        <rect x="288" y="48" width="24" height="12" rx="2" fill="#1B2D4A" stroke="#D4A24C" stroke-width="1" opacity="0.8"/>
+      </svg>
+
+      <!-- Cross of Burgundy flag inline -->
+      <div class="s2-flag-wrap" id="s2-flag">
+        <svg viewBox="0 0 450 300" class="s2-flag-svg">
+          <rect width="450" height="300" fill="#F5F0E0" rx="4"/>
+          <!-- Raguly saltire (Cross of Burgundy) -->
+          <g fill="#B5121B">
+            <!-- Top-left to bottom-right bar -->
+            <path d="M45,10 L55,10 L55,20 L65,20 L65,30 L75,30 L75,40 L85,40 L85,50 L95,50 L95,60 L105,60 L105,70 L115,70 L115,80 L125,80 L125,90 L135,90 L135,100 L145,100 L145,110 L155,110 L155,120 L165,120 L165,130 L175,130 L175,140 L185,140 L185,150 L195,150 L195,160 L205,160 L205,150 L195,150 L195,140 L185,140 L185,130 L175,130 L175,120 L165,120 L165,110 L155,110 L155,100 L145,100 L145,90 L135,90 L135,80 L125,80 L125,70 L115,70 L115,60 L105,60 L105,50 L95,50 L95,40 L85,40 L85,30 L75,30 L75,20 L65,20 L65,10 L55,10 Z" opacity="0"/>
+            <!-- Simplified cross arms -->
+            <line x1="30" y1="15" x2="420" y2="285" stroke="#B5121B" stroke-width="42" stroke-linecap="round" opacity="0.85"/>
+            <line x1="420" y1="15" x2="30" y2="285" stroke="#B5121B" stroke-width="42" stroke-linecap="round" opacity="0.85"/>
+            <!-- Raguly notches on main diagonal -->
+            <rect x="85" y="42" width="18" height="10" transform="rotate(34,94,47)" opacity="0.9"/>
+            <rect x="145" y="82" width="18" height="10" transform="rotate(34,154,87)" opacity="0.9"/>
+            <rect x="205" y="122" width="18" height="10" transform="rotate(34,214,127)" opacity="0.9"/>
+            <rect x="265" y="162" width="18" height="10" transform="rotate(34,274,167)" opacity="0.9"/>
+            <rect x="325" y="202" width="18" height="10" transform="rotate(34,334,207)" opacity="0.9"/>
+            <!-- Raguly notches on anti-diagonal -->
+            <rect x="345" y="42" width="18" height="10" transform="rotate(-34,354,47)" opacity="0.9"/>
+            <rect x="285" y="82" width="18" height="10" transform="rotate(-34,294,87)" opacity="0.9"/>
+            <rect x="225" y="122" width="18" height="10" transform="rotate(-34,234,127)" opacity="0.9"/>
+            <rect x="165" y="162" width="18" height="10" transform="rotate(-34,174,167)" opacity="0.9"/>
+            <rect x="105" y="202" width="18" height="10" transform="rotate(-34,114,207)" opacity="0.9"/>
+          </g>
+          <!-- Subtle aging overlay -->
+          <rect width="450" height="300" fill="rgba(180,150,100,0.06)" rx="4"/>
+        </svg>
+        <p class="s2-flag-label">CRUZ DE BORGOÑA</p>
+      </div>
+
+      <!-- Map pins -->
+      <div class="s2-map-pins">
+        <div class="map-pin" id="s2-pin1"><div class="pin-dot"></div><span class="pin-label">SPAIN</span></div>
+        <div class="map-pin" id="s2-pin2"><div class="pin-dot"></div><span class="pin-label">CARIBBEAN</span></div>
+        <div class="map-pin" id="s2-pin3"><div class="pin-dot"></div><span class="pin-label">AMERICAS</span></div>
+      </div>
+
+      <div class="s2-content">
+        <p class="scene-label">THE DISCOVERY ERA</p>
+        <h2 id="s2-title" class="scene-title">It began in the late 15th century,</h2>
+        <p id="s2-body" class="scene-body">when Spain funded voyages across unknown oceans.</p>
+      </div>
+      <div class="vignette"></div>
+    </div>
+
+    <!-- ═══════════════════════════════════════
+         SCENE 3 · Expansion · 12–20 s
+    ═══════════════════════════════════════ -->
+    <div class="scene" id="s3">
+      <div class="s3-glow"></div>
+      <div class="s3-ghost-text">EXPANSIÓN</div>
+      <!-- D3 map with territories injected here -->
+      <svg id="s3-map-svg" style="position:absolute;top:40px;left:50%;width:1100px;height:660px;transform:translateX(-50%);"></svg>
+      <div class="s3-labels">
+        <div class="s3-label-item" id="s3-label1"><span class="s3-label-dot"></span>South America</div>
+        <div class="s3-label-item" id="s3-label2"><span class="s3-label-dot"></span>Central America</div>
+        <div class="s3-label-item" id="s3-label3"><span class="s3-label-dot"></span>Philippines</div>
+        <div class="s3-label-item" id="s3-label4"><span class="s3-label-dot"></span>Parts of Europe</div>
+        <div class="s3-label-item" id="s3-label5"><span class="s3-label-dot"></span>&amp; Beyond</div>
+      </div>
+      <div class="s3-content">
+        <p class="scene-label">RAPID EXPANSION</p>
+        <h2 id="s3-title" class="scene-title">Within decades, Spain controlled</h2>
+        <p id="s3-body" class="scene-body">vast lands across the Americas, Europe, Asia, and beyond.</p>
+      </div>
+      <div class="vignette"></div>
+    </div>
+
+    <!-- ═══════════════════════════════════════
+         SCENE 4 · Power & Wealth · 20–28 s
+    ═══════════════════════════════════════ -->
+    <div class="scene" id="s4">
+      <div class="s4-glow-top"></div>
+      <div class="s4-glow-bottom"></div>
+      <div class="s4-ghost-text">ORO</div>
+
+      <!-- Flag displayed prominently -->
+      <div class="s4-flag-display" id="s4-flag">
+        <svg viewBox="0 0 450 300" class="s4-flag-svg">
+          <rect width="450" height="300" fill="#F5F0E0" rx="3"/>
+          <g fill="#B5121B">
+            <line x1="30" y1="15" x2="420" y2="285" stroke="#B5121B" stroke-width="40" stroke-linecap="round" opacity="0.85"/>
+            <line x1="420" y1="15" x2="30" y2="285" stroke="#B5121B" stroke-width="40" stroke-linecap="round" opacity="0.85"/>
+            <rect x="85" y="42" width="18" height="10" transform="rotate(34,94,47)" opacity="0.9"/>
+            <rect x="145" y="82" width="18" height="10" transform="rotate(34,154,87)" opacity="0.9"/>
+            <rect x="205" y="122" width="18" height="10" transform="rotate(34,214,127)" opacity="0.9"/>
+            <rect x="265" y="162" width="18" height="10" transform="rotate(34,274,167)" opacity="0.9"/>
+            <rect x="325" y="202" width="18" height="10" transform="rotate(34,334,207)" opacity="0.9"/>
+            <rect x="345" y="42" width="18" height="10" transform="rotate(-34,354,47)" opacity="0.9"/>
+            <rect x="285" y="82" width="18" height="10" transform="rotate(-34,294,87)" opacity="0.9"/>
+            <rect x="225" y="122" width="18" height="10" transform="rotate(-34,234,127)" opacity="0.9"/>
+            <rect x="165" y="162" width="18" height="10" transform="rotate(-34,174,167)" opacity="0.9"/>
+            <rect x="105" y="202" width="18" height="10" transform="rotate(-34,114,207)" opacity="0.9"/>
+          </g>
+          <rect width="450" height="300" fill="rgba(180,150,100,0.06)" rx="3"/>
+        </svg>
+      </div>
+
+      <!-- Coins -->
+      <div class="s4-coins-area">
+        <div class="coin coin-1" id="s4-c1"><div class="coin-inner"><span>₱</span></div></div>
+        <div class="coin coin-2" id="s4-c2"><div class="coin-inner"><span>✦</span></div></div>
+        <div class="coin coin-3" id="s4-c3"><div class="coin-inner"><span>₱</span></div></div>
+        <div class="coin coin-4" id="s4-c4"><div class="coin-inner"><span>✦</span></div></div>
+        <div class="coin coin-5" id="s4-c5"><div class="coin-inner"><span>₱</span></div></div>
+        <div class="coin coin-sm coin-6" id="s4-c6"><div class="coin-inner"><span>✦</span></div></div>
+        <div class="coin coin-sm coin-7" id="s4-c7"><div class="coin-inner"><span>₱</span></div></div>
+        <div class="coin coin-sm coin-8" id="s4-c8"><div class="coin-inner"><span>✦</span></div></div>
+      </div>
+
+      <!-- Bars -->
+      <div class="s4-bars" id="s4-bars">
+        <div class="s4-bar-row"><span class="s4-bar-label">GOLD RESERVES</span><div class="s4-bar-track"><div class="s4-bar-fill" id="s4-bar1" style="width:0%"></div></div><span class="s4-bar-value">91%</span></div>
+        <div class="s4-bar-row"><span class="s4-bar-label">SILVER OUTPUT</span><div class="s4-bar-track"><div class="s4-bar-fill" id="s4-bar2" style="width:0%"></div></div><span class="s4-bar-value">84%</span></div>
+        <div class="s4-bar-row"><span class="s4-bar-label">GLOBAL TRADE</span><div class="s4-bar-track"><div class="s4-bar-fill" id="s4-bar3" style="width:0%"></div></div><span class="s4-bar-value">76%</span></div>
+      </div>
+
+      <div class="s4-content">
+        <p class="scene-label">POWER &amp; WEALTH</p>
+        <h2 id="s4-title" class="scene-title">Gold and silver flowed into Spain,</h2>
+        <p id="s4-body" class="scene-body">making it one of the richest and most powerful empires in history.</p>
+      </div>
+      <div class="vignette"></div>
+    </div>
+
+    <!-- ═══════════════════════════════════════
+         SCENE 5 · Culture & Impact · 28–36 s
+    ═══════════════════════════════════════ -->
+    <div class="scene" id="s5">
+      <div class="s5-glow"></div>
+      <div class="s5-ghost-text">CULTURA</div>
+      <div class="s5-pillars">
+        <div class="s5-pillar" id="s5-p1">
+          <div class="s5-icon-wrap">
+            <svg class="s5-icon" viewBox="0 0 120 120"><rect x="10" y="90" width="100" height="8" fill="#D4A24C" opacity="0.7" rx="2"/><rect x="30" y="50" width="60" height="42" fill="none" stroke="#D4A24C" stroke-width="2" opacity="0.8"/><path d="M20,50 L60,15 L100,50 Z" fill="none" stroke="#F0C75E" stroke-width="2.5" opacity="0.9"/><rect x="48" y="65" width="24" height="28" fill="#D4A24C" opacity="0.4" rx="2"/><circle cx="60" cy="30" r="4" fill="#F0C75E" opacity="0.8"/></svg>
+          </div>
+          <h3 class="s5-pillar-title">Architecture</h3>
+          <p class="s5-pillar-body">Baroque cathedrals and colonial cities rose across two continents</p>
+        </div>
+        <div class="s5-pillar" id="s5-p2">
+          <div class="s5-icon-wrap">
+            <svg class="s5-icon" viewBox="0 0 120 120"><text x="60" y="68" text-anchor="middle" font-family="Fraunces" font-size="52" font-weight="400" fill="#F0C75E" opacity="0.9">Aa</text><line x1="20" y1="82" x2="100" y2="82" stroke="#D4A24C" stroke-width="2" opacity="0.5"/><circle cx="22" cy="28" r="4" fill="#D4A24C" opacity="0.6"/><circle cx="60" cy="18" r="4" fill="#D4A24C" opacity="0.6"/><circle cx="98" cy="28" r="4" fill="#D4A24C" opacity="0.6"/><line x1="22" y1="28" x2="60" y2="18" stroke="#D4A24C" stroke-width="1" opacity="0.35"/><line x1="60" y1="18" x2="98" y2="28" stroke="#D4A24C" stroke-width="1" opacity="0.35"/></svg>
+          </div>
+          <h3 class="s5-pillar-title">Language</h3>
+          <p class="s5-pillar-body">Spanish became one of Earth's most spoken languages — 500M+ today</p>
+        </div>
+        <div class="s5-pillar" id="s5-p3">
+          <div class="s5-icon-wrap">
+            <svg class="s5-icon" viewBox="0 0 120 120"><rect x="54" y="20" width="12" height="80" fill="#D4A24C" opacity="0.75" rx="3"/><rect x="28" y="38" width="64" height="12" fill="#D4A24C" opacity="0.75" rx="3"/><circle cx="60" cy="60" r="42" fill="none" stroke="#D4A24C" stroke-width="1" opacity="0.18"/></svg>
+          </div>
+          <h3 class="s5-pillar-title">Religion</h3>
+          <p class="s5-pillar-body">Catholic faith spread through missions across the Americas and Asia</p>
+        </div>
+      </div>
+      <div class="s5-content">
+        <p class="scene-label">CULTURAL LEGACY</p>
+        <h2 id="s5-title" class="scene-title">Its influence shaped languages,</h2>
+        <p id="s5-body" class="scene-body">cultures, and religions across continents.</p>
+      </div>
+      <div class="vignette"></div>
+    </div>
+
+    <!-- ═══════════════════════════════════════
+         SCENE 6 · Challenges · 36–45 s
+    ═══════════════════════════════════════ -->
+    <div class="scene" id="s6">
+      <div class="s6-storm" id="s6-storm"></div>
+      <div class="s6-glow-red"></div>
+      <div class="s6-ghost-text">CRISIS</div>
+      <div class="s6-storm-overlay" id="s6-storm-overlay"></div>
+      <div class="s6-lightning" id="s6-lightning1"></div>
+      <div class="s6-lightning s6-lightning2" id="s6-lightning2"></div>
+      <!-- D3 map (cracking) injected here -->
+      <svg id="s6-map-svg" style="position:absolute;top:60px;left:50%;width:1000px;height:580px;transform:translateX(-50%);"></svg>
+      <!-- Crack overlays -->
+      <svg id="s6-crack-svg" style="position:absolute;top:60px;left:50%;width:1000px;height:580px;transform:translateX(-50%);" viewBox="0 0 1000 580">
+        <path id="s6-crack1" d="M500,180 L530,280 L490,360 L520,450" fill="none" stroke="#E53935" stroke-width="3" stroke-linecap="round" opacity="0"/>
+        <path id="s6-crack2" d="M500,180 L440,260 L380,330 L350,400" fill="none" stroke="#E53935" stroke-width="2.5" stroke-linecap="round" opacity="0"/>
+        <path id="s6-crack3" d="M350,310 L290,370 L250,400" fill="none" stroke="#E53935" stroke-width="2" stroke-linecap="round" opacity="0"/>
+        <path id="s6-crack4" d="M500,180 L570,250 L620,310 L660,380" fill="none" stroke="#E53935" stroke-width="2" stroke-linecap="round" opacity="0"/>
+      </svg>
+      <div class="s6-cards" id="s6-cards">
+        <div class="s6-card" id="s6-card1"><div class="s6-card-icon">⚔</div><span>Armed Conflicts</span></div>
+        <div class="s6-card" id="s6-card2"><div class="s6-card-icon">✊</div><span>Colonial Resistance</span></div>
+        <div class="s6-card" id="s6-card3"><div class="s6-card-icon">⚖</div><span>Economic Strain</span></div>
+      </div>
+      <div class="s6-content">
+        <p class="scene-label">THE CHALLENGES</p>
+        <h2 id="s6-title" class="scene-title">But power came at a cost—</h2>
+        <p id="s6-body" class="scene-body">conflicts, resistance, and economic strain began to weaken its dominance.</p>
+      </div>
+      <div class="vignette vignette-heavy"></div>
+    </div>
+
+    <!-- ═══════════════════════════════════════
+         SCENE 7 · Decline · 45–55 s
+    ═══════════════════════════════════════ -->
+    <div class="scene" id="s7">
+      <div class="s7-glow"></div>
+      <div class="s7-ghost-text">DECLIVE</div>
+      <!-- D3 orthographic globe injected here -->
+      <div class="s7-globe-wrap" id="s7-globe-wrap">
+        <svg id="s7-globe-svg" style="width:540px;height:540px;"></svg>
+        <div class="s7-drain-overlay" id="s7-drain"></div>
+      </div>
+      <div class="s7-timeline" id="s7-timeline">
+        <div class="s7-tl-item" id="s7-tl1"><span class="s7-tl-year">1810</span><span class="s7-tl-event">Mexico rises</span></div>
+        <div class="s7-tl-item" id="s7-tl2"><span class="s7-tl-year">1816</span><span class="s7-tl-event">Argentina free</span></div>
+        <div class="s7-tl-item" id="s7-tl3"><span class="s7-tl-year">1821</span><span class="s7-tl-event">Peru &amp; Central America</span></div>
+        <div class="s7-tl-item" id="s7-tl4"><span class="s7-tl-year">1898</span><span class="s7-tl-event">Cuba, Philippines lost</span></div>
+      </div>
+      <div class="s7-content">
+        <p class="scene-label">THE LONG DECLINE</p>
+        <h2 id="s7-title" class="scene-title">Over time, colonies gained independence,</h2>
+        <p id="s7-body" class="scene-body">and the empire slowly dissolved.</p>
+      </div>
+      <div class="vignette"></div>
+    </div>
+
+    <!-- ═══════════════════════════════════════
+         SCENE 8 · Ending · 55–60 s
+    ═══════════════════════════════════════ -->
+    <div class="scene" id="s8">
+      <div class="s8-space-bg"></div>
+      <svg class="s8-stars" viewBox="0 0 1920 1080">
+        <circle cx="120" cy="80" r="1.2" fill="white" opacity="0.5"/><circle cx="380" cy="150" r="0.8" fill="white" opacity="0.4"/><circle cx="650" cy="60" r="1.5" fill="white" opacity="0.6"/><circle cx="900" cy="120" r="0.9" fill="white" opacity="0.35"/><circle cx="1150" cy="90" r="1.2" fill="white" opacity="0.5"/><circle cx="1400" cy="45" r="0.8" fill="white" opacity="0.4"/><circle cx="1700" cy="130" r="1.4" fill="white" opacity="0.55"/><circle cx="240" cy="200" r="0.7" fill="white" opacity="0.3"/><circle cx="520" cy="180" r="1.1" fill="white" opacity="0.45"/><circle cx="780" cy="220" r="0.8" fill="white" opacity="0.35"/><circle cx="1050" cy="200" r="1.3" fill="white" opacity="0.5"/><circle cx="1580" cy="210" r="1" fill="white" opacity="0.45"/><circle cx="1820" cy="85" r="0.7" fill="white" opacity="0.3"/><circle cx="60" cy="300" r="1.1" fill="white" opacity="0.4"/><circle cx="1870" cy="320" r="1.3" fill="white" opacity="0.5"/><circle cx="300" cy="900" r="0.9" fill="white" opacity="0.35"/><circle cx="700" cy="950" r="1.1" fill="white" opacity="0.4"/><circle cx="1200" cy="920" r="0.8" fill="white" opacity="0.3"/><circle cx="1650" cy="880" r="1.4" fill="white" opacity="0.5"/>
+      </svg>
+      <!-- D3 orthographic globe (space view) -->
+      <div class="s8-globe-wrap" id="s8-globe-wrap">
+        <svg id="s8-globe-svg" style="width:520px;height:520px;"></svg>
+        <div class="s8-spain-glow" id="s8-spain-glow"></div>
+      </div>
+      <div class="s8-content">
+        <p class="scene-label">LASTING LEGACY</p>
+        <h2 id="s8-title" class="scene-title">But its legacy…</h2>
+        <p id="s8-body" class="scene-body">still shapes the world today.</p>
+      </div>
+      <div class="s8-fade" id="s8-fade"></div>
+      <div class="vignette"></div>
+    </div>
+
+    <!-- ═══════════════════════════════════════
+         END CARD · 60–65 s
+    ═══════════════════════════════════════ -->
+    <div class="scene" id="s-end">
+      <div class="send-bg-glow"></div>
+      <div class="send-accent-line" id="send-line-top"></div>
+      <div class="send-accent-line send-line-bottom" id="send-line-bot"></div>
+      <!-- Crown SVG -->
+      <svg id="send-crown" class="send-crown-svg" viewBox="0 0 200 120" opacity="0">
+        <path d="M20,90 L20,40 L60,70 L100,20 L140,70 L180,40 L180,90 Z" fill="none" stroke="#D4A24C" stroke-width="2" stroke-linejoin="round" opacity="0.8"/>
+        <rect x="15" y="90" width="170" height="14" rx="3" fill="#D4A24C" opacity="0.5"/>
+        <circle cx="100" cy="20" r="6" fill="#F0C75E" opacity="0.9"/><circle cx="20" cy="40" r="5" fill="#F0C75E" opacity="0.7"/><circle cx="180" cy="40" r="5" fill="#F0C75E" opacity="0.7"/><circle cx="60" cy="70" r="4" fill="#F0C75E" opacity="0.6"/><circle cx="140" cy="70" r="4" fill="#F0C75E" opacity="0.6"/>
+      </svg>
+      <div class="send-content">
+        <div class="send-title-wrap" id="send-title-wrap">
+          <p id="send-eyebrow" class="send-eyebrow">THE STORY OF</p>
+          <h1 id="send-main-title" class="send-main-title">THE SPANISH<br>EMPIRE</h1>
+          <div id="send-divider" class="send-divider"></div>
+          <p id="send-sub" class="send-sub">1492 – 1898</p>
+        </div>
+      </div>
+      <div class="s8-fade" id="send-final-fade"></div>
+    </div>
+
+  </div><!-- /el-scenes -->
+
+  <!-- ── WebGL shader transition overlay ── -->
+  <canvas id="gl-canvas" style="position:absolute;top:0;left:0;width:1920px;height:1080px;pointer-events:none;z-index:50;opacity:0;"></canvas>
+
+  <!-- ══════════ STYLES ══════════ -->
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    [data-composition-id="spanish-empire"]{font-family:'Space Grotesk',sans-serif;color:#E8E0D4;background:#0B1729}
+
+    .scene{position:absolute;top:0;left:0;width:1920px;height:1080px;overflow:hidden;opacity:0}
+    .vignette{position:absolute;inset:0;background:radial-gradient(ellipse at center,rgba(11,23,41,0) 50%,rgba(11,23,41,0.55) 100%);pointer-events:none;z-index:10}
+    .vignette-heavy{background:radial-gradient(ellipse at center,rgba(8,14,26,0) 30%,rgba(8,14,26,0.8) 100%)}
+
+    .scene-label{font-family:'Space Grotesk',sans-serif;font-size:18px;font-weight:500;letter-spacing:0.28em;color:#D4A24C;text-transform:uppercase;margin-bottom:20px;text-shadow:0 1px 12px rgba(0,0,0,0.6)}
+    .scene-title{font-family:'Fraunces',serif;font-size:72px;font-weight:400;color:#E8E0D4;line-height:1.12;letter-spacing:-0.02em;margin-bottom:18px;text-shadow:0 2px 16px rgba(0,0,0,0.6),0 0 40px rgba(11,23,41,0.8)}
+    .scene-body{font-family:'Space Grotesk',sans-serif;font-size:32px;font-weight:300;color:#A8B8C8;line-height:1.55;text-shadow:0 1px 10px rgba(0,0,0,0.5)}
+
+    /* S1 */
+    #s1{background:#070e1a}
+    .s1-glow-left{position:absolute;top:-120px;left:-120px;width:700px;height:700px;background:radial-gradient(circle,rgba(212,162,76,0.07) 0%,rgba(212,162,76,0) 70%);pointer-events:none}
+    .s1-glow-right{position:absolute;bottom:-150px;right:-150px;width:800px;height:800px;background:radial-gradient(circle,rgba(212,162,76,0.05) 0%,rgba(212,162,76,0) 70%);pointer-events:none}
+    .s1-text-scrim{position:absolute;bottom:0;left:0;width:100%;height:380px;background:linear-gradient(0deg,rgba(7,14,26,0.85) 0%,rgba(7,14,26,0.5) 55%,rgba(7,14,26,0) 100%);z-index:4;pointer-events:none}
+    .s1-content{position:absolute;bottom:140px;left:120px;width:900px;z-index:5}
+    .s1-headline{font-family:'Fraunces',serif;font-size:96px;font-weight:400;color:#E8E0D4;line-height:1.05;letter-spacing:-0.03em;margin-bottom:24px;text-shadow:0 2px 20px rgba(0,0,0,0.7),0 0 60px rgba(11,23,41,0.9)}
+    .s1-subheadline{font-family:'Space Grotesk',sans-serif;font-size:42px;font-weight:300;color:#D4A24C;line-height:1.4;letter-spacing:-0.01em;text-shadow:0 2px 16px rgba(0,0,0,0.6),0 0 40px rgba(11,23,41,0.8)}
+
+    /* S2 */
+    #s2{background:#0f1820}
+    .s2-warm-bg{position:absolute;inset:0;background:radial-gradient(ellipse at 50% 60%,rgba(90,55,20,0.25) 0%,rgba(11,23,41,0) 70%)}
+    .s2-glow-center{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:900px;height:600px;background:radial-gradient(ellipse,rgba(212,162,76,0.06) 0%,rgba(212,162,76,0) 70%)}
+    .s2-ghost-text{position:absolute;top:-30px;right:-60px;font-family:'Fraunces',serif;font-size:420px;font-weight:900;color:rgba(212,162,76,0.035);line-height:1;user-select:none;pointer-events:none}
+    .s2-ship-svg{position:absolute;top:200px;left:50%;transform:translateX(-15%);width:440px;height:270px}
+    .s2-flag-wrap{position:absolute;top:120px;right:160px;width:300px;text-align:center;opacity:0}
+    .s2-flag-svg{width:300px;height:200px;border-radius:6px;box-shadow:0 8px 32px rgba(0,0,0,0.5)}
+    .s2-flag-label{font-family:'Space Grotesk',sans-serif;font-size:16px;font-weight:500;letter-spacing:0.2em;color:#D4A24C;margin-top:14px;opacity:0.8}
+    .s2-map-pins{position:absolute;top:420px;right:180px;display:flex;flex-direction:column;gap:28px}
+    .map-pin{display:flex;align-items:center;gap:12px;opacity:0}
+    .pin-dot{width:12px;height:12px;border-radius:50%;background:#F0C75E;box-shadow:0 0 10px rgba(240,199,94,0.6)}
+    .pin-label{font-family:'Space Grotesk',sans-serif;font-size:20px;font-weight:600;letter-spacing:0.18em;color:#D4A24C}
+    .s2-content{position:absolute;bottom:120px;left:120px;width:820px;z-index:5}
+
+    /* S3 */
+    #s3{background:#090f1c}
+    .s3-glow{position:absolute;top:-200px;left:50%;transform:translateX(-50%);width:1200px;height:700px;background:radial-gradient(ellipse,rgba(212,162,76,0.07) 0%,rgba(212,162,76,0) 65%)}
+    .s3-ghost-text{position:absolute;top:-40px;left:-100px;font-family:'Fraunces',serif;font-size:380px;font-weight:900;color:rgba(212,162,76,0.028);user-select:none;pointer-events:none}
+    .s3-labels{position:absolute;top:200px;right:80px;display:flex;flex-direction:column;gap:22px;z-index:5}
+    .s3-label-item{display:flex;align-items:center;gap:14px;font-family:'Space Grotesk',sans-serif;font-size:22px;font-weight:400;color:#D4A24C;opacity:0}
+    .s3-label-dot{width:10px;height:10px;border-radius:50%;background:#D4A24C;box-shadow:0 0 8px rgba(212,162,76,0.7);flex-shrink:0}
+    .s3-content{position:absolute;bottom:80px;left:100px;width:760px;z-index:5}
+
+    /* S4 */
+    #s4{background:#080f1a}
+    .s4-glow-top{position:absolute;top:-100px;left:50%;transform:translateX(-50%);width:1100px;height:500px;background:radial-gradient(ellipse,rgba(212,162,76,0.1) 0%,rgba(212,162,76,0) 70%)}
+    .s4-glow-bottom{position:absolute;bottom:-120px;right:200px;width:600px;height:400px;background:radial-gradient(ellipse,rgba(212,162,76,0.06) 0%,rgba(212,162,76,0) 70%)}
+    .s4-ghost-text{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-family:'Fraunces',serif;font-size:500px;font-weight:900;color:rgba(212,162,76,0.03);user-select:none;pointer-events:none}
+    .s4-flag-display{position:absolute;top:100px;left:120px;width:380px;opacity:0}
+    .s4-flag-svg{width:380px;height:253px;border-radius:6px;box-shadow:0 12px 40px rgba(0,0,0,0.6)}
+    .s4-coins-area{position:absolute;top:100px;right:100px;width:600px;height:450px}
+    .coin{position:absolute;border-radius:50%;background:radial-gradient(circle at 35% 35%,#f8d98c,#b8820e,#7a5508);box-shadow:0 6px 18px rgba(212,162,76,0.4),inset 0 1px 3px rgba(255,255,255,0.3)}
+    .coin-inner{width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:0.45em;color:rgba(120,75,5,0.8);border:2px solid rgba(212,162,76,0.4);border-radius:50%}
+    .coin{font-size:90px;width:90px;height:90px}
+    .coin-sm{font-size:65px;width:65px;height:65px}
+    .coin-1{top:30px;left:80px}.coin-2{top:30px;left:210px}.coin-3{top:30px;left:340px}.coin-4{top:30px;left:470px}.coin-5{top:150px;left:130px}
+    .coin-6{top:150px;left:300px}.coin-7{top:150px;left:430px}.coin-8{top:260px;left:200px}
+    .s4-bars{position:absolute;top:420px;left:120px;width:580px;display:flex;flex-direction:column;gap:32px}
+    .s4-bar-row{display:flex;align-items:center;gap:16px}
+    .s4-bar-label{font-family:'Space Grotesk',sans-serif;font-size:16px;font-weight:500;letter-spacing:0.15em;color:#7A8FA6;width:160px;flex-shrink:0}
+    .s4-bar-track{flex:1;height:6px;background:rgba(212,162,76,0.12);border-radius:3px;overflow:hidden}
+    .s4-bar-fill{height:100%;background:linear-gradient(90deg,#8a5f0e,#D4A24C,#F0C75E);border-radius:3px;width:0%}
+    .s4-bar-value{font-family:'Space Grotesk',sans-serif;font-size:20px;font-weight:600;color:#D4A24C;font-variant-numeric:tabular-nums;width:48px}
+    .s4-content{position:absolute;bottom:110px;left:120px;width:820px;z-index:5}
+
+    /* S5 */
+    #s5{background:#0a1220}
+    .s5-glow{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:1400px;height:700px;background:radial-gradient(ellipse,rgba(212,162,76,0.055) 0%,rgba(212,162,76,0) 70%)}
+    .s5-ghost-text{position:absolute;top:-60px;right:-100px;font-family:'Fraunces',serif;font-size:360px;font-weight:900;color:rgba(212,162,76,0.03);user-select:none;pointer-events:none}
+    .s5-pillars{position:absolute;top:120px;left:160px;right:160px;display:flex;gap:60px;align-items:flex-start}
+    .s5-pillar{flex:1;display:flex;flex-direction:column;align-items:center;text-align:center;gap:18px;padding:36px 28px;border:1px solid rgba(212,162,76,0.18);border-radius:12px;background:rgba(212,162,76,0.03);opacity:0}
+    .s5-icon-wrap{width:110px;height:110px;display:flex;align-items:center;justify-content:center}
+    .s5-icon{width:100%;height:100%}
+    .s5-pillar-title{font-family:'Fraunces',serif;font-size:38px;font-weight:400;color:#F0C75E;letter-spacing:-0.01em}
+    .s5-pillar-body{font-family:'Space Grotesk',sans-serif;font-size:22px;font-weight:300;color:#8A9CAE;line-height:1.6}
+    .s5-content{position:absolute;bottom:80px;left:120px;width:900px;z-index:5}
+
+    /* S6 */
+    #s6{background:#060b14}
+    .s6-storm{position:absolute;inset:0;background:radial-gradient(ellipse at 50% 0%,rgba(20,10,5,0.7) 0%,rgba(6,11,20,0) 70%)}
+    .s6-glow-red{position:absolute;top:-100px;left:50%;transform:translateX(-50%);width:900px;height:500px;background:radial-gradient(ellipse,rgba(180,30,30,0.08) 0%,rgba(180,30,30,0) 70%)}
+    .s6-ghost-text{position:absolute;top:-50px;left:-80px;font-family:'Fraunces',serif;font-size:420px;font-weight:900;color:rgba(180,30,30,0.04);user-select:none;pointer-events:none}
+    .s6-storm-overlay{position:absolute;inset:0;background:linear-gradient(180deg,rgba(10,5,2,0.5) 0%,rgba(10,5,2,0) 60%);opacity:0}
+    .s6-lightning{position:absolute;top:0;left:0;width:1920px;height:1080px;background:rgba(220,230,255,0.04);opacity:0;mix-blend-mode:screen}
+    .s6-lightning2{background:rgba(220,230,255,0.06)}
+    .s6-cards{position:absolute;top:200px;right:100px;display:flex;flex-direction:column;gap:24px;z-index:5}
+    .s6-card{display:flex;align-items:center;gap:18px;padding:16px 28px;border:1px solid rgba(180,30,30,0.3);border-radius:8px;background:rgba(180,30,30,0.07);font-family:'Space Grotesk',sans-serif;font-size:22px;font-weight:400;color:#C8A0A0;opacity:0}
+    .s6-card-icon{font-size:28px}
+    .s6-content{position:absolute;bottom:100px;left:100px;width:860px;z-index:5}
+
+    /* S7 */
+    #s7{background:#080e1a}
+    .s7-glow{position:absolute;top:50%;left:30%;transform:translate(-50%,-50%);width:800px;height:800px;background:radial-gradient(circle,rgba(212,162,76,0.04) 0%,rgba(212,162,76,0) 70%)}
+    .s7-ghost-text{position:absolute;top:-40px;right:-80px;font-family:'Fraunces',serif;font-size:380px;font-weight:900;color:rgba(60,70,90,0.06);user-select:none;pointer-events:none}
+    .s7-globe-wrap{position:absolute;top:60px;left:120px;width:540px;height:540px}
+    .s7-drain-overlay{position:absolute;top:0;left:0;width:540px;height:0%;background:linear-gradient(180deg,rgba(8,14,26,0.92) 0%,rgba(8,14,26,0.4) 100%);pointer-events:none;z-index:5}
+    .s7-timeline{position:absolute;top:120px;right:120px;width:520px;display:flex;flex-direction:column;gap:30px;z-index:5}
+    .s7-tl-item{display:flex;align-items:center;gap:20px;padding-left:20px;border-left:2px solid rgba(212,162,76,0.2);opacity:0}
+    .s7-tl-year{font-family:'Space Grotesk',sans-serif;font-size:26px;font-weight:600;color:#D4A24C;font-variant-numeric:tabular-nums;width:70px;flex-shrink:0}
+    .s7-tl-event{font-family:'Space Grotesk',sans-serif;font-size:22px;font-weight:300;color:#7A8FA6}
+    .s7-content{position:absolute;bottom:100px;left:100px;width:840px;z-index:5}
+
+    /* S8 */
+    #s8{background:#030810}
+    .s8-space-bg{position:absolute;inset:0;background:radial-gradient(ellipse at 50% 50%,#0a1530 0%,#030810 70%)}
+    .s8-stars{position:absolute;top:0;left:0;width:1920px;height:1080px}
+    .s8-globe-wrap{position:absolute;top:50%;left:50%;transform:translate(-50%,-58%);width:520px;height:520px}
+    .s8-spain-glow{position:absolute;top:38%;left:56%;width:80px;height:60px;background:radial-gradient(ellipse,rgba(240,199,94,0.5) 0%,rgba(240,199,94,0) 70%);border-radius:50%;pointer-events:none}
+    .s8-content{position:absolute;bottom:140px;left:50%;transform:translateX(-50%);text-align:center;width:900px;z-index:5}
+    #s8 .scene-label{text-align:center}
+    #s8 .scene-title{font-size:86px;text-align:center}
+    #s8 .scene-body{font-size:36px;text-align:center;color:#D4A24C}
+    .s8-fade{position:absolute;inset:0;background:#000;opacity:0;z-index:20}
+
+    /* End Card */
+    #s-end{background:#05090f}
+    .send-bg-glow{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:1400px;height:800px;background:radial-gradient(ellipse,rgba(212,162,76,0.08) 0%,rgba(212,162,76,0) 65%)}
+    .send-accent-line{position:absolute;left:50%;transform:translateX(-50%);width:0px;height:1px;background:rgba(212,162,76,0.4)}
+    #send-line-top{top:220px}.send-line-bottom{top:auto;bottom:220px}
+    .send-crown-svg{position:absolute;top:260px;left:50%;transform:translateX(-50%);width:160px;height:96px}
+    .send-content{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center}
+    .send-title-wrap{display:flex;flex-direction:column;align-items:center;gap:20px}
+    .send-eyebrow{font-family:'Space Grotesk',sans-serif;font-size:20px;font-weight:500;letter-spacing:0.35em;color:#D4A24C;text-transform:uppercase}
+    .send-main-title{font-family:'Fraunces',serif;font-size:136px;font-weight:400;color:#E8E0D4;line-height:1.0;letter-spacing:-0.02em;text-align:center}
+    .send-divider{width:0px;height:1px;background:rgba(212,162,76,0.5)}
+    .send-sub{font-family:'Space Grotesk',sans-serif;font-size:26px;font-weight:300;letter-spacing:0.25em;color:#7A8FA6}
+
+    /* D3 map styling */
+    .land{fill:#2A4A6B;stroke:#3A6080;stroke-width:0.6}
+    .border{fill:none;stroke:#3A6080;stroke-width:0.4}
+    .empire-territory{fill:#D4A24C;stroke:#F0C75E;stroke-width:0.8;opacity:0}
+    .graticule{fill:none;stroke:#1E3A55;stroke-width:0.35;opacity:0.5}
+    .ocean{fill:#0B1729}
+    .globe-ocean{fill:#0a1530}
+    .empire-territory-faded{fill:#4A6080;stroke:#5A7090;stroke-width:0.5;opacity:0.35}
+    /* Spain always-visible highlight */
+    .spain-highlight{fill:#C98B2E;stroke:#F0C75E;stroke-width:1.5;opacity:0}
+
+    /* Scene 2 inset map */
+    .s2-inset-wrap{position:absolute;top:100px;left:100px;width:520px;height:420px;border:1px solid rgba(212,162,76,0.2);border-radius:10px;overflow:hidden;opacity:0;background:rgba(11,23,41,0.7)}
+    .s2-inset-label{position:absolute;bottom:12px;left:16px;font-family:'Space Grotesk',sans-serif;font-size:13px;font-weight:500;letter-spacing:0.2em;color:rgba(212,162,76,0.6);text-transform:uppercase}
+  </style>
+
+  <!-- ══════════ SCRIPTS ══════════ -->
+  <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/topojson-client@3.1.0/dist/topojson-client.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+
+  <script>
+  (function(){
+    /* ─── Seeded PRNG ─── */
+    function mulberry32(s){return function(){s|=0;s=s+0x6D2B79F5|0;var t=Math.imul(s^s>>>15,1|s);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+    var rand=mulberry32(42);
+
+    /* ─── Spanish Empire territory ISO numeric codes ─── */
+    var EMPIRE_CODES=[
+      "724",  /* Spain */
+      "484",  /* Mexico */
+      "604",  /* Peru */
+      "170",  /* Colombia */
+      "862",  /* Venezuela */
+      "218",  /* Ecuador */
+      "068",  /* Bolivia */
+      "152",  /* Chile */
+      "032",  /* Argentina */
+      "600",  /* Paraguay */
+      "858",  /* Uruguay */
+      "192",  /* Cuba */
+      "214",  /* Dominican Republic */
+      "630",  /* Puerto Rico */
+      "608",  /* Philippines */
+      "320",  /* Guatemala */
+      "340",  /* Honduras */
+      "222",  /* El Salvador */
+      "558",  /* Nicaragua */
+      "188",  /* Costa Rica */
+      "591",  /* Panama */
+      "380",  /* Italy (Naples) */
+      "528",  /* Netherlands */
+      "056"   /* Belgium */
+    ];
+    function isEmpire(feat){
+      var id=feat.id||feat.properties&&feat.properties.iso_n3||"";
+      return EMPIRE_CODES.indexOf(String(id))!==-1;
+    }
+
+    /* ─── Load world data synchronously ─── */
+    var worldData=null;
+    try{
+      var xhr=new XMLHttpRequest();
+      xhr.open("GET","./vendor/countries-110m.json",false);
+      xhr.send();
+      if(xhr.status===200) worldData=JSON.parse(xhr.responseText);
+    }catch(e){/* fallback below */}
+
+    /* ─── Build D3 maps if data loaded ─── */
+    function buildFlatMap(svgId,w,h,opts){
+      if(!worldData) return;
+      opts=opts||{};
+      var svg=d3.select("#"+svgId);
+      var proj=d3.geoNaturalEarth1().fitSize([w,h],{type:"Sphere"});
+      var path=d3.geoPath(proj);
+      var countries=topojson.feature(worldData,worldData.objects.countries);
+      var borders=topojson.mesh(worldData,worldData.objects.countries,function(a,b){return a!==b});
+
+      /* Graticule */
+      svg.append("path").datum(d3.geoGraticule()()).attr("d",path).attr("class","graticule");
+
+      /* Land — render empire territories vs land vs spain-highlight */
+      svg.selectAll(".country").data(countries.features).enter().append("path")
+        .attr("d",path)
+        .attr("class",function(d){
+          var id=String(d.id);
+          /* Spain always gets special class when highlightSpain is on */
+          if(opts.highlightSpain && id==="724") return "spain-highlight";
+          /* In highlightSpain mode, other empire territories render as normal land */
+          if(opts.highlightSpain && isEmpire(d)) return "land";
+          return isEmpire(d)?"empire-territory":"land";
+        })
+        .attr("id",function(d){return svgId+"-c"+d.id});
+
+      /* Borders */
+      svg.append("path").datum(borders).attr("d",path).attr("class","border");
+
+      /* Add glowing highlight elements behind Spain when requested */
+      if(opts.highlightSpain){
+        var spainFeat=countries.features.filter(function(f){return String(f.id)==="724"})[0];
+        if(spainFeat){
+          var centroid=path.centroid(spainFeat);
+          if(centroid && !isNaN(centroid[0])){
+            /* Outer glow ring */
+            svg.append("circle").attr("cx",centroid[0]).attr("cy",centroid[1]).attr("r",55)
+              .attr("fill","rgba(240,199,94,0.12)").attr("id",svgId+"-spain-glow-outer").attr("opacity",0);
+            /* Inner glow */
+            svg.append("circle").attr("cx",centroid[0]).attr("cy",centroid[1]).attr("r",30)
+              .attr("fill","rgba(240,199,94,0.25)").attr("id",svgId+"-spain-glow-inner").attr("opacity",0);
+            /* Pulse ring */
+            svg.append("circle").attr("cx",centroid[0]).attr("cy",centroid[1]).attr("r",22)
+              .attr("fill","none").attr("stroke","#F0C75E").attr("stroke-width",2)
+              .attr("id",svgId+"-spain-pulse").attr("opacity",0);
+            /* Label */
+            svg.append("text").attr("x",centroid[0]).attr("y",centroid[1]-40)
+              .attr("text-anchor","middle").attr("fill","#F0C75E")
+              .attr("font-family","Space Grotesk").attr("font-size",18).attr("font-weight",700)
+              .attr("letter-spacing","0.25em").attr("id",svgId+"-spain-label").attr("opacity",0)
+              .text("SPAIN");
+          }
+        }
+      }
+
+      if(opts.showRoutes){
+        /* Route arcs from Spain */
+        var spainCoords=[-3.7,40.4];
+        var routes=[[-75,20],[-58,-15],[-99,19],[121,14]];
+        routes.forEach(function(dest,i){
+          var arcGen=d3.geoPath(proj);
+          var line={type:"LineString",coordinates:[spainCoords,dest]};
+          svg.append("path").datum(line).attr("d",arcGen)
+            .attr("fill","none").attr("stroke","#F0C75E").attr("stroke-width",1.5)
+            .attr("stroke-dasharray","6 4").attr("opacity",0)
+            .attr("class","empire-route").attr("id",svgId+"-route"+i);
+        });
+      }
+    }
+
+    function buildGlobe(svgId,w,h,opts){
+      if(!worldData) return;
+      opts=opts||{};
+      var svg=d3.select("#"+svgId);
+      var rotation=opts.rotation||[-20,0];
+      var proj=d3.geoOrthographic().fitSize([w,h],{type:"Sphere"}).rotate(rotation);
+      var path=d3.geoPath(proj);
+      var countries=topojson.feature(worldData,worldData.objects.countries);
+
+      /* Globe ocean */
+      svg.append("circle").attr("cx",w/2).attr("cy",h/2).attr("r",proj.scale())
+        .attr("class",opts.spaceView?"globe-ocean":"ocean");
+
+      /* Graticule */
+      svg.append("path").datum(d3.geoGraticule()()).attr("d",path).attr("class","graticule");
+
+      /* Countries */
+      svg.selectAll(".country").data(countries.features).enter().append("path")
+        .attr("d",path)
+        .attr("class",function(d){
+          if(opts.faded) return isEmpire(d)?"empire-territory-faded":"land";
+          return isEmpire(d)?"empire-territory":"land"
+        })
+        .attr("id",function(d){return svgId+"-c"+d.id});
+
+      /* Atmosphere ring */
+      if(opts.spaceView){
+        svg.append("circle").attr("cx",w/2).attr("cy",h/2).attr("r",proj.scale()+8)
+          .attr("fill","none").attr("stroke","#1a6ba0").attr("stroke-width",6).attr("opacity",0.15);
+        svg.append("circle").attr("cx",w/2).attr("cy",h/2).attr("r",proj.scale()+4)
+          .attr("fill","none").attr("stroke","#1a6ba0").attr("stroke-width",3).attr("opacity",0.1);
+      }
+
+      /* Spain highlight glow */
+      if(opts.highlightSpain){
+        var spainCenter=proj([-3.7,40.4]);
+        if(spainCenter){
+          svg.append("circle").attr("cx",spainCenter[0]).attr("cy",spainCenter[1]).attr("r",20)
+            .attr("fill","#F0C75E").attr("opacity",0.6).attr("id",svgId+"-spain-glow");
+          svg.append("circle").attr("cx",spainCenter[0]).attr("cy",spainCenter[1]).attr("r",35)
+            .attr("fill","none").attr("stroke","#F0C75E").attr("stroke-width",1).attr("opacity",0.2);
+        }
+      }
+    }
+
+    /* Build Scene 1 route overlay using the same projection */
+    function buildS1Route(){
+      if(!worldData) return;
+      var proj=d3.geoNaturalEarth1().fitSize([1920,1080],{type:"Sphere"});
+      var pathGen=d3.geoPath(proj);
+      var svg=d3.select("#s1-route-svg");
+
+      /* Spain coords [-3.7, 40.4] → projected pixel */
+      var spainPx=proj([-3.7,40.4]);
+      /* Caribbean / Hispaniola [-69.9, 18.7] */
+      var caribPx=proj([-69.9,18.7]);
+      /* Midpoint control points for a nice arc across Atlantic */
+      var mid1=proj([-25,38]);
+      var mid2=proj([-48,26]);
+
+      if(spainPx&&caribPx&&mid1&&mid2){
+        /* Route path: Spain → Caribbean via Atlantic arc */
+        var routeD="M"+spainPx[0]+","+spainPx[1]
+          +" C"+mid1[0]+","+(mid1[1]-20)+","+mid2[0]+","+(mid2[1]+10)+","+caribPx[0]+","+caribPx[1];
+
+        svg.append("path").attr("id","s1-route-path")
+          .attr("d",routeD).attr("fill","none")
+          .attr("stroke","#F0C75E").attr("stroke-width",3.5)
+          .attr("stroke-linecap","round").attr("opacity",0.95);
+
+        /* Start dot (Spain) */
+        svg.append("circle").attr("id","s1-dot-start")
+          .attr("cx",spainPx[0]).attr("cy",spainPx[1]).attr("r",8)
+          .attr("fill","#F0C75E").attr("opacity",0);
+        /* End dot (Caribbean) */
+        svg.append("circle").attr("id","s1-dot-end")
+          .attr("cx",caribPx[0]).attr("cy",caribPx[1]).attr("r",8)
+          .attr("fill","#F0C75E").attr("opacity",0);
+
+        /* Pulsing rings around dots */
+        svg.append("circle").attr("id","s1-ring-start")
+          .attr("cx",spainPx[0]).attr("cy",spainPx[1]).attr("r",16)
+          .attr("fill","none").attr("stroke","#F0C75E").attr("stroke-width",1).attr("opacity",0);
+        svg.append("circle").attr("id","s1-ring-end")
+          .attr("cx",caribPx[0]).attr("cy",caribPx[1]).attr("r",16)
+          .attr("fill","none").attr("stroke","#F0C75E").attr("stroke-width",1).attr("opacity",0);
+
+        /* Label: "Spain" near start */
+        svg.append("text").attr("id","s1-label-spain")
+          .attr("x",spainPx[0]+15).attr("y",spainPx[1]-18)
+          .attr("fill","#D4A24C").attr("font-family","Space Grotesk")
+          .attr("font-size",16).attr("font-weight",500)
+          .attr("letter-spacing","0.15em").attr("opacity",0).text("SPAIN");
+
+        /* Label: "New World" near end */
+        svg.append("text").attr("id","s1-label-newworld")
+          .attr("x",caribPx[0]+15).attr("y",caribPx[1]-18)
+          .attr("fill","#D4A24C").attr("font-family","Space Grotesk")
+          .attr("font-size",16).attr("font-weight",500)
+          .attr("letter-spacing","0.15em").attr("opacity",0).text("NEW WORLD");
+      }
+
+      /* Compass rose (top-right area) */
+      var compassG=svg.append("g").attr("id","s1-compass")
+        .attr("transform","translate(1720,140)").attr("opacity",0);
+      compassG.append("circle").attr("cx",0).attr("cy",0).attr("r",36)
+        .attr("fill","none").attr("stroke","#D4A24C").attr("stroke-width",1.5).attr("opacity",0.6);
+      compassG.append("circle").attr("cx",0).attr("cy",0).attr("r",24)
+        .attr("fill","none").attr("stroke","#D4A24C").attr("stroke-width",0.8).attr("opacity",0.3);
+      compassG.append("line").attr("x1",0).attr("y1",-30).attr("x2",0).attr("y2",30)
+        .attr("stroke","#D4A24C").attr("stroke-width",1.2).attr("opacity",0.7);
+      compassG.append("line").attr("x1",-30).attr("y1",0).attr("x2",30).attr("y2",0)
+        .attr("stroke","#D4A24C").attr("stroke-width",1.2).attr("opacity",0.7);
+      /* Diagonal ticks */
+      compassG.append("line").attr("x1",-18).attr("y1",-18).attr("x2",18).attr("y2",18)
+        .attr("stroke","#D4A24C").attr("stroke-width",0.6).attr("opacity",0.4);
+      compassG.append("line").attr("x1",18).attr("y1",-18).attr("x2",-18).attr("y2",18)
+        .attr("stroke","#D4A24C").attr("stroke-width",0.6).attr("opacity",0.4);
+      /* North arrow */
+      compassG.append("polygon").attr("points","0,-30 -6,-14 6,-14")
+        .attr("fill","#F0C75E").attr("opacity",0.9);
+      compassG.append("polygon").attr("points","0,30 -5,16 5,16")
+        .attr("fill","#D4A24C").attr("opacity",0.5);
+      /* Cardinal labels */
+      compassG.append("text").attr("x",0).attr("y",-42).attr("text-anchor","middle")
+        .attr("fill","#F0C75E").attr("font-size",14).attr("font-family","Space Grotesk")
+        .attr("font-weight",600).attr("opacity",0.85).text("N");
+      compassG.append("text").attr("x",0).attr("y",52).attr("text-anchor","middle")
+        .attr("fill","#D4A24C").attr("font-size",11).attr("font-family","Space Grotesk")
+        .attr("opacity",0.5).text("S");
+      compassG.append("text").attr("x",44).attr("y",5).attr("text-anchor","middle")
+        .attr("fill","#D4A24C").attr("font-size",11).attr("font-family","Space Grotesk")
+        .attr("opacity",0.5).text("E");
+      compassG.append("text").attr("x",-44).attr("y",5).attr("text-anchor","middle")
+        .attr("fill","#D4A24C").attr("font-size",11).attr("font-family","Space Grotesk")
+        .attr("opacity",0.5).text("W");
+    }
+
+    /* Build all maps */
+    buildFlatMap("s1-map-svg",1920,1080,{highlightSpain:true});
+    buildS1Route();
+    buildFlatMap("s3-map-svg",1100,660,{showRoutes:true});
+    buildFlatMap("s6-map-svg",1000,580);
+    buildGlobe("s7-globe-svg",540,540,{rotation:[-50,-10],faded:false,highlightSpain:true});
+    buildGlobe("s8-globe-svg",520,520,{rotation:[-10,0],spaceView:true,highlightSpain:true});
+    /* Scene 2 inset globe */
+    buildGlobe("s2-inset-globe",500,400,{rotation:[30,-15],highlightSpain:true});
+
+    /* ─── WebGL Shader Transition System ─── */
+    var glCanvas=document.getElementById("gl-canvas");
+    glCanvas.width=1920; glCanvas.height=1080;
+    var gl=glCanvas.getContext("webgl",{alpha:true,premultipliedAlpha:false});
+    var glReady=false;
+    var glProgram=null;
+    var uProgress=null, uMode=null, uResolution=null, uColor1=null, uColor2=null;
+
+    if(gl){
+      var vsrc="attribute vec2 a_pos;varying vec2 v_uv;void main(){v_uv=(a_pos+1.0)*0.5;gl_Position=vec4(a_pos,0,1);}";
+      var fsrc=[
+        "precision mediump float;",
+        "varying vec2 v_uv;",
+        "uniform float u_progress;",
+        "uniform float u_mode;",
+        "uniform vec2 u_resolution;",
+        "uniform vec3 u_color1;",
+        "uniform vec3 u_color2;",
+        "",
+        "float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}",
+        "float noise(vec2 p){",
+        "  vec2 i=floor(p);vec2 f=fract(p);f=f*f*(3.0-2.0*f);",
+        "  return mix(mix(hash(i),hash(i+vec2(1,0)),f.x),mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),f.x),f.y);",
+        "}",
+        "float fbm(vec2 p){float v=0.0;float a=0.5;for(int i=0;i<5;i++){v+=a*noise(p);p*=2.0;a*=0.5;}return v;}",
+        "",
+        "void main(){",
+        "  vec2 uv=v_uv;",
+        "  float p=u_progress;",
+        "  float alpha=0.0;",
+        "  vec3 col=vec3(0.0);",
+        "",
+        "  if(u_mode<0.5){",
+        "    /* Mode 0: Gold noise dissolve */",
+        "    float n=fbm(uv*6.0+vec2(1.7,3.2));",
+        "    float edge=smoothstep(p-0.15,p,n)*smoothstep(p+0.15,p,n);",
+        "    float mask=smoothstep(p-0.08,p+0.08,n);",
+        "    col=mix(u_color1,u_color2,edge*2.5);",
+        "    alpha=max(edge*1.8,(1.0-mask)*p*0.3);",
+        "    alpha=clamp(alpha,0.0,1.0);",
+        "  }else if(u_mode<1.5){",
+        "    /* Mode 1: Radial burn wipe */",
+        "    vec2 center=uv-0.5;",
+        "    float dist=length(center)*1.4;",
+        "    float ring=smoothstep(p-0.2,p,dist)*smoothstep(p+0.2,p,dist);",
+        "    float fill=smoothstep(p+0.1,p-0.05,dist);",
+        "    col=mix(u_color1,u_color2,ring*2.0);",
+        "    alpha=max(ring*1.5,fill*p*0.4);",
+        "    alpha=clamp(alpha,0.0,1.0);",
+        "  }else{",
+        "    /* Mode 2: Chromatic warp */",
+        "    vec2 center=uv-0.5;",
+        "    float warp=p*0.08;",
+        "    float d=length(center);",
+        "    vec2 uv_r=uv+center*warp;",
+        "    vec2 uv_b=uv-center*warp;",
+        "    float n1=fbm(uv_r*4.0);",
+        "    float n2=fbm(uv_b*4.0+vec2(5.0));",
+        "    float band=smoothstep(0.3,0.7,abs(sin(d*12.0-p*8.0)));",
+        "    col=vec3(u_color1.r*n1,u_color2.g*0.6,u_color1.b*n2);",
+        "    alpha=band*p*1.2;",
+        "    alpha=clamp(alpha,0.0,0.85);",
+        "  }",
+        "  gl_FragColor=vec4(col,alpha);",
+        "}"
+      ].join("\n");
+
+      function compileShader(src,type){
+        var s=gl.createShader(type);gl.shaderSource(s,src);gl.compileShader(s);
+        return s;
+      }
+      var vs=compileShader(vsrc,gl.VERTEX_SHADER);
+      var fs=compileShader(fsrc,gl.FRAGMENT_SHADER);
+      glProgram=gl.createProgram();gl.attachShader(glProgram,vs);gl.attachShader(glProgram,fs);gl.linkProgram(glProgram);
+
+      if(gl.getProgramParameter(glProgram,gl.LINK_STATUS)){
+        gl.useProgram(glProgram);
+        var buf=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,buf);
+        gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1,1,1]),gl.STATIC_DRAW);
+        var aPos=gl.getAttribLocation(glProgram,"a_pos");gl.enableVertexAttribArray(aPos);gl.vertexAttribPointer(aPos,2,gl.FLOAT,false,0,0);
+        uProgress=gl.getUniformLocation(glProgram,"u_progress");
+        uMode=gl.getUniformLocation(glProgram,"u_mode");
+        uResolution=gl.getUniformLocation(glProgram,"u_resolution");
+        uColor1=gl.getUniformLocation(glProgram,"u_color1");
+        uColor2=gl.getUniformLocation(glProgram,"u_color2");
+        gl.uniform2f(uResolution,1920,1080);
+        gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);
+        glReady=true;
+      }
+    }
+
+    function renderGL(progress,mode,c1,c2){
+      if(!glReady) return;
+      gl.viewport(0,0,1920,1080);
+      gl.clearColor(0,0,0,0);gl.clear(gl.COLOR_BUFFER_BIT);
+      gl.uniform1f(uProgress,progress);
+      gl.uniform1f(uMode,mode);
+      gl.uniform3f(uColor1,c1[0],c1[1],c1[2]);
+      gl.uniform3f(uColor2,c2[0],c2[1],c2[2]);
+      gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
+    }
+
+    /* Transition state object (GSAP animates this) */
+    var trState={progress:0,mode:0,active:false};
+    var goldColor=[0.83,0.64,0.30];
+    var darkColor=[0.04,0.09,0.16];
+    var redColor=[0.7,0.12,0.12];
+
+    function shaderTransition(tl,outSel,inSel,time,dur,mode,c1,c2){
+      dur=dur||0.7;mode=mode||0;c1=c1||goldColor;c2=c2||darkColor;
+      /* Show canvas */
+      tl.set("#gl-canvas",{opacity:1},time);
+      /* Animate underlying scenes */
+      var half=dur*0.5;
+      tl.to(outSel,{opacity:0,duration:dur*0.6,ease:"power2.in"},time);
+      tl.fromTo(inSel,{opacity:0},{opacity:1,duration:dur*0.6,ease:"power2.out"},time+dur*0.4);
+      /* Drive shader progress */
+      var proxy={p:0};
+      tl.to(proxy,{p:1,duration:dur,ease:"power2.inOut",
+        onUpdate:function(){renderGL(proxy.p,mode,c1,c2)}
+      },time);
+      /* Hide canvas */
+      tl.set("#gl-canvas",{opacity:0},time+dur+0.01);
+    }
+
+    /* ─── SVG path setup for crack animations ─── */
+    function setupPathDraw(id){var p=document.getElementById(id);if(!p)return 0;var len=p.getTotalLength();gsap.set(p,{strokeDasharray:len,strokeDashoffset:len});return len}
+
+    /* ─── Build master timeline ─── */
+    var tl=gsap.timeline({paused:true});
+    gsap.set(".scene",{opacity:0});
+
+    /* Setup crack paths */
+    setupPathDraw("s6-crack1");setupPathDraw("s6-crack2");setupPathDraw("s6-crack3");setupPathDraw("s6-crack4");
+    /* Setup route path */
+    setupPathDraw("s1-route-path");
+
+    /* ═════════════════════════════════════
+       SCENE 1 · Opening Hook · 0–5 s
+    ═════════════════════════════════════ */
+    tl.to("#s1",{opacity:1,duration:0.8,ease:"power1.out"},0.1);
+
+    /* Map land fades in gently */
+    tl.from("#s1-map-svg .land",{opacity:0,duration:1.8,ease:"power1.out"},0.15);
+
+    /* ── SPAIN HIGHLIGHT: make it clearly visible ── */
+    /* Spain country shape brightens to gold */
+    tl.to("#s1-map-svg-c724",{opacity:0.95,duration:0.8,ease:"power2.out"},0.3);
+    /* Spain glow effects */
+    tl.to("#s1-map-svg-spain-glow-outer",{opacity:1,duration:1.0,ease:"power1.out"},0.35);
+    tl.to("#s1-map-svg-spain-glow-inner",{opacity:1,duration:0.8,ease:"power2.out"},0.4);
+    /* Pulse ring expands */
+    tl.to("#s1-map-svg-spain-pulse",{opacity:0.7,scale:1.8,duration:1.2,ease:"power2.out"},0.5);
+    tl.to("#s1-map-svg-spain-pulse",{opacity:0,scale:2.5,duration:1.0,ease:"power1.in"},1.7);
+    /* Spain label fades in */
+    tl.to("#s1-map-svg-spain-label",{opacity:0.9,duration:0.6,ease:"power2.out"},0.6);
+
+    /* Spain origin dot on route overlay */
+    tl.to("#s1-dot-start",{opacity:1,duration:0.4,ease:"back.out(2)"},0.5);
+    tl.to("#s1-ring-start",{opacity:0.6,scale:1.5,duration:0.8,ease:"power2.out"},0.55);
+    tl.to("#s1-label-spain",{opacity:0.85,duration:0.5,ease:"power2.out"},0.7);
+
+    /* Route line draws from Spain to the New World */
+    tl.to("#s1-route-path",{strokeDashoffset:0,duration:2.6,ease:"power2.inOut"},0.8);
+
+    /* Caribbean dot + label appear as route arrives */
+    tl.to("#s1-dot-end",{opacity:1,duration:0.4,ease:"back.out(2)"},3.1);
+    tl.to("#s1-ring-end",{opacity:0.6,scale:1.5,duration:0.8,ease:"power2.out"},3.15);
+    tl.to("#s1-label-newworld",{opacity:0.85,duration:0.5,ease:"power2.out"},3.3);
+
+    /* Compass rose */
+    tl.to("#s1-compass",{opacity:0.85,rotation:8,duration:1.5,ease:"power3.out"},0.5);
+
+    /* Content */
+    tl.from("#s1-sub",{opacity:0,y:20,duration:0.5,ease:"power3.out"},0.6);
+    tl.from("#s1-title",{opacity:0,y:50,duration:0.8,ease:"expo.out"},1.0);
+    tl.from("#s1-subtitle",{opacity:0,x:-30,duration:0.7,ease:"power2.out"},1.7);
+
+    /* Ambient zoom */
+    tl.to("#s1",{scale:1.025,duration:5,ease:"none"},0);
+
+    /* ── TRANSITION 1→2: Gold noise dissolve ── */
+    shaderTransition(tl,"#s1","#s2",4.4,0.75,0,goldColor,darkColor);
+
+    /* ═════════════════════════════════════
+       SCENE 2 · Discovery Era · 5–12 s
+    ═════════════════════════════════════ */
+    var S2=5.15;
+
+    /* Inset globe with Spain highlighted enters */
+    tl.fromTo("#s2-inset",{opacity:0,scale:0.92},{opacity:1,scale:1,duration:0.9,ease:"power3.out"},S2+0.15);
+    /* Animate Spain on the inset globe */
+    tl.to("#s2-inset-globe-spain-glow",{opacity:0.8,duration:0.6,ease:"power2.out"},S2+0.5);
+    /* Spain territory visible on inset */
+    (function(){
+      var el=document.getElementById("s2-inset-globe-c724");
+      if(el) tl.to(el,{opacity:0.85,fill:"#D4A24C",duration:0.7,ease:"power2.out"},S2+0.4);
+    })();
+
+    /* Ship rocking */
+    var waveDur=2.2; var waveRep=Math.ceil(7/waveDur)-1;
+    tl.to("#s2-ship-svg",{y:"-=8",rotation:1.5,transformOrigin:"center bottom",duration:waveDur/2,ease:"sine.inOut",yoyo:true,repeat:waveRep*2+1},S2+0.2);
+    tl.to("#s2-waves",{y:5,duration:1.8,ease:"sine.inOut",yoyo:true,repeat:Math.ceil(7/1.8)*2},S2+0.1);
+
+    /* Flag entrance */
+    tl.fromTo("#s2-flag",{opacity:0,y:30},{opacity:1,y:0,duration:0.8,ease:"power3.out"},S2+0.4);
+
+    /* Content */
+    tl.from(".s2-content .scene-label",{opacity:0,y:18,duration:0.5,ease:"power3.out"},S2+0.2);
+    tl.from("#s2-title",{opacity:0,y:40,duration:0.7,ease:"expo.out"},S2+0.5);
+    tl.from("#s2-body",{opacity:0,x:-25,duration:0.6,ease:"power2.out"},S2+0.9);
+
+    /* Map pins */
+    tl.to("#s2-pin1",{opacity:1,duration:0.4,ease:"back.out(1.8)"},S2+1.4);
+    tl.to("#s2-pin2",{opacity:1,duration:0.4,ease:"back.out(1.8)"},S2+1.8);
+    tl.to("#s2-pin3",{opacity:1,duration:0.4,ease:"back.out(1.8)"},S2+2.2);
+
+    tl.from(".s2-ghost-text",{x:40,opacity:0,duration:2.5,ease:"power1.out"},S2);
+
+    /* ── TRANSITION 2→3: Gold noise dissolve ── */
+    shaderTransition(tl,"#s2","#s3",11.4,0.7,0,goldColor,darkColor);
+
+    /* ═════════════════════════════════════
+       SCENE 3 · Expansion · 12–20 s
+    ═════════════════════════════════════ */
+    var S3=12.1;
+
+    /* Content */
+    tl.from(".s3-content .scene-label",{opacity:0,y:18,duration:0.45,ease:"power3.out"},S3);
+    tl.from("#s3-title",{opacity:0,y:45,duration:0.75,ease:"expo.out"},S3+0.3);
+    tl.from("#s3-body",{opacity:0,x:-20,duration:0.6,ease:"power2.out"},S3+0.8);
+
+    /* Territory fills staggered */
+    EMPIRE_CODES.forEach(function(code,i){
+      var el=document.getElementById("s3-map-svg-c"+code);
+      if(el){
+        tl.to(el,{opacity:0.75,duration:0.5,ease:"power2.out"},S3+0.8+i*0.1);
+      }
+    });
+
+    /* Route arcs fade */
+    [0,1,2,3].forEach(function(i){
+      tl.to("#s3-map-svg-route"+i,{opacity:0.55,duration:0.8,ease:"power1.out"},S3+2.0+i*0.4);
+    });
+
+    /* Sidebar labels */
+    gsap.set(["#s3-label1","#s3-label2","#s3-label3","#s3-label4","#s3-label5"],{x:20});
+    tl.to("#s3-label1",{opacity:1,x:0,duration:0.5,ease:"power3.out"},S3+1.2);
+    tl.to("#s3-label2",{opacity:1,x:0,duration:0.5,ease:"power3.out"},S3+1.6);
+    tl.to("#s3-label3",{opacity:1,x:0,duration:0.5,ease:"power3.out"},S3+2.0);
+    tl.to("#s3-label4",{opacity:1,x:0,duration:0.5,ease:"power3.out"},S3+2.4);
+    tl.to("#s3-label5",{opacity:1,x:0,duration:0.5,ease:"power3.out"},S3+2.8);
+
+    /* Map ambient drift */
+    tl.from("#s3-map-svg",{x:40,duration:3.0,ease:"power1.out"},S3);
+
+    /* ── TRANSITION 3→4: Radial burn ── */
+    shaderTransition(tl,"#s3","#s4",19.4,0.7,1,goldColor,darkColor);
+
+    /* ═════════════════════════════════════
+       SCENE 4 · Power & Wealth · 20–28 s
+    ═════════════════════════════════════ */
+    var S4=20.1;
+
+    /* Content */
+    tl.from(".s4-content .scene-label",{opacity:0,y:18,duration:0.45,ease:"power3.out"},S4);
+    tl.from("#s4-title",{opacity:0,y:42,duration:0.7,ease:"expo.out"},S4+0.3);
+    tl.from("#s4-body",{opacity:0,x:-20,duration:0.6,ease:"power2.out"},S4+0.85);
+
+    /* Flag entrance */
+    tl.fromTo("#s4-flag",{opacity:0,scale:0.9},{opacity:1,scale:1,duration:0.8,ease:"back.out(1.4)"},S4+0.3);
+
+    /* Coins fall */
+    var coinIds=["s4-c1","s4-c2","s4-c3","s4-c4","s4-c5","s4-c6","s4-c7","s4-c8"];
+    coinIds.forEach(function(id,i){
+      tl.fromTo("#"+id,
+        {y:-120-(rand()*80),opacity:0,rotation:(rand()-0.5)*30},
+        {y:0,opacity:1,rotation:0,duration:0.6+rand()*0.2,ease:"bounce.out"},
+        S4+0.6+i*0.14
+      );
+    });
+
+    /* Bars */
+    tl.from("#s4-bars",{opacity:0,y:20,duration:0.6,ease:"power3.out"},S4+1.0);
+    tl.to("#s4-bar1",{width:"91%",duration:1.4,ease:"power3.out"},S4+1.4);
+    tl.to("#s4-bar2",{width:"84%",duration:1.4,ease:"power3.out"},S4+1.8);
+    tl.to("#s4-bar3",{width:"76%",duration:1.4,ease:"power3.out"},S4+2.2);
+
+    /* ── TRANSITION 4→5: Gold noise ── */
+    shaderTransition(tl,"#s4","#s5",27.4,0.7,0,goldColor,darkColor);
+
+    /* ═════════════════════════════════════
+       SCENE 5 · Culture & Impact · 28–36 s
+    ═════════════════════════════════════ */
+    var S5=28.1;
+
+    tl.from(".s5-content .scene-label",{opacity:0,y:18,duration:0.45,ease:"power3.out"},S5);
+    tl.from("#s5-title",{opacity:0,y:40,duration:0.7,ease:"expo.out"},S5+0.3);
+    tl.from("#s5-body",{opacity:0,x:-18,duration:0.55,ease:"power2.out"},S5+0.8);
+
+    gsap.set(["#s5-p1","#s5-p2","#s5-p3"],{y:40});
+    tl.to("#s5-p1",{opacity:1,y:0,duration:0.65,ease:"power3.out"},S5+0.6);
+    tl.to("#s5-p2",{opacity:1,y:0,duration:0.65,ease:"expo.out"},S5+0.95);
+    tl.to("#s5-p3",{opacity:1,y:0,duration:0.65,ease:"power3.out"},S5+1.3);
+
+    tl.to("#s5-p1",{y:-6,duration:3.5,ease:"sine.inOut",yoyo:true,repeat:1},S5+2.0);
+    tl.to("#s5-p2",{y:-4,duration:3.2,ease:"sine.inOut",yoyo:true,repeat:1},S5+2.3);
+    tl.to("#s5-p3",{y:-8,duration:3.8,ease:"sine.inOut",yoyo:true,repeat:1},S5+1.8);
+
+    /* ── TRANSITION 5→6: Chromatic warp (dramatic) ── */
+    shaderTransition(tl,"#s5","#s6",35.3,0.9,2,redColor,darkColor);
+
+    /* ═════════════════════════════════════
+       SCENE 6 · Challenges · 36–45 s
+    ═════════════════════════════════════ */
+    var S6=36.2;
+
+    tl.to("#s6-storm-overlay",{opacity:1,duration:3.5,ease:"power1.inOut"},S6);
+
+    tl.from(".s6-content .scene-label",{opacity:0,y:18,duration:0.45,ease:"power3.out"},S6+0.1);
+    tl.from("#s6-title",{opacity:0,y:42,duration:0.7,ease:"expo.out"},S6+0.45);
+    tl.from("#s6-body",{opacity:0,x:-18,duration:0.6,ease:"power2.out"},S6+0.95);
+
+    /* Show empire territories faded on s6 map */
+    EMPIRE_CODES.forEach(function(code){
+      var el=document.getElementById("s6-map-svg-c"+code);
+      if(el){tl.to(el,{opacity:0.5,fill:"#5A3A2A",duration:1.5,ease:"power1.out"},S6+0.2)}
+    });
+
+    /* Cracks */
+    tl.to("#s6-crack1",{opacity:1,strokeDashoffset:0,duration:1.1,ease:"power2.inOut"},S6+0.8);
+    tl.to("#s6-crack2",{opacity:0.8,strokeDashoffset:0,duration:0.9,ease:"power3.inOut"},S6+1.5);
+    tl.to("#s6-crack3",{opacity:0.7,strokeDashoffset:0,duration:0.7,ease:"power2.in"},S6+2.1);
+    tl.to("#s6-crack4",{opacity:0.6,strokeDashoffset:0,duration:0.8,ease:"power2.in"},S6+2.6);
+
+    /* Lightning */
+    function lightning(tl,el,t){
+      tl.to(el,{opacity:1,duration:0.05,ease:"none"},t);tl.to(el,{opacity:0,duration:0.1,ease:"none"},t+0.05);
+      tl.to(el,{opacity:0.7,duration:0.04,ease:"none"},t+0.2);tl.to(el,{opacity:0,duration:0.08,ease:"none"},t+0.24);
+    }
+    lightning(tl,"#s6-lightning1",S6+1.0);lightning(tl,"#s6-lightning2",S6+2.4);
+    lightning(tl,"#s6-lightning1",S6+4.2);lightning(tl,"#s6-lightning2",S6+6.5);
+    lightning(tl,"#s6-lightning1",S6+7.8);
+
+    /* Cards */
+    gsap.set(["#s6-card1","#s6-card2","#s6-card3"],{x:30});
+    tl.to("#s6-card1",{opacity:1,x:0,duration:0.55,ease:"power3.out"},S6+1.2);
+    tl.to("#s6-card2",{opacity:1,x:0,duration:0.55,ease:"power3.out"},S6+1.65);
+    tl.to("#s6-card3",{opacity:1,x:0,duration:0.55,ease:"power3.out"},S6+2.1);
+
+    /* ── TRANSITION 6→7: Radial burn ── */
+    shaderTransition(tl,"#s6","#s7",44.3,0.8,1,redColor,darkColor);
+
+    /* ═════════════════════════════════════
+       SCENE 7 · Decline · 45–55 s
+    ═════════════════════════════════════ */
+    var S7=45.1;
+
+    tl.from(".s7-content .scene-label",{opacity:0,y:18,duration:0.45,ease:"power3.out"},S7+0.2);
+    tl.from("#s7-title",{opacity:0,y:42,duration:0.72,ease:"expo.out"},S7+0.55);
+    tl.from("#s7-body",{opacity:0,x:-18,duration:0.6,ease:"power2.out"},S7+1.05);
+
+    /* Globe entrance */
+    tl.from("#s7-globe-wrap",{scale:0.88,opacity:0,duration:1.2,ease:"power3.out"},S7+0.15);
+
+    /* Gold territory drain on globe */
+    EMPIRE_CODES.forEach(function(code){
+      var el=document.getElementById("s7-globe-svg-c"+code);
+      if(el&&el.classList.contains("empire-territory")){
+        tl.to(el,{opacity:0.6,duration:0.8,ease:"power2.out"},S7+0.5);
+        tl.to(el,{opacity:0.08,fill:"#2A3A55",duration:5.0,ease:"power1.inOut"},S7+2.0);
+      }
+    });
+
+    /* Spain glow fades */
+    tl.to("#s7-globe-svg-spain-glow",{opacity:0.15,duration:6,ease:"power1.inOut"},S7+2.5);
+
+    /* Drain overlay */
+    tl.to("#s7-drain",{height:"100%",duration:6.5,ease:"power1.inOut"},S7+1.5);
+
+    /* Timeline items */
+    gsap.set(["#s7-tl1","#s7-tl2","#s7-tl3","#s7-tl4"],{x:20});
+    tl.to("#s7-tl1",{opacity:1,x:0,duration:0.5,ease:"power3.out"},S7+0.8);
+    tl.to("#s7-tl2",{opacity:1,x:0,duration:0.5,ease:"power3.out"},S7+1.5);
+    tl.to("#s7-tl3",{opacity:1,x:0,duration:0.5,ease:"power3.out"},S7+2.2);
+    tl.to("#s7-tl4",{opacity:1,x:0,duration:0.5,ease:"power3.out"},S7+2.9);
+
+    /* Globe zoom out */
+    tl.to("#s7-globe-wrap",{scale:0.92,duration:7.5,ease:"power1.out"},S7+1.4);
+
+    /* ── TRANSITION 7→8: Chromatic warp ── */
+    shaderTransition(tl,"#s7","#s8",54.3,0.8,2,goldColor,darkColor);
+
+    /* ═════════════════════════════════════
+       SCENE 8 · Ending · 55–60 s
+    ═════════════════════════════════════ */
+    var S8=55.1;
+
+    tl.from(".s8-content .scene-label",{opacity:0,y:18,duration:0.5,ease:"power3.out"},S8+0.2);
+    tl.from("#s8-title",{opacity:0,y:50,duration:0.85,ease:"expo.out"},S8+0.6);
+    tl.from("#s8-body",{opacity:0,y:20,duration:0.7,ease:"power2.out"},S8+1.4);
+
+    /* Globe entrance */
+    tl.from("#s8-globe-wrap",{scale:0.85,opacity:0,duration:1.2,ease:"power3.out"},S8+0.1);
+
+    /* Spain glow pulse */
+    tl.to("#s8-spain-glow",{scale:1.5,opacity:0.8,duration:0.7,ease:"sine.inOut",yoyo:true,repeat:5},S8+0.8);
+
+    tl.to(".s8-stars",{opacity:0.7,duration:1.8,ease:"power1.in"},S8);
+
+    /* Fade to black */
+    tl.to("#s8-fade",{opacity:1,duration:0.9,ease:"power2.in"},59.1);
+
+    /* ── TRANSITION 8→End: Radial burn ── */
+    tl.fromTo("#s-end",{opacity:0},{opacity:1,duration:0.8,ease:"power2.out"},59.8);
+
+    /* ═════════════════════════════════════
+       END CARD · 60–65 s
+    ═════════════════════════════════════ */
+    var SE=60.0;
+
+    tl.to("#send-line-top",{width:800,duration:1.2,ease:"power3.out"},SE+0.3);
+    tl.to("#send-line-bot",{width:800,duration:1.2,ease:"power3.out"},SE+0.5);
+
+    gsap.set("#send-crown",{y:-15});
+    tl.to("#send-crown",{opacity:1,y:0,duration:0.8,ease:"back.out(1.5)"},SE+0.5);
+
+    tl.from("#send-eyebrow",{opacity:0,y:20,duration:0.6,ease:"power3.out"},SE+0.8);
+    tl.from("#send-main-title",{opacity:0,y:55,scale:0.96,duration:1.0,ease:"expo.out"},SE+1.1);
+    tl.to("#send-divider",{width:350,duration:0.9,ease:"power3.out"},SE+1.8);
+    tl.from("#send-sub",{opacity:0,y:15,duration:0.55,ease:"power2.out"},SE+2.4);
+
+    /* Breathing */
+    tl.to("#send-main-title",{scale:1.012,duration:2.0,ease:"sine.inOut",yoyo:true,repeat:1},SE+2.2);
+
+    /* Final fade */
+    tl.to("#send-final-fade",{opacity:1,duration:1.2,ease:"power2.in"},63.8);
+
+    /* ─── Register ─── */
+    window.__timelines=window.__timelines||{};
+    window.__timelines["spanish-empire"]=tl;
+  })();
+  </script>
+
+</div>
+</body>
+</html>

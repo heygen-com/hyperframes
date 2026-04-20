@@ -211,6 +211,23 @@ describe("inlineExternalScripts", () => {
     }
   });
 
+  it("returns a fragment when the input has no html/body wrapper", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = mock(async () => new Response("var d3 = {};", { status: 200 })) as any;
+
+    try {
+      const html = '<script src="https://cdn.example.com/d3.min.js"></script><div>tail</div>';
+      const result = await inlineExternalScripts(html);
+
+      expect(result).not.toMatch(/<!DOCTYPE|<html|<head|<body/i);
+      expect(result).toContain("var d3 = {};");
+      expect(result).toContain("<div>tail</div>");
+      expect(result).not.toContain('src="https://cdn.example.com/d3.min.js"');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it("warns but keeps original tag when fetch fails", async () => {
     const originalFetch = globalThis.fetch;
     globalThis.fetch = mock(async () => {
@@ -265,10 +282,11 @@ describe("inlineExternalScripts", () => {
         <script src="https://cdn.example.com/gsap.min.js"></script>
       </body></html>`;
       const result = await inlineExternalScripts(html);
-      // Both should be found, both fetched
+      // Both identical script tags should be fetched and replaced independently.
       expect(fetchCount).toBe(2);
-      // At least one should be inlined (regex replaces first occurrence)
-      expect(result).toContain("var gsap = {};");
+      expect(
+        result.match(/\/\* inlined: https:\/\/cdn\.example\.com\/gsap\.min\.js \*\//g)?.length,
+      ).toBe(2);
     } finally {
       globalThis.fetch = originalFetch;
     }
