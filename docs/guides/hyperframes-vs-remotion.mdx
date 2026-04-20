@@ -117,7 +117,7 @@ Hyperframes' renderer runs on a single machine today. The architecture doesn't b
 
 ### Visual editing over the render source (Hyperframes' natural bet)
 
-The DOM you render is the DOM you edit. [Hyperframes Studio](/packages/studio) previews compositions in a live iframe and lets you pick and edit elements directly: click an element, drag to reposition, edit properties in a panel. The editor and the renderer share one source of truth.
+The DOM you render is the DOM you edit. [Hyperframes Studio](/packages/studio) previews compositions in a live iframe, and because the renderer and the editor share one DOM, direct manipulation works against the same source of truth the render pipeline consumes. That UX — click to select, drag to reposition, edit properties in a panel — already ships for captions today, with broader element coverage building out from the same architectural foundation.
 
 Building the same editor on top of React is harder because the source of truth is code plus a build step. Round-tripping a visual edit back to JSX means re-compiling. That's why tools like [Paper.Design](https://paper.design) chose HTML as the editable source in the first place.
 
