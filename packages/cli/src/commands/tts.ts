@@ -9,18 +9,25 @@ export const examples: Example[] = [
   ["Adjust speech speed", 'hyperframes tts "Slow and clear" --speed 0.8'],
   ["Read text from a file", "hyperframes tts script.txt"],
   ["List available voices", "hyperframes tts --list"],
+  [
+    "Use MiniMax cloud TTS (requires MINIMAX_API_KEY)",
+    'hyperframes tts "Hello world" --provider minimax',
+  ],
+  [
+    "MiniMax with a specific voice",
+    'hyperframes tts "Hello world" --provider minimax --voice English_Persuasive_Man',
+  ],
 ];
 import { resolve, extname } from "node:path";
 import * as clack from "@clack/prompts";
 import { c } from "../ui/colors.js";
 import { DEFAULT_VOICE, BUNDLED_VOICES } from "../tts/manager.js";
-
-const voiceList = BUNDLED_VOICES.map((v) => `${v.id} (${v.label})`).join(", ");
+import { MINIMAX_VOICES, MINIMAX_DEFAULT_VOICE } from "../tts/minimax.js";
 
 export default defineCommand({
   meta: {
     name: "tts",
-    description: "Generate speech audio from text using a local AI model (Kokoro-82M)",
+    description: "Generate speech audio from text (local Kokoro model or MiniMax cloud API)",
   },
   args: {
     input: {
@@ -30,12 +37,19 @@ export default defineCommand({
     },
     output: {
       type: "string",
-      description: "Output file path (default: speech.wav in current directory)",
+      description: "Output file path (default: speech.wav for kokoro, speech.mp3 for minimax)",
       alias: "o",
+    },
+    provider: {
+      type: "string",
+      description:
+        'TTS provider: "kokoro" (local, default) or "minimax" (cloud, requires MINIMAX_API_KEY)',
+      alias: "p",
+      default: "kokoro",
     },
     voice: {
       type: "string",
-      description: `Voice ID (default: ${DEFAULT_VOICE}). Options: ${voiceList}`,
+      description: `Voice ID. Kokoro default: ${DEFAULT_VOICE}; MiniMax default: ${MINIMAX_DEFAULT_VOICE}`,
       alias: "v",
     },
     speed: {
@@ -45,7 +59,7 @@ export default defineCommand({
     },
     list: {
       type: "boolean",
-      description: "List available voices and exit",
+      description: "List available voices for the selected provider and exit",
       default: false,
     },
     json: {
@@ -55,9 +69,18 @@ export default defineCommand({
     },
   },
   async run({ args }) {
+    const provider = args.provider ?? "kokoro";
+
+    if (provider !== "kokoro" && provider !== "minimax") {
+      console.error(
+        c.error(`Unknown provider "${provider}". Choose "kokoro" (default) or "minimax".`),
+      );
+      process.exit(1);
+    }
+
     // ── List voices mode ──────────────────────────────────────────────
     if (args.list) {
-      return listVoices(args.json);
+      return listVoices(args.json, provider);
     }
 
     // ── Resolve input text ────────────────────────────────────────────
@@ -85,8 +108,8 @@ export default defineCommand({
     }
 
     // ── Resolve output path ───────────────────────────────────────────
-    const output = resolve(args.output ?? "speech.wav");
-    const voice = args.voice ?? DEFAULT_VOICE;
+    const defaultOutput = provider === "minimax" ? "speech.mp3" : "speech.wav";
+    const output = resolve(args.output ?? defaultOutput);
     const speed = args.speed ? parseFloat(args.speed) : 1.0;
 
     if (isNaN(speed) || speed <= 0 || speed > 3) {
@@ -95,42 +118,83 @@ export default defineCommand({
     }
 
     // ── Synthesize ────────────────────────────────────────────────────
-    const { synthesize } = await import("../tts/synthesize.js");
     const spin = args.json ? null : clack.spinner();
-    spin?.start(`Generating speech with ${c.accent(voice)}...`);
 
-    try {
-      const result = await synthesize(text, output, {
-        voice,
-        speed,
-        onProgress: spin ? (msg) => spin.message(msg) : undefined,
-      });
-
-      if (args.json) {
-        console.log(
-          JSON.stringify({
-            ok: true,
-            voice,
-            speed,
-            durationSeconds: result.durationSeconds,
-            outputPath: result.outputPath,
-          }),
-        );
-      } else {
-        spin?.stop(
-          c.success(
-            `Generated ${c.accent(result.durationSeconds.toFixed(1) + "s")} of speech → ${c.accent(result.outputPath)}`,
-          ),
-        );
+    if (provider === "minimax") {
+      const voice = args.voice ?? MINIMAX_DEFAULT_VOICE;
+      spin?.start(`Generating speech with MiniMax voice ${c.accent(voice)}...`);
+      try {
+        const { synthesizeWithMiniMax } = await import("../tts/minimax.js");
+        const result = await synthesizeWithMiniMax(text, output, {
+          voice,
+          speed,
+          onProgress: spin ? (msg) => spin.message(msg) : undefined,
+        });
+        if (args.json) {
+          console.log(
+            JSON.stringify({
+              ok: true,
+              provider: "minimax",
+              voice,
+              speed,
+              durationSeconds: result.durationSeconds,
+              outputPath: result.outputPath,
+            }),
+          );
+        } else {
+          spin?.stop(
+            c.success(
+              `Generated ${c.accent(result.durationSeconds.toFixed(1) + "s")} of speech → ${c.accent(result.outputPath)}`,
+            ),
+          );
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        if (args.json) {
+          console.log(JSON.stringify({ ok: false, error: message }));
+        } else {
+          spin?.stop(c.error(`Speech synthesis failed: ${message}`));
+        }
+        process.exit(1);
       }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      if (args.json) {
-        console.log(JSON.stringify({ ok: false, error: message }));
-      } else {
-        spin?.stop(c.error(`Speech synthesis failed: ${message}`));
+    } else {
+      // kokoro (default)
+      const voice = args.voice ?? DEFAULT_VOICE;
+      spin?.start(`Generating speech with ${c.accent(voice)}...`);
+      try {
+        const { synthesize } = await import("../tts/synthesize.js");
+        const result = await synthesize(text, output, {
+          voice,
+          speed,
+          onProgress: spin ? (msg) => spin.message(msg) : undefined,
+        });
+        if (args.json) {
+          console.log(
+            JSON.stringify({
+              ok: true,
+              provider: "kokoro",
+              voice,
+              speed,
+              durationSeconds: result.durationSeconds,
+              outputPath: result.outputPath,
+            }),
+          );
+        } else {
+          spin?.stop(
+            c.success(
+              `Generated ${c.accent(result.durationSeconds.toFixed(1) + "s")} of speech → ${c.accent(result.outputPath)}`,
+            ),
+          );
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        if (args.json) {
+          console.log(JSON.stringify({ ok: false, error: message }));
+        } else {
+          spin?.stop(c.error(`Speech synthesis failed: ${message}`));
+        }
+        process.exit(1);
       }
-      process.exit(1);
     }
   },
 });
@@ -139,7 +203,30 @@ export default defineCommand({
 // List voices
 // ---------------------------------------------------------------------------
 
-function listVoices(json: boolean): void {
+function listVoices(json: boolean, provider: string): void {
+  if (provider === "minimax") {
+    if (json) {
+      console.log(JSON.stringify(MINIMAX_VOICES));
+      return;
+    }
+    console.log(`\n${c.bold("Available voices")} (MiniMax TTS)\n`);
+    console.log(
+      `  ${c.dim("ID")}                           ${c.dim("Name")}                ${c.dim("Language")}   ${c.dim("Gender")}`,
+    );
+    console.log(`  ${c.dim("─".repeat(70))}`);
+    for (const v of MINIMAX_VOICES) {
+      const id = v.id.padEnd(30);
+      const label = v.label.padEnd(20);
+      const lang = v.language.padEnd(10);
+      console.log(`  ${c.accent(id)} ${label} ${lang} ${v.gender}`);
+    }
+    console.log(
+      `\n  ${c.dim("Requires MINIMAX_API_KEY. See https://platform.minimax.io/docs/api-reference/speech-t2a-http")}\n`,
+    );
+    return;
+  }
+
+  // kokoro
   if (json) {
     console.log(JSON.stringify(BUNDLED_VOICES));
     return;
