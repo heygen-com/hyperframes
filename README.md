@@ -85,16 +85,23 @@ npx hyperframes render       # render to MP4
 
 Hyperframes is inspired by [Remotion](https://www.remotion.dev) — we used Remotion at HeyGen in production, learned a ton from it, and kept attribution comments in the source for the patterns it pioneered (Chrome launch flags, image2pipe → FFmpeg streaming, frame buffering). Both tools drive headless Chrome and both are deterministic. They differ on one decision: **what the primary author writes.** Remotion's bet is React components; Hyperframes' bet is HTML.
 
-|                                                       | **Hyperframes**                | **Remotion**                          |
-| ----------------------------------------------------- | ------------------------------ | ------------------------------------- |
-| Authoring                                             | HTML + CSS + GSAP              | React components (TSX)                |
-| Build step                                            | None; `index.html` plays as-is | Required (bundler)                    |
-| Library-clock animations (GSAP, Anime.js, Motion One) | Seekable, frame-accurate       | Plays at wall-clock during render     |
-| Arbitrary HTML / CSS passthrough                      | Paste and animate              | Rewrite as JSX                        |
-| Distributed rendering                                 | Single-machine today           | Lambda, production-ready              |
-| License                                               | Apache 2.0                     | Commercial above small-team threshold |
+|                                                       | **Hyperframes**                | **Remotion**                      |
+| ----------------------------------------------------- | ------------------------------ | --------------------------------- |
+| Authoring                                             | HTML + CSS + GSAP              | React components (TSX)            |
+| Build step                                            | None; `index.html` plays as-is | Required (bundler)                |
+| Library-clock animations (GSAP, Anime.js, Motion One) | Seekable, frame-accurate       | Plays at wall-clock during render |
+| Arbitrary HTML / CSS passthrough                      | Paste and animate              | Rewrite as JSX                    |
+| Distributed rendering                                 | Single-machine today           | Lambda, production-ready          |
 
-Choose Hyperframes when you want HTML-first compositions and agent-driven authoring. Choose Remotion when you're committed to React and want the broadest tooling around that model.
+### Licensing: fully open source vs source-available
+
+**Hyperframes is completely open source under [Apache 2.0](LICENSE)** — an OSI-approved license. Use it commercially at any scale, with no per-render fees, no seat caps, no company-size thresholds.
+
+**Remotion is [source-available, not open source](https://www.remotion.pro/license).** The code is on GitHub under a custom Remotion License that requires a paid company license above small-team thresholds. It's a great product with a real team behind it — but if open-source licensing matters to you (OSI compliance, redistribution rights, no per-use fees), that's a first-order decision point.
+
+### Which should you pick?
+
+Choose Hyperframes when you want HTML-first compositions, agent-driven authoring, or a fully open-source stack. Choose Remotion when you're committed to React and want the broadest tooling around that model.
 
 Full write-up with benchmarks, an honest list of where each tool wins, and a GSAP side-by-side: **[Hyperframes vs Remotion guide](https://hyperframes.heygen.com/guides/hyperframes-vs-remotion)**.
 

@@ -125,15 +125,23 @@ Building the same editor on top of React is harder because the source of truth i
 
 Both tools currently render through headless Chrome, which outputs sRGB. Remotion [documents this as unsupported](https://www.remotion.dev/docs/hdr). Hyperframes [supports HDR output](/guides/hdr) via a two-pass compositing pipeline that combines a DOM layer with native HLG/PQ video.
 
-## Open source vs licensing
+## Open source vs source-available
+
+This is one of the clearest differences between the two projects, and one of the most common reasons teams pick one over the other.
 
 | | **Hyperframes** | **Remotion** |
 | --- | --- | --- |
-| License | [Apache 2.0](https://github.com/heygen-com/hyperframes/blob/main/LICENSE) | [Commercial company license](https://www.remotion.pro/license) above small-team thresholds |
-| Source available | Yes, full source on GitHub | Yes, source-available on GitHub |
-| Self-host | Free, any scale | Requires commercial license above thresholds |
+| Classification | Open source ([OSI-approved](https://opensource.org/licenses/Apache-2.0)) | Source-available, not open source |
+| License | [Apache 2.0](https://github.com/heygen-com/hyperframes/blob/main/LICENSE) | [Custom Remotion License](https://www.remotion.pro/license) |
+| Commercial use | Free at any scale | Requires a paid company license above small-team thresholds |
+| Per-render fees | None | Yes, above thresholds |
+| Redistribution | Permitted under Apache 2.0 | Restricted by the Remotion License |
 
-We open-sourced Hyperframes under Apache 2.0 so anyone can build on it — including commercially, at any scale, without per-render fees or seat caps. See the [Remotion license page](https://www.remotion.pro/license) for their current thresholds and pricing.
+Both projects publish their source on GitHub, but the licenses work very differently. Apache 2.0 is an [Open Source Initiative-approved license](https://opensource.org/licenses/Apache-2.0) — you can self-host, modify, redistribute, and use Hyperframes commercially at any scale with no per-render fees and no seat caps. The Remotion License is a custom commercial license: you can read the code and self-host for small teams, but commercial use above their thresholds requires a paid company license.
+
+If open-source licensing matters to you — OSI compliance, redistribution rights, no per-use fees, long-term independence from a vendor's pricing decisions — this is a first-order decision point. If your use case fits within Remotion's free tier or your company is comfortable with a commercial license, it's a non-issue. See the [Remotion license page](https://www.remotion.pro/license) for their current terms.
+
+We open-sourced Hyperframes under Apache 2.0 so anyone can build on it — including commercially, at any scale — and so the project can outlive any single company's priorities.
 
 ## Recap
 
