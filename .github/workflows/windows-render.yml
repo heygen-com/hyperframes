@@ -1,0 +1,197 @@
+name: Windows render verification
+
+# Manually triggered smoke test that renders a HyperFrames composition on a
+# real Windows runner. Proves the PR #336 `where ffmpeg` fix actually works
+# end-to-end: FFmpeg is discovered natively on Windows, Chrome is installed
+# and launched, frames are captured, and an MP4 is produced — without Docker
+# or WSL.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Git ref to render (branch / tag / SHA)."
+        required: false
+        default: "main"
+
+concurrency:
+  group: windows-render-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            code:
+              - "packages/**"
+              - "scripts/**"
+              - "package.json"
+              - "bun.lock"
+              - ".github/workflows/windows-render.yml"
+
+  render-windows:
+    name: Render on windows-latest
+    needs: changes
+    if: needs.changes.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.ref }}
+
+      - name: Show platform info
+        shell: pwsh
+        run: |
+          Write-Host "OS: $([System.Environment]::OSVersion.VersionString)"
+          Write-Host "PowerShell: $($PSVersionTable.PSVersion)"
+          Write-Host "Runner: windows-latest"
+
+      # -----------------------------------------------------------------
+      # Install FFmpeg via Chocolatey (mirrors the recommended path for
+      # real Windows users — no Docker, no WSL).
+      # -----------------------------------------------------------------
+      - name: Install FFmpeg (Chocolatey)
+        shell: pwsh
+        run: |
+          choco install ffmpeg -y --no-progress
+          refreshenv
+          Write-Host "--- ffmpeg sanity check ---"
+          where.exe ffmpeg
+          ffmpeg -version | Select-Object -First 1
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        shell: pwsh
+        run: bun install --frozen-lockfile
+
+      - name: Build all packages
+        shell: pwsh
+        run: bun run build
+
+      # -----------------------------------------------------------------
+      # Prove the PR #336 fix: hyperframes doctor exercises findFFmpeg()
+      # and whichBinary() — both must pass on Windows without workarounds.
+      # -----------------------------------------------------------------
+      - name: hyperframes doctor (verifies `where ffmpeg` fix)
+        shell: pwsh
+        run: node packages/cli/dist/cli.js doctor
+
+      - name: Scaffold canary composition
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path "$env:RUNNER_TEMP\windows-canary" | Out-Null
+          cd "$env:RUNNER_TEMP\windows-canary"
+          node "$env:GITHUB_WORKSPACE\packages\cli\dist\cli.js" init canary --example blank --non-interactive --skip-skills
+
+          $fixtures = "$env:GITHUB_WORKSPACE\.github\workflows\fixtures"
+          Copy-Item "$fixtures\windows-canary.html" "canary\index.html" -Force
+          Copy-Item "$fixtures\gsap.min.js"          "canary\gsap.min.js"  -Force
+
+      - name: Render canary composition
+        shell: pwsh
+        run: |
+          cd "$env:RUNNER_TEMP\windows-canary\canary"
+          node "$env:GITHUB_WORKSPACE\packages\cli\dist\cli.js" render `
+            --fps 30 `
+            --quality draft `
+            --workers 2 `
+            --output renders\canary.mp4
+
+      - name: Verify rendered MP4
+        shell: pwsh
+        run: |
+          $mp4 = "$env:RUNNER_TEMP\windows-canary\canary\renders\canary.mp4"
+          if (-not (Test-Path $mp4)) { throw "canary.mp4 not produced" }
+
+          $probe = ffprobe -v error -select_streams v:0 `
+            -show_entries stream=width,height,r_frame_rate -show_entries format=duration `
+            -of default=noprint_wrappers=1 $mp4
+          Write-Host $probe
+
+          # Parse probe output
+          $width    = ($probe | Select-String '^width=(.+)$').Matches.Groups[1].Value
+          $height   = ($probe | Select-String '^height=(.+)$').Matches.Groups[1].Value
+          $fps      = ($probe | Select-String '^r_frame_rate=(.+)$').Matches.Groups[1].Value
+          $duration = [double]($probe | Select-String '^duration=(.+)$').Matches.Groups[1].Value
+
+          if ([int]$width  -ne 1920) { throw "expected 1920 width, got $width" }
+          if ([int]$height -ne 1080) { throw "expected 1080 height, got $height" }
+          if ($fps -ne "30/1")       { throw "expected 30fps, got $fps" }
+          if ($duration -lt 7.5 -or $duration -gt 8.5) { throw "expected ~8s duration, got $duration" }
+
+          Write-Host "canary.mp4 ok: ${width}x${height} @ $fps, ${duration}s"
+
+      - name: Upload rendered MP4 artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-render-${{ github.run_id }}
+          path: ${{ runner.temp }}/windows-canary/canary/renders/canary.mp4
+          if-no-files-found: error
+          retention-days: 7
+
+  # -------------------------------------------------------------------
+  # Unit-test suites on Windows. Mirrors the Linux `test` job in ci.yml
+  # so we catch Windows-specific regressions (path separators, shell
+  # invocations, CRLF, file URLs, etc.) in existing vitest suites.
+  # The producer package is skipped because its tests require Docker /
+  # Linux-only tooling (Dockerfile.test, LFS golden MP4 baselines).
+  # -------------------------------------------------------------------
+  test-windows:
+    name: Tests on windows-latest
+    needs: changes
+    if: needs.changes.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: windows-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.ref }}
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        shell: pwsh
+        run: bun install --frozen-lockfile
+
+      - name: Build
+        shell: pwsh
+        run: bun run build
+
+      - name: Run tests (all packages except producer)
+        shell: pwsh
+        run: bun run --filter "!@hyperframes/producer" test
+
+      - name: Run runtime contract test
+        shell: pwsh
+        run: bun run --filter "@hyperframes/core" test:hyperframe-runtime-ci
