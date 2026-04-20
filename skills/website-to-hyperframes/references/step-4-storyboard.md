@@ -177,7 +177,8 @@ project/
 │   ├── assets/
 │   │   ├── svgs/
 │   │   ├── fonts/
-│   │   └── lottie/
+│   │   ├── lottie/
+│   │   └── videos/
 │   ├── extracted/
 │   │   ├── tokens.json
 │   │   ├── visible-text.txt

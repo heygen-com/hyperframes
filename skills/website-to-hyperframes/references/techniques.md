@@ -252,7 +252,7 @@ Animate font-variation-settings to reshape glyphs in real-time. Works with varia
 ```html
 <style>
   /* Load the captured local variable font — do NOT use Google Fonts @import.
-     Replace this placeholder with an @font-face pointing to capture/assets/fonts/. */
+     Replace this placeholder with an @font-face pointing to ../capture/assets/fonts/. */
   @font-face {
     font-family: "Fraunces";
     src: url("../capture/assets/fonts/Fraunces-Variable.woff2") format("woff2");
