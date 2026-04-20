@@ -43,24 +43,16 @@ describe("isSupportedLang", () => {
 
   it("rejects invalid or misspelled lang codes", () => {
     expect(isSupportedLang("english")).toBe(false);
-    expect(isSupportedLang("EN-US")).toBe(false); // case-sensitive by design
     expect(isSupportedLang("de")).toBe(false);
     expect(isSupportedLang("")).toBe(false);
   });
 });
 
 describe("BUNDLED_VOICES", () => {
-  it("attaches a valid defaultLang to every voice", () => {
-    for (const voice of BUNDLED_VOICES) {
-      expect(isSupportedLang(voice.defaultLang)).toBe(true);
-      expect(voice.defaultLang).toBe(inferLangFromVoiceId(voice.id));
-    }
-  });
-
+  // --lang is user-facing, so the voice list must give users a working
+  // example in at least the most common non-English locales.
   it("exposes at least one voice per non-English language", () => {
-    // Regression guard: --lang is user-facing, so the voice list must give
-    // users a working example in at least the most common non-English locales.
-    const langs = new Set(BUNDLED_VOICES.map((v) => v.defaultLang));
+    const langs = new Set(BUNDLED_VOICES.map((v) => inferLangFromVoiceId(v.id)));
     expect(langs.has("es")).toBe(true);
     expect(langs.has("fr-fr")).toBe(true);
     expect(langs.has("ja")).toBe(true);

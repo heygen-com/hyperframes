@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, writeFileSync, mkdirSync } from "node:fs";
-import { join, dirname } from "node:path";
+import { existsSync, writeFileSync, mkdirSync, readdirSync, unlinkSync } from "node:fs";
+import { join, dirname, basename } from "node:path";
 import { homedir } from "node:os";
 import {
   ensureModel,
@@ -92,7 +92,6 @@ print(json.dumps({
     "outputPath": output_path,
     "sampleRate": sample_rate,
     "durationSeconds": round(duration, 3),
-    "lang": lang if (lang and supports_lang) else None,
     "langApplied": bool(lang and supports_lang),
 }))
 `;
@@ -107,6 +106,22 @@ function ensureSynthScript(): string {
   if (!existsSync(SCRIPT_PATH)) {
     mkdirSync(SCRIPT_DIR, { recursive: true });
     writeFileSync(SCRIPT_PATH, SYNTH_SCRIPT);
+    // Best-effort: delete older versioned scripts left behind by previous
+    // CLI releases so users don't accumulate stale files in ~/.cache.
+    const currentName = basename(SCRIPT_PATH);
+    try {
+      for (const entry of readdirSync(SCRIPT_DIR)) {
+        if (entry !== currentName && /^synth(-v\d+)?\.py$/.test(entry)) {
+          try {
+            unlinkSync(join(SCRIPT_DIR, entry));
+          } catch {
+            // Ignore — orphan cleanup is best-effort.
+          }
+        }
+      }
+    } catch {
+      // Ignore — directory read is best-effort.
+    }
   }
   return SCRIPT_PATH;
 }
@@ -132,8 +147,6 @@ export interface SynthesizeResult {
   outputPath: string;
   sampleRate: number;
   durationSeconds: number;
-  /** Language actually applied during synthesis, or null if kokoro-onnx silently ignored it. */
-  lang: SupportedLang | null;
   /** False when the installed kokoro-onnx version does not support the `lang` kwarg. */
   langApplied: boolean;
 }
@@ -205,7 +218,6 @@ export async function synthesize(
       outputPath: string;
       sampleRate: number;
       durationSeconds: number;
-      lang: SupportedLang | null;
       langApplied: boolean;
     } = JSON.parse(jsonLine);
 
@@ -213,7 +225,6 @@ export async function synthesize(
       outputPath: result.outputPath,
       sampleRate: result.sampleRate,
       durationSeconds: result.durationSeconds,
-      lang: result.lang,
       langApplied: result.langApplied,
     };
   } catch (err: unknown) {

@@ -21,6 +21,7 @@ export const examples: Example[] = [
 import { resolve, extname } from "node:path";
 import * as clack from "@clack/prompts";
 import { c } from "../ui/colors.js";
+import { errorBox } from "../ui/format.js";
 import {
   DEFAULT_VOICE,
   BUNDLED_VOICES,
@@ -115,26 +116,19 @@ export default defineCommand({
       process.exit(1);
     }
 
-    // ── Resolve lang (explicit > inferred from voice prefix) ──────────
     const inferredLang = inferLangFromVoiceId(voice);
     let lang: SupportedLang = inferredLang;
     if (args.lang != null) {
       const requested = String(args.lang).toLowerCase();
       if (!isSupportedLang(requested)) {
-        console.error(
-          c.error(
-            `Unsupported --lang "${args.lang}". Must be one of: ${SUPPORTED_LANGS.join(", ")}.`,
-          ),
-        );
+        errorBox("Invalid --lang", `Got "${args.lang}". Must be one of: ${langList}.`);
         process.exit(1);
       }
       lang = requested;
     }
 
-    // Info-level notice when explicit lang differs from voice-implied lang.
-    // Not an error — users sometimes want this intentionally (e.g. reading
-    // English text with a French voice for a stylized accent). Suppress
-    // when --json so machine-readable output stays clean.
+    // Mismatched voice/lang is a valid stylization (English text, French
+    // phonemization for accent), so this is a hint, not an error.
     if (!args.json && args.lang != null && lang !== inferredLang) {
       console.log(
         c.dim(
@@ -162,7 +156,7 @@ export default defineCommand({
             ok: true,
             voice,
             speed,
-            lang: result.lang,
+            lang,
             langApplied: result.langApplied,
             durationSeconds: result.durationSeconds,
             outputPath: result.outputPath,
@@ -199,8 +193,10 @@ export default defineCommand({
 // ---------------------------------------------------------------------------
 
 function listVoices(json: boolean): void {
+  const rows = BUNDLED_VOICES.map((v) => ({ ...v, defaultLang: inferLangFromVoiceId(v.id) }));
+
   if (json) {
-    console.log(JSON.stringify(BUNDLED_VOICES));
+    console.log(JSON.stringify(rows));
     return;
   }
 
@@ -209,12 +205,12 @@ function listVoices(json: boolean): void {
     `  ${c.dim("ID")}                ${c.dim("Name")}         ${c.dim("Language")}   ${c.dim("Lang code")}  ${c.dim("Gender")}`,
   );
   console.log(`  ${c.dim("─".repeat(72))}`);
-  for (const v of BUNDLED_VOICES) {
-    const id = v.id.padEnd(18);
-    const label = v.label.padEnd(13);
-    const lang = v.language.padEnd(10);
-    const code = v.defaultLang.padEnd(10);
-    console.log(`  ${c.accent(id)} ${label} ${lang} ${code} ${v.gender}`);
+  for (const row of rows) {
+    const id = row.id.padEnd(18);
+    const label = row.label.padEnd(13);
+    const lang = row.language.padEnd(10);
+    const code = row.defaultLang.padEnd(10);
+    console.log(`  ${c.accent(id)} ${label} ${lang} ${code} ${row.gender}`);
   }
   console.log(
     `\n  ${c.dim("Use any Kokoro voice ID — see https://github.com/thewh1teagle/kokoro-onnx for all 54 voices")}`,
