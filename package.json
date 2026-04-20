@@ -11,7 +11,7 @@
   "type": "module",
   "scripts": {
     "dev": "bun run studio",
-    "build": "node scripts/build-workspaces.mjs",
+    "build": "bun run --filter '!@hyperframes/cli' build && bun run --filter @hyperframes/cli build",
     "build:producer": "bun run --filter @hyperframes/producer build",
     "studio": "bun run --filter @hyperframes/studio dev",
     "build:hyperframes-runtime": "bun run --filter @hyperframes/core build:hyperframes-runtime",
@@ -24,7 +24,7 @@
     "lint:skills": "tsx scripts/lint-skills.ts",
     "lint:fix": "oxlint --fix .",
     "format": "oxfmt .",
-    "test": "bun run --filter '*' test && node --test scripts/build-workspaces.test.mjs",
+    "test": "bun run --filter '*' test",
     "format:check": "oxfmt --check .",
     "knip": "knip",
     "generate:previews": "tsx scripts/generate-template-previews.ts",
