@@ -9,7 +9,7 @@ import { spawn } from "child_process";
 import { existsSync, mkdirSync, readdirSync, rmSync } from "fs";
 import { join } from "path";
 import { parseHTML } from "linkedom";
-import { extractVideoMetadata, type VideoMetadata } from "../utils/ffprobe.js";
+import { extractVideoMetadata, pixelFormatHasAlpha, type VideoMetadata } from "../utils/ffprobe.js";
 import { isHdrColorSpace as isHdrColorSpaceUtil } from "../utils/hdr.js";
 import { downloadToTemp, isHttpUrl } from "../utils/urlDownloader.js";
 import { runFfmpeg } from "../utils/runFfmpeg.js";
@@ -22,6 +22,14 @@ export interface VideoElement {
   end: number;
   mediaStart: number;
   hasAudio: boolean;
+  /**
+   * True when the author opts into alpha-preserving extraction via
+   * `<video data-alpha="true">`. Undefined / "auto" falls back to ffprobe
+   * pix_fmt detection. When true, the frame extractor forces PNG output and
+   * adds `-pix_fmt rgba` so transparency survives the extract → inject →
+   * composite pipeline.
+   */
+  hasAlpha?: boolean;
 }
 
 export interface ExtractedFrames {
@@ -71,6 +79,7 @@ export function parseVideoElements(html: string): VideoElement[] {
     const durationAttr = el.getAttribute("data-duration");
     const mediaStartAttr = el.getAttribute("data-media-start");
     const hasAudioAttr = el.getAttribute("data-has-audio");
+    const alphaAttr = el.getAttribute("data-alpha");
 
     const start = startAttr ? parseFloat(startAttr) : 0;
     // Derive end from data-end → data-start+data-duration → Infinity (natural duration).
@@ -84,6 +93,14 @@ export function parseVideoElements(html: string): VideoElement[] {
       end = Infinity; // no explicit bounds — play for the full natural video duration
     }
 
+    // data-alpha parsing:
+    //   "true"           → force alpha extraction even if ffprobe pix_fmt is opaque
+    //   "false"          → force opaque extraction even if source is alpha-bearing
+    //   absent / "auto"  → auto-detect from ffprobe pix_fmt at extract time
+    let hasAlpha: boolean | undefined;
+    if (alphaAttr === "true") hasAlpha = true;
+    else if (alphaAttr === "false") hasAlpha = false;
+
     videos.push({
       id,
       src,
@@ -91,6 +108,7 @@ export function parseVideoElements(html: string): VideoElement[] {
       end,
       mediaStart: mediaStartAttr ? parseFloat(mediaStartAttr) : 0,
       hasAudio: hasAudioAttr === "true",
+      hasAlpha,
     });
   }
 
@@ -105,14 +123,30 @@ export async function extractVideoFramesRange(
   options: ExtractionOptions,
   signal?: AbortSignal,
   config?: Partial<Pick<EngineConfig, "ffmpegProcessTimeout">>,
+  overrides?: {
+    /**
+     * When true, force alpha-preserving extraction: PNG output + `-pix_fmt rgba`
+     * in the FFmpeg invocation. When undefined, ffprobe-detected alpha from the
+     * source file is used as an auto-opt-in.
+     */
+    hasAlpha?: boolean;
+  },
 ): Promise<ExtractedFrames> {
   const ffmpegProcessTimeout = config?.ffmpegProcessTimeout ?? DEFAULT_CONFIG.ffmpegProcessTimeout;
-  const { fps, outputDir, quality = 95, format = "jpg" } = options;
+  const { fps, outputDir, quality = 95 } = options;
 
   const videoOutputDir = join(outputDir, videoId);
   if (!existsSync(videoOutputDir)) mkdirSync(videoOutputDir, { recursive: true });
 
   const metadata = await extractVideoMetadata(videoPath);
+
+  // Alpha detection: explicit override (from data-alpha attribute) wins; else
+  // auto-detect from probed pix_fmt. When alpha is in play we switch to PNG +
+  // rgba so the injected <img> retains transparency for Chrome compositing.
+  const alphaAuto = pixelFormatHasAlpha(metadata.pixelFormat);
+  const hasAlpha = overrides?.hasAlpha ?? alphaAuto;
+  const format: "jpg" | "png" = hasAlpha ? "png" : (options.format ?? "jpg");
+
   const framePattern = `frame_%05d.${format}`;
   const outputPattern = join(videoOutputDir, framePattern);
 
@@ -124,21 +158,36 @@ export async function extractVideoFramesRange(
   const isMacOS = process.platform === "darwin";
 
   const args: string[] = [];
-  if (isHdr && isMacOS) {
+  if (isHdr && isMacOS && !hasAlpha) {
+    // VideoToolbox hwaccel drops alpha — skip for alpha-bearing sources.
     args.push("-hwaccel", "videotoolbox");
   }
   args.push("-ss", String(startTime), "-i", videoPath, "-t", String(duration));
 
   const vfFilters: string[] = [];
-  if (isHdr && isMacOS) {
+  if (isHdr && isMacOS && !hasAlpha) {
     // VideoToolbox tone-maps during decode; force output to bt709 SDR format
     vfFilters.push("format=nv12");
+  }
+  if (hasAlpha) {
+    // Explicitly request RGBA. Without this, FFmpeg's PNG encoder may pick
+    // rgb24 when the decoder emits yuva420p without a libvpx-aware path,
+    // silently dropping the alpha plane. `format=rgba` inserts a scaler /
+    // format filter that decodes alpha correctly for yuva* / rgba* inputs.
+    vfFilters.push("format=rgba");
   }
   vfFilters.push(`fps=${fps}`);
   args.push("-vf", vfFilters.join(","));
 
   args.push("-q:v", format === "jpg" ? String(Math.ceil((100 - quality) / 3)) : "0");
-  if (format === "png") args.push("-compression_level", "6");
+  if (format === "png") {
+    args.push("-compression_level", "6");
+    if (hasAlpha) {
+      // Force the PNG encoder to write RGBA, not RGB. Redundant with the
+      // vf `format=rgba` on well-behaved builds, but explicit for safety.
+      args.push("-pix_fmt", "rgba");
+    }
+  }
   args.push("-y", outputPattern);
 
   return new Promise((resolve, reject) => {
@@ -355,6 +404,7 @@ export async function extractAllVideoFrames(
           options,
           signal,
           config,
+          { hasAlpha: video.hasAlpha },
         );
 
         return { result };

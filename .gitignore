@@ -90,3 +90,6 @@ captures/
 cursor-tests/
 basecamp-video/
 launch-video*/
+
+# Local alpha smoke test scaffolding
+/test-alpha/

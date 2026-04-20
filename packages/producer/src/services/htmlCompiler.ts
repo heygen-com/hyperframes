@@ -1057,6 +1057,11 @@ export interface BrowserMediaElement {
   mediaStart: number;
   hasAudio: boolean;
   volume: number;
+  /**
+   * Alpha-preserving extraction opt-in (from `data-alpha="true"`).
+   * Undefined means auto-detect from ffprobe pix_fmt at extract time.
+   */
+  hasAlpha?: boolean;
 }
 
 export async function discoverMediaFromBrowser(page: Page): Promise<BrowserMediaElement[]> {
@@ -1071,6 +1076,7 @@ export async function discoverMediaFromBrowser(page: Page): Promise<BrowserMedia
       mediaStart: number;
       hasAudio: boolean;
       volume: number;
+      hasAlpha?: boolean;
     }[] = [];
 
     const mediaEls = document.querySelectorAll("video[data-start], audio[data-start]");
@@ -1086,6 +1092,10 @@ export async function discoverMediaFromBrowser(page: Page): Promise<BrowserMedia
       const mediaStart = parseFloat(htmlEl.getAttribute("data-media-start") || "0");
       const hasAudio = htmlEl.getAttribute("data-has-audio") === "true";
       const volume = parseFloat(htmlEl.getAttribute("data-volume") || "1");
+      const alphaAttr = htmlEl.getAttribute("data-alpha");
+      let hasAlpha: boolean | undefined;
+      if (alphaAttr === "true") hasAlpha = true;
+      else if (alphaAttr === "false") hasAlpha = false;
 
       results.push({
         id,
@@ -1097,6 +1107,7 @@ export async function discoverMediaFromBrowser(page: Page): Promise<BrowserMedia
         mediaStart,
         hasAudio,
         volume,
+        hasAlpha,
       });
     });
 

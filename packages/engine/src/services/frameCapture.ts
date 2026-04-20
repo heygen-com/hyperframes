@@ -239,11 +239,14 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
       );
     }
 
-    // Wait for all video elements to have loaded metadata (dimensions + duration)
-    // Without this, frame 0 captures videos at their 300x150 default size
+    // Wait for all video elements to have loaded metadata (dimensions + duration).
+    // Without this, frame 0 captures videos at their 300x150 default size.
+    // Videos opted into alpha extraction (data-alpha="true") are skipped —
+    // their source codec (e.g. PNG-in-AVI, yuva420p webm) may not be Chrome-
+    // playable, and the renderer will swap them for an <img> before capture.
     const videosReady = await pollPageExpression(
       page,
-      `document.querySelectorAll("video").length === 0 || Array.from(document.querySelectorAll("video")).every(v => v.readyState >= 1)`,
+      `(() => { const vids = Array.from(document.querySelectorAll("video")).filter(v => v.getAttribute("data-alpha") !== "true"); return vids.length === 0 || vids.every(v => v.readyState >= 1); })()`,
       pageReadyTimeout,
     );
     if (!videosReady) {
@@ -318,11 +321,13 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
 
   // Wait for all video elements to have loaded metadata (dimensions + duration).
   // Without this, frame 0 captures videos at their 300x150 default size.
+  // Videos opted into alpha extraction (data-alpha="true") are skipped — see
+  // the matching comment in the screenshot branch above.
   const videoDeadline =
     Date.now() + (session.config?.playerReadyTimeout ?? DEFAULT_CONFIG.playerReadyTimeout);
   while (Date.now() < videoDeadline) {
     const videosReady = await page.evaluate(
-      `document.querySelectorAll("video").length === 0 || Array.from(document.querySelectorAll("video")).every(v => v.readyState >= 1)`,
+      `(() => { const vids = Array.from(document.querySelectorAll("video")).filter(v => v.getAttribute("data-alpha") !== "true"); return vids.length === 0 || vids.every(v => v.readyState >= 1); })()`,
     );
     if (videosReady) break;
     await new Promise((r) => setTimeout(r, 100));

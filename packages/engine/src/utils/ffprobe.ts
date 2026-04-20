@@ -62,6 +62,10 @@ export interface VideoMetadata {
   isVFR: boolean;
   /** Color space info from the video stream. Null if ffprobe didn't report it. */
   colorSpace: VideoColorSpace | null;
+  /** Raw pix_fmt string from ffprobe (e.g. "yuv420p", "yuva420p", "rgba"). Empty when unavailable. */
+  pixelFormat: string;
+  /** True when pixelFormat carries an alpha channel (yuva-family / rgba / argb / bgra / rgba64). */
+  hasAlpha: boolean;
 }
 
 export interface AudioMetadata {
@@ -84,6 +88,24 @@ interface FFProbeStream {
   color_transfer?: string;
   color_primaries?: string;
   color_space?: string;
+  pix_fmt?: string;
+}
+
+/**
+ * Pixel formats that carry an alpha channel. Used to auto-detect alpha in
+ * source videos so the frame extractor can preserve transparency.
+ *
+ * Matches yuva-family (WebM VP8/VP9 alpha, h264 4:4:4 alpha), packed RGB+A
+ * (rgba, argb, bgra, abgr, rgba64*), and the ya8 / ya16 gray-plus-alpha family.
+ */
+export function pixelFormatHasAlpha(pixelFormat: string | undefined | null): boolean {
+  if (!pixelFormat) return false;
+  const pf = pixelFormat.toLowerCase();
+  if (pf.startsWith("yuva")) return true;
+  if (pf.startsWith("rgba") || pf.startsWith("argb")) return true;
+  if (pf.startsWith("bgra") || pf.startsWith("abgr")) return true;
+  if (pf === "ya8" || pf.startsWith("ya16")) return true;
+  return false;
 }
 
 interface FFProbeFormat {
@@ -135,6 +157,7 @@ export async function extractVideoMetadata(filePath: string): Promise<VideoMetad
     const colorPrimaries = videoStream.color_primaries || "";
     const colorSpaceVal = videoStream.color_space || "";
     const hasColorInfo = !!(colorTransfer || colorPrimaries || colorSpaceVal);
+    const pixelFormat = videoStream.pix_fmt || "";
 
     return {
       durationSeconds: output.format.duration ? parseFloat(output.format.duration) : 0,
@@ -147,6 +170,8 @@ export async function extractVideoMetadata(filePath: string): Promise<VideoMetad
       colorSpace: hasColorInfo
         ? { colorTransfer, colorPrimaries, colorSpace: colorSpaceVal }
         : null,
+      pixelFormat,
+      hasAlpha: pixelFormatHasAlpha(pixelFormat),
     };
   })();
 

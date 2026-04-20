@@ -772,6 +772,7 @@ export async function executeRenderJob(
                 end: el.end,
                 mediaStart: el.mediaStart,
                 hasAudio: el.hasAudio,
+                hasAlpha: el.hasAlpha,
               });
               existingVideoIds.add(el.id);
             }

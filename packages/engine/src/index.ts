@@ -153,6 +153,7 @@ export {
   extractVideoMetadata,
   extractAudioMetadata,
   analyzeKeyframeIntervals,
+  pixelFormatHasAlpha,
   type VideoMetadata,
   type AudioMetadata,
   type KeyframeAnalysis,

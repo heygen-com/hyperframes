@@ -22,7 +22,7 @@ describe("parseVideoElements", () => {
     );
 
     expect(videos).toHaveLength(1);
-    expect(videos[0]).toEqual({
+    expect(videos[0]).toMatchObject({
       id: "hero",
       src: "clip.mp4",
       start: 2,
@@ -30,5 +30,25 @@ describe("parseVideoElements", () => {
       mediaStart: 1.5,
       hasAudio: true,
     });
+    // hasAlpha defaults to undefined (auto-detect at extract time via ffprobe).
+    expect(videos[0]?.hasAlpha).toBeUndefined();
+  });
+
+  it('parses data-alpha="true" as an explicit alpha opt-in', () => {
+    const videos = parseVideoElements(
+      '<video id="lion" src="lion.avi" data-start="0" data-duration="5" data-alpha="true"></video>',
+    );
+
+    expect(videos).toHaveLength(1);
+    expect(videos[0]?.hasAlpha).toBe(true);
+  });
+
+  it('parses data-alpha="false" as an explicit opaque opt-out', () => {
+    const videos = parseVideoElements(
+      '<video id="opaque" src="clip.mp4" data-alpha="false"></video>',
+    );
+
+    expect(videos).toHaveLength(1);
+    expect(videos[0]?.hasAlpha).toBe(false);
   });
 });
