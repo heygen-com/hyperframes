@@ -305,6 +305,12 @@ This is suppressed in CI environments, non-TTY shells, and when `HYPERFRAMES_NO_
     # Adjust speech speed
     npx hyperframes tts "Slow and clear" --speed 0.8
 
+    # Generate Spanish speech (lang auto-detected from the `e` voice prefix)
+    npx hyperframes tts "La reunión empieza a las nueve" --voice ef_dora --output es.wav
+
+    # Override the phonemizer (read English text with a French voice)
+    npx hyperframes tts "Bonjour le monde" --voice af_heart --lang fr-fr
+
     # Read text from a file
     npx hyperframes tts script.txt
 
@@ -317,8 +323,13 @@ This is suppressed in CI environments, non-TTY shells, and when `HYPERFRAMES_NO_
     | `--output, -o` | Output file path (default: `speech.wav` in current directory) |
     | `--voice, -v` | Voice ID (run `--list` to see options) |
     | `--speed, -s` | Speech speed multiplier (default: 1.0) |
+    | `--lang, -l` | Phonemizer locale (`en-us`, `en-gb`, `es`, `fr-fr`, `hi`, `it`, `pt-br`, `ja`, `zh`). When omitted, inferred from the voice ID prefix. |
     | `--list` | List available voices and exit |
     | `--json` | Output result as JSON |
+
+    <Tip>
+      Voice IDs encode the phonemizer language in their first letter (`a`=American, `b`=British, `e`=Spanish, `f`=French, `h`=Hindi, `i`=Italian, `j`=Japanese, `p`=Brazilian Portuguese, `z`=Mandarin). `--lang` is only needed when you want to override that — for example, giving English text a French phonemizer for a stylized accent.
+    </Tip>
 
     <Tip>
       Combine `tts` with `transcribe` to generate narration and word-level timestamps for captions in a single workflow: generate the audio with `tts`, then transcribe the output with `transcribe` to get word-level timing.

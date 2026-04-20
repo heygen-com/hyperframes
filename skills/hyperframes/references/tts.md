@@ -16,6 +16,25 @@ Match voice to content. Default is `af_heart`.
 
 Run `npx hyperframes tts --list` for all 54 voices (8 languages).
 
+## Multilingual Phonemization
+
+Kokoro voice IDs encode language in the first letter: `a`=American English, `b`=British English, `e`=Spanish, `f`=French, `h`=Hindi, `i`=Italian, `j`=Japanese, `p`=Brazilian Portuguese, `z`=Mandarin. The CLI auto-detects the phonemizer locale from that prefix — you don't need to pass `--lang` when the voice matches the text.
+
+```bash
+npx hyperframes tts "La reunión empieza a las nueve" --voice ef_dora --output es.wav
+npx hyperframes tts "今日はいい天気ですね" --voice jf_alpha --output ja.wav
+```
+
+Use `--lang` only to override auto-detection (e.g. stylized accents):
+
+```bash
+npx hyperframes tts "Hello there" --voice af_heart --lang fr-fr --output accented.wav
+```
+
+Valid `--lang` codes: `en-us`, `en-gb`, `es`, `fr-fr`, `hi`, `it`, `pt-br`, `ja`, `zh`.
+
+Non-English phonemization requires `espeak-ng` installed system-wide (`brew install espeak-ng` on macOS, `apt-get install espeak-ng` on Debian/Ubuntu).
+
 ## Speed Tuning
 
 - **0.7-0.8** — Tutorial, complex content

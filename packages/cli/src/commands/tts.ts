@@ -7,15 +7,31 @@ export const examples: Example[] = [
   ["Choose a voice", 'hyperframes tts "Hello world" --voice am_adam'],
   ["Save to a specific file", 'hyperframes tts "Intro" --voice bf_emma --output narration.wav'],
   ["Adjust speech speed", 'hyperframes tts "Slow and clear" --speed 0.8'],
+  [
+    "Generate Spanish speech",
+    'hyperframes tts "La reunión empieza a las nueve" --voice ef_dora --output es.wav',
+  ],
+  [
+    "Override phonemizer language",
+    'hyperframes tts "Ciao a tutti" --voice af_heart --lang it --output accented.wav',
+  ],
   ["Read text from a file", "hyperframes tts script.txt"],
   ["List available voices", "hyperframes tts --list"],
 ];
 import { resolve, extname } from "node:path";
 import * as clack from "@clack/prompts";
 import { c } from "../ui/colors.js";
-import { DEFAULT_VOICE, BUNDLED_VOICES } from "../tts/manager.js";
+import {
+  DEFAULT_VOICE,
+  BUNDLED_VOICES,
+  SUPPORTED_LANGS,
+  inferLangFromVoiceId,
+  isSupportedLang,
+  type SupportedLang,
+} from "../tts/manager.js";
 
 const voiceList = BUNDLED_VOICES.map((v) => `${v.id} (${v.label})`).join(", ");
+const langList = SUPPORTED_LANGS.join(", ");
 
 export default defineCommand({
   meta: {
@@ -42,6 +58,11 @@ export default defineCommand({
       type: "string",
       description: "Speech speed multiplier (default: 1.0)",
       alias: "s",
+    },
+    lang: {
+      type: "string",
+      description: `Phonemizer language (auto-detected from voice prefix when omitted). Options: ${langList}`,
+      alias: "l",
     },
     list: {
       type: "boolean",
@@ -94,15 +115,44 @@ export default defineCommand({
       process.exit(1);
     }
 
+    // ── Resolve lang (explicit > inferred from voice prefix) ──────────
+    const inferredLang = inferLangFromVoiceId(voice);
+    let lang: SupportedLang = inferredLang;
+    if (args.lang != null) {
+      const requested = String(args.lang).toLowerCase();
+      if (!isSupportedLang(requested)) {
+        console.error(
+          c.error(
+            `Unsupported --lang "${args.lang}". Must be one of: ${SUPPORTED_LANGS.join(", ")}.`,
+          ),
+        );
+        process.exit(1);
+      }
+      lang = requested;
+    }
+
+    // Info-level notice when explicit lang differs from voice-implied lang.
+    // Not an error — users sometimes want this intentionally (e.g. reading
+    // English text with a French voice for a stylized accent). Suppress
+    // when --json so machine-readable output stays clean.
+    if (!args.json && args.lang != null && lang !== inferredLang) {
+      console.log(
+        c.dim(
+          `  Note: voice "${voice}" is ${inferredLang}, rendering with --lang ${lang} instead.`,
+        ),
+      );
+    }
+
     // ── Synthesize ────────────────────────────────────────────────────
     const { synthesize } = await import("../tts/synthesize.js");
     const spin = args.json ? null : clack.spinner();
-    spin?.start(`Generating speech with ${c.accent(voice)}...`);
+    spin?.start(`Generating speech with ${c.accent(voice)} (${lang})...`);
 
     try {
       const result = await synthesize(text, output, {
         voice,
         speed,
+        lang,
         onProgress: spin ? (msg) => spin.message(msg) : undefined,
       });
 
@@ -112,6 +162,8 @@ export default defineCommand({
             ok: true,
             voice,
             speed,
+            lang: result.lang,
+            langApplied: result.langApplied,
             durationSeconds: result.durationSeconds,
             outputPath: result.outputPath,
           }),
@@ -122,6 +174,13 @@ export default defineCommand({
             `Generated ${c.accent(result.durationSeconds.toFixed(1) + "s")} of speech → ${c.accent(result.outputPath)}`,
           ),
         );
+        if (args.lang != null && !result.langApplied) {
+          console.log(
+            c.dim(
+              "  Note: installed kokoro-onnx version does not support the --lang kwarg; phonemization used Kokoro's default.",
+            ),
+          );
+        }
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -147,16 +206,20 @@ function listVoices(json: boolean): void {
 
   console.log(`\n${c.bold("Available voices")} (Kokoro-82M)\n`);
   console.log(
-    `  ${c.dim("ID")}                ${c.dim("Name")}         ${c.dim("Language")}   ${c.dim("Gender")}`,
+    `  ${c.dim("ID")}                ${c.dim("Name")}         ${c.dim("Language")}   ${c.dim("Lang code")}  ${c.dim("Gender")}`,
   );
-  console.log(`  ${c.dim("─".repeat(60))}`);
+  console.log(`  ${c.dim("─".repeat(72))}`);
   for (const v of BUNDLED_VOICES) {
     const id = v.id.padEnd(18);
     const label = v.label.padEnd(13);
     const lang = v.language.padEnd(10);
-    console.log(`  ${c.accent(id)} ${label} ${lang} ${v.gender}`);
+    const code = v.defaultLang.padEnd(10);
+    console.log(`  ${c.accent(id)} ${label} ${lang} ${code} ${v.gender}`);
   }
   console.log(
-    `\n  ${c.dim("Use any Kokoro voice ID — see https://github.com/thewh1teagle/kokoro-onnx for all 54 voices")}\n`,
+    `\n  ${c.dim("Use any Kokoro voice ID — see https://github.com/thewh1teagle/kokoro-onnx for all 54 voices")}`,
+  );
+  console.log(
+    `  ${c.dim("Override phonemizer with --lang <" + SUPPORTED_LANGS.join("|") + ">")}\n`,
   );
 }
