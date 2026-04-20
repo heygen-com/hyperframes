@@ -12,7 +12,11 @@
  * to ensure consistent behavior.
  */
 
-import { join, resolve, dirname } from "path";
+// URL paths in HTML output are POSIX regardless of host OS — use the `posix`
+// submodule so Windows builds don't emit backslash-separated paths (or worse,
+// drive-letter-prefixed artifacts from `resolve("/", ...)`).
+import { posix } from "path";
+const { join, resolve, dirname } = posix;
 
 /** Attributes that may contain relative asset paths. */
 const PATH_ATTRS = ["src", "href"] as const;
