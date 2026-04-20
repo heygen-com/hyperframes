@@ -99,10 +99,6 @@ Hyperframes is inspired by [Remotion](https://www.remotion.dev) — we used Remo
 
 **Remotion is [source-available, not open source](https://www.remotion.pro/license).** The code is on GitHub under a custom Remotion License that requires a paid company license above small-team thresholds. It's a great product with a real team behind it — but if open-source licensing matters to you (OSI compliance, redistribution rights, no per-use fees), that's a first-order decision point.
 
-### Which should you pick?
-
-Choose Hyperframes when you want HTML-first compositions, agent-driven authoring, or a fully open-source stack. Choose Remotion when you're committed to React and want the broadest tooling around that model.
-
 Full write-up with benchmarks, an honest list of where each tool wins, and a GSAP side-by-side: **[Hyperframes vs Remotion guide](https://hyperframes.heygen.com/guides/hyperframes-vs-remotion)**.
 
 ## How It Works
