@@ -71,6 +71,7 @@
             "pages": [
               "guides/website-to-video",
               "guides/prompting",
+              "guides/hyperframes-vs-remotion",
               "guides/gsap-animation",
               "guides/rendering",
               "guides/hdr",

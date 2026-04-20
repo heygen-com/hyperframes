@@ -81,6 +81,23 @@ npx hyperframes render       # render to MP4
 - **Deterministic rendering** — same input = identical output. Built for automated pipelines.
 - **Frame Adapter pattern** — bring your own animation runtime (GSAP, Lottie, CSS, Three.js).
 
+## Hyperframes vs Remotion
+
+Hyperframes is inspired by [Remotion](https://www.remotion.dev) — we used Remotion at HeyGen in production, learned a ton from it, and kept attribution comments in the source for the patterns it pioneered (Chrome launch flags, image2pipe → FFmpeg streaming, frame buffering). Both tools drive headless Chrome and both are deterministic. They differ on one decision: **what the primary author writes.** Remotion's bet is React components; Hyperframes' bet is HTML.
+
+|                                                       | **Hyperframes**                | **Remotion**                          |
+| ----------------------------------------------------- | ------------------------------ | ------------------------------------- |
+| Authoring                                             | HTML + CSS + GSAP              | React components (TSX)                |
+| Build step                                            | None; `index.html` plays as-is | Required (bundler)                    |
+| Library-clock animations (GSAP, Anime.js, Motion One) | Seekable, frame-accurate       | Plays at wall-clock during render     |
+| Arbitrary HTML / CSS passthrough                      | Paste and animate              | Rewrite as JSX                        |
+| Distributed rendering                                 | Single-machine today           | Lambda, production-ready              |
+| License                                               | Apache 2.0                     | Commercial above small-team threshold |
+
+Choose Hyperframes when you want HTML-first compositions and agent-driven authoring. Choose Remotion when you're committed to React and want the broadest tooling around that model.
+
+Full write-up with benchmarks, an honest list of where each tool wins, and a GSAP side-by-side: **[Hyperframes vs Remotion guide](https://hyperframes.heygen.com/guides/hyperframes-vs-remotion)**.
+
 ## How It Works
 
 Define your video as HTML with data attributes:
