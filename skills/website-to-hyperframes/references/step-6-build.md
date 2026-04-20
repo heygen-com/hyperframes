@@ -4,7 +4,7 @@
 
 - **DESIGN.md** — your color palette, fonts, components, and Do's/Don'ts. Every composition must use EXACT hex colors and font families from this file. If it says "white backgrounds" — use white, not dark.
 - **STORYBOARD.md** — the beat-by-beat plan you're executing. Each beat specifies assets, animations, transitions, and which techniques to use.
-- **`extracted/asset-descriptions.md`** — when the storyboard assigns an asset to a beat, re-read the description to understand what it shows and how to position/style it correctly.
+- **`capture/extracted/asset-descriptions.md`** — when the storyboard assigns an asset to a beat, re-read the description to understand what it shows and how to position/style it correctly.
 - **[techniques.md](techniques.md)** — code patterns for the 10 visual techniques. When the storyboard says "SVG path drawing" or "per-word kinetic typography" — read the code pattern from this file and adapt it.
 - **transcript.json** — word-level timestamps that drive scene durations.
 
@@ -21,19 +21,19 @@ STORYBOARD for this beat:
 [paste the beat section from STORYBOARD.md]
 
 ASSETS — reference by path, do NOT read/inline the file contents:
-- Logo: <img src="../assets/favicon.svg"> (top-left, 40x40px)
-- Hero image: <img src="../assets/hero-bg.png"> (full-bleed background)
-- Noise texture: ../assets/noise.png (full-frame overlay, 3% opacity)
+- Logo: <img src="../capture/assets/favicon.svg"> (top-left, 40x40px)
+- Hero image: <img src="../capture/assets/hero-bg.png"> (full-bleed background)
+- Noise texture: ../capture/assets/noise.png (full-frame overlay, 3% opacity)
 
 FONTS — use @font-face with the captured font files, NOT Google Fonts:
-@font-face { font-family: 'BrandFont'; src: url('../assets/fonts/BrandFont-Regular.woff2'); }
+@font-face { font-family: 'BrandFont'; src: url('../capture/assets/fonts/BrandFont-Regular.woff2'); }
 
 Read DESIGN.md for exact colors and Do's/Don'ts.
 Read techniques.md for animation code patterns.
 Load the `hyperframes` skill for composition structure rules.
 ```
 
-After each sub-agent finishes, verify the composition references `../assets/` — if it used inline SVGs or Google Fonts instead of the captured files, fix it before moving on.
+After each sub-agent finishes, verify the composition references `../capture/assets/` — if it used inline SVGs or Google Fonts instead of the captured files, fix it before moving on.
 
 Load the `hyperframes` skill first — it has the rules for data attributes, timeline contracts, deterministic rendering, and layout. Everything below supplements those rules, not replaces them.
 
@@ -96,8 +96,8 @@ Before self-review, verify you actually used the assets you planned to:
 2. List every asset that was assigned to this beat
 3. Search the composition HTML for each filename (e.g., grep for "wave-fallback-desktop")
 4. If any assigned asset is missing from the HTML, add it now
-5. Check for the inline anti-pattern: if the HTML contains `<svg xmlns=` or `data:image/` but no `../assets/` references, the assets were inlined instead of referenced. Replace inline content with `<img src="../assets/filename.svg">`
-6. Check fonts: if the HTML uses `fonts.googleapis.com` but there are captured fonts in `assets/fonts/`, replace with `@font-face` pointing to the local files
+5. Check for the inline anti-pattern: if the HTML contains `<svg xmlns=` or `data:image/` but no `../capture/assets/` references, the assets were inlined instead of referenced. Replace inline content with `<img src="../capture/assets/filename.svg">`
+6. Check fonts: if the HTML uses `fonts.googleapis.com` but there are captured fonts in `capture/assets/fonts/`, replace with `@font-face` pointing to the local files (e.g., `src: url('../capture/assets/fonts/BrandFont-Regular.woff2')`)
 
 This step catches the two most common failures: compositions ending up text-only, and assets being inlined instead of file-referenced.
 

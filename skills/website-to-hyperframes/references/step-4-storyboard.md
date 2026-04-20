@@ -3,7 +3,7 @@
 **Before writing anything, fully re-read these files:**
 
 - **DESIGN.md** — your color palette, font rules, components, Do's/Don'ts. Every creative decision must be grounded in this brand identity. If it says "white backgrounds with purple accent" — plan light scenes, not dark moody ones.
-- **`extracted/asset-descriptions.md`** — read EVERY line. This is your menu of available visuals. Each line describes what the image actually shows (e.g., "translucent ribbons in orange, pink, and purple on white background" or "a high-speed train under a dark starry sky"). Use these descriptions to decide which assets belong in which beat. Assets you don't understand from the description — view them directly before assigning.
+- **`capture/extracted/asset-descriptions.md`** — read EVERY line. This is your menu of available visuals. Each line describes what the image actually shows (e.g., "translucent ribbons in orange, pink, and purple on white background" or "a high-speed train under a dark starry sky"). Use these descriptions to decide which assets belong in which beat. Assets you don't understand from the description — view them directly before assigning.
 - **[techniques.md](techniques.md)** — 11 visual techniques (SVG path drawing, Canvas 2D art, CSS 3D, per-word typography, Lottie, video compositing, typing effect, variable fonts, MotionPath, velocity transitions, audio-reactive). Pick 2-3 per beat and specify them in the storyboard.
 
 The storyboard is the creative north star. It tells the engineer exactly what to build for each beat — mood, camera, animations, transitions, assets, sound. Write it as if you're briefing a motion designer who's never seen the website.
@@ -96,9 +96,9 @@ Cultural and design references, not hex codes:
 
 Which captured files to use, referenced by filename:
 
-- "Background: `assets/wave-fallback-desktop.png` — full-bleed, slow zoom 1→1.04 over beat duration"
-- "Logo: `assets/svgs/stripe-logo.svg` — centered, fades in at 0.5s"
-- "Enterprise photo: `assets/enterprise-accordion-hertz.png` — Ken Burns pan, 70% opacity overlay"
+- "Background: `capture/assets/wave-fallback-desktop.png` — full-bleed, slow zoom 1→1.04 over beat duration"
+- "Logo: `capture/assets/svgs/stripe-logo.svg` — centered, fades in at 0.5s"
+- "Enterprise photo: `capture/assets/enterprise-accordion-hertz.png` — Ken Burns pan, 70% opacity overlay"
 
 ### Animation choreography
 
@@ -172,7 +172,21 @@ project/
 ├── STORYBOARD.md                 THIS FILE — creative north star
 ├── transcript.json               word-level timestamps (from Step 5)
 ├── narration.wav                 TTS audio (from Step 5)
-├── captures/<name>/              captured website data
+├── capture/                      captured website data (from Step 1)
+│   ├── screenshots/
+│   ├── assets/
+│   │   ├── svgs/
+│   │   ├── fonts/
+│   │   └── lottie/
+│   ├── extracted/
+│   │   ├── tokens.json
+│   │   ├── visible-text.txt
+│   │   ├── asset-descriptions.md
+│   │   ├── animations.json
+│   │   ├── assets-catalog.json
+│   │   └── detected-libraries.json
+│   ├── AGENTS.md
+│   └── CLAUDE.md
 └── compositions/
     ├── beat-1-hook.html
     ├── beat-2-features.html

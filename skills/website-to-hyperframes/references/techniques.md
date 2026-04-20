@@ -158,7 +158,7 @@ Vector animations that play inside a composition. Use for logos, character anima
 <script src="https://cdn.jsdelivr.net/npm/@dotlottie/player-component@2.7.12/dist/dotlottie-player.js"></script>
 <dotlottie-player
   class="lottie"
-  src="../assets/lottie/animation-0.json"
+  src="../capture/assets/lottie/animation-0.json"
   autoplay
   loop
   speed="1.5"
@@ -179,7 +179,7 @@ var anim = lottie.loadAnimation({
   renderer: "svg",
   loop: false,
   autoplay: false,
-  path: "../assets/lottie/animation-0.json",
+  path: "../capture/assets/lottie/animation-0.json",
 });
 ```
 
@@ -193,7 +193,7 @@ Embed real video footage inside compositions. Videos must be `muted` with `plays
 <div class="video-frame" style="width:680px;height:840px;border-radius:16px;overflow:hidden;">
   <video
     id="footage"
-    src="../assets/videos/clip.mp4"
+    src="../capture/assets/videos/clip.mp4"
     muted
     playsinline
     style="width:100%;height:100%;object-fit:cover;"
@@ -252,10 +252,10 @@ Animate font-variation-settings to reshape glyphs in real-time. Works with varia
 ```html
 <style>
   /* Load the captured local variable font — do NOT use Google Fonts @import.
-     Replace this placeholder with an @font-face pointing to assets/fonts/. */
+     Replace this placeholder with an @font-face pointing to capture/assets/fonts/. */
   @font-face {
     font-family: "Fraunces";
-    src: url("../assets/fonts/Fraunces-Variable.woff2") format("woff2");
+    src: url("../capture/assets/fonts/Fraunces-Variable.woff2") format("woff2");
     font-weight: 100 900;
     font-style: normal;
     font-display: block;

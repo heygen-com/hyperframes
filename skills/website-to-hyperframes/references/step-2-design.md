@@ -12,7 +12,7 @@ DESIGN.md is NOT the creative plan. The STORYBOARD (Step 4) drives creative dire
 
 ### `## Colors`
 
-5-10 key colors with HEX values from tokens.json and their roles:
+5-10 key colors with HEX values from `capture/extracted/tokens.json` and their roles:
 
 ```
 - **Primary Surface**: `#020204` — deep black background
@@ -65,11 +65,11 @@ For each, note the distinctive visual treatment (border-radius, spacing, hover b
 
 ## Rules
 
-- Use **exact HEX values** from tokens.json. Do not approximate.
+- Use **exact HEX values** from `capture/extracted/tokens.json`. Do not approximate.
 - Name components by what you see in the screenshot, not generic terms.
 - Keep it under 100 lines. This is a cheat sheet, not a design system document.
 - No "Style Prompt" section — the storyboard handles creative direction.
-- No "Assets" section — `asset-descriptions.md` already covers this.
+- No "Assets" section — `capture/extracted/asset-descriptions.md` already covers this.
 - No "Motion" section — the storyboard specifies motion per-beat.
 
 ## Example
