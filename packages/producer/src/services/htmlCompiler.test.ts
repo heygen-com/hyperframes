@@ -152,6 +152,26 @@ describe("inlineExternalScripts", () => {
     }
   });
 
+  it("preserves non-src script attributes when inlining", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = mock(
+      async () => new Response('console.log("module");', { status: 200 }),
+    ) as any;
+
+    try {
+      const html =
+        '<html><body><script type="module" data-role="boot" src="https://cdn.example.com/module.js"></script></body></html>';
+      const result = await inlineExternalScripts(html);
+
+      expect(result).toMatch(/<script\b[^>]*\btype="module"/);
+      expect(result).toMatch(/<script\b[^>]*\bdata-role="boot"/);
+      expect(result).toContain('console.log("module");');
+      expect(result).not.toContain('src="https://cdn.example.com/module.js"');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it("escapes </script in downloaded content", async () => {
     const originalFetch = globalThis.fetch;
     globalThis.fetch = mock(
@@ -164,6 +184,28 @@ describe("inlineExternalScripts", () => {
       // Should escape </script to <\/script
       expect(result).not.toContain("</script><script>alert(1)</script>");
       expect(result).toContain("<\\/script");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("preserves literal replacement tokens in downloaded script content", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = mock(
+      async () =>
+        new Response('const before = "$`"; const after = "$\'"; const both = "$&";', {
+          status: 200,
+        }),
+    ) as any;
+
+    try {
+      const html = `<html><body><script src="https://cdn.example.com/d3.min.js"></script><div>tail</div></body></html>`;
+      const result = await inlineExternalScripts(html);
+
+      expect(result).toContain('const before = "$`";');
+      expect(result).toContain('const after = "$\'";');
+      expect(result).toContain('const both = "$&";');
+      expect(result.match(/<script>/g)?.length).toBe(1);
     } finally {
       globalThis.fetch = originalFetch;
     }

@@ -777,7 +777,9 @@ function ensureFullDocument(html: string): string {
  * works without network access (Docker, CI, restricted environments).
  */
 export async function inlineExternalScripts(html: string): Promise<string> {
-  const { document } = parseHTML(html);
+  const fullHtml = ensureFullDocument(html);
+  const wrappedFragment = fullHtml !== html;
+  const { document } = parseHTML(fullHtml);
   const scripts = document.querySelectorAll("script[src]");
   const externalScripts: { el: Element; src: string }[] = [];
 
@@ -800,21 +802,21 @@ export async function inlineExternalScripts(html: string): Promise<string> {
     }),
   );
 
-  let result = html;
   for (let i = 0; i < downloads.length; i++) {
     const download = downloads[i]!;
-    const { src } = externalScripts[i]!;
+    const { el, src } = externalScripts[i]!;
     if (download.status === "fulfilled") {
-      const escapedSrc = src.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      const scriptTagRe = new RegExp(
-        `<script\\b[^>]*\\bsrc=["']${escapedSrc}["'][^>]*>\\s*</script>`,
-        "is",
-      );
       // Escape </script in downloaded content to prevent premature tag closure.
       // <\/script is safe: the HTML parser doesn't recognize it as a close tag,
       // but JS treats \/ as / so the code executes identically.
       const safeText = download.value.text.replace(/<\/script/gi, "<\\/script");
-      result = result.replace(scriptTagRe, `<script>/* inlined: ${src} */\n${safeText}\n</script>`);
+      const inlineScript = document.createElement("script");
+      for (const attr of Array.from(el.attributes)) {
+        if (attr.name.toLowerCase() === "src") continue;
+        inlineScript.setAttribute(attr.name, attr.value);
+      }
+      inlineScript.textContent = `/* inlined: ${src} */\n${safeText}\n`;
+      el.replaceWith(inlineScript);
       console.log(`[Compiler] Inlined CDN script: ${src}`);
     } else {
       console.warn(
@@ -825,7 +827,7 @@ export async function inlineExternalScripts(html: string): Promise<string> {
     }
   }
 
-  return result;
+  return wrappedFragment ? document.body.innerHTML || "" : document.toString();
 }
 
 /**
