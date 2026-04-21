@@ -244,7 +244,6 @@ function buildTimelineElementKey(params: {
   if (params.selector) return `${scope}:${params.selector}:${params.selectorIndex ?? 0}`;
   return `${scope}:${params.id}:${params.fallbackIndex}`;
 }
-
 function findTimelineDomNode(doc: Document, id: string): Element | null {
   return (
     doc.getElementById(id) ??
@@ -290,7 +289,6 @@ export function buildStandaloneRootTimelineElement(params: {
     sourceFile: compositionSrc,
   };
 }
-
 function normalizePreviewViewport(doc: Document, win: Window): void {
   if (doc.documentElement) {
     doc.documentElement.style.overflow = "hidden";
