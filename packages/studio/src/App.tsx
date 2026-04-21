@@ -344,7 +344,7 @@ export function StudioApp() {
     () => () => {
       if (previewHotkeyWindowRef.current) {
         previewHotkeyWindowRef.current.removeEventListener("keydown", handleTimelineToggleHotkey);
-        previewHotkeyWindowRef.current = null;
+      previewHotkeyWindowRef.current = null;
       }
     },
     [handleTimelineToggleHotkey],
@@ -374,7 +374,6 @@ export function StudioApp() {
             label={el.id || el.tag}
             labelColor={style.label}
             accentColor={style.clip}
-            selector={el.selector}
             seekTime={0}
             duration={el.duration}
             selector={el.selector}
@@ -391,7 +390,6 @@ export function StudioApp() {
             label={el.id || el.tag}
             labelColor={style.label}
             accentColor={style.clip}
-            selector={el.selector}
             seekTime={el.start}
             duration={el.duration}
             selector={el.selector}
@@ -438,7 +436,6 @@ export function StudioApp() {
             label={el.id || el.tag}
             labelColor={style.label}
             accentColor={style.clip}
-            selector={el.selector}
             seekTime={el.start}
             duration={el.duration}
             selector={el.selector}

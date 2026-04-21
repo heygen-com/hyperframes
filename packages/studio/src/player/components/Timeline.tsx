@@ -1146,7 +1146,7 @@ export const Timeline = memo(function Timeline({
                     background: `${clipStyle.accent}26`,
                     boxShadow: `inset 0 0 0 1px ${clipStyle.accent}33`,
                   }}
-                >
+              >
                   {element.tag}
                 </span>
               </div>
