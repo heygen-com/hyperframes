@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <meta data-composition-id="floating-thumbs" data-width="1920" data-height="1080" />
+    <title>Floating Thumbs Up Animation</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        font-family:
+          "Inter",
+          -apple-system,
+          sans-serif;
+      }
+
+      [data-composition-id="floating-thumbs"] {
+        width: 100%;
+        height: 100%;
+      }
+
+      .container {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .thumbs-wrapper {
+        position: absolute;
+        width: 100%;
+        height: 100%;
+      }
+
+      .thumb {
+        position: absolute;
+        font-size: 120px;
+        opacity: 0;
+        filter: drop-shadow(0 10px 20px rgba(0, 0, 0, 0.3));
+      }
+
+      .center-circle {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 280px;
+        height: 280px;
+        background: rgba(255, 255, 255, 0.1);
+        backdrop-filter: blur(10px);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: 3px solid rgba(255, 255, 255, 0.3);
+        font-size: 140px;
+        z-index: 10;
+      }
+
+      .center-icon {
+        opacity: 0;
+      }
+
+      .text-overlay {
+        position: absolute;
+        bottom: 200px;
+        left: 50%;
+        transform: translateX(-50%);
+        font-size: 72px;
+        font-weight: 900;
+        color: white;
+        text-transform: uppercase;
+        letter-spacing: 2px;
+        opacity: 0;
+        text-align: center;
+        z-index: 15;
+      }
+
+      .subtext {
+        position: absolute;
+        bottom: 100px;
+        left: 50%;
+        transform: translateX(-50%);
+        font-size: 42px;
+        color: rgba(255, 255, 255, 0.8);
+        text-align: center;
+        opacity: 0;
+        z-index: 15;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="floating-thumbs"
+      data-start="0"
+      data-duration="9"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div class="container">
+        <div class="thumbs-wrapper" id="thumbs-wrapper">
+          <!-- Dynamic thumbs will be created -->
+        </div>
+
+        <div class="center-circle">
+          <div class="center-icon" id="center-icon">👍</div>
+        </div>
+
+        <div class="text-overlay" id="text-overlay">AMAZING!</div>
+        <div class="subtext" id="subtext">Show your appreciation</div>
+      </div>
+    </div>
+
+    <script>
+      const tl = gsap.timeline({ paused: true });
+
+      // Thumb positions (radial layout)
+      const thumbPositions = [
+        { x: 960, y: 200 },
+        { x: 200, y: 300 },
+        { x: 1720, y: 320 },
+        { x: 350, y: 700 },
+        { x: 1570, y: 750 },
+        { x: 960, y: 850 },
+      ];
+
+      // Create thumbs dynamically
+      const wrapper = document.getElementById("thumbs-wrapper");
+      const thumbElements = [];
+
+      thumbPositions.forEach((pos, i) => {
+        const thumb = document.createElement("div");
+        thumb.className = "thumb";
+        thumb.textContent = "👍";
+        thumb.id = `thumb-${i}`;
+        thumb.style.left = pos.x + "px";
+        thumb.style.top = pos.y + "px";
+        wrapper.appendChild(thumb);
+        thumbElements.push(`#${thumb.id}`);
+      });
+
+      // Center icon fade in
+      tl.to(
+        "#center-icon",
+        {
+          opacity: 1,
+          scale: 1,
+          duration: 0.5,
+          ease: "back.out(2)",
+        },
+        0,
+      );
+
+      // Thumbs float in from edges
+      thumbElements.forEach((thumb, i) => {
+        const offsetX = ((i % 3) - 1) * 200;
+        const offsetY = ((i % 2) - 0.5) * 400;
+        const rotation = (i * 60) % 360;
+        tl.from(
+          thumb,
+          {
+            opacity: 0,
+            scale: 0,
+            x: offsetX,
+            y: offsetY,
+            rotation: rotation,
+            duration: 0.6,
+            ease: "elastic.out(1, 0.5)",
+          },
+          0.1 + i * 0.12,
+        );
+      });
+
+      // Thumbs rotate and float
+      thumbElements.forEach((thumb, i) => {
+        const rotationAmount = 360 + i * 30;
+        const floatAmount = 100 + i * 20;
+        const duration = 2 + i * 0.15;
+        tl.to(
+          thumb,
+          {
+            rotation: rotationAmount,
+            y: (index, target) => parseFloat(target.style.top) - floatAmount,
+            duration: duration,
+            ease: "sine.inOut",
+          },
+          1,
+        );
+      });
+
+      // Text animations
+      tl.to(
+        "#text-overlay",
+        {
+          opacity: 1,
+          y: 0,
+          scale: 1,
+          duration: 0.6,
+          ease: "back.out(1.5)",
+        },
+        1.2,
+      );
+
+      tl.to(
+        "#subtext",
+        {
+          opacity: 1,
+          y: 0,
+          duration: 0.5,
+          ease: "power2.out",
+        },
+        1.5,
+      );
+
+      // Hold section (2s)
+      tl.to({}, {}, 4.5);
+
+      // Exit sequence
+      tl.to(
+        thumbElements.join(", "),
+        {
+          opacity: 0,
+          scale: 0,
+          y: (index) => ((index % 2) - 0.5) * 600,
+          duration: 0.5,
+          ease: "back.in(1.5)",
+          stagger: 0.05,
+        },
+        4.8,
+      );
+
+      tl.to(
+        "#center-icon, #text-overlay, #subtext",
+        {
+          opacity: 0,
+          scale: 0.8,
+          duration: 0.4,
+          ease: "power2.in",
+        },
+        4.8,
+        "-=0.3",
+      );
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["floating-thumbs"] = tl;
+    </script>
+  </body>
+</html>

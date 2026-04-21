@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <meta data-composition-id="like-pulse" data-width="1920" data-height="1080" />
+    <title>YouTube Like Button Pulse</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+        font-family:
+          "Inter",
+          -apple-system,
+          sans-serif;
+      }
+
+      [data-composition-id="like-pulse"] {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .container {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 60px;
+      }
+
+      .button-container {
+        position: relative;
+        width: 300px;
+        height: 300px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .pulse-ring {
+        position: absolute;
+        width: 100%;
+        height: 100%;
+        border: 8px solid #ff0000;
+        border-radius: 50%;
+        opacity: 0;
+      }
+
+      .button-bg {
+        position: absolute;
+        width: 280px;
+        height: 280px;
+        background: #ff0000;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 20px 60px rgba(255, 0, 0, 0.3);
+        z-index: 1;
+      }
+
+      .icon {
+        font-size: 140px;
+        color: white;
+        z-index: 2;
+      }
+
+      .counter {
+        font-size: 120px;
+        font-weight: 900;
+        color: #ff0000;
+        opacity: 0;
+        transform: scale(0.5);
+        text-align: center;
+      }
+
+      .text {
+        font-size: 64px;
+        font-weight: 700;
+        color: white;
+        text-transform: uppercase;
+        letter-spacing: 2px;
+        opacity: 0;
+        transform: translateY(30px);
+        text-align: center;
+      }
+
+      .subtitle {
+        font-size: 36px;
+        color: #888;
+        opacity: 0;
+        transform: translateY(20px);
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="like-pulse"
+      data-start="0"
+      data-duration="8"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div class="container">
+        <div class="button-container">
+          <div class="pulse-ring" id="pulse-1"></div>
+          <div class="pulse-ring" id="pulse-2"></div>
+          <div class="pulse-ring" id="pulse-3"></div>
+          <div class="button-bg">
+            <div class="icon">👍</div>
+          </div>
+        </div>
+
+        <div class="counter" id="counter">
+          <span id="count-value">0</span>
+        </div>
+
+        <div class="text" id="main-text">HIT THAT LIKE</div>
+        <div class="subtitle" id="subtitle">Make a difference!</div>
+      </div>
+    </div>
+
+    <script>
+      const tl = gsap.timeline({ paused: true });
+
+      // Pulse animation (repeats)
+      const createPulse = (ring, delay) => {
+        tl.to(
+          ring,
+          {
+            scale: 1.5,
+            opacity: 0,
+            duration: 1.2,
+            ease: "power1.out",
+          },
+          delay,
+        );
+      };
+
+      createPulse("#pulse-1", 0.3);
+      createPulse("#pulse-2", 0.6);
+      createPulse("#pulse-3", 0.9);
+
+      // Button pop (at start)
+      tl.from(
+        ".button-bg",
+        {
+          scale: 0,
+          opacity: 0,
+          duration: 0.5,
+          ease: "back.out(2)",
+        },
+        0,
+      );
+
+      // Counter animate in
+      tl.to(
+        "#counter",
+        {
+          opacity: 1,
+          scale: 1,
+          duration: 0.6,
+          ease: "elastic.out(1, 0.6)",
+        },
+        0.3,
+      );
+
+      // Count up animation
+      tl.to(
+        { count: 0 },
+        {
+          count: 1247,
+          duration: 2.5,
+          ease: "power1.inOut",
+          onUpdate: function () {
+            document.getElementById("count-value").textContent = Math.round(
+              this.targets()[0].count,
+            );
+          },
+        },
+        0.5,
+      );
+
+      // Text pop in
+      tl.to(
+        "#main-text",
+        {
+          opacity: 1,
+          scale: 1,
+          y: 0,
+          duration: 0.6,
+          ease: "back.out(1.5)",
+        },
+        1.5,
+      );
+
+      // Subtitle fade in
+      tl.to(
+        "#subtitle",
+        {
+          opacity: 1,
+          y: 0,
+          duration: 0.5,
+          ease: "power2.out",
+        },
+        1.8,
+      );
+
+      // Hold section (2s)
+      tl.to({}, {}, 3.5);
+
+      // Exit sequence
+      tl.to(
+        ".button-bg",
+        {
+          scale: 1.2,
+          opacity: 0,
+          duration: 0.4,
+          ease: "back.in(1.5)",
+        },
+        3.8,
+      );
+
+      tl.to(
+        "#counter, #main-text, #subtitle",
+        {
+          opacity: 0,
+          y: -30,
+          duration: 0.4,
+          ease: "power2.in",
+        },
+        3.8,
+        "-=0.4",
+      );
+
+      // Pulse loop (continues during entire timeline)
+      tl.to(
+        "#pulse-1",
+        {
+          scale: 1.5,
+          opacity: 0,
+          duration: 1.2,
+          ease: "power1.out",
+          repeat: 20,
+        },
+        1.2,
+      );
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["like-pulse"] = tl;
+    </script>
+  </body>
+</html>

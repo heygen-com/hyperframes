@@ -1,0 +1,19 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "youtube-subscribe-streak",
+  "type": "hyperframes:example",
+  "title": "Subscribe Streak Counter",
+  "description": "Animated streak counter with fire and stars for maintaining subscriber loyalty",
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 8,
+  "files": [
+    {
+      "path": "index.html",
+      "target": "index.html",
+      "type": "hyperframes:composition"
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "youtube-floating-thumbs",
+  "type": "hyperframes:example",
+  "title": "Floating Thumbs Up Animation",
+  "description": "Multiple thumbs up icons floating and rotating with engagement call-to-action",
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 9,
+  "files": [
+    {
+      "path": "index.html",
+      "target": "index.html",
+      "type": "hyperframes:composition"
+    }
+  ]
+}

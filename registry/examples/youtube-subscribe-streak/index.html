@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <meta data-composition-id="subscribe-streak" data-width="1920" data-height="1080" />
+    <title>Subscribe Streak Counter</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: linear-gradient(135deg, #1e1e2e 0%, #ff006e 100%);
+        font-family:
+          "Inter",
+          -apple-system,
+          sans-serif;
+      }
+
+      [data-composition-id="subscribe-streak"] {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .container {
+        position: relative;
+        text-align: center;
+      }
+
+      .flame-icon {
+        font-size: 180px;
+        margin-bottom: 40px;
+        opacity: 0;
+        scale: 0;
+        filter: drop-shadow(0 20px 40px rgba(255, 0, 110, 0.5));
+        animation: flame-flicker 0.8s ease-in-out infinite;
+      }
+
+      @keyframes flame-flicker {
+        0%,
+        100% {
+          transform: scaleY(1) scaleX(1);
+        }
+        50% {
+          transform: scaleY(1.1) scaleX(0.95);
+        }
+      }
+
+      .streak-box {
+        width: 600px;
+        height: 400px;
+        background: rgba(0, 0, 0, 0.3);
+        backdrop-filter: blur(20px);
+        border: 3px solid #ff006e;
+        border-radius: 30px;
+        padding: 60px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        gap: 40px;
+        box-shadow: 0 25px 80px rgba(255, 0, 110, 0.3);
+        opacity: 0;
+        scale: 0;
+      }
+
+      .streak-label {
+        font-size: 42px;
+        color: #ff006e;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 3px;
+      }
+
+      .counter {
+        font-size: 200px;
+        font-weight: 900;
+        background: linear-gradient(135deg, #ff006e 0%, #ff69b4 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        opacity: 0;
+      }
+
+      .day-label {
+        font-size: 36px;
+        color: #ffffff;
+        font-weight: 300;
+      }
+
+      .cta-text {
+        font-size: 48px;
+        color: #ffffff;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 2px;
+        margin-top: 30px;
+        opacity: 0;
+        transform: translateY(30px);
+      }
+
+      .stars {
+        position: absolute;
+        width: 100%;
+        height: 100%;
+      }
+
+      .star {
+        position: absolute;
+        font-size: 40px;
+        opacity: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="subscribe-streak"
+      data-start="0"
+      data-duration="8"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div class="stars" id="stars"></div>
+      <div class="container">
+        <div class="flame-icon" id="flame">🔥</div>
+
+        <div class="streak-box" id="streak-box">
+          <div class="streak-label">SUBSCRIBER STREAK</div>
+          <div>
+            <div class="counter" id="counter">
+              <span id="count-value">0</span>
+            </div>
+            <div class="day-label">Days Strong</div>
+          </div>
+        </div>
+
+        <div class="cta-text" id="cta-text">KEEP THE STREAK ALIVE!</div>
+      </div>
+    </div>
+
+    <script>
+      const tl = gsap.timeline({ paused: true });
+
+      // Create floating stars
+      const starsContainer = document.getElementById("stars");
+      const starPositions = [
+        { x: 200, y: 150 },
+        { x: 1700, y: 200 },
+        { x: 300, y: 900 },
+        { x: 1600, y: 850 },
+        { x: 960, y: 100 },
+      ];
+
+      starPositions.forEach((pos, i) => {
+        const star = document.createElement("div");
+        star.className = "star";
+        star.textContent = "⭐";
+        star.id = `star-${i}`;
+        star.style.left = pos.x + "px";
+        star.style.top = pos.y + "px";
+        starsContainer.appendChild(star);
+      });
+
+      // Flame entrance with animation
+      tl.to(
+        "#flame",
+        {
+          opacity: 1,
+          scale: 1,
+          duration: 0.6,
+          ease: "back.out(2)",
+        },
+        0,
+      );
+
+      // Streak box pop in
+      tl.to(
+        "#streak-box",
+        {
+          opacity: 1,
+          scale: 1,
+          duration: 0.7,
+          ease: "elastic.out(1, 0.6)",
+        },
+        0.2,
+      );
+
+      // Counter animate in
+      tl.to(
+        "#counter",
+        {
+          opacity: 1,
+          duration: 0.3,
+        },
+        0.5,
+      );
+
+      // Count up animation
+      tl.to(
+        { count: 0 },
+        {
+          count: 256,
+          duration: 2.5,
+          ease: "power2.inOut",
+          onUpdate: function () {
+            document.getElementById("count-value").textContent = Math.round(
+              this.targets()[0].count,
+            );
+          },
+        },
+        0.6,
+      );
+
+      // Stars float in
+      starPositions.forEach((_, i) => {
+        const floatDistance = 50 + i * 15;
+        const duration = 1.5 + i * 0.1;
+        tl.to(
+          `#star-${i}`,
+          {
+            opacity: 1,
+            y: (index, target) => parseFloat(target.style.top) - floatDistance,
+            rotation: 360,
+            duration: duration,
+            ease: "power1.out",
+          },
+          0.8 + i * 0.15,
+        );
+      });
+
+      // CTA text
+      tl.to(
+        "#cta-text",
+        {
+          opacity: 1,
+          y: 0,
+          duration: 0.6,
+          ease: "back.out(1.5)",
+        },
+        2.5,
+      );
+
+      // Pulse effect on streak box
+      tl.to(
+        "#streak-box",
+        {
+          borderColor: "#ff69b4",
+          boxShadow: "0 25px 80px rgba(255, 105, 180, 0.6)",
+          duration: 0.4,
+          ease: "power2.inOut",
+          repeat: 1,
+          yoyo: true,
+        },
+        2.8,
+      );
+
+      // Hold section (2s)
+      tl.to({}, {}, 4.5);
+
+      // Exit sequence
+      tl.to(
+        "#flame, #streak-box, #cta-text",
+        {
+          opacity: 0,
+          scale: 0.8,
+          y: -50,
+          duration: 0.5,
+          ease: "power2.in",
+        },
+        4.8,
+      );
+
+      tl.to(
+        starPositions.map((_, i) => `#star-${i}`).join(", "),
+        {
+          opacity: 0,
+          y: -200,
+          duration: 0.4,
+          ease: "power2.in",
+        },
+        4.8,
+        "-=0.3",
+      );
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["subscribe-streak"] = tl;
+    </script>
+  </body>
+</html>

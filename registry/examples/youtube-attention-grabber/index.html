@@ -1,0 +1,322 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <meta data-composition-id="attention-grabber" data-width="1920" data-height="1080" />
+    <title>Attention Grabber - Like & Subscribe</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: linear-gradient(45deg, #ff1744 0%, #ff6e40 50%, #ffeb3b 100%);
+        font-family:
+          "Fredoka",
+          -apple-system,
+          sans-serif;
+      }
+
+      [data-composition-id="attention-grabber"] {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .container {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 40px;
+      }
+
+      .main-text {
+        font-size: 140px;
+        font-weight: 900;
+        color: white;
+        text-transform: uppercase;
+        letter-spacing: 4px;
+        text-shadow:
+          0 10px 30px rgba(0, 0, 0, 0.3),
+          -5px -5px 0 #ff1744,
+          5px 5px 0 #ff6e40;
+        opacity: 0;
+        transform: scale(0.5) rotateX(90deg);
+        perspective: 1000px;
+      }
+
+      .icon-row {
+        display: flex;
+        gap: 60px;
+        justify-content: center;
+        align-items: center;
+      }
+
+      .icon-bubble {
+        width: 180px;
+        height: 180px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 100px;
+        font-weight: bold;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        opacity: 0;
+        scale: 0;
+      }
+
+      .like-bubble {
+        background: linear-gradient(135deg, #ff1744, #ff5252);
+        border: 5px solid #ffffff;
+      }
+
+      .subscribe-bubble {
+        background: linear-gradient(135deg, #ff6e40, #ffa726);
+        border: 5px solid #ffffff;
+      }
+
+      .plus-sign {
+        font-size: 80px;
+        color: white;
+        font-weight: 900;
+        opacity: 0;
+      }
+
+      .bottom-text {
+        font-size: 64px;
+        color: white;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 2px;
+        text-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+        opacity: 0;
+        transform: translateY(40px);
+      }
+
+      .burst {
+        position: absolute;
+        pointer-events: none;
+      }
+
+      .burst-particle {
+        position: absolute;
+        width: 20px;
+        height: 20px;
+        opacity: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="attention-grabber"
+      data-start="0"
+      data-duration="8"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div class="burst" id="burst-container"></div>
+
+      <div class="container">
+        <div class="main-text" id="main-text">HEY!</div>
+
+        <div class="icon-row">
+          <div class="icon-bubble like-bubble" id="like-bubble">👍</div>
+          <div class="plus-sign" id="plus-sign">+</div>
+          <div class="icon-bubble subscribe-bubble" id="subscribe-bubble">🔔</div>
+        </div>
+
+        <div class="bottom-text" id="bottom-text">= AWESOME SUPPORT!</div>
+      </div>
+    </div>
+
+    <script>
+      const tl = gsap.timeline({ paused: true });
+
+      // Create burst particles
+      const burstContainer = document.getElementById("burst-container");
+      for (let i = 0; i < 12; i++) {
+        const particle = document.createElement("div");
+        particle.className = "burst-particle";
+        particle.textContent = ["✨", "⭐", "💥"][i % 3];
+        particle.style.left = "960px";
+        particle.style.top = "450px";
+        particle.id = `burst-${i}`;
+        burstContainer.appendChild(particle);
+      }
+
+      // Main text entrance with pop
+      tl.to(
+        "#main-text",
+        {
+          opacity: 1,
+          scale: 1,
+          rotateX: 0,
+          duration: 0.7,
+          ease: "back.out(2)",
+        },
+        0,
+      );
+
+      // Text bounce (tiny scale oscillation)
+      tl.to(
+        "#main-text",
+        {
+          scale: 1.15,
+          duration: 0.2,
+          ease: "back.out(1.5)",
+        },
+        0.4,
+      );
+
+      tl.to("#main-text", {
+        scale: 0.95,
+        duration: 0.2,
+        ease: "back.in(1.5)",
+      });
+
+      tl.to("#main-text", {
+        scale: 1.05,
+        duration: 0.2,
+        ease: "back.out(1.5)",
+      });
+
+      tl.to("#main-text", {
+        scale: 1,
+        duration: 0.15,
+        ease: "power2.out",
+      });
+
+      // Burst particle explosion
+      for (let i = 0; i < 12; i++) {
+        const angle = (i / 12) * Math.PI * 2;
+        const distance = 300 + i * 8;
+        const x = Math.cos(angle) * distance;
+        const y = Math.sin(angle) * distance;
+
+        tl.to(
+          `#burst-${i}`,
+          {
+            opacity: 1,
+            x: x,
+            y: y,
+            scale: 0,
+            duration: 0.8,
+            ease: "power2.out",
+          },
+          0.3,
+        );
+      }
+
+      // Like bubble entrance
+      tl.to(
+        "#like-bubble",
+        {
+          opacity: 1,
+          scale: 1,
+          duration: 0.6,
+          ease: "elastic.out(1, 0.6)",
+        },
+        0.8,
+      );
+
+      // Plus sign fade in
+      tl.to(
+        "#plus-sign",
+        {
+          opacity: 1,
+          duration: 0.4,
+        },
+        1.1,
+      );
+
+      // Subscribe bubble entrance
+      tl.to(
+        "#subscribe-bubble",
+        {
+          opacity: 1,
+          scale: 1,
+          duration: 0.6,
+          ease: "elastic.out(1, 0.6)",
+        },
+        1.3,
+      );
+
+      // Bubbles bounce together
+      tl.to(
+        "#like-bubble, #subscribe-bubble",
+        {
+          y: -30,
+          duration: 0.3,
+          ease: "power2.out",
+        },
+        1.8,
+      );
+
+      tl.to("#like-bubble, #subscribe-bubble", {
+        y: 0,
+        duration: 0.3,
+        ease: "bounce.out",
+      });
+
+      // Bottom text
+      tl.to(
+        "#bottom-text",
+        {
+          opacity: 1,
+          y: 0,
+          duration: 0.6,
+          ease: "back.out(1.5)",
+        },
+        2.2,
+      );
+
+      // Pulse bubbles
+      tl.to(
+        "#like-bubble, #subscribe-bubble",
+        {
+          scale: 1.15,
+          duration: 0.3,
+          ease: "back.out(1.5)",
+          repeat: 1,
+          yoyo: true,
+        },
+        2.5,
+      );
+
+      // Hold section (1.5s)
+      tl.to({}, {}, 4.2);
+
+      // Exit
+      tl.to(
+        "#main-text, #like-bubble, #subscribe-bubble, #plus-sign, #bottom-text",
+        {
+          opacity: 0,
+          scale: 0.5,
+          y: -100,
+          duration: 0.5,
+          ease: "back.in(2)",
+        },
+        4.4,
+      );
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["attention-grabber"] = tl;
+    </script>
+  </body>
+</html>
