@@ -92,13 +92,32 @@ export async function createCaptureSession(
   const { browser, captureMode } = await acquireBrowser(chromeArgs, config);
 
   const page = await browser.newPage();
-  // Polyfill esbuild's keepNames helper inside the page. Tools like tsx/Bun
-  // transform this engine's source on the fly and wrap every named function
-  // with `__name(fn, "name")`. When `page.evaluate()` serializes a callback
-  // and ships it to the browser, those `__name(...)` calls would crash with
-  // `__name is not defined` because the helper only exists in Node. Defining
-  // a no-op shim once per page makes the engine work uniformly whether it is
-  // imported from compiled dist (no helper) or from source via tsx.
+  // Polyfill esbuild's keepNames helper inside the page.
+  //
+  // The engine is published as raw TypeScript (`packages/engine/package.json`
+  // points `main`/`exports` at `./src/index.ts`) and downstream consumers
+  // execute it through transpilers that may inject `__name(fn, "name")`
+  // wrappers around named functions. Empirically, this happens with:
+  //   - tsx (its esbuild loader runs with keepNames=true), used by the
+  //     producer's parity-harness, ad-hoc dev scripts, and the
+  //     `bun run --filter @hyperframes/engine test` Vitest path.
+  //   - any tsup/esbuild build that explicitly enables keepNames.
+  //
+  // The HeyGen CLI (`packages/cli`) bundles this engine via tsup with
+  // keepNames left at its default (false) — verified by grepping
+  // `packages/cli/dist/cli.js`, where `__name(...)` call sites are absent.
+  // Bun's TS loader also does not currently inject `__name`. Even so,
+  // anything that calls `page.evaluate(fn)` with a nested named function
+  // under tsx (most local development and tests) will serialize bodies
+  // like `__name(nested,"nested")` and crash with `__name is not defined`
+  // in the browser. The shim makes such calls a no-op.
+  //
+  // An alternative is to load browser-side code as raw text and inject it
+  // via `page.addScriptTag({ content: ... })` — see
+  // `packages/cli/src/commands/contrast-audit.browser.js` for that pattern.
+  // Until every `page.evaluate(fn)` call site migrates, this polyfill is
+  // the single line of defense. The companion regression test in
+  // `frameCapture-namePolyfill.test.ts` verifies the shim stays wired up.
   await page.evaluateOnNewDocument(() => {
     const w = window as unknown as { __name?: <T>(fn: T, _name: string) => T };
     if (typeof w.__name !== "function") {
