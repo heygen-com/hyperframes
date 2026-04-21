@@ -37,6 +37,7 @@
     "perf:gate": "tsx src/perf-gate.ts",
     "check:runtime-conformance": "tsx src/runtime-conformance.ts",
     "benchmark": "tsx src/benchmark.ts",
+    "bench:hdr": "tsx src/benchmark.ts --tags hdr",
     "test": "tsx src/regression-harness.ts",
     "test:update": "tsx src/regression-harness.ts --update",
     "docker:build:test": "docker build -f ../../Dockerfile.test -t hyperframes-producer:test ../..",

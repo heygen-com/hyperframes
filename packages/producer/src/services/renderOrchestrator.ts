@@ -239,6 +239,23 @@ export interface RenderPerfSummary {
   stages: Record<string, number>;
   captureAvgMs?: number;
   capturePeakMs?: number;
+  /**
+   * Peak resident set size (RSS) observed during the render, in MiB.
+   *
+   * Sampled every 250ms by a process-wide poller; surfaces gross memory
+   * regressions (e.g. unbounded image-cache growth) that wall-clock numbers
+   * miss. Optional because callers can serialize older `RenderPerfSummary`
+   * shapes back into this type.
+   */
+  peakRssMb?: number;
+  /**
+   * Peak V8 heap used observed during the render, in MiB.
+   *
+   * Useful as a finer-grained complement to {@link peakRssMb} — RSS includes
+   * native ffmpeg/Chrome allocations, while heapUsed isolates JS-object growth
+   * inside the orchestrator. Optional for the same back-compat reason.
+   */
+  peakHeapUsedMb?: number;
   hdrDiagnostics?: HdrDiagnostics;
 }
 
@@ -962,6 +979,27 @@ export async function executeRenderJob(
   const enableChunkedEncode = cfg.enableChunkedEncode;
   const chunkedEncodeSize = cfg.chunkSizeFrames;
   const enableStreamingEncode = cfg.enableStreamingEncode;
+
+  // Periodic memory sampler — surfaces peak RSS/heap so the benchmark harness
+  // can detect memory regressions (e.g. unbounded image-cache growth) that
+  // wall-clock numbers miss. Sampled every 250ms; the interval is `unref`'d so
+  // it never keeps the event loop alive on its own, and always cleared in the
+  // finally block below regardless of how the render exits.
+  let peakRssBytes = 0;
+  let peakHeapUsedBytes = 0;
+  const sampleMemory = (): void => {
+    try {
+      const m = process.memoryUsage();
+      if (m.rss > peakRssBytes) peakRssBytes = m.rss;
+      if (m.heapUsed > peakHeapUsedBytes) peakHeapUsedBytes = m.heapUsed;
+    } catch {
+      // Defensive: process.memoryUsage() shouldn't throw, but if it ever
+      // does we don't want to take down the render for a benchmark accessory.
+    }
+  };
+  sampleMemory();
+  const memSamplerInterval: NodeJS.Timeout = setInterval(sampleMemory, 250);
+  memSamplerInterval.unref?.();
 
   try {
     const assertNotAborted = () => {
@@ -2512,6 +2550,7 @@ export async function executeRenderJob(
     updateJobStatus(job, "complete", "Render complete", 100, onProgress);
 
     const totalElapsed = Date.now() - pipelineStart;
+    sampleMemory();
 
     const perfSummary: RenderPerfSummary = {
       renderId: job.id,
@@ -2533,6 +2572,8 @@ export async function executeRenderJob(
           : undefined,
       captureAvgMs:
         totalFrames > 0 ? Math.round((perfStages.captureMs ?? 0) / totalFrames) : undefined,
+      peakRssMb: Math.round(peakRssBytes / (1024 * 1024)),
+      peakHeapUsedMb: Math.round(peakHeapUsedBytes / (1024 * 1024)),
     };
     job.perfSummary = perfSummary;
     if (job.config.debug) {
@@ -2666,5 +2707,7 @@ export async function executeRenderJob(
 
     if (restoreLogger) restoreLogger();
     throw error;
+  } finally {
+    clearInterval(memSamplerInterval);
   }
 }
