@@ -262,6 +262,18 @@ describe("createRuntimePlayer", () => {
       player.seek(NaN);
       expect(deps.onDeterministicSeek).toHaveBeenCalledWith(0);
     });
+
+    it("seeks to the exact safe duration without snapping back a frame", () => {
+      const timeline = createMockTimeline({ duration: 8 });
+      const deps = createMockDeps(timeline);
+      deps.getSafeDuration.mockReturnValue(8);
+      const player = createRuntimePlayer(deps);
+      player.seek(8);
+      expect(timeline.pause).toHaveBeenCalled();
+      expect(timeline.totalTime).toHaveBeenCalledWith(8, false);
+      expect(deps.onDeterministicSeek).toHaveBeenCalledWith(8);
+      expect(deps.onSyncMedia).toHaveBeenCalledWith(8, false);
+    });
   });
 
   describe("renderSeek", () => {

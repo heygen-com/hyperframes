@@ -4,6 +4,17 @@ import { formatTime } from "../lib/time";
 import { usePlayerStore, liveTime } from "../store/playerStore";
 
 const SPEED_OPTIONS = [0.25, 0.5, 1, 1.5, 2] as const;
+const SEEK_EDGE_SNAP_PX = 8;
+
+export function resolveSeekPercent(clientX: number, rectLeft: number, rectWidth: number): number {
+  if (!Number.isFinite(rectWidth) || rectWidth <= 0) return 0;
+  const rawPercent = (clientX - rectLeft) / rectWidth;
+  const clamped = Math.max(0, Math.min(1, rawPercent));
+  const snapThreshold = Math.min(0.5, SEEK_EDGE_SNAP_PX / rectWidth);
+  if (clamped <= snapThreshold) return 0;
+  if (clamped >= 1 - snapThreshold) return 1;
+  return clamped;
+}
 
 interface PlayerControlsProps {
   onTogglePlay: () => void;
@@ -88,7 +99,7 @@ export const PlayerControls = memo(function PlayerControls({
       const bar = seekBarRef.current;
       if (!bar || duration <= 0) return;
       const rect = bar.getBoundingClientRect();
-      const percent = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+      const percent = resolveSeekPercent(clientX, rect.left, rect.width);
       // Immediately update progress bar visuals (don't wait for liveTime round-trip)
       const pct = percent * 100;
       if (progressFillRef.current) progressFillRef.current.style.width = `${pct}%`;
