@@ -1,14 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
-<<<<<<< HEAD
-<<<<<<< HEAD
 import path, { join } from "node:path";
-=======
-import { join } from "node:path";
->>>>>>> 8a7ce885 (fix(producer): tighten resource lifecycle and harden file server)
-=======
-import path, { join } from "node:path";
->>>>>>> d6541f84 (test(producer): pin Windows path semantics for isPathInside)
 import { tmpdir } from "node:os";
 import {
   HF_BRIDGE_SCRIPT,
@@ -120,10 +112,6 @@ describe("isPathInside", () => {
       rmSync(outsideDir, { recursive: true, force: true });
     }
   });
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
->>>>>>> d6541f84 (test(producer): pin Windows path semantics for isPathInside)
 
   describe("with path.win32 (cross-platform pinning tests)", () => {
     // Pin Windows-path semantics on Linux/macOS CI by injecting the win32
@@ -161,11 +149,6 @@ describe("isPathInside", () => {
       expect(isPathInside("D:\\foo\\bar", "C:\\foo", win32)).toBe(false);
     });
   });
-<<<<<<< HEAD
-=======
->>>>>>> 8a7ce885 (fix(producer): tighten resource lifecycle and harden file server)
-=======
->>>>>>> d6541f84 (test(producer): pin Windows path semantics for isPathInside)
 });
 
 describe("HF_EARLY_STUB + HF_BRIDGE_SCRIPT integration", () => {
