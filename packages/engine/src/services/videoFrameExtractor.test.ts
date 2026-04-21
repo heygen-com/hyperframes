@@ -134,8 +134,7 @@ describe.skipIf(!HAS_FFMPEG)("extractAllVideoFrames on a VFR source", () => {
       "-i",
       "testsrc2=s=320x180:d=10:rate=60",
       "-vf",
-      "drawtext=text='n=%{n}':fontsize=24:fontcolor=white:x=10:y=10:box=1:boxcolor=black@0.6," +
-        "select='not(between(n,30,89))*not(between(n,180,239))*not(between(n,330,389))*not(between(n,480,539))'",
+      "select='not(between(n\\,30\\,89))*not(between(n\\,180\\,239))*not(between(n\\,330\\,389))*not(between(n\\,480\\,539))'",
       "-vsync",
       "vfr",
       "-c:v",

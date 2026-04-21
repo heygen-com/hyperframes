@@ -2,13 +2,17 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createServer, type Server } from "node:net";
 import { PORT_PROBE_HOSTS, testPortOnAllHosts } from "./portUtils.js";
 
-// High-ephemeral range with runway so parallel test shards don't collide.
-const BASE = 45_000;
-
 const openServers: Server[] = [];
 
-function allocFreePort(): number {
-  return BASE + Math.floor(Math.random() * 1_000);
+async function allocFreePort(): Promise<number> {
+  const srv = createServer();
+  await new Promise<void>((resolve, reject) => {
+    srv.once("error", reject);
+    srv.listen(0, "127.0.0.1", () => resolve());
+  });
+  const port = (srv.address() as import("node:net").AddressInfo).port;
+  await new Promise<void>((resolve) => srv.close(() => resolve()));
+  return port;
 }
 
 afterEach(async () => {
@@ -31,13 +35,13 @@ describe("testPortOnAllHosts — real-socket behaviour (OS-dependent)", () => {
   // regression gate.
 
   it("returns true for a genuinely free port (regression: #309)", async () => {
-    const port = allocFreePort();
+    const port = await allocFreePort();
     const result = await testPortOnAllHosts(port);
     expect(result).toBe(true);
   });
 
   it("returns false when the port is occupied on 0.0.0.0", async () => {
-    const port = allocFreePort();
+    const port = await allocFreePort();
     const blocker = createServer();
     openServers.push(blocker);
     await new Promise<void>((resolve, reject) => {
