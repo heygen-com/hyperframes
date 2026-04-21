@@ -377,7 +377,7 @@ export const NLELayout = memo(function NLELayout({
           <div className="flex flex-col flex-shrink-0" style={{ height: timelineH }}>
             {/* Timeline tracks */}
             <div
-              className="flex-1 min-h-0 overflow-y-auto bg-neutral-950"
+              className="flex-1 min-h-0 overflow-hidden bg-neutral-950"
               onDoubleClick={(e) => {
                 if ((e.target as HTMLElement).closest("[data-clip]")) return;
                 if (compositionStack.length > 1) {
