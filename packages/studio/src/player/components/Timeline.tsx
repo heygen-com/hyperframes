@@ -21,6 +21,7 @@ import {
   type TimelineTrackStyle,
   type TimelineTheme,
 } from "./timelineTheme";
+import { getTimelinePixelsPerSecond } from "./timelineZoom";
 
 /* ── Layout ─────────────────────────────────────────────────────── */
 const GUTTER = 32;
@@ -187,7 +188,7 @@ export const Timeline = memo(function Timeline({
   const setSelectedElementId = usePlayerStore((s) => s.setSelectedElementId);
   const updateElement = usePlayerStore((s) => s.updateElement);
   const zoomMode = usePlayerStore((s) => s.zoomMode);
-  const manualPps = usePlayerStore((s) => s.pixelsPerSecond);
+  const manualZoomPercent = usePlayerStore((s) => s.manualZoomPercent);
   const playheadRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -303,7 +304,7 @@ export const Timeline = memo(function Timeline({
     viewportWidth > GUTTER && effectiveDuration > 0
       ? (viewportWidth - GUTTER - 2) / effectiveDuration
       : 100;
-  const pps = zoomMode === "fit" ? fitPps : manualPps;
+  const pps = getTimelinePixelsPerSecond(fitPps, zoomMode, manualZoomPercent);
   const trackContentWidth = Math.max(0, effectiveDuration * pps);
   const zoomModeRef = useRef(zoomMode);
   zoomModeRef.current = zoomMode;

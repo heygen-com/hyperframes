@@ -34,10 +34,10 @@ interface PlayerState {
   elements: TimelineElement[];
   selectedElementId: string | null;
   playbackRate: number;
-  /** Timeline zoom: 'fit' auto-scales to viewport, 'manual' uses pixelsPerSecond */
+  /** Timeline zoom: 'fit' auto-scales to viewport, 'manual' uses manualZoomPercent */
   zoomMode: ZoomMode;
-  /** Pixels per second when in manual zoom mode */
-  pixelsPerSecond: number;
+  /** Timeline zoom percent relative to the fit width when in manual mode */
+  manualZoomPercent: number;
 
   setIsPlaying: (playing: boolean) => void;
   setCurrentTime: (time: number) => void;
@@ -51,7 +51,7 @@ interface PlayerState {
     updates: Partial<Pick<TimelineElement, "start" | "duration" | "track" | "playbackStart">>,
   ) => void;
   setZoomMode: (mode: ZoomMode) => void;
-  setPixelsPerSecond: (pps: number) => void;
+  setManualZoomPercent: (percent: number) => void;
   reset: () => void;
 }
 
@@ -77,12 +77,13 @@ export const usePlayerStore = create<PlayerState>((set) => ({
   selectedElementId: null,
   playbackRate: 1,
   zoomMode: "fit",
-  pixelsPerSecond: 100,
+  manualZoomPercent: 100,
 
   setIsPlaying: (playing) => set({ isPlaying: playing }),
   setPlaybackRate: (rate) => set({ playbackRate: rate }),
   setZoomMode: (mode) => set({ zoomMode: mode }),
-  setPixelsPerSecond: (pps) => set({ pixelsPerSecond: Math.max(10, pps) }),
+  setManualZoomPercent: (percent) =>
+    set({ manualZoomPercent: Math.max(10, Math.min(2000, Math.round(percent))) }),
   setCurrentTime: (time) => set({ currentTime: Number.isFinite(time) ? time : 0 }),
   setDuration: (duration) => set({ duration: Number.isFinite(duration) ? duration : 0 }),
   setTimelineReady: (ready) => set({ timelineReady: ready }),
@@ -95,7 +96,7 @@ export const usePlayerStore = create<PlayerState>((set) => ({
       ),
     })),
   // Resets project-specific state when switching compositions.
-  // playbackRate, zoomMode, and pixelsPerSecond are intentionally preserved
+  // playbackRate, zoomMode, and manualZoomPercent are intentionally preserved
   // because they are user preferences that should survive project switches.
   reset: () =>
     set({

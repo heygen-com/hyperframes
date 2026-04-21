@@ -17,7 +17,7 @@ describe("usePlayerStore", () => {
       expect(state.selectedElementId).toBeNull();
       expect(state.playbackRate).toBe(1);
       expect(state.zoomMode).toBe("fit");
-      expect(state.pixelsPerSecond).toBe(100);
+      expect(state.manualZoomPercent).toBe(100);
     });
   });
 
@@ -160,20 +160,25 @@ describe("usePlayerStore", () => {
     });
   });
 
-  describe("setPixelsPerSecond", () => {
-    it("updates pixelsPerSecond", () => {
-      usePlayerStore.getState().setPixelsPerSecond(200);
-      expect(usePlayerStore.getState().pixelsPerSecond).toBe(200);
+  describe("setManualZoomPercent", () => {
+    it("updates the manual zoom percent", () => {
+      usePlayerStore.getState().setManualZoomPercent(200);
+      expect(usePlayerStore.getState().manualZoomPercent).toBe(200);
     });
 
     it("clamps to minimum of 10", () => {
-      usePlayerStore.getState().setPixelsPerSecond(5);
-      expect(usePlayerStore.getState().pixelsPerSecond).toBe(10);
+      usePlayerStore.getState().setManualZoomPercent(5);
+      expect(usePlayerStore.getState().manualZoomPercent).toBe(10);
     });
 
     it("clamps negative values to 10", () => {
-      usePlayerStore.getState().setPixelsPerSecond(-50);
-      expect(usePlayerStore.getState().pixelsPerSecond).toBe(10);
+      usePlayerStore.getState().setManualZoomPercent(-50);
+      expect(usePlayerStore.getState().manualZoomPercent).toBe(10);
+    });
+
+    it("clamps to the maximum supported zoom percent", () => {
+      usePlayerStore.getState().setManualZoomPercent(5000);
+      expect(usePlayerStore.getState().manualZoomPercent).toBe(2000);
     });
   });
 
@@ -200,11 +205,11 @@ describe("usePlayerStore", () => {
       expect(state.selectedElementId).toBeNull();
     });
 
-    it("does not reset playbackRate, zoomMode, or pixelsPerSecond", () => {
+    it("does not reset playbackRate, zoomMode, or manualZoomPercent", () => {
       const store = usePlayerStore.getState();
       store.setPlaybackRate(2);
       store.setZoomMode("manual");
-      store.setPixelsPerSecond(200);
+      store.setManualZoomPercent(200);
 
       usePlayerStore.getState().reset();
 
@@ -212,7 +217,7 @@ describe("usePlayerStore", () => {
       // reset() only resets the fields explicitly listed in the reset function
       expect(state.playbackRate).toBe(2);
       expect(state.zoomMode).toBe("manual");
-      expect(state.pixelsPerSecond).toBe(200);
+      expect(state.manualZoomPercent).toBe(200);
     });
   });
 });

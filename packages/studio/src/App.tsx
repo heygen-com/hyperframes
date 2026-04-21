@@ -23,6 +23,10 @@ import {
   buildTrackZIndexMap,
   formatTimelineAttributeNumber,
 } from "./player/components/timelineEditing";
+import {
+  getNextTimelineZoomPercent,
+  getTimelineZoomPercent,
+} from "./player/components/timelineZoom";
 
 interface EditingFile {
   path: string;
@@ -204,9 +208,9 @@ export function StudioApp() {
     ? `/api/projects/${projectId}/preview/comp/${activeCompPath}`
     : null;
   const zoomMode = usePlayerStore((s) => s.zoomMode);
-  const pixelsPerSecond = usePlayerStore((s) => s.pixelsPerSecond);
+  const manualZoomPercent = usePlayerStore((s) => s.manualZoomPercent);
   const setZoomMode = usePlayerStore((s) => s.setZoomMode);
-  const setPixelsPerSecond = usePlayerStore((s) => s.setPixelsPerSecond);
+  const setManualZoomPercent = usePlayerStore((s) => s.setManualZoomPercent);
   const timelineElements = usePlayerStore((s) => s.elements);
   const timelineDuration = usePlayerStore((s) => s.duration);
   const effectiveTimelineDuration = useMemo(() => {
@@ -216,6 +220,10 @@ export function StudioApp() {
         : 0;
     return Math.max(timelineDuration, maxEnd);
   }, [timelineDuration, timelineElements]);
+  const displayedTimelineZoomPercent = useMemo(
+    () => getTimelineZoomPercent(zoomMode, manualZoomPercent),
+    [zoomMode, manualZoomPercent],
+  );
 
   const renderClipContent = useCallback(
     (el: TimelineElement, style: { clip: string; label: string }): ReactNode => {
@@ -336,7 +344,7 @@ export function StudioApp() {
           type="button"
           onClick={() => {
             setZoomMode("manual");
-            setPixelsPerSecond(Math.max(20, Math.round(pixelsPerSecond * 0.8)));
+            setManualZoomPercent(getNextTimelineZoomPercent("out", zoomMode, manualZoomPercent));
           }}
           className="h-7 w-7 rounded-md border border-neutral-800 text-neutral-400 transition-colors hover:border-neutral-700 hover:text-neutral-200"
           title="Zoom out"
@@ -344,13 +352,13 @@ export function StudioApp() {
           -
         </button>
         <div className="min-w-[58px] text-center text-[10px] font-medium tabular-nums text-neutral-500">
-          {zoomMode === "fit" ? "Auto" : `${Math.round(pixelsPerSecond)} px/s`}
+          {`${displayedTimelineZoomPercent}%`}
         </div>
         <button
           type="button"
           onClick={() => {
             setZoomMode("manual");
-            setPixelsPerSecond(Math.min(2000, Math.round(pixelsPerSecond * 1.25)));
+            setManualZoomPercent(getNextTimelineZoomPercent("in", zoomMode, manualZoomPercent));
           }}
           className="h-7 w-7 rounded-md border border-neutral-800 text-neutral-400 transition-colors hover:border-neutral-700 hover:text-neutral-200"
           title="Zoom in"
