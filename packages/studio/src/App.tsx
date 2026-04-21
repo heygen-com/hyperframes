@@ -376,7 +376,6 @@ export function StudioApp() {
             accentColor={style.clip}
             seekTime={0}
             duration={el.duration}
-            selector={el.selector}
           />
         );
       }
@@ -392,7 +391,6 @@ export function StudioApp() {
             accentColor={style.clip}
             seekTime={el.start}
             duration={el.duration}
-            selector={el.selector}
           />
         );
       }
@@ -438,7 +436,6 @@ export function StudioApp() {
             accentColor={style.clip}
             seekTime={el.start}
             duration={el.duration}
-            selector={el.selector}
           />
         );
       }
