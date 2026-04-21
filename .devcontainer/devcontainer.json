@@ -1,0 +1,94 @@
+{
+  "name": "Hyperframes",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
+  },
+
+  // ── Container settings ───────────────────────────────────────────────────
+  "remoteUser": "vscode",
+  "containerEnv": {
+    "PUPPETEER_SKIP_CHROMIUM_DOWNLOAD": "true",
+    "PUPPETEER_EXECUTABLE_PATH": "/usr/bin/chromium",
+    "CONTAINER": "true"
+  },
+
+  // ── VS Code extensions ───────────────────────────────────────────────────
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        // Linting & formatting — oxlint + oxfmt (project standard)
+        "oxc.oxc-vscode",
+
+        // Editor experience
+        "EditorConfig.EditorConfig",
+        "streetsidesoftware.code-spell-checker",
+        "usernamehw.errorlens",
+
+        // Git
+        "eamodio.gitlens",
+        "mhutchie.git-graph",
+
+        // HTML / CSS
+        "bradlc.vscode-tailwindcss",
+        "formulahendry.auto-close-tag",
+        "naumovs.color-highlight",
+
+        // Markdown & docs
+        "yzhang.markdown-all-in-one",
+        "davidanson.vscode-markdownlint",
+
+        // Misc tooling
+        "mikestead.dotenv",
+        "ms-vscode.live-server"
+      ],
+      "settings": {
+        // Use bun as the npm script runner
+        "npm.packageManager": "bun",
+
+        // Format on save
+        "editor.formatOnSave": true,
+        "editor.defaultFormatter": "oxc.oxc-vscode",
+
+        // TypeScript
+        "typescript.tsdk": "node_modules/typescript/lib",
+        "typescript.enablePromptUseWorkspaceTsdk": true,
+
+        // Trim trailing whitespace / insert final newline — matches .editorconfig
+        "files.trimTrailingWhitespace": true,
+        "files.insertFinalNewline": true,
+
+        // Search exclusions
+        "search.exclude": {
+          "**/node_modules": true,
+          "**/dist": true,
+          "**/.git": true,
+          "**/bun.lock": true
+        }
+      }
+    }
+  },
+
+  // ── Lifecycle hooks ──────────────────────────────────────────────────────
+
+  // Install dependencies after the container is created
+  "postCreateCommand": "bun install",
+
+  // Build all packages and start the studio after each start
+  "postStartCommand": "bun run build",
+
+  // ── Port forwarding ──────────────────────────────────────────────────────
+  "forwardPorts": [
+    // Hyperframes Studio dev server (Vite default)
+    5173,
+    // Alternative Vite ports
+    5174,
+    5175
+  ],
+  "portsAttributes": {
+    "5173": {
+      "label": "Hyperframes Studio",
+      "onAutoForward": "openBrowser"
+    }
+  }
+}
