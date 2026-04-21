@@ -204,7 +204,6 @@ export function resolveTimelineAssetDrop(
     track: getDefaultDroppedTrack(input.trackOrder, rowIndex),
   };
 }
-
 /* ── Component ──────────────────────────────────────────────────── */
 interface TimelineProps {
   /** Called when user seeks via ruler/track click or playhead drag */
@@ -478,6 +477,7 @@ export const Timeline = memo(function Timeline({
         !isDragging.current &&
         shouldAutoScrollTimeline(zoomModeRef.current, scroll.scrollWidth, scroll.clientWidth)
       ) {
+        const playheadX = GUTTER + px;
         const visibleRight = scroll.scrollLeft + scroll.clientWidth;
         const visibleLeft = scroll.scrollLeft;
         const edgeMargin = scroll.clientWidth * 0.12;
