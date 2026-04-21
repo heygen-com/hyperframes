@@ -37,12 +37,15 @@ import {
   getNextTimelineZoomPercent,
   getTimelineZoomPercent,
 } from "./player/components/timelineZoom";
+<<<<<<< HEAD
 import {
   getTimelineEditorHintDismissed,
   getTimelineToggleTitle,
   setTimelineEditorHintDismissed,
   shouldHandleTimelineToggleHotkey,
 } from "./utils/timelineDiscovery";
+=======
+>>>>>>> b52f8e16 (feat: use percentage-based timeline zoom)
 
 interface EditingFile {
   path: string;
@@ -344,7 +347,7 @@ export function StudioApp() {
     () => () => {
       if (previewHotkeyWindowRef.current) {
         previewHotkeyWindowRef.current.removeEventListener("keydown", handleTimelineToggleHotkey);
-      previewHotkeyWindowRef.current = null;
+        previewHotkeyWindowRef.current = null;
       }
     },
     [handleTimelineToggleHotkey],
