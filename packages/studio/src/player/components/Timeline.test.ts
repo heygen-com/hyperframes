@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 612b92ae (fix: reset timeline scroll when returning to fit)
 import {
   generateTicks,
   getDefaultDroppedTrack,
@@ -10,9 +13,12 @@ import {
   shouldHandleTimelineDeleteKey,
   shouldAutoScrollTimeline,
 } from "./Timeline";
+<<<<<<< HEAD
 =======
 import { generateTicks, getTimelinePlayheadLeft, shouldAutoScrollTimeline } from "./Timeline";
 >>>>>>> e00a18b1 (fix: sync timeline playhead on zoom changes)
+=======
+>>>>>>> 612b92ae (fix: reset timeline scroll when returning to fit)
 import { formatTime } from "../lib/time";
 
 describe("generateTicks", () => {
