@@ -131,7 +131,6 @@ export function getTimelineScrollLeftForZoomTransition(
   if (previousZoomMode === "manual" && nextZoomMode === "fit") return 0;
   return currentScrollLeft;
 }
-
 export function getTimelinePlayheadLeft(time: number, pixelsPerSecond: number): number {
   if (!Number.isFinite(time) || !Number.isFinite(pixelsPerSecond)) return GUTTER;
   return GUTTER + Math.max(0, time) * Math.max(0, pixelsPerSecond);
@@ -462,7 +461,6 @@ export const Timeline = memo(function Timeline({
     );
     previousZoomModeRef.current = zoomMode;
   }, [zoomMode]);
-
   useMountEffect(() => {
     const unsub = liveTime.subscribe((t) => {
       const dur = durationRef.current;
@@ -477,7 +475,6 @@ export const Timeline = memo(function Timeline({
         !isDragging.current &&
         shouldAutoScrollTimeline(zoomModeRef.current, scroll.scrollWidth, scroll.clientWidth)
       ) {
-        const playheadX = GUTTER + px;
         const visibleRight = scroll.scrollLeft + scroll.clientWidth;
         const visibleLeft = scroll.scrollLeft;
         const edgeMargin = scroll.clientWidth * 0.12;

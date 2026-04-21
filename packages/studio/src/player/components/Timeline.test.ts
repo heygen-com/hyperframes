@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+<<<<<<< HEAD
 import {
   generateTicks,
   getDefaultDroppedTrack,
@@ -9,6 +10,9 @@ import {
   shouldHandleTimelineDeleteKey,
   shouldAutoScrollTimeline,
 } from "./Timeline";
+=======
+import { generateTicks, getTimelinePlayheadLeft, shouldAutoScrollTimeline } from "./Timeline";
+>>>>>>> e00a18b1 (fix: sync timeline playhead on zoom changes)
 import { formatTime } from "../lib/time";
 
 describe("generateTicks", () => {
@@ -144,7 +148,6 @@ describe("getTimelineScrollLeftForZoomTransition", () => {
     expect(getTimelineScrollLeftForZoomTransition("manual", "manual", 480)).toBe(480);
   });
 });
-
 describe("getTimelinePlayheadLeft", () => {
   it("converts time to a pixel offset from the gutter", () => {
     expect(getTimelinePlayheadLeft(4, 20)).toBe(112);
