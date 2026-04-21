@@ -15,6 +15,26 @@ export interface ProducerLogger {
   warn(message: string, meta?: Record<string, unknown>): void;
   info(message: string, meta?: Record<string, unknown>): void;
   debug(message: string, meta?: Record<string, unknown>): void;
+
+  /**
+   * Optional fast level check used to skip expensive metadata construction
+   * at the call site. When the call site needs to build a non-trivial meta
+   * object (e.g. snapshot a struct, format numbers, run `Array.find` over
+   * scene state) just to attach to a debug log, gate it with this method:
+   *
+   * ```ts
+   * if (log.isLevelEnabled?.("debug") ?? true) {
+   *   const meta = buildExpensiveMeta();
+   *   log.debug("hot-path event", meta);
+   * }
+   * ```
+   *
+   * The default coalescence (`?? true`) preserves today's behavior for
+   * loggers that omit this method — they keep building the meta object as
+   * before. Custom integrations (Pino, Winston, structured loggers) should
+   * implement this to enable the optimization.
+   */
+  isLevelEnabled?(level: LogLevel): boolean;
 }
 
 const LOG_LEVEL_PRIORITY: Record<LogLevel, number> = {
@@ -58,6 +78,9 @@ export function createConsoleLogger(level: LogLevel = "info"): ProducerLogger {
       if (shouldLog("debug")) {
         console.log(`[DEBUG] ${message}${formatMeta(meta)}`);
       }
+    },
+    isLevelEnabled(msgLevel) {
+      return shouldLog(msgLevel);
     },
   };
 }

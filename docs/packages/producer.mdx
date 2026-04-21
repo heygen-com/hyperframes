@@ -245,6 +245,46 @@ The producer also re-exports key engine functionality for convenience:
 | `resolveRenderPaths()` | Resolve render directory paths |
 | `prepareHyperframeLintBody()` / `runHyperframeLint()` | Linting utilities |
 
+## Logging
+
+The producer ships a small pluggable logger so callers can inject Pino, Winston, or any structured backend without taking a dependency on it.
+
+```ts
+export type LogLevel = "error" | "warn" | "info" | "debug";
+
+export interface ProducerLogger {
+  error(message: string, meta?: Record<string, unknown>): void;
+  warn(message: string, meta?: Record<string, unknown>): void;
+  info(message: string, meta?: Record<string, unknown>): void;
+  debug(message: string, meta?: Record<string, unknown>): void;
+  isLevelEnabled?(level: LogLevel): boolean;
+}
+```
+
+`createConsoleLogger(level)` returns a console-backed implementation that filters by level and JSON-stringifies the optional `meta` object. `defaultLogger` is the singleton at `level="info"`.
+
+### Skipping expensive metadata in hot paths
+
+`isLevelEnabled` is **optional** so existing custom loggers keep working unchanged. When you build a non-trivial meta object in a hot loop just to attach to a debug log, gate the construction with the nullish-coalescing pattern so production runs (`level=info`) pay nothing while loggers without the method behave exactly as before:
+
+```ts
+// Inside a per-frame loop in the encode pipeline:
+if (i % 30 === 0 && (log.isLevelEnabled?.("debug") ?? true)) {
+  const hdrEl = stackingInfo.find((e) => e.isHdr);
+  log.debug("[Render] HDR layer composite frame", {
+    frame: i,
+    time: time.toFixed(2),
+    hdrElement: hdrEl
+      ? { z: hdrEl.zIndex, visible: hdrEl.visible, width: hdrEl.width }
+      : null,
+    stackingCount: stackingInfo.length,
+    activeTransition: activeTransition?.shader,
+  });
+}
+```
+
+The `?? true` fallback means callers using a custom logger that does not implement `isLevelEnabled` continue to build and pass the meta object — the optimization is opt-in for logger implementations that want it.
+
 ## Regression Testing
 
 The producer includes a regression harness for comparing render output against golden baselines. This is useful for catching visual regressions when changing the runtime, engine, or rendering pipeline.

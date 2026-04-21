@@ -1972,7 +1972,27 @@ export async function executeRenderJob(
               (t) => i >= t.startFrame && i <= t.endFrame,
             );
 
-            if (i % 30 === 0) {
+            // Per-frame debug snapshot (every 30 frames). The meta object
+            // requires `Array.find` over `stackingInfo` plus a number-format
+            // and conditional struct allocation — non-trivial work to do
+            // every 30 frames in the encode hot loop. Gate the entire block
+            // on the logger's level check so production runs (level=info)
+            // pay nothing.
+            //
+            // Audit note (PR #383 review): this is the only per-frame log
+            // site in the streaming HDR encode loop that constructs
+            // non-trivial metadata. The `[diag]` log.info calls inside
+            // compositeToBuffer (compositeToBuffer plan, hdr layer blit,
+            // dom layer blit, compositeToBuffer end) are already gated by
+            // `shouldLog = debugDumpEnabled && debugFrameIndex >= 0`, where
+            // debugDumpEnabled is driven by KEEP_TEMP=1 — strictly stricter
+            // than an isLevelEnabled check. The HDR blit error-path
+            // log.debugs only fire on caught failures, not on the happy
+            // path. Any new per-frame log site that builds meta should
+            // follow the same `if (log.isLevelEnabled?.("level") ?? true)`
+            // pattern (or stay behind `shouldLog`) so production stays
+            // allocation-free in the hot loop.
+            if (i % 30 === 0 && (log.isLevelEnabled?.("debug") ?? true)) {
               const hdrEl = stackingInfo.find((e) => e.isHdr);
               log.debug("[Render] HDR layer composite frame", {
                 frame: i,
