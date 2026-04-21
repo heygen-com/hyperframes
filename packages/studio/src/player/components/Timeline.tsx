@@ -115,6 +115,15 @@ export function shouldAutoScrollTimeline(
   return scrollWidth - clientWidth > 1;
 }
 
+export function getTimelineScrollLeftForZoomTransition(
+  previousZoomMode: ZoomMode | null,
+  nextZoomMode: ZoomMode,
+  currentScrollLeft: number,
+): number {
+  if (previousZoomMode === "manual" && nextZoomMode === "fit") return 0;
+  return currentScrollLeft;
+}
+
 export function getTimelinePlayheadLeft(time: number, pixelsPerSecond: number): number {
   if (!Number.isFinite(time) || !Number.isFinite(pixelsPerSecond)) return GUTTER;
   return GUTTER + Math.max(0, time) * Math.max(0, pixelsPerSecond);
@@ -314,6 +323,7 @@ export const Timeline = memo(function Timeline({
   const trackContentWidth = Math.max(0, effectiveDuration * pps);
   const zoomModeRef = useRef(zoomMode);
   zoomModeRef.current = zoomMode;
+  const previousZoomModeRef = useRef<ZoomMode | null>(zoomMode);
 
   const durationRef = useRef(effectiveDuration);
   durationRef.current = effectiveDuration;
@@ -327,6 +337,20 @@ export const Timeline = memo(function Timeline({
   useEffect(() => {
     syncPlayheadPosition(currentTime);
   }, [currentTime, pps, syncPlayheadPosition]);
+
+  useEffect(() => {
+    const scroll = scrollRef.current;
+    if (!scroll) {
+      previousZoomModeRef.current = zoomMode;
+      return;
+    }
+    scroll.scrollLeft = getTimelineScrollLeftForZoomTransition(
+      previousZoomModeRef.current,
+      zoomMode,
+      scroll.scrollLeft,
+    );
+    previousZoomModeRef.current = zoomMode;
+  }, [zoomMode]);
 
   useMountEffect(() => {
     const unsub = liveTime.subscribe((t) => {

@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { generateTicks, getTimelinePlayheadLeft, shouldAutoScrollTimeline } from "./Timeline";
+import {
+  generateTicks,
+  getTimelinePlayheadLeft,
+  getTimelineScrollLeftForZoomTransition,
+  shouldAutoScrollTimeline,
+} from "./Timeline";
 import { formatTime } from "../lib/time";
 
 describe("generateTicks", () => {
@@ -121,6 +126,18 @@ describe("shouldAutoScrollTimeline", () => {
 
   it("auto-scrolls in manual mode when horizontal overflow exists", () => {
     expect(shouldAutoScrollTimeline("manual", 1200, 800)).toBe(true);
+  });
+});
+
+describe("getTimelineScrollLeftForZoomTransition", () => {
+  it("resets horizontal scroll when switching from manual zoom back to fit", () => {
+    expect(getTimelineScrollLeftForZoomTransition("manual", "fit", 480)).toBe(0);
+  });
+
+  it("preserves the current scroll offset for other zoom transitions", () => {
+    expect(getTimelineScrollLeftForZoomTransition("fit", "fit", 480)).toBe(480);
+    expect(getTimelineScrollLeftForZoomTransition("fit", "manual", 480)).toBe(480);
+    expect(getTimelineScrollLeftForZoomTransition("manual", "manual", 480)).toBe(480);
   });
 });
 
