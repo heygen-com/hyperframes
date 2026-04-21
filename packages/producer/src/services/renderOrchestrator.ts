@@ -101,6 +101,11 @@ import {
 } from "./htmlCompiler.js";
 import { defaultLogger, type ProducerLogger } from "../logger.js";
 import { isPathInside } from "../utils/paths.js";
+import { clearMaxFrameIndex, getMaxFrameIndex } from "./frameDirCache.js";
+import {
+  type HdrImageTransferCache,
+  createHdrImageTransferCache,
+} from "./hdrImageTransferCache.js";
 
 /**
  * Wrap a cleanup operation so it never throws, but logs any failure.
@@ -119,45 +124,6 @@ async function safeCleanup(
   }
 }
 
-/**
- * Cache of the maximum 1-based frame index present in each pre-extracted frame
- * directory (e.g. `frame_0001.png … frame_0150.png` → 150). The directory is
- * read once on first access and the max is computed by parsing filenames.
- *
- * Used to bounds-check `videoFrameIndex` against the directory size before
- * calling `existsSync` per frame, which avoids redundant filesystem syscalls
- * when the requested time falls past the last extracted frame (e.g. a clip
- * shorter than the composition's effective video range).
- */
-const frameDirMaxIndexCache = new Map<string, number>();
-
-const FRAME_FILENAME_RE = /^frame_(\d+)\.png$/;
-
-function getMaxFrameIndex(frameDir: string): number {
-  const cached = frameDirMaxIndexCache.get(frameDir);
-  if (cached !== undefined) return cached;
-  let max = 0;
-  try {
-    for (const name of readdirSync(frameDir)) {
-      const m = FRAME_FILENAME_RE.exec(name);
-      if (!m) continue;
-      const n = Number(m[1]);
-      if (Number.isFinite(n) && n > max) max = n;
-    }
-  } catch {
-    // Directory missing or unreadable → max stays 0; downstream existsSync
-    // check will still produce the right "no frame" outcome.
-  }
-  frameDirMaxIndexCache.set(frameDir, max);
-  return max;
-}
-
-/**
- * Sum file sizes under `dir` recursively. Used to report a `tmpPeakBytes`
- * proxy in `RenderPerfSummary` right before workDir cleanup. Swallows errors
- * because it's purely observational — a missing workDir or symlink loop must
- * not fail the render.
- */
 function sampleDirectoryBytes(dir: string): number {
   let total = 0;
   const stack: string[] = [dir];
@@ -598,6 +564,7 @@ function blitHdrImageLayer(
   canvas: Buffer,
   el: ElementStackingInfo,
   hdrImageBuffers: Map<string, HdrImageBuffer>,
+  hdrImageTransferCache: HdrImageTransferCache,
   width: number,
   height: number,
   log?: ProducerLogger,
@@ -610,13 +577,13 @@ function blitHdrImageLayer(
   }
 
   try {
-    let hdrRgb = buf.data;
-    if (sourceTransfer && targetTransfer && sourceTransfer !== targetTransfer) {
-      // convertTransfer mutates in place; copy first so the cached decode stays
-      // pristine for subsequent frames.
-      hdrRgb = Buffer.from(buf.data);
-      convertTransfer(hdrRgb, sourceTransfer, targetTransfer);
-    }
+    // The cache returns `buf.data` unchanged when no conversion is needed,
+    // and otherwise returns a per-(imageId, targetTransfer) buffer that was
+    // converted exactly once and reused across every subsequent frame.
+    const hdrRgb =
+      sourceTransfer && targetTransfer
+        ? hdrImageTransferCache.getConverted(el.id, sourceTransfer, targetTransfer, buf.data)
+        : buf.data;
 
     const viewportMatrix = parseTransformMatrix(el.transform);
 
@@ -677,6 +644,7 @@ interface HdrCompositeContext {
   effectiveHdr: { transfer: HdrTransfer };
   nativeHdrImageIds: Set<string>;
   hdrImageBuffers: Map<string, HdrImageBuffer>;
+  hdrImageTransferCache: HdrImageTransferCache;
   hdrFrameDirs: Map<string, string>;
   hdrVideoStartTimes: Map<string, number>;
   imageTransfers: Map<string, HdrTransfer>;
@@ -730,6 +698,7 @@ async function compositeHdrFrame(
     effectiveHdr,
     nativeHdrImageIds,
     hdrImageBuffers,
+    hdrImageTransferCache,
     hdrFrameDirs,
     hdrVideoStartTimes,
     imageTransfers,
@@ -777,6 +746,7 @@ async function compositeHdrFrame(
           canvas,
           layer.element,
           hdrImageBuffers,
+          hdrImageTransferCache,
           width,
           height,
           log,
@@ -1659,7 +1629,7 @@ export async function executeRenderJob(
       let hdrEncoderClosed = false;
       let domSessionClosed = false;
       // Track HDR video frame directories at this scope so the outer finally
-      // can clear their entries from the module-scoped frameDirMaxIndexCache.
+      // can clear their entries from the shared frameDirCache module.
       // Without this, the cache leaks one entry per HDR video per render.
       const hdrFrameDirs = new Map<string, string>();
       try {
@@ -1825,7 +1795,7 @@ export async function executeRenderJob(
 
         // ── Pre-extract all HDR video frames in a single FFmpeg pass ──────
         // hdrFrameDirs is declared above the try block so the outer finally
-        // can clear matching frameDirMaxIndexCache entries on any exit path.
+        // can clear matching frameDirCache entries on any exit path.
         for (const [videoId, srcPath] of hdrVideoSrcPaths) {
           const video = composition.videos.find((v) => v.id === videoId);
           if (!video) continue;
@@ -1961,6 +1931,18 @@ export async function executeRenderJob(
               "Internal: HDR render path entered without effectiveHdr — this is a bug.",
             );
           }
+          // Per-job LRU cache for transfer-converted HDR image buffers. Static HDR
+          // images that need PQ↔HLG conversion are converted exactly once per
+          // (imageId, targetTransfer) and then reused for every subsequent frame
+          // instead of paying a fresh `Buffer.from` + `convertTransfer` on every
+          // composite. The cache is local to this render job so concurrent renders
+          // do not share state.
+          const hdrCacheMaxBytes = process.env.HDR_TRANSFER_CACHE_MAX_BYTES
+            ? Number(process.env.HDR_TRANSFER_CACHE_MAX_BYTES)
+            : undefined;
+          const hdrImageTransferCache = createHdrImageTransferCache(
+            hdrCacheMaxBytes !== undefined ? { maxBytes: hdrCacheMaxBytes } : {},
+          );
           const hdrCompositeCtx: HdrCompositeContext = {
             log,
             domSession,
@@ -1971,6 +1953,7 @@ export async function executeRenderJob(
             effectiveHdr,
             nativeHdrImageIds,
             hdrImageBuffers,
+            hdrImageTransferCache,
             hdrFrameDirs,
             hdrVideoStartTimes,
             imageTransfers,
@@ -2090,6 +2073,7 @@ export async function executeRenderJob(
                       sceneBuf as Buffer,
                       el,
                       hdrImageBuffers,
+                      hdrImageTransferCache,
                       width,
                       height,
                       log,
@@ -2207,9 +2191,9 @@ export async function executeRenderJob(
                       }
                       // Drop the matching cache entry so we don't leak a stale
                       // max-frame-index reading for a directory that no longer
-                      // exists. Without this, the module-scoped cache grows
+                      // exists. Without this, the shared cache grows
                       // monotonically across renders.
-                      frameDirMaxIndexCache.delete(frameDir);
+                      clearMaxFrameIndex(frameDir);
                       hdrFrameDirs.delete(videoId);
                     }
                     cleanedUpVideos.add(videoId);
@@ -2267,13 +2251,13 @@ export async function executeRenderJob(
             });
           });
         }
-        // Drop frameDirMaxIndexCache entries for any HDR frame directories
-        // that survived the in-loop cleanup (early failures, KEEP_TEMP=1,
-        // videos still active when the render exits). The on-disk frames
-        // themselves are torn down with workDir; we just don't want the
-        // module-scoped cache to leak entries across renders.
+        // Drop frameDirCache entries for any HDR frame directories that
+        // survived the in-loop cleanup (early failures, KEEP_TEMP=1, videos
+        // still active when the render exits). The on-disk frames themselves
+        // are torn down with workDir; we just don't want the shared cache to
+        // leak entries across renders.
         for (const frameDir of hdrFrameDirs.values()) {
-          frameDirMaxIndexCache.delete(frameDir);
+          clearMaxFrameIndex(frameDir);
         }
         hdrFrameDirs.clear();
       }
