@@ -1,5 +1,10 @@
 import { useRef, useMemo, useCallback, useState, memo, type ReactNode } from "react";
-import { usePlayerStore, liveTime, type TimelineElement } from "../store/playerStore";
+import {
+  usePlayerStore,
+  liveTime,
+  type TimelineElement,
+  type ZoomMode,
+} from "../store/playerStore";
 import { useMountEffect } from "../../hooks/useMountEffect";
 import { formatTime } from "../lib/time";
 import { TimelineClip } from "./TimelineClip";
@@ -97,6 +102,16 @@ export function generateTicks(duration: number): { major: number[]; minor: numbe
     else minor.push(rounded);
   }
   return { major, minor };
+}
+
+export function shouldAutoScrollTimeline(
+  zoomMode: ZoomMode,
+  scrollWidth: number,
+  clientWidth: number,
+): boolean {
+  if (zoomMode === "fit") return false;
+  if (!Number.isFinite(scrollWidth) || !Number.isFinite(clientWidth)) return false;
+  return scrollWidth - clientWidth > 1;
 }
 
 /* ── Component ──────────────────────────────────────────────────── */
@@ -290,6 +305,8 @@ export const Timeline = memo(function Timeline({
       : 100;
   const pps = zoomMode === "fit" ? fitPps : manualPps;
   const trackContentWidth = Math.max(0, effectiveDuration * pps);
+  const zoomModeRef = useRef(zoomMode);
+  zoomModeRef.current = zoomMode;
 
   const durationRef = useRef(effectiveDuration);
   durationRef.current = effectiveDuration;
@@ -304,7 +321,11 @@ export const Timeline = memo(function Timeline({
 
       // Auto-scroll to follow playhead during playback or seeking
       const scroll = scrollRef.current;
-      if (scroll && !isDragging.current) {
+      if (
+        scroll &&
+        !isDragging.current &&
+        shouldAutoScrollTimeline(zoomModeRef.current, scroll.scrollWidth, scroll.clientWidth)
+      ) {
         const playheadX = GUTTER + px;
         const visibleRight = scroll.scrollLeft + scroll.clientWidth;
         const visibleLeft = scroll.scrollLeft;
@@ -444,7 +465,13 @@ export const Timeline = memo(function Timeline({
     (clientX: number) => {
       cancelAnimationFrame(dragScrollRaf.current);
       const el = scrollRef.current;
-      if (!el || !isDragging.current) return;
+      if (
+        !el ||
+        !isDragging.current ||
+        !shouldAutoScrollTimeline(zoomModeRef.current, el.scrollWidth, el.clientWidth)
+      ) {
+        return;
+      }
       const rect = el.getBoundingClientRect();
       const edgeZone = 40;
       const maxSpeed = 12;

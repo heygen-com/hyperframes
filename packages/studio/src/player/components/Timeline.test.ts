@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { generateTicks } from "./Timeline";
+import { generateTicks, shouldAutoScrollTimeline } from "./Timeline";
 import { formatTime } from "../lib/time";
 
 describe("generateTicks", () => {
@@ -106,5 +106,20 @@ describe("formatTime", () => {
     expect(formatTime(1)).toBe("0:01");
     expect(formatTime(9)).toBe("0:09");
     expect(formatTime(61)).toBe("1:01");
+  });
+});
+
+describe("shouldAutoScrollTimeline", () => {
+  it("never auto-scrolls in fit mode", () => {
+    expect(shouldAutoScrollTimeline("fit", 1200, 800)).toBe(false);
+  });
+
+  it("does not auto-scroll when there is no horizontal overflow", () => {
+    expect(shouldAutoScrollTimeline("manual", 800, 800)).toBe(false);
+    expect(shouldAutoScrollTimeline("manual", 800.5, 800)).toBe(false);
+  });
+
+  it("auto-scrolls in manual mode when horizontal overflow exists", () => {
+    expect(shouldAutoScrollTimeline("manual", 1200, 800)).toBe(true);
   });
 });
