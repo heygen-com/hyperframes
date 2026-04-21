@@ -576,6 +576,70 @@ describe("all transitions smoke test", () => {
   }
 });
 
+// ── all transitions: midpoint regressions (p=0.5) ───────────────────────────
+//
+// Endpoint smoke tests above lock down p=0 (≈from) and p=1 (≈to). They miss
+// regressions where a shader becomes a no-op, prematurely completes, returns
+// garbage, or accidentally introduces non-determinism — specifically at the
+// midpoint where the transition is most visible to viewers. Four invariants
+// every shader must satisfy at p=0.5:
+//
+//   1. Output ≠ from         catches "shader is a no-op, returns input as-is"
+//   2. Output ≠ to           catches "shader prematurely completes at midpoint"
+//   3. Output is non-zero    catches "shader didn't write anything to the buf"
+//   4. Output is deterministic — catches accidental Math.random / Date.now /
+//      uninitialized-state regressions that would surface as flaky CI.
+//
+// Two distinct uniform colors give buffer-equality checks distinct byte
+// patterns to compare against. Even shaders that warp UVs (which would be
+// no-ops on uniform input alone) produce mix16(from, to, 0.5) = (25000, 20000,
+// 15000), distinct from both inputs at every pixel.
+describe("all transitions: midpoint regressions (p=0.5)", () => {
+  for (const name of ALL_SHADERS) {
+    describe(name, () => {
+      const w = 8;
+      const h = 8;
+      const from = makeBuffer(w, h, 40000, 30000, 20000);
+      const to = makeBuffer(w, h, 10000, 10000, 10000);
+      const zeros = Buffer.alloc(w * h * 6);
+
+      it("output ≠ from (not a no-op at midpoint)", () => {
+        const fn = TRANSITIONS[name];
+        expect(fn).toBeDefined();
+        const out = Buffer.alloc(w * h * 6);
+        fn?.(from, to, out, w, h, 0.5);
+        expect(out.equals(from)).toBe(false);
+      });
+
+      it("output ≠ to (not premature completion at midpoint)", () => {
+        const fn = TRANSITIONS[name];
+        expect(fn).toBeDefined();
+        const out = Buffer.alloc(w * h * 6);
+        fn?.(from, to, out, w, h, 0.5);
+        expect(out.equals(to)).toBe(false);
+      });
+
+      it("output is non-zero (shader actually wrote pixels)", () => {
+        const fn = TRANSITIONS[name];
+        expect(fn).toBeDefined();
+        const out = Buffer.alloc(w * h * 6);
+        fn?.(from, to, out, w, h, 0.5);
+        expect(out.equals(zeros)).toBe(false);
+      });
+
+      it("output is deterministic across repeated calls", () => {
+        const fn = TRANSITIONS[name];
+        expect(fn).toBeDefined();
+        const out1 = Buffer.alloc(w * h * 6);
+        const out2 = Buffer.alloc(w * h * 6);
+        fn?.(from, to, out1, w, h, 0.5);
+        fn?.(from, to, out2, w, h, 0.5);
+        expect(out2.equals(out1)).toBe(true);
+      });
+    });
+  }
+});
+
 // ── hdrToLinear / linearToHdr roundtrip ────────────────────────────────────
 
 describe("hdrToLinear / linearToHdr", () => {
