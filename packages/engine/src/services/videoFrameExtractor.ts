@@ -418,6 +418,7 @@ export async function extractAllVideoFrames(
 
   const hdrInfo = analyzeCompositionHdr(videoColorSpaces);
   if (hdrInfo.hasHdr && hdrInfo.dominantTransfer) {
+
     // dominantTransfer is "majority wins" — if a composition mixes PQ and HLG
     // sources (rare but legal), the minority transfer's videos get converted
     // with the wrong curve. We treat this as caller-error: a single composition
