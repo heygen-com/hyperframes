@@ -1,4 +1,4 @@
-import { useRef, useMemo, useCallback, useState, memo, type ReactNode } from "react";
+import { useRef, useMemo, useCallback, useState, useEffect, memo, type ReactNode } from "react";
 import {
   usePlayerStore,
   liveTime,
@@ -115,6 +115,11 @@ export function shouldAutoScrollTimeline(
   return scrollWidth - clientWidth > 1;
 }
 
+export function getTimelinePlayheadLeft(time: number, pixelsPerSecond: number): number {
+  if (!Number.isFinite(time) || !Number.isFinite(pixelsPerSecond)) return GUTTER;
+  return GUTTER + Math.max(0, time) * Math.max(0, pixelsPerSecond);
+}
+
 /* ── Component ──────────────────────────────────────────────────── */
 interface TimelineProps {
   /** Called when user seeks via ruler/track click or playhead drag */
@@ -187,6 +192,7 @@ export const Timeline = memo(function Timeline({
   const selectedElementId = usePlayerStore((s) => s.selectedElementId);
   const setSelectedElementId = usePlayerStore((s) => s.setSelectedElementId);
   const updateElement = usePlayerStore((s) => s.updateElement);
+  const currentTime = usePlayerStore((s) => s.currentTime);
   const zoomMode = usePlayerStore((s) => s.zoomMode);
   const manualZoomPercent = usePlayerStore((s) => s.manualZoomPercent);
   const playheadRef = useRef<HTMLDivElement>(null);
@@ -313,12 +319,21 @@ export const Timeline = memo(function Timeline({
   durationRef.current = effectiveDuration;
   const ppsRef = useRef(pps);
   ppsRef.current = pps;
+  const syncPlayheadPosition = useCallback((time: number) => {
+    if (!playheadRef.current || durationRef.current <= 0) return;
+    playheadRef.current.style.left = `${getTimelinePlayheadLeft(time, ppsRef.current)}px`;
+  }, []);
+
+  useEffect(() => {
+    syncPlayheadPosition(currentTime);
+  }, [currentTime, pps, syncPlayheadPosition]);
+
   useMountEffect(() => {
     const unsub = liveTime.subscribe((t) => {
       const dur = durationRef.current;
       if (!playheadRef.current || dur <= 0) return;
-      const px = t * ppsRef.current;
-      playheadRef.current.style.left = `${GUTTER + px}px`;
+      const playheadX = getTimelinePlayheadLeft(t, ppsRef.current);
+      playheadRef.current.style.left = `${playheadX}px`;
 
       // Auto-scroll to follow playhead during playback or seeking
       const scroll = scrollRef.current;
@@ -327,7 +342,6 @@ export const Timeline = memo(function Timeline({
         !isDragging.current &&
         shouldAutoScrollTimeline(zoomModeRef.current, scroll.scrollWidth, scroll.clientWidth)
       ) {
-        const playheadX = GUTTER + px;
         const visibleRight = scroll.scrollLeft + scroll.clientWidth;
         const visibleLeft = scroll.scrollLeft;
         const edgeMargin = scroll.clientWidth * 0.12;

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { generateTicks, shouldAutoScrollTimeline } from "./Timeline";
+import { generateTicks, getTimelinePlayheadLeft, shouldAutoScrollTimeline } from "./Timeline";
 import { formatTime } from "../lib/time";
 
 describe("generateTicks", () => {
@@ -121,5 +121,16 @@ describe("shouldAutoScrollTimeline", () => {
 
   it("auto-scrolls in manual mode when horizontal overflow exists", () => {
     expect(shouldAutoScrollTimeline("manual", 1200, 800)).toBe(true);
+  });
+});
+
+describe("getTimelinePlayheadLeft", () => {
+  it("converts time to a pixel offset from the gutter", () => {
+    expect(getTimelinePlayheadLeft(4, 20)).toBe(112);
+  });
+
+  it("guards invalid input", () => {
+    expect(getTimelinePlayheadLeft(Number.NaN, 20)).toBe(32);
+    expect(getTimelinePlayheadLeft(4, Number.NaN)).toBe(32);
   });
 });
