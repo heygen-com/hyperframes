@@ -15,6 +15,9 @@ import { join, extname, resolve, sep } from "node:path";
 import { getVerifiedHyperframeRuntimeSource } from "./hyperframeRuntimeLoader.js";
 
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> d6541f84 (test(producer): pin Windows path semantics for isPathInside)
 type PathModuleLike = {
   resolve: (...segments: string[]) => string;
   sep: string;
@@ -28,10 +31,13 @@ type IsPathInsideOptions = {
    * `path.posix` to exercise cross-platform behavior on a single OS.
    */
   pathModule?: PathModuleLike;
+<<<<<<< HEAD
 =======
 type IsPathInsideOptions = {
   resolveSymlinks?: boolean;
 >>>>>>> 8a7ce885 (fix(producer): tighten resource lifecycle and harden file server)
+=======
+>>>>>>> d6541f84 (test(producer): pin Windows path semantics for isPathInside)
 };
 
 /**
@@ -52,16 +58,22 @@ export function isPathInside(
   options: IsPathInsideOptions = {},
 ): boolean {
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> d6541f84 (test(producer): pin Windows path semantics for isPathInside)
   const { resolveSymlinks = false, pathModule } = options;
   const resolveFn = pathModule?.resolve ?? resolve;
   const separator = pathModule?.sep ?? sep;
   const resolvedChild = resolveFn(child);
   const resolvedParent = resolveFn(parent);
+<<<<<<< HEAD
 =======
   const { resolveSymlinks = false } = options;
   const resolvedChild = resolve(child);
   const resolvedParent = resolve(parent);
 >>>>>>> 8a7ce885 (fix(producer): tighten resource lifecycle and harden file server)
+=======
+>>>>>>> d6541f84 (test(producer): pin Windows path semantics for isPathInside)
   const normalizedChild =
     resolveSymlinks && existsSync(resolvedChild)
       ? realpathSync.native(resolvedChild)
@@ -72,12 +84,18 @@ export function isPathInside(
       : resolvedParent;
   if (normalizedChild === normalizedParent) return true;
 <<<<<<< HEAD
+<<<<<<< HEAD
   const parentWithSep = normalizedParent.endsWith(separator)
     ? normalizedParent
     : normalizedParent + separator;
 =======
   const parentWithSep = normalizedParent.endsWith(sep) ? normalizedParent : normalizedParent + sep;
 >>>>>>> 8a7ce885 (fix(producer): tighten resource lifecycle and harden file server)
+=======
+  const parentWithSep = normalizedParent.endsWith(separator)
+    ? normalizedParent
+    : normalizedParent + separator;
+>>>>>>> d6541f84 (test(producer): pin Windows path semantics for isPathInside)
   return normalizedChild.startsWith(parentWithSep);
 }
 
