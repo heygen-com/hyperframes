@@ -1,0 +1,8 @@
+{
+  "name": "HyperFrames",
+  "image": "mcr.microsoft.com/devcontainers/typescript-node:20",
+  "postCreateCommand": "npm install",
+  "features": {
+    "ghcr.io/devcontainers/features/common-utils:2": {}
+  }
+}

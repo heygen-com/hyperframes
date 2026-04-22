@@ -1,0 +1,13 @@
+name: Generate SBOM
+on:
+  push:
+    branches: [main]
+jobs:
+  sbom:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: anchore/sbom-action@v0
+        with:
+          format: spdx-json
+          output-file: sbom.spdx.json

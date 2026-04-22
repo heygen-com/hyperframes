@@ -90,3 +90,6 @@ captures/
 cursor-tests/
 basecamp-video/
 launch-video*/
+
+# Bonanza Labs
+sbom.spdx.json
