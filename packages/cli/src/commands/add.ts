@@ -12,7 +12,7 @@ import { existsSync } from "node:fs";
 import { resolve, relative } from "node:path";
 import { ITEM_TYPE_DIRS, type RegistryItem } from "@hyperframes/core";
 import { c } from "../ui/colors.js";
-import { installItem, resolveItem } from "../registry/index.js";
+import { installItem, resolveItemWithDependencies } from "../registry/index.js";
 import {
   DEFAULT_PROJECT_CONFIG,
   loadProjectConfig,
@@ -81,6 +81,7 @@ export interface RunAddResult {
   type: RegistryItem["type"];
   typeDir: string;
   written: string[];
+  installed: string[];
   snippet: string;
   clipboardCopied: boolean;
 }
@@ -106,12 +107,16 @@ export async function runAdd(opts: RunAddArgs): Promise<RunAddResult> {
     config = DEFAULT_PROJECT_CONFIG;
   }
 
-  // 2. Resolve the item from the registry.
-  let item: RegistryItem;
+  // 2. Resolve the item (and transitive dependencies) from the registry.
+  let resolved: RegistryItem[];
   try {
-    item = await resolveItem(opts.name, { baseUrl: config.registry });
+    resolved = await resolveItemWithDependencies(opts.name, { baseUrl: config.registry });
   } catch (err) {
     throw new AddError(err instanceof Error ? err.message : String(err), "unknown-item");
+  }
+  const item = resolved[resolved.length - 1];
+  if (!item) {
+    throw new AddError(`Item "${opts.name}" not found — registry unreachable or empty.`, "unknown-item");
   }
 
   if (item.type === "hyperframes:example") {
@@ -122,20 +127,24 @@ export async function runAdd(opts: RunAddArgs): Promise<RunAddResult> {
   }
 
   // 3. Remap targets per project config.
-  const remappedFiles = item.files.map((f) => ({
-    ...f,
-    target: remapTarget(item, f.target, config.paths),
+  const installPlan = resolved.map((resolvedItem) => ({
+    ...resolvedItem,
+    files: resolvedItem.files.map((f) => ({
+      ...f,
+      target: remapTarget(resolvedItem, f.target, config.paths),
+    })),
   }));
-  const itemForInstall: RegistryItem = { ...item, files: remappedFiles };
 
   // 4. Install — the installer validates every target before any write.
-  let written: string[];
+  let written: string[] = [];
   try {
-    const result = await installItem(itemForInstall, {
-      destDir: projectDir,
-      baseUrl: config.registry,
-    });
-    written = result.written;
+    for (const resolvedItem of installPlan) {
+      const result = await installItem(resolvedItem, {
+        destDir: projectDir,
+        baseUrl: config.registry,
+      });
+      written.push(...result.written);
+    }
   } catch (err) {
     throw new AddError(
       `Install failed: ${err instanceof Error ? err.message : String(err)}`,
@@ -144,10 +153,11 @@ export async function runAdd(opts: RunAddArgs): Promise<RunAddResult> {
   }
 
   // 5. Build include snippet + clipboard copy.
+  const installTarget = installPlan[installPlan.length - 1] ?? item;
   const primaryFile =
-    itemForInstall.files.find((f) => f.type === "hyperframes:snippet") ??
-    itemForInstall.files.find((f) => f.type === "hyperframes:composition") ??
-    itemForInstall.files[0];
+    installTarget.files.find((f) => f.type === "hyperframes:snippet") ??
+    installTarget.files.find((f) => f.type === "hyperframes:composition") ??
+    installTarget.files[0];
   const snippetTargetRel = primaryFile?.target ?? "";
   const snippet = buildSnippet(item, snippetTargetRel);
   const clipboardCopied = !opts.skipClipboard && snippet ? copyToClipboard(snippet) : false;
@@ -158,6 +168,7 @@ export async function runAdd(opts: RunAddArgs): Promise<RunAddResult> {
     type: item.type,
     typeDir: ITEM_TYPE_DIRS[item.type],
     written,
+    installed: installPlan.map((resolvedItem) => resolvedItem.name),
     snippet,
     clipboardCopied,
   };
