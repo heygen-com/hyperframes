@@ -323,14 +323,14 @@ Use the `@hyperframes/shader-transitions` package. Exactly these 14 shader names
 | `cross-warp-morph`    | noise-driven morph blending both scenes              |
 | `light-leak`          | warm cinematic light leak with lens flare            |
 
-Load the package from CDN and wire it to your timeline:
+Load the package from CDN and wire it to your timeline. The IIFE build exposes the package on **`window.HyperShader`** (not `HyperframesShaderTransitions` — use the exact name below):
 
 ```html
 <script src="https://cdn.jsdelivr.net/npm/@hyperframes/shader-transitions/dist/index.global.js"></script>
 <script>
   const tl = gsap.timeline({ paused: true });
   // …scene entrance tweens…
-  window.HyperframesShaderTransitions.init({
+  window.HyperShader.init({
     bgColor: "#0a0a0a",
     accentColor: "#ff6b2b",
     scenes: ["scene-1", "scene-2", "scene-3"],
@@ -355,7 +355,11 @@ Shader-compatible CSS rules (apply only to shader-transition compositions — `h
 
 ### When NOT to use shaders
 
-Don't mix CSS and shader transitions in the same composition — pick one. Shaders are powerful but heavier (WebGL context + per-pixel compositing). For simpler work, CSS-only transitions (clip-path reveals, transform push slides, opacity crossfades on absolute-positioned `.scene` containers) are reliable and lighter.
+Don't mix CSS and shader transitions in the same composition — pick one. Shaders are powerful but heavier (WebGL context + per-pixel compositing).
+
+**Prefer CSS transitions** when the composition will be previewed interactively with lots of scrubbing. Shader transitions are optimized for linear playback — the package captures scene textures via `html2canvas` at transition time and holds them between transitions. When a user scrubs to an arbitrary time, the canvas still holds a stale texture until a new capture completes, producing a visible blank gap. For final renders (`npx hyperframes render`) this doesn't matter — the render engine runs linearly.
+
+For CSS transitions: scenes are absolute-positioned `.scene` containers with opacity driven directly by GSAP tweens. Every scrub position renders cleanly because the DOM is the surface, no capture latency.
 
 ## Typography
 
