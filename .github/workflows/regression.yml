@@ -11,6 +11,12 @@ concurrency:
   group: regression-${{ github.ref }}
   cancel-in-progress: true
 
+# Least-privilege token: only reading code. Jobs that need more (e.g. GHA
+# cache reads/writes from docker/build-push-action with `type=gha`) elevate
+# their own permissions inline.
+permissions:
+  contents: read
+
 jobs:
   changes:
     name: Detect changes
@@ -42,6 +48,9 @@ jobs:
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: write # docker/build-push-action `type=gha` cache reads + writes
     steps:
       - name: Checkout
         uses: actions/checkout@v4
