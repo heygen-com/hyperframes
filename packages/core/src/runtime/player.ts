@@ -59,6 +59,30 @@ function seekTimelineDeterministically(
   return quantized;
 }
 
+function seekMasterAndSiblingTimelinesDeterministically(
+  registry: Record<string, RuntimeTimelineLike | undefined> | undefined | null,
+  master: RuntimeTimelineLike,
+  timeSeconds: number,
+  canonicalFps: number,
+): number {
+  const rearmedSiblings: RuntimeTimelineLike[] = [];
+  forEachSiblingTimeline(registry, master, (tl) => {
+    tl.play();
+    rearmedSiblings.push(tl);
+  });
+  try {
+    return seekTimelineDeterministically(master, timeSeconds, canonicalFps);
+  } finally {
+    for (const tl of rearmedSiblings) {
+      try {
+        tl.pause();
+      } catch {
+        // ignore sibling failures — one broken timeline shouldn't poison seek
+      }
+    }
+  }
+}
+
 export function createRuntimePlayer(deps: PlayerDeps): RuntimePlayer {
   return {
     _timeline: null,
@@ -112,7 +136,12 @@ export function createRuntimePlayer(deps: PlayerDeps): RuntimePlayer {
       const timeline = deps.getTimeline();
       if (!timeline) return;
       const safeTime = Math.max(0, Number(timeSeconds) || 0);
-      const quantized = seekTimelineDeterministically(timeline, safeTime, deps.getCanonicalFps());
+      const quantized = seekMasterAndSiblingTimelinesDeterministically(
+        deps.getTimelineRegistry?.(),
+        timeline,
+        safeTime,
+        deps.getCanonicalFps(),
+      );
       deps.onDeterministicSeek(quantized);
       deps.setIsPlaying(false);
       deps.onSyncMedia(quantized, false);
@@ -127,7 +156,12 @@ export function createRuntimePlayer(deps: PlayerDeps): RuntimePlayer {
       // their animations advance. Without this, non-GSAP compositions freeze
       // on their initial frame.
       const quantized = timeline
-        ? seekTimelineDeterministically(timeline, timeSeconds, canonicalFps)
+        ? seekMasterAndSiblingTimelinesDeterministically(
+            deps.getTimelineRegistry?.(),
+            timeline,
+            timeSeconds,
+            canonicalFps,
+          )
         : quantizeTimeToFrame(Math.max(0, Number(timeSeconds) || 0), canonicalFps);
       deps.onDeterministicSeek(quantized);
       deps.setIsPlaying(false);

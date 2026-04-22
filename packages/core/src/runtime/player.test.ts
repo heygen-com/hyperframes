@@ -54,6 +54,79 @@ function createMockDeps(timeline?: RuntimeTimelineLike | null) {
   };
 }
 
+function createNestedTimelineHarness() {
+  const createScene = (start: number, duration: number) => {
+    const state = { time: 0, paused: false };
+    const timeline = {
+      play: vi.fn(() => {
+        state.paused = false;
+      }),
+      pause: vi.fn(() => {
+        state.paused = true;
+      }),
+      seek: vi.fn((t: number) => {
+        state.time = t;
+      }),
+      totalTime: vi.fn((t: number) => {
+        state.time = t;
+      }),
+      time: vi.fn(() => state.time),
+      duration: vi.fn(() => duration),
+      add: vi.fn(),
+      paused: vi.fn((p?: boolean) => {
+        if (p !== undefined) state.paused = p;
+      }),
+      timeScale: vi.fn(),
+      set: vi.fn(),
+    } satisfies RuntimeTimelineLike;
+    return { timeline, state, start, duration };
+  };
+
+  const scene1 = createScene(0, 1.5);
+  const scene2 = createScene(1.5, 10);
+  const scene5 = createScene(12, 3);
+  const children = [scene1, scene2, scene5];
+
+  const masterState = { time: 0, paused: false };
+  const master = {
+    play: vi.fn(() => {
+      masterState.paused = false;
+    }),
+    pause: vi.fn(() => {
+      masterState.paused = true;
+    }),
+    seek: vi.fn((t: number) => {
+      masterState.time = t;
+      for (const child of children) {
+        if (child.state.paused) continue;
+        child.state.time = Math.max(0, Math.min(t - child.start, child.duration));
+      }
+    }),
+    totalTime: vi.fn((t: number) => {
+      masterState.time = t;
+      for (const child of children) {
+        if (child.state.paused) continue;
+        child.state.time = Math.max(0, Math.min(t - child.start, child.duration));
+      }
+    }),
+    time: vi.fn(() => masterState.time),
+    duration: vi.fn(() => 20),
+    add: vi.fn(),
+    paused: vi.fn((p?: boolean) => {
+      if (p !== undefined) masterState.paused = p;
+    }),
+    timeScale: vi.fn(),
+    set: vi.fn(),
+  } satisfies RuntimeTimelineLike;
+
+  return {
+    master,
+    scene1: scene1.timeline,
+    scene2: scene2.timeline,
+    scene5: scene5.timeline,
+  };
+}
+
 describe("createRuntimePlayer", () => {
   describe("play", () => {
     it("does nothing without a timeline", () => {
@@ -247,6 +320,27 @@ describe("createRuntimePlayer", () => {
       expect(deps.onStatePost).toHaveBeenCalledWith(true);
     });
 
+    it("rearms paused sibling timelines so master seek updates their local offsets", () => {
+      const { master, scene1, scene2, scene5 } = createNestedTimelineHarness();
+      const deps = createMockDeps(master);
+      const player = createRuntimePlayer({
+        ...deps,
+        getTimelineRegistry: () => ({ main: master, scene1, scene2, scene5 }),
+      });
+      player.pause();
+      player.seek(3);
+      expect(scene1.play).toHaveBeenCalledTimes(1);
+      expect(scene2.play).toHaveBeenCalledTimes(1);
+      expect(scene5.play).toHaveBeenCalledTimes(1);
+      expect(master.totalTime).toHaveBeenCalledWith(3, false);
+      expect(scene1.time()).toBe(1.5);
+      expect(scene2.time()).toBe(1.5);
+      expect(scene5.time()).toBe(0);
+      expect(scene1.pause).toHaveBeenCalledTimes(2);
+      expect(scene2.pause).toHaveBeenCalledTimes(2);
+      expect(scene5.pause).toHaveBeenCalledTimes(2);
+    });
+
     it("clamps negative time to 0", () => {
       const timeline = createMockTimeline({ duration: 10 });
       const deps = createMockDeps(timeline);
@@ -285,6 +379,23 @@ describe("createRuntimePlayer", () => {
       expect(timeline.pause).toHaveBeenCalled();
       expect(deps.setIsPlaying).toHaveBeenCalledWith(false);
       expect(deps.onRenderFrameSeek).toHaveBeenCalled();
+    });
+
+    it("renderSeek rearms paused siblings before seeking the master timeline", () => {
+      const { master, scene1, scene2, scene5 } = createNestedTimelineHarness();
+      const deps = createMockDeps(master);
+      const player = createRuntimePlayer({
+        ...deps,
+        getTimelineRegistry: () => ({ main: master, scene1, scene2, scene5 }),
+      });
+      player.pause();
+      player.renderSeek(5);
+      expect(scene1.time()).toBe(1.5);
+      expect(scene2.time()).toBe(3.5);
+      expect(scene5.time()).toBe(0);
+      expect(scene1.play).toHaveBeenCalledTimes(1);
+      expect(scene2.play).toHaveBeenCalledTimes(1);
+      expect(scene5.play).toHaveBeenCalledTimes(1);
     });
   });
 
