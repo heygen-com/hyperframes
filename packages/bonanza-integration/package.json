@@ -1,0 +1,39 @@
+{
+  "name": "@bonanza/hyperframes-integration",
+  "version": "0.1.0",
+  "description": "Bonanza Labs integration for HyperFrames — LLM-agnostic video creation, voice, avatars, payments",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "bonanza-video": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "vitest run",
+    "lint": "oxlint src/"
+  },
+  "dependencies": {
+    "@hyperframes/core": "workspace:*",
+    "@hyperframes/engine": "workspace:*",
+    "@hyperframes/producer": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0",
+    "vitest": "^2.0.0"
+  },
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/c6zks4gssn-droid/hyperframes-improved"
+  },
+  "keywords": [
+    "hyperframes",
+    "bonanza-labs",
+    "ai-video",
+    "llm",
+    "tts",
+    "heygen",
+    "x402"
+  ]
+}
