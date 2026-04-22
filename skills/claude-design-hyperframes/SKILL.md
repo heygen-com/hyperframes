@@ -7,31 +7,29 @@ description: Claude Design entry point for HyperFrames. Produce renderable Hyper
 
 HyperFrames is an open-source HTML-native video framework. Write HTML + CSS + a paused GSAP timeline; `npx hyperframes render index.html` produces the MP4. The composition file is the source of truth — the same file powers the in-browser preview and the render engine.
 
-This file is self-contained. Every rule, contract, table, and template you need to produce a correct composition is inlined below. Do not skip sections assuming they are "references for later" — read through in order, then start writing.
+This file is self-contained. You have strong defaults for design, motion, typography, and GSAP — this skill only tells you the HyperFrames-specific rules and gotchas you couldn't guess.
 
 ## Deliverables
 
-Produce exactly these files per project:
+- `index.html` — the composition / render target.
+- `preview.html` — thin shell embedding the composition via `@hyperframes/player`. Copy the template below verbatim.
+- `README.md` — one paragraph + the commands to preview and render locally.
+- `DESIGN.md` — when a brand, palette, visual identity, or named style is specified in the prompt, or when you invent one (which you should if nothing is given).
 
-- `index.html` — the composition. The root render target.
-- `preview.html` — a thin shell embedding the composition via `@hyperframes/player`. Copy the template below verbatim.
-- `README.md` — one paragraph describing the video + the commands to preview and render locally.
-- `DESIGN.md` — when a brand, palette, visual identity, or named style is specified in the prompt (or you invent one, which you should when nothing is given).
-
-Default to 1920×1080 at 30fps unless the prompt specifies otherwise.
+Default 1920×1080 at 30fps unless the prompt specifies otherwise.
 
 ## Pre-delivery checklist
 
-Before saying "done", verify every item against your generated files. Each has caused silent preview failures in past runs. If any fails, fix it before shipping — do not ship with "I think it should work".
+Verify every item against your generated files before shipping. If any fails, fix it — do not ship with "I think it should work".
 
-1. `index.html` loads GSAP, then on the very next line loads `@hyperframes/core/dist/hyperframe.runtime.iife.js`. Without the runtime pre-load, the player reports `ready` but `currentTime` never advances — the preview is a static frame.
-2. `preview.html` sets the player's `src` via the inline script `document.getElementById("p").setAttribute("src", "./index.html" + location.search)` — **not** via the `src=` attribute on the element. Without the token forward, Claude Design's sandbox serves a `"preview token required"` placeholder to the iframe and the preview renders black.
-3. `preview.html` is the verbatim template from the section below. No decorative chrome (no header, no wordmark, no aspect-ratio wrapper, no caption bar). `<hyperframes-player>` fills the viewport at `width:100vw;height:100vh`.
-4. The string in `data-composition-id` on the root element and the key in `window.__timelines["..."]` are identical. A mismatch silently prevents playback — the player cannot find the timeline and never becomes ready. Default to `"main"` in both places unless the brief specifies otherwise.
-5. The GSAP timeline is created with `{ paused: true }` and `.play()` is never called on it. The player and renderer drive playback via frame-accurate seeking.
-6. No banned fonts (see Typography section below). Inter, Roboto, Playfair Display, Syne, and their siblings (Inter Tight, Inter Display) are in every LLM's default stack. Use something else.
+1. `index.html` loads GSAP, then on the very next line loads `@hyperframes/core/dist/hyperframe.runtime.iife.js`. Without the runtime pre-load, the player reports `ready` but the timeline never advances.
+2. `preview.html` sets the player's `src` via the inline script `document.getElementById("p").setAttribute("src", "./index.html" + location.search)` — **not** via the `src=` attribute on the tag. Without the token forward, Claude Design's sandbox serves a `"preview token required"` placeholder and the in-pane preview renders black.
+3. `preview.html` is the template below verbatim. No decorative chrome (no header, wordmark, aspect-ratio wrapper, caption). `<hyperframes-player>` fills the viewport at `width:100vw;height:100vh`.
+4. The string in `data-composition-id` on the root and the key in `window.__timelines["..."]` are identical. A mismatch silently prevents playback. Default to `"main"` unless the brief specifies otherwise.
+5. The GSAP timeline is created with `{ paused: true }` and `.play()` is never called on it.
+6. No banned fonts (Inter, Inter Tight, Inter Display, Roboto, Syne, Playfair Display, and the rest of the list below).
 7. Every multi-scene composition uses transitions between scenes and entrance animations within scenes. No jump cuts. No exit animations except on the final scene.
-8. Rendering is deterministic — no `Date.now()`, no unseeded `Math.random()`, no `setInterval`, no `setTimeout` inside timeline construction, no `repeat: -1` on any tween or timeline.
+8. Deterministic rendering — no `Date.now()`, no unseeded `Math.random()`, no `setInterval`, no `repeat: -1`, no async timeline construction.
 
 ## `preview.html` template (copy verbatim)
 
@@ -68,7 +66,7 @@ Before saying "done", verify every item against your generated files. Each has c
 </html>
 ```
 
-If a classic (non-module) script tag is required, swap in the global build but keep the token-forwarding script exactly as-is:
+If a classic (non-module) script tag is required, swap to the global build but keep the token-forwarding script:
 
 ```html
 <script src="https://cdn.jsdelivr.net/npm/@hyperframes/player/dist/hyperframes-player.global.js"></script>
@@ -113,61 +111,36 @@ If a classic (non-module) script tag is required, swap in the global build but k
 
 ### Data attribute tables
 
-Every clip needs these:
+Clips (timed visual elements):
 
-| Attribute          | Required                              | Values                                                  |
-| ------------------ | ------------------------------------- | ------------------------------------------------------- |
-| `id`               | yes                                   | unique identifier                                       |
-| `class="clip"`     | yes (on timed visual elements)        | literal string                                          |
-| `data-start`       | yes                                   | seconds, or a clip-id reference (`"el-1"`, `"intro+2"`) |
-| `data-duration`    | required for `img`/`div`/compositions | seconds. video/audio default to media duration          |
-| `data-track-index` | yes                                   | integer. same-track clips cannot overlap in time        |
-| `data-media-start` | no                                    | trim offset into source (seconds)                       |
-| `data-volume`      | no                                    | 0–1 (default 1) for audio                               |
+| Attribute          | Required                          | Values                                                |
+| ------------------ | --------------------------------- | ----------------------------------------------------- |
+| `id`               | yes                               | unique identifier                                     |
+| `class="clip"`     | yes                               | literal string                                        |
+| `data-start`       | yes                               | seconds, or clip-id reference (`"el-1"`, `"intro+2"`) |
+| `data-duration`    | required for img/div/compositions | seconds. video/audio default to media duration        |
+| `data-track-index` | yes                               | integer. same-track clips cannot overlap in time      |
+| `data-media-start` | no                                | trim offset into source (seconds)                     |
+| `data-volume`      | no                                | 0–1 (default 1) for audio                             |
 
-`data-track-index` controls timeline layering, **not** visual z-order. Use CSS `z-index` for stacking.
+`data-track-index` is timeline layering, NOT visual z-order. Use CSS `z-index` for stacking.
 
-Composition roots (index.html's main div, sub-comp roots) also need:
+Composition roots also need:
 
 | Attribute              | Required | Values                                     |
 | ---------------------- | -------- | ------------------------------------------ |
-| `data-composition-id`  | yes      | unique composition ID. root uses `"main"`  |
+| `data-composition-id`  | yes      | unique ID. root uses `"main"`              |
 | `data-start`           | yes      | root: `"0"`                                |
 | `data-duration`        | yes      | seconds. takes precedence over GSAP length |
 | `data-width`           | yes      | pixel width (1920 or 1080)                 |
 | `data-height`          | yes      | pixel height (1080 or 1920)                |
 | `data-composition-src` | no       | path to external HTML sub-composition      |
 
-### Layout before animation
-
-Build the **static hero frame** for each scene first — the moment when the most elements are simultaneously visible — before adding any GSAP. Then animate INTO those positions. The CSS position is the ground truth; the tween describes the journey.
-
-Use a `.scene-content` container that fills the scene and uses padding to inset content. Never `position: absolute; top: Npx` on a content container — absolute-positioned containers overflow when content is taller than the remaining space. Reserve `position: absolute` for decorative overlays only.
-
-```css
-.scene-content {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  width: 100%;
-  height: 100%;
-  padding: 120px 160px;
-  gap: 24px;
-  box-sizing: border-box;
-}
-```
-
-```js
-// entrance: animate INTO the CSS position
-tl.from(".title", { y: 60, opacity: 0, duration: 0.6, ease: "power3.out" }, 0.3);
-tl.from(".subtitle", { y: 40, opacity: 0, duration: 0.5, ease: "power2.out" }, 0.5);
-```
-
 ### Sub-compositions
 
 Load external sub-comp HTMLs with `data-composition-src`. Sub-comp files use a `<template>` wrapper — standalone `index.html` does NOT (a `<template>` hides its contents from the browser; applied to the root it breaks rendering).
 
-**The HyperFrames runtime auto-nests sub-compositions in both preview AND render.** Don't hedge with a plain `<iframe src="compositions/sub.html">` — a `<template>`-wrapped file renders empty in a plain iframe because the template contents are inert by HTML spec. The `data-composition-src` attribute on a div is the supported mechanism; the runtime handles loading, timeline attachment, and texture composite. Examples of real compositions using this: `registry/examples/kinetic-type`, `registry/examples/nyt-graph`, `registry/examples/decision-tree`.
+**The HyperFrames runtime auto-nests sub-compositions in both preview AND render.** Don't hedge with a plain `<iframe src="compositions/sub.html">` — a `<template>`-wrapped file renders empty in a plain iframe because the template contents are inert by HTML spec. The `data-composition-src` attribute on a div is the supported mechanism. Examples: `registry/examples/kinetic-type`, `nyt-graph`, `decision-tree`.
 
 ```html
 <!-- in index.html -->
@@ -195,11 +168,11 @@ Load external sub-comp HTMLs with `data-composition-src`. Sub-comp files use a `
 </template>
 ```
 
-Framework auto-nests sub-timelines — do NOT manually add them to the root timeline.
+Framework auto-nests sub-timelines — do NOT manually add them to the root.
 
 ### Video and audio
 
-Video must be `muted playsinline`. Audio is ALWAYS a separate `<audio>` element, even when the audio came from the same video file:
+Video must be `muted playsinline`. Audio is ALWAYS a separate `<audio>` element, even if the audio is from the same video file:
 
 ```html
 <video
@@ -223,86 +196,53 @@ Video must be `muted playsinline`. Audio is ALWAYS a separate `<audio>` element,
 
 ## Determinism ❌ / ✅
 
-The render engine seeks the timeline to exact frames and expects pixel-identical output on repeat renders. Anything non-deterministic breaks this.
+The render engine seeks to exact frames and expects pixel-identical output on repeat renders.
 
-| ❌ Never                                                           | ✅ Use instead                                                                                          |
-| ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------- |
-| `Date.now()`, `performance.now()`                                  | `tl.time()` inside `onUpdate`, or hard-coded timing                                                     |
-| `Math.random()` unseeded                                           | seeded PRNG (e.g. mulberry32). Claude Design should inline a tiny PRNG if needed                        |
-| `setInterval`, `setTimeout`                                        | timeline tweens + `onUpdate` callbacks                                                                  |
-| `repeat: -1` on any tween                                          | `repeat: Math.ceil(duration / cycleDuration) - 1`                                                       |
-| building timelines in `async`/`setTimeout`                         | construct synchronously at page load                                                                    |
-| `video.play()`, `audio.play()`                                     | framework owns playback — never call these                                                              |
-| animating `visibility` or `display`                                | use `autoAlpha` (animates opacity AND visibility) or opacity-only                                       |
-| `gsap.set()` on clips from later scenes                            | clips in later scenes don't exist yet at page load. Use `tl.set(selector, vars, timePosition)` instead  |
-| `<br>` in content text                                             | use `max-width` for natural wrap. Exception: short display titles where each word is deliberately split |
-| animating the same property on the same element from two timelines | choose one driver per element-property pair                                                             |
-| `data-layer`, `data-end` attributes                                | use `data-track-index` and `data-duration`                                                              |
+| ❌ Never                                   | ✅ Use instead                                                                                          |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------- |
+| `Date.now()`, `performance.now()`          | `tl.time()` inside `onUpdate`, or hard-coded timing                                                     |
+| `Math.random()` unseeded                   | seeded PRNG (e.g. mulberry32)                                                                           |
+| `setInterval`, `setTimeout`                | timeline tweens + `onUpdate` callbacks                                                                  |
+| `repeat: -1` on any tween                  | `repeat: Math.ceil(duration / cycleDuration) - 1`                                                       |
+| building timelines in `async`/`setTimeout` | construct synchronously at page load                                                                    |
+| `video.play()`, `audio.play()`             | framework owns playback                                                                                 |
+| animating `visibility` / `display`         | `autoAlpha` (animates opacity AND visibility) or opacity-only                                           |
+| `gsap.set()` on clips from later scenes    | later-scene clips don't exist in DOM yet at page load. Use `tl.set(selector, vars, timePosition)`       |
+| `<br>` in content text                     | use `max-width` for natural wrap. Exception: short display titles where each word is deliberately split |
+| `data-layer`, `data-end` attributes        | use `data-track-index` and `data-duration`                                                              |
 
 ## Scene transitions
 
 Non-negotiable rules for multi-scene compositions:
 
-1. **Every composition uses transitions.** No jump cuts.
-2. **Every scene uses entrance animations.** Every element animates IN via `gsap.from()` — no element pops fully-formed onto screen.
-3. **Exit animations are BANNED** except on the final scene. Do NOT `gsap.to()` elements to `opacity: 0` or offscreen before a transition. The transition IS the exit. Outgoing scene content must be fully visible the moment the transition starts.
-4. **Final scene only** may fade out (e.g., fade to black). This is the only scene where exit animations are allowed.
-
-```js
-// WRONG — empties the scene before the transition fires
-tl.to("#s1-title", { opacity: 0, duration: 0.4 }, 6.5);
-
-// RIGHT — entrance only, transition at 7.2s handles the exit
-tl.from("#s1-title", { y: 50, opacity: 0, duration: 0.7, ease: "power3.out" }, 0.3);
-```
+1. Every composition uses transitions. No jump cuts.
+2. Every scene uses entrance animations (`gsap.from()`). No element pops fully-formed.
+3. Exit animations are BANNED except on the final scene. Do NOT `gsap.to()` elements to `opacity: 0` or offscreen before a transition. The transition IS the exit.
+4. Final scene only may fade out (e.g., fade to black).
 
 ### Energy → primary transition
 
-Pick ONE primary transition used for 60–70% of scene changes, plus 1–2 accents. Never use a different transition for every scene.
+Pick ONE primary for 60–70% of scene changes, plus 1–2 accents.
 
-| Energy                                   | CSS primary                  | Shader primary                       | Accent                         | Duration  | Easing                 |
-| ---------------------------------------- | ---------------------------- | ------------------------------------ | ------------------------------ | --------- | ---------------------- |
-| **Calm** (wellness, brand story, luxury) | blur crossfade, focus pull   | cross-warp-morph, thermal-distortion | light-leak, circle iris        | 0.5–0.8s  | `sine.inOut`, `power1` |
-| **Medium** (corporate, SaaS, explainer)  | push slide, staggered blocks | whip-pan, cinematic-zoom             | squeeze, vertical push         | 0.3–0.5s  | `power2`, `power3`     |
-| **High** (promos, sports, music, launch) | zoom through, overexposure   | ridged-burn, glitch, chromatic-split | staggered blocks, gravity drop | 0.15–0.3s | `power4`, `expo`       |
+| Energy                                   | CSS primary                  | Shader primary                       | Duration  | Easing                 |
+| ---------------------------------------- | ---------------------------- | ------------------------------------ | --------- | ---------------------- |
+| **Calm** (wellness, brand story, luxury) | blur crossfade, focus pull   | cross-warp-morph, thermal-distortion | 0.5–0.8s  | `sine.inOut`, `power1` |
+| **Medium** (corporate, SaaS, explainer)  | push slide, staggered blocks | whip-pan, cinematic-zoom             | 0.3–0.5s  | `power2`, `power3`     |
+| **High** (promos, sports, music, launch) | zoom through, overexposure   | ridged-burn, glitch, chromatic-split | 0.15–0.3s | `power4`, `expo`       |
 
-### Mood → transition type
+### Mood → transition type (quick guide)
 
-Transitions communicate — choose deliberately.
-
-| Mood                     | CSS / shader transitions                                                                                            |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------- |
-| **Warm / inviting**      | light leak, blur crossfade, focus pull, film burn · shader: thermal-distortion, light-leak, cross-warp-morph        |
-| **Cold / clinical**      | squeeze, zoom out, blinds, shutter, grid dissolve · shader: gravitational-lens                                      |
-| **Editorial / magazine** | push slide, vertical push, diagonal split, shutter · shader: whip-pan                                               |
-| **Tech / futuristic**    | grid dissolve, staggered blocks, blinds, chromatic aberration · shader: glitch, chromatic-split                     |
-| **Tense / edgy**         | glitch, VHS, chromatic aberration, ripple · shader: ridged-burn, glitch, domain-warp                                |
-| **Playful / fun**        | elastic push, 3D flip, circle iris, morph circle, clock wipe · shader: ripple-waves, swirl-vortex                   |
-| **Dramatic / cinematic** | zoom through, zoom out, gravity drop, overexposure, color dip to black · shader: cinematic-zoom, gravitational-lens |
-| **Premium / luxury**     | focus pull, blur crossfade, color dip to black · shader: cross-warp-morph, thermal-distortion                       |
-| **Retro / analog**       | film burn, light leak, VHS, clock wipe · shader: light-leak                                                         |
-
-### Duration presets
-
-| Preset     | Duration | Easing               |
-| ---------- | -------- | -------------------- |
-| `snappy`   | 0.2s     | `power4.inOut`       |
-| `smooth`   | 0.4s     | `power2.inOut`       |
-| `gentle`   | 0.6s     | `sine.inOut`         |
-| `dramatic` | 0.5s     | `power3.in` → `.out` |
-| `instant`  | 0.15s    | `expo.inOut`         |
-| `luxe`     | 0.7s     | `power1.inOut`       |
-
-### Narrative position
-
-| Position               | Use                                                 | Why                                                  |
-| ---------------------- | --------------------------------------------------- | ---------------------------------------------------- |
-| Opening                | most distinctive, match mood, 0.4–0.6s              | sets the visual language for the piece               |
-| Between related points | your primary, consistent, 0.3s                      | content is continuing — don't distract               |
-| Topic change           | something different from your primary               | signals a new section; the viewer's brain resets     |
-| Climax / hero reveal   | boldest accent, fastest or most dramatic            | this is the payoff — spend your best transition here |
-| Wind-down              | return to gentle, blur crossfade, 0.5–0.7s          | let the viewer exhale after the climax               |
-| Outro                  | slowest, simplest, crossfade or color dip, 0.6–1.0s | closure — don't introduce new energy at the end      |
+| Mood                 | Shaders to reach for                             |
+| -------------------- | ------------------------------------------------ |
+| Warm / inviting      | thermal-distortion, light-leak, cross-warp-morph |
+| Cold / clinical      | gravitational-lens                               |
+| Editorial / magazine | whip-pan                                         |
+| Tech / futuristic    | glitch, chromatic-split                          |
+| Tense / edgy         | ridged-burn, glitch, domain-warp                 |
+| Playful / fun        | ripple-waves, swirl-vortex                       |
+| Dramatic / cinematic | cinematic-zoom, gravitational-lens, domain-warp  |
+| Premium / luxury     | cross-warp-morph, thermal-distortion             |
+| Retro / analog       | light-leak                                       |
 
 ### Shader transitions (WebGL)
 
@@ -325,7 +265,7 @@ Use the `@hyperframes/shader-transitions` package. Exactly these 14 shader names
 | `cross-warp-morph`    | noise-driven morph blending both scenes              |
 | `light-leak`          | warm cinematic light leak with lens flare            |
 
-Load the package from CDN and wire it to your timeline. The IIFE build exposes the package on **`window.HyperShader`** (not `HyperframesShaderTransitions` — use the exact name below):
+Load the package and wire it to your timeline. The IIFE build exposes **`window.HyperShader`** (not `HyperframesShaderTransitions` — use the exact name below):
 
 ```html
 <script src="https://cdn.jsdelivr.net/npm/@hyperframes/shader-transitions/dist/index.global.js"></script>
@@ -346,44 +286,127 @@ Load the package from CDN and wire it to your timeline. The IIFE build exposes t
 </script>
 ```
 
-**Scene visibility is yours to own.** HyperShader drives the transition overlay (the WebGL canvas during transition intervals) — it does NOT manage which scene is currently visible between transitions. Start every scene at `opacity: 0` in CSS (except scene-1, which is visible from t=0), then mount/unmount each scene on the timeline:
+### Scene markup — always use the HyperFrames clip contract
 
-```js
-// inside tl construction, after init()
-tl.set("#scene-1", { autoAlpha: 1 }, 0); // scene 1 visible from start
-tl.set("#scene-1", { autoAlpha: 0 }, 5.0); // at transition start, fade out
-tl.set("#scene-2", { autoAlpha: 1 }, 5.0); // scene 2 visible
-tl.set("#scene-2", { autoAlpha: 0 }, 12.0);
-tl.set("#scene-3", { autoAlpha: 1 }, 12.0);
-// …etc
+Every scene must be a HyperFrames clip: `class="scene clip"` + `data-start` + `data-duration` + `data-track-index`. This is required (not optional) for multi-scene compositions. The runtime's time-based visibility gate (`packages/core/src/runtime/init.ts`) sets `style.visibility = "hidden"` on every `[data-start]` element outside its window, every frame — scenes without this markup get no such protection.
+
+### Wrap animated scene content in `.scene-content`
+
+`HyperShader`'s `captureIncomingScene` (in `packages/shader-transitions/src/capture.ts`) looks for a child with `class="scene-content"` and sets it to `visibility:hidden` **during** `html2canvas` so the content's pre-animation state doesn't leak into the WebGL texture. Without this wrapper, any element using `tl.from()` (default `immediateRender:true`) gets captured in its from-state — `yPercent:110` off-screen, `scaleX:0` as a zero-width rectangle, `autoAlpha:0` invisible. The shader texture then contains those broken states, and users see boxes/rectangles/empty slivers during the transition.
+
+```html
+<div
+  class="scene clip"
+  id="scene-2"
+  data-start="6"
+  data-duration="6"
+  data-track-index="0"
+  style="opacity:0;visibility:hidden;background-color:#0a0a0d;"
+>
+  <!-- OUTSIDE .scene-content: static bg, gradients, ambient decoratives.
+       Captured into shader texture. Keep these still. -->
+  <div class="scene-bg-gradient"></div>
+
+  <!-- INSIDE .scene-content: everything that animates in. Hidden during
+       incoming-capture, so from-state does NOT leak into texture. -->
+  <div class="scene-content">
+    <h1 id="s2-title">…</h1>
+    <div class="s2-body">…</div>
+  </div>
+</div>
 ```
 
-Without these sets, all scenes stay at CSS opacity:0 and the composition shows nothing between transitions.
+Rule: any element with an entrance animation goes INSIDE `.scene-content`. Static backgrounds go OUTSIDE.
 
-Shader-compatible CSS rules (apply only to shader-transition compositions — `html2canvas` captures each scene to a WebGL texture, and its rendering pipeline doesn't match CSS exactly):
+### Transition timing — scene boundary must fall INSIDE the transition window
+
+Scene windows tile end-to-end: scene-1 ends at time B, scene-2 starts at B — same instant. Scene windows are **half-open** (`[start, start+duration)`), so at `t=B` the runtime has already set scene-1 to `visibility:hidden`. If `transition.time === B`, HyperShader's `html2canvas(scene-1)` captures a blank texture (element is already hidden) → shader transitions blank → scene-2 → **visible blink**.
+
+Rule: **`transition.time < B` AND `transition.time + transition.duration > B`**. The boundary must fall strictly inside the transition window. Simplest: center it — `transition.time = B - duration/2`.
+
+```js
+// Scene-1 window [0, 6), scene-2 window [6, 12). Transition duration 0.5s.
+// Boundary B = 6. transition.time = 6 - 0.25 = 5.75. Runs 5.75 → 6.25.
+transitions: [{ time: 5.75, shader: "cinematic-zoom", duration: 0.5 }];
+```
+
+Anti-pattern (causes a blink):
+
+```js
+// scene-1 ends at 4.8 → boundary at 4.8. Transition fires AT the boundary →
+// scene-1 already visibility:hidden → capture = blank → blink.
+transitions: [{ time: 4.8, shader: "cross-warp-morph", duration: 0.6 }];
+```
+
+```html
+<!-- Scene windows tile end-to-end with no gaps. Initial scene has no inline opacity/visibility. -->
+<div class="scene clip" id="scene-1" data-start="0" data-duration="6.3" data-track-index="0">…</div>
+<div
+  class="scene clip"
+  id="scene-2"
+  data-start="6.3"
+  data-duration="6.4"
+  data-track-index="0"
+  style="opacity:0;visibility:hidden;"
+>
+  …
+</div>
+<div
+  class="scene clip"
+  id="scene-3"
+  data-start="12.7"
+  data-duration="9.0"
+  data-track-index="0"
+  style="opacity:0;visibility:hidden;"
+>
+  …
+</div>
+```
+
+### Scene visibility: HANDS OFF when using HyperShader
+
+HyperShader owns scene `opacity` end-to-end in both browser preview and engine/render mode. `captureIncomingScene` forces `opacity:1` on the incoming scene temporarily during its `html2canvas` capture, and at transition end HyperShader sets the incoming scene's inline `style.opacity = "1"` itself. You do **not** need to — and must **not** — add `tl.set(#scene-N, { autoAlpha: 1|0 }, …)` on scene containers for transition handoff.
+
+**Why (blink root cause).** `html2canvas` captures are async (~80-150ms). If you manually set the incoming scene to `autoAlpha:1` at the transition's start AND the scenes lack the clip markup above, the browser paints both scenes stacked for the full capture window before HyperShader hides them and shows the canvas. That's the blink. With clip markup, the runtime's visibility gate keeps the incoming scene hidden until its `data-start` window opens, so even a misguided `tl.set` doesn't produce a visible flash.
+
+```js
+const tl = gsap.timeline({ paused: true });
+// animate elements INSIDE each scene — never the .scene container itself
+tl.from("#scene-1 .headline", { y: 40, autoAlpha: 0, duration: 0.8 }, 0.2);
+// …
+
+window.HyperShader.init({ bgColor, scenes, timeline: tl, transitions });
+```
+
+Anti-pattern (causes the blink when scenes lack clip markup):
+
+```js
+tl.set("#scene-2", { autoAlpha: 1 }, 5.7); // double-scene overlap during capture → flash
+tl.set("#scene-1", { autoAlpha: 0 }, 6.3);
+```
+
+### Shader-compatible CSS rules
+
+Apply only to shader-transition compositions — `html2canvas` captures each scene to a WebGL texture, and its rendering pipeline doesn't match CSS exactly:
 
 - **No `transparent` in gradients.** Canvas interpolates `transparent` as `rgba(0,0,0,0)` (black at zero alpha), creating dark fringes. Use the target color at zero alpha: `rgba(200,117,51,0)` not `transparent`.
-- **No gradients on elements thinner than 4px.** Use solid `background-color` on thin accent lines.
-- **No CSS variables (`var(...)`) on elements captured.** Use literal hex colors in inline styles instead.
+- **No gradients on elements thinner than 4px.** Use solid `background-color`.
+- **No CSS variables (`var(...)`) on captured elements.** Use literal hex colors in inline styles.
 - **No gradient opacity below 0.15.** Raise to 0.15+ or use a solid equivalent.
-- **Every `.scene` div must have explicit `background-color`**, AND the same color must be passed as `bgColor` in the `init()` config. Without either, the texture renders black.
-- **Mark uncapturable decorative elements with `data-no-capture`.** They stay in the DOM but are skipped during texture capture.
+- **Every `.scene` div must have explicit `background-color`**, AND the same color must be passed as `bgColor` in `init()`.
+- **Mark uncapturable decoratives with `data-no-capture`.**
 
 ### When NOT to use shaders
 
-Don't mix CSS and shader transitions in the same composition — pick one. Shaders are powerful but heavier (WebGL context + per-pixel compositing).
+Don't mix CSS and shader transitions — pick one. **Prefer CSS transitions** when the composition will be previewed interactively with lots of scrubbing: shader transitions are optimized for linear playback, scrubbing produces visible capture-latency blanks.
 
-**Prefer CSS transitions** when the composition will be previewed interactively with lots of scrubbing. Shader transitions are optimized for linear playback — the package captures scene textures via `html2canvas` at transition time and holds them between transitions. When a user scrubs to an arbitrary time, the canvas still holds a stale texture until a new capture completes, producing a visible blank gap. For final renders (`npx hyperframes render`) this doesn't matter — the render engine runs linearly.
-
-**Dev-time scrubbing trap:** don't call `tl.progress(n)` in rapid succession (e.g. from a loop or dev tools) on a shader-transition composition. Each progress change can queue a fresh `html2canvas` capture; rapid scrubbing deadlocks the capture pipeline. If you need to inspect a specific time, `tl.pause()` first and call `tl.time(t)` once — or use the player's `currentTime` setter, which throttles.
-
-For CSS transitions: scenes are absolute-positioned `.scene` containers with opacity driven directly by GSAP tweens. Every scrub position renders cleanly because the DOM is the surface, no capture latency.
+**Dev-time scrubbing trap:** don't call `tl.progress(n)` in rapid succession on a shader-transition composition — html2canvas captures queue up and deadlock. `tl.pause()` first, call `tl.time(t)` once.
 
 ## Typography
 
-### Banned fonts — do not use these
+### Banned fonts — do not use
 
-Training-data defaults every LLM reaches for. They produce monoculture across compositions.
+Training-data defaults every LLM reaches for. They produce monoculture.
 
 ```
 Inter, Roboto, Open Sans, Noto Sans, Arimo, Lato, Source Sans, PT Sans,
@@ -391,26 +414,18 @@ Nunito, Poppins, Outfit, Sora, Playfair Display, Cormorant Garamond,
 Bodoni Moda, EB Garamond, Cinzel, Prata, Syne
 ```
 
-**Also banned:** close siblings that read as the same voice (Inter Tight, Inter Display, Source Sans 3). Syne in particular is the most overused "distinctive" display font and is an instant AI tell.
+**Also banned:** close siblings that read as the same voice (Inter Tight, Inter Display, Source Sans 3). Syne is the most overused "distinctive" display font — an instant AI tell.
 
-When you reach for Inter, stop. Pick something else. Trending Google Fonts work well — some safe modern picks by category:
+Safe modern picks by category:
 
 - **Display serif:** Fraunces, Instrument Serif, Newsreader, Libre Caslon Display, DM Serif Display
 - **Display sans:** Space Grotesk, Geist, General Sans, Bricolage Grotesque, Host Grotesk, Unbounded
 - **Monospace:** JetBrains Mono, Geist Mono, IBM Plex Mono, Fira Code, Azeret Mono, DM Mono
 - **Impact / condensed:** Bebas Neue, Oswald (heavy weight), Anton, Hepta Slab, Big Shoulders Display
 
-### Pairing rules
+### Dark-background optical compensation
 
-- **Don't pair two sans-serifs.** Cross the boundary: serif + sans, or sans + mono.
-- **One expressive font per scene.** Pair one performer with one recessive face.
-- **Weight contrast must be extreme.** 300 vs 900, not 400 vs 700. The contrast must be visible in motion at a glance.
-- **Video sizes, not web sizes.** Body ≥20px, headlines ≥60px, data labels ≥16px. Never 14px for body.
-- **Tracking tighter than web.** `-0.03em` to `-0.05em` on display sizes. Video encoding compresses letter detail.
-
-### Dark-background compensation
-
-Light text on dark backgrounds reads heavier and spacing reads tighter. Compensate:
+Light text on dark reads heavier and spacing reads tighter:
 
 - Use `font-weight: 350` instead of 400 for body text.
 - Increase `line-height` by 0.05–0.1 beyond your light-background equivalent.
@@ -419,285 +434,196 @@ Light text on dark backgrounds reads heavier and spacing reads tighter. Compensa
 ### OpenType features for data
 
 ```css
-/* Tabular numbers — digits align vertically in columns */
 .stat-value,
 .timer,
 .data-column {
-  font-variant-numeric: tabular-nums;
+  font-variant-numeric: tabular-nums; /* digits align vertically in columns */
 }
-
-/* Diagonal fractions — renders 1/2 as ½ */
 .recipe-amount,
 .ratio {
-  font-variant-numeric: diagonal-fractions;
-}
-
-/* Small caps for abbreviations — less visual shouting */
-.abbreviation {
-  font-variant-caps: all-small-caps;
-}
-
-/* Disable ligatures in code — keep fi, fl, ffi separate */
-code {
-  font-variant-ligatures: none;
+  font-variant-numeric: diagonal-fractions; /* renders 1/2 as ½ */
 }
 ```
 
-`tabular-nums` is essential anywhere numbers stack vertically — stat callouts, timers, scoreboards, data tables.
+`tabular-nums` is essential anywhere numbers stack vertically. Without it, digits have proportional widths and columns don't align.
 
-## Motion principles
+## GSAP — HyperFrames-specific gotchas
 
-### Guardrails
-
-Rules LLMs violate by default. Stop.
-
-- **Don't use the same ease on every tween.** Vary eases like you vary font weights — no more than 2 independent tweens with the same ease in a scene.
-- **Don't use the same speed on everything.** 0.4–0.5s default is lazy. The slowest scene should be 3× slower than the fastest. Vary duration deliberately.
-- **Don't enter every element from the same direction.** `y: 30, opacity: 0` on every tween is a tell. Vary: from left, from right, from scale, opacity-only, letter-spacing.
-- **Don't use the same stagger on every scene.** Each scene needs its own rhythm.
-- **Don't use ambient zoom on every scene.** Slow pan, subtle rotation, scale push, color shift, or stillness. Stillness after motion is powerful.
-- **Don't start at t=0.** Offset the first animation 0.1–0.3s. Zero-delay feels like a jump cut.
-
-### Easing is emotion
-
-The tween is the verb. The easing is the adverb. `expo.out` = confident. `sine.inOut` = dreamy. `elastic.out` = playful. Choose deliberately.
-
-- `.out` for entrances (fast start, decelerates into place, feels responsive). Your default.
-- `.in` for exits (slow start, accelerates away, throws them off).
-- `.inOut` for elements moving between positions.
-
-### Speed communicates weight
-
-| Range     | Feel                              |
-| --------- | --------------------------------- |
-| 0.15–0.3s | energy, urgency, confidence       |
-| 0.3–0.5s  | professional, most content        |
-| 0.5–0.8s  | gravity, luxury, contemplation    |
-| 0.8–2.0s  | cinematic, emotional, atmospheric |
-
-### Scene structure: build / breathe / resolve
-
-Every scene has three phases. Don't dump everything in build and leave nothing for breathe or resolve.
-
-- **Build (0–30%)** — elements enter, staggered.
-- **Breathe (30–70%)** — content visible, alive with ONE ambient motion. Slow scale drift, hue rotation, hairline pulse.
-- **Resolve (70–100%)** — decisive end. Exits are faster than entrances; a card takes 0.4s to appear and 0.25s to disappear.
-
-### Visual composition — frames, not pages
-
-You build for the web by default. Stop.
-
-- **Two focal points minimum per scene.** The eye needs somewhere to travel. Never a single text block floating in empty space.
-- **Fill the frame.** Hero text: 60–80% of width. No web-sized elements.
-- **Three layers minimum per scene.** Background treatment (glow, oversized faded type, color panel). Foreground content. Accent elements (dividers, labels, data bars).
-- **Background is not empty.** Radial glows, oversized faded type bleeding off-frame, subtle border panels, hairline rules. Pure solid `#000` reads as "nothing loaded."
-- **Anchor to edges.** Pin content to left/top or right/bottom. Centered-and-floating is a web pattern.
-- **Split frames.** Data panel on the left, content on the right. Top bar with metadata, full-width below. Zone-based layouts, not centered stacks.
-- **Use structural elements.** Rules, dividers, border panels. They create paths for the eye and animate well (`scaleX` from 0).
-
-### Animation guardrails
-
-- Offset first animation 0.1–0.3s (not t=0).
-- Use at least 3 different eases per scene.
-- Don't repeat an entrance pattern within a scene.
-- Avoid full-screen linear gradients on dark backgrounds (H.264 banding — use radial or solid + localized glow).
-- 60px+ headlines, 20px+ body, 16px+ data labels for rendered video.
-- `font-variant-numeric: tabular-nums` on number columns.
-
-## Visual direction
-
-If the prompt doesn't specify a style, brand, palette, or mood, do NOT default to warm editorial (cream paper + serif + terracotta). Either:
-
-1. **Ask one clarifying question** — _"What mood — clinical, raw, luxury, warm, dramatic, playful?"_ — and wait for the answer, OR
-2. **Commit to a specific aesthetic** from the 8 preset styles below that matches the content type, and write it into `DESIGN.md` before writing `index.html`.
-
-Don't serve the same aesthetic for every brief. Match visual direction to the content:
-
-| Style               | Mood                  | Best for                           | GSAP signature                         | Primary shader                      |
-| ------------------- | --------------------- | ---------------------------------- | -------------------------------------- | ----------------------------------- |
-| **Swiss Pulse**     | clinical, precise     | SaaS, dev tools, APIs, metrics     | `expo.out`, `power4.out` · snap        | `cinematic-zoom`, `sdf-iris`        |
-| **Velvet Standard** | premium, timeless     | luxury, enterprise, keynotes       | `sine.inOut`, `power1` · glide         | `cross-warp-morph`                  |
-| **Deconstructed**   | industrial, raw       | tech launches, security, punk      | `back.out(2.5)`, `steps(8)`, `elastic` | `glitch`, `whip-pan`                |
-| **Maximalist Type** | loud, kinetic         | launches, announcements            | varied, explosive                      | `ridged-burn`                       |
-| **Data Drift**      | futuristic, immersive | AI, ML, cutting-edge tech          | `power3.inOut`, slow                   | `gravitational-lens`, `domain-warp` |
-| **Soft Signal**     | intimate, warm        | wellness, personal stories, brand  | `sine.out`, slow entrances             | `thermal-distortion`                |
-| **Folk Frequency**  | cultural, vivid       | consumer apps, food, communities   | `back.out(1.4)`, playful               | `swirl-vortex`, `ripple-waves`      |
-| **Shadow Cut**      | dark, cinematic       | dramatic reveals, security, exposé | `power4.in`, long holds                | `domain-warp`                       |
-
-`DESIGN.md` format (write this BEFORE `index.html`):
-
-```markdown
-# <project> — DESIGN.md
-
-## Style prompt
-
-<one paragraph: mood, palette feel, typographic voice>
-
-## Colors
-
-- `#hexA` — role (background)
-- `#hexB` — role (ink / foreground)
-- `#hexC` — role (one accent)
-- `#hexD` — role (secondary text, optional)
-
-## Typography
-
-- <display family> — role (headlines)
-- <body family> — role (body, UI)
-- <mono family> — role (metadata, numerics, optional)
-
-## Motion
-
-<1–3 rules: pacing, easing preference, what NOT to do>
-```
-
-Reference these tokens via CSS custom properties on `:root` in `index.html`.
-
-## GSAP essentials (HyperFrames-specific)
-
-### Core tween methods
-
-| Method                                   | Use                                              |
-| ---------------------------------------- | ------------------------------------------------ |
-| `gsap.to(targets, vars)`                 | animate from current state to `vars`             |
-| `gsap.from(targets, vars)`               | animate FROM `vars` TO current state (entrances) |
-| `gsap.fromTo(targets, fromVars, toVars)` | explicit start and end                           |
-| `gsap.set(targets, vars)`                | apply immediately at duration 0                  |
-
-All property names are camelCase (`backgroundColor`, not `background-color`).
+You know GSAP. These are the bits HyperFrames cares about:
 
 ### `immediateRender` gotcha
 
 `from()` and `fromTo()` default to `immediateRender: true` — they apply their "from" state IMMEDIATELY at timeline construction, not when the tween starts. This is the root cause of the "stuck transition overlay" bug:
 
 ```js
-// WRONG — this sets #wipe to yPercent:-100 AT TIMELINE CONSTRUCTION,
-// which may place it over the stage before the transition is supposed to run.
+// WRONG — sets #wipe to yPercent:-100 AT TIMELINE CONSTRUCTION,
+// placing it over the stage before the transition is supposed to run.
 tl.fromTo("#wipe", { yPercent: -100 }, { yPercent: 0, duration: 0.5 }, 17.3);
 
-// RIGHT — define initial state explicitly via CSS or gsap.set() BEFORE
-// the tween, and use tl.to() for the actual animation.
-gsap.set("#wipe", { yPercent: 100 }); // off-stage below
-tl.to("#wipe", { yPercent: 0, duration: 0.5 }, 17.3); // enter from below
+// RIGHT — define initial state via CSS or gsap.set() BEFORE the tween, use tl.to().
+gsap.set("#wipe", { yPercent: 100 });
+tl.to("#wipe", { yPercent: 0, duration: 0.5 }, 17.3);
 ```
 
-Or set `immediateRender: false` explicitly on the `fromTo` if you must use it and the initial state is only correct at the tween's start time.
-
-### Transform aliases
-
-Prefer GSAP's transform aliases over raw `transform` strings:
-
-| Property                    | CSS equivalent         |
-| --------------------------- | ---------------------- |
-| `x`, `y`, `z`               | `translateX/Y/Z` in px |
-| `xPercent`, `yPercent`      | `translateX/Y` in %    |
-| `scale`, `scaleX`, `scaleY` | `scale`                |
-| `rotation`                  | `rotate` in deg        |
-| `rotationX`, `rotationY`    | 3D rotate              |
-| `transformOrigin`           | `transform-origin`     |
+Or set `immediateRender: false` on the `fromTo` explicitly.
 
 ### `autoAlpha` over `opacity`
 
-`autoAlpha` animates opacity AND toggles `visibility: hidden` at 0 (so elements don't catch pointer events while invisible). Prefer it unless you have a specific reason to keep visibility visible.
+`autoAlpha` animates opacity AND toggles `visibility: hidden` at 0 (elements won't catch pointer events while invisible). Prefer it unless you have a specific reason to keep visibility visible. Required for the shader-transition scene mount/unmount pattern above.
 
-### Timeline position parameter
+## Visual direction
 
-Third argument to `tl.to()` / `tl.from()` / `tl.fromTo()`:
+Design is your strength. Use it. This skill is intentionally neutral on style — no preset palettes, no preset motion signatures, no content-type → aesthetic mapping. Pick your own.
 
-- absolute: `1` — at 1s
-- relative: `"+=0.5"`, `"-=0.2"`
-- label: `"intro"`, `"intro+=0.3"`
-- alignment: `"<"` (same start as previous), `">"` (after previous ends), `"<0.2"` (0.2s after previous starts)
+**Four input channels. Additive — use as many as apply:**
 
-### Stagger > separate tweens
+1. **Attachments (strongest visual source).** `.fig`, PDFs (brand guidelines), `.docx`/`.pptx`, screenshots, reference videos. Claude Design reads these natively. Mine for palette, typography, UI chrome, tone of voice.
+2. **Pasted content.** Hex codes, typefaces, copy, scripts, pasted style guides. Authoritative for the fields it covers.
+3. **Research — use it aggressively.** When a brand, product, or topic is named, `web_search` and `web_fetch` aggressively. Research gives you: (a) **tone and positioning** (brand interviews, reviews, teardowns), (b) **real static content** (company blogs, press pages, Wikipedia, Crunchbase, TechCrunch, docs sites — all fetch fine), (c) **real copy material** (actual taglines, feature names, product language — so you quote the brand, not invent generic copy), (d) **visual references** (press kits often list hex codes + typefaces in plain HTML). SPA marketing homepages (React/Vue/Angular) are the one weak case — they return near-empty shells because JS isn't executed.
+4. **URLs the user provided.** Start there, but don't stop. If the main URL is a SPA and returns little, pivot to the brand's blog, press page, Wikipedia entry, case study — those are almost always static. If identity is still unclear after you've done what you can, ask the user for a screenshot.
 
-Use `stagger` for groups — much cleaner than N tweens with manual delays:
+Combine channels: strong attachments + light research gets you brand-accurate visuals AND brand-accurate copy/tone.
 
-```js
-tl.from(
-  ".card",
-  {
-    y: 40,
-    opacity: 0,
-    duration: 0.5,
-    stagger: { each: 0.08, from: "start" }, // or { amount: 0.3, from: "center" }
-  },
-  2.0,
-);
-```
+**Two hard aesthetic rules:**
+
+1. Synthesize from what you have (attachments first, pasted content next, subject matter and emotional tone last). Match the source; don't improvise around it.
+2. Don't fall back to monoculture defaults — cream paper + serif + terracotta ("warm editorial"), or generic dark-mode + Inter + violet. Every LLM reaches for these. Commit to the brief.
+
+### When the brief is sparse — ask ONE short question, then build
+
+Output quality is capped by input quality. If the user's brief has no attachment, no URL, no pasted palette/type/copy, and no named aesthetic or reference, send one short message (4–6 lines) with concrete options before generating:
+
+> To make this look like _yours_ — drop any of these (or describe in words):
+>
+> - A screenshot or two of your product, site, or an ad you like.
+> - A brand PDF / style guide.
+> - A reference video for pacing / color / energy.
+> - A vibe in words — _"clinical and cold"_, _"loud and fast"_, _"a particular director / movie"_.
+> - A must-have element — a specific shader, transition, text effect, anything you already want.
+>
+> Or say _"just build"_ and I'll commit to _<one concrete aesthetic you've chosen for this brief — named concretely>_.
+
+Wait for the reply. No placeholder drafts. When the user replies, incorporate fully. When they say "just build" / "go" / "ship it", commit to the aesthetic you offered and write the composition.
+
+**Skip the question — build immediately — when:** the user attached a file, pasted a palette/type/copy, named a specific aesthetic or well-known brand, is continuing an existing composition, or explicitly asked for speed.
+
+Write `DESIGN.md` before `index.html` as a thinking step: palette, typography, motion character, in whatever shape makes sense for the brief. Reference the resulting tokens via CSS custom properties on `:root` in `index.html`.
 
 ## Registry blocks
 
-HyperFrames ships a block registry at `https://github.com/heygen-com/hyperframes/tree/main/registry/blocks`. Blocks are pre-built sub-compositions you drop into a host composition via `data-composition-src`.
-
-Claude Design can't run `hyperframes add <name>` (it's a CLI command), but it CAN fetch the block HTML directly and wire it manually:
+HyperFrames ships 39 pre-built sub-compositions at `https://github.com/heygen-com/hyperframes/tree/main/registry/blocks`. Claude Design can't run `hyperframes add <name>` (CLI), but CAN fetch the block HTML directly:
 
 1. Fetch `https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/blocks/<name>/<name>.html`
 2. Save as `compositions/<name>.html` in the project
-3. Wire into `index.html` with a sub-composition div
+3. Wire via `data-composition-src` (NOT plain iframe)
 
-Available blocks (partial list, useful for Claude Design work):
+Common blocks:
 
-| Block                | Purpose                                 |
-| -------------------- | --------------------------------------- |
-| `data-chart`         | animated bar/line chart sub-composition |
-| `flowchart`          | animated flow diagram                   |
-| `logo-outro`         | animated logo reveal for closing scenes |
-| `app-showcase`       | product UI mock layout                  |
-| `spotify-card`       | Spotify-style music card UI             |
-| `instagram-follow`   | Instagram follow-button UI              |
-| `reddit-post`        | Reddit post layout                      |
-| `x-post`             | X/Twitter post layout                   |
-| `macos-notification` | macOS-style notification                |
-| `tiktok-follow`      | TikTok follow-button UI                 |
-| `yt-lower-third`     | YouTube-style lower-third graphic       |
+| Block                                    | Purpose                                 |
+| ---------------------------------------- | --------------------------------------- |
+| `data-chart`                             | animated bar/line chart sub-composition |
+| `flowchart`                              | animated flow diagram                   |
+| `logo-outro`                             | animated logo reveal for closing scenes |
+| `app-showcase`                           | product UI mock layout                  |
+| `spotify-card`                           | Spotify-style music card UI             |
+| `instagram-follow`                       | Instagram follow-button UI              |
+| `reddit-post`, `x-post`, `tiktok-follow` | social card UIs                         |
+| `macos-notification`                     | macOS-style notification                |
+| `yt-lower-third`                         | YouTube-style lower-third graphic       |
 
-The full list of 39 blocks is at the URL above. Browse it when the brief calls for something specific.
+## Worked examples
 
-## Optional feature references (fetch when needed)
+Every composition in `https://github.com/heygen-com/hyperframes/tree/main/registry/examples` is a full, renderable HyperFrames project authored by the framework team. They cover editorial layouts, kinetic typography, data visualization, product promos, decision-tree flows, and more. When a brief is technically ambitious (shaders, sub-compositions, complex sequencing) and you want to see the exact shape of working code, fetch one. Don't copy their aesthetic — pick one whose technical pattern matches your needs and mine it for implementation, not for style.
 
-The below cover specific capabilities beyond basic motion. Fetch ONLY when the request requires the feature — otherwise skip.
+## Additional references (fetch when needed)
 
+Everything critical is inlined in this skill — you should rarely need to fetch more. These fallbacks exist for edge cases.
+
+**Foundational references — fetch only if you hit a pattern this skill doesn't cover:**
+
+- **Core composition authoring (deep HyperFrames reference)** → https://github.com/heygen-com/hyperframes/blob/main/skills/hyperframes/SKILL.md
+- **GSAP (deep reference — advanced timelines, stagger, keyframes, plugins)** → https://github.com/heygen-com/hyperframes/blob/main/skills/gsap/SKILL.md
+- **CLI reference (advanced `npx hyperframes` flags, non-standard commands)** → https://github.com/heygen-com/hyperframes/blob/main/skills/hyperframes-cli/SKILL.md
+- **`@hyperframes/player` docs (player element internals, event hooks)** → https://github.com/heygen-com/hyperframes/blob/main/packages/player/README.md
+- **Full docs site** → https://hyperframes.heygen.com/
+- **Real working compositions (mine for technical patterns)** → https://github.com/heygen-com/hyperframes/tree/main/registry/examples
+
+**Feature-specific references — fetch ONLY when the brief needs that feature:**
+
+- **URL-to-video capture pipeline** (when the user wants a video built from a captured website) → https://github.com/heygen-com/hyperframes/blob/main/skills/website-to-hyperframes/SKILL.md
 - **Captions / subtitles synced to audio** → https://github.com/heygen-com/hyperframes/blob/main/skills/hyperframes/references/captions.md
 - **TTS narration (Kokoro-82M)** → https://github.com/heygen-com/hyperframes/blob/main/skills/hyperframes/references/tts.md
-- **Audio-reactive animation (amplitude, frequency bands)** → https://github.com/heygen-com/hyperframes/blob/main/skills/hyperframes/references/audio-reactive.md
+- **Audio-reactive animation (beat sync, glow, pulse driven by music)** → https://github.com/heygen-com/hyperframes/blob/main/skills/hyperframes/references/audio-reactive.md
 - **CSS text-highlight patterns (marker, circle, burst, scribble, sketchout)** → https://github.com/heygen-com/hyperframes/blob/main/skills/hyperframes/references/css-patterns.md
 - **Dynamic caption animations (karaoke, slam, scatter, elastic, 3D)** → https://github.com/heygen-com/hyperframes/blob/main/skills/hyperframes/references/dynamic-techniques.md
 - **Audio transcript generation** → https://github.com/heygen-com/hyperframes/blob/main/skills/hyperframes/references/transcript-guide.md
 - **Installable blocks + components (`hyperframes add`)** → https://github.com/heygen-com/hyperframes/blob/main/skills/hyperframes-registry/SKILL.md
 
-## Worked examples
-
-Pattern-match from real compositions. Browse `https://github.com/heygen-com/hyperframes/tree/main/registry/examples` — every example is a full, renderable composition authored by the HyperFrames team. Specific picks by aesthetic:
-
-- **Editorial / Velvet Standard** → `vignelli` (`registry/examples/vignelli/index.html`)
-- **Warm editorial** → `warm-grain` (`registry/examples/warm-grain/index.html`)
-- **Swiss Pulse** → `swiss-grid` (`registry/examples/swiss-grid/index.html`)
-- **Kinetic typography** → `kinetic-type` (`registry/examples/kinetic-type/index.html`)
-- **Product launch** → `product-promo` (`registry/examples/product-promo/index.html`)
-- **Data visualization** → `nyt-graph` (`registry/examples/nyt-graph/index.html`)
-- **Decision-tree / flow** → `decision-tree` (`registry/examples/decision-tree/index.html`)
-
-Fetch one that matches the brief before writing. Reading a real, working composition teaches more than prose rules ever will.
-
 ## Surface behavior
 
 - Claude Design does not use slash commands.
-- The preview pane runs compositions inside a sandbox at `*.claudeusercontent.com` that requires a `?t=<token>` query on every request — that's why the `preview.html` template forwards `location.search`. When opened locally (no token in URL), the forward is a no-op.
-- Claude Design can't run CLI commands (`hyperframes render`, `hyperframes tts`, `hyperframes capture`). For the render/preview steps, include the commands in `README.md` for the user to run locally after downloading the ZIP.
+- The preview pane is sandboxed at `*.claudeusercontent.com` and requires a `?t=<token>` query on every request — that's why `preview.html` forwards `location.search`. When opened locally (no token), the forward is a no-op.
+- Claude Design can't run CLI commands. Include commands in `README.md` for the user to run locally after downloading the ZIP.
 
 ## Output expectations
 
-When done, the user's ZIP must satisfy:
+- `preview.html` plays the composition cleanly in Claude Design's in-pane preview AND when opened locally.
+- `index.html` is renderable via `npx hyperframes render` with no lint errors.
+- `README.md` is written for the end user and walks them step-by-step through previewing and rendering locally (template below).
+- `DESIGN.md` exists when any visual identity was specified or invented.
 
-- `preview.html` plays the composition cleanly in Claude Design's in-pane preview AND when opened locally after download.
-- `index.html` is renderable via `npx hyperframes render index.html` with no lint errors.
-- `README.md` explains how to preview locally (`open preview.html`) and render (`npx hyperframes render index.html`).
-- `DESIGN.md` exists if any visual identity was specified or invented.
+## README.md template (for the user who downloads the ZIP)
 
-## Example prompts
+Include these instructions verbatim. Swap `<project-name>` and adjust the render flags if the brief needs a non-default resolution / fps.
 
-- `Use https://github.com/heygen-com/hyperframes/blob/main/skills/claude-design-hyperframes/SKILL.md and make a 20-second product launch video about our new API. Deliver index.html, preview.html, and README.md.`
-- `Use the HyperFrames Claude Design skill at https://github.com/heygen-com/hyperframes/blob/main/skills/claude-design-hyperframes/SKILL.md and turn https://www.anthropic.com/news/claude-design-anthropic-labs into a 45-second editorial launch video.`
-- `Use the HyperFrames Claude Design skill entry point and build a 9:16 social teaser with captions, strong transitions, and a player-based preview.`
-- `Apply the HyperFrames Claude Design skill. Make a 60s cinematic launch video for [product]. Shader transitions throughout (consistent primary matching the mood). Pattern-match from the vignelli example.`
+````markdown
+# <project-name>
+
+A HyperFrames video composition. Plain HTML + GSAP; rendered to MP4 by the `hyperframes` CLI.
+
+## Requirements
+
+- **Node.js 22+** — [nodejs.org](https://nodejs.org/)
+- **FFmpeg** — `brew install ffmpeg` (macOS) · `sudo apt install ffmpeg` (Debian/Ubuntu) · [ffmpeg.org/download](https://ffmpeg.org/download.html) (Windows)
+
+Chrome is downloaded automatically on first preview/render. Verify the environment with:
+
+```bash
+npx hyperframes doctor
+```
+
+`npx` downloads the `hyperframes` CLI from npm on first use — no global install required.
+
+## Preview in your browser
+
+```bash
+npx hyperframes preview
+```
+
+Opens the HyperFrames Studio at `http://localhost:3002`.
+
+## Render to MP4
+
+```bash
+npx hyperframes render index.html -o output.mp4
+```
+
+Produces `output.mp4` at 1920×1080 / 30fps by default. Roughly 1–3× real-time on a modern laptop. Use `--fps 60` or `--resolution 3840x2160` to override.
+
+## Troubleshooting
+
+- **"FFmpeg not found"** — install FFmpeg per Requirements.
+- **"Node version too old"** — install Node 22+.
+- **Full docs** — [hyperframes.heygen.com](https://hyperframes.heygen.com/).
+````
+
+## Example prompts users tend to type
+
+Prefer attachment-driven briefs — they produce brand-accurate output. URL-only briefs on SPAs produce generic results.
+
+- _[user drops 3 UI screenshots]_ — `Use the HyperFrames Claude Design skill. 30s product walkthrough matching these screenshots. Feature-led, 16:9, dark theme.`
+- _[user drops a brand PDF]_ — `Use the HyperFrames skill. 15s 9:16 social teaser for the brand in this PDF. Honor palette and type exactly.`
+- _[user drops a reference video]_ — `Use the HyperFrames skill. 20s video in the same tonal register as this reference. Match pacing, color, shader character; my copy below.`
+- `Use the HyperFrames skill. 30s hero reel with this copy for each scene: [pasted script]. Dark theme, technical, no warmth.`
+- `Use the HyperFrames skill. Turn https://www.anthropic.com/news/claude-design-anthropic-labs into a 45s editorial explainer.` — static article, web_fetch works here.
+- `Use the HyperFrames skill. 30s product video for linear.app.` — SPA, web_fetch returns little; ask for screenshots.
