@@ -35,8 +35,10 @@
       "pinDigests": true
     },
     {
-      "matchPackagePatterns": ["^@hyperframes/"],
-      "enabled": false
+      "enabled": false,
+      "matchPackageNames": [
+        "/^@hyperframes//"
+      ]
     }
   ]
 }
