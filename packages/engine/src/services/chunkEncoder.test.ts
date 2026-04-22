@@ -460,6 +460,7 @@ describe("buildEncoderArgs HDR color space", () => {
       expect.stringContaining("HDR is not supported with codec=h264"),
     );
     warnSpy.mockRestore();
+
   });
 
   it("uses range conversion for HDR CPU encoding", () => {
