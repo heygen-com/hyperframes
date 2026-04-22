@@ -142,6 +142,42 @@ describe("GSAP rules", () => {
     expect(finding).toBeUndefined();
   });
 
+  it("does NOT require a local GSAP script for sub-compositions", () => {
+    const html = `<template id="intro-template">
+  <div data-composition-id="intro" data-width="1920" data-height="1080">
+    <div class="title">Hello</div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+      tl.from(".title", { opacity: 0, duration: 1 });
+      window.__timelines["intro"] = tl;
+    </script>
+  </div>
+</template>`;
+
+    const result = lintHyperframeHtml(html, { isSubComposition: true });
+    const finding = result.findings.find((f) => f.code === "missing_gsap_script");
+    expect(finding).toBeUndefined();
+  });
+
+  it("does NOT require a local GSAP script when a template composition is linted in isolation", () => {
+    const html = `<template id="intro-template">
+  <div data-composition-id="intro" data-width="1920" data-height="1080">
+    <div class="title">Hello</div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+      tl.from(".title", { opacity: 0, duration: 1 });
+      window.__timelines["intro"] = tl;
+    </script>
+  </div>
+</template>`;
+
+    const result = lintHyperframeHtml(html, { filePath: "compositions/intro.html" });
+    const finding = result.findings.find((f) => f.code === "missing_gsap_script");
+    expect(finding).toBeUndefined();
+  });
+
   it("ERRORS when GSAP animates visibility on a clip element", () => {
     const html = `
 <html><body>

@@ -10,6 +10,17 @@ interface NLEPreviewProps {
   refreshKey?: number;
 }
 
+export function getPreviewPlayerKey({
+  projectId,
+  directUrl,
+}: {
+  projectId: string;
+  directUrl?: string;
+  refreshKey?: number;
+}): string {
+  return directUrl ?? projectId;
+}
+
 export const NLEPreview = memo(function NLEPreview({
   projectId,
   iframeRef,
@@ -18,7 +29,7 @@ export const NLEPreview = memo(function NLEPreview({
   directUrl,
   refreshKey,
 }: NLEPreviewProps) {
-  const playerKey = `${directUrl ?? projectId}_${refreshKey ?? 0}`;
+  const playerKey = getPreviewPlayerKey({ projectId, directUrl, refreshKey });
 
   return (
     <div className="flex flex-col h-full min-h-0">

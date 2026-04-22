@@ -461,15 +461,18 @@ export function collectRuntimeTimelinePayload(params: {
   }
 
   // ── Persistent overlays ─────────────────────────────────────────────────
-  // Direct children of root with an ID that weren't picked up by either the
-  // DOM query or GSAP introspection are persistent overlays (e.g. grid, border
-  // decorations). Show them as full-duration clips on their own track.
+  // Direct children of root that are pure structural overlays should only
+  // surface in the timeline when authors explicitly opt them in. Otherwise
+  // background layers like "backdrop" make the whole composition read as a
+  // long clip, which is misleading in Studio.
   if (root && rootCompositionDuration != null && rootCompositionDuration > 0) {
     const overlayTrack = clips.length > 0 ? Math.max(...clips.map((c) => c.track)) + 1 : 0;
     for (const child of root.children) {
       const el = child as HTMLElement;
       if (!el.id) continue;
       if (gsapClipIds.has(el.id)) continue;
+      const timelineRole = el.getAttribute("data-timeline-role");
+      if (timelineRole !== "overlay" && timelineRole !== "persistent-overlay") continue;
       const tag = el.tagName.toLowerCase();
       if (tag === "script" || tag === "style" || tag === "link" || tag === "meta") continue;
       // Skip elements that are invisible (display:none in their CSS class)
@@ -500,7 +503,7 @@ export function collectRuntimeTimelinePayload(params: {
         nodePath: null,
         compositionSrc: null,
         assetUrl: null,
-        timelineRole: el.getAttribute("data-timeline-role"),
+        timelineRole,
         timelineLabel: el.getAttribute("data-timeline-label"),
         timelineGroup: el.getAttribute("data-timeline-group"),
         timelinePriority: parseNum(el.getAttribute("data-timeline-priority")),
@@ -536,7 +539,18 @@ export function collectRuntimeTimelinePayload(params: {
       avatarName: null,
     });
   }
-  const safeDuration = Math.max(1, Math.min(maxEnd || 1, params.maxTimelineDurationSeconds));
+  // Timeline payload duration should reflect the playable composition window,
+  // not just the furthest currently-surfaced clip. Studio can intentionally
+  // hide structural/background tracks from the timeline UI; if we collapse the
+  // payload duration down to the last visible clip end, the controls jump even
+  // though playback still runs for the full authored root duration.
+  const safeDuration = Math.max(
+    1,
+    Math.min(
+      Math.max(maxEnd || 1, rootCompositionDuration ?? 0),
+      params.maxTimelineDurationSeconds,
+    ),
+  );
   const shouldEmitNonDeterministicInf = timelineLooksLoopInflated && attrDurationCandidate == null;
   const durationInFrames = shouldEmitNonDeterministicInf
     ? Number.POSITIVE_INFINITY

@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>VFR Screen Recording Regression</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background: #000;
+      }
+      #main {
+        position: relative;
+        width: 480px;
+        height: 332px;
+        overflow: hidden;
+      }
+      #clip {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+      #label {
+        position: absolute;
+        top: 16px;
+        left: 16px;
+        z-index: 10;
+        padding: 6px 12px;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        font-size: 16px;
+        font-weight: 700;
+        color: #ffffff;
+        background: rgba(0, 0, 0, 0.55);
+        border-radius: 6px;
+        letter-spacing: 0.04em;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="main"
+      data-composition-id="vfr-screen-recording"
+      data-start="0"
+      data-duration="3"
+      data-width="480"
+      data-height="332"
+    >
+      <video
+        id="clip"
+        class="clip"
+        data-start="0"
+        data-duration="3"
+        data-media-start="1"
+        data-track-index="0"
+        src="clip.mp4"
+        muted
+        playsinline
+      ></video>
+
+      <div id="label">VFR</div>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+    </script>
+  </body>
+</html>

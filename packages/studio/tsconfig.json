@@ -3,6 +3,10 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
+    "baseUrl": ".",
+    "paths": {
+      "@hyperframes/player": ["../player/src/hyperframes-player.ts"]
+    },
     "jsx": "react-jsx",
     "strict": true,
     "esModuleInterop": true,
@@ -12,7 +16,7 @@
     "declarationMap": true,
     "sourceMap": true,
     "outDir": "dist",
-    "rootDir": "src",
+    "rootDir": "..",
     "types": ["vite/client"],
     "lib": ["dom", "dom.iterable", "esnext"],
     "allowJs": true,

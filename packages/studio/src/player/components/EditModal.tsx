@@ -2,6 +2,7 @@ import { useState, useCallback, useMemo, useRef } from "react";
 import { useMountEffect } from "../../hooks/useMountEffect";
 import { usePlayerStore } from "../store/playerStore";
 import { formatTime } from "../lib/time";
+import { buildPromptCopyText, buildTimelineAgentPrompt } from "./timelineEditing";
 
 interface EditPopoverProps {
   rangeStart: number;
@@ -14,7 +15,8 @@ interface EditPopoverProps {
 export function EditPopover({ rangeStart, rangeEnd, anchorX, anchorY, onClose }: EditPopoverProps) {
   const elements = usePlayerStore((s) => s.elements);
   const [prompt, setPrompt] = useState("");
-  const [copied, setCopied] = useState(false);
+  const [copiedAgentPrompt, setCopiedAgentPrompt] = useState(false);
+  const [copiedPromptOnly, setCopiedPromptOnly] = useState(false);
   const popoverRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -51,27 +53,12 @@ export function EditPopover({ rangeStart, rangeEnd, anchorX, anchorY, onClose }:
   });
 
   const buildClipboardText = useCallback(() => {
-    const elementLines = elementsInRange
-      .map(
-        (el) =>
-          `- #${el.id} (${el.tag}) — ${formatTime(el.start)} to ${formatTime(el.start + el.duration)}, track ${el.track}`,
-      )
-      .join("\n");
-
-    return `Edit the following HyperFrames composition:
-
-Time range: ${formatTime(start)} — ${formatTime(end)}
-
-Elements in range:
-${elementLines || "(none)"}
-
-User request:
-${prompt.trim() || "(no prompt provided)"}
-
-Instructions:
-Modify only the elements listed above within the specified time range.
-The composition uses HyperFrames data attributes (data-start, data-duration, data-track-index) and GSAP for animations.
-Preserve all other elements and timing outside this range.`;
+    return buildTimelineAgentPrompt({
+      rangeStart: start,
+      rangeEnd: end,
+      elements: elementsInRange,
+      prompt,
+    });
   }, [start, end, elementsInRange, prompt]);
 
   const handleCopy = useCallback(async () => {
@@ -85,12 +72,31 @@ Preserve all other elements and timing outside this range.`;
       document.execCommand("copy");
       document.body.removeChild(ta);
     }
-    setCopied(true);
+    setCopiedAgentPrompt(true);
     setTimeout(() => {
-      setCopied(false);
+      setCopiedAgentPrompt(false);
       onClose();
     }, 800);
   }, [buildClipboardText, onClose]);
+
+  const handleCopyPrompt = useCallback(async () => {
+    const promptText = buildPromptCopyText(prompt);
+    if (!promptText) return;
+    try {
+      await navigator.clipboard.writeText(promptText);
+    } catch {
+      const ta = document.createElement("textarea");
+      ta.value = promptText;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+    }
+    setCopiedPromptOnly(true);
+    setTimeout(() => {
+      setCopiedPromptOnly(false);
+    }, 800);
+  }, [prompt]);
 
   const style: React.CSSProperties = {
     position: "fixed",
@@ -146,17 +152,30 @@ Preserve all other elements and timing outside this range.`;
         </div>
 
         {/* Action */}
-        <div className="px-3 pb-3">
+        <div className="grid grid-cols-2 gap-2 px-3 pb-3">
+          <button
+            onClick={handleCopyPrompt}
+            disabled={!buildPromptCopyText(prompt)}
+            className={`py-1.5 text-[11px] font-medium rounded-lg transition-all border ${
+              copiedPromptOnly
+                ? "bg-green-500/20 text-green-400 border-green-500/30"
+                : "bg-neutral-800/70 text-neutral-200 border-neutral-700/50 hover:bg-neutral-800"
+            } disabled:opacity-50 disabled:cursor-not-allowed`}
+          >
+            {copiedPromptOnly ? "Prompt Copied!" : "Copy Prompt"}
+          </button>
           <button
             onClick={handleCopy}
-            className={`w-full py-1.5 text-[11px] font-medium rounded-lg transition-all ${
-              copied
+            className={`py-1.5 text-[11px] font-medium rounded-lg transition-all ${
+              copiedAgentPrompt
                 ? "bg-green-500/20 text-green-400 border border-green-500/30"
                 : "bg-studio-accent/15 text-studio-accent border border-studio-accent/25 hover:bg-studio-accent/25"
             }`}
           >
-            {copied ? "Copied!" : "Copy to Agent"}
-            {!copied && <span className="text-[9px] text-studio-accent/50 ml-1.5">Cmd+Enter</span>}
+            {copiedAgentPrompt ? "Copied!" : "Copy to Agent"}
+            {!copiedAgentPrompt && (
+              <span className="text-[9px] text-studio-accent/50 ml-1.5">Cmd+Enter</span>
+            )}
           </button>
         </div>
       </div>

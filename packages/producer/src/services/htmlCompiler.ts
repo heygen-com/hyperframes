@@ -74,9 +74,21 @@ function dedupeElementsById<T extends { id: string }>(elements: T[]): T[] {
 }
 
 const INLINE_SCRIPT_PATTERN = /<script\b([^>]*)>([\s\S]*?)<\/script>/gi;
+const COMPILER_MOUNT_BLOCK_START = "/* __HF_COMPILER_MOUNT_START__ */";
+const COMPILER_MOUNT_BLOCK_END = "/* __HF_COMPILER_MOUNT_END__ */";
 
 function stripJsComments(source: string): string {
   return source.replace(/\/\/.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "");
+}
+
+function stripCompilerMountBootstrap(source: string): string {
+  return source.replace(
+    new RegExp(
+      `${COMPILER_MOUNT_BLOCK_START.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}[\\s\\S]*?${COMPILER_MOUNT_BLOCK_END.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`,
+      "g",
+    ),
+    "",
+  );
 }
 
 export function detectRenderModeHints(html: string): RenderModeHints {
@@ -96,7 +108,7 @@ export function detectRenderModeHints(html: string): RenderModeHints {
   while ((scriptMatch = scriptPattern.exec(html)) !== null) {
     const attrs = scriptMatch[1] || "";
     if (/\bsrc\s*=/i.test(attrs)) continue;
-    const content = stripJsComments(scriptMatch[2] || "");
+    const content = stripJsComments(stripCompilerMountBootstrap(scriptMatch[2] || ""));
     if (!/requestAnimationFrame\s*\(/.test(content)) continue;
     reasons.push({
       code: "requestAnimationFrame",
@@ -664,6 +676,7 @@ function inlineSubCompositions(
     }
   };
   if (!__compId) { __run(); return; }
+  ${COMPILER_MOUNT_BLOCK_START}
   var __selector = '[data-composition-id="' + (__compId + '').replace(/"/g, '\\\\"') + '"]';
   var __attempt = 0;
   var __tryRun = function() {
@@ -672,6 +685,7 @@ function inlineSubCompositions(
     requestAnimationFrame(__tryRun);
   };
   __tryRun();
+  ${COMPILER_MOUNT_BLOCK_END}
 })()`);
       }
       scriptEl.remove();
@@ -1028,9 +1042,10 @@ export async function compileForRender(
           );
         }
         if (metadata.isVFR) {
-          console.warn(
-            `[Compiler] WARNING: Video "${video.id}" is variable frame rate (VFR). ` +
-              `Screen recordings and phone videos are often VFR, which causes stuttering and frame skipping in renders. Re-encode with: ${reencode}`,
+          console.info(
+            `[Compiler] Video "${video.id}" is variable frame rate (VFR); ` +
+              `the engine will normalize it to CFR before frame extraction. ` +
+              `If rendering feels slow on this video, pre-encode once with: ${reencode}`,
           );
         }
       })

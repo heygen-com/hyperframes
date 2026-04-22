@@ -432,11 +432,13 @@ export const gsapRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
   },
 
   // missing_gsap_script
-  ({ scripts }) => {
+  ({ scripts, rawSource, options }) => {
     const allScriptTexts = scripts.filter((s) => !/\bsrc\s*=/.test(s.attrs)).map((s) => s.content);
     const allScriptSrcs = scripts
       .map((s) => readAttr(`<script ${s.attrs}>`, "src") || "")
       .filter(Boolean);
+    const canInheritGsapFromHost =
+      options.isSubComposition || rawSource.trimStart().toLowerCase().startsWith("<template");
 
     const usesGsap = allScriptTexts.some((t) =>
       /gsap\.(to|from|fromTo|timeline|set|registerPlugin)\b/.test(t),
@@ -455,7 +457,7 @@ export const gsapRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
         (t.length > 5000 && /\bgsap\b/i.test(t)),
     );
 
-    if (!usesGsap || hasGsapScript || hasInlineGsap) return [];
+    if (!usesGsap || hasGsapScript || hasInlineGsap || canInheritGsapFromHost) return [];
     return [
       {
         code: "missing_gsap_script",

@@ -35,6 +35,12 @@ This teaches your agent (Claude Code, Cursor, Gemini CLI, Codex) how to write co
 
 For Claude Design, use the GitHub-hosted entry point at [`skills/claude-design-hyperframes/SKILL.md`](https://github.com/heygen-com/hyperframes/blob/main/skills/claude-design-hyperframes/SKILL.md) and let Claude fetch the repo's `skills/` tree from there. See the [Claude Design guide](https://hyperframes.heygen.com/guides/claude-design).
 
+For Codex specifically, the same skills are also exposed as an [OpenAI Codex plugin](./.codex-plugin/plugin.json) — sparse-install just the plugin surface:
+
+```bash
+codex plugin marketplace add heygen-com/hyperframes --sparse .codex-plugin --sparse skills --sparse assets
+```
+
 #### Try it: example prompts
 
 Copy any of these into your agent to get started. The `/hyperframes` prefix loads the skill context explicitly so you get correct output the first time.
@@ -82,6 +88,26 @@ npx hyperframes render       # render to MP4
 - **AI-first** — agents already speak HTML. The CLI is non-interactive by default, designed for agent-driven workflows.
 - **Deterministic rendering** — same input = identical output. Built for automated pipelines.
 - **Frame Adapter pattern** — bring your own animation runtime (GSAP, Lottie, CSS, Three.js).
+
+## Hyperframes vs Remotion
+
+Hyperframes is inspired by [Remotion](https://www.remotion.dev) — we used Remotion at HeyGen in production, learned a ton from it, and kept attribution comments in the source for the patterns it pioneered (Chrome launch flags, image2pipe → FFmpeg streaming, frame buffering). Both tools drive headless Chrome and both are deterministic. They differ on one decision: **what the primary author writes.** Remotion's bet is React components; Hyperframes' bet is HTML.
+
+|                                                       | **Hyperframes**                | **Remotion**                      |
+| ----------------------------------------------------- | ------------------------------ | --------------------------------- |
+| Authoring                                             | HTML + CSS + GSAP              | React components (TSX)            |
+| Build step                                            | None; `index.html` plays as-is | Required (bundler)                |
+| Library-clock animations (GSAP, Anime.js, Motion One) | Seekable, frame-accurate       | Plays at wall-clock during render |
+| Arbitrary HTML / CSS passthrough                      | Paste and animate              | Rewrite as JSX                    |
+| Distributed rendering                                 | Single-machine today           | Lambda, production-ready          |
+
+### Licensing: fully open source vs source-available
+
+**Hyperframes is completely open source under [Apache 2.0](LICENSE)** — an OSI-approved license. Use it commercially at any scale, with no per-render fees, no seat caps, no company-size thresholds.
+
+**Remotion is [source-available, not open source](https://www.remotion.pro/license).** The code is on GitHub under a custom Remotion License that requires a paid company license above small-team thresholds. It's a great product with a real team behind it — but if open-source licensing matters to you (OSI compliance, redistribution rights, no per-use fees), that's a first-order decision point.
+
+Full write-up with benchmarks, an honest list of where each tool wins, and a GSAP side-by-side: **[Hyperframes vs Remotion guide](https://hyperframes.heygen.com/guides/hyperframes-vs-remotion)**.
 
 ## How It Works
 

@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   collectExternalAssets,
+  compileForRender,
   detectRenderModeHints,
   inlineExternalScripts,
 } from "./htmlCompiler.js";
@@ -342,5 +343,116 @@ describe("detectRenderModeHints", () => {
 
     expect(result.recommendScreenshot).toBe(false);
     expect(result.reasons).toEqual([]);
+  });
+
+  it("ignores compiler-generated nested mount wrappers when detecting requestAnimationFrame", () => {
+    const html = `<!DOCTYPE html>
+<html><body>
+  <div data-composition-id="root" data-width="1920" data-height="1080"></div>
+  <script>
+    (function(){
+      var __compId = "intro";
+      var __run = function() {
+        const label = "safe";
+      };
+      if (!__compId) { __run(); return; }
+      /* __HF_COMPILER_MOUNT_START__ */
+      var __selector = '[data-composition-id="intro"]';
+      var __attempt = 0;
+      var __tryRun = function() {
+        if (document.querySelector(__selector)) { __run(); return; }
+        if (++__attempt >= 8) { __run(); return; }
+        requestAnimationFrame(__tryRun);
+      };
+      __tryRun();
+      /* __HF_COMPILER_MOUNT_END__ */
+    })();
+  </script>
+</body></html>`;
+
+    const result = detectRenderModeHints(html);
+
+    expect(result.recommendScreenshot).toBe(false);
+    expect(result.reasons).toEqual([]);
+  });
+
+  it("still flags user-authored requestAnimationFrame inside nested composition scripts", () => {
+    const html = `<!DOCTYPE html>
+<html><body>
+  <div data-composition-id="root" data-width="1920" data-height="1080"></div>
+  <script>
+    (function(){
+      var __compId = "intro";
+      var __run = function() {
+        function tick() {
+          requestAnimationFrame(tick);
+        }
+        tick();
+      };
+      if (!__compId) { __run(); return; }
+      /* __HF_COMPILER_MOUNT_START__ */
+      var __selector = '[data-composition-id="intro"]';
+      var __attempt = 0;
+      var __tryRun = function() {
+        if (document.querySelector(__selector)) { __run(); return; }
+        if (++__attempt >= 8) { __run(); return; }
+        requestAnimationFrame(__tryRun);
+      };
+      __tryRun();
+      /* __HF_COMPILER_MOUNT_END__ */
+    })();
+  </script>
+</body></html>`;
+
+    const result = detectRenderModeHints(html);
+
+    expect(result.recommendScreenshot).toBe(true);
+    expect(result.reasons.map((reason) => reason.code)).toEqual(["requestAnimationFrame"]);
+  });
+
+  it("does not recommend screenshot mode for nested compositions that hoist GSAP from a CDN script", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-render-mode-"));
+    const compositionsDir = join(projectDir, "compositions");
+    mkdirSync(compositionsDir, { recursive: true });
+
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!DOCTYPE html>
+<html><body>
+  <div data-composition-id="root" data-width="1920" data-height="1080">
+    <div data-composition-id="intro" data-composition-src="compositions/intro.html" data-start="0"></div>
+  </div>
+</body></html>`,
+    );
+    writeFileSync(
+      join(compositionsDir, "intro.html"),
+      `<template id="intro-template">
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <div data-composition-id="intro" data-width="1920" data-height="1080">
+    <div class="title">Hello</div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines["intro"] = gsap.timeline({ paused: true });
+    </script>
+  </div>
+</template>`,
+    );
+
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = mock(async () => {
+      return new Response(
+        "window.gsap = { timeline: function() { return { paused: true }; } }; function __ticker(){ requestAnimationFrame(__ticker); }",
+        { status: 200 },
+      );
+    }) as any;
+
+    try {
+      const result = await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
+
+      expect(result.renderModeHints.recommendScreenshot).toBe(false);
+      expect(result.renderModeHints.reasons).toEqual([]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 });

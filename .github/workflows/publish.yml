@@ -7,6 +7,12 @@ on:
   pull_request:
     types: [closed]
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to publish (e.g. 0.4.11). Tag v<version> must already exist."
+        required: true
+        type: string
 
 jobs:
   publish:
@@ -17,19 +23,30 @@ jobs:
     permissions:
       contents: write
       id-token: write
-    # Run on tag push OR when a release/* PR is merged
+    # Run on tag push, manual dispatch, OR when a release/* PR is merged
     if: >-
       github.event_name == 'push' ||
+      github.event_name == 'workflow_dispatch' ||
       (github.event.pull_request.merged == true &&
        startsWith(github.event.pull_request.head.ref, 'release/v'))
     steps:
       - uses: actions/checkout@v4
+        with:
+          # On manual dispatch, check out the existing tag so we publish the
+          # exact commit that was tagged — not whatever is currently on main.
+          ref: >-
+            ${{ github.event_name == 'workflow_dispatch'
+                && format('refs/tags/v{0}', inputs.version)
+                || github.ref }}
 
       - name: Resolve version
         id: version
         run: |
           if [ "${{ github.event_name }}" = "push" ]; then
             VERSION="${GITHUB_REF_NAME#v}"
+          elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ inputs.version }}"
+            VERSION="${VERSION#v}"
           else
             BRANCH="${{ github.event.pull_request.head.ref }}"
             VERSION="${BRANCH#release/v}"

@@ -1,0 +1,13 @@
+{
+  "name": "vfr-screen-recording",
+  "description": "Regression test for the VFR (variable-frame-rate) screen-recording freeze bug (PR #360). Renders a 3-second composition with a macOS ScreenCaptureKit clip (r_frame_rate=120, avg≈36fps) seeked to mediaStart=1. Pre-fix, the fps filter emitted long runs of duplicate frames that the compositor held as a frozen image; post-fix, VFR→CFR normalization keeps frame-accurate timing.",
+  "tags": ["regression", "video", "vfr"],
+  "minPsnr": 28,
+  "maxFrameFailures": 2,
+  "minAudioCorrelation": 0,
+  "maxAudioLagWindows": 1,
+  "renderConfig": {
+    "fps": 30,
+    "workers": 1
+  }
+}

@@ -5,7 +5,7 @@ import { SourceEditor } from "./components/editor/SourceEditor";
 import { LeftSidebar } from "./components/sidebar/LeftSidebar";
 import { RenderQueue } from "./components/renders/RenderQueue";
 import { useRenderQueue } from "./components/renders/useRenderQueue";
-import { CompositionThumbnail, VideoThumbnail } from "./player";
+import { CompositionThumbnail, VideoThumbnail, usePlayerStore } from "./player";
 import { AudioWaveform } from "./player/components/AudioWaveform";
 import type { TimelineElement } from "./player";
 import { LintModal } from "./components/LintModal";
@@ -18,6 +18,15 @@ import { CaptionTimeline } from "./captions/components/CaptionTimeline";
 import { useCaptionStore } from "./captions/store";
 import { useCaptionSync } from "./captions/hooks/useCaptionSync";
 import { parseCaptionComposition } from "./captions/parser";
+import { applyPatchByTarget, readAttributeByTarget } from "./utils/sourcePatcher";
+import {
+  buildTrackZIndexMap,
+  formatTimelineAttributeNumber,
+} from "./player/components/timelineEditing";
+import {
+  getNextTimelineZoomPercent,
+  getTimelineZoomPercent,
+} from "./player/components/timelineZoom";
 
 interface EditingFile {
   path: string;
@@ -186,7 +195,7 @@ export function StudioApp() {
   }, [captionHasSelection, captionEditMode]);
   const [globalDragOver, setGlobalDragOver] = useState(false);
   const [uploadToast, setUploadToast] = useState<string | null>(null);
-  const [timelineVisible, setTimelineVisible] = useState(false);
+  const [timelineVisible, setTimelineVisible] = useState(true);
   const dragCounterRef = useRef(0);
   const panelDragRef = useRef<{
     side: "left" | "right";
@@ -198,6 +207,23 @@ export function StudioApp() {
   const activePreviewUrl = activeCompPath
     ? `/api/projects/${projectId}/preview/comp/${activeCompPath}`
     : null;
+  const zoomMode = usePlayerStore((s) => s.zoomMode);
+  const manualZoomPercent = usePlayerStore((s) => s.manualZoomPercent);
+  const setZoomMode = usePlayerStore((s) => s.setZoomMode);
+  const setManualZoomPercent = usePlayerStore((s) => s.setManualZoomPercent);
+  const timelineElements = usePlayerStore((s) => s.elements);
+  const timelineDuration = usePlayerStore((s) => s.duration);
+  const effectiveTimelineDuration = useMemo(() => {
+    const maxEnd =
+      timelineElements.length > 0
+        ? Math.max(...timelineElements.map((element) => element.start + element.duration))
+        : 0;
+    return Math.max(timelineDuration, maxEnd);
+  }, [timelineDuration, timelineElements]);
+  const displayedTimelineZoomPercent = useMemo(
+    () => getTimelineZoomPercent(zoomMode, manualZoomPercent),
+    [zoomMode, manualZoomPercent],
+  );
 
   const renderClipContent = useCallback(
     (el: TimelineElement, style: { clip: string; label: string }): ReactNode => {
@@ -222,6 +248,8 @@ export function StudioApp() {
             previewUrl={`/api/projects/${pid}/preview/comp/${compSrc}`}
             label={el.id || el.tag}
             labelColor={style.label}
+            accentColor={style.clip}
+            selector={el.selector}
             seekTime={0}
             duration={el.duration}
           />
@@ -236,11 +264,19 @@ export function StudioApp() {
             previewUrl={activePreviewUrl}
             label={el.id || el.tag}
             labelColor={style.label}
+            accentColor={style.clip}
+            selector={el.selector}
             seekTime={el.start}
             duration={el.duration}
           />
         );
       }
+
+      const htmlPreviewEligible =
+        el.duration > 0 &&
+        effectiveTimelineDuration > 0 &&
+        el.duration < effectiveTimelineDuration * 0.92 &&
+        !/(backdrop|background|overlay|scrim|mask)/i.test(el.id);
 
       // Audio clips — waveform visualization
       if (el.tag === "audio") {
@@ -268,14 +304,14 @@ export function StudioApp() {
         );
       }
 
-      // HTML scene elements — render from the master preview at the scene's time
-      if (el.tag === "div" && el.duration > 0) {
-        const previewUrl = `/api/projects/${pid}/preview`;
+      if (htmlPreviewEligible) {
         return (
           <CompositionThumbnail
-            previewUrl={previewUrl}
+            previewUrl={`/api/projects/${pid}/preview`}
             label={el.id || el.tag}
             labelColor={style.label}
+            accentColor={style.clip}
+            selector={el.selector}
             seekTime={el.start}
             duration={el.duration}
           />
@@ -284,7 +320,53 @@ export function StudioApp() {
 
       return null;
     },
-    [compIdToSrc, activePreviewUrl],
+    [compIdToSrc, activePreviewUrl, effectiveTimelineDuration],
+  );
+  const timelineToolbar = (
+    <div className="flex items-center justify-between px-3 py-2 border-b border-neutral-800/40 bg-neutral-950/96">
+      <div className="text-[10px] font-medium uppercase tracking-[0.16em] text-neutral-500">
+        Timeline
+      </div>
+      <div className="flex items-center gap-1">
+        <button
+          type="button"
+          onClick={() => setZoomMode("fit")}
+          className={`h-7 px-2.5 rounded-md border text-[11px] font-medium transition-colors ${
+            zoomMode === "fit"
+              ? "border-studio-accent/30 bg-studio-accent/10 text-studio-accent"
+              : "border-neutral-800 text-neutral-400 hover:border-neutral-700 hover:text-neutral-200"
+          }`}
+          title="Fit timeline to width"
+        >
+          Fit
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setZoomMode("manual");
+            setManualZoomPercent(getNextTimelineZoomPercent("out", zoomMode, manualZoomPercent));
+          }}
+          className="h-7 w-7 rounded-md border border-neutral-800 text-neutral-400 transition-colors hover:border-neutral-700 hover:text-neutral-200"
+          title="Zoom out"
+        >
+          -
+        </button>
+        <div className="min-w-[58px] text-center text-[10px] font-medium tabular-nums text-neutral-500">
+          {`${displayedTimelineZoomPercent}%`}
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            setZoomMode("manual");
+            setManualZoomPercent(getNextTimelineZoomPercent("in", zoomMode, manualZoomPercent));
+          }}
+          className="h-7 w-7 rounded-md border border-neutral-800 text-neutral-400 transition-colors hover:border-neutral-700 hover:text-neutral-200"
+          title="Zoom in"
+        >
+          +
+        </button>
+      </div>
+    </div>
   );
   const [lintModal, setLintModal] = useState<LintFinding[] | null>(null);
   const [consoleErrors, setConsoleErrors] = useState<LintFinding[] | null>(null);
@@ -377,6 +459,195 @@ export function StudioApp() {
         .catch(() => {});
     }, 600);
   }, []);
+
+  const handleTimelineElementMove = useCallback(
+    async (element: TimelineElement, updates: Pick<TimelineElement, "start" | "track">) => {
+      const pid = projectIdRef.current;
+      if (!pid) throw new Error("No active project");
+
+      const targetPath = element.sourceFile || activeCompPath || "index.html";
+      const response = await fetch(`/api/projects/${pid}/files/${encodeURIComponent(targetPath)}`);
+      if (!response.ok) {
+        throw new Error(`Failed to read ${targetPath}`);
+      }
+
+      const data = (await response.json()) as { content?: string };
+      const originalContent = data.content;
+      if (typeof originalContent !== "string") {
+        throw new Error(`Missing file contents for ${targetPath}`);
+      }
+
+      const patchTarget = element.domId
+        ? { id: element.domId, selector: element.selector, selectorIndex: element.selectorIndex }
+        : element.selector
+          ? { selector: element.selector, selectorIndex: element.selectorIndex }
+          : null;
+      if (!patchTarget) {
+        throw new Error(`Timeline element ${element.id} is missing a patchable target`);
+      }
+
+      const resolvedTargetPath = targetPath || "index.html";
+      const relevantElements = timelineElements
+        .map((timelineElement) =>
+          (timelineElement.key ?? timelineElement.id) === (element.key ?? element.id)
+            ? { ...timelineElement, start: updates.start, track: updates.track }
+            : timelineElement,
+        )
+        .filter(
+          (timelineElement) =>
+            (timelineElement.sourceFile || activeCompPath || "index.html") === resolvedTargetPath,
+        );
+      const trackZIndices = buildTrackZIndexMap(
+        relevantElements.map((timelineElement) => timelineElement.track),
+      );
+
+      let patchedContent = applyPatchByTarget(originalContent, patchTarget, {
+        type: "attribute",
+        property: "start",
+        value: formatTimelineAttributeNumber(updates.start),
+      });
+      patchedContent = applyPatchByTarget(patchedContent, patchTarget, {
+        type: "attribute",
+        property: "track-index",
+        value: String(updates.track),
+      });
+      for (const timelineElement of relevantElements) {
+        const elementTarget = timelineElement.domId
+          ? {
+              id: timelineElement.domId,
+              selector: timelineElement.selector,
+              selectorIndex: timelineElement.selectorIndex,
+            }
+          : timelineElement.selector
+            ? {
+                selector: timelineElement.selector,
+                selectorIndex: timelineElement.selectorIndex,
+              }
+            : null;
+        if (!elementTarget) continue;
+        const nextZIndex = trackZIndices.get(timelineElement.track);
+        if (nextZIndex == null) continue;
+        patchedContent = applyPatchByTarget(patchedContent, elementTarget, {
+          type: "inline-style",
+          property: "z-index",
+          value: String(nextZIndex),
+        });
+      }
+
+      if (patchedContent === originalContent) {
+        throw new Error(`Unable to patch timeline element ${element.id} in ${targetPath}`);
+      }
+
+      const saveResponse = await fetch(
+        `/api/projects/${pid}/files/${encodeURIComponent(targetPath)}`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "text/plain" },
+          body: patchedContent,
+        },
+      );
+      if (!saveResponse.ok) {
+        throw new Error(`Failed to save ${targetPath}`);
+      }
+
+      if (editingPathRef.current === targetPath) {
+        setEditingFile({ path: targetPath, content: patchedContent });
+      }
+
+      setRefreshKey((k) => k + 1);
+    },
+    [activeCompPath, timelineElements],
+  );
+
+  const handleTimelineElementResize = useCallback(
+    async (
+      element: TimelineElement,
+      updates: Pick<TimelineElement, "start" | "duration" | "playbackStart">,
+    ) => {
+      const pid = projectIdRef.current;
+      if (!pid) throw new Error("No active project");
+
+      const targetPath = element.sourceFile || activeCompPath || "index.html";
+      const response = await fetch(`/api/projects/${pid}/files/${encodeURIComponent(targetPath)}`);
+      if (!response.ok) {
+        throw new Error(`Failed to read ${targetPath}`);
+      }
+
+      const data = (await response.json()) as { content?: string };
+      const originalContent = data.content;
+      if (typeof originalContent !== "string") {
+        throw new Error(`Missing file contents for ${targetPath}`);
+      }
+
+      const patchTarget = element.domId
+        ? { id: element.domId, selector: element.selector, selectorIndex: element.selectorIndex }
+        : element.selector
+          ? { selector: element.selector, selectorIndex: element.selectorIndex }
+          : null;
+      if (!patchTarget) {
+        throw new Error(`Timeline element ${element.id} is missing a patchable target`);
+      }
+
+      const playbackStartAttrName =
+        element.playbackStartAttr === "playback-start" ? "playback-start" : "media-start";
+      const currentPlaybackStartValue =
+        readAttributeByTarget(originalContent, patchTarget, "playback-start") ??
+        readAttributeByTarget(originalContent, patchTarget, "media-start");
+      const currentPlaybackStart =
+        currentPlaybackStartValue != null ? parseFloat(currentPlaybackStartValue) : undefined;
+      const trimDelta = updates.start - element.start;
+      const fallbackPlaybackStart =
+        updates.playbackStart == null &&
+        trimDelta !== 0 &&
+        Number.isFinite(currentPlaybackStart) &&
+        currentPlaybackStart != null
+          ? Math.max(0, currentPlaybackStart + trimDelta * Math.max(element.playbackRate ?? 1, 0.1))
+          : undefined;
+      const nextPlaybackStart = updates.playbackStart ?? fallbackPlaybackStart;
+
+      let patchedContent = originalContent;
+      patchedContent = applyPatchByTarget(patchedContent, patchTarget, {
+        type: "attribute",
+        property: "start",
+        value: formatTimelineAttributeNumber(updates.start),
+      });
+      patchedContent = applyPatchByTarget(patchedContent, patchTarget, {
+        type: "attribute",
+        property: "duration",
+        value: formatTimelineAttributeNumber(updates.duration),
+      });
+      if (nextPlaybackStart != null) {
+        patchedContent = applyPatchByTarget(patchedContent, patchTarget, {
+          type: "attribute",
+          property: playbackStartAttrName,
+          value: formatTimelineAttributeNumber(nextPlaybackStart),
+        });
+      }
+
+      if (patchedContent === originalContent) {
+        throw new Error(`Unable to patch timeline element ${element.id} in ${targetPath}`);
+      }
+
+      const saveResponse = await fetch(
+        `/api/projects/${pid}/files/${encodeURIComponent(targetPath)}`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "text/plain" },
+          body: patchedContent,
+        },
+      );
+      if (!saveResponse.ok) {
+        throw new Error(`Failed to save ${targetPath}`);
+      }
+
+      if (editingPathRef.current === targetPath) {
+        setEditingFile({ path: targetPath, content: patchedContent });
+      }
+
+      setRefreshKey((k) => k + 1);
+    },
+    [activeCompPath],
+  );
 
   // ── File Management Handlers ──
 
@@ -780,12 +1051,14 @@ export function StudioApp() {
         {/* Left resize handle */}
         {!leftCollapsed && (
           <div
-            className="w-1 flex-shrink-0 bg-neutral-800 hover:bg-studio-accent cursor-col-resize transition-colors active:bg-studio-accent/80"
+            className="group w-2 flex-shrink-0 cursor-col-resize flex items-center justify-center"
             style={{ touchAction: "none" }}
             onPointerDown={(e) => handlePanelResizeStart("left", e)}
             onPointerMove={handlePanelResizeMove}
             onPointerUp={handlePanelResizeEnd}
-          />
+          >
+            <div className="h-[52px] w-px bg-white/12 transition-colors group-hover:bg-white/18 group-active:bg-white/24" />
+          </div>
         )}
 
         {/* Center: Preview */}
@@ -794,7 +1067,10 @@ export function StudioApp() {
             projectId={projectId}
             refreshKey={refreshKey}
             activeCompositionPath={activeCompPath}
+            timelineToolbar={timelineToolbar}
             renderClipContent={renderClipContent}
+            onMoveElement={handleTimelineElementMove}
+            onResizeElement={handleTimelineElementResize}
             onCompIdToSrcChange={setCompIdToSrc}
             onCompositionChange={(compPath) => {
               // Sync activeCompPath when user drills down via timeline double-click
@@ -875,12 +1151,14 @@ export function StudioApp() {
         {!rightCollapsed && (
           <>
             <div
-              className="w-1 flex-shrink-0 bg-neutral-800 hover:bg-studio-accent cursor-col-resize transition-colors active:bg-studio-accent/80"
+              className="group w-2 flex-shrink-0 cursor-col-resize flex items-center justify-center"
               style={{ touchAction: "none" }}
               onPointerDown={(e) => handlePanelResizeStart("right", e)}
               onPointerMove={handlePanelResizeMove}
               onPointerUp={handlePanelResizeEnd}
-            />
+            >
+              <div className="h-[52px] w-px bg-white/12 transition-colors group-hover:bg-white/18 group-active:bg-white/24" />
+            </div>
             <div
               className="flex flex-col border-l border-neutral-800 bg-neutral-900 flex-shrink-0"
               style={{ width: rightWidth }}

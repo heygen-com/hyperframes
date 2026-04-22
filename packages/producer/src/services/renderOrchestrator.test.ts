@@ -203,7 +203,7 @@ describe("applyRenderModeHints", () => {
       ffmpegEncodeTimeout: 600000,
       ffmpegProcessTimeout: 300000,
       ffmpegStreamingTimeout: 600000,
-      audioGain: 1.35,
+      audioGain: 1,
       frameDataUriCacheLimit: 256,
       playerReadyTimeout: 45000,
       renderReadyTimeout: 15000,

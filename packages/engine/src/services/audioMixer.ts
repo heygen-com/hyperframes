@@ -396,7 +396,7 @@ export async function processCompositionAudio(
           end: element.end,
           mediaStart: element.mediaStart,
           duration: element.end - element.start,
-          volume: element.volume || 1.0,
+          volume: element.volume ?? 1.0,
         });
       } catch (err: unknown) {
         errors.push(`Error: ${element.id} — ${err instanceof Error ? err.message : String(err)}`);

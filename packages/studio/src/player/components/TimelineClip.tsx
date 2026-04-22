@@ -1,7 +1,9 @@
+import type { TimelineTrackStyle } from "./timelineTheme";
 // TimelineClip — Visual clip component for the NLE timeline.
 
 import { memo, type ReactNode } from "react";
 import type { TimelineElement } from "../store/playerStore";
+import { defaultTimelineTheme, getClipHandleOpacity, type TimelineTheme } from "./timelineTheme";
 
 interface TimelineClipProps {
   el: TimelineElement;
@@ -9,11 +11,15 @@ interface TimelineClipProps {
   clipY: number;
   isSelected: boolean;
   isHovered: boolean;
+  isDragging?: boolean;
   hasCustomContent: boolean;
-  style: { clip: string; label: string };
+  theme?: TimelineTheme;
+  trackStyle: TimelineTrackStyle;
   isComposition: boolean;
   onHoverStart: () => void;
   onHoverEnd: () => void;
+  onPointerDown?: (e: React.PointerEvent) => void;
+  onResizeStart?: (edge: "start" | "end", e: React.PointerEvent) => void;
   onClick: (e: React.MouseEvent) => void;
   onDoubleClick: (e: React.MouseEvent) => void;
   children?: ReactNode;
@@ -25,43 +31,62 @@ export const TimelineClip = memo(function TimelineClip({
   clipY,
   isSelected,
   isHovered,
+  isDragging = false,
   hasCustomContent,
-  style,
+  theme = defaultTimelineTheme,
+  trackStyle,
   isComposition,
   onHoverStart,
   onHoverEnd,
+  onPointerDown,
+  onResizeStart,
   onClick,
   onDoubleClick,
   children,
 }: TimelineClipProps) {
   const leftPx = el.start * pps;
   const widthPx = Math.max(el.duration * pps, 4);
+  const handleOpacity = getClipHandleOpacity({ isHovered, isSelected, isDragging });
+  const borderColor = isSelected
+    ? theme.clipBorderActive
+    : isHovered
+      ? theme.clipBorderHover
+      : theme.clipBorder;
+  const boxShadow = isDragging
+    ? theme.clipShadowDragging
+    : isSelected
+      ? theme.clipShadowActive
+      : isHovered
+        ? theme.clipShadowHover
+        : theme.clipShadow;
+  const showHandles = handleOpacity > 0.01;
 
   return (
     <div
       data-clip="true"
-      className={hasCustomContent ? "absolute" : "absolute flex items-center"}
+      className={
+        hasCustomContent ? "absolute overflow-hidden" : "absolute flex items-center overflow-hidden"
+      }
       style={{
         left: leftPx,
         width: widthPx,
         top: clipY,
         bottom: clipY,
-        borderRadius: 5,
-        backgroundColor: hasCustomContent ? (isComposition ? "#111" : style.clip) : style.clip,
+        borderRadius: theme.clipRadius,
+        background: isSelected
+          ? `linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0)), linear-gradient(120deg, ${trackStyle.accent}22, transparent 28%), ${theme.clipBackgroundActive}`
+          : `linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0)), linear-gradient(120deg, ${trackStyle.accent}1e, transparent 28%), ${theme.clipBackground}`,
         backgroundImage:
           isComposition && !hasCustomContent
-            ? `repeating-linear-gradient(135deg, transparent, transparent 3px, rgba(255,255,255,0.08) 3px, rgba(255,255,255,0.08) 6px)`
+            ? `repeating-linear-gradient(135deg, transparent, transparent 3px, rgba(255,255,255,0.05) 3px, rgba(255,255,255,0.05) 6px)`
             : undefined,
-        border: isSelected
-          ? `2px solid rgba(255,255,255,0.9)`
-          : `1px solid rgba(255,255,255,${isHovered ? 0.3 : 0.15})`,
-        boxShadow: isSelected
-          ? `0 0 0 1px ${style.clip}, 0 2px 8px rgba(0,0,0,0.4)`
-          : isHovered
-            ? "0 1px 4px rgba(0,0,0,0.3)"
-            : "none",
-        transition: "border-color 120ms, box-shadow 120ms",
-        zIndex: isSelected ? 10 : isHovered ? 5 : 1,
+        border: `1px solid ${borderColor}`,
+        boxShadow,
+        transition:
+          "border-color 120ms ease-out, box-shadow 140ms ease-out, background 140ms ease-out",
+        zIndex: isDragging ? 20 : isSelected ? 10 : isHovered ? 5 : 1,
+        cursor: "grab",
+        transform: isDragging ? "translateY(-1px)" : undefined,
       }}
       title={
         isComposition
@@ -70,9 +95,80 @@ export const TimelineClip = memo(function TimelineClip({
       }
       onPointerEnter={onHoverStart}
       onPointerLeave={onHoverEnd}
+      onPointerDown={onPointerDown}
       onClick={onClick}
       onDoubleClick={onDoubleClick}
     >
+      <div
+        aria-hidden="true"
+        role="presentation"
+        onPointerDown={(e) => onResizeStart?.("start", e)}
+        style={{
+          position: "absolute",
+          left: 0,
+          top: 0,
+          bottom: 0,
+          width: 18,
+          opacity: showHandles ? 1 : 0,
+          pointerEvents: onResizeStart ? "auto" : "none",
+          zIndex: 4,
+          transition: "opacity 120ms ease-out",
+          cursor: "col-resize",
+          background: showHandles
+            ? `linear-gradient(90deg, ${trackStyle.accent}4d 0%, ${trackStyle.accent}22 42%, transparent 100%)`
+            : "transparent",
+        }}
+      >
+        <div
+          style={{
+            position: "absolute",
+            left: 6,
+            top: 7,
+            bottom: 7,
+            width: 3,
+            borderRadius: 999,
+            background: theme.handleColor,
+            boxShadow: `0 0 0 1px ${trackStyle.accent}38, 0 0 12px ${trackStyle.accent}18`,
+            opacity: handleOpacity,
+            pointerEvents: "none",
+          }}
+        />
+      </div>
+      <div
+        aria-hidden="true"
+        role="presentation"
+        onPointerDown={(e) => onResizeStart?.("end", e)}
+        style={{
+          position: "absolute",
+          right: 0,
+          top: 0,
+          bottom: 0,
+          width: 18,
+          opacity: showHandles ? 1 : 0,
+          pointerEvents: onResizeStart ? "auto" : "none",
+          zIndex: 4,
+          transition: "opacity 120ms ease-out",
+          cursor: "col-resize",
+          background: showHandles
+            ? `linear-gradient(270deg, ${trackStyle.accent}4d 0%, ${trackStyle.accent}22 42%, transparent 100%)`
+            : "transparent",
+        }}
+      >
+        <div
+          style={{
+            position: "absolute",
+            right: 6,
+            top: 7,
+            bottom: 7,
+            width: 3,
+            borderRadius: 999,
+            background: theme.handleColor,
+            boxShadow: `0 0 0 1px ${trackStyle.accent}38, 0 0 12px ${trackStyle.accent}18`,
+            opacity: handleOpacity,
+            pointerEvents: "none",
+          }}
+        />
+      </div>
       {children}
     </div>
   );

@@ -23,6 +23,34 @@ export interface HyperframesConfig {
   lastUpdateCheck?: string;
   /** Latest version found on npm */
   latestVersion?: string;
+  /**
+   * Auto-update marker. Set when a background install is spawned so a
+   * subsequent run can skip re-triggering it. Cleared once
+   * `completedUpdate` captures the outcome.
+   */
+  pendingUpdate?: {
+    /** Version being installed. */
+    version: string;
+    /** Install command being run, for debug logging. */
+    command: string;
+    /** ISO timestamp of when the background install was launched. */
+    startedAt: string;
+  };
+  /**
+   * Outcome of the last completed auto-update, written by the detached
+   * installer. Surfaced once in the next invocation and then cleared.
+   */
+  completedUpdate?: {
+    version: string;
+    /** Whether the install succeeded. */
+    ok: boolean;
+    /** ISO timestamp of when the installer finished. */
+    finishedAt: string;
+    /** Non-empty when `ok === false` — the installer's stderr tail. */
+    error?: string;
+    /** True after the result has been surfaced once to the user. */
+    reported?: boolean;
+  };
 }
 
 const DEFAULT_CONFIG: HyperframesConfig = {
@@ -58,6 +86,8 @@ export function readConfig(): HyperframesConfig {
       commandCount: parsed.commandCount ?? DEFAULT_CONFIG.commandCount,
       lastUpdateCheck: parsed.lastUpdateCheck,
       latestVersion: parsed.latestVersion,
+      pendingUpdate: parsed.pendingUpdate,
+      completedUpdate: parsed.completedUpdate,
     };
 
     cachedConfig = config;

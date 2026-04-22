@@ -296,6 +296,62 @@ async function convertSdrToHdr(
   }
 }
 
+/**
+ * Re-encode a VFR (variable frame rate) video segment to CFR so the downstream
+ * fps filter can extract frames reliably. Screen recordings, phone videos, and
+ * some webcams emit irregular timestamps that cause two failure modes:
+ *   1. Output has fewer frames than expected (e.g. -ss 3 -t 4 produces 90
+ *      frames instead of 120 @ 30fps). FrameLookupTable.getFrameAtTime then
+ *      returns null for late timestamps and the caller freezes on the last
+ *      valid frame.
+ *   2. Large duplicate-frame runs where source PTS don't land on target
+ *      timestamps.
+ *
+ * Only the [startTime, startTime+duration] window is re-encoded, so long
+ * recordings aren't fully transcoded when only a short clip is used.
+ */
+async function convertVfrToCfr(
+  inputPath: string,
+  outputPath: string,
+  targetFps: number,
+  startTime: number,
+  duration: number,
+  signal?: AbortSignal,
+  config?: Partial<Pick<EngineConfig, "ffmpegProcessTimeout">>,
+): Promise<void> {
+  const timeout = config?.ffmpegProcessTimeout ?? DEFAULT_CONFIG.ffmpegProcessTimeout;
+
+  const args = [
+    "-ss",
+    String(startTime),
+    "-i",
+    inputPath,
+    "-t",
+    String(duration),
+    "-fps_mode",
+    "cfr",
+    "-r",
+    String(targetFps),
+    "-c:v",
+    "libx264",
+    "-preset",
+    "fast",
+    "-crf",
+    "18",
+    "-c:a",
+    "copy",
+    "-y",
+    outputPath,
+  ];
+
+  const result = await runFfmpeg(args, { signal, timeout });
+  if (!result.success) {
+    throw new Error(
+      `VFR→CFR conversion failed (exit ${result.exitCode}): ${result.stderr.slice(-300)}`,
+    );
+  }
+}
+
 export async function extractAllVideoFrames(
   videos: VideoElement[],
   baseDir: string,
@@ -368,6 +424,47 @@ export async function extractAllVideoFrames(
           });
         }
       }
+    }
+  }
+
+  // Phase 2b: Re-encode VFR inputs to CFR so the fps filter in Phase 3 produces
+  // the expected frame count. Only the used segment is transcoded.
+  const vfrNormDir = join(options.outputDir, "_vfr_normalized");
+  for (let i = 0; i < resolvedVideos.length; i++) {
+    if (signal?.aborted) break;
+    const entry = resolvedVideos[i];
+    if (!entry) continue;
+    const metadata = await extractVideoMetadata(entry.videoPath);
+    if (!metadata.isVFR) continue;
+
+    let segDuration = entry.video.end - entry.video.start;
+    if (!Number.isFinite(segDuration) || segDuration <= 0) {
+      const sourceRemaining = metadata.durationSeconds - entry.video.mediaStart;
+      segDuration = sourceRemaining > 0 ? sourceRemaining : metadata.durationSeconds;
+    }
+
+    mkdirSync(vfrNormDir, { recursive: true });
+    const normalizedPath = join(vfrNormDir, `${entry.video.id}_cfr.mp4`);
+    try {
+      await convertVfrToCfr(
+        entry.videoPath,
+        normalizedPath,
+        options.fps,
+        entry.video.mediaStart,
+        segDuration,
+        signal,
+        config,
+      );
+      entry.videoPath = normalizedPath;
+      // Segment-scoped re-encode starts the new file at t=0, so downstream
+      // extraction must seek from 0, not the original mediaStart. Shallow-copy
+      // to avoid mutating the caller's VideoElement.
+      entry.video = { ...entry.video, mediaStart: 0 };
+    } catch (err) {
+      errors.push({
+        videoId: entry.video.id,
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
   }
 

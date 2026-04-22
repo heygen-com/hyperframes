@@ -1,0 +1,162 @@
+---
+title: Hyperframes vs Remotion
+description: "Why we built Hyperframes, how it differs from Remotion in practice, and where each tool fits."
+---
+
+[Remotion](https://www.remotion.dev) is an awesome project, and we used Remotion in HeyGen's production pipelines for many months. Remotion promoted the idea of using code to orchestrate and animate video production, and it proved that headless Chrome could be a reliable, deterministic video renderer. Several patterns in the Hyperframes source come directly from what the Remotion team pioneered — Chrome launch flags, port selection, image2pipe streaming into FFmpeg, in-order frame buffering. We kept attribution comments in our code on purpose so the lineage stays visible to anyone reading the source.
+
+This guide is the honest breakdown of where Hyperframes and Remotion differ, written by the team that built Hyperframes. We picked different bets; each one has strengths the other doesn't, and this doc walks through both.
+
+## Why we built Hyperframes
+
+As we scaled our code-to-video pipelines at HeyGen, we kept running into the same kinds of limits inside a React-first authoring model. We debated internally whether to keep building on Remotion or write a renderer from scratch. Two factors pushed us to build Hyperframes.
+
+### 1. The agent-native workflow
+
+In our evals, LLMs writing Remotion compositions produced less creative visual outputs and needed a lot more guardrails and prompting than the same LLMs writing HTML + [GSAP](/guides/gsap-animation) compositions directly.
+
+Two related issues compounded it:
+
+- Animation libraries with their own internal clocks (GSAP, Anime.js, Motion One) don't compose cleanly with React's per-frame render.
+- Arbitrary HTML or CSS that wasn't written as React doesn't have a clean path into a React composition — you have to rewrite it.
+
+### 2. The human editing workflow
+
+We want the same code to be the render layer _and_ the data layer, because we need a UI for humans on top of the agentic experience.
+
+HTML is both the render layer and the editable source of truth — the same DOM is what you see and what you edit. That makes a real visual editor (selection, drag-and-drop, property panels, timeline) much more natural to build, the same way [Paper.Design](https://paper.design) does it. With Remotion, the source of truth is code plus a build step, so round-tripping through a visual editor is painful and fragile. The Remotion team has made progress here, but it's much more difficult to build a real-time editor on top of React than on top of HTML.
+
+We architected Hyperframes to be the most native to agents while making it easy to build a human interface on top.
+
+## At a glance
+
+| | **Hyperframes** | **Remotion** |
+| --- | --- | --- |
+| Authoring | HTML + CSS + GSAP | React components (TSX) |
+| Runtime | Browser DOM, no framework | React reconciliation per frame |
+| Build step | None; `index.html` plays as-is | Required (webpack, bundler) |
+| Library-clock animations (GSAP, Anime.js, Motion One) | Seekable; frame-accurate | Plays at wall-clock during render |
+| Arbitrary HTML / CSS passthrough | Paste and animate | Rewrite as JSX |
+| Distributed rendering | Single-machine today | [Remotion Lambda](https://www.remotion.dev/lambda), production-ready |
+| [HDR output](/guides/hdr) | Supported | Documented as unsupported |
+| Visual editor over render source | Native; same DOM is editable | Source is code plus a build step |
+| License | [Apache 2.0](https://github.com/heygen-com/hyperframes/blob/main/LICENSE) | [Commercial](https://www.remotion.pro/license) |
+
+The rest of this guide walks through what each row means and where each tool actually wins.
+
+## The core difference: React vs HTML
+
+Hyperframes and Remotion both drive headless Chrome. Both are deterministic. Both ship agent skills. They differ on one decision: what the primary author writes.
+
+Remotion's bet is React. Video compositions are React components. You get typed JSX, the React ecosystem, component reuse, and the whole of React tooling. Remotion's strengths come from committing to that surface: years of production use, Lambda at hyperscale, a large community, careful type-safe APIs.
+
+Hyperframes' bet is HTML. Video compositions are HTML pages. You can paste in a landing page, a design-system component, or a CodePen demo and animate it. We think that's the right surface for two specific use cases: AI agents writing video, and visual editors built directly on the DOM the renderer consumes.
+
+Different bets, different strengths. The rest of this doc breaks down where each shows up.
+
+## What the difference means in practice
+
+### Agents express visuals better in HTML than in React
+
+When an LLM writes Hyperframes, it's writing the medium it was trained on most heavily. The web as browsers see it — HTML, CSS, JavaScript, GSAP idioms from CodePen, 25+ years of accumulated web animation content — is the deepest well in a model's training data. React-specific sources are a much smaller slice.
+
+From running both systems in production: an agent asked to write a Remotion composition spends tokens learning framework rules (which hooks are allowed, which APIs are forbidden, how to scaffold a project) before it can be creative. Output tends to converge on a narrow visual vocabulary — centered titles, stock transitions, conventional typography. The same agent writing HTML with GSAP reaches for a wider creative range, because that's what its training data looks like.
+
+### Animation libraries with their own clocks
+
+Asking an agent to port a GSAP animation or an existing web page into Remotion loses details on the first try: timing nuances, audio level relationships, text sizing. The HTML-first path avoids the translation step entirely.
+
+We gave both tools the same 4-second GSAP timeline: 11 letters of "HYPERFRAMES" enter staggered with a back-out ease, hold for 1.5 seconds, then each letter rotates and falls out of frame. Identical animation code, identical easings, identical stagger. The only thing we changed was the renderer.
+
+**Hyperframes output — what the animation is meant to look like:**
+
+<img src="https://static.heygen.ai/hyperframes-oss/docs/images/comparisons/gsap-hf.gif" alt="Hyperframes GSAP render — letters enter, hold, then fall away over the full 4 seconds" />
+
+All four seconds are used. Letters fly in one by one, the full word holds in the center for about a second and a half, then the letters spin and drop away.
+
+**Remotion output — same timeline, same code:**
+
+<img src="https://static.heygen.ai/hyperframes-oss/docs/images/comparisons/gsap-remotion.gif" alt="Remotion GSAP render — GSAP plays through its entire timeline in the first second, leaving most of the render as an empty stage" />
+
+GSAP plays through its entire 4-second animation in roughly the first second of render wall-clock time. By the time Remotion captures later frames, GSAP's timeline has already completed and every letter has exited — the remainder of the render captures an empty stage.
+
+**Why:** GSAP drives its own timeline via `performance.now()`, which ticks at real-time speed during render. Hyperframes pauses GSAP and seeks it to `frame / fps` before capturing each frame, so the library runs in lockstep with the output. Remotion has no equivalent primitive, so GSAP's internal ticker races through the timeline at wall-clock speed while Remotion captures a handful of frames during the entrance and mostly-empty frames after.
+
+Everything GSAP supports — SplitText, ScrollTrigger, MotionPath, physics, 15 years of snippets on CodePen — works the same way in Hyperframes. The pattern generalizes to Anime.js, Motion One, and any other library with its own clock; any JS library without its own clock just works. Wrapping a library clock in a Remotion component is possible but awkward, and you give up most of what the library is good at.
+
+See the [GSAP animation guide](/guides/gsap-animation) for how this integrates, and [Deterministic Rendering](/concepts/determinism) for how seek-driven capture works under the hood.
+
+### Arbitrary HTML, CSS, JavaScript
+
+Every web page is a potential Hyperframes composition. Landing pages. Claude Design artifacts. Design-system docs. CodePen embeds. You paste in the HTML and render.
+
+Remotion asks you to translate first: rewrite HTML as JSX, convert CSS for React, wrap imperative code (Canvas, WebGL, GSAP) in React components with refs and effects. Every translation step is a chance for an agent or a human to lose fidelity or introduce bugs. The translation is round-tripping work anyway — both frameworks ultimately serve HTML to the browser to render.
+
+The [website-to-video guide](/guides/website-to-video) walks through the full capture-to-render pipeline that the HTML-first model enables.
+
+### Auto-fallback for edge primitives
+
+Hyperframes has two capture modes.
+
+- **BeginFrame mode** (Linux + `chrome-headless-shell`) drives Chrome's compositor atomically via `HeadlessExperimental.beginFrame`, producing byte-for-byte reproducible frames across machines.
+- **Screenshot mode** (macOS, Windows, and as an automatic fallback) runs Chrome in real time and takes ordinary screenshots — the same approach Remotion uses.
+
+The renderer inspects each composition at compile time and falls back to screenshot mode when it spots primitives BeginFrame can't handle: inline `<iframe>`s, raw `requestAnimationFrame` loops outside a [Frame Adapter](/concepts/frame-adapters). It injects a virtual-time shim so rAF and iframe content stay frame-driven instead of wall-clock-driven. You get a diagnostic explaining the fallback, and the render produces visibly-correct output. When the composition can run in BeginFrame mode, you get determinism for free.
+
+In practice: GSAP timelines, CSS `@keyframes` (via the Web Animations API adapter), Lottie, Three.js, and the Web Animations API all render deterministically in BeginFrame mode. Raw canvas loops and live-web embeds get screenshot mode automatically.
+
+### React component reuse (Remotion's home turf)
+
+If your team already has a design system in React components, Remotion lets you compose videos from the same primitives you ship in your app. Type safety, IDE completion, cross-file refactoring — everything React brings to developer ergonomics. For teams with existing React investment, this is a real advantage Hyperframes doesn't try to match.
+
+### Distributed rendering (Remotion's clean lead)
+
+[Remotion Lambda](https://www.remotion.dev/lambda) splits long videos across hundreds of AWS Lambda functions. It's mature, production-tested, and well-documented — a thing you can pick up today and use at hyperscale.
+
+Hyperframes' renderer runs on a single machine today. The architecture doesn't block distributed rendering — compositions are stateless HTML, the renderer is stateless — we just haven't gotten there yet. Closing this gap is on our roadmap.
+
+### Visual editing over the render source (Hyperframes' natural bet)
+
+The DOM you render is the DOM you edit. [Hyperframes Studio](/packages/studio) previews compositions in a live iframe, and because the renderer and the editor share one DOM, direct manipulation works against the same source of truth the render pipeline consumes. That UX — click to select, drag to reposition, edit properties in a panel — already ships for captions today, with broader element coverage building out from the same architectural foundation.
+
+Building the same editor on top of React is harder because the source of truth is code plus a build step. Round-tripping a visual edit back to JSX means re-compiling. That's why tools like [Paper.Design](https://paper.design) chose HTML as the editable source in the first place.
+
+### HDR output
+
+Both tools currently render through headless Chrome, which outputs sRGB. Remotion [documents this as unsupported](https://www.remotion.dev/docs/hdr). Hyperframes [supports HDR output](/guides/hdr) via a two-pass compositing pipeline that combines a DOM layer with native HLG/PQ video.
+
+## Open source vs source-available
+
+This is one of the clearest differences between the two projects, and one of the most common reasons teams pick one over the other.
+
+| | **Hyperframes** | **Remotion** |
+| --- | --- | --- |
+| Classification | Open source ([OSI-approved](https://opensource.org/licenses/Apache-2.0)) | Source-available, not open source |
+| License | [Apache 2.0](https://github.com/heygen-com/hyperframes/blob/main/LICENSE) | [Custom Remotion License](https://www.remotion.pro/license) |
+| Commercial use | Free at any scale | Requires a paid company license above small-team thresholds |
+| Per-render fees | None | Yes, above thresholds |
+| Redistribution | Permitted under Apache 2.0 | Restricted by the Remotion License |
+
+Both projects publish their source on GitHub, but the licenses work very differently. Apache 2.0 is an [Open Source Initiative-approved license](https://opensource.org/licenses/Apache-2.0) — you can self-host, modify, redistribute, and use Hyperframes commercially at any scale with no per-render fees and no seat caps. The Remotion License is a custom commercial license: you can read the code and self-host for small teams, but commercial use above their thresholds requires a paid company license.
+
+If open-source licensing matters to you — OSI compliance, redistribution rights, no per-use fees, long-term independence from a vendor's pricing decisions — this is a first-order decision point. If your use case fits within Remotion's free tier or your company is comfortable with a commercial license, it's a non-issue. See the [Remotion license page](https://www.remotion.pro/license) for their current terms.
+
+We open-sourced Hyperframes under Apache 2.0 so anyone can build on it — including commercially, at any scale — and so the project can outlive any single company's priorities.
+
+## Recap
+
+The single difference between Remotion and Hyperframes is the choice of React vs HTML (+ CSS + JavaScript). That decision leads to many differences downstream. For our needs — most native to agents, architected to support a UI layer for humans — HTML + CSS + JavaScript was the obvious bet:
+
+1. Agents already "think" in HTML. LLMs have seen massive amounts of web code.
+2. True "one file in, video out." No `package.json`, no installs, no bundler config, no composition setup. Fewer moving parts = way fewer random failures in automated and agentic workflows.
+3. Highest creative ceiling — anything the browser can render, HTML can represent.
+4. HTML is both the render layer and the editable source of truth. The same DOM is what you see and what you edit.
+
+We at HeyGen are all-in on Hyperframes, but we can't do this alone — that's why we open-sourced it under Apache 2.0, so together we can build the foundation for agentic video creation.
+
+## Further reading
+
+- [Deterministic Rendering](/concepts/determinism) — how seek-driven frame capture works
+- [GSAP animation guide](/guides/gsap-animation) — library-clock integration in practice
+- [Frame Adapters](/concepts/frame-adapters) — the extension point for animation runtimes
+- [Website to video](/guides/website-to-video) — the HTML-first capture-to-render pipeline

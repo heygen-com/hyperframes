@@ -183,6 +183,22 @@ describe("collectRuntimeTimelinePayload", () => {
     expect(result.durationInFrames).toBe(300); // 10s * 30fps
   });
 
+  it("preserves the authored root duration when clips end earlier", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-duration", "7");
+    document.body.appendChild(root);
+
+    const clip = document.createElement("div");
+    clip.id = "trimmed";
+    clip.setAttribute("data-start", "0");
+    clip.setAttribute("data-duration", "5");
+    root.appendChild(clip);
+
+    const result = collectRuntimeTimelinePayload(defaultParams);
+    expect(result.durationInFrames).toBe(210); // 7s * 30fps
+  });
+
   it("clamps duration to maxTimelineDurationSeconds", () => {
     const root = document.createElement("div");
     root.setAttribute("data-composition-id", "main");
@@ -403,7 +419,39 @@ describe("collectRuntimeTimelinePayload", () => {
     expect(clip?.duration).toBeCloseTo(3.5);
   });
 
-  it("includes persistent overlays as full-duration clips", () => {
+  it("includes persistent overlays as full-duration clips only when opted in", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-duration", "12");
+    document.body.appendChild(root);
+
+    const overlay = document.createElement("div");
+    overlay.id = "grid-overlay";
+    overlay.setAttribute("data-timeline-role", "overlay");
+    root.appendChild(overlay);
+
+    (window as any).__timelines = {
+      main: {
+        duration: () => 12,
+        time: () => 0,
+        play: () => {},
+        pause: () => {},
+        seek: () => {},
+        add: () => {},
+        paused: () => {},
+        set: () => {},
+        getChildren: () => [],
+      },
+    };
+
+    const result = collectRuntimeTimelinePayload(defaultParams);
+    const clip = result.clips.find((c) => c.id === "grid-overlay");
+    expect(clip).toBeDefined();
+    expect(clip?.start).toBe(0);
+    expect(clip?.duration).toBe(12);
+  });
+
+  it("does not include persistent overlays by default", () => {
     const root = document.createElement("div");
     root.setAttribute("data-composition-id", "main");
     root.setAttribute("data-duration", "12");
@@ -428,10 +476,7 @@ describe("collectRuntimeTimelinePayload", () => {
     };
 
     const result = collectRuntimeTimelinePayload(defaultParams);
-    const clip = result.clips.find((c) => c.id === "grid-overlay");
-    expect(clip).toBeDefined();
-    expect(clip?.start).toBe(0);
-    expect(clip?.duration).toBe(12);
+    expect(result.clips.find((c) => c.id === "grid-overlay")).toBeUndefined();
   });
 
   it("does not include script/style elements as persistent overlays", () => {

@@ -3,6 +3,8 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import type { StudioApiAdapter } from "../types.js";
 
+const THUMBNAIL_CACHE_VERSION = "v2";
+
 export function registerThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): void {
   api.get("/projects/:id/thumbnail/*", async (c) => {
     if (!adapter.generateThumbnail) {
@@ -20,6 +22,7 @@ export function registerThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): v
     const seekTime = parseFloat(url.searchParams.get("t") || "0.5") || 0.5;
     const vpWidth = parseInt(url.searchParams.get("w") || "0") || 0;
     const vpHeight = parseInt(url.searchParams.get("h") || "0") || 0;
+    const selector = url.searchParams.get("selector") || undefined;
 
     // Determine composition dimensions from HTML
     let compW = vpWidth || 1920;
@@ -42,7 +45,10 @@ export function registerThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): v
 
     // Cache
     const cacheDir = join(project.dir, ".thumbnails");
-    const cacheKey = `${compPath.replace(/\//g, "_")}_${seekTime.toFixed(2)}.jpg`;
+    const selectorKey = selector
+      ? `_${selector.replace(/[^a-zA-Z0-9_-]+/g, "_").slice(0, 80)}`
+      : "";
+    const cacheKey = `${THUMBNAIL_CACHE_VERSION}_${compPath.replace(/\//g, "_")}_${seekTime.toFixed(2)}${selectorKey}.jpg`;
     const cachePath = join(cacheDir, cacheKey);
     if (existsSync(cachePath)) {
       return new Response(new Uint8Array(readFileSync(cachePath)), {
@@ -58,6 +64,7 @@ export function registerThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): v
         width: compW,
         height: compH,
         previewUrl,
+        selector,
       });
       if (!buffer) {
         return c.json({ error: "Thumbnail generation returned null" }, 500);

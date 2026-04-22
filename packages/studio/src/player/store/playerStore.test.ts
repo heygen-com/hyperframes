@@ -17,7 +17,7 @@ describe("usePlayerStore", () => {
       expect(state.selectedElementId).toBeNull();
       expect(state.playbackRate).toBe(1);
       expect(state.zoomMode).toBe("fit");
-      expect(state.pixelsPerSecond).toBe(100);
+      expect(state.manualZoomPercent).toBe(100);
     });
   });
 
@@ -132,6 +132,19 @@ describe("usePlayerStore", () => {
       usePlayerStore.getState().updateElement("nonexistent", { start: 10 });
       expect(usePlayerStore.getState().elements[0].start).toBe(0);
     });
+
+    it("prefers the stable element key when duplicate ids exist", () => {
+      usePlayerStore.getState().setElements([
+        { id: "headline", key: "a", tag: "div", start: 0, duration: 5, track: 0 },
+        { id: "headline", key: "b", tag: "div", start: 5, duration: 5, track: 1 },
+      ]);
+
+      usePlayerStore.getState().updateElement("b", { start: 9 });
+
+      const elements = usePlayerStore.getState().elements;
+      expect(elements[0].start).toBe(0);
+      expect(elements[1].start).toBe(9);
+    });
   });
 
   describe("setZoomMode", () => {
@@ -147,20 +160,25 @@ describe("usePlayerStore", () => {
     });
   });
 
-  describe("setPixelsPerSecond", () => {
-    it("updates pixelsPerSecond", () => {
-      usePlayerStore.getState().setPixelsPerSecond(200);
-      expect(usePlayerStore.getState().pixelsPerSecond).toBe(200);
+  describe("setManualZoomPercent", () => {
+    it("updates the manual zoom percent", () => {
+      usePlayerStore.getState().setManualZoomPercent(200);
+      expect(usePlayerStore.getState().manualZoomPercent).toBe(200);
     });
 
     it("clamps to minimum of 10", () => {
-      usePlayerStore.getState().setPixelsPerSecond(5);
-      expect(usePlayerStore.getState().pixelsPerSecond).toBe(10);
+      usePlayerStore.getState().setManualZoomPercent(5);
+      expect(usePlayerStore.getState().manualZoomPercent).toBe(10);
     });
 
     it("clamps negative values to 10", () => {
-      usePlayerStore.getState().setPixelsPerSecond(-50);
-      expect(usePlayerStore.getState().pixelsPerSecond).toBe(10);
+      usePlayerStore.getState().setManualZoomPercent(-50);
+      expect(usePlayerStore.getState().manualZoomPercent).toBe(10);
+    });
+
+    it("clamps to the maximum supported zoom percent", () => {
+      usePlayerStore.getState().setManualZoomPercent(5000);
+      expect(usePlayerStore.getState().manualZoomPercent).toBe(2000);
     });
   });
 
@@ -187,11 +205,11 @@ describe("usePlayerStore", () => {
       expect(state.selectedElementId).toBeNull();
     });
 
-    it("does not reset playbackRate, zoomMode, or pixelsPerSecond", () => {
+    it("does not reset playbackRate, zoomMode, or manualZoomPercent", () => {
       const store = usePlayerStore.getState();
       store.setPlaybackRate(2);
       store.setZoomMode("manual");
-      store.setPixelsPerSecond(200);
+      store.setManualZoomPercent(200);
 
       usePlayerStore.getState().reset();
 
@@ -199,7 +217,7 @@ describe("usePlayerStore", () => {
       // reset() only resets the fields explicitly listed in the reset function
       expect(state.playbackRate).toBe(2);
       expect(state.zoomMode).toBe("manual");
-      expect(state.pixelsPerSecond).toBe(200);
+      expect(state.manualZoomPercent).toBe(200);
     });
   });
 });

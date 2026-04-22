@@ -17,7 +17,32 @@ type PlayerDeps = {
   onRenderFrameSeek: (timeSeconds: number) => void;
   onShowNativeVideos: () => void;
   getSafeDuration?: () => number;
+  /**
+   * Optional registry of sibling timelines (typically `window.__timelines`).
+   * Provided so that play/pause propagate to sub-scene timelines registered
+   * alongside the master — e.g. a nested-composition master with per-scene
+   * timelines like `scene1-logo-intro`, `scene2-4-canvas`. Without this,
+   * pausing the master would leave scene timelines free-running and
+   * animations would continue to advance visually past the paused time.
+   */
+  getTimelineRegistry?: () => Record<string, RuntimeTimelineLike | undefined>;
 };
+
+function forEachSiblingTimeline(
+  registry: Record<string, RuntimeTimelineLike | undefined> | undefined | null,
+  master: RuntimeTimelineLike,
+  fn: (tl: RuntimeTimelineLike) => void,
+): void {
+  if (!registry) return;
+  for (const tl of Object.values(registry)) {
+    if (!tl || tl === master) continue;
+    try {
+      fn(tl);
+    } catch {
+      // ignore sibling failures — one broken timeline shouldn't poison play/pause
+    }
+  }
+}
 
 function seekTimelineDeterministically(
   timeline: RuntimeTimelineLike,
@@ -32,6 +57,39 @@ function seekTimelineDeterministically(
     timeline.seek(quantized, false);
   }
   return quantized;
+}
+
+function seekMasterAndSiblingTimelinesDeterministically(
+  registry: Record<string, RuntimeTimelineLike | undefined> | undefined | null,
+  master: RuntimeTimelineLike,
+  timeSeconds: number,
+  canonicalFps: number,
+): number {
+  const rearmedSiblings: RuntimeTimelineLike[] = [];
+  forEachSiblingTimeline(registry, master, (tl) => {
+    tl.play();
+    rearmedSiblings.push(tl);
+  });
+  try {
+    return seekTimelineDeterministically(master, timeSeconds, canonicalFps);
+  } finally {
+    for (const tl of rearmedSiblings) {
+      try {
+        tl.pause();
+      } catch {
+        // ignore sibling failures — one broken timeline shouldn't poison seek
+      }
+    }
+  }
+}
+
+function activateSiblingTimelines(
+  registry: Record<string, RuntimeTimelineLike | undefined> | undefined | null,
+  master: RuntimeTimelineLike,
+): void {
+  forEachSiblingTimeline(registry, master, (tl) => {
+    tl.play();
+  });
 }
 
 export function createRuntimePlayer(deps: PlayerDeps): RuntimePlayer {
@@ -59,6 +117,10 @@ export function createRuntimePlayer(deps: PlayerDeps): RuntimePlayer {
         timeline.timeScale(deps.getPlaybackRate());
       }
       timeline.play();
+      forEachSiblingTimeline(deps.getTimelineRegistry?.(), timeline, (tl) => {
+        if (typeof tl.timeScale === "function") tl.timeScale(deps.getPlaybackRate());
+        tl.play();
+      });
       deps.onDeterministicPlay();
       deps.setIsPlaying(true);
       deps.onShowNativeVideos();
@@ -68,6 +130,9 @@ export function createRuntimePlayer(deps: PlayerDeps): RuntimePlayer {
       const timeline = deps.getTimeline();
       if (!timeline) return;
       timeline.pause();
+      forEachSiblingTimeline(deps.getTimelineRegistry?.(), timeline, (tl) => {
+        tl.pause();
+      });
       const time = Math.max(0, Number(timeline.time()) || 0);
       deps.onDeterministicSeek(time);
       deps.onDeterministicPause();
@@ -80,7 +145,12 @@ export function createRuntimePlayer(deps: PlayerDeps): RuntimePlayer {
       const timeline = deps.getTimeline();
       if (!timeline) return;
       const safeTime = Math.max(0, Number(timeSeconds) || 0);
-      const quantized = seekTimelineDeterministically(timeline, safeTime, deps.getCanonicalFps());
+      const quantized = seekMasterAndSiblingTimelinesDeterministically(
+        deps.getTimelineRegistry?.(),
+        timeline,
+        safeTime,
+        deps.getCanonicalFps(),
+      );
       deps.onDeterministicSeek(quantized);
       deps.setIsPlaying(false);
       deps.onSyncMedia(quantized, false);
@@ -95,7 +165,13 @@ export function createRuntimePlayer(deps: PlayerDeps): RuntimePlayer {
       // their animations advance. Without this, non-GSAP compositions freeze
       // on their initial frame.
       const quantized = timeline
-        ? seekTimelineDeterministically(timeline, timeSeconds, canonicalFps)
+        ? (() => {
+            // Export seeks run frame-by-frame through the resolved root timeline.
+            // If nested siblings stay paused, GSAP collapses the root back to the
+            // authored master duration and later frames clamp incorrectly.
+            activateSiblingTimelines(deps.getTimelineRegistry?.(), timeline);
+            return seekTimelineDeterministically(timeline, timeSeconds, canonicalFps);
+          })()
         : quantizeTimeToFrame(Math.max(0, Number(timeSeconds) || 0), canonicalFps);
       deps.onDeterministicSeek(quantized);
       deps.setIsPlaying(false);

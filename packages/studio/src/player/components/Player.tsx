@@ -1,6 +1,5 @@
 import { forwardRef, useRef, useState } from "react";
 import { useMountEffect } from "../../hooks/useMountEffect";
-import type { HyperframesPlayer } from "@hyperframes/player";
 // NOTE: importing "@hyperframes/player" registers a class extending HTMLElement
 // at module load, which throws under SSR. Defer the import to the mount effect
 // so it only runs in the browser.
@@ -10,6 +9,10 @@ interface PlayerProps {
   directUrl?: string;
   onLoad: () => void;
   portrait?: boolean;
+}
+
+interface HyperframesPlayerElement extends HTMLElement {
+  iframeElement: HTMLIFrameElement;
 }
 
 /**
@@ -96,7 +99,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
         if (canceled) return;
 
         // Create the web component imperatively to avoid JSX custom-element typing.
-        const player = document.createElement("hyperframes-player") as HyperframesPlayer;
+        const player = document.createElement("hyperframes-player") as HyperframesPlayerElement;
         const src = directUrl || `/api/projects/${projectId}/preview`;
         player.setAttribute("src", src);
         player.setAttribute("width", String(portrait ? 1080 : 1920));

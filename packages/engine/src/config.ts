@@ -105,7 +105,7 @@ export const DEFAULT_CONFIG: EngineConfig = {
   hdr: false,
   hdrAutoDetect: true,
 
-  audioGain: 1.35,
+  audioGain: 1,
   frameDataUriCacheLimit: 256,
 
   playerReadyTimeout: 45_000,

@@ -21,7 +21,7 @@
     },
     "packages/cli": {
       "name": "@hyperframes/cli",
-      "version": "0.4.5",
+      "version": "0.4.11",
       "bin": {
         "hyperframes": "./dist/cli.js",
       },
@@ -62,7 +62,7 @@
     },
     "packages/core": {
       "name": "@hyperframes/core",
-      "version": "0.4.5",
+      "version": "0.4.11",
       "dependencies": {
         "@chenglou/pretext": "^0.0.5",
       },
@@ -88,7 +88,7 @@
     },
     "packages/engine": {
       "name": "@hyperframes/engine",
-      "version": "0.4.5",
+      "version": "0.4.11",
       "dependencies": {
         "@hono/node-server": "^1.13.0",
         "@hyperframes/core": "workspace:^",
@@ -106,7 +106,7 @@
     },
     "packages/player": {
       "name": "@hyperframes/player",
-      "version": "0.4.5",
+      "version": "0.4.11",
       "devDependencies": {
         "tsup": "^8.0.0",
         "typescript": "^5.0.0",
@@ -115,7 +115,7 @@
     },
     "packages/producer": {
       "name": "@hyperframes/producer",
-      "version": "0.4.5",
+      "version": "0.4.11",
       "dependencies": {
         "@fontsource/archivo-black": "^5.2.8",
         "@fontsource/eb-garamond": "^5.2.7",
@@ -154,7 +154,7 @@
     },
     "packages/shader-transitions": {
       "name": "@hyperframes/shader-transitions",
-      "version": "0.4.5",
+      "version": "0.4.11",
       "dependencies": {
         "html2canvas": "^1.4.1",
       },
@@ -166,7 +166,7 @@
     },
     "packages/studio": {
       "name": "@hyperframes/studio",
-      "version": "0.4.5",
+      "version": "0.4.11",
       "dependencies": {
         "@codemirror/autocomplete": "^6.20.1",
         "@codemirror/commands": "^6.10.3",

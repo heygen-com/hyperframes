@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { generateTicks } from "./Timeline";
+import {
+  generateTicks,
+  getTimelinePlayheadLeft,
+  getTimelineScrollLeftForZoomTransition,
+  shouldAutoScrollTimeline,
+} from "./Timeline";
 import { formatTime } from "../lib/time";
 
 describe("generateTicks", () => {
@@ -106,5 +111,43 @@ describe("formatTime", () => {
     expect(formatTime(1)).toBe("0:01");
     expect(formatTime(9)).toBe("0:09");
     expect(formatTime(61)).toBe("1:01");
+  });
+});
+
+describe("shouldAutoScrollTimeline", () => {
+  it("never auto-scrolls in fit mode", () => {
+    expect(shouldAutoScrollTimeline("fit", 1200, 800)).toBe(false);
+  });
+
+  it("does not auto-scroll when there is no horizontal overflow", () => {
+    expect(shouldAutoScrollTimeline("manual", 800, 800)).toBe(false);
+    expect(shouldAutoScrollTimeline("manual", 800.5, 800)).toBe(false);
+  });
+
+  it("auto-scrolls in manual mode when horizontal overflow exists", () => {
+    expect(shouldAutoScrollTimeline("manual", 1200, 800)).toBe(true);
+  });
+});
+
+describe("getTimelineScrollLeftForZoomTransition", () => {
+  it("resets horizontal scroll when switching from manual zoom back to fit", () => {
+    expect(getTimelineScrollLeftForZoomTransition("manual", "fit", 480)).toBe(0);
+  });
+
+  it("preserves the current scroll offset for other zoom transitions", () => {
+    expect(getTimelineScrollLeftForZoomTransition("fit", "fit", 480)).toBe(480);
+    expect(getTimelineScrollLeftForZoomTransition("fit", "manual", 480)).toBe(480);
+    expect(getTimelineScrollLeftForZoomTransition("manual", "manual", 480)).toBe(480);
+  });
+});
+
+describe("getTimelinePlayheadLeft", () => {
+  it("converts time to a pixel offset from the gutter", () => {
+    expect(getTimelinePlayheadLeft(4, 20)).toBe(112);
+  });
+
+  it("guards invalid input", () => {
+    expect(getTimelinePlayheadLeft(Number.NaN, 20)).toBe(32);
+    expect(getTimelinePlayheadLeft(4, Number.NaN)).toBe(32);
   });
 });

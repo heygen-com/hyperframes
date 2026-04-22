@@ -44,6 +44,7 @@ async function getSharedBrowser(): Promise<import("puppeteer-core").Browser | nu
 
 // In-flight thumbnail dedup
 const _thumbnailInflight = new Map<string, Promise<Buffer>>();
+const THUMBNAIL_CACHE_VERSION = "v2";
 
 // ── Vite adapter for the shared studio API ───────────────────────────────────
 
@@ -205,7 +206,10 @@ function createViteAdapter(dataDir: string, server: ViteDevServer): StudioApiAda
     },
 
     async generateThumbnail(opts) {
-      const cacheKey = `${opts.compPath.replace(/\//g, "_")}_${opts.seekTime.toFixed(2)}.jpg`;
+      const selectorKey = opts.selector
+        ? `_${opts.selector.replace(/[^a-zA-Z0-9_-]+/g, "_").slice(0, 80)}`
+        : "";
+      const cacheKey = `${THUMBNAIL_CACHE_VERSION}_${opts.compPath.replace(/\//g, "_")}_${opts.seekTime.toFixed(2)}${selectorKey}.jpg`;
 
       let bufferPromise = _thumbnailInflight.get(cacheKey);
       if (!bufferPromise) {
@@ -253,7 +257,31 @@ function createViteAdapter(dataDir: string, server: ViteDevServer): StudioApiAda
           }, opts.seekTime);
           await page.evaluate("document.fonts?.ready");
           await new Promise((r) => setTimeout(r, 200));
-          const buf = await page.screenshot({ type: "jpeg", quality: 75 });
+          let clip: { x: number; y: number; width: number; height: number } | undefined;
+          if (opts.selector) {
+            clip = await page.evaluate((selector: string) => {
+              const el = document.querySelector(selector);
+              if (!(el instanceof HTMLElement)) return undefined;
+              const rect = el.getBoundingClientRect();
+              if (rect.width < 4 || rect.height < 4) return undefined;
+              const pad = 8;
+              const x = Math.max(0, rect.left - pad);
+              const y = Math.max(0, rect.top - pad);
+              const maxWidth = window.innerWidth - x;
+              const maxHeight = window.innerHeight - y;
+              return {
+                x,
+                y,
+                width: Math.max(1, Math.min(rect.width + pad * 2, maxWidth)),
+                height: Math.max(1, Math.min(rect.height + pad * 2, maxHeight)),
+              };
+            }, opts.selector);
+          }
+          const buf = await page.screenshot({
+            type: "jpeg",
+            quality: 75,
+            ...(clip ? { clip } : {}),
+          });
           await page.close();
           return buf as Buffer;
         })();
@@ -276,6 +304,20 @@ function createViteAdapter(dataDir: string, server: ViteDevServer): StudioApiAda
       return null;
     },
   };
+}
+
+async function loadRuntimeSourceForDev(server: ViteDevServer): Promise<string | null> {
+  try {
+    const mod = await server.ssrLoadModule(
+      resolve(__dirname, "../core/src/inline-scripts/hyperframe.ts"),
+    );
+    if (typeof mod.loadHyperframeRuntimeSource === "function") {
+      return mod.loadHyperframeRuntimeSource();
+    }
+  } catch (err) {
+    console.warn("[Studio] Failed to load runtime source from core:", err);
+  }
+  return null;
 }
 
 // ── Bridge Hono fetch → Node http response ───────────────────────────────────
@@ -332,16 +374,34 @@ function devProjectApi(): Plugin {
       const runtimePath = resolve(__dirname, "../core/dist/hyperframe.runtime.iife.js");
       server.middlewares.use((req, res, next) => {
         if (req.url !== "/api/runtime.js") return next();
-        if (!existsSync(runtimePath)) {
-          res.writeHead(404);
-          res.end("runtime not built — run pnpm build in packages/core");
-          return;
-        }
-        res.writeHead(200, {
-          "Content-Type": "text/javascript",
-          "Cache-Control": "no-store",
+        const serve = async () => {
+          let runtimeSource: string | null = null;
+          if (existsSync(runtimePath)) {
+            runtimeSource = readFileSync(runtimePath, "utf-8");
+          } else {
+            runtimeSource = await loadRuntimeSourceForDev(server);
+          }
+
+          if (!runtimeSource) {
+            res.writeHead(404);
+            res.end("runtime not available — build packages/core or load runtime source");
+            return;
+          }
+
+          res.writeHead(200, {
+            "Content-Type": "text/javascript",
+            "Cache-Control": "no-store",
+          });
+          res.end(runtimeSource);
+        };
+
+        void serve().catch((err) => {
+          console.error("[Studio runtime] Failed to serve runtime", err);
+          if (!res.headersSent) {
+            res.writeHead(500);
+            res.end("failed to serve runtime");
+          }
         });
-        res.end(readFileSync(runtimePath, "utf-8"));
       });
 
       server.middlewares.use(async (req, res, next) => {
@@ -420,6 +480,11 @@ function devProjectApi(): Plugin {
 
 export default defineConfig({
   plugins: [react(), devProjectApi()],
+  resolve: {
+    alias: {
+      "@hyperframes/player": resolve(__dirname, "../player/src/hyperframes-player.ts"),
+    },
+  },
   build: {
     outDir: "dist",
     emptyOutDir: true,

@@ -10,6 +10,7 @@ import { streamSSE } from "hono/streaming";
 import { existsSync, readFileSync, writeFileSync, statSync } from "node:fs";
 import { resolve, join, basename } from "node:path";
 import { createProjectWatcher, type ProjectWatcher } from "./fileWatcher.js";
+import { loadRuntimeSourceFallback } from "./runtimeSource.js";
 import { VERSION as version } from "../version.js";
 import {
   createStudioApi,
@@ -228,7 +229,31 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
         }, opts.seekTime);
         // Let the seek render settle.
         await new Promise((r) => setTimeout(r, 200));
-        const screenshot = (await page.screenshot({ type: "jpeg", quality: 80 })) as Buffer;
+        let clip: { x: number; y: number; width: number; height: number } | undefined;
+        if (opts.selector) {
+          clip = await page.evaluate((selector: string) => {
+            const el = document.querySelector(selector);
+            if (!(el instanceof HTMLElement)) return undefined;
+            const rect = el.getBoundingClientRect();
+            if (rect.width < 4 || rect.height < 4) return undefined;
+            const pad = 8;
+            const x = Math.max(0, rect.left - pad);
+            const y = Math.max(0, rect.top - pad);
+            const maxWidth = window.innerWidth - x;
+            const maxHeight = window.innerHeight - y;
+            return {
+              x,
+              y,
+              width: Math.max(1, Math.min(rect.width + pad * 2, maxWidth)),
+              height: Math.max(1, Math.min(rect.height + pad * 2, maxHeight)),
+            };
+          }, opts.selector);
+        }
+        const screenshot = (await page.screenshot({
+          type: "jpeg",
+          quality: 80,
+          ...(clip ? { clip } : {}),
+        })) as Buffer;
         return screenshot;
       } catch {
         return null;
@@ -256,11 +281,17 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
 
   // CLI-specific routes (before shared API)
   app.get("/api/runtime.js", (c) => {
-    if (!existsSync(runtimePath)) return c.text("runtime not built", 404);
-    return c.body(readFileSync(runtimePath, "utf-8"), 200, {
-      "Content-Type": "text/javascript",
-      "Cache-Control": "no-store",
-    });
+    const serve = async () => {
+      const runtimeSource = existsSync(runtimePath)
+        ? readFileSync(runtimePath, "utf-8")
+        : await loadRuntimeSourceFallback();
+      if (!runtimeSource) return c.text("runtime not available", 404);
+      return c.body(runtimeSource, 200, {
+        "Content-Type": "text/javascript",
+        "Cache-Control": "no-store",
+      });
+    };
+    return serve();
   });
 
   app.get("/api/events", (c) => {

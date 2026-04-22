@@ -1374,6 +1374,8 @@ export function initSandboxRuntimeModular(): void {
     setTimeline: (timeline) => {
       state.capturedTimeline = timeline;
     },
+    getTimelineRegistry: () =>
+      (window.__timelines ?? {}) as Record<string, RuntimeTimelineLike | undefined>,
     getIsPlaying: () => state.isPlaying,
     setIsPlaying: (playing) => {
       state.isPlaying = playing;

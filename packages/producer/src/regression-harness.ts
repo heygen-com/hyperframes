@@ -18,6 +18,7 @@ import { createRenderJob, executeRenderJob } from "./services/renderOrchestrator
 import { compileForRender } from "./services/htmlCompiler.js";
 import { validateCompilation } from "./services/compilationTester.js";
 import { extractVideoMetadata } from "./utils/ffprobe.js";
+import { buildRmsEnvelope, compareAudioEnvelopes } from "./utils/audioRegression.js";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -346,66 +347,6 @@ function extractMonoPcm16(videoPath: string): Int16Array {
     }
     return new Int16Array(0);
   }
-}
-
-function buildRmsEnvelope(samples: Int16Array, windowSize = 2048, hopSize = 1024): number[] {
-  if (samples.length < windowSize) return [];
-  const envelope: number[] = [];
-  for (let start = 0; start + windowSize <= samples.length; start += hopSize) {
-    let energy = 0;
-    for (let i = 0; i < windowSize; i += 1) {
-      const normalized = (samples[start + i] ?? 0) / 32768;
-      energy += normalized * normalized;
-    }
-    envelope.push(Math.sqrt(energy / windowSize));
-  }
-  return envelope;
-}
-
-function correlationAtLag(a: number[], b: number[], lag: number): number {
-  const startA = Math.max(0, lag);
-  const startB = Math.max(0, -lag);
-  const length = Math.min(a.length - startA, b.length - startB);
-  if (length <= 32) return -1;
-
-  let meanA = 0;
-  let meanB = 0;
-  for (let i = 0; i < length; i += 1) {
-    meanA += a[startA + i] ?? 0;
-    meanB += b[startB + i] ?? 0;
-  }
-  meanA /= length;
-  meanB /= length;
-
-  let numerator = 0;
-  let denA = 0;
-  let denB = 0;
-  for (let i = 0; i < length; i += 1) {
-    const da = (a[startA + i] ?? 0) - meanA;
-    const db = (b[startB + i] ?? 0) - meanB;
-    numerator += da * db;
-    denA += da * da;
-    denB += db * db;
-  }
-  if (denA <= 1e-12 || denB <= 1e-12) return -1;
-  return numerator / Math.sqrt(denA * denB);
-}
-
-function bestEnvelopeCorrelation(
-  rendered: number[],
-  snapshot: number[],
-  maxLagWindows: number,
-): { correlation: number; lagWindows: number } {
-  let best = -1;
-  let bestLag = 0;
-  for (let lag = -maxLagWindows; lag <= maxLagWindows; lag += 1) {
-    const corr = correlationAtLag(rendered, snapshot, lag);
-    if (corr > best) {
-      best = corr;
-      bestLag = lag;
-    }
-  }
-  return { correlation: best, lagWindows: bestLag };
 }
 
 // ── Failure Reporting ────────────────────────────────────────────────────────
@@ -751,7 +692,7 @@ async function runTestSuite(
     if (renderedAudio.length > 0 && snapshotAudio.length > 0) {
       const renderedEnvelope = buildRmsEnvelope(renderedAudio);
       const snapshotEnvelope = buildRmsEnvelope(snapshotAudio);
-      const audio = bestEnvelopeCorrelation(
+      const audio = compareAudioEnvelopes(
         renderedEnvelope,
         snapshotEnvelope,
         suite.meta.maxAudioLagWindows,

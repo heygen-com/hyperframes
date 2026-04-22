@@ -45,6 +45,26 @@ When adding a new CLI command:
 5. **Document it** in `docs/packages/cli.mdx` — add a section with usage examples and flags.
 6. Validate by running `npx tsx packages/cli/src/cli.ts --help` (command appears in the list) and `npx tsx packages/cli/src/cli.ts <name> --help` (examples appear).
 
+### Regression Test Golden Baselines (producer)
+
+`packages/producer/tests/<name>/output/output.mp4` baselines MUST be generated
+inside `Dockerfile.test`, not on your host. CI renders inside that Docker image
+with a specific Chrome + ffmpeg build; pixel-level output drifts across
+different host Chrome/ffmpeg versions and will fail PSNR at dozens of
+checkpoints even when the code is correct.
+
+```bash
+# Build the test image once:
+docker build -t hyperframes-producer:test -f Dockerfile.test .
+
+# Generate or update a baseline (runs the harness with --update inside Docker):
+bun run --cwd packages/producer docker:test:update <test-name>
+```
+
+Never run `bun run --cwd packages/producer test:update` directly from the
+host to capture a baseline that will be committed — the resulting output.mp4
+will not match CI. Use it only for local-only experimentation.
+
 ## Skills
 
 Composition authoring (not repo development) is guided by skills installed via `npx skills add heygen-com/hyperframes`. See `skills/` for source. Invoke `/hyperframes`, `/hyperframes-cli`, `/hyperframes-registry`, or `/gsap` when authoring compositions. When a user provides a website URL and wants a video, invoke `/website-to-hyperframes` — it runs the full 7-step capture-to-video pipeline.

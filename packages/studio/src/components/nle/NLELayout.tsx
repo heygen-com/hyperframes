@@ -27,6 +27,15 @@ interface NLELayoutProps {
     element: TimelineElement,
     style: { clip: string; label: string },
   ) => ReactNode;
+  /** Persist timeline move actions back into source HTML */
+  onMoveElement?: (
+    element: TimelineElement,
+    updates: Pick<TimelineElement, "start" | "track">,
+  ) => Promise<void> | void;
+  onResizeElement?: (
+    element: TimelineElement,
+    updates: Pick<TimelineElement, "start" | "duration" | "playbackStart">,
+  ) => Promise<void> | void;
   /** Exposes the compIdToSrc map for parent components (e.g., useRenderClipContent) */
   onCompIdToSrcChange?: (map: Map<string, string>) => void;
   /** Whether the timeline panel is visible (default: true) */
@@ -50,6 +59,8 @@ export const NLELayout = memo(function NLELayout({
   onIframeRef,
   onCompositionChange,
   renderClipContent,
+  onMoveElement,
+  onResizeElement,
   onCompIdToSrcChange,
   timelineVisible,
   onToggleTimeline,
@@ -59,6 +70,7 @@ export const NLELayout = memo(function NLELayout({
     togglePlay,
     seek,
     onIframeLoad: baseOnIframeLoad,
+    refreshPlayer,
     saveSeekPosition,
   } = useTimelinePlayer();
 
@@ -72,12 +84,13 @@ export const NLELayout = memo(function NLELayout({
     usePlayerStore.getState().reset();
   }
 
-  // Preserve seek position when refreshKey changes (iframe will remount via key prop).
+  // Refresh the existing iframe in place when source files change.
   const prevRefreshKeyRef = useRef(refreshKey);
-  if (refreshKey !== prevRefreshKeyRef.current) {
+  useEffect(() => {
+    if (refreshKey === prevRefreshKeyRef.current) return;
     prevRefreshKeyRef.current = refreshKey;
-    saveSeekPosition();
-  }
+    refreshPlayer();
+  }, [refreshKey, refreshPlayer]);
 
   // Wrap onIframeLoad to also notify parent of iframe ref
   const onIframeLoad = useCallback(() => {
@@ -351,18 +364,20 @@ export const NLELayout = memo(function NLELayout({
         <>
           {/* Resize divider */}
           <div
-            className="h-1 flex-shrink-0 bg-neutral-800 hover:bg-studio-accent cursor-row-resize transition-colors active:bg-studio-accent/80 z-10"
+            className="group h-2 flex-shrink-0 cursor-row-resize flex items-center justify-center z-10"
             style={{ touchAction: "none" }}
             onPointerDown={handleDividerPointerDown}
             onPointerMove={handleDividerPointerMove}
             onPointerUp={handleDividerPointerUp}
-          />
+          >
+            <div className="h-px w-full bg-white/10 transition-colors group-hover:bg-white/16 group-active:bg-white/22" />
+          </div>
 
           {/* Timeline section — fixed height, resizable */}
           <div className="flex flex-col flex-shrink-0" style={{ height: timelineH }}>
             {/* Timeline tracks */}
             <div
-              className="flex-1 min-h-0 overflow-y-auto bg-neutral-950"
+              className="flex-1 min-h-0 overflow-hidden bg-neutral-950"
               onDoubleClick={(e) => {
                 if ((e.target as HTMLElement).closest("[data-clip]")) return;
                 if (compositionStack.length > 1) {
@@ -375,6 +390,8 @@ export const NLELayout = memo(function NLELayout({
                 onSeek={seek}
                 onDrillDown={handleDrillDown}
                 renderClipContent={renderClipContent}
+                onMoveElement={onMoveElement}
+                onResizeElement={onResizeElement}
               />
             </div>
             {timelineFooter && <div className="flex-shrink-0">{timelineFooter}</div>}

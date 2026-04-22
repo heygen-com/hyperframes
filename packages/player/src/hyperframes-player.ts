@@ -1,4 +1,5 @@
 import { createControls, SPEED_PRESETS, type ControlsCallbacks } from "./controls.js";
+import { shouldInjectRuntime } from "./shouldInjectRuntime.js";
 import { PLAYER_STYLES } from "./styles.js";
 
 const DEFAULT_FPS = 30;
@@ -422,9 +423,18 @@ class HyperframesPlayer extends HTMLElement {
         // Check if the runtime bridge is active (__hf or __player from the runtime)
         const hasRuntime = !!(win.__hf || win.__player);
         const hasTimelines = !!(win.__timelines && Object.keys(win.__timelines).length > 0);
+        const hasNestedCompositions =
+          !!this.iframe.contentDocument?.querySelector("[data-composition-src]");
 
-        // Auto-inject runtime if GSAP timelines exist but no runtime bridge
-        if (!hasRuntime && hasTimelines && !this._runtimeInjected && attempts >= 5) {
+        if (
+          shouldInjectRuntime({
+            hasRuntime,
+            hasTimelines,
+            hasNestedCompositions,
+            runtimeInjected: this._runtimeInjected,
+            attempts,
+          })
+        ) {
           this._injectRuntime();
           return; // Wait for runtime to load and initialize
         }

@@ -29,6 +29,7 @@ describe("resolveConfig", () => {
     expect(config.quality).toBe("standard");
     expect(config.format).toBe("jpeg");
     expect(config.jpegQuality).toBe(80);
+    expect(config.audioGain).toBe(1);
     expect(config.debug).toBe(false);
   });
 
