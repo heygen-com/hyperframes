@@ -439,7 +439,6 @@ describe("buildEncoderArgs HDR color space", () => {
     expect(args[paramIdx + 1]).not.toContain("max-cll");
   });
 
-
   it("strips HDR and tags as SDR/BT.709 when codec=h264 (libx264 has no HDR support)", () => {
     // libx264 cannot encode HDR. Rather than emit a "half-HDR" file (BT.2020
     // container tags + BT.709 VUI inside the bitstream — confusing to HDR-aware
