@@ -2,6 +2,7 @@ name: Catalog Previews
 
 on:
   pull_request:
+    branches: [main]
     paths:
       - "registry/blocks/**"
       - "registry/components/**"
