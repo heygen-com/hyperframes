@@ -202,6 +202,10 @@ brew install git-lfs
 # Ubuntu/Debian
 sudo apt install git-lfs
 
+# Windows
+winget install GitHub.GitLFS
+# (or install Git for Windows, which bundles Git LFS as an optional component)
+
 # Then (once, per machine)
 git lfs install
 ```
