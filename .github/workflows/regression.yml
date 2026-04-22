@@ -6,6 +6,10 @@ on:
     branches:
       - main
 
+concurrency:
+  group: regression-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   changes:
     name: Detect changes
