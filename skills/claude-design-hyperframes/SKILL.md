@@ -167,6 +167,8 @@ tl.from(".subtitle", { y: 40, opacity: 0, duration: 0.5, ease: "power2.out" }, 0
 
 Load external sub-comp HTMLs with `data-composition-src`. Sub-comp files use a `<template>` wrapper — standalone `index.html` does NOT (a `<template>` hides its contents from the browser; applied to the root it breaks rendering).
 
+**The HyperFrames runtime auto-nests sub-compositions in both preview AND render.** Don't hedge with a plain `<iframe src="compositions/sub.html">` — a `<template>`-wrapped file renders empty in a plain iframe because the template contents are inert by HTML spec. The `data-composition-src` attribute on a div is the supported mechanism; the runtime handles loading, timeline attachment, and texture composite. Examples of real compositions using this: `registry/examples/kinetic-type`, `registry/examples/nyt-graph`, `registry/examples/decision-tree`.
+
 ```html
 <!-- in index.html -->
 <div
@@ -344,6 +346,20 @@ Load the package from CDN and wire it to your timeline. The IIFE build exposes t
 </script>
 ```
 
+**Scene visibility is yours to own.** HyperShader drives the transition overlay (the WebGL canvas during transition intervals) — it does NOT manage which scene is currently visible between transitions. Start every scene at `opacity: 0` in CSS (except scene-1, which is visible from t=0), then mount/unmount each scene on the timeline:
+
+```js
+// inside tl construction, after init()
+tl.set("#scene-1", { autoAlpha: 1 }, 0); // scene 1 visible from start
+tl.set("#scene-1", { autoAlpha: 0 }, 5.0); // at transition start, fade out
+tl.set("#scene-2", { autoAlpha: 1 }, 5.0); // scene 2 visible
+tl.set("#scene-2", { autoAlpha: 0 }, 12.0);
+tl.set("#scene-3", { autoAlpha: 1 }, 12.0);
+// …etc
+```
+
+Without these sets, all scenes stay at CSS opacity:0 and the composition shows nothing between transitions.
+
 Shader-compatible CSS rules (apply only to shader-transition compositions — `html2canvas` captures each scene to a WebGL texture, and its rendering pipeline doesn't match CSS exactly):
 
 - **No `transparent` in gradients.** Canvas interpolates `transparent` as `rgba(0,0,0,0)` (black at zero alpha), creating dark fringes. Use the target color at zero alpha: `rgba(200,117,51,0)` not `transparent`.
@@ -358,6 +374,8 @@ Shader-compatible CSS rules (apply only to shader-transition compositions — `h
 Don't mix CSS and shader transitions in the same composition — pick one. Shaders are powerful but heavier (WebGL context + per-pixel compositing).
 
 **Prefer CSS transitions** when the composition will be previewed interactively with lots of scrubbing. Shader transitions are optimized for linear playback — the package captures scene textures via `html2canvas` at transition time and holds them between transitions. When a user scrubs to an arbitrary time, the canvas still holds a stale texture until a new capture completes, producing a visible blank gap. For final renders (`npx hyperframes render`) this doesn't matter — the render engine runs linearly.
+
+**Dev-time scrubbing trap:** don't call `tl.progress(n)` in rapid succession (e.g. from a loop or dev tools) on a shader-transition composition. Each progress change can queue a fresh `html2canvas` capture; rapid scrubbing deadlocks the capture pipeline. If you need to inspect a specific time, `tl.pause()` first and call `tl.time(t)` once — or use the player's `currentTime` setter, which throttles.
 
 For CSS transitions: scenes are absolute-positioned `.scene` containers with opacity driven directly by GSAP tweens. Every scrub position renders cleanly because the DOM is the surface, no capture latency.
 
