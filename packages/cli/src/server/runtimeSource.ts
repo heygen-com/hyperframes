@@ -1,17 +1,8 @@
 import { existsSync, readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 
-/**
- * Candidate filenames for the pre-built runtime IIFE artifact.
- * The build copies core's IIFE output into cli/dist under both names.
- */
 const RUNTIME_FILENAMES = ["hyperframe-runtime.js", "hyperframe.runtime.iife.js"];
 
-/**
- * Walk up from `startDir` looking for the runtime artifact inside
- * `node_modules/hyperframes/dist/` or `node_modules/@hyperframes/core/dist/`.
- * Stops at the filesystem root.
- */
 function findRuntimeInNodeModules(startDir: string): string | null {
   const subPaths = [
     "node_modules/hyperframes/dist/hyperframe-runtime.js",
@@ -25,18 +16,13 @@ function findRuntimeInNodeModules(startDir: string): string | null {
       if (existsSync(candidate)) return candidate;
     }
     const parent = dirname(dir);
-    if (parent === dir) break; // reached root
+    if (parent === dir) break;
     dir = parent;
   }
   return null;
 }
 
-/**
- * Try to locate and read the pre-built IIFE runtime artifact on disk.
- * Returns the JS source string or null if not found.
- */
 function readPrebuiltRuntime(): string | null {
-  // 1. Check alongside the bundled CLI (dist/hyperframe-runtime.js etc.)
   for (const name of RUNTIME_FILENAMES) {
     const candidate = resolve(__dirname, name);
     if (existsSync(candidate)) {
@@ -44,7 +30,6 @@ function readPrebuiltRuntime(): string | null {
     }
   }
 
-  // 2. Walk up from __dirname looking inside node_modules
   const fromNodeModules = findRuntimeInNodeModules(__dirname);
   if (fromNodeModules) {
     return readFileSync(fromNodeModules, "utf-8");
@@ -53,22 +38,27 @@ function readPrebuiltRuntime(): string | null {
   return null;
 }
 
-export async function loadRuntimeSourceFallback(): Promise<string | null> {
-  // Primary: dynamically import @hyperframes/core and build via esbuild.
-  // In dev this produces a live build from source. In the bundled CLI,
-  // import.meta.url inside the inlined core code resolves to cli.js,
-  // making the entry.ts path invalid — so this fails for global installs.
+function canBuildFromSource(): boolean {
   try {
-    const mod = await import("@hyperframes/core");
-    if (typeof mod.loadHyperframeRuntimeSource === "function") {
-      return mod.loadHyperframeRuntimeSource();
-    }
+    const entryPath = resolve(__dirname, "..", "..", "..", "core", "src", "runtime", "entry.ts");
+    return existsSync(entryPath);
   } catch {
-    // Expected in bundled context — fall through to pre-built artifact.
+    return false;
+  }
+}
+
+export async function loadRuntimeSourceFallback(): Promise<string | null> {
+  if (canBuildFromSource()) {
+    try {
+      const mod = await import("@hyperframes/core");
+      if (typeof mod.loadHyperframeRuntimeSource === "function") {
+        return mod.loadHyperframeRuntimeSource();
+      }
+    } catch {
+      // esbuild failed even though source exists — fall through to artifact
+    }
   }
 
-  // Fallback: read the pre-built IIFE artifact from disk. This covers the
-  // globally-installed case where esbuild cannot resolve source files.
   const prebuilt = readPrebuiltRuntime();
   if (prebuilt) return prebuilt;
 
