@@ -625,6 +625,10 @@ export async function extractAllVideoFrames(
         resolvedVideos.splice(i, 1);
         videoMetadata.splice(i, 1);
         videoColorSpaces.splice(i, 1);
+        // Added by the extraction-cache commit: keep cacheKeyInputs aligned
+        // with the other parallel arrays so Phase 3's `cacheKeyInputs[i]`
+        // lookup doesn't point at a stale slot after the splice.
+        cacheKeyInputs.splice(i, 1);
       }
     }
   }
