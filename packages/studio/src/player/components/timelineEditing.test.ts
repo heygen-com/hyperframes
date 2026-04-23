@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildClipRangeSelection,
   buildPromptCopyText,
   buildTimelineElementAgentPrompt,
   buildTimelineAgentPrompt,
@@ -7,6 +8,7 @@ import {
   canOffsetTrimClipStart,
   getTimelineEditCapabilities,
   hasPatchableTimelineTarget,
+  resolveBlockedTimelineEditIntent,
   resolveTimelineAutoScroll,
   resolveTimelineMove,
   resolveTimelineResize,
@@ -199,6 +201,14 @@ describe("canOffsetTrimClipStart", () => {
     ).toBe(true);
   });
 
+  it("allows front trim for plain audio clips even before media-start exists", () => {
+    expect(
+      canOffsetTrimClipStart({
+        tag: "audio",
+      }),
+    ).toBe(true);
+  });
+
   it("blocks front trim for generic motion clips", () => {
     expect(
       canOffsetTrimClipStart({
@@ -223,6 +233,21 @@ describe("hasPatchableTimelineTarget", () => {
 });
 
 describe("getTimelineEditCapabilities", () => {
+  it("does not disable editable audio just because it spans multiple scenes", () => {
+    expect(
+      getTimelineEditCapabilities({
+        tag: "audio",
+        duration: 8,
+        selector: "#voiceover",
+        sourceDuration: 8,
+      }),
+    ).toEqual({
+      canMove: true,
+      canTrimStart: true,
+      canTrimEnd: true,
+    });
+  });
+
   it("disables move and trims for generic motion clips even when patchable", () => {
     expect(
       getTimelineEditCapabilities({
@@ -295,6 +320,81 @@ describe("getTimelineEditCapabilities", () => {
       canMove: false,
       canTrimStart: false,
       canTrimEnd: false,
+    });
+  });
+});
+
+describe("resolveBlockedTimelineEditIntent", () => {
+  it("returns move when the clip body is blocked", () => {
+    expect(
+      resolveBlockedTimelineEditIntent({
+        width: 160,
+        offsetX: 80,
+        handleWidth: 18,
+        capabilities: {
+          canMove: false,
+          canTrimStart: false,
+          canTrimEnd: false,
+        },
+      }),
+    ).toBe("move");
+  });
+
+  it("returns resize-start when the left edge is blocked", () => {
+    expect(
+      resolveBlockedTimelineEditIntent({
+        width: 160,
+        offsetX: 8,
+        handleWidth: 18,
+        capabilities: {
+          canMove: true,
+          canTrimStart: false,
+          canTrimEnd: true,
+        },
+      }),
+    ).toBe("resize-start");
+  });
+
+  it("returns resize-end when the right edge is blocked", () => {
+    expect(
+      resolveBlockedTimelineEditIntent({
+        width: 160,
+        offsetX: 154,
+        handleWidth: 18,
+        capabilities: {
+          canMove: true,
+          canTrimStart: true,
+          canTrimEnd: false,
+        },
+      }),
+    ).toBe("resize-end");
+  });
+
+  it("returns null when the relevant edit is supported", () => {
+    expect(
+      resolveBlockedTimelineEditIntent({
+        width: 160,
+        offsetX: 8,
+        handleWidth: 18,
+        capabilities: {
+          canMove: true,
+          canTrimStart: true,
+          canTrimEnd: true,
+        },
+      }),
+    ).toBe(null);
+  });
+});
+
+describe("buildClipRangeSelection", () => {
+  it("anchors the full clip range at the click position", () => {
+    expect(
+      buildClipRangeSelection({ start: 1.25, duration: 3.5 }, { anchorX: 320, anchorY: 180 }),
+    ).toEqual({
+      start: 1.25,
+      end: 4.75,
+      anchorX: 320,
+      anchorY: 180,
     });
   });
 });
@@ -418,6 +518,25 @@ describe("resolveTimelineResize", () => {
         150,
       ),
     ).toEqual({ start: 1.5, duration: 2.5, playbackStart: 1 });
+  });
+
+  it("can seed front trim from an implicit zero playback start", () => {
+    expect(
+      resolveTimelineResize(
+        {
+          start: 0,
+          duration: 8,
+          originClientX: 100,
+          pixelsPerSecond: 100,
+          minStart: 0,
+          maxEnd: 8,
+          playbackStart: 0,
+          playbackRate: 1,
+        },
+        "start",
+        200,
+      ),
+    ).toEqual({ start: 1, duration: 7, playbackStart: 1 });
   });
 
   it("prevents extending media left past available source before media-start", () => {

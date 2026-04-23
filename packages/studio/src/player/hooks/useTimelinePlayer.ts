@@ -559,7 +559,11 @@ export function useTimelinePlayer() {
 
   // Convert a runtime timeline message (from iframe postMessage) into TimelineElements
   const processTimelineMessage = useCallback(
-    (data: { clips: ClipManifestClip[]; durationInFrames: number }) => {
+    (data: {
+      clips: ClipManifestClip[];
+      durationInFrames: number;
+      scenes?: Array<{ id: string; label: string; start: number; duration: number }>;
+    }) => {
       if (!data.clips || data.clips.length === 0) {
         return;
       }

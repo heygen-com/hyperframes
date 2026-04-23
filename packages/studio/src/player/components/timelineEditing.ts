@@ -175,6 +175,15 @@ export interface TimelineEditCapabilities {
   canTrimEnd: boolean;
 }
 
+export type BlockedTimelineEditIntent = "move" | "resize-start" | "resize-end";
+
+export interface TimelineRangeSelection {
+  start: number;
+  end: number;
+  anchorX: number;
+  anchorY: number;
+}
+
 function isDeterministicTimelineWindow(input: {
   tag: string;
   compositionSrc?: string;
@@ -207,12 +216,7 @@ export function canOffsetTrimClipStart(input: {
   if (input.playbackStartAttr != null) return true;
   if (input.playbackStart != null) return true;
   const normalizedTag = input.tag.toLowerCase();
-  if (!["video", "audio"].includes(normalizedTag)) return false;
-  return (
-    input.sourceDuration != null &&
-    Number.isFinite(input.sourceDuration) &&
-    input.sourceDuration > 0
-  );
+  return ["video", "audio"].includes(normalizedTag);
 }
 
 export function getTimelineEditCapabilities(input: {
@@ -232,6 +236,40 @@ export function getTimelineEditCapabilities(input: {
     canMove: canPatch && hasDeterministicWindow,
     canTrimEnd: canPatch && hasFiniteDuration && hasDeterministicWindow,
     canTrimStart: canPatch && hasFiniteDuration && canOffsetTrimClipStart(input),
+  };
+}
+
+export function resolveBlockedTimelineEditIntent(input: {
+  width: number;
+  offsetX: number;
+  handleWidth: number;
+  capabilities: TimelineEditCapabilities;
+}): BlockedTimelineEditIntent | null {
+  const safeWidth = Math.max(0, input.width);
+  const safeOffsetX = clamp(input.offsetX, 0, safeWidth);
+  const safeHandleWidth = Math.max(0, input.handleWidth);
+
+  if (safeOffsetX <= safeHandleWidth && !input.capabilities.canTrimStart) {
+    return "resize-start";
+  }
+  if (safeOffsetX >= Math.max(0, safeWidth - safeHandleWidth) && !input.capabilities.canTrimEnd) {
+    return "resize-end";
+  }
+  if (!input.capabilities.canMove) {
+    return "move";
+  }
+  return null;
+}
+
+export function buildClipRangeSelection(
+  clip: { start: number; duration: number },
+  anchor: { anchorX: number; anchorY: number },
+): TimelineRangeSelection {
+  return {
+    start: clip.start,
+    end: clip.start + clip.duration,
+    anchorX: anchor.anchorX,
+    anchorY: anchor.anchorY,
   };
 }
 

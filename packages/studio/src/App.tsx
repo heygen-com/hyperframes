@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useEffect, useMemo, type ReactNode } from "react";
 import { useMountEffect } from "./hooks/useMountEffect";
 import { NLELayout } from "./components/nle/NLELayout";
+import { TimelineEditorNotice } from "./components/nle/TimelineEditorNotice";
 import { SourceEditor } from "./components/editor/SourceEditor";
 import { LeftSidebar } from "./components/sidebar/LeftSidebar";
 import { RenderQueue } from "./components/renders/RenderQueue";
@@ -28,7 +29,6 @@ import {
   getTimelineZoomPercent,
 } from "./player/components/timelineZoom";
 import {
-  TIMELINE_TOGGLE_SHORTCUT_LABEL,
   getTimelineEditorHintDismissed,
   getTimelineToggleTitle,
   setTimelineEditorHintDismissed,
@@ -38,6 +38,11 @@ import {
 interface EditingFile {
   path: string;
   content: string | null;
+}
+
+interface AppToast {
+  message: string;
+  tone: "error" | "info";
 }
 
 // ── Main App ──
@@ -201,12 +206,14 @@ export function StudioApp() {
     }
   }, [captionHasSelection, captionEditMode]);
   const [globalDragOver, setGlobalDragOver] = useState(false);
-  const [uploadToast, setUploadToast] = useState<string | null>(null);
+  const [appToast, setAppToast] = useState<AppToast | null>(null);
   const [timelineVisible, setTimelineVisible] = useState(true);
   const [timelineEditorHintDismissed, setTimelineEditorHintState] = useState(
     getTimelineEditorHintDismissed,
   );
   const dragCounterRef = useRef(0);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastBlockedTimelineToastAtRef = useRef(0);
   const previewHotkeyWindowRef = useRef<Window | null>(null);
   const panelDragRef = useRef<{
     side: "left" | "right";
@@ -238,6 +245,9 @@ export function StudioApp() {
   const toggleTimelineVisibility = useCallback(() => {
     setTimelineVisible((visible) => !visible);
   }, []);
+  useMountEffect(() => () => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+  });
   const dismissTimelineEditorHint = useCallback(() => {
     setTimelineEditorHintState(true);
     setTimelineEditorHintDismissed(true);
@@ -380,31 +390,6 @@ export function StudioApp() {
   );
   const timelineToolbar = (
     <div className="border-b border-neutral-800/40 bg-neutral-950/96">
-      {timelineVisible && timelineElements.length > 0 && !timelineEditorHintDismissed && (
-        <div className="px-3 pt-3">
-          <div className="flex items-start justify-between gap-3 rounded-xl border border-studio-accent/20 bg-studio-accent/[0.07] px-3 py-3">
-            <div className="min-w-0">
-              <div className="text-[11px] font-semibold text-neutral-100">Timeline editor</div>
-              <p className="mt-1 text-[11px] leading-5 text-neutral-300">
-                Drag clips to move timing, and drag clip edges to resize them when handles are
-                available. Hide the panel anytime and bring it back with{" "}
-                <span className="font-mono text-[10px] text-studio-accent">
-                  {TIMELINE_TOGGLE_SHORTCUT_LABEL}
-                </span>
-                .
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={dismissTimelineEditorHint}
-              className="flex-shrink-0 rounded-md border border-neutral-700 px-2 py-1 text-[10px] font-medium text-neutral-300 transition-colors hover:border-neutral-500 hover:text-neutral-100"
-            >
-              Dismiss
-            </button>
-          </div>
-        </div>
-      )}
-
       <div className="flex items-center justify-between px-3 py-2">
         <div className="text-[10px] font-medium uppercase tracking-[0.16em] text-neutral-500">
           Timeline
@@ -855,10 +840,21 @@ export function StudioApp() {
 
   const handleMoveFile = handleRenameFile;
 
-  const showUploadToast = useCallback((msg: string) => {
-    setUploadToast(msg);
-    setTimeout(() => setUploadToast(null), 4000);
+  const showToast = useCallback((message: string, tone: AppToast["tone"] = "error") => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    setAppToast({ message, tone });
+    toastTimerRef.current = setTimeout(() => setAppToast(null), 4000);
   }, []);
+
+  const handleBlockedTimelineEdit = useCallback(
+    (_element: TimelineElement) => {
+      const now = Date.now();
+      if (now - lastBlockedTimelineToastAtRef.current < 1500) return;
+      lastBlockedTimelineToastAtRef.current = now;
+      showToast("This clip can’t be moved or resized from the timeline yet.", "info");
+    },
+    [showToast],
+  );
 
   const handleImportFiles = useCallback(
     async (files: FileList, dir?: string) => {
@@ -879,20 +875,20 @@ export function StudioApp() {
         if (res.ok) {
           const data = await res.json();
           if (data.skipped?.length) {
-            showUploadToast(`Skipped (too large): ${data.skipped.join(", ")}`);
+            showToast(`Skipped (too large): ${data.skipped.join(", ")}`);
           }
           await refreshFileTree();
           setRefreshKey((k) => k + 1);
         } else if (res.status === 413) {
-          showUploadToast("Upload rejected: payload too large");
+          showToast("Upload rejected: payload too large");
         } else {
-          showUploadToast(`Upload failed (${res.status})`);
+          showToast(`Upload failed (${res.status})`);
         }
       } catch {
-        showUploadToast("Upload failed: network error");
+        showToast("Upload failed: network error");
       }
     },
-    [refreshFileTree, showUploadToast],
+    [refreshFileTree, showToast],
   );
 
   const handleLint = useCallback(async () => {
@@ -1157,6 +1153,7 @@ export function StudioApp() {
             renderClipContent={renderClipContent}
             onMoveElement={handleTimelineElementMove}
             onResizeElement={handleTimelineElementResize}
+            onBlockedEditAttempt={handleBlockedTimelineEdit}
             onCompIdToSrcChange={setCompIdToSrc}
             onCompositionChange={(compPath) => {
               // Sync activeCompPath when user drills down via timeline double-click
@@ -1267,6 +1264,12 @@ export function StudioApp() {
         )}
       </div>
 
+      {timelineElements.length > 0 && !timelineEditorHintDismissed && (
+        <div className="pointer-events-none absolute bottom-5 left-5 z-[140]">
+          <TimelineEditorNotice onDismiss={dismissTimelineEditorHint} />
+        </div>
+      )}
+
       {/* Lint modal */}
       {lintModal !== null && projectId && (
         <LintModal findings={lintModal} projectId={projectId} onClose={() => setLintModal(null)} />
@@ -1306,9 +1309,15 @@ export function StudioApp() {
           </div>
         </div>
       )}
-      {uploadToast && (
-        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[91] px-4 py-2 rounded-lg bg-red-900/90 border border-red-700/50 text-sm text-red-200 shadow-lg animate-in fade-in slide-in-from-bottom-2">
-          {uploadToast}
+      {appToast && (
+        <div
+          className={`absolute bottom-6 left-1/2 -translate-x-1/2 z-[91] px-4 py-2 rounded-lg border text-sm shadow-lg animate-in fade-in slide-in-from-bottom-2 ${
+            appToast.tone === "error"
+              ? "bg-red-900/90 border-red-700/50 text-red-200"
+              : "bg-neutral-900/95 border-neutral-700/60 text-neutral-100"
+          }`}
+        >
+          {appToast.message}
         </div>
       )}
     </div>

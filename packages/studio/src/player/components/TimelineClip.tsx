@@ -147,7 +147,7 @@ export const TimelineClip = memo(function TimelineClip({
           top: 0,
           bottom: 0,
           width: 18,
-          opacity: showHandles ? 1 : 0,
+          opacity: showHandles && capabilities.canTrimEnd ? 1 : 0,
           pointerEvents: onResizeStart && capabilities.canTrimEnd ? "auto" : "none",
           zIndex: 4,
           transition: "opacity 120ms ease-out",

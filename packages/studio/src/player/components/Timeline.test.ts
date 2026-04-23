@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   generateTicks,
+  getTimelineCanvasHeight,
   getTimelinePlayheadLeft,
   getTimelineScrollLeftForZoomTransition,
   shouldAutoScrollTimeline,
@@ -149,5 +150,15 @@ describe("getTimelinePlayheadLeft", () => {
   it("guards invalid input", () => {
     expect(getTimelinePlayheadLeft(Number.NaN, 20)).toBe(32);
     expect(getTimelinePlayheadLeft(4, Number.NaN)).toBe(32);
+  });
+});
+
+describe("getTimelineCanvasHeight", () => {
+  it("includes bottom scroll buffer below the last track", () => {
+    expect(getTimelineCanvasHeight(3)).toBeGreaterThan(24 + 3 * 72);
+  });
+
+  it("still keeps ruler space when there are no tracks", () => {
+    expect(getTimelineCanvasHeight(0)).toBeGreaterThan(24);
   });
 });

@@ -374,6 +374,7 @@ export function initSandboxRuntimeModular(): void {
         string,
         RuntimeTimelineLike | undefined
       >,
+      includeAuthoredTimingAttrs: true,
     });
     return resolver.resolveDurationForElement(element);
   };

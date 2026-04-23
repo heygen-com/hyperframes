@@ -2,6 +2,7 @@ import { useState, useCallback, useRef, useEffect, memo, type ReactNode } from "
 import { useMountEffect } from "../../hooks/useMountEffect";
 import { useTimelinePlayer, PlayerControls, Timeline, usePlayerStore } from "../../player";
 import type { TimelineElement } from "../../player";
+import type { BlockedTimelineEditIntent } from "../../player/components/timelineEditing";
 import { NLEPreview } from "./NLEPreview";
 import { CompositionBreadcrumb, type CompositionLevel } from "./CompositionBreadcrumb";
 
@@ -36,6 +37,7 @@ interface NLELayoutProps {
     element: TimelineElement,
     updates: Pick<TimelineElement, "start" | "duration" | "playbackStart">,
   ) => Promise<void> | void;
+  onBlockedEditAttempt?: (element: TimelineElement, intent: BlockedTimelineEditIntent) => void;
   /** Exposes the compIdToSrc map for parent components (e.g., useRenderClipContent) */
   onCompIdToSrcChange?: (map: Map<string, string>) => void;
   /** Whether the timeline panel is visible (default: true) */
@@ -61,6 +63,7 @@ export const NLELayout = memo(function NLELayout({
   renderClipContent,
   onMoveElement,
   onResizeElement,
+  onBlockedEditAttempt,
   onCompIdToSrcChange,
   timelineVisible,
   onToggleTimeline,
@@ -392,6 +395,7 @@ export const NLELayout = memo(function NLELayout({
                 renderClipContent={renderClipContent}
                 onMoveElement={onMoveElement}
                 onResizeElement={onResizeElement}
+                onBlockedEditAttempt={onBlockedEditAttempt}
               />
             </div>
             {timelineFooter && <div className="flex-shrink-0">{timelineFooter}</div>}
