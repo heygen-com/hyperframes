@@ -56,8 +56,11 @@ export interface ExtractionOptions {
  * Field semantics:
  *   - *Ms fields are wall-clock durations inside each phase.
  *   - *Count fields report how many sources triggered that phase.
- *   - phase3ExtractMs wraps the parallel `extractVideoFramesRange` calls; it
+ *   - extractMs wraps the parallel `extractVideoFramesRange` calls; it
  *     reflects max-across-parallel-workers, not sum.
+ *   - hdrPreflightMs / vfrPreflightMs both include their probe-time sibling
+ *     (hdrProbeMs / vfrProbeMs) for symmetric semantics. The probe-only fields
+ *     are a finer decomposition, not a separate carve-out.
  */
 export interface ExtractionPhaseBreakdown {
   resolveMs: number;
@@ -541,7 +544,7 @@ export async function extractAllVideoFrames(
       });
     }
   }
-  breakdown.vfrPreflightMs = Date.now() - vfrPreflightStart - breakdown.vfrProbeMs;
+  breakdown.vfrPreflightMs = Date.now() - vfrPreflightStart;
 
   // Phase 3: Extract frames (parallel)
   const phase3Start = Date.now();
