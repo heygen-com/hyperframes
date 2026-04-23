@@ -1,3 +1,4 @@
+import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import {
   ensureProducerDist,
@@ -16,7 +17,7 @@ describe("ensureProducerDist", () => {
 
     expect(result).toEqual({
       built: false,
-      producerDistEntry: "/repo/packages/producer/dist/index.js",
+      producerDistEntry: resolve("/repo/packages/producer/dist/index.js"),
     });
     expect(exec).not.toHaveBeenCalled();
   });
@@ -34,13 +35,13 @@ describe("ensureProducerDist", () => {
 
     expect(result).toEqual({
       built: true,
-      producerDistEntry: "/repo/packages/producer/dist/index.js",
+      producerDistEntry: resolve("/repo/packages/producer/dist/index.js"),
     });
     expect(exec).toHaveBeenCalledWith(
       "bun",
       ["run", "--filter", "@hyperframes/producer", "build"],
       {
-        cwd: "/repo",
+        cwd: resolve("/repo"),
         stdio: "pipe",
         env,
       },
@@ -51,11 +52,11 @@ describe("ensureProducerDist", () => {
 describe("producer path helpers", () => {
   it("resolves the producer dist entry relative to studio", () => {
     expect(resolveProducerDistEntry("/repo/packages/studio")).toBe(
-      "/repo/packages/producer/dist/index.js",
+      resolve("/repo/packages/producer/dist/index.js"),
     );
   });
 
   it("resolves the workspace root relative to studio", () => {
-    expect(resolveWorkspaceRoot("/repo/packages/studio")).toBe("/repo");
+    expect(resolveWorkspaceRoot("/repo/packages/studio")).toBe(resolve("/repo"));
   });
 });
