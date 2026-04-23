@@ -219,7 +219,10 @@ interface TimelineProps {
   /** Optional overlay renderer for clips (e.g. badges, cursors) */
   renderClipOverlay?: (element: import("../store/playerStore").TimelineElement) => ReactNode;
   /** Called when files are dropped onto the empty timeline */
-  onFileDrop?: (files: File[]) => void;
+  onFileDrop?: (
+    files: File[],
+    placement?: { start: number; track: number },
+  ) => Promise<void> | void;
   /** Called when an existing asset is dropped from the Assets tab */
   onAssetDrop?: (
     assetPath: string,
@@ -955,7 +958,26 @@ export const Timeline = memo(function Timeline({
       e.preventDefault();
       setIsDragOver(false);
       if (onFileDrop && e.dataTransfer.files.length > 0) {
-        onFileDrop(Array.from(e.dataTransfer.files));
+        const scroll = scrollRef.current;
+        const rect = scroll?.getBoundingClientRect();
+        const placement =
+          scroll && rect
+            ? resolveTimelineAssetDrop(
+                {
+                  rectLeft: rect.left,
+                  rectTop: rect.top,
+                  scrollLeft: scroll.scrollLeft,
+                  scrollTop: scroll.scrollTop,
+                  pixelsPerSecond: ppsRef.current,
+                  duration: durationRef.current,
+                  trackHeight: TRACK_H,
+                  trackOrder: trackOrderRef.current,
+                },
+                e.clientX,
+                e.clientY,
+              )
+            : undefined;
+        void onFileDrop(Array.from(e.dataTransfer.files), placement);
         return;
       }
 

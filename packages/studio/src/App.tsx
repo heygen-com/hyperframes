@@ -16,6 +16,7 @@ import { isMediaFile } from "./utils/mediaTypes";
 import {
   buildTimelineAssetId,
   buildTimelineAssetInsertHtml,
+  buildTimelineFileDropPlacements,
   getTimelineAssetKind,
   insertTimelineAssetIntoSource,
   resolveTimelineAssetSrc,
@@ -905,6 +906,52 @@ export function StudioApp() {
     [showToast],
   );
 
+  const refreshFileTree = useCallback(async () => {
+    const pid = projectIdRef.current;
+    if (!pid) return;
+    const res = await fetch(`/api/projects/${pid}`);
+    const data = await res.json();
+    if (data.files) setFileTree(data.files);
+  }, []);
+
+  const uploadProjectFiles = useCallback(
+    async (files: Iterable<File>, dir?: string): Promise<string[]> => {
+      const pid = projectIdRef.current;
+      const fileList = Array.from(files);
+      if (!pid || fileList.length === 0) return [];
+
+      const formData = new FormData();
+      for (const file of fileList) {
+        formData.append("file", file);
+      }
+
+      const qs = dir ? `?dir=${encodeURIComponent(dir)}` : "";
+      try {
+        const res = await fetch(`/api/projects/${pid}/upload${qs}`, {
+          method: "POST",
+          body: formData,
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.skipped?.length) {
+            showToast(`Skipped (too large): ${data.skipped.join(", ")}`);
+          }
+          await refreshFileTree();
+          setRefreshKey((k) => k + 1);
+          return Array.isArray(data.files) ? data.files : [];
+        } else if (res.status === 413) {
+          showToast("Upload rejected: payload too large");
+        } else {
+          showToast(`Upload failed (${res.status})`);
+        }
+      } catch {
+        showToast("Upload failed: network error");
+      }
+      return [];
+    },
+    [refreshFileTree, showToast],
+  );
+
   const handleTimelineAssetDrop = useCallback(
     async (assetPath: string, placement: Pick<TimelineElement, "start" | "track">) => {
       const pid = projectIdRef.current;
@@ -1011,15 +1058,22 @@ export function StudioApp() {
     [activeCompPath, showToast, timelineElements],
   );
 
-  // ── File Management Handlers ──
+  const handleTimelineFileDrop = useCallback(
+    async (files: File[], placement?: Pick<TimelineElement, "start" | "track">) => {
+      const uploaded = await uploadProjectFiles(files);
+      if (uploaded.length === 0) return;
+      const placements = buildTimelineFileDropPlacements(
+        placement ?? { start: 0, track: 0 },
+        uploaded.length,
+      );
+      for (const [index, assetPath] of uploaded.entries()) {
+        await handleTimelineAssetDrop(assetPath, placements[index] ?? placements[0]);
+      }
+    },
+    [handleTimelineAssetDrop, uploadProjectFiles],
+  );
 
-  const refreshFileTree = useCallback(async () => {
-    const pid = projectIdRef.current;
-    if (!pid) return;
-    const res = await fetch(`/api/projects/${pid}`);
-    const data = await res.json();
-    if (data.files) setFileTree(data.files);
-  }, []);
+  // ── File Management Handlers ──
 
   const handleCreateFile = useCallback(
     async (path: string) => {
@@ -1135,38 +1189,10 @@ export function StudioApp() {
   const handleMoveFile = handleRenameFile;
 
   const handleImportFiles = useCallback(
-    async (files: FileList, dir?: string) => {
-      const pid = projectIdRef.current;
-      if (!pid || files.length === 0) return;
-
-      const formData = new FormData();
-      for (const file of Array.from(files)) {
-        formData.append("file", file);
-      }
-
-      const qs = dir ? `?dir=${encodeURIComponent(dir)}` : "";
-      try {
-        const res = await fetch(`/api/projects/${pid}/upload${qs}`, {
-          method: "POST",
-          body: formData,
-        });
-        if (res.ok) {
-          const data = await res.json();
-          if (data.skipped?.length) {
-            showToast(`Skipped (too large): ${data.skipped.join(", ")}`);
-          }
-          await refreshFileTree();
-          setRefreshKey((k) => k + 1);
-        } else if (res.status === 413) {
-          showToast("Upload rejected: payload too large");
-        } else {
-          showToast(`Upload failed (${res.status})`);
-        }
-      } catch {
-        showToast("Upload failed: network error");
-      }
+    async (files: FileList | File[], dir?: string) => {
+      void uploadProjectFiles(Array.from(files), dir);
     },
-    [refreshFileTree, showToast],
+    [uploadProjectFiles],
   );
 
   const handleLint = useCallback(async () => {
@@ -1431,6 +1457,7 @@ export function StudioApp() {
             renderClipContent={renderClipContent}
             onDeleteElement={handleTimelineElementDelete}
             onAssetDrop={handleTimelineAssetDrop}
+            onFileDrop={handleTimelineFileDrop}
             onMoveElement={handleTimelineElementMove}
             onResizeElement={handleTimelineElementResize}
             onBlockedEditAttempt={handleBlockedTimelineEdit}

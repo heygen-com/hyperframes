@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildTimelineFileDropPlacements,
   buildTimelineAssetInsertHtml,
   getTimelineAssetKind,
   insertTimelineAssetIntoSource,
@@ -53,6 +54,16 @@ describe("resolveTimelineAssetSrc", () => {
     expect(resolveTimelineAssetSrc("compositions/scene-a.html", "assets/photo.png")).toBe(
       "../assets/photo.png",
     );
+  });
+});
+
+describe("buildTimelineFileDropPlacements", () => {
+  it("uses the dropped start and stacks multiple files onto successive tracks", () => {
+    expect(buildTimelineFileDropPlacements({ start: 1.5, track: 2 }, 3)).toEqual([
+      { start: 1.5, track: 2 },
+      { start: 1.5, track: 3 },
+      { start: 1.5, track: 4 },
+    ]);
   });
 });
 

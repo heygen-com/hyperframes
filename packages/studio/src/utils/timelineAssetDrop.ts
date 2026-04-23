@@ -44,6 +44,16 @@ export function resolveTimelineAssetSrc(targetPath: string, assetPath: string): 
   return relative || assetPath.split("/").pop() || assetPath;
 }
 
+export function buildTimelineFileDropPlacements(
+  placement: { start: number; track: number },
+  count: number,
+): Array<{ start: number; track: number }> {
+  return Array.from({ length: Math.max(0, count) }, (_, index) => ({
+    start: placement.start,
+    track: placement.track + index,
+  }));
+}
+
 export function buildTimelineAssetInsertHtml(input: {
   id: string;
   assetPath: string;
