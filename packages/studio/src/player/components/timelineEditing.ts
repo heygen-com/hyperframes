@@ -245,6 +245,10 @@ export function resolveBlockedTimelineEditIntent(input: {
   handleWidth: number;
   capabilities: TimelineEditCapabilities;
 }): BlockedTimelineEditIntent | null {
+  if (input.capabilities.canMove) {
+    return null;
+  }
+
   const safeWidth = Math.max(0, input.width);
   const safeOffsetX = clamp(input.offsetX, 0, safeWidth);
   const safeHandleWidth = Math.max(0, input.handleWidth);
@@ -255,10 +259,7 @@ export function resolveBlockedTimelineEditIntent(input: {
   if (safeOffsetX >= Math.max(0, safeWidth - safeHandleWidth) && !input.capabilities.canTrimEnd) {
     return "resize-end";
   }
-  if (!input.capabilities.canMove) {
-    return "move";
-  }
-  return null;
+  return "move";
 }
 
 export function buildClipRangeSelection(

@@ -347,7 +347,7 @@ describe("resolveBlockedTimelineEditIntent", () => {
         offsetX: 8,
         handleWidth: 18,
         capabilities: {
-          canMove: true,
+          canMove: false,
           canTrimStart: false,
           canTrimEnd: true,
         },
@@ -362,12 +362,42 @@ describe("resolveBlockedTimelineEditIntent", () => {
         offsetX: 154,
         handleWidth: 18,
         capabilities: {
-          canMove: true,
+          canMove: false,
           canTrimStart: true,
           canTrimEnd: false,
         },
       }),
     ).toBe("resize-end");
+  });
+
+  it("does not block the left edge when the clip can still be moved", () => {
+    expect(
+      resolveBlockedTimelineEditIntent({
+        width: 160,
+        offsetX: 8,
+        handleWidth: 18,
+        capabilities: {
+          canMove: true,
+          canTrimStart: false,
+          canTrimEnd: true,
+        },
+      }),
+    ).toBe(null);
+  });
+
+  it("does not swallow the full surface of a narrow movable clip", () => {
+    expect(
+      resolveBlockedTimelineEditIntent({
+        width: 12,
+        offsetX: 6,
+        handleWidth: 18,
+        capabilities: {
+          canMove: true,
+          canTrimStart: false,
+          canTrimEnd: false,
+        },
+      }),
+    ).toBe(null);
   });
 
   it("returns null when the relevant edit is supported", () => {

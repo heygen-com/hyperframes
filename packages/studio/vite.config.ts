@@ -14,7 +14,7 @@ import type {
   ResolvedProject,
   RenderJobState,
 } from "@hyperframes/core/studio-api";
-import { ensureProducerDist } from "./vite.producer";
+import { createRetryingModuleLoader, ensureProducerDist } from "./vite.producer";
 
 // ── Shared Puppeteer browser ─────────────────────────────────────────────────
 
@@ -80,7 +80,7 @@ function createViteAdapter(dataDir: string, server: ViteDevServer): StudioApiAda
 
   const getProducerModule = async () => {
     if (!_producerModulePromise) {
-      _producerModulePromise = (async () => {
+      _producerModulePromise = createRetryingModuleLoader(async () => {
         const { built } = ensureProducerDist({
           studioDir: __dirname,
           env: process.env,
@@ -94,7 +94,7 @@ function createViteAdapter(dataDir: string, server: ViteDevServer): StudioApiAda
         return await import(/* @vite-ignore */ producerPkg);
       })();
     }
-    return _producerModulePromise;
+    return _producerModulePromise();
   };
 
   return {
