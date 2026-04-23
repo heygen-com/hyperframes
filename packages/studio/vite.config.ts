@@ -1,6 +1,5 @@
 import { defineConfig, type Plugin, type ViteDevServer } from "vite";
 import react from "@vitejs/plugin-react";
-import { execFileSync } from "node:child_process";
 import {
   readFileSync,
   readdirSync,
@@ -15,6 +14,7 @@ import type {
   ResolvedProject,
   RenderJobState,
 } from "@hyperframes/core/studio-api";
+import { ensureProducerDist } from "./vite.producer";
 
 // ── Shared Puppeteer browser ─────────────────────────────────────────────────
 
@@ -81,16 +81,14 @@ function createViteAdapter(dataDir: string, server: ViteDevServer): StudioApiAda
   const getProducerModule = async () => {
     if (!_producerModulePromise) {
       _producerModulePromise = (async () => {
-        const producerDistEntry = resolve(__dirname, "../producer/dist/index.js");
-        if (!existsSync(producerDistEntry)) {
+        const { built } = ensureProducerDist({
+          studioDir: __dirname,
+          env: process.env,
+        });
+        if (built) {
           console.warn(
             "[Studio] @hyperframes/producer dist missing; building producer package for local renders...",
           );
-          execFileSync("bun", ["run", "--filter", "@hyperframes/producer", "build"], {
-            cwd: resolve(__dirname, "../.."),
-            stdio: "pipe",
-            env: process.env,
-          });
         }
         const producerPkg = "@hyperframes/producer";
         return await import(/* @vite-ignore */ producerPkg);
