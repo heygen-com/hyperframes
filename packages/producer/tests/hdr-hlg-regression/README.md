@@ -13,7 +13,7 @@ so the HLG-specific encoder/metadata path stays tested in isolation.
 
 The test pins the contract that:
 
-- `extractVideoMetadata` reports `bt2020/arib-std-b67/limited` for the HLG
+- `extractMediaMetadata` reports `bt2020/arib-std-b67/limited` for the HLG
   source (i.e. HLG is detected and not silently coerced to PQ).
 - `isHdrColorSpace` flips the orchestrator into the layered HDR path on the
   HLG signal.
@@ -26,13 +26,6 @@ The test pins the contract that:
 The suite is intentionally short (5 s, two windows) — it exists to detect
 regressions in the HLG-specific code path, not to enumerate every composition
 shape (those live in `hdr-regression`).
-
-## Tolerance
-
-`maxFrameFailures` is **0** here. HLG is a pure pass-through path — no known
-failures, no transcoder workarounds — and HEVC encoding against the rendered
-`rgb48le` buffer is byte-deterministic on the same fixture. Any drift is a
-real regression, not codec noise, so the budget is the strictest possible.
 
 ## Fixture
 

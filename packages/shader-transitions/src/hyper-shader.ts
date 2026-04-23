@@ -363,6 +363,20 @@ function initEngineMode(
     tl.to({ t: 0 }, { t: 1, duration, ease: "none" }, 0);
   }
 
+  // Initial state: every non-first scene starts hidden. CSS defaults
+  // .scene to opacity:1, so without this every scene would composite at
+  // t=0 and the engine's queryElementStacking() would report all of them
+  // visible — manifesting as ghosting/overlap in the very first frame
+  // before the first transition fires. tl.set() at position 0 ensures
+  // the initial state is part of the timeline's seek graph, so reverse
+  // seeks from inside a later transition correctly restore it.
+  for (let i = 1; i < scenes.length; i++) {
+    const sceneId = scenes[i];
+    if (sceneId) {
+      tl.set(`#${sceneId}`, { opacity: 0 }, 0);
+    }
+  }
+
   for (let i = 0; i < transitions.length; i++) {
     const t = transitions[i];
     const fromId = scenes[i];

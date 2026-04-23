@@ -152,6 +152,7 @@ export {
 export { quantizeTimeToFrame, MEDIA_VISUAL_STYLE_PROPERTIES } from "@hyperframes/core";
 
 export {
+  extractMediaMetadata,
   extractVideoMetadata,
   extractAudioMetadata,
   analyzeKeyframeIntervals,

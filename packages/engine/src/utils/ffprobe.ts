@@ -210,7 +210,14 @@ function parseFrameRate(frameRateStr: string | undefined): number {
   return parseFloat(frameRateStr) || 0;
 }
 
-export async function extractVideoMetadata(filePath: string): Promise<VideoMetadata> {
+/**
+ * Probe a media file (video, image, or container) and return normalized metadata.
+ *
+ * Despite the legacy name `extractVideoMetadata` (still exported as a
+ * deprecated alias below), this also handles still images such as PNG so it
+ * can be used uniformly for any visual asset the HDR pipeline encounters.
+ */
+export async function extractMediaMetadata(filePath: string): Promise<VideoMetadata> {
   const cached = videoMetadataCache.get(filePath);
   if (cached) return cached;
 
@@ -285,6 +292,14 @@ export async function extractVideoMetadata(filePath: string): Promise<VideoMetad
   });
   return probePromise;
 }
+
+/**
+ * @deprecated Use `extractMediaMetadata` — this name is kept for backward
+ * compatibility with consumers that imported the original video-only name
+ * before still-image (PNG) support was added. New callers should prefer
+ * `extractMediaMetadata`.
+ */
+export const extractVideoMetadata = extractMediaMetadata;
 
 export async function extractAudioMetadata(filePath: string): Promise<AudioMetadata> {
   const cached = audioMetadataCache.get(filePath);

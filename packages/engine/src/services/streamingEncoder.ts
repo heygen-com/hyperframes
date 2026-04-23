@@ -16,7 +16,13 @@ import { spawn, type ChildProcess } from "child_process";
 import { existsSync, mkdirSync, statSync } from "fs";
 import { dirname } from "path";
 
-import { type GpuEncoder, getCachedGpuEncoder, getGpuEncoderName } from "../utils/gpuEncoder.js";
+import {
+  type GpuEncoder,
+  getCachedGpuEncoder,
+  getGpuEncoderName,
+  mapPresetForGpuEncoder,
+} from "../utils/gpuEncoder.js";
+import { formatFfmpegError } from "../utils/runFfmpeg.js";
 import { getHdrEncoderColorParams } from "../utils/hdr.js";
 import { type EncoderOptions } from "./chunkEncoder.types.js";
 import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
@@ -191,7 +197,7 @@ export function buildStreamingArgs(
 
       switch (gpuEncoder) {
         case "nvenc":
-          args.push("-preset", preset);
+          args.push("-preset", mapPresetForGpuEncoder("nvenc", preset));
           if (bitrate) args.push("-b:v", bitrate);
           else args.push("-cq", String(quality));
           break;
@@ -210,7 +216,7 @@ export function buildStreamingArgs(
           else args.push("-qp", String(quality));
           break;
         case "qsv":
-          args.push("-preset", preset);
+          args.push("-preset", mapPresetForGpuEncoder("qsv", preset));
           if (bitrate) args.push("-b:v", bitrate);
           else args.push("-global_quality", String(quality));
           break;
@@ -439,7 +445,7 @@ export async function spawnStreamingEncoder(
           success: false,
           durationMs,
           fileSize: 0,
-          error: `FFmpeg exited with code ${exitCode}`,
+          error: formatFfmpegError(exitCode, stderr),
         };
       }
 

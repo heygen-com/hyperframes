@@ -161,6 +161,64 @@ describe("buildStreamingArgs", () => {
       expect(args[args.length - 1]).toBe("/tmp/some-output.mp4");
     });
   });
+
+  describe("GPU preset mapping", () => {
+    const baseGpu: StreamingEncoderOptions = {
+      fps: 30,
+      width: 1920,
+      height: 1080,
+      codec: "h264",
+      preset: "ultrafast",
+      quality: 28,
+      useGpu: true,
+    };
+
+    function presetArg(args: string[]): string | undefined {
+      const idx = args.indexOf("-preset");
+      return idx === -1 ? undefined : args[idx + 1];
+    }
+
+    // Regression for the streaming-encode + --gpu failure: NVENC rejects
+    // libx264 `ultrafast` with AVERROR(EINVAL), which previously surfaced
+    // as a bare "FFmpeg exited with code -22".
+    it("translates ultrafast to NVENC p1", () => {
+      const args = buildStreamingArgs(baseGpu, "/tmp/out.mp4", "nvenc");
+      expect(presetArg(args)).toBe("p1");
+    });
+
+    it("translates medium to NVENC p4", () => {
+      const args = buildStreamingArgs({ ...baseGpu, preset: "medium" }, "/tmp/out.mp4", "nvenc");
+      expect(presetArg(args)).toBe("p4");
+    });
+
+    // Same mapping applies to hevc_nvenc: NVENC's preset vocabulary is
+    // codec-agnostic, so the helper must translate for H.265 too.
+    it("translates libx264 preset names to NVENC pN for h265 as well", () => {
+      for (const [libx264, nvencPreset] of [
+        ["ultrafast", "p1"],
+        ["medium", "p4"],
+        ["veryslow", "p7"],
+      ] as const) {
+        const args = buildStreamingArgs(
+          { ...baseGpu, codec: "h265", preset: libx264 },
+          "/tmp/out.mp4",
+          "nvenc",
+        );
+        expect(args[args.indexOf("-c:v") + 1]).toBe("hevc_nvenc");
+        expect(presetArg(args)).toBe(nvencPreset);
+      }
+    });
+
+    it("rewrites QSV's unsupported ultrafast preset to veryfast", () => {
+      const args = buildStreamingArgs(baseGpu, "/tmp/out.mp4", "qsv");
+      expect(presetArg(args)).toBe("veryfast");
+    });
+
+    it("passes QSV-supported preset names through unchanged", () => {
+      const args = buildStreamingArgs({ ...baseGpu, preset: "medium" }, "/tmp/out.mp4", "qsv");
+      expect(presetArg(args)).toBe("medium");
+    });
+  });
 });
 
 describe("createFrameReorderBuffer", () => {

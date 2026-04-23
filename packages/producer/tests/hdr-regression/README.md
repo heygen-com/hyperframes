@@ -15,11 +15,17 @@ covering the highest-value HDR compositing shapes. 10s / 300 frames at 30fps.
 ## Fixtures
 
 - `src/hdr-clip.mp4` — short HEVC Main10 / BT.2020 PQ clip with a moving
-  bright gradient (see `NOTICE.md` for attribution).
-- `src/hdr-photo-pq.png` — 256x144 16-bit RGB PNG with a hand-injected `cICP`
+  bright gradient (see `NOTICE.md` for attribution). Reused across windows
+  A–G and as scene A of the window-H shader transition.
+- `src/hdr-photo-pq.png` — 256×144 16-bit RGB PNG with a hand-injected `cICP`
   chunk (primaries=BT.2020, transfer=SMPTE ST 2084, matrix=GBR, range=full).
+  Used as scene B of the window-H shader transition.
 
-To regenerate the PNG fixture:
+ffmpeg is **not** used to generate the PNG because it does not embed `cICP`
+in PNGs — without that chunk Chromium would not treat the file as HDR and the
+test would silently fall back to SDR.
+
+To regenerate the PNG fixture (deterministic, byte-for-byte stable):
 
 ```bash
 python3 packages/producer/tests/hdr-regression/scripts/generate-hdr-photo-pq.py

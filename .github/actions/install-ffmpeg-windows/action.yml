@@ -1,0 +1,60 @@
+name: Install FFmpeg (Windows)
+description: >-
+  Download a pinned FFmpeg GPL build for Windows from BtbN/FFmpeg-Builds and put
+  ffmpeg.exe / ffprobe.exe on PATH. We bypass `choco install ffmpeg` because
+  the Chocolatey community feed regularly returns 503 / 504 / NuGet resolver
+  errors with no retry, which makes it unsuitable as a CI dependency. From the
+  consumer's perspective this is equivalent — `where ffmpeg` (the PR #336
+  validation) and `findFFmpeg()` both pass.
+
+inputs:
+  release-url:
+    description: >-
+      URL of a BtbN/FFmpeg-Builds zip to install. Pinned to a specific
+      autobuild tag so a new upstream nightly can't silently change encoder
+      behavior under us. The asset filename embeds the git hash, so both
+      the tag and the filename must be bumped together when upgrading.
+    required: false
+    default: https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-04-23-13-16/ffmpeg-N-124085-g162ad61486-win64-gpl.zip
+  max-attempts:
+    description: Max download attempts before failing.
+    required: false
+    default: "3"
+
+runs:
+  using: composite
+  steps:
+    - name: Install FFmpeg from BtbN/FFmpeg-Builds
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Stop'
+
+        $url = '${{ inputs.release-url }}'
+        $maxAttempts = [int]'${{ inputs.max-attempts }}'
+
+        $zip = Join-Path $env:RUNNER_TEMP 'ffmpeg.zip'
+        $dir = Join-Path $env:RUNNER_TEMP 'ffmpeg'
+        New-Item -ItemType Directory -Force -Path $dir | Out-Null
+
+        for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+          Write-Host "--- Downloading ffmpeg from BtbN/FFmpeg-Builds (attempt $attempt/$maxAttempts) ---"
+          try {
+            Invoke-WebRequest -Uri $url -OutFile $zip -UseBasicParsing
+            break
+          } catch {
+            Write-Warning "Download failed: $($_.Exception.Message)"
+            if ($attempt -eq $maxAttempts) { throw }
+            Start-Sleep -Seconds (10 * $attempt)
+          }
+        }
+
+        Write-Host "--- Extracting ffmpeg ---"
+        Expand-Archive -Path $zip -DestinationPath $dir -Force
+
+        $bin = Get-ChildItem -Path $dir -Recurse -Filter 'ffmpeg.exe' | Select-Object -First 1
+        if (-not $bin) { throw "ffmpeg.exe not found after extracting $url" }
+
+        Add-Content -Path $env:GITHUB_PATH -Value $bin.Directory.FullName
+
+        Write-Host "--- ffmpeg sanity check ---"
+        & $bin.FullName -version | Select-Object -First 1
