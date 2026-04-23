@@ -10,6 +10,7 @@ function assert(condition: unknown, message: string): void {
 }
 
 const runtimeSource = loadHyperframeRuntimeSource();
+assert(runtimeSource !== null, "loadHyperframeRuntimeSource() returned null — entry.ts not found");
 
 const requiredSnippets = [
   "window.__player",

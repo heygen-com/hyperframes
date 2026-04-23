@@ -1,4 +1,5 @@
 import { buildSync } from "esbuild";
+import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -17,10 +18,19 @@ function applyDefaultParityMode(script: string, enabled: boolean): string {
   );
 }
 
+/**
+ * Build the runtime IIFE from source via esbuild.
+ *
+ * Returns `null` when `entry.ts` does not exist at the resolved path —
+ * this happens in bundled / published contexts where only `dist/` ships.
+ * Callers must fall back to the pre-built artifact or the inlined constant.
+ */
 export function buildHyperframesRuntimeScript(
   options: HyperframesRuntimeBuildOptions = {},
-): string {
+): string | null {
   const entryPath = resolve(dirname(fileURLToPath(import.meta.url)), "../runtime/entry.ts");
+  if (!existsSync(entryPath)) return null;
+
   const result = buildSync({
     entryPoints: [entryPath],
     bundle: true,

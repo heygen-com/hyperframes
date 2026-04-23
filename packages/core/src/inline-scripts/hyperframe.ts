@@ -17,6 +17,6 @@ export const HYPERFRAME_RUNTIME_CONTRACT: HyperframeRuntimeContract = {
   messageSources: HYPERFRAME_BRIDGE_SOURCES,
 };
 
-export function loadHyperframeRuntimeSource(): string {
+export function loadHyperframeRuntimeSource(): string | null {
   return buildHyperframesRuntimeScript();
 }
