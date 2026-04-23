@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>perf fixture: gsap-heavy</title>
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background: #0b0b12;
+        color: #e6e6f0;
+        font-family:
+          system-ui,
+          -apple-system,
+          sans-serif;
+        overflow: hidden;
+      }
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      .tile {
+        position: absolute;
+        width: 96px;
+        height: 96px;
+        border-radius: 12px;
+        background: linear-gradient(135deg, #4f46e5, #ec4899);
+        box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+        transform: translate3d(0, 0, 0);
+        will-change: transform, opacity;
+      }
+    </style>
+    <script src="/vendor/gsap.min.js"></script>
+    <script data-hyperframes-runtime="1" src="/vendor/hyperframe.runtime.iife.js"></script>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-width="1920"
+      data-height="1080"
+      data-duration="10"
+      data-fps="60"
+    ></div>
+    <script>
+      (function () {
+        var TILE_COUNT = 60;
+        var DURATION_SEC = 10;
+        var COLS = 12;
+        var ROWS = 5;
+        var TILE = 96;
+        var GAP_X = 1920 / COLS;
+        var GAP_Y = 1080 / ROWS;
+
+        var root = document.getElementById("root");
+        var tiles = [];
+        for (var i = 0; i < TILE_COUNT; i++) {
+          var col = i % COLS;
+          var row = Math.floor(i / COLS);
+          var el = document.createElement("div");
+          el.className = "tile";
+          el.style.left = col * GAP_X + (GAP_X - TILE) / 2 + "px";
+          el.style.top = row * GAP_Y + (GAP_Y - TILE) / 2 + "px";
+          el.setAttribute("data-tile-index", String(i));
+          root.appendChild(el);
+          tiles.push(el);
+        }
+
+        var tl = gsap.timeline({ paused: true });
+        for (var j = 0; j < tiles.length; j++) {
+          var t = tiles[j];
+          var phase = j / tiles.length;
+          var start = phase * (DURATION_SEC - 4);
+          tl.to(
+            t,
+            {
+              x: 200 * Math.cos(phase * Math.PI * 2),
+              y: 120 * Math.sin(phase * Math.PI * 2),
+              rotation: 360,
+              scale: 1.4,
+              opacity: 0.6,
+              borderRadius: "48px",
+              duration: 2,
+              ease: "power2.inOut",
+            },
+            start,
+          );
+          tl.to(
+            t,
+            {
+              x: 0,
+              y: 0,
+              rotation: 0,
+              scale: 1,
+              opacity: 1,
+              borderRadius: "12px",
+              duration: 2,
+              ease: "power2.inOut",
+            },
+            start + 2,
+          );
+        }
+
+        window.__timelines = window.__timelines || {};
+        window.__timelines["main"] = tl;
+      })();
+    </script>
+  </body>
+</html>

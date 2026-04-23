@@ -61,6 +61,14 @@ interface TransState {
   progress: number;
 }
 
+// Defaults for transition duration/ease. Used by every fallback site in this
+// file — meta-write, browser/render mode, and engine mode — so a transition
+// without explicit `duration`/`ease` plays the same length and curve in
+// preview, the engine's deterministic seek path, and the metadata the
+// producer reads to plan compositing.
+const DEFAULT_DURATION = 0.7;
+const DEFAULT_EASE = "power2.inOut";
+
 function parseHex(hex: string): [number, number, number] {
   const h = hex.replace("#", "");
   if (h.length < 6) return [0.5, 0.5, 0.5];
@@ -113,6 +121,9 @@ export function init(config: HyperShaderConfig): GsapTimeline {
     }
   }
 
+  // Locally redeclared (not imported) because @hyperframes/shader-transitions
+  // ships as a standalone CDN bundle and must not depend on @hyperframes/engine.
+  // Keep this in sync with HfTransitionMeta in packages/engine/src/types.ts.
   interface HfTransitionMeta {
     time: number;
     duration: number;
@@ -127,9 +138,9 @@ export function init(config: HyperShaderConfig): GsapTimeline {
     if (hfWin.__hf) {
       hfWin.__hf.transitions = transitions.map((t: TransitionConfig, i: number) => ({
         time: t.time,
-        duration: t.duration ?? 1,
+        duration: t.duration ?? DEFAULT_DURATION,
         shader: t.shader,
-        ease: t.ease ?? "none",
+        ease: t.ease ?? DEFAULT_EASE,
         fromScene: scenes[i] ?? "",
         toScene: scenes[i + 1] ?? "",
       }));
@@ -235,8 +246,8 @@ export function init(config: HyperShaderConfig): GsapTimeline {
     const prog = programs.get(t.shader);
     if (!prog) continue;
 
-    const dur = t.duration ?? 0.7;
-    const ease = t.ease ?? "power2.inOut";
+    const dur = t.duration ?? DEFAULT_DURATION;
+    const ease = t.ease ?? DEFAULT_EASE;
     const T = t.time;
 
     // Pause timeline during async capture to prevent the progress tween
@@ -352,13 +363,27 @@ function initEngineMode(
     tl.to({ t: 0 }, { t: 1, duration, ease: "none" }, 0);
   }
 
+  // Initial state: every non-first scene starts hidden. CSS defaults
+  // .scene to opacity:1, so without this every scene would composite at
+  // t=0 and the engine's queryElementStacking() would report all of them
+  // visible — manifesting as ghosting/overlap in the very first frame
+  // before the first transition fires. tl.set() at position 0 ensures
+  // the initial state is part of the timeline's seek graph, so reverse
+  // seeks from inside a later transition correctly restore it.
+  for (let i = 1; i < scenes.length; i++) {
+    const sceneId = scenes[i];
+    if (sceneId) {
+      tl.set(`#${sceneId}`, { opacity: 0 }, 0);
+    }
+  }
+
   for (let i = 0; i < transitions.length; i++) {
     const t = transitions[i];
     const fromId = scenes[i];
     const toId = scenes[i + 1];
     if (!fromId || !toId) continue;
 
-    const dur = t.duration ?? 0.7;
+    const dur = t.duration ?? DEFAULT_DURATION;
     const T = t.time;
 
     // During the transition both scenes need to be visible so the engine

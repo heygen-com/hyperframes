@@ -1,5 +1,8 @@
 import type { RuntimeTimelineLike } from "./types";
 
+const AUTHORED_DURATION_ATTR = "data-hf-authored-duration";
+const AUTHORED_END_ATTR = "data-hf-authored-end";
+
 type ReferenceExpression =
   | {
       kind: "absolute";
@@ -12,8 +15,25 @@ type ReferenceExpression =
     };
 
 function parseNumeric(value: string | null | undefined): number | null {
+  if (value == null || value === "") return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function parseDurationAttr(element: Element): number | null {
+  return parseNumeric(element.getAttribute("data-duration"));
+}
+
+function parseEndAttr(element: Element): number | null {
+  return parseNumeric(element.getAttribute("data-end"));
+}
+
+function parseAuthoredDurationAttr(element: Element): number | null {
+  return parseNumeric(element.getAttribute(AUTHORED_DURATION_ATTR));
+}
+
+function parseAuthoredEndAttr(element: Element): number | null {
+  return parseNumeric(element.getAttribute(AUTHORED_END_ATTR));
 }
 
 function parseStartExpression(raw: string | null | undefined): ReferenceExpression | null {
@@ -37,11 +57,13 @@ function parseStartExpression(raw: string | null | undefined): ReferenceExpressi
 
 export function createRuntimeStartTimeResolver(params: {
   timelineRegistry?: Record<string, RuntimeTimelineLike | undefined>;
+  includeAuthoredTimingAttrs?: boolean;
 }): {
   resolveStartForElement: (element: Element, fallback?: number) => number;
   resolveDurationForElement: (element: Element) => number | null;
 } {
   const timelineRegistry = params.timelineRegistry ?? {};
+  const includeAuthoredTimingAttrs = params.includeAuthoredTimingAttrs ?? false;
   const startCache = new WeakMap<Element, number | null>();
   const durationCache = new WeakMap<Element, number | null>();
   const visiting = new Set<Element>();
@@ -59,12 +81,16 @@ export function createRuntimeStartTimeResolver(params: {
     const cached = durationCache.get(element);
     if (cached !== undefined) return cached;
     let resolved: number | null = null;
-    const durationAttr = parseNumeric(element.getAttribute("data-duration"));
+    const durationAttr =
+      parseDurationAttr(element) ??
+      (includeAuthoredTimingAttrs ? parseAuthoredDurationAttr(element) : null);
     if (durationAttr != null && durationAttr > 0) {
       resolved = durationAttr;
     }
     if (resolved == null || resolved <= 0) {
-      const endAttr = parseNumeric(element.getAttribute("data-end"));
+      const endAttr =
+        parseEndAttr(element) ??
+        (includeAuthoredTimingAttrs ? parseAuthoredEndAttr(element) : null);
       if (endAttr != null) {
         const start = resolveStartForElementInternal(element, 0);
         const delta = endAttr - start;
@@ -106,6 +132,17 @@ export function createRuntimeStartTimeResolver(params: {
     return null;
   };
 
+  const resolveHostOffsetForElement = (element: Element, fallback: number): number => {
+    if (element.hasAttribute("data-composition-id")) {
+      const parentComposition = element.parentElement?.closest("[data-composition-id]");
+      if (!parentComposition) return 0;
+      return resolveStartForElementInternal(parentComposition, fallback);
+    }
+    const compositionRoot = element.closest("[data-composition-id]");
+    if (!compositionRoot) return 0;
+    return resolveStartForElementInternal(compositionRoot, fallback);
+  };
+
   const resolveStartForElementInternal = (element: Element, fallback: number): number => {
     const cached = startCache.get(element);
     if (cached !== undefined) {
@@ -141,8 +178,9 @@ export function createRuntimeStartTimeResolver(params: {
       }
       if (expression.kind === "absolute") {
         const absolute = Math.max(0, expression.value);
-        startCache.set(element, absolute);
-        return absolute;
+        const resolved = Math.max(0, resolveHostOffsetForElement(element, fallback) + absolute);
+        startCache.set(element, resolved);
+        return resolved;
       }
       const target = findReferenceTarget(expression.refId);
       if (!target) {

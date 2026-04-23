@@ -9,9 +9,14 @@ import { spawn } from "child_process";
 import { copyFileSync, existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from "fs";
 import { join, dirname } from "path";
 import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
-import { type GpuEncoder, getCachedGpuEncoder, getGpuEncoderName } from "../utils/gpuEncoder.js";
-import { type HdrTransfer } from "../utils/hdr.js";
-import { runFfmpeg } from "../utils/runFfmpeg.js";
+import {
+  type GpuEncoder,
+  getCachedGpuEncoder,
+  getGpuEncoderName,
+  mapPresetForGpuEncoder,
+} from "../utils/gpuEncoder.js";
+import { type HdrTransfer, getHdrEncoderColorParams } from "../utils/hdr.js";
+import { formatFfmpegError, runFfmpeg } from "../utils/runFfmpeg.js";
 import type { EncoderOptions, EncodeResult, MuxResult } from "./chunkEncoder.types.js";
 
 export type { EncoderOptions, EncodeResult, MuxResult } from "./chunkEncoder.types.js";
@@ -88,6 +93,18 @@ export function buildEncoderArgs(
     useGpu = false,
   } = options;
 
+  // libx264 cannot encode HDR. If a caller passes hdr with codec=h264 we'd
+  // produce a "half-HDR" file (BT.2020 container tags but a BT.709 VUI block
+  // inside the bitstream) which confuses HDR-aware players. Strip hdr and
+  // log a warning so the caller picks h265 (the SDR-tagged output is honest).
+  if (options.hdr && codec === "h264") {
+    console.warn(
+      "[chunkEncoder] HDR is not supported with codec=h264 (libx264 has no HDR support). " +
+        "Stripping HDR metadata and tagging output as SDR/BT.709. Use codec=h265 for HDR output.",
+    );
+    options = { ...options, hdr: undefined };
+  }
+
   const args: string[] = [...inputArgs, "-r", String(fps)];
   const shouldUseGpu = useGpu && gpuEncoder !== null;
 
@@ -98,7 +115,7 @@ export function buildEncoderArgs(
 
       switch (gpuEncoder) {
         case "nvenc":
-          args.push("-preset", preset);
+          args.push("-preset", mapPresetForGpuEncoder("nvenc", preset));
           if (bitrate) args.push("-b:v", bitrate);
           else args.push("-cq", String(quality));
           break;
@@ -117,7 +134,7 @@ export function buildEncoderArgs(
           else args.push("-qp", String(quality));
           break;
         case "qsv":
-          args.push("-preset", preset);
+          args.push("-preset", mapPresetForGpuEncoder("qsv", preset));
           if (bitrate) args.push("-b:v", bitrate);
           else args.push("-global_quality", String(quality));
           break;
@@ -130,8 +147,14 @@ export function buildEncoderArgs(
 
       // Encoder-specific params: anti-banding + color space tagging.
       // aq-mode=3 redistributes bits to dark flat areas (gradients).
+      // For HDR x265 paths we additionally embed BT.2020 + transfer + HDR static
+      // mastering metadata via x265-params; libx264 only carries BT.709 tags
+      // since HDR through H.264 is not supported by this encoder path.
       const xParamsFlag = codec === "h264" ? "-x264-params" : "-x265-params";
-      const colorParams = "colorprim=bt709:transfer=bt709:colormatrix=bt709";
+      const colorParams =
+        codec === "h265" && options.hdr
+          ? getHdrEncoderColorParams(options.hdr.transfer).x265ColorParams
+          : "colorprim=bt709:transfer=bt709:colormatrix=bt709";
       if (preset === "ultrafast") {
         args.push(xParamsFlag, `aq-mode=3:${colorParams}`);
       } else {
@@ -157,22 +180,44 @@ export function buildEncoderArgs(
   }
 
   // Color space metadata — tags the output so players interpret colors correctly.
-  // Chrome screenshots are always sRGB/bt709 pixels regardless of --hdr flag.
-  // We tag truthfully as bt709 even for HDR output — the --hdr flag gives
-  // H.265 + 10-bit encoding (better quality/compression) without lying about
-  // the color space. Tagging as bt2020 when pixels are bt709 causes browsers
-  // to apply the wrong color transform, producing visible orange/warm shifts.
+  //
+  // Default (no options.hdr): Chrome screenshots are sRGB/bt709 pixels and
+  // we tag them truthfully as bt709. Tagging as bt2020 when pixels are bt709
+  // causes browsers to apply the wrong color transform, producing visible
+  // orange/warm shifts.
+  //
+  // HDR (options.hdr provided): the caller asserts the input pixels are
+  // already in the BT.2020 color space (e.g. extracted HDR video frames or a
+  // pre-tagged source). We tag the output as BT.2020 + the corresponding
+  // transfer (smpte2084 for PQ, arib-std-b67 for HLG). HDR static mastering
+  // metadata (master-display, max-cll) is embedded only in the SW libx265
+  // path above; GPU H.265 + HDR carries the color tags but not the static
+  // metadata, which is acceptable for previews but not for HDR-aware delivery.
   if (codec === "h264" || codec === "h265") {
-    args.push(
-      "-colorspace:v",
-      "bt709",
-      "-color_primaries:v",
-      "bt709",
-      "-color_trc:v",
-      "bt709",
-      "-color_range",
-      "tv",
-    );
+    if (options.hdr) {
+      const transferTag = options.hdr.transfer === "pq" ? "smpte2084" : "arib-std-b67";
+      args.push(
+        "-colorspace:v",
+        "bt2020nc",
+        "-color_primaries:v",
+        "bt2020",
+        "-color_trc:v",
+        transferTag,
+        "-color_range",
+        "tv",
+      );
+    } else {
+      args.push(
+        "-colorspace:v",
+        "bt709",
+        "-color_primaries:v",
+        "bt709",
+        "-color_trc:v",
+        "bt709",
+        "-color_range",
+        "tv",
+      );
+    }
 
     // Range conversion: Chrome's full-range RGB → limited/TV range.
     if (gpuEncoder === "vaapi") {
@@ -280,7 +325,7 @@ export async function encodeFramesFromDir(
           durationMs,
           framesEncoded: 0,
           fileSize: 0,
-          error: `FFmpeg exited with code ${code}`,
+          error: formatFfmpegError(code, stderr),
         });
         return;
       }
@@ -482,11 +527,7 @@ export async function muxVideoWithAudio(
     success: result.success,
     outputPath,
     durationMs: result.durationMs,
-    error: !result.success
-      ? result.exitCode !== null
-        ? `FFmpeg exited with code ${result.exitCode}`
-        : `[FFmpeg] ${result.stderr}`
-      : undefined,
+    error: !result.success ? formatFfmpegError(result.exitCode, result.stderr) : undefined,
   };
 }
 
@@ -519,10 +560,6 @@ export async function applyFaststart(
     success: result.success,
     outputPath,
     durationMs: result.durationMs,
-    error: !result.success
-      ? result.exitCode !== null
-        ? `FFmpeg exited with code ${result.exitCode}`
-        : `[FFmpeg] ${result.stderr}`
-      : undefined,
+    error: !result.success ? formatFfmpegError(result.exitCode, result.stderr) : undefined,
   };
 }

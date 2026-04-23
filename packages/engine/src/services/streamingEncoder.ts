@@ -16,7 +16,13 @@ import { spawn, type ChildProcess } from "child_process";
 import { existsSync, mkdirSync, statSync } from "fs";
 import { dirname } from "path";
 
-import { type GpuEncoder, getCachedGpuEncoder, getGpuEncoderName } from "../utils/gpuEncoder.js";
+import {
+  type GpuEncoder,
+  getCachedGpuEncoder,
+  getGpuEncoderName,
+  mapPresetForGpuEncoder,
+} from "../utils/gpuEncoder.js";
+import { formatFfmpegError } from "../utils/runFfmpeg.js";
 import { getHdrEncoderColorParams } from "../utils/hdr.js";
 import { type EncoderOptions } from "./chunkEncoder.types.js";
 import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
@@ -191,7 +197,7 @@ export function buildStreamingArgs(
 
       switch (gpuEncoder) {
         case "nvenc":
-          args.push("-preset", preset);
+          args.push("-preset", mapPresetForGpuEncoder("nvenc", preset));
           if (bitrate) args.push("-b:v", bitrate);
           else args.push("-cq", String(quality));
           break;
@@ -210,7 +216,7 @@ export function buildStreamingArgs(
           else args.push("-qp", String(quality));
           break;
         case "qsv":
-          args.push("-preset", preset);
+          args.push("-preset", mapPresetForGpuEncoder("qsv", preset));
           if (bitrate) args.push("-b:v", bitrate);
           else args.push("-global_quality", String(quality));
           break;
@@ -397,10 +403,23 @@ export async function spawnStreamingEncoder(
     },
 
     close: async (): Promise<StreamingEncoderResult> => {
+      // INVARIANT: close() is idempotent. The renderOrchestrator HDR cleanup
+      // path tracks an `encoderClosed` flag and may still re-call close() in
+      // the outer finally if the inner cleanup raised before the flag flipped.
+      // Each step here must be safe to repeat:
+      //   - clearTimeout: safe to call on an already-cleared/fired timer
+      //   - removeEventListener: no-op if the listener was already removed
+      //     (and {once: true} would have removed it on the first abort anyway)
+      //   - stdin.end gated on !destroyed: skipped on the second call
+      //   - exitPromise: a single shared Promise; awaiting an already-resolved
+      //     Promise resolves immediately with the same captured exitCode
+      // The returned StreamingEncoderResult is therefore consistent across
+      // repeated calls. If you change this method, preserve idempotency or
+      // a regression here will silently double-close ffmpeg and produce
+      // harder-to-trace errors at the orchestrator layer.
       clearTimeout(timer);
       if (signal) signal.removeEventListener("abort", onAbort);
 
-      // Close stdin to signal end of input
       const stdin = ffmpeg.stdin;
       if (stdin && !stdin.destroyed) {
         await new Promise<void>((resolve) => {
@@ -408,7 +427,6 @@ export async function spawnStreamingEncoder(
         });
       }
 
-      // Wait for FFmpeg to finish
       await exitPromise;
 
       const durationMs = Date.now() - startTime;
@@ -427,7 +445,7 @@ export async function spawnStreamingEncoder(
           success: false,
           durationMs,
           fileSize: 0,
-          error: `FFmpeg exited with code ${exitCode}`,
+          error: formatFfmpegError(exitCode, stderr),
         };
       }
 

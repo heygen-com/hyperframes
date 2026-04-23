@@ -182,7 +182,7 @@ export function resolveConfig(overrides?: Partial<EngineConfig>): EngineConfig {
     hdr: (() => {
       const raw = env("PRODUCER_HDR_TRANSFER");
       if (raw === "hlg" || raw === "pq") return { transfer: raw };
-      return undefined;
+      return false;
     })(),
     hdrAutoDetect: envBool("PRODUCER_HDR_AUTO_DETECT", DEFAULT_CONFIG.hdrAutoDetect),
 

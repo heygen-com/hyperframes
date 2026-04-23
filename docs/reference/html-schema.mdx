@@ -58,6 +58,7 @@ Common sizes:
 | `data-volume` | audio, video | No | Volume level from `0` to `1`. Default: `1`. |
 | `data-composition-id` | div | On compositions | Unique composition ID. Must match the key used in `window.__timelines`. |
 | `data-composition-src` | div | No | Path to external composition HTML file (for [nested compositions](#composition-clips)). |
+| `data-variable-values` | div | No | JSON object of values passed to a nested composition. The framework carries the values through, but your composition script must read and apply them manually. |
 | `data-width` | div | On compositions | Composition width in pixels. |
 | `data-height` | div | On compositions | Composition height in pixels. |
 
@@ -151,6 +152,7 @@ Common sizes:
     - Each nested composition has its own `window.__timelines` entry, registered by its own `<script>` block
     - The framework automatically nests sub-timelines — do not manually add them to the parent timeline
     - Any composition can be nested inside any other — there is no special "root" type
+    - Per-instance values can be passed with `data-variable-values`, but the nested composition must read and apply those values itself
 
     For more on how compositions work, see [Compositions](/concepts/compositions).
   </Accordion>

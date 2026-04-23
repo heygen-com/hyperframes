@@ -127,13 +127,54 @@ Every composition has two layers:
 
 ## Variables
 
-Compositions can expose variables for dynamic content:
+HyperFrames does not automatically bind `data-var-*` attributes into your composition DOM or CSS.
 
-```html compositions/card.html
-<div data-composition-id="card" data-var-title="string" data-var-color="color">
+Today, the supported pattern is:
+
+1. Pass per-instance values on the composition host with `data-variable-values`
+2. Read those values inside the composition and apply them in your own script
+
+```html index.html
+<div
+  data-composition-id="card"
+  data-composition-src="compositions/card.html"
+  data-start="0"
+  data-track-index="1"
+  data-variable-values='{"title":"Hello","color":"#ff4d4f"}'
+></div>
 ```
 
-Variables make compositions reusable as [examples](/examples) -- the same composition can render different content by injecting variable values at render time.
+```html compositions/card.html
+<template id="card-template">
+  <div data-composition-id="card" data-width="1920" data-height="1080">
+    <h1 class="title">Fallback</h1>
+
+    <style>
+      [data-composition-id="card"] {
+        --card-color: #111827;
+      }
+
+      [data-composition-id="card"] .title {
+        color: var(--card-color);
+      }
+    </style>
+
+    <script>
+      const root = document.querySelector('[data-composition-id="card"]');
+      const vars = JSON.parse(root?.getAttribute("data-variable-values") ?? "{}");
+      const titleEl = root?.querySelector(".title");
+
+      if (titleEl) {
+        titleEl.textContent = vars.title ?? "Fallback";
+      }
+
+      root?.style.setProperty("--card-color", String(vars.color ?? "#111827"));
+    </script>
+  </div>
+</template>
+```
+
+If you are building tooling on top of `@hyperframes/core`, you can also declare variable metadata separately with `data-composition-variables` and read it via `extractCompositionMetadata()`. That metadata is descriptive only; you still apply the actual values manually inside the composition.
 
 ## Listing Compositions
 

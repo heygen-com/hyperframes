@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>perf fixture: 10-video-grid</title>
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background: #050714;
+        color: #e6e6f0;
+        font-family:
+          system-ui,
+          -apple-system,
+          sans-serif;
+        overflow: hidden;
+      }
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        grid-template-rows: repeat(2, 1fr);
+        gap: 8px;
+        padding: 8px;
+        box-sizing: border-box;
+      }
+      .tile {
+        position: relative;
+        background: #111827;
+        border-radius: 12px;
+        overflow: hidden;
+        box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.05);
+        will-change: transform;
+      }
+      .tile video {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+      .tile .label {
+        position: absolute;
+        top: 8px;
+        left: 8px;
+        z-index: 2;
+        font:
+          600 14px/1 system-ui,
+          sans-serif;
+        color: #fff;
+        background: rgba(0, 0, 0, 0.6);
+        padding: 4px 8px;
+        border-radius: 6px;
+        pointer-events: none;
+      }
+    </style>
+    <script src="/vendor/gsap.min.js"></script>
+    <script data-hyperframes-runtime="1" src="/vendor/hyperframe.runtime.iife.js"></script>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-width="1920"
+      data-height="1080"
+      data-duration="10"
+      data-fps="30"
+    ></div>
+    <script>
+      (function () {
+        var TILE_COUNT = 10;
+        var DURATION_SEC = 10;
+
+        var root = document.getElementById("root");
+        var tiles = [];
+        for (var i = 0; i < TILE_COUNT; i++) {
+          var tile = document.createElement("div");
+          tile.className = "tile";
+          tile.id = "tile-" + i;
+
+          var label = document.createElement("div");
+          label.className = "label";
+          label.textContent = "video " + (i + 1);
+          tile.appendChild(label);
+
+          var video = document.createElement("video");
+          video.id = "video-" + i;
+          video.setAttribute("data-start", "0");
+          video.setAttribute("data-duration", String(DURATION_SEC));
+          video.setAttribute("data-track-index", String(i));
+          video.setAttribute("src", "sample.mp4");
+          video.setAttribute("preload", "auto");
+          video.setAttribute("playsinline", "");
+          video.muted = true;
+          tile.appendChild(video);
+
+          root.appendChild(tile);
+          tiles.push(tile);
+        }
+
+        // Lightweight parent timeline so the player has a non-empty composition
+        // to drive. Each tile gets a subtle scale "breath" over the full
+        // duration — enough to keep GSAP scrubbing real properties without
+        // dominating the rAF budget that the video decoder needs.
+        var tl = gsap.timeline({ paused: true });
+        for (var j = 0; j < tiles.length; j++) {
+          tl.fromTo(
+            tiles[j],
+            { scale: 0.985 },
+            { scale: 1, duration: DURATION_SEC, ease: "sine.inOut" },
+            0,
+          );
+        }
+
+        window.__timelines = window.__timelines || {};
+        window.__timelines["main"] = tl;
+      })();
+    </script>
+  </body>
+</html>

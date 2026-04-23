@@ -1,7 +1,7 @@
 import { readFileSync } from "fs";
 import { resolve } from "path";
 import { describe, expect, it } from "vitest";
-import { extractPngMetadataFromBuffer, extractVideoMetadata } from "./ffprobe.js";
+import { extractMediaMetadata, extractPngMetadataFromBuffer } from "./ffprobe.js";
 
 function crc32(buf: Buffer): number {
   let crc = 0xffffffff;
@@ -51,14 +51,14 @@ function buildMinimalPng(options?: {
     : buildPngWithChunks([ihdr, cicp, idat, iend]);
 }
 
-describe("extractVideoMetadata", () => {
+describe("extractMediaMetadata", () => {
   it("reads HDR PNG cICP metadata when ffprobe color fields are absent", async () => {
     const fixturePath = resolve(
       __dirname,
-      "../../../producer/tests/hdr-image-only/src/hdr-photo.png",
+      "../../../producer/tests/hdr-regression/src/hdr-photo-pq.png",
     );
 
-    const metadata = await extractVideoMetadata(fixturePath);
+    const metadata = await extractMediaMetadata(fixturePath);
 
     expect(metadata.colorSpace).toEqual({
       colorPrimaries: "bt2020",
@@ -102,7 +102,7 @@ describe("extractPngMetadataFromBuffer", () => {
 
   it("continues to parse the checked-in HDR PNG fixture", () => {
     const fixture = readFileSync(
-      resolve(__dirname, "../../../producer/tests/hdr-image-only/src/hdr-photo.png"),
+      resolve(__dirname, "../../../producer/tests/hdr-regression/src/hdr-photo-pq.png"),
     );
     expect(extractPngMetadataFromBuffer(fixture)?.colorSpace?.colorTransfer).toBe("smpte2084");
   });

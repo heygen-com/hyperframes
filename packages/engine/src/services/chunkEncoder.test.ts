@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { ENCODER_PRESETS, getEncoderPreset, buildEncoderArgs } from "./chunkEncoder.js";
 
 describe("ENCODER_PRESETS", () => {
@@ -148,6 +148,89 @@ describe("buildEncoderArgs anti-banding", () => {
   });
 });
 
+describe("buildEncoderArgs GPU preset mapping", () => {
+  const baseOptions = { fps: 30, width: 1920, height: 1080 };
+  const inputArgs = ["-framerate", "30", "-i", "frames/%04d.png"];
+
+  function presetArg(args: string[]): string | undefined {
+    const idx = args.indexOf("-preset");
+    return idx === -1 ? undefined : args[idx + 1];
+  }
+
+  // Regression for the "draft quality + --gpu fails with code -22" bug:
+  // NVENC rejects the libx264 preset name `ultrafast` with AVERROR(EINVAL),
+  // so the `draft` quality tier must not forward that value to h264_nvenc.
+  it("translates the draft ultrafast preset to NVENC p1", () => {
+    const args = buildEncoderArgs(
+      { ...baseOptions, codec: "h264", preset: "ultrafast", quality: 28, useGpu: true },
+      inputArgs,
+      "out.mp4",
+      "nvenc",
+    );
+    expect(presetArg(args)).toBe("p1");
+  });
+
+  it("translates the standard medium preset to NVENC p4", () => {
+    const args = buildEncoderArgs(
+      { ...baseOptions, codec: "h264", preset: "medium", quality: 18, useGpu: true },
+      inputArgs,
+      "out.mp4",
+      "nvenc",
+    );
+    expect(presetArg(args)).toBe("p4");
+  });
+
+  it("translates the high slow preset to NVENC p5", () => {
+    const args = buildEncoderArgs(
+      { ...baseOptions, codec: "h264", preset: "slow", quality: 15, useGpu: true },
+      inputArgs,
+      "out.mp4",
+      "nvenc",
+    );
+    expect(presetArg(args)).toBe("p5");
+  });
+
+  // hevc_nvenc uses the same p1..p7 preset vocabulary as h264_nvenc, so the
+  // mapping must apply to both codecs. Locks in "H.264 and H.265 NVENC share
+  // the preset mapping" against a future refactor that might split the path.
+  it("translates libx264 preset names to NVENC p1..p7 for h265 as well", () => {
+    for (const [libx264, nvencPreset] of [
+      ["ultrafast", "p1"],
+      ["medium", "p4"],
+      ["veryslow", "p7"],
+    ] as const) {
+      const args = buildEncoderArgs(
+        { ...baseOptions, codec: "h265", preset: libx264, quality: 23, useGpu: true },
+        inputArgs,
+        "out.mp4",
+        "nvenc",
+      );
+      expect(args[args.indexOf("-c:v") + 1]).toBe("hevc_nvenc");
+      expect(presetArg(args)).toBe(nvencPreset);
+    }
+  });
+
+  it("rewrites QSV's unsupported ultrafast preset to veryfast", () => {
+    const args = buildEncoderArgs(
+      { ...baseOptions, codec: "h264", preset: "ultrafast", quality: 28, useGpu: true },
+      inputArgs,
+      "out.mp4",
+      "qsv",
+    );
+    expect(presetArg(args)).toBe("veryfast");
+  });
+
+  it("passes QSV-supported preset names through unchanged", () => {
+    const args = buildEncoderArgs(
+      { ...baseOptions, codec: "h264", preset: "medium", quality: 23, useGpu: true },
+      inputArgs,
+      "out.mp4",
+      "qsv",
+    );
+    expect(presetArg(args)).toBe("medium");
+  });
+});
+
 describe("buildEncoderArgs color space", () => {
   const baseOptions = { fps: 30, width: 1920, height: 1080 };
   const inputArgs = ["-framerate", "30", "-i", "frames/%04d.png"];
@@ -285,23 +368,54 @@ describe("buildEncoderArgs HDR color space", () => {
   const baseOptions = { fps: 30, width: 1920, height: 1080 };
   const inputArgs = ["-framerate", "30", "-i", "frames/%04d.png"];
 
-  it("keeps bt709 color tags when HDR flag is set but frames are still Chrome sRGB captures", () => {
-    // HDR flag gives H.265 + 10-bit encoding but pixels are still sRGB/bt709.
-    // Tagging as bt2020 causes orange shift — so we tag truthfully as bt709.
+  it("emits BT.2020 + arib-std-b67 tags for HDR HLG (h265 SW)", () => {
+    // When options.hdr is set, the caller asserts the input pixels are
+    // already in the BT.2020 color space — tag the output truthfully so
+    // HDR-aware players apply the right transform.
     const args = buildEncoderArgs(
       { ...baseOptions, codec: "h265", preset: "medium", quality: 23, hdr: { transfer: "hlg" } },
       inputArgs,
       "out.mp4",
     );
-    expect(args[args.indexOf("-colorspace:v") + 1]).toBe("bt709");
-    expect(args[args.indexOf("-color_primaries:v") + 1]).toBe("bt709");
-    expect(args[args.indexOf("-color_trc:v") + 1]).toBe("bt709");
+    expect(args[args.indexOf("-colorspace:v") + 1]).toBe("bt2020nc");
+    expect(args[args.indexOf("-color_primaries:v") + 1]).toBe("bt2020");
+    expect(args[args.indexOf("-color_trc:v") + 1]).toBe("arib-std-b67");
     const paramIdx = args.indexOf("-x265-params");
-    expect(args[paramIdx + 1]).toContain("colorprim=bt709");
-    expect(args[paramIdx + 1]).toContain("transfer=bt709");
+    expect(args[paramIdx + 1]).toContain("colorprim=bt2020");
+    expect(args[paramIdx + 1]).toContain("transfer=arib-std-b67");
+    expect(args[paramIdx + 1]).toContain("colormatrix=bt2020nc");
   });
 
-  it("uses bt709 when HDR is not set", () => {
+  it("emits BT.2020 + smpte2084 tags for HDR PQ (h265 SW)", () => {
+    const args = buildEncoderArgs(
+      { ...baseOptions, codec: "h265", preset: "medium", quality: 23, hdr: { transfer: "pq" } },
+      inputArgs,
+      "out.mp4",
+    );
+    expect(args[args.indexOf("-colorspace:v") + 1]).toBe("bt2020nc");
+    expect(args[args.indexOf("-color_primaries:v") + 1]).toBe("bt2020");
+    expect(args[args.indexOf("-color_trc:v") + 1]).toBe("smpte2084");
+    const paramIdx = args.indexOf("-x265-params");
+    expect(args[paramIdx + 1]).toContain("colorprim=bt2020");
+    expect(args[paramIdx + 1]).toContain("transfer=smpte2084");
+    expect(args[paramIdx + 1]).toContain("colormatrix=bt2020nc");
+  });
+
+  it("embeds HDR static mastering metadata in x265-params when HDR is set", () => {
+    // master-display + max-cll SEI messages are required so HDR-aware
+    // players (Apple QuickTime, YouTube, HDR TVs) treat the stream as
+    // HDR10 instead of falling back to SDR BT.2020 tone-mapping.
+    const args = buildEncoderArgs(
+      { ...baseOptions, codec: "h265", preset: "medium", quality: 23, hdr: { transfer: "pq" } },
+      inputArgs,
+      "out.mp4",
+    );
+    const paramIdx = args.indexOf("-x265-params");
+    expect(args[paramIdx + 1]).toContain("master-display=");
+    expect(args[paramIdx + 1]).toContain("max-cll=");
+  });
+
+  it("uses bt709 when HDR is not set (SDR Chrome captures)", () => {
     const args = buildEncoderArgs(
       { ...baseOptions, codec: "h265", preset: "medium", quality: 23 },
       inputArgs,
@@ -309,11 +423,47 @@ describe("buildEncoderArgs HDR color space", () => {
     );
     expect(args[args.indexOf("-colorspace:v") + 1]).toBe("bt709");
     expect(args[args.indexOf("-color_trc:v") + 1]).toBe("bt709");
+    const paramIdx = args.indexOf("-x265-params");
+    expect(args[paramIdx + 1]).toContain("colorprim=bt709");
+    expect(args[paramIdx + 1]).not.toContain("master-display");
   });
 
-  it("uses range conversion (not colorspace) for HDR CPU encoding", () => {
-    // Chrome screenshots are sRGB — we don't convert primaries (causes color shifts).
-    // Just range-convert and let the bt2020 container metadata + 10-bit handle the rest.
+  it("does not embed HDR mastering metadata when HDR is not set", () => {
+    const args = buildEncoderArgs(
+      { ...baseOptions, codec: "h265", preset: "medium", quality: 23 },
+      inputArgs,
+      "out.mp4",
+    );
+    const paramIdx = args.indexOf("-x265-params");
+    expect(args[paramIdx + 1]).not.toContain("master-display");
+    expect(args[paramIdx + 1]).not.toContain("max-cll");
+  });
+
+
+  it("strips HDR and tags as SDR/BT.709 when codec=h264 (libx264 has no HDR support)", () => {
+    // libx264 cannot encode HDR. Rather than emit a "half-HDR" file (BT.2020
+    // container tags + BT.709 VUI inside the bitstream — confusing to HDR-aware
+    // players), we strip hdr and tag the whole output as SDR/BT.709. The caller
+    // gets a warning telling them to use codec=h265 for real HDR output.
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const args = buildEncoderArgs(
+      { ...baseOptions, codec: "h264", preset: "medium", quality: 23, hdr: { transfer: "pq" } },
+      inputArgs,
+      "out.mp4",
+    );
+    const paramIdx = args.indexOf("-x264-params");
+    expect(args[paramIdx + 1]).toContain("colorprim=bt709");
+    expect(args[paramIdx + 1]).not.toContain("master-display");
+    expect(args[args.indexOf("-colorspace:v") + 1]).toBe("bt709");
+    expect(args[args.indexOf("-color_primaries:v") + 1]).toBe("bt709");
+    expect(args[args.indexOf("-color_trc:v") + 1]).toBe("bt709");
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("HDR is not supported with codec=h264"),
+    );
+    warnSpy.mockRestore();
+  });
+
+  it("uses range conversion for HDR CPU encoding", () => {
     const args = buildEncoderArgs(
       { ...baseOptions, codec: "h265", preset: "medium", quality: 23, hdr: { transfer: "hlg" } },
       inputArgs,
@@ -322,7 +472,6 @@ describe("buildEncoderArgs HDR color space", () => {
     const vfIdx = args.indexOf("-vf");
     expect(vfIdx).toBeGreaterThan(-1);
     expect(args[vfIdx + 1]).toContain("scale=in_range=pc:out_range=tv");
-    expect(args[vfIdx + 1]).not.toContain("colorspace");
   });
 
   it("uses same range conversion for SDR CPU encoding", () => {
@@ -333,5 +482,30 @@ describe("buildEncoderArgs HDR color space", () => {
     );
     const vfIdx = args.indexOf("-vf");
     expect(args[vfIdx + 1]).toContain("scale=in_range=pc:out_range=tv");
+  });
+
+  it("tags BT.2020 + transfer for HDR GPU H.265 (no mastering metadata via -x265-params)", () => {
+    // GPU encoders (nvenc, videotoolbox, qsv, vaapi) still emit the BT.2020
+    // color tags via the codec-level -colorspace/-color_primaries/-color_trc
+    // flags, but cannot accept x265-params, so HDR static mastering metadata
+    // (master-display, max-cll) is not embedded. Acceptable for previews,
+    // not for HDR-aware delivery.
+    const args = buildEncoderArgs(
+      {
+        ...baseOptions,
+        codec: "h265",
+        preset: "medium",
+        quality: 23,
+        useGpu: true,
+        hdr: { transfer: "pq" },
+      },
+      inputArgs,
+      "out.mp4",
+      "nvenc",
+    );
+    expect(args[args.indexOf("-colorspace:v") + 1]).toBe("bt2020nc");
+    expect(args[args.indexOf("-color_primaries:v") + 1]).toBe("bt2020");
+    expect(args[args.indexOf("-color_trc:v") + 1]).toBe("smpte2084");
+    expect(args.indexOf("-x265-params")).toBe(-1);
   });
 });

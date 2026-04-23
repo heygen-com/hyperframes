@@ -42,6 +42,11 @@ export interface CaptureSession {
   outputDir: string;
   onBeforeCapture: BeforeCaptureHook | null;
   isInitialized: boolean;
+  // Tracks whether the page/browser handles have already been released by
+  // closeCaptureSession. Used to make closeCaptureSession idempotent under
+  // browser-pool semantics (see the function body for the full invariant).
+  pageReleased?: boolean;
+  browserReleased?: boolean;
   browserConsoleBuffer: string[];
   capturePerf: {
     frames: number;
@@ -532,8 +537,29 @@ export async function captureFrameToBuffer(
 }
 
 export async function closeCaptureSession(session: CaptureSession): Promise<void> {
-  if (session.page) await session.page.close().catch(() => {});
-  if (session.browser) await releaseBrowser(session.browser, session.config);
+  // INVARIANT: closeCaptureSession is idempotent. The renderOrchestrator HDR
+  // cleanup path tracks a `domSessionClosed` flag and may still re-call this
+  // in the outer finally if the inner cleanup raised before the flag flipped.
+  //
+  // Naive idempotency would be unsafe under pool semantics: releaseBrowser
+  // decrements pooledBrowserRefCount, so calling it twice for the same
+  // acquire could close a browser that another session still holds. We make
+  // it safe by gating each release behind a per-session "released" flag —
+  // the second call sees the flag already set and skips the release.
+  //
+  // We set the flag AFTER (not before) the await so that if a release throws
+  // midway, the unreleased resource is retried by the outer defensive call.
+  // Example: page release succeeds, browser release throws → pageReleased=true
+  // but browserReleased=false → second call no-ops on page and retries browser.
+  // This matches the orchestrator's intent for HDR cleanup.
+  if (!session.pageReleased && session.page) {
+    await session.page.close().catch(() => {});
+    session.pageReleased = true;
+  }
+  if (!session.browserReleased && session.browser) {
+    await releaseBrowser(session.browser, session.config);
+    session.browserReleased = true;
+  }
   session.isInitialized = false;
 }
 

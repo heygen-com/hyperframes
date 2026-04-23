@@ -149,8 +149,6 @@ export async function hideVideoElements(page: Page, videoIds: string[]): Promise
       const el = document.getElementById(id) as HTMLVideoElement | null;
       if (el) {
         el.style.setProperty("visibility", "hidden", "important");
-        el.style.setProperty("opacity", "0", "important");
-        // Also hide the injected render frame image if present
         const img = document.getElementById(`__render_frame_${id}__`);
         if (img) img.style.setProperty("visibility", "hidden", "important");
       }
@@ -168,7 +166,6 @@ export async function showVideoElements(page: Page, videoIds: string[]): Promise
       const el = document.getElementById(id) as HTMLVideoElement | null;
       if (el) {
         el.style.removeProperty("visibility");
-        el.style.removeProperty("opacity");
         const img = document.getElementById(`__render_frame_${id}__`);
         if (img) img.style.removeProperty("visibility");
       }
@@ -203,8 +200,10 @@ export async function queryVideoElementBounds(
       }
       const rect = el.getBoundingClientRect();
       const style = window.getComputedStyle(el);
-      const zIndex = parseInt(style.zIndex) || 0;
-      const opacity = parseFloat(style.opacity) || 1;
+      const zIndexParsed = parseInt(style.zIndex);
+      const zIndex = Number.isNaN(zIndexParsed) ? 0 : zIndexParsed;
+      const opacityParsed = parseFloat(style.opacity);
+      const opacity = Number.isNaN(opacityParsed) ? 1 : opacityParsed;
       const transform = style.transform || "none";
       const visible =
         style.visibility !== "hidden" &&
@@ -320,12 +319,12 @@ export async function queryElementStacking(
       function resolveRadius(value: string, el: Element): number {
         if (value.includes("%")) {
           const pct = parseFloat(value) / 100;
-          const htmlEl = el as HTMLElement;
-          const w = htmlEl.offsetWidth || 0;
-          const h = htmlEl.offsetHeight || 0;
+          const w = el instanceof HTMLElement ? el.offsetWidth : 0;
+          const h = el instanceof HTMLElement ? el.offsetHeight : 0;
           return pct * Math.min(w, h);
         }
-        return parseFloat(value) || 0;
+        const parsed = parseFloat(value);
+        return Number.isNaN(parsed) ? 0 : parsed;
       }
 
       // Check element itself (replaced elements clip to own border-radius)
@@ -435,12 +434,12 @@ export async function queryElementStacking(
       const rect = el.getBoundingClientRect();
       const style = window.getComputedStyle(el);
       const zIndex = getEffectiveZIndex(el);
-      // For HDR video elements, the frame injector sets `opacity: 0 !important`
-      // on the element itself. Start the opacity walk from the parent to get the
-      // real GSAP-animated opacity from wrapper divs.
       const isHdrEl = hdrSet.has(id);
-      const opacityStartNode = isHdrEl ? el.parentElement : el;
-      const opacity = opacityStartNode ? getEffectiveOpacity(opacityStartNode) : 1;
+      // The frame injector now uses `visibility: hidden` (without `opacity: 0`)
+      // to hide native <video> elements, so the element's own computed opacity
+      // remains the GSAP-controlled value. Walk from the element itself to
+      // multiply through any ancestor opacity stacks.
+      const opacity = getEffectiveOpacity(el);
       const visible =
         style.visibility !== "hidden" &&
         style.display !== "none" &&

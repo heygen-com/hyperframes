@@ -282,9 +282,13 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
   // CLI-specific routes (before shared API)
   app.get("/api/runtime.js", (c) => {
     const serve = async () => {
-      const runtimeSource = existsSync(runtimePath)
-        ? readFileSync(runtimePath, "utf-8")
-        : await loadRuntimeSourceFallback();
+      // Prefer the runtime generated from the current core source over a
+      // potentially stale copied artifact. This keeps local studio/preview
+      // sessions aligned with source edits without requiring a manual
+      // rebuild of the CLI runtime bundle first.
+      const runtimeSource =
+        (await loadRuntimeSourceFallback()) ??
+        (existsSync(runtimePath) ? readFileSync(runtimePath, "utf-8") : null);
       if (!runtimeSource) return c.text("runtime not available", 404);
       return c.body(runtimeSource, 200, {
         "Content-Type": "text/javascript",

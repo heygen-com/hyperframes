@@ -370,16 +370,17 @@ function devProjectApi(): Plugin {
         return _api;
       };
 
-      // Serve the local runtime IIFE so compositions don't depend on CDN
+      // In dev, prefer the runtime built from source over a checked-in dist
+      // artifact. Otherwise Studio can silently serve a stale runtime bundle
+      // after source edits in packages/core, which makes browser behavior lag
+      // behind the code under test until someone manually rebuilds core/dist.
       const runtimePath = resolve(__dirname, "../core/dist/hyperframe.runtime.iife.js");
       server.middlewares.use((req, res, next) => {
         if (req.url !== "/api/runtime.js") return next();
         const serve = async () => {
-          let runtimeSource: string | null = null;
-          if (existsSync(runtimePath)) {
+          let runtimeSource = await loadRuntimeSourceForDev(server);
+          if (!runtimeSource && existsSync(runtimePath)) {
             runtimeSource = readFileSync(runtimePath, "utf-8");
-          } else {
-            runtimeSource = await loadRuntimeSourceForDev(server);
           }
 
           if (!runtimeSource) {

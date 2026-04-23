@@ -29,6 +29,7 @@ const subCommands = {
   catalog: () => import("./commands/catalog.js").then((m) => m.default),
   play: () => import("./commands/play.js").then((m) => m.default),
   preview: () => import("./commands/preview.js").then((m) => m.default),
+  publish: () => import("./commands/publish.js").then((m) => m.default),
   render: () => import("./commands/render.js").then((m) => m.default),
   lint: () => import("./commands/lint.js").then((m) => m.default),
   info: () => import("./commands/info.js").then((m) => m.default),

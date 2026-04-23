@@ -122,6 +122,13 @@ const parsed: ParsedHtml = parseHtml(htmlString);
 import { extractCompositionMetadata } from '@hyperframes/core';
 const meta: CompositionMetadata = extractCompositionMetadata(htmlString);
 // meta.id, meta.duration, meta.width, meta.height, meta.variables
+//
+// Variable metadata is declared on the document root, for example:
+// <html
+//   data-composition-id="card"
+//   data-composition-duration="3"
+//   data-composition-variables='[{"id":"title","label":"Title","type":"string","default":"Hello"}]'
+// >
 
 // Generate HTML from structured data
 const html = generateHyperframesHtml(elements, {

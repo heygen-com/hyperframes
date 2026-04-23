@@ -170,6 +170,21 @@ export type RuntimeAnalyticsMessage = {
   properties: Record<string, string | number | boolean | null>;
 };
 
+/**
+ * Numeric performance metrics emitted by the runtime — scrub latency, sustained
+ * fps, dropped frames, decoder count, composition load time, media sync drift.
+ * The host aggregates per-session values (p50/p95) and forwards to its
+ * observability pipeline. Distinct from `analytics` events because perf data
+ * is continuous and numeric, not discrete.
+ */
+export type RuntimePerformanceMessage = {
+  source: "hf-preview";
+  type: "perf";
+  name: string;
+  value: number;
+  tags: Record<string, string | number | boolean | null>;
+};
+
 export type RuntimeOutboundMessage =
   | RuntimeStateMessage
   | RuntimeTimelineMessage
@@ -181,7 +196,8 @@ export type RuntimeOutboundMessage =
   | RuntimePickerCancelledMessage
   | RuntimeStageSizeMessage
   | RuntimeMediaAutoplayBlockedMessage
-  | RuntimeAnalyticsMessage;
+  | RuntimeAnalyticsMessage
+  | RuntimePerformanceMessage;
 
 export type RuntimePlayer = {
   _timeline: RuntimeTimelineLike | null;

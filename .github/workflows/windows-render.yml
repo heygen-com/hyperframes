@@ -8,6 +8,13 @@ name: Windows render verification
 
 on:
   pull_request:
+    # `edited` is required so the workflow re-fires when a PR's base ref is
+    # set back to `main` after a Graphite stack restack momentarily flips
+    # the base off of `main`. Without it, `pull_request` triggers are not
+    # re-evaluated on `base_ref_changed`, leaving required checks skipped
+    # for that head SHA forever.
+    types: [opened, synchronize, reopened, edited]
+    branches: [main]
   push:
     branches: [main]
   workflow_dispatch:
@@ -53,6 +60,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.inputs.ref }}
+          lfs: true
 
       - name: Show platform info
         shell: pwsh
@@ -62,17 +70,62 @@ jobs:
           Write-Host "Runner: windows-latest"
 
       # -----------------------------------------------------------------
-      # Install FFmpeg via Chocolatey (mirrors the recommended path for
-      # real Windows users — no Docker, no WSL).
+      # Install FFmpeg via the shared composite action so the install logic
+      # stays identical between this job and `test-windows` below. See
+      # .github/actions/install-ffmpeg-windows for why we bypass Chocolatey.
       # -----------------------------------------------------------------
-      - name: Install FFmpeg (Chocolatey)
+      - name: Install FFmpeg
+        uses: ./.github/actions/install-ffmpeg-windows
+
+      # -----------------------------------------------------------------
+      # Verify FFmpeg feature inventory.
+      #
+      # The engine shells out to a fixed set of encoders (libx264 for MP4,
+      # libx265 for HEVC, libvpx-vp9 for WebM, prores_ks for transparent
+      # MOV, aac for audio), muxers (mp4 / mov / webm), and demuxers
+      # (image2pipe for streaming RGBA frames, rawvideo for HDR PQ frames,
+      # mov,mp4 for video frame extraction). Some of these are GPL-only,
+      # so a future build swap could silently drop one and break a code
+      # path the canary render doesn't exercise. Fail fast here instead.
+      # -----------------------------------------------------------------
+      - name: Verify FFmpeg feature inventory
         shell: pwsh
         run: |
-          choco install ffmpeg -y --no-progress
-          refreshenv
-          Write-Host "--- ffmpeg sanity check ---"
-          where.exe ffmpeg
-          ffmpeg -version | Select-Object -First 1
+          $ErrorActionPreference = 'Stop'
+
+          function Assert-FfmpegFeature {
+            param(
+              [Parameter(Mandatory)] [string] $Listing,
+              [Parameter(Mandatory)] [string] $Name,
+              [Parameter(Mandatory)] [string] $Kind
+            )
+            # `ffmpeg -encoders` etc. emit one feature per line as
+            # `<flags> <name> <description>`, so a whitespace boundary on
+            # each side is enough to disambiguate (e.g. `mov` vs `movflags`).
+            $pattern = "(^|\s)$([regex]::Escape($Name))(\s|$)"
+            if ($Listing -notmatch $pattern) {
+              throw "Required FFmpeg $Kind '$Name' not present in this build"
+            }
+            Write-Host "  ok: $Kind $Name"
+          }
+
+          Write-Host "--- encoders ---"
+          $encoders = (& ffmpeg -hide_banner -encoders 2>&1) -join "`n"
+          foreach ($enc in @('libx264', 'libx265', 'libvpx-vp9', 'prores_ks', 'aac')) {
+            Assert-FfmpegFeature -Listing $encoders -Name $enc -Kind 'encoder'
+          }
+
+          Write-Host "--- muxers ---"
+          $muxers = (& ffmpeg -hide_banner -muxers 2>&1) -join "`n"
+          foreach ($mux in @('mp4', 'mov', 'webm')) {
+            Assert-FfmpegFeature -Listing $muxers -Name $mux -Kind 'muxer'
+          }
+
+          Write-Host "--- demuxers ---"
+          $demuxers = (& ffmpeg -hide_banner -demuxers 2>&1) -join "`n"
+          foreach ($dem in @('image2pipe', 'rawvideo', 'mov,mp4,m4a,3gp,3g2,mj2')) {
+            Assert-FfmpegFeature -Listing $demuxers -Name $dem -Kind 'demuxer'
+          }
 
       - name: Install Bun
         uses: oven-sh/setup-bun@v2
@@ -170,6 +223,17 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.inputs.ref }}
+          lfs: true
+
+      # -----------------------------------------------------------------
+      # Install FFmpeg so vitest suites that gate on `HAS_FFMPEG`
+      # (e.g. packages/engine videoFrameExtractor.test.ts) actually run on
+      # Windows. Without it those suites `describe.skipIf(!HAS_FFMPEG)`
+      # themselves silently and any Windows-specific regression in the
+      # FFmpeg-driven code paths would not be caught here.
+      # -----------------------------------------------------------------
+      - name: Install FFmpeg
+        uses: ./.github/actions/install-ffmpeg-windows
 
       - name: Install Bun
         uses: oven-sh/setup-bun@v2

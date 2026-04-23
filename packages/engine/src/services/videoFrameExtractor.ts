@@ -7,10 +7,14 @@
 
 import { spawn } from "child_process";
 import { existsSync, mkdirSync, readdirSync, rmSync } from "fs";
-import { join } from "path";
+import { isAbsolute, join } from "path";
 import { parseHTML } from "linkedom";
-import { extractVideoMetadata, type VideoMetadata } from "../utils/ffprobe.js";
-import { isHdrColorSpace as isHdrColorSpaceUtil } from "../utils/hdr.js";
+import { extractMediaMetadata, type VideoMetadata } from "../utils/ffprobe.js";
+import {
+  analyzeCompositionHdr,
+  isHdrColorSpace as isHdrColorSpaceUtil,
+  type HdrTransfer,
+} from "../utils/hdr.js";
 import { downloadToTemp, isHttpUrl } from "../utils/urlDownloader.js";
 import { runFfmpeg } from "../utils/runFfmpeg.js";
 import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
@@ -154,7 +158,7 @@ export async function extractVideoFramesRange(
   const videoOutputDir = join(outputDir, videoId);
   if (!existsSync(videoOutputDir)) mkdirSync(videoOutputDir, { recursive: true });
 
-  const metadata = await extractVideoMetadata(videoPath);
+  const metadata = await extractMediaMetadata(videoPath);
   const framePattern = `frame_%05d.${format}`;
   const outputPattern = join(videoOutputDir, framePattern);
 
@@ -250,20 +254,27 @@ export async function extractVideoFramesRange(
 }
 
 /**
- * Convert an SDR video to HDR color space (HLG / BT.2020) so it can be
- * composited alongside HDR content without looking washed out.
+ * Convert an SDR (BT.709) video to BT.2020 wide-gamut so it can be composited
+ * alongside HDR content without looking washed out.
  *
- * Uses zscale for color space conversion with a nominal peak luminance of
- * 600 nits — high enough that SDR content doesn't appear too dark next to
- * HDR, matching the approach used by HeyGen's Rio pipeline.
+ * Uses FFmpeg's `colorspace` filter to remap BT.709 → BT.2020 (no real tone
+ * mapping — just a primaries swap so the input fits inside the wider HDR
+ * gamut), then re-tags the stream with the caller's target HDR transfer
+ * function (PQ for HDR10, HLG for broadcast HDR). The output transfer must
+ * match the dominant transfer of the surrounding HDR content; otherwise the
+ * downstream encoder will tag the final video with the wrong curve.
  */
 async function convertSdrToHdr(
   inputPath: string,
   outputPath: string,
+  targetTransfer: HdrTransfer,
   signal?: AbortSignal,
   config?: Partial<Pick<EngineConfig, "ffmpegProcessTimeout">>,
 ): Promise<void> {
   const timeout = config?.ffmpegProcessTimeout ?? DEFAULT_CONFIG.ffmpegProcessTimeout;
+
+  // smpte2084 = PQ (HDR10), arib-std-b67 = HLG.
+  const colorTrc = targetTransfer === "pq" ? "smpte2084" : "arib-std-b67";
 
   const args = [
     "-i",
@@ -273,7 +284,7 @@ async function convertSdrToHdr(
     "-color_primaries",
     "bt2020",
     "-color_trc",
-    "arib-std-b67",
+    colorTrc,
     "-colorspace",
     "bt2020nc",
     "-c:v",
@@ -371,7 +382,11 @@ export async function extractAllVideoFrames(
     if (signal?.aborted) break;
     try {
       let videoPath = video.src;
-      if (!videoPath.startsWith("/") && !isHttpUrl(videoPath)) {
+      // Use isAbsolute() rather than startsWith("/"). On Windows, absolute paths
+      // like "C:\…" are not detected by the latter, so we'd re-join them under
+      // baseDir and produce duplicated, nonexistent paths
+      // (e.g. C:\tmp\hf-vfr-test-X\C:\tmp\hf-vfr-test-X\vfr_screen.mp4).
+      if (!isAbsolute(videoPath) && !isHttpUrl(videoPath)) {
         const fromCompiled = compiledDir ? join(compiledDir, videoPath) : null;
         videoPath =
           fromCompiled && existsSync(fromCompiled) ? fromCompiled : join(baseDir, videoPath);
@@ -396,13 +411,21 @@ export async function extractAllVideoFrames(
   // Phase 2: Probe color spaces and normalize if mixed HDR/SDR
   const videoColorSpaces = await Promise.all(
     resolvedVideos.map(async ({ videoPath }) => {
-      const metadata = await extractVideoMetadata(videoPath);
+      const metadata = await extractMediaMetadata(videoPath);
       return metadata.colorSpace;
     }),
   );
 
-  const hasAnyHdr = videoColorSpaces.some(isHdrColorSpaceUtil);
-  if (hasAnyHdr) {
+  const hdrInfo = analyzeCompositionHdr(videoColorSpaces);
+  if (hdrInfo.hasHdr && hdrInfo.dominantTransfer) {
+
+    // dominantTransfer is "majority wins" — if a composition mixes PQ and HLG
+    // sources (rare but legal), the minority transfer's videos get converted
+    // with the wrong curve. We treat this as caller-error: a single composition
+    // should not mix PQ and HLG sources, the orchestrator picks one transfer
+    // for the whole render, and any source not on that curve is normalized to
+    // it. If you need both transfers, render two separate compositions.
+    const targetTransfer = hdrInfo.dominantTransfer;
     const convertDir = join(options.outputDir, "_hdr_normalized");
     mkdirSync(convertDir, { recursive: true });
 
@@ -410,12 +433,13 @@ export async function extractAllVideoFrames(
       if (signal?.aborted) break;
       const cs = videoColorSpaces[i] ?? null;
       if (!isHdrColorSpaceUtil(cs)) {
-        // SDR video in a mixed timeline — convert to HDR color space
+        // SDR video in a mixed timeline — convert to the dominant HDR transfer
+        // so the encoder tags the final video correctly (PQ vs HLG).
         const entry = resolvedVideos[i];
         if (!entry) continue;
         const convertedPath = join(convertDir, `${entry.video.id}_hdr.mp4`);
         try {
-          await convertSdrToHdr(entry.videoPath, convertedPath, signal, config);
+          await convertSdrToHdr(entry.videoPath, convertedPath, targetTransfer, signal, config);
           entry.videoPath = convertedPath;
         } catch (err) {
           errors.push({
@@ -434,7 +458,7 @@ export async function extractAllVideoFrames(
     if (signal?.aborted) break;
     const entry = resolvedVideos[i];
     if (!entry) continue;
-    const metadata = await extractVideoMetadata(entry.videoPath);
+    const metadata = await extractMediaMetadata(entry.videoPath);
     if (!metadata.isVFR) continue;
 
     let segDuration = entry.video.end - entry.video.start;
@@ -480,7 +504,7 @@ export async function extractAllVideoFrames(
         // Fallback: if no data-duration/data-end was specified (end is Infinity or 0),
         // probe the actual video file to get its natural duration.
         if (!Number.isFinite(videoDuration) || videoDuration <= 0) {
-          const metadata = await extractVideoMetadata(videoPath);
+          const metadata = await extractMediaMetadata(videoPath);
           const sourceDuration = metadata.durationSeconds - video.mediaStart;
           videoDuration = sourceDuration > 0 ? sourceDuration : metadata.durationSeconds;
           video.end = video.start + videoDuration;

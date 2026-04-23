@@ -30,6 +30,27 @@ export type RuntimeState = {
   bridgeLastPostedAt: number;
   bridgeLastPostedPlaying: boolean;
   bridgeLastPostedMuted: boolean;
+  /**
+   * Max interval (ms) between outbound timeline samples on the parent-frame
+   * control bridge. The bridge posts on every changed frame, but also at
+   * least once per this interval so a paused/idle timeline still confirms
+   * its position to any listener.
+   *
+   * **Cross-reference (do not change in isolation)**: the parent-frame
+   * audio-mirror loop in `<hyperframes-player>` waits for
+   * `MIRROR_REQUIRED_CONSECUTIVE_DRIFT_SAMPLES` consecutive over-threshold
+   * samples before issuing a `currentTime` correction. The product of
+   * those two constants is the worst-case A/V re-sync latency:
+   *
+   *   worst_case_correction_latency_ms
+   *     ≈ MIRROR_REQUIRED_CONSECUTIVE_DRIFT_SAMPLES × bridgeMaxPostIntervalMs
+   *
+   * Today: `2 × 80 ms = 160 ms`, which sits comfortably under the
+   * perceptual A/V re-sync tolerance. If you raise this interval, audit
+   * `MIRROR_REQUIRED_CONSECUTIVE_DRIFT_SAMPLES` in
+   * `packages/player/src/hyperframes-player.ts` — leaving it at `2` will
+   * silently push correction latency past the tolerance budget.
+   */
   bridgeMaxPostIntervalMs: number;
   timelinePollIntervalId: ReturnType<typeof setInterval> | null;
   controlBridgeHandler: ((event: MessageEvent) => void) | null;

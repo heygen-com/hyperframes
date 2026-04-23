@@ -116,7 +116,8 @@ export function resolveTimelineMove(
 
 export function buildTrackZIndexMap(tracks: number[]): Map<number, number> {
   const uniqueTracks = Array.from(new Set(tracks)).sort((a, b) => a - b);
-  return new Map(uniqueTracks.map((track, index) => [track, index + 1]));
+  const maxZIndex = uniqueTracks.length;
+  return new Map(uniqueTracks.map((track, index) => [track, maxZIndex - index]));
 }
 
 export function resolveTimelineResize(
@@ -168,6 +169,72 @@ export interface TimelinePromptElement {
   track: number;
 }
 
+export interface TimelineEditCapabilities {
+  canMove: boolean;
+  canTrimStart: boolean;
+  canTrimEnd: boolean;
+}
+
+function isDeterministicTimelineWindow(input: {
+  tag: string;
+  compositionSrc?: string;
+  playbackStartAttr?: "media-start" | "playback-start";
+  sourceDuration?: number;
+}): boolean {
+  if (input.compositionSrc) return true;
+  if (input.playbackStartAttr != null) return true;
+  if (
+    input.sourceDuration != null &&
+    Number.isFinite(input.sourceDuration) &&
+    input.sourceDuration > 0
+  ) {
+    return true;
+  }
+  const normalizedTag = input.tag.toLowerCase();
+  return ["video", "audio", "img"].includes(normalizedTag);
+}
+
+export function hasPatchableTimelineTarget(input: { domId?: string; selector?: string }): boolean {
+  return Boolean(input.domId || input.selector);
+}
+
+export function canOffsetTrimClipStart(input: {
+  tag: string;
+  playbackStart?: number;
+  playbackStartAttr?: "media-start" | "playback-start";
+  sourceDuration?: number;
+}): boolean {
+  if (input.playbackStartAttr != null) return true;
+  if (input.playbackStart != null) return true;
+  const normalizedTag = input.tag.toLowerCase();
+  if (!["video", "audio"].includes(normalizedTag)) return false;
+  return (
+    input.sourceDuration != null &&
+    Number.isFinite(input.sourceDuration) &&
+    input.sourceDuration > 0
+  );
+}
+
+export function getTimelineEditCapabilities(input: {
+  tag: string;
+  duration: number;
+  domId?: string;
+  selector?: string;
+  compositionSrc?: string;
+  playbackStart?: number;
+  playbackStartAttr?: "media-start" | "playback-start";
+  sourceDuration?: number;
+}): TimelineEditCapabilities {
+  const canPatch = hasPatchableTimelineTarget(input);
+  const hasFiniteDuration = Number.isFinite(input.duration) && input.duration > 0;
+  const hasDeterministicWindow = isDeterministicTimelineWindow(input);
+  return {
+    canMove: canPatch && hasDeterministicWindow,
+    canTrimEnd: canPatch && hasFiniteDuration && hasDeterministicWindow,
+    canTrimStart: canPatch && hasFiniteDuration && canOffsetTrimClipStart(input),
+  };
+}
+
 export function buildTimelineAgentPrompt({
   rangeStart,
   rangeEnd,
@@ -206,6 +273,40 @@ Preserve all other elements and timing outside this range.`;
 
 export function buildPromptCopyText(prompt: string): string {
   return prompt.trim();
+}
+
+export function buildTimelineElementAgentPrompt(element: {
+  id: string;
+  tag: string;
+  start: number;
+  duration: number;
+  track: number;
+  sourceFile?: string;
+  selector?: string;
+  compositionSrc?: string;
+}): string {
+  const lines = [
+    "Studio cannot directly move or resize this timeline clip because its visible timing is not fully controlled by patchable HTML timing attributes.",
+    "",
+    "Please update the source so the clip's actual visible timing stays consistent with the authored timeline.",
+    "",
+    "Clip:",
+    `- id: ${element.id}`,
+    `- tag: ${element.tag}`,
+    `- time: ${formatTime(element.start)} to ${formatTime(element.start + element.duration)}`,
+    `- track: ${element.track}`,
+  ];
+
+  if (element.sourceFile) lines.push(`- source file: ${element.sourceFile}`);
+  if (element.selector) lines.push(`- selector: ${element.selector}`);
+  if (element.compositionSrc) lines.push(`- composition src: ${element.compositionSrc}`);
+
+  lines.push(
+    "",
+    "If this clip is animated with GSAP or another JS timeline, update the authored animation timing there as well instead of only changing data-start/data-duration.",
+  );
+
+  return lines.join("\n");
 }
 
 export function formatTimelineAttributeNumber(value: number): string {

@@ -311,6 +311,40 @@ describe("collectRuntimeTimelinePayload", () => {
     expect(sceneClip?.duration).toBe(8);
   });
 
+  it("keeps composition clips sequential when authored durations were preserved privately", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    document.body.appendChild(root);
+
+    const slide1 = document.createElement("div");
+    slide1.id = "slide-1";
+    slide1.setAttribute("data-composition-id", "slide-1");
+    slide1.setAttribute("data-start", "0");
+    slide1.setAttribute("data-hf-authored-duration", "14");
+    root.appendChild(slide1);
+
+    const slide2 = document.createElement("div");
+    slide2.id = "slide-2";
+    slide2.setAttribute("data-composition-id", "slide-2");
+    slide2.setAttribute("data-start", "slide-1");
+    slide2.setAttribute("data-hf-authored-duration", "12");
+    root.appendChild(slide2);
+
+    const slide3 = document.createElement("div");
+    slide3.id = "slide-3";
+    slide3.setAttribute("data-composition-id", "slide-3");
+    slide3.setAttribute("data-start", "slide-2");
+    slide3.setAttribute("data-hf-authored-duration", "16");
+    root.appendChild(slide3);
+
+    const result = collectRuntimeTimelinePayload(defaultParams);
+    const starts = Object.fromEntries(result.clips.map((clip) => [clip.id, clip.start]));
+    expect(starts["slide-1"]).toBe(0);
+    expect(starts["slide-2"]).toBe(14);
+    expect(starts["slide-3"]).toBe(26);
+    expect(result.durationInFrames).toBe(42 * 30);
+  });
+
   it("discovers GSAP-animated scene elements via timeline introspection", () => {
     const root = document.createElement("div");
     root.setAttribute("data-composition-id", "main");

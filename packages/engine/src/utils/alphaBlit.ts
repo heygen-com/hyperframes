@@ -292,7 +292,7 @@ const SRGB_TO_HLG = buildSrgbToHdrLut("hlg");
 const SRGB_TO_PQ = buildSrgbToHdrLut("pq");
 
 /** Select the correct sRGB→HDR LUT for the given transfer function. */
-export function getSrgbToHdrLut(transfer: "hlg" | "pq"): Uint16Array {
+function getSrgbToHdrLut(transfer: "hlg" | "pq"): Uint16Array {
   return transfer === "pq" ? SRGB_TO_PQ : SRGB_TO_HLG;
 }
 
@@ -850,21 +850,129 @@ export function normalizeObjectFit(value: string | undefined): ObjectFit {
 }
 
 /**
- * Parse a CSS `matrix(a,b,c,d,e,f)` string into a 6-element array.
- * Returns null for "none", empty, or unsupported formats (matrix3d).
+ * Parse a CSS `matrix(a,b,c,d,e,f)` or `matrix3d(...)` string into a 6-element
+ * 2D affine array.
  *
- * The array maps to the CSS matrix: [a, b, c, d, tx, ty] where:
+ * Returns null for `"none"`, empty input, or syntactically malformed values.
+ *
+ * The returned array maps to the CSS matrix: [a, b, c, d, tx, ty] where:
  *   | a  c  tx |     (a=scaleX, b=skewY, c=skewX, d=scaleY, tx/ty=translate)
  *   | b  d  ty |
  *   | 0  0  1  |
+ *
+ * `matrix3d` is the default output of `DOMMatrix.toString()` whenever any
+ * ancestor in the chain has used a 3D transform — most importantly GSAP's
+ * default `force3D: true`, which converts `translate(...)` into
+ * `translate3d(..., 0)` and surfaces as `matrix3d(...)` even for purely 2D
+ * animations. Without explicit handling we'd silently drop every transform
+ * driven by GSAP. The 16 values are in column-major order:
+ *
+ *   matrix3d(m11, m12, m13, m14, m21, m22, m23, m24, m31, m32, m33, m34,
+ *            m41, m42, m43, m44)
+ *
+ * The 2D affine corresponds to indices 0, 1, 4, 5, 12, 13 (m11, m12, m21,
+ * m22, m41, m42). Z, perspective, and out-of-plane rotation components are
+ * dropped — for true 3D transforms the resulting 2D projection is only
+ * approximate, but for the GSAP `force3D: true` flat-matrix case it is exact.
+ *
+ * When a `matrix3d` arrives with Z-significant components (m13, m23, m31,
+ * m32, m34, m43 != 0 or m33 != 1) we emit a one-time `console.warn` so
+ * authors using real 3D transforms know the engine path is silently
+ * flattening their scene rather than failing it.
  */
 export function parseTransformMatrix(css: string): number[] | null {
   if (!css || css === "none") return null;
-  const match = css.match(
+
+  const match2d = css.match(
     /^matrix\(\s*([^,]+),\s*([^,]+),\s*([^,]+),\s*([^,]+),\s*([^,]+),\s*([^,)]+)\s*\)$/,
   );
-  if (!match) return null;
-  const values = match.slice(1, 7).map(Number);
-  if (!values.every(Number.isFinite)) return null;
-  return values;
+  if (match2d) {
+    const values = match2d.slice(1, 7).map(Number);
+    if (!values.every(Number.isFinite)) return null;
+    return values;
+  }
+
+  const match3d = css.match(/^matrix3d\(\s*([^)]+)\)$/);
+  if (match3d) {
+    const raw = match3d[1];
+    if (!raw) return null;
+    const parts = raw.split(",").map((s) => Number(s.trim()));
+    if (parts.length !== 16 || !parts.every(Number.isFinite)) return null;
+    // 3D-significance check: a flat 2D transform expressed as matrix3d has
+    // a3=b3=c1=c2=d1=d2=d3=0, c3=1, d4=1. Any deviation means the composition
+    // is using real 3D (perspective, rotateX/Y) which the engine path can't
+    // represent — we project to 2D and the visual will silently drop depth.
+    // Warn once per process so authors don't get a misleading "looks fine in
+    // studio, broken in render" experience without any signal. Z translation
+    // (c4 = parts[14]) is intentionally dropped by the 2D projection below
+    // and does NOT trigger this warning — that's the GSAP `force3D: true`
+    // happy path.
+    warnIfZSignificant(parts);
+    // Extract column-major 2D affine: m11, m12, m21, m22, m41, m42.
+    return [
+      parts[0] as number,
+      parts[1] as number,
+      parts[4] as number,
+      parts[5] as number,
+      parts[12] as number,
+      parts[13] as number,
+    ];
+  }
+
+  return null;
+}
+
+let warnedZSignificant = false;
+const Z_EPSILON = 1e-6;
+
+function warnIfZSignificant(parts: number[]): void {
+  if (warnedZSignificant) return;
+  // CSS matrix3d() is column-major:
+  //   matrix3d(a1, b1, c1, d1, a2, b2, c2, d2, a3, b3, c3, d3, a4, b4, c4, d4)
+  // laid out as:
+  //   | a1 a2 a3 a4 |   | parts[0]  parts[4]  parts[8]  parts[12] |
+  //   | b1 b2 b3 b4 | = | parts[1]  parts[5]  parts[9]  parts[13] |
+  //   | c1 c2 c3 c4 |   | parts[2]  parts[6]  parts[10] parts[14] |
+  //   | d1 d2 d3 d4 |   | parts[3]  parts[7]  parts[11] parts[15] |
+  //
+  // For a flat 2D transform — the only thing this engine path can render
+  // faithfully — we expect:
+  //   a3 = b3 = c1 = c2 = 0   (no XZ/YZ rotation coupling)
+  //   c3 = 1                  (no Z scaling)
+  //   d1 = d2 = d3 = 0        (no perspective)
+  //   d4 = 1                  (no homogeneous scaling)
+  // Z translation (c4 = parts[14]) is explicitly dropped by the 2D affine
+  // extraction below — that's the whole point of supporting GSAP's
+  // `force3D: true` translate3d(x, y, 0) emission — so it is NOT flagged.
+  const a3 = parts[8] ?? 0;
+  const b3 = parts[9] ?? 0;
+  const c1 = parts[2] ?? 0;
+  const c2 = parts[6] ?? 0;
+  const c3 = parts[10] ?? 1;
+  const d1 = parts[3] ?? 0;
+  const d2 = parts[7] ?? 0;
+  const d3 = parts[11] ?? 0;
+  const d4 = parts[15] ?? 1;
+  if (
+    Math.abs(a3) > Z_EPSILON ||
+    Math.abs(b3) > Z_EPSILON ||
+    Math.abs(c1) > Z_EPSILON ||
+    Math.abs(c2) > Z_EPSILON ||
+    Math.abs(c3 - 1) > Z_EPSILON ||
+    Math.abs(d1) > Z_EPSILON ||
+    Math.abs(d2) > Z_EPSILON ||
+    Math.abs(d3) > Z_EPSILON ||
+    Math.abs(d4 - 1) > Z_EPSILON
+  ) {
+    warnedZSignificant = true;
+    console.warn(
+      `[alphaBlit] parseTransformMatrix received a matrix3d with non-trivial 3D components ` +
+        `(a3=${a3}, b3=${b3}, c1=${c1}, c2=${c2}, c3=${c3}, d1=${d1}, d2=${d2}, d3=${d3}, d4=${d4}). ` +
+        `The engine projects 3D transforms to 2D (m11, m12, m21, m22, m41, m42) and silently ` +
+        `discards perspective and out-of-plane rotation. If your composition uses real 3D ` +
+        `(rotateX/Y, perspective), the rendered output will not match the studio preview. ` +
+        `Z translation (translateZ) is dropped by design and does not trigger this warning. ` +
+        `This warning is emitted once per process.`,
+    );
+  }
 }

@@ -194,6 +194,31 @@ npx skills add heygen-com/hyperframes
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
+### Cloning the repo
+
+The repo uses [Git LFS](https://git-lfs.com) for golden regression-test baselines under `packages/producer/tests/**/output.mp4` (~240 MB of `.mp4` files). If you're cloning the full repo for development, install Git LFS first:
+
+```bash
+# macOS
+brew install git-lfs
+
+# Ubuntu/Debian
+sudo apt install git-lfs
+
+# Windows
+winget install GitHub.GitLFS
+# (or install Git for Windows, which bundles Git LFS as an optional component)
+
+# Then (once, per machine)
+git lfs install
+```
+
+If you hit `git-lfs filter-process: command not found` during `git clone` or `npx skills add heygen-com/hyperframes`, install Git LFS and retry. You can also skip LFS content if you only need the source files:
+
+```bash
+GIT_LFS_SKIP_SMUDGE=1 git clone https://github.com/heygen-com/hyperframes.git
+```
+
 ## License
 
 [Apache 2.0](LICENSE)

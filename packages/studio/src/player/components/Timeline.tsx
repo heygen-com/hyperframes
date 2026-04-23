@@ -10,6 +10,7 @@ import { formatTime } from "../lib/time";
 import { TimelineClip } from "./TimelineClip";
 import { EditPopover } from "./EditModal";
 import {
+  getTimelineEditCapabilities,
   resolveTimelineAutoScroll,
   resolveTimelineMove,
   resolveTimelineResize,
@@ -919,12 +920,6 @@ export const Timeline = memo(function Timeline({
                   {element.tag}
                 </span>
               </div>
-              <span
-                className="text-[14px] font-semibold truncate leading-none tracking-[-0.02em]"
-                style={{ color: theme.textPrimary }}
-              >
-                {element.id || element.tag}
-              </span>
               <div className="flex items-center">
                 <span
                   className="max-w-full truncate rounded-md px-1.5 py-0.5 text-[10px] font-medium tabular-nums leading-none"
@@ -1081,6 +1076,7 @@ export const Timeline = memo(function Timeline({
                   {els.map((el, i) => {
                     const clipStyle = getStyle(el.tag);
                     const elementKey = el.key ?? el.id;
+                    const capabilities = getTimelineEditCapabilities(el);
                     const isSelected = selectedElementId === elementKey;
                     const isComposition = !!el.compositionSrc;
                     const clipKey = `${elementKey}-${i}`;
@@ -1109,6 +1105,8 @@ export const Timeline = memo(function Timeline({
                         onHoverEnd={() => setHoveredClip(null)}
                         onResizeStart={(edge, e) => {
                           if (e.button !== 0 || e.shiftKey || !onResizeElement) return;
+                          if (edge === "start" && !capabilities.canTrimStart) return;
+                          if (edge === "end" && !capabilities.canTrimEnd) return;
                           e.stopPropagation();
                           setShowPopover(false);
                           setRangeSelection(null);
@@ -1123,7 +1121,13 @@ export const Timeline = memo(function Timeline({
                           });
                         }}
                         onPointerDown={(e) => {
-                          if (e.button !== 0 || e.shiftKey || !onMoveElement) return;
+                          if (
+                            e.button !== 0 ||
+                            e.shiftKey ||
+                            !onMoveElement ||
+                            !capabilities.canMove
+                          )
+                            return;
                           setShowPopover(false);
                           setRangeSelection(null);
                           const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();

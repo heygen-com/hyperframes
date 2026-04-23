@@ -1,0 +1,14 @@
+{
+  "name": "hdr-hlg-regression",
+  "description": "Regression test for HDR HLG (BT.2020 ARIB STD-B67) video pass-through. Two windows: (A) baseline HLG video + SDR DOM overlay, (B) wrapper-opacity fade applied to an HLG video. Verifies that an HLG HEVC source drives the layered HDR pipeline end-to-end (extractMediaMetadata reports hlg, ffmpegFrameSource decodes correctly, hdrEncoder writes HEVC Main10 / yuv420p10le / BT.2020 HLG with the appropriate mastering metadata) and that opacity composition does not break HLG signal pass-through.",
+  "tags": ["regression", "hdr"],
+  "minPsnr": 28,
+  "maxFrameFailures": 0,
+  "minAudioCorrelation": 0,
+  "maxAudioLagWindows": 1,
+  "renderConfig": {
+    "fps": 30,
+    "workers": 1,
+    "hdr": true
+  }
+}

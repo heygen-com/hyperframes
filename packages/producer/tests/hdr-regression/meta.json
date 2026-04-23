@@ -1,0 +1,14 @@
+{
+  "name": "hdr-regression",
+  "description": "Comprehensive HDR10 (BT.2020 PQ) regression suite. Eight back-to-back 'windows' (A–H) lock down the layered HDR compositing pipeline against the most common composition shapes: baseline pass-through, wrapper-vs-direct opacity, z-order sandwiches, side-by-side multi-source, transform + border-radius, object-fit letterbox, and a shader transition between an HDR video and an HDR PQ image. Window C (direct <video> opacity) is fixed by Chunk 1. Window F (transform + border-radius) is fixed by Chunk 4. The golden is byte-deterministic and `maxFrameFailures` is 0 — any drift in the layered HDR compositor is caught immediately.",
+  "tags": ["regression", "hdr"],
+  "minPsnr": 28,
+  "maxFrameFailures": 0,
+  "minAudioCorrelation": 0,
+  "maxAudioLagWindows": 1,
+  "renderConfig": {
+    "fps": 30,
+    "workers": 1,
+    "hdr": true
+  }
+}

@@ -16,6 +16,9 @@ import { applyCaptionOverrides } from "./captionOverrides";
 import type { RuntimeDeterministicAdapter, RuntimeJson, RuntimeTimelineLike } from "./types";
 import type { PlayerAPI } from "../core.types";
 
+const AUTHORED_DURATION_ATTR = "data-hf-authored-duration";
+const AUTHORED_END_ATTR = "data-hf-authored-end";
+
 export function initSandboxRuntimeModular(): void {
   const state = createRuntimeState();
   const runtimeWindow = window as Window & {
@@ -237,7 +240,18 @@ export function initSandboxRuntimeModular(): void {
       // Preserve explicit root duration so timeline payload can distinguish
       // authored finite duration from loop-inflated timeline duration.
       if (rootEl && node === rootEl) continue;
-      // Non-root compositions derive duration from timeline.
+      // Preserve authored timing for reference-start resolution in Studio and
+      // timeline payload generation. The runtime still strips the public attrs
+      // so visibility/parity continues to derive from the live sub-timeline.
+      const authoredDuration = node.getAttribute("data-duration");
+      const authoredEnd = node.getAttribute("data-end");
+      if (authoredDuration != null && !node.hasAttribute(AUTHORED_DURATION_ATTR)) {
+        node.setAttribute(AUTHORED_DURATION_ATTR, authoredDuration);
+      }
+      if (authoredEnd != null && !node.hasAttribute(AUTHORED_END_ATTR)) {
+        node.setAttribute(AUTHORED_END_ATTR, authoredEnd);
+      }
+      // Non-root compositions derive visible duration from timeline.
       // Strip both data-duration AND data-end so the visibility system
       // falls back to the GSAP timeline duration (parity with preview).
       node.removeAttribute("data-duration");

@@ -26,8 +26,14 @@ Use `npx hyperframes compositions` to see all compositions in a project.
 
 ## Variables
 
-Compositions can expose variables for dynamic content:
+HyperFrames does not automatically bind `data-var-*` attributes into your composition DOM.
 
 ```html
-<div data-composition-id="card" data-var-title="string" data-var-color="color"></div>
+<div
+  data-composition-id="card"
+  data-composition-src="compositions/card.html"
+  data-variable-values='{"title":"Hello","color":"#ff4d4f"}'
+></div>
 ```
+
+Read `data-variable-values` inside the nested composition and apply the values in your own script. Variable metadata for tooling is declared separately via `data-composition-variables` and read with `extractCompositionMetadata()`.

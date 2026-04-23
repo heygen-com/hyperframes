@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>HDR HLG Regression Suite</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background: #000;
+      }
+
+      #main {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #000;
+      }
+
+      .hdr-video {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+      }
+
+      .label {
+        position: absolute;
+        padding: 14px 22px;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        font-size: 36px;
+        font-weight: 700;
+        color: #ffffff;
+        background: rgba(0, 0, 0, 0.6);
+        border-radius: 8px;
+        letter-spacing: 0.04em;
+        z-index: 100;
+      }
+
+      .label-tl {
+        top: 48px;
+        left: 64px;
+      }
+
+      /* Window B: opacity-tweenable wrapper around the HLG video */
+      #window-b-wrapper {
+        position: absolute;
+        inset: 0;
+        opacity: 1;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="main"
+      data-composition-id="hdr-hlg-regression"
+      data-start="0"
+      data-duration="5"
+      data-width="1920"
+      data-height="1080"
+    >
+      <!-- Window A · Static baseline HLG · 0.0–2.5s -->
+      <video
+        id="wa-video"
+        class="clip hdr-video"
+        data-start="0"
+        data-duration="2.5"
+        data-track-index="0"
+        src="hdr-hlg-clip.mp4"
+        muted
+        playsinline
+      ></video>
+      <div class="label label-tl clip" data-start="0" data-duration="2.5">
+        A · HLG baseline + DOM overlay
+      </div>
+
+      <!-- Window B · Wrapper opacity fade on HLG · 2.5–5.0s -->
+      <div id="window-b-wrapper">
+        <video
+          id="wb-video"
+          class="clip hdr-video"
+          data-start="2.5"
+          data-duration="2.5"
+          data-track-index="0"
+          src="hdr-hlg-clip.mp4"
+          muted
+          playsinline
+        ></video>
+      </div>
+      <div class="label label-tl clip" data-start="2.5" data-duration="2.5">
+        B · HLG wrapper opacity fade
+      </div>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+
+      const tl = gsap.timeline({ paused: true });
+
+      // Window B · wrapper opacity 1 → 0.15 → 1 inside the 2.5s window
+      tl.to("#window-b-wrapper", { opacity: 0.15, duration: 1.0, ease: "power2.inOut" }, 2.75);
+      tl.to("#window-b-wrapper", { opacity: 1.0, duration: 1.0, ease: "power2.inOut" }, 3.75);
+
+      window.__timelines["hdr-hlg-regression"] = tl;
+    </script>
+  </body>
+</html>

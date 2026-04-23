@@ -195,10 +195,23 @@ The timeline panel provides a visual representation of your composition's struct
 
 - Each clip appears as a colored bar on its track
 - Bar position and width reflect `data-start` and `data-duration`
-- Tracks are stacked by `data-track-index` (higher tracks render in front)
+- Visually higher rows render in front; lower rows render underneath
 - Relative timing references (e.g., `data-start="intro"`) are resolved and displayed as absolute positions
 
 This makes it easy to understand the temporal structure of complex compositions with many overlapping clips.
+
+### Timeline Editing
+
+The timeline supports move and trim actions that persist directly back into your HTML source.
+
+For a full breakdown of:
+
+- what timeline editing can do today
+- how each action maps to `data-start`, `data-duration`, `data-track-index`, and `z-index`
+- which clip types support start trim
+- current limitations and mental models
+
+see [Timeline Editing](/guides/timeline-editing).
 
 ### Player Controls
 

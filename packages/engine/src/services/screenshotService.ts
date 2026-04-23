@@ -375,17 +375,12 @@ export async function injectVideoFramesBatch(
         let img = video.nextElementSibling as HTMLImageElement | null;
         const isNewImage = !img || !img.classList.contains("__render_frame__");
         const computedStyle = window.getComputedStyle(video);
-        // GSAP seeks re-apply tween values during an active tween, but do not
-        // re-apply tweens that have already completed. After an opacity fade-in
-        // finishes, GSAP's last set value is overwritten on subsequent frames
-        // by the `opacity: 0 !important` we apply at the bottom of this
-        // function to hide the native <video>. That leaves `computedOpacity`
-        // stuck at 0 even though the user's intent is opacity 1 (the tween's
-        // end state). The `|| 1` fallback treats computedOpacity === 0 as a
-        // hidden-native-video artifact and recovers opacity 1, matching the
-        // final on-screen state for the vast majority of compositions.
-        // For active tweens in the [0,1] exclusive range this is a no-op.
-        const computedOpacity = parseFloat(computedStyle.opacity) || 1;
+        // Read the GSAP-controlled opacity directly from the native <video>.
+        // We hide the <video> below with `visibility: hidden` only (never
+        // `opacity: 0`), so its computed opacity is preserved across seeks
+        // and accurately reflects the user's intent on every frame.
+        const opacityParsed = parseFloat(computedStyle.opacity);
+        const computedOpacity = Number.isNaN(opacityParsed) ? 1 : opacityParsed;
         const sourceIsStatic = !computedStyle.position || computedStyle.position === "static";
 
         if (isNewImage) {
@@ -454,8 +449,10 @@ export async function injectVideoFramesBatch(
         );
         img.style.opacity = String(computedOpacity);
         img.style.visibility = "visible";
+        // Hide the native <video> with visibility only — never clobber inline
+        // opacity, so subsequent reads (and queryElementStacking) see the real
+        // GSAP-controlled value.
         video.style.setProperty("visibility", "hidden", "important");
-        video.style.setProperty("opacity", "0", "important");
         video.style.setProperty("pointer-events", "none", "important");
       }
       if (pendingDecodes.length > 0) {
@@ -489,10 +486,10 @@ export async function syncVideoFrameVisibility(
           img.style.visibility = "visible";
         }
       } else {
-        // Inactive video: hide both
+        // Inactive video: hide both. Use visibility only (never opacity) so we
+        // never clobber GSAP-controlled inline opacity.
         video.style.removeProperty("display");
         video.style.setProperty("visibility", "hidden", "important");
-        video.style.setProperty("opacity", "0", "important");
         video.style.setProperty("pointer-events", "none", "important");
         if (hasImg) {
           img.style.visibility = "hidden";

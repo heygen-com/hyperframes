@@ -1,0 +1,144 @@
+name: Player perf
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: player-perf-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      perf: ${{ steps.filter.outputs.perf }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            perf:
+              - "packages/player/**"
+              - "packages/core/**"
+              - "package.json"
+              - "bun.lock"
+              - ".github/workflows/player-perf.yml"
+
+  perf-shards:
+    name: "Perf: ${{ matrix.shard }}"
+    needs: changes
+    if: needs.changes.outputs.perf == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - shard: load
+            scenarios: load
+            runs: "5"
+          - shard: fps
+            scenarios: fps
+            runs: "3"
+          - shard: scrub
+            scenarios: scrub
+            runs: "3"
+          - shard: drift
+            scenarios: drift
+            runs: "3"
+          - shard: parity
+            scenarios: parity
+            runs: "3"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - run: bun install --frozen-lockfile
+
+      # Player perf loads packages/player/dist/hyperframes-player.global.js
+      # and packages/core/dist/hyperframe.runtime.iife.js, so a full build is required.
+      - run: bun run build
+
+      - name: Set up Chrome (headless shell)
+        id: setup-chrome
+        uses: browser-actions/setup-chrome@v1
+        with:
+          chrome-version: stable
+
+      # The parity scenario shells out to `ffmpeg -lavfi ssim` to score the
+      # live-playback frame against the sync-seek reference frame. ffmpeg is
+      # not on the default ubuntu-latest runner image, and a missing binary
+      # surfaces as ENOENT inside computeSsim() — informative, but cheaper
+      # to just install it here so the shard never trips on infra.
+      - name: Install ffmpeg (parity shard only)
+        if: matrix.shard == 'parity'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg
+          ffmpeg -version | head -n 1
+
+      - name: Run player perf — ${{ matrix.shard }} (measure mode)
+        working-directory: packages/player
+        env:
+          PUPPETEER_EXECUTABLE_PATH: ${{ steps.setup-chrome.outputs.chrome-path }}
+        run: |
+          bun run perf \
+            --mode=measure \
+            --scenarios=${{ matrix.scenarios }} \
+            --runs=${{ matrix.runs }}
+
+      - name: Upload perf results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: player-perf-${{ matrix.shard }}
+          path: packages/player/tests/perf/results/
+          if-no-files-found: warn
+          retention-days: 30
+
+  # Summary job — matches the required check name in branch protection.
+  # Logs an explicit "skipped" / "passed" / "failed" line both to stdout and to
+  # $GITHUB_STEP_SUMMARY so a false skip is obvious in the Checks UI without
+  # having to dig into the changes-job logs.
+  player-perf:
+    runs-on: ubuntu-latest
+    needs: [changes, perf-shards]
+    if: always()
+    steps:
+      - name: Check results
+        env:
+          PERF_FILTER_RESULT: ${{ needs.changes.outputs.perf }}
+          PERF_SHARDS_RESULT: ${{ needs.perf-shards.result }}
+        run: |
+          {
+            echo "## Player perf gate"
+            echo ""
+            echo "- paths-filter \`perf\` matched: \`${PERF_FILTER_RESULT}\`"
+            echo "- perf-shards result: \`${PERF_SHARDS_RESULT}\`"
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "${PERF_FILTER_RESULT}" != "true" ]; then
+            echo "::notice title=Player perf::SKIPPED — no changes under packages/player/**, packages/core/**, package.json, bun.lock, or .github/workflows/player-perf.yml. Auto-pass."
+            echo "**Status:** SKIPPED (no player/core changes — auto-pass)" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          if [ "${PERF_SHARDS_RESULT}" != "success" ]; then
+            echo "::error title=Player perf::FAILED — perf-shards result was '${PERF_SHARDS_RESULT}'. See the per-shard logs above."
+            echo "**Status:** FAILED (perf-shards result: \`${PERF_SHARDS_RESULT}\`)" >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+          echo "::notice title=Player perf::PASSED — all perf shards completed successfully."
+          echo "**Status:** PASSED" >> "$GITHUB_STEP_SUMMARY"

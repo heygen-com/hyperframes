@@ -4,6 +4,9 @@ packages/producer/tests/*/output/output.mp4 filter=lfs diff=lfs merge=lfs -text
 # Source video clips for regression test fixtures (HDR samples, etc.)
 packages/producer/tests/*/src/*.mp4 filter=lfs diff=lfs merge=lfs -text
 
+# Source image assets for regression test fixtures (HDR PNGs, screenshot fixtures, etc.)
+packages/producer/tests/*/src/*.png filter=lfs diff=lfs merge=lfs -text
+
 # GitHub Linguist overrides — HTML files are compositions (user content / templates),
 # not the framework source. Hide them from the repo language stats so TypeScript,
 # which is the actual implementation, surfaces as the dominant language.

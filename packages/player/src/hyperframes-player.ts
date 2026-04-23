@@ -2,13 +2,38 @@ import { createControls, SPEED_PRESETS, type ControlsCallbacks } from "./control
 import { shouldInjectRuntime } from "./shouldInjectRuntime.js";
 import { PLAYER_STYLES } from "./styles.js";
 
+let sharedSheet: CSSStyleSheet | null = null;
+
+function getSharedSheet(): CSSStyleSheet | null {
+  if (sharedSheet) return sharedSheet;
+  if (typeof CSSStyleSheet === "undefined") return null;
+  try {
+    const sheet = new CSSStyleSheet();
+    sheet.replaceSync(PLAYER_STYLES);
+    sharedSheet = sheet;
+    return sheet;
+  } catch {
+    return null;
+  }
+}
+
 const DEFAULT_FPS = 30;
 const RUNTIME_CDN_URL =
   "https://cdn.jsdelivr.net/npm/@hyperframes/core/dist/hyperframe.runtime.iife.js";
 
 class HyperframesPlayer extends HTMLElement {
   static get observedAttributes() {
-    return ["src", "width", "height", "controls", "muted", "poster", "playback-rate", "audio-src"];
+    return [
+      "src",
+      "srcdoc",
+      "width",
+      "height",
+      "controls",
+      "muted",
+      "poster",
+      "playback-rate",
+      "audio-src",
+    ];
   }
 
   private shadow: ShadowRoot;
@@ -45,6 +70,16 @@ class HyperframesPlayer extends HTMLElement {
     el: HTMLMediaElement;
     start: number;
     duration: number;
+    /**
+     * Count of consecutive steady-state samples in which the proxy's
+     * `currentTime` was found drifted beyond `MIRROR_DRIFT_THRESHOLD_SECONDS`.
+     * Reset on every in-threshold sample. `_mirrorParentMediaTime` only
+     * issues a write once this passes `MIRROR_REQUIRED_CONSECUTIVE_DRIFT_SAMPLES`,
+     * which absorbs single-sample jitter (e.g. one slow bridge tick) without
+     * thrashing the media element with seeks. Forced calls (promotion,
+     * media-added) bypass the gate and reset the counter.
+     */
+    driftSamples: number;
   }> = [];
 
   /**
@@ -85,9 +120,14 @@ class HyperframesPlayer extends HTMLElement {
     super();
     this.shadow = this.attachShadow({ mode: "open" });
 
-    const style = document.createElement("style");
-    style.textContent = PLAYER_STYLES;
-    this.shadow.appendChild(style);
+    const sheet = getSharedSheet();
+    if (sheet) {
+      this.shadow.adoptedStyleSheets = [sheet];
+    } else {
+      const style = document.createElement("style");
+      style.textContent = PLAYER_STYLES;
+      this.shadow.appendChild(style);
+    }
 
     this.container = document.createElement("div");
     this.container.className = "hfp-container";
@@ -125,6 +165,9 @@ class HyperframesPlayer extends HTMLElement {
     if (this.hasAttribute("poster")) this._setupPoster();
     if (this.hasAttribute("audio-src"))
       this._setupParentAudioFromUrl(this.getAttribute("audio-src")!);
+    // srcdoc wins over src per HTML spec when both are set; mirror both attributes
+    // so the browser applies the standard precedence rules.
+    if (this.hasAttribute("srcdoc")) this.iframe.srcdoc = this.getAttribute("srcdoc")!;
     if (this.hasAttribute("src")) this.iframe.src = this.getAttribute("src")!;
   }
 
@@ -149,6 +192,14 @@ class HyperframesPlayer extends HTMLElement {
           this._ready = false;
           this.iframe.src = val;
         }
+        break;
+      case "srcdoc":
+        // Distinguish removal (null) from empty-string ("") so callers can clear
+        // srcdoc and let src take over. Always reset readiness; the iframe will
+        // load a new document either way.
+        this._ready = false;
+        if (val !== null) this.iframe.srcdoc = val;
+        else this.iframe.removeAttribute("srcdoc");
         break;
       case "width":
         this._compositionWidth = parseInt(val || "1920", 10);
@@ -233,9 +284,35 @@ class HyperframesPlayer extends HTMLElement {
     this.dispatchEvent(new Event("pause"));
   }
 
+  /**
+   * Move playback to `timeInSeconds`.
+   *
+   * Two transports, with different precision semantics — read this before
+   * writing assertions against `seek` from outside the player:
+   *
+   * - **Same-origin (sync) path** — when the runtime's `window.__player.seek`
+   *   is reachable, we call it directly. `timeInSeconds` is forwarded
+   *   *verbatim* (no rounding), so a same-origin scrub of `seek(7.3333)`
+   *   lands the runtime at `7.3333 s` — sub-frame precision relative to
+   *   `DEFAULT_FPS` (30). Studio scrub UIs that need fractional-frame
+   *   alignment (e.g. waveform scrubbing on long-duration audio) get the
+   *   exact requested time.
+   * - **Cross-origin (postMessage) path** — when same-origin access throws
+   *   or `__player.seek` is missing, we fall back to the postMessage bridge.
+   *   The wire protocol carries integer frames (`frame: Math.round(t × FPS)`),
+   *   so cross-origin embeds are *frame-quantized* and `seek(7.3333)` lands
+   *   at `Math.round(7.3333 × 30) / 30 ≈ 7.3333…` (same value here, but for
+   *   most fractional inputs you'll see a snap to the nearest 1/30 s).
+   *
+   * `this._currentTime` always reflects the *requested* `timeInSeconds`
+   * regardless of transport, so the controls UI shows the un-quantized value
+   * either way; the asymmetry only affects what the runtime actually paints.
+   */
   seek(timeInSeconds: number) {
-    const frame = Math.round(timeInSeconds * DEFAULT_FPS);
-    this._sendControl("seek", { frame });
+    if (!this._trySyncSeek(timeInSeconds)) {
+      const frame = Math.round(timeInSeconds * DEFAULT_FPS);
+      this._sendControl("seek", { frame });
+    }
     this._currentTime = timeInSeconds;
 
     // Mirror parent proxy currentTime only while parent owns audible output.
@@ -304,6 +381,37 @@ class HyperframesPlayer extends HTMLElement {
       );
     } catch {
       /* cross-origin */
+    }
+  }
+
+  /**
+   * Reach into the runtime's `window.__player.seek` directly, skipping the
+   * postMessage hop. Same-origin only — cross-origin embeds throw a
+   * `SecurityError` on `contentWindow` property access, which we catch and
+   * report as a no-op so the caller can transparently fall back to the
+   * postMessage bridge. Returns `true` only when the runtime accepted the
+   * call (`__player.seek` exists, is callable, and didn't throw).
+   *
+   * Studio has used this access path privately via `iframe.contentWindow.__player`
+   * (see `useTimelinePlayer.ts`); this helper just formalizes the same
+   * detection inside the player so external scrub UIs get the same
+   * single-task latency. The runtime-side `seek` is the same wrapped
+   * function the postMessage handler calls (`installRuntimeControlBridge`
+   * routes through `player.seek`), so `markExplicitSeek()` and downstream
+   * runtime state stay identical between the two paths.
+   */
+  private _trySyncSeek(timeInSeconds: number): boolean {
+    try {
+      const win = this.iframe.contentWindow as
+        | (Window & { __player?: { seek?: (t: number) => void } })
+        | null;
+      const player = win?.__player;
+      const seek = player?.seek;
+      if (typeof seek !== "function") return false;
+      seek.call(player, timeInSeconds);
+      return true;
+    } catch {
+      return false;
     }
   }
 
@@ -611,12 +719,62 @@ class HyperframesPlayer extends HTMLElement {
    */
   private static readonly MIRROR_DRIFT_THRESHOLD_SECONDS = 0.05;
 
-  private _mirrorParentMediaTime(timelineSeconds: number) {
+  /**
+   * How many *consecutive* over-threshold steady-state samples we wait for
+   * before issuing a `currentTime` write. A value of 2 means a single
+   * spike (one slow bridge tick, one tab-throttled rAF batch, one GC pause)
+   * is absorbed without a seek; sustained drift still corrects on the very
+   * next tick after the threshold is crossed twice in a row.
+   *
+   * **Coupling with the timeline-control bridge** — read before changing:
+   *   worst_case_correction_latency_ms
+   *     ≈ MIRROR_REQUIRED_CONSECUTIVE_DRIFT_SAMPLES × bridgeMaxPostIntervalMs
+   *
+   * `bridgeMaxPostIntervalMs` (currently `80`) lives at
+   * `packages/core/src/runtime/state.ts` (field on `RuntimeState`). At
+   * today's values, worst-case is `2 × 80 ms = 160 ms` — still well under
+   * the human shot-change tolerance for A/V re-sync. If you bump bridge
+   * cadence (raising `bridgeMaxPostIntervalMs`) you may need to drop this
+   * constant to `1` to keep the product under ~150 ms; if you tighten
+   * cadence you can raise this to absorb more jitter without perceptual
+   * cost. There is a back-reference in `state.ts` next to
+   * `bridgeMaxPostIntervalMs` so a change to either side surfaces the
+   * coupling.
+   */
+  private static readonly MIRROR_REQUIRED_CONSECUTIVE_DRIFT_SAMPLES = 2;
+
+  /**
+   * Mirror parent-proxy `currentTime` to the iframe timeline. Defaults to
+   * the *coalesced* path: a single over-threshold sample is treated as
+   * jitter and merely increments a per-proxy counter; the actual seek only
+   * fires once `MIRROR_REQUIRED_CONSECUTIVE_DRIFT_SAMPLES` consecutive
+   * samples agree. Pass `{ force: true }` for one-shot alignment moments
+   * (audio-ownership promotion, brand-new proxy initialization) where we
+   * cannot tolerate even ~80 ms of misaligned audible playback.
+   *
+   * The counter is also reset on any in-threshold sample and on any
+   * out-of-range timeline position, so a proxy that drops back into a
+   * scene later starts fresh rather than carrying stale samples from the
+   * last time it was active.
+   */
+  private _mirrorParentMediaTime(timelineSeconds: number, options?: { force?: boolean }) {
+    const force = options?.force === true;
+    const requiredSamples = HyperframesPlayer.MIRROR_REQUIRED_CONSECUTIVE_DRIFT_SAMPLES;
+    const threshold = HyperframesPlayer.MIRROR_DRIFT_THRESHOLD_SECONDS;
     for (const m of this._parentMedia) {
       const relTime = timelineSeconds - m.start;
-      if (relTime < 0 || relTime >= m.duration) continue;
-      if (Math.abs(m.el.currentTime - relTime) > HyperframesPlayer.MIRROR_DRIFT_THRESHOLD_SECONDS) {
-        m.el.currentTime = relTime;
+      if (relTime < 0 || relTime >= m.duration) {
+        m.driftSamples = 0;
+        continue;
+      }
+      if (Math.abs(m.el.currentTime - relTime) > threshold) {
+        m.driftSamples += 1;
+        if (force || m.driftSamples >= requiredSamples) {
+          m.el.currentTime = relTime;
+          m.driftSamples = 0;
+        }
+      } else {
+        m.driftSamples = 0;
       }
     }
   }
@@ -648,7 +806,10 @@ class HyperframesPlayer extends HTMLElement {
     // precisely because the scenario that triggered promotion is
     // "autoplay blocked" — the iframe can't make noise on its own.
     this._sendControl("set-media-output-muted", { muted: true });
-    this._mirrorParentMediaTime(this._currentTime);
+    // One-shot alignment: a brand-new proxy must pick up the iframe's exact
+    // timeline position immediately to avoid an audible jump. Bypass the
+    // jitter-coalescing gate.
+    this._mirrorParentMediaTime(this._currentTime, { force: true });
     if (!this._paused) this._playParentMedia();
     this.dispatchEvent(
       new CustomEvent("audioownershipchange", {
@@ -668,7 +829,7 @@ class HyperframesPlayer extends HTMLElement {
     tag: "audio" | "video",
     start: number,
     duration: number,
-  ): { el: HTMLMediaElement; start: number; duration: number } | null {
+  ): { el: HTMLMediaElement; start: number; duration: number; driftSamples: number } | null {
     // Deduplicate — browsers normalize URLs so we compare on the element after assignment
     if (this._parentMedia.some((m) => m.el.src === src)) return null;
 
@@ -679,7 +840,7 @@ class HyperframesPlayer extends HTMLElement {
     el.muted = this.muted;
     if (this.playbackRate !== 1) el.playbackRate = this.playbackRate;
 
-    const entry = { el, start, duration };
+    const entry = { el, start, duration, driftSamples: 0 };
     this._parentMedia.push(entry);
     return entry;
   }
@@ -758,7 +919,10 @@ class HyperframesPlayer extends HTMLElement {
     // start producing audio right away — otherwise it sits silent through
     // the next several hundred ms until the next runtime state message.
     if (created && this._audioOwner === "parent") {
-      this._mirrorParentMediaTime(this._currentTime);
+      // One-shot alignment: a freshly-created proxy must catch up to the
+      // current timeline position on the very first sample, so bypass the
+      // jitter-coalescing gate.
+      this._mirrorParentMediaTime(this._currentTime, { force: true });
       if (!this._paused && created.el.src) {
         created.el.play().catch((err: unknown) => this._reportPlaybackError(err));
       }
@@ -810,7 +974,14 @@ class HyperframesPlayer extends HTMLElement {
         }
       }
     });
-    obs.observe(doc.body, { childList: true, subtree: true });
+    const hosts = doc.querySelectorAll("[data-composition-id]");
+    if (hosts.length > 0) {
+      for (const host of hosts) {
+        obs.observe(host, { childList: true, subtree: true });
+      }
+    } else {
+      obs.observe(doc.body, { childList: true, subtree: true });
+    }
     this._mediaObserver = obs;
   }
 

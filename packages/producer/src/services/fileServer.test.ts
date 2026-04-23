@@ -1,8 +1,12 @@
 import { describe, expect, it } from "bun:test";
+import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import path, { join } from "node:path";
+import { tmpdir } from "node:os";
 import {
   HF_BRIDGE_SCRIPT,
   HF_EARLY_STUB,
   injectScriptsAtHeadStart,
+  isPathInside,
   VIRTUAL_TIME_SHIM,
 } from "./fileServer.js";
 
@@ -37,6 +41,113 @@ describe("injectScriptsIntoHtml", () => {
     expect(HF_BRIDGE_SCRIPT).toContain("function seekSameOriginChildFrames");
     expect(HF_BRIDGE_SCRIPT).toContain("childWindow.__HF_VIRTUAL_TIME__.seekToTime(nextTimeMs)");
     expect(HF_BRIDGE_SCRIPT).toContain("seekSameOriginChildFrames(window, nextTimeMs)");
+  });
+});
+
+describe("isPathInside", () => {
+  it("returns true when the child equals the parent", () => {
+    expect(isPathInside("/tmp/project", "/tmp/project")).toBe(true);
+  });
+
+  it("returns true for direct children", () => {
+    expect(isPathInside("/tmp/project/index.html", "/tmp/project")).toBe(true);
+  });
+
+  it("returns true for deeply nested descendants", () => {
+    expect(isPathInside("/tmp/project/a/b/c/file.html", "/tmp/project")).toBe(true);
+  });
+
+  it("rejects siblings with a shared name prefix", () => {
+    // The classic prefix-bug: "/foo" should NOT contain "/foobar/x". A naive
+    // startsWith check without a trailing separator would incorrectly accept
+    // this as nested.
+    expect(isPathInside("/tmp/projectile/a", "/tmp/project")).toBe(false);
+    expect(isPathInside("/tmp/project-other/a", "/tmp/project")).toBe(false);
+  });
+
+  it("rejects paths outside the parent entirely", () => {
+    expect(isPathInside("/etc/passwd", "/tmp/project")).toBe(false);
+    expect(isPathInside("/tmp/other/file.html", "/tmp/project")).toBe(false);
+  });
+
+  it("rejects path-traversal attempts that escape the parent", () => {
+    // path.join("/tmp/project", "../etc/passwd") normalizes to "/tmp/etc/passwd"
+    // — outside the project root. The whole point of isPathInside is to catch
+    // exactly this after the join.
+    expect(isPathInside("/tmp/etc/passwd", "/tmp/project")).toBe(false);
+    expect(isPathInside("/tmp/project/../etc/passwd", "/tmp/project")).toBe(false);
+  });
+
+  it("accepts traversal that resolves back inside the parent", () => {
+    expect(isPathInside("/tmp/project/sub/../index.html", "/tmp/project")).toBe(true);
+  });
+
+  it("treats parents with and without trailing slashes the same", () => {
+    expect(isPathInside("/tmp/project/index.html", "/tmp/project/")).toBe(true);
+    expect(isPathInside("/tmp/project/index.html", "/tmp/project")).toBe(true);
+  });
+
+  it("resolves relative paths against the current working directory", () => {
+    // Both sides resolve against cwd, so a relative file under a relative dir
+    // should be considered nested. We don't assert the absolute path; we just
+    // check the containment relationship holds after resolution.
+    expect(isPathInside("a/b/c.html", "a/b")).toBe(true);
+    expect(isPathInside("a/b/../../c.html", "a/b")).toBe(false);
+  });
+
+  it("rejects symlink escapes when realpath enforcement is enabled", () => {
+    const rootDir = mkdtempSync(join(tmpdir(), "hf-file-server-root-"));
+    const outsideDir = mkdtempSync(join(tmpdir(), "hf-file-server-outside-"));
+    const outsideFile = join(outsideDir, "secret.txt");
+    const symlinkPath = join(rootDir, "escaped.txt");
+
+    try {
+      writeFileSync(outsideFile, "secret");
+      symlinkSync(outsideFile, symlinkPath);
+
+      expect(isPathInside(symlinkPath, rootDir)).toBe(true);
+      expect(isPathInside(symlinkPath, rootDir, { resolveSymlinks: true })).toBe(false);
+    } finally {
+      rmSync(rootDir, { recursive: true, force: true });
+      rmSync(outsideDir, { recursive: true, force: true });
+    }
+  });
+
+  describe("with path.win32 (cross-platform pinning tests)", () => {
+    // Pin Windows-path semantics on Linux/macOS CI by injecting the win32
+    // path module. Without this, accidental Unix-only assumptions (e.g. only
+    // splitting on "/") would silently regress for Windows users.
+    const win32 = { pathModule: path.win32 };
+
+    it("returns true when the child equals the parent", () => {
+      expect(isPathInside("C:\\foo", "C:\\foo", win32)).toBe(true);
+    });
+
+    it("returns true for direct children", () => {
+      expect(isPathInside("C:\\foo\\bar", "C:\\foo", win32)).toBe(true);
+    });
+
+    it("returns true for deeply nested descendants", () => {
+      expect(isPathInside("C:\\foo\\a\\b\\c.html", "C:\\foo", win32)).toBe(true);
+    });
+
+    it("rejects siblings with a shared name prefix", () => {
+      expect(isPathInside("C:\\foobar\\x", "C:\\foo", win32)).toBe(false);
+      expect(isPathInside("C:\\foo-other\\x", "C:\\foo", win32)).toBe(false);
+    });
+
+    it("rejects path-traversal attempts that escape the parent", () => {
+      expect(isPathInside("C:\\foo\\..\\etc\\passwd", "C:\\foo", win32)).toBe(false);
+    });
+
+    it("treats parents with and without trailing backslashes the same", () => {
+      expect(isPathInside("C:\\foo\\bar", "C:\\foo\\", win32)).toBe(true);
+      expect(isPathInside("C:\\foo\\bar", "C:\\foo", win32)).toBe(true);
+    });
+
+    it("rejects paths on a different drive letter", () => {
+      expect(isPathInside("D:\\foo\\bar", "C:\\foo", win32)).toBe(false);
+    });
   });
 });
 

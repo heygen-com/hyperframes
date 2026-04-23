@@ -22,6 +22,36 @@ export interface RunFfmpegResult {
 
 const DEFAULT_TIMEOUT = 300_000;
 
+const DEFAULT_STDERR_TAIL_LINES = 15;
+
+/**
+ * Build a user-facing error message for a failed ffmpeg invocation.
+ *
+ * Historically we reported only `FFmpeg exited with code N`, which is useless
+ * for diagnosing encoder-options failures — a rejected `-preset` surfaces as a
+ * bare `code -22` with no hint at which argument ffmpeg objected to. Including
+ * the tail of stderr turns those into a one-line signal (e.g.
+ * `Error applying encoder options: Invalid argument`) that tells the caller
+ * exactly which option to fix.
+ */
+export function formatFfmpegError(
+  exitCode: number | null,
+  stderr: string,
+  tailLines: number = DEFAULT_STDERR_TAIL_LINES,
+): string {
+  const tail = (stderr ?? "")
+    .split(/\r?\n/)
+    .filter((line) => line.length > 0)
+    .slice(-tailLines)
+    .join("\n");
+  if (exitCode === null) {
+    return tail ? `[FFmpeg] ${tail}` : "[FFmpeg] process error";
+  }
+  return tail
+    ? `FFmpeg exited with code ${exitCode}\nffmpeg stderr (tail):\n${tail}`
+    : `FFmpeg exited with code ${exitCode}`;
+}
+
 export async function runFfmpeg(args: string[], opts?: RunFfmpegOptions): Promise<RunFfmpegResult> {
   const startMs = Date.now();
   const signal = opts?.signal;

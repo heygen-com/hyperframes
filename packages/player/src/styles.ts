@@ -199,3 +199,80 @@ export const PLAYER_STYLES = /* css */ `
 
 export const PLAY_ICON = `<svg width="24" height="24" viewBox="0 0 18 18" fill="currentColor"><polygon points="4,2 16,9 4,16"/></svg>`;
 export const PAUSE_ICON = `<svg width="24" height="24" viewBox="0 0 18 18" fill="currentColor"><rect x="3" y="2" width="4" height="14"/><rect x="11" y="2" width="4" height="14"/></svg>`;
+
+/**
+ * Process-wide cache for the constructed PLAYER_STYLES sheet. Lazy so the
+ * module stays SSR-safe (CSSStyleSheet is window-scoped) and so a single
+ * sheet can be shared across every shadow root via `adoptedStyleSheets` —
+ * the studio thumbnail grid renders dozens of players, and avoiding N
+ * duplicate `<style>` parses + style-recalc invalidations is the win here.
+ *
+ * `null` after a failed construction attempt = "fall back forever in this
+ * process" (the usual cause is a missing constructor in older runtimes;
+ * retrying every call would just throw the same way).
+ */
+let sharedSheet: CSSStyleSheet | null | undefined;
+
+/**
+ * Returns the shared player stylesheet, or `null` if constructable
+ * stylesheets aren't available in this environment.
+ *
+ * The result is memoized for the life of the module — every shadow root
+ * adopts the same `CSSStyleSheet` instance.
+ */
+export function getSharedPlayerStyleSheet(): CSSStyleSheet | null {
+  if (sharedSheet !== undefined) return sharedSheet;
+
+  if (typeof CSSStyleSheet === "undefined") {
+    sharedSheet = null;
+    return null;
+  }
+
+  try {
+    const sheet = new CSSStyleSheet();
+    sheet.replaceSync(PLAYER_STYLES);
+    sharedSheet = sheet;
+    return sheet;
+  } catch {
+    sharedSheet = null;
+    return null;
+  }
+}
+
+/**
+ * Internal hook for tests to clear the memoized sheet. Not part of the
+ * public API.
+ */
+export function _resetSharedPlayerStyleSheet(): void {
+  sharedSheet = undefined;
+}
+
+/**
+ * Install PLAYER_STYLES into a player shadow root. Prefers the shared
+ * constructable stylesheet (one parse, one rule tree, N adopters) and
+ * falls back to a per-instance `<style>` element when the host runtime
+ * lacks `adoptedStyleSheets` support.
+ *
+ * Idempotent: re-applying to a root that already adopts the shared sheet
+ * is a no-op. Pre-existing adopted sheets are preserved (we append, never
+ * replace), so callers further up the chain can keep their styles.
+ */
+export function applyPlayerStyles(shadow: ShadowRoot): void {
+  const sheet = getSharedPlayerStyleSheet();
+  const adopted = (shadow as ShadowRoot & { adoptedStyleSheets?: CSSStyleSheet[] })
+    .adoptedStyleSheets;
+
+  if (sheet && Array.isArray(adopted)) {
+    if (!adopted.includes(sheet)) {
+      (shadow as ShadowRoot & { adoptedStyleSheets: CSSStyleSheet[] }).adoptedStyleSheets = [
+        ...adopted,
+        sheet,
+      ];
+    }
+    return;
+  }
+
+  const style = document.createElement("style");
+  style.textContent = PLAYER_STYLES;
+  shadow.appendChild(style);
+}

@@ -1,0 +1,110 @@
+---
+title: Timeline Editing
+description: "What you can edit in the Studio timeline today, how those edits map back to HTML, and the current limitations."
+---
+
+The Studio timeline lets you edit the parts of a HyperFrames composition that can be persisted cleanly back into source HTML.
+
+It is not a separate project format or hidden binary state. Every supported timeline action updates the same `data-*` attributes and inline styles that your composition already uses.
+
+## What the Timeline Can Do
+
+- **Move clips in time** — drag a clip horizontally to update `data-start`
+- **Move clips between rows** — drag a clip vertically to update `data-track-index`
+- **Change visual stacking** — top timeline rows render above lower rows, and that ordering is persisted back into inline `z-index`
+- **Trim the end of a clip** — drag the right handle to reduce `data-duration`
+- **Trim the start of media clips** — drag the left handle on clips backed by media offsets to advance the clip start and playback offset together
+
+## How Timeline Edits Map To Source
+
+The timeline works directly against your HTML:
+
+- horizontal move updates `data-start`
+- vertical move updates `data-track-index`
+- right trim updates `data-duration`
+- media left trim updates `data-start` and `data-media-start` or `data-playback-start`
+- changing row order also updates inline `z-index` so the preview matches the timeline
+
+This means timeline editing stays inspectable and versionable. If you open the file after a move or trim, you can see the exact attributes that changed.
+
+## Current Editing Model By Clip Type
+
+### Generic motion / DOM clips
+
+Examples:
+- `div`
+- `section`
+- `aside`
+- GSAP-driven cards, overlays, and text blocks
+
+Supported:
+- move the clip later or earlier on the timeline
+- move the clip to another row
+- trim the end of the clip
+
+Not supported yet:
+- true front trim that removes the beginning of the animation itself
+
+### Media clips
+
+Examples:
+- `video`
+- `audio`
+- wrappers backed by `data-media-start` / `data-playback-start`
+
+Supported:
+- move the clip later or earlier on the timeline
+- move the clip to another row
+- trim the end of the clip
+- trim the start of the media content itself
+
+## Why Start Trim Is Media-Only
+
+Media clips have a real content-offset model:
+
+- `data-media-start`
+- `data-playback-start`
+
+Those attributes let the Studio say:
+
+> Start this clip later on the timeline, and also start reading the media later inside the source.
+
+Generic motion clips do not have an equivalent playback-offset model yet. For a GSAP-driven `section` or `div`, the Studio can:
+
+- move the whole clip later by changing `data-start`
+- shorten its visible window by changing `data-duration`
+
+But it cannot yet say:
+
+> Start this animation halfway through its timeline.
+
+That is why generic motion clips do **not** show an interactive left trim handle. The control is hidden instead of implying behavior the runtime cannot currently represent truthfully.
+
+<Note>
+  A useful mental model is: **move** changes when a clip starts, **right trim** changes when it ends, and **left trim** only appears when the clip can actually skip the beginning of its own content.
+</Note>
+
+## Stacking Rule
+
+The Studio follows the normal timeline-editor convention:
+
+- the visually top row renders on top
+- lower rows render underneath
+
+If you want captions, lower-thirds, or overlays to sit above other content, place them on a visually higher timeline row.
+
+## Current Limitations
+
+- **No true front trim for generic motion clips yet.**
+  You can move those clips later in time, but you cannot start their internal animation phase partway through.
+- **Layering is still driven by row order plus persisted inline `z-index`.**
+  If a clip already has custom CSS stacking rules outside the Studio flow, keep that in mind when editing manually.
+- **Timeline editing is intentionally scoped.**
+  The Studio currently focuses on move and trim behavior. It does not yet expose full split, slip, slide, ripple, or roll editing semantics.
+
+## Best Practices
+
+- Use **move** when you want an element to start later but still play its full animation.
+- Use **right trim** when you want the element to end sooner.
+- Use **media left trim** when you want to remove the beginning of a video or audio clip.
+- Put overlays and captions on visually higher rows so they render above base footage.

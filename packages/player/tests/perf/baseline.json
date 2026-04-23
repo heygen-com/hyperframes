@@ -1,0 +1,11 @@
+{
+  "compLoadColdP95Ms": 2000,
+  "compLoadWarmP95Ms": 1000,
+  "compositionTimeAdvancementRatioMin": 0.95,
+  "scrubLatencyP95IsolatedMs": 80,
+  "scrubLatencyP95InlineMs": 33,
+  "driftMaxMs": 500,
+  "driftP95Ms": 100,
+  "paritySsimMin": 0.93,
+  "allowedRegressionRatio": 0.1
+}

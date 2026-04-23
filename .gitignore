@@ -33,6 +33,9 @@ coverage/
 # Producer regression test failures (generated debugging artifacts)
 packages/producer/tests/*/failures/
 
+# Player perf test results (generated each run, attached as CI artifact)
+packages/player/tests/perf/results/
+
 # Rendered output (not test fixtures — those use git LFS)
 output/
 renders/

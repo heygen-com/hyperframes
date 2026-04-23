@@ -17,7 +17,7 @@ import process from "node:process";
 import { createRenderJob, executeRenderJob } from "./services/renderOrchestrator.js";
 import { compileForRender } from "./services/htmlCompiler.js";
 import { validateCompilation } from "./services/compilationTester.js";
-import { extractVideoMetadata } from "./utils/ffprobe.js";
+import { extractMediaMetadata } from "./utils/ffprobe.js";
 import { buildRmsEnvelope, compareAudioEnvelopes } from "./utils/audioRegression.js";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -625,7 +625,7 @@ async function runTestSuite(
 
     // Visual comparison (100 frames, 1 per 1% of video duration)
     logPretty("Comparing visual quality (100 checkpoints)...", "🔍");
-    const videoMetadata = await extractVideoMetadata(renderedOutputPath);
+    const videoMetadata = await extractMediaMetadata(renderedOutputPath);
     const videoDuration = videoMetadata.durationSeconds;
 
     const visualCheckpoints: Array<{ time: number; psnr: number; passed: boolean }> = [];

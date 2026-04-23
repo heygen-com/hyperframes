@@ -29,7 +29,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -39,7 +39,7 @@ jobs:
           - shard: render-compat
             args: "--sequential gsap-letters-render-compat css-spinner-render-compat raf-ball-render-compat iframe-render-compat"
           - shard: hdr
-            args: "--sequential hdr-pq hdr-image-only"
+            args: "--sequential hdr-regression hdr-hlg-regression"
           - shard: styles-a
             args: "style-1-prod style-2-prod style-3-prod"
           - shard: styles-b
@@ -85,7 +85,7 @@ jobs:
           load: true
           tags: hyperframes-producer:test
           cache-from: type=gha,scope=regression-test-image
-          cache-to: type=gha,mode=max,scope=regression-test-image
+          cache-to: type=gha,mode=min,scope=regression-test-image
 
       - name: "Run regression shard: ${{ matrix.shard }}"
         run: |

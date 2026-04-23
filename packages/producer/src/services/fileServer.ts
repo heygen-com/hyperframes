@@ -10,9 +10,61 @@
 import { Hono } from "hono";
 import { serve } from "@hono/node-server";
 import type { IncomingMessage } from "node:http";
-import { readFileSync, existsSync, statSync } from "node:fs";
-import { join, extname } from "node:path";
+import { readFileSync, existsSync, realpathSync, statSync } from "node:fs";
+import { join, extname, resolve, sep } from "node:path";
 import { getVerifiedHyperframeRuntimeSource } from "./hyperframeRuntimeLoader.js";
+
+type PathModuleLike = {
+  resolve: (...segments: string[]) => string;
+  sep: string;
+};
+
+type IsPathInsideOptions = {
+  resolveSymlinks?: boolean;
+  /**
+   * Path module used for resolution and separator comparison. Defaults to
+   * `node:path` for the running platform. Tests inject `path.win32` /
+   * `path.posix` to exercise cross-platform behavior on a single OS.
+   */
+  pathModule?: PathModuleLike;
+};
+
+/**
+ * Returns true iff `child` is the same as, or nested inside, `parent` after
+ * symlink-free path normalization. Used to reject path-traversal attempts
+ * (e.g. GET `/../etc/passwd`) before opening any file.
+ *
+ * `path.join(root, "..")` normalizes traversal segments and can escape `root`
+ * entirely, so the join return value alone is not a safe guard. Callers must
+ * resolve both sides and compare prefixes with the platform separator
+ * appended to `parent` to avoid `/foo` matching `/foobar`.
+ *
+ * Exported for unit tests; not part of the public package surface.
+ */
+export function isPathInside(
+  child: string,
+  parent: string,
+  options: IsPathInsideOptions = {},
+): boolean {
+  const { resolveSymlinks = false, pathModule } = options;
+  const resolveFn = pathModule?.resolve ?? resolve;
+  const separator = pathModule?.sep ?? sep;
+  const resolvedChild = resolveFn(child);
+  const resolvedParent = resolveFn(parent);
+  const normalizedChild =
+    resolveSymlinks && existsSync(resolvedChild)
+      ? realpathSync.native(resolvedChild)
+      : resolvedChild;
+  const normalizedParent =
+    resolveSymlinks && existsSync(resolvedParent)
+      ? realpathSync.native(resolvedParent)
+      : resolvedParent;
+  if (normalizedChild === normalizedParent) return true;
+  const parentWithSep = normalizedParent.endsWith(separator)
+    ? normalizedParent
+    : normalizedParent + separator;
+  return normalizedChild.startsWith(parentWithSep);
+}
 
 const MIME_TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -479,13 +531,36 @@ export function createFileServer(options: FileServerOptions): Promise<FileServer
 
     // Remove leading slash
     const relativePath = requestPath.replace(/^\//, "");
-    const compiledPath = compiledDir ? join(compiledDir, relativePath) : null;
-    const hasCompiledFile = Boolean(
-      compiledPath && existsSync(compiledPath) && statSync(compiledPath).isFile(),
-    );
-    const filePath = hasCompiledFile ? (compiledPath as string) : join(projectDir, relativePath);
 
-    if (!existsSync(filePath) || !statSync(filePath).isFile()) {
+    // Resolve against compiledDir first (preferred — overrides project files
+    // for compositions emitted by the build), then projectDir as fallback.
+    // Each candidate is rejected if `..` segments push it outside the
+    // intended root: `path.join` normalizes traversal but does not enforce
+    // containment, so a request like `GET /../etc/passwd` would otherwise
+    // be served straight off the filesystem.
+    let filePath: string | null = null;
+    if (compiledDir) {
+      const candidate = join(compiledDir, relativePath);
+      if (
+        existsSync(candidate) &&
+        isPathInside(candidate, compiledDir, { resolveSymlinks: true }) &&
+        statSync(candidate).isFile()
+      ) {
+        filePath = candidate;
+      }
+    }
+    if (!filePath) {
+      const candidate = join(projectDir, relativePath);
+      if (
+        existsSync(candidate) &&
+        isPathInside(candidate, projectDir, { resolveSymlinks: true }) &&
+        statSync(candidate).isFile()
+      ) {
+        filePath = candidate;
+      }
+    }
+
+    if (!filePath) {
       if (!/favicon\.ico$/i.test(requestPath)) {
         console.warn(`[FileServer] 404 Not Found: ${requestPath}`);
       }

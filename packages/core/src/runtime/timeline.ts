@@ -6,9 +6,32 @@ import type {
 } from "./types";
 import { createRuntimeStartTimeResolver } from "./startResolver";
 
+const AUTHORED_DURATION_ATTR = "data-hf-authored-duration";
+const AUTHORED_END_ATTR = "data-hf-authored-end";
+
 function parseNum(value: string | null | undefined): number | null {
+  if (value == null || value === "") return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function parseElementDurationAttr(element: Element): number | null {
+  return (
+    parseNum(element.getAttribute("data-duration")) ??
+    parseNum(element.getAttribute(AUTHORED_DURATION_ATTR))
+  );
+}
+
+function parseElementEndAttr(element: Element): number | null {
+  return (
+    parseNum(element.getAttribute("data-end")) ?? parseNum(element.getAttribute(AUTHORED_END_ATTR))
+  );
+}
+
+function maxDefinedNumber(...values: Array<number | null>): number | null {
+  const finite = values.filter((value): value is number => Number.isFinite(value ?? null));
+  if (finite.length === 0) return null;
+  return Math.max(...finite);
 }
 
 /**
@@ -97,6 +120,7 @@ export function collectRuntimeTimelinePayload(params: {
   const timelineRegistry = runtimeWindow.__timelines ?? {};
   const startResolver = createRuntimeStartTimeResolver({
     timelineRegistry,
+    includeAuthoredTimingAttrs: true,
   });
   const resolveTimelineDurationSeconds = (compositionId: string | null): number | null => {
     if (!compositionId) return null;
@@ -189,13 +213,31 @@ export function collectRuntimeTimelinePayload(params: {
   };
 
   const root = document.querySelector("[data-composition-id]") as Element | null;
+  const compositionNodes = Array.from(document.querySelectorAll("[data-composition-id]"));
   const rootCompositionId = root?.getAttribute("data-composition-id") ?? null;
   const rootCompositionStart = root ? startResolver.resolveStartForElement(root, 0) : 0;
   const mediaWindowEnd = resolveMediaWindowEndSeconds();
   const mediaWindowDuration =
     mediaWindowEnd != null ? Math.max(0, mediaWindowEnd - Math.max(0, rootCompositionStart)) : null;
   const rootDurationFromTimeline = resolveTimelineDurationSeconds(rootCompositionId);
-  const rootDurationFromAttr = parseNum(root?.getAttribute("data-duration"));
+  const rootDurationFromAttr = parseElementDurationAttr(root ?? document.body);
+  const compositionWindowEnd = maxDefinedNumber(
+    ...compositionNodes
+      .filter((node) => node !== root)
+      .map((node) => {
+        const start = startResolver.resolveStartForElement(node, 0);
+        const duration =
+          startResolver.resolveDurationForElement(node) ??
+          resolveTimelineDurationSeconds(node.getAttribute("data-composition-id")) ??
+          null;
+        if (!Number.isFinite(start) || duration == null || duration <= 0) return null;
+        return Math.max(0, start) + duration;
+      }),
+  );
+  const compositionWindowDuration =
+    compositionWindowEnd != null
+      ? Math.max(0, compositionWindowEnd - Math.max(0, rootCompositionStart))
+      : null;
   const timelineDurationCandidate =
     typeof rootDurationFromTimeline === "number" &&
     Number.isFinite(rootDurationFromTimeline) &&
@@ -214,17 +256,31 @@ export function collectRuntimeTimelinePayload(params: {
     mediaWindowDuration > 0
       ? mediaWindowDuration
       : null;
+  const compositionWindowDurationCandidate =
+    typeof compositionWindowDuration === "number" &&
+    Number.isFinite(compositionWindowDuration) &&
+    compositionWindowDuration > 0
+      ? compositionWindowDuration
+      : null;
+  const finiteWindowFloor = maxDefinedNumber(
+    mediaWindowDurationCandidate,
+    compositionWindowDurationCandidate,
+  );
   const timelineLooksLoopInflated =
     timelineDurationCandidate != null &&
-    mediaWindowDurationCandidate != null &&
-    timelineDurationCandidate > mediaWindowDurationCandidate + 1;
+    finiteWindowFloor != null &&
+    timelineDurationCandidate > finiteWindowFloor + 1;
   // Prefer explicit authored root duration first.
   // If absent, guard against loop-inflated GSAP durations by trusting finite media window.
   const preferredRootDuration =
     attrDurationCandidate ??
     (timelineLooksLoopInflated
-      ? mediaWindowDurationCandidate
-      : (timelineDurationCandidate ?? mediaWindowDurationCandidate));
+      ? finiteWindowFloor
+      : maxDefinedNumber(
+          timelineDurationCandidate,
+          mediaWindowDurationCandidate,
+          compositionWindowDurationCandidate,
+        ));
   const rootCompositionDuration =
     preferredRootDuration != null
       ? Math.min(preferredRootDuration, params.maxTimelineDurationSeconds)
@@ -242,7 +298,6 @@ export function collectRuntimeTimelinePayload(params: {
     if (!Number.isFinite(start) || start >= timelineWindowEnd) return 0;
     return Math.max(0, Math.min(duration, timelineWindowEnd - start));
   };
-  const compositionNodes = Array.from(document.querySelectorAll("[data-composition-id]"));
   const clips: RuntimeTimelineClip[] = [];
   const scenes: RuntimeTimelineScene[] = [];
   // Only collect elements that are explicitly part of the timeline:
@@ -270,7 +325,7 @@ export function collectRuntimeTimelinePayload(params: {
       compositionContext.inheritedStart ?? 0,
     );
     const nodeCompositionId = node.getAttribute("data-composition-id");
-    let duration = parseNum(node.getAttribute("data-duration"));
+    let duration = parseElementDurationAttr(node);
     if (
       (duration == null || duration <= 0) &&
       nodeCompositionId &&
@@ -523,7 +578,14 @@ export function collectRuntimeTimelinePayload(params: {
     const compositionId = compositionNode.getAttribute("data-composition-id");
     if (!compositionId || !isSceneLikeCompositionId(compositionId)) continue;
     const start = startResolver.resolveStartForElement(compositionNode, 0);
-    const durationFromAttr = parseNum(compositionNode.getAttribute("data-duration"));
+    let durationFromAttr = parseElementDurationAttr(compositionNode);
+    if (
+      (durationFromAttr == null || durationFromAttr <= 0) &&
+      parseElementEndAttr(compositionNode) != null
+    ) {
+      const end = parseElementEndAttr(compositionNode)!;
+      durationFromAttr = Math.max(0, end - start);
+    }
     const durationFromTimeline = resolveTimelineDurationSeconds(compositionId);
     const duration =
       durationFromAttr && durationFromAttr > 0 ? durationFromAttr : durationFromTimeline;

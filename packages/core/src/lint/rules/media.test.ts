@@ -106,4 +106,55 @@ describe("media rules", () => {
     const finding = result.findings.find((f) => f.code === "video_nested_in_timed_element");
     expect(finding).toBeUndefined();
   });
+
+  it("reports imperative play() control on managed media ids", () => {
+    const html = `
+<html><body>
+  <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
+    <video id="demo-video" data-start="0" data-duration="5" src="clip.mp4" muted playsinline></video>
+  </div>
+  <script>
+    const video = document.getElementById("demo-video");
+    video.play();
+  </script>
+</body></html>`;
+    const result = lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "imperative_media_control");
+    expect(finding).toBeDefined();
+    expect(finding?.severity).toBe("error");
+    expect(finding?.elementId).toBe("demo-video");
+  });
+
+  it("reports imperative currentTime writes on query-selected managed media", () => {
+    const html = `
+<html><body>
+  <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
+    <video id="demo-video" data-start="0" data-duration="5" src="clip.mp4" muted playsinline></video>
+  </div>
+  <script>
+    const demo = document.querySelector("#demo-video");
+    demo.currentTime = 1.5;
+  </script>
+</body></html>`;
+    const result = lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "imperative_media_control");
+    expect(finding).toBeDefined();
+    expect(finding?.severity).toBe("error");
+  });
+
+  it("does not flag play() on non-media elements", () => {
+    const html = `
+<html><body>
+  <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
+    <div id="panel"></div>
+  </div>
+  <script>
+    const panel = document.getElementById("panel");
+    panel.play?.();
+  </script>
+</body></html>`;
+    const result = lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "imperative_media_control");
+    expect(finding).toBeUndefined();
+  });
 });

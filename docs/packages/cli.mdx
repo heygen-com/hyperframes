@@ -394,6 +394,25 @@ This is suppressed in CI environments, non-TTY shells, and when `HYPERFRAMES_NO_
     2. **Local studio mode** — if `@hyperframes/studio` is installed in your project's `node_modules`, spawns Vite with full HMR for faster iteration.
     3. **Monorepo mode** — if running from the Hyperframes source repo, spawns the studio dev server directly.
 
+    ### `publish`
+
+    Upload the project and get back a stable `hyperframes.dev` URL:
+
+    ```bash
+    npx hyperframes publish [dir]
+    npx hyperframes publish --yes
+    ```
+
+    | Flag | Description |
+    |------|-------------|
+    | `--yes` | Skip the confirmation prompt |
+
+    `publish` zips the current project, uploads it to the HyperFrames publish backend, and prints a stable `hyperframes.dev` URL for that stored project.
+
+    The printed URL already includes the claim token, so opening it on `hyperframes.dev` lets the intended user claim the uploaded project and continue editing in the web app.
+
+    This flow does not keep a local preview server alive and does not open a tunnel. The published URL resolves to the persisted project stored by HeyGen, so it keeps working after the CLI process exits.
+
     ### `lint`
 
     Check a composition for common issues:
@@ -477,13 +496,15 @@ This is suppressed in CI environments, non-TTY shells, and when `HYPERFRAMES_NO_
     | `--format` | mp4, webm, mov | mp4 | Output format (WebM/MOV render with transparency) |
     | `--fps` | 24, 30, 60 | 30 | Frames per second |
     | `--quality` | draft, standard, high | standard | Encoding quality preset (drives CRF/bitrate) |
+    | `--crf` | 0-51 | — | Override encoder CRF (lower = higher quality). Mutually exclusive with `--video-bitrate` |
+    | `--video-bitrate` | e.g. `10M`, `5000k` | — | Target video bitrate. Mutually exclusive with `--crf` |
     | `--hdr` | — | off | Detect HDR sources and output HDR10 (H.265 10-bit, BT.2020 PQ/HLG). MP4 only. SDR-only compositions are unaffected. See [HDR Rendering](/guides/hdr) |
     | `--workers` | 1-8 | 4 | Parallel render workers |
     | `--gpu` | — | off | GPU encoding (NVENC, VideoToolbox, VAAPI) |
     | `--docker` | — | off | Use Docker for [deterministic rendering](/concepts/determinism) |
     | `--quiet` | — | off | Suppress verbose output |
 
-    CRF and target bitrate are now driven by `--quality`. For programmatic renders, `RenderConfig.crf` and `RenderConfig.videoBitrate` still accept overrides.
+    CRF and target bitrate default to the `--quality` preset. Use `--crf` or `--video-bitrate` for fine-grained overrides; `RenderConfig.crf` and `RenderConfig.videoBitrate` accept the same overrides programmatically.
 
     #### WebM with Transparency
 

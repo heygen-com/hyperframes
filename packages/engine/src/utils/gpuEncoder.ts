@@ -56,3 +56,54 @@ export function getGpuEncoderName(encoder: GpuEncoder, codec: "h264" | "h265"): 
       return codec === "h264" ? "libx264" : "libx265";
   }
 }
+
+// libx264 preset names (ultrafast/superfast/.../placebo) mapped to the
+// equivalent NVENC p1..p7 preset. NVENC rejects libx264 names with
+// AVERROR(EINVAL) ("Error applying encoder options: Invalid argument"),
+// which surfaces as a generic "FFmpeg exited with code -22" — so callers
+// that share a single `preset` field across CPU and GPU paths (e.g. the
+// `draft`/`standard`/`high` quality tiers) must translate before passing
+// the value to h264_nvenc / hevc_nvenc.
+const NVENC_PRESET_MAP: Record<string, string> = {
+  ultrafast: "p1",
+  superfast: "p1",
+  veryfast: "p2",
+  faster: "p3",
+  fast: "p4",
+  medium: "p4",
+  slow: "p5",
+  slower: "p6",
+  veryslow: "p7",
+  placebo: "p7",
+};
+
+// QSV accepts most libx264 preset names but rejects `ultrafast`,
+// `superfast`, and `placebo`. Map those to the nearest supported values.
+const QSV_PRESET_MAP: Record<string, string> = {
+  ultrafast: "veryfast",
+  superfast: "veryfast",
+  placebo: "veryslow",
+};
+
+/**
+ * Translate a libx264-style `-preset` value to one accepted by the given
+ * GPU encoder.
+ *
+ * - `nvenc`: libx264 names → `p1`..`p7`. Already-native `pN` values pass
+ *   through unchanged. Unknown values fall back to `p4` (medium).
+ * - `qsv`:  `ultrafast`/`superfast`/`placebo` → nearest supported name;
+ *   everything else passes through.
+ * - `videotoolbox`, `vaapi`, `null`: no remap (they either ignore `-preset`
+ *   entirely or accept the libx264 vocabulary).
+ */
+export function mapPresetForGpuEncoder(encoder: GpuEncoder, preset: string): string {
+  switch (encoder) {
+    case "nvenc":
+      if (/^p[1-7]$/.test(preset)) return preset;
+      return NVENC_PRESET_MAP[preset] ?? "p4";
+    case "qsv":
+      return QSV_PRESET_MAP[preset] ?? preset;
+    default:
+      return preset;
+  }
+}

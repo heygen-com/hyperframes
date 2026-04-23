@@ -27,6 +27,13 @@ import {
   getNextTimelineZoomPercent,
   getTimelineZoomPercent,
 } from "./player/components/timelineZoom";
+import {
+  TIMELINE_TOGGLE_SHORTCUT_LABEL,
+  getTimelineEditorHintDismissed,
+  getTimelineToggleTitle,
+  setTimelineEditorHintDismissed,
+  shouldHandleTimelineToggleHotkey,
+} from "./utils/timelineDiscovery";
 
 interface EditingFile {
   path: string;
@@ -196,7 +203,11 @@ export function StudioApp() {
   const [globalDragOver, setGlobalDragOver] = useState(false);
   const [uploadToast, setUploadToast] = useState<string | null>(null);
   const [timelineVisible, setTimelineVisible] = useState(true);
+  const [timelineEditorHintDismissed, setTimelineEditorHintState] = useState(
+    getTimelineEditorHintDismissed,
+  );
   const dragCounterRef = useRef(0);
+  const previewHotkeyWindowRef = useRef<Window | null>(null);
   const panelDragRef = useRef<{
     side: "left" | "right";
     startX: number;
@@ -223,6 +234,51 @@ export function StudioApp() {
   const displayedTimelineZoomPercent = useMemo(
     () => getTimelineZoomPercent(zoomMode, manualZoomPercent),
     [zoomMode, manualZoomPercent],
+  );
+  const toggleTimelineVisibility = useCallback(() => {
+    setTimelineVisible((visible) => !visible);
+  }, []);
+  const dismissTimelineEditorHint = useCallback(() => {
+    setTimelineEditorHintState(true);
+    setTimelineEditorHintDismissed(true);
+  }, []);
+  const handleTimelineToggleHotkey = useCallback(
+    (event: KeyboardEvent) => {
+      if (!shouldHandleTimelineToggleHotkey(event)) return;
+      event.preventDefault();
+      toggleTimelineVisibility();
+    },
+    [toggleTimelineVisibility],
+  );
+
+  useMountEffect(() => {
+    window.addEventListener("keydown", handleTimelineToggleHotkey);
+    return () => {
+      window.removeEventListener("keydown", handleTimelineToggleHotkey);
+    };
+  });
+
+  const syncPreviewTimelineHotkey = useCallback(
+    (iframe: HTMLIFrameElement | null) => {
+      const nextWindow = iframe?.contentWindow ?? null;
+      if (previewHotkeyWindowRef.current === nextWindow) return;
+      if (previewHotkeyWindowRef.current) {
+        previewHotkeyWindowRef.current.removeEventListener("keydown", handleTimelineToggleHotkey);
+      }
+      previewHotkeyWindowRef.current = nextWindow;
+      nextWindow?.addEventListener("keydown", handleTimelineToggleHotkey);
+    },
+    [handleTimelineToggleHotkey],
+  );
+
+  useEffect(
+    () => () => {
+      if (previewHotkeyWindowRef.current) {
+        previewHotkeyWindowRef.current.removeEventListener("keydown", handleTimelineToggleHotkey);
+        previewHotkeyWindowRef.current = null;
+      }
+    },
+    [handleTimelineToggleHotkey],
   );
 
   const renderClipContent = useCallback(
@@ -323,48 +379,75 @@ export function StudioApp() {
     [compIdToSrc, activePreviewUrl, effectiveTimelineDuration],
   );
   const timelineToolbar = (
-    <div className="flex items-center justify-between px-3 py-2 border-b border-neutral-800/40 bg-neutral-950/96">
-      <div className="text-[10px] font-medium uppercase tracking-[0.16em] text-neutral-500">
-        Timeline
-      </div>
-      <div className="flex items-center gap-1">
-        <button
-          type="button"
-          onClick={() => setZoomMode("fit")}
-          className={`h-7 px-2.5 rounded-md border text-[11px] font-medium transition-colors ${
-            zoomMode === "fit"
-              ? "border-studio-accent/30 bg-studio-accent/10 text-studio-accent"
-              : "border-neutral-800 text-neutral-400 hover:border-neutral-700 hover:text-neutral-200"
-          }`}
-          title="Fit timeline to width"
-        >
-          Fit
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            setZoomMode("manual");
-            setManualZoomPercent(getNextTimelineZoomPercent("out", zoomMode, manualZoomPercent));
-          }}
-          className="h-7 w-7 rounded-md border border-neutral-800 text-neutral-400 transition-colors hover:border-neutral-700 hover:text-neutral-200"
-          title="Zoom out"
-        >
-          -
-        </button>
-        <div className="min-w-[58px] text-center text-[10px] font-medium tabular-nums text-neutral-500">
-          {`${displayedTimelineZoomPercent}%`}
+    <div className="border-b border-neutral-800/40 bg-neutral-950/96">
+      {timelineVisible && timelineElements.length > 0 && !timelineEditorHintDismissed && (
+        <div className="px-3 pt-3">
+          <div className="flex items-start justify-between gap-3 rounded-xl border border-studio-accent/20 bg-studio-accent/[0.07] px-3 py-3">
+            <div className="min-w-0">
+              <div className="text-[11px] font-semibold text-neutral-100">Timeline editor</div>
+              <p className="mt-1 text-[11px] leading-5 text-neutral-300">
+                Drag clips to move timing, and drag clip edges to resize them when handles are
+                available. Hide the panel anytime and bring it back with{" "}
+                <span className="font-mono text-[10px] text-studio-accent">
+                  {TIMELINE_TOGGLE_SHORTCUT_LABEL}
+                </span>
+                .
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={dismissTimelineEditorHint}
+              className="flex-shrink-0 rounded-md border border-neutral-700 px-2 py-1 text-[10px] font-medium text-neutral-300 transition-colors hover:border-neutral-500 hover:text-neutral-100"
+            >
+              Dismiss
+            </button>
+          </div>
         </div>
-        <button
-          type="button"
-          onClick={() => {
-            setZoomMode("manual");
-            setManualZoomPercent(getNextTimelineZoomPercent("in", zoomMode, manualZoomPercent));
-          }}
-          className="h-7 w-7 rounded-md border border-neutral-800 text-neutral-400 transition-colors hover:border-neutral-700 hover:text-neutral-200"
-          title="Zoom in"
-        >
-          +
-        </button>
+      )}
+
+      <div className="flex items-center justify-between px-3 py-2">
+        <div className="text-[10px] font-medium uppercase tracking-[0.16em] text-neutral-500">
+          Timeline
+        </div>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => setZoomMode("fit")}
+            className={`h-7 px-2.5 rounded-md border text-[11px] font-medium transition-colors ${
+              zoomMode === "fit"
+                ? "border-studio-accent/30 bg-studio-accent/10 text-studio-accent"
+                : "border-neutral-800 text-neutral-400 hover:border-neutral-700 hover:text-neutral-200"
+            }`}
+            title="Fit timeline to width"
+          >
+            Fit
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setZoomMode("manual");
+              setManualZoomPercent(getNextTimelineZoomPercent("out", zoomMode, manualZoomPercent));
+            }}
+            className="h-7 w-7 rounded-md border border-neutral-800 text-neutral-400 transition-colors hover:border-neutral-700 hover:text-neutral-200"
+            title="Zoom out"
+          >
+            -
+          </button>
+          <div className="min-w-[58px] text-center text-[10px] font-medium tabular-nums text-neutral-500">
+            {`${displayedTimelineZoomPercent}%`}
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setZoomMode("manual");
+              setManualZoomPercent(getNextTimelineZoomPercent("in", zoomMode, manualZoomPercent));
+            }}
+            className="h-7 w-7 rounded-md border border-neutral-800 text-neutral-400 transition-colors hover:border-neutral-700 hover:text-neutral-200"
+            title="Zoom in"
+          >
+            +
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -948,13 +1031,15 @@ export function StudioApp() {
             </svg>
           </button>
           <button
-            onClick={() => setTimelineVisible((v) => !v)}
-            className={`h-7 w-7 flex items-center justify-center rounded-md border transition-colors ${
+            type="button"
+            onClick={toggleTimelineVisibility}
+            className={`h-7 flex items-center gap-1.5 px-2.5 rounded-md text-[11px] font-medium border transition-colors ${
               timelineVisible
                 ? "text-studio-accent bg-studio-accent/10 border-studio-accent/30"
-                : "bg-transparent border-transparent text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800"
+                : "text-neutral-300 border-neutral-700 hover:border-neutral-500 hover:bg-neutral-800"
             }`}
-            title={timelineVisible ? "Hide timeline" : "Show timeline"}
+            title={getTimelineToggleTitle(timelineVisible)}
+            aria-label={timelineVisible ? "Hide timeline editor" : "Show timeline editor"}
           >
             <svg
               width="14"
@@ -969,6 +1054,7 @@ export function StudioApp() {
               <line x1="3" y1="9" x2="21" y2="9" />
               <line x1="3" y1="5" x2="21" y2="5" />
             </svg>
+            <span>Timeline</span>
           </button>
           <button
             onClick={() => setRightCollapsed((v) => !v)}
@@ -1079,6 +1165,7 @@ export function StudioApp() {
             }}
             onIframeRef={(iframe) => {
               previewIframeRef.current = iframe;
+              syncPreviewTimelineHotkey(iframe);
               consoleErrorsRef.current = [];
               setConsoleErrors(null);
               if (!iframe) return;
@@ -1143,7 +1230,7 @@ export function StudioApp() {
               ) : undefined
             }
             timelineVisible={timelineVisible}
-            onToggleTimeline={() => setTimelineVisible((v) => !v)}
+            onToggleTimeline={toggleTimelineVisibility}
           />
         </div>
 

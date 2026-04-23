@@ -25,6 +25,7 @@
     "lint:fix": "oxlint --fix .",
     "format": "oxfmt .",
     "test": "bun run --filter '*' test",
+    "player:perf": "bun run --filter @hyperframes/player perf",
     "format:check": "oxfmt --check .",
     "knip": "knip",
     "generate:previews": "tsx scripts/generate-template-previews.ts",

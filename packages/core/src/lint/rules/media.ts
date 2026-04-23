@@ -1,6 +1,139 @@
 import type { LintContext, HyperframeLintFinding } from "../context";
 import { readAttr, truncateSnippet, isMediaTag } from "../utils";
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function selectorTargetsManagedMedia(selector: string, mediaIds: Set<string>): boolean {
+  const normalized = selector.trim();
+  if (!normalized) return false;
+  if (/\b(video|audio)\b/i.test(normalized)) return true;
+  for (const mediaId of mediaIds) {
+    if (
+      normalized.includes(`#${mediaId}`) ||
+      normalized.includes(`[id="${mediaId}"]`) ||
+      normalized.includes(`[id='${mediaId}']`)
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function findImperativeMediaControlFindings(ctx: LintContext): HyperframeLintFinding[] {
+  const findings: HyperframeLintFinding[] = [];
+  const managedMediaIds = new Set(
+    ctx.tags
+      .filter((tag) => tag.name === "video" || tag.name === "audio")
+      .map((tag) => readAttr(tag.raw, "id"))
+      .filter((id): id is string => Boolean(id)),
+  );
+
+  if (managedMediaIds.size === 0 || ctx.scripts.length === 0) return findings;
+
+  for (const script of ctx.scripts) {
+    const mediaVars = new Map<string, string | undefined>();
+    const assignmentPatterns = [
+      /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:document|window\.document)\.getElementById\(\s*["']([^"']+)["']\s*\)/g,
+      /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:document|window\.document)\.querySelector\(\s*["']([^"']+)["']\s*\)/g,
+    ];
+
+    for (const pattern of assignmentPatterns) {
+      let match: RegExpExecArray | null;
+      while ((match = pattern.exec(script.content)) !== null) {
+        const variableName = match[1];
+        const target = match[2];
+        if (!variableName || !target) continue;
+        if (managedMediaIds.has(target) || selectorTargetsManagedMedia(target, managedMediaIds)) {
+          mediaVars.set(variableName, managedMediaIds.has(target) ? target : undefined);
+        }
+      }
+    }
+
+    const directIdPatterns = [
+      {
+        pattern:
+          /\b(?:document|window\.document)\.getElementById\(\s*["']([^"']+)["']\s*\)\.play\s*\(/g,
+        kind: "play()",
+      },
+      {
+        pattern:
+          /\b(?:document|window\.document)\.getElementById\(\s*["']([^"']+)["']\s*\)\.pause\s*\(/g,
+        kind: "pause()",
+      },
+      {
+        pattern:
+          /\b(?:document|window\.document)\.getElementById\(\s*["']([^"']+)["']\s*\)\.currentTime\s*=/g,
+        kind: "currentTime",
+      },
+      {
+        pattern:
+          /\b(?:document|window\.document)\.querySelector\(\s*["']([^"']+)["']\s*\)\.play\s*\(/g,
+        kind: "play()",
+      },
+      {
+        pattern:
+          /\b(?:document|window\.document)\.querySelector\(\s*["']([^"']+)["']\s*\)\.pause\s*\(/g,
+        kind: "pause()",
+      },
+      {
+        pattern:
+          /\b(?:document|window\.document)\.querySelector\(\s*["']([^"']+)["']\s*\)\.currentTime\s*=/g,
+        kind: "currentTime",
+      },
+    ];
+
+    for (const { pattern, kind } of directIdPatterns) {
+      let match: RegExpExecArray | null;
+      while ((match = pattern.exec(script.content)) !== null) {
+        const target = match[1];
+        if (!target) continue;
+        const elementId = managedMediaIds.has(target)
+          ? target
+          : selectorTargetsManagedMedia(target, managedMediaIds)
+            ? undefined
+            : null;
+        if (elementId === null) continue;
+        findings.push({
+          code: "imperative_media_control",
+          severity: "error",
+          message: `Inline <script> imperatively controls managed media via ${kind}. HyperFrames must own media play/pause/seek to keep preview, timeline, and renders deterministic.`,
+          elementId: elementId || undefined,
+          fixHint:
+            "Remove imperative media play/pause/currentTime control. Express timing with data-start/data-duration and media offsets like data-media-start or data-playback-start instead.",
+          snippet: truncateSnippet(match[0]),
+        });
+      }
+    }
+
+    for (const [variableName, elementId] of mediaVars) {
+      const escapedVar = escapeRegExp(variableName);
+      const variablePatterns = [
+        { pattern: new RegExp(`\\b${escapedVar}\\.play\\s*\\(`, "g"), kind: "play()" },
+        { pattern: new RegExp(`\\b${escapedVar}\\.pause\\s*\\(`, "g"), kind: "pause()" },
+        { pattern: new RegExp(`\\b${escapedVar}\\.currentTime\\s*=`, "g"), kind: "currentTime" },
+      ];
+      for (const { pattern, kind } of variablePatterns) {
+        let match: RegExpExecArray | null;
+        while ((match = pattern.exec(script.content)) !== null) {
+          findings.push({
+            code: "imperative_media_control",
+            severity: "error",
+            message: `Inline <script> imperatively controls managed media via ${kind}. HyperFrames must own media play/pause/seek to keep preview, timeline, and renders deterministic.`,
+            elementId,
+            fixHint:
+              "Remove imperative media play/pause/currentTime control. Express timing with data-start/data-duration and media offsets like data-media-start or data-playback-start instead.",
+            snippet: truncateSnippet(match[0]),
+          });
+        }
+      }
+    }
+  }
+
+  return findings;
+}
+
 export const mediaRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
   // duplicate_media_id + duplicate_media_discovery_risk
   ({ tags }) => {
@@ -243,4 +376,7 @@ export const mediaRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = 
     }
     return findings;
   },
+
+  // imperative_media_control
+  findImperativeMediaControlFindings,
 ];
