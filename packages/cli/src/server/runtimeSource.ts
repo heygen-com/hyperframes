@@ -59,13 +59,5 @@ export async function loadRuntimeSourceFallback(): Promise<string | null> {
     }
   }
 
-  const prebuilt = readPrebuiltRuntime();
-  if (prebuilt) return prebuilt;
-
-  console.warn(
-    "[studio] Could not load runtime source. Neither the esbuild build path " +
-      "nor a pre-built runtime artifact (hyperframe-runtime.js) could be found. " +
-      "Try rebuilding with: bun run build",
-  );
-  return null;
+  return readPrebuiltRuntime();
 }
