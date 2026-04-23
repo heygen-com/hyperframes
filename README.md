@@ -41,11 +41,7 @@ For Codex specifically, the same skills are also exposed as an [OpenAI Codex plu
 codex plugin marketplace add heygen-com/hyperframes --sparse .codex-plugin --sparse skills --sparse assets
 ```
 
-For Claude Code plugin packaging, the repo also ships a [Claude Code plugin manifest](./.claude-plugin/plugin.json). It reuses the root `skills/` directory, so Claude Code and Codex stay on the same source of truth. Test it locally from the repo root with:
-
-```bash
-claude --plugin-dir .
-```
+For Claude Code, the repo also ships a [Claude Code plugin manifest](./.claude-plugin/plugin.json): test it locally with `claude --plugin-dir .`, and for marketplace submission use the title `HyperFrames by HeyGen` plus the dark/light icons at [`assets/claude-code-icon-dark.svg`](./assets/claude-code-icon-dark.svg) and [`assets/claude-code-icon-light.svg`](./assets/claude-code-icon-light.svg).
 For Cursor, the same skills are packaged as a [Cursor plugin](./.cursor-plugin/plugin.json) — install from the Cursor Marketplace, or sideload by cloning this repo and pointing **Settings → Plugins → Load unpacked** at the repo root.
 
 #### Try it: example prompts
