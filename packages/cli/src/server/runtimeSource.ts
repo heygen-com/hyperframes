@@ -52,7 +52,8 @@ export async function loadRuntimeSourceFallback(): Promise<string | null> {
     try {
       const mod = await import("@hyperframes/core");
       if (typeof mod.loadHyperframeRuntimeSource === "function") {
-        return mod.loadHyperframeRuntimeSource();
+        const source = mod.loadHyperframeRuntimeSource();
+        if (source) return source;
       }
     } catch {
       // esbuild failed even though source exists — fall through to artifact
