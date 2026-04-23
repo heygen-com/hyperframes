@@ -141,6 +141,34 @@ export function getTimelineCanvasHeight(trackCount: number): number {
   return RULER_H + Math.max(0, trackCount) * TRACK_H + TIMELINE_SCROLL_BUFFER;
 }
 
+export function shouldHandleTimelineDeleteKey(input: {
+  key: string;
+  metaKey?: boolean;
+  ctrlKey?: boolean;
+  altKey?: boolean;
+  target?: EventTarget | null;
+}): boolean {
+  if (input.key !== "Delete" && input.key !== "Backspace") return false;
+  if (input.metaKey || input.ctrlKey || input.altKey) return false;
+  const target =
+    input.target && typeof input.target === "object"
+      ? (input.target as {
+          tagName?: string;
+          isContentEditable?: boolean;
+          closest?: (selector: string) => Element | null;
+        })
+      : null;
+  if (target) {
+    const tag = target.tagName?.toLowerCase() ?? "";
+    if (target.isContentEditable) return false;
+    if (["input", "textarea", "select"].includes(tag)) return false;
+    if (typeof target.closest === "function" && target.closest("[contenteditable='true']")) {
+      return false;
+    }
+  }
+  return true;
+}
+
 export function getDefaultDroppedTrack(trackOrder: number[], rowIndex?: number): number {
   if (trackOrder.length === 0) return 0;
   if (rowIndex == null || rowIndex < 0) return trackOrder[0];
@@ -198,6 +226,9 @@ interface TimelineProps {
     placement: { start: number; track: number },
   ) => Promise<void> | void;
   /** Persist a clip move back into source HTML */
+  onDeleteElement?: (
+    element: import("../store/playerStore").TimelineElement,
+  ) => Promise<void> | void;
   onMoveElement?: (
     element: import("../store/playerStore").TimelineElement,
     updates: Pick<import("../store/playerStore").TimelineElement, "start" | "track">,
@@ -256,6 +287,7 @@ export const Timeline = memo(function Timeline({
   renderClipOverlay,
   onFileDrop,
   onAssetDrop,
+  onDeleteElement,
   onMoveElement,
   onResizeElement,
   onBlockedEditAttempt,
@@ -306,10 +338,13 @@ export const Timeline = memo(function Timeline({
   const resizingClipRef = useRef<ResizingClipState | null>(null);
   resizingClipRef.current = resizingClip;
   const blockedClipRef = useRef<BlockedClipState | null>(null);
+  const deleteInFlightRef = useRef(false);
   const onMoveElementRef = useRef(onMoveElement);
   onMoveElementRef.current = onMoveElement;
   const onResizeElementRef = useRef(onResizeElement);
   onResizeElementRef.current = onResizeElement;
+  const onDeleteElementRef = useRef(onDeleteElement);
+  onDeleteElementRef.current = onDeleteElement;
   const suppressClickRef = useRef(false);
   const [showPopover, setShowPopover] = useState(false);
   const [viewportWidth, setViewportWidth] = useState(0);
@@ -380,6 +415,12 @@ export const Timeline = memo(function Timeline({
     }
     return [...trackOrder, draggedClip.previewTrack].sort((a, b) => a - b);
   }, [draggedClip, trackOrder]);
+  const selectedElement = useMemo(
+    () => elements.find((element) => (element.key ?? element.id) === selectedElementId) ?? null,
+    [elements, selectedElementId],
+  );
+  const selectedElementRef = useRef<TimelineElement | null>(selectedElement);
+  selectedElementRef.current = selectedElement;
 
   // Calculate effective pixels per second
   // In fit mode, use clientWidth (excludes scrollbar) with a small padding
@@ -784,6 +825,28 @@ export const Timeline = memo(function Timeline({
       window.removeEventListener("pointerup", handleWindowPointerUp);
       window.removeEventListener("pointercancel", handleWindowPointerUp);
     };
+  });
+
+  useMountEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (!shouldHandleTimelineDeleteKey(event)) return;
+      const selected = selectedElementRef.current;
+      const onDelete = onDeleteElementRef.current;
+      if (!selected || !onDelete || deleteInFlightRef.current) return;
+      event.preventDefault();
+      deleteInFlightRef.current = true;
+      suppressClickRef.current = true;
+      setShowPopover(false);
+      setRangeSelection(null);
+      Promise.resolve(onDelete(selected)).finally(() => {
+        deleteInFlightRef.current = false;
+        requestAnimationFrame(() => {
+          suppressClickRef.current = false;
+        });
+      });
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
   });
 
   const handlePointerDown = useCallback(

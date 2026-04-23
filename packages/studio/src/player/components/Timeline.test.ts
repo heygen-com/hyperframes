@@ -6,6 +6,7 @@ import {
   resolveTimelineAssetDrop,
   getTimelinePlayheadLeft,
   getTimelineScrollLeftForZoomTransition,
+  shouldHandleTimelineDeleteKey,
   shouldAutoScrollTimeline,
 } from "./Timeline";
 import { formatTime } from "../lib/time";
@@ -162,6 +163,26 @@ describe("getTimelineCanvasHeight", () => {
 
   it("still keeps ruler space when there are no tracks", () => {
     expect(getTimelineCanvasHeight(0)).toBeGreaterThan(24);
+  });
+});
+
+describe("shouldHandleTimelineDeleteKey", () => {
+  it("handles Delete and Backspace when focus is not in an editor", () => {
+    expect(shouldHandleTimelineDeleteKey({ key: "Delete" })).toBe(true);
+    expect(shouldHandleTimelineDeleteKey({ key: "Backspace" })).toBe(true);
+  });
+
+  it("ignores modifier shortcuts", () => {
+    expect(shouldHandleTimelineDeleteKey({ key: "Delete", metaKey: true })).toBe(false);
+    expect(shouldHandleTimelineDeleteKey({ key: "Backspace", ctrlKey: true })).toBe(false);
+  });
+
+  it("ignores input and editable targets", () => {
+    const input = { tagName: "INPUT", isContentEditable: false };
+    const editable = { tagName: "DIV", isContentEditable: true };
+
+    expect(shouldHandleTimelineDeleteKey({ key: "Delete", target: input })).toBe(false);
+    expect(shouldHandleTimelineDeleteKey({ key: "Delete", target: editable })).toBe(false);
   });
 });
 

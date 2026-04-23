@@ -28,6 +28,7 @@ interface NLELayoutProps {
     element: TimelineElement,
     style: { clip: string; label: string },
   ) => ReactNode;
+  onDeleteElement?: (element: TimelineElement) => Promise<void> | void;
   onAssetDrop?: (
     assetPath: string,
     placement: Pick<TimelineElement, "start" | "track">,
@@ -65,6 +66,7 @@ export const NLELayout = memo(function NLELayout({
   onIframeRef,
   onCompositionChange,
   renderClipContent,
+  onDeleteElement,
   onAssetDrop,
   onMoveElement,
   onResizeElement,
@@ -398,6 +400,7 @@ export const NLELayout = memo(function NLELayout({
                 onSeek={seek}
                 onDrillDown={handleDrillDown}
                 renderClipContent={renderClipContent}
+                onDeleteElement={onDeleteElement}
                 onAssetDrop={onAssetDrop}
                 onMoveElement={onMoveElement}
                 onResizeElement={onResizeElement}

@@ -781,6 +781,120 @@ export function StudioApp() {
     toastTimerRef.current = setTimeout(() => setAppToast(null), 4000);
   }, []);
 
+  const handleTimelineElementDelete = useCallback(
+    async (element: TimelineElement) => {
+      const pid = projectIdRef.current;
+      if (!pid) throw new Error("No active project");
+
+      const targetPath = element.sourceFile || activeCompPath || "index.html";
+      try {
+        const response = await fetch(
+          `/api/projects/${pid}/files/${encodeURIComponent(targetPath)}`,
+        );
+        if (!response.ok) {
+          throw new Error(`Failed to read ${targetPath}`);
+        }
+
+        const data = (await response.json()) as { content?: string };
+        const originalContent = data.content;
+        if (typeof originalContent !== "string") {
+          throw new Error(`Missing file contents for ${targetPath}`);
+        }
+
+        const patchTarget = element.domId
+          ? { id: element.domId, selector: element.selector, selectorIndex: element.selectorIndex }
+          : element.selector
+            ? { selector: element.selector, selectorIndex: element.selectorIndex }
+            : null;
+        if (!patchTarget) {
+          throw new Error(`Timeline element ${element.id} is missing a patchable target`);
+        }
+
+        const resolvedTargetPath = targetPath || "index.html";
+        const remainingElements = timelineElements.filter(
+          (timelineElement) =>
+            (timelineElement.key ?? timelineElement.id) !== (element.key ?? element.id) &&
+            (timelineElement.sourceFile || activeCompPath || "index.html") === resolvedTargetPath,
+        );
+        const trackZIndices = buildTrackZIndexMap(
+          remainingElements.map((timelineElement) => timelineElement.track),
+        );
+
+        const removeResponse = await fetch(
+          `/api/projects/${pid}/file-mutations/remove-element/${encodeURIComponent(targetPath)}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ target: patchTarget }),
+          },
+        );
+        if (!removeResponse.ok) {
+          throw new Error(`Failed to delete ${element.id} from ${targetPath}`);
+        }
+
+        const removeData = (await removeResponse.json()) as {
+          changed?: boolean;
+          content?: string;
+        };
+        let patchedContent =
+          typeof removeData.content === "string" ? removeData.content : originalContent;
+        for (const timelineElement of remainingElements) {
+          const elementTarget = timelineElement.domId
+            ? {
+                id: timelineElement.domId,
+                selector: timelineElement.selector,
+                selectorIndex: timelineElement.selectorIndex,
+              }
+            : timelineElement.selector
+              ? {
+                  selector: timelineElement.selector,
+                  selectorIndex: timelineElement.selectorIndex,
+                }
+              : null;
+          if (!elementTarget) continue;
+          const nextZIndex = trackZIndices.get(timelineElement.track);
+          if (nextZIndex == null) continue;
+          patchedContent = applyPatchByTarget(patchedContent, elementTarget, {
+            type: "inline-style",
+            property: "z-index",
+            value: String(nextZIndex),
+          });
+        }
+
+        const saveResponse = await fetch(
+          `/api/projects/${pid}/files/${encodeURIComponent(targetPath)}`,
+          {
+            method: "PUT",
+            headers: { "Content-Type": "text/plain" },
+            body: patchedContent,
+          },
+        );
+        if (!saveResponse.ok) {
+          throw new Error(`Failed to save ${targetPath}`);
+        }
+
+        if (editingPathRef.current === targetPath) {
+          setEditingFile({ path: targetPath, content: patchedContent });
+        }
+
+        usePlayerStore
+          .getState()
+          .setElements(
+            timelineElements.filter(
+              (timelineElement) =>
+                (timelineElement.key ?? timelineElement.id) !== (element.key ?? element.id),
+            ),
+          );
+        usePlayerStore.getState().setSelectedElementId(null);
+        setRefreshKey((k) => k + 1);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Failed to delete timeline clip";
+        showToast(message);
+      }
+    },
+    [activeCompPath, showToast, timelineElements],
+  );
+
   const handleBlockedTimelineEdit = useCallback(
     (_element: TimelineElement) => {
       const now = Date.now();
@@ -1315,6 +1429,7 @@ export function StudioApp() {
             activeCompositionPath={activeCompPath}
             timelineToolbar={timelineToolbar}
             renderClipContent={renderClipContent}
+            onDeleteElement={handleTimelineElementDelete}
             onAssetDrop={handleTimelineAssetDrop}
             onMoveElement={handleTimelineElementMove}
             onResizeElement={handleTimelineElementResize}
