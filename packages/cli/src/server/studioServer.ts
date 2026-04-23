@@ -10,7 +10,7 @@ import { streamSSE } from "hono/streaming";
 import { existsSync, readFileSync, writeFileSync, statSync } from "node:fs";
 import { resolve, join, basename } from "node:path";
 import { createProjectWatcher, type ProjectWatcher } from "./fileWatcher.js";
-import { loadRuntimeSourceFallback } from "./runtimeSource.js";
+import { loadRuntimeSource } from "./runtimeSource.js";
 import { VERSION as version } from "../version.js";
 import {
   createStudioApi,
@@ -31,15 +31,10 @@ function resolveDistDir(): string {
 }
 
 function resolveRuntimePath(): string {
-  // Primary: legacy name copied alongside cli.js during build
   const builtPath = resolve(__dirname, "hyperframe-runtime.js");
   if (existsSync(builtPath)) return builtPath;
-
-  // Alternate: IIFE artifact name copied alongside cli.js
   const iifePath = resolve(__dirname, "hyperframe.runtime.iife.js");
   if (existsSync(iifePath)) return iifePath;
-
-  // Dev workspace: core's dist output
   const devPath = resolve(
     __dirname,
     "..",
@@ -50,7 +45,6 @@ function resolveRuntimePath(): string {
     "hyperframe.runtime.iife.js",
   );
   if (existsSync(devPath)) return devPath;
-
   return builtPath;
 }
 
@@ -290,12 +284,8 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
   // CLI-specific routes (before shared API)
   app.get("/api/runtime.js", (c) => {
     const serve = async () => {
-      // Prefer the runtime generated from the current core source over a
-      // potentially stale copied artifact. This keeps local studio/preview
-      // sessions aligned with source edits without requiring a manual
-      // rebuild of the CLI runtime bundle first.
       const runtimeSource =
-        (await loadRuntimeSourceFallback()) ??
+        (await loadRuntimeSource()) ??
         (existsSync(runtimePath) ? readFileSync(runtimePath, "utf-8") : null);
       if (!runtimeSource) return c.text("runtime not available", 404);
       return c.body(runtimeSource, 200, {
