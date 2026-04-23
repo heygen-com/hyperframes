@@ -7,6 +7,27 @@ interface CompositionsTabProps {
   onSelect: (comp: string) => void;
 }
 
+const DEFAULT_PREVIEW_STAGE = { width: 1920, height: 1080 };
+
+export function resolveCompositionPreviewScale(input: {
+  cardWidth: number;
+  cardHeight: number;
+  stageWidth: number;
+  stageHeight: number;
+}): number {
+  const safeStageWidth =
+    Number.isFinite(input.stageWidth) && input.stageWidth > 0
+      ? input.stageWidth
+      : DEFAULT_PREVIEW_STAGE.width;
+  const safeStageHeight =
+    Number.isFinite(input.stageHeight) && input.stageHeight > 0
+      ? input.stageHeight
+      : DEFAULT_PREVIEW_STAGE.height;
+  const scaleX = input.cardWidth / safeStageWidth;
+  const scaleY = input.cardHeight / safeStageHeight;
+  return Math.min(scaleX, scaleY);
+}
+
 function CompCard({
   projectId,
   comp,
@@ -19,6 +40,7 @@ function CompCard({
   onSelect: () => void;
 }) {
   const [hovered, setHovered] = useState(false);
+  const [stageSize, setStageSize] = useState(DEFAULT_PREVIEW_STAGE);
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleEnter = () => {
     hoverTimer.current = setTimeout(() => setHovered(true), 300);
@@ -33,6 +55,12 @@ function CompCard({
   const name = comp.replace(/^compositions\//, "").replace(/\.html$/, "");
   const thumbnailUrl = `/api/projects/${projectId}/thumbnail/${comp}?t=2`;
   const previewUrl = `/api/projects/${projectId}/preview/comp/${comp}`;
+  const previewScale = resolveCompositionPreviewScale({
+    cardWidth: 80,
+    cardHeight: 45,
+    stageWidth: stageSize.width,
+    stageHeight: stageSize.height,
+  });
 
   return (
     <div
@@ -51,10 +79,25 @@ function CompCard({
           <iframe
             src={previewUrl}
             sandbox="allow-scripts allow-same-origin"
-            className="absolute inset-0 w-[1920px] h-[1080px] border-none pointer-events-none"
+            className="absolute left-0 top-0 border-none pointer-events-none"
             style={{
               transformOrigin: "0 0",
-              transform: `scale(${80 / 1920})`,
+              width: stageSize.width,
+              height: stageSize.height,
+              transform: `scale(${previewScale})`,
+            }}
+            onLoad={(e) => {
+              try {
+                const iframe = e.currentTarget;
+                const root = iframe.contentDocument?.querySelector("[data-composition-id]");
+                const width =
+                  Number(root?.getAttribute("data-width")) || DEFAULT_PREVIEW_STAGE.width;
+                const height =
+                  Number(root?.getAttribute("data-height")) || DEFAULT_PREVIEW_STAGE.height;
+                setStageSize({ width, height });
+              } catch {
+                setStageSize(DEFAULT_PREVIEW_STAGE);
+              }
             }}
             tabIndex={-1}
           />
