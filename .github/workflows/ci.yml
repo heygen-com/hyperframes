@@ -36,6 +36,7 @@ jobs:
               - "bun.lock"
               - "tsconfig*.json"
               - "Dockerfile*"
+              - ".github/workflows/**"
 
   build:
     name: Build
