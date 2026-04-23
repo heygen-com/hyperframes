@@ -23,6 +23,9 @@ import {
   ensureCacheEntryDir,
   lookupCacheEntry,
   markCacheEntryComplete,
+  readKeyStat,
+  rehydrateCacheEntry,
+  type CacheFrameFormat,
 } from "./extractionCache.js";
 
 export interface VideoElement {
@@ -374,6 +377,21 @@ async function convertSdrToHdr(
 }
 
 /**
+ * Resolve the used-segment duration for a video, falling back to the source's
+ * natural duration when the caller hasn't specified bounds (end=Infinity) or
+ * the bounds are nonsensical (end<=start).
+ */
+function resolveSegmentDuration(
+  requested: number,
+  mediaStart: number,
+  metadata: VideoMetadata,
+): number {
+  if (Number.isFinite(requested) && requested > 0) return requested;
+  const sourceRemaining = metadata.durationSeconds - mediaStart;
+  return sourceRemaining > 0 ? sourceRemaining : metadata.durationSeconds;
+}
+
+/**
  * Re-encode a VFR (variable frame rate) video segment to CFR so the downstream
  * fps filter can extract frames reliably. Screen recordings, phone videos, and
  * some webcams emit irregular timestamps that cause two failure modes:
@@ -494,12 +512,17 @@ export async function extractAllVideoFrames(
   // bounds) rather than the workDir-local normalized file produced by
   // Phase 2a/2b preflight. Without this, every render would write a new
   // normalized file with a fresh mtime → fresh cache key → perpetual misses.
-  const cacheKeyInputs = resolvedVideos.map(({ video, videoPath }) => ({
-    videoPath,
-    mediaStart: video.mediaStart,
-    start: video.start,
-    end: video.end,
-  }));
+  const cacheKeyInputs = resolvedVideos.map(({ video, videoPath }) => {
+    const stat = readKeyStat(videoPath);
+    return {
+      videoPath,
+      mtimeMs: stat.mtimeMs,
+      size: stat.size,
+      mediaStart: video.mediaStart,
+      start: video.start,
+      end: video.end,
+    };
+  });
 
   // Phase 2: Probe color spaces and normalize if mixed HDR/SDR
   const phase2ProbeStart = Date.now();
@@ -647,89 +670,84 @@ export async function extractAllVideoFrames(
   }
   breakdown.vfrPreflightMs = Date.now() - vfrPreflightStart;
 
-  // Phase 3: Extract frames (parallel). Optionally consults the
-  // content-addressed extraction cache to skip the ffmpeg call on
-  // repeat renders of the same composition.
   const phase3Start = Date.now();
   const cacheRootDir = config?.extractCacheDir;
-  const cacheFormat = options.format ?? "jpg";
+  const cacheFormat: CacheFrameFormat = options.format ?? "jpg";
+
+  async function tryCachedExtract(
+    video: VideoElement,
+    videoPath: string,
+    videoDuration: number,
+    i: number,
+  ): Promise<ExtractedFrames | null> {
+    if (!cacheRootDir) return null;
+    const keyInput = cacheKeyInputs[i];
+    const probedMeta = videoMetadata[i];
+    if (!keyInput || !probedMeta) return null;
+
+    const keyDuration = resolveSegmentDuration(
+      keyInput.end - keyInput.start,
+      keyInput.mediaStart,
+      probedMeta,
+    );
+    const lookup = lookupCacheEntry(cacheRootDir, {
+      videoPath: keyInput.videoPath,
+      mtimeMs: keyInput.mtimeMs,
+      size: keyInput.size,
+      mediaStart: keyInput.mediaStart,
+      duration: keyDuration,
+      fps: options.fps,
+      format: cacheFormat,
+    });
+
+    if (lookup.hit) {
+      breakdown.cacheHits += 1;
+      const rehydrated = rehydrateCacheEntry(lookup.entry, {
+        videoId: video.id,
+        srcPath: keyInput.videoPath,
+        fps: options.fps,
+        format: cacheFormat,
+        metadata: probedMeta,
+      });
+      return { ...rehydrated, ownedByLookup: true };
+    }
+
+    breakdown.cacheMisses += 1;
+    ensureCacheEntryDir(lookup.entry);
+    const result = await extractVideoFramesRange(
+      videoPath,
+      video.id,
+      video.mediaStart,
+      videoDuration,
+      options,
+      signal,
+      config,
+      lookup.entry.dir,
+    );
+    // Mark complete only AFTER frames are on disk — a crash mid-extract
+    // leaves the entry un-sentineled so the next lookup re-extracts over it.
+    markCacheEntryComplete(lookup.entry);
+    return { ...result, ownedByLookup: true };
+  }
+
   const results = await Promise.all(
     resolvedVideos.map(async ({ video, videoPath }, i) => {
       if (signal?.aborted) {
         throw new Error("Video frame extraction cancelled");
       }
       try {
-        let videoDuration = video.end - video.start;
-
-        // Fallback: if no data-duration/data-end was specified (end is Infinity or 0),
-        // probe the actual video file to get its natural duration.
-        if (!Number.isFinite(videoDuration) || videoDuration <= 0) {
-          const metadata = videoMetadata[i] ?? (await extractMediaMetadata(videoPath));
-          const sourceDuration = metadata.durationSeconds - video.mediaStart;
-          videoDuration = sourceDuration > 0 ? sourceDuration : metadata.durationSeconds;
+        const probedMeta = videoMetadata[i] ?? (await extractMediaMetadata(videoPath));
+        const videoDuration = resolveSegmentDuration(
+          video.end - video.start,
+          video.mediaStart,
+          probedMeta,
+        );
+        if (video.end - video.start !== videoDuration) {
           video.end = video.start + videoDuration;
         }
 
-        if (cacheRootDir) {
-          const keyInput = cacheKeyInputs[i];
-          const probedMeta = videoMetadata[i];
-          if (keyInput && probedMeta) {
-            let keyDuration = keyInput.end - keyInput.start;
-            if (!Number.isFinite(keyDuration) || keyDuration <= 0) {
-              const sourceRemaining = probedMeta.durationSeconds - keyInput.mediaStart;
-              keyDuration = sourceRemaining > 0 ? sourceRemaining : probedMeta.durationSeconds;
-            }
-            const lookup = lookupCacheEntry(cacheRootDir, {
-              videoPath: keyInput.videoPath,
-              mediaStart: keyInput.mediaStart,
-              duration: keyDuration,
-              fps: options.fps,
-              format: cacheFormat,
-            });
-            if (lookup.hit) {
-              const framePattern = `${FRAME_FILENAME_PREFIX}%05d.${cacheFormat}`;
-              const framePaths = new Map<number, string>();
-              const files = readdirSync(lookup.entry.dir)
-                .filter((f) => f.startsWith(FRAME_FILENAME_PREFIX) && f.endsWith(`.${cacheFormat}`))
-                .sort();
-              files.forEach((file, idx) => {
-                framePaths.set(idx, join(lookup.entry.dir, file));
-              });
-              breakdown.cacheHits += 1;
-              return {
-                result: {
-                  videoId: video.id,
-                  srcPath: keyInput.videoPath,
-                  outputDir: lookup.entry.dir,
-                  framePattern,
-                  fps: options.fps,
-                  totalFrames: framePaths.size,
-                  metadata: probedMeta,
-                  framePaths,
-                  ownedByLookup: true,
-                } satisfies ExtractedFrames,
-              };
-            }
-            breakdown.cacheMisses += 1;
-            ensureCacheEntryDir(lookup.entry);
-            const result = await extractVideoFramesRange(
-              videoPath,
-              video.id,
-              video.mediaStart,
-              videoDuration,
-              options,
-              signal,
-              config,
-              lookup.entry.dir,
-            );
-            // ownedByLookup=true so FrameLookupTable.cleanup leaves the entry
-            // behind for the next render. Marking complete is the last step so
-            // a crash mid-extract leaves the entry un-sentineled (treated as a
-            // miss by the next lookup and re-extracted over the partial frames).
-            markCacheEntryComplete(lookup.entry);
-            return { result: { ...result, ownedByLookup: true } };
-          }
-        }
+        const cached = await tryCachedExtract(video, videoPath, videoDuration, i);
+        if (cached) return { result: cached };
 
         const result = await extractVideoFramesRange(
           videoPath,

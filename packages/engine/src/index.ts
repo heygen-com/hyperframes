@@ -125,20 +125,6 @@ export {
   type ExtractionPhaseBreakdown,
 } from "./services/videoFrameExtractor.js";
 
-export {
-  FRAME_FILENAME_PREFIX,
-  COMPLETE_SENTINEL,
-  SCHEMA_PREFIX,
-  cacheEntryDirName,
-  computeCacheKey,
-  ensureCacheEntryDir,
-  lookupCacheEntry,
-  markCacheEntryComplete,
-  type CacheEntry,
-  type CacheKeyInput,
-  type CacheLookup,
-} from "./services/extractionCache.js";
-
 export { createVideoFrameInjector } from "./services/videoFrameInjector.js";
 
 export { parseAudioElements, processCompositionAudio } from "./services/audioMixer.js";

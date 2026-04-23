@@ -28,8 +28,10 @@
  */
 
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, statSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
+import type { VideoMetadata } from "../utils/ffprobe.js";
 
 /** Filename prefix for extracted frames. Shared with the extractor. */
 export const FRAME_FILENAME_PREFIX = "frame_";
@@ -43,10 +45,16 @@ export const SCHEMA_PREFIX = "hfcache-v2-";
 /** Truncated hex chars of SHA-256 used for the entry directory name. */
 const KEY_HEX_CHARS = 16;
 
+export type CacheFrameFormat = "jpg" | "png";
+
 export interface CacheKeyInput {
-  /** Absolute path to the source video file. Path is part of the key so
-   *  moved files re-extract rather than match by (size, mtime) alone. */
+  /** Absolute path to the source video file. Part of the key so moved files
+   *  re-extract rather than match by (size, mtime) alone. */
   videoPath: string;
+  /** Source file modification time in ms (floored). Invalidates the key on edit. */
+  mtimeMs: number;
+  /** Source file size in bytes. Invalidates the key on content change. */
+  size: number;
   /** Seconds into source the composition starts reading (video.mediaStart). */
   mediaStart: number;
   /** Seconds of source the composition uses. Infinity is normalized to -1
@@ -55,8 +63,8 @@ export interface CacheKeyInput {
   duration: number;
   /** Target output frames-per-second. */
   fps: number;
-  /** Output image format ("jpg" | "png"). */
-  format: string;
+  /** Output image format. */
+  format: CacheFrameFormat;
 }
 
 export interface CacheEntry {
@@ -75,34 +83,25 @@ export interface CacheLookup {
 }
 
 /**
- * Canonical JSON serialization for the key input. Keys are listed
- * explicitly to prevent property-order variance across Node versions from
- * producing different hashes for the same logical input. mtime/size are
- * captured from the source file at key-compute time so a file edit
- * invalidates the key even when path/mediaStart/duration/fps don't change.
+ * Read `(mtimeMs, size)` for a path. Returns zeros if the file is missing —
+ * callers on the cache hot path can still compute a stable key, and the
+ * extractor surfaces the real file-not-found error.
  */
-function canonicalKeyBlob(input: CacheKeyInput): string {
-  let mtimeMs = 0;
-  let size = 0;
+export function readKeyStat(videoPath: string): { mtimeMs: number; size: number } {
   try {
-    const stat = statSync(input.videoPath);
-    mtimeMs = Math.floor(stat.mtimeMs);
-    size = stat.size;
+    const stat = statSync(videoPath);
+    return { mtimeMs: Math.floor(stat.mtimeMs), size: stat.size };
   } catch {
-    // If the file disappears between Phase 1 resolution and key compute, the
-    // missing (mtime, size) still gives a stable key — just one that won't
-    // match any real entry, so we'll miss and the extractor will fail with
-    // its normal file-not-found path. Don't throw here; the extractor is the
-    // right place to surface that error.
+    return { mtimeMs: 0, size: 0 };
   }
+}
 
+function canonicalKeyBlob(input: CacheKeyInput): string {
   const durationForKey = Number.isFinite(input.duration) ? input.duration : -1;
-
-  // Properties are written in a fixed order.
   return JSON.stringify({
     p: input.videoPath,
-    m: mtimeMs,
-    s: size,
+    m: input.mtimeMs,
+    s: input.size,
     ms: input.mediaStart,
     d: durationForKey,
     f: input.fps,
@@ -140,18 +139,76 @@ export function lookupCacheEntry(rootDir: string, input: CacheKeyInput): CacheLo
 
 /**
  * Ensure a cache entry's directory exists so the extractor can write into it.
- * Idempotent — creates missing parents recursively.
+ * Idempotent: `mkdirSync({recursive:true})` is a no-op when the dir exists.
  */
 export function ensureCacheEntryDir(entry: CacheEntry): void {
-  if (!existsSync(entry.dir)) mkdirSync(entry.dir, { recursive: true });
+  mkdirSync(entry.dir, { recursive: true });
 }
 
 /**
  * Write the completion sentinel so subsequent lookups treat this entry as a
- * hit. Must be called only after every frame has been written and the
- * directory is considered durable.
+ * hit. Must be called only after every frame has been written.
+ *
+ * Concurrency: lookup→populate→mark is non-atomic. Two concurrent renders of
+ * the same key may both miss, both extract into the same dir, and the later
+ * writer's frames win. The result is correct (identical inputs yield identical
+ * frames) but wasteful. Acceptable for a single-process render pipeline;
+ * anyone running concurrent renders against a shared cache root should front
+ * it with an external lock.
  */
 export function markCacheEntryComplete(entry: CacheEntry): void {
-  const sentinelPath = join(entry.dir, COMPLETE_SENTINEL);
-  writeFileSync(sentinelPath, "", "utf-8");
+  writeFileSync(join(entry.dir, COMPLETE_SENTINEL), "", "utf-8");
+}
+
+/**
+ * Rebuild the in-memory frame index for a cached entry. Called on cache hits
+ * so the extractor's caller receives the same `ExtractedFrames` shape it
+ * would get from a fresh extraction — without re-running ffmpeg or ffprobe.
+ *
+ * The `metadata` argument is the `VideoMetadata` probed in the extractor's
+ * Phase 2 (pre-preflight). Passing it here avoids an extra ffprobe on the
+ * hit path.
+ */
+export interface RehydrateOptions {
+  videoId: string;
+  srcPath: string;
+  fps: number;
+  format: CacheFrameFormat;
+  metadata: VideoMetadata;
+}
+
+export interface RehydratedFrames {
+  videoId: string;
+  srcPath: string;
+  outputDir: string;
+  framePattern: string;
+  fps: number;
+  totalFrames: number;
+  metadata: VideoMetadata;
+  framePaths: Map<number, string>;
+}
+
+export function rehydrateCacheEntry(
+  entry: CacheEntry,
+  options: RehydrateOptions,
+): RehydratedFrames {
+  const framePattern = `${FRAME_FILENAME_PREFIX}%05d.${options.format}`;
+  const framePaths = new Map<number, string>();
+  const suffix = `.${options.format}`;
+  const files = readdirSync(entry.dir)
+    .filter((f) => f.startsWith(FRAME_FILENAME_PREFIX) && f.endsWith(suffix))
+    .sort();
+  files.forEach((file, idx) => {
+    framePaths.set(idx, join(entry.dir, file));
+  });
+  return {
+    videoId: options.videoId,
+    srcPath: options.srcPath,
+    outputDir: entry.dir,
+    framePattern,
+    fps: options.fps,
+    totalFrames: framePaths.size,
+    metadata: options.metadata,
+    framePaths,
+  };
 }

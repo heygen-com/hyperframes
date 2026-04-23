@@ -12,8 +12,23 @@ import {
   ensureCacheEntryDir,
   lookupCacheEntry,
   markCacheEntryComplete,
+  readKeyStat,
   type CacheKeyInput,
 } from "./extractionCache.js";
+
+const keyFor = (videoPath: string, overrides: Partial<CacheKeyInput> = {}): CacheKeyInput => {
+  const { mtimeMs, size } = readKeyStat(videoPath);
+  return {
+    videoPath,
+    mtimeMs,
+    size,
+    mediaStart: 0,
+    duration: 3,
+    fps: 30,
+    format: "jpg",
+    ...overrides,
+  };
+};
 
 describe("extractionCache constants", () => {
   it("exposes the v2 schema prefix", () => {
@@ -43,13 +58,7 @@ describe("computeCacheKey", () => {
     if (existsSync(tmpRoot)) rmSync(tmpRoot, { recursive: true, force: true });
   });
 
-  const base = (videoPath: string): CacheKeyInput => ({
-    videoPath,
-    mediaStart: 0,
-    duration: 3,
-    fps: 30,
-    format: "jpg",
-  });
+  const base = (videoPath: string): CacheKeyInput => keyFor(videoPath);
 
   it("returns the same key for identical inputs", () => {
     const a = computeCacheKey(base(sourceFile));
@@ -141,13 +150,7 @@ describe("lookupCacheEntry / markCacheEntryComplete", () => {
     if (existsSync(tmpRoot)) rmSync(tmpRoot, { recursive: true, force: true });
   });
 
-  const base = (videoPath: string): CacheKeyInput => ({
-    videoPath,
-    mediaStart: 0,
-    duration: 3,
-    fps: 30,
-    format: "jpg",
-  });
+  const base = (videoPath: string): CacheKeyInput => keyFor(videoPath);
 
   it("misses on an empty cache root", () => {
     const lookup = lookupCacheEntry(tmpRoot, base(sourceFile));
