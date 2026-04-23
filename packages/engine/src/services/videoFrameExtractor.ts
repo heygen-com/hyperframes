@@ -479,6 +479,13 @@ export async function extractAllVideoFrames(
 
   const hdrPreflightStart = Date.now();
   const hdrInfo = analyzeCompositionHdr(videoColorSpaces);
+  // Track entries the HDR preflight validated as non-extractable so they can
+  // be removed from every parallel array before Phase 2b and Phase 3 see them.
+  // Without this, `errors.push({...}); continue;` only short-circuits the
+  // normalization step — the invalid entry stays in `resolvedVideos` and
+  // Phase 3 still calls `extractVideoFramesRange` on the same past-EOF
+  // mediaStart, surfacing a second raw FFmpeg error for the same clip.
+  const hdrSkippedIndices = new Set<number>();
   if (hdrInfo.hasHdr && hdrInfo.dominantTransfer) {
     // dominantTransfer is "majority wins" — if a composition mixes PQ and HLG
     // sources (rare but legal), the minority transfer's videos get converted
@@ -508,6 +515,7 @@ export async function extractAllVideoFrames(
             videoId: entry.video.id,
             error: `SDR→HDR conversion skipped: mediaStart (${entry.video.mediaStart}s) ≥ source duration (${metadata.durationSeconds}s)`,
           });
+          hdrSkippedIndices.add(i);
           continue;
         }
 
@@ -547,6 +555,19 @@ export async function extractAllVideoFrames(
     }
   }
   breakdown.hdrPreflightMs = Date.now() - hdrPreflightStart;
+
+  // Remove HDR-preflight-skipped entries from every parallel array so Phase 2b
+  // (VFR) and Phase 3 (extract) don't re-process them. Iterate backwards to
+  // keep indices stable while splicing.
+  if (hdrSkippedIndices.size > 0) {
+    for (let i = resolvedVideos.length - 1; i >= 0; i--) {
+      if (hdrSkippedIndices.has(i)) {
+        resolvedVideos.splice(i, 1);
+        videoMetadata.splice(i, 1);
+        videoColorSpaces.splice(i, 1);
+      }
+    }
+  }
 
   // Phase 2b: Re-encode VFR inputs to CFR so the fps filter in Phase 3 produces
   // the expected frame count. Only the used segment is transcoded.
