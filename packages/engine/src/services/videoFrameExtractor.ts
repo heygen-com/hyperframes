@@ -293,10 +293,17 @@ export async function extractVideoFramesRange(
  * function (PQ for HDR10, HLG for broadcast HDR). The output transfer must
  * match the dominant transfer of the surrounding HDR content; otherwise the
  * downstream encoder will tag the final video with the wrong curve.
+ *
+ * `startTime` and `duration` bound the re-encode to the segment the composition
+ * actually uses. Without them a 30-minute screen recording that contributes a
+ * 2-second clip was transcoded in full — a >100× waste for long sources.
+ * Mirrors the segment-scope fix already applied to the VFR→CFR preflight.
  */
 async function convertSdrToHdr(
   inputPath: string,
   outputPath: string,
+  startTime: number,
+  duration: number,
   targetTransfer: HdrTransfer,
   signal?: AbortSignal,
   config?: Partial<Pick<EngineConfig, "ffmpegProcessTimeout">>,
@@ -307,8 +314,12 @@ async function convertSdrToHdr(
   const colorTrc = targetTransfer === "pq" ? "smpte2084" : "arib-std-b67";
 
   const args = [
+    "-ss",
+    String(startTime),
     "-i",
     inputPath,
+    "-t",
+    String(duration),
     "-vf",
     "colorspace=all=bt2020:iall=bt709:range=tv",
     "-color_primaries",
@@ -455,12 +466,10 @@ export async function extractAllVideoFrames(
 
   // Phase 2: Probe color spaces and normalize if mixed HDR/SDR
   const phase2ProbeStart = Date.now();
-  const videoColorSpaces = await Promise.all(
-    resolvedVideos.map(async ({ videoPath }) => {
-      const metadata = await extractMediaMetadata(videoPath);
-      return metadata.colorSpace;
-    }),
+  const videoMetadata = await Promise.all(
+    resolvedVideos.map(({ videoPath }) => extractMediaMetadata(videoPath)),
   );
+  const videoColorSpaces = videoMetadata.map((m) => m.colorSpace);
   breakdown.hdrProbeMs = Date.now() - phase2ProbeStart;
 
   const hdrPreflightStart = Date.now();
@@ -483,11 +492,34 @@ export async function extractAllVideoFrames(
         // SDR video in a mixed timeline — convert to the dominant HDR transfer
         // so the encoder tags the final video correctly (PQ vs HLG).
         const entry = resolvedVideos[i];
-        if (!entry) continue;
+        const metadata = videoMetadata[i];
+        if (!entry || !metadata) continue;
+
+        // Scope the re-encode to the segment the composition actually uses.
+        // Long sources (e.g. 30-minute screen recordings) contributing short
+        // clips were transcoded in full pre-fix — a >100× waste.
+        let segDuration = entry.video.end - entry.video.start;
+        if (!Number.isFinite(segDuration) || segDuration <= 0) {
+          const sourceRemaining = metadata.durationSeconds - entry.video.mediaStart;
+          segDuration = sourceRemaining > 0 ? sourceRemaining : metadata.durationSeconds;
+        }
+
         const convertedPath = join(convertDir, `${entry.video.id}_hdr.mp4`);
         try {
-          await convertSdrToHdr(entry.videoPath, convertedPath, targetTransfer, signal, config);
+          await convertSdrToHdr(
+            entry.videoPath,
+            convertedPath,
+            entry.video.mediaStart,
+            segDuration,
+            targetTransfer,
+            signal,
+            config,
+          );
           entry.videoPath = convertedPath;
+          // Segment-scoped re-encode starts the new file at t=0, so downstream
+          // extraction must seek from 0, not the original mediaStart. Shallow-copy
+          // to avoid mutating the caller's VideoElement (mirrors the VFR fix).
+          entry.video = { ...entry.video, mediaStart: 0 };
           breakdown.hdrPreflightCount += 1;
         } catch (err) {
           errors.push({

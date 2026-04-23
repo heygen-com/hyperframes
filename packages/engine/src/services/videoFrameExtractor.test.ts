@@ -196,6 +196,87 @@ describe.skipIf(!HAS_FFMPEG)("extractAllVideoFrames on a VFR source", () => {
     expect(result.phaseBreakdown.vfrPreflightMs).toBeGreaterThan(0);
   }, 60_000);
 
+  // Regression test for the segment-scope HDR preflight fix: pre-fix,
+  // convertSdrToHdr re-encoded the entire source, so a 30-minute SDR source
+  // contributing a 2-second clip took ~200× longer than needed. Post-fix the
+  // converted file's duration matches the used segment.
+  it("bounds the SDR→HDR preflight re-encode to the used segment", async () => {
+    const SDR_LONG = join(FIXTURE_DIR, "sdr-long.mp4");
+    const HDR_SHORT = join(FIXTURE_DIR, "hdr-short.mp4");
+
+    const sdrResult = await runFfmpeg([
+      "-y",
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "testsrc2=s=320x180:d=10:rate=30",
+      "-c:v",
+      "libx264",
+      "-preset",
+      "ultrafast",
+      "-pix_fmt",
+      "yuv420p",
+      SDR_LONG,
+    ]);
+    if (!sdrResult.success) {
+      throw new Error(`SDR fixture synthesis failed: ${sdrResult.stderr.slice(-400)}`);
+    }
+
+    // Tag as bt2020nc / smpte2084 so the preflight path considers the timeline mixed-HDR.
+    const hdrResult = await runFfmpeg([
+      "-y",
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "testsrc2=s=320x180:d=2:rate=30",
+      "-c:v",
+      "libx264",
+      "-preset",
+      "ultrafast",
+      "-pix_fmt",
+      "yuv420p",
+      "-color_primaries",
+      "bt2020",
+      "-color_trc",
+      "smpte2084",
+      "-colorspace",
+      "bt2020nc",
+      HDR_SHORT,
+    ]);
+    if (!hdrResult.success) {
+      throw new Error(`HDR fixture synthesis failed: ${hdrResult.stderr.slice(-400)}`);
+    }
+
+    const outputDir = join(FIXTURE_DIR, "out-hdr-segment");
+    mkdirSync(outputDir, { recursive: true });
+
+    const videos: VideoElement[] = [
+      { id: "sdr", src: SDR_LONG, start: 0, end: 2, mediaStart: 0, hasAudio: false },
+      { id: "hdr", src: HDR_SHORT, start: 2, end: 4, mediaStart: 0, hasAudio: false },
+    ];
+
+    const result = await extractAllVideoFrames(videos, FIXTURE_DIR, {
+      fps: 30,
+      outputDir,
+    });
+    expect(result.errors).toEqual([]);
+    expect(result.phaseBreakdown.hdrPreflightCount).toBe(1);
+
+    const convertedPath = join(outputDir, "_hdr_normalized", "sdr_hdr.mp4");
+    expect(existsSync(convertedPath)).toBe(true);
+    const convertedMeta = await extractVideoMetadata(convertedPath);
+    // Pre-fix duration matched the 10s source; post-fix it matches the 2s segment
+    // (±0.2s for encoder keyframe/seek alignment).
+    expect(convertedMeta.durationSeconds).toBeGreaterThan(1.8);
+    expect(convertedMeta.durationSeconds).toBeLessThan(2.5);
+  }, 60_000);
+
   // Asserts both frame-count correctness and that we don't emit long runs of
   // byte-identical "duplicate" frames — the user-visible "frozen screen
   // recording" symptom. Pre-fix duplicate rate on this fixture is ~38%
