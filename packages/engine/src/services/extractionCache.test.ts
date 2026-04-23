@@ -17,11 +17,12 @@ import {
 } from "./extractionCache.js";
 
 const keyFor = (videoPath: string, overrides: Partial<CacheKeyInput> = {}): CacheKeyInput => {
-  const { mtimeMs, size } = readKeyStat(videoPath);
+  const stat = readKeyStat(videoPath);
+  if (!stat) throw new Error(`keyFor fixture missing on disk: ${videoPath}`);
   return {
     videoPath,
-    mtimeMs,
-    size,
+    mtimeMs: stat.mtimeMs,
+    size: stat.size,
     mediaStart: 0,
     duration: 3,
     fps: 30,
@@ -124,8 +125,14 @@ describe("computeCacheKey", () => {
     expect(after).not.toBe(before);
   });
 
-  it("tolerates a missing source file (extractor surfaces the real error later)", () => {
-    expect(() => computeCacheKey(base(join(tmpRoot, "does-not-exist.mp4")))).not.toThrow();
+  it("readKeyStat returns null for a missing source (callers skip the cache)", () => {
+    // Previously readKeyStat returned a `{mtimeMs: 0, size: 0}` sentinel for
+    // missing files; two unrelated missing paths then shared the same cache
+    // key tuple and polluted the cache. The contract now returns null so
+    // callers can explicitly skip the cache path and let the extractor
+    // surface the real file-not-found error.
+    const missing = join(tmpRoot, "does-not-exist.mp4");
+    expect(readKeyStat(missing)).toBeNull();
   });
 });
 

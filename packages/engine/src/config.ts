@@ -80,6 +80,18 @@ export interface EngineConfig {
    * and cleanup removes it when the render ends, preserving the pre-cache
    * behaviour.
    *
+   * **Single-writer.** The cache is not safe for concurrent renders pointing
+   * at the same directory. A `.hf-complete` sentinel prevents another render
+   * from serving an entry that hasn't finished extracting, but individual
+   * frame files are written non-atomically — a second render reading during
+   * the write window can observe a truncated frame. Give each concurrent
+   * render pipeline its own `extractCacheDir`, or gate with an external mutex.
+   *
+   * **Network filesystems.** `mtime` resolution on NFS/SMB mounts can be
+   * coarser than expected (seconds rather than nanoseconds), which may
+   * produce spurious cache hits if a source file is overwritten within the
+   * same mtime tick. Local filesystems are the intended deployment target.
+   *
    * Env fallback: `HYPERFRAMES_EXTRACT_CACHE_DIR`.
    */
   extractCacheDir?: string;

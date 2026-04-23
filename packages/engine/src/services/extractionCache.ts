@@ -83,16 +83,18 @@ export interface CacheLookup {
 }
 
 /**
- * Read `(mtimeMs, size)` for a path. Returns zeros if the file is missing —
- * callers on the cache hot path can still compute a stable key, and the
- * extractor surfaces the real file-not-found error.
+ * Read `(mtimeMs, size)` for a path. Returns `null` if the file is missing —
+ * callers should skip the cache path for that entry so the extractor surfaces
+ * the real file-not-found error. Returning a zero-stat sentinel would let two
+ * missing files share the same `(0, 0)` tuple and pollute the cache with an
+ * orphaned entry.
  */
-export function readKeyStat(videoPath: string): { mtimeMs: number; size: number } {
+export function readKeyStat(videoPath: string): { mtimeMs: number; size: number } | null {
   try {
     const stat = statSync(videoPath);
     return { mtimeMs: Math.floor(stat.mtimeMs), size: stat.size };
   } catch {
-    return { mtimeMs: 0, size: 0 };
+    return null;
   }
 }
 

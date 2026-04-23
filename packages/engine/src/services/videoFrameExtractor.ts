@@ -514,6 +514,11 @@ export async function extractAllVideoFrames(
   // normalized file with a fresh mtime → fresh cache key → perpetual misses.
   const cacheKeyInputs = resolvedVideos.map(({ video, videoPath }) => {
     const stat = readKeyStat(videoPath);
+    // Missing files return null — skip the cache path for that entry. The
+    // extractor will surface the real file-not-found error downstream, and we
+    // avoid polluting the cache with a `(mtimeMs: 0, size: 0)` tuple that two
+    // unrelated missing paths would otherwise share.
+    if (!stat) return null;
     return {
       videoPath,
       mtimeMs: stat.mtimeMs,
