@@ -936,6 +936,10 @@ export function StudioApp() {
           if (data.skipped?.length) {
             showToast(`Skipped (too large): ${data.skipped.join(", ")}`);
           }
+          if (data.invalid?.length) {
+            const names = data.invalid.map((entry: { name: string }) => entry.name).join(", ");
+            showToast(`Unsupported media skipped: ${names}`);
+          }
           await refreshFileTree();
           setRefreshKey((k) => k + 1);
           return Array.isArray(data.files) ? data.files : [];

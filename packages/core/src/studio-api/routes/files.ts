@@ -13,6 +13,7 @@ import {
 } from "node:fs";
 import { resolve, dirname, join } from "node:path";
 import type { StudioApiAdapter } from "../types.js";
+import { validateUploadedMedia } from "../helpers/mediaValidation.js";
 import { isSafePath } from "../helpers/safePath.js";
 import { removeElementFromHtml } from "../helpers/sourceMutation.js";
 
@@ -301,6 +302,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       const formData = await c.req.formData();
       const uploaded: string[] = [];
       const skipped: string[] = [];
+      const invalid: Array<{ name: string; reason: string }> = [];
 
       for (const [, value] of formData.entries()) {
         if (!(value instanceof File)) continue;
@@ -338,10 +340,16 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
 
         const buffer = Buffer.from(await value.arrayBuffer());
         writeFileSync(finalPath, buffer);
+        const validation = validateUploadedMedia(finalPath);
+        if (!validation.ok) {
+          unlinkSync(finalPath);
+          invalid.push({ name: finalName, reason: validation.reason });
+          continue;
+        }
         uploaded.push(subDir ? join(subDir, finalName) : finalName);
       }
 
-      return c.json({ ok: true, files: uploaded, skipped }, 201);
+      return c.json({ ok: true, files: uploaded, skipped, invalid }, 201);
     },
   );
 }

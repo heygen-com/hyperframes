@@ -99,6 +99,7 @@ function createViteAdapter(dataDir: string, server: ViteDevServer): StudioApiAda
 
   return {
     listProjects() {
+      if (!existsSync(dataDir)) return [];
       const sessionsDir = resolve(dataDir, "../sessions");
       const sessionMap = new Map<string, { sessionId: string; title: string }>();
       if (existsSync(sessionsDir)) {
