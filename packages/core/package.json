@@ -80,7 +80,7 @@
     "types": "./dist/index.d.ts"
   },
   "scripts": {
-    "build": "tsc && bun run build:hyperframes-runtime",
+    "build": "bun run build:hyperframes-runtime && tsc",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
