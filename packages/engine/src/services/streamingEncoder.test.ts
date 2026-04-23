@@ -191,6 +191,24 @@ describe("buildStreamingArgs", () => {
       expect(presetArg(args)).toBe("p4");
     });
 
+    // Same mapping applies to hevc_nvenc: NVENC's preset vocabulary is
+    // codec-agnostic, so the helper must translate for H.265 too.
+    it("translates libx264 preset names to NVENC pN for h265 as well", () => {
+      for (const [libx264, nvencPreset] of [
+        ["ultrafast", "p1"],
+        ["medium", "p4"],
+        ["veryslow", "p7"],
+      ] as const) {
+        const args = buildStreamingArgs(
+          { ...baseGpu, codec: "h265", preset: libx264 },
+          "/tmp/out.mp4",
+          "nvenc",
+        );
+        expect(args[args.indexOf("-c:v") + 1]).toBe("hevc_nvenc");
+        expect(presetArg(args)).toBe(nvencPreset);
+      }
+    });
+
     it("rewrites QSV's unsupported ultrafast preset to veryfast", () => {
       const args = buildStreamingArgs(baseGpu, "/tmp/out.mp4", "qsv");
       expect(presetArg(args)).toBe("veryfast");

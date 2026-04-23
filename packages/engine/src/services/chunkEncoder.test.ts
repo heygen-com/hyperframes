@@ -190,6 +190,26 @@ describe("buildEncoderArgs GPU preset mapping", () => {
     expect(presetArg(args)).toBe("p5");
   });
 
+  // hevc_nvenc uses the same p1..p7 preset vocabulary as h264_nvenc, so the
+  // mapping must apply to both codecs. Locks in "H.264 and H.265 NVENC share
+  // the preset mapping" against a future refactor that might split the path.
+  it("translates libx264 preset names to NVENC p1..p7 for h265 as well", () => {
+    for (const [libx264, nvencPreset] of [
+      ["ultrafast", "p1"],
+      ["medium", "p4"],
+      ["veryslow", "p7"],
+    ] as const) {
+      const args = buildEncoderArgs(
+        { ...baseOptions, codec: "h265", preset: libx264, quality: 23, useGpu: true },
+        inputArgs,
+        "out.mp4",
+        "nvenc",
+      );
+      expect(args[args.indexOf("-c:v") + 1]).toBe("hevc_nvenc");
+      expect(presetArg(args)).toBe(nvencPreset);
+    }
+  });
+
   it("rewrites QSV's unsupported ultrafast preset to veryfast", () => {
     const args = buildEncoderArgs(
       { ...baseOptions, codec: "h264", preset: "ultrafast", quality: 28, useGpu: true },
