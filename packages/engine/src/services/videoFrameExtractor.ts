@@ -18,6 +18,12 @@ import {
 import { downloadToTemp, isHttpUrl } from "../utils/urlDownloader.js";
 import { runFfmpeg } from "../utils/runFfmpeg.js";
 import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
+import {
+  FRAME_FILENAME_PREFIX,
+  ensureCacheEntryDir,
+  lookupCacheEntry,
+  markCacheEntryComplete,
+} from "./extractionCache.js";
 
 export interface VideoElement {
   id: string;
@@ -37,6 +43,13 @@ export interface ExtractedFrames {
   totalFrames: number;
   metadata: VideoMetadata;
   framePaths: Map<number, string>;
+  /**
+   * True when the extractor owns `outputDir` and cleanup should rm it when
+   * the render ends. Cache hits set this to false so the shared entry isn't
+   * deleted by a single render's cleanup — the cache dir is owned by the
+   * caller's gc policy, not any one render.
+   */
+  ownedByLookup?: boolean;
 }
 
 export interface ExtractionOptions {
@@ -181,15 +194,22 @@ export async function extractVideoFramesRange(
   options: ExtractionOptions,
   signal?: AbortSignal,
   config?: Partial<Pick<EngineConfig, "ffmpegProcessTimeout">>,
+  /**
+   * Override the output directory for this extraction. When provided, frames
+   * are written directly into `outputDirOverride` (no per-videoId subdir).
+   * Used by the cache layer to materialize frames straight into the keyed
+   * cache entry directory.
+   */
+  outputDirOverride?: string,
 ): Promise<ExtractedFrames> {
   const ffmpegProcessTimeout = config?.ffmpegProcessTimeout ?? DEFAULT_CONFIG.ffmpegProcessTimeout;
   const { fps, outputDir, quality = 95, format = "jpg" } = options;
 
-  const videoOutputDir = join(outputDir, videoId);
+  const videoOutputDir = outputDirOverride ?? join(outputDir, videoId);
   if (!existsSync(videoOutputDir)) mkdirSync(videoOutputDir, { recursive: true });
 
   const metadata = await extractMediaMetadata(videoPath);
-  const framePattern = `frame_%05d.${format}`;
+  const framePattern = `${FRAME_FILENAME_PREFIX}%05d.${format}`;
   const outputPattern = join(videoOutputDir, framePattern);
 
   // When extracting from HDR source, tone-map to SDR in FFmpeg rather than
@@ -253,7 +273,7 @@ export async function extractVideoFramesRange(
 
       const framePaths = new Map<number, string>();
       const files = readdirSync(videoOutputDir)
-        .filter((f) => f.startsWith("frame_") && f.endsWith(`.${format}`))
+        .filter((f) => f.startsWith(FRAME_FILENAME_PREFIX) && f.endsWith(`.${format}`))
         .sort();
       files.forEach((file, index) => {
         framePaths.set(index, join(videoOutputDir, file));
@@ -414,7 +434,7 @@ export async function extractAllVideoFrames(
   baseDir: string,
   options: ExtractionOptions,
   signal?: AbortSignal,
-  config?: Partial<Pick<EngineConfig, "ffmpegProcessTimeout">>,
+  config?: Partial<Pick<EngineConfig, "ffmpegProcessTimeout" | "extractCacheDir">>,
   compiledDir?: string,
 ): Promise<ExtractionResult> {
   const startTime = Date.now();
@@ -468,6 +488,18 @@ export async function extractAllVideoFrames(
   }
 
   breakdown.resolveMs = Date.now() - phase1Start;
+
+  // Snapshot the pre-preflight key inputs so the extraction cache keys on the
+  // user-visible source (original path, original mediaStart, original segment
+  // bounds) rather than the workDir-local normalized file produced by
+  // Phase 2a/2b preflight. Without this, every render would write a new
+  // normalized file with a fresh mtime → fresh cache key → perpetual misses.
+  const cacheKeyInputs = resolvedVideos.map(({ video, videoPath }) => ({
+    videoPath,
+    mediaStart: video.mediaStart,
+    start: video.start,
+    end: video.end,
+  }));
 
   // Phase 2: Probe color spaces and normalize if mixed HDR/SDR
   const phase2ProbeStart = Date.now();
@@ -615,10 +647,14 @@ export async function extractAllVideoFrames(
   }
   breakdown.vfrPreflightMs = Date.now() - vfrPreflightStart;
 
-  // Phase 3: Extract frames (parallel)
+  // Phase 3: Extract frames (parallel). Optionally consults the
+  // content-addressed extraction cache to skip the ffmpeg call on
+  // repeat renders of the same composition.
   const phase3Start = Date.now();
+  const cacheRootDir = config?.extractCacheDir;
+  const cacheFormat = options.format ?? "jpg";
   const results = await Promise.all(
-    resolvedVideos.map(async ({ video, videoPath }) => {
+    resolvedVideos.map(async ({ video, videoPath }, i) => {
       if (signal?.aborted) {
         throw new Error("Video frame extraction cancelled");
       }
@@ -628,10 +664,71 @@ export async function extractAllVideoFrames(
         // Fallback: if no data-duration/data-end was specified (end is Infinity or 0),
         // probe the actual video file to get its natural duration.
         if (!Number.isFinite(videoDuration) || videoDuration <= 0) {
-          const metadata = await extractMediaMetadata(videoPath);
+          const metadata = videoMetadata[i] ?? (await extractMediaMetadata(videoPath));
           const sourceDuration = metadata.durationSeconds - video.mediaStart;
           videoDuration = sourceDuration > 0 ? sourceDuration : metadata.durationSeconds;
           video.end = video.start + videoDuration;
+        }
+
+        if (cacheRootDir) {
+          const keyInput = cacheKeyInputs[i];
+          const probedMeta = videoMetadata[i];
+          if (keyInput && probedMeta) {
+            let keyDuration = keyInput.end - keyInput.start;
+            if (!Number.isFinite(keyDuration) || keyDuration <= 0) {
+              const sourceRemaining = probedMeta.durationSeconds - keyInput.mediaStart;
+              keyDuration = sourceRemaining > 0 ? sourceRemaining : probedMeta.durationSeconds;
+            }
+            const lookup = lookupCacheEntry(cacheRootDir, {
+              videoPath: keyInput.videoPath,
+              mediaStart: keyInput.mediaStart,
+              duration: keyDuration,
+              fps: options.fps,
+              format: cacheFormat,
+            });
+            if (lookup.hit) {
+              const framePattern = `${FRAME_FILENAME_PREFIX}%05d.${cacheFormat}`;
+              const framePaths = new Map<number, string>();
+              const files = readdirSync(lookup.entry.dir)
+                .filter((f) => f.startsWith(FRAME_FILENAME_PREFIX) && f.endsWith(`.${cacheFormat}`))
+                .sort();
+              files.forEach((file, idx) => {
+                framePaths.set(idx, join(lookup.entry.dir, file));
+              });
+              breakdown.cacheHits += 1;
+              return {
+                result: {
+                  videoId: video.id,
+                  srcPath: keyInput.videoPath,
+                  outputDir: lookup.entry.dir,
+                  framePattern,
+                  fps: options.fps,
+                  totalFrames: framePaths.size,
+                  metadata: probedMeta,
+                  framePaths,
+                  ownedByLookup: true,
+                } satisfies ExtractedFrames,
+              };
+            }
+            breakdown.cacheMisses += 1;
+            ensureCacheEntryDir(lookup.entry);
+            const result = await extractVideoFramesRange(
+              videoPath,
+              video.id,
+              video.mediaStart,
+              videoDuration,
+              options,
+              signal,
+              config,
+              lookup.entry.dir,
+            );
+            // ownedByLookup=true so FrameLookupTable.cleanup leaves the entry
+            // behind for the next render. Marking complete is the last step so
+            // a crash mid-extract leaves the entry un-sentineled (treated as a
+            // miss by the next lookup and re-extracted over the partial frames).
+            markCacheEntryComplete(lookup.entry);
+            return { result: { ...result, ownedByLookup: true } };
+          }
         }
 
         const result = await extractVideoFramesRange(
@@ -800,6 +897,10 @@ export class FrameLookupTable {
 
   cleanup(): void {
     for (const video of this.videos.values()) {
+      // Cache-hit / cache-write entries are owned by the extraction cache —
+      // a single render must not delete them, or the next render's lookup
+      // would miss and re-extract unnecessarily.
+      if (video.extracted.ownedByLookup) continue;
       if (existsSync(video.extracted.outputDir)) {
         rmSync(video.extracted.outputDir, { recursive: true, force: true });
       }

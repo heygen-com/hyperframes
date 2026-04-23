@@ -1427,7 +1427,7 @@ export async function executeRenderJob(
         projectDir,
         { fps: job.config.fps, outputDir: join(workDir, "video-frames") },
         abortSignal,
-        undefined,
+        { extractCacheDir: cfg.extractCacheDir },
         compiledDir,
       );
       assertNotAborted();

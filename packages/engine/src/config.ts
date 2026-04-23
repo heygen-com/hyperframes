@@ -72,6 +72,18 @@ export interface EngineConfig {
   /** Custom manifest path for Hyperframe runtime. */
   runtimeManifestPath?: string;
 
+  // ── Cache ────────────────────────────────────────────────────────────
+  /**
+   * Directory where the content-addressed extraction cache persists frame
+   * bundles keyed on (path, mtime, size, mediaStart, duration, fps, format).
+   * Undefined disables caching — extraction runs into the render's workDir
+   * and cleanup removes it when the render ends, preserving the pre-cache
+   * behaviour.
+   *
+   * Env fallback: `HYPERFRAMES_EXTRACT_CACHE_DIR`.
+   */
+  extractCacheDir?: string;
+
   // ── Debug ────────────────────────────────────────────────────────────
   debug: boolean;
 }
@@ -203,6 +215,8 @@ export function resolveConfig(overrides?: Partial<EngineConfig>): EngineConfig {
 
     verifyRuntime: env("PRODUCER_VERIFY_HYPERFRAME_RUNTIME") !== "false",
     runtimeManifestPath: env("PRODUCER_HYPERFRAME_MANIFEST_PATH"),
+
+    extractCacheDir: env("HYPERFRAMES_EXTRACT_CACHE_DIR"),
   };
 
   // Remove undefined values so they don't override defaults
