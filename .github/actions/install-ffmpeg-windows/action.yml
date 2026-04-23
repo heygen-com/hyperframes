@@ -10,10 +10,12 @@ description: >-
 inputs:
   release-url:
     description: >-
-      URL of the BtbN/FFmpeg-Builds zip to install. Pinned by default so a new
-      upstream release can't silently change the encoder/muxer set under us.
+      URL of a BtbN/FFmpeg-Builds zip to install. Pinned to a specific
+      autobuild tag so a new upstream nightly can't silently change encoder
+      behavior under us. The asset filename embeds the git hash, so both
+      the tag and the filename must be bumped together when upgrading.
     required: false
-    default: https://github.com/BtbN/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-win64-gpl.zip
+    default: https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-04-23-13-16/ffmpeg-N-124085-g162ad61486-win64-gpl.zip
   max-attempts:
     description: Max download attempts before failing.
     required: false
