@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en-AU">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Session Report — Hyperframes Setup</title>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700;800;900&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--blue:#0066FF;--blue-dark:#0052CC;--blue-light:rgba(0,102,255,.06);--blue-50:rgba(0,102,255,.04);--blue-mid:rgba(0,102,255,.12);--heading-color:#111111;--text:#333333;--text-700:#4A4A4A;--text-500:#777777;--text-400:#999999;--bg:#fff;--canvas:#F7F9FA;--canvas-alt:#EEF1F3;--border:#E2E6EA;--border-light:#F0F2F4;--shadow:0 1px 3px rgba(0,0,0,.06);--shadow-lg:0 8px 24px rgba(0,0,0,.08);--radius:12px;--heading:'Montserrat',system-ui,sans-serif;--body:Inter,-apple-system,system-ui,'Segoe UI',sans-serif}
+html{scroll-behavior:smooth}body{font-family:var(--body);background:var(--bg);color:var(--text);line-height:1.65;font-size:15px;-webkit-font-smoothing:antialiased}
+.nav{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.92);backdrop-filter:blur(12px);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:0;overflow-x:auto;padding:0 40px;-webkit-overflow-scrolling:touch}.nav a{padding:16px 20px;font-family:var(--heading);font-size:11px;font-weight:600;color:var(--text-500);text-decoration:none;white-space:nowrap;letter-spacing:.03em;text-transform:uppercase;border-bottom:2px solid transparent;transition:all .15s}.nav a:hover{color:var(--text-700)}.nav a.active{color:var(--blue);border-bottom-color:var(--blue)}
+section{padding:80px 40px}section.alt{background:var(--canvas)}.wrap{max-width:1200px;margin:0 auto}
+h1{font-family:var(--heading);font-size:clamp(36px,5vw,52px);font-weight:900;color:var(--heading-color);line-height:1.1;letter-spacing:-.02em}h2{font-family:var(--heading);font-size:clamp(26px,3.5vw,36px);font-weight:800;color:var(--heading-color);line-height:1.2;letter-spacing:-.01em}h3{font-family:var(--heading);font-size:clamp(18px,2vw,22px);font-weight:700;color:var(--heading-color);line-height:1.3}h4{font-family:var(--heading);font-size:16px;font-weight:700;color:var(--text);margin-bottom:12px}
+.label{font-family:var(--heading);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--blue);margin-bottom:10px}.rule{height:3px;background:var(--blue);width:48px;margin:20px 0 0}p{margin-bottom:14px;color:var(--text-700)}strong{color:var(--text);font-weight:600}.lead{font-size:clamp(17px,2vw,20px);line-height:1.7;color:var(--text-700);max-width:780px}.section-intro{margin-bottom:56px}.section-intro h2{margin-bottom:8px}
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:24px}.grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:24px}@media(max-width:900px){.grid-2,.grid-3{grid-template-columns:1fr}}
+.card{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:32px;box-shadow:var(--shadow)}.card-flat{background:var(--canvas);border-radius:var(--radius);padding:32px}.card-blue{background:var(--blue-light);border-radius:var(--radius);padding:32px;border:1px solid rgba(0,102,255,.15)}.card-bordered{border-left:4px solid var(--blue);background:var(--canvas);padding:24px 28px;border-radius:0 var(--radius) var(--radius) 0}
+table{width:100%;border-collapse:collapse;font-size:14px}th{text-align:left;padding:12px 16px;font-family:var(--heading);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-400);border-bottom:2px solid var(--border)}td{padding:12px 16px;border-bottom:1px solid var(--border-light);vertical-align:top;color:var(--text-700)}tr:last-child td{border-bottom:none}tr.row-blue{background:var(--blue-50)}
+ul{margin-left:20px;margin-bottom:14px}li{margin-bottom:6px;color:var(--text-700)}
+code{background:var(--canvas-alt);padding:2px 6px;border-radius:4px;font-size:13px}pre{background:#1a1a2e;color:#e0e0e0;padding:20px;border-radius:var(--radius);font-size:13px;overflow-x:auto;margin-bottom:20px;line-height:1.6}
+.tag{display:inline-block;padding:3px 10px;border-radius:4px;font-size:12px;font-weight:600;background:var(--canvas-alt);color:var(--text-500)}.tag-blue{background:var(--blue-light);color:var(--blue-dark)}
+.spacer{height:40px}.spacer-lg{height:64px}
+.alert{border-radius:var(--radius);padding:20px 24px;margin-bottom:20px;font-size:14px;line-height:1.6}.alert-info{background:var(--blue-light);border:1px solid rgba(0,102,255,.15);color:var(--blue-dark)}.alert-warn{background:#FFF8E1;border:1px solid #FFE082;color:#7B6B2E}.alert-success{background:#E8F5E9;border:1px solid #A5D6A7;color:#2E7D32}
+.check-list{list-style:none;margin-left:0;padding:0}.check-list li{padding:8px 0;display:flex;align-items:flex-start;gap:10px;font-size:14px}.check-list li::before{flex-shrink:0;font-weight:700;font-size:14px;margin-top:1px}.check-done li::before{content:'&#10003;';color:#2E7D32}.check-open li::before{content:'&#9744;';color:var(--text-400)}
+.site-footer{border-top:1px solid var(--border);padding:32px 40px}.footer-inner{max-width:1200px;margin:0 auto;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px}.footer-brand{font-family:var(--heading);font-size:14px;font-weight:700;color:var(--heading-color)}.footer-note{font-size:13px;color:var(--text-400)}
+@media print{.nav{display:none}section{padding:40px 20px;page-break-inside:avoid}.grid-2,.grid-3{gap:16px}body{font-size:12px}}
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav class="nav">
+  <a href="#task">Task</a>
+  <a href="#done">What Was Done</a>
+  <a href="#decisions">Decisions</a>
+  <a href="#files">Files</a>
+  <a href="#findings">Findings</a>
+  <a href="#next">Next Steps</a>
+</nav>
+
+<!-- HERO -->
+<section>
+<div class="wrap">
+  <div class="section-intro">
+    <p class="label">Session Report &mdash; 21 April 2026</p>
+    <h1>Hyperframes Setup.</h1>
+    <div class="rule"></div>
+  </div>
+  <p class="lead">Fork, install, configure, and verify the HeyGen Hyperframes open-source video rendering framework for local use with API-based rendering and Claude Code agent skills.</p>
+</div>
+</section>
+
+<!-- TASK -->
+<section id="task" class="alt">
+<div class="wrap">
+  <div class="section-intro">
+    <p class="label">Section 01</p>
+    <h2>Task</h2>
+  </div>
+  <div class="card-bordered">
+    <p style="margin-bottom:0"><strong>Objective:</strong> Analyse, fork, install, and operationally verify the <code>heygen-com/hyperframes</code> open-source video rendering framework &mdash; establishing a local authoring environment with HTTP API-based rendering and agent skill integration for Claude Code.</p>
+  </div>
+</div>
+</section>
+
+<!-- WHAT WAS DONE -->
+<section id="done">
+<div class="wrap">
+  <div class="section-intro">
+    <p class="label">Section 02</p>
+    <h2>What Was Done</h2>
+  </div>
+  <table>
+    <thead>
+      <tr><th>Action</th><th>Outcome</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Repo analysis</strong></td>
+        <td>Full architectural breakdown of heygen-com/hyperframes: 7-package TypeScript monorepo (cli, core, engine, player, producer, shader-transitions, studio). Apache 2.0. 8k+ stars.</td>
+      </tr>
+      <tr class="row-blue">
+        <td><strong>Fork to Corhelix</strong></td>
+        <td>Created <code>github.com/Corhelix/hyperframes</code> via <code>gh repo fork</code>. Upstream tracking configured.</td>
+      </tr>
+      <tr>
+        <td><strong>Bun installed</strong></td>
+        <td>v1.3.13 installed to <code>~/.bun/bin/bun</code>. Added to <code>$PATH</code> in <code>~/.zshrc</code>.</td>
+      </tr>
+      <tr class="row-blue">
+        <td><strong>git-lfs installed</strong></td>
+        <td>Installed via Homebrew. Hook conflict with graphify post-checkout hook &mdash; resolved via <code>GIT_LFS_SKIP_SMUDGE=1</code> on clone.</td>
+      </tr>
+      <tr>
+        <td><strong>Local clone</strong></td>
+        <td><code>/Users/burns/Documents/hyperframes/</code> &mdash; 1,160 packages installed via <code>bun install</code>.</td>
+      </tr>
+      <tr class="row-blue">
+        <td><strong>Agent skills installed</strong></td>
+        <td>5 skills via <code>npx skills add heygen-com/hyperframes --yes</code>: hyperframes, hyperframes-cli, hyperframes-registry, gsap, website-to-hyperframes. Symlinked into Claude Code.</td>
+      </tr>
+      <tr>
+        <td><strong>Producer server built</strong></td>
+        <td><code>bun run build:producer</code> &mdash; fonts generated (42 faces, 718KB), runtime compiled, server bundled to <code>dist/public-server.js</code>.</td>
+      </tr>
+      <tr class="row-blue">
+        <td><strong>Producer server verified</strong></td>
+        <td>Running at <code>http://localhost:9847</code>. Health check confirmed. Test render: 2s 640&times;360 composition &rarr; 15KB MP4 in 4 seconds. Full pipeline operational.</td>
+      </tr>
+      <tr>
+        <td><strong>Knowledge memory saved</strong></td>
+        <td><code>reference_hyperframes_setup.md</code> created and indexed in <code>MEMORY.md</code> for future session continuity.</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+</section>
+
+<!-- DECISIONS -->
+<section id="decisions" class="alt">
+<div class="wrap">
+  <div class="section-intro">
+    <p class="label">Section 03</p>
+    <h2>Decisions Made</h2>
+  </div>
+  <table>
+    <thead>
+      <tr><th>Decision</th><th>Rationale</th><th>Impact</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Fork to Corhelix user account</strong></td>
+        <td>Corhelix is a GitHub user account, not an organisation. <code>gh repo fork --org</code> fails for user accounts.</td>
+        <td>Fork lives at <code>Corhelix/hyperframes</code>. Can sync upstream via <code>gh repo sync</code>.</td>
+      </tr>
+      <tr class="row-blue">
+        <td><strong>API rendering via producer server, not local CLI</strong></td>
+        <td>User preference: avoid persistent RAM drain from Chrome + FFmpeg. Producer server runs only when needed.</td>
+        <td>Rendering via <code>POST /render</code> to <code>localhost:9847</code>. Future: Docker/Azure for fully decoupled rendering.</td>
+      </tr>
+      <tr>
+        <td><strong>LFS skip smudge on clone</strong></td>
+        <td>graphify post-checkout hook conflicts with git-lfs hooks. <code>git lfs update --force</code> would overwrite graphify hook.</td>
+        <td>LFS-tracked files (large assets) not downloaded. Pull selectively with <code>git lfs pull</code> if needed. No impact on authoring or rendering.</td>
+      </tr>
+      <tr class="row-blue">
+        <td><strong>Local producer for now, Docker/Azure deferred</strong></td>
+        <td>User wants to explore the tool before investing in infrastructure. Azure account available for future deployment.</td>
+        <td>Rendering currently uses local Chrome + FFmpeg when producer is running. RAM impact is temporary (only while server is active).</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+</section>
+
+<!-- FILES -->
+<section id="files">
+<div class="wrap">
+  <div class="section-intro">
+    <p class="label">Section 04</p>
+    <h2>Files Created / Modified</h2>
+  </div>
+  <table>
+    <thead>
+      <tr><th>File</th><th>Action</th><th>Purpose</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>/Users/burns/Documents/hyperframes/</code></td>
+        <td>Created (clone)</td>
+        <td>Local Hyperframes repo &mdash; full monorepo with all 7 packages</td>
+      </tr>
+      <tr class="row-blue">
+        <td><code>~/Documents/hyperframes/.agents/skills/</code></td>
+        <td>Created (skills install)</td>
+        <td>5 agent skills symlinked into Claude Code</td>
+      </tr>
+      <tr>
+        <td><code>~/.bun/bin/bun</code></td>
+        <td>Created (install)</td>
+        <td>Bun v1.3.13 package manager &mdash; required for Hyperframes dev tooling</td>
+      </tr>
+      <tr class="row-blue">
+        <td><code>~/.claude/.../memory/reference_hyperframes_setup.md</code></td>
+        <td>Created</td>
+        <td>Knowledge memory: full setup reference for future sessions</td>
+      </tr>
+      <tr>
+        <td><code>~/.claude/.../memory/MEMORY.md</code></td>
+        <td>Modified</td>
+        <td>Added Hyperframes entry to Tools &amp; Integrations index</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+</section>
+
+<!-- FINDINGS -->
+<section id="findings" class="alt">
+<div class="wrap">
+  <div class="section-intro">
+    <p class="label">Section 05</p>
+    <h2>Findings</h2>
+  </div>
+
+  <div class="alert alert-info">
+    <strong>Architecture.</strong> Hyperframes is a mature, well-structured monorepo. The producer package exposes a clean HTTP API (<code>POST /render</code>, <code>POST /render/stream</code> with SSE, <code>POST /lint</code>, <code>GET /health</code>). Rendering is deterministic &mdash; same HTML composition always produces the same video output. No external API dependencies; entirely self-contained.
+  </div>
+
+  <div class="alert alert-warn">
+    <strong>git-lfs hook conflict.</strong> The graphify post-checkout hook and git-lfs post-checkout hook cannot coexist without manual merging. Current workaround (<code>GIT_LFS_SKIP_SMUDGE=1</code>) is functional but means LFS-tracked assets are not automatically fetched. If large video assets are needed for compositions, run <code>git lfs pull</code> explicitly.
+  </div>
+
+  <div class="alert alert-warn">
+    <strong>Bun not in subshell PATH.</strong> After install, <code>bun</code> is added to <code>~/.zshrc</code> but not available in non-login subshells. Commands must use <code>PATH="$HOME/.bun/bin:$PATH" bun ...</code> or <code>~/.bun/bin/bun</code> directly until a new terminal session is opened.
+  </div>
+
+  <div class="alert alert-success">
+    <strong>Full pipeline verified.</strong> Test render completed successfully: 2-second 640&times;360 composition &rarr; valid MP4 (15KB) in 4 seconds. Health endpoint responding. All 5 agent skills installed and security-assessed (0 Socket alerts, low-to-medium Snyk risk).
+  </div>
+
+  <div class="spacer"></div>
+
+  <h3>System Inventory</h3>
+  <div class="spacer"></div>
+  <div class="grid-3">
+    <div class="card">
+      <p class="label">Prerequisites</p>
+      <p style="margin-bottom:6px"><strong>Node.js</strong> v22.19.0</p>
+      <p style="margin-bottom:6px"><strong>FFmpeg</strong> v8.0.1</p>
+      <p style="margin-bottom:6px"><strong>Bun</strong> v1.3.13</p>
+      <p style="margin-bottom:0"><strong>Chromium</strong> v146 (Puppeteer cache)</p>
+    </div>
+    <div class="card">
+      <p class="label">Producer API Endpoints</p>
+      <p style="margin-bottom:6px"><code>POST /render</code> &mdash; blocking</p>
+      <p style="margin-bottom:6px"><code>POST /render/stream</code> &mdash; SSE</p>
+      <p style="margin-bottom:6px"><code>GET /render/queue</code> &mdash; status</p>
+      <p style="margin-bottom:6px"><code>POST /lint</code> &mdash; validate</p>
+      <p style="margin-bottom:6px"><code>GET /health</code> &mdash; check</p>
+      <p style="margin-bottom:0"><code>GET /outputs/:token</code> &mdash; download</p>
+    </div>
+    <div class="card">
+      <p class="label">Agent Skills</p>
+      <p style="margin-bottom:6px"><strong>hyperframes</strong> &mdash; authoring</p>
+      <p style="margin-bottom:6px"><strong>hyperframes-cli</strong> &mdash; CLI</p>
+      <p style="margin-bottom:6px"><strong>hyperframes-registry</strong> &mdash; components</p>
+      <p style="margin-bottom:6px"><strong>gsap</strong> &mdash; animations</p>
+      <p style="margin-bottom:0"><strong>website-to-hyperframes</strong> &mdash; conversion</p>
+    </div>
+  </div>
+</div>
+</section>
+
+<!-- NEXT STEPS -->
+<section id="next">
+<div class="wrap">
+  <div class="section-intro">
+    <p class="label">Section 06</p>
+    <h2>Next Steps</h2>
+  </div>
+
+  <div class="grid-2">
+    <div class="card">
+      <h4>Completed</h4>
+      <ul class="check-list check-done">
+        <li>Fork to Corhelix GitHub</li>
+        <li>Clone locally with dependencies</li>
+        <li>Install Bun, git-lfs, agent skills</li>
+        <li>Build producer server</li>
+        <li>Verify full render pipeline (test composition &rarr; MP4)</li>
+        <li>Save knowledge memory for future sessions</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>Open</h4>
+      <ul class="check-list check-open">
+        <li>Dockerise producer server for Azure deployment (decoupled rendering)</li>
+        <li>Build first real composition using the component registry</li>
+        <li>Explore the studio visual editor (<code>bun run dev</code>)</li>
+        <li>Test the website-to-hyperframes skill on an existing HTML page</li>
+        <li>Resolve git-lfs / graphify hook conflict properly (manual merge)</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="spacer-lg"></div>
+
+  <div class="card-blue">
+    <h4>Quick Reference &mdash; Starting Hyperframes</h4>
+    <pre><code># Start the producer server
+cd /Users/burns/Documents/hyperframes
+node packages/producer/dist/public-server.js
+# Server at http://localhost:9847
+
+# Render a composition
+curl -X POST http://localhost:9847/render \
+  -H "Content-Type: application/json" \
+  -d '{"html": "&lt;div id=\"stage\" ...&gt;...&lt;/div&gt;"}'
+
+# Open the studio editor
+PATH="$HOME/.bun/bin:$PATH" bun run dev
+
+# Rebuild producer (after upstream sync)
+PATH="$HOME/.bun/bin:$PATH" bun run build:producer</code></pre>
+  </div>
+</div>
+</section>
+
+<!-- FOOTER -->
+<footer class="site-footer">
+<div class="footer-inner">
+  <span class="footer-brand">Corhelix</span>
+  <span class="footer-note">Session Report &mdash; 21 April 2026 &mdash; DRAFT v0.1</span>
+</div>
+</footer>
+
+</body>
+</html>
