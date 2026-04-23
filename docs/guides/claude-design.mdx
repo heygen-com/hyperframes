@@ -3,62 +3,90 @@ title: Claude Design
 description: "Use HyperFrames from Claude Design with a GitHub-hosted skill entry point that pulls the repo's existing skills and preview patterns."
 ---
 
-Claude Design needs a different setup than Claude Code, Cursor, or Codex. The local `npx skills add heygen-com/hyperframes` flow is still the best path for coding agents, but Claude Design currently works better when you point it at a GitHub-hosted HyperFrames entry point and let it pull the repo's existing skill files from there.
+Claude Design needs a different setup than Claude Code, Cursor, or Codex. The local `npx skills add heygen-com/hyperframes` flow is the right path for coding agents. For Claude Design, attach the HyperFrames skill file to your chat — empirically that produces sharper, more rule-compliant output than pasting the URL.
 
-## Recommended entry point
+## Get the skill
 
-Use [`skills/claude-design-hyperframes/SKILL.md`](https://github.com/heygen-com/hyperframes/blob/main/skills/claude-design-hyperframes/SKILL.md) as the Claude Design entry point.
+<CardGroup cols={2}>
+  <Card
+    title="Download SKILL.md"
+    icon="download"
+    href="https://raw.githubusercontent.com/heygen-com/hyperframes/main/skills/claude-design-hyperframes/SKILL.md"
+  >
+    Save the file, then drag it into a Claude Design chat as an attachment.
+  </Card>
+  <Card
+    title="View on GitHub"
+    icon="github"
+    href="https://github.com/heygen-com/hyperframes/blob/main/skills/claude-design-hyperframes/SKILL.md"
+  >
+    Read the skill, copy sections, or link to it in a prompt.
+  </Card>
+</CardGroup>
 
-That file tells Claude Design to:
-
-- fetch the broader [`skills/`](https://github.com/heygen-com/hyperframes/tree/main/skills) tree from this repo
-- use the existing HyperFrames composition rules as the source of truth
-- preview compositions with [`@hyperframes/player`](/packages/player) instead of a one-off iframe shell
+<Tip>
+  **Prefer attaching the file over pasting the URL.** Claude Design reads file attachments natively with detail preserved. URL-driven runs produce usable output but consistently miss more rules than attachment-driven runs.
+</Tip>
 
 ## Which setup to use
 
-| Surface | Recommended setup |
-|---------|-------------------|
-| Claude Design | GitHub-hosted entry point: `skills/claude-design-hyperframes/SKILL.md` |
-| Claude Code | `npx skills add heygen-com/hyperframes`, then use `/hyperframes` |
-| Cursor / Codex / Gemini CLI | `npx skills add heygen-com/hyperframes` |
-
-<Note>
-  The Claude Design entry point is intentionally thin. It exists to route Claude Design into the repo's upstream HyperFrames skills, not to replace them with a second copy.
-</Note>
+| Surface                     | Recommended setup                                                                                                             |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| Claude Design               | Download [`SKILL.md`](https://raw.githubusercontent.com/heygen-com/hyperframes/main/skills/claude-design-hyperframes/SKILL.md) and attach it to your chat |
+| Claude Code                 | `npx skills add heygen-com/hyperframes`, then use `/hyperframes`                                                              |
+| Cursor / Codex / Gemini CLI | `npx skills add heygen-com/hyperframes`                                                                                       |
 
 ## Prompt shape for Claude Design
 
-Claude Design does not use slash commands. Instead, lead with the GitHub URL and ask for a HyperFrames handoff:
+Claude Design does not use slash commands. Lead with the skill file (attached or URL), describe the video, and ideally give Claude Design something to synthesize from — screenshots, a brand PDF, a reference video, a pasted palette, or at minimum a vibe in words.
 
-```text
-Use https://github.com/heygen-com/hyperframes/blob/main/skills/claude-design-hyperframes/SKILL.md and make a 45-second launch video about https://www.anthropic.com/news/claude-design-anthropic-labs. Deliver index.html, preview.html, and README.md. Use @hyperframes/player for preview.
-```
+The skill reads inputs in this order of reliability: **attachments → pasted content → web research → URLs**. A modern SPA homepage returns almost nothing via `web_fetch` because JavaScript isn't executed, so brand-accurate output on brief like "make a video for linear.app" depends on attaching screenshots or letting Claude Design search for the brand's blog, press, or Wikipedia.
 
 Strong Claude Design prompts usually include:
 
-- the GitHub skill URL
-- the source material: URL, doc, repo, screenshots, or brief
+- the attached skill file (or its URL)
+- the source material: screenshots, a brand PDF, a reference video, pasted copy, or a URL
 - duration and aspect ratio
-- tone or visual direction
+- tone or visual direction (if you have one — otherwise let Claude Design ask)
 - explicit deliverables: `index.html`, `preview.html`, `README.md`
 
 ## Copy-paste prompts
 
 <CardGroup cols={1}>
-  <Card title="Blog post to launch video">
+  <Card title="Rich brief (attach SKILL.md + screenshots)">
     ```text
-    Use https://github.com/heygen-com/hyperframes/blob/main/skills/claude-design-hyperframes/SKILL.md and make a 45-second editorial launch video about https://www.anthropic.com/news/claude-design-anthropic-labs. Warm, intelligent, design-forward. Deliver index.html, preview.html, and README.md. Use @hyperframes/player for preview.
+    Use the attached skill. Make a 30-second 16:9 product walkthrough for my app,
+    matching the design in these screenshots. 5 scenes: hero, three features,
+    closing CTA. Shader transitions between scenes.
     ```
   </Card>
-  <Card title="Product teaser">
+  <Card title="Pasted-content brief (attach SKILL.md + paste your copy)">
     ```text
-    Use the HyperFrames Claude Design skill at https://github.com/heygen-com/hyperframes/blob/main/skills/claude-design-hyperframes/SKILL.md and create a 15-second 9:16 teaser for our API launch. Punchy pacing, bold typography, clean transitions, captions on key lines. Deliver render-ready HyperFrames files.
+    Use the attached skill. 30s hero reel with this copy for each scene:
+
+    1. "The fast web broke us."
+    2. "Every app optimized for attention. None for thought."
+    3. "Something is changing. Blogs are back."
+    4. "Welcome to the slow web."
+
+    Dark theme, editorial, serif typography (not Playfair).
     ```
   </Card>
-  <Card title="Website to video">
+  <Card title="Sparse brief (attach SKILL.md, let it ask)">
     ```text
-    Use https://github.com/heygen-com/hyperframes/blob/main/skills/claude-design-hyperframes/SKILL.md and turn https://example.com into a 30-second product tour video. Keep it renderable in HyperFrames and include a player-based preview page.
+    Use the attached skill. Make a 30-second launch video for Orbit.
+    ```
+
+    The skill will ask ONE short question offering five input channels
+    (screenshot, PDF, reference video, vibe word, must-have element) plus
+    a "just build" escape hatch before generating.
+  </Card>
+  <Card title="Static URL brief (editorial piece, not a SPA)">
+    ```text
+    Use the HyperFrames Claude Design skill at
+    https://github.com/heygen-com/hyperframes/blob/main/skills/claude-design-hyperframes/SKILL.md
+    and turn https://www.anthropic.com/news/claude-design-anthropic-labs into a
+    45-second editorial explainer. Keep copy close to the article's real headlines.
     ```
   </Card>
 </CardGroup>
@@ -116,15 +144,19 @@ If a classic script tag is needed instead of ESM, use the global player build wi
 
 See [`@hyperframes/player`](/packages/player) for the full API and framework examples.
 
-## What the entry point teaches Claude Design
+## What the skill teaches Claude Design
 
-The Claude Design entry point pushes Claude toward a real HyperFrames handoff:
+The skill is self-contained — it includes every HyperFrames-specific contract and every known Claude Design sandbox workaround, so Claude Design rarely needs to fetch additional references. Highlights:
 
-- correct `data-*` composition structure
-- paused GSAP timelines registered on `window.__timelines`
-- deterministic render-safe animation choices
-- separate audio clips instead of sound on `<video>`
-- player-based preview pages that are easy to open and review
+- An explicit opening redirect: Claude Design is told NOT to reach for its default video artifacts (`copy_starter_component` with `kind: "animations.jsx"`, the built-in "Animated video" skill, React + Babel JSX, hand-rolled scale-to-fit stage wrappers). This is the single change that most reliably keeps Claude Design on the HyperFrames path
+- Correct `data-*` composition structure, the clip contract on scenes, and paused GSAP timelines registered on `window.__timelines`
+- Shader-transition timing rules: transitions must span the scene boundary (not start at it), animated content must be wrapped in `<div class="scene-content">` so its pre-animation state doesn't leak into the WebGL texture, and the `scenes.length === transitions.length + 1` invariant (with `flash-through-white` as the invisible-bridge escape hatch)
+- Sandbox-compatible preview: token-forwarding `preview.html` template, runtime pre-load in `index.html`, `data-composition-id` ↔ `__timelines` key match (and a convention that the root element's DOM `id` matches too)
+- Attachment-first input model: read screenshots / PDFs / reference videos when provided, otherwise ask one short clarifying question before generating
+- A banned-font list (including Fraunces, Inter Tight, and common AI defaults) plus a banned-pairings line to break the training-data monoculture
+- Deterministic render-safe animation choices (no `Date.now()`, no unseeded `Math.random()`, no `repeat: -1`, no `stagger: { from: "random" }`)
+- Four worked-example anti-patterns with WRONG/RIGHT code pairs — exit tweens before shader transitions, non-deterministic `stagger` origins, absolute-positioned content containers, and SVG filter data URLs as `background-image` (the last one causes `SecurityError` on Safari + cross-origin iframe environments)
+- A `README.md` template for the end user with `npx hyperframes doctor` / `preview` / `render` commands and FFmpeg install instructions
 
 ## Next steps
 
