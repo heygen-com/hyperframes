@@ -23,6 +23,25 @@ export function trackRenderComplete(props: {
   // Resource usage
   peakMemoryMb?: number;
   memoryFreeMb?: number;
+  tmpPeakBytes?: number;
+  // Per-stage timings (subset of RenderPerfSummary.stages)
+  stageCompileMs?: number;
+  stageVideoExtractMs?: number;
+  stageAudioProcessMs?: number;
+  stageCaptureMs?: number;
+  stageEncodeMs?: number;
+  stageAssembleMs?: number;
+  // Video-extraction breakdown (from RenderPerfSummary.videoExtractBreakdown)
+  extractResolveMs?: number;
+  extractHdrProbeMs?: number;
+  extractHdrPreflightMs?: number;
+  extractHdrPreflightCount?: number;
+  extractVfrProbeMs?: number;
+  extractVfrPreflightMs?: number;
+  extractVfrPreflightCount?: number;
+  extractPhase3Ms?: number;
+  extractCacheHits?: number;
+  extractCacheMisses?: number;
 }): void {
   trackEvent("render_complete", {
     duration_ms: props.durationMs,
@@ -40,6 +59,23 @@ export function trackRenderComplete(props: {
     capture_peak_ms: props.capturePeakMs,
     peak_memory_mb: props.peakMemoryMb,
     memory_free_mb: props.memoryFreeMb,
+    tmp_peak_bytes: props.tmpPeakBytes,
+    stage_compile_ms: props.stageCompileMs,
+    stage_video_extract_ms: props.stageVideoExtractMs,
+    stage_audio_process_ms: props.stageAudioProcessMs,
+    stage_capture_ms: props.stageCaptureMs,
+    stage_encode_ms: props.stageEncodeMs,
+    stage_assemble_ms: props.stageAssembleMs,
+    extract_resolve_ms: props.extractResolveMs,
+    extract_hdr_probe_ms: props.extractHdrProbeMs,
+    extract_hdr_preflight_ms: props.extractHdrPreflightMs,
+    extract_hdr_preflight_count: props.extractHdrPreflightCount,
+    extract_vfr_probe_ms: props.extractVfrProbeMs,
+    extract_vfr_preflight_ms: props.extractVfrPreflightMs,
+    extract_vfr_preflight_count: props.extractVfrPreflightCount,
+    extract_phase3_ms: props.extractPhase3Ms,
+    extract_cache_hits: props.extractCacheHits,
+    extract_cache_misses: props.extractCacheMisses,
   });
 }
 

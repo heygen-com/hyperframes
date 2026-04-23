@@ -597,6 +597,9 @@ function trackRenderMetrics(
       ? Math.round((compositionDurationMs / elapsedMs) * 100) / 100
       : undefined;
 
+  const stages = perf?.stages ?? {};
+  const extract = perf?.videoExtractBreakdown;
+
   trackRenderComplete({
     durationMs: elapsedMs,
     fps: options.fps,
@@ -611,6 +614,23 @@ function trackRenderMetrics(
     speedRatio,
     captureAvgMs: perf?.captureAvgMs,
     capturePeakMs: perf?.capturePeakMs,
+    tmpPeakBytes: perf?.tmpPeakBytes,
+    stageCompileMs: stages.compileMs,
+    stageVideoExtractMs: stages.videoExtractMs,
+    stageAudioProcessMs: stages.audioProcessMs,
+    stageCaptureMs: stages.captureMs,
+    stageEncodeMs: stages.encodeMs,
+    stageAssembleMs: stages.assembleMs,
+    extractResolveMs: extract?.resolveMs,
+    extractHdrProbeMs: extract?.hdrProbeMs,
+    extractHdrPreflightMs: extract?.hdrPreflightMs,
+    extractHdrPreflightCount: extract?.hdrPreflightCount,
+    extractVfrProbeMs: extract?.vfrProbeMs,
+    extractVfrPreflightMs: extract?.vfrPreflightMs,
+    extractVfrPreflightCount: extract?.vfrPreflightCount,
+    extractPhase3Ms: extract?.extractMs,
+    extractCacheHits: extract?.cacheHits,
+    extractCacheMisses: extract?.cacheMisses,
     ...getMemorySnapshot(),
   });
 }
