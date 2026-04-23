@@ -308,6 +308,11 @@ async function convertSdrToHdr(
   signal?: AbortSignal,
   config?: Partial<Pick<EngineConfig, "ffmpegProcessTimeout">>,
 ): Promise<void> {
+  // Positive duration is required — FFmpeg's `-t 0` silently produces a 0-byte
+  // output that the downstream extractor then treats as a valid (empty) file.
+  if (duration <= 0) {
+    throw new Error(`convertSdrToHdr: duration must be positive (got ${duration})`);
+  }
   const timeout = config?.ffmpegProcessTimeout ?? DEFAULT_CONFIG.ffmpegProcessTimeout;
 
   // smpte2084 = PQ (HDR10), arib-std-b67 = HLG.
@@ -494,6 +499,17 @@ export async function extractAllVideoFrames(
         const entry = resolvedVideos[i];
         const metadata = videoMetadata[i];
         if (!entry || !metadata) continue;
+
+        // Guard against mediaStart past EOF — FFmpeg's `-ss` silently produces
+        // a 0-byte file when seeking beyond the source duration, and the
+        // downstream extractor then points at a broken input.
+        if (entry.video.mediaStart >= metadata.durationSeconds) {
+          errors.push({
+            videoId: entry.video.id,
+            error: `SDR→HDR conversion skipped: mediaStart (${entry.video.mediaStart}s) ≥ source duration (${metadata.durationSeconds}s)`,
+          });
+          continue;
+        }
 
         // Scope the re-encode to the segment the composition actually uses.
         // Long sources (e.g. 30-minute screen recordings) contributing short
