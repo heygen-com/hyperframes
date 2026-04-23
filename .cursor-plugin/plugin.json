@@ -26,12 +26,6 @@
     "tts",
     "audio-reactive"
   ],
-  "tags": [
-    "video",
-    "animation",
-    "design",
-    "creative",
-    "workflow"
-  ],
+  "tags": ["video", "animation", "design", "creative", "workflow"],
   "skills": "./skills/"
 }
