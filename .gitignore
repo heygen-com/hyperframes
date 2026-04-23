@@ -58,6 +58,7 @@ tmp/
 .tmp/
 
 # Generated files
+packages/core/src/generated/
 packages/producer/src/services/fontData.generated.ts
 
 # Test artifacts

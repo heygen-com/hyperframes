@@ -33,6 +33,10 @@ async function main() {
   }
 
   const runtimeSource = buildHyperframesRuntimeScript({ minify: false });
+  assert(
+    runtimeSource !== null,
+    "buildHyperframesRuntimeScript returned null — entry.ts not found",
+  );
 
   const html = `<!DOCTYPE html>
 <html><head>

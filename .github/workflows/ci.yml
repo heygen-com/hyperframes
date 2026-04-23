@@ -36,6 +36,7 @@ jobs:
               - "bun.lock"
               - "tsconfig*.json"
               - "Dockerfile*"
+              - ".github/workflows/**"
 
   build:
     name: Build
@@ -119,6 +120,7 @@ jobs:
         with:
           node-version: 22
       - run: bun install --frozen-lockfile
+      - run: bun run --cwd packages/core build:hyperframes-runtime
       - run: bun run --filter '!@hyperframes/producer' test
 
   test-runtime-contract:
@@ -137,6 +139,77 @@ jobs:
           node-version: 22
       - run: bun install --frozen-lockfile
       - run: bun run --filter @hyperframes/core test:hyperframe-runtime-ci
+
+  smoke-global-install:
+    name: "Smoke: global install"
+    needs: [changes, build]
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+      - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: bun install --frozen-lockfile
+      - run: bun run build
+
+      # Pack the CLI as a tarball (simulates what `npm publish` produces)
+      - name: Pack CLI tarball
+        run: cd packages/cli && npm pack
+
+      # Install globally using --prefix to avoid sudo
+      - name: Install globally via npm
+        run: npm install -g --prefix /tmp/hf-smoke ./packages/cli/hyperframes-cli-*.tgz
+
+      # Scaffold a blank project
+      - name: Init blank project
+        run: |
+          export PATH="/tmp/hf-smoke/bin:$PATH"
+          mkdir /tmp/hf-project && cd /tmp/hf-project
+          hyperframes init test-project --example blank
+
+      # Start preview, probe the runtime endpoint, assert no esbuild errors
+      - name: Smoke-test preview server
+        run: |
+          export PATH="/tmp/hf-smoke/bin:$PATH"
+          cd /tmp/hf-project/test-project
+
+          # Start the preview server in the background; capture stderr
+          CI=true hyperframes preview --port 3099 2>/tmp/hf-stderr.log &
+          SERVER_PID=$!
+
+          # Wait for the server to be ready (up to 15 s)
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:3099/ >/dev/null 2>&1; then
+              break
+            fi
+            sleep 0.5
+          done
+
+          # Probe the runtime JS endpoint
+          BODY=$(curl -sf http://localhost:3099/api/runtime.js | head -c 200 || true)
+          if [ -z "$BODY" ]; then
+            echo "FAIL: /api/runtime.js returned empty response"
+            kill $SERVER_PID 2>/dev/null || true
+            cat /tmp/hf-stderr.log
+            exit 1
+          fi
+
+          kill $SERVER_PID 2>/dev/null || true
+          wait $SERVER_PID 2>/dev/null || true
+
+          # Assert stderr does not contain esbuild / runtime load errors
+          if grep -qE '✘ \[ERROR\]|Failed to load runtime' /tmp/hf-stderr.log; then
+            echo "FAIL: preview emitted runtime errors:"
+            cat /tmp/hf-stderr.log
+            exit 1
+          fi
+
+          echo "PASS: global install smoke test succeeded"
 
   semantic-pr-title:
     name: Semantic PR title

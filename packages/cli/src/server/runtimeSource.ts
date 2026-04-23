@@ -6,23 +6,14 @@ const ARTIFACT_NAMES = ["hyperframe-runtime.js", "hyperframe.runtime.iife.js"];
 /**
  * Resolve the runtime JS source for the studio preview server.
  *
- * Two contexts exist:
+ * Three resolution strategies, in priority order:
  *
- *   Dev (monorepo workspace) — `entry.ts` exists next to `@hyperframes/core`
- *   source. We build from source via esbuild so edits to the runtime are
- *   reflected without a manual `bun run build`.
- *
- *   Installed (npm global / npx) — only `dist/` ships. We read the pre-built
- *   IIFE artifact that `build:runtime` copies alongside `cli.js`.
- *
- * The priority chain:
- *   1. esbuild from source  (dev only — gated on entry.ts existence)
- *   2. pre-built artifact    (alongside cli.js in dist/)
- *   3. core/dist artifact    (dev fallback if build:runtime already ran)
- *   4. node_modules walk     (nested install edge cases)
+ *   1. esbuild from source (dev only — gated on entry.ts existence)
+ *   2. Inlined constant    (production — baked into @hyperframes/core at build time)
+ *   3. Pre-built artifact  (fallback — reads IIFE file from dist/)
  */
 export async function loadRuntimeSource(): Promise<string | null> {
-  return (await buildFromSource()) ?? readPrebuiltArtifact();
+  return (await buildFromSource()) ?? (await getInlinedRuntime()) ?? readPrebuiltArtifact();
 }
 
 // ── Strategy 1: live build from source (dev only) ──────────────────────────
@@ -38,12 +29,26 @@ async function buildFromSource(): Promise<string | null> {
       if (source) return source;
     }
   } catch {
-    // esbuild failed — fall through to artifact
+    // esbuild failed — fall through to inlined / artifact
   }
   return null;
 }
 
-// ── Strategy 2-4: pre-built IIFE artifact ──────────────────────────────────
+// ── Strategy 2: inlined constant from core build ──────────────────────────
+
+async function getInlinedRuntime(): Promise<string | null> {
+  try {
+    const mod = await import("@hyperframes/core");
+    if (typeof mod.getHyperframeRuntimeScript === "function") {
+      return mod.getHyperframeRuntimeScript() ?? null;
+    }
+  } catch {
+    // Not available — fall through to artifact
+  }
+  return null;
+}
+
+// ── Strategy 3: pre-built IIFE artifact ───────────────────────────────────
 
 function readPrebuiltArtifact(): string | null {
   return readFromDir(__dirname) ?? readFromCoreDistDir() ?? readFromNodeModules();

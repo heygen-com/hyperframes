@@ -7,11 +7,15 @@ function assert(condition: unknown, message: string): void {
 }
 
 const baseline = buildHyperframesRuntimeScript();
+assert(baseline !== null, "buildHyperframesRuntimeScript() returned null — entry.ts not found");
 const parityEnabled = buildHyperframesRuntimeScript({ defaultParityMode: true });
+assert(parityEnabled !== null, "Parity-enabled build returned null");
 const parityDisabled = buildHyperframesRuntimeScript({ defaultParityMode: false });
+assert(parityDisabled !== null, "Parity-disabled build returned null");
 const withSourceUrl = buildHyperframesRuntimeScript({
   sourceUrl: "hyperframe.runtime.iife.js",
 });
+assert(withSourceUrl !== null, "Build with sourceUrl returned null");
 
 assert(baseline.includes("window.__player"), "Baseline runtime should include player contract");
 assert(parityEnabled.length > 0, "Parity-enabled build should produce non-empty runtime source");

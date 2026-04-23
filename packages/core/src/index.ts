@@ -139,6 +139,7 @@ export {
   HYPERFRAME_CONTROL_ACTIONS,
   type HyperframeControlAction,
 } from "./inline-scripts/runtimeContract";
+export { getHyperframeRuntimeScript } from "./generated/runtime-inline";
 export {
   buildHyperframesRuntimeScript,
   type HyperframesRuntimeBuildOptions,
