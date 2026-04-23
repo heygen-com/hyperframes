@@ -27,6 +27,7 @@ import {
   type TimelineTheme,
 } from "./timelineTheme";
 import { getTimelinePixelsPerSecond } from "./timelineZoom";
+import { TIMELINE_ASSET_MIME } from "../../utils/timelineAssetDrop";
 
 /* ── Layout ─────────────────────────────────────────────────────── */
 const GUTTER = 32;
@@ -140,6 +141,42 @@ export function getTimelineCanvasHeight(trackCount: number): number {
   return RULER_H + Math.max(0, trackCount) * TRACK_H + TIMELINE_SCROLL_BUFFER;
 }
 
+export function getDefaultDroppedTrack(trackOrder: number[], rowIndex?: number): number {
+  if (trackOrder.length === 0) return 0;
+  if (rowIndex == null || rowIndex < 0) return trackOrder[0];
+  if (rowIndex >= trackOrder.length) {
+    return Math.max(...trackOrder) + 1;
+  }
+  return trackOrder[rowIndex] ?? trackOrder[trackOrder.length - 1] ?? 0;
+}
+
+export function resolveTimelineAssetDrop(
+  input: {
+    rectLeft: number;
+    rectTop: number;
+    scrollLeft: number;
+    scrollTop: number;
+    pixelsPerSecond: number;
+    duration: number;
+    trackHeight: number;
+    trackOrder: number[];
+  },
+  clientX: number,
+  clientY: number,
+): { start: number; track: number } {
+  const x = clientX - input.rectLeft + input.scrollLeft - GUTTER;
+  const y = clientY - input.rectTop + input.scrollTop - RULER_H;
+  const start = Math.max(
+    0,
+    Math.min(input.duration, Math.round((x / Math.max(input.pixelsPerSecond, 1)) * 100) / 100),
+  );
+  const rowIndex = Math.floor(y / Math.max(input.trackHeight, 1));
+  return {
+    start,
+    track: getDefaultDroppedTrack(input.trackOrder, rowIndex),
+  };
+}
+
 /* ── Component ──────────────────────────────────────────────────── */
 interface TimelineProps {
   /** Called when user seeks via ruler/track click or playhead drag */
@@ -155,6 +192,11 @@ interface TimelineProps {
   renderClipOverlay?: (element: import("../store/playerStore").TimelineElement) => ReactNode;
   /** Called when files are dropped onto the empty timeline */
   onFileDrop?: (files: File[]) => void;
+  /** Called when an existing asset is dropped from the Assets tab */
+  onAssetDrop?: (
+    assetPath: string,
+    placement: { start: number; track: number },
+  ) => Promise<void> | void;
   /** Persist a clip move back into source HTML */
   onMoveElement?: (
     element: import("../store/playerStore").TimelineElement,
@@ -213,6 +255,7 @@ export const Timeline = memo(function Timeline({
   renderClipContent,
   renderClipOverlay,
   onFileDrop,
+  onAssetDrop,
   onMoveElement,
   onResizeElement,
   onBlockedEditAttempt,
@@ -833,6 +876,55 @@ export const Timeline = memo(function Timeline({
   );
 
   const [isDragOver, setIsDragOver] = useState(false);
+  const handleAssetDragOver = useCallback((e: React.DragEvent) => {
+    const hasFiles = e.dataTransfer.files.length > 0;
+    const hasAsset = Array.from(e.dataTransfer.types).includes(TIMELINE_ASSET_MIME);
+    if (!hasFiles && !hasAsset) return;
+    e.preventDefault();
+    if (hasAsset) {
+      e.dataTransfer.dropEffect = "copy";
+    }
+    setIsDragOver(true);
+  }, []);
+
+  const handleAssetDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      setIsDragOver(false);
+      if (onFileDrop && e.dataTransfer.files.length > 0) {
+        onFileDrop(Array.from(e.dataTransfer.files));
+        return;
+      }
+
+      const assetPayload = e.dataTransfer.getData(TIMELINE_ASSET_MIME);
+      if (!assetPayload || !onAssetDrop) return;
+      try {
+        const parsed = JSON.parse(assetPayload) as { path?: string };
+        if (!parsed.path) return;
+        const scroll = scrollRef.current;
+        const rect = scroll?.getBoundingClientRect();
+        if (!scroll || !rect) return;
+        const placement = resolveTimelineAssetDrop(
+          {
+            rectLeft: rect.left,
+            rectTop: rect.top,
+            scrollLeft: scroll.scrollLeft,
+            scrollTop: scroll.scrollTop,
+            pixelsPerSecond: ppsRef.current,
+            duration: durationRef.current,
+            trackHeight: TRACK_H,
+            trackOrder: trackOrderRef.current,
+          },
+          e.clientX,
+          e.clientY,
+        );
+        void onAssetDrop(parsed.path, placement);
+      } catch {
+        // ignore malformed drag payloads
+      }
+    },
+    [onAssetDrop, onFileDrop],
+  );
 
   if (!timelineReady || elements.length === 0) {
     return (
@@ -840,18 +932,9 @@ export const Timeline = memo(function Timeline({
         className={`h-full border-t bg-[#0a0a0b] flex flex-col select-none transition-colors duration-150 ${
           isDragOver ? "border-studio-accent/50 bg-studio-accent/[0.03]" : "border-neutral-800/50"
         }`}
-        onDragOver={(e) => {
-          e.preventDefault();
-          setIsDragOver(true);
-        }}
+        onDragOver={handleAssetDragOver}
         onDragLeave={() => setIsDragOver(false)}
-        onDrop={(e) => {
-          e.preventDefault();
-          setIsDragOver(false);
-          if (onFileDrop && e.dataTransfer.files.length > 0) {
-            onFileDrop(Array.from(e.dataTransfer.files));
-          }
-        }}
+        onDrop={handleAssetDrop}
       >
         {/* Ruler */}
         <div
@@ -1015,6 +1098,9 @@ export const Timeline = memo(function Timeline({
       <div
         ref={scrollRef}
         className={`${zoomMode === "fit" ? "overflow-x-hidden" : "overflow-x-auto"} overflow-y-auto h-full`}
+        onDragOver={handleAssetDragOver}
+        onDragLeave={() => setIsDragOver(false)}
+        onDrop={handleAssetDrop}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}

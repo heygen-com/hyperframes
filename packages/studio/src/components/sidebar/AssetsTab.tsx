@@ -1,6 +1,7 @@
 import { memo, useState, useCallback, useRef } from "react";
 import { VideoFrameThumbnail } from "../ui/VideoFrameThumbnail";
 import { MEDIA_EXT, IMAGE_EXT, VIDEO_EXT, AUDIO_EXT } from "../../utils/mediaTypes";
+import { TIMELINE_ASSET_MIME } from "../../utils/timelineAssetDrop";
 
 interface AssetsTabProps {
   projectId: string;
@@ -106,7 +107,13 @@ function AssetCard({
   return (
     <>
       <div
+        draggable
         onClick={() => onCopy(asset)}
+        onDragStart={(e) => {
+          e.dataTransfer.effectAllowed = "copy";
+          e.dataTransfer.setData(TIMELINE_ASSET_MIME, JSON.stringify({ path: asset }));
+          e.dataTransfer.setData("text/plain", asset);
+        }}
         onContextMenu={(e) => {
           e.preventDefault();
           setContextMenu({ x: e.clientX, y: e.clientY });

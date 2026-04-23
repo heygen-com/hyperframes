@@ -13,6 +13,14 @@ import { LintModal } from "./components/LintModal";
 import type { LintFinding } from "./components/LintModal";
 import { MediaPreview } from "./components/MediaPreview";
 import { isMediaFile } from "./utils/mediaTypes";
+import {
+  buildTimelineAssetId,
+  buildTimelineAssetInsertHtml,
+  getTimelineAssetKind,
+  insertTimelineAssetIntoSource,
+  resolveTimelineAssetSrc,
+  type TimelineAssetKind,
+} from "./utils/timelineAssetDrop";
 import { CaptionOverlay } from "./captions/components/CaptionOverlay";
 import { CaptionPropertyPanel } from "./captions/components/CaptionPropertyPanel";
 import { CaptionTimeline } from "./captions/components/CaptionTimeline";
@@ -43,6 +51,56 @@ interface EditingFile {
 interface AppToast {
   message: string;
   tone: "error" | "info";
+}
+
+const DEFAULT_TIMELINE_ASSET_DURATION: Record<TimelineAssetKind, number> = {
+  image: 3,
+  video: 5,
+  audio: 5,
+};
+
+function collectHtmlIds(source: string): string[] {
+  return Array.from(source.matchAll(/\bid="([^"]+)"/g), (match) => match[1] ?? "");
+}
+
+async function resolveDroppedAssetDuration(
+  projectId: string,
+  assetPath: string,
+  kind: TimelineAssetKind,
+): Promise<number> {
+  if (kind === "image") return DEFAULT_TIMELINE_ASSET_DURATION.image;
+
+  const media = document.createElement(kind === "video" ? "video" : "audio");
+  media.preload = "metadata";
+  media.src = `/api/projects/${projectId}/preview/${assetPath}`;
+
+  const duration = await new Promise<number>((resolve) => {
+    const timeout = window.setTimeout(() => resolve(DEFAULT_TIMELINE_ASSET_DURATION[kind]), 3000);
+    const finalize = (value: number) => {
+      window.clearTimeout(timeout);
+      resolve(value);
+    };
+
+    media.addEventListener(
+      "loadedmetadata",
+      () => {
+        const raw = Number(media.duration);
+        finalize(
+          Number.isFinite(raw) && raw > 0
+            ? Math.round(raw * 100) / 100
+            : DEFAULT_TIMELINE_ASSET_DURATION[kind],
+        );
+      },
+      { once: true },
+    );
+    media.addEventListener("error", () => finalize(DEFAULT_TIMELINE_ASSET_DURATION[kind]), {
+      once: true,
+    });
+  });
+
+  media.src = "";
+  media.load();
+  return duration;
 }
 
 // ── Main App ──
@@ -717,6 +775,128 @@ export function StudioApp() {
     [activeCompPath],
   );
 
+  const showToast = useCallback((message: string, tone: AppToast["tone"] = "error") => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    setAppToast({ message, tone });
+    toastTimerRef.current = setTimeout(() => setAppToast(null), 4000);
+  }, []);
+
+  const handleBlockedTimelineEdit = useCallback(
+    (_element: TimelineElement) => {
+      const now = Date.now();
+      if (now - lastBlockedTimelineToastAtRef.current < 1500) return;
+      lastBlockedTimelineToastAtRef.current = now;
+      showToast("This clip can’t be moved or resized from the timeline yet.", "info");
+    },
+    [showToast],
+  );
+
+  const handleTimelineAssetDrop = useCallback(
+    async (assetPath: string, placement: Pick<TimelineElement, "start" | "track">) => {
+      const pid = projectIdRef.current;
+      if (!pid) throw new Error("No active project");
+
+      const kind = getTimelineAssetKind(assetPath);
+      if (!kind) {
+        showToast("Only image, video, and audio assets can be dropped onto the timeline.");
+        return;
+      }
+
+      const targetPath = activeCompPath || "index.html";
+      try {
+        const response = await fetch(
+          `/api/projects/${pid}/files/${encodeURIComponent(targetPath)}`,
+        );
+        if (!response.ok) {
+          throw new Error(`Failed to read ${targetPath}`);
+        }
+
+        const data = (await response.json()) as { content?: string };
+        const originalContent = data.content;
+        if (typeof originalContent !== "string") {
+          throw new Error(`Missing file contents for ${targetPath}`);
+        }
+
+        const normalizedStart = Number(formatTimelineAttributeNumber(placement.start));
+        const normalizedDuration = Number(
+          formatTimelineAttributeNumber(await resolveDroppedAssetDuration(pid, assetPath, kind)),
+        );
+        const newId = buildTimelineAssetId(assetPath, collectHtmlIds(originalContent));
+        const resolvedAssetSrc = resolveTimelineAssetSrc(targetPath, assetPath);
+
+        const resolvedTargetPath = targetPath || "index.html";
+        const relevantElements = timelineElements.filter(
+          (timelineElement) =>
+            (timelineElement.sourceFile || activeCompPath || "index.html") === resolvedTargetPath,
+        );
+        const trackZIndices = buildTrackZIndexMap([
+          ...relevantElements.map((timelineElement) => timelineElement.track),
+          placement.track,
+        ]);
+
+        let patchedContent = originalContent;
+        for (const timelineElement of relevantElements) {
+          const elementTarget = timelineElement.domId
+            ? {
+                id: timelineElement.domId,
+                selector: timelineElement.selector,
+                selectorIndex: timelineElement.selectorIndex,
+              }
+            : timelineElement.selector
+              ? {
+                  selector: timelineElement.selector,
+                  selectorIndex: timelineElement.selectorIndex,
+                }
+              : null;
+          if (!elementTarget) continue;
+          const nextZIndex = trackZIndices.get(timelineElement.track);
+          if (nextZIndex == null) continue;
+          patchedContent = applyPatchByTarget(patchedContent, elementTarget, {
+            type: "inline-style",
+            property: "z-index",
+            value: String(nextZIndex),
+          });
+        }
+
+        patchedContent = insertTimelineAssetIntoSource(
+          patchedContent,
+          buildTimelineAssetInsertHtml({
+            id: newId,
+            assetPath: resolvedAssetSrc,
+            kind,
+            start: normalizedStart,
+            duration: normalizedDuration,
+            track: placement.track,
+            zIndex: trackZIndices.get(placement.track) ?? 1,
+          }),
+        );
+
+        const saveResponse = await fetch(
+          `/api/projects/${pid}/files/${encodeURIComponent(targetPath)}`,
+          {
+            method: "PUT",
+            headers: { "Content-Type": "text/plain" },
+            body: patchedContent,
+          },
+        );
+        if (!saveResponse.ok) {
+          throw new Error(`Failed to save ${targetPath}`);
+        }
+
+        if (editingPathRef.current === targetPath) {
+          setEditingFile({ path: targetPath, content: patchedContent });
+        }
+
+        setRefreshKey((k) => k + 1);
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Failed to drop asset onto timeline";
+        showToast(message);
+      }
+    },
+    [activeCompPath, showToast, timelineElements],
+  );
+
   // ── File Management Handlers ──
 
   const refreshFileTree = useCallback(async () => {
@@ -839,22 +1019,6 @@ export function StudioApp() {
   );
 
   const handleMoveFile = handleRenameFile;
-
-  const showToast = useCallback((message: string, tone: AppToast["tone"] = "error") => {
-    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-    setAppToast({ message, tone });
-    toastTimerRef.current = setTimeout(() => setAppToast(null), 4000);
-  }, []);
-
-  const handleBlockedTimelineEdit = useCallback(
-    (_element: TimelineElement) => {
-      const now = Date.now();
-      if (now - lastBlockedTimelineToastAtRef.current < 1500) return;
-      lastBlockedTimelineToastAtRef.current = now;
-      showToast("This clip can’t be moved or resized from the timeline yet.", "info");
-    },
-    [showToast],
-  );
 
   const handleImportFiles = useCallback(
     async (files: FileList, dir?: string) => {
@@ -1151,6 +1315,7 @@ export function StudioApp() {
             activeCompositionPath={activeCompPath}
             timelineToolbar={timelineToolbar}
             renderClipContent={renderClipContent}
+            onAssetDrop={handleTimelineAssetDrop}
             onMoveElement={handleTimelineElementMove}
             onResizeElement={handleTimelineElementResize}
             onBlockedEditAttempt={handleBlockedTimelineEdit}

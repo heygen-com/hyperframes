@@ -1,7 +1,9 @@
 import { describe, it, expect } from "vitest";
 import {
   generateTicks,
+  getDefaultDroppedTrack,
   getTimelineCanvasHeight,
+  resolveTimelineAssetDrop,
   getTimelinePlayheadLeft,
   getTimelineScrollLeftForZoomTransition,
   shouldAutoScrollTimeline,
@@ -160,5 +162,55 @@ describe("getTimelineCanvasHeight", () => {
 
   it("still keeps ruler space when there are no tracks", () => {
     expect(getTimelineCanvasHeight(0)).toBeGreaterThan(24);
+  });
+});
+
+describe("getDefaultDroppedTrack", () => {
+  it("defaults to track 0 when there are no rows yet", () => {
+    expect(getDefaultDroppedTrack([])).toBe(0);
+  });
+
+  it("creates a new bottom track when dropped below existing rows", () => {
+    expect(getDefaultDroppedTrack([0, 1, 5], 10)).toBe(6);
+  });
+});
+
+describe("resolveTimelineAssetDrop", () => {
+  it("maps drop coordinates to a start time and visible track", () => {
+    expect(
+      resolveTimelineAssetDrop(
+        {
+          rectLeft: 100,
+          rectTop: 200,
+          scrollLeft: 0,
+          scrollTop: 0,
+          pixelsPerSecond: 100,
+          duration: 10,
+          trackHeight: 72,
+          trackOrder: [0, 3, 7],
+        },
+        432,
+        310,
+      ),
+    ).toEqual({ start: 3, track: 3 });
+  });
+
+  it("can create a new bottom track when dropped below the last visible row", () => {
+    expect(
+      resolveTimelineAssetDrop(
+        {
+          rectLeft: 100,
+          rectTop: 200,
+          scrollLeft: 0,
+          scrollTop: 0,
+          pixelsPerSecond: 100,
+          duration: 10,
+          trackHeight: 72,
+          trackOrder: [0, 3, 7],
+        },
+        250,
+        600,
+      ),
+    ).toEqual({ start: 1.18, track: 8 });
   });
 });
