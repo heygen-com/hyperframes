@@ -1,0 +1,37 @@
+{
+  "$schema": "https://cursor.com/schemas/cursor-plugin/plugin.json",
+  "name": "hyperframes",
+  "displayName": "HyperFrames",
+  "version": "0.1.0",
+  "description": "Write HTML, render video. Compositions, GSAP animations, captions, voiceovers, audio-reactive visuals, and website-to-video capture for HyperFrames.",
+  "author": {
+    "name": "HeyGen",
+    "email": "hyperframes@heygen.com"
+  },
+  "publisher": "HeyGen",
+  "homepage": "https://hyperframes.heygen.com",
+  "repository": "https://github.com/heygen-com/hyperframes",
+  "license": "Apache-2.0",
+  "logo": "assets/logo.png",
+  "category": "developer-tools",
+  "keywords": [
+    "hyperframes",
+    "video",
+    "html",
+    "gsap",
+    "animation",
+    "composition",
+    "rendering",
+    "captions",
+    "tts",
+    "audio-reactive"
+  ],
+  "tags": [
+    "video",
+    "animation",
+    "design",
+    "creative",
+    "workflow"
+  ],
+  "skills": "./skills/"
+}
