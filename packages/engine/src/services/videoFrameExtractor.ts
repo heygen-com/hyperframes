@@ -46,12 +46,39 @@ export interface ExtractionOptions {
   format?: "jpg" | "png";
 }
 
+/**
+ * Per-phase timings and counters emitted by `extractAllVideoFrames`.
+ *
+ * Used by the producer to surface `perfSummary.videoExtractBreakdown` — without
+ * this breakdown, a single `videoExtractMs` stage timing hides where cost lives
+ * (HDR preflight, VFR preflight, per-video ffmpeg extract) when tuning renders.
+ *
+ * Field semantics:
+ *   - *Ms fields are wall-clock durations inside each phase.
+ *   - *Count fields report how many sources triggered that phase.
+ *   - phase3ExtractMs wraps the parallel `extractVideoFramesRange` calls; it
+ *     reflects max-across-parallel-workers, not sum.
+ */
+export interface ExtractionPhaseBreakdown {
+  resolveMs: number;
+  hdrProbeMs: number;
+  hdrPreflightMs: number;
+  hdrPreflightCount: number;
+  vfrProbeMs: number;
+  vfrPreflightMs: number;
+  vfrPreflightCount: number;
+  extractMs: number;
+  cacheHits: number;
+  cacheMisses: number;
+}
+
 export interface ExtractionResult {
   success: boolean;
   extracted: ExtractedFrames[];
   errors: Array<{ videoId: string; error: string }>;
   totalFramesExtracted: number;
   durationMs: number;
+  phaseBreakdown: ExtractionPhaseBreakdown;
 }
 
 export function parseVideoElements(html: string): VideoElement[] {
@@ -375,8 +402,21 @@ export async function extractAllVideoFrames(
   const extracted: ExtractedFrames[] = [];
   const errors: Array<{ videoId: string; error: string }> = [];
   let totalFramesExtracted = 0;
+  const breakdown: ExtractionPhaseBreakdown = {
+    resolveMs: 0,
+    hdrProbeMs: 0,
+    hdrPreflightMs: 0,
+    hdrPreflightCount: 0,
+    vfrProbeMs: 0,
+    vfrPreflightMs: 0,
+    vfrPreflightCount: 0,
+    extractMs: 0,
+    cacheHits: 0,
+    cacheMisses: 0,
+  };
 
   // Phase 1: Resolve paths and download remote videos
+  const phase1Start = Date.now();
   const resolvedVideos: Array<{ video: VideoElement; videoPath: string }> = [];
   for (const video of videos) {
     if (signal?.aborted) break;
@@ -408,14 +448,19 @@ export async function extractAllVideoFrames(
     }
   }
 
+  breakdown.resolveMs = Date.now() - phase1Start;
+
   // Phase 2: Probe color spaces and normalize if mixed HDR/SDR
+  const phase2ProbeStart = Date.now();
   const videoColorSpaces = await Promise.all(
     resolvedVideos.map(async ({ videoPath }) => {
       const metadata = await extractMediaMetadata(videoPath);
       return metadata.colorSpace;
     }),
   );
+  breakdown.hdrProbeMs = Date.now() - phase2ProbeStart;
 
+  const hdrPreflightStart = Date.now();
   const hdrInfo = analyzeCompositionHdr(videoColorSpaces);
   if (hdrInfo.hasHdr && hdrInfo.dominantTransfer) {
     // dominantTransfer is "majority wins" — if a composition mixes PQ and HLG
@@ -440,6 +485,7 @@ export async function extractAllVideoFrames(
         try {
           await convertSdrToHdr(entry.videoPath, convertedPath, targetTransfer, signal, config);
           entry.videoPath = convertedPath;
+          breakdown.hdrPreflightCount += 1;
         } catch (err) {
           errors.push({
             videoId: entry.video.id,
@@ -449,15 +495,19 @@ export async function extractAllVideoFrames(
       }
     }
   }
+  breakdown.hdrPreflightMs = Date.now() - hdrPreflightStart;
 
   // Phase 2b: Re-encode VFR inputs to CFR so the fps filter in Phase 3 produces
   // the expected frame count. Only the used segment is transcoded.
+  const vfrPreflightStart = Date.now();
   const vfrNormDir = join(options.outputDir, "_vfr_normalized");
   for (let i = 0; i < resolvedVideos.length; i++) {
     if (signal?.aborted) break;
     const entry = resolvedVideos[i];
     if (!entry) continue;
+    const vfrProbeStart = Date.now();
     const metadata = await extractMediaMetadata(entry.videoPath);
+    breakdown.vfrProbeMs += Date.now() - vfrProbeStart;
     if (!metadata.isVFR) continue;
 
     let segDuration = entry.video.end - entry.video.start;
@@ -483,6 +533,7 @@ export async function extractAllVideoFrames(
       // extraction must seek from 0, not the original mediaStart. Shallow-copy
       // to avoid mutating the caller's VideoElement.
       entry.video = { ...entry.video, mediaStart: 0 };
+      breakdown.vfrPreflightCount += 1;
     } catch (err) {
       errors.push({
         videoId: entry.video.id,
@@ -490,8 +541,10 @@ export async function extractAllVideoFrames(
       });
     }
   }
+  breakdown.vfrPreflightMs = Date.now() - vfrPreflightStart - breakdown.vfrProbeMs;
 
   // Phase 3: Extract frames (parallel)
+  const phase3Start = Date.now();
   const results = await Promise.all(
     resolvedVideos.map(async ({ video, videoPath }) => {
       if (signal?.aborted) {
@@ -531,6 +584,8 @@ export async function extractAllVideoFrames(
     }),
   );
 
+  breakdown.extractMs = Date.now() - phase3Start;
+
   // Collect results and errors
   for (const item of results) {
     if ("error" in item && item.error) {
@@ -547,6 +602,7 @@ export async function extractAllVideoFrames(
     errors,
     totalFramesExtracted,
     durationMs: Date.now() - startTime,
+    phaseBreakdown: breakdown,
   };
 }
 

@@ -13,4 +13,5 @@ export {
   type ExtractedFrames,
   type ExtractionOptions,
   type ExtractionResult,
+  type ExtractionPhaseBreakdown,
 } from "@hyperframes/engine";

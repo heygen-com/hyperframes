@@ -122,6 +122,7 @@ export {
   type ExtractedFrames,
   type ExtractionOptions,
   type ExtractionResult,
+  type ExtractionPhaseBreakdown,
 } from "./services/videoFrameExtractor.js";
 
 export { createVideoFrameInjector } from "./services/videoFrameInjector.js";

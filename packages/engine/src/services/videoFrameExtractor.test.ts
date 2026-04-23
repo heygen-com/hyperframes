@@ -189,6 +189,11 @@ describe.skipIf(!HAS_FFMPEG)("extractAllVideoFrames on a VFR source", () => {
     // Pre-fix behavior produced ~90 frames (a 25% shortfall).
     expect(frames.length).toBeGreaterThanOrEqual(119);
     expect(frames.length).toBeLessThanOrEqual(121);
+
+    expect(result.phaseBreakdown).toBeDefined();
+    expect(result.phaseBreakdown.extractMs).toBeGreaterThan(0);
+    expect(result.phaseBreakdown.vfrPreflightCount).toBe(1);
+    expect(result.phaseBreakdown.vfrPreflightMs).toBeGreaterThan(0);
   }, 60_000);
 
   // Asserts both frame-count correctness and that we don't emit long runs of

@@ -19,6 +19,7 @@ import {
   rmSync,
   readFileSync,
   readdirSync,
+  statSync,
   writeFileSync,
   copyFileSync,
   appendFileSync,
@@ -28,6 +29,7 @@ import {
   type EngineConfig,
   resolveConfig,
   extractAllVideoFrames,
+  type ExtractionPhaseBreakdown,
   createFrameLookupTable,
   type VideoElement,
   FrameLookupTable,
@@ -150,6 +152,41 @@ function getMaxFrameIndex(frameDir: string): number {
   return max;
 }
 
+/**
+ * Sum file sizes under `dir` recursively. Used to report a `tmpPeakBytes`
+ * proxy in `RenderPerfSummary` right before workDir cleanup. Swallows errors
+ * because it's purely observational — a missing workDir or symlink loop must
+ * not fail the render.
+ */
+function sampleDirectoryBytes(dir: string): number {
+  let total = 0;
+  const stack: string[] = [dir];
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (!current) continue;
+    let entries: string[] = [];
+    try {
+      entries = readdirSync(current);
+    } catch {
+      continue;
+    }
+    for (const name of entries) {
+      const full = join(current, name);
+      try {
+        const st = statSync(full);
+        if (st.isDirectory()) {
+          stack.push(full);
+        } else if (st.isFile()) {
+          total += st.size;
+        }
+      } catch {
+        // ignore
+      }
+    }
+  }
+  return total;
+}
+
 // Diagnostic helpers used by the HDR layered compositor when KEEP_TEMP=1
 // is set. They are pure (capture no state), so we keep them at module scope
 // to avoid re-creating closures per frame and to make them callable from
@@ -237,6 +274,10 @@ export interface RenderPerfSummary {
   videoCount: number;
   audioCount: number;
   stages: Record<string, number>;
+  /** Per-phase breakdown of the Phase 2 video extraction (resolve, HDR probe, HDR preflight, VFR probe/preflight, per-video extract). Undefined when the composition has no videos. */
+  videoExtractBreakdown?: ExtractionPhaseBreakdown;
+  /** Bytes on disk in the render's workDir at assembly time (sampled before cleanup). Lets callers correlate peak temp usage with render duration. */
+  tmpPeakBytes?: number;
   captureAvgMs?: number;
   capturePeakMs?: number;
   /**
@@ -2552,6 +2593,8 @@ export async function executeRenderJob(
     const totalElapsed = Date.now() - pipelineStart;
     sampleMemory();
 
+    const tmpPeakBytes = existsSync(workDir) ? sampleDirectoryBytes(workDir) : 0;
+
     const perfSummary: RenderPerfSummary = {
       renderId: job.id,
       totalElapsedMs: totalElapsed,
@@ -2566,6 +2609,8 @@ export async function executeRenderJob(
       videoCount: composition.videos.length,
       audioCount: composition.audios.length,
       stages: perfStages,
+      videoExtractBreakdown: extractionResult?.phaseBreakdown,
+      tmpPeakBytes,
       hdrDiagnostics:
         hdrDiagnostics.videoExtractionFailures > 0 || hdrDiagnostics.imageDecodeFailures > 0
           ? { ...hdrDiagnostics }
