@@ -148,6 +148,69 @@ describe("buildEncoderArgs anti-banding", () => {
   });
 });
 
+describe("buildEncoderArgs GPU preset mapping", () => {
+  const baseOptions = { fps: 30, width: 1920, height: 1080 };
+  const inputArgs = ["-framerate", "30", "-i", "frames/%04d.png"];
+
+  function presetArg(args: string[]): string | undefined {
+    const idx = args.indexOf("-preset");
+    return idx === -1 ? undefined : args[idx + 1];
+  }
+
+  // Regression for the "draft quality + --gpu fails with code -22" bug:
+  // NVENC rejects the libx264 preset name `ultrafast` with AVERROR(EINVAL),
+  // so the `draft` quality tier must not forward that value to h264_nvenc.
+  it("translates the draft ultrafast preset to NVENC p1", () => {
+    const args = buildEncoderArgs(
+      { ...baseOptions, codec: "h264", preset: "ultrafast", quality: 28, useGpu: true },
+      inputArgs,
+      "out.mp4",
+      "nvenc",
+    );
+    expect(presetArg(args)).toBe("p1");
+  });
+
+  it("translates the standard medium preset to NVENC p4", () => {
+    const args = buildEncoderArgs(
+      { ...baseOptions, codec: "h264", preset: "medium", quality: 18, useGpu: true },
+      inputArgs,
+      "out.mp4",
+      "nvenc",
+    );
+    expect(presetArg(args)).toBe("p4");
+  });
+
+  it("translates the high slow preset to NVENC p5", () => {
+    const args = buildEncoderArgs(
+      { ...baseOptions, codec: "h264", preset: "slow", quality: 15, useGpu: true },
+      inputArgs,
+      "out.mp4",
+      "nvenc",
+    );
+    expect(presetArg(args)).toBe("p5");
+  });
+
+  it("rewrites QSV's unsupported ultrafast preset to veryfast", () => {
+    const args = buildEncoderArgs(
+      { ...baseOptions, codec: "h264", preset: "ultrafast", quality: 28, useGpu: true },
+      inputArgs,
+      "out.mp4",
+      "qsv",
+    );
+    expect(presetArg(args)).toBe("veryfast");
+  });
+
+  it("passes QSV-supported preset names through unchanged", () => {
+    const args = buildEncoderArgs(
+      { ...baseOptions, codec: "h264", preset: "medium", quality: 23, useGpu: true },
+      inputArgs,
+      "out.mp4",
+      "qsv",
+    );
+    expect(presetArg(args)).toBe("medium");
+  });
+});
+
 describe("buildEncoderArgs color space", () => {
   const baseOptions = { fps: 30, width: 1920, height: 1080 };
   const inputArgs = ["-framerate", "30", "-i", "frames/%04d.png"];
