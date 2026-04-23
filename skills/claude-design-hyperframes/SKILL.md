@@ -331,9 +331,11 @@ Scene-1 always has no inline style — it's visible from t=0.
 
 ### Shader transitions
 
-Use `@hyperframes/shader-transitions`. Exactly **13 shader names** are valid — any other string throws `[HyperShader] Unknown shader`:
+Use `@hyperframes/shader-transitions`. Exactly **14 shader names** are valid — any other string throws `[HyperShader] Unknown shader`:
 
-`domain-warp`, `ridged-burn`, `whip-pan`, `sdf-iris`, `ripple-waves`, `gravitational-lens`, `cinematic-zoom`, `chromatic-split`, `swirl-vortex`, `thermal-distortion`, `flash-through-white`, `cross-warp-morph`, `light-leak`.
+`domain-warp`, `ridged-burn`, `whip-pan`, `sdf-iris`, `ripple-waves`, `gravitational-lens`, `cinematic-zoom`, `chromatic-split`, `swirl-vortex`, `thermal-distortion`, `flash-through-white`, `cross-warp-morph`, `light-leak`, `glitch`.
+
+Authoritative list: `packages/shader-transitions/src/shaders/registry.ts`.
 
 Mood → shader mapping: `skills/hyperframes/references/transitions.md`.
 
@@ -378,7 +380,7 @@ Split into sub-compositions ONLY when one of these is true:
 - You're extracting a REUSABLE sub-comp that appears in multiple places (chart block, logo outro).
 - A single scene is so complex it deserves its own file (full UI recreation, heavy data-vis).
 
-If you do split, **HyperShader lives at the ROOT `index.html` ONLY** — never inside a sub-composition. HyperShader hardcodes `#gl-canvas` as its canvas ID (see `packages/shader-transitions/src/hyper-shader.ts:169`); multiple HyperShader instances can't share one canvas. When a sub-comp's HyperShader fails silently on canvas conflict, its fallback code calls `document.querySelectorAll(".scene")` document-wide and sets every scene's opacity to 0 — corrupting visibility across the whole document. Symptom: only scene-1 of each act shows, scenes 2+ never appear.
+If you do split, **HyperShader lives at the ROOT `index.html` ONLY** — never inside a sub-composition. HyperShader hardcodes `#gl-canvas` as its canvas ID (see the canvas creation path in `packages/shader-transitions/src/hyper-shader.ts`); multiple HyperShader instances can't share one canvas. When a sub-comp's HyperShader fails silently on canvas conflict, its fallback code calls `document.querySelectorAll(".scene")` document-wide and sets every scene's opacity to 0 — corrupting visibility across the whole document. Symptom: only scene-1 of each act shows, scenes 2+ never appear.
 
 #### Sub-composition file shape
 
