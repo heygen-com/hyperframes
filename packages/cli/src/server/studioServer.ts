@@ -31,8 +31,15 @@ function resolveDistDir(): string {
 }
 
 function resolveRuntimePath(): string {
+  // Primary: legacy name copied alongside cli.js during build
   const builtPath = resolve(__dirname, "hyperframe-runtime.js");
   if (existsSync(builtPath)) return builtPath;
+
+  // Alternate: IIFE artifact name copied alongside cli.js
+  const iifePath = resolve(__dirname, "hyperframe.runtime.iife.js");
+  if (existsSync(iifePath)) return iifePath;
+
+  // Dev workspace: core's dist output
   const devPath = resolve(
     __dirname,
     "..",
@@ -43,6 +50,7 @@ function resolveRuntimePath(): string {
     "hyperframe.runtime.iife.js",
   );
   if (existsSync(devPath)) return devPath;
+
   return builtPath;
 }
 
