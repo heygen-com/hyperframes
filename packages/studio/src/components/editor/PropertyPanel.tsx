@@ -478,6 +478,13 @@ function formatTextFieldPreview(value: string): string {
   return `${collapsed.slice(0, 55)}…`;
 }
 
+function getTextFieldColor(
+  field: { computedStyles: Record<string, string> },
+  inheritedStyles: Record<string, string>,
+): string {
+  return field.computedStyles.color || inheritedStyles.color || "rgb(0, 0, 0)";
+}
+
 function splitFontFamilies(value: string): string[] {
   const families: string[] = [];
   let current = "";
@@ -1893,6 +1900,7 @@ export const PropertyPanel = memo(function PropertyPanel({
   const [activeTextFieldKey, setActiveTextFieldKey] = useState<string | null>(
     element?.textFields[0]?.key ?? null,
   );
+  const hasTextControls = element != null && isTextEditableSelection(element);
 
   useEffect(() => {
     setPreferredFillMode(fillMode);
@@ -2166,16 +2174,18 @@ export const PropertyPanel = memo(function PropertyPanel({
                     onImportAssets={onImportAssets}
                   />
                 )}
-                <ColorField
-                  label="Text color"
-                  value={styles.color ?? "rgb(0, 0, 0)"}
-                  disabled={styleEditingDisabled}
-                  onCommit={(next) => onSetStyle("color", next)}
-                />
+                {!hasTextControls && (
+                  <ColorField
+                    label="Text color"
+                    value={styles.color ?? "rgb(0, 0, 0)"}
+                    disabled={styleEditingDisabled}
+                    onCommit={(next) => onSetStyle("color", next)}
+                  />
+                )}
               </div>
             </Section>
 
-            {isTextEditableSelection(element) && (
+            {hasTextControls && (
               <Section title="Text" icon={<Type size={15} />}>
                 {(() => {
                   const textFields = element.textFields;
@@ -2201,6 +2211,13 @@ export const PropertyPanel = memo(function PropertyPanel({
                           value={activeField.value}
                           disabled={false}
                           onCommit={(next) => onSetText(next, activeField.key)}
+                        />
+
+                        <ColorField
+                          label="Text color"
+                          value={getTextFieldColor(activeField, styles)}
+                          disabled={false}
+                          onCommit={(next) => onSetTextFieldStyle(activeField.key, "color", next)}
                         />
 
                         <div className={RESPONSIVE_GRID}>
@@ -2282,9 +2299,15 @@ export const PropertyPanel = memo(function PropertyPanel({
                                 }`}
                               >
                                 <div className="flex min-w-0 items-center justify-between gap-2">
-                                  <span className="min-w-0 truncate text-[11px] font-medium text-neutral-100">
-                                    {formatTextFieldPreview(field.value) || `Text ${index + 1}`}
-                                  </span>
+                                  <div className="flex min-w-0 items-center gap-2">
+                                    <span
+                                      className="h-4 w-4 flex-shrink-0 rounded border border-neutral-700 bg-neutral-950"
+                                      style={{ backgroundColor: getTextFieldColor(field, styles) }}
+                                    />
+                                    <span className="min-w-0 truncate text-[11px] font-medium text-neutral-100">
+                                      {formatTextFieldPreview(field.value) || `Text ${index + 1}`}
+                                    </span>
+                                  </div>
                                   <span className="flex-shrink-0 rounded-md border border-neutral-700 bg-neutral-950 px-1.5 py-0.5 text-[10px] uppercase tracking-[0.12em] text-neutral-500">
                                     {field.tagName}
                                   </span>
@@ -2321,6 +2344,13 @@ export const PropertyPanel = memo(function PropertyPanel({
                           disabled={false}
                           autoFocus
                           onCommit={(next) => onSetText(next, activeField.key)}
+                        />
+
+                        <ColorField
+                          label="Text color"
+                          value={getTextFieldColor(activeField, styles)}
+                          disabled={false}
+                          onCommit={(next) => onSetTextFieldStyle(activeField.key, "color", next)}
                         />
 
                         <div className={RESPONSIVE_GRID}>
