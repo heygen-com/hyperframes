@@ -452,6 +452,10 @@ function ImageFillField({
             />
           </label>
         </div>
+        <p className="text-[10px] leading-4 text-neutral-600">
+          If the chooser does not open here, the Codex in-app browser is blocking local file
+          uploads. Open Studio in Chrome or Brave to upload a local image.
+        </p>
         {imageAssets.length > 0 ? (
           <div className="space-y-3">
             {selectedAsset && (
