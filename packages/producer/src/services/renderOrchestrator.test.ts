@@ -8,6 +8,7 @@ import type { CompiledComposition } from "./htmlCompiler.js";
 import {
   applyRenderModeHints,
   extractStandaloneEntryFromIndex,
+  projectBrowserEndToCompositionTimeline,
   writeCompiledArtifacts,
 } from "./renderOrchestrator.js";
 import { toExternalAssetKey } from "../utils/paths.js";
@@ -242,5 +243,19 @@ describe("applyRenderModeHints", () => {
     applyRenderModeHints(cfg, compiled, log);
 
     expect(log.warn).not.toHaveBeenCalled();
+  });
+});
+
+describe("projectBrowserEndToCompositionTimeline", () => {
+  it("keeps end unchanged when browser and compiled starts share the same origin", () => {
+    expect(projectBrowserEndToCompositionTimeline(2, 2, 6)).toBe(6);
+  });
+
+  it("reprojects a scene-local browser end into the compiled host timeline", () => {
+    expect(projectBrowserEndToCompositionTimeline(4.417, 0, 85.52)).toBeCloseTo(89.937, 6);
+  });
+
+  it("preserves scene-local media offsets inside compositions that start much later", () => {
+    expect(projectBrowserEndToCompositionTimeline(21.5, 1.5, 5.5)).toBe(25.5);
   });
 });

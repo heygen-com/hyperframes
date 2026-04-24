@@ -459,7 +459,10 @@ describe("detectRenderModeHints", () => {
 });
 
 describe("template-wrapped sub-composition media offsets", () => {
-  function writeTemplateWrappedProject(hostAttrs: string): {
+  function writeTemplateWrappedProject(
+    hostAttrs: string,
+    mediaAttrs: string = 'data-start="0" data-duration="4"',
+  ): {
     projectDir: string;
     indexPath: string;
   } {
@@ -506,8 +509,7 @@ describe("template-wrapped sub-composition media offsets", () => {
     <video
       id="scene-video"
       src="../assets/clip.mp4"
-      data-start="0"
-      data-duration="4"
+      ${mediaAttrs}
       data-track-index="0"
     ></video>
     <script>
@@ -568,6 +570,28 @@ describe("template-wrapped sub-composition media offsets", () => {
       id: "scene-video-audio",
       start: 2,
       end: 6,
+    });
+  });
+
+  it("offsets scene-local media in compositions that start much later on the timeline", async () => {
+    const { projectDir, indexPath } = writeTemplateWrappedProject(
+      'data-start="20" data-duration="6" data-width="640" data-height="360"',
+      'data-start="1.5" data-duration="4"',
+    );
+
+    const compiled = await compileForRender(projectDir, indexPath, projectDir);
+
+    expect(compiled.videos).toHaveLength(1);
+    expect(compiled.videos[0]).toMatchObject({
+      id: "scene-video",
+      start: 21.5,
+      end: 25.5,
+    });
+    expect(compiled.audios).toHaveLength(1);
+    expect(compiled.audios[0]).toMatchObject({
+      id: "scene-video-audio",
+      start: 21.5,
+      end: 25.5,
     });
   });
 });

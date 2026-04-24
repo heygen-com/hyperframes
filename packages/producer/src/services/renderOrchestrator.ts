@@ -321,6 +321,24 @@ export interface CompositionMetadata {
   height: number;
 }
 
+const BROWSER_MEDIA_EPSILON = 0.0001;
+
+/**
+ * Browser-discovered media inside inlined sub-compositions can still report
+ * scene-local timing from the merged DOM (e.g. start=0, end=85.52) while the
+ * compiled metadata is already offset into the parent host timeline
+ * (e.g. start=4.417, end=89.937). Reproject browser end-time into the
+ * compiled element's time origin before reconciling it back into the render
+ * metadata.
+ */
+export function projectBrowserEndToCompositionTimeline(
+  existingStart: number,
+  browserStart: number,
+  browserEnd: number,
+): number {
+  return browserEnd + (existingStart - browserStart);
+}
+
 function updateJobStatus(
   job: RenderJob,
   status: RenderStatus,
@@ -1191,13 +1209,22 @@ export async function executeRenderJob(
                 if (existing.src !== src) {
                   existing.src = src;
                 }
-                if (el.end > 0 && (existing.end <= 0 || Math.abs(existing.end - el.end) > 0.0001)) {
-                  existing.end = el.end;
+                const projectedEnd = projectBrowserEndToCompositionTimeline(
+                  existing.start,
+                  el.start,
+                  el.end,
+                );
+                if (
+                  projectedEnd > 0 &&
+                  (existing.end <= 0 ||
+                    Math.abs(existing.end - projectedEnd) > BROWSER_MEDIA_EPSILON)
+                ) {
+                  existing.end = projectedEnd;
                 }
                 if (
                   el.mediaStart > 0 &&
                   (existing.mediaStart <= 0 ||
-                    Math.abs(existing.mediaStart - el.mediaStart) > 0.0001)
+                    Math.abs(existing.mediaStart - el.mediaStart) > BROWSER_MEDIA_EPSILON)
                 ) {
                   existing.mediaStart = el.mediaStart;
                 }
@@ -1224,17 +1251,29 @@ export async function executeRenderJob(
                 if (existing.src !== src) {
                   existing.src = src;
                 }
-                if (el.end > 0 && (existing.end <= 0 || Math.abs(existing.end - el.end) > 0.0001)) {
-                  existing.end = el.end;
+                const projectedEnd = projectBrowserEndToCompositionTimeline(
+                  existing.start,
+                  el.start,
+                  el.end,
+                );
+                if (
+                  projectedEnd > 0 &&
+                  (existing.end <= 0 ||
+                    Math.abs(existing.end - projectedEnd) > BROWSER_MEDIA_EPSILON)
+                ) {
+                  existing.end = projectedEnd;
                 }
                 if (
                   el.mediaStart > 0 &&
                   (existing.mediaStart <= 0 ||
-                    Math.abs(existing.mediaStart - el.mediaStart) > 0.0001)
+                    Math.abs(existing.mediaStart - el.mediaStart) > BROWSER_MEDIA_EPSILON)
                 ) {
                   existing.mediaStart = el.mediaStart;
                 }
-                if (el.volume > 0 && Math.abs((existing.volume ?? 1) - el.volume) > 0.0001) {
+                if (
+                  el.volume > 0 &&
+                  Math.abs((existing.volume ?? 1) - el.volume) > BROWSER_MEDIA_EPSILON
+                ) {
                   existing.volume = el.volume;
                 }
               }
