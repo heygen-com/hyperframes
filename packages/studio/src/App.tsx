@@ -2798,6 +2798,7 @@ export function StudioApp() {
                         onRemoveTextField={handleDomRemoveTextField}
                         onDetachFromLayout={handleDomDetachFromLayout}
                         onAskAgent={handleAskAgent}
+                        onCopyAgentInstruction={handleAgentModalSubmit}
                         onImportAssets={handleImportFiles}
                         fontAssets={fontAssets}
                         onImportFonts={handleImportFonts}

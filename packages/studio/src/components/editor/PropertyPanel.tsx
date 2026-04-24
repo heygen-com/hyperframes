@@ -60,6 +60,7 @@ interface PropertyPanelProps {
   onRemoveTextField: (fieldKey: string) => void;
   onDetachFromLayout: () => void;
   onAskAgent: () => void;
+  onCopyAgentInstruction: (instruction: string) => void | Promise<void>;
   onImportAssets?: (files: FileList) => Promise<string[]>;
   fontAssets?: ImportedFontAsset[];
   onImportFonts?: (files: FileList) => Promise<ImportedFontAsset[]>;
@@ -113,6 +114,17 @@ interface FontOption {
 }
 
 const COLOR_PICKER_SIZE = { width: 292, height: 386 };
+
+function buildMakeMovableAgentInstruction(reason: string): string {
+  return [
+    "Make this selected HyperFrames element movable in Studio.",
+    `Studio blocked direct move/resize because: ${reason}`,
+    "Refactor only this element safely.",
+    "Preserve its current visual position, timing, and sibling layout intent where possible.",
+    "If it is transform-driven, replace transform-based positioning with absolute pixel geometry.",
+    "If layout flow owns it, detach conservatively with position: absolute, px left/top/width/height, and margin: 0.",
+  ].join(" ");
+}
 
 function colorFromCss(value: string): ParsedColor {
   return parseCssColor(value) ?? { red: 0, green: 0, blue: 0, alpha: 1 };
@@ -1882,6 +1894,7 @@ export const PropertyPanel = memo(function PropertyPanel({
   onRemoveTextField,
   onDetachFromLayout,
   onAskAgent,
+  onCopyAgentInstruction,
   onImportAssets,
   fontAssets = [],
   onImportFonts,
@@ -1936,6 +1949,10 @@ export const PropertyPanel = memo(function PropertyPanel({
   const clipContent = ["hidden", "clip"].includes((styles.overflow ?? "").trim());
   const sourceLabel = element.id ? `#${element.id}` : element.selector;
   const showEditableSections = element.capabilities.canEditStyles;
+  const disabledMoveReason =
+    element.capabilities.reasonIfDisabled && !element.capabilities.canDetachFromLayout
+      ? element.capabilities.reasonIfDisabled
+      : null;
 
   const handleFillModeChange = (nextMode: string) => {
     setPreferredFillMode(nextMode);
@@ -2009,9 +2026,23 @@ export const PropertyPanel = memo(function PropertyPanel({
               onCommit={(next) => onSetStyle("height", next)}
             />
           </div>
-          {element.capabilities.reasonIfDisabled && !element.capabilities.canDetachFromLayout && (
-            <div className="mt-4 rounded-2xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-[12px] leading-6 text-amber-200">
-              {element.capabilities.reasonIfDisabled}
+          {disabledMoveReason && (
+            <div className="mt-4 flex min-w-0 flex-wrap items-center justify-between gap-3 border-l border-amber-500/40 pl-3">
+              <div className="min-w-0 text-[11px] leading-5 text-neutral-400">
+                <div className="font-medium text-amber-100">{disabledMoveReason}</div>
+                <div>Copy a targeted prompt so an agent can refactor this layer safely.</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  void Promise.resolve(
+                    onCopyAgentInstruction(buildMakeMovableAgentInstruction(disabledMoveReason)),
+                  );
+                }}
+                className="inline-flex h-8 flex-shrink-0 items-center rounded-lg border border-neutral-700 bg-neutral-950 px-3 text-[11px] font-medium text-neutral-100 transition-colors hover:border-amber-400/70 hover:text-amber-100"
+              >
+                {copiedAgentPrompt ? "Prompt copied" : "Ask agent to make movable"}
+              </button>
             </div>
           )}
           {element.capabilities.canDetachFromLayout && (
