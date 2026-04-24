@@ -99,6 +99,14 @@ export default defineCommand({
       description: "Target video bitrate such as 10M. Mutually exclusive with --crf.",
     },
     gpu: { type: "boolean", description: "Use GPU encoding", default: false },
+    "gpu-capture": {
+      type: "boolean",
+      description:
+        "Use hardware GPU for frame capture (ANGLE backend: D3D11/Metal/OpenGL). " +
+        "Default is SwiftShader software GL. Opt in for faster captures on shader-heavy " +
+        "compositions; requires working GPU drivers. Env fallback: HYPERFRAMES_GPU_CAPTURE=1.",
+      default: false,
+    },
     quiet: {
       type: "boolean",
       description: "Suppress verbose output",
@@ -156,6 +164,14 @@ export default defineCommand({
         process.exit(1);
       }
       workers = parsed;
+    }
+
+    // ── Thread --gpu-capture into engine config via env var ────────────
+    // Matches the pattern used for PRODUCER_MAX_CONCURRENT_RENDERS below:
+    // resolveConfig() picks up HYPERFRAMES_GPU_CAPTURE in the engine worker
+    // processes, avoiding per-worker RenderJob plumbing.
+    if (args["gpu-capture"]) {
+      process.env.HYPERFRAMES_GPU_CAPTURE = "true";
     }
 
     // ── Validate max-concurrent-renders ─────────────────────────────────
