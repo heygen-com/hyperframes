@@ -1490,7 +1490,7 @@ function GradientField({
         >
           {parsed.stops.map((stop, index) => (
             <div
-              key={`${stop.color}-${stop.position}-${index}`}
+              key={`stop-preview-${index}`}
               className="absolute top-1/2 h-4 w-4 -translate-y-1/2 rounded-full border-2 border-white/90 shadow-[0_0_0_1px_rgba(0,0,0,0.35)]"
               style={{
                 left: `calc(${stop.position}% - 8px)`,
@@ -1622,7 +1622,7 @@ function GradientField({
         <div className="space-y-3">
           {parsed.stops.map((stop, index) => (
             <div
-              key={`${stop.color}-${stop.position}-${index}`}
+              key={`stop-editor-${index}`}
               className="grid min-w-0 grid-cols-[minmax(0,1fr)_68px_28px] gap-2"
             >
               <ColorField
