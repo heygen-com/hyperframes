@@ -14,10 +14,16 @@ jobs:
     outputs:
       code: ${{ steps.filter.outputs.code }}
     steps:
+      # Force git-based change detection instead of the pull_request REST API.
+      # The API path can fail the whole workflow on transient listFiles
+      # timeouts before any regression shard even starts.
       - uses: actions/checkout@v4
-      - uses: dorny/paths-filter@v3
+        with:
+          fetch-depth: 0
+      - uses: dorny/paths-filter@v4
         id: filter
         with:
+          token: ""
           filters: |
             code:
               - "packages/core/**"
