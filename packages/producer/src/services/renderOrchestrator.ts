@@ -1191,7 +1191,12 @@ export async function executeRenderJob(
                 if (existing.src !== src) {
                   existing.src = src;
                 }
-                if (el.end > 0 && (existing.end <= 0 || Math.abs(existing.end - el.end) > 0.0001)) {
+                // Only fill `end` when the static pipeline had nothing — otherwise the
+                // compiled value (which includes sub-composition host offsets) is
+                // authoritative. The browser's `data-end` is read from the inlined DOM
+                // where sub-composition clips still have scene-local end values, and
+                // overwriting would undo the offset applied in parseSubCompositions.
+                if (el.end > 0 && existing.end <= 0) {
                   existing.end = el.end;
                 }
                 if (
@@ -1224,7 +1229,8 @@ export async function executeRenderJob(
                 if (existing.src !== src) {
                   existing.src = src;
                 }
-                if (el.end > 0 && (existing.end <= 0 || Math.abs(existing.end - el.end) > 0.0001)) {
+                // See the video branch above for why we only fill `end` when missing.
+                if (el.end > 0 && existing.end <= 0) {
                   existing.end = el.end;
                 }
                 if (
