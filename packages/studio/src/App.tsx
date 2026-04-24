@@ -67,6 +67,11 @@ interface EditingFile {
   content: string | null;
 }
 
+interface AppToast {
+  message: string;
+  tone: "error" | "info";
+}
+
 type RightPanelTab = "design" | "renders";
 type FocusedDesignSection = "position" | "styles" | null;
 
@@ -540,12 +545,14 @@ export function StudioApp() {
     }
   }, [captionHasSelection, captionEditMode]);
   const [globalDragOver, setGlobalDragOver] = useState(false);
-  const [uploadToast, setUploadToast] = useState<string | null>(null);
+  const [appToast, setAppToast] = useState<AppToast | null>(null);
   const [timelineVisible, setTimelineVisible] = useState(true);
   const [timelineEditorHintDismissed, setTimelineEditorHintState] = useState(
     getTimelineEditorHintDismissed,
   );
   const dragCounterRef = useRef(0);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastBlockedTimelineToastAtRef = useRef(0);
   const previewHotkeyWindowRef = useRef<Window | null>(null);
   const panelDragRef = useRef<{
     side: "left" | "right";
@@ -2180,6 +2187,7 @@ export function StudioApp() {
             onFileDrop={handleTimelineFileDrop}
             onMoveElement={handleTimelineElementMove}
             onResizeElement={handleTimelineElementResize}
+            onBlockedEditAttempt={handleBlockedTimelineEdit}
             onCompIdToSrcChange={setCompIdToSrc}
             onCompositionChange={(compPath) => {
               // Sync activeCompPath when user drills down via timeline double-click
@@ -2356,9 +2364,15 @@ export function StudioApp() {
           </div>
         </div>
       )}
-      {uploadToast && (
-        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[91] px-4 py-2 rounded-lg bg-red-900/90 border border-red-700/50 text-sm text-red-200 shadow-lg animate-in fade-in slide-in-from-bottom-2">
-          {uploadToast}
+      {appToast && (
+        <div
+          className={`absolute bottom-6 left-1/2 -translate-x-1/2 z-[91] px-4 py-2 rounded-lg border text-sm shadow-lg animate-in fade-in slide-in-from-bottom-2 ${
+            appToast.tone === "error"
+              ? "bg-red-900/90 border-red-700/50 text-red-200"
+              : "bg-neutral-900/95 border-neutral-700/60 text-neutral-100"
+          }`}
+        >
+          {appToast.message}
         </div>
       )}
     </div>
