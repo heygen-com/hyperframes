@@ -29,6 +29,97 @@ const RADIAL_SIZE_KEYWORDS: RadialSizeKeyword[] = [
   "farthest-corner",
 ];
 
+function isWhitespace(char: string | undefined): boolean {
+  return char === " " || char === "\n" || char === "\r" || char === "\t" || char === "\f";
+}
+
+function isDigit(char: string | undefined): boolean {
+  return char != null && char >= "0" && char <= "9";
+}
+
+function isSimpleNumber(value: string): boolean {
+  if (!value) return false;
+  let index = value[0] === "-" ? 1 : 0;
+  let digits = 0;
+
+  while (isDigit(value[index])) {
+    index += 1;
+    digits += 1;
+  }
+
+  if (value[index] === ".") {
+    index += 1;
+    while (isDigit(value[index])) {
+      index += 1;
+      digits += 1;
+    }
+  }
+
+  return digits > 0 && index === value.length;
+}
+
+function parseCssNumber(value: string | undefined): number | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (!isSimpleNumber(trimmed)) return null;
+  const parsed = Number(trimmed);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function splitCssWhitespace(value: string): string[] {
+  const tokens: string[] = [];
+  let current = "";
+
+  for (const char of value) {
+    if (isWhitespace(char)) {
+      if (current) {
+        tokens.push(current);
+        current = "";
+      }
+      continue;
+    }
+    current += char;
+  }
+
+  if (current) tokens.push(current);
+  return tokens;
+}
+
+function hasCssWord(value: string, word: string): boolean {
+  return splitCssWhitespace(value.toLowerCase()).includes(word);
+}
+
+function parsePercentToken(value: string | undefined, fallback: number): number {
+  if (!value?.endsWith("%")) return fallback;
+  const parsed = parseCssNumber(value.slice(0, -1));
+  return parsed == null ? fallback : clamp(parsed, 0, 100);
+}
+
+function parseAngleToken(value: string | undefined): number | null {
+  const trimmed = value?.trim().toLowerCase();
+  if (!trimmed?.endsWith("deg")) return null;
+  return parseCssNumber(trimmed.slice(0, -3));
+}
+
+function trailingPercentStart(value: string): number | null {
+  if (!value.endsWith("%")) return null;
+  const withoutUnit = value.slice(0, -1).trimEnd();
+  let start = withoutUnit.length;
+
+  while (start > 0 && (isDigit(withoutUnit[start - 1]) || withoutUnit[start - 1] === ".")) {
+    start -= 1;
+  }
+
+  if (start > 0 && withoutUnit[start - 1] === "-") {
+    start -= 1;
+  }
+
+  const token = withoutUnit.slice(start);
+  if (!isSimpleNumber(token)) return null;
+  if (start === 0 || !isWhitespace(withoutUnit[start - 1])) return null;
+  return start;
+}
+
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
@@ -38,24 +129,19 @@ function round(value: number): number {
 }
 
 function parsePercent(value: string | undefined, fallback: number): number {
-  if (!value) return fallback;
-  const parsed = Number.parseFloat(value);
-  return Number.isFinite(parsed) ? clamp(parsed, 0, 100) : fallback;
-}
-
-function parseAngle(value: string | undefined, fallback: number): number {
-  if (!value) return fallback;
-  const parsed = Number.parseFloat(value);
-  return Number.isFinite(parsed) ? parsed : fallback;
+  const parsed = parseCssNumber(value);
+  return parsed == null ? fallback : clamp(parsed, 0, 100);
 }
 
 function parseColorStop(raw: string): { color: string; position: number | null } {
   const trimmed = raw.trim();
-  const match = trimmed.match(/^(.*?)(?:\s+(-?\d+(?:\.\d+)?)%)?$/);
-  if (!match) return { color: trimmed, position: null };
+  const percentStart = trailingPercentStart(trimmed);
+  if (percentStart == null) return { color: trimmed, position: null };
+
+  const withoutUnit = trimmed.slice(0, -1).trimEnd();
   return {
-    color: match[1].trim(),
-    position: match[2] != null ? parsePercent(match[2], 0) : null,
+    color: withoutUnit.slice(0, percentStart).trim(),
+    position: parsePercent(withoutUnit.slice(percentStart), 0),
   };
 }
 
@@ -129,8 +215,9 @@ function directionToAngle(value: string): number | null {
 function parseLinearArgs(parts: string[]): GradientModel {
   const first = parts[0] ?? "";
   const angleFromDirection = directionToAngle(first);
-  const firstIsAngle = /-?\d+(?:\.\d+)?deg$/i.test(first);
-  const angle = firstIsAngle ? parseAngle(first, 180) : (angleFromDirection ?? 180);
+  const parsedAngle = parseAngleToken(first);
+  const firstIsAngle = parsedAngle != null;
+  const angle = parsedAngle ?? angleFromDirection ?? 180;
   const stopParts = firstIsAngle || angleFromDirection != null ? parts.slice(1) : parts;
 
   return {
@@ -147,22 +234,29 @@ function parseLinearArgs(parts: string[]): GradientModel {
 
 function parseRadialArgs(parts: string[]): GradientModel {
   const first = parts[0] ?? "";
-  const hasConfig = /\bat\b|circle|ellipse|closest-|farthest-/i.test(first);
+  const firstLower = first.toLowerCase();
+  const hasConfig =
+    hasCssWord(firstLower, "at") ||
+    hasCssWord(firstLower, "circle") ||
+    hasCssWord(firstLower, "ellipse") ||
+    firstLower.includes("closest-") ||
+    firstLower.includes("farthest-");
   const config = hasConfig ? first : "";
   const stopParts = hasConfig ? parts.slice(1) : parts;
+  const configLower = config.toLowerCase();
+  const configTokens = splitCssWhitespace(configLower);
+  const atIndex = configTokens.indexOf("at");
 
-  const shape = /\bcircle\b/i.test(config) ? "circle" : "ellipse";
+  const shape = hasCssWord(configLower, "circle") ? "circle" : "ellipse";
   const radialSize =
-    RADIAL_SIZE_KEYWORDS.find((keyword) => new RegExp(`\\b${keyword}\\b`, "i").test(config)) ??
-    "farthest-corner";
-  const positionMatch = config.match(/at\s+(-?\d+(?:\.\d+)?)%\s+(-?\d+(?:\.\d+)?)%/i);
+    RADIAL_SIZE_KEYWORDS.find((keyword) => configTokens.includes(keyword)) ?? "farthest-corner";
 
   return {
     kind: "radial",
     repeating: false,
     angle: 180,
-    centerX: parsePercent(positionMatch?.[1], 50),
-    centerY: parsePercent(positionMatch?.[2], 50),
+    centerX: parsePercentToken(configTokens[atIndex + 1], 50),
+    centerY: parsePercentToken(configTokens[atIndex + 2], 50),
     shape,
     radialSize,
     stops: normalizeStops(stopParts.map(parseColorStop)),
@@ -171,18 +265,21 @@ function parseRadialArgs(parts: string[]): GradientModel {
 
 function parseConicArgs(parts: string[]): GradientModel {
   const first = parts[0] ?? "";
-  const hasConfig = /\bfrom\b|\bat\b/i.test(first);
+  const firstLower = first.toLowerCase();
+  const hasConfig = hasCssWord(firstLower, "from") || hasCssWord(firstLower, "at");
   const config = hasConfig ? first : "";
   const stopParts = hasConfig ? parts.slice(1) : parts;
-  const angleMatch = config.match(/from\s+(-?\d+(?:\.\d+)?)deg/i);
-  const positionMatch = config.match(/at\s+(-?\d+(?:\.\d+)?)%\s+(-?\d+(?:\.\d+)?)%/i);
+  const configTokens = splitCssWhitespace(config.toLowerCase());
+  const fromIndex = configTokens.indexOf("from");
+  const atIndex = configTokens.indexOf("at");
+  const angle = parseAngleToken(configTokens[fromIndex + 1]);
 
   return {
     kind: "conic",
     repeating: false,
-    angle: parseAngle(angleMatch?.[1], 0),
-    centerX: parsePercent(positionMatch?.[1], 50),
-    centerY: parsePercent(positionMatch?.[2], 50),
+    angle: angle ?? 0,
+    centerX: parsePercentToken(configTokens[atIndex + 1], 50),
+    centerY: parsePercentToken(configTokens[atIndex + 2], 50),
     shape: "ellipse",
     radialSize: "farthest-corner",
     stops: normalizeStops(stopParts.map(parseColorStop)),
@@ -213,12 +310,24 @@ export function buildDefaultGradientModel(fallbackColor?: string): GradientModel
 
 export function parseGradient(value: string | undefined): GradientModel | null {
   if (!value || value === "none") return null;
-  const match = value.trim().match(/^(repeating-)?(linear|radial|conic)-gradient\(([\s\S]*)\)$/i);
-  if (!match) return null;
+  const trimmed = value.trim();
+  const openParenIndex = trimmed.indexOf("(");
+  if (openParenIndex <= 0 || !trimmed.endsWith(")")) return null;
 
-  const repeating = Boolean(match[1]);
-  const kind = match[2].toLowerCase() as GradientKind;
-  const parts = splitGradientArgs(match[3] ?? "");
+  const functionName = trimmed.slice(0, openParenIndex).toLowerCase();
+  const kindByFunctionName: Record<string, { kind: GradientKind; repeating: boolean }> = {
+    "linear-gradient": { kind: "linear", repeating: false },
+    "radial-gradient": { kind: "radial", repeating: false },
+    "conic-gradient": { kind: "conic", repeating: false },
+    "repeating-linear-gradient": { kind: "linear", repeating: true },
+    "repeating-radial-gradient": { kind: "radial", repeating: true },
+    "repeating-conic-gradient": { kind: "conic", repeating: true },
+  };
+  const parsedFunction = kindByFunctionName[functionName];
+  if (!parsedFunction) return null;
+
+  const { kind, repeating } = parsedFunction;
+  const parts = splitGradientArgs(trimmed.slice(openParenIndex + 1, -1));
 
   const parsed =
     kind === "linear"

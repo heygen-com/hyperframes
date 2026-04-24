@@ -7,6 +7,7 @@ import type { Hono } from "hono";
 const FONT_EXT_RE = /\.(otf|ttf|ttc|woff2?)$/i;
 const MAX_FONT_RESULTS = 2000;
 const GOOGLE_FONTS_METADATA_URL = "https://fonts.google.com/metadata/fonts";
+const GOOGLE_FONTS_FETCH_TIMEOUT_MS = 3000;
 let cachedFonts: string[] | null = null;
 let cachedGoogleFonts: string[] | null = null;
 
@@ -196,21 +197,45 @@ function parseGoogleFontMetadata(value: unknown): string[] {
   return families;
 }
 
+function stripGoogleJsonGuard(raw: string): string {
+  const prefix = ")]}'";
+  if (!raw.startsWith(prefix)) return raw;
+
+  let index = prefix.length;
+  while (
+    index < raw.length &&
+    (raw[index] === " " ||
+      raw[index] === "\n" ||
+      raw[index] === "\r" ||
+      raw[index] === "\t" ||
+      raw[index] === "\f")
+  ) {
+    index += 1;
+  }
+
+  return raw.slice(index);
+}
+
 async function listGoogleFontFamilies(): Promise<string[]> {
   if (cachedGoogleFonts) return cachedGoogleFonts;
 
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), GOOGLE_FONTS_FETCH_TIMEOUT_MS);
+
   try {
-    const response = await fetch(GOOGLE_FONTS_METADATA_URL);
+    const response = await fetch(GOOGLE_FONTS_METADATA_URL, { signal: controller.signal });
     if (!response.ok) {
       cachedGoogleFonts = GOOGLE_FONT_FALLBACKS;
       return cachedGoogleFonts;
     }
     const raw = await response.text();
-    const jsonText = raw.replace(/^\)\]\}'\s*/, "");
+    const jsonText = stripGoogleJsonGuard(raw);
     const families = parseGoogleFontMetadata(JSON.parse(jsonText));
     cachedGoogleFonts = families.length > 0 ? families : GOOGLE_FONT_FALLBACKS;
   } catch {
     cachedGoogleFonts = GOOGLE_FONT_FALLBACKS;
+  } finally {
+    clearTimeout(timer);
   }
 
   return cachedGoogleFonts;

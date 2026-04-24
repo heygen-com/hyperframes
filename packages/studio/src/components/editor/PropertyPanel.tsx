@@ -188,8 +188,32 @@ function formatColorToken(value: string): string {
 
 function extractBackgroundImageUrl(value: string | undefined): string {
   if (!value) return "";
-  const match = value.match(/url\((['"]?)(.*?)\1\)/i);
-  return match?.[2] ?? "";
+  const lowerValue = value.toLowerCase();
+  const urlStart = lowerValue.indexOf("url(");
+  if (urlStart < 0) return "";
+
+  let index = urlStart + 4;
+  while (
+    index < value.length &&
+    (value[index] === " " ||
+      value[index] === "\n" ||
+      value[index] === "\r" ||
+      value[index] === "\t" ||
+      value[index] === "\f")
+  ) {
+    index += 1;
+  }
+
+  const quote = value[index] === '"' || value[index] === "'" ? value[index] : null;
+  if (quote) {
+    index += 1;
+    const endQuote = value.indexOf(quote, index);
+    return endQuote >= index ? value.slice(index, endQuote) : "";
+  }
+
+  const endParen = value.indexOf(")", index);
+  if (endParen < index) return "";
+  return value.slice(index, endParen).trim();
 }
 
 function normalizeProjectPath(value: string): string {

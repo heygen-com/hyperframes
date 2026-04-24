@@ -59,6 +59,31 @@ function toOverlayRect(
 
 type GestureKind = "drag" | "resize";
 const BLOCKED_MOVE_THRESHOLD_PX = 4;
+const OVERLAY_RECT_EPSILON_PX = 0.5;
+
+function rectsEqual(a: OverlayRect | null, b: OverlayRect | null): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return (
+    Math.abs(a.left - b.left) < OVERLAY_RECT_EPSILON_PX &&
+    Math.abs(a.top - b.top) < OVERLAY_RECT_EPSILON_PX &&
+    Math.abs(a.width - b.width) < OVERLAY_RECT_EPSILON_PX &&
+    Math.abs(a.height - b.height) < OVERLAY_RECT_EPSILON_PX &&
+    Math.abs(a.scaleX - b.scaleX) < 0.001 &&
+    Math.abs(a.scaleY - b.scaleY) < 0.001
+  );
+}
+
+function selectionCacheKey(
+  selection: Pick<DomEditSelection, "id" | "selector" | "selectorIndex" | "sourceFile">,
+): string {
+  return [
+    selection.sourceFile ?? "",
+    selection.id ?? "",
+    selection.selector ?? "",
+    selection.selectorIndex ?? "",
+  ].join("|");
+}
 
 interface GestureState {
   kind: GestureKind;
@@ -100,6 +125,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   const blockedMoveRef = useRef<BlockedMoveState | null>(null);
   const suppressNextBoxClickRef = useRef(false);
   const rafPausedRef = useRef(false);
+  const resolvedElementRef = useRef<{ key: string; element: HTMLElement } | null>(null);
 
   const selectionRef = useRef(selection);
   selectionRef.current = selection;
@@ -114,6 +140,32 @@ export const DomEditOverlay = memo(function DomEditOverlay({
 
   useMountEffect(() => {
     let frame = 0;
+    const clearOverlayRect = () => {
+      if (!overlayRectRef.current) return;
+      overlayRectRef.current = null;
+      setOverlayRect(null);
+    };
+    const setNextOverlayRect = (next: OverlayRect | null) => {
+      if (rectsEqual(overlayRectRef.current, next)) return;
+      overlayRectRef.current = next;
+      setOverlayRect(next);
+    };
+    const resolveElement = (doc: Document, sel: DomEditSelection) => {
+      const key = selectionCacheKey(sel);
+      const cached = resolvedElementRef.current;
+      if (
+        cached?.key === key &&
+        cached.element.isConnected &&
+        cached.element.ownerDocument === doc
+      ) {
+        return cached.element;
+      }
+
+      const next = findElementForSelection(doc, sel, sel.sourceFile);
+      resolvedElementRef.current = next ? { key, element: next } : null;
+      return next;
+    };
+
     const update = () => {
       frame = requestAnimationFrame(update);
       if (rafPausedRef.current) return;
@@ -122,21 +174,22 @@ export const DomEditOverlay = memo(function DomEditOverlay({
       const iframe = iframeRef.current;
       const overlayEl = overlayRef.current;
       if (!sel || !iframe || !overlayEl) {
-        setOverlayRect(null);
+        resolvedElementRef.current = null;
+        clearOverlayRect();
         return;
       }
 
       const doc = iframe.contentDocument;
       if (!doc) return;
 
-      const el = findElementForSelection(doc, sel, sel.sourceFile);
+      const el = resolveElement(doc, sel);
       if (!el) {
-        setOverlayRect(null);
+        clearOverlayRect();
         return;
       }
 
       const next = toOverlayRect(overlayEl, iframe, el);
-      if (next) setOverlayRect(next);
+      setNextOverlayRect(next);
     };
 
     frame = requestAnimationFrame(update);
