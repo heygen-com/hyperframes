@@ -403,7 +403,6 @@ function ImageFillField({
   onCommit: (nextValue: string) => void;
   onImportAssets?: (files: FileList) => Promise<string[]>;
 }) {
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [uploading, setUploading] = useState(false);
   const imageAssets = useMemo(() => assets.filter((asset) => IMAGE_EXT.test(asset)), [assets]);
   const selectedAsset = useMemo(
@@ -431,25 +430,27 @@ function ImageFillField({
       <div className="grid gap-1.5">
         <div className="flex items-center justify-between gap-3">
           <span className={LABEL}>Project asset</span>
-          <button
-            type="button"
-            disabled={disabled || uploading}
-            onClick={() => fileInputRef.current?.click()}
-            className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 text-[11px] font-medium text-neutral-300 transition-colors hover:border-neutral-600 hover:text-white disabled:cursor-not-allowed disabled:text-neutral-600"
+          <label
+            className={`relative inline-flex h-7 items-center gap-1.5 overflow-hidden rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 text-[11px] font-medium text-neutral-300 transition-colors ${
+              disabled || uploading
+                ? "cursor-not-allowed text-neutral-600"
+                : "cursor-pointer hover:border-neutral-600 hover:text-white"
+            }`}
           >
             <Plus size={12} />
-            {uploading ? "Uploading…" : "Upload image"}
-          </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={async (event) => {
-              await handleUpload(event.target.files);
-              event.target.value = "";
-            }}
-          />
+            <span>{uploading ? "Uploading…" : "Upload image"}</span>
+            <input
+              type="file"
+              accept="image/*"
+              aria-label="Upload image asset"
+              disabled={disabled || uploading}
+              className="absolute inset-0 cursor-pointer opacity-0 disabled:cursor-not-allowed"
+              onChange={async (event) => {
+                await handleUpload(event.target.files);
+                event.target.value = "";
+              }}
+            />
+          </label>
         </div>
         {imageAssets.length > 0 ? (
           <div className="space-y-3">
