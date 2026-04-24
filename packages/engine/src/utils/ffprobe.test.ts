@@ -188,8 +188,41 @@ describe("ffprobe missing-binary fallback", () => {
     expect(meta.fps).toBe(0);
     expect(meta.hasAudio).toBe(false);
     expect(meta.isVFR).toBe(false);
+    expect(meta.hasAlpha).toBe(false);
     expect(meta.colorSpace?.colorTransfer).toBe("smpte2084");
     expect(meta.colorSpace?.colorPrimaries).toBe("bt2020");
+  });
+
+  it("extractMediaMetadata detects VP9 alpha_mode streams", async () => {
+    const { spawn } = createSpawnSpy([
+      {
+        kind: "exit",
+        code: 0,
+        stdout: JSON.stringify({
+          streams: [
+            {
+              codec_type: "video",
+              codec_name: "vp9",
+              width: 320,
+              height: 180,
+              r_frame_rate: "30/1",
+              avg_frame_rate: "30/1",
+              pix_fmt: "yuv420p",
+              tags: { alpha_mode: "1" },
+            },
+          ],
+          format: { duration: "1.5" },
+        }),
+      },
+    ]);
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+
+    const { extractMediaMetadata: extractMediaMetadataMocked } = await import("./ffprobe.js");
+    const meta = await extractMediaMetadataMocked("/tmp/alpha.webm");
+
+    expect(meta.videoCodec).toBe("vp9");
+    expect(meta.hasAlpha).toBe(true);
   });
 
   it("extractMediaMetadata rethrows ffprobe-missing error for non-image files without fallback", async () => {

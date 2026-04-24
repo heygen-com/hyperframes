@@ -35,6 +35,7 @@ export interface VideoElement {
   start: number;
   end: number;
   mediaStart: number;
+  loop: boolean;
   hasAudio: boolean;
 }
 
@@ -141,6 +142,7 @@ export function parseVideoElements(html: string): VideoElement[] {
       start,
       end,
       mediaStart: mediaStartAttr ? parseFloat(mediaStartAttr) : 0,
+      loop: el.hasAttribute("loop"),
       hasAudio: hasAudioAttr === "true",
     });
   }
@@ -207,12 +209,13 @@ export async function extractVideoFramesRange(
   outputDirOverride?: string,
 ): Promise<ExtractedFrames> {
   const ffmpegProcessTimeout = config?.ffmpegProcessTimeout ?? DEFAULT_CONFIG.ffmpegProcessTimeout;
-  const { fps, outputDir, quality = 95, format = "jpg" } = options;
+  const { fps, outputDir, quality = 95 } = options;
 
   const videoOutputDir = outputDirOverride ?? join(outputDir, videoId);
   if (!existsSync(videoOutputDir)) mkdirSync(videoOutputDir, { recursive: true });
 
   const metadata = await extractMediaMetadata(videoPath);
+  const format = resolveFrameFormat(metadata, options.format);
   const framePattern = `${FRAME_FILENAME_PREFIX}%05d.${format}`;
   const outputPattern = join(videoOutputDir, framePattern);
 
@@ -226,6 +229,9 @@ export async function extractVideoFramesRange(
   const args: string[] = [];
   if (isHdr && isMacOS) {
     args.push("-hwaccel", "videotoolbox");
+  }
+  if (metadata.hasAlpha && metadata.videoCodec === "vp9") {
+    args.push("-c:v", "libvpx-vp9");
   }
   args.push("-ss", String(startTime), "-i", videoPath, "-t", String(duration));
 
@@ -390,6 +396,11 @@ function resolveSegmentDuration(
   if (Number.isFinite(requested) && requested > 0) return requested;
   const sourceRemaining = metadata.durationSeconds - mediaStart;
   return sourceRemaining > 0 ? sourceRemaining : metadata.durationSeconds;
+}
+
+function resolveFrameFormat(metadata: VideoMetadata, requested?: "jpg" | "png"): CacheFrameFormat {
+  if (requested) return requested;
+  return metadata.hasAlpha ? "png" : "jpg";
 }
 
 /**
@@ -682,7 +693,6 @@ export async function extractAllVideoFrames(
 
   const phase3Start = Date.now();
   const cacheRootDir = config?.extractCacheDir;
-  const cacheFormat: CacheFrameFormat = options.format ?? "jpg";
 
   async function tryCachedExtract(
     video: VideoElement,
@@ -694,6 +704,7 @@ export async function extractAllVideoFrames(
     const keyInput = cacheKeyInputs[i];
     const probedMeta = videoMetadata[i];
     if (!keyInput || !probedMeta) return null;
+    const cacheFormat = resolveFrameFormat(probedMeta, options.format);
 
     const keyDuration = resolveSegmentDuration(
       keyInput.end - keyInput.start,
@@ -729,7 +740,7 @@ export async function extractAllVideoFrames(
       video.id,
       video.mediaStart,
       videoDuration,
-      options,
+      { ...options, format: cacheFormat },
       signal,
       config,
       lookup.entry.dir,
@@ -764,7 +775,7 @@ export async function extractAllVideoFrames(
           video.id,
           video.mediaStart,
           videoDuration,
-          options,
+          { ...options, format: resolveFrameFormat(probedMeta, options.format) },
           signal,
           config,
         );
@@ -807,10 +818,19 @@ export function getFrameAtTime(
   extracted: ExtractedFrames,
   globalTime: number,
   videoStart: number,
+  loop = false,
+  mediaStart = 0,
 ): string | null {
-  const localTime = globalTime - videoStart;
+  let localTime = globalTime - videoStart;
   if (localTime < 0) return null;
+  const loopDuration = Math.max(0, extracted.metadata.durationSeconds - mediaStart);
+  if (loop && loopDuration > 0 && localTime >= loopDuration) {
+    localTime %= loopDuration;
+  }
   const frameIndex = Math.floor(localTime * extracted.fps);
+  if (loop && frameIndex >= extracted.totalFrames && extracted.totalFrames > 0) {
+    return extracted.framePaths.get(extracted.totalFrames - 1) || null;
+  }
   if (frameIndex < 0 || frameIndex >= extracted.totalFrames) return null;
   return extracted.framePaths.get(frameIndex) || null;
 }
@@ -823,6 +843,7 @@ export class FrameLookupTable {
       start: number;
       end: number;
       mediaStart: number;
+      loop: boolean;
     }
   > = new Map();
   private orderedVideos: Array<{
@@ -831,13 +852,20 @@ export class FrameLookupTable {
     start: number;
     end: number;
     mediaStart: number;
+    loop: boolean;
   }> = [];
   private activeVideoIds: Set<string> = new Set();
   private startCursor = 0;
   private lastTime: number | null = null;
 
-  addVideo(extracted: ExtractedFrames, start: number, end: number, mediaStart: number): void {
-    this.videos.set(extracted.videoId, { extracted, start, end, mediaStart });
+  addVideo(
+    extracted: ExtractedFrames,
+    start: number,
+    end: number,
+    mediaStart: number,
+    loop = false,
+  ): void {
+    this.videos.set(extracted.videoId, { extracted, start, end, mediaStart, loop });
     this.orderedVideos = Array.from(this.videos.entries())
       .map(([videoId, video]) => ({ videoId, ...video }))
       .sort((a, b) => a.start - b.start);
@@ -848,7 +876,7 @@ export class FrameLookupTable {
     const video = this.videos.get(videoId);
     if (!video) return null;
     if (globalTime < video.start || globalTime >= video.end) return null;
-    return getFrameAtTime(video.extracted, globalTime, video.start);
+    return getFrameAtTime(video.extracted, globalTime, video.start, video.loop, video.mediaStart);
   }
 
   private resetActiveState(): void {
@@ -904,8 +932,19 @@ export class FrameLookupTable {
     for (const videoId of this.activeVideoIds) {
       const video = this.videos.get(videoId);
       if (!video) continue;
-      const localTime = globalTime - video.start;
+      let localTime = globalTime - video.start;
+      const loopDuration = Math.max(0, video.extracted.metadata.durationSeconds - video.mediaStart);
+      if (video.loop && loopDuration > 0 && localTime >= loopDuration) {
+        localTime %= loopDuration;
+      }
       const frameIndex = Math.floor(localTime * video.extracted.fps);
+      if (video.loop && frameIndex >= video.extracted.totalFrames) {
+        const framePath = video.extracted.framePaths.get(video.extracted.totalFrames - 1);
+        if (framePath) {
+          frames.set(videoId, { framePath, frameIndex: video.extracted.totalFrames - 1 });
+        }
+        continue;
+      }
       if (frameIndex < 0 || frameIndex >= video.extracted.totalFrames) continue;
       const framePath = video.extracted.framePaths.get(frameIndex);
       if (!framePath) continue;
@@ -949,7 +988,7 @@ export function createFrameLookupTable(
 
   for (const video of videos) {
     const ext = extractedMap.get(video.id);
-    if (ext) table.addVideo(ext, video.start, video.end, video.mediaStart);
+    if (ext) table.addVideo(ext, video.start, video.end, video.mediaStart, video.loop);
   }
 
   return table;

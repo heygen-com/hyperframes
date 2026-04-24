@@ -40,6 +40,7 @@ export interface ResolvedMediaElement {
   start: number;
   duration: number;
   mediaStart: number;
+  loop: boolean;
 }
 
 export interface CompilationResult {
@@ -55,7 +56,7 @@ function getAttr(tag: string, attr: string): string | null {
 }
 
 function hasAttr(tag: string, attr: string): boolean {
-  return new RegExp(`${attr}=["']`).test(tag);
+  return new RegExp(`\\s${attr}(?:\\s|=|>|/)`).test(tag);
 }
 
 function injectAttr(tag: string, attr: string, value: string): string {
@@ -229,6 +230,7 @@ export function extractResolvedMedia(html: string): ResolvedMediaElement[] {
       start: startStr !== null ? parseFloat(startStr) : 0,
       duration,
       mediaStart: mediaStartStr ? parseFloat(mediaStartStr) : 0,
+      loop: hasAttr(tag, "loop"),
     });
   }
 

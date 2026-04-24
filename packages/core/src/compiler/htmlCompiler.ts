@@ -70,6 +70,7 @@ export async function compileHtml(
 
   for (const el of preResolved) {
     if (!el.src) continue;
+    if (el.loop) continue;
     const src = resolveMediaSrc(el.src, projectDir);
     const fileDuration = await probeMediaDuration(src);
     if (fileDuration <= 0) continue;

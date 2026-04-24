@@ -318,14 +318,30 @@ async function runEmbeddedMode(
   projectName?: string,
   forceNew = false,
 ): Promise<void> {
-  const { createStudioServer } = await import("../server/studioServer.js");
+  const { createStudioServer, resolveStudioBundle } = await import("../server/studioServer.js");
 
   const pName = projectName ?? basename(dir);
-  const { app } = createStudioServer({ projectDir: dir, projectName: pName });
+  const studioBundle = resolveStudioBundle();
 
   clack.intro(c.bold("hyperframes preview"));
   const s = clack.spinner();
   s.start("Starting studio...");
+
+  if (!studioBundle.available) {
+    s.stop(c.error("Studio build missing"));
+    console.error();
+    console.error(`  ${c.dim("Could not find")} ${c.accent("index.html")} ${c.dim("in:")}`);
+    for (const checkedPath of studioBundle.checkedPaths) {
+      console.error(`  ${c.dim("-")} ${checkedPath}`);
+    }
+    console.error();
+    console.error(`  ${c.dim("Rebuild the CLI package with")} ${c.accent("pnpm run build")}`);
+    console.error();
+    process.exitCode = 1;
+    return;
+  }
+
+  const { app } = createStudioServer({ projectDir: dir, projectName: pName });
 
   let result: FindPortResult;
   try {

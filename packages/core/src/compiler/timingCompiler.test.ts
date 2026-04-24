@@ -115,9 +115,24 @@ describe("extractResolvedMedia", () => {
     expect(resolved[0].tagName).toBe("video");
     expect(resolved[0].duration).toBe(5);
     expect(resolved[0].start).toBe(1);
+    expect(resolved[0].loop).toBe(false);
     expect(resolved[1].id).toBe("a1");
     expect(resolved[1].tagName).toBe("audio");
     expect(resolved[1].duration).toBe(10);
+  });
+
+  it("marks looped media so render compilation can preserve display duration", () => {
+    const html = '<video id="v1" src="vid.webm" data-start="0" data-duration="4" loop>';
+
+    const resolved = extractResolvedMedia(html);
+
+    expect(resolved).toHaveLength(1);
+    expect(resolved[0]).toMatchObject({
+      id: "v1",
+      tagName: "video",
+      duration: 4,
+      loop: true,
+    });
   });
 
   it("skips elements with invalid durations", () => {

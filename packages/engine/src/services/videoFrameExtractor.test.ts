@@ -8,7 +8,9 @@ import {
   parseVideoElements,
   parseImageElements,
   extractAllVideoFrames,
+  createFrameLookupTable,
   type VideoElement,
+  type ExtractedFrames,
 } from "./videoFrameExtractor.js";
 import { extractVideoMetadata } from "../utils/ffprobe.js";
 import { runFfmpeg } from "../utils/runFfmpeg.js";
@@ -32,6 +34,7 @@ describe("parseVideoElements", () => {
       start: 0,
       end: Infinity,
       mediaStart: 0,
+      loop: false,
       hasAudio: false,
     });
   });
@@ -48,8 +51,96 @@ describe("parseVideoElements", () => {
       start: 2,
       end: 7,
       mediaStart: 1.5,
+      loop: false,
       hasAudio: true,
     });
+  });
+
+  it("preserves looped timed video semantics for render frame lookup", () => {
+    const videos = parseVideoElements(
+      '<video id="hero" src="clip.webm" data-start="2" data-duration="5" loop></video>',
+    );
+
+    expect(videos[0]).toMatchObject({
+      id: "hero",
+      start: 2,
+      end: 7,
+      loop: true,
+    });
+  });
+});
+
+describe("FrameLookupTable", () => {
+  function fakeExtracted(totalFrames: number, fps: number): ExtractedFrames {
+    const framePaths = new Map<number, string>();
+    for (let i = 0; i < totalFrames; i += 1) {
+      framePaths.set(i, `frame-${i}.jpg`);
+    }
+    return {
+      videoId: "hero",
+      srcPath: "clip.webm",
+      outputDir: "/tmp/frames",
+      framePattern: "frame-%05d.jpg",
+      fps,
+      totalFrames,
+      metadata: {
+        durationSeconds: totalFrames / fps,
+        width: 320,
+        height: 180,
+        fps,
+        hasAudio: false,
+        videoCodec: "vp9",
+        colorSpace: {
+          colorTransfer: "bt709",
+          colorPrimaries: "bt709",
+          colorSpace: "bt709",
+        },
+        isVFR: false,
+        hasAlpha: false,
+      },
+      framePaths,
+    };
+  }
+
+  it("wraps active frame payloads for looped clips whose display window exceeds source frames", () => {
+    const table = createFrameLookupTable(
+      [
+        {
+          id: "hero",
+          src: "clip.webm",
+          start: 0,
+          end: 5,
+          mediaStart: 0,
+          loop: true,
+          hasAudio: false,
+        },
+      ],
+      [fakeExtracted(30, 30)],
+    );
+
+    expect(table.getActiveFramePayloads(0.5).get("hero")?.frameIndex).toBe(15);
+    expect(table.getActiveFramePayloads(1.5).get("hero")?.frameIndex).toBe(15);
+    expect(table.getActiveFramePayloads(4.5).get("hero")?.frameIndex).toBe(15);
+  });
+
+  it("does not hold stale frames for non-looping clips after extracted frames end", () => {
+    const table = createFrameLookupTable(
+      [
+        {
+          id: "hero",
+          src: "clip.webm",
+          start: 0,
+          end: 5,
+          mediaStart: 0,
+          loop: false,
+          hasAudio: false,
+        },
+      ],
+      [fakeExtracted(30, 30)],
+    );
+
+    expect(table.getActiveFramePayloads(0.5).has("hero")).toBe(true);
+    expect(table.getActiveFramePayloads(1.5).has("hero")).toBe(false);
   });
 });
 
@@ -175,6 +266,7 @@ describe.skipIf(!HAS_FFMPEG)("extractAllVideoFrames on a VFR source", () => {
       start: 0,
       end: 4,
       mediaStart: 3,
+      loop: false,
       hasAudio: false,
     };
 
@@ -229,6 +321,7 @@ describe.skipIf(!HAS_FFMPEG)("extractAllVideoFrames on a VFR source", () => {
       start: 0,
       end: 2,
       mediaStart: 0,
+      loop: false,
       hasAudio: false,
     };
 
@@ -298,6 +391,7 @@ describe.skipIf(!HAS_FFMPEG)("extractAllVideoFrames on a VFR source", () => {
       start: 0,
       end: 1,
       mediaStart: 0,
+      loop: false,
       hasAudio: false,
     };
 
@@ -388,8 +482,16 @@ describe.skipIf(!HAS_FFMPEG)("extractAllVideoFrames on a VFR source", () => {
     mkdirSync(outputDir, { recursive: true });
 
     const videos: VideoElement[] = [
-      { id: "sdr", src: SDR_LONG, start: 0, end: 2, mediaStart: 0, hasAudio: false },
-      { id: "hdr", src: HDR_SHORT, start: 2, end: 4, mediaStart: 0, hasAudio: false },
+      { id: "sdr", src: SDR_LONG, start: 0, end: 2, mediaStart: 0, loop: false, hasAudio: false },
+      {
+        id: "hdr",
+        src: HDR_SHORT,
+        start: 2,
+        end: 4,
+        mediaStart: 0,
+        loop: false,
+        hasAudio: false,
+      },
     ];
 
     const result = await extractAllVideoFrames(videos, FIXTURE_DIR, {
@@ -424,6 +526,7 @@ describe.skipIf(!HAS_FFMPEG)("extractAllVideoFrames on a VFR source", () => {
       start: 0,
       end: 10,
       mediaStart: 0,
+      loop: false,
       hasAudio: false,
     };
 

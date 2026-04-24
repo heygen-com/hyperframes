@@ -23,11 +23,38 @@ import {
 // ── Path resolution ─────────────────────────────────────────────────────────
 
 function resolveDistDir(): string {
+  return resolveStudioBundle().dir;
+}
+
+export interface StudioBundleResolution {
+  dir: string;
+  indexPath: string;
+  available: boolean;
+  checkedPaths: string[];
+}
+
+export function resolveStudioBundle(): StudioBundleResolution {
   const builtPath = resolve(__dirname, "studio");
-  if (existsSync(resolve(builtPath, "index.html"))) return builtPath;
+  const builtIndex = resolve(builtPath, "index.html");
+  if (existsSync(builtIndex)) {
+    return { dir: builtPath, indexPath: builtIndex, available: true, checkedPaths: [builtIndex] };
+  }
   const devPath = resolve(__dirname, "..", "..", "..", "studio", "dist");
-  if (existsSync(resolve(devPath, "index.html"))) return devPath;
-  return builtPath;
+  const devIndex = resolve(devPath, "index.html");
+  if (existsSync(devIndex)) {
+    return {
+      dir: devPath,
+      indexPath: devIndex,
+      available: true,
+      checkedPaths: [builtIndex, devIndex],
+    };
+  }
+  return {
+    dir: builtPath,
+    indexPath: builtIndex,
+    available: false,
+    checkedPaths: [builtIndex, devIndex],
+  };
 }
 
 function resolveRuntimePath(): string {
@@ -348,7 +375,60 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
   app.get("*", (c) => {
     const indexPath = resolve(studioDir, "index.html");
     if (!existsSync(indexPath)) {
-      return c.text("Studio not found. Rebuild with: pnpm run build", 500);
+      return c.html(
+        `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>HyperFrames Studio unavailable</title>
+    <style>
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        background: #0d0f14;
+        color: #eef2f7;
+        font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+      main {
+        width: min(560px, calc(100vw - 48px));
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 8px;
+        padding: 28px;
+        background: #151923;
+      }
+      h1 {
+        margin: 0 0 12px;
+        font-size: 22px;
+        line-height: 1.2;
+      }
+      p {
+        margin: 0 0 18px;
+        color: #aab3c2;
+        line-height: 1.5;
+      }
+      code {
+        display: block;
+        padding: 12px 14px;
+        border-radius: 6px;
+        background: #090b10;
+        color: #8ff0c2;
+        overflow-wrap: anywhere;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Studio bundle missing</h1>
+      <p>The preview server started, but this CLI build does not contain the Studio assets.</p>
+      <code>pnpm run build</code>
+    </main>
+  </body>
+</html>`,
+        500,
+      );
     }
     return c.html(readFileSync(indexPath, "utf-8"));
   });

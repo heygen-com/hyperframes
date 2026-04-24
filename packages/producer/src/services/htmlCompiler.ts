@@ -196,7 +196,7 @@ async function compileHtmlFile(
   const preResolved = extractResolvedMedia(compiledHtml);
   const clampResults = await Promise.all(
     preResolved
-      .filter((el) => !!el.src)
+      .filter((el) => !!el.src && !el.loop)
       .map(async (el) => {
         const { duration: maxDuration } = await resolveMediaDuration(
           el.src!,
@@ -1097,6 +1097,7 @@ export interface BrowserMediaElement {
   end: number;
   duration: number;
   mediaStart: number;
+  loop: boolean;
   hasAudio: boolean;
   volume: number;
 }
@@ -1111,6 +1112,7 @@ export async function discoverMediaFromBrowser(page: Page): Promise<BrowserMedia
       end: number;
       duration: number;
       mediaStart: number;
+      loop: boolean;
       hasAudio: boolean;
       volume: number;
     }[] = [];
@@ -1126,6 +1128,7 @@ export async function discoverMediaFromBrowser(page: Page): Promise<BrowserMedia
       const end = parseFloat(htmlEl.getAttribute("data-end") || "0");
       const duration = parseFloat(htmlEl.getAttribute("data-duration") || "0");
       const mediaStart = parseFloat(htmlEl.getAttribute("data-media-start") || "0");
+      const loop = htmlEl.hasAttribute("loop");
       const hasAudio = htmlEl.getAttribute("data-has-audio") === "true";
       const volume = parseFloat(htmlEl.getAttribute("data-volume") || "1");
 
@@ -1137,6 +1140,7 @@ export async function discoverMediaFromBrowser(page: Page): Promise<BrowserMedia
         end,
         duration,
         mediaStart,
+        loop,
         hasAudio,
         volume,
       });

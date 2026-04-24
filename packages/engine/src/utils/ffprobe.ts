@@ -62,6 +62,8 @@ export interface VideoMetadata {
   hasAudio: boolean;
   /** True when r_frame_rate and avg_frame_rate differ significantly (>10%), indicating variable frame rate. */
   isVFR: boolean;
+  /** True when the stream carries an alpha channel. */
+  hasAlpha: boolean;
   /** Color space info from the video stream. Null if ffprobe didn't report it. */
   colorSpace: VideoColorSpace | null;
 }
@@ -79,6 +81,7 @@ interface FFProbeStream {
   codec_name?: string;
   width?: number;
   height?: number;
+  pix_fmt?: string;
   r_frame_rate?: string;
   avg_frame_rate?: string;
   sample_rate?: string;
@@ -86,6 +89,7 @@ interface FFProbeStream {
   color_transfer?: string;
   color_primaries?: string;
   color_space?: string;
+  tags?: Record<string, string>;
 }
 
 interface FFProbeFormat {
@@ -251,6 +255,7 @@ export async function extractMediaMetadata(filePath: string): Promise<VideoMetad
           videoCodec: "png",
           hasAudio: false,
           isVFR: false,
+          hasAlpha: false,
           colorSpace: stillImageMeta.colorSpace,
         };
       }
@@ -271,6 +276,10 @@ export async function extractMediaMetadata(filePath: string): Promise<VideoMetad
         ? { colorTransfer, colorPrimaries, colorSpace: colorSpaceVal }
         : null;
     const colorSpace = ffprobeColorSpace ?? stillImageMeta?.colorSpace ?? null;
+    const pixelFormat = videoStream.pix_fmt || "";
+    const alphaMode = videoStream.tags?.alpha_mode || "";
+    const hasAlpha =
+      /(^|[^a-z])yuva|rgba|argb|bgra|gbrap|gray[a-z0-9]*a/i.test(pixelFormat) || alphaMode === "1";
 
     return {
       durationSeconds: output?.format.duration ? parseFloat(output.format.duration) : 0,
@@ -280,6 +289,7 @@ export async function extractMediaMetadata(filePath: string): Promise<VideoMetad
       videoCodec: videoStream.codec_name || "unknown",
       hasAudio: output?.streams.some((s) => s.codec_type === "audio") ?? false,
       isVFR,
+      hasAlpha,
       colorSpace,
     };
   })();

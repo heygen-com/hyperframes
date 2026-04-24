@@ -1231,6 +1231,9 @@ export async function executeRenderJob(
                 if (el.hasAudio && !existing.hasAudio) {
                   existing.hasAudio = true;
                 }
+                if (el.loop && !existing.loop) {
+                  existing.loop = true;
+                }
               }
             } else {
               // New video discovered from browser
@@ -1240,6 +1243,7 @@ export async function executeRenderJob(
                 start: el.start,
                 end: el.end,
                 mediaStart: el.mediaStart,
+                loop: el.loop,
                 hasAudio: el.hasAudio,
               });
               existingVideoIds.add(el.id);

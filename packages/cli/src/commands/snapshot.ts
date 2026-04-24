@@ -25,6 +25,7 @@ const FFMPEG_EXTRACT_TIMEOUT_MS = 30_000;
 async function extractVideoFrameToBuffer(
   videoPath: string,
   timeSeconds: number,
+  useVp9AlphaDecoder = false,
 ): Promise<Buffer | null> {
   const tmp = mkdtempSync(join(tmpdir(), "hf-snapshot-frame-"));
   const outPath = join(tmp, "frame.png");
@@ -33,10 +34,11 @@ async function extractVideoFrameToBuffer(
       (resolvePromise) => {
         // `-ss` before `-i` performs a fast keyframe seek; adequate for snapshot accuracy
         // (±1 frame) and orders of magnitude faster than the decode-and-scan alternative.
-        const ff = spawn("ffmpeg", [
-          "-hide_banner",
-          "-loglevel",
-          "error",
+        const args = ["-hide_banner", "-loglevel", "error"];
+        if (useVp9AlphaDecoder) {
+          args.push("-c:v", "libvpx-vp9");
+        }
+        args.push(
           "-ss",
           String(Math.max(0, timeSeconds)),
           "-i",
@@ -47,7 +49,8 @@ async function extractVideoFrameToBuffer(
           "2",
           "-y",
           outPath,
-        ]);
+        );
+        const ff = spawn("ffmpeg", args);
         let stderr = "";
         let timedOut = false;
         const timer = setTimeout(() => {
@@ -252,19 +255,36 @@ async function captureSnapshots(
         updates: Array<{ videoId: string; dataUri: string }>,
       ) => Promise<void>;
       type SyncVisibilityFn = (page: unknown, activeVideoIds: string[]) => Promise<void>;
+      type ExtractMediaMetadataFn = (
+        filePath: string,
+      ) => Promise<{ videoCodec: string; hasAlpha: boolean }>;
       let injectVideoFramesBatch: InjectFn | null = null;
       let syncVideoFrameVisibility: SyncVisibilityFn | null = null;
+      let extractMediaMetadata: ExtractMediaMetadataFn | null = null;
       try {
         const engine = (await import("@hyperframes/engine")) as {
           injectVideoFramesBatch: InjectFn;
           syncVideoFrameVisibility: SyncVisibilityFn;
+          extractMediaMetadata: ExtractMediaMetadataFn;
         };
         injectVideoFramesBatch = engine.injectVideoFramesBatch;
         syncVideoFrameVisibility = engine.syncVideoFrameVisibility;
+        extractMediaMetadata = engine.extractMediaMetadata;
       } catch {
         // Engine unavailable in this install — snapshot will still run, and
         // compositions without <video data-start> get exactly the old behaviour.
       }
+      const alphaDecoderCache = new Map<string, Promise<boolean>>();
+      const shouldUseVp9AlphaDecoder = (filePath: string): Promise<boolean> => {
+        if (!extractMediaMetadata) return Promise.resolve(false);
+        const cached = alphaDecoderCache.get(filePath);
+        if (cached) return cached;
+        const pending = extractMediaMetadata(filePath)
+          .then((meta) => meta.hasAlpha && meta.videoCodec === "vp9")
+          .catch(() => false);
+        alphaDecoderCache.set(filePath, pending);
+        return pending;
+      };
 
       // Seek and capture each frame
       for (let i = 0; i < positions.length; i++) {
@@ -324,7 +344,10 @@ async function captureSnapshots(
                     : srcDur > 0
                       ? Math.max(0, (srcDur - mediaStart) / playbackRate)
                       : Number.POSITIVE_INFINITY;
-                const relTime = (t - start) * playbackRate + mediaStart;
+                let relTime = (t - start) * playbackRate + mediaStart;
+                if (v.loop && srcDur > mediaStart && relTime >= srcDur) {
+                  relTime = mediaStart + ((relTime - mediaStart) % (srcDur - mediaStart));
+                }
                 const activeNow = t >= start && t < start + duration && relTime >= 0 && !!v.id;
                 return {
                   id: v.id,
@@ -356,7 +379,11 @@ async function captureSnapshots(
               /* unresolvable src (e.g. blob:, data:) — skip */
             }
             if (!filePath) continue;
-            const png = await extractVideoFrameToBuffer(filePath, Math.max(0, v.relTime));
+            const png = await extractVideoFrameToBuffer(
+              filePath,
+              Math.max(0, v.relTime),
+              await shouldUseVp9AlphaDecoder(filePath),
+            );
             if (!png) continue;
             updates.push({
               videoId: v.id,
