@@ -75,6 +75,7 @@
               "guides/hyperframes-vs-remotion",
               "guides/gsap-animation",
               "guides/rendering",
+              "guides/gpu-capture",
               "guides/hdr",
               "guides/performance",
               "guides/timeline-editing",

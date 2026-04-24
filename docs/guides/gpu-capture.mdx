@@ -1,0 +1,109 @@
+---
+title: GPU Frame Capture
+description: Opt in to hardware GPU rendering in the headless-Chrome frame capture stage for faster renders on shader-heavy compositions.
+---
+
+HyperFrames renders in five stages. Stage 4 — **frame capture** — opens every
+HTML frame in headless Chromium and takes a screenshot. By default Chromium
+runs WebGL through the **SwiftShader** software rasterizer for maximum
+cross-platform compatibility. On shader-heavy compositions that software
+fallback becomes the render bottleneck.
+
+Enable `--gpu-capture` to switch Chromium to a hardware ANGLE backend
+(Direct3D 11 on Windows, Metal on macOS, OpenGL on Linux) and let your GPU
+rasterize instead.
+
+## When to use it
+
+- Your render feels slow and the composition uses shader blocks from the
+  registry (`glitch`, `swirl-vortex`, `sdf-iris`, `light-leak`, etc.) or your
+  own WebGL canvases.
+- You're on a workstation with a working GPU driver (NVIDIA / AMD / Intel on
+  Windows or Linux, any Apple Silicon or Intel Mac on macOS).
+- You've already tried `--gpu` (stage-5 NVENC encoding) and still have
+  headroom to improve wall time.
+
+Skip it when:
+
+- You're in a CI or Docker environment without GPU passthrough. The default
+  SwiftShader path Just Works.
+- Your composition is pure DOM/text with no WebGL. Expected speedup is
+  marginal (~10–25%) and the compatibility trade-off isn't worth it.
+
+## Usage
+
+```bash
+hyperframes render --gpu --gpu-capture --output render.mp4
+```
+
+`--gpu-capture` is independent of `--gpu` — you can enable either, both, or
+neither. `--gpu` drives stage-5 NVENC encoding; `--gpu-capture` drives the
+stage-4 Chromium backend.
+
+Set the env var `HYPERFRAMES_GPU_CAPTURE=1` (or `=true`) in your shell or CI
+config to enable without passing the flag every invocation:
+
+```bash
+export HYPERFRAMES_GPU_CAPTURE=1
+hyperframes render --output render.mp4
+```
+
+## Platform matrix
+
+| OS          | Backend selected | Default available out of the box                          |
+| ----------- | ---------------- | --------------------------------------------------------- |
+| Windows     | `d3d11`          | Yes on any machine with an installed display driver       |
+| macOS       | `metal`          | Yes on any Intel/Apple-Silicon Mac                        |
+| Linux       | `opengl`         | Usually — needs Mesa/ANGLE libs. Headless CI may need extra setup. |
+
+On Docker: the host needs `nvidia-container-runtime` (NVIDIA) or equivalent
+for GPU passthrough, and the container image must include the GL libs. If GPU
+capture silently falls back to software inside a container, leave `--gpu-capture`
+off — the env var stays off and Chromium uses SwiftShader.
+
+## Visual equivalence
+
+GPU and software rasterization can disagree by 1–2 pixels at anti-aliased
+edges. In practice:
+
+- Average PSNR between a CPU-captured render and a GPU-captured render is
+  >50 dB on shader-heavy rigs, well above the 40 dB visual-equivalence
+  threshold.
+- Deterministic output is preserved within the GPU backend — the same
+  composition on the same machine produces byte-identical frames across runs.
+
+If pixel-exact reproducibility across different rendering machines matters
+(e.g. regression tests with image diffs), stick with the SwiftShader default.
+If wall-time matters more, opt in.
+
+## Diagnosing silent fallback
+
+If you suspect Chromium is still using SwiftShader despite the flag:
+
+```js
+// snippet for a one-off probe script
+const puppeteer = require("puppeteer-core");
+const browser = await puppeteer.launch({
+  headless: true,
+  args: ["--use-gl=angle", "--use-angle=d3d11", "--ignore-gpu-blocklist"],
+});
+const page = await browser.newPage();
+await page.setContent('<canvas id="c"></canvas>');
+const info = await page.evaluate(() => {
+  const gl = document.getElementById("c").getContext("webgl");
+  const ext = gl.getExtension("WEBGL_debug_renderer_info");
+  return gl.getParameter(ext.UNMASKED_RENDERER_WEBGL);
+});
+console.log(info);
+await browser.close();
+```
+
+A healthy result looks like `ANGLE (NVIDIA, NVIDIA GeForce RTX 4080 …
+Direct3D11 …)`. If you see `SwiftShader Device`, the hardware backend didn't
+activate — usually a driver or Docker-passthrough issue.
+
+## Related
+
+- `--gpu` — hardware NVENC encoding in stage 5 (see [Rendering](./rendering)).
+- `--disable-gpu` — force-disable GPU entirely, including the capture stage
+  and any driver initialisation.
