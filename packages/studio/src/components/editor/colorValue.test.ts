@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { mergeColorWithExistingAlpha, parseCssColor, toColorPickerValue } from "./colorValue";
+import {
+  formatCssColor,
+  hsvToRgb,
+  mergeColorWithExistingAlpha,
+  parseCssColor,
+  rgbToHsv,
+  toColorPickerValue,
+  toHexColor,
+} from "./colorValue";
 
 describe("parseCssColor", () => {
   it("parses rgb values", () => {
@@ -33,6 +41,31 @@ describe("parseCssColor", () => {
 describe("toColorPickerValue", () => {
   it("converts css color to hex", () => {
     expect(toColorPickerValue("rgba(15, 23, 42, 0.64)")).toBe("#0f172a");
+  });
+});
+
+describe("toHexColor", () => {
+  it("formats rgb channels as hex", () => {
+    expect(toHexColor({ red: 15, green: 23, blue: 42 })).toBe("#0f172a");
+  });
+});
+
+describe("formatCssColor", () => {
+  it("formats opaque colors as rgb", () => {
+    expect(formatCssColor({ red: 18, green: 52, blue: 86, alpha: 1 })).toBe("rgb(18, 52, 86)");
+  });
+
+  it("formats translucent colors as rgba", () => {
+    expect(formatCssColor({ red: 18, green: 52, blue: 86, alpha: 0.64 })).toBe(
+      "rgba(18, 52, 86, 0.64)",
+    );
+  });
+});
+
+describe("rgb hsv conversion", () => {
+  it("round-trips primary color values", () => {
+    const hsv = rgbToHsv({ red: 47, green: 198, blue: 127 });
+    expect(hsvToRgb(hsv)).toEqual({ red: 47, green: 198, blue: 127 });
   });
 });
 

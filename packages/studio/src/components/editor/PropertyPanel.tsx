@@ -1,4 +1,14 @@
-import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import { createPortal } from "react-dom";
 import {
   Eye,
   Layers,
@@ -11,7 +21,15 @@ import {
   Type,
   X,
 } from "../../icons/SystemIcons";
-import { mergeColorWithExistingAlpha, parseCssColor, toColorPickerValue } from "./colorValue";
+import {
+  formatCssColor,
+  hsvToRgb,
+  parseCssColor,
+  rgbToHsv,
+  toColorPickerValue,
+  toHexColor,
+  type ParsedColor,
+} from "./colorValue";
 import {
   buildDefaultGradientModel,
   insertGradientStop,
@@ -26,6 +44,7 @@ import {
   POPULAR_GOOGLE_FONT_FAMILIES,
 } from "./fontCatalog";
 import { fontFamilyFromAssetPath, importedFontFaceCss, type ImportedFontAsset } from "./fontAssets";
+import { resolveFloatingPanelPosition, type FloatingPosition } from "./floatingPanel";
 import { IMAGE_EXT } from "../../utils/mediaTypes";
 
 interface PropertyPanelProps {
@@ -91,6 +110,12 @@ type FontSource = "Current" | "Document" | "Imported" | "Local" | "Google" | "Sy
 interface FontOption {
   family: string;
   source: FontSource;
+}
+
+const COLOR_PICKER_SIZE = { width: 292, height: 332 };
+
+function colorFromCss(value: string): ParsedColor {
+  return parseCssColor(value) ?? { red: 0, green: 0, blue: 0, alpha: 1 };
 }
 
 declare global {
@@ -937,21 +962,217 @@ function ColorField({
   disabled?: boolean;
   onCommit: (nextValue: string) => void;
 }) {
-  const pickerRef = useRef<HTMLInputElement | null>(null);
-  const [pickerValue, setPickerValue] = useState(toColorPickerValue(value));
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  const [open, setOpen] = useState(false);
+  const [panelPosition, setPanelPosition] = useState<FloatingPosition | null>(null);
+  const [draftColor, setDraftColor] = useState<ParsedColor>(() => colorFromCss(value));
+  const [hexDraft, setHexDraft] = useState(() => toHexColor(colorFromCss(value)).toUpperCase());
+  const hsv = rgbToHsv(draftColor);
 
   useEffect(() => {
-    setPickerValue(toColorPickerValue(value));
+    const nextColor = colorFromCss(value);
+    setDraftColor(nextColor);
+    setHexDraft(toHexColor(nextColor).toUpperCase());
   }, [value]);
 
+  const updatePanelPosition = useCallback(() => {
+    const anchor = buttonRef.current?.getBoundingClientRect();
+    if (!anchor) return;
+    const measured = panelRef.current?.getBoundingClientRect();
+    setPanelPosition(
+      resolveFloatingPanelPosition(
+        anchor,
+        { width: window.innerWidth, height: window.innerHeight },
+        {
+          width: measured?.width || COLOR_PICKER_SIZE.width,
+          height: measured?.height || COLOR_PICKER_SIZE.height,
+        },
+      ),
+    );
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    updatePanelPosition();
+
+    const handlePositionInvalidated = () => updatePanelPosition();
+    window.addEventListener("resize", handlePositionInvalidated);
+    window.addEventListener("scroll", handlePositionInvalidated, true);
+    return () => {
+      window.removeEventListener("resize", handlePositionInvalidated);
+      window.removeEventListener("scroll", handlePositionInvalidated, true);
+    };
+  }, [open, updatePanelPosition]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (panelRef.current?.contains(target) || buttonRef.current?.contains(target)) return;
+      setOpen(false);
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open]);
+
+  const commitColor = (nextColor: ParsedColor) => {
+    setDraftColor(nextColor);
+    setHexDraft(toHexColor(nextColor).toUpperCase());
+    onCommit(formatCssColor(nextColor));
+  };
+
+  const commitHsv = (nextHsv: { hue?: number; saturation?: number; value?: number }) => {
+    const rgb = hsvToRgb({
+      hue: nextHsv.hue ?? hsv.hue,
+      saturation: nextHsv.saturation ?? hsv.saturation,
+      value: nextHsv.value ?? hsv.value,
+    });
+    commitColor({ ...rgb, alpha: draftColor.alpha });
+  };
+
+  const updateSaturationValue = (clientX: number, clientY: number, target: HTMLDivElement) => {
+    const rect = target.getBoundingClientRect();
+    const saturation = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    const nextValue = Math.max(0, Math.min(1, 1 - (clientY - rect.top) / rect.height));
+    commitHsv({ saturation, value: nextValue });
+  };
+
+  const handleHexCommit = (nextHex: string) => {
+    setHexDraft(nextHex);
+    const normalized = nextHex.trim().startsWith("#") ? nextHex.trim() : `#${nextHex.trim()}`;
+    const parsed = parseCssColor(normalized);
+    if (!parsed) return;
+    commitColor({ ...parsed, alpha: draftColor.alpha });
+  };
+
+  const picker = open
+    ? createPortal(
+        <div
+          ref={panelRef}
+          className="fixed z-[9999] w-[292px] overflow-hidden rounded-2xl border border-neutral-700 bg-neutral-950 shadow-2xl shadow-black/50"
+          style={{
+            left: panelPosition?.left ?? -9999,
+            top: panelPosition?.top ?? -9999,
+          }}
+        >
+          <div className="flex items-center justify-between border-b border-neutral-800 px-3 py-2">
+            <div className="min-w-0">
+              <div className="truncate text-[11px] font-medium text-neutral-100">{label}</div>
+              <div className="text-[9px] uppercase tracking-[0.16em] text-neutral-600">Color</div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              className="flex h-7 w-7 items-center justify-center rounded-lg text-neutral-500 transition-colors hover:bg-neutral-900 hover:text-neutral-200"
+              aria-label="Close color picker"
+            >
+              <X size={13} />
+            </button>
+          </div>
+          <div className="space-y-3 p-3">
+            <div
+              className="relative h-36 cursor-crosshair overflow-hidden rounded-xl border border-neutral-800"
+              style={{
+                backgroundColor: formatCssColor({
+                  ...hsvToRgb({ hue: hsv.hue, saturation: 1, value: 1 }),
+                  alpha: 1,
+                }),
+              }}
+              onPointerDown={(event) => {
+                event.currentTarget.setPointerCapture(event.pointerId);
+                updateSaturationValue(event.clientX, event.clientY, event.currentTarget);
+              }}
+              onPointerMove={(event) => {
+                if (event.buttons !== 1) return;
+                updateSaturationValue(event.clientX, event.clientY, event.currentTarget);
+              }}
+            >
+              <div className="absolute inset-0 bg-gradient-to-r from-white to-transparent" />
+              <div className="absolute inset-0 bg-gradient-to-t from-black to-transparent" />
+              <div
+                className="absolute h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow-[0_0_0_1px_rgba(0,0,0,0.7)]"
+                style={{
+                  left: `${hsv.saturation * 100}%`,
+                  top: `${(1 - hsv.value) * 100}%`,
+                }}
+              />
+            </div>
+
+            <div className="grid grid-cols-[32px_minmax(0,1fr)] items-center gap-3">
+              <div
+                className="h-8 w-8 rounded-lg border border-neutral-700"
+                style={{ backgroundColor: formatCssColor(draftColor) }}
+              />
+              <input
+                type="range"
+                min={0}
+                max={360}
+                value={Math.round(hsv.hue)}
+                onChange={(event) => commitHsv({ hue: Number.parseFloat(event.target.value) })}
+                className="h-2 w-full accent-studio-accent"
+                style={{
+                  background: "linear-gradient(90deg, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00)",
+                }}
+                aria-label="Hue"
+              />
+            </div>
+
+            <div className="grid grid-cols-[32px_minmax(0,1fr)_42px] items-center gap-3">
+              <span className="text-[10px] uppercase tracking-[0.14em] text-neutral-600">
+                Alpha
+              </span>
+              <input
+                type="range"
+                min={0}
+                max={1}
+                step={0.01}
+                value={draftColor.alpha}
+                onChange={(event) =>
+                  commitColor({
+                    ...draftColor,
+                    alpha: Number.parseFloat(event.target.value),
+                  })
+                }
+                className="h-2 w-full accent-studio-accent"
+                aria-label="Alpha"
+              />
+              <span className="text-right text-[10px] font-medium text-neutral-400">
+                {Math.round(draftColor.alpha * 100)}%
+              </span>
+            </div>
+
+            <label className="grid gap-1.5">
+              <span className={LABEL}>Hex</span>
+              <input
+                value={hexDraft}
+                onChange={(event) => handleHexCommit(event.target.value)}
+                className={`${FIELD} h-10 w-full text-[11px] font-medium outline-none`}
+                spellCheck={false}
+              />
+            </label>
+          </div>
+        </div>,
+        document.body,
+      )
+    : null;
+
   const openPicker = () => {
-    const picker = pickerRef.current;
-    if (!picker || disabled) return;
-    if (typeof picker.showPicker === "function") {
-      picker.showPicker();
-      return;
+    if (disabled) return;
+    setOpen((current) => !current);
+    if (!open) {
+      requestAnimationFrame(updatePanelPosition);
     }
-    picker.click();
   };
 
   return (
@@ -961,8 +1182,9 @@ function ColorField({
         type="button"
         disabled={disabled}
         aria-label={`Pick ${label.toLowerCase()} color`}
+        ref={buttonRef}
         onClick={openPicker}
-        className={`${FIELD} flex items-center gap-3 text-left hover:border-neutral-700 disabled:cursor-not-allowed`}
+        className={`${FIELD} flex items-center gap-3 text-left hover:border-neutral-700 disabled:cursor-not-allowed ${open ? "border-neutral-600" : ""}`}
       >
         <div
           className="relative h-7 w-7 flex-shrink-0 overflow-hidden rounded-lg border border-neutral-700 bg-neutral-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
@@ -972,20 +1194,7 @@ function ColorField({
           {value}
         </span>
       </button>
-      <input
-        ref={pickerRef}
-        type="color"
-        tabIndex={-1}
-        disabled={disabled}
-        value={pickerValue}
-        onChange={(e) => {
-          const nextValue = e.target.value;
-          setPickerValue(nextValue);
-          onCommit(mergeColorWithExistingAlpha(nextValue, value));
-        }}
-        className="pointer-events-none absolute opacity-0"
-        aria-hidden="true"
-      />
+      {picker}
     </div>
   );
 }
