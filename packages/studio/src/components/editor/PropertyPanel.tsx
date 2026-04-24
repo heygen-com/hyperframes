@@ -112,7 +112,7 @@ interface FontOption {
   source: FontSource;
 }
 
-const COLOR_PICKER_SIZE = { width: 292, height: 332 };
+const COLOR_PICKER_SIZE = { width: 292, height: 386 };
 
 function colorFromCss(value: string): ParsedColor {
   return parseCssColor(value) ?? { red: 0, green: 0, blue: 0, alpha: 1 };
@@ -969,6 +969,15 @@ function ColorField({
   const [draftColor, setDraftColor] = useState<ParsedColor>(() => colorFromCss(value));
   const [hexDraft, setHexDraft] = useState(() => toHexColor(colorFromCss(value)).toUpperCase());
   const hsv = rgbToHsv(draftColor);
+  const hueColor = formatCssColor({
+    ...hsvToRgb({ hue: hsv.hue, saturation: 1, value: 1 }),
+    alpha: 1,
+  });
+  const opaqueColor = formatCssColor({ ...draftColor, alpha: 1 });
+  const currentColor = formatCssColor(draftColor);
+  const saturationPercent = Math.round(hsv.saturation * 100);
+  const brightnessPercent = Math.round(hsv.value * 100);
+  const alphaPercent = Math.round(draftColor.alpha * 100);
 
   useEffect(() => {
     const nextColor = colorFromCss(value);
@@ -1082,12 +1091,9 @@ function ColorField({
           </div>
           <div className="space-y-3 p-3">
             <div
-              className="relative h-36 cursor-crosshair overflow-hidden rounded-xl border border-neutral-800"
+              className="relative h-36 cursor-crosshair overflow-hidden rounded-xl border border-neutral-700 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]"
               style={{
-                backgroundColor: formatCssColor({
-                  ...hsvToRgb({ hue: hsv.hue, saturation: 1, value: 1 }),
-                  alpha: 1,
-                }),
+                backgroundColor: hueColor,
               }}
               onPointerDown={(event) => {
                 event.currentTarget.setPointerCapture(event.pointerId);
@@ -1101,56 +1107,63 @@ function ColorField({
               <div className="absolute inset-0 bg-gradient-to-r from-white to-transparent" />
               <div className="absolute inset-0 bg-gradient-to-t from-black to-transparent" />
               <div
-                className="absolute h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow-[0_0_0_1px_rgba(0,0,0,0.7)]"
+                className="pointer-events-none absolute top-0 h-full w-px -translate-x-1/2 bg-white/70 shadow-[0_0_0_1px_rgba(0,0,0,0.45)] mix-blend-difference"
+                style={{ left: `${hsv.saturation * 100}%` }}
+              />
+              <div
+                className="pointer-events-none absolute left-0 h-px w-full -translate-y-1/2 bg-white/70 shadow-[0_0_0_1px_rgba(0,0,0,0.45)] mix-blend-difference"
+                style={{ top: `${(1 - hsv.value) * 100}%` }}
+              />
+              <div
+                className="pointer-events-none absolute h-6 w-6 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow-[0_0_0_1px_rgba(0,0,0,0.85),0_8px_18px_rgba(0,0,0,0.45)]"
                 style={{
                   left: `${hsv.saturation * 100}%`,
                   top: `${(1 - hsv.value) * 100}%`,
+                  backgroundColor: opaqueColor,
                 }}
               />
             </div>
 
-            <div className="grid grid-cols-[32px_minmax(0,1fr)] items-center gap-3">
+            <div className="flex min-w-0 items-center gap-3">
               <div
-                className="h-8 w-8 rounded-lg border border-neutral-700"
-                style={{ backgroundColor: formatCssColor(draftColor) }}
+                className="h-9 w-9 flex-shrink-0 rounded-xl border border-neutral-600 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]"
+                style={{ backgroundColor: currentColor }}
               />
-              <input
-                type="range"
-                min={0}
-                max={360}
-                value={Math.round(hsv.hue)}
-                onChange={(event) => commitHsv({ hue: Number.parseFloat(event.target.value) })}
-                className="h-2 w-full accent-studio-accent"
-                style={{
-                  background: "linear-gradient(90deg, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00)",
-                }}
-                aria-label="Hue"
-              />
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-[11px] font-medium text-neutral-100">
+                  {currentColor}
+                </div>
+                <div className="mt-0.5 text-[9px] uppercase tracking-[0.12em] text-neutral-600">
+                  S {saturationPercent}% · B {brightnessPercent}% · A {alphaPercent}%
+                </div>
+              </div>
             </div>
 
-            <div className="grid grid-cols-[32px_minmax(0,1fr)_42px] items-center gap-3">
-              <span className="text-[10px] uppercase tracking-[0.14em] text-neutral-600">
-                Alpha
-              </span>
-              <input
-                type="range"
-                min={0}
-                max={1}
-                step={0.01}
-                value={draftColor.alpha}
-                onChange={(event) =>
-                  commitColor({
-                    ...draftColor,
-                    alpha: Number.parseFloat(event.target.value),
-                  })
-                }
-                className="h-2 w-full accent-studio-accent"
-                aria-label="Alpha"
-              />
-              <span className="text-right text-[10px] font-medium text-neutral-400">
-                {Math.round(draftColor.alpha * 100)}%
-              </span>
-            </div>
+            <ColorSlider
+              label="Hue"
+              value={hsv.hue}
+              min={0}
+              max={360}
+              step={1}
+              displayValue={`${Math.round(hsv.hue)}°`}
+              background="linear-gradient(90deg, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00)"
+              thumbColor={hueColor}
+              disabled={disabled}
+              onCommit={(nextHue) => commitHsv({ hue: nextHue })}
+            />
+
+            <ColorSlider
+              label="Alpha"
+              value={draftColor.alpha}
+              min={0}
+              max={1}
+              step={0.01}
+              displayValue={`${alphaPercent}%`}
+              background={`linear-gradient(90deg, transparent, ${opaqueColor})`}
+              thumbColor={currentColor}
+              disabled={disabled}
+              onCommit={(nextAlpha) => commitColor({ ...draftColor, alpha: nextAlpha })}
+            />
 
             <label className="grid gap-1.5">
               <span className={LABEL}>Hex</span>
@@ -1195,6 +1208,98 @@ function ColorField({
         </span>
       </button>
       {picker}
+    </div>
+  );
+}
+
+function ColorSlider({
+  label,
+  value,
+  min,
+  max,
+  step,
+  displayValue,
+  background,
+  thumbColor,
+  disabled,
+  onCommit,
+}: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  displayValue: string;
+  background: string;
+  thumbColor: string;
+  disabled?: boolean;
+  onCommit: (nextValue: number) => void;
+}) {
+  const trackRef = useRef<HTMLDivElement | null>(null);
+  const percent = ((value - min) / (max - min)) * 100;
+
+  const commitFromClientX = (clientX: number) => {
+    const rect = trackRef.current?.getBoundingClientRect();
+    if (!rect || rect.width <= 0) return;
+    const rawValue = min + ((clientX - rect.left) / rect.width) * (max - min);
+    const stepped = Math.round(rawValue / step) * step;
+    onCommit(Math.max(min, Math.min(max, stepped)));
+  };
+
+  const commitKeyboardValue = (nextValue: number) => {
+    onCommit(Math.max(min, Math.min(max, nextValue)));
+  };
+
+  return (
+    <div className="grid gap-1.5">
+      <div className="flex items-center justify-between">
+        <span className={LABEL}>{label}</span>
+        <span className="text-[10px] font-medium text-neutral-400">{displayValue}</span>
+      </div>
+      <div
+        ref={trackRef}
+        role="slider"
+        tabIndex={disabled ? -1 : 0}
+        aria-label={label}
+        aria-valuemin={min}
+        aria-valuemax={max}
+        aria-valuenow={value}
+        aria-disabled={disabled}
+        className={`relative h-4 rounded-full border border-neutral-700 shadow-[inset_0_1px_2px_rgba(0,0,0,0.55)] outline-none focus:border-[#f5a400] focus:ring-2 focus:ring-[#f5a400]/40 ${
+          disabled ? "cursor-not-allowed opacity-50" : "cursor-ew-resize"
+        }`}
+        style={{ background }}
+        onPointerDown={(event) => {
+          if (disabled) return;
+          event.currentTarget.setPointerCapture(event.pointerId);
+          commitFromClientX(event.clientX);
+        }}
+        onPointerMove={(event) => {
+          if (disabled || event.buttons !== 1) return;
+          commitFromClientX(event.clientX);
+        }}
+        onKeyDown={(event) => {
+          if (disabled) return;
+          if (event.key === "ArrowRight" || event.key === "ArrowUp") {
+            event.preventDefault();
+            commitKeyboardValue(value + step);
+          } else if (event.key === "ArrowLeft" || event.key === "ArrowDown") {
+            event.preventDefault();
+            commitKeyboardValue(value - step);
+          } else if (event.key === "Home") {
+            event.preventDefault();
+            commitKeyboardValue(min);
+          } else if (event.key === "End") {
+            event.preventDefault();
+            commitKeyboardValue(max);
+          }
+        }}
+      >
+        <div
+          className="pointer-events-none absolute top-1/2 h-6 w-6 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow-[0_0_0_1px_rgba(0,0,0,0.85),0_6px_14px_rgba(0,0,0,0.5)]"
+          style={{ left: `${Math.max(0, Math.min(100, percent))}%`, backgroundColor: thumbColor }}
+        />
+      </div>
     </div>
   );
 }
