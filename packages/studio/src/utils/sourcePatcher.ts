@@ -332,11 +332,29 @@ function patchTextContent(html: string, elementId: string, value: string): strin
   const openingTag = match[1];
   const tagName = match[2];
   const contentStart = match.index + openingTag.length;
-  const closingTag = `</${tagName}>`;
-  const closingIndex = html.indexOf(closingTag, contentStart);
+  const closingIndex = findMatchingClosingTagIndex(html, tagName, contentStart);
   if (closingIndex < 0) return html;
 
   return `${html.slice(0, contentStart)}${value}${html.slice(closingIndex)}`;
+}
+
+function findMatchingClosingTagIndex(html: string, tagName: string, contentStart: number): number {
+  const tagPattern = new RegExp(`</?${escapeRegex(tagName)}\\b[^>]*>`, "gi");
+  tagPattern.lastIndex = contentStart;
+  let depth = 1;
+  let match: RegExpExecArray | null;
+
+  while ((match = tagPattern.exec(html)) !== null) {
+    const tag = match[0];
+    if (tag.startsWith("</")) {
+      depth -= 1;
+      if (depth === 0) return match.index;
+      continue;
+    }
+    if (!tag.endsWith("/>")) depth += 1;
+  }
+
+  return -1;
 }
 
 function patchTextContentByTarget(html: string, target: PatchTarget, value: string): string {
@@ -347,8 +365,7 @@ function patchTextContentByTarget(html: string, target: PatchTarget, value: stri
   const tagName = tagNameMatch?.[1];
   if (!tagName) return html;
 
-  const closingTag = `</${tagName}>`;
-  const closingIndex = html.indexOf(closingTag, match.end);
+  const closingIndex = findMatchingClosingTagIndex(html, tagName, match.end + 1);
   if (closingIndex < 0) return html;
 
   return `${html.slice(0, match.end + 1)}${value}${html.slice(closingIndex)}`;

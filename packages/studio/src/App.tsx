@@ -11,7 +11,7 @@ import type { TimelineElement } from "./player";
 import { LintModal } from "./components/LintModal";
 import type { LintFinding } from "./components/LintModal";
 import { MediaPreview } from "./components/MediaPreview";
-import { isMediaFile } from "./utils/mediaTypes";
+import { FONT_EXT, isMediaFile } from "./utils/mediaTypes";
 import {
   buildTimelineAssetId,
   buildTimelineAssetInsertHtml,
@@ -51,9 +51,15 @@ import {
 } from "./utils/timelineDiscovery";
 import { PropertyPanel } from "./components/editor/PropertyPanel";
 import { googleFontStylesheetUrl } from "./components/editor/fontCatalog";
+import {
+  fontFamilyFromAssetPath,
+  importedFontFaceCss,
+  type ImportedFontAsset,
+} from "./components/editor/fontAssets";
 import { DomEditOverlay } from "./components/editor/DomEditOverlay";
 import {
   buildDefaultDomEditTextField,
+  buildDomEditDetachPatchOperations,
   buildDomEditMovePatchOperations,
   buildDomEditResizePatchOperations,
   buildDomEditStylePatchOperation,
@@ -118,8 +124,69 @@ function injectPreviewGoogleFont(doc: Document, fontFamilyValue: string): void {
   link.href = googleFontStylesheetUrl(family);
   doc.head.appendChild(link);
 }
-type FocusedDesignSection = "position" | "styles" | null;
 
+function primaryFontFamilyValue(value: string): string {
+  return (
+    value
+      .split(",")[0]
+      ?.trim()
+      .replace(/^["']|["']$/g, "")
+      .trim() ?? ""
+  );
+}
+
+function injectPreviewImportedFont(doc: Document, asset: ImportedFontAsset): void {
+  const id = `studio-imported-font-${asset.family.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+  if (doc.getElementById(id)) return;
+  const style = doc.createElement("style");
+  style.id = id;
+  style.textContent = importedFontFaceCss(asset);
+  doc.head.appendChild(style);
+}
+
+function normalizeProjectAssetPath(value: string): string {
+  const trimmed = value.trim();
+  const maybeUrl = /^[a-z]+:\/\//i.test(trimmed) ? new URL(trimmed).pathname : trimmed;
+  return decodeURIComponent(maybeUrl)
+    .replace(/\\/g, "/")
+    .replace(/^\.?\//, "");
+}
+
+function toRelativeProjectAssetPath(sourceFile: string, assetPath: string): string {
+  const fromParts = normalizeProjectAssetPath(sourceFile).split("/").filter(Boolean);
+  const targetParts = normalizeProjectAssetPath(assetPath).split("/").filter(Boolean);
+
+  fromParts.pop();
+
+  while (fromParts.length > 0 && targetParts.length > 0 && fromParts[0] === targetParts[0]) {
+    fromParts.shift();
+    targetParts.shift();
+  }
+
+  return [...fromParts.map(() => ".."), ...targetParts].join("/") || assetPath;
+}
+
+function ensureImportedFontFace(
+  html: string,
+  asset: ImportedFontAsset,
+  sourceFile: string,
+): string {
+  const css = importedFontFaceCss(asset, toRelativeProjectAssetPath(sourceFile, asset.path));
+  if (html.includes(css)) return html;
+
+  const styleRe = /<style\b[^>]*data-hf-studio-fonts=(["'])true\1[^>]*>([\s\S]*?)<\/style>/i;
+  const styleMatch = styleRe.exec(html);
+  if (styleMatch) {
+    const nextCss = `${styleMatch[2].trim()}\n${css}`.trim();
+    return html.replace(styleMatch[0], `<style data-hf-studio-fonts="true">\n${nextCss}\n</style>`);
+  }
+
+  const styleTag = `<style data-hf-studio-fonts="true">\n${css}\n</style>`;
+  if (/<\/head>/i.test(html)) {
+    return html.replace(/<\/head>/i, `  ${styleTag}\n  </head>`);
+  }
+  return `${styleTag}\n${html}`;
+}
 function normalizeDomEditStyleValue(property: string, value: string): string {
   const trimmed = value.trim();
   if (!trimmed) return trimmed;
@@ -271,6 +338,37 @@ function isMoveStyleProperty(property: string): boolean {
 
 function isResizeStyleProperty(property: string): boolean {
   return property === "width" || property === "height";
+}
+
+function getDomDetachCoordinateRoot(element: HTMLElement): HTMLElement {
+  const offsetParent = element.offsetParent;
+  if (offsetParent instanceof HTMLElement) return offsetParent;
+
+  let current = element.parentElement;
+  while (current) {
+    if (current.hasAttribute("data-composition-id")) return current;
+    current = current.parentElement;
+  }
+
+  return element.ownerDocument.body;
+}
+
+function measureDomDetachRect(element: HTMLElement): {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+} {
+  const root = getDomDetachCoordinateRoot(element);
+  const rect = element.getBoundingClientRect();
+  const rootRect = root.getBoundingClientRect();
+
+  return {
+    left: rect.left - rootRect.left + root.scrollLeft,
+    top: rect.top - rootRect.top + root.scrollTop,
+    width: rect.width,
+    height: rect.height,
+  };
 }
 
 function getDomSelectionClickKey(
@@ -493,7 +591,6 @@ export function StudioApp() {
   const [domEditSelection, setDomEditSelection] = useState<DomEditSelection | null>(null);
   const [copiedAgentPrompt, setCopiedAgentPrompt] = useState(false);
   const [agentModalOpen, setAgentModalOpen] = useState(false);
-  const [focusedDesignSection, setFocusedDesignSection] = useState<FocusedDesignSection>(null);
   const [previewIframe, setPreviewIframe] = useState<HTMLIFrameElement | null>(null);
   // Auto-enter caption edit mode when the iframe contains .caption-group elements.
   // This is a subscription to external events (postMessage from runtime) — useEffect
@@ -623,6 +720,8 @@ export function StudioApp() {
   const dragCounterRef = useRef(0);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastBlockedTimelineToastAtRef = useRef(0);
+  const lastBlockedDomMoveToastAtRef = useRef(0);
+  const importedFontAssetsRef = useRef<ImportedFontAsset[]>([]);
   const previewHotkeyWindowRef = useRef<Window | null>(null);
   const panelDragRef = useRef<{
     side: "left" | "right";
@@ -880,6 +979,7 @@ export function StudioApp() {
   const domEditSelectionRef = useRef<DomEditSelection | null>(domEditSelection);
   const lastPreviewClickRef = useRef<{ key: string; at: number } | null>(null);
   const domEditSaveTimestampRef = useRef(0);
+  const domTextCommitVersionRef = useRef(0);
 
   // Listen for external file changes (user editing HTML outside the editor).
   // In dev: use Vite HMR. In embedded/production: use SSE from /api/events.
@@ -1287,6 +1387,22 @@ export function StudioApp() {
     [showToast],
   );
 
+  const handleBlockedDomMove = useCallback(
+    (selection: DomEditSelection) => {
+      const now = Date.now();
+      if (now - lastBlockedDomMoveToastAtRef.current < 1500) return;
+      lastBlockedDomMoveToastAtRef.current = now;
+      showToast(
+        selection.capabilities.canDetachFromLayout
+          ? "This layer is controlled by layout. Use Make movable in the panel to detach it."
+          : (selection.capabilities.reasonIfDisabled ??
+              "This element can’t be moved directly from the preview."),
+        "info",
+      );
+    },
+    [showToast],
+  );
+
   const applyDomSelection = useCallback(
     (selection: DomEditSelection | null, options?: { revealPanel?: boolean }) => {
       setDomEditSelection(selection);
@@ -1301,7 +1417,6 @@ export function StudioApp() {
         return;
       }
 
-      setFocusedDesignSection(null);
       setSelectedTimelineElementId(null);
     },
     [setSelectedTimelineElementId, timelineElements],
@@ -1333,6 +1448,8 @@ export function StudioApp() {
             isCompositionHost: true,
             capabilities: resolveDomEditCapabilities({
               selector: hostSelection.selector,
+              tagName: hostSelection.tagName,
+              className: hostSelection.element.className,
               inlineStyles: hostSelection.inlineStyles,
               computedStyles: hostSelection.computedStyles,
               isCompositionHost: true,
@@ -1351,14 +1468,42 @@ export function StudioApp() {
     [activeCompPath, compIdToSrc, fileTree, isMasterView, timelineElements],
   );
 
+  const resolveImportedFontAsset = useCallback(
+    (fontFamilyValue: string): ImportedFontAsset | null => {
+      const family = primaryFontFamilyValue(fontFamilyValue);
+      if (!family) return null;
+      const imported = importedFontAssetsRef.current.find(
+        (font) => font.family.toLowerCase() === family.toLowerCase(),
+      );
+      if (imported) return imported;
+      const asset = fileTree.find(
+        (path) =>
+          FONT_EXT.test(path) &&
+          fontFamilyFromAssetPath(path).toLowerCase() === family.toLowerCase(),
+      );
+      if (!asset) return null;
+      return {
+        family: fontFamilyFromAssetPath(asset),
+        path: asset,
+        url: `/api/projects/${projectId}/preview/${asset}`,
+      };
+    },
+    [fileTree, projectId],
+  );
+
   const persistDomEditOperations = useCallback(
     async (
       selection: DomEditSelection,
       operations: Parameters<typeof applyPatchByTarget>[2][],
-      options?: { skipRefresh?: boolean },
+      options?: {
+        skipRefresh?: boolean;
+        prepareContent?: (html: string, sourceFile: string) => string;
+        shouldSave?: () => boolean;
+      },
     ) => {
       const pid = projectIdRef.current;
       if (!pid) throw new Error("No active project");
+      if (options?.shouldSave && !options.shouldSave()) return;
 
       const targetPath = selection.sourceFile || activeCompPath || "index.html";
       const response = await fetch(`/api/projects/${pid}/files/${encodeURIComponent(targetPath)}`);
@@ -1376,6 +1521,10 @@ export function StudioApp() {
       for (const operation of operations) {
         patchedContent = applyPatchByTarget(patchedContent, selection, operation);
       }
+      if (options?.prepareContent) {
+        patchedContent = options.prepareContent(patchedContent, targetPath);
+      }
+      if (options?.shouldSave && !options.shouldSave()) return;
 
       if (patchedContent === originalContent) {
         throw new Error(`Unable to patch ${selection.selector ?? selection.id ?? "selection"}`);
@@ -1438,12 +1587,53 @@ export function StudioApp() {
     [persistDomEditOperations],
   );
 
+  const handleDomDetachFromLayout = useCallback(async () => {
+    const selection = domEditSelection;
+    if (!selection?.capabilities.canDetachFromLayout) return;
+
+    const doc = previewIframeRef.current?.contentDocument;
+    const element = doc
+      ? findElementForSelection(doc, selection, selection.sourceFile)
+      : selection.element;
+    if (!element) {
+      showToast("Could not find the selected layer in the preview.", "info");
+      return;
+    }
+
+    const rect = measureDomDetachRect(element);
+    const operations = buildDomEditDetachPatchOperations(rect);
+
+    for (const operation of operations) {
+      element.style.setProperty(operation.property, operation.value);
+    }
+
+    await persistDomEditOperations(selection, operations, { skipRefresh: true });
+
+    const refreshed = doc ? findElementForSelection(doc, selection, selection.sourceFile) : element;
+    if (refreshed) {
+      const nextSelection = buildDomSelectionFromTarget(refreshed);
+      if (nextSelection) {
+        applyDomSelection(nextSelection, { revealPanel: false });
+      }
+    }
+    showToast("Layer detached from layout. You can move it now.", "info");
+  }, [
+    applyDomSelection,
+    buildDomSelectionFromTarget,
+    domEditSelection,
+    persistDomEditOperations,
+    showToast,
+  ]);
+
   const handleDomStyleCommit = useCallback(
     async (property: string, value: string) => {
       if (!domEditSelection) return;
-      if (!domEditSelection.capabilities.canEditStyles) return;
-      if (isMoveStyleProperty(property) && !domEditSelection.capabilities.canMove) return;
-      if (isResizeStyleProperty(property) && !domEditSelection.capabilities.canResize) return;
+      const isMoveStyle = isMoveStyleProperty(property);
+      const isResizeStyle = isResizeStyleProperty(property);
+      if (isMoveStyle && !domEditSelection.capabilities.canMove) return;
+      if (isResizeStyle && !domEditSelection.capabilities.canResize) return;
+      if (!isMoveStyle && !isResizeStyle && !domEditSelection.capabilities.canEditStyles) return;
+      const importedFont = property === "font-family" ? resolveImportedFontAsset(value) : null;
       const iframe = previewIframeRef.current;
       const doc = iframe?.contentDocument;
       if (doc) {
@@ -1452,6 +1642,7 @@ export function StudioApp() {
           el.style.setProperty(property, normalizeDomEditStyleValue(property, value));
           if (property === "font-family") {
             injectPreviewGoogleFont(doc, value);
+            if (importedFont) injectPreviewImportedFont(doc, importedFont);
           }
           if (shouldDetachOppositeEdges(domEditSelection)) {
             if (property === "width") el.style.right = "auto";
@@ -1478,15 +1669,22 @@ export function StudioApp() {
           buildDomEditStylePatchOperation("background-size", "contain"),
         );
       }
-      await persistDomEditOperations(domEditSelection, operations, { skipRefresh: true });
+      await persistDomEditOperations(domEditSelection, operations, {
+        skipRefresh: true,
+        prepareContent: importedFont
+          ? (html, sourceFile) => ensureImportedFontFace(html, importedFont, sourceFile)
+          : undefined,
+      });
     },
-    [domEditSelection, persistDomEditOperations],
+    [domEditSelection, persistDomEditOperations, resolveImportedFontAsset],
   );
 
   const handleDomTextCommit = useCallback(
     async (value: string, fieldKey?: string) => {
       if (!domEditSelection) return;
       if (!isTextEditableSelection(domEditSelection)) return;
+      const commitVersion = domTextCommitVersionRef.current + 1;
+      domTextCommitVersionRef.current = commitVersion;
       const nextTextFields =
         domEditSelection.textFields.length > 0
           ? domEditSelection.textFields.map((field) =>
@@ -1515,8 +1713,12 @@ export function StudioApp() {
       await persistDomEditOperations(
         domEditSelection,
         [buildDomEditTextPatchOperation(nextContent)],
-        { skipRefresh: true },
+        {
+          skipRefresh: true,
+          shouldSave: () => domTextCommitVersionRef.current === commitVersion,
+        },
       );
+      if (domTextCommitVersionRef.current !== commitVersion) return;
 
       if (doc) {
         const refreshed = findElementForSelection(
@@ -1536,7 +1738,11 @@ export function StudioApp() {
   );
 
   const commitDomTextFields = useCallback(
-    async (selection: DomEditSelection, nextTextFields: DomEditTextField[]) => {
+    async (
+      selection: DomEditSelection,
+      nextTextFields: DomEditTextField[],
+      options?: { importedFont?: ImportedFontAsset | null },
+    ) => {
       const nextContent =
         nextTextFields.length > 1 || nextTextFields.some((field) => field.source === "child")
           ? serializeDomEditTextFields(nextTextFields)
@@ -1558,8 +1764,12 @@ export function StudioApp() {
         }
       }
 
+      const importedFont = options?.importedFont ?? null;
       await persistDomEditOperations(selection, [buildDomEditTextPatchOperation(nextContent)], {
         skipRefresh: true,
+        prepareContent: importedFont
+          ? (html, sourceFile) => ensureImportedFontFace(html, importedFont, sourceFile)
+          : undefined,
       });
 
       if (doc) {
@@ -1587,9 +1797,13 @@ export function StudioApp() {
       }
 
       const normalizedValue = normalizeDomEditStyleValue(property, value);
+      const importedFont = property === "font-family" ? resolveImportedFontAsset(value) : null;
       if (property === "font-family") {
         const doc = previewIframeRef.current?.contentDocument;
-        if (doc) injectPreviewGoogleFont(doc, normalizedValue);
+        if (doc) {
+          injectPreviewGoogleFont(doc, normalizedValue);
+          if (importedFont) injectPreviewImportedFont(doc, importedFont);
+        }
       }
       const nextTextFields = domEditSelection.textFields.map((entry) =>
         entry.key === fieldKey
@@ -1607,9 +1821,9 @@ export function StudioApp() {
           : entry,
       );
 
-      await commitDomTextFields(domEditSelection, nextTextFields);
+      await commitDomTextFields(domEditSelection, nextTextFields, { importedFont });
     },
-    [commitDomTextFields, domEditSelection, handleDomStyleCommit],
+    [commitDomTextFields, domEditSelection, handleDomStyleCommit, resolveImportedFontAsset],
   );
 
   const handleDomAddTextField = useCallback(
@@ -1653,12 +1867,6 @@ export function StudioApp() {
     },
     [commitDomTextFields, domEditSelection, handleDomTextCommit],
   );
-
-  const handleFocusDesignSection = useCallback((section: Exclude<FocusedDesignSection, null>) => {
-    setRightCollapsed(false);
-    setRightPanelTab("design");
-    setFocusedDesignSection(section);
-  }, []);
 
   const handleAskAgent = useCallback(() => {
     if (!domEditSelection) return;
@@ -2174,6 +2382,32 @@ export function StudioApp() {
     [uploadProjectFiles],
   );
 
+  const handleImportFonts = useCallback(
+    async (files: FileList) => {
+      const uploaded = await uploadProjectFiles(
+        Array.from(files).filter((file) => FONT_EXT.test(file.name)),
+        "assets/fonts",
+      );
+      const pid = projectIdRef.current;
+      const imported = uploaded
+        .filter((asset) => FONT_EXT.test(asset))
+        .map((asset) => ({
+          family: fontFamilyFromAssetPath(asset),
+          path: asset,
+          url: `/api/projects/${pid}/preview/${asset}`,
+        }));
+      importedFontAssetsRef.current = [
+        ...imported,
+        ...importedFontAssetsRef.current.filter(
+          (existing) =>
+            !imported.some((font) => font.family.toLowerCase() === existing.family.toLowerCase()),
+        ),
+      ];
+      return imported;
+    },
+    [uploadProjectFiles],
+  );
+
   const handleLint = useCallback(async () => {
     const pid = projectIdRef.current;
     if (!pid) return;
@@ -2240,6 +2474,17 @@ export function StudioApp() {
     () =>
       fileTree.filter((f) => !f.endsWith(".html") && !f.endsWith(".md") && !f.endsWith(".json")),
     [fileTree],
+  );
+  const fontAssets = useMemo<ImportedFontAsset[]>(
+    () =>
+      assets
+        .filter((asset) => FONT_EXT.test(asset))
+        .map((asset) => ({
+          family: fontFamilyFromAssetPath(asset),
+          path: asset,
+          url: `/api/projects/${projectId}/preview/${asset}`,
+        })),
+    [assets, projectId],
   );
 
   if (resolving || !projectId) {
@@ -2346,7 +2591,7 @@ export function StudioApp() {
               setRightCollapsed(true);
             }}
             className={`h-7 flex items-center gap-1.5 px-2.5 rounded-md text-[11px] font-medium border transition-colors ${
-              !rightCollapsed && rightPanelTab === "design"
+              !rightCollapsed
                 ? "text-studio-accent bg-studio-accent/10 border-studio-accent/30"
                 : "text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800 border-transparent"
             }`}
@@ -2463,12 +2708,10 @@ export function StudioApp() {
                   selection={
                     !rightCollapsed && rightPanelTab === "design" ? domEditSelection : null
                   }
-                  copiedAgentPrompt={copiedAgentPrompt}
                   onCanvasMouseDown={handlePreviewCanvasMouseDown}
                   onCanvasDoubleClick={handlePreviewCanvasDoubleClick}
                   onSelectedDoubleClick={handleSelectedOverlayDoubleClick}
-                  onFocusSection={handleFocusDesignSection}
-                  onAskAgent={handleAskAgent}
+                  onBlockedMove={handleBlockedDomMove}
                   onMoveCommit={handleDomMoveCommit}
                   onResizeCommit={handleDomResizeCommit}
                 />
@@ -2547,16 +2790,17 @@ export function StudioApp() {
                         assets={assets}
                         element={domEditSelection}
                         copiedAgentPrompt={copiedAgentPrompt}
-                        focusedSection={focusedDesignSection}
-                        onFocusSectionHandled={() => setFocusedDesignSection(null)}
                         onClearSelection={clearDomSelection}
                         onSetStyle={handleDomStyleCommit}
                         onSetText={handleDomTextCommit}
                         onSetTextFieldStyle={handleDomTextFieldStyleCommit}
                         onAddTextField={handleDomAddTextField}
                         onRemoveTextField={handleDomRemoveTextField}
+                        onDetachFromLayout={handleDomDetachFromLayout}
                         onAskAgent={handleAskAgent}
                         onImportAssets={handleImportFiles}
+                        fontAssets={fontAssets}
+                        onImportFonts={handleImportFonts}
                       />
                     ) : (
                       <RenderQueue

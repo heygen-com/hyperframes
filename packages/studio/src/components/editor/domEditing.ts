@@ -37,6 +37,7 @@ export interface DomEditCapabilities {
   canEditStyles: boolean;
   canMove: boolean;
   canResize: boolean;
+  canDetachFromLayout: boolean;
   reasonIfDisabled?: string;
 }
 
@@ -90,6 +91,54 @@ function parsePx(value: string | undefined): number | null {
   if (!trimmed.endsWith("px")) return null;
   const parsed = parseFloat(trimmed);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function isClipClassName(className: string | undefined): boolean {
+  return Boolean(className?.split(/\s+/).includes("clip"));
+}
+
+function isInlineTextTag(tagName: string | undefined): boolean {
+  return Boolean(
+    tagName &&
+    ["a", "b", "em", "i", "small", "span", "strong", "sub", "sup"].includes(tagName.toLowerCase()),
+  );
+}
+
+function isBlockishTag(tagName: string | undefined): boolean {
+  return Boolean(
+    tagName &&
+    [
+      "article",
+      "aside",
+      "canvas",
+      "div",
+      "figure",
+      "footer",
+      "header",
+      "img",
+      "main",
+      "section",
+      "svg",
+      "video",
+    ].includes(tagName.toLowerCase()),
+  );
+}
+
+function isBlockishDisplay(display: string | undefined): boolean {
+  return Boolean(
+    display &&
+    [
+      "block",
+      "flex",
+      "flow-root",
+      "grid",
+      "inline-block",
+      "inline-flex",
+      "inline-grid",
+      "list-item",
+      "table",
+    ].includes(display),
+  );
 }
 
 function isTextBearingTag(tagName: string): boolean {
@@ -254,11 +303,7 @@ function getInlineStyles(el: HTMLElement): Record<string, string> {
 }
 
 function isEditableTextLeaf(el: HTMLElement): boolean {
-  return (
-    isTextBearingTag(el.tagName.toLowerCase()) &&
-    el.children.length === 0 &&
-    Boolean(el.textContent?.trim())
-  );
+  return isTextBearingTag(el.tagName.toLowerCase()) && el.children.length === 0;
 }
 
 function getTextFieldLabel(
@@ -282,7 +327,7 @@ function buildTextField(
   return {
     key,
     label: getTextFieldLabel(tagName, index, total, source),
-    value: el.textContent?.trim() ?? "",
+    value: el.textContent ?? "",
     tagName,
     attributes: Array.from(el.attributes)
       .filter((attribute) => attribute.name !== "style")
@@ -358,6 +403,8 @@ export function buildDefaultDomEditTextField(base?: Partial<DomEditTextField>): 
 
 export function resolveDomEditCapabilities(args: {
   selector?: string;
+  tagName?: string;
+  className?: string;
   inlineStyles: Record<string, string>;
   computedStyles: Record<string, string>;
   isCompositionHost: boolean;
@@ -369,17 +416,8 @@ export function resolveDomEditCapabilities(args: {
       canEditStyles: false,
       canMove: false,
       canResize: false,
+      canDetachFromLayout: false,
       reasonIfDisabled: "Studio could not resolve a stable patch target for this element.",
-    };
-  }
-
-  if (args.isCompositionHost && args.isMasterView) {
-    return {
-      canSelect: true,
-      canEditStyles: false,
-      canMove: false,
-      canResize: false,
-      reasonIfDisabled: "Open the composition to edit its contents.",
     };
   }
 
@@ -397,15 +435,40 @@ export function resolveDomEditCapabilities(args: {
     transform === "none";
 
   const canResize = canMove && (width != null || height != null);
+  const isBlockishLayer =
+    args.isCompositionHost ||
+    isClipClassName(args.className) ||
+    isBlockishTag(args.tagName) ||
+    isBlockishDisplay(args.computedStyles.display);
+  const canDetachFromLayout =
+    !canMove &&
+    transform === "none" &&
+    isBlockishLayer &&
+    (!isInlineTextTag(args.tagName) || isClipClassName(args.className));
+  const reasonIfDisabled = !canMove
+    ? canDetachFromLayout
+      ? "This layer is controlled by layout."
+      : "Direct move/resize is limited to absolute or fixed elements with px geometry and no transform-driven layout."
+    : undefined;
+
+  if (args.isCompositionHost && args.isMasterView) {
+    return {
+      canSelect: true,
+      canEditStyles: false,
+      canMove,
+      canResize,
+      canDetachFromLayout,
+      reasonIfDisabled,
+    };
+  }
 
   return {
     canSelect: true,
     canEditStyles: true,
     canMove,
     canResize,
-    reasonIfDisabled: !canMove
-      ? "Direct move/resize is limited to absolute or fixed elements with px geometry and no transform-driven layout."
-      : undefined,
+    canDetachFromLayout,
+    reasonIfDisabled,
   };
 }
 
@@ -444,6 +507,8 @@ export function resolveDomEditSelection(
     const textFields = collectDomEditTextFields(current);
     const capabilities = resolveDomEditCapabilities({
       selector,
+      tagName: current.tagName.toLowerCase(),
+      className: current.className,
       inlineStyles,
       computedStyles,
       isCompositionHost: Boolean(compositionSrc),
@@ -544,6 +609,24 @@ export function buildDomEditResizePatchOperations(width: number, height: number)
   return [
     { type: "inline-style", property: "width", value: `${Math.round(width)}px` },
     { type: "inline-style", property: "height", value: `${Math.round(height)}px` },
+  ];
+}
+
+export function buildDomEditDetachPatchOperations(rect: {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}): PatchOperation[] {
+  return [
+    { type: "inline-style", property: "position", value: "absolute" },
+    { type: "inline-style", property: "left", value: `${Math.round(rect.left)}px` },
+    { type: "inline-style", property: "top", value: `${Math.round(rect.top)}px` },
+    { type: "inline-style", property: "width", value: `${Math.round(rect.width)}px` },
+    { type: "inline-style", property: "height", value: `${Math.round(rect.height)}px` },
+    { type: "inline-style", property: "margin", value: "0" },
+    { type: "inline-style", property: "right", value: "auto" },
+    { type: "inline-style", property: "bottom", value: "auto" },
   ];
 }
 

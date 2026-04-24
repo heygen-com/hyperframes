@@ -1,8 +1,8 @@
 import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
-  ClipboardList,
   Eye,
   Layers,
+  MessageSquare,
   Move,
   Palette,
   Plus,
@@ -25,25 +25,25 @@ import {
   googleFontStylesheetUrl,
   POPULAR_GOOGLE_FONT_FAMILIES,
 } from "./fontCatalog";
+import { fontFamilyFromAssetPath, importedFontFaceCss, type ImportedFontAsset } from "./fontAssets";
 import { IMAGE_EXT } from "../../utils/mediaTypes";
-
-type FocusedSection = "position" | "styles" | null;
 
 interface PropertyPanelProps {
   projectId: string;
   assets: string[];
   element: DomEditSelection | null;
   copiedAgentPrompt: boolean;
-  focusedSection?: FocusedSection;
-  onFocusSectionHandled?: () => void;
   onClearSelection: () => void;
   onSetStyle: (prop: string, value: string) => void;
   onSetText: (value: string, fieldKey?: string) => void;
   onSetTextFieldStyle: (fieldKey: string, property: string, value: string) => void;
   onAddTextField: (afterFieldKey?: string) => string | Promise<string | null> | null;
   onRemoveTextField: (fieldKey: string) => void;
+  onDetachFromLayout: () => void;
   onAskAgent: () => void;
   onImportAssets?: (files: FileList) => Promise<string[]>;
+  fontAssets?: ImportedFontAsset[];
+  onImportFonts?: (files: FileList) => Promise<ImportedFontAsset[]>;
 }
 
 const FIELD =
@@ -86,7 +86,7 @@ interface LocalFontData {
   style?: string;
 }
 
-type FontSource = "Current" | "Document" | "Local" | "Google" | "System";
+type FontSource = "Current" | "Document" | "Imported" | "Local" | "Google" | "System";
 
 interface FontOption {
   family: string;
@@ -382,11 +382,13 @@ function TextAreaField({
   const [draft, setDraft] = useState(value);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const commitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const focusedRef = useRef(false);
   const valueRef = useRef(value);
 
   valueRef.current = value;
 
   useEffect(() => {
+    if (focusedRef.current) return;
     setDraft(value);
   }, [value]);
 
@@ -400,7 +402,7 @@ function TextAreaField({
   useEffect(() => {
     if (!autoFocus) return;
     textareaRef.current?.focus();
-  }, [autoFocus, label, value]);
+  }, [autoFocus]);
 
   const commitDraft = (nextDraft: string) => {
     if (commitTimerRef.current) clearTimeout(commitTimerRef.current);
@@ -427,11 +429,17 @@ function TextAreaField({
           value={draft}
           disabled={disabled}
           rows={4}
+          onFocus={() => {
+            focusedRef.current = true;
+          }}
           onChange={(e) => {
             setDraft(e.target.value);
             scheduleCommit(e.target.value);
           }}
-          onBlur={() => commitDraft(draft)}
+          onBlur={() => {
+            focusedRef.current = false;
+            commitDraft(draft);
+          }}
           className="w-full resize-none bg-transparent text-[11px] font-medium text-neutral-100 outline-none disabled:cursor-not-allowed disabled:text-neutral-600"
         />
       </div>
@@ -528,15 +536,28 @@ function uniqueFontOptions(values: FontOption[]): FontOption[] {
 function fontSourceRank(source: FontSource): number {
   if (source === "Current") return 0;
   if (source === "Document") return 1;
-  if (source === "Local") return 2;
-  if (source === "Google") return 3;
-  return 4;
+  if (source === "Imported") return 2;
+  if (source === "Local") return 3;
+  if (source === "Google") return 4;
+  return 5;
 }
 
 function sortFontOptions(options: FontOption[]): FontOption[] {
   return [...options].sort((a, b) => {
     const rankDelta = fontSourceRank(a.source) - fontSourceRank(b.source);
-    return rankDelta === 0 ? a.family.localeCompare(b.family) : rankDelta;
+    if (rankDelta !== 0) return rankDelta;
+
+    const commonA = COMMON_LOCAL_FONT_FAMILIES.findIndex(
+      (family) => family.toLowerCase() === a.family.toLowerCase(),
+    );
+    const commonB = COMMON_LOCAL_FONT_FAMILIES.findIndex(
+      (family) => family.toLowerCase() === b.family.toLowerCase(),
+    );
+    const commonDelta =
+      (commonA === -1 ? Number.MAX_SAFE_INTEGER : commonA) -
+      (commonB === -1 ? Number.MAX_SAFE_INTEGER : commonB);
+
+    return commonDelta === 0 ? a.family.localeCompare(b.family) : commonDelta;
   });
 }
 
@@ -577,6 +598,17 @@ function loadGoogleFontStylesheet(family: string): void {
   document.head.appendChild(link);
 }
 
+function loadImportedFontStylesheet(asset: ImportedFontAsset): void {
+  if (typeof document === "undefined") return;
+  const id = `studio-imported-font-${asset.family.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+  if (document.getElementById(id)) return;
+
+  const style = document.createElement("style");
+  style.id = id;
+  style.textContent = importedFontFaceCss(asset);
+  document.head.appendChild(style);
+}
+
 function FontWeightField({
   value,
   disabled,
@@ -611,21 +643,28 @@ function FontWeightField({
 function FontFamilyField({
   value,
   disabled,
+  importedFonts,
+  onImportFonts,
   onCommit,
 }: {
   value: string;
   disabled?: boolean;
+  importedFonts: ImportedFontAsset[];
+  onImportFonts?: (files: FileList) => Promise<ImportedFontAsset[]>;
   onCommit: (nextValue: string) => void;
 }) {
   const currentFamily = primaryFontFamily(value);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const fontInputRef = useRef<HTMLInputElement | null>(null);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [localFonts, setLocalFonts] = useState<string[]>([]);
   const [googleFonts, setGoogleFonts] = useState<string[]>(() => [...POPULAR_GOOGLE_FONT_FAMILIES]);
   const [loadingLocalFonts, setLoadingLocalFonts] = useState(false);
   const [loadingGoogleFonts, setLoadingGoogleFonts] = useState(false);
+  const [importingFonts, setImportingFonts] = useState(false);
+  const [fontNotice, setFontNotice] = useState<string | null>(null);
   const canQueryLocalFonts =
     typeof window !== "undefined" && typeof window.queryLocalFonts === "function";
 
@@ -685,22 +724,67 @@ function FontFamilyField({
     if (googleFonts.some((family) => family.toLowerCase() === currentFamily.toLowerCase())) {
       loadGoogleFontStylesheet(currentFamily);
     }
-  }, [currentFamily, googleFonts]);
+    const imported = importedFonts.find(
+      (font) => font.family.toLowerCase() === currentFamily.toLowerCase(),
+    );
+    if (imported) loadImportedFontStylesheet(imported);
+  }, [currentFamily, googleFonts, importedFonts]);
 
   const loadBrowserLocalFonts = async () => {
-    if (!canQueryLocalFonts || !window.queryLocalFonts) return;
+    if (!canQueryLocalFonts || !window.queryLocalFonts) {
+      setFontNotice("This browser does not expose installed fonts. Import a font file instead.");
+      return;
+    }
     setLoadingLocalFonts(true);
+    setFontNotice(null);
     try {
       const fonts = await window.queryLocalFonts();
-      setLocalFonts((current) =>
-        uniqueFontFamilies([...current, ...fonts.map((font) => font.family).filter(Boolean)]),
+      const families = fonts.flatMap((font) =>
+        [font.family, font.fullName, font.postscriptName]
+          .filter((name): name is string => Boolean(name))
+          .map((name) => fontFamilyFromAssetPath(`${name}.ttf`)),
       );
-    } catch {
-      // Browser permission can be denied; server and Google fonts still populate the picker.
+      setLocalFonts((current) => uniqueFontFamilies([...current, ...families]));
+      setFontNotice(fonts.length === 0 ? "No browser-local fonts were returned." : null);
+    } catch (error) {
+      const name = error instanceof Error ? error.name : "";
+      setFontNotice(
+        name === "NotAllowedError"
+          ? "Local font access was denied. Import a font file instead."
+          : "Local font access is unavailable. Import a font file instead.",
+      );
     } finally {
       setLoadingLocalFonts(false);
     }
   };
+
+  const handleImportFonts = async (files: FileList | null) => {
+    if (!files?.length || !onImportFonts) return;
+    setImportingFonts(true);
+    setFontNotice(null);
+    try {
+      const imported = await onImportFonts(files);
+      for (const font of imported) loadImportedFontStylesheet(font);
+      const first = imported[0];
+      if (first) {
+        onCommit(buildFontFamilyValue(first.family));
+        setQuery("");
+        setOpen(false);
+      } else {
+        setFontNotice("No supported font files were imported.");
+      }
+    } finally {
+      setImportingFonts(false);
+    }
+  };
+
+  const projectFontAssets = useMemo(
+    () =>
+      uniqueFontOptions(
+        importedFonts.map((font): FontOption => ({ family: font.family, source: "Imported" })),
+      ),
+    [importedFonts],
+  );
 
   const options = useMemo(() => {
     const documentFonts = collectDocumentFontFamilies();
@@ -708,22 +792,27 @@ function FontFamilyField({
       uniqueFontOptions([
         { family: currentFamily, source: "Current" },
         ...documentFonts.map((family): FontOption => ({ family, source: "Document" })),
+        ...projectFontAssets,
         ...localFonts.map((family): FontOption => ({ family, source: "Local" })),
         ...googleFonts.map((family): FontOption => ({ family, source: "Google" })),
         ...DEFAULT_FONT_FAMILIES.map((family): FontOption => ({ family, source: "System" })),
       ]),
     );
-  }, [currentFamily, googleFonts, localFonts]);
+  }, [currentFamily, googleFonts, localFonts, projectFontAssets]);
 
   const filteredOptions = useMemo(() => {
     const matches = options.filter((option) => fontMatchesQuery(option.family, query));
-    return matches.slice(0, 90);
+    return matches.slice(0, query.trim() ? 120 : 160);
   }, [options, query]);
 
   const commitFamily = (option: FontOption) => {
     if (option.source === "Google") {
       loadGoogleFontStylesheet(option.family);
     }
+    const imported = importedFonts.find(
+      (font) => font.family.toLowerCase() === option.family.toLowerCase(),
+    );
+    if (imported) loadImportedFontStylesheet(imported);
     onCommit(buildFontFamilyValue(option.family));
     setQuery("");
     setOpen(false);
@@ -751,7 +840,7 @@ function FontFamilyField({
 
       {open && (
         <div className="absolute left-0 right-0 top-[calc(100%+6px)] z-50 overflow-hidden rounded-xl border border-neutral-700 bg-neutral-950 shadow-2xl">
-          <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2 border-b border-neutral-800 p-2">
+          <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-2 border-b border-neutral-800 p-2">
             <input
               ref={inputRef}
               type="text"
@@ -781,7 +870,33 @@ function FontFamilyField({
                 {loadingLocalFonts ? "..." : "Local"}
               </button>
             )}
+            <button
+              type="button"
+              disabled={disabled || importingFonts || !onImportFonts}
+              onClick={() => fontInputRef.current?.click()}
+              className="rounded-lg border border-neutral-700 bg-neutral-900 px-2.5 text-[10px] font-medium text-neutral-400 transition-colors hover:border-neutral-600 hover:text-neutral-100 disabled:cursor-not-allowed disabled:text-neutral-700"
+            >
+              {importingFonts ? "..." : "Import"}
+            </button>
+            <input
+              ref={fontInputRef}
+              type="file"
+              accept=".ttf,.otf,.ttc,.woff,.woff2,.eot,font/*"
+              multiple
+              aria-label="Import local font files"
+              disabled={disabled || importingFonts || !onImportFonts}
+              className="hidden"
+              onChange={async (event) => {
+                await handleImportFonts(event.target.files);
+                event.target.value = "";
+              }}
+            />
           </div>
+          {fontNotice && (
+            <div className="border-b border-neutral-800 px-3 py-2 text-[10px] leading-4 text-neutral-500">
+              {fontNotice}
+            </div>
+          )}
           <div className="max-h-64 overflow-y-auto p-1">
             {filteredOptions.length === 0 ? (
               <div className="px-2 py-3 text-[11px] text-neutral-500">No fonts found.</div>
@@ -1385,17 +1500,15 @@ function Section({
   title,
   icon,
   children,
-  sectionRef,
   accessory,
 }: {
   title: string;
   icon: ReactNode;
   children: ReactNode;
-  sectionRef?: React.RefObject<HTMLDivElement | null>;
   accessory?: ReactNode;
 }) {
   return (
-    <section ref={sectionRef} className="min-w-0 border-t border-neutral-800/80 px-4 py-4">
+    <section className="min-w-0 border-t border-neutral-800/80 px-4 py-4">
       <div className="mb-3 flex min-w-0 flex-wrap items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2.5">
           <span className="flex-shrink-0 text-neutral-500">{icon}</span>
@@ -1440,27 +1553,18 @@ export const PropertyPanel = memo(function PropertyPanel({
   assets,
   element,
   copiedAgentPrompt,
-  focusedSection = null,
-  onFocusSectionHandled,
   onClearSelection,
   onSetStyle,
   onSetText,
   onSetTextFieldStyle,
   onAddTextField,
   onRemoveTextField,
+  onDetachFromLayout,
   onAskAgent,
   onImportAssets,
+  fontAssets = [],
+  onImportFonts,
 }: PropertyPanelProps) {
-  const positionRef = useRef<HTMLDivElement | null>(null);
-  const stylesRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    if (!focusedSection) return;
-    const target = focusedSection === "position" ? positionRef.current : stylesRef.current;
-    target?.scrollIntoView({ block: "nearest", behavior: "smooth" });
-    onFocusSectionHandled?.();
-  }, [focusedSection, onFocusSectionHandled]);
-
   const styles = element?.computedStyles ?? EMPTY_STYLES;
   const selectionColors = useMemo(() => collectSelectionColors(styles), [styles]);
   const backgroundImage = styles["background-image"] ?? "none";
@@ -1502,8 +1606,8 @@ export const PropertyPanel = memo(function PropertyPanel({
   }
 
   const styleEditingDisabled = !element.capabilities.canEditStyles;
-  const moveEditingDisabled = styleEditingDisabled || !element.capabilities.canMove;
-  const resizeEditingDisabled = styleEditingDisabled || !element.capabilities.canResize;
+  const moveEditingDisabled = !element.capabilities.canMove;
+  const resizeEditingDisabled = !element.capabilities.canResize;
   const isFlex = styles.display === "flex" || styles.display === "inline-flex";
   const radiusValue = parseNumericValue(styles["border-radius"]) ?? 0;
   const opacityValue = Math.round((parseNumericValue(styles.opacity) ?? 1) * 100);
@@ -1550,13 +1654,13 @@ export const PropertyPanel = memo(function PropertyPanel({
           onClick={onAskAgent}
           className="mt-4 inline-flex h-8 items-center justify-center gap-2 rounded-xl border border-neutral-700 bg-neutral-950 px-3.5 text-[11px] font-medium text-neutral-100 transition-colors hover:border-studio-accent/40 hover:text-studio-accent"
         >
-          <ClipboardList size={15} />
+          <MessageSquare size={15} />
           <span>{copiedAgentPrompt ? "Prompt copied" : "Ask agent"}</span>
         </button>
       </div>
 
       <div className="flex-1 overflow-y-auto">
-        <Section title="Layout" icon={<Move size={15} />} sectionRef={positionRef}>
+        <Section title="Layout" icon={<Move size={15} />}>
           <div className={RESPONSIVE_GRID}>
             <MetricField
               label="X"
@@ -1583,9 +1687,26 @@ export const PropertyPanel = memo(function PropertyPanel({
               onCommit={(next) => onSetStyle("height", next)}
             />
           </div>
-          {element.capabilities.reasonIfDisabled && (
+          {element.capabilities.reasonIfDisabled && !element.capabilities.canDetachFromLayout && (
             <div className="mt-4 rounded-2xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-[12px] leading-6 text-amber-200">
               {element.capabilities.reasonIfDisabled}
+            </div>
+          )}
+          {element.capabilities.canDetachFromLayout && (
+            <div className="mt-4 flex min-w-0 flex-wrap items-center justify-between gap-3 border-l border-amber-500/40 pl-3">
+              <div className="min-w-0 text-[11px] leading-5 text-neutral-400">
+                <div className="font-medium text-neutral-200">
+                  This layer is controlled by layout.
+                </div>
+                <div>Detaches from flex/grid flow and preserves current visual position.</div>
+              </div>
+              <button
+                type="button"
+                onClick={onDetachFromLayout}
+                className="inline-flex h-8 flex-shrink-0 items-center rounded-lg border border-neutral-700 bg-neutral-950 px-3 text-[11px] font-medium text-neutral-100 transition-colors hover:border-amber-400/70 hover:text-amber-100"
+              >
+                Make movable
+              </button>
             </div>
           )}
         </Section>
@@ -1647,7 +1768,7 @@ export const PropertyPanel = memo(function PropertyPanel({
 
         {showEditableSections && (
           <>
-            <Section title="Radius" icon={<Settings size={15} />} sectionRef={stylesRef}>
+            <Section title="Radius" icon={<Settings size={15} />}>
               <SliderControl
                 value={radiusValue}
                 min={0}
@@ -1761,6 +1882,7 @@ export const PropertyPanel = memo(function PropertyPanel({
                         </div>
 
                         <TextAreaField
+                          key={activeField.key}
                           label="Content"
                           value={activeField.value}
                           disabled={false}
@@ -1801,6 +1923,8 @@ export const PropertyPanel = memo(function PropertyPanel({
                             "inherit"
                           }
                           disabled={false}
+                          importedFonts={fontAssets}
+                          onImportFonts={onImportFonts}
                           onCommit={(next) =>
                             onSetTextFieldStyle(activeField.key, "font-family", next)
                           }
@@ -1911,6 +2035,8 @@ export const PropertyPanel = memo(function PropertyPanel({
                             "inherit"
                           }
                           disabled={false}
+                          importedFonts={fontAssets}
+                          onImportFonts={onImportFonts}
                           onCommit={(next) =>
                             onSetTextFieldStyle(activeField.key, "font-family", next)
                           }

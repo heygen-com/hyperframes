@@ -1,10 +1,6 @@
 import { memo, useMemo, useRef, useState, type RefObject } from "react";
 import { useMountEffect } from "../../hooks/useMountEffect";
-import { ClipboardList, Move, Palette } from "../../icons/SystemIcons";
-import { Button } from "../ui";
 import { type DomEditSelection, findElementForSelection } from "./domEditing";
-
-type FocusedSection = "position" | "styles";
 
 interface OverlayRect {
   left: number;
@@ -18,12 +14,10 @@ interface OverlayRect {
 interface DomEditOverlayProps {
   iframeRef: RefObject<HTMLIFrameElement | null>;
   selection: DomEditSelection | null;
-  copiedAgentPrompt: boolean;
   onCanvasMouseDown: (event: React.MouseEvent<HTMLDivElement>) => void;
   onCanvasDoubleClick: (event: React.MouseEvent<HTMLDivElement>) => void;
   onSelectedDoubleClick: () => void;
-  onFocusSection: (section: FocusedSection) => void;
-  onAskAgent: () => void;
+  onBlockedMove: (selection: DomEditSelection) => void;
   onMoveCommit: (
     selection: DomEditSelection,
     next: { left: number; top: number },
@@ -64,6 +58,7 @@ function toOverlayRect(
 }
 
 type GestureKind = "drag" | "resize";
+const BLOCKED_MOVE_THRESHOLD_PX = 4;
 
 interface GestureState {
   kind: GestureKind;
@@ -81,23 +76,29 @@ interface GestureState {
   scaleY: number;
 }
 
+interface BlockedMoveState {
+  pointerId: number;
+  startX: number;
+  startY: number;
+  notified: boolean;
+}
+
 export const DomEditOverlay = memo(function DomEditOverlay({
   iframeRef,
   selection,
-  copiedAgentPrompt,
   onCanvasMouseDown,
   onCanvasDoubleClick,
   onSelectedDoubleClick,
-  onFocusSection,
-  onAskAgent,
+  onBlockedMove,
   onMoveCommit,
   onResizeCommit,
 }: DomEditOverlayProps) {
   const overlayRef = useRef<HTMLDivElement | null>(null);
   const boxRef = useRef<HTMLDivElement | null>(null);
-  const toolbarRef = useRef<HTMLDivElement | null>(null);
   const [overlayRect, setOverlayRect] = useState<OverlayRect | null>(null);
   const gestureRef = useRef<GestureState | null>(null);
+  const blockedMoveRef = useRef<BlockedMoveState | null>(null);
+  const suppressNextBoxClickRef = useRef(false);
   const rafPausedRef = useRef(false);
 
   const selectionRef = useRef(selection);
@@ -108,6 +109,8 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   onMoveCommitRef.current = onMoveCommit;
   const onResizeCommitRef = useRef(onResizeCommit);
   onResizeCommitRef.current = onResizeCommit;
+  const onBlockedMoveRef = useRef(onBlockedMove);
+  onBlockedMoveRef.current = onBlockedMove;
 
   useMountEffect(() => {
     let frame = 0;
@@ -146,13 +149,6 @@ export const DomEditOverlay = memo(function DomEditOverlay({
       selection.selectorIndex ?? 0
     }`;
   }, [selection]);
-
-  const positionToolbar = (boxLeft: number, boxTop: number) => {
-    const tb = toolbarRef.current;
-    if (!tb) return;
-    tb.style.left = `${boxLeft}px`;
-    tb.style.top = `${Math.max(12, boxTop - 46)}px`;
-  };
 
   const startGesture = (kind: GestureKind, e: React.PointerEvent) => {
     const sel = selectionRef.current;
@@ -194,6 +190,18 @@ export const DomEditOverlay = memo(function DomEditOverlay({
     const g = gestureRef.current;
     const sel = selectionRef.current;
     const box = boxRef.current;
+    const blockedMove = blockedMoveRef.current;
+    if (blockedMove && sel) {
+      const dx = e.clientX - blockedMove.startX;
+      const dy = e.clientY - blockedMove.startY;
+      if (!blockedMove.notified && Math.hypot(dx, dy) >= BLOCKED_MOVE_THRESHOLD_PX) {
+        blockedMove.notified = true;
+        suppressNextBoxClickRef.current = true;
+        onBlockedMoveRef.current(sel);
+      }
+      return;
+    }
+
     if (!g || !sel || !box) return;
 
     const dx = e.clientX - g.startX;
@@ -204,7 +212,6 @@ export const DomEditOverlay = memo(function DomEditOverlay({
       const nextBoxTop = g.originTop + dy;
       box.style.left = `${nextBoxLeft}px`;
       box.style.top = `${nextBoxTop}px`;
-      positionToolbar(nextBoxLeft, nextBoxTop);
       sel.element.style.left = `${Math.round(g.actualLeft + dx / g.scaleX)}px`;
       sel.element.style.top = `${Math.round(g.actualTop + dy / g.scaleY)}px`;
     } else {
@@ -220,6 +227,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   const onPointerUp = () => {
     const g = gestureRef.current;
     const sel = selectionRef.current;
+    blockedMoveRef.current = null;
     if (!g || !sel) {
       gestureRef.current = null;
       rafPausedRef.current = false;
@@ -252,28 +260,19 @@ export const DomEditOverlay = memo(function DomEditOverlay({
     }
   };
 
-  const toolbarStyle = useMemo(() => {
-    if (!overlayRect) return undefined;
-    return {
-      left: overlayRect.left,
-      top: Math.max(12, overlayRect.top - 46),
-    };
-  }, [overlayRect]);
-
   // Click on overlay background → select whatever is under the pointer in the iframe.
   // This handles clicking children inside an already-selected parent: the selection
   // box stops propagation for drag gestures, but clicks on the transparent overlay
   // area outside the box pass through to the iframe pick logic.
   const handleOverlayMouseDown = (event: React.MouseEvent<HTMLDivElement>) => {
     const target = event.target as HTMLElement | null;
-    if (target?.closest('[data-dom-edit-toolbar="true"]')) return;
     if (target?.closest('[data-dom-edit-selection-box="true"]')) return;
     onCanvasMouseDown(event);
   };
 
   const handleOverlayDoubleClick = (event: React.MouseEvent<HTMLDivElement>) => {
     const target = event.target as HTMLElement | null;
-    if (target?.closest('[data-dom-edit-toolbar="true"]')) return;
+    if (target?.closest('[data-dom-edit-selection-box="true"]')) return;
     onCanvasDoubleClick(event);
   };
 
@@ -282,7 +281,18 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   // the click coordinates are forwarded to the iframe's element picker.
   const handleBoxClick = (event: React.MouseEvent<HTMLDivElement>) => {
     if (gestureRef.current) return;
+    if (suppressNextBoxClickRef.current) {
+      suppressNextBoxClickRef.current = false;
+      event.stopPropagation();
+      return;
+    }
     onCanvasMouseDown(event);
+  };
+
+  const clearPointerState = () => {
+    blockedMoveRef.current = null;
+    gestureRef.current = null;
+    rafPausedRef.current = false;
   };
 
   return (
@@ -294,10 +304,10 @@ export const DomEditOverlay = memo(function DomEditOverlay({
       onDoubleClick={handleOverlayDoubleClick}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
+      onPointerCancel={clearPointerState}
     >
       {selection && overlayRect && (
         <>
-          {/* Selection box — draggable area */}
           <div
             key={selectionKey}
             ref={boxRef}
@@ -311,8 +321,19 @@ export const DomEditOverlay = memo(function DomEditOverlay({
               cursor: selection.capabilities.canMove ? "move" : "default",
             }}
             onPointerDown={(e) => {
-              if (selection.capabilities.canMove) startGesture("drag", e);
-              else e.stopPropagation();
+              if (selection.capabilities.canMove) {
+                startGesture("drag", e);
+                return;
+              }
+              e.preventDefault();
+              e.stopPropagation();
+              e.currentTarget.setPointerCapture(e.pointerId);
+              blockedMoveRef.current = {
+                pointerId: e.pointerId,
+                startX: e.clientX,
+                startY: e.clientY,
+                notified: false,
+              };
             }}
             onClick={handleBoxClick}
             onDoubleClick={onSelectedDoubleClick}
@@ -328,41 +349,6 @@ export const DomEditOverlay = memo(function DomEditOverlay({
                 }}
               />
             )}
-          </div>
-
-          {/* Toolbar — follows the box during drag via imperative style updates */}
-          <div
-            ref={toolbarRef}
-            data-dom-edit-toolbar="true"
-            className="pointer-events-auto absolute flex items-center gap-1 rounded-xl border border-neutral-800 bg-neutral-950/96 px-2 py-2 shadow-lg backdrop-blur"
-            style={toolbarStyle}
-          >
-            <Button
-              variant="ghost"
-              size="sm"
-              icon={<Move size={12} />}
-              disabled={!selection.capabilities.canMove}
-              onClick={() => onFocusSection("position")}
-            >
-              Move
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              icon={<Palette size={12} />}
-              disabled={!selection.capabilities.canEditStyles}
-              onClick={() => onFocusSection("styles")}
-            >
-              Styles
-            </Button>
-            <Button
-              variant={copiedAgentPrompt ? "primary" : "secondary"}
-              size="sm"
-              icon={<ClipboardList size={12} />}
-              onClick={onAskAgent}
-            >
-              {copiedAgentPrompt ? "Copied" : "Ask agent"}
-            </Button>
           </div>
         </>
       )}

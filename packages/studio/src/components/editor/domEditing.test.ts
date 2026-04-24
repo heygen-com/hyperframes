@@ -6,6 +6,7 @@ import {
   buildDomEditStylePatchOperation,
   buildElementAgentPrompt,
   findElementForSelection,
+  isTextEditableSelection,
   serializeDomEditTextFields,
   type DomEditSelection,
   resolveDomEditCapabilities,
@@ -46,6 +47,7 @@ describe("resolveDomEditCapabilities", () => {
       canEditStyles: true,
       canMove: true,
       canResize: true,
+      canDetachFromLayout: false,
       reasonIfDisabled: undefined,
     });
   });
@@ -54,9 +56,11 @@ describe("resolveDomEditCapabilities", () => {
     expect(
       resolveDomEditCapabilities({
         selector: "#chip",
+        tagName: "div",
         inlineStyles: {},
         computedStyles: {
           position: "static",
+          display: "block",
           left: "auto",
           top: "auto",
           width: "180px",
@@ -71,6 +75,8 @@ describe("resolveDomEditCapabilities", () => {
       canEditStyles: true,
       canMove: false,
       canResize: false,
+      canDetachFromLayout: true,
+      reasonIfDisabled: "This layer is controlled by layout.",
     });
   });
 
@@ -98,6 +104,7 @@ describe("resolveDomEditCapabilities", () => {
     ).toMatchObject({
       canMove: false,
       canResize: false,
+      canDetachFromLayout: false,
     });
   });
 
@@ -129,7 +136,7 @@ describe("resolveDomEditCapabilities", () => {
 });
 
 describe("resolveDomEditSelection", () => {
-  it("marks composition hosts in master view as drill-down only", () => {
+  it("allows moving composition hosts in master view while keeping contents drill-down only", () => {
     expect(
       resolveDomEditCapabilities({
         selector: "#detail-host",
@@ -153,9 +160,10 @@ describe("resolveDomEditSelection", () => {
     ).toEqual({
       canSelect: true,
       canEditStyles: false,
-      canMove: false,
-      canResize: false,
-      reasonIfDisabled: "Open the composition to edit its contents.",
+      canMove: true,
+      canResize: true,
+      canDetachFromLayout: false,
+      reasonIfDisabled: undefined,
     });
   });
 
@@ -238,6 +246,59 @@ describe("resolveDomEditSelection", () => {
       "Headline",
       "Supporting copy",
     ]);
+  });
+
+  it("preserves user-entered text spacing in editable text fields", () => {
+    const document = createDocument(`
+      <section id="card" class="clip" style="position: absolute;">
+        <strong>Headline with trailing space </strong>
+      </section>
+    `);
+
+    const selection = resolveDomEditSelection(document.getElementById("card") as HTMLElement, {
+      activeCompositionPath: null,
+      isMasterView: false,
+    });
+
+    expect(selection?.textFields[0]?.value).toBe("Headline with trailing space ");
+  });
+
+  it("keeps an emptied text layer editable so users can type into it again", () => {
+    const document = createDocument(`
+      <div id="card" class="clip" style="position: absolute;"></div>
+    `);
+
+    const selection = resolveDomEditSelection(document.getElementById("card") as HTMLElement, {
+      activeCompositionPath: null,
+      isMasterView: false,
+    });
+
+    expect(selection?.textFields).toMatchObject([
+      {
+        key: "self:0:div",
+        label: "Content",
+        value: "",
+        source: "self",
+      },
+    ]);
+    expect(selection ? isTextEditableSelection(selection) : false).toBe(true);
+  });
+
+  it("keeps emptied child text layers editable after their content is cleared", () => {
+    const document = createDocument(`
+      <div id="card" class="clip" style="position: absolute;">
+        <strong></strong>
+        <span></span>
+      </div>
+    `);
+
+    const selection = resolveDomEditSelection(document.getElementById("card") as HTMLElement, {
+      activeCompositionPath: null,
+      isMasterView: false,
+    });
+
+    expect(selection?.textFields.map((field) => field.tagName)).toEqual(["strong", "span"]);
+    expect(selection?.textFields.map((field) => field.value)).toEqual(["", ""]);
   });
 });
 

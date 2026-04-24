@@ -1,9 +1,9 @@
 import type { Hono } from "hono";
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, mkdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import type { StudioApiAdapter } from "../types.js";
 
-const THUMBNAIL_CACHE_VERSION = "v2";
+const THUMBNAIL_CACHE_VERSION = "v3";
 
 export function registerThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): void {
   api.get("/projects/:id/thumbnail/*", async (c) => {
@@ -23,13 +23,16 @@ export function registerThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): v
     const vpWidth = parseInt(url.searchParams.get("w") || "0") || 0;
     const vpHeight = parseInt(url.searchParams.get("h") || "0") || 0;
     const selector = url.searchParams.get("selector") || undefined;
+    const urlVersion = url.searchParams.get("v") || "";
 
     // Determine composition dimensions from HTML
     let compW = vpWidth || 1920;
     let compH = vpHeight || 1080;
+    let sourceMtime = 0;
     if (!vpWidth) {
       const htmlFile = join(project.dir, compPath);
       if (existsSync(htmlFile)) {
+        sourceMtime = Math.round(statSync(htmlFile).mtimeMs);
         const html = readFileSync(htmlFile, "utf-8");
         const wMatch = html.match(/data-width=["'](\d+)["']/);
         const hMatch = html.match(/data-height=["'](\d+)["']/);
@@ -48,7 +51,10 @@ export function registerThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): v
     const selectorKey = selector
       ? `_${selector.replace(/[^a-zA-Z0-9_-]+/g, "_").slice(0, 80)}`
       : "";
-    const cacheKey = `${THUMBNAIL_CACHE_VERSION}_${compPath.replace(/\//g, "_")}_${seekTime.toFixed(2)}${selectorKey}.jpg`;
+    const urlVersionKey = urlVersion
+      ? `_${urlVersion.replace(/[^a-zA-Z0-9_-]+/g, "_").slice(0, 32)}`
+      : "";
+    const cacheKey = `${THUMBNAIL_CACHE_VERSION}${urlVersionKey}_${compPath.replace(/\//g, "_")}_${compW}x${compH}_${sourceMtime}_${seekTime.toFixed(2)}${selectorKey}.jpg`;
     const cachePath = join(cacheDir, cacheKey);
     if (existsSync(cachePath)) {
       return new Response(new Uint8Array(readFileSync(cachePath)), {

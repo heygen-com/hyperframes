@@ -170,6 +170,25 @@ describe("applyPatchByTarget", () => {
     expect(patched).toContain("<p>Outside</p>");
   });
 
+  it("does not stop at the first child closing tag when patching nested text", () => {
+    const html =
+      '<section id="card"><div><strong>Headline</strong></div><div>Copy</div></section><p>Outside</p>';
+
+    const patched = applyPatchByTarget(
+      html,
+      { id: "card" },
+      {
+        type: "text-content",
+        property: "text",
+        value: "<strong>New headline</strong>",
+      },
+    );
+
+    expect(patched).toBe(
+      '<section id="card"><strong>New headline</strong></section><p>Outside</p>',
+    );
+  });
+
   it("patches the correct duplicate selector occurrence", () => {
     const html = [
       `<div class="headline clip" data-start="0"></div>`,

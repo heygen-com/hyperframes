@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Hono } from "hono";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { registerThumbnailRoutes } from "./thumbnail";
@@ -51,6 +51,44 @@ describe("registerThumbnailRoutes", () => {
         compPath: "index.html",
         seekTime: 1.2,
         selector: "#title-card",
+      }),
+    );
+  });
+
+  it("keeps url thumbnail versions separated in the disk cache", async () => {
+    const adapter = createAdapter();
+    const app = new Hono();
+    registerThumbnailRoutes(app, adapter);
+
+    await app.request("http://localhost/projects/demo/thumbnail/index.html?t=2&v=old");
+    await app.request("http://localhost/projects/demo/thumbnail/index.html?t=2&v=old");
+    await app.request("http://localhost/projects/demo/thumbnail/index.html?t=2&v=new");
+
+    expect(adapter.generateThumbnail).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps changed composition dimensions separated in the disk cache", async () => {
+    const adapter = createAdapter();
+    const project = await adapter.resolveProject("demo");
+    if (!project) throw new Error("missing project");
+    const app = new Hono();
+    registerThumbnailRoutes(app, adapter);
+
+    const indexPath = join(project.dir, "index.html");
+    writeFileSync(indexPath, `<div data-composition-id="main" data-width="640" data-height="360">`);
+    await app.request("http://localhost/projects/demo/thumbnail/index.html?t=2&v=test");
+
+    writeFileSync(
+      indexPath,
+      `<div data-composition-id="main" data-width="1280" data-height="720">`,
+    );
+    await app.request("http://localhost/projects/demo/thumbnail/index.html?t=2&v=test");
+
+    expect(adapter.generateThumbnail).toHaveBeenCalledTimes(2);
+    expect(adapter.generateThumbnail).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        width: 1280,
+        height: 720,
       }),
     );
   });
