@@ -18,6 +18,7 @@ import {
   buildTimelineFileDropPlacements,
   getTimelineAssetKind,
   insertTimelineAssetIntoSource,
+  resolveTimelineAssetInitialGeometry,
   resolveTimelineAssetSrc,
   type TimelineAssetKind,
 } from "./utils/timelineAssetDrop";
@@ -31,6 +32,7 @@ import {
   applyPatchByTarget,
   readAttributeByTarget,
   readTagSnippetByTarget,
+  type PatchOperation,
 } from "./utils/sourcePatcher";
 import {
   buildTrackZIndexMap,
@@ -48,8 +50,10 @@ import {
   shouldHandleTimelineToggleHotkey,
 } from "./utils/timelineDiscovery";
 import { PropertyPanel } from "./components/editor/PropertyPanel";
+import { googleFontStylesheetUrl } from "./components/editor/fontCatalog";
 import { DomEditOverlay } from "./components/editor/DomEditOverlay";
 import {
+  buildDefaultDomEditTextField,
   buildDomEditMovePatchOperations,
   buildDomEditResizePatchOperations,
   buildDomEditStylePatchOperation,
@@ -57,8 +61,10 @@ import {
   buildElementAgentPrompt,
   findElementForSelection,
   isTextEditableSelection,
+  serializeDomEditTextFields,
   resolveDomEditCapabilities,
   resolveDomEditSelection,
+  type DomEditTextField,
   type DomEditSelection,
 } from "./components/editor/domEditing";
 
@@ -73,6 +79,45 @@ interface AppToast {
 }
 
 type RightPanelTab = "design" | "renders";
+
+const GENERIC_FONT_FAMILIES = new Set([
+  "inherit",
+  "initial",
+  "revert",
+  "revert-layer",
+  "serif",
+  "sans-serif",
+  "monospace",
+  "cursive",
+  "fantasy",
+  "system-ui",
+  "ui-sans-serif",
+  "ui-serif",
+  "ui-monospace",
+  "ui-rounded",
+  "emoji",
+  "math",
+  "fangsong",
+]);
+
+function primaryFontFamilyFromCss(value: string): string {
+  const first = value.split(",")[0] ?? "";
+  return first.trim().replace(/^["']|["']$/g, "");
+}
+
+function injectPreviewGoogleFont(doc: Document, fontFamilyValue: string): void {
+  const family = primaryFontFamilyFromCss(fontFamilyValue);
+  if (!family || GENERIC_FONT_FAMILIES.has(family.toLowerCase())) return;
+
+  const id = `studio-preview-google-font-${family.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+  if (doc.getElementById(id)) return;
+
+  const link = doc.createElement("link");
+  link.id = id;
+  link.rel = "stylesheet";
+  link.href = googleFontStylesheetUrl(family);
+  doc.head.appendChild(link);
+}
 type FocusedDesignSection = "position" | "styles" | null;
 
 function normalizeDomEditStyleValue(property: string, value: string): string {
@@ -87,6 +132,31 @@ function normalizeDomEditStyleValue(property: string, value: string): string {
   }
 
   return trimmed;
+}
+
+function isImageBackgroundValue(value: string): boolean {
+  return /^url\(/i.test(value.trim());
+}
+
+function shouldDetachOppositeEdges(selection: DomEditSelection): boolean {
+  return Boolean(
+    selection.inlineStyles.inset || selection.inlineStyles.right || selection.inlineStyles.bottom,
+  );
+}
+
+function buildOppositeEdgePatchOperations(
+  selection: DomEditSelection,
+  dimension: "width" | "height" | "both",
+): PatchOperation[] {
+  if (!shouldDetachOppositeEdges(selection)) return [];
+  const operations: PatchOperation[] = [];
+  if (dimension === "width" || dimension === "both") {
+    operations.push({ type: "inline-style", property: "right", value: "auto" });
+  }
+  if (dimension === "height" || dimension === "both") {
+    operations.push({ type: "inline-style", property: "bottom", value: "auto" });
+  }
+  return operations;
 }
 
 function getEventTargetElement(target: EventTarget | null): HTMLElement | null {
@@ -1340,7 +1410,10 @@ export function StudioApp() {
     async (selection: DomEditSelection, next: { left: number; top: number }) => {
       await persistDomEditOperations(
         selection,
-        buildDomEditMovePatchOperations(next.left, next.top),
+        [
+          ...buildDomEditMovePatchOperations(next.left, next.top),
+          ...buildOppositeEdgePatchOperations(selection, "both"),
+        ],
         { skipRefresh: true },
       );
     },
@@ -1349,9 +1422,16 @@ export function StudioApp() {
 
   const handleDomResizeCommit = useCallback(
     async (selection: DomEditSelection, next: { width: number; height: number }) => {
+      if (shouldDetachOppositeEdges(selection)) {
+        selection.element.style.right = "auto";
+        selection.element.style.bottom = "auto";
+      }
       await persistDomEditOperations(
         selection,
-        buildDomEditResizePatchOperations(next.width, next.height),
+        [
+          ...buildDomEditResizePatchOperations(next.width, next.height),
+          ...buildOppositeEdgePatchOperations(selection, "both"),
+        ],
         { skipRefresh: true },
       );
     },
@@ -1368,32 +1448,210 @@ export function StudioApp() {
       const doc = iframe?.contentDocument;
       if (doc) {
         const el = findElementForSelection(doc, domEditSelection, domEditSelection.sourceFile);
-        if (el) el.style.setProperty(property, normalizeDomEditStyleValue(property, value));
+        if (el) {
+          el.style.setProperty(property, normalizeDomEditStyleValue(property, value));
+          if (property === "font-family") {
+            injectPreviewGoogleFont(doc, value);
+          }
+          if (shouldDetachOppositeEdges(domEditSelection)) {
+            if (property === "width") el.style.right = "auto";
+            if (property === "height") el.style.bottom = "auto";
+          }
+          if (property === "background-image" && isImageBackgroundValue(value)) {
+            el.style.setProperty("background-position", "center");
+            el.style.setProperty("background-repeat", "no-repeat");
+            el.style.setProperty("background-size", "contain");
+          }
+        }
       }
-      await persistDomEditOperations(
-        domEditSelection,
-        [buildDomEditStylePatchOperation(property, normalizeDomEditStyleValue(property, value))],
-        { skipRefresh: true },
-      );
+      const operations: PatchOperation[] = [
+        buildDomEditStylePatchOperation(property, normalizeDomEditStyleValue(property, value)),
+      ];
+      if (property === "width") {
+        operations.push(...buildOppositeEdgePatchOperations(domEditSelection, "width"));
+      } else if (property === "height") {
+        operations.push(...buildOppositeEdgePatchOperations(domEditSelection, "height"));
+      } else if (property === "background-image" && isImageBackgroundValue(value)) {
+        operations.push(
+          buildDomEditStylePatchOperation("background-position", "center"),
+          buildDomEditStylePatchOperation("background-repeat", "no-repeat"),
+          buildDomEditStylePatchOperation("background-size", "contain"),
+        );
+      }
+      await persistDomEditOperations(domEditSelection, operations, { skipRefresh: true });
     },
     [domEditSelection, persistDomEditOperations],
   );
 
   const handleDomTextCommit = useCallback(
-    async (value: string) => {
+    async (value: string, fieldKey?: string) => {
       if (!domEditSelection) return;
       if (!isTextEditableSelection(domEditSelection)) return;
+      const nextTextFields =
+        domEditSelection.textFields.length > 0
+          ? domEditSelection.textFields.map((field) =>
+              field.key === fieldKey ? { ...field, value } : field,
+            )
+          : [];
+      const nextContent =
+        nextTextFields.length > 1 || nextTextFields.some((field) => field.source === "child")
+          ? serializeDomEditTextFields(nextTextFields)
+          : value;
       const iframe = previewIframeRef.current;
       const doc = iframe?.contentDocument;
       if (doc) {
         const el = findElementForSelection(doc, domEditSelection, domEditSelection.sourceFile);
-        if (el) el.textContent = value;
+        if (el) {
+          if (
+            nextTextFields.length > 1 ||
+            nextTextFields.some((field) => field.source === "child")
+          ) {
+            el.innerHTML = nextContent;
+          } else {
+            el.textContent = value;
+          }
+        }
       }
-      await persistDomEditOperations(domEditSelection, [buildDomEditTextPatchOperation(value)], {
+      await persistDomEditOperations(
+        domEditSelection,
+        [buildDomEditTextPatchOperation(nextContent)],
+        { skipRefresh: true },
+      );
+
+      if (doc) {
+        const refreshed = findElementForSelection(
+          doc,
+          domEditSelection,
+          domEditSelection.sourceFile,
+        );
+        if (refreshed) {
+          const nextSelection = buildDomSelectionFromTarget(refreshed);
+          if (nextSelection) {
+            applyDomSelection(nextSelection, { revealPanel: false });
+          }
+        }
+      }
+    },
+    [applyDomSelection, buildDomSelectionFromTarget, domEditSelection, persistDomEditOperations],
+  );
+
+  const commitDomTextFields = useCallback(
+    async (selection: DomEditSelection, nextTextFields: DomEditTextField[]) => {
+      const nextContent =
+        nextTextFields.length > 1 || nextTextFields.some((field) => field.source === "child")
+          ? serializeDomEditTextFields(nextTextFields)
+          : (nextTextFields[0]?.value ?? "");
+
+      const iframe = previewIframeRef.current;
+      const doc = iframe?.contentDocument;
+      if (doc) {
+        const el = findElementForSelection(doc, selection, selection.sourceFile);
+        if (el) {
+          if (
+            nextTextFields.length > 1 ||
+            nextTextFields.some((field) => field.source === "child")
+          ) {
+            el.innerHTML = nextContent;
+          } else {
+            el.textContent = nextContent;
+          }
+        }
+      }
+
+      await persistDomEditOperations(selection, [buildDomEditTextPatchOperation(nextContent)], {
         skipRefresh: true,
       });
+
+      if (doc) {
+        const refreshed = findElementForSelection(doc, selection, selection.sourceFile);
+        if (refreshed) {
+          const nextSelection = buildDomSelectionFromTarget(refreshed);
+          if (nextSelection) {
+            applyDomSelection(nextSelection, { revealPanel: false });
+          }
+        }
+      }
     },
-    [domEditSelection, persistDomEditOperations],
+    [applyDomSelection, buildDomSelectionFromTarget, persistDomEditOperations],
+  );
+
+  const handleDomTextFieldStyleCommit = useCallback(
+    async (fieldKey: string, property: string, value: string) => {
+      if (!domEditSelection) return;
+      const field = domEditSelection.textFields.find((entry) => entry.key === fieldKey);
+      if (!field) return;
+
+      if (field.source === "self") {
+        await handleDomStyleCommit(property, value);
+        return;
+      }
+
+      const normalizedValue = normalizeDomEditStyleValue(property, value);
+      if (property === "font-family") {
+        const doc = previewIframeRef.current?.contentDocument;
+        if (doc) injectPreviewGoogleFont(doc, normalizedValue);
+      }
+      const nextTextFields = domEditSelection.textFields.map((entry) =>
+        entry.key === fieldKey
+          ? {
+              ...entry,
+              inlineStyles: {
+                ...entry.inlineStyles,
+                [property]: normalizedValue,
+              },
+              computedStyles: {
+                ...entry.computedStyles,
+                [property]: normalizedValue,
+              },
+            }
+          : entry,
+      );
+
+      await commitDomTextFields(domEditSelection, nextTextFields);
+    },
+    [commitDomTextFields, domEditSelection, handleDomStyleCommit],
+  );
+
+  const handleDomAddTextField = useCallback(
+    async (afterFieldKey?: string) => {
+      if (!domEditSelection) return null;
+      if (!domEditSelection.textFields.some((field) => field.source === "child")) return null;
+
+      const insertionIndex = domEditSelection.textFields.findIndex(
+        (field) => field.key === afterFieldKey,
+      );
+      const baseField =
+        domEditSelection.textFields[insertionIndex >= 0 ? insertionIndex : 0] ??
+        domEditSelection.textFields[0];
+      const nextField = buildDefaultDomEditTextField(baseField);
+      const nextTextFields = [...domEditSelection.textFields];
+      nextTextFields.splice(
+        insertionIndex >= 0 ? insertionIndex + 1 : nextTextFields.length,
+        0,
+        nextField,
+      );
+
+      await commitDomTextFields(domEditSelection, nextTextFields);
+      return nextField.key;
+    },
+    [commitDomTextFields, domEditSelection],
+  );
+
+  const handleDomRemoveTextField = useCallback(
+    async (fieldKey: string) => {
+      if (!domEditSelection) return;
+      const field = domEditSelection.textFields.find((entry) => entry.key === fieldKey);
+      if (!field) return;
+
+      if (field.source === "self") {
+        await handleDomTextCommit("", fieldKey);
+        return;
+      }
+
+      const nextTextFields = domEditSelection.textFields.filter((entry) => entry.key !== fieldKey);
+      await commitDomTextFields(domEditSelection, nextTextFields);
+    },
+    [commitDomTextFields, domEditSelection, handleDomTextCommit],
   );
 
   const handleFocusDesignSection = useCallback((section: Exclude<FocusedDesignSection, null>) => {
@@ -1749,6 +2007,7 @@ export function StudioApp() {
             duration: normalizedDuration,
             track: placement.track,
             zIndex: trackZIndices.get(placement.track) ?? 1,
+            geometry: resolveTimelineAssetInitialGeometry(originalContent),
           }),
         );
 
@@ -2293,6 +2552,9 @@ export function StudioApp() {
                         onClearSelection={clearDomSelection}
                         onSetStyle={handleDomStyleCommit}
                         onSetText={handleDomTextCommit}
+                        onSetTextFieldStyle={handleDomTextFieldStyleCommit}
+                        onAddTextField={handleDomAddTextField}
+                        onRemoveTextField={handleDomRemoveTextField}
                         onAskAgent={handleAskAgent}
                         onImportAssets={handleImportFiles}
                       />

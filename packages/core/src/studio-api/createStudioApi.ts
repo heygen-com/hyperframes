@@ -6,6 +6,7 @@ import { registerPreviewRoutes } from "./routes/preview.js";
 import { registerLintRoutes } from "./routes/lint.js";
 import { registerRenderRoutes } from "./routes/render.js";
 import { registerThumbnailRoutes } from "./routes/thumbnail.js";
+import { registerFontRoutes } from "./routes/fonts.js";
 
 /**
  * Create a Hono sub-app with all studio API routes.
@@ -22,6 +23,7 @@ export function createStudioApi(adapter: StudioApiAdapter): Hono {
   registerLintRoutes(api, adapter);
   registerRenderRoutes(api, adapter);
   registerThumbnailRoutes(api, adapter);
+  registerFontRoutes(api);
 
   return api;
 }

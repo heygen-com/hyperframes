@@ -6,6 +6,7 @@ import {
   buildDomEditStylePatchOperation,
   buildElementAgentPrompt,
   findElementForSelection,
+  serializeDomEditTextFields,
   type DomEditSelection,
   resolveDomEditCapabilities,
   resolveDomEditSelection,
@@ -97,6 +98,32 @@ describe("resolveDomEditCapabilities", () => {
     ).toMatchObject({
       canMove: false,
       canResize: false,
+    });
+  });
+
+  it("allows imported absolute media to resize from computed px geometry", () => {
+    expect(
+      resolveDomEditCapabilities({
+        selector: "#photo",
+        inlineStyles: {
+          inset: "0",
+          width: "100%",
+          height: "100%",
+        },
+        computedStyles: {
+          position: "absolute",
+          left: "0px",
+          top: "0px",
+          width: "330px",
+          height: "228px",
+          transform: "none",
+        },
+        isCompositionHost: false,
+        isMasterView: false,
+      }),
+    ).toMatchObject({
+      canMove: true,
+      canResize: true,
     });
   });
 });
@@ -192,6 +219,26 @@ describe("resolveDomEditSelection", () => {
     expect(selection?.id).toBe("card");
     expect(selection?.selector).toBe("#card");
   });
+
+  it("collects simple child text blocks as separate editable fields", () => {
+    const document = createDocument(`
+      <section id="card" class="clip" style="left: 10px; top: 20px; width: 200px; height: 100px; position: absolute;">
+        <strong>Headline</strong>
+        <span>Supporting copy</span>
+      </section>
+    `);
+
+    const selection = resolveDomEditSelection(document.getElementById("card") as HTMLElement, {
+      activeCompositionPath: null,
+      isMasterView: false,
+    });
+
+    expect(selection?.textFields.map((field) => field.label)).toEqual(["Text 1", "Text 2"]);
+    expect(selection?.textFields.map((field) => field.value)).toEqual([
+      "Headline",
+      "Supporting copy",
+    ]);
+  });
 });
 
 describe("patch builders and prompt builder", () => {
@@ -246,6 +293,18 @@ describe("patch builders and prompt builder", () => {
         height: "196px",
         color: "rgb(248, 250, 252)",
       },
+      textFields: [
+        {
+          key: "self:0:div",
+          label: "Content",
+          value: "Drag me first",
+          tagName: "div",
+          attributes: [],
+          inlineStyles: {},
+          computedStyles: {},
+          source: "self",
+        },
+      ],
       capabilities: {
         canSelect: true,
         canEditStyles: true,
@@ -265,5 +324,36 @@ describe("patch builders and prompt builder", () => {
     expect(prompt).toContain("Playback time:");
     expect(prompt).toContain("Computed styles:");
     expect(prompt).toContain("Target HTML:");
+  });
+
+  it("serializes child text fields back into HTML", () => {
+    expect(
+      serializeDomEditTextFields([
+        {
+          key: "child:0:strong",
+          label: "Text 1",
+          value: "Headline <1>",
+          tagName: "strong",
+          attributes: [],
+          inlineStyles: {
+            "font-size": "22px",
+          },
+          computedStyles: {},
+          source: "child",
+        },
+        {
+          key: "child:1:span",
+          label: "Text 2",
+          value: "Details & more",
+          tagName: "span",
+          attributes: [],
+          inlineStyles: {},
+          computedStyles: {},
+          source: "child",
+        },
+      ]),
+    ).toBe(
+      '<strong data-hf-text-key="child:0:strong" style="font-size: 22px">Headline &lt;1&gt;</strong><span data-hf-text-key="child:1:span">Details &amp; more</span>',
+    );
   });
 });

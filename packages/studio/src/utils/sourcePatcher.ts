@@ -7,6 +7,67 @@ function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+function escapeStyleAttributeValue(value: string, quote: string): string {
+  return quote === '"' ? value.replace(/"/g, "&quot;") : value.replace(/'/g, "&#39;");
+}
+
+function splitInlineStyleDeclarations(style: string): string[] {
+  const declarations: string[] = [];
+  let current = "";
+  let quote: string | null = null;
+  let entity = false;
+  let parenDepth = 0;
+
+  for (const char of style) {
+    if (entity) {
+      current += char;
+      if (char === ";") entity = false;
+      continue;
+    }
+
+    if (char === "&") {
+      entity = true;
+      current += char;
+      continue;
+    }
+
+    if (quote) {
+      current += char;
+      if (char === quote) quote = null;
+      continue;
+    }
+
+    if (char === '"' || char === "'") {
+      quote = char;
+      current += char;
+      continue;
+    }
+
+    if (char === "(") {
+      parenDepth += 1;
+      current += char;
+      continue;
+    }
+
+    if (char === ")") {
+      parenDepth = Math.max(0, parenDepth - 1);
+      current += char;
+      continue;
+    }
+
+    if (char === ";" && parenDepth === 0) {
+      declarations.push(current);
+      current = "";
+      continue;
+    }
+
+    current += char;
+  }
+
+  if (current) declarations.push(current);
+  return declarations;
+}
+
 export interface PatchOperation {
   type: "inline-style" | "attribute" | "text-content";
   property: string;
@@ -92,7 +153,7 @@ function patchInlineStyleInTag(html: string, tag: string, prop: string, value: s
     const quote = styleMatch[1];
     // Parse existing properties
     const props = new Map<string, string>();
-    for (const part of existingStyle.split(";")) {
+    for (const part of splitInlineStyleDeclarations(existingStyle)) {
       const colon = part.indexOf(":");
       if (colon < 0) continue;
       const key = part.slice(0, colon).trim();
@@ -103,13 +164,14 @@ function patchInlineStyleInTag(html: string, tag: string, prop: string, value: s
     props.set(prop, value);
     // Rebuild style string
     const newStyle = Array.from(props.entries())
-      .map(([k, v]) => `${k}: ${v}`)
+      .map(([k, v]) => `${k}: ${escapeStyleAttributeValue(v, quote)}`)
       .join("; ");
-    const newTag = tag.replace(/\bstyle=(["'])([\s\S]*?)\1/, `style=${quote}${newStyle}${quote}`);
+    const newTag = tag.replace(styleMatch[0], `style=${quote}${newStyle}${quote}`);
     return html.replace(tag, newTag);
   } else {
     // No existing style — add one
-    const newTag = tag.replace(/>$/, "") + ` style="${prop}: ${value}"`;
+    const newTag =
+      tag.replace(/>$/, "") + ` style="${prop}: ${escapeStyleAttributeValue(value, '"')}"`;
     return html.replace(tag, newTag);
   }
 }
@@ -260,14 +322,21 @@ function patchAttribute(html: string, elementId: string, attr: string, value: st
  * Apply a text content change to an element.
  */
 function patchTextContent(html: string, elementId: string, value: string): string {
-  // Match the element and its content: <tagname id="elementId"...>content</tagname>
-  const pattern = new RegExp(
-    `(<[^>]*\\bid=(["'])${escapeRegex(elementId)}\\2[^>]*>)([\\s\\S]*?)(<\\/[a-z]+>)`,
+  const openTagPattern = new RegExp(
+    `(<([a-z0-9-]+)[^>]*\\bid=(["'])${escapeRegex(elementId)}\\3[^>]*>)`,
     "i",
   );
-  const match = pattern.exec(html);
-  if (!match) return html;
-  return html.replace(pattern, `${match[1]}${value}${match[4]}`);
+  const match = openTagPattern.exec(html);
+  if (!match || match.index == null) return html;
+
+  const openingTag = match[1];
+  const tagName = match[2];
+  const contentStart = match.index + openingTag.length;
+  const closingTag = `</${tagName}>`;
+  const closingIndex = html.indexOf(closingTag, contentStart);
+  if (closingIndex < 0) return html;
+
+  return `${html.slice(0, contentStart)}${value}${html.slice(closingIndex)}`;
 }
 
 function patchTextContentByTarget(html: string, target: PatchTarget, value: string): string {

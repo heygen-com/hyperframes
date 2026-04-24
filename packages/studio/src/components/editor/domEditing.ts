@@ -6,6 +6,9 @@ const CURATED_STYLE_PROPERTIES = [
   "display",
   "top",
   "left",
+  "right",
+  "bottom",
+  "inset",
   "width",
   "height",
   "gap",
@@ -37,6 +40,17 @@ export interface DomEditCapabilities {
   reasonIfDisabled?: string;
 }
 
+export interface DomEditTextField {
+  key: string;
+  label: string;
+  value: string;
+  tagName: string;
+  attributes: Array<{ name: string; value: string }>;
+  inlineStyles: Record<string, string>;
+  computedStyles: Record<string, string>;
+  source: "self" | "child";
+}
+
 export interface DomEditSelection extends PatchTarget {
   element: HTMLElement;
   label: string;
@@ -50,6 +64,7 @@ export interface DomEditSelection extends PatchTarget {
   dataAttributes: Record<string, string>;
   inlineStyles: Record<string, string>;
   computedStyles: Record<string, string>;
+  textFields: DomEditTextField[];
   capabilities: DomEditCapabilities;
 }
 
@@ -78,7 +93,7 @@ function parsePx(value: string | undefined): number | null {
 }
 
 function isTextBearingTag(tagName: string): boolean {
-  return ["div", "span", "p", "h1", "h2", "h3", "h4", "h5", "h6"].includes(tagName);
+  return ["div", "span", "p", "strong", "h1", "h2", "h3", "h4", "h5", "h6"].includes(tagName);
 }
 
 function getCuratedComputedStyles(el: HTMLElement): Record<string, string> {
@@ -238,6 +253,109 @@ function getInlineStyles(el: HTMLElement): Record<string, string> {
   return styles;
 }
 
+function isEditableTextLeaf(el: HTMLElement): boolean {
+  return (
+    isTextBearingTag(el.tagName.toLowerCase()) &&
+    el.children.length === 0 &&
+    Boolean(el.textContent?.trim())
+  );
+}
+
+function getTextFieldLabel(
+  _tagName: string,
+  index: number,
+  total: number,
+  source: "self" | "child",
+): string {
+  if (source === "self" || total === 1) return "Content";
+  return `Text ${index + 1}`;
+}
+
+function buildTextField(
+  el: HTMLElement,
+  index: number,
+  total: number,
+  source: "self" | "child",
+): DomEditTextField {
+  const tagName = el.tagName.toLowerCase();
+  const key = el.getAttribute("data-hf-text-key") ?? `${source}:${index}:${tagName}`;
+  return {
+    key,
+    label: getTextFieldLabel(tagName, index, total, source),
+    value: el.textContent?.trim() ?? "",
+    tagName,
+    attributes: Array.from(el.attributes)
+      .filter((attribute) => attribute.name !== "style")
+      .map((attribute) => ({
+        name: attribute.name,
+        value: attribute.value,
+      })),
+    inlineStyles: getInlineStyles(el),
+    computedStyles: getCuratedComputedStyles(el),
+    source,
+  };
+}
+
+function collectDomEditTextFields(el: HTMLElement): DomEditTextField[] {
+  const childFields = Array.from(el.children).filter(isHtmlElement).filter(isEditableTextLeaf);
+  if (childFields.length > 0) {
+    return childFields.map((child, index) =>
+      buildTextField(child, index, childFields.length, "child"),
+    );
+  }
+
+  if (isEditableTextLeaf(el)) {
+    return [buildTextField(el, 0, 1, "self")];
+  }
+
+  return [];
+}
+
+function escapeHtmlText(value: string): string {
+  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function serializeTextFieldStyle(field: DomEditTextField): string {
+  const entries = Object.entries(field.inlineStyles).filter(([, value]) => Boolean(value));
+  if (entries.length === 0) return "";
+  return entries.map(([key, value]) => `${key}: ${value}`).join("; ");
+}
+
+export function serializeDomEditTextFields(fields: DomEditTextField[]): string {
+  return fields
+    .filter((field) => field.source === "child")
+    .map((field) => {
+      const attrs = [
+        ...field.attributes.filter((attribute) => attribute.name !== "data-hf-text-key"),
+        { name: "data-hf-text-key", value: field.key },
+      ]
+        .map((attribute) => ` ${attribute.name}="${attribute.value.replace(/"/g, "&quot;")}"`)
+        .join("");
+      const style = serializeTextFieldStyle(field);
+      const styleAttr = style ? ` style="${style.replace(/"/g, "&quot;")}"` : "";
+      return `<${field.tagName}${attrs}${styleAttr}>${escapeHtmlText(field.value)}</${field.tagName}>`;
+    })
+    .join("");
+}
+
+export function buildDefaultDomEditTextField(base?: Partial<DomEditTextField>): DomEditTextField {
+  return {
+    key: `child:new:${Date.now()}`,
+    label: "Text",
+    value: "New text",
+    tagName: "span",
+    attributes: [],
+    inlineStyles: {
+      "font-family": base?.computedStyles?.["font-family"] ?? "inherit",
+      "font-size": base?.computedStyles?.["font-size"] ?? "16px",
+      "font-weight": base?.computedStyles?.["font-weight"] ?? "400",
+      color: base?.computedStyles?.color ?? "inherit",
+    },
+    computedStyles: {},
+    source: "child",
+  };
+}
+
 export function resolveDomEditCapabilities(args: {
   selector?: string;
   inlineStyles: Record<string, string>;
@@ -266,10 +384,10 @@ export function resolveDomEditCapabilities(args: {
   }
 
   const position = args.computedStyles.position;
-  const left = parsePx(args.inlineStyles.left);
-  const top = parsePx(args.inlineStyles.top);
-  const width = parsePx(args.inlineStyles.width);
-  const height = parsePx(args.inlineStyles.height);
+  const left = parsePx(args.inlineStyles.left) ?? parsePx(args.computedStyles.left);
+  const top = parsePx(args.inlineStyles.top) ?? parsePx(args.computedStyles.top);
+  const width = parsePx(args.inlineStyles.width) ?? parsePx(args.computedStyles.width);
+  const height = parsePx(args.inlineStyles.height) ?? parsePx(args.computedStyles.height);
   const transform = (args.computedStyles.transform ?? "none").trim();
 
   const canMove =
@@ -323,6 +441,7 @@ export function resolveDomEditSelection(
       undefined;
     const inlineStyles = getInlineStyles(current);
     const computedStyles = getCuratedComputedStyles(current);
+    const textFields = collectDomEditTextFields(current);
     const capabilities = resolveDomEditCapabilities({
       selector,
       inlineStyles,
@@ -353,6 +472,7 @@ export function resolveDomEditSelection(
       dataAttributes: getDataAttributes(current),
       inlineStyles,
       computedStyles,
+      textFields,
       capabilities,
     };
   }
@@ -500,9 +620,5 @@ export function buildElementAgentPrompt({
 }
 
 export function isTextEditableSelection(selection: DomEditSelection): boolean {
-  return (
-    isTextBearingTag(selection.tagName) &&
-    Boolean(selection.textContent) &&
-    !selection.isCompositionHost
-  );
+  return selection.textFields.length > 0 && !selection.isCompositionHost;
 }

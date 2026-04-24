@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  applyPatch,
   applyPatchByTarget,
   readAttributeByTarget,
   readTagSnippetByTarget,
@@ -68,6 +69,30 @@ describe("applyPatchByTarget", () => {
     expect(withHeight).toContain('style="position: absolute; width: 420px; height: 220px"');
   });
 
+  it("escapes quoted CSS urls inside double-quoted style attributes", () => {
+    const html = `<div id="card" style="position: absolute; opacity: 1"></div>`;
+
+    const withBackground = applyPatchByTarget(
+      html,
+      { id: "card" },
+      {
+        type: "inline-style",
+        property: "background-image",
+        value: `url("../ChatGPT Image Apr 22, 2026.png")`,
+      },
+    );
+    const withRadius = applyPatchByTarget(
+      withBackground,
+      { id: "card" },
+      { type: "inline-style", property: "border-radius", value: "12px" },
+    );
+
+    expect(withRadius).toContain(
+      "background-image: url(&quot;../ChatGPT Image Apr 22, 2026.png&quot;)",
+    );
+    expect(withRadius).toContain("border-radius: 12px");
+  });
+
   it("updates media timing attributes by selector", () => {
     const html = `<video class="hero clip" data-start="0.2" data-duration="1.4" data-media-start="0.4"></video>`;
 
@@ -127,6 +152,22 @@ describe("applyPatchByTarget", () => {
     expect(updated).toContain(`style='left: 160px; top: 180px'`);
     expect(updated).toContain(`data-start="0.4"`);
     expect(readAttributeByTarget(updated, { id: "hero" }, "start")).toBe("0.4");
+  });
+
+  it("replaces the full text body of a nested element by id", () => {
+    const html =
+      '<div id="panel"><strong>Headline</strong><span>Supporting copy</span></div><p>Outside</p>';
+
+    const patched = applyPatch(html, "panel", {
+      type: "text-content",
+      property: "text",
+      value: "<strong>New headline</strong><span>New supporting copy</span>",
+    });
+
+    expect(patched).toContain(
+      '<div id="panel"><strong>New headline</strong><span>New supporting copy</span></div>',
+    );
+    expect(patched).toContain("<p>Outside</p>");
   });
 
   it("patches the correct duplicate selector occurrence", () => {
