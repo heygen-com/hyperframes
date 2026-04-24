@@ -11,6 +11,7 @@ import { extractAudioMetadata } from "../utils/ffprobe.js";
 import { downloadToTemp, isHttpUrl } from "../utils/urlDownloader.js";
 import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
 import { runFfmpeg } from "../utils/runFfmpeg.js";
+import { unwrapTemplate } from "../utils/htmlTemplate.js";
 import type { AudioElement, AudioTrack, MixResult } from "./audioMixer.types.js";
 
 export type { AudioElement, AudioTrack, MixResult } from "./audioMixer.types.js";
@@ -24,7 +25,7 @@ interface ExtractResult {
 
 export function parseAudioElements(html: string): AudioElement[] {
   const elements: AudioElement[] = [];
-  const { document } = parseHTML(html);
+  const { document } = parseHTML(unwrapTemplate(html));
 
   // Parse <audio> elements
   const audioEls = document.querySelectorAll("audio[id][src]");

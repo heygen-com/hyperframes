@@ -1233,9 +1233,18 @@ export async function recompileWithResolutions(
   const mainImages = parseImageElements(html);
 
   // Keep inlined sub-composition media authoritative on ID collisions.
-  const videos = dedupeElementsById([...mainVideos, ...subVideos]);
-  const audios = dedupeElementsById([...mainAudios, ...subAudios]);
-  const images = dedupeElementsById([...mainImages, ...subImages]);
+  //
+  // `compiled.html` has already been inlined — the original host elements with
+  // `[data-composition-src]` no longer exist, so `parseSubCompositions` above
+  // returns empty arrays. If we blindly dedupe at this point we replace the
+  // already-offset media from the first compile pass (in compileForRender)
+  // with the scene-local versions parsed from the inlined HTML, losing the
+  // parent offset. Only overwrite when we actually have sub-composition data
+  // to merge in.
+  const hasSubMedia = subVideos.length > 0 || subAudios.length > 0 || subImages.length > 0;
+  const videos = hasSubMedia ? dedupeElementsById([...mainVideos, ...subVideos]) : compiled.videos;
+  const audios = hasSubMedia ? dedupeElementsById([...mainAudios, ...subAudios]) : compiled.audios;
+  const images = hasSubMedia ? dedupeElementsById([...mainImages, ...subImages]) : compiled.images;
 
   const remaining = compiled.unresolvedCompositions.filter(
     (c) => !resolutions.some((r) => r.id === c.id),
