@@ -66,6 +66,39 @@ describe("resolveConfig", () => {
     expect(config.disableGpu).toBe(false);
   });
 
+  it("defaults gpuCapture to false (software GL fallback)", () => {
+    const config = resolveConfig();
+    expect(config.gpuCapture).toBe(false);
+  });
+
+  it("reads HYPERFRAMES_GPU_CAPTURE=true as gpuCapture on", () => {
+    setEnv("HYPERFRAMES_GPU_CAPTURE", "true");
+
+    const config = resolveConfig();
+    expect(config.gpuCapture).toBe(true);
+  });
+
+  it("reads HYPERFRAMES_GPU_CAPTURE=1 as gpuCapture on (local-dev shorthand)", () => {
+    setEnv("HYPERFRAMES_GPU_CAPTURE", "1");
+
+    const config = resolveConfig();
+    expect(config.gpuCapture).toBe(true);
+  });
+
+  it("treats other HYPERFRAMES_GPU_CAPTURE values as false", () => {
+    setEnv("HYPERFRAMES_GPU_CAPTURE", "yes");
+
+    const config = resolveConfig();
+    expect(config.gpuCapture).toBe(false);
+  });
+
+  it("explicit gpuCapture override beats env var", () => {
+    setEnv("HYPERFRAMES_GPU_CAPTURE", "true");
+
+    const config = resolveConfig({ gpuCapture: false });
+    expect(config.gpuCapture).toBe(false);
+  });
+
   it("explicit overrides take precedence over env vars", () => {
     setEnv("PRODUCER_CORES_PER_WORKER", "5");
 
