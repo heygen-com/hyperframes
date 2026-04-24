@@ -123,4 +123,50 @@ describe("initSandboxRuntimeModular", () => {
 
     expect(child.style.visibility).toBe("hidden");
   });
+
+  it("pauses nested media that is outside the timed-media cache after a seek", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+
+    const child = document.createElement("div");
+    child.setAttribute("data-composition-id", "slide-translation");
+    child.setAttribute("data-start", "20");
+    child.setAttribute("data-duration", "16");
+    root.appendChild(child);
+
+    const video = document.createElement("video");
+    child.appendChild(video);
+    Object.defineProperty(video, "duration", { value: 20, writable: true, configurable: true });
+    Object.defineProperty(video, "paused", { value: false, writable: true, configurable: true });
+    Object.defineProperty(video, "readyState", { value: 4, writable: true, configurable: true });
+    Object.defineProperty(video, "currentTime", { value: 0, writable: true, configurable: true });
+    const pause = () => {
+      Object.defineProperty(video, "paused", { value: true, writable: true, configurable: true });
+    };
+    video.load = () => {};
+    video.pause = pause;
+
+    (window as Window & { __timelines?: Record<string, RuntimeTimelineLike> }).__timelines = {
+      main: createMockTimeline(40),
+      "slide-translation": createMockTimeline(16),
+    };
+
+    initSandboxRuntimeModular();
+
+    const player = (
+      window as Window & {
+        __player?: { seek: (timeSeconds: number) => void };
+      }
+    ).__player;
+    expect(player).toBeDefined();
+
+    player?.seek(29);
+
+    expect(video.paused).toBe(true);
+    expect(video.currentTime).toBe(9);
+  });
 });

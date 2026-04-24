@@ -13,19 +13,24 @@ export type RuntimeMediaClip = {
 
 export function refreshRuntimeMediaCache(params?: {
   resolveStartSeconds?: (element: Element) => number;
+  resolveDurationSeconds?: (element: HTMLVideoElement | HTMLAudioElement) => number | null;
+  shouldIncludeElement?: (element: HTMLVideoElement | HTMLAudioElement) => boolean;
 }): {
   timedMediaEls: Array<HTMLVideoElement | HTMLAudioElement>;
   mediaClips: RuntimeMediaClip[];
   videoClips: RuntimeMediaClip[];
   maxMediaEnd: number;
 } {
-  const mediaEls = Array.from(
-    document.querySelectorAll("video[data-start], audio[data-start]"),
-  ) as Array<HTMLVideoElement | HTMLAudioElement>;
+  const mediaEls = Array.from(document.querySelectorAll("video, audio")) as Array<
+    HTMLVideoElement | HTMLAudioElement
+  >;
+  const timedMediaEls = params?.shouldIncludeElement
+    ? mediaEls.filter((el) => params.shouldIncludeElement?.(el))
+    : mediaEls.filter((el) => el.hasAttribute("data-start"));
   const mediaClips: RuntimeMediaClip[] = [];
   const videoClips: RuntimeMediaClip[] = [];
   let maxMediaEnd = 0;
-  for (const el of mediaEls) {
+  for (const el of timedMediaEls) {
     const start = params?.resolveStartSeconds
       ? params.resolveStartSeconds(el)
       : Number.parseFloat(el.dataset.start ?? "0");
@@ -39,7 +44,8 @@ export function refreshRuntimeMediaCache(params?: {
       Number.isFinite(rawRate) && rawRate > 0 ? Math.max(0.1, Math.min(5, rawRate)) : 1;
     const loop = el.loop;
     const sourceDuration = Number.isFinite(el.duration) && el.duration > 0 ? el.duration : null;
-    let duration = Number.parseFloat(el.dataset.duration ?? "");
+    let duration =
+      params?.resolveDurationSeconds?.(el) ?? Number.parseFloat(el.dataset.duration ?? "");
     if ((!Number.isFinite(duration) || duration <= 0) && sourceDuration != null) {
       // Effective duration accounts for playback rate:
       // at 0.5x, a 10s source plays for 20s on the timeline
@@ -63,7 +69,7 @@ export function refreshRuntimeMediaCache(params?: {
     if (el.tagName === "VIDEO") videoClips.push(clip);
     if (Number.isFinite(end)) maxMediaEnd = Math.max(maxMediaEnd, end);
   }
-  return { timedMediaEls: mediaEls, mediaClips, videoClips, maxMediaEnd };
+  return { timedMediaEls, mediaClips, videoClips, maxMediaEnd };
 }
 
 // Per-element timeline→media offset from the previous tick. Used to tell a

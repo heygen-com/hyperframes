@@ -1199,8 +1199,45 @@ export function initSandboxRuntimeModular(): void {
   };
 
   const syncMediaForCurrentState = () => {
+    const resolveMediaCompositionContext = (element: HTMLVideoElement | HTMLAudioElement) => {
+      const compositionRoot = element.closest("[data-composition-id]");
+      const inheritedStart = compositionRoot ? resolveStartForElement(compositionRoot, 0) : null;
+      const inheritedDuration = compositionRoot
+        ? resolveDurationForElement(compositionRoot, { includeAuthoredTimingAttrs: true })
+        : null;
+      return { compositionRoot, inheritedStart, inheritedDuration };
+    };
     const cache = refreshRuntimeMediaCache({
-      resolveStartSeconds: (element) => resolveStartForElement(element, 0),
+      shouldIncludeElement: (element) =>
+        element.hasAttribute("data-start") ||
+        Boolean(resolveMediaCompositionContext(element).compositionRoot),
+      resolveStartSeconds: (element) => {
+        const context = resolveMediaCompositionContext(
+          element as HTMLVideoElement | HTMLAudioElement,
+        );
+        return resolveStartForElement(element, context.inheritedStart ?? 0);
+      },
+      resolveDurationSeconds: (element) => {
+        const context = resolveMediaCompositionContext(element);
+        const start = resolveStartForElement(element, context.inheritedStart ?? 0);
+        const mediaStart =
+          Number.parseFloat(element.dataset.playbackStart ?? element.dataset.mediaStart ?? "0") ||
+          0;
+        const hostRemaining =
+          context.inheritedStart != null &&
+          context.inheritedDuration != null &&
+          context.inheritedDuration > 0
+            ? Math.max(0, context.inheritedStart + context.inheritedDuration - start)
+            : null;
+        const sourceDuration =
+          Number.isFinite(element.duration) && element.duration > mediaStart
+            ? Math.max(0, element.duration - mediaStart)
+            : null;
+        if (sourceDuration != null && hostRemaining != null) {
+          return Math.min(sourceDuration, hostRemaining);
+        }
+        return sourceDuration ?? hostRemaining;
+      },
     });
     syncRuntimeMedia({
       clips: cache.mediaClips,
