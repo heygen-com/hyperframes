@@ -1,377 +1,240 @@
 ---
 title: Studio Manual DOM Editing
-description: Design spec for direct-manipulation DOM editing in HyperFrames Studio.
+description: What the Studio manual DOM editing inspector actually ships today, including capabilities, UX, and constraints.
 ---
 
-This document is the implementation spec for adding manual DOM editing to HyperFrames Studio. The goal is to let users select, move, resize, and later edit supported elements directly on the preview canvas without inventing a new document model or pretending that every DOM node is safely editable.
+This page documents the current manual DOM editing surface in HyperFrames Studio. It reflects the implementation that ships in the Studio inspector today, not the earlier design draft that explored third-party transform engines.
 
-## Why This Exists
+## What Shipped
 
-Studio already supports **timeline editing** by patching source HTML through stable targets such as `id`, `selector`, `selectorIndex`, and `sourceFile`. What it does not support yet is **canvas-first direct manipulation** of DOM elements in the preview itself.
+Studio now supports a direct DOM editing workflow inside the preview:
 
-The missing behavior is:
+- select supported elements directly in the preview
+- see an editor-owned overlay around the current selection
+- move and resize supported elements on canvas
+- edit style properties from the right-side `Design` inspector
+- edit text content for safe text-bearing selections
+- edit solid fills, gradients, image fills, opacity, radius, flex properties, and blend mode
+- drill into nested compositions from master view instead of pretending every inner node is editable in place
+- generate an element-scoped `Ask agent` prompt bundle from the current selection
 
-- click an element in the preview and see selection chrome
-- drag supported elements directly on canvas
-- resize supported elements directly on canvas
-- later, support inline text editing for text nodes we can round-trip safely
+The important rule is still conservative: Studio only exposes interactions it can round-trip back to authored HTML with deterministic behavior.
 
-The important constraint is that Studio should only expose actions it can persist deterministically. If the framework cannot round-trip a change to source HTML with predictable semantics, that action should stay disabled or hidden.
+## Current User Experience
 
-## Existing Foundations In Studio
+### Preview selection
 
-HyperFrames Studio already has most of the persistence and identity plumbing needed for manual DOM editing:
+- Single click selects a patchable element in the preview.
+- The selection overlay is rendered in Studio chrome, not injected into authored content.
+- The overlay is cleared when:
+  - the `Inspector` panel is closed
+  - the user clicks an empty area in the preview
+  - the underlying element disappears after a source refresh
 
-- `packages/studio/src/player/hooks/useTimelinePlayer.ts`
-  - builds patchable timeline elements from runtime/DOM state
-  - already exposes `domId`, `selector`, `selectorIndex`, and `sourceFile`
-- `packages/studio/src/utils/sourcePatcher.ts`
-  - already supports attribute, inline-style, and text-content patch operations
+### Overlay behavior
+
+The overlay provides:
+
+- selection bounds
+- move handle behavior for supported elements
+- a resize handle when width and height are safely patchable
+- a small floating toolbar with `Move`, `Styles`, and `Ask agent`
+
+The current implementation uses Studio-owned pointer handling in `DomEditOverlay.tsx`. It does **not** use `Moveable`.
+
+### Inspector behavior
+
+The `Design` panel currently includes:
+
+- `Layout`
+  - X / Y / W / H fields
+  - wheel and arrow-key numeric scrubbing
+- `Flex`
+  - direction, justify, align, gap, clip content
+- `Radius`
+  - slider + readout
+- `Blending`
+  - opacity slider + blend mode
+- `Fill`
+  - solid color
+  - multi-stop gradient editing
+  - image URL fill
+  - text color
+- `Text`
+  - direct text content editing when the selection is safe to patch
+- `Selection colors`
+  - a summary of detected colors for the current selection
+
+The inspector is intentionally split from `Renders` with a `Design / Renders` tab control in the right panel.
+
+## What Counts As Editable
+
+Studio builds a `DomEditSelection` and `DomEditCapabilities` object for each selection.
+
+### Selection requirements
+
+A node is only useful to Studio if it can be identified with a stable patch target, for example:
+
+- `id`
+- stable selector
+- selector index scoped to the correct source file
+- composition host mapping when master view is involved
+
+### Move support
+
+Move is allowed only when the selected element:
+
+- has a stable patch target
+- is `absolute` or `fixed`
+- has inline `left` and `top` values that parse as pixel values
+- is not transform-driven (`transform: none`)
+
+### Resize support
+
+Resize is allowed only when move is already allowed and Studio can also safely patch pixel `width` and/or `height`.
+
+### Text editing support
+
+Text editing is allowed only for safe text-bearing selections:
+
+- supported text-bearing tags such as `div`, `span`, `p`, and headings
+- non-empty text content
+- not a composition host
+
+### Unsupported examples
+
+Studio intentionally withholds direct geometry editing for:
+
+- flex/grid children whose position is emergent from layout
+- transform-driven geometry
+- nested composition internals while the user is still in master view
+- nodes without a stable patch target
+
+When geometry is blocked but style edits are still safe, the inspector shows the selection and the reason direct geometry editing is unavailable.
+
+## Nested Composition Rules
+
+Nested compositions are handled explicitly.
+
+### In master view
+
+- clicking content inside a nested composition maps back to the composition host
+- Studio does not expose direct inner-node geometry edits from the master preview
+- double click drills into the subcomposition
+
+### After drill-down
+
+- Studio resolves selections inside that composition normally
+- direct move/resize becomes available again if the selected inner node meets the capability rules
+
+This keeps Studio honest about what it can patch safely from the current editing context.
+
+## Source Patching Model
+
+Studio still uses authored HTML as the source of truth.
+
+The manual DOM editing flow patches source through the existing patch pipeline in `packages/studio/src/utils/sourcePatcher.ts`.
+
+Current patch types used by the inspector include:
+
+- inline style patches
+- attribute patches for timeline-linked editing paths
+- text-content patches
+
+The flow is:
+
+1. user selects or manipulates an element in the preview
+2. Studio resolves a stable target
+3. the preview is updated optimistically for interaction feedback
+4. the patch is written back to source
+5. the preview refreshes and selection is reattached
+
+## Gradient Editing
+
+The current gradient editor is a structured Studio control, not a raw CSS text field.
+
+It supports:
+
+- `linear`, `radial`, and `conic` gradients
+- repeating variants
+- multiple stops
+- stop insertion by clicking the preview strip
+- stop removal
+- angle control
+- radial shape and size controls
+- radial/conic center controls
+
+The editor still serializes back to CSS `background-image`, but the inspector works with a parsed gradient model instead of forcing the user to type raw gradient syntax.
+
+## Numeric Scrubbing
+
+Numeric layout/detail inputs now support lightweight design-tool-style nudging:
+
+- mouse wheel over the focused field
+- `ArrowUp` / `ArrowDown`
+- `Shift` for larger steps
+- `Alt` for finer steps
+
+This is currently used across the numeric commit fields in the inspector, including layout metrics and other numeric text inputs that parse cleanly as values plus units.
+
+## Files That Own The Feature
+
+The main implementation lives in:
+
 - `packages/studio/src/App.tsx`
-  - already applies timeline move/resize edits by patching source and refreshing preview
+  - overall inspector wiring
+  - selection lifecycle
+  - preview hit testing
+  - persistence hooks
+- `packages/studio/src/components/editor/DomEditOverlay.tsx`
+  - overlay box, toolbar, drag, resize
+- `packages/studio/src/components/editor/PropertyPanel.tsx`
+  - right-side inspector UI
+- `packages/studio/src/components/editor/domEditing.ts`
+  - selection resolution
+  - capability gating
+  - prompt generation
+- `packages/studio/src/components/editor/colorValue.ts`
+  - color parsing and alpha-preserving color picker behavior
+- `packages/studio/src/components/editor/gradientValue.ts`
+  - gradient parsing, serialization, and stop editing helpers
+- `packages/studio/src/utils/sourcePatcher.ts`
+  - source patch persistence
+
+Supporting Studio shell changes also landed in:
+
+- `packages/studio/src/components/nle/NLELayout.tsx`
 - `packages/studio/src/components/nle/NLEPreview.tsx`
+- `packages/studio/src/components/sidebar/LeftSidebar.tsx`
 - `packages/studio/src/player/components/Player.tsx`
-  - already expose the preview iframe, which is the correct canvas boundary for direct manipulation
+- `packages/studio/src/player/components/Timeline.tsx`
+- `packages/studio/src/player/components/TimelineClip.tsx`
+- `packages/studio/src/player/hooks/useTimelinePlayer.ts`
 
-That means manual DOM editing does **not** require a new persistence engine. The correct scope is:
+## Current Constraints
 
-1. add a selection and transform layer on top of the preview iframe
-2. translate supported interactions into existing patch operations
-3. gate actions behind an explicit capability model
+This feature is intentionally **not** a full general-purpose visual builder.
 
-## Open-Source Research
+Still out of scope today:
 
-We explicitly do **not** want to reinvent the low-level drag/resize interaction layer.
-
-### 1. Moveable
-
-Source: [daybrush/moveable](https://github.com/daybrush/moveable)
-
-Why it matters:
-
-- purpose-built for draggable, resizable, scalable, rotatable, groupable, and snappable DOM interactions
-- has mature event hooks for drag and resize lifecycles
-- explicitly supports iframe contexts in its changelog and API surface
-- pairs naturally with [daybrush/selecto](https://github.com/daybrush/selecto) for future marquee or multi-select workflows
-
-Why it is the best fit:
-
-- HyperFrames Studio needs a **low-level transform primitive**, not a whole page builder
-- Moveable can run against real DOM targets while Studio keeps source-of-truth ownership
-- it is incremental: we can start with move + resize only
-
-### 2. GrapesJS
-
-Source: [GrapesJS/grapesjs](https://github.com/GrapesJS/grapesjs)
-
-Why it matters:
-
-- strong reference for iframe-based editor canvas architecture
-- keeps editor overlays and selection chrome outside user content
-- component model and canvas UX show how to avoid mutating the live DOM naively
-
-What we should borrow:
-
-- selection overlays should live in editor chrome, not inside the authored content
-- explicit “enter component” / drill-down behavior is better than pretending nested content is always directly editable
-- iframe editing needs careful pointer/event management
-
-What we should **not** do:
-
-- adopt GrapesJS as a dependency or new editor model
-- replace HyperFrames’ source patcher and runtime with a second component tree
-
-### 3. Plasmic
-
-Source: [plasmicapp/plasmic](https://github.com/plasmicapp/plasmic)
-
-Why it matters:
-
-- strong reference for codebase-integrated visual editing
-- useful example of capability-driven editing rather than “everything is editable”
-
-What we should borrow:
-
-- only expose actions for things the system can own end to end
-- treat visual editing as a thin layer over a codebase, not as a replacement for it
-
-What we should **not** do:
-
-- bring in a heavyweight app-builder dependency
-- add a second abstract source-of-truth beside authored HTML
-
-## Recommendation
-
-Use the following combination:
-
-- **Moveable** as the transform interaction primitive
-- **Selecto** later, if we add multi-select or marquee selection
-- **GrapesJS-like canvas architecture** for overlays and iframe behavior
-- **Plasmic-like capability gating** so Studio edits only what it fully owns
-
-This gives HyperFrames Studio a focused direct-manipulation layer without turning Studio into a general-purpose website builder.
-
-## Goals
-
-### Phase-1 goals
-
-- select supported DOM elements directly in the preview
-- show editor-owned selection chrome around the selected element
-- move supported elements directly on canvas
-- resize supported elements directly on canvas
-- persist those edits back to source HTML with the existing patch pipeline
-- keep preview and source synchronized after each edit
-
-### Later goals
-
-- inline text editing for safely patchable text nodes
+- rotation
+- arbitrary transforms
 - snapping and alignment guides
 - multi-select
-- keyboard nudging
-- constraint handles for aspect ratio / edge pinning
-
-## Non-Goals
-
-These are explicitly out of scope for the first manual DOM editing rollout:
-
-- freeform editing of arbitrary DOM nodes
-- rotation, warp, or arbitrary transform editing
-- editing GSAP timing semantics directly from canvas
-- rewriting authored layout systems like flex or grid into absolute positioning
-- editing nested subcomposition internals from the master preview without explicit drill-down
-- changing CSS stacking behavior that Studio does not own
-
-## Core Product Rule
-
-Studio should only expose manual DOM actions when it has **100% deterministic control** of the round trip.
-
-That means a direct-manipulation action is allowed only when all of the following are true:
-
-1. Studio can identify a stable patch target
-   - `domId`, or
-   - `selector + selectorIndex`
-2. Studio can express the edit with a supported patch operation
-   - inline style
-   - attribute change
-   - text-content patch
-3. The change has stable meaning in authored HTML
-   - for example, updating `left/top/width/height` on an absolutely positioned element
-
-If any of those are false, Studio should not show transform handles for that element.
-
-## Capability Model
-
-Manual DOM editing should use a dedicated capability object, separate from timeline-only capabilities.
-
-```ts
-type DomEditCapabilities = {
-  canSelect: boolean;
-  canMove: boolean;
-  canResize: boolean;
-  canEditText: boolean;
-  canRotate: boolean;
-  reasonIfDisabled?: string;
-};
-```
-
-### Phase-1 rules
-
-An element is manually editable only if:
-
-- it is patchable via `domId` or `selector + selectorIndex`
-- it resolves to a concrete DOM node in the preview iframe
-- it uses a layout model we can safely patch
-
-Phase-1 supported layout model:
-
-- absolutely positioned elements with patchable `left`, `top`, `width`, or `height`
-
-Phase-1 unsupported examples:
-
-- flex/grid children whose position is emergent from parent layout
-- elements whose visible geometry is controlled entirely by transforms or GSAP
-- nodes rendered inside nested composition hosts unless the user drills into that composition
-
-## Proposed User Experience
-
-### Selection
-
-- single click on a supported element selects it
-- Studio draws the selection box in editor chrome above the iframe
-- selection does not inject editor markup into user content
-
-### Move
-
-- drag the selected element on canvas
-- Studio shows live transform feedback
-- on commit, Studio patches only the supported position properties
-
-### Resize
-
-- show resize handles only when the element’s size can be round-tripped safely
-- on commit, Studio patches only the supported size properties
-
-### Text editing
-
-Not in phase 1, but the future behavior should be:
-
-- double click text content to enter inline edit mode
-- only enable when Studio can patch that exact text node deterministically
-
-### Nested compositions
-
-- master preview can select composition hosts
-- double click on a composition host should drill down into that subcomposition
-- direct editing of inner subcomposition nodes should happen in the subcomposition view, not through the master preview
-
-## Architecture
-
-### 1. Canvas selection bridge
-
-Studio already has access to the preview iframe. Add a canvas-selection controller that:
-
-- observes pointer events from the preview iframe
-- resolves the clicked node to a patchable Studio element
-- computes the target DOM rect in viewport coordinates
-- forwards selection state to the Studio shell
-
-### 2. Overlay layer outside the iframe
-
-Selection chrome should render in Studio, not inside the authored composition.
-
-That overlay owns:
-
-- selection bounding box
-- resize handles
-- hover outlines
-- snapping guides later
-
-This keeps authored HTML clean and avoids polluting exports.
-
-### 3. Transform engine
-
-Use `Moveable` as the transform engine for:
-
-- drag start / drag / drag end
-- resize start / resize / resize end
-
-Initial configuration should disable every behavior we do not support:
-
-- `draggable: true`
-- `resizable: true`
-- `rotatable: false`
-- `scalable: false`
-- `warpable: false`
-- `snappable: false` initially
-
-### 4. Patch translation
-
-Moveable events should translate into source patches, not direct long-lived DOM mutation.
-
-Phase-1 mapping:
-
-- move
-  - patch inline `left`
-  - patch inline `top`
-- resize
-  - patch inline `width`
-  - patch inline `height`
-
-During interaction, the overlay can preview live geometry. On commit, Studio should patch source and refresh the preview from source-of-truth HTML.
-
-### 5. Capability gating
-
-Before attaching Moveable to a node, Studio must evaluate the capability model.
-
-If unsupported:
-
-- allow normal selection if useful
-- do not show move or resize handles
-- surface the reason in the property panel or inspector
-
-## Data Flow
-
-1. user clicks an element in the preview iframe
-2. Studio resolves the DOM node to a patchable target
-3. Studio computes `DomEditCapabilities`
-4. Studio mounts selection chrome and, if allowed, Moveable
-5. user drags or resizes
-6. Studio previews geometry in the overlay
-7. on commit, Studio converts the interaction into `applyPatchByTarget(...)`
-8. source HTML updates
-9. preview hot refreshes
-10. selection is reattached using the same stable target identity
-
-## Why We Should Not Build This From Scratch
-
-A custom transform engine would require us to own:
-
-- drag math
-- resize handles
-- hit testing
-- nested transforms
-- snapping
-- pointer capture
-- iframe coordinate translation
-
-That is exactly the kind of mature, low-level interaction surface that is easy to get 80% right and expensive to harden. `Moveable` already solves most of that category, so HyperFrames should focus on:
-
-- capability gating
-- source patching
-- iframe/editor integration
-- deterministic semantics
-
-## Rollout Plan
-
-### Phase 0: internal wiring
-
-- add `DomEditCapabilities`
-- add preview selection state
-- add overlay layer anchored to the preview iframe
-
-### Phase 1: move + resize
-
-- support only absolutely positioned patchable elements
-- use Moveable for drag and resize
-- commit edits via `applyPatchByTarget(...)`
-
-### Phase 2: text editing
-
-- enable inline text editing for patchable text nodes
-- preserve exact text-node targeting
-
-### Phase 3: quality of life
-
-- snapping
-- alignment guides
-- keyboard nudging
-- multi-select via Selecto
-
-## Validation Plan
-
-Before shipping phase 1, verify all of the following:
-
-- selecting an editable node shows correct overlay bounds
-- moving an editable node updates source HTML and survives refresh
-- resizing an editable node updates source HTML and survives refresh
-- unsupported nodes never show misleading handles
-- nested composition hosts drill down instead of exposing invalid inner editing
-- preview and render stay WYSIWYG after edits
-
-## Open Questions
-
-- should phase 1 patch inline styles only, or also simple positional attributes when present?
-- should selection default to the nearest patchable ancestor when the exact clicked node is not editable?
-- should master-view composition hosts be movable directly, or only editable after drill-down?
-- when a node is unsupported, should Studio show an explanation in the property panel, or simply omit handles?
+- marquee selection
+- freeform editing of every DOM node regardless of layout model
+- editing nested subcomposition internals directly from the master preview without drill-down
 
 ## Bottom Line
 
-The right approach is **not** “make the whole DOM editable.” The right approach is:
+Studio manual DOM editing is now a narrow, deterministic visual editing layer over authored HTML.
 
-- keep authored HTML as the source of truth
-- add a thin iframe-aware overlay layer
-- use `Moveable` as the transform primitive
-- borrow canvas/drill-down behavior from tools like GrapesJS
-- borrow capability boundaries from tools like Plasmic
-- only expose manual DOM actions that Studio can round-trip with deterministic meaning
+It does **not** try to make the whole DOM freely editable. Instead it:
+
+- keeps source HTML as the source of truth
+- exposes only patchable interactions
+- uses a Studio-owned overlay layer for direct manipulation
+- gives users a real inspector for safe style and text edits
+- treats nested compositions as drill-down boundaries instead of flattening them into an unsafe editing surface
+
+That tradeoff is the reason the current feature feels reliable instead of deceptive.
