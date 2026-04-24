@@ -1237,20 +1237,28 @@ export function initSandboxRuntimeModular(): void {
       }
 
       const start = resolveStartForElement(rawNode, 0);
-      const duration = resolveDurationForElement(rawNode, {
-        includeAuthoredTimingAttrs: false,
-      });
-      const end = duration != null && duration > 0 ? start + duration : Number.POSITIVE_INFINITY;
-      // For composition hosts, use the composition timeline's duration to compute end
-      let computedEnd = end;
+      let duration = resolveDurationForElement(rawNode);
       const compId = rawNode.getAttribute("data-composition-id");
-      if (compId && !Number.isFinite(end)) {
+      if (compId) {
         const compTimeline = (window.__timelines ?? {})[compId];
+        let liveDuration: number | null = null;
         if (compTimeline && typeof compTimeline.duration === "function") {
-          const compDur = compTimeline.duration();
-          if (compDur > 0) computedEnd = start + compDur;
+          const compDur = Number(compTimeline.duration());
+          if (Number.isFinite(compDur) && compDur > 0) {
+            liveDuration = compDur;
+          }
+        }
+
+        // Composition hosts must respect both the authored clip window in the parent
+        // composition and the child composition's own live timeline duration.
+        if (duration != null && duration > 0 && liveDuration != null) {
+          duration = Math.min(duration, liveDuration);
+        } else if ((duration == null || duration <= 0) && liveDuration != null) {
+          duration = liveDuration;
         }
       }
+      const computedEnd =
+        duration != null && duration > 0 ? start + duration : Number.POSITIVE_INFINITY;
       const isVisibleNow =
         state.currentTime >= start &&
         (Number.isFinite(computedEnd) ? state.currentTime < computedEnd : true);

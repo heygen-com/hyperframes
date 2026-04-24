@@ -58,7 +58,7 @@ describe("initSandboxRuntimeModular", () => {
     window.cancelAnimationFrame = originalCancelAnimationFrame;
   });
 
-  it("uses live child timeline duration for composition-host visibility", () => {
+  it("uses the shorter live child timeline when the authored window is longer", () => {
     const root = document.createElement("div");
     root.setAttribute("data-composition-id", "main");
     root.setAttribute("data-root", "true");
@@ -87,6 +87,39 @@ describe("initSandboxRuntimeModular", () => {
     expect(player).toBeDefined();
 
     player?.renderSeek(9);
+
+    expect(child.style.visibility).toBe("hidden");
+  });
+
+  it("uses the shorter authored host window when the child timeline is longer", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+
+    const child = document.createElement("div");
+    child.setAttribute("data-composition-id", "slide-1");
+    child.setAttribute("data-start", "0");
+    child.setAttribute("data-hf-authored-duration", "2");
+    root.appendChild(child);
+
+    (window as Window & { __timelines?: Record<string, RuntimeTimelineLike> }).__timelines = {
+      main: createMockTimeline(20),
+      "slide-1": createMockTimeline(8),
+    };
+
+    initSandboxRuntimeModular();
+
+    const player = (
+      window as Window & {
+        __player?: { renderSeek: (timeSeconds: number) => void };
+      }
+    ).__player;
+    expect(player).toBeDefined();
+
+    player?.renderSeek(3);
 
     expect(child.style.visibility).toBe("hidden");
   });
