@@ -74,7 +74,7 @@ export function resolveSourceFile(
  */
 function patchInlineStyle(html: string, elementId: string, prop: string, value: string): string {
   // Find the element tag with this id
-  const idPattern = new RegExp(`(<[^>]*\\bid="${escapeRegex(elementId)}"[^>]*)>`, "i");
+  const idPattern = new RegExp(`(<[^>]*\\bid=(["'])${escapeRegex(elementId)}\\2[^>]*)>`, "i");
   const match = idPattern.exec(html);
   if (!match) return html;
 
@@ -86,9 +86,10 @@ function patchInlineStyleInTag(html: string, tag: string, prop: string, value: s
   if (!tag) return html;
 
   // Check if there's an existing style attribute
-  const styleMatch = /\bstyle="([^"]*)"/.exec(tag);
+  const styleMatch = /\bstyle=(["'])([\s\S]*?)\1/.exec(tag);
   if (styleMatch) {
-    const existingStyle = styleMatch[1];
+    const existingStyle = styleMatch[2];
+    const quote = styleMatch[1];
     // Parse existing properties
     const props = new Map<string, string>();
     for (const part of existingStyle.split(";")) {
@@ -104,7 +105,7 @@ function patchInlineStyleInTag(html: string, tag: string, prop: string, value: s
     const newStyle = Array.from(props.entries())
       .map(([k, v]) => `${k}: ${v}`)
       .join("; ");
-    const newTag = tag.replace(/\bstyle="[^"]*"/, `style="${newStyle}"`);
+    const newTag = tag.replace(/\bstyle=(["'])([\s\S]*?)\1/, `style=${quote}${newStyle}${quote}`);
     return html.replace(tag, newTag);
   } else {
     // No existing style — add one
@@ -137,7 +138,7 @@ function replaceTagAtMatch(html: string, match: TagMatch, newTag: string): strin
 
 function findTagByTarget(html: string, target: PatchTarget): TagMatch | null {
   if (target.id) {
-    const idPattern = new RegExp(`(<[^>]*\\bid="${escapeRegex(target.id)}"[^>]*)>`, "i");
+    const idPattern = new RegExp(`(<[^>]*\\bid=(["'])${escapeRegex(target.id)}\\2[^>]*)>`, "i");
     const match = idPattern.exec(html);
     if (match?.index != null) {
       return {
@@ -154,7 +155,7 @@ function findTagByTarget(html: string, target: PatchTarget): TagMatch | null {
   if (compositionIdMatch) {
     const compId = compositionIdMatch[1];
     const pattern = new RegExp(
-      `(<[^>]*\\bdata-composition-id="${escapeRegex(compId)}"[^>]*)>`,
+      `(<[^>]*\\bdata-composition-id=(["'])${escapeRegex(compId)}\\2[^>]*)>`,
       "i",
     );
     const match = pattern.exec(html);
@@ -201,8 +202,13 @@ export function readAttributeByTarget(
   if (!match) return undefined;
 
   const fullAttr = attr.startsWith("data-") ? attr : `data-${attr}`;
-  const valueMatch = new RegExp(`\\b${fullAttr}="([^"]*)"`).exec(match.tag);
-  return valueMatch?.[1];
+  const valueMatch = new RegExp(`\\b${fullAttr}=(["'])([^"']*)\\1`).exec(match.tag);
+  return valueMatch?.[2];
+}
+
+export function readTagSnippetByTarget(html: string, target: PatchTarget): string | undefined {
+  const match = findTagByTarget(html, target);
+  return match?.tag;
 }
 
 function patchAttributeByTarget(
@@ -215,7 +221,7 @@ function patchAttributeByTarget(
   if (!match) return html;
 
   const fullAttr = attr.startsWith("data-") ? attr : `data-${attr}`;
-  const attrPattern = new RegExp(`\\b${fullAttr}="[^"]*"`);
+  const attrPattern = new RegExp(`\\b${fullAttr}=(["'])([^"']*)\\1`);
   const tag = match.tag;
 
   if (attrPattern.test(tag)) {
@@ -231,13 +237,13 @@ function patchAttributeByTarget(
  * Apply an attribute change to an element in the HTML source.
  */
 function patchAttribute(html: string, elementId: string, attr: string, value: string): string {
-  const idPattern = new RegExp(`(<[^>]*\\bid="${escapeRegex(elementId)}"[^>]*)>`, "i");
+  const idPattern = new RegExp(`(<[^>]*\\bid=(["'])${escapeRegex(elementId)}\\2[^>]*)>`, "i");
   const match = idPattern.exec(html);
   if (!match) return html;
 
   const tag = match[1];
   const fullAttr = attr.startsWith("data-") ? attr : `data-${attr}`;
-  const attrPattern = new RegExp(`\\b${fullAttr}="[^"]*"`);
+  const attrPattern = new RegExp(`\\b${fullAttr}=(["'])([^"']*)\\1`);
 
   if (attrPattern.test(tag)) {
     // Update existing attribute
@@ -255,10 +261,28 @@ function patchAttribute(html: string, elementId: string, attr: string, value: st
  */
 function patchTextContent(html: string, elementId: string, value: string): string {
   // Match the element and its content: <tagname id="elementId"...>content</tagname>
-  const pattern = new RegExp(`(<[^>]*\\bid="${elementId}"[^>]*>)([\\s\\S]*?)(<\\/[a-z]+>)`, "i");
+  const pattern = new RegExp(
+    `(<[^>]*\\bid=(["'])${escapeRegex(elementId)}\\2[^>]*>)([\\s\\S]*?)(<\\/[a-z]+>)`,
+    "i",
+  );
   const match = pattern.exec(html);
   if (!match) return html;
-  return html.replace(pattern, `${match[1]}${value}${match[3]}`);
+  return html.replace(pattern, `${match[1]}${value}${match[4]}`);
+}
+
+function patchTextContentByTarget(html: string, target: PatchTarget, value: string): string {
+  const match = findTagByTarget(html, target);
+  if (!match) return html;
+
+  const tagNameMatch = /^<([a-z0-9-]+)/i.exec(match.tag);
+  const tagName = tagNameMatch?.[1];
+  if (!tagName) return html;
+
+  const closingTag = `</${tagName}>`;
+  const closingIndex = html.indexOf(closingTag, match.end);
+  if (closingIndex < 0) return html;
+
+  return `${html.slice(0, match.end + 1)}${value}${html.slice(closingIndex)}`;
 }
 
 /**
@@ -290,6 +314,8 @@ export function applyPatchByTarget(html: string, target: PatchTarget, op: PatchO
       return patchInlineStyleByTarget(html, target, op.property, op.value);
     case "attribute":
       return patchAttributeByTarget(html, target, op.property, op.value);
+    case "text-content":
+      return patchTextContentByTarget(html, target, op.value);
     default:
       return html;
   }

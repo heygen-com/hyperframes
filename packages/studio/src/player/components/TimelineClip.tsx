@@ -62,6 +62,25 @@ export const TimelineClip = memo(function TimelineClip({
         : theme.clipShadow;
   const capabilities = getTimelineEditCapabilities(el);
   const showHandles = handleOpacity > 0.01;
+  const baseBackgroundImage = isSelected ? theme.clipBackgroundActive : theme.clipBackground;
+  const glossBackgroundImage = isSelected
+    ? "linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0))"
+    : "linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0))";
+  const accentBackgroundImage = `linear-gradient(120deg, ${trackStyle.accent}${
+    isSelected ? "22" : "1e"
+  }, transparent 28%)`;
+  const compositionStripeBackgroundImage =
+    isComposition && !hasCustomContent
+      ? "repeating-linear-gradient(135deg, transparent, transparent 3px, rgba(255,255,255,0.05) 3px, rgba(255,255,255,0.05) 6px)"
+      : undefined;
+  const clipBackgroundImage = [
+    compositionStripeBackgroundImage,
+    glossBackgroundImage,
+    accentBackgroundImage,
+    baseBackgroundImage,
+  ]
+    .filter(Boolean)
+    .join(", ");
 
   return (
     <div
@@ -75,13 +94,7 @@ export const TimelineClip = memo(function TimelineClip({
         top: clipY,
         bottom: clipY,
         borderRadius: theme.clipRadius,
-        background: isSelected
-          ? `linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0)), linear-gradient(120deg, ${trackStyle.accent}22, transparent 28%), ${theme.clipBackgroundActive}`
-          : `linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0)), linear-gradient(120deg, ${trackStyle.accent}1e, transparent 28%), ${theme.clipBackground}`,
-        backgroundImage:
-          isComposition && !hasCustomContent
-            ? `repeating-linear-gradient(135deg, transparent, transparent 3px, rgba(255,255,255,0.05) 3px, rgba(255,255,255,0.05) 6px)`
-            : undefined,
+        backgroundImage: clipBackgroundImage,
         border: `1px solid ${borderColor}`,
         boxShadow,
         transition:

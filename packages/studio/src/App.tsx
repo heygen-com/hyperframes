@@ -1,7 +1,6 @@
 import { useState, useCallback, useRef, useEffect, useMemo, type ReactNode } from "react";
 import { useMountEffect } from "./hooks/useMountEffect";
 import { NLELayout } from "./components/nle/NLELayout";
-import { TimelineEditorNotice } from "./components/nle/TimelineEditorNotice";
 import { SourceEditor } from "./components/editor/SourceEditor";
 import { LeftSidebar } from "./components/sidebar/LeftSidebar";
 import { RenderQueue } from "./components/renders/RenderQueue";
@@ -28,7 +27,11 @@ import { CaptionTimeline } from "./captions/components/CaptionTimeline";
 import { useCaptionStore } from "./captions/store";
 import { useCaptionSync } from "./captions/hooks/useCaptionSync";
 import { parseCaptionComposition } from "./captions/parser";
-import { applyPatchByTarget, readAttributeByTarget } from "./utils/sourcePatcher";
+import {
+  applyPatchByTarget,
+  readAttributeByTarget,
+  readTagSnippetByTarget,
+} from "./utils/sourcePatcher";
 import {
   buildTrackZIndexMap,
   formatTimelineAttributeNumber,
@@ -37,24 +40,287 @@ import {
   getNextTimelineZoomPercent,
   getTimelineZoomPercent,
 } from "./player/components/timelineZoom";
-<<<<<<< HEAD
 import {
+  TIMELINE_TOGGLE_SHORTCUT_LABEL,
   getTimelineEditorHintDismissed,
   getTimelineToggleTitle,
   setTimelineEditorHintDismissed,
   shouldHandleTimelineToggleHotkey,
 } from "./utils/timelineDiscovery";
-=======
->>>>>>> b52f8e16 (feat: use percentage-based timeline zoom)
+import { PropertyPanel } from "./components/editor/PropertyPanel";
+import { DomEditOverlay } from "./components/editor/DomEditOverlay";
+import {
+  buildDomEditMovePatchOperations,
+  buildDomEditResizePatchOperations,
+  buildDomEditStylePatchOperation,
+  buildDomEditTextPatchOperation,
+  buildElementAgentPrompt,
+  findElementForSelection,
+  isTextEditableSelection,
+  resolveDomEditCapabilities,
+  resolveDomEditSelection,
+  type DomEditSelection,
+} from "./components/editor/domEditing";
 
 interface EditingFile {
   path: string;
   content: string | null;
 }
 
-interface AppToast {
-  message: string;
-  tone: "error" | "info";
+type RightPanelTab = "design" | "renders";
+type FocusedDesignSection = "position" | "styles" | null;
+
+function normalizeDomEditStyleValue(property: string, value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return trimmed;
+
+  if (
+    ["left", "top", "width", "height", "border-radius", "font-size"].includes(property) &&
+    /^-?\d+(\.\d+)?$/.test(trimmed)
+  ) {
+    return `${trimmed}px`;
+  }
+
+  return trimmed;
+}
+
+function getEventTargetElement(target: EventTarget | null): HTMLElement | null {
+  if (!target || typeof target !== "object") return null;
+  const maybeNode = target as {
+    nodeType?: number;
+    parentElement?: Element | null;
+  };
+  if (maybeNode.nodeType === 1) return target as HTMLElement;
+  if (maybeNode.nodeType === 3 && maybeNode.parentElement) {
+    return maybeNode.parentElement as HTMLElement;
+  }
+  return null;
+}
+
+function findMatchingTimelineElementId(
+  selection: Pick<
+    DomEditSelection,
+    "id" | "selector" | "selectorIndex" | "sourceFile" | "compositionSrc" | "isCompositionHost"
+  >,
+  elements: TimelineElement[],
+): string | null {
+  for (const element of elements) {
+    if (selection.id && element.domId === selection.id) {
+      return element.key ?? element.id;
+    }
+    if (
+      selection.isCompositionHost &&
+      selection.compositionSrc &&
+      element.compositionSrc === selection.compositionSrc
+    ) {
+      return element.key ?? element.id;
+    }
+    if (
+      selection.selector &&
+      element.selector === selection.selector &&
+      (element.selectorIndex ?? 0) === (selection.selectorIndex ?? 0) &&
+      (element.sourceFile ?? "index.html") === selection.sourceFile
+    ) {
+      return element.key ?? element.id;
+    }
+  }
+
+  return null;
+}
+
+function findMappedCompositionHost(
+  target: HTMLElement,
+  timelineElements: TimelineElement[],
+  compIdToSrc: Map<string, string>,
+  fileTree: string[],
+): { host: HTMLElement; compositionSrc: string } | null {
+  const rootCompositionId =
+    target.ownerDocument
+      .querySelector("[data-composition-id]")
+      ?.getAttribute("data-composition-id") ?? null;
+
+  let nestedCurrent: HTMLElement | null = target;
+  while (nestedCurrent) {
+    const nestedCompId = nestedCurrent.getAttribute("data-composition-id");
+    if (nestedCompId && nestedCompId !== rootCompositionId) {
+      const hostCandidate = nestedCurrent.parentElement?.closest(".clip");
+      if (hostCandidate instanceof HTMLElement) {
+        const hostCompId = hostCandidate.getAttribute("data-composition-id");
+        const compositionSrc =
+          hostCandidate.getAttribute("data-composition-src") ??
+          hostCandidate.getAttribute("data-composition-file") ??
+          (hostCompId ? compIdToSrc.get(hostCompId) : undefined) ??
+          compIdToSrc.get(nestedCompId) ??
+          fileTree.find((path) => path.endsWith(`${nestedCompId}.html`)) ??
+          undefined;
+        if (compositionSrc) {
+          return { host: hostCandidate, compositionSrc };
+        }
+      }
+    }
+    nestedCurrent = nestedCurrent.parentElement;
+  }
+
+  let current: HTMLElement | null = target;
+  while (current) {
+    const compId = current.getAttribute("data-composition-id");
+    const directSrc =
+      current.getAttribute("data-composition-src") ??
+      current.getAttribute("data-composition-file") ??
+      undefined;
+    const timelineMatch =
+      timelineElements.find(
+        (element) =>
+          Boolean(element.compositionSrc) &&
+          (element.domId === current?.id ||
+            (current?.id && element.id === current.id) ||
+            (compId && element.id === compId)),
+      ) ?? null;
+    const compositionSrc =
+      directSrc ??
+      timelineMatch?.compositionSrc ??
+      (compId ? compIdToSrc.get(compId) : undefined) ??
+      (compId ? fileTree.find((path) => path.endsWith(`${compId}.html`)) : undefined);
+    if (compositionSrc) {
+      return { host: current, compositionSrc };
+    }
+    current = current.parentElement;
+  }
+
+  return null;
+}
+
+function isMoveStyleProperty(property: string): boolean {
+  return property === "left" || property === "top";
+}
+
+function isResizeStyleProperty(property: string): boolean {
+  return property === "width" || property === "height";
+}
+
+function getDomSelectionClickKey(
+  selection: Pick<DomEditSelection, "id" | "selector" | "selectorIndex">,
+): string {
+  if (selection.id) return `id:${selection.id}`;
+  return `${selection.selector ?? "unknown"}:${selection.selectorIndex ?? 0}`;
+}
+
+function getPreviewTargetFromPointer(
+  iframe: HTMLIFrameElement,
+  clientX: number,
+  clientY: number,
+): HTMLElement | null {
+  let doc: Document | null = null;
+  let win: Window | null = null;
+  try {
+    doc = iframe.contentDocument;
+    win = iframe.contentWindow;
+  } catch {
+    return null;
+  }
+  if (!doc || !win) return null;
+
+  const iframeRect = iframe.getBoundingClientRect();
+  const root =
+    doc.querySelector<HTMLElement>("[data-composition-id]") ?? doc.documentElement ?? null;
+  const rootRect = root?.getBoundingClientRect();
+  const rootWidth = rootRect?.width || win.innerWidth;
+  const rootHeight = rootRect?.height || win.innerHeight;
+  if (!rootWidth || !rootHeight) return null;
+
+  const scaleX = iframeRect.width / rootWidth;
+  const scaleY = iframeRect.height / rootHeight;
+  const localX = (clientX - iframeRect.left) / scaleX;
+  const localY = (clientY - iframeRect.top) / scaleY;
+
+  return getEventTargetElement(doc.elementFromPoint(localX, localY));
+}
+
+// ── Ask Agent Modal ──
+
+function AskAgentModal({
+  selectionLabel,
+  onSubmit,
+  onClose,
+}: {
+  selectionLabel: string;
+  onSubmit: (instruction: string) => void;
+  onClose: () => void;
+}) {
+  const [value, setValue] = useState("");
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  useMountEffect(() => {
+    requestAnimationFrame(() => inputRef.current?.focus());
+  });
+
+  const handleSubmit = () => {
+    if (!value.trim()) return;
+    onSubmit(value.trim());
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="w-[480px] rounded-2xl border border-neutral-800 bg-neutral-950 shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-5 py-4 border-b border-neutral-800/60">
+          <div>
+            <h3 className="text-sm font-medium text-neutral-200">Ask agent</h3>
+            <p className="text-xs text-neutral-500 mt-0.5">
+              {selectionLabel.length > 50 ? `${selectionLabel.slice(0, 49)}…` : selectionLabel}
+            </p>
+          </div>
+          <button
+            className="p-1 rounded-md text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/50"
+            onClick={onClose}
+          >
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+            >
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
+        <div className="px-5 py-4">
+          <textarea
+            ref={inputRef}
+            className="w-full h-24 px-3 py-2 rounded-lg border border-neutral-800 bg-neutral-900/60 text-sm text-neutral-200 placeholder-neutral-600 resize-none focus:outline-none focus:border-studio-accent/60 focus:ring-1 focus:ring-studio-accent/30"
+            placeholder="Describe what you want to change…"
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleSubmit();
+              if (e.key === "Escape") onClose();
+            }}
+          />
+        </div>
+        <div className="flex items-center justify-between px-5 py-3 border-t border-neutral-800/60">
+          <span className="text-[11px] text-neutral-600">
+            {navigator.platform.includes("Mac") ? "⌘" : "Ctrl"}+Enter to copy
+          </span>
+          <button
+            className="px-4 py-1.5 rounded-lg bg-studio-accent/90 text-xs font-medium text-neutral-950 hover:bg-studio-accent disabled:opacity-40 disabled:cursor-not-allowed"
+            disabled={!value.trim()}
+            onClick={handleSubmit}
+          >
+            Copy prompt
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 const DEFAULT_TIMELINE_ASSET_DURATION: Record<TimelineAssetKind, number> = {
@@ -148,6 +414,12 @@ export function StudioApp() {
   const [rightWidth, setRightWidth] = useState(400);
   const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [rightCollapsed, setRightCollapsed] = useState(true);
+  const [rightPanelTab, setRightPanelTab] = useState<RightPanelTab>("renders");
+  const [domEditSelection, setDomEditSelection] = useState<DomEditSelection | null>(null);
+  const [copiedAgentPrompt, setCopiedAgentPrompt] = useState(false);
+  const [agentModalOpen, setAgentModalOpen] = useState(false);
+  const [focusedDesignSection, setFocusedDesignSection] = useState<FocusedDesignSection>(null);
+  const [previewIframe, setPreviewIframe] = useState<HTMLIFrameElement | null>(null);
   // Auto-enter caption edit mode when the iframe contains .caption-group elements.
   // This is a subscription to external events (postMessage from runtime) — useEffect
   // is appropriate here. The runtime fires "state"/"timeline" messages after all
@@ -268,14 +540,12 @@ export function StudioApp() {
     }
   }, [captionHasSelection, captionEditMode]);
   const [globalDragOver, setGlobalDragOver] = useState(false);
-  const [appToast, setAppToast] = useState<AppToast | null>(null);
+  const [uploadToast, setUploadToast] = useState<string | null>(null);
   const [timelineVisible, setTimelineVisible] = useState(true);
   const [timelineEditorHintDismissed, setTimelineEditorHintState] = useState(
     getTimelineEditorHintDismissed,
   );
   const dragCounterRef = useRef(0);
-  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastBlockedTimelineToastAtRef = useRef(0);
   const previewHotkeyWindowRef = useRef<Window | null>(null);
   const panelDragRef = useRef<{
     side: "left" | "right";
@@ -287,11 +557,14 @@ export function StudioApp() {
   const activePreviewUrl = activeCompPath
     ? `/api/projects/${projectId}/preview/comp/${activeCompPath}`
     : null;
+  const isMasterView = !activeCompPath || activeCompPath === "index.html";
   const zoomMode = usePlayerStore((s) => s.zoomMode);
   const manualZoomPercent = usePlayerStore((s) => s.manualZoomPercent);
   const setZoomMode = usePlayerStore((s) => s.setZoomMode);
   const setManualZoomPercent = usePlayerStore((s) => s.setManualZoomPercent);
+  const currentTime = usePlayerStore((s) => s.currentTime);
   const timelineElements = usePlayerStore((s) => s.elements);
+  const setSelectedTimelineElementId = usePlayerStore((s) => s.setSelectedElementId);
   const timelineDuration = usePlayerStore((s) => s.duration);
   const effectiveTimelineDuration = useMemo(() => {
     const maxEnd =
@@ -307,9 +580,6 @@ export function StudioApp() {
   const toggleTimelineVisibility = useCallback(() => {
     setTimelineVisible((visible) => !visible);
   }, []);
-  useMountEffect(() => () => {
-    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-  });
   const dismissTimelineEditorHint = useCallback(() => {
     setTimelineEditorHintState(true);
     setTimelineEditorHintDismissed(true);
@@ -449,6 +719,31 @@ export function StudioApp() {
   );
   const timelineToolbar = (
     <div className="border-b border-neutral-800/40 bg-neutral-950/96">
+      {timelineVisible && timelineElements.length > 0 && !timelineEditorHintDismissed && (
+        <div className="px-3 pt-3">
+          <div className="flex items-start justify-between gap-3 rounded-xl border border-studio-accent/20 bg-studio-accent/[0.07] px-3 py-3">
+            <div className="min-w-0">
+              <div className="text-[11px] font-semibold text-neutral-100">Timeline editor</div>
+              <p className="mt-1 text-[11px] leading-5 text-neutral-300">
+                Drag clips to move timing, and drag clip edges to resize them when handles are
+                available. Hide the panel anytime and bring it back with{" "}
+                <span className="font-mono text-[10px] text-studio-accent">
+                  {TIMELINE_TOGGLE_SHORTCUT_LABEL}
+                </span>
+                .
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={dismissTimelineEditorHint}
+              className="flex-shrink-0 rounded-md border border-neutral-700 px-2 py-1 text-[10px] font-medium text-neutral-300 transition-colors hover:border-neutral-500 hover:text-neutral-100"
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center justify-between px-3 py-2">
         <div className="text-[10px] font-medium uppercase tracking-[0.16em] text-neutral-500">
           Timeline
@@ -504,11 +799,19 @@ export function StudioApp() {
   const projectIdRef = useRef(projectId);
   const previewIframeRef = useRef<HTMLIFrameElement | null>(null);
   const consoleErrorsRef = useRef<LintFinding[]>([]);
+  const copiedAgentTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const domEditSelectionRef = useRef<DomEditSelection | null>(domEditSelection);
+  const lastPreviewClickRef = useRef<{ key: string; at: number } | null>(null);
+  const domEditSaveTimestampRef = useRef(0);
 
   // Listen for external file changes (user editing HTML outside the editor).
   // In dev: use Vite HMR. In embedded/production: use SSE from /api/events.
+  // Suppress file-change events that echo back from a recent DOM edit save —
+  // those changes are already applied to the iframe DOM and a full reload
+  // would flash the preview.
   useMountEffect(() => {
     const handler = () => {
+      if (Date.now() - domEditSaveTimestampRef.current < 1200) return;
       if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
       refreshTimerRef.current = setTimeout(() => setRefreshKey((k) => k + 1), 400);
     };
@@ -522,6 +825,7 @@ export function StudioApp() {
     return () => es.close();
   });
   projectIdRef.current = projectId;
+  domEditSelectionRef.current = domEditSelection;
 
   // Load file tree when projectId changes.
   // Note: This is one of the few places where useEffect with deps is acceptable —
@@ -906,6 +1210,411 @@ export function StudioApp() {
     [showToast],
   );
 
+  const applyDomSelection = useCallback(
+    (selection: DomEditSelection | null, options?: { revealPanel?: boolean }) => {
+      setDomEditSelection(selection);
+      setCopiedAgentPrompt(false);
+      if (selection) {
+        if (options?.revealPanel !== false) {
+          setRightCollapsed(false);
+          setRightPanelTab("design");
+        }
+        const nextSelectedTimelineId = findMatchingTimelineElementId(selection, timelineElements);
+        setSelectedTimelineElementId(nextSelectedTimelineId);
+        return;
+      }
+
+      setFocusedDesignSection(null);
+      setSelectedTimelineElementId(null);
+    },
+    [setSelectedTimelineElementId, timelineElements],
+  );
+
+  const clearDomSelection = useCallback(() => {
+    applyDomSelection(null, { revealPanel: false });
+  }, [applyDomSelection]);
+
+  const buildDomSelectionFromTarget = useCallback(
+    (target: HTMLElement, options?: { preferClipAncestor?: boolean }) => {
+      if (isMasterView) {
+        const mappedHost = findMappedCompositionHost(
+          target,
+          timelineElements,
+          compIdToSrc,
+          fileTree,
+        );
+        if (mappedHost) {
+          const hostSelection = resolveDomEditSelection(mappedHost.host, {
+            activeCompositionPath: activeCompPath,
+            isMasterView,
+            preferClipAncestor: options?.preferClipAncestor,
+          });
+          if (!hostSelection) return null;
+          return {
+            ...hostSelection,
+            compositionSrc: mappedHost.compositionSrc,
+            isCompositionHost: true,
+            capabilities: resolveDomEditCapabilities({
+              selector: hostSelection.selector,
+              inlineStyles: hostSelection.inlineStyles,
+              computedStyles: hostSelection.computedStyles,
+              isCompositionHost: true,
+              isMasterView: true,
+            }),
+          } satisfies DomEditSelection;
+        }
+      }
+
+      return resolveDomEditSelection(target, {
+        activeCompositionPath: activeCompPath,
+        isMasterView,
+        preferClipAncestor: options?.preferClipAncestor,
+      });
+    },
+    [activeCompPath, compIdToSrc, fileTree, isMasterView, timelineElements],
+  );
+
+  const persistDomEditOperations = useCallback(
+    async (
+      selection: DomEditSelection,
+      operations: Parameters<typeof applyPatchByTarget>[2][],
+      options?: { skipRefresh?: boolean },
+    ) => {
+      const pid = projectIdRef.current;
+      if (!pid) throw new Error("No active project");
+
+      const targetPath = selection.sourceFile || activeCompPath || "index.html";
+      const response = await fetch(`/api/projects/${pid}/files/${encodeURIComponent(targetPath)}`);
+      if (!response.ok) {
+        throw new Error(`Failed to read ${targetPath}`);
+      }
+
+      const data = (await response.json()) as { content?: string };
+      const originalContent = data.content;
+      if (typeof originalContent !== "string") {
+        throw new Error(`Missing file contents for ${targetPath}`);
+      }
+
+      let patchedContent = originalContent;
+      for (const operation of operations) {
+        patchedContent = applyPatchByTarget(patchedContent, selection, operation);
+      }
+
+      if (patchedContent === originalContent) {
+        throw new Error(`Unable to patch ${selection.selector ?? selection.id ?? "selection"}`);
+      }
+
+      const saveResponse = await fetch(
+        `/api/projects/${pid}/files/${encodeURIComponent(targetPath)}`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "text/plain" },
+          body: patchedContent,
+        },
+      );
+      if (!saveResponse.ok) {
+        throw new Error(`Failed to save ${targetPath}`);
+      }
+
+      if (editingPathRef.current === targetPath) {
+        setEditingFile({ path: targetPath, content: patchedContent });
+      }
+
+      if (options?.skipRefresh) {
+        domEditSaveTimestampRef.current = Date.now();
+      } else {
+        setRefreshKey((k) => k + 1);
+      }
+    },
+    [activeCompPath],
+  );
+
+  const handleDomMoveCommit = useCallback(
+    async (selection: DomEditSelection, next: { left: number; top: number }) => {
+      await persistDomEditOperations(
+        selection,
+        buildDomEditMovePatchOperations(next.left, next.top),
+        { skipRefresh: true },
+      );
+    },
+    [persistDomEditOperations],
+  );
+
+  const handleDomResizeCommit = useCallback(
+    async (selection: DomEditSelection, next: { width: number; height: number }) => {
+      await persistDomEditOperations(
+        selection,
+        buildDomEditResizePatchOperations(next.width, next.height),
+        { skipRefresh: true },
+      );
+    },
+    [persistDomEditOperations],
+  );
+
+  const handleDomStyleCommit = useCallback(
+    async (property: string, value: string) => {
+      if (!domEditSelection) return;
+      if (!domEditSelection.capabilities.canEditStyles) return;
+      if (isMoveStyleProperty(property) && !domEditSelection.capabilities.canMove) return;
+      if (isResizeStyleProperty(property) && !domEditSelection.capabilities.canResize) return;
+      const iframe = previewIframeRef.current;
+      const doc = iframe?.contentDocument;
+      if (doc) {
+        const el = findElementForSelection(doc, domEditSelection, domEditSelection.sourceFile);
+        if (el) el.style.setProperty(property, normalizeDomEditStyleValue(property, value));
+      }
+      await persistDomEditOperations(
+        domEditSelection,
+        [buildDomEditStylePatchOperation(property, normalizeDomEditStyleValue(property, value))],
+        { skipRefresh: true },
+      );
+    },
+    [domEditSelection, persistDomEditOperations],
+  );
+
+  const handleDomTextCommit = useCallback(
+    async (value: string) => {
+      if (!domEditSelection) return;
+      if (!isTextEditableSelection(domEditSelection)) return;
+      const iframe = previewIframeRef.current;
+      const doc = iframe?.contentDocument;
+      if (doc) {
+        const el = findElementForSelection(doc, domEditSelection, domEditSelection.sourceFile);
+        if (el) el.textContent = value;
+      }
+      await persistDomEditOperations(domEditSelection, [buildDomEditTextPatchOperation(value)], {
+        skipRefresh: true,
+      });
+    },
+    [domEditSelection, persistDomEditOperations],
+  );
+
+  const handleFocusDesignSection = useCallback((section: Exclude<FocusedDesignSection, null>) => {
+    setRightCollapsed(false);
+    setRightPanelTab("design");
+    setFocusedDesignSection(section);
+  }, []);
+
+  const handleAskAgent = useCallback(() => {
+    if (!domEditSelection) return;
+    setAgentModalOpen(true);
+  }, [domEditSelection]);
+
+  const handleAgentModalSubmit = useCallback(
+    async (userInstruction: string) => {
+      if (!domEditSelection) return;
+
+      const pid = projectIdRef.current;
+      if (!pid) return;
+
+      const targetPath = domEditSelection.sourceFile || activeCompPath || "index.html";
+      const response = await fetch(`/api/projects/${pid}/files/${encodeURIComponent(targetPath)}`);
+      if (!response.ok) throw new Error(`Failed to read ${targetPath}`);
+
+      const data = (await response.json()) as { content?: string };
+      const html = data.content;
+      const tagSnippet =
+        typeof html === "string" ? readTagSnippetByTarget(html, domEditSelection) : undefined;
+      const prompt = buildElementAgentPrompt({
+        selection: domEditSelection,
+        currentTime,
+        tagSnippet,
+        userInstruction,
+      });
+
+      try {
+        await navigator.clipboard.writeText(prompt);
+      } catch {
+        const textarea = document.createElement("textarea");
+        textarea.value = prompt;
+        textarea.setAttribute("readonly", "true");
+        textarea.style.position = "fixed";
+        textarea.style.opacity = "0";
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textarea);
+      }
+
+      setAgentModalOpen(false);
+      if (copiedAgentTimerRef.current) clearTimeout(copiedAgentTimerRef.current);
+      setCopiedAgentPrompt(true);
+      copiedAgentTimerRef.current = setTimeout(() => setCopiedAgentPrompt(false), 1600);
+    },
+    [activeCompPath, currentTime, domEditSelection],
+  );
+
+  const handlePreviewIframeRef = useCallback(
+    (iframe: HTMLIFrameElement | null) => {
+      previewIframeRef.current = iframe;
+      setPreviewIframe(iframe);
+      syncPreviewTimelineHotkey(iframe);
+      consoleErrorsRef.current = [];
+      setConsoleErrors(null);
+    },
+    [syncPreviewTimelineHotkey],
+  );
+
+  const handlePreviewCanvasMouseDown = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      const iframe = previewIframeRef.current;
+      if (!iframe || captionEditMode) return;
+      const target = getPreviewTargetFromPointer(iframe, e.clientX, e.clientY);
+      if (!target) {
+        lastPreviewClickRef.current = null;
+        applyDomSelection(null, { revealPanel: false });
+        return;
+      }
+      e.preventDefault();
+      e.stopPropagation();
+      const nextSelection = buildDomSelectionFromTarget(target, {
+        preferClipAncestor: true,
+      });
+      if (!nextSelection) {
+        lastPreviewClickRef.current = null;
+        applyDomSelection(null, { revealPanel: false });
+        return;
+      }
+      if (nextSelection.isCompositionHost && isMasterView && nextSelection.compositionSrc) {
+        const key = getDomSelectionClickKey(nextSelection);
+        const last = lastPreviewClickRef.current;
+        const now = Date.now();
+        if (last && last.key === key && now - last.at < 350) {
+          lastPreviewClickRef.current = null;
+          applyDomSelection(null, { revealPanel: false });
+          setActiveCompPath(nextSelection.compositionSrc);
+          return;
+        }
+        lastPreviewClickRef.current = { key, at: now };
+      } else {
+        lastPreviewClickRef.current = null;
+      }
+      applyDomSelection(nextSelection);
+    },
+    [applyDomSelection, buildDomSelectionFromTarget, captionEditMode, isMasterView],
+  );
+
+  const handlePreviewCanvasDoubleClick = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      const iframe = previewIframeRef.current;
+      if (!iframe || captionEditMode) return;
+      const target = getPreviewTargetFromPointer(iframe, e.clientX, e.clientY);
+      if (!target) return;
+      const nextSelection = buildDomSelectionFromTarget(target, {
+        preferClipAncestor: false,
+      });
+      if (!nextSelection?.isCompositionHost || !isMasterView || !nextSelection.compositionSrc) {
+        return;
+      }
+      e.preventDefault();
+      e.stopPropagation();
+      lastPreviewClickRef.current = null;
+      applyDomSelection(null, { revealPanel: false });
+      setActiveCompPath(nextSelection.compositionSrc);
+    },
+    [applyDomSelection, buildDomSelectionFromTarget, captionEditMode, isMasterView],
+  );
+
+  const handleSelectedOverlayDoubleClick = useCallback(() => {
+    const selection = domEditSelectionRef.current;
+    if (!selection?.isCompositionHost || !selection.compositionSrc) return;
+    applyDomSelection(null, { revealPanel: false });
+    setActiveCompPath(selection.compositionSrc);
+  }, [applyDomSelection]);
+
+  // eslint-disable-next-line no-restricted-syntax
+  useEffect(() => {
+    if (!previewIframe || captionEditMode) return;
+
+    const syncSelectionFromDocument = () => {
+      const currentSelection = domEditSelectionRef.current;
+      if (!currentSelection) return;
+      let doc: Document | null = null;
+      try {
+        doc = previewIframe.contentDocument;
+      } catch {
+        return;
+      }
+      if (!doc) return;
+
+      const nextElement = findElementForSelection(doc, currentSelection, activeCompPath);
+      if (!nextElement) {
+        applyDomSelection(null, { revealPanel: false });
+        return;
+      }
+
+      const nextSelection = buildDomSelectionFromTarget(nextElement);
+      if (nextSelection) {
+        applyDomSelection(nextSelection, { revealPanel: false });
+      }
+    };
+
+    const attachErrorCapture = () => {
+      try {
+        const win = previewIframe.contentWindow as (Window & typeof globalThis) | null;
+        if (!win) return;
+        if ((win as unknown as Record<string, unknown>).__hfErrorCapture) return;
+        (win as unknown as Record<string, unknown>).__hfErrorCapture = true;
+        const origError = win.console.error.bind(win.console);
+        win.console.error = function (...args: unknown[]) {
+          origError(...args);
+          const text = args.map((a) => (a instanceof Error ? a.message : String(a))).join(" ");
+          if (text.includes("favicon")) return;
+          consoleErrorsRef.current = [
+            ...consoleErrorsRef.current,
+            { severity: "error", message: text },
+          ];
+          setConsoleErrors([...consoleErrorsRef.current]);
+        };
+        win.addEventListener("error", (e: ErrorEvent) => {
+          const text = e.message || String(e);
+          consoleErrorsRef.current = [
+            ...consoleErrorsRef.current,
+            { severity: "error", message: text },
+          ];
+          setConsoleErrors([...consoleErrorsRef.current]);
+        });
+      } catch {
+        // same-origin only
+      }
+    };
+
+    attachErrorCapture();
+    syncSelectionFromDocument();
+
+    const handleLoad = () => {
+      consoleErrorsRef.current = [];
+      setConsoleErrors(null);
+      attachErrorCapture();
+      syncSelectionFromDocument();
+    };
+
+    previewIframe.addEventListener("load", handleLoad);
+    return () => {
+      previewIframe.removeEventListener("load", handleLoad);
+    };
+  }, [
+    activeCompPath,
+    applyDomSelection,
+    buildDomSelectionFromTarget,
+    captionEditMode,
+    previewIframe,
+  ]);
+
+  // eslint-disable-next-line no-restricted-syntax
+  useEffect(() => {
+    if (!captionEditMode) return;
+    applyDomSelection(null, { revealPanel: false });
+  }, [applyDomSelection, captionEditMode]);
+
+  // eslint-disable-next-line no-restricted-syntax
+  useEffect(
+    () => () => {
+      if (copiedAgentTimerRef.current) clearTimeout(copiedAgentTimerRef.current);
+    },
+    [],
+  );
+
   const refreshFileTree = useCallback(async () => {
     const pid = projectIdRef.current;
     if (!pid) return;
@@ -1194,7 +1903,7 @@ export function StudioApp() {
 
   const handleImportFiles = useCallback(
     async (files: FileList | File[], dir?: string) => {
-      void uploadProjectFiles(Array.from(files), dir);
+      return uploadProjectFiles(Array.from(files), dir);
     },
     [uploadProjectFiles],
   );
@@ -1361,9 +2070,17 @@ export function StudioApp() {
             <span>Timeline</span>
           </button>
           <button
-            onClick={() => setRightCollapsed((v) => !v)}
+            onClick={() => {
+              if (rightCollapsed || rightPanelTab !== "design") {
+                setRightPanelTab("design");
+                setRightCollapsed(false);
+                return;
+              }
+              clearDomSelection();
+              setRightCollapsed(true);
+            }}
             className={`h-7 flex items-center gap-1.5 px-2.5 rounded-md text-[11px] font-medium border transition-colors ${
-              !rightCollapsed
+              !rightCollapsed && rightPanelTab === "design"
                 ? "text-studio-accent bg-studio-accent/10 border-studio-accent/30"
                 : "text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800 border-transparent"
             }`}
@@ -1379,8 +2096,7 @@ export function StudioApp() {
               <circle cx="12" cy="12" r="10" />
               <polygon points="10 8 16 12 10 16" fill="currentColor" stroke="none" />
             </svg>
-            Renders
-            {renderQueue.jobs.length > 0 ? ` (${renderQueue.jobs.length})` : ""}
+            Inspector
           </button>
         </div>
       </div>
@@ -1464,63 +2180,32 @@ export function StudioApp() {
             onFileDrop={handleTimelineFileDrop}
             onMoveElement={handleTimelineElementMove}
             onResizeElement={handleTimelineElementResize}
-            onBlockedEditAttempt={handleBlockedTimelineEdit}
             onCompIdToSrcChange={setCompIdToSrc}
             onCompositionChange={(compPath) => {
               // Sync activeCompPath when user drills down via timeline double-click
               // or navigates back via breadcrumb — keeps sidebar + thumbnails in sync.
               setActiveCompPath(compPath);
             }}
-            onIframeRef={(iframe) => {
-              previewIframeRef.current = iframe;
-              syncPreviewTimelineHotkey(iframe);
-              consoleErrorsRef.current = [];
-              setConsoleErrors(null);
-              if (!iframe) return;
-
-              // Attach error capture after each iframe load (content resets on navigation)
-              const attachErrorCapture = () => {
-                try {
-                  const win = iframe.contentWindow as (Window & typeof globalThis) | null;
-                  if (!win) return;
-                  // Guard against double-patching
-                  if ((win as unknown as Record<string, unknown>).__hfErrorCapture) return;
-                  (win as unknown as Record<string, unknown>).__hfErrorCapture = true;
-                  const origError = win.console.error.bind(win.console);
-                  win.console.error = function (...args: unknown[]) {
-                    origError(...args);
-                    const text = args
-                      .map((a) => (a instanceof Error ? a.message : String(a)))
-                      .join(" ");
-                    if (text.includes("favicon")) return;
-                    consoleErrorsRef.current = [
-                      ...consoleErrorsRef.current,
-                      { severity: "error", message: text },
-                    ];
-                    setConsoleErrors([...consoleErrorsRef.current]);
-                  };
-                  win.addEventListener("error", (e: ErrorEvent) => {
-                    const text = e.message || String(e);
-                    consoleErrorsRef.current = [
-                      ...consoleErrorsRef.current,
-                      { severity: "error", message: text },
-                    ];
-                    setConsoleErrors([...consoleErrorsRef.current]);
-                  });
-                } catch {
-                  // cross-origin — can't attach
-                }
-              };
-              // Attach now (iframe may already be loaded) and on future loads
-              attachErrorCapture();
-              iframe.addEventListener("load", () => {
-                consoleErrorsRef.current = [];
-                setConsoleErrors(null);
-                attachErrorCapture();
-              });
-            }}
+            onIframeRef={handlePreviewIframeRef}
             previewOverlay={
-              captionEditMode ? <CaptionOverlay iframeRef={previewIframeRef} /> : undefined
+              captionEditMode ? (
+                <CaptionOverlay iframeRef={previewIframeRef} />
+              ) : (
+                <DomEditOverlay
+                  iframeRef={previewIframeRef}
+                  selection={
+                    !rightCollapsed && rightPanelTab === "design" ? domEditSelection : null
+                  }
+                  copiedAgentPrompt={copiedAgentPrompt}
+                  onCanvasMouseDown={handlePreviewCanvasMouseDown}
+                  onCanvasDoubleClick={handlePreviewCanvasDoubleClick}
+                  onSelectedDoubleClick={handleSelectedOverlayDoubleClick}
+                  onFocusSection={handleFocusDesignSection}
+                  onAskAgent={handleAskAgent}
+                  onMoveCommit={handleDomMoveCommit}
+                  onResizeCommit={handleDomResizeCommit}
+                />
+              )
             }
             timelineFooter={
               captionEditMode ? (
@@ -1561,25 +2246,64 @@ export function StudioApp() {
               {captionEditMode ? (
                 <CaptionPropertyPanel iframeRef={previewIframeRef} />
               ) : (
-                <RenderQueue
-                  jobs={renderQueue.jobs}
-                  projectId={projectId}
-                  onDelete={renderQueue.deleteRender}
-                  onClearCompleted={renderQueue.clearCompleted}
-                  onStartRender={(format, quality) => renderQueue.startRender(30, quality, format)}
-                  isRendering={renderQueue.isRendering}
-                />
+                <>
+                  <div className="flex items-center gap-1 border-b border-neutral-800 px-3 py-2">
+                    <button
+                      type="button"
+                      onClick={() => setRightPanelTab("design")}
+                      className={`h-8 rounded-xl px-3 text-[11px] font-medium transition-colors ${
+                        rightPanelTab === "design"
+                          ? "bg-neutral-800 text-white"
+                          : "text-neutral-500 hover:bg-neutral-800/70 hover:text-neutral-200"
+                      }`}
+                    >
+                      Design
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setRightPanelTab("renders")}
+                      className={`h-8 rounded-xl px-3 text-[11px] font-medium transition-colors ${
+                        rightPanelTab === "renders"
+                          ? "bg-neutral-800 text-white"
+                          : "text-neutral-500 hover:bg-neutral-800/70 hover:text-neutral-200"
+                      }`}
+                    >
+                      {renderQueue.jobs.length > 0
+                        ? `Renders (${renderQueue.jobs.length})`
+                        : "Renders"}
+                    </button>
+                  </div>
+                  <div className="min-h-0 flex-1">
+                    {rightPanelTab === "design" ? (
+                      <PropertyPanel
+                        element={domEditSelection}
+                        copiedAgentPrompt={copiedAgentPrompt}
+                        focusedSection={focusedDesignSection}
+                        onFocusSectionHandled={() => setFocusedDesignSection(null)}
+                        onClearSelection={clearDomSelection}
+                        onSetStyle={handleDomStyleCommit}
+                        onSetText={handleDomTextCommit}
+                        onAskAgent={handleAskAgent}
+                      />
+                    ) : (
+                      <RenderQueue
+                        jobs={renderQueue.jobs}
+                        projectId={projectId}
+                        onDelete={renderQueue.deleteRender}
+                        onClearCompleted={renderQueue.clearCompleted}
+                        onStartRender={(format, quality) =>
+                          renderQueue.startRender(30, quality, format)
+                        }
+                        isRendering={renderQueue.isRendering}
+                      />
+                    )}
+                  </div>
+                </>
               )}
             </div>
           </>
         )}
       </div>
-
-      {timelineElements.length > 0 && !timelineEditorHintDismissed && (
-        <div className="pointer-events-none absolute bottom-5 left-5 z-[140]">
-          <TimelineEditorNotice onDismiss={dismissTimelineEditorHint} />
-        </div>
-      )}
 
       {/* Lint modal */}
       {lintModal !== null && projectId && (
@@ -1592,6 +2316,15 @@ export function StudioApp() {
           findings={consoleErrors}
           projectId={projectId}
           onClose={() => setConsoleErrors(null)}
+        />
+      )}
+
+      {/* Ask agent modal */}
+      {agentModalOpen && domEditSelection && (
+        <AskAgentModal
+          selectionLabel={domEditSelection.label}
+          onSubmit={handleAgentModalSubmit}
+          onClose={() => setAgentModalOpen(false)}
         />
       )}
 
@@ -1620,15 +2353,9 @@ export function StudioApp() {
           </div>
         </div>
       )}
-      {appToast && (
-        <div
-          className={`absolute bottom-6 left-1/2 -translate-x-1/2 z-[91] px-4 py-2 rounded-lg border text-sm shadow-lg animate-in fade-in slide-in-from-bottom-2 ${
-            appToast.tone === "error"
-              ? "bg-red-900/90 border-red-700/50 text-red-200"
-              : "bg-neutral-900/95 border-neutral-700/60 text-neutral-100"
-          }`}
-        >
-          {appToast.message}
+      {uploadToast && (
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[91] px-4 py-2 rounded-lg bg-red-900/90 border border-red-700/50 text-sm text-red-200 shadow-lg animate-in fade-in slide-in-from-bottom-2">
+          {uploadToast}
         </div>
       )}
     </div>
