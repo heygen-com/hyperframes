@@ -1202,6 +1202,10 @@ export function initSandboxRuntimeModular(): void {
     const resolveMediaCompositionContext = (element: HTMLVideoElement | HTMLAudioElement) => {
       const compositionRoot = element.closest("[data-composition-id]");
       const inheritedStart = compositionRoot ? resolveStartForElement(compositionRoot, 0) : null;
+      // Media sync intentionally uses the authored host window here instead of
+      // the live child timeline duration. Visibility prefers live truth so a
+      // shrinking child composition hides early, but nested media needs a
+      // stable authored window so seeks clamp against the host clip timing.
       const inheritedDuration = compositionRoot
         ? resolveDurationForElement(compositionRoot, { includeAuthoredTimingAttrs: true })
         : null;
