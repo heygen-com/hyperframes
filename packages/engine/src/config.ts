@@ -31,6 +31,14 @@ export interface EngineConfig {
   // ── Browser ──────────────────────────────────────────────────────────
   chromePath?: string;
   disableGpu: boolean;
+  /**
+   * Use hardware GPU for frame capture (ANGLE backend: D3D11 on Windows,
+   * Metal on macOS, OpenGL on Linux). Defaults to `false` (SwiftShader software
+   * GL) for maximum cross-platform compatibility. Opt-in for faster captures
+   * on machines with working GPU drivers. Env fallback:
+   * `HYPERFRAMES_GPU_CAPTURE=true` (or `=1`).
+   */
+  gpuCapture: boolean;
   enableBrowserPool: boolean;
   browserTimeout: number;
   protocolTimeout: number;
@@ -113,6 +121,7 @@ export const DEFAULT_CONFIG: EngineConfig = {
   largeRenderThreshold: 1000,
 
   disableGpu: false,
+  gpuCapture: false,
   enableBrowserPool: false,
   browserTimeout: 120_000,
   protocolTimeout: 300_000,
@@ -158,6 +167,14 @@ export function resolveConfig(overrides?: Partial<EngineConfig>): EngineConfig {
     if (raw === undefined) return fallback;
     return raw === "true";
   };
+  // HYPERFRAMES_GPU_CAPTURE accepts "true" or "1" for ergonomics matching
+  // local-dev conventions (`HYPERFRAMES_GPU_CAPTURE=1`). Other engine env
+  // vars are "true" only.
+  const envBoolOrOne = (key: string, fallback: boolean): boolean => {
+    const raw = env(key);
+    if (raw === undefined) return fallback;
+    return raw === "true" || raw === "1";
+  };
 
   // Env-var layer (backward compat)
   const fromEnv: Partial<EngineConfig> = {
@@ -171,6 +188,7 @@ export function resolveConfig(overrides?: Partial<EngineConfig>): EngineConfig {
 
     chromePath: env("PRODUCER_HEADLESS_SHELL_PATH"),
     disableGpu: envBool("PRODUCER_DISABLE_GPU", DEFAULT_CONFIG.disableGpu),
+    gpuCapture: envBoolOrOne("HYPERFRAMES_GPU_CAPTURE", DEFAULT_CONFIG.gpuCapture),
     enableBrowserPool: envBool("PRODUCER_ENABLE_BROWSER_POOL", DEFAULT_CONFIG.enableBrowserPool),
     browserTimeout: envNum("PRODUCER_PUPPETEER_LAUNCH_TIMEOUT_MS", DEFAULT_CONFIG.browserTimeout),
     protocolTimeout: envNum(

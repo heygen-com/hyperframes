@@ -240,14 +240,33 @@ export interface BuildChromeArgsOptions {
   captureMode?: CaptureMode;
 }
 
+/**
+ * Picks the ANGLE backend flag based on platform. Hardware backends yield
+ * significantly faster frame capture on shader-heavy compositions, at the
+ * cost of requiring working GPU drivers. SwiftShader is the safe software
+ * fallback used when `gpuCapture` is disabled.
+ */
+function resolveAngleBackend(gpuCapture: boolean): string {
+  if (!gpuCapture) return "--use-angle=swiftshader";
+  switch (process.platform) {
+    case "win32":
+      return "--use-angle=d3d11";
+    case "darwin":
+      return "--use-angle=metal";
+    default:
+      return "--use-angle=opengl";
+  }
+}
+
 export function buildChromeArgs(
   options: BuildChromeArgsOptions,
-  config?: Partial<Pick<EngineConfig, "disableGpu" | "chromePath">>,
+  config?: Partial<Pick<EngineConfig, "disableGpu" | "gpuCapture" | "chromePath">>,
 ): string[] {
   // Chrome flags tuned for headless rendering performance. The set below is a
   // fairly standard "headless-for-capture" configuration — similar profiles
   // appear in Puppeteer's defaults, Playwright, Remotion, and Chrome's own
   // headless-shell guidance.
+  const gpuCapture = config?.gpuCapture ?? DEFAULT_CONFIG.gpuCapture;
   const chromeArgs = [
     "--no-sandbox",
     "--disable-setuid-sandbox",
@@ -255,7 +274,7 @@ export function buildChromeArgs(
     "--enable-webgl",
     "--ignore-gpu-blocklist",
     "--use-gl=angle",
-    "--use-angle=swiftshader",
+    resolveAngleBackend(gpuCapture),
     "--font-render-hinting=none",
     "--force-color-profile=srgb",
     `--window-size=${options.width},${options.height}`,
