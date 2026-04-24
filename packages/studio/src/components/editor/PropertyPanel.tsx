@@ -20,10 +20,13 @@ import {
   type GradientModel,
 } from "./gradientValue";
 import { isTextEditableSelection, type DomEditSelection } from "./domEditing";
+import { IMAGE_EXT } from "../../utils/mediaTypes";
 
 type FocusedSection = "position" | "styles" | null;
 
 interface PropertyPanelProps {
+  projectId: string;
+  assets: string[];
   element: DomEditSelection | null;
   copiedAgentPrompt: boolean;
   focusedSection?: FocusedSection;
@@ -93,6 +96,48 @@ function extractBackgroundImageUrl(value: string | undefined): string {
   if (!value) return "";
   const match = value.match(/url\((['"]?)(.*?)\1\)/i);
   return match?.[2] ?? "";
+}
+
+function normalizeProjectPath(value: string): string {
+  return value.replace(/\\/g, "/").replace(/^\.?\//, "");
+}
+
+function toRelativeProjectAssetPath(sourceFile: string, assetPath: string): string {
+  const fromParts = normalizeProjectPath(sourceFile).split("/").filter(Boolean);
+  const targetParts = normalizeProjectPath(assetPath).split("/").filter(Boolean);
+
+  fromParts.pop();
+
+  while (fromParts.length > 0 && targetParts.length > 0 && fromParts[0] === targetParts[0]) {
+    fromParts.shift();
+    targetParts.shift();
+  }
+
+  return [...fromParts.map(() => ".."), ...targetParts].join("/") || assetPath;
+}
+
+function resolveSelectedAsset(
+  imageUrl: string,
+  sourceFile: string,
+  assets: string[],
+): string | null {
+  const normalizedUrl = normalizeProjectPath(imageUrl);
+  if (!normalizedUrl) return null;
+
+  for (const asset of assets) {
+    const normalizedAsset = normalizeProjectPath(asset);
+    const relativeAsset = toRelativeProjectAssetPath(sourceFile, asset);
+    if (
+      normalizedUrl === normalizedAsset ||
+      normalizedUrl === relativeAsset ||
+      normalizedUrl.endsWith(`/${normalizedAsset}`) ||
+      normalizedUrl.endsWith(`/${relativeAsset}`)
+    ) {
+      return asset;
+    }
+  }
+
+  return null;
 }
 
 function collectSelectionColors(styles: Record<string, string>) {
@@ -335,6 +380,83 @@ function ColorField({
         }}
         className="pointer-events-none absolute opacity-0"
         aria-hidden="true"
+      />
+    </div>
+  );
+}
+
+function ImageFillField({
+  projectId,
+  sourceFile,
+  value,
+  assets,
+  disabled,
+  onCommit,
+}: {
+  projectId: string;
+  sourceFile: string;
+  value: string;
+  assets: string[];
+  disabled?: boolean;
+  onCommit: (nextValue: string) => void;
+}) {
+  const imageAssets = useMemo(() => assets.filter((asset) => IMAGE_EXT.test(asset)), [assets]);
+  const selectedAsset = useMemo(
+    () => resolveSelectedAsset(value, sourceFile, imageAssets),
+    [imageAssets, sourceFile, value],
+  );
+  const externalUrlValue = selectedAsset ? "" : value;
+
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-1.5">
+        <span className={LABEL}>Project asset</span>
+        {imageAssets.length > 0 ? (
+          <div className="space-y-3">
+            {selectedAsset && (
+              <div className="overflow-hidden rounded-xl border border-neutral-800 bg-neutral-900/80">
+                <img
+                  src={`/api/projects/${projectId}/preview/${selectedAsset}`}
+                  alt={selectedAsset.split("/").pop() ?? selectedAsset}
+                  className="h-28 w-full object-contain bg-neutral-950/80"
+                />
+              </div>
+            )}
+            <div className={FIELD}>
+              <select
+                value={selectedAsset ?? ""}
+                disabled={disabled}
+                onChange={(e) => {
+                  const nextAsset = e.target.value;
+                  if (!nextAsset) {
+                    onCommit("none");
+                    return;
+                  }
+                  onCommit(`url("${toRelativeProjectAssetPath(sourceFile, nextAsset)}")`);
+                }}
+                className="w-full appearance-none bg-transparent text-[11px] font-medium text-neutral-100 outline-none disabled:cursor-not-allowed disabled:text-neutral-600"
+              >
+                <option value="">None</option>
+                {imageAssets.map((asset) => (
+                  <option key={asset} value={asset}>
+                    {asset}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        ) : (
+          <div className="rounded-xl border border-dashed border-neutral-800 bg-neutral-900/50 px-3 py-3 text-[11px] leading-5 text-neutral-500">
+            No image assets yet. Upload media in the Assets tab, then select it here.
+          </div>
+        )}
+      </div>
+
+      <DetailField
+        label="External URL"
+        value={externalUrlValue}
+        disabled={disabled}
+        onCommit={(next) => onCommit(next.trim() ? `url("${next.trim()}")` : "none")}
       />
     </div>
   );
@@ -740,6 +862,8 @@ function SelectionColorRow({
 }
 
 export const PropertyPanel = memo(function PropertyPanel({
+  projectId,
+  assets,
   element,
   copiedAgentPrompt,
   focusedSection = null,
@@ -1006,13 +1130,13 @@ export const PropertyPanel = memo(function PropertyPanel({
                     onCommit={(next) => onSetStyle("background-image", next)}
                   />
                 ) : (
-                  <DetailField
-                    label="Image URL"
+                  <ImageFillField
+                    projectId={projectId}
+                    sourceFile={element.sourceFile}
                     value={imageUrl}
+                    assets={assets}
                     disabled={styleEditingDisabled}
-                    onCommit={(next) =>
-                      onSetStyle("background-image", next.trim() ? `url("${next.trim()}")` : "none")
-                    }
+                    onCommit={(next) => onSetStyle("background-image", next)}
                   />
                 )}
                 <ColorField

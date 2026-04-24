@@ -2276,6 +2276,8 @@ export function StudioApp() {
                   <div className="min-h-0 flex-1">
                     {rightPanelTab === "design" ? (
                       <PropertyPanel
+                        projectId={projectId}
+                        assets={assets}
                         element={domEditSelection}
                         copiedAgentPrompt={copiedAgentPrompt}
                         focusedSection={focusedDesignSection}
