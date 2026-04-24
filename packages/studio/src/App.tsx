@@ -2286,6 +2286,7 @@ export function StudioApp() {
                         onSetStyle={handleDomStyleCommit}
                         onSetText={handleDomTextCommit}
                         onAskAgent={handleAskAgent}
+                        onImportAssets={handleImportFiles}
                       />
                     ) : (
                       <RenderQueue

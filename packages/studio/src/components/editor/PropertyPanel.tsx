@@ -35,6 +35,7 @@ interface PropertyPanelProps {
   onSetStyle: (prop: string, value: string) => void;
   onSetText: (value: string) => void;
   onAskAgent: () => void;
+  onImportAssets?: (files: FileList) => Promise<string[]>;
 }
 
 const FIELD =
@@ -392,6 +393,7 @@ function ImageFillField({
   assets,
   disabled,
   onCommit,
+  onImportAssets,
 }: {
   projectId: string;
   sourceFile: string;
@@ -399,7 +401,10 @@ function ImageFillField({
   assets: string[];
   disabled?: boolean;
   onCommit: (nextValue: string) => void;
+  onImportAssets?: (files: FileList) => Promise<string[]>;
 }) {
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [uploading, setUploading] = useState(false);
   const imageAssets = useMemo(() => assets.filter((asset) => IMAGE_EXT.test(asset)), [assets]);
   const selectedAsset = useMemo(
     () => resolveSelectedAsset(value, sourceFile, imageAssets),
@@ -407,10 +412,45 @@ function ImageFillField({
   );
   const externalUrlValue = selectedAsset ? "" : value;
 
+  const handleUpload = async (files: FileList | null) => {
+    if (!files?.length || !onImportAssets) return;
+    setUploading(true);
+    try {
+      const uploaded = await onImportAssets(files);
+      const nextImage = uploaded.find((asset) => IMAGE_EXT.test(asset));
+      if (nextImage) {
+        onCommit(`url("${toRelativeProjectAssetPath(sourceFile, nextImage)}")`);
+      }
+    } finally {
+      setUploading(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
       <div className="grid gap-1.5">
-        <span className={LABEL}>Project asset</span>
+        <div className="flex items-center justify-between gap-3">
+          <span className={LABEL}>Project asset</span>
+          <button
+            type="button"
+            disabled={disabled || uploading}
+            onClick={() => fileInputRef.current?.click()}
+            className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 text-[11px] font-medium text-neutral-300 transition-colors hover:border-neutral-600 hover:text-white disabled:cursor-not-allowed disabled:text-neutral-600"
+          >
+            <Plus size={12} />
+            {uploading ? "Uploading…" : "Upload image"}
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={async (event) => {
+              await handleUpload(event.target.files);
+              event.target.value = "";
+            }}
+          />
+        </div>
         {imageAssets.length > 0 ? (
           <div className="space-y-3">
             {selectedAsset && (
@@ -447,7 +487,7 @@ function ImageFillField({
           </div>
         ) : (
           <div className="rounded-xl border border-dashed border-neutral-800 bg-neutral-900/50 px-3 py-3 text-[11px] leading-5 text-neutral-500">
-            No image assets yet. Upload media in the Assets tab, then select it here.
+            No image assets yet. Upload one here and Studio will also add it to the Assets tab.
           </div>
         )}
       </div>
