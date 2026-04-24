@@ -13,7 +13,7 @@ import {
 } from "node:fs";
 import { resolve, dirname, join } from "node:path";
 import type { StudioApiAdapter } from "../types.js";
-import { validateUploadedMedia } from "../helpers/mediaValidation.js";
+import { validateUploadedMediaBuffer } from "../helpers/mediaValidation.js";
 import { isSafePath } from "../helpers/safePath.js";
 import { removeElementFromHtml } from "../helpers/sourceMutation.js";
 
@@ -339,13 +339,12 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
         }
 
         const buffer = Buffer.from(await value.arrayBuffer());
-        writeFileSync(finalPath, buffer);
-        const validation = validateUploadedMedia(finalPath);
+        const validation = validateUploadedMediaBuffer(finalName, buffer);
         if (!validation.ok) {
-          unlinkSync(finalPath);
           invalid.push({ name: finalName, reason: validation.reason });
           continue;
         }
+        writeFileSync(finalPath, buffer);
         uploaded.push(subDir ? join(subDir, finalName) : finalName);
       }
 

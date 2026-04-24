@@ -15,6 +15,7 @@ import type {
   RenderJobState,
 } from "@hyperframes/core/studio-api";
 import { createRetryingModuleLoader, ensureProducerDist } from "./vite.producer";
+import { readNodeRequestBody } from "./vite.request-body.js";
 
 // ── Shared Puppeteer browser ─────────────────────────────────────────────────
 
@@ -446,13 +447,10 @@ function devProjectApi(): Plugin {
           url.pathname = url.pathname.slice(4);
 
           // Read body for non-GET/HEAD
-          let body: string | undefined;
+          let body: Buffer | undefined;
           if (req.method !== "GET" && req.method !== "HEAD") {
-            body = await new Promise<string>((resolve) => {
-              let data = "";
-              req.on("data", (chunk: Buffer) => (data += chunk.toString()));
-              req.on("end", () => resolve(data));
-            });
+            const bytes = await readNodeRequestBody(req);
+            body = bytes.byteLength > 0 ? bytes : undefined;
           }
 
           const headers: Record<string, string> = {};

@@ -1,4 +1,7 @@
 import { spawnSync } from "node:child_process";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { basename, join } from "node:path";
 
 const VIDEO_EXT = /\.(mp4|webm|mov)$/i;
 const AUDIO_EXT = /\.(mp3|wav|ogg|m4a|aac)$/i;
@@ -57,5 +60,21 @@ export function validateUploadedMedia(
     return { ok: true };
   } catch {
     return { ok: false, reason: "ffprobe returned unreadable media metadata" };
+  }
+}
+
+export function validateUploadedMediaBuffer(
+  fileName: string,
+  buffer: Uint8Array,
+  runner: FfprobeRunner = spawnSync as unknown as FfprobeRunner,
+): { ok: true } | { ok: false; reason: string } {
+  const tempDir = mkdtempSync(join(tmpdir(), "hyperframes-upload-"));
+  const tempPath = join(tempDir, basename(fileName));
+
+  try {
+    writeFileSync(tempPath, buffer);
+    return validateUploadedMedia(tempPath, runner);
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
   }
 }
