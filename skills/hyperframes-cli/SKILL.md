@@ -1,6 +1,6 @@
 ---
 name: hyperframes-cli
-description: HyperFrames CLI tool — hyperframes init, lint, layout, preview, render, transcribe, tts, doctor, browser, info, upgrade, compositions, docs, benchmark. Use when scaffolding a project, linting, validating, layout-checking compositions, previewing in the studio, rendering to video, transcribing audio, generating TTS, or troubleshooting the HyperFrames environment.
+description: HyperFrames CLI tool — hyperframes init, lint, inspect, preview, render, transcribe, tts, doctor, browser, info, upgrade, compositions, docs, benchmark. Use when scaffolding a project, linting, validating, inspecting visual layout in compositions, previewing in the studio, rendering to video, transcribing audio, generating TTS, or troubleshooting the HyperFrames environment.
 ---
 
 # HyperFrames CLI
@@ -12,11 +12,11 @@ Everything runs through `npx hyperframes`. Requires Node.js >= 22 and FFmpeg.
 1. **Scaffold** — `npx hyperframes init my-video`
 2. **Write** — author HTML composition (see the `hyperframes` skill)
 3. **Lint** — `npx hyperframes lint`
-4. **Layout audit** — `npx hyperframes layout`
+4. **Visual inspect** — `npx hyperframes inspect`
 5. **Preview** — `npx hyperframes preview`
 6. **Render** — `npx hyperframes render`
 
-Lint and layout-audit before preview. `lint` catches missing `data-composition-id`, overlapping tracks, and unregistered timelines. `layout` opens the rendered composition in headless Chrome, seeks through the timeline, and reports text spilling out of bubbles/containers or off the canvas.
+Lint and inspect before preview. `lint` catches missing `data-composition-id`, overlapping tracks, and unregistered timelines. `inspect` opens the rendered composition in headless Chrome, seeks through the timeline, and reports text spilling out of bubbles/containers or off the canvas.
 
 ## Scaffolding
 
@@ -43,14 +43,14 @@ npx hyperframes lint --json           # machine-readable
 
 Lints `index.html` and all files in `compositions/`. Reports errors (must fix), warnings (should fix), and info (with `--verbose`).
 
-## Layout Audit
+## Visual Inspect
 
 ```bash
-npx hyperframes layout                 # audit rendered layout over the timeline
-npx hyperframes layout ./my-project    # specific project
-npx hyperframes layout --json          # agent-readable findings
-npx hyperframes layout --samples 15    # denser timeline sweep
-npx hyperframes layout --at 1.5,4,7.25 # explicit hero-frame timestamps
+npx hyperframes inspect                 # inspect rendered layout over the timeline
+npx hyperframes inspect ./my-project    # specific project
+npx hyperframes inspect --json          # agent-readable findings
+npx hyperframes inspect --samples 15    # denser timeline sweep
+npx hyperframes inspect --at 1.5,4,7.25 # explicit hero-frame timestamps
 ```
 
 Use this after `lint` and `validate`, especially for compositions with speech bubbles, cards, captions, or tight typography. It reports:
@@ -60,7 +60,9 @@ Use this after `lint` and `validate`, especially for compositions with speech bu
 - Text extending outside the composition canvas
 - Children escaping clipping containers
 
-Errors should be fixed before rendering. Warnings are surfaced for agent review; add `--strict` to fail on warnings too. If overflow is intentional for an entrance/exit animation, mark the element or ancestor with `data-layout-allow-overflow`. If a decorative element should never be audited, mark it with `data-layout-ignore`.
+Errors should be fixed before rendering. Warnings are surfaced for agent review; add `--strict` to fail on warnings too. Repeated static issues are collapsed by default so JSON output stays compact for LLM context windows. If overflow is intentional for an entrance/exit animation, mark the element or ancestor with `data-layout-allow-overflow`. If a decorative element should never be audited, mark it with `data-layout-ignore`.
+
+`npx hyperframes layout` remains available as a compatibility alias for the same visual inspection pass.
 
 ## Previewing
 

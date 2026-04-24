@@ -12,6 +12,17 @@
     };
   }
 
+  function rectFromOrigin(left, top, width, height) {
+    return {
+      left: round(left),
+      top: round(top),
+      right: round(left + width),
+      bottom: round(top + height),
+      width: round(width),
+      height: round(height),
+    };
+  }
+
   function round(value) {
     return Math.round(value * 100) / 100;
   }
@@ -33,6 +44,10 @@
     return value.replace(/[^a-zA-Z0-9_-]/g, "\\$&");
   }
 
+  function escapeAttr(value) {
+    return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  }
+
   function selectorFor(element) {
     if (element.id) return `#${escapeCss(element.id)}`;
     const dataName =
@@ -45,7 +60,9 @@
         : element.hasAttribute("data-composition-id")
           ? "data-composition-id"
           : "data-start";
-      return `${element.tagName.toLowerCase()}[${attr}="${escapeCss(dataName)}"]`;
+      const attrSelector = `[${attr}="${escapeAttr(dataName)}"]`;
+      if (document.querySelectorAll(attrSelector).length === 1) return attrSelector;
+      return `${element.tagName.toLowerCase()}${attrSelector}`;
     }
     const classes = Array.from(element.classList).slice(0, 2);
     if (classes.length > 0) {
@@ -142,6 +159,24 @@
     return Number.isFinite(parsed) ? parsed : 0;
   }
 
+  function hasMeaningfulBoxStyle(style) {
+    return (
+      parsePx(style.paddingTop) +
+        parsePx(style.paddingRight) +
+        parsePx(style.paddingBottom) +
+        parsePx(style.paddingLeft) +
+        parsePx(style.borderTopWidth) +
+        parsePx(style.borderRightWidth) +
+        parsePx(style.borderBottomWidth) +
+        parsePx(style.borderLeftWidth) +
+        parsePx(style.borderTopLeftRadius) +
+        parsePx(style.borderTopRightRadius) +
+        parsePx(style.borderBottomRightRadius) +
+        parsePx(style.borderBottomLeftRadius) >
+      0
+    );
+  }
+
   function hasPaint(style) {
     const backgroundColor = style.backgroundColor || "";
     const hasBackground =
@@ -171,30 +206,82 @@
     );
   }
 
-  function isConstraintCandidate(element, root) {
+  function rootRectFor(root) {
+    const measured = toRect(root.getBoundingClientRect());
+    const authoredWidth = Number.parseFloat(root.getAttribute("data-width") || "");
+    const authoredHeight = Number.parseFloat(root.getAttribute("data-height") || "");
+    const hasAuthoredSize =
+      Number.isFinite(authoredWidth) &&
+      authoredWidth > 0 &&
+      Number.isFinite(authoredHeight) &&
+      authoredHeight > 0;
+
+    if (!hasAuthoredSize) return measured;
+    if (measured.width > 0.5 && measured.height > 0.5) return measured;
+    return rectFromOrigin(measured.left, measured.top, authoredWidth, authoredHeight);
+  }
+
+  function isConstraintCandidate(element, root, rootRect) {
     if (element === root) return true;
     const style = getComputedStyle(element);
     if (clipsOverflow(style)) return true;
     if (element.hasAttribute("data-layout-boundary")) return true;
     if (!hasPaint(style)) return false;
+    if (!hasMeaningfulBoxStyle(style)) return false;
     const rect = element.getBoundingClientRect();
-    const rootRect = root.getBoundingClientRect();
     const rootArea = rootRect.width * rootRect.height;
     const area = rect.width * rect.height;
     return area > 0 && area < rootArea * 0.95;
   }
 
-  function nearestConstraint(element, root) {
+  function nearestConstraint(element, root, rootRect) {
     for (
       let current = element;
       current && current !== document.body;
       current = current.parentElement
     ) {
       if (!isVisibleElement(current)) continue;
-      if (isConstraintCandidate(current, root)) return current;
+      if (isConstraintCandidate(current, root, rootRect)) return current;
       if (current === root) return current;
     }
     return root;
+  }
+
+  function formatPx(value) {
+    return `${Math.round(value)}px`;
+  }
+
+  function maxOverflow(overflow) {
+    return Math.max(...Object.values(overflow).filter((value) => typeof value === "number"));
+  }
+
+  function textOverflowFixHint(textRect, containerRect, overflow, fontSize, targetName) {
+    const horizontalOverflow = (overflow.left || 0) + (overflow.right || 0);
+    const verticalOverflow = (overflow.top || 0) + (overflow.bottom || 0);
+    const neededWidth = containerRect.width + horizontalOverflow;
+    const neededHeight = containerRect.height + verticalOverflow;
+    const widthRatio = containerRect.width > 0 ? containerRect.width / textRect.width : 0;
+    const heightRatio = containerRect.height > 0 ? containerRect.height / textRect.height : 0;
+    const limitingRatio = Math.min(
+      widthRatio > 0 ? widthRatio : Number.POSITIVE_INFINITY,
+      heightRatio > 0 ? heightRatio : Number.POSITIVE_INFINITY,
+    );
+    const shrinkPercent =
+      Number.isFinite(limitingRatio) && limitingRatio < 1
+        ? Math.ceil((1 - limitingRatio) * 100)
+        : 0;
+    const targetFont =
+      shrinkPercent > 0 && Number.isFinite(fontSize) && fontSize > 0
+        ? ` or shrink font-size from ${formatPx(fontSize)} to ~${formatPx(fontSize * limitingRatio)}`
+        : "";
+    const sizeTarget =
+      horizontalOverflow > 0 && verticalOverflow > 0
+        ? `resize ${targetName} to at least ~${formatPx(neededWidth)} x ${formatPx(neededHeight)}`
+        : horizontalOverflow > 0
+          ? `widen ${targetName} to at least ~${formatPx(neededWidth)}`
+          : `increase ${targetName} height to at least ~${formatPx(neededHeight)}`;
+
+    return `Text is ${formatPx(textRect.width)} x ${formatPx(textRect.height)} inside ${formatPx(containerRect.width)} x ${formatPx(containerRect.height)} and overflows by up to ${formatPx(maxOverflow(overflow))}; ${sizeTarget}${targetFont}, or allow wrapping with max-width/fitTextFontSize.`;
   }
 
   function clippedTextIssue(element, time, tolerance) {
@@ -208,6 +295,8 @@
     if (overflowY > tolerance) overflow.bottom = round(overflowY);
     const selector = selectorFor(element);
     const text = textContentFor(element);
+    const rect = toRect(element.getBoundingClientRect());
+    const fontSize = parsePx(style.fontSize);
     return {
       code: "clipped_text",
       severity: "error",
@@ -215,10 +304,9 @@
       selector,
       text,
       message: "Text content is clipped by its own box.",
-      rect: toRect(element.getBoundingClientRect()),
+      rect,
       overflow,
-      fixHint:
-        "Increase the element width/height, reduce font-size, loosen letter-spacing, or use fitTextFontSize for dynamic copy.",
+      fixHint: textOverflowFixHint(rect, rect, overflow, fontSize, "the text box"),
     };
   }
 
@@ -229,10 +317,11 @@
     const selector = selectorFor(element);
     const issues = [];
 
-    const container = nearestConstraint(element, root);
-    const containerRect = toRect(container.getBoundingClientRect());
+    const container = nearestConstraint(element, root, rootRect);
+    const containerRect = container === root ? rootRect : toRect(container.getBoundingClientRect());
     const containerOverflow = overflowFor(textRect, containerRect, tolerance);
     if (containerOverflow && !hasAllowOverflowFlag(element)) {
+      const style = getComputedStyle(element);
       issues.push({
         code: "text_box_overflow",
         severity: "error",
@@ -244,8 +333,13 @@
         rect: textRect,
         containerRect,
         overflow: containerOverflow,
-        fixHint:
-          "Increase the bubble/container size or padding, reduce font-size/letter-spacing, or set a max-width that allows wrapping inside the container.",
+        fixHint: textOverflowFixHint(
+          textRect,
+          containerRect,
+          containerOverflow,
+          parsePx(style.fontSize),
+          "the container",
+        ),
       });
     }
 
@@ -253,7 +347,7 @@
     if (canvasOverflow && !hasAllowOverflowFlag(element)) {
       issues.push({
         code: "canvas_overflow",
-        severity: "warning",
+        severity: "info",
         time,
         selector,
         containerSelector: selectorFor(root),
@@ -312,7 +406,7 @@
       document.querySelector("[data-composition-id][data-width][data-height]") ||
       document.querySelector("[data-composition-id]") ||
       document.body;
-    const rootRect = toRect(root.getBoundingClientRect());
+    const rootRect = rootRectFor(root);
     const elements = Array.from(root.querySelectorAll("*")).filter(isVisibleElement);
     const issues = [];
 

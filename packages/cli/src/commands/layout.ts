@@ -9,8 +9,10 @@ import { resolveProject } from "../utils/project.js";
 import { withMeta } from "../utils/updateCheck.js";
 import {
   buildLayoutSampleTimes,
+  collapseStaticLayoutIssues,
   dedupeLayoutIssues,
   formatLayoutIssue,
+  limitLayoutIssues,
   summarizeLayoutIssues,
   type LayoutIssue,
 } from "../utils/layoutAudit.js";
@@ -18,10 +20,11 @@ import {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const SEEK_SETTLE_MS = 120;
+const INSPECT_SCHEMA_VERSION = 1;
 
 export const examples: Example[] = [
-  ["Audit layout across the current composition", "hyperframes layout"],
-  ["Audit a specific project", "hyperframes layout ./my-video"],
+  ["Inspect visual layout across the current composition", "hyperframes layout"],
+  ["Inspect a specific project", "hyperframes layout ./my-video"],
   ["Output agent-readable JSON", "hyperframes layout --json"],
   ["Use explicit hero-frame timestamps", "hyperframes layout --at 1.5,4.0,7.25"],
 ];
@@ -29,7 +32,7 @@ export const examples: Example[] = [
 interface LayoutAuditResult {
   duration: number;
   samples: number[];
-  issues: LayoutIssue[];
+  rawIssues: LayoutIssue[];
 }
 
 async function getCompositionDuration(page: import("puppeteer-core").Page): Promise<number> {
@@ -90,6 +93,16 @@ async function seekTo(page: import("puppeteer-core").Page, time: number): Promis
         requestAnimationFrame(() => requestAnimationFrame(() => resolveFrame())),
       ),
   );
+  await page
+    .evaluate(() => {
+      const fonts = (document as Document & { fonts?: FontFaceSet }).fonts;
+      if (!fonts?.ready) return Promise.resolve();
+      return Promise.race([
+        fonts.ready.then(() => undefined),
+        new Promise<void>((resolve) => setTimeout(resolve, 500)),
+      ]);
+    })
+    .catch(() => {});
   await new Promise((resolveSettle) => setTimeout(resolveSettle, SEEK_SETTLE_MS));
 }
 
@@ -188,7 +201,7 @@ async function alignViewportToComposition(
 
 async function runLayoutAudit(
   projectDir: string,
-  opts: { samples: number; at?: number[]; timeout: number; tolerance: number; maxIssues: number },
+  opts: { samples: number; at?: number[]; timeout: number; tolerance: number },
 ): Promise<LayoutAuditResult> {
   const { ensureBrowser } = await import("../browser/manager.js");
   const puppeteer = await import("puppeteer-core");
@@ -220,11 +233,21 @@ async function runLayoutAudit(
         timeout: opts.timeout,
       })
       .catch(() => {});
+    await page
+      .evaluate(() => {
+        const fonts = (document as Document & { fonts?: FontFaceSet }).fonts;
+        if (!fonts?.ready) return Promise.resolve();
+        return Promise.race([
+          fonts.ready.then(() => undefined),
+          new Promise<void>((resolve) => setTimeout(resolve, 750)),
+        ]);
+      })
+      .catch(() => {});
     await new Promise((resolveSettle) => setTimeout(resolveSettle, 250));
 
     const duration = await getCompositionDuration(page);
     const samples = buildLayoutSampleTimes({ duration, samples: opts.samples, at: opts.at });
-    if (samples.length === 0) return { duration, samples, issues: [] };
+    if (samples.length === 0) return { duration, samples, rawIssues: [] };
 
     await page.addScriptTag({ content: loadLayoutAuditScript() });
 
@@ -241,13 +264,12 @@ async function runLayoutAudit(
         { time, tolerance: opts.tolerance },
       );
       issues.push(...(sampleIssues as LayoutIssue[]));
-      if (issues.length >= opts.maxIssues * 2) break;
     }
 
     return {
       duration,
       samples,
-      issues: dedupeLayoutIssues(issues).slice(0, opts.maxIssues),
+      rawIssues: dedupeLayoutIssues(issues),
     };
   } finally {
     await chromeBrowser?.close().catch(() => {});
@@ -277,138 +299,169 @@ function parseAt(value: unknown): number[] | undefined {
   return times.length > 0 ? times : undefined;
 }
 
-export default defineCommand({
-  meta: {
-    name: "layout",
-    description: "Audit rendered composition layout for text and container overflow",
-  },
-  args: {
-    dir: { type: "positional", description: "Project directory", required: false },
-    json: { type: "boolean", description: "Output agent-readable JSON", default: false },
-    samples: {
-      type: "string",
-      description: "Number of midpoint samples across the duration (default: 9)",
-      default: "9",
+export function createInspectCommand(commandName: "inspect" | "layout") {
+  return defineCommand({
+    meta: {
+      name: commandName,
+      description: "Inspect rendered composition layout for text and container overflow",
     },
-    at: {
-      type: "string",
-      description: "Comma-separated timestamps in seconds (e.g., --at 1.5,4,7.25)",
+    args: {
+      dir: { type: "positional", description: "Project directory", required: false },
+      json: { type: "boolean", description: "Output agent-readable JSON", default: false },
+      samples: {
+        type: "string",
+        description: "Number of midpoint samples across the duration (default: 9)",
+        default: "9",
+      },
+      at: {
+        type: "string",
+        description: "Comma-separated timestamps in seconds (e.g., --at 1.5,4,7.25)",
+      },
+      tolerance: {
+        type: "string",
+        description: "Allowed pixel overflow before reporting an issue (default: 2)",
+        default: "2",
+      },
+      timeout: {
+        type: "string",
+        description: "Ms to wait for runtime to initialize (default: 5000)",
+        default: "5000",
+      },
+      "max-issues": {
+        type: "string",
+        description: "Maximum issues to print or return after static collapse (default: 80)",
+        default: "80",
+      },
+      "collapse-static": {
+        type: "boolean",
+        description: "Collapse repeated static issues across samples (default: true)",
+        default: true,
+      },
+      strict: {
+        type: "boolean",
+        description: "Exit non-zero on warnings too",
+        default: false,
+      },
     },
-    tolerance: {
-      type: "string",
-      description: "Allowed pixel overflow before reporting an issue (default: 2)",
-      default: "2",
-    },
-    timeout: {
-      type: "string",
-      description: "Ms to wait for runtime to initialize (default: 5000)",
-      default: "5000",
-    },
-    "max-issues": {
-      type: "string",
-      description: "Maximum issues to print or return (default: 80)",
-      default: "80",
-    },
-    strict: {
-      type: "boolean",
-      description: "Exit non-zero on warnings too",
-      default: false,
-    },
-  },
-  async run({ args }) {
-    const project = resolveProject(args.dir);
-    const samples = Math.max(1, parseInt(args.samples as string, 10) || 9);
-    const tolerance = Math.max(0, parseFloat(args.tolerance as string) || 2);
-    const timeout = Math.max(500, parseInt(args.timeout as string, 10) || 5000);
-    const maxIssues = Math.max(1, parseInt(args["max-issues"] as string, 10) || 80);
-    const at = parseAt(args.at);
-    const strict = !!args.strict;
+    async run({ args }) {
+      const project = resolveProject(args.dir);
+      const samples = Math.max(1, parseInt(args.samples as string, 10) || 9);
+      const tolerance = Math.max(0, parseFloat(args.tolerance as string) || 2);
+      const timeout = Math.max(500, parseInt(args.timeout as string, 10) || 5000);
+      const maxIssues = Math.max(1, parseInt(args["max-issues"] as string, 10) || 80);
+      const at = parseAt(args.at);
+      const strict = !!args.strict;
+      const collapseStatic = args["collapse-static"] !== false;
 
-    if (!args.json) {
-      const sampleLabel = at ? `${at.length} explicit timestamp(s)` : `${samples} timeline samples`;
-      console.log(
-        `${c.accent("◆")}  Auditing layout for ${c.accent(project.name)} (${sampleLabel})`,
-      );
-    }
-
-    try {
-      const result = await runLayoutAudit(project.dir, {
-        samples,
-        at,
-        timeout,
-        tolerance,
-        maxIssues,
-      });
-      const summary = summarizeLayoutIssues(result.issues);
-      const ok = summary.errorCount === 0 && (!strict || summary.warningCount === 0);
-
-      if (args.json) {
+      if (!args.json) {
+        const sampleLabel = at
+          ? `${at.length} explicit timestamp(s)`
+          : `${samples} timeline samples`;
         console.log(
-          JSON.stringify(
-            withMeta({
-              duration: result.duration,
-              samples: result.samples,
-              tolerance,
-              strict,
-              ...summary,
-              ok,
-              issues: result.issues,
-            }),
-            null,
-            2,
-          ),
+          `${c.accent("◆")}  Inspecting layout for ${c.accent(project.name)} (${sampleLabel})`,
         );
-        process.exit(ok ? 0 : 1);
       }
 
-      if (result.samples.length === 0) {
+      try {
+        const result = await runLayoutAudit(project.dir, {
+          samples,
+          at,
+          timeout,
+          tolerance,
+        });
+        const allIssues = collapseStatic
+          ? collapseStaticLayoutIssues(result.rawIssues)
+          : result.rawIssues;
+        const limited = limitLayoutIssues(allIssues, maxIssues);
+        const summary = summarizeLayoutIssues(allIssues);
+        const ok = summary.errorCount === 0 && (!strict || summary.warningCount === 0);
+
+        if (args.json) {
+          console.log(
+            JSON.stringify(
+              withMeta({
+                schemaVersion: INSPECT_SCHEMA_VERSION,
+                duration: result.duration,
+                samples: result.samples,
+                tolerance,
+                strict,
+                collapseStatic,
+                ...summary,
+                totalIssueCount: limited.totalIssueCount,
+                truncated: limited.truncated,
+                ok,
+                issues: limited.issues,
+              }),
+              null,
+              2,
+            ),
+          );
+          process.exit(ok ? 0 : 1);
+        }
+
+        if (result.samples.length === 0) {
+          console.log();
+          console.log(
+            `${c.error("✗")} Could not determine composition duration — no layout samples run`,
+          );
+          process.exit(1);
+        }
+
         console.log();
-        console.log(
-          `${c.error("✗")} Could not determine composition duration — no layout samples run`,
-        );
+        if (limited.issues.length === 0) {
+          console.log(
+            `${c.success("◇")}  0 layout issues across ${result.samples.length} sample(s)`,
+          );
+          return;
+        }
+
+        for (const issue of limited.issues) {
+          const icon =
+            issue.severity === "error"
+              ? c.error("✗")
+              : issue.severity === "warning"
+                ? c.warn("⚠")
+                : c.dim("ℹ");
+          const formatted = formatLayoutIssue(issue).replace(/\n/g, "\n    ");
+          console.log(`  ${icon} ${c.dim(formatted)}`);
+        }
+
+        console.log();
+        const parts = [
+          `${summary.errorCount} error(s)`,
+          `${summary.warningCount} warning(s)`,
+          `${summary.infoCount} info(s)`,
+        ];
+        const suffix = limited.truncated ? c.dim(`, truncated at ${maxIssues} issue(s)`) : "";
+        console.log(`${ok ? c.success("◇") : c.error("◇")}  ${parts.join(", ")}${suffix}`);
+
+        process.exit(ok ? 0 : 1);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        if (args.json) {
+          console.log(
+            JSON.stringify(
+              withMeta({
+                schemaVersion: INSPECT_SCHEMA_VERSION,
+                ok: false,
+                error: message,
+                issues: [],
+                errorCount: 0,
+                warningCount: 0,
+                infoCount: 0,
+                issueCount: 0,
+              }),
+              null,
+              2,
+            ),
+          );
+          process.exit(1);
+        }
+        console.error(`${c.error("✗")} Inspect failed: ${message}`);
         process.exit(1);
       }
+    },
+  });
+}
 
-      console.log();
-      if (result.issues.length === 0) {
-        console.log(`${c.success("◇")}  0 layout issues across ${result.samples.length} sample(s)`);
-        return;
-      }
-
-      for (const issue of result.issues) {
-        const icon = issue.severity === "error" ? c.error("✗") : c.warn("⚠");
-        const formatted = formatLayoutIssue(issue).replace(/\n/g, "\n    ");
-        console.log(`  ${icon} ${c.dim(formatted)}`);
-      }
-
-      console.log();
-      const parts = [`${summary.errorCount} error(s)`, `${summary.warningCount} warning(s)`];
-      const suffix =
-        result.issues.length >= maxIssues ? c.dim(`, truncated at ${maxIssues} issue(s)`) : "";
-      console.log(`${ok ? c.success("◇") : c.error("◇")}  ${parts.join(", ")}${suffix}`);
-
-      process.exit(ok ? 0 : 1);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      if (args.json) {
-        console.log(
-          JSON.stringify(
-            withMeta({
-              ok: false,
-              error: message,
-              issues: [],
-              errorCount: 0,
-              warningCount: 0,
-              issueCount: 0,
-            }),
-            null,
-            2,
-          ),
-        );
-        process.exit(1);
-      }
-      console.error(`${c.error("✗")} Layout audit failed: ${message}`);
-      process.exit(1);
-    }
-  },
-});
+export default createInspectCommand("layout");

@@ -15,10 +15,15 @@ export type LayoutIssueCode =
   | "canvas_overflow"
   | "container_overflow";
 
+export type LayoutIssueSeverity = "error" | "warning" | "info";
+
 export interface LayoutIssue {
   code: LayoutIssueCode;
-  severity: "error" | "warning";
+  severity: LayoutIssueSeverity;
   time: number;
+  firstSeen?: number;
+  lastSeen?: number;
+  occurrences?: number;
   selector: string;
   containerSelector?: string;
   text?: string;
@@ -33,6 +38,7 @@ export interface LayoutSummary {
   ok: boolean;
   errorCount: number;
   warningCount: number;
+  infoCount: number;
   issueCount: number;
 }
 
@@ -83,18 +89,24 @@ export function computeOverflow(
 export function summarizeLayoutIssues(issues: LayoutIssue[]): LayoutSummary {
   const errorCount = issues.filter((issue) => issue.severity === "error").length;
   const warningCount = issues.filter((issue) => issue.severity === "warning").length;
+  const infoCount = issues.filter((issue) => issue.severity === "info").length;
 
   return {
     ok: errorCount === 0,
     errorCount,
     warningCount,
+    infoCount,
     issueCount: issues.length,
   };
 }
 
 export function formatLayoutIssue(issue: LayoutIssue): string {
+  const timeLabel =
+    issue.occurrences && issue.occurrences > 1
+      ? `t=${formatNumber(issue.firstSeen ?? issue.time)}-${formatNumber(issue.lastSeen ?? issue.time)}s (${issue.occurrences} samples)`
+      : `t=${formatNumber(issue.time)}s`;
   const parts = [
-    `t=${formatNumber(issue.time)}s`,
+    timeLabel,
     issue.code,
     issue.selector,
     issue.containerSelector ? `inside ${issue.containerSelector}` : "",
@@ -126,6 +138,78 @@ export function dedupeLayoutIssues(issues: LayoutIssue[]): LayoutIssue[] {
   }
 
   return result;
+}
+
+export function collapseStaticLayoutIssues(issues: LayoutIssue[]): LayoutIssue[] {
+  const groups = new Map<
+    string,
+    {
+      issue: LayoutIssue;
+      firstSeen: number;
+      lastSeen: number;
+      occurrences: number;
+    }
+  >();
+
+  for (const issue of issues) {
+    const key = staticIssueKey(issue);
+    const existing = groups.get(key);
+    if (!existing) {
+      groups.set(key, {
+        issue,
+        firstSeen: issue.time,
+        lastSeen: issue.time,
+        occurrences: 1,
+      });
+      continue;
+    }
+
+    existing.firstSeen = Math.min(existing.firstSeen, issue.time);
+    existing.lastSeen = Math.max(existing.lastSeen, issue.time);
+    existing.occurrences += 1;
+  }
+
+  return [...groups.values()].map(({ issue, firstSeen, lastSeen, occurrences }) => ({
+    ...issue,
+    time: firstSeen,
+    firstSeen,
+    lastSeen,
+    occurrences,
+  }));
+}
+
+export function limitLayoutIssues(
+  issues: LayoutIssue[],
+  maxIssues: number,
+): { issues: LayoutIssue[]; totalIssueCount: number; truncated: boolean } {
+  const limit = Math.max(1, Math.floor(maxIssues));
+  const sortedIssues = [...issues].sort((a, b) => {
+    const severityDelta = severityRank(a.severity) - severityRank(b.severity);
+    if (severityDelta !== 0) return severityDelta;
+    return a.time - b.time;
+  });
+  return {
+    issues: sortedIssues.slice(0, limit),
+    totalIssueCount: issues.length,
+    truncated: issues.length > limit,
+  };
+}
+
+function severityRank(severity: LayoutIssueSeverity): number {
+  if (severity === "error") return 0;
+  if (severity === "warning") return 1;
+  return 2;
+}
+
+function staticIssueKey(issue: LayoutIssue): string {
+  return [
+    issue.code,
+    issue.severity,
+    issue.selector,
+    issue.containerSelector ?? "",
+    issue.text ?? "",
+    issue.overflow ? formatOverflow(issue.overflow) : "",
+  ].join("|");
 }
 
 function uniqueSortedTimes(times: number[]): number[] {

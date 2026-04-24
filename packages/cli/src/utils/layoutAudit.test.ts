@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   buildLayoutSampleTimes,
   computeOverflow,
+  collapseStaticLayoutIssues,
+  limitLayoutIssues,
   summarizeLayoutIssues,
   formatLayoutIssue,
   type LayoutIssue,
@@ -49,7 +51,34 @@ describe("layoutAudit helpers", () => {
       ok: false,
       errorCount: 2,
       warningCount: 1,
+      infoCount: 0,
       issueCount: 3,
+    });
+  });
+
+  it("tracks info findings separately from warnings and errors", () => {
+    expect(summarizeLayoutIssues([issue("canvas_overflow", "info")])).toEqual({
+      ok: true,
+      errorCount: 0,
+      warningCount: 0,
+      infoCount: 1,
+      issueCount: 1,
+    });
+  });
+
+  it("collapses repeated static issues across sampled timestamps", () => {
+    const collapsed = collapseStaticLayoutIssues([
+      { ...issue("text_box_overflow", "error"), time: 1 },
+      { ...issue("text_box_overflow", "error"), time: 3 },
+      { ...issue("text_box_overflow", "error"), time: 5 },
+    ]);
+
+    expect(collapsed).toHaveLength(1);
+    expect(collapsed[0]).toMatchObject({
+      time: 1,
+      firstSeen: 1,
+      lastSeen: 5,
+      occurrences: 3,
     });
   });
 
@@ -69,6 +98,34 @@ describe("layoutAudit helpers", () => {
     expect(formatted).toContain("inside .bubble");
     expect(formatted).toContain("right 18px, bottom 7px");
     expect(formatted).toContain("Fix: Increase container padding");
+  });
+
+  it("formats collapsed issue time ranges", () => {
+    const formatted = formatLayoutIssue({
+      ...issue("text_box_overflow", "error"),
+      time: 1,
+      firstSeen: 1,
+      lastSeen: 5,
+      occurrences: 3,
+    });
+
+    expect(formatted).toContain("t=1-5s (3 samples)");
+  });
+
+  it("limits returned issues by severity before truncating", () => {
+    const limited = limitLayoutIssues(
+      [
+        { ...issue("canvas_overflow", "info"), time: 1 },
+        { ...issue("text_box_overflow", "error"), time: 2 },
+      ],
+      1,
+    );
+
+    expect(limited).toMatchObject({
+      totalIssueCount: 2,
+      truncated: true,
+      issues: [{ code: "text_box_overflow", severity: "error" }],
+    });
   });
 });
 

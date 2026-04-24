@@ -19,7 +19,7 @@ npx hyperframes <command>
 - Preview compositions with live hot reload (`preview`)
 - Render compositions to MP4 locally or in Docker (`render`)
 - Lint compositions for structural issues (`lint`)
-- Audit rendered layout for text overflow and clipped containers (`layout`)
+- Inspect rendered visual layout for text overflow and clipped containers (`inspect`)
 - Capture key frames as PNG screenshots (`snapshot`)
 - Check your environment for missing dependencies (`doctor`)
 
@@ -446,39 +446,46 @@ This is suppressed in CI environments, non-TTY shells, and when `HYPERFRAMES_NO_
 
     The linter detects missing attributes, missing adapter libraries (GSAP, Lottie, Three.js), structural problems, and more. See [Common Mistakes](/guides/common-mistakes) for details on each rule.
 
-    ### `layout`
+    ### `inspect`
 
-    Audit rendered layout across the composition timeline:
+    Inspect rendered visual layout across the composition timeline:
 
     ```bash
-    npx hyperframes layout [dir]
-    npx hyperframes layout [dir] --json
-    npx hyperframes layout [dir] --samples 15
-    npx hyperframes layout [dir] --at 1.5,4,7.25
+    npx hyperframes inspect [dir]
+    npx hyperframes inspect [dir] --json
+    npx hyperframes inspect [dir] --samples 15
+    npx hyperframes inspect [dir] --at 1.5,4,7.25
     ```
 
     ```
-    ◆  Auditing layout for my-project (9 timeline samples)
+    ◆  Inspecting layout for my-project (9 timeline samples)
 
       ✗ text_box_overflow t=3.25s #headline inside .bubble overflowed right 18px — "Quarterly plan"
-        Fix: Increase the bubble/container size or padding, reduce font-size/letter-spacing, or set a max-width that allows wrapping inside the container.
+        Fix: Text is 418px x 42px inside 400px x 120px and overflows by up to 18px; widen the container to at least ~418px, or allow wrapping with max-width/fitTextFontSize.
 
-    ◇  1 error(s), 0 warning(s)
+    ◇  1 error(s), 0 warning(s), 0 info(s)
     ```
 
-    `layout` bundles the project, serves it locally, opens headless Chrome, seeks through the composition, and reports text or elements that escape their intended boxes. It is designed for agent workflows: each finding includes a timestamp, selector, nearest container selector, measured bounding boxes, overflow sides, and a fix hint.
+    `inspect` bundles the project, serves it locally, opens headless Chrome, seeks through the composition, and reports text or elements that escape their intended boxes. It is designed for agent workflows: each finding includes a schema version, timestamp or collapsed timestamp range, selector, nearest container selector, measured bounding boxes, overflow sides, and a fix hint.
 
     | Flag | Description |
     |------|-------------|
-    | `--json` | Output agent-readable findings with `samples`, `issues`, bounding boxes, and summary counts |
+    | `--json` | Output agent-readable findings with `schemaVersion`, `samples`, `issues`, bounding boxes, and summary counts |
     | `--samples` | Number of midpoint samples across the composition duration (default: 9) |
     | `--at` | Comma-separated timestamps in seconds for explicit hero-frame checks |
     | `--tolerance` | Allowed pixel overflow before reporting an issue (default: 2) |
     | `--timeout` | Ms to wait for runtime initialization (default: 5000) |
-    | `--max-issues` | Maximum findings to print or return (default: 80) |
+    | `--collapse-static` | Collapse repeated static issues across samples (default: true) |
+    | `--max-issues` | Maximum findings to print or return after static collapse (default: 80) |
     | `--strict` | Exit non-zero on warnings as well as errors |
 
     Use `data-layout-allow-overflow` on an element or ancestor when overflow is intentional, such as a planned off-canvas entrance. Use `data-layout-ignore` for decorative elements that should not be audited.
+
+    `layout` remains available as a compatibility alias for the same visual inspection pass:
+
+    ```bash
+    npx hyperframes layout [dir] --json
+    ```
 
     ### `snapshot`
 
