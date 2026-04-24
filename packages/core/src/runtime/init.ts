@@ -368,13 +368,16 @@ export function initSandboxRuntimeModular(): void {
     return resolver.resolveStartForElement(element, fallback);
   };
 
-  const resolveDurationForElement = (element: Element): number | null => {
+  const resolveDurationForElement = (
+    element: Element,
+    opts?: { includeAuthoredTimingAttrs?: boolean },
+  ): number | null => {
     const resolver = createRuntimeStartTimeResolver({
       timelineRegistry: (window.__timelines ?? {}) as Record<
         string,
         RuntimeTimelineLike | undefined
       >,
-      includeAuthoredTimingAttrs: true,
+      includeAuthoredTimingAttrs: opts?.includeAuthoredTimingAttrs ?? true,
     });
     return resolver.resolveDurationForElement(element);
   };
@@ -1234,7 +1237,9 @@ export function initSandboxRuntimeModular(): void {
       }
 
       const start = resolveStartForElement(rawNode, 0);
-      const duration = resolveDurationForElement(rawNode);
+      const duration = resolveDurationForElement(rawNode, {
+        includeAuthoredTimingAttrs: false,
+      });
       const end = duration != null && duration > 0 ? start + duration : Number.POSITIVE_INFINITY;
       // For composition hosts, use the composition timeline's duration to compute end
       let computedEnd = end;
