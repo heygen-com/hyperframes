@@ -10,12 +10,14 @@ type GsapWindow = {
   position: number;
   end: number;
   properties: string[];
+  propertyValues: Record<string, string | number>;
   overwriteAuto: boolean;
   method: string;
   raw: string;
 };
 
 const META_GSAP_KEYS = new Set(["duration", "ease", "repeat", "yoyo", "overwrite", "delay"]);
+const SCENE_BOUNDARY_EPSILON_SECONDS = 0.05;
 
 // ── GSAP parsing utilities ─────────────────────────────────────────────────
 
@@ -68,6 +70,7 @@ function extractGsapWindows(script: string): GsapWindow[] {
       position: animation.position,
       end: animation.position + meta.effectiveDuration,
       properties: meta.properties.length > 0 ? meta.properties : Object.keys(animation.properties),
+      propertyValues: meta.propertyValues,
       overwriteAuto: meta.overwriteAuto,
       method: match[1] ?? "to",
       raw,
@@ -79,9 +82,20 @@ function extractGsapWindows(script: string): GsapWindow[] {
 function parseGsapWindowMeta(
   method: string,
   argsStr: string,
-): { effectiveDuration: number; properties: string[]; overwriteAuto: boolean } {
+): {
+  effectiveDuration: number;
+  properties: string[];
+  propertyValues: Record<string, string | number>;
+  overwriteAuto: boolean;
+} {
+  const emptyMeta = {
+    effectiveDuration: 0,
+    properties: [],
+    propertyValues: {},
+    overwriteAuto: false,
+  };
   const selectorMatch = argsStr.match(/^\s*["']([^"']+)["']\s*,/);
-  if (!selectorMatch) return { effectiveDuration: 0, properties: [], overwriteAuto: false };
+  if (!selectorMatch) return emptyMeta;
 
   const afterSelector = argsStr.slice(selectorMatch[0].length);
   let properties: Record<string, string | number> = {};
@@ -124,6 +138,7 @@ function parseGsapWindowMeta(
   return {
     effectiveDuration: method === "set" ? 0 : effectiveDuration,
     properties: [...propertyNames],
+    propertyValues: properties,
     overwriteAuto,
   };
 }
@@ -176,6 +191,58 @@ function numberValue(value: string | number | undefined): number | null {
 function stringValue(value: string | number | undefined): string | null {
   if (typeof value === "string") return value;
   if (typeof value === "number") return String(value);
+  return null;
+}
+
+function zeroValue(value: string | number | undefined): boolean {
+  if (typeof value === "number") return value === 0;
+  if (typeof value !== "string") return false;
+  return Number(value.trim()) === 0;
+}
+
+function isHiddenGsapState(values: Record<string, string | number>): boolean {
+  const visibility = stringValue(values.visibility)?.toLowerCase();
+  const display = stringValue(values.display)?.toLowerCase();
+  return (
+    zeroValue(values.opacity) ||
+    zeroValue(values.autoAlpha) ||
+    visibility === "hidden" ||
+    display === "none"
+  );
+}
+
+function isSceneBoundaryExit(win: GsapWindow): boolean {
+  if (win.end <= win.position) return false;
+  if (win.method !== "to" && win.method !== "fromTo") return false;
+  return isHiddenGsapState(win.propertyValues);
+}
+
+function isHardKillSet(win: GsapWindow, selector: string, boundary: number): boolean {
+  return (
+    win.method === "set" &&
+    win.targetSelector === selector &&
+    Math.abs(win.position - boundary) <= SCENE_BOUNDARY_EPSILON_SECONDS &&
+    isHiddenGsapState(win.propertyValues)
+  );
+}
+
+function collectClipStartBoundaries(tags: OpenTag[]): number[] {
+  const boundaries = new Set<number>();
+  for (const tag of tags) {
+    const classAttr = readAttr(tag.raw, "class") || "";
+    const classes = classAttr.split(/\s+/).filter(Boolean);
+    if (!classes.includes("clip")) continue;
+    const start = numberValue(readAttr(tag.raw, "data-start") ?? undefined);
+    if (start == null || start <= 0) continue;
+    boundaries.add(start);
+  }
+  return [...boundaries].sort((a, b) => a - b);
+}
+
+function findMatchingSceneBoundary(time: number, boundaries: number[]): number | null {
+  for (const boundary of boundaries) {
+    if (Math.abs(time - boundary) <= SCENE_BOUNDARY_EPSILON_SECONDS) return boundary;
+  }
   return null;
 }
 
@@ -257,6 +324,7 @@ export const gsapRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
     }
 
     const classUsage = countClassUsage(tags);
+    const clipStartBoundaries = collectClipStartBoundaries(tags);
 
     for (const script of scripts) {
       const localTimelineCompId = readRegisteredTimelineCompositionId(script.content);
@@ -287,6 +355,32 @@ export const gsapRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
             selector: left.targetSelector,
             fixHint: 'Shorten the earlier tween, move the later tween, or add `overwrite: "auto"`.',
             snippet: truncateSnippet(`${left.raw}\n${right.raw}`),
+          });
+        }
+      }
+
+      // gsap_exit_missing_hard_kill
+      if (clipStartBoundaries.length > 0) {
+        for (const win of gsapWindows) {
+          if (!isSceneBoundaryExit(win)) continue;
+          const boundary = findMatchingSceneBoundary(win.end, clipStartBoundaries);
+          if (boundary == null) continue;
+          const hasHardKill = gsapWindows.some((candidate) =>
+            isHardKillSet(candidate, win.targetSelector, boundary),
+          );
+          if (hasHardKill) continue;
+
+          findings.push({
+            code: "gsap_exit_missing_hard_kill",
+            severity: "warning",
+            message:
+              `GSAP exit on "${win.targetSelector}" ends at the ${boundary.toFixed(2)}s clip start boundary ` +
+              "without a matching tl.set hard kill. Non-linear seeking can land after the fade and leave stale visibility state.",
+            selector: win.targetSelector,
+            fixHint:
+              `Add \`tl.set("${win.targetSelector}", { opacity: 0 }, ${boundary.toFixed(2)})\` ` +
+              "after the exit tween, or use autoAlpha/visibility if that is the authored hidden state.",
+            snippet: truncateSnippet(win.raw),
           });
         }
       }

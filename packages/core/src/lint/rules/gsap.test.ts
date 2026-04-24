@@ -608,6 +608,58 @@ describe("GSAP rules", () => {
     expect(finding).toBeUndefined();
   });
 
+  it("warns when an opacity exit ends at a clip start boundary without a hard kill", () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080" data-start="0" data-duration="6">
+    <div id="scene-a" class="clip" data-start="0" data-duration="3" data-track-index="0">
+      <h1 id="headline">First beat</h1>
+    </div>
+    <div id="scene-b" class="clip" data-start="3" data-duration="3" data-track-index="0">
+      <h1>Second beat</h1>
+    </div>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.to("#headline", { opacity: 0, duration: 0.3 }, 2.7);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "gsap_exit_missing_hard_kill");
+    expect(finding).toBeDefined();
+    expect(finding?.severity).toBe("warning");
+    expect(finding?.selector).toBe("#headline");
+    expect(finding?.message).toContain("3.00s");
+  });
+
+  it("does not warn when a boundary exit has a matching hard kill", () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080" data-start="0" data-duration="6">
+    <div id="scene-a" class="clip" data-start="0" data-duration="3" data-track-index="0">
+      <h1 id="headline">First beat</h1>
+    </div>
+    <div id="scene-b" class="clip" data-start="3" data-duration="3" data-track-index="0">
+      <h1>Second beat</h1>
+    </div>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.to("#headline", { opacity: 0, duration: 0.3 }, 2.7);
+    tl.set("#headline", { opacity: 0, visibility: "hidden" }, 3);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "gsap_exit_missing_hard_kill");
+    expect(finding).toBeUndefined();
+  });
+
   it("does not false-positive on repeat: -10 (invalid GSAP but not infinite)", () => {
     const html = `
 <html><body>
