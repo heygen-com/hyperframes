@@ -19,6 +19,7 @@ npx hyperframes <command>
 - Preview compositions with live hot reload (`preview`)
 - Render compositions to MP4 locally or in Docker (`render`)
 - Lint compositions for structural issues (`lint`)
+- Audit rendered layout for text overflow and clipped containers (`layout`)
 - Capture key frames as PNG screenshots (`snapshot`)
 - Check your environment for missing dependencies (`doctor`)
 
@@ -444,6 +445,40 @@ This is suppressed in CI environments, non-TTY shells, and when `HYPERFRAMES_NO_
     - **Info** (`ℹ`) — informational notices, shown only with `--verbose`
 
     The linter detects missing attributes, missing adapter libraries (GSAP, Lottie, Three.js), structural problems, and more. See [Common Mistakes](/guides/common-mistakes) for details on each rule.
+
+    ### `layout`
+
+    Audit rendered layout across the composition timeline:
+
+    ```bash
+    npx hyperframes layout [dir]
+    npx hyperframes layout [dir] --json
+    npx hyperframes layout [dir] --samples 15
+    npx hyperframes layout [dir] --at 1.5,4,7.25
+    ```
+
+    ```
+    ◆  Auditing layout for my-project (9 timeline samples)
+
+      ✗ text_box_overflow t=3.25s #headline inside .bubble overflowed right 18px — "Quarterly plan"
+        Fix: Increase the bubble/container size or padding, reduce font-size/letter-spacing, or set a max-width that allows wrapping inside the container.
+
+    ◇  1 error(s), 0 warning(s)
+    ```
+
+    `layout` bundles the project, serves it locally, opens headless Chrome, seeks through the composition, and reports text or elements that escape their intended boxes. It is designed for agent workflows: each finding includes a timestamp, selector, nearest container selector, measured bounding boxes, overflow sides, and a fix hint.
+
+    | Flag | Description |
+    |------|-------------|
+    | `--json` | Output agent-readable findings with `samples`, `issues`, bounding boxes, and summary counts |
+    | `--samples` | Number of midpoint samples across the composition duration (default: 9) |
+    | `--at` | Comma-separated timestamps in seconds for explicit hero-frame checks |
+    | `--tolerance` | Allowed pixel overflow before reporting an issue (default: 2) |
+    | `--timeout` | Ms to wait for runtime initialization (default: 5000) |
+    | `--max-issues` | Maximum findings to print or return (default: 80) |
+    | `--strict` | Exit non-zero on warnings as well as errors |
+
+    Use `data-layout-allow-overflow` on an element or ancestor when overflow is intentional, such as a planned off-canvas entrance. Use `data-layout-ignore` for decorative elements that should not be audited.
 
     ### `snapshot`
 

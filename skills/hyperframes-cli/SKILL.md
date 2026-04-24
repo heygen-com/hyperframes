@@ -1,6 +1,6 @@
 ---
 name: hyperframes-cli
-description: HyperFrames CLI tool — hyperframes init, lint, preview, render, transcribe, tts, doctor, browser, info, upgrade, compositions, docs, benchmark. Use when scaffolding a project, linting or validating compositions, previewing in the studio, rendering to video, transcribing audio, generating TTS, or troubleshooting the HyperFrames environment.
+description: HyperFrames CLI tool — hyperframes init, lint, layout, preview, render, transcribe, tts, doctor, browser, info, upgrade, compositions, docs, benchmark. Use when scaffolding a project, linting, validating, layout-checking compositions, previewing in the studio, rendering to video, transcribing audio, generating TTS, or troubleshooting the HyperFrames environment.
 ---
 
 # HyperFrames CLI
@@ -12,10 +12,11 @@ Everything runs through `npx hyperframes`. Requires Node.js >= 22 and FFmpeg.
 1. **Scaffold** — `npx hyperframes init my-video`
 2. **Write** — author HTML composition (see the `hyperframes` skill)
 3. **Lint** — `npx hyperframes lint`
-4. **Preview** — `npx hyperframes preview`
-5. **Render** — `npx hyperframes render`
+4. **Layout audit** — `npx hyperframes layout`
+5. **Preview** — `npx hyperframes preview`
+6. **Render** — `npx hyperframes render`
 
-Lint before preview — catches missing `data-composition-id`, overlapping tracks, unregistered timelines.
+Lint and layout-audit before preview. `lint` catches missing `data-composition-id`, overlapping tracks, and unregistered timelines. `layout` opens the rendered composition in headless Chrome, seeks through the timeline, and reports text spilling out of bubbles/containers or off the canvas.
 
 ## Scaffolding
 
@@ -41,6 +42,25 @@ npx hyperframes lint --json           # machine-readable
 ```
 
 Lints `index.html` and all files in `compositions/`. Reports errors (must fix), warnings (should fix), and info (with `--verbose`).
+
+## Layout Audit
+
+```bash
+npx hyperframes layout                 # audit rendered layout over the timeline
+npx hyperframes layout ./my-project    # specific project
+npx hyperframes layout --json          # agent-readable findings
+npx hyperframes layout --samples 15    # denser timeline sweep
+npx hyperframes layout --at 1.5,4,7.25 # explicit hero-frame timestamps
+```
+
+Use this after `lint` and `validate`, especially for compositions with speech bubbles, cards, captions, or tight typography. It reports:
+
+- Text extending outside the nearest visual container or bubble
+- Text clipped by its own fixed-width/fixed-height box
+- Text extending outside the composition canvas
+- Children escaping clipping containers
+
+Errors should be fixed before rendering. Warnings are surfaced for agent review; add `--strict` to fail on warnings too. If overflow is intentional for an entrance/exit animation, mark the element or ancestor with `data-layout-allow-overflow`. If a decorative element should never be audited, mark it with `data-layout-ignore`.
 
 ## Previewing
 

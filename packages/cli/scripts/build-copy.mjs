@@ -58,6 +58,7 @@ async function main() {
   for (const sub of ["studio", "docs", "templates", "skills", "docker"]) {
     mkdirSync(join(DIST, sub), { recursive: true });
   }
+  mkdirSync(join(DIST, "commands"), { recursive: true });
 
   const studioDist = resolve(CLI_ROOT, "..", "studio", "dist");
   await waitForStudioDist(studioDist);
@@ -74,6 +75,11 @@ async function main() {
   const dockerfile = join(CLI_ROOT, "src", "docker", "Dockerfile.render");
   if (existsSync(dockerfile)) {
     cpSync(dockerfile, join(DIST, "docker", "Dockerfile.render"));
+  }
+
+  const layoutAuditScript = join(CLI_ROOT, "src", "commands", "layout-audit.browser.js");
+  if (existsSync(layoutAuditScript)) {
+    cpSync(layoutAuditScript, join(DIST, "commands", "layout-audit.browser.js"));
   }
 
   copyMdFiles(join(CLI_ROOT, "src", "docs"), join(DIST, "docs"));

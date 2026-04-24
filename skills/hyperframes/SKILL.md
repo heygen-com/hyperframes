@@ -277,10 +277,25 @@ When no `visual-style.md` or animation direction is provided, follow [house-styl
 ## Output Checklist
 
 - [ ] `npx hyperframes lint` and `npx hyperframes validate` both pass
+- [ ] `npx hyperframes layout` passes, or every reported overflow is intentionally marked
 - [ ] Contrast warnings addressed (see Quality Checks below)
+- [ ] Layout issues addressed (see Quality Checks below)
 - [ ] Animation choreography verified (see Quality Checks below)
 
 ## Quality Checks
+
+### Layout
+
+`hyperframes layout` runs the composition in headless Chrome, seeks through the timeline, and maps layout issues with timestamps, selectors, bounding boxes, and fix hints. Run it after `lint` and `validate`:
+
+```bash
+npx hyperframes layout
+npx hyperframes layout --json
+```
+
+Failures usually mean text is spilling out of a bubble/card, a fixed-size label is clipping dynamic copy, or text has moved off the canvas. Fix by increasing container size or padding, reducing font size or letter spacing, adding a real `max-width` so text wraps inside the container, or using `window.__hyperframes.fitTextFontSize(...)` for dynamic copy.
+
+Use `--samples 15` for dense videos and `--at 1.5,4,7.25` for specific hero frames. If overflow is intentional for an entrance/exit animation, mark the element or ancestor with `data-layout-allow-overflow`. If a decorative element should never be audited, mark it with `data-layout-ignore`.
 
 ### Contrast
 
