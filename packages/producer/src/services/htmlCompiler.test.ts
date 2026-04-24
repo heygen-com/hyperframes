@@ -7,6 +7,7 @@ import {
   compileForRender,
   detectRenderModeHints,
   inlineExternalScripts,
+  recompileWithResolutions,
 } from "./htmlCompiler.js";
 
 // ── collectExternalAssets ──────────────────────────────────────────────────
@@ -454,5 +455,119 @@ describe("detectRenderModeHints", () => {
     } finally {
       globalThis.fetch = originalFetch;
     }
+  });
+});
+
+describe("template-wrapped sub-composition media offsets", () => {
+  function writeTemplateWrappedProject(hostAttrs: string): {
+    projectDir: string;
+    indexPath: string;
+  } {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-template-offset-"));
+    const compositionsDir = join(projectDir, "compositions");
+    mkdirSync(compositionsDir, { recursive: true });
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!DOCTYPE html>
+<html>
+  <body>
+    <div
+      id="root"
+      data-composition-id="root"
+      data-start="0"
+      data-width="640"
+      data-height="360"
+      data-duration="4"
+    >
+      <div
+        id="scene-host"
+        data-composition-id="scene"
+        data-composition-src="compositions/scene.html"
+        ${hostAttrs}
+      ></div>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines["root"] = { duration: () => 4 };
+    </script>
+  </body>
+</html>`,
+    );
+    writeFileSync(
+      join(compositionsDir, "scene.html"),
+      `<template id="scene-template">
+  <div
+    data-composition-id="scene"
+    data-start="0"
+    data-width="640"
+    data-height="360"
+    data-duration="4"
+  >
+    <video
+      id="scene-video"
+      src="../assets/clip.mp4"
+      data-start="0"
+      data-duration="4"
+      data-track-index="0"
+    ></video>
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines["scene"] = { duration: () => 4 };
+    </script>
+  </div>
+</template>`,
+    );
+
+    return { projectDir, indexPath: join(projectDir, "index.html") };
+  }
+
+  it("offsets template-wrapped media to the host start during compile", async () => {
+    const { projectDir, indexPath } = writeTemplateWrappedProject(
+      'data-start="2" data-duration="2" data-width="640" data-height="360"',
+    );
+
+    const compiled = await compileForRender(projectDir, indexPath, projectDir);
+
+    expect(compiled.videos).toHaveLength(1);
+    expect(compiled.videos[0]).toMatchObject({
+      id: "scene-video",
+      start: 2,
+      end: 6,
+    });
+    expect(compiled.audios).toHaveLength(1);
+    expect(compiled.audios[0]).toMatchObject({
+      id: "scene-video-audio",
+      start: 2,
+      end: 6,
+    });
+  });
+
+  it("preserves first-pass media offsets when durations are resolved after inlining", async () => {
+    const { projectDir, indexPath } = writeTemplateWrappedProject(
+      'data-start="2" data-width="640" data-height="360"',
+    );
+
+    const compiled = await compileForRender(projectDir, indexPath, projectDir);
+    expect(compiled.videos[0]?.start).toBe(2);
+
+    const recompiled = await recompileWithResolutions(
+      compiled,
+      [{ id: "scene-host", duration: 2 }],
+      projectDir,
+      projectDir,
+    );
+
+    expect(recompiled.videos).toHaveLength(1);
+    expect(recompiled.videos[0]).toMatchObject({
+      id: "scene-video",
+      start: 2,
+      end: 6,
+    });
+    expect(recompiled.audios).toHaveLength(1);
+    expect(recompiled.audios[0]).toMatchObject({
+      id: "scene-video-audio",
+      start: 2,
+      end: 6,
+    });
   });
 });

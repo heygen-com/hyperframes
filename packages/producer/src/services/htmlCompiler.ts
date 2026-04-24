@@ -1233,9 +1233,10 @@ export async function recompileWithResolutions(
   const mainImages = parseImageElements(html);
 
   // Keep inlined sub-composition media authoritative on ID collisions.
-  const videos = dedupeElementsById([...mainVideos, ...subVideos]);
-  const audios = dedupeElementsById([...mainAudios, ...subAudios]);
-  const images = dedupeElementsById([...mainImages, ...subImages]);
+  const hasSubMedia = subVideos.length > 0 || subAudios.length > 0 || subImages.length > 0;
+  const videos = hasSubMedia ? dedupeElementsById([...mainVideos, ...subVideos]) : compiled.videos;
+  const audios = hasSubMedia ? dedupeElementsById([...mainAudios, ...subAudios]) : compiled.audios;
+  const images = hasSubMedia ? dedupeElementsById([...mainImages, ...subImages]) : compiled.images;
 
   const remaining = compiled.unresolvedCompositions.filter(
     (c) => !resolutions.some((r) => r.id === c.id),

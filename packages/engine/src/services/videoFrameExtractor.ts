@@ -18,6 +18,7 @@ import {
 import { downloadToTemp, isHttpUrl } from "../utils/urlDownloader.js";
 import { runFfmpeg } from "../utils/runFfmpeg.js";
 import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
+import { unwrapTemplate } from "../utils/htmlTemplate.js";
 import {
   FRAME_FILENAME_PREFIX,
   ensureCacheEntryDir,
@@ -102,7 +103,7 @@ export interface ExtractionResult {
 
 export function parseVideoElements(html: string): VideoElement[] {
   const videos: VideoElement[] = [];
-  const { document } = parseHTML(html);
+  const { document } = parseHTML(unwrapTemplate(html));
 
   const videoEls = document.querySelectorAll("video[src]");
   let autoIdCounter = 0;
@@ -156,7 +157,7 @@ export interface ImageElement {
 
 export function parseImageElements(html: string): ImageElement[] {
   const images: ImageElement[] = [];
-  const { document } = parseHTML(html);
+  const { document } = parseHTML(unwrapTemplate(html));
 
   const imgEls = document.querySelectorAll("img[src]");
   let autoIdCounter = 0;
