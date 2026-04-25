@@ -63,7 +63,10 @@ function parsePublishedProjectResponse(payload: unknown): PublishedProjectRespon
   };
 }
 
-function parseStagedUploadResponse(payload: unknown): StagedUploadResponse | null {
+function parseStagedUploadResponse(
+  payload: unknown,
+  archiveByteLength: number,
+): StagedUploadResponse | null {
   const data = dataRecord(payload);
   if (!data) return null;
   const uploadUrl = stringField(data, "upload_url");
@@ -74,7 +77,7 @@ function parseStagedUploadResponse(payload: unknown): StagedUploadResponse | nul
     uploadUrl,
     uploadKey,
     contentType,
-    uploadHeaders: getUploadHeaders(data, uploadUrl, contentType),
+    uploadHeaders: getUploadHeaders(data, uploadUrl, contentType, archiveByteLength),
   };
 }
 
@@ -82,6 +85,7 @@ function getUploadHeaders(
   data: JsonRecord,
   uploadUrl: string,
   contentType: string,
+  archiveByteLength: number,
 ): Record<string, string> {
   const headers: Record<string, string> = {};
   const uploadHeaders = data["upload_headers"];
@@ -103,6 +107,12 @@ function getUploadHeaders(
     !Object.keys(headers).some((key) => key.toLowerCase() === "x-amz-server-side-encryption")
   ) {
     headers["x-amz-server-side-encryption"] = "AES256";
+  }
+  if (
+    signedHeaders?.split(";").includes("content-length") &&
+    !Object.keys(headers).some((key) => key.toLowerCase() === "content-length")
+  ) {
+    headers["content-length"] = String(archiveByteLength);
   }
 
   return headers;
@@ -241,7 +251,7 @@ async function publishProjectArchiveStaged(
   }
 
   const uploadPayload = await readJson(uploadResponse);
-  const stagedUpload = parseStagedUploadResponse(uploadPayload);
+  const stagedUpload = parseStagedUploadResponse(uploadPayload, archive.buffer.byteLength);
   if (!uploadResponse.ok || !stagedUpload) {
     throw new Error(await readErrorMessage(uploadResponse, "Failed to prepare project upload"));
   }

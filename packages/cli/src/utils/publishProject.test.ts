@@ -54,7 +54,8 @@ describe("publishProjectArchive", () => {
         new Response(
           JSON.stringify({
             data: {
-              upload_url: "https://s3.example.com/upload",
+              upload_url:
+                "https://s3.example.com/upload?X-Amz-SignedHeaders=content-length;content-type;host;x-amz-server-side-encryption",
               upload_key: "ephemeral_store/hyperframes/project_uploads/upload-1/demo.zip",
               upload_headers: {
                 "content-type": "application/zip",
@@ -106,10 +107,11 @@ describe("publishProjectArchive", () => {
       );
       expect(fetchMock).toHaveBeenNthCalledWith(
         2,
-        "https://s3.example.com/upload",
+        "https://s3.example.com/upload?X-Amz-SignedHeaders=content-length;content-type;host;x-amz-server-side-encryption",
         expect.objectContaining({
           method: "PUT",
           headers: {
+            "content-length": expect.any(String),
             "content-type": "application/zip",
             "x-amz-server-side-encryption": "AES256",
           },
