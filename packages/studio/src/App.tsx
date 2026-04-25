@@ -2383,7 +2383,7 @@ export function StudioApp() {
   );
 
   const handleImportFonts = useCallback(
-    async (files: FileList) => {
+    async (files: FileList | File[]) => {
       const uploaded = await uploadProjectFiles(
         Array.from(files).filter((file) => FONT_EXT.test(file.name)),
         "assets/fonts",

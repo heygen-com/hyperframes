@@ -380,11 +380,18 @@ describe("patch builders and prompt builder", () => {
       tagSnippet: `<div id="editable-card" style="position:absolute; left: 108px; top: 112px; width: 380px; height: 196px; color: rgb(248, 250, 252)"`,
     });
 
+    expect(prompt).toContain("## HyperFrames element edit request v1");
+    expect(prompt).toContain("Schema version: 1");
     expect(prompt).toContain("Source file: index.html");
     expect(prompt).toContain("Selector: #editable-card");
     expect(prompt).toContain("Playback time:");
-    expect(prompt).toContain("Computed styles:");
+    expect(prompt).toContain("Text fields:");
+    expect(prompt).toContain('key=self:0:div; tag=<div>; source=self; text="Drag me first"');
+    expect(prompt).toContain("Inline styles:");
+    expect(prompt).toContain("Computed styles (browser-resolved):");
     expect(prompt).toContain("Target HTML:");
+    expect(prompt).toContain("Guardrails:");
+    expect(prompt).toContain("Do not modify other elements' data-* attributes or positioning.");
   });
 
   it("serializes child text fields back into HTML", () => {

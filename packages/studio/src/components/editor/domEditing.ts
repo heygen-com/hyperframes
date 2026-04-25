@@ -650,10 +650,19 @@ function formatBoundingBox(bounds: DomEditSelection["boundingBox"]): string {
   return `x=${Math.round(bounds.x)}, y=${Math.round(bounds.y)}, width=${Math.round(bounds.width)}, height=${Math.round(bounds.height)}`;
 }
 
-function formatComputedStyles(styles: Record<string, string>): string {
+function formatStyleBlock(styles: Record<string, string>): string {
   return Object.entries(styles)
     .filter(([, value]) => value && value !== "initial")
     .map(([key, value]) => `${key}: ${value}`)
+    .join("\n");
+}
+
+function formatTextFields(fields: DomEditTextField[]): string {
+  return fields
+    .map(
+      (field) =>
+        `- key=${field.key}; tag=<${field.tagName}>; source=${field.source}; text="${field.value.replace(/"/g, '\\"')}"`,
+    )
     .join("\n");
 }
 
@@ -669,6 +678,9 @@ export function buildElementAgentPrompt({
   userInstruction?: string;
 }): string {
   const lines = [
+    "## HyperFrames element edit request v1",
+    "Schema version: 1",
+    "",
     userInstruction?.trim() || "Edit this selected HyperFrames element.",
     "",
     `Composition: ${selection.compositionPath}`,
@@ -685,9 +697,19 @@ export function buildElementAgentPrompt({
     lines.push(`Text: ${selection.textContent}`);
   }
 
-  const styleBlock = formatComputedStyles(selection.computedStyles);
-  if (styleBlock) {
-    lines.push("", "Computed styles:", styleBlock);
+  const textFieldsBlock = formatTextFields(selection.textFields);
+  if (textFieldsBlock) {
+    lines.push("", "Text fields:", textFieldsBlock);
+  }
+
+  const inlineStyleBlock = formatStyleBlock(selection.inlineStyles);
+  if (inlineStyleBlock) {
+    lines.push("", "Inline styles:", inlineStyleBlock);
+  }
+
+  const computedStyleBlock = formatStyleBlock(selection.computedStyles);
+  if (computedStyleBlock) {
+    lines.push("", "Computed styles (browser-resolved):", computedStyleBlock);
   }
 
   if (tagSnippet) {
@@ -696,7 +718,11 @@ export function buildElementAgentPrompt({
 
   lines.push(
     "",
-    "Make a targeted change to this element only. Preserve the rest of the composition and its timing.",
+    "Guardrails:",
+    "- Make a targeted change to this element only.",
+    "- Preserve the rest of the composition and its timing.",
+    "- Do not modify other elements' data-* attributes or positioning.",
+    "- Prefer existing inline styles or existing CSS rules for this element over adding unrelated selectors.",
   );
 
   return lines.join("\n");

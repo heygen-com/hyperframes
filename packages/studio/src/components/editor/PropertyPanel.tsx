@@ -63,7 +63,7 @@ interface PropertyPanelProps {
   onCopyAgentInstruction: (instruction: string) => void | Promise<void>;
   onImportAssets?: (files: FileList) => Promise<string[]>;
   fontAssets?: ImportedFontAsset[];
-  onImportFonts?: (files: FileList) => Promise<ImportedFontAsset[]>;
+  onImportFonts?: (files: FileList | File[]) => Promise<ImportedFontAsset[]>;
 }
 
 const FIELD =
@@ -104,6 +104,7 @@ interface LocalFontData {
   fullName?: string;
   postscriptName?: string;
   style?: string;
+  blob?: () => Promise<Blob>;
 }
 
 type FontSource = "Current" | "Document" | "Imported" | "Local" | "Google" | "System";
@@ -134,6 +135,22 @@ declare global {
   interface Window {
     queryLocalFonts?: () => Promise<LocalFontData[]>;
   }
+}
+
+function sanitizeFontFilePart(value: string): string {
+  return value
+    .replace(/[^\w .-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function localFontSortScore(font: LocalFontData): number {
+  const style = font.style?.toLowerCase() ?? "";
+  const fullName = font.fullName?.toLowerCase() ?? "";
+  if (style === "regular" || fullName.endsWith(" regular")) return 0;
+  if (style === "normal" || fullName.endsWith(" normal")) return 1;
+  if (style === "medium" || fullName.endsWith(" medium")) return 2;
+  return 3;
 }
 
 function parseNumericValue(value: string | undefined): number | null {
@@ -718,7 +735,7 @@ function FontFamilyField({
   value: string;
   disabled?: boolean;
   importedFonts: ImportedFontAsset[];
-  onImportFonts?: (files: FileList) => Promise<ImportedFontAsset[]>;
+  onImportFonts?: (files: FileList | File[]) => Promise<ImportedFontAsset[]>;
   onCommit: (nextValue: string) => void;
 }) {
   const currentFamily = primaryFontFamily(value);
@@ -728,6 +745,7 @@ function FontFamilyField({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [localFonts, setLocalFonts] = useState<string[]>([]);
+  const [localFontData, setLocalFontData] = useState<LocalFontData[]>([]);
   const [googleFonts, setGoogleFonts] = useState<string[]>(() => [...POPULAR_GOOGLE_FONT_FAMILIES]);
   const [loadingLocalFonts, setLoadingLocalFonts] = useState(false);
   const [loadingGoogleFonts, setLoadingGoogleFonts] = useState(false);
@@ -807,11 +825,12 @@ function FontFamilyField({
     setFontNotice(null);
     try {
       const fonts = await window.queryLocalFonts();
-      const families = fonts.flatMap((font) =>
-        [font.family, font.fullName, font.postscriptName]
-          .filter((name): name is string => Boolean(name))
-          .map((name) => fontFamilyFromAssetPath(`${name}.ttf`)),
-      );
+      const sortedFonts = [...fonts].sort((a, b) => localFontSortScore(a) - localFontSortScore(b));
+      const families = sortedFonts
+        .map((font) => font.family)
+        .filter((name): name is string => Boolean(name))
+        .map((name) => fontFamilyFromAssetPath(`${name}.ttf`));
+      setLocalFontData(sortedFonts);
       setLocalFonts((current) => uniqueFontFamilies([...current, ...families]));
       setFontNotice(fonts.length === 0 ? "No browser-local fonts were returned." : null);
     } catch (error) {
@@ -826,7 +845,7 @@ function FontFamilyField({
     }
   };
 
-  const handleImportFonts = async (files: FileList | null) => {
+  const handleImportFonts = async (files: FileList | File[] | null) => {
     if (!files?.length || !onImportFonts) return;
     setImportingFonts(true);
     setFontNotice(null);
@@ -873,7 +892,50 @@ function FontFamilyField({
     return matches.slice(0, query.trim() ? 120 : 160);
   }, [options, query]);
 
-  const commitFamily = (option: FontOption) => {
+  const importLocalFont = async (family: string): Promise<ImportedFontAsset | null> => {
+    if (!onImportFonts) return null;
+    const candidates = localFontData
+      .filter((font) => fontFamilyFromAssetPath(`${font.family}.ttf`) === family)
+      .sort((a, b) => localFontSortScore(a) - localFontSortScore(b));
+    const font = candidates.find((entry) => typeof entry.blob === "function");
+    if (!font?.blob) return null;
+
+    const blob = await font.blob();
+    const style = sanitizeFontFilePart(font.style ?? "Regular") || "Regular";
+    const name = sanitizeFontFilePart(`${family} ${style}`) || family;
+    const file = new File([blob], `${name}.ttf`, {
+      type: blob.type || "font/ttf",
+    });
+    const imported = await onImportFonts([file]);
+    return (
+      imported.find((asset) => asset.family.toLowerCase() === family.toLowerCase()) ??
+      imported[0] ??
+      null
+    );
+  };
+
+  const commitFamily = async (option: FontOption) => {
+    if (option.source === "Local") {
+      setImportingFonts(true);
+      setFontNotice(null);
+      try {
+        const imported = await importLocalFont(option.family);
+        if (imported) {
+          loadImportedFontStylesheet(imported);
+          onCommit(buildFontFamilyValue(imported.family));
+          setQuery("");
+          setOpen(false);
+          return;
+        }
+        onCommit(buildFontFamilyValue(option.family));
+        setQuery("");
+        setOpen(false);
+      } finally {
+        setImportingFonts(false);
+      }
+      return;
+    }
+
     if (option.source === "Google") {
       loadGoogleFontStylesheet(option.family);
     }
