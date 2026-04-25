@@ -42,6 +42,10 @@
       "import": "./src/registry/index.ts",
       "types": "./src/registry/index.ts"
     },
+    "./elevenlabs": {
+      "import": "./src/elevenlabs/index.ts",
+      "types": "./src/elevenlabs/index.ts"
+    },
     "./schemas/registry.json": "./schemas/registry.json",
     "./schemas/registry-item.json": "./schemas/registry-item.json"
   },
@@ -72,6 +76,10 @@
       "./registry": {
         "import": "./dist/registry/index.js",
         "types": "./dist/registry/index.d.ts"
+      },
+      "./elevenlabs": {
+        "import": "./dist/elevenlabs/index.js",
+        "types": "./dist/elevenlabs/index.d.ts"
       },
       "./schemas/registry.json": "./schemas/registry.json",
       "./schemas/registry-item.json": "./schemas/registry-item.json"

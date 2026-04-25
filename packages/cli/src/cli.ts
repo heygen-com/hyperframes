@@ -40,6 +40,7 @@ const subCommands = {
   browser: () => import("./commands/browser.js").then((m) => m.default),
   transcribe: () => import("./commands/transcribe.js").then((m) => m.default),
   tts: () => import("./commands/tts.js").then((m) => m.default),
+  "el-tts": () => import("./commands/el-tts.js").then((m) => m.default),
   docs: () => import("./commands/docs.js").then((m) => m.default),
   doctor: () => import("./commands/doctor.js").then((m) => m.default),
   upgrade: () => import("./commands/upgrade.js").then((m) => m.default),
