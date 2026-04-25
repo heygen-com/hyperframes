@@ -380,4 +380,63 @@ describe("composition rules", () => {
       expect(finding).toBeUndefined();
     });
   });
+
+  describe("root_composition_missing_data_duration (removed)", () => {
+    // The rule was a static proxy for the runtime's loop-inflation Infinity
+    // emission, but lint cannot observe GSAP timeline duration statically and
+    // the looping shapes that drive it are already covered by
+    // `gsap_infinite_repeat` and `gsap_repeat_ceil_overshoot`. The rule has
+    // been removed (#243's Infinity-emission concern is now carried by those
+    // GSAP rules); these tests pin the removal so the rule does not silently
+    // come back.
+
+    it("does not warn on a docs-compliant root with no data-duration", () => {
+      // The documented authoring model: root composition without
+      // data-duration, runtime derives it from the GSAP timeline.
+      const html = `<!DOCTYPE html><html><body>
+  <div data-composition-id="docs" data-width="1920" data-height="1080" data-start="0">
+    <video src="clip.mp4" data-start="0" data-track-index="0" muted playsinline></video>
+  </div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    window.__timelines["docs"] = gsap.timeline({ paused: true });
+  </script>
+</body></html>`;
+      const result = lintHyperframeHtml(html);
+      const finding = result.findings.find(
+        (f) => f.code === "root_composition_missing_data_duration",
+      );
+      expect(finding).toBeUndefined();
+    });
+
+    it("does not warn even on the original Infinity-risk shape (no media, looping timeline)", () => {
+      // This was the canonical "warn" case under the old rule — root with no
+      // data-duration, no media, GSAP timeline driven by repeat: -1. The
+      // looping shape itself is now flagged by `gsap_infinite_repeat`; the
+      // duplicate `root_composition_missing_data_duration` warning is gone.
+      const html = `<!DOCTYPE html><html><body>
+  <div data-composition-id="loopy" data-width="1920" data-height="1080" data-start="0">
+    <div class="caption" data-start="1" data-duration="2">hello</div>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.to(".caption", { x: 100, duration: 1, repeat: -1 });
+    window.__timelines["loopy"] = tl;
+  </script>
+</body></html>`;
+      const result = lintHyperframeHtml(html);
+      // The deprecated rule must not fire.
+      const removedFinding = result.findings.find(
+        (f) => f.code === "root_composition_missing_data_duration",
+      );
+      expect(removedFinding).toBeUndefined();
+      // The looping shape is still surfaced — by `gsap_infinite_repeat`,
+      // which is the more actionable signal pointing at the real authoring
+      // mistake.
+      const gsapFinding = result.findings.find((f) => f.code === "gsap_infinite_repeat");
+      expect(gsapFinding).toBeDefined();
+    });
+  });
 });
