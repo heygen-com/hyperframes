@@ -1,6 +1,7 @@
 import { AUDIO_EXT, IMAGE_EXT, VIDEO_EXT } from "./mediaTypes";
 
 export const TIMELINE_ASSET_MIME = "application/x-hyperframes-asset";
+const FALLBACK_TIMELINE_FILE_DROP_DURATION = 5;
 
 export type TimelineAssetKind = "image" | "video" | "audio";
 
@@ -46,12 +47,33 @@ export function resolveTimelineAssetSrc(targetPath: string, assetPath: string): 
 
 export function buildTimelineFileDropPlacements(
   placement: { start: number; track: number },
-  count: number,
+  durations: number[],
+  occupiedClips: Array<{ start: number; duration: number; track: number }> = [],
 ): Array<{ start: number; track: number }> {
-  return Array.from({ length: Math.max(0, count) }, (_, index) => ({
-    start: placement.start,
-    track: placement.track + index,
-  }));
+  let nextStart = Math.round(Math.max(0, placement.start) * 100) / 100;
+  const sequenceStart = nextStart;
+  const resolvedDurations = durations.map((duration) =>
+    Number.isFinite(duration) && duration > 0 ? duration : FALLBACK_TIMELINE_FILE_DROP_DURATION,
+  );
+  const sequenceEnd = resolvedDurations.reduce(
+    (end, duration) => Math.round((end + duration) * 100) / 100,
+    sequenceStart,
+  );
+  const overlapsDropTrack = occupiedClips.some((clip) => {
+    if (clip.track !== placement.track) return false;
+    const clipStart = Math.max(0, clip.start);
+    const clipEnd = clipStart + Math.max(0, clip.duration);
+    return sequenceStart < clipEnd && sequenceEnd > clipStart;
+  });
+  const track = overlapsDropTrack
+    ? Math.max(placement.track, ...occupiedClips.map((clip) => clip.track)) + 1
+    : placement.track;
+
+  return resolvedDurations.map((duration) => {
+    const start = nextStart;
+    nextStart = Math.round((nextStart + duration) * 100) / 100;
+    return { start, track };
+  });
 }
 
 export function buildTimelineAssetInsertHtml(input: {

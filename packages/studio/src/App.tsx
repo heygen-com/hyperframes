@@ -957,7 +957,11 @@ export function StudioApp() {
   );
 
   const handleTimelineAssetDrop = useCallback(
-    async (assetPath: string, placement: Pick<TimelineElement, "start" | "track">) => {
+    async (
+      assetPath: string,
+      placement: Pick<TimelineElement, "start" | "track">,
+      durationOverride?: number,
+    ) => {
       const pid = projectIdRef.current;
       if (!pid) throw new Error("No active project");
 
@@ -983,9 +987,11 @@ export function StudioApp() {
         }
 
         const normalizedStart = Number(formatTimelineAttributeNumber(placement.start));
-        const normalizedDuration = Number(
-          formatTimelineAttributeNumber(await resolveDroppedAssetDuration(pid, assetPath, kind)),
-        );
+        const duration =
+          Number.isFinite(durationOverride) && durationOverride != null && durationOverride > 0
+            ? durationOverride
+            : await resolveDroppedAssetDuration(pid, assetPath, kind);
+        const normalizedDuration = Number(formatTimelineAttributeNumber(duration));
         const newId = buildTimelineAssetId(assetPath, collectHtmlIds(originalContent));
         const resolvedAssetSrc = resolveTimelineAssetSrc(targetPath, assetPath);
 
@@ -1064,17 +1070,40 @@ export function StudioApp() {
 
   const handleTimelineFileDrop = useCallback(
     async (files: File[], placement?: Pick<TimelineElement, "start" | "track">) => {
+      const pid = projectIdRef.current;
+      if (!pid) return;
       const uploaded = await uploadProjectFiles(files);
       if (uploaded.length === 0) return;
+      const durations: number[] = [];
+      for (const assetPath of uploaded) {
+        const kind = getTimelineAssetKind(assetPath);
+        const duration = kind ? await resolveDroppedAssetDuration(pid, assetPath, kind) : 0;
+        durations.push(Number(formatTimelineAttributeNumber(duration)));
+      }
       const placements = buildTimelineFileDropPlacements(
         placement ?? { start: 0, track: 0 },
-        uploaded.length,
+        durations,
+        timelineElements
+          .filter(
+            (timelineElement) =>
+              (timelineElement.sourceFile || activeCompPath || "index.html") ===
+              (activeCompPath || "index.html"),
+          )
+          .map((timelineElement) => ({
+            start: timelineElement.start,
+            duration: timelineElement.duration,
+            track: timelineElement.track,
+          })),
       );
       for (const [index, assetPath] of uploaded.entries()) {
-        await handleTimelineAssetDrop(assetPath, placements[index] ?? placements[0]);
+        await handleTimelineAssetDrop(
+          assetPath,
+          placements[index] ?? placements[0],
+          durations[index],
+        );
       }
     },
-    [handleTimelineAssetDrop, uploadProjectFiles],
+    [activeCompPath, handleTimelineAssetDrop, timelineElements, uploadProjectFiles],
   );
 
   // ── File Management Handlers ──
