@@ -1,0 +1,61 @@
+---
+title: Release channels
+description: How HyperFrames keeps alpha-only work out of stable releases.
+---
+
+HyperFrames publishes two release channels:
+
+- Stable releases use versions like `0.4.24` and publish to the npm `latest` dist-tag.
+- Prereleases use versions like `0.4.24-alpha.1` and publish to the npm dist-tag named by the prerelease suffix, such as `alpha`.
+
+## Branch policy
+
+Use branch separation to decide what code is eligible for each release channel.
+Dist-tags only control npm install defaults; they do not remove code from a package.
+
+- `main` is stable/releasable. Anything merged to `main` is eligible for `latest`.
+- `release/v*` branches are for stable patch releases and hotfixes.
+- `next`, `alpha`, `beta`, `rc`, `canary`, and `prerelease/*` branches are for prerelease integration.
+
+If a feature should ship in alpha only, merge or retarget that PR to a prerelease branch instead of `main`.
+
+## Stable release
+
+Stable releases must be reachable from `origin/main` or `origin/release/v*`.
+
+```bash
+bun run set-version 0.4.24
+git push origin main --tags
+```
+
+For hotfixes, branch from the last stable tag, cherry-pick only the fix, publish the patch release, then merge or cherry-pick the same fix back into the prerelease branch.
+
+## Alpha release
+
+Alpha releases must be reachable from a prerelease branch such as `origin/next` or `origin/alpha`.
+
+```bash
+git checkout next
+bun run set-version 0.4.25-alpha.1
+git push origin next
+git push origin v0.4.25-alpha.1
+```
+
+Consumers can install alpha builds explicitly:
+
+```bash
+npm install hyperframes@alpha
+npm install @hyperframes/core@alpha
+```
+
+## CI guardrails
+
+The publish workflow validates release channel boundaries before publishing:
+
+- Stable versions must publish with `latest`.
+- Prerelease versions must publish with the prerelease dist-tag, such as `alpha`.
+- Stable tags must be reachable from `main` or `release/v*`.
+- Prerelease tags must be reachable from a prerelease branch.
+- Merged `release/vX.Y.Z` PRs publish stable releases only.
+
+This prevents an alpha-only feature from being included in a stable hotfix by accident.

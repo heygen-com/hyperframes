@@ -195,6 +195,7 @@
             "group": "Contributing",
             "pages": [
               "contributing",
+              "contributing/release-channels",
               "contributing/testing-local-changes"
             ]
           }

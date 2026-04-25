@@ -17,6 +17,7 @@
     "build:hyperframes-runtime": "bun run --filter @hyperframes/core build:hyperframes-runtime",
     "build:hyperframes-runtime:modular": "bun run --filter @hyperframes/core build:hyperframes-runtime:modular",
     "verify:packed-manifests": "node scripts/verify-packed-manifests.mjs",
+    "validate:release-channel": "node scripts/validate-release-channel.mjs",
     "set-version": "tsx scripts/set-version.ts",
     "sync-schemas": "tsx scripts/sync-schemas.ts",
     "sync-schemas:check": "tsx scripts/sync-schemas.ts --check",

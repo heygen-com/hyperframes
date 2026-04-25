@@ -32,6 +32,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          fetch-depth: 0
           # On manual dispatch, check out the existing tag so we publish the
           # exact commit that was tagged — not whatever is currently on main.
           ref: >-
@@ -63,6 +64,14 @@ jobs:
           fi
           echo "dist_tag=${DIST_TAG}" >> "$GITHUB_OUTPUT"
           echo "Resolved version=${VERSION} dist_tag=${DIST_TAG}"
+
+      - name: Validate release channel
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          DIST_TAG: ${{ steps.version.outputs.dist_tag }}
+          EVENT_NAME: ${{ github.event_name }}
+          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: node scripts/validate-release-channel.mjs
 
       - name: Create release tag
         if: github.event_name == 'pull_request'
