@@ -324,6 +324,49 @@ describe("audio_src_not_found", () => {
     const occurrences = (finding?.message.match(/song\.mp3/g) ?? []).length;
     expect(occurrences).toBe(1);
   });
+
+  it("resolves sub-composition src relative to the sub-composition file (../assets/...)", () => {
+    // A sub-composition at compositions/captions.html referencing
+    // ../assets/bgm.mp3 means {projectRoot}/assets/bgm.mp3 — the bundler
+    // rewrites that path before serving, so the lint check has to mirror it.
+    const subComp = `<html><body>
+  <div data-composition-id="captions" data-width="1920" data-height="1080">
+    <audio id="music" src="../assets/bgm.mp3" data-start="0" data-track-index="0" data-volume="1"></audio>
+  </div>
+  <script>window.__timelines = window.__timelines || {}; window.__timelines["captions"] = gsap.timeline({ paused: true });</script>
+</body></html>`;
+    const project = makeProject(validHtml(), { "captions.html": subComp });
+    mkdirSync(join(project.dir, "assets"), { recursive: true });
+    writeFileSync(join(project.dir, "assets", "bgm.mp3"), "fake");
+
+    const { results } = lintProject(project);
+
+    const first = results[0];
+    expect(first).toBeDefined();
+    const finding = first?.result.findings.find((f) => f.code === "audio_src_not_found");
+    expect(finding).toBeUndefined();
+  });
+
+  it("flags sub-composition src that resolves to a missing file via ../", () => {
+    const subComp = `<html><body>
+  <div data-composition-id="captions" data-width="1920" data-height="1080">
+    <audio id="music" src="../assets/missing.mp3" data-start="0" data-track-index="0" data-volume="1"></audio>
+  </div>
+  <script>window.__timelines = window.__timelines || {}; window.__timelines["captions"] = gsap.timeline({ paused: true });</script>
+</body></html>`;
+    const project = makeProject(validHtml(), { "captions.html": subComp });
+    // No assets/ directory at all.
+
+    const { results } = lintProject(project);
+
+    const first = results[0];
+    expect(first).toBeDefined();
+    const finding = first?.result.findings.find((f) => f.code === "audio_src_not_found");
+    expect(finding).toBeDefined();
+    // The original (un-rewritten) src is what surfaces in the message so the
+    // author can grep for it in their HTML.
+    expect(finding?.message).toContain("../assets/missing.mp3");
+  });
 });
 
 describe("multiple_root_compositions", () => {

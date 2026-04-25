@@ -2,7 +2,21 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join, resolve, extname } from "node:path";
 import { lintHyperframeHtml, type HyperframeLintResult } from "@hyperframes/core/lint";
 import type { HyperframeLintFinding } from "@hyperframes/core/lint";
+import { rewriteAssetPath } from "@hyperframes/core";
 import type { ProjectDir } from "./project.js";
+
+/**
+ * An HTML source paired with the sub-composition path it came from, if any.
+ * Sub-composition relative paths (`../assets/foo.mp3`) need to be resolved
+ * against the sub-composition's directory before checking the filesystem —
+ * the root index.html is the only source where a bare `resolve(projectDir, src)`
+ * is correct.
+ */
+interface HtmlSource {
+  html: string;
+  /** `data-composition-src` value (e.g. "compositions/scene.html"); undefined for the root. */
+  compSrcPath?: string;
+}
 
 export interface ProjectLintResult {
   results: Array<{ file: string; result: HyperframeLintResult }>;
@@ -32,14 +46,14 @@ export function lintProject(project: ProjectDir): ProjectLintResult {
   totalInfos += rootResult.infoCount;
 
   // Lint sub-compositions in compositions/ directory, collecting HTML for project-level checks
-  const allHtmlSources = [rootHtml];
+  const allHtmlSources: HtmlSource[] = [{ html: rootHtml }];
   const compositionsDir = resolve(project.dir, "compositions");
   if (existsSync(compositionsDir)) {
     const files = readdirSync(compositionsDir).filter((f) => f.endsWith(".html"));
     for (const file of files) {
       const filePath = join(compositionsDir, file);
       const html = readFileSync(filePath, "utf-8");
-      allHtmlSources.push(html);
+      allHtmlSources.push({ html, compSrcPath: `compositions/${file}` });
       const result = lintHyperframeHtml(html, { filePath, isSubComposition: true });
       results.push({ file: `compositions/${file}`, result });
       totalErrors += result.errorCount;
@@ -83,7 +97,10 @@ export function lintProject(project: ProjectDir): ProjectLintResult {
  * placing an audio file in the project but forgetting the <audio> tag, which
  * results in a silent render.
  */
-function lintProjectAudioFiles(projectDir: string, htmlSources: string[]): HyperframeLintFinding[] {
+function lintProjectAudioFiles(
+  projectDir: string,
+  htmlSources: HtmlSource[],
+): HyperframeLintFinding[] {
   const findings: HyperframeLintFinding[] = [];
 
   // Scan project root for audio files (non-recursive — only top-level)
@@ -99,7 +116,7 @@ function lintProjectAudioFiles(projectDir: string, htmlSources: string[]): Hyper
   if (audioFiles.length === 0) return findings;
 
   // Check if any HTML source contains an <audio> element
-  const hasAudioElement = htmlSources.some((html) => /<audio\b/i.test(html));
+  const hasAudioElement = htmlSources.some(({ html }) => /<audio\b/i.test(html));
 
   if (!hasAudioElement) {
     findings.push({
@@ -121,19 +138,27 @@ function lintProjectAudioFiles(projectDir: string, htmlSources: string[]): Hyper
  * in the project directory. The renderer will silently skip missing audio,
  * producing a silent video with no indication of what went wrong.
  */
-function lintAudioSrcNotFound(projectDir: string, htmlSources: string[]): HyperframeLintFinding[] {
+function lintAudioSrcNotFound(
+  projectDir: string,
+  htmlSources: HtmlSource[],
+): HyperframeLintFinding[] {
   const findings: HyperframeLintFinding[] = [];
 
   const audioSrcRe = /<audio\b[^>]*\bsrc\s*=\s*["']([^"']+)["'][^>]*>/gi;
 
   const missingSrcs: string[] = [];
-  for (const html of htmlSources) {
+  for (const { html, compSrcPath } of htmlSources) {
     let match: RegExpExecArray | null;
     while ((match = audioSrcRe.exec(html)) !== null) {
       const src = match[1]!;
       if (/^(https?:|data:|blob:)/i.test(src)) continue;
       if (/^__[A-Z_]+__$/.test(src)) continue; // Skip template placeholders
-      const resolved = resolve(projectDir, src);
+      // Sub-composition srcs are written relative to the sub-composition file
+      // (e.g. "../assets/foo.mp3"); the bundler rewrites them to root-relative
+      // before serving. Mirror that rewrite here so the existence check sees
+      // the same path the renderer will. Root-html srcs pass through unchanged.
+      const rootRelative = compSrcPath ? rewriteAssetPath(compSrcPath, src) : src;
+      const resolved = resolve(projectDir, rootRelative);
       if (!existsSync(resolved)) {
         missingSrcs.push(src);
       }
@@ -192,7 +217,7 @@ function lintMultipleRootCompositions(projectDir: string): HyperframeLintFinding
  * Extracts each attribute independently (order-insensitive) to handle any HTML attribute order.
  * Deduplicates by (src, start, duration) to avoid flagging the same audio reached via sub-compositions.
  */
-function lintDuplicateAudioTracks(htmlSources: string[]): HyperframeLintFinding[] {
+function lintDuplicateAudioTracks(htmlSources: HtmlSource[]): HyperframeLintFinding[] {
   const findings: HyperframeLintFinding[] = [];
   function extractAttr(tag: string, name: string): string | null {
     const re = new RegExp(`\\b${name}\\s*=\\s*["']([^"']+)["']`, "i");
@@ -203,7 +228,7 @@ function lintDuplicateAudioTracks(htmlSources: string[]): HyperframeLintFinding[
   const tracks: Array<{ trackIndex: number; start: number; end: number; src: string }> = [];
   const seen = new Set<string>();
 
-  for (const html of htmlSources) {
+  for (const { html } of htmlSources) {
     // Regex with g flag must be created inside the loop — a shared g-regex
     // carries lastIndex across strings, silently skipping matches.
     const audioTagRe = /<audio\b[^>]*>/gi;
