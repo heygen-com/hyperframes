@@ -90,64 +90,71 @@ export const LeftSidebar = memo(function LeftSidebar({
       style={{ width }}
     >
       {/* Tabs — Code first */}
-      <div className="flex border-b border-neutral-800/50 flex-shrink-0">
-        <button
-          type="button"
-          onClick={() => selectTab("code")}
-          className={`flex-1 py-2 text-[11px] font-medium transition-colors ${
-            tab === "code"
-              ? "text-neutral-200 border-b-2 border-studio-accent"
-              : "text-neutral-500 hover:text-neutral-400"
-          }`}
-        >
-          Code
-        </button>
-        <button
-          type="button"
-          onClick={() => selectTab("compositions")}
-          className={`flex-1 py-2 text-[11px] font-medium transition-colors ${
-            tab === "compositions"
-              ? "text-neutral-200 border-b-2 border-studio-accent"
-              : "text-neutral-500 hover:text-neutral-400"
-          }`}
-        >
-          Compositions
-        </button>
-        <button
-          type="button"
-          onClick={() => selectTab("assets")}
-          className={`flex-1 py-2 text-[11px] font-medium transition-colors ${
-            tab === "assets"
-              ? "text-neutral-200 border-b-2 border-studio-accent"
-              : "text-neutral-500 hover:text-neutral-400"
-          }`}
-        >
-          Assets
-        </button>
-        {onToggleCollapse && (
-          <button
-            type="button"
-            onClick={onToggleCollapse}
-            className="mx-1 my-1 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md border border-transparent text-neutral-500 transition-colors hover:border-neutral-800 hover:bg-neutral-900 hover:text-neutral-300"
-            title="Hide sidebar"
-            aria-label="Hide sidebar"
+      <div className="border-b border-neutral-800/50 px-3 py-3 flex-shrink-0">
+        <div className="flex items-center gap-2">
+          <div
+            className="grid min-w-0 flex-1 gap-1 rounded-[18px] bg-neutral-900 p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]"
+            style={{ gridTemplateColumns: "0.9fr 1.25fr 0.9fr" }}
           >
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
+            <button
+              type="button"
+              onClick={() => selectTab("code")}
+              className={`rounded-[14px] px-2.5 py-2 text-[10px] font-semibold transition-all ${
+                tab === "code"
+                  ? "bg-neutral-800 text-white"
+                  : "text-neutral-500 hover:text-neutral-200"
+              }`}
             >
-              <path d="m14 7-5 5 5 5" />
-              <path d="M19 4v16" />
-            </svg>
-          </button>
-        )}
+              Code
+            </button>
+            <button
+              type="button"
+              onClick={() => selectTab("compositions")}
+              className={`rounded-[14px] px-2.5 py-2 text-[10px] font-semibold transition-all ${
+                tab === "compositions"
+                  ? "bg-neutral-800 text-white"
+                  : "text-neutral-500 hover:text-neutral-200"
+              }`}
+            >
+              Compositions
+            </button>
+            <button
+              type="button"
+              onClick={() => selectTab("assets")}
+              className={`rounded-[14px] px-2.5 py-2 text-[10px] font-semibold transition-all ${
+                tab === "assets"
+                  ? "bg-neutral-800 text-white"
+                  : "text-neutral-500 hover:text-neutral-200"
+              }`}
+            >
+              Assets
+            </button>
+          </div>
+          {onToggleCollapse && (
+            <button
+              type="button"
+              onClick={onToggleCollapse}
+              className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md border border-transparent text-neutral-500 transition-colors hover:border-neutral-800 hover:bg-neutral-900 hover:text-neutral-300"
+              title="Hide sidebar"
+              aria-label="Hide sidebar"
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="m14 7-5 5 5 5" />
+                <path d="M19 4v16" />
+              </svg>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Tab content */}

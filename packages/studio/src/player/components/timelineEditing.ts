@@ -273,7 +273,6 @@ export function buildClipRangeSelection(
     anchorY: anchor.anchorY,
   };
 }
-
 export function buildTimelineAgentPrompt({
   rangeStart,
   rangeEnd,
@@ -347,7 +346,6 @@ export function buildTimelineElementAgentPrompt(element: {
 
   return lines.join("\n");
 }
-
 export function formatTimelineAttributeNumber(value: number): string {
   return Number(roundToCentiseconds(value).toFixed(2)).toString();
 }

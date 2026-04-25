@@ -89,7 +89,6 @@ export const NLELayout = memo(function NLELayout({
     togglePlay,
     seek,
     onIframeLoad: baseOnIframeLoad,
-    refreshPlayer,
     saveSeekPosition,
   } = useTimelinePlayer();
 
@@ -103,13 +102,15 @@ export const NLELayout = memo(function NLELayout({
     usePlayerStore.getState().reset();
   }
 
-  // Refresh the existing iframe in place when source files change.
+  // Save seek position before the Player component creates a new player
+  // on refreshKey change. The Player handles the actual reload via the
+  // dual-player crossfade; we just need to persist the current time.
   const prevRefreshKeyRef = useRef(refreshKey);
   useEffect(() => {
     if (refreshKey === prevRefreshKeyRef.current) return;
     prevRefreshKeyRef.current = refreshKey;
-    refreshPlayer();
-  }, [refreshKey, refreshPlayer]);
+    saveSeekPosition();
+  }, [refreshKey, saveSeekPosition]);
 
   // Wrap onIframeLoad to also notify parent of iframe ref
   const onIframeLoad = useCallback(() => {
@@ -208,6 +209,10 @@ export const NLELayout = memo(function NLELayout({
   // Current preview URL — derived from composition stack
   const currentLevel = compositionStack[compositionStack.length - 1];
   const directUrl = compositionStack.length > 1 ? currentLevel.previewUrl : undefined;
+
+  useEffect(() => {
+    onIframeRef?.(iframeRef.current);
+  }, [compositionStack.length, onIframeRef, refreshKey, iframeRef]);
 
   // Save master seek position before drilling down so we can restore it on back-navigation.
   // saveSeekPosition() sets pendingSeekRef in useTimelinePlayer which onIframeLoad reads.

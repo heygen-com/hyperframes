@@ -428,7 +428,6 @@ describe("buildClipRangeSelection", () => {
     });
   });
 });
-
 describe("resolveTimelineAutoScroll", () => {
   it("does not scroll when the pointer stays away from the edges", () => {
     expect(
@@ -512,7 +511,6 @@ describe("buildTimelineElementAgentPrompt", () => {
     ).toContain("If this clip is animated with GSAP");
   });
 });
-
 describe("resolveTimelineResize", () => {
   it("shrinks clip duration from the right edge", () => {
     expect(

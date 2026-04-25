@@ -11,6 +11,7 @@ interface PlayerProps {
   directUrl?: string;
   onLoad: () => void;
   portrait?: boolean;
+  style?: React.CSSProperties;
 }
 
 interface HyperframesPlayerElement extends HTMLElement {
@@ -28,6 +29,17 @@ function getShaderTransitionLoading(event: Event): boolean | null {
   const state = detail.state;
   if (!isRecord(state)) return null;
   return state.loading === true && state.ready !== true;
+}
+
+function enableInteractiveIframe(player: HyperframesPlayerElement): void {
+  const root = player.shadowRoot;
+  if (!root) return;
+
+  const container = root.querySelector<HTMLElement>(".hfp-container");
+  const iframe = root.querySelector<HTMLIFrameElement>(".hfp-iframe");
+
+  container?.style.setProperty("pointer-events", "auto");
+  iframe?.style.setProperty("pointer-events", "auto");
 }
 
 // Assets are considered ready when every `<video>`/`<audio>` has enough data
@@ -76,7 +88,7 @@ function hasUnloadedAssets(iframe: HTMLIFrameElement, lastResult: boolean): bool
  * timeline probing, and DOM inspection.
  */
 export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
-  ({ projectId, directUrl, onLoad, portrait }, ref) => {
+  ({ projectId, directUrl, onLoad, portrait, style }, ref) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const loadCountRef = useRef(0);
     const assetPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -109,6 +121,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
         player.style.height = "100%";
         player.style.display = "block";
         container.appendChild(player);
+        enableInteractiveIframe(player);
 
         // Bridge the inner iframe to the forwarded ref for useTimelinePlayer.
         const iframe = player.iframeElement;
@@ -231,7 +244,10 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
     const showAssetOverlay = assetOverlayVisible && !shaderTransitionLoading;
 
     return (
-      <div className="relative w-full h-full max-w-full max-h-full overflow-hidden bg-black flex items-center justify-center">
+      <div
+        className="relative w-full h-full max-w-full max-h-full overflow-hidden bg-black flex items-center justify-center"
+        style={style}
+      >
         <div ref={containerRef} className="w-full h-full" />
         {showAssetOverlay && (
           <div
