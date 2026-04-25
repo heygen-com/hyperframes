@@ -252,20 +252,9 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
     const message = err instanceof Error ? err.message : String(err);
     const text = `[Browser:PAGEERROR] ${message}`;
 
-    // Frame capture pauses → seeks → screenshots → plays audio/video many
-    // times per second. HTMLMediaElement.play() returns a promise that rejects
-    // with AbortError whenever another pause() lands before it resolves —
-    // which it does, every frame. The rejection is benign (output frames are
-    // unaffected) but the message floods the terminal.
-    //
-    // The thrown value is a DOMException whose `name` is literally
-    // "DOMException"; "AbortError" appears as the prefix of its `message`, so
-    // we match against the message rather than err.name. Both "play()" and
-    // "pause()" are required so we don't accidentally swallow unrelated
-    // AbortErrors. Still pushed to browserConsoleBuffer so it's available in
-    // the post-failure diagnostic dump.
+    // Benign play/pause race during frame capture — suppress terminal noise, keep in buffer.
     const isPlayAbort =
-      /^AbortError:/.test(message) && /play\(\)/i.test(message) && /pause\(\)/i.test(message);
+      /^AbortError:/.test(message) && message.includes("play()") && message.includes("pause()");
     if (!isPlayAbort) {
       console.error(text);
     }
