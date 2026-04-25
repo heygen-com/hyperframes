@@ -24,6 +24,7 @@ export interface DockerRenderOptions {
   format: "mp4" | "webm" | "mov";
   workers: number;
   gpu: boolean;
+  gpuCapture: boolean;
   hdr: boolean;
   crf?: number;
   videoBitrate?: string;
@@ -60,6 +61,10 @@ export function buildDockerRunArgs(input: DockerRunArgsInput): string[] {
     ...(options.videoBitrate ? ["--video-bitrate", options.videoBitrate] : []),
     ...(options.quiet ? ["--quiet"] : []),
     ...(options.gpu ? ["--gpu"] : []),
+    // The containerized CLI re-runs `hyperframes render` with this flag,
+    // which exports HYPERFRAMES_GPU_CAPTURE=true inside the container before
+    // the engine workers spawn — same code path as a local render.
+    ...(options.gpuCapture ? ["--gpu-capture"] : []),
     ...(options.hdr ? ["--hdr"] : []),
   ];
 }

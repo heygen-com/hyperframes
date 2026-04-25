@@ -7,6 +7,7 @@ const BASE: DockerRenderOptions = {
   format: "mp4",
   workers: 4,
   gpu: false,
+  gpuCapture: false,
   hdr: false,
   crf: undefined,
   videoBitrate: undefined,
@@ -53,7 +54,15 @@ describe("buildDockerRunArgs", () => {
     expect(
       buildDockerRunArgs({
         ...FIXED_INPUT,
-        options: { ...BASE, gpu: true, hdr: true, crf: 18, videoBitrate: undefined, quiet: true },
+        options: {
+          ...BASE,
+          gpu: true,
+          gpuCapture: true,
+          hdr: true,
+          crf: 18,
+          videoBitrate: undefined,
+          quiet: true,
+        },
       }),
     ).toMatchInlineSnapshot(`
       [
@@ -84,6 +93,7 @@ describe("buildDockerRunArgs", () => {
         "18",
         "--quiet",
         "--gpu",
+        "--gpu-capture",
         "--hdr",
       ]
     `);
@@ -103,6 +113,41 @@ describe("buildDockerRunArgs", () => {
   it("omits --hdr when hdr is disabled", () => {
     const args = buildDockerRunArgs({ ...FIXED_INPUT, options: BASE });
     expect(args).not.toContain("--hdr");
+  });
+
+  // Forwarding gap caught in PR #471 review: --gpu-capture is plumbed
+  // through host env (process.env.HYPERFRAMES_GPU_CAPTURE), which the
+  // container never sees. The containerized CLI must receive the flag
+  // explicitly so it can re-export the env var inside the container before
+  // its engine workers spawn.
+  it("forwards --gpu-capture to the container when gpuCapture is enabled", () => {
+    const args = buildDockerRunArgs({
+      ...FIXED_INPUT,
+      options: { ...BASE, gpuCapture: true },
+    });
+    expect(args).toContain("--gpu-capture");
+  });
+
+  it("omits --gpu-capture when gpuCapture is disabled", () => {
+    const args = buildDockerRunArgs({ ...FIXED_INPUT, options: BASE });
+    expect(args).not.toContain("--gpu-capture");
+  });
+
+  it("--gpu-capture is independent of --gpu (each forwards on its own)", () => {
+    const captureOnly = buildDockerRunArgs({
+      ...FIXED_INPUT,
+      options: { ...BASE, gpuCapture: true },
+    });
+    expect(captureOnly).toContain("--gpu-capture");
+    expect(captureOnly).not.toContain("--gpu");
+    expect(captureOnly).not.toContain("--gpus");
+
+    const encodeOnly = buildDockerRunArgs({
+      ...FIXED_INPUT,
+      options: { ...BASE, gpu: true },
+    });
+    expect(encodeOnly).toContain("--gpu");
+    expect(encodeOnly).not.toContain("--gpu-capture");
   });
 
   it("requests host GPU passthrough only when gpu is enabled", () => {
@@ -130,6 +175,7 @@ describe("buildDockerRunArgs", () => {
         format: "webm",
         workers: 8,
         gpu: true,
+        gpuCapture: true,
         hdr: true,
         crf: 16,
         videoBitrate: undefined,
@@ -147,6 +193,7 @@ describe("buildDockerRunArgs", () => {
     expect(args).toContain("16");
     expect(args).toContain("--quiet");
     expect(args).toContain("--gpu");
+    expect(args).toContain("--gpu-capture");
     expect(args).toContain("--hdr");
   });
 

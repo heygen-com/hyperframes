@@ -325,6 +325,7 @@ export default defineCommand({
         format,
         workers: workerCount,
         gpu: useGpu,
+        gpuCapture: Boolean(args["gpu-capture"]),
         hdr: args.hdr ?? false,
         crf,
         videoBitrate,
@@ -337,6 +338,7 @@ export default defineCommand({
         format,
         workers: workerCount,
         gpu: useGpu,
+        gpuCapture: Boolean(args["gpu-capture"]),
         hdr: args.hdr ?? false,
         crf,
         videoBitrate,
@@ -353,6 +355,7 @@ interface RenderOptions {
   format: "mp4" | "webm" | "mov";
   workers: number;
   gpu: boolean;
+  gpuCapture: boolean;
   hdr: boolean;
   crf?: number;
   videoBitrate?: string;
@@ -477,6 +480,7 @@ async function renderDocker(
       format: options.format,
       workers: options.workers,
       gpu: options.gpu,
+      gpuCapture: options.gpuCapture,
       hdr: options.hdr,
       crf: options.crf,
       videoBitrate: options.videoBitrate,
