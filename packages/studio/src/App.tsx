@@ -19,13 +19,14 @@ import type { TimelineElement } from "./player";
 import { LintModal } from "./components/LintModal";
 import type { LintFinding } from "./components/LintModal";
 import { MediaPreview } from "./components/MediaPreview";
-import { isMediaFile } from "./utils/mediaTypes";
+import { FONT_EXT, isMediaFile } from "./utils/mediaTypes";
 import {
   buildTimelineAssetId,
   buildTimelineAssetInsertHtml,
   buildTimelineFileDropPlacements,
   getTimelineAssetKind,
   insertTimelineAssetIntoSource,
+  resolveTimelineAssetInitialGeometry,
   resolveTimelineAssetSrc,
   type TimelineAssetKind,
 } from "./utils/timelineAssetDrop";
@@ -35,7 +36,12 @@ import { CaptionTimeline } from "./captions/components/CaptionTimeline";
 import { useCaptionStore } from "./captions/store";
 import { useCaptionSync } from "./captions/hooks/useCaptionSync";
 import { parseCaptionComposition } from "./captions/parser";
-import { applyPatchByTarget, readAttributeByTarget } from "./utils/sourcePatcher";
+import {
+  applyPatchByTarget,
+  readAttributeByTarget,
+  readTagSnippetByTarget,
+  type PatchOperation,
+} from "./utils/sourcePatcher";
 import {
   buildTrackZIndexMap,
   formatTimelineAttributeNumber,
@@ -45,12 +51,39 @@ import {
   getTimelineZoomPercent,
 } from "./player/components/timelineZoom";
 import {
+  TIMELINE_TOGGLE_SHORTCUT_LABEL,
+  getTimelineEditorHintDismissed,
   getTimelineToggleTitle,
+  setTimelineEditorHintDismissed,
   shouldHandleTimelineToggleHotkey,
 } from "./utils/timelineDiscovery";
 import { buildFrameCaptureFilename, buildFrameCaptureUrl } from "./utils/frameCapture";
 import { buildProjectHash, parseProjectIdFromHash } from "./utils/projectRouting";
 import { Camera } from "./icons/SystemIcons";
+import { PropertyPanel } from "./components/editor/PropertyPanel";
+import { googleFontStylesheetUrl } from "./components/editor/fontCatalog";
+import {
+  fontFamilyFromAssetPath,
+  importedFontFaceCss,
+  type ImportedFontAsset,
+} from "./components/editor/fontAssets";
+import { DomEditOverlay } from "./components/editor/DomEditOverlay";
+import {
+  buildDefaultDomEditTextField,
+  buildDomEditDetachPatchOperations,
+  buildDomEditMovePatchOperations,
+  buildDomEditResizePatchOperations,
+  buildDomEditStylePatchOperation,
+  buildDomEditTextPatchOperation,
+  buildElementAgentPrompt,
+  findElementForSelection,
+  isTextEditableSelection,
+  serializeDomEditTextFields,
+  resolveDomEditCapabilities,
+  resolveDomEditSelection,
+  type DomEditTextField,
+  type DomEditSelection,
+} from "./components/editor/domEditing";
 
 interface EditingFile {
   path: string;
@@ -64,6 +97,418 @@ interface AppToast {
 
 function getTimelineElementLabel(element: TimelineElement): string {
   return element.label || element.id || element.tag;
+}
+
+type RightPanelTab = "design" | "renders";
+
+const GENERIC_FONT_FAMILIES = new Set([
+  "inherit",
+  "initial",
+  "revert",
+  "revert-layer",
+  "serif",
+  "sans-serif",
+  "monospace",
+  "cursive",
+  "fantasy",
+  "system-ui",
+  "ui-sans-serif",
+  "ui-serif",
+  "ui-monospace",
+  "ui-rounded",
+  "emoji",
+  "math",
+  "fangsong",
+]);
+
+function primaryFontFamilyFromCss(value: string): string {
+  const first = value.split(",")[0] ?? "";
+  return first.trim().replace(/^["']|["']$/g, "");
+}
+
+function injectPreviewGoogleFont(doc: Document, fontFamilyValue: string): void {
+  const family = primaryFontFamilyFromCss(fontFamilyValue);
+  if (!family || GENERIC_FONT_FAMILIES.has(family.toLowerCase())) return;
+
+  const id = `studio-preview-google-font-${family.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+  if (doc.getElementById(id)) return;
+
+  const link = doc.createElement("link");
+  link.id = id;
+  link.rel = "stylesheet";
+  link.href = googleFontStylesheetUrl(family);
+  doc.head.appendChild(link);
+}
+
+function primaryFontFamilyValue(value: string): string {
+  return (
+    value
+      .split(",")[0]
+      ?.trim()
+      .replace(/^["']|["']$/g, "")
+      .trim() ?? ""
+  );
+}
+
+function injectPreviewImportedFont(doc: Document, asset: ImportedFontAsset): void {
+  const id = `studio-imported-font-${asset.family.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+  if (doc.getElementById(id)) return;
+  const style = doc.createElement("style");
+  style.id = id;
+  style.textContent = importedFontFaceCss(asset);
+  doc.head.appendChild(style);
+}
+
+function normalizeProjectAssetPath(value: string): string {
+  const trimmed = value.trim();
+  const maybeUrl = /^[a-z]+:\/\//i.test(trimmed) ? new URL(trimmed).pathname : trimmed;
+  return decodeURIComponent(maybeUrl)
+    .replace(/\\/g, "/")
+    .replace(/^\.?\//, "");
+}
+
+function toRelativeProjectAssetPath(sourceFile: string, assetPath: string): string {
+  const fromParts = normalizeProjectAssetPath(sourceFile).split("/").filter(Boolean);
+  const targetParts = normalizeProjectAssetPath(assetPath).split("/").filter(Boolean);
+
+  fromParts.pop();
+
+  while (fromParts.length > 0 && targetParts.length > 0 && fromParts[0] === targetParts[0]) {
+    fromParts.shift();
+    targetParts.shift();
+  }
+
+  return [...fromParts.map(() => ".."), ...targetParts].join("/") || assetPath;
+}
+
+function ensureImportedFontFace(
+  html: string,
+  asset: ImportedFontAsset,
+  sourceFile: string,
+): string {
+  const css = importedFontFaceCss(asset, toRelativeProjectAssetPath(sourceFile, asset.path));
+  if (html.includes(css)) return html;
+
+  const styleRe = /<style\b[^>]*data-hf-studio-fonts=(["'])true\1[^>]*>([\s\S]*?)<\/style>/i;
+  const styleMatch = styleRe.exec(html);
+  if (styleMatch) {
+    const nextCss = `${styleMatch[2].trim()}\n${css}`.trim();
+    return html.replace(styleMatch[0], `<style data-hf-studio-fonts="true">\n${nextCss}\n</style>`);
+  }
+
+  const styleTag = `<style data-hf-studio-fonts="true">\n${css}\n</style>`;
+  if (/<\/head>/i.test(html)) {
+    return html.replace(/<\/head>/i, `  ${styleTag}\n  </head>`);
+  }
+  return `${styleTag}\n${html}`;
+}
+function normalizeDomEditStyleValue(property: string, value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return trimmed;
+
+  if (
+    ["left", "top", "width", "height", "border-radius", "font-size"].includes(property) &&
+    /^-?\d+(\.\d+)?$/.test(trimmed)
+  ) {
+    return `${trimmed}px`;
+  }
+
+  return trimmed;
+}
+
+function isImageBackgroundValue(value: string): boolean {
+  return /^url\(/i.test(value.trim());
+}
+
+function shouldDetachOppositeEdges(selection: DomEditSelection): boolean {
+  return Boolean(
+    selection.inlineStyles.inset || selection.inlineStyles.right || selection.inlineStyles.bottom,
+  );
+}
+
+function buildOppositeEdgePatchOperations(
+  selection: DomEditSelection,
+  dimension: "width" | "height" | "both",
+): PatchOperation[] {
+  if (!shouldDetachOppositeEdges(selection)) return [];
+  const operations: PatchOperation[] = [];
+  if (dimension === "width" || dimension === "both") {
+    operations.push({ type: "inline-style", property: "right", value: "auto" });
+  }
+  if (dimension === "height" || dimension === "both") {
+    operations.push({ type: "inline-style", property: "bottom", value: "auto" });
+  }
+  return operations;
+}
+
+function getEventTargetElement(target: EventTarget | null): HTMLElement | null {
+  if (!target || typeof target !== "object") return null;
+  const maybeNode = target as {
+    nodeType?: number;
+    parentElement?: Element | null;
+  };
+  if (maybeNode.nodeType === 1) return target as HTMLElement;
+  if (maybeNode.nodeType === 3 && maybeNode.parentElement) {
+    return maybeNode.parentElement as HTMLElement;
+  }
+  return null;
+}
+
+function findMatchingTimelineElementId(
+  selection: Pick<
+    DomEditSelection,
+    "id" | "selector" | "selectorIndex" | "sourceFile" | "compositionSrc" | "isCompositionHost"
+  >,
+  elements: TimelineElement[],
+): string | null {
+  for (const element of elements) {
+    if (selection.id && element.domId === selection.id) {
+      return element.key ?? element.id;
+    }
+    if (
+      selection.isCompositionHost &&
+      selection.compositionSrc &&
+      element.compositionSrc === selection.compositionSrc
+    ) {
+      return element.key ?? element.id;
+    }
+    if (
+      selection.selector &&
+      element.selector === selection.selector &&
+      (element.selectorIndex ?? 0) === (selection.selectorIndex ?? 0) &&
+      (element.sourceFile ?? "index.html") === selection.sourceFile
+    ) {
+      return element.key ?? element.id;
+    }
+  }
+
+  return null;
+}
+
+function findMappedCompositionHost(
+  target: HTMLElement,
+  timelineElements: TimelineElement[],
+  compIdToSrc: Map<string, string>,
+  fileTree: string[],
+): { host: HTMLElement; compositionSrc: string } | null {
+  const rootCompositionId =
+    target.ownerDocument
+      .querySelector("[data-composition-id]")
+      ?.getAttribute("data-composition-id") ?? null;
+
+  let nestedCurrent: HTMLElement | null = target;
+  while (nestedCurrent) {
+    const nestedCompId = nestedCurrent.getAttribute("data-composition-id");
+    if (nestedCompId && nestedCompId !== rootCompositionId) {
+      const hostCandidate = nestedCurrent.parentElement?.closest(".clip");
+      if (hostCandidate instanceof HTMLElement) {
+        const hostCompId = hostCandidate.getAttribute("data-composition-id");
+        const compositionSrc =
+          hostCandidate.getAttribute("data-composition-src") ??
+          hostCandidate.getAttribute("data-composition-file") ??
+          (hostCompId ? compIdToSrc.get(hostCompId) : undefined) ??
+          compIdToSrc.get(nestedCompId) ??
+          fileTree.find((path) => path.endsWith(`${nestedCompId}.html`)) ??
+          undefined;
+        if (compositionSrc) {
+          return { host: hostCandidate, compositionSrc };
+        }
+      }
+    }
+    nestedCurrent = nestedCurrent.parentElement;
+  }
+
+  let current: HTMLElement | null = target;
+  while (current) {
+    const compId = current.getAttribute("data-composition-id");
+    const directSrc =
+      current.getAttribute("data-composition-src") ??
+      current.getAttribute("data-composition-file") ??
+      undefined;
+    const timelineMatch =
+      timelineElements.find(
+        (element) =>
+          Boolean(element.compositionSrc) &&
+          (element.domId === current?.id ||
+            (current?.id && element.id === current.id) ||
+            (compId && element.id === compId)),
+      ) ?? null;
+    const compositionSrc =
+      directSrc ??
+      timelineMatch?.compositionSrc ??
+      (compId ? compIdToSrc.get(compId) : undefined) ??
+      (compId ? fileTree.find((path) => path.endsWith(`${compId}.html`)) : undefined);
+    if (compositionSrc) {
+      return { host: current, compositionSrc };
+    }
+    current = current.parentElement;
+  }
+
+  return null;
+}
+
+function isMoveStyleProperty(property: string): boolean {
+  return property === "left" || property === "top";
+}
+
+function isResizeStyleProperty(property: string): boolean {
+  return property === "width" || property === "height";
+}
+
+function getDomDetachCoordinateRoot(element: HTMLElement): HTMLElement {
+  const offsetParent = element.offsetParent;
+  if (offsetParent instanceof HTMLElement) return offsetParent;
+
+  let current = element.parentElement;
+  while (current) {
+    if (current.hasAttribute("data-composition-id")) return current;
+    current = current.parentElement;
+  }
+
+  return element.ownerDocument.body;
+}
+
+function measureDomDetachRect(element: HTMLElement): {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+} {
+  const root = getDomDetachCoordinateRoot(element);
+  const rect = element.getBoundingClientRect();
+  const rootRect = root.getBoundingClientRect();
+
+  return {
+    left: rect.left - rootRect.left + root.scrollLeft,
+    top: rect.top - rootRect.top + root.scrollTop,
+    width: rect.width,
+    height: rect.height,
+  };
+}
+
+function getDomSelectionClickKey(
+  selection: Pick<DomEditSelection, "id" | "selector" | "selectorIndex">,
+): string {
+  if (selection.id) return `id:${selection.id}`;
+  return `${selection.selector ?? "unknown"}:${selection.selectorIndex ?? 0}`;
+}
+
+function getPreviewTargetFromPointer(
+  iframe: HTMLIFrameElement,
+  clientX: number,
+  clientY: number,
+): HTMLElement | null {
+  let doc: Document | null = null;
+  let win: Window | null = null;
+  try {
+    doc = iframe.contentDocument;
+    win = iframe.contentWindow;
+  } catch {
+    return null;
+  }
+  if (!doc || !win) return null;
+
+  const iframeRect = iframe.getBoundingClientRect();
+  const root =
+    doc.querySelector<HTMLElement>("[data-composition-id]") ?? doc.documentElement ?? null;
+  const rootRect = root?.getBoundingClientRect();
+  const rootWidth = rootRect?.width || win.innerWidth;
+  const rootHeight = rootRect?.height || win.innerHeight;
+  if (!rootWidth || !rootHeight) return null;
+
+  const scaleX = iframeRect.width / rootWidth;
+  const scaleY = iframeRect.height / rootHeight;
+  const localX = (clientX - iframeRect.left) / scaleX;
+  const localY = (clientY - iframeRect.top) / scaleY;
+
+  return getEventTargetElement(doc.elementFromPoint(localX, localY));
+}
+
+// ── Ask Agent Modal ──
+
+function AskAgentModal({
+  selectionLabel,
+  onSubmit,
+  onClose,
+}: {
+  selectionLabel: string;
+  onSubmit: (instruction: string) => void;
+  onClose: () => void;
+}) {
+  const [value, setValue] = useState("");
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  useMountEffect(() => {
+    requestAnimationFrame(() => inputRef.current?.focus());
+  });
+
+  const handleSubmit = () => {
+    if (!value.trim()) return;
+    onSubmit(value.trim());
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="w-[480px] rounded-2xl border border-neutral-800 bg-neutral-950 shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-5 py-4 border-b border-neutral-800/60">
+          <div>
+            <h3 className="text-sm font-medium text-neutral-200">Ask agent</h3>
+            <p className="text-xs text-neutral-500 mt-0.5">
+              {selectionLabel.length > 50 ? `${selectionLabel.slice(0, 49)}…` : selectionLabel}
+            </p>
+          </div>
+          <button
+            className="p-1 rounded-md text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/50"
+            onClick={onClose}
+          >
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+            >
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
+        <div className="px-5 py-4">
+          <textarea
+            ref={inputRef}
+            className="w-full h-24 px-3 py-2 rounded-lg border border-neutral-800 bg-neutral-900/60 text-sm text-neutral-200 placeholder-neutral-600 resize-none focus:outline-none focus:border-studio-accent/60 focus:ring-1 focus:ring-studio-accent/30"
+            placeholder="Describe what you want to change…"
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleSubmit();
+              if (e.key === "Escape") onClose();
+            }}
+          />
+        </div>
+        <div className="flex items-center justify-between px-5 py-3 border-t border-neutral-800/60">
+          <span className="text-[11px] text-neutral-600">
+            {navigator.platform.includes("Mac") ? "⌘" : "Ctrl"}+Enter to copy
+          </span>
+          <button
+            className="px-4 py-1.5 rounded-lg bg-studio-accent/90 text-xs font-medium text-neutral-950 hover:bg-studio-accent disabled:opacity-40 disabled:cursor-not-allowed"
+            disabled={!value.trim()}
+            onClick={handleSubmit}
+          >
+            Copy prompt
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 const DEFAULT_TIMELINE_ASSET_DURATION: Record<TimelineAssetKind, number> = {
@@ -157,6 +602,11 @@ export function StudioApp() {
   const [rightWidth, setRightWidth] = useState(400);
   const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [rightCollapsed, setRightCollapsed] = useState(true);
+  const [rightPanelTab, setRightPanelTab] = useState<RightPanelTab>("renders");
+  const [domEditSelection, setDomEditSelection] = useState<DomEditSelection | null>(null);
+  const [copiedAgentPrompt, setCopiedAgentPrompt] = useState(false);
+  const [agentModalOpen, setAgentModalOpen] = useState(false);
+  const [previewIframe, setPreviewIframe] = useState<HTMLIFrameElement | null>(null);
   // Auto-enter caption edit mode when the iframe contains .caption-group elements.
   // This is a subscription to external events (postMessage from runtime) — useEffect
   // is appropriate here. The runtime fires "state"/"timeline" messages after all
@@ -280,9 +730,14 @@ export function StudioApp() {
   const [appToast, setAppToast] = useState<AppToast | null>(null);
   const [timelineVisible, setTimelineVisible] = useState(true);
   const [captureFrameTime, setCaptureFrameTime] = useState(0);
+  const [timelineEditorHintDismissed, setTimelineEditorHintState] = useState(
+    getTimelineEditorHintDismissed,
+  );
   const dragCounterRef = useRef(0);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastBlockedTimelineToastAtRef = useRef(0);
+  const lastBlockedDomMoveToastAtRef = useRef(0);
+  const importedFontAssetsRef = useRef<ImportedFontAsset[]>([]);
   const previewHotkeyWindowRef = useRef<Window | null>(null);
   const panelDragRef = useRef<{
     side: "left" | "right";
@@ -294,11 +749,14 @@ export function StudioApp() {
   const activePreviewUrl = activeCompPath
     ? `/api/projects/${projectId}/preview/comp/${activeCompPath}`
     : null;
+  const isMasterView = !activeCompPath || activeCompPath === "index.html";
   const zoomMode = usePlayerStore((s) => s.zoomMode);
   const manualZoomPercent = usePlayerStore((s) => s.manualZoomPercent);
   const setZoomMode = usePlayerStore((s) => s.setZoomMode);
   const setManualZoomPercent = usePlayerStore((s) => s.setManualZoomPercent);
+  const currentTime = usePlayerStore((s) => s.currentTime);
   const timelineElements = usePlayerStore((s) => s.elements);
+  const setSelectedTimelineElementId = usePlayerStore((s) => s.setSelectedElementId);
   const timelineDuration = usePlayerStore((s) => s.duration);
   const effectiveTimelineDuration = useMemo(() => {
     const maxEnd =
@@ -337,6 +795,10 @@ export function StudioApp() {
   useMountEffect(() => () => {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
   });
+  const dismissTimelineEditorHint = useCallback(() => {
+    setTimelineEditorHintState(true);
+    setTimelineEditorHintDismissed(true);
+  }, []);
   const handleTimelineToggleHotkey = useCallback(
     (event: KeyboardEvent) => {
       if (!shouldHandleTimelineToggleHotkey(event)) return;
@@ -400,7 +862,6 @@ export function StudioApp() {
             label={getTimelineElementLabel(el)}
             labelColor={style.label}
             accentColor={style.clip}
-            selector={el.selector}
             seekTime={0}
             duration={el.duration}
           />
@@ -416,7 +877,6 @@ export function StudioApp() {
             label={getTimelineElementLabel(el)}
             labelColor={style.label}
             accentColor={style.clip}
-            selector={el.selector}
             seekTime={el.start}
             duration={el.duration}
           />
@@ -477,7 +937,6 @@ export function StudioApp() {
             label={getTimelineElementLabel(el)}
             labelColor={style.label}
             accentColor={style.clip}
-            selector={el.selector}
             seekTime={el.start}
             duration={el.duration}
           />
@@ -490,6 +949,31 @@ export function StudioApp() {
   );
   const timelineToolbar = (
     <div className="border-b border-neutral-800/40 bg-neutral-950/96">
+      {timelineVisible && timelineElements.length > 0 && !timelineEditorHintDismissed && (
+        <div className="px-3 pt-3">
+          <div className="flex items-start justify-between gap-3 rounded-xl border border-studio-accent/20 bg-studio-accent/[0.07] px-3 py-3">
+            <div className="min-w-0">
+              <div className="text-[11px] font-semibold text-neutral-100">Timeline editor</div>
+              <p className="mt-1 text-[11px] leading-5 text-neutral-300">
+                Drag clips to move timing, and drag clip edges to resize them when handles are
+                available. Hide the panel anytime and bring it back with{" "}
+                <span className="font-mono text-[10px] text-studio-accent">
+                  {TIMELINE_TOGGLE_SHORTCUT_LABEL}
+                </span>
+                .
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={dismissTimelineEditorHint}
+              className="flex-shrink-0 rounded-md border border-neutral-700 px-2 py-1 text-[10px] font-medium text-neutral-300 transition-colors hover:border-neutral-500 hover:text-neutral-100"
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center justify-between px-3 py-2">
         <div className="text-[10px] font-medium uppercase tracking-[0.16em] text-neutral-500">
           Timeline
@@ -567,11 +1051,20 @@ export function StudioApp() {
   const projectIdRef = useRef(projectId);
   const previewIframeRef = useRef<HTMLIFrameElement | null>(null);
   const consoleErrorsRef = useRef<LintFinding[]>([]);
+  const copiedAgentTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const domEditSelectionRef = useRef<DomEditSelection | null>(domEditSelection);
+  const lastPreviewClickRef = useRef<{ key: string; at: number } | null>(null);
+  const domEditSaveTimestampRef = useRef(0);
+  const domTextCommitVersionRef = useRef(0);
 
   // Listen for external file changes (user editing HTML outside the editor).
   // In dev: use Vite HMR. In embedded/production: use SSE from /api/events.
+  // Suppress file-change events that echo back from a recent DOM edit save —
+  // those changes are already applied to the iframe DOM and a full reload
+  // would flash the preview.
   useMountEffect(() => {
     const handler = () => {
+      if (Date.now() - domEditSaveTimestampRef.current < 1200) return;
       if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
       refreshTimerRef.current = setTimeout(() => setRefreshKey((k) => k + 1), 400);
     };
@@ -585,6 +1078,7 @@ export function StudioApp() {
     return () => es.close();
   });
   projectIdRef.current = projectId;
+  domEditSelectionRef.current = domEditSelection;
 
   // Load file tree when projectId changes.
   // Note: This is one of the few places where useEffect with deps is acceptable —
@@ -1005,6 +1499,707 @@ export function StudioApp() {
     [showToast],
   );
 
+  const handleBlockedDomMove = useCallback(
+    (selection: DomEditSelection) => {
+      const now = Date.now();
+      if (now - lastBlockedDomMoveToastAtRef.current < 1500) return;
+      lastBlockedDomMoveToastAtRef.current = now;
+      showToast(
+        selection.capabilities.canDetachFromLayout
+          ? "This layer is controlled by layout. Use Make movable in the panel to detach it."
+          : (selection.capabilities.reasonIfDisabled ??
+              "This element can’t be moved directly from the preview."),
+        "info",
+      );
+    },
+    [showToast],
+  );
+
+  const applyDomSelection = useCallback(
+    (selection: DomEditSelection | null, options?: { revealPanel?: boolean }) => {
+      setDomEditSelection(selection);
+      setCopiedAgentPrompt(false);
+      if (selection) {
+        if (options?.revealPanel !== false) {
+          setRightCollapsed(false);
+          setRightPanelTab("design");
+        }
+        const nextSelectedTimelineId = findMatchingTimelineElementId(selection, timelineElements);
+        setSelectedTimelineElementId(nextSelectedTimelineId);
+        return;
+      }
+
+      setSelectedTimelineElementId(null);
+    },
+    [setSelectedTimelineElementId, timelineElements],
+  );
+
+  const clearDomSelection = useCallback(() => {
+    applyDomSelection(null, { revealPanel: false });
+  }, [applyDomSelection]);
+
+  const buildDomSelectionFromTarget = useCallback(
+    (target: HTMLElement, options?: { preferClipAncestor?: boolean }) => {
+      if (isMasterView) {
+        const mappedHost = findMappedCompositionHost(
+          target,
+          timelineElements,
+          compIdToSrc,
+          fileTree,
+        );
+        if (mappedHost) {
+          const hostSelection = resolveDomEditSelection(mappedHost.host, {
+            activeCompositionPath: activeCompPath,
+            isMasterView,
+            preferClipAncestor: options?.preferClipAncestor,
+          });
+          if (!hostSelection) return null;
+          return {
+            ...hostSelection,
+            compositionSrc: mappedHost.compositionSrc,
+            isCompositionHost: true,
+            capabilities: resolveDomEditCapabilities({
+              selector: hostSelection.selector,
+              tagName: hostSelection.tagName,
+              className: hostSelection.element.className,
+              inlineStyles: hostSelection.inlineStyles,
+              computedStyles: hostSelection.computedStyles,
+              isCompositionHost: true,
+              isMasterView: true,
+            }),
+          } satisfies DomEditSelection;
+        }
+      }
+
+      return resolveDomEditSelection(target, {
+        activeCompositionPath: activeCompPath,
+        isMasterView,
+        preferClipAncestor: options?.preferClipAncestor,
+      });
+    },
+    [activeCompPath, compIdToSrc, fileTree, isMasterView, timelineElements],
+  );
+
+  const resolveImportedFontAsset = useCallback(
+    (fontFamilyValue: string): ImportedFontAsset | null => {
+      const family = primaryFontFamilyValue(fontFamilyValue);
+      if (!family) return null;
+      const imported = importedFontAssetsRef.current.find(
+        (font) => font.family.toLowerCase() === family.toLowerCase(),
+      );
+      if (imported) return imported;
+      const asset = fileTree.find(
+        (path) =>
+          FONT_EXT.test(path) &&
+          fontFamilyFromAssetPath(path).toLowerCase() === family.toLowerCase(),
+      );
+      if (!asset) return null;
+      return {
+        family: fontFamilyFromAssetPath(asset),
+        path: asset,
+        url: `/api/projects/${projectId}/preview/${asset}`,
+      };
+    },
+    [fileTree, projectId],
+  );
+
+  const persistDomEditOperations = useCallback(
+    async (
+      selection: DomEditSelection,
+      operations: Parameters<typeof applyPatchByTarget>[2][],
+      options?: {
+        skipRefresh?: boolean;
+        prepareContent?: (html: string, sourceFile: string) => string;
+        shouldSave?: () => boolean;
+      },
+    ) => {
+      const pid = projectIdRef.current;
+      if (!pid) throw new Error("No active project");
+      if (options?.shouldSave && !options.shouldSave()) return;
+
+      const targetPath = selection.sourceFile || activeCompPath || "index.html";
+      const response = await fetch(`/api/projects/${pid}/files/${encodeURIComponent(targetPath)}`);
+      if (!response.ok) {
+        throw new Error(`Failed to read ${targetPath}`);
+      }
+
+      const data = (await response.json()) as { content?: string };
+      const originalContent = data.content;
+      if (typeof originalContent !== "string") {
+        throw new Error(`Missing file contents for ${targetPath}`);
+      }
+
+      let patchedContent = originalContent;
+      for (const operation of operations) {
+        patchedContent = applyPatchByTarget(patchedContent, selection, operation);
+      }
+      if (options?.prepareContent) {
+        patchedContent = options.prepareContent(patchedContent, targetPath);
+      }
+      if (options?.shouldSave && !options.shouldSave()) return;
+
+      if (patchedContent === originalContent) {
+        throw new Error(`Unable to patch ${selection.selector ?? selection.id ?? "selection"}`);
+      }
+
+      const saveResponse = await fetch(
+        `/api/projects/${pid}/files/${encodeURIComponent(targetPath)}`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "text/plain" },
+          body: patchedContent,
+        },
+      );
+      if (!saveResponse.ok) {
+        throw new Error(`Failed to save ${targetPath}`);
+      }
+
+      if (editingPathRef.current === targetPath) {
+        setEditingFile({ path: targetPath, content: patchedContent });
+      }
+
+      if (options?.skipRefresh) {
+        domEditSaveTimestampRef.current = Date.now();
+      } else {
+        setRefreshKey((k) => k + 1);
+      }
+    },
+    [activeCompPath],
+  );
+
+  const handleDomMoveCommit = useCallback(
+    async (selection: DomEditSelection, next: { left: number; top: number }) => {
+      await persistDomEditOperations(
+        selection,
+        [
+          ...buildDomEditMovePatchOperations(next.left, next.top),
+          ...buildOppositeEdgePatchOperations(selection, "both"),
+        ],
+        { skipRefresh: true },
+      );
+    },
+    [persistDomEditOperations],
+  );
+
+  const handleDomResizeCommit = useCallback(
+    async (selection: DomEditSelection, next: { width: number; height: number }) => {
+      if (shouldDetachOppositeEdges(selection)) {
+        selection.element.style.right = "auto";
+        selection.element.style.bottom = "auto";
+      }
+      await persistDomEditOperations(
+        selection,
+        [
+          ...buildDomEditResizePatchOperations(next.width, next.height),
+          ...buildOppositeEdgePatchOperations(selection, "both"),
+        ],
+        { skipRefresh: true },
+      );
+    },
+    [persistDomEditOperations],
+  );
+
+  const handleDomDetachFromLayout = useCallback(async () => {
+    const selection = domEditSelection;
+    if (!selection?.capabilities.canDetachFromLayout) return;
+
+    const doc = previewIframeRef.current?.contentDocument;
+    const element = doc
+      ? findElementForSelection(doc, selection, selection.sourceFile)
+      : selection.element;
+    if (!element) {
+      showToast("Could not find the selected layer in the preview.", "info");
+      return;
+    }
+
+    const rect = measureDomDetachRect(element);
+    const operations = buildDomEditDetachPatchOperations(rect);
+
+    for (const operation of operations) {
+      element.style.setProperty(operation.property, operation.value);
+    }
+
+    await persistDomEditOperations(selection, operations, { skipRefresh: true });
+
+    const refreshed = doc ? findElementForSelection(doc, selection, selection.sourceFile) : element;
+    if (refreshed) {
+      const nextSelection = buildDomSelectionFromTarget(refreshed);
+      if (nextSelection) {
+        applyDomSelection(nextSelection, { revealPanel: false });
+      }
+    }
+    showToast("Layer detached from layout. You can move it now.", "info");
+  }, [
+    applyDomSelection,
+    buildDomSelectionFromTarget,
+    domEditSelection,
+    persistDomEditOperations,
+    showToast,
+  ]);
+
+  const handleDomStyleCommit = useCallback(
+    async (property: string, value: string) => {
+      if (!domEditSelection) return;
+      const isMoveStyle = isMoveStyleProperty(property);
+      const isResizeStyle = isResizeStyleProperty(property);
+      if (isMoveStyle && !domEditSelection.capabilities.canMove) return;
+      if (isResizeStyle && !domEditSelection.capabilities.canResize) return;
+      if (!isMoveStyle && !isResizeStyle && !domEditSelection.capabilities.canEditStyles) return;
+      const importedFont = property === "font-family" ? resolveImportedFontAsset(value) : null;
+      const iframe = previewIframeRef.current;
+      const doc = iframe?.contentDocument;
+      if (doc) {
+        const el = findElementForSelection(doc, domEditSelection, domEditSelection.sourceFile);
+        if (el) {
+          el.style.setProperty(property, normalizeDomEditStyleValue(property, value));
+          if (property === "font-family") {
+            injectPreviewGoogleFont(doc, value);
+            if (importedFont) injectPreviewImportedFont(doc, importedFont);
+          }
+          if (shouldDetachOppositeEdges(domEditSelection)) {
+            if (property === "width") el.style.right = "auto";
+            if (property === "height") el.style.bottom = "auto";
+          }
+          if (property === "background-image" && isImageBackgroundValue(value)) {
+            el.style.setProperty("background-position", "center");
+            el.style.setProperty("background-repeat", "no-repeat");
+            el.style.setProperty("background-size", "contain");
+          }
+        }
+      }
+      const operations: PatchOperation[] = [
+        buildDomEditStylePatchOperation(property, normalizeDomEditStyleValue(property, value)),
+      ];
+      if (property === "width") {
+        operations.push(...buildOppositeEdgePatchOperations(domEditSelection, "width"));
+      } else if (property === "height") {
+        operations.push(...buildOppositeEdgePatchOperations(domEditSelection, "height"));
+      } else if (property === "background-image" && isImageBackgroundValue(value)) {
+        operations.push(
+          buildDomEditStylePatchOperation("background-position", "center"),
+          buildDomEditStylePatchOperation("background-repeat", "no-repeat"),
+          buildDomEditStylePatchOperation("background-size", "contain"),
+        );
+      }
+      await persistDomEditOperations(domEditSelection, operations, {
+        skipRefresh: true,
+        prepareContent: importedFont
+          ? (html, sourceFile) => ensureImportedFontFace(html, importedFont, sourceFile)
+          : undefined,
+      });
+    },
+    [domEditSelection, persistDomEditOperations, resolveImportedFontAsset],
+  );
+
+  const handleDomTextCommit = useCallback(
+    async (value: string, fieldKey?: string) => {
+      if (!domEditSelection) return;
+      if (!isTextEditableSelection(domEditSelection)) return;
+      const commitVersion = domTextCommitVersionRef.current + 1;
+      domTextCommitVersionRef.current = commitVersion;
+      const nextTextFields =
+        domEditSelection.textFields.length > 0
+          ? domEditSelection.textFields.map((field) =>
+              field.key === fieldKey ? { ...field, value } : field,
+            )
+          : [];
+      const nextContent =
+        nextTextFields.length > 1 || nextTextFields.some((field) => field.source === "child")
+          ? serializeDomEditTextFields(nextTextFields)
+          : value;
+      const iframe = previewIframeRef.current;
+      const doc = iframe?.contentDocument;
+      if (doc) {
+        const el = findElementForSelection(doc, domEditSelection, domEditSelection.sourceFile);
+        if (el) {
+          if (
+            nextTextFields.length > 1 ||
+            nextTextFields.some((field) => field.source === "child")
+          ) {
+            el.innerHTML = nextContent;
+          } else {
+            el.textContent = value;
+          }
+        }
+      }
+      await persistDomEditOperations(
+        domEditSelection,
+        [buildDomEditTextPatchOperation(nextContent)],
+        {
+          skipRefresh: true,
+          shouldSave: () => domTextCommitVersionRef.current === commitVersion,
+        },
+      );
+      if (domTextCommitVersionRef.current !== commitVersion) return;
+
+      if (doc) {
+        const refreshed = findElementForSelection(
+          doc,
+          domEditSelection,
+          domEditSelection.sourceFile,
+        );
+        if (refreshed) {
+          const nextSelection = buildDomSelectionFromTarget(refreshed);
+          if (nextSelection) {
+            applyDomSelection(nextSelection, { revealPanel: false });
+          }
+        }
+      }
+    },
+    [applyDomSelection, buildDomSelectionFromTarget, domEditSelection, persistDomEditOperations],
+  );
+
+  const commitDomTextFields = useCallback(
+    async (
+      selection: DomEditSelection,
+      nextTextFields: DomEditTextField[],
+      options?: { importedFont?: ImportedFontAsset | null },
+    ) => {
+      const nextContent =
+        nextTextFields.length > 1 || nextTextFields.some((field) => field.source === "child")
+          ? serializeDomEditTextFields(nextTextFields)
+          : (nextTextFields[0]?.value ?? "");
+
+      const iframe = previewIframeRef.current;
+      const doc = iframe?.contentDocument;
+      if (doc) {
+        const el = findElementForSelection(doc, selection, selection.sourceFile);
+        if (el) {
+          if (
+            nextTextFields.length > 1 ||
+            nextTextFields.some((field) => field.source === "child")
+          ) {
+            el.innerHTML = nextContent;
+          } else {
+            el.textContent = nextContent;
+          }
+        }
+      }
+
+      const importedFont = options?.importedFont ?? null;
+      await persistDomEditOperations(selection, [buildDomEditTextPatchOperation(nextContent)], {
+        skipRefresh: true,
+        prepareContent: importedFont
+          ? (html, sourceFile) => ensureImportedFontFace(html, importedFont, sourceFile)
+          : undefined,
+      });
+
+      if (doc) {
+        const refreshed = findElementForSelection(doc, selection, selection.sourceFile);
+        if (refreshed) {
+          const nextSelection = buildDomSelectionFromTarget(refreshed);
+          if (nextSelection) {
+            applyDomSelection(nextSelection, { revealPanel: false });
+          }
+        }
+      }
+    },
+    [applyDomSelection, buildDomSelectionFromTarget, persistDomEditOperations],
+  );
+
+  const handleDomTextFieldStyleCommit = useCallback(
+    async (fieldKey: string, property: string, value: string) => {
+      if (!domEditSelection) return;
+      const field = domEditSelection.textFields.find((entry) => entry.key === fieldKey);
+      if (!field) return;
+
+      if (field.source === "self") {
+        await handleDomStyleCommit(property, value);
+        return;
+      }
+
+      const normalizedValue = normalizeDomEditStyleValue(property, value);
+      const importedFont = property === "font-family" ? resolveImportedFontAsset(value) : null;
+      if (property === "font-family") {
+        const doc = previewIframeRef.current?.contentDocument;
+        if (doc) {
+          injectPreviewGoogleFont(doc, normalizedValue);
+          if (importedFont) injectPreviewImportedFont(doc, importedFont);
+        }
+      }
+      const nextTextFields = domEditSelection.textFields.map((entry) =>
+        entry.key === fieldKey
+          ? {
+              ...entry,
+              inlineStyles: {
+                ...entry.inlineStyles,
+                [property]: normalizedValue,
+              },
+              computedStyles: {
+                ...entry.computedStyles,
+                [property]: normalizedValue,
+              },
+            }
+          : entry,
+      );
+
+      await commitDomTextFields(domEditSelection, nextTextFields, { importedFont });
+    },
+    [commitDomTextFields, domEditSelection, handleDomStyleCommit, resolveImportedFontAsset],
+  );
+
+  const handleDomAddTextField = useCallback(
+    async (afterFieldKey?: string) => {
+      if (!domEditSelection) return null;
+      if (!domEditSelection.textFields.some((field) => field.source === "child")) return null;
+
+      const insertionIndex = domEditSelection.textFields.findIndex(
+        (field) => field.key === afterFieldKey,
+      );
+      const baseField =
+        domEditSelection.textFields[insertionIndex >= 0 ? insertionIndex : 0] ??
+        domEditSelection.textFields[0];
+      const nextField = buildDefaultDomEditTextField(baseField);
+      const nextTextFields = [...domEditSelection.textFields];
+      nextTextFields.splice(
+        insertionIndex >= 0 ? insertionIndex + 1 : nextTextFields.length,
+        0,
+        nextField,
+      );
+
+      await commitDomTextFields(domEditSelection, nextTextFields);
+      return nextField.key;
+    },
+    [commitDomTextFields, domEditSelection],
+  );
+
+  const handleDomRemoveTextField = useCallback(
+    async (fieldKey: string) => {
+      if (!domEditSelection) return;
+      const field = domEditSelection.textFields.find((entry) => entry.key === fieldKey);
+      if (!field) return;
+
+      if (field.source === "self") {
+        await handleDomTextCommit("", fieldKey);
+        return;
+      }
+
+      const nextTextFields = domEditSelection.textFields.filter((entry) => entry.key !== fieldKey);
+      await commitDomTextFields(domEditSelection, nextTextFields);
+    },
+    [commitDomTextFields, domEditSelection, handleDomTextCommit],
+  );
+
+  const handleAskAgent = useCallback(() => {
+    if (!domEditSelection) return;
+    setAgentModalOpen(true);
+  }, [domEditSelection]);
+
+  const handleAgentModalSubmit = useCallback(
+    async (userInstruction: string) => {
+      if (!domEditSelection) return;
+
+      const pid = projectIdRef.current;
+      if (!pid) return;
+
+      const targetPath = domEditSelection.sourceFile || activeCompPath || "index.html";
+      const response = await fetch(`/api/projects/${pid}/files/${encodeURIComponent(targetPath)}`);
+      if (!response.ok) throw new Error(`Failed to read ${targetPath}`);
+
+      const data = (await response.json()) as { content?: string };
+      const html = data.content;
+      const tagSnippet =
+        typeof html === "string" ? readTagSnippetByTarget(html, domEditSelection) : undefined;
+      const prompt = buildElementAgentPrompt({
+        selection: domEditSelection,
+        currentTime,
+        tagSnippet,
+        userInstruction,
+      });
+
+      try {
+        await navigator.clipboard.writeText(prompt);
+      } catch {
+        const textarea = document.createElement("textarea");
+        textarea.value = prompt;
+        textarea.setAttribute("readonly", "true");
+        textarea.style.position = "fixed";
+        textarea.style.opacity = "0";
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textarea);
+      }
+
+      setAgentModalOpen(false);
+      if (copiedAgentTimerRef.current) clearTimeout(copiedAgentTimerRef.current);
+      setCopiedAgentPrompt(true);
+      copiedAgentTimerRef.current = setTimeout(() => setCopiedAgentPrompt(false), 1600);
+    },
+    [activeCompPath, currentTime, domEditSelection],
+  );
+
+  const handlePreviewIframeRef = useCallback(
+    (iframe: HTMLIFrameElement | null) => {
+      previewIframeRef.current = iframe;
+      setPreviewIframe(iframe);
+      syncPreviewTimelineHotkey(iframe);
+      consoleErrorsRef.current = [];
+      setConsoleErrors(null);
+    },
+    [syncPreviewTimelineHotkey],
+  );
+
+  const handlePreviewCanvasMouseDown = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      const iframe = previewIframeRef.current;
+      if (!iframe || captionEditMode) return;
+      const target = getPreviewTargetFromPointer(iframe, e.clientX, e.clientY);
+      if (!target) {
+        lastPreviewClickRef.current = null;
+        applyDomSelection(null, { revealPanel: false });
+        return;
+      }
+      e.preventDefault();
+      e.stopPropagation();
+      const nextSelection = buildDomSelectionFromTarget(target, {
+        preferClipAncestor: true,
+      });
+      if (!nextSelection) {
+        lastPreviewClickRef.current = null;
+        applyDomSelection(null, { revealPanel: false });
+        return;
+      }
+      if (nextSelection.isCompositionHost && isMasterView && nextSelection.compositionSrc) {
+        const key = getDomSelectionClickKey(nextSelection);
+        const last = lastPreviewClickRef.current;
+        const now = Date.now();
+        if (last && last.key === key && now - last.at < 350) {
+          lastPreviewClickRef.current = null;
+          applyDomSelection(null, { revealPanel: false });
+          setActiveCompPath(nextSelection.compositionSrc);
+          return;
+        }
+        lastPreviewClickRef.current = { key, at: now };
+      } else {
+        lastPreviewClickRef.current = null;
+      }
+      applyDomSelection(nextSelection);
+    },
+    [applyDomSelection, buildDomSelectionFromTarget, captionEditMode, isMasterView],
+  );
+
+  const handlePreviewCanvasDoubleClick = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      const iframe = previewIframeRef.current;
+      if (!iframe || captionEditMode) return;
+      const target = getPreviewTargetFromPointer(iframe, e.clientX, e.clientY);
+      if (!target) return;
+      const nextSelection = buildDomSelectionFromTarget(target, {
+        preferClipAncestor: false,
+      });
+      if (!nextSelection?.isCompositionHost || !isMasterView || !nextSelection.compositionSrc) {
+        return;
+      }
+      e.preventDefault();
+      e.stopPropagation();
+      lastPreviewClickRef.current = null;
+      applyDomSelection(null, { revealPanel: false });
+      setActiveCompPath(nextSelection.compositionSrc);
+    },
+    [applyDomSelection, buildDomSelectionFromTarget, captionEditMode, isMasterView],
+  );
+
+  const handleSelectedOverlayDoubleClick = useCallback(() => {
+    const selection = domEditSelectionRef.current;
+    if (!selection?.isCompositionHost || !selection.compositionSrc) return;
+    applyDomSelection(null, { revealPanel: false });
+    setActiveCompPath(selection.compositionSrc);
+  }, [applyDomSelection]);
+
+  // eslint-disable-next-line no-restricted-syntax
+  useEffect(() => {
+    if (!previewIframe || captionEditMode) return;
+
+    const syncSelectionFromDocument = () => {
+      const currentSelection = domEditSelectionRef.current;
+      if (!currentSelection) return;
+      let doc: Document | null = null;
+      try {
+        doc = previewIframe.contentDocument;
+      } catch {
+        return;
+      }
+      if (!doc) return;
+
+      const nextElement = findElementForSelection(doc, currentSelection, activeCompPath);
+      if (!nextElement) {
+        applyDomSelection(null, { revealPanel: false });
+        return;
+      }
+
+      const nextSelection = buildDomSelectionFromTarget(nextElement);
+      if (nextSelection) {
+        applyDomSelection(nextSelection, { revealPanel: false });
+      }
+    };
+
+    const attachErrorCapture = () => {
+      try {
+        const win = previewIframe.contentWindow as (Window & typeof globalThis) | null;
+        if (!win) return;
+        if ((win as unknown as Record<string, unknown>).__hfErrorCapture) return;
+        (win as unknown as Record<string, unknown>).__hfErrorCapture = true;
+        const origError = win.console.error.bind(win.console);
+        win.console.error = function (...args: unknown[]) {
+          origError(...args);
+          const text = args.map((a) => (a instanceof Error ? a.message : String(a))).join(" ");
+          if (text.includes("favicon")) return;
+          consoleErrorsRef.current = [
+            ...consoleErrorsRef.current,
+            { severity: "error", message: text },
+          ];
+          setConsoleErrors([...consoleErrorsRef.current]);
+        };
+        win.addEventListener("error", (e: ErrorEvent) => {
+          const text = e.message || String(e);
+          consoleErrorsRef.current = [
+            ...consoleErrorsRef.current,
+            { severity: "error", message: text },
+          ];
+          setConsoleErrors([...consoleErrorsRef.current]);
+        });
+      } catch {
+        // same-origin only
+      }
+    };
+
+    attachErrorCapture();
+    syncSelectionFromDocument();
+
+    const handleLoad = () => {
+      consoleErrorsRef.current = [];
+      setConsoleErrors(null);
+      attachErrorCapture();
+      syncSelectionFromDocument();
+    };
+
+    previewIframe.addEventListener("load", handleLoad);
+    return () => {
+      previewIframe.removeEventListener("load", handleLoad);
+    };
+  }, [
+    activeCompPath,
+    applyDomSelection,
+    buildDomSelectionFromTarget,
+    captionEditMode,
+    previewIframe,
+  ]);
+
+  // eslint-disable-next-line no-restricted-syntax
+  useEffect(() => {
+    if (!captionEditMode) return;
+    applyDomSelection(null, { revealPanel: false });
+  }, [applyDomSelection, captionEditMode]);
+
+  // eslint-disable-next-line no-restricted-syntax
+  useEffect(
+    () => () => {
+      if (copiedAgentTimerRef.current) clearTimeout(copiedAgentTimerRef.current);
+    },
+    [],
+  );
+
   const refreshFileTree = useCallback(async () => {
     const pid = projectIdRef.current;
     if (!pid) return;
@@ -1138,6 +2333,7 @@ export function StudioApp() {
             duration: normalizedDuration,
             track: placement.track,
             zIndex: trackZIndices.get(placement.track) ?? 1,
+            geometry: resolveTimelineAssetInitialGeometry(originalContent),
           }),
         );
 
@@ -1322,7 +2518,33 @@ export function StudioApp() {
 
   const handleImportFiles = useCallback(
     async (files: FileList | File[], dir?: string) => {
-      void uploadProjectFiles(Array.from(files), dir);
+      return uploadProjectFiles(Array.from(files), dir);
+    },
+    [uploadProjectFiles],
+  );
+
+  const handleImportFonts = useCallback(
+    async (files: FileList | File[]) => {
+      const uploaded = await uploadProjectFiles(
+        Array.from(files).filter((file) => FONT_EXT.test(file.name)),
+        "assets/fonts",
+      );
+      const pid = projectIdRef.current;
+      const imported = uploaded
+        .filter((asset) => FONT_EXT.test(asset))
+        .map((asset) => ({
+          family: fontFamilyFromAssetPath(asset),
+          path: asset,
+          url: `/api/projects/${pid}/preview/${asset}`,
+        }));
+      importedFontAssetsRef.current = [
+        ...imported,
+        ...importedFontAssetsRef.current.filter(
+          (existing) =>
+            !imported.some((font) => font.family.toLowerCase() === existing.family.toLowerCase()),
+        ),
+      ];
+      return imported;
     },
     [uploadProjectFiles],
   );
@@ -1394,6 +2616,17 @@ export function StudioApp() {
       fileTree.filter((f) => !f.endsWith(".html") && !f.endsWith(".md") && !f.endsWith(".json")),
     [fileTree],
   );
+  const fontAssets = useMemo<ImportedFontAsset[]>(
+    () =>
+      assets
+        .filter((asset) => FONT_EXT.test(asset))
+        .map((asset) => ({
+          family: fontFamilyFromAssetPath(asset),
+          path: asset,
+          url: `/api/projects/${projectId}/preview/${asset}`,
+        })),
+    [assets, projectId],
+  );
 
   if (resolving || !projectId) {
     return (
@@ -1453,7 +2686,15 @@ export function StudioApp() {
             <span>Capture</span>
           </a>
           <button
-            onClick={() => setRightCollapsed((v) => !v)}
+            onClick={() => {
+              if (rightCollapsed || rightPanelTab !== "design") {
+                setRightPanelTab("design");
+                setRightCollapsed(false);
+                return;
+              }
+              clearDomSelection();
+              setRightCollapsed(true);
+            }}
             className={`h-7 flex items-center gap-1.5 px-2.5 rounded-md text-[11px] font-medium border transition-colors ${
               !rightCollapsed
                 ? "text-studio-accent bg-studio-accent/10 border-studio-accent/30"
@@ -1471,8 +2712,7 @@ export function StudioApp() {
               <circle cx="12" cy="12" r="10" />
               <polygon points="10 8 16 12 10 16" fill="currentColor" stroke="none" />
             </svg>
-            Renders
-            {renderQueue.jobs.length > 0 ? ` (${renderQueue.jobs.length})` : ""}
+            Inspector
           </button>
         </div>
       </div>
@@ -1589,56 +2829,24 @@ export function StudioApp() {
               // or navigates back via breadcrumb — keeps sidebar + thumbnails in sync.
               setActiveCompPath(compPath);
             }}
-            onIframeRef={(iframe) => {
-              previewIframeRef.current = iframe;
-              syncPreviewTimelineHotkey(iframe);
-              consoleErrorsRef.current = [];
-              setConsoleErrors(null);
-              if (!iframe) return;
-
-              // Attach error capture after each iframe load (content resets on navigation)
-              const attachErrorCapture = () => {
-                try {
-                  const win = iframe.contentWindow as (Window & typeof globalThis) | null;
-                  if (!win) return;
-                  // Guard against double-patching
-                  if ((win as unknown as Record<string, unknown>).__hfErrorCapture) return;
-                  (win as unknown as Record<string, unknown>).__hfErrorCapture = true;
-                  const origError = win.console.error.bind(win.console);
-                  win.console.error = function (...args: unknown[]) {
-                    origError(...args);
-                    const text = args
-                      .map((a) => (a instanceof Error ? a.message : String(a)))
-                      .join(" ");
-                    if (text.includes("favicon")) return;
-                    consoleErrorsRef.current = [
-                      ...consoleErrorsRef.current,
-                      { severity: "error", message: text },
-                    ];
-                    setConsoleErrors([...consoleErrorsRef.current]);
-                  };
-                  win.addEventListener("error", (e: ErrorEvent) => {
-                    const text = e.message || String(e);
-                    consoleErrorsRef.current = [
-                      ...consoleErrorsRef.current,
-                      { severity: "error", message: text },
-                    ];
-                    setConsoleErrors([...consoleErrorsRef.current]);
-                  });
-                } catch {
-                  // cross-origin — can't attach
-                }
-              };
-              // Attach now (iframe may already be loaded) and on future loads
-              attachErrorCapture();
-              iframe.addEventListener("load", () => {
-                consoleErrorsRef.current = [];
-                setConsoleErrors(null);
-                attachErrorCapture();
-              });
-            }}
+            onIframeRef={handlePreviewIframeRef}
             previewOverlay={
-              captionEditMode ? <CaptionOverlay iframeRef={previewIframeRef} /> : undefined
+              captionEditMode ? (
+                <CaptionOverlay iframeRef={previewIframeRef} />
+              ) : (
+                <DomEditOverlay
+                  iframeRef={previewIframeRef}
+                  selection={
+                    !rightCollapsed && rightPanelTab === "design" ? domEditSelection : null
+                  }
+                  onCanvasMouseDown={handlePreviewCanvasMouseDown}
+                  onCanvasDoubleClick={handlePreviewCanvasDoubleClick}
+                  onSelectedDoubleClick={handleSelectedOverlayDoubleClick}
+                  onBlockedMove={handleBlockedDomMove}
+                  onMoveCommit={handleDomMoveCommit}
+                  onResizeCommit={handleDomResizeCommit}
+                />
+              )
             }
             timelineFooter={
               captionEditMode ? (
@@ -1679,14 +2887,67 @@ export function StudioApp() {
               {captionEditMode ? (
                 <CaptionPropertyPanel iframeRef={previewIframeRef} />
               ) : (
-                <RenderQueue
-                  jobs={renderQueue.jobs}
-                  projectId={projectId}
-                  onDelete={renderQueue.deleteRender}
-                  onClearCompleted={renderQueue.clearCompleted}
-                  onStartRender={(format, quality) => renderQueue.startRender(30, quality, format)}
-                  isRendering={renderQueue.isRendering}
-                />
+                <>
+                  <div className="flex items-center gap-1 border-b border-neutral-800 px-3 py-2">
+                    <button
+                      type="button"
+                      onClick={() => setRightPanelTab("design")}
+                      className={`h-8 rounded-xl px-3 text-[11px] font-medium transition-colors ${
+                        rightPanelTab === "design"
+                          ? "bg-neutral-800 text-white"
+                          : "text-neutral-500 hover:bg-neutral-800/70 hover:text-neutral-200"
+                      }`}
+                    >
+                      Design
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setRightPanelTab("renders")}
+                      className={`h-8 rounded-xl px-3 text-[11px] font-medium transition-colors ${
+                        rightPanelTab === "renders"
+                          ? "bg-neutral-800 text-white"
+                          : "text-neutral-500 hover:bg-neutral-800/70 hover:text-neutral-200"
+                      }`}
+                    >
+                      {renderQueue.jobs.length > 0
+                        ? `Renders (${renderQueue.jobs.length})`
+                        : "Renders"}
+                    </button>
+                  </div>
+                  <div className="min-h-0 flex-1">
+                    {rightPanelTab === "design" ? (
+                      <PropertyPanel
+                        projectId={projectId}
+                        assets={assets}
+                        element={domEditSelection}
+                        copiedAgentPrompt={copiedAgentPrompt}
+                        onClearSelection={clearDomSelection}
+                        onSetStyle={handleDomStyleCommit}
+                        onSetText={handleDomTextCommit}
+                        onSetTextFieldStyle={handleDomTextFieldStyleCommit}
+                        onAddTextField={handleDomAddTextField}
+                        onRemoveTextField={handleDomRemoveTextField}
+                        onDetachFromLayout={handleDomDetachFromLayout}
+                        onAskAgent={handleAskAgent}
+                        onCopyAgentInstruction={handleAgentModalSubmit}
+                        onImportAssets={handleImportFiles}
+                        fontAssets={fontAssets}
+                        onImportFonts={handleImportFonts}
+                      />
+                    ) : (
+                      <RenderQueue
+                        jobs={renderQueue.jobs}
+                        projectId={projectId}
+                        onDelete={renderQueue.deleteRender}
+                        onClearCompleted={renderQueue.clearCompleted}
+                        onStartRender={(format, quality) =>
+                          renderQueue.startRender(30, quality, format)
+                        }
+                        isRendering={renderQueue.isRendering}
+                      />
+                    )}
+                  </div>
+                </>
               )}
             </div>
           </>
@@ -1704,6 +2965,15 @@ export function StudioApp() {
           findings={consoleErrors}
           projectId={projectId}
           onClose={() => setConsoleErrors(null)}
+        />
+      )}
+
+      {/* Ask agent modal */}
+      {agentModalOpen && domEditSelection && (
+        <AskAgentModal
+          selectionLabel={domEditSelection.label}
+          onSubmit={handleAgentModalSubmit}
+          onClose={() => setAgentModalOpen(false)}
         />
       )}
 

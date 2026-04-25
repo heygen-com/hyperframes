@@ -1,19 +1,28 @@
 import { forwardRef, useRef, useState } from "react";
 import { isLottieAnimationLoaded } from "@hyperframes/core/runtime/lottie-readiness";
 import { useMountEffect } from "../../hooks/useMountEffect";
-// NOTE: importing "@hyperframes/player" registers a class extending HTMLElement
-// at module load, which throws under SSR. Defer the import to the mount effect
-// so it only runs in the browser.
 
 interface PlayerProps {
   projectId?: string;
   directUrl?: string;
   onLoad: () => void;
   portrait?: boolean;
+  style?: React.CSSProperties;
 }
 
 interface HyperframesPlayerElement extends HTMLElement {
   iframeElement: HTMLIFrameElement;
+}
+
+function enableInteractiveIframe(player: HyperframesPlayerElement): void {
+  const root = player.shadowRoot;
+  if (!root) return;
+
+  const container = root.querySelector<HTMLElement>(".hfp-container");
+  const iframe = root.querySelector<HTMLIFrameElement>(".hfp-iframe");
+
+  container?.style.setProperty("pointer-events", "auto");
+  iframe?.style.setProperty("pointer-events", "auto");
 }
 
 // Assets are considered ready when every `<video>`/`<audio>` has enough data
@@ -49,18 +58,9 @@ function hasUnloadedAssets(iframe: HTMLIFrameElement, lastResult: boolean): bool
   }
 }
 
-/**
- * Renders a composition preview using the <hyperframes-player> web component.
- *
- * The web component handles iframe scaling, dimension detection, and
- * ResizeObserver internally. This wrapper bridges its inner iframe to the
- * forwarded ref so useTimelinePlayer can access it for clip manifest parsing,
- * timeline probing, and DOM inspection.
- */
 export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
-  ({ projectId, directUrl, onLoad, portrait }, ref) => {
+  ({ projectId, directUrl, onLoad, portrait, style }, ref) => {
     const containerRef = useRef<HTMLDivElement>(null);
-    const loadCountRef = useRef(0);
     const assetPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const [assetsLoading, setAssetsLoading] = useState(false);
 
@@ -71,11 +71,9 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
       let canceled = false;
       let cleanup: (() => void) | undefined;
 
-      // Dynamic import registers the custom element in the browser only.
       import("@hyperframes/player").then(() => {
         if (canceled) return;
 
-        // Create the web component imperatively to avoid JSX custom-element typing.
         const player = document.createElement("hyperframes-player") as HyperframesPlayerElement;
         const src = directUrl || `/api/projects/${projectId}/preview`;
         player.setAttribute("src", src);
@@ -85,8 +83,8 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
         player.style.height = "100%";
         player.style.display = "block";
         container.appendChild(player);
+        enableInteractiveIframe(player);
 
-        // Bridge the inner iframe to the forwarded ref for useTimelinePlayer.
         const iframe = player.iframeElement;
         if (typeof ref === "function") {
           ref(iframe);
@@ -94,35 +92,12 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
           (ref as React.MutableRefObject<HTMLIFrameElement | null>).current = iframe;
         }
 
-        // Prevent the web component's built-in click-to-toggle behavior.
-        // The studio manages playback exclusively via useTimelinePlayer.
         const preventToggle = (e: Event) => e.stopImmediatePropagation();
         player.addEventListener("click", preventToggle, { capture: true });
 
-        // Forward the iframe's native load event to the studio's onIframeLoad.
         const handleLoad = () => {
-          loadCountRef.current++;
-          // Reveal animation on reload (hot-reload, composition switch)
-          if (loadCountRef.current > 1) {
-            container.classList.remove("preview-revealing");
-            void container.offsetWidth;
-            container.classList.add("preview-revealing");
-            const onEnd = () => container.classList.remove("preview-revealing");
-            container.addEventListener("animationend", onEnd, { once: true });
-          }
           onLoad();
 
-          // Show a loading overlay until every `<video>`/`<audio>` and Lottie
-          // asset is ready. Without this users can click play before audio has
-          // buffered — the runtime is resilient (queued play() resolves once
-          // data arrives), but the overlay communicates why the first frame
-          // or first audio beat may lag.
-          //
-          // Poll with a 10 s safety cap (100 ticks × 100 ms). If the cap
-          // trips we hide the overlay so the UI doesn't appear stuck forever,
-          // but we log a debug warning so the case is diagnosable — a long
-          // cold video or a broken asset can legitimately exceed 10 s on a
-          // slow network.
           if (assetPollRef.current) clearInterval(assetPollRef.current);
           let lastUnloaded = hasUnloadedAssets(iframe, false);
           if (lastUnloaded) {
@@ -135,11 +110,6 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
                 if (assetPollRef.current) clearInterval(assetPollRef.current);
                 assetPollRef.current = null;
                 setAssetsLoading(false);
-                if (lastUnloaded) {
-                  console.debug(
-                    "[Player] Asset-loading overlay timed out after 10s; hiding anyway. Check network or asset integrity.",
-                  );
-                }
               }
             }, 100);
           } else {
@@ -154,7 +124,6 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
           if (assetPollRef.current) clearInterval(assetPollRef.current);
           assetPollRef.current = null;
           container.removeChild(player);
-          // Clear the forwarded ref
           if (typeof ref === "function") {
             ref(null);
           } else if (ref) {
@@ -170,7 +139,10 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
     });
 
     return (
-      <div className="relative w-full h-full max-w-full max-h-full overflow-hidden bg-black flex items-center justify-center">
+      <div
+        className="relative w-full h-full max-w-full max-h-full overflow-hidden bg-black flex items-center justify-center"
+        style={style}
+      >
         <div ref={containerRef} className="w-full h-full" />
         {assetsLoading && (
           <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center z-20 pointer-events-none">

@@ -202,7 +202,8 @@
             "pages": [
               "contributing",
               "contributing/release-channels",
-              "contributing/testing-local-changes"
+              "contributing/testing-local-changes",
+              "contributing/studio-manual-dom-editing"
             ]
           },
           {

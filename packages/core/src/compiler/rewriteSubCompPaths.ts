@@ -97,6 +97,28 @@ export function rewriteAssetPaths<T>(
 }
 
 /**
+ * Rewrite CSS url(...) references inside inline style attributes.
+ */
+export function rewriteInlineStyleAssetUrls<T>(
+  elements: Iterable<T>,
+  compSrcPath: string,
+  getStyle: (el: T) => string | null | undefined,
+  setStyle: (el: T, value: string) => void,
+): void {
+  const compDir = dirname(compSrcPath);
+  if (!compDir || compDir === ".") return;
+
+  for (const el of elements) {
+    const style = getStyle(el);
+    if (!style) continue;
+    const rewritten = rewriteCssAssetUrls(style, compSrcPath);
+    if (rewritten !== style) {
+      setStyle(el, rewritten);
+    }
+  }
+}
+
+/**
  * Rewrite CSS url(...) references in a sub-composition's inline styles so
  * ../foo.woff2 remains valid after the CSS is hoisted into the root document.
  */

@@ -279,7 +279,6 @@ export function resolveTimelineAssetDrop(
     track: getDefaultDroppedTrack(input.trackOrder, rowIndex),
   };
 }
-
 /* ── Component ──────────────────────────────────────────────────── */
 interface TimelineProps {
   /** Called when user seeks via ruler/track click or playhead drag */
@@ -544,7 +543,6 @@ export const Timeline = memo(function Timeline({
     );
     previousZoomModeRef.current = zoomMode;
   }, [zoomMode]);
-
   useMountEffect(() => {
     const unsub = liveTime.subscribe((t) => {
       const dur = durationRef.current;

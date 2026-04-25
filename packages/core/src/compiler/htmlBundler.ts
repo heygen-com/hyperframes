@@ -7,7 +7,11 @@ import {
   parseHTMLContent,
   stripEmbeddedRuntimeScripts,
 } from "./htmlDocument";
-import { rewriteAssetPaths, rewriteCssAssetUrls } from "./rewriteSubCompPaths";
+import {
+  rewriteAssetPaths,
+  rewriteCssAssetUrls,
+  rewriteInlineStyleAssetUrls,
+} from "./rewriteSubCompPaths";
 import { scopeCssToComposition, wrapScopedCompositionScript } from "./compositionScoping";
 import { validateHyperframeHtmlContract } from "./staticGuard";
 
@@ -499,6 +503,17 @@ export async function bundleToSingleHtml(
       (el: Element, attr: string) => el.getAttribute(attr),
       (el: Element, attr: string, val: string) => {
         el.setAttribute(attr, val);
+      },
+    );
+    const styledEls = innerRoot
+      ? innerRoot.querySelectorAll("[style]")
+      : contentDoc.querySelectorAll("[style]");
+    rewriteInlineStyleAssetUrls(
+      styledEls,
+      src,
+      (el: Element) => el.getAttribute("style"),
+      (el: Element, val: string) => {
+        el.setAttribute("style", val);
       },
     );
 

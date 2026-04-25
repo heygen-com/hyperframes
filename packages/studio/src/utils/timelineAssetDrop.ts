@@ -76,6 +76,23 @@ export function buildTimelineFileDropPlacements(
   });
 }
 
+export function resolveTimelineAssetInitialGeometry(source: string): {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+} {
+  const width = Number.parseFloat(source.match(/\bdata-width=(["'])([^"']+)\1/i)?.[2] ?? "");
+  const height = Number.parseFloat(source.match(/\bdata-height=(["'])([^"']+)\1/i)?.[2] ?? "");
+
+  return {
+    left: 0,
+    top: 0,
+    width: Number.isFinite(width) && width > 0 ? Math.round(width) : 640,
+    height: Number.isFinite(height) && height > 0 ? Math.round(height) : 360,
+  };
+}
+
 export function buildTimelineAssetInsertHtml(input: {
   id: string;
   assetPath: string;
@@ -84,15 +101,18 @@ export function buildTimelineAssetInsertHtml(input: {
   duration: number;
   track: number;
   zIndex: number;
+  geometry?: { left: number; top: number; width: number; height: number };
 }): string {
   const sharedAttrs = `id="${input.id}" class="clip" src="${input.assetPath}" data-start="${input.start}" data-duration="${input.duration}" data-track-index="${input.track}"`;
+  const geometry = input.geometry ?? { left: 0, top: 0, width: 640, height: 360 };
+  const visualStyles = `position: absolute; left: ${geometry.left}px; top: ${geometry.top}px; width: ${geometry.width}px; height: ${geometry.height}px; object-fit: contain; z-index: ${input.zIndex}`;
 
   if (input.kind === "image") {
-    return `<img ${sharedAttrs} style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; z-index: ${input.zIndex}" />`;
+    return `<img ${sharedAttrs} style="${visualStyles}" />`;
   }
 
   if (input.kind === "video") {
-    return `<video ${sharedAttrs} muted playsinline style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; z-index: ${input.zIndex}"></video>`;
+    return `<video ${sharedAttrs} muted playsinline style="${visualStyles}"></video>`;
   }
 
   return `<audio ${sharedAttrs} style="z-index: ${input.zIndex}"></audio>`;
