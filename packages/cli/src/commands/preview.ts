@@ -397,11 +397,12 @@ async function runEmbeddedMode(
   // Node as a SIGINT at all — the process just sits there. Run a readline
   // interface on stdin so the keystroke is observed at the TTY layer and
   // re-emit it as SIGINT. No-op on platforms where the signal already arrives.
+  let rl: import("node:readline").Interface | undefined;
   if (process.platform === "win32") {
     const readline = await import("node:readline");
-    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+    rl = readline.createInterface({ input: process.stdin, output: process.stdout });
     rl.on("SIGINT", () => {
-      process.emit("SIGINT");
+      process.emit("SIGINT", "SIGINT");
     });
   }
 
@@ -412,6 +413,10 @@ async function runEmbeddedMode(
       shuttingDown = true;
       process.off("SIGINT", shutdown);
       process.off("SIGTERM", shutdown);
+      // Close the readline interface so a second Ctrl+C during the grace
+      // period below doesn't re-emit SIGINT and trigger Node's default
+      // exit-130 behaviour, contradicting our intent to exit cleanly.
+      rl?.close();
       // `server.close()` can take a second or two to drain keep-alive
       // connections; surface progress so the terminal doesn't look frozen.
       console.log();
