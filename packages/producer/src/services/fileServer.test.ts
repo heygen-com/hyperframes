@@ -1,8 +1,9 @@
 import { describe, expect, it } from "bun:test";
-import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import path, { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
+  createFileServer,
   HF_BRIDGE_SCRIPT,
   HF_EARLY_STUB,
   injectScriptsAtHeadStart,
@@ -148,6 +149,45 @@ describe("isPathInside", () => {
     it("rejects paths on a different drive letter", () => {
       expect(isPathInside("D:\\foo\\bar", "C:\\foo", win32)).toBe(false);
     });
+  });
+});
+
+describe("createFileServer", () => {
+  it("serves asset files through project-root symlinked directories", async () => {
+    const workspaceDir = mkdtempSync(join(tmpdir(), "hf-file-server-symlink-assets-"));
+    const adsDir = join(workspaceDir, "Ads");
+    const projectDir = join(adsDir, "annual-upsell-2");
+    const sharedDir = join(adsDir, "shared");
+
+    try {
+      mkdirSync(projectDir, { recursive: true });
+      mkdirSync(sharedDir, { recursive: true });
+      writeFileSync(join(projectDir, "index.html"), "<!doctype html><html></html>");
+      writeFileSync(
+        join(sharedDir, "brand.css"),
+        ".aisplus-glass { backdrop-filter: blur(28px); }",
+      );
+      symlinkSync("../shared", join(projectDir, "shared"));
+
+      const server = await createFileServer({
+        projectDir,
+        preHeadScripts: [],
+        headScripts: [],
+        bodyScripts: [],
+      });
+
+      try {
+        const response = await fetch(`${server.url}/shared/brand.css`);
+
+        expect(response.status).toBe(200);
+        expect(response.headers.get("content-type")).toContain("text/css");
+        expect(await response.text()).toContain(".aisplus-glass");
+      } finally {
+        server.close();
+      }
+    } finally {
+      rmSync(workspaceDir, { recursive: true, force: true });
+    }
   });
 });
 

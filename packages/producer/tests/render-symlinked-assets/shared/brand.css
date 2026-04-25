@@ -1,0 +1,18 @@
+.stage {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: #0b1220;
+}
+
+.card {
+  width: 260px;
+  height: 120px;
+  display: grid;
+  place-items: center;
+  border: 4px solid #86efac;
+  background: #22c55e;
+  color: #04130a;
+  font: 700 34px system-ui, sans-serif;
+}

@@ -1,0 +1,13 @@
+{
+  "name": "Render Symlinked Assets",
+  "description": "Regression test for render-mode FileServer parity with preview when a project asset directory is a symlink to a sibling shared folder.",
+  "tags": ["regression"],
+  "minPsnr": 30,
+  "maxFrameFailures": 0,
+  "minAudioCorrelation": 0,
+  "maxAudioLagWindows": 1,
+  "renderConfig": {
+    "fps": 24,
+    "workers": 1
+  }
+}

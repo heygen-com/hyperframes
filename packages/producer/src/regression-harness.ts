@@ -235,6 +235,14 @@ function discoverTestSuites(
   return suites;
 }
 
+function copyFixtureSupportFiles(suite: TestSuite, tempRoot: string): void {
+  const excluded = new Set(["src", "output", "meta.json", "failures"]);
+  for (const entry of readdirSync(suite.dir)) {
+    if (excluded.has(entry)) continue;
+    cpSync(join(suite.dir, entry), join(tempRoot, entry), { recursive: true });
+  }
+}
+
 // ── FFmpeg Utilities ─────────────────────────────────────────────────────────
 
 function runFfmpeg(args: string[], label: string): { stdout: Buffer; stderr: string } {
@@ -582,6 +590,7 @@ async function runTestSuite(
     logPretty("Rendering video...", "🎬");
 
     const tempSrcDir = join(tempRoot, "src");
+    copyFixtureSupportFiles(suite, tempRoot);
     cpSync(suite.srcDir, tempSrcDir, { recursive: true });
 
     const job = createRenderJob({
