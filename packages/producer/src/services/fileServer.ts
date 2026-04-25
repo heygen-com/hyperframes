@@ -31,8 +31,8 @@ type IsPathInsideOptions = {
 
 /**
  * Returns true iff `child` is the same as, or nested inside, `parent` after
- * symlink-free path normalization. Used to reject path-traversal attempts
- * (e.g. GET `/../etc/passwd`) before opening any file.
+ * path normalization. Used to reject path-traversal attempts (e.g.
+ * GET `/../etc/passwd`) before opening any file.
  *
  * `path.join(root, "..")` normalizes traversal segments and can escape `root`
  * entirely, so the join return value alone is not a safe guard. Callers must
@@ -537,13 +537,14 @@ export function createFileServer(options: FileServerOptions): Promise<FileServer
     // Each candidate is rejected if `..` segments push it outside the
     // intended root: `path.join` normalizes traversal but does not enforce
     // containment, so a request like `GET /../etc/passwd` would otherwise
-    // be served straight off the filesystem.
+    // be served straight off the filesystem. Keep this lexical so project
+    // symlinks to sibling asset directories behave like preview mode.
     let filePath: string | null = null;
     if (compiledDir) {
       const candidate = join(compiledDir, relativePath);
       if (
         existsSync(candidate) &&
-        isPathInside(candidate, compiledDir, { resolveSymlinks: true }) &&
+        isPathInside(candidate, compiledDir) &&
         statSync(candidate).isFile()
       ) {
         filePath = candidate;
@@ -553,7 +554,7 @@ export function createFileServer(options: FileServerOptions): Promise<FileServer
       const candidate = join(projectDir, relativePath);
       if (
         existsSync(candidate) &&
-        isPathInside(candidate, projectDir, { resolveSymlinks: true }) &&
+        isPathInside(candidate, projectDir) &&
         statSync(candidate).isFile()
       ) {
         filePath = candidate;
