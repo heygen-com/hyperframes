@@ -392,11 +392,7 @@ export const NLELayout = memo(function NLELayout({
           <div className="flex flex-col flex-shrink-0" style={{ height: timelineH }}>
             {/* Timeline tracks */}
             <div
-              // flex flex-col so the toolbar takes its natural height and the
-              // Timeline below fills the remainder. Without it, both children
-              // are block-laid and Timeline's `h-full` grabs the parent's full
-              // height, pushing the bottom edge of the scroll area below the
-              // viewport and clipping its scrollbar.
+              // flex-col: toolbar takes natural height, Timeline fills remainder.
               className="flex flex-col flex-1 min-h-0 overflow-hidden bg-neutral-950"
               onDoubleClick={(e) => {
                 if ((e.target as HTMLElement).closest("[data-clip]")) return;
@@ -405,7 +401,7 @@ export const NLELayout = memo(function NLELayout({
                 }
               }}
             >
-              {timelineToolbar}
+              <div className="flex-shrink-0">{timelineToolbar}</div>
               <Timeline
                 onSeek={seek}
                 onDrillDown={handleDrillDown}
