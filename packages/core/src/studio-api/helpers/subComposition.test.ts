@@ -23,6 +23,7 @@ describe("buildSubCompositionHtml", () => {
       "compositions/hero.html": `<template id="hero-template">
   <div data-composition-id="hero" data-width="1920" data-height="1080">
     <img src="../logo.png" alt="Logo" />
+    <div style="background-image: url('../poster.png')"></div>
     <style>
       @font-face {
         font-family: "Brand Sans";
@@ -42,8 +43,10 @@ describe("buildSubCompositionHtml", () => {
 
     expect(html).toContain('<base href="/api/projects/demo/preview/">');
     expect(html).toContain('src="logo.png"');
+    expect(html).toContain("background-image: url('poster.png')");
     expect(html).toContain('url("fonts/brand.woff2")');
     expect(html).not.toContain('src="../logo.png"');
+    expect(html).not.toContain("url('../poster.png')");
     expect(html).not.toContain('url("../fonts/brand.woff2")');
   });
 });

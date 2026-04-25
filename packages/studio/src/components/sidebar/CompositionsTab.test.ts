@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveCompositionPreviewScale } from "./CompositionsTab";
+import { resolveCompositionPreviewScale, resolveThumbnailSeekTime } from "./CompositionsTab";
 
 describe("resolveCompositionPreviewScale", () => {
   it("scales a 16:9 stage to fit the composition card", () => {
@@ -33,5 +33,20 @@ describe("resolveCompositionPreviewScale", () => {
         stageHeight: Number.NaN,
       }),
     ).toBeCloseTo(80 / 1920);
+  });
+});
+
+describe("resolveThumbnailSeekTime", () => {
+  it("uses the default 3s frame for compositions longer than 3s", () => {
+    expect(resolveThumbnailSeekTime(6)).toBe(3);
+  });
+
+  it("uses the midpoint for compositions shorter than 3s", () => {
+    expect(resolveThumbnailSeekTime(2)).toBe(1);
+  });
+
+  it("falls back to the default 3s frame when duration is unknown", () => {
+    expect(resolveThumbnailSeekTime(null)).toBe(3);
+    expect(resolveThumbnailSeekTime(Number.NaN)).toBe(3);
   });
 });
