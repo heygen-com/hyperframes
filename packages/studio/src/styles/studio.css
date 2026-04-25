@@ -2,6 +2,15 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Studio is a dark-only UI — pin the user-agent color scheme to dark so that
+ * browser-native chrome (scrollbars, form controls, focus rings) picks the
+ * matching palette instead of defaulting to light against our #0a0a0a body.
+ */
+:root {
+  color-scheme: dark;
+}
+
 body {
   margin: 0;
   padding: 0;
