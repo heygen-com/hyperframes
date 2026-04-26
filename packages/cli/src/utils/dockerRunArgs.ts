@@ -39,8 +39,11 @@ export function buildDockerRunArgs(input: DockerRunArgsInput): string[] {
     "--platform",
     "linux/amd64",
     "--shm-size=2g",
-    // GPU encoding requires host GPU passthrough.
-    ...(options.gpu ? ["--gpus", "all"] : []),
+    // GPU encoding (--gpu) needs NVENC; hardware frame capture (--gpu-capture)
+    // needs ANGLE talking to the host GPU. Either flag, on its own, requires
+    // `--gpus all` — without it, Chromium silently falls back to swiftshader
+    // inside the container and the user gets no perf benefit.
+    ...(options.gpu || options.gpuCapture ? ["--gpus", "all"] : []),
     "-v",
     `${projectDir}:/project:ro`,
     "-v",

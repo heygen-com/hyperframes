@@ -133,14 +133,16 @@ describe("buildDockerRunArgs", () => {
     expect(args).not.toContain("--gpu-capture");
   });
 
-  it("--gpu-capture is independent of --gpu (each forwards on its own)", () => {
+  it("--gpu-capture and --gpu forward independently into the container", () => {
+    // The two CLI flags do separate things (NVENC encode vs hardware frame
+    // capture) — each is forwarded on its own so the containerized CLI can
+    // re-enable just the one the user asked for.
     const captureOnly = buildDockerRunArgs({
       ...FIXED_INPUT,
       options: { ...BASE, gpuCapture: true },
     });
     expect(captureOnly).toContain("--gpu-capture");
     expect(captureOnly).not.toContain("--gpu");
-    expect(captureOnly).not.toContain("--gpus");
 
     const encodeOnly = buildDockerRunArgs({
       ...FIXED_INPUT,
@@ -150,20 +152,34 @@ describe("buildDockerRunArgs", () => {
     expect(encodeOnly).not.toContain("--gpu-capture");
   });
 
-  it("requests host GPU passthrough only when gpu is enabled", () => {
+  // Footgun caught in PR #471 review: --gpu-capture without --gpu used to
+  // forward the flag into the container but never request host GPU passthrough,
+  // so Chromium silently fell back to swiftshader. Either flag on its own
+  // implies `--gpus all` now.
+  it("requests host GPU passthrough when --gpu OR --gpu-capture is enabled", () => {
     const off = buildDockerRunArgs({ ...FIXED_INPUT, options: BASE });
     expect(off).not.toContain("--gpus");
-    expect(off).not.toContain("--gpu");
 
-    const on = buildDockerRunArgs({
+    const encodeOnly = buildDockerRunArgs({
       ...FIXED_INPUT,
       options: { ...BASE, gpu: true },
     });
-    // `--gpus all` is a docker run flag (host passthrough); `--gpu` is the
-    // hyperframes CLI flag forwarded into the container — both must be set.
-    expect(on).toContain("--gpus");
-    expect(on).toContain("all");
-    expect(on).toContain("--gpu");
+    expect(encodeOnly).toContain("--gpus");
+    expect(encodeOnly).toContain("all");
+
+    const captureOnly = buildDockerRunArgs({
+      ...FIXED_INPUT,
+      options: { ...BASE, gpuCapture: true },
+    });
+    expect(captureOnly).toContain("--gpus");
+    expect(captureOnly).toContain("all");
+
+    // `--gpus all` should appear exactly once even when both flags are set.
+    const both = buildDockerRunArgs({
+      ...FIXED_INPUT,
+      options: { ...BASE, gpu: true, gpuCapture: true },
+    });
+    expect(both.filter((a) => a === "--gpus")).toHaveLength(1);
   });
 
   it("forwards every renderer-shaped option (regression tripwire for silent drops)", () => {
