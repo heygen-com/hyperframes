@@ -50,6 +50,7 @@ export {
   releaseBrowser,
   resolveHeadlessShellPath,
   buildChromeArgs,
+  resolveAngleBackend,
   ENABLE_BROWSER_POOL,
   type BuildChromeArgsOptions,
   type CaptureMode,

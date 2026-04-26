@@ -72,17 +72,13 @@ export async function captureWebsite(
   const { ensureBrowser } = await import("../browser/manager.js");
   const browser = await ensureBrowser();
   const puppeteer = await import("puppeteer-core");
+  const { resolveAngleBackend } = await import("@hyperframes/engine");
   // Honor HYPERFRAMES_GPU_CAPTURE for parity with the render command's
-  // --gpu-capture flag. On Windows use D3D11, macOS Metal, Linux OpenGL.
+  // --gpu-capture flag. Backend selection lives in the engine so capture
+  // and the render pipeline pick the same flag on every platform.
   const gpuCapture =
     process.env.HYPERFRAMES_GPU_CAPTURE === "true" || process.env.HYPERFRAMES_GPU_CAPTURE === "1";
-  const angleBackend = !gpuCapture
-    ? "--use-angle=swiftshader"
-    : process.platform === "win32"
-      ? "--use-angle=d3d11"
-      : process.platform === "darwin"
-        ? "--use-angle=metal"
-        : "--use-angle=opengl";
+  const angleBackend = resolveAngleBackend(gpuCapture);
   const chromeBrowser = await puppeteer.default.launch({
     headless: true,
     executablePath: browser.executablePath,

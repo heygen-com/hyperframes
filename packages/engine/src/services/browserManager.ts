@@ -246,7 +246,7 @@ export interface BuildChromeArgsOptions {
  * cost of requiring working GPU drivers. SwiftShader is the safe software
  * fallback used when `gpuCapture` is disabled.
  */
-function resolveAngleBackend(gpuCapture: boolean): string {
+export function resolveAngleBackend(gpuCapture: boolean): string {
   if (!gpuCapture) return "--use-angle=swiftshader";
   switch (process.platform) {
     case "win32":
