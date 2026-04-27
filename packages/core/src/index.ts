@@ -161,6 +161,17 @@ export type { FrameAdapter, FrameAdapterContext } from "./adapters/types";
 export type { GSAPTimelineLike, CreateGSAPFrameAdapterOptions } from "./adapters/gsap";
 export { createGSAPFrameAdapter } from "./adapters/gsap";
 
+// Generator
+export type { SceneRunnerOptions } from "./runtime/generator";
+export { SceneRunner, animate, delay } from "./runtime/generator";
+
+// Reactive Signals
+export { Signal, createSignal } from "./runtime/signals";
+
+// Code Morpher
+export type { DiffLine } from "./runtime/codeMorpher";
+export { CodeMorpher } from "./runtime/codeMorpher";
+
 // Text measurement
 export { fitTextFontSize } from "./text/index.js";
 export type { FitTextOptions, FitTextResult } from "./text/index.js";

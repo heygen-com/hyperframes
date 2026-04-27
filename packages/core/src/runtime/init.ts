@@ -3,6 +3,7 @@ import { initRuntimeAnalytics, emitAnalyticsEvent } from "./analytics";
 import { createCssAdapter } from "./adapters/css";
 import { createGsapAdapter } from "./adapters/gsap";
 import { createLottieAdapter } from "./adapters/lottie";
+import { createProceduralAdapter } from "./adapters/procedural";
 import { createThreeAdapter } from "./adapters/three";
 import { createWaapiAdapter } from "./adapters/waapi";
 import { refreshRuntimeMediaCache, syncRuntimeMedia } from "./media";
@@ -1553,6 +1554,7 @@ export function initSandboxRuntimeModular(): void {
     createLottieAdapter(),
     createThreeAdapter(),
     createGsapAdapter({ getTimeline: () => state.capturedTimeline }),
+    createProceduralAdapter({ getCanonicalFps: () => state.canonicalFps }),
   ] as RuntimeDeterministicAdapter[];
   installRuntimeErrorDiagnostics();
   runAdapters("discover");
