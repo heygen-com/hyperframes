@@ -468,6 +468,32 @@ export function applyRenderModeHints(
 }
 
 /**
+ * Crop an rgb48le buffer to a sub-region. Returns a new Buffer containing
+ * only the cropped pixels.
+ */
+function cropRgb48le(
+  src: Buffer,
+  srcW: number,
+  srcH: number,
+  cropX: number,
+  cropY: number,
+  cropW: number,
+  cropH: number,
+): Buffer {
+  const BPP = 6;
+  const dst = Buffer.alloc(cropW * cropH * BPP);
+  for (let row = 0; row < cropH; row++) {
+    const srcRow = cropY + row;
+    if (srcRow < 0 || srcRow >= srcH) continue;
+    const srcOff = (srcRow * srcW + cropX) * BPP;
+    const dstOff = row * cropW * BPP;
+    const copyLen = Math.min(cropW, srcW - cropX) * BPP;
+    if (copyLen > 0) src.copy(dst, dstOff, srcOff, srcOff + copyLen);
+  }
+  return dst;
+}
+
+/**
  * Blit a single HDR video layer onto an rgb48le canvas.
  *
  * Shared between the normal-frame compositing path (compositeToBuffer)
@@ -523,8 +549,41 @@ function blitHdrVideoLayer(
     const hasBorderRadius = br[0] > 0 || br[1] > 0 || br[2] > 0 || br[3] > 0;
     const borderRadiusParam = hasBorderRadius ? br : undefined;
 
+    // Apply ancestor overflow:hidden clip rect by constraining the blit
+    // bounds. For the no-transform (region) path, we crop the source
+    // image and adjust the destination position. For the affine path,
+    // clip rect support is not yet implemented (would require per-pixel
+    // scissor in the affine blit); log a warning and skip clipping.
+    let blitX = el.x;
+    let blitY = el.y;
+    let blitSrcX = 0;
+    let blitSrcY = 0;
+    let blitW = srcW;
+    let blitH = srcH;
+    let clipped = false;
+
+    if (el.clipRect) {
+      const cr = el.clipRect;
+      const cx1 = Math.max(blitX, cr.x);
+      const cy1 = Math.max(blitY, cr.y);
+      const cx2 = Math.min(blitX + blitW, cr.x + cr.width);
+      const cy2 = Math.min(blitY + blitH, cr.y + cr.height);
+      if (cx2 <= cx1 || cy2 <= cy1) return; // fully clipped
+      blitSrcX = cx1 - blitX;
+      blitSrcY = cy1 - blitY;
+      blitW = cx2 - cx1;
+      blitH = cy2 - cy1;
+      blitX = cx1;
+      blitY = cy1;
+      clipped = true;
+    }
+
     if (viewportMatrix) {
-      // Use the full viewport transform (handles scale, rotation, translate)
+      if (clipped && log) {
+        log.debug(
+          `HDR clip rect on affine-transformed element ${el.id} — clip not applied (affine scissor not yet supported)`,
+        );
+      }
       blitRgb48leAffine(
         canvas,
         hdrRgb,
@@ -536,8 +595,22 @@ function blitHdrVideoLayer(
         el.opacity < 0.999 ? el.opacity : undefined,
         borderRadiusParam,
       );
+    } else if (clipped) {
+      // Crop the source buffer to the clipped region before blitting
+      const croppedBuf = cropRgb48le(hdrRgb, srcW, srcH, blitSrcX, blitSrcY, blitW, blitH);
+      blitRgb48leRegion(
+        canvas,
+        croppedBuf,
+        blitX,
+        blitY,
+        blitW,
+        blitH,
+        width,
+        height,
+        el.opacity < 0.999 ? el.opacity : undefined,
+        borderRadiusParam,
+      );
     } else {
-      // No transform — identity position, use fast region blit
       blitRgb48leRegion(
         canvas,
         hdrRgb,
@@ -729,7 +802,13 @@ async function compositeHdrFrame(
     ? fullStacking.filter((e) => elementFilter.has(e.id))
     : fullStacking;
 
-  const layers = groupIntoLayers(filteredStacking);
+  // Skip elements with zero effective opacity — their parent (e.g. a scene
+  // div) may have been faded out via GSAP. Without this filter, child
+  // data-start elements inside an opacity:0 parent still get composited as
+  // independent layers, painting over content that should be above them.
+  const visibleStacking = filteredStacking.filter((e) => e.opacity > 0);
+
+  const layers = groupIntoLayers(visibleStacking);
 
   const shouldLog = debugDumpEnabled && debugFrameIndex >= 0;
   if (shouldLog) {

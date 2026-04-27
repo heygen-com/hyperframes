@@ -255,6 +255,13 @@ export interface ElementStackingInfo {
    * Falls back to the CSS default `"50% 50%"` (center) when unset.
    */
   objectPosition: string;
+  /**
+   * Clip rect from the nearest ancestor with `overflow: hidden` (or
+   * `clip`/`clip-path`). When set, the HDR compositor must scissor the
+   * element's blit to this viewport-relative rectangle. `null` means no
+   * clipping ancestor was found — render at full element bounds.
+   */
+  clipRect: { x: number; y: number; width: number; height: number } | null;
 }
 
 /**
@@ -355,6 +362,39 @@ export async function queryElementStacking(
         current = current.parentElement;
       }
       return [0, 0, 0, 0];
+    }
+
+    // Walk ancestors to find the tightest overflow:hidden clip rect.
+    // Returns null if no clipping ancestor exists.
+    function getClipRect(
+      node: Element,
+    ): { x: number; y: number; width: number; height: number } | null {
+      let current: Element | null = node.parentElement;
+      let clip: { x: number; y: number; width: number; height: number } | null = null;
+      while (current) {
+        const cs = window.getComputedStyle(current);
+        if (cs.overflow === "hidden" || cs.overflow === "clip") {
+          const r = current.getBoundingClientRect();
+          const ancestor = {
+            x: Math.round(r.x),
+            y: Math.round(r.y),
+            width: Math.round(r.width),
+            height: Math.round(r.height),
+          };
+          if (!clip) {
+            clip = ancestor;
+          } else {
+            // Intersect with existing clip
+            const x1 = Math.max(clip.x, ancestor.x);
+            const y1 = Math.max(clip.y, ancestor.y);
+            const x2 = Math.min(clip.x + clip.width, ancestor.x + ancestor.width);
+            const y2 = Math.min(clip.y + clip.height, ancestor.y + ancestor.height);
+            clip = { x: x1, y: y1, width: Math.max(0, x2 - x1), height: Math.max(0, y2 - y1) };
+          }
+        }
+        current = current.parentElement;
+      }
+      return clip;
     }
 
     // Walk up the DOM multiplying each ancestor's opacity. GSAP animates
@@ -472,6 +512,7 @@ export async function queryElementStacking(
         // can rely on a populated value.
         objectFit: style.objectFit || "fill",
         objectPosition: style.objectPosition || "50% 50%",
+        clipRect: isHdrEl ? getClipRect(el) : null,
       });
     }
     return results;

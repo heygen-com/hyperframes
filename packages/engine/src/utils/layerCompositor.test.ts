@@ -2,7 +2,12 @@ import { describe, expect, it } from "vitest";
 import { groupIntoLayers } from "./layerCompositor.js";
 import type { ElementStackingInfo } from "../services/videoFrameInjector.js";
 
-function makeEl(id: string, zIndex: number, isHdr: boolean): ElementStackingInfo {
+function makeEl(
+  id: string,
+  zIndex: number,
+  isHdr: boolean,
+  overrides?: Partial<ElementStackingInfo>,
+): ElementStackingInfo {
   return {
     id,
     zIndex,
@@ -17,6 +22,10 @@ function makeEl(id: string, zIndex: number, isHdr: boolean): ElementStackingInfo
     isHdr,
     transform: "none",
     borderRadius: [0, 0, 0, 0],
+    objectFit: "cover",
+    objectPosition: "50% 50%",
+    clipRect: null,
+    ...overrides,
   };
 }
 
