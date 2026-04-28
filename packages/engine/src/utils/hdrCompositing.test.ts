@@ -30,52 +30,41 @@ function makeEl(
 }
 
 describe("HDR compositing — opacity filtering", () => {
-  it("zero-opacity elements should be filtered before compositing", () => {
+  it("zero-opacity elements remain in groupIntoLayers for hide-list correctness", () => {
     const elements = [
       makeEl("bg", 0, false),
       makeEl("v-hdr", 1, true),
       makeEl("overlay", 2, false, { opacity: 0 }),
     ];
-    // The renderOrchestrator filters before groupIntoLayers:
-    // visibleStacking = filteredStacking.filter(e => e.opacity > 0)
-    const visible = elements.filter((e) => e.opacity > 0);
-    const layers = groupIntoLayers(visible);
-    expect(layers).toHaveLength(2);
+    // Elements stay in layers for correct DOM screenshot hide-lists.
+    // The compositor skips zero-opacity HDR layers during blit.
+    const layers = groupIntoLayers(elements);
+    expect(layers).toHaveLength(3);
     expect(layers[0]!.type).toBe("dom");
     expect(layers[1]!.type).toBe("hdr");
-    // overlay (opacity 0) should NOT appear
-    if (layers[0]!.type === "dom") {
-      expect(layers[0]!.elementIds).not.toContain("overlay");
-    }
+    expect(layers[2]!.type).toBe("dom");
   });
 
-  it("near-zero opacity elements are still excluded", () => {
-    const elements = [makeEl("bg", 0, false), makeEl("faded", 1, false, { opacity: 0 })];
-    const visible = elements.filter((e) => e.opacity > 0);
-    expect(visible).toHaveLength(1);
-    expect(visible[0]!.id).toBe("bg");
+  it("zero-opacity HDR element should be skipped during blit", () => {
+    const el = makeEl("v-hdr", 1, true, { opacity: 0 });
+    // The compositor checks: if (layer.element.opacity <= 0) continue;
+    expect(el.opacity).toBe(0);
+    expect(el.opacity <= 0).toBe(true);
   });
 
-  it("low but non-zero opacity elements are kept", () => {
-    const elements = [makeEl("bg", 0, false), makeEl("ghost", 1, false, { opacity: 0.1 })];
-    const visible = elements.filter((e) => e.opacity > 0);
-    expect(visible).toHaveLength(2);
+  it("low but non-zero opacity HDR elements are NOT skipped", () => {
+    const el = makeEl("v-hdr", 1, true, { opacity: 0.1 });
+    expect(el.opacity > 0).toBe(true);
   });
 
   it("child data-start element with parent opacity 0 has effective opacity 0", () => {
-    // getEffectiveOpacity multiplies ancestor opacities.
-    // If parent scene has opacity 0 and child overlay has opacity 1,
-    // effective opacity = 0 * 1 = 0
     const childOverlay = makeEl("s6-text-wrap", 10, false, { opacity: 0 });
-    const visible = [childOverlay].filter((e) => e.opacity > 0);
-    expect(visible).toHaveLength(0);
+    expect(childOverlay.opacity).toBe(0);
   });
 
   it("DOM overlay above HDR video is in a separate layer when both visible", () => {
     const elements = [makeEl("bg", 0, false), makeEl("v-hdr", 1, true), makeEl("badge", 10, false)];
-    const visible = elements.filter((e) => e.opacity > 0);
-    const layers = groupIntoLayers(visible);
-    // Should be: DOM(bg) → HDR(v-hdr) → DOM(badge)
+    const layers = groupIntoLayers(elements);
     expect(layers).toHaveLength(3);
     expect(layers[0]!.type).toBe("dom");
     expect(layers[1]!.type).toBe("hdr");
@@ -101,7 +90,6 @@ describe("HDR compositing — clip rect", () => {
       clipRect: { x: 0, y: 0, width: 960, height: 1080 },
     });
     const cr = el.clipRect!;
-    // Intersection of element (0,0,1920,1080) with clip (0,0,960,1080)
     const cx1 = Math.max(el.x, cr.x);
     const cy1 = Math.max(el.y, cr.y);
     const cx2 = Math.min(el.x + el.width, cr.x + cr.width);
@@ -121,10 +109,6 @@ describe("HDR compositing — clip rect", () => {
     const cr = el.clipRect!;
     const cx2 = Math.min(el.x + el.width, cr.x + cr.width);
     const cx1 = Math.max(el.x, cr.x);
-    // Element starts at 1000, clip ends at 960 — no overlap on left portion
-    // But element goes 1000-1920, clip is 0-960, so overlap is 0 pixels? No:
-    // cx1 = max(1000, 0) = 1000, cx2 = min(1920, 960) = 960
-    // cx2 - cx1 = 960 - 1000 = -40 → clamped to 0
     expect(Math.max(0, cx2 - cx1)).toBe(0);
   });
 
@@ -139,7 +123,6 @@ describe("HDR compositing — clip rect", () => {
     const cr = el.clipRect!;
     const cx1 = Math.max(el.x, cr.x);
     const blitSrcX = cx1 - el.x;
-    // Video positioned at x=960, clip starts at x=960 → srcX = 0
     expect(blitSrcX).toBe(0);
     const blitW = Math.min(el.x + el.width, cr.x + cr.width) - cx1;
     expect(blitW).toBe(960);

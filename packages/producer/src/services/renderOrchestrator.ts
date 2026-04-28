@@ -802,13 +802,10 @@ async function compositeHdrFrame(
     ? fullStacking.filter((e) => elementFilter.has(e.id))
     : fullStacking;
 
-  // Skip elements with zero effective opacity — their parent (e.g. a scene
-  // div) may have been faded out via GSAP. Without this filter, child
-  // data-start elements inside an opacity:0 parent still get composited as
-  // independent layers, painting over content that should be above them.
-  const visibleStacking = filteredStacking.filter((e) => e.opacity > 0);
-
-  const layers = groupIntoLayers(visibleStacking);
+  // Zero-opacity elements stay in the stacking for correct hide-list
+  // generation (their <img> replacements must be hidden from sibling
+  // screenshots). The actual blit is skipped in the compositing loop below.
+  const layers = groupIntoLayers(filteredStacking);
 
   const shouldLog = debugDumpEnabled && debugFrameIndex >= 0;
   if (shouldLog) {
@@ -836,6 +833,8 @@ async function compositeHdrFrame(
 
   for (const [layerIdx, layer] of layers.entries()) {
     if (layer.type === "hdr") {
+      // Skip zero-opacity HDR elements — their parent scene may have faded out.
+      if (layer.element.opacity <= 0) continue;
       const before = shouldLog ? countNonZeroRgb48(canvas) : 0;
       const isHdrImage = nativeHdrImageIds.has(layer.element.id);
       if (isHdrImage) {
