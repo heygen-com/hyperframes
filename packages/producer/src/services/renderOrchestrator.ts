@@ -222,8 +222,8 @@ export interface RenderConfig {
   crf?: number;
   /** Target video bitrate (e.g. "10M"). Mutually exclusive with `crf`. */
   videoBitrate?: string;
-  /** Enable HDR color space probing on video/image sources. */
-  hdr?: boolean;
+  /** HDR rendering mode. `auto` probes sources and enables HDR if any HDR content is found. */
+  hdrMode?: "auto" | "force-hdr" | "force-sdr";
 }
 
 export interface RenderPerfSummary {
@@ -1477,7 +1477,7 @@ export async function executeRenderJob(
     // overhead on SDR-only compositions.
     const nativeHdrVideoIds = new Set<string>();
     const videoTransfers = new Map<string, HdrTransfer>();
-    if (job.config.hdr && composition.videos.length > 0) {
+    if (job.config.hdrMode !== "force-sdr" && composition.videos.length > 0) {
       await Promise.all(
         composition.videos.map(async (v) => {
           let videoPath = v.src;
@@ -1504,7 +1504,7 @@ export async function executeRenderJob(
     const imageTransfers = new Map<string, HdrTransfer>();
     const hdrImageSrcPaths = new Map<string, string>();
     const imageColorSpaces: (VideoColorSpace | null)[] = [];
-    if (job.config.hdr && composition.images.length > 0) {
+    if (job.config.hdrMode !== "force-sdr" && composition.images.length > 0) {
       const probed = await Promise.all(
         composition.images.map(async (img) => {
           let imgPath = img.src;
@@ -1573,14 +1573,24 @@ export async function executeRenderJob(
     // dominant transfer (PQ if any PQ source is present, otherwise HLG).
     // Image-only compositions can trigger HDR output without any video.
     let effectiveHdr: { transfer: HdrTransfer } | undefined;
-    if (job.config.hdr) {
+    {
+      const hdrMode = job.config.hdrMode ?? "auto";
       const videoColorSpaces = (extractionResult?.extracted ?? []).map(
         (ext) => ext.metadata.colorSpace,
       );
       const allColorSpaces = [...videoColorSpaces, ...imageColorSpaces];
-      if (allColorSpaces.length > 0) {
-        const info = analyzeCompositionHdr(allColorSpaces);
-        if (info.hasHdr && info.dominantTransfer) {
+      const info = allColorSpaces.length > 0 ? analyzeCompositionHdr(allColorSpaces) : null;
+
+      if (hdrMode === "force-sdr") {
+        effectiveHdr = undefined;
+      } else if (hdrMode === "force-hdr") {
+        if (info?.hasHdr && info.dominantTransfer) {
+          effectiveHdr = { transfer: info.dominantTransfer };
+        } else {
+          effectiveHdr = { transfer: "hlg" };
+        }
+      } else {
+        if (info?.hasHdr && info.dominantTransfer) {
           effectiveHdr = { transfer: info.dominantTransfer };
         }
       }
@@ -1591,10 +1601,19 @@ export async function executeRenderJob(
       );
       effectiveHdr = undefined;
     }
-    if (effectiveHdr) {
-      log.info(
-        `[Render] HDR source detected — output: ${effectiveHdr.transfer.toUpperCase()} (BT.2020, 10-bit H.265)`,
-      );
+    {
+      const hdrMode = job.config.hdrMode ?? "auto";
+      if (effectiveHdr) {
+        const reason =
+          hdrMode === "force-hdr" ? "forced by --hdr flag" : "auto-detected from source(s)";
+        log.info(
+          `[Render] HDR ${reason} — output: ${effectiveHdr.transfer.toUpperCase()} (BT.2020, 10-bit H.265)`,
+        );
+      } else if (hdrMode === "force-sdr") {
+        log.info("[Render] SDR forced by --sdr flag");
+      } else {
+        log.info("[Render] No HDR sources detected — rendering SDR");
+      }
     }
 
     // ── Stage 3: Audio processing ───────────────────────────────────────

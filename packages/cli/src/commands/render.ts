@@ -87,7 +87,12 @@ export default defineCommand({
     },
     hdr: {
       type: "boolean",
-      description: "Enable HDR: probe sources for PQ/HLG, output H.265 10-bit BT.2020",
+      description: "Force HDR output even if no HDR sources are detected",
+      default: false,
+    },
+    sdr: {
+      type: "boolean",
+      description: "Force SDR output even if HDR sources are detected",
       default: false,
     },
     crf: {
@@ -301,6 +306,12 @@ export default defineCommand({
       }
     }
 
+    // ── Validate HDR/SDR mutual exclusion ────────────────────────────────
+    if (args.hdr && args.sdr) {
+      console.error("Error: --hdr and --sdr are mutually exclusive.");
+      process.exit(1);
+    }
+
     // ── Render ────────────────────────────────────────────────────────────
     if (useDocker) {
       await renderDocker(project.dir, outputPath, {
@@ -309,7 +320,7 @@ export default defineCommand({
         format,
         workers: workerCount,
         gpu: useGpu,
-        hdr: args.hdr ?? false,
+        hdrMode: args.sdr ? "force-sdr" : args.hdr ? "force-hdr" : "auto",
         crf,
         videoBitrate,
         quiet,
@@ -321,7 +332,7 @@ export default defineCommand({
         format,
         workers: workerCount,
         gpu: useGpu,
-        hdr: args.hdr ?? false,
+        hdrMode: args.sdr ? "force-sdr" : args.hdr ? "force-hdr" : "auto",
         crf,
         videoBitrate,
         quiet,
@@ -337,7 +348,7 @@ interface RenderOptions {
   format: "mp4" | "webm" | "mov";
   workers: number;
   gpu: boolean;
-  hdr: boolean;
+  hdrMode: "auto" | "force-hdr" | "force-sdr";
   crf?: number;
   videoBitrate?: string;
   quiet: boolean;
@@ -461,7 +472,7 @@ async function renderDocker(
       format: options.format,
       workers: options.workers,
       gpu: options.gpu,
-      hdr: options.hdr,
+      hdrMode: options.hdrMode,
       crf: options.crf,
       videoBitrate: options.videoBitrate,
       quiet: options.quiet,
@@ -527,7 +538,7 @@ async function renderLocal(
     format: options.format,
     workers: options.workers,
     useGpu: options.gpu,
-    hdr: options.hdr,
+    hdrMode: options.hdrMode,
     crf: options.crf,
     videoBitrate: options.videoBitrate,
   });

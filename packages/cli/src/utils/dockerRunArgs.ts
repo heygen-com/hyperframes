@@ -24,7 +24,7 @@ export interface DockerRenderOptions {
   format: "mp4" | "webm" | "mov";
   workers: number;
   gpu: boolean;
-  hdr: boolean;
+  hdrMode: "auto" | "force-hdr" | "force-sdr";
   crf?: number;
   videoBitrate?: string;
   quiet: boolean;
@@ -60,6 +60,7 @@ export function buildDockerRunArgs(input: DockerRunArgsInput): string[] {
     ...(options.videoBitrate ? ["--video-bitrate", options.videoBitrate] : []),
     ...(options.quiet ? ["--quiet"] : []),
     ...(options.gpu ? ["--gpu"] : []),
-    ...(options.hdr ? ["--hdr"] : []),
+    ...(options.hdrMode === "force-hdr" ? ["--hdr"] : []),
+    ...(options.hdrMode === "force-sdr" ? ["--sdr"] : []),
   ];
 }

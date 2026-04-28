@@ -7,7 +7,7 @@ const BASE: DockerRenderOptions = {
   format: "mp4",
   workers: 4,
   gpu: false,
-  hdr: false,
+  hdrMode: "auto",
   crf: undefined,
   videoBitrate: undefined,
   quiet: false,
@@ -53,7 +53,14 @@ describe("buildDockerRunArgs", () => {
     expect(
       buildDockerRunArgs({
         ...FIXED_INPUT,
-        options: { ...BASE, gpu: true, hdr: true, crf: 18, videoBitrate: undefined, quiet: true },
+        options: {
+          ...BASE,
+          gpu: true,
+          hdrMode: "force-hdr",
+          crf: 18,
+          videoBitrate: undefined,
+          quiet: true,
+        },
       }),
     ).toMatchInlineSnapshot(`
       [
@@ -92,17 +99,28 @@ describe("buildDockerRunArgs", () => {
   // Regression for the original PR feedback: --hdr was silently dropped from
   // the docker arg array. Keep this assertion explicit (in addition to the
   // snapshot above) so the failure message points directly at the flag.
-  it("forwards --hdr to the container when hdr is enabled", () => {
+  it("forwards --hdr to the container when hdrMode is force-hdr", () => {
     const args = buildDockerRunArgs({
       ...FIXED_INPUT,
-      options: { ...BASE, hdr: true },
+      options: { ...BASE, hdrMode: "force-hdr" },
     });
     expect(args).toContain("--hdr");
+    expect(args).not.toContain("--sdr");
   });
 
-  it("omits --hdr when hdr is disabled", () => {
+  it("forwards --sdr to the container when hdrMode is force-sdr", () => {
+    const args = buildDockerRunArgs({
+      ...FIXED_INPUT,
+      options: { ...BASE, hdrMode: "force-sdr" },
+    });
+    expect(args).toContain("--sdr");
+    expect(args).not.toContain("--hdr");
+  });
+
+  it("omits --hdr and --sdr when hdrMode is auto", () => {
     const args = buildDockerRunArgs({ ...FIXED_INPUT, options: BASE });
     expect(args).not.toContain("--hdr");
+    expect(args).not.toContain("--sdr");
   });
 
   it("requests host GPU passthrough only when gpu is enabled", () => {
@@ -130,7 +148,7 @@ describe("buildDockerRunArgs", () => {
         format: "webm",
         workers: 8,
         gpu: true,
-        hdr: true,
+        hdrMode: "force-hdr",
         crf: 16,
         videoBitrate: undefined,
         quiet: true,
