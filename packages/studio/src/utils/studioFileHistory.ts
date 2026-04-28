@@ -36,10 +36,26 @@ export async function saveProjectFilesWithHistory({
   const changedPaths = Object.keys(snapshots);
   if (changedPaths.length === 0) return [];
 
-  for (const path of changedPaths) {
-    await writeFile(path, snapshots[path].after);
-  }
+  const writtenPaths: string[] = [];
+  try {
+    for (const path of changedPaths) {
+      await writeFile(path, snapshots[path].after);
+      writtenPaths.push(path);
+    }
 
-  await recordEdit({ label, kind, coalesceKey, files: snapshots });
+    await recordEdit({ label, kind, coalesceKey, files: snapshots });
+  } catch (error) {
+    try {
+      for (const path of writtenPaths.reverse()) {
+        await writeFile(path, snapshots[path].before);
+      }
+    } catch (rollbackError) {
+      throw new AggregateError(
+        [error, rollbackError],
+        "Failed to save project files and rollback did not complete",
+      );
+    }
+    throw error;
+  }
   return changedPaths;
 }
