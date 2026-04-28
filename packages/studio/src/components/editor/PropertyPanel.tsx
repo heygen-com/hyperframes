@@ -64,6 +64,7 @@ interface PropertyPanelProps {
   onImportAssets?: (files: FileList) => Promise<string[]>;
   fontAssets?: ImportedFontAsset[];
   onImportFonts?: (files: FileList | File[]) => Promise<ImportedFontAsset[]>;
+  allowLayoutDetach?: boolean;
 }
 
 const FIELD =
@@ -1984,6 +1985,7 @@ export const PropertyPanel = memo(function PropertyPanel({
   onImportAssets,
   fontAssets = [],
   onImportFonts,
+  allowLayoutDetach = true,
 }: PropertyPanelProps) {
   const styles = element?.computedStyles ?? EMPTY_STYLES;
   const selectionColors = useMemo(() => collectSelectionColors(styles), [styles]);
@@ -2020,7 +2022,7 @@ export const PropertyPanel = memo(function PropertyPanel({
         <p className="text-sm font-medium text-neutral-200">Select an element in the preview.</p>
         <p className="mt-2 max-w-[260px] text-xs leading-5 text-neutral-500">
           The inspector is tuned for direct DOM edits with safer geometry controls, color picking,
-          and cleaner Paper-style grouping.
+          and cleaner grouped layer controls.
         </p>
       </div>
     );
@@ -2036,7 +2038,9 @@ export const PropertyPanel = memo(function PropertyPanel({
   const sourceLabel = element.id ? `#${element.id}` : element.selector;
   const showEditableSections = element.capabilities.canEditStyles;
   const disabledMoveReason =
-    element.capabilities.reasonIfDisabled && !element.capabilities.canDetachFromLayout
+    allowLayoutDetach &&
+    element.capabilities.reasonIfDisabled &&
+    !element.capabilities.canDetachFromLayout
       ? element.capabilities.reasonIfDisabled
       : null;
 
@@ -2131,7 +2135,7 @@ export const PropertyPanel = memo(function PropertyPanel({
               </button>
             </div>
           )}
-          {element.capabilities.canDetachFromLayout && (
+          {allowLayoutDetach && element.capabilities.canDetachFromLayout && (
             <div className="mt-4 flex min-w-0 flex-wrap items-center justify-between gap-3 border-l border-amber-500/40 pl-3">
               <div className="min-w-0 text-[11px] leading-5 text-neutral-400">
                 <div className="font-medium text-neutral-200">
