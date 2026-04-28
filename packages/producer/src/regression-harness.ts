@@ -600,7 +600,7 @@ async function runTestSuite(
       workers: suite.meta.renderConfig.workers,
       useGpu: false,
       debug: false,
-      hdrMode: suite.meta.renderConfig.hdr ? "force-hdr" : "auto",
+      hdr: suite.meta.renderConfig.hdr ?? false,
     });
 
     await executeRenderJob(job, tempSrcDir, renderedOutputPath);
