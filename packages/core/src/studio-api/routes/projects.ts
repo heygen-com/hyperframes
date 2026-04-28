@@ -25,6 +25,6 @@ export function registerProjectRoutes(api: Hono, adapter: StudioApiAdapter): voi
     const project = await adapter.resolveProject(c.req.param("id"));
     if (!project) return c.json({ error: "not found" }, 404);
     const files = walkDir(project.dir);
-    return c.json({ id: project.id, files });
+    return c.json({ id: project.id, dir: project.dir, title: project.title, files });
   });
 }
