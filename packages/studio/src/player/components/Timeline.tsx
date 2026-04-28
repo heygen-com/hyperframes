@@ -35,7 +35,7 @@ const TRACK_H = 72;
 const RULER_H = 24;
 const CLIP_Y = 3; // vertical inset inside track
 const CLIP_HANDLE_W = 18;
-const TIMELINE_SCROLL_BUFFER = 24;
+const TIMELINE_SCROLL_BUFFER = 20;
 
 interface TrackVisualStyle extends TimelineTrackStyle {
   icon: ReactNode;
@@ -214,6 +214,14 @@ export function getTimelinePlayheadLeft(time: number, pixelsPerSecond: number): 
 
 export function getTimelineCanvasHeight(trackCount: number): number {
   return RULER_H + Math.max(0, trackCount) * TRACK_H + TIMELINE_SCROLL_BUFFER;
+}
+
+export function shouldShowTimelineShortcutHint(
+  scrollHeight: number,
+  clientHeight: number,
+): boolean {
+  if (!Number.isFinite(scrollHeight) || !Number.isFinite(clientHeight)) return true;
+  return scrollHeight - clientHeight <= 1;
 }
 
 export function shouldHandleTimelineDeleteKey(input: {
@@ -426,30 +434,51 @@ export const Timeline = memo(function Timeline({
   onDeleteElementRef.current = onDeleteElement;
   const suppressClickRef = useRef(false);
   const [showPopover, setShowPopover] = useState(false);
+  const [showShortcutHint, setShowShortcutHint] = useState(true);
   const [viewportWidth, setViewportWidth] = useState(0);
   const roRef = useRef<ResizeObserver | null>(null);
+  const shortcutHintRafRef = useRef(0);
+  const syncShortcutHintVisibility = useCallback(() => {
+    const scroll = scrollRef.current;
+    setShowShortcutHint(
+      scroll ? shouldShowTimelineShortcutHint(scroll.scrollHeight, scroll.clientHeight) : true,
+    );
+  }, []);
+  const scheduleShortcutHintVisibilitySync = useCallback(() => {
+    if (shortcutHintRafRef.current) cancelAnimationFrame(shortcutHintRafRef.current);
+    shortcutHintRafRef.current = requestAnimationFrame(() => {
+      shortcutHintRafRef.current = 0;
+      syncShortcutHintVisibility();
+    });
+  }, [syncShortcutHintVisibility]);
 
   // Callback ref: sets up ResizeObserver when the DOM element actually mounts.
   // useMountEffect can't work here because the component returns null on first
   // render (timelineReady=false), so containerRef.current is null when the
   // effect fires and the ResizeObserver is never created.
-  const setContainerRef = useCallback((el: HTMLDivElement | null) => {
-    if (roRef.current) {
-      roRef.current.disconnect();
-      roRef.current = null;
-    }
-    containerRef.current = el;
-    if (!el) return;
-    setViewportWidth(el.clientWidth);
-    roRef.current = new ResizeObserver(([entry]) => {
-      setViewportWidth(entry.contentRect.width);
-    });
-    roRef.current.observe(el);
-  }, []);
+  const setContainerRef = useCallback(
+    (el: HTMLDivElement | null) => {
+      if (roRef.current) {
+        roRef.current.disconnect();
+        roRef.current = null;
+      }
+      containerRef.current = el;
+      if (!el) return;
+      setViewportWidth(el.clientWidth);
+      scheduleShortcutHintVisibilitySync();
+      roRef.current = new ResizeObserver(([entry]) => {
+        setViewportWidth(entry.contentRect.width);
+        scheduleShortcutHintVisibilitySync();
+      });
+      roRef.current.observe(el);
+    },
+    [scheduleShortcutHintVisibilitySync],
+  );
 
   // Clean up ResizeObserver on unmount
   useMountEffect(() => () => {
     roRef.current?.disconnect();
+    if (shortcutHintRafRef.current) cancelAnimationFrame(shortcutHintRafRef.current);
   });
 
   // Effective duration: max of store duration and the furthest element end.
@@ -494,6 +523,7 @@ export const Timeline = memo(function Timeline({
     }
     return [...trackOrder, draggedClip.previewTrack].sort((a, b) => a - b);
   }, [draggedClip, trackOrder]);
+  const totalH = getTimelineCanvasHeight(displayTrackOrder.length);
   const selectedElement = useMemo(
     () => elements.find((element) => (element.key ?? element.id) === selectedElementId) ?? null,
     [elements, selectedElementId],
@@ -1010,6 +1040,10 @@ export const Timeline = memo(function Timeline({
   );
   const majorTickInterval =
     major.length >= 2 ? Math.max(0.25, major[1] - major[0]) : effectiveDuration;
+  useEffect(() => {
+    syncShortcutHintVisibility();
+  }, [syncShortcutHintVisibility, timelineReady, elements.length, totalH]);
+
   const getPreviewElement = useCallback(
     (element: TimelineElement): TimelineElement => {
       if (
@@ -1237,7 +1271,6 @@ export const Timeline = memo(function Timeline({
     );
   }
 
-  const totalH = getTimelineCanvasHeight(displayTrackOrder.length);
   const draggedElement = draggedClip?.element ?? null;
   const activeDraggedElement =
     draggedClip?.started === true && draggedElement
@@ -1311,7 +1344,7 @@ export const Timeline = memo(function Timeline({
     <div
       ref={setContainerRef}
       aria-label="Timeline"
-      className={`border-t select-none h-full overflow-hidden ${shiftHeld ? "cursor-crosshair" : "cursor-default"}`}
+      className={`relative border-t select-none h-full overflow-hidden ${shiftHeld ? "cursor-crosshair" : "cursor-default"}`}
       style={{
         touchAction: "pan-x pan-y",
         background: theme.shellBackground,
@@ -1650,8 +1683,8 @@ export const Timeline = memo(function Timeline({
         </div>
       </div>
 
-      {/* Keyboard shortcut hint — always visible */}
-      {!showPopover && !rangeSelection && (
+      {/* Keyboard shortcut hint */}
+      {showShortcutHint && !showPopover && !rangeSelection && (
         <div className="absolute bottom-2 right-3 pointer-events-none z-20">
           <div
             className="flex items-center gap-1.5 px-2 py-1 rounded-md border"
