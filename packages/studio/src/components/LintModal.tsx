@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { XIcon, WarningIcon, CheckCircleIcon, CaretRightIcon } from "@phosphor-icons/react";
+import { copyTextToClipboard } from "../utils/clipboard";
 
 export interface LintFinding {
   severity: "error" | "warning";
@@ -30,12 +31,10 @@ export function LintModal({
       return line;
     });
     const text = `Fix these HyperFrames lint issues for project "${projectId}":\n\nProject path: ${window.location.href}\n\n${lines.join("\n\n")}`;
-    try {
-      await navigator.clipboard.writeText(text);
+    const copiedText = await copyTextToClipboard(text);
+    if (copiedText) {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    } catch {
-      // ignore
     }
   };
 

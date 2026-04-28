@@ -36,6 +36,7 @@ import { CaptionTimeline } from "./captions/components/CaptionTimeline";
 import { useCaptionStore } from "./captions/store";
 import { useCaptionSync } from "./captions/hooks/useCaptionSync";
 import { parseCaptionComposition } from "./captions/parser";
+import { copyTextToClipboard } from "./utils/clipboard";
 import {
   applyPatchByTarget,
   readAttributeByTarget,
@@ -622,6 +623,7 @@ export function StudioApp() {
   const [rightCollapsed, setRightCollapsed] = useState(true);
   const [rightPanelTab, setRightPanelTab] = useState<RightPanelTab>("renders");
   const [domEditSelection, setDomEditSelection] = useState<DomEditSelection | null>(null);
+  const [agentPromptTagSnippet, setAgentPromptTagSnippet] = useState<string | undefined>();
   const [copiedAgentPrompt, setCopiedAgentPrompt] = useState(false);
   const [agentModalOpen, setAgentModalOpen] = useState(false);
   const [previewIframe, setPreviewIframe] = useState<HTMLIFrameElement | null>(null);
@@ -1565,6 +1567,7 @@ export function StudioApp() {
   const applyDomSelection = useCallback(
     (selection: DomEditSelection | null, options?: { revealPanel?: boolean }) => {
       setDomEditSelection(selection);
+      setAgentPromptTagSnippet(undefined);
       setCopiedAgentPrompt(false);
       if (selection) {
         if (options?.revealPanel !== false) {
@@ -1625,6 +1628,34 @@ export function StudioApp() {
       });
     },
     [activeCompPath, compIdToSrc, fileTree, isMasterView, timelineElements],
+  );
+
+  const preloadAgentPromptSnippet = useCallback(
+    async (selection: DomEditSelection) => {
+      const pid = projectIdRef.current;
+      if (!pid) return;
+
+      const targetPath = selection.sourceFile || activeCompPath || "index.html";
+      try {
+        const response = await fetch(
+          `/api/projects/${pid}/files/${encodeURIComponent(targetPath)}`,
+        );
+        if (!response.ok) return;
+
+        const data = (await response.json()) as { content?: string };
+        const html = data.content;
+        const tagSnippet =
+          typeof html === "string" ? readTagSnippetByTarget(html, selection) : undefined;
+
+        setAgentPromptTagSnippet((current) => {
+          if (domEditSelectionRef.current !== selection) return current;
+          return tagSnippet;
+        });
+      } catch {
+        // Runtime outerHTML is still available as a synchronous copy fallback.
+      }
+    },
+    [activeCompPath],
   );
 
   const resolveImportedFontAsset = useCallback(
@@ -2029,24 +2060,17 @@ export function StudioApp() {
 
   const handleAskAgent = useCallback(() => {
     if (!domEditSelection) return;
+    setAgentPromptTagSnippet(undefined);
+    void preloadAgentPromptSnippet(domEditSelection);
     setAgentModalOpen(true);
-  }, [domEditSelection]);
+  }, [domEditSelection, preloadAgentPromptSnippet]);
 
   const handleAgentModalSubmit = useCallback(
     async (userInstruction: string) => {
       if (!domEditSelection) return;
 
-      const pid = projectIdRef.current;
-      if (!pid) return;
-
       const targetPath = domEditSelection.sourceFile || activeCompPath || "index.html";
-      const response = await fetch(`/api/projects/${pid}/files/${encodeURIComponent(targetPath)}`);
-      if (!response.ok) throw new Error(`Failed to read ${targetPath}`);
-
-      const data = (await response.json()) as { content?: string };
-      const html = data.content;
-      const tagSnippet =
-        typeof html === "string" ? readTagSnippetByTarget(html, domEditSelection) : undefined;
+      const tagSnippet = agentPromptTagSnippet ?? domEditSelection.element.outerHTML;
       const prompt = buildElementAgentPrompt({
         selection: domEditSelection,
         currentTime,
@@ -2055,18 +2079,10 @@ export function StudioApp() {
         sourceFilePath: toProjectAbsolutePath(projectDir, targetPath),
       });
 
-      try {
-        await navigator.clipboard.writeText(prompt);
-      } catch {
-        const textarea = document.createElement("textarea");
-        textarea.value = prompt;
-        textarea.setAttribute("readonly", "true");
-        textarea.style.position = "fixed";
-        textarea.style.opacity = "0";
-        document.body.appendChild(textarea);
-        textarea.select();
-        document.execCommand("copy");
-        document.body.removeChild(textarea);
+      const copied = await copyTextToClipboard(prompt);
+      if (!copied) {
+        showToast("Could not copy prompt to clipboard.", "error");
+        return;
       }
 
       setAgentModalOpen(false);
@@ -2074,7 +2090,7 @@ export function StudioApp() {
       setCopiedAgentPrompt(true);
       copiedAgentTimerRef.current = setTimeout(() => setCopiedAgentPrompt(false), 1600);
     },
-    [activeCompPath, currentTime, domEditSelection, projectDir],
+    [activeCompPath, agentPromptTagSnippet, currentTime, domEditSelection, projectDir, showToast],
   );
 
   const handlePreviewIframeRef = useCallback(
