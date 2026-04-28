@@ -14,6 +14,7 @@ interface OverlayRect {
 interface DomEditOverlayProps {
   iframeRef: RefObject<HTMLIFrameElement | null>;
   selection: DomEditSelection | null;
+  allowCanvasMovement?: boolean;
   onCanvasMouseDown: (
     event: React.MouseEvent<HTMLDivElement>,
     options?: { preferClipAncestor?: boolean },
@@ -125,6 +126,7 @@ interface BlockedMoveState {
 export const DomEditOverlay = memo(function DomEditOverlay({
   iframeRef,
   selection,
+  allowCanvasMovement = true,
   onCanvasMouseDown,
   onCanvasDoubleClick,
   onSelectedDoubleClick,
@@ -403,9 +405,10 @@ export const DomEditOverlay = memo(function DomEditOverlay({
               top: overlayRect.top,
               width: overlayRect.width,
               height: overlayRect.height,
-              cursor: selection.capabilities.canMove ? "move" : "default",
+              cursor: allowCanvasMovement && selection.capabilities.canMove ? "move" : "default",
             }}
             onPointerDown={(e) => {
+              if (!allowCanvasMovement) return;
               if (selection.capabilities.canMove) {
                 startGesture("drag", e);
                 return;
@@ -424,7 +427,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
             onDoubleClick={onSelectedDoubleClick}
           >
             {/* Resize handle — bottom-right corner */}
-            {selection.capabilities.canResize && (
+            {allowCanvasMovement && selection.capabilities.canResize && (
               <div
                 className="absolute -right-1.5 -bottom-1.5 w-3 h-3 rounded-sm bg-studio-accent border border-studio-accent/60"
                 style={{ cursor: "se-resize", touchAction: "none" }}
