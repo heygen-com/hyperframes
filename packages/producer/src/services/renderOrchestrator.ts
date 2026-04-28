@@ -584,9 +584,9 @@ function blitHdrVideoLayer(
     // translation (e.g. `left: 960px` → `matrix(1,0,0,1,960,0)`). The region
     // blit handles translation via el.x/el.y, so we only need the affine path
     // for actual scale/rotation transforms.
+    // parseTransformMatrix returns a 6-element array or null — length check unnecessary.
     const isTranslationOnly = !!(
       viewportMatrix &&
-      viewportMatrix.length >= 6 &&
       Math.abs(viewportMatrix[0]! - 1) < 0.001 &&
       Math.abs(viewportMatrix[1]!) < 0.001 &&
       Math.abs(viewportMatrix[2]!) < 0.001 &&
@@ -680,6 +680,9 @@ function blitHdrImageLayer(
   const buf = hdrImageBuffers.get(el.id);
   if (!buf) {
     return;
+  }
+  if (el.clipRect && log) {
+    log.debug(`HDR clip rect on image element ${el.id} — clip not yet supported for images`);
   }
 
   try {
