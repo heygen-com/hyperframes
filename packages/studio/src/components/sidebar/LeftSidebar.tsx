@@ -88,40 +88,45 @@ export const LeftSidebar = memo(function LeftSidebar({
       style={{ width }}
     >
       {/* Tabs — Code first */}
-      <div className="flex border-b border-neutral-800/50 flex-shrink-0">
-        <button
-          type="button"
-          onClick={() => selectTab("code")}
-          className={`flex-1 py-2 text-[11px] font-medium transition-colors ${
-            tab === "code"
-              ? "text-neutral-200 border-b-2 border-studio-accent"
-              : "text-neutral-500 hover:text-neutral-400"
-          }`}
+      <div className="border-b border-neutral-800/50 px-3 py-3 flex-shrink-0">
+        <div
+          className="grid gap-1 rounded-[18px] bg-neutral-900 p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]"
+          style={{ gridTemplateColumns: "0.9fr 1.25fr 0.9fr" }}
         >
-          Code
-        </button>
-        <button
-          type="button"
-          onClick={() => selectTab("compositions")}
-          className={`flex-1 py-2 text-[11px] font-medium transition-colors ${
-            tab === "compositions"
-              ? "text-neutral-200 border-b-2 border-studio-accent"
-              : "text-neutral-500 hover:text-neutral-400"
-          }`}
-        >
-          Compositions
-        </button>
-        <button
-          type="button"
-          onClick={() => selectTab("assets")}
-          className={`flex-1 py-2 text-[11px] font-medium transition-colors ${
-            tab === "assets"
-              ? "text-neutral-200 border-b-2 border-studio-accent"
-              : "text-neutral-500 hover:text-neutral-400"
-          }`}
-        >
-          Assets
-        </button>
+          <button
+            type="button"
+            onClick={() => selectTab("code")}
+            className={`rounded-[14px] px-2.5 py-2 text-[10px] font-semibold transition-all ${
+              tab === "code"
+                ? "bg-neutral-800 text-white"
+                : "text-neutral-500 hover:text-neutral-200"
+            }`}
+          >
+            Code
+          </button>
+          <button
+            type="button"
+            onClick={() => selectTab("compositions")}
+            className={`rounded-[14px] px-2.5 py-2 text-[10px] font-semibold transition-all ${
+              tab === "compositions"
+                ? "bg-neutral-800 text-white"
+                : "text-neutral-500 hover:text-neutral-200"
+            }`}
+          >
+            Compositions
+          </button>
+          <button
+            type="button"
+            onClick={() => selectTab("assets")}
+            className={`rounded-[14px] px-2.5 py-2 text-[10px] font-semibold transition-all ${
+              tab === "assets"
+                ? "bg-neutral-800 text-white"
+                : "text-neutral-500 hover:text-neutral-200"
+            }`}
+          >
+            Assets
+          </button>
+        </div>
       </div>
 
       {/* Tab content */}

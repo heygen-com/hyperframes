@@ -24,7 +24,7 @@ Two related issues compounded it:
 
 We want the same code to be the render layer _and_ the data layer, because we need a UI for humans on top of the agentic experience.
 
-HTML is both the render layer and the editable source of truth — the same DOM is what you see and what you edit. That makes a real visual editor (selection, drag-and-drop, property panels, timeline) much more natural to build, the same way [Paper.Design](https://paper.design) does it. With Remotion, the source of truth is code plus a build step, so round-tripping through a visual editor is painful and fragile. The Remotion team has made progress here, but it's much more difficult to build a real-time editor on top of React than on top of HTML.
+HTML is both the render layer and the editable source of truth — the same DOM is what you see and what you edit. That makes a real visual editor (selection, drag-and-drop, property panels, timeline) much more natural to build. With Remotion, the source of truth is code plus a build step, so round-tripping through a visual editor is painful and fragile. The Remotion team has made progress here, but it's much more difficult to build a real-time editor on top of React than on top of HTML.
 
 We architected Hyperframes to be the most native to agents while making it easy to build a human interface on top.
 
@@ -119,7 +119,7 @@ Hyperframes' renderer runs on a single machine today. The architecture doesn't b
 
 The DOM you render is the DOM you edit. [Hyperframes Studio](/packages/studio) previews compositions in a live iframe, and because the renderer and the editor share one DOM, direct manipulation works against the same source of truth the render pipeline consumes. That UX — click to select, drag to reposition, edit properties in a panel — already ships for captions today, with broader element coverage building out from the same architectural foundation.
 
-Building the same editor on top of React is harder because the source of truth is code plus a build step. Round-tripping a visual edit back to JSX means re-compiling. That's why tools like [Paper.Design](https://paper.design) chose HTML as the editable source in the first place.
+Building the same editor on top of React is harder because the source of truth is code plus a build step. Round-tripping a visual edit back to JSX means re-compiling, which makes HTML a better fit for direct visual editing.
 
 ### HDR output
 

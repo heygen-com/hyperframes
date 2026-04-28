@@ -2,6 +2,7 @@ import { useState, useCallback, useRef, useEffect, useMemo, type ReactNode } fro
 import { useMountEffect } from "./hooks/useMountEffect";
 import { NLELayout } from "./components/nle/NLELayout";
 import { SourceEditor } from "./components/editor/SourceEditor";
+import { PropertyPanel } from "./components/editor/PropertyPanel";
 import { LeftSidebar } from "./components/sidebar/LeftSidebar";
 import { RenderQueue } from "./components/renders/RenderQueue";
 import { useRenderQueue } from "./components/renders/useRenderQueue";
@@ -27,6 +28,7 @@ import { CaptionTimeline } from "./captions/components/CaptionTimeline";
 import { useCaptionStore } from "./captions/store";
 import { useCaptionSync } from "./captions/hooks/useCaptionSync";
 import { parseCaptionComposition } from "./captions/parser";
+import { useElementPicker } from "./hooks/useElementPicker";
 import { applyPatchByTarget, readAttributeByTarget } from "./utils/sourcePatcher";
 import {
   buildTrackZIndexMap,
@@ -50,6 +52,8 @@ interface AppToast {
   message: string;
   tone: "error" | "info";
 }
+
+type RightPanelTab = "design" | "renders";
 
 const DEFAULT_TIMELINE_ASSET_DURATION: Record<TimelineAssetKind, number> = {
   image: 3,
@@ -131,6 +135,7 @@ export function StudioApp() {
   const [editingFile, setEditingFile] = useState<EditingFile | null>(null);
   const [activeCompPath, setActiveCompPath] = useState<string | null>(null);
   const [fileTree, setFileTree] = useState<string[]>([]);
+  const [workspaceFiles, setWorkspaceFiles] = useState<Record<string, string>>({});
   const [compIdToSrc, setCompIdToSrc] = useState<Map<string, string>>(new Map());
   const renderQueue = useRenderQueue(projectId);
   const captionEditMode = useCaptionStore((s) => s.isEditMode);
@@ -142,6 +147,7 @@ export function StudioApp() {
   const [rightWidth, setRightWidth] = useState(400);
   const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [rightCollapsed, setRightCollapsed] = useState(true);
+  const [rightPanelTab, setRightPanelTab] = useState<RightPanelTab>("renders");
   // Auto-enter caption edit mode when the iframe contains .caption-group elements.
   // This is a subscription to external events (postMessage from runtime) — useEffect
   // is appropriate here. The runtime fires "state"/"timeline" messages after all
@@ -510,6 +516,15 @@ export function StudioApp() {
   const previewIframeRef = useRef<HTMLIFrameElement | null>(null);
   const consoleErrorsRef = useRef<LintFinding[]>([]);
 
+  const syncPreviewIframeRefFromDom = useCallback(() => {
+    const iframe = document
+      .querySelector("hyperframes-player")
+      ?.shadowRoot?.querySelector("iframe");
+    if (iframe instanceof HTMLIFrameElement) {
+      previewIframeRef.current = iframe;
+    }
+  }, []);
+
   // Listen for external file changes (user editing HTML outside the editor).
   // In dev: use Vite HMR. In embedded/production: use SSE from /api/events.
   useMountEffect(() => {
@@ -547,6 +562,40 @@ export function StudioApp() {
     };
   }, [projectId]);
 
+  // Keep the inspector's source-patching map fresh enough to persist picked edits.
+  // eslint-disable-next-line no-restricted-syntax
+  useEffect(() => {
+    if (!projectId) return;
+    const htmlFiles = fileTree.filter((path) => path.endsWith(".html"));
+    if (htmlFiles.length === 0) {
+      setWorkspaceFiles({});
+      return;
+    }
+
+    let cancelled = false;
+    Promise.all(
+      htmlFiles.map(async (path) => {
+        const response = await fetch(
+          `/api/projects/${projectId}/files/${encodeURIComponent(path)}`,
+        );
+        if (!response.ok) return null;
+        const data = (await response.json()) as { content?: string };
+        return typeof data.content === "string" ? ([path, data.content] as const) : null;
+      }),
+    )
+      .then((entries) => {
+        if (cancelled) return;
+        setWorkspaceFiles(Object.fromEntries(entries.filter((entry) => entry != null)));
+      })
+      .catch(() => {
+        if (!cancelled) setWorkspaceFiles({});
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, fileTree]);
+
   const handleFileSelect = useCallback((path: string) => {
     const pid = projectIdRef.current;
     if (!pid) return;
@@ -575,6 +624,10 @@ export function StudioApp() {
     if (!pid) return;
     const path = editingPathRef.current;
     if (!path) return;
+
+    if (path.endsWith(".html")) {
+      setWorkspaceFiles((files) => ({ ...files, [path]: content }));
+    }
 
     // Debounce the server write (600ms)
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
@@ -786,6 +839,54 @@ export function StudioApp() {
     setAppToast({ message, tone });
     toastTimerRef.current = setTimeout(() => setAppToast(null), 4000);
   }, []);
+
+  const handlePickedFileSync = useCallback(
+    (files: Record<string, string>) => {
+      const pid = projectIdRef.current;
+      if (!pid) return;
+
+      setWorkspaceFiles((currentFiles) => ({ ...currentFiles, ...files }));
+      for (const [path, content] of Object.entries(files)) {
+        if (editingPathRef.current === path) {
+          setEditingFile({ path, content });
+        }
+      }
+
+      void Promise.all(
+        Object.entries(files).map(async ([path, content]) => {
+          const response = await fetch(`/api/projects/${pid}/files/${encodeURIComponent(path)}`, {
+            method: "PUT",
+            headers: { "Content-Type": "text/plain" },
+            body: content,
+          });
+          if (!response.ok) {
+            throw new Error(`Failed to save ${path}`);
+          }
+        }),
+      )
+        .then(() => {
+          setRefreshKey((k) => k + 1);
+        })
+        .catch((error) => {
+          showToast(error instanceof Error ? error.message : "Failed to save inspector edit");
+        });
+    },
+    [showToast],
+  );
+
+  const {
+    isPickMode,
+    pickedElement,
+    enablePick,
+    disablePick,
+    clearPick,
+    setStyle: setPickedStyle,
+    setDataAttr: setPickedDataAttr,
+    setTextContent: setPickedTextContent,
+  } = useElementPicker(previewIframeRef, {
+    workspaceFiles,
+    onSyncFiles: handlePickedFileSync,
+  });
 
   const handleTimelineElementDelete = useCallback(
     async (element: TimelineElement) => {
@@ -1395,9 +1496,19 @@ export function StudioApp() {
             <span>Timeline</span>
           </button>
           <button
-            onClick={() => setRightCollapsed((v) => !v)}
+            type="button"
+            onClick={() => {
+              if (rightCollapsed || rightPanelTab !== "design") {
+                syncPreviewIframeRefFromDom();
+                setRightPanelTab("design");
+                setRightCollapsed(false);
+                return;
+              }
+              clearPick();
+              setRightCollapsed(true);
+            }}
             className={`h-7 flex items-center gap-1.5 px-2.5 rounded-md text-[11px] font-medium border transition-colors ${
-              !rightCollapsed
+              !rightCollapsed && rightPanelTab === "design"
                 ? "text-studio-accent bg-studio-accent/10 border-studio-accent/30"
                 : "text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800 border-transparent"
             }`}
@@ -1413,8 +1524,38 @@ export function StudioApp() {
               <circle cx="12" cy="12" r="10" />
               <polygon points="10 8 16 12 10 16" fill="currentColor" stroke="none" />
             </svg>
-            Renders
-            {renderQueue.jobs.length > 0 ? ` (${renderQueue.jobs.length})` : ""}
+            Inspector
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              if (rightCollapsed || rightPanelTab !== "renders") {
+                setRightPanelTab("renders");
+                setRightCollapsed(false);
+                return;
+              }
+              setRightCollapsed(true);
+            }}
+            className={`h-7 flex items-center gap-1.5 px-2.5 rounded-md text-[11px] font-medium border transition-colors ${
+              !rightCollapsed && rightPanelTab === "renders"
+                ? "text-studio-accent bg-studio-accent/10 border-studio-accent/30"
+                : "text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800 border-transparent"
+            }`}
+          >
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
+              <rect x="4" y="4" width="16" height="16" rx="2" />
+              <path d="M8 8h8" />
+              <path d="M8 12h8" />
+              <path d="M8 16h5" />
+            </svg>
+            Renders{renderQueue.jobs.length > 0 ? ` (${renderQueue.jobs.length})` : ""}
           </button>
         </div>
       </div>
@@ -1576,7 +1717,7 @@ export function StudioApp() {
           />
         </div>
 
-        {/* Right panel: Renders-only (resizable, collapsible via header Renders button) */}
+        {/* Right panel: inspector and renders */}
         {!rightCollapsed && (
           <>
             <div
@@ -1595,14 +1736,65 @@ export function StudioApp() {
               {captionEditMode ? (
                 <CaptionPropertyPanel iframeRef={previewIframeRef} />
               ) : (
-                <RenderQueue
-                  jobs={renderQueue.jobs}
-                  projectId={projectId}
-                  onDelete={renderQueue.deleteRender}
-                  onClearCompleted={renderQueue.clearCompleted}
-                  onStartRender={(format, quality) => renderQueue.startRender(30, quality, format)}
-                  isRendering={renderQueue.isRendering}
-                />
+                <>
+                  <div className="flex items-center gap-1 border-b border-neutral-800 px-3 py-2">
+                    <button
+                      type="button"
+                      onClick={() => setRightPanelTab("design")}
+                      className={`h-8 rounded-xl px-3 text-[11px] font-medium transition-colors ${
+                        rightPanelTab === "design"
+                          ? "bg-neutral-800 text-white"
+                          : "text-neutral-500 hover:bg-neutral-800/70 hover:text-neutral-200"
+                      }`}
+                    >
+                      Design
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setRightPanelTab("renders")}
+                      className={`h-8 rounded-xl px-3 text-[11px] font-medium transition-colors ${
+                        rightPanelTab === "renders"
+                          ? "bg-neutral-800 text-white"
+                          : "text-neutral-500 hover:bg-neutral-800/70 hover:text-neutral-200"
+                      }`}
+                    >
+                      {renderQueue.jobs.length > 0
+                        ? `Renders (${renderQueue.jobs.length})`
+                        : "Renders"}
+                    </button>
+                  </div>
+                  <div className="min-h-0 flex-1">
+                    {rightPanelTab === "design" ? (
+                      <PropertyPanel
+                        element={pickedElement}
+                        isPickMode={isPickMode}
+                        onEnablePick={() => {
+                          syncPreviewIframeRefFromDom();
+                          enablePick();
+                        }}
+                        onDisablePick={() => {
+                          syncPreviewIframeRefFromDom();
+                          disablePick();
+                        }}
+                        onClearPick={clearPick}
+                        onSetStyle={setPickedStyle}
+                        onSetDataAttr={setPickedDataAttr}
+                        onSetText={setPickedTextContent}
+                      />
+                    ) : (
+                      <RenderQueue
+                        jobs={renderQueue.jobs}
+                        projectId={projectId}
+                        onDelete={renderQueue.deleteRender}
+                        onClearCompleted={renderQueue.clearCompleted}
+                        onStartRender={(format, quality) =>
+                          renderQueue.startRender(30, quality, format)
+                        }
+                        isRendering={renderQueue.isRendering}
+                      />
+                    )}
+                  </div>
+                </>
               )}
             </div>
           </>
