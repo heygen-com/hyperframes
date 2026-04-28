@@ -423,6 +423,7 @@ export function blitRgb48leRegion(
   if (sw <= 0 || sh <= 0) return;
 
   const op = opacity ?? 1.0;
+  if (op <= 0) return;
 
   const x0 = Math.max(0, dx);
   const y0 = Math.max(0, dy);
@@ -441,6 +442,33 @@ export function blitRgb48leRegion(
       const srcRowOff = ((srcOffsetY + y) * sw + srcOffsetX) * 6;
       const dstRowOff = ((y0 + y) * canvasWidth + x0) * 6;
       source.copy(canvas, dstRowOff, srcRowOff, srcRowOff + clippedW * 6);
+    }
+  } else if (!hasMask) {
+    const invOp = 1 - op;
+    for (let y = 0; y < y1 - y0; y++) {
+      let srcOff = ((srcOffsetY + y) * sw + srcOffsetX) * 6;
+      let dstOff = ((y0 + y) * canvasWidth + x0) * 6;
+      for (let x = 0; x < clippedW; x++) {
+        const sr = source[srcOff]! | (source[srcOff + 1]! << 8);
+        const sg = source[srcOff + 2]! | (source[srcOff + 3]! << 8);
+        const sb = source[srcOff + 4]! | (source[srcOff + 5]! << 8);
+        const dr = canvas[dstOff]! | (canvas[dstOff + 1]! << 8);
+        const dg = canvas[dstOff + 2]! | (canvas[dstOff + 3]! << 8);
+        const db = canvas[dstOff + 4]! | (canvas[dstOff + 5]! << 8);
+
+        const r = (sr * op + dr * invOp + 0.5) | 0;
+        const g = (sg * op + dg * invOp + 0.5) | 0;
+        const b = (sb * op + db * invOp + 0.5) | 0;
+        canvas[dstOff] = r & 0xff;
+        canvas[dstOff + 1] = r >>> 8;
+        canvas[dstOff + 2] = g & 0xff;
+        canvas[dstOff + 3] = g >>> 8;
+        canvas[dstOff + 4] = b & 0xff;
+        canvas[dstOff + 5] = b >>> 8;
+
+        srcOff += 6;
+        dstOff += 6;
+      }
     }
   } else {
     for (let y = 0; y < y1 - y0; y++) {
@@ -528,6 +556,7 @@ export function blitRgb48leAffine(
   const invTy = -(invB * tx + invD * ty);
 
   const op = opacity ?? 1.0;
+  if (op <= 0) return;
 
   const hasMask = borderRadius !== undefined;
 

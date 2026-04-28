@@ -775,6 +775,25 @@ describe("blitRgb48leRegion", () => {
     expect(canvas.readUInt16LE(0)).toBe(20000);
   });
 
+  it("blends opacity over existing destination pixels", () => {
+    const canvas = makeHdrFrame(2, 1, 10000, 20000, 30000);
+    const source = makeHdrFrame(2, 1, 50000, 10000, 60000);
+    blitRgb48leRegion(canvas, source, 0, 0, 2, 1, 2, 1, 0.25);
+    expect(canvas.readUInt16LE(0)).toBe(20000);
+    expect(canvas.readUInt16LE(2)).toBe(17500);
+    expect(canvas.readUInt16LE(4)).toBe(37500);
+    expect(canvas.readUInt16LE(6)).toBe(20000);
+  });
+
+  it("skips exact-zero opacity without mutating the destination", () => {
+    const canvas = makeHdrFrame(1, 1, 10000, 20000, 30000);
+    const source = makeHdrFrame(1, 1, 50000, 50000, 50000);
+    blitRgb48leRegion(canvas, source, 0, 0, 1, 1, 1, 1, 0);
+    expect(canvas.readUInt16LE(0)).toBe(10000);
+    expect(canvas.readUInt16LE(2)).toBe(20000);
+    expect(canvas.readUInt16LE(4)).toBe(30000);
+  });
+
   it("no-op for zero-size region", () => {
     const canvas = Buffer.alloc(4 * 4 * 6);
     const source = makeHdrFrame(2, 2, 10000, 20000, 30000);
