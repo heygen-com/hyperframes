@@ -578,22 +578,22 @@ function blitHdrVideoLayer(
       clipped = true;
     }
 
-    // Detect identity matrix — route through the region path (which supports
-    // clip rects) instead of the affine path. Chrome reports a viewport matrix
-    // for all HDR elements, including untransformed ones inside overflow:hidden
-    // wrappers. An identity matrix means no visual transform is applied.
-    const isIdentity = !!(
+    // Detect translation-only matrix (no scale/rotation) — route through the
+    // region path which supports clip rects. Chrome reports a viewport matrix
+    // for all HDR elements, even untransformed ones or those with only layout
+    // translation (e.g. `left: 960px` → `matrix(1,0,0,1,960,0)`). The region
+    // blit handles translation via el.x/el.y, so we only need the affine path
+    // for actual scale/rotation transforms.
+    const isTranslationOnly = !!(
       viewportMatrix &&
       viewportMatrix.length >= 6 &&
       Math.abs(viewportMatrix[0]! - 1) < 0.001 &&
       Math.abs(viewportMatrix[1]!) < 0.001 &&
       Math.abs(viewportMatrix[2]!) < 0.001 &&
-      Math.abs(viewportMatrix[3]! - 1) < 0.001 &&
-      Math.abs(viewportMatrix[4]!) < 0.001 &&
-      Math.abs(viewportMatrix[5]!) < 0.001
+      Math.abs(viewportMatrix[3]! - 1) < 0.001
     );
 
-    if (viewportMatrix && !isIdentity) {
+    if (viewportMatrix && !isTranslationOnly) {
       if (clipped && log) {
         log.debug(
           `HDR clip rect on affine-transformed element ${el.id} — clip not applied (affine scissor not yet supported)`,
