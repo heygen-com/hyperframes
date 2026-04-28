@@ -53,6 +53,7 @@ import {
   CaretRight,
   ClipboardText,
   ArrowCounterClockwise,
+  ArrowClockwise,
   Gear,
 } from "@phosphor-icons/react";
 import type { Icon as PhosphorIcon, IconProps as PhosphorIconProps } from "@phosphor-icons/react";
@@ -127,4 +128,5 @@ export const ChevronDown = makeIcon(CaretDown);
 export const ChevronRight = makeIcon(CaretRight);
 export const ClipboardList = makeIcon(ClipboardText);
 export const RotateCcw = makeIcon(ArrowCounterClockwise);
+export const RotateCw = makeIcon(ArrowClockwise);
 export const Settings = makeIcon(Gear);
