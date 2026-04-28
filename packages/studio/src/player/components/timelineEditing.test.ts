@@ -248,7 +248,7 @@ describe("getTimelineEditCapabilities", () => {
     });
   });
 
-  it("disables move and trims for generic motion clips even when patchable", () => {
+  it("allows moving generic motion clips while keeping trims blocked", () => {
     expect(
       getTimelineEditCapabilities({
         tag: "section",
@@ -256,7 +256,7 @@ describe("getTimelineEditCapabilities", () => {
         selector: ".feature-card",
       }),
     ).toEqual({
-      canMove: false,
+      canMove: true,
       canTrimStart: false,
       canTrimEnd: false,
     });

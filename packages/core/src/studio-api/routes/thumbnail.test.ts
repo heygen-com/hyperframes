@@ -95,6 +95,24 @@ describe("registerThumbnailRoutes", () => {
     );
   });
 
+  it("forwards selector occurrence indexes to thumbnail generation", async () => {
+    const adapter = createAdapter();
+    const app = new Hono();
+    registerThumbnailRoutes(app, adapter);
+
+    const response = await app.request(
+      "http://localhost/projects/demo/thumbnail/index.html?t=1.2&selector=.card&selectorIndex=2",
+    );
+
+    expect(response.status).toBe(200);
+    expect(adapter.generateThumbnail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        selector: ".card",
+        selectorIndex: 2,
+      }),
+    );
+  });
+
   it("keeps url thumbnail versions separated in the disk cache", async () => {
     const adapter = createAdapter();
     const app = new Hono();

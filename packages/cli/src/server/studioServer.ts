@@ -262,7 +262,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
         await new Promise((r) => setTimeout(r, 200));
         let clip: ScreenshotClip | undefined;
         if (opts.selector) {
-          clip = await page.evaluate(getElementScreenshotClip, opts.selector);
+          clip = await page.evaluate(getElementScreenshotClip, opts.selector, opts.selectorIndex);
         }
         const screenshot = (await page.screenshot(
           opts.format === "png"

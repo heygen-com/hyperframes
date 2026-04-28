@@ -233,7 +233,7 @@ export function getTimelineEditCapabilities(input: {
   const hasFiniteDuration = Number.isFinite(input.duration) && input.duration > 0;
   const hasDeterministicWindow = isDeterministicTimelineWindow(input);
   return {
-    canMove: canPatch && hasDeterministicWindow,
+    canMove: canPatch && (hasDeterministicWindow || hasFiniteDuration),
     canTrimEnd: canPatch && hasFiniteDuration && hasDeterministicWindow,
     canTrimStart: canPatch && hasFiniteDuration && canOffsetTrimClipStart(input),
   };

@@ -73,6 +73,7 @@ export interface StudioApiAdapter {
     previewUrl: string;
     selector?: string;
     format?: "jpeg" | "png";
+    selectorIndex?: number;
   }) => Promise<Buffer | null>;
 
   /** Optional: resolve session ID to project (multi-project mode). */

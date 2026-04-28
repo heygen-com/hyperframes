@@ -22,7 +22,7 @@ interface TimelineLike {
   isActive: () => boolean;
 }
 
-interface ClipManifestClip {
+export interface ClipManifestClip {
   id: string | null;
   label: string;
   start: number;

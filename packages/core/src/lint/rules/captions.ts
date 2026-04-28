@@ -12,7 +12,8 @@ export const captionRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> 
           content,
         );
       const hasCaptionLoop =
-        /forEach|\.forEach\s*\(/.test(content) && /createElement|caption|group|cg-/.test(content);
+        /forEach|\.forEach\s*\(/.test(content) &&
+        /karaoke|caption[-_]?(?:group|word|line|block)|cg-/.test(content);
       if (hasCaptionLoop && hasExitTween && !hasHardKill) {
         findings.push({
           code: "caption_exit_missing_hard_kill",

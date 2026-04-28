@@ -50,6 +50,28 @@ describe("caption rules", () => {
     expect(finding).toBeUndefined();
   });
 
+  it("does not warn for generic GSAP opacity exits in non-caption loops", () => {
+    const html = `
+<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080">
+    <script>
+      window.__timelines = window.__timelines || {};
+      var tl = gsap.timeline({ paused: true });
+      var sceneCaption = document.querySelector("#scene-caption");
+      CARDS.forEach(function(group, gi) {
+        var groupEl = document.createElement("div");
+        groupEl.id = "card-" + gi;
+        tl.to(groupEl, { opacity: 0, duration: 0.12 }, 2);
+      });
+      window.__timelines["main"] = tl;
+    </script>
+  </div>
+</body></html>`;
+    const result = lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "caption_exit_missing_hard_kill");
+    expect(finding).toBeUndefined();
+  });
+
   it("warns when caption group has nowrap without max-width", () => {
     const html = `
 <html><body>
