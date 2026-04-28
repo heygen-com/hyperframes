@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { EditHistoryStorageAdapter } from "../utils/editHistoryStorage";
 import { createMemoryEditHistoryStorage } from "../utils/editHistoryStorage";
-import { createPersistentEditHistoryController } from "./usePersistentEditHistory";
+import {
+  createPersistentEditHistoryController,
+  createPersistentEditHistoryStore,
+} from "./usePersistentEditHistory";
 
 describe("createPersistentEditHistoryController", () => {
   it("records history and reloads it for the same project", async () => {
@@ -84,5 +87,66 @@ describe("createPersistentEditHistoryController", () => {
     ).resolves.toBeUndefined();
 
     expect(controller.snapshot().canUndo).toBe(true);
+  });
+
+  it("serializes concurrent record edits against the latest state", async () => {
+    const storage = createMemoryEditHistoryStorage();
+    let timestamp = 100;
+    const store = createPersistentEditHistoryStore({
+      projectId: "project-1",
+      storage,
+      initialState: { undo: [], redo: [] },
+      now: () => timestamp++,
+      onChange: () => {},
+    });
+
+    await Promise.all([
+      store.recordEdit({
+        label: "Move layer",
+        kind: "manual",
+        files: { "index.html": { before: "a", after: "b" } },
+      }),
+      store.recordEdit({
+        label: "Resize layer",
+        kind: "manual",
+        files: { "index.html": { before: "b", after: "c" } },
+      }),
+    ]);
+
+    expect(store.snapshot().state.undo.map((entry) => entry.label)).toEqual([
+      "Move layer",
+      "Resize layer",
+    ]);
+  });
+
+  it("still coalesces concurrent source edits that share a coalesce key", async () => {
+    const storage = createMemoryEditHistoryStorage();
+    let timestamp = 100;
+    const store = createPersistentEditHistoryStore({
+      projectId: "project-1",
+      storage,
+      initialState: { undo: [], redo: [] },
+      now: () => timestamp++,
+      onChange: () => {},
+    });
+
+    await Promise.all([
+      store.recordEdit({
+        label: "Edit source",
+        kind: "source",
+        coalesceKey: "source:index.html",
+        files: { "index.html": { before: "a", after: "b" } },
+      }),
+      store.recordEdit({
+        label: "Edit source",
+        kind: "source",
+        coalesceKey: "source:index.html",
+        files: { "index.html": { before: "b", after: "c" } },
+      }),
+    ]);
+
+    expect(store.snapshot().state.undo).toHaveLength(1);
+    expect(store.snapshot().state.undo[0].files["index.html"].before).toBe("a");
+    expect(store.snapshot().state.undo[0].files["index.html"].after).toBe("c");
   });
 });
