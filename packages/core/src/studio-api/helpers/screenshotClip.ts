@@ -5,8 +5,15 @@ export interface ScreenshotClip {
   height: number;
 }
 
-export function getElementScreenshotClip(selector: string): ScreenshotClip | undefined {
-  const el = document.querySelector(selector);
+export function getElementScreenshotClip(
+  selector: string,
+  selectorIndex?: number,
+): ScreenshotClip | undefined {
+  const matches = Array.from(document.querySelectorAll(selector)).filter(
+    (el): el is HTMLElement => el instanceof HTMLElement,
+  );
+  const safeIndex = Math.max(0, Math.min(matches.length - 1, Math.floor(selectorIndex ?? 0)));
+  const el = matches[safeIndex] ?? null;
   if (!(el instanceof HTMLElement)) return undefined;
   const rect = el.getBoundingClientRect();
   if (rect.width < 4 || rect.height < 4) return undefined;

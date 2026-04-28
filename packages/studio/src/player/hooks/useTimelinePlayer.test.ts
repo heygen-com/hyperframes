@@ -13,6 +13,29 @@ import {
   shouldIgnorePlaybackShortcutTarget,
 } from "./useTimelinePlayer";
 
+function createDocument(markup: string): Document {
+  const window = new Window();
+  window.document.body.innerHTML = markup;
+  return window.document;
+}
+
+function createClip(overrides: Partial<ClipManifestClip>): ClipManifestClip {
+  return {
+    id: null,
+    label: "",
+    start: 0,
+    duration: 4,
+    track: 0,
+    kind: "element",
+    tagName: "div",
+    compositionId: null,
+    parentCompositionId: null,
+    compositionSrc: null,
+    assetUrl: null,
+    ...overrides,
+  };
+}
+
 function mockTargetMatching(selectorNeedle: string): EventTarget {
   return {
     closest: (selector: string) => (selector.includes(selectorNeedle) ? ({} as Element) : null),
@@ -29,29 +52,6 @@ function mockKeyboardEvent(
     metaKey: false,
     code,
     target: mockTargetMatching("[data-missing]"),
-    ...overrides,
-  };
-}
-
-function createDocument(markup: string): Document {
-  const window = new Window();
-  window.document.body.innerHTML = markup;
-  return window.document;
-}
-
-function createClip(overrides: Partial<ClipManifestClip>): ClipManifestClip {
-  return {
-    id: null,
-    label: "Element",
-    start: 0,
-    duration: 4,
-    track: 0,
-    kind: "element",
-    tagName: "div",
-    compositionId: null,
-    parentCompositionId: null,
-    compositionSrc: null,
-    assetUrl: null,
     ...overrides,
   };
 }

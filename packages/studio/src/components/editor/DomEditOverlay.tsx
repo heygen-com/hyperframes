@@ -14,7 +14,10 @@ interface OverlayRect {
 interface DomEditOverlayProps {
   iframeRef: RefObject<HTMLIFrameElement | null>;
   selection: DomEditSelection | null;
-  onCanvasMouseDown: (event: React.MouseEvent<HTMLDivElement>) => void;
+  onCanvasMouseDown: (
+    event: React.MouseEvent<HTMLDivElement>,
+    options?: { preferClipAncestor?: boolean },
+  ) => void;
   onCanvasDoubleClick: (event: React.MouseEvent<HTMLDivElement>) => void;
   onSelectedDoubleClick: () => void;
   onBlockedMove: (selection: DomEditSelection) => void;
@@ -85,10 +88,21 @@ function selectionCacheKey(
   ].join("|");
 }
 
+function restoreInlineStyle(
+  element: HTMLElement,
+  property: "left" | "top" | "width" | "height",
+  value: string,
+) {
+  if (value) element.style.setProperty(property, value);
+  else element.style.removeProperty(property);
+}
+
 interface GestureState {
   kind: GestureKind;
   startX: number;
   startY: number;
+  initialStyleLeft: string;
+  initialStyleTop: string;
   originLeft: number;
   originTop: number;
   originWidth: number;
@@ -226,6 +240,8 @@ export const DomEditOverlay = memo(function DomEditOverlay({
       kind,
       startX: e.clientX,
       startY: e.clientY,
+      initialStyleLeft: sel.element.style.left,
+      initialStyleTop: sel.element.style.top,
       originLeft: rect.left,
       originTop: rect.top,
       originWidth: rect.width,
@@ -277,9 +293,10 @@ export const DomEditOverlay = memo(function DomEditOverlay({
     }
   };
 
-  const onPointerUp = () => {
+  const onPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
     const g = gestureRef.current;
     const sel = selectionRef.current;
+    const box = boxRef.current;
     blockedMoveRef.current = null;
     if (!g || !sel) {
       gestureRef.current = null;
@@ -289,6 +306,21 @@ export const DomEditOverlay = memo(function DomEditOverlay({
 
     gestureRef.current = null;
     rafPausedRef.current = false;
+
+    const movedDistance = Math.hypot(e.clientX - g.startX, e.clientY - g.startY);
+    if (g.kind === "drag" && movedDistance < BLOCKED_MOVE_THRESHOLD_PX) {
+      restoreInlineStyle(sel.element, "left", g.initialStyleLeft);
+      restoreInlineStyle(sel.element, "top", g.initialStyleTop);
+      if (box) {
+        box.style.left = `${g.originLeft}px`;
+        box.style.top = `${g.originTop}px`;
+      }
+      suppressNextBoxClickRef.current = true;
+      onCanvasMouseDown(e as unknown as React.MouseEvent<HTMLDivElement>, {
+        preferClipAncestor: false,
+      });
+      return;
+    }
 
     if (g.kind === "drag") {
       const finalLeft = Number.parseFloat(sel.element.style.left) || g.actualLeft;
@@ -320,7 +352,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   const handleOverlayMouseDown = (event: React.MouseEvent<HTMLDivElement>) => {
     const target = event.target as HTMLElement | null;
     if (target?.closest('[data-dom-edit-selection-box="true"]')) return;
-    onCanvasMouseDown(event);
+    onCanvasMouseDown(event, { preferClipAncestor: false });
   };
 
   const handleOverlayDoubleClick = (event: React.MouseEvent<HTMLDivElement>) => {
@@ -339,7 +371,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
       event.stopPropagation();
       return;
     }
-    onCanvasMouseDown(event);
+    onCanvasMouseDown(event, { preferClipAncestor: false });
   };
 
   const clearPointerState = () => {

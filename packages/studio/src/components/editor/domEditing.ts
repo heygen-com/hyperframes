@@ -93,6 +93,32 @@ function parsePx(value: string | undefined): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function isIdentityTransform(value: string | undefined): boolean {
+  const transform = (value ?? "none").trim();
+  if (!transform || transform === "none") return true;
+
+  const matrix = transform.match(/^matrix\(([^)]+)\)$/i);
+  if (matrix) {
+    const values = matrix[1].split(",").map((part) => Number.parseFloat(part.trim()));
+    if (values.length !== 6 || values.some((part) => !Number.isFinite(part))) return false;
+    return (
+      Math.abs(values[0] - 1) < 0.0001 &&
+      Math.abs(values[1]) < 0.0001 &&
+      Math.abs(values[2]) < 0.0001 &&
+      Math.abs(values[3] - 1) < 0.0001 &&
+      Math.abs(values[4]) < 0.0001 &&
+      Math.abs(values[5]) < 0.0001
+    );
+  }
+
+  const matrix3d = transform.match(/^matrix3d\(([^)]+)\)$/i);
+  if (!matrix3d) return false;
+  const values = matrix3d[1].split(",").map((part) => Number.parseFloat(part.trim()));
+  if (values.length !== 16 || values.some((part) => !Number.isFinite(part))) return false;
+  const identity = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+  return values.every((part, index) => Math.abs(part - identity[index]) < 0.0001);
+}
+
 function isClipClassName(className: string | undefined): boolean {
   return Boolean(className?.split(/\s+/).includes("clip"));
 }
@@ -426,13 +452,13 @@ export function resolveDomEditCapabilities(args: {
   const top = parsePx(args.inlineStyles.top) ?? parsePx(args.computedStyles.top);
   const width = parsePx(args.inlineStyles.width) ?? parsePx(args.computedStyles.width);
   const height = parsePx(args.inlineStyles.height) ?? parsePx(args.computedStyles.height);
-  const transform = (args.computedStyles.transform ?? "none").trim();
+  const hasTransformDrivenGeometry = !isIdentityTransform(args.computedStyles.transform);
 
   const canMove =
     (position === "absolute" || position === "fixed") &&
     left != null &&
     top != null &&
-    transform === "none";
+    !hasTransformDrivenGeometry;
 
   const canResize = canMove && (width != null || height != null);
   const isBlockishLayer =
@@ -442,7 +468,7 @@ export function resolveDomEditCapabilities(args: {
     isBlockishDisplay(args.computedStyles.display);
   const canDetachFromLayout =
     !canMove &&
-    transform === "none" &&
+    !hasTransformDrivenGeometry &&
     isBlockishLayer &&
     (!isInlineTextTag(args.tagName) || isClipClassName(args.className));
   const reasonIfDisabled = !canMove

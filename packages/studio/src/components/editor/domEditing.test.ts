@@ -108,6 +108,61 @@ describe("resolveDomEditCapabilities", () => {
     });
   });
 
+  it("treats identity transforms left behind by animation libraries as movable", () => {
+    expect(
+      resolveDomEditCapabilities({
+        selector: "#card",
+        inlineStyles: {
+          left: "120px",
+          top: "80px",
+          width: "240px",
+          height: "140px",
+        },
+        computedStyles: {
+          position: "absolute",
+          left: "120px",
+          top: "80px",
+          width: "240px",
+          height: "140px",
+          transform: "matrix(1, 0, 0, 1, 0, 0)",
+        },
+        isCompositionHost: false,
+        isMasterView: false,
+      }),
+    ).toMatchObject({
+      canMove: true,
+      canResize: true,
+      canDetachFromLayout: false,
+    });
+  });
+
+  it("treats identity matrix3d transforms as movable", () => {
+    expect(
+      resolveDomEditCapabilities({
+        selector: "#card",
+        inlineStyles: {
+          left: "120px",
+          top: "80px",
+          width: "240px",
+          height: "140px",
+        },
+        computedStyles: {
+          position: "absolute",
+          left: "120px",
+          top: "80px",
+          width: "240px",
+          height: "140px",
+          transform: "matrix3d(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1)",
+        },
+        isCompositionHost: false,
+        isMasterView: false,
+      }),
+    ).toMatchObject({
+      canMove: true,
+      canResize: true,
+    });
+  });
+
   it("allows imported absolute media to resize from computed px geometry", () => {
     expect(
       resolveDomEditCapabilities({
@@ -226,6 +281,24 @@ describe("resolveDomEditSelection", () => {
 
     expect(selection?.id).toBe("card");
     expect(selection?.selector).toBe("#card");
+  });
+
+  it("can resolve the exact child when clip-ancestor preference is disabled", () => {
+    const document = createDocument(`
+      <section id="card" class="clip" style="left: 10px; top: 20px; width: 200px; height: 100px; position: absolute;">
+        <p id="copy">Hello</p>
+      </section>
+    `);
+
+    const child = document.getElementById("copy") as HTMLElement;
+    const selection = resolveDomEditSelection(child, {
+      activeCompositionPath: null,
+      isMasterView: false,
+      preferClipAncestor: false,
+    });
+
+    expect(selection?.id).toBe("copy");
+    expect(selection?.selector).toBe("#copy");
   });
 
   it("collects simple child text blocks as separate editable fields", () => {
