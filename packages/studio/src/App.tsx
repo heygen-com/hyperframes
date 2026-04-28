@@ -181,6 +181,23 @@ function toRelativeProjectAssetPath(sourceFile: string, assetPath: string): stri
   return [...fromParts.map(() => ".."), ...targetParts].join("/") || assetPath;
 }
 
+function isAbsoluteFilePath(value: string): boolean {
+  return /^(?:\/|[A-Za-z]:[\\/]|\\\\)/.test(value);
+}
+
+function toProjectAbsolutePath(projectDir: string | null, sourceFile: string): string | undefined {
+  const trimmedSource = sourceFile.trim();
+  if (!trimmedSource) return undefined;
+
+  const normalizedSource = trimmedSource.replace(/\\/g, "/");
+  if (isAbsoluteFilePath(normalizedSource)) return normalizedSource;
+
+  const normalizedRoot = projectDir?.trim().replace(/\\/g, "/").replace(/\/+$/, "");
+  if (!normalizedRoot) return undefined;
+
+  return `${normalizedRoot}/${normalizedSource.replace(/^\.?\//, "")}`;
+}
+
 function ensureImportedFontFace(
   html: string,
   asset: ImportedFontAsset,
@@ -589,6 +606,7 @@ export function StudioApp() {
   });
 
   const [editingFile, setEditingFile] = useState<EditingFile | null>(null);
+  const [projectDir, setProjectDir] = useState<string | null>(null);
   const [activeCompPath, setActiveCompPath] = useState<string | null>(null);
   const [fileTree, setFileTree] = useState<string[]>([]);
   const [compIdToSrc, setCompIdToSrc] = useState<Map<string, string>>(new Map());
@@ -1094,10 +1112,13 @@ export function StudioApp() {
     let cancelled = false;
     fetch(`/api/projects/${projectId}`)
       .then((r) => r.json())
-      .then((data: { files?: string[] }) => {
+      .then((data: { files?: string[]; dir?: string }) => {
         if (!cancelled && data.files) setFileTree(data.files);
+        if (!cancelled) setProjectDir(typeof data.dir === "string" ? data.dir : null);
       })
-      .catch(() => {});
+      .catch(() => {
+        if (!cancelled) setProjectDir(null);
+      });
     return () => {
       cancelled = true;
     };
@@ -2009,6 +2030,7 @@ export function StudioApp() {
         currentTime,
         tagSnippet,
         userInstruction,
+        sourceFilePath: toProjectAbsolutePath(projectDir, targetPath),
       });
 
       try {
@@ -2030,7 +2052,7 @@ export function StudioApp() {
       setCopiedAgentPrompt(true);
       copiedAgentTimerRef.current = setTimeout(() => setCopiedAgentPrompt(false), 1600);
     },
-    [activeCompPath, currentTime, domEditSelection],
+    [activeCompPath, currentTime, domEditSelection, projectDir],
   );
 
   const handlePreviewIframeRef = useCallback(

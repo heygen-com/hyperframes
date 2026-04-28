@@ -697,12 +697,15 @@ export function buildElementAgentPrompt({
   currentTime,
   tagSnippet,
   userInstruction,
+  sourceFilePath,
 }: {
   selection: DomEditSelection;
   currentTime: number;
   tagSnippet?: string;
   userInstruction?: string;
+  sourceFilePath?: string;
 }): string {
+  const displayedSourceFile = sourceFilePath?.trim() || selection.sourceFile;
   const lines = [
     "## HyperFrames element edit request v1",
     "Schema version: 1",
@@ -711,7 +714,7 @@ export function buildElementAgentPrompt({
     "",
     `Composition: ${selection.compositionPath}`,
     `Playback time: ${formatTime(currentTime)}`,
-    `Source file: ${selection.sourceFile}`,
+    `Source file: ${displayedSourceFile}`,
     `DOM id: ${selection.id ?? "(none)"}`,
     `Selector: ${selection.selector ?? "(none)"}`,
     `Selector index: ${selection.selectorIndex ?? 0}`,

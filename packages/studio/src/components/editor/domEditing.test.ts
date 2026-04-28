@@ -467,6 +467,43 @@ describe("patch builders and prompt builder", () => {
     expect(prompt).toContain("Do not modify other elements' data-* attributes or positioning.");
   });
 
+  it("uses an absolute source path in copied agent prompts when provided", () => {
+    const selection = {
+      element: {} as HTMLElement,
+      id: "editable-card",
+      selector: "#editable-card",
+      selectorIndex: undefined,
+      sourceFile: "index.html",
+      compositionPath: "index.html",
+      compositionSrc: undefined,
+      isCompositionHost: false,
+      label: "Drag me first",
+      tagName: "div",
+      boundingBox: { x: 108, y: 112, width: 380, height: 196 },
+      textContent: "Drag me first",
+      dataAttributes: {},
+      inlineStyles: {},
+      computedStyles: {},
+      textFields: [],
+      capabilities: {
+        canSelect: true,
+        canEditStyles: true,
+        canMove: true,
+        canResize: true,
+        canDetachFromLayout: false,
+      },
+    } satisfies DomEditSelection;
+
+    const prompt = buildElementAgentPrompt({
+      selection,
+      currentTime: 1.25,
+      sourceFilePath: "/tmp/hf-studio-project/index.html",
+    });
+
+    expect(prompt).toContain("Source file: /tmp/hf-studio-project/index.html");
+    expect(prompt).not.toContain("Source file: index.html");
+  });
+
   it("serializes child text fields back into HTML", () => {
     expect(
       serializeDomEditTextFields([
