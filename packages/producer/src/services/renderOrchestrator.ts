@@ -890,7 +890,7 @@ export function isRecoverableParallelCaptureError(error: unknown): boolean {
 
 export function shouldFallbackToScreenshotAfterCalibrationError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
-  return /HeadlessExperimental\.beginFrame timed out|beginFrame probe timeout|Another frame is pending|Frame still pending|Protocol error.*HeadlessExperimental\.beginFrame/i.test(
+  return /HeadlessExperimental\.beginFrame timed out|beginFrame probe timeout|Another frame is pending|Frame still pending|Protocol error.*HeadlessExperimental\.beginFrame|Runtime\.callFunctionOn timed out|Runtime\.evaluate timed out/i.test(
     message,
   );
 }

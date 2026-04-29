@@ -424,6 +424,23 @@ describe("capture calibration safeguards", () => {
     ).toBe(true);
     expect(shouldFallbackToScreenshotAfterCalibrationError(new Error("ffmpeg exited"))).toBe(false);
   });
+
+  it("falls back to screenshot mode after Runtime.callFunctionOn timeout during calibration", () => {
+    expect(
+      shouldFallbackToScreenshotAfterCalibrationError(
+        new Error(
+          "Runtime.callFunctionOn timed out. Increase the 'protocolTimeout' setting in launch/connect calls for a higher timeout if needed.",
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      shouldFallbackToScreenshotAfterCalibrationError(
+        new Error(
+          "Runtime.evaluate timed out. Increase the 'protocolTimeout' setting in launch/connect calls for a higher timeout if needed.",
+        ),
+      ),
+    ).toBe(true);
+  });
 });
 
 describe("adaptive missing-frame retry helpers", () => {
