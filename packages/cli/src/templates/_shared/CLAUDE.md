@@ -11,6 +11,11 @@
 | **hyperframes-registry**   | `/hyperframes-registry`   | Installing blocks and components via `hyperframes add`                                            |
 | **website-to-hyperframes** | `/website-to-hyperframes` | Capturing a URL and turning it into a video — full website-to-video pipeline                      |
 | **gsap**                   | `/gsap`                   | GSAP animations for HyperFrames — tweens, timelines, easing, performance                          |
+| **animejs**                | `/animejs`                | Anime.js animations registered on `window.__hfAnime`                                              |
+| **css-animations**         | `/css-animations`         | CSS keyframes that HyperFrames can pause and seek                                                 |
+| **lottie**                 | `/lottie`                 | `lottie-web` and dotLottie players registered on `window.__hfLottie`                              |
+| **three**                  | `/three`                  | Three.js scenes rendered from HyperFrames `hf-seek` events                                        |
+| **waapi**                  | `/waapi`                  | Web Animations API motion driven through `document.getAnimations()`                               |
 
 > **Skills not available?** Ask the user to run `npx hyperframes skills` and restart their
 > agent session, or install manually: `npx skills add heygen-com/hyperframes`.

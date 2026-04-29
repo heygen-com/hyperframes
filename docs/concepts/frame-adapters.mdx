@@ -104,15 +104,16 @@ These rules are non-negotiable for any adapter. They are the foundation of Hyper
 
 ## Supported Runtimes
 
-First-party adapters:
+First-party runtime adapters:
 
-| Runtime | Seek Method | Status |
-|---------|------------|--------|
-| [GSAP](/guides/gsap-animation) | `timeline.seek(frame / fps)` | Available |
-| CSS/WAAPI | `animation.currentTime` | Planned |
-| Lottie | Set animation frame/progress | Planned |
-| Three.js/WebGL | Compute deterministic scene state | Planned |
-| SVG/Anime | Implement seek + duration contract | Planned |
+| Runtime | Seek Method | Skill |
+|---------|-------------|-------|
+| [GSAP](/guides/gsap-animation) | `timeline.totalTime(timeSeconds)` or `timeline.seek(timeSeconds)` | `/gsap` |
+| Anime.js | `instance.seek(timeMs)` for animations registered on `window.__hfAnime` | `/animejs` |
+| CSS keyframes | Browser `Animation.currentTime`, with paused negative-delay fallback | `/css-animations` |
+| Lottie / dotLottie | `goToAndStop(timeMs, false)`, raw-frame setters, or player seek APIs | `/lottie` |
+| Three.js / WebGL | `hf-seek` events plus `window.__hfThreeTime` for deterministic scene rendering | `/three` |
+| Web Animations API | `document.getAnimations()` and `animation.currentTime` | `/waapi` |
 
 Community adapters are welcome -- if it can seek by frame, it belongs in Hyperframes.
 

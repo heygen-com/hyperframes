@@ -67,4 +67,4 @@ will not match CI. Use it only for local-only experimentation.
 
 ## Skills
 
-Composition authoring (not repo development) is guided by skills installed via `npx skills add heygen-com/hyperframes`. See `skills/` for source. Invoke `/hyperframes`, `/hyperframes-cli`, `/hyperframes-registry`, or `/gsap` when authoring compositions. When a user provides a website URL and wants a video, invoke `/website-to-hyperframes` — it runs the full 7-step capture-to-video pipeline.
+Composition authoring (not repo development) is guided by skills installed via `npx skills add heygen-com/hyperframes`. See `skills/` for source. Invoke `/hyperframes`, `/hyperframes-cli`, `/hyperframes-registry`, or `/gsap` when authoring compositions. Use `/animejs`, `/css-animations`, `/lottie`, `/three`, or `/waapi` when a composition uses those first-party runtime adapters. When a user provides a website URL and wants a video, invoke `/website-to-hyperframes` — it runs the full 7-step capture-to-video pipeline.

@@ -13,7 +13,7 @@ Install the HyperFrames skills, then describe the video you want:
 npx skills add heygen-com/hyperframes
 ```
 
-This teaches your agent (Claude Code, Cursor, Gemini CLI, Codex) how to write correct compositions and GSAP animations. In Claude Code the skills register as slash commands — `/hyperframes` for composition authoring, `/hyperframes-cli` for CLI commands, and `/gsap` for animation help. Invoking the slash command loads the skill context explicitly, which produces correct output the first time.
+This teaches your agent (Claude Code, Cursor, Gemini CLI, Codex) how to write correct compositions, GSAP timelines, and first-party adapter animations. In Claude Code the skills register as slash commands — `/hyperframes` for composition authoring, `/hyperframes-cli` for CLI commands, `/gsap` for timeline animation help, and `/animejs`, `/css-animations`, `/lottie`, `/three`, or `/waapi` when a composition uses those runtimes. Invoking the slash command loads the skill context explicitly, which produces correct output the first time.
 
 <Note>
   Claude Design uses a different entry path. Open [`docs/guides/claude-design-hyperframes.md`](https://github.com/heygen-com/hyperframes/blob/main/docs/guides/claude-design-hyperframes.md) on GitHub, click the download button (↓) to save it, then attach to your Claude Design chat. It produces a valid first draft you can refine in any AI coding agent. See the [Claude Design guide](/guides/claude-design).
@@ -47,7 +47,7 @@ Copy any of these into your agent to get started.
 The agent handles scaffolding, animation, and rendering. See the [prompting guide](/guides/prompting) for more patterns.
 
 <Tip>
-  Skills encode HyperFrames-specific patterns — like required `class="clip"` on timed elements, GSAP timeline registration, and `data-*` attribute semantics — that are not in generic web docs. Using skills produces correct compositions from the start.
+  Skills encode HyperFrames-specific patterns — like required `class="clip"` on timed elements, GSAP timeline registration, adapter registries such as `window.__hfLottie`, and `data-*` attribute semantics — that are not in generic web docs. Using skills produces correct compositions from the start.
 </Tip>
 
 ## Option 2: Start a project manually

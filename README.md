@@ -32,7 +32,7 @@ Install the HyperFrames skills, then describe the video you want:
 npx skills add heygen-com/hyperframes
 ```
 
-This teaches your agent (Claude Code, Cursor, Gemini CLI, Codex) how to write correct compositions and GSAP animations. In Claude Code, the skills register as slash commands — invoke `/hyperframes` to author compositions, `/hyperframes-cli` for CLI commands, and `/gsap` for animation help.
+This teaches your agent (Claude Code, Cursor, Gemini CLI, Codex) how to write correct compositions, GSAP timelines, and first-party adapter animations. In Claude Code, the skills register as slash commands — invoke `/hyperframes` to author compositions, `/hyperframes-cli` for CLI commands, `/gsap` for timeline animation help, or the adapter skills (`/animejs`, `/css-animations`, `/lottie`, `/three`, `/waapi`) when a composition uses those runtimes.
 
 For Claude Design, open [`docs/guides/claude-design-hyperframes.md`](https://github.com/heygen-com/hyperframes/blob/main/docs/guides/claude-design-hyperframes.md) on GitHub and click the download button (↓) to save it, then attach the file to your Claude Design chat. It produces a valid first draft; refine in any AI coding agent. See the [Claude Design guide](https://hyperframes.heygen.com/guides/claude-design).
 
@@ -185,14 +185,19 @@ HyperFrames ships [skills](https://github.com/vercel-labs/skills) that teach AI 
 npx skills add heygen-com/hyperframes
 ```
 
-| Skill                     | What it teaches                                                                              |
-| ------------------------- | -------------------------------------------------------------------------------------------- |
-| `hyperframes`             | HTML composition authoring, captions, TTS, audio-reactive animation, transitions             |
-| `hyperframes-cli`         | CLI commands: init, lint, preview, render, transcribe, tts, doctor                           |
-| `hyperframes-registry`    | Block and component installation via `hyperframes add`                                       |
-| `website-to-hyperframes`  | Capture a URL and turn it into a video — full website-to-video pipeline                      |
-| `remotion-to-hyperframes` | Translate a Remotion (React) composition into a HyperFrames HTML composition                 |
-| `gsap`                    | GSAP animation API, timelines, easing, ScrollTrigger, plugins, React/Vue/Svelte, performance |
+| Skill                     | What it teaches                                                                                                     |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `hyperframes`             | HTML composition authoring, captions, TTS, audio-reactive animation, transitions                                    |
+| `hyperframes-cli`         | CLI commands: init, lint, preview, render, transcribe, tts, doctor                                                  |
+| `hyperframes-registry`    | Block and component installation via `hyperframes add`                                                              |
+| `website-to-hyperframes`  | Capture a URL and turn it into a video — full website-to-video pipeline                                             |
+| `remotion-to-hyperframes` | Translate a Remotion (React) composition into a HyperFrames HTML composition                                        |
+| `gsap`                    | GSAP timelines for HyperFrames: paused registration, deterministic seeking, easing, sequencing, performance         |
+| `animejs`                 | Anime.js animations and timelines registered on `window.__hfAnime` for deterministic HyperFrames seeking            |
+| `css-animations`          | CSS keyframe animation patterns that HyperFrames can discover, pause, and seek                                      |
+| `lottie`                  | `lottie-web` and dotLottie players registered on `window.__hfLottie` with local assets and paused playback          |
+| `three`                   | Three.js scenes that render from HyperFrames `hf-seek` events and `window.__hfThreeTime` instead of wall-clock time |
+| `waapi`                   | Web Animations API `element.animate()` patterns seeked through `document.getAnimations()`                           |
 
 ## Contributing
 

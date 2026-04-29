@@ -5,6 +5,28 @@ description: GSAP animation reference for HyperFrames. Covers gsap.to(), from(),
 
 # GSAP
 
+## HyperFrames Contract
+
+HyperFrames controls GSAP through its `gsap` runtime adapter. Create a paused timeline synchronously, register it on `window.__timelines` with the exact `data-composition-id`, and let HyperFrames seek it.
+
+```html
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+<script>
+  window.__timelines = window.__timelines || {};
+  const tl = gsap.timeline({ paused: true });
+
+  tl.from(".title", { y: 48, opacity: 0, duration: 0.6, ease: "power3.out" }, 0);
+  tl.to(".accent", { scaleX: 1, duration: 0.5, ease: "power2.out" }, 0.25);
+
+  window.__timelines["main"] = tl;
+</script>
+```
+
+- The registry key must match the composition root's `data-composition-id`.
+- Do not call `tl.play()` for render-critical motion.
+- Do not build timelines inside async code, timers, or event handlers.
+- Keep loops finite. HyperFrames renders finite video durations.
+
 ## Core Tween Methods
 
 - **gsap.to(targets, vars)** — animate from current state to `vars`. Most common.
@@ -21,7 +43,7 @@ Always use **camelCase** property names (e.g. `backgroundColor`, `rotationX`).
 - **ease** — `"power1.out"` (default), `"power3.inOut"`, `"back.out(1.7)"`, `"elastic.out(1, 0.3)"`, `"none"`.
 - **stagger** — number `0.1` or object: `{ amount: 0.3, from: "center" }`, `{ each: 0.1, from: "random" }`.
 - **overwrite** — `false` (default), `true`, or `"auto"`.
-- **repeat** — number or `-1` for infinite. **yoyo** — alternates direction with repeat.
+- **repeat** — number only in HyperFrames. **yoyo** — alternates direction with repeat.
 - **onComplete**, **onStart**, **onUpdate** — callbacks.
 - **immediateRender** — default `true` for from()/fromTo(). Set `false` on later tweens targeting the same property+element to avoid overwrite.
 
@@ -209,3 +231,10 @@ Pause or kill off-screen animations.
 - Chain animations with delay when a timeline can sequence them.
 - Create tweens before the DOM exists.
 - Skip cleanup — always kill tweens when no longer needed.
+- Use infinite repeat values in HyperFrames compositions. Compute the finite repeat count from the visible duration.
+
+## Credits And References
+
+- HyperFrames adapter source: `packages/core/src/runtime/adapters/gsap.ts`.
+- GSAP documentation: https://gsap.com/docs/v3/
+- GSAP timeline pause and seek behavior: https://gsap.com/docs/v3/GSAP/Timeline/pause%28%29/
