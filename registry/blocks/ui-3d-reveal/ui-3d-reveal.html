@@ -28,7 +28,13 @@
     </style>
   </head>
   <body>
-    <div data-composition-id="ui-3d-reveal" data-width="1920" data-height="1080" data-duration="13">
+    <div
+      data-composition-id="ui-3d-reveal"
+      data-width="1920"
+      data-height="1080"
+      data-start="0"
+      data-duration="13"
+    >
       <!-- Background: Figma outer canvas dark -->
       <div class="bg-base"></div>
       <div class="bg-glow" id="bgGlow"></div>
@@ -2897,6 +2903,7 @@
             O + 4.8,
           );
 
+          window.__timelines = window.__timelines || {};
           window.__timelines["ui-3d-reveal"] = tl;
         })();
       </script>

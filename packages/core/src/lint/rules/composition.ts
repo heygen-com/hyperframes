@@ -15,6 +15,17 @@ function countPhysicalLines(source: string): number {
   return withoutFinalNewline.split("\n").length;
 }
 
+function isRegistrySourceFile(filePath?: string): boolean {
+  if (!filePath) return false;
+
+  const normalized = filePath.replace(/\\/g, "/");
+  return /(?:^|\/)registry\/blocks\/([^/]+)\/\1\.html$/i.test(normalized);
+}
+
+function isRegistryInstalledFile(rawSource: string): boolean {
+  return /^\s*<!--\s*hyperframes-registry-item:[^>]*-->/i.test(rawSource.slice(0, 512));
+}
+
 function isCompositionRootOrMount(rawTag: string): boolean {
   return Boolean(
     readAttr(rawTag, "data-composition-id") || readAttr(rawTag, "data-composition-src"),
@@ -24,6 +35,8 @@ function isCompositionRootOrMount(rawTag: string): boolean {
 export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
   // composition_file_too_large
   ({ rawSource, options }) => {
+    if (isRegistrySourceFile(options.filePath) || isRegistryInstalledFile(rawSource)) return [];
+
     const lineCount = countPhysicalLines(rawSource);
     if (lineCount <= MAX_COMPOSITION_LINES) return [];
 

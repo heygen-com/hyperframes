@@ -35,17 +35,43 @@ describe("composition rules", () => {
       expect(finding).toBeUndefined();
     });
 
-    it("warns on large HTML files regardless of path", () => {
+    it("does not warn for large registry source block files", () => {
       const html = Array.from({ length: 301 }, (_, i) =>
         i === 0 ? "<html><body>" : `<!-- filler ${i} -->`,
       ).join("\n");
 
       const result = lintHyperframeHtml(html, {
-        filePath: "/project/registry/blocks/data-chart.html",
+        filePath: "/project/registry/blocks/data-chart/data-chart.html",
+      });
+      const finding = result.findings.find((f) => f.code === "composition_file_too_large");
+      expect(finding).toBeUndefined();
+    });
+
+    it("warns for large installed block composition files", () => {
+      const html = Array.from({ length: 301 }, (_, i) =>
+        i === 0 ? "<html><body>" : `<!-- filler ${i} -->`,
+      ).join("\n");
+
+      const result = lintHyperframeHtml(html, {
+        filePath: "/project/compositions/data-chart.html",
       });
       const finding = result.findings.find((f) => f.code === "composition_file_too_large");
       expect(finding).toBeDefined();
       expect(finding?.severity).toBe("warning");
+    });
+
+    it("does not warn for large registry-installed block composition files", () => {
+      const html =
+        "<!-- hyperframes-registry-item: data-chart -->\n" +
+        Array.from({ length: 300 }, (_, i) =>
+          i === 0 ? "<html><body>" : `<!-- filler ${i} -->`,
+        ).join("\n");
+
+      const result = lintHyperframeHtml(html, {
+        filePath: "/project/compositions/data-chart.html",
+      });
+      const finding = result.findings.find((f) => f.code === "composition_file_too_large");
+      expect(finding).toBeUndefined();
     });
 
     it("uses nested split copy for large sub-composition files", () => {

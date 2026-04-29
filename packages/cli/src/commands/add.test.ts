@@ -181,9 +181,9 @@ describe("runAdd (integration, mocked registry)", () => {
       expect(result.type).toBe("hyperframes:block");
       expect(result.written).toHaveLength(1);
       expect(existsSync(join(dir, "compositions/my-block.html"))).toBe(true);
-      expect(readFileSync(join(dir, "compositions/my-block.html"), "utf-8")).toContain(
-        "my-block.html",
-      );
+      const installed = readFileSync(join(dir, "compositions/my-block.html"), "utf-8");
+      expect(installed).toContain("<!-- hyperframes-registry-item: my-block -->");
+      expect(installed).toContain("my-block.html");
       expect(result.snippet).toContain("compositions/my-block.html");
     } finally {
       rmSync(dir, { recursive: true, force: true });
