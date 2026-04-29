@@ -5,6 +5,10 @@ import type { TimelineElement } from "../../player";
 import type { BlockedTimelineEditIntent } from "../../player/components/timelineEditing";
 import { NLEPreview } from "./NLEPreview";
 import { CompositionBreadcrumb, type CompositionLevel } from "./CompositionBreadcrumb";
+import {
+  TIMELINE_TOGGLE_SHORTCUT_LABEL,
+  getTimelineToggleTitle,
+} from "../../utils/timelineDiscovery";
 
 interface NLELayoutProps {
   projectId: string;
@@ -197,6 +201,7 @@ export const NLELayout = memo(function NLELayout({
 
   // Resizable timeline height
   const [timelineH, setTimelineH] = useState(DEFAULT_TIMELINE_H);
+  const isTimelineVisible = timelineVisible ?? true;
   const isDragging = useRef(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -366,16 +371,11 @@ export const NLELayout = memo(function NLELayout({
               onNavigate={handleNavigateComposition}
             />
           )}
-          <PlayerControls
-            onTogglePlay={togglePlay}
-            onSeek={seek}
-            timelineVisible={timelineVisible ?? true}
-            onToggleTimeline={onToggleTimeline}
-          />
+          <PlayerControls onTogglePlay={togglePlay} onSeek={seek} />
         </div>
       </div>
 
-      {(timelineVisible ?? true) && (
+      {isTimelineVisible ? (
         <>
           {/* Resize divider */}
           <div
@@ -417,7 +417,42 @@ export const NLELayout = memo(function NLELayout({
             {timelineFooter && <div className="flex-shrink-0">{timelineFooter}</div>}
           </div>
         </>
-      )}
+      ) : onToggleTimeline ? (
+        <div className="flex-shrink-0 border-t border-neutral-800/50 bg-neutral-950/96">
+          <div className="flex h-10 items-center justify-between px-3">
+            <div className="text-[10px] font-medium uppercase tracking-[0.16em] text-neutral-500">
+              Timeline
+            </div>
+            <button
+              type="button"
+              onClick={onToggleTimeline}
+              className="flex h-7 items-center gap-1.5 rounded-md border border-neutral-800 px-2.5 text-[11px] font-medium text-neutral-300 transition-colors hover:border-neutral-700 hover:bg-neutral-900 hover:text-neutral-100"
+              title={getTimelineToggleTitle(false)}
+              aria-label="Show timeline editor"
+            >
+              <svg
+                width="13"
+                height="13"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.7"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <rect x="3" y="13" width="18" height="8" rx="1" />
+                <path d="M7 9h10" />
+                <path d="M8 5h8" />
+              </svg>
+              <span>Show</span>
+              <span className="hidden rounded bg-white/5 px-1 py-0.5 font-mono text-[9px] text-neutral-500 sm:inline">
+                {TIMELINE_TOGGLE_SHORTCUT_LABEL}
+              </span>
+            </button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 });

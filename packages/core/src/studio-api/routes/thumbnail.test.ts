@@ -51,6 +51,27 @@ describe("registerThumbnailRoutes", () => {
         compPath: "index.html",
         seekTime: 1.2,
         selector: "#title-card",
+        format: "jpeg",
+      }),
+    );
+  });
+
+  it("forwards png capture requests and returns a png content type", async () => {
+    const adapter = createAdapter();
+    const app = new Hono();
+    registerThumbnailRoutes(app, adapter);
+
+    const response = await app.request(
+      "http://localhost/projects/demo/thumbnail/compositions%2Fintro.html?t=2&format=png",
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Type")).toBe("image/png");
+    expect(adapter.generateThumbnail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        compPath: "compositions/intro.html",
+        seekTime: 2,
+        format: "png",
       }),
     );
   });

@@ -278,11 +278,18 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
             };
           }, opts.selector);
         }
-        const screenshot = (await page.screenshot({
-          type: "jpeg",
-          quality: 80,
-          ...(clip ? { clip } : {}),
-        })) as Buffer;
+        const screenshot = (await page.screenshot(
+          opts.format === "png"
+            ? {
+                type: "png",
+                ...(clip ? { clip } : {}),
+              }
+            : {
+                type: "jpeg",
+                quality: 80,
+                ...(clip ? { clip } : {}),
+              },
+        )) as Buffer;
         return screenshot;
       } catch {
         return null;

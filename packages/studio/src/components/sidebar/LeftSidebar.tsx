@@ -35,6 +35,7 @@ interface LeftSidebarProps {
   codeChildren?: ReactNode;
   onLint?: () => void;
   linting?: boolean;
+  onToggleCollapse?: () => void;
 }
 
 export const LeftSidebar = memo(function LeftSidebar({
@@ -57,6 +58,7 @@ export const LeftSidebar = memo(function LeftSidebar({
   codeChildren,
   onLint,
   linting,
+  onToggleCollapse,
 }: LeftSidebarProps) {
   const [tab, setTab] = useState<SidebarTab>(getPersistedTab);
 
@@ -122,6 +124,30 @@ export const LeftSidebar = memo(function LeftSidebar({
         >
           Assets
         </button>
+        {onToggleCollapse && (
+          <button
+            type="button"
+            onClick={onToggleCollapse}
+            className="mx-1 my-1 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md border border-transparent text-neutral-500 transition-colors hover:border-neutral-800 hover:bg-neutral-900 hover:text-neutral-300"
+            title="Hide sidebar"
+            aria-label="Hide sidebar"
+          >
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="m14 7-5 5 5 5" />
+              <path d="M19 4v16" />
+            </svg>
+          </button>
+        )}
       </div>
 
       {/* Tab content */}

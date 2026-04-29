@@ -1,9 +1,5 @@
 import { useRef, useState, useCallback, useEffect, memo } from "react";
 import { useMountEffect } from "../../hooks/useMountEffect";
-import {
-  TIMELINE_TOGGLE_SHORTCUT_LABEL,
-  getTimelineToggleTitle,
-} from "../../utils/timelineDiscovery";
 import { formatFrameTime, frameToSeconds, formatTime } from "../lib/time";
 import { usePlayerStore, liveTime } from "../store/playerStore";
 
@@ -30,15 +26,11 @@ export function resolveSeekPercent(clientX: number, rectLeft: number, rectWidth:
 interface PlayerControlsProps {
   onTogglePlay: () => void;
   onSeek: (time: number) => void;
-  timelineVisible?: boolean;
-  onToggleTimeline?: () => void;
 }
 
 export const PlayerControls = memo(function PlayerControls({
   onTogglePlay,
   onSeek,
-  timelineVisible,
-  onToggleTimeline,
 }: PlayerControlsProps) {
   // Subscribe to only the fields we render — each selector prevents cascading re-renders
   const isPlaying = usePlayerStore((s) => s.isPlaying);
@@ -437,39 +429,6 @@ export const PlayerControls = memo(function PlayerControls({
           </span>
         ))}
       </div>
-
-      {/* Timeline toggle */}
-      {onToggleTimeline !== undefined && (
-        <button
-          type="button"
-          onClick={onToggleTimeline}
-          className={`h-7 flex items-center gap-1.5 rounded-md border px-2.5 text-[11px] font-medium transition-colors ${
-            timelineVisible
-              ? "text-studio-accent bg-studio-accent/10 border-studio-accent/30"
-              : "border-neutral-700 text-neutral-300 hover:border-neutral-500 hover:bg-neutral-800"
-          }`}
-          title={getTimelineToggleTitle(Boolean(timelineVisible))}
-          aria-label={timelineVisible ? "Hide timeline editor" : "Show timeline editor"}
-        >
-          <svg
-            width="13"
-            height="13"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-          >
-            <rect x="3" y="13" width="18" height="8" rx="1" />
-            <line x1="3" y1="9" x2="21" y2="9" />
-            <line x1="3" y1="5" x2="21" y2="5" />
-          </svg>
-          <span>Timeline</span>
-          <span className="hidden md:inline rounded bg-black/20 px-1 py-0.5 text-[9px] font-mono opacity-70">
-            {TIMELINE_TOGGLE_SHORTCUT_LABEL}
-          </span>
-        </button>
-      )}
     </div>
   );
 });

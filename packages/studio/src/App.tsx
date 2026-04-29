@@ -1,11 +1,19 @@
-import { useState, useCallback, useRef, useEffect, useMemo, type ReactNode } from "react";
+import {
+  useState,
+  useCallback,
+  useRef,
+  useEffect,
+  useMemo,
+  type MouseEvent,
+  type ReactNode,
+} from "react";
 import { useMountEffect } from "./hooks/useMountEffect";
 import { NLELayout } from "./components/nle/NLELayout";
 import { SourceEditor } from "./components/editor/SourceEditor";
 import { LeftSidebar } from "./components/sidebar/LeftSidebar";
 import { RenderQueue } from "./components/renders/RenderQueue";
 import { useRenderQueue } from "./components/renders/useRenderQueue";
-import { CompositionThumbnail, VideoThumbnail, usePlayerStore } from "./player";
+import { CompositionThumbnail, VideoThumbnail, liveTime, usePlayerStore } from "./player";
 import { AudioWaveform } from "./player/components/AudioWaveform";
 import type { TimelineElement } from "./player";
 import { LintModal } from "./components/LintModal";
@@ -40,6 +48,8 @@ import {
   getTimelineToggleTitle,
   shouldHandleTimelineToggleHotkey,
 } from "./utils/timelineDiscovery";
+import { buildFrameCaptureFilename, buildFrameCaptureUrl } from "./utils/frameCapture";
+import { Camera } from "./icons/SystemIcons";
 
 interface EditingFile {
   path: string;
@@ -264,6 +274,7 @@ export function StudioApp() {
   const [globalDragOver, setGlobalDragOver] = useState(false);
   const [appToast, setAppToast] = useState<AppToast | null>(null);
   const [timelineVisible, setTimelineVisible] = useState(true);
+  const [captureFrameTime, setCaptureFrameTime] = useState(0);
   const dragCounterRef = useRef(0);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastBlockedTimelineToastAtRef = useRef(0);
@@ -298,6 +309,26 @@ export function StudioApp() {
   const toggleTimelineVisibility = useCallback(() => {
     setTimelineVisible((visible) => !visible);
   }, []);
+  const toggleLeftSidebar = useCallback(() => {
+    setLeftCollapsed((collapsed) => !collapsed);
+  }, []);
+  const refreshCaptureFrameTime = useCallback(() => {
+    setCaptureFrameTime(usePlayerStore.getState().currentTime);
+  }, []);
+
+  useMountEffect(() => {
+    setCaptureFrameTime(usePlayerStore.getState().currentTime);
+    return liveTime.subscribe(setCaptureFrameTime);
+  });
+
+  const captureFrameHref = projectId
+    ? buildFrameCaptureUrl({
+        projectId,
+        compositionPath: activeCompPath,
+        currentTime: captureFrameTime,
+      })
+    : "#";
+  const captureFrameFilename = buildFrameCaptureFilename(activeCompPath, captureFrameTime);
   useMountEffect(() => () => {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
   });
@@ -495,6 +526,28 @@ export function StudioApp() {
             title="Zoom in"
           >
             +
+          </button>
+          <button
+            type="button"
+            onClick={toggleTimelineVisibility}
+            className="ml-1 flex h-7 w-7 items-center justify-center rounded-md text-neutral-500 transition-colors hover:bg-neutral-900 hover:text-neutral-200"
+            title={getTimelineToggleTitle(true)}
+            aria-label="Hide timeline editor"
+          >
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M5 7h14" />
+              <path d="m8 11 4 4 4-4" />
+            </svg>
           </button>
         </div>
       </div>
@@ -786,6 +839,42 @@ export function StudioApp() {
     setAppToast({ message, tone });
     toastTimerRef.current = setTimeout(() => setAppToast(null), 4000);
   }, []);
+
+  const handleCaptureFrameClick = useCallback(
+    async (event: MouseEvent<HTMLAnchorElement>) => {
+      if (!projectId) return;
+      event.preventDefault();
+
+      const currentTime = usePlayerStore.getState().currentTime;
+      setCaptureFrameTime(currentTime);
+      const href = buildFrameCaptureUrl({
+        projectId,
+        compositionPath: activeCompPath,
+        currentTime,
+      });
+      const filename = buildFrameCaptureFilename(activeCompPath, currentTime);
+
+      try {
+        const response = await fetch(href, { cache: "no-store" });
+        if (!response.ok) {
+          throw new Error(`Capture failed (${response.status})`);
+        }
+        const blob = await response.blob();
+        const blobUrl = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = blobUrl;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 0);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Capture failed";
+        showToast(message);
+      }
+    },
+    [activeCompPath, projectId, showToast],
+  );
 
   const handleTimelineElementDelete = useCallback(
     async (element: TimelineElement) => {
@@ -1345,55 +1434,19 @@ export function StudioApp() {
         </div>
         {/* Right: toolbar buttons */}
         <div className="flex items-center gap-1.5">
-          <button
-            onClick={() => setLeftCollapsed((v) => !v)}
-            className={`h-7 w-7 flex items-center justify-center rounded-md border transition-colors ${
-              !leftCollapsed
-                ? "text-studio-accent bg-studio-accent/10 border-studio-accent/30"
-                : "bg-transparent border-transparent text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800"
-            }`}
-            title={leftCollapsed ? "Show sidebar" : "Hide sidebar"}
+          <a
+            href={captureFrameHref}
+            download={captureFrameFilename}
+            onClick={handleCaptureFrameClick}
+            onFocus={refreshCaptureFrameTime}
+            onPointerDown={refreshCaptureFrameTime}
+            className="h-7 flex items-center gap-1.5 px-2.5 rounded-md text-[11px] font-medium border border-neutral-700 text-neutral-300 transition-colors hover:border-neutral-500 hover:bg-neutral-800"
+            title="Capture current frame"
+            aria-label="Capture current frame"
           >
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <rect x="3" y="3" width="18" height="18" rx="2" />
-              <path d="M9 3v18" />
-            </svg>
-          </button>
-          <button
-            type="button"
-            onClick={toggleTimelineVisibility}
-            className={`h-7 flex items-center gap-1.5 px-2.5 rounded-md text-[11px] font-medium border transition-colors ${
-              timelineVisible
-                ? "text-studio-accent bg-studio-accent/10 border-studio-accent/30"
-                : "text-neutral-300 border-neutral-700 hover:border-neutral-500 hover:bg-neutral-800"
-            }`}
-            title={getTimelineToggleTitle(timelineVisible)}
-            aria-label={timelineVisible ? "Hide timeline editor" : "Show timeline editor"}
-          >
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-            >
-              <rect x="3" y="13" width="18" height="8" rx="1" />
-              <line x1="3" y1="9" x2="21" y2="9" />
-              <line x1="3" y1="5" x2="21" y2="5" />
-            </svg>
-            <span>Timeline</span>
-          </button>
+            <Camera size={14} />
+            <span>Capture</span>
+          </a>
           <button
             onClick={() => setRightCollapsed((v) => !v)}
             className={`h-7 flex items-center gap-1.5 px-2.5 rounded-md text-[11px] font-medium border transition-colors ${
@@ -1422,7 +1475,32 @@ export function StudioApp() {
       {/* Main content: sidebar + preview + right panel */}
       <div className="flex flex-1 min-h-0">
         {/* Left sidebar: Compositions + Assets (resizable, collapsible) */}
-        {!leftCollapsed && (
+        {leftCollapsed ? (
+          <div className="flex w-10 flex-shrink-0 flex-col items-center border-r border-neutral-800/50 bg-neutral-950 pt-1">
+            <button
+              type="button"
+              onClick={toggleLeftSidebar}
+              className="flex h-8 w-8 items-center justify-center rounded-md border border-transparent text-neutral-500 transition-colors hover:border-neutral-800 hover:bg-neutral-900 hover:text-neutral-300"
+              title="Show sidebar"
+              aria-label="Show sidebar"
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M5 4v16" />
+                <path d="m10 7 5 5-5 5" />
+              </svg>
+            </button>
+          </div>
+        ) : (
           <LeftSidebar
             width={leftWidth}
             projectId={projectId}
@@ -1469,6 +1547,7 @@ export function StudioApp() {
             }
             onLint={handleLint}
             linting={linting}
+            onToggleCollapse={toggleLeftSidebar}
           />
         )}
 

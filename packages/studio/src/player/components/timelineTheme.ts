@@ -63,12 +63,12 @@ const TRACK_STYLES: Record<string, TimelineTrackStyle> = {
 const DEFAULT_TRACK_STYLE: TimelineTrackStyle = createTrackStyle();
 
 export const defaultTimelineTheme: TimelineTheme = {
-  shellBackground: "#0A0E15",
+  shellBackground: "#0A0A0B",
   shellBorder: "rgba(255,255,255,0.05)",
   rulerBorder: "rgba(255,255,255,0.045)",
-  rowBackground: "#0A0E15",
+  rowBackground: "#0A0A0B",
   rowBorder: "rgba(255,255,255,0.05)",
-  gutterBackground: "#0D121B",
+  gutterBackground: "#0A0A0B",
   gutterBorder: "rgba(255,255,255,0.05)",
   textPrimary: "#E8EDF5",
   textSecondary: "#8391A8",

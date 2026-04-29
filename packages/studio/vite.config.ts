@@ -250,7 +250,7 @@ function createViteAdapter(dataDir: string, server: ViteDevServer): StudioApiAda
           await page.setViewport({
             width: opts.width,
             height: opts.height,
-            deviceScaleFactor: 0.5,
+            deviceScaleFactor: opts.format === "png" ? 1 : 0.5,
           });
           await page.goto(opts.previewUrl, { waitUntil: "domcontentloaded", timeout: 10000 });
           await page.evaluate(() => {
@@ -307,11 +307,18 @@ function createViteAdapter(dataDir: string, server: ViteDevServer): StudioApiAda
               };
             }, opts.selector);
           }
-          const buf = await page.screenshot({
-            type: "jpeg",
-            quality: 75,
-            ...(clip ? { clip } : {}),
-          });
+          const buf = await page.screenshot(
+            opts.format === "png"
+              ? {
+                  type: "png",
+                  ...(clip ? { clip } : {}),
+                }
+              : {
+                  type: "jpeg",
+                  quality: 75,
+                  ...(clip ? { clip } : {}),
+                },
+          );
           await page.close();
           return buf as Buffer;
         })();
