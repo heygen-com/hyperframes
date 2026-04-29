@@ -1,6 +1,6 @@
 # Design Picker
 
-Create a `design.md` by serving a visual picker page where the user configures 7 independent categories.
+Two-phase visual picker: mood boards first (pick a complete direction), then fine-tune individual categories.
 
 ## Prerequisites
 
@@ -12,12 +12,18 @@ Before generating options, read these style references — all options must comp
 
 ## Building the picker
 
-1. Generate options **contextual to the user's prompt**. A "product launch video" gets different architectures than a "data dashboard recap" or a "brand story." Each category should reflect the content:
-   - **3-4 architectures** — structural layouts that make sense for THIS content. A product launch needs a hook/proof/CTA structure. A data story needs stat grids and comparison layouts. A brand reel needs editorial flow with pull quotes. Name them evocatively (not "Layout A").
-   - **5-6 palettes** — always include a mix of dark, light, and tinted backgrounds. Even for calm/wellness prompts, include at least one dark option. Name them after their personality ("Midnight Volt", "Warm Chalk"), not their colors.
-   - **3 type pairings** — serif+mono, grotesque+mono, display+sans. Cross-category pairings per typography.md. One safe, one editorial, one bold.
+1. Generate options **contextual to the user's prompt**. Each category should reflect the content:
+   - **3-4 mood boards** — complete visual directions combining architecture + palette + typography + density + depth. Each is a holistic identity the user can pick in one click. Name them evocatively ("Terminal Precision", "Editorial Warmth", "Bold Statement"). One safe/expected, one editorial, one ambitious.
+   - **3-4 architectures** — structural layouts that make sense for THIS content. Use `{{prompt_headline}}` and `{{prompt_sub}}` tokens in preview_html so previews show the user's actual content, not placeholder text.
+   - **5-6 palettes** — always include a mix of dark, light, and tinted backgrounds. Name them after personality.
+   - **3 type pairings** — serif+mono, grotesque+mono, display+sans. Cross-category pairings per typography.md.
 2. `mkdir -p .hyperframes` then copy [../templates/design-picker.html](../templates/design-picker.html) to `.hyperframes/pick-design.html`.
-3. Replace `__ARCHITECTURES_JSON__`, `__PALETTES_JSON__`, and `__TYPEPAIRS_JSON__` with your generated options. Use Python or a heredoc to inject JSON cleanly — don't hand-escape quotes in sed. The user picks one from each category independently — structure, palette, type pairing, plus theme (dark/light/full palette), corners, density, and depth.
+3. Replace these placeholders using Python (don't hand-escape quotes in sed):
+   - `__ARCHITECTURES_JSON__` — array of architecture objects
+   - `__PALETTES_JSON__` — array of palette objects
+   - `__TYPEPAIRS_JSON__` — array of type pairing objects
+   - `__MOODBOARDS_JSON__` — array of mood board objects (see format below)
+   - `__PROMPT_JSON__` — object with prompt context (see format below)
 
 ### Architecture data format
 
@@ -46,6 +52,52 @@ Optionally include `components` (component styling rules) and `dos` (do's and do
   "preview_html": "<div style='background:{{bg}};color:{{fg}};padding:{{pad}};min-height:100vh;font-family:\"{{bf}}\",sans-serif;font-weight:{{bw}};'><div style='max-width:100%;display:flex;flex-direction:column;gap:{{gap}};'><div style='font-size:10px;text-transform:uppercase;letter-spacing:0.12em;color:{{mt}};'>Overline Label</div><div style='font-family:\"{{hf}}\",serif;font-weight:{{hw}};font-size:48px;line-height:1.1;letter-spacing:-0.02em;'>The Headline Goes Here</div><div style='font-size:20px;color:{{mt}};max-width:70%;line-height:1.5;'>Subheading text that introduces the narrative arc of this composition with enough words to fill two lines.</div><div style='font-size:15px;line-height:1.7;color:{{fg}};max-width:65%;'>Body paragraph with real sentences. The quick brown fox jumps over the lazy dog. This gives a sense of text density and reading rhythm at the chosen type size.</div><div style='display:flex;gap:{{gap}};flex-wrap:wrap;'><div style='background:{{fg6}};border-radius:{{cr}};padding:{{pad}};flex:1;min-width:200px;box-shadow:{{shadow}};'><div style='font-size:36px;font-family:\"{{hf}}\",serif;font-weight:{{hw}};color:{{ac}};'>2.4M</div><div style='font-size:12px;color:{{mt}};margin-top:4px;'>Primary Stat</div></div><div style='background:{{fg6}};border-radius:{{cr}};padding:{{pad}};flex:1;min-width:200px;box-shadow:{{shadow}};'><div style='font-size:36px;font-family:\"{{hf}}\",serif;font-weight:{{hw}};color:{{fg}};'>87%</div><div style='font-size:12px;color:{{mt}};margin-top:4px;'>Secondary Stat</div></div></div><div style='border-left:3px solid {{ac}};padding:12px {{pad}};background:{{ac3}};border-radius:0 {{cr}} {{cr}} 0;'><div style='font-size:18px;font-style:italic;color:{{fg}};line-height:1.5;'>\"A pull quote that captures the key insight of the piece.\"</div><div style='font-size:12px;color:{{mt}};margin-top:8px;'>— Attribution Name</div></div><div style='background:{{fg3}};border-radius:{{cr}};padding:{{pad}};box-shadow:{{shadow}};'><div style='font-size:14px;font-weight:{{hw}};margin-bottom:8px;'>Card Title</div><div style='font-size:13px;color:{{mt}};line-height:1.5;'>Card body text with a different treatment than the main content area.</div></div><div style='background:{{ac5}};border:1px solid {{ac25}};border-radius:{{cr}};padding:{{pad}};box-shadow:{{shadow}};'><div style='font-size:14px;font-weight:{{hw}};color:{{ac}};margin-bottom:8px;'>Accent Card</div><div style='font-size:13px;color:{{fg}};line-height:1.5;'>Second card with a tinted accent treatment for variety.</div></div><div style='font-family:monospace;font-size:13px;background:{{fg8}};border-radius:{{cr}};padding:{{pad}};color:{{fg15}};box-shadow:{{shadow}};'>$ hyperframes render --output video.mp4</div><div style='display:flex;gap:12px;flex-wrap:wrap;'><button style='background:{{ac}};color:{{bg}};border:none;padding:10px 24px;border-radius:{{cr}};font-size:14px;font-weight:600;box-shadow:{{shadow}};cursor:pointer;'>Primary Action</button><button style='background:transparent;color:{{fg}};border:1px solid {{fg15}};padding:10px 24px;border-radius:{{cr}};font-size:14px;cursor:pointer;'>Secondary</button></div><div style='display:flex;gap:8px;flex-wrap:wrap;'><span style='background:{{fg6}};border-radius:100px;padding:4px 12px;font-size:11px;color:{{mt}};'>Tag One</span><span style='background:{{fg6}};border-radius:100px;padding:4px 12px;font-size:11px;color:{{mt}};'>Tag Two</span><span style='background:{{ac5}};border-radius:100px;padding:4px 12px;font-size:11px;color:{{ac}};'>Accent Tag</span></div><div style='height:1px;background:linear-gradient(to right,{{ac25}},{{fg6}},{{ac25}});'></div><div style='display:flex;justify-content:space-between;font-size:12px;color:{{mt}};border-bottom:1px solid {{g}};padding:8px 0;'><span>Data row label</span><span style='color:{{fg}};font-weight:600;'>1,234</span></div></div></div>"
 }
 ```
+
+### Mood board data format
+
+Each mood board pre-selects one option from each category. The user picks a mood board in Phase 1, then fine-tunes in Phase 2 with those selections pre-filled.
+
+```json
+{
+  "name": "Terminal Precision",
+  "description": "Code-forward, data-dense, CLI energy. Dark canvas, monospace body, sharp corners.",
+  "theme": "dark",
+  "arch_index": 0,
+  "palette_index": 0,
+  "type_index": 0,
+  "corners_index": 0,
+  "density_index": 0,
+  "depth_index": 1,
+  "corners": "0px",
+  "padding": "12px",
+  "gap": "8px",
+  "shadow": "0 2px 16px rgba(0,230,255,0.15)"
+}
+```
+
+Indices reference into the ARCHITECTURES, PALETTES, and TYPEPAIRS arrays. The template renders a mini preview of each mood board using its architecture's `preview_html` with the mood board's palette/type applied.
+
+### Prompt context data format
+
+```json
+{
+  "title": "AI Coding Assistant",
+  "headline": "Your Code, Understood.",
+  "subline": "An AI coding assistant that reads your entire codebase.",
+  "section_desc": "Layout options for your product launch"
+}
+```
+
+`title` appears in the Phase 1 header. `headline` and `subline` replace `{{prompt_headline}}` and `{{prompt_sub}}` in architecture preview_html so previews show real content.
+
+### Content tokens in preview_html
+
+In addition to the standard design tokens (`{{bg}}`, `{{fg}}`, `{{ac}}`, etc.), architecture `preview_html` can use:
+
+- `{{prompt_headline}}` — the user's actual headline text
+- `{{prompt_sub}}` — the user's actual subline text
+
+This makes previews contextual — the user sees their own content styled, not generic placeholders.
 
 ## Serving and user selection
 
