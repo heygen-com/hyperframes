@@ -1,6 +1,6 @@
 # House Style
 
-Creative direction for compositions when no `design.md` is provided. These are starting points — override anything that doesn't serve the content. When a `design.md` exists, its YAML tokens take precedence; house-style fills gaps for values the design.md doesn't define.
+Creative direction for compositions when no `design.md` is provided. These are starting points — override anything that doesn't serve the content. When a `design.md` exists, its brand values take precedence; house-style fills gaps.
 
 ## Before Writing HTML
 

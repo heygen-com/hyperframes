@@ -9,53 +9,24 @@ HTML is the source of truth for video. A composition is an HTML file with `data-
 
 ## Approach
 
-### Step 0a: Design system (always required, first)
+### Step 0a: Design system
 
-Run this BEFORE prompt expansion. Design direction shapes expansion output (atmosphere layers, motion energy, typography), so expanding first produces generic breakdowns that later ignore the palette.
+If `design.md` exists in the project, read it first. It's the source of truth for brand colors, fonts, and constraints. Use its exact values — don't invent colors or substitute fonts. Any format works (YAML frontmatter, prose, tables — just extract the values).
 
-Every composition MUST have a `design.md` in the project root before construction. It is the source of truth for colors, typography, motion, spacing, and mood — every later step (expansion output, scene subagents, assembler) reads it.
+If it names fonts you can't find locally (no `fonts/` directory with `.woff2` files, not a built-in font), warn the user before writing HTML: "design.md specifies [font name] but no font files found. Please add .woff2 files to `fonts/` or I'll fall back to [closest built-in alternative]."
 
-#### DESIGN.md format
+If no `design.md` exists:
 
-DESIGN.md uses the [google-labs-code/design.md](https://github.com/google-labs-code/design.md) spec, extended with a `motion:` namespace for video:
+1. **User named a style or mood?** → Read [visual-styles.md](./visual-styles.md) for the 8 named presets. Pick the closest match.
+2. **Nothing?** → Ask: mood, light or dark, any brand colors/fonts? Then pick a palette from [house-style.md](./house-style.md).
 
-- **YAML front matter** — machine-readable tokens (`colors`, `typography`, `rounded`, `spacing`, `components`, `motion`). These are normative values agents parse directly.
-- **Markdown prose** — `## Overview`, `## Colors`, `## Typography`, `## Elevation`, `## Components`, `## Do's and Don'ts`. Prose explains the _why_ behind each token.
-
-Token references use `{path.to.token}` syntax: `{colors.primary}`, `{typography.headline}`, `{rounded.md}`.
-
-The `motion:` extension carries video-specific tokens: `energy` (calm/moderate/high), `easing` (entry/exit/ambient GSAP eases), `duration` (entrance/hold/transition in seconds), `atmosphere` (decorative layer list), and `transition` (shader name).
-
-#### Resolution order
-
-1. **Exists** — if `design.md` is already in the project root, read it and proceed to Step 1. If it lacks YAML front matter, extract its values into front matter and keep the prose.
-2. **Style picker** — read [visual-styles.md](./visual-styles.md) for the 8 named presets. Each preset includes a complete YAML token block. Ask the user which mood fits, copy the token block into `design.md` front matter, then add prose sections. Customize colors/fonts to the user's brand.
-3. **Guided build** — if no preset fits, ask 3 questions:
-   - What's the mood? (explosive / cinematic / fluid / technical / chaotic / warm)
-   - Light or dark canvas?
-   - Any specific brand colors, fonts, or visual references?
-     Then write a full DESIGN.md with YAML front matter + prose from the answers.
-4. **House-style defaults (last resort)** — only if the user explicitly says "skip design" or this is a tiny edit to an existing composition without a design.md. In that case, follow [house-style.md](./house-style.md) and write its palette + typography into `design.md` so downstream steps have a file to read.
-
-Do NOT begin prompt expansion or scene authoring without a `design.md`. Design direction affects expansion output (atmosphere layers, motion energy, typography choices) — expansion before design produces generic scene breakdowns that later ignore the palette.
-
-### Using design.md during construction
-
-`design.md` is the source of truth for all visual decisions. Use YAML front matter tokens as normative values — `{colors.primary}`, `{typography.headline}`, `{motion.easing.entry}`. Do not invent new colors, substitute fonts, or override its rules. If the composition needs a value design.md doesn't cover, follow [house-style.md](./house-style.md) for that specific decision.
-
-**Passing design.md downstream:**
-
-- **Prompt expansion** — cite YAML token paths (`{colors.accent}`, `{motion.energy}`, `{typography.headline.fontFamily}`) in the expanded prompt's style block. Every scene breakdown references the palette by token name.
-- **Scene subagents** — each subagent receives the full `design.md` (or its YAML front matter). Fragment authors apply only these values; house-style decoratives are added WITHIN the design.md's palette constraints.
-- **Assembler** — reads design.md front matter to populate global CSS variables in the scaffold. Maps `{colors.*}` → `var(--color-*)`, `{typography.*}` → font declarations, `{spacing.*}` → gap/padding values.
+**design.md defines the brand. It does not define video composition rules.** Those come from [references/video-composition.md](references/video-composition.md) and [house-style.md](./house-style.md). Use brand colors at video-appropriate scale — not at web-UI opacity.
 
 ### Step 0b: Prompt expansion
 
-Always run on every composition (except single-scene pieces and trivial edits). This step grounds the user's intent against `design.md` and `house-style.md` and produces a consistent intermediate that every downstream agent — scene subagents, assembler, lint — reads the same way.
+Always run on every composition (except single-scene pieces and trivial edits). This step grounds the user's intent against `design.md` and `house-style.md` and produces a consistent intermediate that every downstream agent reads the same way.
 
-Read [references/prompt-expansion.md](references/prompt-expansion.md) for the full process and output format. The expanded prompt quotes design.md's palette hex values, typography pair, and motion energy verbatim — it does not re-state generic defaults. Present the expanded prompt to the user for approval before proceeding.
-
-If the user's prompt is already scene-by-scene, the expansion is mostly pass-through, but it still binds the prompt to design.md and house-style — which is the contract the downstream steps depend on.
+Read [references/prompt-expansion.md](references/prompt-expansion.md) for the full process and output format.
 
 ### Step 1: Plan
 
@@ -72,22 +43,14 @@ For small edits (fix a color, adjust timing, add one element), skip straight to 
 ### Visual Identity Gate
 
 <HARD-GATE>
-Before writing ANY composition HTML, you MUST have a `design.md` with YAML front matter tokens. Do NOT write compositions with default or generic colors.
+Before writing ANY composition HTML, you MUST have a visual identity. Do NOT write compositions with default or generic colors.
 
-Check in this order:
+1. **design.md exists?** → Read it. Use its exact brand colors, fonts, and constraints.
+2. **User named a style or gave brand direction?** → Read [visual-styles.md](./visual-styles.md) or use user's colors.
+3. **Nothing?** → Ask before writing HTML: mood, light/dark, any brand colors or fonts?
 
-1. **design.md exists in the project?** → Read it. Parse YAML front matter for token values. Use its exact `{colors.*}`, `{typography.*}`, `{motion.*}`, and "Do's and Don'ts" constraints.
-2. **User named a style** (e.g., "Swiss Pulse", "dark and techy", "luxury brand")? → Read [visual-styles.md](./visual-styles.md) for the 8 named presets. Copy the matching YAML token block into a new `design.md`, add prose sections, customize to the user's brand.
-3. **None of the above?** → Ask 3 questions before writing any HTML:
-   - What's the mood? (explosive / cinematic / fluid / technical / chaotic / warm)
-   - Light or dark canvas?
-   - Any specific brand colors, fonts, or visual references?
-     Then generate a full `design.md` with YAML front matter + prose from the answers.
-
-Every composition must trace its palette and typography back to a `design.md` with structured tokens. If you're reaching for `#333`, `#3b82f6`, or `Roboto` — you skipped this step.
+If you're reaching for `#333`, `#3b82f6`, or `Roboto` — you skipped this step.
 </HARD-GATE>
-
-For motion defaults, sizing, entrance patterns, and easing — follow [house-style.md](./house-style.md). The house style handles HOW things move. The DESIGN.md handles WHAT things look like.
 
 ## Layout Before Animation
 
@@ -308,7 +271,7 @@ tl.from("#s2-heading", { x: -40, opacity: 0, duration: 0.6, ease: "expo.out" }, 
 - 60px+ headlines, 20px+ body, 16px+ data labels for rendered video
 - `font-variant-numeric: tabular-nums` on number columns
 
-When no `design.md` or animation direction is provided, follow [house-style.md](./house-style.md) for aesthetic defaults.
+If no `design.md` exists, follow [house-style.md](./house-style.md) for aesthetic defaults.
 
 ## Typography and Assets
 
@@ -327,6 +290,7 @@ When no `design.md` or animation direction is provided, follow [house-style.md](
 
 - [ ] `npx hyperframes lint` and `npx hyperframes validate` both pass
 - [ ] `npx hyperframes inspect` passes, or every reported overflow is intentionally marked
+- [ ] Design adherence verified if design.md exists (see Quality Checks below)
 - [ ] Contrast warnings addressed (see Quality Checks below)
 - [ ] Layout issues addressed (see Quality Checks below)
 - [ ] Animation choreography verified (see Quality Checks below)
@@ -366,6 +330,24 @@ If warnings appear:
 
 Use `--no-contrast` to skip if iterating rapidly and you'll check later.
 
+### Design Adherence
+
+If a `design.md` exists, verify the composition follows it after authoring. Read the HTML and check:
+
+1. **Colors** — every hex value in the composition appears in design.md's palette section (however the user labeled it: Colors, Palette, Theme, etc.). Flag any invented colors.
+2. **Typography** — font families and weights match design.md's type spec. No substitutions.
+3. **Corners** — border-radius values match the declared corner style, if specified.
+4. **Spacing** — padding and gap values fall within the declared density range, if specified.
+5. **Depth** — shadow usage matches the declared depth level, if specified (flat = none, subtle = light, layered = glows).
+6. **Avoidance rules** — if design.md has a section listing things to avoid (commonly "What NOT to Do", "Don'ts", "Anti-patterns", or "Do's and Don'ts"), verify none are present.
+
+Report violations as a checklist. Fix each one before serving.
+
+If no `design.md` exists (house-style-only path), verify:
+
+1. **Palette consistency** — the same bg, fg, and accent colors are used across all scenes. No per-scene color invention.
+2. **No lazy defaults** — check the composition against house-style.md's "Lazy Defaults to Question" list. If any appear, they must be a deliberate choice for the content, not a default.
+
 ### Animation Map
 
 After authoring animations, run the animation map to verify choreography:
@@ -399,8 +381,9 @@ Skip on small edits (fixing a color, adjusting one duration). Run on new composi
 - **[references/css-patterns.md](references/css-patterns.md)** — CSS+GSAP marker highlighting: highlight, circle, burst, scribble, sketchout. Deterministic, fully seekable. Read when adding visual emphasis to text.
 - **[references/typography.md](references/typography.md)** — Typography: font pairing, OpenType features, dark-background adjustments, font discovery script. **Always read** — every composition has text.
 - **[references/motion-principles.md](references/motion-principles.md)** — Motion design principles: easing as emotion, timing as weight, choreography as hierarchy, scene pacing, ambient motion, anti-patterns. Read when choreographing GSAP animations.
-- **[visual-styles.md](visual-styles.md)** — 8 named visual styles (Swiss Pulse, Velvet Standard, Deconstructed, Maximalist Type, Data Drift, Soft Signal, Folk Frequency, Shadow Cut) with hex palettes, GSAP easing signatures, and shader pairings. Read when user names a style or when generating DESIGN.md.
-- **[house-style.md](house-style.md)** — Default motion, sizing, and color palettes when no style is specified.
+- **[references/design-picker.md](references/design-picker.md)** — Create a design.md via visual picker. Read when no design.md exists and the user wants to create one.
+- **[visual-styles.md](visual-styles.md)** — 8 named visual styles (Swiss Pulse, Velvet Standard, Deconstructed, Maximalist Type, Data Drift, Soft Signal, Folk Frequency, Shadow Cut) with hex palettes, GSAP easing signatures, and shader pairings. Read when user names a style or when generating design.md.
+- **[house-style.md](house-style.md)** — Default motion, sizing, and color palettes when no design.md is specified.
 - **[patterns.md](patterns.md)** — PiP, title cards, slide show patterns.
 - **[data-in-motion.md](data-in-motion.md)** — Data, stats, and infographic patterns.
 - **[references/transcript-guide.md](references/transcript-guide.md)** — Transcription commands, whisper models, external APIs, troubleshooting.
