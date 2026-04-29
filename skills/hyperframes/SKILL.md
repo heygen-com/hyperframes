@@ -9,6 +9,19 @@ HTML is the source of truth for video. A composition is an HTML file with `data-
 
 ## Approach
 
+### Discovery (exploratory requests only)
+
+For open-ended requests ("make me a product launch video", "create something for our brand") where the user hasn't committed to a direction, understand intent before picking colors:
+
+- **Audience** — who watches this? Developers? Executives? General consumers?
+- **Platform** — where does it play? Social (15s), website hero, product demo, internal?
+- **Priority** — what matters most? Motion quality? Content accuracy? Brand fidelity? Speed?
+- **Variations** — does the user want options, or a single best shot?
+
+For specific requests ("add a title card", "fix the timing on scene 3"), skip discovery.
+
+For exploratory requests, consider offering 2-3 variations that differ meaningfully — not just color swaps, but different pacing, energy levels, or structural approaches. One safe/expected, one ambitious. Don't mandate this — it's a tool available when appropriate.
+
 ### Step 0a: Design system
 
 If `design.md` exists in the project, read it first. It's the source of truth for brand colors, fonts, and constraints. Use its exact values — don't invent colors or substitute fonts. Any format works (YAML frontmatter, prose, tables — just extract the values).
@@ -34,9 +47,12 @@ Before writing HTML, think at a high level:
 
 1. **What** — what should the viewer experience? Identify the narrative arc, key moments, and emotional beats.
 2. **Structure** — how many compositions, which are sub-compositions vs inline, what tracks carry what (video, audio, overlays, captions).
-3. **Timing** — which clips drive the duration, where do transitions land, what's the pacing.
-4. **Layout** — build the end-state first. See "Layout Before Animation" below.
-5. **Animate** — then add motion using the rules below.
+3. **Rhythm** — declare your scene rhythm before implementing. Which scenes are quick hits, which are holds, where do shaders land, where does energy peak. Name the pattern: fast-fast-SLOW-fast-SHADER-hold. Read [references/beat-direction.md](references/beat-direction.md) for rhythm templates.
+4. **Timing** — which clips drive the duration, where do transitions land, what's the pacing.
+5. **Layout** — build the end-state first. See "Layout Before Animation" below.
+6. **Animate** — then add motion using the rules below.
+
+**Build what was asked.** A request for "a title card" is not a request for "a title card + 3 supporting scenes + ambient music + captions." Every scene, every element, every tween should earn its place. If additional scenes or elements would genuinely improve the piece, propose them — don't add them.
 
 For small edits (fix a color, adjust timing, add one element), skip straight to the rules.
 
@@ -283,17 +299,22 @@ If no `design.md` exists, follow [house-style.md](./house-style.md) for aestheti
 
 ## Editing Existing Compositions
 
-- Read the full composition first — match existing fonts, colors, animation patterns
+- **Read actual files, don't guess.** When editing, extending, or creating companion compositions, read the existing source. Don't reconstruct hex codes from memory. Don't guess GSAP easing patterns. The composition IS the spec — extract exact values from it.
+- Match existing fonts, colors, animation patterns from what you read
 - Only change what was requested
 - Preserve timing of unrelated clips
 
 ## Output Checklist
 
+**Fast (run immediately, block on results):**
+
 - [ ] `npx hyperframes lint` and `npx hyperframes validate` both pass
+- [ ] Design adherence verified if design.md exists
+
+**Slow (run in parallel while presenting the preview to the user):**
+
 - [ ] `npx hyperframes inspect` passes, or every reported overflow is intentionally marked
-- [ ] Design adherence verified if design.md exists (see Quality Checks below)
 - [ ] Contrast warnings addressed (see Quality Checks below)
-- [ ] Layout issues addressed (see Quality Checks below)
 - [ ] Animation choreography verified (see Quality Checks below)
 
 ## Quality Checks
@@ -381,10 +402,13 @@ Skip on small edits (fixing a color, adjusting one duration). Run on new composi
 - **[references/audio-reactive.md](references/audio-reactive.md)** — Audio-reactive animation: map frequency bands and amplitude to GSAP properties. Read when visuals should respond to music, voice, or sound.
 - **[references/css-patterns.md](references/css-patterns.md)** — CSS+GSAP marker highlighting: highlight, circle, burst, scribble, sketchout. Deterministic, fully seekable. Read when adding visual emphasis to text.
 - **[references/video-composition.md](references/video-composition.md)** — Video-medium rules: density, color presence, scale, frame composition, design.md as brand not layout. **Always read** — these override web instincts.
+- **[references/beat-direction.md](references/beat-direction.md)** — Beat planning: concept, mood, choreography verbs, rhythm templates, transition decisions, depth layers. **Always read for multi-scene compositions.**
 - **[references/typography.md](references/typography.md)** — Typography: font pairing, OpenType features, dark-background adjustments, font discovery script. **Always read** — every composition has text.
-- **[references/motion-principles.md](references/motion-principles.md)** — Motion design principles: easing as emotion, timing as weight, choreography as hierarchy, scene pacing, ambient motion, anti-patterns. **Always read** — every composition has motion.
+- **[references/motion-principles.md](references/motion-principles.md)** — Motion design principles, image motion treatment, load-bearing GSAP rules. **Always read** — every composition has motion.
+- **[references/techniques.md](references/techniques.md)** — 11 visual techniques with code patterns: SVG drawing, Canvas 2D, CSS 3D, kinetic type, Lottie, video compositing, typing effect, variable fonts, MotionPath, velocity transitions, audio-reactive. Read when planning techniques per beat.
+- **[references/narration.md](references/narration.md)** — Pacing, tone, script structure, number pronunciation, opening line patterns. Read when the composition includes voiceover or TTS.
 - **[references/design-picker.md](references/design-picker.md)** — Create a design.md via visual picker. Read when no design.md exists and the user wants to create one.
-- **[visual-styles.md](visual-styles.md)** — 8 named visual styles (Swiss Pulse, Velvet Standard, Deconstructed, Maximalist Type, Data Drift, Soft Signal, Folk Frequency, Shadow Cut) with hex palettes, GSAP easing signatures, and shader pairings. Read when user names a style or when generating design.md.
+- **[visual-styles.md](visual-styles.md)** — 8 named visual styles with hex palettes, GSAP easing signatures, and shader pairings. Read when user names a style or when generating design.md.
 - **[house-style.md](house-style.md)** — Default motion, sizing, and color palettes when no design.md is specified.
 - **[patterns.md](patterns.md)** — PiP, title cards, slide show patterns.
 - **[data-in-motion.md](data-in-motion.md)** — Data, stats, and infographic patterns.

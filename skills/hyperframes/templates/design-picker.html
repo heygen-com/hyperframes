@@ -306,31 +306,77 @@ function renderPreview() {
   pv.innerHTML = h;
 }
 
-// Output
+// Output — google-labs-code/design.md spec: YAML frontmatter + prose sections
 function showOutput() {
   if (picks.theme===null||picks.arch===null||picks.palette===null||picks.type===null||picks.corners===null||picks.density===null||picks.depth===null) return;
   var a=ARCHITECTURES[picks.arch], p=PALETTES[picks.palette], t=TYPEPAIRS[picks.type];
   var th = THEMES[picks.theme], cr = CORNERS[picks.corners], dn = DENSITIES[picks.density], dp = DEPTHS[picks.depth];
-  var useBg = (th.id === "palette" && p.background) ? p.background : th.bg;
-  var useFg = (th.id === "palette" && p.foreground) ? p.foreground : th.fg;
-  var md = "# Design System\n\n";
-  md += "## Mood\n" + a.mood + "\n\n";
-  md += "## Theme\n- Mode: " + th.name + "\n- Canvas: " + useBg + "\n- Content: " + useFg + "\n\n";
-  md += "## Structure\n- Architecture: " + a.name + " — " + a.description + "\n\n";
-  md += "## Colors\n";
-  md += "- Accent: " + p.accent + "\n";
-  if (p.muted) md += "- Muted: " + p.muted + "\n";
-  if (p.surface) md += "- Surface: " + p.surface + "\n";
-  md += "\n## Typography\n";
-  md += "- Headline: " + t.headline.family + ", weight " + t.headline.weight + "\n";
-  md += "- Body: " + t.body.family + ", weight " + t.body.weight + "\n";
-  md += "- Size scale: 52px display, 32px heading, 20px subhead, 15px body, 12px caption\n";
-  md += "- Tracking: -0.03em on display sizes, normal on body\n";
-  md += "\n## Corners\n- Border radius: " + cr.name + " (" + cr.value + ")\n";
-  md += "\n## Spacing\n- Density: " + dn.name + "\n- Padding: " + dn.padding + "\n- Gap: " + dn.gap + "\n";
-  md += "\n## Depth & Elevation\n- Level: " + dp.name + " — " + dp.desc + "\n";
-  if (a.components) md += "\n## Components\n" + a.components + "\n";
-  if (a.dos) md += "\n## Do's and Don'ts\n" + a.dos + "\n";
+  var bg = (th.id === "palette" && p.background) ? p.background : th.bg;
+  var fg = (th.id === "palette" && p.foreground) ? p.foreground : th.fg;
+  var ac = p.accent;
+  var mt = p.muted || p.mid || "#888888";
+  var padVal = {Tight:"8px",Normal:"16px",Generous:"32px"}[dn.name] || "16px";
+  var gapVal = {Tight:"8px",Normal:"16px",Generous:"28px"}[dn.name] || "16px";
+  var shadowDesc = {Flat:"none",Subtle:"0 2px 8px rgba(0,0,0,0.1)",Layered:"0 4px 24px rgba(0,0,0,0.15)"}[dp.name] || "none";
+
+  // YAML frontmatter
+  var md = "---\n";
+  md += "name: Untitled\n";
+  md += "colors:\n";
+  md += "  primary: \"" + bg + "\"\n";
+  md += "  on-primary: \"" + fg + "\"\n";
+  md += "  accent: \"" + ac + "\"\n";
+  md += "  muted: \"" + mt + "\"\n";
+  md += "typography:\n";
+  md += "  headline:\n";
+  md += "    fontFamily: " + t.headline.family + "\n";
+  md += "    fontSize: 3.5rem\n";
+  md += "    fontWeight: " + t.headline.weight + "\n";
+  md += "    letterSpacing: -0.03em\n";
+  md += "  body:\n";
+  md += "    fontFamily: " + t.body.family + "\n";
+  md += "    fontSize: 1rem\n";
+  md += "    fontWeight: " + t.body.weight + "\n";
+  md += "    lineHeight: 1.5\n";
+  md += "rounded:\n";
+  md += "  md: " + cr.value + "\n";
+  md += "spacing:\n";
+  md += "  md: " + padVal + "\n";
+  md += "  lg: " + gapVal + "\n";
+  md += "---\n\n";
+
+  // Prose sections
+  md += "## Overview\n\n";
+  md += a.mood + ". " + a.description + ". " + p.description + ".\n\n";
+
+  md += "## Colors\n\n";
+  md += "- **Primary** (`" + bg + "`) — Canvas background\n";
+  md += "- **On-Primary** (`" + fg + "`) — Text and content\n";
+  md += "- **Accent** (`" + ac + "`) — CTAs, highlights, interactive elements\n";
+  md += "- **Muted** (`" + mt + "`) — Secondary text, captions\n\n";
+
+  md += "## Typography\n\n";
+  md += "- **Headline** — " + t.headline.family + " at weight " + t.headline.weight + ". Display and section headings.\n";
+  md += "- **Body** — " + t.body.family + " at weight " + t.body.weight + ". Running text and UI labels.\n\n";
+
+  md += "## Layout\n\n";
+  md += "- Structure: " + a.name + " — " + a.tag + "\n";
+  md += "- Density: " + dn.name + " (" + dn.desc + ")\n";
+  md += "- Corners: " + cr.name + " (" + cr.value + ")\n\n";
+
+  md += "## Elevation\n\n";
+  md += dp.name + " — " + dp.desc + ".\n\n";
+
+  if (a.components) md += "## Components\n\n" + a.components + "\n\n";
+
+  md += "## Do's and Don'ts\n\n";
+  if (a.dos) {
+    md += a.dos + "\n";
+  } else {
+    md += "### Do's\n- Use accent color sparingly for maximum impact\n- Maintain consistent " + cr.name.toLowerCase() + " corners across all elements\n\n";
+    md += "### Don'ts\n- Do not mix multiple accent colors\n- Do not use font weights outside the specified headline/body pair\n";
+  }
+
   document.getElementById("md-output").value = md;
   document.getElementById("md-overlay").classList.add("visible");
 }
