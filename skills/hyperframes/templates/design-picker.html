@@ -11,41 +11,49 @@
         box-sizing: border-box;
       }
       body {
-        font-family: system-ui, sans-serif;
-        background: #111;
+        font-family:
+          system-ui,
+          -apple-system,
+          sans-serif;
+        background: #0e0e0e;
         color: #eee;
         height: 100vh;
         overflow: hidden;
         display: flex;
         flex-direction: column;
+        font-size: 13px;
+        line-height: 1.4;
+        -webkit-font-smoothing: antialiased;
       }
 
-      /* ── Phase navigation ── */
+      /* ── Phase bar ── */
       .phase-bar {
         display: flex;
-        border-bottom: 1px solid #222;
-        padding: 0 24px;
+        border-bottom: 1px solid #1a1a1a;
+        padding: 0 20px;
         flex-shrink: 0;
+        background: #111;
       }
       .phase-tab {
-        padding: 14px 20px;
-        font-size: 13px;
+        padding: 12px 16px;
+        font-size: 12px;
         font-weight: 600;
         color: #555;
         cursor: pointer;
         border-bottom: 2px solid transparent;
         transition: all 0.15s;
+        letter-spacing: 0.02em;
       }
       .phase-tab.active {
         color: #fff;
         border-bottom-color: #fff;
       }
       .phase-tab.disabled {
-        opacity: 0.3;
+        opacity: 0.25;
         pointer-events: none;
       }
 
-      /* ── Phase containers ── */
+      /* ── Phases ── */
       .phase {
         display: none;
         flex: 1;
@@ -58,79 +66,84 @@
       /* ── Phase 1: Mood boards ── */
       .mood-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
-        gap: 20px;
-        padding: 28px;
+        grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+        gap: 16px;
+        padding: 20px;
         overflow-y: auto;
         flex: 1;
         align-content: start;
       }
       .mood-card {
-        border: 2px solid #222;
-        border-radius: 16px;
+        border: 1px solid #1e1e1e;
+        border-radius: 12px;
         overflow: hidden;
         cursor: pointer;
         transition:
           border-color 0.15s,
-          transform 0.15s;
+          transform 0.15s,
+          box-shadow 0.15s;
+        background: #141414;
       }
       .mood-card:hover {
-        border-color: #444;
-        transform: translateY(-2px);
+        border-color: #333;
+        transform: translateY(-1px);
+        box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
       }
       .mood-card.selected {
         border-color: #fff;
       }
       .mood-preview {
-        height: 280px;
+        height: 260px;
         overflow: hidden;
         position: relative;
+        background: #0a0a0a;
       }
       .mood-preview > div {
         transform-origin: top left;
       }
       .mood-info {
-        padding: 16px 20px;
-        border-top: 1px solid #222;
+        padding: 14px 16px;
       }
       .mood-name {
-        font-size: 16px;
+        font-size: 14px;
         font-weight: 600;
-        margin-bottom: 4px;
+        margin-bottom: 3px;
       }
       .mood-desc {
-        font-size: 12px;
-        color: #888;
+        font-size: 11px;
+        color: #666;
         line-height: 1.4;
       }
       .mood-tokens {
         display: flex;
-        gap: 6px;
-        margin-top: 10px;
+        gap: 4px;
+        margin-top: 8px;
+        flex-wrap: wrap;
       }
       .mood-token {
-        font-size: 10px;
+        font-size: 9px;
         color: #555;
         background: #1a1a1a;
-        padding: 3px 8px;
-        border-radius: 4px;
+        padding: 2px 7px;
+        border-radius: 3px;
+        letter-spacing: 0.02em;
       }
 
       .mood-header {
-        padding: 28px 28px 0;
+        padding: 20px 20px 0;
         flex-shrink: 0;
       }
       .mood-header h2 {
-        font-size: 20px;
+        font-size: 16px;
         font-weight: 600;
-        margin-bottom: 4px;
+        margin-bottom: 2px;
       }
       .mood-header p {
-        font-size: 13px;
-        color: #666;
+        font-size: 12px;
+        color: #555;
       }
       .mood-next {
-        padding: 16px 28px;
+        padding: 12px 20px;
         flex-shrink: 0;
         display: flex;
         justify-content: flex-end;
@@ -139,13 +152,13 @@
         background: #fff;
         color: #000;
         border: none;
-        padding: 12px 28px;
-        border-radius: 10px;
-        font-size: 14px;
+        padding: 10px 24px;
+        border-radius: 8px;
+        font-size: 13px;
         font-weight: 600;
         cursor: pointer;
         opacity: 0;
-        transform: translateY(10px);
+        transform: translateY(8px);
         transition: all 0.2s;
       }
       .mood-next-btn.visible {
@@ -158,150 +171,202 @@
 
       /* ── Phase 2: Fine-tune ── */
       .panel-left {
-        width: 380px;
-        min-width: 380px;
+        width: 400px;
+        min-width: 400px;
         height: 100%;
         overflow-y: auto;
-        border-right: 1px solid #222;
-        padding: 28px 24px 120px;
+        border-right: 1px solid #1a1a1a;
+        padding: 0 0 100px;
+        background: #111;
       }
       .panel-right {
         flex: 1;
         height: 100%;
         overflow-y: auto;
         overflow-x: hidden;
+        background: #0e0e0e;
       }
       .panel-right * {
         max-width: 100%;
         box-sizing: border-box;
       }
 
-      .section {
-        margin-bottom: 36px;
+      /* ── Section cards (Neuform-inspired) ── */
+      .section-card {
+        border-bottom: 1px solid #1a1a1a;
+      }
+      .section-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 14px 16px 6px;
+      }
+      .section-icon {
+        width: 22px;
+        height: 22px;
+        border-radius: 5px;
+        background: rgba(255, 255, 255, 0.04);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #555;
+        font-size: 11px;
+        flex-shrink: 0;
       }
       .section-title {
-        font-size: 14px;
+        font-size: 11px;
         font-weight: 600;
-        margin-bottom: 4px;
         color: #fff;
+        letter-spacing: 0.01em;
       }
-      .section-desc {
-        font-size: 12px;
-        color: #666;
-        margin-bottom: 14px;
+      .section-meta {
+        font-size: 10px;
+        color: #444;
+        margin-left: auto;
+      }
+      .section-body {
+        padding: 6px 16px 16px;
       }
 
-      .option {
-        border: 2px solid #222;
-        border-radius: 12px;
-        padding: 14px 18px;
-        margin-bottom: 8px;
+      /* ── Option cards ── */
+      .opt {
+        border: 1px solid #1e1e1e;
+        border-radius: 10px;
+        margin-bottom: 6px;
         cursor: pointer;
-        transition: border-color 0.15s;
+        transition: border-color 0.12s;
+        overflow: hidden;
+        background: #141414;
         position: relative;
       }
-      .option:hover {
-        border-color: #444;
+      .opt:hover {
+        border-color: #333;
       }
-      .option.selected {
+      .opt.selected {
         border-color: #fff;
       }
+      .opt-inner {
+        padding: 12px 14px;
+      }
       .opt-name {
-        font-size: 14px;
+        font-size: 12px;
         font-weight: 600;
         margin-bottom: 2px;
       }
       .opt-desc {
-        font-size: 11px;
-        color: #888;
+        font-size: 10px;
+        color: #666;
         line-height: 1.4;
       }
       .opt-tag {
-        font-size: 10px;
-        color: #555;
+        font-size: 9px;
+        color: #444;
         margin-top: 4px;
         text-transform: uppercase;
-        letter-spacing: 0.05em;
+        letter-spacing: 0.04em;
       }
       .opt-rec {
         position: absolute;
         top: 8px;
-        right: 12px;
-        font-size: 9px;
-        font-weight: 600;
+        right: 10px;
+        font-size: 8px;
+        font-weight: 700;
         color: #4ade80;
-        background: rgba(74, 222, 128, 0.1);
-        padding: 2px 8px;
-        border-radius: 4px;
+        background: rgba(74, 222, 128, 0.08);
+        padding: 2px 6px;
+        border-radius: 3px;
         text-transform: uppercase;
-        letter-spacing: 0.05em;
+        letter-spacing: 0.04em;
       }
 
-      .pal-swatches {
+      /* ── Palette option ── */
+      .pal-strip {
         display: flex;
-        gap: 5px;
-        margin-bottom: 6px;
-      }
-      .pal-swatch {
-        width: 28px;
         height: 28px;
         border-radius: 6px;
-        border: 1px solid rgba(255, 255, 255, 0.1);
+        overflow: hidden;
+        margin-bottom: 8px;
+      }
+      .pal-strip > div {
+        flex: 1;
+      }
+      .pal-ramp {
+        display: flex;
+        gap: 2px;
+        margin-top: 4px;
+      }
+      .pal-ramp-swatch {
+        width: 100%;
+        height: 6px;
+        border-radius: 2px;
       }
 
-      .type-headline-preview {
+      /* ── Type option (specimen) ── */
+      .type-specimen {
+        padding: 14px;
+        border-bottom: 1px solid #1a1a1a;
+      }
+      .type-headline {
         line-height: 1.1;
         letter-spacing: -0.02em;
-        margin-bottom: 3px;
+        margin-bottom: 6px;
       }
-      .type-body-preview {
+      .type-body {
         line-height: 1.5;
-        opacity: 0.6;
-        font-size: 12px;
+        color: #666;
+        font-size: 11px;
+      }
+      .type-meta {
+        padding: 10px 14px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
       }
       .type-families {
-        font-size: 10px;
-        color: #666;
-        margin-top: 6px;
+        font-size: 9px;
+        color: #444;
+        letter-spacing: 0.02em;
       }
-
-      .preview-empty {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        height: 100%;
+      .type-letters {
+        font-size: 9px;
         color: #333;
-        font-size: 14px;
+        letter-spacing: 0.08em;
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+        max-width: 200px;
       }
 
+      /* ── Chip options ── */
       .chips {
         display: flex;
-        gap: 8px;
+        gap: 6px;
         flex-wrap: wrap;
       }
       .chip {
-        border: 2px solid #222;
-        border-radius: 10px;
-        padding: 10px 16px;
+        border: 1px solid #1e1e1e;
+        border-radius: 8px;
+        padding: 8px 12px;
         cursor: pointer;
-        transition: border-color 0.15s;
+        transition: border-color 0.12s;
         display: flex;
         align-items: center;
-        gap: 10px;
+        gap: 8px;
+        background: #141414;
       }
       .chip:hover {
-        border-color: #444;
+        border-color: #333;
       }
       .chip.selected {
         border-color: #fff;
       }
       .chip-label {
-        font-size: 12px;
+        font-size: 11px;
         font-weight: 500;
       }
       .chip-sub {
-        font-size: 10px;
-        color: #666;
+        font-size: 9px;
+        color: #555;
       }
       .chip-preview {
         flex-shrink: 0;
@@ -309,58 +374,69 @@
 
       .theme-chip {
         flex: 1;
-        min-width: 100px;
+        min-width: 90px;
         flex-direction: column;
         align-items: center;
-        padding: 14px 16px;
+        padding: 10px 12px;
         text-align: center;
       }
       .theme-swatch {
         width: 100%;
-        height: 32px;
+        height: 28px;
         border-radius: 4px;
-        margin-bottom: 6px;
-        border: 1px solid rgba(255, 255, 255, 0.1);
+        margin-bottom: 4px;
+        border: 1px solid rgba(255, 255, 255, 0.06);
       }
       .corner-box {
-        width: 28px;
-        height: 28px;
-        border: 2px solid #888;
+        width: 22px;
+        height: 22px;
+        border: 2px solid #666;
       }
       .density-bars {
         display: flex;
         flex-direction: column;
-        width: 32px;
+        width: 24px;
       }
       .density-bar {
-        background: #888;
-        height: 4px;
+        background: #666;
+        height: 3px;
         border-radius: 1px;
       }
       .depth-square {
-        width: 28px;
-        height: 28px;
-        background: #333;
+        width: 22px;
+        height: 22px;
+        background: #2a2a2a;
+        border-radius: 3px;
       }
 
+      .preview-empty {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+        color: #2a2a2a;
+        font-size: 13px;
+      }
+
+      /* ── FAB + Overlay ── */
       .fab {
         position: fixed;
-        bottom: 24px;
-        right: 40px;
-        transform: translateY(80px);
+        bottom: 20px;
+        right: 32px;
+        transform: translateY(60px);
         opacity: 0;
         background: #fff;
         color: #000;
         border: none;
-        padding: 14px 28px;
-        border-radius: 12px;
-        font-size: 14px;
+        padding: 12px 24px;
+        border-radius: 10px;
+        font-size: 13px;
         font-weight: 600;
         cursor: pointer;
         box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
         transition:
-          transform 0.3s ease,
-          opacity 0.3s ease;
+          transform 0.25s ease,
+          opacity 0.25s ease;
         z-index: 100;
       }
       .fab.visible {
@@ -385,37 +461,37 @@
         display: flex;
       }
       .md-card {
-        background: #1a1a1a;
-        border: 1px solid #333;
-        border-radius: 16px;
-        max-width: 640px;
+        background: #161616;
+        border: 1px solid #2a2a2a;
+        border-radius: 14px;
+        max-width: 600px;
         width: 90%;
         max-height: 80vh;
         display: flex;
         flex-direction: column;
       }
       .md-header {
-        padding: 20px 24px;
-        border-bottom: 1px solid #222;
+        padding: 16px 20px;
+        border-bottom: 1px solid #1e1e1e;
         display: flex;
         justify-content: space-between;
         align-items: center;
       }
       .md-title {
-        font-size: 16px;
+        font-size: 14px;
         font-weight: 600;
       }
       .md-actions {
         display: flex;
-        gap: 8px;
+        gap: 6px;
       }
       .copy-btn {
         background: #fff;
         color: #000;
         border: none;
-        padding: 8px 20px;
-        border-radius: 8px;
-        font-size: 13px;
+        padding: 7px 16px;
+        border-radius: 6px;
+        font-size: 12px;
         font-weight: 600;
         cursor: pointer;
       }
@@ -424,31 +500,31 @@
       }
       .close-btn {
         background: transparent;
-        color: #888;
-        border: 1px solid #333;
-        padding: 8px 16px;
-        border-radius: 8px;
-        font-size: 13px;
+        color: #666;
+        border: 1px solid #2a2a2a;
+        padding: 7px 14px;
+        border-radius: 6px;
+        font-size: 12px;
         cursor: pointer;
       }
       .close-btn:hover {
         color: #fff;
-        border-color: #555;
+        border-color: #444;
       }
       .md-body {
-        padding: 24px;
+        padding: 20px;
         overflow-y: auto;
         flex: 1;
       }
       .md-editor {
         font-family: "SF Mono", Consolas, monospace;
-        font-size: 13px;
+        font-size: 12px;
         line-height: 1.6;
-        color: #ccc;
+        color: #aaa;
         background: transparent;
         border: none;
         width: 100%;
-        min-height: 400px;
+        min-height: 360px;
         resize: vertical;
         outline: none;
         white-space: pre-wrap;
@@ -456,7 +532,6 @@
     </style>
   </head>
   <body>
-    <!-- Phase navigation -->
     <div class="phase-bar">
       <div class="phase-tab active" id="tab-mood" onclick="showPhase('mood')">1. Direction</div>
       <div class="phase-tab disabled" id="tab-tune" onclick="showPhase('tune')">2. Fine-tune</div>
@@ -481,49 +556,66 @@
     <!-- Phase 2: Fine-tune -->
     <div class="phase" id="phase-tune" style="flex-direction: row">
       <div class="panel-left">
-        <div style="font-size: 18px; font-weight: 600; margin-bottom: 4px">Fine-tune</div>
-        <div id="tune-subtitle" style="font-size: 12px; color: #666; margin-bottom: 28px">
-          Adjust any category. Preview updates live.
+        <!-- Theme -->
+        <div class="section-card">
+          <div class="section-header">
+            <div class="section-icon">◐</div>
+            <div class="section-title">Theme</div>
+          </div>
+          <div class="section-body"><div class="chips" id="theme-options"></div></div>
         </div>
-
-        <div class="section">
-          <div class="section-title">Theme</div>
-          <div class="section-desc">Light or dark canvas.</div>
-          <div class="chips" id="theme-options"></div>
+        <!-- Structure -->
+        <div class="section-card">
+          <div class="section-header">
+            <div class="section-icon">▦</div>
+            <div class="section-title">Structure</div>
+            <div class="section-meta" id="arch-meta"></div>
+          </div>
+          <div class="section-body" id="arch-options"></div>
         </div>
-        <div class="section">
-          <div class="section-title">Structure</div>
-          <div id="arch-section-desc" class="section-desc">Shape, layout, spatial feel.</div>
-          <div id="arch-options"></div>
+        <!-- Palette -->
+        <div class="section-card">
+          <div class="section-header">
+            <div class="section-icon">◉</div>
+            <div class="section-title">Color</div>
+          </div>
+          <div class="section-body" id="pal-options"></div>
         </div>
-        <div class="section">
-          <div class="section-title">Color palette</div>
-          <div class="section-desc">Accent colors applied to your theme.</div>
-          <div id="pal-options"></div>
+        <!-- Typography -->
+        <div class="section-card">
+          <div class="section-header">
+            <div class="section-icon">Aa</div>
+            <div class="section-title">Typography</div>
+          </div>
+          <div class="section-body" id="type-options"></div>
         </div>
-        <div class="section">
-          <div class="section-title">Typography</div>
-          <div class="section-desc">Headline + body pairing.</div>
-          <div id="type-options"></div>
+        <!-- Corners -->
+        <div class="section-card">
+          <div class="section-header">
+            <div class="section-icon">⬔</div>
+            <div class="section-title">Corners</div>
+          </div>
+          <div class="section-body"><div class="chips" id="corner-options"></div></div>
         </div>
-        <div class="section">
-          <div class="section-title">Corners</div>
-          <div class="section-desc">Component border radius.</div>
-          <div class="chips" id="corner-options"></div>
+        <!-- Density -->
+        <div class="section-card">
+          <div class="section-header">
+            <div class="section-icon">≡</div>
+            <div class="section-title">Density</div>
+          </div>
+          <div class="section-body"><div class="chips" id="density-options"></div></div>
         </div>
-        <div class="section">
-          <div class="section-title">Density</div>
-          <div class="section-desc">Spacing between elements.</div>
-          <div class="chips" id="density-options"></div>
-        </div>
-        <div class="section">
-          <div class="section-title">Depth</div>
-          <div class="section-desc">Shadows and layering.</div>
-          <div class="chips" id="depth-options"></div>
+        <!-- Depth -->
+        <div class="section-card">
+          <div class="section-header">
+            <div class="section-icon">◧</div>
+            <div class="section-title">Depth</div>
+          </div>
+          <div class="section-body"><div class="chips" id="depth-options"></div></div>
         </div>
       </div>
       <div class="panel-right" id="preview">
-        <div class="preview-empty">Select a structure to begin</div>
+        <div class="preview-empty">Pick a structure to preview</div>
       </div>
     </div>
 
@@ -534,12 +626,10 @@
         <div class="md-header">
           <div class="md-title">
             design.md
-            <span style="font-size: 12px; font-weight: 400; color: #666"
-              >— edit anything, then copy</span
-            >
+            <span style="font-size: 11px; font-weight: 400; color: #555">— edit, then copy</span>
           </div>
           <div class="md-actions">
-            <button class="copy-btn" id="copy-btn">Copy to clipboard</button>
+            <button class="copy-btn" id="copy-btn">Copy</button>
             <button
               class="close-btn"
               onclick="document.getElementById('md-overlay').classList.remove('visible')"
@@ -560,7 +650,6 @@
       var TYPEPAIRS = __TYPEPAIRS_JSON__;
       var MOODBOARDS = __MOODBOARDS_JSON__;
       var PROMPT = __PROMPT_JSON__;
-
       var picks = {
         theme: null,
         arch: null,
@@ -572,43 +661,25 @@
       };
 
       var THEMES = [
-        {
-          name: "Dark",
-          id: "dark",
-          bg: "#0e0e0e",
-          fg: "#eee",
-          desc: "Light content on dark canvas",
-        },
-        {
-          name: "Light",
-          id: "light",
-          bg: "#f5f3ef",
-          fg: "#1a1a1a",
-          desc: "Dark content on light canvas",
-        },
-        {
-          name: "Full palette",
-          id: "palette",
-          bg: null,
-          fg: null,
-          desc: "Use palette bg/fg colors",
-        },
+        { name: "Dark", id: "dark", bg: "#0e0e0e", fg: "#eee", desc: "Light on dark" },
+        { name: "Light", id: "light", bg: "#f5f3ef", fg: "#1a1a1a", desc: "Dark on light" },
+        { name: "Palette", id: "palette", bg: null, fg: null, desc: "Use palette colors" },
       ];
       var CORNERS = [
-        { name: "Sharp", value: "0px", desc: "No radius" },
-        { name: "Slight", value: "4px", desc: "Subtle rounding" },
-        { name: "Rounded", value: "12px", desc: "Soft corners" },
-        { name: "Pill", value: "100px", desc: "Fully rounded" },
+        { name: "Sharp", value: "0px" },
+        { name: "Slight", value: "4px" },
+        { name: "Rounded", value: "12px" },
+        { name: "Pill", value: "100px" },
       ];
       var DENSITIES = [
-        { name: "Tight", padding: "8-12px", gap: "8-12px", desc: "Compact, data-dense" },
+        { name: "Tight", padding: "8-12px", gap: "8-12px", desc: "Compact" },
         { name: "Normal", padding: "16-24px", gap: "16-20px", desc: "Balanced" },
-        { name: "Generous", padding: "32-48px", gap: "28-40px", desc: "Lots of breathing room" },
+        { name: "Generous", padding: "32-48px", gap: "28-40px", desc: "Spacious" },
       ];
       var DEPTHS = [
-        { name: "Flat", desc: "No shadows or glows" },
-        { name: "Subtle", desc: "Faint shadows on elevated elements" },
-        { name: "Layered", desc: "Glows, vignettes, atmospheric depth" },
+        { name: "Flat", desc: "No shadows" },
+        { name: "Subtle", desc: "Faint shadows" },
+        { name: "Layered", desc: "Glows + depth" },
       ];
 
       // Load fonts
@@ -625,9 +696,7 @@
 
       function al(hex, o) {
         if (!hex || typeof hex !== "string" || hex[0] !== "#") return "rgba(128,128,128," + o + ")";
-        if (hex.length === 4) {
-          hex = "#" + hex[1] + hex[1] + hex[2] + hex[2] + hex[3] + hex[3];
-        }
+        if (hex.length === 4) hex = "#" + hex[1] + hex[1] + hex[2] + hex[2] + hex[3] + hex[3];
         var r = parseInt(hex.slice(1, 3), 16),
           g = parseInt(hex.slice(3, 5), 16),
           b = parseInt(hex.slice(5, 7), 16);
@@ -637,34 +706,26 @@
         return "rgba(" + r + "," + g + "," + b + "," + o + ")";
       }
 
-      // Set prompt-aware UI text
-      if (PROMPT && PROMPT.title) {
+      // Prompt-aware UI
+      if (PROMPT && PROMPT.title)
         document.getElementById("mood-title").textContent = "Pick a direction for: " + PROMPT.title;
-      }
-      if (PROMPT && PROMPT.section_desc) {
-        document.getElementById("arch-section-desc").textContent = PROMPT.section_desc;
-      }
 
       // ── Phase 1: Mood boards ──
       var moodGrid = document.getElementById("mood-grid");
       var selectedMood = null;
-
       MOODBOARDS.forEach(function (mb, i) {
         var card = document.createElement("div");
         card.className = "mood-card";
-
-        // Build a mini preview using the mood board's defaults
-        var tp = TYPEPAIRS[mb.type_index || 0];
-        var pal = PALETTES[mb.palette_index || 0];
-        var arch = ARCHITECTURES[mb.arch_index || 0];
-        var thId = mb.theme || "dark";
-        var th =
-          THEMES.find(function (t) {
-            return t.id === thId;
-          }) || THEMES[0];
-        var bg = thId === "palette" ? pal.background : th.bg;
-        var fg = thId === "palette" ? pal.foreground : th.fg;
-
+        var tp = TYPEPAIRS[mb.type_index || 0],
+          pal = PALETTES[mb.palette_index || 0],
+          arch = ARCHITECTURES[mb.arch_index || 0];
+        var thId = mb.theme || "dark",
+          th =
+            THEMES.find(function (t) {
+              return t.id === thId;
+            }) || THEMES[0];
+        var bg = thId === "palette" ? pal.background : th.bg,
+          fg = thId === "palette" ? pal.foreground : th.fg;
         var tokens = {
           "{{bg}}": bg,
           "{{fg}}": fg,
@@ -687,34 +748,28 @@
           "{{ac3}}": al(pal.accent, 0.03),
           "{{ac5}}": al(pal.accent, 0.05),
           "{{ac25}}": al(pal.accent, 0.25),
-          "{{prompt_headline}}": (PROMPT && PROMPT.headline) || "Your Headline Here",
-          "{{prompt_sub}}":
-            (PROMPT && PROMPT.subline) || "A subline that introduces your product or idea.",
+          "{{prompt_headline}}": (PROMPT && PROMPT.headline) || "Your Headline",
+          "{{prompt_sub}}": (PROMPT && PROMPT.subline) || "A subline for your product.",
         };
-
         var preview = arch.preview_html || "";
         Object.keys(tokens).forEach(function (k) {
           preview = preview.split(k).join(tokens[k]);
         });
-
-        var tokenTags = [tp.headline.family, pal.name, CORNERS[mb.corners_index || 1].name]
+        var tagHtml = [tp.headline.family, pal.name, CORNERS[mb.corners_index || 1].name]
           .map(function (t) {
             return '<span class="mood-token">' + t + "</span>";
           })
           .join("");
-
         card.innerHTML =
-          '<div class="mood-preview"><div style="transform:scale(0.5);transform-origin:top left;width:200%;height:200%;">' +
+          '<div class="mood-preview"><div style="transform:scale(0.48);transform-origin:top left;width:208.33%;height:208.33%;">' +
           preview +
-          "</div></div>" +
-          '<div class="mood-info"><div class="mood-name">' +
+          '</div></div><div class="mood-info"><div class="mood-name">' +
           mb.name +
           '</div><div class="mood-desc">' +
           mb.description +
           '</div><div class="mood-tokens">' +
-          tokenTags +
+          tagHtml +
           "</div></div>";
-
         card.onclick = function () {
           moodGrid.querySelectorAll(".mood-card").forEach(function (c) {
             c.classList.remove("selected");
@@ -726,7 +781,6 @@
         moodGrid.appendChild(card);
       });
 
-      // ── Phase switching ──
       function showPhase(name) {
         document.querySelectorAll(".phase").forEach(function (p) {
           p.classList.remove("active");
@@ -741,8 +795,6 @@
       function goToTune() {
         if (selectedMood === null) return;
         var mb = MOODBOARDS[selectedMood];
-
-        // Pre-fill picks from mood board
         var thIdx = THEMES.findIndex(function (t) {
           return t.id === (mb.theme || "dark");
         });
@@ -759,91 +811,97 @@
           chipSel("density", mb.density_index, document.getElementById("density-options"));
         if (mb.depth_index != null)
           chipSel("depth", mb.depth_index, document.getElementById("depth-options"));
-
-        // Enable and switch to phase 2
         document.getElementById("tab-tune").classList.remove("disabled");
         showPhase("tune");
       }
 
-      // ── Phase 2: Build options (same as before but with recommended badges) ──
+      // ── Phase 2: Build options ──
+
+      // Architecture cards
       var archOpts = document.getElementById("arch-options");
       ARCHITECTURES.forEach(function (a, i) {
         var el = document.createElement("div");
-        el.className = "option";
-        var rec =
-          MOODBOARDS.length > 0 &&
-          selectedMood !== null &&
-          MOODBOARDS[selectedMood].arch_index === i
-            ? '<div class="opt-rec">recommended</div>'
-            : "";
+        el.className = "opt";
         el.innerHTML =
-          rec +
-          '<div class="opt-name">' +
+          '<div class="opt-inner"><div class="opt-name">' +
           a.name +
           '</div><div class="opt-desc">' +
           a.description +
           '</div><div class="opt-tag">' +
           a.tag +
-          "</div>";
+          "</div></div>";
         el.onclick = function () {
           sel("arch", i, archOpts);
         };
         archOpts.appendChild(el);
       });
+
+      // Palette cards with ramp
       var palOpts = document.getElementById("pal-options");
       PALETTES.forEach(function (p, i) {
         var el = document.createElement("div");
-        el.className = "option";
+        el.className = "opt";
         el.innerHTML =
-          '<div class="pal-swatches"><div class="pal-swatch" style="background:' +
+          '<div class="opt-inner"><div class="pal-strip"><div style="background:' +
           p.background +
-          ';"></div><div class="pal-swatch" style="background:' +
-          p.foreground +
-          ';"></div><div class="pal-swatch" style="background:' +
+          ';"></div><div style="background:' +
+          (p.muted || p.mid || "#888") +
+          ';"></div><div style="background:' +
           p.accent +
+          ';"></div><div style="background:' +
+          p.foreground +
           ';"></div></div><div class="opt-name">' +
           p.name +
           '</div><div class="opt-desc">' +
           p.description +
-          "</div>";
+          "</div></div>";
         el.onclick = function () {
           sel("palette", i, palOpts);
         };
         palOpts.appendChild(el);
       });
+
+      // Typography cards with specimen
       var typeOpts = document.getElementById("type-options");
       TYPEPAIRS.forEach(function (tp, i) {
+        var letters = "AaBbCcDdEeFfGgHh";
         var el = document.createElement("div");
-        el.className = "option";
+        el.className = "opt";
         el.innerHTML =
-          '<div class="type-headline-preview" style="font-family:\'' +
+          '<div class="type-specimen"><div class="type-headline" style="font-family:\'' +
           tp.headline.family +
           "',sans-serif;font-weight:" +
           tp.headline.weight +
-          ';font-size:22px;">' +
+          ';font-size:24px;">' +
           tp.preview +
-          '</div><div class="type-body-preview" style="font-family:\'' +
+          '</div><div class="type-body" style="font-family:\'' +
           tp.body.family +
           "',monospace;font-weight:" +
           tp.body.weight +
           ';">' +
           tp.body_preview +
-          '</div><div class="type-families">' +
+          '</div></div><div class="type-meta"><div class="type-families">' +
           tp.headline.family +
           " " +
           tp.headline.weight +
-          " + " +
+          " · " +
           tp.body.family +
           " " +
           tp.body.weight +
-          "</div>";
+          '</div><div class="type-letters" style="font-family:\'' +
+          tp.headline.family +
+          "',sans-serif;font-weight:" +
+          tp.headline.weight +
+          ';">' +
+          letters +
+          "</div></div>";
         el.onclick = function () {
           sel("type", i, typeOpts);
         };
         typeOpts.appendChild(el);
       });
 
-      // Theme/Corner/Density/Depth chips
+      // Theme chips
       var themeOpts = document.getElementById("theme-options");
       THEMES.forEach(function (th, i) {
         var el = document.createElement("div");
@@ -861,6 +919,8 @@
         };
         themeOpts.appendChild(el);
       });
+
+      // Corner chips
       var cornerOpts = document.getElementById("corner-options");
       CORNERS.forEach(function (c, i) {
         var el = document.createElement("div");
@@ -878,9 +938,11 @@
         };
         cornerOpts.appendChild(el);
       });
+
+      // Density chips
       var densityOpts = document.getElementById("density-options");
       DENSITIES.forEach(function (d, i) {
-        var gaps = [3, 5, 8][i];
+        var gaps = [2, 4, 7][i];
         var el = document.createElement("div");
         el.className = "chip";
         el.innerHTML =
@@ -896,19 +958,21 @@
         };
         densityOpts.appendChild(el);
       });
+
+      // Depth chips
       var depthOpts = document.getElementById("depth-options");
       DEPTHS.forEach(function (d, i) {
         var shadow = [
           "none",
-          "0 2px 8px rgba(255,255,255,0.05)",
-          "0 0 20px rgba(255,255,255,0.08)",
+          "0 2px 8px rgba(255,255,255,0.04)",
+          "0 0 16px rgba(255,255,255,0.06)",
         ][i];
         var el = document.createElement("div");
         el.className = "chip";
         el.innerHTML =
           '<div class="chip-preview"><div class="depth-square" style="box-shadow:' +
           shadow +
-          ';border-radius:4px;"></div></div><div><div class="chip-label">' +
+          ';"></div></div><div><div class="chip-label">' +
           d.name +
           '</div><div class="chip-sub">' +
           d.desc +
@@ -928,9 +992,8 @@
         checkReady();
         renderPreview();
       }
-
       function sel(key, idx, container) {
-        container.querySelectorAll(".option").forEach(function (c) {
+        container.querySelectorAll(".opt").forEach(function (c) {
           c.classList.remove("selected");
         });
         container.children[idx].classList.add("selected");
@@ -955,10 +1018,9 @@
       function renderPreview() {
         var pv = document.getElementById("preview");
         if (picks.arch === null) {
-          pv.innerHTML = '<div class="preview-empty">Pick a structure to see the preview</div>';
+          pv.innerHTML = '<div class="preview-empty">Pick a structure to preview</div>';
           return;
         }
-
         var a = ARCHITECTURES[picks.arch];
         var th = picks.theme !== null ? THEMES[picks.theme] : THEMES[0];
         var p =
@@ -983,8 +1045,8 @@
         }
         var ac = p.accent,
           mt = p.muted || al(fg, 0.4);
-        var pad = [12, 20, 36][dn] + "px";
-        var gap = [8, 16, 28][dn] + "px";
+        var pad = [12, 20, 36][dn] + "px",
+          gap = [8, 16, 28][dn] + "px";
         var isDark = bg && bg[0] === "#" ? parseInt(bg.slice(1, 3), 16) < 80 : true;
         var shCol = isDark ? ac : fg;
         var shadow = [
@@ -1014,9 +1076,8 @@
           "{{ac3}}": al(ac, 0.03),
           "{{ac5}}": al(ac, 0.05),
           "{{ac25}}": al(ac, 0.25),
-          "{{prompt_headline}}": (PROMPT && PROMPT.headline) || "Your Headline Here",
-          "{{prompt_sub}}":
-            (PROMPT && PROMPT.subline) || "A subline that introduces your product or idea.",
+          "{{prompt_headline}}": (PROMPT && PROMPT.headline) || "Your Headline",
+          "{{prompt_sub}}": (PROMPT && PROMPT.subline) || "Subline.",
         };
         var h =
           a.preview_html ||
@@ -1031,7 +1092,7 @@
         pv.innerHTML = h;
       }
 
-      // Output
+      // ── Output ──
       function showOutput() {
         if (
           picks.theme === null ||
@@ -1052,62 +1113,74 @@
           dp = DEPTHS[picks.depth];
         var bg = th.id === "palette" && p.background ? p.background : th.bg;
         var fg = th.id === "palette" && p.foreground ? p.foreground : th.fg;
-        var ac = p.accent;
-        var mt = p.muted || p.mid || "#888888";
+        var ac = p.accent,
+          mt = p.muted || p.mid || "#888";
         var padVal = { Tight: "8px", Normal: "16px", Generous: "32px" }[dn.name] || "16px";
         var gapVal = { Tight: "8px", Normal: "16px", Generous: "28px" }[dn.name] || "16px";
 
         var md = "---\n";
         md += "name: " + ((PROMPT && PROMPT.title) || "Untitled") + "\n";
-        md += "colors:\n";
-        md += '  primary: "' + bg + '"\n';
-        md += '  on-primary: "' + fg + '"\n';
-        md += '  accent: "' + ac + '"\n';
-        md += '  muted: "' + mt + '"\n';
-        md += "typography:\n";
-        md += "  headline:\n";
-        md += "    fontFamily: " + t.headline.family + "\n";
-        md += "    fontSize: 3.5rem\n";
-        md += "    fontWeight: " + t.headline.weight + "\n";
-        md += "    letterSpacing: -0.03em\n";
-        md += "  body:\n";
-        md += "    fontFamily: " + t.body.family + "\n";
-        md += "    fontSize: 1rem\n";
-        md += "    fontWeight: " + t.body.weight + "\n";
-        md += "    lineHeight: 1.5\n";
-        md += "rounded:\n";
-        md += "  md: " + cr.value + "\n";
-        md += "spacing:\n";
-        md += "  md: " + padVal + "\n";
-        md += "  lg: " + gapVal + "\n";
-        md += "---\n\n";
-
-        md += "## Overview\n\n";
-        md += a.mood + ". " + a.description + ". " + p.description + ".\n\n";
-        md += "## Colors\n\n";
-        md += "- **Primary** (`" + bg + "`) — Canvas background\n";
-        md += "- **On-Primary** (`" + fg + "`) — Text and content\n";
-        md += "- **Accent** (`" + ac + "`) — CTAs, highlights, interactive elements\n";
-        md += "- **Muted** (`" + mt + "`) — Secondary text, captions\n\n";
-        md += "## Typography\n\n";
         md +=
-          "- **Headline** — " +
+          'colors:\n  primary: "' +
+          bg +
+          '"\n  on-primary: "' +
+          fg +
+          '"\n  accent: "' +
+          ac +
+          '"\n  muted: "' +
+          mt +
+          '"\n';
+        md +=
+          "typography:\n  headline:\n    fontFamily: " +
+          t.headline.family +
+          "\n    fontSize: 3.5rem\n    fontWeight: " +
+          t.headline.weight +
+          "\n    letterSpacing: -0.03em\n";
+        md +=
+          "  body:\n    fontFamily: " +
+          t.body.family +
+          "\n    fontSize: 1rem\n    fontWeight: " +
+          t.body.weight +
+          "\n    lineHeight: 1.5\n";
+        md += "rounded:\n  md: " + cr.value + "\n";
+        md += "spacing:\n  md: " + padVal + "\n  lg: " + gapVal + "\n";
+        md += "---\n\n";
+        md += "## Overview\n\n" + a.mood + ". " + a.description + ". " + p.description + ".\n\n";
+        md +=
+          "## Colors\n\n- **Primary** (`" +
+          bg +
+          "`) — Canvas background\n- **On-Primary** (`" +
+          fg +
+          "`) — Text and content\n- **Accent** (`" +
+          ac +
+          "`) — CTAs, highlights\n- **Muted** (`" +
+          mt +
+          "`) — Secondary text\n\n";
+        md +=
+          "## Typography\n\n- **Headline** — " +
           t.headline.family +
           " at weight " +
           t.headline.weight +
-          ". Display and section headings.\n";
-        md +=
-          "- **Body** — " +
+          "\n- **Body** — " +
           t.body.family +
           " at weight " +
           t.body.weight +
-          ". Running text and UI labels.\n\n";
-        md += "## Layout\n\n";
-        md += "- Structure: " + a.name + " — " + a.tag + "\n";
-        md += "- Density: " + dn.name + " (" + dn.desc + ")\n";
-        md += "- Corners: " + cr.name + " (" + cr.value + ")\n\n";
-        md += "## Elevation\n\n";
-        md += dp.name + " — " + dp.desc + ".\n\n";
+          "\n\n";
+        md +=
+          "## Layout\n\n- Structure: " +
+          a.name +
+          " — " +
+          a.tag +
+          "\n- Density: " +
+          dn.name +
+          " (" +
+          dn.desc +
+          ")\n- Corners: " +
+          cr.name +
+          " (" +
+          cr.value +
+          ")\n\n";
+        md += "## Elevation\n\n" + dp.name + " — " + dp.desc + ".\n\n";
         if (a.components) md += "## Components\n\n" + a.components + "\n\n";
         md += "## Do's and Don'ts\n\n";
         if (a.dos) {
@@ -1116,10 +1189,9 @@
           md +=
             "### Do's\n- Use accent color sparingly for maximum impact\n- Maintain consistent " +
             cr.name.toLowerCase() +
-            " corners across all elements\n\n";
-          md +=
-            "### Don'ts\n- Do not mix multiple accent colors\n- Do not use font weights outside the specified headline/body pair\n";
+            " corners\n\n### Don'ts\n- Do not mix multiple accent colors\n- Do not use weights outside the headline/body pair\n";
         }
+
         document.getElementById("md-output").value = md;
         document.getElementById("md-overlay").classList.add("visible");
       }
@@ -1128,7 +1200,7 @@
         navigator.clipboard.writeText(document.getElementById("md-output").value).then(function () {
           document.getElementById("copy-btn").textContent = "Copied!";
           setTimeout(function () {
-            document.getElementById("copy-btn").textContent = "Copy to clipboard";
+            document.getElementById("copy-btn").textContent = "Copy";
           }, 2000);
         });
       });
