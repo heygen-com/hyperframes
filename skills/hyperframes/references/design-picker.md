@@ -22,7 +22,7 @@ Read these before generating options — they define the rules your options must
 
    **Palettes** (5-6) — named after the brand's world, not generic moods. The palette names and colors should feel like they belong to THIS specific product. Always mix dark + light + tinted.
 
-   **Type pairings** (5-6) — match the brand's energy and audience. Don't reuse the same pairings across every picker — choose fonts that fit the specific voice. Use the font discovery script from typography.md to find options beyond your defaults. Never reach for Inter, Roboto, or Poppins. Cross-category per typography.md (never two sans-serifs).
+   **Type pairings** (5-6) — **RUN the font discovery script from typography.md BEFORE generating pairings.** This is not optional. Download Google Fonts metadata, run the script, and pick from its output. You will otherwise reach for the same 8 fonts every time (Bricolage Grotesque, Instrument Serif, Fraunces, Archivo Black, DM Serif Display, Space Grotesk, Fredoka) — that's your training data default, not a contextual choice. Match the brand's energy and audience. Cross-category per typography.md (never two sans-serifs).
 
 2. `mkdir -p .hyperframes` then copy [../templates/design-picker.html](../templates/design-picker.html) to `.hyperframes/pick-design.html`.
 3. Replace these placeholders using Python (don't hand-escape quotes in sed):
