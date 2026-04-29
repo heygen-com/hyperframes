@@ -22,7 +22,7 @@ For specific requests ("add a title card", "fix the timing on scene 3"), skip di
 
 For exploratory requests, consider offering 2-3 variations that differ meaningfully — not just color swaps, but different pacing, energy levels, or structural approaches. One safe/expected, one ambitious. Don't mandate this — it's a tool available when appropriate.
 
-### Step 0a: Design system
+### Step 1: Design system
 
 If `design.md` exists in the project, read it first. It's the source of truth for brand colors, fonts, and constraints. Use its exact values — don't invent colors or substitute fonts. Any format works (YAML frontmatter, prose, tables — just extract the values).
 
@@ -35,13 +35,13 @@ If no `design.md` exists:
 
 **design.md defines the brand. It does not define video composition rules.** Those come from [references/video-composition.md](references/video-composition.md) and [house-style.md](./house-style.md). Use brand colors at video-appropriate scale — not at web-UI opacity.
 
-### Step 0b: Prompt expansion
+### Step 2: Prompt expansion
 
 Always run on every composition (except single-scene pieces and trivial edits). This step grounds the user's intent against `design.md` and `house-style.md` and produces a consistent intermediate that every downstream agent reads the same way.
 
 Read [references/prompt-expansion.md](references/prompt-expansion.md) for the full process and output format.
 
-### Step 1: Plan
+### Step 3: Plan
 
 Before writing HTML, think at a high level:
 
@@ -56,16 +56,8 @@ Before writing HTML, think at a high level:
 
 For small edits (fix a color, adjust timing, add one element), skip straight to the rules.
 
-### Visual Identity Gate
-
 <HARD-GATE>
-Before writing ANY composition HTML, you MUST have a visual identity. Do NOT write compositions with default or generic colors.
-
-1. **design.md exists?** → Read it. Use its exact brand colors, fonts, and constraints.
-2. **User named a style or gave brand direction?** → Read [visual-styles.md](./visual-styles.md) or use user's colors.
-3. **Nothing?** → Ask before writing HTML: mood, light/dark, any brand colors or fonts?
-
-If you're reaching for `#333`, `#3b82f6`, or `Roboto` — you skipped this step.
+Before writing ANY composition HTML — verify you have a visual identity from Step 1. If you're reaching for `#333`, `#3b82f6`, or `Roboto`, you skipped it.
 </HARD-GATE>
 
 ## Layout Before Animation
