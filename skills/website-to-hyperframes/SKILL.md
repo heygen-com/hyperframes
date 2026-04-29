@@ -112,13 +112,13 @@ handoff link; it is source-code context only.
 
 ### Reference Files
 
-| File                                                    | When to read                                                                                                                                                   |
-| ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [step-1-capture.md](references/step-1-capture.md)       | Step 1 — reading captured data                                                                                                                                 |
-| [step-2-design.md](references/step-2-design.md)         | Step 2 — writing DESIGN.md                                                                                                                                     |
-| [step-3-script.md](references/step-3-script.md)         | Step 3 — writing the narration script                                                                                                                          |
-| [step-4-storyboard.md](references/step-4-storyboard.md) | Step 4 — per-beat creative direction                                                                                                                           |
-| [step-5-vo.md](references/step-5-vo.md)                 | Step 5 — TTS, transcription, timing                                                                                                                            |
-| [step-6-build.md](references/step-6-build.md)           | Step 6 — building compositions with self-review                                                                                                                |
-| [step-7-validate.md](references/step-7-validate.md)     | Step 7 — lint, validate, snapshot, preview                                                                                                                     |
-| [techniques.md](references/techniques.md)               | Steps 4 & 6 — 10 visual techniques with code patterns (SVG drawing, Canvas 2D, 3D, typography, Lottie, video, typing, variable fonts, MotionPath, transitions) |
+| File                                                     | When to read                                                                                                                                                                   |
+| -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| [step-1-capture.md](references/step-1-capture.md)        | Step 1 — reading captured data                                                                                                                                                 |
+| [step-2-design.md](references/step-2-design.md)          | Step 2 — writing DESIGN.md                                                                                                                                                     |
+| [step-3-script.md](references/step-3-script.md)          | Step 3 — writing the narration script                                                                                                                                          |
+| [step-4-storyboard.md](references/step-4-storyboard.md)  | Step 4 — per-beat creative direction                                                                                                                                           |
+| [step-5-vo.md](references/step-5-vo.md)                  | Step 5 — TTS, transcription, timing                                                                                                                                            |
+| [step-6-build.md](references/step-6-build.md)            | Step 6 — building compositions with self-review                                                                                                                                |
+| [step-7-validate.md](references/step-7-validate.md)      | Step 7 — lint, validate, snapshot, preview                                                                                                                                     |
+| [techniques.md](../hyperframes/references/techniques.md) | Steps 4 & 6 — 11 visual techniques with code patterns (SVG drawing, Canvas 2D, 3D, typography, Lottie, video, typing, variable fonts, MotionPath, transitions, audio-reactive) |
