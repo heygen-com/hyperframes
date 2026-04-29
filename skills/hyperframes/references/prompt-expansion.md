@@ -2,13 +2,13 @@
 
 Run on every composition. Expansion is not about lengthening a short prompt — it's about grounding the user's intent against `design.md` and `house-style.md` and producing a consistent intermediate that every downstream agent reads the same way.
 
-Runs AFTER `design.md` is established (Step 0a). The expansion consumes design.md and produces output that cites its palette, typography, and motion energy verbatim.
+Runs AFTER `design.md` is established (Step 0a). The expansion consumes design.md's YAML front matter tokens and produces output that cites them by token path.
 
 ## Prerequisites
 
 Read before generating:
 
-- `design.md` — palette, typography, energy, mood. The expansion quotes these values; it does not invent any.
+- `design.md` — parse YAML front matter for `colors`, `typography`, `motion`, `spacing`, `rounded`, `components` tokens. The expansion cites these by token path (`{colors.primary}`, `{motion.energy}`, `{typography.headline.fontFamily}`); it does not invent values.
 - [../house-style.md](../house-style.md) — its rules for Background Layer (2-5 decoratives), Color, Motion, Typography apply to every scene. The expansion does NOT re-state those rules; it writes output that conforms to them.
 
 If `design.md` doesn't exist yet, run Step 0a (Design system) first. Expansion without a design context produces generic scene breakdowns that later agents ignore.
@@ -36,19 +36,19 @@ The quality gap between a single-pass composition and a multi-scene-pipeline com
 
 Expand into a full production prompt with these sections:
 
-1. **Title + style block** — cite design.md's palette (bg/fg/accent hex values), typography pairing, energy level, and mood. Do NOT invent a palette — quote the design.md values.
-2. **Global animation rules** — parallax layers, micro-motion requirements, kinetic typography, pacing rules, transition style. Align energy with design.md (calm → slow eases, high energy → snappy eases).
+1. **Title + style block** — cite design.md's YAML tokens by path: `{colors.primary}`, `{colors.accent}`, `{typography.headline.fontFamily}`, `{motion.energy}`. Do NOT invent a palette — quote design.md token values.
+2. **Global animation rules** — parallax layers, micro-motion requirements, kinetic typography, pacing rules, transition style. Use `{motion.easing.entry}` / `{motion.easing.exit}` / `{motion.easing.ambient}` and `{motion.duration.*}` from design.md. Align energy with `{motion.energy}` (calm → slow eases, high → snappy eases).
 3. **Scene-by-scene breakdown** — for each scene, enumerate:
    - Time range and title
-   - **Background layer** — list the 2–5 decoratives (from house-style's list) with exact positioning, opacity values from design.md, and the ambient motion each uses (breath, drift, pulse, orbit). This is almost always richer than what the user's prompt specified — the user rarely lists atmosphere, you add it.
+   - **Background layer** — list the 2–5 decoratives (from `{motion.atmosphere}` list + house-style) with exact positioning, opacity values from `{colors.*}`, and the ambient motion each uses (breath, drift, pulse, orbit). The user rarely lists atmosphere; expansion adds it.
    - **Midground** — content elements (not generic: "alien claw slides across wall" not "scary things happen"). Keep everything the user specified; add what's missing.
-   - **Foreground** — text, typography, animation style per text element. Type sizes and weights quoted from design.md.
-   - **Micro-details** — registration marks, tick indicators, monospace coord/meta labels, typographic accents, background data streams, grid patterns. These are what make a scene feel real. The user's prompt never lists them; expansion adds at least 2–3 per scene.
-   - **Transition out** — specific morph (what object becomes what, duration, ease), not just "cut" or "crossfade"
-4. **Recurring motifs** — visual threads that appear across multiple scenes, always drawn from design.md's palette and typography.
-5. **Transition rules** — every scene-to-scene connection described as object morphing. Transition duration/ease should match design.md's energy level.
+   - **Foreground** — text using `{typography.headline}`, `{typography.body}`, `{typography.label}` tokens. Type sizes and weights quoted from design.md YAML.
+   - **Micro-details** — registration marks, tick indicators, monospace coord/meta labels, typographic accents, background data streams, grid patterns. These make a scene feel real. The user's prompt never lists them; expansion adds at least 2–3 per scene.
+   - **Transition out** — use `{motion.transition}` shader. Specific morph (what object becomes what), duration from `{motion.duration.transition}`, ease from `{motion.easing.exit}`.
+4. **Recurring motifs** — visual threads across scenes, drawn from `{colors.*}` and `{typography.*}` tokens.
+5. **Transition rules** — every scene-to-scene connection described as object morphing. Duration/ease from `{motion.duration.transition}` and `{motion.easing.*}`.
 6. **Pacing curve** — where energy builds, peaks, and releases.
-7. **Negative prompt** — what to avoid for this specific composition.
+7. **Negative prompt** — what to avoid, informed by design.md's "Do's and Don'ts" section.
 
 ## Output
 
