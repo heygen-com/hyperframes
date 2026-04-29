@@ -581,6 +581,54 @@
         outline: none;
         white-space: pre-wrap;
       }
+
+      /* ── Phase 1 palette bar ── */
+      .pal-bar {
+        display: flex;
+        gap: 8px;
+        padding: 12px 20px 0;
+        flex-shrink: 0;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+      .pal-bar-label {
+        font-size: 10px;
+        color: #444;
+        letter-spacing: 0.03em;
+        text-transform: uppercase;
+        margin-right: 4px;
+      }
+      .pal-bar-chip {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 5px 10px;
+        border: 1px solid #1e1e1e;
+        border-radius: 6px;
+        cursor: pointer;
+        transition: border-color 0.12s;
+        background: #141414;
+      }
+      .pal-bar-chip:hover {
+        border-color: #333;
+      }
+      .pal-bar-chip.active {
+        border-color: #fff;
+      }
+      .pal-bar-chip-swatches {
+        display: flex;
+        gap: 2px;
+      }
+      .pal-bar-chip-swatch {
+        width: 14px;
+        height: 14px;
+        border-radius: 3px;
+      }
+      .pal-bar-chip-name {
+        font-size: 10px;
+        font-weight: 500;
+        color: #888;
+      }
     </style>
   </head>
   <body>
@@ -597,6 +645,7 @@
           Each option is a complete visual identity. Pick one, then fine-tune.
         </p>
       </div>
+      <div class="pal-bar" id="pal-bar"><span class="pal-bar-label">Palette</span></div>
       <div class="mood-grid" id="mood-grid"></div>
       <div class="mood-next">
         <button class="mood-next-btn" id="mood-next-btn" onclick="goToTune()">
@@ -781,76 +830,114 @@
       if (PROMPT && PROMPT.title)
         document.getElementById("mood-title").textContent = "Pick a direction for: " + PROMPT.title;
 
-      // ── Phase 1: Mood boards ──
+      // ── Phase 1: Mood boards + Palette bar ──
       var moodGrid = document.getElementById("mood-grid");
       var selectedMood = null;
-      MOODBOARDS.forEach(function (mb, i) {
-        var card = document.createElement("div");
-        card.className = "mood-card";
-        var tp = TYPEPAIRS[mb.type_index || 0],
-          pal = PALETTES[mb.palette_index || 0],
-          arch = ARCHITECTURES[mb.arch_index || 0];
-        var thId = mb.theme || "dark",
-          th =
-            THEMES.find(function (t) {
-              return t.id === thId;
-            }) || THEMES[0];
-        var bg = thId === "palette" ? pal.background : th.bg,
-          fg = thId === "palette" ? pal.foreground : th.fg;
-        var tokens = {
-          "{{bg}}": bg,
-          "{{fg}}": fg,
-          "{{ac}}": pal.accent,
-          "{{mt}}": pal.muted || pal.mid || al(fg, 0.4),
-          "{{hf}}": tp.headline.family,
-          "{{hw}}": tp.headline.weight,
-          "{{bf}}": tp.body.family,
-          "{{bw}}": tp.body.weight,
-          "{{cr}}": mb.corners || "4px",
-          "{{pad}}": mb.padding || "20px",
-          "{{gap}}": mb.gap || "16px",
-          "{{shadow}}": mb.shadow || "none",
-          "{{sf}}": al(fg, 0.06),
-          "{{g}}": al(fg, 0.06),
-          "{{fg3}}": al(fg, 0.03),
-          "{{fg6}}": al(fg, 0.06),
-          "{{fg8}}": al(fg, 0.08),
-          "{{fg15}}": al(fg, 0.15),
-          "{{ac3}}": al(pal.accent, 0.03),
-          "{{ac5}}": al(pal.accent, 0.05),
-          "{{ac25}}": al(pal.accent, 0.25),
-          "{{prompt_headline}}": (PROMPT && PROMPT.headline) || "Your Headline",
-          "{{prompt_sub}}": (PROMPT && PROMPT.subline) || "A subline for your product.",
-        };
-        var preview = arch.preview_html || "";
-        Object.keys(tokens).forEach(function (k) {
-          preview = preview.split(k).join(tokens[k]);
-        });
-        var tagHtml = [tp.headline.family, pal.name, CORNERS[mb.corners_index || 1].name]
-          .map(function (t) {
-            return '<span class="mood-token">' + t + "</span>";
-          })
-          .join("");
-        card.innerHTML =
-          '<div class="mood-preview"><div style="transform:scale(0.48);transform-origin:top left;width:208.33%;height:208.33%;">' +
-          preview +
-          '</div></div><div class="mood-info"><div class="mood-name">' +
-          mb.name +
-          '</div><div class="mood-desc">' +
-          mb.description +
-          '</div><div class="mood-tokens">' +
-          tagHtml +
-          "</div></div>";
-        card.onclick = function () {
-          moodGrid.querySelectorAll(".mood-card").forEach(function (c) {
-            c.classList.remove("selected");
+      var overridePalette = null;
+
+      // Build palette bar
+      var palBar = document.getElementById("pal-bar");
+      PALETTES.forEach(function (p, i) {
+        var chip = document.createElement("div");
+        chip.className = "pal-bar-chip" + (i === 0 ? "" : "");
+        chip.innerHTML =
+          '<div class="pal-bar-chip-swatches"><div class="pal-bar-chip-swatch" style="background:' +
+          p.background +
+          ';border:1px solid rgba(255,255,255,0.08);"></div><div class="pal-bar-chip-swatch" style="background:' +
+          p.accent +
+          ';"></div><div class="pal-bar-chip-swatch" style="background:' +
+          p.foreground +
+          ';border:1px solid rgba(255,255,255,0.08);"></div></div><span class="pal-bar-chip-name">' +
+          p.name +
+          "</span>";
+        chip.onclick = function () {
+          palBar.querySelectorAll(".pal-bar-chip").forEach(function (c) {
+            c.classList.remove("active");
           });
-          card.classList.add("selected");
-          selectedMood = i;
-          document.getElementById("mood-next-btn").classList.add("visible");
+          if (overridePalette === i) {
+            overridePalette = null;
+          } else {
+            chip.classList.add("active");
+            overridePalette = i;
+          }
+          renderMoodBoards();
         };
-        moodGrid.appendChild(card);
+        palBar.appendChild(chip);
       });
+
+      function renderMoodBoards() {
+        var prevSelected = selectedMood;
+        moodGrid.innerHTML = "";
+        MOODBOARDS.forEach(function (mb, i) {
+          var card = document.createElement("div");
+          card.className = "mood-card" + (i === prevSelected ? " selected" : "");
+          var tp = TYPEPAIRS[mb.type_index || 0],
+            arch = ARCHITECTURES[mb.arch_index || 0];
+          var pal =
+            overridePalette !== null ? PALETTES[overridePalette] : PALETTES[mb.palette_index || 0];
+          var thId = mb.theme || "dark",
+            th =
+              THEMES.find(function (t) {
+                return t.id === thId;
+              }) || THEMES[0];
+          var bg = thId === "palette" ? pal.background : th.bg,
+            fg = thId === "palette" ? pal.foreground : th.fg;
+          var tokens = {
+            "{{bg}}": bg,
+            "{{fg}}": fg,
+            "{{ac}}": pal.accent,
+            "{{mt}}": pal.muted || pal.mid || al(fg, 0.4),
+            "{{hf}}": tp.headline.family,
+            "{{hw}}": tp.headline.weight,
+            "{{bf}}": tp.body.family,
+            "{{bw}}": tp.body.weight,
+            "{{cr}}": mb.corners || "4px",
+            "{{pad}}": mb.padding || "20px",
+            "{{gap}}": mb.gap || "16px",
+            "{{shadow}}": mb.shadow || "none",
+            "{{sf}}": al(fg, 0.06),
+            "{{g}}": al(fg, 0.06),
+            "{{fg3}}": al(fg, 0.03),
+            "{{fg6}}": al(fg, 0.06),
+            "{{fg8}}": al(fg, 0.08),
+            "{{fg15}}": al(fg, 0.15),
+            "{{ac3}}": al(pal.accent, 0.03),
+            "{{ac5}}": al(pal.accent, 0.05),
+            "{{ac25}}": al(pal.accent, 0.25),
+            "{{prompt_headline}}": (PROMPT && PROMPT.headline) || "Your Headline",
+            "{{prompt_sub}}": (PROMPT && PROMPT.subline) || "A subline for your product.",
+          };
+          var preview = arch.preview_html || "";
+          Object.keys(tokens).forEach(function (k) {
+            preview = preview.split(k).join(tokens[k]);
+          });
+          var tagHtml = [tp.headline.family, pal.name, CORNERS[mb.corners_index || 1].name]
+            .map(function (t) {
+              return '<span class="mood-token">' + t + "</span>";
+            })
+            .join("");
+          card.innerHTML =
+            '<div class="mood-preview"><div style="transform:scale(0.48);transform-origin:top left;width:208.33%;height:208.33%;">' +
+            preview +
+            '</div></div><div class="mood-info"><div class="mood-name">' +
+            mb.name +
+            '</div><div class="mood-desc">' +
+            mb.description +
+            '</div><div class="mood-tokens">' +
+            tagHtml +
+            "</div></div>";
+          card.onclick = function () {
+            moodGrid.querySelectorAll(".mood-card").forEach(function (c) {
+              c.classList.remove("selected");
+            });
+            card.classList.add("selected");
+            selectedMood = i;
+            document.getElementById("mood-next-btn").classList.add("visible");
+          };
+          moodGrid.appendChild(card);
+        });
+      }
+      renderMoodBoards();
 
       function showPhase(name) {
         document.querySelectorAll(".phase").forEach(function (p) {
@@ -872,8 +959,8 @@
         if (thIdx >= 0) chipSel("theme", thIdx, document.getElementById("theme-options"));
         if (mb.arch_index != null)
           sel("arch", mb.arch_index, document.getElementById("arch-options"));
-        if (mb.palette_index != null)
-          sel("palette", mb.palette_index, document.getElementById("pal-options"));
+        var palIdx = overridePalette !== null ? overridePalette : mb.palette_index;
+        if (palIdx != null) sel("palette", palIdx, document.getElementById("pal-options"));
         if (mb.type_index != null)
           sel("type", mb.type_index, document.getElementById("type-options"));
         if (mb.corners_index != null)
