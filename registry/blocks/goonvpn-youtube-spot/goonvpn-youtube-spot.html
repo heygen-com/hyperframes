@@ -1,0 +1,987 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #ffffff;
+        font-family:
+          -apple-system, BlinkMacSystemFont, "SF Pro Display", Inter, "Helvetica Neue", Arial,
+          sans-serif;
+      }
+
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        color: #111111;
+        background:
+          radial-gradient(circle at 20% 16%, rgba(0, 122, 255, 0.13), transparent 24%),
+          radial-gradient(circle at 82% 22%, rgba(52, 199, 89, 0.14), transparent 22%),
+          linear-gradient(180deg, #ffffff 0%, #f5f5f7 100%);
+      }
+
+      .stage {
+        position: absolute;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        padding: 70px 120px;
+      }
+
+      .headline {
+        position: absolute;
+        left: 118px;
+        top: 104px;
+        width: 580px;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        z-index: 2;
+        pointer-events: none;
+      }
+
+      .headline span {
+        display: block;
+        font-size: 92px;
+        line-height: 0.92;
+        font-weight: 900;
+        letter-spacing: 0;
+      }
+
+      .headline .blue {
+        color: #007aff;
+      }
+
+      .headline .sub {
+        margin-top: 20px;
+        width: 410px;
+        color: #6e6e73;
+        font-size: 27px;
+        line-height: 1.18;
+        font-weight: 700;
+      }
+
+      .ambient-word {
+        position: absolute;
+        right: 78px;
+        bottom: 64px;
+        color: rgba(17, 17, 17, 0.05);
+        font-size: 208px;
+        line-height: 0.84;
+        font-weight: 900;
+        letter-spacing: 0;
+        pointer-events: none;
+      }
+
+      .ambient-line {
+        position: absolute;
+        height: 2px;
+        width: 360px;
+        border-radius: 999px;
+        background: rgba(0, 122, 255, 0.2);
+        transform-origin: center;
+        pointer-events: none;
+      }
+
+      .line-a {
+        left: 198px;
+        bottom: 230px;
+      }
+
+      .line-b {
+        right: 208px;
+        top: 196px;
+        width: 248px;
+        background: rgba(52, 199, 89, 0.2);
+      }
+
+      .snap-shadow {
+        position: absolute;
+        left: 50%;
+        bottom: 132px;
+        width: 560px;
+        height: 52px;
+        border-radius: 50%;
+        transform: translateX(-50%);
+        background: rgba(17, 17, 17, 0.14);
+        filter: blur(24px);
+        opacity: 0;
+      }
+
+      .phone {
+        position: relative;
+        width: 462px;
+        height: 952px;
+        border-radius: 72px;
+        padding: 16px;
+        background: linear-gradient(145deg, #1f2025 0%, #07070a 100%);
+        box-shadow:
+          0 46px 120px rgba(17, 17, 17, 0.22),
+          inset 0 0 0 2px rgba(255, 255, 255, 0.12);
+        z-index: 4;
+        will-change: transform;
+      }
+
+      .phone::before {
+        content: "";
+        position: absolute;
+        inset: 8px;
+        border-radius: 64px;
+        border: 2px solid rgba(255, 255, 255, 0.07);
+        pointer-events: none;
+      }
+
+      .screen {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        border-radius: 56px;
+        background: #f5f5f7;
+        box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.04);
+      }
+
+      .island {
+        position: absolute;
+        left: 50%;
+        top: 15px;
+        width: 138px;
+        height: 38px;
+        border-radius: 999px;
+        transform: translateX(-50%);
+        background: #07070a;
+        z-index: 30;
+      }
+
+      .store-view,
+      .detail-view,
+      .white-wipe {
+        position: absolute;
+        inset: 0;
+      }
+
+      .store-view {
+        padding: 70px 24px 26px;
+        z-index: 2;
+      }
+
+      .store-top {
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+        margin-bottom: 16px;
+      }
+
+      .store-title {
+        font-size: 38px;
+        line-height: 1;
+        font-weight: 900;
+        letter-spacing: 0;
+      }
+
+      .avatar {
+        width: 38px;
+        height: 38px;
+        border-radius: 50%;
+        background:
+          radial-gradient(circle at 62% 38%, rgba(255, 255, 255, 0.9) 0 10%, transparent 11%),
+          linear-gradient(135deg, #007aff, #34c759);
+        box-shadow: 0 8px 18px rgba(0, 122, 255, 0.25);
+      }
+
+      .search-pill {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        height: 45px;
+        padding: 0 16px;
+        border-radius: 15px;
+        background: #e9e9ed;
+        color: #6e6e73;
+        font-size: 18px;
+        font-weight: 700;
+        margin-bottom: 16px;
+      }
+
+      .search-icon {
+        width: 16px;
+        height: 16px;
+        border: 3px solid #8e8e93;
+        border-radius: 50%;
+        position: relative;
+      }
+
+      .search-icon::after {
+        content: "";
+        position: absolute;
+        right: -8px;
+        bottom: -5px;
+        width: 9px;
+        height: 3px;
+        border-radius: 999px;
+        background: #8e8e93;
+        transform: rotate(45deg);
+      }
+
+      .screen-window {
+        height: 720px;
+        overflow: hidden;
+        border-radius: 26px;
+      }
+
+      .scroll-content {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        will-change: transform;
+      }
+
+      .store-row {
+        display: grid;
+        grid-template-columns: 72px 1fr 78px;
+        align-items: center;
+        gap: 13px;
+        min-height: 104px;
+        padding: 13px 12px;
+        border-radius: 23px;
+        background: rgba(255, 255, 255, 0.88);
+        box-shadow: 0 2px 0 rgba(0, 0, 0, 0.035);
+      }
+
+      .app-icon {
+        width: 72px;
+        height: 72px;
+        border-radius: 18px;
+        position: relative;
+        overflow: hidden;
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.38);
+      }
+
+      .icon-cloud {
+        background: linear-gradient(135deg, #70d7ff, #007aff);
+      }
+
+      .icon-photo {
+        background:
+          radial-gradient(circle at 32% 35%, #ffffff 0 10%, transparent 11%),
+          linear-gradient(135deg, #ff9f0a, #ff375f);
+      }
+
+      .icon-music {
+        background: linear-gradient(135deg, #ff2d55, #5856d6);
+      }
+
+      .icon-bank {
+        background: linear-gradient(135deg, #111111, #8e8e93);
+      }
+
+      .icon-map {
+        background: linear-gradient(135deg, #34c759, #ffd60a);
+      }
+
+      .icon-goon {
+        background:
+          radial-gradient(circle at 72% 16%, rgba(255, 255, 255, 0.62) 0 12%, transparent 13%),
+          linear-gradient(145deg, #101828 0%, #007aff 64%, #34c759 100%);
+      }
+
+      .icon-goon::before {
+        content: "";
+        position: absolute;
+        left: 21px;
+        top: 16px;
+        width: 30px;
+        height: 38px;
+        border-radius: 16px 16px 18px 18px;
+        background: rgba(255, 255, 255, 0.94);
+        clip-path: polygon(50% 0, 88% 13%, 88% 46%, 50% 100%, 12% 46%, 12% 13%);
+      }
+
+      .icon-goon::after {
+        content: "";
+        position: absolute;
+        left: 31px;
+        top: 29px;
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: #007aff;
+      }
+
+      .row-copy {
+        min-width: 0;
+      }
+
+      .row-title {
+        color: #111111;
+        font-size: 18px;
+        line-height: 1.24;
+        font-weight: 800;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .row-sub {
+        margin-top: 4px;
+        color: #6e6e73;
+        font-size: 12px;
+        line-height: 1.28;
+        font-weight: 600;
+      }
+
+      .stars {
+        margin-top: 6px;
+        color: #8e8e93;
+        font-size: 12px;
+        line-height: 1.25;
+        font-weight: 800;
+      }
+
+      .get-button,
+      .install-button,
+      .open-button {
+        display: grid;
+        place-items: center;
+        height: 34px;
+        border-radius: 999px;
+        font-size: 14px;
+        line-height: 1;
+        font-weight: 900;
+        letter-spacing: 0;
+      }
+
+      .get-button,
+      .open-button {
+        width: 72px;
+        color: #007aff;
+        background: #ececf1;
+      }
+
+      #goon-row {
+        position: relative;
+        transform-origin: center;
+        outline: 0 solid rgba(0, 122, 255, 0);
+      }
+
+      .tap-dot {
+        position: absolute;
+        right: 47px;
+        top: 52px;
+        width: 42px;
+        height: 42px;
+        border-radius: 50%;
+        border: 4px solid rgba(0, 122, 255, 0.8);
+        background: rgba(0, 122, 255, 0.18);
+        opacity: 0;
+        z-index: 9;
+      }
+
+      .detail-view {
+        padding: 78px 24px 26px;
+        background: #f5f5f7;
+        opacity: 0;
+        z-index: 8;
+      }
+
+      .detail-card {
+        height: 100%;
+        border-radius: 36px;
+        padding: 28px 22px 24px;
+        background: #ffffff;
+        box-shadow: 0 26px 70px rgba(17, 17, 17, 0.12);
+        overflow: hidden;
+      }
+
+      .detail-hero {
+        display: grid;
+        grid-template-columns: 108px 1fr;
+        gap: 16px;
+        align-items: center;
+      }
+
+      .detail-icon {
+        width: 108px;
+        height: 108px;
+        border-radius: 26px;
+      }
+
+      .detail-title {
+        font-size: 31px;
+        line-height: 1;
+        font-weight: 900;
+      }
+
+      .detail-sub {
+        margin-top: 7px;
+        color: #6e6e73;
+        font-size: 14px;
+        line-height: 1.2;
+        font-weight: 700;
+      }
+
+      .install-button {
+        position: relative;
+        width: 94px;
+        margin-top: 15px;
+        color: #ffffff;
+        background: #007aff;
+        overflow: hidden;
+      }
+
+      .install-label,
+      .open-label,
+      .ring {
+        position: absolute;
+      }
+
+      .install-label,
+      .open-label {
+        inset: 0;
+        display: grid;
+        place-items: center;
+      }
+
+      .open-label,
+      .ring {
+        opacity: 0;
+      }
+
+      .ring {
+        inset: 4px auto auto 34px;
+        width: 26px;
+        height: 26px;
+        transform: rotate(-90deg);
+      }
+
+      .ring .track {
+        fill: none;
+        stroke: rgba(255, 255, 255, 0.36);
+        stroke-width: 4;
+      }
+
+      .ring .progress {
+        fill: none;
+        stroke: #ffffff;
+        stroke-width: 4;
+        stroke-linecap: round;
+        stroke-dasharray: 69;
+        stroke-dashoffset: 69;
+      }
+
+      .stats {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 8px;
+        margin: 26px 0;
+      }
+
+      .stat {
+        min-height: 72px;
+        border-radius: 22px;
+        padding: 12px 8px;
+        background: #f5f5f7;
+        text-align: center;
+      }
+
+      .stat-label {
+        color: #8e8e93;
+        font-size: 11px;
+        font-weight: 800;
+      }
+
+      .stat-value {
+        margin-top: 7px;
+        color: #111111;
+        font-size: 22px;
+        line-height: 1;
+        font-weight: 900;
+      }
+
+      .progress-panel {
+        position: relative;
+        display: grid;
+        place-items: center;
+        height: 260px;
+        border-radius: 34px;
+        background:
+          radial-gradient(circle at 50% 40%, rgba(0, 122, 255, 0.12), transparent 48%), #f5f5f7;
+        overflow: hidden;
+      }
+
+      .progress-halo {
+        position: absolute;
+        width: 196px;
+        height: 196px;
+        border-radius: 50%;
+        border: 24px solid rgba(0, 122, 255, 0.1);
+      }
+
+      .progress-big {
+        width: 190px;
+        height: 190px;
+        transform: rotate(-90deg);
+      }
+
+      .big-track,
+      .big-progress {
+        fill: none;
+        stroke-width: 18;
+      }
+
+      .big-track {
+        stroke: rgba(0, 122, 255, 0.12);
+      }
+
+      .big-progress {
+        stroke: #007aff;
+        stroke-linecap: round;
+        stroke-dasharray: 440;
+        stroke-dashoffset: 440;
+      }
+
+      .percent {
+        position: absolute;
+        color: #111111;
+        font-size: 48px;
+        line-height: 1;
+        font-weight: 900;
+      }
+
+      .shield-status {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        margin-top: 18px;
+        color: #34c759;
+        font-size: 20px;
+        font-weight: 900;
+        opacity: 0;
+      }
+
+      .check {
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        color: #ffffff;
+        background: #34c759;
+      }
+
+      .speed-lines {
+        position: absolute;
+        inset: 0;
+        opacity: 0;
+        z-index: 20;
+        pointer-events: none;
+      }
+
+      .speed-lines i {
+        position: absolute;
+        left: 50%;
+        width: 4px;
+        height: 210px;
+        border-radius: 999px;
+        background: rgba(17, 17, 17, 0.18);
+        transform: translateX(-50%);
+      }
+
+      .speed-lines i:nth-child(1) {
+        top: 70px;
+        margin-left: -310px;
+      }
+
+      .speed-lines i:nth-child(2) {
+        top: 130px;
+        margin-left: 304px;
+        height: 240px;
+      }
+
+      .speed-lines i:nth-child(3) {
+        top: 260px;
+        margin-left: -232px;
+        height: 300px;
+      }
+
+      .speed-lines i:nth-child(4) {
+        top: 220px;
+        margin-left: 228px;
+        height: 320px;
+      }
+
+      .white-wipe {
+        background: #ffffff;
+        opacity: 0;
+        z-index: 40;
+        pointer-events: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="goonvpn-youtube-spot"
+      data-start="0"
+      data-duration="7"
+      data-width="1920"
+      data-height="1080"
+    >
+      <audio
+        id="sfx"
+        data-start="0"
+        data-duration="7"
+        data-track-index="1"
+        src="assets/goonvpn-sfx.wav"
+        data-volume="0.95"
+      ></audio>
+
+      <div class="stage">
+        <div class="headline" id="stageHeadline">
+          <span>SECURE</span>
+          <span class="blue">INSTANTLY</span>
+          <div class="sub">One tap, installed, ready.</div>
+        </div>
+        <div class="ambient-word">VPN</div>
+        <div class="ambient-line line-a"></div>
+        <div class="ambient-line line-b"></div>
+        <div class="snap-shadow"></div>
+
+        <div class="phone">
+          <div class="screen">
+            <div class="island"></div>
+
+            <section class="store-view">
+              <div class="store-top">
+                <div class="store-title">Search</div>
+                <div class="avatar"></div>
+              </div>
+              <div class="search-pill">
+                <div class="search-icon"></div>
+                <div>vpn apps</div>
+              </div>
+              <div class="screen-window" data-layout-allow-overflow>
+                <div class="scroll-content">
+                  <div class="store-row">
+                    <div class="app-icon icon-cloud"></div>
+                    <div class="row-copy">
+                      <div class="row-title">CloudPocket</div>
+                      <div class="row-sub">Files and backups</div>
+                      <div class="stars">4.6 ★★★★★</div>
+                    </div>
+                    <div class="get-button">GET</div>
+                  </div>
+                  <div class="store-row">
+                    <div class="app-icon icon-photo"></div>
+                    <div class="row-copy">
+                      <div class="row-title">LensLab</div>
+                      <div class="row-sub">Photo editor</div>
+                      <div class="stars">4.8 ★★★★★</div>
+                    </div>
+                    <div class="get-button">GET</div>
+                  </div>
+                  <div class="store-row">
+                    <div class="app-icon icon-music"></div>
+                    <div class="row-copy">
+                      <div class="row-title">BeatShelf</div>
+                      <div class="row-sub">Music discovery</div>
+                      <div class="stars">4.4 ★★★★☆</div>
+                    </div>
+                    <div class="get-button">GET</div>
+                  </div>
+                  <div class="store-row">
+                    <div class="app-icon icon-bank"></div>
+                    <div class="row-copy">
+                      <div class="row-title">VaultPay</div>
+                      <div class="row-sub">Budget tracker</div>
+                      <div class="stars">4.7 ★★★★★</div>
+                    </div>
+                    <div class="get-button">GET</div>
+                  </div>
+                  <div class="store-row">
+                    <div class="app-icon icon-map"></div>
+                    <div class="row-copy">
+                      <div class="row-title">TrailPing</div>
+                      <div class="row-sub">Maps for trips</div>
+                      <div class="stars">4.5 ★★★★☆</div>
+                    </div>
+                    <div class="get-button">GET</div>
+                  </div>
+                  <div class="store-row" id="goon-row">
+                    <div class="app-icon icon-goon"></div>
+                    <div class="row-copy">
+                      <div class="row-title">goonVPN</div>
+                      <div class="row-sub">Fast private browsing</div>
+                      <div class="stars">4.9 ★★★★★</div>
+                    </div>
+                    <div class="get-button">GET</div>
+                    <div class="tap-dot"></div>
+                  </div>
+                  <div class="store-row">
+                    <div class="app-icon icon-cloud"></div>
+                    <div class="row-copy">
+                      <div class="row-title">QuickTunnel</div>
+                      <div class="row-sub">Network tools</div>
+                      <div class="stars">4.2 ★★★★☆</div>
+                    </div>
+                    <div class="get-button">GET</div>
+                  </div>
+                  <div class="store-row">
+                    <div class="app-icon icon-photo"></div>
+                    <div class="row-copy">
+                      <div class="row-title">PrivateFrame</div>
+                      <div class="row-sub">Photo lockers</div>
+                      <div class="stars">4.3 ★★★★☆</div>
+                    </div>
+                    <div class="get-button">GET</div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section class="detail-view">
+              <div class="detail-card">
+                <div class="detail-hero">
+                  <div class="app-icon icon-goon detail-icon"></div>
+                  <div>
+                    <div class="detail-title">goonVPN</div>
+                    <div class="detail-sub">Private, fast VPN for everyday browsing.</div>
+                    <div class="install-button">
+                      <span class="install-label">GET</span>
+                      <svg class="ring" viewBox="0 0 28 28" aria-hidden="true">
+                        <circle class="track" cx="14" cy="14" r="11"></circle>
+                        <circle class="progress" cx="14" cy="14" r="11"></circle>
+                      </svg>
+                      <span class="open-label"></span>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="stats">
+                  <div class="stat">
+                    <div class="stat-label">RATING</div>
+                    <div class="stat-value">4.9</div>
+                  </div>
+                  <div class="stat">
+                    <div class="stat-label">SPEED</div>
+                    <div class="stat-value">Fast</div>
+                  </div>
+                  <div class="stat">
+                    <div class="stat-label">AGE</div>
+                    <div class="stat-value">4+</div>
+                  </div>
+                </div>
+
+                <div class="progress-panel">
+                  <div class="progress-halo"></div>
+                  <svg class="progress-big" viewBox="0 0 160 160" aria-hidden="true">
+                    <circle class="big-track" cx="80" cy="80" r="70"></circle>
+                    <circle id="progressArc" class="big-progress" cx="80" cy="80" r="70"></circle>
+                  </svg>
+                  <div class="percent" id="progressText">0%</div>
+                </div>
+                <div class="shield-status">
+                  <div class="check">✓</div>
+                  <div>Installed</div>
+                </div>
+              </div>
+            </section>
+          </div>
+        </div>
+      </div>
+
+      <div class="speed-lines">
+        <i></i>
+        <i></i>
+        <i></i>
+        <i></i>
+      </div>
+      <div class="white-wipe"></div>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+
+      gsap.defaults({ force3D: true });
+
+      const tl = gsap.timeline({
+        paused: true,
+        defaults: { duration: 0.45, ease: "power3.out" },
+      });
+
+      const breatheRepeats = Math.ceil(7 / 2.4) - 1;
+
+      tl.from(
+        ".headline span",
+        { y: 46, opacity: 0, stagger: 0.055, duration: 0.38, ease: "back.out(1.35)" },
+        0.05,
+      )
+        .from(".headline .sub", { y: 20, opacity: 0, duration: 0.28 }, 0.2)
+        .from(".ambient-word", { scale: 0.92, opacity: 0, duration: 0.5 }, 0.08)
+        .from(".ambient-line", { scaleX: 0, opacity: 0, stagger: 0.08, duration: 0.42 }, 0.16)
+        .to(
+          ".ambient-line",
+          {
+            scaleX: 1.08,
+            opacity: 0.55,
+            duration: 2.4,
+            yoyo: true,
+            repeat: breatheRepeats,
+            ease: "sine.inOut",
+          },
+          0.55,
+        )
+        .from(
+          ".phone",
+          {
+            y: 760,
+            scale: 0.82,
+            rotation: -2.5,
+            opacity: 0,
+            duration: 0.47,
+            ease: "back.out(1.6)",
+          },
+          0,
+        )
+        .from(".store-title", { y: 26, opacity: 0, duration: 0.28 }, 0.28)
+        .from(".avatar", { scale: 0.4, opacity: 0, duration: 0.24, ease: "back.out(1.8)" }, 0.34)
+        .from(".search-pill", { y: 18, opacity: 0, duration: 0.26 }, 0.4)
+        .from(
+          ".store-row",
+          { y: 44, opacity: 0, stagger: 0.035, duration: 0.36, ease: "power3.out" },
+          0.48,
+        );
+
+      tl.to(".scroll-content", { y: -456, duration: 1.2, ease: "power4.out" }, 0.62)
+        .to(
+          ".screen-window",
+          { scale: 1.012, duration: 0.18, yoyo: true, repeat: 1, ease: "power2.out" },
+          0.92,
+        )
+        .to(
+          ".screen-window",
+          { scale: 1.014, duration: 0.14, yoyo: true, repeat: 1, ease: "power2.out" },
+          1.25,
+        )
+        .to(
+          "#goon-row",
+          {
+            scale: 1.035,
+            outlineWidth: 3,
+            outlineColor: "rgba(0,122,255,0.34)",
+            duration: 0.2,
+            ease: "back.out(1.7)",
+          },
+          1.72,
+        )
+        .to("#goon-row", { scale: 1, duration: 0.22 }, 1.93)
+        .fromTo(
+          ".tap-dot",
+          { scale: 0.25, opacity: 0.95 },
+          { scale: 2.15, opacity: 0, duration: 0.42, ease: "power2.out" },
+          2.02,
+        )
+        .to("#goon-row .get-button", { scale: 0.82, duration: 0.1, ease: "power3.in" }, 2.04)
+        .to("#goon-row .get-button", { scale: 1, duration: 0.14, ease: "back.out(2)" }, 2.14);
+
+      tl.fromTo(
+        ".detail-view",
+        { y: 620, scale: 0.92, opacity: 0 },
+        { y: 0, scale: 1, opacity: 1, duration: 0.46, ease: "power4.out" },
+        2.32,
+      )
+        .from(".detail-card", { y: 56, scale: 0.96, duration: 0.42, ease: "back.out(1.2)" }, 2.34)
+        .from(
+          ".detail-icon",
+          { scale: 0.55, rotation: -8, opacity: 0, duration: 0.32, ease: "back.out(1.8)" },
+          2.47,
+        )
+        .from(".detail-title", { y: 20, opacity: 0, duration: 0.28 }, 2.54)
+        .from(".detail-sub", { y: 14, opacity: 0, duration: 0.24 }, 2.6)
+        .from(
+          ".install-button",
+          { scale: 0.72, opacity: 0, duration: 0.24, ease: "back.out(2)" },
+          2.66,
+        )
+        .from(".stat", { y: 28, opacity: 0, stagger: 0.05, duration: 0.3 }, 2.78)
+        .from(".progress-panel", { y: 42, scale: 0.96, opacity: 0, duration: 0.38 }, 2.92);
+
+      tl.to(".install-label", { y: -18, opacity: 0, duration: 0.16 }, 2.86)
+        .set(".install-label", { textContent: "" }, 3.02)
+        .to(".ring", { opacity: 1, duration: 0.16 }, 2.96)
+        .fromTo(
+          ".ring .progress",
+          { strokeDashoffset: 69 },
+          { strokeDashoffset: 0, duration: 1.2, ease: "power2.inOut" },
+          3.04,
+        )
+        .fromTo(
+          "#progressArc",
+          { strokeDashoffset: 440 },
+          { strokeDashoffset: 0, duration: 1.42, ease: "power2.inOut" },
+          3.02,
+        )
+        .set("#progressText", { textContent: "18%" }, 3.18)
+        .to(".progress-panel", { scale: 1.025, duration: 0.12, yoyo: true, repeat: 1 }, 3.18)
+        .set("#progressText", { textContent: "52%" }, 3.56)
+        .to(".progress-panel", { scale: 1.03, duration: 0.12, yoyo: true, repeat: 1 }, 3.56)
+        .set("#progressText", { textContent: "87%" }, 3.9)
+        .to(".progress-panel", { scale: 1.035, duration: 0.12, yoyo: true, repeat: 1 }, 3.9)
+        .set("#progressText", { textContent: "100%" }, 4.28)
+        .to(
+          ".progress-panel",
+          { scale: 1.04, duration: 0.12, yoyo: true, repeat: 1, ease: "back.out(1.7)" },
+          4.28,
+        )
+        .to(".ring", { scale: 0.35, opacity: 0, duration: 0.16 }, 4.44)
+        .to(".install-button", { backgroundColor: "#34c759", width: 94, duration: 0.18 }, 4.5)
+        .set(".open-label", { textContent: "OPEN" }, 4.52)
+        .to(".open-label", { opacity: 1, duration: 0.16 }, 4.56)
+        .fromTo(
+          ".shield-status",
+          { y: 22, scale: 0.9, opacity: 0 },
+          { y: 0, scale: 1, opacity: 1, duration: 0.34, ease: "back.out(1.8)" },
+          4.62,
+        )
+        .to(
+          ".phone",
+          { scale: 1.025, duration: 0.18, yoyo: true, repeat: 1, ease: "back.out(1.5)" },
+          4.7,
+        );
+
+      tl.to(".headline", { y: -18, opacity: 0.35, duration: 0.22 }, 5.18)
+        .to(".ambient-word", { opacity: 0.018, duration: 0.22 }, 5.18)
+        .to(".snap-shadow", { opacity: 1, scaleX: 0.8, duration: 0.16 }, 5.35)
+        .fromTo(
+          ".speed-lines",
+          { y: -220, opacity: 0 },
+          { y: 420, opacity: 1, duration: 0.26, ease: "power4.in" },
+          5.42,
+        )
+        .to(
+          ".phone",
+          { y: 1050, scale: 0.78, rotation: -3.5, duration: 0.48, ease: "power4.in" },
+          5.44,
+        )
+        .to(".snap-shadow", { opacity: 0, scaleX: 1.6, duration: 0.28 }, 5.62)
+        .to(".speed-lines", { opacity: 0, duration: 0.2 }, 5.74)
+        .to(".white-wipe", { opacity: 1, duration: 0.42, ease: "power2.out" }, 5.86);
+
+      window.__timelines["goonvpn-youtube-spot"] = tl;
+    </script>
+  </body>
+</html>

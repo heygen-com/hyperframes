@@ -1,0 +1,33 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "nyc-paris-flight",
+  "type": "hyperframes:block",
+  "title": "NYC Paris Flight",
+  "description": "Apple-style realistic map animation with a plane flying from New York to Paris, marker circle, landing pop, and sound effects.",
+  "tags": ["showcase", "travel", "map", "youtube", "sfx"],
+  "author": "Stronkter",
+  "authorUrl": "https://x.com/Stronkter",
+  "sourcePrompt": "\ud83d\udcf7HyperFrames by HeyGen Make a six-second Apple-style font bold video of a plane going from New York to Paris. A map animation, and then it shows the plane going from New York to Paris. Make the fonts Apple-style bold and make the map actual realistic, actually realistic. Before it lands in Paris, do a doodle circle in red around Paris, and then it lands in the doodle circle, and the video basically cuts to a white screen at the end. Also add sound effects for everything as well. Every nice motion, every the plane for pop-ups, bubble, pop-up effect, everything you want.",
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 6,
+  "files": [
+    {
+      "path": "nyc-paris-flight.html",
+      "target": "compositions/nyc-paris-flight.html",
+      "type": "hyperframes:composition"
+    },
+    {
+      "path": "assets/map-nyc-paris.png",
+      "target": "assets/map-nyc-paris.png",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/sfx-mix.wav",
+      "target": "assets/sfx-mix.wav",
+      "type": "hyperframes:asset"
+    }
+  ]
+}

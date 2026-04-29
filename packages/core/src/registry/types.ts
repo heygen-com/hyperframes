@@ -48,6 +48,10 @@ interface RegistryItemBase {
   tags?: string[];
   /** Item author / maintainer. */
   author?: string;
+  /** URL for the author / creator credit. */
+  authorUrl?: string;
+  /** Original prompt used to create or inspire the item. */
+  sourcePrompt?: string;
   /** SPDX license identifier. */
   license?: string;
   /** Minimum `hyperframes` CLI version required to install this item (semver). */

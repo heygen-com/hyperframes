@@ -35,6 +35,14 @@
       "type": "string",
       "minLength": 1
     },
+    "authorUrl": {
+      "type": "string",
+      "format": "uri"
+    },
+    "sourcePrompt": {
+      "type": "string",
+      "minLength": 1
+    },
     "license": {
       "type": "string",
       "minLength": 1,

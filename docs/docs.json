@@ -141,6 +141,10 @@
             "group": "Showcases",
             "pages": [
               "catalog/blocks/app-showcase",
+              "catalog/blocks/apple-money-count",
+              "catalog/blocks/goonvpn-youtube-spot",
+              "catalog/blocks/north-korea-locked-down",
+              "catalog/blocks/nyc-paris-flight",
               "catalog/blocks/ui-3d-reveal"
             ]
           },

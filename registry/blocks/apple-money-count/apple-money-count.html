@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #fdfefe;
+      }
+
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #fdfefe;
+        color: #111315;
+        font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+      }
+
+      .green-flash {
+        position: absolute;
+        inset: 0;
+        z-index: 1;
+        background: #30d158;
+        opacity: 0;
+      }
+
+      .stage-content {
+        position: relative;
+        z-index: 5;
+        display: flex;
+        width: 100%;
+        height: 100%;
+        align-items: center;
+        justify-content: center;
+        padding: 120px 160px;
+      }
+
+      .amount-wrap {
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 1080px;
+        min-height: 260px;
+      }
+
+      .amount {
+        position: relative;
+        color: #111315;
+        font-size: 190px;
+        font-weight: 900;
+        line-height: 0.9;
+        letter-spacing: 0;
+        font-variant-numeric: tabular-nums;
+        text-align: center;
+        white-space: nowrap;
+        text-shadow:
+          0 3px 0 rgba(255, 255, 255, 0.58),
+          0 18px 36px rgba(17, 19, 21, 0.14),
+          0 42px 92px rgba(17, 19, 21, 0.1);
+        will-change: transform, color, opacity, text-shadow;
+      }
+
+      .money-burst {
+        position: absolute;
+        inset: 0;
+        z-index: 8;
+        pointer-events: none;
+      }
+
+      .money-icon {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        display: grid;
+        place-items: center;
+        opacity: 0;
+        filter: drop-shadow(0 20px 24px rgba(7, 84, 31, 0.2));
+        will-change: transform, opacity, filter;
+      }
+
+      .money-icon.bill {
+        width: 96px;
+        height: 52px;
+        border-radius: 10px;
+        background: #30d158;
+        box-shadow:
+          inset 0 0 0 3px rgba(7, 84, 31, 0.2),
+          inset 0 -10px 18px rgba(7, 84, 31, 0.1),
+          0 16px 26px rgba(7, 84, 31, 0.2),
+          0 34px 64px rgba(7, 84, 31, 0.16);
+      }
+
+      .money-icon.bill::before {
+        position: absolute;
+        inset: 9px 16px;
+        border: 2px solid rgba(7, 84, 31, 0.28);
+        border-radius: 999px;
+        content: "";
+      }
+
+      .money-icon.coin {
+        width: 64px;
+        height: 64px;
+        border-radius: 50%;
+        background: radial-gradient(circle at 34% 30%, #fff7a6 0%, #ffd54f 40%, #d9a514 100%);
+        box-shadow:
+          inset 0 0 0 4px rgba(111, 76, 0, 0.12),
+          inset 0 -8px 14px rgba(111, 76, 0, 0.1),
+          0 16px 30px rgba(111, 76, 0, 0.18),
+          0 34px 58px rgba(111, 76, 0, 0.12);
+      }
+
+      .money-icon .mark {
+        position: relative;
+        z-index: 1;
+        color: #07541f;
+        font-size: 30px;
+        font-weight: 900;
+        line-height: 1;
+      }
+
+      .money-icon.coin .mark {
+        color: #6f4c00;
+        font-size: 28px;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="apple-money-count"
+      data-root="true"
+      data-start="0"
+      data-duration="5"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div id="greenFlash" class="green-flash"></div>
+      <div class="stage-content">
+        <div class="amount-wrap">
+          <div id="amount" class="amount">$0</div>
+        </div>
+      </div>
+      <div id="moneyBurst" class="money-burst" data-layout-allow-overflow></div>
+      <audio
+        id="sfxTrack"
+        data-start="0"
+        data-duration="5"
+        data-track-index="9"
+        src="assets/sfx-production.wav"
+        data-volume="0.92"
+      ></audio>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+
+      const amount = document.querySelector("#amount");
+      const moneyBurst = document.querySelector("#moneyBurst");
+      const countState = { value: 0 };
+
+      function formatMoney(value) {
+        const bounded = Math.max(0, Math.min(10000, value));
+        const rounded = Math.round(bounded);
+        return "$" + rounded.toLocaleString("en-US");
+      }
+
+      function renderAmount(value) {
+        amount.textContent = formatMoney(value);
+      }
+
+      const moneyIcons = [];
+      const moneySpecs = [];
+
+      for (let i = 0; i < 62; i += 1) {
+        const icon = document.createElement("div");
+        const isCoin = i % 3 === 0;
+        icon.className = "money-icon " + (isCoin ? "coin" : "bill");
+        icon.innerHTML = '<span class="mark">$</span>';
+        moneyBurst.appendChild(icon);
+        moneyIcons.push(icon);
+
+        const angle = i * 2.399963229728653;
+        const ring = i % 5;
+        const radiusX = 260 + ring * 145 + (i % 7) * 12;
+        const radiusY = 160 + ring * 78 + (i % 6) * 12;
+        const offsetX = (i % 4) * 24 - 36;
+        const offsetY = (i % 5) * 18 - 36;
+        const x = Math.max(-865, Math.min(865, Math.cos(angle) * radiusX + offsetX));
+        const y = Math.max(-465, Math.min(465, Math.sin(angle * 1.13) * radiusY + offsetY));
+
+        moneySpecs.push({
+          x,
+          y,
+          delay: (i % 8) * 0.025,
+          duration: 0.74 + (i % 5) * 0.045,
+          fadeDelay: (i % 5) * 0.05,
+          rotation: ((i * 43) % 160) - 80,
+          scale: isCoin ? 0.72 + (i % 4) * 0.08 : 0.68 + (i % 5) * 0.07,
+        });
+      }
+
+      renderAmount(0);
+
+      const tl = gsap.timeline({
+        paused: true,
+        defaults: { ease: "power3.out" },
+      });
+
+      gsap.set(moneyIcons, {
+        x: 0,
+        y: 0,
+        xPercent: -50,
+        yPercent: -50,
+        opacity: 0,
+        scale: 0.18,
+        transformOrigin: "50% 50%",
+      });
+
+      tl.from(
+        "#amount",
+        {
+          y: 26,
+          opacity: 0,
+          scale: 0.985,
+          duration: 0.45,
+          ease: "power2.out",
+        },
+        0,
+      );
+
+      tl.to(
+        countState,
+        {
+          value: 10000,
+          duration: 3.16,
+          ease: "none",
+          onUpdate: () => renderAmount(countState.value),
+          onComplete: () => renderAmount(10000),
+        },
+        0,
+      );
+
+      tl.to(
+        "#amount",
+        {
+          color: "#30d158",
+          textShadow:
+            "0 3px 0 rgba(255,255,255,0.52), 0 18px 40px rgba(48,209,88,0.3), 0 46px 96px rgba(7,84,31,0.2)",
+          duration: 0.18,
+        },
+        3.16,
+      );
+      tl.to("#amount", { scale: 1.06, duration: 0.16, ease: "back.out(2.2)" }, 3.16);
+      tl.to("#amount", { scale: 1, duration: 0.23, ease: "power2.out" }, 3.33);
+
+      tl.to("#greenFlash", { opacity: 0.34, duration: 0.08, ease: "none" }, 3.16);
+      tl.to("#greenFlash", { opacity: 0.22, duration: 0.76, ease: "none" }, 3.24);
+      tl.to("#greenFlash", { opacity: 0, duration: 0.16, ease: "power2.out" }, 4);
+
+      moneyIcons.forEach((icon, i) => {
+        const spec = moneySpecs[i];
+        tl.to(
+          icon,
+          {
+            x: spec.x,
+            y: spec.y,
+            rotation: spec.rotation,
+            scale: spec.scale,
+            opacity: 1,
+            duration: spec.duration,
+            ease: "power4.out",
+          },
+          3.28 + spec.delay,
+        );
+        tl.to(
+          icon,
+          {
+            y: spec.y + (spec.y < 0 ? -58 : 58),
+            scale: spec.scale * 0.54,
+            opacity: 0,
+            duration: 0.38,
+            ease: "power2.in",
+          },
+          4.18 + spec.fadeDelay,
+        );
+      });
+
+      tl.to("#amount", { opacity: 0, scale: 0.985, duration: 0.28, ease: "power2.in" }, 4.36);
+
+      window.__timelines["apple-money-count"] = tl;
+    </script>
+  </body>
+</html>

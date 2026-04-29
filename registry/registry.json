@@ -92,6 +92,22 @@
       "type": "hyperframes:block"
     },
     {
+      "name": "north-korea-locked-down",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "apple-money-count",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "goonvpn-youtube-spot",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "nyc-paris-flight",
+      "type": "hyperframes:block"
+    },
+    {
       "name": "ui-3d-reveal",
       "type": "hyperframes:block"
     },

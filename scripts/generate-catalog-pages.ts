@@ -13,7 +13,7 @@
  *   npx tsx scripts/generate-catalog-pages.ts
  */
 
-import { readdirSync, readFileSync, existsSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { readFileSync, existsSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 // Import from source — bun workspace linking doesn't resolve for scripts outside packages/.
@@ -27,10 +27,16 @@ const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
 const registryDir = resolve(repoRoot, "registry");
 const docsDir = resolve(repoRoot, "docs");
+const catalogImageBase = "https://static.heygen.ai/hyperframes-oss/docs/images/catalog";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
 type ItemKind = "block" | "component";
+
+interface SourceMetadata {
+  authorUrl?: string;
+  sourcePrompt?: string;
+}
 
 interface CatalogEntry {
   name: string;
@@ -48,28 +54,34 @@ interface CatalogEntry {
 
 function discoverItems(): { kind: ItemKind; manifest: RegistryItem }[] {
   const items: { kind: ItemKind; manifest: RegistryItem }[] = [];
+  const registryManifest = JSON.parse(
+    readFileSync(join(registryDir, "registry.json"), "utf-8"),
+  ) as { items?: { name: string; type: string }[] };
 
-  const dirs: { kind: ItemKind; dir: string }[] = [
-    { kind: "block", dir: join(registryDir, "blocks") },
-    { kind: "component", dir: join(registryDir, "components") },
-  ];
+  for (const item of registryManifest.items ?? []) {
+    const kind =
+      item.type === "hyperframes:block"
+        ? "block"
+        : item.type === "hyperframes:component"
+          ? "component"
+          : null;
 
-  for (const { kind, dir } of dirs) {
-    if (!existsSync(dir)) continue;
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      if (!entry.isDirectory()) continue;
-      const manifestPath = join(dir, entry.name, "registry-item.json");
-      if (!existsSync(manifestPath)) continue;
+    if (!kind) continue;
 
-      let manifest: RegistryItem;
-      try {
-        manifest = JSON.parse(readFileSync(manifestPath, "utf-8")) as RegistryItem;
-      } catch (err) {
-        console.warn(`  ⚠ Skipping ${manifestPath}: ${(err as Error).message}`);
-        continue;
-      }
-      items.push({ kind, manifest });
+    const manifestPath = join(registryDir, typeDir(kind), item.name, "registry-item.json");
+    if (!existsSync(manifestPath)) {
+      console.warn(`  ⚠ Skipping ${item.name}: missing ${manifestPath}`);
+      continue;
     }
+
+    let manifest: RegistryItem;
+    try {
+      manifest = JSON.parse(readFileSync(manifestPath, "utf-8")) as RegistryItem;
+    } catch (err) {
+      console.warn(`  ⚠ Skipping ${manifestPath}: ${(err as Error).message}`);
+      continue;
+    }
+    items.push({ kind, manifest });
   }
 
   return items.sort((a, b) => a.manifest.name.localeCompare(b.manifest.name));
@@ -89,6 +101,7 @@ function generateItemMdx(kind: ItemKind, manifest: RegistryItem): string {
   const tags = manifest.tags ?? [];
   const tagBadges = tags.map((t) => `\`${t}\``).join(" ");
   const installCmd = `npx hyperframes add ${manifest.name}`;
+  const source = manifest as RegistryItem & SourceMetadata;
 
   const lines: string[] = [
     "---",
@@ -106,8 +119,17 @@ function generateItemMdx(kind: ItemKind, manifest: RegistryItem): string {
     lines.push(tagBadges, "");
   }
 
+  if (manifest.author) {
+    const author = source.authorUrl ? `[${manifest.author}](${source.authorUrl})` : manifest.author;
+    lines.push(`Created by ${author}.`, "");
+  }
+
+  if (source.sourcePrompt) {
+    lines.push("## Source Prompt", "", "```text", source.sourcePrompt, "```", "");
+  }
+
   // Preview video with poster — muted loop, no autoPlay (matches examples page).
-  const previewPath = `/images/catalog/${typeDir(kind)}/${manifest.name}`;
+  const previewPath = `${catalogImageBase}/${typeDir(kind)}/${manifest.name}`;
   lines.push(
     `<video className="w-full aspect-video rounded-xl object-cover bg-zinc-100 dark:bg-zinc-800" src="${previewPath}.mp4" poster="${previewPath}.png" autoPlay muted loop playsInline />`,
     "",
@@ -227,7 +249,7 @@ function main(): void {
       description: manifest.description,
       tags: manifest.tags ?? [],
       href: `/catalog/${dir}/${manifest.name}`,
-      preview: `/images/catalog/${dir}/${manifest.name}.png`,
+      preview: `${catalogImageBase}/${dir}/${manifest.name}.png`,
     });
   }
 

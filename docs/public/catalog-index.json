@@ -13,6 +13,21 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/app-showcase.png"
   },
   {
+    "name": "apple-money-count",
+    "type": "block",
+    "title": "Apple Money Count",
+    "description": "Apple-style finance counter that counts from $0 to $10,000, flashes green, and bursts money icons with sound.",
+    "tags": [
+      "showcase",
+      "finance",
+      "kinetic",
+      "youtube",
+      "sfx"
+    ],
+    "href": "/catalog/blocks/apple-money-count",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/apple-money-count.png"
+  },
+  {
     "name": "chromatic-radial-split",
     "type": "block",
     "title": "Chromatic Radial Split",
@@ -111,6 +126,20 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/glitch.png"
   },
   {
+    "name": "goonvpn-youtube-spot",
+    "type": "block",
+    "title": "GoonVPN YouTube Spot",
+    "description": "Snappy Apple-style YouTube insert showing a phone finding and installing a fictional VPN app with sound effects.",
+    "tags": [
+      "app",
+      "showcase",
+      "youtube",
+      "sfx"
+    ],
+    "href": "/catalog/blocks/goonvpn-youtube-spot",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/goonvpn-youtube-spot.png"
+  },
+  {
     "name": "grain-overlay",
     "type": "component",
     "title": "Grain Overlay",
@@ -200,6 +229,36 @@
     ],
     "href": "/catalog/blocks/macos-notification",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/macos-notification.png"
+  },
+  {
+    "name": "north-korea-locked-down",
+    "type": "block",
+    "title": "North Korea Locked Down",
+    "description": "Realistic map zoom into North Korea with a red scribble circle, locked-down pop-up label, and reddish editorial wash.",
+    "tags": [
+      "showcase",
+      "map",
+      "annotation",
+      "youtube",
+      "kinetic"
+    ],
+    "href": "/catalog/blocks/north-korea-locked-down",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/north-korea-locked-down.png"
+  },
+  {
+    "name": "nyc-paris-flight",
+    "type": "block",
+    "title": "NYC Paris Flight",
+    "description": "Apple-style realistic map animation with a plane flying from New York to Paris, marker circle, landing pop, and sound effects.",
+    "tags": [
+      "showcase",
+      "travel",
+      "map",
+      "youtube",
+      "sfx"
+    ],
+    "href": "/catalog/blocks/nyc-paris-flight",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/nyc-paris-flight.png"
   },
   {
     "name": "reddit-post",

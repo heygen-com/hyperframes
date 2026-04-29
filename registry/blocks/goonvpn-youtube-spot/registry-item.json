@@ -1,0 +1,28 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "goonvpn-youtube-spot",
+  "type": "hyperframes:block",
+  "title": "GoonVPN YouTube Spot",
+  "description": "Snappy Apple-style YouTube insert showing a phone finding and installing a fictional VPN app with sound effects.",
+  "tags": ["app", "showcase", "youtube", "sfx"],
+  "author": "Stronkter",
+  "authorUrl": "https://x.com/Stronkter",
+  "sourcePrompt": "\ud83d\udcf7HyperFrames by HeyGen make me a 7s video apple style bold font and styling a phone scrolling in a appstore clicking on a vpn app called goonVPN and installing it the app installs the phone snaps down and fades to a white backround make it snappy and pop its for a youtube video  also add soundfx and make it 60fps and 1920x1080",
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 7,
+  "files": [
+    {
+      "path": "goonvpn-youtube-spot.html",
+      "target": "compositions/goonvpn-youtube-spot.html",
+      "type": "hyperframes:composition"
+    },
+    {
+      "path": "assets/goonvpn-sfx.wav",
+      "target": "assets/goonvpn-sfx.wav",
+      "type": "hyperframes:asset"
+    }
+  ]
+}

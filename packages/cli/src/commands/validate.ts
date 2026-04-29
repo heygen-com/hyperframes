@@ -29,6 +29,16 @@ interface ContrastEntry {
 
 const CONTRAST_SAMPLES = 5;
 const SEEK_SETTLE_MS = 150;
+const MEDIA_EXTENSIONS = /\.(aac|flac|m4a|mov|mp3|mp4|oga|ogg|wav|webm)$/i;
+
+export function shouldIgnoreRequestFailure(url: string, errorText: string | undefined): boolean {
+  if (errorText !== "net::ERR_ABORTED") return false;
+  try {
+    return MEDIA_EXTENSIONS.test(new URL(url).pathname);
+  } catch {
+    return false;
+  }
+}
 
 async function getCompositionDuration(page: import("puppeteer-core").Page): Promise<number> {
   return page.evaluate(() => {
@@ -183,10 +193,12 @@ async function validateInBrowser(
     page.on("requestfailed", (req) => {
       const url = req.url();
       if (url.includes("favicon") || url.startsWith("data:")) return;
+      const failureText = req.failure()?.errorText;
+      if (shouldIgnoreRequestFailure(url, failureText)) return;
       const path = decodeURIComponent(new URL(url).pathname).replace(/^\//, "");
       errors.push({
         level: "error",
-        text: `Failed to load ${path}: ${req.failure()?.errorText ?? "net::ERR_FAILED"}`,
+        text: `Failed to load ${path}: ${failureText ?? "net::ERR_FAILED"}`,
         url,
       });
     });

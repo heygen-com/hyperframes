@@ -212,13 +212,15 @@ describe("registry types", () => {
       expect(true).toBe(true);
     });
 
-    it("optional metadata fields are accepted (author, license, deprecated, minCliVersion)", () => {
+    it("optional metadata fields are accepted", () => {
       const item: ComponentItem = {
         name: "shader-wipe",
         type: "hyperframes:component",
         title: "Shader Wipe",
         description: "d",
         author: "heygen",
+        authorUrl: "https://example.com/heygen",
+        sourcePrompt: "Create a shader wipe.",
         license: "Apache-2.0",
         minCliVersion: "0.4.0",
         deprecated: "Use `shader-wipe-v2` instead.",
@@ -231,6 +233,8 @@ describe("registry types", () => {
         ],
       };
       expect(item.author).toBe("heygen");
+      expect(item.authorUrl).toBe("https://example.com/heygen");
+      expect(item.sourcePrompt).toBe("Create a shader wipe.");
     });
   });
 });

@@ -1,0 +1,525 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #f5f5f7;
+        font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+      }
+
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #f5f5f7;
+        color: #1d1d1f;
+      }
+
+      .stage {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #f5f5f7;
+      }
+
+      .map-plane {
+        position: absolute;
+        inset: 0;
+        transform-origin: 52% 48%;
+        will-change: transform, opacity;
+      }
+
+      .map-image {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+
+      .soft-ocean {
+        position: absolute;
+        inset: 0;
+        background:
+          radial-gradient(circle at 50% 24%, rgba(0, 113, 227, 0.18), rgba(0, 113, 227, 0) 34%),
+          linear-gradient(180deg, rgba(245, 245, 247, 0.05), rgba(245, 245, 247, 0.3));
+        mix-blend-mode: multiply;
+        opacity: 0.72;
+      }
+
+      .route-svg,
+      .doodle-svg {
+        position: absolute;
+        inset: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: visible;
+      }
+
+      .route-glow {
+        fill: none;
+        stroke: rgba(0, 113, 227, 0.23);
+        stroke-width: 24;
+        stroke-linecap: round;
+        stroke-dasharray: 2000;
+        stroke-dashoffset: 2000;
+        filter: blur(4px);
+      }
+
+      .route-path {
+        fill: none;
+        stroke: #0071e3;
+        stroke-width: 9;
+        stroke-linecap: round;
+        stroke-dasharray: 2000;
+        stroke-dashoffset: 2000;
+        filter: drop-shadow(0 10px 20px rgba(0, 113, 227, 0.22));
+      }
+
+      .route-thread {
+        fill: none;
+        stroke: rgba(255, 255, 255, 0.86);
+        stroke-width: 3;
+        stroke-linecap: round;
+        stroke-dasharray: 2000;
+        stroke-dashoffset: 2000;
+      }
+
+      .route-tick {
+        position: absolute;
+        width: 14px;
+        height: 14px;
+        margin: -7px 0 0 -7px;
+        border-radius: 999px;
+        background: #ffffff;
+        border: 3px solid #0071e3;
+        box-shadow: 0 8px 26px rgba(0, 113, 227, 0.32);
+        opacity: 0;
+      }
+
+      .pin {
+        position: absolute;
+        width: 26px;
+        height: 26px;
+        border-radius: 999px;
+        background: #ffffff;
+        border: 7px solid #0071e3;
+        box-shadow:
+          0 15px 34px rgba(0, 0, 0, 0.18),
+          0 0 0 10px rgba(0, 113, 227, 0.12);
+        transform: translate(-50%, -50%);
+        transform-origin: center;
+        will-change: transform, opacity;
+      }
+
+      .pin::after {
+        content: "";
+        position: absolute;
+        inset: -20px;
+        border-radius: 999px;
+        border: 2px solid rgba(0, 113, 227, 0.25);
+      }
+
+      .pin-label {
+        position: absolute;
+        top: 32px;
+        min-width: 142px;
+        padding: 12px 16px 13px;
+        border-radius: 20px;
+        background: rgba(255, 255, 255, 0.84);
+        border: 1px solid rgba(255, 255, 255, 0.88);
+        color: #1d1d1f;
+        font-size: 22px;
+        font-weight: 800;
+        line-height: 1;
+        letter-spacing: 0;
+        box-shadow: 0 18px 38px rgba(29, 29, 31, 0.16);
+        backdrop-filter: blur(18px);
+        white-space: nowrap;
+      }
+
+      .pin-label span {
+        display: block;
+        margin-top: 7px;
+        color: #6e6e73;
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      #nyc-pin {
+        left: 308.41px;
+        top: 584.16px;
+      }
+
+      #nyc-pin .pin-label {
+        left: 28px;
+      }
+
+      #paris-pin {
+        left: 1611.59px;
+        top: 387.84px;
+      }
+
+      #paris-pin .pin-label {
+        right: 28px;
+      }
+
+      .plane {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 112px;
+        height: 112px;
+        offset-path: path("M 308.41 584.158 C 650 520 1120 245 1611.59 387.842");
+        offset-distance: 0%;
+        offset-rotate: auto;
+        offset-anchor: 50% 50%;
+        transform-origin: center;
+        filter: drop-shadow(0 22px 22px rgba(0, 0, 0, 0.24));
+        opacity: 1;
+        will-change: offset-distance, transform, opacity;
+      }
+
+      .plane-core {
+        position: absolute;
+        inset: 0;
+        transform-origin: center;
+        will-change: transform;
+      }
+
+      .plane svg {
+        width: 100%;
+        height: 100%;
+        overflow: visible;
+      }
+
+      .doodle-line {
+        fill: none;
+        stroke: #ff3b30;
+        stroke-width: 13;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        stroke-dasharray: 900;
+        stroke-dashoffset: 900;
+        filter: drop-shadow(0 10px 14px rgba(255, 59, 48, 0.18));
+      }
+
+      .doodle-line.secondary {
+        stroke-width: 6;
+        opacity: 0.82;
+      }
+
+      .paris-pulse {
+        position: absolute;
+        left: 1611.59px;
+        top: 387.84px;
+        width: 126px;
+        height: 126px;
+        margin: -63px 0 0 -63px;
+        border-radius: 999px;
+        border: 4px solid rgba(255, 59, 48, 0.34);
+        opacity: 0;
+      }
+
+      .landing-badge {
+        position: absolute;
+        left: 1500px;
+        top: 502px;
+        padding: 15px 20px 16px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.9);
+        color: #d70015;
+        font-size: 24px;
+        font-weight: 900;
+        line-height: 1;
+        letter-spacing: 0;
+        box-shadow: 0 20px 44px rgba(29, 29, 31, 0.14);
+        opacity: 0;
+        transform: scale(0.78);
+        transform-origin: center;
+      }
+
+      .title-stack {
+        position: absolute;
+        left: 82px;
+        top: 70px;
+        z-index: 6;
+        max-width: 780px;
+        padding: 30px 34px 33px;
+        border-radius: 30px;
+        background: rgba(255, 255, 255, 0.72);
+        border: 1px solid rgba(255, 255, 255, 0.86);
+        box-shadow: 0 28px 70px rgba(29, 29, 31, 0.12);
+        backdrop-filter: blur(22px);
+      }
+
+      .eyebrow {
+        color: #6e6e73;
+        font-size: 19px;
+        font-weight: 800;
+        letter-spacing: 0;
+      }
+
+      .headline {
+        margin-top: 11px;
+        color: #1d1d1f;
+        font-size: 84px;
+        font-weight: 900;
+        line-height: 0.92;
+        letter-spacing: 0;
+      }
+
+      .headline span {
+        color: #0071e3;
+      }
+
+      .route-meta {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        margin-top: 18px;
+        color: #6e6e73;
+        font-size: 25px;
+        font-weight: 800;
+      }
+
+      .route-meta i {
+        display: block;
+        width: 54px;
+        height: 6px;
+        border-radius: 999px;
+        background: #0071e3;
+      }
+
+      .attribution {
+        position: absolute;
+        right: 28px;
+        bottom: 24px;
+        z-index: 5;
+        padding: 8px 12px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.68);
+        color: rgba(29, 29, 31, 0.76);
+        font-size: 14px;
+        font-weight: 700;
+        line-height: 1;
+      }
+
+      .white-screen {
+        position: absolute;
+        inset: 0;
+        z-index: 30;
+        background: #ffffff;
+        opacity: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="nyc-paris-flight"
+      data-start="0"
+      data-duration="6"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div
+        id="flight-scene"
+        class="clip stage"
+        data-start="0"
+        data-duration="6"
+        data-track-index="0"
+      >
+        <div id="map-plane" class="map-plane" data-layout-allow-overflow>
+          <img class="map-image" src="assets/map-nyc-paris.png" alt="" />
+          <div class="soft-ocean" data-layout-ignore></div>
+
+          <svg class="route-svg" viewBox="0 0 1920 1080" aria-hidden="true" data-layout-ignore>
+            <path
+              id="route-glow"
+              class="route-glow"
+              d="M 308.41 584.158 C 650 520 1120 245 1611.59 387.842"
+            />
+            <path
+              id="route-path"
+              class="route-path"
+              d="M 308.41 584.158 C 650 520 1120 245 1611.59 387.842"
+            />
+            <path
+              id="route-thread"
+              class="route-thread"
+              d="M 308.41 584.158 C 650 520 1120 245 1611.59 387.842"
+            />
+          </svg>
+
+          <div class="route-tick" style="left: 481.8px; top: 539.7px"></div>
+          <div class="route-tick" style="left: 647.6px; top: 486.5px"></div>
+          <div class="route-tick" style="left: 824.8px; top: 430.6px"></div>
+          <div class="route-tick" style="left: 1011.5px; top: 382.4px"></div>
+          <div class="route-tick" style="left: 1206.1px; top: 352.3px"></div>
+          <div class="route-tick" style="left: 1406.7px; top: 350.7px"></div>
+
+          <div id="nyc-pin" class="pin">
+            <div class="pin-label">New York<span>JFK / NYC</span></div>
+          </div>
+
+          <div id="paris-pin" class="pin">
+            <div class="pin-label">Paris<span>CDG / FR</span></div>
+          </div>
+
+          <div id="plane" class="plane" aria-hidden="true">
+            <div id="plane-core" class="plane-core">
+              <svg viewBox="-64 -64 128 128">
+                <path
+                  d="M 58 0 C 52 -10 37 -15 15 -16 L -18 -56 C -23 -62 -34 -58 -32 -49 L -21 -15 L -48 -12 C -56 -11 -60 -6 -60 0 C -60 6 -56 11 -48 12 L -21 15 L -32 49 C -34 58 -23 62 -18 56 L 15 16 C 37 15 52 10 58 0 Z"
+                  fill="#ffffff"
+                />
+                <path
+                  d="M 54 0 C 46 -6 33 -9 14 -10 L -19 -50 C -21 -53 -25 -52 -25 -47 L -15 -10 L -49 -6 C -53 -5 -55 -2 -55 0 C -55 2 -53 5 -49 6 L -15 10 L -25 47 C -25 52 -21 53 -19 50 L 14 10 C 33 9 46 6 54 0 Z"
+                  fill="#0071e3"
+                />
+                <circle cx="18" cy="0" r="6" fill="#f5f5f7" opacity="0.95" />
+              </svg>
+            </div>
+          </div>
+
+          <svg class="doodle-svg" viewBox="0 0 1920 1080" aria-hidden="true" data-layout-ignore>
+            <path
+              id="doodle-a"
+              class="doodle-line"
+              d="M 1510 382 C 1505 323 1560 287 1627 300 C 1700 315 1740 358 1720 416 C 1705 468 1624 486 1556 462 C 1518 449 1494 417 1510 382"
+            />
+            <path
+              id="doodle-b"
+              class="doodle-line secondary"
+              d="M 1518 396 C 1488 356 1528 307 1605 296 C 1688 284 1748 338 1730 397 C 1713 453 1641 480 1570 463 C 1526 453 1504 427 1518 396"
+            />
+          </svg>
+
+          <div id="paris-pulse" class="paris-pulse"></div>
+          <div id="landing-badge" class="landing-badge">ARRIVED</div>
+        </div>
+
+        <div class="title-stack">
+          <div class="eyebrow">Six-second transatlantic hop</div>
+          <div class="headline">NEW YORK <span>TO</span> PARIS</div>
+          <div class="route-meta">
+            <i></i>
+            <p>5,837 km compressed</p>
+          </div>
+        </div>
+
+        <div class="attribution">© OpenStreetMap contributors © CARTO</div>
+        <div id="white-screen" class="white-screen"></div>
+      </div>
+
+      <audio
+        id="sfx"
+        data-start="0"
+        data-duration="6"
+        data-track-index="1"
+        src="assets/sfx-mix.wav"
+        data-volume="0.95"
+      ></audio>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+
+      const tl = gsap.timeline({
+        paused: true,
+        defaults: { overwrite: "auto" },
+      });
+
+      tl.from(
+        "#map-plane",
+        { scale: 1.1, x: -38, y: 20, opacity: 0.94, duration: 1.05, ease: "power2.out" },
+        0.16,
+      );
+      tl.from(
+        ".title-stack",
+        { y: 28, scale: 0.97, opacity: 0, duration: 0.52, ease: "expo.out" },
+        0.24,
+      );
+      tl.from(".eyebrow", { x: -22, opacity: 0, duration: 0.36, ease: "power3.out" }, 0.32);
+      tl.from(".headline", { y: 34, opacity: 0, duration: 0.5, ease: "back.out(1.45)" }, 0.4);
+      tl.from(".route-meta", { x: -26, opacity: 0, duration: 0.38, ease: "circ.out" }, 0.58);
+
+      tl.from("#nyc-pin", { scale: 0.12, opacity: 0, duration: 0.34, ease: "back.out(2.8)" }, 0.7);
+      tl.from(
+        "#paris-pin",
+        { scale: 0.12, opacity: 0, duration: 0.34, ease: "elastic.out(1, 0.5)" },
+        0.86,
+      );
+
+      tl.from("#plane", { scale: 0.48, opacity: 0, duration: 0.3, ease: "back.out(2.2)" }, 1.08);
+      tl.to("#route-glow", { strokeDashoffset: 0, duration: 3.1, ease: "power1.inOut" }, 1.16);
+      tl.to("#route-path", { strokeDashoffset: 0, duration: 3.05, ease: "power2.inOut" }, 1.2);
+      tl.to("#route-thread", { strokeDashoffset: 0, duration: 2.92, ease: "sine.inOut" }, 1.26);
+      tl.to("#plane", { offsetDistance: "100%", duration: 3.25, ease: "sine.inOut" }, 1.17);
+      tl.to(
+        "#plane-core",
+        { scale: 1.06, duration: 0.2, repeat: 12, yoyo: true, ease: "sine.inOut" },
+        1.22,
+      );
+      tl.to("#map-plane", { scale: 1.025, duration: 3.2, ease: "sine.inOut" }, 1.28);
+
+      gsap.utils.toArray(".route-tick").forEach((tick, index) => {
+        tl.fromTo(
+          tick,
+          { scale: 0.2, opacity: 0 },
+          { scale: 1, opacity: 1, duration: 0.16, ease: "back.out(3)" },
+          1.34 + index * 0.44,
+        );
+        tl.to(
+          tick,
+          { scale: 0.6, opacity: 0.18, duration: 0.34, ease: "power2.out" },
+          1.48 + index * 0.44,
+        );
+      });
+
+      tl.from(
+        "#paris-pulse",
+        { scale: 0.52, opacity: 0, duration: 0.26, ease: "back.out(2.4)" },
+        4.06,
+      );
+      tl.to("#doodle-a", { strokeDashoffset: 0, duration: 0.54, ease: "power2.out" }, 4.18);
+      tl.to("#doodle-b", { strokeDashoffset: 0, duration: 0.36, ease: "power3.out" }, 4.36);
+      tl.to("#paris-pulse", { scale: 1.5, opacity: 0, duration: 0.58, ease: "power3.out" }, 4.64);
+
+      tl.to("#plane-core", { scale: 1.23, duration: 0.16, ease: "back.out(3)" }, 4.96);
+      tl.to("#plane-core", { scale: 0.9, duration: 0.12, ease: "power2.in" }, 5.12);
+      tl.to("#plane-core", { scale: 1, duration: 0.22, ease: "elastic.out(1, 0.45)" }, 5.24);
+      tl.to(
+        "#landing-badge",
+        { scale: 1, opacity: 1, duration: 0.28, ease: "back.out(2.4)" },
+        5.02,
+      );
+      tl.to(
+        "#landing-badge",
+        { scale: 1.06, duration: 0.16, yoyo: true, repeat: 1, ease: "sine.inOut" },
+        5.3,
+      );
+
+      tl.set("#white-screen", { opacity: 1 }, 5.5);
+
+      window.__timelines["nyc-paris-flight"] = tl;
+    </script>
+  </body>
+</html>

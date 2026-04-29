@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #eef3f4;
+        font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+      }
+
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #eef3f4;
+        color: #151515;
+      }
+
+      .camera {
+        position: absolute;
+        inset: 0;
+        z-index: 0;
+        transform-origin: 50% 51%;
+        will-change: transform, filter;
+      }
+
+      .map {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+
+      .paper-depth {
+        position: absolute;
+        inset: 0;
+        background:
+          radial-gradient(circle at 52% 50%, rgba(255, 255, 255, 0.08), transparent 28%),
+          linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(10, 20, 24, 0.12));
+        mix-blend-mode: multiply;
+        pointer-events: none;
+      }
+
+      .annotation {
+        position: absolute;
+        left: 652px;
+        top: 235px;
+        z-index: 4;
+        width: 560px;
+        height: 392px;
+        overflow: visible;
+        transform-origin: center;
+        will-change: transform, opacity;
+      }
+
+      .scribble {
+        position: absolute;
+        inset: 0;
+        width: 560px;
+        height: 392px;
+        overflow: visible;
+      }
+
+      .scribble path {
+        fill: none;
+        stroke: #e21d2f;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        filter: drop-shadow(0 8px 12px rgba(226, 29, 47, 0.24));
+      }
+
+      #circle-a {
+        stroke-width: 12;
+        stroke-dasharray: 980;
+        stroke-dashoffset: 980;
+      }
+
+      #circle-b {
+        stroke-width: 6;
+        opacity: 0.82;
+        stroke-dasharray: 910;
+        stroke-dashoffset: 910;
+      }
+
+      .label {
+        position: absolute;
+        left: 50%;
+        top: -146px;
+        transform: translateX(-50%) scale(0.82);
+        transform-origin: 50% 100%;
+        min-width: 370px;
+        padding: 18px 26px 20px;
+        border-radius: 18px;
+        color: #ffffff;
+        background: #111111;
+        box-shadow:
+          0 22px 54px rgba(25, 4, 7, 0.24),
+          inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+        font-size: 60px;
+        line-height: 0.9;
+        font-weight: 900;
+        letter-spacing: 0;
+        text-align: center;
+        text-transform: uppercase;
+        opacity: 0;
+      }
+
+      .label::after {
+        content: "";
+        position: absolute;
+        left: 50%;
+        bottom: -16px;
+        width: 32px;
+        height: 32px;
+        background: #111111;
+        transform: translateX(-50%) rotate(45deg);
+      }
+
+      .red-wash {
+        position: absolute;
+        inset: 0;
+        z-index: 2;
+        background:
+          radial-gradient(
+            circle at 50% 48%,
+            rgba(255, 59, 48, 0.3),
+            rgba(255, 59, 48, 0.06) 42%,
+            rgba(79, 0, 8, 0.22) 100%
+          ),
+          linear-gradient(90deg, rgba(99, 0, 12, 0.12), rgba(255, 59, 48, 0.2));
+        opacity: 0;
+        mix-blend-mode: multiply;
+        pointer-events: none;
+      }
+
+      .scanline {
+        position: absolute;
+        inset: 0;
+        z-index: 3;
+        opacity: 0;
+        background: repeating-linear-gradient(
+          0deg,
+          rgba(65, 0, 0, 0.12) 0,
+          rgba(65, 0, 0, 0.12) 1px,
+          transparent 1px,
+          transparent 7px
+        );
+        mix-blend-mode: multiply;
+        pointer-events: none;
+      }
+
+      .corner {
+        position: absolute;
+        z-index: 6;
+        width: 84px;
+        height: 84px;
+        border-color: rgba(17, 17, 17, 0.62);
+        opacity: 0;
+      }
+
+      .corner.tl {
+        left: 86px;
+        top: 78px;
+        border-top: 5px solid;
+        border-left: 5px solid;
+      }
+
+      .corner.tr {
+        right: 86px;
+        top: 78px;
+        border-top: 5px solid;
+        border-right: 5px solid;
+      }
+
+      .corner.bl {
+        left: 86px;
+        bottom: 78px;
+        border-bottom: 5px solid;
+        border-left: 5px solid;
+      }
+
+      .corner.br {
+        right: 86px;
+        bottom: 78px;
+        border-bottom: 5px solid;
+        border-right: 5px solid;
+      }
+
+      .attribution {
+        position: absolute;
+        right: 28px;
+        bottom: 22px;
+        z-index: 7;
+        color: rgba(17, 17, 17, 0.44);
+        font-size: 19px;
+        font-weight: 650;
+        opacity: 0.7;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="north-korea-locked-down"
+      data-root="true"
+      data-start="0"
+      data-duration="7"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div id="camera" class="camera">
+        <img class="map" src="assets/korea-map.png" alt="" />
+        <div class="paper-depth"></div>
+      </div>
+
+      <div id="annotation" class="annotation">
+        <div id="label" class="label">LOCKED<br />DOWN</div>
+        <svg class="scribble" viewBox="0 0 560 392" aria-hidden="true" data-layout-ignore>
+          <path
+            id="circle-a"
+            d="M 74 211 C 42 119 118 42 254 36 C 410 30 524 111 508 222 C 494 320 350 377 208 346 C 94 322 37 278 74 211"
+          />
+          <path
+            id="circle-b"
+            d="M 92 231 C 33 150 105 55 243 44 C 408 31 529 126 501 244 C 480 334 335 370 197 342 C 83 319 47 269 92 231"
+          />
+        </svg>
+      </div>
+
+      <div id="redWash" class="red-wash"></div>
+      <div id="scanline" class="scanline"></div>
+      <div class="corner tl"></div>
+      <div class="corner tr"></div>
+      <div class="corner bl"></div>
+      <div class="corner br"></div>
+      <div class="attribution">© OpenStreetMap contributors © CARTO</div>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+
+      const tl = gsap.timeline({
+        paused: true,
+        defaults: { overwrite: "auto" },
+      });
+
+      tl.fromTo(
+        "#camera",
+        { scale: 0.92, x: -70, y: 18, filter: "saturate(0.92) contrast(0.98)" },
+        {
+          scale: 2.12,
+          x: -56,
+          y: -22,
+          filter: "saturate(1.08) contrast(1.04)",
+          duration: 3.18,
+          ease: "expo.inOut",
+        },
+        0,
+      );
+      tl.to("#camera", { scale: 2.2, x: -44, y: -34, duration: 0.42, ease: "back.out(1.5)" }, 3.18);
+      tl.from(
+        ".corner",
+        { opacity: 0, scale: 0.72, duration: 0.28, stagger: 0.035, ease: "power3.out" },
+        0.42,
+      );
+      tl.to(".corner", { opacity: 0.72, duration: 0.18, ease: "power2.out" }, 1.2);
+      tl.fromTo(
+        "#annotation",
+        { opacity: 0, scale: 0.92, x: 4, y: -4 },
+        { opacity: 1, scale: 1, x: 0, y: 0, duration: 0.16, ease: "power2.out" },
+        3.12,
+      );
+      tl.to("#circle-a", { strokeDashoffset: 0, duration: 0.62, ease: "power2.out" }, 3.24);
+      tl.to("#circle-b", { strokeDashoffset: 0, duration: 0.44, ease: "power3.out" }, 3.46);
+      tl.to("#label", { opacity: 1, scale: 1, duration: 0.28, ease: "back.out(2.1)" }, 3.78);
+      tl.to("#redWash", { opacity: 1, duration: 0.24, ease: "power2.out" }, 3.82);
+      tl.to("#scanline", { opacity: 0.44, duration: 0.18, ease: "none" }, 3.86);
+      tl.to(
+        "#annotation",
+        { scale: 1.045, duration: 0.14, yoyo: true, repeat: 1, ease: "sine.inOut" },
+        4.1,
+      );
+      tl.to("#camera", { scale: 2.06, x: -82, y: -8, duration: 2.35, ease: "sine.inOut" }, 4.2);
+      tl.to("#redWash", { opacity: 0.82, duration: 2.35, ease: "sine.inOut" }, 4.2);
+      tl.to(".corner", { opacity: 0.38, duration: 0.72, ease: "sine.inOut" }, 5.82);
+      tl.to("#label", { y: -6, duration: 0.4, yoyo: true, repeat: 1, ease: "sine.inOut" }, 5.94);
+
+      window.__timelines["north-korea-locked-down"] = tl;
+    </script>
+  </body>
+</html>
