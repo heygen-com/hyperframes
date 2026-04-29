@@ -24,12 +24,9 @@ Apple keynote register — economy of words, silence between sentences is a feat
 **Style basis:** DESIGN.md (brand colors, fonts, components from the captured site)
 ```
 
-**Global guardrails** (adapt to the brand):
+**Global guardrails** — read [video-composition.md](../../hyperframes/references/video-composition.md) first. It defines the medium rules: density, color presence, scale, frame composition, and how design.md is brand truth not layout spec. Then apply these capture-specific additions:
 
-- Push color presence. Muted is fine, flat is not. Every beat should have at least one color that pulls your eye.
-- Motion should be visible and intentional. Err toward more movement than feels safe — subtle reads as static at 30fps.
 - Use as many captured assets as the creative vision allows. Scatter framework icons around a dashboard. Layer enterprise photos behind stats. Use product screenshots as floating cards. The assets exist — use them generously.
-- Aim for 8-10 visual elements per beat, not 2-3. A great beat has: background texture, midground content, foreground accents, floating decorative elements, animated icons, SVG path drawings, particle effects, typographic details. It should feel DENSE and alive.
 - Use at least 2-3 different techniques from techniques.md per beat — not across the whole video, per beat. Don't default to basic fade/scale/opacity — mix in SVG path drawing, CSS 3D transforms, typing effects, counter animations, canvas procedural art. Each beat should feel like its own visual world.
 
 **Underscore/music direction** (if applicable):

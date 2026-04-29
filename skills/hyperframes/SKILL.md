@@ -275,7 +275,8 @@ If no `design.md` exists, follow [house-style.md](./house-style.md) for aestheti
 
 ## Typography and Assets
 
-- **Fonts:** Just write the `font-family` you want in CSS — the compiler embeds supported fonts automatically. If a font isn't supported, the compiler warns.
+- **Built-in fonts:** Write the `font-family` you want in CSS — the compiler embeds supported fonts automatically.
+- **Custom fonts:** If design.md names a font that isn't built-in, the user must provide `.woff2` files in a `fonts/` directory. If missing, warn before writing HTML. When files exist, add `@font-face` declarations pointing to the local files.
 - Add `crossorigin="anonymous"` to external media
 - For dynamic text overflow, use `window.__hyperframes.fitTextFontSize(text, { maxWidth, fontFamily, fontWeight })`
 - All files live at the project root alongside `index.html`; sub-compositions use `../`
@@ -379,8 +380,9 @@ Skip on small edits (fixing a color, adjusting one duration). Run on new composi
 - **[references/tts.md](references/tts.md)** — Text-to-speech with Kokoro-82M. Voice selection, speed tuning, TTS+captions workflow. Read when generating narration or voiceover.
 - **[references/audio-reactive.md](references/audio-reactive.md)** — Audio-reactive animation: map frequency bands and amplitude to GSAP properties. Read when visuals should respond to music, voice, or sound.
 - **[references/css-patterns.md](references/css-patterns.md)** — CSS+GSAP marker highlighting: highlight, circle, burst, scribble, sketchout. Deterministic, fully seekable. Read when adding visual emphasis to text.
+- **[references/video-composition.md](references/video-composition.md)** — Video-medium rules: density, color presence, scale, frame composition, design.md as brand not layout. **Always read** — these override web instincts.
 - **[references/typography.md](references/typography.md)** — Typography: font pairing, OpenType features, dark-background adjustments, font discovery script. **Always read** — every composition has text.
-- **[references/motion-principles.md](references/motion-principles.md)** — Motion design principles: easing as emotion, timing as weight, choreography as hierarchy, scene pacing, ambient motion, anti-patterns. Read when choreographing GSAP animations.
+- **[references/motion-principles.md](references/motion-principles.md)** — Motion design principles: easing as emotion, timing as weight, choreography as hierarchy, scene pacing, ambient motion, anti-patterns. **Always read** — every composition has motion.
 - **[references/design-picker.md](references/design-picker.md)** — Create a design.md via visual picker. Read when no design.md exists and the user wants to create one.
 - **[visual-styles.md](visual-styles.md)** — 8 named visual styles (Swiss Pulse, Velvet Standard, Deconstructed, Maximalist Type, Data Drift, Soft Signal, Folk Frequency, Shadow Cut) with hex palettes, GSAP easing signatures, and shader pairings. Read when user names a style or when generating design.md.
 - **[house-style.md](house-style.md)** — Default motion, sizing, and color palettes when no design.md is specified.
