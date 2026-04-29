@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
-import { join, resolve, extname } from "node:path";
+import { dirname, join, resolve, extname } from "node:path";
 import { lintHyperframeHtml, type HyperframeLintResult } from "@hyperframes/core/lint";
 import type { HyperframeLintFinding } from "@hyperframes/core/lint";
 import { rewriteAssetPath } from "@hyperframes/core";
@@ -27,6 +27,32 @@ export interface ProjectLintResult {
 
 const AUDIO_EXTENSIONS = new Set([".mp3", ".wav", ".aac", ".ogg", ".m4a", ".flac", ".opus"]);
 
+function isLocalStylesheetHref(href: string): boolean {
+  return !!href && !/^(https?:|data:|blob:|\/\/)/i.test(href);
+}
+
+function collectExternalStyles(
+  projectDir: string,
+  html: string,
+  compSrcPath?: string,
+): Array<{ href: string; content: string }> {
+  const styles: Array<{ href: string; content: string }> = [];
+  const linkRe = /<link\b[^>]*>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = linkRe.exec(html)) !== null) {
+    const tag = match[0];
+    const rel = tag.match(/\brel\s*=\s*["']([^"']+)["']/i)?.[1] ?? "";
+    if (!rel.split(/\s+/).some((part) => part.toLowerCase() === "stylesheet")) continue;
+    const href = tag.match(/\bhref\s*=\s*["']([^"']+)["']/i)?.[1] ?? "";
+    if (!isLocalStylesheetHref(href)) continue;
+    const rootRelative = compSrcPath ? join(dirname(compSrcPath), href) : href;
+    const resolved = resolve(projectDir, rootRelative);
+    if (!existsSync(resolved)) continue;
+    styles.push({ href, content: readFileSync(resolved, "utf-8") });
+  }
+  return styles;
+}
+
 /**
  * Lint the root index.html and all sub-compositions in the compositions/ directory.
  * Returns aggregated results across all files.
@@ -39,7 +65,10 @@ export function lintProject(project: ProjectDir): ProjectLintResult {
 
   // Lint root composition
   const rootHtml = readFileSync(project.indexPath, "utf-8");
-  const rootResult = lintHyperframeHtml(rootHtml, { filePath: project.indexPath });
+  const rootResult = lintHyperframeHtml(rootHtml, {
+    filePath: project.indexPath,
+    externalStyles: collectExternalStyles(project.dir, rootHtml),
+  });
   results.push({ file: "index.html", result: rootResult });
   totalErrors += rootResult.errorCount;
   totalWarnings += rootResult.warningCount;
@@ -53,8 +82,13 @@ export function lintProject(project: ProjectDir): ProjectLintResult {
     for (const file of files) {
       const filePath = join(compositionsDir, file);
       const html = readFileSync(filePath, "utf-8");
-      allHtmlSources.push({ html, compSrcPath: `compositions/${file}` });
-      const result = lintHyperframeHtml(html, { filePath, isSubComposition: true });
+      const compSrcPath = `compositions/${file}`;
+      allHtmlSources.push({ html, compSrcPath });
+      const result = lintHyperframeHtml(html, {
+        filePath,
+        isSubComposition: true,
+        externalStyles: collectExternalStyles(project.dir, html, compSrcPath),
+      });
       results.push({ file: `compositions/${file}`, result });
       totalErrors += result.errorCount;
       totalWarnings += result.warningCount;

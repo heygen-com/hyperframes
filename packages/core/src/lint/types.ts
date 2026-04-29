@@ -22,6 +22,7 @@ export type HyperframeLintResult = {
 export type HyperframeLinterOptions = {
   filePath?: string;
   isSubComposition?: boolean;
+  externalStyles?: Array<{ href: string; content: string }>;
 };
 
 // A rule is a pure function: receives parsed context, returns zero or more findings.

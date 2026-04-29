@@ -143,4 +143,64 @@ describe("core rules", () => {
       expect(finding).toBeUndefined();
     });
   });
+
+  describe("composition_self_attribute_selector", () => {
+    it("warns when inline CSS targets the root composition id", () => {
+      const html = `
+<html><body>
+  <div id="scene" data-composition-id="scene" data-width="1920" data-height="1080">
+    <style>
+      [data-composition-id="scene"] .title { opacity: 0; }
+      [data-composition-id="other"] .title { color: red; }
+    </style>
+    <h1 class="title">Hello</h1>
+  </div>
+  <script>window.__timelines = {};</script>
+</body></html>`;
+      const result = lintHyperframeHtml(html);
+      const findings = result.findings.filter(
+        (f) => f.code === "composition_self_attribute_selector",
+      );
+
+      expect(findings).toHaveLength(1);
+      expect(findings[0]?.severity).toBe("warning");
+      expect(findings[0]?.selector).toBe('[data-composition-id="scene"] .title');
+      expect(findings[0]?.fixHint).toContain("#scene");
+      expect(findings[0]?.fixHint).not.toContain("#556");
+    });
+
+    it("warns when external CSS targets the root composition id", () => {
+      const html = `
+<html><body>
+  <div id="scene" data-composition-id="scene" data-width="1920" data-height="1080"></div>
+  <script>window.__timelines = {};</script>
+</body></html>`;
+      const result = lintHyperframeHtml(html, {
+        externalStyles: [
+          {
+            href: "scene.css",
+            content: '[data-composition-id="scene"] .title { opacity: 0; }',
+          },
+        ],
+      });
+      const finding = result.findings.find((f) => f.code === "composition_self_attribute_selector");
+
+      expect(finding).toBeDefined();
+      expect(finding?.selector).toBe('[data-composition-id="scene"] .title');
+    });
+
+    it("does not warn when CSS targets a different composition id", () => {
+      const html = `
+<html><body>
+  <div id="scene" data-composition-id="scene" data-width="1920" data-height="1080">
+    <style>[data-composition-id="other"] .title { opacity: 0; }</style>
+  </div>
+  <script>window.__timelines = {};</script>
+</body></html>`;
+      const result = lintHyperframeHtml(html);
+      const finding = result.findings.find((f) => f.code === "composition_self_attribute_selector");
+
+      expect(finding).toBeUndefined();
+    });
+  });
 });

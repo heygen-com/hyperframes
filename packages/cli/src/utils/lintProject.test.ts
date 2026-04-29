@@ -99,6 +99,28 @@ describe("lintProject", () => {
     expect(subFindings.some((f) => f.code === "media_missing_id")).toBe(true);
   });
 
+  it("lints linked CSS next to sub-compositions", () => {
+    const project = makeProject(validHtml(), {
+      "scene.html": `<html><head><link rel="stylesheet" href="scene.css"></head><body>
+  <div id="scene" data-composition-id="scene" data-width="1920" data-height="1080" data-start="0" data-duration="2"></div>
+  <script>window.__timelines = window.__timelines || {}; window.__timelines["scene"] = gsap.timeline({ paused: true });</script>
+</body></html>`,
+    });
+    writeFileSync(
+      join(project.dir, "compositions", "scene.css"),
+      '[data-composition-id="scene"] .title { opacity: 0; }',
+    );
+
+    const { results } = lintProject(project);
+    const subResult = results.find((result) => result.file === "compositions/scene.html");
+    const finding = subResult?.result.findings.find(
+      (item) => item.code === "composition_self_attribute_selector",
+    );
+
+    expect(finding).toBeDefined();
+    expect(finding?.selector).toBe('[data-composition-id="scene"] .title');
+  });
+
   it("aggregates errors across index.html and sub-compositions", () => {
     const project = makeProject(htmlWithMissingMediaId(), {
       "overlay.html": htmlWithMissingMediaId(),

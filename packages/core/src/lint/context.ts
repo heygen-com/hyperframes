@@ -34,7 +34,15 @@ export function buildLintContext(html: string, options: HyperframeLinterOptions 
   if (templateMatch?.[1]) source = templateMatch[1];
 
   const tags = extractOpenTags(source);
-  const styles = extractBlocks(source, STYLE_BLOCK_PATTERN);
+  const styles = [
+    ...extractBlocks(source, STYLE_BLOCK_PATTERN),
+    ...(options.externalStyles ?? []).map((style) => ({
+      attrs: `href="${style.href}"`,
+      content: style.content,
+      raw: style.content,
+      index: -1,
+    })),
+  ];
   const scripts = extractBlocks(source, SCRIPT_BLOCK_PATTERN);
   const compositionIds = collectCompositionIds(tags);
   const rootTag = findRootTag(source);

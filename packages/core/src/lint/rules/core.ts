@@ -1,4 +1,5 @@
 import type { LintContext, HyperframeLintFinding } from "../context";
+import postcss from "postcss";
 import {
   readAttr,
   truncateSnippet,
@@ -8,6 +9,17 @@ import {
   TIMELINE_REGISTRY_ASSIGN_PATTERN,
   INVALID_SCRIPT_CLOSE_PATTERN,
 } from "../utils";
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function selectorTargetsCompositionId(selector: string, compositionId: string): boolean {
+  const escaped = escapeRegExp(compositionId);
+  return new RegExp(
+    String.raw`\[\s*data-composition-id\s*=\s*(?:"${escaped}"|'${escaped}')\s*\]`,
+  ).test(selector);
+}
 
 export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
   // root_missing_composition_id + root_missing_dimensions
@@ -162,6 +174,40 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
         selector: `[data-composition-id="${compId}"]`,
         fixHint:
           "Preserve the matching composition wrapper or align the CSS scope to an existing wrapper.",
+      });
+    }
+    return findings;
+  },
+
+  // composition_self_attribute_selector
+  ({ styles, rootCompositionId, rootTag }) => {
+    const findings: HyperframeLintFinding[] = [];
+    if (!rootCompositionId) return findings;
+    const seenSelectors = new Set<string>();
+    const rootId = readAttr(rootTag?.raw || "", "id");
+    for (const style of styles) {
+      let root: postcss.Root;
+      try {
+        root = postcss.parse(style.content);
+      } catch {
+        continue;
+      }
+      root.walkRules((rule) => {
+        for (const selector of rule.selectors) {
+          if (!selectorTargetsCompositionId(selector, rootCompositionId)) continue;
+          if (seenSelectors.has(selector)) continue;
+          seenSelectors.add(selector);
+          findings.push({
+            code: "composition_self_attribute_selector",
+            severity: "warning",
+            message:
+              "Selector matches the block's own id; will leak to sibling instances when the block is embedded twice.",
+            selector,
+            fixHint: rootId
+              ? `Use #${rootId} for clearer authoring intent and instance-isolated styling.`
+              : "Add a stable id to the composition root and use that id selector for clearer authoring intent and instance-isolated styling.",
+          });
+        }
       });
     }
     return findings;
