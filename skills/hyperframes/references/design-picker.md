@@ -13,8 +13,8 @@ Before generating options, read these style references — all options must comp
 ## Building the picker
 
 1. Generate options **contextual to the user's prompt**. Each category should reflect the content:
-   - **3-4 mood boards** — complete visual directions combining architecture + palette + typography + density + depth. Each is a holistic identity the user can pick in one click. Name them evocatively ("Terminal Precision", "Editorial Warmth", "Bold Statement"). One safe/expected, one editorial, one ambitious.
-   - **3-4 architectures** — structural layouts that make sense for THIS content. Use `{{prompt_headline}}` and `{{prompt_sub}}` tokens in preview_html so previews show the user's actual content, not placeholder text.
+   - **Mood boards** — as many as the creative space warrants. A narrow prompt with specific assets might need 4-5 genuinely different directions. A wide-open prompt might need 8+. Every board must feel visually distinct — if two look similar, cut one. Each is a holistic identity: architecture + palette + type + density + depth in one click. Name them evocatively. Include at least one safe/expected, one editorial, and one ambitious option.
+   - **Architectures** — one per mood board minimum. Each must use different layout structure. If the user provided media assets, use them as background images in `preview_html` (use `url(path)` without quotes — single quotes inside `style='...'` break the attribute). Use `{{prompt_headline}}` and `{{prompt_sub}}` tokens so previews show real content.
    - **5-6 palettes** — always include a mix of dark, light, and tinted backgrounds. Name them after personality.
    - **3 type pairings** — serif+mono, grotesque+mono, display+sans. Cross-category pairings per typography.md.
 2. `mkdir -p .hyperframes` then copy [../templates/design-picker.html](../templates/design-picker.html) to `.hyperframes/pick-design.html`.
@@ -38,6 +38,8 @@ Optionally include `components` (component styling rules) and `dos` (do's and do
 **Layout constraint:** All preview HTML must use percentage widths or `max-width: 100%`. Use `flex-wrap: wrap` on all flex rows. Absolute-positioned decoratives must stay within a parent with `overflow: hidden`.
 
 **Security:** Architecture `preview_html` must not contain `<script>` tags, event handlers (`onclick`, `onerror`, etc.), or `javascript:` URLs. It is injected via `innerHTML`.
+
+**Image URLs:** When using background images in `preview_html`, use `url(path/to/image.jpg)` WITHOUT quotes around the path. Single quotes like `url('path.jpg')` break because `preview_html` is inside a `style='...'` attribute — the inner single quotes terminate the outer attribute.
 
 **Palette variety:** Always include a mix of light, dark, and tinted backgrounds across the 6 palettes — even for calm/wellness prompts.
 
