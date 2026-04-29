@@ -18,9 +18,12 @@ function scopeSelector(selector: string, scope: string, compositionId: string): 
   if (!trimmed) return selector;
   if (/^(html|body|:root|\*)$/i.test(trimmed)) return selector;
   const compositionIdPattern = new RegExp(
-    `data-composition-id\\s*=\\s*(["'])${escapeRegExp(compositionId)}\\1`,
+    `\\[\\s*data-composition-id\\s*=\\s*(["'])${escapeRegExp(compositionId)}\\1\\s*\\]`,
+    "g",
   );
-  if (compositionIdPattern.test(trimmed)) return selectorWithoutRootTiming;
+  if (compositionIdPattern.test(trimmed)) {
+    return selectorWithoutRootTiming.replace(compositionIdPattern, scope);
+  }
   const leading = selectorWithoutRootTiming.match(/^\s*/)?.[0] ?? "";
   const trailing = selectorWithoutRootTiming.match(/\s*$/)?.[0] ?? "";
   return `${leading}${scope} ${trimmed}${trailing}`;
@@ -56,10 +59,16 @@ function isInsideGlobalAtRule(rule: Rule): boolean {
   return false;
 }
 
-export function scopeCssToComposition(css: string, compositionId: string): string {
+export function scopeCssToComposition(
+  css: string,
+  compositionId: string,
+  scopeSelectorOverride?: string,
+): string {
   const trimmedCompositionId = compositionId.trim();
   if (!css || !trimmedCompositionId) return css;
-  const scope = `[data-composition-id="${escapeCssAttributeValue(trimmedCompositionId)}"]`;
+  const scope =
+    scopeSelectorOverride ||
+    `[data-composition-id="${escapeCssAttributeValue(trimmedCompositionId)}"]`;
   const root = postcss.parse(css);
 
   root.walkRules((rule) => {
@@ -76,10 +85,14 @@ export function wrapScopedCompositionScript(
   source: string,
   compositionId: string,
   errorLabel = "[HyperFrames] composition script error:",
+  scopeSelectorOverride?: string,
+  timelineCompositionId = compositionId,
 ): string {
   const compositionIdLiteral = JSON.stringify(compositionId);
+  const timelineCompositionIdLiteral = JSON.stringify(timelineCompositionId);
   const errorLabelLiteral = JSON.stringify(errorLabel);
   const escapedCompositionId = escapeRegExp(compositionId);
+  const scopeSelectorLiteral = JSON.stringify(scopeSelectorOverride ?? null);
   const rootSelectorPatternLiteral = JSON.stringify(
     String.raw`\[\s*data-composition-id\s*=\s*(?:"${escapedCompositionId}"|'${escapedCompositionId}')\s*\]`,
   );
@@ -88,13 +101,14 @@ export function wrapScopedCompositionScript(
   );
   return `(function(){
   var __hfCompId = ${compositionIdLiteral};
+  var __hfTimelineCompId = ${timelineCompositionIdLiteral};
   var __hfErrorLabel = ${errorLabelLiteral};
   var __hfEscapeAttr = function(value) {
     return (value + "").replace(/\\\\/g, "\\\\\\\\").replace(/"/g, "\\\\\\"");
   };
-  var __hfRootSelector = __hfCompId
+  var __hfRootSelector = ${scopeSelectorLiteral} || (__hfCompId
     ? '[data-composition-id="' + __hfEscapeAttr(__hfCompId) + '"]'
-    : "";
+    : "");
   var __hfRoot = null;
   var __hfRootSelectorPattern = ${rootSelectorPatternLiteral};
   var __hfTimingSelectorPattern = ${timingSelectorPatternLiteral};
@@ -143,6 +157,41 @@ export function wrapScopedCompositionScript(
         },
       })
     : window.document;
+  var __hfTimelineRegistryProxy = null;
+  var __hfGetTimelineRegistry = function() {
+    window.__timelines = window.__timelines || {};
+    if (!__hfCompId || __hfCompId === __hfTimelineCompId || typeof Proxy !== "function") {
+      return window.__timelines;
+    }
+    if (!__hfTimelineRegistryProxy) {
+      __hfTimelineRegistryProxy = new Proxy(window.__timelines, {
+        get: function(target, prop, receiver) {
+          return Reflect.get(target, prop === __hfCompId ? __hfTimelineCompId : prop, receiver);
+        },
+        set: function(target, prop, value, receiver) {
+          return Reflect.set(target, prop === __hfCompId ? __hfTimelineCompId : prop, value, receiver);
+        },
+      });
+    }
+    return __hfTimelineRegistryProxy;
+  };
+  var __hfScopedWindow = typeof Proxy === "function"
+    ? new Proxy(window, {
+        get: function(target, prop, receiver) {
+          if (prop === "__timelines") return __hfGetTimelineRegistry();
+          var value = Reflect.get(target, prop, receiver);
+          return typeof value === "function" ? value.bind(target) : value;
+        },
+        set: function(target, prop, value, receiver) {
+          if (prop === "__timelines") {
+            target.__timelines = value || {};
+            __hfTimelineRegistryProxy = null;
+            return true;
+          }
+          return Reflect.set(target, prop, value, receiver);
+        },
+      })
+    : window;
   var __hfResolveGsapTarget = function(target) {
     if (typeof target !== "string") return target;
     return __hfQueryAll(target);
@@ -214,9 +263,9 @@ export function wrapScopedCompositionScript(
       });
   var __hfRun = function() {
     try {
-      (function(document, gsap) {
+      (function(document, gsap, window) {
 ${source}
-      }).call(window, __hfScopedDocument, __hfScopedGsap);
+      }).call(window, __hfScopedDocument, __hfScopedGsap, __hfScopedWindow);
     } catch (_err) {
       console.error(__hfErrorLabel, __hfCompId, _err);
     }

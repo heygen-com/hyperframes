@@ -137,7 +137,7 @@ describe("bundleToSingleHtml", () => {
     expect(bundled).toContain(".logo");
 
     // Scripts from template should be included
-    expect(bundled).toContain('window.__timelines["logo-reveal"]');
+    expect(bundled).toContain('__timelines["logo-reveal"]');
   });
 
   it("does not inline template when host already has content", async () => {
@@ -282,6 +282,62 @@ describe("bundleToSingleHtml", () => {
     expect(bundled).toContain("new Proxy(window.document");
     expect(bundled).toContain("new Proxy(__hfBaseGsap");
     expect(bundled).toContain('tl.to(".title"');
+  });
+
+  it("isolates sibling instances of the same external sub-composition", async () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html>
+<html><head>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+</head><body>
+  <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+    <div
+      id="scene-a"
+      data-composition-id="scene"
+      data-composition-src="compositions/scene.html"
+      data-start="0"
+      data-duration="5"></div>
+    <div
+      id="scene-b"
+      data-composition-id="scene"
+      data-composition-src="compositions/scene.html"
+      data-start="5"
+      data-duration="5"></div>
+  </div>
+  <script>window.__timelines={};</script>
+</body></html>`,
+      "compositions/scene.html": `<template id="scene-template">
+  <div data-composition-id="scene" data-width="1920" data-height="1080">
+    <style>[data-composition-id="scene"] .title { opacity: 0; }</style>
+    <h1 class="title">Scene</h1>
+    <script>
+      const tl = gsap.timeline({ paused: true });
+      tl.to('[data-composition-id="scene"] .title', { opacity: 1 });
+      window.__timelines = window.__timelines || {};
+      window.__timelines["scene"] = tl;
+    </script>
+  </div>
+</template>`,
+    });
+
+    const bundled = await bundleToSingleHtml(dir);
+
+    const { document } = parseHTML(bundled);
+    const sceneA = document.querySelector("#scene-a");
+    const sceneB = document.querySelector("#scene-b");
+    const sceneAId = sceneA?.getAttribute("data-composition-id") ?? "";
+    const sceneBId = sceneB?.getAttribute("data-composition-id") ?? "";
+
+    expect(sceneAId).not.toBe("scene");
+    expect(sceneBId).not.toBe("scene");
+    expect(sceneAId).not.toBe(sceneBId);
+    expect(sceneA?.getAttribute("data-hf-original-composition-id")).toBe("scene");
+    expect(sceneB?.getAttribute("data-hf-original-composition-id")).toBe("scene");
+    expect(bundled).toContain(`[data-composition-id="${sceneAId}"] .title`);
+    expect(bundled).toContain(`[data-composition-id="${sceneBId}"] .title`);
+    expect(bundled).toContain('var __hfTimelineCompId = "scene__hf1"');
+    expect(bundled).toContain('var __hfTimelineCompId = "scene__hf2"');
+    expect(bundled).not.toContain('[data-composition-id="scene"] .title { opacity: 0; }');
   });
 
   it("rewrites CSS url(...) asset paths from sub-compositions when styles are hoisted", async () => {

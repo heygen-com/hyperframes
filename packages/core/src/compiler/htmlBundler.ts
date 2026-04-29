@@ -193,6 +193,14 @@ function rewriteCssUrlsWithInlinedAssets(cssText: string, projectDir: string): s
   );
 }
 
+function cssAttributeSelector(attr: string, value: string): string {
+  return `[${attr}="${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"]`;
+}
+
+function uniqueCompositionId(baseId: string, index: number): string {
+  return `${baseId}__hf${index}`;
+}
+
 function enforceCompositionPixelSizing(document: Document): void {
   const compositionEls = [
     ...document.querySelectorAll("[data-composition-id][data-width][data-height]"),
@@ -422,7 +430,15 @@ export async function bundleToSingleHtml(
   const compStyleChunks: string[] = [];
   const compScriptChunks: string[] = [];
   const compExternalScriptSrcs: string[] = [];
-  for (const hostEl of [...document.querySelectorAll("[data-composition-src]")]) {
+  const subCompositionHosts = [...document.querySelectorAll("[data-composition-src]")];
+  const hostCountsByCompositionId = new Map<string, number>();
+  for (const hostEl of subCompositionHosts) {
+    const compId = (hostEl.getAttribute("data-composition-id") || "").trim();
+    if (!compId) continue;
+    hostCountsByCompositionId.set(compId, (hostCountsByCompositionId.get(compId) || 0) + 1);
+  }
+  const hostInstanceByCompositionId = new Map<string, number>();
+  for (const hostEl of subCompositionHosts) {
     const src = hostEl.getAttribute("data-composition-src");
     if (!src || !isRelativeUrl(src)) continue;
     const compPath = safePath(projectDir, src);
@@ -442,6 +458,22 @@ export async function bundleToSingleHtml(
       : contentDoc.querySelector("[data-composition-id]");
     const inferredCompId = innerRoot?.getAttribute("data-composition-id")?.trim() || "";
     const scopeCompId = compId || inferredCompId;
+    const duplicateInstance = scopeCompId && (hostCountsByCompositionId.get(scopeCompId) || 0) > 1;
+    const instanceIndex = duplicateInstance
+      ? (hostInstanceByCompositionId.get(scopeCompId) || 0) + 1
+      : 0;
+    if (duplicateInstance) hostInstanceByCompositionId.set(scopeCompId, instanceIndex);
+    const runtimeCompId =
+      duplicateInstance && scopeCompId
+        ? uniqueCompositionId(scopeCompId, instanceIndex)
+        : scopeCompId;
+    const runtimeScope = runtimeCompId
+      ? cssAttributeSelector("data-composition-id", runtimeCompId)
+      : "";
+    if (duplicateInstance && runtimeCompId) {
+      hostEl.setAttribute("data-hf-original-composition-id", scopeCompId);
+      hostEl.setAttribute("data-composition-id", runtimeCompId);
+    }
 
     // When a sub-composition is a full HTML document (no <template>), styles
     // and scripts in <head> are not part of contentDoc (which only has body
@@ -450,7 +482,9 @@ export async function bundleToSingleHtml(
     if (!contentRoot && compDoc.head) {
       for (const s of [...compDoc.head.querySelectorAll("style")]) {
         const css = rewriteCssAssetUrls(s.textContent || "", src);
-        compStyleChunks.push(scopeCompId ? scopeCssToComposition(css, scopeCompId) : css);
+        compStyleChunks.push(
+          scopeCompId ? scopeCssToComposition(css, scopeCompId, runtimeScope) : css,
+        );
       }
       for (const s of [...compDoc.head.querySelectorAll("script")]) {
         const externalSrc = (s.getAttribute("src") || "").trim();
@@ -462,7 +496,9 @@ export async function bundleToSingleHtml(
 
     for (const s of [...contentDoc.querySelectorAll("style")]) {
       const css = rewriteCssAssetUrls(s.textContent || "", src);
-      compStyleChunks.push(scopeCompId ? scopeCssToComposition(css, scopeCompId) : css);
+      compStyleChunks.push(
+        scopeCompId ? scopeCssToComposition(css, scopeCompId, runtimeScope) : css,
+      );
       s.remove();
     }
     for (const s of [...contentDoc.querySelectorAll("script")]) {
@@ -480,6 +516,8 @@ export async function bundleToSingleHtml(
                 s.textContent || "",
                 scopeCompId,
                 "[HyperFrames] composition script error:",
+                runtimeScope,
+                runtimeCompId || scopeCompId,
               )
             : `(function(){ try { ${s.textContent || ""} } catch (_err) { console.error('[HyperFrames] composition script error:', _err); } })();`,
         );
