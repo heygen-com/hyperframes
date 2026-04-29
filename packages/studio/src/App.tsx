@@ -275,6 +275,14 @@ function getHistoryShortcutLabel(action: "undo" | "redo"): string {
   return action === "undo" ? `${modifier}+Z` : `${modifier}+Shift+Z`;
 }
 
+function getDomEditCoalesceKey(
+  selection: Pick<DomEditSelection, "id" | "selector" | "sourceFile">,
+  action: "move" | "resize",
+): string {
+  const target = selection.id || selection.selector || "selection";
+  return `${action}:${selection.sourceFile || "index.html"}:${target}`;
+}
+
 function findMatchingTimelineElementId(
   selection: Pick<
     DomEditSelection,
@@ -1537,6 +1545,11 @@ export function StudioApp() {
     }
   }, [clearDomSelection, editHistory, readProjectFile, showToast, writeProjectFile]);
 
+  const handleUndoRef = useRef(handleUndo);
+  const handleRedoRef = useRef(handleRedo);
+  handleUndoRef.current = handleUndo;
+  handleRedoRef.current = handleRedo;
+
   // eslint-disable-next-line no-restricted-syntax
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
@@ -1545,17 +1558,17 @@ export function StudioApp() {
       const key = event.key.toLowerCase();
       if (key === "z" && !event.shiftKey) {
         event.preventDefault();
-        void handleUndo();
+        void handleUndoRef.current();
         return;
       }
       if ((key === "z" && event.shiftKey) || (event.ctrlKey && !event.metaKey && key === "y")) {
         event.preventDefault();
-        void handleRedo();
+        void handleRedoRef.current();
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [handleRedo, handleUndo]);
+  }, []);
 
   const buildDomSelectionFromTarget = useCallback(
     (target: HTMLElement, options?: { preferClipAncestor?: boolean }) => {
@@ -1656,6 +1669,7 @@ export function StudioApp() {
       operations: Parameters<typeof applyPatchByTarget>[2][],
       options?: {
         label?: string;
+        coalesceKey?: string;
         skipRefresh?: boolean;
         prepareContent?: (html: string, sourceFile: string) => string;
         shouldSave?: () => boolean;
@@ -1694,6 +1708,7 @@ export function StudioApp() {
         projectId: pid,
         label: options?.label ?? "Edit layer",
         kind: "manual",
+        coalesceKey: options?.coalesceKey,
         files: { [targetPath]: patchedContent },
         readFile: async () => originalContent,
         writeFile: writeProjectFile,
@@ -1717,7 +1732,11 @@ export function StudioApp() {
           ...buildDomEditMovePatchOperations(next.left, next.top),
           ...buildOppositeEdgePatchOperations(selection, "both"),
         ],
-        { skipRefresh: true, label: "Move layer" },
+        {
+          skipRefresh: true,
+          label: "Move layer",
+          coalesceKey: getDomEditCoalesceKey(selection, "move"),
+        },
       );
     },
     [persistDomEditOperations],
@@ -1735,7 +1754,11 @@ export function StudioApp() {
           ...buildDomEditResizePatchOperations(next.width, next.height),
           ...buildOppositeEdgePatchOperations(selection, "both"),
         ],
-        { skipRefresh: true, label: "Resize layer" },
+        {
+          skipRefresh: true,
+          label: "Resize layer",
+          coalesceKey: getDomEditCoalesceKey(selection, "resize"),
+        },
       );
     },
     [persistDomEditOperations],

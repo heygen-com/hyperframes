@@ -83,7 +83,7 @@ describe("saveProjectFilesWithHistory", () => {
     expect(recordEdit).not.toHaveBeenCalled();
   });
 
-  it("rolls back written files when history persistence fails", async () => {
+  it("rolls back written files when the injected history recorder throws", async () => {
     const reads: Record<string, string> = {
       "index.html": "index-before",
       "scene.html": "scene-before",
