@@ -76,7 +76,6 @@ import {
   type DomEditTextField,
   type DomEditSelection,
 } from "./components/editor/domEditing";
-import { hashEditHistoryContent } from "./utils/editHistory";
 import { saveProjectFilesWithHistory } from "./utils/studioFileHistory";
 
 interface EditingFile {
@@ -267,6 +266,13 @@ function shouldIgnoreHistoryShortcut(target: EventTarget | null): boolean {
   return Boolean(
     el.closest("input, textarea, select, [contenteditable='true'], [role='textbox'], .cm-editor"),
   );
+}
+
+function getHistoryShortcutLabel(action: "undo" | "redo"): string {
+  const isMac =
+    typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/i.test(navigator.platform);
+  const modifier = isMac ? "Cmd" : "Ctrl";
+  return action === "undo" ? `${modifier}+Z` : `${modifier}+Shift+Z`;
 }
 
 function findMatchingTimelineElementId(
@@ -1499,51 +1505,37 @@ export function StudioApp() {
     applyDomSelection(null, { revealPanel: false });
   }, [applyDomSelection]);
 
-  const readHistoryHashesForPaths = useCallback(
-    async (paths: string[]) => {
-      const hashes: Record<string, string> = {};
-      for (const path of paths) {
-        hashes[path] = hashEditHistoryContent(await readProjectFile(path));
-      }
-      return hashes;
-    },
-    [readProjectFile],
-  );
-
-  const applyHistoryFiles = useCallback(
-    async (files: Record<string, string>) => {
-      for (const [path, content] of Object.entries(files)) {
-        await writeProjectFile(path, content);
-      }
-      clearDomSelection();
-      setRefreshKey((key) => key + 1);
-    },
-    [clearDomSelection, writeProjectFile],
-  );
-
   const handleUndo = useCallback(async () => {
     const result = await editHistory.undo({
-      readCurrentHashes: () => readHistoryHashesForPaths(editHistory.undoPaths),
-      writeFiles: applyHistoryFiles,
+      readFile: readProjectFile,
+      writeFile: writeProjectFile,
     });
     if (!result.ok && result.reason === "content-mismatch") {
       showToast("File changed outside Studio. Undo history was not applied.", "info");
       return;
     }
-    if (result.ok && result.label) showToast(`Undid ${result.label}`, "info");
-  }, [applyHistoryFiles, editHistory, readHistoryHashesForPaths, showToast]);
+    if (result.ok && result.label) {
+      clearDomSelection();
+      setRefreshKey((key) => key + 1);
+      showToast(`Undid ${result.label}`, "info");
+    }
+  }, [clearDomSelection, editHistory, readProjectFile, showToast, writeProjectFile]);
 
   const handleRedo = useCallback(async () => {
     const result = await editHistory.redo({
-      readCurrentHashes: () => readHistoryHashesForPaths(editHistory.redoPaths),
-      writeFiles: applyHistoryFiles,
+      readFile: readProjectFile,
+      writeFile: writeProjectFile,
     });
     if (!result.ok && result.reason === "content-mismatch") {
       showToast("File changed outside Studio. Redo history was not applied.", "info");
       return;
     }
-    if (result.ok && result.label) showToast(`Redid ${result.label}`, "info");
-  }, [applyHistoryFiles, editHistory, readHistoryHashesForPaths, showToast]);
+    if (result.ok && result.label) {
+      clearDomSelection();
+      setRefreshKey((key) => key + 1);
+      showToast(`Redid ${result.label}`, "info");
+    }
+  }, [clearDomSelection, editHistory, readProjectFile, showToast, writeProjectFile]);
 
   // eslint-disable-next-line no-restricted-syntax
   useEffect(() => {
@@ -1556,7 +1548,7 @@ export function StudioApp() {
         void handleUndo();
         return;
       }
-      if ((key === "z" && event.shiftKey) || key === "y") {
+      if ((key === "z" && event.shiftKey) || (event.ctrlKey && !event.metaKey && key === "y")) {
         event.preventDefault();
         void handleRedo();
       }
@@ -2717,7 +2709,11 @@ export function StudioApp() {
                 ? "border-neutral-700 text-neutral-300 hover:border-neutral-500 hover:bg-neutral-800"
                 : "border-neutral-900 text-neutral-700"
             }`}
-            title={editHistory.undoLabel ? `Undo ${editHistory.undoLabel} (Cmd+Z)` : "Undo (Cmd+Z)"}
+            title={
+              editHistory.undoLabel
+                ? `Undo ${editHistory.undoLabel} (${getHistoryShortcutLabel("undo")})`
+                : `Undo (${getHistoryShortcutLabel("undo")})`
+            }
             aria-label="Undo"
           >
             <RotateCcw size={14} />
@@ -2733,8 +2729,8 @@ export function StudioApp() {
             }`}
             title={
               editHistory.redoLabel
-                ? `Redo ${editHistory.redoLabel} (Cmd+Shift+Z)`
-                : "Redo (Cmd+Shift+Z)"
+                ? `Redo ${editHistory.redoLabel} (${getHistoryShortcutLabel("redo")})`
+                : `Redo (${getHistoryShortcutLabel("redo")})`
             }
             aria-label="Redo"
           >

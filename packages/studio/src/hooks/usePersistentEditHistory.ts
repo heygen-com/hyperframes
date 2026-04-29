@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   buildEditHistoryEntry,
   createEmptyEditHistory,
+  hashEditHistoryContent,
   pushEditHistoryEntry,
   redoEditHistory,
   undoEditHistory,
@@ -24,8 +25,8 @@ interface RecordEditInput {
 }
 
 interface ApplyCallbacks {
-  readCurrentHashes: () => Promise<Record<string, string>>;
-  writeFiles: (files: Record<string, string>) => Promise<void>;
+  readFile: (path: string) => Promise<string>;
+  writeFile: (path: string, content: string) => Promise<void>;
 }
 
 interface UsePersistentEditHistoryOptions {
@@ -69,6 +70,53 @@ function snapshotEditHistoryState(state: EditHistoryState) {
     redoPaths: redoEntry ? Object.keys(redoEntry.files) : [],
     state,
   };
+}
+
+async function readCurrentFileHashes(
+  paths: string[],
+  readFile: (path: string) => Promise<string>,
+): Promise<{
+  currentFiles: Record<string, string>;
+  currentHashes: Record<string, string>;
+}> {
+  const currentFiles: Record<string, string> = {};
+  const currentHashes: Record<string, string> = {};
+  for (const path of paths) {
+    const content = await readFile(path);
+    currentFiles[path] = content;
+    currentHashes[path] = hashEditHistoryContent(content);
+  }
+  return { currentFiles, currentHashes };
+}
+
+async function writeFilesWithRollback({
+  files,
+  rollbackFiles,
+  writeFile,
+}: {
+  files: Record<string, string>;
+  rollbackFiles: Record<string, string>;
+  writeFile: (path: string, content: string) => Promise<void>;
+}): Promise<void> {
+  const writtenPaths: string[] = [];
+  try {
+    for (const [path, content] of Object.entries(files)) {
+      await writeFile(path, content);
+      writtenPaths.push(path);
+    }
+  } catch (error) {
+    try {
+      for (const path of writtenPaths.reverse()) {
+        await writeFile(path, rollbackFiles[path]);
+      }
+    } catch (rollbackError) {
+      throw new AggregateError(
+        [error, rollbackError],
+        "Failed to apply edit history and rollback did not complete",
+      );
+    }
+    throw error;
+  }
 }
 
 export function createPersistentEditHistoryStore({
@@ -123,15 +171,29 @@ export function createPersistentEditHistoryStore({
     },
     async undo(callbacks: ApplyCallbacks): Promise<ApplyResult> {
       return mutate<ApplyResult>(async (currentState) => {
-        const hashes = await callbacks.readCurrentHashes();
-        const result = undoEditHistory(currentState, hashes, now());
+        const entry = currentState.undo[currentState.undo.length - 1];
+        if (!entry) {
+          return {
+            state: currentState,
+            result: { ok: false, reason: "empty" },
+          };
+        }
+        const { currentFiles, currentHashes } = await readCurrentFileHashes(
+          Object.keys(entry.files),
+          callbacks.readFile,
+        );
+        const result = undoEditHistory(currentState, currentHashes, now());
         if (!result.ok) {
           return {
             state: currentState,
             result: { ok: false, reason: result.reason },
           };
         }
-        await callbacks.writeFiles(result.filesToWrite);
+        await writeFilesWithRollback({
+          files: result.filesToWrite,
+          rollbackFiles: currentFiles,
+          writeFile: callbacks.writeFile,
+        });
         return {
           state: result.state,
           result: { ok: true, label: result.entry.label },
@@ -140,15 +202,29 @@ export function createPersistentEditHistoryStore({
     },
     async redo(callbacks: ApplyCallbacks): Promise<ApplyResult> {
       return mutate<ApplyResult>(async (currentState) => {
-        const hashes = await callbacks.readCurrentHashes();
-        const result = redoEditHistory(currentState, hashes, now());
+        const entry = currentState.redo[currentState.redo.length - 1];
+        if (!entry) {
+          return {
+            state: currentState,
+            result: { ok: false, reason: "empty" },
+          };
+        }
+        const { currentFiles, currentHashes } = await readCurrentFileHashes(
+          Object.keys(entry.files),
+          callbacks.readFile,
+        );
+        const result = redoEditHistory(currentState, currentHashes, now());
         if (!result.ok) {
           return {
             state: currentState,
             result: { ok: false, reason: result.reason },
           };
         }
-        await callbacks.writeFiles(result.filesToWrite);
+        await writeFilesWithRollback({
+          files: result.filesToWrite,
+          rollbackFiles: currentFiles,
+          writeFile: callbacks.writeFile,
+        });
         return {
           state: result.state,
           result: { ok: true, label: result.entry.label },
@@ -197,10 +273,11 @@ export function usePersistentEditHistory(options: UsePersistentEditHistoryOption
 
   useEffect(() => {
     let cancelled = false;
+    const emptyState = createEmptyEditHistory();
     storeRef.current = null;
+    setState(emptyState);
     setLoaded(false);
     if (!projectId) {
-      setState(createEmptyEditHistory());
       setLoaded(true);
       return;
     }
@@ -219,7 +296,6 @@ export function usePersistentEditHistory(options: UsePersistentEditHistoryOption
       })
       .catch(() => {
         if (cancelled) return;
-        const emptyState = createEmptyEditHistory();
         storeRef.current = createPersistentEditHistoryStore({
           projectId,
           storage,

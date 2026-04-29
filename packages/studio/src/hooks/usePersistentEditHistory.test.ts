@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { createEmptyEditHistory } from "../utils/editHistory";
 import type { EditHistoryStorageAdapter } from "../utils/editHistoryStorage";
 import { createMemoryEditHistoryStorage } from "../utils/editHistoryStorage";
 import {
@@ -49,9 +50,13 @@ describe("createPersistentEditHistoryController", () => {
     });
 
     const result = await controller.undo({
-      readCurrentHashes: async () => ({ "index.html": "e70c2de5" }),
-      writeFiles: async (files) => {
-        expect(files).toEqual({ "index.html": "a" });
+      readFile: async (path) => {
+        expect(path).toBe("index.html");
+        return "b";
+      },
+      writeFile: async (path, content) => {
+        expect(path).toBe("index.html");
+        expect(content).toBe("a");
       },
     });
     expect(result.ok).toBe(true);
@@ -95,7 +100,7 @@ describe("createPersistentEditHistoryController", () => {
     const store = createPersistentEditHistoryStore({
       projectId: "project-1",
       storage,
-      initialState: { undo: [], redo: [] },
+      initialState: createEmptyEditHistory(),
       now: () => timestamp++,
       onChange: () => {},
     });
@@ -125,7 +130,7 @@ describe("createPersistentEditHistoryController", () => {
     const store = createPersistentEditHistoryStore({
       projectId: "project-1",
       storage,
-      initialState: { undo: [], redo: [] },
+      initialState: createEmptyEditHistory(),
       now: () => timestamp++,
       onChange: () => {},
     });
@@ -148,5 +153,103 @@ describe("createPersistentEditHistoryController", () => {
     expect(store.snapshot().state.undo).toHaveLength(1);
     expect(store.snapshot().state.undo[0].files["index.html"].before).toBe("a");
     expect(store.snapshot().state.undo[0].files["index.html"].after).toBe("c");
+  });
+
+  it("reads undo hashes from the live top entry during queued undo calls", async () => {
+    const storage = createMemoryEditHistoryStorage();
+    let timestamp = 100;
+    const store = createPersistentEditHistoryStore({
+      projectId: "project-1",
+      storage,
+      initialState: createEmptyEditHistory(),
+      now: () => timestamp++,
+      onChange: () => {},
+    });
+    await store.recordEdit({
+      label: "Edit first file",
+      kind: "manual",
+      files: { "first.html": { before: "first-before", after: "first-after" } },
+    });
+    await store.recordEdit({
+      label: "Edit second file",
+      kind: "manual",
+      files: { "second.html": { before: "second-before", after: "second-after" } },
+    });
+
+    const files: Record<string, string> = {
+      "first.html": "first-after",
+      "second.html": "second-after",
+    };
+    const readPaths: string[] = [];
+
+    await Promise.all([
+      store.undo({
+        readFile: async (path) => {
+          readPaths.push(path);
+          return files[path];
+        },
+        writeFile: async (path, content) => {
+          files[path] = content;
+        },
+      }),
+      store.undo({
+        readFile: async (path) => {
+          readPaths.push(path);
+          return files[path];
+        },
+        writeFile: async (path, content) => {
+          files[path] = content;
+        },
+      }),
+    ]);
+
+    expect(readPaths).toEqual(["second.html", "first.html"]);
+    expect(files).toEqual({
+      "first.html": "first-before",
+      "second.html": "second-before",
+    });
+    expect(store.snapshot().canUndo).toBe(false);
+    expect(store.snapshot().canRedo).toBe(true);
+  });
+
+  it("rolls back files when an undo write fails partway through", async () => {
+    const storage = createMemoryEditHistoryStorage();
+    const store = createPersistentEditHistoryStore({
+      projectId: "project-1",
+      storage,
+      initialState: createEmptyEditHistory(),
+      now: () => 100,
+      onChange: () => {},
+    });
+    await store.recordEdit({
+      label: "Edit files",
+      kind: "manual",
+      files: {
+        "first.html": { before: "first-before", after: "first-after" },
+        "second.html": { before: "second-before", after: "second-after" },
+      },
+    });
+
+    const files: Record<string, string> = {
+      "first.html": "first-after",
+      "second.html": "second-after",
+    };
+    const result = store.undo({
+      readFile: async (path) => files[path],
+      writeFile: async (path, content) => {
+        if (path === "second.html" && content === "second-before") {
+          throw new Error("write failed");
+        }
+        files[path] = content;
+      },
+    });
+
+    await expect(result).rejects.toThrow("write failed");
+    expect(files).toEqual({
+      "first.html": "first-after",
+      "second.html": "second-after",
+    });
+    expect(store.snapshot().undoLabel).toBe("Edit files");
+    expect(store.snapshot().canRedo).toBe(false);
   });
 });
