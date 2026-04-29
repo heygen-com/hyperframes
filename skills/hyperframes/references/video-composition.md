@@ -6,9 +6,9 @@ Video frames are not web pages. These rules apply to every composition regardles
 
 design.md defines what the brand looks like: colors, fonts, personality, constraints. It does NOT define how to compose a video frame. Use brand colors at video-appropriate intensity — not at web-UI opacity.
 
-**Strict from design.md:** hex values, font families, weight relationships, Do's and Don'ts.
+**Strict from design.md:** hex values (including background color), font families, weight relationships, Do's and Don'ts. If the user chose a light canvas, use a light canvas. If they chose dark, use dark. Do not override their palette.
 
-**Adapt for video:** background lightness, type sizes, spacing, decorative opacity, border weight, component treatments. A web UI card at `border: 1px solid #e2e3e6` with `box-shadow: 0 2px 4px rgba(0,0,0,0.06)` is invisible on video. The brand color is sacred; the application is yours.
+**Adapt for video:** type sizes, spacing, decorative opacity, border weight, component treatments. A web UI card at `border: 1px solid #e2e3e6` with `box-shadow: 0 2px 4px rgba(0,0,0,0.06)` is invisible on video. The brand color is sacred; the application is yours.
 
 ## Density
 
@@ -27,7 +27,7 @@ Aim for 8-10 visual elements per scene. Two of those should be decorative elemen
 Muted is fine. Flat is not. Every scene should have at least one color that pulls the eye.
 
 - Brand accent should be VISIBLE — not a 5% opacity glow lost in compression. 15-25% for atmospheric, full saturation for focal elements.
-- Dark canvases make color pop. Light canvases need stronger accent application to avoid looking washed out.
+- **Light canvases work differently than dark.** On dark: accent glows pop naturally. On light: use bolder borders (2px+ solid), stronger structural elements (rules, dividers), and full-saturation accent hits. Light backgrounds need texture (subtle grain, patterns) to avoid the "blank slide" feel. Don't switch to dark — make light cinematic.
 - Tint neutrals toward the brand hue. Dead gray reads as undesigned.
 
 ## Scale
