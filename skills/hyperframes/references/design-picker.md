@@ -12,9 +12,12 @@ Before generating options, read these style references — all options must comp
 
 ## Building the picker
 
-1. Generate 2-3 visual directions based on the prompt. Each direction needs: name, mood, colors (bg/fg/accent), fonts (headline/body), energy level, and transition style.
+1. Generate options **contextual to the user's prompt**. A "product launch video" gets different architectures than a "data dashboard recap" or a "brand story." Each category should reflect the content:
+   - **3-4 architectures** — structural layouts that make sense for THIS content. A product launch needs a hook/proof/CTA structure. A data story needs stat grids and comparison layouts. A brand reel needs editorial flow with pull quotes. Name them evocatively (not "Layout A").
+   - **5-6 palettes** — always include a mix of dark, light, and tinted backgrounds. Even for calm/wellness prompts, include at least one dark option. Name them after their personality ("Midnight Volt", "Warm Chalk"), not their colors.
+   - **3 type pairings** — serif+mono, grotesque+mono, display+sans. Cross-category pairings per typography.md. One safe, one editorial, one bold.
 2. `mkdir -p .hyperframes` then copy [../templates/design-picker.html](../templates/design-picker.html) to `.hyperframes/pick-design.html`.
-3. Replace `__ARCHITECTURES_JSON__`, `__PALETTES_JSON__`, and `__TYPEPAIRS_JSON__` with your generated options. The user picks one from each category independently — structure, palette, type pairing, plus theme (dark/light/full palette), corners, density, and depth.
+3. Replace `__ARCHITECTURES_JSON__`, `__PALETTES_JSON__`, and `__TYPEPAIRS_JSON__` with your generated options. Use Python or a heredoc to inject JSON cleanly — don't hand-escape quotes in sed. The user picks one from each category independently — structure, palette, type pairing, plus theme (dark/light/full palette), corners, density, and depth.
 
 ### Architecture data format
 
