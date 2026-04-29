@@ -1,0 +1,20 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "flowchart-vertical",
+  "type": "hyperframes:block",
+  "title": "Flowchart Vertical",
+  "description": "Portrait animated decision tree with SVG connectors, sticky-note nodes, cursor interaction, and typing correction",
+  "tags": ["diagram", "flowchart", "interactive", "portrait"],
+  "dimensions": {
+    "width": 1440,
+    "height": 2560
+  },
+  "duration": 12,
+  "files": [
+    {
+      "path": "flowchart-vertical.html",
+      "target": "compositions/flowchart-vertical.html",
+      "type": "hyperframes:composition"
+    }
+  ]
+}
