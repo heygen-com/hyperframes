@@ -167,10 +167,19 @@ async function resolveMediaDuration(
     return { duration: 0, resolvedPath: filePath };
   }
 
-  const metadata =
-    tagName === "video"
-      ? await extractMediaMetadata(filePath)
-      : await extractAudioMetadata(filePath);
+  let metadata: { durationSeconds: number };
+  if (tagName === "video") {
+    metadata = await extractMediaMetadata(filePath);
+  } else {
+    try {
+      metadata = await extractAudioMetadata(filePath);
+    } catch {
+      // Source file has no audio stream (e.g. a silent video used as an audio src).
+      // Return duration 0 so the element is excluded from the composition gracefully,
+      // matching how missing files and failed downloads are already handled above.
+      return { duration: 0, resolvedPath: filePath };
+    }
+  }
 
   const fileDuration = metadata.durationSeconds;
   const effectiveDuration = fileDuration - mediaStart;
