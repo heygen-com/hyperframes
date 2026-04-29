@@ -4,13 +4,13 @@ Two-phase visual picker: mood boards first (pick a complete direction), then fin
 
 ## Prerequisites
 
-**Read these BEFORE generating any options.** Every option you generate must comply with these references. If you skip them, you'll produce banned fonts, lazy defaults, and web-scale previews.
+Read these before generating options — they define the rules your options must follow:
 
-- [typography.md](typography.md) — **banned font list** (Inter, Roboto, Poppins, Syne, etc.), cross-category pairing rules (serif + sans or sans + mono, NEVER two sans-serifs), weight contrast (300-400 body / 700-900 headline), font discovery script for finding options beyond your defaults
-- [../house-style.md](../house-style.md) — **lazy defaults to avoid** (no gradient text, no left-edge accent stripes, no pure #000/#fff, no identical card grids, no cyan-on-dark). If you're about to use one, pause.
-- [video-composition.md](video-composition.md) — video-medium rules: density (8-10 elements per preview), scale (64px+ headlines in previews, not 14px), color presence (visible accent, not 5% opacity)
-- [../visual-styles.md](../visual-styles.md) — 8 named presets with curated palettes, motion energy, and type pairings. Use as inspiration for mood board directions — don't copy them, but let them expand your range.
-- [beat-direction.md](beat-direction.md) — rhythm patterns per video type. Informs which architectures make sense for the prompt (social ad needs hook-PUNCH-CTA, brand reel needs drift-build-PEAK-resolve).
+- [typography.md](typography.md)
+- [../house-style.md](../house-style.md)
+- [video-composition.md](video-composition.md)
+- [../visual-styles.md](../visual-styles.md)
+- [beat-direction.md](beat-direction.md)
 
 ## Building the picker
 
