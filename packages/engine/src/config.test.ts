@@ -29,6 +29,7 @@ describe("resolveConfig", () => {
     expect(config.quality).toBe("standard");
     expect(config.format).toBe("jpeg");
     expect(config.jpegQuality).toBe(80);
+    expect(config.browserGpuMode).toBe("software");
     expect(config.audioGain).toBe(1);
     expect(config.debug).toBe(false);
   });
@@ -64,6 +65,20 @@ describe("resolveConfig", () => {
 
     const config = resolveConfig();
     expect(config.disableGpu).toBe(false);
+  });
+
+  it("reads browser GPU mode from env", () => {
+    setEnv("PRODUCER_BROWSER_GPU_MODE", "hardware");
+
+    const config = resolveConfig();
+    expect(config.browserGpuMode).toBe("hardware");
+  });
+
+  it("falls back to software browser GPU mode for invalid env values", () => {
+    setEnv("PRODUCER_BROWSER_GPU_MODE", "native");
+
+    const config = resolveConfig();
+    expect(config.browserGpuMode).toBe("software");
   });
 
   it("explicit overrides take precedence over env vars", () => {

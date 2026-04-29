@@ -6,6 +6,7 @@ const BASE: DockerRenderOptions = {
   quality: "standard",
   format: "mp4",
   gpu: false,
+  browserGpu: false,
   hdrMode: "auto",
   crf: undefined,
   videoBitrate: undefined,
@@ -42,6 +43,7 @@ describe("buildDockerRunArgs", () => {
         "standard",
         "--format",
         "mp4",
+        "--no-browser-gpu",
       ]
     `);
   });
@@ -91,6 +93,7 @@ describe("buildDockerRunArgs", () => {
         "18",
         "--quiet",
         "--gpu",
+        "--no-browser-gpu",
         "--hdr",
       ]
     `);
@@ -139,6 +142,11 @@ describe("buildDockerRunArgs", () => {
     expect(on).toContain("--gpu");
   });
 
+  it("forces software browser capture inside Docker", () => {
+    const args = buildDockerRunArgs({ ...FIXED_INPUT, options: BASE });
+    expect(args).toContain("--no-browser-gpu");
+  });
+
   it("forwards every renderer-shaped option (regression tripwire for silent drops)", () => {
     const args = buildDockerRunArgs({
       ...FIXED_INPUT,
@@ -148,6 +156,7 @@ describe("buildDockerRunArgs", () => {
         format: "webm",
         workers: 8,
         gpu: true,
+        browserGpu: false,
         hdrMode: "force-hdr",
         crf: 16,
         videoBitrate: undefined,
@@ -165,6 +174,7 @@ describe("buildDockerRunArgs", () => {
     expect(args).toContain("16");
     expect(args).toContain("--quiet");
     expect(args).toContain("--gpu");
+    expect(args).toContain("--no-browser-gpu");
     expect(args).toContain("--hdr");
   });
 

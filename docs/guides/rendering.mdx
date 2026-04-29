@@ -65,7 +65,8 @@ Render your Hyperframes [compositions](/concepts/compositions) to MP4, MOV, or W
 
     **Pros:**
     - Fast startup, no container overhead
-    - Uses your system GPU for hardware-accelerated encoding (with `--gpu`)
+    - Can use your system GPU for Chrome/WebGL capture by default
+    - Can use your system GPU for hardware-accelerated encoding (with `--gpu`)
     - Best for iterative development
 
     **Cons:**
@@ -90,7 +91,8 @@ Render your Hyperframes [compositions](/concepts/compositions) to MP4, MOV, or W
 
     **Cons:**
     - Slower startup due to container initialization
-    - No GPU acceleration inside the container
+    - Browser capture stays on the deterministic software-GL path
+    - GPU encoding requires Docker host GPU passthrough and is not cross-platform on Docker Desktop
 
     <Note>
       Docker mode uses `chrome-headless-shell` with [BeginFrame](/concepts/determinism#how-it-works) control for frame-perfect, deterministic capture.
@@ -121,7 +123,8 @@ Render your Hyperframes [compositions](/concepts/compositions) to MP4, MOV, or W
 | `--video-bitrate` | e.g. `10M`, `5000k` | — | Target bitrate encoding. Cannot combine with `--crf` |
 | `--workers` | 1-8 or `auto` | auto | Parallel render workers (see [Workers](#workers) below) |
 | `--max-concurrent-renders` | 1-10 | 2 | Max simultaneous renders via the producer server (see [Concurrent Renders](#concurrent-renders) below) |
-| `--gpu` | — | off | GPU encoding (NVENC, VideoToolbox, VAAPI) |
+| `--gpu` | — | off | GPU encoding (NVENC, VideoToolbox, VAAPI, QSV) |
+| `--browser-gpu` / `--no-browser-gpu` | — | on locally, off in Docker | Use or opt out of host GPU acceleration for local Chrome/WebGL capture |
 | `--hdr` | — | off | Force HDR output even if no HDR sources are detected (MP4 only). See [HDR Rendering](/guides/hdr) |
 | `--sdr` | — | off | Force SDR output even if HDR sources are detected |
 | `--docker` | — | off | Use Docker for [deterministic rendering](/concepts/determinism) |
@@ -148,6 +151,26 @@ npx hyperframes render --video-bitrate 10M --output controlled.mp4
 ```
 
 **Tip**: The default `standard` preset (CRF 18) is visually lossless at 1080p — most people cannot distinguish it from the source. Use `--quality draft` for faster iteration, or `--quality high` / `--crf 10` when file size is no concern.
+
+## GPU Acceleration
+
+Hyperframes has two separate GPU acceleration surfaces:
+
+- `--gpu` uses a hardware video encoder in FFmpeg when one is available. Supported backends include VideoToolbox on macOS, NVENC on NVIDIA systems, VAAPI on Linux, and Intel QSV on supported Windows/Linux hosts.
+- Browser GPU uses the host GPU for local Chrome/WebGL capture. It is enabled automatically for local renders and disabled in Docker. Use `--no-browser-gpu` to opt out.
+
+```bash Terminal
+# Add hardware FFmpeg encoding to the default local browser-GPU render
+npx hyperframes render --gpu --output encoded-fast.mp4
+
+# Opt out of hardware Chrome/WebGL capture
+npx hyperframes render --no-browser-gpu --output software-browser.mp4
+
+# Use browser GPU plus hardware FFmpeg encoding
+npx hyperframes render --gpu --output gpu.mp4
+```
+
+Browser GPU capture is local-mode only. It maps to platform-native Chrome GPU backends: Metal on macOS, D3D11 on Windows, and EGL on Linux. Use `--no-browser-gpu` or Docker mode when exact cross-machine reproducibility matters more than local render speed.
 
 ## Workers
 

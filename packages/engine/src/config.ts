@@ -31,6 +31,11 @@ export interface EngineConfig {
   // ── Browser ──────────────────────────────────────────────────────────
   chromePath?: string;
   disableGpu: boolean;
+  /**
+   * Chrome/WebGL rendering backend. "software" keeps the existing SwiftShader
+   * path for reproducible output; "hardware" lets Chrome use the host GPU.
+   */
+  browserGpuMode: "software" | "hardware";
   enableBrowserPool: boolean;
   browserTimeout: number;
   protocolTimeout: number;
@@ -113,6 +118,7 @@ export const DEFAULT_CONFIG: EngineConfig = {
   largeRenderThreshold: 1000,
 
   disableGpu: false,
+  browserGpuMode: "software",
   enableBrowserPool: false,
   browserTimeout: 120_000,
   protocolTimeout: 300_000,
@@ -158,6 +164,11 @@ export function resolveConfig(overrides?: Partial<EngineConfig>): EngineConfig {
     if (raw === undefined) return fallback;
     return raw === "true";
   };
+  const envBrowserGpuMode = (): EngineConfig["browserGpuMode"] => {
+    const raw = env("PRODUCER_BROWSER_GPU_MODE");
+    if (raw === "hardware" || raw === "software") return raw;
+    return DEFAULT_CONFIG.browserGpuMode;
+  };
 
   // Env-var layer (backward compat)
   const fromEnv: Partial<EngineConfig> = {
@@ -171,6 +182,7 @@ export function resolveConfig(overrides?: Partial<EngineConfig>): EngineConfig {
 
     chromePath: env("PRODUCER_HEADLESS_SHELL_PATH"),
     disableGpu: envBool("PRODUCER_DISABLE_GPU", DEFAULT_CONFIG.disableGpu),
+    browserGpuMode: envBrowserGpuMode(),
     enableBrowserPool: envBool("PRODUCER_ENABLE_BROWSER_POOL", DEFAULT_CONFIG.enableBrowserPool),
     browserTimeout: envNum("PRODUCER_PUPPETEER_LAUNCH_TIMEOUT_MS", DEFAULT_CONFIG.browserTimeout),
     protocolTimeout: envNum(

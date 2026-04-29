@@ -206,6 +206,7 @@ function createConfig(): EngineConfig {
     minParallelFrames: 120,
     largeRenderThreshold: 1000,
     disableGpu: false,
+    browserGpuMode: "software",
     enableBrowserPool: false,
     browserTimeout: 120000,
     protocolTimeout: 300000,

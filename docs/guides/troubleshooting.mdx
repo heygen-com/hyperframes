@@ -128,9 +128,10 @@ If your issue is about a specific coding mistake (animations not working, video 
 
     1. Use `--quality draft` during development for faster encoding
     2. Run `npx hyperframes benchmark` to find the optimal worker count for your system
-    3. Use `--gpu` for hardware-accelerated encoding (local mode only)
-    4. Reduce `--fps` to 24 if 30fps is not needed
-    5. Check that your composition does not have unnecessary elements or overly complex animations
+    3. Local Chrome/WebGL GPU capture is enabled automatically; compare with `--no-browser-gpu` if troubleshooting
+    4. Use `--gpu` for hardware-accelerated encoding (local mode only)
+    5. Reduce `--fps` to 24 if 30fps is not needed
+    6. Check that your composition does not have unnecessary elements or overly complex animations
 
     See [Rendering: Options](/guides/rendering#options) for all available flags.
   </Accordion>

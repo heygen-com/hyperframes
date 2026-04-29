@@ -9,6 +9,7 @@ export const examples: Example[] = [
   ["High quality at 60fps", "hyperframes render --fps 60 --quality high --output hd.mp4"],
   ["Deterministic render via Docker", "hyperframes render --docker --output deterministic.mp4"],
   ["Parallel rendering with 6 workers", "hyperframes render --workers 6 --output fast.mp4"],
+  ["Opt out of browser GPU render", "hyperframes render --no-browser-gpu --output cpu.mp4"],
   ["HDR output (auto-detected)", "hyperframes render --output hdr-output.mp4"],
 ];
 import { cpus, freemem, tmpdir } from "node:os";
@@ -99,6 +100,11 @@ export default defineCommand({
       description: "Target video bitrate such as 10M. Mutually exclusive with --crf.",
     },
     gpu: { type: "boolean", description: "Use GPU encoding", default: false },
+    "browser-gpu": {
+      type: "boolean",
+      description:
+        "Use host GPU acceleration for Chrome/WebGL capture. Enabled by default for local renders; use --no-browser-gpu to opt out.",
+    },
     quiet: {
       type: "boolean",
       description: "Suppress verbose output",
@@ -186,6 +192,8 @@ export default defineCommand({
 
     const useDocker = args.docker ?? false;
     const useGpu = args.gpu ?? false;
+    const browserGpuArg = args["browser-gpu"];
+    const useBrowserGpu = resolveBrowserGpuForCli(useDocker, browserGpuArg);
     const quiet = args.quiet ?? false;
     const strictAll = args["strict-all"] ?? false;
     const strictErrors = (args.strict ?? false) || strictAll;
@@ -194,6 +202,15 @@ export default defineCommand({
 
     if (crfRaw != null && videoBitrate) {
       errorBox("Conflicting encoder settings", "Use either --crf or --video-bitrate, not both.");
+      process.exit(1);
+    }
+
+    if (useDocker && browserGpuArg === true) {
+      errorBox(
+        "Browser GPU is local-only",
+        "--browser-gpu uses the host Chrome GPU backend. Docker mode keeps browser rendering deterministic and does not expose a cross-platform Chrome GPU backend.",
+        "Run without --docker, or use --gpu for Docker GPU encoding where your Docker host supports GPU passthrough.",
+      );
       process.exit(1);
     }
 
@@ -227,6 +244,13 @@ export default defineCommand({
           c.dim(" \u2192 " + outputPath),
       );
       console.log(c.dim("   " + fps + "fps \u00B7 " + quality + " \u00B7 " + workerLabel));
+      if (useGpu || useBrowserGpu) {
+        const gpuModes = [
+          useGpu ? "encoder GPU" : null,
+          useBrowserGpu ? "browser GPU (auto)" : null,
+        ].filter(Boolean);
+        console.log(c.dim("   GPU: " + gpuModes.join(" + ")));
+      }
       console.log("");
     }
 
@@ -312,6 +336,7 @@ export default defineCommand({
         format,
         workers,
         gpu: useGpu,
+        browserGpu: useBrowserGpu,
         hdrMode: args.sdr ? "force-sdr" : args.hdr ? "force-hdr" : "auto",
         crf,
         videoBitrate,
@@ -324,6 +349,7 @@ export default defineCommand({
         format,
         workers,
         gpu: useGpu,
+        browserGpu: useBrowserGpu,
         hdrMode: args.sdr ? "force-sdr" : args.hdr ? "force-hdr" : "auto",
         crf,
         videoBitrate,
@@ -340,11 +366,23 @@ interface RenderOptions {
   format: "mp4" | "webm" | "mov";
   workers?: number;
   gpu: boolean;
+  browserGpu: boolean;
   hdrMode: "auto" | "force-hdr" | "force-sdr";
   crf?: number;
   videoBitrate?: string;
   quiet: boolean;
   browserPath?: string;
+}
+
+export function resolveBrowserGpuForCli(
+  useDocker: boolean,
+  browserGpuArg: boolean | undefined,
+  envMode = process.env.PRODUCER_BROWSER_GPU_MODE,
+): boolean {
+  if (useDocker) return false;
+  if (browserGpuArg !== undefined) return browserGpuArg;
+  if (envMode === "software") return false;
+  return true;
 }
 
 const DOCKER_IMAGE_PREFIX = "hyperframes-renderer";
@@ -464,6 +502,7 @@ async function renderDocker(
       format: options.format,
       workers: options.workers,
       gpu: options.gpu,
+      browserGpu: options.browserGpu,
       hdrMode: options.hdrMode,
       crf: options.crf,
       videoBitrate: options.videoBitrate,
@@ -508,7 +547,7 @@ async function renderDocker(
   printRenderComplete(outputPath, elapsed, options.quiet);
 }
 
-async function renderLocal(
+export async function renderLocal(
   projectDir: string,
   outputPath: string,
   options: RenderOptions,
@@ -530,6 +569,9 @@ async function renderLocal(
     format: options.format,
     workers: options.workers,
     useGpu: options.gpu,
+    producerConfig: producer.resolveConfig({
+      browserGpuMode: options.browserGpu ? "hardware" : "software",
+    }),
     hdrMode: options.hdrMode,
     crf: options.crf,
     videoBitrate: options.videoBitrate,

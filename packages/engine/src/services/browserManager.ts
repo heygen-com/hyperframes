@@ -238,12 +238,18 @@ export interface BuildChromeArgsOptions {
   width: number;
   height: number;
   captureMode?: CaptureMode;
+  platform?: NodeJS.Platform;
 }
 
 export function buildChromeArgs(
   options: BuildChromeArgsOptions,
-  config?: Partial<Pick<EngineConfig, "disableGpu" | "chromePath">>,
+  config?: Partial<Pick<EngineConfig, "browserGpuMode" | "disableGpu" | "chromePath">>,
 ): string[] {
+  const platform = options.platform ?? process.platform;
+  const gpuDisabled = config?.disableGpu ?? DEFAULT_CONFIG.disableGpu;
+  const browserGpuMode = gpuDisabled
+    ? "software"
+    : (config?.browserGpuMode ?? DEFAULT_CONFIG.browserGpuMode);
   // Chrome flags tuned for headless rendering performance. The set below is a
   // fairly standard "headless-for-capture" configuration — similar profiles
   // appear in Puppeteer's defaults, Playwright, Remotion, and Chrome's own
@@ -254,8 +260,7 @@ export function buildChromeArgs(
     "--disable-dev-shm-usage",
     "--enable-webgl",
     "--ignore-gpu-blocklist",
-    "--use-gl=angle",
-    "--use-angle=swiftshader",
+    ...getBrowserGpuArgs(browserGpuMode, platform),
     "--font-render-hinting=none",
     "--force-color-profile=srgb",
     `--window-size=${options.width},${options.height}`,
@@ -301,9 +306,28 @@ export function buildChromeArgs(
     );
   }
 
-  const gpuDisabled = config?.disableGpu ?? DEFAULT_CONFIG.disableGpu;
   if (gpuDisabled) {
     chromeArgs.push("--disable-gpu");
   }
   return chromeArgs;
+}
+
+function getBrowserGpuArgs(
+  mode: EngineConfig["browserGpuMode"],
+  platform: NodeJS.Platform,
+): string[] {
+  if (mode === "software") {
+    return ["--use-gl=angle", "--use-angle=swiftshader"];
+  }
+
+  switch (platform) {
+    case "darwin":
+      return ["--use-gl=angle", "--use-angle=metal", "--enable-gpu-rasterization"];
+    case "win32":
+      return ["--use-gl=angle", "--use-angle=d3d11", "--enable-gpu-rasterization"];
+    case "linux":
+      return ["--use-gl=egl", "--enable-gpu-rasterization"];
+    default:
+      return ["--enable-gpu-rasterization"];
+  }
 }

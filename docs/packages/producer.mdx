@@ -213,16 +213,29 @@ npx hyperframes render --docker --output output.mp4
 
 The producer supports hardware-accelerated encoding for faster renders:
 
-| Platform | Encoder | Flag |
-|----------|---------|------|
+| Platform | Encoder | Selection |
+|----------|---------|-----------|
 | NVIDIA | NVENC | Auto-detected |
 | macOS | VideoToolbox | Auto-detected |
 | Linux | VAAPI | Auto-detected |
+| Intel | QSV | Auto-detected |
 
-GPU encoding is automatically used when available. To check your system's capabilities:
+When GPU encoding is enabled, Hyperframes detects the available FFmpeg hardware encoder automatically. To check your system's capabilities:
 
 ```bash
 npx hyperframes doctor
+```
+
+The CLI enables local Chrome/WebGL GPU capture automatically and supports `--no-browser-gpu` as an opt-out. When using the producer API directly, pass an engine config override:
+
+```typescript
+import { resolveConfig } from '@hyperframes/producer';
+
+const job = createRenderJob({
+  fps: 30,
+  quality: 'standard',
+  producerConfig: resolveConfig({ browserGpuMode: 'hardware' }),
+});
 ```
 
 ## Additional Exports

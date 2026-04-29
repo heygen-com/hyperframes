@@ -19,11 +19,14 @@ Requires: Docker installed and running.
 - `-w, --workers` — Parallel workers 1-8 (default: auto)
 - `--crf` — Override encoder CRF (mutually exclusive with `--video-bitrate`)
 - `--video-bitrate` — Target video bitrate such as `10M` (mutually exclusive with `--crf`)
-- `--gpu` — Use GPU encoding (NVENC, VideoToolbox, VAAPI)
+- `--gpu` — Use GPU encoding (NVENC, VideoToolbox, VAAPI, QSV)
+- `--browser-gpu` / `--no-browser-gpu` — Use or opt out of host GPU acceleration for local Chrome/WebGL capture (enabled by default for local renders, disabled in Docker)
 - `-o, --output` — Custom output path
 
 ## Tips
 
 - Use `draft` quality for fast previews during development
+- Local renders use browser GPU capture automatically; use `--no-browser-gpu` to compare against the software-browser path
+- Use `--gpu` when a local render also benefits from hardware FFmpeg encoding
 - Use `npx hyperframes benchmark` to find optimal settings
 - 4 workers is usually the sweet spot for most compositions
