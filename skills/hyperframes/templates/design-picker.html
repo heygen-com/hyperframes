@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Design your visual direction</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
     <style>
       * {
         margin: 0;
@@ -409,6 +410,57 @@
         border-radius: 3px;
       }
 
+      /* ── Easing option ── */
+      .ease-opt {
+        border: 1px solid #1e1e1e;
+        border-radius: 10px;
+        margin-bottom: 6px;
+        cursor: pointer;
+        transition: border-color 0.12s;
+        overflow: hidden;
+        background: #141414;
+        padding: 10px 14px;
+      }
+      .ease-opt:hover {
+        border-color: #333;
+      }
+      .ease-opt.selected {
+        border-color: #fff;
+      }
+      .ease-track {
+        position: relative;
+        height: 8px;
+        background: #1a1a1a;
+        border-radius: 4px;
+        margin-bottom: 8px;
+        overflow: visible;
+      }
+      .ease-dot {
+        position: absolute;
+        top: 50%;
+        transform: translateY(-50%);
+        left: 0;
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        background: #fff;
+      }
+      .ease-label {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .ease-name {
+        font-size: 11px;
+        font-weight: 600;
+      }
+      .ease-value {
+        font-size: 9px;
+        color: #444;
+        font-family: "SF Mono", Consolas, monospace;
+        letter-spacing: 0.02em;
+      }
+
       .preview-empty {
         display: flex;
         align-items: center;
@@ -613,6 +665,15 @@
           </div>
           <div class="section-body"><div class="chips" id="depth-options"></div></div>
         </div>
+        <!-- Motion / Easing -->
+        <div class="section-card">
+          <div class="section-header">
+            <div class="section-icon">⟿</div>
+            <div class="section-title">Motion</div>
+            <div class="section-meta">entry easing</div>
+          </div>
+          <div class="section-body" id="ease-options"></div>
+        </div>
       </div>
       <div class="panel-right" id="preview">
         <div class="preview-empty">Pick a structure to preview</div>
@@ -658,7 +719,17 @@
         corners: null,
         density: null,
         depth: null,
+        easing: null,
       };
+
+      var EASINGS = [
+        { name: "Confident", value: "power3.out", desc: "Fast start, smooth deceleration" },
+        { name: "Snappy", value: "expo.out", desc: "Very fast start, crisp stop" },
+        { name: "Gentle", value: "sine.inOut", desc: "Soft acceleration and deceleration" },
+        { name: "Bouncy", value: "back.out(1.4)", desc: "Overshoots then settles" },
+        { name: "Elastic", value: "elastic.out(1, 0.5)", desc: "Springs past target and wobbles" },
+        { name: "Sharp", value: "power4.out", desc: "Aggressive start, hard stop" },
+      ];
 
       var THEMES = [
         { name: "Dark", id: "dark", bg: "#0e0e0e", fg: "#eee", desc: "Light on dark" },
@@ -811,6 +882,14 @@
           chipSel("density", mb.density_index, document.getElementById("density-options"));
         if (mb.depth_index != null)
           chipSel("depth", mb.depth_index, document.getElementById("depth-options"));
+        if (mb.easing_index != null) {
+          var eOpts = document.getElementById("ease-options");
+          eOpts.querySelectorAll(".ease-opt").forEach(function (c) {
+            c.classList.remove("selected");
+          });
+          eOpts.children[mb.easing_index].classList.add("selected");
+          picks.easing = mb.easing_index;
+        }
         document.getElementById("tab-tune").classList.remove("disabled");
         showPhase("tune");
       }
@@ -983,6 +1062,41 @@
         depthOpts.appendChild(el);
       });
 
+      // Easing options with GSAP animation
+      var easeOpts = document.getElementById("ease-options");
+      EASINGS.forEach(function (e, i) {
+        var el = document.createElement("div");
+        el.className = "ease-opt";
+        var dotId = "ease-dot-" + i;
+        el.innerHTML =
+          '<div class="ease-track"><div class="ease-dot" id="' +
+          dotId +
+          '"></div></div>' +
+          '<div class="ease-label"><div class="ease-name">' +
+          e.name +
+          '</div><div class="ease-value">' +
+          e.value +
+          "</div></div>";
+        el.onclick = function () {
+          easeOpts.querySelectorAll(".ease-opt").forEach(function (c) {
+            c.classList.remove("selected");
+          });
+          el.classList.add("selected");
+          picks.easing = i;
+          checkReady();
+        };
+        easeOpts.appendChild(el);
+        // Animate the dot with GSAP
+        gsap.to("#" + dotId, {
+          left: "calc(100% - 12px)",
+          duration: 1.2,
+          ease: e.value,
+          repeat: -1,
+          repeatDelay: 0.8,
+          yoyo: true,
+        });
+      });
+
       function chipSel(key, idx, container) {
         container.querySelectorAll(".chip").forEach(function (c) {
           c.classList.remove("selected");
@@ -1010,7 +1124,8 @@
           picks.type !== null &&
           picks.corners !== null &&
           picks.density !== null &&
-          picks.depth !== null;
+          picks.depth !== null &&
+          picks.easing !== null;
         document.getElementById("fab").classList.toggle("visible", ready);
         document.getElementById("md-overlay").classList.remove("visible");
       }
@@ -1181,6 +1296,17 @@
           cr.value +
           ")\n\n";
         md += "## Elevation\n\n" + dp.name + " — " + dp.desc + ".\n\n";
+        var easeObj = picks.easing !== null ? EASINGS[picks.easing] : null;
+        if (easeObj) {
+          md +=
+            "## Motion\n\n- **Entry easing:** `" +
+            easeObj.value +
+            "` — " +
+            easeObj.desc +
+            "\n- **Energy:** " +
+            easeObj.name +
+            "\n\n";
+        }
         if (a.components) md += "## Components\n\n" + a.components + "\n\n";
         md += "## Do's and Don'ts\n\n";
         if (a.dos) {
