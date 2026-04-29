@@ -14,11 +14,16 @@ Two-phase visual picker: mood boards first (pick a complete direction), then fin
 
 ## Building the picker
 
-1. Generate options **contextual to the user's prompt**. Each category should reflect the content:
-   - **Mood boards** — as many as the creative space warrants. A narrow prompt with specific assets might need 4-5 genuinely different directions. A wide-open prompt might need 8+. Every board must feel visually distinct — if two look similar, cut one. Each is a holistic identity: architecture + palette + type + density + depth in one click. Name them evocatively. Include at least one safe/expected, one editorial, and one ambitious option.
-   - **Architectures** — one per mood board minimum. Each must use different layout structure. If the user provided media assets, use them as background images in `preview_html` (use `url(path)` without quotes — single quotes inside `style='...'` break the attribute). Use `{{prompt_headline}}` and `{{prompt_sub}}` tokens so previews show real content.
-   - **5-6 palettes** — always include a mix of dark, light, and tinted backgrounds. Name them after personality.
-   - **5-6 type pairings** — cross-category per typography.md (never two sans-serifs). Cover different registers: one safe/corporate, one editorial/serif, one bold/display, one technical/mono-heavy, one warm/humanist. Each pairing should feel like a different voice speaking the same words. Use the font discovery script from typography.md if you need to find fonts beyond your defaults — don't reach for Inter, Roboto, or Poppins.
+1. Generate options **deeply contextual to the user's prompt**. Every category — not just architectures — must reflect the specific product, brand, audience, and mood. Generic options that could appear on any picker are a failure.
+
+   **Mood boards** — as many as the creative space warrants (4-8). Every board must tell a different STORY about the brand, not just reshuffle the same elements. Ask: "what are the genuinely different ways to position this product?" A cat food brand might be: playful chaos, premium positioning, comfort/cozy, social-native, flavor showcase, humor-led, sensory/appetizing. Each is a different narrative, not a different font on the same layout.
+
+   **Architectures** — one per mood board minimum, each visually distinct. Use `{{prompt_headline}}` and `{{prompt_sub}}` tokens. If the user provided media assets, use them as background images (use `url(path)` without quotes — single quotes inside `style='...'` break the attribute).
+
+   **Palettes** (5-6) — named after the brand's world, not generic moods. The palette names and colors should feel like they belong to THIS specific product. Always mix dark + light + tinted.
+
+   **Type pairings** (5-6) — match the brand's energy and audience. Don't reuse the same pairings across every picker — choose fonts that fit the specific voice. Use the font discovery script from typography.md to find options beyond your defaults. Never reach for Inter, Roboto, or Poppins. Cross-category per typography.md (never two sans-serifs).
+
 2. `mkdir -p .hyperframes` then copy [../templates/design-picker.html](../templates/design-picker.html) to `.hyperframes/pick-design.html`.
 3. Replace these placeholders using Python (don't hand-escape quotes in sed):
    - `__ARCHITECTURES_JSON__` — array of architecture objects
