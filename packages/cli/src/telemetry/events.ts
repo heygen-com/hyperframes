@@ -105,8 +105,8 @@ export function trackRenderError(props: {
   });
 }
 
-export function trackInitTemplate(templateId: string): void {
-  trackEvent("init_template", { template: templateId });
+export function trackInitTemplate(templateId: string, props?: { tailwind?: boolean }): void {
+  trackEvent("init_template", { template: templateId, tailwind: props?.tailwind });
 }
 
 export function trackBrowserInstall(): void {

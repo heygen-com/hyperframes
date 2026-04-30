@@ -260,6 +260,26 @@ async function applyVideoMetadataHints(
   );
 }
 
+async function waitForOptionalTailwindReady(page: Page, timeoutMs: number): Promise<void> {
+  const hasTailwindReady = await page.evaluate(
+    `(() => { const ready = window.__tailwindReady; return !!ready && typeof ready.then === "function"; })()`,
+  );
+  if (!hasTailwindReady) return;
+
+  const ready = await Promise.race([
+    page.evaluate(
+      `Promise.resolve(window.__tailwindReady).then(() => true, () => false)`,
+    ) as Promise<boolean>,
+    new Promise<boolean>((resolve) => setTimeout(() => resolve(false), timeoutMs)),
+  ]);
+
+  if (!ready) {
+    throw new Error(
+      `[FrameCapture] window.__tailwindReady not resolved after ${timeoutMs}ms. Tailwind browser runtime must finish before frame capture starts.`,
+    );
+  }
+}
+
 export async function initializeSession(session: CaptureSession): Promise<void> {
   const { page, serverUrl } = session;
 
@@ -350,6 +370,7 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
     }
 
     await page.evaluate(`document.fonts?.ready`);
+    await waitForOptionalTailwindReady(page, pageReadyTimeout);
 
     // For PNG captures, force the page background fully transparent so the
     // captured screenshots carry a real alpha channel. Must run AFTER
@@ -443,6 +464,7 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
 
   // Font check (no rAF dependency — uses fonts.ready API directly)
   await page.evaluate(`document.fonts?.ready`);
+  await waitForOptionalTailwindReady(page, pageReadyTimeout);
 
   // Stop warmup
   warmupRunning = false;

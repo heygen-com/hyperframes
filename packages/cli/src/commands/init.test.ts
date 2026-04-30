@@ -7,6 +7,8 @@ import { fileURLToPath } from "node:url";
 import { injectTailwindBrowserScript } from "./init.js";
 
 const cliEntry = resolve(fileURLToPath(import.meta.url), "..", "..", "cli.ts");
+const tailwindScript =
+  '<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.2.4/dist/index.global.js" integrity="sha384-v5YF9xS+gLRWdvrQ0u/WRbCkjSIH0NjHIPe8tBL1ZRrmI7PiSH6LLdzs0aAIMCuh" crossorigin="anonymous"></script>';
 
 // Spawns `bun` directly because the CLI entry is a .ts file that needs a
 // TypeScript-aware runtime. vitest runs under node, so `process.execPath`
@@ -71,9 +73,8 @@ describe("hyperframes init flag rename", () => {
       expect(res.status).toBe(0);
 
       const html = readFileSync(join(target, "index.html"), "utf-8");
-      expect(html).toContain(
-        '<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>',
-      );
+      expect(html).toContain(tailwindScript);
+      expect(html).toContain("window.__tailwindReady");
 
       const pkg = JSON.parse(readFileSync(join(target, "package.json"), "utf-8")) as {
         scripts?: Record<string, string>;
@@ -91,22 +92,44 @@ describe("hyperframes init flag rename", () => {
     }
   });
 
-  it("inserts Tailwind before uppercase script tags", () => {
+  it("inserts Tailwind before uppercase closing head tags", () => {
     const html = [
       "<!doctype html>",
       "<html>",
       "<head>",
       '  <SCRIPT src="./runtime.global.js"></SCRIPT>',
-      "</head>",
+      "</HEAD>",
       "</html>",
     ].join("\n");
 
-    expect(injectTailwindBrowserScript(html)).toContain(
-      [
-        '<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>',
-        '  <SCRIPT src="./runtime.global.js"></SCRIPT>',
-      ].join("\n"),
+    const injected = injectTailwindBrowserScript(html);
+    expect(injected.indexOf('  <SCRIPT src="./runtime.global.js"></SCRIPT>')).toBeLessThan(
+      injected.indexOf(tailwindScript),
     );
+    expect(injected.indexOf(tailwindScript)).toBeLessThan(injected.indexOf("</HEAD>"));
+  });
+
+  it("inserts Tailwind into single-line HTML heads", () => {
+    const html = "<!doctype html><html><head><title>x</title></head><body></body></html>";
+
+    expect(injectTailwindBrowserScript(html)).toContain(`${tailwindScript}\n</head>`);
+  });
+
+  it("does not duplicate Tailwind support when it is already present", () => {
+    const html = ["<!doctype html>", "<html>", "<head>", tailwindScript, "</head>", "</html>"].join(
+      "\n",
+    );
+
+    expect(injectTailwindBrowserScript(html)).toBe(html);
+  });
+
+  it("keeps the readiness shim free of render-loop APIs", () => {
+    const html = "<!doctype html><html><head></head><body></body></html>";
+    const injected = injectTailwindBrowserScript(html);
+
+    expect(injected).not.toContain("Date.now");
+    expect(injected).not.toContain("requestAnimationFrame");
+    expect(injected).not.toContain("setTimeout");
   });
 
   it("--template prints a rename hint and exits non-zero", () => {

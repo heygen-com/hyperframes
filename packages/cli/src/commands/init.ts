@@ -6,7 +6,7 @@ export const examples: Example[] = [
   ["Pick a starter example", "hyperframes init my-video --example warm-grain"],
   ["Start from an existing video file", "hyperframes init my-video --video clip.mp4"],
   ["Start from an audio file", "hyperframes init my-video --audio track.mp3"],
-  ["Scaffold with Tailwind CSS", "hyperframes init my-video --tailwind"],
+  ["Scaffold with Tailwind CSS", "hyperframes init my-video --example blank --tailwind"],
   ["Non-interactive mode (for CI or AI agents)", "hyperframes init my-video --non-interactive"],
   ["Skip AI coding skills installation", "hyperframes init my-video --skip-skills"],
 ];
@@ -55,7 +55,12 @@ const DEFAULT_META: VideoMeta = {
   videoCodec: "h264",
 };
 
-const TAILWIND_BROWSER_SRC = "https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4";
+// Pin the browser runtime exactly so repeated renders do not drift as Tailwind
+// ships JIT/preflight changes on the CDN.
+const TAILWIND_BROWSER_VERSION = "4.2.4";
+const TAILWIND_BROWSER_SRC = `https://cdn.jsdelivr.net/npm/@tailwindcss/browser@${TAILWIND_BROWSER_VERSION}/dist/index.global.js`;
+const TAILWIND_BROWSER_INTEGRITY =
+  "sha384-v5YF9xS+gLRWdvrQ0u/WRbCkjSIH0NjHIPe8tBL1ZRrmI7PiSH6LLdzs0aAIMCuh";
 
 // ---------------------------------------------------------------------------
 // ffprobe helper — shells out to ffprobe to avoid engine dependency
@@ -224,20 +229,50 @@ function writeDefaultPackageJson(destDir: string, projectName: string): void {
 }
 
 function listHtmlFiles(dir: string): string[] {
-  return readdirSync(dir, { withFileTypes: true, recursive: true })
-    .filter((entry) => entry.isFile() && entry.name.endsWith(".html"))
-    .map((entry) => join(entry.parentPath ?? entry.path, entry.name));
+  const files: string[] = [];
+  const ignoredDirs = new Set([".git", "dist", "node_modules"]);
+
+  function walk(currentDir: string): void {
+    for (const entry of readdirSync(currentDir, { withFileTypes: true })) {
+      const entryPath = join(currentDir, entry.name);
+      if (entry.isDirectory()) {
+        if (!ignoredDirs.has(entry.name)) walk(entryPath);
+        continue;
+      }
+      if (entry.isFile() && entry.name.endsWith(".html")) {
+        files.push(entryPath);
+      }
+    }
+  }
+
+  walk(dir);
+  return files;
 }
 
 export function injectTailwindBrowserScript(html: string): string {
   if (html.includes(TAILWIND_BROWSER_SRC)) return html;
 
-  const script = `<script src="${TAILWIND_BROWSER_SRC}"></script>`;
-  if (/<script[\s>]/i.test(html)) {
-    return html.replace(/(\n[ \t]*)(<script)([\s>])/i, `$1${script}$1$2$3`);
+  const script = [
+    `<script>`,
+    `window.__tailwindReady=new Promise(function(resolve){`,
+    `var loaded=document.readyState==="complete";`,
+    `var resolved=false;`,
+    `var observer;`,
+    `function readTailwindCss(){var styles=document.querySelectorAll("style");for(var i=styles.length-1;i>=0;i--){var text=styles[i].textContent||"";if(text.indexOf("tailwindcss v")!==-1)return text;}return "";}`,
+    `function finish(){if(resolved||!loaded||!readTailwindCss())return;resolved=true;if(observer)observer.disconnect();resolve(true);}`,
+    `observer=new MutationObserver(finish);`,
+    `observer.observe(document.documentElement,{childList:true,subtree:true,characterData:true});`,
+    `if(loaded){finish();}else{window.addEventListener("load",function(){loaded=true;finish();},{once:true});}`,
+    `});`,
+    `</script>`,
+    `<script src="${TAILWIND_BROWSER_SRC}" integrity="${TAILWIND_BROWSER_INTEGRITY}" crossorigin="anonymous"></script>`,
+  ].join("\n");
+
+  if (/<\/head>/i.test(html)) {
+    return html.replace(/<\/head>/i, (closingHead) => `\n${script}\n${closingHead}`);
   }
 
-  return html.replace(/(\n[ \t]*)<\/head>/i, `$1${script}$1</head>`);
+  return `${script}\n${html}`;
 }
 
 function writeTailwindSupport(destDir: string): void {
@@ -620,7 +655,7 @@ export default defineCommand({
         console.error(c.dim("Use --example blank for offline use."));
         process.exit(1);
       }
-      trackInitTemplate(templateId);
+      trackInitTemplate(templateId, { tailwind });
       const transcriptFile = resolve(destDir, "transcript.json");
       if (existsSync(transcriptFile)) {
         await patchTranscript(destDir, transcriptFile);
@@ -818,7 +853,7 @@ export default defineCommand({
       );
       process.exit(1);
     }
-    trackInitTemplate(templateId);
+    trackInitTemplate(templateId, { tailwind });
 
     // 4b. Patch captions with transcript if available
     const transcriptFile = resolve(destDir, "transcript.json");

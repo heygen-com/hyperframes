@@ -177,6 +177,8 @@ This is suppressed in CI environments, non-TTY shells, and when `HYPERFRAMES_NO_
 
     In default (agent) mode, `--example` is required — the CLI errors with a usage example if missing. In `--human-friendly` mode, you choose interactively. When `--video` or `--audio` is provided, the CLI automatically transcribes the audio with Whisper and patches captions into the composition (use `--skip-transcribe` to disable).
 
+    `--tailwind` injects the pinned Tailwind browser runtime into scaffolded HTML and exposes a `window.__tailwindReady` promise that renders wait on before capturing frame 0. The browser runtime is still intended for scaffolded projects and quick iteration; for fully offline or locked-down production renders, compile Tailwind to CSS and include the stylesheet directly.
+
     After scaffolding, the CLI installs AI coding skills for Claude Code, Gemini CLI, and Codex CLI (use `--skip-skills` to disable). See [`skills`](#skills) command.
 
     See [Examples](/examples) for full details.
