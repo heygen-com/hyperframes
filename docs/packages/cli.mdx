@@ -148,6 +148,9 @@ This is suppressed in CI environments, non-TTY shells, and when `HYPERFRAMES_NO_
     # Agent mode (default) — --example is required
     npx hyperframes init my-video --example blank --video video.mp4
 
+    # Include Tailwind CSS browser-runtime support
+    npx hyperframes init my-video --example blank --tailwind
+
     # Human mode — interactive prompts
     npx hyperframes init --human-friendly
     ```
@@ -157,6 +160,7 @@ This is suppressed in CI environments, non-TTY shells, and when `HYPERFRAMES_NO_
     | `--example, -e` | Example to scaffold (required in default mode, interactive in `--human-friendly`) |
     | `--video, -V` | Path to a video file (MP4, WebM, MOV) |
     | `--audio, -a` | Path to an audio file (MP3, WAV, M4A) |
+    | `--tailwind` | Add Tailwind CSS browser-runtime support to scaffolded HTML |
     | `--skip-skills` | Skip AI coding skills installation |
     | `--skip-transcribe` | Skip automatic whisper transcription |
     | `--model` | Whisper model for transcription (e.g. `small.en`, `medium.en`, `large-v3`) |

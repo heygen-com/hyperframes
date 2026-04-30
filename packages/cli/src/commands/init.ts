@@ -6,6 +6,7 @@ export const examples: Example[] = [
   ["Pick a starter example", "hyperframes init my-video --example warm-grain"],
   ["Start from an existing video file", "hyperframes init my-video --video clip.mp4"],
   ["Start from an audio file", "hyperframes init my-video --audio track.mp3"],
+  ["Scaffold with Tailwind CSS", "hyperframes init my-video --tailwind"],
   ["Non-interactive mode (for CI or AI agents)", "hyperframes init my-video --non-interactive"],
   ["Skip AI coding skills installation", "hyperframes init my-video --skip-skills"],
 ];
@@ -53,6 +54,8 @@ const DEFAULT_META: VideoMeta = {
   hasAudio: false,
   videoCodec: "h264",
 };
+
+const TAILWIND_BROWSER_SRC = "https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4";
 
 // ---------------------------------------------------------------------------
 // ffprobe helper — shells out to ffprobe to avoid engine dependency
@@ -189,6 +192,17 @@ function hyperframesScript(command: string): string {
   return `npx --yes ${getHyperframesPackageSpecifier()} ${command}`;
 }
 
+function buildPackageScripts(): Record<string, string> {
+  return {
+    dev: hyperframesScript("preview"),
+    check:
+      `${hyperframesScript("lint")} && ${hyperframesScript("validate")} && ` +
+      `${hyperframesScript("inspect")}`,
+    render: hyperframesScript("render"),
+    publish: hyperframesScript("publish"),
+  };
+}
+
 function writeDefaultPackageJson(destDir: string, projectName: string): void {
   const packageJsonPath = resolve(destDir, "package.json");
   if (existsSync(packageJsonPath)) return;
@@ -200,18 +214,37 @@ function writeDefaultPackageJson(destDir: string, projectName: string): void {
         name: toPackageName(projectName),
         private: true,
         type: "module",
-        scripts: {
-          dev: hyperframesScript("preview"),
-          check: `${hyperframesScript("lint")} && ${hyperframesScript("validate")} && ${hyperframesScript("inspect")}`,
-          render: hyperframesScript("render"),
-          publish: hyperframesScript("publish"),
-        },
+        scripts: buildPackageScripts(),
       },
       null,
       2,
     )}\n`,
     "utf-8",
   );
+}
+
+function listHtmlFiles(dir: string): string[] {
+  return readdirSync(dir, { withFileTypes: true, recursive: true })
+    .filter((entry) => entry.isFile() && entry.name.endsWith(".html"))
+    .map((entry) => join(entry.parentPath ?? entry.path, entry.name));
+}
+
+function injectTailwindBrowserScript(html: string): string {
+  if (html.includes(TAILWIND_BROWSER_SRC)) return html;
+
+  const script = `<script src="${TAILWIND_BROWSER_SRC}"></script>`;
+  if (/<script[\s>]/.test(html)) {
+    return html.replace(/(\n[ \t]*)<script([\s>])/, `$1${script}$1<script$2`);
+  }
+
+  return html.replace(/(\n[ \t]*)<\/head>/i, `$1${script}$1</head>`);
+}
+
+function writeTailwindSupport(destDir: string): void {
+  for (const file of listHtmlFiles(destDir)) {
+    const html = readFileSync(file, "utf-8");
+    writeFileSync(file, injectTailwindBrowserScript(html), "utf-8");
+  }
 }
 
 function patchVideoSrc(
@@ -358,6 +391,7 @@ async function scaffoldProject(
   templateId: string,
   localVideoName: string | undefined,
   durationSeconds?: number,
+  tailwind = false,
 ): Promise<void> {
   mkdirSync(destDir, { recursive: true });
 
@@ -369,6 +403,7 @@ async function scaffoldProject(
     await fetchRemoteTemplate(templateId, destDir);
   }
   patchVideoSrc(destDir, localVideoName, durationSeconds);
+  if (tailwind) writeTailwindSupport(destDir);
 
   writeFileSync(
     resolve(destDir, "meta.json"),
@@ -466,6 +501,10 @@ export default defineCommand({
       type: "boolean",
       description: "Skip AI coding skills installation",
     },
+    tailwind: {
+      type: "boolean",
+      description: "Add Tailwind CSS browser-runtime support",
+    },
   },
   async run({ args }) {
     if (args.template !== undefined) {
@@ -483,6 +522,7 @@ export default defineCommand({
     const audioFlag = args.audio;
     const skipTranscribe = args["skip-transcribe"] === true;
     const skipSkills = args["skip-skills"] === true;
+    const tailwind = args.tailwind === true;
     const nonInteractive = args["non-interactive"] === true;
     const modelFlag = args.model;
     const languageFlag = args.language;
@@ -569,6 +609,7 @@ export default defineCommand({
           templateId,
           localVideoName,
           videoDuration,
+          tailwind,
         );
       } catch (err) {
         console.error(
@@ -764,7 +805,7 @@ export default defineCommand({
       spin.start(`Downloading example ${c.accent(templateId)}...`);
     }
     try {
-      await scaffoldProject(destDir, name, templateId, localVideoName, videoDuration);
+      await scaffoldProject(destDir, name, templateId, localVideoName, videoDuration, tailwind);
       if (!isBundled) {
         spin.stop(c.success(`Downloaded ${templateId}`));
       }

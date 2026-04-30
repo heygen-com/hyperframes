@@ -55,6 +55,41 @@ describe("hyperframes init flag rename", () => {
     }
   });
 
+  it("--tailwind enables Tailwind utilities in scaffolded HTML", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-init-test-"));
+    const target = join(dir, "proj");
+    try {
+      const res = runInit([
+        target,
+        "--example",
+        "blank",
+        "--tailwind",
+        "--non-interactive",
+        "--skip-skills",
+      ]);
+      expect(res.status).toBe(0);
+
+      const html = readFileSync(join(target, "index.html"), "utf-8");
+      expect(html).toContain(
+        '<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>',
+      );
+
+      const pkg = JSON.parse(readFileSync(join(target, "package.json"), "utf-8")) as {
+        scripts?: Record<string, string>;
+      };
+      expect(pkg.scripts).toMatchObject({
+        dev: "npx --yes hyperframes preview",
+        check:
+          "npx --yes hyperframes lint && npx --yes hyperframes validate && npx --yes hyperframes inspect",
+        render: "npx --yes hyperframes render",
+        publish: "npx --yes hyperframes publish",
+      });
+      expect(Object.keys(pkg.scripts ?? {}).sort()).toEqual(["check", "dev", "publish", "render"]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("--template prints a rename hint and exits non-zero", () => {
     const dir = mkdtempSync(join(tmpdir(), "hf-init-test-"));
     const target = join(dir, "proj");
