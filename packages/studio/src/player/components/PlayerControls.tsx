@@ -1,6 +1,6 @@
 import { useRef, useState, useCallback, useEffect, memo } from "react";
 import { useMountEffect } from "../../hooks/useMountEffect";
-import { formatFrameTime, frameToSeconds, formatTime } from "../lib/time";
+import { formatFrameTime, frameToSeconds, stepFrameTime, formatTime } from "../lib/time";
 import { usePlayerStore, liveTime } from "../store/playerStore";
 
 const SPEED_OPTIONS = [0.25, 0.5, 1, 1.5, 2] as const;
@@ -208,10 +208,10 @@ export const PlayerControls = memo(function PlayerControls({
       const step = e.shiftKey ? 10 : 1;
       if (e.key === "ArrowLeft") {
         e.preventDefault();
-        onSeek(Math.max(0, currentTimeRef.current - frameToSeconds(step)));
+        onSeek(stepFrameTime(currentTimeRef.current, -step));
       } else if (e.key === "ArrowRight") {
         e.preventDefault();
-        onSeek(Math.min(duration, currentTimeRef.current + frameToSeconds(step)));
+        onSeek(Math.min(duration, stepFrameTime(currentTimeRef.current, step)));
       }
     },
     [timelineReady, duration, onSeek],

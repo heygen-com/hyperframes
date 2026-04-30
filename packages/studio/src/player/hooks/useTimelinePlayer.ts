@@ -1,7 +1,7 @@
 import { useRef, useCallback } from "react";
 import { usePlayerStore, liveTime, type TimelineElement } from "../store/playerStore";
 import { useMountEffect } from "../../hooks/useMountEffect";
-import { frameToSeconds, STUDIO_PREVIEW_FPS } from "../lib/time";
+import { stepFrameTime, STUDIO_PREVIEW_FPS } from "../lib/time";
 import { useCaptionStore } from "../../captions/store";
 
 interface PlaybackAdapter {
@@ -697,7 +697,7 @@ export function useTimelinePlayer() {
     (deltaFrames: number) => {
       const adapter = getAdapter();
       const currentTime = adapter?.getTime() ?? usePlayerStore.getState().currentTime;
-      seek(currentTime + frameToSeconds(deltaFrames, STUDIO_PREVIEW_FPS));
+      seek(stepFrameTime(currentTime, deltaFrames, STUDIO_PREVIEW_FPS));
     },
     [getAdapter, seek],
   );

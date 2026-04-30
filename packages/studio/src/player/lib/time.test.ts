@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { formatFrameTime, frameToSeconds, secondsToFrame, formatTime } from "./time";
+import { formatFrameTime, frameToSeconds, secondsToFrame, stepFrameTime, formatTime } from "./time";
 
 describe("formatTime", () => {
   it("formats zero seconds", () => {
@@ -71,5 +71,15 @@ describe("frame helpers", () => {
 
   it("formats current and total frame display", () => {
     expect(formatFrameTime(1, 5)).toBe("30f / 150f");
+  });
+
+  it("steps from a truncated runtime time by integer frame index", () => {
+    expect(stepFrameTime(0.0333333, 1)).toBe(2 / 30);
+    expect(stepFrameTime(0.0666666, 1)).toBe(3 / 30);
+    expect(stepFrameTime(0.0666666, -1)).toBe(1 / 30);
+  });
+
+  it("clamps frame stepping at zero", () => {
+    expect(stepFrameTime(0, -1)).toBe(0);
   });
 });
