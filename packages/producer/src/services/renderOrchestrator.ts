@@ -46,6 +46,7 @@ import {
   getCompositionDuration,
   prepareCaptureSessionForReuse,
   type CaptureOptions,
+  type CaptureVideoMetadataHint,
   type CaptureSession,
   type BeforeCaptureHook,
   createVideoFrameInjector,
@@ -676,6 +677,50 @@ export function applyRenderModeHints(
     reasonCodes: compiled.renderModeHints.reasons.map((reason) => reason.code),
     reasons: compiled.renderModeHints.reasons.map((reason) => reason.message),
   });
+}
+
+export function collectVideoReadinessSkipIds(
+  nativeHdrVideoIds: ReadonlySet<string>,
+  extractedVideos: readonly ExtractedVideoReadinessInput[],
+): string[] {
+  return Array.from(
+    new Set([
+      ...nativeHdrVideoIds,
+      ...extractedVideos
+        .filter((video) => hasUsableVideoDimensions(video.metadata))
+        .map((video) => video.videoId),
+    ]),
+  ).sort();
+}
+
+interface ExtractedVideoReadinessInput {
+  videoId: string;
+  metadata: {
+    width: number;
+    height: number;
+  };
+}
+
+function hasUsableVideoDimensions(metadata: ExtractedVideoReadinessInput["metadata"]) {
+  return (
+    Number.isFinite(metadata.width) &&
+    Number.isFinite(metadata.height) &&
+    metadata.width > 0 &&
+    metadata.height > 0
+  );
+}
+
+export function collectVideoMetadataHints(
+  extractedVideos: readonly ExtractedVideoReadinessInput[],
+): CaptureVideoMetadataHint[] {
+  return extractedVideos
+    .filter((video) => hasUsableVideoDimensions(video.metadata))
+    .map((video) => ({
+      id: video.videoId,
+      width: video.metadata.width,
+      height: video.metadata.height,
+    }))
+    .sort((a, b) => a.id.localeCompare(b.id));
 }
 
 export function resolveRenderWorkerCount(
@@ -2123,6 +2168,8 @@ export async function executeRenderJob(
     let frameLookup: FrameLookupTable | null = null;
     const compiledDir = join(workDir, "compiled");
     let extractionResult: Awaited<ReturnType<typeof extractAllVideoFrames>> | null = null;
+    let videoReadinessSkipIds: string[] = [];
+    let videoMetadataHints: CaptureVideoMetadataHint[] = [];
 
     // Probe ORIGINAL color spaces before extraction (which may convert SDR→HDR).
     // This is needed to identify which videos are natively HDR vs converted-SDR
@@ -2196,6 +2243,11 @@ export async function executeRenderJob(
       if (extractionResult.extracted.length > 0) {
         frameLookup = createFrameLookupTable(composition.videos, extractionResult.extracted);
       }
+      videoReadinessSkipIds = collectVideoReadinessSkipIds(
+        nativeHdrVideoIds,
+        extractionResult.extracted,
+      );
+      videoMetadataHints = collectVideoMetadataHints(extractionResult.extracted);
       perfStages.videoExtractMs = Date.now() - stage2Start;
 
       // Auto-detect audio from video files via ffprobe metadata
@@ -2338,17 +2390,18 @@ export async function executeRenderJob(
       quality: needsAlpha ? undefined : job.config.quality === "draft" ? 80 : 95,
     };
 
-    // Native HDR videos (e.g. HEVC) may be undecodable by Chrome on the current
-    // platform — Linux headless-shell ships without HEVC support. Their pixels
-    // come from out-of-band ffmpeg extraction, so the DOM `<video>` element is
-    // only kept around for layout. Skip the per-page readiness wait for these
-    // IDs in every capture session we open during HDR rendering; otherwise the
-    // render hangs 45s and throws "video metadata not ready" even though we
-    // never asked the browser to decode the video. Encapsulating the spread
-    // here avoids drifting copies across the five capture call sites below.
-    const buildHdrCaptureOptions = (): CaptureOptions => ({
+    // Capture sessions do not need native browser metadata for videos whose
+    // pixels come from out-of-band FFmpeg frame extraction. Waiting on those
+    // `<video>` elements lets browser decode/cache quirks block renders even
+    // though the browser never supplies their pixels. We still pass FFmpeg
+    // dimensions as metadata hints so CSS layouts that depend on intrinsic
+    // aspect ratio stay stable before the first injected frame. Native HDR
+    // videos are included for the same reason: Chrome may not decode them at
+    // all, while the renderer composites their extracted frames separately.
+    const buildCaptureOptions = (): CaptureOptions => ({
       ...captureOptions,
-      skipReadinessVideoIds: Array.from(nativeHdrVideoIds),
+      videoMetadataHints,
+      skipReadinessVideoIds: videoReadinessSkipIds,
     });
 
     let captureCalibration:
@@ -2368,7 +2421,7 @@ export async function executeRenderJob(
         calibrationSession = await createCaptureSession(
           fileServer.url,
           calibrationDir,
-          buildHdrCaptureOptions(),
+          buildCaptureOptions(),
           videoInjector,
           calibrationCfg,
         );
@@ -2562,7 +2615,7 @@ export async function executeRenderJob(
       const domSession = await createCaptureSession(
         fileServer.url,
         framesDir,
-        buildHdrCaptureOptions(),
+        buildCaptureOptions(),
         createVideoFrameInjector(frameLookup),
         cfg,
       );
@@ -3307,7 +3360,7 @@ export async function executeRenderJob(
               fileServer.url,
               workDir,
               tasks,
-              buildHdrCaptureOptions(),
+              buildCaptureOptions(),
               () => createVideoFrameInjector(frameLookup),
               abortSignal,
               (progress) => {
@@ -3346,7 +3399,7 @@ export async function executeRenderJob(
               (await createCaptureSession(
                 fileServer.url,
                 framesDir,
-                buildHdrCaptureOptions(),
+                buildCaptureOptions(),
                 videoInjector,
                 cfg,
               ));
@@ -3411,7 +3464,7 @@ export async function executeRenderJob(
               initialWorkerCount: workerCount,
               allowRetry: job.config.workers === undefined,
               frameExt: needsAlpha ? "png" : "jpg",
-              captureOptions: buildHdrCaptureOptions(),
+              captureOptions: buildCaptureOptions(),
               createBeforeCaptureHook: () => createVideoFrameInjector(frameLookup),
               abortSignal,
               onProgress: (progress) => {
@@ -3454,7 +3507,7 @@ export async function executeRenderJob(
               (await createCaptureSession(
                 fileServer.url,
                 framesDir,
-                buildHdrCaptureOptions(),
+                buildCaptureOptions(),
                 videoInjector,
                 cfg,
               ));

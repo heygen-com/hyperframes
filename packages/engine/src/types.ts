@@ -86,17 +86,28 @@ export interface CaptureOptions {
   quality?: number;
   deviceScaleFactor?: number;
   /**
+   * FFmpeg-probed intrinsic dimensions for videos whose frames are injected
+   * out-of-band. Applied before the readiness wait so layout that depends on
+   * video aspect ratio (e.g. `height:auto`) stays stable even if Chromium never
+   * loads native metadata.
+   */
+  videoMetadataHints?: readonly CaptureVideoMetadataHint[];
+  /**
    * Video element IDs to exclude from the in-page readiness check that waits
    * for `video.readyState >= 1` before capture starts.
    *
-   * Use for videos whose frames are supplied out-of-band (e.g. native HDR
-   * frame extraction via ffmpeg). The DOM `<video>` element is then only
-   * needed for layout (`getBoundingClientRect` / `offsetWidth`), which works
-   * at `readyState=0`. Without this, codecs that headless Chromium can't
-   * decode (HEVC on Linux `headless-shell`) cause a fatal timeout even
-   * though we never asked the browser to play the video.
+   * Use for videos whose frames are supplied out-of-band, including standard
+   * FFmpeg frame injection and native HDR extraction. Pair with
+   * `videoMetadataHints` for any skipped video whose CSS layout may depend on
+   * intrinsic media dimensions.
    */
   skipReadinessVideoIds?: readonly string[];
+}
+
+export interface CaptureVideoMetadataHint {
+  id: string;
+  width: number;
+  height: number;
 }
 
 export interface CaptureResult {

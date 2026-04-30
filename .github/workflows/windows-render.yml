@@ -201,12 +201,121 @@ jobs:
 
           Write-Host "canary.mp4 ok: ${width}x${height} @ $fps, ${duration}s"
 
+      - name: Scaffold issue #574 reused-video regression
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $project = "$env:RUNNER_TEMP\issue-574-reused-video"
+          New-Item -ItemType Directory -Force -Path $project | Out-Null
+          cd $project
+
+          ffmpeg -y `
+            -f lavfi -i "testsrc2=size=1920x1080:rate=30:duration=12" `
+            -f lavfi -i "sine=frequency=880:sample_rate=48000:duration=12" `
+            -c:v libx264 `
+            -pix_fmt yuv420p `
+            -r 30 `
+            -g 250 `
+            -keyint_min 250 `
+            -c:a aac `
+            -shortest `
+            1.mp4
+
+          @'
+          <!doctype html>
+          <html lang="en">
+            <head>
+              <meta charset="UTF-8" />
+              <title>Issue 574 reused video regression</title>
+              <style>
+                html,
+                body {
+                  margin: 0;
+                  padding: 0;
+                  background: #000;
+                }
+
+                #root {
+                  position: relative;
+                  width: 1920px;
+                  height: 1080px;
+                  overflow: hidden;
+                  background: #000;
+                }
+
+                video {
+                  position: absolute;
+                  inset: 0;
+                  width: 100%;
+                  height: 100%;
+                  object-fit: cover;
+                }
+              </style>
+            </head>
+            <body>
+              <div
+                id="root"
+                data-composition-id="root"
+                data-start="0"
+                data-duration="12"
+                data-width="1920"
+                data-height="1080"
+              >
+                <video id="video1" src="1.mp4" data-start="0" muted data-duration="4" data-track-index="0" data-media-start="0"></video>
+                <video id="video2" src="1.mp4" data-start="4" muted data-duration="4" data-track-index="0" data-media-start="4"></video>
+                <video id="video3" src="1.mp4" data-start="8" muted data-duration="4" data-track-index="0" data-media-start="8"></video>
+              </div>
+              <script>
+                window.__timelines = window.__timelines || {};
+              </script>
+            </body>
+          </html>
+          '@ | Set-Content -Path index.html -Encoding utf8
+
+      - name: Render issue #574 reused-video regression
+        shell: pwsh
+        env:
+          PRODUCER_PLAYER_READY_TIMEOUT_MS: "15000"
+        run: |
+          cd "$env:RUNNER_TEMP\issue-574-reused-video"
+          node "$env:GITHUB_WORKSPACE\packages\cli\dist\cli.js" render `
+            --fps 30 `
+            --quality standard `
+            --workers 1 `
+            --output renders\issue-574.mp4
+
+      - name: Verify issue #574 rendered MP4
+        shell: pwsh
+        run: |
+          $mp4 = "$env:RUNNER_TEMP\issue-574-reused-video\renders\issue-574.mp4"
+          if (-not (Test-Path $mp4)) { throw "issue-574.mp4 not produced" }
+
+          $probe = ffprobe -v error -select_streams v:0 `
+            -show_entries stream=width,height,r_frame_rate -show_entries format=duration `
+            -of default=noprint_wrappers=1 $mp4
+          Write-Host $probe
+
+          $width    = ($probe | Select-String '^width=(.+)$').Matches.Groups[1].Value
+          $height   = ($probe | Select-String '^height=(.+)$').Matches.Groups[1].Value
+          $fps      = ($probe | Select-String '^r_frame_rate=(.+)$').Matches.Groups[1].Value
+          $duration = [double]($probe | Select-String '^duration=(.+)$').Matches.Groups[1].Value
+
+          if ([int]$width  -ne 1920) { throw "expected 1920 width, got $width" }
+          if ([int]$height -ne 1080) { throw "expected 1080 height, got $height" }
+          if ($fps -ne "30/1")       { throw "expected 30fps, got $fps" }
+          if ($duration -lt 11.5 -or $duration -gt 12.5) { throw "expected ~12s duration, got $duration" }
+
+          Write-Host "issue-574.mp4 ok: ${width}x${height} @ $fps, ${duration}s"
+
       - name: Upload rendered MP4 artifact
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: windows-render-${{ github.run_id }}
-          path: ${{ runner.temp }}/windows-canary/canary/renders/canary.mp4
+          path: |
+            ${{ runner.temp }}/windows-canary/canary/renders/canary.mp4
+            ${{ runner.temp }}/issue-574-reused-video/renders/issue-574.mp4
           if-no-files-found: error
           retention-days: 7
 

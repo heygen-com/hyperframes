@@ -8,6 +8,8 @@ import type { CompiledComposition } from "./htmlCompiler.js";
 import {
   applyRenderModeHints,
   buildMissingFrameRetryBatches,
+  collectVideoMetadataHints,
+  collectVideoReadinessSkipIds,
   createCaptureCalibrationConfig,
   estimateMeasuredCaptureCostMultiplier,
   estimateCaptureCostMultiplier,
@@ -257,6 +259,35 @@ describe("applyRenderModeHints", () => {
     applyRenderModeHints(cfg, compiled, log);
 
     expect(log.warn).not.toHaveBeenCalled();
+  });
+});
+
+describe("collectVideoReadinessSkipIds", () => {
+  it("skips native metadata waits for every injected video with dimensions", () => {
+    expect(
+      collectVideoReadinessSkipIds(new Set(["hdr-video"]), [
+        { videoId: "video1", metadata: { width: 1920, height: 1080 } },
+        { videoId: "video2", metadata: { width: 1920, height: 1080 } },
+        { videoId: "video3", metadata: { width: 1920, height: 1080 } },
+        { videoId: "hdr-video", metadata: { width: 1920, height: 1080 } },
+        { videoId: "bad-metadata", metadata: { width: 0, height: 0 } },
+      ]),
+    ).toEqual(["hdr-video", "video1", "video2", "video3"]);
+  });
+});
+
+describe("collectVideoMetadataHints", () => {
+  it("passes extracted video dimensions to capture sessions", () => {
+    expect(
+      collectVideoMetadataHints([
+        { videoId: "video2", metadata: { width: 1080, height: 1920, durationSeconds: 4 } },
+        { videoId: "video1", metadata: { width: 1920, height: 1080, durationSeconds: 12 } },
+        { videoId: "bad-metadata", metadata: { width: 0, height: 1080, durationSeconds: 1 } },
+      ]),
+    ).toEqual([
+      { id: "video1", width: 1920, height: 1080 },
+      { id: "video2", width: 1080, height: 1920 },
+    ]);
   });
 });
 

@@ -36,6 +36,7 @@ export type {
   HfMediaElement,
   HfTransitionMeta,
   CaptureOptions,
+  CaptureVideoMetadataHint,
   CaptureResult,
   CaptureBufferResult,
   CapturePerfSummary,

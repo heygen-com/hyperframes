@@ -29,6 +29,7 @@ import {
 import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
 import type {
   CaptureOptions,
+  CaptureVideoMetadataHint,
   CaptureResult,
   CaptureBufferResult,
   CapturePerfSummary,
@@ -221,6 +222,44 @@ async function pollPageExpression(
   return Boolean(await page.evaluate(expression));
 }
 
+async function applyVideoMetadataHints(
+  page: Page,
+  hints: readonly CaptureVideoMetadataHint[] | undefined,
+): Promise<void> {
+  if (!hints || hints.length === 0) return;
+
+  await page.evaluate(
+    (metadataHints: CaptureVideoMetadataHint[]) => {
+      for (const hint of metadataHints) {
+        if (
+          !hint.id ||
+          !Number.isFinite(hint.width) ||
+          !Number.isFinite(hint.height) ||
+          hint.width <= 0 ||
+          hint.height <= 0
+        ) {
+          continue;
+        }
+
+        const video = document.getElementById(hint.id) as HTMLVideoElement | null;
+        if (!video) continue;
+
+        if (!video.hasAttribute("width")) video.setAttribute("width", String(hint.width));
+        if (!video.hasAttribute("height")) video.setAttribute("height", String(hint.height));
+
+        const computed = window.getComputedStyle(video);
+        if (
+          !video.style.aspectRatio &&
+          (!computed.aspectRatio || computed.aspectRatio === "auto")
+        ) {
+          video.style.aspectRatio = `${hint.width} / ${hint.height}`;
+        }
+      }
+    },
+    [...hints],
+  );
+}
+
 export async function initializeSession(session: CaptureSession): Promise<void> {
   const { page, serverUrl } = session;
 
@@ -290,11 +329,14 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
       );
     }
 
+    await applyVideoMetadataHints(page, session.options.videoMetadataHints);
+
     // Wait for all video elements to have loaded metadata (dimensions + duration)
     // Without this, frame 0 captures videos at their 300x150 default size.
     // skipReadinessVideoIds excludes natively-extracted videos (e.g. HDR HEVC
-    // sources) whose frames come from ffmpeg out-of-band — Chromium may not be
-    // able to decode them at all (e.g. HEVC on Linux headless-shell).
+    // sources) whose frames come from ffmpeg out-of-band. videoMetadataHints
+    // supply intrinsic dimensions for skipped videos whose layout depends on
+    // aspect ratio, while Chromium may still fail to decode/load metadata.
     const skipIdsLiteral = JSON.stringify(session.options.skipReadinessVideoIds ?? []);
     const videosReady = await pollPageExpression(
       page,
@@ -382,9 +424,12 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
     );
   }
 
+  await applyVideoMetadataHints(page, session.options.videoMetadataHints);
+
   // Wait for all video elements to have loaded metadata (dimensions + duration).
   // Without this, frame 0 captures videos at their 300x150 default size.
-  // See screenshot-mode comment above for why skipReadinessVideoIds exists.
+  // See screenshot-mode comment above for why skipReadinessVideoIds and
+  // videoMetadataHints are paired.
   const beginframeSkipIdsLiteral = JSON.stringify(session.options.skipReadinessVideoIds ?? []);
   const videoDeadline =
     Date.now() + (session.config?.playerReadyTimeout ?? DEFAULT_CONFIG.playerReadyTimeout);
