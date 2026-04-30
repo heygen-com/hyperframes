@@ -1,7 +1,7 @@
 {
   "name": "hyperframes",
   "version": "0.1.0",
-  "description": "Write HTML, render video. Compositions, GSAP and runtime adapter animations, captions, voiceovers, audio-reactive visuals, and website-to-video capture for HyperFrames.",
+  "description": "Write HTML, render video. Compositions, Tailwind v4 styles, GSAP and runtime adapter animations, captions, voiceovers, audio-reactive visuals, and website-to-video capture for HyperFrames.",
   "author": {
     "name": "HeyGen",
     "email": "hyperframes@heygen.com",
@@ -14,6 +14,7 @@
     "hyperframes",
     "video",
     "html",
+    "tailwind",
     "gsap",
     "lottie",
     "three",
@@ -30,7 +31,7 @@
   "interface": {
     "displayName": "HyperFrames by HeyGen",
     "shortDescription": "Write HTML, render video",
-    "longDescription": "Build videos from HTML with HyperFrames. Author compositions with HTML, CSS, GSAP, Anime.js, Lottie, Three.js, and WAAPI adapter patterns, use the CLI for init/preview/render/transcribe/tts, install reusable registry blocks and components, and turn any website into a video with the 7-step capture-to-video pipeline.",
+    "longDescription": "Build videos from HTML with HyperFrames. Author compositions with HTML, CSS, Tailwind v4 browser-runtime styles, GSAP, Anime.js, Lottie, Three.js, and WAAPI adapter patterns, use the CLI for init/preview/render/transcribe/tts, install reusable registry blocks and components, and turn any website into a video with the 7-step capture-to-video pipeline.",
     "developerName": "HeyGen",
     "category": "Design",
     "capabilities": ["Read", "Write"],

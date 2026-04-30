@@ -25,12 +25,15 @@ npx hyperframes init my-video                        # interactive wizard
 npx hyperframes init my-video --example warm-grain   # pick an example
 npx hyperframes init my-video --video clip.mp4        # with video file
 npx hyperframes init my-video --audio track.mp3       # with audio file
+npx hyperframes init my-video --example blank --tailwind # with Tailwind v4 browser runtime
 npx hyperframes init my-video --non-interactive       # skip prompts (CI/agents)
 ```
 
 Templates: `blank`, `warm-grain`, `play-mode`, `swiss-grid`, `vignelli`, `decision-tree`, `kinetic-type`, `product-promo`, `nyt-graph`.
 
 `init` creates the right file structure, copies media, transcribes audio with Whisper, and installs AI coding skills. Use it instead of creating files by hand.
+
+When using `--tailwind`, invoke the `tailwind` skill before editing classes or theme tokens. The scaffold uses Tailwind v4.2 via the browser runtime, not Studio's Tailwind v3 setup.
 
 ## Linting
 

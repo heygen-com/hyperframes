@@ -10,6 +10,7 @@
 | **hyperframes-cli**        | `/hyperframes-cli`        | CLI commands: init, lint, preview, render, transcribe, tts                                        |
 | **hyperframes-registry**   | `/hyperframes-registry`   | Installing blocks and components via `hyperframes add`                                            |
 | **website-to-hyperframes** | `/website-to-hyperframes` | Capturing a URL and turning it into a video — full website-to-video pipeline                      |
+| **tailwind**               | `/tailwind`               | Tailwind v4 browser-runtime styles for projects created with `hyperframes init --tailwind`        |
 | **gsap**                   | `/gsap`                   | GSAP animations for HyperFrames — tweens, timelines, easing, performance                          |
 | **animejs**                | `/animejs`                | Anime.js animations registered on `window.__hfAnime`                                              |
 | **css-animations**         | `/css-animations`         | CSS keyframes that HyperFrames can pause and seek                                                 |
