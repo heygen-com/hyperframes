@@ -945,7 +945,9 @@
       }
       renderMoodBoards();
 
+      var currentPhase = "mood";
       function showPhase(name) {
+        currentPhase = name;
         document.querySelectorAll(".phase").forEach(function (p) {
           p.classList.remove("active");
         });
@@ -954,6 +956,8 @@
         });
         document.getElementById("phase-" + name).classList.add("active");
         document.getElementById("tab-" + name).classList.add("active");
+        if (name === "mood") document.getElementById("fab").classList.remove("visible");
+        else checkReady();
       }
 
       function goToTune() {
@@ -1219,7 +1223,9 @@
           picks.density !== null &&
           picks.depth !== null &&
           picks.easing !== null;
-        document.getElementById("fab").classList.toggle("visible", ready);
+        document
+          .getElementById("fab")
+          .classList.toggle("visible", ready && currentPhase === "tune");
         document.getElementById("md-overlay").classList.remove("visible");
       }
 
