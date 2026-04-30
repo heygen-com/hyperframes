@@ -13,7 +13,7 @@ For scene choreography, GSAP is usually clearer. CSS animations work best when t
 
 - Put the animated element in the DOM before runtime initialization finishes.
 - Give timed elements a `data-start` value so local animation time matches the clip.
-- Use finite `animation-duration` and `animation-iteration-count`.
+- Use finite `animation-duration` and `animation-iteration-count` because the negative-delay fallback cannot represent unbounded duration in environments without WAAPI-backed CSS animations.
 - Prefer `animation-fill-mode: both` so seeked states hold before and after active motion.
 - Avoid wall-clock JavaScript, hover-triggered state, and class toggles that depend on user events.
 
@@ -103,7 +103,7 @@ Use CSS custom properties to avoid duplicating keyframes:
 
 ## Avoid
 
-- Infinite CSS animations. Use a finite iteration count covering the visible duration.
+- Infinite CSS animations unless you have verified the browser exposes seekable WAAPI-backed CSS animation handles. Prefer a finite iteration count covering the visible duration.
 - Animating layout properties like `top`, `left`, `width`, or `height` when transforms work.
 - Relying on hover, focus, scroll, or media queries to trigger render-critical motion.
 - Changing animation classes after startup unless another deterministic timeline controls that change.

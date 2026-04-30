@@ -12,7 +12,7 @@ HyperFrames supports Three.js through its `three` runtime adapter. The adapter d
 - Create the scene, camera, renderer, materials, and assets synchronously when possible.
 - Render from HyperFrames time, not wall-clock time.
 - Listen for the `hf-seek` event and render exactly that time.
-- Use local assets only. Do not fetch models, textures, or HDRIs from the network during render.
+- Load models, textures, and HDRIs before render-critical seeking. Do not fetch them at seek time.
 - Avoid `requestAnimationFrame` or `renderer.setAnimationLoop` as the source of truth for render-critical motion.
 
 The adapter sets `window.__hfThreeTime` and dispatches `new CustomEvent("hf-seek", { detail: { time } })` on each seek.
@@ -26,6 +26,7 @@ The adapter sets `window.__hfThreeTime` and dispatches `new CustomEvent("hf-seek
 
   const canvas = document.getElementById("three-layer");
   const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
+  // Match these to your composition's frame size.
   renderer.setSize(1920, 1080, false);
   renderer.setPixelRatio(1);
 
@@ -103,4 +104,3 @@ npx hyperframes validate
 - HyperFrames adapter source: `packages/core/src/runtime/adapters/three.ts`.
 - Three.js `WebGLRenderer` docs: https://threejs.org/docs/pages/WebGLRenderer.html
 - Three.js `AnimationMixer.setTime()` docs: https://threejs.org/docs/pages/AnimationMixer.html
-- Public skill survey: mindrally/skills `three-js` was reviewed for general Three.js agent guidance, but this skill is original HyperFrames-specific guidance rather than a vendored copy.

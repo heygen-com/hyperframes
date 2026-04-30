@@ -18,7 +18,7 @@ HyperFrames controls GSAP through its `gsap` runtime adapter. Create a paused ti
   tl.from(".title", { y: 48, opacity: 0, duration: 0.6, ease: "power3.out" }, 0);
   tl.to(".accent", { scaleX: 1, duration: 0.5, ease: "power2.out" }, 0.25);
 
-  window.__timelines["main"] = tl;
+  window.__timelines["main"] = tl; // key must equal data-composition-id on the composition root
 </script>
 ```
 
@@ -43,7 +43,7 @@ Always use **camelCase** property names (e.g. `backgroundColor`, `rotationX`).
 - **ease** — `"power1.out"` (default), `"power3.inOut"`, `"back.out(1.7)"`, `"elastic.out(1, 0.3)"`, `"none"`.
 - **stagger** — number `0.1` or object: `{ amount: 0.3, from: "center" }`, `{ each: 0.1, from: "random" }`.
 - **overwrite** — `false` (default), `true`, or `"auto"`.
-- **repeat** — number only in HyperFrames. **yoyo** — alternates direction with repeat.
+- **repeat** — finite number; never `-1` in HyperFrames. Compute repeats from the visible duration. **yoyo** — alternates direction with repeat.
 - **onComplete**, **onStart**, **onUpdate** — callbacks.
 - **immediateRender** — default `true` for from()/fromTo(). Set `false` on later tweens targeting the same property+element to avoid overwrite.
 
@@ -231,7 +231,7 @@ Pause or kill off-screen animations.
 - Chain animations with delay when a timeline can sequence them.
 - Create tweens before the DOM exists.
 - Skip cleanup — always kill tweens when no longer needed.
-- Use infinite repeat values in HyperFrames compositions. Compute the finite repeat count from the visible duration.
+- Use infinite repeat values in HyperFrames compositions. Use finite repeat counts computed from the visible duration.
 
 ## Credits And References
 

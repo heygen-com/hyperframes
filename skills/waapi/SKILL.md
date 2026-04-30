@@ -20,7 +20,7 @@ The adapter calls `document.getAnimations()`, sets each animation's `currentTime
 ## Basic Pattern
 
 ```html
-<div id="orb" class="clip orb" data-start="0" data-duration="3" data-track-index="2"></div>
+<div id="orb" class="clip orb" data-start="2" data-duration="3" data-track-index="2"></div>
 
 <script>
   const orb = document.getElementById("orb");
@@ -32,6 +32,7 @@ The adapter calls `document.getAnimations()`, sets each animation's `currentTime
     ],
     {
       duration: 3000,
+      delay: 2000,
       easing: "cubic-bezier(0.2, 0, 0, 1)",
       fill: "both",
       iterations: 1,
