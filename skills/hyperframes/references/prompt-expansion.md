@@ -2,7 +2,7 @@
 
 Run on every composition. Expansion is not about lengthening a short prompt — it's about grounding the user's intent against `design.md` and `house-style.md` and producing a consistent intermediate that every downstream agent reads the same way.
 
-Runs AFTER design direction is established (Step 0a). The expansion consumes design.md (if present) and produces output that cites its exact values.
+Runs AFTER design direction is established (Step 1). The expansion consumes design.md (if present) and produces output that cites its exact values.
 
 ## Prerequisites
 
@@ -13,7 +13,7 @@ Read before generating:
 - [video-composition.md](video-composition.md) — video-medium rules for density, scale, and color presence. The expansion applies these automatically.
 - [../house-style.md](../house-style.md) — its rules for Background Layer (2-5 decoratives), Color, Motion, Typography apply to every scene. The expansion writes output that conforms to them.
 
-If `design.md` doesn't exist yet, run Step 0a (Design system) first. Expansion without a design context produces generic scene breakdowns that later agents ignore.
+If `design.md` doesn't exist yet, run Step 1 (Design system) first. Expansion without a design context produces generic scene breakdowns that later agents ignore.
 
 ## Why always run it
 

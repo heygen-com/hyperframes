@@ -77,6 +77,7 @@ Each mood board pre-selects one option from each category. The user picks a mood
   "corners_index": 0,
   "density_index": 0,
   "depth_index": 1,
+  "easing_index": 0,
   "corners": "0px",
   "padding": "12px",
   "gap": "8px",

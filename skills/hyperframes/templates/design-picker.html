@@ -978,14 +978,13 @@
           chipSel("density", mb.density_index, document.getElementById("density-options"));
         if (mb.depth_index != null)
           chipSel("depth", mb.depth_index, document.getElementById("depth-options"));
-        if (mb.easing_index != null) {
-          var eOpts = document.getElementById("ease-options");
-          eOpts.querySelectorAll(".ease-opt").forEach(function (c) {
-            c.classList.remove("selected");
-          });
-          eOpts.children[mb.easing_index].classList.add("selected");
-          picks.easing = mb.easing_index;
-        }
+        var eIdx = mb.easing_index != null ? mb.easing_index : 0;
+        var eOpts = document.getElementById("ease-options");
+        eOpts.querySelectorAll(".ease-opt").forEach(function (c) {
+          c.classList.remove("selected");
+        });
+        eOpts.children[eIdx].classList.add("selected");
+        picks.easing = eIdx;
         document.getElementById("tab-tune").classList.remove("disabled");
         showPhase("tune");
       }
