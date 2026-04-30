@@ -229,12 +229,12 @@ function listHtmlFiles(dir: string): string[] {
     .map((entry) => join(entry.parentPath ?? entry.path, entry.name));
 }
 
-function injectTailwindBrowserScript(html: string): string {
+export function injectTailwindBrowserScript(html: string): string {
   if (html.includes(TAILWIND_BROWSER_SRC)) return html;
 
   const script = `<script src="${TAILWIND_BROWSER_SRC}"></script>`;
-  if (/<script[\s>]/.test(html)) {
-    return html.replace(/(\n[ \t]*)<script([\s>])/, `$1${script}$1<script$2`);
+  if (/<script[\s>]/i.test(html)) {
+    return html.replace(/(\n[ \t]*)(<script)([\s>])/i, `$1${script}$1$2$3`);
   }
 
   return html.replace(/(\n[ \t]*)<\/head>/i, `$1${script}$1</head>`);

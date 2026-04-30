@@ -4,6 +4,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { injectTailwindBrowserScript } from "./init.js";
 
 const cliEntry = resolve(fileURLToPath(import.meta.url), "..", "..", "cli.ts");
 
@@ -88,6 +89,24 @@ describe("hyperframes init flag rename", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+
+  it("inserts Tailwind before uppercase script tags", () => {
+    const html = [
+      "<!doctype html>",
+      "<html>",
+      "<head>",
+      '  <SCRIPT src="./runtime.global.js"></SCRIPT>',
+      "</head>",
+      "</html>",
+    ].join("\n");
+
+    expect(injectTailwindBrowserScript(html)).toContain(
+      [
+        '<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>',
+        '  <SCRIPT src="./runtime.global.js"></SCRIPT>',
+      ].join("\n"),
+    );
   });
 
   it("--template prints a rename hint and exits non-zero", () => {
