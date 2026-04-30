@@ -19,6 +19,7 @@ import type { TimelineElement } from "./player";
 import { LintModal } from "./components/LintModal";
 import type { LintFinding } from "./components/LintModal";
 import { MediaPreview } from "./components/MediaPreview";
+import { RotateCcw, RotateCw } from "./icons/SystemIcons";
 import { FONT_EXT, isMediaFile } from "./utils/mediaTypes";
 import {
   buildTimelineAssetId,
@@ -37,6 +38,7 @@ import { useCaptionStore } from "./captions/store";
 import { useCaptionSync } from "./captions/hooks/useCaptionSync";
 import { parseCaptionComposition } from "./captions/parser";
 import { copyTextToClipboard } from "./utils/clipboard";
+import { usePersistentEditHistory } from "./hooks/usePersistentEditHistory";
 import {
   applyPatchByTarget,
   readAttributeByTarget,
@@ -85,6 +87,7 @@ import {
   type DomEditTextField,
   type DomEditSelection,
 } from "./components/editor/domEditing";
+import { saveProjectFilesWithHistory } from "./utils/studioFileHistory";
 
 interface EditingFile {
   path: string;
@@ -270,6 +273,29 @@ function getEventTargetElement(target: EventTarget | null): HTMLElement | null {
     return maybeNode.parentElement as HTMLElement;
   }
   return null;
+}
+
+function shouldIgnoreHistoryShortcut(target: EventTarget | null): boolean {
+  const el = getEventTargetElement(target);
+  if (!el) return false;
+  return Boolean(
+    el.closest("input, textarea, select, [contenteditable='true'], [role='textbox'], .cm-editor"),
+  );
+}
+
+function getHistoryShortcutLabel(action: "undo" | "redo"): string {
+  const isMac =
+    typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/i.test(navigator.platform);
+  const modifier = isMac ? "Cmd" : "Ctrl";
+  return action === "undo" ? `${modifier}+Z` : `${modifier}+Shift+Z`;
+}
+
+function getDomEditCoalesceKey(
+  selection: Pick<DomEditSelection, "id" | "selector" | "sourceFile">,
+  action: "move" | "resize",
+): string {
+  const target = selection.id || selection.selector || "selection";
+  return `${action}:${selection.sourceFile || "index.html"}:${target}`;
 }
 
 function findMatchingTimelineElementId(
@@ -1148,28 +1174,61 @@ export function StudioApp() {
 
   const editingPathRef = useRef(editingFile?.path);
   editingPathRef.current = editingFile?.path;
+  const editHistory = usePersistentEditHistory({ projectId });
 
-  const handleContentChange = useCallback((content: string) => {
+  const readProjectFile = useCallback(async (path: string): Promise<string> => {
     const pid = projectIdRef.current;
-    if (!pid) return;
-    const path = editingPathRef.current;
-    if (!path) return;
-
-    // Debounce the server write (600ms)
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = setTimeout(() => {
-      fetch(`/api/projects/${pid}/files/${encodeURIComponent(path)}`, {
-        method: "PUT",
-        headers: { "Content-Type": "text/plain" },
-        body: content,
-      })
-        .then(() => {
-          if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
-          refreshTimerRef.current = setTimeout(() => setRefreshKey((k) => k + 1), 600);
-        })
-        .catch(() => {});
-    }, 600);
+    if (!pid) throw new Error("No active project");
+    const response = await fetch(`/api/projects/${pid}/files/${encodeURIComponent(path)}`);
+    if (!response.ok) throw new Error(`Failed to read ${path}`);
+    const data = (await response.json()) as { content?: string };
+    if (typeof data.content !== "string") throw new Error(`Missing file contents for ${path}`);
+    return data.content;
   }, []);
+
+  const writeProjectFile = useCallback(async (path: string, content: string): Promise<void> => {
+    const pid = projectIdRef.current;
+    if (!pid) throw new Error("No active project");
+    const response = await fetch(`/api/projects/${pid}/files/${encodeURIComponent(path)}`, {
+      method: "PUT",
+      headers: { "Content-Type": "text/plain" },
+      body: content,
+    });
+    if (!response.ok) throw new Error(`Failed to save ${path}`);
+    if (editingPathRef.current === path) {
+      setEditingFile({ path, content });
+    }
+  }, []);
+
+  const handleContentChange = useCallback(
+    (content: string) => {
+      const pid = projectIdRef.current;
+      if (!pid) return;
+      const path = editingPathRef.current;
+      if (!path) return;
+
+      // Debounce the server write (600ms)
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = setTimeout(() => {
+        saveProjectFilesWithHistory({
+          projectId: pid,
+          label: "Edit source",
+          kind: "source",
+          coalesceKey: `source:${path}`,
+          files: { [path]: content },
+          readFile: readProjectFile,
+          writeFile: writeProjectFile,
+          recordEdit: editHistory.recordEdit,
+        })
+          .then(() => {
+            if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
+            refreshTimerRef.current = setTimeout(() => setRefreshKey((k) => k + 1), 600);
+          })
+          .catch(() => {});
+      }, 600);
+    },
+    [editHistory.recordEdit, readProjectFile, writeProjectFile],
+  );
 
   const handleTimelineElementMove = useCallback(
     async (element: TimelineElement, updates: Pick<TimelineElement, "start" | "track">) => {
@@ -1249,25 +1308,19 @@ export function StudioApp() {
         throw new Error(`Unable to patch timeline element ${element.id} in ${targetPath}`);
       }
 
-      const saveResponse = await fetch(
-        `/api/projects/${pid}/files/${encodeURIComponent(targetPath)}`,
-        {
-          method: "PUT",
-          headers: { "Content-Type": "text/plain" },
-          body: patchedContent,
-        },
-      );
-      if (!saveResponse.ok) {
-        throw new Error(`Failed to save ${targetPath}`);
-      }
-
-      if (editingPathRef.current === targetPath) {
-        setEditingFile({ path: targetPath, content: patchedContent });
-      }
+      await saveProjectFilesWithHistory({
+        projectId: pid,
+        label: "Move timeline clip",
+        kind: "timeline",
+        files: { [targetPath]: patchedContent },
+        readFile: async () => originalContent,
+        writeFile: writeProjectFile,
+        recordEdit: editHistory.recordEdit,
+      });
 
       setRefreshKey((k) => k + 1);
     },
-    [activeCompPath, timelineElements],
+    [activeCompPath, editHistory.recordEdit, timelineElements, writeProjectFile],
   );
 
   const handleTimelineElementResize = useCallback(
@@ -1339,25 +1392,19 @@ export function StudioApp() {
         throw new Error(`Unable to patch timeline element ${element.id} in ${targetPath}`);
       }
 
-      const saveResponse = await fetch(
-        `/api/projects/${pid}/files/${encodeURIComponent(targetPath)}`,
-        {
-          method: "PUT",
-          headers: { "Content-Type": "text/plain" },
-          body: patchedContent,
-        },
-      );
-      if (!saveResponse.ok) {
-        throw new Error(`Failed to save ${targetPath}`);
-      }
-
-      if (editingPathRef.current === targetPath) {
-        setEditingFile({ path: targetPath, content: patchedContent });
-      }
+      await saveProjectFilesWithHistory({
+        projectId: pid,
+        label: "Resize timeline clip",
+        kind: "timeline",
+        files: { [targetPath]: patchedContent },
+        readFile: async () => originalContent,
+        writeFile: writeProjectFile,
+        recordEdit: editHistory.recordEdit,
+      });
 
       setRefreshKey((k) => k + 1);
     },
-    [activeCompPath],
+    [activeCompPath, editHistory.recordEdit, writeProjectFile],
   );
 
   const showToast = useCallback((message: string, tone: AppToast["tone"] = "error") => {
@@ -1482,21 +1529,15 @@ export function StudioApp() {
           });
         }
 
-        const saveResponse = await fetch(
-          `/api/projects/${pid}/files/${encodeURIComponent(targetPath)}`,
-          {
-            method: "PUT",
-            headers: { "Content-Type": "text/plain" },
-            body: patchedContent,
-          },
-        );
-        if (!saveResponse.ok) {
-          throw new Error(`Failed to save ${targetPath}`);
-        }
-
-        if (editingPathRef.current === targetPath) {
-          setEditingFile({ path: targetPath, content: patchedContent });
-        }
+        await saveProjectFilesWithHistory({
+          projectId: pid,
+          label: "Delete timeline clip",
+          kind: "timeline",
+          files: { [targetPath]: patchedContent },
+          readFile: async () => originalContent,
+          writeFile: writeProjectFile,
+          recordEdit: editHistory.recordEdit,
+        });
 
         usePlayerStore
           .getState()
@@ -1513,7 +1554,7 @@ export function StudioApp() {
         showToast(message);
       }
     },
-    [activeCompPath, showToast, timelineElements],
+    [activeCompPath, editHistory.recordEdit, showToast, timelineElements, writeProjectFile],
   );
 
   const handleBlockedTimelineEdit = useCallback(
@@ -1565,6 +1606,63 @@ export function StudioApp() {
   const clearDomSelection = useCallback(() => {
     applyDomSelection(null, { revealPanel: false });
   }, [applyDomSelection]);
+
+  const handleUndo = useCallback(async () => {
+    const result = await editHistory.undo({
+      readFile: readProjectFile,
+      writeFile: writeProjectFile,
+    });
+    if (!result.ok && result.reason === "content-mismatch") {
+      showToast("File changed outside Studio. Undo history was not applied.", "info");
+      return;
+    }
+    if (result.ok && result.label) {
+      clearDomSelection();
+      setRefreshKey((key) => key + 1);
+      showToast(`Undid ${result.label}`, "info");
+    }
+  }, [clearDomSelection, editHistory, readProjectFile, showToast, writeProjectFile]);
+
+  const handleRedo = useCallback(async () => {
+    const result = await editHistory.redo({
+      readFile: readProjectFile,
+      writeFile: writeProjectFile,
+    });
+    if (!result.ok && result.reason === "content-mismatch") {
+      showToast("File changed outside Studio. Redo history was not applied.", "info");
+      return;
+    }
+    if (result.ok && result.label) {
+      clearDomSelection();
+      setRefreshKey((key) => key + 1);
+      showToast(`Redid ${result.label}`, "info");
+    }
+  }, [clearDomSelection, editHistory, readProjectFile, showToast, writeProjectFile]);
+
+  const handleUndoRef = useRef(handleUndo);
+  const handleRedoRef = useRef(handleRedo);
+  handleUndoRef.current = handleUndo;
+  handleRedoRef.current = handleRedo;
+
+  // eslint-disable-next-line no-restricted-syntax
+  useEffect(() => {
+    const handler = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey)) return;
+      if (shouldIgnoreHistoryShortcut(event.target)) return;
+      const key = event.key.toLowerCase();
+      if (key === "z" && !event.shiftKey) {
+        event.preventDefault();
+        void handleUndoRef.current();
+        return;
+      }
+      if ((key === "z" && event.shiftKey) || (event.ctrlKey && !event.metaKey && key === "y")) {
+        event.preventDefault();
+        void handleRedoRef.current();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
 
   const buildDomSelectionFromTarget = useCallback(
     (target: HTMLElement, options?: { preferClipAncestor?: boolean }) => {
@@ -1664,6 +1762,8 @@ export function StudioApp() {
       selection: DomEditSelection,
       operations: Parameters<typeof applyPatchByTarget>[2][],
       options?: {
+        label?: string;
+        coalesceKey?: string;
         skipRefresh?: boolean;
         prepareContent?: (html: string, sourceFile: string) => string;
         shouldSave?: () => boolean;
@@ -1698,21 +1798,16 @@ export function StudioApp() {
         throw new Error(`Unable to patch ${selection.selector ?? selection.id ?? "selection"}`);
       }
 
-      const saveResponse = await fetch(
-        `/api/projects/${pid}/files/${encodeURIComponent(targetPath)}`,
-        {
-          method: "PUT",
-          headers: { "Content-Type": "text/plain" },
-          body: patchedContent,
-        },
-      );
-      if (!saveResponse.ok) {
-        throw new Error(`Failed to save ${targetPath}`);
-      }
-
-      if (editingPathRef.current === targetPath) {
-        setEditingFile({ path: targetPath, content: patchedContent });
-      }
+      await saveProjectFilesWithHistory({
+        projectId: pid,
+        label: options?.label ?? "Edit layer",
+        kind: "manual",
+        coalesceKey: options?.coalesceKey,
+        files: { [targetPath]: patchedContent },
+        readFile: async () => originalContent,
+        writeFile: writeProjectFile,
+        recordEdit: editHistory.recordEdit,
+      });
 
       if (options?.skipRefresh) {
         domEditSaveTimestampRef.current = Date.now();
@@ -1720,7 +1815,7 @@ export function StudioApp() {
         setRefreshKey((k) => k + 1);
       }
     },
-    [activeCompPath],
+    [activeCompPath, editHistory.recordEdit, writeProjectFile],
   );
 
   const handleDomMoveCommit = useCallback(
@@ -1731,7 +1826,11 @@ export function StudioApp() {
           ...buildDomEditMovePatchOperations(next.left, next.top),
           ...buildOppositeEdgePatchOperations(selection, "both"),
         ],
-        { skipRefresh: true },
+        {
+          skipRefresh: true,
+          label: "Move layer",
+          coalesceKey: getDomEditCoalesceKey(selection, "move"),
+        },
       );
     },
     [persistDomEditOperations],
@@ -1749,7 +1848,11 @@ export function StudioApp() {
           ...buildDomEditResizePatchOperations(next.width, next.height),
           ...buildOppositeEdgePatchOperations(selection, "both"),
         ],
-        { skipRefresh: true },
+        {
+          skipRefresh: true,
+          label: "Resize layer",
+          coalesceKey: getDomEditCoalesceKey(selection, "resize"),
+        },
       );
     },
     [persistDomEditOperations],
@@ -1775,7 +1878,10 @@ export function StudioApp() {
       element.style.setProperty(operation.property, operation.value);
     }
 
-    await persistDomEditOperations(selection, operations, { skipRefresh: true });
+    await persistDomEditOperations(selection, operations, {
+      skipRefresh: true,
+      label: "Make layer movable",
+    });
 
     const refreshed = doc ? findElementForSelection(doc, selection, selection.sourceFile) : element;
     if (refreshed) {
@@ -1838,6 +1944,7 @@ export function StudioApp() {
         );
       }
       await persistDomEditOperations(domEditSelection, operations, {
+        label: "Edit layer style",
         skipRefresh: true,
         prepareContent: importedFont
           ? (html, sourceFile) => ensureImportedFontFace(html, importedFont, sourceFile)
@@ -1882,6 +1989,7 @@ export function StudioApp() {
         domEditSelection,
         [buildDomEditTextPatchOperation(nextContent)],
         {
+          label: "Edit text",
           skipRefresh: true,
           shouldSave: () => domTextCommitVersionRef.current === commitVersion,
         },
@@ -1934,6 +2042,7 @@ export function StudioApp() {
 
       const importedFont = options?.importedFont ?? null;
       await persistDomEditOperations(selection, [buildDomEditTextPatchOperation(nextContent)], {
+        label: "Edit text",
         skipRefresh: true,
         prepareContent: importedFont
           ? (html, sourceFile) => ensureImportedFontFace(html, importedFont, sourceFile)
@@ -2379,21 +2488,15 @@ export function StudioApp() {
           }),
         );
 
-        const saveResponse = await fetch(
-          `/api/projects/${pid}/files/${encodeURIComponent(targetPath)}`,
-          {
-            method: "PUT",
-            headers: { "Content-Type": "text/plain" },
-            body: patchedContent,
-          },
-        );
-        if (!saveResponse.ok) {
-          throw new Error(`Failed to save ${targetPath}`);
-        }
-
-        if (editingPathRef.current === targetPath) {
-          setEditingFile({ path: targetPath, content: patchedContent });
-        }
+        await saveProjectFilesWithHistory({
+          projectId: pid,
+          label: "Add timeline asset",
+          kind: "timeline",
+          files: { [targetPath]: patchedContent },
+          readFile: async () => originalContent,
+          writeFile: writeProjectFile,
+          recordEdit: editHistory.recordEdit,
+        });
 
         setRefreshKey((k) => k + 1);
       } catch (error) {
@@ -2402,7 +2505,7 @@ export function StudioApp() {
         showToast(message);
       }
     },
-    [activeCompPath, showToast, timelineElements],
+    [activeCompPath, editHistory.recordEdit, showToast, timelineElements, writeProjectFile],
   );
 
   const handleTimelineFileDrop = useCallback(
@@ -2714,6 +2817,42 @@ export function StudioApp() {
         </div>
         {/* Right: toolbar buttons */}
         <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => void handleUndo()}
+            disabled={!editHistory.canUndo}
+            className={`h-7 w-7 flex items-center justify-center rounded-md border transition-colors ${
+              editHistory.canUndo
+                ? "border-neutral-700 text-neutral-300 hover:border-neutral-500 hover:bg-neutral-800"
+                : "border-neutral-900 text-neutral-700"
+            }`}
+            title={
+              editHistory.undoLabel
+                ? `Undo ${editHistory.undoLabel} (${getHistoryShortcutLabel("undo")})`
+                : `Undo (${getHistoryShortcutLabel("undo")})`
+            }
+            aria-label="Undo"
+          >
+            <RotateCcw size={14} />
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleRedo()}
+            disabled={!editHistory.canRedo}
+            className={`h-7 w-7 flex items-center justify-center rounded-md border transition-colors ${
+              editHistory.canRedo
+                ? "border-neutral-700 text-neutral-300 hover:border-neutral-500 hover:bg-neutral-800"
+                : "border-neutral-900 text-neutral-700"
+            }`}
+            title={
+              editHistory.redoLabel
+                ? `Redo ${editHistory.redoLabel} (${getHistoryShortcutLabel("redo")})`
+                : `Redo (${getHistoryShortcutLabel("redo")})`
+            }
+            aria-label="Redo"
+          >
+            <RotateCw size={14} />
+          </button>
           <a
             href={captureFrameHref}
             download={captureFrameFilename}
