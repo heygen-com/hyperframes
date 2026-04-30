@@ -36,7 +36,7 @@ Tailwind v4 is CSS-first:
     --font-display: "Inter", sans-serif;
   }
 
-  @utility text-balance-tight {
+  @utility headline-balance {
     text-wrap: balance;
     letter-spacing: 0;
   }
@@ -145,6 +145,4 @@ The validation path should show no missing-style flashes on frame 0. If styles a
 
 - Tailwind CSS official v4 installation, upgrade, and compatibility docs: https://tailwindcss.com/docs
 - Tailwind CSS v4 release notes: https://tailwindcss.com/blog/tailwindcss-v4
-- Community skill references reviewed for v4 gotchas and skill shape:
-  - https://skills.sh/tlq5l/tailwindcss-v4-skill/tailwindcss-v4
-  - https://agent-skills.md/skills/bout3fiddy/agents/tailwindcss
+- Community Tailwind skills were reviewed for v4 gotchas and skill shape, but this skill keeps the durable contract in-repo and HyperFrames-specific.
