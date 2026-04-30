@@ -84,6 +84,8 @@
           transform 0.15s,
           box-shadow 0.15s;
         background: #141414;
+        display: flex;
+        flex-direction: column;
       }
       .mood-card:hover {
         border-color: #333;
@@ -94,7 +96,8 @@
         border-color: #fff;
       }
       .mood-preview {
-        aspect-ratio: 16 / 9;
+        flex: 1;
+        min-height: 240px;
         overflow: hidden;
         position: relative;
         background: #0a0a0a;
