@@ -32,6 +32,7 @@ import {
 import { fetchRemoteTemplate } from "../templates/remote.js";
 import { trackInitTemplate } from "../telemetry/events.js";
 import { hasFFmpeg } from "../whisper/manager.js";
+import { VERSION } from "../version.js";
 
 interface VideoMeta {
   durationSeconds: number;
@@ -166,6 +167,51 @@ function getStaticTemplateDir(templateId: string): string {
 
 function getSharedTemplateDir(): string {
   return resolveAssetDir(["..", "templates", "_shared"], ["templates", "_shared"]);
+}
+
+function toPackageName(projectName: string): string {
+  const normalized = basename(projectName)
+    .trim()
+    .toLowerCase()
+    .replace(/^[._]+/, "")
+    .replace(/[^a-z0-9._~-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^[-.]+|[-.]+$/g, "");
+
+  return normalized || "hyperframes-project";
+}
+
+function getHyperframesPackageSpecifier(): string {
+  return VERSION === "0.0.0-dev" ? "hyperframes" : `hyperframes@${VERSION}`;
+}
+
+function hyperframesScript(command: string): string {
+  return `npx --yes ${getHyperframesPackageSpecifier()} ${command}`;
+}
+
+function writeDefaultPackageJson(destDir: string, projectName: string): void {
+  const packageJsonPath = resolve(destDir, "package.json");
+  if (existsSync(packageJsonPath)) return;
+
+  writeFileSync(
+    packageJsonPath,
+    `${JSON.stringify(
+      {
+        name: toPackageName(projectName),
+        private: true,
+        type: "module",
+        scripts: {
+          dev: hyperframesScript("preview"),
+          check: `${hyperframesScript("lint")} && ${hyperframesScript("validate")} && ${hyperframesScript("inspect")}`,
+          render: hyperframesScript("render"),
+          publish: hyperframesScript("publish"),
+        },
+      },
+      null,
+      2,
+    )}\n`,
+    "utf-8",
+  );
 }
 
 function patchVideoSrc(
@@ -345,6 +391,8 @@ async function scaffoldProject(
       await import("../utils/projectConfig.js");
     writeProjectConfig(destDir, DEFAULT_PROJECT_CONFIG);
   }
+
+  writeDefaultPackageJson(destDir, name);
 
   // Copy shared files (CLAUDE.md, AGENTS.md) for AI agent context
   const sharedDir = getSharedTemplateDir();
@@ -559,10 +607,13 @@ export default defineCommand({
       console.log(`     ${c.dim("More patterns: hyperframes.heygen.com/guides/prompting")}`);
       console.log();
       console.log(`  ${c.accent("4.")} Preview in the browser:`);
-      console.log(`     ${c.accent(`cd ${name}`)} && ${c.accent("npx hyperframes preview")}`);
+      console.log(`     ${c.accent(`cd ${name}`)} && ${c.accent("npm run dev")}`);
       console.log();
-      console.log(`  ${c.accent("5.")} Render to MP4 when ready:`);
-      console.log(`     ${c.accent(`cd ${name}`)} && ${c.accent("npx hyperframes render")}`);
+      console.log(`  ${c.accent("5.")} Check the composition:`);
+      console.log(`     ${c.accent(`cd ${name}`)} && ${c.accent("npm run check")}`);
+      console.log();
+      console.log(`  ${c.accent("6.")} Render to MP4 when ready:`);
+      console.log(`     ${c.accent(`cd ${name}`)} && ${c.accent("npm run render")}`);
       console.log();
       console.log(`  ${c.dim("Full docs: hyperframes.heygen.com")}`);
       return;

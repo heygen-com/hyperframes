@@ -23,9 +23,10 @@
 ## Commands
 
 ```bash
-npx hyperframes preview          # preview in browser (studio editor)
-npx hyperframes render       # render to MP4
-npx hyperframes lint         # validate compositions (errors + warnings)
+npm run dev          # preview in browser (studio editor)
+npm run check        # lint + validate + inspect
+npm run render       # render to MP4
+npm run publish      # publish and get a shareable link
 npx hyperframes lint --verbose  # include info-level findings
 npx hyperframes lint --json     # machine-readable output for CI
 npx hyperframes docs <topic> # reference docs in terminal
@@ -56,13 +57,13 @@ https://hyperframes.heygen.com/llms.txt
 
 ## Linting — ALWAYS RUN AFTER CHANGES
 
-After creating or editing any `.html` composition, **always** run the linter before considering the task complete:
+After creating or editing any `.html` composition, **always** run the full check before considering the task complete:
 
 ```bash
-npx hyperframes lint
+npm run check
 ```
 
-Fix all errors before presenting the result. Warnings are informational and usually safe to ignore.
+Fix all errors before presenting the result. Inspect warnings should be reviewed before rendering.
 
 ## Key Rules
 
