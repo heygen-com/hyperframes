@@ -90,6 +90,7 @@ window.__contrastAudit = async function (imgBase64, time) {
     if (parseFloat(cs.opacity) <= 0.01) continue;
     var rect = el.getBoundingClientRect();
     if (rect.width < 8 || rect.height < 8) continue;
+    if (rect.right <= 0 || rect.bottom <= 0 || rect.left >= w || rect.top >= h) continue;
 
     var fg = parseColor(cs.color);
     if (fg[3] <= 0.01) continue;
@@ -103,6 +104,7 @@ window.__contrastAudit = async function (imgBase64, time) {
     var y0 = Math.max(0, Math.floor(rect.y) - 4);
     var y1 = Math.min(h - 1, Math.ceil(rect.y + rect.height) + 4);
     var sample = function (sx, sy) {
+      if (sx < 0 || sx >= w || sy < 0 || sy >= h) return;
       var idx = (sy * w + sx) * 4;
       rr.push(px[idx]);
       gg.push(px[idx + 1]);

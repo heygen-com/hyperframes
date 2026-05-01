@@ -4,6 +4,7 @@ import { existsSync, mkdtempSync, readFileSync, mkdirSync, rmSync } from "node:f
 import { tmpdir } from "node:os";
 import { resolve, join, relative, isAbsolute } from "node:path";
 import { resolveProject } from "../utils/project.js";
+import { resolveCompositionViewportFromHtml } from "../utils/compositionViewport.js";
 import { c } from "../ui/colors.js";
 import type { Example } from "./_examples.js";
 
@@ -168,7 +169,7 @@ async function captureSnapshots(
 
     try {
       const page = await chromeBrowser.newPage();
-      await page.setViewport({ width: 1920, height: 1080 });
+      await page.setViewport(resolveCompositionViewportFromHtml(html));
 
       await page.goto(`http://127.0.0.1:${port}/`, {
         waitUntil: "domcontentloaded",

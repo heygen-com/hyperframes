@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { resolve, join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { resolveProject } from "../utils/project.js";
+import { resolveCompositionViewportFromHtml } from "../utils/compositionViewport.js";
 import { c } from "../ui/colors.js";
 import { withMeta } from "../utils/updateCheck.js";
 
@@ -172,7 +173,7 @@ async function validateInBrowser(
     });
 
     const page = await chromeBrowser.newPage();
-    await page.setViewport({ width: 1920, height: 1080 });
+    await page.setViewport(resolveCompositionViewportFromHtml(html));
 
     page.on("console", (msg) => {
       const type = msg.type();

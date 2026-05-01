@@ -27,6 +27,70 @@ const SCENE_BOUNDARY_EPSILON_SECONDS = 0.05;
 
 // ── GSAP parsing utilities ─────────────────────────────────────────────────
 
+function stripJsComments(source: string): string {
+  let out = "";
+  let i = 0;
+  let quote: "'" | '"' | "`" | null = null;
+  let escaped = false;
+
+  while (i < source.length) {
+    const ch = source[i] ?? "";
+    const next = source[i + 1] ?? "";
+
+    if (quote) {
+      out += ch;
+      if (escaped) {
+        escaped = false;
+      } else if (ch === "\\") {
+        escaped = true;
+      } else if (ch === quote) {
+        quote = null;
+      }
+      i += 1;
+      continue;
+    }
+
+    if (ch === "'" || ch === '"' || ch === "`") {
+      quote = ch;
+      out += ch;
+      i += 1;
+      continue;
+    }
+
+    if (ch === "/" && next === "/") {
+      out += "  ";
+      i += 2;
+      while (i < source.length && source[i] !== "\n" && source[i] !== "\r") {
+        out += " ";
+        i += 1;
+      }
+      continue;
+    }
+
+    if (ch === "/" && next === "*") {
+      out += "  ";
+      i += 2;
+      while (i < source.length) {
+        const blockCh = source[i] ?? "";
+        const blockNext = source[i + 1] ?? "";
+        if (blockCh === "*" && blockNext === "/") {
+          out += "  ";
+          i += 2;
+          break;
+        }
+        out += blockCh === "\n" || blockCh === "\r" ? blockCh : " ";
+        i += 1;
+      }
+      continue;
+    }
+
+    out += ch;
+    i += 1;
+  }
+
+  return out;
+}
+
 function countClassUsage(tags: OpenTag[]): Map<string, number> {
   const counts = new Map<string, number>();
   for (const tag of tags) {
@@ -685,7 +749,7 @@ export const gsapRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
   ({ scripts }) => {
     const findings: HyperframeLintFinding[] = [];
     for (const script of scripts) {
-      const content = script.content;
+      const content = stripJsComments(script.content);
       // Match repeat: -1 in GSAP tweens or timeline configs
       const pattern = /repeat\s*:\s*-1(?!\d)/g;
       let match: RegExpExecArray | null;

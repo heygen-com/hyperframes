@@ -21,7 +21,31 @@ interface CompositionInfo {
   source?: string;
 }
 
-function parseCompositions(html: string, baseDir: string): CompositionInfo[] {
+const NON_RENDERED_TAGS = new Set(["script", "style", "link", "meta", "template"]);
+
+function countRenderableDescendants(root: Element): number {
+  return Array.from(root.querySelectorAll("*")).filter(
+    (el) => !NON_RENDERED_TAGS.has(el.tagName.toLowerCase()),
+  ).length;
+}
+
+function estimateDurationFromScripts(root: ParentNode): number {
+  let duration = 0;
+  for (const script of Array.from(root.querySelectorAll("script"))) {
+    const content = script.textContent ?? "";
+    const durationPattern = /\bduration\s*:\s*(\d+(?:\.\d+)?)/g;
+    let match: RegExpExecArray | null;
+    while ((match = durationPattern.exec(content)) !== null) {
+      const value = Number.parseFloat(match[1] ?? "");
+      if (Number.isFinite(value) && value > duration) {
+        duration = value;
+      }
+    }
+  }
+  return duration;
+}
+
+export function parseCompositions(html: string, baseDir: string): CompositionInfo[] {
   const parser = new DOMParser();
   const doc = parser.parseFromString(html, "text/html");
 
@@ -81,7 +105,7 @@ function parseCompositions(html: string, baseDir: string): CompositionInfo[] {
   return compositions;
 }
 
-function parseSubComposition(
+export function parseSubComposition(
   html: string,
   fallbackId: string,
   fallbackWidth: number,
@@ -89,20 +113,23 @@ function parseSubComposition(
 ): CompositionInfo {
   const parser = new DOMParser();
   const doc = parser.parseFromString(html, "text/html");
+  const template = doc.querySelector("template");
+  const searchDocument = template?.content ?? doc;
 
   // Sub-compositions may use <template> wrappers or direct divs
-  const compDiv =
-    doc.querySelector("[data-composition-id]") ??
-    doc.querySelector("template [data-composition-id]");
+  const compDiv = searchDocument.querySelector("[data-composition-id]");
 
   const id = compDiv?.getAttribute("data-composition-id") ?? fallbackId;
   const width = parseInt(compDiv?.getAttribute("data-width") ?? String(fallbackWidth), 10);
   const height = parseInt(compDiv?.getAttribute("data-height") ?? String(fallbackHeight), 10);
 
   // Count timed elements inside the sub-composition
-  const searchRoot = compDiv ?? doc;
+  const searchRoot = compDiv ?? searchDocument;
   const timedChildren = searchRoot.querySelectorAll("[data-start], .clip, .caption-group");
   let elementCount = timedChildren.length;
+  if (elementCount === 0 && compDiv) {
+    elementCount = countRenderableDescendants(compDiv);
+  }
 
   // Parse duration from the composition's own data-duration attribute
   let duration = 0;
@@ -132,6 +159,9 @@ function parseSubComposition(
         duration = end;
       }
     });
+  }
+  if (duration <= 0) {
+    duration = estimateDurationFromScripts(searchRoot);
   }
 
   return { id, duration, width, height, elementCount };

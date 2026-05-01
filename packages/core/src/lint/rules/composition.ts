@@ -303,8 +303,9 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
   },
 
   // root_composition_missing_data_start
-  ({ rootTag }) => {
+  ({ rootTag, options }) => {
     const findings: HyperframeLintFinding[] = [];
+    if (options.isSubComposition) return findings;
     if (!rootTag) return findings;
     const compId = readAttr(rootTag.raw, "data-composition-id");
     if (!compId) return findings;

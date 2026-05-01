@@ -76,6 +76,11 @@ function injectInterceptor(html: string): string {
   if (sanitized.includes("</head>")) {
     return sanitized.replace("</head>", `${tag}\n</head>`);
   }
+  const htmlOpenMatch = sanitized.match(/<html\b[^>]*>/i);
+  if (htmlOpenMatch?.index != null) {
+    const insertPos = htmlOpenMatch.index + htmlOpenMatch[0].length;
+    return `${sanitized.slice(0, insertPos)}<head>${tag}</head>${sanitized.slice(insertPos)}`;
+  }
   const doctypeIdx = sanitized.toLowerCase().indexOf("<!doctype");
   if (doctypeIdx >= 0) {
     const insertPos = sanitized.indexOf(">", doctypeIdx) + 1;
@@ -299,8 +304,7 @@ function coalesceHeadStylesAndBodyScripts(document: Document): void {
   }
 
   const bodyInlineScripts = [...document.querySelectorAll("body script")].filter((el) => {
-    const src = (el.getAttribute("src") || "").trim();
-    if (src) return false;
+    if (el.hasAttribute(RUNTIME_BOOTSTRAP_ATTR) || el.hasAttribute("src")) return false;
     const type = (el.getAttribute("type") || "").trim().toLowerCase();
     return !type || type === "text/javascript" || type === "application/javascript";
   });

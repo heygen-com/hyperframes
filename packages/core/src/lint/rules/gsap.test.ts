@@ -582,6 +582,27 @@ describe("GSAP rules", () => {
     expect(finding).toBeUndefined();
   });
 
+  it("does not error on repeat: -1 inside JavaScript comments", () => {
+    const html = `
+<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080"></div>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    // avoid repeat:-1 anywhere in user code
+    /*
+      This rule should still allow comments mentioning repeat: -1.
+    */
+    tl.to("#spinner", { rotation: 360, duration: 0.8, repeat: 4, ease: "none" }, 0);
+    window.__timelines["main"] = tl;
+  </script>
+</body></html>`;
+    const result = lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "gsap_infinite_repeat");
+    expect(finding).toBeUndefined();
+  });
+
   it("does NOT report overlapping_gsap_tweens when an object-target tween is interleaved (regression)", () => {
     // Regression: a non-DOM-targeting tween like `tl.to({ _: 0 }, …)` (used to
     // anchor timeline duration) was matched by the regex but skipped by the

@@ -7,7 +7,7 @@
  * Guarantees every timed element gets:
  * - id on media elements when missing
  * - data-end (computed from data-start + data-duration when possible)
- * - data-has-audio="true" on <video> elements
+ * - data-has-audio on <video> elements (false for muted visual-only videos)
  *
  * For elements without data-duration (e.g. videos relying on source duration),
  * this compiler identifies them as "unresolved" so the caller can provide
@@ -101,9 +101,11 @@ function compileTag(
     }
   }
 
-  // 2. Add data-has-audio="true" to <video> elements
+  // 2. Add data-has-audio to <video> elements. Muted videos are visual-only by
+  // contract; audible media should be represented by either an unmuted video
+  // with data-has-audio="true" or a separate <audio> element.
   if (isVideo && !hasAttr(result, "data-has-audio")) {
-    result = injectAttr(result, "data-has-audio", "true");
+    result = injectAttr(result, "data-has-audio", hasAttr(result, "muted") ? "false" : "true");
   }
 
   return { tag: result, unresolved };

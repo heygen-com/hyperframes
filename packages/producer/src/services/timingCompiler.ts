@@ -42,6 +42,10 @@ function hasAttr(tag: string, attr: string): boolean {
   return new RegExp(`${attr}=["']`).test(tag);
 }
 
+function hasAttrName(tag: string, attr: string): boolean {
+  return new RegExp(`\\s${attr}(?:\\s|=|>|/)`).test(tag);
+}
+
 function injectAttr(tag: string, attr: string, value: string): string {
   return tag.replace(/>$/, ` ${attr}="${value}">`);
 }
@@ -74,7 +78,7 @@ function compileTag(
   }
 
   if (isVideo && !hasAttr(result, "data-has-audio")) {
-    result = injectAttr(result, "data-has-audio", "true");
+    result = injectAttr(result, "data-has-audio", hasAttrName(result, "muted") ? "false" : "true");
   }
 
   return { tag: result, unresolved };

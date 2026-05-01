@@ -630,4 +630,18 @@ describe("composition rules", () => {
       expect(gsapFinding).toBeDefined();
     });
   });
+
+  describe("root_composition_missing_data_start", () => {
+    it("does not warn for template-wrapped sub-composition files", () => {
+      const html = `
+<template id="foo-template">
+  <div data-composition-id="foo" data-width="1920" data-height="1080">
+    <div class="clip" data-start="0" data-duration="1"></div>
+  </div>
+</template>`;
+      const result = lintHyperframeHtml(html, { isSubComposition: true });
+      const finding = result.findings.find((f) => f.code === "root_composition_missing_data_start");
+      expect(finding).toBeUndefined();
+    });
+  });
 });

@@ -17,6 +17,31 @@ function makeTempProject(files: Record<string, string>): string {
 }
 
 describe("bundleToSingleHtml", () => {
+  it("does not merge author scripts into the runtime bootstrap placeholder", async () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html>
+<html><body>
+  <div data-composition-id="main" data-width="320" data-height="180">
+    <canvas id="scene"></canvas>
+  </div>
+  <script>
+    const canvas = document.getElementById("scene");
+    window.__timelines = window.__timelines || {};
+    window.__timelines.main = { duration: () => 1, seek() {}, pause() {} };
+  </script>
+</body></html>`,
+    });
+
+    const bundled = await bundleToSingleHtml(dir);
+    const runtimeBlock = bundled.match(
+      /<script\b[^>]*data-hyperframes-preview-runtime[^>]*>[\s\S]*?<\/script>/i,
+    )?.[0];
+
+    expect(runtimeBlock).toBeDefined();
+    expect(runtimeBlock).not.toContain("getElementById");
+    expect(bundled).toContain('document.getElementById("scene")');
+  });
+
   it("hoists external CDN scripts from sub-compositions into the bundle", async () => {
     const dir = makeTempProject({
       "index.html": `<!doctype html>

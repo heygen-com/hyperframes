@@ -25,6 +25,14 @@ describe("compileTimingAttrs", () => {
     expect(unresolved).toHaveLength(0);
   });
 
+  it("marks muted videos as visual-only audio sources", () => {
+    const html = '<video id="v1" src="a.mp4" data-start="0" data-duration="3" muted playsinline>';
+    const { html: compiled } = compileTimingAttrs(html);
+
+    expect(compiled).toContain('data-has-audio="false"');
+    expect(compiled).not.toContain('data-has-audio="true"');
+  });
+
   it("marks video as unresolved when data-duration and data-end are missing", () => {
     const html = '<video id="v1" src="a.mp4" data-start="1">';
     const { unresolved } = compileTimingAttrs(html);
