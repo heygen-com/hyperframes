@@ -4,6 +4,7 @@ export {
   injectDurations,
   extractResolvedMedia,
   clampDurations,
+  shouldClampMediaDuration,
   type UnresolvedElement,
   type ResolvedDuration,
   type ResolvedMediaElement,

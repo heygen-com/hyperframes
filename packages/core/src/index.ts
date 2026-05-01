@@ -110,6 +110,7 @@ export {
   injectDurations,
   extractResolvedMedia,
   clampDurations,
+  shouldClampMediaDuration,
 } from "./compiler/timingCompiler";
 
 // Lint

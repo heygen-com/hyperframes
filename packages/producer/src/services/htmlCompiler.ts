@@ -17,6 +17,7 @@ import {
   injectDurations,
   extractResolvedMedia,
   clampDurations,
+  shouldClampMediaDuration,
   type ResolvedDuration,
   type UnresolvedElement,
   rewriteAssetPaths,
@@ -236,7 +237,7 @@ async function compileHtmlFile(
   );
   const clampList: ResolvedDuration[] = [];
   for (const r of clampResults) {
-    if (r.maxDuration > 0 && r.duration > r.maxDuration) {
+    if (r.maxDuration > 0 && shouldClampMediaDuration(r.duration, r.maxDuration)) {
       clampList.push({ id: r.id, duration: r.maxDuration });
     }
   }

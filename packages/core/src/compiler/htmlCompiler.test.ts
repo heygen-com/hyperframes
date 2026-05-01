@@ -20,4 +20,14 @@ describe("compileHtml", () => {
     expect(compiled).toContain('data-duration="3.125"');
     expect(compiled).toContain('data-end="3.125"');
   });
+
+  it("preserves explicit media durations when probe precision differs slightly", async () => {
+    const html =
+      '<audio id="click" src="click.mp3" data-start="0" data-duration="1.044898" data-end="1.044898">';
+
+    const compiled = await compileHtml(html, "/project", async () => 1);
+
+    expect(compiled).toContain('data-duration="1.044898"');
+    expect(compiled).toContain('data-end="1.044898"');
+  });
 });

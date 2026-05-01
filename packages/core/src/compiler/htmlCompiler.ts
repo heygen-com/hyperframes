@@ -4,6 +4,7 @@ import {
   injectDurations,
   extractResolvedMedia,
   clampDurations,
+  shouldClampMediaDuration,
   type ResolvedDuration,
 } from "./timingCompiler";
 
@@ -76,7 +77,7 @@ export async function compileHtml(
     if (fileDuration <= 0) continue;
 
     const maxDuration = fileDuration - el.mediaStart;
-    if (maxDuration > 0 && el.duration > maxDuration) {
+    if (maxDuration > 0 && shouldClampMediaDuration(el.duration, maxDuration)) {
       clampList.push({ id: el.id, duration: maxDuration });
     }
   }

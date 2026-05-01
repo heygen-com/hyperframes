@@ -48,6 +48,13 @@ export interface CompilationResult {
   unresolved: UnresolvedElement[];
 }
 
+// ffprobe precision can differ slightly across local and CI media stacks.
+const MEDIA_DURATION_CLAMP_EPSILON_SECONDS = 0.05;
+
+export function shouldClampMediaDuration(declaredDuration: number, maxDuration: number): boolean {
+  return declaredDuration > maxDuration + MEDIA_DURATION_CLAMP_EPSILON_SECONDS;
+}
+
 // ── Helpers ──────────────────────────────────────────────────────────────
 
 function getAttr(tag: string, attr: string): string | null {
