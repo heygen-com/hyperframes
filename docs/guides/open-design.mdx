@@ -1,0 +1,175 @@
+---
+title: Open Design
+description: "Create HyperFrames video drafts in Open Design — the open-source, BYOK Claude-Design alternative — then refine in any AI coding agent."
+---
+
+[Open Design](https://github.com/nexu-io/open-design) is an open-source, local-first alternative to Claude Design. It runs on your laptop with `pnpm tools-dev`, deploys the web layer to Vercel, and delegates to whichever coding-agent CLI you already have on your `PATH` (Claude Code, Codex, Cursor Agent, Gemini CLI, OpenCode, Qwen, Copilot, Hermes, Kimi, Pi) — or to any OpenAI-compatible BYOK endpoint.
+
+Open Design produces a **valid first draft** of a HyperFrames composition — palette, scene content, GSAP entrance tweens, mid-scene activity, and shader transitions. You then download the project and refine in any AI coding agent with linting and live preview.
+
+## Get started
+
+<Steps>
+  <Step title="Download the instruction file">
+    Open [`open-design-hyperframes.md`](https://github.com/heygen-com/hyperframes/blob/main/docs/guides/open-design-hyperframes.md) on GitHub and click the download button (↓) to save it.
+  </Step>
+  <Step title="Run Open Design locally">
+    ```bash
+    git clone https://github.com/nexu-io/open-design.git
+    cd open-design
+    pnpm install
+    pnpm tools-dev run web
+    # open the web URL printed by tools-dev
+    ```
+  </Step>
+  <Step title="Drop the file into a skill, or attach it to chat">
+    **Recommended:** copy `open-design-hyperframes.md` to `skills/hyperframes-handoff/SKILL.md` inside the Open Design repo. The daemon auto-discovers it on the next request and exposes it as a skill in the picker. **Or:** start a new chat and attach the file directly — Open Design reads attachments natively.
+  </Step>
+  <Step title="Describe your video">
+    Pick the `hyperframes-handoff` skill (or your active prototype skill), pick a design system or visual direction, and type the brief. Include screenshots, brand assets, or a palette if you have them.
+  </Step>
+  <Step title="Save the project to disk">
+    Open Design writes `index.html`, `preview.html`, `README.md`, and a `DESIGN.md` snapshot into `.od/projects/<id>/`. Click **Save to disk** or download as a project ZIP.
+  </Step>
+  <Step title="Refine in any AI coding agent">
+    The Open Design project folder is already a real on-disk working directory. Hand it off to Claude Code, Cursor, Codex, or any agent with terminal access:
+    ```bash
+    cd .od/projects/<id>
+    npx skills add heygen-com/hyperframes   # install skills (one-time)
+    npx hyperframes lint                     # should pass with zero errors
+    npx hyperframes preview                  # open the studio
+    ```
+  </Step>
+</Steps>
+
+<Tip>
+  **Drop into `skills/`, don't paste into chat.** Open Design's daemon reads `SKILL.md` files at request time and injects the side files (templates, references) automatically. A pasted URL or chat attachment works, but the skill path gives you the full pre-flight pipeline (template injection + 5-dimensional self-critique gate).
+</Tip>
+
+## Which setup to use
+
+| Surface                                | Recommended setup                                                                                                                                                            |
+| -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Open Design (open-source)              | Drop [`open-design-hyperframes.md`](https://github.com/heygen-com/hyperframes/blob/main/docs/guides/open-design-hyperframes.md) into `skills/hyperframes-handoff/SKILL.md`   |
+| Claude Code                            | `npx skills add heygen-com/hyperframes`, then use `/hyperframes`                                                                                                             |
+| Cursor / Codex / Gemini CLI            | `npx skills add heygen-com/hyperframes`                                                                                                                                       |
+| Claude Design (closed-source)          | Attach [`claude-design-hyperframes.md`](https://github.com/heygen-com/hyperframes/blob/main/docs/guides/claude-design-hyperframes.md) to your chat                          |
+
+## How it works
+
+The instruction file gives Open Design **pre-valid HTML skeletons** — the structural rules (data attributes, timeline registration, scene visibility, preview token forwarding) are already embedded. Open Design fills in the creative work:
+
+1. **Palette + typography** — driven by the active `DESIGN.md` (Open Design ships 72 systems out of the box, plus 5 deterministic visual directions when no brand is named) bound onto `:root`
+2. **Scene content** — text, images, layout inside `.scene-content` wrappers
+3. **Animations** — GSAP entrance tweens and mid-scene activity
+4. **Transitions** — hard cuts for most scenes, shader transitions at 2-3 key moments
+
+Open Design's [5-dimensional self-critique](https://github.com/nexu-io/open-design/blob/main/apps/web/src/prompts/discovery.ts) runs before emission, so the artifact arrives lint-clean and your coding agent can start refining immediately without structural fixes.
+
+## Example prompts
+
+<CardGroup cols={1}>
+  <Card title="Feature announcement">
+    ```text
+    Use the hyperframes-handoff skill. I just shipped dark mode for my app.
+    Make me a 15-second Instagram reel announcing it.
+
+    - App name: Taskflow
+    - Primary color: #6C5CE7
+    - The vibe is clean, minimal, dark
+    - Key stat: "47% of users requested this"
+    ```
+  </Card>
+  <Card title="Founder pitch (BYOK with your own CLI)">
+    ```text
+    Use the hyperframes-handoff skill on Codex CLI. 25-second LinkedIn video.
+
+    Problem: Sales teams waste 3 hours/day on manual CRM updates.
+    Solution: AutoCRM — AI that logs every call, email, and meeting.
+    Traction: 200+ teams, $1.2M ARR, 18% MoM growth.
+    CTA: autocrmhq.com
+
+    Use the Linear design system. Professional but not corporate.
+    ```
+  </Card>
+  <Card title="Brand-driven (use one of the 72 design systems)">
+    ```text
+    Use the hyperframes-handoff skill. Design system: Stripe. 10-second reel.
+    One big number: "$4.2 billion processed in Q1 2026"
+
+    Dark background, the number animates up from zero. Subtle, confident.
+    End with logo placeholder and "stripe.com"
+    ```
+  </Card>
+  <Card title="Sparse brief (let it ask)">
+    ```text
+    Use the hyperframes-handoff skill. 30-second launch video for Orbit.
+    ```
+
+    Open Design's `RULE 1` always opens with a `<question-form>` before emitting code, so a sparse brief turns into one short question form (surface · audience · tone · brand · scale) instead of an AI-freestyle render.
+  </Card>
+</CardGroup>
+
+## What to include in your prompt
+
+Open Design reads inputs in this order of reliability: **active DESIGN.md > attachments > pasted content > web research > URLs**.
+
+| Input type | What it gives Open Design |
+| --- | --- |
+| Active design system (72 shipped, switchable from picker) | Full 9-section spec (color, typography, spacing, layout, components, motion, voice, brand, anti-patterns) — strongest source |
+| Screenshots / PDFs / brand guides | Palette, typography, UI patterns, tone — read by the agent natively |
+| Pasted hex codes, typefaces, copy | Authoritative for what they cover |
+| Brand name (well-known) | Open Design can `WebFetch` blogs, press, Wikipedia |
+| SPA URL (React/Vue homepage) | Returns near-empty shell — pivot to blog/press instead |
+
+The more specific your prompt, the better the output. Pick a design system or visual direction up front, then describe content.
+
+## Why use Open Design vs. Claude Design
+
+| | Claude Design | **Open Design** |
+| --- | --- | --- |
+| License | Closed | Apache-2.0 |
+| Cost | Pro / Max / Team | BYOK (free with your own CLI / API key) |
+| Form factor | Web (claude.ai) only | Web app + local daemon (or deploy to Vercel) |
+| Agent runtime | Anthropic only (Opus 4.7) | 10 CLI adapters + OpenAI-compatible BYOK proxy |
+| Skills | Proprietary | 31 file-based `SKILL.md` bundles, droppable |
+| Design systems | Proprietary | 72 shipped `DESIGN.md` systems |
+| Filesystem-grade workspace | ❌ | ✅ Real `cwd`, real `Read` / `Write` / `Bash` / `WebFetch` |
+
+If you want the Claude Design loop without lock-in, Open Design is the same artifact-first mental model — open, local, BYOK.
+
+## Known limitations
+
+- **Render still happens locally** — Open Design produces the HTML; `npx hyperframes render` and HDR encoding still need FFmpeg + Node 22+ on your machine.
+- **In-pane preview is sandboxed iframe** — full browser playback is reliable; for frame-accurate scrubbing use `npx hyperframes preview` after handoff.
+- **Shader passthrough requires WebGL** — same as the Claude Design path; Open Design's iframe sandbox supports it.
+- **Skill pre-flight is daemon-side** — if you bypass the skill picker and paste raw HTML into chat, you lose the side-file injection and 5-dim critique gate. Use the skill.
+
+## The handoff to your coding agent
+
+Open Design's project folder is the agent's `cwd`. There's no "export then re-import" step — open Claude Code, Cursor, Codex, or any AI coding agent against the same directory:
+
+```bash
+cd .od/projects/<your-project-id>
+npx skills add heygen-com/hyperframes   # one-time setup
+npx hyperframes lint                     # verify structure
+npx hyperframes preview                  # open the studio
+```
+
+Then iterate the same way as the Claude Design path:
+
+- "Make scene 3's entrance snappier"
+- "Add a counter animation to the stat in scene 5"
+- "Tighten the pacing — scenes 4 and 6 feel too long"
+- "Change the shader on transition 2 to glitch"
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Claude Design Guide" icon="message" href="/guides/claude-design">
+    The closed-source flavor of the same workflow — useful when you don't have a CLI on your laptop.
+  </Card>
+  <Card title="Prompt Guide" icon="message" href="/guides/prompting">
+    More prompt patterns for HyperFrames across Claude Code, Claude Design, Open Design, and other agents.
+  </Card>
+</CardGroup>

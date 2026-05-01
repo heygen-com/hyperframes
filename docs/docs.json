@@ -71,6 +71,7 @@
             "pages": [
               "guides/website-to-video",
               "guides/claude-design",
+              "guides/open-design",
               "guides/prompting",
               "guides/hyperframes-vs-remotion",
               "guides/gsap-animation",
