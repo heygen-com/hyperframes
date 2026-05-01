@@ -71,7 +71,7 @@ describe("initSandboxRuntimeModular", () => {
     window.cancelAnimationFrame = originalCancelAnimationFrame;
   });
 
-  it("keeps a composition host visible for its authored window after the child timeline settles", () => {
+  it("uses the shorter live child timeline when the authored window is longer", () => {
     const root = document.createElement("div");
     root.setAttribute("data-composition-id", "main");
     root.setAttribute("data-root", "true");
@@ -102,7 +102,7 @@ describe("initSandboxRuntimeModular", () => {
 
     player?.renderSeek(9);
 
-    expect(child.style.visibility).toBe("visible");
+    expect(child.style.visibility).toBe("hidden");
   });
 
   it("uses the shorter authored host window when the child timeline is longer", () => {

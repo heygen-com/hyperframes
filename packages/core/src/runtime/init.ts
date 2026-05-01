@@ -1336,10 +1336,11 @@ export function initSandboxRuntimeModular(): void {
           }
         }
 
-        // Composition hosts stay visible for their authored parent clip window.
-        // The child timeline controls animated state inside that window; it may
-        // intentionally settle before the host clip ends.
-        if ((duration == null || duration <= 0) && liveDuration != null) {
+        // Composition hosts must respect both the authored parent clip window
+        // and the child composition's own live timeline duration.
+        if (duration != null && duration > 0 && liveDuration != null) {
+          duration = Math.min(duration, liveDuration);
+        } else if ((duration == null || duration <= 0) && liveDuration != null) {
           duration = liveDuration;
         }
       }
