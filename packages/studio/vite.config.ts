@@ -9,6 +9,7 @@ import {
   realpathSync,
 } from "node:fs";
 import { join, resolve } from "node:path";
+import { createHash } from "node:crypto";
 import type {
   StudioApiAdapter,
   ResolvedProject,
@@ -17,6 +18,7 @@ import type {
 import { createRetryingModuleLoader, ensureProducerDist } from "./vite.producer";
 import { readNodeRequestBody } from "./vite.request-body.js";
 import { seekThumbnailPreview } from "./vite.thumbnail";
+import { createStudioManualEditsRenderBodyScript } from "./src/components/editor/manualEditsRenderScript";
 
 // ── Shared Puppeteer browser ─────────────────────────────────────────────────
 
@@ -48,6 +50,7 @@ async function getSharedBrowser(): Promise<import("puppeteer-core").Browser | nu
 // In-flight thumbnail dedup
 const _thumbnailInflight = new Map<string, Promise<Buffer>>();
 const THUMBNAIL_CACHE_VERSION = "v3";
+const STUDIO_MANUAL_EDITS_PATH = ".hyperframes/studio-manual-edits.json";
 
 interface ScreenshotClip {
   x: number;
@@ -56,24 +59,254 @@ interface ScreenshotClip {
   height: number;
 }
 
+function readStudioManualEditManifestContent(projectDir: string): string {
+  const manifestPath = join(projectDir, STUDIO_MANUAL_EDITS_PATH);
+  if (!existsSync(manifestPath)) return "";
+  try {
+    return readFileSync(manifestPath, "utf-8");
+  } catch {
+    return "";
+  }
+}
+
+async function applyStudioManualEditsToThumbnailPage(
+  page: import("puppeteer-core").Page,
+  manifestContent: string,
+  activeCompositionPath: string,
+): Promise<void> {
+  if (!manifestContent.trim()) return;
+
+  await page.evaluate(
+    (content: string, compositionPath: string) => {
+      const OFFSET_X_PROP = "--hf-studio-offset-x";
+      const OFFSET_Y_PROP = "--hf-studio-offset-y";
+      const WIDTH_PROP = "--hf-studio-width";
+      const HEIGHT_PROP = "--hf-studio-height";
+      const ROTATION_PROP = "--hf-studio-rotation";
+
+      const finiteNumber = (value: unknown) =>
+        typeof value === "number" && Number.isFinite(value) ? value : null;
+
+      const sourceFileMatches = (sourceFile: string) =>
+        !compositionPath || compositionPath === "index.html" || compositionPath === sourceFile;
+
+      const findClosestByAttribute = (
+        element: HTMLElement,
+        attributeNames: string[],
+      ): HTMLElement | null => {
+        let current: HTMLElement | null = element;
+        while (current) {
+          const candidate = current;
+          if (attributeNames.some((attribute) => candidate.hasAttribute(attribute))) {
+            return candidate;
+          }
+          current = current.parentElement;
+        }
+        return null;
+      };
+
+      const sourceFileForElement = (element: HTMLElement): string => {
+        const ownerRoot = findClosestByAttribute(element, ["data-composition-id"]);
+        return (
+          ownerRoot?.getAttribute("data-composition-file") ??
+          ownerRoot?.getAttribute("data-composition-src") ??
+          compositionPath ??
+          "index.html"
+        );
+      };
+
+      const elementMatchesSourceFile = (element: HTMLElement, sourceFile: string) =>
+        sourceFileForElement(element) === sourceFile;
+
+      const querySelectorCandidates = (selector: string): HTMLElement[] => {
+        const className = selector.match(/^\.([A-Za-z0-9_-]+)$/)?.[1];
+        if (className) {
+          return Array.from(document.getElementsByTagName("*")).filter(
+            (element): element is HTMLElement =>
+              element instanceof HTMLElement && element.classList.contains(className),
+          );
+        }
+
+        if (/^[A-Za-z][A-Za-z0-9-]*$/.test(selector)) {
+          return Array.from(document.getElementsByTagName(selector)).filter(
+            (element): element is HTMLElement => element instanceof HTMLElement,
+          );
+        }
+
+        return Array.from(document.querySelectorAll(selector)).filter(
+          (element): element is HTMLElement => element instanceof HTMLElement,
+        );
+      };
+
+      const resolveTarget = (edit: Record<string, unknown>): HTMLElement | null => {
+        const target = edit.target;
+        if (!target || typeof target !== "object") return null;
+        const targetRecord = target as Record<string, unknown>;
+        const sourceFile =
+          typeof targetRecord.sourceFile === "string" ? targetRecord.sourceFile : "";
+        if (!sourceFile || !sourceFileMatches(sourceFile)) return null;
+
+        const id = typeof targetRecord.id === "string" ? targetRecord.id : "";
+        if (id) {
+          const byId = document.getElementById(id);
+          if (byId instanceof HTMLElement && elementMatchesSourceFile(byId, sourceFile)) {
+            return byId;
+          }
+
+          const matchesById = [
+            document.documentElement,
+            ...Array.from(document.getElementsByTagName("*")),
+          ].filter(
+            (element): element is HTMLElement =>
+              element instanceof HTMLElement &&
+              element.id === id &&
+              elementMatchesSourceFile(element, sourceFile),
+          );
+          if (matchesById[0]) return matchesById[0];
+        }
+
+        const selector = typeof targetRecord.selector === "string" ? targetRecord.selector : "";
+        if (!selector) return null;
+
+        try {
+          const matches = querySelectorCandidates(selector).filter((element) =>
+            elementMatchesSourceFile(element, sourceFile),
+          );
+          const selectorIndex = finiteNumber(targetRecord.selectorIndex) ?? 0;
+          return matches[Math.max(0, Math.floor(selectorIndex))] ?? null;
+        } catch {
+          return null;
+        }
+      };
+
+      const roundRotationAngle = (angle: number) => Math.round(angle * 10) / 10;
+      const isSimpleRotateAngle = (value: string) =>
+        /^-?(?:\d+(?:\.\d+)?|\.\d+)(?:deg|rad|turn|grad)$/.test(value.trim());
+      const composeRotation = (element: HTMLElement, rotationValue: string) => {
+        const original = element.getAttribute("data-hf-studio-original-rotate")?.trim();
+        if (!original || original === "none" || !isSimpleRotateAngle(original)) {
+          return rotationValue;
+        }
+        return `calc(${original} + ${rotationValue})`;
+      };
+
+      const applyPathOffset = (element: HTMLElement, edit: Record<string, unknown>) => {
+        const x = finiteNumber(edit.x);
+        const y = finiteNumber(edit.y);
+        if (x == null || y == null) return;
+        element.setAttribute("data-hf-studio-path-offset", "true");
+        element.style.setProperty(OFFSET_X_PROP, `${Math.round(x)}px`);
+        element.style.setProperty(OFFSET_Y_PROP, `${Math.round(y)}px`);
+        element.style.setProperty(
+          "translate",
+          `var(${OFFSET_X_PROP}, 0px) var(${OFFSET_Y_PROP}, 0px)`,
+        );
+      };
+
+      const readParentFlexBasisPixels = (
+        element: HTMLElement,
+        size: { width: number; height: number },
+      ) => {
+        const parent = element.parentElement;
+        if (!parent) return null;
+        const styles = getComputedStyle(parent);
+        if (styles.display !== "flex" && styles.display !== "inline-flex") return null;
+        return Math.round(
+          Math.max(1, styles.flexDirection.startsWith("column") ? size.height : size.width),
+        );
+      };
+
+      const applyBoxSize = (element: HTMLElement, edit: Record<string, unknown>) => {
+        const width = finiteNumber(edit.width);
+        const height = finiteNumber(edit.height);
+        if (width == null || height == null || width <= 0 || height <= 0) return;
+        const rounded = {
+          width: Math.round(Math.max(1, width)),
+          height: Math.round(Math.max(1, height)),
+        };
+        element.setAttribute("data-hf-studio-box-size", "true");
+        element.style.setProperty(WIDTH_PROP, `${rounded.width}px`);
+        element.style.setProperty(HEIGHT_PROP, `${rounded.height}px`);
+        element.style.setProperty("box-sizing", "border-box");
+        element.style.setProperty("width", `${rounded.width}px`);
+        element.style.setProperty("height", `${rounded.height}px`);
+        element.style.setProperty("min-width", "0px");
+        element.style.setProperty("min-height", "0px");
+        element.style.setProperty("max-width", "none");
+        element.style.setProperty("max-height", "none");
+        const flexBasis = readParentFlexBasisPixels(element, rounded);
+        if (flexBasis != null) {
+          element.style.setProperty("flex-basis", `${flexBasis}px`);
+          element.style.setProperty("flex-grow", "0");
+          element.style.setProperty("flex-shrink", "0");
+        }
+        if (getComputedStyle(element).display === "inline") {
+          element.style.setProperty("display", "inline-block");
+        }
+      };
+
+      const applyRotation = (element: HTMLElement, edit: Record<string, unknown>) => {
+        const angle = finiteNumber(edit.angle);
+        if (angle == null) return;
+        if (!element.hasAttribute("data-hf-studio-rotation")) {
+          element.setAttribute(
+            "data-hf-studio-original-rotate",
+            element.style.getPropertyValue("rotate"),
+          );
+        }
+        element.setAttribute("data-hf-studio-rotation", "true");
+        element.style.setProperty(ROTATION_PROP, `${roundRotationAngle(angle)}deg`);
+        element.style.setProperty(
+          "rotate",
+          composeRotation(element, `var(${ROTATION_PROP}, 0deg)`),
+        );
+      };
+
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(content);
+      } catch {
+        return;
+      }
+      const edits = (parsed as { edits?: unknown }).edits;
+      if (!Array.isArray(edits)) return;
+
+      for (const edit of edits) {
+        if (!edit || typeof edit !== "object") continue;
+        const editRecord = edit as Record<string, unknown>;
+        const element = resolveTarget(editRecord);
+        if (!element) continue;
+        if (editRecord.kind === "path-offset") applyPathOffset(element, editRecord);
+        if (editRecord.kind === "box-size") applyBoxSize(element, editRecord);
+        if (editRecord.kind === "rotation") applyRotation(element, editRecord);
+      }
+    },
+    manifestContent,
+    activeCompositionPath,
+  );
+}
+
 // ── Vite adapter for the shared studio API ───────────────────────────────────
 
 function createViteAdapter(dataDir: string, server: ViteDevServer): StudioApiAdapter {
   // Lazy-load the bundler via Vite's SSR module loader
   let _bundler: ((dir: string) => Promise<string>) | null = null;
-  let _producerModulePromise: Promise<{
-    createRenderJob: (config: {
-      fps: 24 | 30 | 60;
-      quality: "draft" | "standard" | "high";
-      format: string;
-    }) => unknown;
-    executeRenderJob: (
-      job: unknown,
-      projectDir: string,
-      outputPath: string,
-      onProgress?: (job: { progress: number; currentStage?: string }) => void,
-    ) => Promise<void>;
-  }> | null = null;
+  let _producerModuleLoader:
+    | (() => Promise<{
+        createRenderJob: (config: {
+          fps: 24 | 30 | 60;
+          quality: "draft" | "standard" | "high";
+          format: string;
+          renderBodyScripts?: string[];
+        }) => unknown;
+        executeRenderJob: (
+          job: unknown,
+          projectDir: string,
+          outputPath: string,
+          onProgress?: (job: { progress: number; currentStage?: string }) => void,
+        ) => Promise<void>;
+      }>)
+    | null = null;
   const getBundler = async () => {
     if (!_bundler) {
       try {
@@ -88,8 +321,8 @@ function createViteAdapter(dataDir: string, server: ViteDevServer): StudioApiAda
   };
 
   const getProducerModule = async () => {
-    if (!_producerModulePromise) {
-      _producerModulePromise = createRetryingModuleLoader(async () => {
+    if (!_producerModuleLoader) {
+      _producerModuleLoader = createRetryingModuleLoader(async () => {
         const { built } = ensureProducerDist({
           studioDir: __dirname,
           env: process.env,
@@ -101,9 +334,9 @@ function createViteAdapter(dataDir: string, server: ViteDevServer): StudioApiAda
         }
         const producerPkg = "@hyperframes/producer";
         return await import(/* @vite-ignore */ producerPkg);
-      })();
+      });
     }
-    return _producerModulePromise();
+    return _producerModuleLoader();
   };
 
   return {
@@ -211,10 +444,13 @@ function createViteAdapter(dataDir: string, server: ViteDevServer): StudioApiAda
             if (systemChrome) process.env.PRODUCER_HEADLESS_SHELL_PATH = systemChrome;
           }
           const { createRenderJob, executeRenderJob } = await getProducerModule();
+          const manifestContent = readStudioManualEditManifestContent(opts.project.dir);
+          const manualEditsRenderScript = createStudioManualEditsRenderBodyScript(manifestContent);
           const job = createRenderJob({
             fps: opts.fps as 24 | 30 | 60,
             quality: opts.quality as "draft" | "standard" | "high",
             format: opts.format,
+            ...(manualEditsRenderScript ? { renderBodyScripts: [manualEditsRenderScript] } : {}),
           });
           const onProgress = (j: { progress: number; currentStage?: string }) => {
             state.progress = j.progress;
@@ -247,7 +483,11 @@ function createViteAdapter(dataDir: string, server: ViteDevServer): StudioApiAda
       const selectorKey = opts.selector
         ? `_${opts.selector.replace(/[^a-zA-Z0-9_-]+/g, "_").slice(0, 80)}_${opts.selectorIndex ?? 0}`
         : "";
-      const cacheKey = `${THUMBNAIL_CACHE_VERSION}_${opts.compPath.replace(/\//g, "_")}_${opts.seekTime.toFixed(2)}${selectorKey}.jpg`;
+      const manifestContent = readStudioManualEditManifestContent(opts.project.dir);
+      const manifestKey = manifestContent.trim()
+        ? `_${createHash("sha1").update(manifestContent).digest("hex").slice(0, 16)}`
+        : "";
+      const cacheKey = `${THUMBNAIL_CACHE_VERSION}${manifestKey}_${opts.compPath.replace(/\//g, "_")}_${opts.seekTime.toFixed(2)}${selectorKey}.${opts.format === "png" ? "png" : "jpg"}`;
 
       let bufferPromise = _thumbnailInflight.get(cacheKey);
       if (!bufferPromise) {
@@ -274,8 +514,10 @@ function createViteAdapter(dataDir: string, server: ViteDevServer): StudioApiAda
             )
             .catch(() => {});
           await seekThumbnailPreview(page, opts.seekTime);
+          await applyStudioManualEditsToThumbnailPage(page, manifestContent, opts.compPath);
           await page.evaluate("document.fonts?.ready");
           await new Promise((r) => setTimeout(r, 200));
+          await applyStudioManualEditsToThumbnailPage(page, manifestContent, opts.compPath);
           let clip: ScreenshotClip | undefined;
           if (opts.selector) {
             clip = await page.evaluate(

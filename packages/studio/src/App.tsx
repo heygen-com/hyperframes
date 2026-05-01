@@ -73,13 +73,11 @@ import {
 import { DomEditOverlay } from "./components/editor/DomEditOverlay";
 import {
   buildDefaultDomEditTextField,
-  buildDomEditDetachPatchOperations,
-  buildDomEditMovePatchOperations,
-  buildDomEditResizePatchOperations,
   buildDomEditStylePatchOperation,
   buildDomEditTextPatchOperation,
   buildElementAgentPrompt,
   findElementForSelection,
+  getDomEditTargetKey,
   isTextEditableSelection,
   serializeDomEditTextFields,
   resolveDomEditCapabilities,
@@ -87,6 +85,16 @@ import {
   type DomEditTextField,
   type DomEditSelection,
 } from "./components/editor/domEditing";
+import {
+  STUDIO_MANUAL_EDITS_PATH,
+  applyStudioManualEditManifest,
+  installStudioManualEditSeekReapply,
+  parseStudioManualEditManifest,
+  serializeStudioManualEditManifest,
+  upsertStudioBoxSizeEdit,
+  upsertStudioPathOffsetEdit,
+  upsertStudioRotationEdit,
+} from "./components/editor/manualEdits";
 import { saveProjectFilesWithHistory } from "./utils/studioFileHistory";
 
 interface EditingFile {
@@ -290,14 +298,6 @@ function getHistoryShortcutLabel(action: "undo" | "redo"): string {
   return action === "undo" ? `${modifier}+Z` : `${modifier}+Shift+Z`;
 }
 
-function getDomEditCoalesceKey(
-  selection: Pick<DomEditSelection, "id" | "selector" | "sourceFile">,
-  action: "move" | "resize",
-): string {
-  const target = selection.id || selection.selector || "selection";
-  return `${action}:${selection.sourceFile || "index.html"}:${target}`;
-}
-
 function findMatchingTimelineElementId(
   selection: Pick<
     DomEditSelection,
@@ -397,37 +397,6 @@ function isMoveStyleProperty(property: string): boolean {
 
 function isResizeStyleProperty(property: string): boolean {
   return property === "width" || property === "height";
-}
-
-function getDomDetachCoordinateRoot(element: HTMLElement): HTMLElement {
-  const offsetParent = element.offsetParent;
-  if (offsetParent instanceof HTMLElement) return offsetParent;
-
-  let current = element.parentElement;
-  while (current) {
-    if (current.hasAttribute("data-composition-id")) return current;
-    current = current.parentElement;
-  }
-
-  return element.ownerDocument.body;
-}
-
-function measureDomDetachRect(element: HTMLElement): {
-  left: number;
-  top: number;
-  width: number;
-  height: number;
-} {
-  const root = getDomDetachCoordinateRoot(element);
-  const rect = element.getBoundingClientRect();
-  const rootRect = root.getBoundingClientRect();
-
-  return {
-    left: rect.left - rootRect.left + root.scrollLeft,
-    top: rect.top - rootRect.top + root.scrollTop,
-    width: rect.width,
-    height: rect.height,
-  };
 }
 
 function getDomSelectionClickKey(
@@ -785,6 +754,7 @@ export function StudioApp() {
   const lastBlockedDomMoveToastAtRef = useRef(0);
   const importedFontAssetsRef = useRef<ImportedFontAsset[]>([]);
   const previewHotkeyWindowRef = useRef<Window | null>(null);
+  const previewHistoryHotkeyCleanupRef = useRef<(() => void) | null>(null);
   const panelDragRef = useRef<{
     side: "left" | "right";
     startX: number;
@@ -1106,6 +1076,20 @@ export function StudioApp() {
   const lastPreviewClickRef = useRef<{ key: string; at: number } | null>(null);
   const domEditSaveTimestampRef = useRef(0);
   const domTextCommitVersionRef = useRef(0);
+  const domEditSaveQueueRef = useRef(Promise.resolve());
+
+  const queueDomEditSave = useCallback((save: () => Promise<void>) => {
+    const queuedSave = domEditSaveQueueRef.current.catch(() => undefined).then(save);
+    domEditSaveQueueRef.current = queuedSave.then(
+      () => undefined,
+      () => undefined,
+    );
+    return queuedSave;
+  }, []);
+
+  const waitForPendingDomEditSaves = useCallback(async () => {
+    await domEditSaveQueueRef.current.catch(() => undefined);
+  }, []);
 
   // Listen for external file changes (user editing HTML outside the editor).
   // In dev: use Vite HMR. In embedded/production: use SSE from /api/events.
@@ -1198,6 +1182,16 @@ export function StudioApp() {
     if (editingPathRef.current === path) {
       setEditingFile({ path, content });
     }
+  }, []);
+
+  const readOptionalProjectFile = useCallback(async (path: string): Promise<string> => {
+    const pid = projectIdRef.current;
+    if (!pid) throw new Error("No active project");
+    const response = await fetch(`/api/projects/${pid}/files/${encodeURIComponent(path)}`);
+    if (response.status === 404) return "";
+    if (!response.ok) throw new Error(`Failed to read ${path}`);
+    const data = (await response.json()) as { content?: string };
+    return typeof data.content === "string" ? data.content : "";
   }, []);
 
   const handleContentChange = useCallback(
@@ -1420,6 +1414,7 @@ export function StudioApp() {
 
       const currentTime = usePlayerStore.getState().currentTime;
       setCaptureFrameTime(currentTime);
+      await waitForPendingDomEditSaves();
       const href = buildFrameCaptureUrl({
         projectId,
         compositionPath: activeCompPath,
@@ -1446,7 +1441,7 @@ export function StudioApp() {
         showToast(message);
       }
     },
-    [activeCompPath, projectId, showToast],
+    [activeCompPath, projectId, showToast, waitForPendingDomEditSaves],
   );
 
   const handleTimelineElementDelete = useCallback(
@@ -1573,10 +1568,8 @@ export function StudioApp() {
       if (now - lastBlockedDomMoveToastAtRef.current < 1500) return;
       lastBlockedDomMoveToastAtRef.current = now;
       showToast(
-        selection.capabilities.canDetachFromLayout
-          ? "This layer is controlled by layout. Use Make movable in the panel to detach it."
-          : (selection.capabilities.reasonIfDisabled ??
-              "This element can’t be moved directly from the preview."),
+        selection.capabilities.reasonIfDisabled ??
+          "This element can’t be adjusted directly from the preview.",
         "info",
       );
     },
@@ -1607,10 +1600,82 @@ export function StudioApp() {
     applyDomSelection(null, { revealPanel: false });
   }, [applyDomSelection]);
 
+  const readHistoryProjectFile = useCallback(
+    async (path: string): Promise<string> => {
+      return path === STUDIO_MANUAL_EDITS_PATH
+        ? readOptionalProjectFile(path)
+        : readProjectFile(path);
+    },
+    [readOptionalProjectFile, readProjectFile],
+  );
+
+  const writeHistoryProjectFile = useCallback(
+    async (path: string, content: string): Promise<void> => {
+      await writeProjectFile(path, content);
+      if (path === STUDIO_MANUAL_EDITS_PATH) {
+        domEditSaveTimestampRef.current = Date.now();
+      }
+    },
+    [writeProjectFile],
+  );
+
+  const applyStudioManualEditsToPreview = useCallback(
+    async (iframe: HTMLIFrameElement | null = previewIframeRef.current) => {
+      if (!iframe) return;
+      let doc: Document | null = null;
+      try {
+        doc = iframe.contentDocument;
+      } catch {
+        return;
+      }
+      if (!doc) return;
+      const previewDoc = doc;
+
+      const content = await readOptionalProjectFile(STUDIO_MANUAL_EDITS_PATH).catch(() => "");
+      const manifest = parseStudioManualEditManifest(content);
+      const applyManifest = () => {
+        applyStudioManualEditManifest(previewDoc, manifest, activeCompPath);
+      };
+      const applyAndInstallSeekHooks = () => {
+        applyManifest();
+        if (iframe.contentWindow) {
+          installStudioManualEditSeekReapply(iframe.contentWindow, applyManifest);
+        }
+      };
+
+      const win = iframe.contentWindow;
+      applyAndInstallSeekHooks();
+      win?.requestAnimationFrame?.(applyAndInstallSeekHooks);
+      win?.setTimeout?.(applyAndInstallSeekHooks, 80);
+      win?.setTimeout?.(applyAndInstallSeekHooks, 250);
+      win?.setTimeout?.(applyAndInstallSeekHooks, 500);
+      win?.setTimeout?.(applyAndInstallSeekHooks, 1000);
+      win?.setTimeout?.(applyAndInstallSeekHooks, 2000);
+    },
+    [activeCompPath, readOptionalProjectFile],
+  );
+
+  const syncHistoryPreviewAfterApply = useCallback(
+    async (paths: string[] | undefined) => {
+      const changedPaths = paths ?? [];
+      const manualManifestOnly =
+        changedPaths.length > 0 && changedPaths.every((path) => path === STUDIO_MANUAL_EDITS_PATH);
+
+      if (manualManifestOnly) {
+        await applyStudioManualEditsToPreview(previewIframeRef.current);
+        return;
+      }
+
+      setRefreshKey((key) => key + 1);
+    },
+    [applyStudioManualEditsToPreview],
+  );
+
   const handleUndo = useCallback(async () => {
+    await waitForPendingDomEditSaves();
     const result = await editHistory.undo({
-      readFile: readProjectFile,
-      writeFile: writeProjectFile,
+      readFile: readHistoryProjectFile,
+      writeFile: writeHistoryProjectFile,
     });
     if (!result.ok && result.reason === "content-mismatch") {
       showToast("File changed outside Studio. Undo history was not applied.", "info");
@@ -1618,15 +1683,24 @@ export function StudioApp() {
     }
     if (result.ok && result.label) {
       clearDomSelection();
-      setRefreshKey((key) => key + 1);
+      await syncHistoryPreviewAfterApply(result.paths);
       showToast(`Undid ${result.label}`, "info");
     }
-  }, [clearDomSelection, editHistory, readProjectFile, showToast, writeProjectFile]);
+  }, [
+    clearDomSelection,
+    editHistory,
+    readHistoryProjectFile,
+    showToast,
+    syncHistoryPreviewAfterApply,
+    waitForPendingDomEditSaves,
+    writeHistoryProjectFile,
+  ]);
 
   const handleRedo = useCallback(async () => {
+    await waitForPendingDomEditSaves();
     const result = await editHistory.redo({
-      readFile: readProjectFile,
-      writeFile: writeProjectFile,
+      readFile: readHistoryProjectFile,
+      writeFile: writeHistoryProjectFile,
     });
     if (!result.ok && result.reason === "content-mismatch") {
       showToast("File changed outside Studio. Redo history was not applied.", "info");
@@ -1634,35 +1708,76 @@ export function StudioApp() {
     }
     if (result.ok && result.label) {
       clearDomSelection();
-      setRefreshKey((key) => key + 1);
+      await syncHistoryPreviewAfterApply(result.paths);
       showToast(`Redid ${result.label}`, "info");
     }
-  }, [clearDomSelection, editHistory, readProjectFile, showToast, writeProjectFile]);
+  }, [
+    clearDomSelection,
+    editHistory,
+    readHistoryProjectFile,
+    showToast,
+    syncHistoryPreviewAfterApply,
+    waitForPendingDomEditSaves,
+    writeHistoryProjectFile,
+  ]);
 
   const handleUndoRef = useRef(handleUndo);
   const handleRedoRef = useRef(handleRedo);
   handleUndoRef.current = handleUndo;
   handleRedoRef.current = handleRedo;
 
+  const handleHistoryHotkey = useCallback((event: KeyboardEvent) => {
+    if (!(event.metaKey || event.ctrlKey)) return;
+    if (shouldIgnoreHistoryShortcut(event.target)) return;
+    const key = event.key.toLowerCase();
+    if (key === "z" && !event.shiftKey) {
+      event.preventDefault();
+      void handleUndoRef.current();
+      return;
+    }
+    if ((key === "z" && event.shiftKey) || (event.ctrlKey && !event.metaKey && key === "y")) {
+      event.preventDefault();
+      void handleRedoRef.current();
+    }
+  }, []);
+
   // eslint-disable-next-line no-restricted-syntax
   useEffect(() => {
-    const handler = (event: KeyboardEvent) => {
-      if (!(event.metaKey || event.ctrlKey)) return;
-      if (shouldIgnoreHistoryShortcut(event.target)) return;
-      const key = event.key.toLowerCase();
-      if (key === "z" && !event.shiftKey) {
-        event.preventDefault();
-        void handleUndoRef.current();
-        return;
+    window.addEventListener("keydown", handleHistoryHotkey, true);
+    return () => window.removeEventListener("keydown", handleHistoryHotkey, true);
+  }, [handleHistoryHotkey]);
+
+  const syncPreviewHistoryHotkey = useCallback(
+    (iframe: HTMLIFrameElement | null) => {
+      previewHistoryHotkeyCleanupRef.current?.();
+      previewHistoryHotkeyCleanupRef.current = null;
+
+      const win = iframe?.contentWindow ?? null;
+      let doc: Document | null = null;
+      try {
+        doc = iframe?.contentDocument ?? null;
+      } catch {
+        doc = null;
       }
-      if ((key === "z" && event.shiftKey) || (event.ctrlKey && !event.metaKey && key === "y")) {
-        event.preventDefault();
-        void handleRedoRef.current();
-      }
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, []);
+      if (!win && !doc) return;
+
+      win?.addEventListener("keydown", handleHistoryHotkey, true);
+      doc?.addEventListener("keydown", handleHistoryHotkey, true);
+      previewHistoryHotkeyCleanupRef.current = () => {
+        win?.removeEventListener("keydown", handleHistoryHotkey, true);
+        doc?.removeEventListener("keydown", handleHistoryHotkey, true);
+      };
+    },
+    [handleHistoryHotkey],
+  );
+
+  useEffect(
+    () => () => {
+      previewHistoryHotkeyCleanupRef.current?.();
+      previewHistoryHotkeyCleanupRef.current = null;
+    },
+    [],
+  );
 
   const buildDomSelectionFromTarget = useCallback(
     (target: HTMLElement, options?: { preferClipAncestor?: boolean }) => {
@@ -1818,86 +1933,98 @@ export function StudioApp() {
     [activeCompPath, editHistory.recordEdit, writeProjectFile],
   );
 
-  const handleDomMoveCommit = useCallback(
-    async (selection: DomEditSelection, next: { left: number; top: number }) => {
-      await persistDomEditOperations(
-        selection,
-        [
-          ...buildDomEditMovePatchOperations(next.left, next.top),
-          ...buildOppositeEdgePatchOperations(selection, "both"),
-        ],
-        {
-          skipRefresh: true,
+  const handleDomPathOffsetCommit = useCallback(
+    async (selection: DomEditSelection, next: { x: number; y: number }) => {
+      const save = async () => {
+        const originalContent = await readOptionalProjectFile(STUDIO_MANUAL_EDITS_PATH);
+        const manifest = parseStudioManualEditManifest(originalContent);
+        const nextContent = serializeStudioManualEditManifest(
+          upsertStudioPathOffsetEdit(manifest, selection, next),
+        );
+
+        if (nextContent === originalContent) return;
+
+        const pid = projectIdRef.current;
+        if (!pid) throw new Error("No active project");
+        await saveProjectFilesWithHistory({
+          projectId: pid,
           label: "Move layer",
-          coalesceKey: getDomEditCoalesceKey(selection, "move"),
-        },
-      );
+          kind: "manual",
+          coalesceKey: `path-offset:${getDomEditTargetKey(selection)}`,
+          files: { [STUDIO_MANUAL_EDITS_PATH]: nextContent },
+          readFile: async () => originalContent,
+          writeFile: writeProjectFile,
+          recordEdit: editHistory.recordEdit,
+        });
+        domEditSaveTimestampRef.current = Date.now();
+      };
+
+      await queueDomEditSave(save);
     },
-    [persistDomEditOperations],
+    [editHistory.recordEdit, queueDomEditSave, readOptionalProjectFile, writeProjectFile],
   );
 
-  const handleDomResizeCommit = useCallback(
+  const handleDomBoxSizeCommit = useCallback(
     async (selection: DomEditSelection, next: { width: number; height: number }) => {
-      if (shouldDetachOppositeEdges(selection)) {
-        selection.element.style.right = "auto";
-        selection.element.style.bottom = "auto";
-      }
-      await persistDomEditOperations(
-        selection,
-        [
-          ...buildDomEditResizePatchOperations(next.width, next.height),
-          ...buildOppositeEdgePatchOperations(selection, "both"),
-        ],
-        {
-          skipRefresh: true,
-          label: "Resize layer",
-          coalesceKey: getDomEditCoalesceKey(selection, "resize"),
-        },
-      );
+      const save = async () => {
+        const originalContent = await readOptionalProjectFile(STUDIO_MANUAL_EDITS_PATH);
+        const manifest = parseStudioManualEditManifest(originalContent);
+        const nextContent = serializeStudioManualEditManifest(
+          upsertStudioBoxSizeEdit(manifest, selection, next),
+        );
+
+        if (nextContent === originalContent) return;
+
+        const pid = projectIdRef.current;
+        if (!pid) throw new Error("No active project");
+        await saveProjectFilesWithHistory({
+          projectId: pid,
+          label: "Resize layer box",
+          kind: "manual",
+          coalesceKey: `box-size:${getDomEditTargetKey(selection)}`,
+          files: { [STUDIO_MANUAL_EDITS_PATH]: nextContent },
+          readFile: async () => originalContent,
+          writeFile: writeProjectFile,
+          recordEdit: editHistory.recordEdit,
+        });
+        domEditSaveTimestampRef.current = Date.now();
+      };
+
+      await queueDomEditSave(save);
     },
-    [persistDomEditOperations],
+    [editHistory.recordEdit, queueDomEditSave, readOptionalProjectFile, writeProjectFile],
   );
 
-  const handleDomDetachFromLayout = useCallback(async () => {
-    const selection = domEditSelection;
-    if (!selection?.capabilities.canDetachFromLayout) return;
+  const handleDomRotationCommit = useCallback(
+    async (selection: DomEditSelection, next: { angle: number }) => {
+      const save = async () => {
+        const originalContent = await readOptionalProjectFile(STUDIO_MANUAL_EDITS_PATH);
+        const manifest = parseStudioManualEditManifest(originalContent);
+        const nextContent = serializeStudioManualEditManifest(
+          upsertStudioRotationEdit(manifest, selection, next),
+        );
 
-    const doc = previewIframeRef.current?.contentDocument;
-    const element = doc
-      ? findElementForSelection(doc, selection, selection.sourceFile)
-      : selection.element;
-    if (!element) {
-      showToast("Could not find the selected layer in the preview.", "info");
-      return;
-    }
+        if (nextContent === originalContent) return;
 
-    const rect = measureDomDetachRect(element);
-    const operations = buildDomEditDetachPatchOperations(rect);
+        const pid = projectIdRef.current;
+        if (!pid) throw new Error("No active project");
+        await saveProjectFilesWithHistory({
+          projectId: pid,
+          label: "Rotate layer",
+          kind: "manual",
+          coalesceKey: `rotation:${getDomEditTargetKey(selection)}`,
+          files: { [STUDIO_MANUAL_EDITS_PATH]: nextContent },
+          readFile: async () => originalContent,
+          writeFile: writeProjectFile,
+          recordEdit: editHistory.recordEdit,
+        });
+        domEditSaveTimestampRef.current = Date.now();
+      };
 
-    for (const operation of operations) {
-      element.style.setProperty(operation.property, operation.value);
-    }
-
-    await persistDomEditOperations(selection, operations, {
-      skipRefresh: true,
-      label: "Make layer movable",
-    });
-
-    const refreshed = doc ? findElementForSelection(doc, selection, selection.sourceFile) : element;
-    if (refreshed) {
-      const nextSelection = buildDomSelectionFromTarget(refreshed);
-      if (nextSelection) {
-        applyDomSelection(nextSelection, { revealPanel: false });
-      }
-    }
-    showToast("Layer detached from layout. You can move it now.", "info");
-  }, [
-    applyDomSelection,
-    buildDomSelectionFromTarget,
-    domEditSelection,
-    persistDomEditOperations,
-    showToast,
-  ]);
+      await queueDomEditSave(save);
+    },
+    [editHistory.recordEdit, queueDomEditSave, readOptionalProjectFile, writeProjectFile],
+  );
 
   const handleDomStyleCommit = useCallback(
     async (property: string, value: string) => {
@@ -2185,10 +2312,11 @@ export function StudioApp() {
       previewIframeRef.current = iframe;
       setPreviewIframe(iframe);
       syncPreviewTimelineHotkey(iframe);
+      syncPreviewHistoryHotkey(iframe);
       consoleErrorsRef.current = [];
       setConsoleErrors(null);
     },
-    [syncPreviewTimelineHotkey],
+    [syncPreviewHistoryHotkey, syncPreviewTimelineHotkey],
   );
 
   const handlePreviewCanvasMouseDown = useCallback(
@@ -2316,12 +2444,16 @@ export function StudioApp() {
     };
 
     attachErrorCapture();
+    syncPreviewHistoryHotkey(previewIframe);
+    void applyStudioManualEditsToPreview(previewIframe);
     syncSelectionFromDocument();
 
     const handleLoad = () => {
       consoleErrorsRef.current = [];
       setConsoleErrors(null);
       attachErrorCapture();
+      syncPreviewHistoryHotkey(previewIframe);
+      void applyStudioManualEditsToPreview(previewIframe);
       syncSelectionFromDocument();
     };
 
@@ -2332,9 +2464,11 @@ export function StudioApp() {
   }, [
     activeCompPath,
     applyDomSelection,
+    applyStudioManualEditsToPreview,
     buildDomSelectionFromTarget,
     captionEditMode,
     previewIframe,
+    syncPreviewHistoryHotkey,
   ]);
 
   // eslint-disable-next-line no-restricted-syntax
@@ -3020,13 +3154,14 @@ export function StudioApp() {
                   selection={
                     !rightCollapsed && rightPanelTab === "design" ? domEditSelection : null
                   }
-                  allowCanvasMovement={false}
+                  allowCanvasMovement
                   onCanvasMouseDown={handlePreviewCanvasMouseDown}
                   onCanvasDoubleClick={handlePreviewCanvasDoubleClick}
                   onSelectedDoubleClick={handleSelectedOverlayDoubleClick}
                   onBlockedMove={handleBlockedDomMove}
-                  onMoveCommit={handleDomMoveCommit}
-                  onResizeCommit={handleDomResizeCommit}
+                  onPathOffsetCommit={handleDomPathOffsetCommit}
+                  onBoxSizeCommit={handleDomBoxSizeCommit}
+                  onRotationCommit={handleDomRotationCommit}
                 />
               )
             }
@@ -3109,13 +3244,10 @@ export function StudioApp() {
                         onSetTextFieldStyle={handleDomTextFieldStyleCommit}
                         onAddTextField={handleDomAddTextField}
                         onRemoveTextField={handleDomRemoveTextField}
-                        onDetachFromLayout={handleDomDetachFromLayout}
                         onAskAgent={handleAskAgent}
-                        onCopyAgentInstruction={handleAgentModalSubmit}
                         onImportAssets={handleImportFiles}
                         fontAssets={fontAssets}
                         onImportFonts={handleImportFonts}
-                        allowLayoutDetach={false}
                       />
                     ) : (
                       <RenderQueue
@@ -3123,9 +3255,10 @@ export function StudioApp() {
                         projectId={projectId}
                         onDelete={renderQueue.deleteRender}
                         onClearCompleted={renderQueue.clearCompleted}
-                        onStartRender={(format, quality) =>
-                          renderQueue.startRender(30, quality, format)
-                        }
+                        onStartRender={async (format, quality) => {
+                          await waitForPendingDomEditSaves();
+                          await renderQueue.startRender(30, quality, format);
+                        }}
                         isRendering={renderQueue.isRendering}
                       />
                     )}

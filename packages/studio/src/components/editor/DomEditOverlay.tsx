@@ -1,6 +1,27 @@
 import { memo, useMemo, useRef, useState, type RefObject } from "react";
 import { useMountEffect } from "../../hooks/useMountEffect";
 import { type DomEditSelection, findElementForSelection } from "./domEditing";
+import {
+  applyStudioBoxSize,
+  applyStudioBoxSizeDraft,
+  applyStudioPathOffset,
+  applyStudioPathOffsetDraft,
+  applyStudioRotation,
+  applyStudioRotationDraft,
+  beginStudioManualEditGesture,
+  captureStudioBoxSize,
+  captureStudioRotation,
+  endStudioManualEditGesture,
+  isStudioManualEditGestureCurrent,
+  readStudioBoxSize,
+  readStudioPathOffset,
+  readStudioRotation,
+  restoreStudioBoxSize,
+  restoreStudioPathOffset,
+  restoreStudioRotation,
+  type StudioBoxSizeSnapshot,
+  type StudioRotationSnapshot,
+} from "./manualEdits";
 
 interface OverlayRect {
   left: number;
@@ -22,14 +43,15 @@ interface DomEditOverlayProps {
   onCanvasDoubleClick: (event: React.MouseEvent<HTMLDivElement>) => void;
   onSelectedDoubleClick: () => void;
   onBlockedMove: (selection: DomEditSelection) => void;
-  onMoveCommit: (
+  onPathOffsetCommit: (
     selection: DomEditSelection,
-    next: { left: number; top: number },
+    next: { x: number; y: number },
   ) => Promise<void> | void;
-  onResizeCommit: (
+  onBoxSizeCommit: (
     selection: DomEditSelection,
     next: { width: number; height: number },
   ) => Promise<void> | void;
+  onRotationCommit: (selection: DomEditSelection, next: { angle: number }) => Promise<void> | void;
 }
 
 function toOverlayRect(
@@ -61,9 +83,11 @@ function toOverlayRect(
   };
 }
 
-type GestureKind = "drag" | "resize";
+type GestureKind = "drag" | "resize" | "rotate";
 const BLOCKED_MOVE_THRESHOLD_PX = 4;
+const MIN_RESIZE_EDGE_PX = 20;
 const OVERLAY_RECT_EPSILON_PX = 0.5;
+const ROTATION_SNAP_DEGREES = 15;
 
 function rectsEqual(a: OverlayRect | null, b: OverlayRect | null): boolean {
   if (a === b) return true;
@@ -89,31 +113,111 @@ function selectionCacheKey(
   ].join("|");
 }
 
-function restoreInlineStyle(
-  element: HTMLElement,
-  property: "left" | "top" | "width" | "height",
-  value: string,
-) {
-  if (value) element.style.setProperty(property, value);
-  else element.style.removeProperty(property);
+type FocusableDomEditOverlay = {
+  focus(options?: FocusOptions): void;
+};
+
+export function focusDomEditOverlayElement(element: FocusableDomEditOverlay | null): void {
+  element?.focus({ preventScroll: true });
 }
 
-interface GestureState {
-  kind: GestureKind;
-  startX: number;
-  startY: number;
-  initialStyleLeft: string;
-  initialStyleTop: string;
-  originLeft: number;
-  originTop: number;
+export function resolveDomEditResizeGesture(input: {
   originWidth: number;
   originHeight: number;
-  actualLeft: number;
-  actualTop: number;
   actualWidth: number;
   actualHeight: number;
   scaleX: number;
   scaleY: number;
+  dx: number;
+  dy: number;
+  uniform: boolean;
+}): { overlayWidth: number; overlayHeight: number; width: number; height: number } {
+  const scaleX = input.scaleX > 0 ? input.scaleX : 1;
+  const scaleY = input.scaleY > 0 ? input.scaleY : 1;
+
+  if (input.uniform) {
+    const deltaX = input.dx / scaleX;
+    const deltaY = input.dy / scaleY;
+    const delta = Math.abs(deltaX) >= Math.abs(deltaY) ? deltaX : deltaY;
+    const side = Math.max(1, Math.max(input.actualWidth, input.actualHeight) + delta);
+    return {
+      overlayWidth: Math.max(MIN_RESIZE_EDGE_PX, side * scaleX),
+      overlayHeight: Math.max(MIN_RESIZE_EDGE_PX, side * scaleY),
+      width: side,
+      height: side,
+    };
+  }
+
+  return {
+    overlayWidth: Math.max(MIN_RESIZE_EDGE_PX, input.originWidth + input.dx),
+    overlayHeight: Math.max(MIN_RESIZE_EDGE_PX, input.originHeight + input.dy),
+    width: Math.max(1, input.actualWidth + input.dx / scaleX),
+    height: Math.max(1, input.actualHeight + input.dy / scaleY),
+  };
+}
+
+function pointerAngleDegrees(centerX: number, centerY: number, x: number, y: number): number {
+  return (Math.atan2(y - centerY, x - centerX) * 180) / Math.PI;
+}
+
+function normalizeAngleDelta(delta: number): number {
+  return ((((delta + 180) % 360) + 360) % 360) - 180;
+}
+
+function roundAngle(angle: number): number {
+  return Math.round(angle * 10) / 10;
+}
+
+export function resolveDomEditRotationGesture(input: {
+  centerX: number;
+  centerY: number;
+  startX: number;
+  startY: number;
+  currentX: number;
+  currentY: number;
+  actualAngle: number;
+  snap: boolean;
+}): { angle: number } {
+  const startAngle = pointerAngleDegrees(input.centerX, input.centerY, input.startX, input.startY);
+  const currentAngle = pointerAngleDegrees(
+    input.centerX,
+    input.centerY,
+    input.currentX,
+    input.currentY,
+  );
+  const delta = normalizeAngleDelta(currentAngle - startAngle);
+  const angle = input.actualAngle + delta;
+  return {
+    angle: input.snap
+      ? Math.round(angle / ROTATION_SNAP_DEGREES) * ROTATION_SNAP_DEGREES
+      : roundAngle(angle),
+  };
+}
+
+interface GestureState {
+  kind: GestureKind;
+  mode: "path-offset" | "box-size" | "rotation";
+  startX: number;
+  startY: number;
+  centerX: number;
+  centerY: number;
+  initialStyleTranslate: string;
+  initialRotation: StudioRotationSnapshot;
+  initialOffsetX: string;
+  initialOffsetY: string;
+  initialBoxSize: StudioBoxSizeSnapshot;
+  originLeft: number;
+  originTop: number;
+  originWidth: number;
+  originHeight: number;
+  actualOffsetX: number;
+  actualOffsetY: number;
+  actualWidth: number;
+  actualHeight: number;
+  actualRotation: number;
+  scaleX: number;
+  scaleY: number;
+  manualEditDragToken?: string;
 }
 
 interface BlockedMoveState {
@@ -131,8 +235,9 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   onCanvasDoubleClick,
   onSelectedDoubleClick,
   onBlockedMove,
-  onMoveCommit,
-  onResizeCommit,
+  onPathOffsetCommit,
+  onBoxSizeCommit,
+  onRotationCommit,
 }: DomEditOverlayProps) {
   const overlayRef = useRef<HTMLDivElement | null>(null);
   const boxRef = useRef<HTMLDivElement | null>(null);
@@ -147,10 +252,12 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   selectionRef.current = selection;
   const overlayRectRef = useRef(overlayRect);
   overlayRectRef.current = overlayRect;
-  const onMoveCommitRef = useRef(onMoveCommit);
-  onMoveCommitRef.current = onMoveCommit;
-  const onResizeCommitRef = useRef(onResizeCommit);
-  onResizeCommitRef.current = onResizeCommit;
+  const onPathOffsetCommitRef = useRef(onPathOffsetCommit);
+  onPathOffsetCommitRef.current = onPathOffsetCommit;
+  const onBoxSizeCommitRef = useRef(onBoxSizeCommit);
+  onBoxSizeCommitRef.current = onBoxSizeCommit;
+  const onRotationCommitRef = useRef(onRotationCommit);
+  onRotationCommitRef.current = onRotationCommit;
   const onBlockedMoveRef = useRef(onBlockedMove);
   onBlockedMoveRef.current = onBlockedMove;
 
@@ -189,7 +296,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
       const sel = selectionRef.current;
       const iframe = iframeRef.current;
       const overlayEl = overlayRef.current;
-      if (!sel || !iframe || !overlayEl) {
+      if (!iframe || !overlayEl) {
         resolvedElementRef.current = null;
         clearOverlayRect();
         return;
@@ -197,6 +304,12 @@ export const DomEditOverlay = memo(function DomEditOverlay({
 
       const doc = iframe.contentDocument;
       if (!doc) return;
+
+      if (!sel) {
+        resolvedElementRef.current = null;
+        clearOverlayRect();
+        return;
+      }
 
       const el = resolveElement(doc, sel);
       if (!el) {
@@ -223,14 +336,25 @@ export const DomEditOverlay = memo(function DomEditOverlay({
     const sel = selectionRef.current;
     const rect = overlayRectRef.current;
     const box = boxRef.current;
+    const overlayEl = overlayRef.current;
     if (!sel || !rect || !box) return;
-
-    const left = Number.parseFloat(sel.computedStyles.left ?? "");
-    const top = Number.parseFloat(sel.computedStyles.top ?? "");
-    const width = Number.parseFloat(sel.computedStyles.width ?? "");
-    const height = Number.parseFloat(sel.computedStyles.height ?? "");
-    if (!Number.isFinite(left) || !Number.isFinite(top)) return;
-    if (kind === "resize" && !Number.isFinite(width) && !Number.isFinite(height)) return;
+    const mode: GestureState["mode"] =
+      kind === "rotate" ? "rotation" : kind === "drag" ? "path-offset" : "box-size";
+    if (kind === "drag" && !sel.capabilities.canApplyManualOffset) return;
+    if (kind === "resize" && !sel.capabilities.canApplyManualSize) return;
+    if (kind === "rotate" && !sel.capabilities.canApplyManualRotation) return;
+    if (kind === "resize" && (!Number.isFinite(rect.width) || !Number.isFinite(rect.height))) {
+      return;
+    }
+    const offset = readStudioPathOffset(sel.element);
+    const size = readStudioBoxSize(sel.element);
+    const rotation = readStudioRotation(sel.element);
+    const actualWidth = size.width > 0 ? size.width : rect.width / rect.scaleX;
+    const actualHeight = size.height > 0 ? size.height : rect.height / rect.scaleY;
+    const manualEditDragToken = beginStudioManualEditGesture(sel.element);
+    const overlayBounds = overlayEl?.getBoundingClientRect();
+    const centerX = (overlayBounds?.left ?? 0) + rect.left + rect.width / 2;
+    const centerY = (overlayBounds?.top ?? 0) + rect.top + rect.height / 2;
 
     e.preventDefault();
     e.stopPropagation();
@@ -240,20 +364,28 @@ export const DomEditOverlay = memo(function DomEditOverlay({
 
     gestureRef.current = {
       kind,
+      mode,
       startX: e.clientX,
       startY: e.clientY,
-      initialStyleLeft: sel.element.style.left,
-      initialStyleTop: sel.element.style.top,
+      centerX,
+      centerY,
+      initialStyleTranslate: sel.element.style.getPropertyValue("translate"),
+      initialRotation: captureStudioRotation(sel.element),
+      initialOffsetX: sel.element.style.getPropertyValue("--hf-studio-offset-x"),
+      initialOffsetY: sel.element.style.getPropertyValue("--hf-studio-offset-y"),
+      initialBoxSize: captureStudioBoxSize(sel.element),
       originLeft: rect.left,
       originTop: rect.top,
       originWidth: rect.width,
       originHeight: rect.height,
-      actualLeft: left,
-      actualTop: top,
-      actualWidth: Number.isFinite(width) ? width : 0,
-      actualHeight: Number.isFinite(height) ? height : 0,
+      actualOffsetX: offset.x,
+      actualOffsetY: offset.y,
+      actualWidth,
+      actualHeight,
+      actualRotation: rotation.angle,
       scaleX: rect.scaleX,
       scaleY: rect.scaleY,
+      manualEditDragToken,
     };
   };
 
@@ -278,20 +410,45 @@ export const DomEditOverlay = memo(function DomEditOverlay({
     const dx = e.clientX - g.startX;
     const dy = e.clientY - g.startY;
 
+    if (g.kind === "rotate") {
+      const nextRotation = resolveDomEditRotationGesture({
+        centerX: g.centerX,
+        centerY: g.centerY,
+        startX: g.startX,
+        startY: g.startY,
+        currentX: e.clientX,
+        currentY: e.clientY,
+        actualAngle: g.actualRotation,
+        snap: e.shiftKey,
+      });
+      applyStudioRotationDraft(sel.element, nextRotation);
+      return;
+    }
+
     if (g.kind === "drag") {
       const nextBoxLeft = g.originLeft + dx;
       const nextBoxTop = g.originTop + dy;
       box.style.left = `${nextBoxLeft}px`;
       box.style.top = `${nextBoxTop}px`;
-      sel.element.style.left = `${Math.round(g.actualLeft + dx / g.scaleX)}px`;
-      sel.element.style.top = `${Math.round(g.actualTop + dy / g.scaleY)}px`;
+      applyStudioPathOffsetDraft(sel.element, {
+        x: g.actualOffsetX + dx / g.scaleX,
+        y: g.actualOffsetY + dy / g.scaleY,
+      });
     } else {
-      const newW = Math.max(20, g.originWidth + dx);
-      const newH = Math.max(20, g.originHeight + dy);
-      box.style.width = `${newW}px`;
-      box.style.height = `${newH}px`;
-      sel.element.style.width = `${Math.round(g.actualWidth + dx / g.scaleX)}px`;
-      sel.element.style.height = `${Math.round(g.actualHeight + dy / g.scaleY)}px`;
+      const nextSize = resolveDomEditResizeGesture({
+        originWidth: g.originWidth,
+        originHeight: g.originHeight,
+        actualWidth: g.actualWidth,
+        actualHeight: g.actualHeight,
+        scaleX: g.scaleX,
+        scaleY: g.scaleY,
+        dx,
+        dy,
+        uniform: e.shiftKey,
+      });
+      box.style.width = `${nextSize.overlayWidth}px`;
+      box.style.height = `${nextSize.overlayHeight}px`;
+      applyStudioBoxSizeDraft(sel.element, nextSize);
     }
   };
 
@@ -311,8 +468,12 @@ export const DomEditOverlay = memo(function DomEditOverlay({
 
     const movedDistance = Math.hypot(e.clientX - g.startX, e.clientY - g.startY);
     if (g.kind === "drag" && movedDistance < BLOCKED_MOVE_THRESHOLD_PX) {
-      restoreInlineStyle(sel.element, "left", g.initialStyleLeft);
-      restoreInlineStyle(sel.element, "top", g.initialStyleTop);
+      restoreStudioPathOffset(sel.element, {
+        translate: g.initialStyleTranslate,
+        x: g.initialOffsetX,
+        y: g.initialOffsetY,
+      });
+      endStudioManualEditGesture(sel.element, g.manualEditDragToken);
       if (box) {
         box.style.left = `${g.originLeft}px`;
         box.style.top = `${g.originTop}px`;
@@ -324,26 +485,71 @@ export const DomEditOverlay = memo(function DomEditOverlay({
       return;
     }
 
-    if (g.kind === "drag") {
-      const finalLeft = Number.parseFloat(sel.element.style.left) || g.actualLeft;
-      const finalTop = Number.parseFloat(sel.element.style.top) || g.actualTop;
-      void Promise.resolve(onMoveCommitRef.current(sel, { left: finalLeft, top: finalTop })).catch(
-        () => {
-          sel.element.style.left = `${Math.round(g.actualLeft)}px`;
-          sel.element.style.top = `${Math.round(g.actualTop)}px`;
-        },
-      );
+    if (g.kind === "resize" && movedDistance < BLOCKED_MOVE_THRESHOLD_PX) {
+      restoreStudioBoxSize(sel.element, g.initialBoxSize);
+      endStudioManualEditGesture(sel.element, g.manualEditDragToken);
+      if (box) {
+        box.style.width = `${g.originWidth}px`;
+        box.style.height = `${g.originHeight}px`;
+      }
+      return;
+    }
+
+    if (g.kind === "rotate" && movedDistance < BLOCKED_MOVE_THRESHOLD_PX) {
+      restoreStudioRotation(sel.element, g.initialRotation);
+      endStudioManualEditGesture(sel.element, g.manualEditDragToken);
+      return;
+    }
+
+    if (g.kind === "rotate") {
+      const finalRotation = readStudioRotation(sel.element);
+      applyStudioRotation(sel.element, finalRotation);
+      void Promise.resolve(onRotationCommitRef.current(sel, finalRotation))
+        .catch(() => {
+          if (
+            g.manualEditDragToken &&
+            isStudioManualEditGestureCurrent(sel.element, g.manualEditDragToken)
+          ) {
+            restoreStudioRotation(sel.element, g.initialRotation);
+          }
+        })
+        .finally(() => {
+          endStudioManualEditGesture(sel.element, g.manualEditDragToken);
+        });
+    } else if (g.kind === "drag") {
+      const finalOffset = readStudioPathOffset(sel.element);
+      applyStudioPathOffset(sel.element, finalOffset);
+      void Promise.resolve(onPathOffsetCommitRef.current(sel, finalOffset))
+        .catch(() => {
+          if (
+            g.manualEditDragToken &&
+            isStudioManualEditGestureCurrent(sel.element, g.manualEditDragToken)
+          ) {
+            restoreStudioPathOffset(sel.element, {
+              translate: g.initialStyleTranslate,
+              x: g.initialOffsetX,
+              y: g.initialOffsetY,
+            });
+          }
+        })
+        .finally(() => {
+          endStudioManualEditGesture(sel.element, g.manualEditDragToken);
+        });
     } else {
-      const finalW = Number.parseFloat(sel.element.style.width) || g.actualWidth;
-      const finalH = Number.parseFloat(sel.element.style.height) || g.actualHeight;
-      void Promise.resolve(onResizeCommitRef.current(sel, { width: finalW, height: finalH })).catch(
-        () => {
-          if (g.actualWidth > 0) sel.element.style.width = `${Math.round(g.actualWidth)}px`;
-          else sel.element.style.removeProperty("width");
-          if (g.actualHeight > 0) sel.element.style.height = `${Math.round(g.actualHeight)}px`;
-          else sel.element.style.removeProperty("height");
-        },
-      );
+      const finalSize = readStudioBoxSize(sel.element);
+      applyStudioBoxSize(sel.element, finalSize);
+      void Promise.resolve(onBoxSizeCommitRef.current(sel, finalSize))
+        .catch(() => {
+          if (
+            g.manualEditDragToken &&
+            isStudioManualEditGestureCurrent(sel.element, g.manualEditDragToken)
+          ) {
+            restoreStudioBoxSize(sel.element, g.initialBoxSize);
+          }
+        })
+        .finally(() => {
+          endStudioManualEditGesture(sel.element, g.manualEditDragToken);
+        });
     }
   };
 
@@ -377,6 +583,24 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   };
 
   const clearPointerState = () => {
+    const g = gestureRef.current;
+    const sel = selectionRef.current;
+    if (g?.mode === "path-offset" && sel) {
+      restoreStudioPathOffset(sel.element, {
+        translate: g.initialStyleTranslate,
+        x: g.initialOffsetX,
+        y: g.initialOffsetY,
+      });
+      endStudioManualEditGesture(sel.element, g.manualEditDragToken);
+    }
+    if (g?.mode === "box-size" && sel) {
+      restoreStudioBoxSize(sel.element, g.initialBoxSize);
+      endStudioManualEditGesture(sel.element, g.manualEditDragToken);
+    }
+    if (g?.mode === "rotation" && sel) {
+      restoreStudioRotation(sel.element, g.initialRotation);
+      endStudioManualEditGesture(sel.element, g.manualEditDragToken);
+    }
     blockedMoveRef.current = null;
     gestureRef.current = null;
     rafPausedRef.current = false;
@@ -386,7 +610,10 @@ export const DomEditOverlay = memo(function DomEditOverlay({
     <div
       key={selectionKey}
       ref={overlayRef}
-      className="absolute inset-0 z-10 pointer-events-auto"
+      className="absolute inset-0 z-10 pointer-events-auto outline-none"
+      tabIndex={-1}
+      aria-label="Composition canvas"
+      onPointerDownCapture={(event) => focusDomEditOverlayElement(event.currentTarget)}
       onMouseDown={handleOverlayMouseDown}
       onDoubleClick={handleOverlayDoubleClick}
       onPointerMove={onPointerMove}
@@ -395,6 +622,31 @@ export const DomEditOverlay = memo(function DomEditOverlay({
     >
       {selection && overlayRect && (
         <>
+          {allowCanvasMovement && selection.capabilities.canApplyManualRotation && (
+            <div
+              className="pointer-events-none absolute"
+              style={{
+                left: overlayRect.left + overlayRect.width / 2,
+                top: overlayRect.top - 34,
+                width: 28,
+                height: 34,
+                transform: "translateX(-50%)",
+              }}
+            >
+              <div className="absolute left-1/2 top-3 h-5 w-px -translate-x-1/2 bg-studio-accent/60" />
+              <button
+                type="button"
+                className="pointer-events-auto absolute left-1/2 top-0 h-4 w-4 -translate-x-1/2 rounded-full border border-studio-accent/80 bg-neutral-950 p-0 shadow-[0_0_0_2px_rgba(60,230,172,0.18)]"
+                style={{ cursor: "grab", touchAction: "none" }}
+                title="Rotate"
+                aria-label="Rotate selection"
+                onPointerDown={(e) => {
+                  e.stopPropagation();
+                  startGesture("rotate", e);
+                }}
+              />
+            </div>
+          )}
           <div
             key={selectionKey}
             ref={boxRef}
@@ -405,11 +657,14 @@ export const DomEditOverlay = memo(function DomEditOverlay({
               top: overlayRect.top,
               width: overlayRect.width,
               height: overlayRect.height,
-              cursor: allowCanvasMovement && selection.capabilities.canMove ? "move" : "default",
+              cursor:
+                allowCanvasMovement && selection.capabilities.canApplyManualOffset
+                  ? "move"
+                  : "default",
             }}
             onPointerDown={(e) => {
               if (!allowCanvasMovement) return;
-              if (selection.capabilities.canMove) {
+              if (selection.capabilities.canApplyManualOffset) {
                 startGesture("drag", e);
                 return;
               }
@@ -427,7 +682,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
             onDoubleClick={onSelectedDoubleClick}
           >
             {/* Resize handle — bottom-right corner */}
-            {allowCanvasMovement && selection.capabilities.canResize && (
+            {allowCanvasMovement && selection.capabilities.canApplyManualSize && (
               <div
                 className="absolute -right-1.5 -bottom-1.5 w-3 h-3 rounded-sm bg-studio-accent border border-studio-accent/60"
                 style={{ cursor: "se-resize", touchAction: "none" }}

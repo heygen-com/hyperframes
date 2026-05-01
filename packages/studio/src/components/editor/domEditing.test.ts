@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { Window } from "happy-dom";
 import {
-  buildDomEditMovePatchOperations,
-  buildDomEditResizePatchOperations,
   buildDomEditStylePatchOperation,
   buildElementAgentPrompt,
   findElementForSelection,
+  getDomEditNonEditableReason,
+  getDomEditTargetKey,
   isTextEditableSelection,
   serializeDomEditTextFields,
   type DomEditSelection,
@@ -47,7 +47,9 @@ describe("resolveDomEditCapabilities", () => {
       canEditStyles: true,
       canMove: true,
       canResize: true,
-      canDetachFromLayout: false,
+      canApplyManualOffset: true,
+      canApplyManualSize: true,
+      canApplyManualRotation: true,
       reasonIfDisabled: undefined,
     });
   });
@@ -75,8 +77,10 @@ describe("resolveDomEditCapabilities", () => {
       canEditStyles: true,
       canMove: false,
       canResize: false,
-      canDetachFromLayout: true,
-      reasonIfDisabled: "This layer is controlled by layout.",
+      canApplyManualOffset: true,
+      canApplyManualSize: true,
+      canApplyManualRotation: true,
+      reasonIfDisabled: undefined,
     });
   });
 
@@ -104,7 +108,9 @@ describe("resolveDomEditCapabilities", () => {
     ).toMatchObject({
       canMove: false,
       canResize: false,
-      canDetachFromLayout: false,
+      canApplyManualOffset: true,
+      canApplyManualSize: true,
+      canApplyManualRotation: true,
     });
   });
 
@@ -132,7 +138,7 @@ describe("resolveDomEditCapabilities", () => {
     ).toMatchObject({
       canMove: true,
       canResize: true,
-      canDetachFromLayout: false,
+      canApplyManualOffset: true,
     });
   });
 
@@ -217,8 +223,10 @@ describe("resolveDomEditSelection", () => {
       canEditStyles: false,
       canMove: true,
       canResize: true,
-      canDetachFromLayout: false,
-      reasonIfDisabled: undefined,
+      canApplyManualOffset: false,
+      canApplyManualSize: false,
+      canApplyManualRotation: false,
+      reasonIfDisabled: "Drill into the composition to edit its internal layers.",
     });
   });
 
@@ -373,23 +381,60 @@ describe("resolveDomEditSelection", () => {
     expect(selection?.textFields.map((field) => field.tagName)).toEqual(["strong", "span"]);
     expect(selection?.textFields.map((field) => field.value)).toEqual(["", ""]);
   });
+
+  it("explains anonymous child elements that resolve to an editable parent", () => {
+    const document = createDocument(`
+      <div data-composition-id="main">
+        <div id="card">
+          <strong>Headline</strong>
+        </div>
+      </div>
+    `);
+
+    const child = document.querySelector("strong") as HTMLElement;
+    const selection = resolveDomEditSelection(child, {
+      activeCompositionPath: null,
+      isMasterView: false,
+      preferClipAncestor: false,
+    });
+
+    expect(selection?.id).toBe("card");
+    expect(getDomEditNonEditableReason(child, selection)).toBe("Selection resolves to Card");
+  });
+
+  it("does not mark an element as non-editable when Studio can edit it directly", () => {
+    const document = createDocument(`
+      <div data-composition-id="main">
+        <div id="card">Editable</div>
+      </div>
+    `);
+
+    const element = document.getElementById("card") as HTMLElement;
+    const selection = resolveDomEditSelection(element, {
+      activeCompositionPath: null,
+      isMasterView: false,
+    });
+
+    expect(getDomEditNonEditableReason(element, selection)).toBeNull();
+  });
+
+  it("keeps duplicate class targets distinct for history keys", () => {
+    const first = getDomEditTargetKey({
+      sourceFile: "index.html",
+      selector: ".card",
+      selectorIndex: 0,
+    });
+    const second = getDomEditTargetKey({
+      sourceFile: "index.html",
+      selector: ".card",
+      selectorIndex: 1,
+    });
+
+    expect(first).not.toBe(second);
+  });
 });
 
 describe("patch builders and prompt builder", () => {
-  it("builds move patch operations for left/top", () => {
-    expect(buildDomEditMovePatchOperations(140.4, 82.1)).toEqual([
-      { type: "inline-style", property: "left", value: "140px" },
-      { type: "inline-style", property: "top", value: "82px" },
-    ]);
-  });
-
-  it("builds resize patch operations for width/height", () => {
-    expect(buildDomEditResizePatchOperations(301.6, 210.1)).toEqual([
-      { type: "inline-style", property: "width", value: "302px" },
-      { type: "inline-style", property: "height", value: "210px" },
-    ]);
-  });
-
   it("builds style patch operations", () => {
     expect(buildDomEditStylePatchOperation("background-color", "rgb(15, 23, 42)")).toEqual({
       type: "inline-style",
@@ -444,6 +489,9 @@ describe("patch builders and prompt builder", () => {
         canEditStyles: true,
         canMove: true,
         canResize: true,
+        canApplyManualOffset: true,
+        canApplyManualSize: true,
+        canApplyManualRotation: true,
       },
     } satisfies DomEditSelection;
 
@@ -490,7 +538,9 @@ describe("patch builders and prompt builder", () => {
         canEditStyles: true,
         canMove: true,
         canResize: true,
-        canDetachFromLayout: false,
+        canApplyManualOffset: true,
+        canApplyManualSize: true,
+        canApplyManualRotation: true,
       },
     } satisfies DomEditSelection;
 
