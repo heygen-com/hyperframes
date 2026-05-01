@@ -9,8 +9,6 @@ import {
   realpathSync,
 } from "node:fs";
 import { join, resolve } from "node:path";
-import { getElementScreenshotClip } from "@hyperframes/core/studio-api/screenshot-clip";
-import type { ScreenshotClip } from "@hyperframes/core/studio-api/screenshot-clip";
 import type {
   StudioApiAdapter,
   ResolvedProject,
@@ -49,6 +47,13 @@ async function getSharedBrowser(): Promise<import("puppeteer-core").Browser | nu
 // In-flight thumbnail dedup
 const _thumbnailInflight = new Map<string, Promise<Buffer>>();
 const THUMBNAIL_CACHE_VERSION = "v2";
+
+interface ScreenshotClip {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
 
 // ── Vite adapter for the shared studio API ───────────────────────────────────
 
@@ -291,7 +296,23 @@ function createViteAdapter(dataDir: string, server: ViteDevServer): StudioApiAda
           await new Promise((r) => setTimeout(r, 200));
           let clip: ScreenshotClip | undefined;
           if (opts.selector) {
-            clip = await page.evaluate(getElementScreenshotClip, opts.selector);
+            clip = await page.evaluate((selector: string) => {
+              const el = document.querySelector(selector);
+              if (!(el instanceof HTMLElement)) return undefined;
+              const rect = el.getBoundingClientRect();
+              if (rect.width < 4 || rect.height < 4) return undefined;
+              const pad = 8;
+              const x = Math.max(0, rect.left - pad);
+              const y = Math.max(0, rect.top - pad);
+              const maxWidth = window.innerWidth - x;
+              const maxHeight = window.innerHeight - y;
+              return {
+                x,
+                y,
+                width: Math.max(1, Math.min(rect.width + pad * 2, maxWidth)),
+                height: Math.max(1, Math.min(rect.height + pad * 2, maxHeight)),
+              };
+            }, opts.selector);
           }
           const buf = await page.screenshot(
             opts.format === "png"
