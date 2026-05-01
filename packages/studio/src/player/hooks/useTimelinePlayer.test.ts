@@ -15,6 +15,7 @@ import {
 
 function createDocument(markup: string): Document {
   const window = new Window();
+  Object.assign(window, { SyntaxError });
   window.document.body.innerHTML = markup;
   return window.document;
 }

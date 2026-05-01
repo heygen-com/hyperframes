@@ -39,6 +39,7 @@ interface ApplyResult {
   ok: boolean;
   reason?: "empty" | "content-mismatch";
   label?: string;
+  paths?: string[];
 }
 
 interface PersistentEditHistoryStoreOptions {
@@ -196,7 +197,7 @@ export function createPersistentEditHistoryStore({
         });
         return {
           state: result.state,
-          result: { ok: true, label: result.entry.label },
+          result: { ok: true, label: result.entry.label, paths: Object.keys(result.entry.files) },
         };
       });
     },
@@ -227,7 +228,7 @@ export function createPersistentEditHistoryStore({
         });
         return {
           state: result.state,
-          result: { ok: true, label: result.entry.label },
+          result: { ok: true, label: result.entry.label, paths: Object.keys(result.entry.files) },
         };
       });
     },

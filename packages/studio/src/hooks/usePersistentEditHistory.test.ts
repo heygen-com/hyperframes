@@ -60,6 +60,7 @@ describe("createPersistentEditHistoryController", () => {
       },
     });
     expect(result.ok).toBe(true);
+    expect(result.paths).toEqual(["index.html"]);
 
     expect(controller.snapshot().canUndo).toBe(false);
     expect(controller.snapshot().canRedo).toBe(true);

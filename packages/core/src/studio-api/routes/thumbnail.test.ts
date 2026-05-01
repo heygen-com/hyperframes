@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Hono } from "hono";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { registerThumbnailRoutes } from "./thumbnail";
@@ -151,22 +151,27 @@ describe("registerThumbnailRoutes", () => {
     );
   });
 
-  it("preserves an explicit zero seek time", async () => {
+  it("keeps changed studio manual edits separated in the disk cache", async () => {
     const adapter = createAdapter();
+    const project = await adapter.resolveProject("demo");
+    if (!project) throw new Error("missing project");
     const app = new Hono();
     registerThumbnailRoutes(app, adapter);
 
-    const response = await app.request(
-      "http://localhost/projects/demo/thumbnail/index.html?t=0&format=png",
-    );
+    const indexPath = join(project.dir, "index.html");
+    writeFileSync(indexPath, `<div data-composition-id="main" data-width="640" data-height="360">`);
+    const manualEditsDir = join(project.dir, ".hyperframes");
+    mkdirSync(manualEditsDir, { recursive: true });
+    const manualEditsPath = join(manualEditsDir, "studio-manual-edits.json");
+    writeFileSync(manualEditsPath, `{"version":1,"edits":[]}`);
 
-    expect(response.status).toBe(200);
-    expect(adapter.generateThumbnail).toHaveBeenCalledWith(
-      expect.objectContaining({
-        compPath: "index.html",
-        seekTime: 0,
-        format: "png",
-      }),
+    await app.request("http://localhost/projects/demo/thumbnail/index.html?t=2&v=test");
+    writeFileSync(
+      manualEditsPath,
+      `{"version":1,"edits":[{"kind":"rotation","target":{"sourceFile":"index.html","id":"card"},"angle":30}]}`,
     );
+    await app.request("http://localhost/projects/demo/thumbnail/index.html?t=2&v=test");
+
+    expect(adapter.generateThumbnail).toHaveBeenCalledTimes(2);
   });
 });

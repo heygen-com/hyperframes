@@ -1,9 +1,11 @@
 import type { Hono } from "hono";
 import { existsSync, readFileSync, writeFileSync, mkdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { createHash } from "node:crypto";
 import type { StudioApiAdapter } from "../types.js";
 
 const THUMBNAIL_CACHE_VERSION = "v3";
+const STUDIO_MANUAL_EDITS_PATH = ".hyperframes/studio-manual-edits.json";
 
 export function registerThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): void {
   api.get("/projects/:id/thumbnail/*", async (c) => {
@@ -47,6 +49,13 @@ export function registerThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): v
         if (hMatch?.[1]) compH = parseInt(hMatch[1]);
       }
     }
+    const manualEditsFile = join(project.dir, STUDIO_MANUAL_EDITS_PATH);
+    let manualEditsKey = "";
+    if (existsSync(manualEditsFile)) {
+      const manualEditsContent = readFileSync(manualEditsFile, "utf-8");
+      manualEditsKey = `_${createHash("sha1").update(manualEditsContent).digest("hex").slice(0, 16)}`;
+      sourceMtime = Math.max(sourceMtime, Math.round(statSync(manualEditsFile).mtimeMs));
+    }
 
     const previewUrl =
       compPath === "index.html"
@@ -61,7 +70,7 @@ export function registerThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): v
     const urlVersionKey = urlVersion
       ? `_${urlVersion.replace(/[^a-zA-Z0-9_-]+/g, "_").slice(0, 32)}`
       : "";
-    const cacheKey = `${THUMBNAIL_CACHE_VERSION}${urlVersionKey}_${format}_${compPath.replace(/\//g, "_")}_${compW}x${compH}_${sourceMtime}_${seekTime.toFixed(2)}${selectorKey}.${format === "png" ? "png" : "jpg"}`;
+    const cacheKey = `${THUMBNAIL_CACHE_VERSION}${urlVersionKey}${manualEditsKey}_${format}_${compPath.replace(/\//g, "_")}_${compW}x${compH}_${sourceMtime}_${seekTime.toFixed(2)}${selectorKey}.${format === "png" ? "png" : "jpg"}`;
     const cachePath = join(cacheDir, cacheKey);
     if (existsSync(cachePath)) {
       return new Response(new Uint8Array(readFileSync(cachePath)), {

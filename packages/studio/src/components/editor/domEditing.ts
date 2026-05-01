@@ -35,9 +35,13 @@ const CURATED_STYLE_PROPERTIES = [
 export interface DomEditCapabilities {
   canSelect: boolean;
   canEditStyles: boolean;
+  /** Directly editable authored left/top style fields. Canvas drag uses manual edits instead. */
   canMove: boolean;
+  /** Directly editable authored width/height style fields. Canvas resize uses manual edits instead. */
   canResize: boolean;
-  canDetachFromLayout: boolean;
+  canApplyManualOffset: boolean;
+  canApplyManualSize: boolean;
+  canApplyManualRotation: boolean;
   reasonIfDisabled?: string;
 }
 
@@ -117,54 +121,6 @@ function isIdentityTransform(value: string | undefined): boolean {
   if (values.length !== 16 || values.some((part) => !Number.isFinite(part))) return false;
   const identity = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
   return values.every((part, index) => Math.abs(part - identity[index]) < 0.0001);
-}
-
-function isClipClassName(className: string | undefined): boolean {
-  return Boolean(className?.split(/\s+/).includes("clip"));
-}
-
-function isInlineTextTag(tagName: string | undefined): boolean {
-  return Boolean(
-    tagName &&
-    ["a", "b", "em", "i", "small", "span", "strong", "sub", "sup"].includes(tagName.toLowerCase()),
-  );
-}
-
-function isBlockishTag(tagName: string | undefined): boolean {
-  return Boolean(
-    tagName &&
-    [
-      "article",
-      "aside",
-      "canvas",
-      "div",
-      "figure",
-      "footer",
-      "header",
-      "img",
-      "main",
-      "section",
-      "svg",
-      "video",
-    ].includes(tagName.toLowerCase()),
-  );
-}
-
-function isBlockishDisplay(display: string | undefined): boolean {
-  return Boolean(
-    display &&
-    [
-      "block",
-      "flex",
-      "flow-root",
-      "grid",
-      "inline-block",
-      "inline-flex",
-      "inline-grid",
-      "list-item",
-      "table",
-    ].includes(display),
-  );
 }
 
 function isTextBearingTag(tagName: string): boolean {
@@ -442,7 +398,9 @@ export function resolveDomEditCapabilities(args: {
       canEditStyles: false,
       canMove: false,
       canResize: false,
-      canDetachFromLayout: false,
+      canApplyManualOffset: false,
+      canApplyManualSize: false,
+      canApplyManualRotation: false,
       reasonIfDisabled: "Studio could not resolve a stable patch target for this element.",
     };
   }
@@ -461,21 +419,13 @@ export function resolveDomEditCapabilities(args: {
     !hasTransformDrivenGeometry;
 
   const canResize = canMove && (width != null || height != null);
-  const isBlockishLayer =
-    args.isCompositionHost ||
-    isClipClassName(args.className) ||
-    isBlockishTag(args.tagName) ||
-    isBlockishDisplay(args.computedStyles.display);
-  const canDetachFromLayout =
-    !canMove &&
-    !hasTransformDrivenGeometry &&
-    isBlockishLayer &&
-    (!isInlineTextTag(args.tagName) || isClipClassName(args.className));
-  const reasonIfDisabled = !canMove
-    ? canDetachFromLayout
-      ? "This layer is controlled by layout."
-      : "Direct move/resize is limited to absolute or fixed elements with px geometry and no transform-driven layout."
-    : undefined;
+  const canApplyManualGeometry = !args.isCompositionHost;
+  const canApplyManualOffset = canApplyManualGeometry;
+  const canApplyManualSize = canApplyManualGeometry;
+  const canApplyManualRotation = canApplyManualGeometry;
+  const reasonIfDisabled = canApplyManualGeometry
+    ? undefined
+    : "Drill into the composition to edit its internal layers.";
 
   if (args.isCompositionHost && args.isMasterView) {
     return {
@@ -483,7 +433,9 @@ export function resolveDomEditCapabilities(args: {
       canEditStyles: false,
       canMove,
       canResize,
-      canDetachFromLayout,
+      canApplyManualOffset,
+      canApplyManualSize,
+      canApplyManualRotation,
       reasonIfDisabled,
     };
   }
@@ -493,7 +445,9 @@ export function resolveDomEditCapabilities(args: {
     canEditStyles: true,
     canMove,
     canResize,
-    canDetachFromLayout,
+    canApplyManualOffset,
+    canApplyManualSize,
+    canApplyManualRotation,
     reasonIfDisabled,
   };
 }
@@ -585,6 +539,49 @@ export function refreshDomEditSelection(
     : null;
 }
 
+export function getDomEditTargetKey(
+  selection: Pick<DomEditSelection, "id" | "selector" | "selectorIndex" | "sourceFile">,
+): string {
+  return [
+    selection.sourceFile || "index.html",
+    selection.id ?? "",
+    selection.selector ?? "",
+    selection.selectorIndex ?? "",
+  ].join("|");
+}
+
+function hasSupportedDirectEdit(capabilities: DomEditCapabilities): boolean {
+  return (
+    capabilities.canEditStyles ||
+    capabilities.canMove ||
+    capabilities.canResize ||
+    capabilities.canApplyManualOffset ||
+    capabilities.canApplyManualSize ||
+    capabilities.canApplyManualRotation
+  );
+}
+
+export function getDomEditNonEditableReason(
+  element: HTMLElement,
+  selection: DomEditSelection | null,
+): string | null {
+  if (!selection) {
+    return "No stable source target";
+  }
+
+  if (selection.element !== element) {
+    return selection.isCompositionHost
+      ? "Nested composition boundary"
+      : `Selection resolves to ${selection.label}`;
+  }
+
+  if (!hasSupportedDirectEdit(selection.capabilities)) {
+    return selection.capabilities.reasonIfDisabled ?? "No supported direct edits";
+  }
+
+  return null;
+}
+
 export function findElementForSelection(
   doc: Document,
   selection: Pick<DomEditSelection, "id" | "selector" | "selectorIndex" | "sourceFile">,
@@ -622,38 +619,6 @@ export function findElementForSelection(
           selection.sourceFile),
   );
   return matches[0] ?? null;
-}
-
-export function buildDomEditMovePatchOperations(left: number, top: number): PatchOperation[] {
-  return [
-    { type: "inline-style", property: "left", value: `${Math.round(left)}px` },
-    { type: "inline-style", property: "top", value: `${Math.round(top)}px` },
-  ];
-}
-
-export function buildDomEditResizePatchOperations(width: number, height: number): PatchOperation[] {
-  return [
-    { type: "inline-style", property: "width", value: `${Math.round(width)}px` },
-    { type: "inline-style", property: "height", value: `${Math.round(height)}px` },
-  ];
-}
-
-export function buildDomEditDetachPatchOperations(rect: {
-  left: number;
-  top: number;
-  width: number;
-  height: number;
-}): PatchOperation[] {
-  return [
-    { type: "inline-style", property: "position", value: "absolute" },
-    { type: "inline-style", property: "left", value: `${Math.round(rect.left)}px` },
-    { type: "inline-style", property: "top", value: `${Math.round(rect.top)}px` },
-    { type: "inline-style", property: "width", value: `${Math.round(rect.width)}px` },
-    { type: "inline-style", property: "height", value: `${Math.round(rect.height)}px` },
-    { type: "inline-style", property: "margin", value: "0" },
-    { type: "inline-style", property: "right", value: "auto" },
-    { type: "inline-style", property: "bottom", value: "auto" },
-  ];
 }
 
 export function buildDomEditStylePatchOperation(property: string, value: string): PatchOperation {

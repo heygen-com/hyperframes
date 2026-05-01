@@ -257,6 +257,8 @@ export interface RenderConfig {
   producerConfig?: EngineConfig;
   /** Custom logger. Defaults to console-based defaultLogger. */
   logger?: ProducerLogger;
+  /** Extra scripts injected after the render runtime before </body> in index.html. */
+  renderBodyScripts?: string[];
   /** Override CRF for the video encoder. Mutually exclusive with `videoBitrate`. */
   crf?: number;
   /** Target video bitrate (e.g. "10M"). Mutually exclusive with `crf`. */
@@ -1973,16 +1975,277 @@ export async function executeRenderJob(
       needsAlpha,
       deviceScaleFactor,
     });
-    compiled = probeResult.compiled;
-    fileServer = probeResult.fileServer;
-    probeSession = probeResult.probeSession;
-    lastBrowserConsole = probeResult.lastBrowserConsole;
-    // The probe stage produces `duration` / `totalFrames` values; the
-    // sequencer owns the `RenderJob` and writes them onto it.
-    job.duration = probeResult.duration;
-    job.totalFrames = probeResult.totalFrames;
-    const totalFrames = probeResult.totalFrames;
-    perfStages.browserProbeMs = probeResult.browserProbeMs;
+    const outputWidth = width * deviceScaleFactor;
+    const outputHeight = height * deviceScaleFactor;
+    if (deviceScaleFactor > 1) {
+      log.info("Supersampling composition via deviceScaleFactor", {
+        compositionWidth: width,
+        compositionHeight: height,
+        outputResolution: job.config.outputResolution,
+        outputWidth,
+        outputHeight,
+        deviceScaleFactor,
+      });
+    }
+
+    const probeStart = Date.now();
+    const needsBrowser = composition.duration <= 0 || compiled.unresolvedCompositions.length > 0;
+
+    if (needsBrowser) {
+      const reasons = [];
+      if (composition.duration <= 0) reasons.push("root duration unknown");
+      if (compiled.unresolvedCompositions.length > 0)
+        reasons.push(`${compiled.unresolvedCompositions.length} unresolved composition(s)`);
+
+      fileServer = await createFileServer({
+        projectDir,
+        compiledDir: join(workDir, "compiled"),
+        port: 0,
+        preHeadScripts: [VIRTUAL_TIME_SHIM],
+        additionalBodyScripts: job.config.renderBodyScripts,
+      });
+      assertNotAborted();
+
+      const captureOpts: CaptureOptions = {
+        width,
+        height,
+        fps: job.config.fps,
+        format: needsAlpha ? "png" : "jpeg",
+        quality: needsAlpha ? undefined : 80,
+        deviceScaleFactor,
+      };
+      probeSession = await createCaptureSession(
+        fileServer.url,
+        join(workDir, "probe"),
+        captureOpts,
+        null,
+        cfg,
+      );
+      await initializeSession(probeSession);
+      assertNotAborted();
+      lastBrowserConsole = probeSession.browserConsoleBuffer;
+
+      // Discover root composition duration
+      if (composition.duration <= 0) {
+        const discoveredDuration = await getCompositionDuration(probeSession);
+        assertNotAborted();
+        log.info("Probed composition duration from browser", {
+          discoveredDuration,
+          staticDuration: compiled.staticDuration,
+        });
+        composition.duration = discoveredDuration;
+      } else {
+        log.info("Using static duration from data-duration attribute", {
+          duration: composition.duration,
+        });
+      }
+
+      // Resolve unresolved composition durations via window.__timelines
+      if (compiled.unresolvedCompositions.length > 0) {
+        const resolutions = await resolveCompositionDurations(
+          probeSession.page,
+          compiled.unresolvedCompositions,
+        );
+        assertNotAborted();
+        if (resolutions.length > 0) {
+          compiled = await recompileWithResolutions(
+            compiled,
+            resolutions,
+            projectDir,
+            join(workDir, "downloads"),
+          );
+          assertNotAborted();
+          // Update composition metadata with re-parsed media
+          composition.videos = compiled.videos;
+          composition.audios = compiled.audios;
+          composition.images = compiled.images;
+          writeCompiledArtifacts(compiled, workDir, Boolean(job.config.debug));
+        }
+      }
+
+      // Discover media elements from browser DOM (catches dynamically-set src)
+      const browserMedia = await discoverMediaFromBrowser(probeSession.page);
+      assertNotAborted();
+      if (browserMedia.length > 0) {
+        const existingVideoIds = new Set(composition.videos.map((v) => v.id));
+        const existingAudioIds = new Set(composition.audios.map((a) => a.id));
+
+        for (const el of browserMedia) {
+          if (!el.src || el.src === "about:blank") continue;
+
+          // Convert absolute localhost URLs back to relative paths
+          let src = el.src;
+          if (fileServer && src.startsWith(fileServer.url)) {
+            src = src.slice(fileServer.url.length).replace(/^\//, "");
+          }
+
+          if (el.tagName === "video") {
+            if (existingVideoIds.has(el.id)) {
+              // Reconcile to browser/runtime media metadata (runtime src can differ from static HTML).
+              const existing = composition.videos.find((v) => v.id === el.id);
+              if (existing) {
+                if (existing.src !== src) {
+                  existing.src = src;
+                }
+                const projectedEnd = projectBrowserEndToCompositionTimeline(
+                  existing.start,
+                  el.start,
+                  el.end,
+                );
+                if (
+                  projectedEnd > 0 &&
+                  (existing.end <= 0 ||
+                    Math.abs(existing.end - projectedEnd) > BROWSER_MEDIA_EPSILON)
+                ) {
+                  existing.end = projectedEnd;
+                }
+                if (
+                  el.mediaStart > 0 &&
+                  (existing.mediaStart <= 0 ||
+                    Math.abs(existing.mediaStart - el.mediaStart) > BROWSER_MEDIA_EPSILON)
+                ) {
+                  existing.mediaStart = el.mediaStart;
+                }
+                if (el.hasAudio && !existing.hasAudio) {
+                  existing.hasAudio = true;
+                }
+                if (el.loop && !existing.loop) {
+                  existing.loop = true;
+                }
+              }
+            } else {
+              // New video discovered from browser
+              composition.videos.push({
+                id: el.id,
+                src,
+                start: el.start,
+                end: el.end,
+                mediaStart: el.mediaStart,
+                loop: el.loop,
+                hasAudio: el.hasAudio,
+              });
+              existingVideoIds.add(el.id);
+            }
+          } else if (el.tagName === "audio") {
+            if (existingAudioIds.has(el.id)) {
+              const existing = composition.audios.find((a) => a.id === el.id);
+              if (existing) {
+                if (existing.src !== src) {
+                  existing.src = src;
+                }
+                const projectedEnd = projectBrowserEndToCompositionTimeline(
+                  existing.start,
+                  el.start,
+                  el.end,
+                );
+                if (
+                  projectedEnd > 0 &&
+                  (existing.end <= 0 ||
+                    Math.abs(existing.end - projectedEnd) > BROWSER_MEDIA_EPSILON)
+                ) {
+                  existing.end = projectedEnd;
+                }
+                if (
+                  el.mediaStart > 0 &&
+                  (existing.mediaStart <= 0 ||
+                    Math.abs(existing.mediaStart - el.mediaStart) > BROWSER_MEDIA_EPSILON)
+                ) {
+                  existing.mediaStart = el.mediaStart;
+                }
+                if (
+                  el.volume > 0 &&
+                  Math.abs((existing.volume ?? 1) - el.volume) > BROWSER_MEDIA_EPSILON
+                ) {
+                  existing.volume = el.volume;
+                }
+              }
+            } else {
+              composition.audios.push({
+                id: el.id,
+                src,
+                start: el.start,
+                end: el.end,
+                mediaStart: el.mediaStart,
+                layer: 0,
+                volume: el.volume,
+                type: "audio",
+              });
+              existingAudioIds.add(el.id);
+            }
+          }
+        }
+      }
+    }
+    perfStages.browserProbeMs = Date.now() - probeStart;
+
+    job.duration = composition.duration;
+    job.totalFrames = Math.ceil(composition.duration * job.config.fps);
+    const totalFrames = job.totalFrames;
+
+    if (job.duration <= 0) {
+      // Gather diagnostics to help users understand why the render would produce a black video.
+      // Wrapped in try/catch because the browser tab may have crashed (which could be
+      // WHY duration is 0), and we don't want a Puppeteer error to mask the real message.
+      const diagnostics: string[] = [];
+      try {
+        if (probeSession) {
+          const timelinesInfo = await probeSession.page.evaluate(() => {
+            const tl = (window as any).__timelines;
+            const hf = (window as any).__hf;
+            return {
+              timelineKeys: tl ? Object.keys(tl) : [],
+              hfDuration: hf?.duration ?? null,
+              gsapLoaded: typeof (window as any).gsap !== "undefined",
+            };
+          });
+          if (!timelinesInfo.gsapLoaded) {
+            diagnostics.push(
+              "GSAP is not loaded — CDN script may have failed to download. " +
+                "Bundle GSAP locally in your project instead of using a CDN <script src>.",
+            );
+          } else if (timelinesInfo.timelineKeys.length === 0) {
+            diagnostics.push(
+              "GSAP is loaded but no timelines were registered on window.__timelines. " +
+                "Ensure your script creates a timeline and assigns it: " +
+                'window.__timelines["main"] = gsap.timeline({ paused: true });',
+            );
+          }
+          for (const line of probeSession.browserConsoleBuffer) {
+            if (/\[Browser:ERROR\]|\[Browser:PAGEERROR\]|404|net::ERR_/i.test(line)) {
+              diagnostics.push(`Browser: ${line}`);
+            }
+          }
+        }
+      } catch (err) {
+        log.warn("Failed to gather browser diagnostics for zero-duration composition", {
+          error: err instanceof Error ? err.message : String(err),
+        });
+        diagnostics.push("(Could not gather browser diagnostics — page may have crashed)");
+      }
+      const hint =
+        diagnostics.length > 0
+          ? "\n\nDiagnostics:\n  - " + diagnostics.join("\n  - ")
+          : "\n\nCheck that GSAP timelines are registered on window.__timelines.";
+      throw new Error("Composition duration is 0 — this would produce a black video." + hint);
+    }
+
+    // Surface browser-side asset failures (404s, script errors) as warnings.
+    // These don't block the render but indicate missing images, fonts, or
+    // scripts that may produce unexpected visual artifacts.
+    if (probeSession) {
+      const failedRequests = probeSession.browserConsoleBuffer.filter((line) =>
+        /404|ERR_NAME_NOT_RESOLVED|ERR_CONNECTION_REFUSED|net::ERR_/i.test(line),
+      );
+      if (failedRequests.length > 0) {
+        log.warn("Browser encountered network failures during page load:", {
+          failures: failedRequests.slice(0, 10),
+        });
+        for (const line of failedRequests.slice(0, 5)) {
+          console.warn(`[Render] Asset load failure: ${line}`);
+        }
+      }
+    }
+
     perfStages.compileMs = Date.now() - stage1Start;
 
     // ── Stage 2: Video frame extraction ─────────────────────────────────
@@ -2102,6 +2365,7 @@ export async function executeRenderJob(
         compiledDir: join(workDir, "compiled"),
         port: 0,
         preHeadScripts: [VIRTUAL_TIME_SHIM],
+        additionalBodyScripts: job.config.renderBodyScripts,
       });
       assertNotAborted();
     }

@@ -4,6 +4,7 @@ import { copyTextToClipboard } from "./clipboard";
 
 function installDocument(execCommand: (command: string) => boolean): void {
   const window = new Window();
+  Object.assign(window, { SyntaxError });
   Object.defineProperty(window.document, "execCommand", {
     configurable: true,
     value: execCommand,
