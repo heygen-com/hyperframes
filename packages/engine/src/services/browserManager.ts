@@ -234,6 +234,30 @@ export async function releaseBrowser(
   await browser.close().catch(() => {});
 }
 
+export function forceReleaseBrowser(browser: Browser): void {
+  if (pooledBrowser && pooledBrowser === browser) {
+    pooledBrowserRefCount = 0;
+    pooledBrowser = null;
+  }
+  const proc = (
+    browser as unknown as {
+      process?: () => { kill: (signal?: NodeJS.Signals) => boolean; killed?: boolean } | null;
+    }
+  ).process?.();
+  if (proc && !proc.killed) {
+    try {
+      proc.kill("SIGKILL");
+    } catch {
+      // Best-effort cleanup.
+    }
+  }
+  try {
+    browser.disconnect();
+  } catch {
+    // Best-effort cleanup.
+  }
+}
+
 export interface BuildChromeArgsOptions {
   width: number;
   height: number;

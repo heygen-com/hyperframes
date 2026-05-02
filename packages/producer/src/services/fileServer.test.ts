@@ -189,6 +189,34 @@ describe("createFileServer", () => {
       rmSync(workspaceDir, { recursive: true, force: true });
     }
   });
+
+  it("decodes percent-encoded reserved characters in URL path segments", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-file-server-reserved-chars-"));
+
+    try {
+      const subDir = join(projectDir, "video#1");
+      mkdirSync(subDir, { recursive: true });
+      writeFileSync(join(projectDir, "index.html"), "<!doctype html><html></html>");
+      writeFileSync(join(subDir, "frame.jpg"), "fake-jpg");
+
+      const server = await createFileServer({
+        projectDir,
+        preHeadScripts: [],
+        headScripts: [],
+        bodyScripts: [],
+      });
+
+      try {
+        const res = await fetch(`${server.url}/video%231/frame.jpg`);
+        expect(res.status).toBe(200);
+        expect(await res.text()).toBe("fake-jpg");
+      } finally {
+        server.close();
+      }
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("HF_EARLY_STUB + HF_BRIDGE_SCRIPT integration", () => {

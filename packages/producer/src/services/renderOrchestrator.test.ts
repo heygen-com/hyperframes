@@ -140,6 +140,28 @@ describe("createCompiledFrameSrcResolver", () => {
 
     expect(resolver("/tmp/hf-job/video-frames/frame_00001.jpg")).toBeNull();
   });
+
+  it("resolves symlinked cache frames when materialized under compiledDir", () => {
+    const resolver = createCompiledFrameSrcResolver("/tmp/hf-job/compiled");
+
+    expect(resolver("/tmp/hf-job/compiled/__hyperframes_video_frames/vid1/frame_00001.jpg")).toBe(
+      "/__hyperframes_video_frames/vid1/frame_00001.jpg",
+    );
+
+    expect(resolver("/tmp/cache/abc123/frame_00001.jpg")).toBeNull();
+  });
+
+  it("encodes reserved characters in frame path segments", () => {
+    const resolver = createCompiledFrameSrcResolver("/tmp/hf-job/compiled");
+
+    expect(
+      resolver("/tmp/hf-job/compiled/__hyperframes_video_frames/video#1/frame_00001.jpg"),
+    ).toBe("/__hyperframes_video_frames/video%231/frame_00001.jpg");
+
+    expect(
+      resolver("/tmp/hf-job/compiled/__hyperframes_video_frames/video?q=1/frame_00001.jpg"),
+    ).toBe("/__hyperframes_video_frames/video%3Fq%3D1/frame_00001.jpg");
+  });
 });
 
 describe("writeCompiledArtifacts — external assets on Windows drive-letter paths (GH #321)", () => {

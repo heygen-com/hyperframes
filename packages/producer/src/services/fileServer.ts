@@ -450,8 +450,17 @@ export function createFileServer(options: FileServerOptions): Promise<FileServer
     let requestPath = c.req.path;
     if (requestPath === "/") requestPath = "/index.html";
 
-    // Remove leading slash
-    const relativePath = requestPath.replace(/^\//, "");
+    const relativePath = requestPath
+      .replace(/^\//, "")
+      .split("/")
+      .map((seg) => {
+        try {
+          return decodeURIComponent(seg);
+        } catch {
+          return seg;
+        }
+      })
+      .join("/");
 
     // Resolve against compiledDir first (preferred — overrides project files
     // for compositions emitted by the build), then projectDir as fallback.

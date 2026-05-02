@@ -16,6 +16,7 @@ import { quantizeTimeToFrame } from "@hyperframes/core";
 import {
   acquireBrowser,
   releaseBrowser,
+  forceReleaseBrowser,
   buildChromeArgs,
   resolveHeadlessShellPath,
   type CaptureMode,
@@ -93,27 +94,6 @@ async function waitForCloseWithTimeout(promise: Promise<unknown>): Promise<boole
   ]);
   if (timer) clearTimeout(timer);
   return !timedOut;
-}
-
-function forceKillBrowserProcess(browser: Browser): void {
-  const browserProcess = (
-    browser as unknown as {
-      process?: () => { kill: (signal?: NodeJS.Signals) => boolean; killed?: boolean } | null;
-    }
-  ).process?.();
-
-  if (browserProcess && !browserProcess.killed) {
-    try {
-      browserProcess.kill("SIGKILL");
-    } catch {
-      // Best-effort cleanup after Puppeteer close has already timed out.
-    }
-  }
-  try {
-    browser.disconnect();
-  } catch {
-    // Best-effort cleanup after Puppeteer close has already timed out.
-  }
 }
 
 export async function createCaptureSession(
@@ -718,7 +698,8 @@ export async function closeCaptureSession(session: CaptureSession): Promise<void
     const pageClosed = await waitForCloseWithTimeout(session.page.close());
     if (!pageClosed) {
       console.warn("[FrameCapture] Timed out closing page; forcing browser process shutdown");
-      forceKillBrowserProcess(session.browser);
+      forceReleaseBrowser(session.browser);
+      session.browserReleased = true;
     }
     session.pageReleased = true;
   }
@@ -728,7 +709,7 @@ export async function closeCaptureSession(session: CaptureSession): Promise<void
     );
     if (!browserClosed) {
       console.warn("[FrameCapture] Timed out closing browser; forcing browser process shutdown");
-      forceKillBrowserProcess(session.browser);
+      forceReleaseBrowser(session.browser);
     }
     session.browserReleased = true;
   }

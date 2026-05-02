@@ -26,6 +26,7 @@ import {
   writeFileSync,
   copyFileSync,
   appendFileSync,
+  symlinkSync,
 } from "fs";
 import { parseHTML } from "linkedom";
 import {
@@ -2293,6 +2294,25 @@ export async function executeRenderJob(
         compiledDir,
       );
       assertNotAborted();
+
+      const compiledFrameRoot = join(compiledDir, "__hyperframes_video_frames");
+      for (const ext of extractionResult.extracted) {
+        const resolvedOut = resolve(ext.outputDir);
+        if (!resolvedOut.startsWith(resolve(compiledDir) + "/")) {
+          const linkPath = join(compiledFrameRoot, ext.videoId);
+          if (!existsSync(linkPath)) {
+            mkdirSync(dirname(linkPath), { recursive: true });
+            symlinkSync(resolvedOut, linkPath);
+          }
+          const remapped = new Map<number, string>();
+          for (const [idx, framePath] of ext.framePaths) {
+            const basename = framePath.slice(framePath.lastIndexOf("/") + 1);
+            remapped.set(idx, join(linkPath, basename));
+          }
+          ext.framePaths = remapped;
+          ext.outputDir = linkPath;
+        }
+      }
 
       if (extractionResult.extracted.length > 0) {
         frameLookup = createFrameLookupTable(composition.videos, extractionResult.extracted);

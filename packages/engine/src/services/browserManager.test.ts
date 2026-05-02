@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import { buildChromeArgs } from "./browserManager.js";
+import { buildChromeArgs, forceReleaseBrowser } from "./browserManager.js";
 
 describe("buildChromeArgs browser GPU mode", () => {
   const base = { width: 1920, height: 1080 };
@@ -44,5 +44,35 @@ describe("buildChromeArgs browser GPU mode", () => {
     expect(args).toContain("--disable-gpu");
     expect(args).toContain("--use-angle=swiftshader");
     expect(args).not.toContain("--use-angle=metal");
+  });
+});
+
+describe("forceReleaseBrowser", () => {
+  it("kills the browser process and disconnects", () => {
+    const killFn = vi.fn(() => true);
+    const disconnectFn = vi.fn();
+    const mockBrowser = {
+      process: () => ({ kill: killFn, killed: false }),
+      disconnect: disconnectFn,
+    } as any;
+
+    forceReleaseBrowser(mockBrowser);
+
+    expect(killFn).toHaveBeenCalledWith("SIGKILL");
+    expect(disconnectFn).toHaveBeenCalled();
+  });
+
+  it("tolerates an already-killed process", () => {
+    const killFn = vi.fn();
+    const disconnectFn = vi.fn();
+    const mockBrowser = {
+      process: () => ({ kill: killFn, killed: true }),
+      disconnect: disconnectFn,
+    } as any;
+
+    forceReleaseBrowser(mockBrowser);
+
+    expect(killFn).not.toHaveBeenCalled();
+    expect(disconnectFn).toHaveBeenCalled();
   });
 });
