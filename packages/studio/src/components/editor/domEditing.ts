@@ -152,16 +152,15 @@ function findClosestByAttribute(el: HTMLElement, attributeNames: string[]): HTML
   return null;
 }
 
-function getCompositionHost(el: HTMLElement): HTMLElement | null {
-  return findClosestByAttribute(el, ["data-composition-src", "data-composition-file"]);
-}
-
 function getSourceFileForElement(
   el: HTMLElement,
   activeCompositionPath: string | null,
 ): { sourceFile: string; compositionPath: string } {
+  const sourceHost = findClosestByAttribute(el, ["data-composition-file", "data-composition-src"]);
   const ownerRoot = findClosestByAttribute(el, ["data-composition-id"]);
   const sourceFile =
+    sourceHost?.getAttribute("data-composition-file") ??
+    sourceHost?.getAttribute("data-composition-src") ??
     ownerRoot?.getAttribute("data-composition-file") ??
     ownerRoot?.getAttribute("data-composition-src") ??
     activeCompositionPath ??
@@ -173,19 +172,26 @@ function getSourceFileForElement(
   };
 }
 
+function getPreferredClipAncestor(startEl: HTMLElement): HTMLElement | null {
+  let current: HTMLElement | null = startEl;
+  while (current) {
+    if (current.classList.contains("clip")) {
+      const isCompositionHost =
+        current.hasAttribute("data-composition-src") ||
+        current.hasAttribute("data-composition-file");
+      if (!isCompositionHost || current === startEl) return current;
+    }
+    current = current.parentElement;
+  }
+  return null;
+}
+
 function getSelectionCandidate(startEl: HTMLElement, options: DomEditContextOptions): HTMLElement {
   if (options.preferClipAncestor) {
-    const clipAncestor = startEl.closest(".clip");
-    if (isHtmlElement(clipAncestor)) {
+    const clipAncestor = getPreferredClipAncestor(startEl);
+    if (clipAncestor) {
       return clipAncestor;
     }
-  }
-
-  if (!options.isMasterView) return startEl;
-
-  const compositionHost = getCompositionHost(startEl);
-  if (compositionHost && compositionHost !== startEl) {
-    return compositionHost;
   }
 
   return startEl;
@@ -425,7 +431,7 @@ export function resolveDomEditCapabilities(args: {
   const canApplyManualRotation = canApplyManualGeometry;
   const reasonIfDisabled = canApplyManualGeometry
     ? undefined
-    : "Drill into the composition to edit its internal layers.";
+    : "Select an internal layer to transform it.";
 
   if (args.isCompositionHost && args.isMasterView) {
     return {

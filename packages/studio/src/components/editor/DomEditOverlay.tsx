@@ -42,8 +42,6 @@ interface DomEditOverlayProps {
     event: React.MouseEvent<HTMLDivElement>,
     options?: { preferClipAncestor?: boolean },
   ) => void;
-  onCanvasDoubleClick: (event: React.MouseEvent<HTMLDivElement>) => void;
-  onSelectedDoubleClick: () => void;
   onBlockedMove: (selection: DomEditSelection) => void;
   onPathOffsetCommit: (
     selection: DomEditSelection,
@@ -232,8 +230,6 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   selection,
   allowCanvasMovement = true,
   onCanvasMouseDown,
-  onCanvasDoubleClick,
-  onSelectedDoubleClick,
   onBlockedMove,
   onPathOffsetCommit,
   onBoxSizeCommit,
@@ -553,12 +549,6 @@ export const DomEditOverlay = memo(function DomEditOverlay({
     onCanvasMouseDown(event, { preferClipAncestor: false });
   };
 
-  const handleOverlayDoubleClick = (event: React.MouseEvent<HTMLDivElement>) => {
-    const target = event.target as HTMLElement | null;
-    if (target?.closest('[data-dom-edit-selection-box="true"]')) return;
-    onCanvasDoubleClick(event);
-  };
-
   // Click on the selection box itself → re-pick the element under the pointer.
   // This lets you click a child element even when a parent is selected, because
   // the click coordinates are forwarded to the iframe's element picker.
@@ -601,7 +591,6 @@ export const DomEditOverlay = memo(function DomEditOverlay({
       aria-label="Composition canvas"
       onPointerDownCapture={(event) => focusDomEditOverlayElement(event.currentTarget)}
       onMouseDown={handleOverlayMouseDown}
-      onDoubleClick={handleOverlayDoubleClick}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={clearPointerState}
@@ -665,7 +654,6 @@ export const DomEditOverlay = memo(function DomEditOverlay({
               };
             }}
             onClick={handleBoxClick}
-            onDoubleClick={onSelectedDoubleClick}
           >
             {/* Resize handle — bottom-right corner */}
             {allowCanvasMovement && selection.capabilities.canApplyManualSize && (

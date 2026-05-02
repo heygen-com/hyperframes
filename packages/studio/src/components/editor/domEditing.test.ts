@@ -197,7 +197,7 @@ describe("resolveDomEditCapabilities", () => {
 });
 
 describe("resolveDomEditSelection", () => {
-  it("allows moving composition hosts in master view while keeping contents drill-down only", () => {
+  it("keeps composition host transforms disabled in master view", () => {
     expect(
       resolveDomEditCapabilities({
         selector: "#detail-host",
@@ -226,14 +226,19 @@ describe("resolveDomEditSelection", () => {
       canApplyManualOffset: false,
       canApplyManualSize: false,
       canApplyManualRotation: false,
-      reasonIfDisabled: "Drill into the composition to edit its internal layers.",
+      reasonIfDisabled: "Select an internal layer to transform it.",
     });
   });
 
-  it("resolves child clicks inside a composition host back to the host in master view", () => {
+  it("resolves child clicks inside a composition host to the child in master view", () => {
     const document = createDocument(`
       <div data-composition-id="main">
-        <div id="detail-host" data-composition-src="compositions/detail-card.html">
+        <div
+          id="detail-host"
+          class="clip"
+          data-composition-id="detail-card"
+          data-composition-file="compositions/detail-card.html"
+        >
           <span id="inner-copy">Nested scene</span>
         </div>
       </div>
@@ -245,10 +250,65 @@ describe("resolveDomEditSelection", () => {
       isMasterView: true,
     });
 
-    expect(selection?.id).toBe("detail-host");
-    expect(selection?.isCompositionHost).toBe(true);
-    expect(selection?.capabilities.canMove).toBe(false);
-    expect(selection?.capabilities.canEditStyles).toBe(false);
+    expect(selection?.id).toBe("inner-copy");
+    expect(selection?.sourceFile).toBe("compositions/detail-card.html");
+    expect(selection?.isCompositionHost).toBe(false);
+    expect(selection?.capabilities.canApplyManualOffset).toBe(true);
+    expect(selection?.capabilities.canEditStyles).toBe(true);
+  });
+
+  it("does not prefer a scene host clip ancestor when selecting inside it", () => {
+    const document = createDocument(`
+      <div data-composition-id="main">
+        <div
+          id="detail-host"
+          class="clip"
+          data-composition-id="detail-card"
+          data-composition-file="compositions/detail-card.html"
+        >
+          <span id="inner-copy">Nested scene</span>
+        </div>
+      </div>
+    `);
+
+    const child = document.getElementById("inner-copy") as HTMLElement;
+    const selection = resolveDomEditSelection(child, {
+      activeCompositionPath: null,
+      isMasterView: true,
+      preferClipAncestor: true,
+    });
+
+    expect(selection?.id).toBe("inner-copy");
+    expect(selection?.sourceFile).toBe("compositions/detail-card.html");
+    expect(selection?.isCompositionHost).toBe(false);
+  });
+
+  it("still prefers an internal clip ancestor inside a scene", () => {
+    const document = createDocument(`
+      <div data-composition-id="main">
+        <div
+          id="detail-host"
+          class="clip"
+          data-composition-id="detail-card"
+          data-composition-file="compositions/detail-card.html"
+        >
+          <section id="nested-card" class="clip">
+            <span id="inner-copy">Nested scene</span>
+          </section>
+        </div>
+      </div>
+    `);
+
+    const child = document.getElementById("inner-copy") as HTMLElement;
+    const selection = resolveDomEditSelection(child, {
+      activeCompositionPath: null,
+      isMasterView: true,
+      preferClipAncestor: true,
+    });
+
+    expect(selection?.id).toBe("nested-card");
+    expect(selection?.sourceFile).toBe("compositions/detail-card.html");
+    expect(selection?.isCompositionHost).toBe(false);
   });
 
   it("scopes class selector indexing to the same source file", () => {
