@@ -46,8 +46,9 @@ interface DomEditOverlayProps {
   onCanvasPointerMove: (
     event: React.PointerEvent<HTMLDivElement>,
     options?: { preferClipAncestor?: boolean },
-  ) => void;
+  ) => DomEditSelection | null;
   onCanvasPointerLeave: () => void;
+  onSelectionChange: (selection: DomEditSelection, options?: { revealPanel?: boolean }) => void;
   onBlockedMove: (selection: DomEditSelection) => void;
   onPathOffsetCommit: (
     selection: DomEditSelection,
@@ -276,6 +277,7 @@ export function resolveDomEditRotationGesture(input: {
 interface GestureState {
   kind: GestureKind;
   mode: "path-offset" | "box-size" | "rotation";
+  selection: DomEditSelection;
   startX: number;
   startY: number;
   centerX: number;
@@ -316,6 +318,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   onCanvasMouseDown,
   onCanvasPointerMove,
   onCanvasPointerLeave,
+  onSelectionChange,
   onBlockedMove,
   onPathOffsetCommit,
   onBoxSizeCommit,
@@ -328,6 +331,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   const gestureRef = useRef<GestureState | null>(null);
   const blockedMoveRef = useRef<BlockedMoveState | null>(null);
   const suppressNextBoxClickRef = useRef(false);
+  const suppressNextOverlayMouseDownRef = useRef(false);
   const rafPausedRef = useRef(false);
   const resolvedElementRef = useRef<{ key: string; element: HTMLElement } | null>(null);
   const resolvedHoverElementRef = useRef<{ key: string; element: HTMLElement } | null>(null);
@@ -352,6 +356,8 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   onCanvasPointerMoveRef.current = onCanvasPointerMove;
   const onCanvasPointerLeaveRef = useRef(onCanvasPointerLeave);
   onCanvasPointerLeaveRef.current = onCanvasPointerLeave;
+  const onSelectionChangeRef = useRef(onSelectionChange);
+  onSelectionChangeRef.current = onSelectionChange;
 
   useMountEffect(() => {
     let frame = 0;
@@ -457,19 +463,24 @@ export const DomEditOverlay = memo(function DomEditOverlay({
     }`;
   }, [selection]);
 
-  const startGesture = (kind: GestureKind, e: React.PointerEvent) => {
-    const sel = selectionRef.current;
-    const rect = overlayRectRef.current;
+  const startGesture = (
+    kind: GestureKind,
+    e: React.PointerEvent<HTMLElement>,
+    options?: { selection?: DomEditSelection; rect?: OverlayRect | null },
+  ) => {
+    const sel = options?.selection ?? selectionRef.current;
+    const rect = options?.rect ?? overlayRectRef.current;
     const box = boxRef.current;
     const overlayEl = overlayRef.current;
-    if (!sel || !rect || !box) return;
+    if (!sel || !rect) return false;
+    if (kind !== "drag" && !box) return false;
     const mode: GestureState["mode"] =
       kind === "rotate" ? "rotation" : kind === "drag" ? "path-offset" : "box-size";
-    if (kind === "drag" && !sel.capabilities.canApplyManualOffset) return;
-    if (kind === "resize" && !sel.capabilities.canApplyManualSize) return;
-    if (kind === "rotate" && !sel.capabilities.canApplyManualRotation) return;
+    if (kind === "drag" && !sel.capabilities.canApplyManualOffset) return false;
+    if (kind === "resize" && !sel.capabilities.canApplyManualSize) return false;
+    if (kind === "rotate" && !sel.capabilities.canApplyManualRotation) return false;
     if (kind === "resize" && (!Number.isFinite(rect.width) || !Number.isFinite(rect.height))) {
-      return;
+      return false;
     }
     const offset = readStudioPathOffset(sel.element);
     const size = readStudioBoxSize(sel.element);
@@ -483,13 +494,14 @@ export const DomEditOverlay = memo(function DomEditOverlay({
 
     e.preventDefault();
     e.stopPropagation();
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    e.currentTarget.setPointerCapture(e.pointerId);
 
     rafPausedRef.current = true;
 
     gestureRef.current = {
       kind,
       mode,
+      selection: sel,
       startX: e.clientX,
       startY: e.clientY,
       centerX,
@@ -510,11 +522,12 @@ export const DomEditOverlay = memo(function DomEditOverlay({
       editScaleY: rect.editScaleY,
       manualEditDragToken,
     };
+    return true;
   };
 
   const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     const g = gestureRef.current;
-    const sel = selectionRef.current;
+    const sel = g?.selection ?? selectionRef.current;
     const box = boxRef.current;
     const blockedMove = blockedMoveRef.current;
     if (!blockedMove && !g) {
@@ -532,7 +545,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
       return;
     }
 
-    if (!g || !sel || !box) return;
+    if (!g || !sel) return;
 
     const dx = e.clientX - g.startX;
     const dy = e.clientY - g.startY;
@@ -555,8 +568,10 @@ export const DomEditOverlay = memo(function DomEditOverlay({
     if (g.kind === "drag") {
       const nextBoxLeft = g.originLeft + dx;
       const nextBoxTop = g.originTop + dy;
-      box.style.left = `${nextBoxLeft}px`;
-      box.style.top = `${nextBoxTop}px`;
+      if (box) {
+        box.style.left = `${nextBoxLeft}px`;
+        box.style.top = `${nextBoxTop}px`;
+      }
       applyStudioPathOffsetDraft(
         sel.element,
         resolveDomEditPathOffsetGesture({
@@ -569,6 +584,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
         }),
       );
     } else {
+      if (!box) return;
       const nextSize = resolveDomEditResizeGesture({
         originWidth: g.originWidth,
         originHeight: g.originHeight,
@@ -588,7 +604,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
 
   const onPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
     const g = gestureRef.current;
-    const sel = selectionRef.current;
+    const sel = g?.selection ?? selectionRef.current;
     const box = boxRef.current;
     blockedMoveRef.current = null;
     if (!g || !sel) {
@@ -684,9 +700,49 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   // box stops propagation for drag gestures, but clicks on the transparent overlay
   // area outside the box pass through to the iframe pick logic.
   const handleOverlayMouseDown = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (suppressNextOverlayMouseDownRef.current) {
+      suppressNextOverlayMouseDownRef.current = false;
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
     const target = event.target as HTMLElement | null;
     if (target?.closest('[data-dom-edit-selection-box="true"]')) return;
     onCanvasMouseDown(event, { preferClipAncestor: false });
+  };
+
+  const handleOverlayPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!allowCanvasMovement || event.button !== 0) return;
+    const target = event.target as HTMLElement | null;
+    if (target?.closest('[data-dom-edit-selection-box="true"]')) return;
+
+    const hoverCandidate = onCanvasPointerMoveRef.current(event, {
+      preferClipAncestor: false,
+    });
+    const candidate = hoverCandidate ?? hoverSelectionRef.current;
+    if (!candidate?.capabilities.canApplyManualOffset) return;
+
+    const overlayEl = overlayRef.current;
+    const iframe = iframeRef.current;
+    const candidateRect =
+      overlayEl && iframe ? toOverlayRect(overlayEl, iframe, candidate.element) : null;
+    if (!candidateRect) return;
+
+    suppressNextOverlayMouseDownRef.current = true;
+    selectionRef.current = candidate;
+    overlayRectRef.current = candidateRect;
+    hoverRectRef.current = null;
+    setOverlayRect(candidateRect);
+    setHoverRect(null);
+    const didStartGesture = startGesture("drag", event, {
+      selection: candidate,
+      rect: candidateRect,
+    });
+    if (!didStartGesture) {
+      suppressNextOverlayMouseDownRef.current = false;
+      return;
+    }
+    onSelectionChangeRef.current(candidate);
   };
 
   // Click on the selection box itself → re-pick the element under the pointer.
@@ -704,7 +760,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
 
   const clearPointerState = () => {
     const g = gestureRef.current;
-    const sel = selectionRef.current;
+    const sel = g?.selection ?? selectionRef.current;
     if (g?.mode === "path-offset" && sel) {
       restoreStudioPathOffset(sel.element, g.initialPathOffset);
       endStudioManualEditGesture(sel.element, g.manualEditDragToken);
@@ -724,12 +780,12 @@ export const DomEditOverlay = memo(function DomEditOverlay({
 
   return (
     <div
-      key={selectionKey}
       ref={overlayRef}
       className="absolute inset-0 z-10 pointer-events-auto outline-none"
       tabIndex={-1}
       aria-label="Composition canvas"
       onPointerDownCapture={(event) => focusDomEditOverlayElement(event.currentTarget)}
+      onPointerDown={handleOverlayPointerDown}
       onMouseDown={handleOverlayMouseDown}
       onPointerMove={onPointerMove}
       onPointerLeave={() => onCanvasPointerLeaveRef.current()}
@@ -740,7 +796,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
         <div
           aria-hidden="true"
           data-dom-edit-hover-box="true"
-          className="pointer-events-none absolute rounded-lg border border-white/65 bg-white/[0.03] shadow-[0_0_0_1px_rgba(255,255,255,0.16)]"
+          className="pointer-events-none absolute rounded-xl border border-studio-accent/80 bg-studio-accent/5 shadow-[0_0_0_1px_rgba(60,230,172,0.25)]"
           style={{
             left: hoverRect.left,
             top: hoverRect.top,

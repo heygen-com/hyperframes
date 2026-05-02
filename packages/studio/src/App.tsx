@@ -2361,14 +2361,14 @@ export function StudioApp() {
     (e: React.PointerEvent<HTMLDivElement>, options?: { preferClipAncestor?: boolean }) => {
       if (captionEditMode) {
         updateDomEditHoverSelection(null);
-        return;
+        return null;
       }
 
-      updateDomEditHoverSelection(
-        resolveDomSelectionFromPreviewPoint(e.clientX, e.clientY, {
-          preferClipAncestor: options?.preferClipAncestor ?? false,
-        }),
-      );
+      const nextSelection = resolveDomSelectionFromPreviewPoint(e.clientX, e.clientY, {
+        preferClipAncestor: options?.preferClipAncestor ?? false,
+      });
+      updateDomEditHoverSelection(nextSelection);
+      return nextSelection;
     },
     [captionEditMode, resolveDomSelectionFromPreviewPoint, updateDomEditHoverSelection],
   );
@@ -3175,6 +3175,7 @@ export function StudioApp() {
                   onCanvasMouseDown={handlePreviewCanvasMouseDown}
                   onCanvasPointerMove={handlePreviewCanvasPointerMove}
                   onCanvasPointerLeave={handlePreviewCanvasPointerLeave}
+                  onSelectionChange={applyDomSelection}
                   onBlockedMove={handleBlockedDomMove}
                   onPathOffsetCommit={handleDomPathOffsetCommit}
                   onBoxSizeCommit={handleDomBoxSizeCommit}
