@@ -325,8 +325,10 @@ describe("studio manual edits", () => {
     expect(card.style.getPropertyValue("flex-basis")).toBe("260px");
   });
 
-  it("applies rotations through CSS rotate longhand", () => {
-    const document = createDocument(`<div id="card" style="rotate: 8deg"></div>`);
+  it("applies rotations through CSS rotate longhand around the element center", () => {
+    const document = createDocument(
+      `<div id="card" style="rotate: 8deg; transform-origin: left top"></div>`,
+    );
     const card = document.getElementById("card") as HTMLElement;
 
     applyStudioRotation(card, { angle: 24.24 });
@@ -335,16 +337,19 @@ describe("studio manual edits", () => {
     expect(card.style.getPropertyValue(STUDIO_ROTATION_PROP)).toBe("24.2deg");
     expect(card.style.getPropertyValue("rotate")).toContain("8deg");
     expect(card.style.getPropertyValue("rotate")).toContain(STUDIO_ROTATION_PROP);
+    expect(card.style.getPropertyValue("transform-origin")).toBe("center center");
 
     applyStudioRotationDraft(card, { angle: -12.26 });
     expect(readStudioRotation(card)).toEqual({ angle: -12.3 });
     expect(card.style.getPropertyValue("rotate")).toBe("calc(8deg + -12.3deg)");
+    expect(card.style.getPropertyValue("transform-origin")).toBe("center center");
 
     const snapshot = captureStudioRotation(card);
     applyStudioRotationDraft(card, { angle: 45 });
     restoreStudioRotation(card, snapshot);
     expect(readStudioRotation(card)).toEqual({ angle: -12.3 });
     expect(card.style.getPropertyValue("rotate")).toBe("calc(8deg + -12.3deg)");
+    expect(card.style.getPropertyValue("transform-origin")).toBe("center center");
   });
 
   it("does not recapture a studio rotation draft as the authored base", () => {
@@ -660,7 +665,9 @@ describe("studio manual edits", () => {
   });
 
   it("applies and clears manifest rotations while restoring authored inline rotation", () => {
-    const document = createDocument(`<div id="card" style="rotate: 8deg"></div>`);
+    const document = createDocument(
+      `<div id="card" style="rotate: 8deg; transform-origin: left top"></div>`,
+    );
     const manifest = parseStudioManualEditManifest(`{
       "version": 1,
       "edits": [
@@ -677,12 +684,14 @@ describe("studio manual edits", () => {
     expect(readStudioRotation(card)).toEqual({ angle: 37.5 });
     expect(card.style.getPropertyValue("rotate")).toContain(STUDIO_ROTATION_PROP);
     expect(card.style.getPropertyValue("rotate")).toContain("8deg");
+    expect(card.style.getPropertyValue("transform-origin")).toBe("center center");
 
     expect(
       applyStudioManualEditManifest(document, emptyStudioManualEditManifest(), "index.html"),
     ).toBe(0);
     expect(readStudioRotation(card)).toEqual({ angle: 0 });
     expect(card.style.getPropertyValue("rotate")).toBe("8deg");
+    expect(card.style.getPropertyValue("transform-origin")).toBe("left top");
   });
 
   it("clears stale preview offsets that are no longer in the manifest", () => {
