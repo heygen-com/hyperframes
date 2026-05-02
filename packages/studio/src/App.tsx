@@ -80,7 +80,6 @@ import {
   getDomEditTargetKey,
   isTextEditableSelection,
   serializeDomEditTextFields,
-  resolveDomEditCapabilities,
   resolveDomEditSelection,
   type DomEditTextField,
   type DomEditSelection,
@@ -309,8 +308,14 @@ function findMatchingTimelineElementId(
   >,
   elements: TimelineElement[],
 ): string | null {
+  const selectionSourceFile = selection.sourceFile || "index.html";
   for (const element of elements) {
-    if (selection.id && element.domId === selection.id) {
+    const elementSourceFile = element.sourceFile || "index.html";
+    if (
+      selection.id &&
+      element.domId === selection.id &&
+      elementSourceFile === selectionSourceFile
+    ) {
       return element.key ?? element.id;
     }
     if (
@@ -333,81 +338,12 @@ function findMatchingTimelineElementId(
   return null;
 }
 
-function findMappedCompositionHost(
-  target: HTMLElement,
-  timelineElements: TimelineElement[],
-  compIdToSrc: Map<string, string>,
-  fileTree: string[],
-): { host: HTMLElement; compositionSrc: string } | null {
-  const rootCompositionId =
-    target.ownerDocument
-      .querySelector("[data-composition-id]")
-      ?.getAttribute("data-composition-id") ?? null;
-
-  let nestedCurrent: HTMLElement | null = target;
-  while (nestedCurrent) {
-    const nestedCompId = nestedCurrent.getAttribute("data-composition-id");
-    if (nestedCompId && nestedCompId !== rootCompositionId) {
-      const hostCandidate = nestedCurrent.parentElement?.closest(".clip");
-      if (hostCandidate instanceof HTMLElement) {
-        const hostCompId = hostCandidate.getAttribute("data-composition-id");
-        const compositionSrc =
-          hostCandidate.getAttribute("data-composition-src") ??
-          hostCandidate.getAttribute("data-composition-file") ??
-          (hostCompId ? compIdToSrc.get(hostCompId) : undefined) ??
-          compIdToSrc.get(nestedCompId) ??
-          fileTree.find((path) => path.endsWith(`${nestedCompId}.html`)) ??
-          undefined;
-        if (compositionSrc) {
-          return { host: hostCandidate, compositionSrc };
-        }
-      }
-    }
-    nestedCurrent = nestedCurrent.parentElement;
-  }
-
-  let current: HTMLElement | null = target;
-  while (current) {
-    const compId = current.getAttribute("data-composition-id");
-    const directSrc =
-      current.getAttribute("data-composition-src") ??
-      current.getAttribute("data-composition-file") ??
-      undefined;
-    const timelineMatch =
-      timelineElements.find(
-        (element) =>
-          Boolean(element.compositionSrc) &&
-          (element.domId === current?.id ||
-            (current?.id && element.id === current.id) ||
-            (compId && element.id === compId)),
-      ) ?? null;
-    const compositionSrc =
-      directSrc ??
-      timelineMatch?.compositionSrc ??
-      (compId ? compIdToSrc.get(compId) : undefined) ??
-      (compId ? fileTree.find((path) => path.endsWith(`${compId}.html`)) : undefined);
-    if (compositionSrc) {
-      return { host: current, compositionSrc };
-    }
-    current = current.parentElement;
-  }
-
-  return null;
-}
-
 function isMoveStyleProperty(property: string): boolean {
   return property === "left" || property === "top";
 }
 
 function isResizeStyleProperty(property: string): boolean {
   return property === "width" || property === "height";
-}
-
-function getDomSelectionClickKey(
-  selection: Pick<DomEditSelection, "id" | "selector" | "selectorIndex">,
-): string {
-  if (selection.id) return `id:${selection.id}`;
-  return `${selection.selector ?? "unknown"}:${selection.selectorIndex ?? 0}`;
 }
 
 function getPreviewTargetFromPointer(
@@ -1077,7 +1013,6 @@ export function StudioApp() {
   const consoleErrorsRef = useRef<LintFinding[]>([]);
   const copiedAgentTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const domEditSelectionRef = useRef<DomEditSelection | null>(domEditSelection);
-  const lastPreviewClickRef = useRef<{ key: string; at: number } | null>(null);
   const domEditSaveTimestampRef = useRef(0);
   const domTextCommitVersionRef = useRef(0);
   const domEditSaveQueueRef = useRef(Promise.resolve());
@@ -1899,44 +1834,13 @@ export function StudioApp() {
 
   const buildDomSelectionFromTarget = useCallback(
     (target: HTMLElement, options?: { preferClipAncestor?: boolean }) => {
-      if (isMasterView) {
-        const mappedHost = findMappedCompositionHost(
-          target,
-          timelineElements,
-          compIdToSrc,
-          fileTree,
-        );
-        if (mappedHost) {
-          const hostSelection = resolveDomEditSelection(mappedHost.host, {
-            activeCompositionPath: activeCompPath,
-            isMasterView,
-            preferClipAncestor: options?.preferClipAncestor,
-          });
-          if (!hostSelection) return null;
-          return {
-            ...hostSelection,
-            compositionSrc: mappedHost.compositionSrc,
-            isCompositionHost: true,
-            capabilities: resolveDomEditCapabilities({
-              selector: hostSelection.selector,
-              tagName: hostSelection.tagName,
-              className: hostSelection.element.className,
-              inlineStyles: hostSelection.inlineStyles,
-              computedStyles: hostSelection.computedStyles,
-              isCompositionHost: true,
-              isMasterView: true,
-            }),
-          } satisfies DomEditSelection;
-        }
-      }
-
       return resolveDomEditSelection(target, {
         activeCompositionPath: activeCompPath,
         isMasterView,
         preferClipAncestor: options?.preferClipAncestor,
       });
     },
-    [activeCompPath, compIdToSrc, fileTree, isMasterView, timelineElements],
+    [activeCompPath, isMasterView],
   );
 
   const preloadAgentPromptSnippet = useCallback(
@@ -2389,7 +2293,6 @@ export function StudioApp() {
       if (!iframe || captionEditMode) return;
       const target = getPreviewTargetFromPointer(iframe, e.clientX, e.clientY);
       if (!target) {
-        lastPreviewClickRef.current = null;
         applyDomSelection(null, { revealPanel: false });
         return;
       }
@@ -2399,56 +2302,13 @@ export function StudioApp() {
         preferClipAncestor: options?.preferClipAncestor ?? true,
       });
       if (!nextSelection) {
-        lastPreviewClickRef.current = null;
         applyDomSelection(null, { revealPanel: false });
         return;
       }
-      if (nextSelection.isCompositionHost && isMasterView && nextSelection.compositionSrc) {
-        const key = getDomSelectionClickKey(nextSelection);
-        const last = lastPreviewClickRef.current;
-        const now = Date.now();
-        if (last && last.key === key && now - last.at < 350) {
-          lastPreviewClickRef.current = null;
-          applyDomSelection(null, { revealPanel: false });
-          setActiveCompPath(nextSelection.compositionSrc);
-          return;
-        }
-        lastPreviewClickRef.current = { key, at: now };
-      } else {
-        lastPreviewClickRef.current = null;
-      }
       applyDomSelection(nextSelection);
     },
-    [applyDomSelection, buildDomSelectionFromTarget, captionEditMode, isMasterView],
+    [applyDomSelection, buildDomSelectionFromTarget, captionEditMode],
   );
-
-  const handlePreviewCanvasDoubleClick = useCallback(
-    (e: React.MouseEvent<HTMLDivElement>) => {
-      const iframe = previewIframeRef.current;
-      if (!iframe || captionEditMode) return;
-      const target = getPreviewTargetFromPointer(iframe, e.clientX, e.clientY);
-      if (!target) return;
-      const nextSelection = buildDomSelectionFromTarget(target, {
-        preferClipAncestor: false,
-      });
-      if (!nextSelection?.isCompositionHost || !isMasterView || !nextSelection.compositionSrc) {
-        return;
-      }
-      e.preventDefault();
-      e.stopPropagation();
-      lastPreviewClickRef.current = null;
-      applyDomSelection(null, { revealPanel: false });
-      setActiveCompPath(nextSelection.compositionSrc);
-    },
-    [applyDomSelection, buildDomSelectionFromTarget, captionEditMode, isMasterView],
-  );
-
-  const handleSelectedOverlayDoubleClick = useCallback(() => {
-    const selection = domEditSelectionRef.current;
-    if (!selection?.isCompositionHost || !selection.compositionSrc) return;
-    applyDomSelection(null, { revealPanel: false });
-    setActiveCompPath(selection.compositionSrc);
-  }, [applyDomSelection]);
 
   // eslint-disable-next-line no-restricted-syntax
   useEffect(() => {
@@ -3220,8 +3080,6 @@ export function StudioApp() {
                   }
                   allowCanvasMovement
                   onCanvasMouseDown={handlePreviewCanvasMouseDown}
-                  onCanvasDoubleClick={handlePreviewCanvasDoubleClick}
-                  onSelectedDoubleClick={handleSelectedOverlayDoubleClick}
                   onBlockedMove={handleBlockedDomMove}
                   onPathOffsetCommit={handleDomPathOffsetCommit}
                   onBoxSizeCommit={handleDomBoxSizeCommit}
