@@ -871,7 +871,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
               <div className="absolute left-1/2 top-3 h-5 w-px -translate-x-1/2 bg-studio-accent/60" />
               <button
                 type="button"
-                className="pointer-events-auto absolute left-1/2 top-0 h-4 w-4 -translate-x-1/2 rounded-full border border-studio-accent bg-studio-accent p-0 shadow-[0_0_0_2px_rgba(60,230,172,0.18)]"
+                className="pointer-events-auto absolute left-1/2 top-0 h-3 w-3 -translate-x-1/2 rounded-full border border-studio-accent bg-studio-accent p-0 shadow-[0_0_0_2px_rgba(60,230,172,0.18)]"
                 style={{ cursor: "grab", touchAction: "none" }}
                 title="Rotate"
                 aria-label="Rotate selection"
