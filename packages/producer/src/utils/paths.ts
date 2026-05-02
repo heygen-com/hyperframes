@@ -2,7 +2,13 @@
  * Path resolution utilities for the render pipeline.
  */
 
-import { resolve, basename, join, relative, isAbsolute } from "node:path";
+import {
+  basename,
+  join,
+  resolve as nodeResolve,
+  relative as nodeRelative,
+  isAbsolute as nodeIsAbsolute,
+} from "node:path";
 
 export interface RenderPaths {
   absoluteProjectDir: string;
@@ -11,7 +17,17 @@ export interface RenderPaths {
 
 const DEFAULT_RENDERS_DIR =
   process.env.PRODUCER_RENDERS_DIR ??
-  resolve(new URL(import.meta.url).pathname, "../../..", "renders");
+  nodeResolve(new URL(import.meta.url).pathname, "../../..", "renders");
+
+type PathModuleLike = {
+  resolve: (...segments: string[]) => string;
+  relative: (from: string, to: string) => string;
+  isAbsolute: (path: string) => boolean;
+};
+
+type IsPathInsideOptions = {
+  pathModule?: PathModuleLike;
+};
 
 /**
  * Cross-platform containment check.
@@ -25,15 +41,22 @@ const DEFAULT_RENDERS_DIR =
  * Both inputs are normalised via `resolve()` so callers don't need to.
  * Equality counts as "inside" (a directory contains itself).
  */
-export function isPathInside(childPath: string, parentPath: string): boolean {
-  const absChild = resolve(childPath);
-  const absParent = resolve(parentPath);
+export function isPathInside(
+  childPath: string,
+  parentPath: string,
+  options: IsPathInsideOptions = {},
+): boolean {
+  const resolvePath = options.pathModule?.resolve ?? nodeResolve;
+  const relativePath = options.pathModule?.relative ?? nodeRelative;
+  const isPathAbsolute = options.pathModule?.isAbsolute ?? nodeIsAbsolute;
+  const absChild = resolvePath(childPath);
+  const absParent = resolvePath(parentPath);
   if (absChild === absParent) return true;
-  const rel = relative(absParent, absChild);
+  const rel = relativePath(absParent, absChild);
   // `relative()` returns "" when paths are equal, ".." or "..\\foo" when child
   // is above the parent, and an absolute path when they live on different
   // drives/volumes (Windows) — none of which count as "inside".
-  return rel !== "" && !rel.startsWith("..") && !isAbsolute(rel);
+  return rel !== "" && !rel.startsWith("..") && !isPathAbsolute(rel);
 }
 
 /**
@@ -91,10 +114,10 @@ export function resolveRenderPaths(
   outputPath: string | null | undefined,
   rendersDir: string = DEFAULT_RENDERS_DIR,
 ): RenderPaths {
-  const absoluteProjectDir = resolve(projectDir);
+  const absoluteProjectDir = nodeResolve(projectDir);
   const projectName = basename(absoluteProjectDir);
   const resolvedOutputPath = outputPath ?? join(rendersDir, `${projectName}.mp4`);
-  const absoluteOutputPath = resolve(resolvedOutputPath);
+  const absoluteOutputPath = nodeResolve(resolvedOutputPath);
 
   return { absoluteProjectDir, absoluteOutputPath };
 }

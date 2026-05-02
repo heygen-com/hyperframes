@@ -12,7 +12,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { resolve } from "node:path";
+import { resolve, win32 } from "node:path";
 
 import { isPathInside, toExternalAssetKey } from "./paths.js";
 
@@ -46,6 +46,16 @@ describe("isPathInside", () => {
 
   it("normalises trailing slashes on parent", () => {
     expect(isPathInside(resolve("/foo/bar/baz"), resolve("/foo/bar/"))).toBe(true);
+  });
+
+  it("handles Windows paths under the parent directory", () => {
+    expect(
+      isPathInside(
+        win32.resolve("C:\\compiled\\__hyperframes_video_frames\\video\\frame_000001.jpg"),
+        win32.resolve("C:\\compiled"),
+        { pathModule: win32 },
+      ),
+    ).toBe(true);
   });
 });
 
