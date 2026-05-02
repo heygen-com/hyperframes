@@ -93,7 +93,7 @@ import {
   type ElementStackingInfo,
   type HfTransitionMeta,
 } from "@hyperframes/engine";
-import { join, dirname, resolve } from "path";
+import { join, dirname, resolve, relative, isAbsolute } from "path";
 import { randomUUID } from "crypto";
 import { freemem } from "os";
 import { fileURLToPath } from "url";
@@ -665,6 +665,26 @@ export function writeCompiledArtifacts(
   }
 }
 
+export function createCompiledFrameSrcResolver(
+  compiledDir: string,
+): (framePath: string) => string | null {
+  const compiledRoot = resolve(compiledDir);
+  return (framePath: string): string | null => {
+    const resolvedFramePath = resolve(framePath);
+    if (!isPathInside(resolvedFramePath, compiledRoot)) return null;
+
+    const relativePath = relative(compiledRoot, resolvedFramePath);
+    if (!relativePath || relativePath.startsWith("..") || isAbsolute(relativePath)) {
+      return null;
+    }
+
+    return `/${relativePath
+      .split(/[\\/]+/)
+      .map((segment) => encodeURIComponent(segment))
+      .join("/")}`;
+  };
+}
+
 export function applyRenderModeHints(
   cfg: EngineConfig,
   compiled: CompiledComposition,
@@ -728,12 +748,11 @@ export function resolveRenderWorkerCount(
   requestedWorkers: number | undefined,
   cfg: EngineConfig,
   compiled: Pick<CompiledComposition, "hasShaderTransitions" | "renderModeHints">,
-  composition: Pick<CompositionMetadata, "videos" | "audios">,
   log: ProducerLogger = defaultLogger,
   measuredCaptureCost?: CaptureCostEstimate,
 ): number {
   const captureCost = combineCaptureCostEstimates(
-    estimateCaptureCostMultiplier(compiled, composition),
+    estimateCaptureCostMultiplier(compiled),
     measuredCaptureCost,
   );
   const workerCount = calculateOptimalWorkers(totalFrames, requestedWorkers, {
@@ -763,7 +782,6 @@ export function resolveRenderWorkerCount(
 
 export function estimateCaptureCostMultiplier(
   compiled: Pick<CompiledComposition, "hasShaderTransitions" | "renderModeHints">,
-  composition: Pick<CompositionMetadata, "videos" | "audios">,
 ): CaptureCostEstimate {
   let multiplier = 1;
   const reasons: string[] = [];
@@ -781,16 +799,6 @@ export function estimateCaptureCostMultiplier(
   if (reasonCodes.has("iframe")) {
     multiplier += 0.5;
     reasons.push("iframe");
-  }
-
-  if (composition.videos.length > 0) {
-    multiplier += Math.min(2, composition.videos.length * 0.75);
-    reasons.push(`${composition.videos.length} video${composition.videos.length === 1 ? "" : "s"}`);
-  }
-
-  if (composition.audios.length > 0) {
-    multiplier += Math.min(1, composition.audios.length * 0.75);
-    reasons.push(`${composition.audios.length} audio${composition.audios.length === 1 ? "" : "s"}`);
   }
 
   return {
@@ -2248,7 +2256,7 @@ export async function executeRenderJob(
       extractionResult = await extractAllVideoFrames(
         composition.videos,
         projectDir,
-        { fps: job.config.fps, outputDir: join(workDir, "video-frames") },
+        { fps: job.config.fps, outputDir: join(compiledDir, "__hyperframes_video_frames") },
         abortSignal,
         { extractCacheDir: cfg.extractCacheDir },
         compiledDir,
@@ -2418,6 +2426,12 @@ export async function executeRenderJob(
       videoMetadataHints,
       skipReadinessVideoIds: videoReadinessSkipIds,
     });
+    const frameSrcResolver = createCompiledFrameSrcResolver(compiledDir);
+    const createRenderVideoFrameInjector = (): BeforeCaptureHook | null =>
+      createVideoFrameInjector(frameLookup, {
+        frameDataUriCacheLimit: cfg.frameDataUriCacheLimit,
+        frameSrcResolver,
+      });
 
     let captureCalibration:
       | {
@@ -2430,7 +2444,7 @@ export async function executeRenderJob(
     if (job.config.workers === undefined && totalFrames >= 60) {
       const calibrationDir = join(workDir, "capture-calibration");
       const calibrationCfg = createCaptureCalibrationConfig(cfg);
-      const videoInjector = createVideoFrameInjector(frameLookup);
+      const videoInjector = createRenderVideoFrameInjector();
       let calibrationSession: CaptureSession | null = null;
       try {
         calibrationSession = await createCaptureSession(
@@ -2510,7 +2524,6 @@ export async function executeRenderJob(
       job.config.workers,
       cfg,
       compiled,
-      composition,
       log,
       captureCalibration?.estimate,
     );
@@ -2646,7 +2659,7 @@ export async function executeRenderJob(
         fileServer.url,
         framesDir,
         buildCaptureOptions(),
-        createVideoFrameInjector(frameLookup),
+        createRenderVideoFrameInjector(),
         cfg,
       );
       // Track lifecycle of resources spawned during HDR rendering so the
@@ -3411,7 +3424,7 @@ export async function executeRenderJob(
               workDir,
               tasks,
               buildCaptureOptions(),
-              () => createVideoFrameInjector(frameLookup),
+              createRenderVideoFrameInjector,
               abortSignal,
               (progress) => {
                 job.framesRendered = progress.capturedFrames;
@@ -3443,7 +3456,7 @@ export async function executeRenderJob(
           } else {
             // Sequential capture → streaming encode
 
-            const videoInjector = createVideoFrameInjector(frameLookup);
+            const videoInjector = createRenderVideoFrameInjector();
             const session =
               probeSession ??
               (await createCaptureSession(
@@ -3515,7 +3528,7 @@ export async function executeRenderJob(
               allowRetry: job.config.workers === undefined,
               frameExt: needsAlpha ? "png" : "jpg",
               captureOptions: buildCaptureOptions(),
-              createBeforeCaptureHook: () => createVideoFrameInjector(frameLookup),
+              createBeforeCaptureHook: createRenderVideoFrameInjector,
               abortSignal,
               onProgress: (progress) => {
                 job.framesRendered = progress.capturedFrames;
@@ -3551,7 +3564,7 @@ export async function executeRenderJob(
           } else {
             // Sequential capture
 
-            const videoInjector = createVideoFrameInjector(frameLookup);
+            const videoInjector = createRenderVideoFrameInjector();
             const session =
               probeSession ??
               (await createCaptureSession(

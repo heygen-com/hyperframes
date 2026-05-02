@@ -446,13 +446,15 @@ export async function injectVideoFramesBatch(
           }
         }
         img.decoding = "sync";
-        img.src = item.dataUri;
-        pendingDecodes.push(
-          img
-            .decode()
-            .catch(() => undefined)
-            .then(() => undefined),
-        );
+        if (img.getAttribute("src") !== item.dataUri) {
+          img.src = item.dataUri;
+          pendingDecodes.push(
+            img
+              .decode()
+              .catch(() => undefined)
+              .then(() => undefined),
+          );
+        }
         img.style.opacity = String(computedOpacity);
         img.style.visibility = "visible";
         // Hide the native <video> with visibility only — never clobber inline

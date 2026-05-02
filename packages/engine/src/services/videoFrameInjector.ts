@@ -14,7 +14,16 @@ import { injectVideoFramesBatch, syncVideoFrameVisibility } from "./screenshotSe
 import { type BeforeCaptureHook } from "./frameCapture.js";
 import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
 
-function createFrameDataUriCache(cacheLimit: number) {
+export interface VideoFrameInjectorOptions extends Partial<
+  Pick<EngineConfig, "frameDataUriCacheLimit">
+> {
+  frameSrcResolver?: (framePath: string) => string | null;
+}
+
+function createFrameSourceCache(
+  cacheLimit: number,
+  frameSrcResolver?: (framePath: string) => string | null,
+) {
   const cache = new Map<string, string>();
   const inFlight = new Map<string, Promise<string>>();
 
@@ -33,6 +42,9 @@ function createFrameDataUriCache(cacheLimit: number) {
   }
 
   async function get(framePath: string): Promise<string> {
+    const servedSrc = frameSrcResolver?.(framePath);
+    if (servedSrc) return servedSrc;
+
     const cached = cache.get(framePath);
     if (cached) {
       remember(framePath, cached);
@@ -67,7 +79,7 @@ function createFrameDataUriCache(cacheLimit: number) {
  */
 export function createVideoFrameInjector(
   frameLookup: FrameLookupTable | null,
-  config?: Partial<Pick<EngineConfig, "frameDataUriCacheLimit">>,
+  config?: VideoFrameInjectorOptions,
 ): BeforeCaptureHook | null {
   if (!frameLookup) return null;
 
@@ -75,7 +87,7 @@ export function createVideoFrameInjector(
     32,
     config?.frameDataUriCacheLimit ?? DEFAULT_CONFIG.frameDataUriCacheLimit,
   );
-  const frameCache = createFrameDataUriCache(cacheLimit);
+  const frameCache = createFrameSourceCache(cacheLimit, config?.frameSrcResolver);
   const lastInjectedFrameByVideo = new Map<string, number>();
 
   return async (page: Page, time: number) => {

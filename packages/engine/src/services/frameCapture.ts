@@ -74,6 +74,47 @@ export interface CaptureSession {
 // Circular buffer for browser console messages dumped on render failure diagnostics.
 // Complex compositions produce 100+ messages; 50 was too small to capture relevant errors.
 const BROWSER_CONSOLE_BUFFER_SIZE = 200;
+const CAPTURE_SESSION_CLOSE_TIMEOUT_MS = 5_000;
+
+async function waitForCloseWithTimeout(promise: Promise<unknown>): Promise<boolean> {
+  let timedOut = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  await Promise.race([
+    promise.then(
+      () => undefined,
+      () => undefined,
+    ),
+    new Promise<void>((resolve) => {
+      timer = setTimeout(() => {
+        timedOut = true;
+        resolve();
+      }, CAPTURE_SESSION_CLOSE_TIMEOUT_MS);
+    }),
+  ]);
+  if (timer) clearTimeout(timer);
+  return !timedOut;
+}
+
+function forceKillBrowserProcess(browser: Browser): void {
+  const browserProcess = (
+    browser as unknown as {
+      process?: () => { kill: (signal?: NodeJS.Signals) => boolean; killed?: boolean } | null;
+    }
+  ).process?.();
+
+  if (browserProcess && !browserProcess.killed) {
+    try {
+      browserProcess.kill("SIGKILL");
+    } catch {
+      // Best-effort cleanup after Puppeteer close has already timed out.
+    }
+  }
+  try {
+    browser.disconnect();
+  } catch {
+    // Best-effort cleanup after Puppeteer close has already timed out.
+  }
+}
 
 export async function createCaptureSession(
   serverUrl: string,
@@ -674,11 +715,21 @@ export async function closeCaptureSession(session: CaptureSession): Promise<void
   // but browserReleased=false → second call no-ops on page and retries browser.
   // This matches the orchestrator's intent for HDR cleanup.
   if (!session.pageReleased && session.page) {
-    await session.page.close().catch(() => {});
+    const pageClosed = await waitForCloseWithTimeout(session.page.close());
+    if (!pageClosed) {
+      console.warn("[FrameCapture] Timed out closing page; forcing browser process shutdown");
+      forceKillBrowserProcess(session.browser);
+    }
     session.pageReleased = true;
   }
   if (!session.browserReleased && session.browser) {
-    await releaseBrowser(session.browser, session.config);
+    const browserClosed = await waitForCloseWithTimeout(
+      releaseBrowser(session.browser, session.config),
+    );
+    if (!browserClosed) {
+      console.warn("[FrameCapture] Timed out closing browser; forcing browser process shutdown");
+      forceKillBrowserProcess(session.browser);
+    }
     session.browserReleased = true;
   }
   session.isInitialized = false;

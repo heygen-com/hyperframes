@@ -11,6 +11,7 @@ import {
   collectVideoMetadataHints,
   collectVideoReadinessSkipIds,
   createCaptureCalibrationConfig,
+  createCompiledFrameSrcResolver,
   estimateMeasuredCaptureCostMultiplier,
   estimateCaptureCostMultiplier,
   extractStandaloneEntryFromIndex,
@@ -122,6 +123,22 @@ describe("shouldUseStreamingEncode", () => {
         120.001,
       ),
     ).toBe(false);
+  });
+});
+
+describe("createCompiledFrameSrcResolver", () => {
+  it("maps extracted frame paths under compiledDir to encoded server URLs", () => {
+    const resolver = createCompiledFrameSrcResolver("/tmp/hf job/compiled");
+
+    expect(
+      resolver("/tmp/hf job/compiled/__hyperframes_video_frames/video 1/frame_00001.jpg"),
+    ).toBe("/__hyperframes_video_frames/video%201/frame_00001.jpg");
+  });
+
+  it("returns null for paths outside compiledDir", () => {
+    const resolver = createCompiledFrameSrcResolver("/tmp/hf-job/compiled");
+
+    expect(resolver("/tmp/hf-job/video-frames/frame_00001.jpg")).toBeNull();
   });
 });
 
@@ -337,15 +354,6 @@ describe("collectVideoMetadataHints", () => {
 
 describe("resolveRenderWorkerCount", () => {
   const cfg = { ...createConfig(), coresPerWorker: 100 };
-  const audio = {
-    id: "narration",
-    src: "narration.wav",
-    start: 0,
-    end: 3,
-    mediaStart: 0,
-    layer: 9,
-    type: "audio" as const,
-  };
 
   it("reduces auto workers for expensive capture workloads", () => {
     const log = {
@@ -363,7 +371,6 @@ describe("resolveRenderWorkerCount", () => {
         hasShaderTransitions: true,
         renderModeHints: { recommendScreenshot: false, reasons: [] },
       },
-      { videos: [], audios: [audio] },
       log,
     );
 
@@ -387,7 +394,6 @@ describe("resolveRenderWorkerCount", () => {
         hasShaderTransitions: true,
         renderModeHints: { recommendScreenshot: false, reasons: [] },
       },
-      { videos: [], audios: [audio] },
       log,
     );
 
@@ -404,7 +410,6 @@ describe("resolveRenderWorkerCount", () => {
         hasShaderTransitions: false,
         renderModeHints: { recommendScreenshot: false, reasons: [] },
       },
-      { videos: [], audios: [] },
       undefined,
       { multiplier: 4, reasons: ["calibration-p95=2400ms"] },
     );
@@ -414,33 +419,17 @@ describe("resolveRenderWorkerCount", () => {
 });
 
 describe("estimateCaptureCostMultiplier", () => {
-  it("weights shader transitions, media, and render mode hints", () => {
-    const cost = estimateCaptureCostMultiplier(
-      {
-        hasShaderTransitions: true,
-        renderModeHints: {
-          recommendScreenshot: true,
-          reasons: [{ code: "requestAnimationFrame", message: "raw rAF" }],
-        },
+  it("weights shader transitions and render mode hints without charging static media cost", () => {
+    const cost = estimateCaptureCostMultiplier({
+      hasShaderTransitions: true,
+      renderModeHints: {
+        recommendScreenshot: true,
+        reasons: [{ code: "requestAnimationFrame", message: "raw rAF" }],
       },
-      {
-        videos: [],
-        audios: [
-          {
-            id: "narration",
-            src: "narration.wav",
-            start: 0,
-            end: 3,
-            mediaStart: 0,
-            layer: 9,
-            type: "audio" as const,
-          },
-        ],
-      },
-    );
+    });
 
-    expect(cost.multiplier).toBe(4.75);
-    expect(cost.reasons).toEqual(["shader-transitions", "requestAnimationFrame", "1 audio"]);
+    expect(cost.multiplier).toBe(4);
+    expect(cost.reasons).toEqual(["shader-transitions", "requestAnimationFrame"]);
   });
 });
 
