@@ -577,12 +577,14 @@ export async function bundleToSingleHtml(
       const innerH = innerRoot.getAttribute("data-height");
       if (innerW && !hostEl.getAttribute("data-width")) hostEl.setAttribute("data-width", innerW);
       if (innerH && !hostEl.getAttribute("data-height")) hostEl.setAttribute("data-height", innerH);
+      innerRoot.setAttribute("data-composition-file", src);
       for (const child of [...innerRoot.querySelectorAll("style, script")]) child.remove();
       hostEl.innerHTML = compId ? innerRoot.innerHTML || "" : innerRoot.outerHTML || "";
     } else {
       for (const child of [...contentDoc.querySelectorAll("style, script")]) child.remove();
       hostEl.innerHTML = contentDoc.body.innerHTML || "";
     }
+    hostEl.setAttribute("data-composition-file", src);
     hostEl.removeAttribute("data-composition-src");
   }
 

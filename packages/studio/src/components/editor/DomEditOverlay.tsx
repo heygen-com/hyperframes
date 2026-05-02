@@ -10,6 +10,7 @@ import {
   applyStudioRotationDraft,
   beginStudioManualEditGesture,
   captureStudioBoxSize,
+  captureStudioPathOffset,
   captureStudioRotation,
   endStudioManualEditGesture,
   isStudioManualEditGestureCurrent,
@@ -20,6 +21,7 @@ import {
   restoreStudioPathOffset,
   restoreStudioRotation,
   type StudioBoxSizeSnapshot,
+  type StudioPathOffsetSnapshot,
   type StudioRotationSnapshot,
 } from "./manualEdits";
 
@@ -201,10 +203,8 @@ interface GestureState {
   startY: number;
   centerX: number;
   centerY: number;
-  initialStyleTranslate: string;
+  initialPathOffset: StudioPathOffsetSnapshot;
   initialRotation: StudioRotationSnapshot;
-  initialOffsetX: string;
-  initialOffsetY: string;
   initialBoxSize: StudioBoxSizeSnapshot;
   originLeft: number;
   originTop: number;
@@ -369,10 +369,8 @@ export const DomEditOverlay = memo(function DomEditOverlay({
       startY: e.clientY,
       centerX,
       centerY,
-      initialStyleTranslate: sel.element.style.getPropertyValue("translate"),
+      initialPathOffset: captureStudioPathOffset(sel.element),
       initialRotation: captureStudioRotation(sel.element),
-      initialOffsetX: sel.element.style.getPropertyValue("--hf-studio-offset-x"),
-      initialOffsetY: sel.element.style.getPropertyValue("--hf-studio-offset-y"),
       initialBoxSize: captureStudioBoxSize(sel.element),
       originLeft: rect.left,
       originTop: rect.top,
@@ -468,11 +466,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
 
     const movedDistance = Math.hypot(e.clientX - g.startX, e.clientY - g.startY);
     if (g.kind === "drag" && movedDistance < BLOCKED_MOVE_THRESHOLD_PX) {
-      restoreStudioPathOffset(sel.element, {
-        translate: g.initialStyleTranslate,
-        x: g.initialOffsetX,
-        y: g.initialOffsetY,
-      });
+      restoreStudioPathOffset(sel.element, g.initialPathOffset);
       endStudioManualEditGesture(sel.element, g.manualEditDragToken);
       if (box) {
         box.style.left = `${g.originLeft}px`;
@@ -525,11 +519,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
             g.manualEditDragToken &&
             isStudioManualEditGestureCurrent(sel.element, g.manualEditDragToken)
           ) {
-            restoreStudioPathOffset(sel.element, {
-              translate: g.initialStyleTranslate,
-              x: g.initialOffsetX,
-              y: g.initialOffsetY,
-            });
+            restoreStudioPathOffset(sel.element, g.initialPathOffset);
           }
         })
         .finally(() => {
@@ -586,11 +576,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
     const g = gestureRef.current;
     const sel = selectionRef.current;
     if (g?.mode === "path-offset" && sel) {
-      restoreStudioPathOffset(sel.element, {
-        translate: g.initialStyleTranslate,
-        x: g.initialOffsetX,
-        y: g.initialOffsetY,
-      });
+      restoreStudioPathOffset(sel.element, g.initialPathOffset);
       endStudioManualEditGesture(sel.element, g.manualEditDragToken);
     }
     if (g?.mode === "box-size" && sel) {

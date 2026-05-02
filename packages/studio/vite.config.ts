@@ -800,10 +800,13 @@ function devProjectApi(): Plugin {
         const isProjectFile = realProjectPaths.some((p) => filePath.startsWith(p));
         if (
           isProjectFile &&
-          (filePath.endsWith(".html") || filePath.endsWith(".css") || filePath.endsWith(".js"))
+          (filePath.endsWith(".html") ||
+            filePath.endsWith(".css") ||
+            filePath.endsWith(".js") ||
+            filePath.endsWith(".json"))
         ) {
           console.log(`[Studio] File changed: ${filePath}`);
-          server.ws.send({ type: "custom", event: "hf:file-change", data: {} });
+          server.ws.send({ type: "custom", event: "hf:file-change", data: { path: filePath } });
         }
       });
     },
