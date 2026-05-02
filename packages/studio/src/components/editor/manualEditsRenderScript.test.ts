@@ -103,6 +103,7 @@ describe("createStudioManualEditsRenderBodyScript", () => {
     expect(card.style.getPropertyValue("width")).toBe("120px");
     expect(card.style.getPropertyValue("height")).toBe("64px");
     expect(card.style.getPropertyValue("rotate")).toContain("--hf-studio-rotation");
+    expect(card.style.getPropertyValue("transform-origin")).toBe("center center");
 
     (
       window as unknown as {
@@ -271,6 +272,7 @@ describe("createStudioManualEditsRenderBodyScript", () => {
     expect(card.style.getPropertyValue("translate")).toContain("calc(20px +");
     expect(card.style.getPropertyValue("rotate")).toContain("8deg");
     expect(card.style.getPropertyValue("rotate")).toContain("--hf-studio-rotation");
+    expect(card.style.getPropertyValue("transform-origin")).toBe("center center");
   });
 
   it("does not compound stale studio variables during render reapply", () => {

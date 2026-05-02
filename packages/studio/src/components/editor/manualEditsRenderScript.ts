@@ -15,6 +15,7 @@ function studioManualEditsRenderRuntime(manifestContent: string): void {
   const ORIGINAL_TRANSLATE_ATTR = "data-hf-studio-original-translate";
   const ORIGINAL_ROTATE_ATTR = "data-hf-studio-original-rotate";
   const WRAPPED_SEEK_PROP = "__hfStudioManualEditsWrapped";
+  const ROTATION_TRANSFORM_ORIGIN = "center center";
 
   const finiteNumber = (value: unknown): number | null =>
     typeof value === "number" && Number.isFinite(value) ? value : null;
@@ -258,6 +259,7 @@ function studioManualEditsRenderRuntime(manifestContent: string): void {
     prepareRotationBase(element);
     element.setAttribute(ROTATION_ATTR, "true");
     element.style.setProperty(ROTATION_PROP, `${roundRotationAngle(angle)}deg`);
+    element.style.setProperty("transform-origin", ROTATION_TRANSFORM_ORIGIN);
     element.style.setProperty("rotate", composeRotation(element, `var(${ROTATION_PROP}, 0deg)`));
   };
 

@@ -27,10 +27,13 @@ const STUDIO_ORIGINAL_TRANSFORM_ORIGIN_ATTR = "data-hf-studio-original-transform
 const STUDIO_ORIGINAL_DISPLAY_ATTR = "data-hf-studio-original-display";
 const STUDIO_ORIGINAL_ROTATE_ATTR = "data-hf-studio-original-rotate";
 const STUDIO_ORIGINAL_INLINE_ROTATE_ATTR = "data-hf-studio-original-inline-rotate";
+const STUDIO_ORIGINAL_ROTATION_TRANSFORM_ORIGIN_ATTR =
+  "data-hf-studio-original-rotation-transform-origin";
 const STUDIO_ROTATION_DRAFT_ATTR = "data-hf-studio-rotation-draft";
 const STUDIO_MANUAL_EDITS_APPLY_PROP = "__hfStudioManualEditsApply";
 const STUDIO_MANUAL_EDITS_WRAPPED_PROP = "__hfStudioManualEditsWrapped";
 const STUDIO_MANUAL_EDITS_PLAYBACK_FRAME_PROP = "__hfStudioManualEditsPlaybackFrame";
+const STUDIO_ROTATION_TRANSFORM_ORIGIN = "center center";
 let studioManualEditGestureId = 0;
 
 export interface StudioManualEditTarget {
@@ -518,6 +521,12 @@ function prepareStudioRotationBase(element: HTMLElement, updateBase: boolean): v
   } else if (updateBase && wasResetByAnimation && !isStudioManualEditGestureActive(element)) {
     element.setAttribute(STUDIO_ORIGINAL_ROTATE_ATTR, currentRotate);
   }
+  if (!element.hasAttribute(STUDIO_ORIGINAL_ROTATION_TRANSFORM_ORIGIN_ATTR)) {
+    element.setAttribute(
+      STUDIO_ORIGINAL_ROTATION_TRANSFORM_ORIGIN_ATTR,
+      element.style.getPropertyValue("transform-origin"),
+    );
+  }
 }
 
 function writeStudioRotationVars(
@@ -528,6 +537,7 @@ function writeStudioRotationVars(
   prepareStudioRotationBase(element, options.updateBase ?? true);
   element.setAttribute(STUDIO_ROTATION_ATTR, "true");
   element.style.setProperty(STUDIO_ROTATION_PROP, `${roundRotationAngle(rotation.angle)}deg`);
+  element.style.setProperty("transform-origin", STUDIO_ROTATION_TRANSFORM_ORIGIN);
 }
 
 function isSimpleRotateAngle(value: string): boolean {
@@ -718,6 +728,7 @@ function clearStudioRotation(element: HTMLElement): void {
   element.removeAttribute(STUDIO_ROTATION_DRAFT_ATTR);
   element.removeAttribute(STUDIO_ORIGINAL_ROTATE_ATTR);
   element.removeAttribute(STUDIO_ORIGINAL_INLINE_ROTATE_ATTR);
+  element.removeAttribute(STUDIO_ORIGINAL_ROTATION_TRANSFORM_ORIGIN_ATTR);
 }
 
 function restoreOriginalBoxSizeProperty(
@@ -750,6 +761,15 @@ function restoreOriginalRotationProperty(element: HTMLElement): void {
   else element.style.setProperty("rotate", original);
   element.removeAttribute(STUDIO_ORIGINAL_INLINE_ROTATE_ATTR);
   element.removeAttribute(STUDIO_ORIGINAL_ROTATE_ATTR);
+
+  const originalTransformOrigin = element.getAttribute(
+    STUDIO_ORIGINAL_ROTATION_TRANSFORM_ORIGIN_ATTR,
+  );
+  if (originalTransformOrigin != null) {
+    if (originalTransformOrigin === "") element.style.removeProperty("transform-origin");
+    else element.style.setProperty("transform-origin", originalTransformOrigin);
+  }
+  element.removeAttribute(STUDIO_ORIGINAL_ROTATION_TRANSFORM_ORIGIN_ATTR);
 }
 
 function restoreOriginalTranslateProperty(element: HTMLElement): void {
@@ -825,11 +845,13 @@ export interface StudioBoxSizeSnapshot {
 
 export interface StudioRotationSnapshot {
   rotate: string;
+  transformOrigin: string;
   studioRotation: string;
   marker: string | null;
   draftMarker: string | null;
   originalRotate: string | null;
   originalInlineRotate: string | null;
+  originalTransformOrigin: string | null;
 }
 
 export interface StudioPathOffsetSnapshot {
@@ -878,11 +900,13 @@ export function captureStudioBoxSize(element: HTMLElement): StudioBoxSizeSnapsho
 export function captureStudioRotation(element: HTMLElement): StudioRotationSnapshot {
   return {
     rotate: element.style.getPropertyValue("rotate"),
+    transformOrigin: element.style.getPropertyValue("transform-origin"),
     studioRotation: element.style.getPropertyValue(STUDIO_ROTATION_PROP),
     marker: element.getAttribute(STUDIO_ROTATION_ATTR),
     draftMarker: element.getAttribute(STUDIO_ROTATION_DRAFT_ATTR),
     originalRotate: element.getAttribute(STUDIO_ORIGINAL_ROTATE_ATTR),
     originalInlineRotate: element.getAttribute(STUDIO_ORIGINAL_INLINE_ROTATE_ATTR),
+    originalTransformOrigin: element.getAttribute(STUDIO_ORIGINAL_ROTATION_TRANSFORM_ORIGIN_ATTR),
   };
 }
 
@@ -948,11 +972,17 @@ export function restoreStudioRotation(
   previous: StudioRotationSnapshot,
 ): void {
   restoreStyleProperty(element, "rotate", previous.rotate);
+  restoreStyleProperty(element, "transform-origin", previous.transformOrigin);
   restoreStyleProperty(element, STUDIO_ROTATION_PROP, previous.studioRotation);
   restoreAttribute(element, STUDIO_ROTATION_ATTR, previous.marker);
   restoreAttribute(element, STUDIO_ROTATION_DRAFT_ATTR, previous.draftMarker);
   restoreAttribute(element, STUDIO_ORIGINAL_ROTATE_ATTR, previous.originalRotate);
   restoreAttribute(element, STUDIO_ORIGINAL_INLINE_ROTATE_ATTR, previous.originalInlineRotate);
+  restoreAttribute(
+    element,
+    STUDIO_ORIGINAL_ROTATION_TRANSFORM_ORIGIN_ATTR,
+    previous.originalTransformOrigin,
+  );
 }
 
 export function restoreStudioPathOffset(
