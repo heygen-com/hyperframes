@@ -92,6 +92,7 @@ import {
   isStudioManualEditManifestPath,
   parseStudioManualEditManifest,
   readStudioFileChangePath,
+  removeStudioManualEditsForSelection,
   serializeStudioManualEditManifest,
   type StudioManualEditManifest,
   upsertStudioBoxSizeEdit,
@@ -2025,6 +2026,47 @@ export function StudioApp() {
     [commitStudioManualEditManifestOptimistically],
   );
 
+  const refreshDomEditSelectionFromPreview = useCallback(
+    (selection: DomEditSelection) => {
+      const iframe = previewIframeRef.current;
+      let doc: Document | null = null;
+      try {
+        doc = iframe?.contentDocument ?? null;
+      } catch {
+        return;
+      }
+      if (!doc) return;
+
+      const element = findElementForSelection(doc, selection, selection.sourceFile);
+      if (!element) return;
+
+      const nextSelection = buildDomSelectionFromTarget(element);
+      if (nextSelection) {
+        applyDomSelection(nextSelection, { revealPanel: false });
+      }
+    },
+    [applyDomSelection, buildDomSelectionFromTarget],
+  );
+
+  const handleDomManualEditsReset = useCallback(
+    (selection: DomEditSelection) => {
+      commitStudioManualEditManifestOptimistically(
+        (manifest) => removeStudioManualEditsForSelection(manifest, selection),
+        {
+          label: "Reset layer edits",
+          coalesceKey: `manual-reset:${getDomEditTargetKey(selection)}`,
+        },
+      );
+      applyCurrentStudioManualEditsToPreview(previewIframeRef.current);
+      refreshDomEditSelectionFromPreview(selection);
+    },
+    [
+      applyCurrentStudioManualEditsToPreview,
+      commitStudioManualEditManifestOptimistically,
+      refreshDomEditSelectionFromPreview,
+    ],
+  );
+
   const handleDomStyleCommit = useCallback(
     async (property: string, value: string) => {
       if (!domEditSelection) return;
@@ -3240,6 +3282,7 @@ export function StudioApp() {
                         onSetTextFieldStyle={handleDomTextFieldStyleCommit}
                         onAddTextField={handleDomAddTextField}
                         onRemoveTextField={handleDomRemoveTextField}
+                        onResetManualEdits={handleDomManualEditsReset}
                         onAskAgent={handleAskAgent}
                         onImportAssets={handleImportFiles}
                         fontAssets={fontAssets}

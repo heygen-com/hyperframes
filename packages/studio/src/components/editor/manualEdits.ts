@@ -337,6 +337,16 @@ export function upsertStudioRotationEdit(
   return { version: 1, edits };
 }
 
+export function removeStudioManualEditsForSelection(
+  manifest: StudioManualEditManifest,
+  selection: DomEditSelection,
+): StudioManualEditManifest {
+  const key = targetKey(selectionTarget(selection));
+  const edits = manifest.edits.filter((edit) => targetKey(edit.target) !== key);
+  if (edits.length === manifest.edits.length) return manifest;
+  return { version: 1, edits };
+}
+
 function readPxCustomProperty(element: HTMLElement, property: string): number {
   const value = Number.parseFloat(element.style.getPropertyValue(property));
   return Number.isFinite(value) ? value : 0;
