@@ -380,6 +380,19 @@ function toggleDomEditGroupSelection(
   return [...group, selection];
 }
 
+function replaceDomEditGroupSelection(
+  group: DomEditSelection[],
+  selection: DomEditSelection,
+): DomEditSelection[] {
+  let replaced = false;
+  const nextGroup = group.map((entry) => {
+    if (!domEditSelectionsTargetSame(entry, selection)) return entry;
+    replaced = true;
+    return selection;
+  });
+  return replaced ? nextGroup : [...group, selection];
+}
+
 // ── Ask Agent Modal ──
 
 function AskAgentModal({
@@ -1556,7 +1569,7 @@ export function StudioApp() {
   const applyDomSelection = useCallback(
     (
       selection: DomEditSelection | null,
-      options?: { revealPanel?: boolean; additive?: boolean },
+      options?: { revealPanel?: boolean; additive?: boolean; preserveGroup?: boolean },
     ) => {
       setAgentPromptTagSnippet(undefined);
       setCopiedAgentPrompt(false);
@@ -1572,12 +1585,15 @@ export function StudioApp() {
       const currentGroup = domEditGroupSelectionsRef.current;
       const isAdditiveSelection = Boolean(options?.additive);
       const wasInGroup = domEditSelectionInGroup(currentGroup, selection);
-      const nextGroup = isAdditiveSelection
-        ? toggleDomEditGroupSelection(currentGroup, selection)
-        : [selection];
+      const nextGroup = options?.preserveGroup
+        ? replaceDomEditGroupSelection(currentGroup, selection)
+        : isAdditiveSelection
+          ? toggleDomEditGroupSelection(currentGroup, selection)
+          : [selection];
       const currentSelection = domEditSelectionRef.current;
-      const nextSelection =
-        isAdditiveSelection && wasInGroup
+      const nextSelection = options?.preserveGroup
+        ? selection
+        : isAdditiveSelection && wasInGroup
           ? domEditSelectionsTargetSame(currentSelection, selection)
             ? (nextGroup[0] ?? null)
             : domEditSelectionInGroup(nextGroup, currentSelection)
@@ -2034,7 +2050,7 @@ export function StudioApp() {
 
       const nextSelection = buildDomSelectionFromTarget(element);
       if (nextSelection) {
-        applyDomSelection(nextSelection, { revealPanel: false });
+        applyDomSelection(nextSelection, { revealPanel: false, preserveGroup: true });
       }
     },
     [applyDomSelection, buildDomSelectionFromTarget],
@@ -2219,7 +2235,7 @@ export function StudioApp() {
         if (refreshed) {
           const nextSelection = buildDomSelectionFromTarget(refreshed);
           if (nextSelection) {
-            applyDomSelection(nextSelection, { revealPanel: false });
+            applyDomSelection(nextSelection, { revealPanel: false, preserveGroup: true });
           }
         }
       }
@@ -2268,7 +2284,7 @@ export function StudioApp() {
         if (refreshed) {
           const nextSelection = buildDomSelectionFromTarget(refreshed);
           if (nextSelection) {
-            applyDomSelection(nextSelection, { revealPanel: false });
+            applyDomSelection(nextSelection, { revealPanel: false, preserveGroup: true });
           }
         }
       }
@@ -2503,7 +2519,7 @@ export function StudioApp() {
 
       const nextSelection = buildDomSelectionFromTarget(nextElement);
       if (nextSelection) {
-        applyDomSelection(nextSelection, { revealPanel: false });
+        applyDomSelection(nextSelection, { revealPanel: false, preserveGroup: true });
       }
     };
 
