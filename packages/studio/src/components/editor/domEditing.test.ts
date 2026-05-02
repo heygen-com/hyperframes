@@ -333,6 +333,28 @@ describe("resolveDomEditSelection", () => {
     expect(findElementForSelection(document, selection!, null)).toBe(rootChip);
   });
 
+  it("resolves nested duplicate ids from master view without treating root as the nested source", () => {
+    const document = createDocument(`
+      <div data-composition-id="main">
+        <div id="card">Root card</div>
+        <div data-composition-id="nested" data-composition-file="scenes/nested.html">
+          <div id="card">Nested card</div>
+        </div>
+      </div>
+    `);
+
+    const nestedCard = document.querySelector(
+      '[data-composition-file="scenes/nested.html"] #card',
+    ) as HTMLElement;
+    const selection = resolveDomEditSelection(nestedCard, {
+      activeCompositionPath: null,
+      isMasterView: true,
+    });
+
+    expect(selection?.sourceFile).toBe("scenes/nested.html");
+    expect(findElementForSelection(document, selection!, null)).toBe(nestedCard);
+  });
+
   it("prefers the nearest clip ancestor on single-click style selection", () => {
     const document = createDocument(`
       <section id="card" class="clip" style="left: 10px; top: 20px; width: 200px; height: 100px; position: absolute;">

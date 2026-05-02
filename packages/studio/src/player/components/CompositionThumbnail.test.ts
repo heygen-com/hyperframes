@@ -13,7 +13,7 @@ describe("buildCompositionThumbnailUrl", () => {
         origin: "http://localhost:3000",
       }),
     ).toBe(
-      "http://localhost:3000/api/projects/demo/thumbnail/index.html?t=2.00&v=v2&selector=.card&selectorIndex=2",
+      "http://localhost:3000/api/projects/demo/thumbnail/index.html?t=2.00&v=v3&selector=.card&selectorIndex=2",
     );
   });
 });

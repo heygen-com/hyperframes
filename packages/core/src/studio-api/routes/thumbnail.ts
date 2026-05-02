@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { createHash } from "node:crypto";
 import type { StudioApiAdapter } from "../types.js";
 
-const THUMBNAIL_CACHE_VERSION = "v3";
+const THUMBNAIL_CACHE_VERSION = "v4";
 const STUDIO_MANUAL_EDITS_PATH = ".hyperframes/studio-manual-edits.json";
 
 export function registerThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): void {

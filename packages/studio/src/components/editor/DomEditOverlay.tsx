@@ -48,6 +48,7 @@ export interface DomEditGroupPathOffsetCommit {
 
 interface DomEditOverlayProps {
   iframeRef: RefObject<HTMLIFrameElement | null>;
+  activeCompositionPath: string | null;
   selection: DomEditSelection | null;
   groupSelections?: DomEditSelection[];
   hoverSelection: DomEditSelection | null;
@@ -193,17 +194,9 @@ function groupOverlayItemsEqual(a: GroupOverlayItem[], b: GroupOverlayItem[]): b
       other &&
       item.key === other.key &&
       item.element === other.element &&
+      item.selection === other.selection &&
       rectsEqual(item.rect, other.rect),
     );
-  });
-}
-
-function groupOverlayItemRectsEqual(a: GroupOverlayItem[], b: GroupOverlayItem[]): boolean {
-  if (a === b) return true;
-  if (a.length !== b.length) return false;
-  return a.every((item, index) => {
-    const other = b[index];
-    return Boolean(other && item.key === other.key && rectsEqual(item.rect, other.rect));
   });
 }
 
@@ -402,6 +395,7 @@ type ResolvedElementRef = {
 
 export const DomEditOverlay = memo(function DomEditOverlay({
   iframeRef,
+  activeCompositionPath,
   selection,
   groupSelections = [],
   hoverSelection,
@@ -434,6 +428,8 @@ export const DomEditOverlay = memo(function DomEditOverlay({
 
   const selectionRef = useRef(selection);
   selectionRef.current = selection;
+  const activeCompositionPathRef = useRef(activeCompositionPath);
+  activeCompositionPathRef.current = activeCompositionPath;
   const groupSelectionsRef = useRef(groupSelections);
   groupSelectionsRef.current = groupSelections;
   const hoverSelectionRef = useRef(hoverSelection);
@@ -489,10 +485,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
       setGroupOverlayItems([]);
     };
     const setNextGroupOverlayItems = (next: GroupOverlayItem[]) => {
-      if (groupOverlayItemRectsEqual(groupOverlayItemsRef.current, next)) {
-        groupOverlayItemsRef.current = next;
-        return;
-      }
+      if (groupOverlayItemsEqual(groupOverlayItemsRef.current, next)) return;
       groupOverlayItemsRef.current = next;
       setGroupOverlayItems(next);
     };
@@ -507,7 +500,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
         return cached.element;
       }
 
-      const next = findElementForSelection(doc, sel, sel.sourceFile);
+      const next = findElementForSelection(doc, sel, activeCompositionPathRef.current);
       cacheRef.current = next ? { key, element: next } : null;
       return next;
     };
@@ -516,7 +509,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
       const cached = resolvedGroupElementRef.current.get(key);
       if (cached?.isConnected && cached.ownerDocument === doc) return cached;
 
-      const next = findElementForSelection(doc, sel, sel.sourceFile);
+      const next = findElementForSelection(doc, sel, activeCompositionPathRef.current);
       if (next) {
         resolvedGroupElementRef.current.set(key, next);
       } else {
@@ -906,9 +899,6 @@ export const DomEditOverlay = memo(function DomEditOverlay({
       if (movedDistance < BLOCKED_MOVE_THRESHOLD_PX) {
         restoreGroupPathOffsets(groupG);
         suppressNextBoxClickRef.current = true;
-        onCanvasMouseDown(e as unknown as React.MouseEvent<HTMLDivElement>, {
-          preferClipAncestor: false,
-        });
         return;
       }
 
@@ -1041,6 +1031,8 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   const handleOverlayMouseDown = (event: React.MouseEvent<HTMLDivElement>) => {
     if (suppressNextOverlayMouseDownRef.current) {
       suppressNextOverlayMouseDownRef.current = false;
+      suppressNextBoxMouseDownRef.current = false;
+      suppressNextBoxClickRef.current = false;
       event.preventDefault();
       event.stopPropagation();
       return;

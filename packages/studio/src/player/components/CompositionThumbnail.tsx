@@ -15,7 +15,7 @@ interface CompositionThumbnailProps {
 }
 
 const CLIP_HEIGHT = 66;
-const THUMBNAIL_URL_VERSION = "v2";
+const THUMBNAIL_URL_VERSION = "v3";
 
 export function buildCompositionThumbnailUrl({
   previewUrl,
