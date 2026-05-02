@@ -255,9 +255,11 @@ describe("bundleToSingleHtml", () => {
     const host = document.querySelector("#scene-host");
 
     expect(host?.getAttribute("data-composition-id")).toBe("scene");
+    expect(host?.getAttribute("data-composition-file")).toBe("compositions/scene.html");
     expect(host?.getAttribute("data-start")).toBe("intro");
     expect(host?.getAttribute("data-width")).toBe("1920");
     expect(host?.querySelector(".title")?.textContent).toBe("Scene");
+    expect(host?.querySelector(".title")?.closest("[data-composition-file]")).toBe(host);
     expect(
       Array.from(host?.children ?? []).some(
         (child) => child.getAttribute("data-composition-id") === "scene",

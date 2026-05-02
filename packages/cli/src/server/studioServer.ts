@@ -318,8 +318,8 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
 
   app.get("/api/events", (c) => {
     return streamSSE(c, async (stream) => {
-      const listener = () => {
-        stream.writeSSE({ event: "file-change", data: "{}" }).catch(() => {});
+      const listener = (path: string) => {
+        stream.writeSSE({ event: "file-change", data: JSON.stringify({ path }) }).catch(() => {});
       };
       watcher.addListener(listener);
       while (true) {

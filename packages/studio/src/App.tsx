@@ -88,9 +88,13 @@ import {
 import {
   STUDIO_MANUAL_EDITS_PATH,
   applyStudioManualEditManifest,
+  emptyStudioManualEditManifest,
   installStudioManualEditSeekReapply,
+  isStudioManualEditManifestPath,
   parseStudioManualEditManifest,
+  readStudioFileChangePath,
   serializeStudioManualEditManifest,
+  type StudioManualEditManifest,
   upsertStudioBoxSizeEdit,
   upsertStudioPathOffsetEdit,
   upsertStudioRotationEdit,
@@ -1077,6 +1081,16 @@ export function StudioApp() {
   const domEditSaveTimestampRef = useRef(0);
   const domTextCommitVersionRef = useRef(0);
   const domEditSaveQueueRef = useRef(Promise.resolve());
+  const studioManualEditManifestRef = useRef<StudioManualEditManifest>(
+    emptyStudioManualEditManifest(),
+  );
+  const studioManualEditRevisionRef = useRef(0);
+  const applyStudioManualEditsToPreviewRef = useRef<
+    (iframe?: HTMLIFrameElement | null, options?: { forceFromDisk?: boolean }) => Promise<void>
+  >(async () => {});
+  const studioManualEditProjectRef = useRef<string | null>(projectId);
+  const activeCompPathRef = useRef(activeCompPath);
+  activeCompPathRef.current = activeCompPath;
 
   const queueDomEditSave = useCallback((save: () => Promise<void>) => {
     const queuedSave = domEditSaveQueueRef.current.catch(() => undefined).then(save);
@@ -1097,8 +1111,18 @@ export function StudioApp() {
   // those changes are already applied to the iframe DOM and a full reload
   // would flash the preview.
   useMountEffect(() => {
-    const handler = () => {
-      if (Date.now() - domEditSaveTimestampRef.current < 1200) return;
+    const handler = (payload?: unknown) => {
+      const changedPath = readStudioFileChangePath(payload);
+      const recentDomEditSave = Date.now() - domEditSaveTimestampRef.current < 1200;
+      if (isStudioManualEditManifestPath(changedPath)) {
+        if (!recentDomEditSave) {
+          void applyStudioManualEditsToPreviewRef.current(previewIframeRef.current, {
+            forceFromDisk: true,
+          });
+        }
+        return;
+      }
+      if (recentDomEditSave) return;
       if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
       refreshTimerRef.current = setTimeout(() => setRefreshKey((k) => k + 1), 400);
     };
@@ -1113,6 +1137,15 @@ export function StudioApp() {
   });
   projectIdRef.current = projectId;
   domEditSelectionRef.current = domEditSelection;
+
+  // eslint-disable-next-line no-restricted-syntax
+  useEffect(() => {
+    const previousProjectId = studioManualEditProjectRef.current;
+    studioManualEditProjectRef.current = projectId;
+    if (!previousProjectId || previousProjectId === projectId) return;
+    studioManualEditManifestRef.current = emptyStudioManualEditManifest();
+    studioManualEditRevisionRef.current += 1;
+  }, [projectId]);
 
   // Load file tree when projectId changes.
   // Note: This is one of the few places where useEffect with deps is acceptable —
@@ -1619,8 +1652,8 @@ export function StudioApp() {
     [writeProjectFile],
   );
 
-  const applyStudioManualEditsToPreview = useCallback(
-    async (iframe: HTMLIFrameElement | null = previewIframeRef.current) => {
+  const applyCurrentStudioManualEditsToPreview = useCallback(
+    (iframe: HTMLIFrameElement | null = previewIframeRef.current) => {
       if (!iframe) return;
       let doc: Document | null = null;
       try {
@@ -1631,10 +1664,12 @@ export function StudioApp() {
       if (!doc) return;
       const previewDoc = doc;
 
-      const content = await readOptionalProjectFile(STUDIO_MANUAL_EDITS_PATH).catch(() => "");
-      const manifest = parseStudioManualEditManifest(content);
       const applyManifest = () => {
-        applyStudioManualEditManifest(previewDoc, manifest, activeCompPath);
+        applyStudioManualEditManifest(
+          previewDoc,
+          studioManualEditManifestRef.current,
+          activeCompPathRef.current,
+        );
       };
       const applyAndInstallSeekHooks = () => {
         applyManifest();
@@ -1652,7 +1687,90 @@ export function StudioApp() {
       win?.setTimeout?.(applyAndInstallSeekHooks, 1000);
       win?.setTimeout?.(applyAndInstallSeekHooks, 2000);
     },
-    [activeCompPath, readOptionalProjectFile],
+    [],
+  );
+
+  const applyStudioManualEditsToPreview = useCallback(
+    async (
+      iframe: HTMLIFrameElement | null = previewIframeRef.current,
+      options?: { forceFromDisk?: boolean },
+    ) => {
+      const readRevision = studioManualEditRevisionRef.current;
+      applyCurrentStudioManualEditsToPreview(iframe);
+      const content = await readOptionalProjectFile(STUDIO_MANUAL_EDITS_PATH).catch(() => "");
+      if (options?.forceFromDisk || readRevision === studioManualEditRevisionRef.current) {
+        studioManualEditManifestRef.current = parseStudioManualEditManifest(content);
+        if (options?.forceFromDisk) studioManualEditRevisionRef.current += 1;
+        applyCurrentStudioManualEditsToPreview(iframe);
+        return;
+      }
+    },
+    [applyCurrentStudioManualEditsToPreview, readOptionalProjectFile],
+  );
+  applyStudioManualEditsToPreviewRef.current = applyStudioManualEditsToPreview;
+
+  const commitStudioManualEditManifestOptimistically = useCallback(
+    (
+      updateManifest: (manifest: StudioManualEditManifest) => StudioManualEditManifest,
+      options: { label: string; coalesceKey: string },
+    ) => {
+      const previousManifest = studioManualEditManifestRef.current;
+      const nextManifest = updateManifest(previousManifest);
+      const previousContent = serializeStudioManualEditManifest(previousManifest);
+      const nextContent = serializeStudioManualEditManifest(nextManifest);
+      if (nextContent === previousContent) return;
+
+      const revision = studioManualEditRevisionRef.current + 1;
+      studioManualEditRevisionRef.current = revision;
+      studioManualEditManifestRef.current = nextManifest;
+      applyCurrentStudioManualEditsToPreview(previewIframeRef.current);
+
+      const save = async () => {
+        const originalContent = await readOptionalProjectFile(STUDIO_MANUAL_EDITS_PATH);
+        const diskManifest = parseStudioManualEditManifest(originalContent);
+        const nextDiskManifest = updateManifest(diskManifest);
+        const nextDiskContent = serializeStudioManualEditManifest(nextDiskManifest);
+        if (nextDiskContent === originalContent) return;
+
+        const pid = projectIdRef.current;
+        if (!pid) throw new Error("No active project");
+        domEditSaveTimestampRef.current = Date.now();
+        await saveProjectFilesWithHistory({
+          projectId: pid,
+          label: options.label,
+          kind: "manual",
+          coalesceKey: options.coalesceKey,
+          files: { [STUDIO_MANUAL_EDITS_PATH]: nextDiskContent },
+          readFile: async () => originalContent,
+          writeFile: writeProjectFile,
+          recordEdit: editHistory.recordEdit,
+        });
+        domEditSaveTimestampRef.current = Date.now();
+
+        if (studioManualEditRevisionRef.current === revision) {
+          studioManualEditManifestRef.current = nextDiskManifest;
+          applyCurrentStudioManualEditsToPreview(previewIframeRef.current);
+        }
+      };
+
+      void queueDomEditSave(save).catch((error) => {
+        if (studioManualEditRevisionRef.current === revision) {
+          studioManualEditRevisionRef.current += 1;
+          studioManualEditManifestRef.current = previousManifest;
+          applyCurrentStudioManualEditsToPreview(previewIframeRef.current);
+        }
+        const message = error instanceof Error ? error.message : "Failed to save manual edit";
+        showToast(message);
+      });
+    },
+    [
+      applyCurrentStudioManualEditsToPreview,
+      editHistory.recordEdit,
+      queueDomEditSave,
+      readOptionalProjectFile,
+      showToast,
+      writeProjectFile,
+    ],
   );
 
   const syncHistoryPreviewAfterApply = useCallback(
@@ -1662,7 +1780,7 @@ export function StudioApp() {
         changedPaths.length > 0 && changedPaths.every((path) => path === STUDIO_MANUAL_EDITS_PATH);
 
       if (manualManifestOnly) {
-        await applyStudioManualEditsToPreview(previewIframeRef.current);
+        await applyStudioManualEditsToPreview(previewIframeRef.current, { forceFromDisk: true });
         return;
       }
 
@@ -1934,96 +2052,42 @@ export function StudioApp() {
   );
 
   const handleDomPathOffsetCommit = useCallback(
-    async (selection: DomEditSelection, next: { x: number; y: number }) => {
-      const save = async () => {
-        const originalContent = await readOptionalProjectFile(STUDIO_MANUAL_EDITS_PATH);
-        const manifest = parseStudioManualEditManifest(originalContent);
-        const nextContent = serializeStudioManualEditManifest(
-          upsertStudioPathOffsetEdit(manifest, selection, next),
-        );
-
-        if (nextContent === originalContent) return;
-
-        const pid = projectIdRef.current;
-        if (!pid) throw new Error("No active project");
-        await saveProjectFilesWithHistory({
-          projectId: pid,
+    (selection: DomEditSelection, next: { x: number; y: number }) => {
+      commitStudioManualEditManifestOptimistically(
+        (manifest) => upsertStudioPathOffsetEdit(manifest, selection, next),
+        {
           label: "Move layer",
-          kind: "manual",
           coalesceKey: `path-offset:${getDomEditTargetKey(selection)}`,
-          files: { [STUDIO_MANUAL_EDITS_PATH]: nextContent },
-          readFile: async () => originalContent,
-          writeFile: writeProjectFile,
-          recordEdit: editHistory.recordEdit,
-        });
-        domEditSaveTimestampRef.current = Date.now();
-      };
-
-      await queueDomEditSave(save);
+        },
+      );
     },
-    [editHistory.recordEdit, queueDomEditSave, readOptionalProjectFile, writeProjectFile],
+    [commitStudioManualEditManifestOptimistically],
   );
 
   const handleDomBoxSizeCommit = useCallback(
-    async (selection: DomEditSelection, next: { width: number; height: number }) => {
-      const save = async () => {
-        const originalContent = await readOptionalProjectFile(STUDIO_MANUAL_EDITS_PATH);
-        const manifest = parseStudioManualEditManifest(originalContent);
-        const nextContent = serializeStudioManualEditManifest(
-          upsertStudioBoxSizeEdit(manifest, selection, next),
-        );
-
-        if (nextContent === originalContent) return;
-
-        const pid = projectIdRef.current;
-        if (!pid) throw new Error("No active project");
-        await saveProjectFilesWithHistory({
-          projectId: pid,
+    (selection: DomEditSelection, next: { width: number; height: number }) => {
+      commitStudioManualEditManifestOptimistically(
+        (manifest) => upsertStudioBoxSizeEdit(manifest, selection, next),
+        {
           label: "Resize layer box",
-          kind: "manual",
           coalesceKey: `box-size:${getDomEditTargetKey(selection)}`,
-          files: { [STUDIO_MANUAL_EDITS_PATH]: nextContent },
-          readFile: async () => originalContent,
-          writeFile: writeProjectFile,
-          recordEdit: editHistory.recordEdit,
-        });
-        domEditSaveTimestampRef.current = Date.now();
-      };
-
-      await queueDomEditSave(save);
+        },
+      );
     },
-    [editHistory.recordEdit, queueDomEditSave, readOptionalProjectFile, writeProjectFile],
+    [commitStudioManualEditManifestOptimistically],
   );
 
   const handleDomRotationCommit = useCallback(
-    async (selection: DomEditSelection, next: { angle: number }) => {
-      const save = async () => {
-        const originalContent = await readOptionalProjectFile(STUDIO_MANUAL_EDITS_PATH);
-        const manifest = parseStudioManualEditManifest(originalContent);
-        const nextContent = serializeStudioManualEditManifest(
-          upsertStudioRotationEdit(manifest, selection, next),
-        );
-
-        if (nextContent === originalContent) return;
-
-        const pid = projectIdRef.current;
-        if (!pid) throw new Error("No active project");
-        await saveProjectFilesWithHistory({
-          projectId: pid,
+    (selection: DomEditSelection, next: { angle: number }) => {
+      commitStudioManualEditManifestOptimistically(
+        (manifest) => upsertStudioRotationEdit(manifest, selection, next),
+        {
           label: "Rotate layer",
-          kind: "manual",
           coalesceKey: `rotation:${getDomEditTargetKey(selection)}`,
-          files: { [STUDIO_MANUAL_EDITS_PATH]: nextContent },
-          readFile: async () => originalContent,
-          writeFile: writeProjectFile,
-          recordEdit: editHistory.recordEdit,
-        });
-        domEditSaveTimestampRef.current = Date.now();
-      };
-
-      await queueDomEditSave(save);
+        },
+      );
     },
-    [editHistory.recordEdit, queueDomEditSave, readOptionalProjectFile, writeProjectFile],
+    [commitStudioManualEditManifestOptimistically],
   );
 
   const handleDomStyleCommit = useCallback(

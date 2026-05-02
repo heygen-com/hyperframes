@@ -10,6 +10,8 @@ const STUDIO_PATH_OFFSET_ATTR = "data-hf-studio-path-offset";
 const STUDIO_MANUAL_EDIT_GESTURE_ATTR = "data-hf-studio-manual-edit-gesture";
 const STUDIO_BOX_SIZE_ATTR = "data-hf-studio-box-size";
 const STUDIO_ROTATION_ATTR = "data-hf-studio-rotation";
+const STUDIO_ORIGINAL_TRANSLATE_ATTR = "data-hf-studio-original-translate";
+const STUDIO_ORIGINAL_INLINE_TRANSLATE_ATTR = "data-hf-studio-original-inline-translate";
 const STUDIO_ORIGINAL_WIDTH_ATTR = "data-hf-studio-original-width";
 const STUDIO_ORIGINAL_HEIGHT_ATTR = "data-hf-studio-original-height";
 const STUDIO_ORIGINAL_MIN_WIDTH_ATTR = "data-hf-studio-original-min-width";
@@ -24,6 +26,7 @@ const STUDIO_ORIGINAL_SCALE_ATTR = "data-hf-studio-original-scale";
 const STUDIO_ORIGINAL_TRANSFORM_ORIGIN_ATTR = "data-hf-studio-original-transform-origin";
 const STUDIO_ORIGINAL_DISPLAY_ATTR = "data-hf-studio-original-display";
 const STUDIO_ORIGINAL_ROTATE_ATTR = "data-hf-studio-original-rotate";
+const STUDIO_ORIGINAL_INLINE_ROTATE_ATTR = "data-hf-studio-original-inline-rotate";
 const STUDIO_MANUAL_EDITS_APPLY_PROP = "__hfStudioManualEditsApply";
 const STUDIO_MANUAL_EDITS_WRAPPED_SEEK_PROP = "__hfStudioManualEditsWrapped";
 let studioManualEditGestureId = 0;
@@ -200,6 +203,47 @@ export function serializeStudioManualEditManifest(manifest: StudioManualEditMani
   return `${JSON.stringify(manifest, null, 2)}\n`;
 }
 
+function normalizeStudioFileChangePath(path: string): string {
+  return path
+    .trim()
+    .replace(/\\/g, "/")
+    .replace(/^\.?\//, "");
+}
+
+function readStudioFileChangePathFromValue(value: unknown): string | null {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    if (trimmed.startsWith("{")) {
+      try {
+        return readStudioFileChangePathFromValue(JSON.parse(trimmed) as unknown);
+      } catch {
+        return normalizeStudioFileChangePath(trimmed);
+      }
+    }
+    return normalizeStudioFileChangePath(trimmed);
+  }
+
+  if (!value || typeof value !== "object") return null;
+  const record = value as Record<string, unknown>;
+  if (typeof record.path === "string") return normalizeStudioFileChangePath(record.path);
+  if (typeof record.filePath === "string") return normalizeStudioFileChangePath(record.filePath);
+  if ("data" in record) return readStudioFileChangePathFromValue(record.data);
+  return null;
+}
+
+export function readStudioFileChangePath(payload: unknown): string | null {
+  return readStudioFileChangePathFromValue(payload);
+}
+
+export function isStudioManualEditManifestPath(path: string | null): boolean {
+  if (!path) return false;
+  const normalized = normalizeStudioFileChangePath(path);
+  return (
+    normalized === STUDIO_MANUAL_EDITS_PATH || normalized.endsWith(`/${STUDIO_MANUAL_EDITS_PATH}`)
+  );
+}
+
 function selectionTarget(selection: DomEditSelection): StudioManualEditTarget {
   return {
     sourceFile: selection.sourceFile || "index.html",
@@ -337,7 +381,67 @@ export function isStudioManualEditGestureCurrent(element: HTMLElement, token: st
   return element.getAttribute(STUDIO_MANUAL_EDIT_GESTURE_ATTR) === token;
 }
 
-function writeStudioPathOffsetVars(element: HTMLElement, offset: { x: number; y: number }): void {
+function splitTopLevelWhitespace(value: string): string[] {
+  const parts: string[] = [];
+  let depth = 0;
+  let current = "";
+  for (const char of value.trim()) {
+    if (char === "(") depth += 1;
+    if (char === ")") depth = Math.max(0, depth - 1);
+    if (/\s/.test(char) && depth === 0) {
+      if (current) parts.push(current);
+      current = "";
+    } else {
+      current += char;
+    }
+  }
+  if (current) parts.push(current);
+  return parts;
+}
+
+function composeTranslateValue(element: HTMLElement, x: string, y: string): string {
+  const original = element.getAttribute(STUDIO_ORIGINAL_TRANSLATE_ATTR)?.trim();
+  if (!original || original === "none") return `${x} ${y}`;
+
+  const parts = splitTopLevelWhitespace(original);
+  if (parts.length === 1) return `calc(${parts[0]} + ${x}) ${y}`;
+  if (parts.length === 2) return `calc(${parts[0]} + ${x}) calc(${parts[1]} + ${y})`;
+  if (parts.length === 3) {
+    return `calc(${parts[0]} + ${x}) calc(${parts[1]} + ${y}) ${parts[2]}`;
+  }
+  return `${x} ${y}`;
+}
+
+function readTransformLonghandBase(element: HTMLElement, property: "translate" | "rotate"): string {
+  const value = readStyleOrComputed(element, property).trim();
+  return value === "none" ? "" : value;
+}
+
+function prepareStudioPathOffsetBase(element: HTMLElement, updateBase: boolean): void {
+  const inlineTranslate = element.style.getPropertyValue("translate");
+  const currentTranslate = readTransformLonghandBase(element, "translate");
+  const hasMarker = element.hasAttribute(STUDIO_PATH_OFFSET_ATTR);
+  const wasResetByAnimation = !styleUsesStudioOffset(currentTranslate);
+  if (!hasMarker) {
+    element.setAttribute(
+      STUDIO_ORIGINAL_INLINE_TRANSLATE_ATTR,
+      styleUsesStudioOffset(inlineTranslate) ? "" : inlineTranslate,
+    );
+    element.setAttribute(
+      STUDIO_ORIGINAL_TRANSLATE_ATTR,
+      wasResetByAnimation ? currentTranslate : "",
+    );
+  } else if (updateBase && wasResetByAnimation && !isStudioManualEditGestureActive(element)) {
+    element.setAttribute(STUDIO_ORIGINAL_TRANSLATE_ATTR, currentTranslate);
+  }
+}
+
+function writeStudioPathOffsetVars(
+  element: HTMLElement,
+  offset: { x: number; y: number },
+  options: { updateBase?: boolean } = {},
+): void {
+  prepareStudioPathOffsetBase(element, options.updateBase ?? true);
   element.setAttribute(STUDIO_PATH_OFFSET_ATTR, "true");
   element.style.setProperty(STUDIO_OFFSET_X_PROP, `${Math.round(offset.x)}px`);
   element.style.setProperty(STUDIO_OFFSET_Y_PROP, `${Math.round(offset.y)}px`);
@@ -395,11 +499,28 @@ function writeStudioBoxSizeVars(
   element.style.setProperty(STUDIO_HEIGHT_PROP, `${Math.round(Math.max(1, size.height))}px`);
 }
 
-function writeStudioRotationVars(element: HTMLElement, rotation: { angle: number }): void {
-  if (!element.hasAttribute(STUDIO_ROTATION_ATTR)) {
-    element.setAttribute(STUDIO_ORIGINAL_ROTATE_ATTR, element.style.getPropertyValue("rotate"));
+function prepareStudioRotationBase(element: HTMLElement, updateBase: boolean): void {
+  const inlineRotate = element.style.getPropertyValue("rotate");
+  const currentRotate = readTransformLonghandBase(element, "rotate");
+  const hasMarker = element.hasAttribute(STUDIO_ROTATION_ATTR);
+  const wasResetByAnimation = !styleUsesStudioRotation(currentRotate);
+  if (!hasMarker) {
+    element.setAttribute(
+      STUDIO_ORIGINAL_INLINE_ROTATE_ATTR,
+      styleUsesStudioRotation(inlineRotate) ? "" : inlineRotate,
+    );
+    element.setAttribute(STUDIO_ORIGINAL_ROTATE_ATTR, wasResetByAnimation ? currentRotate : "");
+  } else if (updateBase && wasResetByAnimation && !isStudioManualEditGestureActive(element)) {
+    element.setAttribute(STUDIO_ORIGINAL_ROTATE_ATTR, currentRotate);
   }
+}
 
+function writeStudioRotationVars(
+  element: HTMLElement,
+  rotation: { angle: number },
+  options: { updateBase?: boolean } = {},
+): void {
+  prepareStudioRotationBase(element, options.updateBase ?? true);
   element.setAttribute(STUDIO_ROTATION_ATTR, "true");
   element.style.setProperty(STUDIO_ROTATION_PROP, `${roundRotationAngle(rotation.angle)}deg`);
 }
@@ -501,7 +622,11 @@ export function applyStudioPathOffset(
   writeStudioPathOffsetVars(element, offset);
   element.style.setProperty(
     "translate",
-    `var(${STUDIO_OFFSET_X_PROP}, 0px) var(${STUDIO_OFFSET_Y_PROP}, 0px)`,
+    composeTranslateValue(
+      element,
+      `var(${STUDIO_OFFSET_X_PROP}, 0px)`,
+      `var(${STUDIO_OFFSET_Y_PROP}, 0px)`,
+    ),
   );
 }
 
@@ -509,8 +634,11 @@ export function applyStudioPathOffsetDraft(
   element: HTMLElement,
   offset: { x: number; y: number },
 ): void {
-  writeStudioPathOffsetVars(element, offset);
-  element.style.setProperty("translate", `${Math.round(offset.x)}px ${Math.round(offset.y)}px`);
+  writeStudioPathOffsetVars(element, offset, { updateBase: false });
+  element.style.setProperty(
+    "translate",
+    composeTranslateValue(element, `${Math.round(offset.x)}px`, `${Math.round(offset.y)}px`),
+  );
 }
 
 export function applyStudioBoxSize(
@@ -536,7 +664,7 @@ export function applyStudioRotation(element: HTMLElement, rotation: { angle: num
 }
 
 export function applyStudioRotationDraft(element: HTMLElement, rotation: { angle: number }): void {
-  writeStudioRotationVars(element, rotation);
+  writeStudioRotationVars(element, rotation, { updateBase: false });
   element.style.setProperty(
     "rotate",
     composeStudioRotationValue(element, `${roundRotationAngle(rotation.angle)}deg`),
@@ -548,11 +676,13 @@ function clearStudioPathOffset(element: HTMLElement): void {
     element.hasAttribute(STUDIO_PATH_OFFSET_ATTR) ||
     styleUsesStudioOffset(element.style.getPropertyValue("translate"))
   ) {
-    element.style.removeProperty("translate");
+    restoreOriginalTranslateProperty(element);
   }
   element.style.removeProperty(STUDIO_OFFSET_X_PROP);
   element.style.removeProperty(STUDIO_OFFSET_Y_PROP);
   element.removeAttribute(STUDIO_PATH_OFFSET_ATTR);
+  element.removeAttribute(STUDIO_ORIGINAL_TRANSLATE_ATTR);
+  element.removeAttribute(STUDIO_ORIGINAL_INLINE_TRANSLATE_ATTR);
 }
 
 function clearStudioRotation(element: HTMLElement): void {
@@ -566,6 +696,7 @@ function clearStudioRotation(element: HTMLElement): void {
   element.style.removeProperty(STUDIO_ROTATION_PROP);
   element.removeAttribute(STUDIO_ROTATION_ATTR);
   element.removeAttribute(STUDIO_ORIGINAL_ROTATE_ATTR);
+  element.removeAttribute(STUDIO_ORIGINAL_INLINE_ROTATE_ATTR);
 }
 
 function restoreOriginalBoxSizeProperty(
@@ -593,10 +724,19 @@ function restoreOriginalBoxSizeProperty(
 }
 
 function restoreOriginalRotationProperty(element: HTMLElement): void {
-  const original = element.getAttribute(STUDIO_ORIGINAL_ROTATE_ATTR);
+  const original = element.getAttribute(STUDIO_ORIGINAL_INLINE_ROTATE_ATTR);
   if (original == null || original === "") element.style.removeProperty("rotate");
   else element.style.setProperty("rotate", original);
+  element.removeAttribute(STUDIO_ORIGINAL_INLINE_ROTATE_ATTR);
   element.removeAttribute(STUDIO_ORIGINAL_ROTATE_ATTR);
+}
+
+function restoreOriginalTranslateProperty(element: HTMLElement): void {
+  const original = element.getAttribute(STUDIO_ORIGINAL_INLINE_TRANSLATE_ATTR);
+  if (original == null || original === "") element.style.removeProperty("translate");
+  else element.style.setProperty("translate", original);
+  element.removeAttribute(STUDIO_ORIGINAL_INLINE_TRANSLATE_ATTR);
+  element.removeAttribute(STUDIO_ORIGINAL_TRANSLATE_ATTR);
 }
 
 function clearStudioBoxSize(element: HTMLElement): void {
@@ -628,11 +768,6 @@ function clearStudioBoxSize(element: HTMLElement): void {
   element.style.removeProperty(STUDIO_WIDTH_PROP);
   element.style.removeProperty(STUDIO_HEIGHT_PROP);
   element.removeAttribute(STUDIO_BOX_SIZE_ATTR);
-}
-
-function parseStoredOffset(value: string): number {
-  const parsed = Number.parseFloat(value);
-  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 export interface StudioBoxSizeSnapshot {
@@ -672,6 +807,16 @@ export interface StudioRotationSnapshot {
   studioRotation: string;
   marker: string | null;
   originalRotate: string | null;
+  originalInlineRotate: string | null;
+}
+
+export interface StudioPathOffsetSnapshot {
+  translate: string;
+  x: string;
+  y: string;
+  marker: string | null;
+  originalTranslate: string | null;
+  originalInlineTranslate: string | null;
 }
 
 export function captureStudioBoxSize(element: HTMLElement): StudioBoxSizeSnapshot {
@@ -714,6 +859,18 @@ export function captureStudioRotation(element: HTMLElement): StudioRotationSnaps
     studioRotation: element.style.getPropertyValue(STUDIO_ROTATION_PROP),
     marker: element.getAttribute(STUDIO_ROTATION_ATTR),
     originalRotate: element.getAttribute(STUDIO_ORIGINAL_ROTATE_ATTR),
+    originalInlineRotate: element.getAttribute(STUDIO_ORIGINAL_INLINE_ROTATE_ATTR),
+  };
+}
+
+export function captureStudioPathOffset(element: HTMLElement): StudioPathOffsetSnapshot {
+  return {
+    translate: element.style.getPropertyValue("translate"),
+    x: element.style.getPropertyValue(STUDIO_OFFSET_X_PROP),
+    y: element.style.getPropertyValue(STUDIO_OFFSET_Y_PROP),
+    marker: element.getAttribute(STUDIO_PATH_OFFSET_ATTR),
+    originalTranslate: element.getAttribute(STUDIO_ORIGINAL_TRANSLATE_ATTR),
+    originalInlineTranslate: element.getAttribute(STUDIO_ORIGINAL_INLINE_TRANSLATE_ATTR),
   };
 }
 
@@ -771,20 +928,13 @@ export function restoreStudioRotation(
   restoreStyleProperty(element, STUDIO_ROTATION_PROP, previous.studioRotation);
   restoreAttribute(element, STUDIO_ROTATION_ATTR, previous.marker);
   restoreAttribute(element, STUDIO_ORIGINAL_ROTATE_ATTR, previous.originalRotate);
+  restoreAttribute(element, STUDIO_ORIGINAL_INLINE_ROTATE_ATTR, previous.originalInlineRotate);
 }
 
 export function restoreStudioPathOffset(
   element: HTMLElement,
-  previous: { translate: string; x: string; y: string },
+  previous: StudioPathOffsetSnapshot,
 ): void {
-  const hadStudioOffset =
-    Boolean(previous.x) || Boolean(previous.y) || styleUsesStudioOffset(previous.translate);
-
-  applyStudioPathOffset(element, {
-    x: parseStoredOffset(previous.x),
-    y: parseStoredOffset(previous.y),
-  });
-
   if (previous.translate) element.style.setProperty("translate", previous.translate);
   else element.style.removeProperty("translate");
 
@@ -794,7 +944,13 @@ export function restoreStudioPathOffset(
   if (previous.y) element.style.setProperty(STUDIO_OFFSET_Y_PROP, previous.y);
   else element.style.removeProperty(STUDIO_OFFSET_Y_PROP);
 
-  if (!hadStudioOffset) element.removeAttribute(STUDIO_PATH_OFFSET_ATTR);
+  restoreAttribute(element, STUDIO_PATH_OFFSET_ATTR, previous.marker);
+  restoreAttribute(element, STUDIO_ORIGINAL_TRANSLATE_ATTR, previous.originalTranslate);
+  restoreAttribute(
+    element,
+    STUDIO_ORIGINAL_INLINE_TRANSLATE_ATTR,
+    previous.originalInlineTranslate,
+  );
 }
 
 function markSeekWrapped(fn: (time: number) => unknown): void {
@@ -869,29 +1025,18 @@ function sourceFileMatches(activeCompositionPath: string | null, sourceFile: str
   return activeCompositionPath === sourceFile;
 }
 
-function findClosestByAttribute(el: HTMLElement, attributeNames: string[]): HTMLElement | null {
-  let current: HTMLElement | null = el;
-  while (current) {
-    const candidate = current;
-    if (attributeNames.some((attribute) => candidate.hasAttribute(attribute))) {
-      return candidate;
-    }
-    current = current.parentElement;
-  }
-  return null;
-}
-
 function getManualEditSourceFileForElement(
   el: HTMLElement,
   activeCompositionPath: string | null,
 ): string {
-  const ownerRoot = findClosestByAttribute(el, ["data-composition-id"]);
-  return (
-    ownerRoot?.getAttribute("data-composition-file") ??
-    ownerRoot?.getAttribute("data-composition-src") ??
-    activeCompositionPath ??
-    "index.html"
-  );
+  let current: HTMLElement | null = el;
+  while (current) {
+    const sourceFile =
+      current.getAttribute("data-composition-file") ?? current.getAttribute("data-composition-src");
+    if (sourceFile) return sourceFile;
+    current = current.parentElement;
+  }
+  return activeCompositionPath ?? "index.html";
 }
 
 function elementMatchesManualEditSourceFile(
@@ -907,23 +1052,21 @@ function queryManualEditSelectorCandidates(
   selector: string,
   htmlElement: typeof HTMLElement,
 ): HTMLElement[] {
+  const isCandidate = (element: Element): element is HTMLElement => element instanceof htmlElement;
+
   const className = selector.match(/^\.([A-Za-z0-9_-]+)$/)?.[1];
   if (className) {
     return Array.from(doc.getElementsByTagName("*")).filter(
       (element): element is HTMLElement =>
-        element instanceof htmlElement && element.classList.contains(className),
+        isCandidate(element) && element.classList.contains(className),
     );
   }
 
   if (/^[A-Za-z][A-Za-z0-9-]*$/.test(selector)) {
-    return Array.from(doc.getElementsByTagName(selector)).filter(
-      (element): element is HTMLElement => element instanceof htmlElement,
-    );
+    return Array.from(doc.getElementsByTagName(selector)).filter(isCandidate);
   }
 
-  return Array.from(doc.querySelectorAll(selector)).filter(
-    (element): element is HTMLElement => element instanceof htmlElement,
-  );
+  return Array.from(doc.querySelectorAll(selector)).filter(isCandidate);
 }
 
 function resolveManualEditTarget(
@@ -982,10 +1125,13 @@ function collectStudioManualEditElements(doc: Document): HTMLElement[] {
       element.hasAttribute(STUDIO_MANUAL_EDIT_GESTURE_ATTR) ||
       element.hasAttribute(STUDIO_BOX_SIZE_ATTR) ||
       element.hasAttribute(STUDIO_ROTATION_ATTR) ||
+      element.hasAttribute(STUDIO_ORIGINAL_TRANSLATE_ATTR) ||
+      element.hasAttribute(STUDIO_ORIGINAL_INLINE_TRANSLATE_ATTR) ||
       element.hasAttribute(STUDIO_ORIGINAL_MIN_WIDTH_ATTR) ||
       element.hasAttribute(STUDIO_ORIGINAL_FLEX_BASIS_ATTR) ||
       element.hasAttribute(STUDIO_ORIGINAL_SCALE_ATTR) ||
       element.hasAttribute(STUDIO_ORIGINAL_ROTATE_ATTR) ||
+      element.hasAttribute(STUDIO_ORIGINAL_INLINE_ROTATE_ATTR) ||
       Boolean(element.style.getPropertyValue(STUDIO_OFFSET_X_PROP)) ||
       Boolean(element.style.getPropertyValue(STUDIO_OFFSET_Y_PROP)) ||
       Boolean(element.style.getPropertyValue(STUDIO_WIDTH_PROP)) ||

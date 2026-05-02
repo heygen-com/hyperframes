@@ -19,7 +19,9 @@ import {
   emptyStudioManualEditManifest,
   endStudioManualEditGesture,
   installStudioManualEditSeekReapply,
+  isStudioManualEditManifestPath,
   parseStudioManualEditManifest,
+  readStudioFileChangePath,
   readStudioBoxSize,
   readStudioPathOffset,
   readStudioRotation,
@@ -80,6 +82,15 @@ function mockBoundingRect(element: HTMLElement, width: number, height: number): 
       height,
       toJSON: () => ({}),
     }) as DOMRect;
+}
+
+function mockComputedStyle(element: HTMLElement, values: Record<string, string>): void {
+  const win = element.ownerDocument.defaultView;
+  if (!win) throw new Error("defaultView fixture missing");
+  win.getComputedStyle = ((target: Element) =>
+    ({
+      getPropertyValue: (property: string) => (target === element ? (values[property] ?? "") : ""),
+    }) as CSSStyleDeclaration) as typeof win.getComputedStyle;
 }
 
 describe("studio manual edits", () => {
@@ -183,6 +194,21 @@ describe("studio manual edits", () => {
     );
   });
 
+  it("recognizes manual edit manifest file-change payloads", () => {
+    expect(readStudioFileChangePath({ path: ".hyperframes/studio-manual-edits.json" })).toBe(
+      ".hyperframes/studio-manual-edits.json",
+    );
+    expect(readStudioFileChangePath({ data: '{"path":"nested/file.html"}' })).toBe(
+      "nested/file.html",
+    );
+    expect(
+      isStudioManualEditManifestPath(
+        "/Users/example/project/.hyperframes/studio-manual-edits.json",
+      ),
+    ).toBe(true);
+    expect(isStudioManualEditManifestPath("index.html")).toBe(false);
+  });
+
   it("applies offsets through CSS translate longhand", () => {
     const document = createDocument(`<div id="card"></div>`);
     const card = document.getElementById("card") as HTMLElement;
@@ -193,6 +219,74 @@ describe("studio manual edits", () => {
     expect(card.style.getPropertyValue(STUDIO_OFFSET_X_PROP)).toBe("14px");
     expect(card.style.getPropertyValue(STUDIO_OFFSET_Y_PROP)).toBe("-8px");
     expect(card.style.getPropertyValue("translate")).toContain(STUDIO_OFFSET_X_PROP);
+  });
+
+  it("preserves authored inline translate as the additive path offset base", () => {
+    const document = createDocument(`<div id="card" style="translate: 10px 20px"></div>`);
+    const card = document.getElementById("card") as HTMLElement;
+
+    applyStudioPathOffset(card, { x: 14, y: -8 });
+
+    expect(card.style.getPropertyValue("translate")).toContain("calc(10px +");
+    expect(card.style.getPropertyValue("translate")).toContain("calc(20px +");
+    expect(card.style.getPropertyValue("translate")).toContain(STUDIO_OFFSET_X_PROP);
+    expect(card.style.getPropertyValue("translate")).toContain(STUDIO_OFFSET_Y_PROP);
+  });
+
+  it("preserves stylesheet-authored transform longhands as additive bases", () => {
+    const document = createDocument(`<div id="card"></div>`);
+    const card = document.getElementById("card") as HTMLElement;
+    mockComputedStyle(card, {
+      translate: "10px 20px",
+      rotate: "8deg",
+    });
+
+    applyStudioPathOffset(card, { x: 14, y: -8 });
+    applyStudioRotation(card, { angle: 12 });
+
+    expect(card.style.getPropertyValue("translate")).toContain("calc(10px +");
+    expect(card.style.getPropertyValue("translate")).toContain("calc(20px +");
+    expect(card.style.getPropertyValue("translate")).toContain(STUDIO_OFFSET_X_PROP);
+    expect(card.style.getPropertyValue("rotate")).toContain("8deg");
+    expect(card.style.getPropertyValue("rotate")).toContain(STUDIO_ROTATION_PROP);
+  });
+
+  it("clears computed transform bases without freezing them inline", () => {
+    const document = createDocument(`<div id="card"></div>`);
+    const card = document.getElementById("card") as HTMLElement;
+    mockComputedStyle(card, {
+      translate: "10px 20px",
+      rotate: "8deg",
+    });
+
+    applyStudioPathOffset(card, { x: 14, y: -8 });
+    applyStudioRotation(card, { angle: 12 });
+
+    expect(
+      applyStudioManualEditManifest(document, emptyStudioManualEditManifest(), "index.html"),
+    ).toBe(0);
+
+    expect(card.style.getPropertyValue("translate")).toBe("");
+    expect(card.style.getPropertyValue("rotate")).toBe("");
+  });
+
+  it("does not compound stale studio variables as authored transform bases", () => {
+    const document = createDocument(`<div id="card"></div>`);
+    const card = document.getElementById("card") as HTMLElement;
+
+    card.style.setProperty(
+      "translate",
+      `var(${STUDIO_OFFSET_X_PROP}, 0px) var(${STUDIO_OFFSET_Y_PROP}, 0px)`,
+    );
+    card.style.setProperty("rotate", `var(${STUDIO_ROTATION_PROP}, 0deg)`);
+
+    applyStudioPathOffset(card, { x: 14, y: -8 });
+    applyStudioRotation(card, { angle: 12 });
+
+    expect(card.style.getPropertyValue("translate")).toBe(
+      `var(${STUDIO_OFFSET_X_PROP}, 0px) var(${STUDIO_OFFSET_Y_PROP}, 0px)`,
+    );
+    expect(card.style.getPropertyValue("rotate")).toBe(`var(${STUDIO_ROTATION_PROP}, 0deg)`);
   });
 
   it("applies box sizes through CSS dimensions and flex sizing overrides", () => {
@@ -239,8 +333,8 @@ describe("studio manual edits", () => {
 
     expect(readStudioRotation(card)).toEqual({ angle: 24.2 });
     expect(card.style.getPropertyValue(STUDIO_ROTATION_PROP)).toBe("24.2deg");
-    expect(card.style.getPropertyValue("rotate")).toContain(STUDIO_ROTATION_PROP);
     expect(card.style.getPropertyValue("rotate")).toContain("8deg");
+    expect(card.style.getPropertyValue("rotate")).toContain(STUDIO_ROTATION_PROP);
 
     applyStudioRotationDraft(card, { angle: -12.26 });
     expect(readStudioRotation(card)).toEqual({ angle: -12.3 });
@@ -438,6 +532,47 @@ describe("studio manual edits", () => {
     expect(readStudioBoxSize(nestedSecondTile)).toEqual({ width: 220, height: 80 });
   });
 
+  it("resolves manifest targets inside composition-file hosts without composition ids", () => {
+    const document = createDocument(`
+      <div data-composition-id="root">
+        <div id="card"></div>
+        <div data-composition-file="scenes/anonymous.html">
+          <div id="card"></div>
+        </div>
+      </div>
+    `);
+    const htmlElement = document.defaultView?.HTMLElement;
+    if (!htmlElement) throw new Error("HTMLElement fixture missing");
+    const cards = Array.from(document.getElementsByTagName("*")).filter(
+      (element): element is HTMLElement => element instanceof htmlElement && element.id === "card",
+    );
+    const rootCard = cards[0];
+    const nestedCard = cards[1];
+    if (!rootCard || !nestedCard) {
+      throw new Error("anonymous composition fixture missing");
+    }
+
+    const manifest = parseStudioManualEditManifest(`{
+      "version": 1,
+      "edits": [
+        {
+          "kind": "path-offset",
+          "target": {
+            "sourceFile": "scenes/anonymous.html",
+            "selector": "#card",
+            "id": "card"
+          },
+          "x": 24,
+          "y": 12
+        }
+      ]
+    }`);
+
+    expect(applyStudioManualEditManifest(document, manifest, "index.html")).toBe(1);
+    expect(readStudioPathOffset(rootCard)).toEqual({ x: 0, y: 0 });
+    expect(readStudioPathOffset(nestedCard)).toEqual({ x: 24, y: 12 });
+  });
+
   it("applies and clears manifest box sizes while restoring authored inline size", () => {
     const document = createDocument(`
       <div style="display: flex; flex-direction: row">
@@ -493,6 +628,7 @@ describe("studio manual edits", () => {
     expect(applyStudioManualEditManifest(document, manifest, "index.html")).toBe(1);
     expect(readStudioRotation(card)).toEqual({ angle: 37.5 });
     expect(card.style.getPropertyValue("rotate")).toContain(STUDIO_ROTATION_PROP);
+    expect(card.style.getPropertyValue("rotate")).toContain("8deg");
 
     expect(
       applyStudioManualEditManifest(document, emptyStudioManualEditManifest(), "index.html"),
@@ -516,6 +652,20 @@ describe("studio manual edits", () => {
     expect(card.style.getPropertyValue(STUDIO_OFFSET_X_PROP)).toBe("");
     expect(card.style.getPropertyValue(STUDIO_OFFSET_Y_PROP)).toBe("");
     expect(card.style.getPropertyValue("translate")).toBe("");
+  });
+
+  it("restores authored inline translate when clearing offsets", () => {
+    const document = createDocument(`<div id="card" style="translate: 10px 20px"></div>`);
+    const card = document.getElementById("card") as HTMLElement;
+
+    applyStudioPathOffset(card, { x: 24, y: 12 });
+    expect(card.style.getPropertyValue("translate")).toContain(STUDIO_OFFSET_X_PROP);
+
+    expect(
+      applyStudioManualEditManifest(document, emptyStudioManualEditManifest(), "index.html"),
+    ).toBe(0);
+
+    expect(card.style.getPropertyValue("translate")).toBe("10px 20px");
   });
 
   it("does not replay the manifest over an active manual edit gesture", () => {

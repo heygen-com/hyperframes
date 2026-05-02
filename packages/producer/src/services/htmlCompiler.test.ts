@@ -668,6 +668,7 @@ describe("template-wrapped sub-composition media offsets", () => {
     const host = document.querySelector("#scene-host");
 
     expect(host?.getAttribute("data-composition-id")).toBe("scene");
+    expect(host?.getAttribute("data-composition-file")).toBe("compositions/scene.html");
     expect(host?.getAttribute("data-start")).toBe("20");
     expect(host?.getAttribute("data-width")).toBe("640");
     expect(host?.querySelector(".title")?.textContent).toBe("Scene");
@@ -715,6 +716,10 @@ describe("template-wrapped sub-composition media offsets", () => {
     const host = document.querySelector("#scene-host");
 
     expect(host?.getAttribute("data-composition-id")).toBeNull();
+    expect(host?.getAttribute("data-composition-file")).toBe("compositions/scene.html");
+    expect(
+      host?.querySelector('[data-composition-id="scene"]')?.getAttribute("data-composition-file"),
+    ).toBe("compositions/scene.html");
     expect(host?.querySelector('[data-composition-id="scene"] .title')?.textContent).toBe("Scene");
     expect(compiled.html).toContain('var __hfCompId = "scene";');
   });
