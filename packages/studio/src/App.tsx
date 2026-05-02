@@ -2055,7 +2055,7 @@ export function StudioApp() {
       }
       if (!doc) return;
 
-      const element = findElementForSelection(doc, selection, selection.sourceFile);
+      const element = findElementForSelection(doc, selection, activeCompPath);
       if (!element) return;
 
       const nextSelection = buildDomSelectionFromTarget(element);
@@ -2063,7 +2063,7 @@ export function StudioApp() {
         applyDomSelection(nextSelection, { revealPanel: false, preserveGroup: true });
       }
     },
-    [applyDomSelection, buildDomSelectionFromTarget],
+    [activeCompPath, applyDomSelection, buildDomSelectionFromTarget],
   );
 
   const handleDomPathOffsetCommit = useCallback(
@@ -2159,7 +2159,7 @@ export function StudioApp() {
       const iframe = previewIframeRef.current;
       const doc = iframe?.contentDocument;
       if (doc) {
-        const el = findElementForSelection(doc, domEditSelection, domEditSelection.sourceFile);
+        const el = findElementForSelection(doc, domEditSelection, activeCompPath);
         if (el) {
           el.style.setProperty(property, normalizeDomEditStyleValue(property, value));
           if (property === "font-family") {
@@ -2191,7 +2191,7 @@ export function StudioApp() {
           : undefined,
       });
     },
-    [domEditSelection, persistDomEditOperations, resolveImportedFontAsset],
+    [activeCompPath, domEditSelection, persistDomEditOperations, resolveImportedFontAsset],
   );
 
   const handleDomTextCommit = useCallback(
@@ -2213,7 +2213,7 @@ export function StudioApp() {
       const iframe = previewIframeRef.current;
       const doc = iframe?.contentDocument;
       if (doc) {
-        const el = findElementForSelection(doc, domEditSelection, domEditSelection.sourceFile);
+        const el = findElementForSelection(doc, domEditSelection, activeCompPath);
         if (el) {
           if (
             nextTextFields.length > 1 ||
@@ -2237,11 +2237,7 @@ export function StudioApp() {
       if (domTextCommitVersionRef.current !== commitVersion) return;
 
       if (doc) {
-        const refreshed = findElementForSelection(
-          doc,
-          domEditSelection,
-          domEditSelection.sourceFile,
-        );
+        const refreshed = findElementForSelection(doc, domEditSelection, activeCompPath);
         if (refreshed) {
           const nextSelection = buildDomSelectionFromTarget(refreshed);
           if (nextSelection) {
@@ -2250,7 +2246,13 @@ export function StudioApp() {
         }
       }
     },
-    [applyDomSelection, buildDomSelectionFromTarget, domEditSelection, persistDomEditOperations],
+    [
+      activeCompPath,
+      applyDomSelection,
+      buildDomSelectionFromTarget,
+      domEditSelection,
+      persistDomEditOperations,
+    ],
   );
 
   const commitDomTextFields = useCallback(
@@ -2267,7 +2269,7 @@ export function StudioApp() {
       const iframe = previewIframeRef.current;
       const doc = iframe?.contentDocument;
       if (doc) {
-        const el = findElementForSelection(doc, selection, selection.sourceFile);
+        const el = findElementForSelection(doc, selection, activeCompPath);
         if (el) {
           if (
             nextTextFields.length > 1 ||
@@ -2290,7 +2292,7 @@ export function StudioApp() {
       });
 
       if (doc) {
-        const refreshed = findElementForSelection(doc, selection, selection.sourceFile);
+        const refreshed = findElementForSelection(doc, selection, activeCompPath);
         if (refreshed) {
           const nextSelection = buildDomSelectionFromTarget(refreshed);
           if (nextSelection) {
@@ -2299,7 +2301,7 @@ export function StudioApp() {
         }
       }
     },
-    [applyDomSelection, buildDomSelectionFromTarget, persistDomEditOperations],
+    [activeCompPath, applyDomSelection, buildDomSelectionFromTarget, persistDomEditOperations],
   );
 
   const handleDomTextFieldStyleCommit = useCallback(
@@ -3271,6 +3273,7 @@ export function StudioApp() {
               ) : (
                 <DomEditOverlay
                   iframeRef={previewIframeRef}
+                  activeCompositionPath={activeCompPath}
                   hoverSelection={captionEditMode ? null : domEditHoverSelection}
                   selection={
                     !rightCollapsed && rightPanelTab === "design" ? domEditSelection : null

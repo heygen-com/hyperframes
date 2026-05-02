@@ -83,40 +83,109 @@ async function applyStudioManualEditsToThumbnailPage(
       const WIDTH_PROP = "--hf-studio-width";
       const HEIGHT_PROP = "--hf-studio-height";
       const ROTATION_PROP = "--hf-studio-rotation";
+      const PATH_OFFSET_ATTR = "data-hf-studio-path-offset";
+      const ROTATION_ATTR = "data-hf-studio-rotation";
+      const ORIGINAL_TRANSLATE_ATTR = "data-hf-studio-original-translate";
+      const ORIGINAL_ROTATE_ATTR = "data-hf-studio-original-rotate";
+      const ROTATION_TRANSFORM_ORIGIN = "center center";
 
       const finiteNumber = (value: unknown) =>
         typeof value === "number" && Number.isFinite(value) ? value : null;
 
-      const sourceFileMatches = (sourceFile: string) =>
-        !compositionPath || compositionPath === "index.html" || compositionPath === sourceFile;
-
-      const findClosestByAttribute = (
-        element: HTMLElement,
-        attributeNames: string[],
-      ): HTMLElement | null => {
+      const sourceFileForElement = (element: HTMLElement): string => {
         let current: HTMLElement | null = element;
         while (current) {
-          const candidate = current;
-          if (attributeNames.some((attribute) => candidate.hasAttribute(attribute))) {
-            return candidate;
-          }
+          const sourceFile =
+            current.getAttribute("data-composition-file") ??
+            current.getAttribute("data-composition-src");
+          if (sourceFile) return sourceFile;
           current = current.parentElement;
         }
-        return null;
-      };
-
-      const sourceFileForElement = (element: HTMLElement): string => {
-        const ownerRoot = findClosestByAttribute(element, ["data-composition-id"]);
-        return (
-          ownerRoot?.getAttribute("data-composition-file") ??
-          ownerRoot?.getAttribute("data-composition-src") ??
-          compositionPath ??
-          "index.html"
-        );
+        return compositionPath ?? "index.html";
       };
 
       const elementMatchesSourceFile = (element: HTMLElement, sourceFile: string) =>
         sourceFileForElement(element) === sourceFile;
+
+      const styleUsesStudioOffset = (value: string): boolean =>
+        value.includes(OFFSET_X_PROP) || value.includes(OFFSET_Y_PROP);
+
+      const styleUsesStudioRotation = (value: string): boolean => value.includes(ROTATION_PROP);
+
+      const splitTopLevelWhitespace = (value: string): string[] => {
+        const parts: string[] = [];
+        let depth = 0;
+        let current = "";
+        for (const char of value.trim()) {
+          if (char === "(") depth += 1;
+          if (char === ")") depth = Math.max(0, depth - 1);
+          if (/\s/.test(char) && depth === 0) {
+            if (current) parts.push(current);
+            current = "";
+          } else {
+            current += char;
+          }
+        }
+        if (current) parts.push(current);
+        return parts;
+      };
+
+      const composeTranslate = (element: HTMLElement, x: string, y: string): string => {
+        const original = element.getAttribute(ORIGINAL_TRANSLATE_ATTR)?.trim();
+        if (!original || original === "none") return `${x} ${y}`;
+
+        const parts = splitTopLevelWhitespace(original);
+        if (parts.length === 1) return `calc(${parts[0]} + ${x}) ${y}`;
+        if (parts.length === 2) return `calc(${parts[0]} + ${x}) calc(${parts[1]} + ${y})`;
+        if (parts.length === 3) {
+          return `calc(${parts[0]} + ${x}) calc(${parts[1]} + ${y}) ${parts[2]}`;
+        }
+        return `${x} ${y}`;
+      };
+
+      const readStyleOrComputed = (element: HTMLElement, property: string): string => {
+        try {
+          return (
+            element.style.getPropertyValue(property) ||
+            getComputedStyle(element).getPropertyValue(property)
+          );
+        } catch {
+          return element.style.getPropertyValue(property);
+        }
+      };
+
+      const readTransformLonghandBase = (
+        element: HTMLElement,
+        property: "translate" | "rotate",
+      ): string => {
+        const value = readStyleOrComputed(element, property).trim();
+        return value === "none" ? "" : value;
+      };
+
+      const preparePathOffsetBase = (element: HTMLElement): void => {
+        const currentTranslate = readTransformLonghandBase(element, "translate");
+        const hasMarker = element.hasAttribute(PATH_OFFSET_ATTR);
+        const wasResetByAnimation = !styleUsesStudioOffset(currentTranslate);
+        if (!hasMarker) {
+          element.setAttribute(
+            ORIGINAL_TRANSLATE_ATTR,
+            wasResetByAnimation ? currentTranslate : "",
+          );
+        } else if (wasResetByAnimation) {
+          element.setAttribute(ORIGINAL_TRANSLATE_ATTR, currentTranslate);
+        }
+      };
+
+      const prepareRotationBase = (element: HTMLElement): void => {
+        const currentRotate = readTransformLonghandBase(element, "rotate");
+        const hasMarker = element.hasAttribute(ROTATION_ATTR);
+        const wasResetByAnimation = !styleUsesStudioRotation(currentRotate);
+        if (!hasMarker) {
+          element.setAttribute(ORIGINAL_ROTATE_ATTR, wasResetByAnimation ? currentRotate : "");
+        } else if (wasResetByAnimation) {
+          element.setAttribute(ORIGINAL_ROTATE_ATTR, currentRotate);
+        }
+      };
 
       const querySelectorCandidates = (selector: string): HTMLElement[] => {
         const className = selector.match(/^\.([A-Za-z0-9_-]+)$/)?.[1];
@@ -144,7 +213,7 @@ async function applyStudioManualEditsToThumbnailPage(
         const targetRecord = target as Record<string, unknown>;
         const sourceFile =
           typeof targetRecord.sourceFile === "string" ? targetRecord.sourceFile : "";
-        if (!sourceFile || !sourceFileMatches(sourceFile)) return null;
+        if (!sourceFile) return null;
 
         const id = typeof targetRecord.id === "string" ? targetRecord.id : "";
         if (id) {
@@ -183,7 +252,7 @@ async function applyStudioManualEditsToThumbnailPage(
       const isSimpleRotateAngle = (value: string) =>
         /^-?(?:\d+(?:\.\d+)?|\.\d+)(?:deg|rad|turn|grad)$/.test(value.trim());
       const composeRotation = (element: HTMLElement, rotationValue: string) => {
-        const original = element.getAttribute("data-hf-studio-original-rotate")?.trim();
+        const original = element.getAttribute(ORIGINAL_ROTATE_ATTR)?.trim();
         if (!original || original === "none" || !isSimpleRotateAngle(original)) {
           return rotationValue;
         }
@@ -194,12 +263,13 @@ async function applyStudioManualEditsToThumbnailPage(
         const x = finiteNumber(edit.x);
         const y = finiteNumber(edit.y);
         if (x == null || y == null) return;
-        element.setAttribute("data-hf-studio-path-offset", "true");
+        preparePathOffsetBase(element);
+        element.setAttribute(PATH_OFFSET_ATTR, "true");
         element.style.setProperty(OFFSET_X_PROP, `${Math.round(x)}px`);
         element.style.setProperty(OFFSET_Y_PROP, `${Math.round(y)}px`);
         element.style.setProperty(
           "translate",
-          `var(${OFFSET_X_PROP}, 0px) var(${OFFSET_Y_PROP}, 0px)`,
+          composeTranslate(element, `var(${OFFSET_X_PROP}, 0px)`, `var(${OFFSET_Y_PROP}, 0px)`),
         );
       };
 
@@ -248,14 +318,10 @@ async function applyStudioManualEditsToThumbnailPage(
       const applyRotation = (element: HTMLElement, edit: Record<string, unknown>) => {
         const angle = finiteNumber(edit.angle);
         if (angle == null) return;
-        if (!element.hasAttribute("data-hf-studio-rotation")) {
-          element.setAttribute(
-            "data-hf-studio-original-rotate",
-            element.style.getPropertyValue("rotate"),
-          );
-        }
-        element.setAttribute("data-hf-studio-rotation", "true");
+        prepareRotationBase(element);
+        element.setAttribute(ROTATION_ATTR, "true");
         element.style.setProperty(ROTATION_PROP, `${roundRotationAngle(angle)}deg`);
+        element.style.setProperty("transform-origin", ROTATION_TRANSFORM_ORIGIN);
         element.style.setProperty(
           "rotate",
           composeRotation(element, `var(${ROTATION_PROP}, 0deg)`),
