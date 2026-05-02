@@ -698,13 +698,16 @@ describe("studio manual edits", () => {
 
   it("reapplies the latest preview manifest after wrapped seeks", () => {
     const window = new Window();
+    const seekArgs: unknown[][] = [];
     const previewWindow = window as unknown as Parameters<
       typeof installStudioManualEditSeekReapply
     >[0] & {
       __player: Record<string, unknown>;
     };
     previewWindow.__player = {
-      seek: () => {},
+      seek: (...args: unknown[]) => {
+        seekArgs.push(args);
+      },
     };
 
     let applied = 0;
@@ -713,8 +716,9 @@ describe("studio manual edits", () => {
         applied += 1;
       }),
     ).toBe(true);
-    (previewWindow.__player.seek as (time: number) => void)(1);
+    (previewWindow.__player.seek as (time: number, suppressEvents: boolean) => void)(1, false);
     expect(applied).toBe(1);
+    expect(seekArgs).toEqual([[1, false]]);
 
     expect(
       installStudioManualEditSeekReapply(previewWindow, () => {
@@ -723,5 +727,89 @@ describe("studio manual edits", () => {
     ).toBe(true);
     (previewWindow.__player.seek as (time: number) => void)(2);
     expect(applied).toBe(11);
+  });
+
+  it("reapplies manual edits while fresh playback is active", () => {
+    const window = new Window();
+    const frames: FrameRequestCallback[] = [];
+    let playing = false;
+    const previewWindow = window as unknown as Parameters<
+      typeof installStudioManualEditSeekReapply
+    >[0] & {
+      __player: Record<string, unknown>;
+      requestAnimationFrame: (callback: FrameRequestCallback) => number;
+    };
+    previewWindow.requestAnimationFrame = (callback: FrameRequestCallback) => {
+      frames.push(callback);
+      return frames.length;
+    };
+    previewWindow.__player = {
+      play: () => {
+        playing = true;
+      },
+      isPlaying: () => playing,
+    };
+
+    let applied = 0;
+    expect(
+      installStudioManualEditSeekReapply(previewWindow, () => {
+        applied += 1;
+      }),
+    ).toBe(true);
+
+    (previewWindow.__player.play as () => void)();
+    expect(applied).toBe(1);
+    expect(frames).toHaveLength(1);
+
+    frames.shift()?.(16);
+    expect(applied).toBe(2);
+    expect(frames).toHaveLength(1);
+
+    playing = false;
+    frames.shift()?.(32);
+    expect(applied).toBe(3);
+    expect(frames).toHaveLength(0);
+  });
+
+  it("stops playback reapply after an unpaused timeline has completed", () => {
+    const window = new Window();
+    const frames: FrameRequestCallback[] = [];
+    let currentTime = 0;
+    let paused = true;
+    const previewWindow = window as unknown as Parameters<
+      typeof installStudioManualEditSeekReapply
+    >[0] & {
+      __timeline: Record<string, unknown>;
+      requestAnimationFrame: (callback: FrameRequestCallback) => number;
+    };
+    previewWindow.requestAnimationFrame = (callback: FrameRequestCallback) => {
+      frames.push(callback);
+      return frames.length;
+    };
+    previewWindow.__timeline = {
+      play: () => {
+        paused = false;
+      },
+      paused: () => paused,
+      isActive: () => false,
+      time: () => currentTime,
+      duration: () => 2,
+    };
+
+    let applied = 0;
+    expect(
+      installStudioManualEditSeekReapply(previewWindow, () => {
+        applied += 1;
+      }),
+    ).toBe(true);
+
+    (previewWindow.__timeline.play as () => void)();
+    expect(applied).toBe(1);
+    expect(frames).toHaveLength(1);
+
+    currentTime = 2;
+    frames.shift()?.(16);
+    expect(applied).toBe(2);
+    expect(frames).toHaveLength(0);
   });
 });

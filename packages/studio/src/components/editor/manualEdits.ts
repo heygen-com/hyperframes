@@ -28,7 +28,8 @@ const STUDIO_ORIGINAL_DISPLAY_ATTR = "data-hf-studio-original-display";
 const STUDIO_ORIGINAL_ROTATE_ATTR = "data-hf-studio-original-rotate";
 const STUDIO_ORIGINAL_INLINE_ROTATE_ATTR = "data-hf-studio-original-inline-rotate";
 const STUDIO_MANUAL_EDITS_APPLY_PROP = "__hfStudioManualEditsApply";
-const STUDIO_MANUAL_EDITS_WRAPPED_SEEK_PROP = "__hfStudioManualEditsWrapped";
+const STUDIO_MANUAL_EDITS_WRAPPED_PROP = "__hfStudioManualEditsWrapped";
+const STUDIO_MANUAL_EDITS_PLAYBACK_FRAME_PROP = "__hfStudioManualEditsPlaybackFrame";
 let studioManualEditGestureId = 0;
 
 export interface StudioManualEditTarget {
@@ -74,6 +75,7 @@ type StudioManualEditSeekWindow = Window & {
   __timeline?: Record<string, unknown>;
   __timelines?: Record<string, Record<string, unknown>>;
   __hfStudioManualEditsApply?: () => void;
+  __hfStudioManualEditsPlaybackFrame?: number | null;
 };
 
 export function emptyStudioManualEditManifest(): StudioManualEditManifest {
@@ -953,24 +955,24 @@ export function restoreStudioPathOffset(
   );
 }
 
-function markSeekWrapped(fn: (time: number) => unknown): void {
+function markWrapped(fn: (...args: unknown[]) => unknown): void {
   try {
-    Object.defineProperty(fn, STUDIO_MANUAL_EDITS_WRAPPED_SEEK_PROP, {
+    Object.defineProperty(fn, STUDIO_MANUAL_EDITS_WRAPPED_PROP, {
       configurable: false,
       enumerable: false,
       value: true,
     });
   } catch {
     try {
-      (fn as unknown as Record<string, unknown>)[STUDIO_MANUAL_EDITS_WRAPPED_SEEK_PROP] = true;
+      (fn as unknown as Record<string, unknown>)[STUDIO_MANUAL_EDITS_WRAPPED_PROP] = true;
     } catch {
       // Ignore non-extensible functions.
     }
   }
 }
 
-function isSeekWrapped(fn: (time: number) => unknown): boolean {
-  return Boolean((fn as unknown as Record<string, unknown>)[STUDIO_MANUAL_EDITS_WRAPPED_SEEK_PROP]);
+function isWrapped(fn: (...args: unknown[]) => unknown): boolean {
+  return Boolean((fn as unknown as Record<string, unknown>)[STUDIO_MANUAL_EDITS_WRAPPED_PROP]);
 }
 
 function wrapSeekReapplyFunction(
@@ -980,16 +982,144 @@ function wrapSeekReapplyFunction(
 ): boolean {
   const fn = owner?.[key];
   if (!owner || typeof fn !== "function") return false;
-  const seek = fn as (time: number) => unknown;
-  if (isSeekWrapped(seek)) return true;
+  const seek = fn as (...args: unknown[]) => unknown;
+  if (isWrapped(seek)) return true;
 
-  const wrappedSeek = function (this: unknown, time: number): unknown {
-    const result = seek.call(this, time);
+  const wrappedSeek = function (this: unknown, ...args: unknown[]): unknown {
+    const result = seek.apply(this, args);
     win.__hfStudioManualEditsApply?.();
     return result;
   };
-  markSeekWrapped(wrappedSeek);
+  markWrapped(wrappedSeek);
   owner[key] = wrappedSeek;
+  return true;
+}
+
+function readOwnerNumber(owner: Record<string, unknown>, key: string): number | null {
+  const fn = owner[key];
+  if (typeof fn !== "function") return null;
+  try {
+    return finiteNumber(fn.call(owner));
+  } catch {
+    return null;
+  }
+}
+
+function hasRemainingTimelineTime(owner: Record<string, unknown>): boolean {
+  const duration = readOwnerNumber(owner, "duration") ?? readOwnerNumber(owner, "getDuration");
+  if (duration == null) return true;
+  if (duration <= 0) return false;
+
+  const time =
+    readOwnerNumber(owner, "time") ??
+    readOwnerNumber(owner, "totalTime") ??
+    readOwnerNumber(owner, "getTime");
+  if (time == null) return true;
+  return time < duration;
+}
+
+function isTimelinePlaying(owner: Record<string, unknown> | undefined): boolean {
+  if (!owner) return false;
+  const isPlaying = owner.isPlaying;
+  if (typeof isPlaying === "function") {
+    try {
+      return Boolean(isPlaying.call(owner));
+    } catch {
+      return false;
+    }
+  }
+
+  const paused = owner.paused;
+  if (typeof paused === "function") {
+    try {
+      if (paused.call(owner)) return false;
+    } catch {
+      return false;
+    }
+
+    const isActive = owner.isActive;
+    if (typeof isActive === "function") {
+      try {
+        if (isActive.call(owner)) return true;
+      } catch {
+        return false;
+      }
+    }
+
+    return hasRemainingTimelineTime(owner);
+  }
+
+  const isActive = owner.isActive;
+  if (typeof isActive === "function") {
+    try {
+      return Boolean(isActive.call(owner));
+    } catch {
+      return false;
+    }
+  }
+
+  return false;
+}
+
+function isStudioManualEditPlaybackActive(win: StudioManualEditSeekWindow): boolean {
+  if (isTimelinePlaying(win.__player)) return true;
+  if (isTimelinePlaying(win.__timeline)) return true;
+  return Object.values(win.__timelines ?? {}).some(isTimelinePlaying);
+}
+
+function startStudioManualEditPlaybackReapply(win: StudioManualEditSeekWindow): void {
+  win.__hfStudioManualEditsApply?.();
+  if (win[STUDIO_MANUAL_EDITS_PLAYBACK_FRAME_PROP] != null) return;
+
+  const tick = () => {
+    win.__hfStudioManualEditsApply?.();
+    if (!isStudioManualEditPlaybackActive(win)) {
+      win[STUDIO_MANUAL_EDITS_PLAYBACK_FRAME_PROP] = null;
+      return;
+    }
+    win[STUDIO_MANUAL_EDITS_PLAYBACK_FRAME_PROP] = win.requestAnimationFrame(tick);
+  };
+
+  win[STUDIO_MANUAL_EDITS_PLAYBACK_FRAME_PROP] = win.requestAnimationFrame(tick);
+}
+
+function wrapPlayReapplyFunction(
+  win: StudioManualEditSeekWindow,
+  owner: Record<string, unknown> | undefined,
+  key: string,
+): boolean {
+  const fn = owner?.[key];
+  if (!owner || typeof fn !== "function") return false;
+  const play = fn as (...args: unknown[]) => unknown;
+  if (isWrapped(play)) return true;
+
+  const wrappedPlay = function (this: unknown, ...args: unknown[]): unknown {
+    const result = play.apply(this, args);
+    startStudioManualEditPlaybackReapply(win);
+    return result;
+  };
+  markWrapped(wrappedPlay);
+  owner[key] = wrappedPlay;
+  return true;
+}
+
+function wrapApplyAfterFunction(
+  win: StudioManualEditSeekWindow,
+  owner: Record<string, unknown> | undefined,
+  key: string,
+): boolean {
+  const fn = owner?.[key];
+  if (!owner || typeof fn !== "function") return false;
+  const applyAfter = fn as (...args: unknown[]) => unknown;
+  if (isWrapped(applyAfter)) return true;
+
+  const wrappedApplyAfter = function (this: unknown, ...args: unknown[]): unknown {
+    const result = applyAfter.apply(this, args);
+    win.__hfStudioManualEditsApply?.();
+    return result;
+  };
+  markWrapped(wrappedApplyAfter);
+  owner[key] = wrappedApplyAfter;
   return true;
 }
 
@@ -1005,10 +1135,24 @@ export function installStudioManualEditSeekReapply(win: Window, apply: () => voi
     "renderSeek",
   );
   const wrappedTimelineSeek = wrapSeekReapplyFunction(studioWin, studioWin.__timeline, "seek");
+  const wrappedPlayerPlay = wrapPlayReapplyFunction(studioWin, studioWin.__player, "play");
+  const wrappedTimelinePlay = wrapPlayReapplyFunction(studioWin, studioWin.__timeline, "play");
+  const wrappedPlayerPause = wrapApplyAfterFunction(studioWin, studioWin.__player, "pause");
+  const wrappedTimelinePause = wrapApplyAfterFunction(studioWin, studioWin.__timeline, "pause");
   let wrappedNamedTimelineSeek = false;
+  let wrappedNamedTimelinePlay = false;
+  let wrappedNamedTimelinePause = false;
   for (const timeline of Object.values(studioWin.__timelines ?? {})) {
     wrappedNamedTimelineSeek =
       wrapSeekReapplyFunction(studioWin, timeline, "seek") || wrappedNamedTimelineSeek;
+    wrappedNamedTimelinePlay =
+      wrapPlayReapplyFunction(studioWin, timeline, "play") || wrappedNamedTimelinePlay;
+    wrappedNamedTimelinePause =
+      wrapApplyAfterFunction(studioWin, timeline, "pause") || wrappedNamedTimelinePause;
+  }
+
+  if (isStudioManualEditPlaybackActive(studioWin)) {
+    startStudioManualEditPlaybackReapply(studioWin);
   }
 
   return (
@@ -1016,7 +1160,13 @@ export function installStudioManualEditSeekReapply(win: Window, apply: () => voi
     wrappedPlayerSeek ||
     wrappedPlayerRenderSeek ||
     wrappedTimelineSeek ||
-    wrappedNamedTimelineSeek
+    wrappedPlayerPlay ||
+    wrappedTimelinePlay ||
+    wrappedPlayerPause ||
+    wrappedTimelinePause ||
+    wrappedNamedTimelineSeek ||
+    wrappedNamedTimelinePlay ||
+    wrappedNamedTimelinePause
   );
 }
 
