@@ -27,6 +27,7 @@ const STUDIO_ORIGINAL_TRANSFORM_ORIGIN_ATTR = "data-hf-studio-original-transform
 const STUDIO_ORIGINAL_DISPLAY_ATTR = "data-hf-studio-original-display";
 const STUDIO_ORIGINAL_ROTATE_ATTR = "data-hf-studio-original-rotate";
 const STUDIO_ORIGINAL_INLINE_ROTATE_ATTR = "data-hf-studio-original-inline-rotate";
+const STUDIO_ROTATION_DRAFT_ATTR = "data-hf-studio-rotation-draft";
 const STUDIO_MANUAL_EDITS_APPLY_PROP = "__hfStudioManualEditsApply";
 const STUDIO_MANUAL_EDITS_WRAPPED_PROP = "__hfStudioManualEditsWrapped";
 const STUDIO_MANUAL_EDITS_PLAYBACK_FRAME_PROP = "__hfStudioManualEditsPlaybackFrame";
@@ -505,7 +506,9 @@ function prepareStudioRotationBase(element: HTMLElement, updateBase: boolean): v
   const inlineRotate = element.style.getPropertyValue("rotate");
   const currentRotate = readTransformLonghandBase(element, "rotate");
   const hasMarker = element.hasAttribute(STUDIO_ROTATION_ATTR);
-  const wasResetByAnimation = !styleUsesStudioRotation(currentRotate);
+  const wasResetByAnimation =
+    !styleUsesStudioRotation(currentRotate) &&
+    !styleMatchesStudioRotationDraft(element, currentRotate);
   if (!hasMarker) {
     element.setAttribute(
       STUDIO_ORIGINAL_INLINE_ROTATE_ATTR,
@@ -617,6 +620,19 @@ function styleUsesStudioRotation(value: string): boolean {
   return value.includes(STUDIO_ROTATION_PROP);
 }
 
+function compactStyleValue(value: string): string {
+  return value.replace(/\s+/g, "").toLowerCase();
+}
+
+function styleMatchesStudioRotationDraft(element: HTMLElement, value: string): boolean {
+  if (!element.hasAttribute(STUDIO_ROTATION_DRAFT_ATTR)) return false;
+  const rotation = element.style.getPropertyValue(STUDIO_ROTATION_PROP).trim();
+  if (!rotation || !value.trim()) return false;
+  return (
+    compactStyleValue(value) === compactStyleValue(composeStudioRotationValue(element, rotation))
+  );
+}
+
 export function applyStudioPathOffset(
   element: HTMLElement,
   offset: { x: number; y: number },
@@ -659,6 +675,7 @@ export function applyStudioBoxSizeDraft(
 
 export function applyStudioRotation(element: HTMLElement, rotation: { angle: number }): void {
   writeStudioRotationVars(element, rotation);
+  element.removeAttribute(STUDIO_ROTATION_DRAFT_ATTR);
   element.style.setProperty(
     "rotate",
     composeStudioRotationValue(element, `var(${STUDIO_ROTATION_PROP}, 0deg)`),
@@ -667,6 +684,7 @@ export function applyStudioRotation(element: HTMLElement, rotation: { angle: num
 
 export function applyStudioRotationDraft(element: HTMLElement, rotation: { angle: number }): void {
   writeStudioRotationVars(element, rotation, { updateBase: false });
+  element.setAttribute(STUDIO_ROTATION_DRAFT_ATTR, "true");
   element.style.setProperty(
     "rotate",
     composeStudioRotationValue(element, `${roundRotationAngle(rotation.angle)}deg`),
@@ -697,6 +715,7 @@ function clearStudioRotation(element: HTMLElement): void {
 
   element.style.removeProperty(STUDIO_ROTATION_PROP);
   element.removeAttribute(STUDIO_ROTATION_ATTR);
+  element.removeAttribute(STUDIO_ROTATION_DRAFT_ATTR);
   element.removeAttribute(STUDIO_ORIGINAL_ROTATE_ATTR);
   element.removeAttribute(STUDIO_ORIGINAL_INLINE_ROTATE_ATTR);
 }
@@ -808,6 +827,7 @@ export interface StudioRotationSnapshot {
   rotate: string;
   studioRotation: string;
   marker: string | null;
+  draftMarker: string | null;
   originalRotate: string | null;
   originalInlineRotate: string | null;
 }
@@ -860,6 +880,7 @@ export function captureStudioRotation(element: HTMLElement): StudioRotationSnaps
     rotate: element.style.getPropertyValue("rotate"),
     studioRotation: element.style.getPropertyValue(STUDIO_ROTATION_PROP),
     marker: element.getAttribute(STUDIO_ROTATION_ATTR),
+    draftMarker: element.getAttribute(STUDIO_ROTATION_DRAFT_ATTR),
     originalRotate: element.getAttribute(STUDIO_ORIGINAL_ROTATE_ATTR),
     originalInlineRotate: element.getAttribute(STUDIO_ORIGINAL_INLINE_ROTATE_ATTR),
   };
@@ -929,6 +950,7 @@ export function restoreStudioRotation(
   restoreStyleProperty(element, "rotate", previous.rotate);
   restoreStyleProperty(element, STUDIO_ROTATION_PROP, previous.studioRotation);
   restoreAttribute(element, STUDIO_ROTATION_ATTR, previous.marker);
+  restoreAttribute(element, STUDIO_ROTATION_DRAFT_ATTR, previous.draftMarker);
   restoreAttribute(element, STUDIO_ORIGINAL_ROTATE_ATTR, previous.originalRotate);
   restoreAttribute(element, STUDIO_ORIGINAL_INLINE_ROTATE_ATTR, previous.originalInlineRotate);
 }
@@ -1275,6 +1297,7 @@ function collectStudioManualEditElements(doc: Document): HTMLElement[] {
       element.hasAttribute(STUDIO_MANUAL_EDIT_GESTURE_ATTR) ||
       element.hasAttribute(STUDIO_BOX_SIZE_ATTR) ||
       element.hasAttribute(STUDIO_ROTATION_ATTR) ||
+      element.hasAttribute(STUDIO_ROTATION_DRAFT_ATTR) ||
       element.hasAttribute(STUDIO_ORIGINAL_TRANSLATE_ATTR) ||
       element.hasAttribute(STUDIO_ORIGINAL_INLINE_TRANSLATE_ATTR) ||
       element.hasAttribute(STUDIO_ORIGINAL_MIN_WIDTH_ATTR) ||

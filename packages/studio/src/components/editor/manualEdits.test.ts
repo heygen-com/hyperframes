@@ -347,6 +347,54 @@ describe("studio manual edits", () => {
     expect(card.style.getPropertyValue("rotate")).toBe("calc(8deg + -12.3deg)");
   });
 
+  it("does not recapture a studio rotation draft as the authored base", () => {
+    const document = createDocument(`<div id="card" style="rotate: 8deg"></div>`);
+    const card = document.getElementById("card") as HTMLElement;
+    const manifest = parseStudioManualEditManifest(`{
+      "version": 1,
+      "edits": [
+        {
+          "kind": "rotation",
+          "target": { "sourceFile": "index.html", "selector": "#card", "id": "card" },
+          "angle": 35
+        }
+      ]
+    }`);
+
+    applyStudioRotation(card, { angle: 12 });
+    applyStudioRotationDraft(card, { angle: 35 });
+    expect(card.style.getPropertyValue("rotate")).toBe("calc(8deg + 35deg)");
+
+    expect(applyStudioManualEditManifest(document, manifest, "index.html")).toBe(1);
+
+    expect(card.style.getPropertyValue("rotate")).toBe(
+      `calc(8deg + var(${STUDIO_ROTATION_PROP}, 0deg))`,
+    );
+  });
+
+  it("does not treat a base-free studio rotation draft as authored rotation", () => {
+    const document = createDocument(`<div id="card"></div>`);
+    const card = document.getElementById("card") as HTMLElement;
+    const manifest = parseStudioManualEditManifest(`{
+      "version": 1,
+      "edits": [
+        {
+          "kind": "rotation",
+          "target": { "sourceFile": "index.html", "selector": "#card", "id": "card" },
+          "angle": 35
+        }
+      ]
+    }`);
+
+    applyStudioRotation(card, { angle: 12 });
+    applyStudioRotationDraft(card, { angle: 35 });
+    expect(card.style.getPropertyValue("rotate")).toBe("35deg");
+
+    expect(applyStudioManualEditManifest(document, manifest, "index.html")).toBe(1);
+
+    expect(card.style.getPropertyValue("rotate")).toBe(`var(${STUDIO_ROTATION_PROP}, 0deg)`);
+  });
+
   it("uses height for flex-basis inside column flex containers", () => {
     const document = createDocument(`
       <div style="display: flex; flex-direction: column">
