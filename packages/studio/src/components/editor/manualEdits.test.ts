@@ -657,6 +657,48 @@ describe("studio manual edits", () => {
     expect(readStudioPathOffset(nestedCard)).toEqual({ x: 24, y: 12 });
   });
 
+  it("applies nested source edits while previewing a non-index parent composition", () => {
+    const document = createDocument(`
+      <div data-composition-id="parent">
+        <div id="parent-card"></div>
+        <div data-composition-file="scenes/child.html">
+          <div id="child-card"></div>
+        </div>
+      </div>
+    `);
+    const parentCard = document.getElementById("parent-card") as HTMLElement;
+    const childCard = document.getElementById("child-card") as HTMLElement;
+    const manifest = parseStudioManualEditManifest(`{
+      "version": 1,
+      "edits": [
+        {
+          "kind": "path-offset",
+          "target": {
+            "sourceFile": "scenes/parent.html",
+            "selector": "#parent-card",
+            "id": "parent-card"
+          },
+          "x": 12,
+          "y": 8
+        },
+        {
+          "kind": "path-offset",
+          "target": {
+            "sourceFile": "scenes/child.html",
+            "selector": "#child-card",
+            "id": "child-card"
+          },
+          "x": 36,
+          "y": 18
+        }
+      ]
+    }`);
+
+    expect(applyStudioManualEditManifest(document, manifest, "scenes/parent.html")).toBe(2);
+    expect(readStudioPathOffset(parentCard)).toEqual({ x: 12, y: 8 });
+    expect(readStudioPathOffset(childCard)).toEqual({ x: 36, y: 18 });
+  });
+
   it("applies and clears manifest box sizes while restoring authored inline size", () => {
     const document = createDocument(`
       <div style="display: flex; flex-direction: row">

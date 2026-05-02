@@ -1232,11 +1232,6 @@ export function installStudioManualEditSeekReapply(win: Window, apply: () => voi
   );
 }
 
-function sourceFileMatches(activeCompositionPath: string | null, sourceFile: string): boolean {
-  if (!activeCompositionPath || activeCompositionPath === "index.html") return true;
-  return activeCompositionPath === sourceFile;
-}
-
 function getManualEditSourceFileForElement(
   el: HTMLElement,
   activeCompositionPath: string | null,
@@ -1286,7 +1281,6 @@ function resolveManualEditTarget(
   edit: StudioManualEdit,
   activeCompositionPath: string | null,
 ): HTMLElement | null {
-  if (!sourceFileMatches(activeCompositionPath, edit.target.sourceFile)) return null;
   const htmlElement = doc.defaultView?.HTMLElement;
   if (!htmlElement) return null;
 
