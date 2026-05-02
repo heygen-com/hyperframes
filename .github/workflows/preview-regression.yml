@@ -55,6 +55,11 @@ jobs:
 
       - run: bun install --frozen-lockfile
 
+      - name: Run Studio preview routing regression
+        run: |
+          bun run --cwd packages/studio test -- vite.thumbnail.test.ts src/utils/projectRouting.test.ts src/utils/frameCapture.test.ts
+          bun run --cwd packages/core test -- src/studio-api/routes/thumbnail.test.ts
+
       - name: Build preview runtime
         run: bun run --cwd packages/core build:hyperframes-runtime
 

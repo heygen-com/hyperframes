@@ -16,6 +16,7 @@ import type {
 } from "@hyperframes/core/studio-api";
 import { createRetryingModuleLoader, ensureProducerDist } from "./vite.producer";
 import { readNodeRequestBody } from "./vite.request-body.js";
+import { seekThumbnailPreview } from "./vite.thumbnail";
 
 // ── Shared Puppeteer browser ─────────────────────────────────────────────────
 
@@ -46,7 +47,7 @@ async function getSharedBrowser(): Promise<import("puppeteer-core").Browser | nu
 
 // In-flight thumbnail dedup
 const _thumbnailInflight = new Map<string, Promise<Buffer>>();
-const THUMBNAIL_CACHE_VERSION = "v2";
+const THUMBNAIL_CACHE_VERSION = "v3";
 
 interface ScreenshotClip {
   x: number;
@@ -272,26 +273,7 @@ function createViteAdapter(dataDir: string, server: ViteDevServer): StudioApiAda
               { timeout: 5000 },
             )
             .catch(() => {});
-          await page.evaluate((t: number) => {
-            const w = window as Window & {
-              __timelines?: Record<
-                string,
-                { seek: (t: number) => void; pause: (t?: number) => void }
-              >;
-              gsap?: { ticker: { tick: () => void } };
-            };
-            if (w.__timelines) {
-              // Seek ALL timelines (compositions may register multiple)
-              for (const tl of Object.values(w.__timelines)) {
-                if (tl) {
-                  // pause(t) both seeks AND forces GSAP to render the frame
-                  tl.pause(t);
-                }
-              }
-              // Force GSAP to flush any pending renders
-              if (w.gsap?.ticker) w.gsap.ticker.tick();
-            }
-          }, opts.seekTime);
+          await seekThumbnailPreview(page, opts.seekTime);
           await page.evaluate("document.fonts?.ready");
           await new Promise((r) => setTimeout(r, 200));
           let clip: ScreenshotClip | undefined;

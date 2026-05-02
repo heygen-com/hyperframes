@@ -3,7 +3,7 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import type { StudioApiAdapter } from "../types.js";
 
-const THUMBNAIL_CACHE_VERSION = "v2";
+const THUMBNAIL_CACHE_VERSION = "v3";
 
 export function registerThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): void {
   api.get("/projects/:id/thumbnail/*", async (c) => {
@@ -19,7 +19,9 @@ export function registerThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): v
     if (compPath && !compPath.includes(".")) compPath += ".html";
 
     const url = new URL(c.req.url, `http://${c.req.header("host") || "localhost"}`);
-    const seekTime = parseFloat(url.searchParams.get("t") || "0.5") || 0.5;
+    const rawSeekTime = url.searchParams.get("t");
+    const parsedSeekTime = rawSeekTime == null ? Number.NaN : parseFloat(rawSeekTime);
+    const seekTime = Number.isFinite(parsedSeekTime) ? parsedSeekTime : 0.5;
     const vpWidth = parseInt(url.searchParams.get("w") || "0") || 0;
     const vpHeight = parseInt(url.searchParams.get("h") || "0") || 0;
     const selector = url.searchParams.get("selector") || undefined;

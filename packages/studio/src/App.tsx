@@ -49,6 +49,7 @@ import {
   shouldHandleTimelineToggleHotkey,
 } from "./utils/timelineDiscovery";
 import { buildFrameCaptureFilename, buildFrameCaptureUrl } from "./utils/frameCapture";
+import { buildProjectHash, parseProjectIdFromHash } from "./utils/projectRouting";
 import { Camera } from "./icons/SystemIcons";
 
 interface EditingFile {
@@ -122,9 +123,9 @@ export function StudioApp() {
   const [resolving, setResolving] = useState(true);
 
   useMountEffect(() => {
-    const hashMatch = window.location.hash.match(/^#project\/([^/]+)/);
-    if (hashMatch) {
-      setProjectId(hashMatch[1]);
+    const hashProjectId = parseProjectIdFromHash(window.location.hash);
+    if (hashProjectId) {
+      setProjectId(hashProjectId);
       setResolving(false);
       return;
     }
@@ -135,7 +136,7 @@ export function StudioApp() {
         const first = (data.projects ?? [])[0];
         if (first) {
           setProjectId(first.id);
-          window.location.hash = `#project/${first.id}`;
+          window.location.hash = buildProjectHash(first.id);
         }
       })
       .catch(() => {})

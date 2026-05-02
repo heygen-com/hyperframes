@@ -1,3 +1,5 @@
+import { buildProjectApiPath } from "./projectRouting";
+
 export interface FrameCaptureRequest {
   projectId: string;
   compositionPath: string | null;
@@ -17,7 +19,7 @@ export function buildFrameCaptureUrl({
 }: FrameCaptureRequest): string {
   const compPath = normalizeCompositionPath(compositionPath);
   const url = new URL(
-    `/api/projects/${encodeURIComponent(projectId)}/thumbnail/${encodeURIComponent(compPath)}`,
+    buildProjectApiPath(projectId, `/thumbnail/${encodeURIComponent(compPath)}`),
     origin,
   );
   url.searchParams.set("t", Math.max(0, currentTime).toFixed(3));

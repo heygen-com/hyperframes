@@ -75,4 +75,23 @@ describe("registerThumbnailRoutes", () => {
       }),
     );
   });
+
+  it("preserves an explicit zero seek time", async () => {
+    const adapter = createAdapter();
+    const app = new Hono();
+    registerThumbnailRoutes(app, adapter);
+
+    const response = await app.request(
+      "http://localhost/projects/demo/thumbnail/index.html?t=0&format=png",
+    );
+
+    expect(response.status).toBe(200);
+    expect(adapter.generateThumbnail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        compPath: "index.html",
+        seekTime: 0,
+        format: "png",
+      }),
+    );
+  });
 });
