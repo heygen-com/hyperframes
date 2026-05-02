@@ -30,8 +30,8 @@ interface OverlayRect {
   top: number;
   width: number;
   height: number;
-  scaleX: number;
-  scaleY: number;
+  editScaleX: number;
+  editScaleY: number;
 }
 
 interface DomEditOverlayProps {
@@ -70,16 +70,73 @@ function toOverlayRect(
   if (!rootWidth || !rootHeight) return null;
 
   const elementRect = element.getBoundingClientRect();
-  const scaleX = iframeRect.width / rootWidth;
-  const scaleY = iframeRect.height / rootHeight;
+  const rootScaleX = iframeRect.width / rootWidth;
+  const rootScaleY = iframeRect.height / rootHeight;
+  const sourceBoundary = findSourceBoundary(element);
+  const sourceBoundaryRect = sourceBoundary?.getBoundingClientRect();
+  const editScale = resolveDomEditCoordinateScale({
+    rootScaleX,
+    rootScaleY,
+    sourceRectWidth: sourceBoundaryRect?.width,
+    sourceRectHeight: sourceBoundaryRect?.height,
+    sourceWidth: readPositiveDimension(sourceBoundary?.getAttribute("data-width") ?? null),
+    sourceHeight: readPositiveDimension(sourceBoundary?.getAttribute("data-height") ?? null),
+  });
 
   return {
-    left: iframeRect.left - overlayRect.left + elementRect.left * scaleX,
-    top: iframeRect.top - overlayRect.top + elementRect.top * scaleY,
-    width: elementRect.width * scaleX,
-    height: elementRect.height * scaleY,
-    scaleX,
-    scaleY,
+    left: iframeRect.left - overlayRect.left + (elementRect.left - rootRect.left) * rootScaleX,
+    top: iframeRect.top - overlayRect.top + (elementRect.top - rootRect.top) * rootScaleY,
+    width: elementRect.width * rootScaleX,
+    height: elementRect.height * rootScaleY,
+    editScaleX: editScale.scaleX,
+    editScaleY: editScale.scaleY,
+  };
+}
+
+function readPositiveDimension(value: string | null): number | null {
+  if (!value) return null;
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function findSourceBoundary(element: HTMLElement): HTMLElement | null {
+  let current: HTMLElement | null = element;
+  while (current) {
+    if (
+      current.hasAttribute("data-composition-file") ||
+      current.hasAttribute("data-composition-src")
+    ) {
+      return current;
+    }
+    current = current.parentElement;
+  }
+  return null;
+}
+
+export function resolveDomEditCoordinateScale(input: {
+  rootScaleX: number;
+  rootScaleY: number;
+  sourceRectWidth?: number;
+  sourceRectHeight?: number;
+  sourceWidth?: number | null;
+  sourceHeight?: number | null;
+}): { scaleX: number; scaleY: number } {
+  const rootScaleX = input.rootScaleX > 0 ? input.rootScaleX : 1;
+  const rootScaleY = input.rootScaleY > 0 ? input.rootScaleY : 1;
+  const sourceScaleX =
+    input.sourceRectWidth && input.sourceRectWidth > 0 && input.sourceWidth && input.sourceWidth > 0
+      ? (input.sourceRectWidth * rootScaleX) / input.sourceWidth
+      : rootScaleX;
+  const sourceScaleY =
+    input.sourceRectHeight &&
+    input.sourceRectHeight > 0 &&
+    input.sourceHeight &&
+    input.sourceHeight > 0
+      ? (input.sourceRectHeight * rootScaleY) / input.sourceHeight
+      : rootScaleY;
+  return {
+    scaleX: sourceScaleX > 0 ? sourceScaleX : rootScaleX,
+    scaleY: sourceScaleY > 0 ? sourceScaleY : rootScaleY,
   };
 }
 
@@ -97,8 +154,8 @@ function rectsEqual(a: OverlayRect | null, b: OverlayRect | null): boolean {
     Math.abs(a.top - b.top) < OVERLAY_RECT_EPSILON_PX &&
     Math.abs(a.width - b.width) < OVERLAY_RECT_EPSILON_PX &&
     Math.abs(a.height - b.height) < OVERLAY_RECT_EPSILON_PX &&
-    Math.abs(a.scaleX - b.scaleX) < 0.001 &&
-    Math.abs(a.scaleY - b.scaleY) < 0.001
+    Math.abs(a.editScaleX - b.editScaleX) < 0.001 &&
+    Math.abs(a.editScaleY - b.editScaleY) < 0.001
   );
 }
 
@@ -153,6 +210,22 @@ export function resolveDomEditResizeGesture(input: {
     overlayHeight: Math.max(MIN_RESIZE_EDGE_PX, input.originHeight + input.dy),
     width: Math.max(1, input.actualWidth + input.dx / scaleX),
     height: Math.max(1, input.actualHeight + input.dy / scaleY),
+  };
+}
+
+export function resolveDomEditPathOffsetGesture(input: {
+  actualOffsetX: number;
+  actualOffsetY: number;
+  scaleX: number;
+  scaleY: number;
+  dx: number;
+  dy: number;
+}): { x: number; y: number } {
+  const scaleX = input.scaleX > 0 ? input.scaleX : 1;
+  const scaleY = input.scaleY > 0 ? input.scaleY : 1;
+  return {
+    x: input.actualOffsetX + input.dx / scaleX,
+    y: input.actualOffsetY + input.dy / scaleY,
   };
 }
 
@@ -213,8 +286,8 @@ interface GestureState {
   actualWidth: number;
   actualHeight: number;
   actualRotation: number;
-  scaleX: number;
-  scaleY: number;
+  editScaleX: number;
+  editScaleY: number;
   manualEditDragToken?: string;
 }
 
@@ -345,8 +418,8 @@ export const DomEditOverlay = memo(function DomEditOverlay({
     const offset = readStudioPathOffset(sel.element);
     const size = readStudioBoxSize(sel.element);
     const rotation = readStudioRotation(sel.element);
-    const actualWidth = size.width > 0 ? size.width : rect.width / rect.scaleX;
-    const actualHeight = size.height > 0 ? size.height : rect.height / rect.scaleY;
+    const actualWidth = size.width > 0 ? size.width : rect.width / rect.editScaleX;
+    const actualHeight = size.height > 0 ? size.height : rect.height / rect.editScaleY;
     const manualEditDragToken = beginStudioManualEditGesture(sel.element);
     const overlayBounds = overlayEl?.getBoundingClientRect();
     const centerX = (overlayBounds?.left ?? 0) + rect.left + rect.width / 2;
@@ -377,8 +450,8 @@ export const DomEditOverlay = memo(function DomEditOverlay({
       actualWidth,
       actualHeight,
       actualRotation: rotation.angle,
-      scaleX: rect.scaleX,
-      scaleY: rect.scaleY,
+      editScaleX: rect.editScaleX,
+      editScaleY: rect.editScaleY,
       manualEditDragToken,
     };
   };
@@ -424,18 +497,25 @@ export const DomEditOverlay = memo(function DomEditOverlay({
       const nextBoxTop = g.originTop + dy;
       box.style.left = `${nextBoxLeft}px`;
       box.style.top = `${nextBoxTop}px`;
-      applyStudioPathOffsetDraft(sel.element, {
-        x: g.actualOffsetX + dx / g.scaleX,
-        y: g.actualOffsetY + dy / g.scaleY,
-      });
+      applyStudioPathOffsetDraft(
+        sel.element,
+        resolveDomEditPathOffsetGesture({
+          actualOffsetX: g.actualOffsetX,
+          actualOffsetY: g.actualOffsetY,
+          scaleX: g.editScaleX,
+          scaleY: g.editScaleY,
+          dx,
+          dy,
+        }),
+      );
     } else {
       const nextSize = resolveDomEditResizeGesture({
         originWidth: g.originWidth,
         originHeight: g.originHeight,
         actualWidth: g.actualWidth,
         actualHeight: g.actualHeight,
-        scaleX: g.scaleX,
-        scaleY: g.scaleY,
+        scaleX: g.editScaleX,
+        scaleY: g.editScaleY,
         dx,
         dy,
         uniform: e.shiftKey,

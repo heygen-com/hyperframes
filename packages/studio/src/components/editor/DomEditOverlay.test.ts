@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   focusDomEditOverlayElement,
+  resolveDomEditCoordinateScale,
+  resolveDomEditPathOffsetGesture,
   resolveDomEditResizeGesture,
   resolveDomEditRotationGesture,
 } from "./DomEditOverlay";
@@ -13,6 +15,54 @@ describe("focusDomEditOverlayElement", () => {
     });
 
     expect(calls).toEqual([{ preventScroll: true }]);
+  });
+});
+
+describe("resolveDomEditCoordinateScale", () => {
+  it("uses the top-level preview scale when no source boundary dimensions are available", () => {
+    expect(
+      resolveDomEditCoordinateScale({
+        rootScaleX: 0.5,
+        rootScaleY: 0.5,
+      }),
+    ).toEqual({
+      scaleX: 0.5,
+      scaleY: 0.5,
+    });
+  });
+
+  it("converts source-local pixels through a scaled nested composition host", () => {
+    expect(
+      resolveDomEditCoordinateScale({
+        rootScaleX: 0.5,
+        rootScaleY: 0.5,
+        sourceRectWidth: 960,
+        sourceRectHeight: 540,
+        sourceWidth: 1920,
+        sourceHeight: 1080,
+      }),
+    ).toEqual({
+      scaleX: 0.25,
+      scaleY: 0.25,
+    });
+  });
+});
+
+describe("resolveDomEditPathOffsetGesture", () => {
+  it("writes source-local offsets when the edited source is scaled down in master view", () => {
+    expect(
+      resolveDomEditPathOffsetGesture({
+        actualOffsetX: 10,
+        actualOffsetY: -4,
+        scaleX: 0.25,
+        scaleY: 0.25,
+        dx: 25,
+        dy: 10,
+      }),
+    ).toEqual({
+      x: 110,
+      y: 36,
+    });
   });
 });
 
@@ -75,6 +125,27 @@ describe("resolveDomEditResizeGesture", () => {
     ).toMatchObject({
       width: 260,
       height: 260,
+    });
+  });
+
+  it("writes source-local dimensions when the edited source is scaled down in master view", () => {
+    expect(
+      resolveDomEditResizeGesture({
+        originWidth: 100,
+        originHeight: 50,
+        actualWidth: 400,
+        actualHeight: 200,
+        scaleX: 0.25,
+        scaleY: 0.25,
+        dx: 25,
+        dy: 10,
+        uniform: false,
+      }),
+    ).toEqual({
+      overlayWidth: 125,
+      overlayHeight: 60,
+      width: 500,
+      height: 240,
     });
   });
 });
