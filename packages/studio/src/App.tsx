@@ -393,6 +393,14 @@ function replaceDomEditGroupSelection(
   return replaced ? nextGroup : [...group, selection];
 }
 
+function seedDomEditGroupWithSelection(
+  group: DomEditSelection[],
+  selection: DomEditSelection | null,
+): DomEditSelection[] {
+  if (!selection || domEditSelectionInGroup(group, selection)) return group;
+  return [selection, ...group];
+}
+
 // ── Ask Agent Modal ──
 
 function AskAgentModal({
@@ -1582,15 +1590,17 @@ export function StudioApp() {
         return;
       }
 
-      const currentGroup = domEditGroupSelectionsRef.current;
       const isAdditiveSelection = Boolean(options?.additive);
+      const currentSelection = domEditSelectionRef.current;
+      const currentGroup = isAdditiveSelection
+        ? seedDomEditGroupWithSelection(domEditGroupSelectionsRef.current, currentSelection)
+        : domEditGroupSelectionsRef.current;
       const wasInGroup = domEditSelectionInGroup(currentGroup, selection);
       const nextGroup = options?.preserveGroup
         ? replaceDomEditGroupSelection(currentGroup, selection)
         : isAdditiveSelection
           ? toggleDomEditGroupSelection(currentGroup, selection)
           : [selection];
-      const currentSelection = domEditSelectionRef.current;
       const nextSelection = options?.preserveGroup
         ? selection
         : isAdditiveSelection && wasInGroup
