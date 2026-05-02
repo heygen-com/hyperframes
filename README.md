@@ -36,8 +36,6 @@ This teaches your agent (Claude Code, Cursor, Gemini CLI, Codex) how to write co
 
 For Claude Design, open [`docs/guides/claude-design-hyperframes.md`](https://github.com/heygen-com/hyperframes/blob/main/docs/guides/claude-design-hyperframes.md) on GitHub and click the download button (↓) to save it, then attach the file to your Claude Design chat. It produces a valid first draft; refine in any AI coding agent. See the [Claude Design guide](https://hyperframes.heygen.com/guides/claude-design).
 
-For [Open Design](https://github.com/nexu-io/open-design) — the open-source, BYOK alternative to Claude Design that runs locally and drives whichever coding-agent CLI you already have on your `PATH` — open [`docs/guides/open-design-hyperframes.md`](https://github.com/heygen-com/hyperframes/blob/main/docs/guides/open-design-hyperframes.md) and either drop it into your project's `skills/hyperframes-handoff/SKILL.md` or attach it to your Open Design chat. It teaches Open Design to emit a HyperFrames-valid composition; refine in any AI coding agent. See the [Open Design guide](https://hyperframes.heygen.com/guides/open-design).
-
 For Codex specifically, the same skills are also exposed as an [OpenAI Codex plugin](./.codex-plugin/plugin.json) — sparse-install just the plugin surface:
 
 ```bash
