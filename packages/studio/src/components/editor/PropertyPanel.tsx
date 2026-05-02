@@ -38,6 +38,7 @@ import {
   type GradientModel,
 } from "./gradientValue";
 import { isTextEditableSelection, type DomEditSelection } from "./domEditing";
+import { readStudioBoxSize, readStudioPathOffset } from "./manualEdits";
 import {
   COMMON_LOCAL_FONT_FAMILIES,
   googleFontStylesheetUrl,
@@ -54,6 +55,8 @@ interface PropertyPanelProps {
   copiedAgentPrompt: boolean;
   onClearSelection: () => void;
   onSetStyle: (prop: string, value: string) => void;
+  onSetManualOffset: (element: DomEditSelection, next: { x: number; y: number }) => void;
+  onSetManualSize: (element: DomEditSelection, next: { width: number; height: number }) => void;
   onSetText: (value: string, fieldKey?: string) => void;
   onSetTextFieldStyle: (fieldKey: string, property: string, value: string) => void;
   onAddTextField: (afterFieldKey?: string) => string | Promise<string | null> | null;
@@ -169,6 +172,17 @@ function parseNumericToken(value: string | undefined): ParsedNumericToken | null
     value: parsed,
     unit: match[2] ?? "",
   };
+}
+
+function parsePxMetricValue(value: string): number | null {
+  const token = parseNumericToken(value);
+  if (!token) return null;
+  if (token.unit && token.unit.toLowerCase() !== "px") return null;
+  return token.value;
+}
+
+function formatPxMetricValue(value: number): string {
+  return `${formatNumericValue(value)}px`;
 }
 
 function adjustNumericToken(
@@ -1962,6 +1976,8 @@ export const PropertyPanel = memo(function PropertyPanel({
   copiedAgentPrompt,
   onClearSelection,
   onSetStyle,
+  onSetManualOffset,
+  onSetManualSize,
   onSetText,
   onSetTextFieldStyle,
   onAddTextField,
@@ -2006,22 +2022,60 @@ export const PropertyPanel = memo(function PropertyPanel({
         <Eye size={18} className="mb-3 text-neutral-600" />
         <p className="text-sm font-medium text-neutral-200">Select an element in the preview.</p>
         <p className="mt-2 max-w-[260px] text-xs leading-5 text-neutral-500">
-          The inspector is tuned for direct DOM edits with safer geometry controls, color picking,
-          and cleaner grouped layer controls.
+          The inspector is tuned for element edits with safer geometry controls, color picking, and
+          cleaner grouped layer controls.
         </p>
       </div>
     );
   }
 
   const styleEditingDisabled = !element.capabilities.canEditStyles;
-  const moveEditingDisabled = !element.capabilities.canMove;
-  const resizeEditingDisabled = !element.capabilities.canResize;
+  const manualOffsetEditingDisabled = !element.capabilities.canApplyManualOffset;
+  const manualSizeEditingDisabled = !element.capabilities.canApplyManualSize;
   const isFlex = styles.display === "flex" || styles.display === "inline-flex";
   const radiusValue = parseNumericValue(styles["border-radius"]) ?? 0;
   const opacityValue = Math.round((parseNumericValue(styles.opacity) ?? 1) * 100);
   const clipContent = ["hidden", "clip"].includes((styles.overflow ?? "").trim());
   const sourceLabel = element.id ? `#${element.id}` : element.selector;
   const showEditableSections = element.capabilities.canEditStyles;
+  const manualOffset = readStudioPathOffset(element.element);
+  const manualSize = readStudioBoxSize(element.element);
+  const resolvedWidth =
+    manualSize.width > 0
+      ? manualSize.width
+      : (parsePxMetricValue(styles.width ?? "") ?? element.boundingBox.width);
+  const resolvedHeight =
+    manualSize.height > 0
+      ? manualSize.height
+      : (parsePxMetricValue(styles.height ?? "") ?? element.boundingBox.height);
+
+  const commitManualOffset = (axis: "x" | "y", nextValue: string) => {
+    const parsed = parsePxMetricValue(nextValue);
+    if (parsed == null) return;
+    const current = readStudioPathOffset(element.element);
+    onSetManualOffset(element, {
+      x: axis === "x" ? parsed : current.x,
+      y: axis === "y" ? parsed : current.y,
+    });
+  };
+
+  const commitManualSize = (axis: "width" | "height", nextValue: string) => {
+    const parsed = parsePxMetricValue(nextValue);
+    if (parsed == null || parsed <= 0) return;
+    const current = readStudioBoxSize(element.element);
+    const width =
+      current.width > 0
+        ? current.width
+        : (parsePxMetricValue(styles.width ?? "") ?? element.boundingBox.width);
+    const height =
+      current.height > 0
+        ? current.height
+        : (parsePxMetricValue(styles.height ?? "") ?? element.boundingBox.height);
+    onSetManualSize(element, {
+      width: axis === "width" ? parsed : width,
+      height: axis === "height" ? parsed : height,
+    });
+  };
 
   const handleFillModeChange = (nextMode: string) => {
     setPreferredFillMode(nextMode);
@@ -2083,27 +2137,27 @@ export const PropertyPanel = memo(function PropertyPanel({
           <div className={RESPONSIVE_GRID}>
             <MetricField
               label="X"
-              value={styles.left ?? "auto"}
-              disabled={moveEditingDisabled}
-              onCommit={(next) => onSetStyle("left", next)}
+              value={formatPxMetricValue(manualOffset.x)}
+              disabled={manualOffsetEditingDisabled}
+              onCommit={(next) => commitManualOffset("x", next)}
             />
             <MetricField
               label="Y"
-              value={styles.top ?? "auto"}
-              disabled={moveEditingDisabled}
-              onCommit={(next) => onSetStyle("top", next)}
+              value={formatPxMetricValue(manualOffset.y)}
+              disabled={manualOffsetEditingDisabled}
+              onCommit={(next) => commitManualOffset("y", next)}
             />
             <MetricField
               label="W"
-              value={styles.width ?? "auto"}
-              disabled={resizeEditingDisabled}
-              onCommit={(next) => onSetStyle("width", next)}
+              value={formatPxMetricValue(resolvedWidth)}
+              disabled={manualSizeEditingDisabled}
+              onCommit={(next) => commitManualSize("width", next)}
             />
             <MetricField
               label="H"
-              value={styles.height ?? "auto"}
-              disabled={resizeEditingDisabled}
-              onCommit={(next) => onSetStyle("height", next)}
+              value={formatPxMetricValue(resolvedHeight)}
+              disabled={manualSizeEditingDisabled}
+              onCommit={(next) => commitManualSize("height", next)}
             />
           </div>
         </Section>

@@ -239,10 +239,7 @@ function normalizeDomEditStyleValue(property: string, value: string): string {
   const trimmed = value.trim();
   if (!trimmed) return trimmed;
 
-  if (
-    ["left", "top", "width", "height", "border-radius", "font-size"].includes(property) &&
-    /^-?\d+(\.\d+)?$/.test(trimmed)
-  ) {
+  if (["border-radius", "font-size"].includes(property) && /^-?\d+(\.\d+)?$/.test(trimmed)) {
     return `${trimmed}px`;
   }
 
@@ -251,27 +248,6 @@ function normalizeDomEditStyleValue(property: string, value: string): string {
 
 function isImageBackgroundValue(value: string): boolean {
   return /^url\(/i.test(value.trim());
-}
-
-function shouldDetachOppositeEdges(selection: DomEditSelection): boolean {
-  return Boolean(
-    selection.inlineStyles.inset || selection.inlineStyles.right || selection.inlineStyles.bottom,
-  );
-}
-
-function buildOppositeEdgePatchOperations(
-  selection: DomEditSelection,
-  dimension: "width" | "height" | "both",
-): PatchOperation[] {
-  if (!shouldDetachOppositeEdges(selection)) return [];
-  const operations: PatchOperation[] = [];
-  if (dimension === "width" || dimension === "both") {
-    operations.push({ type: "inline-style", property: "right", value: "auto" });
-  }
-  if (dimension === "height" || dimension === "both") {
-    operations.push({ type: "inline-style", property: "bottom", value: "auto" });
-  }
-  return operations;
 }
 
 function getEventTargetElement(target: EventTarget | null): HTMLElement | null {
@@ -339,12 +315,8 @@ function findMatchingTimelineElementId(
   return null;
 }
 
-function isMoveStyleProperty(property: string): boolean {
-  return property === "left" || property === "top";
-}
-
-function isResizeStyleProperty(property: string): boolean {
-  return property === "width" || property === "height";
+function isManualGeometryStyleProperty(property: string): boolean {
+  return property === "left" || property === "top" || property === "width" || property === "height";
 }
 
 function getPreviewTargetFromPointer(
@@ -1987,45 +1959,6 @@ export function StudioApp() {
     [activeCompPath, editHistory.recordEdit, writeProjectFile],
   );
 
-  const handleDomPathOffsetCommit = useCallback(
-    (selection: DomEditSelection, next: { x: number; y: number }) => {
-      commitStudioManualEditManifestOptimistically(
-        (manifest) => upsertStudioPathOffsetEdit(manifest, selection, next),
-        {
-          label: "Move layer",
-          coalesceKey: `path-offset:${getDomEditTargetKey(selection)}`,
-        },
-      );
-    },
-    [commitStudioManualEditManifestOptimistically],
-  );
-
-  const handleDomBoxSizeCommit = useCallback(
-    (selection: DomEditSelection, next: { width: number; height: number }) => {
-      commitStudioManualEditManifestOptimistically(
-        (manifest) => upsertStudioBoxSizeEdit(manifest, selection, next),
-        {
-          label: "Resize layer box",
-          coalesceKey: `box-size:${getDomEditTargetKey(selection)}`,
-        },
-      );
-    },
-    [commitStudioManualEditManifestOptimistically],
-  );
-
-  const handleDomRotationCommit = useCallback(
-    (selection: DomEditSelection, next: { angle: number }) => {
-      commitStudioManualEditManifestOptimistically(
-        (manifest) => upsertStudioRotationEdit(manifest, selection, next),
-        {
-          label: "Rotate layer",
-          coalesceKey: `rotation:${getDomEditTargetKey(selection)}`,
-        },
-      );
-    },
-    [commitStudioManualEditManifestOptimistically],
-  );
-
   const refreshDomEditSelectionFromPreview = useCallback(
     (selection: DomEditSelection) => {
       const iframe = previewIframeRef.current;
@@ -2046,6 +1979,48 @@ export function StudioApp() {
       }
     },
     [applyDomSelection, buildDomSelectionFromTarget],
+  );
+
+  const handleDomPathOffsetCommit = useCallback(
+    (selection: DomEditSelection, next: { x: number; y: number }) => {
+      commitStudioManualEditManifestOptimistically(
+        (manifest) => upsertStudioPathOffsetEdit(manifest, selection, next),
+        {
+          label: "Move layer",
+          coalesceKey: `path-offset:${getDomEditTargetKey(selection)}`,
+        },
+      );
+      refreshDomEditSelectionFromPreview(selection);
+    },
+    [commitStudioManualEditManifestOptimistically, refreshDomEditSelectionFromPreview],
+  );
+
+  const handleDomBoxSizeCommit = useCallback(
+    (selection: DomEditSelection, next: { width: number; height: number }) => {
+      commitStudioManualEditManifestOptimistically(
+        (manifest) => upsertStudioBoxSizeEdit(manifest, selection, next),
+        {
+          label: "Resize layer box",
+          coalesceKey: `box-size:${getDomEditTargetKey(selection)}`,
+        },
+      );
+      refreshDomEditSelectionFromPreview(selection);
+    },
+    [commitStudioManualEditManifestOptimistically, refreshDomEditSelectionFromPreview],
+  );
+
+  const handleDomRotationCommit = useCallback(
+    (selection: DomEditSelection, next: { angle: number }) => {
+      commitStudioManualEditManifestOptimistically(
+        (manifest) => upsertStudioRotationEdit(manifest, selection, next),
+        {
+          label: "Rotate layer",
+          coalesceKey: `rotation:${getDomEditTargetKey(selection)}`,
+        },
+      );
+      refreshDomEditSelectionFromPreview(selection);
+    },
+    [commitStudioManualEditManifestOptimistically, refreshDomEditSelectionFromPreview],
   );
 
   const handleDomManualEditsReset = useCallback(
@@ -2070,11 +2045,8 @@ export function StudioApp() {
   const handleDomStyleCommit = useCallback(
     async (property: string, value: string) => {
       if (!domEditSelection) return;
-      const isMoveStyle = isMoveStyleProperty(property);
-      const isResizeStyle = isResizeStyleProperty(property);
-      if (isMoveStyle && !domEditSelection.capabilities.canMove) return;
-      if (isResizeStyle && !domEditSelection.capabilities.canResize) return;
-      if (!isMoveStyle && !isResizeStyle && !domEditSelection.capabilities.canEditStyles) return;
+      if (isManualGeometryStyleProperty(property)) return;
+      if (!domEditSelection.capabilities.canEditStyles) return;
       const importedFont = property === "font-family" ? resolveImportedFontAsset(value) : null;
       const iframe = previewIframeRef.current;
       const doc = iframe?.contentDocument;
@@ -2086,10 +2058,6 @@ export function StudioApp() {
             injectPreviewGoogleFont(doc, value);
             if (importedFont) injectPreviewImportedFont(doc, importedFont);
           }
-          if (shouldDetachOppositeEdges(domEditSelection)) {
-            if (property === "width") el.style.right = "auto";
-            if (property === "height") el.style.bottom = "auto";
-          }
           if (property === "background-image" && isImageBackgroundValue(value)) {
             el.style.setProperty("background-position", "center");
             el.style.setProperty("background-repeat", "no-repeat");
@@ -2100,11 +2068,7 @@ export function StudioApp() {
       const operations: PatchOperation[] = [
         buildDomEditStylePatchOperation(property, normalizeDomEditStyleValue(property, value)),
       ];
-      if (property === "width") {
-        operations.push(...buildOppositeEdgePatchOperations(domEditSelection, "width"));
-      } else if (property === "height") {
-        operations.push(...buildOppositeEdgePatchOperations(domEditSelection, "height"));
-      } else if (property === "background-image" && isImageBackgroundValue(value)) {
+      if (property === "background-image" && isImageBackgroundValue(value)) {
         operations.push(
           buildDomEditStylePatchOperation("background-position", "center"),
           buildDomEditStylePatchOperation("background-repeat", "no-repeat"),
@@ -3278,6 +3242,8 @@ export function StudioApp() {
                         copiedAgentPrompt={copiedAgentPrompt}
                         onClearSelection={clearDomSelection}
                         onSetStyle={handleDomStyleCommit}
+                        onSetManualOffset={handleDomPathOffsetCommit}
+                        onSetManualSize={handleDomBoxSizeCommit}
                         onSetText={handleDomTextCommit}
                         onSetTextFieldStyle={handleDomTextFieldStyleCommit}
                         onAddTextField={handleDomAddTextField}
