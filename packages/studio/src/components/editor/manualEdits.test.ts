@@ -25,6 +25,7 @@ import {
   readStudioBoxSize,
   readStudioPathOffset,
   readStudioRotation,
+  removeStudioManualEditsForSelection,
   restoreStudioBoxSize,
   restoreStudioRotation,
   serializeStudioManualEditManifest,
@@ -162,6 +163,36 @@ describe("studio manual edits", () => {
         expect.objectContaining({ kind: "rotation", angle: -15 }),
       ]),
     );
+  });
+
+  it("removes all manual edits for the selected target", () => {
+    const selection = createSelection();
+    const otherSelection = {
+      ...createSelection(),
+      id: "other-card",
+      selector: "#other-card",
+      label: "Other card",
+    };
+    const moved = upsertStudioPathOffsetEdit(emptyStudioManualEditManifest(), selection, {
+      x: 12,
+      y: 30,
+    });
+    const resized = upsertStudioBoxSizeEdit(moved, selection, {
+      width: 240,
+      height: 120,
+    });
+    const rotated = upsertStudioRotationEdit(resized, selection, { angle: 32 });
+    const manifest = upsertStudioPathOffsetEdit(rotated, otherSelection, { x: 4, y: 8 });
+
+    const updated = removeStudioManualEditsForSelection(manifest, selection);
+
+    expect(updated.edits).toHaveLength(1);
+    expect(updated.edits[0]).toMatchObject({
+      kind: "path-offset",
+      target: { id: "other-card", selector: "#other-card" },
+      x: 4,
+      y: 8,
+    });
   });
 
   it("round-trips valid manifest entries and drops invalid entries", () => {

@@ -58,6 +58,7 @@ interface PropertyPanelProps {
   onSetTextFieldStyle: (fieldKey: string, property: string, value: string) => void;
   onAddTextField: (afterFieldKey?: string) => string | Promise<string | null> | null;
   onRemoveTextField: (fieldKey: string) => void;
+  onResetManualEdits: (element: DomEditSelection) => void;
   onAskAgent: () => void;
   onImportAssets?: (files: FileList) => Promise<string[]>;
   fontAssets?: ImportedFontAsset[];
@@ -1965,6 +1966,7 @@ export const PropertyPanel = memo(function PropertyPanel({
   onSetTextFieldStyle,
   onAddTextField,
   onRemoveTextField,
+  onResetManualEdits,
   onAskAgent,
   onImportAssets,
   fontAssets = [],
@@ -2055,14 +2057,25 @@ export const PropertyPanel = memo(function PropertyPanel({
             <X size={13} />
           </button>
         </div>
-        <button
-          type="button"
-          onClick={onAskAgent}
-          className="mt-4 inline-flex h-8 items-center justify-center gap-2 rounded-xl border border-neutral-700 bg-neutral-950 px-3.5 text-[11px] font-medium text-neutral-100 transition-colors hover:border-studio-accent/40 hover:text-studio-accent"
-        >
-          <MessageSquare size={15} />
-          <span>{copiedAgentPrompt ? "Prompt copied" : "Ask agent"}</span>
-        </button>
+        <div className="mt-4 flex min-w-0 flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={onAskAgent}
+            className="inline-flex h-8 items-center justify-center gap-2 rounded-xl border border-neutral-700 bg-neutral-950 px-3.5 text-[11px] font-medium text-neutral-100 transition-colors hover:border-studio-accent/40 hover:text-studio-accent"
+          >
+            <MessageSquare size={15} />
+            <span>{copiedAgentPrompt ? "Prompt copied" : "Ask agent"}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => onResetManualEdits(element)}
+            title="Reset move, size, and rotation edits"
+            className="inline-flex h-8 items-center justify-center gap-2 rounded-xl border border-neutral-700 bg-neutral-950 px-3.5 text-[11px] font-medium text-neutral-100 transition-colors hover:border-neutral-500 hover:text-white"
+          >
+            <RotateCcw size={14} />
+            <span>Reset edits</span>
+          </button>
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto">
