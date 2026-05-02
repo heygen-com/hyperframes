@@ -151,6 +151,7 @@ type GestureKind = "drag" | "resize" | "rotate";
 const BLOCKED_MOVE_THRESHOLD_PX = 4;
 const MIN_RESIZE_EDGE_PX = 20;
 const OVERLAY_RECT_EPSILON_PX = 0.5;
+const ROTATION_COMMIT_EPSILON_DEGREES = 0.05;
 const ROTATION_SNAP_DEGREES = 15;
 
 function rectsEqual(a: OverlayRect | null, b: OverlayRect | null): boolean {
@@ -272,6 +273,10 @@ export function resolveDomEditRotationGesture(input: {
       ? Math.round(angle / ROTATION_SNAP_DEGREES) * ROTATION_SNAP_DEGREES
       : roundAngle(angle),
   };
+}
+
+export function hasDomEditRotationChanged(initialAngle: number, nextAngle: number): boolean {
+  return Math.abs(nextAngle - initialAngle) >= ROTATION_COMMIT_EPSILON_DEGREES;
 }
 
 interface GestureState {
@@ -676,14 +681,22 @@ export const DomEditOverlay = memo(function DomEditOverlay({
       return;
     }
 
-    if (g.kind === "rotate" && movedDistance < BLOCKED_MOVE_THRESHOLD_PX) {
-      restoreStudioRotation(sel.element, g.initialRotation);
-      endStudioManualEditGesture(sel.element, g.manualEditDragToken);
-      return;
-    }
-
     if (g.kind === "rotate") {
-      const finalRotation = readStudioRotation(sel.element);
+      const finalRotation = resolveDomEditRotationGesture({
+        centerX: g.centerX,
+        centerY: g.centerY,
+        startX: g.startX,
+        startY: g.startY,
+        currentX: e.clientX,
+        currentY: e.clientY,
+        actualAngle: g.actualRotation,
+        snap: e.shiftKey,
+      });
+      if (!hasDomEditRotationChanged(g.actualRotation, finalRotation.angle)) {
+        restoreStudioRotation(sel.element, g.initialRotation);
+        endStudioManualEditGesture(sel.element, g.manualEditDragToken);
+        return;
+      }
       applyStudioRotation(sel.element, finalRotation);
       void Promise.resolve(onRotationCommitRef.current(sel, finalRotation))
         .catch(() => {

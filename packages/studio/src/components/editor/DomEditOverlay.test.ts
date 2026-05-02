@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   focusDomEditOverlayElement,
+  hasDomEditRotationChanged,
   resolveDomEditCoordinateScale,
   resolveDomEditPathOffsetGesture,
   resolveDomEditResizeGesture,
@@ -194,5 +195,22 @@ describe("resolveDomEditRotationGesture", () => {
         snap: true,
       }),
     ).toEqual({ angle: 15 });
+  });
+
+  it("allows small pointer movements when the rounded angle changes", () => {
+    const nextRotation = resolveDomEditRotationGesture({
+      centerX: 0,
+      centerY: 0,
+      startX: 0,
+      startY: -40,
+      currentX: 1,
+      currentY: -40,
+      actualAngle: 0,
+      snap: false,
+    });
+
+    expect(nextRotation.angle).toBe(1.4);
+    expect(hasDomEditRotationChanged(0, nextRotation.angle)).toBe(true);
+    expect(hasDomEditRotationChanged(0, 0)).toBe(false);
   });
 });
