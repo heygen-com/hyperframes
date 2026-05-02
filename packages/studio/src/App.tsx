@@ -70,7 +70,10 @@ import {
   importedFontFaceCss,
   type ImportedFontAsset,
 } from "./components/editor/fontAssets";
-import { DomEditOverlay } from "./components/editor/DomEditOverlay";
+import {
+  DomEditOverlay,
+  type DomEditGroupPathOffsetCommit,
+} from "./components/editor/DomEditOverlay";
 import {
   buildDefaultDomEditTextField,
   buildDomEditStylePatchOperation,
@@ -359,6 +362,24 @@ function domEditSelectionsTargetSame(
   return getDomEditTargetKey(a) === getDomEditTargetKey(b);
 }
 
+function domEditSelectionInGroup(
+  group: DomEditSelection[],
+  selection: DomEditSelection | null,
+): boolean {
+  if (!selection) return false;
+  return group.some((entry) => domEditSelectionsTargetSame(entry, selection));
+}
+
+function toggleDomEditGroupSelection(
+  group: DomEditSelection[],
+  selection: DomEditSelection,
+): DomEditSelection[] {
+  if (domEditSelectionInGroup(group, selection)) {
+    return group.filter((entry) => !domEditSelectionsTargetSame(entry, selection));
+  }
+  return [...group, selection];
+}
+
 // ── Ask Agent Modal ──
 
 function AskAgentModal({
@@ -540,6 +561,7 @@ export function StudioApp() {
   const [rightCollapsed, setRightCollapsed] = useState(true);
   const [rightPanelTab, setRightPanelTab] = useState<RightPanelTab>("renders");
   const [domEditSelection, setDomEditSelection] = useState<DomEditSelection | null>(null);
+  const [domEditGroupSelections, setDomEditGroupSelections] = useState<DomEditSelection[]>([]);
   const [domEditHoverSelection, setDomEditHoverSelection] = useState<DomEditSelection | null>(null);
   const [agentPromptTagSnippet, setAgentPromptTagSnippet] = useState<string | undefined>();
   const [copiedAgentPrompt, setCopiedAgentPrompt] = useState(false);
@@ -996,6 +1018,7 @@ export function StudioApp() {
   const consoleErrorsRef = useRef<LintFinding[]>([]);
   const copiedAgentTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const domEditSelectionRef = useRef<DomEditSelection | null>(domEditSelection);
+  const domEditGroupSelectionsRef = useRef<DomEditSelection[]>(domEditGroupSelections);
   const domEditHoverSelectionRef = useRef<DomEditSelection | null>(domEditHoverSelection);
   const domEditSaveTimestampRef = useRef(0);
   const domTextCommitVersionRef = useRef(0);
@@ -1056,6 +1079,7 @@ export function StudioApp() {
   });
   projectIdRef.current = projectId;
   domEditSelectionRef.current = domEditSelection;
+  domEditGroupSelectionsRef.current = domEditGroupSelections;
   domEditHoverSelectionRef.current = domEditHoverSelection;
 
   // eslint-disable-next-line no-restricted-syntax
@@ -1530,16 +1554,51 @@ export function StudioApp() {
   );
 
   const applyDomSelection = useCallback(
-    (selection: DomEditSelection | null, options?: { revealPanel?: boolean }) => {
-      setDomEditSelection(selection);
+    (
+      selection: DomEditSelection | null,
+      options?: { revealPanel?: boolean; additive?: boolean },
+    ) => {
       setAgentPromptTagSnippet(undefined);
       setCopiedAgentPrompt(false);
-      if (selection) {
+      if (!selection) {
+        domEditSelectionRef.current = null;
+        domEditGroupSelectionsRef.current = [];
+        setDomEditSelection(null);
+        setDomEditGroupSelections([]);
+        setSelectedTimelineElementId(null);
+        return;
+      }
+
+      const currentGroup = domEditGroupSelectionsRef.current;
+      const isAdditiveSelection = Boolean(options?.additive);
+      const wasInGroup = domEditSelectionInGroup(currentGroup, selection);
+      const nextGroup = isAdditiveSelection
+        ? toggleDomEditGroupSelection(currentGroup, selection)
+        : [selection];
+      const currentSelection = domEditSelectionRef.current;
+      const nextSelection =
+        isAdditiveSelection && wasInGroup
+          ? domEditSelectionsTargetSame(currentSelection, selection)
+            ? (nextGroup[0] ?? null)
+            : domEditSelectionInGroup(nextGroup, currentSelection)
+              ? currentSelection
+              : (nextGroup[0] ?? null)
+          : selection;
+
+      domEditSelectionRef.current = nextSelection;
+      domEditGroupSelectionsRef.current = nextGroup;
+      setDomEditSelection(nextSelection);
+      setDomEditGroupSelections(nextGroup);
+
+      if (nextSelection) {
         if (options?.revealPanel !== false) {
           setRightCollapsed(false);
           setRightPanelTab("design");
         }
-        const nextSelectedTimelineId = findMatchingTimelineElementId(selection, timelineElements);
+        const nextSelectedTimelineId = findMatchingTimelineElementId(
+          nextSelection,
+          timelineElements,
+        );
         setSelectedTimelineElementId(nextSelectedTimelineId);
         return;
       }
@@ -1995,6 +2054,29 @@ export function StudioApp() {
     [commitStudioManualEditManifestOptimistically, refreshDomEditSelectionFromPreview],
   );
 
+  const handleDomGroupPathOffsetCommit = useCallback(
+    (updates: DomEditGroupPathOffsetCommit[]) => {
+      if (updates.length === 0) return;
+      const coalesceKey = updates
+        .map((update) => getDomEditTargetKey(update.selection))
+        .sort()
+        .join(":");
+      commitStudioManualEditManifestOptimistically(
+        (manifest) =>
+          updates.reduce(
+            (nextManifest, update) =>
+              upsertStudioPathOffsetEdit(nextManifest, update.selection, update.next),
+            manifest,
+          ),
+        {
+          label: `Move ${updates.length} layers`,
+          coalesceKey: `group-path-offset:${coalesceKey}`,
+        },
+      );
+    },
+    [commitStudioManualEditManifestOptimistically],
+  );
+
   const handleDomBoxSizeCommit = useCallback(
     (selection: DomEditSelection, next: { width: number; height: number }) => {
       commitStudioManualEditManifestOptimistically(
@@ -2331,12 +2413,12 @@ export function StudioApp() {
         preferClipAncestor: options?.preferClipAncestor ?? true,
       });
       if (!nextSelection) {
-        applyDomSelection(null, { revealPanel: false });
+        if (!e.shiftKey) applyDomSelection(null, { revealPanel: false });
         return;
       }
       e.preventDefault();
       e.stopPropagation();
-      applyDomSelection(nextSelection);
+      applyDomSelection(nextSelection, { additive: e.shiftKey });
     },
     [applyDomSelection, captionEditMode, resolveDomSelectionFromPreviewPoint],
   );
@@ -2374,10 +2456,22 @@ export function StudioApp() {
   // eslint-disable-next-line no-restricted-syntax
   useEffect(() => {
     if (!domEditHoverSelection) return;
-    if (!domEditSelection) return;
-    if (!domEditSelectionsTargetSame(domEditHoverSelection, domEditSelection)) return;
+    const hoverMatchesSelection = domEditSelectionsTargetSame(
+      domEditHoverSelection,
+      domEditSelection,
+    );
+    const hoverMatchesGroup = domEditSelectionInGroup(
+      domEditGroupSelections,
+      domEditHoverSelection,
+    );
+    if (!hoverMatchesSelection && !hoverMatchesGroup) return;
     updateDomEditHoverSelection(null);
-  }, [domEditHoverSelection, domEditSelection, updateDomEditHoverSelection]);
+  }, [
+    domEditGroupSelections,
+    domEditHoverSelection,
+    domEditSelection,
+    updateDomEditHoverSelection,
+  ]);
 
   // eslint-disable-next-line no-restricted-syntax
   useEffect(() => {
@@ -3155,6 +3249,9 @@ export function StudioApp() {
                   selection={
                     !rightCollapsed && rightPanelTab === "design" ? domEditSelection : null
                   }
+                  groupSelections={
+                    !rightCollapsed && rightPanelTab === "design" ? domEditGroupSelections : []
+                  }
                   allowCanvasMovement
                   onCanvasMouseDown={handlePreviewCanvasMouseDown}
                   onCanvasPointerMove={handlePreviewCanvasPointerMove}
@@ -3162,6 +3259,7 @@ export function StudioApp() {
                   onSelectionChange={applyDomSelection}
                   onBlockedMove={handleBlockedDomMove}
                   onPathOffsetCommit={handleDomPathOffsetCommit}
+                  onGroupPathOffsetCommit={handleDomGroupPathOffsetCommit}
                   onBoxSizeCommit={handleDomBoxSizeCommit}
                   onRotationCommit={handleDomRotationCommit}
                 />
@@ -3238,7 +3336,7 @@ export function StudioApp() {
                       <PropertyPanel
                         projectId={projectId}
                         assets={assets}
-                        element={domEditSelection}
+                        element={domEditGroupSelections.length > 1 ? null : domEditSelection}
                         copiedAgentPrompt={copiedAgentPrompt}
                         onClearSelection={clearDomSelection}
                         onSetStyle={handleDomStyleCommit}

@@ -3,6 +3,7 @@ import {
   focusDomEditOverlayElement,
   hasDomEditRotationChanged,
   resolveDomEditCoordinateScale,
+  resolveDomEditGroupOverlayRect,
   resolveDomEditPathOffsetGesture,
   resolveDomEditResizeGesture,
   resolveDomEditRotationGesture,
@@ -64,6 +65,29 @@ describe("resolveDomEditPathOffsetGesture", () => {
       x: 110,
       y: 36,
     });
+  });
+});
+
+describe("resolveDomEditGroupOverlayRect", () => {
+  it("returns a bounding box that contains every selected element", () => {
+    expect(
+      resolveDomEditGroupOverlayRect([
+        { left: 40, top: 30, width: 80, height: 50, editScaleX: 1, editScaleY: 1 },
+        { left: 150, top: 10, width: 30, height: 120, editScaleX: 0.5, editScaleY: 0.5 },
+        { left: 20, top: 90, width: 50, height: 20, editScaleX: 2, editScaleY: 2 },
+      ]),
+    ).toEqual({
+      left: 20,
+      top: 10,
+      width: 160,
+      height: 120,
+      editScaleX: 1,
+      editScaleY: 1,
+    });
+  });
+
+  it("returns null for an empty group", () => {
+    expect(resolveDomEditGroupOverlayRect([])).toBeNull();
   });
 });
 

@@ -34,9 +34,21 @@ interface OverlayRect {
   editScaleY: number;
 }
 
+interface GroupOverlayItem {
+  key: string;
+  selection: DomEditSelection;
+  rect: OverlayRect;
+}
+
+export interface DomEditGroupPathOffsetCommit {
+  selection: DomEditSelection;
+  next: { x: number; y: number };
+}
+
 interface DomEditOverlayProps {
   iframeRef: RefObject<HTMLIFrameElement | null>;
   selection: DomEditSelection | null;
+  groupSelections?: DomEditSelection[];
   hoverSelection: DomEditSelection | null;
   allowCanvasMovement?: boolean;
   onCanvasMouseDown: (
@@ -48,12 +60,16 @@ interface DomEditOverlayProps {
     options?: { preferClipAncestor?: boolean },
   ) => DomEditSelection | null;
   onCanvasPointerLeave: () => void;
-  onSelectionChange: (selection: DomEditSelection, options?: { revealPanel?: boolean }) => void;
+  onSelectionChange: (
+    selection: DomEditSelection,
+    options?: { revealPanel?: boolean; additive?: boolean },
+  ) => void;
   onBlockedMove: (selection: DomEditSelection) => void;
   onPathOffsetCommit: (
     selection: DomEditSelection,
     next: { x: number; y: number },
   ) => Promise<void> | void;
+  onGroupPathOffsetCommit: (updates: DomEditGroupPathOffsetCommit[]) => Promise<void> | void;
   onBoxSizeCommit: (
     selection: DomEditSelection,
     next: { width: number; height: number },
@@ -165,6 +181,41 @@ function rectsEqual(a: OverlayRect | null, b: OverlayRect | null): boolean {
     Math.abs(a.editScaleX - b.editScaleX) < 0.001 &&
     Math.abs(a.editScaleY - b.editScaleY) < 0.001
   );
+}
+
+function groupOverlayItemsEqual(a: GroupOverlayItem[], b: GroupOverlayItem[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  return a.every((item, index) => {
+    const other = b[index];
+    return Boolean(other && item.key === other.key && rectsEqual(item.rect, other.rect));
+  });
+}
+
+export function resolveDomEditGroupOverlayRect(rects: OverlayRect[]): OverlayRect | null {
+  const first = rects[0];
+  if (!first) return null;
+
+  let left = first.left;
+  let top = first.top;
+  let right = first.left + first.width;
+  let bottom = first.top + first.height;
+
+  for (const rect of rects.slice(1)) {
+    left = Math.min(left, rect.left);
+    top = Math.min(top, rect.top);
+    right = Math.max(right, rect.left + rect.width);
+    bottom = Math.max(bottom, rect.top + rect.height);
+  }
+
+  return {
+    left,
+    top,
+    width: right - left,
+    height: bottom - top,
+    editScaleX: 1,
+    editScaleY: 1,
+  };
 }
 
 function selectionCacheKey(
@@ -304,6 +355,24 @@ interface GestureState {
   manualEditDragToken?: string;
 }
 
+interface GroupGestureMember {
+  key: string;
+  selection: DomEditSelection;
+  initialPathOffset: StudioPathOffsetSnapshot;
+  actualOffsetX: number;
+  actualOffsetY: number;
+  editScaleX: number;
+  editScaleY: number;
+  manualEditDragToken?: string;
+}
+
+interface GroupGestureState {
+  startX: number;
+  startY: number;
+  originItems: GroupOverlayItem[];
+  members: GroupGestureMember[];
+}
+
 interface BlockedMoveState {
   pointerId: number;
   startX: number;
@@ -318,6 +387,7 @@ type ResolvedElementRef = {
 export const DomEditOverlay = memo(function DomEditOverlay({
   iframeRef,
   selection,
+  groupSelections = [],
   hoverSelection,
   allowCanvasMovement = true,
   onCanvasMouseDown,
@@ -326,6 +396,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   onSelectionChange,
   onBlockedMove,
   onPathOffsetCommit,
+  onGroupPathOffsetCommit,
   onBoxSizeCommit,
   onRotationCommit,
 }: DomEditOverlayProps) {
@@ -333,24 +404,33 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   const boxRef = useRef<HTMLDivElement | null>(null);
   const [overlayRect, setOverlayRect] = useState<OverlayRect | null>(null);
   const [hoverRect, setHoverRect] = useState<OverlayRect | null>(null);
+  const [groupOverlayItems, setGroupOverlayItems] = useState<GroupOverlayItem[]>([]);
   const gestureRef = useRef<GestureState | null>(null);
+  const groupGestureRef = useRef<GroupGestureState | null>(null);
   const blockedMoveRef = useRef<BlockedMoveState | null>(null);
   const suppressNextBoxClickRef = useRef(false);
   const suppressNextOverlayMouseDownRef = useRef(false);
   const rafPausedRef = useRef(false);
   const resolvedElementRef = useRef<{ key: string; element: HTMLElement } | null>(null);
   const resolvedHoverElementRef = useRef<{ key: string; element: HTMLElement } | null>(null);
+  const resolvedGroupElementRef = useRef<Map<string, HTMLElement>>(new Map());
 
   const selectionRef = useRef(selection);
   selectionRef.current = selection;
+  const groupSelectionsRef = useRef(groupSelections);
+  groupSelectionsRef.current = groupSelections;
   const hoverSelectionRef = useRef(hoverSelection);
   hoverSelectionRef.current = hoverSelection;
   const overlayRectRef = useRef(overlayRect);
   overlayRectRef.current = overlayRect;
   const hoverRectRef = useRef(hoverRect);
   hoverRectRef.current = hoverRect;
+  const groupOverlayItemsRef = useRef(groupOverlayItems);
+  groupOverlayItemsRef.current = groupOverlayItems;
   const onPathOffsetCommitRef = useRef(onPathOffsetCommit);
   onPathOffsetCommitRef.current = onPathOffsetCommit;
+  const onGroupPathOffsetCommitRef = useRef(onGroupPathOffsetCommit);
+  onGroupPathOffsetCommitRef.current = onGroupPathOffsetCommit;
   const onBoxSizeCommitRef = useRef(onBoxSizeCommit);
   onBoxSizeCommitRef.current = onBoxSizeCommit;
   const onRotationCommitRef = useRef(onRotationCommit);
@@ -386,6 +466,16 @@ export const DomEditOverlay = memo(function DomEditOverlay({
       hoverRectRef.current = next;
       setHoverRect(next);
     };
+    const clearGroupOverlayItems = () => {
+      if (groupOverlayItemsRef.current.length === 0) return;
+      groupOverlayItemsRef.current = [];
+      setGroupOverlayItems([]);
+    };
+    const setNextGroupOverlayItems = (next: GroupOverlayItem[]) => {
+      if (groupOverlayItemsEqual(groupOverlayItemsRef.current, next)) return;
+      groupOverlayItemsRef.current = next;
+      setGroupOverlayItems(next);
+    };
     const resolveElement = (doc: Document, sel: DomEditSelection, cacheRef: ResolvedElementRef) => {
       const key = selectionCacheKey(sel);
       const cached = cacheRef.current;
@@ -401,6 +491,19 @@ export const DomEditOverlay = memo(function DomEditOverlay({
       cacheRef.current = next ? { key, element: next } : null;
       return next;
     };
+    const resolveGroupElement = (doc: Document, sel: DomEditSelection) => {
+      const key = selectionCacheKey(sel);
+      const cached = resolvedGroupElementRef.current.get(key);
+      if (cached?.isConnected && cached.ownerDocument === doc) return cached;
+
+      const next = findElementForSelection(doc, sel, sel.sourceFile);
+      if (next) {
+        resolvedGroupElementRef.current.set(key, next);
+      } else {
+        resolvedGroupElementRef.current.delete(key);
+      }
+      return next;
+    };
 
     const update = () => {
       frame = requestAnimationFrame(update);
@@ -412,8 +515,10 @@ export const DomEditOverlay = memo(function DomEditOverlay({
       if (!iframe || !overlayEl) {
         resolvedElementRef.current = null;
         resolvedHoverElementRef.current = null;
+        resolvedGroupElementRef.current.clear();
         clearOverlayRect();
         clearHoverRect();
+        clearGroupOverlayItems();
         return;
       }
 
@@ -421,8 +526,10 @@ export const DomEditOverlay = memo(function DomEditOverlay({
       if (!doc) {
         resolvedElementRef.current = null;
         resolvedHoverElementRef.current = null;
+        resolvedGroupElementRef.current.clear();
         clearOverlayRect();
         clearHoverRect();
+        clearGroupOverlayItems();
         return;
       }
 
@@ -438,11 +545,34 @@ export const DomEditOverlay = memo(function DomEditOverlay({
         clearOverlayRect();
       }
 
+      const group = groupSelectionsRef.current;
+      if (group.length > 0) {
+        const nextGroupItems: GroupOverlayItem[] = [];
+        const liveGroupKeys = new Set<string>();
+        for (const groupSelection of group) {
+          const key = selectionCacheKey(groupSelection);
+          liveGroupKeys.add(key);
+          const el = resolveGroupElement(doc, groupSelection);
+          const rect = el ? toOverlayRect(overlayEl, iframe, el) : null;
+          if (rect) nextGroupItems.push({ key, selection: groupSelection, rect });
+        }
+        for (const key of resolvedGroupElementRef.current.keys()) {
+          if (!liveGroupKeys.has(key)) resolvedGroupElementRef.current.delete(key);
+        }
+        setNextGroupOverlayItems(nextGroupItems);
+      } else {
+        resolvedGroupElementRef.current.clear();
+        clearGroupOverlayItems();
+      }
+
       const hoverSel = hoverSelectionRef.current;
       const hoverMatchesSelection = Boolean(
         sel && hoverSel && selectionCacheKey(sel) === selectionCacheKey(hoverSel),
       );
-      if (!hoverSel || hoverMatchesSelection) {
+      const hoverMatchesGroup = Boolean(
+        hoverSel && group.some((entry) => selectionCacheKey(entry) === selectionCacheKey(hoverSel)),
+      );
+      if (!hoverSel || hoverMatchesSelection || hoverMatchesGroup) {
         resolvedHoverElementRef.current = null;
         clearHoverRect();
         return;
@@ -467,6 +597,15 @@ export const DomEditOverlay = memo(function DomEditOverlay({
       selection.selectorIndex ?? 0
     }`;
   }, [selection]);
+  const groupBounds = useMemo(
+    () => resolveDomEditGroupOverlayRect(groupOverlayItems.map((item) => item.rect)),
+    [groupOverlayItems],
+  );
+  const hasGroupSelection = groupSelections.length > 1;
+  const groupCanMove =
+    hasGroupSelection &&
+    groupOverlayItems.length > 1 &&
+    groupOverlayItems.every((item) => item.selection.capabilities.canApplyManualOffset);
 
   const setDraftOverlayRect = (next: OverlayRect) => {
     if (rectsEqual(overlayRectRef.current, next)) return;
@@ -483,6 +622,66 @@ export const DomEditOverlay = memo(function DomEditOverlay({
       editScaleX: g.editScaleX,
       editScaleY: g.editScaleY,
     });
+  };
+
+  const setDraftGroupOverlayItems = (next: GroupOverlayItem[]) => {
+    if (groupOverlayItemsEqual(groupOverlayItemsRef.current, next)) return;
+    groupOverlayItemsRef.current = next;
+    setGroupOverlayItems(next);
+  };
+
+  const restoreGroupGestureOverlayItems = (g: GroupGestureState) => {
+    setDraftGroupOverlayItems(g.originItems);
+  };
+
+  const startGroupDrag = (e: React.PointerEvent<HTMLElement>) => {
+    const items = groupOverlayItemsRef.current;
+    if (items.length <= 1) return false;
+
+    const blockedSelection = items.find(
+      (item) => !item.selection.capabilities.canApplyManualOffset,
+    )?.selection;
+    if (blockedSelection) {
+      e.preventDefault();
+      e.stopPropagation();
+      onBlockedMoveRef.current(blockedSelection);
+      return false;
+    }
+
+    const members = items.map((item) => {
+      const offset = readStudioPathOffset(item.selection.element);
+      return {
+        key: item.key,
+        selection: item.selection,
+        initialPathOffset: captureStudioPathOffset(item.selection.element),
+        actualOffsetX: offset.x,
+        actualOffsetY: offset.y,
+        editScaleX: item.rect.editScaleX,
+        editScaleY: item.rect.editScaleY,
+        manualEditDragToken: beginStudioManualEditGesture(item.selection.element),
+      };
+    });
+
+    e.preventDefault();
+    e.stopPropagation();
+    e.currentTarget.setPointerCapture(e.pointerId);
+
+    rafPausedRef.current = true;
+    groupGestureRef.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      originItems: items,
+      members,
+    };
+    return true;
+  };
+
+  const restoreGroupPathOffsets = (g: GroupGestureState) => {
+    for (const member of g.members) {
+      restoreStudioPathOffset(member.selection.element, member.initialPathOffset);
+      endStudioManualEditGesture(member.selection.element, member.manualEditDragToken);
+    }
+    restoreGroupGestureOverlayItems(g);
   };
 
   const startGesture = (
@@ -549,10 +748,11 @@ export const DomEditOverlay = memo(function DomEditOverlay({
 
   const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     const g = gestureRef.current;
+    const groupG = groupGestureRef.current;
     const sel = g?.selection ?? selectionRef.current;
     const box = boxRef.current;
     const blockedMove = blockedMoveRef.current;
-    if (!blockedMove && !g) {
+    if (!blockedMove && !g && !groupG) {
       onCanvasPointerMoveRef.current(e, { preferClipAncestor: false });
     }
 
@@ -563,6 +763,35 @@ export const DomEditOverlay = memo(function DomEditOverlay({
         blockedMove.notified = true;
         suppressNextBoxClickRef.current = true;
         onBlockedMoveRef.current(sel);
+      }
+      return;
+    }
+
+    if (groupG) {
+      const dx = e.clientX - groupG.startX;
+      const dy = e.clientY - groupG.startY;
+      setDraftGroupOverlayItems(
+        groupG.originItems.map((item) => ({
+          ...item,
+          rect: {
+            ...item.rect,
+            left: item.rect.left + dx,
+            top: item.rect.top + dy,
+          },
+        })),
+      );
+      for (const member of groupG.members) {
+        applyStudioPathOffsetDraft(
+          member.selection.element,
+          resolveDomEditPathOffsetGesture({
+            actualOffsetX: member.actualOffsetX,
+            actualOffsetY: member.actualOffsetY,
+            scaleX: member.editScaleX,
+            scaleY: member.editScaleY,
+            dx,
+            dy,
+          }),
+        );
       }
       return;
     }
@@ -642,9 +871,49 @@ export const DomEditOverlay = memo(function DomEditOverlay({
 
   const onPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
     const g = gestureRef.current;
+    const groupG = groupGestureRef.current;
     const sel = g?.selection ?? selectionRef.current;
     const box = boxRef.current;
     blockedMoveRef.current = null;
+
+    if (groupG) {
+      groupGestureRef.current = null;
+      rafPausedRef.current = false;
+
+      const movedDistance = Math.hypot(e.clientX - groupG.startX, e.clientY - groupG.startY);
+      if (movedDistance < BLOCKED_MOVE_THRESHOLD_PX) {
+        restoreGroupPathOffsets(groupG);
+        suppressNextBoxClickRef.current = true;
+        onCanvasMouseDown(e as unknown as React.MouseEvent<HTMLDivElement>, {
+          preferClipAncestor: false,
+        });
+        return;
+      }
+
+      const updates = groupG.members.map((member) => {
+        const finalOffset = readStudioPathOffset(member.selection.element);
+        applyStudioPathOffset(member.selection.element, finalOffset);
+        return { selection: member.selection, next: finalOffset };
+      });
+      void Promise.resolve(onGroupPathOffsetCommitRef.current(updates))
+        .catch(() => {
+          for (const member of groupG.members) {
+            if (
+              member.manualEditDragToken &&
+              isStudioManualEditGestureCurrent(member.selection.element, member.manualEditDragToken)
+            ) {
+              restoreStudioPathOffset(member.selection.element, member.initialPathOffset);
+            }
+          }
+        })
+        .finally(() => {
+          for (const member of groupG.members) {
+            endStudioManualEditGesture(member.selection.element, member.manualEditDragToken);
+          }
+        });
+      return;
+    }
+
     if (!g || !sel) {
       gestureRef.current = null;
       rafPausedRef.current = false;
@@ -761,6 +1030,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
 
   const handleOverlayPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     if (!allowCanvasMovement || event.button !== 0) return;
+    if (event.shiftKey) return;
     const target = event.target as HTMLElement | null;
     if (target?.closest('[data-dom-edit-selection-box="true"]')) return;
 
@@ -797,7 +1067,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   // This lets you click a child element even when a parent is selected, because
   // the click coordinates are forwarded to the iframe's element picker.
   const handleBoxClick = (event: React.MouseEvent<HTMLDivElement>) => {
-    if (gestureRef.current) return;
+    if (gestureRef.current || groupGestureRef.current) return;
     if (suppressNextBoxClickRef.current) {
       suppressNextBoxClickRef.current = false;
       event.stopPropagation();
@@ -807,6 +1077,8 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   };
 
   const clearPointerState = () => {
+    const groupG = groupGestureRef.current;
+    if (groupG) restoreGroupPathOffsets(groupG);
     const g = gestureRef.current;
     const sel = g?.selection ?? selectionRef.current;
     if (g?.mode === "path-offset" && sel) {
@@ -824,6 +1096,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
       endStudioManualEditGesture(sel.element, g.manualEditDragToken);
     }
     blockedMoveRef.current = null;
+    groupGestureRef.current = null;
     gestureRef.current = null;
     rafPausedRef.current = false;
   };
@@ -855,7 +1128,41 @@ export const DomEditOverlay = memo(function DomEditOverlay({
           }}
         />
       )}
-      {selection && overlayRect && (
+      {hasGroupSelection && groupOverlayItems.length > 1 && groupBounds && (
+        <>
+          {groupOverlayItems.map((item) => (
+            <div
+              key={item.key}
+              aria-hidden="true"
+              className="pointer-events-none absolute rounded-xl border border-studio-accent/70 bg-studio-accent/[0.03]"
+              style={{
+                left: item.rect.left,
+                top: item.rect.top,
+                width: item.rect.width,
+                height: item.rect.height,
+              }}
+            />
+          ))}
+          <div
+            data-dom-edit-selection-box="true"
+            className="pointer-events-auto absolute rounded-xl border border-studio-accent bg-studio-accent/5 shadow-[0_0_0_1px_rgba(60,230,172,0.3)]"
+            style={{
+              left: groupBounds.left,
+              top: groupBounds.top,
+              width: groupBounds.width,
+              height: groupBounds.height,
+              cursor: allowCanvasMovement && groupCanMove ? "move" : "default",
+            }}
+            onPointerDown={(e) => {
+              if (!allowCanvasMovement) return;
+              if (e.shiftKey) return;
+              startGroupDrag(e);
+            }}
+            onClick={handleBoxClick}
+          />
+        </>
+      )}
+      {!hasGroupSelection && selection && overlayRect && (
         <>
           {allowCanvasMovement && selection.capabilities.canApplyManualRotation && (
             <div
