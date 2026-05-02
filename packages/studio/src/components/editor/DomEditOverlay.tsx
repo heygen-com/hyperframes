@@ -463,6 +463,23 @@ export const DomEditOverlay = memo(function DomEditOverlay({
     }`;
   }, [selection]);
 
+  const setDraftOverlayRect = (next: OverlayRect) => {
+    if (rectsEqual(overlayRectRef.current, next)) return;
+    overlayRectRef.current = next;
+    setOverlayRect(next);
+  };
+
+  const restoreGestureOverlayRect = (g: GestureState) => {
+    setDraftOverlayRect({
+      left: g.originLeft,
+      top: g.originTop,
+      width: g.originWidth,
+      height: g.originHeight,
+      editScaleX: g.editScaleX,
+      editScaleY: g.editScaleY,
+    });
+  };
+
   const startGesture = (
     kind: GestureKind,
     e: React.PointerEvent<HTMLElement>,
@@ -568,6 +585,14 @@ export const DomEditOverlay = memo(function DomEditOverlay({
     if (g.kind === "drag") {
       const nextBoxLeft = g.originLeft + dx;
       const nextBoxTop = g.originTop + dy;
+      setDraftOverlayRect({
+        left: nextBoxLeft,
+        top: nextBoxTop,
+        width: g.originWidth,
+        height: g.originHeight,
+        editScaleX: g.editScaleX,
+        editScaleY: g.editScaleY,
+      });
       if (box) {
         box.style.left = `${nextBoxLeft}px`;
         box.style.top = `${nextBoxTop}px`;
@@ -595,6 +620,14 @@ export const DomEditOverlay = memo(function DomEditOverlay({
         dx,
         dy,
         uniform: e.shiftKey,
+      });
+      setDraftOverlayRect({
+        left: g.originLeft,
+        top: g.originTop,
+        width: nextSize.overlayWidth,
+        height: nextSize.overlayHeight,
+        editScaleX: g.editScaleX,
+        editScaleY: g.editScaleY,
       });
       box.style.width = `${nextSize.overlayWidth}px`;
       box.style.height = `${nextSize.overlayHeight}px`;
@@ -624,6 +657,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
         box.style.left = `${g.originLeft}px`;
         box.style.top = `${g.originTop}px`;
       }
+      restoreGestureOverlayRect(g);
       suppressNextBoxClickRef.current = true;
       onCanvasMouseDown(e as unknown as React.MouseEvent<HTMLDivElement>, {
         preferClipAncestor: false,
@@ -638,6 +672,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
         box.style.width = `${g.originWidth}px`;
         box.style.height = `${g.originHeight}px`;
       }
+      restoreGestureOverlayRect(g);
       return;
     }
 
@@ -764,10 +799,12 @@ export const DomEditOverlay = memo(function DomEditOverlay({
     if (g?.mode === "path-offset" && sel) {
       restoreStudioPathOffset(sel.element, g.initialPathOffset);
       endStudioManualEditGesture(sel.element, g.manualEditDragToken);
+      restoreGestureOverlayRect(g);
     }
     if (g?.mode === "box-size" && sel) {
       restoreStudioBoxSize(sel.element, g.initialBoxSize);
       endStudioManualEditGesture(sel.element, g.manualEditDragToken);
+      restoreGestureOverlayRect(g);
     }
     if (g?.mode === "rotation" && sel) {
       restoreStudioRotation(sel.element, g.initialRotation);
@@ -821,7 +858,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
               <div className="absolute left-1/2 top-3 h-5 w-px -translate-x-1/2 bg-studio-accent/60" />
               <button
                 type="button"
-                className="pointer-events-auto absolute left-1/2 top-0 h-4 w-4 -translate-x-1/2 rounded-full border border-studio-accent/80 bg-neutral-950 p-0 shadow-[0_0_0_2px_rgba(60,230,172,0.18)]"
+                className="pointer-events-auto absolute left-1/2 top-0 h-4 w-4 -translate-x-1/2 rounded-full border border-studio-accent bg-studio-accent p-0 shadow-[0_0_0_2px_rgba(60,230,172,0.18)]"
                 style={{ cursor: "grab", touchAction: "none" }}
                 title="Rotate"
                 aria-label="Rotate selection"
