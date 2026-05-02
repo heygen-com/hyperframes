@@ -189,6 +189,20 @@ function groupOverlayItemsEqual(a: GroupOverlayItem[], b: GroupOverlayItem[]): b
   if (a.length !== b.length) return false;
   return a.every((item, index) => {
     const other = b[index];
+    return Boolean(
+      other &&
+      item.key === other.key &&
+      item.element === other.element &&
+      rectsEqual(item.rect, other.rect),
+    );
+  });
+}
+
+function groupOverlayItemRectsEqual(a: GroupOverlayItem[], b: GroupOverlayItem[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  return a.every((item, index) => {
+    const other = b[index];
     return Boolean(other && item.key === other.key && rectsEqual(item.rect, other.rect));
   });
 }
@@ -411,7 +425,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   const groupGestureRef = useRef<GroupGestureState | null>(null);
   const blockedMoveRef = useRef<BlockedMoveState | null>(null);
   const suppressNextBoxClickRef = useRef(false);
-  const suppressNextBoxClickUntilRef = useRef(0);
+  const suppressNextBoxMouseDownRef = useRef(false);
   const suppressNextOverlayMouseDownRef = useRef(false);
   const rafPausedRef = useRef(false);
   const resolvedElementRef = useRef<{ key: string; element: HTMLElement } | null>(null);
@@ -475,7 +489,10 @@ export const DomEditOverlay = memo(function DomEditOverlay({
       setGroupOverlayItems([]);
     };
     const setNextGroupOverlayItems = (next: GroupOverlayItem[]) => {
-      if (groupOverlayItemsEqual(groupOverlayItemsRef.current, next)) return;
+      if (groupOverlayItemRectsEqual(groupOverlayItemsRef.current, next)) {
+        groupOverlayItemsRef.current = next;
+        return;
+      }
       groupOverlayItemsRef.current = next;
       setGroupOverlayItems(next);
     };
@@ -1032,7 +1049,8 @@ export const DomEditOverlay = memo(function DomEditOverlay({
     if (target?.closest('[data-dom-edit-selection-box="true"]')) return;
     onCanvasMouseDown(event, { preferClipAncestor: false });
     if (event.shiftKey) {
-      suppressNextBoxClickUntilRef.current = performance.now() + 500;
+      suppressNextBoxMouseDownRef.current = true;
+      suppressNextBoxClickRef.current = true;
     }
   };
 
@@ -1048,7 +1066,8 @@ export const DomEditOverlay = memo(function DomEditOverlay({
       event.preventDefault();
       event.stopPropagation();
       suppressNextOverlayMouseDownRef.current = true;
-      suppressNextBoxClickUntilRef.current = performance.now() + 500;
+      suppressNextBoxMouseDownRef.current = true;
+      suppressNextBoxClickRef.current = true;
       onSelectionChangeRef.current(candidate, { additive: true });
       return;
     }
@@ -1090,12 +1109,8 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   // the click coordinates are forwarded to the iframe's element picker.
   const handleBoxClick = (event: React.MouseEvent<HTMLDivElement>) => {
     if (gestureRef.current || groupGestureRef.current) return;
-    if (
-      suppressNextBoxClickRef.current ||
-      performance.now() < suppressNextBoxClickUntilRef.current
-    ) {
+    if (suppressNextBoxClickRef.current) {
       suppressNextBoxClickRef.current = false;
-      suppressNextBoxClickUntilRef.current = 0;
       event.stopPropagation();
       return;
     }
@@ -1184,6 +1199,12 @@ export const DomEditOverlay = memo(function DomEditOverlay({
               if (e.shiftKey) return;
               startGroupDrag(e);
             }}
+            onMouseDown={(e) => {
+              if (!suppressNextBoxMouseDownRef.current) return;
+              suppressNextBoxMouseDownRef.current = false;
+              e.preventDefault();
+              e.stopPropagation();
+            }}
             onClick={handleBoxClick}
           />
         </>
@@ -1246,6 +1267,12 @@ export const DomEditOverlay = memo(function DomEditOverlay({
                 startY: e.clientY,
                 notified: false,
               };
+            }}
+            onMouseDown={(e) => {
+              if (!suppressNextBoxMouseDownRef.current) return;
+              suppressNextBoxMouseDownRef.current = false;
+              e.preventDefault();
+              e.stopPropagation();
             }}
             onClick={handleBoxClick}
           >
