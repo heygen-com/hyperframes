@@ -37,6 +37,7 @@ interface OverlayRect {
 interface GroupOverlayItem {
   key: string;
   selection: DomEditSelection;
+  element: HTMLElement;
   rect: OverlayRect;
 }
 
@@ -358,6 +359,7 @@ interface GestureState {
 interface GroupGestureMember {
   key: string;
   selection: DomEditSelection;
+  element: HTMLElement;
   initialPathOffset: StudioPathOffsetSnapshot;
   actualOffsetX: number;
   actualOffsetY: number;
@@ -409,6 +411,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   const groupGestureRef = useRef<GroupGestureState | null>(null);
   const blockedMoveRef = useRef<BlockedMoveState | null>(null);
   const suppressNextBoxClickRef = useRef(false);
+  const suppressNextBoxClickUntilRef = useRef(0);
   const suppressNextOverlayMouseDownRef = useRef(false);
   const rafPausedRef = useRef(false);
   const resolvedElementRef = useRef<{ key: string; element: HTMLElement } | null>(null);
@@ -554,7 +557,8 @@ export const DomEditOverlay = memo(function DomEditOverlay({
           liveGroupKeys.add(key);
           const el = resolveGroupElement(doc, groupSelection);
           const rect = el ? toOverlayRect(overlayEl, iframe, el) : null;
-          if (rect) nextGroupItems.push({ key, selection: groupSelection, rect });
+          if (el && rect)
+            nextGroupItems.push({ key, selection: groupSelection, element: el, rect });
         }
         for (const key of resolvedGroupElementRef.current.keys()) {
           if (!liveGroupKeys.has(key)) resolvedGroupElementRef.current.delete(key);
@@ -649,16 +653,17 @@ export const DomEditOverlay = memo(function DomEditOverlay({
     }
 
     const members = items.map((item) => {
-      const offset = readStudioPathOffset(item.selection.element);
+      const offset = readStudioPathOffset(item.element);
       return {
         key: item.key,
         selection: item.selection,
-        initialPathOffset: captureStudioPathOffset(item.selection.element),
+        element: item.element,
+        initialPathOffset: captureStudioPathOffset(item.element),
         actualOffsetX: offset.x,
         actualOffsetY: offset.y,
         editScaleX: item.rect.editScaleX,
         editScaleY: item.rect.editScaleY,
-        manualEditDragToken: beginStudioManualEditGesture(item.selection.element),
+        manualEditDragToken: beginStudioManualEditGesture(item.element),
       };
     });
 
@@ -678,8 +683,8 @@ export const DomEditOverlay = memo(function DomEditOverlay({
 
   const restoreGroupPathOffsets = (g: GroupGestureState) => {
     for (const member of g.members) {
-      restoreStudioPathOffset(member.selection.element, member.initialPathOffset);
-      endStudioManualEditGesture(member.selection.element, member.manualEditDragToken);
+      restoreStudioPathOffset(member.element, member.initialPathOffset);
+      endStudioManualEditGesture(member.element, member.manualEditDragToken);
     }
     restoreGroupGestureOverlayItems(g);
   };
@@ -782,7 +787,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
       );
       for (const member of groupG.members) {
         applyStudioPathOffsetDraft(
-          member.selection.element,
+          member.element,
           resolveDomEditPathOffsetGesture({
             actualOffsetX: member.actualOffsetX,
             actualOffsetY: member.actualOffsetY,
@@ -891,8 +896,8 @@ export const DomEditOverlay = memo(function DomEditOverlay({
       }
 
       const updates = groupG.members.map((member) => {
-        const finalOffset = readStudioPathOffset(member.selection.element);
-        applyStudioPathOffset(member.selection.element, finalOffset);
+        const finalOffset = readStudioPathOffset(member.element);
+        applyStudioPathOffset(member.element, finalOffset);
         return { selection: member.selection, next: finalOffset };
       });
       void Promise.resolve(onGroupPathOffsetCommitRef.current(updates))
@@ -900,15 +905,15 @@ export const DomEditOverlay = memo(function DomEditOverlay({
           for (const member of groupG.members) {
             if (
               member.manualEditDragToken &&
-              isStudioManualEditGestureCurrent(member.selection.element, member.manualEditDragToken)
+              isStudioManualEditGestureCurrent(member.element, member.manualEditDragToken)
             ) {
-              restoreStudioPathOffset(member.selection.element, member.initialPathOffset);
+              restoreStudioPathOffset(member.element, member.initialPathOffset);
             }
           }
         })
         .finally(() => {
           for (const member of groupG.members) {
-            endStudioManualEditGesture(member.selection.element, member.manualEditDragToken);
+            endStudioManualEditGesture(member.element, member.manualEditDragToken);
           }
         });
       return;
@@ -1026,6 +1031,9 @@ export const DomEditOverlay = memo(function DomEditOverlay({
     const target = event.target as HTMLElement | null;
     if (target?.closest('[data-dom-edit-selection-box="true"]')) return;
     onCanvasMouseDown(event, { preferClipAncestor: false });
+    if (event.shiftKey) {
+      suppressNextBoxClickUntilRef.current = performance.now() + 500;
+    }
   };
 
   const handleOverlayPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
@@ -1068,8 +1076,12 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   // the click coordinates are forwarded to the iframe's element picker.
   const handleBoxClick = (event: React.MouseEvent<HTMLDivElement>) => {
     if (gestureRef.current || groupGestureRef.current) return;
-    if (suppressNextBoxClickRef.current) {
+    if (
+      suppressNextBoxClickRef.current ||
+      performance.now() < suppressNextBoxClickUntilRef.current
+    ) {
       suppressNextBoxClickRef.current = false;
+      suppressNextBoxClickUntilRef.current = 0;
       event.stopPropagation();
       return;
     }
