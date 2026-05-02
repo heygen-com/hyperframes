@@ -989,6 +989,37 @@ async function measureCaptureCostFromSession(
   };
 }
 
+function logCaptureCalibrationResult(
+  calibration: { estimate: CaptureCostEstimate; samples: CaptureCalibrationSample[] },
+  log: ProducerLogger,
+): void {
+  if (calibration.estimate.multiplier > 1) {
+    log.warn("[Render] Measured slow frame capture during auto-worker calibration.", {
+      multiplier: calibration.estimate.multiplier,
+      p95Ms: calibration.estimate.p95Ms,
+      sampledFrames: calibration.samples.map((sample) => sample.frameIndex),
+    });
+  } else {
+    log.debug("[Render] Auto-worker calibration kept baseline capture cost.", {
+      p95Ms: calibration.estimate.p95Ms,
+      sampledFrames: calibration.samples.map((sample) => sample.frameIndex),
+    });
+  }
+}
+
+function createFailedCaptureCalibrationEstimate(reason: string): {
+  estimate: CaptureCostEstimate;
+  samples: CaptureCalibrationSample[];
+} {
+  return {
+    estimate: {
+      multiplier: MAX_MEASURED_CAPTURE_COST_MULTIPLIER,
+      reasons: [reason],
+    },
+    samples: [],
+  };
+}
+
 async function executeDiskCaptureWithAdaptiveRetry(options: {
   serverUrl: string;
   workDir: string;
@@ -2439,7 +2470,6 @@ export async function executeRenderJob(
           samples: CaptureCalibrationSample[];
         }
       | undefined;
-    let switchedToScreenshotAfterCalibration = false;
 
     if (job.config.workers === undefined && totalFrames >= 60) {
       const calibrationDir = join(workDir, "capture-calibration");
@@ -2464,48 +2494,66 @@ export async function executeRenderJob(
           totalFrames,
           job.config.fps,
         );
-        if (captureCalibration.estimate.multiplier > 1) {
-          log.warn("[Render] Measured slow frame capture during auto-worker calibration.", {
-            multiplier: captureCalibration.estimate.multiplier,
-            p95Ms: captureCalibration.estimate.p95Ms,
-            sampledFrames: captureCalibration.samples.map((sample) => sample.frameIndex),
-          });
-        } else {
-          log.debug("[Render] Auto-worker calibration kept baseline capture cost.", {
-            p95Ms: captureCalibration.estimate.p95Ms,
-            sampledFrames: captureCalibration.samples.map((sample) => sample.frameIndex),
-          });
-        }
+        logCaptureCalibrationResult(captureCalibration, log);
       } catch (error) {
         const shouldFallbackToScreenshot =
           !cfg.forceScreenshot && shouldFallbackToScreenshotAfterCalibrationError(error);
         if (shouldFallbackToScreenshot) {
           cfg.forceScreenshot = true;
-          switchedToScreenshotAfterCalibration = true;
           if (probeSession) {
             lastBrowserConsole = probeSession.browserConsoleBuffer;
             await closeCaptureSession(probeSession).catch(() => {});
             probeSession = null;
           }
-        }
-        captureCalibration = {
-          estimate: {
-            multiplier: MAX_MEASURED_CAPTURE_COST_MULTIPLIER,
-            reasons: shouldFallbackToScreenshot
-              ? ["calibration-beginframe-timeout", "screenshot-fallback"]
-              : ["calibration-failed"],
-          },
-          samples: [],
-        };
-        if (shouldFallbackToScreenshot) {
+          if (calibrationSession) {
+            lastBrowserConsole = calibrationSession.browserConsoleBuffer;
+            await closeCaptureSession(calibrationSession).catch(() => {});
+            calibrationSession = null;
+          }
+
           log.warn(
-            "[Render] BeginFrame auto-worker calibration timed out; falling back to screenshot capture mode.",
+            "[Render] BeginFrame auto-worker calibration timed out; retrying calibration in screenshot capture mode.",
             {
               protocolTimeout: calibrationCfg.protocolTimeout,
               error: error instanceof Error ? error.message : String(error),
             },
           );
+
+          const screenshotCalibrationCfg = createCaptureCalibrationConfig(cfg);
+          try {
+            calibrationSession = await createCaptureSession(
+              fileServer.url,
+              join(workDir, "capture-calibration-screenshot"),
+              buildCaptureOptions(),
+              createRenderVideoFrameInjector(),
+              screenshotCalibrationCfg,
+            );
+            if (!calibrationSession.isInitialized) {
+              await initializeSession(calibrationSession);
+            }
+            assertNotAborted();
+
+            captureCalibration = await measureCaptureCostFromSession(
+              calibrationSession,
+              totalFrames,
+              job.config.fps,
+            );
+            logCaptureCalibrationResult(captureCalibration, log);
+          } catch (fallbackError) {
+            captureCalibration = createFailedCaptureCalibrationEstimate(
+              "calibration-screenshot-failed",
+            );
+            log.warn(
+              "[Render] Screenshot auto-worker calibration failed after BeginFrame fallback; using conservative worker budget.",
+              {
+                protocolTimeout: screenshotCalibrationCfg.protocolTimeout,
+                error:
+                  fallbackError instanceof Error ? fallbackError.message : String(fallbackError),
+              },
+            );
+          }
         } else {
+          captureCalibration = createFailedCaptureCalibrationEstimate("calibration-failed");
           log.warn("[Render] Auto-worker calibration failed; using conservative worker budget.", {
             protocolTimeout: calibrationCfg.protocolTimeout,
             error: error instanceof Error ? error.message : String(error),
@@ -2527,10 +2575,6 @@ export async function executeRenderJob(
       log,
       captureCalibration?.estimate,
     );
-
-    if (switchedToScreenshotAfterCalibration && workerCount > 1) {
-      workerCount = 1;
-    }
 
     if (workerCount > 1 && probeSession) {
       lastBrowserConsole = probeSession.browserConsoleBuffer;

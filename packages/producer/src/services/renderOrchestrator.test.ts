@@ -416,6 +416,30 @@ describe("resolveRenderWorkerCount", () => {
 
     expect(workers).toBe(1);
   });
+
+  it("keeps baseline auto workers after screenshot fallback when measured capture is cheap", () => {
+    const log = {
+      error: vi.fn(),
+      warn: vi.fn(),
+      info: vi.fn(),
+      debug: vi.fn(),
+    };
+
+    const workers = resolveRenderWorkerCount(
+      180,
+      undefined,
+      { ...cfg, forceScreenshot: true },
+      {
+        hasShaderTransitions: false,
+        renderModeHints: { recommendScreenshot: false, reasons: [] },
+      },
+      log,
+      { multiplier: 1, reasons: [], p95Ms: 180 },
+    );
+
+    expect(workers).toBe(6);
+    expect(log.warn).not.toHaveBeenCalled();
+  });
 });
 
 describe("estimateCaptureCostMultiplier", () => {
