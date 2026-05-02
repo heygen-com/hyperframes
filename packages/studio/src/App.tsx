@@ -377,6 +377,15 @@ function getPreviewTargetFromPointer(
   return getEventTargetElement(doc.elementFromPoint(localX, localY));
 }
 
+function domEditSelectionsTargetSame(
+  a: DomEditSelection | null,
+  b: DomEditSelection | null,
+): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return getDomEditTargetKey(a) === getDomEditTargetKey(b);
+}
+
 // ── Ask Agent Modal ──
 
 function AskAgentModal({
@@ -558,6 +567,7 @@ export function StudioApp() {
   const [rightCollapsed, setRightCollapsed] = useState(true);
   const [rightPanelTab, setRightPanelTab] = useState<RightPanelTab>("renders");
   const [domEditSelection, setDomEditSelection] = useState<DomEditSelection | null>(null);
+  const [domEditHoverSelection, setDomEditHoverSelection] = useState<DomEditSelection | null>(null);
   const [agentPromptTagSnippet, setAgentPromptTagSnippet] = useState<string | undefined>();
   const [copiedAgentPrompt, setCopiedAgentPrompt] = useState(false);
   const [agentModalOpen, setAgentModalOpen] = useState(false);
@@ -1013,6 +1023,7 @@ export function StudioApp() {
   const consoleErrorsRef = useRef<LintFinding[]>([]);
   const copiedAgentTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const domEditSelectionRef = useRef<DomEditSelection | null>(domEditSelection);
+  const domEditHoverSelectionRef = useRef<DomEditSelection | null>(domEditHoverSelection);
   const domEditSaveTimestampRef = useRef(0);
   const domTextCommitVersionRef = useRef(0);
   const domEditSaveQueueRef = useRef(Promise.resolve());
@@ -1072,6 +1083,7 @@ export function StudioApp() {
   });
   projectIdRef.current = projectId;
   domEditSelectionRef.current = domEditSelection;
+  domEditHoverSelectionRef.current = domEditHoverSelection;
 
   // eslint-disable-next-line no-restricted-syntax
   useEffect(() => {
@@ -1843,6 +1855,25 @@ export function StudioApp() {
     [activeCompPath, isMasterView],
   );
 
+  const resolveDomSelectionFromPreviewPoint = useCallback(
+    (clientX: number, clientY: number, options?: { preferClipAncestor?: boolean }) => {
+      const iframe = previewIframeRef.current;
+      if (!iframe || captionEditMode) return null;
+      const target = getPreviewTargetFromPointer(iframe, clientX, clientY);
+      if (!target) return null;
+      return buildDomSelectionFromTarget(target, {
+        preferClipAncestor: options?.preferClipAncestor,
+      });
+    },
+    [buildDomSelectionFromTarget, captionEditMode],
+  );
+
+  const updateDomEditHoverSelection = useCallback((selection: DomEditSelection | null) => {
+    if (domEditSelectionsTargetSame(domEditHoverSelectionRef.current, selection)) return;
+    domEditHoverSelectionRef.current = selection;
+    setDomEditHoverSelection(selection);
+  }, []);
+
   const preloadAgentPromptSnippet = useCallback(
     async (selection: DomEditSelection) => {
       const pid = projectIdRef.current;
@@ -2289,26 +2320,65 @@ export function StudioApp() {
 
   const handlePreviewCanvasMouseDown = useCallback(
     (e: React.MouseEvent<HTMLDivElement>, options?: { preferClipAncestor?: boolean }) => {
-      const iframe = previewIframeRef.current;
-      if (!iframe || captionEditMode) return;
-      const target = getPreviewTargetFromPointer(iframe, e.clientX, e.clientY);
-      if (!target) {
-        applyDomSelection(null, { revealPanel: false });
-        return;
-      }
-      e.preventDefault();
-      e.stopPropagation();
-      const nextSelection = buildDomSelectionFromTarget(target, {
+      if (captionEditMode) return;
+      const nextSelection = resolveDomSelectionFromPreviewPoint(e.clientX, e.clientY, {
         preferClipAncestor: options?.preferClipAncestor ?? true,
       });
       if (!nextSelection) {
         applyDomSelection(null, { revealPanel: false });
         return;
       }
+      e.preventDefault();
+      e.stopPropagation();
       applyDomSelection(nextSelection);
     },
-    [applyDomSelection, buildDomSelectionFromTarget, captionEditMode],
+    [applyDomSelection, captionEditMode, resolveDomSelectionFromPreviewPoint],
   );
+
+  const handlePreviewCanvasPointerMove = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>, options?: { preferClipAncestor?: boolean }) => {
+      if (captionEditMode) {
+        updateDomEditHoverSelection(null);
+        return;
+      }
+
+      updateDomEditHoverSelection(
+        resolveDomSelectionFromPreviewPoint(e.clientX, e.clientY, {
+          preferClipAncestor: options?.preferClipAncestor ?? false,
+        }),
+      );
+    },
+    [captionEditMode, resolveDomSelectionFromPreviewPoint, updateDomEditHoverSelection],
+  );
+
+  const handlePreviewCanvasPointerLeave = useCallback(() => {
+    updateDomEditHoverSelection(null);
+  }, [updateDomEditHoverSelection]);
+
+  // eslint-disable-next-line no-restricted-syntax
+  useEffect(() => {
+    if (captionEditMode) updateDomEditHoverSelection(null);
+  }, [captionEditMode, updateDomEditHoverSelection]);
+
+  // eslint-disable-next-line no-restricted-syntax
+  useEffect(() => {
+    updateDomEditHoverSelection(null);
+  }, [activeCompPath, projectId, previewIframe, refreshKey, updateDomEditHoverSelection]);
+
+  // eslint-disable-next-line no-restricted-syntax
+  useEffect(() => {
+    if (!domEditHoverSelection) return;
+    if (!domEditSelection) return;
+    if (!domEditSelectionsTargetSame(domEditHoverSelection, domEditSelection)) return;
+    updateDomEditHoverSelection(null);
+  }, [domEditHoverSelection, domEditSelection, updateDomEditHoverSelection]);
+
+  // eslint-disable-next-line no-restricted-syntax
+  useEffect(() => {
+    if (!domEditHoverSelection) return;
+    if (domEditHoverSelection.element.isConnected) return;
+    updateDomEditHoverSelection(null);
+  }, [domEditHoverSelection, updateDomEditHoverSelection]);
 
   // eslint-disable-next-line no-restricted-syntax
   useEffect(() => {
@@ -3075,11 +3145,14 @@ export function StudioApp() {
               ) : (
                 <DomEditOverlay
                   iframeRef={previewIframeRef}
+                  hoverSelection={captionEditMode ? null : domEditHoverSelection}
                   selection={
                     !rightCollapsed && rightPanelTab === "design" ? domEditSelection : null
                   }
                   allowCanvasMovement
                   onCanvasMouseDown={handlePreviewCanvasMouseDown}
+                  onCanvasPointerMove={handlePreviewCanvasPointerMove}
+                  onCanvasPointerLeave={handlePreviewCanvasPointerLeave}
                   onBlockedMove={handleBlockedDomMove}
                   onPathOffsetCommit={handleDomPathOffsetCommit}
                   onBoxSizeCommit={handleDomBoxSizeCommit}

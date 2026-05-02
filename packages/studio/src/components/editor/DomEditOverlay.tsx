@@ -37,11 +37,17 @@ interface OverlayRect {
 interface DomEditOverlayProps {
   iframeRef: RefObject<HTMLIFrameElement | null>;
   selection: DomEditSelection | null;
+  hoverSelection: DomEditSelection | null;
   allowCanvasMovement?: boolean;
   onCanvasMouseDown: (
     event: React.MouseEvent<HTMLDivElement>,
     options?: { preferClipAncestor?: boolean },
   ) => void;
+  onCanvasPointerMove: (
+    event: React.PointerEvent<HTMLDivElement>,
+    options?: { preferClipAncestor?: boolean },
+  ) => void;
+  onCanvasPointerLeave: () => void;
   onBlockedMove: (selection: DomEditSelection) => void;
   onPathOffsetCommit: (
     selection: DomEditSelection,
@@ -298,11 +304,18 @@ interface BlockedMoveState {
   notified: boolean;
 }
 
+type ResolvedElementRef = {
+  current: { key: string; element: HTMLElement } | null;
+};
+
 export const DomEditOverlay = memo(function DomEditOverlay({
   iframeRef,
   selection,
+  hoverSelection,
   allowCanvasMovement = true,
   onCanvasMouseDown,
+  onCanvasPointerMove,
+  onCanvasPointerLeave,
   onBlockedMove,
   onPathOffsetCommit,
   onBoxSizeCommit,
@@ -311,16 +324,22 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   const overlayRef = useRef<HTMLDivElement | null>(null);
   const boxRef = useRef<HTMLDivElement | null>(null);
   const [overlayRect, setOverlayRect] = useState<OverlayRect | null>(null);
+  const [hoverRect, setHoverRect] = useState<OverlayRect | null>(null);
   const gestureRef = useRef<GestureState | null>(null);
   const blockedMoveRef = useRef<BlockedMoveState | null>(null);
   const suppressNextBoxClickRef = useRef(false);
   const rafPausedRef = useRef(false);
   const resolvedElementRef = useRef<{ key: string; element: HTMLElement } | null>(null);
+  const resolvedHoverElementRef = useRef<{ key: string; element: HTMLElement } | null>(null);
 
   const selectionRef = useRef(selection);
   selectionRef.current = selection;
+  const hoverSelectionRef = useRef(hoverSelection);
+  hoverSelectionRef.current = hoverSelection;
   const overlayRectRef = useRef(overlayRect);
   overlayRectRef.current = overlayRect;
+  const hoverRectRef = useRef(hoverRect);
+  hoverRectRef.current = hoverRect;
   const onPathOffsetCommitRef = useRef(onPathOffsetCommit);
   onPathOffsetCommitRef.current = onPathOffsetCommit;
   const onBoxSizeCommitRef = useRef(onBoxSizeCommit);
@@ -329,6 +348,10 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   onRotationCommitRef.current = onRotationCommit;
   const onBlockedMoveRef = useRef(onBlockedMove);
   onBlockedMoveRef.current = onBlockedMove;
+  const onCanvasPointerMoveRef = useRef(onCanvasPointerMove);
+  onCanvasPointerMoveRef.current = onCanvasPointerMove;
+  const onCanvasPointerLeaveRef = useRef(onCanvasPointerLeave);
+  onCanvasPointerLeaveRef.current = onCanvasPointerLeave;
 
   useMountEffect(() => {
     let frame = 0;
@@ -342,9 +365,19 @@ export const DomEditOverlay = memo(function DomEditOverlay({
       overlayRectRef.current = next;
       setOverlayRect(next);
     };
-    const resolveElement = (doc: Document, sel: DomEditSelection) => {
+    const clearHoverRect = () => {
+      if (!hoverRectRef.current) return;
+      hoverRectRef.current = null;
+      setHoverRect(null);
+    };
+    const setNextHoverRect = (next: OverlayRect | null) => {
+      if (rectsEqual(hoverRectRef.current, next)) return;
+      hoverRectRef.current = next;
+      setHoverRect(next);
+    };
+    const resolveElement = (doc: Document, sel: DomEditSelection, cacheRef: ResolvedElementRef) => {
       const key = selectionCacheKey(sel);
-      const cached = resolvedElementRef.current;
+      const cached = cacheRef.current;
       if (
         cached?.key === key &&
         cached.element.isConnected &&
@@ -354,7 +387,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
       }
 
       const next = findElementForSelection(doc, sel, sel.sourceFile);
-      resolvedElementRef.current = next ? { key, element: next } : null;
+      cacheRef.current = next ? { key, element: next } : null;
       return next;
     };
 
@@ -367,27 +400,50 @@ export const DomEditOverlay = memo(function DomEditOverlay({
       const overlayEl = overlayRef.current;
       if (!iframe || !overlayEl) {
         resolvedElementRef.current = null;
+        resolvedHoverElementRef.current = null;
         clearOverlayRect();
+        clearHoverRect();
         return;
       }
 
       const doc = iframe.contentDocument;
-      if (!doc) return;
+      if (!doc) {
+        resolvedElementRef.current = null;
+        resolvedHoverElementRef.current = null;
+        clearOverlayRect();
+        clearHoverRect();
+        return;
+      }
 
-      if (!sel) {
+      if (sel) {
+        const el = resolveElement(doc, sel, resolvedElementRef);
+        if (el) {
+          setNextOverlayRect(toOverlayRect(overlayEl, iframe, el));
+        } else {
+          clearOverlayRect();
+        }
+      } else {
         resolvedElementRef.current = null;
         clearOverlayRect();
+      }
+
+      const hoverSel = hoverSelectionRef.current;
+      const hoverMatchesSelection = Boolean(
+        sel && hoverSel && selectionCacheKey(sel) === selectionCacheKey(hoverSel),
+      );
+      if (!hoverSel || hoverMatchesSelection) {
+        resolvedHoverElementRef.current = null;
+        clearHoverRect();
         return;
       }
 
-      const el = resolveElement(doc, sel);
-      if (!el) {
-        clearOverlayRect();
+      const hoverEl = resolveElement(doc, hoverSel, resolvedHoverElementRef);
+      if (!hoverEl) {
+        clearHoverRect();
         return;
       }
 
-      const next = toOverlayRect(overlayEl, iframe, el);
-      setNextOverlayRect(next);
+      setNextHoverRect(toOverlayRect(overlayEl, iframe, hoverEl));
     };
 
     frame = requestAnimationFrame(update);
@@ -456,11 +512,15 @@ export const DomEditOverlay = memo(function DomEditOverlay({
     };
   };
 
-  const onPointerMove = (e: React.PointerEvent) => {
+  const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     const g = gestureRef.current;
     const sel = selectionRef.current;
     const box = boxRef.current;
     const blockedMove = blockedMoveRef.current;
+    if (!blockedMove && !g) {
+      onCanvasPointerMoveRef.current(e, { preferClipAncestor: false });
+    }
+
     if (blockedMove && sel) {
       const dx = e.clientX - blockedMove.startX;
       const dy = e.clientY - blockedMove.startY;
@@ -672,9 +732,23 @@ export const DomEditOverlay = memo(function DomEditOverlay({
       onPointerDownCapture={(event) => focusDomEditOverlayElement(event.currentTarget)}
       onMouseDown={handleOverlayMouseDown}
       onPointerMove={onPointerMove}
+      onPointerLeave={() => onCanvasPointerLeaveRef.current()}
       onPointerUp={onPointerUp}
       onPointerCancel={clearPointerState}
     >
+      {hoverSelection && hoverRect && (
+        <div
+          aria-hidden="true"
+          data-dom-edit-hover-box="true"
+          className="pointer-events-none absolute rounded-lg border border-white/65 bg-white/[0.03] shadow-[0_0_0_1px_rgba(255,255,255,0.16)]"
+          style={{
+            left: hoverRect.left,
+            top: hoverRect.top,
+            width: hoverRect.width,
+            height: hoverRect.height,
+          }}
+        />
+      )}
       {selection && overlayRect && (
         <>
           {allowCanvasMovement && selection.capabilities.canApplyManualRotation && (
