@@ -1038,7 +1038,21 @@ export const DomEditOverlay = memo(function DomEditOverlay({
 
   const handleOverlayPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     if (!allowCanvasMovement || event.button !== 0) return;
-    if (event.shiftKey) return;
+    if (event.shiftKey) {
+      const candidate =
+        onCanvasPointerMoveRef.current(event, {
+          preferClipAncestor: false,
+        }) ?? hoverSelectionRef.current;
+      if (!candidate) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      suppressNextOverlayMouseDownRef.current = true;
+      suppressNextBoxClickUntilRef.current = performance.now() + 500;
+      onSelectionChangeRef.current(candidate, { additive: true });
+      return;
+    }
+
     const target = event.target as HTMLElement | null;
     if (target?.closest('[data-dom-edit-selection-box="true"]')) return;
 
@@ -1218,6 +1232,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
             }}
             onPointerDown={(e) => {
               if (!allowCanvasMovement) return;
+              if (e.shiftKey) return;
               if (selection.capabilities.canApplyManualOffset) {
                 startGesture("drag", e);
                 return;
