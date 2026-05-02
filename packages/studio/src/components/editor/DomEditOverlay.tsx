@@ -895,6 +895,8 @@ export const DomEditOverlay = memo(function DomEditOverlay({
       groupGestureRef.current = null;
       rafPausedRef.current = false;
 
+      const dx = e.clientX - groupG.startX;
+      const dy = e.clientY - groupG.startY;
       const movedDistance = Math.hypot(e.clientX - groupG.startX, e.clientY - groupG.startY);
       if (movedDistance < BLOCKED_MOVE_THRESHOLD_PX) {
         restoreGroupPathOffsets(groupG);
@@ -902,8 +904,25 @@ export const DomEditOverlay = memo(function DomEditOverlay({
         return;
       }
 
+      setDraftGroupOverlayItems(
+        groupG.originItems.map((item) => ({
+          ...item,
+          rect: {
+            ...item.rect,
+            left: item.rect.left + dx,
+            top: item.rect.top + dy,
+          },
+        })),
+      );
       const updates = groupG.members.map((member) => {
-        const finalOffset = readStudioPathOffset(member.element);
+        const finalOffset = resolveDomEditPathOffsetGesture({
+          actualOffsetX: member.actualOffsetX,
+          actualOffsetY: member.actualOffsetY,
+          scaleX: member.editScaleX,
+          scaleY: member.editScaleY,
+          dx,
+          dy,
+        });
         applyStudioPathOffset(member.element, finalOffset);
         return { selection: member.selection, next: finalOffset };
       });
@@ -992,7 +1011,30 @@ export const DomEditOverlay = memo(function DomEditOverlay({
           endStudioManualEditGesture(sel.element, g.manualEditDragToken);
         });
     } else if (g.kind === "drag") {
-      const finalOffset = readStudioPathOffset(sel.element);
+      const dx = e.clientX - g.startX;
+      const dy = e.clientY - g.startY;
+      const finalOffset = resolveDomEditPathOffsetGesture({
+        actualOffsetX: g.actualOffsetX,
+        actualOffsetY: g.actualOffsetY,
+        scaleX: g.editScaleX,
+        scaleY: g.editScaleY,
+        dx,
+        dy,
+      });
+      const nextBoxLeft = g.originLeft + dx;
+      const nextBoxTop = g.originTop + dy;
+      setDraftOverlayRect({
+        left: nextBoxLeft,
+        top: nextBoxTop,
+        width: g.originWidth,
+        height: g.originHeight,
+        editScaleX: g.editScaleX,
+        editScaleY: g.editScaleY,
+      });
+      if (box) {
+        box.style.left = `${nextBoxLeft}px`;
+        box.style.top = `${nextBoxTop}px`;
+      }
       applyStudioPathOffset(sel.element, finalOffset);
       void Promise.resolve(onPathOffsetCommitRef.current(sel, finalOffset))
         .catch(() => {
