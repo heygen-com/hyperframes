@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { parseHTML } from "linkedom";
 import { scopeCssToComposition, wrapScopedCompositionScript } from "./compositionScoping";
 
@@ -88,5 +88,86 @@ window.__timelines.scene = tl;
     expect(fakeWindow.__selectedTitle).toBe("Scene");
     expect(fakeWindow.__selectedRootTitle).toBe("Scene");
     expect(gsapTargets).toEqual([["Scene"], ["Scene"]]);
+  });
+
+  it("reads scoped proxy accessors with the original target receiver", () => {
+    const root = {
+      contains(node: unknown) {
+        return node === root;
+      },
+    };
+    const body = { tagName: "BODY" };
+    const fakeDocument = {
+      querySelector(selector: string) {
+        return selector === '[data-composition-id="scene"]' ? root : null;
+      },
+      querySelectorAll() {
+        return [];
+      },
+      getElementById() {
+        return null;
+      },
+      get body() {
+        if (this !== fakeDocument) {
+          throw new TypeError("Illegal invocation");
+        }
+        return body;
+      },
+    };
+    const location = { href: "https://example.test/scene" };
+    const fakeUtils = {
+      get marker() {
+        if (this !== fakeUtils) {
+          throw new TypeError("Illegal invocation");
+        }
+        return "utils-ok";
+      },
+    };
+    const fakeGsap = {
+      utils: fakeUtils,
+      get version() {
+        if (this !== fakeGsap) {
+          throw new TypeError("Illegal invocation");
+        }
+        return "gsap-ok";
+      },
+    };
+    const fakeWindow = {
+      document: fakeDocument,
+      __bodyTag: "",
+      __href: "",
+      __gsapVersion: "",
+      __utilsMarker: "",
+      __timelines: {},
+      gsap: fakeGsap,
+      get location() {
+        if (this !== fakeWindow) {
+          throw new TypeError("Illegal invocation");
+        }
+        return location;
+      },
+    };
+    const wrapped = wrapScopedCompositionScript(
+      `
+window.__bodyTag = document.body.tagName;
+window.__href = window.location.href;
+window.__gsapVersion = gsap.version;
+window.__utilsMarker = gsap.utils.marker;
+`,
+      "scene",
+    );
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    try {
+      new Function("window", "gsap", wrapped)(fakeWindow, fakeWindow.gsap);
+    } finally {
+      errorSpy.mockRestore();
+    }
+
+    expect(fakeWindow.__bodyTag).toBe("BODY");
+    expect(fakeWindow.__href).toBe("https://example.test/scene");
+    expect(fakeWindow.__gsapVersion).toBe("gsap-ok");
+    expect(fakeWindow.__utilsMarker).toBe("utils-ok");
+    expect(errorSpy).not.toHaveBeenCalled();
   });
 });
