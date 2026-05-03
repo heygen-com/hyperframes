@@ -136,6 +136,7 @@ window.__timelines.scene = tl;
       document: fakeDocument,
       __bodyTag: "",
       __href: "",
+      __windowSet: "",
       __gsapVersion: "",
       __utilsMarker: "",
       __timelines: {},
@@ -146,11 +147,18 @@ window.__timelines.scene = tl;
         }
         return location;
       },
+      set customValue(value: string) {
+        if (this !== fakeWindow) {
+          throw new TypeError("Illegal invocation");
+        }
+        this.__windowSet = value;
+      },
     };
     const wrapped = wrapScopedCompositionScript(
       `
 window.__bodyTag = document.body.tagName;
 window.__href = window.location.href;
+window.customValue = "window-set-ok";
 window.__gsapVersion = gsap.version;
 window.__utilsMarker = gsap.utils.marker;
 `,
@@ -166,8 +174,63 @@ window.__utilsMarker = gsap.utils.marker;
 
     expect(fakeWindow.__bodyTag).toBe("BODY");
     expect(fakeWindow.__href).toBe("https://example.test/scene");
+    expect(fakeWindow.__windowSet).toBe("window-set-ok");
     expect(fakeWindow.__gsapVersion).toBe("gsap-ok");
     expect(fakeWindow.__utilsMarker).toBe("utils-ok");
+    expect(errorSpy).not.toHaveBeenCalled();
+  });
+
+  it("reads remapped timeline registry accessors with the original target receiver", () => {
+    let timeline = "initial";
+    const timelineRegistry = {
+      get host() {
+        if (this !== timelineRegistry) {
+          throw new TypeError("Illegal invocation");
+        }
+        return timeline;
+      },
+      set host(value: string) {
+        if (this !== timelineRegistry) {
+          throw new TypeError("Illegal invocation");
+        }
+        timeline = value;
+      },
+    };
+    const fakeWindow = {
+      document: {
+        querySelector() {
+          return null;
+        },
+        querySelectorAll() {
+          return [];
+        },
+      },
+      __timelines: timelineRegistry,
+      __beforeTimeline: "",
+      __afterTimeline: "",
+      gsap: {},
+    };
+    const wrapped = wrapScopedCompositionScript(
+      `
+window.__beforeTimeline = window.__timelines.scene;
+window.__timelines.scene = "updated";
+window.__afterTimeline = window.__timelines.scene;
+`,
+      "scene",
+      "[HyperFrames] composition script error:",
+      undefined,
+      "host",
+    );
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    try {
+      new Function("window", "gsap", wrapped)(fakeWindow, fakeWindow.gsap);
+    } finally {
+      errorSpy.mockRestore();
+    }
+
+    expect(fakeWindow.__beforeTimeline).toBe("initial");
+    expect(fakeWindow.__afterTimeline).toBe("updated");
     expect(errorSpy).not.toHaveBeenCalled();
   });
 });

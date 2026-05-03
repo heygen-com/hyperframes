@@ -166,10 +166,10 @@ export function wrapScopedCompositionScript(
     if (!__hfTimelineRegistryProxy) {
       __hfTimelineRegistryProxy = new Proxy(window.__timelines, {
         get: function(target, prop, receiver) {
-          return Reflect.get(target, prop === __hfCompId ? __hfTimelineCompId : prop, receiver);
+          return Reflect.get(target, prop === __hfCompId ? __hfTimelineCompId : prop, target);
         },
         set: function(target, prop, value, receiver) {
-          return Reflect.set(target, prop === __hfCompId ? __hfTimelineCompId : prop, value, receiver);
+          return Reflect.set(target, prop === __hfCompId ? __hfTimelineCompId : prop, value, target);
         },
       });
     }
@@ -188,7 +188,7 @@ export function wrapScopedCompositionScript(
             __hfTimelineRegistryProxy = null;
             return true;
           }
-          return Reflect.set(target, prop, value, receiver);
+          return Reflect.set(target, prop, value, target);
         },
       })
     : window;
