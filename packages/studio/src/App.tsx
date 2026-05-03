@@ -401,6 +401,60 @@ function seedDomEditGroupWithSelection(
   return [selection, ...group];
 }
 
+function objectLike(value: unknown): object | null {
+  return value && (typeof value === "object" || typeof value === "function") ? value : null;
+}
+
+function callPlaybackMethod(target: object | null, key: string): void {
+  const method = target ? Reflect.get(target, key) : null;
+  if (typeof method !== "function") return;
+  try {
+    method.call(target);
+  } catch {
+    // Best-effort playback freeze; drag should still work if playback control is unavailable.
+  }
+}
+
+function readPlaybackTime(target: object | null, key: string): number | null {
+  const method = target ? Reflect.get(target, key) : null;
+  if (typeof method !== "function") return null;
+  try {
+    const value = method.call(target);
+    return typeof value === "number" && Number.isFinite(value) ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function pauseStudioPreviewPlayback(iframe: HTMLIFrameElement | null): number | null {
+  const win = iframe?.contentWindow;
+  if (!win) return null;
+
+  try {
+    let pausedTime: number | null = null;
+    const player = objectLike(Reflect.get(win, "__player"));
+    pausedTime = readPlaybackTime(player, "getTime") ?? pausedTime;
+    callPlaybackMethod(player, "pause");
+
+    const timeline = objectLike(Reflect.get(win, "__timeline"));
+    pausedTime = pausedTime ?? readPlaybackTime(timeline, "time");
+    callPlaybackMethod(timeline, "pause");
+
+    const timelines = objectLike(Reflect.get(win, "__timelines"));
+    if (timelines) {
+      for (const value of Object.values(timelines)) {
+        const timelineRecord = objectLike(value);
+        pausedTime = pausedTime ?? readPlaybackTime(timelineRecord, "time");
+        callPlaybackMethod(timelineRecord, "pause");
+      }
+    }
+
+    return pausedTime;
+  } catch {
+    return null;
+  }
+}
+
 // ── Ask Agent Modal ──
 
 function AskAgentModal({
@@ -1049,7 +1103,10 @@ export function StudioApp() {
   );
   const studioManualEditRevisionRef = useRef(0);
   const applyStudioManualEditsToPreviewRef = useRef<
-    (iframe?: HTMLIFrameElement | null, options?: { forceFromDisk?: boolean }) => Promise<void>
+    (
+      iframe?: HTMLIFrameElement | null,
+      options?: { forceFromDisk?: boolean; readFromDiskFirst?: boolean },
+    ) => Promise<void>
   >(async () => {});
   const studioManualEditProjectRef = useRef<string | null>(projectId);
   const activeCompPathRef = useRef(activeCompPath);
@@ -1592,9 +1649,10 @@ export function StudioApp() {
 
       const isAdditiveSelection = Boolean(options?.additive);
       const currentSelection = domEditSelectionRef.current;
+      const previousGroup = domEditGroupSelectionsRef.current;
       const currentGroup = isAdditiveSelection
-        ? seedDomEditGroupWithSelection(domEditGroupSelectionsRef.current, currentSelection)
-        : domEditGroupSelectionsRef.current;
+        ? seedDomEditGroupWithSelection(previousGroup, currentSelection)
+        : previousGroup;
       const wasInGroup = domEditSelectionInGroup(currentGroup, selection);
       const nextGroup = options?.preserveGroup
         ? replaceDomEditGroupSelection(currentGroup, selection)
@@ -1698,10 +1756,13 @@ export function StudioApp() {
   const applyStudioManualEditsToPreview = useCallback(
     async (
       iframe: HTMLIFrameElement | null = previewIframeRef.current,
-      options?: { forceFromDisk?: boolean },
+      options?: { forceFromDisk?: boolean; readFromDiskFirst?: boolean },
     ) => {
       const readRevision = studioManualEditRevisionRef.current;
-      applyCurrentStudioManualEditsToPreview(iframe);
+      const readFromDiskFirst = Boolean(options?.forceFromDisk || options?.readFromDiskFirst);
+      if (!readFromDiskFirst) {
+        applyCurrentStudioManualEditsToPreview(iframe);
+      }
       const content = await readOptionalProjectFile(STUDIO_MANUAL_EDITS_PATH).catch(() => "");
       if (options?.forceFromDisk || readRevision === studioManualEditRevisionRef.current) {
         studioManualEditManifestRef.current = parseStudioManualEditManifest(content);
@@ -1709,10 +1770,19 @@ export function StudioApp() {
         applyCurrentStudioManualEditsToPreview(iframe);
         return;
       }
+      if (readFromDiskFirst) {
+        applyCurrentStudioManualEditsToPreview(iframe);
+      }
     },
     [applyCurrentStudioManualEditsToPreview, readOptionalProjectFile],
   );
   applyStudioManualEditsToPreviewRef.current = applyStudioManualEditsToPreview;
+
+  const applyStudioManualEditsToPreviewAfterRefresh = useCallback(
+    (iframe: HTMLIFrameElement | null = previewIframeRef.current) =>
+      applyStudioManualEditsToPreview(iframe, { readFromDiskFirst: true }),
+    [applyStudioManualEditsToPreview],
+  );
 
   const commitStudioManualEditManifestOptimistically = useCallback(
     (
@@ -1723,7 +1793,9 @@ export function StudioApp() {
       const nextManifest = updateManifest(previousManifest);
       const previousContent = serializeStudioManualEditManifest(previousManifest);
       const nextContent = serializeStudioManualEditManifest(nextManifest);
-      if (nextContent === previousContent) return;
+      if (nextContent === previousContent) {
+        return;
+      }
 
       const revision = studioManualEditRevisionRef.current + 1;
       studioManualEditRevisionRef.current = revision;
@@ -1735,7 +1807,9 @@ export function StudioApp() {
         const diskManifest = parseStudioManualEditManifest(originalContent);
         const nextDiskManifest = updateManifest(diskManifest);
         const nextDiskContent = serializeStudioManualEditManifest(nextDiskManifest);
-        if (nextDiskContent === originalContent) return;
+        if (nextDiskContent === originalContent) {
+          return;
+        }
 
         const pid = projectIdRef.current;
         if (!pid) throw new Error("No active project");
@@ -2066,6 +2140,60 @@ export function StudioApp() {
     [activeCompPath, applyDomSelection, buildDomSelectionFromTarget],
   );
 
+  const refreshDomEditGroupSelectionsFromPreview = useCallback(
+    (selections: DomEditSelection[]) => {
+      const iframe = previewIframeRef.current;
+      let doc: Document | null = null;
+      try {
+        doc = iframe?.contentDocument ?? null;
+      } catch {
+        return;
+      }
+      if (!doc) return;
+
+      const nextGroup: DomEditSelection[] = [];
+      for (const selection of selections) {
+        const element = findElementForSelection(doc, selection, activeCompPath);
+        if (!element) continue;
+        const nextSelection = buildDomSelectionFromTarget(element);
+        if (nextSelection) nextGroup.push(nextSelection);
+      }
+      if (nextGroup.length === 0) return;
+
+      const currentSelection = domEditSelectionRef.current;
+      const nextSelection =
+        nextGroup.find((selection) => domEditSelectionsTargetSame(selection, currentSelection)) ??
+        nextGroup[0] ??
+        null;
+
+      setAgentPromptTagSnippet(undefined);
+      setCopiedAgentPrompt(false);
+      domEditSelectionRef.current = nextSelection;
+      domEditGroupSelectionsRef.current = nextGroup;
+      setDomEditSelection(nextSelection);
+      setDomEditGroupSelections(nextGroup);
+
+      if (nextSelection) {
+        setSelectedTimelineElementId(
+          findMatchingTimelineElementId(nextSelection, timelineElements),
+        );
+      } else {
+        setSelectedTimelineElementId(null);
+      }
+    },
+    [activeCompPath, buildDomSelectionFromTarget, setSelectedTimelineElementId, timelineElements],
+  );
+
+  const handleDomManualDragStart = useCallback(() => {
+    const pausedTime = pauseStudioPreviewPlayback(previewIframeRef.current);
+    const playerStore = usePlayerStore.getState();
+    playerStore.setIsPlaying(false);
+    if (pausedTime != null) {
+      playerStore.setCurrentTime(pausedTime);
+      liveTime.notify(pausedTime);
+    }
+  }, []);
+
   const handleDomPathOffsetCommit = useCallback(
     (selection: DomEditSelection, next: { x: number; y: number }) => {
       commitStudioManualEditManifestOptimistically(
@@ -2099,8 +2227,9 @@ export function StudioApp() {
           coalesceKey: `group-path-offset:${coalesceKey}`,
         },
       );
+      refreshDomEditGroupSelectionsFromPreview(domEditGroupSelectionsRef.current);
     },
-    [commitStudioManualEditManifestOptimistically],
+    [commitStudioManualEditManifestOptimistically, refreshDomEditGroupSelectionsFromPreview],
   );
 
   const handleDomBoxSizeCommit = useCallback(
@@ -2567,7 +2696,7 @@ export function StudioApp() {
 
     attachErrorCapture();
     syncPreviewHistoryHotkey(previewIframe);
-    void applyStudioManualEditsToPreview(previewIframe);
+    void applyStudioManualEditsToPreviewAfterRefresh(previewIframe);
     syncSelectionFromDocument();
 
     const handleLoad = () => {
@@ -2575,7 +2704,7 @@ export function StudioApp() {
       setConsoleErrors(null);
       attachErrorCapture();
       syncPreviewHistoryHotkey(previewIframe);
-      void applyStudioManualEditsToPreview(previewIframe);
+      void applyStudioManualEditsToPreviewAfterRefresh(previewIframe);
       syncSelectionFromDocument();
     };
 
@@ -2586,7 +2715,7 @@ export function StudioApp() {
   }, [
     activeCompPath,
     applyDomSelection,
-    applyStudioManualEditsToPreview,
+    applyStudioManualEditsToPreviewAfterRefresh,
     buildDomSelectionFromTarget,
     captionEditMode,
     previewIframe,
@@ -3287,6 +3416,7 @@ export function StudioApp() {
                   onCanvasPointerLeave={handlePreviewCanvasPointerLeave}
                   onSelectionChange={applyDomSelection}
                   onBlockedMove={handleBlockedDomMove}
+                  onManualDragStart={handleDomManualDragStart}
                   onPathOffsetCommit={handleDomPathOffsetCommit}
                   onGroupPathOffsetCommit={handleDomGroupPathOffsetCommit}
                   onBoxSizeCommit={handleDomBoxSizeCommit}

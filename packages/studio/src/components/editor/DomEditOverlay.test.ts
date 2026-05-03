@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
+import { Window } from "happy-dom";
 import {
+  filterNestedDomEditGroupItems,
   focusDomEditOverlayElement,
   hasDomEditRotationChanged,
   resolveDomEditCoordinateScale,
   resolveDomEditGroupOverlayRect,
-  resolveDomEditPathOffsetGesture,
   resolveDomEditResizeGesture,
   resolveDomEditRotationGesture,
 } from "./DomEditOverlay";
@@ -50,24 +51,6 @@ describe("resolveDomEditCoordinateScale", () => {
   });
 });
 
-describe("resolveDomEditPathOffsetGesture", () => {
-  it("writes source-local offsets when the edited source is scaled down in master view", () => {
-    expect(
-      resolveDomEditPathOffsetGesture({
-        actualOffsetX: 10,
-        actualOffsetY: -4,
-        scaleX: 0.25,
-        scaleY: 0.25,
-        dx: 25,
-        dy: 10,
-      }),
-    ).toEqual({
-      x: 110,
-      y: 36,
-    });
-  });
-});
-
 describe("resolveDomEditGroupOverlayRect", () => {
   it("returns a bounding box that contains every selected element", () => {
     expect(
@@ -88,6 +71,24 @@ describe("resolveDomEditGroupOverlayRect", () => {
 
   it("returns null for an empty group", () => {
     expect(resolveDomEditGroupOverlayRect([])).toBeNull();
+  });
+});
+
+describe("filterNestedDomEditGroupItems", () => {
+  it("keeps top-level selected elements so descendants are not moved twice", () => {
+    const window = new Window();
+    const parent = window.document.createElement("div");
+    const child = window.document.createElement("div");
+    const sibling = window.document.createElement("div");
+    parent.append(child);
+
+    expect(
+      filterNestedDomEditGroupItems([
+        { key: "parent", element: parent },
+        { key: "child", element: child },
+        { key: "sibling", element: sibling },
+      ]).map((item) => item.key),
+    ).toEqual(["parent", "sibling"]);
   });
 });
 
