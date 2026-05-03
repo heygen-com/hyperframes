@@ -1360,7 +1360,9 @@ export function applyStudioManualEditManifest(
   for (const edit of manifest.edits) {
     const element = resolveManualEditTarget(doc, edit, activeCompositionPath);
     if (!element) continue;
-    if (isStudioManualEditGestureActive(element)) continue;
+    if (isStudioManualEditGestureActive(element)) {
+      continue;
+    }
     resolvedEdits.push({ edit, element });
     if (edit.kind === "path-offset") pathOffsetTargets.add(element);
     if (edit.kind === "box-size") boxSizeTargets.add(element);
