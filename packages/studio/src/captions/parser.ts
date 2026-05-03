@@ -303,6 +303,7 @@ function parseTranscriptArray(arrayLiteral: string): TranscriptWord[] {
     ) {
       const entry = item as Record<string, unknown>;
       words.push({
+        ...(typeof entry.id === "string" ? { id: entry.id } : {}),
         text: entry.text as string,
         start: entry.start as number,
         end: entry.end as number,

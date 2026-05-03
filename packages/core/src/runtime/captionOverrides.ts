@@ -38,6 +38,48 @@ interface GsapStatic {
   getTweensOf: (target: Element) => GsapTween[];
 }
 
+function resolveCaptionWordElement(el: Element | null): HTMLElement | null {
+  if (!(el instanceof HTMLElement)) return null;
+  if (el.dataset.captionWrapper !== "true") return el;
+
+  const inner = el.querySelector<HTMLElement>(":scope > span");
+  return inner ?? null;
+}
+
+function getCaptionWordElements(): HTMLElement[] {
+  const wordEls: HTMLElement[] = [];
+  const groups = document.querySelectorAll(".caption-group");
+
+  for (const group of groups) {
+    for (const child of group.children) {
+      if (!(child instanceof HTMLElement)) continue;
+
+      const wordEl =
+        child.dataset.captionWrapper === "true"
+          ? child.querySelector<HTMLElement>(":scope > span")
+          : child.tagName === "SPAN"
+            ? child
+            : null;
+
+      if (wordEl) wordEls.push(wordEl);
+    }
+  }
+
+  return wordEls;
+}
+
+function getOrCreateCaptionWrapper(el: HTMLElement): HTMLElement {
+  const parent = el.parentElement;
+  if (parent?.dataset.captionWrapper === "true") return parent;
+
+  const wrapper = document.createElement("span");
+  wrapper.style.display = "inline-block";
+  wrapper.dataset.captionWrapper = "true";
+  el.parentNode?.insertBefore(wrapper, el);
+  wrapper.appendChild(el);
+  return wrapper;
+}
+
 export function applyCaptionOverrides(): void {
   const gsap = (window as unknown as { gsap?: GsapStatic }).gsap;
   if (!gsap) return;
@@ -54,24 +96,17 @@ export function applyCaptionOverrides(): void {
       if (!data || !Array.isArray(data) || data.length === 0) return;
 
       // Build word element index for wordIndex fallback
-      const wordEls: Element[] = [];
-      const groups = document.querySelectorAll(".caption-group");
-      for (const group of groups) {
-        const spans = group.querySelectorAll(":scope > span");
-        for (const span of spans) {
-          wordEls.push(span);
-        }
-      }
+      const wordEls = getCaptionWordElements();
 
       for (const override of data) {
-        let el: Element | null = null;
+        let el: HTMLElement | null = null;
         if (override.wordId) {
-          el = document.getElementById(override.wordId);
+          el = resolveCaptionWordElement(document.getElementById(override.wordId));
         }
         if (!el && override.wordIndex !== undefined) {
           el = wordEls[override.wordIndex] ?? null;
         }
-        if (!el || !(el instanceof HTMLElement)) continue;
+        if (!el) continue;
 
         // Split into transform props (wrapper) and style props (word span)
         const transformProps: Record<string, unknown> = {};
@@ -127,11 +162,7 @@ export function applyCaptionOverrides(): void {
         // Wrap the word in an inline-block span and apply transforms to the wrapper.
         // This preserves all GSAP entrance/exit/karaoke animations on the inner span.
         if (Object.keys(transformProps).length > 0) {
-          const wrapper = document.createElement("span");
-          wrapper.style.display = "inline-block";
-          wrapper.dataset.captionWrapper = "true";
-          el.parentNode?.insertBefore(wrapper, el);
-          wrapper.appendChild(el);
+          const wrapper = getOrCreateCaptionWrapper(el);
           gsap.set(wrapper, transformProps);
         }
       }

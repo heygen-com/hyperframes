@@ -102,6 +102,20 @@ describe("extractTranscript", () => {
       expect(words).toHaveLength(1);
       expect(words[0]).toEqual({ text: "Hello", start: 0.0, end: 0.5 });
     });
+
+    it("preserves stable word ids when present", () => {
+      const words = extractTranscript(`
+        const TRANSCRIPT = [
+          { id: "word-a", text: "Hello", start: 0, end: 0.4 },
+          { id: "word-b", text: "world", start: 0.5, end: 1 },
+        ];
+      `);
+
+      expect(words).toEqual([
+        { id: "word-a", text: "Hello", start: 0, end: 0.4 },
+        { id: "word-b", text: "world", start: 0.5, end: 1 },
+      ]);
+    });
   });
 
   describe("script variable name", () => {

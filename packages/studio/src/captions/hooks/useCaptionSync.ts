@@ -124,17 +124,22 @@ export function useCaptionSync(projectId: string | null) {
 
       const model = state.model;
       const allSegIds: string[] = [];
+      const segIdByWordId = new Map<string, string>();
       for (const groupId of model.groupOrder) {
         const group = model.groups.get(groupId);
         if (!group) continue;
         for (const segId of group.segmentIds) {
           allSegIds.push(segId);
+          const seg = model.segments.get(segId);
+          if (seg?.wordId) segIdByWordId.set(seg.wordId, segId);
         }
       }
 
       const newSegments = new Map(model.segments);
       for (const override of overrides) {
-        const segId = allSegIds[override.wordIndex];
+        const segId =
+          (override.wordId ? segIdByWordId.get(override.wordId) : undefined) ??
+          allSegIds[override.wordIndex];
         if (!segId) continue;
         const seg = newSegments.get(segId);
         if (!seg) continue;
