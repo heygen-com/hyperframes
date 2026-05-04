@@ -852,6 +852,33 @@ describe("HyperframesPlayer loop end-state handling", () => {
     expect(play).toHaveBeenCalled();
     expect(player._paused).toBe(false);
   });
+
+  it("fires ended and stays paused when a non-looping composition posts its final paused state", () => {
+    const seek = vi.spyOn(player, "seek");
+    const play = vi.spyOn(player, "play");
+    const ended = vi.fn();
+    player.addEventListener("ended", ended);
+    player.loop = false;
+    player._duration = 4;
+    player._paused = false;
+
+    player._onMessage(
+      new MessageEvent("message", {
+        source: frameWindow,
+        data: {
+          source: "hf-preview",
+          type: "state",
+          frame: 120,
+          isPlaying: false,
+        },
+      }),
+    );
+
+    expect(seek).not.toHaveBeenCalled();
+    expect(play).not.toHaveBeenCalled();
+    expect(ended).toHaveBeenCalledTimes(1);
+    expect(player._paused).toBe(true);
+  });
 });
 
 describe("HyperframesPlayer srcdoc attribute", () => {
