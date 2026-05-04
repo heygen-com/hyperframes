@@ -261,14 +261,19 @@ function hexToRgba(color: string, opacity: number): string {
 
 function generateJs(model: CaptionModel): string {
   // Collect all segments across all groups in order
-  const allSegments: Array<{ text: string; start: number; end: number }> = [];
+  const allSegments: Array<{ id?: string; text: string; start: number; end: number }> = [];
   for (const groupId of model.groupOrder) {
     const group = model.groups.get(groupId);
     if (!group) continue;
     for (const segId of group.segmentIds) {
       const seg = model.segments.get(segId);
       if (!seg) continue;
-      allSegments.push({ text: seg.text, start: seg.start, end: seg.end });
+      allSegments.push({
+        ...(seg.wordId ? { id: seg.wordId } : {}),
+        text: seg.text,
+        start: seg.start,
+        end: seg.end,
+      });
     }
   }
 
@@ -300,9 +305,11 @@ function generateJs(model: CaptionModel): string {
     const wordLines: string[] = groupSegments.map((seg) => {
       const escaped = seg.text.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
       const segVar = `w_${seg.id.replace(/[^a-zA-Z0-9_]/g, "_")}`;
+      const idLine = seg.wordId ? `\n  ${segVar}.id = ${JSON.stringify(seg.wordId)};` : "";
       return (
         `  const ${segVar} = document.createElement('span');` +
         `\n  ${segVar}.className = 'word clip';` +
+        idLine +
         `\n  ${segVar}.textContent = '${escaped}';` +
         `\n  ${segVar}.dataset.start = '${seg.start}';` +
         `\n  ${segVar}.dataset.end = '${seg.end}';` +

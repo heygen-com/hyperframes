@@ -96,4 +96,29 @@ describe("applyCaptionOverrides", () => {
     expect(word.style.fontSize).toBe("72px");
     expect(wrapper.getAttribute("style") ?? "").not.toContain("font-size");
   });
+
+  it("resolves wordId overrides against the inner word of an existing wrapper", async () => {
+    const { setCalls } = installGsapMock();
+    installCaptionOverrideFetch([{ wordId: "w0", x: 16 }]);
+    document.body.innerHTML = `
+      <div class="caption-group">
+        <span data-caption-wrapper="true">
+          <span id="w0">Hello</span>
+        </span>
+      </div>
+    `;
+
+    applyCaptionOverrides();
+    await flushCaptionOverrides();
+
+    const word = document.getElementById("w0");
+    const wrapper = word?.parentElement;
+    if (!(word instanceof HTMLElement) || !wrapper) {
+      throw new Error("Expected pre-wrapped caption word");
+    }
+
+    expect(setCalls).toHaveLength(1);
+    expect(setCalls[0]?.target).toBe(wrapper);
+    expect(setCalls[0]?.vars).toEqual({ x: 16 });
+  });
 });

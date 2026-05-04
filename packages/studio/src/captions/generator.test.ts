@@ -137,6 +137,25 @@ describe("generateCaptionHtml", () => {
       expect(html).toContain('"end": 2.7');
     });
 
+    it("includes stable word ids in the transcript and generated word spans", () => {
+      const transcript: TranscriptWord[] = [
+        { id: "word-a", text: "Hello", start: 0, end: 0.4 },
+        { id: "word-b", text: "world", start: 0.5, end: 1 },
+      ];
+      const model = buildCaptionModel(transcript, {
+        width: 1920,
+        height: 1080,
+        duration: 2,
+      });
+
+      const html = generateCaptionHtml(model);
+
+      expect(html).toContain('"id": "word-a"');
+      expect(html).toContain('"id": "word-b"');
+      expect(html).toContain('w_segment_0.id = "word-a";');
+      expect(html).toContain('w_segment_1.id = "word-b";');
+    });
+
     it("TRANSCRIPT contains all 7 words from the sample", () => {
       const model = buildTestModel();
       const html = generateCaptionHtml(model);
