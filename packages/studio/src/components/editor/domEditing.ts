@@ -658,7 +658,7 @@ function formatTextFields(fields: DomEditTextField[]): string {
   return fields
     .map(
       (field) =>
-        `- key=${field.key}; tag=<${field.tagName}>; source=${field.source}; text="${field.value.replace(/"/g, '\\"')}"`,
+        `- key=${field.key}; tag=<${field.tagName}>; source=${field.source}; text=${JSON.stringify(field.value)}`,
     )
     .join("\n");
 }

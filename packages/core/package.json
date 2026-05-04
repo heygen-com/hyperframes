@@ -42,6 +42,10 @@
       "import": "./src/studio-api/helpers/screenshotClip.ts",
       "types": "./src/studio-api/helpers/screenshotClip.ts"
     },
+    "./studio-api/manual-edits-render-script": {
+      "import": "./src/studio-api/helpers/manualEditsRenderScript.ts",
+      "types": "./src/studio-api/helpers/manualEditsRenderScript.ts"
+    },
     "./text": {
       "import": "./src/text/index.ts",
       "types": "./src/text/index.ts"
@@ -80,6 +84,10 @@
       "./studio-api/screenshot-clip": {
         "import": "./dist/studio-api/helpers/screenshotClip.js",
         "types": "./dist/studio-api/helpers/screenshotClip.d.ts"
+      },
+      "./studio-api/manual-edits-render-script": {
+        "import": "./dist/studio-api/helpers/manualEditsRenderScript.js",
+        "types": "./dist/studio-api/helpers/manualEditsRenderScript.d.ts"
       },
       "./text": {
         "import": "./dist/text/index.js",
