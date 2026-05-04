@@ -1763,7 +1763,18 @@ export function StudioApp() {
       if (!readFromDiskFirst) {
         applyCurrentStudioManualEditsToPreview(iframe);
       }
-      const content = await readOptionalProjectFile(STUDIO_MANUAL_EDITS_PATH).catch(() => "");
+      let content: string;
+      try {
+        content = await readOptionalProjectFile(STUDIO_MANUAL_EDITS_PATH);
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Failed to read manual edit manifest";
+        showToast(message);
+        if (readFromDiskFirst) {
+          applyCurrentStudioManualEditsToPreview(iframe);
+        }
+        return;
+      }
       if (options?.forceFromDisk || readRevision === studioManualEditRevisionRef.current) {
         studioManualEditManifestRef.current = parseStudioManualEditManifest(content);
         if (options?.forceFromDisk) studioManualEditRevisionRef.current += 1;
@@ -1774,7 +1785,7 @@ export function StudioApp() {
         applyCurrentStudioManualEditsToPreview(iframe);
       }
     },
-    [applyCurrentStudioManualEditsToPreview, readOptionalProjectFile],
+    [applyCurrentStudioManualEditsToPreview, readOptionalProjectFile, showToast],
   );
   applyStudioManualEditsToPreviewRef.current = applyStudioManualEditsToPreview;
 
@@ -2639,9 +2650,10 @@ export function StudioApp() {
 
   // eslint-disable-next-line no-restricted-syntax
   useEffect(() => {
-    if (!previewIframe || captionEditMode) return;
+    if (!previewIframe) return;
 
     const syncSelectionFromDocument = () => {
+      if (captionEditMode) return;
       const currentSelection = domEditSelectionRef.current;
       if (!currentSelection) return;
       let doc: Document | null = null;
