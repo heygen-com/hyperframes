@@ -292,13 +292,13 @@
         background: linear-gradient(135deg, #34c759, #ffd60a);
       }
 
-      .icon-goon {
+      .icon-vpn {
         background:
           radial-gradient(circle at 72% 16%, rgba(255, 255, 255, 0.62) 0 12%, transparent 13%),
           linear-gradient(145deg, #101828 0%, #007aff 64%, #34c759 100%);
       }
 
-      .icon-goon::before {
+      .icon-vpn::before {
         content: "";
         position: absolute;
         left: 21px;
@@ -310,7 +310,7 @@
         clip-path: polygon(50% 0, 88% 13%, 88% 46%, 50% 100%, 12% 46%, 12% 13%);
       }
 
-      .icon-goon::after {
+      .icon-vpn::after {
         content: "";
         position: absolute;
         left: 31px;
@@ -371,7 +371,7 @@
         background: #ececf1;
       }
 
-      #goon-row {
+      #vpn-row {
         position: relative;
         transform-origin: center;
         outline: 0 solid rgba(0, 122, 255, 0);
@@ -652,11 +652,11 @@
 
       <div class="stage">
         <div class="headline" id="stageHeadline">
-          <span>SECURE</span>
-          <span class="blue">INSTANTLY</span>
-          <div class="sub">One tap, installed, ready.</div>
+          <span>PRIVATE</span>
+          <span class="blue">SIMPLY</span>
+          <div class="sub">A calmer way to browse.</div>
         </div>
-        <div class="ambient-word">VPN</div>
+        <div class="ambient-word">SAFE</div>
         <div class="ambient-line line-a"></div>
         <div class="ambient-line line-b"></div>
         <div class="snap-shadow"></div>
@@ -672,7 +672,7 @@
               </div>
               <div class="search-pill">
                 <div class="search-icon"></div>
-                <div>vpn apps</div>
+                <div>privacy apps</div>
               </div>
               <div class="screen-window" data-layout-allow-overflow>
                 <div class="scroll-content">
@@ -721,11 +721,11 @@
                     </div>
                     <div class="get-button">GET</div>
                   </div>
-                  <div class="store-row" id="goon-row">
-                    <div class="app-icon icon-goon"></div>
+                  <div class="store-row" id="vpn-row">
+                    <div class="app-icon icon-vpn"></div>
                     <div class="row-copy">
-                      <div class="row-title">goonVPN</div>
-                      <div class="row-sub">Fast private browsing</div>
+                      <div class="row-title">VPN</div>
+                      <div class="row-sub">Simple private browsing</div>
                       <div class="stars">4.9 ★★★★★</div>
                     </div>
                     <div class="get-button">GET</div>
@@ -756,10 +756,10 @@
             <section class="detail-view">
               <div class="detail-card">
                 <div class="detail-hero">
-                  <div class="app-icon icon-goon detail-icon"></div>
+                  <div class="app-icon icon-vpn detail-icon"></div>
                   <div>
-                    <div class="detail-title">goonVPN</div>
-                    <div class="detail-sub">Private, fast VPN for everyday browsing.</div>
+                    <div class="detail-title">VPN</div>
+                    <div class="detail-sub">Friendly privacy for everyday browsing.</div>
                     <div class="install-button">
                       <span class="install-label">GET</span>
                       <svg class="ring" viewBox="0 0 28 28" aria-hidden="true">
@@ -796,7 +796,7 @@
                 </div>
                 <div class="shield-status">
                   <div class="check">✓</div>
-                  <div>Installed</div>
+                  <div>Ready to browse</div>
                 </div>
               </div>
             </section>
@@ -878,7 +878,7 @@
           1.25,
         )
         .to(
-          "#goon-row",
+          "#vpn-row",
           {
             scale: 1.035,
             outlineWidth: 3,
@@ -888,15 +888,15 @@
           },
           1.72,
         )
-        .to("#goon-row", { scale: 1, duration: 0.22 }, 1.93)
+        .to("#vpn-row", { scale: 1, duration: 0.22 }, 1.93)
         .fromTo(
           ".tap-dot",
           { scale: 0.25, opacity: 0.95 },
           { scale: 2.15, opacity: 0, duration: 0.42, ease: "power2.out" },
           2.02,
         )
-        .to("#goon-row .get-button", { scale: 0.82, duration: 0.1, ease: "power3.in" }, 2.04)
-        .to("#goon-row .get-button", { scale: 1, duration: 0.14, ease: "back.out(2)" }, 2.14);
+        .to("#vpn-row .get-button", { scale: 0.82, duration: 0.1, ease: "power3.in" }, 2.04)
+        .to("#vpn-row .get-button", { scale: 1, duration: 0.14, ease: "back.out(2)" }, 2.14);
 
       tl.fromTo(
         ".detail-view",

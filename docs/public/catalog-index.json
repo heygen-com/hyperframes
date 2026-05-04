@@ -128,8 +128,8 @@
   {
     "name": "goonvpn-youtube-spot",
     "type": "block",
-    "title": "GoonVPN YouTube Spot",
-    "description": "Snappy Apple-style YouTube insert showing a phone finding and installing a fictional VPN app with sound effects.",
+    "title": "VPN YouTube Spot",
+    "description": "Snappy Apple-style YouTube insert showing a phone finding and installing a friendly VPN app with sound effects.",
     "tags": [
       "app",
       "showcase",
