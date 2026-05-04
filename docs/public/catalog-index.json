@@ -126,7 +126,7 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/glitch.png"
   },
   {
-    "name": "goonvpn-youtube-spot",
+    "name": "vpn-youtube-spot",
     "type": "block",
     "title": "VPN YouTube Spot",
     "description": "Snappy Apple-style YouTube insert showing a phone finding and installing a friendly VPN app with sound effects.",
@@ -136,8 +136,8 @@
       "youtube",
       "sfx"
     ],
-    "href": "/catalog/blocks/goonvpn-youtube-spot",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/goonvpn-youtube-spot.png"
+    "href": "/catalog/blocks/vpn-youtube-spot",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/vpn-youtube-spot.png"
   },
   {
     "name": "grain-overlay",

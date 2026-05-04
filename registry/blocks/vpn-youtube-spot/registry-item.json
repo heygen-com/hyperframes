@@ -1,6 +1,6 @@
 {
   "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
-  "name": "goonvpn-youtube-spot",
+  "name": "vpn-youtube-spot",
   "type": "hyperframes:block",
   "title": "VPN YouTube Spot",
   "description": "Snappy Apple-style YouTube insert showing a phone finding and installing a friendly VPN app with sound effects.",
@@ -15,13 +15,13 @@
   "duration": 7,
   "files": [
     {
-      "path": "goonvpn-youtube-spot.html",
-      "target": "compositions/goonvpn-youtube-spot.html",
+      "path": "vpn-youtube-spot.html",
+      "target": "compositions/vpn-youtube-spot.html",
       "type": "hyperframes:composition"
     },
     {
-      "path": "assets/goonvpn-sfx.wav",
-      "target": "assets/goonvpn-sfx.wav",
+      "path": "assets/vpn-sfx.wav",
+      "target": "assets/vpn-sfx.wav",
       "type": "hyperframes:asset"
     }
   ]
