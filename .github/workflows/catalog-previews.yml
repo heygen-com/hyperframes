@@ -44,7 +44,7 @@ jobs:
         run: |
           # Find which blocks/components changed in this PR
           BASE_SHA=${{ github.event.pull_request.base.sha }}
-          CHANGED_ITEMS=$(git diff --name-only "$BASE_SHA"...HEAD -- registry/blocks/ registry/components/ \
+          CHANGED_ITEMS=$(git diff --name-only --diff-filter=ACMR "$BASE_SHA"...HEAD -- registry/blocks/ registry/components/ \
             | grep -E '^registry/(blocks|components)/' \
             | sed 's|^registry/[^/]*/\([^/]*\)/.*|\1|' \
             | sort -u)
