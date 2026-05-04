@@ -228,6 +228,35 @@ describe("createStudioManualEditsRenderBodyScript", () => {
     expect(nestedCard.style.getPropertyValue("translate")).toContain("--hf-studio-offset-x");
   });
 
+  it("uses the active composition path as the unscoped document fallback", () => {
+    const window = new Window();
+    window.document.body.innerHTML = `<div id="card"></div>`;
+    const card = window.document.getElementById("card");
+    if (!(card instanceof window.HTMLElement)) {
+      throw new Error("card fixture missing");
+    }
+
+    const script = createStudioManualEditsRenderBodyScript(
+      JSON.stringify({
+        version: 1,
+        edits: [
+          {
+            kind: "path-offset",
+            target: { sourceFile: "compositions/scene-2.html", id: "card" },
+            x: 12,
+            y: 24,
+          },
+        ],
+      }),
+      { activeCompositionPath: "compositions/scene-2.html" },
+    );
+    if (!script) throw new Error("script fixture missing");
+
+    runScript(window, script);
+
+    expect(card.style.getPropertyValue("translate")).toContain("--hf-studio-offset-x");
+  });
+
   it("preserves computed transform longhands as render edit bases", () => {
     const window = new Window();
     window.document.body.innerHTML = `<div id="card"></div>`;
@@ -314,5 +343,40 @@ describe("createStudioManualEditsRenderBodyScript", () => {
       "var(--hf-studio-offset-x, 0px) var(--hf-studio-offset-y, 0px)",
     );
     expect(card.style.getPropertyValue("rotate")).toBe("var(--hf-studio-rotation, 0deg)");
+  });
+
+  it("exposes a render reapply hook for thumbnails after layout settles", () => {
+    const window = new Window();
+    window.document.body.innerHTML = `<div id="card"></div>`;
+    const card = window.document.getElementById("card");
+    if (!(card instanceof window.HTMLElement)) {
+      throw new Error("card fixture missing");
+    }
+
+    const script = createStudioManualEditsRenderBodyScript(
+      JSON.stringify({
+        version: 1,
+        edits: [
+          {
+            kind: "path-offset",
+            target: { sourceFile: "index.html", id: "card" },
+            x: 12,
+            y: 24,
+          },
+        ],
+      }),
+    );
+    if (!script) throw new Error("script fixture missing");
+
+    runScript(window, script);
+    card.style.removeProperty("translate");
+
+    (
+      window as unknown as {
+        __hfStudioManualEditsApply?: () => number;
+      }
+    ).__hfStudioManualEditsApply?.();
+
+    expect(card.style.getPropertyValue("translate")).toContain("--hf-studio-offset-x");
   });
 });

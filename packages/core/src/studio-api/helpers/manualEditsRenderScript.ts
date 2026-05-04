@@ -1,9 +1,19 @@
-export function createStudioManualEditsRenderBodyScript(manifestContent: string): string | null {
-  if (!manifestContent.trim()) return null;
-  return `(${studioManualEditsRenderRuntime.toString()})(${JSON.stringify(manifestContent)});`;
+export interface StudioManualEditsRenderScriptOptions {
+  activeCompositionPath?: string | null;
 }
 
-function studioManualEditsRenderRuntime(manifestContent: string): void {
+export function createStudioManualEditsRenderBodyScript(
+  manifestContent: string,
+  options: StudioManualEditsRenderScriptOptions = {},
+): string | null {
+  if (!manifestContent.trim()) return null;
+  return `(${studioManualEditsRenderRuntime.toString()})(${JSON.stringify(manifestContent)}, ${JSON.stringify(options.activeCompositionPath ?? null)});`;
+}
+
+function studioManualEditsRenderRuntime(
+  manifestContent: string,
+  activeCompositionPath: string | null,
+): void {
   const OFFSET_X_PROP = "--hf-studio-offset-x";
   const OFFSET_Y_PROP = "--hf-studio-offset-y";
   const WIDTH_PROP = "--hf-studio-width";
@@ -22,6 +32,12 @@ function studioManualEditsRenderRuntime(manifestContent: string): void {
 
   const objectRecord = (value: unknown): Record<string, unknown> | null =>
     value && typeof value === "object" ? (value as Record<string, unknown>) : null;
+
+  const runtimeWindow = window as Window & {
+    __hf?: { seek?: (time: number) => unknown };
+    __hfStudioManualEditsApply?: () => number;
+    __player?: { renderSeek?: (time: number) => unknown };
+  };
 
   const parsedManifest = (() => {
     try {
@@ -42,7 +58,7 @@ function studioManualEditsRenderRuntime(manifestContent: string): void {
       if (sourceFile) return sourceFile;
       current = current.parentElement;
     }
-    return "index.html";
+    return activeCompositionPath ?? "index.html";
   };
 
   const elementMatchesSourceFile = (element: HTMLElement, sourceFile: string): boolean =>
@@ -277,6 +293,7 @@ function studioManualEditsRenderRuntime(manifestContent: string): void {
     }
     return applied;
   };
+  runtimeWindow.__hfStudioManualEditsApply = applyManifest;
 
   const markWrapped = (fn: (time: number) => unknown): void => {
     try {
@@ -297,9 +314,12 @@ function studioManualEditsRenderRuntime(manifestContent: string): void {
   const isWrapped = (fn: (time: number) => unknown): boolean =>
     Boolean((fn as unknown as Record<string, unknown>)[WRAPPED_SEEK_PROP]);
 
-  const wrapFunction = (owner: Record<string, unknown> | undefined, key: string): boolean => {
-    const fn = owner?.[key];
-    if (!owner || typeof fn !== "function") return false;
+  const wrapFunction = (
+    get: () => ((time: number) => unknown) | undefined,
+    set: (fn: (time: number) => unknown) => void,
+  ): boolean => {
+    const fn = get();
+    if (!fn) return false;
     const seek = fn as (time: number) => unknown;
     if (isWrapped(seek)) {
       applyManifest();
@@ -312,18 +332,24 @@ function studioManualEditsRenderRuntime(manifestContent: string): void {
       return result;
     };
     markWrapped(wrappedSeek);
-    owner[key] = wrappedSeek;
+    set(wrappedSeek);
     applyManifest();
     return true;
   };
 
   const wrapSeekFunctions = (): boolean => {
-    const runtimeWindow = window as Window & {
-      __hf?: { seek?: (time: number) => unknown };
-      __player?: { renderSeek?: (time: number) => unknown };
-    };
-    const wrappedHfSeek = wrapFunction(runtimeWindow.__hf, "seek");
-    const wrappedPlayerRenderSeek = wrapFunction(runtimeWindow.__player, "renderSeek");
+    const wrappedHfSeek = wrapFunction(
+      () => runtimeWindow.__hf?.seek,
+      (fn) => {
+        if (runtimeWindow.__hf) runtimeWindow.__hf.seek = fn;
+      },
+    );
+    const wrappedPlayerRenderSeek = wrapFunction(
+      () => runtimeWindow.__player?.renderSeek,
+      (fn) => {
+        if (runtimeWindow.__player) runtimeWindow.__player.renderSeek = fn;
+      },
+    );
     return wrappedHfSeek || wrappedPlayerRenderSeek;
   };
 
