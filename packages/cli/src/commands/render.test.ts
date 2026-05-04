@@ -47,6 +47,8 @@ describe("renderLocal browser GPU config", () => {
       }
     }
     vi.clearAllMocks();
+    vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
   it("passes an explicit software override for --no-browser-gpu even when env requests hardware", async () => {
@@ -129,6 +131,31 @@ describe("renderLocal browser GPU config", () => {
     });
 
     expect(producerState.createdJobs[0]?.variables).toBeUndefined();
+  });
+
+  it("can force the CLI process to exit after a successful local render", async () => {
+    vi.useFakeTimers();
+    const exit = vi
+      .spyOn(process, "exit")
+      .mockImplementation((code?: string | number | null): never => {
+        throw new Error(`process.exit:${code ?? ""}`);
+      });
+    const { renderLocal } = await import("./render.js");
+
+    await renderLocal("/tmp/project", "/tmp/out.mp4", {
+      fps: 30,
+      quality: "standard",
+      format: "mp4",
+      gpu: false,
+      browserGpu: true,
+      hdrMode: "auto",
+      quiet: true,
+      exitAfterComplete: true,
+    });
+
+    expect(exit).not.toHaveBeenCalled();
+    expect(() => vi.advanceTimersByTime(100)).toThrow("process.exit:0");
+    expect(exit).toHaveBeenCalledWith(0);
   });
 });
 

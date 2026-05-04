@@ -429,7 +429,19 @@ class HyperframesPlayer extends HTMLElement {
     if (data.type === "state") {
       this._currentTime = (data.frame ?? 0) / DEFAULT_FPS;
       const wasPlaying = !this._paused;
-      this._paused = !data.isPlaying;
+      const nextPaused = !data.isPlaying;
+      const completedPlayback =
+        this._duration > 0 && this._currentTime >= this._duration && (wasPlaying || data.isPlaying);
+
+      if (completedPlayback && this.loop) {
+        if (this._audioOwner === "parent") this._pauseParentMedia();
+        this._paused = nextPaused;
+        this.seek(0);
+        this.play();
+        return;
+      }
+
+      this._paused = nextPaused;
 
       // Under parent ownership the proxies are the audible output, so they
       // mirror the iframe's play/pause transitions (externally-driven pause
@@ -456,16 +468,11 @@ class HyperframesPlayer extends HTMLElement {
         );
       }
 
-      if (this._currentTime >= this._duration && !this._paused) {
+      if (completedPlayback) {
         if (this._audioOwner === "parent") this._pauseParentMedia();
-        if (this.loop) {
-          this.seek(0);
-          this.play();
-        } else {
-          this._paused = true;
-          this.controlsApi?.updatePlaying(false);
-          this.dispatchEvent(new Event("ended"));
-        }
+        this._paused = true;
+        this.controlsApi?.updatePlaying(false);
+        this.dispatchEvent(new Event("ended"));
       }
     }
 

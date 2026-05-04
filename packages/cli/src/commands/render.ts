@@ -363,6 +363,7 @@ export default defineCommand({
         videoBitrate,
         quiet,
         variables,
+        exitAfterComplete: true,
       });
     } else {
       await renderLocal(project.dir, outputPath, {
@@ -378,6 +379,7 @@ export default defineCommand({
         quiet,
         browserPath,
         variables,
+        exitAfterComplete: true,
       });
     }
   },
@@ -396,6 +398,7 @@ interface RenderOptions {
   quiet: boolean;
   browserPath?: string;
   variables?: Record<string, unknown>;
+  exitAfterComplete?: boolean;
 }
 
 export type VariablesParseError =
@@ -681,6 +684,7 @@ async function renderDocker(
   });
 
   printRenderComplete(outputPath, elapsed, options.quiet);
+  if (options.exitAfterComplete) scheduleRenderProcessExit();
 }
 
 export async function renderLocal(
@@ -729,6 +733,27 @@ export async function renderLocal(
   const elapsed = Date.now() - startTime;
   trackRenderMetrics(job, elapsed, options, false);
   printRenderComplete(outputPath, elapsed, options.quiet);
+  if (options.exitAfterComplete) scheduleRenderProcessExit();
+}
+
+type UnrefableTimer = {
+  unref: () => void;
+};
+
+function isUnrefableTimer(
+  timer: ReturnType<typeof setTimeout>,
+): timer is ReturnType<typeof setTimeout> & UnrefableTimer {
+  return (
+    typeof timer === "object" &&
+    timer !== null &&
+    "unref" in timer &&
+    typeof timer.unref === "function"
+  );
+}
+
+function scheduleRenderProcessExit(): void {
+  const timer = setTimeout(() => process.exit(0), 100);
+  if (isUnrefableTimer(timer)) timer.unref();
 }
 
 function getMemorySnapshot() {

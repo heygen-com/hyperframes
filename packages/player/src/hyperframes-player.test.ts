@@ -798,6 +798,62 @@ describe("HyperframesPlayer seek() sync path", () => {
   });
 });
 
+describe("HyperframesPlayer loop end-state handling", () => {
+  type PlayerInternal = HTMLElement & {
+    iframe: HTMLIFrameElement;
+    play: () => void;
+    seek: (timeInSeconds: number) => void;
+    loop: boolean;
+    _duration: number;
+    _paused: boolean;
+    _onMessage: (event: MessageEvent) => void;
+  };
+
+  let player: PlayerInternal;
+  let frameWindow: Window;
+
+  beforeEach(async () => {
+    await import("./hyperframes-player.js");
+    player = document.createElement("hyperframes-player") as PlayerInternal;
+    frameWindow = window;
+    vi.spyOn(frameWindow, "postMessage").mockImplementation(() => undefined);
+    Object.defineProperty(player.iframe, "contentWindow", {
+      configurable: true,
+      get: () => frameWindow,
+    });
+    document.body.appendChild(player);
+  });
+
+  afterEach(() => {
+    player.remove();
+    vi.restoreAllMocks();
+  });
+
+  it("wraps and keeps playing when a looping composition posts its final paused state", () => {
+    const seek = vi.spyOn(player, "seek");
+    const play = vi.spyOn(player, "play");
+    player.loop = true;
+    player._duration = 4;
+    player._paused = false;
+
+    player._onMessage(
+      new MessageEvent("message", {
+        source: frameWindow,
+        data: {
+          source: "hf-preview",
+          type: "state",
+          frame: 120,
+          isPlaying: false,
+        },
+      }),
+    );
+
+    expect(seek).toHaveBeenCalledWith(0);
+    expect(play).toHaveBeenCalled();
+    expect(player._paused).toBe(false);
+  });
+});
+
 describe("HyperframesPlayer srcdoc attribute", () => {
   type PlayerInternal = HTMLElement & {
     iframe: HTMLIFrameElement;
