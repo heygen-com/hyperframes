@@ -1,0 +1,146 @@
+<template id="scene-root-count-extrema-first-interpretation-template">
+  <div
+    id="scene-root-count-extrema-first-interpretation"
+    data-composition-id="scene-root-count-extrema-first-interpretation"
+    data-width="1920"
+    data-height="1080"
+  >
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      #scene-root-count-extrema-first-interpretation {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: linear-gradient(135deg, #f7f4ed 0%, #eef6f4 48%, #f4f0ff 100%);
+        color: #161616;
+        font-family: Inter, Arial, sans-serif;
+      }
+      #scene-root-count-extrema-first-interpretation::before {
+        content: "";
+        position: absolute;
+        inset: 40px;
+        border: 2px solid rgba(22, 22, 22, 0.16);
+        pointer-events: none;
+      }
+      .scene {
+        position: absolute;
+        inset: 116px 80px 80px;
+        display: grid;
+        grid-template-columns: minmax(0, 1.2fr) minmax(420px, 0.8fr);
+        grid-template-rows: auto auto minmax(0, 1fr) auto;
+        gap: 22px 44px;
+        padding: 56px;
+        border: 2px solid rgba(22, 22, 22, 0.18);
+        background: rgba(255, 255, 255, 0.86);
+        box-shadow: 0 18px 60px rgba(36, 49, 47, 0.12);
+      }
+      .scene-kicker {
+        grid-column: 1 / -1;
+        font-size: 24px;
+        font-weight: 800;
+        color: #8b2f2b;
+        text-transform: uppercase;
+      }
+      h1 {
+        margin: 0;
+        font-size: 64px;
+        line-height: 1.04;
+        color: #161616;
+      }
+      .goal {
+        margin: 0;
+        font-size: 31px;
+        line-height: 1.3;
+        color: #24312f;
+      }
+      .caption {
+        grid-row: 3 / 5;
+        margin: 0;
+        align-self: end;
+        padding: 30px 34px;
+        border-left: 8px solid #236c67;
+        background: #fffaf0;
+        font-size: 30px;
+        line-height: 1.38;
+        color: #161616;
+      }
+      .refs {
+        display: flex;
+        flex-wrap: wrap;
+        align-content: start;
+        gap: 12px;
+      }
+      .refs span {
+        max-width: 100%;
+        padding: 12px 16px;
+        border: 1px solid rgba(35, 108, 103, 0.34);
+        background: #e6f5f2;
+        color: #173f3c;
+        font-size: 22px;
+        line-height: 1.25;
+      }
+      .directive {
+        margin: 0;
+        align-self: end;
+        padding: 22px 24px;
+        border: 2px solid rgba(38, 32, 63, 0.24);
+        background: #f2e7b8;
+        color: #161616;
+        font-size: 24px;
+        line-height: 1.3;
+      }
+      .scene-tone-1 .caption {
+        border-color: #5b4b75;
+      }
+      .scene-tone-2 .caption {
+        border-color: #8b2f2b;
+      }
+      .scene-tone-3 .caption {
+        border-color: #315f9b;
+      }
+      .scene-tone-4 .caption {
+        border-color: #706117;
+      }
+    </style>
+    <section class="scene scene-tone-2">
+      <div class="scene-kicker">Scene 03 · Cues 61-100</div>
+      <h1>First root-count and extrema interpretation</h1>
+      <p class="goal">Connect roots of g'(x) with crossings and sign changes near x=2 and x=6.</p>
+      <p class="caption">
+        이것도 지금 GX가 FX로부터 출발해서 탐색하려고 하는데, 이걸로 바로 그릴 수는 없으니까 G'X를
+        기반으로 해서 어떻게 해석해야 할지 고민해봐야겠죠 G'X는 실근 2와 6을 금방 찾아야 하고,
+        함수값에 부호 변화가 있어야만 감수값이 존재하겠죠 결국 이건 절대값 차이 함수니까, F를 잘
+        그려보고 X는 지금 고정되어 있는 것 같네요, 그렇죠? 그래서 잘 탐색해보면서 2와 6에서 만나는
+        경우를 한번 찾아봐야겠어요 그게 아니면 이제 F랑 X를 따로 그려보면서 결정 체크해보는 거야
+        교점이 지금 부호 변화까지 되어야 한다는 걸 항상 잊으면 안 됩니다 이걸 종합해서 보면, 결국
+        마지막에 뭐가 나오냐면 F6과 G2를 곱한 게 음수입니다 그런데 이 조건은 딱히 연결되어 있는 게
+        없잖아 연결하려고 한 것도 아니었잖아요 그래서 굳이 한다면 이거 그냥 두 가지밖에 없죠 플러스
+        일대랑 마이너스 일대를 보고 생각을 해보면 되겠죠 자, 그럼 이제 여기까지 일차적으로 봤을 때
+        큰 방향이라고 한다면 일단 Fx를 그래프를 그려보면서 이 조건들을 가
+      </p>
+      <div class="refs">
+        <span>D1: \text{최고차항의 계수가 양수이고 }f(0)=0\text{ 인 삼차함수}f(x)</span
+        ><span>D2: \text{함수}\ g(x) = \int_0^x (|f(t)| - |t|)\,dt</span
+        ><span
+          >D3: (\text{가})\text{ 방정식 }g'(x)=0\text{ 의 서로 다른 실근의 개수는 }4\text{
+          이다.}</span
+        ><span>D4: (\text{나})\text{ 함수 }g(x)\text{는 }x=2, \ x=6\text{ 에서 극값을 갖는다.}</span
+        ><span>D5: f(6)\times g(2)&lt;0</span><span>L1-a: \text{좌표평면에 그려보기 시작}</span>
+      </div>
+      <p class="directive">Use crossing markers at x=2 and x=6.</p>
+    </section>
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines["scene-root-count-extrema-first-interpretation"] = {
+        seek() {},
+        duration() {
+          return 120;
+        },
+        pause() {},
+      };
+    </script>
+  </div>
+</template>

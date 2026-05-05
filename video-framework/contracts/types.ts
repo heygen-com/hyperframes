@@ -183,3 +183,25 @@ export interface ActiveVisualRef {
   readonly ref: string;
   readonly meaning: string | null;
 }
+
+export interface CompositionBuildManifest {
+  readonly schemaVersion: "hyperframes-composition-build.v0";
+  readonly sourcePlanPath: string;
+  readonly outputDir: string;
+  readonly layoutStrategy: string;
+  readonly files: readonly CompositionBuildFile[];
+  readonly diagnostics: CompositionBuildDiagnostics;
+  readonly validationCommands: readonly string[];
+}
+
+export interface CompositionBuildFile {
+  readonly path: string;
+  readonly role: "root-composition" | "scene-composition" | "build-manifest";
+  readonly derivedFrom: readonly string[];
+}
+
+export interface CompositionBuildDiagnostics {
+  readonly sceneCount: number;
+  readonly durationSeconds: number;
+  readonly unresolvedBottleneckIds: readonly string[];
+}

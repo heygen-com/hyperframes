@@ -40,6 +40,16 @@ what visual context it needs. Treat `diagnostics.cueCoverage` as the first
 review gate: uncovered cues are blocking, and duplicated cue indexes identify
 scene boundaries that need deliberate acceptance or adjustment.
 
+After reviewing the plan, generate a deterministic composition shell:
+
+```bash
+bun run video-framework/scripts/build-composition.ts \
+  --plan video-projects/palantir-math/15-abs-cubic-integral-extrema/plan/video-project-plan.json
+```
+
+This writes a root `index.html`, one sub-composition per semantic scene, and a
+`build-manifest.json` that records the plan-to-composition bridge.
+
 For composition HTML, follow the repo Hyperframes skills: design identity first,
 layout before animation, paused GSAP timelines on `window.__timelines`, and then
 `npx hyperframes lint` plus `npx hyperframes validate`.

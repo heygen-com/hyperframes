@@ -1,0 +1,153 @@
+<template id="scene-g-definition-and-g-prime-template">
+  <div
+    id="scene-g-definition-and-g-prime"
+    data-composition-id="scene-g-definition-and-g-prime"
+    data-width="1920"
+    data-height="1080"
+  >
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      #scene-g-definition-and-g-prime {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: linear-gradient(135deg, #f7f4ed 0%, #eef6f4 48%, #f4f0ff 100%);
+        color: #161616;
+        font-family: Inter, Arial, sans-serif;
+      }
+      #scene-g-definition-and-g-prime::before {
+        content: "";
+        position: absolute;
+        inset: 40px;
+        border: 2px solid rgba(22, 22, 22, 0.16);
+        pointer-events: none;
+      }
+      .scene {
+        position: absolute;
+        inset: 116px 80px 80px;
+        display: grid;
+        grid-template-columns: minmax(0, 1.2fr) minmax(420px, 0.8fr);
+        grid-template-rows: auto auto minmax(0, 1fr) auto;
+        gap: 22px 44px;
+        padding: 56px;
+        border: 2px solid rgba(22, 22, 22, 0.18);
+        background: rgba(255, 255, 255, 0.86);
+        box-shadow: 0 18px 60px rgba(36, 49, 47, 0.12);
+      }
+      .scene-kicker {
+        grid-column: 1 / -1;
+        font-size: 24px;
+        font-weight: 800;
+        color: #8b2f2b;
+        text-transform: uppercase;
+      }
+      h1 {
+        margin: 0;
+        font-size: 64px;
+        line-height: 1.04;
+        color: #161616;
+      }
+      .goal {
+        margin: 0;
+        font-size: 31px;
+        line-height: 1.3;
+        color: #24312f;
+      }
+      .caption {
+        grid-row: 3 / 5;
+        margin: 0;
+        align-self: end;
+        padding: 30px 34px;
+        border-left: 8px solid #236c67;
+        background: #fffaf0;
+        font-size: 30px;
+        line-height: 1.38;
+        color: #161616;
+      }
+      .refs {
+        display: flex;
+        flex-wrap: wrap;
+        align-content: start;
+        gap: 12px;
+      }
+      .refs span {
+        max-width: 100%;
+        padding: 12px 16px;
+        border: 1px solid rgba(35, 108, 103, 0.34);
+        background: #e6f5f2;
+        color: #173f3c;
+        font-size: 22px;
+        line-height: 1.25;
+      }
+      .directive {
+        margin: 0;
+        align-self: end;
+        padding: 22px 24px;
+        border: 2px solid rgba(38, 32, 63, 0.24);
+        background: #f2e7b8;
+        color: #161616;
+        font-size: 24px;
+        line-height: 1.3;
+      }
+      .scene-tone-1 .caption {
+        border-color: #5b4b75;
+      }
+      .scene-tone-2 .caption {
+        border-color: #8b2f2b;
+      }
+      .scene-tone-3 .caption {
+        border-color: #315f9b;
+      }
+      .scene-tone-4 .caption {
+        border-color: #706117;
+      }
+    </style>
+    <section class="scene scene-tone-1">
+      <div class="scene-kicker">Scene 02 · Cues 20-61</div>
+      <h1>Translate g(x) into derivative/root-count language</h1>
+      <p class="goal">
+        Move from the integral definition to g'(x)=0 and the meaning of four distinct roots.
+      </p>
+      <p class="caption">
+        미지수 도구, 좌표평면에서 뭔가 그려본다든지, 뒤에 이제 조건이 나오면 좀 줄일 수 있다든지
+        아직 방향을 정확히 모르겠어 여기까지만 일단 해놓고 그 다음에 이제 GX가 있어요 GX를 새로
+        정의했는데, FX에서 X를 빼면 적분 자 GX가 생기고, 0부터 X까지 적분하는 함수입니다 적분
+        함수인데 속을 들여다보니 FX가 절댓값이고, X도 절댓값이어서 차이 함수를 접근한 것입니다
+        이것도 아직 우리가 더 이상 해석을 해봤자 방향을 결정할 수 있는 것들은 없는 것 같아
+        여기까지만 해놓고, 그다음에 이제 가 나오죠? 가 조건이니까 방정식 G'X는 0의 서로 다른 실근의
+        개수가 우리가 GX가 적분 함수이기 때문에 G'X라는 것은 미적분학의 기본 정리로부터 나옵니다
+        그래서 이제 결국에 속에 있는 것들이 변수만 바뀌어서 그대로 나왔다는 거예요 이걸 그대로
+        가지고 해석을 해보면요 Y는 절대값 차이 함수였는데 선생님이 이걸 좌표 평면을 염두에 두고
+        해석한 거예요 서로 다른 실전의 개수를 보려면 합체를 해야 하잖아, 그렇지? 그래프는 거의
+      </p>
+      <div class="refs">
+        <span>D1: \text{최고차항의 계수가 양수이고 }f(0)=0\text{ 인 삼차함수}f(x)</span
+        ><span>D1:interp: f(x)=px^3+qx^2+rx \text{ (단, $p&gt;0$)}</span
+        ><span>D2: \text{함수}\ g(x) = \int_0^x (|f(t)| - |t|)\,dt</span
+        ><span
+          >D2:interp: g(x)\text{는}\mid f(t)\mid\text{와}\mid t \mid\text{의 차이함수를 적분}</span
+        ><span
+          >D3: (\text{가})\text{ 방정식 }g'(x)=0\text{ 의 서로 다른 실근의 개수는 }4\text{
+          이다.}</span
+        ><span
+          >D3:interp: y=\mid f(x) \mid - \mid x \mid\text{와 }x\text{축과의 교점의 개수가 }4. \text{
+          또는 } y=\mid f(x)\mid \text{와 } y=\mid x\mid \text{의 교점}</span
+        >
+      </div>
+      <p class="directive">Animate |f(x)| and |x| as two comparable curves.</p>
+    </section>
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines["scene-g-definition-and-g-prime"] = {
+        seek() {},
+        duration() {
+          return 120;
+        },
+        pause() {},
+      };
+    </script>
+  </div>
+</template>

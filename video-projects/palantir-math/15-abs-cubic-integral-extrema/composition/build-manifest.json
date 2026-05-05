@@ -1,0 +1,93 @@
+{
+  "schemaVersion": "hyperframes-composition-build.v0",
+  "sourcePlanPath": "../plan/video-project-plan.json",
+  "outputDir": "video-projects/palantir-math/15-abs-cubic-integral-extrema/composition",
+  "layoutStrategy": "root composition mounts one generated sub-composition per semantic scene; scene clips are timed from the reviewed VideoProjectPlan and advanced animation is deferred",
+  "files": [
+    {
+      "path": "index.html",
+      "role": "root-composition",
+      "derivedFrom": [
+        "VideoProjectPlan.project",
+        "VideoProjectPlan.scenes",
+        "VideoProjectPlan.metrics"
+      ]
+    },
+    {
+      "path": "compositions/intro-condition-decomposition.html",
+      "role": "scene-composition",
+      "derivedFrom": ["VideoProjectPlan.scenes", "ScenePlan.intro-condition-decomposition"]
+    },
+    {
+      "path": "compositions/g-definition-and-g-prime.html",
+      "role": "scene-composition",
+      "derivedFrom": ["VideoProjectPlan.scenes", "ScenePlan.g-definition-and-g-prime"]
+    },
+    {
+      "path": "compositions/root-count-extrema-first-interpretation.html",
+      "role": "scene-composition",
+      "derivedFrom": [
+        "VideoProjectPlan.scenes",
+        "ScenePlan.root-count-extrema-first-interpretation"
+      ]
+    },
+    {
+      "path": "compositions/revisit-g-prime-with-fixed-abs-x.html",
+      "role": "scene-composition",
+      "derivedFrom": ["VideoProjectPlan.scenes", "ScenePlan.revisit-g-prime-with-fixed-abs-x"]
+    },
+    {
+      "path": "compositions/extrema-as-crossing-sign-change.html",
+      "role": "scene-composition",
+      "derivedFrom": ["VideoProjectPlan.scenes", "ScenePlan.extrema-as-crossing-sign-change"]
+    },
+    {
+      "path": "compositions/avoid-abs-folding-use-f-vs-plus-minus-x.html",
+      "role": "scene-composition",
+      "derivedFrom": [
+        "VideoProjectPlan.scenes",
+        "ScenePlan.avoid-abs-folding-use-f-vs-plus-minus-x"
+      ]
+    },
+    {
+      "path": "compositions/construct-four-root-shape.html",
+      "role": "scene-composition",
+      "derivedFrom": ["VideoProjectPlan.scenes", "ScenePlan.construct-four-root-shape"]
+    },
+    {
+      "path": "compositions/final-sign-condition-f6-g2.html",
+      "role": "scene-composition",
+      "derivedFrom": ["VideoProjectPlan.scenes", "ScenePlan.final-sign-condition-f6-g2"]
+    },
+    {
+      "path": "compositions/g2-area-sign-inside-condition.html",
+      "role": "scene-composition",
+      "derivedFrom": ["VideoProjectPlan.scenes", "ScenePlan.g2-area-sign-inside-condition"]
+    },
+    {
+      "path": "compositions/final-shape-root-count-check.html",
+      "role": "scene-composition",
+      "derivedFrom": ["VideoProjectPlan.scenes", "ScenePlan.final-shape-root-count-check"]
+    },
+    {
+      "path": "compositions/pqr-f8-deferred-calculation.html",
+      "role": "scene-composition",
+      "derivedFrom": ["VideoProjectPlan.scenes", "ScenePlan.pqr-f8-deferred-calculation"]
+    },
+    {
+      "path": "build-manifest.json",
+      "role": "build-manifest",
+      "derivedFrom": ["VideoProjectPlan.diagnostics", "VideoProjectPlan.bottlenecks"]
+    }
+  ],
+  "diagnostics": {
+    "sceneCount": 11,
+    "durationSeconds": 1479.54,
+    "unresolvedBottleneckIds": ["script-to-scene-map", "visual-context-activation"]
+  },
+  "validationCommands": [
+    "npx hyperframes lint video-projects/palantir-math/15-abs-cubic-integral-extrema/composition",
+    "npx hyperframes validate video-projects/palantir-math/15-abs-cubic-integral-extrema/composition",
+    "npx hyperframes inspect video-projects/palantir-math/15-abs-cubic-integral-extrema/composition"
+  ]
+}

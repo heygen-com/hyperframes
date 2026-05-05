@@ -1,0 +1,153 @@
+<template id="scene-extrema-as-crossing-sign-change-template">
+  <div
+    id="scene-extrema-as-crossing-sign-change"
+    data-composition-id="scene-extrema-as-crossing-sign-change"
+    data-width="1920"
+    data-height="1080"
+  >
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      #scene-extrema-as-crossing-sign-change {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: linear-gradient(135deg, #f7f4ed 0%, #eef6f4 48%, #f4f0ff 100%);
+        color: #161616;
+        font-family: Inter, Arial, sans-serif;
+      }
+      #scene-extrema-as-crossing-sign-change::before {
+        content: "";
+        position: absolute;
+        inset: 40px;
+        border: 2px solid rgba(22, 22, 22, 0.16);
+        pointer-events: none;
+      }
+      .scene {
+        position: absolute;
+        inset: 116px 80px 80px;
+        display: grid;
+        grid-template-columns: minmax(0, 1.2fr) minmax(420px, 0.8fr);
+        grid-template-rows: auto auto minmax(0, 1fr) auto;
+        gap: 22px 44px;
+        padding: 56px;
+        border: 2px solid rgba(22, 22, 22, 0.18);
+        background: rgba(255, 255, 255, 0.86);
+        box-shadow: 0 18px 60px rgba(36, 49, 47, 0.12);
+      }
+      .scene-kicker {
+        grid-column: 1 / -1;
+        font-size: 24px;
+        font-weight: 800;
+        color: #8b2f2b;
+        text-transform: uppercase;
+      }
+      h1 {
+        margin: 0;
+        font-size: 64px;
+        line-height: 1.04;
+        color: #161616;
+      }
+      .goal {
+        margin: 0;
+        font-size: 31px;
+        line-height: 1.3;
+        color: #24312f;
+      }
+      .caption {
+        grid-row: 3 / 5;
+        margin: 0;
+        align-self: end;
+        padding: 30px 34px;
+        border-left: 8px solid #236c67;
+        background: #fffaf0;
+        font-size: 30px;
+        line-height: 1.38;
+        color: #161616;
+      }
+      .refs {
+        display: flex;
+        flex-wrap: wrap;
+        align-content: start;
+        gap: 12px;
+      }
+      .refs span {
+        max-width: 100%;
+        padding: 12px 16px;
+        border: 1px solid rgba(35, 108, 103, 0.34);
+        background: #e6f5f2;
+        color: #173f3c;
+        font-size: 22px;
+        line-height: 1.25;
+      }
+      .directive {
+        margin: 0;
+        align-self: end;
+        padding: 22px 24px;
+        border: 2px solid rgba(38, 32, 63, 0.24);
+        background: #f2e7b8;
+        color: #161616;
+        font-size: 24px;
+        line-height: 1.3;
+      }
+      .scene-tone-1 .caption {
+        border-color: #5b4b75;
+      }
+      .scene-tone-2 .caption {
+        border-color: #8b2f2b;
+      }
+      .scene-tone-3 .caption {
+        border-color: #315f9b;
+      }
+      .scene-tone-4 .caption {
+        border-color: #706117;
+      }
+    </style>
+    <section class="scene scene-tone-4">
+      <div class="scene-kicker">Scene 05 · Cues 153-197</div>
+      <h1>Interpret extrema as sign-changing crossings</h1>
+      <p class="goal">
+        Make D3 and D4 active together: four roots plus extrema at 2 and 6 require sign-change
+        crossings.
+      </p>
+      <p class="caption">
+        지금 여기서 탐색을 시작하면 아직도 경우가 너무 많아요, 그렇죠? 그래서 이제 조건을 계속
+        추가해서 보자고요 자, 그다음 조건을 보니까 함수 GX는 X가 2와 X가 6에서 극값을 갖는다 이것도
+        아까 보면 우리가 이거 해석할 때 어떻게 했어요 여러분? 부호 변화가 일어나야 한다 부호 변화를
+        봐야 하니까 결국 얘네들이 X는 2와 6을 기준으로 부호 변화가 일어나게끔 고정을 시켜줘야 한다는
+        거죠? 이만 예로 한번 들어보세요 이 예를 들어보면, 그래프가 있고 함수가 있을 때 2와 만나는
+        지점을 한번 만들어 볼게요 E와 만나는 지점이 여기 있습니다 여기에서 만나는 지점을 만들어
+        보니까 절대값이 사실 이 경우에는 올리든 안 올리든 똑같긴 한데, 이렇게 보면 여러분, E에서
+        만나는 건 맞지만 부호 변화가 있네요? 무슨 얘기냐면? 차이 함수입니다 FX에서 X를 뺀 것입니다
+        뺐을 때 그 차이가 부호 변화가 있냐고 플러스에서 마이너스로 바뀌었지 더 아래에 있잖아 그렇지?
+        차이를 구해보면 뭐 변화가 있다 근데 이 말도 조금 어렵죠 우리가
+      </p>
+      <div class="refs">
+        <span>D1: \text{최고차항의 계수가 양수이고 }f(0)=0\text{ 인 삼차함수}f(x)</span
+        ><span>D2: \text{함수}\ g(x) = \int_0^x (|f(t)| - |t|)\,dt</span
+        ><span
+          >D3: (\text{가})\text{ 방정식 }g'(x)=0\text{ 의 서로 다른 실근의 개수는 }4\text{
+          이다.}</span
+        ><span
+          >D2:interp: g(x)\text{는}\mid f(t)\mid\text{와}\mid t \mid\text{의 차이함수를 적분}</span
+        ><span>L2-a: \mid f(x)\mid,\mid x\mid \text{ 는 그려볼 수 있는가?}</span
+        ><span
+          >D4: (\text{나})\text{ 함수 }g(x)\text{는 }x=2, \ x=6\text{ 에서 극값을 갖는다.}</span
+        >
+      </div>
+      <p class="directive">Show four possible root slots before narrowing to valid crossings.</p>
+    </section>
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines["scene-extrema-as-crossing-sign-change"] = {
+        seek() {},
+        duration() {
+          return 120;
+        },
+        pause() {},
+      };
+    </script>
+  </div>
+</template>

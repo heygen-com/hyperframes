@@ -1,0 +1,151 @@
+<template id="scene-revisit-g-prime-with-fixed-abs-x-template">
+  <div
+    id="scene-revisit-g-prime-with-fixed-abs-x"
+    data-composition-id="scene-revisit-g-prime-with-fixed-abs-x"
+    data-width="1920"
+    data-height="1080"
+  >
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      #scene-revisit-g-prime-with-fixed-abs-x {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: linear-gradient(135deg, #f7f4ed 0%, #eef6f4 48%, #f4f0ff 100%);
+        color: #161616;
+        font-family: Inter, Arial, sans-serif;
+      }
+      #scene-revisit-g-prime-with-fixed-abs-x::before {
+        content: "";
+        position: absolute;
+        inset: 40px;
+        border: 2px solid rgba(22, 22, 22, 0.16);
+        pointer-events: none;
+      }
+      .scene {
+        position: absolute;
+        inset: 116px 80px 80px;
+        display: grid;
+        grid-template-columns: minmax(0, 1.2fr) minmax(420px, 0.8fr);
+        grid-template-rows: auto auto minmax(0, 1fr) auto;
+        gap: 22px 44px;
+        padding: 56px;
+        border: 2px solid rgba(22, 22, 22, 0.18);
+        background: rgba(255, 255, 255, 0.86);
+        box-shadow: 0 18px 60px rgba(36, 49, 47, 0.12);
+      }
+      .scene-kicker {
+        grid-column: 1 / -1;
+        font-size: 24px;
+        font-weight: 800;
+        color: #8b2f2b;
+        text-transform: uppercase;
+      }
+      h1 {
+        margin: 0;
+        font-size: 64px;
+        line-height: 1.04;
+        color: #161616;
+      }
+      .goal {
+        margin: 0;
+        font-size: 31px;
+        line-height: 1.3;
+        color: #24312f;
+      }
+      .caption {
+        grid-row: 3 / 5;
+        margin: 0;
+        align-self: end;
+        padding: 30px 34px;
+        border-left: 8px solid #236c67;
+        background: #fffaf0;
+        font-size: 30px;
+        line-height: 1.38;
+        color: #161616;
+      }
+      .refs {
+        display: flex;
+        flex-wrap: wrap;
+        align-content: start;
+        gap: 12px;
+      }
+      .refs span {
+        max-width: 100%;
+        padding: 12px 16px;
+        border: 1px solid rgba(35, 108, 103, 0.34);
+        background: #e6f5f2;
+        color: #173f3c;
+        font-size: 22px;
+        line-height: 1.25;
+      }
+      .directive {
+        margin: 0;
+        align-self: end;
+        padding: 22px 24px;
+        border: 2px solid rgba(38, 32, 63, 0.24);
+        background: #f2e7b8;
+        color: #161616;
+        font-size: 24px;
+        line-height: 1.3;
+      }
+      .scene-tone-1 .caption {
+        border-color: #5b4b75;
+      }
+      .scene-tone-2 .caption {
+        border-color: #8b2f2b;
+      }
+      .scene-tone-3 .caption {
+        border-color: #315f9b;
+      }
+      .scene-tone-4 .caption {
+        border-color: #706117;
+      }
+    </style>
+    <section class="scene scene-tone-3">
+      <div class="scene-kicker">Scene 04 · Cues 100-153</div>
+      <h1>Revisit g'(x) with |x| fixed</h1>
+      <p class="goal">
+        Use |x| as the fixed comparison curve and treat f(x) as the adjustable object.
+      </p>
+      <p class="caption">
+        이걸 어떻게 해결할 건가요? 미지수 가지고도 할 수 있는 게 없어요 그래서 이건 일단 넘어가는 게
+        좋겠죠 일단 생각만 하고 그 다음에 두 번째로 가는 거야 두 번째는 GX인데, 이거 역시 아까
+        어려웠죠? 그래서 이걸 차이안수 적분이라고 했으니까 이거 해석했던 거 어떻게 했어? G'X
+        기반으로 다 해석을 했잖아 그래서 결국에는 FX를 내가 지금 그리려고 뭔가 방향을 잡아놨으니까
+        G'X를 가지고 생각을 해보는거지 결국에는 FX'X 절대값 한거 그럼 그려볼 수 있냐? 어 이거 당연히
+        그릴 수 있어 절대값 X 그리고 FX는 지금 이 상태에서 그냥 접어 올려서 생각만 해보면 되겠죠
+        그래서 이제 여기에서 그래 볼 수 있다 그래 볼 수 있으니까 여기까지 해놓고 다음 조건을 계속
+        보는 거야 그럼 이제 가 조건 보니까 서로 다른 실근의 개수가 4가 나와야 돼 4 4가 나와야 되는데
+        지금 G'X는 0을 우리가 아까 좀 다르게 보는 게 좋겠죠 왜? FX를 지금 따로 부리고 있잖아 절댓값
+        X는 고정이 돼 있잖아 그렇지? 내가 지금 이거 한
+      </p>
+      <div class="refs">
+        <span>D1: \text{최고차항의 계수가 양수이고 }f(0)=0\text{ 인 삼차함수}f(x)</span
+        ><span>D2: \text{함수}\ g(x) = \int_0^x (|f(t)| - |t|)\,dt</span
+        ><span
+          >D3: (\text{가})\text{ 방정식 }g'(x)=0\text{ 의 서로 다른 실근의 개수는 }4\text{
+          이다.}</span
+        ><span>D4: (\text{나})\text{ 함수 }g(x)\text{는 }x=2, \ x=6\text{ 에서 극값을 갖는다.}</span
+        ><span>D5: f(6)\times g(2)&lt;0</span
+        ><span
+          >D2:interp: g(x)\text{는}\mid f(t)\mid\text{와}\mid t \mid\text{의 차이함수를 적분}</span
+        >
+      </div>
+      <p class="directive">Pin |x| visually while moving or reshaping f(x).</p>
+    </section>
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines["scene-revisit-g-prime-with-fixed-abs-x"] = {
+        seek() {},
+        duration() {
+          return 120;
+        },
+        pause() {},
+      };
+    </script>
+  </div>
+</template>

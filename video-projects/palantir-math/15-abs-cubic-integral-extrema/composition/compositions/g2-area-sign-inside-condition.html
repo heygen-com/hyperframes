@@ -1,0 +1,150 @@
+<template id="scene-g2-area-sign-inside-condition-template">
+  <div
+    id="scene-g2-area-sign-inside-condition"
+    data-composition-id="scene-g2-area-sign-inside-condition"
+    data-width="1920"
+    data-height="1080"
+  >
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      #scene-g2-area-sign-inside-condition {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: linear-gradient(135deg, #f7f4ed 0%, #eef6f4 48%, #f4f0ff 100%);
+        color: #161616;
+        font-family: Inter, Arial, sans-serif;
+      }
+      #scene-g2-area-sign-inside-condition::before {
+        content: "";
+        position: absolute;
+        inset: 40px;
+        border: 2px solid rgba(22, 22, 22, 0.16);
+        pointer-events: none;
+      }
+      .scene {
+        position: absolute;
+        inset: 116px 80px 80px;
+        display: grid;
+        grid-template-columns: minmax(0, 1.2fr) minmax(420px, 0.8fr);
+        grid-template-rows: auto auto minmax(0, 1fr) auto;
+        gap: 22px 44px;
+        padding: 56px;
+        border: 2px solid rgba(22, 22, 22, 0.18);
+        background: rgba(255, 255, 255, 0.86);
+        box-shadow: 0 18px 60px rgba(36, 49, 47, 0.12);
+      }
+      .scene-kicker {
+        grid-column: 1 / -1;
+        font-size: 24px;
+        font-weight: 800;
+        color: #8b2f2b;
+        text-transform: uppercase;
+      }
+      h1 {
+        margin: 0;
+        font-size: 64px;
+        line-height: 1.04;
+        color: #161616;
+      }
+      .goal {
+        margin: 0;
+        font-size: 31px;
+        line-height: 1.3;
+        color: #24312f;
+      }
+      .caption {
+        grid-row: 3 / 5;
+        margin: 0;
+        align-self: end;
+        padding: 30px 34px;
+        border-left: 8px solid #236c67;
+        background: #fffaf0;
+        font-size: 30px;
+        line-height: 1.38;
+        color: #161616;
+      }
+      .refs {
+        display: flex;
+        flex-wrap: wrap;
+        align-content: start;
+        gap: 12px;
+      }
+      .refs span {
+        max-width: 100%;
+        padding: 12px 16px;
+        border: 1px solid rgba(35, 108, 103, 0.34);
+        background: #e6f5f2;
+        color: #173f3c;
+        font-size: 22px;
+        line-height: 1.25;
+      }
+      .directive {
+        margin: 0;
+        align-self: end;
+        padding: 22px 24px;
+        border: 2px solid rgba(38, 32, 63, 0.24);
+        background: #f2e7b8;
+        color: #161616;
+        font-size: 24px;
+        line-height: 1.3;
+      }
+      .scene-tone-1 .caption {
+        border-color: #5b4b75;
+      }
+      .scene-tone-2 .caption {
+        border-color: #8b2f2b;
+      }
+      .scene-tone-3 .caption {
+        border-color: #315f9b;
+      }
+      .scene-tone-4 .caption {
+        border-color: #706117;
+      }
+    </style>
+    <section class="scene scene-tone-3">
+      <div class="scene-kicker">Scene 09 · Cues 385-456</div>
+      <h1>Explain g(2) as signed area</h1>
+      <p class="goal">Translate g(2)&lt;0 into accumulated signed area between |f(t)| and |t|.</p>
+      <p class="caption">
+        그래서 이 부분이 지금 양수이기 때문에 음수가 되도록 바꿔줘야 해요 근데 이걸 생각해보니까
+        음수가 되도록 바꾼다는 말이 조금 어려울 것 같아요 그래서 여기까지는 한번 해볼게 음수가
+        되려면 일단 이 경우도 되는지 한번 봐보세요 잠깐만, 음수가 되고 음수가 되고, 자 이 경우 하면
+        되나요? 다른 거 다 놔두고 G2가 음수다라는 말이 뭔지만 이 경우 한 번 이 경우를 보면, 이걸
+        만약에 선생님이 여러분 적분 절댓값 한 번 보여줄게 우리는 FX지만 절댓값 한 번 보여줄게 이거
+        지금 어떻게 돼? 여기 부분은 어떻게 돼? 차이가 지금 다 음수지, 음수 이거 다 더해봤자 음수죠
+        아, 이게 지금 음수일 때를 의미하는 거야 G까지 모두 더해봤을 때 음수가 되는 경우를 만든 거야
+        자, 그런데 이제 여기서 빠르게 생각해보면 다른 경우가 뭐가 있을까? 이런 식으로 해보자 자,
+        이런 것들 한번 생각해볼까요? 이런 것들? 이런 것들을 생각해보면 무조건 다 더해봤자 지금
+        양수죠 여기까지 다 더해봤자 양수가 될 것 같아 이런 식으로 음수가 될 때
+      </p>
+      <div class="refs">
+        <span>D1: \text{최고차항의 계수가 양수이고 }f(0)=0\text{ 인 삼차함수}f(x)</span
+        ><span>D2: \text{함수}\ g(x) = \int_0^x (|f(t)| - |t|)\,dt</span
+        ><span
+          >D3: (\text{가})\text{ 방정식 }g'(x)=0\text{ 의 서로 다른 실근의 개수는 }4\text{
+          이다.}</span
+        ><span>D4: (\text{나})\text{ 함수 }g(x)\text{는 }x=2, \ x=6\text{ 에서 극값을 갖는다.}</span
+        ><span>D5: f(6)\times g(2)&lt;0</span
+        ><span
+          >D4:interp: y=g'(x)\text{ 의 실근 }2,6\text{ 근방에서 함숫값의 부호변화}\text{ 또는 }
+          y=\mid f(x)\mid \text{와 } y=\mid x\mid \text{의 교점 근방에서의 부호변화}</span
+        >
+      </div>
+      <p class="directive">Shade negative and positive area regions separately.</p>
+    </section>
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines["scene-g2-area-sign-inside-condition"] = {
+        seek() {},
+        duration() {
+          return 180;
+        },
+        pause() {},
+      };
+    </script>
+  </div>
+</template>

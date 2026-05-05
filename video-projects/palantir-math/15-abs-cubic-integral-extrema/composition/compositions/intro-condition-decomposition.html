@@ -1,0 +1,145 @@
+<template id="scene-intro-condition-decomposition-template">
+  <div
+    id="scene-intro-condition-decomposition"
+    data-composition-id="scene-intro-condition-decomposition"
+    data-width="1920"
+    data-height="1080"
+  >
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      #scene-intro-condition-decomposition {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: linear-gradient(135deg, #f7f4ed 0%, #eef6f4 48%, #f4f0ff 100%);
+        color: #161616;
+        font-family: Inter, Arial, sans-serif;
+      }
+      #scene-intro-condition-decomposition::before {
+        content: "";
+        position: absolute;
+        inset: 40px;
+        border: 2px solid rgba(22, 22, 22, 0.16);
+        pointer-events: none;
+      }
+      .scene {
+        position: absolute;
+        inset: 116px 80px 80px;
+        display: grid;
+        grid-template-columns: minmax(0, 1.2fr) minmax(420px, 0.8fr);
+        grid-template-rows: auto auto minmax(0, 1fr) auto;
+        gap: 22px 44px;
+        padding: 56px;
+        border: 2px solid rgba(22, 22, 22, 0.18);
+        background: rgba(255, 255, 255, 0.86);
+        box-shadow: 0 18px 60px rgba(36, 49, 47, 0.12);
+      }
+      .scene-kicker {
+        grid-column: 1 / -1;
+        font-size: 24px;
+        font-weight: 800;
+        color: #8b2f2b;
+        text-transform: uppercase;
+      }
+      h1 {
+        margin: 0;
+        font-size: 64px;
+        line-height: 1.04;
+        color: #161616;
+      }
+      .goal {
+        margin: 0;
+        font-size: 31px;
+        line-height: 1.3;
+        color: #24312f;
+      }
+      .caption {
+        grid-row: 3 / 5;
+        margin: 0;
+        align-self: end;
+        padding: 30px 34px;
+        border-left: 8px solid #236c67;
+        background: #fffaf0;
+        font-size: 30px;
+        line-height: 1.38;
+        color: #161616;
+      }
+      .refs {
+        display: flex;
+        flex-wrap: wrap;
+        align-content: start;
+        gap: 12px;
+      }
+      .refs span {
+        max-width: 100%;
+        padding: 12px 16px;
+        border: 1px solid rgba(35, 108, 103, 0.34);
+        background: #e6f5f2;
+        color: #173f3c;
+        font-size: 22px;
+        line-height: 1.25;
+      }
+      .directive {
+        margin: 0;
+        align-self: end;
+        padding: 22px 24px;
+        border: 2px solid rgba(38, 32, 63, 0.24);
+        background: #f2e7b8;
+        color: #161616;
+        font-size: 24px;
+        line-height: 1.3;
+      }
+      .scene-tone-1 .caption {
+        border-color: #5b4b75;
+      }
+      .scene-tone-2 .caption {
+        border-color: #8b2f2b;
+      }
+      .scene-tone-3 .caption {
+        border-color: #315f9b;
+      }
+      .scene-tone-4 .caption {
+        border-color: #706117;
+      }
+    </style>
+    <section class="scene scene-tone-0">
+      <div class="scene-kicker">Scene 01 · Cues 1-20</div>
+      <h1>Decompose the problem conditions</h1>
+      <p class="goal">
+        Open from the final edited lecture script and establish D1-D2 as the first visual context.
+      </p>
+      <p class="caption">
+        자, 이제 우리가 15번 마지막 문제예요 15번 객관식에서 마지막 문제다 보니까 조건들이 조금
+        복잡해지는 것 같아 근데 이거 우리가 복잡한 문제일수록 조건들을 잘 분해합니다 분해를 잘
+        시켜서 각각 분해한 것들을 정확히 이해하고 그 다음에 연결해서 진행하면 돼 그렇게 되면 결국
+        답이 나오는 곳에 있어서 꽤 어려운 점은 없을 거예요 자, 그럼 이제 처음부터 한번 봅시다 처음
+        조건이 뭐냐면 3차 함수가 지금 나오죠 3차 함수가 나오는데, 3차 함수만 가지고 해석을 할 때
+        나올 수 있는 게 사실 PQR 미지수 도구,
+      </p>
+      <div class="refs">
+        <span>D1: \text{최고차항의 계수가 양수이고 }f(0)=0\text{ 인 삼차함수}f(x)</span
+        ><span>D1:interp: f(x)=px^3+qx^2+rx \text{ (단, $p&gt;0$)}</span
+        ><span>D2: \text{함수}\ g(x) = \int_0^x (|f(t)| - |t|)\,dt</span
+        ><span
+          >D2:interp: g(x)\text{는}\mid f(t)\mid\text{와}\mid t \mid\text{의 차이함수를 적분}</span
+        >
+      </div>
+      <p class="directive">
+        Reveal the cubic-function condition before showing the integral definition.
+      </p>
+    </section>
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines["scene-intro-condition-decomposition"] = {
+        seek() {},
+        duration() {
+          return 60;
+        },
+        pause() {},
+      };
+    </script>
+  </div>
+</template>

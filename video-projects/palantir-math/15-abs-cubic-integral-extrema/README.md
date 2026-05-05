@@ -49,13 +49,34 @@ For this fixture, duplicated cue indexes are expected at some scene boundaries
 because the SRT cue can straddle a semantic scene cut. Uncovered cues are not
 expected and should block composition generation.
 
+## Generated Composition
+
+Run from the Hyperframes repo root after the plan has been reviewed:
+
+```bash
+bun run video-framework/scripts/build-composition.ts \
+  --plan video-projects/palantir-math/15-abs-cubic-integral-extrema/plan/video-project-plan.json
+```
+
+Output:
+
+```text
+video-projects/palantir-math/15-abs-cubic-integral-extrema/composition/
+```
+
+The generated root mounts one sub-composition per semantic scene. This keeps
+each scene file small enough for Hyperframes lint and future agent revision.
+The shell is intentionally layout-first: it proves timing, scene mounting,
+captions, and visual-context references before advanced animation is added.
+
 ## Loop Contract
 
 1. Parse final SRT/script into a typed timeline.
 2. Map the timeline to semantic scenes and active Sequencer refs.
 3. Review `diagnostics.cueCoverage` and accept or adjust boundary duplicates.
 4. Generate a Hyperframes composition from the scene plan.
-5. Run `npx hyperframes lint` and `npx hyperframes inspect`.
+5. Run `npx hyperframes lint`, `npx hyperframes validate`, and `npx hyperframes
+inspect`.
 6. Backpropagate timing, caption, or visual-context failures into the TypeScript
    scene mapping rules before editing the renderer.
 

@@ -1,0 +1,152 @@
+<template id="scene-final-sign-condition-f6-g2-template">
+  <div
+    id="scene-final-sign-condition-f6-g2"
+    data-composition-id="scene-final-sign-condition-f6-g2"
+    data-width="1920"
+    data-height="1080"
+  >
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      #scene-final-sign-condition-f6-g2 {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: linear-gradient(135deg, #f7f4ed 0%, #eef6f4 48%, #f4f0ff 100%);
+        color: #161616;
+        font-family: Inter, Arial, sans-serif;
+      }
+      #scene-final-sign-condition-f6-g2::before {
+        content: "";
+        position: absolute;
+        inset: 40px;
+        border: 2px solid rgba(22, 22, 22, 0.16);
+        pointer-events: none;
+      }
+      .scene {
+        position: absolute;
+        inset: 116px 80px 80px;
+        display: grid;
+        grid-template-columns: minmax(0, 1.2fr) minmax(420px, 0.8fr);
+        grid-template-rows: auto auto minmax(0, 1fr) auto;
+        gap: 22px 44px;
+        padding: 56px;
+        border: 2px solid rgba(22, 22, 22, 0.18);
+        background: rgba(255, 255, 255, 0.86);
+        box-shadow: 0 18px 60px rgba(36, 49, 47, 0.12);
+      }
+      .scene-kicker {
+        grid-column: 1 / -1;
+        font-size: 24px;
+        font-weight: 800;
+        color: #8b2f2b;
+        text-transform: uppercase;
+      }
+      h1 {
+        margin: 0;
+        font-size: 64px;
+        line-height: 1.04;
+        color: #161616;
+      }
+      .goal {
+        margin: 0;
+        font-size: 31px;
+        line-height: 1.3;
+        color: #24312f;
+      }
+      .caption {
+        grid-row: 3 / 5;
+        margin: 0;
+        align-self: end;
+        padding: 30px 34px;
+        border-left: 8px solid #236c67;
+        background: #fffaf0;
+        font-size: 30px;
+        line-height: 1.38;
+        color: #161616;
+      }
+      .refs {
+        display: flex;
+        flex-wrap: wrap;
+        align-content: start;
+        gap: 12px;
+      }
+      .refs span {
+        max-width: 100%;
+        padding: 12px 16px;
+        border: 1px solid rgba(35, 108, 103, 0.34);
+        background: #e6f5f2;
+        color: #173f3c;
+        font-size: 22px;
+        line-height: 1.25;
+      }
+      .directive {
+        margin: 0;
+        align-self: end;
+        padding: 22px 24px;
+        border: 2px solid rgba(38, 32, 63, 0.24);
+        background: #f2e7b8;
+        color: #161616;
+        font-size: 24px;
+        line-height: 1.3;
+      }
+      .scene-tone-1 .caption {
+        border-color: #5b4b75;
+      }
+      .scene-tone-2 .caption {
+        border-color: #8b2f2b;
+      }
+      .scene-tone-3 .caption {
+        border-color: #315f9b;
+      }
+      .scene-tone-4 .caption {
+        border-color: #706117;
+      }
+    </style>
+    <section class="scene scene-tone-2">
+      <div class="scene-kicker">Scene 08 · Cues 327-385</div>
+      <h1>Apply f(6) x g(2) &lt; 0</h1>
+      <p class="goal">
+        Use D5 as the decisive condition and split cases by signs of f(6) and g(2).
+      </p>
+      <p class="caption">
+        이 조건이 이제 마지막이다 이 조건이 이제 나머지를 확실하게 결정해 줄 거예요 자, 그래서 이제
+        우리가 플러스냐 마이너스냐 경우를 나눠서 마지막에 볼 건데, 여기까지 결정된 걸 가지고 기준을
+        한 번 잡아야죠 F6이냐 G2냐 뭐부터 할 거예요? 생각해보면 F6이 있죠 당연히 여러분이 Fx를
+        가지고 탐색을 하고 있으니까 F6을 양수일 때랑 음수일 때랑 찾아보면 됩니다, 맞죠? 그래서 F6이
+        양수일 때라고 생각해보면, F6이 양수일 때 지금 이 경우네요 F6이 양수일 때는 이 경우가 딱
+        들어맞네요 일단 가 만족했죠 나도 만족했어 여기에서 마지막 조건에서 F6이 양수일 때도 만족했어
+        그럼 이제 남은 게 뭐야? 남은 게 G2가 음수일 때야 음수, 아 근데 지금 이 G2가 무슨
+        의미인지부터 알아야 내가 그 FX에 적용해볼 수 있잖아? 그치? 그러니까 G2가 음수라는 말은 결국
+        뭐냐? 무슨 의미야? FX 입장에서는 무슨 의미야? 그걸 이제 생각해보는 거야 자 그래서 GX를 다시
+        보면 GX는 지금 절대값 차이 함수를 적분한 거예요
+      </p>
+      <div class="refs">
+        <span>D1: \text{최고차항의 계수가 양수이고 }f(0)=0\text{ 인 삼차함수}f(x)</span
+        ><span>D2: \text{함수}\ g(x) = \int_0^x (|f(t)| - |t|)\,dt</span
+        ><span
+          >D3: (\text{가})\text{ 방정식 }g'(x)=0\text{ 의 서로 다른 실근의 개수는 }4\text{
+          이다.}</span
+        ><span>D4: (\text{나})\text{ 함수 }g(x)\text{는 }x=2, \ x=6\text{ 에서 극값을 갖는다.}</span
+        ><span>D5: f(6)\times g(2)&lt;0</span
+        ><span
+          >D4:interp: y=g'(x)\text{ 의 실근 }2,6\text{ 근방에서 함숫값의 부호변화}\text{ 또는 }
+          y=\mid f(x)\mid \text{와 } y=\mid x\mid \text{의 교점 근방에서의 부호변화}</span
+        >
+      </div>
+      <p class="directive">Show f(6) and g(2) as separate sign tiles.</p>
+    </section>
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines["scene-final-sign-condition-f6-g2"] = {
+        seek() {},
+        duration() {
+          return 150;
+        },
+        pause() {},
+      };
+    </script>
+  </div>
+</template>

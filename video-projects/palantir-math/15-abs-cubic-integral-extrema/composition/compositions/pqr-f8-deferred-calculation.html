@@ -1,0 +1,146 @@
+<template id="scene-pqr-f8-deferred-calculation-template">
+  <div
+    id="scene-pqr-f8-deferred-calculation"
+    data-composition-id="scene-pqr-f8-deferred-calculation"
+    data-width="1920"
+    data-height="1080"
+  >
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      #scene-pqr-f8-deferred-calculation {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: linear-gradient(135deg, #f7f4ed 0%, #eef6f4 48%, #f4f0ff 100%);
+        color: #161616;
+        font-family: Inter, Arial, sans-serif;
+      }
+      #scene-pqr-f8-deferred-calculation::before {
+        content: "";
+        position: absolute;
+        inset: 40px;
+        border: 2px solid rgba(22, 22, 22, 0.16);
+        pointer-events: none;
+      }
+      .scene {
+        position: absolute;
+        inset: 116px 80px 80px;
+        display: grid;
+        grid-template-columns: minmax(0, 1.2fr) minmax(420px, 0.8fr);
+        grid-template-rows: auto auto minmax(0, 1fr) auto;
+        gap: 22px 44px;
+        padding: 56px;
+        border: 2px solid rgba(22, 22, 22, 0.18);
+        background: rgba(255, 255, 255, 0.86);
+        box-shadow: 0 18px 60px rgba(36, 49, 47, 0.12);
+      }
+      .scene-kicker {
+        grid-column: 1 / -1;
+        font-size: 24px;
+        font-weight: 800;
+        color: #8b2f2b;
+        text-transform: uppercase;
+      }
+      h1 {
+        margin: 0;
+        font-size: 64px;
+        line-height: 1.04;
+        color: #161616;
+      }
+      .goal {
+        margin: 0;
+        font-size: 31px;
+        line-height: 1.3;
+        color: #24312f;
+      }
+      .caption {
+        grid-row: 3 / 5;
+        margin: 0;
+        align-self: end;
+        padding: 30px 34px;
+        border-left: 8px solid #236c67;
+        background: #fffaf0;
+        font-size: 30px;
+        line-height: 1.38;
+        color: #161616;
+      }
+      .refs {
+        display: flex;
+        flex-wrap: wrap;
+        align-content: start;
+        gap: 12px;
+      }
+      .refs span {
+        max-width: 100%;
+        padding: 12px 16px;
+        border: 1px solid rgba(35, 108, 103, 0.34);
+        background: #e6f5f2;
+        color: #173f3c;
+        font-size: 22px;
+        line-height: 1.25;
+      }
+      .directive {
+        margin: 0;
+        align-self: end;
+        padding: 22px 24px;
+        border: 2px solid rgba(38, 32, 63, 0.24);
+        background: #f2e7b8;
+        color: #161616;
+        font-size: 24px;
+        line-height: 1.3;
+      }
+      .scene-tone-1 .caption {
+        border-color: #5b4b75;
+      }
+      .scene-tone-2 .caption {
+        border-color: #8b2f2b;
+      }
+      .scene-tone-3 .caption {
+        border-color: #315f9b;
+      }
+      .scene-tone-4 .caption {
+        border-color: #706117;
+      }
+    </style>
+    <section class="scene scene-tone-0">
+      <div class="scene-kicker">Scene 11 · Cues 501-520</div>
+      <h1>Leave the algebraic calculation as the next step</h1>
+      <p class="goal">
+        Close by naming the three equations that determine P, Q, R and defer the arithmetic.
+      </p>
+      <p class="caption">
+        이걸 다 결정할 수 있을까요? 이제 그거를 마지막에 확인만 하면 되겠죠 F8을 지금 구하려고
+        보니까 PQR을 구하려면 C 몇 개 있어야 돼요? 3개 있습니다. 3개 지금 F0에서 접하도록 만들면
+        되겠지 접하도록 F'0이 1이면 되겠죠 이거 하나 있고요 그 다음에 F2가 또 나오네 F2 나오고
+        마이너스 2면 되겠죠 그 다음에 이제 마지막에 F6 F6이 6이면 돼요 됐니? 자, 3가지 식이 필요한데
+        3개 다 나왔어 그럼 PQR까지 그 다음에 이렇게 해석만 하면 여러분들이 F8까지도 할 수 있어요
+        됐죠? 자, 그래서 이제 쌤이 여기까지만 하고 계산은 여러분들한테 맡길게요 나머지는 다음 시간에
+        합시다
+      </p>
+      <div class="refs">
+        <span>L-a: \text{그래프}\rightarrow \text{수식}</span
+        ><span>D1: \text{최고차항의 계수가 양수이고 }f(0)=0\text{ 인 삼차함수}f(x)</span
+        ><span>D2: \text{함수}\ g(x) = \int_0^x (|f(t)| - |t|)\,dt</span
+        ><span
+          >D3: (\text{가})\text{ 방정식 }g'(x)=0\text{ 의 서로 다른 실근의 개수는 }4\text{
+          이다.}</span
+        ><span>D4: (\text{나})\text{ 함수 }g(x)\text{는 }x=2, \ x=6\text{ 에서 극값을 갖는다.}</span
+        ><span>D5: f(6)\times g(2)&lt;0</span>
+      </div>
+      <p class="directive">Switch from graph space to a three-equation summary.</p>
+    </section>
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines["scene-pqr-f8-deferred-calculation"] = {
+        seek() {},
+        duration() {
+          return 70;
+        },
+        pause() {},
+      };
+    </script>
+  </div>
+</template>

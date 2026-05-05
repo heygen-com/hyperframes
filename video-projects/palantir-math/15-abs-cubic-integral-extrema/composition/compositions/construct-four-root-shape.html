@@ -1,0 +1,151 @@
+<template id="scene-construct-four-root-shape-template">
+  <div
+    id="scene-construct-four-root-shape"
+    data-composition-id="scene-construct-four-root-shape"
+    data-width="1920"
+    data-height="1080"
+  >
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      #scene-construct-four-root-shape {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: linear-gradient(135deg, #f7f4ed 0%, #eef6f4 48%, #f4f0ff 100%);
+        color: #161616;
+        font-family: Inter, Arial, sans-serif;
+      }
+      #scene-construct-four-root-shape::before {
+        content: "";
+        position: absolute;
+        inset: 40px;
+        border: 2px solid rgba(22, 22, 22, 0.16);
+        pointer-events: none;
+      }
+      .scene {
+        position: absolute;
+        inset: 116px 80px 80px;
+        display: grid;
+        grid-template-columns: minmax(0, 1.2fr) minmax(420px, 0.8fr);
+        grid-template-rows: auto auto minmax(0, 1fr) auto;
+        gap: 22px 44px;
+        padding: 56px;
+        border: 2px solid rgba(22, 22, 22, 0.18);
+        background: rgba(255, 255, 255, 0.86);
+        box-shadow: 0 18px 60px rgba(36, 49, 47, 0.12);
+      }
+      .scene-kicker {
+        grid-column: 1 / -1;
+        font-size: 24px;
+        font-weight: 800;
+        color: #8b2f2b;
+        text-transform: uppercase;
+      }
+      h1 {
+        margin: 0;
+        font-size: 64px;
+        line-height: 1.04;
+        color: #161616;
+      }
+      .goal {
+        margin: 0;
+        font-size: 31px;
+        line-height: 1.3;
+        color: #24312f;
+      }
+      .caption {
+        grid-row: 3 / 5;
+        margin: 0;
+        align-self: end;
+        padding: 30px 34px;
+        border-left: 8px solid #236c67;
+        background: #fffaf0;
+        font-size: 30px;
+        line-height: 1.38;
+        color: #161616;
+      }
+      .refs {
+        display: flex;
+        flex-wrap: wrap;
+        align-content: start;
+        gap: 12px;
+      }
+      .refs span {
+        max-width: 100%;
+        padding: 12px 16px;
+        border: 1px solid rgba(35, 108, 103, 0.34);
+        background: #e6f5f2;
+        color: #173f3c;
+        font-size: 22px;
+        line-height: 1.25;
+      }
+      .directive {
+        margin: 0;
+        align-self: end;
+        padding: 22px 24px;
+        border: 2px solid rgba(38, 32, 63, 0.24);
+        background: #f2e7b8;
+        color: #161616;
+        font-size: 24px;
+        line-height: 1.3;
+      }
+      .scene-tone-1 .caption {
+        border-color: #5b4b75;
+      }
+      .scene-tone-2 .caption {
+        border-color: #8b2f2b;
+      }
+      .scene-tone-3 .caption {
+        border-color: #315f9b;
+      }
+      .scene-tone-4 .caption {
+        border-color: #706117;
+      }
+    </style>
+    <section class="scene scene-tone-1">
+      <div class="scene-kicker">Scene 07 · Cues 271-327</div>
+      <h1>Construct the four-root shape</h1>
+      <p class="goal">
+        Build the candidate shape that can satisfy four roots and the extrema information.
+      </p>
+      <p class="caption">
+        자, 그래서 이제 우리가 결국에는 Y는 F랑 Y는의 교점을 가지고 해석을 해보면 되는 거야 자, 근데
+        지금 여기에서 우리가 조건이 여기서 끝난 거야? 더 있죠? 더 있나요? 일단 X는 2와 6이 있고,
+        실근의 개수가 4로 나왔습니다 여기에서 확실히 우리가 뭔가 결정을 할 수 있을 것 같고, 지금
+        어느 정도 결정이 된 것 같아요 자 그래서 여기에서 하나만 만들어보자 일단 0에서는 무조건
+        만나니까 그냥 놔두면 되고요 자 X는 2에서 어떻게 돼야 돼? 2에서 교차하면서 만나야 돼 이 경우
+        하나 있지 그 다음에 이제 어떻게 할 거야? 6에서도 만나줘야 되니까 6에서 만났는데 이번에
+        밑에서 이렇게 해볼게요 특정한 경우 하나만 살펴볼게요 이거 한번 보세요 이거 보면 지금 여기
+        2와 6에서 만나긴 하지만 결국 이게 대칭이 되니까 Y는 X든 마이너스 X든 어느 쪽에서든 만나게
+        돼, 그렇지? 이렇게 해서 실근의 개수가 4가 되도록 만들어야 하는데, 확실히 만나야 하는 점이
+        뭐냐면 0, 2, 6, 2 기준으로 5개 점이 있지 5개 점에
+      </p>
+      <div class="refs">
+        <span>D1: \text{최고차항의 계수가 양수이고 }f(0)=0\text{ 인 삼차함수}f(x)</span
+        ><span>D2: \text{함수}\ g(x) = \int_0^x (|f(t)| - |t|)\,dt</span
+        ><span
+          >D3: (\text{가})\text{ 방정식 }g'(x)=0\text{ 의 서로 다른 실근의 개수는 }4\text{
+          이다.}</span
+        ><span>D4: (\text{나})\text{ 함수 }g(x)\text{는 }x=2, \ x=6\text{ 에서 극값을 갖는다.}</span
+        ><span
+          >D4:interp: y=g'(x)\text{ 의 실근 }2,6\text{ 근방에서 함숫값의 부호변화}\text{ 또는 }
+          y=\mid f(x)\mid \text{와 } y=\mid x\mid \text{의 교점 근방에서의 부호변화}</span
+        ><span>L4-b: f(x)\text{ 와 } x\text{ 만을 가지고 접근하는 방법?}</span>
+      </div>
+      <p class="directive">Accumulate root markers in sequence.</p>
+    </section>
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines["scene-construct-four-root-shape"] = {
+        seek() {},
+        duration() {
+          return 150;
+        },
+        pause() {},
+      };
+    </script>
+  </div>
+</template>

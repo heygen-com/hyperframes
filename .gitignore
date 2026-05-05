@@ -120,3 +120,11 @@ video-projects/**/captures/
 video-projects/**/audit/*.png
 video-projects/**/audit/*.webm
 video-projects/**/audit/*.mp4
+
+# Generated composition source from the video framework is reviewable project
+# state, unlike local scratch `compositions/` directories above.
+!video-projects/**/composition/
+!video-projects/**/composition/index.html
+!video-projects/**/composition/build-manifest.json
+!video-projects/**/composition/compositions/
+!video-projects/**/composition/compositions/*.html
