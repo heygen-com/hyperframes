@@ -637,7 +637,10 @@ export function StudioApp() {
     // Debounce the server write (600ms)
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
-      fetch(`/api/projects/${pid}/files/${encodeURIComponent(path)}`, {
+      const currentPid = projectIdRef.current;
+      const currentPath = editingPathRef.current;
+      if (!currentPid || !currentPath) return;
+      fetch(`/api/projects/${currentPid}/files/${encodeURIComponent(currentPath)}`, {
         method: "PUT",
         headers: { "Content-Type": "text/plain" },
         body: content,
