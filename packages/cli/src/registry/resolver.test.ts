@@ -1,6 +1,11 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import type { RegistryItem, RegistryManifest } from "@hyperframes/core";
-import { listRegistryItems, loadAllItems, resolveItem } from "./resolver.js";
+import {
+  listRegistryItems,
+  loadAllItems,
+  resolveItem,
+  resolveItemWithDependencies,
+} from "./resolver.js";
 
 const MANIFEST: RegistryManifest = {
   $schema: "https://hyperframes.heygen.com/schema/registry.json",
@@ -13,6 +18,11 @@ const MANIFEST: RegistryManifest = {
   ],
 };
 
+const DEPENDENCIES: Record<string, string[] | undefined> = {
+  beta: ["alpha"],
+  gamma: ["beta"],
+};
+
 function buildItem(name: string, type: "hyperframes:example" | "hyperframes:block"): RegistryItem {
   if (type === "hyperframes:example") {
     return {
@@ -22,6 +32,7 @@ function buildItem(name: string, type: "hyperframes:example" | "hyperframes:bloc
       description: `${name} desc`,
       dimensions: { width: 1920, height: 1080 },
       duration: 10,
+      registryDependencies: DEPENDENCIES[name],
       files: [{ path: "index.html", target: "index.html", type: "hyperframes:composition" }],
     };
   }
@@ -32,6 +43,7 @@ function buildItem(name: string, type: "hyperframes:example" | "hyperframes:bloc
     description: `${name} desc`,
     dimensions: { width: 1080, height: 1350 },
     duration: 6,
+    registryDependencies: DEPENDENCIES[name],
     files: [
       {
         path: `${name}.html`,
@@ -42,7 +54,13 @@ function buildItem(name: string, type: "hyperframes:example" | "hyperframes:bloc
   };
 }
 
-function mockFetch(overrides: Record<string, unknown> = {}): void {
+function mockFetch(
+  overrides: {
+    registryFails?: boolean;
+    missing?: string[];
+    dependencies?: Record<string, string[] | undefined>;
+  } = {},
+): void {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (urlInput: string | URL) => {
@@ -51,9 +69,13 @@ function mockFetch(overrides: Record<string, unknown> = {}): void {
         return new Response(JSON.stringify(MANIFEST), { status: 200 });
       }
       const m = /\/(examples|blocks|components)\/([^/]+)\/registry-item\.json$/.exec(url);
-      if (m && !(overrides.missing as string[] | undefined)?.includes(m[2]!)) {
+      if (m && !overrides.missing?.includes(m[2]!)) {
         const type = m[1] === "examples" ? "hyperframes:example" : "hyperframes:block";
-        return new Response(JSON.stringify(buildItem(m[2]!, type)), { status: 200 });
+        const item = buildItem(m[2]!, type);
+        if (overrides.dependencies && item.name in overrides.dependencies) {
+          item.registryDependencies = overrides.dependencies[item.name];
+        }
+        return new Response(JSON.stringify(item), { status: 200 });
       }
       return new Response("not found", { status: 404 });
     }),
@@ -138,6 +160,30 @@ describe("registry resolver", () => {
       );
       const baseUrl = uniqueBaseUrl();
       await expect(resolveItem("alpha", { baseUrl })).rejects.toThrow(/unreachable/);
+    });
+  });
+
+  describe("resolveItemWithDependencies", () => {
+    it("returns dependencies first, then the requested item", async () => {
+      const baseUrl = uniqueBaseUrl();
+      const items = await resolveItemWithDependencies("gamma", { baseUrl });
+      expect(items.map((item) => item.name)).toEqual(["alpha", "beta", "gamma"]);
+    });
+
+    it("throws when a transitive dependency is missing from the registry", async () => {
+      mockFetch({ dependencies: { beta: ["does-not-exist"], gamma: ["beta"] } });
+      const baseUrl = uniqueBaseUrl();
+      await expect(resolveItemWithDependencies("gamma", { baseUrl })).rejects.toThrow(
+        /Dependency "does-not-exist" not found in registry/,
+      );
+    });
+
+    it("throws a clear cycle error for circular dependencies", async () => {
+      mockFetch({ dependencies: { alpha: ["gamma"], beta: ["alpha"], gamma: ["beta"] } });
+      const baseUrl = uniqueBaseUrl();
+      await expect(resolveItemWithDependencies("gamma", { baseUrl })).rejects.toThrow(
+        /Circular registryDependencies detected/,
+      );
     });
   });
 });

@@ -1,7 +1,6 @@
 /**
  * Registry resolver — loads the top-level manifest and per-item manifests.
- * No transitive dependency resolution yet (examples don't have any); added
- * when blocks/components need it for the `add` command.
+ * Supports transitive `registryDependencies` resolution for install flows.
  */
 
 import type { ItemType, RegistryItem, RegistryManifestEntry } from "@hyperframes/core";
@@ -63,27 +62,87 @@ export async function loadAllItems(
   return items;
 }
 
+function formatAvailable(entries: RegistryManifestEntry[]): string {
+  return entries.map((e) => e.name).join(", ");
+}
+
 /**
  * Resolve a single item by name. Throws if unknown or unreachable.
- *
- * TODO: walk registryDependencies transitively and return a topo-sorted
- * list of items. Today examples have no deps so this returns a single item.
- * Blocks and components will need transitive resolution once they ship with
- * deps (seed items in Phase B).
  */
 export async function resolveItem(
   name: string,
   options: ResolveOptions = {},
 ): Promise<RegistryItem> {
+  const items = await resolveItemWithDependencies(name, options);
+  const item = items[items.length - 1];
+  if (!item) {
+    throw new Error(`Item "${name}" not found — registry unreachable or empty.`);
+  }
+  return item;
+}
+
+/**
+ * Resolve one item and all of its transitive `registryDependencies` in
+ * topological order (dependencies first, requested item last).
+ */
+export async function resolveItemWithDependencies(
+  name: string,
+  options: ResolveOptions = {},
+): Promise<RegistryItem[]> {
   const entries = await listRegistryItems(undefined, options);
   const entry = entries.find((e) => e.name === name);
   if (!entry) {
-    const available = entries.map((e) => e.name).join(", ");
+    const available = formatAvailable(entries);
     throw new Error(
       available.length > 0
         ? `Item "${name}" not found in registry. Available: ${available}`
         : `Item "${name}" not found — registry unreachable or empty.`,
     );
   }
-  return fetchItemManifest(entry.name, entry.type, options.baseUrl);
+
+  const entryByName = new Map(entries.map((e) => [e.name, e]));
+  const visiting = new Set<string>();
+  const visited = new Set<string>();
+  const ordered: RegistryItem[] = [];
+  const itemCache = new Map<string, Promise<RegistryItem>>();
+
+  const getItem = (itemName: string): Promise<RegistryItem> => {
+    const existing = itemCache.get(itemName);
+    if (existing) return existing;
+
+    const registryEntry = entryByName.get(itemName);
+    if (!registryEntry) {
+      const available = formatAvailable(entries);
+      throw new Error(
+        available.length > 0
+          ? `Dependency "${itemName}" not found in registry. Available: ${available}`
+          : `Dependency "${itemName}" not found — registry unreachable or empty.`,
+      );
+    }
+
+    const pending = fetchItemManifest(registryEntry.name, registryEntry.type, options.baseUrl);
+    itemCache.set(itemName, pending);
+    return pending;
+  };
+
+  const visit = async (itemName: string, path: string[]): Promise<void> => {
+    if (visited.has(itemName)) return;
+    if (visiting.has(itemName)) {
+      const cycleStart = path.indexOf(itemName);
+      const cyclePath = [...path.slice(cycleStart), itemName].join(" -> ");
+      throw new Error(`Circular registryDependencies detected: ${cyclePath}`);
+    }
+
+    visiting.add(itemName);
+    const item = await getItem(itemName);
+    for (const dep of item.registryDependencies ?? []) {
+      await visit(dep, [...path, itemName]);
+    }
+    visiting.delete(itemName);
+    visited.add(itemName);
+    ordered.push(item);
+  };
+
+  await visit(name, []);
+  return ordered;
 }

@@ -13,6 +13,7 @@ const MANIFEST: RegistryManifest = {
   homepage: "https://example.com",
   items: [
     { name: "my-block", type: "hyperframes:block" },
+    { name: "base-component", type: "hyperframes:component" },
     { name: "my-component", type: "hyperframes:component" },
     { name: "my-example", type: "hyperframes:example" },
   ],
@@ -41,6 +42,7 @@ const COMPONENT_ITEM: RegistryItem = {
   type: "hyperframes:component",
   title: "My Component",
   description: "Component for tests",
+  registryDependencies: ["base-component"],
   files: [
     {
       path: "my-component.html",
@@ -50,6 +52,21 @@ const COMPONENT_ITEM: RegistryItem = {
     {
       path: "my-component.css",
       target: "compositions/components/my-component/my-component.css",
+      type: "hyperframes:style",
+    },
+  ],
+};
+
+const BASE_COMPONENT_ITEM: RegistryItem = {
+  $schema: "https://hyperframes.heygen.com/schema/registry-item.json",
+  name: "base-component",
+  type: "hyperframes:component",
+  title: "Base Component",
+  description: "Base component dependency for tests",
+  files: [
+    {
+      path: "base-component.css",
+      target: "compositions/components/base-component/base-component.css",
       type: "hyperframes:style",
     },
   ],
@@ -68,6 +85,7 @@ const EXAMPLE_ITEM: RegistryItem = {
 
 const ITEM_BY_NAME: Record<string, RegistryItem> = {
   "my-block": BLOCK_ITEM,
+  "base-component": BASE_COMPONENT_ITEM,
   "my-component": COMPONENT_ITEM,
   "my-example": EXAMPLE_ITEM,
 };
@@ -206,7 +224,9 @@ describe("runAdd (integration, mocked registry)", () => {
         projectDir: dir,
         skipClipboard: true,
       });
-      expect(result.written.length).toBe(2);
+      expect(result.written.length).toBe(3);
+      expect(result.installed).toEqual(["base-component", "my-component"]);
+      expect(existsSync(join(dir, "src/fx/base-component/base-component.css"))).toBe(true);
       expect(existsSync(join(dir, "src/fx/my-component/my-component.html"))).toBe(true);
       expect(existsSync(join(dir, "src/fx/my-component/my-component.css"))).toBe(true);
       expect(result.snippet).toContain("src/fx/my-component/my-component.html");
