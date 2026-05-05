@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+TOOLS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export LD_LIBRARY_PATH="${TOOLS_DIR}/whisper.cpp/build/src:${TOOLS_DIR}/whisper.cpp/build/ggml/src:${LD_LIBRARY_PATH:-}"
+
+exec "${TOOLS_DIR}/whisper.cpp/build/bin/whisper-cli" "$@"

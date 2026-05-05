@@ -1,0 +1,825 @@
+{
+  "schemaVersion": "hyperframes-video-project-plan.v0",
+  "project": {
+    "id": "palantir-math/15-abs-cubic-integral-extrema",
+    "title": "Palantir Math Problem 15 Motion Lecture Pilot",
+    "language": "ko",
+    "renderTarget": "face-free-motion-lecture",
+    "aspectRatio": "16:9",
+    "fps": 30
+  },
+  "sourceAuthority": {
+    "primaryTimeline": "user-final-srt",
+    "transcriptPath": "/home/palantirkc/projects/hyperframes/video-projects/palantir-math/15-abs-cubic-integral-extrema/source/15_pilot-한국어.srt",
+    "whisperRole": "timing-validation",
+    "visualContextProvider": "palantir-math-sequencer",
+    "visualContextRule": "The SRT controls narration order. Sequencer refs only attach visual context for formulas, conditions, and graph expressions."
+  },
+  "promptInterpretation": [
+    {
+      "source": "source/123.png",
+      "meaning": "Build a Hyperframes video editing project, define reusable multi-project folders, and specify how scenes are edited before rendering."
+    },
+    {
+      "source": "source/123123.png",
+      "meaning": "If the user provides MP4 narration, locally recognize speech timing with Whisper so the video knows what was said when."
+    }
+  ],
+  "metrics": {
+    "cueCount": 520,
+    "durationSeconds": 1479.54,
+    "plannedSceneCount": 11,
+    "visualContextFrameCount": 34
+  },
+  "diagnostics": {
+    "cueCoverage": {
+      "coveredCueCount": 520,
+      "uncoveredCueCount": 0,
+      "duplicatedCueCount": 10,
+      "uncoveredCueIndexSample": [],
+      "duplicatedCueIndexSample": [20, 61, 100, 153, 197, 271, 327, 385, 456, 501]
+    },
+    "sceneTiming": {
+      "totalSceneSeconds": 1480,
+      "transcriptDurationSeconds": 1479.54,
+      "sceneCoverageRatio": 1
+    },
+    "activeBottleneckIds": ["script-to-scene-map", "visual-context-activation"]
+  },
+  "bottlenecks": [
+    {
+      "id": "script-to-scene-map",
+      "status": "active",
+      "reason": "The final SRT is conversational, so scene boundaries must be semantic rather than raw frame-index based.",
+      "nextAction": "Review generated scene boundaries against the intended lecture rhythm."
+    },
+    {
+      "id": "visual-context-activation",
+      "status": "active",
+      "reason": "Sequencer active refs say which formulas and graphs are meaningful, but they do not carry final video timestamps.",
+      "nextAction": "Attach refs to scene spans before generating composition HTML."
+    },
+    {
+      "id": "audio-alignment",
+      "status": "ready",
+      "reason": "The repo-local large-v3 Whisper model can align MP4 narration, but this fixture already has an SRT.",
+      "nextAction": "Use Whisper as a validation path for this fixture and as the default path for MP4-only projects."
+    }
+  ],
+  "scenes": [
+    {
+      "id": "intro-condition-decomposition",
+      "label": "Decompose the problem conditions",
+      "time": {
+        "start": "00:00:00,000",
+        "end": "00:01:00,000",
+        "durationSeconds": 60
+      },
+      "cueRange": {
+        "first": 1,
+        "last": 20,
+        "count": 20
+      },
+      "visualContext": {
+        "frameSpan": {
+          "first": 0,
+          "last": 4
+        },
+        "activeRefs": [
+          {
+            "ref": "D1",
+            "meaning": "\\text{최고차항의 계수가 양수이고 }f(0)=0\\text{ 인 삼차함수}f(x)"
+          },
+          {
+            "ref": "D1:interp",
+            "meaning": "f(x)=px^3+qx^2+rx \\text{ (단, $p>0$)}"
+          },
+          {
+            "ref": "D2",
+            "meaning": "\\text{함수}\\ g(x) = \\int_0^x (|f(t)| - |t|)\\,dt"
+          },
+          {
+            "ref": "D2:interp",
+            "meaning": "g(x)\\text{는}\\mid f(t)\\mid\\text{와}\\mid t \\mid\\text{의 차이함수를 적분}"
+          }
+        ],
+        "expressionRefs": ["f4", "f5", "f1"],
+        "manualRefs": []
+      },
+      "transcriptSample": "자, 이제 우리가 15번 마지막 문제예요 15번 객관식에서 마지막 문제다 보니까 조건들이 조금 복잡해지는 것 같아 근데 이거 우리가 복잡한 문제일수록 조건들을 잘 분해합니다 분해를 잘 시켜서 각각 분해한 것들을 정확히 이해하고 그 다음에 연결해서 진행하면 돼 그렇게 되면 결국 답이 나오는 곳에 있어서 꽤 어려운 점은 없을 거예요 자, 그럼 이제 처음부터 한번 봅시다 처음 조건이 뭐냐면 3차 함수가 지금 나오죠 3차 함수가 나오는데, 3차 함수만 가지고 해석을 할 때 나올 수 있는 게 사실 PQR 미지수 도구,",
+      "semanticGoal": "Open from the final edited lecture script and establish D1-D2 as the first visual context.",
+      "captionPolicy": "lower-third, two-line maximum",
+      "motionDirectives": [
+        "Reveal the cubic-function condition before showing the integral definition.",
+        "Use slow condition-card staging rather than dense formula motion."
+      ],
+      "bottleneckNotes": [
+        "The SRT is newer than the source math JSON, so transcript order wins when frame order differs."
+      ]
+    },
+    {
+      "id": "g-definition-and-g-prime",
+      "label": "Translate g(x) into derivative/root-count language",
+      "time": {
+        "start": "00:01:00,000",
+        "end": "00:03:00,000",
+        "durationSeconds": 120
+      },
+      "cueRange": {
+        "first": 20,
+        "last": 61,
+        "count": 42
+      },
+      "visualContext": {
+        "frameSpan": {
+          "first": 5,
+          "last": 10
+        },
+        "activeRefs": [
+          {
+            "ref": "D1",
+            "meaning": "\\text{최고차항의 계수가 양수이고 }f(0)=0\\text{ 인 삼차함수}f(x)"
+          },
+          {
+            "ref": "D1:interp",
+            "meaning": "f(x)=px^3+qx^2+rx \\text{ (단, $p>0$)}"
+          },
+          {
+            "ref": "D2",
+            "meaning": "\\text{함수}\\ g(x) = \\int_0^x (|f(t)| - |t|)\\,dt"
+          },
+          {
+            "ref": "D2:interp",
+            "meaning": "g(x)\\text{는}\\mid f(t)\\mid\\text{와}\\mid t \\mid\\text{의 차이함수를 적분}"
+          },
+          {
+            "ref": "D3",
+            "meaning": "(\\text{가})\\text{ 방정식 }g'(x)=0\\text{ 의 서로 다른 실근의 개수는 }4\\text{ 이다.}"
+          },
+          {
+            "ref": "D3:interp",
+            "meaning": "y=\\mid f(x) \\mid - \\mid x \\mid\\text{와 }x\\text{축과의 교점의 개수가 }4. \\text{ 또는 } y=\\mid f(x)\\mid \\text{와 } y=\\mid x\\mid \\text{의 교점}"
+          },
+          {
+            "ref": "D4",
+            "meaning": "(\\text{나})\\text{ 함수 }g(x)\\text{는 }x=2, \\ x=6\\text{ 에서 극값을 갖는다.}"
+          },
+          {
+            "ref": "D4:interp",
+            "meaning": "y=g'(x)\\text{ 의 실근 }2,6\\text{ 근방에서 함숫값의 부호변화}\\text{ 또는 } y=\\mid f(x)\\mid \\text{와 } y=\\mid x\\mid \\text{의 교점 근방에서의 부호변화}"
+          },
+          {
+            "ref": "D5",
+            "meaning": "f(6)\\times g(2)<0"
+          },
+          {
+            "ref": "D5:interp",
+            "meaning": "[f(x)>0 \\ and \\ g(x)<0]\\text{ 또는 }[f(x)<0 \\ and \\ g(x)>0]"
+          }
+        ],
+        "expressionRefs": ["f4"],
+        "manualRefs": []
+      },
+      "transcriptSample": "미지수 도구, 좌표평면에서 뭔가 그려본다든지, 뒤에 이제 조건이 나오면 좀 줄일 수 있다든지 아직 방향을 정확히 모르겠어 여기까지만 일단 해놓고 그 다음에 이제 GX가 있어요 GX를 새로 정의했는데, FX에서 X를 빼면 적분 자 GX가 생기고, 0부터 X까지 적분하는 함수입니다 적분 함수인데 속을 들여다보니 FX가 절댓값이고, X도 절댓값이어서 차이 함수를 접근한 것입니다 이것도 아직 우리가 더 이상 해석을 해봤자 방향을 결정할 수 있는 것들은 없는 것 같아 여기까지만 해놓고, 그다음에 이제 가 나오죠? 가 조건이니까 방정식 G'X는 0의 서로 다른 실근의 개수가 우리가 GX가 적분 함수이기 때문에 G'X라는 것은 미적분학의 기본 정리로부터 나옵니다 그래서 이제 결국에 속에 있는 것들이 변수만 바뀌어서 그대로 나왔다는 거예요 이걸 그대로 가지고 해석을 해보면요 Y는 절대값 차이 함수였는데 선생님이 이걸 좌표 평면을 염두에 두고 해석한 거예요 서로 다른 실전의 개수를 보려면 합체를 해야 하잖아, 그렇지? 그래프는 거의 ",
+      "semanticGoal": "Move from the integral definition to g'(x)=0 and the meaning of four distinct roots.",
+      "captionPolicy": "lower-third, keep derivative anchor visible",
+      "motionDirectives": [
+        "Animate |f(x)| and |x| as two comparable curves.",
+        "Keep the derivative/root-count interpretation visible as a side anchor."
+      ],
+      "bottleneckNotes": [
+        "Whisper or SRT timing alone cannot know which condition card should be active; Sequencer refs supply that context."
+      ]
+    },
+    {
+      "id": "root-count-extrema-first-interpretation",
+      "label": "First root-count and extrema interpretation",
+      "time": {
+        "start": "00:03:00,000",
+        "end": "00:05:00,000",
+        "durationSeconds": 120
+      },
+      "cueRange": {
+        "first": 61,
+        "last": 100,
+        "count": 40
+      },
+      "visualContext": {
+        "frameSpan": {
+          "first": 11,
+          "last": 14
+        },
+        "activeRefs": [
+          {
+            "ref": "D1",
+            "meaning": "\\text{최고차항의 계수가 양수이고 }f(0)=0\\text{ 인 삼차함수}f(x)"
+          },
+          {
+            "ref": "D2",
+            "meaning": "\\text{함수}\\ g(x) = \\int_0^x (|f(t)| - |t|)\\,dt"
+          },
+          {
+            "ref": "D3",
+            "meaning": "(\\text{가})\\text{ 방정식 }g'(x)=0\\text{ 의 서로 다른 실근의 개수는 }4\\text{ 이다.}"
+          },
+          {
+            "ref": "D4",
+            "meaning": "(\\text{나})\\text{ 함수 }g(x)\\text{는 }x=2, \\ x=6\\text{ 에서 극값을 갖는다.}"
+          },
+          {
+            "ref": "D5",
+            "meaning": "f(6)\\times g(2)<0"
+          },
+          {
+            "ref": "L1-a",
+            "meaning": "\\text{좌표평면에 그려보기 시작}"
+          }
+        ],
+        "expressionRefs": ["f4"],
+        "manualRefs": []
+      },
+      "transcriptSample": "이것도 지금 GX가 FX로부터 출발해서 탐색하려고 하는데, 이걸로 바로 그릴 수는 없으니까 G'X를 기반으로 해서 어떻게 해석해야 할지 고민해봐야겠죠 G'X는 실근 2와 6을 금방 찾아야 하고, 함수값에 부호 변화가 있어야만 감수값이 존재하겠죠 결국 이건 절대값 차이 함수니까, F를 잘 그려보고 X는 지금 고정되어 있는 것 같네요, 그렇죠? 그래서 잘 탐색해보면서 2와 6에서 만나는 경우를 한번 찾아봐야겠어요 그게 아니면 이제 F랑 X를 따로 그려보면서 결정 체크해보는 거야 교점이 지금 부호 변화까지 되어야 한다는 걸 항상 잊으면 안 됩니다 이걸 종합해서 보면, 결국 마지막에 뭐가 나오냐면 F6과 G2를 곱한 게 음수입니다 그런데 이 조건은 딱히 연결되어 있는 게 없잖아 연결하려고 한 것도 아니었잖아요 그래서 굳이 한다면 이거 그냥 두 가지밖에 없죠 플러스 일대랑 마이너스 일대를 보고 생각을 해보면 되겠죠 자, 그럼 이제 여기까지 일차적으로 봤을 때 큰 방향이라고 한다면 일단 Fx를 그래프를 그려보면서 이 조건들을 가",
+      "semanticGoal": "Connect roots of g'(x) with crossings and sign changes near x=2 and x=6.",
+      "captionPolicy": "side caption when graph markers are dense",
+      "motionDirectives": [
+        "Use crossing markers at x=2 and x=6.",
+        "Distinguish contact from sign-changing intersection with color and motion direction."
+      ],
+      "bottleneckNotes": [
+        "The final script speaks in exploratory order; a rigid frame-by-frame replay would feel late here."
+      ]
+    },
+    {
+      "id": "revisit-g-prime-with-fixed-abs-x",
+      "label": "Revisit g'(x) with |x| fixed",
+      "time": {
+        "start": "00:05:00,000",
+        "end": "00:07:00,000",
+        "durationSeconds": 120
+      },
+      "cueRange": {
+        "first": 100,
+        "last": 153,
+        "count": 54
+      },
+      "visualContext": {
+        "frameSpan": {
+          "first": 15,
+          "last": 18
+        },
+        "activeRefs": [
+          {
+            "ref": "D1",
+            "meaning": "\\text{최고차항의 계수가 양수이고 }f(0)=0\\text{ 인 삼차함수}f(x)"
+          },
+          {
+            "ref": "D2",
+            "meaning": "\\text{함수}\\ g(x) = \\int_0^x (|f(t)| - |t|)\\,dt"
+          },
+          {
+            "ref": "D3",
+            "meaning": "(\\text{가})\\text{ 방정식 }g'(x)=0\\text{ 의 서로 다른 실근의 개수는 }4\\text{ 이다.}"
+          },
+          {
+            "ref": "D4",
+            "meaning": "(\\text{나})\\text{ 함수 }g(x)\\text{는 }x=2, \\ x=6\\text{ 에서 극값을 갖는다.}"
+          },
+          {
+            "ref": "D5",
+            "meaning": "f(6)\\times g(2)<0"
+          },
+          {
+            "ref": "D2:interp",
+            "meaning": "g(x)\\text{는}\\mid f(t)\\mid\\text{와}\\mid t \\mid\\text{의 차이함수를 적분}"
+          },
+          {
+            "ref": "L2-a",
+            "meaning": "\\mid f(x)\\mid,\\mid x\\mid \\text{ 는 그려볼 수 있는가?}"
+          }
+        ],
+        "expressionRefs": ["f4", "f5"],
+        "manualRefs": []
+      },
+      "transcriptSample": "이걸 어떻게 해결할 건가요? 미지수 가지고도 할 수 있는 게 없어요 그래서 이건 일단 넘어가는 게 좋겠죠 일단 생각만 하고 그 다음에 두 번째로 가는 거야 두 번째는 GX인데, 이거 역시 아까 어려웠죠? 그래서 이걸 차이안수 적분이라고 했으니까 이거 해석했던 거 어떻게 했어? G'X 기반으로 다 해석을 했잖아 그래서 결국에는 FX를 내가 지금 그리려고 뭔가 방향을 잡아놨으니까 G'X를 가지고 생각을 해보는거지 결국에는 FX'X 절대값 한거 그럼 그려볼 수 있냐? 어 이거 당연히 그릴 수 있어 절대값 X 그리고 FX는 지금 이 상태에서 그냥 접어 올려서 생각만 해보면 되겠죠 그래서 이제 여기에서 그래 볼 수 있다 그래 볼 수 있으니까 여기까지 해놓고 다음 조건을 계속 보는 거야 그럼 이제 가 조건 보니까 서로 다른 실근의 개수가 4가 나와야 돼 4 4가 나와야 되는데 지금 G'X는 0을 우리가 아까 좀 다르게 보는 게 좋겠죠 왜? FX를 지금 따로 부리고 있잖아 절댓값 X는 고정이 돼 있잖아 그렇지? 내가 지금 이거 한",
+      "semanticGoal": "Use |x| as the fixed comparison curve and treat f(x) as the adjustable object.",
+      "captionPolicy": "lower-third with fixed-vs-adjustable labels preserved",
+      "motionDirectives": [
+        "Pin |x| visually while moving or reshaping f(x).",
+        "Avoid decorative motion; the viewer must read which graph is fixed."
+      ],
+      "bottleneckNotes": [
+        "This is the first major semantic split from raw captions: the visual must express fixed-vs-adjustable roles."
+      ]
+    },
+    {
+      "id": "extrema-as-crossing-sign-change",
+      "label": "Interpret extrema as sign-changing crossings",
+      "time": {
+        "start": "00:07:00,000",
+        "end": "00:09:00,000",
+        "durationSeconds": 120
+      },
+      "cueRange": {
+        "first": 153,
+        "last": 197,
+        "count": 45
+      },
+      "visualContext": {
+        "frameSpan": {
+          "first": 19,
+          "last": 23
+        },
+        "activeRefs": [
+          {
+            "ref": "D1",
+            "meaning": "\\text{최고차항의 계수가 양수이고 }f(0)=0\\text{ 인 삼차함수}f(x)"
+          },
+          {
+            "ref": "D2",
+            "meaning": "\\text{함수}\\ g(x) = \\int_0^x (|f(t)| - |t|)\\,dt"
+          },
+          {
+            "ref": "D3",
+            "meaning": "(\\text{가})\\text{ 방정식 }g'(x)=0\\text{ 의 서로 다른 실근의 개수는 }4\\text{ 이다.}"
+          },
+          {
+            "ref": "D2:interp",
+            "meaning": "g(x)\\text{는}\\mid f(t)\\mid\\text{와}\\mid t \\mid\\text{의 차이함수를 적분}"
+          },
+          {
+            "ref": "L2-a",
+            "meaning": "\\mid f(x)\\mid,\\mid x\\mid \\text{ 는 그려볼 수 있는가?}"
+          },
+          {
+            "ref": "D4",
+            "meaning": "(\\text{나})\\text{ 함수 }g(x)\\text{는 }x=2, \\ x=6\\text{ 에서 극값을 갖는다.}"
+          },
+          {
+            "ref": "D5",
+            "meaning": "f(6)\\times g(2)<0"
+          },
+          {
+            "ref": "L2-b",
+            "meaning": "y=\\mid f(x)\\mid\\text{ 와 } y=\\mid x\\mid \\text{ 의 교점으로 해석}"
+          },
+          {
+            "ref": "D4:interp",
+            "meaning": "y=g'(x)\\text{ 의 실근 }2,6\\text{ 근방에서 함숫값의 부호변화}\\text{ 또는 } y=\\mid f(x)\\mid \\text{와 } y=\\mid x\\mid \\text{의 교점 근방에서의 부호변화}"
+          }
+        ],
+        "expressionRefs": ["f4", "f5"],
+        "manualRefs": []
+      },
+      "transcriptSample": "지금 여기서 탐색을 시작하면 아직도 경우가 너무 많아요, 그렇죠? 그래서 이제 조건을 계속 추가해서 보자고요 자, 그다음 조건을 보니까 함수 GX는 X가 2와 X가 6에서 극값을 갖는다 이것도 아까 보면 우리가 이거 해석할 때 어떻게 했어요 여러분? 부호 변화가 일어나야 한다 부호 변화를 봐야 하니까 결국 얘네들이 X는 2와 6을 기준으로 부호 변화가 일어나게끔 고정을 시켜줘야 한다는 거죠? 이만 예로 한번 들어보세요 이 예를 들어보면, 그래프가 있고 함수가 있을 때 2와 만나는 지점을 한번 만들어 볼게요 E와 만나는 지점이 여기 있습니다 여기에서 만나는 지점을 만들어 보니까 절대값이 사실 이 경우에는 올리든 안 올리든 똑같긴 한데, 이렇게 보면 여러분, E에서 만나는 건 맞지만 부호 변화가 있네요? 무슨 얘기냐면? 차이 함수입니다 FX에서 X를 뺀 것입니다 뺐을 때 그 차이가 부호 변화가 있냐고 플러스에서 마이너스로 바뀌었지 더 아래에 있잖아 그렇지? 차이를 구해보면 뭐 변화가 있다 근데 이 말도 조금 어렵죠 우리가",
+      "semanticGoal": "Make D3 and D4 active together: four roots plus extrema at 2 and 6 require sign-change crossings.",
+      "captionPolicy": "lower-third or side caption, never over graph roots",
+      "motionDirectives": [
+        "Show four possible root slots before narrowing to valid crossings.",
+        "Use pulse markers only at sign-changing roots."
+      ],
+      "bottleneckNotes": [
+        "Caption grouping should not hide the graph; this scene needs lower-third captions or side captions."
+      ]
+    },
+    {
+      "id": "avoid-abs-folding-use-f-vs-plus-minus-x",
+      "label": "Avoid absolute-value folding traps",
+      "time": {
+        "start": "00:09:00,000",
+        "end": "00:13:00,000",
+        "durationSeconds": 240
+      },
+      "cueRange": {
+        "first": 197,
+        "last": 271,
+        "count": 75
+      },
+      "visualContext": {
+        "frameSpan": {
+          "first": 24,
+          "last": 28
+        },
+        "activeRefs": [
+          {
+            "ref": "D1",
+            "meaning": "\\text{최고차항의 계수가 양수이고 }f(0)=0\\text{ 인 삼차함수}f(x)"
+          },
+          {
+            "ref": "D2",
+            "meaning": "\\text{함수}\\ g(x) = \\int_0^x (|f(t)| - |t|)\\,dt"
+          },
+          {
+            "ref": "D3",
+            "meaning": "(\\text{가})\\text{ 방정식 }g'(x)=0\\text{ 의 서로 다른 실근의 개수는 }4\\text{ 이다.}"
+          },
+          {
+            "ref": "D4",
+            "meaning": "(\\text{나})\\text{ 함수 }g(x)\\text{는 }x=2, \\ x=6\\text{ 에서 극값을 갖는다.}"
+          },
+          {
+            "ref": "D4:interp",
+            "meaning": "y=g'(x)\\text{ 의 실근 }2,6\\text{ 근방에서 함숫값의 부호변화}\\text{ 또는 } y=\\mid f(x)\\mid \\text{와 } y=\\mid x\\mid \\text{의 교점 근방에서의 부호변화}"
+          },
+          {
+            "ref": "L4-b",
+            "meaning": "f(x)\\text{ 와 } x\\text{ 만을 가지고 접근하는 방법?}"
+          },
+          {
+            "ref": "D5",
+            "meaning": "f(6)\\times g(2)<0"
+          },
+          {
+            "ref": "L4-c",
+            "meaning": "y=f(x)\\text{ 와 } y=\\pm x\\text{ 의 교점으로 해석}"
+          },
+          {
+            "ref": "L4-d",
+            "meaning": "y=f(x) \\text{ 가 } y=\\pm x \\text{ 와 만나는 점의 근방에서의 부호변화로 해석}"
+          }
+        ],
+        "expressionRefs": ["f4", "f5", "f1", "line1", "line2"],
+        "manualRefs": []
+      },
+      "transcriptSample": "조금만 더 움직이면 되는데 요런거죠? 그쵸? 자파메가 난다는거? 그래서 요런 경우만 좀 해보면 되겠다 자 그래서 이제 요걸 가지고 쇠로 이렇게 보는거에요 잠깐만 자 이제 여기까지 왔는데 자 봅시다 일단 부호 변화를 만드는 것까지는 알겠어요 근데 여기서 뭘 해야 되냐? 우리는 아직 조건이 좀 더 남았어 조건이 좀 더 남았고, 일단 이것만 가지고 내가 했던 것을 다시 한번 살펴볼게요 쌤이 지금 여기에서 잠깐 짚고 넘어가는 이유가 있어요 여러분이 지금 FX를 그릴 거예요 이렇게 막 그리면서 여러 가지 시도를 해볼 거 아니야? 여러분은 사실 입장, 여러분의 입장에서 생각해보면 FX를 그릴 때마다 위로 접어 올려서 맞춰보고 체크하는 과정이 있지 이런 것도 굉장히 복잡한 과정이야, 그렇지? 시험장에서도 그렇고 하니까 선생님이 이걸 생각했을 때 FX를 고려해보면 FX만으로 생각해보면 저걸 올리지 않고도 내가 바로 체크할 수 있는 방법이 없을까? 분리를 해보는 거죠 그래서 이제 이걸 FX와 X만을 가지고 접근하는 방법을 생각하고 시",
+      "semanticGoal": "Explain why the work should compare f(x) against plus/minus x instead of over-folding the graph.",
+      "captionPolicy": "short caption groups because this scene needs internal micro-beats",
+      "motionDirectives": [
+        "Introduce y=x and y=-x as two reference lines.",
+        "Fade out invalid folded interpretations rather than deleting them abruptly."
+      ],
+      "bottleneckNotes": [
+        "This scene is the longest early hold; it needs micro-beats inside one semantic scene."
+      ]
+    },
+    {
+      "id": "construct-four-root-shape",
+      "label": "Construct the four-root shape",
+      "time": {
+        "start": "00:13:00,000",
+        "end": "00:15:30,000",
+        "durationSeconds": 150
+      },
+      "cueRange": {
+        "first": 271,
+        "last": 327,
+        "count": 57
+      },
+      "visualContext": {
+        "frameSpan": {
+          "first": 27,
+          "last": 31
+        },
+        "activeRefs": [
+          {
+            "ref": "D1",
+            "meaning": "\\text{최고차항의 계수가 양수이고 }f(0)=0\\text{ 인 삼차함수}f(x)"
+          },
+          {
+            "ref": "D2",
+            "meaning": "\\text{함수}\\ g(x) = \\int_0^x (|f(t)| - |t|)\\,dt"
+          },
+          {
+            "ref": "D3",
+            "meaning": "(\\text{가})\\text{ 방정식 }g'(x)=0\\text{ 의 서로 다른 실근의 개수는 }4\\text{ 이다.}"
+          },
+          {
+            "ref": "D4",
+            "meaning": "(\\text{나})\\text{ 함수 }g(x)\\text{는 }x=2, \\ x=6\\text{ 에서 극값을 갖는다.}"
+          },
+          {
+            "ref": "D4:interp",
+            "meaning": "y=g'(x)\\text{ 의 실근 }2,6\\text{ 근방에서 함숫값의 부호변화}\\text{ 또는 } y=\\mid f(x)\\mid \\text{와 } y=\\mid x\\mid \\text{의 교점 근방에서의 부호변화}"
+          },
+          {
+            "ref": "L4-b",
+            "meaning": "f(x)\\text{ 와 } x\\text{ 만을 가지고 접근하는 방법?}"
+          },
+          {
+            "ref": "L4-c",
+            "meaning": "y=f(x)\\text{ 와 } y=\\pm x\\text{ 의 교점으로 해석}"
+          },
+          {
+            "ref": "D5",
+            "meaning": "f(6)\\times g(2)<0"
+          },
+          {
+            "ref": "L4-d",
+            "meaning": "y=f(x) \\text{ 가 } y=\\pm x \\text{ 와 만나는 점의 근방에서의 부호변화로 해석}"
+          },
+          {
+            "ref": "L5-a",
+            "meaning": "f(6)\\text{ 을 기준으로 경우 줄이기}"
+          },
+          {
+            "ref": "L5-b",
+            "meaning": "g(2)\\text{ 의 부호 의미 해석}"
+          }
+        ],
+        "expressionRefs": ["f4", "f5", "f1", "line1", "line2"],
+        "manualRefs": []
+      },
+      "transcriptSample": "자, 그래서 이제 우리가 결국에는 Y는 F랑 Y는의 교점을 가지고 해석을 해보면 되는 거야 자, 근데 지금 여기에서 우리가 조건이 여기서 끝난 거야? 더 있죠? 더 있나요? 일단 X는 2와 6이 있고, 실근의 개수가 4로 나왔습니다 여기에서 확실히 우리가 뭔가 결정을 할 수 있을 것 같고, 지금 어느 정도 결정이 된 것 같아요 자 그래서 여기에서 하나만 만들어보자 일단 0에서는 무조건 만나니까 그냥 놔두면 되고요 자 X는 2에서 어떻게 돼야 돼? 2에서 교차하면서 만나야 돼 이 경우 하나 있지 그 다음에 이제 어떻게 할 거야? 6에서도 만나줘야 되니까 6에서 만났는데 이번에 밑에서 이렇게 해볼게요 특정한 경우 하나만 살펴볼게요 이거 한번 보세요 이거 보면 지금 여기 2와 6에서 만나긴 하지만 결국 이게 대칭이 되니까 Y는 X든 마이너스 X든 어느 쪽에서든 만나게 돼, 그렇지? 이렇게 해서 실근의 개수가 4가 되도록 만들어야 하는데, 확실히 만나야 하는 점이 뭐냐면 0, 2, 6, 2 기준으로 5개 점이 있지 5개 점에",
+      "semanticGoal": "Build the candidate shape that can satisfy four roots and the extrema information.",
+      "captionPolicy": "captions below root marker band",
+      "motionDirectives": [
+        "Accumulate root markers in sequence.",
+        "Keep invalid candidates ghosted so the narrowing logic remains visible."
+      ],
+      "bottleneckNotes": [
+        "Scene overlaps prior frame refs by design; semantic continuity is more important than strict frame partitioning."
+      ]
+    },
+    {
+      "id": "final-sign-condition-f6-g2",
+      "label": "Apply f(6) x g(2) < 0",
+      "time": {
+        "start": "00:15:30,000",
+        "end": "00:18:00,000",
+        "durationSeconds": 150
+      },
+      "cueRange": {
+        "first": 327,
+        "last": 385,
+        "count": 59
+      },
+      "visualContext": {
+        "frameSpan": {
+          "first": 29,
+          "last": 31
+        },
+        "activeRefs": [
+          {
+            "ref": "D1",
+            "meaning": "\\text{최고차항의 계수가 양수이고 }f(0)=0\\text{ 인 삼차함수}f(x)"
+          },
+          {
+            "ref": "D2",
+            "meaning": "\\text{함수}\\ g(x) = \\int_0^x (|f(t)| - |t|)\\,dt"
+          },
+          {
+            "ref": "D3",
+            "meaning": "(\\text{가})\\text{ 방정식 }g'(x)=0\\text{ 의 서로 다른 실근의 개수는 }4\\text{ 이다.}"
+          },
+          {
+            "ref": "D4",
+            "meaning": "(\\text{나})\\text{ 함수 }g(x)\\text{는 }x=2, \\ x=6\\text{ 에서 극값을 갖는다.}"
+          },
+          {
+            "ref": "D5",
+            "meaning": "f(6)\\times g(2)<0"
+          },
+          {
+            "ref": "D4:interp",
+            "meaning": "y=g'(x)\\text{ 의 실근 }2,6\\text{ 근방에서 함숫값의 부호변화}\\text{ 또는 } y=\\mid f(x)\\mid \\text{와 } y=\\mid x\\mid \\text{의 교점 근방에서의 부호변화}"
+          },
+          {
+            "ref": "L4-b",
+            "meaning": "f(x)\\text{ 와 } x\\text{ 만을 가지고 접근하는 방법?}"
+          },
+          {
+            "ref": "L4-c",
+            "meaning": "y=f(x)\\text{ 와 } y=\\pm x\\text{ 의 교점으로 해석}"
+          },
+          {
+            "ref": "L4-d",
+            "meaning": "y=f(x) \\text{ 가 } y=\\pm x \\text{ 와 만나는 점의 근방에서의 부호변화로 해석}"
+          },
+          {
+            "ref": "L5-a",
+            "meaning": "f(6)\\text{ 을 기준으로 경우 줄이기}"
+          },
+          {
+            "ref": "L5-b",
+            "meaning": "g(2)\\text{ 의 부호 의미 해석}"
+          }
+        ],
+        "expressionRefs": ["f4", "f5", "f1", "line1", "line2"],
+        "manualRefs": []
+      },
+      "transcriptSample": "이 조건이 이제 마지막이다 이 조건이 이제 나머지를 확실하게 결정해 줄 거예요 자, 그래서 이제 우리가 플러스냐 마이너스냐 경우를 나눠서 마지막에 볼 건데, 여기까지 결정된 걸 가지고 기준을 한 번 잡아야죠 F6이냐 G2냐 뭐부터 할 거예요? 생각해보면 F6이 있죠 당연히 여러분이 Fx를 가지고 탐색을 하고 있으니까 F6을 양수일 때랑 음수일 때랑 찾아보면 됩니다, 맞죠? 그래서 F6이 양수일 때라고 생각해보면, F6이 양수일 때 지금 이 경우네요 F6이 양수일 때는 이 경우가 딱 들어맞네요 일단 가 만족했죠 나도 만족했어 여기에서 마지막 조건에서 F6이 양수일 때도 만족했어 그럼 이제 남은 게 뭐야? 남은 게 G2가 음수일 때야 음수, 아 근데 지금 이 G2가 무슨 의미인지부터 알아야 내가 그 FX에 적용해볼 수 있잖아? 그치? 그러니까 G2가 음수라는 말은 결국 뭐냐? 무슨 의미야? FX 입장에서는 무슨 의미야? 그걸 이제 생각해보는 거야 자 그래서 GX를 다시 보면 GX는 지금 절대값 차이 함수를 적분한 거예요 ",
+      "semanticGoal": "Use D5 as the decisive condition and split cases by signs of f(6) and g(2).",
+      "captionPolicy": "right-side caption while sign tiles animate",
+      "motionDirectives": [
+        "Show f(6) and g(2) as separate sign tiles.",
+        "Animate rejected sign cases with a short strike-through."
+      ],
+      "bottleneckNotes": [
+        "The script discusses case selection conversationally; the plan must turn that into explicit visual branches."
+      ]
+    },
+    {
+      "id": "g2-area-sign-inside-condition",
+      "label": "Explain g(2) as signed area",
+      "time": {
+        "start": "00:18:00,000",
+        "end": "00:21:00,000",
+        "durationSeconds": 180
+      },
+      "cueRange": {
+        "first": 385,
+        "last": 456,
+        "count": 72
+      },
+      "visualContext": {
+        "frameSpan": {
+          "first": 30,
+          "last": 32
+        },
+        "activeRefs": [
+          {
+            "ref": "D1",
+            "meaning": "\\text{최고차항의 계수가 양수이고 }f(0)=0\\text{ 인 삼차함수}f(x)"
+          },
+          {
+            "ref": "D2",
+            "meaning": "\\text{함수}\\ g(x) = \\int_0^x (|f(t)| - |t|)\\,dt"
+          },
+          {
+            "ref": "D3",
+            "meaning": "(\\text{가})\\text{ 방정식 }g'(x)=0\\text{ 의 서로 다른 실근의 개수는 }4\\text{ 이다.}"
+          },
+          {
+            "ref": "D4",
+            "meaning": "(\\text{나})\\text{ 함수 }g(x)\\text{는 }x=2, \\ x=6\\text{ 에서 극값을 갖는다.}"
+          },
+          {
+            "ref": "D5",
+            "meaning": "f(6)\\times g(2)<0"
+          },
+          {
+            "ref": "D4:interp",
+            "meaning": "y=g'(x)\\text{ 의 실근 }2,6\\text{ 근방에서 함숫값의 부호변화}\\text{ 또는 } y=\\mid f(x)\\mid \\text{와 } y=\\mid x\\mid \\text{의 교점 근방에서의 부호변화}"
+          },
+          {
+            "ref": "L4-b",
+            "meaning": "f(x)\\text{ 와 } x\\text{ 만을 가지고 접근하는 방법?}"
+          },
+          {
+            "ref": "L4-c",
+            "meaning": "y=f(x)\\text{ 와 } y=\\pm x\\text{ 의 교점으로 해석}"
+          },
+          {
+            "ref": "L4-d",
+            "meaning": "y=f(x) \\text{ 가 } y=\\pm x \\text{ 와 만나는 점의 근방에서의 부호변화로 해석}"
+          },
+          {
+            "ref": "L5-a",
+            "meaning": "f(6)\\text{ 을 기준으로 경우 줄이기}"
+          },
+          {
+            "ref": "L5-b",
+            "meaning": "g(2)\\text{ 의 부호 의미 해석}"
+          },
+          {
+            "ref": "L5-c",
+            "meaning": "0\\leq x <2 \\text{ 일 때, }y=f(x) \\text{ 가 }y=\\pm x \\text{ 안쪽에서} "
+          }
+        ],
+        "expressionRefs": ["f4", "f5", "f1", "line1", "line2"],
+        "manualRefs": []
+      },
+      "transcriptSample": "그래서 이 부분이 지금 양수이기 때문에 음수가 되도록 바꿔줘야 해요 근데 이걸 생각해보니까 음수가 되도록 바꾼다는 말이 조금 어려울 것 같아요 그래서 여기까지는 한번 해볼게 음수가 되려면 일단 이 경우도 되는지 한번 봐보세요 잠깐만, 음수가 되고 음수가 되고, 자 이 경우 하면 되나요? 다른 거 다 놔두고 G2가 음수다라는 말이 뭔지만 이 경우 한 번 이 경우를 보면, 이걸 만약에 선생님이 여러분 적분 절댓값 한 번 보여줄게 우리는 FX지만 절댓값 한 번 보여줄게 이거 지금 어떻게 돼? 여기 부분은 어떻게 돼? 차이가 지금 다 음수지, 음수 이거 다 더해봤자 음수죠 아, 이게 지금 음수일 때를 의미하는 거야 G까지 모두 더해봤을 때 음수가 되는 경우를 만든 거야 자, 그런데 이제 여기서 빠르게 생각해보면 다른 경우가 뭐가 있을까? 이런 식으로 해보자 자, 이런 것들 한번 생각해볼까요? 이런 것들? 이런 것들을 생각해보면 무조건 다 더해봤자 지금 양수죠 여기까지 다 더해봤자 양수가 될 것 같아 이런 식으로 음수가 될 때",
+      "semanticGoal": "Translate g(2)<0 into accumulated signed area between |f(t)| and |t|.",
+      "captionPolicy": "minimal captions; reserve canvas for area shading",
+      "motionDirectives": [
+        "Shade negative and positive area regions separately.",
+        "Use area accumulation motion rather than another formula reveal."
+      ],
+      "bottleneckNotes": [
+        "This is the highest-risk visual bottleneck: captions must align to area explanation, not just the spoken words."
+      ]
+    },
+    {
+      "id": "final-shape-root-count-check",
+      "label": "Check the final shape against all root-count conditions",
+      "time": {
+        "start": "00:21:00,000",
+        "end": "00:23:30,000",
+        "durationSeconds": 150
+      },
+      "cueRange": {
+        "first": 456,
+        "last": 501,
+        "count": 46
+      },
+      "visualContext": {
+        "frameSpan": {
+          "first": 32,
+          "last": 33
+        },
+        "activeRefs": [
+          {
+            "ref": "D1",
+            "meaning": "\\text{최고차항의 계수가 양수이고 }f(0)=0\\text{ 인 삼차함수}f(x)"
+          },
+          {
+            "ref": "D2",
+            "meaning": "\\text{함수}\\ g(x) = \\int_0^x (|f(t)| - |t|)\\,dt"
+          },
+          {
+            "ref": "D3",
+            "meaning": "(\\text{가})\\text{ 방정식 }g'(x)=0\\text{ 의 서로 다른 실근의 개수는 }4\\text{ 이다.}"
+          },
+          {
+            "ref": "D4",
+            "meaning": "(\\text{나})\\text{ 함수 }g(x)\\text{는 }x=2, \\ x=6\\text{ 에서 극값을 갖는다.}"
+          },
+          {
+            "ref": "D5",
+            "meaning": "f(6)\\times g(2)<0"
+          },
+          {
+            "ref": "L5-b",
+            "meaning": "g(2)\\text{ 의 부호 의미 해석}"
+          },
+          {
+            "ref": "L5-c",
+            "meaning": "0\\leq x <2 \\text{ 일 때, }y=f(x) \\text{ 가 }y=\\pm x \\text{ 안쪽에서} "
+          },
+          {
+            "ref": "L-a",
+            "meaning": "\\text{그래프}\\rightarrow \\text{수식}"
+          }
+        ],
+        "expressionRefs": ["f4", "f5", "f1"],
+        "manualRefs": []
+      },
+      "transcriptSample": "모양이 2에서 만나면서 이런 식으로 한번 생각을 해볼 수 있겠죠 안쪽에서 그래서 결국에 안쪽에서 만나면서 2랑 또 만나야 되나 이쪽 둘 중에 하나였으니까 만났죠 교차하면서 만나고 있어 그 다음에 6에서도 교차해야 되는데 이거 지금 안 되지 이거 우리가 맞춰오면 되지 그래서 6일 때 맞춰보면 이런 식으로 맞춰볼 수가 있겠죠 이런 식으로 맞춰볼 수 있을 것 같아요, 됐죠? 이 정도면 충분할 것 같아 그래서 결국에는 2와 0에서 만나면서 진행을 하는데 F6이 아까 기준으로 잡았잖아 양수가 되도록 맞추면 되지, 그치? 이거 맞고 그 다음에 G2에서 교차하면서 만나는데 여기도 됐는데 중요한 것은 안쪽에서 만나야 돼, 그치? 그리고 하나가 더 있었어 이게 좀 복잡하지만 우리가 지금 하나씩 찾아갔기 때문에 할 수 있겠죠 그래서 결국에는 서로 달하시는 개수 4까지 지금 맞춰야 돼, 그치? 서로 달하시는 개수 보니까 여기서 하나, 이거 지금 하나만 되려면 어떻게 돼야겠어요? 이게 좀 자세히 보면 좀 아니긴 한데 이게 하나가 되려면 접",
+      "semanticGoal": "Verify the constructed shape against the count and crossing requirements.",
+      "captionPolicy": "compact caption under condition checklist",
+      "motionDirectives": [
+        "Replay final candidate with root-count badges.",
+        "Keep all D1-D5 condition badges in a compact checklist."
+      ],
+      "bottleneckNotes": [
+        "A checklist gives recovery when the narration references earlier conditions without restating them fully."
+      ]
+    },
+    {
+      "id": "pqr-f8-deferred-calculation",
+      "label": "Leave the algebraic calculation as the next step",
+      "time": {
+        "start": "00:23:30,000",
+        "end": "00:24:40,000",
+        "durationSeconds": 70
+      },
+      "cueRange": {
+        "first": 501,
+        "last": 520,
+        "count": 20
+      },
+      "visualContext": {
+        "frameSpan": {
+          "first": 33,
+          "last": 33
+        },
+        "activeRefs": [
+          {
+            "ref": "L-a",
+            "meaning": "\\text{그래프}\\rightarrow \\text{수식}"
+          },
+          {
+            "ref": "D1",
+            "meaning": "\\text{최고차항의 계수가 양수이고 }f(0)=0\\text{ 인 삼차함수}f(x)"
+          },
+          {
+            "ref": "D2",
+            "meaning": "\\text{함수}\\ g(x) = \\int_0^x (|f(t)| - |t|)\\,dt"
+          },
+          {
+            "ref": "D3",
+            "meaning": "(\\text{가})\\text{ 방정식 }g'(x)=0\\text{ 의 서로 다른 실근의 개수는 }4\\text{ 이다.}"
+          },
+          {
+            "ref": "D4",
+            "meaning": "(\\text{나})\\text{ 함수 }g(x)\\text{는 }x=2, \\ x=6\\text{ 에서 극값을 갖는다.}"
+          },
+          {
+            "ref": "D5",
+            "meaning": "f(6)\\times g(2)<0"
+          }
+        ],
+        "expressionRefs": ["f4", "f5", "f1"],
+        "manualRefs": []
+      },
+      "transcriptSample": "이걸 다 결정할 수 있을까요? 이제 그거를 마지막에 확인만 하면 되겠죠 F8을 지금 구하려고 보니까 PQR을 구하려면 C 몇 개 있어야 돼요? 3개 있습니다. 3개 지금 F0에서 접하도록 만들면 되겠지 접하도록 F'0이 1이면 되겠죠 이거 하나 있고요 그 다음에 F2가 또 나오네 F2 나오고 마이너스 2면 되겠죠 그 다음에 이제 마지막에 F6 F6이 6이면 돼요 됐니? 자, 3가지 식이 필요한데 3개 다 나왔어 그럼 PQR까지 그 다음에 이렇게 해석만 하면 여러분들이 F8까지도 할 수 있어요 됐죠? 자, 그래서 이제 쌤이 여기까지만 하고 계산은 여러분들한테 맡길게요 나머지는 다음 시간에 합시다",
+      "semanticGoal": "Close by naming the three equations that determine P, Q, R and defer the arithmetic.",
+      "captionPolicy": "clean summary caption only",
+      "motionDirectives": [
+        "Switch from graph space to a three-equation summary.",
+        "End on a clean calculation handoff rather than a solved-number reveal."
+      ],
+      "bottleneckNotes": [
+        "The final video should not invent a solution beyond the user's final lecture script."
+      ]
+    }
+  ],
+  "nextLoop": [
+    "Review generated scene boundaries against the final user script.",
+    "Treat uncovered cues as blocking and duplicated cue indexes as scene-boundary review points.",
+    "Promote accepted scene plans into a Hyperframes composition manifest.",
+    "Generate layout-first composition HTML with deterministic assets only.",
+    "Run npx hyperframes lint and npx hyperframes validate on the generated composition.",
+    "Backpropagate caption, timing, or visual-context failures into project.json before editing animation code."
+  ]
+}

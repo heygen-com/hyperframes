@@ -5,7 +5,11 @@ import { existsSync, writeFileSync } from "node:fs";
 export const examples: Example[] = [
   ["Transcribe an audio file", "hyperframes transcribe audio.mp3"],
   ["Transcribe a video file", "hyperframes transcribe video.mp4"],
-  ["Use a larger model for better accuracy", "hyperframes transcribe audio.mp3 --model medium.en"],
+  ["Use a larger multilingual model", "hyperframes transcribe audio.mp3 --model medium"],
+  [
+    "Use an English-only model when audio is English",
+    "hyperframes transcribe audio.mp3 --model medium.en --language en",
+  ],
   ["Set language to filter non-target speech", "hyperframes transcribe audio.mp3 --language en"],
   ["Import an existing SRT file", "hyperframes transcribe subtitles.srt"],
   ["Import an OpenAI Whisper JSON response", "hyperframes transcribe response.json"],

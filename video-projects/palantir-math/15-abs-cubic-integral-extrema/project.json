@@ -1,0 +1,235 @@
+{
+  "schemaVersion": "hyperframes-video-project.v0",
+  "project": {
+    "id": "palantir-math/15-abs-cubic-integral-extrema",
+    "title": "Palantir Math Problem 15 Motion Lecture Pilot",
+    "language": "ko",
+    "renderTarget": "face-free-motion-lecture",
+    "aspectRatio": "16:9",
+    "fps": 30
+  },
+  "requirements": [
+    {
+      "source": "source/123.png",
+      "meaning": "Build a Hyperframes video editing project, define reusable multi-project folders, and specify how scenes are edited before rendering."
+    },
+    {
+      "source": "source/123123.png",
+      "meaning": "If the user provides MP4 narration, locally recognize speech timing with Whisper so the video knows what was said when."
+    }
+  ],
+  "inputs": {
+    "transcript": {
+      "kind": "srt",
+      "path": "source/15_pilot-한국어.srt",
+      "authority": "user-final-srt"
+    },
+    "recordedMedia": {
+      "kind": "mp4",
+      "status": "pending-user-provided"
+    },
+    "whisper": {
+      "binaryPath": "../../../tools/whisper-cli",
+      "modelPath": "../../../tools/whisper.cpp/models/ggml-large-v3.bin",
+      "language": "ko",
+      "role": "timing-validation"
+    }
+  },
+  "visualContext": {
+    "provider": "palantir-math-sequencer",
+    "seqFramesPath": "/home/palantirkc/projects/palantir-math/problems/15-abs-cubic-integral-extrema/seq-frames.json",
+    "seqDataPath": "/home/palantirkc/projects/palantir-math/problems/15-abs-cubic-integral-extrema/seq-data.json",
+    "rule": "The SRT controls narration order. Sequencer refs only attach visual context for formulas, conditions, and graph expressions."
+  },
+  "workflow": {
+    "editingModel": "script-first scene map, then Hyperframes composition",
+    "captionStrategy": "Use final SRT directly; use repo-local whisper.cpp only for MP4-only timing or validation.",
+    "bottlenecks": [
+      {
+        "id": "script-to-scene-map",
+        "status": "active",
+        "reason": "The final SRT is conversational, so scene boundaries must be semantic rather than raw frame-index based.",
+        "nextAction": "Review generated scene boundaries against the intended lecture rhythm."
+      },
+      {
+        "id": "visual-context-activation",
+        "status": "active",
+        "reason": "Sequencer active refs say which formulas and graphs are meaningful, but they do not carry final video timestamps.",
+        "nextAction": "Attach refs to scene spans before generating composition HTML."
+      },
+      {
+        "id": "audio-alignment",
+        "status": "ready",
+        "reason": "The repo-local large-v3 Whisper model can align MP4 narration, but this fixture already has an SRT.",
+        "nextAction": "Use Whisper as a validation path for this fixture and as the default path for MP4-only projects."
+      }
+    ]
+  },
+  "sceneMap": [
+    {
+      "id": "intro-condition-decomposition",
+      "label": "Decompose the problem conditions",
+      "timeline": { "start": "00:00:00,000", "end": "00:01:00,000" },
+      "visualContext": { "frameSpan": { "first": 0, "last": 4 } },
+      "semanticGoal": "Open from the final edited lecture script and establish D1-D2 as the first visual context.",
+      "captionPolicy": "lower-third, two-line maximum",
+      "motionDirectives": [
+        "Reveal the cubic-function condition before showing the integral definition.",
+        "Use slow condition-card staging rather than dense formula motion."
+      ],
+      "bottleneckNotes": [
+        "The SRT is newer than the source math JSON, so transcript order wins when frame order differs."
+      ]
+    },
+    {
+      "id": "g-definition-and-g-prime",
+      "label": "Translate g(x) into derivative/root-count language",
+      "timeline": { "start": "00:01:00,000", "end": "00:03:00,000" },
+      "visualContext": { "frameSpan": { "first": 5, "last": 10 } },
+      "semanticGoal": "Move from the integral definition to g'(x)=0 and the meaning of four distinct roots.",
+      "captionPolicy": "lower-third, keep derivative anchor visible",
+      "motionDirectives": [
+        "Animate |f(x)| and |x| as two comparable curves.",
+        "Keep the derivative/root-count interpretation visible as a side anchor."
+      ],
+      "bottleneckNotes": [
+        "Whisper or SRT timing alone cannot know which condition card should be active; Sequencer refs supply that context."
+      ]
+    },
+    {
+      "id": "root-count-extrema-first-interpretation",
+      "label": "First root-count and extrema interpretation",
+      "timeline": { "start": "00:03:00,000", "end": "00:05:00,000" },
+      "visualContext": { "frameSpan": { "first": 11, "last": 14 } },
+      "semanticGoal": "Connect roots of g'(x) with crossings and sign changes near x=2 and x=6.",
+      "captionPolicy": "side caption when graph markers are dense",
+      "motionDirectives": [
+        "Use crossing markers at x=2 and x=6.",
+        "Distinguish contact from sign-changing intersection with color and motion direction."
+      ],
+      "bottleneckNotes": [
+        "The final script speaks in exploratory order; a rigid frame-by-frame replay would feel late here."
+      ]
+    },
+    {
+      "id": "revisit-g-prime-with-fixed-abs-x",
+      "label": "Revisit g'(x) with |x| fixed",
+      "timeline": { "start": "00:05:00,000", "end": "00:07:00,000" },
+      "visualContext": { "frameSpan": { "first": 15, "last": 18 } },
+      "semanticGoal": "Use |x| as the fixed comparison curve and treat f(x) as the adjustable object.",
+      "captionPolicy": "lower-third with fixed-vs-adjustable labels preserved",
+      "motionDirectives": [
+        "Pin |x| visually while moving or reshaping f(x).",
+        "Avoid decorative motion; the viewer must read which graph is fixed."
+      ],
+      "bottleneckNotes": [
+        "This is the first major semantic split from raw captions: the visual must express fixed-vs-adjustable roles."
+      ]
+    },
+    {
+      "id": "extrema-as-crossing-sign-change",
+      "label": "Interpret extrema as sign-changing crossings",
+      "timeline": { "start": "00:07:00,000", "end": "00:09:00,000" },
+      "visualContext": { "frameSpan": { "first": 19, "last": 23 } },
+      "semanticGoal": "Make D3 and D4 active together: four roots plus extrema at 2 and 6 require sign-change crossings.",
+      "captionPolicy": "lower-third or side caption, never over graph roots",
+      "motionDirectives": [
+        "Show four possible root slots before narrowing to valid crossings.",
+        "Use pulse markers only at sign-changing roots."
+      ],
+      "bottleneckNotes": [
+        "Caption grouping should not hide the graph; this scene needs lower-third captions or side captions."
+      ]
+    },
+    {
+      "id": "avoid-abs-folding-use-f-vs-plus-minus-x",
+      "label": "Avoid absolute-value folding traps",
+      "timeline": { "start": "00:09:00,000", "end": "00:13:00,000" },
+      "visualContext": { "frameSpan": { "first": 24, "last": 28 } },
+      "semanticGoal": "Explain why the work should compare f(x) against plus/minus x instead of over-folding the graph.",
+      "captionPolicy": "short caption groups because this scene needs internal micro-beats",
+      "motionDirectives": [
+        "Introduce y=x and y=-x as two reference lines.",
+        "Fade out invalid folded interpretations rather than deleting them abruptly."
+      ],
+      "bottleneckNotes": [
+        "This scene is the longest early hold; it needs micro-beats inside one semantic scene."
+      ]
+    },
+    {
+      "id": "construct-four-root-shape",
+      "label": "Construct the four-root shape",
+      "timeline": { "start": "00:13:00,000", "end": "00:15:30,000" },
+      "visualContext": { "frameSpan": { "first": 27, "last": 31 } },
+      "semanticGoal": "Build the candidate shape that can satisfy four roots and the extrema information.",
+      "captionPolicy": "captions below root marker band",
+      "motionDirectives": [
+        "Accumulate root markers in sequence.",
+        "Keep invalid candidates ghosted so the narrowing logic remains visible."
+      ],
+      "bottleneckNotes": [
+        "Scene overlaps prior frame refs by design; semantic continuity is more important than strict frame partitioning."
+      ]
+    },
+    {
+      "id": "final-sign-condition-f6-g2",
+      "label": "Apply f(6) x g(2) < 0",
+      "timeline": { "start": "00:15:30,000", "end": "00:18:00,000" },
+      "visualContext": { "frameSpan": { "first": 29, "last": 31 } },
+      "semanticGoal": "Use D5 as the decisive condition and split cases by signs of f(6) and g(2).",
+      "captionPolicy": "right-side caption while sign tiles animate",
+      "motionDirectives": [
+        "Show f(6) and g(2) as separate sign tiles.",
+        "Animate rejected sign cases with a short strike-through."
+      ],
+      "bottleneckNotes": [
+        "The script discusses case selection conversationally; the plan must turn that into explicit visual branches."
+      ]
+    },
+    {
+      "id": "g2-area-sign-inside-condition",
+      "label": "Explain g(2) as signed area",
+      "timeline": { "start": "00:18:00,000", "end": "00:21:00,000" },
+      "visualContext": { "frameSpan": { "first": 30, "last": 32 } },
+      "semanticGoal": "Translate g(2)<0 into accumulated signed area between |f(t)| and |t|.",
+      "captionPolicy": "minimal captions; reserve canvas for area shading",
+      "motionDirectives": [
+        "Shade negative and positive area regions separately.",
+        "Use area accumulation motion rather than another formula reveal."
+      ],
+      "bottleneckNotes": [
+        "This is the highest-risk visual bottleneck: captions must align to area explanation, not just the spoken words."
+      ]
+    },
+    {
+      "id": "final-shape-root-count-check",
+      "label": "Check the final shape against all root-count conditions",
+      "timeline": { "start": "00:21:00,000", "end": "00:23:30,000" },
+      "visualContext": { "frameSpan": { "first": 32, "last": 33 } },
+      "semanticGoal": "Verify the constructed shape against the count and crossing requirements.",
+      "captionPolicy": "compact caption under condition checklist",
+      "motionDirectives": [
+        "Replay final candidate with root-count badges.",
+        "Keep all D1-D5 condition badges in a compact checklist."
+      ],
+      "bottleneckNotes": [
+        "A checklist gives recovery when the narration references earlier conditions without restating them fully."
+      ]
+    },
+    {
+      "id": "pqr-f8-deferred-calculation",
+      "label": "Leave the algebraic calculation as the next step",
+      "timeline": { "start": "00:23:30,000", "end": "00:24:40,000" },
+      "visualContext": { "frameSpan": { "first": 33, "last": 33 } },
+      "semanticGoal": "Close by naming the three equations that determine P, Q, R and defer the arithmetic.",
+      "captionPolicy": "clean summary caption only",
+      "motionDirectives": [
+        "Switch from graph space to a three-equation summary.",
+        "End on a clean calculation handoff rather than a solved-number reveal."
+      ],
+      "bottleneckNotes": [
+        "The final video should not invent a solution beyond the user's final lecture script."
+      ]
+    }
+  ]
+}

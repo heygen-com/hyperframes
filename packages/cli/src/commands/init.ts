@@ -521,7 +521,7 @@ export default defineCommand({
     model: {
       type: "string",
       description:
-        "Whisper model for transcription (e.g. tiny.en, base.en, small.en, medium.en, large)",
+        "Whisper model for transcription (e.g. tiny, base, small, medium, large-v3; use .en only for English audio)",
     },
     language: {
       type: "string",

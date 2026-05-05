@@ -163,7 +163,7 @@ This is suppressed in CI environments, non-TTY shells, and when `HYPERFRAMES_NO_
     | `--tailwind` | Add Tailwind CSS browser-runtime support to scaffolded HTML |
     | `--skip-skills` | Skip AI coding skills installation |
     | `--skip-transcribe` | Skip automatic whisper transcription |
-    | `--model` | Whisper model for transcription (e.g. `small.en`, `medium.en`, `large-v3`) |
+    | `--model` | Whisper model for transcription (e.g. `small`, `medium`, `large-v3`; use `.en` only for English audio) |
     | `--language` | Language code for transcription (e.g. `en`, `es`, `ja`). Filters non-target speech. |
     | `--human-friendly` | Enable interactive terminal UI with prompts |
 
@@ -263,6 +263,7 @@ This is suppressed in CI environments, non-TTY shells, and when `HYPERFRAMES_NO_
     ```bash
     # Transcribe audio/video with local whisper.cpp
     npx hyperframes transcribe audio.mp3
+    npx hyperframes transcribe video.mp4 --model medium --language ja
     npx hyperframes transcribe video.mp4 --model medium.en --language en
 
     # Import existing transcripts from other tools
@@ -274,7 +275,7 @@ This is suppressed in CI environments, non-TTY shells, and when `HYPERFRAMES_NO_
     | Flag | Description |
     |------|-------------|
     | `--dir, -d` | Project directory (default: current directory) |
-    | `--model, -m` | Whisper model (default: `small.en`). Options: `tiny.en`, `base.en`, `small.en`, `medium.en`, `large-v3` |
+    | `--model, -m` | Whisper model (default: `small`). Options: `tiny`, `base`, `small`, `medium`, `large-v3`; `.en` variants are for English audio only |
     | `--language, -l` | Language code (e.g. `en`, `es`, `ja`). Filters out non-target language speech. |
     | `--json` | Output result as JSON |
 
@@ -292,7 +293,7 @@ This is suppressed in CI environments, non-TTY shells, and when `HYPERFRAMES_NO_
     All formats are normalized to a standard `[{text, start, end}]` word array and saved as `transcript.json`. If the project has caption HTML files, they are automatically patched with the transcript data.
 
     <Tip>
-      For music or noisy audio, use `--model medium.en` for better accuracy. For the best results with production content, transcribe via the OpenAI or Groq Whisper API and import the JSON.
+      For music or noisy audio, use `--model medium` or `--model large-v3` for better accuracy. Use `.en` models only when the source audio is English. For the best results with production content, transcribe via the OpenAI or Groq Whisper API and import the JSON.
     </Tip>
 
     ### `tts`

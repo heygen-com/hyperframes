@@ -99,3 +99,24 @@ ab-test/
 compositions/
 video-6-2-patched/
 claude-design-hyperframes-video/
+
+# Local agent/session runtime. These are useful for recovery but not repo truth.
+.codex/
+.palantir-mini/
+
+# Repo-local tool installs. Keep binaries, build trees, and model weights local.
+tools/whisper.cpp/
+
+# Video project media and generated render artifacts. Project manifests,
+# framework contracts, and text plans remain trackable.
+video-projects/**/source/**/*.mp4
+video-projects/**/source/**/*.mov
+video-projects/**/source/**/*.MOV
+video-projects/**/source/**/*.wav
+video-projects/**/source/**/*.mp3
+video-projects/**/out/
+video-projects/**/renders/
+video-projects/**/captures/
+video-projects/**/audit/*.png
+video-projects/**/audit/*.webm
+video-projects/**/audit/*.mp4
