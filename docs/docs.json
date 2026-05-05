@@ -144,10 +144,11 @@
             "pages": [
               "catalog/blocks/app-showcase",
               "catalog/blocks/apple-money-count",
-              "catalog/blocks/vpn-youtube-spot",
+              "catalog/blocks/blue-sweater-intro-video",
               "catalog/blocks/north-korea-locked-down",
               "catalog/blocks/nyc-paris-flight",
-              "catalog/blocks/ui-3d-reveal"
+              "catalog/blocks/ui-3d-reveal",
+              "catalog/blocks/vpn-youtube-spot"
             ]
           },
           {

@@ -28,6 +28,20 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/apple-money-count.png"
   },
   {
+    "name": "blue-sweater-intro-video",
+    "type": "block",
+    "title": "Blue Sweater Intro Video",
+    "description": "Warm AI creator intro sequence that resolves into an X follow card for @_blue_sweater_.",
+    "tags": [
+      "showcase",
+      "ai",
+      "creator",
+      "sfx"
+    ],
+    "href": "/catalog/blocks/blue-sweater-intro-video",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/blue-sweater-intro-video.png"
+  },
+  {
     "name": "chromatic-radial-split",
     "type": "block",
     "title": "Chromatic Radial Split",
@@ -124,20 +138,6 @@
     ],
     "href": "/catalog/blocks/glitch",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/glitch.png"
-  },
-  {
-    "name": "vpn-youtube-spot",
-    "type": "block",
-    "title": "VPN YouTube Spot",
-    "description": "Snappy Apple-style YouTube insert showing a phone finding and installing a friendly VPN app with sound effects.",
-    "tags": [
-      "app",
-      "showcase",
-      "youtube",
-      "sfx"
-    ],
-    "href": "/catalog/blocks/vpn-youtube-spot",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/vpn-youtube-spot.png"
   },
   {
     "name": "grain-overlay",
@@ -541,6 +541,20 @@
     ],
     "href": "/catalog/blocks/ui-3d-reveal",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/ui-3d-reveal.png"
+  },
+  {
+    "name": "vpn-youtube-spot",
+    "type": "block",
+    "title": "VPN YouTube Spot",
+    "description": "Snappy Apple-style YouTube insert showing a phone finding and installing a friendly VPN app with sound effects.",
+    "tags": [
+      "app",
+      "showcase",
+      "youtube",
+      "sfx"
+    ],
+    "href": "/catalog/blocks/vpn-youtube-spot",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/vpn-youtube-spot.png"
   },
   {
     "name": "whip-pan",

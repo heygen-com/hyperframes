@@ -1,0 +1,32 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "blue-sweater-intro-video",
+  "type": "hyperframes:block",
+  "title": "Blue Sweater Intro Video",
+  "description": "Warm AI creator intro sequence that resolves into an X follow card for @_blue_sweater_.",
+  "tags": ["showcase", "ai", "creator", "sfx"],
+  "author": "Joe Sai",
+  "authorUrl": "https://x.com/_blue_sweater_",
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 12,
+  "files": [
+    {
+      "path": "blue-sweater-intro-video.html",
+      "target": "compositions/blue-sweater-intro-video.html",
+      "type": "hyperframes:composition"
+    },
+    {
+      "path": "assets/joe-sai-avatar.png",
+      "target": "assets/joe-sai-avatar.png",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/sfx/integrated-melodic-tech-mix.wav",
+      "target": "assets/sfx/integrated-melodic-tech-mix.wav",
+      "type": "hyperframes:asset"
+    }
+  ]
+}
