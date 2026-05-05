@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "Hyperframes Studio",
+      "runtimeExecutable": "bun",
+      "runtimeArgs": ["run", "studio"],
+      "port": 5190
+    }
+  ]
+}
