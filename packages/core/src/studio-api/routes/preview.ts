@@ -5,6 +5,25 @@ import type { StudioApiAdapter } from "../types.js";
 import { isSafePath } from "../helpers/safePath.js";
 import { getMimeType } from "../helpers/mime.js";
 import { buildSubCompositionHtml } from "../helpers/subComposition.js";
+import { createProjectSignature } from "../helpers/projectSignature.js";
+
+const PROJECT_SIGNATURE_META = "hyperframes-project-signature";
+
+function resolveProjectSignature(adapter: StudioApiAdapter, projectDir: string): string {
+  return adapter.getProjectSignature?.(projectDir) ?? createProjectSignature(projectDir);
+}
+
+function injectProjectSignature(html: string, signature: string): string {
+  const tag = `<meta name="${PROJECT_SIGNATURE_META}" content="${signature}">`;
+  if (html.includes(`name="${PROJECT_SIGNATURE_META}"`)) {
+    return html.replace(
+      new RegExp(`<meta\\s+name=["']${PROJECT_SIGNATURE_META}["'][^>]*>`, "i"),
+      tag,
+    );
+  }
+  if (html.includes("</head>")) return html.replace("</head>", `${tag}\n</head>`);
+  return `${tag}\n${html}`;
+}
 
 export function registerPreviewRoutes(api: Hono, adapter: StudioApiAdapter): void {
   // Bundled composition preview
@@ -37,10 +56,18 @@ export function registerPreviewRoutes(api: Hono, adapter: StudioApiAdapter): voi
         bundled = bundled.replace(/<head>/i, `<head><base href="${baseHref}">`);
       }
 
+      bundled = injectProjectSignature(bundled, resolveProjectSignature(adapter, project.dir));
       return c.html(bundled);
     } catch {
       const file = resolve(project.dir, "index.html");
-      if (existsSync(file)) return c.html(readFileSync(file, "utf-8"));
+      if (existsSync(file)) {
+        return c.html(
+          injectProjectSignature(
+            readFileSync(file, "utf-8"),
+            resolveProjectSignature(adapter, project.dir),
+          ),
+        );
+      }
       return c.text("not found", 404);
     }
   });
@@ -63,7 +90,7 @@ export function registerPreviewRoutes(api: Hono, adapter: StudioApiAdapter): voi
     const baseHref = `/api/projects/${project.id}/preview/`;
     const html = buildSubCompositionHtml(project.dir, compPath, adapter.runtimeUrl, baseHref);
     if (!html) return c.text("not found", 404);
-    return c.html(html);
+    return c.html(injectProjectSignature(html, resolveProjectSignature(adapter, project.dir)));
   });
 
   // Static asset serving (with range request support for audio/video seeking)

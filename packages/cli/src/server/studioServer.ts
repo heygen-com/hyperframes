@@ -14,6 +14,7 @@ import { loadRuntimeSource } from "./runtimeSource.js";
 import { VERSION as version } from "../version.js";
 import {
   createStudioApi,
+  createProjectSignature,
   getMimeType,
   type StudioApiAdapter,
   type ResolvedProject,
@@ -144,6 +145,10 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
   // ── CLI adapter for the shared studio API ──────────────────────────────
 
   const project: ResolvedProject = { id: projectId, dir: projectDir, title: projectId };
+  let cachedProjectSignature: string | null = null;
+  watcher.addListener(() => {
+    cachedProjectSignature = null;
+  });
 
   const adapter: StudioApiAdapter = {
     listProjects: () => [project],
@@ -164,6 +169,12 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
         console.error("[studio] Bundle failed:", err);
         return null;
       }
+    },
+
+    getProjectSignature(dir: string): string {
+      if (resolve(dir) !== resolve(projectDir)) return createProjectSignature(dir);
+      cachedProjectSignature ??= createProjectSignature(projectDir);
+      return cachedProjectSignature;
     },
 
     async lint(html: string, opts?: { filePath?: string }) {

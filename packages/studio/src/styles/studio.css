@@ -49,3 +49,115 @@ body {
 .cm-editor.cm-focused {
   outline: none;
 }
+
+/*
+ * HyperFrames brand loader. Shared by preview overlays that need a calm,
+ * branded loading state instead of a generic spinner.
+ */
+.hf-loader {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  width: min(34rem, 100%);
+  padding: 1.5rem;
+  box-sizing: border-box;
+  text-align: center;
+  cursor: default;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-user-drag: none;
+}
+
+.hf-frame {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  min-height: 12rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.52);
+}
+
+.hf-loader-mark-frame {
+  display: grid;
+  place-items: center;
+  overflow: visible;
+  transform-origin: 50% 50%;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-user-drag: none;
+}
+
+.hf-loader-mark {
+  display: block;
+  overflow: visible;
+  filter: drop-shadow(0 0 7px rgba(79, 219, 94, 0.2));
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-user-drag: none;
+}
+
+.hf-loader-title {
+  font-family:
+    Inter,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  color: var(--hf-heading, #f4f4f5);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hf-loader-detail {
+  max-width: 32rem;
+  min-height: 2.5rem;
+  overflow: hidden;
+  color: var(--hf-text-secondary, rgba(244, 244, 245, 0.68));
+  font-family:
+    Inter,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+  font-size: 0.82rem;
+  line-height: 1.6;
+}
+
+.hf-loader-mono {
+  width: min(36rem, 100%);
+  min-height: 1.5rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--hf-text-tertiary, rgba(244, 244, 245, 0.46));
+  font-family: "IBM Plex Mono", "SF Mono", "Fira Code", monospace;
+  font-size: 0.75rem;
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.hf-loader-progress {
+  width: min(18rem, 72vw);
+  height: 0.375rem;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.hf-loader-progress__fill {
+  width: 100%;
+  height: 100%;
+  transform: scaleX(0);
+  transform-origin: left center;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #06e3fa, #4fdb5e);
+  transition: transform 160ms ease;
+}

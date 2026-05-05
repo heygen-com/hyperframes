@@ -41,6 +41,9 @@ export interface StudioApiAdapter {
   /** Bundle a project directory into a single HTML string. Returns null if unavailable. */
   bundle(projectDir: string): Promise<string | null>;
 
+  /** Optional: cached signature for project files that should invalidate preview frame caches. */
+  getProjectSignature?: (projectDir: string) => string;
+
   /** Lint a single HTML string. */
   lint(html: string, opts?: { filePath?: string }): Promise<LintResult> | LintResult;
 

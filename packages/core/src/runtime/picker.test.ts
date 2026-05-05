@@ -95,6 +95,37 @@ describe("createPickerModule", () => {
       expect(api.getCandidatesAtPoint(Infinity, 0)).toEqual([]);
     });
 
+    it("does not pick through blocking loading overlays", () => {
+      const picker = createPickerModule({ postMessage: createMockPostMessage() });
+      picker.installPickerApi();
+      const scene = document.createElement("div");
+      scene.id = "scene-title";
+      scene.textContent = "Scene title";
+      const overlay = document.createElement("div");
+      overlay.setAttribute("data-hyper-shader-loading", "");
+      const overlayLabel = document.createElement("span");
+      overlayLabel.textContent = "Preparing scene transitions";
+      overlay.appendChild(overlayLabel);
+      document.body.appendChild(scene);
+      document.body.appendChild(overlay);
+
+      const originalElementsFromPoint = document.elementsFromPoint;
+      Object.defineProperty(document, "elementsFromPoint", {
+        configurable: true,
+        value: vi.fn(() => [overlayLabel, overlay, scene]),
+      });
+
+      const api = (window as any).__HF_PICKER_API;
+      try {
+        expect(api.getCandidatesAtPoint(10, 10)).toEqual([]);
+      } finally {
+        Object.defineProperty(document, "elementsFromPoint", {
+          configurable: true,
+          value: originalElementsFromPoint,
+        });
+      }
+    });
+
     it("pickAtPoint returns null for invalid coords", () => {
       const picker = createPickerModule({ postMessage: createMockPostMessage() });
       picker.installPickerApi();

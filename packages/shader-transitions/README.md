@@ -30,7 +30,7 @@ const tl = init({
 });
 ```
 
-The `init()` function captures each scene to a WebGL texture at transition time, crossfades between them using the selected shader, and returns a GSAP timeline. If WebGL is unavailable, it falls back to hard cuts.
+The `init()` function pre-captures animated scene samples for every transition, composites cached samples with the selected shader during playback, and returns a GSAP timeline. Scene animations keep advancing through shader transitions without running DOM captures in the playback loop. If WebGL is unavailable, it falls back to normal timeline playback without shader compositing.
 
 ### With an existing timeline
 
@@ -74,14 +74,19 @@ init({
 
 ### `init(config): GsapTimeline`
 
-| Option          | Type                 | Required | Description                                                                                                                                                   |
-| --------------- | -------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `bgColor`       | `string`             | yes      | Fallback background color (hex) for scene capture. Use the composition's body/canvas background — individual scenes set their own `background-color` via CSS. |
-| `accentColor`   | `string`             | no       | Accent color (hex) for shader glow effects                                                                                                                    |
-| `scenes`        | `string[]`           | yes      | Element IDs of each scene, in order                                                                                                                           |
-| `transitions`   | `TransitionConfig[]` | yes      | Transition definitions (see below)                                                                                                                            |
-| `timeline`      | `GsapTimeline`       | no       | Existing timeline to attach transitions to                                                                                                                    |
-| `compositionId` | `string`             | no       | Override the `data-composition-id` for timeline registration                                                                                                  |
+| Option                | Type                 | Required | Description                                                                                                                                                   |
+| --------------------- | -------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bgColor`             | `string`             | yes      | Fallback background color (hex) for scene capture. Use the composition's body/canvas background — individual scenes set their own `background-color` via CSS. |
+| `accentColor`         | `string`             | no       | Accent color (hex) for shader glow effects                                                                                                                    |
+| `scenes`              | `string[]`           | yes      | Element IDs of each scene, in order                                                                                                                           |
+| `transitions`         | `TransitionConfig[]` | yes      | Transition definitions (see below)                                                                                                                            |
+| `timeline`            | `GsapTimeline`       | no       | Existing timeline to attach transitions to                                                                                                                    |
+| `compositionId`       | `string`             | no       | Override the `data-composition-id` for timeline registration                                                                                                  |
+| `previewCaptureFps`   | `number`             | no       | Browser preview pre-capture samples per transition second. Defaults to `30`; rendering uses deterministic per-frame compositing instead.                      |
+| `previewCaptureScale` | `number`             | no       | Browser preview pre-capture scale from `0.25` to `1`. Defaults to `1` for full-fidelity snapshots; lower it for faster lower-resolution preview captures.     |
+| `showPreviewLoading`  | `boolean`            | no       | Cover the preview with a loading phrase and progress bar while browser snapshots are being pre-captured. Defaults to `true`.                                  |
+
+Browser previews store captured transition snapshots in IndexedDB using a key derived from composition ID, scene DOM/style signatures, transition timing, capture FPS, scale, and dimensions. On refresh, matching snapshots are reloaded into WebGL textures instead of being captured again. Runtime scene or stylesheet edits mark only adjacent transition caches dirty; recapture is deferred until playback so editing stays responsive.
 
 ### `TransitionConfig`
 

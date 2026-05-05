@@ -36,19 +36,35 @@ function compileShader(gl: WebGLRenderingContext, src: string, type: number): We
   return s;
 }
 
-export function createProgram(gl: WebGLRenderingContext, fragSrc: string): WebGLProgram {
-  if (!cachedVertexShader) {
-    cachedVertexShader = compileShader(gl, vertSrc, gl.VERTEX_SHADER);
-  }
+function linkProgram(
+  gl: WebGLRenderingContext,
+  vertexShader: WebGLShader,
+  fragSrc: string,
+): WebGLProgram {
   const p = gl.createProgram();
   if (!p) throw new Error("[HyperShader] Failed to create program");
-  gl.attachShader(p, cachedVertexShader);
+  gl.attachShader(p, vertexShader);
   gl.attachShader(p, compileShader(gl, fragSrc, gl.FRAGMENT_SHADER));
   gl.linkProgram(p);
   if (!gl.getProgramParameter(p, gl.LINK_STATUS)) {
     throw new Error(`[HyperShader] Program link: ${gl.getProgramInfoLog(p) || "unknown"}`);
   }
   return p;
+}
+
+export function createProgram(gl: WebGLRenderingContext, fragSrc: string): WebGLProgram {
+  if (!cachedVertexShader) {
+    cachedVertexShader = compileShader(gl, vertSrc, gl.VERTEX_SHADER);
+  }
+  return linkProgram(gl, cachedVertexShader, fragSrc);
+}
+
+export function createProgramWithVertex(
+  gl: WebGLRenderingContext,
+  vertexSrc: string,
+  fragSrc: string,
+): WebGLProgram {
+  return linkProgram(gl, compileShader(gl, vertexSrc, gl.VERTEX_SHADER), fragSrc);
 }
 
 export interface AccentColors {
@@ -136,8 +152,16 @@ export function uploadTexture(
   tex: WebGLTexture,
   canvas: HTMLCanvasElement,
 ): void {
-  gl.bindTexture(gl.TEXTURE_2D, tex);
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, canvas);
+  uploadTextureSource(gl, tex, canvas);
   canvas.width = 0;
   canvas.height = 0;
+}
+
+export function uploadTextureSource(
+  gl: WebGLRenderingContext,
+  tex: WebGLTexture,
+  source: TexImageSource,
+): void {
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source);
 }

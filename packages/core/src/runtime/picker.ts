@@ -4,6 +4,19 @@ type PickerModuleDeps = {
   postMessage: (payload: RuntimeOutboundMessage) => void;
 };
 
+const PICKER_IGNORE_SELECTOR = [
+  "[data-hyperframes-ignore]",
+  "[data-hyperframes-picker-ignore]",
+  "[data-hf-ignore]",
+  "[data-no-inspect]",
+  "[data-no-pick]",
+  "[data-hyper-shader-loading]",
+].join(",");
+const PICKER_BLOCK_SELECTOR = [
+  "[data-hyperframes-picker-block]",
+  "[data-hyper-shader-loading]",
+].join(",");
+
 export type PickerModule = {
   enablePickMode: () => void;
   disablePickMode: () => void;
@@ -48,7 +61,12 @@ export function createPickerModule(deps: PickerModuleDeps): PickerModule {
     const tag = el.tagName.toLowerCase();
     if (tag === "script" || tag === "style" || tag === "link" || tag === "meta") return false;
     if (el.classList.contains("__hf-pick-highlight")) return false;
+    if (el.closest(PICKER_IGNORE_SELECTOR)) return false;
     return true;
+  }
+
+  function blocksPickerAtPoint(el: Element | null): boolean {
+    return Boolean(el?.closest(PICKER_BLOCK_SELECTOR));
   }
 
   function buildElementSelector(el: Element): string {
@@ -97,6 +115,7 @@ export function createPickerModule(deps: PickerModuleDeps): PickerModule {
       const single = document.elementFromPoint(clientX, clientY);
       raw = single ? [single] : [];
     }
+    if (blocksPickerAtPoint(raw[0] ?? null)) return [];
     const dedupe: Record<string, true> = {};
     const candidates: Element[] = [];
     for (let i = 0; i < raw.length; i += 1) {

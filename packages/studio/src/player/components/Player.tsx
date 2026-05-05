@@ -1,6 +1,7 @@
-import { forwardRef, useRef, useState } from "react";
+import { forwardRef, useEffect, useRef, useState } from "react";
 import { isLottieAnimationLoaded } from "@hyperframes/core/runtime/lottie-readiness";
 import { useMountEffect } from "../../hooks/useMountEffect";
+import { HyperframesLoader } from "../../components/ui";
 // NOTE: importing "@hyperframes/player" registers a class extending HTMLElement
 // at module load, which throws under SSR. Defer the import to the mount effect
 // so it only runs in the browser.
@@ -62,7 +63,10 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
     const containerRef = useRef<HTMLDivElement>(null);
     const loadCountRef = useRef(0);
     const assetPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    const assetFadeRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const [assetsLoading, setAssetsLoading] = useState(false);
+    const [assetOverlayVisible, setAssetOverlayVisible] = useState(false);
+    const [assetOverlayFading, setAssetOverlayFading] = useState(false);
 
     useMountEffect(() => {
       const container = containerRef.current;
@@ -169,13 +173,55 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
       };
     });
 
+    useEffect(() => {
+      if (assetFadeRef.current) {
+        clearTimeout(assetFadeRef.current);
+        assetFadeRef.current = null;
+      }
+
+      if (assetsLoading) {
+        setAssetOverlayVisible(true);
+        setAssetOverlayFading(false);
+        return;
+      }
+
+      setAssetOverlayFading(true);
+      assetFadeRef.current = setTimeout(() => {
+        setAssetOverlayVisible(false);
+        setAssetOverlayFading(false);
+        assetFadeRef.current = null;
+      }, 240);
+
+      return () => {
+        if (assetFadeRef.current) {
+          clearTimeout(assetFadeRef.current);
+          assetFadeRef.current = null;
+        }
+      };
+    }, [assetsLoading]);
+
     return (
       <div className="relative w-full h-full max-w-full max-h-full overflow-hidden bg-black flex items-center justify-center">
         <div ref={containerRef} className="w-full h-full" />
-        {assetsLoading && (
-          <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center z-20 pointer-events-none">
-            <div className="w-8 h-8 border-2 border-white/20 border-t-white rounded-full animate-spin" />
-            <span className="text-white/60 text-xs mt-3">Loading assets…</span>
+        {assetOverlayVisible && (
+          <div
+            className="absolute inset-0 bg-black flex items-center justify-center z-20 select-none"
+            data-hyperframes-ignore=""
+            draggable={false}
+            style={{
+              opacity: assetOverlayFading ? 0 : 1,
+              pointerEvents: assetOverlayFading ? "none" : "auto",
+              transition: "opacity 240ms ease-out",
+            }}
+            onDragStart={(event) => event.preventDefault()}
+            onMouseDown={(event) => event.preventDefault()}
+            onPointerDown={(event) => event.preventDefault()}
+          >
+            <HyperframesLoader
+              title="Preparing preview assets"
+              detail="Waiting for media and motion assets before playback starts."
+              size={56}
+            />
           </div>
         )}
       </div>

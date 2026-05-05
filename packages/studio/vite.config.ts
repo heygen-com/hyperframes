@@ -8,12 +8,13 @@ import {
   lstatSync,
   realpathSync,
 } from "node:fs";
-import { join, resolve } from "node:path";
+import { isAbsolute, join, relative, resolve } from "node:path";
 import type {
   StudioApiAdapter,
   ResolvedProject,
   RenderJobState,
 } from "@hyperframes/core/studio-api";
+import { createProjectSignature } from "../core/src/studio-api/helpers/projectSignature";
 import { createRetryingModuleLoader, ensureProducerDist } from "./vite.producer";
 import { readNodeRequestBody } from "./vite.request-body.js";
 import { seekThumbnailPreview } from "./vite.thumbnail";
@@ -56,6 +57,14 @@ interface ScreenshotClip {
   height: number;
 }
 
+function isPathWithin(parentDir: string, childPath: string): boolean {
+  const childRelativePath = relative(resolve(parentDir), resolve(childPath));
+  return (
+    childRelativePath === "" ||
+    (!childRelativePath.startsWith("..") && !isAbsolute(childRelativePath))
+  );
+}
+
 // ── Vite adapter for the shared studio API ───────────────────────────────────
 
 function createViteAdapter(dataDir: string, server: ViteDevServer): StudioApiAdapter {
@@ -74,6 +83,12 @@ function createViteAdapter(dataDir: string, server: ViteDevServer): StudioApiAda
       onProgress?: (job: { progress: number; currentStage?: string }) => void,
     ) => Promise<void>;
   }> | null = null;
+  const projectSignatureCache = new Map<string, string>();
+  server.watcher.on("all", (_event, file) => {
+    for (const projectDir of projectSignatureCache.keys()) {
+      if (isPathWithin(projectDir, file)) projectSignatureCache.delete(projectDir);
+    }
+  });
   const getBundler = async () => {
     if (!_bundler) {
       try {
@@ -178,6 +193,16 @@ function createViteAdapter(dataDir: string, server: ViteDevServer): StudioApiAda
         `data-hyperframes-preview-runtime="1" src="${this.runtimeUrl}"`,
       );
       return html;
+    },
+
+    getProjectSignature(projectDir: string): string {
+      const cacheKey = resolve(projectDir);
+      const cached = projectSignatureCache.get(cacheKey);
+      if (cached) return cached;
+
+      const signature = createProjectSignature(cacheKey);
+      projectSignatureCache.set(cacheKey, signature);
+      return signature;
     },
 
     async lint(html: string, opts?: { filePath?: string }) {

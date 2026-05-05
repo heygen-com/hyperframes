@@ -8,8 +8,26 @@ export interface ProjectWatcher {
   close(): void;
 }
 
-const WATCHED_EXTENSIONS = new Set([".html", ".css", ".js", ".json"]);
+const WATCHER_EXCLUDED_DIRS = new Set([
+  ".cache",
+  ".git",
+  ".hyperframes",
+  ".next",
+  ".vite",
+  "build",
+  "coverage",
+  "dist",
+  "node_modules",
+  "outputs",
+  "renders",
+]);
 const DEBOUNCE_MS = 300;
+
+export function shouldWatchProjectFile(filename: string): boolean {
+  if (!filename) return false;
+  const parts = filename.split(/[\\/]+/);
+  return !parts.some((part) => WATCHER_EXCLUDED_DIRS.has(part));
+}
 
 export function createProjectWatcher(projectDir: string): ProjectWatcher {
   const listeners = new Set<FileChangeListener>();
@@ -19,13 +37,13 @@ export function createProjectWatcher(projectDir: string): ProjectWatcher {
   try {
     watcher = watch(projectDir, { recursive: true }, (_event, filename) => {
       if (!filename) return;
-      const ext = "." + filename.split(".").pop()?.toLowerCase();
-      if (!WATCHED_EXTENSIONS.has(ext)) return;
+      const relativePath = filename.toString();
+      if (!shouldWatchProjectFile(relativePath)) return;
 
       if (debounceTimer) clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
         for (const fn of listeners) {
-          fn(filename);
+          fn(relativePath);
         }
       }, DEBOUNCE_MS);
     });
