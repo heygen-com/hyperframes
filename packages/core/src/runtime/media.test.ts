@@ -204,17 +204,15 @@ describe("syncRuntimeMedia", () => {
     expect(clip.el.play).toHaveBeenCalled();
   });
 
-  it("nudges preload to auto AND calls play() on unbuffered media in one pass", () => {
-    // Assets added after the runtime already bound its metadata listeners
-    // (e.g. a sub-composition that injects a late <audio>) need both the
-    // preload nudge and the play() call from the same sync tick — the
-    // reviewer flagged that these two concerns must not drift.
+  it("forces preload=auto on every active element, not just during play", () => {
+    // Streaming formats (MP3) may arrive with preload="metadata", which only
+    // buffers the first few seconds. Setting preload="auto" on every active
+    // tick catches elements whose preload was overridden after init.ts set it
+    // — and ensures it happens even when paused (e.g. during a seek).
     const clip = createMockClip({ start: 0, end: 10 });
-    Object.defineProperty(clip.el, "readyState", { value: 0, writable: true });
     Object.defineProperty(clip.el, "preload", { value: "metadata", writable: true });
-    syncRuntimeMedia({ clips: [clip], timeSeconds: 5, playing: true, playbackRate: 1 });
+    syncRuntimeMedia({ clips: [clip], timeSeconds: 5, playing: false, playbackRate: 1 });
     expect(clip.el.preload).toBe("auto");
-    expect(clip.el.play).toHaveBeenCalled();
   });
 
   it("does not re-fire play() while a previous play() is in flight", () => {
@@ -245,6 +243,60 @@ describe("syncRuntimeMedia", () => {
     // Next tick: play() should fire again (guard was cleared by the seek)
     syncRuntimeMedia({ clips: [clip], timeSeconds: 15.02, playing: true, playbackRate: 1 });
     expect(clip.el.play).toHaveBeenCalledTimes(2);
+  });
+
+  it("calls load() once when a seek fails past the buffered range (MP3 partial buffer)", () => {
+    // Streaming MP3 with preload="metadata" only buffers the first ~15s.
+    // When the user seeks to 20s, el.currentTime = 20 silently fails —
+    // currentTime stays at 0. The fix detects this and calls load() once
+    // to trigger a full network fetch.
+    const clip = createMockClip({ start: 0, end: 30, mediaStart: 0 });
+    // Simulate: currentTime is writable but the setter is intercepted
+    // to stay at 0 (simulating failed seek past buffer).
+    let internalTime = 0;
+    Object.defineProperty(clip.el, "currentTime", {
+      get: () => internalTime,
+      set: () => {
+        // Seek silently fails — stays at 0 (MP3 past buffer)
+      },
+      configurable: true,
+    });
+    clip.el.load = vi.fn();
+    // First tick at t=20 — hard seek fires, fails, should call load()
+    syncRuntimeMedia({ clips: [clip], timeSeconds: 20, playing: true, playbackRate: 1 });
+    expect(clip.el.load).toHaveBeenCalledTimes(1);
+    // Second tick — load() should NOT be called again (one-shot guard)
+    syncRuntimeMedia({ clips: [clip], timeSeconds: 20.05, playing: true, playbackRate: 1 });
+    expect(clip.el.load).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not call load() when the seek succeeds", () => {
+    const clip = createMockClip({ start: 0, end: 30, mediaStart: 0 });
+    Object.defineProperty(clip.el, "currentTime", { value: 0, writable: true });
+    clip.el.load = vi.fn();
+    // Seek to 20 — succeeds (currentTime updates)
+    syncRuntimeMedia({ clips: [clip], timeSeconds: 20, playing: true, playbackRate: 1 });
+    expect(clip.el.currentTime).toBe(20);
+    expect(clip.el.load).not.toHaveBeenCalled();
+  });
+
+  it("clears the load-retry guard when clip deactivates and reactivates", () => {
+    const clip = createMockClip({ start: 0, end: 10, mediaStart: 0 });
+    let internalTime = 0;
+    Object.defineProperty(clip.el, "currentTime", {
+      get: () => internalTime,
+      set: () => {},
+      configurable: true,
+    });
+    clip.el.load = vi.fn();
+    // First activation — seek fails, load() called
+    syncRuntimeMedia({ clips: [clip], timeSeconds: 5, playing: true, playbackRate: 1 });
+    expect(clip.el.load).toHaveBeenCalledTimes(1);
+    // Deactivate
+    syncRuntimeMedia({ clips: [clip], timeSeconds: 11, playing: true, playbackRate: 1 });
+    // Reactivate — guard was cleared, so load() can fire again
+    syncRuntimeMedia({ clips: [clip], timeSeconds: 5, playing: true, playbackRate: 1 });
+    expect(clip.el.load).toHaveBeenCalledTimes(2);
   });
 
   it("pauses active clip when not playing", () => {
