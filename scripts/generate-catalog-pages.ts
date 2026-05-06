@@ -302,9 +302,6 @@ function generateTexturePreview(manifest: RegistryItem, textureGroups: TextureGr
 
 function catalogPreviewFor(kind: ItemKind, manifest: RegistryItem): string {
   const dir = typeDir(kind);
-  if (textureGroupsFor(manifest).length > 0) {
-    return `/public/catalog-assets/${dir}/${manifest.name}/preview.png`;
-  }
   return `${catalogImageBase}/${dir}/${manifest.name}.png`;
 }
 

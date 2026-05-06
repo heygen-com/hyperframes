@@ -360,7 +360,7 @@
       "effect"
     ],
     "href": "/catalog/components/texture-mask-text",
-    "preview": "/public/catalog-assets/components/texture-mask-text/preview.png"
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/texture-mask-text.png"
   },
   {
     "name": "thermal-distortion",
