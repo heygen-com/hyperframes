@@ -1,0 +1,60 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "texture-mask-text",
+  "type": "hyperframes:component",
+  "title": "Texture Mask Text",
+  "description": "CSS luminance masks that cut holes through letterforms — 9 pre-built textures from PBR color maps (lava, rock, concrete, brick, wood, onyx, carpet, metal, snow)",
+  "tags": ["text", "texture", "mask", "effect"],
+  "files": [
+    {
+      "path": "texture-mask-text.html",
+      "target": "compositions/components/texture-mask-text/texture-mask-text.html",
+      "type": "hyperframes:snippet"
+    },
+    {
+      "path": "masks/lava.png",
+      "target": "compositions/components/texture-mask-text/masks/lava.png",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "masks/rock.png",
+      "target": "compositions/components/texture-mask-text/masks/rock.png",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "masks/concrete.png",
+      "target": "compositions/components/texture-mask-text/masks/concrete.png",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "masks/brick.png",
+      "target": "compositions/components/texture-mask-text/masks/brick.png",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "masks/wood.png",
+      "target": "compositions/components/texture-mask-text/masks/wood.png",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "masks/onyx.png",
+      "target": "compositions/components/texture-mask-text/masks/onyx.png",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "masks/carpet.png",
+      "target": "compositions/components/texture-mask-text/masks/carpet.png",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "masks/metal.png",
+      "target": "compositions/components/texture-mask-text/masks/metal.png",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "masks/snow.png",
+      "target": "compositions/components/texture-mask-text/masks/snow.png",
+      "type": "hyperframes:asset"
+    }
+  ]
+}
