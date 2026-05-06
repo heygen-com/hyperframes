@@ -52,18 +52,35 @@ Show a static image before playback starts:
 
 ## Attributes
 
-| Attribute       | Type    | Default | Description                                  |
-| --------------- | ------- | ------- | -------------------------------------------- |
-| `src`           | string  | —       | URL to the composition HTML file             |
-| `audio-src`     | string  | —       | Audio URL for parent-frame playback (mobile) |
-| `width`         | number  | 1920    | Composition width in pixels (aspect ratio)   |
-| `height`        | number  | 1080    | Composition height in pixels (aspect ratio)  |
-| `controls`      | boolean | false   | Show play/pause, scrubber, and time display  |
-| `muted`         | boolean | false   | Mute audio playback                          |
-| `poster`        | string  | —       | Image URL shown before playback starts       |
-| `playback-rate` | number  | 1       | Speed multiplier (0.5 = half, 2 = double)    |
-| `autoplay`      | boolean | false   | Start playing when ready                     |
-| `loop`          | boolean | false   | Restart when the composition ends            |
+| Attribute              | Type                            | Default       | Description                                                                 |
+| ---------------------- | ------------------------------- | ------------- | --------------------------------------------------------------------------- |
+| `src`                  | string                          | —             | URL to the composition HTML file                                            |
+| `audio-src`            | string                          | —             | Audio URL for parent-frame playback (mobile)                                |
+| `width`                | number                          | 1920          | Composition width in pixels (aspect ratio)                                  |
+| `height`               | number                          | 1080          | Composition height in pixels (aspect ratio)                                 |
+| `controls`             | boolean                         | false         | Show play/pause, scrubber, and time display                                 |
+| `muted`                | boolean                         | false         | Mute audio playback                                                         |
+| `poster`               | string                          | —             | Image URL shown before playback starts                                      |
+| `playback-rate`        | number                          | 1             | Speed multiplier (0.5 = half, 2 = double)                                   |
+| `autoplay`             | boolean                         | false         | Start playing when ready                                                    |
+| `loop`                 | boolean                         | false         | Restart when the composition ends                                           |
+| `shader-capture-scale` | number                          | —             | Shader transition snapshot scale forwarded to browser previews (`0.25`-`1`) |
+| `shader-loading`       | `composition \| player \| none` | `composition` | Controls shader transition prep loading UI ownership                        |
+
+### Shader transition previews
+
+When a composition uses `@hyperframes/shader-transitions`, the player can own preview-only shader capture settings:
+
+```html
+<hyperframes-player
+  src="./composition/index.html"
+  shader-capture-scale="1"
+  shader-loading="player"
+  controls
+></hyperframes-player>
+```
+
+`shader-loading="player"` shows the player-owned transition-prep overlay from shader progress messages. `composition` leaves direct composition fallback behavior alone, and `none` suppresses the loader.
 
 ### Mobile audio
 
@@ -98,6 +115,8 @@ player.ready; // boolean (read-only)
 player.playbackRate; // number (read/write)
 player.muted; // boolean (read/write)
 player.loop; // boolean (read/write)
+player.shaderCaptureScale; // number (read/write)
+player.shaderLoading; // "composition" | "player" | "none" (read/write)
 
 // Inner iframe access (for advanced consumers — see "Advanced: iframe access" below)
 player.iframeElement; // HTMLIFrameElement (read-only)
@@ -157,14 +176,15 @@ function StudioPreview({ src }: { src: string }) {
 
 ## Events
 
-| Event        | Detail            | Fired when                                 |
-| ------------ | ----------------- | ------------------------------------------ |
-| `ready`      | `{ duration }`    | Composition loaded and duration determined |
-| `play`       | —                 | Playback started                           |
-| `pause`      | —                 | Playback paused                            |
-| `timeupdate` | `{ currentTime }` | Playback position changed (~10 fps)        |
-| `ended`      | —                 | Reached the end (when not looping)         |
-| `error`      | `{ message }`     | Composition failed to load                 |
+| Event                   | Detail                     | Fired when                                 |
+| ----------------------- | -------------------------- | ------------------------------------------ |
+| `ready`                 | `{ duration }`             | Composition loaded and duration determined |
+| `play`                  | —                          | Playback started                           |
+| `pause`                 | —                          | Playback paused                            |
+| `timeupdate`            | `{ currentTime }`          | Playback position changed (~10 fps)        |
+| `ended`                 | —                          | Reached the end (when not looping)         |
+| `error`                 | `{ message }`              | Composition failed to load                 |
+| `shadertransitionstate` | `{ compositionId, state }` | Shader transition cache/capture progress   |
 
 ```js
 player.addEventListener("ready", (e) => {

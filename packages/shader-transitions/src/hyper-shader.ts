@@ -64,8 +64,6 @@ export interface HyperShaderConfig {
   timeline?: GsapTimeline;
   compositionId?: string;
   previewCaptureFps?: number;
-  previewCaptureScale?: number;
-  showPreviewLoading?: boolean;
 }
 
 interface TransState {
@@ -196,6 +194,33 @@ function clampNumber(value: number, min: number, max: number): number {
 function resolvePositiveNumber(value: number | undefined, fallback: number): number {
   if (value === undefined) return fallback;
   return Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
+const PLAYER_CAPTURE_SCALE_PARAM = "__hf_shader_capture_scale";
+const PLAYER_LOADING_PARAM = "__hf_shader_loading";
+
+function readPlayerOption(globalName: string, queryName: string): string | null {
+  const globalValue = (window as unknown as Record<string, unknown>)[globalName];
+  if (typeof globalValue === "string") return globalValue;
+  if (typeof globalValue === "number" && Number.isFinite(globalValue)) return String(globalValue);
+  try {
+    return new URLSearchParams(window.location.search).get(queryName);
+  } catch {
+    return null;
+  }
+}
+
+function resolvePlayerCaptureScale(): number {
+  const raw = readPlayerOption("__HF_SHADER_CAPTURE_SCALE", PLAYER_CAPTURE_SCALE_PARAM);
+  const parsed = raw === null ? NaN : Number(raw);
+  return clampNumber(Number.isFinite(parsed) && parsed > 0 ? parsed : 1, 0.25, 1);
+}
+
+function resolvePlayerLoadingMode(): "internal" | "player" | "none" {
+  const raw = readPlayerOption("__HF_SHADER_LOADING", PLAYER_LOADING_PARAM)?.trim().toLowerCase();
+  if (raw === "player" || raw === "true" || raw === "1") return "player";
+  if (raw === "none" || raw === "false" || raw === "0" || raw === "off") return "none";
+  return "internal";
 }
 
 function stableHash(input: string): string {
@@ -886,12 +911,8 @@ export function init(config: HyperShaderConfig): GsapTimeline {
 
   const canvasEl = glCanvas;
   const previewCaptureFps = clampNumber(resolvePositiveNumber(config.previewCaptureFps, 30), 1, 60);
-  const defaultCaptureScale = 1;
-  const previewCaptureScale = clampNumber(
-    resolvePositiveNumber(config.previewCaptureScale, defaultCaptureScale),
-    0.25,
-    1,
-  );
+  const previewCaptureScale = resolvePlayerCaptureScale();
+  const loadingMode = resolvePlayerLoadingMode();
   const previewTextureWidth = Math.max(1, Math.round(compWidth * previewCaptureScale));
   const previewTextureHeight = Math.max(1, Math.round(compHeight * previewCaptureScale));
   const cachedTransitions: CachedTransition[] = [];
@@ -921,7 +942,7 @@ export function init(config: HyperShaderConfig): GsapTimeline {
   const interpolatedToFbo = createFramebuffer(gl, interpolatedToTex);
   let loadingOverlay: SnapshotLoadingOverlay | null = null;
   const getLoadingOverlay = (): SnapshotLoadingOverlay | null => {
-    if (config.showPreviewLoading === false) return null;
+    if (loadingMode !== "internal") return null;
     loadingOverlay = loadingOverlay || createSnapshotLoadingOverlay(root, compWidth, compHeight);
     return loadingOverlay;
   };
@@ -1500,6 +1521,15 @@ export function init(config: HyperShaderConfig): GsapTimeline {
     const next = { ...current, ...status };
     next.dirtyTransitions = cachedTransitions.filter((cache) => cache.dirty || !cache.ready).length;
     hfWin.__hf.shaderTransitions[compId] = next;
+    window.parent?.postMessage(
+      {
+        source: "hf-preview",
+        type: "shader-transition-state",
+        compositionId: compId,
+        state: next,
+      },
+      "*",
+    );
     if (next.loading) {
       const overlay = getLoadingOverlay();
       overlay?.show();

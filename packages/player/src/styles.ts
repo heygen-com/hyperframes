@@ -31,6 +31,161 @@ export const PLAYER_STYLES = /* css */ `
     pointer-events: none;
   }
 
+  .hfp-shader-loader {
+    position: absolute;
+    inset: 0;
+    z-index: 20;
+    display: grid;
+    place-items: center;
+    visibility: hidden;
+    opacity: 0;
+    pointer-events: none;
+    background: #030504;
+    color: #f4f7fb;
+    cursor: default;
+    user-select: none;
+    -webkit-user-select: none;
+    transition: opacity 420ms ease-out, visibility 420ms ease-out;
+  }
+
+  .hfp-shader-loader.hfp-visible,
+  .hfp-shader-loader.hfp-hiding {
+    visibility: visible;
+  }
+
+  .hfp-shader-loader.hfp-visible {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .hfp-shader-loader.hfp-hiding {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .hfp-shader-loader-panel {
+    display: grid;
+    grid-template-rows: 86px 40px 26px 12px 44px;
+    justify-items: center;
+    align-items: center;
+    gap: 8px;
+    width: min(620px, 82%);
+    text-align: center;
+    font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+
+  .hfp-shader-loader-mark {
+    width: 86px;
+    height: 86px;
+    display: grid;
+    place-items: center;
+    overflow: visible;
+  }
+
+  .hfp-shader-loader-mark svg {
+    display: block;
+    overflow: visible;
+    filter: drop-shadow(0 0 5px rgba(79, 219, 94, 0.16));
+    pointer-events: none;
+  }
+
+  .hfp-shader-loader-title {
+    width: 100%;
+    height: 40px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    font-size: 26px;
+    line-height: 40px;
+    font-weight: 700;
+    letter-spacing: 0;
+  }
+
+  .hfp-shader-loader-title-text {
+    color: transparent;
+    background: linear-gradient(
+      90deg,
+      rgba(244, 247, 251, 0.84) 0%,
+      #ffffff 42%,
+      #80efe4 52%,
+      #ffffff 62%,
+      rgba(244, 247, 251, 0.84) 100%
+    );
+    background-size: 220% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    animation: hfp-shader-loader-sheen 1.9s linear infinite;
+  }
+
+  .hfp-shader-loader-detail {
+    width: 100%;
+    height: 26px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    color: rgba(244, 247, 251, 0.62);
+    font-size: 15px;
+    line-height: 26px;
+    font-weight: 500;
+  }
+
+  .hfp-shader-loader-track {
+    width: min(360px, 100%);
+    height: 8px;
+    overflow: hidden;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.1);
+  }
+
+  .hfp-shader-loader-fill {
+    width: 100%;
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, #06e3fa, #4fdb5e);
+    transform: scaleX(0);
+    transform-origin: left center;
+    transition: transform 160ms ease;
+  }
+
+  .hfp-shader-loader-progress {
+    width: min(420px, 100%);
+    height: 44px;
+    display: grid;
+    grid-template-rows: repeat(2, 22px);
+    color: rgba(244, 247, 251, 0.48);
+    font: 600 13px/22px "IBM Plex Mono", "SF Mono", "Fira Code", "Courier New", monospace;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .hfp-shader-loader-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 74px;
+    align-items: center;
+    column-gap: 20px;
+    width: 100%;
+    white-space: nowrap;
+  }
+
+  .hfp-shader-loader-label {
+    min-width: 0;
+    overflow: hidden;
+    text-align: left;
+    text-overflow: ellipsis;
+  }
+
+  .hfp-shader-loader-value {
+    text-align: right;
+  }
+
+  @keyframes hfp-shader-loader-sheen {
+    from {
+      background-position: 140% 0;
+    }
+    to {
+      background-position: -140% 0;
+    }
+  }
+
   /* ── Theming via CSS custom properties ──
    *
    * Override from outside the shadow DOM:

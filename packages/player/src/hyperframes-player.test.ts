@@ -323,6 +323,137 @@ describe("HyperframesPlayer parent-frame media", () => {
   });
 });
 
+// ── Shader transition preview controls ──
+//
+// Shader transition capture scale and loading UI ownership are player-level
+// preview concerns. The player forwards those options into the iframe before
+// the composition runs, then renders transition-prep progress from runtime
+// messages when `shader-loading="player"` is enabled.
+
+describe("HyperframesPlayer shader transition options", () => {
+  type PlayerWithIframe = HTMLElement & {
+    iframeElement: HTMLIFrameElement;
+  };
+
+  beforeEach(async () => {
+    await import("./hyperframes-player.js");
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    document.body.innerHTML = "";
+  });
+
+  it("observes shader capture scale and loading attributes", () => {
+    const player = document.createElement("hyperframes-player");
+    const Ctor = player.constructor as typeof HTMLElement & {
+      observedAttributes: string[];
+    };
+
+    expect(Ctor.observedAttributes).toContain("shader-capture-scale");
+    expect(Ctor.observedAttributes).toContain("shader-loading");
+  });
+
+  it("passes shader options through src query parameters", () => {
+    const player = document.createElement("hyperframes-player") as PlayerWithIframe;
+    player.setAttribute("shader-capture-scale", "0.5");
+    player.setAttribute("shader-loading", "player");
+    player.setAttribute("src", "/api/projects/demo/preview?x=1#stage");
+
+    const url = new URL(player.iframeElement.src);
+    expect(url.pathname).toBe("/api/projects/demo/preview");
+    expect(url.searchParams.get("x")).toBe("1");
+    expect(url.searchParams.get("__hf_shader_capture_scale")).toBe("0.5");
+    expect(url.searchParams.get("__hf_shader_loading")).toBe("player");
+    expect(url.hash).toBe("#stage");
+  });
+
+  it("injects shader options into srcdoc before composition scripts run", () => {
+    const player = document.createElement("hyperframes-player") as PlayerWithIframe;
+    player.setAttribute("shader-capture-scale", "0.5");
+    player.setAttribute("shader-loading", "player");
+    player.setAttribute(
+      "srcdoc",
+      '<!doctype html><html><head><script src="composition.js"></script></head><body></body></html>',
+    );
+
+    const srcdoc = player.iframeElement.srcdoc;
+    expect(srcdoc).toContain('window.__HF_SHADER_CAPTURE_SCALE="0.5";');
+    expect(srcdoc).toContain('window.__HF_SHADER_LOADING="player";');
+    expect(srcdoc.indexOf("data-hyperframes-player-shader-options")).toBeLessThan(
+      srcdoc.indexOf("composition.js"),
+    );
+  });
+
+  it("shows and hides the player-owned shader loader from transition state messages", () => {
+    vi.useFakeTimers();
+    const player = document.createElement("hyperframes-player") as PlayerWithIframe;
+    player.setAttribute("shader-loading", "player");
+    document.body.appendChild(player);
+
+    const iframeWindow = player.iframeElement.contentWindow;
+    expect(iframeWindow).toBeTruthy();
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        source: iframeWindow,
+        data: {
+          source: "hf-preview",
+          type: "shader-transition-state",
+          compositionId: "main",
+          state: {
+            loading: true,
+            progress: 3,
+            total: 10,
+            currentTransition: 1,
+            transitionTotal: 2,
+            transitionFrame: 3,
+            transitionFrames: 5,
+            phase: "capturing",
+          },
+        },
+      }),
+    );
+
+    const loader = player.shadowRoot?.querySelector(".hfp-shader-loader");
+    expect(loader?.classList.contains("hfp-visible")).toBe(true);
+    expect(loader?.textContent).toContain("1/2");
+    expect(loader?.textContent).toContain("3/5");
+
+    const playEvents: Event[] = [];
+    player.addEventListener("play", (event) => playEvents.push(event));
+    loader?.dispatchEvent(new MouseEvent("click", { bubbles: true, composed: true }));
+    expect(playEvents).toHaveLength(0);
+
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        source: iframeWindow,
+        data: {
+          source: "hf-preview",
+          type: "shader-transition-state",
+          compositionId: "main",
+          state: { loading: false, ready: true },
+        },
+      }),
+    );
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        source: iframeWindow,
+        data: {
+          source: "hf-preview",
+          type: "shader-transition-state",
+          compositionId: "main",
+          state: { loading: false, ready: true },
+        },
+      }),
+    );
+    expect(loader?.classList.contains("hfp-visible")).toBe(false);
+    expect(loader?.classList.contains("hfp-hiding")).toBe(true);
+    vi.advanceTimersByTime(420);
+    expect(loader?.classList.contains("hfp-hiding")).toBe(false);
+    vi.useRealTimers();
+  });
+});
+
 // ── Shared stylesheet (adoptedStyleSheets) ──
 //
 // Every player constructed in the same document should adopt the *same*
