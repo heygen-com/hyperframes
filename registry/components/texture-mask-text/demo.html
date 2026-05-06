@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Texture Mask Text — Demo</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Anton&family=Archivo+Black&family=Black+Ops+One&family=Bungee&family=Passion+One:wght@900&family=Playfair+Display:wght@900&family=Righteous&family=Rubik+Mono+One&family=Teko:wght@700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="texture-mask-text-demo"
+      data-width="1920"
+      data-height="1080"
+      data-duration="5"
+    >
+      <div class="demo-canvas">
+        <div class="grid">
+          <div class="cell">
+            <div class="label">lava</div>
+            <div class="shadow-wrap">
+              <div class="hf-texture-text hf-texture-lava t-lava">MOLTEN</div>
+            </div>
+          </div>
+          <div class="cell">
+            <div class="label">rock</div>
+            <div class="shadow-wrap">
+              <div class="hf-texture-text hf-texture-rock t-rock" style="--mask-contrast: 2">RUINED</div>
+            </div>
+          </div>
+          <div class="cell">
+            <div class="label">concrete</div>
+            <div class="shadow-wrap">
+              <div class="hf-texture-text hf-texture-concrete t-concrete">SCORED</div>
+            </div>
+          </div>
+          <div class="cell">
+            <div class="label">brick</div>
+            <div class="shadow-wrap">
+              <div class="hf-texture-text hf-texture-brick t-brick" style="--mask-size: 80%">MORTAR</div>
+            </div>
+          </div>
+          <div class="cell">
+            <div class="label">wood</div>
+            <div class="shadow-wrap">
+              <div class="hf-texture-text hf-texture-wood t-wood" style="--mask-contrast: 3">SLICED</div>
+            </div>
+          </div>
+          <div class="cell">
+            <div class="label">onyx</div>
+            <div class="shadow-wrap">
+              <div class="hf-texture-text hf-texture-onyx t-onyx">VEINED</div>
+            </div>
+          </div>
+          <div class="cell">
+            <div class="label">carpet</div>
+            <div class="shadow-wrap">
+              <div class="hf-texture-text hf-texture-carpet t-carpet" style="--mask-size: 200px 200px">WOVEN</div>
+            </div>
+          </div>
+          <div class="cell">
+            <div class="label">metal</div>
+            <div class="shadow-wrap">
+              <div class="hf-texture-text hf-texture-metal t-metal">FADING</div>
+            </div>
+          </div>
+          <div class="cell">
+            <div class="label">snow</div>
+            <div class="shadow-wrap">
+              <div class="hf-texture-text hf-texture-snow t-snow" style="--mask-contrast: 1.5">THAWING</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <style>
+        .hf-texture-text {
+          color: #fff;
+          -webkit-mask-image: var(--mask-url);
+          mask-image: var(--mask-url);
+          -webkit-mask-size: var(--mask-size, cover);
+          mask-size: var(--mask-size, cover);
+          -webkit-mask-position: var(--mask-position, center);
+          mask-position: var(--mask-position, center);
+          -webkit-mask-mode: luminance;
+          mask-mode: luminance;
+          filter: contrast(var(--mask-contrast, 1));
+        }
+
+        .hf-texture-lava     { --mask-url: url('masks/lava.png'); }
+        .hf-texture-rock     { --mask-url: url('masks/rock.png'); }
+        .hf-texture-concrete { --mask-url: url('masks/concrete.png'); }
+        .hf-texture-brick    { --mask-url: url('masks/brick.png'); }
+        .hf-texture-wood     { --mask-url: url('masks/wood.png'); }
+        .hf-texture-onyx     { --mask-url: url('masks/onyx.png'); }
+        .hf-texture-carpet   { --mask-url: url('masks/carpet.png'); }
+        .hf-texture-metal    { --mask-url: url('masks/metal.png'); }
+        .hf-texture-snow     { --mask-url: url('masks/snow.png'); }
+
+        .demo-canvas {
+          width: 1920px;
+          height: 1080px;
+          background: #111;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+        }
+
+        .grid {
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          gap: 0;
+          width: 1800px;
+          height: 960px;
+        }
+
+        .cell {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          gap: 12px;
+        }
+
+        .label {
+          font-family: "Inter", sans-serif;
+          font-size: 18px;
+          letter-spacing: 4px;
+          text-transform: uppercase;
+          color: rgba(255, 255, 255, 0.3);
+        }
+
+        .shadow-wrap {
+          filter: drop-shadow(2px 3px 4px rgba(0, 0, 0, 0.4));
+        }
+
+        .t-lava {
+          font-family: "Anton", sans-serif;
+          font-size: 120px;
+          line-height: 1;
+          text-transform: uppercase;
+        }
+
+        .t-rock {
+          font-family: "Archivo Black", sans-serif;
+          font-size: 120px;
+          line-height: 1;
+          text-transform: uppercase;
+        }
+
+        .t-concrete {
+          font-family: "Black Ops One", system-ui;
+          font-size: 110px;
+          line-height: 1;
+        }
+
+        .t-brick {
+          font-family: "Passion One", sans-serif;
+          font-weight: 900;
+          font-size: 120px;
+          line-height: 1;
+          text-transform: uppercase;
+        }
+
+        .t-wood {
+          font-family: "Bungee", sans-serif;
+          font-size: 100px;
+          line-height: 1.1;
+          text-transform: uppercase;
+        }
+
+        .t-onyx {
+          font-family: "Playfair Display", serif;
+          font-weight: 900;
+          font-size: 120px;
+          line-height: 1;
+          text-transform: uppercase;
+        }
+
+        .t-carpet {
+          font-family: "Rubik Mono One", monospace;
+          font-size: 90px;
+          line-height: 1.2;
+          text-transform: uppercase;
+        }
+
+        .t-metal {
+          font-family: "Teko", sans-serif;
+          font-weight: 700;
+          font-size: 120px;
+          line-height: 1;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+        }
+
+        .t-snow {
+          font-family: "Righteous", sans-serif;
+          font-size: 120px;
+          line-height: 1;
+          text-transform: uppercase;
+        }
+      </style>
+    </div>
+  </body>
+</html>
