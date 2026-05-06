@@ -5,6 +5,12 @@ import { readAttr, truncateSnippet } from "../utils";
 const TEXTURE_BASE_CLASS = "hf-texture-text";
 const TEXTURE_CLASS_PREFIX = "hf-texture-";
 
+type DropShadowRule = {
+  selector: string;
+  classNames: string[];
+  directlyTargetsTexture: boolean;
+};
+
 function classNames(tag: OpenTag): string[] {
   return (readAttr(tag.raw, "class") ?? "").split(/\s+/).filter(Boolean);
 }
@@ -23,24 +29,28 @@ function hasInlineDropShadow(tag: OpenTag): boolean {
   return /\bfilter\s*:\s*[^;]*\bdrop-shadow\s*\(/i.test(style);
 }
 
-function textureClassesInSelector(selector: string): string[] {
+function classNamesInSelector(selector: string): string[] {
   const classes = new Set<string>();
   const pattern = /\.([A-Za-z_][\w-]*)/g;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(selector)) !== null) {
     const className = match[1];
-    if (!className || !isTextureMaterialClass(className)) continue;
+    if (!className) continue;
     classes.add(className);
   }
   return [...classes];
 }
 
+function textureClassesInSelector(selector: string): string[] {
+  return classNamesInSelector(selector).filter(isTextureMaterialClass);
+}
+
 function collectTextureCss(styles: LintContext["styles"]): {
   definedTextureClasses: Set<string>;
-  directDropShadowSelectors: string[];
+  dropShadowRules: DropShadowRule[];
 } {
   const definedTextureClasses = new Set<string>();
-  const directDropShadowSelectors: string[] = [];
+  const dropShadowRules: DropShadowRule[] = [];
   const roots: postcss.Root[] = [];
 
   for (const style of styles) {
@@ -86,26 +96,31 @@ function collectTextureCss(styles: LintContext["styles"]): {
 
       if (hasDropShadow) {
         for (const selector of selectors) {
+          const selectorClassNames = classNamesInSelector(selector);
           const targetsBaseClass = /\.hf-texture-text\b/.test(selector);
           const targetsDefinedTextureClass = textureClassesInSelector(selector).some((className) =>
             definedTextureClasses.has(className),
           );
-          if (targetsBaseClass || targetsDefinedTextureClass)
-            directDropShadowSelectors.push(selector);
+          dropShadowRules.push({
+            selector,
+            classNames: selectorClassNames,
+            directlyTargetsTexture: targetsBaseClass || targetsDefinedTextureClass,
+          });
         }
       }
     });
   }
 
-  return { definedTextureClasses, directDropShadowSelectors };
+  return { definedTextureClasses, dropShadowRules };
 }
 
 export const textureRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
   ({ tags, styles }) => {
     const findings: HyperframeLintFinding[] = [];
-    const { definedTextureClasses, directDropShadowSelectors } = collectTextureCss(styles);
+    const { definedTextureClasses, dropShadowRules } = collectTextureCss(styles);
 
-    for (const selector of directDropShadowSelectors) {
+    for (const { selector, directlyTargetsTexture } of dropShadowRules) {
+      if (!directlyTargetsTexture) continue;
       findings.push({
         code: "texture_drop_shadow_on_text",
         severity: "warning",
@@ -159,6 +174,23 @@ export const textureRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> 
             "Paste the Texture Mask Text component `<style>...</style>` block into the composition, or fix the texture class typo.",
           snippet: truncateSnippet(tag.raw),
         });
+      }
+
+      if (hasBaseClass) {
+        for (const rule of dropShadowRules) {
+          if (rule.directlyTargetsTexture) continue;
+          if (!rule.classNames.some((className) => classes.includes(className))) continue;
+          findings.push({
+            code: "texture_drop_shadow_on_text",
+            severity: "warning",
+            message: "Drop shadow is applied directly to textured text.",
+            selector: rule.selector,
+            elementId: readAttr(tag.raw, "id") || undefined,
+            fixHint:
+              "Wrap the textured text and apply `filter: drop-shadow(...)` to the wrapper, not the `hf-texture-text` element.",
+            snippet: truncateSnippet(tag.raw),
+          });
+        }
       }
 
       if (hasBaseClass && hasInlineDropShadow(tag)) {

@@ -2,40 +2,6 @@
 
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap');
 
-/* ── TT Norms Pro (matches hyperframes.heygen.com) ── */
-
-@font-face {
-  font-family: 'TT Norms Pro';
-  src: url('/public/fonts/tt-norms/TT_Norms_Pro_Normal.woff2') format('woff2');
-  font-weight: 400;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: 'TT Norms Pro';
-  src: url('/public/fonts/tt-norms/TT_Norms_Pro_Medium.woff2') format('woff2');
-  font-weight: 500;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: 'TT Norms Pro';
-  src: url('/public/fonts/tt-norms/TT_Norms_Pro_DemiBold.woff2') format('woff2');
-  font-weight: 600;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: 'TT Norms Pro';
-  src: url('/public/fonts/tt-norms/TT_Norms_Pro_Bold.woff2') format('woff2');
-  font-weight: 700;
-  font-style: normal;
-  font-display: swap;
-}
-
 /* ── Light mode (default) ── */
 /*
  * NOTE: All custom variables are namespaced with `--hf-` to avoid
@@ -102,11 +68,11 @@
 /* ── Typography ── */
 
 body {
-  font-family: 'TT Norms Pro', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 
 h1, h2, h3, h4, h5, h6 {
-  font-family: 'TT Norms Pro', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 
 h1, h2 {
@@ -175,6 +141,10 @@ a:not([class]):hover {
   text-overflow: ellipsis;
 }
 
+.texture-preview-shadow {
+  filter: drop-shadow(1px 2px 1px rgba(0, 0, 0, 0.48));
+}
+
 .texture-preview-word {
   color: #fff;
   font-family: Impact, 'Arial Black', sans-serif;
@@ -184,7 +154,6 @@ a:not([class]):hover {
   text-align: center;
   text-transform: uppercase;
   white-space: nowrap;
-  filter: drop-shadow(1px 2px 4px rgba(0, 0, 0, 0.55));
   -webkit-mask-image: var(--mask-url);
   mask-image: var(--mask-url);
   -webkit-mask-size: cover;

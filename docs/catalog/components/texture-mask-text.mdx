@@ -12,27 +12,27 @@ CSS luminance masks that cut holes through letterforms - 66 pre-built texture ma
 <div className="texture-preview-panel">
   <div className="texture-preview-card" style={{ "--mask-url": "url('/public/catalog-assets/components/texture-mask-text/masks/brick.png')" }}>
     <div className="texture-preview-label">Brick</div>
-    <div className="texture-preview-word">BRICK</div>
+    <div className="texture-preview-shadow"><div className="texture-preview-word">BRICK</div></div>
   </div>
   <div className="texture-preview-card" style={{ "--mask-url": "url('/public/catalog-assets/components/texture-mask-text/masks/rock.png')" }}>
     <div className="texture-preview-label">Rock</div>
-    <div className="texture-preview-word">ROCK</div>
+    <div className="texture-preview-shadow"><div className="texture-preview-word">ROCK</div></div>
   </div>
   <div className="texture-preview-card" style={{ "--mask-url": "url('/public/catalog-assets/components/texture-mask-text/masks/ground-103.png')" }}>
     <div className="texture-preview-label">Ground 103</div>
-    <div className="texture-preview-word">GROUND</div>
+    <div className="texture-preview-shadow"><div className="texture-preview-word">GROUND</div></div>
   </div>
   <div className="texture-preview-card" style={{ "--mask-url": "url('/public/catalog-assets/components/texture-mask-text/masks/wood.png')" }}>
     <div className="texture-preview-label">Wood</div>
-    <div className="texture-preview-word">WOOD</div>
+    <div className="texture-preview-shadow"><div className="texture-preview-word">WOOD</div></div>
   </div>
   <div className="texture-preview-card" style={{ "--mask-url": "url('/public/catalog-assets/components/texture-mask-text/masks/metal.png')" }}>
     <div className="texture-preview-label">Metal</div>
-    <div className="texture-preview-word">METAL</div>
+    <div className="texture-preview-shadow"><div className="texture-preview-word">METAL</div></div>
   </div>
   <div className="texture-preview-card" style={{ "--mask-url": "url('/public/catalog-assets/components/texture-mask-text/masks/lava.png')" }}>
     <div className="texture-preview-label">Lava</div>
-    <div className="texture-preview-word">LAVA</div>
+    <div className="texture-preview-shadow"><div className="texture-preview-word">LAVA</div></div>
   </div>
 </div>
 
@@ -79,7 +79,7 @@ Use the Texture Mask Text catalog component.
    </div>
 ```
 
-After install, the snippet lives at `compositions/components/texture-mask-text/texture-mask-text.html` inside the project where you ran `npx hyperframes add texture-mask-text`. The part to paste is its `<style>...</style>` block; the installed `masks/` PNG files stay in place and are referenced by that CSS.
+After install, the snippet lives at `compositions/components/texture-mask-text/texture-mask-text.html` inside the project where you ran `npx hyperframes add texture-mask-text`. The part to paste is its `<style>...</style>` block; the installed `masks/` PNG files stay in place and are referenced by project-root URLs in that CSS.
 
 Swap `hf-texture-brick` for the class shown on any texture card below. The base class `hf-texture-text` is always required.
 
@@ -489,4 +489,4 @@ window.__timelines["my-composition"] = tl;
 
 ## Usage
 
-After `npx hyperframes add texture-mask-text`, the installed snippet lives at `compositions/components/texture-mask-text/texture-mask-text.html` inside your current HyperFrames project. Open that file and paste its `<style>...</style>` block into your composition once; it defines `hf-texture-text` and every `hf-texture-*` class used by the examples above. Keep the installed `masks/` PNG files in place.
+After `npx hyperframes add texture-mask-text`, the installed snippet lives at `compositions/components/texture-mask-text/texture-mask-text.html` inside your current HyperFrames project. Open that file and paste its `<style>...</style>` block into your composition once; it defines `hf-texture-text` and every `hf-texture-*` class used by the examples above. Keep the installed `masks/` PNG files in place; the CSS references them with project-root URLs.

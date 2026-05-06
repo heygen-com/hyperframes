@@ -117,4 +117,17 @@ describe("texture rules", () => {
     expect(finding).toBeDefined();
     expect(finding?.selector).toBe(".hf-texture-lava");
   });
+
+  it("warns when drop-shadow targets another class on the textured text element", () => {
+    const html = baseHtml(
+      '<div class="hf-texture-text hf-texture-lava headline">TEXT</div>',
+      `${textureCss}.headline { filter: drop-shadow(1px 2px 1px black); }`,
+    );
+
+    const result = lintHyperframeHtml(html);
+    const finding = result.findings.find((item) => item.code === "texture_drop_shadow_on_text");
+
+    expect(finding).toBeDefined();
+    expect(finding?.selector).toBe(".headline");
+  });
 });

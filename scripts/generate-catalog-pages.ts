@@ -214,7 +214,7 @@ function generateTextureAgentUsage(
     "   </div>",
     "```",
     "",
-    `After install, the snippet lives at \`${installedSnippet}\` inside the project where you ran \`npx hyperframes add ${manifest.name}\`. The part to paste is its \`<style>...</style>\` block; the installed \`masks/\` PNG files stay in place and are referenced by that CSS.`,
+    `After install, the snippet lives at \`${installedSnippet}\` inside the project where you ran \`npx hyperframes add ${manifest.name}\`. The part to paste is its \`<style>...</style>\` block; the installed \`masks/\` PNG files stay in place and are referenced by project-root URLs in that CSS.`,
     "",
     `Swap \`${firstClass}\` for the class shown on any texture card below. The base class \`hf-texture-text\` is always required.`,
     "",
@@ -287,7 +287,7 @@ function generateTexturePreview(manifest: RegistryItem, textureGroups: TextureGr
     lines.push(
       `  <div className="texture-preview-card" style={{ "--mask-url": "url('${maskPath}')" }}>`,
       `    <div className="texture-preview-label">${textureLabel(item!)}</div>`,
-      `    <div className="texture-preview-word">${textureSampleWord(item!)}</div>`,
+      `    <div className="texture-preview-shadow"><div className="texture-preview-word">${textureSampleWord(item!)}</div></div>`,
       "  </div>",
     );
   }
@@ -425,7 +425,7 @@ function generateItemMdx(kind: ItemKind, manifest: RegistryItem): string {
       lines.push(
         "## Usage",
         "",
-        `After \`${installCmd}\`, the installed snippet lives at \`${primaryTarget}\` inside your current HyperFrames project. Open that file and paste its \`<style>...</style>\` block into your composition once; it defines \`hf-texture-text\` and every \`hf-texture-*\` class used by the examples above. Keep the installed \`masks/\` PNG files in place.`,
+        `After \`${installCmd}\`, the installed snippet lives at \`${primaryTarget}\` inside your current HyperFrames project. Open that file and paste its \`<style>...</style>\` block into your composition once; it defines \`hf-texture-text\` and every \`hf-texture-*\` class used by the examples above. Keep the installed \`masks/\` PNG files in place; the CSS references them with project-root URLs.`,
         "",
       );
     } else {

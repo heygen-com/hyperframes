@@ -466,6 +466,36 @@ describe("texture_mask_asset_not_found", () => {
 
     expect(finding).toBeUndefined();
   });
+
+  it("resolves root-absolute mask-image URLs from the project root", () => {
+    const html = `<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080">
+    <div class="hf-texture-text hf-texture-lava">TEXT</div>
+  </div>
+  <style>
+    .hf-texture-lava {
+      -webkit-mask-image: url("/compositions/components/texture-mask-text/masks/lava.png");
+      mask-image: url("/compositions/components/texture-mask-text/masks/lava.png");
+    }
+  </style>
+  <script>window.__timelines = window.__timelines || {}; window.__timelines["main"] = gsap.timeline({ paused: true });</script>
+</body></html>`;
+    const project = makeProject(html);
+    mkdirSync(join(project.dir, "compositions", "components", "texture-mask-text", "masks"), {
+      recursive: true,
+    });
+    writeFileSync(
+      join(project.dir, "compositions", "components", "texture-mask-text", "masks", "lava.png"),
+      "fake",
+    );
+
+    const { results } = lintProject(project);
+    const finding = results[0]?.result.findings.find(
+      (item) => item.code === "texture_mask_asset_not_found",
+    );
+
+    expect(finding).toBeUndefined();
+  });
 });
 
 describe("multiple_root_compositions", () => {
