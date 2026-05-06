@@ -391,6 +391,83 @@ describe("audio_src_not_found", () => {
   });
 });
 
+describe("texture_mask_asset_not_found", () => {
+  it("errors when CSS mask-image references a missing local texture", () => {
+    const html = `<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080">
+    <div class="hf-texture-text hf-texture-lava">TEXT</div>
+  </div>
+  <style>
+    .hf-texture-lava {
+      -webkit-mask-image: url("masks/lava.png");
+      mask-image: url("masks/lava.png");
+    }
+  </style>
+  <script>window.__timelines = window.__timelines || {}; window.__timelines["main"] = gsap.timeline({ paused: true });</script>
+</body></html>`;
+    const project = makeProject(html);
+
+    const { totalErrors, results } = lintProject(project);
+    const finding = results[0]?.result.findings.find(
+      (item) => item.code === "texture_mask_asset_not_found",
+    );
+
+    expect(totalErrors).toBeGreaterThan(0);
+    expect(finding).toBeDefined();
+    expect(finding?.severity).toBe("error");
+    expect(finding?.message).toContain("masks/lava.png");
+  });
+
+  it("does not error when the referenced texture mask exists", () => {
+    const html = `<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080">
+    <div class="hf-texture-text hf-texture-lava">TEXT</div>
+  </div>
+  <style>
+    .hf-texture-lava {
+      -webkit-mask-image: url("masks/lava.png");
+      mask-image: url("masks/lava.png");
+    }
+  </style>
+  <script>window.__timelines = window.__timelines || {}; window.__timelines["main"] = gsap.timeline({ paused: true });</script>
+</body></html>`;
+    const project = makeProject(html);
+    mkdirSync(join(project.dir, "masks"), { recursive: true });
+    writeFileSync(join(project.dir, "masks", "lava.png"), "fake");
+
+    const { results } = lintProject(project);
+    const finding = results[0]?.result.findings.find(
+      (item) => item.code === "texture_mask_asset_not_found",
+    );
+
+    expect(finding).toBeUndefined();
+  });
+
+  it("resolves mask-image URLs inside linked sub-composition stylesheets", () => {
+    const project = makeProject(validHtml(), {
+      "scene.html": `<html><head><link rel="stylesheet" href="scene.css"></head><body>
+  <div data-composition-id="scene" data-width="1920" data-height="1080">
+    <div class="hf-texture-text hf-texture-lava">TEXT</div>
+  </div>
+  <script>window.__timelines = window.__timelines || {}; window.__timelines["scene"] = gsap.timeline({ paused: true });</script>
+</body></html>`,
+    });
+    writeFileSync(
+      join(project.dir, "compositions", "scene.css"),
+      '.hf-texture-lava { mask-image: url("masks/lava.png"); }',
+    );
+    mkdirSync(join(project.dir, "compositions", "masks"), { recursive: true });
+    writeFileSync(join(project.dir, "compositions", "masks", "lava.png"), "fake");
+
+    const { results } = lintProject(project);
+    const finding = results[0]?.result.findings.find(
+      (item) => item.code === "texture_mask_asset_not_found",
+    );
+
+    expect(finding).toBeUndefined();
+  });
+});
+
 describe("multiple_root_compositions", () => {
   it("fires when two HTML files have data-composition-id", () => {
     const project = makeProject(validHtml());
