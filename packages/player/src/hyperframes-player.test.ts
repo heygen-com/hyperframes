@@ -1308,4 +1308,47 @@ describe("HyperframesPlayer volume and mute", () => {
     const slider = shadow.querySelector(".hfp-volume-slider");
     expect(slider).toBeTruthy();
   });
+
+  it("volume slider has ARIA slider attributes", () => {
+    player.setAttribute("controls", "");
+    document.body.appendChild(player);
+
+    const shadow = player.shadowRoot!;
+    const slider = shadow.querySelector(".hfp-volume-slider")!;
+    expect(slider.getAttribute("role")).toBe("slider");
+    expect(slider.getAttribute("aria-label")).toBe("Volume");
+    expect(slider.getAttribute("aria-valuemin")).toBe("0");
+    expect(slider.getAttribute("aria-valuemax")).toBe("100");
+    expect(slider.getAttribute("aria-valuenow")).toBe("100");
+    expect(slider.getAttribute("tabindex")).toBe("0");
+  });
+
+  it("dispatches volumechange when muted toggles (HTML5 spec)", () => {
+    document.body.appendChild(player);
+
+    const handler = vi.fn();
+    player.addEventListener("volumechange", handler);
+
+    player.muted = true;
+    expect(handler).toHaveBeenCalledTimes(1);
+
+    player.muted = false;
+    expect(handler).toHaveBeenCalledTimes(2);
+  });
+
+  it("muted icon differs from volume=0 unmuted icon", () => {
+    player.setAttribute("controls", "");
+    document.body.appendChild(player);
+
+    const shadow = player.shadowRoot!;
+    const muteBtn = shadow.querySelector(".hfp-mute-btn")!;
+
+    player.setAttribute("volume", "0");
+    const zeroVolumeHtml = muteBtn.innerHTML;
+
+    player.muted = true;
+    const mutedHtml = muteBtn.innerHTML;
+
+    expect(zeroVolumeHtml).not.toBe(mutedHtml);
+  });
 });

@@ -1561,7 +1561,8 @@ export function initSandboxRuntimeModular(): void {
       const mediaEls = document.querySelectorAll("video, audio");
       for (const el of mediaEls) {
         if (!(el instanceof HTMLMediaElement)) continue;
-        const clipVolume = parseFloat(el.dataset.volume ?? "") || 1;
+        const parsed = parseFloat(el.dataset.volume ?? "");
+        const clipVolume = Number.isFinite(parsed) ? parsed : 1;
         el.volume = clipVolume * volume;
       }
     },

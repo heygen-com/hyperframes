@@ -118,6 +118,12 @@ export function createControls(
 
   const volumeSlider = document.createElement("div");
   volumeSlider.className = "hfp-volume-slider";
+  volumeSlider.setAttribute("role", "slider");
+  volumeSlider.setAttribute("aria-label", "Volume");
+  volumeSlider.setAttribute("aria-valuemin", "0");
+  volumeSlider.setAttribute("aria-valuemax", "100");
+  volumeSlider.setAttribute("aria-valuenow", "100");
+  volumeSlider.tabIndex = 0;
   const volumeFill = document.createElement("div");
   volumeFill.className = "hfp-volume-fill";
   volumeFill.style.width = "100%";
@@ -142,7 +148,8 @@ export function createControls(
   if (speedIndex === -1) speedIndex = 0;
 
   const getVolumeIcon = (muted: boolean, volume: number): string => {
-    if (muted || volume === 0) return VOLUME_MUTED_ICON;
+    if (muted) return VOLUME_MUTED_ICON;
+    if (volume === 0) return VOLUME_LOW_ICON;
     if (volume < 0.5) return VOLUME_LOW_ICON;
     return VOLUME_HIGH_ICON;
   };
@@ -165,6 +172,7 @@ export function createControls(
     const fraction = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
     currentVolume = fraction;
     volumeFill.style.width = `${fraction * 100}%`;
+    volumeSlider.setAttribute("aria-valuenow", String(Math.round(fraction * 100)));
     if (isMuted && fraction > 0) callbacks.onMuteToggle();
     muteBtn.innerHTML = getVolumeIcon(isMuted, fraction);
     callbacks.onVolumeChange(fraction);
@@ -204,6 +212,26 @@ export function createControls(
   };
   document.addEventListener("touchmove", onVolumeTouchMove, { passive: true });
   document.addEventListener("touchend", onVolumeTouchEnd);
+
+  const VOLUME_STEP = 0.05;
+  volumeSlider.addEventListener("keydown", (e) => {
+    let newVol = currentVolume;
+    if (e.key === "ArrowRight" || e.key === "ArrowUp") {
+      newVol = Math.min(1, currentVolume + VOLUME_STEP);
+    } else if (e.key === "ArrowLeft" || e.key === "ArrowDown") {
+      newVol = Math.max(0, currentVolume - VOLUME_STEP);
+    } else {
+      return;
+    }
+    e.preventDefault();
+    e.stopPropagation();
+    currentVolume = newVol;
+    volumeFill.style.width = `${newVol * 100}%`;
+    volumeSlider.setAttribute("aria-valuenow", String(Math.round(newVol * 100)));
+    if (isMuted && newVol > 0) callbacks.onMuteToggle();
+    muteBtn.innerHTML = getVolumeIcon(isMuted, newVol);
+    callbacks.onVolumeChange(newVol);
+  });
 
   const setActiveOption = (speed: number) => {
     for (const opt of speedMenu.querySelectorAll(".hfp-speed-option")) {
@@ -323,6 +351,7 @@ export function createControls(
     updateVolume(volume: number) {
       currentVolume = volume;
       volumeFill.style.width = `${volume * 100}%`;
+      volumeSlider.setAttribute("aria-valuenow", String(Math.round(volume * 100)));
       muteBtn.innerHTML = getVolumeIcon(isMuted, volume);
     },
     show() {
