@@ -230,6 +230,23 @@ describe("syncRuntimeMedia", () => {
     expect(clip.el.play).toHaveBeenCalledTimes(1);
   });
 
+  it("re-issues play() after a hard seek clears the in-flight guard", () => {
+    // A scrub during playback triggers a hard seek (offset jump > 0.5s).
+    // The fix clears the playRequested guard so the very next sync tick can
+    // re-issue play() instead of waiting 50-150ms for the guard to clear
+    // naturally — closing the audible desync gap on timeline scrub.
+    const clip = createMockClip({ start: 0, end: 20, mediaStart: 0 });
+    Object.defineProperty(clip.el, "currentTime", { value: 2, writable: true });
+    // Steady-state playback at t=2
+    syncRuntimeMedia({ clips: [clip], timeSeconds: 2, playing: true, playbackRate: 1 });
+    expect(clip.el.play).toHaveBeenCalledTimes(1);
+    // Scrub to t=15 — hard seek fires, guard should be cleared
+    syncRuntimeMedia({ clips: [clip], timeSeconds: 15, playing: true, playbackRate: 1 });
+    // Next tick: play() should fire again (guard was cleared by the seek)
+    syncRuntimeMedia({ clips: [clip], timeSeconds: 15.02, playing: true, playbackRate: 1 });
+    expect(clip.el.play).toHaveBeenCalledTimes(2);
+  });
+
   it("pauses active clip when not playing", () => {
     const clip = createMockClip({ start: 0, end: 10 });
     Object.defineProperty(clip.el, "paused", { value: false, writable: true });

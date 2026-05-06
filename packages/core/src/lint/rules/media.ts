@@ -460,6 +460,44 @@ export const mediaRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = 
     return findings;
   },
 
+  // video_audio_double_source — catches audible <video> paired with a separate
+  // <audio> pointing to the same file, which causes double playback at runtime
+  ({ tags }) => {
+    const findings: HyperframeLintFinding[] = [];
+    const videoSources = new Map<string, { id?: string; raw: string }>();
+    const audioSources = new Map<string, { id?: string; raw: string }>();
+
+    for (const tag of tags) {
+      if (!readAttr(tag.raw, "data-start")) continue;
+      const src = readAttr(tag.raw, "src");
+      if (!src) continue;
+      const elementId = readAttr(tag.raw, "id") || undefined;
+      if (tag.name === "video") {
+        const isMuted = hasAttrName(tag.raw, "muted");
+        if (!isMuted) {
+          videoSources.set(src, { id: elementId, raw: tag.raw });
+        }
+      } else if (tag.name === "audio") {
+        audioSources.set(src, { id: elementId, raw: tag.raw });
+      }
+    }
+
+    for (const [src, audioInfo] of audioSources) {
+      const videoInfo = videoSources.get(src);
+      if (!videoInfo) continue;
+      findings.push({
+        code: "video_audio_double_source",
+        severity: "error",
+        message: `<audio${audioInfo.id ? ` id="${audioInfo.id}"` : ""}> and <video${videoInfo.id ? ` id="${videoInfo.id}"` : ""}> both point to the same source. The unmuted video already provides audio — the duplicate <audio> will cause double playback and echo.`,
+        elementId: audioInfo.id,
+        fixHint:
+          "Either mute the video (add `muted` attribute) and keep the separate <audio>, or remove the <audio> element and let the video provide its own audio track.",
+        snippet: truncateSnippet(audioInfo.raw),
+      });
+    }
+    return findings;
+  },
+
   // imperative_media_control
   findImperativeMediaControlFindings,
 ];

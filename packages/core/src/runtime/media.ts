@@ -177,6 +177,11 @@ export function syncRuntimeMedia(params: {
         } catch {
           // ignore browser seek restrictions
         }
+        // After a hard seek, clear the in-flight play guard so the next tick
+        // can re-issue play(). Without this, a seek during playback leaves
+        // the element paused at the new position for 50-150ms (one poll
+        // interval) while the timeline continues — audible desync on scrub.
+        playRequested.delete(el);
       }
       if (params.playing && el.paused && !playRequested.has(el)) {
         // `HTMLMediaElement.play()` is spec'd to queue playback and resolve
