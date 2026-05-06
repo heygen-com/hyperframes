@@ -16,13 +16,12 @@
     hf-texture-snow      — soft patchy dissolve
 
   Custom properties:
-    --mask-url        (none)    mask image — set by texture class or inline
     --mask-size       cover     CSS mask-size
     --mask-position   center    CSS mask-position
     --mask-contrast   1         filter contrast to sharpen/soften edges
 
-  Custom texture:
-    <div class="hf-texture-text" style="--mask-url: url('my-texture.png')">TEXT</div>
+  Custom texture (set mask-image directly, not via custom property):
+    <div class="hf-texture-text" style="-webkit-mask-image: url('my-texture.png'); mask-image: url('my-texture.png')">TEXT</div>
 
   Drop shadow (follows masked contour, not bounding box):
     <div style="filter: drop-shadow(2px 3px 4px rgba(0,0,0,0.3))">
@@ -33,8 +32,6 @@
 <style>
   .hf-texture-text {
     color: #fff;
-    -webkit-mask-image: var(--mask-url);
-    mask-image: var(--mask-url);
     -webkit-mask-size: var(--mask-size, cover);
     mask-size: var(--mask-size, cover);
     -webkit-mask-position: var(--mask-position, center);
@@ -45,30 +42,39 @@
   }
 
   .hf-texture-lava {
-    --mask-url: url("masks/lava.png");
+    -webkit-mask-image: url("masks/lava.png");
+    mask-image: url("masks/lava.png");
   }
   .hf-texture-rock {
-    --mask-url: url("masks/rock.png");
+    -webkit-mask-image: url("masks/rock.png");
+    mask-image: url("masks/rock.png");
   }
   .hf-texture-concrete {
-    --mask-url: url("masks/concrete.png");
+    -webkit-mask-image: url("masks/concrete.png");
+    mask-image: url("masks/concrete.png");
   }
   .hf-texture-brick {
-    --mask-url: url("masks/brick.png");
+    -webkit-mask-image: url("masks/brick.png");
+    mask-image: url("masks/brick.png");
   }
   .hf-texture-wood {
-    --mask-url: url("masks/wood.png");
+    -webkit-mask-image: url("masks/wood.png");
+    mask-image: url("masks/wood.png");
   }
   .hf-texture-onyx {
-    --mask-url: url("masks/onyx.png");
+    -webkit-mask-image: url("masks/onyx.png");
+    mask-image: url("masks/onyx.png");
   }
   .hf-texture-carpet {
-    --mask-url: url("masks/carpet.png");
+    -webkit-mask-image: url("masks/carpet.png");
+    mask-image: url("masks/carpet.png");
   }
   .hf-texture-metal {
-    --mask-url: url("masks/metal.png");
+    -webkit-mask-image: url("masks/metal.png");
+    mask-image: url("masks/metal.png");
   }
   .hf-texture-snow {
-    --mask-url: url("masks/snow.png");
+    -webkit-mask-image: url("masks/snow.png");
+    mask-image: url("masks/snow.png");
   }
 </style>
