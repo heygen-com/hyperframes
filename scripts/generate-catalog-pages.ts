@@ -274,13 +274,15 @@ function main(): void {
   // Items with the same first tag are grouped together. Items without tags
   // go into an "Other" group. Groups are sorted with a priority order.
   const GROUP_ORDER: Record<string, number> = {
-    "Social Overlays": 0,
-    "Shader Transitions": 1,
-    "CSS Transitions": 2,
-    Showcases: 3,
-    Data: 4,
-    Effects: 5,
-    Blocks: 6,
+    "HTML-in-Canvas": 0,
+    Captions: 1,
+    "Social Overlays": 2,
+    "Shader Transitions": 3,
+    "CSS Transitions": 4,
+    Showcases: 5,
+    Data: 6,
+    Effects: 7,
+    Blocks: 8,
   };
 
   function groupForItem(entry: CatalogEntry): string {
@@ -288,6 +290,9 @@ function main(): void {
     // Two-tag combos for specific grouping
     if (tags.includes("transition") && tags.includes("shader")) return "Shader Transitions";
     if (tags.includes("transition") && tags.includes("showcase")) return "CSS Transitions";
+    // HTML-in-Canvas and Captions categories
+    if (tags.includes("html-in-canvas")) return "HTML-in-Canvas";
+    if (tags.includes("captions")) return "Captions";
     // Single-tag mapping
     if (tags.includes("social")) return "Social Overlays";
     if (tags.includes("transition"))

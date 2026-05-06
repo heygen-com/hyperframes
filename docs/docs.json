@@ -91,6 +91,28 @@
         "tab": "Catalog",
         "groups": [
           {
+            "group": "HTML-in-Canvas",
+            "pages": [
+              "catalog/blocks/vfx-iphone-device",
+              "catalog/blocks/vfx-liquid-background",
+              "catalog/blocks/vfx-liquid-glass",
+              "catalog/blocks/vfx-magnetic",
+              "catalog/blocks/vfx-portal",
+              "catalog/blocks/vfx-shatter",
+              "catalog/blocks/vfx-text-cursor"
+            ]
+          },
+          {
+            "group": "Captions",
+            "pages": [
+              "catalog/blocks/captions-bounce",
+              "catalog/blocks/captions-cinematic",
+              "catalog/blocks/captions-karaoke",
+              "catalog/blocks/captions-minimal",
+              "catalog/blocks/captions-slam"
+            ]
+          },
+          {
             "group": "Social Overlays",
             "pages": [
               "catalog/blocks/instagram-follow",
@@ -148,7 +170,6 @@
               "catalog/blocks/north-korea-locked-down",
               "catalog/blocks/nyc-paris-flight",
               "catalog/blocks/ui-3d-reveal",
-              "catalog/blocks/vfx-iphone-device",
               "catalog/blocks/vpn-youtube-spot"
             ]
           },
@@ -169,19 +190,8 @@
           {
             "group": "Blocks",
             "pages": [
-              "catalog/blocks/captions-bounce",
-              "catalog/blocks/captions-cinematic",
-              "catalog/blocks/captions-karaoke",
-              "catalog/blocks/captions-minimal",
-              "catalog/blocks/captions-slam",
               "catalog/blocks/flowchart",
-              "catalog/blocks/logo-outro",
-              "catalog/blocks/vfx-liquid-background",
-              "catalog/blocks/vfx-liquid-glass",
-              "catalog/blocks/vfx-magnetic",
-              "catalog/blocks/vfx-portal",
-              "catalog/blocks/vfx-shatter",
-              "catalog/blocks/vfx-text-cursor"
+              "catalog/blocks/logo-outro"
             ]
           }
         ]
