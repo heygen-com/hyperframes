@@ -40,21 +40,61 @@
       .text-source {
         width: 1920px;
         height: 1080px;
-        display: grid;
-        place-items: center;
-        background: linear-gradient(180deg, #030407 0%, #070910 52%, #030407 100%);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        background: linear-gradient(160deg, #030407 0%, #0a1020 40%, #070910 70%, #030407 100%);
         text-align: center;
-        padding: 0 60px;
+        padding: 0 120px;
+        gap: 32px;
+        position: relative;
+        overflow: hidden;
       }
+      .text-source::before {
+        content: '';
+        position: absolute;
+        width: 700px; height: 700px; border-radius: 50%;
+        background: radial-gradient(circle, rgba(0,212,255,0.06) 0%, transparent 70%);
+        top: -150px; right: -100px; pointer-events: none;
+      }
+      .text-source::after {
+        content: '';
+        position: absolute;
+        width: 500px; height: 500px; border-radius: 50%;
+        background: radial-gradient(circle, rgba(124,58,237,0.05) 0%, transparent 70%);
+        bottom: -100px; left: -50px; pointer-events: none;
+      }
+      .badge { font-size: 14px; font-weight: 600; letter-spacing: 3px; text-transform: uppercase; color: rgba(0,212,255,0.8); }
       .text-source h1 {
-        font-size: 172px;
+        font-size: 148px;
         font-weight: 900;
-        line-height: 0.88;
+        line-height: 0.9;
         color: rgba(248, 249, 253, 0.96);
-        text-shadow: 0 0 40px rgba(255, 255, 255, 0.22);
-        letter-spacing: -4px;
-        max-width: 1600px;
+        text-shadow: 0 0 60px rgba(255, 255, 255, 0.15);
+        letter-spacing: -5px;
+        max-width: 1400px;
       }
+      .text-source h1 span {
+        background: linear-gradient(135deg, #00d4ff, #a855f7);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+      }
+      .subtitle {
+        font-size: 28px;
+        font-weight: 400;
+        color: rgba(255,255,255,0.35);
+        max-width: 800px;
+        line-height: 1.5;
+      }
+      .stats {
+        display: flex;
+        gap: 48px;
+        margin-top: 16px;
+      }
+      .stat { text-align: center; }
+      .stat-val { font-size: 42px; font-weight: 800; color: #00d4ff; letter-spacing: -1px; }
+      .stat-label { font-size: 12px; font-weight: 600; color: rgba(255,255,255,0.3); text-transform: uppercase; letter-spacing: 2px; margin-top: 4px; }
     </style>
   </head>
   <body>
@@ -83,7 +123,14 @@
         "
       >
         <div class="text-source">
-          <h1>Liquid Glass Design</h1>
+          <div class="badge">Write HTML → Render Video</div>
+          <h1>Ship videos <span>10x faster</span></h1>
+          <div class="subtitle">HTML is the source of truth for video. No timeline editors, no After Effects — just code.</div>
+          <div class="stats">
+            <div class="stat"><div class="stat-val">47x</div><div class="stat-label">Faster than AE</div></div>
+            <div class="stat"><div class="stat-val">12.4K</div><div class="stat-label">Creators</div></div>
+            <div class="stat"><div class="stat-val">2.4M</div><div class="stat-label">Videos Rendered</div></div>
+          </div>
         </div>
       </canvas>
 
