@@ -1,19 +1,88 @@
 <!--
-  Texture Mask Text — CSS luminance masks that cut holes through letterforms.
+  Texture Mask Text - CSS luminance masks that cut holes through letterforms.
 
   Usage: add class="hf-texture-text hf-texture-{name}" to any text element.
-  Paste this snippet into your composition's HTML.
+  Paste this file's <style>...</style> block into your composition's HTML once.
+  Keep the installed masks/ PNG files in place; these CSS classes reference them.
 
-  Available textures:
-    hf-texture-lava      — smooth organic erosion
-    hf-texture-rock      — sharp hard cutouts
-    hf-texture-concrete  — streaked channel cuts
-    hf-texture-brick     — mortar line patterns
-    hf-texture-wood      — horizontal grain slices
-    hf-texture-onyx      — flowing marble veins
-    hf-texture-carpet    — fine repeating weave
-    hf-texture-metal     — rust/pit erosion
-    hf-texture-snow      — soft patchy dissolve
+  Available textures (66 total):
+    Masonry:
+      hf-texture-brick                - mortar line patterns
+      hf-texture-bricks-104           - ambientCG Bricks104
+      hf-texture-bricks-102           - ambientCG Bricks102
+      hf-texture-bricks-101           - ambientCG Bricks101
+      hf-texture-bricks-075-a         - ambientCG Bricks075A
+      hf-texture-concrete             - streaked channel cuts
+      hf-texture-concrete-034         - ambientCG Concrete034
+      hf-texture-concrete-047-a       - ambientCG Concrete047A
+      hf-texture-concrete-046         - ambientCG Concrete046
+      hf-texture-concrete-042-a       - ambientCG Concrete042A
+      hf-texture-plaster-001          - ambientCG Plaster001
+      hf-texture-painted-plaster-017  - ambientCG PaintedPlaster017
+
+    Stone:
+      hf-texture-rock                 - sharp hard cutouts
+      hf-texture-rock-063             - ambientCG Rock063
+      hf-texture-rock-058             - ambientCG Rock058
+      hf-texture-onyx                 - flowing marble veins
+      hf-texture-marble-012           - ambientCG Marble012
+      hf-texture-marble-016           - ambientCG Marble016
+      hf-texture-travertine-009       - ambientCG Travertine009
+      hf-texture-paving-stones-150    - ambientCG PavingStones150
+      hf-texture-paving-stones-138    - ambientCG PavingStones138
+      hf-texture-tiles-138            - ambientCG Tiles138
+
+    Ground / road:
+      hf-texture-ground-103           - ambientCG Ground103
+      hf-texture-ground-037           - ambientCG Ground037
+      hf-texture-ground-054           - ambientCG Ground054
+      hf-texture-ground-104           - ambientCG Ground104
+      hf-texture-ground-068           - ambientCG Ground068
+      hf-texture-ground-080           - ambientCG Ground080
+      hf-texture-road-012-a           - ambientCG Road012A
+      hf-texture-road-008-a           - ambientCG Road008A
+      hf-texture-road-007             - ambientCG Road007
+      hf-texture-road-013-a           - ambientCG Road013A
+      hf-texture-road-012-b           - ambientCG Road012B
+      hf-texture-road-009-c           - ambientCG Road009C
+      hf-texture-asphalt-031          - ambientCG Asphalt031
+
+    Wood:
+      hf-texture-wood                 - horizontal grain slices
+      hf-texture-wood-094             - ambientCG Wood094
+      hf-texture-wood-092             - ambientCG Wood092
+      hf-texture-wood-051             - ambientCG Wood051
+      hf-texture-wood-066             - ambientCG Wood066
+      hf-texture-wood-049             - ambientCG Wood049
+      hf-texture-wood-058             - ambientCG Wood058
+      hf-texture-wood-floor-051       - ambientCG WoodFloor051
+      hf-texture-wood-floor-064       - ambientCG WoodFloor064
+      hf-texture-wood-floor-070       - ambientCG WoodFloor070
+      hf-texture-bark-014             - ambientCG Bark014
+
+    Metal:
+      hf-texture-metal                - rust and pit erosion
+      hf-texture-metal-049-a          - ambientCG Metal049A
+      hf-texture-metal-055-a          - ambientCG Metal055A
+      hf-texture-metal-046-b          - ambientCG Metal046B
+      hf-texture-metal-061-b          - ambientCG Metal061B
+      hf-texture-metal-048-a          - ambientCG Metal048A
+      hf-texture-metal-032            - ambientCG Metal032
+      hf-texture-metal-041-a          - ambientCG Metal041A
+      hf-texture-metal-038            - ambientCG Metal038
+      hf-texture-diamond-plate-009    - ambientCG DiamondPlate009
+
+    Organic / soft:
+      hf-texture-lava                 - smooth organic erosion
+      hf-texture-grass-005            - ambientCG Grass005
+      hf-texture-grass-001            - ambientCG Grass001
+      hf-texture-grass-004            - ambientCG Grass004
+      hf-texture-carpet               - fine repeating weave
+      hf-texture-fabric-083           - ambientCG Fabric083
+      hf-texture-snow                 - soft patchy dissolve
+      hf-texture-snow-015             - ambientCG Snow015
+      hf-texture-leather-037          - ambientCG Leather037
+      hf-texture-fabric-080           - ambientCG Fabric080
 
   Custom properties:
     --mask-size       cover     CSS mask-size
@@ -76,5 +145,233 @@
   .hf-texture-snow {
     -webkit-mask-image: url("masks/snow.png");
     mask-image: url("masks/snow.png");
+  }
+  .hf-texture-bricks-104 {
+    -webkit-mask-image: url("masks/bricks-104.png");
+    mask-image: url("masks/bricks-104.png");
+  }
+  .hf-texture-ground-103 {
+    -webkit-mask-image: url("masks/ground-103.png");
+    mask-image: url("masks/ground-103.png");
+  }
+  .hf-texture-grass-005 {
+    -webkit-mask-image: url("masks/grass-005.png");
+    mask-image: url("masks/grass-005.png");
+  }
+  .hf-texture-rock-063 {
+    -webkit-mask-image: url("masks/rock-063.png");
+    mask-image: url("masks/rock-063.png");
+  }
+  .hf-texture-wood-094 {
+    -webkit-mask-image: url("masks/wood-094.png");
+    mask-image: url("masks/wood-094.png");
+  }
+  .hf-texture-road-012-a {
+    -webkit-mask-image: url("masks/road-012-a.png");
+    mask-image: url("masks/road-012-a.png");
+  }
+  .hf-texture-wood-092 {
+    -webkit-mask-image: url("masks/wood-092.png");
+    mask-image: url("masks/wood-092.png");
+  }
+  .hf-texture-metal-049-a {
+    -webkit-mask-image: url("masks/metal-049-a.png");
+    mask-image: url("masks/metal-049-a.png");
+  }
+  .hf-texture-wood-floor-051 {
+    -webkit-mask-image: url("masks/wood-floor-051.png");
+    mask-image: url("masks/wood-floor-051.png");
+  }
+  .hf-texture-paving-stones-150 {
+    -webkit-mask-image: url("masks/paving-stones-150.png");
+    mask-image: url("masks/paving-stones-150.png");
+  }
+  .hf-texture-road-008-a {
+    -webkit-mask-image: url("masks/road-008-a.png");
+    mask-image: url("masks/road-008-a.png");
+  }
+  .hf-texture-road-007 {
+    -webkit-mask-image: url("masks/road-007.png");
+    mask-image: url("masks/road-007.png");
+  }
+  .hf-texture-metal-055-a {
+    -webkit-mask-image: url("masks/metal-055-a.png");
+    mask-image: url("masks/metal-055-a.png");
+  }
+  .hf-texture-concrete-034 {
+    -webkit-mask-image: url("masks/concrete-034.png");
+    mask-image: url("masks/concrete-034.png");
+  }
+  .hf-texture-grass-001 {
+    -webkit-mask-image: url("masks/grass-001.png");
+    mask-image: url("masks/grass-001.png");
+  }
+  .hf-texture-wood-051 {
+    -webkit-mask-image: url("masks/wood-051.png");
+    mask-image: url("masks/wood-051.png");
+  }
+  .hf-texture-asphalt-031 {
+    -webkit-mask-image: url("masks/asphalt-031.png");
+    mask-image: url("masks/asphalt-031.png");
+  }
+  .hf-texture-wood-floor-064 {
+    -webkit-mask-image: url("masks/wood-floor-064.png");
+    mask-image: url("masks/wood-floor-064.png");
+  }
+  .hf-texture-concrete-047-a {
+    -webkit-mask-image: url("masks/concrete-047-a.png");
+    mask-image: url("masks/concrete-047-a.png");
+  }
+  .hf-texture-metal-046-b {
+    -webkit-mask-image: url("masks/metal-046-b.png");
+    mask-image: url("masks/metal-046-b.png");
+  }
+  .hf-texture-grass-004 {
+    -webkit-mask-image: url("masks/grass-004.png");
+    mask-image: url("masks/grass-004.png");
+  }
+  .hf-texture-marble-012 {
+    -webkit-mask-image: url("masks/marble-012.png");
+    mask-image: url("masks/marble-012.png");
+  }
+  .hf-texture-ground-037 {
+    -webkit-mask-image: url("masks/ground-037.png");
+    mask-image: url("masks/ground-037.png");
+  }
+  .hf-texture-tiles-138 {
+    -webkit-mask-image: url("masks/tiles-138.png");
+    mask-image: url("masks/tiles-138.png");
+  }
+  .hf-texture-wood-066 {
+    -webkit-mask-image: url("masks/wood-066.png");
+    mask-image: url("masks/wood-066.png");
+  }
+  .hf-texture-concrete-046 {
+    -webkit-mask-image: url("masks/concrete-046.png");
+    mask-image: url("masks/concrete-046.png");
+  }
+  .hf-texture-wood-049 {
+    -webkit-mask-image: url("masks/wood-049.png");
+    mask-image: url("masks/wood-049.png");
+  }
+  .hf-texture-road-013-a {
+    -webkit-mask-image: url("masks/road-013-a.png");
+    mask-image: url("masks/road-013-a.png");
+  }
+  .hf-texture-plaster-001 {
+    -webkit-mask-image: url("masks/plaster-001.png");
+    mask-image: url("masks/plaster-001.png");
+  }
+  .hf-texture-snow-015 {
+    -webkit-mask-image: url("masks/snow-015.png");
+    mask-image: url("masks/snow-015.png");
+  }
+  .hf-texture-road-012-b {
+    -webkit-mask-image: url("masks/road-012-b.png");
+    mask-image: url("masks/road-012-b.png");
+  }
+  .hf-texture-concrete-042-a {
+    -webkit-mask-image: url("masks/concrete-042-a.png");
+    mask-image: url("masks/concrete-042-a.png");
+  }
+  .hf-texture-bricks-102 {
+    -webkit-mask-image: url("masks/bricks-102.png");
+    mask-image: url("masks/bricks-102.png");
+  }
+  .hf-texture-rock-058 {
+    -webkit-mask-image: url("masks/rock-058.png");
+    mask-image: url("masks/rock-058.png");
+  }
+  .hf-texture-wood-floor-070 {
+    -webkit-mask-image: url("masks/wood-floor-070.png");
+    mask-image: url("masks/wood-floor-070.png");
+  }
+  .hf-texture-bricks-101 {
+    -webkit-mask-image: url("masks/bricks-101.png");
+    mask-image: url("masks/bricks-101.png");
+  }
+  .hf-texture-travertine-009 {
+    -webkit-mask-image: url("masks/travertine-009.png");
+    mask-image: url("masks/travertine-009.png");
+  }
+  .hf-texture-ground-054 {
+    -webkit-mask-image: url("masks/ground-054.png");
+    mask-image: url("masks/ground-054.png");
+  }
+  .hf-texture-wood-058 {
+    -webkit-mask-image: url("masks/wood-058.png");
+    mask-image: url("masks/wood-058.png");
+  }
+  .hf-texture-ground-104 {
+    -webkit-mask-image: url("masks/ground-104.png");
+    mask-image: url("masks/ground-104.png");
+  }
+  .hf-texture-painted-plaster-017 {
+    -webkit-mask-image: url("masks/painted-plaster-017.png");
+    mask-image: url("masks/painted-plaster-017.png");
+  }
+  .hf-texture-paving-stones-138 {
+    -webkit-mask-image: url("masks/paving-stones-138.png");
+    mask-image: url("masks/paving-stones-138.png");
+  }
+  .hf-texture-ground-068 {
+    -webkit-mask-image: url("masks/ground-068.png");
+    mask-image: url("masks/ground-068.png");
+  }
+  .hf-texture-bricks-075-a {
+    -webkit-mask-image: url("masks/bricks-075-a.png");
+    mask-image: url("masks/bricks-075-a.png");
+  }
+  .hf-texture-ground-080 {
+    -webkit-mask-image: url("masks/ground-080.png");
+    mask-image: url("masks/ground-080.png");
+  }
+  .hf-texture-road-009-c {
+    -webkit-mask-image: url("masks/road-009-c.png");
+    mask-image: url("masks/road-009-c.png");
+  }
+  .hf-texture-bark-014 {
+    -webkit-mask-image: url("masks/bark-014.png");
+    mask-image: url("masks/bark-014.png");
+  }
+  .hf-texture-marble-016 {
+    -webkit-mask-image: url("masks/marble-016.png");
+    mask-image: url("masks/marble-016.png");
+  }
+  .hf-texture-fabric-083 {
+    -webkit-mask-image: url("masks/fabric-083.png");
+    mask-image: url("masks/fabric-083.png");
+  }
+  .hf-texture-metal-061-b {
+    -webkit-mask-image: url("masks/metal-061-b.png");
+    mask-image: url("masks/metal-061-b.png");
+  }
+  .hf-texture-metal-048-a {
+    -webkit-mask-image: url("masks/metal-048-a.png");
+    mask-image: url("masks/metal-048-a.png");
+  }
+  .hf-texture-metal-032 {
+    -webkit-mask-image: url("masks/metal-032.png");
+    mask-image: url("masks/metal-032.png");
+  }
+  .hf-texture-metal-041-a {
+    -webkit-mask-image: url("masks/metal-041-a.png");
+    mask-image: url("masks/metal-041-a.png");
+  }
+  .hf-texture-metal-038 {
+    -webkit-mask-image: url("masks/metal-038.png");
+    mask-image: url("masks/metal-038.png");
+  }
+  .hf-texture-diamond-plate-009 {
+    -webkit-mask-image: url("masks/diamond-plate-009.png");
+    mask-image: url("masks/diamond-plate-009.png");
+  }
+  .hf-texture-leather-037 {
+    -webkit-mask-image: url("masks/leather-037.png");
+    mask-image: url("masks/leather-037.png");
+  }
+  .hf-texture-fabric-080 {
+    -webkit-mask-image: url("masks/fabric-080.png");
+    mask-image: url("masks/fabric-080.png");
   }
 </style>

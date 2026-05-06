@@ -175,7 +175,8 @@
             "pages": [
               "catalog/components/grain-overlay",
               "catalog/components/grid-pixelate-wipe",
-              "catalog/components/shimmer-sweep"
+              "catalog/components/shimmer-sweep",
+              "catalog/components/texture-mask-text"
             ]
           },
           {

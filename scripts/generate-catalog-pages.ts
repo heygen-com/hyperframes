@@ -38,6 +38,11 @@ interface SourceMetadata {
   sourcePrompt?: string;
 }
 
+interface TextureGroup {
+  title: string;
+  items: string[];
+}
+
 interface CatalogEntry {
   name: string;
   type: ItemKind;
@@ -97,11 +102,206 @@ function typeDir(kind: ItemKind): string {
   return ITEM_TYPE_DIRS[kind === "block" ? "hyperframes:block" : "hyperframes:component"];
 }
 
+function textureGroupsFor(manifest: RegistryItem): TextureGroup[] {
+  if (!("textureGroups" in manifest)) return [];
+  const value = manifest.textureGroups;
+  if (!Array.isArray(value)) return [];
+
+  return value.filter((group): group is TextureGroup => {
+    if (!group || typeof group !== "object") return false;
+    if (!("title" in group) || typeof group.title !== "string") return false;
+    if (!("items" in group) || !Array.isArray(group.items)) return false;
+    return group.items.every((item) => typeof item === "string");
+  });
+}
+
+function textureLabel(slug: string): string {
+  return slug
+    .split("-")
+    .map((part) =>
+      part.length === 1 ? part.toUpperCase() : part[0]!.toUpperCase() + part.slice(1),
+    )
+    .join(" ");
+}
+
+function textureSampleWord(slug: string): string {
+  if (slug.includes("brick")) return "BRICK";
+  if (slug.includes("concrete")) return "CONCRETE";
+  if (slug.includes("plaster")) return "PLASTER";
+  if (slug.includes("rock")) return "ROCK";
+  if (slug.includes("onyx")) return "ONYX";
+  if (slug.includes("marble")) return "MARBLE";
+  if (slug.includes("travertine")) return "STONE";
+  if (slug.includes("paving")) return "STONE";
+  if (slug.includes("tiles")) return "TILE";
+  if (slug.includes("ground")) return "GROUND";
+  if (slug.includes("road")) return "ROAD";
+  if (slug.includes("asphalt")) return "ASPHALT";
+  if (slug.includes("wood-floor")) return "FLOOR";
+  if (slug.includes("wood")) return "WOOD";
+  if (slug.includes("bark")) return "BARK";
+  if (slug.includes("diamond")) return "PLATE";
+  if (slug.includes("metal")) return "METAL";
+  if (slug.includes("lava")) return "LAVA";
+  if (slug.includes("grass")) return "GRASS";
+  if (slug.includes("carpet")) return "WOVEN";
+  if (slug.includes("fabric")) return "FABRIC";
+  if (slug.includes("snow")) return "SNOW";
+  if (slug.includes("leather")) return "LEATHER";
+  return slug.toUpperCase();
+}
+
+function generateTextureExamples(manifest: RegistryItem, textureGroups: TextureGroup[]): string[] {
+  const lines: string[] = ["## Texture Examples", "", '<div className="texture-example-groups">'];
+
+  for (const group of textureGroups) {
+    lines.push(
+      "  <div>",
+      `    <h3 className="texture-example-title">${group.title}</h3>`,
+      '    <div className="texture-example-grid">',
+    );
+    for (const item of group.items) {
+      const maskPath = `/public/catalog-assets/components/${manifest.name}/masks/${item}.png`;
+      const textureClass = `hf-texture-${item}`;
+      lines.push(
+        `      <div className="texture-example-card" style={{ "--mask-url": "url('${maskPath}')" }}>`,
+        `        <div className="texture-example-meta"><div className="texture-example-label">${textureLabel(item)}</div><code className="texture-example-class">${textureClass}</code></div>`,
+        `        <div className="texture-example-shadow"><div className="texture-example-word">${textureSampleWord(item)}</div></div>`,
+        `        <div className="texture-example-usage">Use <code>hf-texture-text ${textureClass}</code></div>`,
+        "      </div>",
+      );
+    }
+    lines.push("    </div>", "  </div>");
+  }
+
+  lines.push("</div>", "");
+  return lines;
+}
+
+function generateTextureAgentUsage(
+  manifest: RegistryItem,
+  textureGroups: TextureGroup[],
+): string[] {
+  const firstTexture = textureGroups[0]?.items[0] ?? "brick";
+  const firstClass = `hf-texture-${firstTexture}`;
+  const installedSnippet = `compositions/components/${manifest.name}/${manifest.name}.html`;
+
+  return [
+    "## Agent Usage",
+    "",
+    "Use this wording when asking an agent to apply a texture:",
+    "",
+    "```text",
+    `Use the ${manifest.title} catalog component.`,
+    "",
+    "1. From the project root, run:",
+    `   npx hyperframes add ${manifest.name}`,
+    "2. That command creates this installed snippet:",
+    `   ${installedSnippet}`,
+    "3. Open that file and paste its <style>...</style>",
+    "   block into the composition once. That CSS defines",
+    "   hf-texture-text and every hf-texture-* class.",
+    "4. Apply this class to the target text:",
+    `   class="hf-texture-text ${firstClass}"`,
+    "5. For another material, copy one hf-texture-* class",
+    "   from the Texture Examples cards.",
+    "6. This is the proper way to apply drop shadow",
+    "   to textured text: wrap the text and put",
+    "   filter on the wrapper, not on the text.",
+    "   Use this markup:",
+    `   <div style="filter: drop-shadow(1px 2px 1px rgba(0,0,0,0.48))">`,
+    `     <div class="hf-texture-text ${firstClass}">TEXT</div>`,
+    "   </div>",
+    "```",
+    "",
+    `After install, the snippet lives at \`${installedSnippet}\` inside the project where you ran \`npx hyperframes add ${manifest.name}\`. The part to paste is its \`<style>...</style>\` block; the installed \`masks/\` PNG files stay in place and are referenced by that CSS.`,
+    "",
+    `Swap \`${firstClass}\` for the class shown on any texture card below. The base class \`hf-texture-text\` is always required.`,
+    "",
+  ];
+}
+
+function generateTextureAnimationExample(
+  manifest: RegistryItem,
+  textureGroups: TextureGroup[],
+): string[] {
+  const texture =
+    textureGroups.flatMap((group) => group.items).find((item) => item === "lava") ??
+    textureGroups[0]?.items[0] ??
+    "brick";
+  const textureClass = `hf-texture-${texture}`;
+  const maskPath = `/public/catalog-assets/components/${manifest.name}/masks/${texture}.png`;
+
+  return [
+    "## Animated Texture",
+    "",
+    "Animate the texture by moving the mask position on the text element. Keep drop shadow on a wrapper so the shadow follows the textured contour.",
+    "",
+    `<div className="texture-animate-demo" style={{ "--mask-url": "url('${maskPath}')" }}>`,
+    '  <div className="texture-animate-meta">',
+    '    <div className="texture-animate-label">Animated mask position</div>',
+    `    <code className="texture-animate-class">hf-texture-text ${textureClass}</code>`,
+    "  </div>",
+    '  <div className="texture-animate-shadow">',
+    '    <div className="texture-animate-word">MOTION</div>',
+    "  </div>",
+    "</div>",
+    "",
+    "```html",
+    '<div class="texture-shadow">',
+    `  <div class="hf-texture-text ${textureClass} animated-texture">MOTION</div>`,
+    "</div>",
+    "```",
+    "",
+    "```css",
+    ".animated-texture {",
+    "  --mask-size: 180% 180%;",
+    "  --mask-position: 0% 50%;",
+    "}",
+    "```",
+    "",
+    "```js",
+    "const tl = gsap.timeline({ paused: true });",
+    'tl.to(".animated-texture", {',
+    '  "--mask-position": "100% 50%",',
+    "  duration: 1.2,",
+    '  ease: "sine.inOut",',
+    "  yoyo: true,",
+    "  repeat: 1,",
+    "}, 0);",
+    'window.__timelines["my-composition"] = tl;',
+    "```",
+    "",
+  ];
+}
+
+function generateTexturePreview(manifest: RegistryItem, textureGroups: TextureGroup[]): string[] {
+  const sampleItems = textureGroups
+    .map((group) => group.items[0])
+    .filter(Boolean)
+    .slice(0, 6);
+  const lines: string[] = ['<div className="texture-preview-panel">'];
+
+  for (const item of sampleItems) {
+    const maskPath = `/public/catalog-assets/components/${manifest.name}/masks/${item}.png`;
+    lines.push(
+      `  <div className="texture-preview-card" style={{ "--mask-url": "url('${maskPath}')" }}>`,
+      `    <div className="texture-preview-label">${textureLabel(item!)}</div>`,
+      `    <div className="texture-preview-word">${textureSampleWord(item!)}</div>`,
+      "  </div>",
+    );
+  }
+
+  lines.push("</div>", "");
+  return lines;
+}
+
 function generateItemMdx(kind: ItemKind, manifest: RegistryItem): string {
   const tags = manifest.tags ?? [];
   const tagBadges = tags.map((t) => `\`${t}\``).join(" ");
   const installCmd = `npx hyperframes add ${manifest.name}`;
   const source = manifest as RegistryItem & SourceMetadata;
+  const textureGroups = textureGroupsFor(manifest);
 
   const lines: string[] = [
     "---",
@@ -137,12 +337,16 @@ function generateItemMdx(kind: ItemKind, manifest: RegistryItem): string {
     lines.push("## Source Prompt", "", "```text", source.sourcePrompt, "```", "");
   }
 
-  // Preview video with poster — muted loop, no autoPlay (matches examples page).
-  const previewPath = `${catalogImageBase}/${typeDir(kind)}/${manifest.name}`;
-  lines.push(
-    `<video className="w-full aspect-video rounded-xl object-cover bg-zinc-100 dark:bg-zinc-800" src="${previewPath}.mp4" poster="${previewPath}.png" autoPlay muted loop playsInline />`,
-    "",
-  );
+  if (textureGroups.length > 0) {
+    lines.push(...generateTexturePreview(manifest, textureGroups));
+  } else {
+    // Preview video with poster — muted loop, no autoPlay (matches examples page).
+    const previewPath = `${catalogImageBase}/${typeDir(kind)}/${manifest.name}`;
+    lines.push(
+      `<video className="w-full aspect-video rounded-xl object-cover bg-zinc-100 dark:bg-zinc-800" src="${previewPath}.mp4" poster="${previewPath}.png" autoPlay muted loop playsInline />`,
+      "",
+    );
+  }
 
   // Install command
   lines.push(
@@ -181,12 +385,20 @@ function generateItemMdx(kind: ItemKind, manifest: RegistryItem): string {
     );
   }
 
-  // Files
-  lines.push("## Files", "", "| File | Target | Type |", "| --- | --- | --- |");
-  for (const f of manifest.files) {
-    lines.push(`| \`${f.path}\` | \`${f.target}\` | ${f.type} |`);
+  if (textureGroups.length > 0) {
+    lines.push(...generateTextureAgentUsage(manifest, textureGroups));
+    lines.push(...generateTextureAnimationExample(manifest, textureGroups));
+    lines.push(...generateTextureExamples(manifest, textureGroups));
   }
-  lines.push("");
+
+  // Files
+  if (textureGroups.length === 0) {
+    lines.push("## Files", "", "| File | Target | Type |", "| --- | --- | --- |");
+    for (const f of manifest.files) {
+      lines.push(`| \`${f.path}\` | \`${f.target}\` | ${f.type} |`);
+    }
+    lines.push("");
+  }
 
   // Usage hint — find the primary file by type, not array position.
   const primaryFile =
@@ -209,12 +421,21 @@ function generateItemMdx(kind: ItemKind, manifest: RegistryItem): string {
       "",
     );
   } else {
-    lines.push(
-      "## Usage",
-      "",
-      `Open \`${primaryTarget}\` and paste its contents into your composition. See the comment header in the file for detailed instructions.`,
-      "",
-    );
+    if (textureGroups.length > 0) {
+      lines.push(
+        "## Usage",
+        "",
+        `After \`${installCmd}\`, the installed snippet lives at \`${primaryTarget}\` inside your current HyperFrames project. Open that file and paste its \`<style>...</style>\` block into your composition once; it defines \`hf-texture-text\` and every \`hf-texture-*\` class used by the examples above. Keep the installed \`masks/\` PNG files in place.`,
+        "",
+      );
+    } else {
+      lines.push(
+        "## Usage",
+        "",
+        `Open \`${primaryTarget}\` and paste its contents into your composition. See the comment header in the file for detailed instructions.`,
+        "",
+      );
+    }
   }
 
   // Related skill

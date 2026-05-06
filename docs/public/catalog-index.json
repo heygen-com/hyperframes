@@ -349,6 +349,20 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/swirl-vortex.png"
   },
   {
+    "name": "texture-mask-text",
+    "type": "component",
+    "title": "Texture Mask Text",
+    "description": "CSS luminance masks that cut holes through letterforms - 66 pre-built texture masks from ambientCG PBR color maps",
+    "tags": [
+      "text",
+      "texture",
+      "mask",
+      "effect"
+    ],
+    "href": "/catalog/components/texture-mask-text",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/texture-mask-text.png"
+  },
+  {
     "name": "thermal-distortion",
     "type": "block",
     "title": "Thermal Distortion",
