@@ -60,6 +60,10 @@
       "type": "hyperframes:component"
     },
     {
+      "name": "texture-mask-text",
+      "type": "hyperframes:component"
+    },
+    {
       "name": "instagram-follow",
       "type": "hyperframes:block"
     },
