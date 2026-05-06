@@ -11,11 +11,21 @@ HyperFrames supports Three.js through its `three` runtime adapter. The adapter d
 
 - Create the scene, camera, renderer, materials, and assets synchronously when possible.
 - Render from HyperFrames time, not wall-clock time.
-- Listen for the `hf-seek` event and render exactly that time.
+- Register a render callback so HyperFrames seeks reach your scene on every frame.
 - Load models, textures, and HDRIs before render-critical seeking. Do not fetch them at seek time.
 - Avoid `requestAnimationFrame` or `renderer.setAnimationLoop` as the source of truth for render-critical motion.
 
-The adapter sets `window.__hfThreeTime` and dispatches `new CustomEvent("hf-seek", { detail: { time } })` on each seek.
+On each seek the adapter:
+
+1. Sets `window.__hfThreeTime` to the current time.
+2. Invokes every callback in `window.__hfThreeRender` with the current time.
+3. Dispatches `new CustomEvent("hf-seek", { detail: { time } })` on `window`.
+
+Prefer the `__hfThreeRender` registry — it mirrors the `__hfAnime` / `__hfLottie`
+pattern used by sibling adapters and is robust against listener-registration
+ordering issues during render mode (compositions whose `<script type="module">`
+imports finish later than the first seek). The `hf-seek` event remains
+supported for backward compatibility but is best treated as a fallback.
 
 ## Basic Pattern
 
@@ -47,9 +57,8 @@ The adapter sets `window.__hfThreeTime` and dispatches `new CustomEvent("hf-seek
     renderer.render(scene, camera);
   }
 
-  window.addEventListener("hf-seek", (event) => {
-    renderAt(event.detail.time);
-  });
+  window.__hfThreeRender = window.__hfThreeRender || [];
+  window.__hfThreeRender.push(renderAt);
 
   renderAt(window.__hfThreeTime || 0);
 </script>
@@ -72,9 +81,26 @@ function renderAt(time) {
   mixer.setTime(time);
   renderer.render(scene, camera);
 }
+
+window.__hfThreeRender = window.__hfThreeRender || [];
+window.__hfThreeRender.push(renderAt);
 ```
 
 If several mixers exist, seek all of them from the same `time`.
+
+## Multiple Layers
+
+`window.__hfThreeRender` is an array — every layer can register its own
+render callback and they all receive the same time on every seek:
+
+```js
+window.__hfThreeRender = window.__hfThreeRender || [];
+window.__hfThreeRender.push(renderForeground);
+window.__hfThreeRender.push(renderBackground);
+```
+
+The adapter swallows callback errors so one broken layer cannot starve the
+others.
 
 ## Good Uses
 

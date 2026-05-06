@@ -35,6 +35,16 @@ declare global {
     __HF_FPS?: number;
     __HF_MAX_DURATION_SEC?: number;
     __hfThreeTime?: number;
+    /**
+     * Three.js render callbacks registered by compositions.
+     * The adapter invokes every callback with the current time on each seek,
+     * before dispatching the legacy `hf-seek` event.
+     *
+     * Push your render function here:
+     *   window.__hfThreeRender = window.__hfThreeRender || [];
+     *   window.__hfThreeRender.push(renderAt);
+     */
+    __hfThreeRender?: ((time: number) => void)[];
     __HF_PICKER_API?: HyperframePickerApi;
     gsap?: {
       timeline: (params?: { paused?: boolean }) => RuntimeTimelineLike;
