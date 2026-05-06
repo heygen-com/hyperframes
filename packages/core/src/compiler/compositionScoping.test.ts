@@ -158,6 +158,56 @@ window.__timelines.scene = tl;
     expect(gsapTargets).toEqual([["Scene"], ["Scene"]]);
   });
 
+  it("scopes getElementById when duplicate IDs exist across composition roots", () => {
+    const { document } = parseHTML(`
+      <div data-composition-id="scene-a"><canvas id="gl-canvas"></canvas></div>
+      <div data-composition-id="scene-b"><canvas id="gl-canvas"></canvas></div>
+    `);
+    const fakeWindow = {
+      document,
+      __selectedComp: "",
+      __timelines: {},
+    };
+    const wrapped = wrapScopedCompositionScript(
+      `
+window.__selectedComp =
+  document.getElementById("gl-canvas")
+    ?.closest("[data-composition-id]")
+    ?.getAttribute("data-composition-id") || "null";
+`,
+      "scene-b",
+    );
+
+    new Function("window", wrapped)(fakeWindow);
+
+    expect(fakeWindow.__selectedComp).toBe("scene-b");
+  });
+
+  it("scopes getElementById for IDs that need CSS selector escaping", () => {
+    const { document } = parseHTML(`
+      <div data-composition-id="scene-a"><div id="clip:1"></div></div>
+      <div data-composition-id="scene-b"><div id="clip:1"></div></div>
+    `);
+    const fakeWindow = {
+      document,
+      __selectedComp: "",
+      __timelines: {},
+    };
+    const wrapped = wrapScopedCompositionScript(
+      `
+window.__selectedComp =
+  document.getElementById("clip:1")
+    ?.closest("[data-composition-id]")
+    ?.getAttribute("data-composition-id") || "null";
+`,
+      "scene-b",
+    );
+
+    new Function("window", wrapped)(fakeWindow);
+
+    expect(fakeWindow.__selectedComp).toBe("scene-b");
+  });
+
   it("reads scoped proxy accessors with the original target receiver", () => {
     const root = {
       contains(node: unknown) {
