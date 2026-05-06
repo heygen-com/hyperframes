@@ -119,6 +119,11 @@ export function syncRuntimeMedia(params: {
    */
   userMuted?: boolean;
   /**
+   * User's volume preference (0–1, set via `onSetVolume`). Multiplied with the
+   * per-clip author volume so `data-volume="0.5"` at user volume 0.8 yields 0.4.
+   */
+  userVolume?: number;
+  /**
    * Invoked at most once when a media element's `play()` promise rejects with
    * `NotAllowedError`. The caller is expected to latch and post a single
    * outbound message; further invocations are suppressed by the caller.
@@ -142,7 +147,8 @@ export function syncRuntimeMedia(params: {
           relTime = clip.mediaStart + ((relTime - clip.mediaStart) % loopLength);
         }
       }
-      if (clip.volume != null) el.volume = clip.volume;
+      const userVol = params.userVolume ?? 1;
+      el.volume = (clip.volume ?? 1) * userVol;
       if (shouldMute) el.muted = true;
       // Ensure full preload for every active media element. Streaming
       // formats (MP3) may arrive with preload="metadata", which only

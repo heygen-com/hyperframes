@@ -10,6 +10,7 @@ export type RuntimeState = {
   parityModeEnabled: boolean;
   canonicalFps: number;
   bridgeMuted: boolean;
+  bridgeVolume: number;
   /**
    * Internal mute of audible media output, owned by the audio-ownership
    * protocol between the parent (`<hyperframes-player>`) and this runtime.
@@ -78,6 +79,7 @@ export function createRuntimeState(): RuntimeState {
     parityModeEnabled: true,
     canonicalFps: 30,
     bridgeMuted: false,
+    bridgeVolume: 1,
     mediaOutputMuted: false,
     mediaAutoplayBlockedPosted: false,
     playbackRate: 1,

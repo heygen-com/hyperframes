@@ -11,6 +11,7 @@ export type RuntimeBridgeControlAction =
   | "pause"
   | "seek"
   | "set-muted"
+  | "set-volume"
   | "set-media-output-muted"
   | "set-playback-rate"
   | "enable-pick-mode"
@@ -23,6 +24,7 @@ export type RuntimeBridgeControlMessage = {
   action: RuntimeBridgeControlAction;
   frame?: number;
   muted?: boolean;
+  volume?: number;
   playbackRate?: number;
   seekMode?: "drag" | "commit";
 };

@@ -365,6 +365,7 @@ class HyperframesPlayer extends HTMLElement {
         for (const m of this._parentMedia) m.el.muted = val !== null;
         this._sendControl("set-muted", { muted: val !== null });
         this.controlsApi?.updateMuted(val !== null);
+        this.dispatchEvent(new Event("volumechange"));
         break;
       case "volume": {
         const v = Math.max(0, Math.min(1, parseFloat(val || "1")));

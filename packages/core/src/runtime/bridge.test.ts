@@ -7,6 +7,7 @@ function createMockDeps() {
     onPause: vi.fn(),
     onSeek: vi.fn(),
     onSetMuted: vi.fn(),
+    onSetVolume: vi.fn(),
     onSetMediaOutputMuted: vi.fn(),
     onSetPlaybackRate: vi.fn(),
     onEnablePickMode: vi.fn(),
@@ -54,6 +55,29 @@ describe("installRuntimeControlBridge", () => {
     const handler = installRuntimeControlBridge(deps);
     handler(makeControlMessage("set-muted", { muted: true }));
     expect(deps.onSetMuted).toHaveBeenCalledWith(true);
+  });
+
+  it("dispatches set-volume command", () => {
+    const deps = createMockDeps();
+    const handler = installRuntimeControlBridge(deps);
+    handler(makeControlMessage("set-volume", { volume: 0.5 }));
+    expect(deps.onSetVolume).toHaveBeenCalledWith(0.5);
+  });
+
+  it("clamps set-volume to [0, 1]", () => {
+    const deps = createMockDeps();
+    const handler = installRuntimeControlBridge(deps);
+    handler(makeControlMessage("set-volume", { volume: 1.5 }));
+    expect(deps.onSetVolume).toHaveBeenCalledWith(1);
+    handler(makeControlMessage("set-volume", { volume: -0.5 }));
+    expect(deps.onSetVolume).toHaveBeenCalledWith(0);
+  });
+
+  it("defaults volume to 1 when absent", () => {
+    const deps = createMockDeps();
+    const handler = installRuntimeControlBridge(deps);
+    handler(makeControlMessage("set-volume"));
+    expect(deps.onSetVolume).toHaveBeenCalledWith(1);
   });
 
   it("dispatches set-media-output-muted command", () => {

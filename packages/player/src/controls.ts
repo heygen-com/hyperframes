@@ -165,6 +165,7 @@ export function createControls(
     const fraction = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
     currentVolume = fraction;
     volumeFill.style.width = `${fraction * 100}%`;
+    if (isMuted && fraction > 0) callbacks.onMuteToggle();
     muteBtn.innerHTML = getVolumeIcon(isMuted, fraction);
     callbacks.onVolumeChange(fraction);
   };
@@ -182,6 +183,27 @@ export function createControls(
   };
   document.addEventListener("mousemove", onVolumeMouseMove);
   document.addEventListener("mouseup", onVolumeMouseUp);
+
+  volumeSlider.addEventListener(
+    "touchstart",
+    (e) => {
+      volumeScrubbing = true;
+      const touch = e.touches[0];
+      if (touch) handleVolumeAt(touch.clientX);
+    },
+    { passive: true },
+  );
+  const onVolumeTouchMove = (e: TouchEvent) => {
+    if (volumeScrubbing) {
+      const touch = e.touches[0];
+      if (touch) handleVolumeAt(touch.clientX);
+    }
+  };
+  const onVolumeTouchEnd = () => {
+    volumeScrubbing = false;
+  };
+  document.addEventListener("touchmove", onVolumeTouchMove, { passive: true });
+  document.addEventListener("touchend", onVolumeTouchEnd);
 
   const setActiveOption = (speed: number) => {
     for (const opt of speedMenu.querySelectorAll(".hfp-speed-option")) {
@@ -316,6 +338,8 @@ export function createControls(
       document.removeEventListener("touchend", onTouchEnd);
       document.removeEventListener("mousemove", onVolumeMouseMove);
       document.removeEventListener("mouseup", onVolumeMouseUp);
+      document.removeEventListener("touchmove", onVolumeTouchMove);
+      document.removeEventListener("touchend", onVolumeTouchEnd);
       document.removeEventListener("click", onDocClick);
       if (hideTimeout) clearTimeout(hideTimeout);
     },

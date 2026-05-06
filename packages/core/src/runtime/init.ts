@@ -1296,6 +1296,7 @@ export function initSandboxRuntimeModular(): void {
       playbackRate: state.playbackRate,
       outputMuted: state.mediaOutputMuted,
       userMuted: state.bridgeMuted,
+      userVolume: state.bridgeVolume,
       onAutoplayBlocked: () => {
         if (state.mediaAutoplayBlockedPosted) return;
         state.mediaAutoplayBlockedPosted = true;
@@ -1553,6 +1554,15 @@ export function initSandboxRuntimeModular(): void {
       for (const el of mediaEls) {
         if (!(el instanceof HTMLMediaElement)) continue;
         el.muted = effective;
+      }
+    },
+    onSetVolume: (volume) => {
+      state.bridgeVolume = volume;
+      const mediaEls = document.querySelectorAll("video, audio");
+      for (const el of mediaEls) {
+        if (!(el instanceof HTMLMediaElement)) continue;
+        const clipVolume = parseFloat(el.dataset.volume ?? "") || 1;
+        el.volume = clipVolume * volume;
       }
     },
     onSetMediaOutputMuted: (muted) => {

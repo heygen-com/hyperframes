@@ -319,6 +319,30 @@ describe("syncRuntimeMedia", () => {
     expect(clip.el.volume).toBe(0.7);
   });
 
+  it("applies userVolume as a multiplier on clip volume", () => {
+    const clip = createMockClip({ start: 0, end: 10, volume: 0.8 });
+    syncRuntimeMedia({
+      clips: [clip],
+      timeSeconds: 5,
+      playing: false,
+      playbackRate: 1,
+      userVolume: 0.5,
+    });
+    expect(clip.el.volume).toBeCloseTo(0.4);
+  });
+
+  it("applies userVolume to clips without explicit volume (default 1)", () => {
+    const clip = createMockClip({ start: 0, end: 10 });
+    syncRuntimeMedia({
+      clips: [clip],
+      timeSeconds: 5,
+      playing: false,
+      playbackRate: 1,
+      userVolume: 0.3,
+    });
+    expect(clip.el.volume).toBeCloseTo(0.3);
+  });
+
   it("hard-syncs on the first active tick (sub-composition activation, mediaStart offsets)", () => {
     const clip = createMockClip({ start: 0, end: 10, mediaStart: 0 });
     Object.defineProperty(clip.el, "currentTime", { value: 0, writable: true });
