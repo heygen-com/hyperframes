@@ -119,6 +119,15 @@ function generateItemMdx(kind: ItemKind, manifest: RegistryItem): string {
     lines.push(tagBadges, "");
   }
 
+  if (tags.includes("html-in-canvas")) {
+    lines.push(
+      `<Warning>`,
+      `**Requires Chrome flag.** Enable \`chrome://flags/#canvas-draw-element\` for live preview. Rendering via CLI enables the flag automatically. [Learn more](/guides/html-in-canvas).`,
+      `</Warning>`,
+      "",
+    );
+  }
+
   if (manifest.author) {
     const author = source.authorUrl ? `[${manifest.author}](${source.authorUrl})` : manifest.author;
     lines.push(`Created by ${author}.`, "");
@@ -275,7 +284,6 @@ function main(): void {
   // go into an "Other" group. Groups are sorted with a priority order.
   const GROUP_ORDER: Record<string, number> = {
     "HTML-in-Canvas": 0,
-    Captions: 1,
     "Social Overlays": 2,
     "Shader Transitions": 3,
     "CSS Transitions": 4,
@@ -292,7 +300,6 @@ function main(): void {
     if (tags.includes("transition") && tags.includes("showcase")) return "CSS Transitions";
     // HTML-in-Canvas and Captions categories
     if (tags.includes("html-in-canvas")) return "HTML-in-Canvas";
-    if (tags.includes("captions")) return "Captions";
     // Single-tag mapping
     if (tags.includes("social")) return "Social Overlays";
     if (tags.includes("transition"))

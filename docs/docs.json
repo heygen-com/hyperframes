@@ -69,6 +69,7 @@
           {
             "group": "Guides",
             "pages": [
+              "guides/html-in-canvas",
               "guides/website-to-video",
               "guides/claude-design",
               "guides/open-design",
@@ -100,16 +101,6 @@
               "catalog/blocks/vfx-portal",
               "catalog/blocks/vfx-shatter",
               "catalog/blocks/vfx-text-cursor"
-            ]
-          },
-          {
-            "group": "Captions",
-            "pages": [
-              "catalog/blocks/captions-bounce",
-              "catalog/blocks/captions-cinematic",
-              "catalog/blocks/captions-karaoke",
-              "catalog/blocks/captions-minimal",
-              "catalog/blocks/captions-slam"
             ]
           },
           {

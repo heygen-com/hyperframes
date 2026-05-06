@@ -224,26 +224,6 @@
       "type": "hyperframes:block"
     },
     {
-      "name": "captions-slam",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "captions-karaoke",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "captions-minimal",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "captions-bounce",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "captions-cinematic",
-      "type": "hyperframes:block"
-    },
-    {
       "name": "vfx-text-cursor",
       "type": "hyperframes:block"
     },

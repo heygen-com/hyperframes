@@ -42,66 +42,6 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/blue-sweater-intro-video.png"
   },
   {
-    "name": "captions-bounce",
-    "type": "block",
-    "title": "Captions – Bounce",
-    "description": "Playful social-media style captions with elastic bounce-in per word on alternating colorful pill backgrounds",
-    "tags": [
-      "captions",
-      "bounce"
-    ],
-    "href": "/catalog/blocks/captions-bounce",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/captions-bounce.png"
-  },
-  {
-    "name": "captions-cinematic",
-    "type": "block",
-    "title": "Captions – Cinematic",
-    "description": "Elegant film-title captions with slow fade, letter-spacing animation, warm tint, and extending horizontal accent line",
-    "tags": [
-      "captions",
-      "cinematic"
-    ],
-    "href": "/catalog/blocks/captions-cinematic",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/captions-cinematic.png"
-  },
-  {
-    "name": "captions-karaoke",
-    "type": "block",
-    "title": "Captions – Karaoke",
-    "description": "Word-by-word color reveal with frosted glass pill background, dimmed-to-highlighted karaoke progression",
-    "tags": [
-      "captions",
-      "karaoke"
-    ],
-    "href": "/catalog/blocks/captions-karaoke",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/captions-karaoke.png"
-  },
-  {
-    "name": "captions-minimal",
-    "type": "block",
-    "title": "Captions – Minimal",
-    "description": "Clean, professional Netflix-subtitle style captions with soft fade and y-offset on a dark pill background",
-    "tags": [
-      "captions",
-      "minimal"
-    ],
-    "href": "/catalog/blocks/captions-minimal",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/captions-minimal.png"
-  },
-  {
-    "name": "captions-slam",
-    "type": "block",
-    "title": "Captions – Slam",
-    "description": "Bold, punchy slam captions with back-eased overshoot scale-in, uppercase Inter 900, and per-word accent styling",
-    "tags": [
-      "captions",
-      "slam"
-    ],
-    "href": "/catalog/blocks/captions-slam",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/captions-slam.png"
-  },
-  {
     "name": "chromatic-radial-split",
     "type": "block",
     "title": "Chromatic Radial Split",
