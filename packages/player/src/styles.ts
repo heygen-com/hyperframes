@@ -350,10 +350,77 @@ export const PLAYER_STYLES = /* css */ `
     color: var(--hfp-accent, #fff);
     font-weight: 600;
   }
+
+  .hfp-volume-wrap {
+    position: relative;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 0;
+  }
+
+  .hfp-mute-btn {
+    background: none;
+    border: none;
+    color: var(--hfp-color, #fff);
+    cursor: pointer;
+    padding: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    flex-shrink: 0;
+  }
+
+  .hfp-mute-btn:hover {
+    opacity: 0.8;
+  }
+
+  .hfp-mute-btn svg,
+  .hfp-mute-btn svg * {
+    pointer-events: none;
+  }
+
+  .hfp-volume-slider-wrap {
+    width: 0;
+    overflow: hidden;
+    transition: width 0.2s ease;
+    display: flex;
+    align-items: center;
+  }
+
+  .hfp-volume-wrap:hover .hfp-volume-slider-wrap {
+    width: 64px;
+  }
+
+  .hfp-volume-slider {
+    width: 56px;
+    height: var(--hfp-scrubber-height, 4px);
+    background: var(--hfp-scrubber-bg, rgba(255, 255, 255, 0.3));
+    border-radius: var(--hfp-scrubber-radius, 2px);
+    cursor: pointer;
+    position: relative;
+    margin-left: 4px;
+    margin-right: 4px;
+  }
+
+  .hfp-volume-fill {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100%;
+    background: var(--hfp-accent, #fff);
+    border-radius: var(--hfp-scrubber-radius, 2px);
+    pointer-events: none;
+  }
 `;
 
 export const PLAY_ICON = `<svg width="24" height="24" viewBox="0 0 18 18" fill="currentColor"><polygon points="4,2 16,9 4,16"/></svg>`;
 export const PAUSE_ICON = `<svg width="24" height="24" viewBox="0 0 18 18" fill="currentColor"><rect x="3" y="2" width="4" height="14"/><rect x="11" y="2" width="4" height="14"/></svg>`;
+export const VOLUME_HIGH_ICON = `<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M3 9v6h4l5 5V4L7 9H3z"/><path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/><path d="M14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>`;
+export const VOLUME_LOW_ICON = `<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M3 9v6h4l5 5V4L7 9H3z"/><path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/></svg>`;
+export const VOLUME_MUTED_ICON = `<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M3 9v6h4l5 5V4L7 9H3z"/><path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z" opacity="0.3"/><line x1="18" y1="7" x2="14" y2="17" stroke="currentColor" stroke-width="2"/></svg>`;
 
 /**
  * Process-wide cache for the constructed PLAYER_STYLES sheet. Lazy so the

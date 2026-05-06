@@ -138,6 +138,7 @@ class HyperframesPlayer extends HTMLElement {
       "height",
       "controls",
       "muted",
+      "volume",
       "poster",
       "playback-rate",
       "audio-src",
@@ -166,6 +167,7 @@ class HyperframesPlayer extends HTMLElement {
   private _duration = 0;
   private _currentTime = 0;
   private _paused = true;
+  private _volume = 1;
   private _compositionWidth = 1920;
   private _compositionHeight = 1080;
   private _probeInterval: ReturnType<typeof setInterval> | null = null;
@@ -362,7 +364,17 @@ class HyperframesPlayer extends HTMLElement {
       case "muted":
         for (const m of this._parentMedia) m.el.muted = val !== null;
         this._sendControl("set-muted", { muted: val !== null });
+        this.controlsApi?.updateMuted(val !== null);
         break;
+      case "volume": {
+        const v = Math.max(0, Math.min(1, parseFloat(val || "1")));
+        this._volume = v;
+        for (const m of this._parentMedia) m.el.volume = v;
+        this._sendControl("set-volume", { volume: v });
+        this.controlsApi?.updateVolume(v);
+        this.dispatchEvent(new Event("volumechange"));
+        break;
+      }
       case "audio-src":
         if (val) this._setupParentAudioFromUrl(val);
         break;
@@ -515,6 +527,13 @@ class HyperframesPlayer extends HTMLElement {
   set muted(m: boolean) {
     if (m) this.setAttribute("muted", "");
     else this.removeAttribute("muted");
+  }
+
+  get volume() {
+    return this._volume;
+  }
+  set volume(v: number) {
+    this.setAttribute("volume", String(Math.max(0, Math.min(1, v))));
   }
 
   get loop() {
@@ -1061,6 +1080,12 @@ class HyperframesPlayer extends HTMLElement {
       onSpeedChange: (speed) => {
         this.playbackRate = speed;
       },
+      onMuteToggle: () => {
+        this.muted = !this.muted;
+      },
+      onVolumeChange: (volume) => {
+        this.volume = volume;
+      },
     };
     const presetsAttr = this.getAttribute("speed-presets");
     const speedPresets = presetsAttr
@@ -1070,6 +1095,8 @@ class HyperframesPlayer extends HTMLElement {
           .filter((n) => !isNaN(n) && n > 0)
       : undefined;
     this.controlsApi = createControls(this.shadow, callbacks, { speedPresets });
+    this.controlsApi.updateMuted(this.muted);
+    this.controlsApi.updateVolume(this._volume);
   }
 
   private _setupPoster() {
@@ -1242,6 +1269,7 @@ class HyperframesPlayer extends HTMLElement {
     el.src = src;
     el.load();
     el.muted = this.muted;
+    el.volume = this._volume;
     if (this.playbackRate !== 1) el.playbackRate = this.playbackRate;
 
     const entry = { el, start, duration, driftSamples: 0 };

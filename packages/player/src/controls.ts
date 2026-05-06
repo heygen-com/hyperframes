@@ -1,10 +1,18 @@
-import { PLAY_ICON, PAUSE_ICON } from "./styles.js";
+import {
+  PLAY_ICON,
+  PAUSE_ICON,
+  VOLUME_HIGH_ICON,
+  VOLUME_LOW_ICON,
+  VOLUME_MUTED_ICON,
+} from "./styles.js";
 
 export interface ControlsCallbacks {
   onPlay: () => void;
   onPause: () => void;
   onSeek: (fraction: number) => void;
   onSpeedChange: (speed: number) => void;
+  onMuteToggle: () => void;
+  onVolumeChange: (volume: number) => void;
 }
 
 /** Default logarithmic speed presets — each step roughly doubles/halves. */
@@ -38,6 +46,8 @@ export function createControls(
   updateTime: (current: number, duration: number) => void;
   updatePlaying: (playing: boolean) => void;
   updateSpeed: (speed: number) => void;
+  updateMuted: (muted: boolean) => void;
+  updateVolume: (volume: number) => void;
   show: () => void;
   hide: () => void;
   destroy: () => void;
@@ -94,22 +104,84 @@ export function createControls(
   speedWrap.appendChild(speedMenu);
   speedWrap.appendChild(speedBtn);
 
+  const volumeWrap = document.createElement("div");
+  volumeWrap.className = "hfp-volume-wrap";
+
+  const muteBtn = document.createElement("button");
+  muteBtn.className = "hfp-mute-btn";
+  muteBtn.type = "button";
+  muteBtn.innerHTML = VOLUME_HIGH_ICON;
+  muteBtn.setAttribute("aria-label", "Mute");
+
+  const volumeSliderWrap = document.createElement("div");
+  volumeSliderWrap.className = "hfp-volume-slider-wrap";
+
+  const volumeSlider = document.createElement("div");
+  volumeSlider.className = "hfp-volume-slider";
+  const volumeFill = document.createElement("div");
+  volumeFill.className = "hfp-volume-fill";
+  volumeFill.style.width = "100%";
+  volumeSlider.appendChild(volumeFill);
+  volumeSliderWrap.appendChild(volumeSlider);
+
+  volumeWrap.appendChild(volumeSliderWrap);
+  volumeWrap.appendChild(muteBtn);
+
   controls.appendChild(playBtn);
   controls.appendChild(scrubber);
   controls.appendChild(time);
+  controls.appendChild(volumeWrap);
   controls.appendChild(speedWrap);
   parent.appendChild(controls);
 
   let isPlaying = false;
+  let isMuted = false;
+  let currentVolume = 1;
   let hideTimeout: ReturnType<typeof setTimeout> | null = null;
   let speedIndex = presets.indexOf(1); // start at 1x
   if (speedIndex === -1) speedIndex = 0;
+
+  const getVolumeIcon = (muted: boolean, volume: number): string => {
+    if (muted || volume === 0) return VOLUME_MUTED_ICON;
+    if (volume < 0.5) return VOLUME_LOW_ICON;
+    return VOLUME_HIGH_ICON;
+  };
 
   playBtn.addEventListener("click", (e) => {
     e.stopPropagation();
     if (isPlaying) callbacks.onPause();
     else callbacks.onPlay();
   });
+
+  muteBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    callbacks.onMuteToggle();
+  });
+
+  let volumeScrubbing = false;
+
+  const handleVolumeAt = (clientX: number) => {
+    const rect = volumeSlider.getBoundingClientRect();
+    const fraction = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    currentVolume = fraction;
+    volumeFill.style.width = `${fraction * 100}%`;
+    muteBtn.innerHTML = getVolumeIcon(isMuted, fraction);
+    callbacks.onVolumeChange(fraction);
+  };
+
+  volumeSlider.addEventListener("mousedown", (e) => {
+    e.stopPropagation();
+    volumeScrubbing = true;
+    handleVolumeAt(e.clientX);
+  });
+  const onVolumeMouseMove = (e: MouseEvent) => {
+    if (volumeScrubbing) handleVolumeAt(e.clientX);
+  };
+  const onVolumeMouseUp = () => {
+    volumeScrubbing = false;
+  };
+  document.addEventListener("mousemove", onVolumeMouseMove);
+  document.addEventListener("mouseup", onVolumeMouseUp);
 
   const setActiveOption = (speed: number) => {
     for (const opt of speedMenu.querySelectorAll(".hfp-speed-option")) {
@@ -221,6 +293,16 @@ export function createControls(
       speedBtn.textContent = formatSpeed(speed);
       setActiveOption(speed);
     },
+    updateMuted(muted: boolean) {
+      isMuted = muted;
+      muteBtn.innerHTML = getVolumeIcon(muted, currentVolume);
+      muteBtn.setAttribute("aria-label", muted ? "Unmute" : "Mute");
+    },
+    updateVolume(volume: number) {
+      currentVolume = volume;
+      volumeFill.style.width = `${volume * 100}%`;
+      muteBtn.innerHTML = getVolumeIcon(isMuted, volume);
+    },
     show() {
       controls.style.display = "";
     },
@@ -232,6 +314,8 @@ export function createControls(
       document.removeEventListener("mouseup", onMouseUp);
       document.removeEventListener("touchmove", onTouchMove);
       document.removeEventListener("touchend", onTouchEnd);
+      document.removeEventListener("mousemove", onVolumeMouseMove);
+      document.removeEventListener("mouseup", onVolumeMouseUp);
       document.removeEventListener("click", onDocClick);
       if (hideTimeout) clearTimeout(hideTimeout);
     },

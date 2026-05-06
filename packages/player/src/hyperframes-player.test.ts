@@ -1171,3 +1171,141 @@ describe("HyperframesPlayer srcdoc attribute", () => {
     player.remove();
   });
 });
+
+// ── Volume / Mute controls ──
+
+describe("HyperframesPlayer volume and mute", () => {
+  let player: HTMLElement & {
+    muted: boolean;
+    volume: number;
+    iframeElement: HTMLIFrameElement;
+  };
+  let mockAudio: {
+    preload: string;
+    src: string;
+    muted: boolean;
+    volume: number;
+    playbackRate: number;
+    currentTime: number;
+    load: ReturnType<typeof vi.fn>;
+    play: ReturnType<typeof vi.fn>;
+    pause: ReturnType<typeof vi.fn>;
+  };
+
+  beforeEach(async () => {
+    await import("./hyperframes-player.js");
+
+    mockAudio = {
+      preload: "",
+      src: "",
+      muted: false,
+      volume: 1,
+      playbackRate: 1,
+      currentTime: 0,
+      load: vi.fn(),
+      play: vi.fn().mockResolvedValue(undefined),
+      pause: vi.fn(),
+    };
+    vi.spyOn(globalThis, "Audio").mockImplementation(
+      () => mockAudio as unknown as HTMLAudioElement,
+    );
+
+    player = document.createElement("hyperframes-player") as typeof player;
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    document.body.innerHTML = "";
+  });
+
+  it("defaults volume to 1", () => {
+    document.body.appendChild(player);
+    expect(player.volume).toBe(1);
+  });
+
+  it("sets volume on parent media when audio-src is configured", () => {
+    player.setAttribute("volume", "0.5");
+    player.setAttribute("audio-src", "https://cdn.example.com/narration.mp3");
+    document.body.appendChild(player);
+
+    expect(mockAudio.volume).toBe(0.5);
+  });
+
+  it("updates parent media volume when volume attribute changes", () => {
+    player.setAttribute("audio-src", "https://cdn.example.com/narration.mp3");
+    document.body.appendChild(player);
+
+    player.setAttribute("volume", "0.3");
+    expect(mockAudio.volume).toBe(0.3);
+  });
+
+  it("clamps volume to [0, 1]", () => {
+    document.body.appendChild(player);
+
+    player.volume = 1.5;
+    expect(player.volume).toBe(1);
+
+    player.volume = -0.5;
+    expect(player.volume).toBe(0);
+  });
+
+  it("dispatches volumechange event when volume changes", () => {
+    document.body.appendChild(player);
+
+    const handler = vi.fn();
+    player.addEventListener("volumechange", handler);
+
+    player.setAttribute("volume", "0.7");
+    expect(handler).toHaveBeenCalledTimes(1);
+  });
+
+  it("muted property toggles the muted attribute", () => {
+    document.body.appendChild(player);
+
+    player.muted = true;
+    expect(player.hasAttribute("muted")).toBe(true);
+
+    player.muted = false;
+    expect(player.hasAttribute("muted")).toBe(false);
+  });
+
+  it("sends set-volume control to iframe", () => {
+    document.body.appendChild(player);
+
+    const postMessageSpy = vi.fn();
+    Object.defineProperty(player.iframeElement, "contentWindow", {
+      value: { postMessage: postMessageSpy },
+      configurable: true,
+    });
+
+    player.setAttribute("volume", "0.6");
+    expect(postMessageSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: "hf-parent",
+        type: "control",
+        action: "set-volume",
+        volume: 0.6,
+      }),
+      "*",
+    );
+  });
+
+  it("controls bar shows mute button when controls are enabled", () => {
+    player.setAttribute("controls", "");
+    document.body.appendChild(player);
+
+    const shadow = player.shadowRoot!;
+    const muteBtn = shadow.querySelector(".hfp-mute-btn");
+    expect(muteBtn).toBeTruthy();
+    expect(muteBtn?.getAttribute("aria-label")).toBe("Mute");
+  });
+
+  it("controls bar shows volume slider when controls are enabled", () => {
+    player.setAttribute("controls", "");
+    document.body.appendChild(player);
+
+    const shadow = player.shadowRoot!;
+    const slider = shadow.querySelector(".hfp-volume-slider");
+    expect(slider).toBeTruthy();
+  });
+});
