@@ -315,17 +315,15 @@ function generateItemMdx(kind: ItemKind, manifest: RegistryItem): string {
   const source = manifest as RegistryItem & SourceMetadata;
   const textureGroups = textureGroupsFor(manifest);
 
-  const lines: string[] = [
-    "---",
-    `title: "${manifest.title.replace(/"/g, '\\"')}"`,
-    `description: "${manifest.description.replace(/"/g, '\\"')}"`,
-    "---",
-    "",
-    `# ${manifest.title}`,
-    "",
-    manifest.description,
-    "",
-  ];
+  const lines: string[] = ["---", `title: "${manifest.title.replace(/"/g, '\\"')}"`];
+  if (textureGroups.length === 0) {
+    lines.push(`description: "${manifest.description.replace(/"/g, '\\"')}"`);
+  }
+  lines.push("---", "");
+
+  if (textureGroups.length === 0) {
+    lines.push(`# ${manifest.title}`, "", manifest.description, "");
+  }
 
   if (tagBadges) {
     lines.push(tagBadges, "");
