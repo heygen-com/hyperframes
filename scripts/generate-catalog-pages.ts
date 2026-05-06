@@ -151,6 +151,10 @@ function textureSampleWord(slug: string): string {
   return slug.toUpperCase();
 }
 
+function textureMaskUrlFor(manifest: RegistryItem, texture: string): string {
+  return `${catalogImageBase}/components/${manifest.name}/masks/${texture}.png`;
+}
+
 function generateTextureExamples(manifest: RegistryItem, textureGroups: TextureGroup[]): string[] {
   const lines: string[] = [
     "## Texture Examples",
@@ -165,7 +169,7 @@ function generateTextureExamples(manifest: RegistryItem, textureGroups: TextureG
       '    <div className="hf-texture-example-grid">',
     );
     for (const item of group.items) {
-      const maskPath = `/public/catalog-assets/components/${manifest.name}/masks/${item}.png`;
+      const maskPath = textureMaskUrlFor(manifest, item);
       const textureClass = `hf-texture-${item}`;
       lines.push(
         `      <div className="hf-texture-example-card" style={{ "--mask-url": "url('${maskPath}')" }}>`,
@@ -234,7 +238,7 @@ function generateTextureAnimationExample(
     textureGroups[0]?.items[0] ??
     "brick";
   const textureClass = `hf-texture-${texture}`;
-  const maskPath = `/public/catalog-assets/components/${manifest.name}/masks/${texture}.png`;
+  const maskPath = textureMaskUrlFor(manifest, texture);
 
   return [
     "## Animated Texture",
@@ -287,7 +291,7 @@ function generateTexturePreview(manifest: RegistryItem, textureGroups: TextureGr
   const lines: string[] = ['<div className="hf-texture-preview-panel">'];
 
   for (const item of sampleItems) {
-    const maskPath = `/public/catalog-assets/components/${manifest.name}/masks/${item}.png`;
+    const maskPath = textureMaskUrlFor(manifest, item);
     lines.push(
       `  <div className="hf-texture-preview-card" style={{ "--mask-url": "url('${maskPath}')" }}>`,
       `    <div className="hf-texture-preview-label">${textureLabel(item!)}</div>`,
