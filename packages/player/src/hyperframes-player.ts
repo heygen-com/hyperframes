@@ -402,6 +402,9 @@ class HyperframesPlayer extends HTMLElement {
 
   play() {
     this._hidePoster();
+    if (this._duration > 0 && this._currentTime >= this._duration) {
+      this.seek(0);
+    }
     // Always drive the iframe runtime — it's the single source of timeline
     // truth regardless of who owns audible output. When we own audio, the
     // proxies join; when the runtime owns, they stay silent.

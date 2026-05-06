@@ -1010,6 +1010,56 @@ describe("HyperframesPlayer loop end-state handling", () => {
     expect(ended).toHaveBeenCalledTimes(1);
     expect(player._paused).toBe(true);
   });
+
+  it("play() seeks to 0 and replays when called after the video has ended", () => {
+    const seek = vi.spyOn(player, "seek");
+    player.loop = false;
+    player._duration = 4;
+    player._paused = false;
+
+    player._onMessage(
+      new MessageEvent("message", {
+        source: frameWindow,
+        data: {
+          source: "hf-preview",
+          type: "state",
+          frame: 120,
+          isPlaying: false,
+        },
+      }),
+    );
+
+    expect(player._paused).toBe(true);
+    seek.mockClear();
+
+    player.play();
+
+    expect(seek).toHaveBeenCalledWith(0);
+    expect(player._paused).toBe(false);
+  });
+
+  it("play() does not seek to 0 when called mid-playback", () => {
+    const seek = vi.spyOn(player, "seek");
+    player._duration = 4;
+    player._paused = true;
+    // Simulate mid-video position (frame 60 = 2s into a 4s video)
+    player._onMessage(
+      new MessageEvent("message", {
+        source: frameWindow,
+        data: {
+          source: "hf-preview",
+          type: "state",
+          frame: 60,
+          isPlaying: false,
+        },
+      }),
+    );
+
+    player.play();
+
+    expect(seek).not.toHaveBeenCalled();
+    expect(player._paused).toBe(false);
+  });
 });
 
 describe("HyperframesPlayer srcdoc attribute", () => {
