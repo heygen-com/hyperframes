@@ -202,8 +202,8 @@ function generateTextureAgentUsage(
     `   npx hyperframes add ${manifest.name}`,
     "2. That command creates this installed snippet:",
     `   ${installedSnippet}`,
-    "3. Open that file and paste its <style>...</style>",
-    "   block into the composition once. That CSS defines",
+    "3. Open that file and paste the real <style> block",
+    "   near the bottom into the composition once. That CSS defines",
     "   hf-texture-text and every hf-texture-* class.",
     "4. Apply this class to the target text:",
     `   class="hf-texture-text ${firstClass}"`,
@@ -218,7 +218,7 @@ function generateTextureAgentUsage(
     "   </div>",
     "```",
     "",
-    `After install, the snippet lives at \`${installedSnippet}\` inside the project where you ran \`npx hyperframes add ${manifest.name}\`. The part to paste is its \`<style>...</style>\` block; the texture PNGs install to \`assets/${manifest.name}/masks/\` and are referenced by project-root URLs in that CSS.`,
+    `After install, the snippet lives at \`${installedSnippet}\` inside the project where you ran \`npx hyperframes add ${manifest.name}\`. The part to paste is the real \`<style>\` element near the bottom of that file; the texture PNGs install to \`assets/${manifest.name}/masks/\` and are referenced by project-root URLs in that CSS.`,
     "",
     `Swap \`${firstClass}\` for the class shown on any texture card below. The base class \`hf-texture-text\` is always required.`,
     "",
@@ -437,7 +437,7 @@ function generateItemMdx(kind: ItemKind, manifest: RegistryItem): string {
       lines.push(
         "## Usage",
         "",
-        `After \`${installCmd}\`, the installed snippet lives at \`${primaryTarget}\` inside your current HyperFrames project. Open that file and paste its \`<style>...</style>\` block into your composition once; it defines \`hf-texture-text\` and every \`hf-texture-*\` class used by the examples above. Keep the installed texture PNGs in \`assets/${manifest.name}/masks/\`; the CSS references them with project-root URLs.`,
+        `After \`${installCmd}\`, the installed snippet lives at \`${primaryTarget}\` inside your current HyperFrames project. Open that file and paste the real \`<style>\` element near the bottom into your composition once; it defines \`hf-texture-text\` and every \`hf-texture-*\` class used by the examples above. Keep the installed texture PNGs in \`assets/${manifest.name}/masks/\`; the CSS references them with project-root URLs.`,
         "",
       );
     } else {

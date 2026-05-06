@@ -16,6 +16,10 @@ function countPhysicalLines(source: string): number {
   return withoutFinalNewline.split("\n").length;
 }
 
+function countStructuralLines(source: string): number {
+  return countPhysicalLines(source.replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, "<style></style>"));
+}
+
 function isRegistrySourceFile(filePath?: string): boolean {
   if (!filePath) return false;
 
@@ -38,7 +42,7 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
   ({ rawSource, options }) => {
     if (isRegistrySourceFile(options.filePath) || isRegistryInstalledFile(rawSource)) return [];
 
-    const lineCount = countPhysicalLines(rawSource);
+    const lineCount = countStructuralLines(rawSource);
     if (lineCount <= MAX_COMPOSITION_LINES) return [];
 
     const splitTarget = options.isSubComposition

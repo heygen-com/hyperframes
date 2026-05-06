@@ -35,6 +35,21 @@ describe("composition rules", () => {
       expect(finding).toBeUndefined();
     });
 
+    it("does not count inline style block internals as structural lines", () => {
+      const style = `<style>\n${Array.from({ length: 320 }, (_, i) => `.rule-${i} { color: red; }`).join("\n")}\n</style>`;
+      const html = `<!doctype html>
+<html>
+  <head>${style}</head>
+  <body>
+    <div data-composition-id="main" data-start="0" data-duration="1">TEXT</div>
+  </body>
+</html>`;
+
+      const result = lintHyperframeHtml(html, { filePath: "/project/index.html" });
+      const finding = result.findings.find((f) => f.code === "composition_file_too_large");
+      expect(finding).toBeUndefined();
+    });
+
     it("does not warn for large registry source block files", () => {
       const html = Array.from({ length: 301 }, (_, i) =>
         i === 0 ? "<html><body>" : `<!-- filler ${i} -->`,
