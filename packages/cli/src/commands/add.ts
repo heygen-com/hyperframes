@@ -248,7 +248,7 @@ export default defineCommand({
 
       let items: Awaited<ReturnType<typeof resolveItemsByTag>>;
       try {
-        items = await resolveItemsByTag(args.name, { baseUrl: config.registry });
+        items = await resolveItemsByTag(args.name, { baseUrl: config.registry, skipCache: true });
       } catch {
         items = [];
       }

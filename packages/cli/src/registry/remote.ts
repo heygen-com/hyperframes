@@ -84,10 +84,13 @@ async function fetchJson<T>(url: string): Promise<T> {
  */
 export async function fetchRegistryManifest(
   baseUrl: string = DEFAULT_REGISTRY_URL,
+  options?: { skipCache?: boolean },
 ): Promise<RegistryManifest | undefined> {
   const cacheFile = cachePath(baseUrl, "registry");
-  const cached = readCache<RegistryManifest>(cacheFile);
-  if (cached) return cached;
+  if (!options?.skipCache) {
+    const cached = readCache<RegistryManifest>(cacheFile);
+    if (cached) return cached;
+  }
 
   try {
     const manifest = await fetchJson<RegistryManifest>(`${baseUrl}/registry.json`);
