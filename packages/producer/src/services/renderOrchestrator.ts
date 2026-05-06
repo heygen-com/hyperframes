@@ -1534,6 +1534,23 @@ function blitHdrImageLayer(
  * extracting them into an explicit struct lets the helper live at module
  * scope (no closure-over-renderJob) and keeps the per-call signature small.
  */
+type CompositeTransfer = HdrTransfer | "srgb";
+
+export function shouldUseLayeredComposite(options: {
+  hasHdrContent: boolean;
+  hasShaderTransitions: boolean;
+  isPngSequence: boolean;
+}): boolean {
+  return options.hasHdrContent || (options.hasShaderTransitions && !options.isPngSequence);
+}
+
+export function resolveCompositeTransfer(
+  hasHdrContent: boolean,
+  effectiveHdr: { transfer: HdrTransfer } | undefined,
+): CompositeTransfer {
+  return hasHdrContent && effectiveHdr ? effectiveHdr.transfer : "srgb";
+}
+
 interface HdrCompositeContext {
   log: ProducerLogger;
   domSession: CaptureSession;
@@ -1541,7 +1558,7 @@ interface HdrCompositeContext {
   width: number;
   height: number;
   fps: number;
-  effectiveHdr: { transfer: HdrTransfer };
+  compositeTransfer: CompositeTransfer;
   nativeHdrImageIds: Set<string>;
   hdrImageBuffers: Map<string, HdrImageBuffer>;
   hdrImageTransferCache: HdrImageTransferCache;
@@ -1596,7 +1613,7 @@ async function compositeHdrFrame(
     width,
     height,
     fps,
-    effectiveHdr,
+    compositeTransfer,
     nativeHdrImageIds,
     hdrImageBuffers,
     hdrImageTransferCache,
@@ -1648,6 +1665,7 @@ async function compositeHdrFrame(
       if (layer.element.opacity <= 0) continue;
       const before = shouldLog ? countNonZeroRgb48(canvas) : 0;
       const isHdrImage = nativeHdrImageIds.has(layer.element.id);
+      const hdrTargetTransfer = compositeTransfer === "srgb" ? undefined : compositeTransfer;
       if (isHdrImage) {
         blitHdrImageLayer(
           canvas,
@@ -1658,7 +1676,7 @@ async function compositeHdrFrame(
           height,
           log,
           imageTransfers.get(layer.element.id),
-          effectiveHdr.transfer,
+          hdrTargetTransfer,
           hdrPerf,
         );
       } else {
@@ -1673,7 +1691,7 @@ async function compositeHdrFrame(
           height,
           log,
           videoTransfers.get(layer.element.id),
-          effectiveHdr.transfer,
+          hdrTargetTransfer,
           hdrPerf,
         );
       }
@@ -1774,7 +1792,7 @@ async function compositeHdrFrame(
         const before = shouldLog ? countNonZeroRgb48(canvas) : 0;
         const alphaPixels = shouldLog ? countNonZeroAlpha(domRgba) : 0;
         timingStart = Date.now();
-        blitRgba8OverRgb48le(domRgba, canvas, width, height, effectiveHdr.transfer);
+        blitRgba8OverRgb48le(domRgba, canvas, width, height, compositeTransfer);
         addHdrTiming(hdrPerf, "domBlitMs", timingStart);
         if (shouldLog && debugDumpDir) {
           const after = countNonZeroRgb48(canvas);
@@ -2699,7 +2717,12 @@ export async function executeRenderJob(
     // auto mode stays SDR since H.265 10-bit causes browser color management
     // issues (orange shift) with no quality benefit.
     const nativeHdrIds = new Set([...nativeHdrVideoIds, ...nativeHdrImageIds]);
-    const hasHdrContent = effectiveHdr && nativeHdrIds.size > 0;
+    const hasHdrContent = Boolean(effectiveHdr && nativeHdrIds.size > 0);
+    const useLayeredComposite = shouldUseLayeredComposite({
+      hasHdrContent,
+      hasShaderTransitions: compiled.hasShaderTransitions,
+      isPngSequence,
+    });
     const encoderHdr = hasHdrContent ? effectiveHdr : undefined;
     // png-sequence has no encoder, but the rest of the orchestrator still
     // reads `preset.quality` for `effectiveQuality` and `preset.codec` for
@@ -2730,21 +2753,27 @@ export async function executeRenderJob(
 
     job.framesRendered = 0;
 
-    // ── HDR z-ordered multi-layer compositing ──────────────────────────────
+    // ── Z-ordered multi-layer compositing ─────────────────────────────────
     // Per frame: query all elements' z-order, group into layers (DOM or HDR),
     // composite bottom-to-top in Node.js memory. HDR layers use native
-    // pre-extracted HLG pixels; DOM layers use Chrome alpha screenshots
-    // with sRGB→HLG conversion. Video position/opacity applied via queried bounds.
-    if (hasHdrContent) {
-      log.info("[Render] HDR layered composite: z-ordered DOM + native HLG video layers");
+    // pre-extracted pixels; DOM layers use Chrome alpha screenshots converted
+    // into the active rgb48le signal space. Shader transitions use this same
+    // path for SDR compositions so the engine can apply transition math to
+    // isolated scene buffers instead of recording plain DOM screenshots.
+    if (useLayeredComposite) {
+      log.info(
+        hasHdrContent
+          ? "[Render] HDR layered composite: z-ordered DOM + native HDR video/image layers"
+          : "[Render] Shader transition composite: z-ordered SDR DOM layers",
+      );
       hdrPerf = createHdrPerfCollector();
 
-      // HDR layered compositing relies on captureAlphaPng (Page.captureScreenshot
-      // with a transparent background) for the SDR DOM overlay layer. That CDP
-      // call hangs indefinitely when Chrome is launched with --enable-begin-frame-control
+      // Layered compositing relies on captureAlphaPng (Page.captureScreenshot
+      // with a transparent background) for DOM layers. That CDP call hangs
+      // indefinitely when Chrome is launched with --enable-begin-frame-control
       // (the default on Linux/headless-shell), because the compositor is paused
       // and never produces a frame to capture. Force screenshot mode for the
-      // entire HDR path — same constraint as alpha output formats above.
+      // entire layered path — same constraint as alpha output formats above.
       cfg.forceScreenshot = true;
 
       // Use NATIVE HDR IDs (probed before SDR→HDR conversion) so only originally-HDR
@@ -2823,8 +2852,13 @@ export async function executeRenderJob(
           const scenes = document.querySelectorAll(".scene");
           const map: Record<string, string[]> = {};
           for (const scene of scenes) {
-            const els = scene.querySelectorAll("[data-start]");
-            map[scene.id] = Array.from(els).map((e) => e.id);
+            if (!scene.id) continue;
+            const ids = new Set<string>([scene.id]);
+            const els = scene.querySelectorAll("[id]");
+            for (const el of els) {
+              if (el.id) ids.add(el.id);
+            }
+            map[scene.id] = Array.from(ids);
           }
           return map;
         });
@@ -2836,7 +2870,7 @@ export async function executeRenderJob(
         }));
 
         if (transitionRanges.length > 0) {
-          log.info("[Render] Detected shader transitions for HDR compositing", {
+          log.info("[Render] Detected shader transitions for layered compositing", {
             count: transitionRanges.length,
             transitions: transitionRanges.map((t) => ({
               shader: t.shader,
@@ -3109,15 +3143,8 @@ export async function executeRenderJob(
           if (debugDumpDir && !existsSync(debugDumpDir)) {
             mkdirSync(debugDumpDir, { recursive: true });
           }
-          // INVARIANT: this entire `try` block is reachable only when HDR
-          // output is enabled (`if (effectiveHdr) { ... try { ... } }`), so
-          // narrowing here is safe even though `effectiveHdr` is typed as
-          // `... | undefined` at the outer scope.
-          if (!effectiveHdr) {
-            throw new Error(
-              "Internal: HDR render path entered without effectiveHdr — this is a bug.",
-            );
-          }
+          const compositeTransfer = resolveCompositeTransfer(hasHdrContent, effectiveHdr);
+          const hdrTargetTransfer = compositeTransfer === "srgb" ? undefined : compositeTransfer;
           // Per-job LRU cache for transfer-converted HDR image buffers. Static HDR
           // images that need PQ↔HLG conversion are converted exactly once per
           // (imageId, targetTransfer) and then reused for every subsequent frame
@@ -3137,7 +3164,7 @@ export async function executeRenderJob(
             width,
             height,
             fps: job.config.fps,
-            effectiveHdr,
+            compositeTransfer,
             nativeHdrImageIds,
             hdrImageBuffers,
             hdrImageTransferCache,
@@ -3281,7 +3308,7 @@ export async function executeRenderJob(
                       height,
                       log,
                       imageTransfers.get(el.id),
-                      effectiveHdr?.transfer,
+                      hdrTargetTransfer,
                       hdrPerf,
                     );
                   } else {
@@ -3296,7 +3323,7 @@ export async function executeRenderJob(
                       height,
                       log,
                       videoTransfers.get(el.id),
-                      effectiveHdr?.transfer,
+                      hdrTargetTransfer,
                       hdrPerf,
                     );
                   }
@@ -3328,19 +3355,13 @@ export async function executeRenderJob(
                   timingStart = Date.now();
                   const { data: domRgba } = decodePng(domPng);
                   addHdrTiming(hdrPerf, "domPngDecodeMs", timingStart);
-                  // Invariant: `hasHdrVideo` requires `effectiveHdr` to be set (see line ~919).
-                  if (!effectiveHdr) {
-                    throw new Error(
-                      "Invariant violation: effectiveHdr is undefined inside hasHdrVideo branch",
-                    );
-                  }
                   timingStart = Date.now();
                   blitRgba8OverRgb48le(
                     domRgba,
                     sceneBuf as Buffer,
                     width,
                     height,
-                    effectiveHdr.transfer,
+                    compositeTransfer,
                   );
                   addHdrTiming(hdrPerf, "domBlitMs", timingStart);
                 } catch (err) {
@@ -3352,11 +3373,12 @@ export async function executeRenderJob(
                 }
               }
 
-              // Apply shader transition blend directly in PQ/HLG signal space.
-              // Linearization was attempted but destroys dark PQ content — values below
-              // PQ ~5000 quantize to zero in 16-bit linear, wiping out the bottom portion
-              // of dark video content. PQ space is perceptual and works well enough
-              // for shader math since the shaders were designed for perceptual (sRGB) space.
+              // Apply shader transition blend directly in the active rgb48le
+              // signal space. Linearizing HDR was attempted but destroys dark
+              // PQ content — values below PQ ~5000 quantize to zero in 16-bit
+              // linear, wiping out the bottom portion of dark video content.
+              // SDR compositions use 16-bit-expanded sRGB, which matches the
+              // shader design space.
               const transitionFn: TransitionFn = TRANSITIONS[activeTransition.shader] ?? crossfade;
               transitionFn(transBufferA, transBufferB, transOutput, width, height, progress);
               addHdrTiming(hdrPerf, "transitionCompositeMs", transitionTimingStart);
@@ -3431,7 +3453,7 @@ export async function executeRenderJob(
               updateJobStatus(
                 job,
                 "rendering",
-                `HDR composite frame ${i + 1}/${job.totalFrames}`,
+                `Layered composite frame ${i + 1}/${job.totalFrames}`,
                 Math.round(25 + frameProgress * 55),
                 onProgress,
               );

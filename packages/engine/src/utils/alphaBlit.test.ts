@@ -511,6 +511,16 @@ describe("blitRgba8OverRgb48le", () => {
     expect(canvas.readUInt16LE(4)).toBe(0);
   });
 
+  it("fully opaque DOM with srgb transfer expands 8-bit channels to 16-bit SDR", () => {
+    const canvas = makeHdrFrame(1, 1, 10000, 20000, 30000);
+    const dom = makeDomRgba(1, 1, 255, 128, 1, 255);
+    blitRgba8OverRgb48le(dom, canvas, 1, 1, "srgb");
+
+    expect(canvas.readUInt16LE(0)).toBe(65535);
+    expect(canvas.readUInt16LE(2)).toBe(128 * 257);
+    expect(canvas.readUInt16LE(4)).toBe(257);
+  });
+
   it("sRGB→HLG: black stays black, white stays white", () => {
     const canvasBlack = makeHdrFrame(1, 1, 0, 0, 0);
     const domBlack = makeDomRgba(1, 1, 0, 0, 0, 255);

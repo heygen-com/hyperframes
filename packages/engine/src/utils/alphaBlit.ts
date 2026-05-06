@@ -249,7 +249,7 @@ export function decodePngToRgb48le(buf: Buffer): { width: number; height: number
  * bt2020). For neutral/near-neutral content (text, UI) the gamut difference
  * is negligible.
  */
-function buildSrgbToHdrLut(transfer: "hlg" | "pq"): Uint16Array {
+function buildSrgbToSignalLut(transfer: "hlg" | "pq" | "srgb"): Uint16Array {
   const lut = new Uint16Array(256);
 
   // HLG OETF constants (Rec. 2100)
@@ -267,6 +267,11 @@ function buildSrgbToHdrLut(transfer: "hlg" | "pq"): Uint16Array {
   const sdrNits = 203.0;
 
   for (let i = 0; i < 256; i++) {
+    if (transfer === "srgb") {
+      lut[i] = i * 257;
+      continue;
+    }
+
     // sRGB EOTF: signal → linear (range 0–1, relative to SDR white)
     const v = i / 255;
     const linear = v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
@@ -288,12 +293,15 @@ function buildSrgbToHdrLut(transfer: "hlg" | "pq"): Uint16Array {
   return lut;
 }
 
-const SRGB_TO_HLG = buildSrgbToHdrLut("hlg");
-const SRGB_TO_PQ = buildSrgbToHdrLut("pq");
+const SRGB_TO_SRGB_16 = buildSrgbToSignalLut("srgb");
+const SRGB_TO_HLG = buildSrgbToSignalLut("hlg");
+const SRGB_TO_PQ = buildSrgbToSignalLut("pq");
 
 /** Select the correct sRGB→HDR LUT for the given transfer function. */
-function getSrgbToHdrLut(transfer: "hlg" | "pq"): Uint16Array {
-  return transfer === "pq" ? SRGB_TO_PQ : SRGB_TO_HLG;
+function getSrgbToSignalLut(transfer: "hlg" | "pq" | "srgb"): Uint16Array {
+  if (transfer === "pq") return SRGB_TO_PQ;
+  if (transfer === "hlg") return SRGB_TO_HLG;
+  return SRGB_TO_SRGB_16;
 }
 
 // ── Alpha compositing ─────────────────────────────────────────────────────────
@@ -317,10 +325,10 @@ export function blitRgba8OverRgb48le(
   canvas: Buffer,
   width: number,
   height: number,
-  transfer: "hlg" | "pq" = "hlg",
+  transfer: "hlg" | "pq" | "srgb" = "hlg",
 ): void {
   const pixelCount = width * height;
-  const lut = getSrgbToHdrLut(transfer);
+  const lut = getSrgbToSignalLut(transfer);
 
   for (let i = 0; i < pixelCount; i++) {
     const da = domRgba[i * 4 + 3] ?? 0;

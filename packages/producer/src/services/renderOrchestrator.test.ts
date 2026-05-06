@@ -21,8 +21,10 @@ import {
   materializeExtractedFramesForCompiledDir,
   projectBrowserEndToCompositionTimeline,
   resolveRenderWorkerCount,
+  resolveCompositeTransfer,
   selectCaptureCalibrationFrames,
   shouldFallbackToScreenshotAfterCalibrationError,
+  shouldUseLayeredComposite,
   shouldUseStreamingEncode,
   writeCompiledArtifacts,
 } from "./renderOrchestrator.js";
@@ -540,6 +542,48 @@ describe("estimateCaptureCostMultiplier", () => {
 
     expect(cost.multiplier).toBe(4);
     expect(cost.reasons).toEqual(["shader-transitions", "requestAnimationFrame"]);
+  });
+});
+
+describe("shouldUseLayeredComposite", () => {
+  it("uses the layered compositor for SDR shader transition renders", () => {
+    expect(
+      shouldUseLayeredComposite({
+        hasHdrContent: false,
+        hasShaderTransitions: true,
+        isPngSequence: false,
+      }),
+    ).toBe(true);
+  });
+
+  it("does not route PNG sequence shader renders through the streaming layered compositor", () => {
+    expect(
+      shouldUseLayeredComposite({
+        hasHdrContent: false,
+        hasShaderTransitions: true,
+        isPngSequence: true,
+      }),
+    ).toBe(false);
+  });
+
+  it("keeps HDR content on the layered compositor even without shader transitions", () => {
+    expect(
+      shouldUseLayeredComposite({
+        hasHdrContent: true,
+        hasShaderTransitions: false,
+        isPngSequence: false,
+      }),
+    ).toBe(true);
+  });
+});
+
+describe("resolveCompositeTransfer", () => {
+  it("uses 16-bit-expanded sRGB for SDR layered shader transition renders", () => {
+    expect(resolveCompositeTransfer(false, undefined)).toBe("srgb");
+  });
+
+  it("uses the active HDR transfer when HDR content is being preserved", () => {
+    expect(resolveCompositeTransfer(true, { transfer: "hlg" })).toBe("hlg");
   });
 });
 
