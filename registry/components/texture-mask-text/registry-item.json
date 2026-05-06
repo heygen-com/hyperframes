@@ -111,332 +111,332 @@
     },
     {
       "path": "masks/lava.png",
-      "target": "compositions/components/texture-mask-text/masks/lava.png",
+      "target": "assets/texture-mask-text/masks/lava.png",
       "type": "hyperframes:asset"
     },
     {
       "path": "masks/rock.png",
-      "target": "compositions/components/texture-mask-text/masks/rock.png",
+      "target": "assets/texture-mask-text/masks/rock.png",
       "type": "hyperframes:asset"
     },
     {
       "path": "masks/concrete.png",
-      "target": "compositions/components/texture-mask-text/masks/concrete.png",
+      "target": "assets/texture-mask-text/masks/concrete.png",
       "type": "hyperframes:asset"
     },
     {
       "path": "masks/brick.png",
-      "target": "compositions/components/texture-mask-text/masks/brick.png",
+      "target": "assets/texture-mask-text/masks/brick.png",
       "type": "hyperframes:asset"
     },
     {
       "path": "masks/wood.png",
-      "target": "compositions/components/texture-mask-text/masks/wood.png",
+      "target": "assets/texture-mask-text/masks/wood.png",
       "type": "hyperframes:asset"
     },
     {
       "path": "masks/onyx.png",
-      "target": "compositions/components/texture-mask-text/masks/onyx.png",
+      "target": "assets/texture-mask-text/masks/onyx.png",
       "type": "hyperframes:asset"
     },
     {
       "path": "masks/carpet.png",
-      "target": "compositions/components/texture-mask-text/masks/carpet.png",
+      "target": "assets/texture-mask-text/masks/carpet.png",
       "type": "hyperframes:asset"
     },
     {
       "path": "masks/metal.png",
-      "target": "compositions/components/texture-mask-text/masks/metal.png",
+      "target": "assets/texture-mask-text/masks/metal.png",
       "type": "hyperframes:asset"
     },
     {
       "path": "masks/snow.png",
-      "target": "compositions/components/texture-mask-text/masks/snow.png",
+      "target": "assets/texture-mask-text/masks/snow.png",
       "type": "hyperframes:asset"
     },
     {
       "path": "masks/bricks-104.png",
-      "target": "compositions/components/texture-mask-text/masks/bricks-104.png",
+      "target": "assets/texture-mask-text/masks/bricks-104.png",
       "type": "hyperframes:asset"
     },
     {
       "path": "masks/ground-103.png",
-      "target": "compositions/components/texture-mask-text/masks/ground-103.png",
+      "target": "assets/texture-mask-text/masks/ground-103.png",
       "type": "hyperframes:asset"
     },
     {
       "path": "masks/grass-005.png",
-      "target": "compositions/components/texture-mask-text/masks/grass-005.png",
+      "target": "assets/texture-mask-text/masks/grass-005.png",
       "type": "hyperframes:asset"
     },
     {
       "path": "masks/rock-063.png",
-      "target": "compositions/components/texture-mask-text/masks/rock-063.png",
+      "target": "assets/texture-mask-text/masks/rock-063.png",
       "type": "hyperframes:asset"
     },
     {
       "path": "masks/wood-094.png",
-      "target": "compositions/components/texture-mask-text/masks/wood-094.png",
+      "target": "assets/texture-mask-text/masks/wood-094.png",
       "type": "hyperframes:asset"
     },
     {
       "path": "masks/road-012-a.png",
-      "target": "compositions/components/texture-mask-text/masks/road-012-a.png",
+      "target": "assets/texture-mask-text/masks/road-012-a.png",
       "type": "hyperframes:asset"
     },
     {
       "path": "masks/wood-092.png",
-      "target": "compositions/components/texture-mask-text/masks/wood-092.png",
+      "target": "assets/texture-mask-text/masks/wood-092.png",
       "type": "hyperframes:asset"
     },
     {
       "path": "masks/metal-049-a.png",
-      "target": "compositions/components/texture-mask-text/masks/metal-049-a.png",
+      "target": "assets/texture-mask-text/masks/metal-049-a.png",
       "type": "hyperframes:asset"
     },
     {
       "path": "masks/wood-floor-051.png",
-      "target": "compositions/components/texture-mask-text/masks/wood-floor-051.png",
+      "target": "assets/texture-mask-text/masks/wood-floor-051.png",
       "type": "hyperframes:asset"
     },
     {
       "path": "masks/paving-stones-150.png",
-      "target": "compositions/components/texture-mask-text/masks/paving-stones-150.png",
+      "target": "assets/texture-mask-text/masks/paving-stones-150.png",
       "type": "hyperframes:asset"
     },
     {
       "path": "masks/road-008-a.png",
-      "target": "compositions/components/texture-mask-text/masks/road-008-a.png",
+      "target": "assets/texture-mask-text/masks/road-008-a.png",
       "type": "hyperframes:asset"
     },
     {
       "path": "masks/road-007.png",
-      "target": "compositions/components/texture-mask-text/masks/road-007.png",
+      "target": "assets/texture-mask-text/masks/road-007.png",
       "type": "hyperframes:asset"
     },
     {
       "path": "masks/metal-055-a.png",
-      "target": "compositions/components/texture-mask-text/masks/metal-055-a.png",
+      "target": "assets/texture-mask-text/masks/metal-055-a.png",
       "type": "hyperframes:asset"
     },
     {
       "path": "masks/concrete-034.png",
-      "target": "compositions/components/texture-mask-text/masks/concrete-034.png",
+      "target": "assets/texture-mask-text/masks/concrete-034.png",
       "type": "hyperframes:asset"
     },
     {
       "path": "masks/grass-001.png",
-      "target": "compositions/components/texture-mask-text/masks/grass-001.png",
+      "target": "assets/texture-mask-text/masks/grass-001.png",
       "type": "hyperframes:asset"
     },
     {
       "path": "masks/wood-051.png",
-      "target": "compositions/components/texture-mask-text/masks/wood-051.png",
+      "target": "assets/texture-mask-text/masks/wood-051.png",
       "type": "hyperframes:asset"
     },
     {
       "path": "masks/asphalt-031.png",
-      "target": "compositions/components/texture-mask-text/masks/asphalt-031.png",
+      "target": "assets/texture-mask-text/masks/asphalt-031.png",
       "type": "hyperframes:asset"
     },
     {
       "path": "masks/wood-floor-064.png",
-      "target": "compositions/components/texture-mask-text/masks/wood-floor-064.png",
+      "target": "assets/texture-mask-text/masks/wood-floor-064.png",
       "type": "hyperframes:asset"
     },
     {
       "path": "masks/concrete-047-a.png",
-      "target": "compositions/components/texture-mask-text/masks/concrete-047-a.png",
+      "target": "assets/texture-mask-text/masks/concrete-047-a.png",
       "type": "hyperframes:asset"
     },
     {
       "path": "masks/metal-046-b.png",
-      "target": "compositions/components/texture-mask-text/masks/metal-046-b.png",
+      "target": "assets/texture-mask-text/masks/metal-046-b.png",
       "type": "hyperframes:asset"
     },
     {
       "path": "masks/grass-004.png",
-      "target": "compositions/components/texture-mask-text/masks/grass-004.png",
+      "target": "assets/texture-mask-text/masks/grass-004.png",
       "type": "hyperframes:asset"
     },
     {
       "path": "masks/marble-012.png",
-      "target": "compositions/components/texture-mask-text/masks/marble-012.png",
+      "target": "assets/texture-mask-text/masks/marble-012.png",
       "type": "hyperframes:asset"
     },
     {
       "path": "masks/ground-037.png",
-      "target": "compositions/components/texture-mask-text/masks/ground-037.png",
+      "target": "assets/texture-mask-text/masks/ground-037.png",
       "type": "hyperframes:asset"
     },
     {
       "path": "masks/tiles-138.png",
-      "target": "compositions/components/texture-mask-text/masks/tiles-138.png",
+      "target": "assets/texture-mask-text/masks/tiles-138.png",
       "type": "hyperframes:asset"
     },
     {
       "path": "masks/wood-066.png",
-      "target": "compositions/components/texture-mask-text/masks/wood-066.png",
+      "target": "assets/texture-mask-text/masks/wood-066.png",
       "type": "hyperframes:asset"
     },
     {
       "path": "masks/concrete-046.png",
-      "target": "compositions/components/texture-mask-text/masks/concrete-046.png",
+      "target": "assets/texture-mask-text/masks/concrete-046.png",
       "type": "hyperframes:asset"
     },
     {
       "path": "masks/wood-049.png",
-      "target": "compositions/components/texture-mask-text/masks/wood-049.png",
+      "target": "assets/texture-mask-text/masks/wood-049.png",
       "type": "hyperframes:asset"
     },
     {
       "path": "masks/road-013-a.png",
-      "target": "compositions/components/texture-mask-text/masks/road-013-a.png",
+      "target": "assets/texture-mask-text/masks/road-013-a.png",
       "type": "hyperframes:asset"
     },
     {
       "path": "masks/plaster-001.png",
-      "target": "compositions/components/texture-mask-text/masks/plaster-001.png",
+      "target": "assets/texture-mask-text/masks/plaster-001.png",
       "type": "hyperframes:asset"
     },
     {
       "path": "masks/snow-015.png",
-      "target": "compositions/components/texture-mask-text/masks/snow-015.png",
+      "target": "assets/texture-mask-text/masks/snow-015.png",
       "type": "hyperframes:asset"
     },
     {
       "path": "masks/road-012-b.png",
-      "target": "compositions/components/texture-mask-text/masks/road-012-b.png",
+      "target": "assets/texture-mask-text/masks/road-012-b.png",
       "type": "hyperframes:asset"
     },
     {
       "path": "masks/concrete-042-a.png",
-      "target": "compositions/components/texture-mask-text/masks/concrete-042-a.png",
+      "target": "assets/texture-mask-text/masks/concrete-042-a.png",
       "type": "hyperframes:asset"
     },
     {
       "path": "masks/bricks-102.png",
-      "target": "compositions/components/texture-mask-text/masks/bricks-102.png",
+      "target": "assets/texture-mask-text/masks/bricks-102.png",
       "type": "hyperframes:asset"
     },
     {
       "path": "masks/rock-058.png",
-      "target": "compositions/components/texture-mask-text/masks/rock-058.png",
+      "target": "assets/texture-mask-text/masks/rock-058.png",
       "type": "hyperframes:asset"
     },
     {
       "path": "masks/wood-floor-070.png",
-      "target": "compositions/components/texture-mask-text/masks/wood-floor-070.png",
+      "target": "assets/texture-mask-text/masks/wood-floor-070.png",
       "type": "hyperframes:asset"
     },
     {
       "path": "masks/bricks-101.png",
-      "target": "compositions/components/texture-mask-text/masks/bricks-101.png",
+      "target": "assets/texture-mask-text/masks/bricks-101.png",
       "type": "hyperframes:asset"
     },
     {
       "path": "masks/travertine-009.png",
-      "target": "compositions/components/texture-mask-text/masks/travertine-009.png",
+      "target": "assets/texture-mask-text/masks/travertine-009.png",
       "type": "hyperframes:asset"
     },
     {
       "path": "masks/ground-054.png",
-      "target": "compositions/components/texture-mask-text/masks/ground-054.png",
+      "target": "assets/texture-mask-text/masks/ground-054.png",
       "type": "hyperframes:asset"
     },
     {
       "path": "masks/wood-058.png",
-      "target": "compositions/components/texture-mask-text/masks/wood-058.png",
+      "target": "assets/texture-mask-text/masks/wood-058.png",
       "type": "hyperframes:asset"
     },
     {
       "path": "masks/ground-104.png",
-      "target": "compositions/components/texture-mask-text/masks/ground-104.png",
+      "target": "assets/texture-mask-text/masks/ground-104.png",
       "type": "hyperframes:asset"
     },
     {
       "path": "masks/painted-plaster-017.png",
-      "target": "compositions/components/texture-mask-text/masks/painted-plaster-017.png",
+      "target": "assets/texture-mask-text/masks/painted-plaster-017.png",
       "type": "hyperframes:asset"
     },
     {
       "path": "masks/paving-stones-138.png",
-      "target": "compositions/components/texture-mask-text/masks/paving-stones-138.png",
+      "target": "assets/texture-mask-text/masks/paving-stones-138.png",
       "type": "hyperframes:asset"
     },
     {
       "path": "masks/ground-068.png",
-      "target": "compositions/components/texture-mask-text/masks/ground-068.png",
+      "target": "assets/texture-mask-text/masks/ground-068.png",
       "type": "hyperframes:asset"
     },
     {
       "path": "masks/bricks-075-a.png",
-      "target": "compositions/components/texture-mask-text/masks/bricks-075-a.png",
+      "target": "assets/texture-mask-text/masks/bricks-075-a.png",
       "type": "hyperframes:asset"
     },
     {
       "path": "masks/ground-080.png",
-      "target": "compositions/components/texture-mask-text/masks/ground-080.png",
+      "target": "assets/texture-mask-text/masks/ground-080.png",
       "type": "hyperframes:asset"
     },
     {
       "path": "masks/road-009-c.png",
-      "target": "compositions/components/texture-mask-text/masks/road-009-c.png",
+      "target": "assets/texture-mask-text/masks/road-009-c.png",
       "type": "hyperframes:asset"
     },
     {
       "path": "masks/bark-014.png",
-      "target": "compositions/components/texture-mask-text/masks/bark-014.png",
+      "target": "assets/texture-mask-text/masks/bark-014.png",
       "type": "hyperframes:asset"
     },
     {
       "path": "masks/marble-016.png",
-      "target": "compositions/components/texture-mask-text/masks/marble-016.png",
+      "target": "assets/texture-mask-text/masks/marble-016.png",
       "type": "hyperframes:asset"
     },
     {
       "path": "masks/fabric-083.png",
-      "target": "compositions/components/texture-mask-text/masks/fabric-083.png",
+      "target": "assets/texture-mask-text/masks/fabric-083.png",
       "type": "hyperframes:asset"
     },
     {
       "path": "masks/metal-061-b.png",
-      "target": "compositions/components/texture-mask-text/masks/metal-061-b.png",
+      "target": "assets/texture-mask-text/masks/metal-061-b.png",
       "type": "hyperframes:asset"
     },
     {
       "path": "masks/metal-048-a.png",
-      "target": "compositions/components/texture-mask-text/masks/metal-048-a.png",
+      "target": "assets/texture-mask-text/masks/metal-048-a.png",
       "type": "hyperframes:asset"
     },
     {
       "path": "masks/metal-032.png",
-      "target": "compositions/components/texture-mask-text/masks/metal-032.png",
+      "target": "assets/texture-mask-text/masks/metal-032.png",
       "type": "hyperframes:asset"
     },
     {
       "path": "masks/metal-041-a.png",
-      "target": "compositions/components/texture-mask-text/masks/metal-041-a.png",
+      "target": "assets/texture-mask-text/masks/metal-041-a.png",
       "type": "hyperframes:asset"
     },
     {
       "path": "masks/metal-038.png",
-      "target": "compositions/components/texture-mask-text/masks/metal-038.png",
+      "target": "assets/texture-mask-text/masks/metal-038.png",
       "type": "hyperframes:asset"
     },
     {
       "path": "masks/diamond-plate-009.png",
-      "target": "compositions/components/texture-mask-text/masks/diamond-plate-009.png",
+      "target": "assets/texture-mask-text/masks/diamond-plate-009.png",
       "type": "hyperframes:asset"
     },
     {
       "path": "masks/leather-037.png",
-      "target": "compositions/components/texture-mask-text/masks/leather-037.png",
+      "target": "assets/texture-mask-text/masks/leather-037.png",
       "type": "hyperframes:asset"
     },
     {
       "path": "masks/fabric-080.png",
-      "target": "compositions/components/texture-mask-text/masks/fabric-080.png",
+      "target": "assets/texture-mask-text/masks/fabric-080.png",
       "type": "hyperframes:asset"
     }
   ]

@@ -7,7 +7,6 @@ const TEXTURE_CLASS_PREFIX = "hf-texture-";
 
 type DropShadowRule = {
   selector: string;
-  classNames: string[];
   directlyTargetsTexture: boolean;
 };
 
@@ -43,6 +42,21 @@ function classNamesInSelector(selector: string): string[] {
 
 function textureClassesInSelector(selector: string): string[] {
   return classNamesInSelector(selector).filter(isTextureMaterialClass);
+}
+
+function simpleSelectorMatchesTag(selector: string, tag: OpenTag, tagClasses: string[]): boolean {
+  const trimmed = selector.trim();
+  const simpleSelectorPattern = /^(?:[A-Za-z][\w-]*)?(?:\.[A-Za-z_][\w-]*)+$/;
+  if (!simpleSelectorPattern.test(trimmed)) return false;
+
+  const typeMatch = /^([A-Za-z][\w-]*)/.exec(trimmed);
+  if (typeMatch && typeMatch[1]!.toLowerCase() !== tag.name) return false;
+
+  const selectorClasses = classNamesInSelector(trimmed);
+  return (
+    selectorClasses.length > 0 &&
+    selectorClasses.every((className) => tagClasses.includes(className))
+  );
 }
 
 function collectTextureCss(styles: LintContext["styles"]): {
@@ -96,14 +110,12 @@ function collectTextureCss(styles: LintContext["styles"]): {
 
       if (hasDropShadow) {
         for (const selector of selectors) {
-          const selectorClassNames = classNamesInSelector(selector);
           const targetsBaseClass = /\.hf-texture-text\b/.test(selector);
           const targetsDefinedTextureClass = textureClassesInSelector(selector).some((className) =>
             definedTextureClasses.has(className),
           );
           dropShadowRules.push({
             selector,
-            classNames: selectorClassNames,
             directlyTargetsTexture: targetsBaseClass || targetsDefinedTextureClass,
           });
         }
@@ -179,7 +191,7 @@ export const textureRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> 
       if (hasBaseClass) {
         for (const rule of dropShadowRules) {
           if (rule.directlyTargetsTexture) continue;
-          if (!rule.classNames.some((className) => classes.includes(className))) continue;
+          if (!simpleSelectorMatchesTag(rule.selector, tag, classes)) continue;
           findings.push({
             code: "texture_drop_shadow_on_text",
             severity: "warning",

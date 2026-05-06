@@ -52,6 +52,11 @@ const COMPONENT_ITEM: RegistryItem = {
       target: "compositions/components/my-component/my-component.css",
       type: "hyperframes:style",
     },
+    {
+      path: "assets/mask.png",
+      target: "assets/my-component/mask.png",
+      type: "hyperframes:asset",
+    },
   ],
 };
 
@@ -190,7 +195,7 @@ describe("runAdd (integration, mocked registry)", () => {
     }
   });
 
-  it("remaps component targets per hyperframes.json paths.components", async () => {
+  it("remaps component snippet/style targets while leaving asset targets stable", async () => {
     const dir = tmp();
     try {
       const baseUrl = uniqueBase();
@@ -206,9 +211,10 @@ describe("runAdd (integration, mocked registry)", () => {
         projectDir: dir,
         skipClipboard: true,
       });
-      expect(result.written.length).toBe(2);
+      expect(result.written.length).toBe(3);
       expect(existsSync(join(dir, "src/fx/my-component/my-component.html"))).toBe(true);
       expect(existsSync(join(dir, "src/fx/my-component/my-component.css"))).toBe(true);
+      expect(existsSync(join(dir, "assets/my-component/mask.png"))).toBe(true);
       expect(result.snippet).toContain("src/fx/my-component/my-component.html");
     } finally {
       rmSync(dir, { recursive: true, force: true });

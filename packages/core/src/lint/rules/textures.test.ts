@@ -130,4 +130,16 @@ describe("texture rules", () => {
     expect(finding).toBeDefined();
     expect(finding?.selector).toBe(".headline");
   });
+
+  it("does not warn when another-class drop-shadow selector needs an unmatched ancestor", () => {
+    const html = baseHtml(
+      '<div class="hf-texture-text hf-texture-lava headline">TEXT</div>',
+      `${textureCss}.card .headline { filter: drop-shadow(1px 2px 1px black); }`,
+    );
+
+    const result = lintHyperframeHtml(html);
+    const finding = result.findings.find((item) => item.code === "texture_drop_shadow_on_text");
+
+    expect(finding).toBeUndefined();
+  });
 });

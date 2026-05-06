@@ -79,7 +79,7 @@ Use the Texture Mask Text catalog component.
    </div>
 ```
 
-After install, the snippet lives at `compositions/components/texture-mask-text/texture-mask-text.html` inside the project where you ran `npx hyperframes add texture-mask-text`. The part to paste is its `<style>...</style>` block; the installed `masks/` PNG files stay in place and are referenced by project-root URLs in that CSS.
+After install, the snippet lives at `compositions/components/texture-mask-text/texture-mask-text.html` inside the project where you ran `npx hyperframes add texture-mask-text`. The part to paste is its `<style>...</style>` block; the texture PNGs install to `assets/texture-mask-text/masks/` and are referenced by project-root URLs in that CSS.
 
 Swap `hf-texture-brick` for the class shown on any texture card below. The base class `hf-texture-text` is always required.
 
@@ -489,4 +489,4 @@ window.__timelines["my-composition"] = tl;
 
 ## Usage
 
-After `npx hyperframes add texture-mask-text`, the installed snippet lives at `compositions/components/texture-mask-text/texture-mask-text.html` inside your current HyperFrames project. Open that file and paste its `<style>...</style>` block into your composition once; it defines `hf-texture-text` and every `hf-texture-*` class used by the examples above. Keep the installed `masks/` PNG files in place; the CSS references them with project-root URLs.
+After `npx hyperframes add texture-mask-text`, the installed snippet lives at `compositions/components/texture-mask-text/texture-mask-text.html` inside your current HyperFrames project. Open that file and paste its `<style>...</style>` block into your composition once; it defines `hf-texture-text` and every `hf-texture-*` class used by the examples above. Keep the installed texture PNGs in `assets/texture-mask-text/masks/`; the CSS references them with project-root URLs.

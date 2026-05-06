@@ -474,20 +474,17 @@ describe("texture_mask_asset_not_found", () => {
   </div>
   <style>
     .hf-texture-lava {
-      -webkit-mask-image: url("/compositions/components/texture-mask-text/masks/lava.png");
-      mask-image: url("/compositions/components/texture-mask-text/masks/lava.png");
+      -webkit-mask-image: url("/assets/texture-mask-text/masks/lava.png");
+      mask-image: url("/assets/texture-mask-text/masks/lava.png");
     }
   </style>
   <script>window.__timelines = window.__timelines || {}; window.__timelines["main"] = gsap.timeline({ paused: true });</script>
 </body></html>`;
     const project = makeProject(html);
-    mkdirSync(join(project.dir, "compositions", "components", "texture-mask-text", "masks"), {
+    mkdirSync(join(project.dir, "assets", "texture-mask-text", "masks"), {
       recursive: true,
     });
-    writeFileSync(
-      join(project.dir, "compositions", "components", "texture-mask-text", "masks", "lava.png"),
-      "fake",
-    );
+    writeFileSync(join(project.dir, "assets", "texture-mask-text", "masks", "lava.png"), "fake");
 
     const { results } = lintProject(project);
     const finding = results[0]?.result.findings.find(
