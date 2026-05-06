@@ -2,6 +2,40 @@
 
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap');
 
+/* ── TT Norms Pro (matches hyperframes.heygen.com) ── */
+
+@font-face {
+  font-family: 'TT Norms Pro';
+  src: url('https://www-static-assets.heygen.com/fonts/tt-norms/TT_Norms_Pro_Normal.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'TT Norms Pro';
+  src: url('https://www-static-assets.heygen.com/fonts/tt-norms/TT_Norms_Pro_Medium.woff2') format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'TT Norms Pro';
+  src: url('https://www-static-assets.heygen.com/fonts/tt-norms/TT_Norms_Pro_DemiBold.woff2') format('woff2');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'TT Norms Pro';
+  src: url('https://www-static-assets.heygen.com/fonts/tt-norms/TT_Norms_Pro_Bold.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
 /* ── Light mode (default) ── */
 /*
  * NOTE: All custom variables are namespaced with `--hf-` to avoid
@@ -68,11 +102,11 @@
 /* ── Typography ── */
 
 body {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family: 'TT Norms Pro', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 
 h1, h2, h3, h4, h5, h6 {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family: 'TT Norms Pro', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 
 h1, h2 {
@@ -116,14 +150,14 @@ a:not([class]):hover {
 
 /* Catalog texture examples */
 
-.texture-preview-panel {
+.hf-texture-preview-panel {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
   margin: 24px 0 40px;
 }
 
-.texture-preview-card {
+.hf-texture-preview-card {
   min-width: 0;
   border: 1px solid rgba(127, 127, 127, 0.22);
   border-radius: 8px;
@@ -131,7 +165,7 @@ a:not([class]):hover {
   background: #101010;
 }
 
-.texture-preview-label {
+.hf-texture-preview-label {
   margin-bottom: 12px;
   color: rgba(255, 255, 255, 0.6);
   font-size: 12px;
@@ -141,11 +175,11 @@ a:not([class]):hover {
   text-overflow: ellipsis;
 }
 
-.texture-preview-shadow {
+.hf-texture-preview-shadow {
   filter: drop-shadow(1px 2px 1px rgba(0, 0, 0, 0.48));
 }
 
-.texture-preview-word {
+.hf-texture-preview-word {
   color: #fff;
   font-family: Impact, 'Arial Black', sans-serif;
   font-size: 42px;
@@ -164,7 +198,7 @@ a:not([class]):hover {
   mask-mode: luminance;
 }
 
-.texture-animate-demo {
+.hf-texture-animate-demo {
   border: 1px solid rgba(127, 127, 127, 0.22);
   border-radius: 8px;
   padding: 22px;
@@ -175,7 +209,7 @@ a:not([class]):hover {
   background-size: 44px 100%;
 }
 
-.texture-animate-meta {
+.hf-texture-animate-meta {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -183,14 +217,14 @@ a:not([class]):hover {
   margin-bottom: 18px;
 }
 
-.texture-animate-label {
+.hf-texture-animate-label {
   min-width: 0;
   color: rgba(24, 24, 24, 0.62);
   font-size: 13px;
   line-height: 1.2;
 }
 
-.texture-animate-class {
+.hf-texture-animate-class {
   max-width: 62%;
   padding: 2px 6px;
   border: 1px solid rgba(24, 24, 24, 0.12);
@@ -204,11 +238,11 @@ a:not([class]):hover {
   text-overflow: ellipsis;
 }
 
-.texture-animate-shadow {
+.hf-texture-animate-shadow {
   filter: drop-shadow(1px 2px 1px rgba(0, 0, 0, 0.48));
 }
 
-.texture-animate-word {
+.hf-texture-animate-word {
   color: #181818;
   font-family: Impact, 'Arial Black', sans-serif;
   font-size: 92px;
@@ -225,10 +259,10 @@ a:not([class]):hover {
   mask-position: 0% 50%;
   -webkit-mask-mode: luminance;
   mask-mode: luminance;
-  animation: texture-mask-pan 2.1s ease-in-out infinite alternate;
+  animation: hf-texture-mask-pan 2.1s ease-in-out infinite alternate;
 }
 
-@keyframes texture-mask-pan {
+@keyframes hf-texture-mask-pan {
   from {
     -webkit-mask-position: 0% 50%;
     mask-position: 0% 50%;
@@ -240,32 +274,32 @@ a:not([class]):hover {
   }
 }
 
-.texture-example-groups {
+.hf-texture-example-groups {
   display: grid;
   gap: 32px;
   margin: 20px 0 40px;
 }
 
-.texture-example-title {
+.hf-texture-example-title {
   margin: 0 0 10px;
   font-size: 14px;
   font-weight: 600;
 }
 
-.texture-example-grid {
+.hf-texture-example-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr));
   gap: 16px;
 }
 
-.texture-example-card {
+.hf-texture-example-card {
   border: 1px solid rgba(127, 127, 127, 0.22);
   border-radius: 8px;
   padding: 20px;
   background: #f1f1f1;
 }
 
-.texture-example-meta {
+.hf-texture-example-meta {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -273,7 +307,7 @@ a:not([class]):hover {
   margin-bottom: 14px;
 }
 
-.texture-example-label {
+.hf-texture-example-label {
   min-width: 0;
   color: rgba(24, 24, 24, 0.62);
   font-size: 13px;
@@ -283,7 +317,7 @@ a:not([class]):hover {
   text-overflow: ellipsis;
 }
 
-.texture-example-class {
+.hf-texture-example-class {
   max-width: 62%;
   padding: 2px 6px;
   border: 1px solid rgba(24, 24, 24, 0.12);
@@ -297,11 +331,11 @@ a:not([class]):hover {
   text-overflow: ellipsis;
 }
 
-.texture-example-shadow {
+.hf-texture-example-shadow {
   filter: drop-shadow(1px 2px 1px rgba(0, 0, 0, 0.48));
 }
 
-.texture-example-word {
+.hf-texture-example-word {
   color: #181818;
   font-family: Impact, 'Arial Black', sans-serif;
   font-size: 54px;
@@ -320,7 +354,7 @@ a:not([class]):hover {
   mask-mode: luminance;
 }
 
-.texture-example-usage {
+.hf-texture-example-usage {
   display: flex;
   align-items: flex-start;
   gap: 6px;
@@ -333,7 +367,7 @@ a:not([class]):hover {
   line-height: 1.3;
 }
 
-.texture-example-usage code {
+.hf-texture-example-usage code {
   min-width: 0;
   color: rgba(24, 24, 24, 0.82);
   font-size: 11px;
@@ -343,36 +377,36 @@ a:not([class]):hover {
 }
 
 @media (max-width: 860px) {
-  .texture-preview-panel {
+  .hf-texture-preview-panel {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
 @media (max-width: 520px) {
-  .texture-preview-panel {
+  .hf-texture-preview-panel {
     grid-template-columns: 1fr;
   }
 
-  .texture-preview-word {
+  .hf-texture-preview-word {
     font-size: 40px;
   }
 
-  .texture-animate-meta {
+  .hf-texture-animate-meta {
     align-items: flex-start;
     flex-direction: column;
   }
 
-  .texture-animate-class {
+  .hf-texture-animate-class {
     max-width: 100%;
   }
 
-  .texture-animate-word {
+  .hf-texture-animate-word {
     font-size: 56px;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .texture-animate-word {
+  .hf-texture-animate-word {
     animation: none;
   }
 }

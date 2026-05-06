@@ -152,22 +152,26 @@ function textureSampleWord(slug: string): string {
 }
 
 function generateTextureExamples(manifest: RegistryItem, textureGroups: TextureGroup[]): string[] {
-  const lines: string[] = ["## Texture Examples", "", '<div className="texture-example-groups">'];
+  const lines: string[] = [
+    "## Texture Examples",
+    "",
+    '<div className="hf-texture-example-groups">',
+  ];
 
   for (const group of textureGroups) {
     lines.push(
       "  <div>",
-      `    <h3 className="texture-example-title">${group.title}</h3>`,
-      '    <div className="texture-example-grid">',
+      `    <h3 className="hf-texture-example-title">${group.title}</h3>`,
+      '    <div className="hf-texture-example-grid">',
     );
     for (const item of group.items) {
       const maskPath = `/public/catalog-assets/components/${manifest.name}/masks/${item}.png`;
       const textureClass = `hf-texture-${item}`;
       lines.push(
-        `      <div className="texture-example-card" style={{ "--mask-url": "url('${maskPath}')" }}>`,
-        `        <div className="texture-example-meta"><div className="texture-example-label">${textureLabel(item)}</div><code className="texture-example-class">${textureClass}</code></div>`,
-        `        <div className="texture-example-shadow"><div className="texture-example-word">${textureSampleWord(item)}</div></div>`,
-        `        <div className="texture-example-usage">Use <code>hf-texture-text ${textureClass}</code></div>`,
+        `      <div className="hf-texture-example-card" style={{ "--mask-url": "url('${maskPath}')" }}>`,
+        `        <div className="hf-texture-example-meta"><div className="hf-texture-example-label">${textureLabel(item)}</div><code className="hf-texture-example-class">${textureClass}</code></div>`,
+        `        <div className="hf-texture-example-shadow"><div className="hf-texture-example-word">${textureSampleWord(item)}</div></div>`,
+        `        <div className="hf-texture-example-usage">Use <code>hf-texture-text ${textureClass}</code></div>`,
         "      </div>",
       );
     }
@@ -237,13 +241,13 @@ function generateTextureAnimationExample(
     "",
     "Animate the texture by moving the mask position on the text element. Keep drop shadow on a wrapper so the shadow follows the textured contour.",
     "",
-    `<div className="texture-animate-demo" style={{ "--mask-url": "url('${maskPath}')" }}>`,
-    '  <div className="texture-animate-meta">',
-    '    <div className="texture-animate-label">Animated mask position</div>',
-    `    <code className="texture-animate-class">hf-texture-text ${textureClass}</code>`,
+    `<div className="hf-texture-animate-demo" style={{ "--mask-url": "url('${maskPath}')" }}>`,
+    '  <div className="hf-texture-animate-meta">',
+    '    <div className="hf-texture-animate-label">Animated mask position</div>',
+    `    <code className="hf-texture-animate-class">hf-texture-text ${textureClass}</code>`,
     "  </div>",
-    '  <div className="texture-animate-shadow">',
-    '    <div className="texture-animate-word">MOTION</div>',
+    '  <div className="hf-texture-animate-shadow">',
+    '    <div className="hf-texture-animate-word">MOTION</div>',
     "  </div>",
     "</div>",
     "",
@@ -280,20 +284,28 @@ function generateTexturePreview(manifest: RegistryItem, textureGroups: TextureGr
     .map((group) => group.items[0])
     .filter(Boolean)
     .slice(0, 6);
-  const lines: string[] = ['<div className="texture-preview-panel">'];
+  const lines: string[] = ['<div className="hf-texture-preview-panel">'];
 
   for (const item of sampleItems) {
     const maskPath = `/public/catalog-assets/components/${manifest.name}/masks/${item}.png`;
     lines.push(
-      `  <div className="texture-preview-card" style={{ "--mask-url": "url('${maskPath}')" }}>`,
-      `    <div className="texture-preview-label">${textureLabel(item!)}</div>`,
-      `    <div className="texture-preview-shadow"><div className="texture-preview-word">${textureSampleWord(item!)}</div></div>`,
+      `  <div className="hf-texture-preview-card" style={{ "--mask-url": "url('${maskPath}')" }}>`,
+      `    <div className="hf-texture-preview-label">${textureLabel(item!)}</div>`,
+      `    <div className="hf-texture-preview-shadow"><div className="hf-texture-preview-word">${textureSampleWord(item!)}</div></div>`,
       "  </div>",
     );
   }
 
   lines.push("</div>", "");
   return lines;
+}
+
+function catalogPreviewFor(kind: ItemKind, manifest: RegistryItem): string {
+  const dir = typeDir(kind);
+  if (textureGroupsFor(manifest).length > 0) {
+    return `/public/catalog-assets/${dir}/${manifest.name}/preview.png`;
+  }
+  return `${catalogImageBase}/${dir}/${manifest.name}.png`;
 }
 
 function generateItemMdx(kind: ItemKind, manifest: RegistryItem): string {
@@ -479,7 +491,7 @@ function main(): void {
       description: manifest.description,
       tags: manifest.tags ?? [],
       href: `/catalog/${dir}/${manifest.name}`,
-      preview: `${catalogImageBase}/${dir}/${manifest.name}.png`,
+      preview: catalogPreviewFor(kind, manifest),
     });
   }
 
