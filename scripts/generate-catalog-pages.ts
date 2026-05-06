@@ -309,6 +309,10 @@ function catalogPreviewFor(kind: ItemKind, manifest: RegistryItem): string {
   return `${catalogImageBase}/${dir}/${manifest.name}.png`;
 }
 
+function yamlString(value: string): string {
+  return JSON.stringify(value);
+}
+
 function generateItemMdx(kind: ItemKind, manifest: RegistryItem): string {
   const tags = manifest.tags ?? [];
   const tagBadges = tags.map((t) => `\`${t}\``).join(" ");
@@ -316,9 +320,9 @@ function generateItemMdx(kind: ItemKind, manifest: RegistryItem): string {
   const source = manifest as RegistryItem & SourceMetadata;
   const textureGroups = textureGroupsFor(manifest);
 
-  const lines: string[] = ["---", `title: "${manifest.title.replace(/"/g, '\\"')}"`];
+  const lines: string[] = ["---", `title: ${yamlString(manifest.title)}`];
   if (textureGroups.length === 0) {
-    lines.push(`description: "${manifest.description.replace(/"/g, '\\"')}"`);
+    lines.push(`description: ${yamlString(manifest.description)}`);
   }
   lines.push("---", "");
 
