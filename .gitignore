@@ -72,9 +72,10 @@ packages/studio/data/
 # Playwright MCP browser cache
 .playwright-mcp/
 
-# Installed skills (user-specific)
+# Installed skills and generated Claude session summaries (user-specific)
 .agents/
 .claude/skills/
+.claude/session-summaries/
 skills-lock.json
 
 # Skills from other PRs (not managed here)
