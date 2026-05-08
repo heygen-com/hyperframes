@@ -50,6 +50,22 @@ interface ShaderLoaderElements {
   frameRow: HTMLDivElement;
 }
 
+interface RuntimeDurationAdapter {
+  getDuration: () => number;
+}
+
+interface DirectTimelineAdapter {
+  duration: () => number;
+  time: () => number;
+  seek: (timeInSeconds: number) => unknown;
+  play: () => unknown;
+  pause: () => unknown;
+}
+
+type PlaybackDurationAdapter =
+  | { kind: "runtime"; getDuration: () => number }
+  | { kind: "direct-timeline"; timeline: DirectTimelineAdapter; getDuration: () => number };
+
 const SHADER_LOADING_PHRASES = [
   "Preparing scene transitions",
   "Sampling outgoing scene motion",
@@ -108,6 +124,25 @@ function withShaderQueryParams(
   setQueryParam(params, SHADER_LOADING_PARAM, loadingMode === "composition" ? null : loadingMode);
   const nextQuery = params.toString();
   return `${path}${nextQuery ? `?${nextQuery}` : ""}${hash}`;
+}
+
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isRuntimeDurationAdapter(value: unknown): value is RuntimeDurationAdapter {
+  return isObjectRecord(value) && typeof value.getDuration === "function";
+}
+
+function isDirectTimelineAdapter(value: unknown): value is DirectTimelineAdapter {
+  return (
+    isObjectRecord(value) &&
+    typeof value.duration === "function" &&
+    typeof value.time === "function" &&
+    typeof value.seek === "function" &&
+    typeof value.play === "function" &&
+    typeof value.pause === "function"
+  );
 }
 
 function injectShaderOptionsIntoSrcdoc(
@@ -172,6 +207,8 @@ class HyperframesPlayer extends HTMLElement {
   private _compositionHeight = 1080;
   private _probeInterval: ReturnType<typeof setInterval> | null = null;
   private _lastUpdateMs = 0;
+  private _directTimelineAdapter: DirectTimelineAdapter | null = null;
+  private _directTimelineRaf: number | null = null;
 
   /**
    * Parent-frame audio/video proxies, preloaded mirror copies of the iframe's
@@ -308,6 +345,8 @@ class HyperframesPlayer extends HTMLElement {
     window.removeEventListener("message", this._onMessage);
     this.iframe.removeEventListener("load", this._onIframeLoad);
     if (this._probeInterval) clearInterval(this._probeInterval);
+    this._stopDirectTimelineClock();
+    this._directTimelineAdapter = null;
     if (this.shaderLoaderHideTimeout) clearTimeout(this.shaderLoaderHideTimeout);
     this.shaderLoaderHideTimeout = null;
     this._teardownMediaObserver();
@@ -418,18 +457,21 @@ class HyperframesPlayer extends HTMLElement {
     if (this._duration > 0 && this._currentTime >= this._duration) {
       this.seek(0);
     }
-    // Always drive the iframe runtime — it's the single source of timeline
-    // truth regardless of who owns audible output. When we own audio, the
-    // proxies join; when the runtime owns, they stay silent.
-    this._sendControl("play");
+    // Drive the iframe runtime when present. Same-origin standalone GSAP
+    // compositions can expose only `window.__timelines`, so they use a direct
+    // timeline adapter instead of a postMessage bridge nobody is listening to.
+    const directTimelineStarted = this._tryDirectTimelinePlay();
+    if (!directTimelineStarted) this._sendControl("play");
     if (this._audioOwner === "parent") this._playParentMedia();
     this._paused = false;
     this.controlsApi?.updatePlaying(true);
     this.dispatchEvent(new Event("play"));
+    if (directTimelineStarted) this._startDirectTimelineClock();
   }
 
   pause() {
-    this._sendControl("pause");
+    if (!this._tryDirectTimelinePause()) this._sendControl("pause");
+    this._stopDirectTimelineClock();
     if (this._audioOwner === "parent") this._pauseParentMedia();
     this._paused = true;
     this.controlsApi?.updatePlaying(false);
@@ -461,10 +503,11 @@ class HyperframesPlayer extends HTMLElement {
    * either way; the asymmetry only affects what the runtime actually paints.
    */
   seek(timeInSeconds: number) {
-    if (!this._trySyncSeek(timeInSeconds)) {
+    if (!this._trySyncSeek(timeInSeconds) && !this._tryDirectTimelineSeek(timeInSeconds)) {
       const frame = Math.round(timeInSeconds * DEFAULT_FPS);
       this._sendControl("seek", { frame });
     }
+    this._stopDirectTimelineClock();
     this._currentTime = timeInSeconds;
 
     // Mirror parent proxy currentTime only while parent owns audible output.
@@ -819,6 +862,147 @@ class HyperframesPlayer extends HTMLElement {
     }
   }
 
+  private _tryDirectTimelineSeek(timeInSeconds: number): boolean {
+    const timeline = this._directTimelineAdapter || this._resolveDirectTimelineAdapter();
+    if (!timeline) return false;
+    try {
+      timeline.seek(timeInSeconds);
+      this._directTimelineAdapter = timeline;
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private _tryDirectTimelinePlay(): boolean {
+    const timeline = this._directTimelineAdapter || this._resolveDirectTimelineAdapter();
+    if (!timeline) return false;
+    try {
+      timeline.play();
+      this._directTimelineAdapter = timeline;
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private _tryDirectTimelinePause(): boolean {
+    const timeline = this._directTimelineAdapter || this._resolveDirectTimelineAdapter();
+    if (!timeline) return false;
+    try {
+      timeline.pause();
+      this._directTimelineAdapter = timeline;
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private _startDirectTimelineClock(): void {
+    this._stopDirectTimelineClock();
+
+    const tick = () => {
+      const timeline = this._directTimelineAdapter;
+      if (!timeline || this._paused) {
+        this._directTimelineRaf = null;
+        return;
+      }
+
+      let currentTime: number;
+      try {
+        currentTime = timeline.time();
+      } catch {
+        this._directTimelineRaf = null;
+        return;
+      }
+
+      if (this._duration > 0) currentTime = Math.min(currentTime, this._duration);
+      this._currentTime = currentTime;
+      const completedPlayback = this._duration > 0 && currentTime >= this._duration;
+      const now = performance.now();
+      if (now - this._lastUpdateMs > 100 || completedPlayback) {
+        this._lastUpdateMs = now;
+        this.controlsApi?.updateTime(this._currentTime, this._duration);
+        this.dispatchEvent(
+          new CustomEvent("timeupdate", { detail: { currentTime: this._currentTime } }),
+        );
+      }
+
+      if (completedPlayback) {
+        if (this.loop) {
+          this.seek(0);
+          this.play();
+          return;
+        }
+        timeline.pause();
+        this._paused = true;
+        this.controlsApi?.updatePlaying(false);
+        this.dispatchEvent(new Event("ended"));
+        this._directTimelineRaf = null;
+        return;
+      }
+
+      this._directTimelineRaf = requestAnimationFrame(tick);
+    };
+
+    this._directTimelineRaf = requestAnimationFrame(tick);
+  }
+
+  private _stopDirectTimelineClock(): void {
+    if (this._directTimelineRaf === null) return;
+    cancelAnimationFrame(this._directTimelineRaf);
+    this._directTimelineRaf = null;
+  }
+
+  private _resolveDirectTimelineAdapter(): DirectTimelineAdapter | null {
+    try {
+      const win = this.iframe.contentWindow;
+      if (!win) return null;
+      return this._resolveDirectTimelineAdapterFromWindow(win);
+    } catch {
+      return null;
+    }
+  }
+
+  private _resolveDirectTimelineAdapterFromWindow(win: Window): DirectTimelineAdapter | null {
+    if (this._hasRuntimeBridge(win)) return null;
+
+    const timelines = Reflect.get(win, "__timelines");
+    if (!isObjectRecord(timelines)) return null;
+
+    const keys = Object.keys(timelines);
+    if (keys.length === 0) return null;
+
+    const rootId = this.iframe.contentDocument
+      ?.querySelector("[data-composition-id]")
+      ?.getAttribute("data-composition-id");
+    const key = rootId && rootId in timelines ? rootId : keys[keys.length - 1];
+    const timeline = timelines[key];
+    return isDirectTimelineAdapter(timeline) ? timeline : null;
+  }
+
+  private _hasRuntimeBridge(win: Window): boolean {
+    return Reflect.get(win, "__hf") !== undefined || isObjectRecord(Reflect.get(win, "__player"));
+  }
+
+  private _resolvePlaybackDurationAdapter(win: Window): PlaybackDurationAdapter | null {
+    const runtimePlayer = Reflect.get(win, "__player");
+    if (isRuntimeDurationAdapter(runtimePlayer)) {
+      return { kind: "runtime", getDuration: () => runtimePlayer.getDuration() };
+    }
+
+    const timeline = this._resolveDirectTimelineAdapterFromWindow(win);
+    if (timeline) {
+      return {
+        kind: "direct-timeline",
+        timeline,
+        getDuration: () => timeline.duration(),
+      };
+    }
+
+    return null;
+  }
+
   private _isControlsClick(event: Event) {
     return event
       .composedPath()
@@ -917,6 +1101,8 @@ class HyperframesPlayer extends HTMLElement {
   private _onIframeLoad() {
     let attempts = 0;
     this._runtimeInjected = false;
+    this._directTimelineAdapter = null;
+    this._stopDirectTimelineClock();
     this._resetShaderLoader();
     // A fresh iframe means a fresh runtime — `mediaOutputMuted` and the
     // autoplay-blocked latch are both reset inside it. The web component's
@@ -976,31 +1162,12 @@ class HyperframesPlayer extends HTMLElement {
           return;
         }
 
-        const getAdapter = () => {
-          if (win.__player && typeof win.__player.getDuration === "function") return win.__player;
-          if (win.__timelines) {
-            const keys = Object.keys(win.__timelines);
-            if (keys.length > 0) {
-              // Resolve the root composition id from the DOM — the outermost
-              // `[data-composition-id]` element is the master. Bundled previews
-              // register the root composition alongside sub-compositions, and
-              // without this lookup Object.keys() order would make a
-              // sub-composition's duration hijack the overall video length.
-              const rootId = this.iframe.contentDocument
-                ?.querySelector("[data-composition-id]")
-                ?.getAttribute("data-composition-id");
-              const key = rootId && rootId in win.__timelines ? rootId : keys[keys.length - 1];
-              const tl = win.__timelines[key];
-              return { getDuration: () => tl.duration() };
-            }
-          }
-          return null;
-        };
-
-        const adapter = getAdapter();
+        const adapter = this._resolvePlaybackDurationAdapter(win);
         if (adapter && adapter.getDuration() > 0) {
           clearInterval(this._probeInterval!);
           this._duration = adapter.getDuration();
+          this._directTimelineAdapter =
+            adapter.kind === "direct-timeline" ? adapter.timeline : null;
           this._ready = true;
           this.controlsApi?.updateTime(0, this._duration);
           this.dispatchEvent(new CustomEvent("ready", { detail: { duration: this._duration } }));

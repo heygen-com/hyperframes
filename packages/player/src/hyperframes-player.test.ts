@@ -790,12 +790,22 @@ describe("HyperframesPlayer seek() sync path", () => {
     play?: () => void;
     pause?: () => void;
   };
+  type TimelineStub = {
+    duration: () => number;
+    time: () => number;
+    seek: (t: number) => void;
+    play: () => void;
+    pause: () => void;
+  };
   type FakeContentWindow = {
     __player?: SyncPlayerStub;
+    __timelines?: Record<string, TimelineStub>;
     postMessage?: ReturnType<typeof vi.fn>;
   };
   type PlayerInternal = HTMLElement & {
     seek: (t: number) => void;
+    play: () => void;
+    pause: () => void;
     iframe: HTMLIFrameElement;
     _currentTime: number;
   };
@@ -872,6 +882,67 @@ describe("HyperframesPlayer seek() sync path", () => {
       }),
       "*",
     );
+  });
+
+  it("seeks same-origin __timelines when no runtime bridge exists", () => {
+    const timeline: TimelineStub = {
+      duration: vi.fn(() => 5),
+      time: vi.fn(() => 0),
+      seek: vi.fn(),
+      play: vi.fn(),
+      pause: vi.fn(),
+    };
+    const post = vi.fn();
+    stubContentWindow({ __timelines: { main: timeline }, postMessage: post });
+
+    player.seek(2);
+
+    expect(timeline.seek).toHaveBeenCalledTimes(1);
+    expect(timeline.seek).toHaveBeenCalledWith(2);
+    expect(post).not.toHaveBeenCalled();
+  });
+
+  it("plays and pauses same-origin __timelines when no runtime bridge exists", () => {
+    const timeline: TimelineStub = {
+      duration: vi.fn(() => 5),
+      time: vi.fn(() => 0),
+      seek: vi.fn(),
+      play: vi.fn(),
+      pause: vi.fn(),
+    };
+    const post = vi.fn();
+    stubContentWindow({ __timelines: { main: timeline }, postMessage: post });
+
+    player.play();
+    player.pause();
+
+    expect(timeline.play).toHaveBeenCalledTimes(1);
+    expect(timeline.pause).toHaveBeenCalledTimes(1);
+    expect(post).not.toHaveBeenCalled();
+  });
+
+  it("does not bypass an installed runtime bridge for direct __timelines playback", () => {
+    const timeline: TimelineStub = {
+      duration: vi.fn(() => 5),
+      time: vi.fn(() => 0),
+      seek: vi.fn(),
+      play: vi.fn(),
+      pause: vi.fn(),
+    };
+    const post = vi.fn();
+    stubContentWindow({
+      __player: { play: vi.fn(), pause: vi.fn() },
+      __timelines: { main: timeline },
+      postMessage: post,
+    });
+
+    player.play();
+    player.pause();
+
+    expect(timeline.play).not.toHaveBeenCalled();
+    expect(timeline.pause).not.toHaveBeenCalled();
+    expect(post).toHaveBeenCalledWith(expect.objectContaining({ action: "play" }), "*");
+    expect(post).toHaveBeenCalledWith(expect.objectContaining({ action: "pause" }), "*");
   });
 
   it("falls back to postMessage when __player exists but lacks seek()", () => {
