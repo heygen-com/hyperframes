@@ -642,6 +642,42 @@ describe("syncRuntimeMedia", () => {
     expect(posted).toBe(1);
   });
 
+  it("corrects stable sub-0.5s drift after consecutive over-threshold ticks", () => {
+    const clip = createMockClip({ start: 0, end: 10, mediaStart: 0 });
+    Object.defineProperty(clip.el, "currentTime", { value: 5.4, writable: true });
+    syncRuntimeMedia({ clips: [clip], timeSeconds: 5.4, playing: true, playbackRate: 1 });
+    syncRuntimeMedia({ clips: [clip], timeSeconds: 5, playing: true, playbackRate: 1 });
+    expect(clip.el.currentTime).toBe(5.4);
+    syncRuntimeMedia({ clips: [clip], timeSeconds: 5, playing: true, playbackRate: 1 });
+    expect(clip.el.currentTime).toBe(5.4);
+    syncRuntimeMedia({ clips: [clip], timeSeconds: 5, playing: true, playbackRate: 1 });
+    expect(clip.el.currentTime).toBe(5);
+  });
+
+  it("does not force audio forward while it's still buffering (gradual drift growth)", () => {
+    const clip = createMockClip({ start: 0, end: 10, mediaStart: 0 });
+    Object.defineProperty(clip.el, "currentTime", { value: 0, writable: true });
+    syncRuntimeMedia({ clips: [clip], timeSeconds: 0, playing: true, playbackRate: 1 });
+    for (let t = 0.016; t < 0.7; t += 0.016) {
+      syncRuntimeMedia({ clips: [clip], timeSeconds: t, playing: true, playbackRate: 1 });
+    }
+    expect(clip.el.currentTime).toBe(0);
+  });
+
+  it("forceSync corrects any drift above 20ms immediately", () => {
+    const clip = createMockClip({ start: 0, end: 10, mediaStart: 0 });
+    Object.defineProperty(clip.el, "currentTime", { value: 5.1, writable: true });
+    syncRuntimeMedia({ clips: [clip], timeSeconds: 5.1, playing: true, playbackRate: 1 });
+    syncRuntimeMedia({
+      clips: [clip],
+      timeSeconds: 5,
+      playing: true,
+      playbackRate: 1,
+      forceSync: true,
+    });
+    expect(clip.el.currentTime).toBe(5);
+  });
+
   it("mutes when either outputMuted OR userMuted is true (OR invariant)", () => {
     // Explicit validation of the combined-flag contract: setting one to
     // false while the other is true must keep the element muted.

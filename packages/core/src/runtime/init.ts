@@ -14,6 +14,9 @@ import { collectRuntimeTimelinePayload } from "./timeline";
 import { createRuntimeStartTimeResolver } from "./startResolver";
 import { loadExternalCompositions, loadInlineTemplateCompositions } from "./compositionLoader";
 import { applyCaptionOverrides } from "./captionOverrides";
+import { TransportClock } from "./clock";
+import { WebAudioTransport } from "./webAudioTransport";
+import { quantizeTimeToFrame } from "../inline-scripts/parityContract";
 import type { RuntimeDeterministicAdapter, RuntimeJson, RuntimeTimelineLike } from "./types";
 import type { PlayerAPI } from "../core.types";
 import { swallow } from "./diagnostics";
@@ -153,10 +156,6 @@ export function initSandboxRuntimeModular(): void {
 
   const MIN_VALID_TIMELINE_DURATION_SECONDS = 1 / 60;
   const TIMELINE_FLOOR_COVERAGE_RATIO = 0.75;
-  const LOOP_WRAP_PREVIOUS_TIME_THRESHOLD_SECONDS = 0.75;
-  const LOOP_WRAP_CURRENT_TIME_THRESHOLD_SECONDS = 0.35;
-  const LOOP_GUARD_SEEK_GRACE_PERIOD_MS = 900;
-  const LOOP_GUARD_CONSECUTIVE_WRAP_THRESHOLD = 3;
   const PLAY_REBIND_HOLD_SECONDS = 2;
   const METADATA_REBIND_MIN_DURATION_GAIN_SECONDS = 0.05;
   const METADATA_REBIND_DEBOUNCE_MS = 100;
@@ -905,14 +904,6 @@ export function initSandboxRuntimeModular(): void {
     return { timeline: null };
   };
 
-  const syncCurrentTimeFromTimeline = () => {
-    const timeline = state.capturedTimeline;
-    if (!timeline || typeof timeline.time !== "function") return;
-    const nextTime = Number(timeline.time());
-    if (!Number.isFinite(nextTime)) return;
-    state.currentTime = Math.max(0, nextTime);
-  };
-
   // Track whether child composition timelines have been added to the root.
   // This prevents the polling loop from skipping rebind when TARGET_DURATION
   // makes the root "usable" before children register. Assumption: child scripts
@@ -1297,6 +1288,8 @@ export function initSandboxRuntimeModular(): void {
         return sourceDuration ?? hostRemaining;
       },
     });
+    const forceSync = state.mediaForceSyncNextTick;
+    if (forceSync) state.mediaForceSyncNextTick = false;
     syncRuntimeMedia({
       clips: cache.mediaClips,
       timeSeconds: state.currentTime,
@@ -1305,6 +1298,7 @@ export function initSandboxRuntimeModular(): void {
       outputMuted: state.mediaOutputMuted,
       userMuted: state.bridgeMuted,
       userVolume: state.bridgeVolume,
+      forceSync,
       onAutoplayBlocked: () => {
         if (state.mediaAutoplayBlockedPosted) return;
         state.mediaAutoplayBlockedPosted = true;
@@ -1363,7 +1357,6 @@ export function initSandboxRuntimeModular(): void {
   };
 
   const postState = (force: boolean) => {
-    syncCurrentTimeFromTimeline();
     const frame = Math.max(0, Math.round((state.currentTime || 0) * state.canonicalFps));
     const now = Date.now();
     const shouldPost =
@@ -1481,6 +1474,7 @@ export function initSandboxRuntimeModular(): void {
     } else {
       state.playbackRate = Math.max(0.1, Math.min(5, parsed));
     }
+    state.mediaForceSyncNextTick = true;
     if (state.capturedTimeline && typeof state.capturedTimeline.timeScale === "function") {
       state.capturedTimeline.timeScale(state.playbackRate);
     }
@@ -1505,6 +1499,7 @@ export function initSandboxRuntimeModular(): void {
       (window.__timelines ?? {}) as Record<string, RuntimeTimelineLike | undefined>,
     getIsPlaying: () => state.isPlaying,
     setIsPlaying: (playing) => {
+      if (state.isPlaying !== playing) state.mediaForceSyncNextTick = true;
       state.isPlaying = playing;
     },
     getPlaybackRate: () => state.playbackRate,
@@ -1512,6 +1507,7 @@ export function initSandboxRuntimeModular(): void {
     getCanonicalFps: () => state.canonicalFps,
     onSyncMedia: (timeSeconds, playing) => {
       state.currentTime = Math.max(0, Number(timeSeconds) || 0);
+      if (state.isPlaying !== playing) state.mediaForceSyncNextTick = true;
       state.isPlaying = playing;
       syncMediaForCurrentState();
     },
@@ -1562,6 +1558,7 @@ export function initSandboxRuntimeModular(): void {
     onSetMuted: (muted) => {
       state.bridgeMuted = muted;
       const effective = muted || state.mediaOutputMuted;
+      webAudio.setMuted(effective);
       const mediaEls = document.querySelectorAll("video, audio");
       for (const el of mediaEls) {
         if (!(el instanceof HTMLMediaElement)) continue;
@@ -1570,6 +1567,7 @@ export function initSandboxRuntimeModular(): void {
     },
     onSetVolume: (volume) => {
       state.bridgeVolume = volume;
+      webAudio.setVolume(volume);
       const mediaEls = document.querySelectorAll("video, audio");
       for (const el of mediaEls) {
         if (!(el instanceof HTMLMediaElement)) continue;
@@ -1581,13 +1579,17 @@ export function initSandboxRuntimeModular(): void {
     onSetMediaOutputMuted: (muted) => {
       state.mediaOutputMuted = muted;
       const effective = muted || state.bridgeMuted;
+      webAudio.setMuted(effective);
       const mediaEls = document.querySelectorAll("video, audio");
       for (const el of mediaEls) {
         if (!(el instanceof HTMLMediaElement)) continue;
         el.muted = effective;
       }
     },
-    onSetPlaybackRate: (rate) => applyPlaybackRate(rate),
+    onSetPlaybackRate: (rate) => {
+      applyPlaybackRate(rate);
+      if (state.transportClock) state.transportClock.setRate(state.playbackRate);
+    },
     onEnablePickMode: () => picker.enablePickMode(),
     onDisablePickMode: () => picker.disablePickMode(),
   });
@@ -1627,100 +1629,351 @@ export function initSandboxRuntimeModular(): void {
   installRuntimeErrorDiagnostics();
   runAdapters("discover");
   bindMediaMetadataListeners();
-  if (state.timelinePollIntervalId) {
-    clearInterval(state.timelinePollIntervalId);
-  }
-  let timelinePollTick = 0;
-  let lastObservedTimelineTime: number | null = null;
-  let lastExplicitSeekAtMs = 0;
-  let loopGuardRebindTriggered = false;
-  let loopWrapCandidateCount = 0;
-  const markExplicitSeek = () => {
-    lastExplicitSeekAtMs = Date.now();
-    loopGuardRebindTriggered = false;
-    loopWrapCandidateCount = 0;
+  // ── Single-clock transport ──
+  //
+  // TransportClock is the sole time authority. GSAP is always paused —
+  // seeked to clock.now() on each rAF tick. This eliminates the
+  // two-clock drift problem from issue #668: one clock, zero drift.
+  const clock = new TransportClock();
+  state.transportClock = clock;
+  const webAudio = new WebAudioTransport();
+  let webAudioReady = false;
+  void webAudio.init().then((ok) => {
+    webAudioReady = ok;
+  });
+  let transportTickCount = 0;
+  let inTransportTick = false;
+
+  const seekTimelineAndAdapters = (t: number) => {
+    const tl = state.capturedTimeline;
+    if (tl) {
+      try {
+        if (typeof tl.totalTime === "function") {
+          tl.totalTime(t, false);
+        } else {
+          tl.seek(t, false);
+        }
+      } catch (err) {
+        swallow("runtime.init.transport.seek", err);
+      }
+      // Sibling timelines (registered in __timelines but not nested under
+      // the root) are paused alongside the master. We do NOT seek them to
+      // absolute position `t` here — child timelines nested under the root
+      // are already propagated via tl.totalTime(), and seeking them again
+      // at absolute `t` would clobber their offset-relative position.
+      // Play/pause propagation for siblings happens in the player.play()
+      // and player.pause() overrides via the adapter layer.
+    }
+    for (const adapter of state.deterministicAdapters) {
+      try {
+        adapter.seek({ time: t });
+      } catch (err) {
+        swallow("runtime.init.transport.adapter", err);
+      }
+    }
   };
-  state.timelinePollIntervalId = setInterval(() => {
-    timelinePollTick += 1;
-    const shouldHoldRebindDuringEarlyPlay =
-      state.isPlaying &&
-      state.capturedTimeline != null &&
-      Math.max(0, state.currentTime || 0) < PLAY_REBIND_HOLD_SECONDS;
-    const timelineBoundThisTick = shouldHoldRebindDuringEarlyPlay
-      ? false
-      : bindRootTimelineIfAvailable();
-    if (state.capturedTimeline && !player._timeline) {
-      player._timeline = state.capturedTimeline;
-    }
-    if (timelineBoundThisTick || timelinePollTick % 20 === 0) {
-      postTimeline();
-    }
-    if (timelinePollTick % 10 === 0) {
-      bindMediaMetadataListeners();
-    }
-    syncCurrentTimeFromTimeline();
-    if (state.isPlaying && state.capturedTimeline) {
-      const currentObserved = Math.max(0, state.currentTime || 0);
-      const previousObserved = lastObservedTimelineTime;
-      const safeDuration = getSafeTimelineDurationSeconds(state.capturedTimeline, 0);
-      if (safeDuration > 0 && currentObserved >= safeDuration) {
-        player.pause();
-        player.seek(safeDuration);
-        lastObservedTimelineTime = safeDuration;
-        loopWrapCandidateCount = 0;
+
+  const transportTick = () => {
+    if (state.tornDown || inTransportTick) return;
+    inTransportTick = true;
+    try {
+      state.transportRafId = window.requestAnimationFrame(transportTick);
+      transportTickCount += 1;
+
+      // Slower operations: timeline binding (~every 60 frames / ~1s at 60fps)
+      if (transportTickCount % 60 === 0) {
+        const shouldHoldRebind =
+          clock.isPlaying() &&
+          state.capturedTimeline != null &&
+          clock.now() < PLAY_REBIND_HOLD_SECONDS;
+        if (!shouldHoldRebind) {
+          const prevTimeline = state.capturedTimeline;
+          if (bindRootTimelineIfAvailable()) {
+            if (state.capturedTimeline && !player._timeline) {
+              player._timeline = state.capturedTimeline;
+            }
+            if (state.capturedTimeline && state.capturedTimeline !== prevTimeline) {
+              state.capturedTimeline.pause();
+            }
+            const dur = getSafeTimelineDurationSeconds(state.capturedTimeline, 0);
+            if (dur > 0) clock.setDuration(dur);
+            postTimeline();
+          }
+        }
+      }
+      if (transportTickCount % 20 === 0) {
+        postTimeline();
+      }
+      if (transportTickCount % 30 === 0) {
+        bindMediaMetadataListeners();
+      }
+
+      // Keep clock duration in sync with the resolved timeline duration.
+      // Cheap (no DOM reads) and catches async timeline rebinds that happen
+      // outside the 60-tick branch (metadata hydration, deferred setTimeout).
+      if (state.capturedTimeline) {
+        const dur = getSafeTimelineDurationSeconds(state.capturedTimeline, 0);
+        if (dur > 0) clock.setDuration(dur);
+      }
+
+      // Audio-master clock: three tiers of timing precision.
+      // 1. WebAudio (AudioContext.currentTime): ~21µs, sample-accurate
+      // 2. HTMLMediaElement (audio.currentTime): ~33ms, frame-accurate
+      // 3. Monotonic (performance.now()): ~1ms, no audio coupling
+      if (clock.isPlaying() && !state.mediaOutputMuted) {
+        if (webAudio.isActive() && webAudio.context) {
+          const webAudioTime = webAudio.getTime();
+          if (webAudioTime >= 0) {
+            clock.attachAudioSource({ currentTimeSeconds: webAudioTime });
+          }
+        } else {
+          const audioEls = document.querySelectorAll("audio[data-start]");
+          let foundActive = false;
+          for (const rawEl of audioEls) {
+            if (!(rawEl instanceof HTMLMediaElement) || !rawEl.isConnected) continue;
+            const start = Number.parseFloat(rawEl.dataset.start ?? "");
+            const durAttr = Number.parseFloat(rawEl.dataset.duration ?? "");
+            const end = Number.isFinite(durAttr) && durAttr > 0 ? start + durAttr : Infinity;
+            const mediaStart =
+              Number.parseFloat(rawEl.dataset.playbackStart ?? rawEl.dataset.mediaStart ?? "0") ||
+              0;
+            if (Number.isFinite(start) && state.currentTime >= start && state.currentTime < end) {
+              if (!rawEl.paused) {
+                clock.attachAudioSource({ el: rawEl, compositionStart: start, mediaStart });
+                foundActive = true;
+              } else if (rawEl.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) {
+                // Audio is buffering — freeze visuals at last known position
+                // instead of falling through to monotonic (which runs ahead).
+                clock.attachAudioSource({ currentTimeSeconds: state.currentTime });
+                foundActive = true;
+              }
+              break;
+            }
+          }
+          if (!foundActive && clock.hasAudioSource()) {
+            clock.detachAudioSource();
+          }
+        }
+      } else if (clock.hasAudioSource()) {
+        clock.detachAudioSource();
+      }
+
+      const t = clock.now();
+      state.currentTime = t;
+      seekTimelineAndAdapters(t);
+
+      // Looping is handled at the player layer (<hyperframes-player>),
+      // not the runtime. The clock pauses at duration; GSAP's repeat:-1
+      // is bypassed because we drive tl.totalTime(t) directly. The
+      // parent observes isPlaying=false at end and re-issues seek(0)+play()
+      // if its loop attribute is set.
+      if (clock.isPlaying() && clock.reachedEnd()) {
+        webAudio.stopAll();
+        clock.detachAudioSource();
+        clock.pause();
+        state.isPlaying = false;
+        const dur = clock.getDuration();
+        if (Number.isFinite(dur)) {
+          clock.seek(dur);
+          state.currentTime = dur;
+          seekTimelineAndAdapters(dur);
+        }
+        runAdapters("pause");
+        syncMediaForCurrentState();
         postState(true);
         return;
       }
-      const isWrapCandidate =
-        previousObserved != null &&
-        previousObserved >= LOOP_WRAP_PREVIOUS_TIME_THRESHOLD_SECONDS &&
-        currentObserved <= LOOP_WRAP_CURRENT_TIME_THRESHOLD_SECONDS;
-      if (isWrapCandidate) {
-        loopWrapCandidateCount += 1;
-      } else {
-        loopWrapCandidateCount = 0;
+
+      if (clock.isPlaying()) {
+        syncMediaForCurrentState();
       }
-      if (
-        !loopGuardRebindTriggered &&
-        loopWrapCandidateCount >= LOOP_GUARD_CONSECUTIVE_WRAP_THRESHOLD &&
-        Date.now() - lastExplicitSeekAtMs > LOOP_GUARD_SEEK_GRACE_PERIOD_MS
-      ) {
-        const resolution = resolveRootTimelineFromDocument();
-        if (rebindTimelineFromResolution(resolution, "loop_guard")) {
-          loopGuardRebindTriggered = true;
-          loopWrapCandidateCount = 0;
+      postState(false);
+    } finally {
+      inTransportTick = false;
+    }
+  };
+
+  const hardSyncAllMedia = (timeSeconds: number) => {
+    const mediaEls = document.querySelectorAll("video, audio");
+    for (const el of mediaEls) {
+      if (!(el instanceof HTMLMediaElement)) continue;
+      if (!el.isConnected) continue;
+      const start = Number.parseFloat(el.dataset.start ?? "");
+      if (!Number.isFinite(start)) continue;
+      const durAttr = Number.parseFloat(el.dataset.duration ?? "");
+      const end = Number.isFinite(durAttr) && durAttr > 0 ? start + durAttr : Infinity;
+      if (timeSeconds < start || timeSeconds >= end) continue;
+      const mediaStart =
+        Number.parseFloat(el.dataset.playbackStart ?? el.dataset.mediaStart ?? "0") || 0;
+      const relTime = timeSeconds - start + mediaStart;
+      if (relTime >= 0) {
+        try {
+          el.currentTime = relTime;
+        } catch {
+          // ignore seek restrictions
         }
       }
-      lastObservedTimelineTime = Math.max(0, state.currentTime || 0);
-    } else {
-      lastObservedTimelineTime = Math.max(0, state.currentTime || 0);
     }
-    if (state.isPlaying) {
-      syncMediaForCurrentState();
+  };
+
+  // Player methods route through the TransportClock.
+  player.play = () => {
+    const tl = state.capturedTimeline;
+    if (!tl || clock.isPlaying()) return;
+    const dur = getSafeTimelineDurationSeconds(tl, 0);
+    if (dur > 0) {
+      clock.setDuration(dur);
+      if (clock.reachedEnd()) {
+        clock.seek(0);
+        state.currentTime = 0;
+        seekTimelineAndAdapters(0);
+      }
     }
-    postState(false);
-  }, 50);
+    tl.pause();
+    if (!clock.play()) return;
+    state.isPlaying = true;
+    state.mediaForceSyncNextTick = true;
+    hardSyncAllMedia(clock.now());
+    // Schedule audio through WebAudio for sample-accurate timing.
+    // Falls back to HTMLMediaElement playback if WebAudio isn't ready
+    // or decoding fails (the syncRuntimeMedia path handles that).
+    if (webAudioReady) {
+      const gen = webAudio.startGeneration();
+      const audioEls = document.querySelectorAll("audio[data-start]");
+      for (const rawEl of audioEls) {
+        if (!(rawEl instanceof HTMLMediaElement) || !rawEl.isConnected) continue;
+        const compStart = Number.parseFloat(rawEl.dataset.start ?? "");
+        if (!Number.isFinite(compStart)) continue;
+        const mediaStart =
+          Number.parseFloat(rawEl.dataset.playbackStart ?? rawEl.dataset.mediaStart ?? "0") || 0;
+        const volumeAttr = Number.parseFloat(rawEl.dataset.volume ?? "");
+        const vol = Number.isFinite(volumeAttr) ? volumeAttr : 1;
+        void webAudio.decodeAudioElement(rawEl).then((buffer) => {
+          if (!buffer || !clock.isPlaying()) return;
+          void webAudio.schedulePlayback(
+            rawEl,
+            buffer,
+            compStart,
+            mediaStart,
+            clock.now(),
+            vol * state.bridgeVolume,
+            gen,
+          );
+        });
+      }
+    }
+    runAdapters("play");
+    syncMediaForCurrentState();
+    postState(true);
+  };
+
+  player.pause = () => {
+    if (!clock.isPlaying()) return;
+    webAudio.stopAll();
+    clock.detachAudioSource();
+    clock.pause();
+    state.isPlaying = false;
+    state.currentTime = clock.now();
+    state.mediaForceSyncNextTick = true;
+    hardSyncAllMedia(state.currentTime);
+    const tl = state.capturedTimeline;
+    if (tl) tl.pause();
+    runAdapters("pause");
+    syncMediaForCurrentState();
+    postState(true);
+  };
+
+  player.seek = (timeSeconds: number) => {
+    const quantized = quantizeTimeToFrame(
+      Math.max(0, Number(timeSeconds) || 0),
+      state.canonicalFps,
+    );
+    webAudio.stopAll();
+    clock.detachAudioSource();
+    const wasPlaying = clock.isPlaying();
+    if (wasPlaying) clock.pause();
+    clock.seek(quantized);
+    state.currentTime = clock.now();
+    state.isPlaying = false;
+    state.mediaForceSyncNextTick = true;
+    const tl = state.capturedTimeline;
+    if (tl) tl.pause();
+    seekTimelineAndAdapters(state.currentTime);
+    runAdapters("pause");
+    syncMediaForCurrentState();
+    postState(true);
+  };
+
+  player.renderSeek = (timeSeconds: number) => {
+    const quantized = quantizeTimeToFrame(
+      Math.max(0, Number(timeSeconds) || 0),
+      state.canonicalFps,
+    );
+    if (clock.isPlaying()) clock.pause();
+    clock.seek(quantized);
+    state.currentTime = clock.now();
+    state.isPlaying = false;
+    state.mediaForceSyncNextTick = true;
+    seekTimelineAndAdapters(state.currentTime);
+    syncMediaForCurrentState();
+    postState(true);
+  };
+
+  player.getTime = () => clock.now();
+  player.getDuration = () => {
+    const dur = clock.getDuration();
+    return Number.isFinite(dur) ? dur : 0;
+  };
+  player.isPlaying = () => clock.isPlaying();
+  player.setPlaybackRate = (rate: number) => {
+    applyPlaybackRate(rate);
+    clock.setRate(state.playbackRate);
+  };
+
+  // Sync clock duration from any captured timeline
+  if (state.capturedTimeline) {
+    const dur = getSafeTimelineDurationSeconds(state.capturedTimeline, 0);
+    if (dur > 0) clock.setDuration(dur);
+    state.capturedTimeline.pause();
+  }
+
+  // Re-delegate __player methods through the live `player` object so
+  // transport clock overrides are visible to iframe consumers reading
+  // window.__player. Uses property delegation so future methods added
+  // to createPlayerApiCompat are forwarded automatically.
+  const playerApi = window.__player;
+  if (playerApi) {
+    const delegated = [
+      "play",
+      "pause",
+      "seek",
+      "renderSeek",
+      "getTime",
+      "getDuration",
+      "isPlaying",
+    ] as const;
+    for (const key of delegated) {
+      Object.defineProperty(playerApi, key, {
+        get: () => player[key],
+        configurable: true,
+      });
+    }
+  }
+
+  // Start the rAF tick loop
+  state.transportRafId = window.requestAnimationFrame(transportTick);
   postTimeline();
   postState(true);
-
-  const originalSeek = player.seek;
-  player.seek = (timeSeconds: number) => {
-    markExplicitSeek();
-    originalSeek(timeSeconds);
-  };
-  const originalRenderSeek = player.renderSeek;
-  player.renderSeek = (timeSeconds: number) => {
-    markExplicitSeek();
-    originalRenderSeek(timeSeconds);
-  };
 
   const teardown = () => {
     if (state.tornDown) return;
     state.tornDown = true;
-    if (state.timelinePollIntervalId) {
-      clearInterval(state.timelinePollIntervalId);
-      state.timelinePollIntervalId = null;
+    if (state.transportRafId != null) {
+      window.cancelAnimationFrame(state.transportRafId);
+      state.transportRafId = null;
     }
+    state.transportClock = null;
+    webAudio.destroy();
     if (metadataRebindDebounceTimerId != null) {
       window.clearTimeout(metadataRebindDebounceTimerId);
       metadataRebindDebounceTimerId = null;

@@ -79,6 +79,8 @@ export function refreshRuntimeMediaCache(params?: {
 // inactive so the next activation gets a hard resync on its first tick.
 const lastOffset = new WeakMap<HTMLMediaElement, number>();
 
+const strictDriftSamples = new WeakMap<HTMLMediaElement, number>();
+
 // Elements that had a seek past their buffered range (common with streaming
 // MP3 where preload="metadata" only fetches the first few seconds). After
 // setting preload="auto" and calling load(), we mark the element so subsequent
@@ -130,6 +132,7 @@ export function syncRuntimeMedia(params: {
    * outbound message; further invocations are suppressed by the caller.
    */
   onAutoplayBlocked?: () => void;
+  forceSync?: boolean;
 }): void {
   // Either flag silences output. Combined up front so the per-clip loop is
   // a single branch instead of two.
@@ -165,26 +168,27 @@ export function syncRuntimeMedia(params: {
         // ignore unsupported playbackRate
         swallow("runtime.media.site1", err);
       }
-      // Drift correction. Forcing `el.currentTime = relTime` every frame
-      // causes an audible seek+rebuffer hiccup (readyState drops briefly).
+      // Drift correction — three tiers:
       //
-      // We only want to correct drift that came from an *event* — an explicit
-      // user seek, a sub-composition activation, or a timeline jump — not
-      // drift that grew naturally from initial-buffer latency. Telling them
-      // apart by timing: scrubs move the timeline-to-media offset by seconds
-      // in a single tick; buffer catch-up grows the offset by ~one frame
-      // (<20ms) per tick.
+      // 1. Hard sync (0.5s): first tick, timeline jumps (scrub), catastrophic
+      //    drift (>3s). Unconditional seek — accepts brief rebuffer cost.
+      //    Forcing el.currentTime every frame causes audible seek hiccups
+      //    (readyState drops briefly), so we only hard-seek when necessary.
       //
-      // The first tick a clip is active we don't have a previous offset to
-      // compare against — treat that as a hard resync so sub-compositions
-      // with non-zero `mediaStart` land on the right frame.
+      // 2. Strict sync (40ms, 2 consecutive samples): catches accumulated
+      //    drift from pause/play toggling or browser media pipeline latency.
+      //    Offset-stabilization guard (4ms/tick) prevents false corrections
+      //    during initial buffering where offset grows naturally.
       //
-      // Tradeoff: the 3 s catastrophic-drift valve means an unnoticed
-      // steady-state drift can accumulate up to ~3 s before we correct.
-      // For music / motion graphics this is inaudible; for lip-synced
-      // dialogue it is not. If that becomes a target use case, switch to
-      // a short-window tight threshold (e.g. tighten to 0.15 s when the
-      // last play/pause transition was >500 ms ago).
+      // 3. Force sync (20ms): on play/pause/seek/rate transitions, correct
+      //    any drift >20ms immediately via the forceSync one-shot flag.
+      //
+      // The first tick a clip is active has no previous offset to compare —
+      // treated as hard resync so sub-compositions with non-zero mediaStart
+      // land on the right frame.
+      const STRICT_DRIFT_THRESHOLD = 0.04;
+      const STRICT_REQUIRED_SAMPLES = 2;
+
       const currentElTime = el.currentTime || 0;
       const drift = Math.abs(currentElTime - relTime);
       const offset = relTime - currentElTime;
@@ -193,33 +197,38 @@ export function syncRuntimeMedia(params: {
       const firstTickOfClip = prevOffset === undefined;
       const offsetJumped = !firstTickOfClip && Math.abs(offset - prevOffset!) > 0.5;
       const catastrophicDrift = drift > 3;
-      if (drift > 0.5 && (firstTickOfClip || offsetJumped || catastrophicDrift)) {
+      const hardSync = drift > 0.5 && (firstTickOfClip || offsetJumped || catastrophicDrift);
+      // Only apply strict sync when offset has stabilized (not growing).
+      // During initial buffering, offset grows ~16ms/tick as the timeline
+      // advances while media stays at 0. Accumulated drift from pause/play
+      // toggling shows up as a stable, non-zero offset (delta near 0).
+      const offsetStabilized = prevOffset !== undefined && Math.abs(offset - prevOffset) < 0.004;
+      let strictSync = false;
+      if (!hardSync && !firstTickOfClip && offsetStabilized && drift > STRICT_DRIFT_THRESHOLD) {
+        const samples = (strictDriftSamples.get(el) ?? 0) + 1;
+        strictDriftSamples.set(el, samples);
+        if (samples >= STRICT_REQUIRED_SAMPLES) {
+          strictSync = true;
+          strictDriftSamples.set(el, 0);
+        }
+      } else if (drift <= STRICT_DRIFT_THRESHOLD) {
+        strictDriftSamples.set(el, 0);
+      }
+      if (hardSync || strictSync || (params.forceSync && drift > 0.02)) {
         try {
           el.currentTime = relTime;
         } catch (err) {
-          // ignore browser seek restrictions
           swallow("runtime.media.site2", err);
         }
-        // Detect failed seek: if currentTime didn't reach the target,
-        // the browser can't seek past its buffered range. Common with
-        // streaming MP3 where only the first ~15s is cached. Force a
-        // full network fetch via load() so the browser builds a complete
-        // media index. One-shot per element — subsequent sync ticks will
-        // re-attempt the seek once data arrives.
         if (Math.abs(el.currentTime - relTime) > 0.5 && !seekLoadRetried.has(el)) {
           seekLoadRetried.add(el);
           el.load();
           try {
             el.currentTime = relTime;
           } catch (err) {
-            // ignore — the seek will be retried on the next tick
             swallow("runtime.media.site3", err);
           }
         }
-        // After a hard seek, clear the in-flight play guard so the next tick
-        // can re-issue play(). Without this, a seek during playback leaves
-        // the element paused at the new position for 50-150ms (one poll
-        // interval) while the timeline continues — audible desync on scrub.
         playRequested.delete(el);
       }
       if (params.playing && el.paused && !playRequested.has(el)) {
@@ -258,6 +267,7 @@ export function syncRuntimeMedia(params: {
     // Clip left its active window — drop the offset baseline so the next
     // activation (e.g. re-entering a sub-composition) gets a hard resync.
     lastOffset.delete(el);
+    strictDriftSamples.delete(el);
     seekLoadRetried.delete(el);
     if (!el.paused) el.pause();
   }

@@ -178,7 +178,12 @@ async function validateInBrowser(
     });
 
     page.on("pageerror", (err) => {
-      errors.push({ level: "error", text: err instanceof Error ? err.message : String(err) });
+      const text = err instanceof Error ? err.message : String(err);
+      // CDN scripts (e.g. GSAP from jsdelivr) returning HTML error pages
+      // instead of JS produce "Unexpected token '<'" SyntaxErrors. These
+      // are network failures, not composition authoring errors.
+      if (text.includes("Unexpected token '<'") || text.includes("Unexpected token '&lt;'")) return;
+      errors.push({ level: "error", text });
     });
 
     page.on("requestfailed", (req) => {

@@ -1,5 +1,6 @@
 import type { RuntimeDeterministicAdapter, RuntimeTimelineLike } from "./types";
 import type { RuntimeMediaClip } from "./media";
+import type { TransportClock } from "./clock";
 
 export type RuntimeState = {
   capturedTimeline: RuntimeTimelineLike | null;
@@ -26,6 +27,13 @@ export type RuntimeState = {
    * takes over playback and further rejections are the same problem.
    */
   mediaAutoplayBlockedPosted: boolean;
+  /**
+   * One-shot flag: force a hard media sync on the next tick. Set on
+   * play/pause/seek/rate transitions to immediately correct any
+   * accumulated sub-threshold drift from pause/play toggling.
+   * Consumed (reset to false) by `syncMediaForCurrentState`.
+   */
+  mediaForceSyncNextTick: boolean;
   playbackRate: number;
   bridgeLastPostedFrame: number;
   bridgeLastPostedAt: number;
@@ -53,7 +61,6 @@ export type RuntimeState = {
    * silently push correction latency past the tolerance budget.
    */
   bridgeMaxPostIntervalMs: number;
-  timelinePollIntervalId: ReturnType<typeof setInterval> | null;
   controlBridgeHandler: ((event: MessageEvent) => void) | null;
   clampDurationLoggedRaw: number | null;
   beforeUnloadHandler: (() => void) | null;
@@ -67,6 +74,14 @@ export type RuntimeState = {
   tornDown: boolean;
   maxTimelineDurationSeconds: number;
   nativeVisualWatchdogTick: number;
+  /**
+   * Single-clock transport. The sole time authority — GSAP is always
+   * paused and seeked to `clock.now()` on each rAF tick. Eliminates
+   * the two-clock drift problem described in issue #668.
+   */
+  transportClock: TransportClock | null;
+  /** rAF ID for the single-clock tick loop. */
+  transportRafId: number | null;
 };
 
 export function createRuntimeState(): RuntimeState {
@@ -82,13 +97,13 @@ export function createRuntimeState(): RuntimeState {
     bridgeVolume: 1,
     mediaOutputMuted: false,
     mediaAutoplayBlockedPosted: false,
+    mediaForceSyncNextTick: false,
     playbackRate: 1,
     bridgeLastPostedFrame: -1,
     bridgeLastPostedAt: 0,
     bridgeLastPostedPlaying: false,
     bridgeLastPostedMuted: false,
     bridgeMaxPostIntervalMs: 80,
-    timelinePollIntervalId: null,
     controlBridgeHandler: null,
     clampDurationLoggedRaw: null,
     beforeUnloadHandler: null,
@@ -102,5 +117,7 @@ export function createRuntimeState(): RuntimeState {
     tornDown: false,
     maxTimelineDurationSeconds: 1800,
     nativeVisualWatchdogTick: 0,
+    transportClock: null,
+    transportRafId: null,
   };
 }
