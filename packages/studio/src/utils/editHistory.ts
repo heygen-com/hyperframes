@@ -1,4 +1,4 @@
-export type EditHistoryKind = "manual" | "timeline" | "source";
+export type EditHistoryKind = "manual" | "motion" | "timeline" | "source";
 
 export interface EditHistoryFileSnapshot {
   before: string;

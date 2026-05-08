@@ -54,16 +54,14 @@ import {
   getTimelineZoomPercent,
 } from "./player/components/timelineZoom";
 import {
-  TIMELINE_TOGGLE_SHORTCUT_LABEL,
-  getTimelineEditorHintDismissed,
   getTimelineToggleTitle,
-  setTimelineEditorHintDismissed,
   shouldHandleTimelineToggleHotkey,
 } from "./utils/timelineDiscovery";
 import { buildFrameCaptureFilename, buildFrameCaptureUrl } from "./utils/frameCapture";
 import { buildProjectHash, parseProjectIdFromHash } from "./utils/projectRouting";
 import { Camera } from "./icons/SystemIcons";
 import { PropertyPanel } from "./components/editor/PropertyPanel";
+import { MotionPanel } from "./components/editor/MotionPanel";
 import { googleFontStylesheetUrl } from "./components/editor/fontCatalog";
 import {
   fontFamilyFromAssetPath,
@@ -74,16 +72,29 @@ import {
   DomEditOverlay,
   type DomEditGroupPathOffsetCommit,
 } from "./components/editor/DomEditOverlay";
+import { TimelineLayerPanel } from "./components/editor/TimelineLayerPanel";
+import {
+  STUDIO_INSPECTOR_PANELS_ENABLED,
+  STUDIO_MANUAL_EDITING_DISABLED_TITLE,
+  STUDIO_MOTION_PANEL_ENABLED,
+  STUDIO_PREVIEW_MANUAL_EDITING_ENABLED,
+  STUDIO_TIMELINE_LAYER_INSPECTOR_ENABLED,
+} from "./components/editor/manualEditingAvailability";
 import {
   buildDefaultDomEditTextField,
   buildDomEditStylePatchOperation,
   buildDomEditTextPatchOperation,
   buildElementAgentPrompt,
+  collectDomEditLayerItems,
+  countDomEditChildLayers,
   findElementForSelection,
+  findElementForTimelineElement,
+  getDomEditLayerKey,
   getDomEditTargetKey,
   isTextEditableSelection,
   serializeDomEditTextFields,
   resolveDomEditSelection,
+  type DomEditLayerItem,
   type DomEditTextField,
   type DomEditSelection,
 } from "./components/editor/domEditing";
@@ -102,7 +113,29 @@ import {
   upsertStudioPathOffsetEdit,
   upsertStudioRotationEdit,
 } from "./components/editor/manualEdits";
+import {
+  STUDIO_MOTION_PATH,
+  applyStudioMotionManifest,
+  emptyStudioMotionManifest,
+  getStudioMotionForSelection,
+  installStudioMotionSeekReapply,
+  isStudioMotionManifestPath,
+  parseStudioMotionManifest,
+  removeStudioMotionForSelection,
+  serializeStudioMotionManifest,
+  type StudioGsapMotion,
+  type StudioMotionManifest,
+  upsertStudioGsapMotion,
+} from "./components/editor/studioMotion";
 import { saveProjectFilesWithHistory } from "./utils/studioFileHistory";
+import {
+  canInspectTimelineElement,
+  getTimelineElementKey,
+  getTimelineLayerVisibilityInPreview,
+  isTimelineElementActiveAtTime,
+  isTimelineLayerVisibleInPreview,
+  shouldShowTimelineInspectorBounds,
+} from "./utils/timelineInspector";
 
 interface EditingFile {
   path: string;
@@ -118,7 +151,7 @@ function getTimelineElementLabel(element: TimelineElement): string {
   return element.label || element.id || element.tag;
 }
 
-type RightPanelTab = "design" | "renders";
+type RightPanelTab = "design" | "motion" | "renders";
 
 const GENERIC_FONT_FAMILIES = new Set([
   "inherit",
@@ -242,7 +275,10 @@ function normalizeDomEditStyleValue(property: string, value: string): string {
   const trimmed = value.trim();
   if (!trimmed) return trimmed;
 
-  if (["border-radius", "font-size"].includes(property) && /^-?\d+(\.\d+)?$/.test(trimmed)) {
+  if (
+    ["border-radius", "border-width", "font-size", "letter-spacing"].includes(property) &&
+    /^-?\d+(\.\d+)?$/.test(trimmed)
+  ) {
     return `${trimmed}px`;
   }
 
@@ -424,6 +460,105 @@ function readPlaybackTime(target: object | null, key: string): number | null {
   } catch {
     return null;
   }
+}
+
+interface PreviewPlayerCompat {
+  getTime: () => number;
+  renderSeek: (timeSeconds: number) => void;
+}
+
+function getPreviewPlayer(win: Window | null | undefined): PreviewPlayerCompat | null {
+  const player = objectLike(win ? Reflect.get(win, "__player") : null);
+  if (!player) return null;
+  const getTime = Reflect.get(player, "getTime");
+  const renderSeek = Reflect.get(player, "renderSeek");
+  if (typeof getTime !== "function" || typeof renderSeek !== "function") return null;
+  return {
+    getTime: () => {
+      const value = getTime.call(player);
+      return typeof value === "number" && Number.isFinite(value) ? value : 0;
+    },
+    renderSeek: (timeSeconds: number) => {
+      renderSeek.call(player, timeSeconds);
+    },
+  };
+}
+
+function seekStudioPreview(iframe: HTMLIFrameElement | null, timeSeconds: number): boolean {
+  const player = getPreviewPlayer(iframe?.contentWindow);
+  if (!player) return false;
+  const nextTime = Math.max(0, timeSeconds);
+  player.renderSeek(nextTime);
+  usePlayerStore.getState().setCurrentTime(nextTime);
+  liveTime.notify(nextTime);
+  return true;
+}
+
+function parseFiniteSeconds(value: string | null): number | null {
+  if (value == null || value.trim() === "") return null;
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function resolveLayerVisibleSeekTime(
+  layerElement: HTMLElement,
+  timelineElement: TimelineElement | null,
+  player: PreviewPlayerCompat | null,
+): number | null {
+  if (!timelineElement || !player) return null;
+  const originalTime = player.getTime();
+
+  const clipStart = Math.max(0, timelineElement.start);
+  const clipEnd = Math.max(clipStart, clipStart + Math.max(0, timelineElement.duration));
+  const authoredStart = parseFiniteSeconds(
+    layerElement.getAttribute("data-start") ??
+      layerElement.closest<HTMLElement>("[data-start]")?.getAttribute("data-start") ??
+      null,
+  );
+  const preferredTime =
+    authoredStart == null
+      ? clipStart
+      : Math.min(clipEnd, Math.max(clipStart, clipStart + authoredStart));
+  const candidates = [preferredTime, clipStart];
+  const duration = clipEnd - clipStart;
+  if (duration > 0) {
+    const maxSamples = 24;
+    const frameStep = 1 / 24;
+    const step = Math.max(frameStep, duration / maxSamples);
+    for (let time = clipStart; time <= clipEnd + 0.0001; time += step) {
+      candidates.push(Math.min(clipEnd, time));
+    }
+  }
+  candidates.push(clipEnd);
+
+  let lastTried = preferredTime;
+  let clearestVisibleTime: number | null = null;
+  let clearestVisibleOpacity = 0;
+  let resolvedTime: number | null = null;
+  const seen = new Set<string>();
+  try {
+    for (const candidate of candidates) {
+      const time = Math.min(clipEnd, Math.max(clipStart, candidate));
+      const key = time.toFixed(4);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      lastTried = time;
+      player.renderSeek(time);
+      const visibility = getTimelineLayerVisibilityInPreview(layerElement);
+      if (visibility.visible && visibility.compositeOpacity > clearestVisibleOpacity) {
+        clearestVisibleTime = time;
+        clearestVisibleOpacity = visibility.compositeOpacity;
+      }
+      if (isTimelineLayerVisibleInPreview(layerElement, { minCompositeOpacity: 0.9 })) {
+        resolvedTime = time;
+        break;
+      }
+    }
+  } finally {
+    player.renderSeek(originalTime);
+  }
+
+  return resolvedTime ?? clearestVisibleTime ?? lastTried;
 }
 
 function pauseStudioPreviewPlayback(iframe: HTMLIFrameElement | null): number | null {
@@ -642,6 +777,16 @@ export function StudioApp() {
   const [copiedAgentPrompt, setCopiedAgentPrompt] = useState(false);
   const [agentModalOpen, setAgentModalOpen] = useState(false);
   const [previewIframe, setPreviewIframe] = useState<HTMLIFrameElement | null>(null);
+  const [inspectedTimelineElementId, setInspectedTimelineElementId] = useState<string | null>(null);
+  const [thumbnailedTimelineElementIds, setThumbnailedTimelineElementIds] = useState<
+    ReadonlySet<string>
+  >(() => new Set());
+  const [previewDocumentVersion, setPreviewDocumentVersion] = useState(0);
+  const refreshPreviewDocumentVersion = useCallback(() => {
+    setPreviewDocumentVersion((version) => version + 1);
+    window.setTimeout(() => setPreviewDocumentVersion((version) => version + 1), 80);
+    window.setTimeout(() => setPreviewDocumentVersion((version) => version + 1), 300);
+  }, []);
   // Auto-enter caption edit mode when the iframe contains .caption-group elements.
   // This is a subscription to external events (postMessage from runtime) — useEffect
   // is appropriate here. The runtime fires "state"/"timeline" messages after all
@@ -787,9 +932,6 @@ export function StudioApp() {
   const [appToast, setAppToast] = useState<AppToast | null>(null);
   const [timelineVisible, setTimelineVisible] = useState(true);
   const [captureFrameTime, setCaptureFrameTime] = useState(0);
-  const [timelineEditorHintDismissed, setTimelineEditorHintState] = useState(
-    getTimelineEditorHintDismissed,
-  );
   const dragCounterRef = useRef(0);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastBlockedTimelineToastAtRef = useRef(0);
@@ -814,6 +956,7 @@ export function StudioApp() {
   const setManualZoomPercent = usePlayerStore((s) => s.setManualZoomPercent);
   const currentTime = usePlayerStore((s) => s.currentTime);
   const timelineElements = usePlayerStore((s) => s.elements);
+  const selectedTimelineElementId = usePlayerStore((s) => s.selectedElementId);
   const setSelectedTimelineElementId = usePlayerStore((s) => s.setSelectedElementId);
   const timelineDuration = usePlayerStore((s) => s.duration);
   const effectiveTimelineDuration = useMemo(() => {
@@ -853,10 +996,6 @@ export function StudioApp() {
   useMountEffect(() => () => {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
   });
-  const dismissTimelineEditorHint = useCallback(() => {
-    setTimelineEditorHintState(true);
-    setTimelineEditorHintDismissed(true);
-  }, []);
   const handleTimelineToggleHotkey = useCallback(
     (event: KeyboardEvent) => {
       if (!shouldHandleTimelineToggleHotkey(event)) return;
@@ -1011,31 +1150,6 @@ export function StudioApp() {
   );
   const timelineToolbar = (
     <div className="border-b border-neutral-800/40 bg-neutral-950/96">
-      {timelineVisible && timelineElements.length > 0 && !timelineEditorHintDismissed && (
-        <div className="px-3 pt-3">
-          <div className="flex items-start justify-between gap-3 rounded-xl border border-studio-accent/20 bg-studio-accent/[0.07] px-3 py-3">
-            <div className="min-w-0">
-              <div className="text-[11px] font-semibold text-neutral-100">Timeline editor</div>
-              <p className="mt-1 text-[11px] leading-5 text-neutral-300">
-                Drag clips to move timing, and drag clip edges to resize them when handles are
-                available. Hide the panel anytime and bring it back with{" "}
-                <span className="font-mono text-[10px] text-studio-accent">
-                  {TIMELINE_TOGGLE_SHORTCUT_LABEL}
-                </span>
-                .
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={dismissTimelineEditorHint}
-              className="flex-shrink-0 rounded-md border border-neutral-700 px-2 py-1 text-[10px] font-medium text-neutral-300 transition-colors hover:border-neutral-500 hover:text-neutral-100"
-            >
-              Dismiss
-            </button>
-          </div>
-        </div>
-      )}
-
       <div className="flex items-center justify-between px-3 py-2">
         <div className="text-[10px] font-medium uppercase tracking-[0.16em] text-neutral-500">
           Timeline
@@ -1108,6 +1222,7 @@ export function StudioApp() {
   const [consoleErrors, setConsoleErrors] = useState<LintFinding[] | null>(null);
   const [linting, setLinting] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [, setStudioMotionRevision] = useState(0);
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const projectIdRef = useRef(projectId);
@@ -1124,7 +1239,15 @@ export function StudioApp() {
     emptyStudioManualEditManifest(),
   );
   const studioManualEditRevisionRef = useRef(0);
+  const studioMotionManifestRef = useRef<StudioMotionManifest>(emptyStudioMotionManifest());
+  const studioMotionRevisionRef = useRef(0);
   const applyStudioManualEditsToPreviewRef = useRef<
+    (
+      iframe?: HTMLIFrameElement | null,
+      options?: { forceFromDisk?: boolean; readFromDiskFirst?: boolean },
+    ) => Promise<void>
+  >(async () => {});
+  const applyStudioMotionToPreviewRef = useRef<
     (
       iframe?: HTMLIFrameElement | null,
       options?: { forceFromDisk?: boolean; readFromDiskFirst?: boolean },
@@ -1164,6 +1287,14 @@ export function StudioApp() {
         }
         return;
       }
+      if (isStudioMotionManifestPath(changedPath)) {
+        if (!recentDomEditSave) {
+          void applyStudioMotionToPreviewRef.current(previewIframeRef.current, {
+            forceFromDisk: true,
+          });
+        }
+        return;
+      }
       if (recentDomEditSave) return;
       if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
       refreshTimerRef.current = setTimeout(() => setRefreshKey((k) => k + 1), 400);
@@ -1189,6 +1320,9 @@ export function StudioApp() {
     if (!previousProjectId || previousProjectId === projectId) return;
     studioManualEditManifestRef.current = emptyStudioManualEditManifest();
     studioManualEditRevisionRef.current += 1;
+    studioMotionManifestRef.current = emptyStudioMotionManifest();
+    studioMotionRevisionRef.current += 1;
+    setStudioMotionRevision((revision) => revision + 1);
   }, [projectId]);
 
   // Load file tree when projectId changes.
@@ -1668,6 +1802,14 @@ export function StudioApp() {
         setSelectedTimelineElementId(null);
         return;
       }
+      if (!STUDIO_INSPECTOR_PANELS_ENABLED) {
+        domEditSelectionRef.current = null;
+        domEditGroupSelectionsRef.current = [];
+        setDomEditSelection(null);
+        setDomEditGroupSelections([]);
+        setSelectedTimelineElementId(null);
+        return;
+      }
 
       const isAdditiveSelection = Boolean(options?.additive);
       const currentSelection = domEditSelectionRef.current;
@@ -1720,7 +1862,7 @@ export function StudioApp() {
 
   const readHistoryProjectFile = useCallback(
     async (path: string): Promise<string> => {
-      return path === STUDIO_MANUAL_EDITS_PATH
+      return path === STUDIO_MANUAL_EDITS_PATH || path === STUDIO_MOTION_PATH
         ? readOptionalProjectFile(path)
         : readProjectFile(path);
     },
@@ -1730,7 +1872,7 @@ export function StudioApp() {
   const writeHistoryProjectFile = useCallback(
     async (path: string, content: string): Promise<void> => {
       await writeProjectFile(path, content);
-      if (path === STUDIO_MANUAL_EDITS_PATH) {
+      if (path === STUDIO_MANUAL_EDITS_PATH || path === STUDIO_MOTION_PATH) {
         domEditSaveTimestampRef.current = Date.now();
       }
     },
@@ -1817,6 +1959,81 @@ export function StudioApp() {
     [applyStudioManualEditsToPreview],
   );
 
+  const applyCurrentStudioMotionToPreview = useCallback(
+    (iframe: HTMLIFrameElement | null = previewIframeRef.current) => {
+      if (!iframe) return;
+      let doc: Document | null = null;
+      try {
+        doc = iframe.contentDocument;
+      } catch {
+        return;
+      }
+      if (!doc) return;
+      const previewDoc = doc;
+
+      const applyManifest = () => {
+        applyStudioMotionManifest(
+          previewDoc,
+          studioMotionManifestRef.current,
+          activeCompPathRef.current,
+        );
+      };
+      const applyAndInstallSeekHooks = () => {
+        applyManifest();
+        if (iframe.contentWindow) {
+          installStudioMotionSeekReapply(iframe.contentWindow, applyManifest);
+        }
+      };
+
+      const win = iframe.contentWindow;
+      win?.requestAnimationFrame?.(applyAndInstallSeekHooks);
+      win?.setTimeout?.(applyAndInstallSeekHooks, 120);
+    },
+    [],
+  );
+
+  const applyStudioMotionToPreview = useCallback(
+    async (
+      iframe: HTMLIFrameElement | null = previewIframeRef.current,
+      options?: { forceFromDisk?: boolean; readFromDiskFirst?: boolean },
+    ) => {
+      const readRevision = studioMotionRevisionRef.current;
+      const readFromDiskFirst = Boolean(options?.forceFromDisk || options?.readFromDiskFirst);
+      if (!readFromDiskFirst) {
+        applyCurrentStudioMotionToPreview(iframe);
+      }
+      let content: string;
+      try {
+        content = await readOptionalProjectFile(STUDIO_MOTION_PATH);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Failed to read motion manifest";
+        showToast(message);
+        if (readFromDiskFirst) {
+          applyCurrentStudioMotionToPreview(iframe);
+        }
+        return;
+      }
+      if (options?.forceFromDisk || readRevision === studioMotionRevisionRef.current) {
+        studioMotionManifestRef.current = parseStudioMotionManifest(content);
+        if (options?.forceFromDisk) studioMotionRevisionRef.current += 1;
+        setStudioMotionRevision((revision) => revision + 1);
+        applyCurrentStudioMotionToPreview(iframe);
+        return;
+      }
+      if (readFromDiskFirst) {
+        applyCurrentStudioMotionToPreview(iframe);
+      }
+    },
+    [applyCurrentStudioMotionToPreview, readOptionalProjectFile, showToast],
+  );
+  applyStudioMotionToPreviewRef.current = applyStudioMotionToPreview;
+
+  const applyStudioMotionToPreviewAfterRefresh = useCallback(
+    (iframe: HTMLIFrameElement | null = previewIframeRef.current) =>
+      applyStudioMotionToPreview(iframe, { readFromDiskFirst: true }),
+    [applyStudioMotionToPreview],
+  );
+
   const commitStudioManualEditManifestOptimistically = useCallback(
     (
       updateManifest: (manifest: StudioManualEditManifest) => StudioManualEditManifest,
@@ -1885,20 +2102,97 @@ export function StudioApp() {
     ],
   );
 
+  const commitStudioMotionManifestOptimistically = useCallback(
+    (
+      updateManifest: (manifest: StudioMotionManifest) => StudioMotionManifest,
+      options: { label: string; coalesceKey: string },
+    ) => {
+      const previousManifest = studioMotionManifestRef.current;
+      const nextManifest = updateManifest(previousManifest);
+      const previousContent = serializeStudioMotionManifest(previousManifest);
+      const nextContent = serializeStudioMotionManifest(nextManifest);
+      if (nextContent === previousContent) {
+        return;
+      }
+
+      const revision = studioMotionRevisionRef.current + 1;
+      studioMotionRevisionRef.current = revision;
+      studioMotionManifestRef.current = nextManifest;
+      setStudioMotionRevision((current) => current + 1);
+      applyCurrentStudioMotionToPreview(previewIframeRef.current);
+
+      const save = async () => {
+        const originalContent = await readOptionalProjectFile(STUDIO_MOTION_PATH);
+        const diskManifest = parseStudioMotionManifest(originalContent);
+        const nextDiskManifest = updateManifest(diskManifest);
+        const nextDiskContent = serializeStudioMotionManifest(nextDiskManifest);
+        if (nextDiskContent === originalContent) {
+          return;
+        }
+
+        const pid = projectIdRef.current;
+        if (!pid) throw new Error("No active project");
+        domEditSaveTimestampRef.current = Date.now();
+        await saveProjectFilesWithHistory({
+          projectId: pid,
+          label: options.label,
+          kind: "motion",
+          coalesceKey: options.coalesceKey,
+          files: { [STUDIO_MOTION_PATH]: nextDiskContent },
+          readFile: async () => originalContent,
+          writeFile: writeProjectFile,
+          recordEdit: editHistory.recordEdit,
+        });
+        domEditSaveTimestampRef.current = Date.now();
+
+        if (studioMotionRevisionRef.current === revision) {
+          studioMotionManifestRef.current = nextDiskManifest;
+          setStudioMotionRevision((current) => current + 1);
+          applyCurrentStudioMotionToPreview(previewIframeRef.current);
+        }
+      };
+
+      void queueDomEditSave(save).catch((error) => {
+        if (studioMotionRevisionRef.current === revision) {
+          studioMotionRevisionRef.current += 1;
+          studioMotionManifestRef.current = previousManifest;
+          setStudioMotionRevision((current) => current + 1);
+          applyCurrentStudioMotionToPreview(previewIframeRef.current);
+        }
+        const message = error instanceof Error ? error.message : "Failed to save motion edit";
+        showToast(message);
+      });
+    },
+    [
+      applyCurrentStudioMotionToPreview,
+      editHistory.recordEdit,
+      queueDomEditSave,
+      readOptionalProjectFile,
+      showToast,
+      writeProjectFile,
+    ],
+  );
+
   const syncHistoryPreviewAfterApply = useCallback(
     async (paths: string[] | undefined) => {
       const changedPaths = paths ?? [];
       const manualManifestOnly =
         changedPaths.length > 0 && changedPaths.every((path) => path === STUDIO_MANUAL_EDITS_PATH);
+      const motionManifestOnly =
+        changedPaths.length > 0 && changedPaths.every((path) => path === STUDIO_MOTION_PATH);
 
       if (manualManifestOnly) {
         await applyStudioManualEditsToPreview(previewIframeRef.current, { forceFromDisk: true });
         return;
       }
+      if (motionManifestOnly) {
+        await applyStudioMotionToPreview(previewIframeRef.current, { forceFromDisk: true });
+        return;
+      }
 
       setRefreshKey((key) => key + 1);
     },
-    [applyStudioManualEditsToPreview],
+    [applyStudioManualEditsToPreview, applyStudioMotionToPreview],
   );
 
   const handleUndo = useCallback(async () => {
@@ -2037,6 +2331,169 @@ export function StudioApp() {
     if (domEditSelectionsTargetSame(domEditHoverSelectionRef.current, selection)) return;
     domEditHoverSelectionRef.current = selection;
     setDomEditHoverSelection(selection);
+  }, []);
+
+  const buildDomSelectionForTimelineElement = useCallback(
+    (element: TimelineElement): DomEditSelection | null => {
+      const iframe = previewIframeRef.current;
+      let doc: Document | null = null;
+      try {
+        doc = iframe?.contentDocument ?? null;
+      } catch {
+        return null;
+      }
+      if (!doc) return null;
+
+      const targetElement = findElementForTimelineElement(doc, element, {
+        activeCompositionPath: activeCompPath,
+        compIdToSrc,
+        isMasterView,
+      });
+      return targetElement
+        ? buildDomSelectionFromTarget(targetElement, { preferClipAncestor: false })
+        : null;
+    },
+    [activeCompPath, buildDomSelectionFromTarget, compIdToSrc, isMasterView],
+  );
+
+  const inspectedTimelineElement = useMemo(
+    () =>
+      timelineElements.find(
+        (element) => getTimelineElementKey(element) === inspectedTimelineElementId,
+      ) ?? null,
+    [inspectedTimelineElementId, timelineElements],
+  );
+
+  const timelineLayerChildCounts = useMemo(() => {
+    void previewDocumentVersion;
+    const counts = new Map<string, number>();
+    if (!STUDIO_TIMELINE_LAYER_INSPECTOR_ENABLED || !inspectedTimelineElement) return counts;
+
+    const key = getTimelineElementKey(inspectedTimelineElement);
+    if (key) {
+      const selection = buildDomSelectionForTimelineElement(inspectedTimelineElement);
+      const count = countDomEditChildLayers(selection?.element, {
+        activeCompositionPath: activeCompPath,
+        isMasterView,
+      });
+      if (count > 0) counts.set(key, count);
+    }
+
+    return counts;
+  }, [
+    activeCompPath,
+    buildDomSelectionForTimelineElement,
+    inspectedTimelineElement,
+    isMasterView,
+    previewDocumentVersion,
+  ]);
+
+  const inspectedTimelineLayers = useMemo(() => {
+    void previewDocumentVersion;
+    if (!STUDIO_TIMELINE_LAYER_INSPECTOR_ENABLED || !inspectedTimelineElement) return [];
+    const selection = buildDomSelectionForTimelineElement(inspectedTimelineElement);
+    return collectDomEditLayerItems(selection?.element, {
+      activeCompositionPath: activeCompPath,
+      isMasterView,
+    });
+  }, [
+    activeCompPath,
+    buildDomSelectionForTimelineElement,
+    inspectedTimelineElement,
+    isMasterView,
+    previewDocumentVersion,
+  ]);
+
+  const selectedTimelineLayerKey = useMemo(
+    () => (domEditSelection ? getDomEditLayerKey(domEditSelection) : null),
+    [domEditSelection],
+  );
+
+  const handleTimelineElementSelect = useCallback(
+    (element: TimelineElement | null) => {
+      if (!STUDIO_INSPECTOR_PANELS_ENABLED) return;
+      if (!element) {
+        applyDomSelection(null, { revealPanel: false });
+        setInspectedTimelineElementId(null);
+        return;
+      }
+
+      const selection = buildDomSelectionForTimelineElement(element);
+      if (selection) applyDomSelection(selection);
+    },
+    [applyDomSelection, buildDomSelectionForTimelineElement],
+  );
+
+  const handleTimelineElementInspect = useCallback(
+    (element: TimelineElement) => {
+      if (!STUDIO_TIMELINE_LAYER_INSPECTOR_ENABLED || !STUDIO_INSPECTOR_PANELS_ENABLED) return;
+      if (!canInspectTimelineElement(element)) {
+        showToast("Audio clips do not have visual layers.", "info");
+        return;
+      }
+
+      const key = getTimelineElementKey(element);
+      if (!key) return;
+      setInspectedTimelineElementId((current) => (current === key ? null : key));
+      setLeftCollapsed(false);
+
+      const iframe = previewIframeRef.current;
+      if (!shouldShowTimelineInspectorBounds(currentTime, element)) {
+        seekStudioPreview(iframe, element.start);
+      }
+
+      const selection = buildDomSelectionForTimelineElement(element);
+      if (selection) applyDomSelection(selection);
+    },
+    [applyDomSelection, buildDomSelectionForTimelineElement, currentTime, showToast],
+  );
+
+  const handleToggleTimelineElementThumbnail = useCallback((element: TimelineElement) => {
+    const key = getTimelineElementKey(element);
+    if (!key) return;
+    setThumbnailedTimelineElementIds((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
+
+  const handleTimelineLayerSelect = useCallback(
+    (layer: DomEditLayerItem) => {
+      if (!STUDIO_INSPECTOR_PANELS_ENABLED) return;
+
+      const iframe = previewIframeRef.current;
+      const player = getPreviewPlayer(iframe?.contentWindow);
+      const visibleTime = resolveLayerVisibleSeekTime(
+        layer.element,
+        inspectedTimelineElement,
+        player,
+      );
+      if (visibleTime != null) {
+        seekStudioPreview(iframe, visibleTime);
+      }
+
+      const selection = buildDomSelectionFromTarget(layer.element, { preferClipAncestor: false });
+      if (!selection) {
+        showToast("Studio could not resolve this nested layer.", "error");
+        return;
+      }
+
+      applyDomSelection(selection);
+      requestAnimationFrame(refreshPreviewDocumentVersion);
+    },
+    [
+      applyDomSelection,
+      buildDomSelectionFromTarget,
+      inspectedTimelineElement,
+      refreshPreviewDocumentVersion,
+      showToast,
+    ],
+  );
+
+  const handleTimelineLayerPanelClose = useCallback(() => {
+    setInspectedTimelineElementId(null);
   }, []);
 
   const preloadAgentPromptSnippet = useCallback(
@@ -2308,6 +2765,42 @@ export function StudioApp() {
     [
       applyCurrentStudioManualEditsToPreview,
       commitStudioManualEditManifestOptimistically,
+      refreshDomEditSelectionFromPreview,
+    ],
+  );
+
+  const handleDomMotionCommit = useCallback(
+    (
+      selection: DomEditSelection,
+      motion: Omit<StudioGsapMotion, "kind" | "target" | "updatedAt">,
+    ) => {
+      commitStudioMotionManifestOptimistically(
+        (manifest) => upsertStudioGsapMotion(manifest, selection, motion),
+        {
+          label: "Set GSAP motion",
+          coalesceKey: `motion:${getDomEditTargetKey(selection)}`,
+        },
+      );
+      refreshDomEditSelectionFromPreview(selection);
+    },
+    [commitStudioMotionManifestOptimistically, refreshDomEditSelectionFromPreview],
+  );
+
+  const handleDomMotionClear = useCallback(
+    (selection: DomEditSelection) => {
+      commitStudioMotionManifestOptimistically(
+        (manifest) => removeStudioMotionForSelection(manifest, selection),
+        {
+          label: "Clear GSAP motion",
+          coalesceKey: `motion:${getDomEditTargetKey(selection)}`,
+        },
+      );
+      applyCurrentStudioMotionToPreview(previewIframeRef.current);
+      refreshDomEditSelectionFromPreview(selection);
+    },
+    [
+      applyCurrentStudioMotionToPreview,
+      commitStudioMotionManifestOptimistically,
       refreshDomEditSelectionFromPreview,
     ],
   );
@@ -2592,13 +3085,14 @@ export function StudioApp() {
       syncPreviewHistoryHotkey(iframe);
       consoleErrorsRef.current = [];
       setConsoleErrors(null);
+      refreshPreviewDocumentVersion();
     },
-    [syncPreviewHistoryHotkey, syncPreviewTimelineHotkey],
+    [refreshPreviewDocumentVersion, syncPreviewHistoryHotkey, syncPreviewTimelineHotkey],
   );
 
   const handlePreviewCanvasMouseDown = useCallback(
     (e: React.MouseEvent<HTMLDivElement>, options?: { preferClipAncestor?: boolean }) => {
-      if (captionEditMode) return;
+      if (!STUDIO_PREVIEW_MANUAL_EDITING_ENABLED || captionEditMode) return;
       const nextSelection = resolveDomSelectionFromPreviewPoint(e.clientX, e.clientY, {
         preferClipAncestor: options?.preferClipAncestor ?? true,
       });
@@ -2615,7 +3109,7 @@ export function StudioApp() {
 
   const handlePreviewCanvasPointerMove = useCallback(
     (e: React.PointerEvent<HTMLDivElement>, options?: { preferClipAncestor?: boolean }) => {
-      if (captionEditMode) {
+      if (!STUDIO_PREVIEW_MANUAL_EDITING_ENABLED || captionEditMode) {
         updateDomEditHoverSelection(null);
         return null;
       }
@@ -2675,7 +3169,7 @@ export function StudioApp() {
     if (!previewIframe) return;
 
     const syncSelectionFromDocument = () => {
-      if (captionEditMode) return;
+      if (!STUDIO_INSPECTOR_PANELS_ENABLED || captionEditMode) return;
       const currentSelection = domEditSelectionRef.current;
       if (!currentSelection) return;
       let doc: Document | null = null;
@@ -2730,16 +3224,24 @@ export function StudioApp() {
 
     attachErrorCapture();
     syncPreviewHistoryHotkey(previewIframe);
-    void applyStudioManualEditsToPreviewAfterRefresh(previewIframe);
+    void (async () => {
+      await applyStudioManualEditsToPreviewAfterRefresh(previewIframe);
+      await applyStudioMotionToPreviewAfterRefresh(previewIframe);
+    })();
     syncSelectionFromDocument();
+    refreshPreviewDocumentVersion();
 
     const handleLoad = () => {
       consoleErrorsRef.current = [];
       setConsoleErrors(null);
       attachErrorCapture();
       syncPreviewHistoryHotkey(previewIframe);
-      void applyStudioManualEditsToPreviewAfterRefresh(previewIframe);
+      void (async () => {
+        await applyStudioManualEditsToPreviewAfterRefresh(previewIframe);
+        await applyStudioMotionToPreviewAfterRefresh(previewIframe);
+      })();
       syncSelectionFromDocument();
+      refreshPreviewDocumentVersion();
     };
 
     previewIframe.addEventListener("load", handleLoad);
@@ -2750,9 +3252,11 @@ export function StudioApp() {
     activeCompPath,
     applyDomSelection,
     applyStudioManualEditsToPreviewAfterRefresh,
+    applyStudioMotionToPreviewAfterRefresh,
     buildDomSelectionFromTarget,
     captionEditMode,
     previewIframe,
+    refreshPreviewDocumentVersion,
     syncPreviewHistoryHotkey,
   ]);
 
@@ -2761,6 +3265,14 @@ export function StudioApp() {
     if (!captionEditMode) return;
     applyDomSelection(null, { revealPanel: false });
   }, [applyDomSelection, captionEditMode]);
+
+  // eslint-disable-next-line no-restricted-syntax
+  useEffect(() => {
+    if (STUDIO_INSPECTOR_PANELS_ENABLED) return;
+    updateDomEditHoverSelection(null);
+    applyDomSelection(null, { revealPanel: false });
+    if (rightPanelTab !== "renders") setRightPanelTab("renders");
+  }, [applyDomSelection, rightPanelTab, updateDomEditHoverSelection]);
 
   // eslint-disable-next-line no-restricted-syntax
   useEffect(
@@ -3191,6 +3703,42 @@ export function StudioApp() {
         })),
     [assets, projectId],
   );
+  const selectedStudioMotion =
+    STUDIO_INSPECTOR_PANELS_ENABLED && domEditSelection
+      ? getStudioMotionForSelection(studioMotionManifestRef.current, domEditSelection)
+      : null;
+  const selectedTimelineElement = useMemo(
+    () =>
+      selectedTimelineElementId
+        ? (timelineElements.find(
+            (element) => getTimelineElementKey(element) === selectedTimelineElementId,
+          ) ?? null)
+        : null,
+    [selectedTimelineElementId, timelineElements],
+  );
+  const designPanelActive = STUDIO_INSPECTOR_PANELS_ENABLED && rightPanelTab === "design";
+  const motionPanelActive =
+    STUDIO_INSPECTOR_PANELS_ENABLED && STUDIO_MOTION_PANEL_ENABLED && rightPanelTab === "motion";
+  const inspectorPanelActive = designPanelActive || motionPanelActive;
+  const shouldShowSelectedDomBounds =
+    inspectorPanelActive &&
+    !rightCollapsed &&
+    (!selectedTimelineElement ||
+      isTimelineElementActiveAtTime(currentTime, selectedTimelineElement));
+  const inspectorButtonActive =
+    STUDIO_INSPECTOR_PANELS_ENABLED && !rightCollapsed && inspectorPanelActive;
+  const timelineLayerPanel =
+    STUDIO_TIMELINE_LAYER_INSPECTOR_ENABLED &&
+    inspectedTimelineElement &&
+    inspectedTimelineLayers.length > 0 ? (
+      <TimelineLayerPanel
+        clipLabel={getTimelineElementLabel(inspectedTimelineElement)}
+        layers={inspectedTimelineLayers}
+        selectedLayerKey={selectedTimelineLayerKey}
+        onSelectLayer={handleTimelineLayerSelect}
+        onClose={handleTimelineLayerPanelClose}
+      />
+    ) : null;
 
   if (resolving || !projectId) {
     return (
@@ -3286,8 +3834,10 @@ export function StudioApp() {
             <span>Capture</span>
           </a>
           <button
+            type="button"
             onClick={() => {
-              if (rightCollapsed || rightPanelTab !== "design") {
+              if (!STUDIO_INSPECTOR_PANELS_ENABLED) return;
+              if (rightCollapsed || !inspectorPanelActive) {
                 setRightPanelTab("design");
                 setRightCollapsed(false);
                 return;
@@ -3295,11 +3845,20 @@ export function StudioApp() {
               clearDomSelection();
               setRightCollapsed(true);
             }}
+            disabled={!STUDIO_INSPECTOR_PANELS_ENABLED}
             className={`h-7 flex items-center gap-1.5 px-2.5 rounded-md text-[11px] font-medium border transition-colors ${
-              !rightCollapsed
+              inspectorButtonActive
                 ? "text-studio-accent bg-studio-accent/10 border-studio-accent/30"
-                : "text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800 border-transparent"
+                : STUDIO_INSPECTOR_PANELS_ENABLED
+                  ? "text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800 border-transparent"
+                  : "cursor-not-allowed border-transparent text-neutral-700"
             }`}
+            title={
+              STUDIO_INSPECTOR_PANELS_ENABLED ? "Inspector" : STUDIO_MANUAL_EDITING_DISABLED_TITLE
+            }
+            aria-label={
+              STUDIO_INSPECTOR_PANELS_ENABLED ? "Inspector" : STUDIO_MANUAL_EDITING_DISABLED_TITLE
+            }
           >
             <svg
               width="12"
@@ -3393,6 +3952,7 @@ export function StudioApp() {
             onLint={handleLint}
             linting={linting}
             onToggleCollapse={toggleLeftSidebar}
+            takeoverContent={timelineLayerPanel}
           />
         )}
 
@@ -3423,28 +3983,36 @@ export function StudioApp() {
             onMoveElement={handleTimelineElementMove}
             onResizeElement={handleTimelineElementResize}
             onBlockedEditAttempt={handleBlockedTimelineEdit}
+            onSelectTimelineElement={handleTimelineElementSelect}
+            onInspectTimelineElement={handleTimelineElementInspect}
+            inspectedTimelineElementId={inspectedTimelineElementId}
+            timelineLayerChildCounts={timelineLayerChildCounts}
+            thumbnailedTimelineElementIds={thumbnailedTimelineElementIds}
+            onToggleTimelineElementThumbnail={handleToggleTimelineElementThumbnail}
             onCompIdToSrcChange={setCompIdToSrc}
             onCompositionChange={(compPath) => {
               // Sync activeCompPath when user drills down via timeline double-click
               // or navigates back via breadcrumb — keeps sidebar + thumbnails in sync.
               setActiveCompPath(compPath);
+              setInspectedTimelineElementId(null);
+              refreshPreviewDocumentVersion();
             }}
             onIframeRef={handlePreviewIframeRef}
             previewOverlay={
               captionEditMode ? (
                 <CaptionOverlay iframeRef={previewIframeRef} />
-              ) : (
+              ) : STUDIO_INSPECTOR_PANELS_ENABLED ? (
                 <DomEditOverlay
                   iframeRef={previewIframeRef}
                   activeCompositionPath={activeCompPath}
-                  hoverSelection={captionEditMode ? null : domEditHoverSelection}
-                  selection={
-                    !rightCollapsed && rightPanelTab === "design" ? domEditSelection : null
+                  hoverSelection={
+                    STUDIO_PREVIEW_MANUAL_EDITING_ENABLED && !captionEditMode
+                      ? domEditHoverSelection
+                      : null
                   }
-                  groupSelections={
-                    !rightCollapsed && rightPanelTab === "design" ? domEditGroupSelections : []
-                  }
-                  allowCanvasMovement
+                  selection={shouldShowSelectedDomBounds ? domEditSelection : null}
+                  groupSelections={shouldShowSelectedDomBounds ? domEditGroupSelections : []}
+                  allowCanvasMovement={STUDIO_PREVIEW_MANUAL_EDITING_ENABLED}
                   onCanvasMouseDown={handlePreviewCanvasMouseDown}
                   onCanvasPointerMove={handlePreviewCanvasPointerMove}
                   onCanvasPointerLeave={handlePreviewCanvasPointerLeave}
@@ -3456,7 +4024,7 @@ export function StudioApp() {
                   onBoxSizeCommit={handleDomBoxSizeCommit}
                   onRotationCommit={handleDomRotationCommit}
                 />
-              )
+              ) : null
             }
             timelineFooter={
               captionEditMode ? (
@@ -3499,17 +4067,34 @@ export function StudioApp() {
               ) : (
                 <>
                   <div className="flex items-center gap-1 border-b border-neutral-800 px-3 py-2">
-                    <button
-                      type="button"
-                      onClick={() => setRightPanelTab("design")}
-                      className={`h-8 rounded-xl px-3 text-[11px] font-medium transition-colors ${
-                        rightPanelTab === "design"
-                          ? "bg-neutral-800 text-white"
-                          : "text-neutral-500 hover:bg-neutral-800/70 hover:text-neutral-200"
-                      }`}
-                    >
-                      Design
-                    </button>
+                    {STUDIO_INSPECTOR_PANELS_ENABLED && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => setRightPanelTab("design")}
+                          className={`h-8 rounded-xl px-3 text-[11px] font-medium transition-colors ${
+                            rightPanelTab === "design"
+                              ? "bg-neutral-800 text-white"
+                              : "text-neutral-500 hover:bg-neutral-800/70 hover:text-neutral-200"
+                          }`}
+                        >
+                          Design
+                        </button>
+                        {STUDIO_MOTION_PANEL_ENABLED && (
+                          <button
+                            type="button"
+                            onClick={() => setRightPanelTab("motion")}
+                            className={`h-8 rounded-xl px-3 text-[11px] font-medium transition-colors ${
+                              rightPanelTab === "motion"
+                                ? "bg-neutral-800 text-white"
+                                : "text-neutral-500 hover:bg-neutral-800/70 hover:text-neutral-200"
+                            }`}
+                          >
+                            Motion
+                          </button>
+                        )}
+                      </>
+                    )}
                     <button
                       type="button"
                       onClick={() => setRightPanelTab("renders")}
@@ -3525,7 +4110,7 @@ export function StudioApp() {
                     </button>
                   </div>
                   <div className="min-h-0 flex-1">
-                    {rightPanelTab === "design" ? (
+                    {designPanelActive ? (
                       <PropertyPanel
                         projectId={projectId}
                         assets={assets}
@@ -3544,6 +4129,14 @@ export function StudioApp() {
                         onImportAssets={handleImportFiles}
                         fontAssets={fontAssets}
                         onImportFonts={handleImportFonts}
+                      />
+                    ) : motionPanelActive ? (
+                      <MotionPanel
+                        element={domEditGroupSelections.length > 1 ? null : domEditSelection}
+                        motion={selectedStudioMotion}
+                        onClearSelection={clearDomSelection}
+                        onSetMotion={handleDomMotionCommit}
+                        onClearMotion={handleDomMotionClear}
                       />
                     ) : (
                       <RenderQueue

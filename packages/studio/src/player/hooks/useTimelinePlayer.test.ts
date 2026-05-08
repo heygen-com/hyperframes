@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 import { Window } from "happy-dom";
 import {
   buildStandaloneRootTimelineElement,
+  createStaticSeekPlaybackAdapter,
   createTimelineElementFromManifestClip,
   findTimelineDomNodeForClip,
   getTimelineElementSelector,
   parseTimelineFromDOM,
+  readTimelineDurationFromDocument,
   type ClipManifestClip,
   mergeTimelineElementsPreservingDowngrades,
   resolveStandaloneRootCompositionSrc,
@@ -56,6 +58,102 @@ function mockKeyboardEvent(
     ...overrides,
   };
 }
+
+function createManualAnimationClock() {
+  let now = 0;
+  let nextId = 0;
+  const callbacks = new Map<number, FrameRequestCallback>();
+  return {
+    now: () => now,
+    requestAnimationFrame: (callback: FrameRequestCallback) => {
+      nextId += 1;
+      callbacks.set(nextId, callback);
+      return nextId;
+    },
+    cancelAnimationFrame: (id: number) => {
+      callbacks.delete(id);
+    },
+    step: (milliseconds: number) => {
+      now += milliseconds;
+      const pending = Array.from(callbacks.entries());
+      callbacks.clear();
+      for (const [, callback] of pending) {
+        callback(now);
+      }
+    },
+    scheduledCount: () => callbacks.size,
+  };
+}
+
+describe("readTimelineDurationFromDocument", () => {
+  it("prefers the root composition duration", () => {
+    const doc = createDocument(`
+      <div data-composition-id="main" data-duration="3">
+        <section data-start="0" data-duration="8"></section>
+      </div>
+    `);
+
+    expect(readTimelineDurationFromDocument(doc)).toBe(3);
+  });
+
+  it("falls back to the maximum child end time", () => {
+    const doc = createDocument(`
+      <div data-composition-id="main">
+        <section data-start="1" data-duration="2"></section>
+        <section data-start="4" data-duration="1.5"></section>
+      </div>
+    `);
+
+    expect(readTimelineDurationFromDocument(doc)).toBe(5.5);
+  });
+});
+
+describe("createStaticSeekPlaybackAdapter", () => {
+  it("drives renderSeek while playing a duration-only composition", () => {
+    const clock = createManualAnimationClock();
+    const renderedTimes: number[] = [];
+    const adapter = createStaticSeekPlaybackAdapter(
+      {
+        getTime: () => 0,
+        renderSeek: (time: number) => {
+          renderedTimes.push(time);
+        },
+      },
+      3,
+      clock,
+    );
+
+    adapter.seek(1);
+    adapter.play();
+    clock.step(500);
+    clock.step(2_000);
+
+    expect(renderedTimes).toEqual([1, 1.5, 3]);
+    expect(adapter.getTime()).toBe(3);
+    expect(adapter.isPlaying()).toBe(false);
+    expect(clock.scheduledCount()).toBe(0);
+  });
+
+  it("clamps explicit seeks to the fallback duration", () => {
+    const clock = createManualAnimationClock();
+    const renderedTimes: number[] = [];
+    const adapter = createStaticSeekPlaybackAdapter(
+      {
+        getTime: () => 0,
+        renderSeek: (time: number) => {
+          renderedTimes.push(time);
+        },
+      },
+      2,
+      clock,
+    );
+
+    adapter.seek(9);
+
+    expect(renderedTimes).toEqual([2]);
+    expect(adapter.getTime()).toBe(2);
+  });
+});
 
 describe("buildStandaloneRootTimelineElement", () => {
   it("includes selector and source metadata for standalone composition fallback clips", () => {
@@ -151,6 +249,36 @@ describe("findTimelineDomNodeForClip", () => {
 });
 
 describe("anonymous timeline identity", () => {
+  it("adds root-level untimed DOM layers as implicit full-duration layers", () => {
+    const doc = createDocument(`
+      <div data-composition-id="compare" data-start="0" data-duration="18">
+        <link rel="stylesheet" href="styles.css" />
+        <div class="scene-shell">
+          <div class="topline">Title</div>
+        </div>
+        <video id="main-video" class="clip main-video" data-start="0" data-duration="18" data-track-index="1"></video>
+        <script></script>
+      </div>
+    `);
+
+    const elements = parseTimelineFromDOM(doc, 18);
+
+    expect(elements).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          duration: 18,
+          label: "Scene Shell",
+          selector: ".scene-shell",
+          start: 0,
+          tag: "div",
+          timingSource: "implicit",
+        }),
+      ]),
+    );
+    expect(elements.find((element) => element.tag === "link")).toBeUndefined();
+    expect(elements.find((element) => element.tag === "script")).toBeUndefined();
+  });
+
   it("keeps fallback-parsed anonymous clips distinct when labels match", () => {
     const doc = createDocument(`
       <div data-composition-id="main" data-start="0" data-duration="8">

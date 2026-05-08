@@ -228,7 +228,16 @@ export function getTimelineEditCapabilities(input: {
   playbackStart?: number;
   playbackStartAttr?: "media-start" | "playback-start";
   sourceDuration?: number;
+  timingSource?: "authored" | "implicit";
 }): TimelineEditCapabilities {
+  if (input.timingSource === "implicit") {
+    return {
+      canMove: false,
+      canTrimStart: false,
+      canTrimEnd: false,
+    };
+  }
+
   const canPatch = hasPatchableTimelineTarget(input);
   const hasFiniteDuration = Number.isFinite(input.duration) && input.duration > 0;
   const hasDeterministicWindow = isDeterministicTimelineWindow(input);

@@ -262,6 +262,21 @@ describe("getTimelineEditCapabilities", () => {
     });
   });
 
+  it("keeps implicit layout layers selectable but not timeline-editable", () => {
+    expect(
+      getTimelineEditCapabilities({
+        duration: 8,
+        selector: ".scene-shell",
+        tag: "div",
+        timingSource: "implicit",
+      }),
+    ).toEqual({
+      canMove: false,
+      canTrimStart: false,
+      canTrimEnd: false,
+    });
+  });
+
   it("allows move and both trims for patchable media clips with offset support", () => {
     expect(
       getTimelineEditCapabilities({

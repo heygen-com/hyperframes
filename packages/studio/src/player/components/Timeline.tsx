@@ -28,6 +28,11 @@ import {
 } from "./timelineTheme";
 import { getPinchTimelineZoomPercent, getTimelinePixelsPerSecond } from "./timelineZoom";
 import { TIMELINE_ASSET_MIME } from "../../utils/timelineAssetDrop";
+import {
+  canInspectTimelineElement,
+  getTimelineElementKey,
+  isAudioTimelineElement,
+} from "../../utils/timelineInspector";
 
 /* ── Layout ─────────────────────────────────────────────────────── */
 const GUTTER = 32;
@@ -329,6 +334,12 @@ interface TimelineProps {
     element: import("../store/playerStore").TimelineElement,
     intent: BlockedTimelineEditIntent,
   ) => void;
+  onSelectElement?: (element: import("../store/playerStore").TimelineElement | null) => void;
+  onInspectElement?: (element: import("../store/playerStore").TimelineElement) => void;
+  inspectedElementId?: string | null;
+  layerChildCounts?: ReadonlyMap<string, number>;
+  thumbnailedElementIds?: ReadonlySet<string>;
+  onToggleElementThumbnail?: (element: import("../store/playerStore").TimelineElement) => void;
   theme?: Partial<TimelineTheme>;
 }
 
@@ -376,6 +387,12 @@ export const Timeline = memo(function Timeline({
   onMoveElement,
   onResizeElement,
   onBlockedEditAttempt,
+  onSelectElement,
+  onInspectElement,
+  inspectedElementId,
+  layerChildCounts,
+  thumbnailedElementIds,
+  onToggleElementThumbnail,
   theme: themeOverrides,
 }: TimelineProps = {}) {
   const theme = useMemo(() => ({ ...defaultTimelineTheme, ...themeOverrides }), [themeOverrides]);
@@ -1482,6 +1499,14 @@ export const Timeline = memo(function Timeline({
                     const elementKey = el.key ?? el.id;
                     const capabilities = getTimelineEditCapabilities(el);
                     const isSelected = selectedElementId === elementKey;
+                    const canInspectClip = canInspectTimelineElement(el);
+                    const isInspectorActive =
+                      canInspectClip && inspectedElementId === getTimelineElementKey(el);
+                    const childCount = canInspectClip
+                      ? (layerChildCounts?.get(elementKey) ?? 0)
+                      : 0;
+                    const isThumbnailActive = thumbnailedElementIds?.has(elementKey) ?? false;
+                    const thumbnailLabel = isAudioTimelineElement(el) ? "waveform" : "thumbnail";
                     const isComposition = !!el.compositionSrc;
                     const clipKey = `${elementKey}-${i}`;
                     const isHovered = hoveredClip === clipKey;
@@ -1505,8 +1530,32 @@ export const Timeline = memo(function Timeline({
                         theme={theme}
                         trackStyle={clipStyle}
                         isComposition={isComposition}
+                        isInspectorActive={isInspectorActive}
+                        isThumbnailActive={isThumbnailActive}
+                        thumbnailLabel={thumbnailLabel}
+                        childCount={childCount}
                         onHoverStart={() => setHoveredClip(clipKey)}
                         onHoverEnd={() => setHoveredClip(null)}
+                        onInspectorClick={
+                          canInspectClip && onInspectElement
+                            ? (e) => {
+                                e.stopPropagation();
+                                if (suppressClickRef.current) return;
+                                setSelectedElementId(elementKey);
+                                onSelectElement?.(el);
+                                onInspectElement(el);
+                              }
+                            : undefined
+                        }
+                        onThumbnailClick={
+                          onToggleElementThumbnail && canInspectClip
+                            ? (e) => {
+                                e.stopPropagation();
+                                if (suppressClickRef.current) return;
+                                onToggleElementThumbnail(el);
+                              }
+                            : undefined
+                        }
                         onResizeStart={(edge, e) => {
                           if (e.button !== 0 || e.shiftKey || !onResizeElement) return;
                           if (edge === "start" && !capabilities.canTrimStart) return;
@@ -1579,7 +1628,9 @@ export const Timeline = memo(function Timeline({
                         onClick={(e) => {
                           e.stopPropagation();
                           if (suppressClickRef.current) return;
-                          setSelectedElementId(isSelected ? null : elementKey);
+                          const nextElement = isSelected ? null : el;
+                          setSelectedElementId(nextElement ? elementKey : null);
+                          onSelectElement?.(nextElement);
                         }}
                         onDoubleClick={(e) => {
                           e.stopPropagation();

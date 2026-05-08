@@ -16,18 +16,31 @@ const CURATED_STYLE_PROPERTIES = [
   "align-items",
   "flex-direction",
   "font-size",
+  "font-style",
   "font-weight",
   "font-family",
+  "line-height",
+  "letter-spacing",
+  "text-align",
+  "text-transform",
   "color",
   "background-color",
   "background-image",
   "opacity",
   "mix-blend-mode",
   "border-radius",
+  "border-width",
+  "border-style",
   "border-color",
+  "border-top-width",
+  "border-top-style",
+  "border-top-color",
   "outline-color",
   "overflow",
+  "clip-path",
   "box-shadow",
+  "filter",
+  "backdrop-filter",
   "z-index",
   "transform",
 ] as const;
@@ -73,10 +86,38 @@ export interface DomEditSelection extends PatchTarget {
   capabilities: DomEditCapabilities;
 }
 
+export interface DomEditLayerItem {
+  key: string;
+  element: HTMLElement;
+  label: string;
+  tagName: string;
+  depth: number;
+  childCount: number;
+  id?: string;
+  selector?: string;
+  selectorIndex?: number;
+  sourceFile: string;
+}
+
 export interface DomEditContextOptions {
   activeCompositionPath: string | null;
   isMasterView: boolean;
   preferClipAncestor?: boolean;
+}
+
+export interface TimelineElementDomTarget {
+  id?: string;
+  domId?: string;
+  selector?: string;
+  selectorIndex?: number;
+  sourceFile?: string;
+  compositionSrc?: string;
+}
+
+export interface TimelineElementDomTargetOptions {
+  activeCompositionPath: string | null;
+  compIdToSrc?: ReadonlyMap<string, string>;
+  isMasterView: boolean;
 }
 
 function isHtmlElement(value: unknown): value is HTMLElement {
@@ -198,14 +239,64 @@ function getSelectionCandidate(startEl: HTMLElement, options: DomEditContextOpti
 }
 
 function getPreferredClassSelector(el: HTMLElement): string | undefined {
-  const classes = el.className
-    .split(/\s+/)
+  const classes = Array.from(el.classList)
     .map((value) => value.trim())
     .filter(Boolean);
   if (classes.length === 0) return undefined;
   const preferred =
     classes.find((value) => value !== "clip" && !value.startsWith("__hf-")) ?? classes[0];
-  return preferred ? `.${preferred}` : undefined;
+  return preferred ? `.${escapeCssIdentifier(preferred)}` : undefined;
+}
+
+function escapeCssIdentifier(value: string): string {
+  const css = globalThis.CSS as { escape?: (input: string) => string } | undefined;
+  if (typeof css?.escape === "function") return css.escape(value);
+
+  if (value === "-") return "\\-";
+
+  let escaped = "";
+  for (let index = 0; index < value.length; index += 1) {
+    const char = value[index] ?? "";
+    const code = char.charCodeAt(0);
+    if (code === 0) {
+      escaped += "\uFFFD";
+      continue;
+    }
+
+    const isDigit = code >= 48 && code <= 57;
+    const isUpperAlpha = code >= 65 && code <= 90;
+    const isLowerAlpha = code >= 97 && code <= 122;
+    const isControl = (code >= 1 && code <= 31) || code === 127;
+    const isLeadingDigit = index === 0 && isDigit;
+    const isSecondDigitAfterDash = index === 1 && value.startsWith("-") && isDigit;
+    if (isControl || isLeadingDigit || isSecondDigitAfterDash) {
+      escaped += `\\${code.toString(16)} `;
+      continue;
+    }
+    if (isUpperAlpha || isLowerAlpha || isDigit || char === "-" || char === "_" || code >= 128) {
+      escaped += char;
+      continue;
+    }
+    escaped += `\\${char}`;
+  }
+  return escaped;
+}
+
+function escapeCssString(value: string): string {
+  return value
+    .replace(/\\/g, "\\\\")
+    .replace(/"/g, '\\"')
+    .replace(/\n/g, "\\a ")
+    .replace(/\r/g, "\\d ")
+    .replace(/\f/g, "\\c ");
+}
+
+function querySelectorAllSafely(doc: Document, selector: string): Element[] {
+  try {
+    return Array.from(doc.querySelectorAll(selector));
+  } catch {
+    return [];
+  }
 }
 
 function humanizeIdentifier(value: string): string {
@@ -221,10 +312,10 @@ function humanizeIdentifier(value: string): string {
 }
 
 function buildStableSelector(el: HTMLElement): string | undefined {
-  if (el.id) return `#${el.id}`;
+  if (el.id) return `#${escapeCssIdentifier(el.id)}`;
 
   const compositionId = el.getAttribute("data-composition-id");
-  if (compositionId) return `[data-composition-id="${compositionId}"]`;
+  if (compositionId) return `[data-composition-id="${escapeCssString(compositionId)}"]`;
 
   return getPreferredClassSelector(el);
 }
@@ -238,13 +329,20 @@ function getSelectorIndex(
 ): number | undefined {
   if (!selector?.startsWith(".")) return undefined;
 
-  const candidates = Array.from(doc.querySelectorAll(selector)).filter(
+  const candidates = querySelectorAllSafely(doc, selector).filter(
     (candidate): candidate is HTMLElement =>
       isHtmlElement(candidate) &&
       getSourceFileForElement(candidate, activeCompositionPath).sourceFile === sourceFile,
   );
   const index = candidates.indexOf(el);
   return index >= 0 ? index : undefined;
+}
+
+export function getDomEditLayerKey(
+  target: Pick<DomEditSelection, "id" | "selector" | "selectorIndex" | "sourceFile">,
+): string {
+  const selectorIndex = target.selectorIndex ?? 0;
+  return `${target.sourceFile}:${target.id ?? target.selector ?? "layer"}:${selectorIndex}`;
 }
 
 function buildElementLabel(el: HTMLElement): string {
@@ -269,6 +367,123 @@ function buildElementLabel(el: HTMLElement): string {
   const text = (el.textContent ?? "").trim().replace(/\s+/g, " ");
   if (text) return text.length > 40 ? `${text.slice(0, 39)}…` : text;
   return el.tagName.toLowerCase();
+}
+
+const DOM_LAYER_IGNORED_TAGS = new Set([
+  "base",
+  "br",
+  "link",
+  "meta",
+  "script",
+  "source",
+  "style",
+  "template",
+  "track",
+  "wbr",
+]);
+
+function isInspectableLayerElement(el: HTMLElement): boolean {
+  const tagName = el.tagName.toLowerCase();
+  if (DOM_LAYER_IGNORED_TAGS.has(tagName)) return false;
+
+  const computed = el.ownerDocument.defaultView?.getComputedStyle(el);
+  if (computed?.display === "none" || computed?.visibility === "hidden") return false;
+
+  return true;
+}
+
+function getDomLayerPatchTarget(
+  el: HTMLElement,
+  activeCompositionPath: string | null,
+): Pick<DomEditSelection, "id" | "selector" | "selectorIndex" | "sourceFile"> | null {
+  if (!isInspectableLayerElement(el)) return null;
+
+  const selector = buildStableSelector(el);
+  if (!selector) return null;
+
+  const { sourceFile } = getSourceFileForElement(el, activeCompositionPath);
+  return {
+    id: el.id || undefined,
+    selector,
+    selectorIndex: getSelectorIndex(
+      el.ownerDocument,
+      el,
+      selector,
+      sourceFile,
+      activeCompositionPath,
+    ),
+    sourceFile,
+  };
+}
+
+function getDirectLayerChildren(el: HTMLElement, options: DomEditContextOptions): HTMLElement[] {
+  return Array.from(el.children).filter(
+    (child): child is HTMLElement =>
+      isHtmlElement(child) && getDomLayerPatchTarget(child, options.activeCompositionPath) !== null,
+  );
+}
+
+export function countDomEditChildLayers(
+  root: HTMLElement | null | undefined,
+  options: DomEditContextOptions,
+  maxCount = 99,
+): number {
+  if (!root) return 0;
+
+  let count = 0;
+  const visit = (el: HTMLElement) => {
+    for (const child of Array.from(el.children)) {
+      if (!isHtmlElement(child)) continue;
+      if (getDomLayerPatchTarget(child, options.activeCompositionPath)) {
+        count += 1;
+        if (count >= maxCount) return;
+      }
+      visit(child);
+      if (count >= maxCount) return;
+    }
+  };
+
+  visit(root);
+  return count;
+}
+
+export function collectDomEditLayerItems(
+  root: HTMLElement | null | undefined,
+  options: DomEditContextOptions,
+  maxItems = 80,
+): DomEditLayerItem[] {
+  if (!root) return [];
+
+  const items: DomEditLayerItem[] = [];
+  const visit = (el: HTMLElement, depth: number) => {
+    if (items.length >= maxItems) return;
+
+    const target = getDomLayerPatchTarget(el, options.activeCompositionPath);
+    if (target) {
+      items.push({
+        key: getDomEditLayerKey(target),
+        element: el,
+        label: buildElementLabel(el),
+        tagName: el.tagName.toLowerCase(),
+        depth,
+        childCount: getDirectLayerChildren(el, options).length,
+        id: target.id ?? undefined,
+        selector: target.selector ?? undefined,
+        selectorIndex: target.selectorIndex,
+        sourceFile: target.sourceFile,
+      });
+    }
+
+    const nextDepth = target ? depth + 1 : depth;
+    for (const child of Array.from(el.children)) {
+      if (!isHtmlElement(child)) continue;
+      visit(child, nextDepth);
+      if (items.length >= maxItems) return;
+    }
+  };
+
+  visit(root, 0);
+  return items;
 }
 
 function getDataAttributes(el: HTMLElement): Record<string, string> {
@@ -607,7 +822,7 @@ export function findElementForSelection(
   if (!selection.selector) return null;
 
   if (selection.selector.startsWith(".") && selection.selectorIndex != null) {
-    const matches = Array.from(doc.querySelectorAll(selection.selector)).filter(
+    const matches = querySelectorAllSafely(doc, selection.selector).filter(
       (candidate): candidate is HTMLElement =>
         isHtmlElement(candidate) &&
         (!selection.sourceFile ||
@@ -617,7 +832,7 @@ export function findElementForSelection(
     return matches[selection.selectorIndex] ?? null;
   }
 
-  const matches = Array.from(doc.querySelectorAll(selection.selector)).filter(
+  const matches = querySelectorAllSafely(doc, selection.selector).filter(
     (candidate): candidate is HTMLElement =>
       isHtmlElement(candidate) &&
       (!selection.sourceFile ||
@@ -625,6 +840,51 @@ export function findElementForSelection(
           selection.sourceFile),
   );
   return matches[0] ?? null;
+}
+
+export function findElementForTimelineElement(
+  doc: Document,
+  element: TimelineElementDomTarget,
+  options: TimelineElementDomTargetOptions,
+): HTMLElement | null {
+  const elementId = typeof element.id === "string" ? element.id : "";
+  const compositionSource = element.compositionSrc ?? options.compIdToSrc?.get(elementId);
+  const sourceFile =
+    compositionSource ?? element.sourceFile ?? options.activeCompositionPath ?? "index.html";
+  const escapedElementId = escapeCssString(elementId);
+  const escapedCompositionSource = compositionSource ? escapeCssString(compositionSource) : null;
+  const selector =
+    element.selector ??
+    (compositionSource
+      ? `[data-composition-src="${escapedCompositionSource}"],[data-composition-file="${escapedCompositionSource}"],[data-composition-id="${escapedElementId}"]`
+      : escapedElementId
+        ? `[data-composition-id="${escapedElementId}"]`
+        : undefined);
+
+  if (selector || element.domId) {
+    const targetElement = findElementForSelection(
+      doc,
+      {
+        id: element.domId ?? undefined,
+        selector,
+        selectorIndex: element.selectorIndex,
+        sourceFile,
+      },
+      options.activeCompositionPath,
+    );
+    if (targetElement) return targetElement;
+  }
+
+  const hasExplicitDomTarget = Boolean(element.domId || element.selector || compositionSource);
+  if (options.isMasterView || hasExplicitDomTarget || !options.activeCompositionPath) {
+    return null;
+  }
+
+  const root = doc.querySelector("[data-composition-id]");
+  if (!isHtmlElement(root)) return null;
+  return getSourceFileForElement(root, options.activeCompositionPath).sourceFile === sourceFile
+    ? root
+    : null;
 }
 
 export function buildDomEditStylePatchOperation(property: string, value: string): PatchOperation {

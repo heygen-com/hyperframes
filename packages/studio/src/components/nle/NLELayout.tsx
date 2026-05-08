@@ -51,6 +51,12 @@ interface NLELayoutProps {
     updates: Pick<TimelineElement, "start" | "duration" | "playbackStart">,
   ) => Promise<void> | void;
   onBlockedEditAttempt?: (element: TimelineElement, intent: BlockedTimelineEditIntent) => void;
+  onSelectTimelineElement?: (element: TimelineElement | null) => void;
+  onInspectTimelineElement?: (element: TimelineElement) => void;
+  inspectedTimelineElementId?: string | null;
+  timelineLayerChildCounts?: ReadonlyMap<string, number>;
+  thumbnailedTimelineElementIds?: ReadonlySet<string>;
+  onToggleTimelineElementThumbnail?: (element: TimelineElement) => void;
   /** Exposes the compIdToSrc map for parent components (e.g., useRenderClipContent) */
   onCompIdToSrcChange?: (map: Map<string, string>) => void;
   /** Whether the timeline panel is visible (default: true) */
@@ -80,6 +86,12 @@ export const NLELayout = memo(function NLELayout({
   onMoveElement,
   onResizeElement,
   onBlockedEditAttempt,
+  onSelectTimelineElement,
+  onInspectTimelineElement,
+  inspectedTimelineElementId,
+  timelineLayerChildCounts,
+  thumbnailedTimelineElementIds,
+  onToggleTimelineElementThumbnail,
   onCompIdToSrcChange,
   timelineVisible,
   onToggleTimeline,
@@ -417,6 +429,12 @@ export const NLELayout = memo(function NLELayout({
                 onMoveElement={onMoveElement}
                 onResizeElement={onResizeElement}
                 onBlockedEditAttempt={onBlockedEditAttempt}
+                onSelectElement={onSelectTimelineElement}
+                onInspectElement={onInspectTimelineElement}
+                inspectedElementId={inspectedTimelineElementId}
+                layerChildCounts={timelineLayerChildCounts}
+                thumbnailedElementIds={thumbnailedTimelineElementIds}
+                onToggleElementThumbnail={onToggleTimelineElementThumbnail}
               />
             </div>
             {timelineFooter && <div className="flex-shrink-0">{timelineFooter}</div>}

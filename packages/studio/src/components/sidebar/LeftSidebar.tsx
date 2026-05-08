@@ -36,6 +36,7 @@ interface LeftSidebarProps {
   onLint?: () => void;
   linting?: boolean;
   onToggleCollapse?: () => void;
+  takeoverContent?: ReactNode;
 }
 
 export const LeftSidebar = memo(function LeftSidebar({
@@ -59,6 +60,7 @@ export const LeftSidebar = memo(function LeftSidebar({
   onLint,
   linting,
   onToggleCollapse,
+  takeoverContent,
 }: LeftSidebarProps) {
   const [tab, setTab] = useState<SidebarTab>(getPersistedTab);
 
@@ -89,142 +91,148 @@ export const LeftSidebar = memo(function LeftSidebar({
       className="flex flex-col h-full bg-neutral-950 border-r border-neutral-800/50"
       style={{ width }}
     >
-      {/* Tabs — Code first */}
-      <div className="border-b border-neutral-800/50 px-3 py-3 flex-shrink-0">
-        <div className="flex items-center gap-2">
-          <div
-            className="grid min-w-0 flex-1 gap-1 rounded-[18px] bg-neutral-900 p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]"
-            style={{ gridTemplateColumns: "0.9fr 1.25fr 0.9fr" }}
-          >
-            <button
-              type="button"
-              onClick={() => selectTab("code")}
-              className={`rounded-[14px] px-2.5 py-2 text-[10px] font-semibold transition-all ${
-                tab === "code"
-                  ? "bg-neutral-800 text-white"
-                  : "text-neutral-500 hover:text-neutral-200"
-              }`}
-            >
-              Code
-            </button>
-            <button
-              type="button"
-              onClick={() => selectTab("compositions")}
-              className={`rounded-[14px] px-2.5 py-2 text-[10px] font-semibold transition-all ${
-                tab === "compositions"
-                  ? "bg-neutral-800 text-white"
-                  : "text-neutral-500 hover:text-neutral-200"
-              }`}
-            >
-              Compositions
-            </button>
-            <button
-              type="button"
-              onClick={() => selectTab("assets")}
-              className={`rounded-[14px] px-2.5 py-2 text-[10px] font-semibold transition-all ${
-                tab === "assets"
-                  ? "bg-neutral-800 text-white"
-                  : "text-neutral-500 hover:text-neutral-200"
-              }`}
-            >
-              Assets
-            </button>
-          </div>
-          {onToggleCollapse && (
-            <button
-              type="button"
-              onClick={onToggleCollapse}
-              className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md border border-transparent text-neutral-500 transition-colors hover:border-neutral-800 hover:bg-neutral-900 hover:text-neutral-300"
-              title="Hide sidebar"
-              aria-label="Hide sidebar"
-            >
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
+      {takeoverContent ? (
+        <div className="flex min-h-0 flex-1">{takeoverContent}</div>
+      ) : (
+        <>
+          {/* Tabs — Code first */}
+          <div className="border-b border-neutral-800/50 px-3 py-3 flex-shrink-0">
+            <div className="flex items-center gap-2">
+              <div
+                className="grid min-w-0 flex-1 gap-1 rounded-[18px] bg-neutral-900 p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]"
+                style={{ gridTemplateColumns: "0.9fr 1.25fr 0.9fr" }}
               >
-                <path d="m14 7-5 5 5 5" />
-                <path d="M19 4v16" />
-              </svg>
-            </button>
-          )}
-        </div>
-      </div>
+                <button
+                  type="button"
+                  onClick={() => selectTab("code")}
+                  className={`rounded-[14px] px-2.5 py-2 text-[10px] font-semibold transition-all ${
+                    tab === "code"
+                      ? "bg-neutral-800 text-white"
+                      : "text-neutral-500 hover:text-neutral-200"
+                  }`}
+                >
+                  Code
+                </button>
+                <button
+                  type="button"
+                  onClick={() => selectTab("compositions")}
+                  className={`rounded-[14px] px-2.5 py-2 text-[10px] font-semibold transition-all ${
+                    tab === "compositions"
+                      ? "bg-neutral-800 text-white"
+                      : "text-neutral-500 hover:text-neutral-200"
+                  }`}
+                >
+                  Compositions
+                </button>
+                <button
+                  type="button"
+                  onClick={() => selectTab("assets")}
+                  className={`rounded-[14px] px-2.5 py-2 text-[10px] font-semibold transition-all ${
+                    tab === "assets"
+                      ? "bg-neutral-800 text-white"
+                      : "text-neutral-500 hover:text-neutral-200"
+                  }`}
+                >
+                  Assets
+                </button>
+              </div>
+              {onToggleCollapse && (
+                <button
+                  type="button"
+                  onClick={onToggleCollapse}
+                  className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md border border-transparent text-neutral-500 transition-colors hover:border-neutral-800 hover:bg-neutral-900 hover:text-neutral-300"
+                  title="Hide sidebar"
+                  aria-label="Hide sidebar"
+                >
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="m14 7-5 5 5 5" />
+                    <path d="M19 4v16" />
+                  </svg>
+                </button>
+              )}
+            </div>
+          </div>
 
-      {/* Tab content */}
-      {tab === "compositions" && (
-        <CompositionsTab
-          projectId={projectId}
-          compositions={compositions}
-          activeComposition={activeComposition}
-          onSelect={onSelectComposition}
-        />
-      )}
-      {tab === "assets" && (
-        <AssetsTab
-          projectId={projectId}
-          assets={assets}
-          onImport={onImportFiles}
-          onDelete={onDeleteFile}
-          onRename={onRenameFile}
-        />
-      )}
-      {tab === "code" && (
-        <div className="flex flex-1 min-h-0">
-          {(fileProp?.length ?? 0) > 0 && (
-            <div className="w-[160px] flex-shrink-0 border-r border-neutral-800 overflow-y-auto">
-              <FileTree
-                files={fileProp ?? []}
-                activeFile={editingFile?.path ?? null}
-                onSelectFile={onSelectFile ?? (() => {})}
-                onCreateFile={onCreateFile}
-                onCreateFolder={onCreateFolder}
-                onDeleteFile={onDeleteFile}
-                onRenameFile={onRenameFile}
-                onDuplicateFile={onDuplicateFile}
-                onMoveFile={onMoveFile}
-                onImportFiles={onImportFiles}
-              />
+          {/* Tab content */}
+          {tab === "compositions" && (
+            <CompositionsTab
+              projectId={projectId}
+              compositions={compositions}
+              activeComposition={activeComposition}
+              onSelect={onSelectComposition}
+            />
+          )}
+          {tab === "assets" && (
+            <AssetsTab
+              projectId={projectId}
+              assets={assets}
+              onImport={onImportFiles}
+              onDelete={onDeleteFile}
+              onRename={onRenameFile}
+            />
+          )}
+          {tab === "code" && (
+            <div className="flex flex-1 min-h-0">
+              {(fileProp?.length ?? 0) > 0 && (
+                <div className="w-[160px] flex-shrink-0 border-r border-neutral-800 overflow-y-auto">
+                  <FileTree
+                    files={fileProp ?? []}
+                    activeFile={editingFile?.path ?? null}
+                    onSelectFile={onSelectFile ?? (() => {})}
+                    onCreateFile={onCreateFile}
+                    onCreateFolder={onCreateFolder}
+                    onDeleteFile={onDeleteFile}
+                    onRenameFile={onRenameFile}
+                    onDuplicateFile={onDuplicateFile}
+                    onMoveFile={onMoveFile}
+                    onImportFiles={onImportFiles}
+                  />
+                </div>
+              )}
+              <div className="flex-1 overflow-hidden min-w-0">
+                {codeChildren ?? (
+                  <div className="flex items-center justify-center h-full text-neutral-600 text-sm">
+                    Select a file to edit
+                  </div>
+                )}
+              </div>
             </div>
           )}
-          <div className="flex-1 overflow-hidden min-w-0">
-            {codeChildren ?? (
-              <div className="flex items-center justify-center h-full text-neutral-600 text-sm">
-                Select a file to edit
-              </div>
-            )}
-          </div>
-        </div>
-      )}
 
-      {/* Lint button pinned at the bottom */}
-      {onLint && (
-        <div className="border-t border-neutral-800 p-2 flex-shrink-0">
-          <button
-            onClick={onLint}
-            disabled={linting}
-            className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-[11px] font-medium text-neutral-500 hover:text-amber-300 hover:bg-neutral-800 transition-colors disabled:opacity-40"
-          >
-            <svg
-              width="12"
-              height="12"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <path d="M9 11l3 3L22 4" />
-              <path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" />
-            </svg>
-            {linting ? "Linting…" : "Lint"}
-          </button>
-        </div>
+          {/* Lint button pinned at the bottom */}
+          {onLint && (
+            <div className="border-t border-neutral-800 p-2 flex-shrink-0">
+              <button
+                onClick={onLint}
+                disabled={linting}
+                className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-[11px] font-medium text-neutral-500 hover:text-amber-300 hover:bg-neutral-800 transition-colors disabled:opacity-40"
+              >
+                <svg
+                  width="12"
+                  height="12"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
+                  <path d="M9 11l3 3L22 4" />
+                  <path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" />
+                </svg>
+                {linting ? "Linting…" : "Lint"}
+              </button>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

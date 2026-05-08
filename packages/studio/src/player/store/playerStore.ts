@@ -23,6 +23,8 @@ export interface TimelineElement {
   volume?: number;
   /** Path from data-composition-src — identifies sub-composition elements */
   compositionSrc?: string;
+  /** Whether this row came from authored clip timing or Studio's full-duration layer fallback. */
+  timingSource?: "authored" | "implicit";
 }
 
 export type ZoomMode = "fit" | "manual";

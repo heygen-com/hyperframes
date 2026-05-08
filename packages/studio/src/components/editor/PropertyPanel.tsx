@@ -18,8 +18,10 @@ import {
   Plus,
   RotateCcw,
   Settings,
+  Square,
   Type,
   X,
+  Zap,
 } from "../../icons/SystemIcons";
 import {
   formatCssColor,
@@ -54,7 +56,7 @@ interface PropertyPanelProps {
   element: DomEditSelection | null;
   copiedAgentPrompt: boolean;
   onClearSelection: () => void;
-  onSetStyle: (prop: string, value: string) => void;
+  onSetStyle: (prop: string, value: string) => void | Promise<void>;
   onSetManualOffset: (element: DomEditSelection, next: { x: number; y: number }) => void;
   onSetManualSize: (element: DomEditSelection, next: { width: number; height: number }) => void;
   onSetText: (value: string, fieldKey?: string) => void;
@@ -100,7 +102,6 @@ const DEFAULT_FONT_FAMILIES = [
   "serif",
   "monospace",
 ];
-
 interface LocalFontData {
   family: string;
   fullName?: string;
@@ -117,6 +118,15 @@ interface FontOption {
 }
 
 const COLOR_PICKER_SIZE = { width: 292, height: 386 };
+const EMPTY_FILTER_VALUE = "none";
+const BOX_SHADOW_PRESETS = {
+  none: "none",
+  soft: "0 12px 36px rgba(0, 0, 0, 0.28)",
+  lift: "0 18px 54px rgba(0, 0, 0, 0.38)",
+  glow: "0 0 0 1px rgba(60, 230, 172, 0.34), 0 18px 56px rgba(60, 230, 172, 0.2)",
+} as const;
+
+type BoxShadowPreset = keyof typeof BOX_SHADOW_PRESETS | "custom";
 
 function colorFromCss(value: string): ParsedColor {
   return parseCssColor(value) ?? { red: 0, green: 0, blue: 0, alpha: 1 };
@@ -181,8 +191,166 @@ function parsePxMetricValue(value: string): number | null {
   return token.value;
 }
 
+export function clampPanelNumber(
+  value: number,
+  min: number,
+  max: number,
+  fallback: number,
+): number {
+  if (!Number.isFinite(value)) return fallback;
+  return Math.max(min, Math.min(max, value));
+}
+
+export function normalizePanelPxValue(
+  value: string,
+  options: { min?: number; max?: number; fallback?: number } = {},
+): string | null {
+  const token = parseNumericToken(value.trim());
+  if (!token) return null;
+  if (token.unit && token.unit.toLowerCase() !== "px") return null;
+  const next = clampPanelNumber(
+    token.value,
+    options.min ?? Number.NEGATIVE_INFINITY,
+    options.max ?? Number.POSITIVE_INFINITY,
+    options.fallback ?? 0,
+  );
+  return `${formatNumericValue(next)}px`;
+}
+
 function formatPxMetricValue(value: number): string {
   return `${formatNumericValue(value)}px`;
+}
+
+function normalizeTextMetricValue(property: "letter-spacing" | "line-height", value: string) {
+  const trimmed = value.trim();
+  if (!trimmed || trimmed === "normal") return trimmed || "normal";
+  const token = parseNumericToken(trimmed);
+  if (!token) return trimmed;
+  if (property === "letter-spacing") {
+    return token.unit ? trimmed : `${formatNumericValue(token.value)}px`;
+  }
+  if (token.unit) return trimmed;
+  return token.value > 4 ? `${formatNumericValue(token.value)}px` : formatNumericValue(token.value);
+}
+
+function splitCssFunctions(value: string): string[] {
+  const functions: string[] = [];
+  let current = "";
+  let depth = 0;
+
+  for (const char of value.trim()) {
+    if (char === "(") depth += 1;
+    if (char === ")") depth = Math.max(0, depth - 1);
+    if (/\s/.test(char) && depth === 0) {
+      if (current.trim()) functions.push(current.trim());
+      current = "";
+      continue;
+    }
+    current += char;
+  }
+
+  if (current.trim()) functions.push(current.trim());
+  return functions;
+}
+
+export function getCssFilterFunctionPx(value: string | undefined, name: string): number {
+  const normalized = value?.trim();
+  if (!normalized || normalized === EMPTY_FILTER_VALUE) return 0;
+  const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = new RegExp(`(?:^|\\s)${escapedName}\\((-?\\d+(?:\\.\\d+)?)px\\)`, "i").exec(
+    normalized,
+  );
+  if (!match) return 0;
+  const parsed = Number.parseFloat(match[1]);
+  return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
+}
+
+export function setCssFilterFunctionPx(
+  value: string | undefined,
+  name: string,
+  nextPx: number,
+): string {
+  const nextValue = clampPanelNumber(nextPx, 0, 200, 0);
+  const functions = splitCssFunctions(value && value.trim() !== EMPTY_FILTER_VALUE ? value : "");
+  const lowerName = name.toLowerCase();
+  const filtered = functions.filter((entry) => !entry.toLowerCase().startsWith(`${lowerName}(`));
+  if (nextValue > 0) filtered.push(`${name}(${formatNumericValue(nextValue)}px)`);
+  return filtered.length > 0 ? filtered.join(" ") : EMPTY_FILTER_VALUE;
+}
+
+export function inferBoxShadowPreset(value: string | undefined): BoxShadowPreset {
+  const normalized = value?.trim() || "none";
+  for (const [preset, shadow] of Object.entries(BOX_SHADOW_PRESETS)) {
+    if (normalized === shadow) return preset as BoxShadowPreset;
+  }
+  return normalized === "none" ? "none" : "custom";
+}
+
+function buildBoxShadowPresetValue(preset: BoxShadowPreset, fallback: string | undefined): string {
+  if (preset === "custom") return fallback?.trim() || "none";
+  return BOX_SHADOW_PRESETS[preset];
+}
+
+export function inferClipPathPreset(
+  value: string | undefined,
+): "none" | "inset" | "circle" | "custom" {
+  const normalized = value?.trim();
+  if (!normalized || normalized === "none") return "none";
+  if (/^inset\(/i.test(normalized)) return "inset";
+  if (/^circle\(/i.test(normalized)) return "circle";
+  return "custom";
+}
+
+export function getClipPathInsetPx(value: string | undefined): number {
+  const match = /^inset\(\s*(-?\d+(?:\.\d+)?)px\b/i.exec(value?.trim() ?? "");
+  if (!match) return 0;
+  const parsed = Number.parseFloat(match[1]);
+  return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
+}
+
+export function buildStrokeWidthStyleUpdates(
+  nextWidth: string,
+  currentBorderStyle: string | undefined,
+): Array<[property: string, value: string]> {
+  const updates: Array<[property: string, value: string]> = [["border-width", nextWidth]];
+  const token = parseNumericToken(nextWidth);
+  const style = currentBorderStyle?.trim().toLowerCase() || "none";
+  if (token && token.value > 0 && (style === "none" || style === "hidden")) {
+    updates.push(["border-style", "solid"]);
+  }
+  return updates;
+}
+
+export function buildStrokeStyleUpdates(
+  nextStyle: string,
+  currentBorderWidth: string | undefined,
+): Array<[property: string, value: string]> {
+  const updates: Array<[property: string, value: string]> = [["border-style", nextStyle]];
+  const style = nextStyle.trim().toLowerCase();
+  if (!style || style === "none" || style === "hidden") return updates;
+
+  const token = parseNumericToken(currentBorderWidth?.trim() || "0");
+  if (!token || token.value <= 0) {
+    updates.push(["border-width", "1px"]);
+  }
+  return updates;
+}
+
+function buildClipPathValue(
+  preset: "none" | "inset" | "circle" | "custom",
+  radiusValue: number,
+  fallback: string | undefined,
+) {
+  if (preset === "custom") return fallback?.trim() || "none";
+  if (preset === "circle") return "circle(50% at 50% 50%)";
+  if (preset === "inset") {
+    return `inset(0 round ${formatNumericValue(Math.max(0, radiusValue))}px)`;
+  }
+  return "none";
+}
+
+function buildInsetClipPathValue(insetPx: number, radiusValue: number): string {
+  return `inset(${formatNumericValue(Math.max(0, insetPx))}px round ${formatNumericValue(Math.max(0, radiusValue))}px)`;
 }
 
 function adjustNumericToken(
@@ -1058,6 +1226,75 @@ function FontFamilyField({
   );
 }
 
+function getTextStyleValue(
+  field: DomEditSelection["textFields"][number],
+  inheritedStyles: Record<string, string>,
+  property: string,
+  fallback: string,
+): string {
+  return field.computedStyles[property] || inheritedStyles[property] || fallback;
+}
+
+function AdvancedTextControls({
+  field,
+  inheritedStyles,
+  disabled,
+  onCommit,
+}: {
+  field: DomEditSelection["textFields"][number];
+  inheritedStyles: Record<string, string>;
+  disabled?: boolean;
+  onCommit: (property: string, value: string) => void;
+}) {
+  return (
+    <div className="space-y-4">
+      <div className={RESPONSIVE_GRID}>
+        <MetricField
+          label="Line"
+          value={getTextStyleValue(field, inheritedStyles, "line-height", "normal")}
+          disabled={disabled}
+          liveCommit
+          onCommit={(next) =>
+            onCommit("line-height", normalizeTextMetricValue("line-height", next))
+          }
+        />
+        <MetricField
+          label="Track"
+          value={getTextStyleValue(field, inheritedStyles, "letter-spacing", "0px")}
+          disabled={disabled}
+          liveCommit
+          onCommit={(next) =>
+            onCommit("letter-spacing", normalizeTextMetricValue("letter-spacing", next))
+          }
+        />
+      </div>
+      <div className={RESPONSIVE_GRID}>
+        <SelectField
+          label="Align"
+          value={getTextStyleValue(field, inheritedStyles, "text-align", "start")}
+          disabled={disabled}
+          onChange={(next) => onCommit("text-align", next)}
+          options={["start", "left", "center", "right", "justify", "end"]}
+        />
+        <SelectField
+          label="Case"
+          value={getTextStyleValue(field, inheritedStyles, "text-transform", "none")}
+          disabled={disabled}
+          onChange={(next) => onCommit("text-transform", next)}
+          options={["none", "uppercase", "lowercase", "capitalize"]}
+        />
+      </div>
+      <SelectField
+        label="Style"
+        value={getTextStyleValue(field, inheritedStyles, "font-style", "normal")}
+        disabled={disabled}
+        onChange={(next) => onCommit("font-style", next)}
+        options={["normal", "italic", "oblique"]}
+      />
+    </div>
+  );
+}
+
 function ColorField({
   label,
   value,
@@ -1896,6 +2133,8 @@ function SelectField({
   options: string[];
   onChange: (nextValue: string) => void;
 }) {
+  const renderedOptions = value && !options.includes(value) ? [value, ...options] : options;
+
   return (
     <label className="grid min-w-0 gap-1.5">
       <span className={LABEL}>{label}</span>
@@ -1906,7 +2145,7 @@ function SelectField({
           onChange={(e) => onChange(e.target.value)}
           className="min-w-0 w-full appearance-none bg-transparent text-[11px] font-medium text-neutral-100 outline-none disabled:cursor-not-allowed disabled:text-neutral-600"
         >
-          {options.map((option) => (
+          {renderedOptions.map((option) => (
             <option key={option} value={option}>
               {option}
             </option>
@@ -2035,7 +2274,19 @@ export const PropertyPanel = memo(function PropertyPanel({
   const isFlex = styles.display === "flex" || styles.display === "inline-flex";
   const radiusValue = parseNumericValue(styles["border-radius"]) ?? 0;
   const opacityValue = Math.round((parseNumericValue(styles.opacity) ?? 1) * 100);
-  const clipContent = ["hidden", "clip"].includes((styles.overflow ?? "").trim());
+  const borderWidthValue =
+    parsePxMetricValue(styles["border-width"] ?? "") ??
+    parsePxMetricValue(styles["border-top-width"] ?? "") ??
+    0;
+  const borderStyleValue = styles["border-style"] || styles["border-top-style"] || "none";
+  const borderColorValue =
+    styles["border-color"] || styles["border-top-color"] || "rgba(255, 255, 255, 0.18)";
+  const boxShadowPreset = inferBoxShadowPreset(styles["box-shadow"]);
+  const filterBlurValue = getCssFilterFunctionPx(styles.filter, "blur");
+  const backdropBlurValue = getCssFilterFunctionPx(styles["backdrop-filter"], "blur");
+  const clipPathValue = styles["clip-path"] || "none";
+  const clipPathPreset = inferClipPathPreset(clipPathValue);
+  const clipInsetValue = getClipPathInsetPx(clipPathValue);
   const sourceLabel = element.id ? `#${element.id}` : element.selector;
   const showEditableSections = element.capabilities.canEditStyles;
   const manualOffset = readStudioPathOffset(element.element);
@@ -2203,16 +2454,6 @@ export const PropertyPanel = memo(function PropertyPanel({
                 disabled={styleEditingDisabled}
                 onCommit={(next) => onSetStyle("gap", next.endsWith("px") ? next : `${next}px`)}
               />
-              <label className="flex items-center gap-3 rounded-2xl border border-neutral-800 bg-neutral-900 px-3 py-3 text-[12px] text-neutral-300 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
-                <input
-                  type="checkbox"
-                  checked={clipContent}
-                  disabled={styleEditingDisabled}
-                  onChange={(e) => onSetStyle("overflow", e.target.checked ? "hidden" : "visible")}
-                  className="h-4 w-4 rounded border-neutral-700 bg-neutral-950 text-[#3ce6ac] focus:ring-[#3ce6ac]"
-                />
-                <span>Clip content</span>
-              </label>
             </div>
           </Section>
         )}
@@ -2230,6 +2471,163 @@ export const PropertyPanel = memo(function PropertyPanel({
                 formatDisplayValue={(next) => `${formatNumericValue(next)}px`}
                 onCommit={(next) => onSetStyle("border-radius", `${formatNumericValue(next)}px`)}
               />
+            </Section>
+
+            <Section title="Stroke" icon={<Square size={15} />}>
+              <div className="space-y-4">
+                <div className={RESPONSIVE_GRID}>
+                  <MetricField
+                    label="Width"
+                    value={formatPxMetricValue(borderWidthValue)}
+                    disabled={styleEditingDisabled}
+                    liveCommit
+                    onCommit={async (next) => {
+                      const normalized = normalizePanelPxValue(next, {
+                        min: 0,
+                        max: 200,
+                        fallback: borderWidthValue,
+                      });
+                      if (!normalized) return;
+                      for (const [property, value] of buildStrokeWidthStyleUpdates(
+                        normalized,
+                        borderStyleValue,
+                      )) {
+                        await onSetStyle(property, value);
+                      }
+                    }}
+                  />
+                  <SelectField
+                    label="Style"
+                    value={borderStyleValue}
+                    disabled={styleEditingDisabled}
+                    onChange={async (next) => {
+                      for (const [property, value] of buildStrokeStyleUpdates(
+                        next,
+                        formatPxMetricValue(borderWidthValue),
+                      )) {
+                        await onSetStyle(property, value);
+                      }
+                    }}
+                    options={[
+                      "none",
+                      "solid",
+                      "dashed",
+                      "dotted",
+                      "double",
+                      "hidden",
+                      "groove",
+                      "ridge",
+                      "inset",
+                      "outset",
+                    ]}
+                  />
+                </div>
+                <ColorField
+                  label="Stroke color"
+                  value={borderColorValue}
+                  disabled={styleEditingDisabled}
+                  onCommit={(next) => onSetStyle("border-color", next)}
+                />
+              </div>
+            </Section>
+
+            <Section title="Effects" icon={<Zap size={15} />}>
+              <div className="space-y-4">
+                <SelectField
+                  label="Shadow"
+                  value={boxShadowPreset}
+                  disabled={styleEditingDisabled}
+                  onChange={(next) => {
+                    if (next === "custom") return;
+                    onSetStyle(
+                      "box-shadow",
+                      buildBoxShadowPresetValue(next as BoxShadowPreset, styles["box-shadow"]),
+                    );
+                  }}
+                  options={["custom", "none", "soft", "lift", "glow"]}
+                />
+                <div className={RESPONSIVE_GRID}>
+                  <div className="grid min-w-0 gap-1.5">
+                    <span className={LABEL}>Layer blur</span>
+                    <SliderControl
+                      value={filterBlurValue}
+                      min={0}
+                      max={Math.max(40, Math.ceil(filterBlurValue))}
+                      step={1}
+                      disabled={styleEditingDisabled}
+                      displayValue={`${formatNumericValue(filterBlurValue)}px`}
+                      formatDisplayValue={(next) => `${formatNumericValue(next)}px`}
+                      onCommit={(next) =>
+                        onSetStyle("filter", setCssFilterFunctionPx(styles.filter, "blur", next))
+                      }
+                    />
+                  </div>
+                  <div className="grid min-w-0 gap-1.5">
+                    <span className={LABEL}>Backdrop</span>
+                    <SliderControl
+                      value={backdropBlurValue}
+                      min={0}
+                      max={Math.max(60, Math.ceil(backdropBlurValue))}
+                      step={1}
+                      disabled={styleEditingDisabled}
+                      displayValue={`${formatNumericValue(backdropBlurValue)}px`}
+                      formatDisplayValue={(next) => `${formatNumericValue(next)}px`}
+                      onCommit={(next) =>
+                        onSetStyle(
+                          "backdrop-filter",
+                          setCssFilterFunctionPx(styles["backdrop-filter"], "blur", next),
+                        )
+                      }
+                    />
+                  </div>
+                </div>
+              </div>
+            </Section>
+
+            <Section title="Clip" icon={<Layers size={15} />}>
+              <div className="space-y-4">
+                <div className={RESPONSIVE_GRID}>
+                  <SelectField
+                    label="Overflow"
+                    value={styles.overflow || "visible"}
+                    disabled={styleEditingDisabled}
+                    onChange={(next) => onSetStyle("overflow", next)}
+                    options={["visible", "hidden", "clip", "auto", "scroll"]}
+                  />
+                  <SelectField
+                    label="Mask"
+                    value={clipPathPreset}
+                    disabled={styleEditingDisabled}
+                    onChange={(next) => {
+                      if (next === "custom") return;
+                      onSetStyle(
+                        "clip-path",
+                        buildClipPathValue(
+                          next as "none" | "inset" | "circle",
+                          radiusValue,
+                          clipPathValue,
+                        ),
+                      );
+                    }}
+                    options={["custom", "none", "inset", "circle"]}
+                  />
+                </div>
+                <div className="grid min-w-0 gap-1.5">
+                  <span className={LABEL}>Mask inset</span>
+                  <SliderControl
+                    value={clipInsetValue}
+                    min={0}
+                    max={Math.max(120, Math.ceil(clipInsetValue))}
+                    step={1}
+                    disabled={styleEditingDisabled}
+                    displayValue={`${formatNumericValue(clipInsetValue)}px`}
+                    formatDisplayValue={(next) => `${formatNumericValue(next)}px`}
+                    onCommit={(next) =>
+                      onSetStyle("clip-path", buildInsetClipPathValue(next, radiusValue))
+                    }
+                  />
+                </div>
+              </div>
             </Section>
 
             <Section title="Blending" icon={<Eye size={15} />}>
@@ -2389,6 +2787,15 @@ export const PropertyPanel = memo(function PropertyPanel({
                             onSetTextFieldStyle(activeField.key, "font-family", next)
                           }
                         />
+
+                        <AdvancedTextControls
+                          field={activeField}
+                          inheritedStyles={styles}
+                          disabled={false}
+                          onCommit={(property, value) =>
+                            onSetTextFieldStyle(activeField.key, property, value)
+                          }
+                        />
                       </div>
                     );
                   }
@@ -2512,6 +2919,15 @@ export const PropertyPanel = memo(function PropertyPanel({
                           onImportFonts={onImportFonts}
                           onCommit={(next) =>
                             onSetTextFieldStyle(activeField.key, "font-family", next)
+                          }
+                        />
+
+                        <AdvancedTextControls
+                          field={activeField}
+                          inheritedStyles={styles}
+                          disabled={false}
+                          onCommit={(property, value) =>
+                            onSetTextFieldStyle(activeField.key, property, value)
                           }
                         />
                       </div>

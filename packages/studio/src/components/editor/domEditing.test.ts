@@ -3,7 +3,10 @@ import { Window } from "happy-dom";
 import {
   buildDomEditStylePatchOperation,
   buildElementAgentPrompt,
+  collectDomEditLayerItems,
+  countDomEditChildLayers,
   findElementForSelection,
+  findElementForTimelineElement,
   getDomEditNonEditableReason,
   getDomEditTargetKey,
   isTextEditableSelection,
@@ -355,6 +358,66 @@ describe("resolveDomEditSelection", () => {
     expect(findElementForSelection(document, selection!, null)).toBe(nestedCard);
   });
 
+  it("does not throw when a generated timeline identity is passed as a selector", () => {
+    const document = createDocument(`
+      <div data-composition-id="main">
+        <div class="topline">Logo</div>
+      </div>
+    `);
+
+    expect(() =>
+      findElementForSelection(
+        document,
+        {
+          id: "index.html:Hyperframes Logo Light:0",
+          selector:
+            '[data-composition-id="index.html:Hyperframes Logo Light:0"],#index.html:Hyperframes Logo Light:0',
+          sourceFile: "index.html",
+        },
+        null,
+      ),
+    ).not.toThrow();
+    expect(
+      findElementForSelection(
+        document,
+        {
+          id: "index.html:Hyperframes Logo Light:0",
+          selector:
+            '[data-composition-id="index.html:Hyperframes Logo Light:0"],#index.html:Hyperframes Logo Light:0',
+          sourceFile: "index.html",
+        },
+        null,
+      ),
+    ).toBeNull();
+  });
+
+  it("escapes ids and composition ids when creating stable selectors", () => {
+    const document = createDocument(`
+      <div data-composition-id="main">
+        <div id="logo:light">Logo</div>
+        <div data-composition-id="scene:one">Scene</div>
+      </div>
+    `);
+    const logo = document.getElementById("logo:light") as HTMLElement;
+    const scene = Array.from(document.querySelectorAll("[data-composition-id]")).find(
+      (element) => element.getAttribute("data-composition-id") === "scene:one",
+    ) as HTMLElement;
+
+    const logoSelection = resolveDomEditSelection(logo, {
+      activeCompositionPath: null,
+      isMasterView: true,
+    });
+    const sceneSelection = resolveDomEditSelection(scene, {
+      activeCompositionPath: null,
+      isMasterView: true,
+    });
+
+    expect(logoSelection?.selector).not.toBe("#logo:light");
+    expect(findElementForSelection(document, logoSelection!, null)).toBe(logo);
+    expect(sceneSelection?.selector).toBe('[data-composition-id="scene:one"]');
+    expect(findElementForSelection(document, sceneSelection!, null)).toBe(scene);
+  });
+
   it("prefers the nearest clip ancestor on single-click style selection", () => {
     const document = createDocument(`
       <section id="card" class="clip" style="left: 10px; top: 20px; width: 200px; height: 100px; position: absolute;">
@@ -514,6 +577,90 @@ describe("resolveDomEditSelection", () => {
 
     expect(first).not.toBe(second);
   });
+
+  it("resolves generated timeline ids without throwing", () => {
+    const document = createDocument(`
+      <div data-composition-id="hook">
+        <div class="topline">Topline</div>
+      </div>
+    `);
+
+    expect(
+      findElementForTimelineElement(
+        document,
+        { id: "index.html:Hyperframes Logo Light:0", sourceFile: "index.html" },
+        {
+          activeCompositionPath: null,
+          isMasterView: true,
+        },
+      ),
+    ).toBeNull();
+  });
+
+  it("falls back to the root composition for standalone manifest clips without DOM targets", () => {
+    const document = createDocument(`
+      <div data-composition-id="hook">
+        <div class="topline">Topline</div>
+        <div class="scene-shell">Scene</div>
+      </div>
+    `);
+    const root = document.querySelector("[data-composition-id]") as HTMLElement;
+
+    expect(
+      findElementForTimelineElement(
+        document,
+        { id: "compositions/hook.html:Hyperframes Logo Light:0" },
+        {
+          activeCompositionPath: "compositions/hook.html",
+          isMasterView: false,
+        },
+      ),
+    ).toBe(root);
+  });
+
+  it("resolves the standalone composition root when the fallback clip carries source metadata", () => {
+    const document = createDocument(`
+      <div data-composition-id="manual">
+        <div class="scene-shell">Scene</div>
+      </div>
+    `);
+    const root = document.querySelector("[data-composition-id]") as HTMLElement;
+
+    expect(
+      findElementForTimelineElement(
+        document,
+        {
+          id: "manual",
+          compositionSrc: "compositions/manual.html",
+          selector: '[data-composition-id="manual"]',
+          sourceFile: "compositions/manual.html",
+        },
+        {
+          activeCompositionPath: "compositions/manual.html",
+          isMasterView: false,
+        },
+      ),
+    ).toBe(root);
+  });
+
+  it("does not fall back to the root composition when an explicit timeline selector misses", () => {
+    const document = createDocument(`
+      <div data-composition-id="hook">
+        <div class="topline">Topline</div>
+      </div>
+    `);
+
+    expect(
+      findElementForTimelineElement(
+        document,
+        { selector: ".missing", sourceFile: "compositions/hook.html" },
+        {
+          activeCompositionPath: "compositions/hook.html",
+          isMasterView: false,
+        },
+      ),
+    ).toBeNull();
+  });
 });
 
 describe("patch builders and prompt builder", () => {
@@ -665,5 +812,61 @@ describe("patch builders and prompt builder", () => {
     ).toBe(
       '<strong data-hf-text-key="child:0:strong" style="font-size: 22px">Headline &lt;1&gt;</strong><span data-hf-text-key="child:1:span">Details &amp; more</span>',
     );
+  });
+
+  it("collects nested timeline layers with stable keys and child counts", () => {
+    const doc = createDocument(`
+      <div data-composition-id="hook" data-composition-file="compositions/hook.html">
+        <section class="scene-shell">
+          <div class="topline">
+            <span class="brand">HyperFrames</span>
+            <span class="badge">Alpha</span>
+          </div>
+        </section>
+      </div>
+    `);
+    const root = doc.querySelector(".scene-shell") as HTMLElement;
+    const layers = collectDomEditLayerItems(root, {
+      activeCompositionPath: "compositions/hook.html",
+      isMasterView: false,
+    });
+
+    expect(
+      countDomEditChildLayers(root, {
+        activeCompositionPath: "compositions/hook.html",
+        isMasterView: false,
+      }),
+    ).toBe(3);
+    expect(layers.map((layer) => layer.label)).toEqual([
+      "Scene Shell",
+      "Topline",
+      "Brand",
+      "Badge",
+    ]);
+    expect(layers[0]?.childCount).toBe(1);
+    expect(layers.find((layer) => layer.label === "Brand")?.key).toBe(
+      "compositions/hook.html:.brand:0",
+    );
+  });
+
+  it("collects timeline layers with SVG descendants without crashing", () => {
+    const doc = createDocument(`
+      <div data-composition-id="hook" data-composition-file="compositions/hook.html">
+        <section class="scene-shell">
+          <svg class="brand-mark" viewBox="0 0 24 24">
+            <path class="brand-path" d="M0 0h24v24H0z"></path>
+          </svg>
+          <div class="title">HyperFrames</div>
+        </section>
+      </div>
+    `);
+    const root = doc.querySelector(".scene-shell") as HTMLElement;
+
+    expect(() =>
+      collectDomEditLayerItems(root, {
+        activeCompositionPath: "compositions/hook.html",
+        isMasterView: false,
+      }),
+    ).not.toThrow();
   });
 });

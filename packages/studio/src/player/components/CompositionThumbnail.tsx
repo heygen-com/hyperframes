@@ -16,6 +16,7 @@ interface CompositionThumbnailProps {
 
 const CLIP_HEIGHT = 66;
 const THUMBNAIL_URL_VERSION = "v3";
+export const COMPOSITION_THUMBNAIL_LABEL_Z_INDEX = 10;
 
 export function buildCompositionThumbnailUrl({
   previewUrl,
@@ -143,7 +144,10 @@ export const CompositionThumbnail = memo(function CompositionThumbnail({
         }}
       />
 
-      <div className="absolute left-2 top-2 z-10">
+      <div
+        className="absolute left-2 top-2"
+        style={{ zIndex: COMPOSITION_THUMBNAIL_LABEL_Z_INDEX }}
+      >
         <span
           className="block max-w-full truncate rounded-md px-1.5 py-0.5 text-[9px] font-semibold uppercase leading-none"
           style={{
@@ -157,8 +161,9 @@ export const CompositionThumbnail = memo(function CompositionThumbnail({
       </div>
 
       <div
-        className="absolute bottom-0 left-0 right-0 z-10 px-1.5 pb-0.5 pt-3"
+        className="absolute bottom-0 left-0 right-0 px-1.5 pb-0.5 pt-3"
         style={{
+          zIndex: COMPOSITION_THUMBNAIL_LABEL_Z_INDEX,
           background:
             "linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.4) 60%, transparent 100%)",
         }}
