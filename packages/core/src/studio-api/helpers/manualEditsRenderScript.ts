@@ -2,6 +2,8 @@ export interface StudioManualEditsRenderScriptOptions {
   activeCompositionPath?: string | null;
 }
 
+export const STUDIO_MANUAL_EDITS_PATH = ".hyperframes/studio-manual-edits.json";
+
 export function createStudioManualEditsRenderBodyScript(
   manifestContent: string,
   options: StudioManualEditsRenderScriptOptions = {},

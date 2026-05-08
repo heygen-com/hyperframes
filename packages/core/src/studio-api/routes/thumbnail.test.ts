@@ -174,4 +174,28 @@ describe("registerThumbnailRoutes", () => {
 
     expect(adapter.generateThumbnail).toHaveBeenCalledTimes(2);
   });
+
+  it("keeps changed studio motion separated in the disk cache", async () => {
+    const adapter = createAdapter();
+    const project = await adapter.resolveProject("demo");
+    if (!project) throw new Error("missing project");
+    const app = new Hono();
+    registerThumbnailRoutes(app, adapter);
+
+    const indexPath = join(project.dir, "index.html");
+    writeFileSync(indexPath, `<div data-composition-id="main" data-width="640" data-height="360">`);
+    const motionDir = join(project.dir, ".hyperframes");
+    mkdirSync(motionDir, { recursive: true });
+    const motionPath = join(motionDir, "studio-motion.json");
+    writeFileSync(motionPath, `{"version":1,"motions":[]}`);
+
+    await app.request("http://localhost/projects/demo/thumbnail/index.html?t=2&v=test");
+    writeFileSync(
+      motionPath,
+      `{"version":1,"motions":[{"kind":"gsap-motion","target":{"sourceFile":"index.html","id":"card"},"start":0,"duration":1,"ease":"power2.out","from":{"y":32},"to":{"y":0}}]}`,
+    );
+    await app.request("http://localhost/projects/demo/thumbnail/index.html?t=2&v=test");
+
+    expect(adapter.generateThumbnail).toHaveBeenCalledTimes(2);
+  });
 });

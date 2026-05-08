@@ -1,13 +1,21 @@
 import type { Hono } from "hono";
 import { existsSync, readFileSync, statSync } from "node:fs";
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
+import { injectScriptsIntoHtml } from "../../compiler/htmlDocument.js";
 import type { StudioApiAdapter } from "../types.js";
 import { isSafePath } from "../helpers/safePath.js";
 import { getMimeType } from "../helpers/mime.js";
 import { buildSubCompositionHtml } from "../helpers/subComposition.js";
 import { createProjectSignature } from "../helpers/projectSignature.js";
+import {
+  createStudioMotionRenderBodyScript,
+  STUDIO_MOTION_PATH,
+} from "../helpers/studioMotionRenderScript.js";
 
 const PROJECT_SIGNATURE_META = "hyperframes-project-signature";
+const GSAP_CDN_VERSION = "3.15.0";
+const GSAP_CDN_SCRIPT = `<script src="https://cdn.jsdelivr.net/npm/gsap@${GSAP_CDN_VERSION}/dist/gsap.min.js"></script>`;
+const GSAP_CUSTOM_EASE_CDN_SCRIPT = `<script src="https://cdn.jsdelivr.net/npm/gsap@${GSAP_CDN_VERSION}/dist/CustomEase.min.js"></script>`;
 
 function resolveProjectSignature(adapter: StudioApiAdapter, projectDir: string): string {
   return adapter.getProjectSignature?.(projectDir) ?? createProjectSignature(projectDir);
@@ -23,6 +31,97 @@ function injectProjectSignature(html: string, signature: string): string {
   }
   if (html.includes("</head>")) return html.replace("</head>", `${tag}\n</head>`);
   return `${tag}\n${html}`;
+}
+
+function readStudioMotionManifestContent(projectDir: string): string {
+  const manifestPath = join(projectDir, STUDIO_MOTION_PATH);
+  if (!existsSync(manifestPath)) return "";
+  try {
+    return readFileSync(manifestPath, "utf-8");
+  } catch {
+    return "";
+  }
+}
+
+function parseStudioMotionManifestContent(content: string): {
+  hasMotion: boolean;
+  hasCustomEase: boolean;
+} {
+  try {
+    const parsed = JSON.parse(content) as { motions?: Array<{ customEase?: unknown }> };
+    const motions = Array.isArray(parsed.motions) ? parsed.motions : [];
+    return {
+      hasMotion: motions.length > 0,
+      hasCustomEase: motions.some((motion) => Boolean(motion?.customEase)),
+    };
+  } catch {
+    return { hasMotion: false, hasCustomEase: false };
+  }
+}
+
+function injectScriptTagIntoHead(html: string, scriptTag: string): string {
+  if (html.includes("</head>")) return html.replace("</head>", `${scriptTag}\n</head>`);
+  return `${scriptTag}\n${html}`;
+}
+
+function htmlHasGsap(html: string): boolean {
+  // Keep this heuristic conservative: if user source already loads GSAP, Studio does not add another copy.
+  return (
+    /<script\b[^>]*src=["'][^"']*gsap/i.test(html) ||
+    /\/\*\s*inlined:.*gsap/i.test(html) ||
+    /\b(GreenSock|_gsScope)\b/.test(html) ||
+    /\bgsap\.(config|defaults|registerPlugin|version)\b/.test(html)
+  );
+}
+
+function htmlHasCustomEase(html: string): boolean {
+  return (
+    /<script\b[^>]*src=["'][^"']*CustomEase/i.test(html) ||
+    /\bwindow\.CustomEase\b/.test(html) ||
+    /\bCustomEase\s*=\s*/.test(html)
+  );
+}
+
+function injectStudioMotionDependencies(html: string, manifestContent: string): string {
+  const manifest = parseStudioMotionManifestContent(manifestContent);
+  if (!manifest.hasMotion) return html;
+  let next = html;
+  if (!htmlHasGsap(next)) next = injectScriptTagIntoHead(next, GSAP_CDN_SCRIPT);
+  if (manifest.hasCustomEase && !htmlHasCustomEase(next)) {
+    next = injectScriptTagIntoHead(next, GSAP_CUSTOM_EASE_CDN_SCRIPT);
+  }
+  return next;
+}
+
+function injectStudioMotionScript(
+  html: string,
+  projectDir: string,
+  activeCompositionPath: string,
+): string {
+  const manifestContent = readStudioMotionManifestContent(projectDir);
+  const script = createStudioMotionRenderBodyScript(manifestContent, {
+    activeCompositionPath,
+  });
+  if (!script) return html;
+  return injectScriptsIntoHtml(
+    injectStudioMotionDependencies(html, manifestContent),
+    [],
+    [script],
+    false,
+  );
+}
+
+function injectStudioPreviewAugmentations(
+  html: string,
+  adapter: StudioApiAdapter,
+  projectDir: string,
+  activeCompositionPath: string,
+): string {
+  return injectStudioMotionScript(
+    injectProjectSignature(html, resolveProjectSignature(adapter, projectDir)),
+    projectDir,
+    activeCompositionPath,
+  );
 }
 
 export function registerPreviewRoutes(api: Hono, adapter: StudioApiAdapter): void {
@@ -56,15 +155,17 @@ export function registerPreviewRoutes(api: Hono, adapter: StudioApiAdapter): voi
         bundled = bundled.replace(/<head>/i, `<head><base href="${baseHref}">`);
       }
 
-      bundled = injectProjectSignature(bundled, resolveProjectSignature(adapter, project.dir));
+      bundled = injectStudioPreviewAugmentations(bundled, adapter, project.dir, "index.html");
       return c.html(bundled);
     } catch {
       const file = resolve(project.dir, "index.html");
       if (existsSync(file)) {
         return c.html(
-          injectProjectSignature(
+          injectStudioPreviewAugmentations(
             readFileSync(file, "utf-8"),
-            resolveProjectSignature(adapter, project.dir),
+            adapter,
+            project.dir,
+            "index.html",
           ),
         );
       }
@@ -88,9 +189,9 @@ export function registerPreviewRoutes(api: Hono, adapter: StudioApiAdapter): voi
       return c.text("not found", 404);
     }
     const baseHref = `/api/projects/${project.id}/preview/`;
-    const html = buildSubCompositionHtml(project.dir, compPath, adapter.runtimeUrl, baseHref);
+    let html = buildSubCompositionHtml(project.dir, compPath, adapter.runtimeUrl, baseHref);
     if (!html) return c.text("not found", 404);
-    return c.html(injectProjectSignature(html, resolveProjectSignature(adapter, project.dir)));
+    return c.html(injectStudioPreviewAugmentations(html, adapter, project.dir, compPath));
   });
 
   // Static asset serving (with range request support for audio/video seeking)

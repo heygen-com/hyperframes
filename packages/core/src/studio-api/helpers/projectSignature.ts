@@ -28,6 +28,10 @@ const SIGNATURE_EXCLUDED_DIRS = new Set([
   "renders",
 ]);
 const MAX_SIGNATURE_TEXT_BYTES = 2_000_000;
+const STUDIO_SIGNATURE_MANIFEST_PATHS = [
+  ".hyperframes/studio-manual-edits.json",
+  ".hyperframes/studio-motion.json",
+] as const;
 
 interface ProjectSignatureFile {
   file: string;
@@ -93,6 +97,31 @@ function collectProjectSignatureFiles(
   }
 }
 
+function collectProjectSignatureManifestFiles(
+  projectDir: string,
+  files: ProjectSignatureFile[],
+): void {
+  const seen = new Set(files.map((entry) => entry.file));
+  for (const manifestPath of STUDIO_SIGNATURE_MANIFEST_PATHS) {
+    const file = resolve(projectDir, manifestPath);
+    if (seen.has(file) || !isPathWithin(projectDir, file)) continue;
+    let stat: ReturnType<typeof lstatSync>;
+    try {
+      stat = lstatSync(file);
+    } catch {
+      continue;
+    }
+    if (stat.isSymbolicLink() || !stat.isFile()) continue;
+    files.push({
+      file,
+      mtimeMs: stat.mtimeMs,
+      size: stat.size,
+      textContentEligible: isTextContentEligible(file, stat.size),
+    });
+    seen.add(file);
+  }
+}
+
 function createProjectFingerprint(projectDir: string, files: ProjectSignatureFile[]): string {
   const hash = createHash("sha256");
   for (const entry of files) {
@@ -108,10 +137,14 @@ function createProjectFingerprint(projectDir: string, files: ProjectSignatureFil
   return hash.digest("hex").slice(0, 24);
 }
 
+/**
+ * Creates a stable preview cache-busting signature for project source plus Studio manifests.
+ */
 export function createProjectSignature(projectDir: string): string {
   const normalizedProjectDir = resolve(projectDir);
   const files: ProjectSignatureFile[] = [];
   collectProjectSignatureFiles(normalizedProjectDir, normalizedProjectDir, files);
+  collectProjectSignatureManifestFiles(normalizedProjectDir, files);
   files.sort((a, b) => a.file.localeCompare(b.file));
 
   const fingerprint = createProjectFingerprint(normalizedProjectDir, files);
