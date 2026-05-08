@@ -921,6 +921,27 @@ describe("HyperframesPlayer seek() sync path", () => {
     expect(post).not.toHaveBeenCalled();
   });
 
+  it("pauses same-origin __timelines after seek while playing", () => {
+    const pause = vi.fn();
+    const timeline: TimelineStub = {
+      duration: vi.fn(() => 5),
+      time: vi.fn(() => 0),
+      seek: vi.fn(),
+      play: vi.fn(),
+      pause,
+    };
+    const post = vi.fn();
+    stubContentWindow({ __timelines: { main: timeline }, postMessage: post });
+
+    player.play();
+    pause.mockClear();
+    player.seek(2);
+
+    expect(timeline.seek).toHaveBeenCalledWith(2);
+    expect(pause).toHaveBeenCalledTimes(1);
+    expect(post).not.toHaveBeenCalled();
+  });
+
   it("does not bypass an installed runtime bridge for direct __timelines playback", () => {
     const timeline: TimelineStub = {
       duration: vi.fn(() => 5),

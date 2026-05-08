@@ -867,6 +867,8 @@ class HyperframesPlayer extends HTMLElement {
     if (!timeline) return false;
     try {
       timeline.seek(timeInSeconds);
+      // GSAP seek() preserves play state; the player seek() contract lands paused.
+      timeline.pause();
       this._directTimelineAdapter = timeline;
       return true;
     } catch {
@@ -935,6 +937,7 @@ class HyperframesPlayer extends HTMLElement {
           return;
         }
         timeline.pause();
+        if (this._audioOwner === "parent") this._pauseParentMedia();
         this._paused = true;
         this.controlsApi?.updatePlaying(false);
         this.dispatchEvent(new Event("ended"));
