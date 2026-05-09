@@ -2420,8 +2420,21 @@ export function StudioApp() {
 
       const selection = buildDomSelectionForTimelineElement(element);
       if (selection) applyDomSelection(selection);
+
+      const key = getTimelineElementKey(element);
+      if (STUDIO_TIMELINE_LAYER_INSPECTOR_ENABLED && key && canInspectTimelineElement(element)) {
+        setInspectedTimelineElementId(key);
+        setLeftCollapsed(false);
+
+        const iframe = previewIframeRef.current;
+        if (!shouldShowTimelineInspectorBounds(currentTime, element)) {
+          seekStudioPreview(iframe, element.start);
+        }
+      } else {
+        setInspectedTimelineElementId(null);
+      }
     },
-    [applyDomSelection, buildDomSelectionForTimelineElement],
+    [applyDomSelection, buildDomSelectionForTimelineElement, currentTime],
   );
 
   const handleTimelineElementInspect = useCallback(
