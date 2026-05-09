@@ -5,6 +5,7 @@ interface NLEPreviewProps {
   projectId: string;
   iframeRef: Ref<HTMLIFrameElement>;
   onIframeLoad: () => void;
+  onCompositionLoadingChange?: (loading: boolean) => void;
   portrait?: boolean;
   directUrl?: string;
   refreshKey?: number;
@@ -36,6 +37,7 @@ export const NLEPreview = memo(function NLEPreview({
   projectId,
   iframeRef,
   onIframeLoad,
+  onCompositionLoadingChange,
   portrait,
   directUrl,
   refreshKey,
@@ -88,6 +90,7 @@ export const NLEPreview = memo(function NLEPreview({
           projectId={directUrl ? undefined : projectId}
           directUrl={directUrl}
           onLoad={retiringKey ? handleNewPlayerLoad : onIframeLoad}
+          onCompositionLoadingChange={onCompositionLoadingChange}
           portrait={portrait}
           style={retiringKey ? { position: "absolute", inset: 0, zIndex: 1 } : undefined}
         />

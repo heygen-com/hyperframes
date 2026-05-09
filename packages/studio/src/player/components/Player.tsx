@@ -10,6 +10,7 @@ interface PlayerProps {
   projectId?: string;
   directUrl?: string;
   onLoad: () => void;
+  onCompositionLoadingChange?: (loading: boolean) => void;
   portrait?: boolean;
   style?: React.CSSProperties;
 }
@@ -92,7 +93,7 @@ function hasUnloadedAssets(iframe: HTMLIFrameElement, lastResult: boolean): bool
  * timeline probing, and DOM inspection.
  */
 export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
-  ({ projectId, directUrl, onLoad, portrait, style }, ref) => {
+  ({ projectId, directUrl, onLoad, onCompositionLoadingChange, portrait, style }, ref) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const loadCountRef = useRef(0);
     const assetPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -261,6 +262,10 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
     const showCompositionOverlay = shouldShowCompositionLoadingOverlay(compositionLoading);
     const showAssetOverlay =
       assetOverlayVisible && !shaderTransitionLoading && !showCompositionOverlay;
+
+    useEffect(() => {
+      onCompositionLoadingChange?.(showCompositionOverlay);
+    }, [onCompositionLoadingChange, showCompositionOverlay]);
 
     return (
       <div
