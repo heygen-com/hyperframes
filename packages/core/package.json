@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/core",
-  "version": "0.6.0-alpha.2",
+  "version": "0.6.0-alpha.3",
   "description": "",
   "repository": {
     "type": "git",
@@ -42,14 +42,6 @@
       "import": "./src/studio-api/helpers/screenshotClip.ts",
       "types": "./src/studio-api/helpers/screenshotClip.ts"
     },
-    "./studio-api/manual-edits-render-script": {
-      "import": "./src/studio-api/helpers/manualEditsRenderScript.ts",
-      "types": "./src/studio-api/helpers/manualEditsRenderScript.ts"
-    },
-    "./studio-api/studio-motion-render-script": {
-      "import": "./src/studio-api/helpers/studioMotionRenderScript.ts",
-      "types": "./src/studio-api/helpers/studioMotionRenderScript.ts"
-    },
     "./text": {
       "import": "./src/text/index.ts",
       "types": "./src/text/index.ts"
@@ -88,14 +80,6 @@
       "./studio-api/screenshot-clip": {
         "import": "./dist/studio-api/helpers/screenshotClip.js",
         "types": "./dist/studio-api/helpers/screenshotClip.d.ts"
-      },
-      "./studio-api/manual-edits-render-script": {
-        "import": "./dist/studio-api/helpers/manualEditsRenderScript.js",
-        "types": "./dist/studio-api/helpers/manualEditsRenderScript.d.ts"
-      },
-      "./studio-api/studio-motion-render-script": {
-        "import": "./dist/studio-api/helpers/studioMotionRenderScript.js",
-        "types": "./dist/studio-api/helpers/studioMotionRenderScript.d.ts"
       },
       "./text": {
         "import": "./dist/text/index.js",
