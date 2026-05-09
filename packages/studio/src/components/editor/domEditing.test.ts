@@ -10,6 +10,7 @@ import {
   getDomEditNonEditableReason,
   getDomEditTargetKey,
   isTextEditableSelection,
+  resolveVisualDomEditSelectionTarget,
   serializeDomEditTextFields,
   type DomEditSelection,
   resolveDomEditCapabilities,
@@ -21,6 +22,30 @@ function createDocument(markup: string): Document {
   Object.assign(window, { SyntaxError });
   window.document.body.innerHTML = markup;
   return window.document;
+}
+
+function setElementRect(
+  element: HTMLElement,
+  rect: Partial<Pick<DOMRect, "left" | "top" | "width" | "height">>,
+) {
+  const left = rect.left ?? 0;
+  const top = rect.top ?? 0;
+  const width = rect.width ?? 100;
+  const height = rect.height ?? 40;
+  Object.defineProperty(element, "getBoundingClientRect", {
+    configurable: true,
+    value: () => ({
+      x: left,
+      y: top,
+      left,
+      top,
+      width,
+      height,
+      right: left + width,
+      bottom: top + height,
+      toJSON: () => null,
+    }),
+  });
 }
 
 describe("resolveDomEditCapabilities", () => {
@@ -196,6 +221,104 @@ describe("resolveDomEditCapabilities", () => {
       canMove: true,
       canResize: true,
     });
+  });
+});
+
+describe("resolveVisualDomEditSelectionTarget", () => {
+  it("prefers the visible leaf under the pointer over an oversized container", () => {
+    const document = createDocument(`
+      <section id="container" class="hero-shell">
+        <span id="headline" class="headline">Launch faster</span>
+      </section>
+    `);
+    const container = document.getElementById("container") as HTMLElement;
+    const headline = document.getElementById("headline") as HTMLElement;
+    setElementRect(container, { width: 900, height: 520 });
+    setElementRect(headline, { left: 240, top: 160, width: 180, height: 36 });
+
+    expect(
+      resolveVisualDomEditSelectionTarget([container, headline], {
+        activeCompositionPath: "index.html",
+      }),
+    ).toBe(headline);
+  });
+
+  it("skips hidden and zero-size elements before picking a rendered candidate", () => {
+    const document = createDocument(`
+      <div id="hidden" style="display: none">Hidden</div>
+      <div id="empty">Empty</div>
+      <div id="visible">Visible</div>
+    `);
+    const hidden = document.getElementById("hidden") as HTMLElement;
+    const empty = document.getElementById("empty") as HTMLElement;
+    const visible = document.getElementById("visible") as HTMLElement;
+    setElementRect(hidden, { width: 120, height: 32 });
+    setElementRect(empty, { width: 0, height: 0 });
+    setElementRect(visible, { width: 120, height: 32 });
+
+    expect(
+      resolveVisualDomEditSelectionTarget([hidden, empty, visible], {
+        activeCompositionPath: "index.html",
+      }),
+    ).toBe(visible);
+  });
+
+  it("skips transparent elements that still report a box", () => {
+    const document = createDocument(`
+      <button id="transparent" style="opacity: 0">Transparent</button>
+      <button id="visible">Visible</button>
+    `);
+    const transparent = document.getElementById("transparent") as HTMLElement;
+    const visible = document.getElementById("visible") as HTMLElement;
+    setElementRect(transparent, { width: 120, height: 32 });
+    setElementRect(visible, { width: 120, height: 32 });
+
+    expect(
+      resolveVisualDomEditSelectionTarget([transparent, visible], {
+        activeCompositionPath: "index.html",
+      }),
+    ).toBe(visible);
+  });
+
+  it("falls back to the nearest stable editable ancestor when a visual child has no target", () => {
+    const document = createDocument(`
+      <section id="card">
+        <span>Unlabeled copy</span>
+      </section>
+    `);
+    const card = document.getElementById("card") as HTMLElement;
+    const span = card.querySelector("span") as HTMLElement;
+    setElementRect(card, { width: 400, height: 200 });
+    setElementRect(span, { left: 40, top: 40, width: 140, height: 28 });
+
+    expect(
+      resolveVisualDomEditSelectionTarget([span, card], {
+        activeCompositionPath: "index.html",
+      }),
+    ).toBe(card);
+  });
+
+  it("keeps explicit layer selection able to target containers", () => {
+    const document = createDocument(`
+      <section id="container" class="hero-shell">
+        <span id="headline" class="headline">Launch faster</span>
+      </section>
+    `);
+    const container = document.getElementById("container") as HTMLElement;
+    const headline = document.getElementById("headline") as HTMLElement;
+    setElementRect(container, { width: 900, height: 520 });
+    setElementRect(headline, { left: 240, top: 160, width: 180, height: 36 });
+
+    const visualTarget = resolveVisualDomEditSelectionTarget([container, headline], {
+      activeCompositionPath: "index.html",
+    });
+    const explicitSelection = resolveDomEditSelection(container, {
+      activeCompositionPath: "index.html",
+      isMasterView: false,
+    });
+
+    expect(visualTarget).toBe(headline);
+    expect(explicitSelection?.id).toBe("container");
   });
 });
 
@@ -641,6 +764,36 @@ describe("resolveDomEditSelection", () => {
         },
       ),
     ).toBe(root);
+  });
+
+  it("normalizes preview URLs when resolving master timeline composition clips", () => {
+    const document = createDocument(`
+      <div data-composition-id="main">
+        <div
+          id="slide-1"
+          data-composition-id="slide-core-conviction"
+          data-composition-src="compositions/slide-01-core-conviction.html"
+        >
+          <h1>Core Conviction</h1>
+        </div>
+      </div>
+    `);
+    const slide = document.getElementById("slide-1") as HTMLElement;
+
+    expect(
+      findElementForTimelineElement(
+        document,
+        {
+          id: "slide-1",
+          compositionSrc:
+            "http://127.0.0.1:5176/api/projects/apple-presentation-download/preview/compositions/slide-01-core-conviction.html",
+        },
+        {
+          activeCompositionPath: null,
+          isMasterView: true,
+        },
+      ),
+    ).toBe(slide);
   });
 
   it("does not fall back to the root composition when an explicit timeline selector misses", () => {

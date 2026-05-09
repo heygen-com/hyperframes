@@ -3,11 +3,11 @@ import { join } from "node:path";
 import {
   createStudioManualEditsRenderBodyScript,
   type StudioManualEditsRenderScriptOptions,
-} from "@hyperframes/core/studio-api/manual-edits-render-script";
+} from "../core/src/studio-api/helpers/manualEditsRenderScript";
 import {
   createStudioMotionRenderBodyScript,
   STUDIO_MOTION_PATH,
-} from "@hyperframes/core/studio-api/studio-motion-render-script";
+} from "../core/src/studio-api/helpers/studioMotionRenderScript";
 
 const STUDIO_MANUAL_EDITS_PATH = ".hyperframes/studio-manual-edits.json";
 

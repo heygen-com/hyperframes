@@ -291,6 +291,27 @@ function escapeCssString(value: string): string {
     .replace(/\f/g, "\\c ");
 }
 
+function normalizeTimelineCompositionSource(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  if (!trimmed) return undefined;
+
+  let pathname = trimmed;
+  try {
+    pathname = new URL(trimmed, "http://studio.local").pathname;
+  } catch {
+    pathname = trimmed;
+  }
+
+  for (const marker of ["/preview/comp/", "/preview/"]) {
+    const markerIndex = pathname.indexOf(marker);
+    if (markerIndex < 0) continue;
+    const sourcePath = pathname.slice(markerIndex + marker.length).replace(/^\/+/, "");
+    return sourcePath || trimmed;
+  }
+
+  return trimmed;
+}
+
 function querySelectorAllSafely(doc: Document, selector: string): Element[] {
   try {
     return Array.from(doc.querySelectorAll(selector));
@@ -414,6 +435,66 @@ function getDomLayerPatchTarget(
     ),
     sourceFile,
   };
+}
+
+function getElementDepth(el: HTMLElement): number {
+  let depth = 0;
+  let current = el.parentElement;
+  while (current) {
+    depth += 1;
+    current = current.parentElement;
+  }
+  return depth;
+}
+
+function hasRenderedBox(el: HTMLElement): boolean {
+  const rect = el.getBoundingClientRect();
+  if (rect.width <= 1 || rect.height <= 1) return false;
+
+  const computed = el.ownerDocument.defaultView?.getComputedStyle(el);
+  if (!computed) return true;
+  if (computed.display === "none" || computed.visibility === "hidden") return false;
+
+  const opacity = Number.parseFloat(computed.opacity);
+  if (Number.isFinite(opacity) && opacity <= 0.01) return false;
+
+  return true;
+}
+
+function getVisualElementScore(el: HTMLElement, pointerStackIndex: number): number {
+  const tagName = el.tagName.toLowerCase();
+  const rect = el.getBoundingClientRect();
+  const area = Math.max(1, rect.width * rect.height);
+  const smallerElementBonus = Math.max(0, 1_000_000 - Math.min(area, 1_000_000)) / 1_000;
+  const visualLeafBonus =
+    isEditableTextLeaf(el) || ["img", "video", "canvas", "svg"].includes(tagName) ? 2_000 : 0;
+
+  return getElementDepth(el) * 10_000 + visualLeafBonus + smallerElementBonus - pointerStackIndex;
+}
+
+export function resolveVisualDomEditSelectionTarget(
+  elementsFromPoint: Iterable<Element | null | undefined>,
+  options: Pick<DomEditContextOptions, "activeCompositionPath">,
+): HTMLElement | null {
+  let best: { element: HTMLElement; score: number } | null = null;
+  let pointerStackIndex = 0;
+
+  for (const entry of elementsFromPoint) {
+    if (!isHtmlElement(entry)) {
+      pointerStackIndex += 1;
+      continue;
+    }
+
+    if (hasRenderedBox(entry) && getDomLayerPatchTarget(entry, options.activeCompositionPath)) {
+      const score = getVisualElementScore(entry, pointerStackIndex);
+      if (!best || score > best.score) {
+        best = { element: entry, score };
+      }
+    }
+    pointerStackIndex += 1;
+  }
+
+  return best?.element ?? null;
 }
 
 function getDirectLayerChildren(el: HTMLElement, options: DomEditContextOptions): HTMLElement[] {
@@ -848,9 +929,14 @@ export function findElementForTimelineElement(
   options: TimelineElementDomTargetOptions,
 ): HTMLElement | null {
   const elementId = typeof element.id === "string" ? element.id : "";
-  const compositionSource = element.compositionSrc ?? options.compIdToSrc?.get(elementId);
+  const compositionSource =
+    normalizeTimelineCompositionSource(element.compositionSrc) ??
+    options.compIdToSrc?.get(elementId);
   const sourceFile =
-    compositionSource ?? element.sourceFile ?? options.activeCompositionPath ?? "index.html";
+    compositionSource ??
+    normalizeTimelineCompositionSource(element.sourceFile) ??
+    options.activeCompositionPath ??
+    "index.html";
   const escapedElementId = escapeCssString(elementId);
   const escapedCompositionSource = compositionSource ? escapeCssString(compositionSource) : null;
   const selector =

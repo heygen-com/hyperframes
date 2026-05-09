@@ -78,10 +78,10 @@ import {
   STUDIO_MANUAL_EDITING_DISABLED_TITLE,
   STUDIO_MOTION_PANEL_ENABLED,
   STUDIO_PREVIEW_MANUAL_EDITING_ENABLED,
+  STUDIO_PREVIEW_SELECTION_ENABLED,
   STUDIO_TIMELINE_LAYER_INSPECTOR_ENABLED,
 } from "./components/editor/manualEditingAvailability";
 import {
-  buildDefaultDomEditTextField,
   buildDomEditStylePatchOperation,
   buildDomEditTextPatchOperation,
   buildElementAgentPrompt,
@@ -92,6 +92,7 @@ import {
   getDomEditLayerKey,
   getDomEditTargetKey,
   isTextEditableSelection,
+  resolveVisualDomEditSelectionTarget,
   serializeDomEditTextFields,
   resolveDomEditSelection,
   type DomEditLayerItem,
@@ -362,6 +363,7 @@ function getPreviewTargetFromPointer(
   iframe: HTMLIFrameElement,
   clientX: number,
   clientY: number,
+  activeCompositionPath: string | null,
 ): HTMLElement | null {
   let doc: Document | null = null;
   let win: Window | null = null;
@@ -385,6 +387,16 @@ function getPreviewTargetFromPointer(
   const scaleY = iframeRect.height / rootHeight;
   const localX = (clientX - iframeRect.left) / scaleX;
   const localY = (clientY - iframeRect.top) / scaleY;
+
+  if (typeof doc.elementsFromPoint === "function") {
+    const visualTarget = resolveVisualDomEditSelectionTarget(
+      doc.elementsFromPoint(localX, localY),
+      {
+        activeCompositionPath,
+      },
+    );
+    if (visualTarget) return visualTarget;
+  }
 
   return getEventTargetElement(doc.elementFromPoint(localX, localY));
 }
@@ -778,9 +790,6 @@ export function StudioApp() {
   const [agentModalOpen, setAgentModalOpen] = useState(false);
   const [previewIframe, setPreviewIframe] = useState<HTMLIFrameElement | null>(null);
   const [inspectedTimelineElementId, setInspectedTimelineElementId] = useState<string | null>(null);
-  const [thumbnailedTimelineElementIds, setThumbnailedTimelineElementIds] = useState<
-    ReadonlySet<string>
-  >(() => new Set());
   const [previewDocumentVersion, setPreviewDocumentVersion] = useState(0);
   const refreshPreviewDocumentVersion = useCallback(() => {
     setPreviewDocumentVersion((version) => version + 1);
@@ -2318,13 +2327,13 @@ export function StudioApp() {
     (clientX: number, clientY: number, options?: { preferClipAncestor?: boolean }) => {
       const iframe = previewIframeRef.current;
       if (!iframe || captionEditMode) return null;
-      const target = getPreviewTargetFromPointer(iframe, clientX, clientY);
+      const target = getPreviewTargetFromPointer(iframe, clientX, clientY, activeCompPath);
       if (!target) return null;
       return buildDomSelectionFromTarget(target, {
         preferClipAncestor: options?.preferClipAncestor,
       });
     },
-    [buildDomSelectionFromTarget, captionEditMode],
+    [activeCompPath, buildDomSelectionFromTarget, captionEditMode],
   );
 
   const updateDomEditHoverSelection = useCallback((selection: DomEditSelection | null) => {
@@ -2460,17 +2469,6 @@ export function StudioApp() {
     },
     [applyDomSelection, buildDomSelectionForTimelineElement, currentTime, showToast],
   );
-
-  const handleToggleTimelineElementThumbnail = useCallback((element: TimelineElement) => {
-    const key = getTimelineElementKey(element);
-    if (!key) return;
-    setThumbnailedTimelineElementIds((current) => {
-      const next = new Set(current);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  }, []);
 
   const handleTimelineLayerSelect = useCallback(
     (layer: DomEditLayerItem) => {
@@ -3013,48 +3011,6 @@ export function StudioApp() {
     [commitDomTextFields, domEditSelection, handleDomStyleCommit, resolveImportedFontAsset],
   );
 
-  const handleDomAddTextField = useCallback(
-    async (afterFieldKey?: string) => {
-      if (!domEditSelection) return null;
-      if (!domEditSelection.textFields.some((field) => field.source === "child")) return null;
-
-      const insertionIndex = domEditSelection.textFields.findIndex(
-        (field) => field.key === afterFieldKey,
-      );
-      const baseField =
-        domEditSelection.textFields[insertionIndex >= 0 ? insertionIndex : 0] ??
-        domEditSelection.textFields[0];
-      const nextField = buildDefaultDomEditTextField(baseField);
-      const nextTextFields = [...domEditSelection.textFields];
-      nextTextFields.splice(
-        insertionIndex >= 0 ? insertionIndex + 1 : nextTextFields.length,
-        0,
-        nextField,
-      );
-
-      await commitDomTextFields(domEditSelection, nextTextFields);
-      return nextField.key;
-    },
-    [commitDomTextFields, domEditSelection],
-  );
-
-  const handleDomRemoveTextField = useCallback(
-    async (fieldKey: string) => {
-      if (!domEditSelection) return;
-      const field = domEditSelection.textFields.find((entry) => entry.key === fieldKey);
-      if (!field) return;
-
-      if (field.source === "self") {
-        await handleDomTextCommit("", fieldKey);
-        return;
-      }
-
-      const nextTextFields = domEditSelection.textFields.filter((entry) => entry.key !== fieldKey);
-      await commitDomTextFields(domEditSelection, nextTextFields);
-    },
-    [commitDomTextFields, domEditSelection, handleDomTextCommit],
-  );
-
   const handleAskAgent = useCallback(() => {
     if (!domEditSelection) return;
     setAgentPromptTagSnippet(undefined);
@@ -3105,9 +3061,9 @@ export function StudioApp() {
 
   const handlePreviewCanvasMouseDown = useCallback(
     (e: React.MouseEvent<HTMLDivElement>, options?: { preferClipAncestor?: boolean }) => {
-      if (!STUDIO_PREVIEW_MANUAL_EDITING_ENABLED || captionEditMode) return;
+      if (!STUDIO_PREVIEW_SELECTION_ENABLED || captionEditMode) return;
       const nextSelection = resolveDomSelectionFromPreviewPoint(e.clientX, e.clientY, {
-        preferClipAncestor: options?.preferClipAncestor ?? true,
+        preferClipAncestor: options?.preferClipAncestor ?? false,
       });
       if (!nextSelection) {
         if (!e.shiftKey) applyDomSelection(null, { revealPanel: false });
@@ -3122,7 +3078,7 @@ export function StudioApp() {
 
   const handlePreviewCanvasPointerMove = useCallback(
     (e: React.PointerEvent<HTMLDivElement>, options?: { preferClipAncestor?: boolean }) => {
-      if (!STUDIO_PREVIEW_MANUAL_EDITING_ENABLED || captionEditMode) {
+      if (!STUDIO_PREVIEW_SELECTION_ENABLED || captionEditMode) {
         updateDomEditHoverSelection(null);
         return null;
       }
@@ -4000,8 +3956,6 @@ export function StudioApp() {
             onInspectTimelineElement={handleTimelineElementInspect}
             inspectedTimelineElementId={inspectedTimelineElementId}
             timelineLayerChildCounts={timelineLayerChildCounts}
-            thumbnailedTimelineElementIds={thumbnailedTimelineElementIds}
-            onToggleTimelineElementThumbnail={handleToggleTimelineElementThumbnail}
             onCompIdToSrcChange={setCompIdToSrc}
             onCompositionChange={(compPath) => {
               // Sync activeCompPath when user drills down via timeline double-click
@@ -4019,7 +3973,7 @@ export function StudioApp() {
                   iframeRef={previewIframeRef}
                   activeCompositionPath={activeCompPath}
                   hoverSelection={
-                    STUDIO_PREVIEW_MANUAL_EDITING_ENABLED && !captionEditMode
+                    STUDIO_PREVIEW_SELECTION_ENABLED && !captionEditMode
                       ? domEditHoverSelection
                       : null
                   }
@@ -4125,8 +4079,6 @@ export function StudioApp() {
                   <div className="min-h-0 flex-1">
                     {designPanelActive ? (
                       <PropertyPanel
-                        projectId={projectId}
-                        assets={assets}
                         element={domEditGroupSelections.length > 1 ? null : domEditSelection}
                         copiedAgentPrompt={copiedAgentPrompt}
                         onClearSelection={clearDomSelection}
@@ -4135,11 +4087,8 @@ export function StudioApp() {
                         onSetManualSize={handleDomBoxSizeCommit}
                         onSetText={handleDomTextCommit}
                         onSetTextFieldStyle={handleDomTextFieldStyleCommit}
-                        onAddTextField={handleDomAddTextField}
-                        onRemoveTextField={handleDomRemoveTextField}
                         onResetManualEdits={handleDomManualEditsReset}
                         onAskAgent={handleAskAgent}
-                        onImportAssets={handleImportFiles}
                         fontAssets={fontAssets}
                         onImportFonts={handleImportFonts}
                       />

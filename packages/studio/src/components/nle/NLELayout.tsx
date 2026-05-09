@@ -55,8 +55,6 @@ interface NLELayoutProps {
   onInspectTimelineElement?: (element: TimelineElement) => void;
   inspectedTimelineElementId?: string | null;
   timelineLayerChildCounts?: ReadonlyMap<string, number>;
-  thumbnailedTimelineElementIds?: ReadonlySet<string>;
-  onToggleTimelineElementThumbnail?: (element: TimelineElement) => void;
   /** Exposes the compIdToSrc map for parent components (e.g., useRenderClipContent) */
   onCompIdToSrcChange?: (map: Map<string, string>) => void;
   /** Whether the timeline panel is visible (default: true) */
@@ -94,8 +92,6 @@ export const NLELayout = memo(function NLELayout({
   onInspectTimelineElement,
   inspectedTimelineElementId,
   timelineLayerChildCounts,
-  thumbnailedTimelineElementIds,
-  onToggleTimelineElementThumbnail,
   onCompIdToSrcChange,
   timelineVisible,
   onToggleTimeline,
@@ -453,8 +449,6 @@ export const NLELayout = memo(function NLELayout({
                 onInspectElement={onInspectTimelineElement}
                 inspectedElementId={inspectedTimelineElementId}
                 layerChildCounts={timelineLayerChildCounts}
-                thumbnailedElementIds={thumbnailedTimelineElementIds}
-                onToggleElementThumbnail={onToggleTimelineElementThumbnail}
                 disabled={timelineDisabled}
               />
             </div>
