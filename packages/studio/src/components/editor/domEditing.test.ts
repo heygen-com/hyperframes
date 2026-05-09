@@ -9,6 +9,7 @@ import {
   findElementForTimelineElement,
   getDomEditNonEditableReason,
   getDomEditTargetKey,
+  isLargeRasterDomEditSelection,
   isTextEditableSelection,
   resolveVisualDomEditSelectionTarget,
   serializeDomEditTextFields,
@@ -319,6 +320,56 @@ describe("resolveVisualDomEditSelectionTarget", () => {
 
     expect(visualTarget).toBe(headline);
     expect(explicitSelection?.id).toBe("container");
+  });
+});
+
+describe("isLargeRasterDomEditSelection", () => {
+  it("flags large image and background targets for raster click fallback", () => {
+    expect(
+      isLargeRasterDomEditSelection(
+        {
+          tagName: "img",
+          boundingBox: { x: 0, y: 0, width: 1920, height: 1080 },
+          computedStyles: {},
+        },
+        { width: 1920, height: 1080 },
+      ),
+    ).toBe(true);
+
+    expect(
+      isLargeRasterDomEditSelection(
+        {
+          tagName: "div",
+          boundingBox: { x: 0, y: 0, width: 1280, height: 720 },
+          computedStyles: { "background-image": 'url("hero.png")' },
+        },
+        { width: 1920, height: 1080 },
+      ),
+    ).toBe(true);
+  });
+
+  it("does not flag small media or text selections", () => {
+    expect(
+      isLargeRasterDomEditSelection(
+        {
+          tagName: "img",
+          boundingBox: { x: 80, y: 80, width: 96, height: 96 },
+          computedStyles: {},
+        },
+        { width: 1920, height: 1080 },
+      ),
+    ).toBe(false);
+
+    expect(
+      isLargeRasterDomEditSelection(
+        {
+          tagName: "h1",
+          boundingBox: { x: 0, y: 0, width: 1600, height: 300 },
+          computedStyles: {},
+        },
+        { width: 1920, height: 1080 },
+      ),
+    ).toBe(false);
   });
 });
 
@@ -934,6 +985,50 @@ describe("patch builders and prompt builder", () => {
 
     expect(prompt).toContain("Source file: /tmp/hf-studio-project/index.html");
     expect(prompt).not.toContain("Source file: index.html");
+  });
+
+  it("includes raster click context in copied agent prompts", () => {
+    const selection = {
+      element: {} as HTMLElement,
+      id: undefined,
+      selector: ".hero-bg",
+      selectorIndex: undefined,
+      sourceFile: "index.html",
+      compositionPath: "index.html",
+      compositionSrc: undefined,
+      isCompositionHost: false,
+      label: "Hero Bg",
+      tagName: "img",
+      boundingBox: { x: 0, y: 0, width: 1920, height: 1080 },
+      textContent: null,
+      dataAttributes: {},
+      inlineStyles: {},
+      computedStyles: {},
+      textFields: [],
+      capabilities: {
+        canSelect: true,
+        canEditStyles: true,
+        canMove: true,
+        canResize: true,
+        canApplyManualOffset: true,
+        canApplyManualSize: true,
+        canApplyManualRotation: true,
+      },
+    } satisfies DomEditSelection;
+
+    const prompt = buildElementAgentPrompt({
+      selection,
+      currentTime: 3,
+      selectionContext:
+        "The user clicked visible text that is baked into the selected image/background.",
+      userInstruction: "Change the title copy.",
+    });
+
+    expect(prompt).toContain("Selection context:");
+    expect(prompt).toContain(
+      "The user clicked visible text that is baked into the selected image/background.",
+    );
+    expect(prompt).toContain("Change the title copy.");
   });
 
   it("serializes child text fields back into HTML", () => {

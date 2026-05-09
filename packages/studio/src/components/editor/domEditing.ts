@@ -105,6 +105,11 @@ export interface DomEditContextOptions {
   preferClipAncestor?: boolean;
 }
 
+export interface DomEditViewport {
+  width: number;
+  height: number;
+}
+
 export interface TimelineElementDomTarget {
   id?: string;
   domId?: string;
@@ -495,6 +500,31 @@ export function resolveVisualDomEditSelectionTarget(
   }
 
   return best?.element ?? null;
+}
+
+function hasRasterBackground(selection: Pick<DomEditSelection, "computedStyles">): boolean {
+  const backgroundImage = selection.computedStyles["background-image"]?.trim();
+  return Boolean(backgroundImage && backgroundImage !== "none");
+}
+
+export function isLargeRasterDomEditSelection(
+  selection: Pick<DomEditSelection, "boundingBox" | "computedStyles" | "tagName">,
+  viewport?: DomEditViewport | null,
+): boolean {
+  const tagName = selection.tagName.toLowerCase();
+  const isRasterLike = tagName === "img" || hasRasterBackground(selection);
+  if (!isRasterLike) return false;
+
+  const { width, height } = selection.boundingBox;
+  if (width <= 1 || height <= 1) return false;
+  if (!viewport || viewport.width <= 1 || viewport.height <= 1) {
+    return width >= 960 && height >= 540;
+  }
+
+  const areaRatio = (width * height) / (viewport.width * viewport.height);
+  const widthRatio = width / viewport.width;
+  const heightRatio = height / viewport.height;
+  return areaRatio >= 0.4 || (widthRatio >= 0.7 && heightRatio >= 0.5);
 }
 
 function getDirectLayerChildren(el: HTMLElement, options: DomEditContextOptions): HTMLElement[] {
@@ -1013,12 +1043,14 @@ export function buildElementAgentPrompt({
   selection,
   currentTime,
   tagSnippet,
+  selectionContext,
   userInstruction,
   sourceFilePath,
 }: {
   selection: DomEditSelection;
   currentTime: number;
   tagSnippet?: string;
+  selectionContext?: string;
   userInstruction?: string;
   sourceFilePath?: string;
 }): string {
@@ -1041,6 +1073,11 @@ export function buildElementAgentPrompt({
 
   if (selection.textContent) {
     lines.push(`Text: ${selection.textContent}`);
+  }
+
+  const trimmedSelectionContext = selectionContext?.trim();
+  if (trimmedSelectionContext) {
+    lines.push("", "Selection context:", trimmedSelectionContext);
   }
 
   const textFieldsBlock = formatTextFields(selection.textFields);

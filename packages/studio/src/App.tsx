@@ -4,6 +4,7 @@ import {
   useRef,
   useEffect,
   useMemo,
+  type CSSProperties,
   type MouseEvent,
   type ReactNode,
 } from "react";
@@ -91,10 +92,12 @@ import {
   findElementForTimelineElement,
   getDomEditLayerKey,
   getDomEditTargetKey,
+  isLargeRasterDomEditSelection,
   isTextEditableSelection,
   resolveVisualDomEditSelectionTarget,
   serializeDomEditTextFields,
   resolveDomEditSelection,
+  type DomEditViewport,
   type DomEditLayerItem,
   type DomEditTextField,
   type DomEditSelection,
@@ -359,6 +362,59 @@ function isManualGeometryStyleProperty(property: string): boolean {
   return property === "left" || property === "top" || property === "width" || property === "height";
 }
 
+interface PreviewLocalPointer {
+  x: number;
+  y: number;
+  viewport: DomEditViewport;
+}
+
+interface AgentModalAnchorPoint {
+  x: number;
+  y: number;
+}
+
+function resolvePreviewLocalPointer(
+  iframe: HTMLIFrameElement,
+  doc: Document,
+  win: Window,
+  clientX: number,
+  clientY: number,
+): PreviewLocalPointer | null {
+  const iframeRect = iframe.getBoundingClientRect();
+  const root =
+    doc.querySelector<HTMLElement>("[data-composition-id]") ?? doc.documentElement ?? null;
+  const rootRect = root?.getBoundingClientRect();
+  const rootWidth = rootRect?.width || win.innerWidth;
+  const rootHeight = rootRect?.height || win.innerHeight;
+  if (!rootWidth || !rootHeight) return null;
+
+  const scaleX = iframeRect.width / rootWidth;
+  const scaleY = iframeRect.height / rootHeight;
+  return {
+    x: (clientX - iframeRect.left) / scaleX,
+    y: (clientY - iframeRect.top) / scaleY,
+    viewport: { width: rootWidth, height: rootHeight },
+  };
+}
+
+function getPreviewLocalPointer(
+  iframe: HTMLIFrameElement,
+  clientX: number,
+  clientY: number,
+): PreviewLocalPointer | null {
+  let doc: Document | null = null;
+  let win: Window | null = null;
+  try {
+    doc = iframe.contentDocument;
+    win = iframe.contentWindow;
+  } catch {
+    return null;
+  }
+  if (!doc || !win) return null;
+
+  return resolvePreviewLocalPointer(iframe, doc, win, clientX, clientY);
+}
+
 function getPreviewTargetFromPointer(
   iframe: HTMLIFrameElement,
   clientX: number,
@@ -375,22 +431,12 @@ function getPreviewTargetFromPointer(
   }
   if (!doc || !win) return null;
 
-  const iframeRect = iframe.getBoundingClientRect();
-  const root =
-    doc.querySelector<HTMLElement>("[data-composition-id]") ?? doc.documentElement ?? null;
-  const rootRect = root?.getBoundingClientRect();
-  const rootWidth = rootRect?.width || win.innerWidth;
-  const rootHeight = rootRect?.height || win.innerHeight;
-  if (!rootWidth || !rootHeight) return null;
-
-  const scaleX = iframeRect.width / rootWidth;
-  const scaleY = iframeRect.height / rootHeight;
-  const localX = (clientX - iframeRect.left) / scaleX;
-  const localY = (clientY - iframeRect.top) / scaleY;
+  const localPointer = resolvePreviewLocalPointer(iframe, doc, win, clientX, clientY);
+  if (!localPointer) return null;
 
   if (typeof doc.elementsFromPoint === "function") {
     const visualTarget = resolveVisualDomEditSelectionTarget(
-      doc.elementsFromPoint(localX, localY),
+      doc.elementsFromPoint(localPointer.x, localPointer.y),
       {
         activeCompositionPath,
       },
@@ -398,7 +444,22 @@ function getPreviewTargetFromPointer(
     if (visualTarget) return visualTarget;
   }
 
-  return getEventTargetElement(doc.elementFromPoint(localX, localY));
+  return getEventTargetElement(doc.elementFromPoint(localPointer.x, localPointer.y));
+}
+
+function buildRasterClickSelectionContext(
+  selection: DomEditSelection,
+  localPointer: PreviewLocalPointer,
+): string {
+  return [
+    "The user clicked a large raster/background element in the Studio preview.",
+    `Preview click: x=${Math.round(localPointer.x)}px, y=${Math.round(localPointer.y)}px in a ${Math.round(
+      localPointer.viewport.width,
+    )}x${Math.round(localPointer.viewport.height)} composition.`,
+    `Selected target: <${selection.tagName}> ${selection.selector ?? selection.id ?? selection.label}.`,
+    "Visible copy or artwork at that point may be baked into the selected image/background rather than a selectable DOM text layer.",
+    "If the request mentions text seen at the click location, inspect or replace the image asset, or recreate that visible copy as editable DOM.",
+  ].join("\n");
 }
 
 function domEditSelectionsTargetSame(
@@ -604,17 +665,47 @@ function pauseStudioPreviewPlayback(iframe: HTMLIFrameElement | null): number | 
 
 // ── Ask Agent Modal ──
 
+function clampNumber(value: number, min: number, max: number): number {
+  if (max < min) return min;
+  return Math.min(Math.max(value, min), max);
+}
+
+function getAgentModalPositionStyle(
+  anchorPoint: AgentModalAnchorPoint | null,
+): CSSProperties | undefined {
+  if (!anchorPoint || typeof window === "undefined") return undefined;
+
+  const modalWidth = 480;
+  const estimatedModalHeight = 270;
+  const margin = 16;
+  const left = clampNumber(
+    anchorPoint.x,
+    margin + modalWidth / 2,
+    window.innerWidth - margin - modalWidth / 2,
+  );
+  const top = clampNumber(
+    anchorPoint.y + 12,
+    margin,
+    window.innerHeight - margin - estimatedModalHeight,
+  );
+
+  return { left, top, transform: "translateX(-50%)" };
+}
+
 function AskAgentModal({
   selectionLabel,
+  anchorPoint = null,
   onSubmit,
   onClose,
 }: {
   selectionLabel: string;
+  anchorPoint?: AgentModalAnchorPoint | null;
   onSubmit: (instruction: string) => void;
   onClose: () => void;
 }) {
   const [value, setValue] = useState("");
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const modalPositionStyle = getAgentModalPositionStyle(anchorPoint);
 
   useMountEffect(() => {
     requestAnimationFrame(() => inputRef.current?.focus());
@@ -627,11 +718,18 @@ function AskAgentModal({
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm"
+      className={
+        anchorPoint
+          ? "fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm"
+          : "fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm"
+      }
       onClick={onClose}
     >
       <div
-        className="w-[480px] rounded-2xl border border-neutral-800 bg-neutral-950 shadow-2xl"
+        className={`w-[480px] rounded-2xl border border-neutral-800 bg-neutral-950 shadow-2xl ${
+          anchorPoint ? "fixed" : ""
+        }`}
+        style={modalPositionStyle}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-5 py-4 border-b border-neutral-800/60">
@@ -786,6 +884,12 @@ export function StudioApp() {
   const [domEditGroupSelections, setDomEditGroupSelections] = useState<DomEditSelection[]>([]);
   const [domEditHoverSelection, setDomEditHoverSelection] = useState<DomEditSelection | null>(null);
   const [agentPromptTagSnippet, setAgentPromptTagSnippet] = useState<string | undefined>();
+  const [agentPromptSelectionContext, setAgentPromptSelectionContext] = useState<
+    string | undefined
+  >();
+  const [agentModalAnchorPoint, setAgentModalAnchorPoint] = useState<AgentModalAnchorPoint | null>(
+    null,
+  );
   const [copiedAgentPrompt, setCopiedAgentPrompt] = useState(false);
   const [agentModalOpen, setAgentModalOpen] = useState(false);
   const [previewIframe, setPreviewIframe] = useState<HTMLIFrameElement | null>(null);
@@ -1802,6 +1906,8 @@ export function StudioApp() {
       options?: { revealPanel?: boolean; additive?: boolean; preserveGroup?: boolean },
     ) => {
       setAgentPromptTagSnippet(undefined);
+      setAgentPromptSelectionContext(undefined);
+      setAgentModalAnchorPoint(null);
       setCopiedAgentPrompt(false);
       if (!selection) {
         domEditSelectionRef.current = null;
@@ -3014,6 +3120,8 @@ export function StudioApp() {
   const handleAskAgent = useCallback(() => {
     if (!domEditSelection) return;
     setAgentPromptTagSnippet(undefined);
+    setAgentPromptSelectionContext(undefined);
+    setAgentModalAnchorPoint(null);
     void preloadAgentPromptSnippet(domEditSelection);
     setAgentModalOpen(true);
   }, [domEditSelection, preloadAgentPromptSnippet]);
@@ -3028,6 +3136,7 @@ export function StudioApp() {
         selection: domEditSelection,
         currentTime,
         tagSnippet,
+        selectionContext: agentPromptSelectionContext,
         userInstruction,
         sourceFilePath: toProjectAbsolutePath(projectDir, targetPath),
       });
@@ -3039,11 +3148,21 @@ export function StudioApp() {
       }
 
       setAgentModalOpen(false);
+      setAgentPromptSelectionContext(undefined);
+      setAgentModalAnchorPoint(null);
       if (copiedAgentTimerRef.current) clearTimeout(copiedAgentTimerRef.current);
       setCopiedAgentPrompt(true);
       copiedAgentTimerRef.current = setTimeout(() => setCopiedAgentPrompt(false), 1600);
     },
-    [activeCompPath, agentPromptTagSnippet, currentTime, domEditSelection, projectDir, showToast],
+    [
+      activeCompPath,
+      agentPromptSelectionContext,
+      agentPromptTagSnippet,
+      currentTime,
+      domEditSelection,
+      projectDir,
+      showToast,
+    ],
   );
 
   const handlePreviewIframeRef = useCallback(
@@ -3071,9 +3190,29 @@ export function StudioApp() {
       }
       e.preventDefault();
       e.stopPropagation();
+      const localPointer = previewIframeRef.current
+        ? getPreviewLocalPointer(previewIframeRef.current, e.clientX, e.clientY)
+        : null;
       applyDomSelection(nextSelection, { additive: e.shiftKey });
+      if (
+        !e.shiftKey &&
+        localPointer &&
+        isLargeRasterDomEditSelection(nextSelection, localPointer.viewport)
+      ) {
+        setAgentPromptSelectionContext(
+          buildRasterClickSelectionContext(nextSelection, localPointer),
+        );
+        setAgentModalAnchorPoint({ x: e.clientX, y: e.clientY });
+        void preloadAgentPromptSnippet(nextSelection);
+        setAgentModalOpen(true);
+      }
     },
-    [applyDomSelection, captionEditMode, resolveDomSelectionFromPreviewPoint],
+    [
+      applyDomSelection,
+      captionEditMode,
+      preloadAgentPromptSnippet,
+      resolveDomSelectionFromPreviewPoint,
+    ],
   );
 
   const handlePreviewCanvasPointerMove = useCallback(
@@ -4139,8 +4278,13 @@ export function StudioApp() {
       {agentModalOpen && domEditSelection && (
         <AskAgentModal
           selectionLabel={domEditSelection.label}
+          anchorPoint={agentModalAnchorPoint}
           onSubmit={handleAgentModalSubmit}
-          onClose={() => setAgentModalOpen(false)}
+          onClose={() => {
+            setAgentModalOpen(false);
+            setAgentPromptSelectionContext(undefined);
+            setAgentModalAnchorPoint(null);
+          }}
         />
       )}
 
