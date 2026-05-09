@@ -69,6 +69,10 @@ const MIN_TIMELINE_H = 100;
 const DEFAULT_TIMELINE_H = 220;
 const MIN_PREVIEW_H = 120;
 
+export function shouldDisableTimelineWhileCompositionLoading(compositionLoading: boolean): boolean {
+  return compositionLoading;
+}
+
 export const NLELayout = memo(function NLELayout({
   projectId,
   portrait,
@@ -214,6 +218,8 @@ export const NLELayout = memo(function NLELayout({
 
   // Resizable timeline height
   const [timelineH, setTimelineH] = useState(DEFAULT_TIMELINE_H);
+  const [compositionLoading, setCompositionLoading] = useState(true);
+  const timelineDisabled = shouldDisableTimelineWhileCompositionLoading(compositionLoading);
   const isTimelineVisible = timelineVisible ?? true;
   const isDragging = useRef(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -327,23 +333,31 @@ export const NLELayout = memo(function NLELayout({
   }, [activeCompositionPath, projectId, updateCompositionStack]);
 
   // Resize divider handlers
-  const handleDividerPointerDown = useCallback((e: React.PointerEvent) => {
-    e.preventDefault();
-    isDragging.current = true;
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
-  }, []);
+  const handleDividerPointerDown = useCallback(
+    (e: React.PointerEvent) => {
+      if (timelineDisabled) return;
+      e.preventDefault();
+      isDragging.current = true;
+      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    },
+    [timelineDisabled],
+  );
 
-  const handleDividerPointerMove = useCallback((e: React.PointerEvent) => {
-    if (!isDragging.current || !containerRef.current) return;
-    const rect = containerRef.current.getBoundingClientRect();
-    const mouseY = e.clientY - rect.top;
-    const containerH = rect.height;
-    const newTimelineH = Math.max(
-      MIN_TIMELINE_H,
-      Math.min(containerH - MIN_PREVIEW_H, containerH - mouseY),
-    );
-    setTimelineH(newTimelineH);
-  }, []);
+  const handleDividerPointerMove = useCallback(
+    (e: React.PointerEvent) => {
+      if (timelineDisabled) return;
+      if (!isDragging.current || !containerRef.current) return;
+      const rect = containerRef.current.getBoundingClientRect();
+      const mouseY = e.clientY - rect.top;
+      const containerH = rect.height;
+      const newTimelineH = Math.max(
+        MIN_TIMELINE_H,
+        Math.min(containerH - MIN_PREVIEW_H, containerH - mouseY),
+      );
+      setTimelineH(newTimelineH);
+    },
+    [timelineDisabled],
+  );
 
   const handleDividerPointerUp = useCallback(() => {
     isDragging.current = false;
@@ -374,6 +388,7 @@ export const NLELayout = memo(function NLELayout({
             projectId={projectId}
             iframeRef={iframeRef}
             onIframeLoad={onIframeLoad}
+            onCompositionLoadingChange={setCompositionLoading}
             portrait={portrait}
             directUrl={directUrl}
             refreshKey={refreshKey}
@@ -388,7 +403,7 @@ export const NLELayout = memo(function NLELayout({
               onNavigate={handleNavigateComposition}
             />
           )}
-          <PlayerControls onTogglePlay={togglePlay} onSeek={seek} />
+          <PlayerControls onTogglePlay={togglePlay} onSeek={seek} disabled={timelineDisabled} />
         </div>
       </div>
 
@@ -406,13 +421,18 @@ export const NLELayout = memo(function NLELayout({
           </div>
 
           {/* Timeline section — fixed height, resizable */}
-          <div className="flex flex-col flex-shrink-0" style={{ height: timelineH }}>
+          <div
+            className="relative flex flex-col flex-shrink-0"
+            style={{ height: timelineH }}
+            aria-disabled={timelineDisabled || undefined}
+          >
             {/* Timeline tracks */}
             <div
               // flex-col: toolbar takes natural height, Timeline fills remainder.
               className="flex flex-col flex-1 min-h-0 overflow-hidden bg-neutral-950"
               onDoubleClick={(e) => {
                 if ((e.target as HTMLElement).closest("[data-clip]")) return;
+                if (timelineDisabled) return;
                 if (compositionStack.length > 1) {
                   updateCompositionStack((prev) => prev.slice(0, -1));
                 }
@@ -435,9 +455,20 @@ export const NLELayout = memo(function NLELayout({
                 layerChildCounts={timelineLayerChildCounts}
                 thumbnailedElementIds={thumbnailedTimelineElementIds}
                 onToggleElementThumbnail={onToggleTimelineElementThumbnail}
+                disabled={timelineDisabled}
               />
             </div>
             {timelineFooter && <div className="flex-shrink-0">{timelineFooter}</div>}
+            {timelineDisabled && (
+              <div
+                className="absolute inset-0 z-30 cursor-not-allowed bg-black/18"
+                data-testid="timeline-loading-disabled-overlay"
+                aria-hidden="true"
+                onPointerDown={(event) => event.preventDefault()}
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={(event) => event.preventDefault()}
+              />
+            )}
           </div>
         </>
       ) : onToggleTimeline ? (

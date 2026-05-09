@@ -26,11 +26,13 @@ export function resolveSeekPercent(clientX: number, rectLeft: number, rectWidth:
 interface PlayerControlsProps {
   onTogglePlay: () => void;
   onSeek: (time: number) => void;
+  disabled?: boolean;
 }
 
 export const PlayerControls = memo(function PlayerControls({
   onTogglePlay,
   onSeek,
+  disabled = false,
 }: PlayerControlsProps) {
   // Subscribe to only the fields we render — each selector prevents cascading re-renders
   const isPlaying = usePlayerStore((s) => s.isPlaying);
@@ -57,6 +59,7 @@ export const PlayerControls = memo(function PlayerControls({
 
   const durationRef = useRef(duration);
   durationRef.current = duration;
+  const controlsDisabled = disabled || !timelineReady;
   useMountEffect(() => {
     const updateProgress = (t: number) => {
       currentTimeRef.current = t;
@@ -115,6 +118,7 @@ export const PlayerControls = memo(function PlayerControls({
 
   const seekFromClientX = useCallback(
     (clientX: number) => {
+      if (disabled) return;
       const bar = seekBarRef.current;
       if (!bar || duration <= 0) return;
       const rect = bar.getBoundingClientRect();
@@ -125,7 +129,7 @@ export const PlayerControls = memo(function PlayerControls({
       if (progressThumbRef.current) progressThumbRef.current.style.left = `${pct}%`;
       onSeek(percent * duration);
     },
-    [duration, onSeek],
+    [disabled, duration, onSeek],
   );
 
   const handlePointerDown = useCallback(
@@ -204,7 +208,7 @@ export const PlayerControls = memo(function PlayerControls({
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
-      if (!timelineReady || duration <= 0) return;
+      if (disabled || !timelineReady || duration <= 0) return;
       const step = e.shiftKey ? 10 : 1;
       if (e.key === "ArrowLeft") {
         e.preventDefault();
@@ -214,14 +218,15 @@ export const PlayerControls = memo(function PlayerControls({
         onSeek(Math.min(duration, stepFrameTime(currentTimeRef.current, step)));
       }
     },
-    [timelineReady, duration, onSeek],
+    [disabled, timelineReady, duration, onSeek],
   );
 
   const commitJumpFrame = useCallback(() => {
+    if (disabled) return;
     const frame = Number.parseInt(jumpFrame, 10);
     if (!Number.isFinite(frame) || duration <= 0) return;
     onSeek(Math.min(duration, frameToSeconds(Math.max(0, frame))));
-  }, [duration, jumpFrame, onSeek]);
+  }, [disabled, duration, jumpFrame, onSeek]);
 
   const handleJumpSubmit = useCallback(
     (e: React.FormEvent) => {
@@ -243,6 +248,7 @@ export const PlayerControls = memo(function PlayerControls({
   return (
     <div
       className="px-4 py-2 flex flex-wrap items-center gap-x-2 gap-y-1"
+      aria-disabled={disabled || undefined}
       style={{
         borderTop: "1px solid rgba(255,255,255,0.04)",
         // Add iOS safe-area inset so Safari's bottom URL bar doesn't occlude
@@ -256,7 +262,7 @@ export const PlayerControls = memo(function PlayerControls({
         type="button"
         aria-label={isPlaying ? "Pause" : "Play"}
         onClick={onTogglePlay}
-        disabled={!timelineReady}
+        disabled={controlsDisabled}
         className="flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-lg disabled:opacity-30 disabled:pointer-events-none transition-colors"
         style={{ background: "rgba(255,255,255,0.06)" }}
       >
@@ -293,12 +299,15 @@ export const PlayerControls = memo(function PlayerControls({
           (sliderRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
         }}
         role="slider"
-        tabIndex={0}
+        tabIndex={disabled ? -1 : 0}
         aria-label="Seek"
+        aria-disabled={disabled || undefined}
         aria-valuemin={0}
         aria-valuemax={Math.round(duration)}
         aria-valuenow={0}
-        className="min-w-[96px] flex-1 h-6 flex items-center cursor-pointer group"
+        className={`min-w-[96px] flex-1 h-6 flex items-center group ${
+          disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"
+        }`}
         // `touch-action: none` tells the browser we're handling every
         // pointer gesture on this element ourselves. Without it, iOS
         // Safari consumes horizontal swipes for its own swipe-back-to-
@@ -334,6 +343,7 @@ export const PlayerControls = memo(function PlayerControls({
         <button
           type="button"
           onClick={() => setShowSpeedMenu((v) => !v)}
+          disabled={disabled}
           className="w-10 px-2 py-1 rounded-md text-[10px] font-mono tabular-nums transition-colors"
           style={{ color: "#71717A", background: "rgba(255,255,255,0.04)" }}
         >
@@ -374,6 +384,7 @@ export const PlayerControls = memo(function PlayerControls({
       <button
         type="button"
         onClick={() => setLoopEnabled(!loopEnabled)}
+        disabled={disabled}
         className={`h-7 w-14 rounded-md border px-2 text-[10px] font-medium transition-colors ${
           loopEnabled
             ? "text-studio-accent bg-studio-accent/10 border-studio-accent/30"
@@ -389,6 +400,7 @@ export const PlayerControls = memo(function PlayerControls({
       <button
         type="button"
         onClick={() => setTimeDisplayMode((mode) => (mode === "time" ? "frame" : "time"))}
+        disabled={disabled}
         className="h-7 w-14 rounded-md border border-neutral-700 px-2 text-[10px] font-mono text-neutral-300 transition-colors hover:border-neutral-500 hover:bg-neutral-800"
         title="Toggle time/frame display"
         aria-label="Toggle time and frame display"
@@ -403,6 +415,7 @@ export const PlayerControls = memo(function PlayerControls({
         <input
           value={jumpFrame}
           onChange={(e) => setJumpFrame(e.target.value)}
+          disabled={disabled}
           inputMode="numeric"
           pattern="[0-9]*"
           aria-label="Jump to frame"
