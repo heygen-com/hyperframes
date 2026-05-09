@@ -31,6 +31,10 @@ function getShaderTransitionLoading(event: Event): boolean | null {
   return state.loading === true && state.ready !== true;
 }
 
+export function shouldShowCompositionLoadingOverlay(compositionLoading: boolean): boolean {
+  return compositionLoading;
+}
+
 function enableInteractiveIframe(player: HyperframesPlayerElement): void {
   const root = player.shadowRoot;
   if (!root) return;
@@ -97,6 +101,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
     const [assetOverlayVisible, setAssetOverlayVisible] = useState(false);
     const [assetOverlayFading, setAssetOverlayFading] = useState(false);
     const [shaderTransitionLoading, setShaderTransitionLoading] = useState(false);
+    const [compositionLoading, setCompositionLoading] = useState(true);
 
     useMountEffect(() => {
       const container = containerRef.current;
@@ -142,10 +147,20 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
         };
         player.addEventListener("shadertransitionstate", handleShaderTransitionState);
 
+        const handleReady = () => {
+          setCompositionLoading(false);
+        };
+        const handleError = () => {
+          setCompositionLoading(false);
+        };
+        player.addEventListener("ready", handleReady);
+        player.addEventListener("error", handleError);
+
         // Forward the iframe's native load event to the studio's onIframeLoad.
         const handleLoad = () => {
           loadCountRef.current++;
           setShaderTransitionLoading(false);
+          setCompositionLoading(true);
           // Reveal animation on reload (hot-reload, composition switch)
           if (loadCountRef.current > 1) {
             container.classList.remove("preview-revealing");
@@ -196,6 +211,8 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
           iframe.removeEventListener("load", handleLoad);
           player.removeEventListener("click", preventToggle, { capture: true });
           player.removeEventListener("shadertransitionstate", handleShaderTransitionState);
+          player.removeEventListener("ready", handleReady);
+          player.removeEventListener("error", handleError);
           if (assetPollRef.current) clearInterval(assetPollRef.current);
           assetPollRef.current = null;
           container.removeChild(player);
@@ -241,7 +258,9 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
       };
     }, [assetsLoading]);
 
-    const showAssetOverlay = assetOverlayVisible && !shaderTransitionLoading;
+    const showCompositionOverlay = shouldShowCompositionLoadingOverlay(compositionLoading);
+    const showAssetOverlay =
+      assetOverlayVisible && !shaderTransitionLoading && !showCompositionOverlay;
 
     return (
       <div
@@ -249,6 +268,23 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
         style={style}
       >
         <div ref={containerRef} className="w-full h-full" />
+        {showCompositionOverlay && (
+          <div
+            className="absolute inset-0 bg-black flex items-center justify-center z-30 select-none"
+            data-hyperframes-ignore=""
+            data-testid="composition-loading-overlay"
+            draggable={false}
+            onDragStart={(event) => event.preventDefault()}
+            onMouseDown={(event) => event.preventDefault()}
+            onPointerDown={(event) => event.preventDefault()}
+          >
+            <HyperframesLoader
+              title="Loading composition"
+              detail="Preparing the Studio preview."
+              size={56}
+            />
+          </div>
+        )}
         {showAssetOverlay && (
           <div
             className="absolute inset-0 bg-black flex items-center justify-center z-20 select-none"
