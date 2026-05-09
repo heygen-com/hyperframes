@@ -4,7 +4,6 @@ import {
   useRef,
   useEffect,
   useMemo,
-  type CSSProperties,
   type MouseEvent,
   type ReactNode,
 } from "react";
@@ -79,10 +78,10 @@ import {
   STUDIO_MANUAL_EDITING_DISABLED_TITLE,
   STUDIO_MOTION_PANEL_ENABLED,
   STUDIO_PREVIEW_MANUAL_EDITING_ENABLED,
-  STUDIO_PREVIEW_SELECTION_ENABLED,
   STUDIO_TIMELINE_LAYER_INSPECTOR_ENABLED,
 } from "./components/editor/manualEditingAvailability";
 import {
+  buildDefaultDomEditTextField,
   buildDomEditStylePatchOperation,
   buildDomEditTextPatchOperation,
   buildElementAgentPrompt,
@@ -92,12 +91,9 @@ import {
   findElementForTimelineElement,
   getDomEditLayerKey,
   getDomEditTargetKey,
-  isLargeRasterDomEditSelection,
   isTextEditableSelection,
-  resolveVisualDomEditSelectionTarget,
   serializeDomEditTextFields,
   resolveDomEditSelection,
-  type DomEditViewport,
   type DomEditLayerItem,
   type DomEditTextField,
   type DomEditSelection,
@@ -362,64 +358,10 @@ function isManualGeometryStyleProperty(property: string): boolean {
   return property === "left" || property === "top" || property === "width" || property === "height";
 }
 
-interface PreviewLocalPointer {
-  x: number;
-  y: number;
-  viewport: DomEditViewport;
-}
-
-interface AgentModalAnchorPoint {
-  x: number;
-  y: number;
-}
-
-function resolvePreviewLocalPointer(
-  iframe: HTMLIFrameElement,
-  doc: Document,
-  win: Window,
-  clientX: number,
-  clientY: number,
-): PreviewLocalPointer | null {
-  const iframeRect = iframe.getBoundingClientRect();
-  const root =
-    doc.querySelector<HTMLElement>("[data-composition-id]") ?? doc.documentElement ?? null;
-  const rootRect = root?.getBoundingClientRect();
-  const rootWidth = rootRect?.width || win.innerWidth;
-  const rootHeight = rootRect?.height || win.innerHeight;
-  if (!rootWidth || !rootHeight) return null;
-
-  const scaleX = iframeRect.width / rootWidth;
-  const scaleY = iframeRect.height / rootHeight;
-  return {
-    x: (clientX - iframeRect.left) / scaleX,
-    y: (clientY - iframeRect.top) / scaleY,
-    viewport: { width: rootWidth, height: rootHeight },
-  };
-}
-
-function getPreviewLocalPointer(
-  iframe: HTMLIFrameElement,
-  clientX: number,
-  clientY: number,
-): PreviewLocalPointer | null {
-  let doc: Document | null = null;
-  let win: Window | null = null;
-  try {
-    doc = iframe.contentDocument;
-    win = iframe.contentWindow;
-  } catch {
-    return null;
-  }
-  if (!doc || !win) return null;
-
-  return resolvePreviewLocalPointer(iframe, doc, win, clientX, clientY);
-}
-
 function getPreviewTargetFromPointer(
   iframe: HTMLIFrameElement,
   clientX: number,
   clientY: number,
-  activeCompositionPath: string | null,
 ): HTMLElement | null {
   let doc: Document | null = null;
   let win: Window | null = null;
@@ -431,35 +373,20 @@ function getPreviewTargetFromPointer(
   }
   if (!doc || !win) return null;
 
-  const localPointer = resolvePreviewLocalPointer(iframe, doc, win, clientX, clientY);
-  if (!localPointer) return null;
+  const iframeRect = iframe.getBoundingClientRect();
+  const root =
+    doc.querySelector<HTMLElement>("[data-composition-id]") ?? doc.documentElement ?? null;
+  const rootRect = root?.getBoundingClientRect();
+  const rootWidth = rootRect?.width || win.innerWidth;
+  const rootHeight = rootRect?.height || win.innerHeight;
+  if (!rootWidth || !rootHeight) return null;
 
-  if (typeof doc.elementsFromPoint === "function") {
-    const visualTarget = resolveVisualDomEditSelectionTarget(
-      doc.elementsFromPoint(localPointer.x, localPointer.y),
-      {
-        activeCompositionPath,
-      },
-    );
-    if (visualTarget) return visualTarget;
-  }
+  const scaleX = iframeRect.width / rootWidth;
+  const scaleY = iframeRect.height / rootHeight;
+  const localX = (clientX - iframeRect.left) / scaleX;
+  const localY = (clientY - iframeRect.top) / scaleY;
 
-  return getEventTargetElement(doc.elementFromPoint(localPointer.x, localPointer.y));
-}
-
-function buildRasterClickSelectionContext(
-  selection: DomEditSelection,
-  localPointer: PreviewLocalPointer,
-): string {
-  return [
-    "The user clicked a large raster/background element in the Studio preview.",
-    `Preview click: x=${Math.round(localPointer.x)}px, y=${Math.round(localPointer.y)}px in a ${Math.round(
-      localPointer.viewport.width,
-    )}x${Math.round(localPointer.viewport.height)} composition.`,
-    `Selected target: <${selection.tagName}> ${selection.selector ?? selection.id ?? selection.label}.`,
-    "Visible copy or artwork at that point may be baked into the selected image/background rather than a selectable DOM text layer.",
-    "If the request mentions text seen at the click location, inspect or replace the image asset, or recreate that visible copy as editable DOM.",
-  ].join("\n");
+  return getEventTargetElement(doc.elementFromPoint(localX, localY));
 }
 
 function domEditSelectionsTargetSame(
@@ -665,47 +592,17 @@ function pauseStudioPreviewPlayback(iframe: HTMLIFrameElement | null): number | 
 
 // ── Ask Agent Modal ──
 
-function clampNumber(value: number, min: number, max: number): number {
-  if (max < min) return min;
-  return Math.min(Math.max(value, min), max);
-}
-
-function getAgentModalPositionStyle(
-  anchorPoint: AgentModalAnchorPoint | null,
-): CSSProperties | undefined {
-  if (!anchorPoint || typeof window === "undefined") return undefined;
-
-  const modalWidth = 480;
-  const estimatedModalHeight = 270;
-  const margin = 16;
-  const left = clampNumber(
-    anchorPoint.x,
-    margin + modalWidth / 2,
-    window.innerWidth - margin - modalWidth / 2,
-  );
-  const top = clampNumber(
-    anchorPoint.y + 12,
-    margin,
-    window.innerHeight - margin - estimatedModalHeight,
-  );
-
-  return { left, top, transform: "translateX(-50%)" };
-}
-
 function AskAgentModal({
   selectionLabel,
-  anchorPoint = null,
   onSubmit,
   onClose,
 }: {
   selectionLabel: string;
-  anchorPoint?: AgentModalAnchorPoint | null;
   onSubmit: (instruction: string) => void;
   onClose: () => void;
 }) {
   const [value, setValue] = useState("");
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const modalPositionStyle = getAgentModalPositionStyle(anchorPoint);
 
   useMountEffect(() => {
     requestAnimationFrame(() => inputRef.current?.focus());
@@ -718,18 +615,11 @@ function AskAgentModal({
 
   return (
     <div
-      className={
-        anchorPoint
-          ? "fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm"
-          : "fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm"
-      }
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm"
       onClick={onClose}
     >
       <div
-        className={`w-[480px] rounded-2xl border border-neutral-800 bg-neutral-950 shadow-2xl ${
-          anchorPoint ? "fixed" : ""
-        }`}
-        style={modalPositionStyle}
+        className="w-[480px] rounded-2xl border border-neutral-800 bg-neutral-950 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-5 py-4 border-b border-neutral-800/60">
@@ -884,16 +774,13 @@ export function StudioApp() {
   const [domEditGroupSelections, setDomEditGroupSelections] = useState<DomEditSelection[]>([]);
   const [domEditHoverSelection, setDomEditHoverSelection] = useState<DomEditSelection | null>(null);
   const [agentPromptTagSnippet, setAgentPromptTagSnippet] = useState<string | undefined>();
-  const [agentPromptSelectionContext, setAgentPromptSelectionContext] = useState<
-    string | undefined
-  >();
-  const [agentModalAnchorPoint, setAgentModalAnchorPoint] = useState<AgentModalAnchorPoint | null>(
-    null,
-  );
   const [copiedAgentPrompt, setCopiedAgentPrompt] = useState(false);
   const [agentModalOpen, setAgentModalOpen] = useState(false);
   const [previewIframe, setPreviewIframe] = useState<HTMLIFrameElement | null>(null);
   const [inspectedTimelineElementId, setInspectedTimelineElementId] = useState<string | null>(null);
+  const [thumbnailedTimelineElementIds, setThumbnailedTimelineElementIds] = useState<
+    ReadonlySet<string>
+  >(() => new Set());
   const [previewDocumentVersion, setPreviewDocumentVersion] = useState(0);
   const refreshPreviewDocumentVersion = useCallback(() => {
     setPreviewDocumentVersion((version) => version + 1);
@@ -1906,8 +1793,6 @@ export function StudioApp() {
       options?: { revealPanel?: boolean; additive?: boolean; preserveGroup?: boolean },
     ) => {
       setAgentPromptTagSnippet(undefined);
-      setAgentPromptSelectionContext(undefined);
-      setAgentModalAnchorPoint(null);
       setCopiedAgentPrompt(false);
       if (!selection) {
         domEditSelectionRef.current = null;
@@ -2433,13 +2318,13 @@ export function StudioApp() {
     (clientX: number, clientY: number, options?: { preferClipAncestor?: boolean }) => {
       const iframe = previewIframeRef.current;
       if (!iframe || captionEditMode) return null;
-      const target = getPreviewTargetFromPointer(iframe, clientX, clientY, activeCompPath);
+      const target = getPreviewTargetFromPointer(iframe, clientX, clientY);
       if (!target) return null;
       return buildDomSelectionFromTarget(target, {
         preferClipAncestor: options?.preferClipAncestor,
       });
     },
-    [activeCompPath, buildDomSelectionFromTarget, captionEditMode],
+    [buildDomSelectionFromTarget, captionEditMode],
   );
 
   const updateDomEditHoverSelection = useCallback((selection: DomEditSelection | null) => {
@@ -2575,6 +2460,17 @@ export function StudioApp() {
     },
     [applyDomSelection, buildDomSelectionForTimelineElement, currentTime, showToast],
   );
+
+  const handleToggleTimelineElementThumbnail = useCallback((element: TimelineElement) => {
+    const key = getTimelineElementKey(element);
+    if (!key) return;
+    setThumbnailedTimelineElementIds((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
 
   const handleTimelineLayerSelect = useCallback(
     (layer: DomEditLayerItem) => {
@@ -2955,26 +2851,15 @@ export function StudioApp() {
           buildDomEditStylePatchOperation("background-size", "contain"),
         );
       }
-      try {
-        await persistDomEditOperations(domEditSelection, operations, {
-          label: "Edit layer style",
-          skipRefresh: true,
-          prepareContent: importedFont
-            ? (html, sourceFile) => ensureImportedFontFace(html, importedFont, sourceFile)
-            : undefined,
-        });
-      } catch (err) {
-        console.warn("[Studio] Style persist failed:", err instanceof Error ? err.message : err);
-      }
-      refreshDomEditSelectionFromPreview(domEditSelection);
+      await persistDomEditOperations(domEditSelection, operations, {
+        label: "Edit layer style",
+        skipRefresh: true,
+        prepareContent: importedFont
+          ? (html, sourceFile) => ensureImportedFontFace(html, importedFont, sourceFile)
+          : undefined,
+      });
     },
-    [
-      activeCompPath,
-      domEditSelection,
-      persistDomEditOperations,
-      refreshDomEditSelectionFromPreview,
-      resolveImportedFontAsset,
-    ],
+    [activeCompPath, domEditSelection, persistDomEditOperations, resolveImportedFontAsset],
   );
 
   const handleDomTextCommit = useCallback(
@@ -3128,11 +3013,51 @@ export function StudioApp() {
     [commitDomTextFields, domEditSelection, handleDomStyleCommit, resolveImportedFontAsset],
   );
 
+  const handleDomAddTextField = useCallback(
+    async (afterFieldKey?: string) => {
+      if (!domEditSelection) return null;
+      if (!domEditSelection.textFields.some((field) => field.source === "child")) return null;
+
+      const insertionIndex = domEditSelection.textFields.findIndex(
+        (field) => field.key === afterFieldKey,
+      );
+      const baseField =
+        domEditSelection.textFields[insertionIndex >= 0 ? insertionIndex : 0] ??
+        domEditSelection.textFields[0];
+      const nextField = buildDefaultDomEditTextField(baseField);
+      const nextTextFields = [...domEditSelection.textFields];
+      nextTextFields.splice(
+        insertionIndex >= 0 ? insertionIndex + 1 : nextTextFields.length,
+        0,
+        nextField,
+      );
+
+      await commitDomTextFields(domEditSelection, nextTextFields);
+      return nextField.key;
+    },
+    [commitDomTextFields, domEditSelection],
+  );
+
+  const handleDomRemoveTextField = useCallback(
+    async (fieldKey: string) => {
+      if (!domEditSelection) return;
+      const field = domEditSelection.textFields.find((entry) => entry.key === fieldKey);
+      if (!field) return;
+
+      if (field.source === "self") {
+        await handleDomTextCommit("", fieldKey);
+        return;
+      }
+
+      const nextTextFields = domEditSelection.textFields.filter((entry) => entry.key !== fieldKey);
+      await commitDomTextFields(domEditSelection, nextTextFields);
+    },
+    [commitDomTextFields, domEditSelection, handleDomTextCommit],
+  );
+
   const handleAskAgent = useCallback(() => {
     if (!domEditSelection) return;
     setAgentPromptTagSnippet(undefined);
-    setAgentPromptSelectionContext(undefined);
-    setAgentModalAnchorPoint(null);
     void preloadAgentPromptSnippet(domEditSelection);
     setAgentModalOpen(true);
   }, [domEditSelection, preloadAgentPromptSnippet]);
@@ -3147,7 +3072,6 @@ export function StudioApp() {
         selection: domEditSelection,
         currentTime,
         tagSnippet,
-        selectionContext: agentPromptSelectionContext,
         userInstruction,
         sourceFilePath: toProjectAbsolutePath(projectDir, targetPath),
       });
@@ -3159,21 +3083,11 @@ export function StudioApp() {
       }
 
       setAgentModalOpen(false);
-      setAgentPromptSelectionContext(undefined);
-      setAgentModalAnchorPoint(null);
       if (copiedAgentTimerRef.current) clearTimeout(copiedAgentTimerRef.current);
       setCopiedAgentPrompt(true);
       copiedAgentTimerRef.current = setTimeout(() => setCopiedAgentPrompt(false), 1600);
     },
-    [
-      activeCompPath,
-      agentPromptSelectionContext,
-      agentPromptTagSnippet,
-      currentTime,
-      domEditSelection,
-      projectDir,
-      showToast,
-    ],
+    [activeCompPath, agentPromptTagSnippet, currentTime, domEditSelection, projectDir, showToast],
   );
 
   const handlePreviewIframeRef = useCallback(
@@ -3191,9 +3105,9 @@ export function StudioApp() {
 
   const handlePreviewCanvasMouseDown = useCallback(
     (e: React.MouseEvent<HTMLDivElement>, options?: { preferClipAncestor?: boolean }) => {
-      if (!STUDIO_PREVIEW_SELECTION_ENABLED || captionEditMode) return;
+      if (!STUDIO_PREVIEW_MANUAL_EDITING_ENABLED || captionEditMode) return;
       const nextSelection = resolveDomSelectionFromPreviewPoint(e.clientX, e.clientY, {
-        preferClipAncestor: options?.preferClipAncestor ?? false,
+        preferClipAncestor: options?.preferClipAncestor ?? true,
       });
       if (!nextSelection) {
         if (!e.shiftKey) applyDomSelection(null, { revealPanel: false });
@@ -3201,34 +3115,14 @@ export function StudioApp() {
       }
       e.preventDefault();
       e.stopPropagation();
-      const localPointer = previewIframeRef.current
-        ? getPreviewLocalPointer(previewIframeRef.current, e.clientX, e.clientY)
-        : null;
       applyDomSelection(nextSelection, { additive: e.shiftKey });
-      if (
-        !e.shiftKey &&
-        localPointer &&
-        isLargeRasterDomEditSelection(nextSelection, localPointer.viewport)
-      ) {
-        setAgentPromptSelectionContext(
-          buildRasterClickSelectionContext(nextSelection, localPointer),
-        );
-        setAgentModalAnchorPoint({ x: e.clientX, y: e.clientY });
-        void preloadAgentPromptSnippet(nextSelection);
-        setAgentModalOpen(true);
-      }
     },
-    [
-      applyDomSelection,
-      captionEditMode,
-      preloadAgentPromptSnippet,
-      resolveDomSelectionFromPreviewPoint,
-    ],
+    [applyDomSelection, captionEditMode, resolveDomSelectionFromPreviewPoint],
   );
 
   const handlePreviewCanvasPointerMove = useCallback(
     (e: React.PointerEvent<HTMLDivElement>, options?: { preferClipAncestor?: boolean }) => {
-      if (!STUDIO_PREVIEW_SELECTION_ENABLED || captionEditMode) {
+      if (!STUDIO_PREVIEW_MANUAL_EDITING_ENABLED || captionEditMode) {
         updateDomEditHoverSelection(null);
         return null;
       }
@@ -4106,6 +4000,8 @@ export function StudioApp() {
             onInspectTimelineElement={handleTimelineElementInspect}
             inspectedTimelineElementId={inspectedTimelineElementId}
             timelineLayerChildCounts={timelineLayerChildCounts}
+            thumbnailedTimelineElementIds={thumbnailedTimelineElementIds}
+            onToggleTimelineElementThumbnail={handleToggleTimelineElementThumbnail}
             onCompIdToSrcChange={setCompIdToSrc}
             onCompositionChange={(compPath) => {
               // Sync activeCompPath when user drills down via timeline double-click
@@ -4123,7 +4019,7 @@ export function StudioApp() {
                   iframeRef={previewIframeRef}
                   activeCompositionPath={activeCompPath}
                   hoverSelection={
-                    STUDIO_PREVIEW_SELECTION_ENABLED && !captionEditMode
+                    STUDIO_PREVIEW_MANUAL_EDITING_ENABLED && !captionEditMode
                       ? domEditHoverSelection
                       : null
                   }
@@ -4229,6 +4125,8 @@ export function StudioApp() {
                   <div className="min-h-0 flex-1">
                     {designPanelActive ? (
                       <PropertyPanel
+                        projectId={projectId}
+                        assets={assets}
                         element={domEditGroupSelections.length > 1 ? null : domEditSelection}
                         multiSelectCount={domEditGroupSelections.length}
                         copiedAgentPrompt={copiedAgentPrompt}
@@ -4236,11 +4134,13 @@ export function StudioApp() {
                         onSetStyle={handleDomStyleCommit}
                         onSetManualOffset={handleDomPathOffsetCommit}
                         onSetManualSize={handleDomBoxSizeCommit}
-                        onSetRotation={handleDomRotationCommit}
                         onSetText={handleDomTextCommit}
                         onSetTextFieldStyle={handleDomTextFieldStyleCommit}
+                        onAddTextField={handleDomAddTextField}
+                        onRemoveTextField={handleDomRemoveTextField}
                         onResetManualEdits={handleDomManualEditsReset}
                         onAskAgent={handleAskAgent}
+                        onImportAssets={handleImportFiles}
                         fontAssets={fontAssets}
                         onImportFonts={handleImportFonts}
                       />
@@ -4258,9 +4158,9 @@ export function StudioApp() {
                         projectId={projectId}
                         onDelete={renderQueue.deleteRender}
                         onClearCompleted={renderQueue.clearCompleted}
-                        onStartRender={async (format, quality, resolution) => {
+                        onStartRender={async (format, quality, resolution, fps) => {
                           await waitForPendingDomEditSaves();
-                          await renderQueue.startRender({ format, quality, resolution });
+                          await renderQueue.startRender({ fps, quality, format, resolution });
                         }}
                         isRendering={renderQueue.isRendering}
                       />
@@ -4291,13 +4191,8 @@ export function StudioApp() {
       {agentModalOpen && domEditSelection && (
         <AskAgentModal
           selectionLabel={domEditSelection.label}
-          anchorPoint={agentModalAnchorPoint}
           onSubmit={handleAgentModalSubmit}
-          onClose={() => {
-            setAgentModalOpen(false);
-            setAgentPromptSelectionContext(undefined);
-            setAgentModalAnchorPoint(null);
-          }}
+          onClose={() => setAgentModalOpen(false)}
         />
       )}
 

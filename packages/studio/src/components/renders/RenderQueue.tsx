@@ -6,6 +6,7 @@ type StartRenderHandler = (
   format: "mp4" | "webm" | "mov",
   quality: "draft" | "standard" | "high",
   resolution: ResolutionPreset | "auto",
+  fps: 24 | 30 | 60,
 ) => void | Promise<void>;
 
 interface RenderQueueProps {
@@ -194,12 +195,8 @@ function FormatExportButton({
 }) {
   const [format, setFormat] = useState<"mp4" | "webm" | "mov">("mp4");
   const [quality, setQuality] = useState<"draft" | "standard" | "high">("standard");
-  const [scale, setScale] = useState<RenderScale>("auto");
-
-  // If the user previously picked 1080p / 4K for a 16:9 comp and then switches
-  // to a square (or any non-matching) comp, fall back to "auto" without
-  // discarding their preference — switching back to 16:9 re-applies it.
-  const effectiveScale: RenderScale = scaleApplies(scale, compositionDimensions) ? scale : "auto";
+  const [resolution, setResolution] = useState<ResolutionPreset | "auto">("auto");
+  const [fps, setFps] = useState<24 | 30 | 60>(30);
 
   // MOV (ProRes) is a fixed-quality codec — quality selector has no effect.
   const showQuality = format !== "mov";
@@ -239,6 +236,17 @@ function FormatExportButton({
         </select>
       )}
       <select
+        value={fps}
+        onChange={(e) => setFps(Number(e.target.value) as 24 | 30 | 60)}
+        disabled={isRendering}
+        title="Frames per second"
+        className="h-5 px-1 text-[10px] bg-neutral-800 border border-neutral-700 text-neutral-300 outline-none disabled:opacity-50"
+      >
+        <option value={24}>24fps</option>
+        <option value={30}>30fps</option>
+        <option value={60}>60fps</option>
+      </select>
+      <select
         value={format}
         onChange={(e) => setFormat(e.target.value as "mp4" | "webm" | "mov")}
         disabled={isRendering}
@@ -250,7 +258,7 @@ function FormatExportButton({
       </select>
       <button
         onClick={() => {
-          void onStartRender(format, quality, resolution);
+          void onStartRender(format, quality, resolution, fps);
         }}
         disabled={isRendering}
         className="flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold rounded-r bg-studio-accent text-[#09090B] hover:brightness-110 transition-colors disabled:opacity-50"

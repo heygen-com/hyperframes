@@ -32,7 +32,7 @@ const env = import.meta.env as StudioFeatureFlagEnv;
 export const STUDIO_PREVIEW_MANUAL_EDITING_ENABLED = resolveStudioBooleanEnvFlag(
   env,
   [STUDIO_PREVIEW_MANUAL_DRAGGING_ENV, "VITE_STUDIO_PREVIEW_MANUAL_EDITING_ENABLED"],
-  false,
+  true,
 );
 
 export const STUDIO_INSPECTOR_PANELS_ENABLED = resolveStudioBooleanEnvFlag(
@@ -44,7 +44,7 @@ export const STUDIO_INSPECTOR_PANELS_ENABLED = resolveStudioBooleanEnvFlag(
 export const STUDIO_MOTION_PANEL_ENABLED = resolveStudioBooleanEnvFlag(
   env,
   [STUDIO_MOTION_PANEL_ENV, "VITE_STUDIO_MOTION_PANEL_ENABLED"],
-  false,
+  true,
 );
 
 export const STUDIO_TIMELINE_LAYER_INSPECTOR_ENABLED =

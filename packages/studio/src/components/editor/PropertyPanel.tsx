@@ -15,21 +15,32 @@ import {
   MessageSquare,
   Move,
   Palette,
+  Plus,
   RotateCcw,
   Settings,
+  Square,
   Type,
   X,
+  Zap,
 } from "../../icons/SystemIcons";
 import {
   formatCssColor,
   hsvToRgb,
   parseCssColor,
   rgbToHsv,
+  toColorPickerValue,
   toHexColor,
   type ParsedColor,
 } from "./colorValue";
+import {
+  buildDefaultGradientModel,
+  insertGradientStop,
+  parseGradient,
+  serializeGradient,
+  type GradientModel,
+} from "./gradientValue";
 import { isTextEditableSelection, type DomEditSelection } from "./domEditing";
-import { readStudioBoxSize, readStudioPathOffset, readStudioRotation } from "./manualEdits";
+import { readStudioBoxSize, readStudioPathOffset } from "./manualEdits";
 import {
   COMMON_LOCAL_FONT_FAMILIES,
   googleFontStylesheetUrl,
@@ -37,8 +48,11 @@ import {
 } from "./fontCatalog";
 import { fontFamilyFromAssetPath, importedFontFaceCss, type ImportedFontAsset } from "./fontAssets";
 import { resolveFloatingPanelPosition, type FloatingPosition } from "./floatingPanel";
+import { IMAGE_EXT } from "../../utils/mediaTypes";
 
 interface PropertyPanelProps {
+  projectId: string;
+  assets: string[];
   element: DomEditSelection | null;
   multiSelectCount?: number;
   copiedAgentPrompt: boolean;
@@ -46,11 +60,13 @@ interface PropertyPanelProps {
   onSetStyle: (prop: string, value: string) => void | Promise<void>;
   onSetManualOffset: (element: DomEditSelection, next: { x: number; y: number }) => void;
   onSetManualSize: (element: DomEditSelection, next: { width: number; height: number }) => void;
-  onSetRotation: (element: DomEditSelection, next: { angle: number }) => void;
   onSetText: (value: string, fieldKey?: string) => void;
   onSetTextFieldStyle: (fieldKey: string, property: string, value: string) => void;
+  onAddTextField: (afterFieldKey?: string) => string | Promise<string | null> | null;
+  onRemoveTextField: (fieldKey: string) => void;
   onResetManualEdits: (element: DomEditSelection) => void;
   onAskAgent: () => void;
+  onImportAssets?: (files: FileList) => Promise<string[]>;
   fontAssets?: ImportedFontAsset[];
   onImportFonts?: (files: FileList | File[]) => Promise<ImportedFontAsset[]>;
 }
@@ -206,6 +222,18 @@ function formatPxMetricValue(value: number): string {
   return `${formatNumericValue(value)}px`;
 }
 
+function normalizeTextMetricValue(property: "letter-spacing" | "line-height", value: string) {
+  const trimmed = value.trim();
+  if (!trimmed || trimmed === "normal") return trimmed || "normal";
+  const token = parseNumericToken(trimmed);
+  if (!token) return trimmed;
+  if (property === "letter-spacing") {
+    return token.unit ? trimmed : `${formatNumericValue(token.value)}px`;
+  }
+  if (token.unit) return trimmed;
+  return token.value > 4 ? `${formatNumericValue(token.value)}px` : formatNumericValue(token.value);
+}
+
 function splitCssFunctions(value: string): string[] {
   const functions: string[] = [];
   let current = "";
@@ -309,6 +337,23 @@ export function buildStrokeStyleUpdates(
   return updates;
 }
 
+function buildClipPathValue(
+  preset: "none" | "inset" | "circle" | "custom",
+  radiusValue: number,
+  fallback: string | undefined,
+) {
+  if (preset === "custom") return fallback?.trim() || "none";
+  if (preset === "circle") return "circle(50% at 50% 50%)";
+  if (preset === "inset") {
+    return `inset(0 round ${formatNumericValue(Math.max(0, radiusValue))}px)`;
+  }
+  return "none";
+}
+
+function buildInsetClipPathValue(insetPx: number, radiusValue: number): string {
+  return `inset(${formatNumericValue(Math.max(0, insetPx))}px round ${formatNumericValue(Math.max(0, radiusValue))}px)`;
+}
+
 function adjustNumericToken(
   value: string,
   direction: 1 | -1,
@@ -320,6 +365,123 @@ function adjustNumericToken(
   const baseStep = modifiers?.altKey ? 0.1 : modifiers?.shiftKey ? 10 : 1;
   const nextValue = token.value + baseStep * direction;
   return `${formatNumericValue(nextValue)}${token.unit}`;
+}
+
+function formatColorToken(value: string): string {
+  const parsed = parseCssColor(value);
+  if (!parsed) return value;
+  const hex = toColorPickerValue(value).replace(/^#/, "").toUpperCase();
+  return `${hex} / ${Math.round(parsed.alpha * 100)}%`;
+}
+
+function extractBackgroundImageUrl(value: string | undefined): string {
+  if (!value) return "";
+  const lowerValue = value.toLowerCase();
+  const urlStart = lowerValue.indexOf("url(");
+  if (urlStart < 0) return "";
+
+  let index = urlStart + 4;
+  while (
+    index < value.length &&
+    (value[index] === " " ||
+      value[index] === "\n" ||
+      value[index] === "\r" ||
+      value[index] === "\t" ||
+      value[index] === "\f")
+  ) {
+    index += 1;
+  }
+
+  const quote = value[index] === '"' || value[index] === "'" ? value[index] : null;
+  if (quote) {
+    index += 1;
+    const endQuote = value.indexOf(quote, index);
+    return endQuote >= index ? value.slice(index, endQuote) : "";
+  }
+
+  const endParen = value.indexOf(")", index);
+  if (endParen < index) return "";
+  return value.slice(index, endParen).trim();
+}
+
+function normalizeProjectPath(value: string): string {
+  const trimmed = value.trim();
+  const maybeUrl = /^[a-z]+:\/\//i.test(trimmed) ? new URL(trimmed).pathname : trimmed;
+  return decodeURIComponent(maybeUrl)
+    .replace(/\\/g, "/")
+    .replace(/^\.?\//, "");
+}
+
+function toRelativeProjectAssetPath(sourceFile: string, assetPath: string): string {
+  const fromParts = normalizeProjectPath(sourceFile).split("/").filter(Boolean);
+  const targetParts = normalizeProjectPath(assetPath).split("/").filter(Boolean);
+
+  fromParts.pop();
+
+  while (fromParts.length > 0 && targetParts.length > 0 && fromParts[0] === targetParts[0]) {
+    fromParts.shift();
+    targetParts.shift();
+  }
+
+  return [...fromParts.map(() => ".."), ...targetParts].join("/") || assetPath;
+}
+
+function toProjectRootAssetPath(assetPath: string): string {
+  return normalizeProjectPath(assetPath);
+}
+
+function resolveSelectedAsset(
+  imageUrl: string,
+  sourceFile: string,
+  assets: string[],
+): string | null {
+  const normalizedUrl = normalizeProjectPath(imageUrl);
+  if (!normalizedUrl) return null;
+
+  for (const asset of assets) {
+    const normalizedAsset = normalizeProjectPath(asset);
+    const relativeAsset = toRelativeProjectAssetPath(sourceFile, asset);
+    if (
+      normalizedUrl === normalizedAsset ||
+      normalizedUrl === relativeAsset ||
+      normalizedUrl.endsWith(`/${normalizedAsset}`) ||
+      normalizedUrl.endsWith(`/${relativeAsset}`)
+    ) {
+      return asset;
+    }
+  }
+
+  return null;
+}
+
+function collectSelectionColors(styles: Record<string, string>) {
+  const candidates = [
+    { source: "Fill", value: styles["background-color"] },
+    { source: "Text", value: styles.color },
+  ];
+
+  const deduped = new Map<string, { swatch: string; token: string; sources: string[] }>();
+
+  for (const candidate of candidates) {
+    if (!candidate.value) continue;
+    const parsed = parseCssColor(candidate.value);
+    if (!parsed || parsed.alpha <= 0) continue;
+
+    const key = `${toColorPickerValue(candidate.value)}-${Math.round(parsed.alpha * 100)}`;
+    const existing = deduped.get(key);
+    if (existing) {
+      existing.sources.push(candidate.source);
+      continue;
+    }
+
+    deduped.set(key, {
+      swatch: toColorPickerValue(candidate.value),
+      token: formatColorToken(candidate.value),
+      sources: [candidate.source],
+    });
+  }
+
+  return Array.from(deduped.values());
 }
 
 function CommitField({
@@ -429,6 +591,27 @@ function MetricField({
         />
       </div>
     </div>
+  );
+}
+
+function DetailField({
+  label,
+  value,
+  disabled,
+  onCommit,
+}: {
+  label: string;
+  value: string;
+  disabled?: boolean;
+  onCommit: (nextValue: string) => void;
+}) {
+  return (
+    <label className="grid min-w-0 gap-1.5">
+      <span className={LABEL}>{label}</span>
+      <div className={FIELD}>
+        <CommitField value={value} disabled={disabled} onCommit={onCommit} />
+      </div>
+    </label>
   );
 }
 
@@ -1044,6 +1227,75 @@ function FontFamilyField({
   );
 }
 
+function getTextStyleValue(
+  field: DomEditSelection["textFields"][number],
+  inheritedStyles: Record<string, string>,
+  property: string,
+  fallback: string,
+): string {
+  return field.computedStyles[property] || inheritedStyles[property] || fallback;
+}
+
+function AdvancedTextControls({
+  field,
+  inheritedStyles,
+  disabled,
+  onCommit,
+}: {
+  field: DomEditSelection["textFields"][number];
+  inheritedStyles: Record<string, string>;
+  disabled?: boolean;
+  onCommit: (property: string, value: string) => void;
+}) {
+  return (
+    <div className="space-y-4">
+      <div className={RESPONSIVE_GRID}>
+        <MetricField
+          label="Line"
+          value={getTextStyleValue(field, inheritedStyles, "line-height", "normal")}
+          disabled={disabled}
+          liveCommit
+          onCommit={(next) =>
+            onCommit("line-height", normalizeTextMetricValue("line-height", next))
+          }
+        />
+        <MetricField
+          label="Track"
+          value={getTextStyleValue(field, inheritedStyles, "letter-spacing", "0px")}
+          disabled={disabled}
+          liveCommit
+          onCommit={(next) =>
+            onCommit("letter-spacing", normalizeTextMetricValue("letter-spacing", next))
+          }
+        />
+      </div>
+      <div className={RESPONSIVE_GRID}>
+        <SelectField
+          label="Align"
+          value={getTextStyleValue(field, inheritedStyles, "text-align", "start")}
+          disabled={disabled}
+          onChange={(next) => onCommit("text-align", next)}
+          options={["start", "left", "center", "right", "justify", "end"]}
+        />
+        <SelectField
+          label="Case"
+          value={getTextStyleValue(field, inheritedStyles, "text-transform", "none")}
+          disabled={disabled}
+          onChange={(next) => onCommit("text-transform", next)}
+          options={["none", "uppercase", "lowercase", "capitalize"]}
+        />
+      </div>
+      <SelectField
+        label="Style"
+        value={getTextStyleValue(field, inheritedStyles, "font-style", "normal")}
+        disabled={disabled}
+        onChange={(next) => onCommit("font-style", next)}
+        options={["normal", "italic", "oblique"]}
+      />
+    </div>
+  );
+}
+
 function ColorField({
   label,
   value,
@@ -1397,6 +1649,360 @@ function ColorSlider({
   );
 }
 
+function ImageFillField({
+  projectId,
+  sourceFile,
+  value,
+  assets,
+  disabled,
+  onCommit,
+  onImportAssets,
+}: {
+  projectId: string;
+  sourceFile: string;
+  value: string;
+  assets: string[];
+  disabled?: boolean;
+  onCommit: (nextValue: string) => void;
+  onImportAssets?: (files: FileList) => Promise<string[]>;
+}) {
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const imageAssets = useMemo(() => assets.filter((asset) => IMAGE_EXT.test(asset)), [assets]);
+  const selectedAsset = useMemo(
+    () => resolveSelectedAsset(value, sourceFile, imageAssets),
+    [imageAssets, sourceFile, value],
+  );
+  const externalUrlValue = selectedAsset ? "" : value;
+
+  const handleUpload = async (files: FileList | null) => {
+    if (!files?.length || !onImportAssets) return;
+    setUploading(true);
+    try {
+      const uploaded = await onImportAssets(files);
+      const nextImage = uploaded.find((asset) => IMAGE_EXT.test(asset));
+      if (nextImage) {
+        onCommit(`url("${toProjectRootAssetPath(nextImage)}")`);
+      }
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="grid min-w-0 gap-1.5">
+        <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+          <span className={LABEL}>Project asset</span>
+          <button
+            type="button"
+            disabled={disabled || uploading}
+            onClick={() => fileInputRef.current?.click()}
+            className={`inline-flex h-7 max-w-full items-center gap-1.5 rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 text-[11px] font-medium text-neutral-300 transition-colors ${
+              disabled || uploading
+                ? "cursor-not-allowed text-neutral-600"
+                : "cursor-pointer hover:border-neutral-600 hover:text-white"
+            }`}
+          >
+            <Plus size={12} className="flex-shrink-0" />
+            <span className="truncate">{uploading ? "Uploading…" : "Upload image"}</span>
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            aria-label="Upload image asset"
+            disabled={disabled || uploading}
+            className="hidden"
+            onChange={async (event) => {
+              await handleUpload(event.target.files);
+              event.target.value = "";
+            }}
+          />
+        </div>
+        {imageAssets.length > 0 ? (
+          <div className="space-y-3">
+            {selectedAsset && (
+              <div className="overflow-hidden rounded-xl border border-neutral-800 bg-neutral-900/80">
+                <img
+                  src={`/api/projects/${projectId}/preview/${selectedAsset}`}
+                  alt={selectedAsset.split("/").pop() ?? selectedAsset}
+                  className="h-28 w-full object-contain bg-neutral-950/80"
+                />
+              </div>
+            )}
+            <div className={FIELD}>
+              <select
+                value={selectedAsset ?? ""}
+                disabled={disabled}
+                onChange={(e) => {
+                  const nextAsset = e.target.value;
+                  if (!nextAsset) {
+                    onCommit("none");
+                    return;
+                  }
+                  onCommit(`url("${toProjectRootAssetPath(nextAsset)}")`);
+                }}
+                className="min-w-0 w-full appearance-none bg-transparent text-[11px] font-medium text-neutral-100 outline-none disabled:cursor-not-allowed disabled:text-neutral-600"
+              >
+                <option value="">None</option>
+                {imageAssets.map((asset) => (
+                  <option key={asset} value={asset}>
+                    {asset}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        ) : (
+          <div className="rounded-xl border border-dashed border-neutral-800 bg-neutral-900/50 px-3 py-3 text-[11px] leading-5 text-neutral-500">
+            No image assets yet. Upload one here and Studio will also add it to the Assets tab.
+          </div>
+        )}
+      </div>
+
+      <DetailField
+        label="External URL"
+        value={externalUrlValue}
+        disabled={disabled}
+        onCommit={(next) => onCommit(next.trim() ? `url("${next.trim()}")` : "none")}
+      />
+    </div>
+  );
+}
+
+function GradientField({
+  value,
+  fallbackColor,
+  disabled,
+  onCommit,
+}: {
+  value: string;
+  fallbackColor: string | undefined;
+  disabled?: boolean;
+  onCommit: (nextValue: string) => void;
+}) {
+  const previewRef = useRef<HTMLDivElement | null>(null);
+  const parsed = parseGradient(value) ?? buildDefaultGradientModel(fallbackColor);
+
+  const commit = (next: GradientModel) => onCommit(serializeGradient(next));
+
+  const patch = (partial: Partial<GradientModel>) => commit({ ...parsed, ...partial });
+
+  const updateStop = (index: number, partial: Partial<GradientModel["stops"][number]>) => {
+    const stops = parsed.stops.map((stop, stopIndex) =>
+      stopIndex === index ? { ...stop, ...partial } : stop,
+    );
+    commit({ ...parsed, stops });
+  };
+
+  const addStop = (position?: number) => {
+    const nextGradient =
+      position != null
+        ? insertGradientStop(parsed, position)
+        : insertGradientStop(
+            parsed,
+            parsed.stops.at(-1)?.position != null
+              ? Math.min(100, (parsed.stops.at(-1)?.position ?? 90) + 10)
+              : 100,
+          );
+    commit(nextGradient);
+  };
+
+  const removeStop = (index: number) => {
+    if (parsed.stops.length <= 2) return;
+    commit({ ...parsed, stops: parsed.stops.filter((_, stopIndex) => stopIndex !== index) });
+  };
+
+  const previewStyle = {
+    backgroundImage: serializeGradient(parsed),
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className={`${FIELD} space-y-3 p-3`}>
+        <div
+          ref={previewRef}
+          className="relative h-11 overflow-hidden rounded-lg border border-neutral-700"
+          style={previewStyle}
+          onClick={(event) => {
+            if (disabled) return;
+            const rect = previewRef.current?.getBoundingClientRect();
+            if (!rect || rect.width <= 0) return;
+            const position = ((event.clientX - rect.left) / rect.width) * 100;
+            addStop(position);
+          }}
+        >
+          {parsed.stops.map((stop, index) => (
+            <div
+              key={`stop-preview-${index}`}
+              className="absolute top-1/2 h-4 w-4 -translate-y-1/2 rounded-full border-2 border-white/90 shadow-[0_0_0_1px_rgba(0,0,0,0.35)]"
+              style={{
+                left: `calc(${stop.position}% - 8px)`,
+                backgroundColor: stop.color,
+              }}
+            />
+          ))}
+        </div>
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <SegmentedControl
+            disabled={disabled}
+            value={parsed.kind}
+            onChange={(next) => patch({ kind: next as GradientModel["kind"] })}
+            options={[
+              { label: "Linear", value: "linear" },
+              { label: "Radial", value: "radial" },
+              { label: "Conic", value: "conic" },
+            ]}
+          />
+          <label className="flex items-center gap-2 text-[11px] font-medium text-neutral-400">
+            <input
+              type="checkbox"
+              checked={parsed.repeating}
+              disabled={disabled}
+              onChange={(e) => patch({ repeating: e.target.checked })}
+              className="h-4 w-4 rounded border-neutral-700 bg-neutral-950 text-[#3ce6ac] focus:ring-[#3ce6ac]"
+            />
+            Repeat
+          </label>
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={() =>
+              commit({
+                ...parsed,
+                stops: [...parsed.stops].reverse().map((stop) => ({
+                  ...stop,
+                  position: 100 - stop.position,
+                })),
+              })
+            }
+            className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 text-[11px] font-medium text-neutral-300 transition-colors hover:border-neutral-600 hover:text-white disabled:cursor-not-allowed disabled:text-neutral-600"
+          >
+            <RotateCcw size={12} />
+            Reverse
+          </button>
+        </div>
+      </div>
+
+      {(parsed.kind === "linear" || parsed.kind === "conic") && (
+        <div className="grid gap-1.5">
+          <span className={LABEL}>{parsed.kind === "linear" ? "Angle" : "Start angle"}</span>
+          <SliderControl
+            value={parsed.angle}
+            min={0}
+            max={360}
+            step={1}
+            disabled={disabled}
+            displayValue={`${Math.round(parsed.angle)}°`}
+            formatDisplayValue={(next) => `${Math.round(next)}°`}
+            onCommit={(next) => patch({ angle: next })}
+          />
+        </div>
+      )}
+
+      {parsed.kind === "radial" && (
+        <div className={RESPONSIVE_GRID}>
+          <SelectField
+            label="Shape"
+            value={parsed.shape}
+            disabled={disabled}
+            onChange={(next) => patch({ shape: next as GradientModel["shape"] })}
+            options={["ellipse", "circle"]}
+          />
+          <SelectField
+            label="Size"
+            value={parsed.radialSize}
+            disabled={disabled}
+            onChange={(next) => patch({ radialSize: next as GradientModel["radialSize"] })}
+            options={["closest-side", "closest-corner", "farthest-side", "farthest-corner"]}
+          />
+        </div>
+      )}
+
+      {(parsed.kind === "radial" || parsed.kind === "conic") && (
+        <div className={RESPONSIVE_GRID}>
+          <div className="grid min-w-0 gap-1.5">
+            <span className={LABEL}>Center X</span>
+            <SliderControl
+              value={parsed.centerX}
+              min={0}
+              max={100}
+              step={1}
+              disabled={disabled}
+              displayValue={`${Math.round(parsed.centerX)}%`}
+              formatDisplayValue={(next) => `${Math.round(next)}%`}
+              onCommit={(next) => patch({ centerX: next })}
+            />
+          </div>
+          <div className="grid min-w-0 gap-1.5">
+            <span className={LABEL}>Center Y</span>
+            <SliderControl
+              value={parsed.centerY}
+              min={0}
+              max={100}
+              step={1}
+              disabled={disabled}
+              displayValue={`${Math.round(parsed.centerY)}%`}
+              formatDisplayValue={(next) => `${Math.round(next)}%`}
+              onCommit={(next) => patch({ centerY: next })}
+            />
+          </div>
+        </div>
+      )}
+
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <span className={LABEL}>Stops</span>
+          <button
+            type="button"
+            disabled={disabled || parsed.stops.length >= 6}
+            onClick={() => addStop()}
+            className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 text-[11px] font-medium text-neutral-300 transition-colors hover:border-neutral-600 hover:text-white disabled:cursor-not-allowed disabled:text-neutral-600"
+          >
+            <Plus size={12} />
+            Add stop
+          </button>
+        </div>
+        <div className="space-y-3">
+          {parsed.stops.map((stop, index) => (
+            <div
+              key={`stop-editor-${index}`}
+              className="grid min-w-0 grid-cols-[minmax(0,1fr)_68px_28px] gap-2"
+            >
+              <ColorField
+                label={`Stop ${index + 1}`}
+                value={stop.color}
+                disabled={disabled}
+                onCommit={(next) => updateStop(index, { color: next })}
+              />
+              <DetailField
+                label="Pos"
+                value={`${Math.round(stop.position)}%`}
+                disabled={disabled}
+                onCommit={(next) =>
+                  updateStop(index, {
+                    position: Number.parseFloat(next.replace("%", "")) || 0,
+                  })
+                }
+              />
+              <button
+                type="button"
+                disabled={disabled || parsed.stops.length <= 2}
+                onClick={() => removeStop(index)}
+                className="mt-[22px] flex h-10 items-center justify-center rounded-lg border border-neutral-700 bg-neutral-950 text-neutral-400 transition-colors hover:border-neutral-600 hover:text-white disabled:cursor-not-allowed disabled:text-neutral-700"
+                aria-label={`Remove stop ${index + 1}`}
+              >
+                <X size={12} />
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function SliderControl({
   value,
   min,
@@ -1477,6 +2083,44 @@ function SliderControl({
   );
 }
 
+function SegmentedControl({
+  options,
+  value,
+  disabled,
+  onChange,
+}: {
+  options: Array<{ label: string; value: string }>;
+  value: string;
+  disabled?: boolean;
+  onChange: (nextValue: string) => void;
+}) {
+  return (
+    <div
+      className="grid min-w-0 gap-1 rounded-xl bg-neutral-900 p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]"
+      style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}
+    >
+      {options.map((option) => {
+        const selected = option.value === value;
+        return (
+          <button
+            key={option.value}
+            type="button"
+            disabled={disabled}
+            onClick={() => onChange(option.value)}
+            className={`min-w-0 truncate rounded-lg px-2 py-1.5 text-[11px] font-medium transition-colors disabled:cursor-not-allowed ${
+              selected
+                ? "bg-neutral-800 text-white shadow-[0_1px_3px_rgba(0,0,0,0.28)]"
+                : "text-neutral-500 hover:text-neutral-200"
+            }`}
+          >
+            {option.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function SelectField({
   label,
   value,
@@ -1540,36 +2184,34 @@ function Section({
   );
 }
 
-export type PropertyPanelSectionId = "Text" | "Layout" | "Colors" | "Radius" | "Shadow";
-
-export function getPropertyPanelVisibleSections(input: {
-  hasSelection: boolean;
-  canEditStyles: boolean;
-  hasTextControls: boolean;
-  hasColorControls: boolean;
-}): PropertyPanelSectionId[] {
-  if (!input.hasSelection) return [];
-
-  const sections: PropertyPanelSectionId[] = [];
-  if (input.hasTextControls) sections.push("Text");
-  sections.push("Layout");
-  if (input.canEditStyles) {
-    if (input.hasColorControls) sections.push("Colors");
-    sections.push("Radius", "Shadow");
-  }
-  return sections;
-}
-
-export function isPropertyPanelMediaLikeSelection(input: {
-  tagName: string;
-  styles: Record<string, string>;
-}): boolean {
-  if (["img", "video", "audio", "canvas"].includes(input.tagName)) return true;
-  const backgroundImage = input.styles["background-image"]?.trim();
-  return Boolean(backgroundImage && backgroundImage !== "none");
+function SelectionColorRow({
+  swatch,
+  token,
+  sources,
+}: {
+  swatch: string;
+  token: string;
+  sources: string[];
+}) {
+  return (
+    <div className={`${FIELD} flex min-w-0 items-center gap-3`}>
+      <div
+        className="h-7 w-7 flex-shrink-0 rounded-lg border border-neutral-700"
+        style={{ backgroundColor: swatch }}
+      />
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-[11px] font-medium text-neutral-100">{token}</div>
+        <div className="truncate text-[11px] uppercase tracking-[0.18em] text-neutral-500">
+          {sources.join(" · ")}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export const PropertyPanel = memo(function PropertyPanel({
+  projectId,
+  assets,
   element,
   multiSelectCount = 0,
   copiedAgentPrompt,
@@ -1577,19 +2219,35 @@ export const PropertyPanel = memo(function PropertyPanel({
   onSetStyle,
   onSetManualOffset,
   onSetManualSize,
-  onSetRotation,
   onSetText,
   onSetTextFieldStyle,
+  onAddTextField,
+  onRemoveTextField,
   onResetManualEdits,
   onAskAgent,
+  onImportAssets,
   fontAssets = [],
   onImportFonts,
 }: PropertyPanelProps) {
   const styles = element?.computedStyles ?? EMPTY_STYLES;
+  const selectionColors = useMemo(() => collectSelectionColors(styles), [styles]);
+  const backgroundImage = styles["background-image"] ?? "none";
+  const fillMode =
+    backgroundImage && backgroundImage !== "none"
+      ? backgroundImage.includes("gradient")
+        ? "Gradient"
+        : "Image"
+      : "Solid";
+  const [preferredFillMode, setPreferredFillMode] = useState(fillMode);
+  const imageUrl = extractBackgroundImageUrl(backgroundImage);
   const [activeTextFieldKey, setActiveTextFieldKey] = useState<string | null>(
     element?.textFields[0]?.key ?? null,
   );
   const hasTextControls = element != null && isTextEditableSelection(element);
+
+  useEffect(() => {
+    setPreferredFillMode(fillMode);
+  }, [fillMode, element?.id, element?.selector, backgroundImage]);
 
   useEffect(() => {
     const nextFields = element?.textFields ?? [];
@@ -1620,7 +2278,8 @@ export const PropertyPanel = memo(function PropertyPanel({
               Select an element in the preview.
             </p>
             <p className="mt-2 max-w-[260px] text-xs leading-5 text-neutral-500">
-              Click any element to inspect and edit it. Click deeper to select child elements.
+              The inspector is tuned for element edits with safer geometry controls, color picking,
+              and cleaner grouped layer controls.
             </p>
           </>
         )}
@@ -1631,31 +2290,26 @@ export const PropertyPanel = memo(function PropertyPanel({
   const styleEditingDisabled = !element.capabilities.canEditStyles;
   const manualOffsetEditingDisabled = !element.capabilities.canApplyManualOffset;
   const manualSizeEditingDisabled = !element.capabilities.canApplyManualSize;
+  const isFlex = styles.display === "flex" || styles.display === "inline-flex";
   const radiusValue = parseNumericValue(styles["border-radius"]) ?? 0;
+  const opacityValue = Math.round((parseNumericValue(styles.opacity) ?? 1) * 100);
+  const borderWidthValue =
+    parsePxMetricValue(styles["border-width"] ?? "") ??
+    parsePxMetricValue(styles["border-top-width"] ?? "") ??
+    0;
+  const borderStyleValue = styles["border-style"] || styles["border-top-style"] || "none";
+  const borderColorValue =
+    styles["border-color"] || styles["border-top-color"] || "rgba(255, 255, 255, 0.18)";
   const boxShadowPreset = inferBoxShadowPreset(styles["box-shadow"]);
+  const filterBlurValue = getCssFilterFunctionPx(styles.filter, "blur");
+  const backdropBlurValue = getCssFilterFunctionPx(styles["backdrop-filter"], "blur");
+  const clipPathValue = styles["clip-path"] || "none";
+  const clipPathPreset = inferClipPathPreset(clipPathValue);
+  const clipInsetValue = getClipPathInsetPx(clipPathValue);
   const sourceLabel = element.id ? `#${element.id}` : element.selector;
   const showEditableSections = element.capabilities.canEditStyles;
-  const mediaLikeSelection = isPropertyPanelMediaLikeSelection({
-    tagName: element.tagName,
-    styles,
-  });
-  const bgColor = styles["background-color"]?.trim();
-  const hasExplicitFillColor =
-    !mediaLikeSelection &&
-    Boolean(bgColor) &&
-    bgColor !== "rgba(0, 0, 0, 0)" &&
-    bgColor !== "transparent";
-  const canShowFillColor = hasExplicitFillColor;
-  const canShowTextColor = !mediaLikeSelection && Boolean(styles.color?.trim());
-  const visibleSections = getPropertyPanelVisibleSections({
-    hasSelection: true,
-    canEditStyles: showEditableSections,
-    hasTextControls,
-    hasColorControls: canShowFillColor || canShowTextColor,
-  });
   const manualOffset = readStudioPathOffset(element.element);
   const manualSize = readStudioBoxSize(element.element);
-  const manualRotation = readStudioRotation(element.element);
   const resolvedWidth =
     manualSize.width > 0
       ? manualSize.width
@@ -1691,6 +2345,20 @@ export const PropertyPanel = memo(function PropertyPanel({
       width: axis === "width" ? parsed : width,
       height: axis === "height" ? parsed : height,
     });
+  };
+
+  const handleFillModeChange = (nextMode: string) => {
+    setPreferredFillMode(nextMode);
+    if (nextMode === "Solid") {
+      onSetStyle("background-image", "none");
+      return;
+    }
+    if (nextMode === "Gradient" && !backgroundImage.includes("gradient")) {
+      onSetStyle(
+        "background-image",
+        serializeGradient(buildDefaultGradientModel(styles["background-color"])),
+      );
+    }
   };
 
   return (
@@ -1735,205 +2403,574 @@ export const PropertyPanel = memo(function PropertyPanel({
       </div>
 
       <div className="flex-1 overflow-y-auto">
-        {visibleSections.includes("Text") && (
-          <Section title="Text" icon={<Type size={15} />}>
-            {(() => {
-              const textFields = element.textFields;
-              const activeField =
-                textFields.find((field) => field.key === activeTextFieldKey) ?? textFields[0];
-              if (!activeField) return null;
+        <Section title="Layout" icon={<Move size={15} />}>
+          <div className={RESPONSIVE_GRID}>
+            <MetricField
+              label="X"
+              value={formatPxMetricValue(manualOffset.x)}
+              disabled={manualOffsetEditingDisabled}
+              onCommit={(next) => commitManualOffset("x", next)}
+            />
+            <MetricField
+              label="Y"
+              value={formatPxMetricValue(manualOffset.y)}
+              disabled={manualOffsetEditingDisabled}
+              onCommit={(next) => commitManualOffset("y", next)}
+            />
+            <MetricField
+              label="W"
+              value={formatPxMetricValue(resolvedWidth)}
+              disabled={manualSizeEditingDisabled}
+              onCommit={(next) => commitManualSize("width", next)}
+            />
+            <MetricField
+              label="H"
+              value={formatPxMetricValue(resolvedHeight)}
+              disabled={manualSizeEditingDisabled}
+              onCommit={(next) => commitManualSize("height", next)}
+            />
+          </div>
+        </Section>
 
-              return (
-                <div className="space-y-4">
-                  {textFields.length > 1 && (
-                    <div className="grid gap-2">
-                      <span className={LABEL}>Text layers</span>
-                      {textFields.map((field, index) => {
-                        const active = field.key === activeField.key;
-                        return (
-                          <button
-                            key={field.key}
-                            type="button"
-                            onClick={() => setActiveTextFieldKey(field.key)}
-                            className={`min-w-0 w-full rounded-xl border px-3 py-2 text-left transition-colors ${
-                              active
-                                ? "border-studio-accent/50 bg-studio-accent/10"
-                                : "border-neutral-800 bg-neutral-900/80 hover:border-neutral-700 hover:bg-neutral-900"
-                            }`}
-                          >
-                            <div className="flex min-w-0 items-center justify-between gap-2">
-                              <div className="flex min-w-0 items-center gap-2">
-                                <span
-                                  className="h-4 w-4 flex-shrink-0 rounded border border-neutral-700 bg-neutral-950"
-                                  style={{ backgroundColor: getTextFieldColor(field, styles) }}
-                                />
-                                <span className="min-w-0 truncate text-[11px] font-medium text-neutral-100">
-                                  {formatTextFieldPreview(field.value) || `Text ${index + 1}`}
-                                </span>
-                              </div>
-                              <span className="flex-shrink-0 rounded-md border border-neutral-700 bg-neutral-950 px-1.5 py-0.5 text-[10px] uppercase tracking-[0.12em] text-neutral-500">
-                                {field.tagName}
-                              </span>
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
+        {showEditableSections && isFlex && (
+          <Section title="Flex" icon={<Layers size={15} />}>
+            <div className="space-y-4">
+              <SegmentedControl
+                disabled={styleEditingDisabled}
+                value={styles["flex-direction"] || "row"}
+                onChange={(next) => onSetStyle("flex-direction", next)}
+                options={[
+                  { label: "→ Row", value: "row" },
+                  { label: "↓ Column", value: "column" },
+                ]}
+              />
+              <div className={RESPONSIVE_GRID}>
+                <SelectField
+                  label="Justify"
+                  value={styles["justify-content"] || "flex-start"}
+                  disabled={styleEditingDisabled}
+                  onChange={(next) => onSetStyle("justify-content", next)}
+                  options={[
+                    "flex-start",
+                    "center",
+                    "space-between",
+                    "space-around",
+                    "space-evenly",
+                    "flex-end",
+                  ]}
+                />
+                <SelectField
+                  label="Align"
+                  value={styles["align-items"] || "stretch"}
+                  disabled={styleEditingDisabled}
+                  onChange={(next) => onSetStyle("align-items", next)}
+                  options={["stretch", "flex-start", "center", "flex-end", "baseline"]}
+                />
+              </div>
+              <DetailField
+                label="Gap"
+                value={styles.gap ?? "0px"}
+                disabled={styleEditingDisabled}
+                onCommit={(next) => onSetStyle("gap", next.endsWith("px") ? next : `${next}px`)}
+              />
+            </div>
+          </Section>
+        )}
 
-                  <div className="space-y-4 rounded-xl border border-neutral-800 bg-neutral-900/60 p-3">
-                    <TextAreaField
-                      key={activeField.key}
-                      label="Content"
-                      value={activeField.value}
-                      disabled={false}
-                      onCommit={(next) => onSetText(next, activeField.key)}
-                    />
+        {showEditableSections && (
+          <>
+            <Section title="Radius" icon={<Settings size={15} />}>
+              <SliderControl
+                value={radiusValue}
+                min={0}
+                max={Math.max(240, Math.ceil(radiusValue))}
+                step={1}
+                disabled={styleEditingDisabled}
+                displayValue={`${formatNumericValue(radiusValue)}px`}
+                formatDisplayValue={(next) => `${formatNumericValue(next)}px`}
+                onCommit={(next) => onSetStyle("border-radius", `${formatNumericValue(next)}px`)}
+              />
+            </Section>
 
-                    <ColorField
-                      label="Text color"
-                      value={getTextFieldColor(activeField, styles)}
-                      disabled={false}
-                      onCommit={(next) => onSetTextFieldStyle(activeField.key, "color", next)}
-                    />
-
-                    <FontFamilyField
-                      value={
-                        activeField.computedStyles["font-family"] ||
-                        styles["font-family"] ||
-                        "inherit"
+            <Section title="Stroke" icon={<Square size={15} />}>
+              <div className="space-y-4">
+                <div className={RESPONSIVE_GRID}>
+                  <MetricField
+                    label="Width"
+                    value={formatPxMetricValue(borderWidthValue)}
+                    disabled={styleEditingDisabled}
+                    liveCommit
+                    onCommit={async (next) => {
+                      const normalized = normalizePanelPxValue(next, {
+                        min: 0,
+                        max: 200,
+                        fallback: borderWidthValue,
+                      });
+                      if (!normalized) return;
+                      for (const [property, value] of buildStrokeWidthStyleUpdates(
+                        normalized,
+                        borderStyleValue,
+                      )) {
+                        await onSetStyle(property, value);
                       }
-                      disabled={false}
-                      importedFonts={fontAssets}
-                      onImportFonts={onImportFonts}
-                      onCommit={(next) => onSetTextFieldStyle(activeField.key, "font-family", next)}
-                    />
+                    }}
+                  />
+                  <SelectField
+                    label="Style"
+                    value={borderStyleValue}
+                    disabled={styleEditingDisabled}
+                    onChange={async (next) => {
+                      for (const [property, value] of buildStrokeStyleUpdates(
+                        next,
+                        formatPxMetricValue(borderWidthValue),
+                      )) {
+                        await onSetStyle(property, value);
+                      }
+                    }}
+                    options={[
+                      "none",
+                      "solid",
+                      "dashed",
+                      "dotted",
+                      "double",
+                      "hidden",
+                      "groove",
+                      "ridge",
+                      "inset",
+                      "outset",
+                    ]}
+                  />
+                </div>
+                <ColorField
+                  label="Stroke color"
+                  value={borderColorValue}
+                  disabled={styleEditingDisabled}
+                  onCommit={(next) => onSetStyle("border-color", next)}
+                />
+              </div>
+            </Section>
 
-                    <div className={RESPONSIVE_GRID}>
-                      <MetricField
-                        label="Size"
-                        value={
-                          activeField.computedStyles["font-size"] || styles["font-size"] || "16px"
-                        }
-                        disabled={false}
-                        liveCommit
-                        onCommit={(next) => onSetTextFieldStyle(activeField.key, "font-size", next)}
-                      />
-                      <FontWeightField
-                        value={
-                          activeField.computedStyles["font-weight"] ||
-                          styles["font-weight"] ||
-                          "400"
-                        }
-                        disabled={false}
-                        onCommit={(next) =>
-                          onSetTextFieldStyle(activeField.key, "font-weight", next)
-                        }
-                      />
-                    </div>
+            <Section title="Effects" icon={<Zap size={15} />}>
+              <div className="space-y-4">
+                <SelectField
+                  label="Shadow"
+                  value={boxShadowPreset}
+                  disabled={styleEditingDisabled}
+                  onChange={(next) => {
+                    if (next === "custom") return;
+                    onSetStyle(
+                      "box-shadow",
+                      buildBoxShadowPresetValue(next as BoxShadowPreset, styles["box-shadow"]),
+                    );
+                  }}
+                  options={["custom", "none", "soft", "lift", "glow"]}
+                />
+                <div className={RESPONSIVE_GRID}>
+                  <div className="grid min-w-0 gap-1.5">
+                    <span className={LABEL}>Layer blur</span>
+                    <SliderControl
+                      value={filterBlurValue}
+                      min={0}
+                      max={Math.max(40, Math.ceil(filterBlurValue))}
+                      step={1}
+                      disabled={styleEditingDisabled}
+                      displayValue={`${formatNumericValue(filterBlurValue)}px`}
+                      formatDisplayValue={(next) => `${formatNumericValue(next)}px`}
+                      onCommit={(next) =>
+                        onSetStyle("filter", setCssFilterFunctionPx(styles.filter, "blur", next))
+                      }
+                    />
+                  </div>
+                  <div className="grid min-w-0 gap-1.5">
+                    <span className={LABEL}>Backdrop</span>
+                    <SliderControl
+                      value={backdropBlurValue}
+                      min={0}
+                      max={Math.max(60, Math.ceil(backdropBlurValue))}
+                      step={1}
+                      disabled={styleEditingDisabled}
+                      displayValue={`${formatNumericValue(backdropBlurValue)}px`}
+                      formatDisplayValue={(next) => `${formatNumericValue(next)}px`}
+                      onCommit={(next) =>
+                        onSetStyle(
+                          "backdrop-filter",
+                          setCssFilterFunctionPx(styles["backdrop-filter"], "blur", next),
+                        )
+                      }
+                    />
                   </div>
                 </div>
-              );
-            })()}
-          </Section>
-        )}
+              </div>
+            </Section>
 
-        {visibleSections.includes("Layout") && (
-          <Section title="Layout" icon={<Move size={15} />}>
-            <div className={RESPONSIVE_GRID}>
-              <MetricField
-                label="X"
-                value={formatPxMetricValue(manualOffset.x)}
-                disabled={manualOffsetEditingDisabled}
-                onCommit={(next) => commitManualOffset("x", next)}
-              />
-              <MetricField
-                label="Y"
-                value={formatPxMetricValue(manualOffset.y)}
-                disabled={manualOffsetEditingDisabled}
-                onCommit={(next) => commitManualOffset("y", next)}
-              />
-              <MetricField
-                label="W"
-                value={formatPxMetricValue(resolvedWidth)}
-                disabled={manualSizeEditingDisabled}
-                onCommit={(next) => commitManualSize("width", next)}
-              />
-              <MetricField
-                label="H"
-                value={formatPxMetricValue(resolvedHeight)}
-                disabled={manualSizeEditingDisabled}
-                onCommit={(next) => commitManualSize("height", next)}
-              />
-              <MetricField
-                label="Rotate"
-                value={`${formatNumericValue(manualRotation.angle)}°`}
-                disabled={manualOffsetEditingDisabled}
-                onCommit={(next) => {
-                  const parsed = parseFloat(next.replace("°", "").trim());
-                  if (Number.isFinite(parsed)) {
-                    onSetRotation(element, { angle: parsed % 360 });
+            <Section title="Clip" icon={<Layers size={15} />}>
+              <div className="space-y-4">
+                <div className={RESPONSIVE_GRID}>
+                  <SelectField
+                    label="Overflow"
+                    value={styles.overflow || "visible"}
+                    disabled={styleEditingDisabled}
+                    onChange={(next) => onSetStyle("overflow", next)}
+                    options={["visible", "hidden", "clip", "auto", "scroll"]}
+                  />
+                  <SelectField
+                    label="Mask"
+                    value={clipPathPreset}
+                    disabled={styleEditingDisabled}
+                    onChange={(next) => {
+                      if (next === "custom") return;
+                      onSetStyle(
+                        "clip-path",
+                        buildClipPathValue(
+                          next as "none" | "inset" | "circle",
+                          radiusValue,
+                          clipPathValue,
+                        ),
+                      );
+                    }}
+                    options={["custom", "none", "inset", "circle"]}
+                  />
+                </div>
+                <div className="grid min-w-0 gap-1.5">
+                  <span className={LABEL}>Mask inset</span>
+                  <SliderControl
+                    value={clipInsetValue}
+                    min={0}
+                    max={Math.max(120, Math.ceil(clipInsetValue))}
+                    step={1}
+                    disabled={styleEditingDisabled}
+                    displayValue={`${formatNumericValue(clipInsetValue)}px`}
+                    formatDisplayValue={(next) => `${formatNumericValue(next)}px`}
+                    onCommit={(next) =>
+                      onSetStyle("clip-path", buildInsetClipPathValue(next, radiusValue))
+                    }
+                  />
+                </div>
+              </div>
+            </Section>
+
+            <Section title="Blending" icon={<Eye size={15} />}>
+              <div className="space-y-4">
+                <SliderControl
+                  value={opacityValue}
+                  min={0}
+                  max={100}
+                  step={1}
+                  disabled={styleEditingDisabled}
+                  displayValue={`${opacityValue}%`}
+                  formatDisplayValue={(next) => `${Math.round(next)}%`}
+                  onCommit={(next) => onSetStyle("opacity", formatNumericValue(next / 100))}
+                />
+                <SelectField
+                  label="Mode"
+                  value={styles["mix-blend-mode"] || "normal"}
+                  disabled={styleEditingDisabled}
+                  onChange={(next) => onSetStyle("mix-blend-mode", next)}
+                  options={["normal", "multiply", "screen", "overlay", "darken", "lighten"]}
+                />
+              </div>
+            </Section>
+
+            <Section
+              title="Fill"
+              icon={<Palette size={15} />}
+              accessory={
+                <div className="rounded-full border border-neutral-700 bg-neutral-900 px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.16em] text-neutral-400">
+                  {preferredFillMode}
+                </div>
+              }
+            >
+              <div className="space-y-4">
+                <SegmentedControl
+                  disabled={styleEditingDisabled}
+                  value={preferredFillMode}
+                  onChange={handleFillModeChange}
+                  options={[
+                    { label: "Solid", value: "Solid" },
+                    { label: "Gradient", value: "Gradient" },
+                    { label: "Image", value: "Image" },
+                  ]}
+                />
+                {preferredFillMode === "Solid" ? (
+                  <ColorField
+                    label="Fill color"
+                    value={styles["background-color"] ?? "transparent"}
+                    disabled={styleEditingDisabled}
+                    onCommit={(next) => onSetStyle("background-color", next)}
+                  />
+                ) : preferredFillMode === "Gradient" ? (
+                  <GradientField
+                    value={
+                      backgroundImage !== "none"
+                        ? backgroundImage
+                        : serializeGradient(buildDefaultGradientModel(styles["background-color"]))
+                    }
+                    fallbackColor={styles["background-color"]}
+                    disabled={styleEditingDisabled}
+                    onCommit={(next) => onSetStyle("background-image", next)}
+                  />
+                ) : (
+                  <ImageFillField
+                    projectId={projectId}
+                    sourceFile={element.sourceFile}
+                    value={imageUrl}
+                    assets={assets}
+                    disabled={styleEditingDisabled}
+                    onCommit={(next) => onSetStyle("background-image", next)}
+                    onImportAssets={onImportAssets}
+                  />
+                )}
+                {!hasTextControls && (
+                  <ColorField
+                    label="Text color"
+                    value={styles.color ?? "rgb(0, 0, 0)"}
+                    disabled={styleEditingDisabled}
+                    onCommit={(next) => onSetStyle("color", next)}
+                  />
+                )}
+              </div>
+            </Section>
+
+            {hasTextControls && (
+              <Section title="Text" icon={<Type size={15} />}>
+                {(() => {
+                  const textFields = element.textFields;
+                  const activeField =
+                    textFields.find((field) => field.key === activeTextFieldKey) ?? textFields[0];
+                  if (!activeField) return null;
+
+                  if (textFields.length === 1) {
+                    return (
+                      <div className="space-y-4 rounded-xl border border-neutral-800 bg-neutral-900/60 p-3">
+                        <div className="min-w-0">
+                          <div className="truncate text-[11px] font-medium text-neutral-100">
+                            {formatTextFieldPreview(activeField.value) || "Text"}
+                          </div>
+                          <div className="text-[10px] uppercase tracking-[0.12em] text-neutral-500">
+                            {activeField.tagName}
+                          </div>
+                        </div>
+
+                        <TextAreaField
+                          key={activeField.key}
+                          label="Content"
+                          value={activeField.value}
+                          disabled={false}
+                          onCommit={(next) => onSetText(next, activeField.key)}
+                        />
+
+                        <ColorField
+                          label="Text color"
+                          value={getTextFieldColor(activeField, styles)}
+                          disabled={false}
+                          onCommit={(next) => onSetTextFieldStyle(activeField.key, "color", next)}
+                        />
+
+                        <div className={RESPONSIVE_GRID}>
+                          <MetricField
+                            label="Size"
+                            value={
+                              activeField.computedStyles["font-size"] ||
+                              styles["font-size"] ||
+                              "16px"
+                            }
+                            disabled={false}
+                            liveCommit
+                            onCommit={(next) =>
+                              onSetTextFieldStyle(activeField.key, "font-size", next)
+                            }
+                          />
+                          <FontWeightField
+                            value={
+                              activeField.computedStyles["font-weight"] ||
+                              styles["font-weight"] ||
+                              "400"
+                            }
+                            disabled={false}
+                            onCommit={(next) =>
+                              onSetTextFieldStyle(activeField.key, "font-weight", next)
+                            }
+                          />
+                        </div>
+
+                        <FontFamilyField
+                          value={
+                            activeField.computedStyles["font-family"] ||
+                            styles["font-family"] ||
+                            "inherit"
+                          }
+                          disabled={false}
+                          importedFonts={fontAssets}
+                          onImportFonts={onImportFonts}
+                          onCommit={(next) =>
+                            onSetTextFieldStyle(activeField.key, "font-family", next)
+                          }
+                        />
+
+                        <AdvancedTextControls
+                          field={activeField}
+                          inheritedStyles={styles}
+                          disabled={false}
+                          onCommit={(property, value) =>
+                            onSetTextFieldStyle(activeField.key, property, value)
+                          }
+                        />
+                      </div>
+                    );
                   }
-                }}
-              />
-            </div>
-          </Section>
-        )}
 
-        {visibleSections.includes("Colors") && (
-          <Section title="Colors" icon={<Palette size={15} />}>
-            <div className="space-y-4">
-              {canShowFillColor && (
-                <ColorField
-                  label="Fill color"
-                  value={styles["background-color"] ?? "transparent"}
-                  disabled={styleEditingDisabled}
-                  onCommit={(next) => onSetStyle("background-color", next)}
-                />
-              )}
-              {canShowTextColor && (
-                <ColorField
-                  label="Text color"
-                  value={styles.color ?? "rgb(0, 0, 0)"}
-                  disabled={styleEditingDisabled}
-                  onCommit={(next) => onSetStyle("color", next)}
-                />
-              )}
-            </div>
-          </Section>
-        )}
+                  return (
+                    <div className="space-y-4">
+                      <div className="grid gap-1.5">
+                        <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+                          <span className={LABEL}>Text layers</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              void Promise.resolve(onAddTextField(activeField.key)).then(
+                                (nextKey) => {
+                                  if (nextKey) setActiveTextFieldKey(nextKey);
+                                },
+                              );
+                            }}
+                            className="inline-flex h-7 max-w-full items-center gap-1.5 rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 text-[11px] font-medium text-neutral-300 transition-colors hover:border-neutral-600 hover:text-white"
+                          >
+                            <Plus size={12} className="flex-shrink-0" />
+                            <span className="truncate">Add text</span>
+                          </button>
+                        </div>
+                        <div className="grid gap-2">
+                          {textFields.map((field, index) => {
+                            const active = field.key === activeField.key;
+                            return (
+                              <button
+                                key={field.key}
+                                type="button"
+                                onClick={() => setActiveTextFieldKey(field.key)}
+                                className={`min-w-0 w-full rounded-xl border px-3 py-2 text-left transition-colors ${
+                                  active
+                                    ? "border-studio-accent/50 bg-studio-accent/10"
+                                    : "border-neutral-800 bg-neutral-900/80 hover:border-neutral-700 hover:bg-neutral-900"
+                                }`}
+                              >
+                                <div className="flex min-w-0 items-center justify-between gap-2">
+                                  <div className="flex min-w-0 items-center gap-2">
+                                    <span
+                                      className="h-4 w-4 flex-shrink-0 rounded border border-neutral-700 bg-neutral-950"
+                                      style={{ backgroundColor: getTextFieldColor(field, styles) }}
+                                    />
+                                    <span className="min-w-0 truncate text-[11px] font-medium text-neutral-100">
+                                      {formatTextFieldPreview(field.value) || `Text ${index + 1}`}
+                                    </span>
+                                  </div>
+                                  <span className="flex-shrink-0 rounded-md border border-neutral-700 bg-neutral-950 px-1.5 py-0.5 text-[10px] uppercase tracking-[0.12em] text-neutral-500">
+                                    {field.tagName}
+                                  </span>
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
 
-        {visibleSections.includes("Radius") && (
-          <Section title="Radius" icon={<Settings size={15} />}>
-            <SliderControl
-              value={radiusValue}
-              min={0}
-              max={Math.max(240, Math.ceil(radiusValue))}
-              step={1}
-              disabled={styleEditingDisabled}
-              displayValue={`${formatNumericValue(radiusValue)}px`}
-              formatDisplayValue={(next) => `${formatNumericValue(next)}px`}
-              onCommit={(next) => onSetStyle("border-radius", `${formatNumericValue(next)}px`)}
-            />
-          </Section>
-        )}
+                      <div className="space-y-4 rounded-xl border border-neutral-800 bg-neutral-900/60 p-3">
+                        <div className="flex min-w-0 items-center justify-between gap-2">
+                          <div className="min-w-0">
+                            <div className="truncate text-[11px] font-medium text-neutral-100">
+                              {formatTextFieldPreview(activeField.value) || "Text"}
+                            </div>
+                            <div className="text-[10px] uppercase tracking-[0.12em] text-neutral-500">
+                              {activeField.tagName}
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => onRemoveTextField(activeField.key)}
+                            className="inline-flex h-7 flex-shrink-0 items-center rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 text-[11px] font-medium text-neutral-300 transition-colors hover:border-neutral-600 hover:text-white"
+                          >
+                            Remove
+                          </button>
+                        </div>
 
-        {visibleSections.includes("Shadow") && (
-          <Section title="Shadow" icon={<Eye size={15} />}>
-            <SelectField
-              label="Box shadow"
-              value={boxShadowPreset}
-              disabled={styleEditingDisabled}
-              onChange={(next) => {
-                if (next === "custom") return;
-                onSetStyle(
-                  "box-shadow",
-                  buildBoxShadowPresetValue(next as BoxShadowPreset, styles["box-shadow"]),
-                );
-              }}
-              options={["custom", "none", "soft", "lift", "glow"]}
-            />
-          </Section>
+                        <TextAreaField
+                          key={activeField.key}
+                          label="Content"
+                          value={activeField.value}
+                          disabled={false}
+                          autoFocus
+                          onCommit={(next) => onSetText(next, activeField.key)}
+                        />
+
+                        <ColorField
+                          label="Text color"
+                          value={getTextFieldColor(activeField, styles)}
+                          disabled={false}
+                          onCommit={(next) => onSetTextFieldStyle(activeField.key, "color", next)}
+                        />
+
+                        <div className={RESPONSIVE_GRID}>
+                          <MetricField
+                            label="Size"
+                            value={activeField.computedStyles["font-size"] || "16px"}
+                            disabled={false}
+                            liveCommit
+                            onCommit={(next) =>
+                              onSetTextFieldStyle(activeField.key, "font-size", next)
+                            }
+                          />
+                          <FontWeightField
+                            value={activeField.computedStyles["font-weight"] || "400"}
+                            disabled={false}
+                            onCommit={(next) =>
+                              onSetTextFieldStyle(activeField.key, "font-weight", next)
+                            }
+                          />
+                        </div>
+
+                        <FontFamilyField
+                          value={
+                            activeField.computedStyles["font-family"] ||
+                            styles["font-family"] ||
+                            "inherit"
+                          }
+                          disabled={false}
+                          importedFonts={fontAssets}
+                          onImportFonts={onImportFonts}
+                          onCommit={(next) =>
+                            onSetTextFieldStyle(activeField.key, "font-family", next)
+                          }
+                        />
+
+                        <AdvancedTextControls
+                          field={activeField}
+                          inheritedStyles={styles}
+                          disabled={false}
+                          onCommit={(property, value) =>
+                            onSetTextFieldStyle(activeField.key, property, value)
+                          }
+                        />
+                      </div>
+                    </div>
+                  );
+                })()}
+              </Section>
+            )}
+
+            {selectionColors.length > 0 && (
+              <Section title="Selection colors" icon={<Palette size={15} />}>
+                <div className="space-y-3">
+                  {selectionColors.map((entry) => (
+                    <SelectionColorRow
+                      key={`${entry.swatch}-${entry.token}`}
+                      swatch={entry.swatch}
+                      token={entry.token}
+                      sources={entry.sources}
+                    />
+                  ))}
+                </div>
+              </Section>
+            )}
+          </>
         )}
       </div>
     </div>
