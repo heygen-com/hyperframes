@@ -44,7 +44,7 @@ export const STUDIO_INSPECTOR_PANELS_ENABLED = resolveStudioBooleanEnvFlag(
 export const STUDIO_MOTION_PANEL_ENABLED = resolveStudioBooleanEnvFlag(
   env,
   [STUDIO_MOTION_PANEL_ENV, "VITE_STUDIO_MOTION_PANEL_ENABLED"],
-  true,
+  false,
 );
 
 export const STUDIO_TIMELINE_LAYER_INSPECTOR_ENABLED =
