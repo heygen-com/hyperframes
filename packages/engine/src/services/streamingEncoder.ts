@@ -400,6 +400,9 @@ export async function spawnStreamingEncoder(
     exitPromiseResolve?.();
   });
 
+  ffmpeg.stdin?.on("error", () => {});
+  ffmpeg.stdout?.on("error", () => {});
+
   // Handle abort signal
   const onAbort = () => {
     if (exitStatus === "running") {

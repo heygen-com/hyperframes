@@ -510,9 +510,11 @@ async function scaffoldProject(
 ): Promise<void> {
   mkdirSync(destDir, { recursive: true });
 
-  // Use bundled template if available, otherwise fetch from GitHub
+  // Use bundled template if available, otherwise fetch from GitHub.
+  // Check for index.html inside the dir — an empty directory left by the
+  // build toolchain should not prevent the remote fetch fallback.
   const templateDir = getStaticTemplateDir(templateId);
-  if (existsSync(templateDir)) {
+  if (existsSync(join(templateDir, "index.html"))) {
     cpSync(templateDir, destDir, { recursive: true });
   } else {
     await fetchRemoteTemplate(templateId, destDir);
