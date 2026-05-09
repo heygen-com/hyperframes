@@ -933,6 +933,15 @@ export function initSandboxRuntimeModular(): void {
     if (typeof state.capturedTimeline.timeScale === "function") {
       state.capturedTimeline.timeScale(state.playbackRate);
     }
+    const boundDuration = getSafeTimelineDurationSeconds(state.capturedTimeline, 0);
+    if (boundDuration > 0) {
+      try {
+        clock.setDuration(boundDuration);
+      } catch {
+        // clock not yet initialized — duration will be set during TransportClock setup
+      }
+      state.capturedTimeline.pause();
+    }
     if (resolution.diagnostics) {
       postRuntimeMessage({
         source: "hf-preview",
