@@ -38,13 +38,13 @@ export const STUDIO_PREVIEW_MANUAL_EDITING_ENABLED = resolveStudioBooleanEnvFlag
 export const STUDIO_INSPECTOR_PANELS_ENABLED = resolveStudioBooleanEnvFlag(
   env,
   [STUDIO_INSPECTOR_PANELS_ENV, "VITE_STUDIO_INSPECTOR_PANELS_ENABLED"],
-  false,
+  true,
 );
 
 export const STUDIO_MOTION_PANEL_ENABLED = resolveStudioBooleanEnvFlag(
   env,
   [STUDIO_MOTION_PANEL_ENV, "VITE_STUDIO_MOTION_PANEL_ENABLED"],
-  false,
+  true,
 );
 
 export const STUDIO_TIMELINE_LAYER_INSPECTOR_ENABLED =
@@ -52,7 +52,7 @@ export const STUDIO_TIMELINE_LAYER_INSPECTOR_ENABLED =
   resolveStudioBooleanEnvFlag(
     env,
     [STUDIO_TIMELINE_LAYER_INSPECTOR_ENV, "VITE_STUDIO_TIMELINE_LAYER_INSPECTOR_ENABLED"],
-    false,
+    true,
   );
 
 export const STUDIO_MANUAL_EDITING_ENABLED = STUDIO_PREVIEW_MANUAL_EDITING_ENABLED;

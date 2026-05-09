@@ -16,16 +16,16 @@ describe("manual editing availability", () => {
     vi.resetModules();
   });
 
-  it("keeps alpha inspector and manual editing surfaces disabled by default", async () => {
+  it("enables inspector panels by default while manual editing stays opt-in", async () => {
     const availability = await loadAvailabilityWithEnv({});
 
     expect(availability.STUDIO_PREVIEW_MANUAL_EDITING_ENABLED).toBe(false);
-    expect(availability.STUDIO_INSPECTOR_PANELS_ENABLED).toBe(false);
-    expect(availability.STUDIO_MOTION_PANEL_ENABLED).toBe(false);
-    expect(availability.STUDIO_TIMELINE_LAYER_INSPECTOR_ENABLED).toBe(false);
+    expect(availability.STUDIO_INSPECTOR_PANELS_ENABLED).toBe(true);
+    expect(availability.STUDIO_MOTION_PANEL_ENABLED).toBe(true);
+    expect(availability.STUDIO_TIMELINE_LAYER_INSPECTOR_ENABLED).toBe(true);
   });
 
-  it("enables inspector layers only through explicit opt-in flags", async () => {
+  it("keeps explicit truthy inspector env flags enabled", async () => {
     const availability = await loadAvailabilityWithEnv({
       VITE_STUDIO_ENABLE_INSPECTOR_PANELS: "1",
       VITE_STUDIO_ENABLE_TIMELINE_LAYER_INSPECTOR: "true",
@@ -33,6 +33,17 @@ describe("manual editing availability", () => {
 
     expect(availability.STUDIO_INSPECTOR_PANELS_ENABLED).toBe(true);
     expect(availability.STUDIO_TIMELINE_LAYER_INSPECTOR_ENABLED).toBe(true);
+  });
+
+  it("allows explicit env flags to disable default-on inspector panels", async () => {
+    const availability = await loadAvailabilityWithEnv({
+      VITE_STUDIO_ENABLE_MOTION_PANEL: "0",
+      VITE_STUDIO_ENABLE_TIMELINE_LAYER_INSPECTOR: "off",
+    });
+
+    expect(availability.STUDIO_INSPECTOR_PANELS_ENABLED).toBe(true);
+    expect(availability.STUDIO_MOTION_PANEL_ENABLED).toBe(false);
+    expect(availability.STUDIO_TIMELINE_LAYER_INSPECTOR_ENABLED).toBe(false);
   });
 
   it("keeps timeline layer inspection off when the parent inspector flag is off", async () => {
