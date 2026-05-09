@@ -11,6 +11,7 @@ import {
 import { createPortal } from "react-dom";
 import {
   Eye,
+  Layers,
   MessageSquare,
   Move,
   Palette,
@@ -28,7 +29,7 @@ import {
   type ParsedColor,
 } from "./colorValue";
 import { isTextEditableSelection, type DomEditSelection } from "./domEditing";
-import { readStudioBoxSize, readStudioPathOffset } from "./manualEdits";
+import { readStudioBoxSize, readStudioPathOffset, readStudioRotation } from "./manualEdits";
 import {
   COMMON_LOCAL_FONT_FAMILIES,
   googleFontStylesheetUrl,
@@ -39,11 +40,13 @@ import { resolveFloatingPanelPosition, type FloatingPosition } from "./floatingP
 
 interface PropertyPanelProps {
   element: DomEditSelection | null;
+  multiSelectCount?: number;
   copiedAgentPrompt: boolean;
   onClearSelection: () => void;
   onSetStyle: (prop: string, value: string) => void | Promise<void>;
   onSetManualOffset: (element: DomEditSelection, next: { x: number; y: number }) => void;
   onSetManualSize: (element: DomEditSelection, next: { width: number; height: number }) => void;
+  onSetRotation: (element: DomEditSelection, next: { angle: number }) => void;
   onSetText: (value: string, fieldKey?: string) => void;
   onSetTextFieldStyle: (fieldKey: string, property: string, value: string) => void;
   onResetManualEdits: (element: DomEditSelection) => void;
@@ -1568,11 +1571,13 @@ export function isPropertyPanelMediaLikeSelection(input: {
 
 export const PropertyPanel = memo(function PropertyPanel({
   element,
+  multiSelectCount = 0,
   copiedAgentPrompt,
   onClearSelection,
   onSetStyle,
   onSetManualOffset,
   onSetManualSize,
+  onSetRotation,
   onSetText,
   onSetTextFieldStyle,
   onResetManualEdits,
@@ -1597,12 +1602,28 @@ export const PropertyPanel = memo(function PropertyPanel({
   if (!element) {
     return (
       <div className="flex h-full flex-col items-center justify-center bg-neutral-900 px-6 text-center">
-        <Eye size={18} className="mb-3 text-neutral-600" />
-        <p className="text-sm font-medium text-neutral-200">Select an element in the preview.</p>
-        <p className="mt-2 max-w-[260px] text-xs leading-5 text-neutral-500">
-          The inspector is tuned for element edits with safer geometry controls, color picking, and
-          cleaner grouped layer controls.
-        </p>
+        {multiSelectCount > 1 ? (
+          <>
+            <Layers size={18} className="mb-3 text-neutral-600" />
+            <p className="text-sm font-medium text-neutral-200">
+              {multiSelectCount} elements selected
+            </p>
+            <p className="mt-2 max-w-[260px] text-xs leading-5 text-neutral-500">
+              Select a single element to edit its properties. Click an element in the preview or use
+              the timeline layer panel.
+            </p>
+          </>
+        ) : (
+          <>
+            <Eye size={18} className="mb-3 text-neutral-600" />
+            <p className="text-sm font-medium text-neutral-200">
+              Select an element in the preview.
+            </p>
+            <p className="mt-2 max-w-[260px] text-xs leading-5 text-neutral-500">
+              Click any element to inspect and edit it. Click deeper to select child elements.
+            </p>
+          </>
+        )}
       </div>
     );
   }
@@ -1618,8 +1639,14 @@ export const PropertyPanel = memo(function PropertyPanel({
     tagName: element.tagName,
     styles,
   });
-  const canShowFillColor = !mediaLikeSelection;
-  const canShowTextColor = !hasTextControls && !mediaLikeSelection;
+  const bgColor = styles["background-color"]?.trim();
+  const hasExplicitFillColor =
+    !mediaLikeSelection &&
+    Boolean(bgColor) &&
+    bgColor !== "rgba(0, 0, 0, 0)" &&
+    bgColor !== "transparent";
+  const canShowFillColor = hasExplicitFillColor;
+  const canShowTextColor = !mediaLikeSelection && Boolean(styles.color?.trim());
   const visibleSections = getPropertyPanelVisibleSections({
     hasSelection: true,
     canEditStyles: showEditableSections,
@@ -1628,6 +1655,7 @@ export const PropertyPanel = memo(function PropertyPanel({
   });
   const manualOffset = readStudioPathOffset(element.element);
   const manualSize = readStudioBoxSize(element.element);
+  const manualRotation = readStudioRotation(element.element);
   const resolvedWidth =
     manualSize.width > 0
       ? manualSize.width
@@ -1836,6 +1864,17 @@ export const PropertyPanel = memo(function PropertyPanel({
                 value={formatPxMetricValue(resolvedHeight)}
                 disabled={manualSizeEditingDisabled}
                 onCommit={(next) => commitManualSize("height", next)}
+              />
+              <MetricField
+                label="Rotate"
+                value={`${formatNumericValue(manualRotation.angle)}°`}
+                disabled={manualOffsetEditingDisabled}
+                onCommit={(next) => {
+                  const parsed = parseFloat(next.replace("°", "").trim());
+                  if (Number.isFinite(parsed)) {
+                    onSetRotation(element, { angle: parsed % 360 });
+                  }
+                }}
               />
             </div>
           </Section>

@@ -16,13 +16,13 @@ describe("manual editing availability", () => {
     vi.resetModules();
   });
 
-  it("enables inspector selection by default while motion and manual dragging stay opt-in", async () => {
+  it("enables inspector selection, motion panel, and manual editing by default", async () => {
     const availability = await loadAvailabilityWithEnv({});
 
     expect(availability.STUDIO_PREVIEW_MANUAL_EDITING_ENABLED).toBe(false);
     expect(availability.STUDIO_PREVIEW_SELECTION_ENABLED).toBe(true);
     expect(availability.STUDIO_INSPECTOR_PANELS_ENABLED).toBe(true);
-    expect(availability.STUDIO_MOTION_PANEL_ENABLED).toBe(false);
+    expect(availability.STUDIO_MOTION_PANEL_ENABLED).toBe(true);
     expect(availability.STUDIO_TIMELINE_LAYER_INSPECTOR_ENABLED).toBe(true);
   });
 

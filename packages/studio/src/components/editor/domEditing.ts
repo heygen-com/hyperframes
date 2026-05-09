@@ -398,6 +398,7 @@ function buildElementLabel(el: HTMLElement): string {
 const DOM_LAYER_IGNORED_TAGS = new Set([
   "base",
   "br",
+  "canvas",
   "link",
   "meta",
   "script",

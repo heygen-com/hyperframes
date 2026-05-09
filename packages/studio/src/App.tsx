@@ -2955,15 +2955,26 @@ export function StudioApp() {
           buildDomEditStylePatchOperation("background-size", "contain"),
         );
       }
-      await persistDomEditOperations(domEditSelection, operations, {
-        label: "Edit layer style",
-        skipRefresh: true,
-        prepareContent: importedFont
-          ? (html, sourceFile) => ensureImportedFontFace(html, importedFont, sourceFile)
-          : undefined,
-      });
+      try {
+        await persistDomEditOperations(domEditSelection, operations, {
+          label: "Edit layer style",
+          skipRefresh: true,
+          prepareContent: importedFont
+            ? (html, sourceFile) => ensureImportedFontFace(html, importedFont, sourceFile)
+            : undefined,
+        });
+      } catch (err) {
+        console.warn("[Studio] Style persist failed:", err instanceof Error ? err.message : err);
+      }
+      refreshDomEditSelectionFromPreview(domEditSelection);
     },
-    [activeCompPath, domEditSelection, persistDomEditOperations, resolveImportedFontAsset],
+    [
+      activeCompPath,
+      domEditSelection,
+      persistDomEditOperations,
+      refreshDomEditSelectionFromPreview,
+      resolveImportedFontAsset,
+    ],
   );
 
   const handleDomTextCommit = useCallback(
@@ -4219,11 +4230,13 @@ export function StudioApp() {
                     {designPanelActive ? (
                       <PropertyPanel
                         element={domEditGroupSelections.length > 1 ? null : domEditSelection}
+                        multiSelectCount={domEditGroupSelections.length}
                         copiedAgentPrompt={copiedAgentPrompt}
                         onClearSelection={clearDomSelection}
                         onSetStyle={handleDomStyleCommit}
                         onSetManualOffset={handleDomPathOffsetCommit}
                         onSetManualSize={handleDomBoxSizeCommit}
+                        onSetRotation={handleDomRotationCommit}
                         onSetText={handleDomTextCommit}
                         onSetTextFieldStyle={handleDomTextFieldStyleCommit}
                         onResetManualEdits={handleDomManualEditsReset}
