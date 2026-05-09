@@ -61,6 +61,8 @@ interface NLELayoutProps {
   timelineVisible?: boolean;
   /** Callback to toggle timeline visibility */
   onToggleTimeline?: () => void;
+  /** Notifies parent when composition loading state changes */
+  onCompositionLoadingChange?: (loading: boolean) => void;
 }
 
 const MIN_TIMELINE_H = 100;
@@ -95,6 +97,7 @@ export const NLELayout = memo(function NLELayout({
   onCompIdToSrcChange,
   timelineVisible,
   onToggleTimeline,
+  onCompositionLoadingChange: onCompositionLoadingChangeParent,
 }: NLELayoutProps) {
   const {
     iframeRef,
@@ -216,6 +219,10 @@ export const NLELayout = memo(function NLELayout({
   const [timelineH, setTimelineH] = useState(DEFAULT_TIMELINE_H);
   const [compositionLoading, setCompositionLoading] = useState(true);
   const timelineDisabled = shouldDisableTimelineWhileCompositionLoading(compositionLoading);
+
+  useEffect(() => {
+    onCompositionLoadingChangeParent?.(compositionLoading);
+  }, [compositionLoading, onCompositionLoadingChangeParent]);
   const isTimelineVisible = timelineVisible ?? true;
   const isDragging = useRef(false);
   const containerRef = useRef<HTMLDivElement>(null);
