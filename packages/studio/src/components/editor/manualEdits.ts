@@ -1053,7 +1053,11 @@ function wrapSeekReapplyFunction(
     return result;
   };
   markWrapped(wrappedSeek);
-  owner[key] = wrappedSeek;
+  try {
+    owner[key] = wrappedSeek;
+  } catch {
+    return false;
+  }
   return true;
 }
 
@@ -1161,7 +1165,11 @@ function wrapPlayReapplyFunction(
     return result;
   };
   markWrapped(wrappedPlay);
-  owner[key] = wrappedPlay;
+  try {
+    owner[key] = wrappedPlay;
+  } catch {
+    return false;
+  }
   return true;
 }
 
@@ -1181,7 +1189,11 @@ function wrapApplyAfterFunction(
     return result;
   };
   markWrapped(wrappedApplyAfter);
-  owner[key] = wrappedApplyAfter;
+  try {
+    owner[key] = wrappedApplyAfter;
+  } catch {
+    return false;
+  }
   return true;
 }
 
