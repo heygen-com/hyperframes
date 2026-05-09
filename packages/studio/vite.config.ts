@@ -70,7 +70,7 @@ async function getSharedBrowser(): Promise<import("puppeteer-core").Browser | nu
 }
 
 // In-flight thumbnail dedup
-const _thumbnailInflight = new Map<string, Promise<Buffer>>();
+const _thumbnailInflight = new Map<string, Promise<Buffer | null>>();
 const THUMBNAIL_CACHE_VERSION = "v4";
 
 interface ScreenshotClip {
@@ -353,77 +353,88 @@ function createViteAdapter(dataDir: string, server: ViteDevServer): StudioApiAda
           const browser = await getSharedBrowser();
           if (!browser) return null;
           const page = await browser.newPage();
-          await page.setViewport({
-            width: opts.width,
-            height: opts.height,
-            deviceScaleFactor: opts.format === "png" ? 1 : 0.5,
-          });
-          await page.goto(opts.previewUrl, { waitUntil: "domcontentloaded", timeout: 10000 });
-          await page.evaluate(() => {
-            document.documentElement.style.background = "#000";
-            document.body.style.background = "#000";
-            document.body.style.margin = "0";
-            document.body.style.overflow = "hidden";
-          });
-          await page
-            .waitForFunction(
-              `!!(window.__timelines && Object.keys(window.__timelines).length > 0)`,
-              { timeout: 5000 },
-            )
-            .catch(() => {});
-          await seekThumbnailPreview(page, opts.seekTime);
-          await applyStudioRenderBodyScriptsToThumbnailPage(page, opts.project.dir, opts.compPath);
-          await page.evaluate("document.fonts?.ready");
-          await new Promise((r) => setTimeout(r, 200));
-          await reapplyStudioRenderBodyScriptsToThumbnailPage(page);
-          let clip: ScreenshotClip | undefined;
-          if (opts.selector) {
-            clip = await page.evaluate(
-              (selector: string, selectorIndex: number | undefined) => {
-                const matches = Array.from(document.querySelectorAll(selector)).filter(
-                  (el): el is HTMLElement => el instanceof HTMLElement,
-                );
-                const safeIndex = Math.max(
-                  0,
-                  Math.min(matches.length - 1, Math.floor(selectorIndex ?? 0)),
-                );
-                const el = matches[safeIndex] ?? null;
-                if (!(el instanceof HTMLElement)) return undefined;
-                const rect = el.getBoundingClientRect();
-                if (rect.width < 4 || rect.height < 4) return undefined;
-                const pad = 8;
-                const x = Math.max(0, rect.left - pad);
-                const y = Math.max(0, rect.top - pad);
-                const maxWidth = window.innerWidth - x;
-                const maxHeight = window.innerHeight - y;
-                return {
-                  x,
-                  y,
-                  width: Math.max(1, Math.min(rect.width + pad * 2, maxWidth)),
-                  height: Math.max(1, Math.min(rect.height + pad * 2, maxHeight)),
-                };
-              },
-              opts.selector,
-              opts.selectorIndex,
+          try {
+            await page.setViewport({
+              width: opts.width,
+              height: opts.height,
+              deviceScaleFactor: opts.format === "png" ? 1 : 0.5,
+            });
+            await page.goto(opts.previewUrl, { waitUntil: "domcontentloaded", timeout: 10000 });
+            await page.evaluate(() => {
+              document.documentElement.style.background = "#000";
+              document.body.style.background = "#000";
+              document.body.style.margin = "0";
+              document.body.style.overflow = "hidden";
+            });
+            await page
+              .waitForFunction(
+                `!!(window.__timelines && Object.keys(window.__timelines).length > 0)`,
+                { timeout: 5000 },
+              )
+              .catch(() => {});
+            await seekThumbnailPreview(page, opts.seekTime);
+            await applyStudioRenderBodyScriptsToThumbnailPage(
+              page,
+              opts.project.dir,
+              opts.compPath,
             );
-          }
-          const buf = await page.screenshot(
-            opts.format === "png"
-              ? {
-                  type: "png",
-                  ...(clip ? { clip } : {}),
-                }
-              : {
-                  type: "jpeg",
-                  quality: 75,
-                  ...(clip ? { clip } : {}),
+            await page.evaluate("document.fonts?.ready");
+            await new Promise((r) => setTimeout(r, 200));
+            await reapplyStudioRenderBodyScriptsToThumbnailPage(page);
+            let clip: ScreenshotClip | undefined;
+            if (opts.selector) {
+              clip = await page.evaluate(
+                (selector: string, selectorIndex: number | undefined) => {
+                  const matches = Array.from(document.querySelectorAll(selector)).filter(
+                    (el): el is HTMLElement => el instanceof HTMLElement,
+                  );
+                  const safeIndex = Math.max(
+                    0,
+                    Math.min(matches.length - 1, Math.floor(selectorIndex ?? 0)),
+                  );
+                  const el = matches[safeIndex] ?? null;
+                  if (!(el instanceof HTMLElement)) return undefined;
+                  const rect = el.getBoundingClientRect();
+                  if (rect.width < 4 || rect.height < 4) return undefined;
+                  const pad = 8;
+                  const x = Math.max(0, rect.left - pad);
+                  const y = Math.max(0, rect.top - pad);
+                  const maxWidth = window.innerWidth - x;
+                  const maxHeight = window.innerHeight - y;
+                  return {
+                    x,
+                    y,
+                    width: Math.max(1, Math.min(rect.width + pad * 2, maxWidth)),
+                    height: Math.max(1, Math.min(rect.height + pad * 2, maxHeight)),
+                  };
                 },
-          );
-          await page.close();
-          return buf as Buffer;
+                opts.selector,
+                opts.selectorIndex,
+              );
+            }
+            const buf = await page.screenshot(
+              opts.format === "png"
+                ? {
+                    type: "png",
+                    ...(clip ? { clip } : {}),
+                  }
+                : {
+                    type: "jpeg",
+                    quality: 75,
+                    ...(clip ? { clip } : {}),
+                  },
+            );
+            return buf as Buffer;
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            console.warn(`[Studio thumbnail] Failed to generate ${opts.compPath}: ${message}`);
+            return null;
+          } finally {
+            await page.close().catch(() => {});
+          }
         })();
         _thumbnailInflight.set(cacheKey, bufferPromise);
-        bufferPromise.finally(() => _thumbnailInflight.delete(cacheKey));
+        void bufferPromise.finally(() => _thumbnailInflight.delete(cacheKey));
       }
       return bufferPromise;
     },

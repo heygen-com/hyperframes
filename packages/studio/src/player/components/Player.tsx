@@ -19,6 +19,9 @@ interface HyperframesPlayerElement extends HTMLElement {
   iframeElement: HTMLIFrameElement;
 }
 
+const MEDIA_HAVE_FUTURE_DATA = 3;
+const MEDIA_NETWORK_NO_SOURCE = 3;
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
@@ -47,6 +50,11 @@ function enableInteractiveIframe(player: HyperframesPlayerElement): void {
   iframe?.style.setProperty("pointer-events", "auto");
 }
 
+function isPreviewMediaElement(el: Element): el is HTMLMediaElement {
+  const tagName = el.tagName.toLowerCase();
+  return tagName === "video" || tagName === "audio";
+}
+
 // Assets are considered ready when every `<video>`/`<audio>` has enough data
 // to play through without buffering, and every registered Lottie animation has
 // finished loading.
@@ -55,7 +63,7 @@ function enableInteractiveIframe(player: HyperframesPlayerElement): void {
 // races so a brief access failure (e.g. an iframe that just swapped src)
 // doesn't flicker the overlay state — we keep showing whatever was most
 // recently true.
-function hasUnloadedAssets(iframe: HTMLIFrameElement, lastResult: boolean): boolean {
+export function hasUnloadedAssets(iframe: HTMLIFrameElement, lastResult: boolean): boolean {
   try {
     const win = iframe.contentWindow as unknown as (Window & { __hfLottie?: unknown[] }) | null;
     const doc = iframe.contentDocument;
@@ -63,9 +71,10 @@ function hasUnloadedAssets(iframe: HTMLIFrameElement, lastResult: boolean): bool
 
     for (const el of doc.querySelectorAll("video, audio")) {
       if (
-        el instanceof HTMLMediaElement &&
-        el.preload === "auto" &&
-        el.readyState < HTMLMediaElement.HAVE_FUTURE_DATA
+        isPreviewMediaElement(el) &&
+        !el.error &&
+        el.networkState !== MEDIA_NETWORK_NO_SOURCE &&
+        el.readyState < MEDIA_HAVE_FUTURE_DATA
       ) {
         return true;
       }

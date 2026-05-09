@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { initSandboxRuntimeModular } from "./init";
 import type { RuntimeTimelineLike } from "./types";
 
@@ -45,6 +45,31 @@ function createPaddableMockTimeline(duration: number): RuntimeTimelineLike {
   return timeline;
 }
 
+function createManualRaf() {
+  let now = 0;
+  let nextId = 0;
+  const callbacks = new Map<number, FrameRequestCallback>();
+  return {
+    requestAnimationFrame: (callback: FrameRequestCallback) => {
+      nextId += 1;
+      callbacks.set(nextId, callback);
+      return nextId;
+    },
+    cancelAnimationFrame: (id: number) => {
+      callbacks.delete(id);
+    },
+    step: (milliseconds: number) => {
+      now += milliseconds;
+      const pending = Array.from(callbacks.entries());
+      callbacks.clear();
+      for (const [, callback] of pending) {
+        callback(now);
+      }
+    },
+    now: () => now,
+  };
+}
+
 describe("initSandboxRuntimeModular", () => {
   const originalRequestAnimationFrame = window.requestAnimationFrame;
   const originalCancelAnimationFrame = window.cancelAnimationFrame;
@@ -67,6 +92,7 @@ describe("initSandboxRuntimeModular", () => {
     delete (window as Window & { __player?: unknown }).__player;
     delete (window as Window & { __playerReady?: boolean }).__playerReady;
     delete (window as Window & { __renderReady?: boolean }).__renderReady;
+    vi.restoreAllMocks();
     window.requestAnimationFrame = originalRequestAnimationFrame;
     window.cancelAnimationFrame = originalCancelAnimationFrame;
   });
@@ -283,32 +309,67 @@ describe("initSandboxRuntimeModular", () => {
     expect(video.currentTime).toBe(0);
   });
 
-  it("allows external code to reassign delegated __player methods", () => {
+  it("plays scheduled child timelines without a captured root timeline when audio has failed", () => {
+    const raf = createManualRaf();
+    vi.spyOn(performance, "now").mockImplementation(() => raf.now());
+    window.requestAnimationFrame = raf.requestAnimationFrame as typeof window.requestAnimationFrame;
+    window.cancelAnimationFrame = raf.cancelAnimationFrame as typeof window.cancelAnimationFrame;
+
     const root = document.createElement("div");
     root.setAttribute("data-composition-id", "main");
     root.setAttribute("data-root", "true");
     root.setAttribute("data-start", "0");
+    root.setAttribute("data-duration", "4");
     root.setAttribute("data-width", "1920");
     root.setAttribute("data-height", "1080");
     document.body.appendChild(root);
 
+    const child = document.createElement("div");
+    child.setAttribute("data-composition-id", "scene");
+    child.setAttribute("data-start", "0");
+    child.setAttribute("data-duration", "4");
+    root.appendChild(child);
+
+    const audio = document.createElement("audio");
+    audio.setAttribute("data-start", "0");
+    audio.setAttribute("data-duration", "4");
+    Object.defineProperty(audio, "error", {
+      value: { code: 4, message: "format error" },
+      configurable: true,
+    });
+    Object.defineProperty(audio, "networkState", {
+      value: HTMLMediaElement.NETWORK_NO_SOURCE,
+      configurable: true,
+    });
+    Object.defineProperty(audio, "readyState", {
+      value: HTMLMediaElement.HAVE_NOTHING,
+      configurable: true,
+    });
+    Object.defineProperty(audio, "paused", { value: true, configurable: true });
+    Object.defineProperty(audio, "currentTime", { value: 0, writable: true, configurable: true });
+    audio.load = () => {};
+    audio.play = vi.fn(() => Promise.reject(new Error("format error")));
+    root.appendChild(audio);
+
+    const childTimeline = createMockTimeline(4);
     (window as Window & { __timelines?: Record<string, RuntimeTimelineLike> }).__timelines = {
-      main: createMockTimeline(10),
+      scene: childTimeline,
     };
 
     initSandboxRuntimeModular();
 
     const player = (
       window as Window & {
-        __player?: { renderSeek: (timeSeconds: number) => void };
+        __player?: { play: () => void; getTime: () => number; isPlaying: () => boolean };
       }
     ).__player;
     expect(player).toBeDefined();
-    if (!player) return;
 
-    const original = player.renderSeek;
-    expect(() => {
-      player.renderSeek = (t: number) => original(t);
-    }).not.toThrow();
+    player?.play();
+    raf.step(1_000);
+
+    expect(player?.isPlaying()).toBe(true);
+    expect(player?.getTime()).toBeCloseTo(1, 1);
+    expect(childTimeline.time()).toBeCloseTo(1, 1);
   });
 });
