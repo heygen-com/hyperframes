@@ -3616,6 +3616,67 @@ export function StudioApp() {
     [activeCompPath, handleTimelineAssetDrop, timelineElements, uploadProjectFiles],
   );
 
+  const handleTimelineBlockDrop = useCallback(
+    async (
+      block: { name: string; file: string; title: string; duration: number; category: string },
+      placement: Pick<TimelineElement, "start" | "track">,
+    ) => {
+      const pid = projectIdRef.current;
+      if (!pid) return;
+
+      // Fetch block content from registry
+      const res = await fetch(
+        `/api/registry/blocks/${block.name}/files/${encodeURIComponent(block.file)}`,
+      );
+      if (!res.ok) {
+        showToast(`Failed to fetch block: ${block.title}`);
+        return;
+      }
+      const data = (await res.json()) as { content?: string };
+      if (typeof data.content !== "string") {
+        showToast(`Invalid block content: ${block.title}`);
+        return;
+      }
+
+      // Write block to compositions/
+      const targetPath = `compositions/${block.file}`;
+      await writeProjectFile(targetPath, data.content);
+
+      // Now add it to the active composition's timeline as a sub-composition
+      const compPath = activeCompPath || "index.html";
+      const compRes = await fetch(`/api/projects/${pid}/files/${encodeURIComponent(compPath)}`);
+      if (!compRes.ok) return;
+      const compData = (await compRes.json()) as { content?: string };
+      if (typeof compData.content !== "string") return;
+
+      const blockId = block.name.replace(/[^a-zA-Z0-9_-]/g, "-");
+      const normalizedStart = Number(placement.start.toFixed(2));
+      const normalizedDuration = block.duration || 5;
+
+      // Build the sub-composition element
+      const subCompHtml = `<div data-composition-id="${blockId}" data-composition-src="${targetPath}" data-start="${normalizedStart}" data-duration="${normalizedDuration}" style="position:absolute;inset:0;width:1920px;height:1080px;"></div>`;
+
+      // Insert before closing </body> or at end of root composition
+      let patchedContent = compData.content;
+      const bodyCloseIdx = patchedContent.lastIndexOf("</body>");
+      if (bodyCloseIdx >= 0) {
+        patchedContent =
+          patchedContent.slice(0, bodyCloseIdx) +
+          subCompHtml +
+          "\n" +
+          patchedContent.slice(bodyCloseIdx);
+      } else {
+        patchedContent += "\n" + subCompHtml;
+      }
+
+      await writeProjectFile(compPath, patchedContent);
+      await refreshFileTree();
+      setRefreshKey((k) => k + 1);
+      showToast(`Added ${block.title} to timeline at ${normalizedStart.toFixed(1)}s`, "info");
+    },
+    [activeCompPath, refreshFileTree, showToast, writeProjectFile],
+  );
+
   // ── File Management Handlers ──
 
   const handleCreateFile = useCallback(
@@ -4119,6 +4180,7 @@ export function StudioApp() {
             renderClipContent={renderClipContent}
             onDeleteElement={handleTimelineElementDelete}
             onAssetDrop={handleTimelineAssetDrop}
+            onBlockDrop={handleTimelineBlockDrop}
             onFileDrop={handleTimelineFileDrop}
             onMoveElement={handleTimelineElementMove}
             onResizeElement={handleTimelineElementResize}

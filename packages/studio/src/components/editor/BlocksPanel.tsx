@@ -8,6 +8,7 @@ import {
   type BlockCategory,
   type BlockEntry,
 } from "./blockCatalog";
+import { TIMELINE_BLOCK_MIME } from "../../utils/timelineAssetDrop";
 
 interface BlocksPanelProps {
   onAddBlock: (block: BlockEntry) => void;
@@ -44,7 +45,30 @@ function BlockCard({
   const icon = CATEGORY_ICONS[block.category];
 
   return (
-    <div className="group relative flex flex-col rounded-2xl border border-neutral-800 bg-neutral-950 transition-all hover:border-neutral-700 hover:bg-neutral-900/80">
+    <div
+      draggable
+      onDragStart={(e) => {
+        e.dataTransfer.effectAllowed = "copy";
+        e.dataTransfer.setData(
+          TIMELINE_BLOCK_MIME,
+          JSON.stringify({
+            name: block.name,
+            file: block.file,
+            title: block.title,
+            duration: block.duration,
+            category: block.category,
+          }),
+        );
+        const ghost = document.createElement("div");
+        ghost.textContent = block.title;
+        ghost.style.cssText =
+          "position:fixed;top:-100px;left:-100px;padding:6px 12px;background:#18181b;color:#fff;border-radius:8px;font-size:11px;font-weight:600;white-space:nowrap;pointer-events:none;z-index:9999;";
+        document.body.appendChild(ghost);
+        e.dataTransfer.setDragImage(ghost, 0, 0);
+        requestAnimationFrame(() => ghost.remove());
+      }}
+      className="group relative flex flex-col rounded-2xl border border-neutral-800 bg-neutral-950 transition-all hover:border-neutral-700 hover:bg-neutral-900/80"
+    >
       {/* Visual preview area */}
       <div
         className="relative flex h-[72px] items-center justify-center overflow-hidden rounded-t-2xl"
