@@ -326,9 +326,11 @@ export function createControls(
 
   return {
     updateTime(current: number, duration: number) {
-      const pct = duration > 0 ? (current / duration) * 100 : 0;
+      // Defensive: source should already clamp, but guard here so the UI never overflows.
+      const clampedCurrent = duration > 0 ? Math.min(current, duration) : current;
+      const pct = duration > 0 ? (clampedCurrent / duration) * 100 : 0;
       progress.style.width = `${pct}%`;
-      time.textContent = `${formatTime(current)} / ${formatTime(duration)}`;
+      time.textContent = `${formatTime(clampedCurrent)} / ${formatTime(duration)}`;
     },
     updatePlaying(playing: boolean) {
       isPlaying = playing;

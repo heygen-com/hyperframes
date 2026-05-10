@@ -247,11 +247,13 @@ export const PLAYER_STYLES = /* css */ `
 
   .hfp-scrubber {
     flex: 1;
+    min-width: 0;
     height: var(--hfp-scrubber-height, 4px);
     background: var(--hfp-scrubber-bg, rgba(255, 255, 255, 0.3));
     border-radius: var(--hfp-scrubber-radius, 2px);
     cursor: pointer;
     position: relative;
+    overflow: hidden;
   }
 
   .hfp-scrubber:hover {
@@ -264,7 +266,6 @@ export const PLAYER_STYLES = /* css */ `
     left: 0;
     height: 100%;
     background: var(--hfp-accent, #fff);
-    border-radius: var(--hfp-scrubber-radius, 2px);
     pointer-events: none;
   }
 
@@ -401,6 +402,7 @@ export const PLAYER_STYLES = /* css */ `
     border-radius: var(--hfp-scrubber-radius, 2px);
     cursor: pointer;
     position: relative;
+    overflow: hidden;
     margin-left: 4px;
     margin-right: 4px;
   }
@@ -411,7 +413,6 @@ export const PLAYER_STYLES = /* css */ `
     left: 0;
     height: 100%;
     background: var(--hfp-accent, #fff);
-    border-radius: var(--hfp-scrubber-radius, 2px);
     pointer-events: none;
   }
 `;

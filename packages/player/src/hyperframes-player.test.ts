@@ -1028,6 +1028,7 @@ describe("HyperframesPlayer loop end-state handling", () => {
     seek: (timeInSeconds: number) => void;
     loop: boolean;
     _duration: number;
+    _currentTime: number;
     _paused: boolean;
     _onMessage: (event: MessageEvent) => void;
   };
@@ -1151,6 +1152,30 @@ describe("HyperframesPlayer loop end-state handling", () => {
 
     expect(seek).not.toHaveBeenCalled();
     expect(player._paused).toBe(false);
+  });
+
+  it("clamps _currentTime to _duration when a state message reports a frame past the end", () => {
+    // Regression test: the postMessage state path previously set _currentTime
+    // without clamping, while the direct timeline path already clamped. A frame
+    // count slightly past the end (common on final-frame messages) would set
+    // _currentTime > _duration, causing the progress bar to overflow the
+    // scrubber track and the time display to show e.g. "0:05 / 0:04".
+    player._duration = 4; // 4s = 120 frames at 30fps
+    player._paused = false;
+
+    player._onMessage(
+      new MessageEvent("message", {
+        source: frameWindow,
+        data: {
+          source: "hf-preview",
+          type: "state",
+          frame: 150, // 5s — past the 4s duration
+          isPlaying: false,
+        },
+      }),
+    );
+
+    expect(player._currentTime).toBe(4);
   });
 });
 

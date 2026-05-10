@@ -1030,7 +1030,8 @@ class HyperframesPlayer extends HTMLElement {
     }
 
     if (data.type === "state") {
-      this._currentTime = (data.frame ?? 0) / DEFAULT_FPS;
+      const rawTime = (data.frame ?? 0) / DEFAULT_FPS;
+      this._currentTime = this._duration > 0 ? Math.min(rawTime, this._duration) : rawTime;
       const wasPlaying = !this._paused;
       const nextPaused = !data.isPlaying;
       const completedPlayback =
