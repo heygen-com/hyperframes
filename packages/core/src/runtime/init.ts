@@ -1739,7 +1739,15 @@ export function initSandboxRuntimeModular(): void {
   const seekTimelineAndAdapters = (t: number) => {
     const tl = state.capturedTimeline;
     if (tl) {
-      seekRuntimeTimeline(tl, t, "runtime.init.transport.seek");
+      try {
+        if (typeof tl.totalTime === "function") {
+          tl.totalTime(t, false);
+        } else {
+          tl.seek(t, false);
+        }
+      } catch (err) {
+        swallow("runtime.init.transport.seek", err);
+      }
       // Sibling timelines (registered in __timelines but not nested under
       // the root) are paused alongside the master. We do NOT seek them to
       // absolute position `t` here — child timelines nested under the root
