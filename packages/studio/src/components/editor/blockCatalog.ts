@@ -1,5 +1,16 @@
 export type BlockCategory = "vfx" | "transitions" | "social" | "data" | "scenes";
 
+export interface BlockParam {
+  key: string;
+  label: string;
+  type: "color" | "text" | "number" | "select";
+  cssVar?: string; // CSS variable name to set
+  default: string;
+  options?: string[]; // for select type
+  min?: number;
+  max?: number;
+}
+
 export interface BlockEntry {
   name: string;
   title: string;
@@ -8,6 +19,7 @@ export interface BlockEntry {
   tags: string[];
   duration: number;
   file: string;
+  params?: BlockParam[];
 }
 
 export const BLOCK_CATEGORY_META: Record<
@@ -60,6 +72,7 @@ function block(
   description: string,
   tags: string[],
   duration: number,
+  params?: BlockParam[],
 ): BlockEntry {
   return {
     name,
@@ -69,6 +82,7 @@ function block(
     tags,
     duration,
     file: `${name}.html`,
+    ...(params ? { params } : {}),
   };
 }
 
@@ -79,6 +93,31 @@ export const BLOCK_CATALOG: BlockEntry[] = [
     "Glass refraction with live HTML content",
     ["html-in-canvas", "webgl"],
     20,
+    [
+      {
+        key: "bg-color",
+        label: "Background",
+        type: "color",
+        cssVar: "--bg-color",
+        default: "#000000",
+      },
+      {
+        key: "accent-color",
+        label: "Accent",
+        type: "color",
+        cssVar: "--accent-color",
+        default: "#00d4ff",
+      },
+      {
+        key: "speed",
+        label: "Speed",
+        type: "number",
+        cssVar: "--speed",
+        default: "1",
+        min: 0.1,
+        max: 3,
+      },
+    ],
   ),
   block(
     "vfx-liquid-background",
@@ -86,6 +125,19 @@ export const BLOCK_CATALOG: BlockEntry[] = [
     "Organic fluid simulation with vertex displacement",
     ["html-in-canvas", "liquid", "webgl"],
     12,
+    [
+      { key: "color-1", label: "Color 1", type: "color", cssVar: "--color-1", default: "#0a0a2e" },
+      { key: "color-2", label: "Color 2", type: "color", cssVar: "--color-2", default: "#1a1a4e" },
+      {
+        key: "speed",
+        label: "Speed",
+        type: "number",
+        cssVar: "--speed",
+        default: "1",
+        min: 0.1,
+        max: 5,
+      },
+    ],
   ),
   block(
     "vfx-magnetic",
@@ -94,7 +146,24 @@ export const BLOCK_CATALOG: BlockEntry[] = [
     ["html-in-canvas", "webgl"],
     15,
   ),
-  block("vfx-portal", "Portal", "Dimensional portal VFX", ["html-in-canvas", "webgl"], 10),
+  block("vfx-portal", "Portal", "Dimensional portal VFX", ["html-in-canvas", "webgl"], 10, [
+    {
+      key: "portal-color",
+      label: "Portal Color",
+      type: "color",
+      cssVar: "--portal-color",
+      default: "#7c3aed",
+    },
+    {
+      key: "intensity",
+      label: "Intensity",
+      type: "number",
+      cssVar: "--intensity",
+      default: "1.5",
+      min: 0.5,
+      max: 5,
+    },
+  ]),
   block(
     "vfx-shatter",
     "Shatter",
@@ -303,6 +372,37 @@ export const BLOCK_CATALOG: BlockEntry[] = [
     "Animated bar + line chart with staggered reveal",
     ["data", "chart"],
     15,
+    [
+      {
+        key: "chart-color",
+        label: "Bar Color",
+        type: "color",
+        cssVar: "--chart-color",
+        default: "#3b82f6",
+      },
+      {
+        key: "line-color",
+        label: "Line Color",
+        type: "color",
+        cssVar: "--line-color",
+        default: "#10b981",
+      },
+      {
+        key: "bg-color",
+        label: "Background",
+        type: "color",
+        cssVar: "--bg-color",
+        default: "#0a0a0a",
+      },
+      {
+        key: "style",
+        label: "Style",
+        type: "select",
+        cssVar: "--chart-style",
+        default: "bar",
+        options: ["bar", "line", "area"],
+      },
+    ],
   ),
   block(
     "flowchart",
@@ -346,6 +446,29 @@ export const BLOCK_CATALOG: BlockEntry[] = [
     "Cinematic logo reveal with glow bloom",
     ["branding", "outro", "logo"],
     6,
+    [
+      {
+        key: "bg-color",
+        label: "Background",
+        type: "color",
+        cssVar: "--bg-color",
+        default: "#000000",
+      },
+      {
+        key: "glow-color",
+        label: "Glow Color",
+        type: "color",
+        cssVar: "--glow-color",
+        default: "#ffffff",
+      },
+      {
+        key: "logo-text",
+        label: "Logo Text",
+        type: "text",
+        cssVar: "--logo-text",
+        default: "LOGO",
+      },
+    ],
   ),
   block(
     "north-korea-locked-down",

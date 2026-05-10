@@ -1,4 +1,4 @@
-import { memo, useState, useCallback } from "react";
+import { memo, useState, useCallback, useRef } from "react";
 import { Search, Plus, Layers, Square } from "../../icons/SystemIcons";
 import {
   BLOCK_CATALOG,
@@ -9,6 +9,8 @@ import {
   type BlockEntry,
 } from "./blockCatalog";
 import { TIMELINE_BLOCK_MIME } from "../../utils/timelineAssetDrop";
+import { BlockThumbnail } from "./BlockThumbnail";
+import { BlockParamsPanel } from "./BlockParamsPanel";
 
 interface BlocksPanelProps {
   onAddBlock: (block: BlockEntry) => void;
@@ -44,6 +46,9 @@ function BlockCard({
   const accent = CATEGORY_ACCENTS[block.category];
   const icon = CATEGORY_ICONS[block.category];
 
+  const [showPreview, setShowPreview] = useState(false);
+  const hoverTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+
   return (
     <div
       draggable
@@ -75,6 +80,13 @@ function BlockCard({
         style={{
           background: `linear-gradient(135deg, ${accent}08 0%, ${accent}14 50%, ${accent}06 100%)`,
         }}
+        onMouseEnter={() => {
+          hoverTimer.current = setTimeout(() => setShowPreview(true), 500);
+        }}
+        onMouseLeave={() => {
+          clearTimeout(hoverTimer.current);
+          setShowPreview(false);
+        }}
       >
         <div
           className="absolute inset-0 opacity-[0.03]"
@@ -83,7 +95,12 @@ function BlockCard({
             backgroundSize: "16px 16px",
           }}
         />
-        <span className="relative text-2xl opacity-40" style={{ color: accent }}>
+        {/* Live thumbnail preview */}
+        <div className="relative z-10">
+          <BlockThumbnail blockName={block.name} width={175} height={72} />
+        </div>
+        {/* Fallback icon (shown behind thumbnail, visible when thumbnail hasn't loaded) */}
+        <span className="absolute text-2xl opacity-40" style={{ color: accent }}>
           {icon}
         </span>
         {/* Add button overlay */}
@@ -91,7 +108,7 @@ function BlockCard({
           type="button"
           onClick={onAdd}
           disabled={isAdding}
-          className="absolute inset-0 flex items-center justify-center bg-black/60 opacity-0 backdrop-blur-sm transition-opacity group-hover:opacity-100 disabled:cursor-wait"
+          className="absolute inset-0 z-20 flex items-center justify-center bg-black/60 opacity-0 backdrop-blur-sm transition-opacity group-hover:opacity-100 disabled:cursor-wait"
         >
           {isAdding ? (
             <div
@@ -109,6 +126,13 @@ function BlockCard({
           )}
         </button>
       </div>
+
+      {/* Hover preview tooltip */}
+      {showPreview && (
+        <div className="absolute bottom-full left-1/2 z-50 mb-2 -translate-x-1/2 rounded-xl border border-neutral-700 bg-neutral-900 p-1 shadow-2xl">
+          <BlockThumbnail blockName={block.name} width={400} height={225} />
+        </div>
+      )}
 
       {/* Info */}
       <div className="flex flex-1 flex-col gap-1 px-3 py-2.5">
@@ -136,12 +160,21 @@ function BlockCard({
 export const BlocksPanel = memo(function BlocksPanel({ onAddBlock, adding }: BlocksPanelProps) {
   const [activeCategory, setActiveCategory] = useState<BlockCategory | null>(null);
   const [search, setSearch] = useState("");
+  const [recentlyUsed, setRecentlyUsed] = useState<string[]>([]);
+  const [lastAddedBlock, setLastAddedBlock] = useState<BlockEntry | null>(null);
 
   const filtered = filterBlocks(BLOCK_CATALOG, activeCategory, search);
 
   const handleAdd = useCallback(
     (block: BlockEntry) => {
       onAddBlock(block);
+      setRecentlyUsed((prev) => {
+        const next = [block.name, ...prev.filter((n) => n !== block.name)];
+        return next.slice(0, 6);
+      });
+      if (block.params?.length) {
+        setLastAddedBlock(block);
+      }
     },
     [onAddBlock],
   );
@@ -201,6 +234,46 @@ export const BlocksPanel = memo(function BlocksPanel({ onAddBlock, adding }: Blo
           })}
         </div>
       </div>
+
+      {/* Block params panel (shown after adding a block with params) */}
+      {lastAddedBlock?.params && (
+        <BlockParamsPanel
+          blockName={lastAddedBlock.title}
+          params={lastAddedBlock.params}
+          onParamChange={(key, value) => {
+            console.log(`[Blocks] param change: ${lastAddedBlock.name}.${key} = ${value}`);
+          }}
+        />
+      )}
+
+      {/* Recently Used */}
+      {recentlyUsed.length > 0 && (
+        <div className="border-b border-neutral-800 px-4 py-2">
+          <div className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-neutral-600">
+            Recently Used
+          </div>
+          <div className="flex flex-wrap gap-1">
+            {recentlyUsed.map((name) => {
+              const block = BLOCK_CATALOG.find((b) => b.name === name);
+              if (!block) return null;
+              const accent = CATEGORY_ACCENTS[block.category];
+              return (
+                <button
+                  key={name}
+                  onClick={() => handleAdd(block)}
+                  className="rounded-lg px-2 py-1 text-[10px] font-medium text-neutral-300 transition-colors hover:text-white"
+                  style={{
+                    backgroundColor: `${accent}15`,
+                    border: `1px solid ${accent}25`,
+                  }}
+                >
+                  {block.title}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Grid */}
       <div className="flex-1 overflow-y-auto px-3 py-3">
