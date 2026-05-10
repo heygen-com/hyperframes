@@ -101,6 +101,7 @@ import {
   type DomEditLayerItem,
   type DomEditTextField,
   type DomEditSelection,
+  buildDefaultDomEditTextField,
 } from "./components/editor/domEditing";
 import {
   STUDIO_MANUAL_EDITS_PATH,
@@ -3129,6 +3130,48 @@ export function StudioApp() {
     [commitDomTextFields, domEditSelection, handleDomStyleCommit, resolveImportedFontAsset],
   );
 
+  const handleDomAddTextField = useCallback(
+    async (afterFieldKey?: string) => {
+      if (!domEditSelection) return null;
+      if (!domEditSelection.textFields.some((field) => field.source === "child")) return null;
+
+      const insertionIndex = domEditSelection.textFields.findIndex(
+        (field) => field.key === afterFieldKey,
+      );
+      const baseField =
+        domEditSelection.textFields[insertionIndex >= 0 ? insertionIndex : 0] ??
+        domEditSelection.textFields[0];
+      const nextField = buildDefaultDomEditTextField(baseField);
+      const nextTextFields = [...domEditSelection.textFields];
+      nextTextFields.splice(
+        insertionIndex >= 0 ? insertionIndex + 1 : nextTextFields.length,
+        0,
+        nextField,
+      );
+
+      await commitDomTextFields(domEditSelection, nextTextFields);
+      return nextField.key;
+    },
+    [commitDomTextFields, domEditSelection],
+  );
+
+  const handleDomRemoveTextField = useCallback(
+    async (fieldKey: string) => {
+      if (!domEditSelection) return;
+      const field = domEditSelection.textFields.find((entry) => entry.key === fieldKey);
+      if (!field) return;
+
+      if (field.source === "self") {
+        await handleDomTextCommit("", fieldKey);
+        return;
+      }
+
+      const nextTextFields = domEditSelection.textFields.filter((entry) => entry.key !== fieldKey);
+      await commitDomTextFields(domEditSelection, nextTextFields);
+    },
+    [commitDomTextFields, domEditSelection, handleDomTextCommit],
+  );
+
   const handleAskAgent = useCallback(() => {
     if (!domEditSelection) return;
     setAgentPromptTagSnippet(undefined);
@@ -4248,8 +4291,8 @@ export function StudioApp() {
                         onSetManualSize={handleDomBoxSizeCommit}
                         onSetText={handleDomTextCommit}
                         onSetTextFieldStyle={handleDomTextFieldStyleCommit}
-                        onAddTextField={() => null}
-                        onRemoveTextField={() => {}}
+                        onAddTextField={handleDomAddTextField}
+                        onRemoveTextField={handleDomRemoveTextField}
                         onResetManualEdits={handleDomManualEditsReset}
                         onAskAgent={handleAskAgent}
                         onImportAssets={handleImportFiles}
