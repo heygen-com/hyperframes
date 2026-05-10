@@ -198,13 +198,26 @@ export function syncRuntimeMedia(params: {
       const offsetJumped = !firstTickOfClip && Math.abs(offset - prevOffset!) > 0.5;
       const catastrophicDrift = drift > 3;
       const hardSync = drift > 0.5 && (firstTickOfClip || offsetJumped || catastrophicDrift);
+      // Playing video elements use the browser's native decoder pipeline for
+      // timing. Seeking a playing video resets the decoder, causing a ~150ms
+      // freeze while it re-buffers — during which the monotonic clock advances,
+      // creating a perpetual seek→freeze→drift→seek stutter loop. Skip strict
+      // and force sync for playing videos; only hard sync (>0.5s) warrants
+      // the decoder-reset cost.
+      const isPlayingVideo = el.tagName === "VIDEO" && !el.paused;
       // Only apply strict sync when offset has stabilized (not growing).
       // During initial buffering, offset grows ~16ms/tick as the timeline
       // advances while media stays at 0. Accumulated drift from pause/play
       // toggling shows up as a stable, non-zero offset (delta near 0).
       const offsetStabilized = prevOffset !== undefined && Math.abs(offset - prevOffset) < 0.004;
       let strictSync = false;
-      if (!hardSync && !firstTickOfClip && offsetStabilized && drift > STRICT_DRIFT_THRESHOLD) {
+      if (
+        !isPlayingVideo &&
+        !hardSync &&
+        !firstTickOfClip &&
+        offsetStabilized &&
+        drift > STRICT_DRIFT_THRESHOLD
+      ) {
         const samples = (strictDriftSamples.get(el) ?? 0) + 1;
         strictDriftSamples.set(el, samples);
         if (samples >= STRICT_REQUIRED_SAMPLES) {
@@ -214,7 +227,8 @@ export function syncRuntimeMedia(params: {
       } else if (drift <= STRICT_DRIFT_THRESHOLD) {
         strictDriftSamples.set(el, 0);
       }
-      if (hardSync || strictSync || (params.forceSync && drift > 0.02)) {
+      const forceSync = !isPlayingVideo && params.forceSync && drift > 0.02;
+      if (hardSync || strictSync || forceSync) {
         try {
           el.currentTime = relTime;
         } catch (err) {
