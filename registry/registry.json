@@ -120,6 +120,10 @@
       "type": "hyperframes:block"
     },
     {
+      "name": "magic-book",
+      "type": "hyperframes:block"
+    },
+    {
       "name": "domain-warp-dissolve",
       "type": "hyperframes:block"
     },

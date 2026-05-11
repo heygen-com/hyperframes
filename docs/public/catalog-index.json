@@ -231,6 +231,20 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/macos-notification.png"
   },
   {
+    "name": "magic-book",
+    "type": "block",
+    "title": "Magic Book",
+    "description": "A cinematic 3D spellbook dissolve with glowing rings, magical dust, and GPGPU particle vapor.",
+    "tags": [
+      "vfx",
+      "3d",
+      "particles",
+      "cinematic"
+    ],
+    "href": "/catalog/blocks/magic-book",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/magic-book.png"
+  },
+  {
     "name": "north-korea-locked-down",
     "type": "block",
     "title": "North Korea Locked Down",

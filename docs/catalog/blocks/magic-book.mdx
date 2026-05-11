@@ -1,0 +1,50 @@
+---
+title: "Magic Book"
+description: "A cinematic 3D spellbook dissolve with glowing rings, magical dust, and GPGPU particle vapor."
+---
+
+# Magic Book
+
+A cinematic 3D spellbook dissolve with glowing rings, magical dust, and GPGPU particle vapor.
+
+`vfx` `3d` `particles` `cinematic`
+
+<video className="w-full aspect-video rounded-xl object-cover bg-zinc-100 dark:bg-zinc-800" src="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/magic-book.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/magic-book.png" autoPlay muted loop playsInline />
+
+## Install
+
+<CodeGroup>
+
+```bash Terminal
+npx hyperframes add magic-book
+```
+
+</CodeGroup>
+
+## Details
+
+| Property | Value |
+| --- | --- |
+| Type | Block |
+| Dimensions | 1920 x 1080 |
+| Duration | 8s |
+
+## Files
+
+| File | Target | Type |
+| --- | --- | --- |
+| `magic-book.html` | `compositions/magic-book.html` | hyperframes:composition |
+| `scene.gltf` | `compositions/scene.gltf` | asset |
+| `scene.bin` | `compositions/scene.bin` | asset |
+| `textures/material_0_baseColor.png` | `compositions/textures/material_0_baseColor.png` | asset |
+| `textures/material_0_emissive.png` | `compositions/textures/material_0_emissive.png` | asset |
+| `textures/material_0_metallicRoughness.png` | `compositions/textures/material_0_metallicRoughness.png` | asset |
+| `textures/material_0_normal.png` | `compositions/textures/material_0_normal.png` | asset |
+
+## Usage
+
+After installing, add the block to your host composition:
+
+```html
+<div data-composition-id="magic-book" data-composition-src="compositions/magic-book.html" data-start="0" data-duration="8" data-track-index="1" data-width="1920" data-height="1080"></div>
+```
