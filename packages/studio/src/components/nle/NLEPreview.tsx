@@ -9,6 +9,7 @@ interface NLEPreviewProps {
   portrait?: boolean;
   directUrl?: string;
   refreshKey?: number;
+  suppressLoadingOverlay?: boolean;
 }
 
 export function getPreviewPlayerKey({
@@ -41,6 +42,7 @@ export const NLEPreview = memo(function NLEPreview({
   portrait,
   directUrl,
   refreshKey,
+  suppressLoadingOverlay,
 }: NLEPreviewProps) {
   const baseKey = getPreviewPlayerKey({ projectId, directUrl, refreshKey });
   const prevRefreshKeyRef = useRef(refreshKey);
@@ -93,6 +95,7 @@ export const NLEPreview = memo(function NLEPreview({
           onCompositionLoadingChange={onCompositionLoadingChange}
           portrait={portrait}
           style={retiringKey ? { position: "absolute", inset: 0, zIndex: 1 } : undefined}
+          suppressLoadingOverlay={suppressLoadingOverlay}
         />
       </div>
     </div>

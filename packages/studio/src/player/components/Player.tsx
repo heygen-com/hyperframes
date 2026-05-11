@@ -13,6 +13,7 @@ interface PlayerProps {
   onCompositionLoadingChange?: (loading: boolean) => void;
   portrait?: boolean;
   style?: React.CSSProperties;
+  suppressLoadingOverlay?: boolean;
 }
 
 interface HyperframesPlayerElement extends HTMLElement {
@@ -102,7 +103,18 @@ export function hasUnloadedAssets(iframe: HTMLIFrameElement, lastResult: boolean
  * timeline probing, and DOM inspection.
  */
 export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
-  ({ projectId, directUrl, onLoad, onCompositionLoadingChange, portrait, style }, ref) => {
+  (
+    {
+      projectId,
+      directUrl,
+      onLoad,
+      onCompositionLoadingChange,
+      portrait,
+      style,
+      suppressLoadingOverlay,
+    },
+    ref,
+  ) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const loadCountRef = useRef(0);
     const assetPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -268,7 +280,8 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
       };
     }, [assetsLoading]);
 
-    const showCompositionOverlay = shouldShowCompositionLoadingOverlay(compositionLoading);
+    const showCompositionOverlay =
+      !suppressLoadingOverlay && shouldShowCompositionLoadingOverlay(compositionLoading);
     const showAssetOverlay =
       assetOverlayVisible && !shaderTransitionLoading && !showCompositionOverlay;
 

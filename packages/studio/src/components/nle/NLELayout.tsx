@@ -217,7 +217,13 @@ export const NLELayout = memo(function NLELayout({
 
   // Resizable timeline height
   const [timelineH, setTimelineH] = useState(DEFAULT_TIMELINE_H);
-  const [compositionLoading, setCompositionLoading] = useState(true);
+  const hasLoadedOnceRef = useRef(false);
+  const [compositionLoading, setCompositionLoadingRaw] = useState(true);
+  const setCompositionLoading = useCallback((loading: boolean) => {
+    if (!loading) hasLoadedOnceRef.current = true;
+    if (loading && hasLoadedOnceRef.current) return;
+    setCompositionLoadingRaw(loading);
+  }, []);
   const timelineDisabled = shouldDisableTimelineWhileCompositionLoading(compositionLoading);
 
   useEffect(() => {
@@ -395,6 +401,7 @@ export const NLELayout = memo(function NLELayout({
             portrait={portrait}
             directUrl={directUrl}
             refreshKey={refreshKey}
+            suppressLoadingOverlay={hasLoadedOnceRef.current}
           />
           {previewOverlay}
         </div>
