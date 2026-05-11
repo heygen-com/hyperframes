@@ -1880,6 +1880,75 @@ export function StudioApp() {
     [activeCompPath, editHistory.recordEdit, showToast, timelineElements, writeProjectFile],
   );
 
+  const handleDomEditElementDelete = useCallback(
+    async (selection: DomEditSelection) => {
+      const pid = projectIdRef.current;
+      if (!pid) return;
+
+      const targetPath = selection.sourceFile || activeCompPath || "index.html";
+      try {
+        const response = await fetch(
+          `/api/projects/${pid}/files/${encodeURIComponent(targetPath)}`,
+        );
+        if (!response.ok) throw new Error(`Failed to read ${targetPath}`);
+
+        const data = (await response.json()) as { content?: string };
+        const originalContent = data.content;
+        if (typeof originalContent !== "string")
+          throw new Error(`Missing file contents for ${targetPath}`);
+
+        const patchTarget: { id?: string; selector?: string; selectorIndex?: number } = selection.id
+          ? {
+              id: selection.id,
+              selector: selection.selector,
+              selectorIndex: selection.selectorIndex,
+            }
+          : selection.selector
+            ? { selector: selection.selector, selectorIndex: selection.selectorIndex }
+            : ({} as never);
+        if (!patchTarget.id && !patchTarget.selector) {
+          throw new Error("Selected element has no patchable target");
+        }
+
+        const removeResponse = await fetch(
+          `/api/projects/${pid}/file-mutations/remove-element/${encodeURIComponent(targetPath)}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ target: patchTarget }),
+          },
+        );
+        if (!removeResponse.ok) throw new Error(`Failed to delete element from ${targetPath}`);
+
+        const removeData = (await removeResponse.json()) as { changed?: boolean; content?: string };
+        const patchedContent =
+          typeof removeData.content === "string" ? removeData.content : originalContent;
+
+        domEditSaveTimestampRef.current = Date.now();
+        await saveProjectFilesWithHistory({
+          projectId: pid,
+          label: "Delete element",
+          kind: "timeline",
+          files: { [targetPath]: patchedContent },
+          readFile: async () => originalContent,
+          writeFile: writeProjectFile,
+          recordEdit: editHistory.recordEdit,
+        });
+
+        domEditSelectionRef.current = null;
+        domEditGroupSelectionsRef.current = [];
+        setDomEditSelection(null);
+        setDomEditGroupSelections([]);
+        usePlayerStore.getState().setSelectedElementId(null);
+        setRefreshKey((k) => k + 1);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Failed to delete element";
+        showToast(message);
+      }
+    },
+    [activeCompPath, editHistory.recordEdit, showToast, writeProjectFile],
+  );
+
   // ── Consolidated keyboard shortcuts ────────────────────────────────
   // All app-level window keydown handlers live here.
   // Component-scoped shortcuts (playback J/K/L/Space, caption nudge)
@@ -1888,6 +1957,8 @@ export function StudioApp() {
   handleToggleRef.current = handleTimelineToggleHotkey;
   const handleDeleteRef = useRef(handleTimelineElementDelete);
   handleDeleteRef.current = handleTimelineElementDelete;
+  const handleDomEditDeleteRef = useRef(handleDomEditElementDelete);
+  handleDomEditDeleteRef.current = handleDomEditElementDelete;
 
   // eslint-disable-next-line no-restricted-syntax
   useEffect(() => {
@@ -1926,7 +1997,7 @@ export function StudioApp() {
         }
       }
 
-      // Delete / Backspace — remove selected timeline element
+      // Delete / Backspace — remove selected element (timeline clip or preview selection)
       if (
         (event.key === "Delete" || event.key === "Backspace") &&
         !event.metaKey &&
@@ -1935,11 +2006,19 @@ export function StudioApp() {
         !isEditableTarget(event.target)
       ) {
         const { selectedElementId, elements } = usePlayerStore.getState();
-        if (!selectedElementId) return;
-        const element = elements.find((el) => (el.key ?? el.id) === selectedElementId);
-        if (!element) return;
-        event.preventDefault();
-        void handleDeleteRef.current(element);
+        if (selectedElementId) {
+          const element = elements.find((el) => (el.key ?? el.id) === selectedElementId);
+          if (element) {
+            event.preventDefault();
+            void handleDeleteRef.current(element);
+            return;
+          }
+        }
+        const domSelection = domEditSelectionRef.current;
+        if (domSelection) {
+          event.preventDefault();
+          void handleDomEditDeleteRef.current(domSelection);
+        }
       }
     }
 
