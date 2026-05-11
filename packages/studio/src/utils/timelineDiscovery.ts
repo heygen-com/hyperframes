@@ -13,7 +13,7 @@ interface EditableTargetLike {
   getAttribute?: (name: string) => string | null;
 }
 
-function isEditableTarget(target: EventTarget | null): boolean {
+export function isEditableTarget(target: EventTarget | null): boolean {
   if (!target || typeof target !== "object") return false;
 
   const element = target as EditableTargetLike;

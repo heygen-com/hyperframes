@@ -11,8 +11,8 @@ import {
 import { useMountEffect } from "./hooks/useMountEffect";
 import { NLELayout } from "./components/nle/NLELayout";
 import { SourceEditor } from "./components/editor/SourceEditor";
-import { LeftSidebar } from "./components/sidebar/LeftSidebar";
-import { RenderQueue, type CompositionDimensions } from "./components/renders/RenderQueue";
+import { LeftSidebar, type LeftSidebarHandle } from "./components/sidebar/LeftSidebar";
+import { RenderQueue } from "./components/renders/RenderQueue";
 import { useRenderQueue } from "./components/renders/useRenderQueue";
 import { CompositionThumbnail, VideoThumbnail, liveTime, usePlayerStore } from "./player";
 import { AudioWaveform } from "./player/components/AudioWaveform";
@@ -56,6 +56,7 @@ import {
 } from "./player/components/timelineZoom";
 import {
   getTimelineToggleTitle,
+  isEditableTarget,
   shouldHandleTimelineToggleHotkey,
 } from "./utils/timelineDiscovery";
 import { buildFrameCaptureFilename, buildFrameCaptureUrl } from "./utils/frameCapture";
@@ -1053,6 +1054,7 @@ export function StudioApp() {
   const lastBlockedDomMoveToastAtRef = useRef(0);
   const importedFontAssetsRef = useRef<ImportedFontAsset[]>([]);
   const previewHotkeyWindowRef = useRef<Window | null>(null);
+  const leftSidebarRef = useRef<LeftSidebarHandle>(null);
   const previewHistoryHotkeyCleanupRef = useRef<(() => void) | null>(null);
   const panelDragRef = useRef<{
     side: "left" | "right";
@@ -1119,13 +1121,6 @@ export function StudioApp() {
     },
     [toggleTimelineVisibility],
   );
-
-  useMountEffect(() => {
-    window.addEventListener("keydown", handleTimelineToggleHotkey);
-    return () => {
-      window.removeEventListener("keydown", handleTimelineToggleHotkey);
-    };
-  });
 
   const syncPreviewTimelineHotkey = useCallback(
     (iframe: HTMLIFrameElement | null) => {
@@ -1878,6 +1873,73 @@ export function StudioApp() {
     [activeCompPath, editHistory.recordEdit, showToast, timelineElements, writeProjectFile],
   );
 
+  // ── Consolidated keyboard shortcuts ────────────────────────────────
+  // All app-level window keydown handlers live here.
+  // Component-scoped shortcuts (playback J/K/L/Space, caption nudge)
+  // stay in their respective hooks.
+  const handleToggleRef = useRef(handleTimelineToggleHotkey);
+  handleToggleRef.current = handleTimelineToggleHotkey;
+  const handleDeleteRef = useRef(handleTimelineElementDelete);
+  handleDeleteRef.current = handleTimelineElementDelete;
+
+  // eslint-disable-next-line no-restricted-syntax
+  useEffect(() => {
+    function handleAppKeyDown(event: KeyboardEvent) {
+      // Shift+T — toggle timeline
+      handleToggleRef.current(event);
+
+      // Cmd/Ctrl+Z — undo, Cmd/Ctrl+Shift+Z or Ctrl+Y — redo
+      if (event.metaKey || event.ctrlKey) {
+        if (!shouldIgnoreHistoryShortcut(event.target)) {
+          const key = event.key.toLowerCase();
+          if (key === "z" && !event.shiftKey) {
+            event.preventDefault();
+            void handleUndoRef.current();
+            return;
+          }
+          if ((key === "z" && event.shiftKey) || (event.ctrlKey && !event.metaKey && key === "y")) {
+            event.preventDefault();
+            void handleRedoRef.current();
+            return;
+          }
+        }
+
+        // Cmd/Ctrl+1 — sidebar: Compositions tab
+        if (event.key === "1") {
+          event.preventDefault();
+          leftSidebarRef.current?.selectTab("compositions");
+          return;
+        }
+
+        // Cmd/Ctrl+2 — sidebar: Assets tab
+        if (event.key === "2") {
+          event.preventDefault();
+          leftSidebarRef.current?.selectTab("assets");
+          return;
+        }
+      }
+
+      // Delete / Backspace — remove selected timeline element
+      if (
+        (event.key === "Delete" || event.key === "Backspace") &&
+        !event.metaKey &&
+        !event.ctrlKey &&
+        !event.altKey &&
+        !isEditableTarget(event.target)
+      ) {
+        const { selectedElementId, elements } = usePlayerStore.getState();
+        if (!selectedElementId) return;
+        const element = elements.find((el) => (el.key ?? el.id) === selectedElementId);
+        if (!element) return;
+        event.preventDefault();
+        void handleDeleteRef.current(element);
+      }
+    }
+
+    window.addEventListener("keydown", handleAppKeyDown, true);
+    return () => window.removeEventListener("keydown", handleAppKeyDown, true);
+  }, []);
+
   const handleBlockedTimelineEdit = useCallback(
     (_element: TimelineElement) => {
       const now = Date.now();
@@ -2367,6 +2429,8 @@ export function StudioApp() {
   handleUndoRef.current = handleUndo;
   handleRedoRef.current = handleRedo;
 
+  // History hotkey — no longer has its own window listener (consolidated
+  // handler covers it), but kept as a named callback for iframe forwarding.
   const handleHistoryHotkey = useCallback((event: KeyboardEvent) => {
     if (!(event.metaKey || event.ctrlKey)) return;
     if (shouldIgnoreHistoryShortcut(event.target)) return;
@@ -2381,12 +2445,6 @@ export function StudioApp() {
       void handleRedoRef.current();
     }
   }, []);
-
-  // eslint-disable-next-line no-restricted-syntax
-  useEffect(() => {
-    window.addEventListener("keydown", handleHistoryHotkey, true);
-    return () => window.removeEventListener("keydown", handleHistoryHotkey, true);
-  }, [handleHistoryHotkey]);
 
   const syncPreviewHistoryHotkey = useCallback(
     (iframe: HTMLIFrameElement | null) => {
@@ -4075,6 +4133,7 @@ export function StudioApp() {
           </div>
         ) : (
           <LeftSidebar
+            ref={leftSidebarRef}
             width={leftWidth}
             projectId={projectId}
             compositions={compositions}
