@@ -446,7 +446,6 @@ export const Timeline = memo(function Timeline({
   const resizingClipRef = useRef<ResizingClipState | null>(null);
   resizingClipRef.current = resizingClip;
   const blockedClipRef = useRef<BlockedClipState | null>(null);
-  const deleteInFlightRef = useRef(false);
   const onMoveElementRef = useRef(onMoveElement);
   onMoveElementRef.current = onMoveElement;
   const onResizeElementRef = useRef(onResizeElement);
@@ -977,7 +976,7 @@ export const Timeline = memo(function Timeline({
   });
 
   const prevSelectedRef = useRef(selectedElementRef.current);
-  // eslint-disable-next-line no-restricted-syntax
+  // eslint-disable-next-line no-restricted-syntax, react-hooks/exhaustive-deps
   useEffect(() => {
     const prev = prevSelectedRef.current;
     const curr = selectedElementRef.current;
