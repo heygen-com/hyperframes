@@ -1054,6 +1054,7 @@ export function StudioApp() {
   const lastBlockedDomMoveToastAtRef = useRef(0);
   const importedFontAssetsRef = useRef<ImportedFontAsset[]>([]);
   const previewHotkeyWindowRef = useRef<Window | null>(null);
+  const handleAppKeyDownRef = useRef<((event: KeyboardEvent) => void) | undefined>(undefined);
   const leftSidebarRef = useRef<LeftSidebarHandle>(null);
   const previewHistoryHotkeyCleanupRef = useRef<(() => void) | null>(null);
   const panelDragRef = useRef<{
@@ -1122,27 +1123,31 @@ export function StudioApp() {
     [toggleTimelineVisibility],
   );
 
+  const previewAppKeyDownHandler = useCallback((event: KeyboardEvent) => {
+    handleAppKeyDownRef.current?.(event);
+  }, []);
+
   const syncPreviewTimelineHotkey = useCallback(
     (iframe: HTMLIFrameElement | null) => {
       const nextWindow = iframe?.contentWindow ?? null;
       if (previewHotkeyWindowRef.current === nextWindow) return;
       if (previewHotkeyWindowRef.current) {
-        previewHotkeyWindowRef.current.removeEventListener("keydown", handleTimelineToggleHotkey);
+        previewHotkeyWindowRef.current.removeEventListener("keydown", previewAppKeyDownHandler);
       }
       previewHotkeyWindowRef.current = nextWindow;
-      nextWindow?.addEventListener("keydown", handleTimelineToggleHotkey);
+      nextWindow?.addEventListener("keydown", previewAppKeyDownHandler, true);
     },
-    [handleTimelineToggleHotkey],
+    [previewAppKeyDownHandler],
   );
 
   useEffect(
     () => () => {
       if (previewHotkeyWindowRef.current) {
-        previewHotkeyWindowRef.current.removeEventListener("keydown", handleTimelineToggleHotkey);
+        previewHotkeyWindowRef.current.removeEventListener("keydown", previewAppKeyDownHandler);
         previewHotkeyWindowRef.current = null;
       }
     },
-    [handleTimelineToggleHotkey],
+    [previewAppKeyDownHandler],
   );
 
   const renderClipContent = useCallback(
@@ -1960,68 +1965,71 @@ export function StudioApp() {
   const handleDomEditDeleteRef = useRef(handleDomEditElementDelete);
   handleDomEditDeleteRef.current = handleDomEditElementDelete;
 
-  // eslint-disable-next-line no-restricted-syntax
-  useEffect(() => {
-    function handleAppKeyDown(event: KeyboardEvent) {
-      // Shift+T — toggle timeline
-      handleToggleRef.current(event);
+  handleAppKeyDownRef.current = (event: KeyboardEvent) => {
+    // Shift+T — toggle timeline
+    handleToggleRef.current(event);
 
-      // Cmd/Ctrl+Z — undo, Cmd/Ctrl+Shift+Z or Ctrl+Y — redo
-      if (event.metaKey || event.ctrlKey) {
-        if (!shouldIgnoreHistoryShortcut(event.target)) {
-          const key = event.key.toLowerCase();
-          if (key === "z" && !event.shiftKey) {
-            event.preventDefault();
-            void handleUndoRef.current();
-            return;
-          }
-          if ((key === "z" && event.shiftKey) || (event.ctrlKey && !event.metaKey && key === "y")) {
-            event.preventDefault();
-            void handleRedoRef.current();
-            return;
-          }
-        }
-
-        // Cmd/Ctrl+1 — sidebar: Compositions tab
-        if (event.key === "1") {
+    // Cmd/Ctrl+Z — undo, Cmd/Ctrl+Shift+Z or Ctrl+Y — redo
+    if (event.metaKey || event.ctrlKey) {
+      if (!shouldIgnoreHistoryShortcut(event.target)) {
+        const key = event.key.toLowerCase();
+        if (key === "z" && !event.shiftKey) {
           event.preventDefault();
-          leftSidebarRef.current?.selectTab("compositions");
+          void handleUndoRef.current();
           return;
         }
-
-        // Cmd/Ctrl+2 — sidebar: Assets tab
-        if (event.key === "2") {
+        if ((key === "z" && event.shiftKey) || (event.ctrlKey && !event.metaKey && key === "y")) {
           event.preventDefault();
-          leftSidebarRef.current?.selectTab("assets");
+          void handleRedoRef.current();
           return;
         }
       }
 
-      // Delete / Backspace — remove selected element (timeline clip or preview selection)
-      if (
-        (event.key === "Delete" || event.key === "Backspace") &&
-        !event.metaKey &&
-        !event.ctrlKey &&
-        !event.altKey &&
-        !isEditableTarget(event.target)
-      ) {
-        const { selectedElementId, elements } = usePlayerStore.getState();
-        if (selectedElementId) {
-          const element = elements.find((el) => (el.key ?? el.id) === selectedElementId);
-          if (element) {
-            event.preventDefault();
-            void handleDeleteRef.current(element);
-            return;
-          }
-        }
-        const domSelection = domEditSelectionRef.current;
-        if (domSelection) {
-          event.preventDefault();
-          void handleDomEditDeleteRef.current(domSelection);
-        }
+      // Cmd/Ctrl+1 — sidebar: Compositions tab
+      if (event.key === "1") {
+        event.preventDefault();
+        leftSidebarRef.current?.selectTab("compositions");
+        return;
+      }
+
+      // Cmd/Ctrl+2 — sidebar: Assets tab
+      if (event.key === "2") {
+        event.preventDefault();
+        leftSidebarRef.current?.selectTab("assets");
+        return;
       }
     }
 
+    // Delete / Backspace — remove selected element (timeline clip or preview selection)
+    if (
+      (event.key === "Delete" || event.key === "Backspace") &&
+      !event.metaKey &&
+      !event.ctrlKey &&
+      !event.altKey &&
+      !isEditableTarget(event.target)
+    ) {
+      const { selectedElementId, elements } = usePlayerStore.getState();
+      if (selectedElementId) {
+        const element = elements.find((el) => (el.key ?? el.id) === selectedElementId);
+        if (element) {
+          event.preventDefault();
+          void handleDeleteRef.current(element);
+          return;
+        }
+      }
+      const domSelection = domEditSelectionRef.current;
+      if (domSelection) {
+        event.preventDefault();
+        void handleDomEditDeleteRef.current(domSelection);
+      }
+    }
+  };
+
+  // eslint-disable-next-line no-restricted-syntax
+  useEffect(() => {
+    function handleAppKeyDown(event: KeyboardEvent) {
+      handleAppKeyDownRef.current?.(event);
+    }
     window.addEventListener("keydown", handleAppKeyDown, true);
     return () => window.removeEventListener("keydown", handleAppKeyDown, true);
   }, []);
