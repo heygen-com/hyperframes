@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/shader-transitions",
-  "version": "0.6.0-alpha.9",
+  "version": "0.6.0-alpha.10",
   "description": "WebGL shader transitions for HyperFrames compositions",
   "repository": {
     "type": "git",
