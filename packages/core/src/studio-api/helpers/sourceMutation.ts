@@ -17,6 +17,20 @@ function parseSourceDocument(source: string): { document: Document; wrappedFragm
   };
 }
 
+function querySelectorAllWithTemplates(root: Document | Element, selector: string): Element[] {
+  const matches = Array.from(root.querySelectorAll(selector));
+  if (matches.length > 0) return matches;
+  // querySelectorAll doesn't traverse <template> content in linkedom.
+  // Search directly on each template element (NOT .content — removing from
+  // .content's DocumentFragment doesn't update the serialized output).
+  const templates = Array.from(root.querySelectorAll("template"));
+  for (const tmpl of templates) {
+    const inner = tmpl.querySelectorAll(selector);
+    if (inner.length > 0) return Array.from(inner);
+  }
+  return [];
+}
+
 function findTargetElement(document: Document, target: SourceMutationTarget): Element | null {
   if (target.id) {
     const byId = document.getElementById(target.id);
@@ -25,7 +39,7 @@ function findTargetElement(document: Document, target: SourceMutationTarget): El
 
   if (!target.selector) return null;
   try {
-    const matches = Array.from(document.querySelectorAll(target.selector));
+    const matches = querySelectorAllWithTemplates(document, target.selector);
     return matches[target.selectorIndex ?? 0] ?? null;
   } catch {
     return null;
