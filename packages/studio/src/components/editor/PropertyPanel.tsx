@@ -460,12 +460,33 @@ function CommitField({
   const [draft, setDraft] = useState(value);
   const commitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const valueRef = useRef(value);
+  const draftRef = useRef(draft);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   valueRef.current = value;
+  draftRef.current = draft;
 
   useEffect(() => {
     setDraft(value);
   }, [value]);
+
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    const handler = (e: WheelEvent) => {
+      if (disabled) return;
+      const delta = e.deltaY === 0 ? e.deltaX : e.deltaY;
+      if (delta === 0) return;
+      const nextDraft = adjustNumericToken(draftRef.current, delta < 0 ? 1 : -1, e);
+      if (!nextDraft) return;
+      e.preventDefault();
+      e.stopPropagation();
+      setDraft(nextDraft);
+      scheduleCommitRef.current(nextDraft);
+    };
+    el.addEventListener("wheel", handler, { passive: false });
+    return () => el.removeEventListener("wheel", handler);
+  }, [disabled]);
 
   useEffect(
     () => () => {
@@ -489,9 +510,12 @@ function CommitField({
       }
     }, 120);
   };
+  const scheduleCommitRef = useRef(scheduleCommit);
+  scheduleCommitRef.current = scheduleCommit;
 
   return (
     <input
+      ref={inputRef}
       type="text"
       value={draft}
       disabled={disabled}
@@ -500,16 +524,6 @@ function CommitField({
         if (liveCommit) scheduleCommit(e.target.value);
       }}
       onBlur={() => commitDraft(draft)}
-      onWheel={(e) => {
-        if (disabled) return;
-        const delta = e.deltaY === 0 ? e.deltaX : e.deltaY;
-        if (delta === 0) return;
-        const nextDraft = adjustNumericToken(draft, delta < 0 ? 1 : -1, e);
-        if (!nextDraft) return;
-        e.preventDefault();
-        setDraft(nextDraft);
-        scheduleCommit(nextDraft);
-      }}
       onKeyDown={(e) => {
         if (e.key === "Enter") {
           (e.target as HTMLInputElement).blur();
