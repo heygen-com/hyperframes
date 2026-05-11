@@ -197,6 +197,21 @@ describe("parseHtml", () => {
     expect(result.resolution).toBe("portrait");
   });
 
+  it("keeps explicit portrait resolution even when dimensions are square", () => {
+    const html = `
+      <html data-resolution="portrait" data-composition-width="1080" data-composition-height="1080">
+      <body>
+        <div id="stage">
+          <div id="text1" data-start="0" data-end="5"><div>Hello</div></div>
+        </div>
+      </body>
+      </html>
+    `;
+    const result = parseHtml(html);
+
+    expect(result.resolution).toBe("portrait");
+  });
+
   it("defaults to portrait when no resolution info is available", () => {
     const html = `
       <html>
@@ -290,7 +305,7 @@ describe("parseHtml", () => {
     expect(result.resolution).toBe("square");
   });
 
-  it("infers square-4k from equal width/height ≥ 2160", () => {
+  it("infers square-4k from equal width/height >= 2160", () => {
     const html = `
       <html data-composition-width="2160" data-composition-height="2160">
       <body>

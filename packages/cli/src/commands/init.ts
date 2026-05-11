@@ -632,7 +632,7 @@ export default defineCommand({
     resolution: {
       type: "string",
       description:
-        "Canvas resolution preset: landscape (1920x1080), portrait (1080x1920), landscape-4k (3840x2160), portrait-4k (2160x3840), square (1080x1080), square-4k (2160x2160). Aliases: 1080p, 4k, uhd. Default: keep template dimensions (typically 1920x1080).",
+        "Canvas resolution preset: landscape (1920x1080), portrait (1080x1920), landscape-4k (3840x2160), portrait-4k (2160x3840), square (1080x1080), square-4k (2160x2160). Aliases: 1080p, 4k, uhd, 1080p-square, square-1080p, 4k-square. Default: keep template dimensions (typically 1920x1080).",
     },
   },
   async run({ args }) {
@@ -672,7 +672,8 @@ export default defineCommand({
         console.error(
           c.error(
             `Invalid --resolution: "${args.resolution}". ` +
-              `Use one of: landscape, portrait, landscape-4k, portrait-4k, square, square-4k (or aliases 1080p, 4k, uhd).`,
+              `Use one of: landscape, portrait, landscape-4k, portrait-4k, square, square-4k ` +
+              `(or aliases 1080p, 4k, uhd, 1080p-square, square-1080p, 4k-square).`,
           ),
         );
         process.exit(1);

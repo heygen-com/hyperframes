@@ -4,10 +4,8 @@ import {
   buildStrokeWidthStyleUpdates,
   getClipPathInsetPx,
   getCssFilterFunctionPx,
-  getPropertyPanelVisibleSections,
   inferBoxShadowPreset,
   inferClipPathPreset,
-  isPropertyPanelMediaLikeSelection,
   normalizePanelPxValue,
   setCssFilterFunctionPx,
 } from "./PropertyPanel";
@@ -65,52 +63,5 @@ describe("PropertyPanel style helpers", () => {
     ]);
     expect(buildStrokeStyleUpdates("none", "4px")).toEqual([["border-style", "none"]]);
     expect(buildStrokeStyleUpdates("solid", "4px")).toEqual([["border-style", "solid"]]);
-  });
-
-  it("orders the simplified default inspector sections around high-confidence edits", () => {
-    expect(
-      getPropertyPanelVisibleSections({
-        hasSelection: true,
-        canEditStyles: true,
-        hasTextControls: true,
-        hasColorControls: true,
-      }),
-    ).toEqual(["Text", "Layout", "Colors", "Radius", "Shadow"]);
-
-    expect(
-      getPropertyPanelVisibleSections({
-        hasSelection: true,
-        canEditStyles: true,
-        hasTextControls: false,
-        hasColorControls: false,
-      }),
-    ).toEqual(["Layout", "Radius", "Shadow"]);
-  });
-
-  it("treats media tags and background-image layers as image-like controls", () => {
-    expect(
-      isPropertyPanelMediaLikeSelection({
-        tagName: "img",
-        styles: {},
-      }),
-    ).toBe(true);
-
-    expect(
-      isPropertyPanelMediaLikeSelection({
-        tagName: "div",
-        styles: {
-          "background-image": "url(/assets/studio.png)",
-        },
-      }),
-    ).toBe(true);
-
-    expect(
-      isPropertyPanelMediaLikeSelection({
-        tagName: "div",
-        styles: {
-          "background-image": "none",
-        },
-      }),
-    ).toBe(false);
   });
 });

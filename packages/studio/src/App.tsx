@@ -157,6 +157,12 @@ function getTimelineElementLabel(element: TimelineElement): string {
   return element.label || element.id || element.tag;
 }
 
+function confirmElementDelete(label: string, kind: "timeline clip" | "element"): boolean {
+  return window.confirm(
+    `Delete ${kind} "${label}"?\n\nThis removes it from the project source. You can use Undo to restore it.`,
+  );
+}
+
 type RightPanelTab = "design" | "motion" | "renders";
 
 const GENERIC_FONT_FAMILIES = new Set([
@@ -1780,6 +1786,8 @@ export function StudioApp() {
     async (element: TimelineElement) => {
       const pid = projectIdRef.current;
       if (!pid) throw new Error("No active project");
+      const label = getTimelineElementLabel(element);
+      if (!confirmElementDelete(label, "timeline clip")) return;
 
       const targetPath = element.sourceFile || activeCompPath || "index.html";
       try {
@@ -1877,6 +1885,7 @@ export function StudioApp() {
           );
         usePlayerStore.getState().setSelectedElementId(null);
         setRefreshKey((k) => k + 1);
+        showToast(`Deleted ${label}. Use Undo to restore it.`, "info");
       } catch (error) {
         const message = error instanceof Error ? error.message : "Failed to delete timeline clip";
         showToast(message);
@@ -1889,6 +1898,8 @@ export function StudioApp() {
     async (selection: DomEditSelection) => {
       const pid = projectIdRef.current;
       if (!pid) return;
+      const label = selection.label || selection.id || selection.selector || selection.tagName;
+      if (!confirmElementDelete(label, "element")) return;
 
       const targetPath = selection.sourceFile || activeCompPath || "index.html";
       try {
@@ -1946,6 +1957,7 @@ export function StudioApp() {
         setDomEditGroupSelections([]);
         usePlayerStore.getState().setSelectedElementId(null);
         setRefreshKey((k) => k + 1);
+        showToast(`Deleted ${label}. Use Undo to restore it.`, "info");
       } catch (error) {
         const message = error instanceof Error ? error.message : "Failed to delete element";
         showToast(message);

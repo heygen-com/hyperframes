@@ -247,6 +247,38 @@ describe("applyResolutionPreset", () => {
     });
   });
 
+  it("swaps to square dimensions for square", () => {
+    withFixture((dir) => {
+      const file = join(dir, "index.html");
+      writeFileSync(file, sampleHtml, "utf-8");
+
+      applyResolutionPreset(dir, "square");
+      const out = readFileSync(file, "utf-8");
+
+      expect(out).toContain('data-width="1080"');
+      expect(out).toContain('data-height="1080"');
+      expect(out).toContain('data-resolution="square"');
+      expect(out).toContain("width: 1080px");
+      expect(out).toContain("height: 1080px");
+    });
+  });
+
+  it("swaps to square-4k dimensions", () => {
+    withFixture((dir) => {
+      const file = join(dir, "index.html");
+      writeFileSync(file, sampleHtml, "utf-8");
+
+      applyResolutionPreset(dir, "square-4k");
+      const out = readFileSync(file, "utf-8");
+
+      expect(out).toContain('data-width="2160"');
+      expect(out).toContain('data-height="2160"');
+      expect(out).toContain('data-resolution="square-4k"');
+      expect(out).toContain("width: 2160px");
+      expect(out).toContain("height: 2160px");
+    });
+  });
+
   it("scaffolds a 4k project end-to-end via --resolution 4k", () => {
     const dir = mkdtempSync(join(tmpdir(), "hf-init-test-"));
     const target = join(dir, "proj");

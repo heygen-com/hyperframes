@@ -817,6 +817,17 @@ describe("resolveDeviceScaleFactor", () => {
     ).toBe(2);
   });
 
+  it("returns 2 for square 1080p → square-4k", () => {
+    expect(
+      resolveDeviceScaleFactor({
+        ...defaults,
+        compositionWidth: 1080,
+        compositionHeight: 1080,
+        outputResolution: "square-4k",
+      }),
+    ).toBe(2);
+  });
+
   it("returns 1 when the composition already matches the requested resolution", () => {
     expect(
       resolveDeviceScaleFactor({
@@ -852,6 +863,25 @@ describe("resolveDeviceScaleFactor", () => {
     expect(() =>
       resolveDeviceScaleFactor({ ...defaults, outputResolution: "portrait-4k" }),
     ).toThrow(/aspect ratio/);
+  });
+
+  it("rejects square comp → non-square 4K presets", () => {
+    for (const outputResolution of ["landscape-4k", "portrait-4k"] as const) {
+      expect(() =>
+        resolveDeviceScaleFactor({
+          ...defaults,
+          compositionWidth: 1080,
+          compositionHeight: 1080,
+          outputResolution,
+        }),
+      ).toThrow(/aspect ratio/);
+    }
+  });
+
+  it("rejects landscape comp → square-4k", () => {
+    expect(() => resolveDeviceScaleFactor({ ...defaults, outputResolution: "square-4k" })).toThrow(
+      /aspect ratio/,
+    );
   });
 
   it("rejects downsampling (4K composition → 1080p output)", () => {

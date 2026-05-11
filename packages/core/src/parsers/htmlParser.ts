@@ -147,8 +147,8 @@ function parseResolutionFromHtml(doc: Document): CanvasResolution | null {
 function resolveResolutionFromDimensions(width: number, height: number): CanvasResolution {
   const longSide = Math.max(width, height);
   // UHD cutoff is the long side of the 4K presets (3840 for `landscape-4k` /
-  // `portrait-4k`, 2160 for `square-4k`). A looser threshold (e.g. ≥ 2560)
-  // would silently misclassify QHD/1440p (2560×1440) as 4K, which is the
+  // `portrait-4k`, 2160 for `square-4k`). A looser threshold (e.g. >= 2560)
+  // would silently misclassify QHD/1440p (2560x1440) as 4K, which is the
   // wrong default for a common authoring resolution closer to 1080p than to
   // UHD. Authors who genuinely want the 4K preset can still set
   // `data-resolution="..."` explicitly.

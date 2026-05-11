@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { VALID_CANVAS_RESOLUTIONS } from "../../core.types";
 import { registerRenderRoutes } from "./render";
 import type { StudioApiAdapter } from "../types";
 
@@ -98,8 +99,8 @@ describe("POST /projects/:id/render — outputResolution forwarding", () => {
     }
   });
 
-  it("accepts each of the four canonical preset values", async () => {
-    for (const preset of ["landscape", "portrait", "landscape-4k", "portrait-4k"] as const) {
+  it("accepts each canonical preset value", async () => {
+    for (const preset of VALID_CANVAS_RESOLUTIONS) {
       const spy = vi.fn();
       const { app, cleanup } = buildApp(spy);
       try {

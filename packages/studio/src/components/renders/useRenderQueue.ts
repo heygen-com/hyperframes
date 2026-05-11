@@ -14,7 +14,7 @@ export interface RenderJob {
 // Mirrors `CanvasResolution` from @hyperframes/core. Kept local because
 // studio's tsconfig doesn't include node types, and the core barrel
 // transitively pulls in modules with `node:fs` imports. Drift risk is
-// low (string literals tied to a stable enum).
+// low (6 string literals kept in sync manually with CANVAS_DIMENSIONS).
 export type ResolutionPreset =
   | "landscape"
   | "portrait"

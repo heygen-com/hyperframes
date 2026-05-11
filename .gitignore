@@ -62,7 +62,8 @@ tmp/
 packages/core/src/generated/
 packages/producer/src/services/fontData.generated.ts
 
-# Test artifacts
+# Local proof / test artifacts
+qa-artifacts/
 my-video/
 examples/
 packages/studio/data/
