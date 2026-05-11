@@ -28,7 +28,6 @@ import {
   hsvToRgb,
   parseCssColor,
   rgbToHsv,
-  toColorPickerValue,
   toHexColor,
   type ParsedColor,
 } from "./colorValue";
@@ -367,13 +366,6 @@ function adjustNumericToken(
   return `${formatNumericValue(nextValue)}${token.unit}`;
 }
 
-function formatColorToken(value: string): string {
-  const parsed = parseCssColor(value);
-  if (!parsed) return value;
-  const hex = toColorPickerValue(value).replace(/^#/, "").toUpperCase();
-  return `${hex} / ${Math.round(parsed.alpha * 100)}%`;
-}
-
 function extractBackgroundImageUrl(value: string | undefined): string {
   if (!value) return "";
   const lowerValue = value.toLowerCase();
@@ -452,36 +444,6 @@ function resolveSelectedAsset(
   }
 
   return null;
-}
-
-function collectSelectionColors(styles: Record<string, string>) {
-  const candidates = [
-    { source: "Fill", value: styles["background-color"] },
-    { source: "Text", value: styles.color },
-  ];
-
-  const deduped = new Map<string, { swatch: string; token: string; sources: string[] }>();
-
-  for (const candidate of candidates) {
-    if (!candidate.value) continue;
-    const parsed = parseCssColor(candidate.value);
-    if (!parsed || parsed.alpha <= 0) continue;
-
-    const key = `${toColorPickerValue(candidate.value)}-${Math.round(parsed.alpha * 100)}`;
-    const existing = deduped.get(key);
-    if (existing) {
-      existing.sources.push(candidate.source);
-      continue;
-    }
-
-    deduped.set(key, {
-      swatch: toColorPickerValue(candidate.value),
-      token: formatColorToken(candidate.value),
-      sources: [candidate.source],
-    });
-  }
-
-  return Array.from(deduped.values());
 }
 
 function CommitField({
@@ -2137,22 +2099,20 @@ function SelectField({
   const renderedOptions = value && !options.includes(value) ? [value, ...options] : options;
 
   return (
-    <label className="grid min-w-0 gap-1.5">
-      <span className={LABEL}>{label}</span>
-      <div className={FIELD}>
-        <select
-          value={value}
-          disabled={disabled}
-          onChange={(e) => onChange(e.target.value)}
-          className="min-w-0 w-full appearance-none bg-transparent text-[11px] font-medium text-neutral-100 outline-none disabled:cursor-not-allowed disabled:text-neutral-600"
-        >
-          {renderedOptions.map((option) => (
-            <option key={option} value={option}>
-              {option}
-            </option>
-          ))}
-        </select>
-      </div>
+    <label className={`${FIELD} flex items-center gap-3`}>
+      <span className="flex-shrink-0 text-[11px] font-medium text-neutral-500">{label}</span>
+      <select
+        value={value}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.value)}
+        className="min-w-0 w-full appearance-none bg-transparent text-[11px] font-medium text-neutral-100 outline-none disabled:cursor-not-allowed disabled:text-neutral-600"
+      >
+        {renderedOptions.map((option) => (
+          <option key={option} value={option}>
+            {option}
+          </option>
+        ))}
+      </select>
     </label>
   );
 }
@@ -2184,31 +2144,6 @@ function Section({
   );
 }
 
-function SelectionColorRow({
-  swatch,
-  token,
-  sources,
-}: {
-  swatch: string;
-  token: string;
-  sources: string[];
-}) {
-  return (
-    <div className={`${FIELD} flex min-w-0 items-center gap-3`}>
-      <div
-        className="h-7 w-7 flex-shrink-0 rounded-lg border border-neutral-700"
-        style={{ backgroundColor: swatch }}
-      />
-      <div className="min-w-0 flex-1">
-        <div className="truncate text-[11px] font-medium text-neutral-100">{token}</div>
-        <div className="truncate text-[11px] uppercase tracking-[0.18em] text-neutral-500">
-          {sources.join(" · ")}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 export const PropertyPanel = memo(function PropertyPanel({
   projectId,
   assets,
@@ -2230,7 +2165,6 @@ export const PropertyPanel = memo(function PropertyPanel({
   onImportFonts,
 }: PropertyPanelProps) {
   const styles = element?.computedStyles ?? EMPTY_STYLES;
-  const selectionColors = useMemo(() => collectSelectionColors(styles), [styles]);
   const backgroundImage = styles["background-image"] ?? "none";
   const fillMode =
     backgroundImage && backgroundImage !== "none"
@@ -2403,6 +2337,219 @@ export const PropertyPanel = memo(function PropertyPanel({
       </div>
 
       <div className="flex-1 overflow-y-auto">
+        {hasTextControls && (
+          <Section title="Text" icon={<Type size={15} />}>
+            {(() => {
+              const textFields = element.textFields;
+              const activeField =
+                textFields.find((field) => field.key === activeTextFieldKey) ?? textFields[0];
+              if (!activeField) return null;
+
+              if (textFields.length === 1) {
+                return (
+                  <div className="space-y-4 rounded-xl border border-neutral-800 bg-neutral-900/60 p-3">
+                    <div className="min-w-0">
+                      <div className="truncate text-[11px] font-medium text-neutral-100">
+                        {formatTextFieldPreview(activeField.value) || "Text"}
+                      </div>
+                      <div className="text-[10px] uppercase tracking-[0.12em] text-neutral-500">
+                        {activeField.tagName}
+                      </div>
+                    </div>
+
+                    <TextAreaField
+                      key={activeField.key}
+                      label="Content"
+                      value={activeField.value}
+                      disabled={false}
+                      onCommit={(next) => onSetText(next, activeField.key)}
+                    />
+
+                    <ColorField
+                      label="Text color"
+                      value={getTextFieldColor(activeField, styles)}
+                      disabled={false}
+                      onCommit={(next) => onSetTextFieldStyle(activeField.key, "color", next)}
+                    />
+
+                    <div className={RESPONSIVE_GRID}>
+                      <MetricField
+                        label="Size"
+                        value={
+                          activeField.computedStyles["font-size"] || styles["font-size"] || "16px"
+                        }
+                        disabled={false}
+                        liveCommit
+                        onCommit={(next) => onSetTextFieldStyle(activeField.key, "font-size", next)}
+                      />
+                      <FontWeightField
+                        value={
+                          activeField.computedStyles["font-weight"] ||
+                          styles["font-weight"] ||
+                          "400"
+                        }
+                        disabled={false}
+                        onCommit={(next) =>
+                          onSetTextFieldStyle(activeField.key, "font-weight", next)
+                        }
+                      />
+                    </div>
+
+                    <FontFamilyField
+                      value={
+                        activeField.computedStyles["font-family"] ||
+                        styles["font-family"] ||
+                        "inherit"
+                      }
+                      disabled={false}
+                      importedFonts={fontAssets}
+                      onImportFonts={onImportFonts}
+                      onCommit={(next) => onSetTextFieldStyle(activeField.key, "font-family", next)}
+                    />
+
+                    <AdvancedTextControls
+                      field={activeField}
+                      inheritedStyles={styles}
+                      disabled={false}
+                      onCommit={(property, value) =>
+                        onSetTextFieldStyle(activeField.key, property, value)
+                      }
+                    />
+                  </div>
+                );
+              }
+
+              return (
+                <div className="space-y-4">
+                  <div className="grid gap-1.5">
+                    <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+                      <span className={LABEL}>Text layers</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          void Promise.resolve(onAddTextField(activeField.key)).then((nextKey) => {
+                            if (nextKey) setActiveTextFieldKey(nextKey);
+                          });
+                        }}
+                        className="inline-flex h-7 max-w-full items-center gap-1.5 rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 text-[11px] font-medium text-neutral-300 transition-colors hover:border-neutral-600 hover:text-white"
+                      >
+                        <Plus size={12} className="flex-shrink-0" />
+                        <span className="truncate">Add text</span>
+                      </button>
+                    </div>
+                    <div className="grid gap-2">
+                      {textFields.map((field, index) => {
+                        const active = field.key === activeField.key;
+                        return (
+                          <button
+                            key={field.key}
+                            type="button"
+                            onClick={() => setActiveTextFieldKey(field.key)}
+                            className={`min-w-0 w-full rounded-xl border px-3 py-2 text-left transition-colors ${
+                              active
+                                ? "border-studio-accent/50 bg-studio-accent/10"
+                                : "border-neutral-800 bg-neutral-900/80 hover:border-neutral-700 hover:bg-neutral-900"
+                            }`}
+                          >
+                            <div className="flex min-w-0 items-center justify-between gap-2">
+                              <div className="flex min-w-0 items-center gap-2">
+                                <span
+                                  className="h-4 w-4 flex-shrink-0 rounded border border-neutral-700 bg-neutral-950"
+                                  style={{ backgroundColor: getTextFieldColor(field, styles) }}
+                                />
+                                <span className="min-w-0 truncate text-[11px] font-medium text-neutral-100">
+                                  {formatTextFieldPreview(field.value) || `Text ${index + 1}`}
+                                </span>
+                              </div>
+                              <span className="flex-shrink-0 rounded-md border border-neutral-700 bg-neutral-950 px-1.5 py-0.5 text-[10px] uppercase tracking-[0.12em] text-neutral-500">
+                                {field.tagName}
+                              </span>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="space-y-4 rounded-xl border border-neutral-800 bg-neutral-900/60 p-3">
+                    <div className="flex min-w-0 items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="truncate text-[11px] font-medium text-neutral-100">
+                          {formatTextFieldPreview(activeField.value) || "Text"}
+                        </div>
+                        <div className="text-[10px] uppercase tracking-[0.12em] text-neutral-500">
+                          {activeField.tagName}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => onRemoveTextField(activeField.key)}
+                        className="inline-flex h-7 flex-shrink-0 items-center rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 text-[11px] font-medium text-neutral-300 transition-colors hover:border-neutral-600 hover:text-white"
+                      >
+                        Remove
+                      </button>
+                    </div>
+
+                    <TextAreaField
+                      key={activeField.key}
+                      label="Content"
+                      value={activeField.value}
+                      disabled={false}
+                      autoFocus
+                      onCommit={(next) => onSetText(next, activeField.key)}
+                    />
+
+                    <ColorField
+                      label="Text color"
+                      value={getTextFieldColor(activeField, styles)}
+                      disabled={false}
+                      onCommit={(next) => onSetTextFieldStyle(activeField.key, "color", next)}
+                    />
+
+                    <div className={RESPONSIVE_GRID}>
+                      <MetricField
+                        label="Size"
+                        value={activeField.computedStyles["font-size"] || "16px"}
+                        disabled={false}
+                        liveCommit
+                        onCommit={(next) => onSetTextFieldStyle(activeField.key, "font-size", next)}
+                      />
+                      <FontWeightField
+                        value={activeField.computedStyles["font-weight"] || "400"}
+                        disabled={false}
+                        onCommit={(next) =>
+                          onSetTextFieldStyle(activeField.key, "font-weight", next)
+                        }
+                      />
+                    </div>
+
+                    <FontFamilyField
+                      value={
+                        activeField.computedStyles["font-family"] ||
+                        styles["font-family"] ||
+                        "inherit"
+                      }
+                      disabled={false}
+                      importedFonts={fontAssets}
+                      onImportFonts={onImportFonts}
+                      onCommit={(next) => onSetTextFieldStyle(activeField.key, "font-family", next)}
+                    />
+
+                    <AdvancedTextControls
+                      field={activeField}
+                      inheritedStyles={styles}
+                      disabled={false}
+                      onCommit={(property, value) =>
+                        onSetTextFieldStyle(activeField.key, property, value)
+                      }
+                    />
+                  </div>
+                </div>
+              );
+            })()}
+          </Section>
+        )}
+
         <Section title="Layout" icon={<Move size={15} />}>
           <div className={RESPONSIVE_GRID}>
             <MetricField
@@ -2649,7 +2796,7 @@ export const PropertyPanel = memo(function PropertyPanel({
               </div>
             </Section>
 
-            <Section title="Blending" icon={<Eye size={15} />}>
+            <Section title="Transparency" icon={<Eye size={15} />}>
               <div className="space-y-4">
                 <SliderControl
                   value={opacityValue}
@@ -2730,246 +2877,6 @@ export const PropertyPanel = memo(function PropertyPanel({
                 )}
               </div>
             </Section>
-
-            {hasTextControls && (
-              <Section title="Text" icon={<Type size={15} />}>
-                {(() => {
-                  const textFields = element.textFields;
-                  const activeField =
-                    textFields.find((field) => field.key === activeTextFieldKey) ?? textFields[0];
-                  if (!activeField) return null;
-
-                  if (textFields.length === 1) {
-                    return (
-                      <div className="space-y-4 rounded-xl border border-neutral-800 bg-neutral-900/60 p-3">
-                        <div className="min-w-0">
-                          <div className="truncate text-[11px] font-medium text-neutral-100">
-                            {formatTextFieldPreview(activeField.value) || "Text"}
-                          </div>
-                          <div className="text-[10px] uppercase tracking-[0.12em] text-neutral-500">
-                            {activeField.tagName}
-                          </div>
-                        </div>
-
-                        <TextAreaField
-                          key={activeField.key}
-                          label="Content"
-                          value={activeField.value}
-                          disabled={false}
-                          onCommit={(next) => onSetText(next, activeField.key)}
-                        />
-
-                        <ColorField
-                          label="Text color"
-                          value={getTextFieldColor(activeField, styles)}
-                          disabled={false}
-                          onCommit={(next) => onSetTextFieldStyle(activeField.key, "color", next)}
-                        />
-
-                        <div className={RESPONSIVE_GRID}>
-                          <MetricField
-                            label="Size"
-                            value={
-                              activeField.computedStyles["font-size"] ||
-                              styles["font-size"] ||
-                              "16px"
-                            }
-                            disabled={false}
-                            liveCommit
-                            onCommit={(next) =>
-                              onSetTextFieldStyle(activeField.key, "font-size", next)
-                            }
-                          />
-                          <FontWeightField
-                            value={
-                              activeField.computedStyles["font-weight"] ||
-                              styles["font-weight"] ||
-                              "400"
-                            }
-                            disabled={false}
-                            onCommit={(next) =>
-                              onSetTextFieldStyle(activeField.key, "font-weight", next)
-                            }
-                          />
-                        </div>
-
-                        <FontFamilyField
-                          value={
-                            activeField.computedStyles["font-family"] ||
-                            styles["font-family"] ||
-                            "inherit"
-                          }
-                          disabled={false}
-                          importedFonts={fontAssets}
-                          onImportFonts={onImportFonts}
-                          onCommit={(next) =>
-                            onSetTextFieldStyle(activeField.key, "font-family", next)
-                          }
-                        />
-
-                        <AdvancedTextControls
-                          field={activeField}
-                          inheritedStyles={styles}
-                          disabled={false}
-                          onCommit={(property, value) =>
-                            onSetTextFieldStyle(activeField.key, property, value)
-                          }
-                        />
-                      </div>
-                    );
-                  }
-
-                  return (
-                    <div className="space-y-4">
-                      <div className="grid gap-1.5">
-                        <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
-                          <span className={LABEL}>Text layers</span>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              void Promise.resolve(onAddTextField(activeField.key)).then(
-                                (nextKey) => {
-                                  if (nextKey) setActiveTextFieldKey(nextKey);
-                                },
-                              );
-                            }}
-                            className="inline-flex h-7 max-w-full items-center gap-1.5 rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 text-[11px] font-medium text-neutral-300 transition-colors hover:border-neutral-600 hover:text-white"
-                          >
-                            <Plus size={12} className="flex-shrink-0" />
-                            <span className="truncate">Add text</span>
-                          </button>
-                        </div>
-                        <div className="grid gap-2">
-                          {textFields.map((field, index) => {
-                            const active = field.key === activeField.key;
-                            return (
-                              <button
-                                key={field.key}
-                                type="button"
-                                onClick={() => setActiveTextFieldKey(field.key)}
-                                className={`min-w-0 w-full rounded-xl border px-3 py-2 text-left transition-colors ${
-                                  active
-                                    ? "border-studio-accent/50 bg-studio-accent/10"
-                                    : "border-neutral-800 bg-neutral-900/80 hover:border-neutral-700 hover:bg-neutral-900"
-                                }`}
-                              >
-                                <div className="flex min-w-0 items-center justify-between gap-2">
-                                  <div className="flex min-w-0 items-center gap-2">
-                                    <span
-                                      className="h-4 w-4 flex-shrink-0 rounded border border-neutral-700 bg-neutral-950"
-                                      style={{ backgroundColor: getTextFieldColor(field, styles) }}
-                                    />
-                                    <span className="min-w-0 truncate text-[11px] font-medium text-neutral-100">
-                                      {formatTextFieldPreview(field.value) || `Text ${index + 1}`}
-                                    </span>
-                                  </div>
-                                  <span className="flex-shrink-0 rounded-md border border-neutral-700 bg-neutral-950 px-1.5 py-0.5 text-[10px] uppercase tracking-[0.12em] text-neutral-500">
-                                    {field.tagName}
-                                  </span>
-                                </div>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-
-                      <div className="space-y-4 rounded-xl border border-neutral-800 bg-neutral-900/60 p-3">
-                        <div className="flex min-w-0 items-center justify-between gap-2">
-                          <div className="min-w-0">
-                            <div className="truncate text-[11px] font-medium text-neutral-100">
-                              {formatTextFieldPreview(activeField.value) || "Text"}
-                            </div>
-                            <div className="text-[10px] uppercase tracking-[0.12em] text-neutral-500">
-                              {activeField.tagName}
-                            </div>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => onRemoveTextField(activeField.key)}
-                            className="inline-flex h-7 flex-shrink-0 items-center rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 text-[11px] font-medium text-neutral-300 transition-colors hover:border-neutral-600 hover:text-white"
-                          >
-                            Remove
-                          </button>
-                        </div>
-
-                        <TextAreaField
-                          key={activeField.key}
-                          label="Content"
-                          value={activeField.value}
-                          disabled={false}
-                          autoFocus
-                          onCommit={(next) => onSetText(next, activeField.key)}
-                        />
-
-                        <ColorField
-                          label="Text color"
-                          value={getTextFieldColor(activeField, styles)}
-                          disabled={false}
-                          onCommit={(next) => onSetTextFieldStyle(activeField.key, "color", next)}
-                        />
-
-                        <div className={RESPONSIVE_GRID}>
-                          <MetricField
-                            label="Size"
-                            value={activeField.computedStyles["font-size"] || "16px"}
-                            disabled={false}
-                            liveCommit
-                            onCommit={(next) =>
-                              onSetTextFieldStyle(activeField.key, "font-size", next)
-                            }
-                          />
-                          <FontWeightField
-                            value={activeField.computedStyles["font-weight"] || "400"}
-                            disabled={false}
-                            onCommit={(next) =>
-                              onSetTextFieldStyle(activeField.key, "font-weight", next)
-                            }
-                          />
-                        </div>
-
-                        <FontFamilyField
-                          value={
-                            activeField.computedStyles["font-family"] ||
-                            styles["font-family"] ||
-                            "inherit"
-                          }
-                          disabled={false}
-                          importedFonts={fontAssets}
-                          onImportFonts={onImportFonts}
-                          onCommit={(next) =>
-                            onSetTextFieldStyle(activeField.key, "font-family", next)
-                          }
-                        />
-
-                        <AdvancedTextControls
-                          field={activeField}
-                          inheritedStyles={styles}
-                          disabled={false}
-                          onCommit={(property, value) =>
-                            onSetTextFieldStyle(activeField.key, property, value)
-                          }
-                        />
-                      </div>
-                    </div>
-                  );
-                })()}
-              </Section>
-            )}
-
-            {selectionColors.length > 0 && (
-              <Section title="Selection colors" icon={<Palette size={15} />}>
-                <div className="space-y-3">
-                  {selectionColors.map((entry) => (
-                    <SelectionColorRow
-                      key={`${entry.swatch}-${entry.token}`}
-                      swatch={entry.swatch}
-                      token={entry.token}
-                      sources={entry.sources}
-                    />
-                  ))}
-                </div>
-              </Section>
-            )}
           </>
         )}
       </div>
