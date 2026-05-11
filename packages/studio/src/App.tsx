@@ -1525,6 +1525,10 @@ export function StudioApp() {
       // Debounce the server write (600ms)
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
       saveTimerRef.current = setTimeout(() => {
+        // Suppress the file-change watcher echo — the save callback triggers
+        // its own refresh, so a second one from the watcher causes a double-reload
+        // race that can leave the player in a non-playable state.
+        domEditSaveTimestampRef.current = Date.now();
         saveProjectFilesWithHistory({
           projectId: pid,
           label: "Edit source",
@@ -1623,6 +1627,7 @@ export function StudioApp() {
         throw new Error(`Unable to patch timeline element ${element.id} in ${targetPath}`);
       }
 
+      domEditSaveTimestampRef.current = Date.now();
       await saveProjectFilesWithHistory({
         projectId: pid,
         label: "Move timeline clip",
@@ -1707,6 +1712,7 @@ export function StudioApp() {
         throw new Error(`Unable to patch timeline element ${element.id} in ${targetPath}`);
       }
 
+      domEditSaveTimestampRef.current = Date.now();
       await saveProjectFilesWithHistory({
         projectId: pid,
         label: "Resize timeline clip",
@@ -1845,6 +1851,7 @@ export function StudioApp() {
           });
         }
 
+        domEditSaveTimestampRef.current = Date.now();
         await saveProjectFilesWithHistory({
           projectId: pid,
           label: "Delete timeline clip",
@@ -3646,6 +3653,7 @@ export function StudioApp() {
           }),
         );
 
+        domEditSaveTimestampRef.current = Date.now();
         await saveProjectFilesWithHistory({
           projectId: pid,
           label: "Add timeline asset",
