@@ -1,0 +1,207 @@
+/**
+ * RAF-driven hook that tracks overlay, hover, and group rects from the iframe DOM.
+ * Runs a requestAnimationFrame loop and writes React state only when rects change.
+ */
+import { useRef, useState, type RefObject } from "react";
+import { useMountEffect } from "../../hooks/useMountEffect";
+import { type DomEditSelection, findElementForSelection } from "./domEditing";
+import {
+  type GroupOverlayItem,
+  type OverlayRect,
+  type ResolvedElementRef,
+  groupOverlayItemsEqual,
+  isElementVisibleForOverlay,
+  rectsEqual,
+  resolveElementForOverlay,
+  selectionCacheKey,
+  toOverlayRect,
+} from "./domEditOverlayGeometry";
+
+interface UseDomEditOverlayRectsOptions {
+  iframeRef: RefObject<HTMLIFrameElement | null>;
+  overlayRef: RefObject<HTMLDivElement | null>;
+  selectionRef: RefObject<DomEditSelection | null>;
+  activeCompositionPathRef: RefObject<string | null>;
+  groupSelectionsRef: RefObject<DomEditSelection[]>;
+  hoverSelectionRef: RefObject<DomEditSelection | null>;
+  rafPausedRef: RefObject<boolean>;
+}
+
+interface UseDomEditOverlayRectsResult {
+  overlayRect: OverlayRect | null;
+  overlayRectRef: RefObject<OverlayRect | null>;
+  setOverlayRect: (next: OverlayRect | null) => void;
+  hoverRect: OverlayRect | null;
+  hoverRectRef: RefObject<OverlayRect | null>;
+  setHoverRect: (next: OverlayRect | null) => void;
+  groupOverlayItems: GroupOverlayItem[];
+  groupOverlayItemsRef: RefObject<GroupOverlayItem[]>;
+  setGroupOverlayItems: (next: GroupOverlayItem[]) => void;
+}
+
+export function useDomEditOverlayRects({
+  iframeRef,
+  overlayRef,
+  selectionRef,
+  activeCompositionPathRef,
+  groupSelectionsRef,
+  hoverSelectionRef,
+  rafPausedRef,
+}: UseDomEditOverlayRectsOptions): UseDomEditOverlayRectsResult {
+  const [overlayRect, setOverlayRectState] = useState<OverlayRect | null>(null);
+  const [hoverRect, setHoverRectState] = useState<OverlayRect | null>(null);
+  const [groupOverlayItems, setGroupOverlayItemsState] = useState<GroupOverlayItem[]>([]);
+
+  const overlayRectRef = useRef<OverlayRect | null>(null);
+  const hoverRectRef = useRef<OverlayRect | null>(null);
+  const groupOverlayItemsRef = useRef<GroupOverlayItem[]>([]);
+  const resolvedElementRef = useRef<{ key: string; element: HTMLElement } | null>(null);
+  const resolvedHoverElementRef = useRef<{ key: string; element: HTMLElement } | null>(null);
+  const resolvedGroupElementRef = useRef<Map<string, HTMLElement>>(new Map());
+
+  const setOverlayRect = (next: OverlayRect | null) => {
+    if (rectsEqual(overlayRectRef.current, next)) return;
+    overlayRectRef.current = next;
+    setOverlayRectState(next);
+  };
+
+  const setHoverRect = (next: OverlayRect | null) => {
+    if (rectsEqual(hoverRectRef.current, next)) return;
+    hoverRectRef.current = next;
+    setHoverRectState(next);
+  };
+
+  const setGroupOverlayItems = (next: GroupOverlayItem[]) => {
+    if (groupOverlayItemsEqual(groupOverlayItemsRef.current, next)) return;
+    groupOverlayItemsRef.current = next;
+    setGroupOverlayItemsState(next);
+  };
+
+  const resolveGroupElement = (doc: Document, sel: DomEditSelection) => {
+    const key = selectionCacheKey(sel);
+    const cached = resolvedGroupElementRef.current.get(key);
+    if (cached?.isConnected && cached.ownerDocument === doc) return cached;
+
+    const next = findElementForSelection(doc, sel, activeCompositionPathRef.current);
+    if (next) {
+      resolvedGroupElementRef.current.set(key, next);
+    } else {
+      resolvedGroupElementRef.current.delete(key);
+    }
+    return next;
+  };
+
+  useMountEffect(() => {
+    let frame = 0;
+
+    const clearAll = () => {
+      setOverlayRect(null);
+      setHoverRect(null);
+      setGroupOverlayItems([]);
+    };
+
+    const update = () => {
+      frame = requestAnimationFrame(update);
+      if (rafPausedRef.current) return;
+
+      const sel = selectionRef.current;
+      const iframe = iframeRef.current;
+      const overlayEl = overlayRef.current;
+      if (!iframe || !overlayEl) {
+        resolvedElementRef.current = null;
+        resolvedHoverElementRef.current = null;
+        resolvedGroupElementRef.current.clear();
+        clearAll();
+        return;
+      }
+
+      const doc = iframe.contentDocument;
+      if (!doc) {
+        resolvedElementRef.current = null;
+        resolvedHoverElementRef.current = null;
+        resolvedGroupElementRef.current.clear();
+        clearAll();
+        return;
+      }
+
+      if (sel) {
+        const el = resolveElementForOverlay(
+          doc,
+          sel,
+          activeCompositionPathRef.current,
+          resolvedElementRef as ResolvedElementRef,
+        );
+        if (el && isElementVisibleForOverlay(el)) {
+          setOverlayRect(toOverlayRect(overlayEl, iframe, el));
+        } else {
+          setOverlayRect(null);
+        }
+      } else {
+        resolvedElementRef.current = null;
+        setOverlayRect(null);
+      }
+
+      const group = groupSelectionsRef.current;
+      if (group.length > 0) {
+        const nextGroupItems: GroupOverlayItem[] = [];
+        const liveGroupKeys = new Set<string>();
+        for (const groupSelection of group) {
+          const key = selectionCacheKey(groupSelection);
+          liveGroupKeys.add(key);
+          const el = resolveGroupElement(doc, groupSelection);
+          const rect = el ? toOverlayRect(overlayEl, iframe, el) : null;
+          if (el && rect)
+            nextGroupItems.push({ key, selection: groupSelection, element: el, rect });
+        }
+        for (const key of resolvedGroupElementRef.current.keys()) {
+          if (!liveGroupKeys.has(key)) resolvedGroupElementRef.current.delete(key);
+        }
+        setGroupOverlayItems(nextGroupItems);
+      } else {
+        resolvedGroupElementRef.current.clear();
+        setGroupOverlayItems([]);
+      }
+
+      const hoverSel = hoverSelectionRef.current;
+      const hoverMatchesSelection = Boolean(
+        sel && hoverSel && selectionCacheKey(sel) === selectionCacheKey(hoverSel),
+      );
+      const hoverMatchesGroup = Boolean(
+        hoverSel && group.some((entry) => selectionCacheKey(entry) === selectionCacheKey(hoverSel)),
+      );
+      if (!hoverSel || hoverMatchesSelection || hoverMatchesGroup) {
+        resolvedHoverElementRef.current = null;
+        setHoverRect(null);
+        return;
+      }
+
+      const hoverEl = resolveElementForOverlay(
+        doc,
+        hoverSel,
+        activeCompositionPathRef.current,
+        resolvedHoverElementRef as ResolvedElementRef,
+      );
+      if (!hoverEl) {
+        setHoverRect(null);
+        return;
+      }
+
+      setHoverRect(toOverlayRect(overlayEl, iframe, hoverEl));
+    };
+
+    frame = requestAnimationFrame(update);
+    return () => cancelAnimationFrame(frame);
+  });
+
+  return {
+    overlayRect,
+    overlayRectRef,
+    setOverlayRect,
+    hoverRect,
+    hoverRectRef,
+    setHoverRect,
+    groupOverlayItems,
+    groupOverlayItemsRef,
+    setGroupOverlayItems,
+  };
+}

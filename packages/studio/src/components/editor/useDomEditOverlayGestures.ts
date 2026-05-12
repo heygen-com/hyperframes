@@ -1,0 +1,393 @@
+/**
+ * Gesture handling for DomEditOverlay.
+ * Owns: onPointerMove, onPointerUp, clearPointerState.
+ * startGesture and startGroupDrag live in domEditOverlayStartGesture.ts.
+ */
+import type { RefObject } from "react";
+import { type DomEditSelection } from "./domEditing";
+import {
+  applyManualOffsetDragCommit,
+  applyManualOffsetDragDraft,
+  endManualOffsetDragMembers,
+  restoreManualOffsetDragMembers,
+} from "./manualOffsetDrag";
+import {
+  applyStudioBoxSize,
+  applyStudioBoxSizeDraft,
+  applyStudioRotation,
+  applyStudioRotationDraft,
+  endStudioManualEditGesture,
+  isStudioManualEditGestureCurrent,
+  readStudioBoxSize,
+  restoreStudioBoxSize,
+  restoreStudioPathOffset,
+  restoreStudioRotation,
+} from "./manualEdits";
+import {
+  type GroupOverlayItem,
+  type OverlayRect,
+  groupOverlayItemsEqual,
+  rectsEqual,
+} from "./domEditOverlayGeometry";
+import {
+  BLOCKED_MOVE_THRESHOLD_PX,
+  type BlockedMoveState,
+  type GestureKind,
+  type GestureState,
+  type GroupGestureState,
+  hasDomEditRotationChanged,
+  resolveDomEditResizeGesture,
+  resolveDomEditRotationGesture,
+} from "./domEditOverlayGestures";
+import type { DomEditGroupPathOffsetCommit } from "./DomEditOverlay";
+import {
+  startGesture as _startGesture,
+  startGroupDrag as _startGroupDrag,
+} from "./domEditOverlayStartGesture";
+
+// Refs are stable across renders; values are read via .current.
+export type UseDomEditOverlayGesturesOptions = {
+  overlayRef: RefObject<HTMLDivElement | null>;
+  boxRef: RefObject<HTMLDivElement | null>;
+  selectionRef: RefObject<DomEditSelection | null>;
+  overlayRectRef: RefObject<OverlayRect | null>;
+  groupOverlayItemsRef: RefObject<GroupOverlayItem[]>;
+  gestureRef: RefObject<GestureState | null>;
+  groupGestureRef: RefObject<GroupGestureState | null>;
+  blockedMoveRef: RefObject<BlockedMoveState | null>;
+  rafPausedRef: RefObject<boolean>;
+  suppressNextBoxClickRef: RefObject<boolean>;
+  setOverlayRect: (next: OverlayRect | null) => void;
+  setGroupOverlayItems: (next: GroupOverlayItem[]) => void;
+  onBlockedMoveRef: RefObject<(selection: DomEditSelection) => void>;
+  onManualDragStartRef: RefObject<(() => void) | undefined>;
+  onPathOffsetCommitRef: RefObject<
+    (s: DomEditSelection, n: { x: number; y: number }) => Promise<void> | void
+  >;
+  onGroupPathOffsetCommitRef: RefObject<
+    (updates: DomEditGroupPathOffsetCommit[]) => Promise<void> | void
+  >;
+  onBoxSizeCommitRef: RefObject<
+    (s: DomEditSelection, n: { width: number; height: number }) => Promise<void> | void
+  >;
+  onRotationCommitRef: RefObject<
+    (s: DomEditSelection, n: { angle: number }) => Promise<void> | void
+  >;
+  onCanvasPointerMoveRef: RefObject<
+    (
+      e: React.PointerEvent<HTMLDivElement>,
+      o?: { preferClipAncestor?: boolean },
+    ) => DomEditSelection | null
+  >;
+  onCanvasMouseDown: (
+    e: React.MouseEvent<HTMLDivElement>,
+    o?: { preferClipAncestor?: boolean },
+  ) => void;
+};
+
+export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGesturesOptions) {
+  const setDraftOverlayRect = (next: OverlayRect) => {
+    if (rectsEqual(opts.overlayRectRef.current, next)) return;
+    opts.overlayRectRef.current = next;
+    opts.setOverlayRect(next);
+  };
+  const restoreGestureOverlayRect = (g: GestureState) => {
+    setDraftOverlayRect({
+      left: g.originLeft,
+      top: g.originTop,
+      width: g.originWidth,
+      height: g.originHeight,
+      editScaleX: g.editScaleX,
+      editScaleY: g.editScaleY,
+    });
+  };
+  const setDraftGroupOverlayItems = (next: GroupOverlayItem[]) => {
+    if (groupOverlayItemsEqual(opts.groupOverlayItemsRef.current, next)) return;
+    opts.groupOverlayItemsRef.current = next;
+    opts.setGroupOverlayItems(next);
+  };
+
+  const restoreGroupPathOffsets = (g: GroupGestureState) => {
+    restoreManualOffsetDragMembers(g.members);
+    setDraftGroupOverlayItems(g.originItems);
+  };
+
+  const startGroupDrag = (e: React.PointerEvent<HTMLElement>) => _startGroupDrag(e, opts);
+  const startGesture = (
+    kind: GestureKind,
+    e: React.PointerEvent<HTMLElement>,
+    options?: { selection?: DomEditSelection; rect?: OverlayRect | null },
+  ) => _startGesture(kind, e, opts, options);
+
+  const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const g = opts.gestureRef.current;
+    const groupG = opts.groupGestureRef.current;
+    const sel = g?.selection ?? opts.selectionRef.current;
+    const box = opts.boxRef.current;
+    const blockedMove = opts.blockedMoveRef.current;
+    if (!blockedMove && !g && !groupG) {
+      opts.onCanvasPointerMoveRef.current(e, { preferClipAncestor: false });
+    }
+
+    if (blockedMove && sel) {
+      const dx = e.clientX - blockedMove.startX;
+      const dy = e.clientY - blockedMove.startY;
+      if (!blockedMove.notified && Math.hypot(dx, dy) >= BLOCKED_MOVE_THRESHOLD_PX) {
+        blockedMove.notified = true;
+        opts.suppressNextBoxClickRef.current = true;
+        opts.onBlockedMoveRef.current(sel);
+      }
+      return;
+    }
+
+    if (groupG) {
+      const dx = e.clientX - groupG.startX;
+      const dy = e.clientY - groupG.startY;
+      setDraftGroupOverlayItems(
+        groupG.originItems.map((item) => ({
+          ...item,
+          rect: { ...item.rect, left: item.rect.left + dx, top: item.rect.top + dy },
+        })),
+      );
+      for (const member of groupG.members) applyManualOffsetDragDraft(member, dx, dy);
+      return;
+    }
+
+    if (!g || !sel) return;
+    const dx = e.clientX - g.startX;
+    const dy = e.clientY - g.startY;
+
+    if (g.kind === "rotate") {
+      applyStudioRotationDraft(
+        sel.element,
+        resolveDomEditRotationGesture({
+          centerX: g.centerX,
+          centerY: g.centerY,
+          startX: g.startX,
+          startY: g.startY,
+          currentX: e.clientX,
+          currentY: e.clientY,
+          actualAngle: g.actualRotation,
+          snap: e.shiftKey,
+        }),
+      );
+      return;
+    }
+
+    if (g.kind === "drag") {
+      const nextBoxLeft = g.originLeft + dx;
+      const nextBoxTop = g.originTop + dy;
+      setDraftOverlayRect({
+        left: nextBoxLeft,
+        top: nextBoxTop,
+        width: g.originWidth,
+        height: g.originHeight,
+        editScaleX: g.editScaleX,
+        editScaleY: g.editScaleY,
+      });
+      if (box) {
+        box.style.left = `${nextBoxLeft}px`;
+        box.style.top = `${nextBoxTop}px`;
+      }
+      if (g.pathOffsetMember) applyManualOffsetDragDraft(g.pathOffsetMember, dx, dy);
+    } else {
+      if (!box) return;
+      const nextSize = resolveDomEditResizeGesture({
+        originWidth: g.originWidth,
+        originHeight: g.originHeight,
+        actualWidth: g.actualWidth,
+        actualHeight: g.actualHeight,
+        scaleX: g.editScaleX,
+        scaleY: g.editScaleY,
+        dx,
+        dy,
+        uniform: e.shiftKey,
+      });
+      setDraftOverlayRect({
+        left: g.originLeft,
+        top: g.originTop,
+        width: nextSize.overlayWidth,
+        height: nextSize.overlayHeight,
+        editScaleX: g.editScaleX,
+        editScaleY: g.editScaleY,
+      });
+      box.style.width = `${nextSize.overlayWidth}px`;
+      box.style.height = `${nextSize.overlayHeight}px`;
+      applyStudioBoxSizeDraft(sel.element, nextSize);
+    }
+  };
+
+  const onPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    const g = opts.gestureRef.current;
+    const groupG = opts.groupGestureRef.current;
+    const sel = g?.selection ?? opts.selectionRef.current;
+    const box = opts.boxRef.current;
+    opts.blockedMoveRef.current = null;
+
+    if (groupG) {
+      opts.groupGestureRef.current = null;
+      opts.rafPausedRef.current = false;
+      const dx = e.clientX - groupG.startX;
+      const dy = e.clientY - groupG.startY;
+      if (Math.hypot(dx, dy) < BLOCKED_MOVE_THRESHOLD_PX) {
+        restoreGroupPathOffsets(groupG);
+        opts.suppressNextBoxClickRef.current = true;
+        return;
+      }
+      setDraftGroupOverlayItems(
+        groupG.originItems.map((item) => ({
+          ...item,
+          rect: { ...item.rect, left: item.rect.left + dx, top: item.rect.top + dy },
+        })),
+      );
+      const updates = groupG.members.map((member) => ({
+        selection: member.selection,
+        next: applyManualOffsetDragCommit(member, dx, dy),
+      }));
+      void Promise.resolve(opts.onGroupPathOffsetCommitRef.current(updates))
+        .catch(() => {
+          for (const member of groupG.members) {
+            if (
+              member.gestureToken &&
+              isStudioManualEditGestureCurrent(member.element, member.gestureToken)
+            )
+              restoreStudioPathOffset(member.element, member.initialPathOffset);
+          }
+        })
+        .finally(() => endManualOffsetDragMembers(groupG.members));
+      return;
+    }
+
+    if (!g || !sel) {
+      opts.gestureRef.current = null;
+      opts.rafPausedRef.current = false;
+      return;
+    }
+    opts.gestureRef.current = null;
+    opts.rafPausedRef.current = false;
+    const movedDistance = Math.hypot(e.clientX - g.startX, e.clientY - g.startY);
+
+    if (g.kind === "drag" && movedDistance < BLOCKED_MOVE_THRESHOLD_PX) {
+      restoreStudioPathOffset(sel.element, g.initialPathOffset);
+      endStudioManualEditGesture(sel.element, g.manualEditDragToken);
+      if (box) {
+        box.style.left = `${g.originLeft}px`;
+        box.style.top = `${g.originTop}px`;
+      }
+      restoreGestureOverlayRect(g);
+      opts.suppressNextBoxClickRef.current = true;
+      opts.onCanvasMouseDown(e as unknown as React.MouseEvent<HTMLDivElement>, {
+        preferClipAncestor: false,
+      });
+      return;
+    }
+
+    if (g.kind === "resize" && movedDistance < BLOCKED_MOVE_THRESHOLD_PX) {
+      restoreStudioBoxSize(sel.element, g.initialBoxSize);
+      endStudioManualEditGesture(sel.element, g.manualEditDragToken);
+      if (box) {
+        box.style.width = `${g.originWidth}px`;
+        box.style.height = `${g.originHeight}px`;
+      }
+      restoreGestureOverlayRect(g);
+      return;
+    }
+
+    if (g.kind === "rotate") {
+      const finalRotation = resolveDomEditRotationGesture({
+        centerX: g.centerX,
+        centerY: g.centerY,
+        startX: g.startX,
+        startY: g.startY,
+        currentX: e.clientX,
+        currentY: e.clientY,
+        actualAngle: g.actualRotation,
+        snap: e.shiftKey,
+      });
+      if (!hasDomEditRotationChanged(g.actualRotation, finalRotation.angle)) {
+        restoreStudioRotation(sel.element, g.initialRotation);
+        endStudioManualEditGesture(sel.element, g.manualEditDragToken);
+        return;
+      }
+      applyStudioRotation(sel.element, finalRotation);
+      void Promise.resolve(opts.onRotationCommitRef.current(sel, finalRotation))
+        .catch(() => {
+          if (
+            g.manualEditDragToken &&
+            isStudioManualEditGestureCurrent(sel.element, g.manualEditDragToken)
+          )
+            restoreStudioRotation(sel.element, g.initialRotation);
+        })
+        .finally(() => endStudioManualEditGesture(sel.element, g.manualEditDragToken));
+    } else if (g.kind === "drag") {
+      const dx = e.clientX - g.startX;
+      const dy = e.clientY - g.startY;
+      if (!g.pathOffsetMember) return;
+      const finalOffset = applyManualOffsetDragCommit(g.pathOffsetMember, dx, dy);
+      const nextBoxLeft = g.originLeft + dx;
+      const nextBoxTop = g.originTop + dy;
+      setDraftOverlayRect({
+        left: nextBoxLeft,
+        top: nextBoxTop,
+        width: g.originWidth,
+        height: g.originHeight,
+        editScaleX: g.editScaleX,
+        editScaleY: g.editScaleY,
+      });
+      if (box) {
+        box.style.left = `${nextBoxLeft}px`;
+        box.style.top = `${nextBoxTop}px`;
+      }
+      void Promise.resolve(opts.onPathOffsetCommitRef.current(sel, finalOffset))
+        .catch(() => {
+          if (
+            g.pathOffsetMember?.gestureToken &&
+            isStudioManualEditGestureCurrent(sel.element, g.pathOffsetMember.gestureToken)
+          )
+            restoreStudioPathOffset(sel.element, g.initialPathOffset);
+        })
+        .finally(() => {
+          if (g.pathOffsetMember) endManualOffsetDragMembers([g.pathOffsetMember]);
+        });
+    } else {
+      const finalSize = readStudioBoxSize(sel.element);
+      applyStudioBoxSize(sel.element, finalSize);
+      void Promise.resolve(opts.onBoxSizeCommitRef.current(sel, finalSize))
+        .catch(() => {
+          if (
+            g.manualEditDragToken &&
+            isStudioManualEditGestureCurrent(sel.element, g.manualEditDragToken)
+          )
+            restoreStudioBoxSize(sel.element, g.initialBoxSize);
+        })
+        .finally(() => endStudioManualEditGesture(sel.element, g.manualEditDragToken));
+    }
+  };
+
+  const clearPointerState = (selectionRef: RefObject<DomEditSelection | null>) => {
+    const groupG = opts.groupGestureRef.current;
+    if (groupG) restoreGroupPathOffsets(groupG);
+    const g = opts.gestureRef.current;
+    const sel = g?.selection ?? selectionRef.current;
+    if (g?.mode === "path-offset" && sel) {
+      restoreStudioPathOffset(sel.element, g.initialPathOffset);
+      endStudioManualEditGesture(sel.element, g.manualEditDragToken);
+      restoreGestureOverlayRect(g);
+    }
+    if (g?.mode === "box-size" && sel) {
+      restoreStudioBoxSize(sel.element, g.initialBoxSize);
+      endStudioManualEditGesture(sel.element, g.manualEditDragToken);
+      restoreGestureOverlayRect(g);
+    }
+    if (g?.mode === "rotation" && sel) {
+      restoreStudioRotation(sel.element, g.initialRotation);
+      endStudioManualEditGesture(sel.element, g.manualEditDragToken);
+    }
+    opts.blockedMoveRef.current = null;
+    opts.groupGestureRef.current = null;
+    opts.gestureRef.current = null;
+    opts.rafPausedRef.current = false;
+  };
+
+  return { startGesture, startGroupDrag, onPointerMove, onPointerUp, clearPointerState };
+}

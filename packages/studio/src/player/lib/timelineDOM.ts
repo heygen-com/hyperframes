@@ -11,6 +11,7 @@
 import type { TimelineElement } from "../store/playerStore";
 import type { ClipManifestClip } from "./playbackTypes";
 import {
+  readDurationAttribute,
   resolveMediaElement,
   applyMediaMetadataFromElement,
   getTimelineElementDisplayLabel,
@@ -22,6 +23,7 @@ import {
   buildTimelineElementKey,
   buildTimelineElementIdentity,
   getTimelineElementIdentity,
+  findTimelineDomNodeForClip,
 } from "./timelineElementHelpers";
 
 // Re-export helpers that were previously public from this module so that
@@ -46,6 +48,8 @@ export {
   resolveIframe,
   buildMissingCompositionElements,
 } from "./timelineIframeHelpers";
+
+import { readTimelineDurationFromDocument } from "./timelineElementHelpers";
 
 // ---------------------------------------------------------------------------
 // TimelineElement factories

@@ -1,0 +1,200 @@
+import { useRef, useCallback, useEffect } from "react";
+import { liveTime, type ZoomMode } from "../store/playerStore";
+import { useMountEffect } from "../../hooks/useMountEffect";
+import { getPinchTimelineZoomPercent } from "./timelineZoom";
+import {
+  GUTTER,
+  getTimelinePlayheadLeft,
+  getTimelineScrollLeftForZoomTransition,
+  getTimelineScrollLeftForZoomAnchor,
+  shouldAutoScrollTimeline,
+} from "./timelineLayout";
+
+interface UseTimelinePlayheadInput {
+  playheadRef: React.RefObject<HTMLDivElement | null>;
+  scrollRef: React.RefObject<HTMLDivElement | null>;
+  ppsRef: React.RefObject<number>;
+  durationRef: React.RefObject<number>;
+  isDragging: React.RefObject<boolean>;
+  currentTime: number;
+  zoomMode: ZoomMode;
+  manualZoomPercent: number;
+  zoomModeRef: React.RefObject<ZoomMode>;
+  manualZoomPercentRef: React.RefObject<number>;
+  fitPps: number;
+  fitPpsRef: React.RefObject<number>;
+  effectiveDuration: number;
+  pps: number;
+  timelineReady: boolean;
+  elementsLength: number;
+  setZoomMode: (mode: ZoomMode) => void;
+  setManualZoomPercent: (percent: number) => void;
+  onSeek?: (time: number) => void;
+}
+
+export function useTimelinePlayhead({
+  playheadRef,
+  scrollRef,
+  ppsRef,
+  durationRef,
+  isDragging,
+  currentTime,
+  zoomMode,
+  zoomModeRef,
+  manualZoomPercentRef,
+  fitPps: _fitPps,
+  fitPpsRef,
+  effectiveDuration,
+  pps,
+  timelineReady,
+  elementsLength,
+  setZoomMode,
+  setManualZoomPercent,
+  onSeek,
+}: UseTimelinePlayheadInput) {
+  const dragScrollRaf = useRef(0);
+  const previousZoomModeRef = useRef<ZoomMode | null>(zoomMode);
+
+  const syncPlayheadPosition = useCallback(
+    (time: number) => {
+      if (!playheadRef.current || durationRef.current <= 0) return;
+      playheadRef.current.style.left = `${getTimelinePlayheadLeft(time, ppsRef.current)}px`;
+    },
+    [playheadRef, durationRef, ppsRef],
+  );
+
+  useEffect(() => {
+    syncPlayheadPosition(currentTime);
+  }, [currentTime, pps, syncPlayheadPosition]);
+
+  useEffect(() => {
+    const scroll = scrollRef.current;
+    if (!scroll) {
+      previousZoomModeRef.current = zoomMode;
+      return;
+    }
+    scroll.scrollLeft = getTimelineScrollLeftForZoomTransition(
+      previousZoomModeRef.current,
+      zoomMode,
+      scroll.scrollLeft,
+    );
+    previousZoomModeRef.current = zoomMode;
+  }, [zoomMode, scrollRef]);
+
+  useMountEffect(() => {
+    const unsub = liveTime.subscribe((t) => {
+      if (!playheadRef.current || durationRef.current <= 0) return;
+      const playheadX = getTimelinePlayheadLeft(t, ppsRef.current);
+      playheadRef.current.style.left = `${playheadX}px`;
+      const scroll = scrollRef.current;
+      if (
+        scroll &&
+        !isDragging.current &&
+        shouldAutoScrollTimeline(zoomModeRef.current, scroll.scrollWidth, scroll.clientWidth)
+      ) {
+        const edgeMargin = scroll.clientWidth * 0.12;
+        if (playheadX > scroll.scrollLeft + scroll.clientWidth - edgeMargin)
+          scroll.scrollLeft = playheadX - scroll.clientWidth * 0.15;
+        else if (playheadX < scroll.scrollLeft + GUTTER)
+          scroll.scrollLeft = Math.max(0, playheadX - GUTTER);
+      }
+    });
+    return unsub;
+  });
+
+  const seekFromX = useCallback(
+    (clientX: number) => {
+      const el = scrollRef.current;
+      if (!el || effectiveDuration <= 0) return;
+      const rect = el.getBoundingClientRect();
+      const x = clientX - rect.left + el.scrollLeft - GUTTER;
+      if (x < 0) return;
+      const time = Math.max(0, Math.min(effectiveDuration, x / pps));
+      liveTime.notify(time);
+      onSeek?.(time);
+    },
+    [scrollRef, effectiveDuration, pps, onSeek],
+  );
+
+  const autoScrollDuringDrag = useCallback(
+    (clientX: number) => {
+      cancelAnimationFrame(dragScrollRaf.current);
+      const el = scrollRef.current;
+      if (
+        !el ||
+        !isDragging.current ||
+        !shouldAutoScrollTimeline(zoomModeRef.current, el.scrollWidth, el.clientWidth)
+      )
+        return;
+      const rect = el.getBoundingClientRect();
+      const edgeZone = 40;
+      const maxSpeed = 12;
+      let scrollDelta = 0;
+      if (clientX < rect.left + edgeZone)
+        scrollDelta = -maxSpeed * Math.max(0, 1 - (clientX - rect.left) / edgeZone);
+      else if (clientX > rect.right - edgeZone)
+        scrollDelta = maxSpeed * Math.max(0, 1 - (rect.right - clientX) / edgeZone);
+      if (scrollDelta !== 0) {
+        el.scrollLeft += scrollDelta;
+        seekFromX(clientX);
+        dragScrollRaf.current = requestAnimationFrame(() => autoScrollDuringDrag(clientX));
+      }
+    },
+    [scrollRef, isDragging, zoomModeRef, seekFromX],
+  );
+
+  const handlePinchWheel = useCallback(
+    (e: WheelEvent) => {
+      if (!e.ctrlKey) return;
+      const scroll = scrollRef.current;
+      if (!scroll || durationRef.current <= 0 || fitPpsRef.current <= 0 || ppsRef.current <= 0)
+        return;
+      e.preventDefault();
+      e.stopPropagation();
+      const rect = scroll.getBoundingClientRect();
+      const nextZoomPercent = getPinchTimelineZoomPercent(
+        e.deltaY,
+        zoomModeRef.current,
+        manualZoomPercentRef.current,
+      );
+      if (nextZoomPercent === manualZoomPercentRef.current && zoomModeRef.current === "manual")
+        return;
+      const nextPps = fitPpsRef.current * (nextZoomPercent / 100);
+      const nextScrollLeft = getTimelineScrollLeftForZoomAnchor({
+        pointerX: e.clientX - rect.left,
+        currentScrollLeft: scroll.scrollLeft,
+        gutter: GUTTER,
+        currentPixelsPerSecond: ppsRef.current,
+        nextPixelsPerSecond: nextPps,
+        duration: durationRef.current,
+      });
+      setZoomMode("manual");
+      setManualZoomPercent(nextZoomPercent);
+      requestAnimationFrame(() => {
+        const maxScrollLeft = Math.max(0, scroll.scrollWidth - scroll.clientWidth);
+        scroll.scrollLeft = Math.min(maxScrollLeft, nextScrollLeft);
+      });
+    },
+    [
+      scrollRef,
+      durationRef,
+      fitPpsRef,
+      ppsRef,
+      zoomModeRef,
+      manualZoomPercentRef,
+      setManualZoomPercent,
+      setZoomMode,
+    ],
+  );
+
+  useEffect(() => {
+    const scroll = scrollRef.current;
+    if (!scroll) return;
+    scroll.addEventListener("wheel", handlePinchWheel, { passive: false, capture: true });
+    return () => {
+      scroll.removeEventListener("wheel", handlePinchWheel, { capture: true });
+    };
+  }, [handlePinchWheel, scrollRef, timelineReady, elementsLength]);
+
+  return { seekFromX, autoScrollDuringDrag, dragScrollRaf };
+}

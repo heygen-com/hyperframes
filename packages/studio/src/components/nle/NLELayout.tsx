@@ -4,7 +4,8 @@ import { useTimelinePlayer, PlayerControls, Timeline, usePlayerStore } from "../
 import type { TimelineElement } from "../../player";
 import type { BlockedTimelineEditIntent } from "../../player/components/timelineEditing";
 import { NLEPreview } from "./NLEPreview";
-import { CompositionBreadcrumb, type CompositionLevel } from "./CompositionBreadcrumb";
+import { CompositionBreadcrumb } from "./CompositionBreadcrumb";
+import { useCompositionStack } from "./useCompositionStack";
 import {
   TIMELINE_TOGGLE_SHORTCUT_LABEL,
   getTimelineToggleTitle,
@@ -101,19 +102,14 @@ export const NLELayout = memo(function NLELayout({
     saveSeekPosition,
   } = useTimelinePlayer();
 
-  // Reset timeline state when the project changes to prevent stale data from a
-  // previous project leaking into the new one.
+  // Reset timeline state when the project changes
   const prevProjectIdRef = useRef(projectId);
   if (prevProjectIdRef.current !== projectId) {
     prevProjectIdRef.current = projectId;
-    // Only reset Zustand state during render (safe — pure state update).
-    // Imperative cleanup (RAF, intervals) happens in resetPlayer's store reset.
     usePlayerStore.getState().reset();
   }
 
-  // Save seek position before the Player component creates a new player
-  // on refreshKey change. The Player handles the actual reload via the
-  // dual-player crossfade; we just need to persist the current time.
+  // Save seek position before refresh
   const prevRefreshKeyRef = useRef(refreshKey);
   useEffect(() => {
     if (refreshKey === prevRefreshKeyRef.current) return;
@@ -121,14 +117,61 @@ export const NLELayout = memo(function NLELayout({
     saveSeekPosition();
   }, [refreshKey, saveSeekPosition]);
 
-  // Wrap onIframeLoad to also notify parent of iframe ref
   const onIframeLoad = useCallback(() => {
     baseOnIframeLoad();
     onIframeRef?.(iframeRef.current);
   }, [baseOnIframeLoad, iframeRef, onIframeRef]);
 
-  // Composition ID → actual file path mapping, built from the raw index.html
-  const [compIdToSrc, setCompIdToSrc] = useState<Map<string, string>>(new Map());
+  const {
+    compositionStack,
+    updateCompositionStack,
+    handleNavigateComposition,
+    handleDrillDown: drillDown,
+    masterSeekRef,
+    compIdToSrc,
+    setCompIdToSrc,
+  } = useCompositionStack({
+    projectId,
+    activeCompositionPath,
+    onCompositionChange,
+  });
+
+  // Wrap handleDrillDown to also scan the iframe DOM for data-composition-src
+  const iframeRef_ = iframeRef;
+  const handleDrillDown = useCallback(
+    (element: TimelineElement) => {
+      if (!element.compositionSrc) return;
+      // Check compIdToSrc map first; then scan iframe DOM; then fall through to drillDown
+      const compId = element.id;
+      let resolvedPath = compIdToSrc.get(compId);
+      if (!resolvedPath) {
+        try {
+          const doc = iframeRef_.current?.contentDocument;
+          if (doc) {
+            const host = doc.querySelector(
+              `[data-composition-id="${compId}"][data-composition-src]`,
+            );
+            if (host) {
+              resolvedPath = host.getAttribute("data-composition-src") || undefined;
+            }
+          }
+        } catch {
+          /* cross-origin */
+        }
+      }
+      // Delegate with the resolved compositionSrc (may be same as original)
+      drillDown({
+        id: compId,
+        compositionSrc: resolvedPath ?? element.compositionSrc,
+      });
+    },
+    [compIdToSrc, drillDown, iframeRef_],
+  );
+
+  // Composition ID → file path map from raw index.html
+  const compIdToSrcRef = useRef(compIdToSrc);
+  compIdToSrcRef.current = compIdToSrc;
+
   useMountEffect(() => {
     fetch(`/api/projects/${projectId}/files/index.html`)
       .then((r) => r.json())
@@ -150,12 +193,6 @@ export const NLELayout = memo(function NLELayout({
   });
 
   // Patch elements with compositionSrc whenever elements or compIdToSrc change.
-  // The runtime strips data-composition-src from the DOM after loading, so elements
-  // arrive without it. This bridges the gap using the map built from raw HTML.
-  // Map keys are composition IDs (e.g. "dark-intro"), while element IDs may be
-  // DOM IDs with suffixes (e.g. "dark-intro-host"), so we try multiple lookups.
-  const compIdToSrcRef = useRef(compIdToSrc);
-  compIdToSrcRef.current = compIdToSrc;
   // eslint-disable-next-line no-restricted-syntax
   useEffect(() => {
     if (compIdToSrc.size === 0) return;
@@ -165,7 +202,6 @@ export const NLELayout = memo(function NLELayout({
       let patched = false;
       const updated = elements.map((el) => {
         if (el.compositionSrc) return el;
-        // Try exact match, then strip common suffixes (-host, -comp, -layer)
         const src = map.get(el.id) ?? map.get(el.id.replace(/-(host|comp|layer)$/, ""));
         if (src) {
           patched = true;
@@ -175,15 +211,12 @@ export const NLELayout = memo(function NLELayout({
       });
       return patched ? updated : null;
     };
-    // Patch current elements immediately
     const patched = patchElements(usePlayerStore.getState().elements);
     if (patched) usePlayerStore.getState().setElements(patched);
-    // Subscribe for future element updates — use a flag to prevent re-entrant patching
     let patching = false;
     return usePlayerStore.subscribe((state, prev) => {
       if (patching) return;
       if (state.elements === prev.elements || state.elements.length === 0) return;
-      // Skip if all elements already have compositionSrc
       if (state.elements.every((el) => el.compositionSrc)) return;
       patching = true;
       const result = patchElements(state.elements);
@@ -191,26 +224,6 @@ export const NLELayout = memo(function NLELayout({
       patching = false;
     });
   }, [compIdToSrc]);
-
-  // Composition drill-down stack
-  const [compositionStack, setCompositionStack] = useState<CompositionLevel[]>([
-    { id: "master", label: "Master", previewUrl: `/api/projects/${projectId}/preview` },
-  ]);
-
-  // Wrap setCompositionStack to auto-notify parent on composition change
-  const onCompositionChangeRef = useRef(onCompositionChange);
-  onCompositionChangeRef.current = onCompositionChange;
-  const updateCompositionStack: typeof setCompositionStack = useCallback((action) => {
-    setCompositionStack((prev) => {
-      const next = typeof action === "function" ? action(prev) : action;
-      const prevId = prev[prev.length - 1]?.id;
-      const nextId = next[next.length - 1]?.id;
-      if (prevId !== nextId) {
-        queueMicrotask(() => onCompositionChangeRef.current?.(nextId === "master" ? null : nextId));
-      }
-      return next;
-    });
-  }, []);
 
   // Resizable timeline height
   const [timelineH, setTimelineH] = useState(DEFAULT_TIMELINE_H);
@@ -226,117 +239,17 @@ export const NLELayout = memo(function NLELayout({
   useEffect(() => {
     onCompositionLoadingChangeParent?.(compositionLoading);
   }, [compositionLoading, onCompositionLoadingChangeParent]);
+
   const isTimelineVisible = timelineVisible ?? true;
   const isDragging = useRef(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Current preview URL — derived from composition stack
   const currentLevel = compositionStack[compositionStack.length - 1];
   const directUrl = compositionStack.length > 1 ? currentLevel.previewUrl : undefined;
 
   useEffect(() => {
     onIframeRef?.(iframeRef.current);
   }, [compositionStack.length, onIframeRef, refreshKey, iframeRef]);
-
-  // Save master seek position before drilling down so we can restore it on back-navigation.
-  // saveSeekPosition() sets pendingSeekRef in useTimelinePlayer which onIframeLoad reads.
-  const masterSeekRef = useRef(0);
-
-  // Drill-down: push a sub-composition onto the stack
-  const iframeRef_ = iframeRef; // stable ref for the callback
-  const handleDrillDown = useCallback(
-    (element: TimelineElement) => {
-      if (!element.compositionSrc) return;
-      // Save current master playback position for back-navigation
-      masterSeekRef.current = usePlayerStore.getState().currentTime;
-      saveSeekPosition();
-      // compositionSrc may be a full URL (from runtime manifest) or a relative path
-      // Extract the element's composition ID from its timeline ID
-      const compId = element.id;
-
-      // 1. Check compIdToSrc map (from index.html)
-      // 2. Scan the current iframe DOM for data-composition-src attribute
-      // 3. Fall back to stripping the compositionSrc to a relative path
-      let resolvedPath = compIdToSrc.get(compId);
-      if (!resolvedPath) {
-        try {
-          const doc = iframeRef_.current?.contentDocument;
-          if (doc) {
-            const host = doc.querySelector(
-              `[data-composition-id="${compId}"][data-composition-src]`,
-            );
-            if (host) {
-              resolvedPath = host.getAttribute("data-composition-src") || undefined;
-            }
-          }
-        } catch {
-          /* cross-origin */
-        }
-      }
-      if (!resolvedPath) {
-        // Strip full URL to relative path if needed
-        const src = element.compositionSrc;
-        const compMatch = src.match(/compositions\/.*\.html/);
-        resolvedPath = compMatch ? compMatch[0] : src;
-      }
-
-      usePlayerStore.getState().setElements([]);
-
-      // Toggle: if already viewing this composition, go back to parent (like Premiere)
-      updateCompositionStack((prev) => {
-        const currentId = prev[prev.length - 1].id;
-        if (currentId === resolvedPath && prev.length > 1) {
-          return prev.slice(0, -1);
-        }
-        // Extract a clean label from the path (strip directories and extension)
-        const label =
-          resolvedPath
-            .split("/")
-            .pop()
-            ?.replace(/\.html$/, "") || resolvedPath;
-        const previewUrl = `/api/projects/${projectId}/preview/comp/${resolvedPath}`;
-        return [...prev, { id: resolvedPath, label, previewUrl }];
-      });
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [projectId, compIdToSrc],
-  );
-
-  // Navigate back to a specific breadcrumb level
-  const handleNavigateComposition = useCallback((index: number) => {
-    // When going back to master (index 0), restore the saved master position
-    if (index === 0 && masterSeekRef.current > 0) {
-      usePlayerStore.getState().setCurrentTime(masterSeekRef.current);
-    }
-    saveSeekPosition();
-    usePlayerStore.getState().setElements([]);
-    updateCompositionStack((prev) => prev.slice(0, index + 1));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Navigate to a composition when activeCompositionPath changes.
-  // Uses useEffect to ensure state updates happen after render commit,
-  // avoiding render-time mutations that React can swallow during batching.
-  // eslint-disable-next-line no-restricted-syntax
-  useEffect(() => {
-    if (activeCompositionPath === "index.html") {
-      usePlayerStore.getState().setElements([]);
-      updateCompositionStack((prev) => (prev.length > 1 ? [prev[0]] : prev));
-    } else if (activeCompositionPath && activeCompositionPath.startsWith("compositions/")) {
-      const label = activeCompositionPath.replace(/^compositions\//, "").replace(/\.html$/, "");
-      const previewUrl = `/api/projects/${projectId}/preview/comp/${activeCompositionPath}`;
-      usePlayerStore.getState().setElements([]);
-      updateCompositionStack((prev) => {
-        if (prev[prev.length - 1]?.id === activeCompositionPath) return prev;
-        return [
-          { id: "master", label: "Master", previewUrl: `/api/projects/${projectId}/preview` },
-          { id: activeCompositionPath, label, previewUrl },
-        ];
-      });
-    } else if (!activeCompositionPath) {
-      usePlayerStore.getState().setElements([]);
-    }
-  }, [activeCompositionPath, projectId, updateCompositionStack]);
 
   // Resize divider handlers
   const handleDividerPointerDown = useCallback(
@@ -380,6 +293,9 @@ export const NLELayout = memo(function NLELayout({
     [compositionStack.length],
   );
 
+  // Suppress TS unused-var warning for masterSeekRef (used inside useCompositionStack)
+  void masterSeekRef;
+
   return (
     <div
       ref={containerRef}
@@ -387,7 +303,7 @@ export const NLELayout = memo(function NLELayout({
       onKeyDown={handleKeyDown}
       tabIndex={-1}
     >
-      {/* Preview + player controls — takes remaining space above timeline */}
+      {/* Preview + player controls */}
       <div className="flex-1 min-h-0 flex flex-col">
         <div className="flex-1 min-h-0 relative">
           <NLEPreview
@@ -402,7 +318,6 @@ export const NLELayout = memo(function NLELayout({
           />
           {previewOverlay}
         </div>
-        {/* Player controls always visible, regardless of timeline state */}
         <div className="bg-neutral-950 border-t border-neutral-800/50 flex-shrink-0">
           {compositionStack.length > 1 && (
             <CompositionBreadcrumb
@@ -427,15 +342,13 @@ export const NLELayout = memo(function NLELayout({
             <div className="h-px w-full bg-white/10 transition-colors group-hover:bg-white/16 group-active:bg-white/22" />
           </div>
 
-          {/* Timeline section — fixed height, resizable */}
+          {/* Timeline section */}
           <div
             className="relative flex flex-col flex-shrink-0"
             style={{ height: timelineH }}
             aria-disabled={timelineDisabled || undefined}
           >
-            {/* Timeline tracks */}
             <div
-              // flex-col: toolbar takes natural height, Timeline fills remainder.
               className="flex flex-col flex-1 min-h-0 overflow-hidden bg-neutral-950"
               onDoubleClick={(e) => {
                 if ((e.target as HTMLElement).closest("[data-clip]")) return;

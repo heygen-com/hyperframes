@@ -1,448 +1,13 @@
-import { defineConfig, type Plugin, type ViteDevServer } from "vite";
+import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
-import {
-  readFileSync,
-  readdirSync,
-  existsSync,
-  writeFileSync,
-  lstatSync,
-  realpathSync,
-} from "node:fs";
-import { isAbsolute, join, relative, resolve } from "node:path";
-import { createHash } from "node:crypto";
-import {
-  type ResolvedProject,
-  type RenderJobState,
-  type StudioApiAdapter,
-} from "@hyperframes/core/studio-api";
-import { createProjectSignature } from "../core/src/studio-api/helpers/projectSignature";
-import { createRetryingModuleLoader, ensureProducerDist } from "./vite.producer";
+import { readFileSync, readdirSync, existsSync, lstatSync, realpathSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { readNodeRequestBody } from "./vite.request-body.js";
-import {
-  createStudioDevRenderBodyScripts,
-  readStudioDevManualEditManifestContent,
-  readStudioDevMotionManifestContent,
-} from "./vite.studioMotion";
-import { seekThumbnailPreview } from "./vite.thumbnail";
+import { createViteAdapter, isPathWithin } from "./vite.adapter";
 
-// ── Shared Puppeteer browser ─────────────────────────────────────────────────
-
-let _browser: import("puppeteer-core").Browser | null = null;
-let _browserLaunchPromise: Promise<import("puppeteer-core").Browser> | null = null;
-
-async function getSharedBrowser(): Promise<import("puppeteer-core").Browser | null> {
-  if (_browser?.connected) return _browser;
-  if (_browserLaunchPromise) return _browserLaunchPromise;
-  _browserLaunchPromise = (async () => {
-    const puppeteer = await import("puppeteer-core");
-    const executablePath = [
-      "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-      "/usr/bin/google-chrome",
-      "/usr/bin/chromium-browser",
-    ].find((p) => existsSync(p));
-    if (!executablePath) return null;
-    _browser = await puppeteer.default.launch({
-      headless: true,
-      executablePath,
-      args: ["--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage"],
-    });
-    _browserLaunchPromise = null;
-    return _browser;
-  })();
-  return _browserLaunchPromise;
-}
-
-// In-flight thumbnail dedup
-const _thumbnailInflight = new Map<string, Promise<Buffer>>();
-const THUMBNAIL_CACHE_VERSION = "v4";
-
-interface ScreenshotClip {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}
-
-async function applyStudioRenderBodyScriptsToThumbnailPage(
-  page: import("puppeteer-core").Page,
-  projectDir: string,
-  activeCompositionPath: string,
-): Promise<void> {
-  const scripts = createStudioDevRenderBodyScripts(projectDir, {
-    activeCompositionPath,
-  });
-  for (const script of scripts) {
-    await page.addScriptTag({ content: script });
-  }
-}
-
-async function reapplyStudioRenderBodyScriptsToThumbnailPage(
-  page: import("puppeteer-core").Page,
-): Promise<void> {
-  await page.evaluate(() => {
-    const runtimeWindow = window as Window & {
-      __hfStudioManualEditsApply?: () => number;
-      __hfStudioMotionApply?: () => number;
-    };
-    if (typeof runtimeWindow.__hfStudioManualEditsApply === "function") {
-      runtimeWindow.__hfStudioManualEditsApply();
-    }
-    if (typeof runtimeWindow.__hfStudioMotionApply === "function") {
-      runtimeWindow.__hfStudioMotionApply();
-    }
-  });
-}
-
-function isPathWithin(parentDir: string, childPath: string): boolean {
-  const childRelativePath = relative(resolve(parentDir), resolve(childPath));
-  return (
-    childRelativePath === "" ||
-    (!childRelativePath.startsWith("..") && !isAbsolute(childRelativePath))
-  );
-}
-
-// ── Vite adapter for the shared studio API ───────────────────────────────────
-
-function createViteAdapter(dataDir: string, server: ViteDevServer): StudioApiAdapter {
-  // Lazy-load the bundler via Vite's SSR module loader
-  let _bundler:
-    | ((dir: string, options?: { runtime?: "inline" | "placeholder" }) => Promise<string>)
-    | null = null;
-  let _producerModuleLoader:
-    | (() => Promise<{
-        createRenderJob: (config: {
-          fps: 24 | 30 | 60;
-          quality: "draft" | "standard" | "high";
-          format: string;
-          renderBodyScripts?: string[];
-          outputResolution?: "landscape" | "portrait" | "landscape-4k" | "portrait-4k";
-        }) => unknown;
-        executeRenderJob: (
-          job: unknown,
-          projectDir: string,
-          outputPath: string,
-          onProgress?: (job: { progress: number; currentStage?: string }) => void,
-        ) => Promise<void>;
-      }>)
-    | null = null;
-  const projectSignatureCache = new Map<string, string>();
-  server.watcher.on("all", (_event, file) => {
-    for (const projectDir of projectSignatureCache.keys()) {
-      if (isPathWithin(projectDir, file)) projectSignatureCache.delete(projectDir);
-    }
-  });
-  const getBundler = async () => {
-    if (!_bundler) {
-      try {
-        const mod = await server.ssrLoadModule("@hyperframes/core/compiler");
-        _bundler = (dir, options) => mod.bundleToSingleHtml(dir, options);
-      } catch (err) {
-        console.warn("[Studio] Failed to load compiler, previews will use raw HTML:", err);
-        _bundler = null as never;
-      }
-    }
-    return _bundler;
-  };
-
-  const getProducerModule = async () => {
-    if (!_producerModuleLoader) {
-      _producerModuleLoader = createRetryingModuleLoader(async () => {
-        const { built } = ensureProducerDist({
-          studioDir: __dirname,
-          env: process.env,
-        });
-        if (built) {
-          console.warn(
-            "[Studio] @hyperframes/producer dist missing; building producer package for local renders...",
-          );
-        }
-        const producerPkg = "@hyperframes/producer";
-        return await import(/* @vite-ignore */ producerPkg);
-      });
-    }
-    return _producerModuleLoader();
-  };
-
-  return {
-    listProjects() {
-      if (!existsSync(dataDir)) return [];
-      const sessionsDir = resolve(dataDir, "../sessions");
-      const sessionMap = new Map<string, { sessionId: string; title: string }>();
-      if (existsSync(sessionsDir)) {
-        for (const file of readdirSync(sessionsDir).filter((f) => f.endsWith(".json"))) {
-          try {
-            const raw = JSON.parse(readFileSync(join(sessionsDir, file), "utf-8"));
-            if (raw.projectId) {
-              sessionMap.set(raw.projectId, {
-                sessionId: file.replace(".json", ""),
-                title: raw.title || "Untitled",
-              });
-            }
-          } catch {
-            /* skip corrupt */
-          }
-        }
-      }
-      return readdirSync(dataDir, { withFileTypes: true })
-        .filter(
-          (d) =>
-            (d.isDirectory() || d.isSymbolicLink()) &&
-            existsSync(join(dataDir, d.name, "index.html")),
-        )
-        .map((d) => {
-          const session = sessionMap.get(d.name);
-          return {
-            id: d.name,
-            dir: join(dataDir, d.name),
-            title: session?.title ?? d.name,
-            sessionId: session?.sessionId,
-          } satisfies ResolvedProject;
-        })
-        .sort((a, b) => (a.title ?? "").localeCompare(b.title ?? ""));
-    },
-
-    resolveProject(id: string) {
-      let projectDir = join(dataDir, id);
-      if (!existsSync(projectDir)) {
-        // Try resolving as session ID
-        const sessionsDir = resolve(dataDir, "../sessions");
-        const sessionFile = join(sessionsDir, `${id}.json`);
-        if (existsSync(sessionFile)) {
-          try {
-            const session = JSON.parse(readFileSync(sessionFile, "utf-8"));
-            if (session.projectId) {
-              projectDir = join(dataDir, session.projectId);
-              if (existsSync(projectDir)) {
-                return { id: session.projectId, dir: projectDir, title: session.title };
-              }
-            }
-          } catch {
-            /* ignore */
-          }
-        }
-        return null;
-      }
-      return { id, dir: projectDir };
-    },
-
-    async bundle(dir: string) {
-      const bundler = await getBundler();
-      if (!bundler) return null;
-      // Studio vite preview: bundler emits an empty `src=""` placeholder so we
-      // can point it at the local /api/runtime.js endpoint. Cached by the browser
-      // across composition hot-reloads instead of being inlined fresh each time.
-      let html = await bundler(dir, { runtime: "placeholder" });
-      html = html.replace(
-        'data-hyperframes-preview-runtime="1" src=""',
-        `data-hyperframes-preview-runtime="1" src="${this.runtimeUrl}"`,
-      );
-      return html;
-    },
-
-    getProjectSignature(projectDir: string): string {
-      const cacheKey = resolve(projectDir);
-      const cached = projectSignatureCache.get(cacheKey);
-      if (cached) return cached;
-
-      const signature = createProjectSignature(cacheKey);
-      projectSignatureCache.set(cacheKey, signature);
-      return signature;
-    },
-
-    async lint(html: string, opts?: { filePath?: string }) {
-      const mod = await server.ssrLoadModule("@hyperframes/core/lint");
-      return mod.lintHyperframeHtml(html, opts);
-    },
-
-    runtimeUrl: "/api/runtime.js",
-
-    rendersDir: () => resolve(dataDir, "../renders"),
-
-    startRender(opts): RenderJobState {
-      const state: RenderJobState = {
-        id: opts.jobId,
-        status: "rendering",
-        progress: 0,
-        outputPath: opts.outputPath,
-      };
-
-      const startTime = Date.now();
-      (async () => {
-        try {
-          // Help the producer find a browser — it checks PRODUCER_HEADLESS_SHELL_PATH
-          // but doesn't search system Chrome paths. Reuse the same discovery as thumbnails.
-          if (!process.env.PRODUCER_HEADLESS_SHELL_PATH) {
-            const systemChrome = [
-              "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-              "/usr/bin/google-chrome",
-              "/usr/bin/chromium-browser",
-            ].find((p) => existsSync(p));
-            if (systemChrome) process.env.PRODUCER_HEADLESS_SHELL_PATH = systemChrome;
-          }
-          const { createRenderJob, executeRenderJob } = await getProducerModule();
-          const renderBodyScripts = createStudioDevRenderBodyScripts(opts.project.dir);
-          const job = createRenderJob({
-            // opts.fps is already an Fps rational — the studio-api route
-            // normalized any wire-format `number | string` into the structured
-            // form before calling this adapter.
-            fps: opts.fps,
-            quality: opts.quality as "draft" | "standard" | "high",
-            format: opts.format,
-            ...(renderBodyScripts.length > 0 ? { renderBodyScripts } : {}),
-            outputResolution: opts.outputResolution,
-          });
-          const onProgress = (j: { progress: number; currentStage?: string }) => {
-            state.progress = j.progress;
-            if (j.currentStage) state.stage = j.currentStage;
-          };
-          await executeRenderJob(job, opts.project.dir, opts.outputPath, onProgress);
-          state.status = "complete";
-          state.progress = 100;
-          const metaPath = opts.outputPath.replace(/\.(mp4|webm|mov)$/, ".meta.json");
-          writeFileSync(
-            metaPath,
-            JSON.stringify({ status: "complete", durationMs: Date.now() - startTime }),
-          );
-        } catch (err) {
-          state.status = "failed";
-          state.error = err instanceof Error ? err.message : String(err);
-          try {
-            const metaPath = opts.outputPath.replace(/\.(mp4|webm|mov)$/, ".meta.json");
-            writeFileSync(metaPath, JSON.stringify({ status: "failed" }));
-          } catch {
-            /* ignore */
-          }
-        }
-      })();
-
-      return state;
-    },
-
-    async generateThumbnail(opts) {
-      const selectorKey = opts.selector
-        ? `_${opts.selector.replace(/[^a-zA-Z0-9_-]+/g, "_").slice(0, 80)}_${opts.selectorIndex ?? 0}`
-        : "";
-      const manualManifestContent = readStudioDevManualEditManifestContent(opts.project.dir);
-      const manualManifestKey = manualManifestContent.trim()
-        ? `_${createHash("sha1").update(manualManifestContent).digest("hex").slice(0, 16)}`
-        : "";
-      const motionManifestContent = readStudioDevMotionManifestContent(opts.project.dir);
-      const motionManifestKey = motionManifestContent.trim()
-        ? `_${createHash("sha1").update(motionManifestContent).digest("hex").slice(0, 16)}`
-        : "";
-      const cacheKey = `${THUMBNAIL_CACHE_VERSION}${manualManifestKey}${motionManifestKey}_${opts.compPath.replace(/\//g, "_")}_${opts.seekTime.toFixed(2)}${selectorKey}.${opts.format === "png" ? "png" : "jpg"}`;
-
-      let bufferPromise = _thumbnailInflight.get(cacheKey);
-      if (!bufferPromise) {
-        bufferPromise = (async () => {
-          const browser = await getSharedBrowser();
-          if (!browser) return null;
-          let page: Awaited<ReturnType<typeof browser.newPage>> | null = null;
-          try {
-            page = await browser.newPage();
-            await page.setViewport({
-              width: opts.width,
-              height: opts.height,
-              deviceScaleFactor: opts.format === "png" ? 1 : 0.5,
-            });
-            await page.goto(opts.previewUrl, { waitUntil: "domcontentloaded", timeout: 10000 });
-            await page.evaluate(() => {
-              document.documentElement.style.background = "#000";
-              document.body.style.background = "#000";
-              document.body.style.margin = "0";
-              document.body.style.overflow = "hidden";
-            });
-            await page
-              .waitForFunction(
-                `!!(window.__timelines && Object.keys(window.__timelines).length > 0)`,
-                { timeout: 5000 },
-              )
-              .catch(() => {});
-            await seekThumbnailPreview(page, opts.seekTime);
-            await applyStudioRenderBodyScriptsToThumbnailPage(
-              page,
-              opts.project.dir,
-              opts.compPath,
-            );
-            await page.evaluate("document.fonts?.ready");
-            await new Promise((r) => setTimeout(r, 200));
-            await reapplyStudioRenderBodyScriptsToThumbnailPage(page);
-            let clip: ScreenshotClip | undefined;
-            if (opts.selector) {
-              clip = await page.evaluate(
-                (selector: string, selectorIndex: number | undefined) => {
-                  const matches = Array.from(document.querySelectorAll(selector)).filter(
-                    (el): el is HTMLElement => el instanceof HTMLElement,
-                  );
-                  const safeIndex = Math.max(
-                    0,
-                    Math.min(matches.length - 1, Math.floor(selectorIndex ?? 0)),
-                  );
-                  const el = matches[safeIndex] ?? null;
-                  if (!(el instanceof HTMLElement)) return undefined;
-                  const rect = el.getBoundingClientRect();
-                  if (rect.width < 4 || rect.height < 4) return undefined;
-                  const pad = 8;
-                  const x = Math.max(0, rect.left - pad);
-                  const y = Math.max(0, rect.top - pad);
-                  const maxWidth = window.innerWidth - x;
-                  const maxHeight = window.innerHeight - y;
-                  return {
-                    x,
-                    y,
-                    width: Math.max(1, Math.min(rect.width + pad * 2, maxWidth)),
-                    height: Math.max(1, Math.min(rect.height + pad * 2, maxHeight)),
-                  };
-                },
-                opts.selector,
-                opts.selectorIndex,
-              );
-            }
-            const buf = await page.screenshot(
-              opts.format === "png"
-                ? {
-                    type: "png",
-                    ...(clip ? { clip } : {}),
-                  }
-                : {
-                    type: "jpeg",
-                    quality: 75,
-                    ...(clip ? { clip } : {}),
-                  },
-            );
-            await page.close();
-            return buf as Buffer;
-          } catch (err) {
-            if (page) await page.close().catch(() => {});
-            console.warn(
-              "[Studio] Thumbnail generation failed:",
-              err instanceof Error ? err.message : err,
-            );
-            return null;
-          }
-        })();
-        _thumbnailInflight.set(cacheKey, bufferPromise);
-        bufferPromise.finally(() => _thumbnailInflight.delete(cacheKey));
-      }
-      return bufferPromise;
-    },
-
-    async resolveSession(sessionId: string) {
-      const sessionsDir = resolve(dataDir, "../sessions");
-      const sessionFile = join(sessionsDir, `${sessionId}.json`);
-      if (!existsSync(sessionFile)) return null;
-      try {
-        const raw = JSON.parse(readFileSync(sessionFile, "utf-8"));
-        if (raw.projectId) return { projectId: raw.projectId, title: raw.title };
-      } catch {
-        /* ignore */
-      }
-      return null;
-    },
-  };
-}
-
-async function loadRuntimeSourceForDev(server: ViteDevServer): Promise<string | null> {
+async function loadRuntimeSourceForDev(
+  server: import("vite").ViteDevServer,
+): Promise<string | null> {
   try {
     const mod = await server.ssrLoadModule(
       resolve(__dirname, "../core/src/inline-scripts/hyperframe.ts"),
@@ -473,7 +38,6 @@ async function bridgeHonoResponse(
     return;
   }
 
-  // Stream the response body (important for SSE)
   const reader = honoResponse.body.getReader();
   try {
     while (true) {
@@ -491,11 +55,11 @@ async function bridgeHonoResponse(
 
 function devProjectApi(): Plugin {
   const dataDir = resolve(__dirname, "data/projects");
+  const runtimePath = resolve(__dirname, "../core/dist/hyperframe.runtime.iife.js");
 
   return {
     name: "studio-dev-api",
     configureServer(server): void {
-      // Load the shared module lazily via SSR (resolves hono + TypeScript)
       let _api: { fetch: (req: Request) => Promise<Response> } | null = null;
       const getApi = async () => {
         if (!_api) {
@@ -506,11 +70,7 @@ function devProjectApi(): Plugin {
         return _api;
       };
 
-      // In dev, prefer the runtime built from source over a checked-in dist
-      // artifact. Otherwise Studio can silently serve a stale runtime bundle
-      // after source edits in packages/core, which makes browser behavior lag
-      // behind the code under test until someone manually rebuilds core/dist.
-      const runtimePath = resolve(__dirname, "../core/dist/hyperframe.runtime.iife.js");
+      // Runtime endpoint — prefer source build over dist artifact
       server.middlewares.use((req, res, next) => {
         if (req.url !== "/api/runtime.js") return next();
         const serve = async () => {
@@ -518,20 +78,17 @@ function devProjectApi(): Plugin {
           if (!runtimeSource && existsSync(runtimePath)) {
             runtimeSource = readFileSync(runtimePath, "utf-8");
           }
-
           if (!runtimeSource) {
             res.writeHead(404);
             res.end("runtime not available — build packages/core or load runtime source");
             return;
           }
-
           res.writeHead(200, {
             "Content-Type": "text/javascript",
             "Cache-Control": "no-store",
           });
           res.end(runtimeSource);
         };
-
         void serve().catch((err) => {
           console.error("[Studio runtime] Failed to serve runtime", err);
           if (!res.headersSent) {
@@ -541,35 +98,27 @@ function devProjectApi(): Plugin {
         });
       });
 
+      // API middleware
       server.middlewares.use(async (req, res, next) => {
         if (!req.url?.startsWith("/api/")) return next();
-
         try {
           const api = await getApi();
-
-          // Build a Fetch Request from the Node IncomingMessage
           const url = new URL(req.url, `http://${req.headers.host}`);
-          // Strip /api prefix — shared module routes are relative
           url.pathname = url.pathname.slice(4);
-
-          // Read body for non-GET/HEAD
           let body: Buffer | undefined;
           if (req.method !== "GET" && req.method !== "HEAD") {
             const bytes = await readNodeRequestBody(req);
             body = bytes.byteLength > 0 ? bytes : undefined;
           }
-
           const headers: Record<string, string> = {};
           for (const [key, value] of Object.entries(req.headers)) {
             if (value != null) headers[key] = Array.isArray(value) ? value.join(", ") : value;
           }
-
           const fetchReq = new Request(url.toString(), {
             method: req.method,
             headers,
             body,
           });
-
           const response = await api.fetch(fetchReq);
           await bridgeHonoResponse(response, res);
         } catch (err) {
@@ -599,7 +148,7 @@ function devProjectApi(): Plugin {
       }
 
       server.watcher.on("change", (filePath: string) => {
-        const isProjectFile = realProjectPaths.some((p) => filePath.startsWith(p));
+        const isProjectFile = realProjectPaths.some((p) => isPathWithin(p, filePath));
         if (
           isProjectFile &&
           (filePath.endsWith(".html") ||

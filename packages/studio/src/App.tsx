@@ -19,6 +19,7 @@ import { useConsoleErrorCapture } from "./hooks/useConsoleErrorCapture";
 import { useFrameCapture } from "./hooks/useFrameCapture";
 import { useLintModal } from "./hooks/useLintModal";
 import { useCompositionDimensions } from "./hooks/useCompositionDimensions";
+import { useToast } from "./hooks/useToast";
 import { buildProjectHash, parseProjectIdFromHash } from "./utils/projectRouting";
 import {
   STUDIO_INSPECTOR_PANELS_ENABLED,
@@ -27,7 +28,6 @@ import {
 import { getStudioMotionForSelection } from "./components/editor/studioMotion";
 import { getTimelineElementKey, isTimelineElementActiveAtTime } from "./utils/timelineInspector";
 import type { DomEditSelection } from "./components/editor/domEditing";
-import type { AppToast } from "./utils/studioHelpers";
 import { AskAgentModal } from "./components/AskAgentModal";
 import { StudioHeader } from "./components/StudioHeader";
 import { StudioLeftSidebar } from "./components/StudioLeftSidebar";
@@ -102,18 +102,7 @@ export function StudioApp() {
 
   const [timelineVisible, setTimelineVisible] = useState(true);
   const toggleTimelineVisibility = useCallback(() => setTimelineVisible((v) => !v), []);
-  const [appToast, setAppToast] = useState<AppToast | null>(null);
-  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const showToast = useCallback((message: string, tone: AppToast["tone"] = "error") => {
-    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-    setAppToast({ message, tone });
-    toastTimerRef.current = setTimeout(() => setAppToast(null), 4000);
-  }, []);
-
-  useMountEffect(() => () => {
-    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-  });
-
+  const { appToast, showToast } = useToast();
   const panelLayout = usePanelLayout();
   const editHistory = usePersistentEditHistory({ projectId });
   const domEditSaveTimestampRef = useRef(0);

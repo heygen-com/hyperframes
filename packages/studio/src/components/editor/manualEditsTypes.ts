@@ -1,0 +1,141 @@
+/* ── Public constants ──────────────────────────────────────────────── */
+export const STUDIO_MANUAL_EDITS_PATH = ".hyperframes/studio-manual-edits.json";
+export const STUDIO_OFFSET_X_PROP = "--hf-studio-offset-x";
+export const STUDIO_OFFSET_Y_PROP = "--hf-studio-offset-y";
+export const STUDIO_WIDTH_PROP = "--hf-studio-width";
+export const STUDIO_HEIGHT_PROP = "--hf-studio-height";
+export const STUDIO_ROTATION_PROP = "--hf-studio-rotation";
+
+/* ── Internal DOM attribute names ─────────────────────────────────── */
+export const STUDIO_PATH_OFFSET_ATTR = "data-hf-studio-path-offset";
+export const STUDIO_MANUAL_EDIT_GESTURE_ATTR = "data-hf-studio-manual-edit-gesture";
+export const STUDIO_BOX_SIZE_ATTR = "data-hf-studio-box-size";
+export const STUDIO_ROTATION_ATTR = "data-hf-studio-rotation";
+export const STUDIO_ORIGINAL_TRANSLATE_ATTR = "data-hf-studio-original-translate";
+export const STUDIO_ORIGINAL_INLINE_TRANSLATE_ATTR = "data-hf-studio-original-inline-translate";
+export const STUDIO_ORIGINAL_WIDTH_ATTR = "data-hf-studio-original-width";
+export const STUDIO_ORIGINAL_HEIGHT_ATTR = "data-hf-studio-original-height";
+export const STUDIO_ORIGINAL_MIN_WIDTH_ATTR = "data-hf-studio-original-min-width";
+export const STUDIO_ORIGINAL_MIN_HEIGHT_ATTR = "data-hf-studio-original-min-height";
+export const STUDIO_ORIGINAL_MAX_WIDTH_ATTR = "data-hf-studio-original-max-width";
+export const STUDIO_ORIGINAL_MAX_HEIGHT_ATTR = "data-hf-studio-original-max-height";
+export const STUDIO_ORIGINAL_FLEX_BASIS_ATTR = "data-hf-studio-original-flex-basis";
+export const STUDIO_ORIGINAL_FLEX_GROW_ATTR = "data-hf-studio-original-flex-grow";
+export const STUDIO_ORIGINAL_FLEX_SHRINK_ATTR = "data-hf-studio-original-flex-shrink";
+export const STUDIO_ORIGINAL_BOX_SIZING_ATTR = "data-hf-studio-original-box-sizing";
+export const STUDIO_ORIGINAL_SCALE_ATTR = "data-hf-studio-original-scale";
+export const STUDIO_ORIGINAL_TRANSFORM_ORIGIN_ATTR = "data-hf-studio-original-transform-origin";
+export const STUDIO_ORIGINAL_DISPLAY_ATTR = "data-hf-studio-original-display";
+export const STUDIO_ORIGINAL_ROTATE_ATTR = "data-hf-studio-original-rotate";
+export const STUDIO_ORIGINAL_INLINE_ROTATE_ATTR = "data-hf-studio-original-inline-rotate";
+export const STUDIO_ORIGINAL_ROTATION_TRANSFORM_ORIGIN_ATTR =
+  "data-hf-studio-original-rotation-transform-origin";
+export const STUDIO_ROTATION_DRAFT_ATTR = "data-hf-studio-rotation-draft";
+export const STUDIO_ORIGINAL_TRANSFORM_DISPLAY_ATTR = "data-hf-studio-original-transform-display";
+
+/* ── Internal window property names ──────────────────────────────── */
+export const STUDIO_MANUAL_EDITS_APPLY_PROP = "__hfStudioManualEditsApply";
+export const STUDIO_MANUAL_EDITS_WRAPPED_PROP = "__hfStudioManualEditsWrapped";
+export const STUDIO_MANUAL_EDITS_PLAYBACK_FRAME_PROP = "__hfStudioManualEditsPlaybackFrame";
+
+export const STUDIO_ROTATION_TRANSFORM_ORIGIN = "center center";
+
+/* ── Edit types ───────────────────────────────────────────────────── */
+export interface StudioManualEditTarget {
+  sourceFile: string;
+  selector?: string;
+  selectorIndex?: number;
+  id?: string;
+}
+
+export interface StudioPathOffsetEdit {
+  kind: "path-offset";
+  target: StudioManualEditTarget;
+  x: number;
+  y: number;
+  updatedAt?: string;
+}
+
+export interface StudioBoxSizeEdit {
+  kind: "box-size";
+  target: StudioManualEditTarget;
+  width: number;
+  height: number;
+  updatedAt?: string;
+}
+
+export interface StudioRotationEdit {
+  kind: "rotation";
+  target: StudioManualEditTarget;
+  angle: number;
+  updatedAt?: string;
+}
+
+export type StudioManualEdit = StudioPathOffsetEdit | StudioBoxSizeEdit | StudioRotationEdit;
+
+export interface StudioManualEditManifest {
+  version: 1;
+  edits: StudioManualEdit[];
+}
+
+export type StudioManualEditSeekWindow = Window & {
+  __hf?: Record<string, unknown>;
+  __player?: Record<string, unknown>;
+  __timeline?: Record<string, unknown>;
+  __timelines?: Record<string, Record<string, unknown>>;
+  __hfStudioManualEditsApply?: () => void;
+  __hfStudioManualEditsPlaybackFrame?: number | null;
+};
+
+/* ── Snapshot types ───────────────────────────────────────────────── */
+export interface StudioBoxSizeSnapshot {
+  width: string;
+  height: string;
+  minWidth: string;
+  minHeight: string;
+  maxWidth: string;
+  maxHeight: string;
+  flexBasis: string;
+  flexGrow: string;
+  flexShrink: string;
+  boxSizing: string;
+  scale: string;
+  transformOrigin: string;
+  display: string;
+  studioWidth: string;
+  studioHeight: string;
+  marker: string | null;
+  originalWidth: string | null;
+  originalHeight: string | null;
+  originalMinWidth: string | null;
+  originalMinHeight: string | null;
+  originalMaxWidth: string | null;
+  originalMaxHeight: string | null;
+  originalFlexBasis: string | null;
+  originalFlexGrow: string | null;
+  originalFlexShrink: string | null;
+  originalBoxSizing: string | null;
+  originalScale: string | null;
+  originalTransformOrigin: string | null;
+  originalDisplay: string | null;
+}
+
+export interface StudioRotationSnapshot {
+  rotate: string;
+  transformOrigin: string;
+  studioRotation: string;
+  marker: string | null;
+  draftMarker: string | null;
+  originalRotate: string | null;
+  originalInlineRotate: string | null;
+  originalTransformOrigin: string | null;
+}
+
+export interface StudioPathOffsetSnapshot {
+  translate: string;
+  x: string;
+  y: string;
+  marker: string | null;
+  originalTranslate: string | null;
+  originalInlineTranslate: string | null;
+}

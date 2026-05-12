@@ -1,0 +1,211 @@
+import { type DomEditSelection, findElementForSelection } from "./domEditing";
+
+export interface OverlayRect {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+  editScaleX: number;
+  editScaleY: number;
+}
+
+export interface GroupOverlayItem {
+  key: string;
+  selection: DomEditSelection;
+  element: HTMLElement;
+  rect: OverlayRect;
+}
+
+export type ResolvedElementRef = {
+  current: { key: string; element: HTMLElement } | null;
+};
+
+export function isElementVisibleForOverlay(el: HTMLElement): boolean {
+  const win = el.ownerDocument.defaultView;
+  if (!win) return true;
+  let current: HTMLElement | null = el;
+  while (current) {
+    const computed = win.getComputedStyle(current);
+    if (computed.display === "none" || computed.visibility === "hidden") return false;
+    const opacity = Number.parseFloat(computed.opacity);
+    if (Number.isFinite(opacity) && opacity <= 0.01) return false;
+    current = current.parentElement;
+  }
+  return true;
+}
+
+function readPositiveDimension(value: string | null): number | null {
+  if (!value) return null;
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function findSourceBoundary(element: HTMLElement): HTMLElement | null {
+  let current: HTMLElement | null = element;
+  while (current) {
+    if (
+      current.hasAttribute("data-composition-file") ||
+      current.hasAttribute("data-composition-src")
+    ) {
+      return current;
+    }
+    current = current.parentElement;
+  }
+  return null;
+}
+
+export function resolveDomEditCoordinateScale(input: {
+  rootScaleX: number;
+  rootScaleY: number;
+  sourceRectWidth?: number;
+  sourceRectHeight?: number;
+  sourceWidth?: number | null;
+  sourceHeight?: number | null;
+}): { scaleX: number; scaleY: number } {
+  const rootScaleX = input.rootScaleX > 0 ? input.rootScaleX : 1;
+  const rootScaleY = input.rootScaleY > 0 ? input.rootScaleY : 1;
+  const sourceScaleX =
+    input.sourceRectWidth && input.sourceRectWidth > 0 && input.sourceWidth && input.sourceWidth > 0
+      ? (input.sourceRectWidth * rootScaleX) / input.sourceWidth
+      : rootScaleX;
+  const sourceScaleY =
+    input.sourceRectHeight &&
+    input.sourceRectHeight > 0 &&
+    input.sourceHeight &&
+    input.sourceHeight > 0
+      ? (input.sourceRectHeight * rootScaleY) / input.sourceHeight
+      : rootScaleY;
+  return {
+    scaleX: sourceScaleX > 0 ? sourceScaleX : rootScaleX,
+    scaleY: sourceScaleY > 0 ? sourceScaleY : rootScaleY,
+  };
+}
+
+export function toOverlayRect(
+  overlayEl: HTMLDivElement,
+  iframe: HTMLIFrameElement,
+  element: HTMLElement,
+): OverlayRect | null {
+  const iframeRect = iframe.getBoundingClientRect();
+  const overlayRect = overlayEl.getBoundingClientRect();
+  const doc = iframe.contentDocument;
+  const root =
+    doc?.querySelector<HTMLElement>("[data-composition-id]") ?? doc?.documentElement ?? null;
+  const rootRect = root?.getBoundingClientRect();
+  const rootWidth = rootRect?.width;
+  const rootHeight = rootRect?.height;
+  if (!rootWidth || !rootHeight) return null;
+
+  const elementRect = element.getBoundingClientRect();
+  const rootScaleX = iframeRect.width / rootWidth;
+  const rootScaleY = iframeRect.height / rootHeight;
+  const sourceBoundary = findSourceBoundary(element);
+  const sourceBoundaryRect = sourceBoundary?.getBoundingClientRect();
+  const editScale = resolveDomEditCoordinateScale({
+    rootScaleX,
+    rootScaleY,
+    sourceRectWidth: sourceBoundaryRect?.width,
+    sourceRectHeight: sourceBoundaryRect?.height,
+    sourceWidth: readPositiveDimension(sourceBoundary?.getAttribute("data-width") ?? null),
+    sourceHeight: readPositiveDimension(sourceBoundary?.getAttribute("data-height") ?? null),
+  });
+
+  return {
+    left: iframeRect.left - overlayRect.left + (elementRect.left - rootRect.left) * rootScaleX,
+    top: iframeRect.top - overlayRect.top + (elementRect.top - rootRect.top) * rootScaleY,
+    width: elementRect.width * rootScaleX,
+    height: elementRect.height * rootScaleY,
+    editScaleX: editScale.scaleX,
+    editScaleY: editScale.scaleY,
+  };
+}
+
+const OVERLAY_RECT_EPSILON_PX = 0.5;
+
+export function rectsEqual(a: OverlayRect | null, b: OverlayRect | null): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return (
+    Math.abs(a.left - b.left) < OVERLAY_RECT_EPSILON_PX &&
+    Math.abs(a.top - b.top) < OVERLAY_RECT_EPSILON_PX &&
+    Math.abs(a.width - b.width) < OVERLAY_RECT_EPSILON_PX &&
+    Math.abs(a.height - b.height) < OVERLAY_RECT_EPSILON_PX &&
+    Math.abs(a.editScaleX - b.editScaleX) < 0.001 &&
+    Math.abs(a.editScaleY - b.editScaleY) < 0.001
+  );
+}
+
+export function groupOverlayItemsEqual(a: GroupOverlayItem[], b: GroupOverlayItem[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  return a.every((item, index) => {
+    const other = b[index];
+    return Boolean(
+      other &&
+      item.key === other.key &&
+      item.element === other.element &&
+      item.selection === other.selection &&
+      rectsEqual(item.rect, other.rect),
+    );
+  });
+}
+
+export function resolveDomEditGroupOverlayRect(rects: OverlayRect[]): OverlayRect | null {
+  const first = rects[0];
+  if (!first) return null;
+
+  let left = first.left;
+  let top = first.top;
+  let right = first.left + first.width;
+  let bottom = first.top + first.height;
+
+  for (const rect of rects.slice(1)) {
+    left = Math.min(left, rect.left);
+    top = Math.min(top, rect.top);
+    right = Math.max(right, rect.left + rect.width);
+    bottom = Math.max(bottom, rect.top + rect.height);
+  }
+
+  return {
+    left,
+    top,
+    width: right - left,
+    height: bottom - top,
+    editScaleX: 1,
+    editScaleY: 1,
+  };
+}
+
+export function filterNestedDomEditGroupItems<T extends { element: HTMLElement }>(items: T[]): T[] {
+  return items.filter(
+    (item) => !items.some((other) => other !== item && other.element.contains(item.element)),
+  );
+}
+
+export function selectionCacheKey(
+  selection: Pick<DomEditSelection, "id" | "selector" | "selectorIndex" | "sourceFile">,
+): string {
+  return [
+    selection.sourceFile ?? "",
+    selection.id ?? "",
+    selection.selector ?? "",
+    selection.selectorIndex ?? "",
+  ].join("|");
+}
+
+export function resolveElementForOverlay(
+  doc: Document,
+  sel: DomEditSelection,
+  activeCompositionPath: string | null,
+  cacheRef: ResolvedElementRef,
+): HTMLElement | null {
+  const key = selectionCacheKey(sel);
+  const cached = cacheRef.current;
+  if (cached?.key === key && cached.element.isConnected && cached.element.ownerDocument === doc) {
+    return cached.element;
+  }
+
+  const next = findElementForSelection(doc, sel, activeCompositionPath);
+  cacheRef.current = next ? { key, element: next } : null;
+  return next;
+}
