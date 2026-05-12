@@ -12,6 +12,7 @@ export type ScheduledSource = {
   compositionStart: number;
   mediaStart: number;
   scheduledAt: number;
+  priorMuted: boolean;
 };
 
 export class WebAudioTransport {
@@ -117,6 +118,7 @@ export class WebAudioTransport {
         sourceNode.start(scheduledAt + delay, mediaStart);
       }
 
+      const priorMuted = el.muted;
       el.muted = true;
 
       const scheduled: ScheduledSource = {
@@ -126,6 +128,7 @@ export class WebAudioTransport {
         compositionStart,
         mediaStart,
         scheduledAt,
+        priorMuted,
       };
       this._activeSources.push(scheduled);
       this._paused = false;
@@ -168,10 +171,7 @@ export class WebAudioTransport {
       } catch {
         // already stopped
       }
-      // Keep the element muted — syncRuntimeMedia will unmute on the next
-      // tick if appropriate. Restoring priorMuted here races with el.play()
-      // in the media sync loop, briefly producing audio from both the HTML
-      // element and the Web Audio buffer on pause/resume transitions.
+      source.el.muted = source.priorMuted;
     }
     this._activeSources = [];
     this._paused = true;
