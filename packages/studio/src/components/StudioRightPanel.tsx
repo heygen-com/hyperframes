@@ -50,6 +50,7 @@ export function StudioRightPanel({
     handleDomStyleCommit,
     handleDomPathOffsetCommit,
     handleDomBoxSizeCommit,
+    handleDomRotationCommit,
     handleDomTextCommit,
     handleDomTextFieldStyleCommit,
     handleDomAddTextField,
@@ -136,6 +137,7 @@ export function StudioRightPanel({
                   onSetStyle={handleDomStyleCommit}
                   onSetManualOffset={handleDomPathOffsetCommit}
                   onSetManualSize={handleDomBoxSizeCommit}
+                  onSetManualRotation={handleDomRotationCommit}
                   onSetText={handleDomTextCommit}
                   onSetTextFieldStyle={handleDomTextFieldStyleCommit}
                   onAddTextField={handleDomAddTextField}
