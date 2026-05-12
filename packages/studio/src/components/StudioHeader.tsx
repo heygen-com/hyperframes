@@ -5,31 +5,45 @@ import {
   STUDIO_MANUAL_EDITING_DISABLED_TITLE,
 } from "./editor/manualEditingAvailability";
 import { getHistoryShortcutLabel } from "../utils/studioHelpers";
-import { useStudioContext } from "../contexts/StudioContext";
-import { usePanelLayoutContext } from "../contexts/PanelLayoutContext";
-import { useDomEditContext } from "../contexts/DomEditContext";
 
 export interface StudioHeaderProps {
+  projectId: string;
+  editHistory: {
+    canUndo: boolean;
+    canRedo: boolean;
+    undoLabel: string | null;
+    redoLabel: string | null;
+  };
+  handleUndo: () => Promise<void>;
+  handleRedo: () => Promise<void>;
   captureFrameHref: string;
   captureFrameFilename: string;
   handleCaptureFrameClick: (event: MouseEvent<HTMLAnchorElement>) => void;
   refreshCaptureFrameTime: () => void;
   inspectorButtonActive: boolean;
   inspectorPanelActive: boolean;
+  rightCollapsed: boolean;
+  setRightCollapsed: (collapsed: boolean) => void;
+  setRightPanelTab: (tab: "design" | "motion" | "renders") => void;
+  clearDomSelection: () => void;
 }
 
 export function StudioHeader({
+  projectId,
+  editHistory,
+  handleUndo,
+  handleRedo,
   captureFrameHref,
   captureFrameFilename,
   handleCaptureFrameClick,
   refreshCaptureFrameTime,
   inspectorButtonActive,
   inspectorPanelActive,
+  rightCollapsed,
+  setRightCollapsed,
+  setRightPanelTab,
+  clearDomSelection,
 }: StudioHeaderProps) {
-  const { projectId, editHistory, handleUndo, handleRedo } = useStudioContext();
-  const { rightCollapsed, setRightCollapsed, setRightPanelTab } = usePanelLayoutContext();
-  const { clearDomSelection } = useDomEditContext();
-
   return (
     <div className="flex items-center justify-between h-10 px-3 bg-neutral-900 border-b border-neutral-800 flex-shrink-0">
       {/* Left: project name */}

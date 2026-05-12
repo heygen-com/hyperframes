@@ -1,87 +1,114 @@
+import type { RefObject } from "react";
 import { PropertyPanel } from "./editor/PropertyPanel";
 import { MotionPanel } from "./editor/MotionPanel";
 import { CaptionPropertyPanel } from "../captions/components/CaptionPropertyPanel";
-import { RenderQueue } from "./renders/RenderQueue";
-import type { RenderJob } from "./renders/useRenderQueue";
+import { RenderQueue, type CompositionDimensions } from "./renders/RenderQueue";
+import type { RightPanelTab } from "../utils/studioHelpers";
+import type { DomEditSelection } from "./editor/domEditing";
 import type { StudioGsapMotion } from "./editor/studioMotion";
+import type { ImportedFontAsset } from "./editor/fontAssets";
+import type { RenderJob, ResolutionPreset } from "./renders/useRenderQueue";
 import {
   STUDIO_INSPECTOR_PANELS_ENABLED,
   STUDIO_MOTION_PANEL_ENABLED,
 } from "./editor/manualEditingAvailability";
-import { useCallback } from "react";
-import { resolveDomEditSelection, type DomEditLayerItem } from "./editor/domEditing";
-import { useStudioContext } from "../contexts/StudioContext";
-import { usePanelLayoutContext } from "../contexts/PanelLayoutContext";
-import { useFileManagerContext } from "../contexts/FileManagerContext";
-import { useDomEditContext } from "../contexts/DomEditContext";
 
 export interface StudioRightPanelProps {
+  rightWidth: number;
+  rightPanelTab: RightPanelTab;
+  setRightPanelTab: (tab: RightPanelTab) => void;
+  handlePanelResizeStart: (side: "left" | "right", e: React.PointerEvent) => void;
+  handlePanelResizeMove: (e: React.PointerEvent) => void;
+  handlePanelResizeEnd: (e: React.PointerEvent) => void;
+  captionEditMode: boolean;
+  previewIframeRef: RefObject<HTMLIFrameElement | null>;
+  // Design panel
+  projectId: string;
+  assets: string[];
+  domEditSelection: DomEditSelection | null;
+  domEditGroupSelections: DomEditSelection[];
+  copiedAgentPrompt: boolean;
+  clearDomSelection: () => void;
+  handleDomStyleCommit: (prop: string, value: string) => void | Promise<void>;
+  handleDomPathOffsetCommit: (element: DomEditSelection, next: { x: number; y: number }) => void;
+  handleDomBoxSizeCommit: (
+    element: DomEditSelection,
+    next: { width: number; height: number },
+  ) => void;
+  handleDomTextCommit: (value: string, fieldKey?: string) => void;
+  handleDomTextFieldStyleCommit: (fieldKey: string, property: string, value: string) => void;
+  handleDomAddTextField: (afterFieldKey?: string) => string | Promise<string | null> | null;
+  handleDomRemoveTextField: (fieldKey: string) => void;
+  handleDomManualEditsReset: (element: DomEditSelection) => void;
+  handleAskAgent: () => void;
+  handleImportFiles: (files: FileList) => Promise<string[]>;
+  fontAssets: ImportedFontAsset[];
+  handleImportFonts: (files: FileList | File[]) => Promise<ImportedFontAsset[]>;
+  // Motion panel
   selectedStudioMotion: StudioGsapMotion | null;
+  handleDomMotionCommit: (
+    element: DomEditSelection,
+    motion: Omit<StudioGsapMotion, "kind" | "target" | "updatedAt">,
+  ) => void;
+  handleDomMotionClear: (element: DomEditSelection) => void;
+  // Design panel active states
   designPanelActive: boolean;
   motionPanelActive: boolean;
+  // Render panel
+  renderQueueJobs: RenderJob[];
+  renderQueueDeleteRender: (jobId: string) => void;
+  renderQueueClearCompleted: () => void;
+  renderQueueStartRender: (options: {
+    fps?: number;
+    quality?: "draft" | "standard" | "high";
+    format?: "mp4" | "webm" | "mov";
+    resolution?: ResolutionPreset | "auto";
+  }) => Promise<void>;
+  renderQueueIsRendering: boolean;
+  compositionDimensions: CompositionDimensions | null;
+  waitForPendingDomEditSaves: () => Promise<void>;
 }
 
 export function StudioRightPanel({
+  rightWidth,
+  rightPanelTab,
+  setRightPanelTab,
+  handlePanelResizeStart,
+  handlePanelResizeMove,
+  handlePanelResizeEnd,
+  captionEditMode,
+  previewIframeRef,
+  projectId,
+  assets,
+  domEditSelection,
+  domEditGroupSelections,
+  copiedAgentPrompt,
+  clearDomSelection,
+  handleDomStyleCommit,
+  handleDomPathOffsetCommit,
+  handleDomBoxSizeCommit,
+  handleDomTextCommit,
+  handleDomTextFieldStyleCommit,
+  handleDomAddTextField,
+  handleDomRemoveTextField,
+  handleDomManualEditsReset,
+  handleAskAgent,
+  handleImportFiles,
+  fontAssets,
+  handleImportFonts,
   selectedStudioMotion,
+  handleDomMotionCommit,
+  handleDomMotionClear,
   designPanelActive,
   motionPanelActive,
+  renderQueueJobs,
+  renderQueueDeleteRender,
+  renderQueueClearCompleted,
+  renderQueueStartRender,
+  renderQueueIsRendering,
+  compositionDimensions,
+  waitForPendingDomEditSaves,
 }: StudioRightPanelProps) {
-  const {
-    rightWidth,
-    rightPanelTab,
-    setRightPanelTab,
-    handlePanelResizeStart,
-    handlePanelResizeMove,
-    handlePanelResizeEnd,
-  } = usePanelLayoutContext();
-
-  const {
-    captionEditMode,
-    previewIframeRef,
-    projectId,
-    activeCompPath,
-    compositionDimensions,
-    waitForPendingDomEditSaves,
-    renderQueue,
-  } = useStudioContext();
-
-  const {
-    domEditSelection,
-    domEditGroupSelections,
-    copiedAgentPrompt,
-    clearDomSelection,
-    handleDomStyleCommit,
-    handleDomPathOffsetCommit,
-    handleDomBoxSizeCommit,
-    handleDomRotationCommit,
-    handleDomTextCommit,
-    handleDomTextFieldStyleCommit,
-    handleDomAddTextField,
-    handleDomRemoveTextField,
-    handleDomManualEditsReset,
-    handleAskAgent,
-    handleDomMotionCommit,
-    handleDomMotionClear,
-    applyDomSelection,
-  } = useDomEditContext();
-
-  const { assets, fontAssets, handleImportFiles, handleImportFonts } = useFileManagerContext();
-
-  const isMasterView = !activeCompPath || activeCompPath === "index.html";
-  const handleSelectLayer = useCallback(
-    (layer: DomEditLayerItem) => {
-      const selection = resolveDomEditSelection(layer.element, {
-        activeCompositionPath: activeCompPath,
-        isMasterView,
-        preferClipAncestor: false,
-      });
-      if (selection) applyDomSelection(selection);
-    },
-    [activeCompPath, isMasterView, applyDomSelection],
-  );
-
-  const renderJobs = renderQueue.jobs as RenderJob[];
-
   return (
     <>
       <div
@@ -139,7 +166,7 @@ export function StudioRightPanel({
                     : "text-neutral-500 hover:bg-neutral-800/70 hover:text-neutral-200"
                 }`}
               >
-                {renderJobs.length > 0 ? `Renders (${renderJobs.length})` : "Renders"}
+                {renderQueueJobs.length > 0 ? `Renders (${renderQueueJobs.length})` : "Renders"}
               </button>
             </div>
             <div className="min-h-0 flex-1">
@@ -154,7 +181,6 @@ export function StudioRightPanel({
                   onSetStyle={handleDomStyleCommit}
                   onSetManualOffset={handleDomPathOffsetCommit}
                   onSetManualSize={handleDomBoxSizeCommit}
-                  onSetManualRotation={handleDomRotationCommit}
                   onSetText={handleDomTextCommit}
                   onSetTextFieldStyle={handleDomTextFieldStyleCommit}
                   onAddTextField={handleDomAddTextField}
@@ -164,8 +190,6 @@ export function StudioRightPanel({
                   onImportAssets={handleImportFiles}
                   fontAssets={fontAssets}
                   onImportFonts={handleImportFonts}
-                  activeCompositionPath={activeCompPath}
-                  onSelectLayer={handleSelectLayer}
                 />
               ) : motionPanelActive ? (
                 <MotionPanel
@@ -177,16 +201,16 @@ export function StudioRightPanel({
                 />
               ) : (
                 <RenderQueue
-                  jobs={renderJobs}
+                  jobs={renderQueueJobs}
                   projectId={projectId}
-                  onDelete={renderQueue.deleteRender}
-                  onClearCompleted={renderQueue.clearCompleted}
+                  onDelete={renderQueueDeleteRender}
+                  onClearCompleted={renderQueueClearCompleted}
                   onStartRender={async (format, quality, resolution, fps) => {
                     await waitForPendingDomEditSaves();
-                    await renderQueue.startRender({ fps, quality, format, resolution });
+                    await renderQueueStartRender({ fps, quality, format, resolution });
                   }}
                   compositionDimensions={compositionDimensions}
-                  isRendering={renderQueue.isRendering}
+                  isRendering={renderQueueIsRendering}
                 />
               )}
             </div>
