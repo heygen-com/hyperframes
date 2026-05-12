@@ -2,6 +2,11 @@ import { memo, useState, useRef, useEffect } from "react";
 import { RenderQueueItem } from "./RenderQueueItem";
 import type { RenderJob, ResolutionPreset } from "./useRenderQueue";
 
+export interface CompositionDimensions {
+  width: number;
+  height: number;
+}
+
 type StartRenderHandler = (
   format: "mp4" | "webm" | "mov",
   quality: "draft" | "standard" | "high",
@@ -209,8 +214,8 @@ function FormatExportButton({
           (feature-flag, etc.), move `rounded-l` to whichever element ends up
           leftmost. */}
       <select
-        value={effectiveScale}
-        onChange={(e) => setScale(e.target.value as RenderScale)}
+        value={resolution}
+        onChange={(e) => setResolution(e.target.value as ResolutionPreset | "auto")}
         disabled={isRendering}
         className="h-5 px-1 text-[10px] rounded-l bg-neutral-800 border border-neutral-700 text-neutral-300 outline-none disabled:opacity-50"
       >
