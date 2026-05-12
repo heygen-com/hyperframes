@@ -157,7 +157,7 @@ export async function renderLottiePreviews(
 <script src="https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.12.2/lottie.min.js"></script>
 <style>*{margin:0;padding:0;background:transparent}#c{width:400px;height:400px}</style>
 </head><body><div id="c"></div></body></html>`,
-          { waitUntil: "networkidle0", timeout: 10000 },
+          { waitUntil: "load", timeout: 10000 },
         );
         // Pass animation data safely via parameterized evaluate (no string interpolation)
         await previewPage.evaluate(
