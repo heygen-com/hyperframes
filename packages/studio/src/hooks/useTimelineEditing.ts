@@ -40,8 +40,7 @@ interface UseTimelineEditingOptions {
   writeProjectFile: (path: string, content: string) => Promise<void>;
   recordEdit: (input: RecordEditInput) => Promise<void>;
   domEditSaveTimestampRef: React.MutableRefObject<number>;
-  previewIframeRef: React.MutableRefObject<HTMLIFrameElement | null>;
-  setRefreshKey: React.Dispatch<React.SetStateAction<number>>;
+  reloadPreview: () => void;
   uploadProjectFiles: (files: Iterable<File>, dir?: string) => Promise<string[]>;
 }
 
@@ -81,8 +80,7 @@ export function useTimelineEditing({
   writeProjectFile,
   recordEdit,
   domEditSaveTimestampRef,
-  previewIframeRef,
-  setRefreshKey,
+  reloadPreview,
   uploadProjectFiles,
 }: UseTimelineEditingOptions) {
   const projectIdRef = useRef(projectId);
@@ -150,11 +148,7 @@ export function useTimelineEditing({
         recordEdit,
       });
 
-      try {
-        previewIframeRef.current?.contentWindow?.location.reload();
-      } catch {
-        setRefreshKey((k) => k + 1);
-      }
+      reloadPreview();
     },
     [
       activeCompPath,
@@ -162,8 +156,7 @@ export function useTimelineEditing({
       timelineElements,
       writeProjectFile,
       domEditSaveTimestampRef,
-      previewIframeRef,
-      setRefreshKey,
+      reloadPreview,
     ],
   );
 
@@ -234,20 +227,9 @@ export function useTimelineEditing({
         recordEdit,
       });
 
-      try {
-        previewIframeRef.current?.contentWindow?.location.reload();
-      } catch {
-        setRefreshKey((k) => k + 1);
-      }
+      reloadPreview();
     },
-    [
-      activeCompPath,
-      recordEdit,
-      writeProjectFile,
-      domEditSaveTimestampRef,
-      previewIframeRef,
-      setRefreshKey,
-    ],
+    [activeCompPath, recordEdit, writeProjectFile, domEditSaveTimestampRef, reloadPreview],
   );
 
   const handleTimelineElementDelete = useCallback(
@@ -320,11 +302,7 @@ export function useTimelineEditing({
             timelineElements.filter((te) => (te.key ?? te.id) !== (element.key ?? element.id)),
           );
         usePlayerStore.getState().setSelectedElementId(null);
-        try {
-          previewIframeRef.current?.contentWindow?.location.reload();
-        } catch {
-          setRefreshKey((k) => k + 1);
-        }
+        reloadPreview();
         showToast(`Deleted ${label}. Use Undo to restore it.`, "info");
       } catch (error) {
         const message = error instanceof Error ? error.message : "Failed to delete timeline clip";
@@ -338,8 +316,7 @@ export function useTimelineEditing({
       timelineElements,
       writeProjectFile,
       domEditSaveTimestampRef,
-      previewIframeRef,
-      setRefreshKey,
+      reloadPreview,
     ],
   );
 
@@ -418,11 +395,7 @@ export function useTimelineEditing({
           recordEdit,
         });
 
-        try {
-          previewIframeRef.current?.contentWindow?.location.reload();
-        } catch {
-          setRefreshKey((k) => k + 1);
-        }
+        reloadPreview();
       } catch (error) {
         const message =
           error instanceof Error ? error.message : "Failed to drop asset onto timeline";
@@ -436,8 +409,7 @@ export function useTimelineEditing({
       timelineElements,
       writeProjectFile,
       domEditSaveTimestampRef,
-      previewIframeRef,
-      setRefreshKey,
+      reloadPreview,
     ],
   );
 
