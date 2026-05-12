@@ -1342,7 +1342,7 @@ export function initSandboxRuntimeModular(): void {
       timeSeconds: state.currentTime,
       playing: state.isPlaying,
       playbackRate: state.playbackRate,
-      outputMuted: state.mediaOutputMuted,
+      outputMuted: state.mediaOutputMuted || webAudio.isActive(),
       userMuted: state.bridgeMuted,
       userVolume: state.bridgeVolume,
       forceSync,

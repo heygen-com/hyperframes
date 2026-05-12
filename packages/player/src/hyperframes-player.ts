@@ -1401,6 +1401,19 @@ class HyperframesPlayer extends HTMLElement {
   private _promoteToParentProxy() {
     if (this._audioOwner === "parent") return;
     this._audioOwner = "parent";
+    // Synchronously mute iframe media to close the race window where a
+    // user gesture could let the runtime's el.play() succeed before the
+    // async bridge mute lands.
+    try {
+      const doc = this.iframe.contentDocument;
+      if (doc) {
+        for (const el of doc.querySelectorAll<HTMLMediaElement>("video, audio")) {
+          el.muted = true;
+        }
+      }
+    } catch {
+      /* cross-origin */
+    }
     // `_sendControl` is async — the iframe won't see the mute for ~one
     // message-loop tick. In that narrow window the runtime's next
     // `syncRuntimeMedia` pass may still try `el.play()` on the iframe

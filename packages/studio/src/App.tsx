@@ -2207,11 +2207,12 @@ export function StudioApp() {
       iframe: HTMLIFrameElement | null = previewIframeRef.current,
       options?: { forceFromDisk?: boolean; readFromDiskFirst?: boolean },
     ) => {
-      const readRevision = studioManualEditRevisionRef.current;
       const readFromDiskFirst = Boolean(options?.forceFromDisk || options?.readFromDiskFirst);
       if (!readFromDiskFirst) {
         applyCurrentStudioManualEditsToPreview(iframe);
+        return;
       }
+      const readRevision = studioManualEditRevisionRef.current;
       let content: string;
       try {
         content = await readOptionalProjectFile(STUDIO_MANUAL_EDITS_PATH);
@@ -2219,30 +2220,18 @@ export function StudioApp() {
         const message =
           error instanceof Error ? error.message : "Failed to read manual edit manifest";
         showToast(message);
-        if (readFromDiskFirst) {
-          applyCurrentStudioManualEditsToPreview(iframe);
-        }
+        applyCurrentStudioManualEditsToPreview(iframe);
         return;
       }
       if (options?.forceFromDisk || readRevision === studioManualEditRevisionRef.current) {
         studioManualEditManifestRef.current = parseStudioManualEditManifest(content);
         if (options?.forceFromDisk) studioManualEditRevisionRef.current += 1;
-        applyCurrentStudioManualEditsToPreview(iframe);
-        return;
       }
-      if (readFromDiskFirst) {
-        applyCurrentStudioManualEditsToPreview(iframe);
-      }
+      applyCurrentStudioManualEditsToPreview(iframe);
     },
     [applyCurrentStudioManualEditsToPreview, readOptionalProjectFile, showToast],
   );
   applyStudioManualEditsToPreviewRef.current = applyStudioManualEditsToPreview;
-
-  const applyStudioManualEditsToPreviewAfterRefresh = useCallback(
-    (iframe: HTMLIFrameElement | null = previewIframeRef.current) =>
-      applyStudioManualEditsToPreview(iframe, { readFromDiskFirst: true }),
-    [applyStudioManualEditsToPreview],
-  );
 
   const applyCurrentStudioMotionToPreview = useCallback(
     (iframe: HTMLIFrameElement | null = previewIframeRef.current) => {
@@ -2282,42 +2271,31 @@ export function StudioApp() {
       iframe: HTMLIFrameElement | null = previewIframeRef.current,
       options?: { forceFromDisk?: boolean; readFromDiskFirst?: boolean },
     ) => {
-      const readRevision = studioMotionRevisionRef.current;
       const readFromDiskFirst = Boolean(options?.forceFromDisk || options?.readFromDiskFirst);
       if (!readFromDiskFirst) {
         applyCurrentStudioMotionToPreview(iframe);
+        return;
       }
+      const readRevision = studioMotionRevisionRef.current;
       let content: string;
       try {
         content = await readOptionalProjectFile(STUDIO_MOTION_PATH);
       } catch (error) {
         const message = error instanceof Error ? error.message : "Failed to read motion manifest";
         showToast(message);
-        if (readFromDiskFirst) {
-          applyCurrentStudioMotionToPreview(iframe);
-        }
+        applyCurrentStudioMotionToPreview(iframe);
         return;
       }
       if (options?.forceFromDisk || readRevision === studioMotionRevisionRef.current) {
         studioMotionManifestRef.current = parseStudioMotionManifest(content);
         if (options?.forceFromDisk) studioMotionRevisionRef.current += 1;
         setStudioMotionRevision((revision) => revision + 1);
-        applyCurrentStudioMotionToPreview(iframe);
-        return;
       }
-      if (readFromDiskFirst) {
-        applyCurrentStudioMotionToPreview(iframe);
-      }
+      applyCurrentStudioMotionToPreview(iframe);
     },
     [applyCurrentStudioMotionToPreview, readOptionalProjectFile, showToast],
   );
   applyStudioMotionToPreviewRef.current = applyStudioMotionToPreview;
-
-  const applyStudioMotionToPreviewAfterRefresh = useCallback(
-    (iframe: HTMLIFrameElement | null = previewIframeRef.current) =>
-      applyStudioMotionToPreview(iframe, { readFromDiskFirst: true }),
-    [applyStudioMotionToPreview],
-  );
 
   const commitStudioManualEditManifestOptimistically = useCallback(
     (
@@ -3558,8 +3536,8 @@ export function StudioApp() {
     attachErrorCapture();
     syncPreviewHistoryHotkey(previewIframe);
     void (async () => {
-      await applyStudioManualEditsToPreviewAfterRefresh(previewIframe);
-      await applyStudioMotionToPreviewAfterRefresh(previewIframe);
+      await applyStudioManualEditsToPreviewRef.current(previewIframe);
+      await applyStudioMotionToPreviewRef.current(previewIframe);
     })();
     syncSelectionFromDocument();
     refreshPreviewDocumentVersion();
@@ -3570,8 +3548,8 @@ export function StudioApp() {
       attachErrorCapture();
       syncPreviewHistoryHotkey(previewIframe);
       void (async () => {
-        await applyStudioManualEditsToPreviewAfterRefresh(previewIframe);
-        await applyStudioMotionToPreviewAfterRefresh(previewIframe);
+        await applyStudioManualEditsToPreviewRef.current(previewIframe);
+        await applyStudioMotionToPreviewRef.current(previewIframe);
       })();
       syncSelectionFromDocument();
       refreshPreviewDocumentVersion();
@@ -3584,8 +3562,6 @@ export function StudioApp() {
   }, [
     activeCompPath,
     applyDomSelection,
-    applyStudioManualEditsToPreviewAfterRefresh,
-    applyStudioMotionToPreviewAfterRefresh,
     buildDomSelectionFromTarget,
     captionEditMode,
     previewIframe,
