@@ -203,8 +203,11 @@ export const NLELayout = memo(function NLELayout({
   const updateCompositionStack: typeof setCompositionStack = useCallback((action) => {
     setCompositionStack((prev) => {
       const next = typeof action === "function" ? action(prev) : action;
-      const id = next[next.length - 1]?.id;
-      queueMicrotask(() => onCompositionChangeRef.current?.(id === "master" ? null : id));
+      const prevId = prev[prev.length - 1]?.id;
+      const nextId = next[next.length - 1]?.id;
+      if (prevId !== nextId) {
+        queueMicrotask(() => onCompositionChangeRef.current?.(nextId === "master" ? null : nextId));
+      }
       return next;
     });
   }, []);

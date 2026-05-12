@@ -108,8 +108,12 @@ export function StudioPreviewArea({
         onCompositionChange={(compPath) => {
           // Sync activeCompPath when user drills down via timeline double-click
           // or navigates back via breadcrumb — keeps sidebar + thumbnails in sync.
-          setActiveCompPath(compPath);
-          refreshPreviewDocumentVersion();
+          // Guard against no-op updates to prevent circular refresh cascades
+          // between activeCompPath → compositionStack → onCompositionChange.
+          if (compPath !== activeCompPath) {
+            setActiveCompPath(compPath);
+            refreshPreviewDocumentVersion();
+          }
         }}
         onIframeRef={handlePreviewIframeRef}
         previewOverlay={
