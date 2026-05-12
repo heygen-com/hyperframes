@@ -150,7 +150,11 @@ export function useTimelineEditing({
         recordEdit,
       });
 
-      setRefreshKey((k) => k + 1);
+      try {
+        previewIframeRef.current?.contentWindow?.location.reload();
+      } catch {
+        setRefreshKey((k) => k + 1);
+      }
     },
     [
       activeCompPath,
@@ -158,6 +162,7 @@ export function useTimelineEditing({
       timelineElements,
       writeProjectFile,
       domEditSaveTimestampRef,
+      previewIframeRef,
       setRefreshKey,
     ],
   );
@@ -229,9 +234,20 @@ export function useTimelineEditing({
         recordEdit,
       });
 
-      setRefreshKey((k) => k + 1);
+      try {
+        previewIframeRef.current?.contentWindow?.location.reload();
+      } catch {
+        setRefreshKey((k) => k + 1);
+      }
     },
-    [activeCompPath, recordEdit, writeProjectFile, domEditSaveTimestampRef, setRefreshKey],
+    [
+      activeCompPath,
+      recordEdit,
+      writeProjectFile,
+      domEditSaveTimestampRef,
+      previewIframeRef,
+      setRefreshKey,
+    ],
   );
 
   const handleTimelineElementDelete = useCallback(
@@ -402,7 +418,11 @@ export function useTimelineEditing({
           recordEdit,
         });
 
-        setRefreshKey((k) => k + 1);
+        try {
+          previewIframeRef.current?.contentWindow?.location.reload();
+        } catch {
+          setRefreshKey((k) => k + 1);
+        }
       } catch (error) {
         const message =
           error instanceof Error ? error.message : "Failed to drop asset onto timeline";
@@ -416,6 +436,7 @@ export function useTimelineEditing({
       timelineElements,
       writeProjectFile,
       domEditSaveTimestampRef,
+      previewIframeRef,
       setRefreshKey,
     ],
   );
