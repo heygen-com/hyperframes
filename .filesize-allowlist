@@ -1,4 +1,0 @@
-# Files temporarily exceeding the 500 LOC limit.
-# Each entry must have a tracking comment explaining why it's here.
-# Remove entries as files are split down.
-packages/studio/src/App.tsx
