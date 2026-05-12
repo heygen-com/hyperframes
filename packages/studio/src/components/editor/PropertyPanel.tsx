@@ -2734,6 +2734,14 @@ export const PropertyPanel = memo(function PropertyPanel({
               onCommit={(next) => commitManualRotation(next.replace("°", ""))}
             />
           </div>
+          <div className="mt-3">
+            <MetricField
+              label="Layer"
+              value={String(parseInt(styles["z-index"] || "auto", 10) || 0)}
+              scrub
+              onCommit={(next) => onSetStyle("z-index", next)}
+            />
+          </div>
         </Section>
 
         {showEditableSections && isFlex && (
