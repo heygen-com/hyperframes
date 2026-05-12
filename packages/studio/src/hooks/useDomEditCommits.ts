@@ -3,7 +3,6 @@ import { usePlayerStore } from "../player";
 import { FONT_EXT } from "../utils/mediaTypes";
 import { applyPatchByTarget } from "../utils/sourcePatcher";
 import { saveProjectFilesWithHistory } from "../utils/studioFileHistory";
-import { confirmElementDelete } from "../utils/studioHelpers";
 import { primaryFontFamilyValue } from "../utils/studioFontHelpers";
 import { getDomEditTargetKey, type DomEditSelection } from "../components/editor/domEditing";
 import {
@@ -346,7 +345,6 @@ export function useDomEditCommits({
       const pid = projectIdRef.current;
       if (!pid) return;
       const label = selection.label || selection.id || selection.selector || selection.tagName;
-      if (!confirmElementDelete(label, "element")) return;
 
       const targetPath = selection.sourceFile || activeCompPath || "index.html";
       try {

@@ -18,7 +18,6 @@ import {
 import { saveProjectFilesWithHistory } from "../utils/studioFileHistory";
 import {
   getTimelineElementLabel,
-  confirmElementDelete,
   collectHtmlIds,
   resolveDroppedAssetDuration,
 } from "../utils/studioHelpers";
@@ -41,6 +40,7 @@ interface UseTimelineEditingOptions {
   writeProjectFile: (path: string, content: string) => Promise<void>;
   recordEdit: (input: RecordEditInput) => Promise<void>;
   domEditSaveTimestampRef: React.MutableRefObject<number>;
+  previewIframeRef: React.MutableRefObject<HTMLIFrameElement | null>;
   setRefreshKey: React.Dispatch<React.SetStateAction<number>>;
   uploadProjectFiles: (files: Iterable<File>, dir?: string) => Promise<string[]>;
 }
@@ -81,6 +81,7 @@ export function useTimelineEditing({
   writeProjectFile,
   recordEdit,
   domEditSaveTimestampRef,
+  previewIframeRef,
   setRefreshKey,
   uploadProjectFiles,
 }: UseTimelineEditingOptions) {
@@ -238,7 +239,6 @@ export function useTimelineEditing({
       const pid = projectIdRef.current;
       if (!pid) throw new Error("No active project");
       const label = getTimelineElementLabel(element);
-      if (!confirmElementDelete(label, "timeline clip")) return;
 
       const targetPath = element.sourceFile || activeCompPath || "index.html";
       try {
@@ -304,7 +304,11 @@ export function useTimelineEditing({
             timelineElements.filter((te) => (te.key ?? te.id) !== (element.key ?? element.id)),
           );
         usePlayerStore.getState().setSelectedElementId(null);
-        setRefreshKey((k) => k + 1);
+        try {
+          previewIframeRef.current?.contentWindow?.location.reload();
+        } catch {
+          setRefreshKey((k) => k + 1);
+        }
         showToast(`Deleted ${label}. Use Undo to restore it.`, "info");
       } catch (error) {
         const message = error instanceof Error ? error.message : "Failed to delete timeline clip";
@@ -318,6 +322,7 @@ export function useTimelineEditing({
       timelineElements,
       writeProjectFile,
       domEditSaveTimestampRef,
+      previewIframeRef,
       setRefreshKey,
     ],
   );
