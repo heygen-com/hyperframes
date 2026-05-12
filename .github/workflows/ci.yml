@@ -314,6 +314,24 @@ jobs:
 
           test -s /tmp/hf-cli-outside/renders/outside.mp4
 
+  filesize:
+    name: File size check
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - name: Check file sizes (max 500 lines)
+        run: |
+          EXIT=0
+          while IFS= read -r f; do
+            lines=$(wc -l < "$f")
+            if [ "$lines" -gt 500 ]; then
+              echo "::error file=$f::$f has $lines lines (max 500)"
+              EXIT=1
+            fi
+          done < <(find packages -path '*/node_modules' -prune -o \( -name '*.ts' -o -name '*.tsx' \) -print | grep -vE '\.(test|spec)\.(ts|tsx)$|\.generated\.')
+          exit $EXIT
+
   semantic-pr-title:
     name: Semantic PR title
     if: github.event_name == 'pull_request'
