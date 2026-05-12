@@ -15,11 +15,46 @@ import {
   clearBrowser,
   CHROME_VERSION,
   CACHE_DIR,
+  isLinuxArm,
 } from "../browser/manager.js";
 import { trackBrowserInstall } from "../telemetry/events.js";
 
 async function runEnsure(): Promise<void> {
   clack.intro(c.bold("hyperframes browser ensure"));
+
+  // ARM64 Linux: Chrome headless shell is not available.
+  // Try to find system Chromium first, then attempt auto-install via apt.
+  if (isLinuxArm()) {
+    const s = clack.spinner();
+    s.start("Linux ARM64 detected — looking for system Chromium...");
+    const existing = await findBrowser();
+    if (existing) {
+      s.stop(c.success("System Chromium found"));
+      console.log();
+      console.log(`   ${c.dim("Source:")}  ${c.bold(existing.source)}`);
+      console.log(`   ${c.dim("Path:")}    ${c.bold(existing.executablePath)}`);
+      console.log();
+      clack.outro(c.success("Ready to render."));
+      return;
+    }
+
+    s.stop(c.warn("No Chromium found — attempting auto-install via apt-get..."));
+    console.log();
+
+    // Delegate to ensureBrowser which handles the full ARM64 install flow.
+    try {
+      const result = await ensureBrowser();
+      console.log();
+      console.log(`   ${c.dim("Source:")}  ${c.bold(result.source)}`);
+      console.log(`   ${c.dim("Path:")}    ${c.bold(result.executablePath)}`);
+      console.log();
+      clack.outro(c.success("Chromium ready. You can now render on ARM64."));
+    } catch (err) {
+      clack.log.error(err instanceof Error ? err.message : String(err));
+      clack.outro(c.warn("Manual setup required (see instructions above)."));
+    }
+    return;
+  }
 
   const s = clack.spinner();
   s.start("Looking for an existing browser...");

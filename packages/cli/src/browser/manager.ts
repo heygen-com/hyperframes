@@ -1,4 +1,4 @@
-import { execSync } from "node:child_process";
+import { execSync, spawnSync } from "node:child_process";
 import { existsSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -112,6 +112,55 @@ export async function findBrowser(): Promise<BrowserResult | undefined> {
 }
 
 /**
+ * On Linux ARM64, attempt to auto-install system Chromium if not found.
+ * This makes `hyperframes render` work out-of-the-box on DGX Spark / GB10 / Jetson.
+ */
+async function ensureLinuxArmBrowser(options?: EnsureBrowserOptions): Promise<BrowserResult> {
+  void options;
+
+  // If already available (env var or system path), use it directly.
+  const existing = await findBrowser();
+  if (existing) return existing;
+
+  // Try auto-installing via apt (common on Ubuntu-based ARM systems).
+  const hasApt = existsSync("/usr/bin/apt-get");
+  if (hasApt) {
+    console.error(
+      "\n🔍 Linux ARM64 detected — Chrome Headless Shell is not available for this platform.",
+    );
+    console.error("📦 Auto-installing system Chromium via apt-get (this only happens once)...\n");
+
+    // Use spawnSync so output streams to the terminal in real time.
+    const result = spawnSync("apt-get", ["install", "-y", "chromium-browser"], {
+      stdio: "inherit",
+      timeout: 120_000,
+    });
+
+    if (result.status === 0) {
+      const afterInstall = await findBrowser();
+      if (afterInstall) {
+        console.error(`\n✅ Chromium installed at ${afterInstall.executablePath}\n`);
+        return afterInstall;
+      }
+    } else {
+      // apt succeeded but binary not found, or apt failed — fall through to helpful error.
+      console.error("\n⚠️  apt-get exited with errors. Trying anyway...\n");
+      const afterAttempt = await findBrowser();
+      if (afterAttempt) return afterAttempt;
+    }
+  }
+
+  // Could not auto-install — give clear manual instructions.
+  throw new Error(
+    `Chrome Headless Shell is not available for Linux ARM64 (DGX Spark, GB10, Jetson).\n\n` +
+      `Install Chromium manually and point hyperframes to it:\n\n` +
+      `  sudo apt-get install -y chromium-browser\n` +
+      `  export HYPERFRAMES_BROWSER_PATH=$(which chromium-browser)\n\n` +
+      `Then re-run your command. The HYPERFRAMES_BROWSER_PATH env var persists for the session.`,
+  );
+}
+
+/**
  * Find or download a browser.
  * Resolution: env var -> cached download -> system Chrome -> auto-download.
  */
@@ -122,6 +171,12 @@ export async function ensureBrowser(options?: EnsureBrowserOptions): Promise<Bro
   const platform = detectBrowserPlatform();
   if (!platform) {
     throw new Error(`Unsupported platform: ${process.platform} ${process.arch}`);
+  }
+
+  // Chrome headless shell has no Linux ARM64 build (e.g. DGX Spark, GB10).
+  // Try to auto-install system Chromium via apt, then find it.
+  if (isLinuxArm()) {
+    return ensureLinuxArmBrowser(options);
   }
 
   const installed = await install({
@@ -145,6 +200,10 @@ export function clearBrowser(): boolean {
   }
   rmSync(CACHE_DIR, { recursive: true, force: true });
   return true;
+}
+
+export function isLinuxArm(): boolean {
+  return detectBrowserPlatform() === "linux_arm";
 }
 
 export { CHROME_VERSION, CACHE_DIR };
