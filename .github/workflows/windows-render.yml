@@ -365,11 +365,9 @@ jobs:
         with:
           node-version: 22
 
-      - name: Disable Windows Defender real-time monitoring for node_modules
+      - name: Disable Windows Defender real-time monitoring
         shell: pwsh
-        run: |
-          Add-MpPreference -ExclusionPath "$env:GITHUB_WORKSPACE\packages\producer\node_modules"
-          Add-MpPreference -ExclusionPath "$env:GITHUB_WORKSPACE\node_modules"
+        run: Set-MpPreference -DisableRealtimeMonitoring $true
 
       - name: Install dependencies
         shell: pwsh
