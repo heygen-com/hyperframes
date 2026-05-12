@@ -3306,8 +3306,8 @@ export function StudioApp() {
     attachErrorCapture();
     syncPreviewHistoryHotkey(previewIframe);
     void (async () => {
-      await applyStudioManualEditsToPreviewRef.current(previewIframe);
-      await applyStudioMotionToPreviewRef.current(previewIframe);
+      await applyStudioManualEditsToPreviewRef.current(previewIframe, { readFromDiskFirst: true });
+      await applyStudioMotionToPreviewRef.current(previewIframe, { readFromDiskFirst: true });
     })();
     syncSelectionFromDocument();
     refreshPreviewDocumentVersion();
@@ -3318,8 +3318,10 @@ export function StudioApp() {
       attachErrorCapture();
       syncPreviewHistoryHotkey(previewIframe);
       void (async () => {
-        await applyStudioManualEditsToPreviewRef.current(previewIframe);
-        await applyStudioMotionToPreviewRef.current(previewIframe);
+        await applyStudioManualEditsToPreviewRef.current(previewIframe, {
+          readFromDiskFirst: true,
+        });
+        await applyStudioMotionToPreviewRef.current(previewIframe, { readFromDiskFirst: true });
       })();
       syncSelectionFromDocument();
       refreshPreviewDocumentVersion();
@@ -4188,6 +4190,7 @@ export function StudioApp() {
                         onSetStyle={handleDomStyleCommit}
                         onSetManualOffset={handleDomPathOffsetCommit}
                         onSetManualSize={handleDomBoxSizeCommit}
+                        onSetManualRotation={handleDomRotationCommit}
                         onSetText={handleDomTextCommit}
                         onSetTextFieldStyle={handleDomTextFieldStyleCommit}
                         onAddTextField={handleDomAddTextField}
