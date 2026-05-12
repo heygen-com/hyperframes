@@ -28,11 +28,6 @@ import {
 } from "./timelineTheme";
 import { getPinchTimelineZoomPercent, getTimelinePixelsPerSecond } from "./timelineZoom";
 import { TIMELINE_ASSET_MIME } from "../../utils/timelineAssetDrop";
-import {
-  canInspectTimelineElement,
-  getTimelineElementKey,
-  isAudioTimelineElement,
-} from "../../utils/timelineInspector";
 
 /* ── Layout ─────────────────────────────────────────────────────── */
 const GUTTER = 32;
@@ -335,12 +330,6 @@ interface TimelineProps {
     intent: BlockedTimelineEditIntent,
   ) => void;
   onSelectElement?: (element: import("../store/playerStore").TimelineElement | null) => void;
-  onInspectElement?: (element: import("../store/playerStore").TimelineElement) => void;
-  inspectedElementId?: string | null;
-  layerChildCounts?: ReadonlyMap<string, number>;
-  thumbnailedElementIds?: ReadonlySet<string>;
-  onToggleElementThumbnail?: (element: import("../store/playerStore").TimelineElement) => void;
-  disabled?: boolean;
   theme?: Partial<TimelineTheme>;
 }
 
@@ -389,12 +378,6 @@ export const Timeline = memo(function Timeline({
   onResizeElement,
   onBlockedEditAttempt,
   onSelectElement,
-  onInspectElement,
-  inspectedElementId,
-  layerChildCounts,
-  thumbnailedElementIds,
-  onToggleElementThumbnail,
-  disabled = false,
   theme: themeOverrides,
 }: TimelineProps = {}) {
   const theme = useMemo(() => ({ ...defaultTimelineTheme, ...themeOverrides }), [themeOverrides]);
@@ -414,8 +397,6 @@ export const Timeline = memo(function Timeline({
   const scrollRef = useRef<HTMLDivElement>(null);
   const [hoveredClip, setHoveredClip] = useState<string | null>(null);
   const isDragging = useRef(false);
-  const disabledRef = useRef(disabled);
-  disabledRef.current = disabled;
   const shiftClickClipRef = useRef<{
     element: TimelineElement;
     anchorX: number;
@@ -500,19 +481,6 @@ export const Timeline = memo(function Timeline({
     roRef.current?.disconnect();
     if (shortcutHintRafRef.current) cancelAnimationFrame(shortcutHintRafRef.current);
   });
-
-  useEffect(() => {
-    if (!disabled) return;
-    stopClipDragAutoScrollRef.current();
-    isDragging.current = false;
-    isRangeSelecting.current = false;
-    blockedClipRef.current = null;
-    setDraggedClip(null);
-    setResizingClip(null);
-    setRangeSelection(null);
-    setShowPopover(false);
-    setIsDragOver(false);
-  }, [disabled]);
 
   // Effective duration: max of store duration and the furthest element end.
   // processTimelineMessage updates elements but not duration, so elements can
@@ -740,7 +708,6 @@ export const Timeline = memo(function Timeline({
 
   const seekFromX = useCallback(
     (clientX: number) => {
-      if (disabledRef.current) return;
       const el = scrollRef.current;
       if (!el || effectiveDuration <= 0) return;
       const rect = el.getBoundingClientRect();
@@ -798,7 +765,6 @@ export const Timeline = memo(function Timeline({
     };
 
     const handleWindowPointerMove = (e: PointerEvent) => {
-      if (disabledRef.current) return;
       const drag = draggedClipRef.current;
       const resize = resizingClipRef.current;
       const blocked = blockedClipRef.current;
@@ -883,7 +849,6 @@ export const Timeline = memo(function Timeline({
 
     const handleWindowPointerUp = () => {
       stopClipDragAutoScrollRef.current();
-      if (disabledRef.current) return;
       const resize = resizingClipRef.current;
       if (resize) {
         resizingClipRef.current = null;
@@ -989,10 +954,6 @@ export const Timeline = memo(function Timeline({
 
   const handlePointerDown = useCallback(
     (e: React.PointerEvent) => {
-      if (disabledRef.current) {
-        e.preventDefault();
-        return;
-      }
       if (e.button !== 0) return;
 
       // Shift+click starts range selection — even on clips
@@ -1024,7 +985,6 @@ export const Timeline = memo(function Timeline({
   );
   const handlePointerMove = useCallback(
     (e: React.PointerEvent) => {
-      if (disabledRef.current) return;
       if (isRangeSelecting.current) {
         const rect = scrollRef.current?.getBoundingClientRect();
         if (rect) {
@@ -1095,7 +1055,6 @@ export const Timeline = memo(function Timeline({
 
   const [isDragOver, setIsDragOver] = useState(false);
   const handleAssetDragOver = useCallback((e: React.DragEvent) => {
-    if (disabledRef.current) return;
     const hasFiles = e.dataTransfer.files.length > 0;
     const hasAsset = Array.from(e.dataTransfer.types).includes(TIMELINE_ASSET_MIME);
     if (!hasFiles && !hasAsset) return;
@@ -1110,7 +1069,6 @@ export const Timeline = memo(function Timeline({
     (e: React.DragEvent) => {
       e.preventDefault();
       setIsDragOver(false);
-      if (disabledRef.current) return;
       if (onFileDrop && e.dataTransfer.files.length > 0) {
         const scroll = scrollRef.current;
         const rect = scroll?.getBoundingClientRect();
@@ -1167,7 +1125,6 @@ export const Timeline = memo(function Timeline({
 
   const handlePinchWheel = useCallback(
     (e: WheelEvent) => {
-      if (disabledRef.current) return;
       if (!e.ctrlKey) return;
       const scroll = scrollRef.current;
       if (!scroll || durationRef.current <= 0 || fitPpsRef.current <= 0 || ppsRef.current <= 0) {
@@ -1223,7 +1180,6 @@ export const Timeline = memo(function Timeline({
         className={`h-full border-t bg-[#0a0a0b] flex flex-col select-none transition-colors duration-150 ${
           isDragOver ? "border-studio-accent/50 bg-studio-accent/[0.03]" : "border-neutral-800/50"
         }`}
-        aria-disabled={disabled || undefined}
         onDragOver={handleAssetDragOver}
         onDragLeave={() => setIsDragOver(false)}
         onDrop={handleAssetDrop}
@@ -1379,13 +1335,8 @@ export const Timeline = memo(function Timeline({
     <div
       ref={setContainerRef}
       aria-label="Timeline"
-      aria-disabled={disabled || undefined}
-      className={`relative border-t select-none h-full overflow-hidden transition-opacity ${
-        disabled
-          ? "cursor-not-allowed opacity-45"
-          : shiftHeld
-            ? "cursor-crosshair"
-            : "cursor-default"
+      className={`relative border-t select-none h-full overflow-hidden ${
+        shiftHeld ? "cursor-crosshair" : "cursor-default"
       }`}
       style={{
         touchAction: "pan-x pan-y",
@@ -1524,14 +1475,6 @@ export const Timeline = memo(function Timeline({
                     const elementKey = el.key ?? el.id;
                     const capabilities = getTimelineEditCapabilities(el);
                     const isSelected = selectedElementId === elementKey;
-                    const canInspectClip = canInspectTimelineElement(el);
-                    const isInspectorActive =
-                      canInspectClip && inspectedElementId === getTimelineElementKey(el);
-                    const childCount = canInspectClip
-                      ? (layerChildCounts?.get(elementKey) ?? 0)
-                      : 0;
-                    const isThumbnailActive = thumbnailedElementIds?.has(elementKey) ?? false;
-                    const thumbnailLabel = isAudioTimelineElement(el) ? "waveform" : "thumbnail";
                     const isComposition = !!el.compositionSrc;
                     const clipKey = `${elementKey}-${i}`;
                     const isHovered = hoveredClip === clipKey;
@@ -1555,32 +1498,8 @@ export const Timeline = memo(function Timeline({
                         theme={theme}
                         trackStyle={clipStyle}
                         isComposition={isComposition}
-                        isInspectorActive={isInspectorActive}
-                        isThumbnailActive={isThumbnailActive}
-                        thumbnailLabel={thumbnailLabel}
-                        childCount={childCount}
                         onHoverStart={() => setHoveredClip(clipKey)}
                         onHoverEnd={() => setHoveredClip(null)}
-                        onInspectorClick={
-                          canInspectClip && onInspectElement
-                            ? (e) => {
-                                e.stopPropagation();
-                                if (suppressClickRef.current) return;
-                                setSelectedElementId(elementKey);
-                                onSelectElement?.(el);
-                                onInspectElement(el);
-                              }
-                            : undefined
-                        }
-                        onThumbnailClick={
-                          onToggleElementThumbnail && canInspectClip
-                            ? (e) => {
-                                e.stopPropagation();
-                                if (suppressClickRef.current) return;
-                                onToggleElementThumbnail(el);
-                              }
-                            : undefined
-                        }
                         onResizeStart={(edge, e) => {
                           if (e.button !== 0 || e.shiftKey || !onResizeElement) return;
                           if (edge === "start" && !capabilities.canTrimStart) return;

@@ -547,18 +547,65 @@ function MetricField({
   value,
   disabled,
   liveCommit,
+  scrub,
   onCommit,
 }: {
   label: string;
   value: string;
   disabled?: boolean;
   liveCommit?: boolean;
+  scrub?: boolean;
   onCommit: (nextValue: string) => void;
 }) {
+  const scrubRef = useRef<{
+    startX: number;
+    startValue: number;
+    pointerId: number;
+  } | null>(null);
+
+  const handleScrubPointerDown = useCallback(
+    (e: React.PointerEvent<HTMLSpanElement>) => {
+      if (disabled || !scrub) return;
+      const parsed = parseFloat(value);
+      if (!Number.isFinite(parsed)) return;
+      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+      scrubRef.current = { startX: e.clientX, startValue: parsed, pointerId: e.pointerId };
+    },
+    [disabled, scrub, value],
+  );
+
+  const handleScrubPointerMove = useCallback(
+    (e: React.PointerEvent<HTMLSpanElement>) => {
+      const state = scrubRef.current;
+      if (!state) return;
+      const delta = e.clientX - state.startX;
+      const next = Math.round(state.startValue + delta);
+      onCommit(String(next));
+    },
+    [onCommit],
+  );
+
+  const handleScrubPointerUp = useCallback(() => {
+    scrubRef.current = null;
+  }, []);
+
+  const scrubProps =
+    scrub && !disabled
+      ? ({
+          className:
+            "flex-shrink-0 text-[11px] font-medium text-neutral-500 cursor-ew-resize select-none",
+          onPointerDown: handleScrubPointerDown,
+          onPointerMove: handleScrubPointerMove,
+          onPointerUp: handleScrubPointerUp,
+        } as const)
+      : ({
+          className: "flex-shrink-0 text-[11px] font-medium text-neutral-500",
+        } as const);
+
   return (
     <div className={FIELD}>
       <div className="flex min-w-0 items-center gap-3">
-        <span className="flex-shrink-0 text-[11px] font-medium text-neutral-500">{label}</span>
+        <span {...scrubProps}>{label}</span>
         <CommitField
           value={value}
           disabled={disabled}
@@ -2309,6 +2356,16 @@ export const PropertyPanel = memo(function PropertyPanel({
     parsePxMetricValue(styles["border-width"] ?? "") ??
     parsePxMetricValue(styles["border-top-width"] ?? "") ??
     0;
+  const hasVisualBackground =
+    (styles.background != null && styles.background !== "none" && styles.background !== "") ||
+    (styles["background-color"] != null &&
+      styles["background-color"] !== "transparent" &&
+      styles["background-color"] !== "rgba(0, 0, 0, 0)" &&
+      styles["background-color"] !== "") ||
+    (styles["background-image"] != null &&
+      styles["background-image"] !== "none" &&
+      styles["background-image"] !== "") ||
+    borderWidthValue > 0;
   const borderStyleValue = styles["border-style"] || styles["border-top-style"] || "none";
   const borderColorValue =
     styles["border-color"] || styles["border-top-color"] || "rgba(255, 255, 255, 0.18)";
@@ -2638,24 +2695,28 @@ export const PropertyPanel = memo(function PropertyPanel({
               label="X"
               value={formatPxMetricValue(manualOffset.x)}
               disabled={manualOffsetEditingDisabled}
+              scrub
               onCommit={(next) => commitManualOffset("x", next)}
             />
             <MetricField
               label="Y"
               value={formatPxMetricValue(manualOffset.y)}
               disabled={manualOffsetEditingDisabled}
+              scrub
               onCommit={(next) => commitManualOffset("y", next)}
             />
             <MetricField
               label="W"
               value={formatPxMetricValue(resolvedWidth)}
               disabled={manualSizeEditingDisabled}
+              scrub
               onCommit={(next) => commitManualSize("width", next)}
             />
             <MetricField
               label="H"
               value={formatPxMetricValue(resolvedHeight)}
               disabled={manualSizeEditingDisabled}
+              scrub
               onCommit={(next) => commitManualSize("height", next)}
             />
           </div>
@@ -2708,18 +2769,20 @@ export const PropertyPanel = memo(function PropertyPanel({
 
         {showEditableSections && (
           <>
-            <Section title="Radius" icon={<Settings size={15} />}>
-              <SliderControl
-                value={radiusValue}
-                min={0}
-                max={Math.max(240, Math.ceil(radiusValue))}
-                step={1}
-                disabled={styleEditingDisabled}
-                displayValue={`${formatNumericValue(radiusValue)}px`}
-                formatDisplayValue={(next) => `${formatNumericValue(next)}px`}
-                onCommit={(next) => onSetStyle("border-radius", `${formatNumericValue(next)}px`)}
-              />
-            </Section>
+            {hasVisualBackground && (
+              <Section title="Radius" icon={<Settings size={15} />}>
+                <SliderControl
+                  value={radiusValue}
+                  min={0}
+                  max={Math.max(240, Math.ceil(radiusValue))}
+                  step={1}
+                  disabled={styleEditingDisabled}
+                  displayValue={`${formatNumericValue(radiusValue)}px`}
+                  formatDisplayValue={(next) => `${formatNumericValue(next)}px`}
+                  onCommit={(next) => onSetStyle("border-radius", `${formatNumericValue(next)}px`)}
+                />
+              </Section>
+            )}
 
             <Section title="Stroke" icon={<Square size={15} />}>
               <div className="space-y-4">

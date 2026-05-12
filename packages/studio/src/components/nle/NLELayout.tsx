@@ -52,9 +52,6 @@ interface NLELayoutProps {
   ) => Promise<void> | void;
   onBlockedEditAttempt?: (element: TimelineElement, intent: BlockedTimelineEditIntent) => void;
   onSelectTimelineElement?: (element: TimelineElement | null) => void;
-  onInspectTimelineElement?: (element: TimelineElement) => void;
-  inspectedTimelineElementId?: string | null;
-  timelineLayerChildCounts?: ReadonlyMap<string, number>;
   /** Exposes the compIdToSrc map for parent components (e.g., useRenderClipContent) */
   onCompIdToSrcChange?: (map: Map<string, string>) => void;
   /** Whether the timeline panel is visible (default: true) */
@@ -91,9 +88,6 @@ export const NLELayout = memo(function NLELayout({
   onResizeElement,
   onBlockedEditAttempt,
   onSelectTimelineElement,
-  onInspectTimelineElement,
-  inspectedTimelineElementId,
-  timelineLayerChildCounts,
   onCompIdToSrcChange,
   timelineVisible,
   onToggleTimeline,
@@ -460,10 +454,6 @@ export const NLELayout = memo(function NLELayout({
                 onResizeElement={onResizeElement}
                 onBlockedEditAttempt={onBlockedEditAttempt}
                 onSelectElement={onSelectTimelineElement}
-                onInspectElement={onInspectTimelineElement}
-                inspectedElementId={inspectedTimelineElementId}
-                layerChildCounts={timelineLayerChildCounts}
-                disabled={timelineDisabled}
               />
             </div>
             {timelineFooter && <div className="flex-shrink-0">{timelineFooter}</div>}

@@ -74,24 +74,19 @@ import {
   DomEditOverlay,
   type DomEditGroupPathOffsetCommit,
 } from "./components/editor/DomEditOverlay";
-import { TimelineLayerPanel } from "./components/editor/TimelineLayerPanel";
 import {
   STUDIO_INSPECTOR_PANELS_ENABLED,
   STUDIO_MANUAL_EDITING_DISABLED_TITLE,
   STUDIO_MOTION_PANEL_ENABLED,
   STUDIO_PREVIEW_MANUAL_EDITING_ENABLED,
   STUDIO_PREVIEW_SELECTION_ENABLED,
-  STUDIO_TIMELINE_LAYER_INSPECTOR_ENABLED,
 } from "./components/editor/manualEditingAvailability";
 import {
   buildDomEditStylePatchOperation,
   buildDomEditTextPatchOperation,
   buildElementAgentPrompt,
-  collectDomEditLayerItems,
-  countDomEditChildLayers,
   findElementForSelection,
   findElementForTimelineElement,
-  getDomEditLayerKey,
   getDomEditTargetKey,
   isLargeRasterDomEditSelection,
   isTextEditableSelection,
@@ -99,7 +94,6 @@ import {
   serializeDomEditTextFields,
   resolveDomEditSelection,
   type DomEditViewport,
-  type DomEditLayerItem,
   type DomEditTextField,
   type DomEditSelection,
   buildDefaultDomEditTextField,
@@ -134,14 +128,7 @@ import {
   upsertStudioGsapMotion,
 } from "./components/editor/studioMotion";
 import { saveProjectFilesWithHistory } from "./utils/studioFileHistory";
-import {
-  canInspectTimelineElement,
-  getTimelineElementKey,
-  getTimelineLayerVisibilityInPreview,
-  isTimelineElementActiveAtTime,
-  isTimelineLayerVisibleInPreview,
-  shouldShowTimelineInspectorBounds,
-} from "./utils/timelineInspector";
+import { getTimelineElementKey, isTimelineElementActiveAtTime } from "./utils/timelineInspector";
 
 interface EditingFile {
   path: string;
@@ -543,105 +530,6 @@ function readPlaybackTime(target: object | null, key: string): number | null {
   }
 }
 
-interface PreviewPlayerCompat {
-  getTime: () => number;
-  renderSeek: (timeSeconds: number) => void;
-}
-
-function getPreviewPlayer(win: Window | null | undefined): PreviewPlayerCompat | null {
-  const player = objectLike(win ? Reflect.get(win, "__player") : null);
-  if (!player) return null;
-  const getTime = Reflect.get(player, "getTime");
-  const renderSeek = Reflect.get(player, "renderSeek");
-  if (typeof getTime !== "function" || typeof renderSeek !== "function") return null;
-  return {
-    getTime: () => {
-      const value = getTime.call(player);
-      return typeof value === "number" && Number.isFinite(value) ? value : 0;
-    },
-    renderSeek: (timeSeconds: number) => {
-      renderSeek.call(player, timeSeconds);
-    },
-  };
-}
-
-function seekStudioPreview(iframe: HTMLIFrameElement | null, timeSeconds: number): boolean {
-  const player = getPreviewPlayer(iframe?.contentWindow);
-  if (!player) return false;
-  const nextTime = Math.max(0, timeSeconds);
-  player.renderSeek(nextTime);
-  usePlayerStore.getState().setCurrentTime(nextTime);
-  liveTime.notify(nextTime);
-  return true;
-}
-
-function parseFiniteSeconds(value: string | null): number | null {
-  if (value == null || value.trim() === "") return null;
-  const parsed = Number.parseFloat(value);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-function resolveLayerVisibleSeekTime(
-  layerElement: HTMLElement,
-  timelineElement: TimelineElement | null,
-  player: PreviewPlayerCompat | null,
-): number | null {
-  if (!timelineElement || !player) return null;
-  const originalTime = player.getTime();
-
-  const clipStart = Math.max(0, timelineElement.start);
-  const clipEnd = Math.max(clipStart, clipStart + Math.max(0, timelineElement.duration));
-  const authoredStart = parseFiniteSeconds(
-    layerElement.getAttribute("data-start") ??
-      layerElement.closest<HTMLElement>("[data-start]")?.getAttribute("data-start") ??
-      null,
-  );
-  const preferredTime =
-    authoredStart == null
-      ? clipStart
-      : Math.min(clipEnd, Math.max(clipStart, clipStart + authoredStart));
-  const candidates = [preferredTime, clipStart];
-  const duration = clipEnd - clipStart;
-  if (duration > 0) {
-    const maxSamples = 24;
-    const frameStep = 1 / 24;
-    const step = Math.max(frameStep, duration / maxSamples);
-    for (let time = clipStart; time <= clipEnd + 0.0001; time += step) {
-      candidates.push(Math.min(clipEnd, time));
-    }
-  }
-  candidates.push(clipEnd);
-
-  let lastTried = preferredTime;
-  let clearestVisibleTime: number | null = null;
-  let clearestVisibleOpacity = 0;
-  let resolvedTime: number | null = null;
-  const seen = new Set<string>();
-  try {
-    for (const candidate of candidates) {
-      const time = Math.min(clipEnd, Math.max(clipStart, candidate));
-      const key = time.toFixed(4);
-      if (seen.has(key)) continue;
-      seen.add(key);
-      lastTried = time;
-      player.renderSeek(time);
-      const visibility = getTimelineLayerVisibilityInPreview(layerElement);
-      if (visibility.visible && visibility.compositeOpacity > clearestVisibleOpacity) {
-        clearestVisibleTime = time;
-        clearestVisibleOpacity = visibility.compositeOpacity;
-      }
-      if (isTimelineLayerVisibleInPreview(layerElement, { minCompositeOpacity: 0.9 })) {
-        resolvedTime = time;
-        break;
-      }
-    }
-  } finally {
-    player.renderSeek(originalTime);
-  }
-
-  return resolvedTime ?? clearestVisibleTime ?? lastTried;
-}
-
 function pauseStudioPreviewPlayback(iframe: HTMLIFrameElement | null): number | null {
   const win = iframe?.contentWindow;
   if (!win) return null;
@@ -901,9 +789,8 @@ export function StudioApp() {
   const [copiedAgentPrompt, setCopiedAgentPrompt] = useState(false);
   const [agentModalOpen, setAgentModalOpen] = useState(false);
   const [previewIframe, setPreviewIframe] = useState<HTMLIFrameElement | null>(null);
-  const [inspectedTimelineElementId, setInspectedTimelineElementId] = useState<string | null>(null);
   const [compositionLoading, setCompositionLoading] = useState(true);
-  const [previewDocumentVersion, setPreviewDocumentVersion] = useState(0);
+  const [, setPreviewDocumentVersion] = useState(0);
   const refreshPreviewDocumentVersion = useCallback(() => {
     setPreviewDocumentVersion((version) => version + 1);
     window.setTimeout(() => setPreviewDocumentVersion((version) => version + 1), 80);
@@ -2626,147 +2513,19 @@ export function StudioApp() {
     [activeCompPath, buildDomSelectionFromTarget, compIdToSrc, isMasterView],
   );
 
-  const inspectedTimelineElement = useMemo(
-    () =>
-      timelineElements.find(
-        (element) => getTimelineElementKey(element) === inspectedTimelineElementId,
-      ) ?? null,
-    [inspectedTimelineElementId, timelineElements],
-  );
-
-  const timelineLayerChildCounts = useMemo(() => {
-    void previewDocumentVersion;
-    const counts = new Map<string, number>();
-    if (!STUDIO_TIMELINE_LAYER_INSPECTOR_ENABLED || !inspectedTimelineElement) return counts;
-
-    const key = getTimelineElementKey(inspectedTimelineElement);
-    if (key) {
-      const selection = buildDomSelectionForTimelineElement(inspectedTimelineElement);
-      const count = countDomEditChildLayers(selection?.element, {
-        activeCompositionPath: activeCompPath,
-        isMasterView,
-      });
-      if (count > 0) counts.set(key, count);
-    }
-
-    return counts;
-  }, [
-    activeCompPath,
-    buildDomSelectionForTimelineElement,
-    inspectedTimelineElement,
-    isMasterView,
-    previewDocumentVersion,
-  ]);
-
-  const inspectedTimelineLayers = useMemo(() => {
-    void previewDocumentVersion;
-    if (!STUDIO_TIMELINE_LAYER_INSPECTOR_ENABLED || !inspectedTimelineElement) return [];
-    const selection = buildDomSelectionForTimelineElement(inspectedTimelineElement);
-    return collectDomEditLayerItems(selection?.element, {
-      activeCompositionPath: activeCompPath,
-      isMasterView,
-    });
-  }, [
-    activeCompPath,
-    buildDomSelectionForTimelineElement,
-    inspectedTimelineElement,
-    isMasterView,
-    previewDocumentVersion,
-  ]);
-
-  const selectedTimelineLayerKey = useMemo(
-    () => (domEditSelection ? getDomEditLayerKey(domEditSelection) : null),
-    [domEditSelection],
-  );
-
   const handleTimelineElementSelect = useCallback(
     (element: TimelineElement | null) => {
       if (!STUDIO_INSPECTOR_PANELS_ENABLED) return;
       if (!element) {
         applyDomSelection(null, { revealPanel: false });
-        setInspectedTimelineElementId(null);
         return;
       }
 
       const selection = buildDomSelectionForTimelineElement(element);
       if (selection) applyDomSelection(selection);
-
-      const key = getTimelineElementKey(element);
-      if (STUDIO_TIMELINE_LAYER_INSPECTOR_ENABLED && key && canInspectTimelineElement(element)) {
-        setInspectedTimelineElementId(key);
-        setLeftCollapsed(false);
-
-        const iframe = previewIframeRef.current;
-        if (!shouldShowTimelineInspectorBounds(currentTime, element)) {
-          seekStudioPreview(iframe, element.start);
-        }
-      } else {
-        setInspectedTimelineElementId(null);
-      }
     },
-    [applyDomSelection, buildDomSelectionForTimelineElement, currentTime],
+    [applyDomSelection, buildDomSelectionForTimelineElement],
   );
-
-  const handleTimelineElementInspect = useCallback(
-    (element: TimelineElement) => {
-      if (!STUDIO_TIMELINE_LAYER_INSPECTOR_ENABLED || !STUDIO_INSPECTOR_PANELS_ENABLED) return;
-      if (!canInspectTimelineElement(element)) {
-        showToast("Audio clips do not have visual layers.", "info");
-        return;
-      }
-
-      const key = getTimelineElementKey(element);
-      if (!key) return;
-      setInspectedTimelineElementId((current) => (current === key ? null : key));
-      setLeftCollapsed(false);
-
-      const iframe = previewIframeRef.current;
-      if (!shouldShowTimelineInspectorBounds(currentTime, element)) {
-        seekStudioPreview(iframe, element.start);
-      }
-
-      const selection = buildDomSelectionForTimelineElement(element);
-      if (selection) applyDomSelection(selection);
-    },
-    [applyDomSelection, buildDomSelectionForTimelineElement, currentTime, showToast],
-  );
-
-  const handleTimelineLayerSelect = useCallback(
-    (layer: DomEditLayerItem) => {
-      if (!STUDIO_INSPECTOR_PANELS_ENABLED) return;
-
-      const iframe = previewIframeRef.current;
-      const player = getPreviewPlayer(iframe?.contentWindow);
-      const visibleTime = resolveLayerVisibleSeekTime(
-        layer.element,
-        inspectedTimelineElement,
-        player,
-      );
-      if (visibleTime != null) {
-        seekStudioPreview(iframe, visibleTime);
-      }
-
-      const selection = buildDomSelectionFromTarget(layer.element, { preferClipAncestor: false });
-      if (!selection) {
-        showToast("Studio could not resolve this nested layer.", "error");
-        return;
-      }
-
-      applyDomSelection(selection);
-      requestAnimationFrame(refreshPreviewDocumentVersion);
-    },
-    [
-      applyDomSelection,
-      buildDomSelectionFromTarget,
-      inspectedTimelineElement,
-      refreshPreviewDocumentVersion,
-      showToast,
-    ],
-  );
-
-  const handleTimelineLayerPanelClose = useCallback(() => {
-    setInspectedTimelineElementId(null);
-  }, []);
 
   const preloadAgentPromptSnippet = useCallback(
     async (selection: DomEditSelection) => {
@@ -4050,19 +3809,6 @@ export function StudioApp() {
       isTimelineElementActiveAtTime(currentTime, selectedTimelineElement));
   const inspectorButtonActive =
     STUDIO_INSPECTOR_PANELS_ENABLED && !rightCollapsed && inspectorPanelActive;
-  const timelineLayerPanel =
-    STUDIO_TIMELINE_LAYER_INSPECTOR_ENABLED &&
-    inspectedTimelineElement &&
-    inspectedTimelineLayers.length > 0 ? (
-      <TimelineLayerPanel
-        clipLabel={getTimelineElementLabel(inspectedTimelineElement)}
-        layers={inspectedTimelineLayers}
-        selectedLayerKey={selectedTimelineLayerKey}
-        onSelectLayer={handleTimelineLayerSelect}
-        onClose={handleTimelineLayerPanelClose}
-      />
-    ) : null;
-
   if (resolving || !projectId) {
     return (
       <div className="h-full w-full bg-neutral-950 flex items-center justify-center">
@@ -4276,7 +4022,6 @@ export function StudioApp() {
             onLint={handleLint}
             linting={linting}
             onToggleCollapse={toggleLeftSidebar}
-            takeoverContent={timelineLayerPanel}
           />
         )}
 
@@ -4308,16 +4053,12 @@ export function StudioApp() {
             onResizeElement={handleTimelineElementResize}
             onBlockedEditAttempt={handleBlockedTimelineEdit}
             onSelectTimelineElement={handleTimelineElementSelect}
-            onInspectTimelineElement={handleTimelineElementInspect}
-            inspectedTimelineElementId={inspectedTimelineElementId}
-            timelineLayerChildCounts={timelineLayerChildCounts}
             onCompIdToSrcChange={setCompIdToSrc}
             onCompositionLoadingChange={setCompositionLoading}
             onCompositionChange={(compPath) => {
               // Sync activeCompPath when user drills down via timeline double-click
               // or navigates back via breadcrumb — keeps sidebar + thumbnails in sync.
               setActiveCompPath(compPath);
-              setInspectedTimelineElementId(null);
               refreshPreviewDocumentVersion();
             }}
             onIframeRef={handlePreviewIframeRef}

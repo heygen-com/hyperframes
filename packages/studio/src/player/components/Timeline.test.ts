@@ -12,8 +12,6 @@ import {
   shouldHandleTimelineDeleteKey,
   shouldAutoScrollTimeline,
 } from "./Timeline";
-import { TIMELINE_CLIP_CONTROL_Z_INDEX } from "./TimelineClip";
-import { COMPOSITION_THUMBNAIL_LABEL_Z_INDEX } from "./CompositionThumbnail";
 import { formatTime } from "../lib/time";
 
 describe("generateTicks", () => {
@@ -163,12 +161,6 @@ describe("shouldAutoScrollTimeline", () => {
 
   it("auto-scrolls in manual mode when horizontal overflow exists", () => {
     expect(shouldAutoScrollTimeline("manual", 1200, 800)).toBe(true);
-  });
-});
-
-describe("timeline clip controls", () => {
-  it("renders layer controls above composition thumbnail chrome", () => {
-    expect(TIMELINE_CLIP_CONTROL_Z_INDEX).toBeGreaterThan(COMPOSITION_THUMBNAIL_LABEL_Z_INDEX);
   });
 });
 
