@@ -19,6 +19,9 @@ export default defineConfig({
   entry: {
     cli: "src/cli.ts",
     pngDecodeBlitWorker: "../producer/src/services/pngDecodeBlitWorker.ts",
+    // hf#677/#732: shader-blend worker. Same `new Worker(<path>)`
+    // bundling rationale as `pngDecodeBlitWorker` above.
+    shaderTransitionWorker: "../producer/src/services/shaderTransitionWorker.ts",
   },
   format: ["esm"],
   outDir: "dist",
@@ -72,6 +75,14 @@ var __dirname = __hf_dirname(__filename);`,
       // `alphaBlit.ts` is import-free (only zlib) so the worker survives
       // the worker_thread loader boundary directly via this TS source.
       "@hyperframes/engine/alpha-blit": resolve(__dirname, "../engine/src/utils/alphaBlit.ts"),
+      // hf#677 follow-up: the shader-blend worker imports from
+      // `@hyperframes/engine/shader-transitions` (subpath export) — a
+      // standalone TS file with zero internal imports that survives the
+      // worker_thread loader boundary.
+      "@hyperframes/engine/shader-transitions": resolve(
+        __dirname,
+        "../engine/src/utils/shaderTransitions.ts",
+      ),
     };
     options.loader = { ...options.loader, ".browser.js": "text" };
   },

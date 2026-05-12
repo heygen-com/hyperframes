@@ -24,6 +24,9 @@ const workspaceAliasPlugin = {
     build.onResolve({ filter: /^@hyperframes\/engine\/alpha-blit$/ }, () => ({
       path: resolve(scriptDir, "../engine/src/utils/alphaBlit.ts"),
     }));
+    build.onResolve({ filter: /^@hyperframes\/engine\/shader-transitions$/ }, () => ({
+      path: resolve(scriptDir, "../engine/src/utils/shaderTransitions.ts"),
+    }));
     build.onResolve({ filter: /^@hyperframes\/core$/ }, () => ({
       path: resolve(scriptDir, "../core/src/index.ts"),
     }));
@@ -73,6 +76,22 @@ await Promise.all([
     sourcemap: true,
     entryPoints: ["src/services/pngDecodeBlitWorker.ts"],
     outfile: "dist/services/pngDecodeBlitWorker.js",
+  }),
+  // Shader-blend worker (hf#677 follow-up). Loaded by
+  // `shaderTransitionWorkerPool.createShaderTransitionWorkerPool` via
+  // `new Worker(<path>)`. Same bundling rationale as the
+  // `pngDecodeBlitWorker` entry above.
+  build({
+    bundle: true,
+    platform: "node",
+    target: "node22",
+    format: "esm",
+    external: ["puppeteer", "esbuild", "postcss"],
+    plugins: [workspaceAliasPlugin],
+    minify: false,
+    sourcemap: true,
+    entryPoints: ["src/services/shaderTransitionWorker.ts"],
+    outfile: "dist/services/shaderTransitionWorker.js",
   }),
 ]);
 
