@@ -1678,13 +1678,6 @@ export function useTimelinePlayer() {
         processTimelineMessageRef.current(data);
         // Fill in composition hosts the manifest missed (element-reference starts)
         enrichMissingCompositionsRef.current();
-        if (data.durationInFrames > 0 && Number.isFinite(data.durationInFrames)) {
-          const fps = 30;
-          const dur = data.durationInFrames / fps;
-          if (dur > 0 && dur < 7200) {
-            usePlayerStore.getState().setDuration(dur);
-          }
-        }
         // If manifest produced 0 elements after filtering, try DOM fallback
         if (usePlayerStore.getState().elements.length === 0) {
           try {
