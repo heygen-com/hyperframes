@@ -9,7 +9,35 @@ import {
   type PatchOperation,
 } from "../utils/sourcePatcher";
 import { saveProjectFilesWithHistory } from "../utils/studioFileHistory";
-import { confirmElementDelete } from "../utils/studioHelpers";
+import {
+  confirmElementDelete,
+  findMatchingTimelineElementId,
+  isImageBackgroundValue,
+  isManualGeometryStyleProperty,
+  normalizeDomEditStyleValue,
+  toProjectAbsolutePath,
+  type AgentModalAnchorPoint,
+  type RightPanelTab,
+} from "../utils/studioHelpers";
+import {
+  primaryFontFamilyValue,
+  injectPreviewGoogleFont,
+  injectPreviewImportedFont,
+  ensureImportedFontFace,
+} from "../utils/studioFontHelpers";
+import {
+  getPreviewLocalPointer,
+  getPreviewTargetFromPointer,
+  buildRasterClickSelectionContext,
+  pauseStudioPreviewPlayback,
+} from "../utils/studioPreviewHelpers";
+import {
+  domEditSelectionsTargetSame,
+  domEditSelectionInGroup,
+  toggleDomEditGroupSelection,
+  replaceDomEditGroupSelection,
+  seedDomEditGroupWithSelection,
+} from "../utils/domEditHelpers";
 import {
   STUDIO_INSPECTOR_PANELS_ENABLED,
   STUDIO_PREVIEW_SELECTION_ENABLED,
@@ -23,11 +51,9 @@ import {
   getDomEditTargetKey,
   isLargeRasterDomEditSelection,
   isTextEditableSelection,
-  resolveVisualDomEditSelectionTarget,
   serializeDomEditTextFields,
   resolveDomEditSelection,
   buildDefaultDomEditTextField,
-  type DomEditViewport,
   type DomEditTextField,
   type DomEditSelection,
 } from "../components/editor/domEditing";
@@ -44,29 +70,11 @@ import {
   type StudioMotionManifest,
   upsertStudioGsapMotion,
 } from "../components/editor/studioMotion";
-import { googleFontStylesheetUrl } from "../components/editor/fontCatalog";
-import {
-  fontFamilyFromAssetPath,
-  importedFontFaceCss,
-  type ImportedFontAsset,
-} from "../components/editor/fontAssets";
+import { fontFamilyFromAssetPath, type ImportedFontAsset } from "../components/editor/fontAssets";
 import type { DomEditGroupPathOffsetCommit } from "../components/editor/DomEditOverlay";
 import type { EditHistoryKind } from "../utils/editHistory";
 
 // ── Types ──
-
-export type RightPanelTab = "design" | "motion" | "renders";
-
-interface AgentModalAnchorPoint {
-  x: number;
-  y: number;
-}
-
-interface PreviewLocalPointer {
-  x: number;
-  y: number;
-  viewport: DomEditViewport;
-}
 
 interface RecordEditInput {
   label: string;
@@ -119,384 +127,6 @@ export interface UseDomEditSessionParams {
   >;
   syncPreviewHistoryHotkey: (iframe: HTMLIFrameElement | null) => void;
   setRefreshKey: React.Dispatch<React.SetStateAction<number>>;
-}
-
-// ── Local helpers ──
-
-const GENERIC_FONT_FAMILIES = new Set([
-  "inherit",
-  "initial",
-  "revert",
-  "revert-layer",
-  "serif",
-  "sans-serif",
-  "monospace",
-  "cursive",
-  "fantasy",
-  "system-ui",
-  "ui-sans-serif",
-  "ui-serif",
-  "ui-monospace",
-  "ui-rounded",
-  "emoji",
-  "math",
-  "fangsong",
-]);
-
-function primaryFontFamilyFromCss(value: string): string {
-  const first = value.split(",")[0] ?? "";
-  return first.trim().replace(/^["']|["']$/g, "");
-}
-
-function injectPreviewGoogleFont(doc: Document, fontFamilyValue: string): void {
-  const family = primaryFontFamilyFromCss(fontFamilyValue);
-  if (!family || GENERIC_FONT_FAMILIES.has(family.toLowerCase())) return;
-
-  const id = `studio-preview-google-font-${family.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
-  if (doc.getElementById(id)) return;
-
-  const link = doc.createElement("link");
-  link.id = id;
-  link.rel = "stylesheet";
-  link.href = googleFontStylesheetUrl(family);
-  doc.head.appendChild(link);
-}
-
-function primaryFontFamilyValue(value: string): string {
-  return (
-    value
-      .split(",")[0]
-      ?.trim()
-      .replace(/^["']|["']$/g, "")
-      .trim() ?? ""
-  );
-}
-
-function injectPreviewImportedFont(doc: Document, asset: ImportedFontAsset): void {
-  const id = `studio-imported-font-${asset.family.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
-  if (doc.getElementById(id)) return;
-  const style = doc.createElement("style");
-  style.id = id;
-  style.textContent = importedFontFaceCss(asset);
-  doc.head.appendChild(style);
-}
-
-function normalizeProjectAssetPath(value: string): string {
-  const trimmed = value.trim();
-  const maybeUrl = /^[a-z]+:\/\//i.test(trimmed) ? new URL(trimmed).pathname : trimmed;
-  return decodeURIComponent(maybeUrl)
-    .replace(/\\/g, "/")
-    .replace(/^\.?\//, "");
-}
-
-function toRelativeProjectAssetPath(sourceFile: string, assetPath: string): string {
-  const fromParts = normalizeProjectAssetPath(sourceFile).split("/").filter(Boolean);
-  const targetParts = normalizeProjectAssetPath(assetPath).split("/").filter(Boolean);
-
-  fromParts.pop();
-
-  while (fromParts.length > 0 && targetParts.length > 0 && fromParts[0] === targetParts[0]) {
-    fromParts.shift();
-    targetParts.shift();
-  }
-
-  return [...fromParts.map(() => ".."), ...targetParts].join("/") || assetPath;
-}
-
-function isAbsoluteFilePath(value: string): boolean {
-  return /^(?:\/|[A-Za-z]:[\\/]|\\\\)/.test(value);
-}
-
-function toProjectAbsolutePath(projectDir: string | null, sourceFile: string): string | undefined {
-  const trimmedSource = sourceFile.trim();
-  if (!trimmedSource) return undefined;
-
-  const normalizedSource = trimmedSource.replace(/\\/g, "/");
-  if (isAbsoluteFilePath(normalizedSource)) return normalizedSource;
-
-  const normalizedRoot = projectDir?.trim().replace(/\\/g, "/").replace(/\/+$/, "");
-  if (!normalizedRoot) return undefined;
-
-  return `${normalizedRoot}/${normalizedSource.replace(/^\.?\//, "")}`;
-}
-
-function ensureImportedFontFace(
-  html: string,
-  asset: ImportedFontAsset,
-  sourceFile: string,
-): string {
-  const css = importedFontFaceCss(asset, toRelativeProjectAssetPath(sourceFile, asset.path));
-  if (html.includes(css)) return html;
-
-  const styleRe = /<style\b[^>]*data-hf-studio-fonts=(["'])true\1[^>]*>([\s\S]*?)<\/style>/i;
-  const styleMatch = styleRe.exec(html);
-  if (styleMatch) {
-    const nextCss = `${styleMatch[2].trim()}\n${css}`.trim();
-    return html.replace(styleMatch[0], `<style data-hf-studio-fonts="true">\n${nextCss}\n</style>`);
-  }
-
-  const styleTag = `<style data-hf-studio-fonts="true">\n${css}\n</style>`;
-  if (/<\/head>/i.test(html)) {
-    return html.replace(/<\/head>/i, `  ${styleTag}\n  </head>`);
-  }
-  return `${styleTag}\n${html}`;
-}
-
-function normalizeDomEditStyleValue(property: string, value: string): string {
-  const trimmed = value.trim();
-  if (!trimmed) return trimmed;
-
-  if (
-    ["border-radius", "border-width", "font-size", "letter-spacing"].includes(property) &&
-    /^-?\d+(\.\d+)?$/.test(trimmed)
-  ) {
-    return `${trimmed}px`;
-  }
-
-  return trimmed;
-}
-
-function isImageBackgroundValue(value: string): boolean {
-  return /^url\(/i.test(value.trim());
-}
-
-function isManualGeometryStyleProperty(property: string): boolean {
-  return property === "left" || property === "top" || property === "width" || property === "height";
-}
-
-function resolvePreviewLocalPointer(
-  iframe: HTMLIFrameElement,
-  doc: Document,
-  win: Window,
-  clientX: number,
-  clientY: number,
-): PreviewLocalPointer | null {
-  const iframeRect = iframe.getBoundingClientRect();
-  const root =
-    doc.querySelector<HTMLElement>("[data-composition-id]") ?? doc.documentElement ?? null;
-  const rootRect = root?.getBoundingClientRect();
-  const rootWidth = rootRect?.width || win.innerWidth;
-  const rootHeight = rootRect?.height || win.innerHeight;
-  if (!rootWidth || !rootHeight) return null;
-
-  const scaleX = iframeRect.width / rootWidth;
-  const scaleY = iframeRect.height / rootHeight;
-  return {
-    x: (clientX - iframeRect.left) / scaleX,
-    y: (clientY - iframeRect.top) / scaleY,
-    viewport: { width: rootWidth, height: rootHeight },
-  };
-}
-
-function getPreviewLocalPointer(
-  iframe: HTMLIFrameElement,
-  clientX: number,
-  clientY: number,
-): PreviewLocalPointer | null {
-  let doc: Document | null = null;
-  let win: Window | null = null;
-  try {
-    doc = iframe.contentDocument;
-    win = iframe.contentWindow;
-  } catch {
-    return null;
-  }
-  if (!doc || !win) return null;
-
-  return resolvePreviewLocalPointer(iframe, doc, win, clientX, clientY);
-}
-
-function getPreviewTargetFromPointer(
-  iframe: HTMLIFrameElement,
-  clientX: number,
-  clientY: number,
-  activeCompositionPath: string | null,
-): HTMLElement | null {
-  let doc: Document | null = null;
-  let win: Window | null = null;
-  try {
-    doc = iframe.contentDocument;
-    win = iframe.contentWindow;
-  } catch {
-    return null;
-  }
-  if (!doc || !win) return null;
-
-  const localPointer = resolvePreviewLocalPointer(iframe, doc, win, clientX, clientY);
-  if (!localPointer) return null;
-
-  if (typeof doc.elementsFromPoint === "function") {
-    const visualTarget = resolveVisualDomEditSelectionTarget(
-      doc.elementsFromPoint(localPointer.x, localPointer.y),
-      {
-        activeCompositionPath,
-      },
-    );
-    if (visualTarget) return visualTarget;
-  }
-
-  const target = doc.elementFromPoint(localPointer.x, localPointer.y);
-  if (!target || typeof target !== "object") return null;
-  const maybeNode = target as { nodeType?: number; parentElement?: Element | null };
-  if (maybeNode.nodeType === 1) return target as HTMLElement;
-  if (maybeNode.nodeType === 3 && maybeNode.parentElement) {
-    return maybeNode.parentElement as HTMLElement;
-  }
-  return null;
-}
-
-function buildRasterClickSelectionContext(
-  selection: DomEditSelection,
-  localPointer: PreviewLocalPointer,
-): string {
-  return [
-    "The user clicked a large raster/background element in the Studio preview.",
-    `Preview click: x=${Math.round(localPointer.x)}px, y=${Math.round(localPointer.y)}px in a ${Math.round(
-      localPointer.viewport.width,
-    )}x${Math.round(localPointer.viewport.height)} composition.`,
-    `Selected target: <${selection.tagName}> ${selection.selector ?? selection.id ?? selection.label}.`,
-    "Visible copy or artwork at that point may be baked into the selected image/background rather than a selectable DOM text layer.",
-    "If the request mentions text seen at the click location, inspect or replace the image asset, or recreate that visible copy as editable DOM.",
-  ].join("\n");
-}
-
-function domEditSelectionsTargetSame(
-  a: DomEditSelection | null,
-  b: DomEditSelection | null,
-): boolean {
-  if (a === b) return true;
-  if (!a || !b) return false;
-  return getDomEditTargetKey(a) === getDomEditTargetKey(b);
-}
-
-function domEditSelectionInGroup(
-  group: DomEditSelection[],
-  selection: DomEditSelection | null,
-): boolean {
-  if (!selection) return false;
-  return group.some((entry) => domEditSelectionsTargetSame(entry, selection));
-}
-
-function toggleDomEditGroupSelection(
-  group: DomEditSelection[],
-  selection: DomEditSelection,
-): DomEditSelection[] {
-  if (domEditSelectionInGroup(group, selection)) {
-    return group.filter((entry) => !domEditSelectionsTargetSame(entry, selection));
-  }
-  return [...group, selection];
-}
-
-function replaceDomEditGroupSelection(
-  group: DomEditSelection[],
-  selection: DomEditSelection,
-): DomEditSelection[] {
-  let replaced = false;
-  const nextGroup = group.map((entry) => {
-    if (!domEditSelectionsTargetSame(entry, selection)) return entry;
-    replaced = true;
-    return selection;
-  });
-  return replaced ? nextGroup : [...group, selection];
-}
-
-function seedDomEditGroupWithSelection(
-  group: DomEditSelection[],
-  selection: DomEditSelection | null,
-): DomEditSelection[] {
-  if (!selection || domEditSelectionInGroup(group, selection)) return group;
-  return [selection, ...group];
-}
-
-function findMatchingTimelineElementId(
-  selection: Pick<
-    DomEditSelection,
-    "id" | "selector" | "selectorIndex" | "sourceFile" | "compositionSrc" | "isCompositionHost"
-  >,
-  elements: TimelineElement[],
-): string | null {
-  const selectionSourceFile = selection.sourceFile || "index.html";
-  for (const element of elements) {
-    const elementSourceFile = element.sourceFile || "index.html";
-    if (
-      selection.id &&
-      element.domId === selection.id &&
-      elementSourceFile === selectionSourceFile
-    ) {
-      return element.key ?? element.id;
-    }
-    if (
-      selection.isCompositionHost &&
-      selection.compositionSrc &&
-      element.compositionSrc === selection.compositionSrc
-    ) {
-      return element.key ?? element.id;
-    }
-    if (
-      selection.selector &&
-      element.selector === selection.selector &&
-      (element.selectorIndex ?? 0) === (selection.selectorIndex ?? 0) &&
-      (element.sourceFile ?? "index.html") === selection.sourceFile
-    ) {
-      return element.key ?? element.id;
-    }
-  }
-
-  return null;
-}
-
-function objectLike(value: unknown): object | null {
-  return value && (typeof value === "object" || typeof value === "function") ? value : null;
-}
-
-function callPlaybackMethod(target: object | null, key: string): void {
-  const method = target ? Reflect.get(target, key) : null;
-  if (typeof method !== "function") return;
-  try {
-    method.call(target);
-  } catch {
-    // Best-effort playback freeze; drag should still work if playback control is unavailable.
-  }
-}
-
-function readPlaybackTime(target: object | null, key: string): number | null {
-  const method = target ? Reflect.get(target, key) : null;
-  if (typeof method !== "function") return null;
-  try {
-    const value = method.call(target);
-    return typeof value === "number" && Number.isFinite(value) ? value : null;
-  } catch {
-    return null;
-  }
-}
-
-function pauseStudioPreviewPlayback(iframe: HTMLIFrameElement | null): number | null {
-  const win = iframe?.contentWindow;
-  if (!win) return null;
-
-  try {
-    let pausedTime: number | null = null;
-    const player = objectLike(Reflect.get(win, "__player"));
-    pausedTime = readPlaybackTime(player, "getTime") ?? pausedTime;
-    callPlaybackMethod(player, "pause");
-
-    const timeline = objectLike(Reflect.get(win, "__timeline"));
-    pausedTime = pausedTime ?? readPlaybackTime(timeline, "time");
-    callPlaybackMethod(timeline, "pause");
-
-    const timelines = objectLike(Reflect.get(win, "__timelines"));
-    if (timelines) {
-      for (const value of Object.values(timelines)) {
-        const timelineRecord = objectLike(value);
-        pausedTime = pausedTime ?? readPlaybackTime(timelineRecord, "time");
-        callPlaybackMethod(timelineRecord, "pause");
-      }
-    }
-
-    return pausedTime;
-  } catch {
-    return null;
-  }
 }
 
 // ── Hook ──
