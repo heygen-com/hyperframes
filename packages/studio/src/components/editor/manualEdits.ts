@@ -653,10 +653,33 @@ function styleMatchesStudioRotationDraft(element: HTMLElement, value: string): b
   );
 }
 
+const STUDIO_ORIGINAL_TRANSFORM_DISPLAY_ATTR = "data-hf-studio-original-transform-display";
+
+function promoteInlineForTransform(element: HTMLElement): void {
+  const computedDisplay = safeComputedStyleProperty(element, "display");
+  if (computedDisplay !== "inline") return;
+  if (!element.hasAttribute(STUDIO_ORIGINAL_TRANSFORM_DISPLAY_ATTR)) {
+    element.setAttribute(
+      STUDIO_ORIGINAL_TRANSFORM_DISPLAY_ATTR,
+      element.style.getPropertyValue("display"),
+    );
+  }
+  element.style.setProperty("display", "inline-block");
+}
+
+function restoreInlineDisplay(element: HTMLElement): void {
+  const original = element.getAttribute(STUDIO_ORIGINAL_TRANSFORM_DISPLAY_ATTR);
+  if (original == null) return;
+  if (original === "") element.style.removeProperty("display");
+  else element.style.setProperty("display", original);
+  element.removeAttribute(STUDIO_ORIGINAL_TRANSFORM_DISPLAY_ATTR);
+}
+
 export function applyStudioPathOffset(
   element: HTMLElement,
   offset: { x: number; y: number },
 ): void {
+  promoteInlineForTransform(element);
   writeStudioPathOffsetVars(element, offset);
   element.style.setProperty(
     "translate",
@@ -672,6 +695,7 @@ export function applyStudioPathOffsetDraft(
   element: HTMLElement,
   offset: { x: number; y: number },
 ): void {
+  promoteInlineForTransform(element);
   writeStudioPathOffsetVars(element, offset, { updateBase: false });
   element.style.setProperty(
     "translate",
@@ -683,6 +707,7 @@ export function applyStudioBoxSize(
   element: HTMLElement,
   size: { width: number; height: number },
 ): void {
+  promoteInlineForTransform(element);
   applyStudioBoxSizeDimensions(element, size);
 }
 
@@ -690,10 +715,12 @@ export function applyStudioBoxSizeDraft(
   element: HTMLElement,
   size: { width: number; height: number },
 ): void {
+  promoteInlineForTransform(element);
   applyStudioBoxSizeDimensions(element, size);
 }
 
 export function applyStudioRotation(element: HTMLElement, rotation: { angle: number }): void {
+  promoteInlineForTransform(element);
   writeStudioRotationVars(element, rotation);
   element.removeAttribute(STUDIO_ROTATION_DRAFT_ATTR);
   element.style.setProperty(
@@ -703,6 +730,7 @@ export function applyStudioRotation(element: HTMLElement, rotation: { angle: num
 }
 
 export function applyStudioRotationDraft(element: HTMLElement, rotation: { angle: number }): void {
+  promoteInlineForTransform(element);
   writeStudioRotationVars(element, rotation, { updateBase: false });
   element.setAttribute(STUDIO_ROTATION_DRAFT_ATTR, "true");
   element.style.setProperty(
@@ -718,6 +746,7 @@ function clearStudioPathOffset(element: HTMLElement): void {
   ) {
     restoreOriginalTranslateProperty(element);
   }
+  restoreInlineDisplay(element);
   element.style.removeProperty(STUDIO_OFFSET_X_PROP);
   element.style.removeProperty(STUDIO_OFFSET_Y_PROP);
   element.removeAttribute(STUDIO_PATH_OFFSET_ATTR);
@@ -732,6 +761,7 @@ function clearStudioRotation(element: HTMLElement): void {
   ) {
     restoreOriginalRotationProperty(element);
   }
+  restoreInlineDisplay(element);
 
   element.style.removeProperty(STUDIO_ROTATION_PROP);
   element.removeAttribute(STUDIO_ROTATION_ATTR);
@@ -816,6 +846,7 @@ function clearStudioBoxSize(element: HTMLElement): void {
     restoreOriginalBoxSizeProperty(element, "display", STUDIO_ORIGINAL_DISPLAY_ATTR);
   }
 
+  restoreInlineDisplay(element);
   element.style.removeProperty(STUDIO_WIDTH_PROP);
   element.style.removeProperty(STUDIO_HEIGHT_PROP);
   element.removeAttribute(STUDIO_BOX_SIZE_ATTR);
@@ -1346,6 +1377,7 @@ function collectStudioManualEditElements(doc: Document): HTMLElement[] {
       element.hasAttribute(STUDIO_ROTATION_DRAFT_ATTR) ||
       element.hasAttribute(STUDIO_ORIGINAL_TRANSLATE_ATTR) ||
       element.hasAttribute(STUDIO_ORIGINAL_INLINE_TRANSLATE_ATTR) ||
+      element.hasAttribute(STUDIO_ORIGINAL_TRANSFORM_DISPLAY_ATTR) ||
       element.hasAttribute(STUDIO_ORIGINAL_MIN_WIDTH_ATTR) ||
       element.hasAttribute(STUDIO_ORIGINAL_FLEX_BASIS_ATTR) ||
       element.hasAttribute(STUDIO_ORIGINAL_SCALE_ATTR) ||

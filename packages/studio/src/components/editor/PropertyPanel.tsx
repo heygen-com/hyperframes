@@ -39,7 +39,7 @@ import {
   type GradientModel,
 } from "./gradientValue";
 import { isTextEditableSelection, type DomEditSelection } from "./domEditing";
-import { readStudioBoxSize, readStudioPathOffset } from "./manualEdits";
+import { readStudioBoxSize, readStudioPathOffset, readStudioRotation } from "./manualEdits";
 import {
   COMMON_LOCAL_FONT_FAMILIES,
   googleFontStylesheetUrl,
@@ -59,6 +59,7 @@ interface PropertyPanelProps {
   onSetStyle: (prop: string, value: string) => void | Promise<void>;
   onSetManualOffset: (element: DomEditSelection, next: { x: number; y: number }) => void;
   onSetManualSize: (element: DomEditSelection, next: { width: number; height: number }) => void;
+  onSetManualRotation: (element: DomEditSelection, next: { angle: number }) => void;
   onSetText: (value: string, fieldKey?: string) => void;
   onSetTextFieldStyle: (fieldKey: string, property: string, value: string) => void;
   onAddTextField: (afterFieldKey?: string) => string | Promise<string | null> | null;
@@ -2279,6 +2280,7 @@ export const PropertyPanel = memo(function PropertyPanel({
   onSetStyle,
   onSetManualOffset,
   onSetManualSize,
+  onSetManualRotation,
   onSetText,
   onSetTextFieldStyle,
   onAddTextField,
@@ -2414,6 +2416,13 @@ export const PropertyPanel = memo(function PropertyPanel({
       width: axis === "width" ? parsed : width,
       height: axis === "height" ? parsed : height,
     });
+  };
+
+  const manualRotation = readStudioRotation(element.element);
+  const commitManualRotation = (nextValue: string) => {
+    const parsed = Number.parseFloat(nextValue);
+    if (!Number.isFinite(parsed)) return;
+    onSetManualRotation(element, { angle: parsed });
   };
 
   const handleFillModeChange = (nextMode: string) => {
@@ -2718,6 +2727,11 @@ export const PropertyPanel = memo(function PropertyPanel({
               disabled={manualSizeEditingDisabled}
               scrub
               onCommit={(next) => commitManualSize("height", next)}
+            />
+            <MetricField
+              label="R"
+              value={`${manualRotation.angle}°`}
+              onCommit={(next) => commitManualRotation(next.replace("°", ""))}
             />
           </div>
         </Section>
