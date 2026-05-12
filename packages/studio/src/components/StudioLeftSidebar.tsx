@@ -3,61 +3,54 @@ import { SourceEditor } from "./editor/SourceEditor";
 import { LeftSidebar, type LeftSidebarHandle } from "./sidebar/LeftSidebar";
 import { MediaPreview } from "./MediaPreview";
 import { isMediaFile } from "../utils/mediaTypes";
-import type { EditingFile } from "../utils/studioHelpers";
+import { usePanelLayoutContext } from "../contexts/PanelLayoutContext";
+import { useStudioContext } from "../contexts/StudioContext";
+import { useFileManagerContext } from "../contexts/FileManagerContext";
 
 export interface StudioLeftSidebarProps {
-  collapsed: boolean;
   leftSidebarRef: RefObject<LeftSidebarHandle | null>;
-  width: number;
-  projectId: string;
-  compositions: string[];
-  assets: string[];
-  editingFile: EditingFile | null;
-  fileTree: string[];
   onSelectComposition: (comp: string) => void;
-  onSelectFile: (path: string) => void;
-  onCreateFile: (path: string) => void;
-  onCreateFolder: (path: string) => void;
-  onDeleteFile: (path: string) => void;
-  onRenameFile: (oldPath: string, newPath: string) => void;
-  onDuplicateFile: (path: string) => void;
-  onMoveFile: (oldPath: string, newPath: string) => void;
-  onImportFiles: (files: FileList, dir?: string) => void;
-  onContentChange: (content: string) => void;
   onLint: () => void;
   linting: boolean;
-  onToggleCollapse: () => void;
 }
 
 export function StudioLeftSidebar({
-  collapsed,
   leftSidebarRef,
-  width,
-  projectId,
-  compositions,
-  assets,
-  editingFile,
-  fileTree,
   onSelectComposition,
-  onSelectFile,
-  onCreateFile,
-  onCreateFolder,
-  onDeleteFile,
-  onRenameFile,
-  onDuplicateFile,
-  onMoveFile,
-  onImportFiles,
-  onContentChange,
   onLint,
   linting,
-  onToggleCollapse,
 }: StudioLeftSidebarProps) {
-  if (collapsed) {
+  const {
+    leftCollapsed,
+    leftWidth,
+    toggleLeftSidebar,
+    handlePanelResizeStart,
+    handlePanelResizeMove,
+    handlePanelResizeEnd,
+  } = usePanelLayoutContext();
+  const { projectId } = useStudioContext();
+  const {
+    compositions,
+    assets,
+    editingFile,
+    fileTree,
+    handleFileSelect,
+    handleCreateFile,
+    handleCreateFolder,
+    handleDeleteFile,
+    handleRenameFile,
+    handleDuplicateFile,
+    handleMoveFile,
+    handleImportFiles,
+    handleContentChange,
+  } = useFileManagerContext();
+
+  if (leftCollapsed) {
     return (
       <div className="flex w-10 flex-shrink-0 flex-col items-center border-r border-neutral-800/50 bg-neutral-950 pt-1">
         <button
           type="button"
-          onClick={onToggleCollapse}
+          onClick={toggleLeftSidebar}
           className="flex h-8 w-8 items-center justify-center rounded-md border border-transparent text-neutral-500 transition-colors hover:border-neutral-800 hover:bg-neutral-900 hover:text-neutral-300"
           title="Show sidebar"
           aria-label="Show sidebar"
@@ -82,40 +75,51 @@ export function StudioLeftSidebar({
   }
 
   return (
-    <LeftSidebar
-      ref={leftSidebarRef}
-      width={width}
-      projectId={projectId}
-      compositions={compositions}
-      assets={assets}
-      activeComposition={editingFile?.path ?? null}
-      onSelectComposition={onSelectComposition}
-      fileTree={fileTree}
-      editingFile={editingFile}
-      onSelectFile={onSelectFile}
-      onCreateFile={onCreateFile}
-      onCreateFolder={onCreateFolder}
-      onDeleteFile={onDeleteFile}
-      onRenameFile={onRenameFile}
-      onDuplicateFile={onDuplicateFile}
-      onMoveFile={onMoveFile}
-      onImportFiles={onImportFiles}
-      codeChildren={
-        editingFile ? (
-          isMediaFile(editingFile.path) ? (
-            <MediaPreview projectId={projectId} filePath={editingFile.path} />
-          ) : (
-            <SourceEditor
-              content={editingFile.content ?? ""}
-              filePath={editingFile.path}
-              onChange={onContentChange}
-            />
-          )
-        ) : undefined
-      }
-      onLint={onLint}
-      linting={linting}
-      onToggleCollapse={onToggleCollapse}
-    />
+    <>
+      <LeftSidebar
+        ref={leftSidebarRef}
+        width={leftWidth}
+        projectId={projectId}
+        compositions={compositions}
+        assets={assets}
+        activeComposition={editingFile?.path ?? null}
+        onSelectComposition={onSelectComposition}
+        fileTree={fileTree}
+        editingFile={editingFile}
+        onSelectFile={handleFileSelect}
+        onCreateFile={handleCreateFile}
+        onCreateFolder={handleCreateFolder}
+        onDeleteFile={handleDeleteFile}
+        onRenameFile={handleRenameFile}
+        onDuplicateFile={handleDuplicateFile}
+        onMoveFile={handleMoveFile}
+        onImportFiles={handleImportFiles}
+        codeChildren={
+          editingFile ? (
+            isMediaFile(editingFile.path) ? (
+              <MediaPreview projectId={projectId} filePath={editingFile.path} />
+            ) : (
+              <SourceEditor
+                content={editingFile.content ?? ""}
+                filePath={editingFile.path}
+                onChange={handleContentChange}
+              />
+            )
+          ) : undefined
+        }
+        onLint={onLint}
+        linting={linting}
+        onToggleCollapse={toggleLeftSidebar}
+      />
+      <div
+        className="group w-2 flex-shrink-0 cursor-col-resize flex items-center justify-center"
+        style={{ touchAction: "none" }}
+        onPointerDown={(e) => handlePanelResizeStart("left", e)}
+        onPointerMove={handlePanelResizeMove}
+        onPointerUp={handlePanelResizeEnd}
+      >
+        <div className="h-[52px] w-px bg-white/12 transition-colors group-hover:bg-white/18 group-active:bg-white/24" />
+      </div>
+    </>
   );
 }
