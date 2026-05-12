@@ -35,7 +35,7 @@
     "@codemirror/search": "^6.6.0",
     "@codemirror/state": "^6.6.0",
     "@codemirror/theme-one-dark": "^6.1.2",
-    "@codemirror/view": "^6.40.0",
+    "@codemirror/view": "6.40.0",
     "@hyperframes/core": "workspace:*",
     "@hyperframes/player": "workspace:*",
     "@phosphor-icons/react": "^2.1.10",
@@ -44,8 +44,8 @@
   },
   "devDependencies": {
     "@hyperframes/producer": "workspace:*",
-    "@types/react": "^19.0.0",
-    "@types/react-dom": "^19.0.0",
+    "@types/react": "19",
+    "@types/react-dom": "19",
     "@vitejs/plugin-react": "^4.0.0",
     "autoprefixer": "^10.4.0",
     "postcss": "^8.4.0",
@@ -57,8 +57,8 @@
     "zustand": "^5.0.0"
   },
   "peerDependencies": {
-    "react": "^18.0.0 || ^19.0.0",
-    "react-dom": "^18.0.0 || ^19.0.0",
+    "react": "19",
+    "react-dom": "19",
     "zustand": "^4.0.0 || ^5.0.0"
   }
 }

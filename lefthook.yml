@@ -12,6 +12,18 @@ pre-commit:
     typecheck:
       glob: "*.{ts,tsx}"
       run: cd packages/core && bunx tsc --noEmit && cd ../studio && bunx tsc --noEmit
+    filesize:
+      glob: "*.{ts,tsx}"
+      exclude: "(\\.test\\.(ts|tsx)$|\\.generated\\.)"
+      run: |
+        for f in {staged_files}; do
+          case "$f" in *useTimelinePlayer.ts|*App.tsx) continue ;; esac
+          lines=$(wc -l < "$f")
+          if [ "$lines" -gt 500 ]; then
+            echo "ERROR: $f has $lines lines (max 500)"
+            exit 1
+          fi
+        done
 
 commit-msg:
   commands:
