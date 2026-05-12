@@ -1,5 +1,35 @@
 #!/usr/bin/env node
 
+// ── Worker entry path bootstrap (must run before any producer/engine load) ──
+// The hf#677 worker_threads pools (`pngDecodeBlitWorkerPool`,
+// `shaderTransitionWorkerPool`) live in the producer package and try to
+// resolve their worker entry by probing for sibling `.js` files next to
+// `import.meta.url`. When this CLI is bundled by tsup, the producer code is
+// inlined into `cli.js`, but `import.meta.url` resolves to the producer's
+// own dist path (NOT cli.js) on some module-graph layouts — so the sibling
+// probe lands in a directory that does not contain the bundled workers.
+// We emit the worker entries next to cli.js (see tsup.config.ts) and tell
+// the pools where to find them via the published env-var overrides. The
+// pools have an explicit `workerEntryPath` factory option as the canonical
+// API, but setting the env vars here covers every call site without having
+// to thread the path through the renderOrchestrator → captureHdrStage →
+// captureHdrHybridLoop chain.
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { existsSync } from "node:fs";
+
+(() => {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const shader = join(here, "shaderTransitionWorker.js");
+  const png = join(here, "pngDecodeBlitWorker.js");
+  if (!process.env.HF_SHADER_WORKER_ENTRY && existsSync(shader)) {
+    process.env.HF_SHADER_WORKER_ENTRY = shader;
+  }
+  if (!process.env.HF_PNG_DECODE_BLIT_WORKER_ENTRY && existsSync(png)) {
+    process.env.HF_PNG_DECODE_BLIT_WORKER_ENTRY = png;
+  }
+})();
+
 // ── Fast-path exits ─────────────────────────────────────────────────────────
 // Check --version before importing anything heavy. This makes
 // `hyperframes --version` near-instant (~10ms vs ~80ms).
