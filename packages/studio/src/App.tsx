@@ -94,7 +94,6 @@ export function StudioApp() {
         : 0;
     return Math.max(timelineDuration, maxEnd);
   }, [timelineDuration, timelineElements]);
-
   const refreshPreviewDocumentVersion = useCallback(() => {
     setPreviewDocumentVersion((v) => v + 1);
     window.setTimeout(() => setPreviewDocumentVersion((v) => v + 1), 80);
@@ -103,10 +102,8 @@ export function StudioApp() {
 
   const [timelineVisible, setTimelineVisible] = useState(true);
   const toggleTimelineVisibility = useCallback(() => setTimelineVisible((v) => !v), []);
-
   const [appToast, setAppToast] = useState<AppToast | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
   const showToast = useCallback((message: string, tone: AppToast["tone"] = "error") => {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     setAppToast({ message, tone });
@@ -120,6 +117,14 @@ export function StudioApp() {
   const panelLayout = usePanelLayout();
   const editHistory = usePersistentEditHistory({ projectId });
   const domEditSaveTimestampRef = useRef(0);
+  const reloadPreview = useCallback(() => {
+    try {
+      previewIframeRef.current?.contentWindow?.location.reload();
+    } catch {
+      setRefreshKey((k) => k + 1);
+    }
+  }, []);
+
   const fileManager = useFileManager({
     projectId,
     showToast,
@@ -146,8 +151,7 @@ export function StudioApp() {
     writeProjectFile: fileManager.writeProjectFile,
     recordEdit: editHistory.recordEdit,
     domEditSaveTimestampRef,
-    previewIframeRef,
-    setRefreshKey,
+    reloadPreview,
     uploadProjectFiles: fileManager.uploadProjectFiles,
   });
 
@@ -211,6 +215,7 @@ export function StudioApp() {
     applyStudioManualEditsToPreviewRef: manifestPersistence.applyStudioManualEditsToPreviewRef,
     applyStudioMotionToPreviewRef: manifestPersistence.applyStudioMotionToPreviewRef,
     syncPreviewHistoryHotkey: appHotkeys.syncPreviewHistoryHotkey,
+    reloadPreview,
     setRefreshKey,
   });
 

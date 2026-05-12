@@ -65,7 +65,7 @@ export interface UseDomEditCommitsParams {
   importedFontAssetsRef: React.MutableRefObject<ImportedFontAsset[]>;
   projectId: string | null;
   projectIdRef: React.MutableRefObject<string | null>;
-  setRefreshKey: React.Dispatch<React.SetStateAction<number>>;
+  reloadPreview: () => void;
 
   // From useDomSelection
   domEditSelection: DomEditSelection | null;
@@ -101,7 +101,7 @@ export function useDomEditCommits({
   importedFontAssetsRef,
   projectId,
   projectIdRef,
-  setRefreshKey,
+  reloadPreview,
   domEditSelection,
   domEditGroupSelectionsRef,
   applyDomSelection,
@@ -178,7 +178,7 @@ export function useDomEditCommits({
       if (options?.skipRefresh) {
         domEditSaveTimestampRef.current = Date.now();
       } else {
-        setRefreshKey((k) => k + 1);
+        reloadPreview();
       }
     },
     [
@@ -187,7 +187,7 @@ export function useDomEditCommits({
       writeProjectFile,
       projectIdRef,
       domEditSaveTimestampRef,
-      setRefreshKey,
+      reloadPreview,
     ],
   );
 
@@ -397,14 +397,8 @@ export function useDomEditCommits({
         });
 
         clearDomSelection();
-        const store = usePlayerStore.getState();
-        store.setSelectedElementId(null);
-        // Clear stale elements before iframe reload to prevent the merge
-        // function from preserving pre-delete elements, which causes
-        // duration oscillation as enrichMissingCompositions and
-        // processTimelineMessage fight over the element count.
-        store.setElements([]);
-        setRefreshKey((k) => k + 1);
+        usePlayerStore.getState().setSelectedElementId(null);
+        reloadPreview();
         showToast(`Deleted ${label}. Use Undo to restore it.`, "info");
       } catch (error) {
         const message = error instanceof Error ? error.message : "Failed to delete element";
@@ -417,7 +411,7 @@ export function useDomEditCommits({
       domEditSaveTimestampRef,
       editHistory.recordEdit,
       projectIdRef,
-      setRefreshKey,
+      reloadPreview,
       showToast,
       writeProjectFile,
     ],

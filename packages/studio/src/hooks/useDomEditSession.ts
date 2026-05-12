@@ -64,6 +64,7 @@ export interface UseDomEditSessionParams {
     (iframe: HTMLIFrameElement) => Promise<void>
   >;
   syncPreviewHistoryHotkey: (iframe: HTMLIFrameElement | null) => void;
+  reloadPreview: () => void;
   setRefreshKey: React.Dispatch<React.SetStateAction<number>>;
 }
 
@@ -102,8 +103,10 @@ export function useDomEditSession({
   applyStudioManualEditsToPreviewRef,
   applyStudioMotionToPreviewRef,
   syncPreviewHistoryHotkey,
-  setRefreshKey,
+  reloadPreview,
+  setRefreshKey: _setRefreshKey,
 }: UseDomEditSessionParams) {
+  void _setRefreshKey;
   // ── Selection (delegated to useDomSelection) ──
 
   const {
@@ -216,7 +219,7 @@ export function useDomEditSession({
     importedFontAssetsRef,
     projectId,
     projectIdRef,
-    setRefreshKey,
+    reloadPreview,
     domEditSelection,
     domEditSelectionRef,
     domEditGroupSelectionsRef,
