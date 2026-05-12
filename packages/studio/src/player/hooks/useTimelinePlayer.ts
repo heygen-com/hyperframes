@@ -1551,14 +1551,93 @@ export function useTimelinePlayer() {
     isRefreshingRef.current = false;
     setIsPlaying(false);
 
-    try {
-      const iframe = iframeRef.current;
-      const doc = iframe?.contentDocument;
-      const iframeWin = iframe?.contentWindow as IframeWindow | null;
-      if (doc && iframeWin) {
-        normalizePreviewViewport(doc, iframeWin);
-        autoHealMissingCompositionIds(doc);
-        attachIframeShortcutListeners();
+    probeIntervalRef.current = setInterval(() => {
+      attempts++;
+      const adapter = getAdapter();
+      if (adapter && adapter.getDuration() > 0) {
+        clearInterval(probeIntervalRef.current);
+        adapter.pause();
+
+        const seekTo = pendingSeekRef.current;
+        pendingSeekRef.current = null;
+        const startTime = seekTo != null ? Math.min(seekTo, adapter.getDuration()) : 0;
+
+        adapter.seek(startTime);
+        const adapterDur = adapter.getDuration();
+        // Cap at 7200s (2h) to guard against loop-inflated GSAP timelines
+        if (
+          Number.isFinite(adapterDur) &&
+          adapterDur > 0 &&
+          adapterDur < 7200 &&
+          adapterDur !== usePlayerStore.getState().duration
+        ) {
+          setDuration(adapterDur);
+        }
+        setCurrentTime(startTime);
+        if (!isRefreshingRef.current) {
+          setTimelineReady(true);
+        }
+        isRefreshingRef.current = false;
+        setIsPlaying(false);
+
+        try {
+          const iframe = iframeRef.current;
+          const doc = iframe?.contentDocument;
+          const iframeWin = iframe?.contentWindow as IframeWindow | null;
+          if (doc && iframeWin) {
+            normalizePreviewViewport(doc, iframeWin);
+            autoHealMissingCompositionIds(doc);
+            attachIframeShortcutListeners();
+          }
+
+          // Try reading __clipManifest if already available (fast path)
+          const manifest = iframeWin?.__clipManifest;
+          if (manifest && manifest.clips.length > 0) {
+            processTimelineMessage(manifest);
+          }
+          // Enrich: fill in composition hosts the manifest missed
+          enrichMissingCompositions();
+
+          // Run DOM fallback if still no elements were populated
+          // (manifest may exist but all clips filtered out by parentCompositionId logic)
+          if (usePlayerStore.getState().elements.length === 0 && doc) {
+            // Fallback: parse data-start elements directly from DOM (raw HTML without runtime)
+            const els = parseTimelineFromDOM(doc, adapter.getDuration());
+            if (els.length > 0) {
+              syncTimelineElements(els);
+            }
+          }
+
+          // Final fallback for standalone composition previews: if still no
+          // elements, build timeline entries from the DOM inside the root
+          // composition. This ensures the timeline always shows content when
+          // viewing a single composition (where elements lack data-start).
+          if (usePlayerStore.getState().elements.length === 0 && doc) {
+            const rootComp = doc.querySelector("[data-composition-id]");
+            const rootDuration = adapter.getDuration();
+            if (rootComp && rootDuration > 0) {
+              const fallbackElement = buildStandaloneRootTimelineElement({
+                compositionId: rootComp.getAttribute("data-composition-id") || "composition",
+                tagName: (rootComp as HTMLElement).tagName || "div",
+                rootDuration,
+                iframeSrc: iframe?.src || "",
+                selector: getTimelineElementSelector(rootComp),
+              });
+              if (fallbackElement) {
+                // Always show the root composition as a single clip — guarantees
+                // the timeline is never empty when a valid composition is loaded.
+                syncTimelineElements([fallbackElement]);
+              }
+            }
+          }
+          // The runtime will also postMessage the full timeline after all compositions load.
+          // That message is handled by the window listener below, which will update elements
+          // with the complete data (including async-loaded compositions).
+        } catch (err) {
+          console.warn("[useTimelinePlayer] Could not read timeline elements from iframe", err);
+        }
+
+        return;
       }
 
       const manifest = iframeWin?.__clipManifest;
