@@ -1,21 +1,14 @@
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useCallback, useRef, useEffect } from "react";
 import type { TimelineElement } from "../player";
 import { liveTime, usePlayerStore } from "../player";
 import { FONT_EXT } from "../utils/mediaTypes";
-import { copyTextToClipboard } from "../utils/clipboard";
-import {
-  applyPatchByTarget,
-  readTagSnippetByTarget,
-  type PatchOperation,
-} from "../utils/sourcePatcher";
+import { applyPatchByTarget, type PatchOperation } from "../utils/sourcePatcher";
 import { saveProjectFilesWithHistory } from "../utils/studioFileHistory";
 import {
   confirmElementDelete,
   isImageBackgroundValue,
   isManualGeometryStyleProperty,
   normalizeDomEditStyleValue,
-  toProjectAbsolutePath,
-  type AgentModalAnchorPoint,
   type RightPanelTab,
 } from "../utils/studioHelpers";
 import {
@@ -36,7 +29,6 @@ import {
 import {
   buildDomEditStylePatchOperation,
   buildDomEditTextPatchOperation,
-  buildElementAgentPrompt,
   findElementForSelection,
   getDomEditTargetKey,
   isLargeRasterDomEditSelection,
@@ -62,6 +54,7 @@ import {
 import { fontFamilyFromAssetPath, type ImportedFontAsset } from "../components/editor/fontAssets";
 import type { DomEditGroupPathOffsetCommit } from "../components/editor/DomEditOverlay";
 import type { EditHistoryKind } from "../utils/editHistory";
+import { useAskAgentModal } from "./useAskAgentModal";
 import { useDomSelection } from "./useDomSelection";
 
 // ── Types ──
@@ -189,52 +182,35 @@ export function useDomEditSession({
     rightPanelTab,
   });
 
-  // ── State ──
+  // ── Agent modal (delegated to useAskAgentModal) ──
 
-  const [agentPromptTagSnippet, setAgentPromptTagSnippet] = useState<string | undefined>();
-  const [agentPromptSelectionContext, setAgentPromptSelectionContext] = useState<
-    string | undefined
-  >();
-  const [agentModalAnchorPoint, setAgentModalAnchorPoint] = useState<AgentModalAnchorPoint | null>(
-    null,
-  );
-  const [copiedAgentPrompt, setCopiedAgentPrompt] = useState(false);
-  const [agentModalOpen, setAgentModalOpen] = useState(false);
+  const {
+    agentModalOpen,
+    agentModalAnchorPoint,
+    copiedAgentPrompt,
+    agentPromptSelectionContext,
+    setAgentModalOpen,
+    setAgentPromptSelectionContext,
+    setAgentModalAnchorPoint,
+    preloadAgentPromptSnippet,
+    handleAskAgent,
+    handleAgentModalSubmit,
+  } = useAskAgentModal({
+    projectId,
+    activeCompPath,
+    projectDir,
+    projectIdRef,
+    currentTime,
+    showToast,
+    domEditSelectionRef,
+    domEditSelection,
+  });
 
   // ── Refs ──
 
-  const copiedAgentTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const domTextCommitVersionRef = useRef(0);
 
   // ── Callbacks ──
-
-  const preloadAgentPromptSnippet = useCallback(
-    async (selection: DomEditSelection) => {
-      const pid = projectIdRef.current;
-      if (!pid) return;
-
-      const targetPath = selection.sourceFile || activeCompPath || "index.html";
-      try {
-        const response = await fetch(
-          `/api/projects/${pid}/files/${encodeURIComponent(targetPath)}`,
-        );
-        if (!response.ok) return;
-
-        const data = (await response.json()) as { content?: string };
-        const html = data.content;
-        const tagSnippet =
-          typeof html === "string" ? readTagSnippetByTarget(html, selection) : undefined;
-
-        setAgentPromptTagSnippet((current) => {
-          if (domEditSelectionRef.current !== selection) return current;
-          return tagSnippet;
-        });
-      } catch {
-        // Runtime outerHTML is still available as a synchronous copy fallback.
-      }
-    },
-    [activeCompPath, domEditSelectionRef, projectIdRef],
-  );
 
   const resolveImportedFontAsset = useCallback(
     (fontFamilyValue: string): ImportedFontAsset | null => {
@@ -726,54 +702,6 @@ export function useDomEditSession({
     [commitDomTextFields, domEditSelection, handleDomTextCommit],
   );
 
-  const handleAskAgent = useCallback(() => {
-    if (!domEditSelection) return;
-    setAgentPromptTagSnippet(undefined);
-    setAgentPromptSelectionContext(undefined);
-    setAgentModalAnchorPoint(null);
-    void preloadAgentPromptSnippet(domEditSelection);
-    setAgentModalOpen(true);
-  }, [domEditSelection, preloadAgentPromptSnippet]);
-
-  const handleAgentModalSubmit = useCallback(
-    async (userInstruction: string) => {
-      if (!domEditSelection) return;
-
-      const targetPath = domEditSelection.sourceFile || activeCompPath || "index.html";
-      const tagSnippet = agentPromptTagSnippet ?? domEditSelection.element.outerHTML;
-      const prompt = buildElementAgentPrompt({
-        selection: domEditSelection,
-        currentTime,
-        tagSnippet,
-        selectionContext: agentPromptSelectionContext,
-        userInstruction,
-        sourceFilePath: toProjectAbsolutePath(projectDir, targetPath),
-      });
-
-      const copied = await copyTextToClipboard(prompt);
-      if (!copied) {
-        showToast("Could not copy prompt to clipboard.", "error");
-        return;
-      }
-
-      setAgentModalOpen(false);
-      setAgentPromptSelectionContext(undefined);
-      setAgentModalAnchorPoint(null);
-      if (copiedAgentTimerRef.current) clearTimeout(copiedAgentTimerRef.current);
-      setCopiedAgentPrompt(true);
-      copiedAgentTimerRef.current = setTimeout(() => setCopiedAgentPrompt(false), 1600);
-    },
-    [
-      activeCompPath,
-      agentPromptSelectionContext,
-      agentPromptTagSnippet,
-      currentTime,
-      domEditSelection,
-      projectDir,
-      showToast,
-    ],
-  );
-
   const handlePreviewCanvasMouseDown = useCallback(
     (e: React.MouseEvent<HTMLDivElement>, options?: { preferClipAncestor?: boolean }) => {
       if (!STUDIO_PREVIEW_SELECTION_ENABLED || captionEditMode || compositionLoading) return;
@@ -810,6 +738,9 @@ export function useDomEditSession({
       preloadAgentPromptSnippet,
       resolveDomSelectionFromPreviewPoint,
       previewIframeRef,
+      setAgentModalAnchorPoint,
+      setAgentModalOpen,
+      setAgentPromptSelectionContext,
     ],
   );
 
@@ -850,15 +781,6 @@ export function useDomEditSession({
   );
 
   // ── Effects ──
-
-  // Clear agent-prompt state when selection changes
-  // eslint-disable-next-line no-restricted-syntax
-  useEffect(() => {
-    setAgentPromptTagSnippet(undefined);
-    setAgentPromptSelectionContext(undefined);
-    setAgentModalAnchorPoint(null);
-    setCopiedAgentPrompt(false);
-  }, [domEditSelection]);
 
   // Sync selection from preview document (the big one with attachErrorCapture)
   // eslint-disable-next-line no-restricted-syntax
@@ -923,15 +845,6 @@ export function useDomEditSession({
     applyStudioManualEditsToPreviewRef,
     applyStudioMotionToPreviewRef,
   ]);
-
-  // Cleanup copiedAgentTimerRef
-  // eslint-disable-next-line no-restricted-syntax
-  useEffect(
-    () => () => {
-      if (copiedAgentTimerRef.current) clearTimeout(copiedAgentTimerRef.current);
-    },
-    [],
-  );
 
   const handleDomEditElementDelete = useCallback(
     async (selection: DomEditSelection) => {
