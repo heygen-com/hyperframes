@@ -453,16 +453,49 @@ function getElementDepth(el: HTMLElement): number {
   return depth;
 }
 
+const VISUAL_LEAF_TAGS = new Set(["img", "video", "canvas", "svg", "audio"]);
+
+function isElementComputedVisible(el: HTMLElement): boolean {
+  const win = el.ownerDocument.defaultView;
+  if (!win) return true;
+  let current: HTMLElement | null = el;
+  while (current) {
+    const computed = win.getComputedStyle(current);
+    if (computed.display === "none" || computed.visibility === "hidden") return false;
+    const opacity = Number.parseFloat(computed.opacity);
+    if (Number.isFinite(opacity) && opacity <= 0.01) return false;
+    current = current.parentElement;
+  }
+  return true;
+}
+
+function isEmptyVisualContainer(el: HTMLElement): boolean {
+  const tag = el.tagName.toLowerCase();
+  if (VISUAL_LEAF_TAGS.has(tag)) return false;
+
+  const children = el.children;
+  if (children.length === 0) {
+    const text = (el.textContent ?? "").trim();
+    return text.length === 0;
+  }
+
+  for (let i = 0; i < children.length; i += 1) {
+    const child = children[i];
+    if (!isHtmlElement(child)) continue;
+    if (VISUAL_LEAF_TAGS.has(child.tagName.toLowerCase())) return false;
+    if (isElementComputedVisible(child)) return false;
+  }
+
+  return true;
+}
+
 function hasRenderedBox(el: HTMLElement): boolean {
   const rect = el.getBoundingClientRect();
   if (rect.width <= 1 || rect.height <= 1) return false;
 
-  const computed = el.ownerDocument.defaultView?.getComputedStyle(el);
-  if (!computed) return true;
-  if (computed.display === "none" || computed.visibility === "hidden") return false;
+  if (!isElementComputedVisible(el)) return false;
 
-  const opacity = Number.parseFloat(computed.opacity);
-  if (Number.isFinite(opacity) && opacity <= 0.01) return false;
+  if (isEmptyVisualContainer(el)) return false;
 
   return true;
 }

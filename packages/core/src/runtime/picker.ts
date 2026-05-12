@@ -58,12 +58,28 @@ export function createPickerModule(deps: PickerModuleDeps): PickerModule {
     });
   }
 
+  function isEffectivelyHidden(el: HTMLElement): boolean {
+    const win = el.ownerDocument.defaultView;
+    if (!win) return false;
+    let current: HTMLElement | null = el;
+    while (current && current !== document.body && current !== document.documentElement) {
+      const computed = win.getComputedStyle(current);
+      if (computed.display === "none" || computed.visibility === "hidden") return true;
+      if (computed.pointerEvents === "none") return true;
+      const opacity = Number.parseFloat(computed.opacity);
+      if (Number.isFinite(opacity) && opacity <= 0.01) return true;
+      current = current.parentElement;
+    }
+    return false;
+  }
+
   function isPickableElement(el: Element | null): el is Element {
     if (!el || el === document.body || el === document.documentElement) return false;
     const tag = el.tagName.toLowerCase();
     if (tag === "script" || tag === "style" || tag === "link" || tag === "meta") return false;
     if (el.classList.contains("__hf-pick-highlight")) return false;
     if (el.closest(PICKER_IGNORE_SELECTOR)) return false;
+    if (isEffectivelyHidden(el as HTMLElement)) return false;
     return true;
   }
 

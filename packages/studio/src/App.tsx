@@ -2156,10 +2156,8 @@ export function StudioApp() {
 
   const writeHistoryProjectFile = useCallback(
     async (path: string, content: string): Promise<void> => {
+      domEditSaveTimestampRef.current = Date.now();
       await writeProjectFile(path, content);
-      if (path === STUDIO_MANUAL_EDITS_PATH || path === STUDIO_MOTION_PATH) {
-        domEditSaveTimestampRef.current = Date.now();
-      }
     },
     [writeProjectFile],
   );
@@ -2453,6 +2451,19 @@ export function StudioApp() {
         return;
       }
 
+      // Reload the iframe in-place rather than recreating the Player component.
+      // This preserves the <hyperframes-player> web component and its shader
+      // transition cache — only the iframe document reloads, so transitions that
+      // weren't touched by the undo/redo don't need to rebuild from scratch.
+      const iframe = previewIframeRef.current;
+      if (iframe?.contentWindow) {
+        try {
+          iframe.contentWindow.location.reload();
+          return;
+        } catch {
+          // Cross-origin or detached — fall through to full refresh
+        }
+      }
       setRefreshKey((key) => key + 1);
     },
     [applyStudioManualEditsToPreview, applyStudioMotionToPreview],
@@ -4030,9 +4041,11 @@ export function StudioApp() {
   const motionPanelActive =
     STUDIO_INSPECTOR_PANELS_ENABLED && STUDIO_MOTION_PANEL_ENABLED && rightPanelTab === "motion";
   const inspectorPanelActive = designPanelActive || motionPanelActive;
+  const isPlaying = usePlayerStore((s) => s.isPlaying);
   const shouldShowSelectedDomBounds =
     inspectorPanelActive &&
     !rightCollapsed &&
+    !isPlaying &&
     (!selectedTimelineElement ||
       isTimelineElementActiveAtTime(currentTime, selectedTimelineElement));
   const inspectorButtonActive =
@@ -4316,7 +4329,10 @@ export function StudioApp() {
                   iframeRef={previewIframeRef}
                   activeCompositionPath={activeCompPath}
                   hoverSelection={
-                    STUDIO_PREVIEW_SELECTION_ENABLED && !captionEditMode
+                    STUDIO_PREVIEW_SELECTION_ENABLED &&
+                    !captionEditMode &&
+                    !compositionLoading &&
+                    !isPlaying
                       ? domEditHoverSelection
                       : null
                   }

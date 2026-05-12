@@ -36,6 +36,8 @@ function getShaderTransitionLoading(event: Event): boolean | null {
   return state.loading === true && state.ready !== true;
 }
 
+const COMPOSITION_LOADING_OVERLAY_DELAY_MS = 400;
+
 export function shouldShowCompositionLoadingOverlay(compositionLoading: boolean): boolean {
   return compositionLoading;
 }
@@ -124,6 +126,20 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
     const [assetOverlayFading, setAssetOverlayFading] = useState(false);
     const [shaderTransitionLoading, setShaderTransitionLoading] = useState(false);
     const [compositionLoading, setCompositionLoading] = useState(true);
+    const [compositionOverlayDeferred, setCompositionOverlayDeferred] = useState(true);
+
+    // eslint-disable-next-line no-restricted-syntax
+    useEffect(() => {
+      if (!compositionLoading) {
+        setCompositionOverlayDeferred(true);
+        return;
+      }
+      const timer = setTimeout(
+        () => setCompositionOverlayDeferred(false),
+        COMPOSITION_LOADING_OVERLAY_DELAY_MS,
+      );
+      return () => clearTimeout(timer);
+    }, [compositionLoading]);
 
     useMountEffect(() => {
       const container = containerRef.current;
@@ -281,7 +297,9 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
     }, [assetsLoading]);
 
     const showCompositionOverlay =
-      !suppressLoadingOverlay && shouldShowCompositionLoadingOverlay(compositionLoading);
+      !suppressLoadingOverlay &&
+      !compositionOverlayDeferred &&
+      shouldShowCompositionLoadingOverlay(compositionLoading);
     const showAssetOverlay =
       assetOverlayVisible && !shaderTransitionLoading && !showCompositionOverlay;
 

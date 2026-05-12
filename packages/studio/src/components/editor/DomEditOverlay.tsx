@@ -85,6 +85,20 @@ interface DomEditOverlayProps {
   onRotationCommit: (selection: DomEditSelection, next: { angle: number }) => Promise<void> | void;
 }
 
+function isElementVisibleForOverlay(el: HTMLElement): boolean {
+  const win = el.ownerDocument.defaultView;
+  if (!win) return true;
+  let current: HTMLElement | null = el;
+  while (current) {
+    const computed = win.getComputedStyle(current);
+    if (computed.display === "none" || computed.visibility === "hidden") return false;
+    const opacity = Number.parseFloat(computed.opacity);
+    if (Number.isFinite(opacity) && opacity <= 0.01) return false;
+    current = current.parentElement;
+  }
+  return true;
+}
+
 function toOverlayRect(
   overlayEl: HTMLDivElement,
   iframe: HTMLIFrameElement,
@@ -534,7 +548,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
 
       if (sel) {
         const el = resolveElement(doc, sel, resolvedElementRef);
-        if (el) {
+        if (el && isElementVisibleForOverlay(el)) {
           setNextOverlayRect(toOverlayRect(overlayEl, iframe, el));
         } else {
           clearOverlayRect();

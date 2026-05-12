@@ -125,10 +125,22 @@ function injectStudioPreviewAugmentations(
 }
 
 export function registerPreviewRoutes(api: Hono, adapter: StudioApiAdapter): void {
+  const previewCacheHeaders = (etag: string) => ({
+    "Cache-Control": "private, no-cache",
+    ETag: etag,
+  });
+
   // Bundled composition preview
   api.get("/projects/:id/preview", async (c) => {
     const project = await adapter.resolveProject(c.req.param("id"));
     if (!project) return c.json({ error: "not found" }, 404);
+
+    const signature = resolveProjectSignature(adapter, project.dir);
+    const etag = `"preview:${signature}"`;
+    const ifNoneMatch = c.req.header("If-None-Match");
+    if (ifNoneMatch === etag) {
+      return new Response(null, { status: 304, headers: previewCacheHeaders(etag) });
+    }
 
     try {
       let bundled = await adapter.bundle(project.dir);
@@ -156,7 +168,7 @@ export function registerPreviewRoutes(api: Hono, adapter: StudioApiAdapter): voi
       }
 
       bundled = injectStudioPreviewAugmentations(bundled, adapter, project.dir, "index.html");
-      return c.html(bundled);
+      return c.html(bundled, 200, previewCacheHeaders(etag));
     } catch {
       const file = resolve(project.dir, "index.html");
       if (existsSync(file)) {
@@ -167,6 +179,8 @@ export function registerPreviewRoutes(api: Hono, adapter: StudioApiAdapter): voi
             project.dir,
             "index.html",
           ),
+          200,
+          previewCacheHeaders(etag),
         );
       }
       return c.text("not found", 404);
@@ -177,6 +191,8 @@ export function registerPreviewRoutes(api: Hono, adapter: StudioApiAdapter): voi
   api.get("/projects/:id/preview/comp/*", async (c) => {
     const project = await adapter.resolveProject(c.req.param("id"));
     if (!project) return c.json({ error: "not found" }, 404);
+
+    const signature = resolveProjectSignature(adapter, project.dir);
     const compPath = decodeURIComponent(
       c.req.path.replace(`/projects/${project.id}/preview/comp/`, "").split("?")[0] ?? "",
     );
@@ -188,10 +204,21 @@ export function registerPreviewRoutes(api: Hono, adapter: StudioApiAdapter): voi
     ) {
       return c.text("not found", 404);
     }
+
+    const etag = `"comp:${compPath}:${signature}"`;
+    const ifNoneMatch = c.req.header("If-None-Match");
+    if (ifNoneMatch === etag) {
+      return new Response(null, { status: 304, headers: previewCacheHeaders(etag) });
+    }
+
     const baseHref = `/api/projects/${project.id}/preview/`;
     let html = buildSubCompositionHtml(project.dir, compPath, adapter.runtimeUrl, baseHref);
     if (!html) return c.text("not found", 404);
-    return c.html(injectStudioPreviewAugmentations(html, adapter, project.dir, compPath));
+    return c.html(
+      injectStudioPreviewAugmentations(html, adapter, project.dir, compPath),
+      200,
+      previewCacheHeaders(etag),
+    );
   });
 
   // Static asset serving (with range request support for audio/video seeking)
@@ -202,11 +229,25 @@ export function registerPreviewRoutes(api: Hono, adapter: StudioApiAdapter): voi
       c.req.path.replace(`/projects/${project.id}/preview/`, "").split("?")[0] ?? "",
     );
     const file = resolve(project.dir, subPath);
-    if (!isSafePath(project.dir, file) || !existsSync(file) || !statSync(file).isFile()) {
+    const stat = existsSync(file) ? statSync(file) : null;
+    if (!isSafePath(project.dir, file) || !stat?.isFile()) {
       return c.text("not found", 404);
     }
     const contentType = getMimeType(subPath);
     const isText = /\.(html|css|js|json|svg|txt|md)$/i.test(subPath);
+
+    const etag = `"${stat.mtimeMs.toString(36)}-${stat.size.toString(36)}"`;
+    const cacheHeaders: Record<string, string> = isText
+      ? { "Cache-Control": "no-store" }
+      : { "Cache-Control": "private, max-age=3600, must-revalidate", ETag: etag };
+
+    if (!isText) {
+      const ifNoneMatch = c.req.header("If-None-Match");
+      if (ifNoneMatch === etag) {
+        return new Response(null, { status: 304, headers: cacheHeaders });
+      }
+    }
+
     const buffer: Buffer = isText
       ? Buffer.from(readFileSync(file, "utf-8"), "utf-8")
       : readFileSync(file);
@@ -224,6 +265,7 @@ export function registerPreviewRoutes(api: Hono, adapter: StudioApiAdapter): voi
         return new Response(new Uint8Array(buffer.slice(start, safeEnd + 1)), {
           status: 206,
           headers: {
+            ...cacheHeaders,
             "Content-Type": contentType,
             "Content-Range": `bytes ${start}-${safeEnd}/${totalSize}`,
             "Accept-Ranges": "bytes",
@@ -235,6 +277,7 @@ export function registerPreviewRoutes(api: Hono, adapter: StudioApiAdapter): voi
 
     return new Response(new Uint8Array(buffer), {
       headers: {
+        ...cacheHeaders,
         "Content-Type": contentType,
         "Accept-Ranges": "bytes",
         "Content-Length": String(totalSize),
