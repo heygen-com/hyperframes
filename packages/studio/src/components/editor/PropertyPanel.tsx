@@ -39,7 +39,7 @@ import {
   type GradientModel,
 } from "./gradientValue";
 import { isTextEditableSelection, type DomEditSelection } from "./domEditing";
-import { readStudioBoxSize, readStudioPathOffset } from "./manualEdits";
+import { readStudioBoxSize, readStudioPathOffset, readStudioRotation } from "./manualEdits";
 import {
   COMMON_LOCAL_FONT_FAMILIES,
   googleFontStylesheetUrl,
@@ -59,6 +59,7 @@ interface PropertyPanelProps {
   onSetStyle: (prop: string, value: string) => void | Promise<void>;
   onSetManualOffset: (element: DomEditSelection, next: { x: number; y: number }) => void;
   onSetManualSize: (element: DomEditSelection, next: { width: number; height: number }) => void;
+  onSetManualRotation: (element: DomEditSelection, next: { angle: number }) => void;
   onSetText: (value: string, fieldKey?: string) => void;
   onSetTextFieldStyle: (fieldKey: string, property: string, value: string) => void;
   onAddTextField: (afterFieldKey?: string) => string | Promise<string | null> | null;
@@ -769,8 +770,8 @@ function fontSourceRank(source: FontSource): number {
   if (source === "Current") return 0;
   if (source === "Document") return 1;
   if (source === "Imported") return 2;
-  if (source === "Local") return 3;
-  if (source === "Google") return 4;
+  if (source === "Google") return 3;
+  if (source === "Local") return 4;
   return 5;
 }
 
@@ -841,16 +842,44 @@ function loadImportedFontStylesheet(asset: ImportedFontAsset): void {
   document.head.appendChild(style);
 }
 
+const ALL_WEIGHTS = ["100", "200", "300", "400", "500", "600", "700", "800", "900"];
+const WEIGHT_LABELS: Record<string, string> = {
+  "100": "100 · Thin",
+  "200": "200 · Extra Light",
+  "300": "300 · Light",
+  "400": "400 · Regular",
+  "500": "500 · Medium",
+  "600": "600 · Semi Bold",
+  "700": "700 · Bold",
+  "800": "800 · Extra Bold",
+  "900": "900 · Black",
+};
+
+function detectAvailableWeights(fontFamily: string): string[] {
+  const fonts = document.fonts;
+  if (!fonts) return ALL_WEIGHTS;
+  const family = fontFamily.split(",")[0]?.trim().replace(/['"]/g, "");
+  if (!family) return ALL_WEIGHTS;
+  const available: string[] = [];
+  for (const w of ALL_WEIGHTS) {
+    if (fonts.check(`${w} 16px "${family}"`)) available.push(w);
+  }
+  return available.length > 0 ? available : ALL_WEIGHTS;
+}
+
 function FontWeightField({
   value,
   disabled,
+  fontFamily,
   onCommit,
 }: {
   value: string;
   disabled?: boolean;
+  fontFamily?: string;
   onCommit: (nextValue: string) => void;
 }) {
-  const options = ["300", "400", "500", "600", "700", "800"];
+  const options = fontFamily ? detectAvailableWeights(fontFamily) : ALL_WEIGHTS;
+  const displayOptions = value && !options.includes(value) ? [value, ...options] : options;
   return (
     <div className={FIELD}>
       <div className="flex min-w-0 items-center gap-3">
@@ -861,9 +890,9 @@ function FontWeightField({
           onChange={(e) => onCommit(e.target.value)}
           className="min-w-0 w-full appearance-none bg-transparent text-[11px] font-medium text-neutral-100 outline-none disabled:cursor-not-allowed disabled:text-neutral-600"
         >
-          {options.map((option) => (
+          {displayOptions.map((option) => (
             <option key={option} value={option}>
-              {option}
+              {WEIGHT_LABELS[option] ?? option}
             </option>
           ))}
         </select>
@@ -1022,13 +1051,20 @@ function FontFamilyField({
 
   const options = useMemo(() => {
     const documentFonts = collectDocumentFontFamilies();
+    const googleSet = new Set(googleFonts.map((f) => f.toLowerCase()));
+    const taggedLocalFonts = localFonts.map(
+      (family): FontOption => ({
+        family,
+        source: googleSet.has(family.toLowerCase()) ? "Google" : "Local",
+      }),
+    );
     return sortFontOptions(
       uniqueFontOptions([
         { family: currentFamily, source: "Current" },
         ...documentFonts.map((family): FontOption => ({ family, source: "Document" })),
         ...projectFontAssets,
-        ...localFonts.map((family): FontOption => ({ family, source: "Local" })),
         ...googleFonts.map((family): FontOption => ({ family, source: "Google" })),
+        ...taggedLocalFonts,
         ...DEFAULT_FONT_FAMILIES.map((family): FontOption => ({ family, source: "System" })),
       ]),
     );
@@ -1036,7 +1072,21 @@ function FontFamilyField({
 
   const filteredOptions = useMemo(() => {
     const matches = options.filter((option) => fontMatchesQuery(option.family, query));
-    return matches.slice(0, query.trim() ? 120 : 160);
+    if (query.trim()) return matches.slice(0, 200);
+    const bySource = new Map<string, FontOption[]>();
+    for (const m of matches) {
+      const list = bySource.get(m.source) ?? [];
+      list.push(m);
+      bySource.set(m.source, list);
+    }
+    const result: FontOption[] = [];
+    for (const s of ["Current", "Document", "Imported"]) {
+      result.push(...(bySource.get(s) ?? []));
+    }
+    result.push(...(bySource.get("Google") ?? []).slice(0, 100));
+    result.push(...(bySource.get("Local") ?? []).slice(0, 80));
+    result.push(...(bySource.get("System") ?? []));
+    return result;
   }, [options, query]);
 
   const importLocalFont = async (family: string): Promise<ImportedFontAsset | null> => {
@@ -1226,21 +1276,36 @@ function AdvancedTextControls({
   return (
     <div className="space-y-4">
       <div className={RESPONSIVE_GRID}>
-        <MetricField
+        <SelectField
           label="Line"
           value={getTextStyleValue(field, inheritedStyles, "line-height", "normal")}
           disabled={disabled}
-          liveCommit
-          onCommit={(next) =>
+          options={["normal", "1", "1.1", "1.2", "1.25", "1.3", "1.4", "1.5", "1.6", "1.75", "2"]}
+          onChange={(next) =>
             onCommit("line-height", normalizeTextMetricValue("line-height", next))
           }
         />
-        <MetricField
+        <SelectField
           label="Track"
           value={getTextStyleValue(field, inheritedStyles, "letter-spacing", "0px")}
           disabled={disabled}
-          liveCommit
-          onCommit={(next) =>
+          options={[
+            "0px",
+            "-0.05em",
+            "-0.04em",
+            "-0.03em",
+            "-0.02em",
+            "-0.01em",
+            "0em",
+            "0.01em",
+            "0.02em",
+            "0.03em",
+            "0.05em",
+            "0.1em",
+            "0.15em",
+            "0.2em",
+          ]}
+          onChange={(next) =>
             onCommit("letter-spacing", normalizeTextMetricValue("letter-spacing", next))
           }
         />
@@ -1266,7 +1331,7 @@ function AdvancedTextControls({
         value={getTextStyleValue(field, inheritedStyles, "font-style", "normal")}
         disabled={disabled}
         onChange={(next) => onCommit("font-style", next)}
-        options={["normal", "italic", "oblique"]}
+        options={["normal", "italic"]}
       />
     </div>
   );
@@ -2168,6 +2233,7 @@ export const PropertyPanel = memo(function PropertyPanel({
   onSetStyle,
   onSetManualOffset,
   onSetManualSize,
+  onSetManualRotation,
   onSetText,
   onSetTextFieldStyle,
   onAddTextField,
@@ -2295,6 +2361,13 @@ export const PropertyPanel = memo(function PropertyPanel({
     });
   };
 
+  const manualRotation = readStudioRotation(element.element);
+  const commitManualRotation = (nextValue: string) => {
+    const parsed = Number.parseFloat(nextValue);
+    if (!Number.isFinite(parsed)) return;
+    onSetManualRotation(element, { angle: parsed });
+  };
+
   const handleFillModeChange = (nextMode: string) => {
     setPreferredFillMode(nextMode);
     if (nextMode === "Solid") {
@@ -2401,6 +2474,9 @@ export const PropertyPanel = memo(function PropertyPanel({
                           activeField.computedStyles["font-weight"] ||
                           styles["font-weight"] ||
                           "400"
+                        }
+                        fontFamily={
+                          activeField.computedStyles["font-family"] || styles["font-family"]
                         }
                         disabled={false}
                         onCommit={(next) =>
@@ -2530,6 +2606,7 @@ export const PropertyPanel = memo(function PropertyPanel({
                       />
                       <FontWeightField
                         value={activeField.computedStyles["font-weight"] || "400"}
+                        fontFamily={activeField.computedStyles["font-family"]}
                         disabled={false}
                         onCommit={(next) =>
                           onSetTextFieldStyle(activeField.key, "font-weight", next)
@@ -2589,6 +2666,11 @@ export const PropertyPanel = memo(function PropertyPanel({
               value={formatPxMetricValue(resolvedHeight)}
               disabled={manualSizeEditingDisabled}
               onCommit={(next) => commitManualSize("height", next)}
+            />
+            <MetricField
+              label="R"
+              value={`${manualRotation.angle}°`}
+              onCommit={(next) => commitManualRotation(next.replace("°", ""))}
             />
           </div>
         </Section>

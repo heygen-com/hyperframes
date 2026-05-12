@@ -657,6 +657,10 @@ export function applyStudioPathOffset(
   element: HTMLElement,
   offset: { x: number; y: number },
 ): void {
+  const computedDisplay = safeComputedStyleProperty(element, "display");
+  if (computedDisplay === "inline") {
+    element.style.setProperty("display", "inline-block");
+  }
   writeStudioPathOffsetVars(element, offset);
   element.style.setProperty(
     "translate",
@@ -672,6 +676,10 @@ export function applyStudioPathOffsetDraft(
   element: HTMLElement,
   offset: { x: number; y: number },
 ): void {
+  const computedDisplay = safeComputedStyleProperty(element, "display");
+  if (computedDisplay === "inline") {
+    element.style.setProperty("display", "inline-block");
+  }
   writeStudioPathOffsetVars(element, offset, { updateBase: false });
   element.style.setProperty(
     "translate",
