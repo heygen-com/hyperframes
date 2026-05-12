@@ -89,11 +89,10 @@ export function useDomEditTextCommits({
           buildDomEditStylePatchOperation("background-size", "contain"),
         );
       }
-      const skipRefresh = property !== "z-index";
       try {
         await persistDomEditOperations(domEditSelection, operations, {
           label: "Edit layer style",
-          skipRefresh,
+          skipRefresh: true,
           prepareContent: importedFont
             ? (html, sourceFile) => ensureImportedFontFace(html, importedFont, sourceFile)
             : undefined,
