@@ -55,9 +55,12 @@ function CompCard({
   const name = comp.replace(/^compositions\//, "").replace(/\.html$/, "");
   const thumbnailUrl = `/api/projects/${projectId}/thumbnail/${comp}?t=2`;
   const previewUrl = `/api/projects/${projectId}/preview/comp/${comp}`;
+  const isPortrait = stageSize.height > stageSize.width;
+  const cardWidth = isPortrait ? Math.round((45 * stageSize.width) / stageSize.height) : 80;
+  const cardHeight = isPortrait ? 45 : Math.round((80 * stageSize.height) / stageSize.width);
   const previewScale = resolveCompositionPreviewScale({
-    cardWidth: 80,
-    cardHeight: 45,
+    cardWidth,
+    cardHeight,
     stageWidth: stageSize.width,
     stageHeight: stageSize.height,
   });
@@ -73,7 +76,10 @@ function CompCard({
           : "border-l-2 border-transparent hover:bg-neutral-800/50"
       }`}
     >
-      <div className="w-20 h-[45px] rounded overflow-hidden bg-neutral-900 flex-shrink-0 relative">
+      <div
+        className="rounded overflow-hidden bg-neutral-900 flex-shrink-0 relative"
+        style={{ width: cardWidth, height: cardHeight }}
+      >
         {/* Live iframe preview on hover */}
         {hovered && (
           <iframe
