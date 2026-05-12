@@ -906,6 +906,7 @@ export function useTimelinePlayer() {
   const iframeShortcutCleanupRef = useRef<(() => void) | null>(null);
   const playbackKeyDownRef = useRef<(e: KeyboardEvent) => void>(() => {});
   const playbackKeyUpRef = useRef<(e: KeyboardEvent) => void>(() => {});
+  const lastTimelineMessageRef = useRef<number>(0);
   const staticSeekAdapterRef = useRef<{
     player: RuntimePlaybackAdapter;
     duration: number;
@@ -1703,13 +1704,21 @@ export function useTimelinePlayer() {
               processTimelineMessageRef.current(manifest);
             }
           }
-          // Always try to enrich — timelines may have registered since the last check
-          enrichMissingCompositionsRef.current();
+          // Enrich only when the timeline has settled — skip during the window
+          // right after a "timeline" message to avoid the enrichment adding
+          // elements that fight with the manifest's authoritative element list,
+          // causing duration oscillation (the merge function alternates between
+          // REPLACE and PRESERVE when element counts fluctuate).
+          const msSinceTimeline = Date.now() - lastTimelineMessageRef.current;
+          if (msSinceTimeline > 500) {
+            enrichMissingCompositionsRef.current();
+          }
         } catch (err) {
           console.warn("[useTimelinePlayer] Could not read clip manifest from iframe", err);
         }
       }
       if (data?.source === "hf-preview" && data?.type === "timeline" && Array.isArray(data.clips)) {
+        lastTimelineMessageRef.current = Date.now();
         processTimelineMessageRef.current(data);
         // Fill in composition hosts the manifest missed (element-reference starts)
         enrichMissingCompositionsRef.current();

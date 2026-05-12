@@ -397,7 +397,13 @@ export function useDomEditCommits({
         });
 
         clearDomSelection();
-        usePlayerStore.getState().setSelectedElementId(null);
+        const store = usePlayerStore.getState();
+        store.setSelectedElementId(null);
+        // Clear stale elements before iframe reload to prevent the merge
+        // function from preserving pre-delete elements, which causes
+        // duration oscillation as enrichMissingCompositions and
+        // processTimelineMessage fight over the element count.
+        store.setElements([]);
         setRefreshKey((k) => k + 1);
         showToast(`Deleted ${label}. Use Undo to restore it.`, "info");
       } catch (error) {
