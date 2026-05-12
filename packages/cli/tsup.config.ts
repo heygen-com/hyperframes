@@ -7,7 +7,19 @@ const pkg = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), 
 };
 
 export default defineConfig({
-  entry: ["src/cli.ts"],
+  // hf#732 lever-4: emit BOTH the CLI bundle and the PNG decode + alpha-blit
+  // worker entry. The producer's `pngDecodeBlitWorkerPool` instantiates a
+  // Node `worker_threads` Worker via `new Worker(<path>)`, which is a
+  // filesystem load — it cannot share the parent module graph. The pool's
+  // path resolver probes for `pngDecodeBlitWorker.js` next to its own loaded
+  // module (which lives inside `dist/cli.js` after the producer is
+  // `noExternal`'d and bundled in). Without this entry the file would not
+  // exist at runtime and the pool would either crash or silently fall back
+  // to inline decode/blit, killing the perf gain.
+  entry: {
+    cli: "src/cli.ts",
+    pngDecodeBlitWorker: "../producer/src/services/pngDecodeBlitWorker.ts",
+  },
   format: ["esm"],
   outDir: "dist",
   target: "node22",
@@ -56,6 +68,10 @@ var __dirname = __hf_dirname(__filename);`,
   esbuildOptions(options) {
     options.alias = {
       "@hyperframes/producer": resolve(__dirname, "../producer/src/index.ts"),
+      // hf#732 lever-4: alias for the PNG decode+blit worker's import.
+      // `alphaBlit.ts` is import-free (only zlib) so the worker survives
+      // the worker_thread loader boundary directly via this TS source.
+      "@hyperframes/engine/alpha-blit": resolve(__dirname, "../engine/src/utils/alphaBlit.ts"),
     };
     options.loader = { ...options.loader, ".browser.js": "text" };
   },

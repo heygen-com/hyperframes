@@ -21,6 +21,9 @@ const workspaceAliasPlugin = {
     build.onResolve({ filter: /^@hyperframes\/engine$/ }, () => ({
       path: resolve(scriptDir, "../engine/src/index.ts"),
     }));
+    build.onResolve({ filter: /^@hyperframes\/engine\/alpha-blit$/ }, () => ({
+      path: resolve(scriptDir, "../engine/src/utils/alphaBlit.ts"),
+    }));
     build.onResolve({ filter: /^@hyperframes\/core$/ }, () => ({
       path: resolve(scriptDir, "../core/src/index.ts"),
     }));
@@ -54,6 +57,22 @@ await Promise.all([
     sourcemap: true,
     entryPoints: ["src/server.ts"],
     outfile: "dist/public-server.js",
+  }),
+  // PNG decode + alpha-blit worker (hf#732 lever-4). Loaded by
+  // `pngDecodeBlitWorkerPool.createPngDecodeBlitWorkerPool` via
+  // `new Worker(<path>)`. Must be a separate entry point so the worker
+  // module is standalone and shares no parent module-graph state.
+  build({
+    bundle: true,
+    platform: "node",
+    target: "node22",
+    format: "esm",
+    external: ["puppeteer", "esbuild", "postcss"],
+    plugins: [workspaceAliasPlugin],
+    minify: false,
+    sourcemap: true,
+    entryPoints: ["src/services/pngDecodeBlitWorker.ts"],
+    outfile: "dist/services/pngDecodeBlitWorker.js",
   }),
 ]);
 
