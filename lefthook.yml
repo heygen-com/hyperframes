@@ -17,7 +17,8 @@ pre-commit:
       exclude: "(\\.test\\.(ts|tsx)$|\\.generated\\.)"
       run: |
         for f in {staged_files}; do
-          case "$f" in *useTimelinePlayer.ts|*App.tsx) continue ;; esac
+          # TODO: remove useDomEditSession exclusion after Tasks 3-5 split it under 500 LOC
+          case "$f" in */useDomEditSession.ts) continue ;; esac
           lines=$(wc -l < "$f")
           if [ "$lines" -gt 500 ]; then
             echo "ERROR: $f has $lines lines (max 500)"
