@@ -459,16 +459,24 @@ class HyperframesPlayer extends HTMLElement {
     if (this._duration > 0 && this._currentTime >= this._duration) {
       this.seek(0);
     }
+    // Must be set before _startParentTickClock so the RAF loop's `_paused`
+    // check doesn't immediately self-terminate on the first callback.
+    this._paused = false;
     // Drive the iframe runtime when present. Same-origin standalone GSAP
     // compositions can expose only `window.__timelines`, so they use a direct
     // timeline adapter instead of a postMessage bridge nobody is listening to.
     const directTimelineStarted = this._tryDirectTimelinePlay();
     if (!directTimelineStarted) {
       this._sendControl("play");
-      this._startParentTickClock();
+      // Only start the parent tick clock once the composition is ready and
+      // confirmed on the runtime bridge path (not the direct-timeline path).
+      // Guards against firing ticks into an uninitialized iframe when play()
+      // is called before the probe has resolved.
+      if (this._ready && !this._directTimelineAdapter) {
+        this._startParentTickClock();
+      }
     }
     if (this._audioOwner === "parent") this._playParentMedia();
-    this._paused = false;
     this.controlsApi?.updatePlaying(true);
     this.dispatchEvent(new Event("play"));
     if (directTimelineStarted) this._startDirectTimelineClock();
@@ -514,6 +522,7 @@ class HyperframesPlayer extends HTMLElement {
       this._sendControl("seek", { frame });
     }
     this._stopDirectTimelineClock();
+    this._stopParentTickClock();
     this._currentTime = timeInSeconds;
 
     // Mirror parent proxy currentTime only while parent owns audible output.

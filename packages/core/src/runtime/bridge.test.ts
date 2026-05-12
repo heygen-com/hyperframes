@@ -6,6 +6,7 @@ function createMockDeps() {
     onPlay: vi.fn(),
     onPause: vi.fn(),
     onSeek: vi.fn(),
+    onTick: vi.fn(),
     onSetMuted: vi.fn(),
     onSetVolume: vi.fn(),
     onSetMediaOutputMuted: vi.fn(),
@@ -108,6 +109,13 @@ describe("installRuntimeControlBridge", () => {
     const handler = installRuntimeControlBridge(deps);
     handler(makeControlMessage("set-playback-rate"));
     expect(deps.onSetPlaybackRate).toHaveBeenCalledWith(1);
+  });
+
+  it("dispatches tick command", () => {
+    const deps = createMockDeps();
+    const handler = installRuntimeControlBridge(deps);
+    handler(makeControlMessage("tick"));
+    expect(deps.onTick).toHaveBeenCalledOnce();
   });
 
   it("dispatches enable-pick-mode", () => {
