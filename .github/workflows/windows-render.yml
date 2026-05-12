@@ -1,5 +1,8 @@
 name: Windows render verification
 
+permissions:
+  contents: read
+
 # Manually triggered smoke test that renders a HyperFrames composition on a
 # real Windows runner. Proves the PR #336 `where ffmpeg` fix actually works
 # end-to-end: FFmpeg is discovered natively on Windows, Chrome is installed

@@ -42,14 +42,18 @@ jobs:
 
       - name: Resolve version
         id: version
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
         run: |
-          if [ "${{ github.event_name }}" = "push" ]; then
+          if [ "$EVENT_NAME" = "push" ]; then
             VERSION="${GITHUB_REF_NAME#v}"
-          elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            VERSION="${{ inputs.version }}"
+          elif [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            VERSION="${INPUT_VERSION}"
             VERSION="${VERSION#v}"
           else
-            BRANCH="${{ github.event.pull_request.head.ref }}"
+            BRANCH="${PR_HEAD_REF}"
             VERSION="${BRANCH#release/v}"
           fi
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
