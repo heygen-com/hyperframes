@@ -328,12 +328,13 @@ jobs:
         run: |
           EXIT=0
           while IFS= read -r f; do
+            if grep -qxF "$f" .filesize-allowlist 2>/dev/null; then continue; fi
             lines=$(wc -l < "$f")
             if [ "$lines" -gt 500 ]; then
               echo "::error file=$f::$f has $lines lines (max 500)"
               EXIT=1
             fi
-          done < <(find packages -path '*/node_modules' -prune -o \( -name '*.ts' -o -name '*.tsx' \) -print | grep -vE '\.(test|spec)\.(ts|tsx)$|\.generated\.')
+          done < <(find packages/studio -path '*/node_modules' -prune -o \( -name '*.ts' -o -name '*.tsx' \) -print | grep -vE '\.(test|spec)\.(ts|tsx)$|\.generated\.')
           exit $EXIT
 
   semantic-pr-title:

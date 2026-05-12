@@ -13,29 +13,18 @@ pre-commit:
       glob: "*.{ts,tsx}"
       run: cd packages/core && bunx tsc --noEmit && cd ../studio && bunx tsc --noEmit
     filesize:
-      glob: "*.{ts,tsx}"
+      # Scoped to packages/studio — the 500 LOC limit is a studio architecture
+      # standard enforced as part of the App.tsx decomposition work. Player and
+      # other packages enforce size discipline via code review and convention.
+      # Files temporarily over the limit are listed in .filesize-allowlist.
+      glob: "packages/studio/**/*.{ts,tsx}"
       exclude: "(\\.test\\.(ts|tsx)$|\\.generated\\.)"
       run: |
         for f in {staged_files}; do
-          # The hook-level `exclude` regex above is meant to skip test
-          # and generated files, but lefthook expands `{staged_files}`
-          # before evaluating it for our shell loop — so the runtime
-          # filter has to repeat the rule.
-          case "$f" in
-            *.test.ts|*.test.tsx|*.generated.ts|*.generated.tsx) continue ;;
-          esac
-          # Grandfathered files that pre-date this hook (added in #748).
-          # New files >500 lines still fail; existing offenders are tracked
-          # for thinning in separate refactors — the producer stages stack
-          # is actively shrinking renderOrchestrator.ts, and
-          # captureHdrStage.ts is on the cycle-break list.
-          case "$f" in
-            *useTimelinePlayer.ts|*App.tsx) continue ;;
-            *renderOrchestrator.ts|*captureHdrStage.ts) continue ;;
-          esac
+          if grep -qxF "$f" .filesize-allowlist 2>/dev/null; then continue; fi
           lines=$(wc -l < "$f")
           if [ "$lines" -gt 500 ]; then
-            echo "ERROR: $f has $lines lines (max 500)"
+            echo "ERROR: $f has $lines lines (max 500) — add to .filesize-allowlist if temporarily needed"
             exit 1
           fi
         done
