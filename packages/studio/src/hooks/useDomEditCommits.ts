@@ -3,6 +3,7 @@ import { usePlayerStore } from "../player";
 import { FONT_EXT } from "../utils/mediaTypes";
 import { applyPatchByTarget } from "../utils/sourcePatcher";
 import { saveProjectFilesWithHistory } from "../utils/studioFileHistory";
+import { confirmElementDelete } from "../utils/studioHelpers";
 import { primaryFontFamilyValue } from "../utils/studioFontHelpers";
 import { getDomEditTargetKey, type DomEditSelection } from "../components/editor/domEditing";
 import {
@@ -65,7 +66,7 @@ export interface UseDomEditCommitsParams {
   importedFontAssetsRef: React.MutableRefObject<ImportedFontAsset[]>;
   projectId: string | null;
   projectIdRef: React.MutableRefObject<string | null>;
-  reloadPreview: () => void;
+  setRefreshKey: React.Dispatch<React.SetStateAction<number>>;
 
   // From useDomSelection
   domEditSelection: DomEditSelection | null;
@@ -101,7 +102,7 @@ export function useDomEditCommits({
   importedFontAssetsRef,
   projectId,
   projectIdRef,
-  reloadPreview,
+  setRefreshKey,
   domEditSelection,
   domEditGroupSelectionsRef,
   applyDomSelection,
@@ -178,7 +179,7 @@ export function useDomEditCommits({
       if (options?.skipRefresh) {
         domEditSaveTimestampRef.current = Date.now();
       } else {
-        reloadPreview();
+        setRefreshKey((k) => k + 1);
       }
     },
     [
@@ -187,7 +188,7 @@ export function useDomEditCommits({
       writeProjectFile,
       projectIdRef,
       domEditSaveTimestampRef,
-      reloadPreview,
+      setRefreshKey,
     ],
   );
 
@@ -345,6 +346,7 @@ export function useDomEditCommits({
       const pid = projectIdRef.current;
       if (!pid) return;
       const label = selection.label || selection.id || selection.selector || selection.tagName;
+      if (!confirmElementDelete(label, "element")) return;
 
       const targetPath = selection.sourceFile || activeCompPath || "index.html";
       try {
@@ -398,7 +400,7 @@ export function useDomEditCommits({
 
         clearDomSelection();
         usePlayerStore.getState().setSelectedElementId(null);
-        reloadPreview();
+        setRefreshKey((k) => k + 1);
         showToast(`Deleted ${label}. Use Undo to restore it.`, "info");
       } catch (error) {
         const message = error instanceof Error ? error.message : "Failed to delete element";
@@ -411,7 +413,7 @@ export function useDomEditCommits({
       domEditSaveTimestampRef,
       editHistory.recordEdit,
       projectIdRef,
-      reloadPreview,
+      setRefreshKey,
       showToast,
       writeProjectFile,
     ],
