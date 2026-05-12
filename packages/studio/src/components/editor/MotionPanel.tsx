@@ -4,7 +4,6 @@ import type { DomEditSelection } from "./domEditing";
 import {
   STUDIO_GSAP_EASE_OPTIONS,
   buildStudioGsapPresetMotion,
-  clampStudioCustomEasePoints,
   controlPointsForGsapEase,
   parseStudioCustomEaseData,
   serializeStudioCustomEaseData,

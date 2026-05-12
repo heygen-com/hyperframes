@@ -8,7 +8,6 @@ import {
   type StudioCustomEaseControlPoints,
   type StudioGsapCustomEase,
   type StudioGsapMotion,
-  type StudioGsapMotionDirection,
   type StudioGsapMotionPreset,
   type StudioGsapPresetMotionOptions,
   type StudioMotionManifest,
