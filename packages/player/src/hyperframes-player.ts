@@ -1,4 +1,4 @@
-import { createControls, SPEED_PRESETS, type ControlsCallbacks } from "./controls.js";
+import { createControls, type ControlsCallbacks } from "./controls.js";
 import { shouldInjectRuntime } from "./shouldInjectRuntime.js";
 import { PLAYER_STYLES } from "./styles.js";
 

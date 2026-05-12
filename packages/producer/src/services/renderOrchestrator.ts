@@ -1975,8 +1975,6 @@ export async function executeRenderJob(
       needsAlpha,
       deviceScaleFactor,
     });
-    const outputWidth = width * deviceScaleFactor;
-    const outputHeight = height * deviceScaleFactor;
     if (deviceScaleFactor > 1) {
       log.info("Supersampling composition via deviceScaleFactor", {
         compositionWidth: width,
