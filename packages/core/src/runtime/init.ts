@@ -7,7 +7,6 @@ import { createLottieAdapter } from "./adapters/lottie";
 import { createThreeAdapter } from "./adapters/three";
 import { createWaapiAdapter } from "./adapters/waapi";
 import { refreshRuntimeMediaCache, syncRuntimeMedia } from "./media";
-import { createMediaPreloadManager } from "./mediaPreloader";
 import { createPickerModule } from "./picker";
 import { createRuntimePlayer } from "./player";
 import { createRuntimeState } from "./state";
@@ -933,6 +932,15 @@ export function initSandboxRuntimeModular(): void {
     if (typeof state.capturedTimeline.timeScale === "function") {
       state.capturedTimeline.timeScale(state.playbackRate);
     }
+    const boundDuration = getSafeTimelineDurationSeconds(state.capturedTimeline, 0);
+    if (boundDuration > 0) {
+      try {
+        clock.setDuration(boundDuration);
+      } catch {
+        // clock not yet initialized — duration will be set during TransportClock setup
+      }
+      state.capturedTimeline.pause();
+    }
     if (resolution.diagnostics) {
       postRuntimeMessage({
         source: "hf-preview",
@@ -1223,61 +1231,24 @@ export function initSandboxRuntimeModular(): void {
     metadataBoundMedia.clear();
   };
 
-  const isRenderMode = Boolean((window as Record<string, unknown>).__HF_EXPORT_RENDER_SEEK_CONFIG);
-  const mediaPreloader = createMediaPreloadManager({
-    onActivation: (clipCount) => {
-      postRuntimeDiagnosticOnce("lazy_preload_activated", { clipCount }, "lazy_preload_activated");
-    },
-  });
-
   const bindMediaMetadataListeners = () => {
     if (state.tornDown) return;
     const mediaEls = Array.from(document.querySelectorAll("video, audio")) as HTMLMediaElement[];
-    const isLazy = mediaPreloader.isLazy();
-
-    let newElementsBound = false;
     for (const mediaEl of mediaEls) {
       if (metadataBoundMedia.has(mediaEl)) continue;
       metadataBoundMedia.add(mediaEl);
-      newElementsBound = true;
       mediaEl.addEventListener("loadedmetadata", scheduleMetadataDurationHydration);
       mediaEl.addEventListener("durationchange", scheduleMetadataDurationHydration);
 
-      // In eager mode, preload inline (same ordering as before lazy preloading)
-      if (!isLazy || isRenderMode) {
-        if (mediaEl.preload !== "auto") mediaEl.preload = "auto";
-        if (mediaEl.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) mediaEl.load();
+      // Eagerly preload media data so audio/video is buffered before the user
+      // clicks play. Without this, the first play() call fires on un-fetched
+      // media, producing silence or choppy audio until the browser caches it.
+      if (mediaEl.preload !== "auto") {
+        mediaEl.preload = "auto";
       }
-    }
-
-    if (newElementsBound && !isRenderMode) {
-      mediaPreloader.refresh();
-    }
-
-    // Lazy-mode demotion runs separately after refresh updates the clip list
-    if (mediaPreloader.isLazy() && !isRenderMode) {
-      // Only demote timed media (elements with data-start) to metadata preload.
-      // Untimed media (background audio, ambient loops, decorative video) must
-      // keep their original preload state — the mediaPreloader only manages
-      // timed clips and would never promote them back.
-      for (const mediaEl of mediaEls) {
-        if (!mediaEl.hasAttribute("data-start")) continue;
-        // Power-user opt-out: data-preload-eager keeps a clip eagerly buffered
-        // even under lazy mode, useful when a specific clip must be instantly
-        // available regardless of playhead proximity.
-        if (mediaEl.hasAttribute("data-preload-eager")) continue;
-        if (mediaEl.preload === "auto" || mediaEl.preload === "") {
-          mediaEl.preload = "metadata";
-          // Kick off the metadata fetch explicitly — some browsers (Chrome Lite
-          // mode, Firefox with media.preload.default=0) won't fetch metadata
-          // until load() is called, and timeline duration depends on el.duration.
-          mediaEl.load();
-        }
-        if (mediaEl.readyState < HTMLMediaElement.HAVE_METADATA) {
-          mediaEl.load();
-        }
+      if (mediaEl.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) {
+        mediaEl.load();
       }
-      mediaPreloader.preloadAroundTime(Math.max(0, state.currentTime || 0));
     }
   };
 
@@ -1333,7 +1304,7 @@ export function initSandboxRuntimeModular(): void {
       timeSeconds: state.currentTime,
       playing: state.isPlaying,
       playbackRate: state.playbackRate,
-      outputMuted: state.mediaOutputMuted,
+      outputMuted: state.mediaOutputMuted || webAudio.isActive(),
       userMuted: state.bridgeMuted,
       userVolume: state.bridgeVolume,
       forceSync,
@@ -1488,6 +1459,7 @@ export function initSandboxRuntimeModular(): void {
       .then(() => loadInlineTemplateCompositions(compositionLoaderParams))
       .finally(() => {
         externalCompositionsReady = true;
+        bindRootTimelineIfAvailable();
         runAdapters("discover", state.currentTime);
         bindMediaMetadataListeners();
         installAssetFailureDiagnostics();
@@ -1627,7 +1599,6 @@ export function initSandboxRuntimeModular(): void {
     onSetPlaybackRate: (rate) => {
       applyPlaybackRate(rate);
       if (state.transportClock) state.transportClock.setRate(state.playbackRate);
-      webAudio.setRate(state.playbackRate);
     },
     onEnablePickMode: () => picker.enablePickMode(),
     onDisablePickMode: () => picker.disablePickMode(),
@@ -1683,6 +1654,49 @@ export function initSandboxRuntimeModular(): void {
   let transportTickCount = 0;
   let inTransportTick = false;
 
+  const seekRuntimeTimeline = (
+    timeline: RuntimeTimelineLike,
+    timeSeconds: number,
+    swallowLabel: string,
+  ) => {
+    try {
+      timeline.pause();
+      if (typeof timeline.totalTime === "function") {
+        timeline.totalTime(timeSeconds, false);
+      } else {
+        timeline.seek(timeSeconds, false);
+      }
+    } catch (err) {
+      swallow(swallowLabel, err);
+    }
+  };
+
+  const seekStandaloneRegisteredTimelines = (timeSeconds: number) => {
+    const timelines = (window.__timelines ?? {}) as Record<string, RuntimeTimelineLike | undefined>;
+    const rootCompositionId =
+      resolveRootCompositionElement()?.getAttribute("data-composition-id") ?? null;
+    for (const [compositionId, timeline] of Object.entries(timelines)) {
+      if (!timeline || compositionId === rootCompositionId) continue;
+      const node = document.querySelector(`[data-composition-id="${CSS.escape(compositionId)}"]`);
+      if (!node) continue;
+      const start = resolveStartForElement(node, 0);
+      if (!Number.isFinite(start)) continue;
+      const authoredDuration = resolveDurationForElement(node, {
+        includeAuthoredTimingAttrs: true,
+      });
+      const timelineDuration = getTimelineDurationSeconds(timeline);
+      const duration =
+        authoredDuration != null && authoredDuration > 0 ? authoredDuration : timelineDuration;
+      const localTime = Math.max(
+        0,
+        duration != null && duration > 0
+          ? Math.min(duration, timeSeconds - start)
+          : timeSeconds - start,
+      );
+      seekRuntimeTimeline(timeline, localTime, "runtime.init.transport.childTimeline");
+    }
+  };
+
   const seekTimelineAndAdapters = (t: number) => {
     const tl = state.capturedTimeline;
     if (tl) {
@@ -1702,6 +1716,8 @@ export function initSandboxRuntimeModular(): void {
       // at absolute `t` would clobber their offset-relative position.
       // Play/pause propagation for siblings happens in the player.play()
       // and player.pause() overrides via the adapter layer.
+    } else {
+      seekStandaloneRegisteredTimelines(t);
     }
     for (const adapter of state.deterministicAdapters) {
       try {
@@ -1780,7 +1796,7 @@ export function initSandboxRuntimeModular(): void {
               if (!rawEl.paused) {
                 clock.attachAudioSource({ el: rawEl, compositionStart: start, mediaStart });
                 foundActive = true;
-              } else if (rawEl.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) {
+              } else if (!rawEl.error && rawEl.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) {
                 // Audio is buffering — freeze visuals at last known position
                 // instead of falling through to monotonic (which runs ahead).
                 clock.attachAudioSource({ currentTimeSeconds: state.currentTime });
@@ -1825,9 +1841,6 @@ export function initSandboxRuntimeModular(): void {
 
       if (clock.isPlaying()) {
         syncMediaForCurrentState();
-        if (mediaPreloader.isLazy() && transportTickCount % 10 === 0) {
-          mediaPreloader.sync(Math.max(0, state.currentTime || 0));
-        }
       }
       postState(false);
     } finally {
@@ -1861,8 +1874,7 @@ export function initSandboxRuntimeModular(): void {
   // Player methods route through the TransportClock.
   player.play = () => {
     const tl = state.capturedTimeline;
-    if (!tl || clock.isPlaying()) return;
-    mediaPreloader.preloadAroundTime(Math.max(0, state.currentTime || 0));
+    if (clock.isPlaying()) return;
     const dur = getSafeTimelineDurationSeconds(tl, 0);
     if (dur > 0) {
       clock.setDuration(dur);
@@ -1871,8 +1883,12 @@ export function initSandboxRuntimeModular(): void {
         state.currentTime = 0;
         seekTimelineAndAdapters(0);
       }
+    } else {
+      const rootEl = resolveRootCompositionElement();
+      const declaredDur = Number(rootEl?.getAttribute("data-duration") ?? 0);
+      if (declaredDur > 0) clock.setDuration(declaredDur);
     }
-    tl.pause();
+    if (tl) tl.pause();
     if (!clock.play()) return;
     state.isPlaying = true;
     state.mediaForceSyncNextTick = true;
@@ -1901,7 +1917,6 @@ export function initSandboxRuntimeModular(): void {
             clock.now(),
             vol * state.bridgeVolume,
             gen,
-            state.playbackRate,
           );
         });
       }
@@ -1932,7 +1947,6 @@ export function initSandboxRuntimeModular(): void {
       Math.max(0, Number(timeSeconds) || 0),
       state.canonicalFps,
     );
-    mediaPreloader.preloadAroundTime(quantized);
     webAudio.stopAll();
     clock.detachAudioSource();
     const wasPlaying = clock.isPlaying();
