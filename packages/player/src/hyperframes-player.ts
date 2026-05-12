@@ -209,6 +209,7 @@ class HyperframesPlayer extends HTMLElement {
   private _lastUpdateMs = 0;
   private _directTimelineAdapter: DirectTimelineAdapter | null = null;
   private _directTimelineRaf: number | null = null;
+  private _parentTickRaf: number | null = null;
 
   /**
    * Parent-frame audio/video proxies, preloaded mirror copies of the iframe's
@@ -346,6 +347,7 @@ class HyperframesPlayer extends HTMLElement {
     this.iframe.removeEventListener("load", this._onIframeLoad);
     if (this._probeInterval) clearInterval(this._probeInterval);
     this._stopDirectTimelineClock();
+    this._stopParentTickClock();
     this._directTimelineAdapter = null;
     if (this.shaderLoaderHideTimeout) clearTimeout(this.shaderLoaderHideTimeout);
     this.shaderLoaderHideTimeout = null;
@@ -461,7 +463,10 @@ class HyperframesPlayer extends HTMLElement {
     // compositions can expose only `window.__timelines`, so they use a direct
     // timeline adapter instead of a postMessage bridge nobody is listening to.
     const directTimelineStarted = this._tryDirectTimelinePlay();
-    if (!directTimelineStarted) this._sendControl("play");
+    if (!directTimelineStarted) {
+      this._sendControl("play");
+      this._startParentTickClock();
+    }
     if (this._audioOwner === "parent") this._playParentMedia();
     this._paused = false;
     this.controlsApi?.updatePlaying(true);
@@ -472,6 +477,7 @@ class HyperframesPlayer extends HTMLElement {
   pause() {
     if (!this._tryDirectTimelinePause()) this._sendControl("pause");
     this._stopDirectTimelineClock();
+    this._stopParentTickClock();
     if (this._audioOwner === "parent") this._pauseParentMedia();
     this._paused = true;
     this.controlsApi?.updatePlaying(false);
@@ -957,6 +963,33 @@ class HyperframesPlayer extends HTMLElement {
     this._directTimelineRaf = null;
   }
 
+  /**
+   * Widget-frame RAF loop that sends "tick" postMessages to the composition
+   * iframe on every frame. Used for the runtime bridge path so that animation
+   * advances even when the composition iframe's own rAF is throttled by
+   * Chromium (e.g. deeply nested cross-origin iframes in Electron / Claude desktop).
+   * The runtime's own rAF loop still runs — ticking GSAP twice per frame is
+   * harmless because seekTimelineAndAdapters is idempotent.
+   */
+  private _startParentTickClock(): void {
+    this._stopParentTickClock();
+    const tick = () => {
+      if (this._paused) {
+        this._parentTickRaf = null;
+        return;
+      }
+      this._sendControl("tick");
+      this._parentTickRaf = requestAnimationFrame(tick);
+    };
+    this._parentTickRaf = requestAnimationFrame(tick);
+  }
+
+  private _stopParentTickClock(): void {
+    if (this._parentTickRaf === null) return;
+    cancelAnimationFrame(this._parentTickRaf);
+    this._parentTickRaf = null;
+  }
+
   private _resolveDirectTimelineAdapter(): DirectTimelineAdapter | null {
     try {
       const win = this.iframe.contentWindow;
@@ -1107,6 +1140,7 @@ class HyperframesPlayer extends HTMLElement {
     this._runtimeInjected = false;
     this._directTimelineAdapter = null;
     this._stopDirectTimelineClock();
+    this._stopParentTickClock();
     this._resetShaderLoader();
     // A fresh iframe means a fresh runtime — `mediaOutputMuted` and the
     // autoplay-blocked latch are both reset inside it. The web component's
