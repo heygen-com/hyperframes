@@ -1524,108 +1524,70 @@ export function useTimelinePlayer() {
     }
   }, [syncTimelineElements]);
 
-  const onIframeLoad = useCallback(() => {
-    unmutePreviewMedia(iframeRef.current);
+  const initializeAdapter = useCallback(() => {
+    const adapter = getAdapter();
+    if (!adapter || adapter.getDuration() <= 0) return false;
 
-    let attempts = 0;
-    const maxAttempts = 25;
+    adapter.pause();
+    const seekTo = pendingSeekRef.current;
+    pendingSeekRef.current = null;
+    const startTime = seekTo != null ? Math.min(seekTo, adapter.getDuration()) : 0;
 
-    if (probeIntervalRef.current) clearInterval(probeIntervalRef.current);
+    adapter.seek(startTime);
+    const adapterDur = adapter.getDuration();
+    if (
+      Number.isFinite(adapterDur) &&
+      adapterDur > 0 &&
+      adapterDur < 7200 &&
+      adapterDur !== usePlayerStore.getState().duration
+    ) {
+      setDuration(adapterDur);
+    }
+    setCurrentTime(startTime);
+    if (!isRefreshingRef.current) {
+      setTimelineReady(true);
+    }
+    isRefreshingRef.current = false;
+    setIsPlaying(false);
 
-    probeIntervalRef.current = setInterval(() => {
-      attempts++;
-      const adapter = getAdapter();
-      if (adapter && adapter.getDuration() > 0) {
-        clearInterval(probeIntervalRef.current);
-        adapter.pause();
-
-        const seekTo = pendingSeekRef.current;
-        pendingSeekRef.current = null;
-        const startTime = seekTo != null ? Math.min(seekTo, adapter.getDuration()) : 0;
-
-        adapter.seek(startTime);
-        const adapterDur = adapter.getDuration();
-        // Cap at 7200s (2h) to guard against loop-inflated GSAP timelines
-        if (
-          Number.isFinite(adapterDur) &&
-          adapterDur > 0 &&
-          adapterDur < 7200 &&
-          adapterDur !== usePlayerStore.getState().duration
-        ) {
-          setDuration(adapterDur);
-        }
-        setCurrentTime(startTime);
-        if (!isRefreshingRef.current) {
-          setTimelineReady(true);
-        }
-        isRefreshingRef.current = false;
-        setIsPlaying(false);
-
-        try {
-          const iframe = iframeRef.current;
-          const doc = iframe?.contentDocument;
-          const iframeWin = iframe?.contentWindow as IframeWindow | null;
-          if (doc && iframeWin) {
-            normalizePreviewViewport(doc, iframeWin);
-            autoHealMissingCompositionIds(doc);
-            attachIframeShortcutListeners();
-          }
-
-          // Try reading __clipManifest if already available (fast path)
-          const manifest = iframeWin?.__clipManifest;
-          if (manifest && manifest.clips.length > 0) {
-            processTimelineMessage(manifest);
-          }
-          // Enrich: fill in composition hosts the manifest missed
-          enrichMissingCompositions();
-
-          // Run DOM fallback if still no elements were populated
-          // (manifest may exist but all clips filtered out by parentCompositionId logic)
-          if (usePlayerStore.getState().elements.length === 0 && doc) {
-            // Fallback: parse data-start elements directly from DOM (raw HTML without runtime)
-            const els = parseTimelineFromDOM(doc, adapter.getDuration());
-            if (els.length > 0) {
-              syncTimelineElements(els);
-            }
-          }
-
-          // Final fallback for standalone composition previews: if still no
-          // elements, build timeline entries from the DOM inside the root
-          // composition. This ensures the timeline always shows content when
-          // viewing a single composition (where elements lack data-start).
-          if (usePlayerStore.getState().elements.length === 0 && doc) {
-            const rootComp = doc.querySelector("[data-composition-id]");
-            const rootDuration = adapter.getDuration();
-            if (rootComp && rootDuration > 0) {
-              const fallbackElement = buildStandaloneRootTimelineElement({
-                compositionId: rootComp.getAttribute("data-composition-id") || "composition",
-                tagName: (rootComp as HTMLElement).tagName || "div",
-                rootDuration,
-                iframeSrc: iframe?.src || "",
-                selector: getTimelineElementSelector(rootComp),
-              });
-              if (fallbackElement) {
-                // Always show the root composition as a single clip — guarantees
-                // the timeline is never empty when a valid composition is loaded.
-                syncTimelineElements([fallbackElement]);
-              }
-            }
-          }
-          // The runtime will also postMessage the full timeline after all compositions load.
-          // That message is handled by the window listener below, which will update elements
-          // with the complete data (including async-loaded compositions).
-        } catch (err) {
-          console.warn("[useTimelinePlayer] Could not read timeline elements from iframe", err);
-        }
-
-        return;
+    try {
+      const iframe = iframeRef.current;
+      const doc = iframe?.contentDocument;
+      const iframeWin = iframe?.contentWindow as IframeWindow | null;
+      if (doc && iframeWin) {
+        normalizePreviewViewport(doc, iframeWin);
+        autoHealMissingCompositionIds(doc);
+        attachIframeShortcutListeners();
       }
-      if (attempts >= maxAttempts) {
-        clearInterval(probeIntervalRef.current);
-        console.warn("Could not find __player, __timeline, or __timelines on iframe after 5s");
+
+      const manifest = iframeWin?.__clipManifest;
+      if (manifest && manifest.clips.length > 0) {
+        processTimelineMessage(manifest);
       }
-    }, 200);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+      enrichMissingCompositions();
+
+      if (usePlayerStore.getState().elements.length === 0 && doc) {
+        const els = parseTimelineFromDOM(doc, adapter.getDuration());
+        if (els.length > 0) syncTimelineElements(els);
+      }
+      if (usePlayerStore.getState().elements.length === 0 && doc) {
+        const rootComp = doc.querySelector("[data-composition-id]");
+        const rootDuration = adapter.getDuration();
+        if (rootComp && rootDuration > 0) {
+          const fallbackElement = buildStandaloneRootTimelineElement({
+            compositionId: rootComp.getAttribute("data-composition-id") || "composition",
+            tagName: (rootComp as HTMLElement).tagName || "div",
+            rootDuration,
+            iframeSrc: iframe?.src || "",
+            selector: getTimelineElementSelector(rootComp),
+          });
+          if (fallbackElement) syncTimelineElements([fallbackElement]);
+        }
+      }
+    } catch (err) {
+      console.warn("[useTimelinePlayer] Could not read timeline elements from iframe", err);
+    }
+    return true;
   }, [
     getAdapter,
     setDuration,
@@ -1637,6 +1599,50 @@ export function useTimelinePlayer() {
     syncTimelineElements,
     attachIframeShortcutListeners,
   ]);
+
+  const onIframeLoad = useCallback(() => {
+    unmutePreviewMedia(iframeRef.current);
+    if (probeIntervalRef.current) clearInterval(probeIntervalRef.current);
+
+    // Fast path: adapter already available (in-place reloads, cached compositions)
+    if (initializeAdapter()) return;
+
+    // The runtime posts "state" or "timeline" messages once ready.
+    // Listen for those instead of polling. Use a short-lived message
+    // listener that fires initializeAdapter on the first signal.
+    const iframe = iframeRef.current;
+    let settled = false;
+
+    const trySettle = () => {
+      if (settled) return;
+      if (initializeAdapter()) {
+        settled = true;
+        window.removeEventListener("message", onMessage);
+        if (probeIntervalRef.current) clearInterval(probeIntervalRef.current);
+      }
+    };
+
+    const onMessage = (e: MessageEvent) => {
+      if (e.source && iframe && e.source !== iframe.contentWindow) return;
+      const data = e.data;
+      if (data?.source === "hf-preview" && (data?.type === "state" || data?.type === "timeline")) {
+        trySettle();
+      }
+    };
+    window.addEventListener("message", onMessage);
+
+    // Safety net: if no message arrives within 5s, try one last time then give up.
+    // This replaces the old 25×200ms polling loop with a single delayed check.
+    probeIntervalRef.current = setTimeout(() => {
+      if (!settled) {
+        trySettle();
+        if (!settled) {
+          console.warn("[useTimelinePlayer] Runtime did not signal readiness within 5s");
+        }
+      }
+      window.removeEventListener("message", onMessage);
+    }, 5000) as unknown as ReturnType<typeof setInterval>;
+  }, [initializeAdapter]);
 
   /** Save the current playback time so the next onIframeLoad restores it. */
   const saveSeekPosition = useCallback(() => {
