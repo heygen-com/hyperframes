@@ -144,6 +144,10 @@ jobs:
         with:
           node-version: 22
 
+      - name: Disable Windows Defender real-time monitoring
+        shell: pwsh
+        run: Set-MpPreference -DisableRealtimeMonitoring $true
+
       - name: Install dependencies
         shell: pwsh
         run: bun install --frozen-lockfile
@@ -360,6 +364,12 @@ jobs:
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
+
+      - name: Disable Windows Defender real-time monitoring for node_modules
+        shell: pwsh
+        run: |
+          Add-MpPreference -ExclusionPath "$env:GITHUB_WORKSPACE\packages\producer\node_modules"
+          Add-MpPreference -ExclusionPath "$env:GITHUB_WORKSPACE\node_modules"
 
       - name: Install dependencies
         shell: pwsh
