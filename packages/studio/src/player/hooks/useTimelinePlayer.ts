@@ -920,17 +920,40 @@ export function useTimelinePlayer() {
   const syncTimelineElements = useCallback(
     (elements: TimelineElement[], nextDuration?: number) => {
       const state = usePlayerStore.getState();
+      const resolvedDuration = nextDuration ?? state.duration;
       const mergedElements = mergeTimelineElementsPreservingDowngrades(
         state.elements,
         elements,
         state.duration,
-        nextDuration ?? state.duration,
+        resolvedDuration,
       );
-      setElements(mergedElements);
-      if (Number.isFinite(nextDuration) && (nextDuration ?? 0) > 0) {
+
+      const elementsChanged =
+        mergedElements.length !== state.elements.length ||
+        mergedElements.some((el, i) => {
+          const prev = state.elements[i];
+          return (
+            !prev ||
+            el.id !== prev.id ||
+            el.start !== prev.start ||
+            el.duration !== prev.duration ||
+            el.track !== prev.track
+          );
+        });
+
+      if (elementsChanged) {
+        setElements(mergedElements);
+      }
+      if (
+        Number.isFinite(nextDuration) &&
+        (nextDuration ?? 0) > 0 &&
+        nextDuration !== state.duration
+      ) {
         setDuration(nextDuration ?? 0);
       }
-      setTimelineReady(true);
+      if (!state.timelineReady) {
+        setTimelineReady(true);
+      }
     },
     [setElements, setTimelineReady, setDuration],
   );
@@ -1523,8 +1546,14 @@ export function useTimelinePlayer() {
         adapter.seek(startTime);
         const adapterDur = adapter.getDuration();
         // Cap at 7200s (2h) to guard against loop-inflated GSAP timelines
-        if (Number.isFinite(adapterDur) && adapterDur > 0 && adapterDur < 7200)
+        if (
+          Number.isFinite(adapterDur) &&
+          adapterDur > 0 &&
+          adapterDur < 7200 &&
+          adapterDur !== usePlayerStore.getState().duration
+        ) {
           setDuration(adapterDur);
+        }
         setCurrentTime(startTime);
         if (!isRefreshingRef.current) {
           setTimelineReady(true);
