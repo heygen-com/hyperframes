@@ -1,6 +1,6 @@
 import { useCallback, useRef, useEffect } from "react";
 import type { TimelineElement } from "../player";
-import { liveTime, usePlayerStore } from "../player";
+import { usePlayerStore } from "../player";
 import { FONT_EXT } from "../utils/mediaTypes";
 import { applyPatchByTarget, type PatchOperation } from "../utils/sourcePatcher";
 import { saveProjectFilesWithHistory } from "../utils/studioFileHistory";
@@ -17,21 +17,12 @@ import {
   injectPreviewImportedFont,
   ensureImportedFontFace,
 } from "../utils/studioFontHelpers";
-import {
-  getPreviewLocalPointer,
-  buildRasterClickSelectionContext,
-  pauseStudioPreviewPlayback,
-} from "../utils/studioPreviewHelpers";
-import {
-  STUDIO_INSPECTOR_PANELS_ENABLED,
-  STUDIO_PREVIEW_SELECTION_ENABLED,
-} from "../components/editor/manualEditingAvailability";
+import { STUDIO_INSPECTOR_PANELS_ENABLED } from "../components/editor/manualEditingAvailability";
 import {
   buildDomEditStylePatchOperation,
   buildDomEditTextPatchOperation,
   findElementForSelection,
   getDomEditTargetKey,
-  isLargeRasterDomEditSelection,
   isTextEditableSelection,
   serializeDomEditTextFields,
   buildDefaultDomEditTextField,
@@ -56,6 +47,7 @@ import type { DomEditGroupPathOffsetCommit } from "../components/editor/DomEditO
 import type { EditHistoryKind } from "../utils/editHistory";
 import { useAskAgentModal } from "./useAskAgentModal";
 import { useDomSelection } from "./useDomSelection";
+import { usePreviewInteraction } from "./usePreviewInteraction";
 
 // ── Types ──
 
@@ -206,6 +198,29 @@ export function useDomEditSession({
     domEditSelection,
   });
 
+  // ── Preview interaction (delegated to usePreviewInteraction) ──
+
+  const {
+    handlePreviewCanvasMouseDown,
+    handlePreviewCanvasPointerMove,
+    handlePreviewCanvasPointerLeave,
+    handleBlockedDomMove,
+    handleDomManualDragStart,
+  } = usePreviewInteraction({
+    captionEditMode,
+    compositionLoading,
+    previewIframeRef,
+    activeCompPath,
+    showToast,
+    applyDomSelection,
+    resolveDomSelectionFromPreviewPoint,
+    updateDomEditHoverSelection,
+    preloadAgentPromptSnippet,
+    setAgentPromptSelectionContext,
+    setAgentModalAnchorPoint,
+    setAgentModalOpen,
+  });
+
   // ── Refs ──
 
   const domTextCommitVersionRef = useRef(0);
@@ -302,16 +317,6 @@ export function useDomEditSession({
       setRefreshKey,
     ],
   );
-
-  const handleDomManualDragStart = useCallback(() => {
-    const pausedTime = pauseStudioPreviewPlayback(previewIframeRef.current);
-    const playerStore = usePlayerStore.getState();
-    playerStore.setIsPlaying(false);
-    if (pausedTime != null) {
-      playerStore.setCurrentTime(pausedTime);
-      liveTime.notify(pausedTime);
-    }
-  }, [previewIframeRef]);
 
   const handleDomPathOffsetCommit = useCallback(
     (selection: DomEditSelection, next: { x: number; y: number }) => {
@@ -700,84 +705,6 @@ export function useDomEditSession({
       await commitDomTextFields(domEditSelection, nextTextFields);
     },
     [commitDomTextFields, domEditSelection, handleDomTextCommit],
-  );
-
-  const handlePreviewCanvasMouseDown = useCallback(
-    (e: React.MouseEvent<HTMLDivElement>, options?: { preferClipAncestor?: boolean }) => {
-      if (!STUDIO_PREVIEW_SELECTION_ENABLED || captionEditMode || compositionLoading) return;
-      const nextSelection = resolveDomSelectionFromPreviewPoint(e.clientX, e.clientY, {
-        preferClipAncestor: options?.preferClipAncestor ?? false,
-      });
-      if (!nextSelection) {
-        if (!e.shiftKey) applyDomSelection(null, { revealPanel: false });
-        return;
-      }
-      e.preventDefault();
-      e.stopPropagation();
-      const localPointer = previewIframeRef.current
-        ? getPreviewLocalPointer(previewIframeRef.current, e.clientX, e.clientY)
-        : null;
-      applyDomSelection(nextSelection, { additive: e.shiftKey });
-      if (
-        !e.shiftKey &&
-        localPointer &&
-        isLargeRasterDomEditSelection(nextSelection, localPointer.viewport)
-      ) {
-        setAgentPromptSelectionContext(
-          buildRasterClickSelectionContext(nextSelection, localPointer),
-        );
-        setAgentModalAnchorPoint({ x: e.clientX, y: e.clientY });
-        void preloadAgentPromptSnippet(nextSelection);
-        setAgentModalOpen(true);
-      }
-    },
-    [
-      applyDomSelection,
-      captionEditMode,
-      compositionLoading,
-      preloadAgentPromptSnippet,
-      resolveDomSelectionFromPreviewPoint,
-      previewIframeRef,
-      setAgentModalAnchorPoint,
-      setAgentModalOpen,
-      setAgentPromptSelectionContext,
-    ],
-  );
-
-  const handlePreviewCanvasPointerMove = useCallback(
-    (e: React.PointerEvent<HTMLDivElement>, options?: { preferClipAncestor?: boolean }) => {
-      if (!STUDIO_PREVIEW_SELECTION_ENABLED || captionEditMode || compositionLoading) {
-        updateDomEditHoverSelection(null);
-        return null;
-      }
-
-      const nextSelection = resolveDomSelectionFromPreviewPoint(e.clientX, e.clientY, {
-        preferClipAncestor: options?.preferClipAncestor ?? false,
-      });
-      updateDomEditHoverSelection(nextSelection);
-      return nextSelection;
-    },
-    [
-      captionEditMode,
-      compositionLoading,
-      resolveDomSelectionFromPreviewPoint,
-      updateDomEditHoverSelection,
-    ],
-  );
-
-  const handlePreviewCanvasPointerLeave = useCallback(() => {
-    updateDomEditHoverSelection(null);
-  }, [updateDomEditHoverSelection]);
-
-  const handleBlockedDomMove = useCallback(
-    (selection: DomEditSelection) => {
-      showToast(
-        selection.capabilities.reasonIfDisabled ??
-          "This element can't be adjusted directly from the preview.",
-        "info",
-      );
-    },
-    [showToast],
   );
 
   // ── Effects ──
