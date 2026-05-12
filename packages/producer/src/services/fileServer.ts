@@ -420,8 +420,6 @@ export interface FileServerOptions {
   headScripts?: string[];
   /** Scripts injected before </body> of index.html. Default: render mode extension. */
   bodyScripts?: string[];
-  /** Scripts injected after bodyScripts before </body> of index.html. */
-  additionalBodyScripts?: string[];
   /** Strip embedded runtime scripts from HTML before injection. Default: true. */
   stripEmbeddedRuntime?: boolean;
 }
@@ -444,10 +442,7 @@ export function createFileServer(options: FileServerOptions): Promise<FileServer
   const preHeadScripts = [HF_EARLY_STUB, ...(options.preHeadScripts ?? [])];
   // Default scripts: Hyperframe runtime in <head>, render mode in </body>
   const headScripts = options.headScripts ?? [getVerifiedHyperframeRuntimeSource()];
-  const bodyScripts = [
-    ...(options.bodyScripts ?? [RENDER_MODE_SCRIPT, HF_BRIDGE_SCRIPT]),
-    ...(options.additionalBodyScripts ?? []),
-  ];
+  const bodyScripts = options.bodyScripts ?? [RENDER_MODE_SCRIPT, HF_BRIDGE_SCRIPT];
 
   const app = new Hono();
 

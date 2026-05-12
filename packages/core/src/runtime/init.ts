@@ -933,15 +933,6 @@ export function initSandboxRuntimeModular(): void {
     if (typeof state.capturedTimeline.timeScale === "function") {
       state.capturedTimeline.timeScale(state.playbackRate);
     }
-    const boundDuration = getSafeTimelineDurationSeconds(state.capturedTimeline, 0);
-    if (boundDuration > 0) {
-      try {
-        clock.setDuration(boundDuration);
-      } catch {
-        // clock not yet initialized — duration will be set during TransportClock setup
-      }
-      state.capturedTimeline.pause();
-    }
     if (resolution.diagnostics) {
       postRuntimeMessage({
         source: "hf-preview",
@@ -1342,7 +1333,7 @@ export function initSandboxRuntimeModular(): void {
       timeSeconds: state.currentTime,
       playing: state.isPlaying,
       playbackRate: state.playbackRate,
-      outputMuted: state.mediaOutputMuted || webAudio.isActive(),
+      outputMuted: state.mediaOutputMuted,
       userMuted: state.bridgeMuted,
       userVolume: state.bridgeVolume,
       forceSync,
@@ -1497,7 +1488,6 @@ export function initSandboxRuntimeModular(): void {
       .then(() => loadInlineTemplateCompositions(compositionLoaderParams))
       .finally(() => {
         externalCompositionsReady = true;
-        bindRootTimelineIfAvailable();
         runAdapters("discover", state.currentTime);
         bindMediaMetadataListeners();
         installAssetFailureDiagnostics();
@@ -1693,49 +1683,6 @@ export function initSandboxRuntimeModular(): void {
   let transportTickCount = 0;
   let inTransportTick = false;
 
-  const seekRuntimeTimeline = (
-    timeline: RuntimeTimelineLike,
-    timeSeconds: number,
-    swallowLabel: string,
-  ) => {
-    try {
-      timeline.pause();
-      if (typeof timeline.totalTime === "function") {
-        timeline.totalTime(timeSeconds, false);
-      } else {
-        timeline.seek(timeSeconds, false);
-      }
-    } catch (err) {
-      swallow(swallowLabel, err);
-    }
-  };
-
-  const seekStandaloneRegisteredTimelines = (timeSeconds: number) => {
-    const timelines = (window.__timelines ?? {}) as Record<string, RuntimeTimelineLike | undefined>;
-    const rootCompositionId =
-      resolveRootCompositionElement()?.getAttribute("data-composition-id") ?? null;
-    for (const [compositionId, timeline] of Object.entries(timelines)) {
-      if (!timeline || compositionId === rootCompositionId) continue;
-      const node = document.querySelector(`[data-composition-id="${CSS.escape(compositionId)}"]`);
-      if (!node) continue;
-      const start = resolveStartForElement(node, 0);
-      if (!Number.isFinite(start)) continue;
-      const authoredDuration = resolveDurationForElement(node, {
-        includeAuthoredTimingAttrs: true,
-      });
-      const timelineDuration = getTimelineDurationSeconds(timeline);
-      const duration =
-        authoredDuration != null && authoredDuration > 0 ? authoredDuration : timelineDuration;
-      const localTime = Math.max(
-        0,
-        duration != null && duration > 0
-          ? Math.min(duration, timeSeconds - start)
-          : timeSeconds - start,
-      );
-      seekRuntimeTimeline(timeline, localTime, "runtime.init.transport.childTimeline");
-    }
-  };
-
   const seekTimelineAndAdapters = (t: number) => {
     const tl = state.capturedTimeline;
     if (tl) {
@@ -1755,8 +1702,6 @@ export function initSandboxRuntimeModular(): void {
       // at absolute `t` would clobber their offset-relative position.
       // Play/pause propagation for siblings happens in the player.play()
       // and player.pause() overrides via the adapter layer.
-    } else {
-      seekStandaloneRegisteredTimelines(t);
     }
     for (const adapter of state.deterministicAdapters) {
       try {
@@ -1835,7 +1780,7 @@ export function initSandboxRuntimeModular(): void {
               if (!rawEl.paused) {
                 clock.attachAudioSource({ el: rawEl, compositionStart: start, mediaStart });
                 foundActive = true;
-              } else if (!rawEl.error && rawEl.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) {
+              } else if (rawEl.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) {
                 // Audio is buffering — freeze visuals at last known position
                 // instead of falling through to monotonic (which runs ahead).
                 clock.attachAudioSource({ currentTimeSeconds: state.currentTime });
@@ -1916,7 +1861,8 @@ export function initSandboxRuntimeModular(): void {
   // Player methods route through the TransportClock.
   player.play = () => {
     const tl = state.capturedTimeline;
-    if (clock.isPlaying()) return;
+    if (!tl || clock.isPlaying()) return;
+    mediaPreloader.preloadAroundTime(Math.max(0, state.currentTime || 0));
     const dur = getSafeTimelineDurationSeconds(tl, 0);
     if (dur > 0) {
       clock.setDuration(dur);
@@ -1925,12 +1871,8 @@ export function initSandboxRuntimeModular(): void {
         state.currentTime = 0;
         seekTimelineAndAdapters(0);
       }
-    } else {
-      const rootEl = resolveRootCompositionElement();
-      const declaredDur = Number(rootEl?.getAttribute("data-duration") ?? 0);
-      if (declaredDur > 0) clock.setDuration(declaredDur);
     }
-    if (tl) tl.pause();
+    tl.pause();
     if (!clock.play()) return;
     state.isPlaying = true;
     state.mediaForceSyncNextTick = true;

@@ -1,0 +1,1 @@
+{"version":3,"file":"frameCapture.d.ts","sourceRoot":"","sources":["../../src/services/frameCapture.ts"],"names":[],"mappings":"AAAA;;;GAGG;AACH,OAAO,EACL,oBAAoB,EACpB,iBAAiB,EACjB,mBAAmB,EACnB,YAAY,EACZ,oBAAoB,EACpB,sBAAsB,EACtB,qBAAqB,EACrB,6BAA6B,EAC7B,KAAK,cAAc,EACnB,KAAK,aAAa,EAClB,KAAK,mBAAmB,EACxB,KAAK,kBAAkB,EACvB,KAAK,cAAc,EACnB,KAAK,iBAAiB,GACvB,MAAM,qBAAqB,CAAC"}

@@ -681,7 +681,6 @@ function inlineSubCompositions(
       const innerH = innerRoot.getAttribute("data-height");
       if (innerW && !host.getAttribute("data-width")) host.setAttribute("data-width", innerW);
       if (innerH && !host.getAttribute("data-height")) host.setAttribute("data-height", innerH);
-      innerRoot.setAttribute("data-composition-file", srcPath);
       innerRoot.querySelectorAll("style, script").forEach((el) => el.remove());
       host.innerHTML = compId ? innerRoot.innerHTML || "" : innerRoot.outerHTML || "";
     } else {
@@ -689,7 +688,6 @@ function inlineSubCompositions(
       host.innerHTML = contentDoc.toString();
     }
 
-    host.setAttribute("data-composition-file", srcPath);
     host.removeAttribute("data-composition-src");
 
     // Set explicit pixel dimensions on the host element so children using

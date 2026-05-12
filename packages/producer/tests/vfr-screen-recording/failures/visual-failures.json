@@ -1,0 +1,279 @@
+{
+  "summary": {
+    "totalCheckpoints": 100,
+    "failedCheckpoints": 54,
+    "threshold": 28
+  },
+  "failedFrames": [
+    {
+      "time": 0.09,
+      "psnr": 22.256128,
+      "belowThresholdBy": 5.743872
+    },
+    {
+      "time": 0.12,
+      "psnr": 22.140487,
+      "belowThresholdBy": 5.859513
+    },
+    {
+      "time": 0.15,
+      "psnr": 22.179456,
+      "belowThresholdBy": 5.820544000000002
+    },
+    {
+      "time": 0.18,
+      "psnr": 22.179456,
+      "belowThresholdBy": 5.820544000000002
+    },
+    {
+      "time": 0.21,
+      "psnr": 21.965369,
+      "belowThresholdBy": 6.034631000000001
+    },
+    {
+      "time": 0.72,
+      "psnr": 22.124397,
+      "belowThresholdBy": 5.875603000000002
+    },
+    {
+      "time": 0.75,
+      "psnr": 21.974375,
+      "belowThresholdBy": 6.025625000000002
+    },
+    {
+      "time": 0.78,
+      "psnr": 21.974375,
+      "belowThresholdBy": 6.025625000000002
+    },
+    {
+      "time": 0.81,
+      "psnr": 21.576887,
+      "belowThresholdBy": 6.423113000000001
+    },
+    {
+      "time": 0.84,
+      "psnr": 20.875483,
+      "belowThresholdBy": 7.124517000000001
+    },
+    {
+      "time": 0.87,
+      "psnr": 20.573199,
+      "belowThresholdBy": 7.426801000000001
+    },
+    {
+      "time": 0.9,
+      "psnr": 20.659209,
+      "belowThresholdBy": 7.340790999999999
+    },
+    {
+      "time": 0.93,
+      "psnr": 20.660655,
+      "belowThresholdBy": 7.339345000000002
+    },
+    {
+      "time": 0.96,
+      "psnr": 20.661614,
+      "belowThresholdBy": 7.338386
+    },
+    {
+      "time": 0.99,
+      "psnr": 20.660907,
+      "belowThresholdBy": 7.339092999999998
+    },
+    {
+      "time": 1.02,
+      "psnr": 20.663712,
+      "belowThresholdBy": 7.336288
+    },
+    {
+      "time": 1.05,
+      "psnr": 20.661661,
+      "belowThresholdBy": 7.338339000000001
+    },
+    {
+      "time": 1.08,
+      "psnr": 20.661661,
+      "belowThresholdBy": 7.338339000000001
+    },
+    {
+      "time": 1.11,
+      "psnr": 20.658796,
+      "belowThresholdBy": 7.341204000000001
+    },
+    {
+      "time": 1.17,
+      "psnr": 21.79722,
+      "belowThresholdBy": 6.202780000000001
+    },
+    {
+      "time": 1.2,
+      "psnr": 21.556139,
+      "belowThresholdBy": 6.443860999999998
+    },
+    {
+      "time": 1.23,
+      "psnr": 20.188096,
+      "belowThresholdBy": 7.811903999999998
+    },
+    {
+      "time": 1.29,
+      "psnr": 22.406725,
+      "belowThresholdBy": 5.593274999999998
+    },
+    {
+      "time": 1.32,
+      "psnr": 22.786094,
+      "belowThresholdBy": 5.2139060000000015
+    },
+    {
+      "time": 1.35,
+      "psnr": 23.352752,
+      "belowThresholdBy": 4.647248000000001
+    },
+    {
+      "time": 1.38,
+      "psnr": 23.352752,
+      "belowThresholdBy": 4.647248000000001
+    },
+    {
+      "time": 1.41,
+      "psnr": 22.211662,
+      "belowThresholdBy": 5.7883379999999995
+    },
+    {
+      "time": 1.92,
+      "psnr": 25.090316,
+      "belowThresholdBy": 2.9096839999999986
+    },
+    {
+      "time": 1.95,
+      "psnr": 23.673743,
+      "belowThresholdBy": 4.326256999999998
+    },
+    {
+      "time": 1.98,
+      "psnr": 23.673743,
+      "belowThresholdBy": 4.326256999999998
+    },
+    {
+      "time": 2.01,
+      "psnr": 22.642487,
+      "belowThresholdBy": 5.357513000000001
+    },
+    {
+      "time": 2.04,
+      "psnr": 22.718313,
+      "belowThresholdBy": 5.281687000000002
+    },
+    {
+      "time": 2.07,
+      "psnr": 23.028197,
+      "belowThresholdBy": 4.971803000000001
+    },
+    {
+      "time": 2.1,
+      "psnr": 23.751957,
+      "belowThresholdBy": 4.248042999999999
+    },
+    {
+      "time": 2.13,
+      "psnr": 25.975816,
+      "belowThresholdBy": 2.0241840000000018
+    },
+    {
+      "time": 2.16,
+      "psnr": 22.928774,
+      "belowThresholdBy": 5.071225999999999
+    },
+    {
+      "time": 2.19,
+      "psnr": 26.324329,
+      "belowThresholdBy": 1.6756710000000012
+    },
+    {
+      "time": 2.22,
+      "psnr": 25.537279,
+      "belowThresholdBy": 2.4627209999999984
+    },
+    {
+      "time": 2.25,
+      "psnr": 26.382274,
+      "belowThresholdBy": 1.617726000000001
+    },
+    {
+      "time": 2.28,
+      "psnr": 26.382274,
+      "belowThresholdBy": 1.617726000000001
+    },
+    {
+      "time": 2.31,
+      "psnr": 23.573514,
+      "belowThresholdBy": 4.426486000000001
+    },
+    {
+      "time": 2.46,
+      "psnr": 24.578146,
+      "belowThresholdBy": 3.4218539999999997
+    },
+    {
+      "time": 2.49,
+      "psnr": 24.501098,
+      "belowThresholdBy": 3.498902000000001
+    },
+    {
+      "time": 2.52,
+      "psnr": 24.404203,
+      "belowThresholdBy": 3.595797000000001
+    },
+    {
+      "time": 2.55,
+      "psnr": 25.122537,
+      "belowThresholdBy": 2.8774629999999988
+    },
+    {
+      "time": 2.58,
+      "psnr": 25.122537,
+      "belowThresholdBy": 2.8774629999999988
+    },
+    {
+      "time": 2.61,
+      "psnr": 26.335585,
+      "belowThresholdBy": 1.6644150000000018
+    },
+    {
+      "time": 2.64,
+      "psnr": 24.310134,
+      "belowThresholdBy": 3.6898659999999985
+    },
+    {
+      "time": 2.67,
+      "psnr": 25.824841,
+      "belowThresholdBy": 2.1751590000000007
+    },
+    {
+      "time": 2.85,
+      "psnr": 22.968464,
+      "belowThresholdBy": 5.031535999999999
+    },
+    {
+      "time": 2.88,
+      "psnr": 22.968464,
+      "belowThresholdBy": 5.031535999999999
+    },
+    {
+      "time": 2.91,
+      "psnr": 22.524879,
+      "belowThresholdBy": 5.4751210000000015
+    },
+    {
+      "time": 2.94,
+      "psnr": 23.12954,
+      "belowThresholdBy": 4.870460000000001
+    },
+    {
+      "time": 2.97,
+      "psnr": 23.497156,
+      "belowThresholdBy": 4.502844
+    }
+  ]
+}

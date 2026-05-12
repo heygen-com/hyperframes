@@ -153,40 +153,6 @@ describe("isPathInside", () => {
 });
 
 describe("createFileServer", () => {
-  it("appends additional body scripts after configured body scripts", async () => {
-    const projectDir = mkdtempSync(join(tmpdir(), "hf-file-server-extra-body-"));
-
-    try {
-      writeFileSync(
-        join(projectDir, "index.html"),
-        "<!doctype html><html><head></head><body></body></html>",
-      );
-
-      const server = await createFileServer({
-        projectDir,
-        preHeadScripts: [],
-        headScripts: [],
-        bodyScripts: ["window.__bodyScript = true;"],
-        additionalBodyScripts: ["window.__additionalBodyScript = true;"],
-      });
-
-      try {
-        const response = await fetch(`${server.url}/index.html`);
-        const html = await response.text();
-
-        expect(response.status).toBe(200);
-        expect(html.indexOf("window.__bodyScript = true;")).toBeGreaterThanOrEqual(0);
-        expect(html.indexOf("window.__additionalBodyScript = true;")).toBeGreaterThan(
-          html.indexOf("window.__bodyScript = true;"),
-        );
-      } finally {
-        server.close();
-      }
-    } finally {
-      rmSync(projectDir, { recursive: true, force: true });
-    }
-  });
-
   it("serves asset files through project-root symlinked directories", async () => {
     const workspaceDir = mkdtempSync(join(tmpdir(), "hf-file-server-symlink-assets-"));
     const adsDir = join(workspaceDir, "Ads");

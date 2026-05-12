@@ -1,0 +1,509 @@
+{
+  "summary": {
+    "totalCheckpoints": 100,
+    "failedCheckpoints": 100,
+    "threshold": 30
+  },
+  "failedFrames": [
+    {
+      "time": 0,
+      "psnr": 22.729066,
+      "belowThresholdBy": 7.2709340000000005
+    },
+    {
+      "time": 0.05,
+      "psnr": 22.728686,
+      "belowThresholdBy": 7.271314
+    },
+    {
+      "time": 0.1,
+      "psnr": 22.728667,
+      "belowThresholdBy": 7.2713329999999985
+    },
+    {
+      "time": 0.15,
+      "psnr": 22.728643,
+      "belowThresholdBy": 7.271356999999998
+    },
+    {
+      "time": 0.2,
+      "psnr": 22.728644,
+      "belowThresholdBy": 7.271356000000001
+    },
+    {
+      "time": 0.25,
+      "psnr": 22.728643,
+      "belowThresholdBy": 7.271356999999998
+    },
+    {
+      "time": 0.3,
+      "psnr": 22.728644,
+      "belowThresholdBy": 7.271356000000001
+    },
+    {
+      "time": 0.35,
+      "psnr": 22.728643,
+      "belowThresholdBy": 7.271356999999998
+    },
+    {
+      "time": 0.4,
+      "psnr": 22.728643,
+      "belowThresholdBy": 7.271356999999998
+    },
+    {
+      "time": 0.45,
+      "psnr": 22.728644,
+      "belowThresholdBy": 7.271356000000001
+    },
+    {
+      "time": 0.5,
+      "psnr": 22.728643,
+      "belowThresholdBy": 7.271356999999998
+    },
+    {
+      "time": 0.55,
+      "psnr": 22.728644,
+      "belowThresholdBy": 7.271356000000001
+    },
+    {
+      "time": 0.6,
+      "psnr": 22.728643,
+      "belowThresholdBy": 7.271356999999998
+    },
+    {
+      "time": 0.65,
+      "psnr": 22.728643,
+      "belowThresholdBy": 7.271356999999998
+    },
+    {
+      "time": 0.7,
+      "psnr": 22.728644,
+      "belowThresholdBy": 7.271356000000001
+    },
+    {
+      "time": 0.75,
+      "psnr": 22.728643,
+      "belowThresholdBy": 7.271356999999998
+    },
+    {
+      "time": 0.8,
+      "psnr": 22.728644,
+      "belowThresholdBy": 7.271356000000001
+    },
+    {
+      "time": 0.85,
+      "psnr": 22.728643,
+      "belowThresholdBy": 7.271356999999998
+    },
+    {
+      "time": 0.9,
+      "psnr": 22.728643,
+      "belowThresholdBy": 7.271356999999998
+    },
+    {
+      "time": 0.95,
+      "psnr": 22.728644,
+      "belowThresholdBy": 7.271356000000001
+    },
+    {
+      "time": 1,
+      "psnr": 22.728643,
+      "belowThresholdBy": 7.271356999999998
+    },
+    {
+      "time": 1.05,
+      "psnr": 22.728644,
+      "belowThresholdBy": 7.271356000000001
+    },
+    {
+      "time": 1.1,
+      "psnr": 22.728643,
+      "belowThresholdBy": 7.271356999999998
+    },
+    {
+      "time": 1.15,
+      "psnr": 22.728643,
+      "belowThresholdBy": 7.271356999999998
+    },
+    {
+      "time": 1.2,
+      "psnr": 22.728644,
+      "belowThresholdBy": 7.271356000000001
+    },
+    {
+      "time": 1.25,
+      "psnr": 22.728643,
+      "belowThresholdBy": 7.271356999999998
+    },
+    {
+      "time": 1.3,
+      "psnr": 22.728644,
+      "belowThresholdBy": 7.271356000000001
+    },
+    {
+      "time": 1.35,
+      "psnr": 22.728643,
+      "belowThresholdBy": 7.271356999999998
+    },
+    {
+      "time": 1.4,
+      "psnr": 22.728643,
+      "belowThresholdBy": 7.271356999999998
+    },
+    {
+      "time": 1.45,
+      "psnr": 22.728644,
+      "belowThresholdBy": 7.271356000000001
+    },
+    {
+      "time": 1.5,
+      "psnr": 22.728643,
+      "belowThresholdBy": 7.271356999999998
+    },
+    {
+      "time": 1.55,
+      "psnr": 22.728644,
+      "belowThresholdBy": 7.271356000000001
+    },
+    {
+      "time": 1.6,
+      "psnr": 22.728643,
+      "belowThresholdBy": 7.271356999999998
+    },
+    {
+      "time": 1.65,
+      "psnr": 22.728643,
+      "belowThresholdBy": 7.271356999999998
+    },
+    {
+      "time": 1.7,
+      "psnr": 22.728644,
+      "belowThresholdBy": 7.271356000000001
+    },
+    {
+      "time": 1.75,
+      "psnr": 22.728643,
+      "belowThresholdBy": 7.271356999999998
+    },
+    {
+      "time": 1.8,
+      "psnr": 22.728644,
+      "belowThresholdBy": 7.271356000000001
+    },
+    {
+      "time": 1.85,
+      "psnr": 22.728643,
+      "belowThresholdBy": 7.271356999999998
+    },
+    {
+      "time": 1.9,
+      "psnr": 22.728643,
+      "belowThresholdBy": 7.271356999999998
+    },
+    {
+      "time": 1.95,
+      "psnr": 22.728644,
+      "belowThresholdBy": 7.271356000000001
+    },
+    {
+      "time": 2,
+      "psnr": 22.728643,
+      "belowThresholdBy": 7.271356999999998
+    },
+    {
+      "time": 2.05,
+      "psnr": 22.728644,
+      "belowThresholdBy": 7.271356000000001
+    },
+    {
+      "time": 2.1,
+      "psnr": 22.728643,
+      "belowThresholdBy": 7.271356999999998
+    },
+    {
+      "time": 2.15,
+      "psnr": 22.728643,
+      "belowThresholdBy": 7.271356999999998
+    },
+    {
+      "time": 2.2,
+      "psnr": 22.728644,
+      "belowThresholdBy": 7.271356000000001
+    },
+    {
+      "time": 2.25,
+      "psnr": 22.728643,
+      "belowThresholdBy": 7.271356999999998
+    },
+    {
+      "time": 2.3,
+      "psnr": 22.728644,
+      "belowThresholdBy": 7.271356000000001
+    },
+    {
+      "time": 2.35,
+      "psnr": 22.728643,
+      "belowThresholdBy": 7.271356999999998
+    },
+    {
+      "time": 2.4,
+      "psnr": 22.728643,
+      "belowThresholdBy": 7.271356999999998
+    },
+    {
+      "time": 2.45,
+      "psnr": 22.728644,
+      "belowThresholdBy": 7.271356000000001
+    },
+    {
+      "time": 2.5,
+      "psnr": 22.728643,
+      "belowThresholdBy": 7.271356999999998
+    },
+    {
+      "time": 2.55,
+      "psnr": 22.728644,
+      "belowThresholdBy": 7.271356000000001
+    },
+    {
+      "time": 2.6,
+      "psnr": 22.728643,
+      "belowThresholdBy": 7.271356999999998
+    },
+    {
+      "time": 2.65,
+      "psnr": 22.728643,
+      "belowThresholdBy": 7.271356999999998
+    },
+    {
+      "time": 2.7,
+      "psnr": 22.728644,
+      "belowThresholdBy": 7.271356000000001
+    },
+    {
+      "time": 2.75,
+      "psnr": 22.728643,
+      "belowThresholdBy": 7.271356999999998
+    },
+    {
+      "time": 2.8,
+      "psnr": 22.728644,
+      "belowThresholdBy": 7.271356000000001
+    },
+    {
+      "time": 2.85,
+      "psnr": 22.728643,
+      "belowThresholdBy": 7.271356999999998
+    },
+    {
+      "time": 2.9,
+      "psnr": 22.728643,
+      "belowThresholdBy": 7.271356999999998
+    },
+    {
+      "time": 2.95,
+      "psnr": 22.728644,
+      "belowThresholdBy": 7.271356000000001
+    },
+    {
+      "time": 3,
+      "psnr": 22.728643,
+      "belowThresholdBy": 7.271356999999998
+    },
+    {
+      "time": 3.05,
+      "psnr": 22.728644,
+      "belowThresholdBy": 7.271356000000001
+    },
+    {
+      "time": 3.1,
+      "psnr": 22.728643,
+      "belowThresholdBy": 7.271356999999998
+    },
+    {
+      "time": 3.15,
+      "psnr": 22.728643,
+      "belowThresholdBy": 7.271356999999998
+    },
+    {
+      "time": 3.2,
+      "psnr": 22.728555,
+      "belowThresholdBy": 7.271445
+    },
+    {
+      "time": 3.25,
+      "psnr": 22.728555,
+      "belowThresholdBy": 7.271445
+    },
+    {
+      "time": 3.3,
+      "psnr": 22.728555,
+      "belowThresholdBy": 7.271445
+    },
+    {
+      "time": 3.35,
+      "psnr": 22.728555,
+      "belowThresholdBy": 7.271445
+    },
+    {
+      "time": 3.4,
+      "psnr": 22.728555,
+      "belowThresholdBy": 7.271445
+    },
+    {
+      "time": 3.45,
+      "psnr": 22.728565,
+      "belowThresholdBy": 7.271435
+    },
+    {
+      "time": 3.5,
+      "psnr": 22.728565,
+      "belowThresholdBy": 7.271435
+    },
+    {
+      "time": 3.55,
+      "psnr": 22.728565,
+      "belowThresholdBy": 7.271435
+    },
+    {
+      "time": 3.6,
+      "psnr": 22.728565,
+      "belowThresholdBy": 7.271435
+    },
+    {
+      "time": 3.65,
+      "psnr": 22.728565,
+      "belowThresholdBy": 7.271435
+    },
+    {
+      "time": 3.7,
+      "psnr": 22.728565,
+      "belowThresholdBy": 7.271435
+    },
+    {
+      "time": 3.75,
+      "psnr": 22.728565,
+      "belowThresholdBy": 7.271435
+    },
+    {
+      "time": 3.8,
+      "psnr": 22.728565,
+      "belowThresholdBy": 7.271435
+    },
+    {
+      "time": 3.85,
+      "psnr": 22.728565,
+      "belowThresholdBy": 7.271435
+    },
+    {
+      "time": 3.9,
+      "psnr": 22.728565,
+      "belowThresholdBy": 7.271435
+    },
+    {
+      "time": 3.95,
+      "psnr": 22.728565,
+      "belowThresholdBy": 7.271435
+    },
+    {
+      "time": 4,
+      "psnr": 22.728565,
+      "belowThresholdBy": 7.271435
+    },
+    {
+      "time": 4.05,
+      "psnr": 22.728565,
+      "belowThresholdBy": 7.271435
+    },
+    {
+      "time": 4.1,
+      "psnr": 22.728565,
+      "belowThresholdBy": 7.271435
+    },
+    {
+      "time": 4.15,
+      "psnr": 22.728681,
+      "belowThresholdBy": 7.271318999999998
+    },
+    {
+      "time": 4.2,
+      "psnr": 22.728681,
+      "belowThresholdBy": 7.271318999999998
+    },
+    {
+      "time": 4.25,
+      "psnr": 22.728681,
+      "belowThresholdBy": 7.271318999999998
+    },
+    {
+      "time": 4.3,
+      "psnr": 22.728681,
+      "belowThresholdBy": 7.271318999999998
+    },
+    {
+      "time": 4.35,
+      "psnr": 22.728681,
+      "belowThresholdBy": 7.271318999999998
+    },
+    {
+      "time": 4.4,
+      "psnr": 22.728681,
+      "belowThresholdBy": 7.271318999999998
+    },
+    {
+      "time": 4.45,
+      "psnr": 22.728681,
+      "belowThresholdBy": 7.271318999999998
+    },
+    {
+      "time": 4.5,
+      "psnr": 22.728681,
+      "belowThresholdBy": 7.271318999999998
+    },
+    {
+      "time": 4.55,
+      "psnr": 22.728681,
+      "belowThresholdBy": 7.271318999999998
+    },
+    {
+      "time": 4.6,
+      "psnr": 22.728681,
+      "belowThresholdBy": 7.271318999999998
+    },
+    {
+      "time": 4.65,
+      "psnr": 22.728681,
+      "belowThresholdBy": 7.271318999999998
+    },
+    {
+      "time": 4.7,
+      "psnr": 22.728681,
+      "belowThresholdBy": 7.271318999999998
+    },
+    {
+      "time": 4.75,
+      "psnr": 22.728681,
+      "belowThresholdBy": 7.271318999999998
+    },
+    {
+      "time": 4.8,
+      "psnr": 22.728681,
+      "belowThresholdBy": 7.271318999999998
+    },
+    {
+      "time": 4.85,
+      "psnr": 22.728681,
+      "belowThresholdBy": 7.271318999999998
+    },
+    {
+      "time": 4.9,
+      "psnr": 22.728681,
+      "belowThresholdBy": 7.271318999999998
+    },
+    {
+      "time": 4.95,
+      "psnr": 22.728681,
+      "belowThresholdBy": 7.271318999999998
+    }
+  ]
+}
