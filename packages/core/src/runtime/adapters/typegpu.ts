@@ -1,5 +1,5 @@
 import type { RuntimeDeterministicAdapter } from "../types";
-import { swallow } from "../diagnostics";
+import { dispatchSeekEvent } from "./seek-dispatch";
 
 /**
  * TypeGPU / WebGPU adapter for HyperFrames
@@ -40,9 +40,26 @@ import { swallow } from "../diagnostics";
  *
  * Works with TypeGPU (https://docs.swmansion.com/TypeGPU) and raw WebGPU alike.
  * The adapter makes no assumptions about how the pipeline is constructed.
+ * Multiple canvases / renderers are supported — each listens for the same event.
  *
- * Multiple canvases / renderers are supported — each just listens for the
- * same `"hf-seek"` event.
+ * ## Render-mode determinism
+ *
+ * For frame-perfect video renders, call `await device.queue.onSubmittedWorkDone()`
+ * after each `render(time)` invocation before the frame is captured. This ensures
+ * the GPU has finished writing to the canvas before the engine screenshots it.
+ *
+ * ## Browser feature detection
+ *
+ * Always guard against environments where WebGPU is unavailable:
+ *
+ * ```js
+ * if (!navigator.gpu) { /* fallback or early return *\/ }
+ * const adapter = await navigator.gpu.requestAdapter();
+ * if (!adapter)       { /* GPU unavailable — software fallback *\/ }
+ * ```
+ *
+ * The adapter itself does not check for WebGPU support — that is the
+ * composition author's responsibility.
  */
 export function createTypegpuAdapter(): RuntimeDeterministicAdapter {
   let forcedTime: number | null = null;
@@ -59,11 +76,7 @@ export function createTypegpuAdapter(): RuntimeDeterministicAdapter {
       forcedTime = Math.max(0, Number(ctx.time) || 0);
       lastForcedTime = forcedTime;
       window.__hfTypegpuTime = forcedTime;
-      try {
-        window.dispatchEvent(new CustomEvent("hf-seek", { detail: { time: forcedTime } }));
-      } catch (err) {
-        swallow("runtime.adapters.typegpu.site1", err);
-      }
+      dispatchSeekEvent(forcedTime);
     },
 
     pause: () => {

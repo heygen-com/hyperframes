@@ -1,11 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createThreeAdapter } from "./three";
+import { resetSeekDispatchState } from "./seek-dispatch";
 
 const threeWindow = window as Window & { __hfThreeTime?: number };
 
 describe("three adapter", () => {
   beforeEach(() => {
     delete threeWindow.__hfThreeTime;
+    resetSeekDispatchState();
   });
 
   it("has correct name", () => {

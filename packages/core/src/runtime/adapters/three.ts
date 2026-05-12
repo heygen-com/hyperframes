@@ -1,5 +1,5 @@
 import type { RuntimeDeterministicAdapter } from "../types";
-import { swallow } from "../diagnostics";
+import { dispatchSeekEvent } from "./seek-dispatch";
 
 export function createThreeAdapter(): RuntimeDeterministicAdapter {
   let forcedTime: number | null = null;
@@ -12,12 +12,7 @@ export function createThreeAdapter(): RuntimeDeterministicAdapter {
       forcedTime = Math.max(0, Number(ctx.time) || 0);
       lastForcedTime = forcedTime;
       window.__hfThreeTime = forcedTime;
-      try {
-        window.dispatchEvent(new CustomEvent("hf-seek", { detail: { time: forcedTime } }));
-      } catch (err) {
-        // ignore custom event failures
-        swallow("runtime.adapters.three.site1", err);
-      }
+      dispatchSeekEvent(forcedTime);
     },
     pause: () => {
       if (forcedTime == null) {

@@ -1,11 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createTypegpuAdapter } from "./typegpu";
+import { resetSeekDispatchState } from "./seek-dispatch";
 
 const gpuWindow = window as Window & { __hfTypegpuTime?: number };
 
 describe("typegpu adapter", () => {
   beforeEach(() => {
     delete gpuWindow.__hfTypegpuTime;
+    // Reset shared dedup state so each test starts with a clean dispatch history
+    resetSeekDispatchState();
   });
 
   it("has correct name", () => {
@@ -41,7 +44,7 @@ describe("typegpu adapter", () => {
     expect(gpuWindow.__hfTypegpuTime).toBe(0);
   });
 
-  it("multiple seeks dispatch separate events", () => {
+  it("multiple seeks to different times dispatch separate events", () => {
     const adapter = createTypegpuAdapter();
     const handler = vi.fn();
     window.addEventListener("hf-seek", handler);
@@ -50,6 +53,18 @@ describe("typegpu adapter", () => {
     adapter.seek({ time: 3 });
     window.removeEventListener("hf-seek", handler);
     expect(handler).toHaveBeenCalledTimes(3);
+  });
+
+  it("duplicate seek to same time fires event only once (dedup)", () => {
+    const adapter = createTypegpuAdapter();
+    const handler = vi.fn();
+    window.addEventListener("hf-seek", handler);
+    adapter.seek({ time: 5 });
+    adapter.seek({ time: 5 }); // same time — deduplicated
+    window.removeEventListener("hf-seek", handler);
+    expect(handler).toHaveBeenCalledOnce();
+    // __hfTypegpuTime is still updated on every seek regardless of dedup
+    expect(gpuWindow.__hfTypegpuTime).toBe(5);
   });
 
   it("pause after seek preserves last time", () => {
@@ -63,10 +78,7 @@ describe("typegpu adapter", () => {
     const adapter = createTypegpuAdapter();
     adapter.seek({ time: 5 });
     adapter.revert!();
-    // After revert, next pause should not use the old time
     adapter.pause();
-    // __hfTypegpuTime is still the last written value — the internal clock is reset
-    // (composition is expected to re-initialize)
     expect(gpuWindow.__hfTypegpuTime).toBe(5);
   });
 
