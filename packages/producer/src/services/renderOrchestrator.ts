@@ -1961,7 +1961,7 @@ export async function executeRenderJob(
     const { width, height } = composition;
     perfStages.compileOnlyMs = compileResult.compileOnlyMs;
 
-    const probeResult = await runProbeStage({
+    const _probeResult = await runProbeStage({
       projectDir,
       workDir,
       job,
