@@ -11,7 +11,6 @@ import {
 import { saveProjectFilesWithHistory } from "../utils/studioFileHistory";
 import {
   confirmElementDelete,
-  findMatchingTimelineElementId,
   isImageBackgroundValue,
   isManualGeometryStyleProperty,
   normalizeDomEditStyleValue,
@@ -27,17 +26,9 @@ import {
 } from "../utils/studioFontHelpers";
 import {
   getPreviewLocalPointer,
-  getPreviewTargetFromPointer,
   buildRasterClickSelectionContext,
   pauseStudioPreviewPlayback,
 } from "../utils/studioPreviewHelpers";
-import {
-  domEditSelectionsTargetSame,
-  domEditSelectionInGroup,
-  toggleDomEditGroupSelection,
-  replaceDomEditGroupSelection,
-  seedDomEditGroupWithSelection,
-} from "../utils/domEditHelpers";
 import {
   STUDIO_INSPECTOR_PANELS_ENABLED,
   STUDIO_PREVIEW_SELECTION_ENABLED,
@@ -47,12 +38,10 @@ import {
   buildDomEditTextPatchOperation,
   buildElementAgentPrompt,
   findElementForSelection,
-  findElementForTimelineElement,
   getDomEditTargetKey,
   isLargeRasterDomEditSelection,
   isTextEditableSelection,
   serializeDomEditTextFields,
-  resolveDomEditSelection,
   buildDefaultDomEditTextField,
   type DomEditTextField,
   type DomEditSelection,
@@ -73,6 +62,7 @@ import {
 import { fontFamilyFromAssetPath, type ImportedFontAsset } from "../components/editor/fontAssets";
 import type { DomEditGroupPathOffsetCommit } from "../components/editor/DomEditOverlay";
 import type { EditHistoryKind } from "../utils/editHistory";
+import { useDomSelection } from "./useDomSelection";
 
 // ── Types ──
 
@@ -166,11 +156,41 @@ export function useDomEditSession({
   syncPreviewHistoryHotkey,
   setRefreshKey,
 }: UseDomEditSessionParams) {
+  // ── Selection (delegated to useDomSelection) ──
+
+  const {
+    domEditSelection,
+    domEditGroupSelections,
+    domEditHoverSelection,
+    domEditSelectionRef,
+    domEditGroupSelectionsRef,
+    applyDomSelection,
+    clearDomSelection,
+    buildDomSelectionFromTarget,
+    resolveDomSelectionFromPreviewPoint,
+    updateDomEditHoverSelection,
+    buildDomSelectionForTimelineElement,
+    handleTimelineElementSelect,
+    refreshDomEditSelectionFromPreview,
+    refreshDomEditGroupSelectionsFromPreview,
+  } = useDomSelection({
+    projectId,
+    activeCompPath,
+    isMasterView,
+    compIdToSrc,
+    captionEditMode,
+    previewIframeRef,
+    timelineElements,
+    setSelectedTimelineElementId,
+    setRightCollapsed,
+    setRightPanelTab,
+    previewIframe,
+    refreshKey,
+    rightPanelTab,
+  });
+
   // ── State ──
 
-  const [domEditSelection, setDomEditSelection] = useState<DomEditSelection | null>(null);
-  const [domEditGroupSelections, setDomEditGroupSelections] = useState<DomEditSelection[]>([]);
-  const [domEditHoverSelection, setDomEditHoverSelection] = useState<DomEditSelection | null>(null);
   const [agentPromptTagSnippet, setAgentPromptTagSnippet] = useState<string | undefined>();
   const [agentPromptSelectionContext, setAgentPromptSelectionContext] = useState<
     string | undefined
@@ -183,160 +203,10 @@ export function useDomEditSession({
 
   // ── Refs ──
 
-  const domEditSelectionRef = useRef<DomEditSelection | null>(domEditSelection);
-  const domEditGroupSelectionsRef = useRef<DomEditSelection[]>(domEditGroupSelections);
-  const domEditHoverSelectionRef = useRef<DomEditSelection | null>(domEditHoverSelection);
   const copiedAgentTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const domTextCommitVersionRef = useRef(0);
 
-  // Keep refs in sync with state
-  domEditSelectionRef.current = domEditSelection;
-  domEditGroupSelectionsRef.current = domEditGroupSelections;
-  domEditHoverSelectionRef.current = domEditHoverSelection;
-
   // ── Callbacks ──
-
-  const applyDomSelection = useCallback(
-    (
-      selection: DomEditSelection | null,
-      options?: { revealPanel?: boolean; additive?: boolean; preserveGroup?: boolean },
-    ) => {
-      setAgentPromptTagSnippet(undefined);
-      setAgentPromptSelectionContext(undefined);
-      setAgentModalAnchorPoint(null);
-      setCopiedAgentPrompt(false);
-      if (!selection) {
-        domEditSelectionRef.current = null;
-        domEditGroupSelectionsRef.current = [];
-        setDomEditSelection(null);
-        setDomEditGroupSelections([]);
-        setSelectedTimelineElementId(null);
-        return;
-      }
-      if (!STUDIO_INSPECTOR_PANELS_ENABLED) {
-        domEditSelectionRef.current = null;
-        domEditGroupSelectionsRef.current = [];
-        setDomEditSelection(null);
-        setDomEditGroupSelections([]);
-        setSelectedTimelineElementId(null);
-        return;
-      }
-
-      const isAdditiveSelection = Boolean(options?.additive);
-      const currentSelection = domEditSelectionRef.current;
-      const previousGroup = domEditGroupSelectionsRef.current;
-      const currentGroup = isAdditiveSelection
-        ? seedDomEditGroupWithSelection(previousGroup, currentSelection)
-        : previousGroup;
-      const wasInGroup = domEditSelectionInGroup(currentGroup, selection);
-      const nextGroup = options?.preserveGroup
-        ? replaceDomEditGroupSelection(currentGroup, selection)
-        : isAdditiveSelection
-          ? toggleDomEditGroupSelection(currentGroup, selection)
-          : [selection];
-      const nextSelection = options?.preserveGroup
-        ? selection
-        : isAdditiveSelection && wasInGroup
-          ? domEditSelectionsTargetSame(currentSelection, selection)
-            ? (nextGroup[0] ?? null)
-            : domEditSelectionInGroup(nextGroup, currentSelection)
-              ? currentSelection
-              : (nextGroup[0] ?? null)
-          : selection;
-
-      domEditSelectionRef.current = nextSelection;
-      domEditGroupSelectionsRef.current = nextGroup;
-      setDomEditSelection(nextSelection);
-      setDomEditGroupSelections(nextGroup);
-
-      if (nextSelection) {
-        if (options?.revealPanel !== false) {
-          setRightCollapsed(false);
-          setRightPanelTab("design");
-        }
-        const nextSelectedTimelineId = findMatchingTimelineElementId(
-          nextSelection,
-          timelineElements,
-        );
-        setSelectedTimelineElementId(nextSelectedTimelineId);
-        return;
-      }
-
-      setSelectedTimelineElementId(null);
-    },
-    [setSelectedTimelineElementId, timelineElements, setRightCollapsed, setRightPanelTab],
-  );
-
-  const clearDomSelection = useCallback(() => {
-    applyDomSelection(null, { revealPanel: false });
-  }, [applyDomSelection]);
-
-  const buildDomSelectionFromTarget = useCallback(
-    (target: HTMLElement, options?: { preferClipAncestor?: boolean }) => {
-      return resolveDomEditSelection(target, {
-        activeCompositionPath: activeCompPath,
-        isMasterView,
-        preferClipAncestor: options?.preferClipAncestor,
-      });
-    },
-    [activeCompPath, isMasterView],
-  );
-
-  const resolveDomSelectionFromPreviewPoint = useCallback(
-    (clientX: number, clientY: number, options?: { preferClipAncestor?: boolean }) => {
-      const iframe = previewIframeRef.current;
-      if (!iframe || captionEditMode) return null;
-      const target = getPreviewTargetFromPointer(iframe, clientX, clientY, activeCompPath);
-      if (!target) return null;
-      return buildDomSelectionFromTarget(target, {
-        preferClipAncestor: options?.preferClipAncestor,
-      });
-    },
-    [activeCompPath, buildDomSelectionFromTarget, captionEditMode, previewIframeRef],
-  );
-
-  const updateDomEditHoverSelection = useCallback((selection: DomEditSelection | null) => {
-    if (domEditSelectionsTargetSame(domEditHoverSelectionRef.current, selection)) return;
-    domEditHoverSelectionRef.current = selection;
-    setDomEditHoverSelection(selection);
-  }, []);
-
-  const buildDomSelectionForTimelineElement = useCallback(
-    (element: TimelineElement): DomEditSelection | null => {
-      const iframe = previewIframeRef.current;
-      let doc: Document | null = null;
-      try {
-        doc = iframe?.contentDocument ?? null;
-      } catch {
-        return null;
-      }
-      if (!doc) return null;
-
-      const targetElement = findElementForTimelineElement(doc, element, {
-        activeCompositionPath: activeCompPath,
-        compIdToSrc,
-        isMasterView,
-      });
-      return targetElement
-        ? buildDomSelectionFromTarget(targetElement, { preferClipAncestor: false })
-        : null;
-    },
-    [activeCompPath, buildDomSelectionFromTarget, compIdToSrc, isMasterView, previewIframeRef],
-  );
-
-  const handleTimelineElementSelect = useCallback(
-    (element: TimelineElement | null) => {
-      if (!STUDIO_INSPECTOR_PANELS_ENABLED) return;
-      if (!element) {
-        applyDomSelection(null, { revealPanel: false });
-        return;
-      }
-
-      const selection = buildDomSelectionForTimelineElement(element);
-      if (selection) applyDomSelection(selection);
-    },
-    [applyDomSelection, buildDomSelectionForTimelineElement],
-  );
 
   const preloadAgentPromptSnippet = useCallback(
     async (selection: DomEditSelection) => {
@@ -363,7 +233,7 @@ export function useDomEditSession({
         // Runtime outerHTML is still available as a synchronous copy fallback.
       }
     },
-    [activeCompPath, projectIdRef],
+    [activeCompPath, domEditSelectionRef, projectIdRef],
   );
 
   const resolveImportedFontAsset = useCallback(
@@ -457,78 +327,6 @@ export function useDomEditSession({
     ],
   );
 
-  const refreshDomEditSelectionFromPreview = useCallback(
-    (selection: DomEditSelection) => {
-      const iframe = previewIframeRef.current;
-      let doc: Document | null = null;
-      try {
-        doc = iframe?.contentDocument ?? null;
-      } catch {
-        return;
-      }
-      if (!doc) return;
-
-      const element = findElementForSelection(doc, selection, activeCompPath);
-      if (!element) return;
-
-      const nextSelection = buildDomSelectionFromTarget(element);
-      if (nextSelection) {
-        applyDomSelection(nextSelection, { revealPanel: false, preserveGroup: true });
-      }
-    },
-    [activeCompPath, applyDomSelection, buildDomSelectionFromTarget, previewIframeRef],
-  );
-
-  const refreshDomEditGroupSelectionsFromPreview = useCallback(
-    (selections: DomEditSelection[]) => {
-      const iframe = previewIframeRef.current;
-      let doc: Document | null = null;
-      try {
-        doc = iframe?.contentDocument ?? null;
-      } catch {
-        return;
-      }
-      if (!doc) return;
-
-      const nextGroup: DomEditSelection[] = [];
-      for (const selection of selections) {
-        const element = findElementForSelection(doc, selection, activeCompPath);
-        if (!element) continue;
-        const nextSelection = buildDomSelectionFromTarget(element);
-        if (nextSelection) nextGroup.push(nextSelection);
-      }
-      if (nextGroup.length === 0) return;
-
-      const currentSelection = domEditSelectionRef.current;
-      const nextSelection =
-        nextGroup.find((selection) => domEditSelectionsTargetSame(selection, currentSelection)) ??
-        nextGroup[0] ??
-        null;
-
-      setAgentPromptTagSnippet(undefined);
-      setCopiedAgentPrompt(false);
-      domEditSelectionRef.current = nextSelection;
-      domEditGroupSelectionsRef.current = nextGroup;
-      setDomEditSelection(nextSelection);
-      setDomEditGroupSelections(nextGroup);
-
-      if (nextSelection) {
-        setSelectedTimelineElementId(
-          findMatchingTimelineElementId(nextSelection, timelineElements),
-        );
-      } else {
-        setSelectedTimelineElementId(null);
-      }
-    },
-    [
-      activeCompPath,
-      buildDomSelectionFromTarget,
-      setSelectedTimelineElementId,
-      timelineElements,
-      previewIframeRef,
-    ],
-  );
-
   const handleDomManualDragStart = useCallback(() => {
     const pausedTime = pauseStudioPreviewPlayback(previewIframeRef.current);
     const playerStore = usePlayerStore.getState();
@@ -574,7 +372,11 @@ export function useDomEditSession({
       );
       refreshDomEditGroupSelectionsFromPreview(domEditGroupSelectionsRef.current);
     },
-    [commitStudioManualEditManifestOptimistically, refreshDomEditGroupSelectionsFromPreview],
+    [
+      commitStudioManualEditManifestOptimistically,
+      domEditGroupSelectionsRef,
+      refreshDomEditGroupSelectionsFromPreview,
+    ],
   );
 
   const handleDomBoxSizeCommit = useCallback(
@@ -1049,46 +851,14 @@ export function useDomEditSession({
 
   // ── Effects ──
 
-  // Clear hover on caption mode change
+  // Clear agent-prompt state when selection changes
   // eslint-disable-next-line no-restricted-syntax
   useEffect(() => {
-    if (captionEditMode) updateDomEditHoverSelection(null);
-  }, [captionEditMode, updateDomEditHoverSelection]);
-
-  // Clear hover on composition/project/preview change
-  // eslint-disable-next-line no-restricted-syntax
-  useEffect(() => {
-    updateDomEditHoverSelection(null);
-  }, [activeCompPath, projectId, previewIframe, refreshKey, updateDomEditHoverSelection]);
-
-  // Clear hover when matching selection
-  // eslint-disable-next-line no-restricted-syntax
-  useEffect(() => {
-    if (!domEditHoverSelection) return;
-    const hoverMatchesSelection = domEditSelectionsTargetSame(
-      domEditHoverSelection,
-      domEditSelection,
-    );
-    const hoverMatchesGroup = domEditSelectionInGroup(
-      domEditGroupSelections,
-      domEditHoverSelection,
-    );
-    if (!hoverMatchesSelection && !hoverMatchesGroup) return;
-    updateDomEditHoverSelection(null);
-  }, [
-    domEditGroupSelections,
-    domEditHoverSelection,
-    domEditSelection,
-    updateDomEditHoverSelection,
-  ]);
-
-  // Clear hover when element disconnected
-  // eslint-disable-next-line no-restricted-syntax
-  useEffect(() => {
-    if (!domEditHoverSelection) return;
-    if (domEditHoverSelection.element.isConnected) return;
-    updateDomEditHoverSelection(null);
-  }, [domEditHoverSelection, updateDomEditHoverSelection]);
+    setAgentPromptTagSnippet(undefined);
+    setAgentPromptSelectionContext(undefined);
+    setAgentModalAnchorPoint(null);
+    setCopiedAgentPrompt(false);
+  }, [domEditSelection]);
 
   // Sync selection from preview document (the big one with attachErrorCapture)
   // eslint-disable-next-line no-restricted-syntax
@@ -1146,28 +916,13 @@ export function useDomEditSession({
     applyDomSelection,
     buildDomSelectionFromTarget,
     captionEditMode,
+    domEditSelectionRef,
     previewIframe,
     refreshPreviewDocumentVersion,
     syncPreviewHistoryHotkey,
     applyStudioManualEditsToPreviewRef,
     applyStudioMotionToPreviewRef,
   ]);
-
-  // Clear selection on caption mode change
-  // eslint-disable-next-line no-restricted-syntax
-  useEffect(() => {
-    if (!captionEditMode) return;
-    applyDomSelection(null, { revealPanel: false });
-  }, [applyDomSelection, captionEditMode]);
-
-  // Disabled inspector effect
-  // eslint-disable-next-line no-restricted-syntax
-  useEffect(() => {
-    if (STUDIO_INSPECTOR_PANELS_ENABLED) return;
-    updateDomEditHoverSelection(null);
-    applyDomSelection(null, { revealPanel: false });
-    if (rightPanelTab !== "renders") setRightPanelTab("renders");
-  }, [applyDomSelection, rightPanelTab, updateDomEditHoverSelection, setRightPanelTab]);
 
   // Cleanup copiedAgentTimerRef
   // eslint-disable-next-line no-restricted-syntax
