@@ -185,10 +185,13 @@ export function useTimelinePlayer() {
         const time = adapter.getTime();
         const dur = adapter.getDuration();
         liveTime.notify(time); // direct DOM updates, no React re-render
-        if (time >= dur && !adapter.isPlaying()) {
+        const { inPoint, outPoint } = usePlayerStore.getState();
+        const loopEnd = outPoint !== null ? outPoint : dur;
+        const loopStart = inPoint !== null ? inPoint : 0;
+        if (time >= loopEnd && !adapter.isPlaying()) {
           if (usePlayerStore.getState().loopEnabled && dur > 0) {
-            adapter.seek(0);
-            liveTime.notify(0);
+            adapter.seek(loopStart);
+            liveTime.notify(loopStart);
             adapter.play();
             setIsPlaying(true);
             rafRef.current = requestAnimationFrame(tick);
@@ -269,15 +272,18 @@ export function useTimelinePlayer() {
       const tick = (now: number) => {
         const elapsed = ((now - startedAt) / 1000) * speed;
         let nextTime = startTime - elapsed;
-        if (nextTime <= 0) {
+        const { inPoint, outPoint } = usePlayerStore.getState();
+        const loopEnd = outPoint !== null ? outPoint : duration;
+        const loopStart = inPoint !== null ? inPoint : 0;
+        if (nextTime <= loopStart) {
           if (usePlayerStore.getState().loopEnabled && duration > 0) {
-            startTime = duration;
+            startTime = loopEnd;
             startedAt = now;
-            nextTime = duration;
+            nextTime = loopEnd;
           } else {
-            adapter.seek(0);
-            liveTime.notify(0);
-            setCurrentTime(0);
+            adapter.seek(loopStart);
+            liveTime.notify(loopStart);
+            setCurrentTime(loopStart);
             setIsPlaying(false);
             shuttleDirectionRef.current = null;
             reverseRafRef.current = 0;

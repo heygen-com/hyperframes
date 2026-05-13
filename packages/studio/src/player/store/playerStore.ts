@@ -43,6 +43,10 @@ interface PlayerState {
   zoomMode: ZoomMode;
   /** Timeline zoom percent relative to the fit width when in manual mode */
   manualZoomPercent: number;
+  /** Work-area in-point (seconds). When set, loop starts here and A jumps here. */
+  inPoint: number | null;
+  /** Work-area out-point (seconds). When set, loop ends here and E jumps here. */
+  outPoint: number | null;
 
   setIsPlaying: (playing: boolean) => void;
   setCurrentTime: (time: number) => void;
@@ -58,6 +62,8 @@ interface PlayerState {
   ) => void;
   setZoomMode: (mode: ZoomMode) => void;
   setManualZoomPercent: (percent: number) => void;
+  setInPoint: (time: number | null) => void;
+  setOutPoint: (time: number | null) => void;
   reset: () => void;
 
   /**
@@ -93,6 +99,8 @@ export const usePlayerStore = create<PlayerState>((set) => ({
   loopEnabled: false,
   zoomMode: "fit",
   manualZoomPercent: 100,
+  inPoint: null,
+  outPoint: null,
 
   requestedSeekTime: null,
   requestSeek: (time) => set({ requestedSeekTime: time }),
@@ -105,6 +113,8 @@ export const usePlayerStore = create<PlayerState>((set) => ({
   },
   setLoopEnabled: (enabled) => set({ loopEnabled: enabled }),
   setZoomMode: (mode) => set({ zoomMode: mode }),
+  setInPoint: (time) => set({ inPoint: time !== null && Number.isFinite(time) ? time : null }),
+  setOutPoint: (time) => set({ outPoint: time !== null && Number.isFinite(time) ? time : null }),
   setManualZoomPercent: (percent) =>
     set({ manualZoomPercent: Math.max(10, Math.min(2000, Math.round(percent))) }),
   setCurrentTime: (time) => set({ currentTime: Number.isFinite(time) ? time : 0 }),
@@ -129,5 +139,7 @@ export const usePlayerStore = create<PlayerState>((set) => ({
       timelineReady: false,
       elements: [],
       selectedElementId: null,
+      inPoint: null,
+      outPoint: null,
     }),
 }));

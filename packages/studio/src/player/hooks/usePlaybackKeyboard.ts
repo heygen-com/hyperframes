@@ -128,9 +128,33 @@ export function usePlaybackKeyboard({
           return;
         }
         shuttle("forward");
+        return;
+      }
+      if (e.code === "KeyI") {
+        e.preventDefault();
+        const t = getAdapter()?.getTime() ?? usePlayerStore.getState().currentTime;
+        usePlayerStore.getState().setInPoint(e.shiftKey ? null : t);
+        return;
+      }
+      if (e.code === "KeyO") {
+        e.preventDefault();
+        const t = getAdapter()?.getTime() ?? usePlayerStore.getState().currentTime;
+        usePlayerStore.getState().setOutPoint(e.shiftKey ? null : t);
+        return;
+      }
+      if (e.code === "KeyA") {
+        e.preventDefault();
+        seek(usePlayerStore.getState().inPoint ?? 0);
+        return;
+      }
+      if (e.code === "KeyE") {
+        e.preventDefault();
+        const { outPoint } = usePlayerStore.getState();
+        seek(outPoint ?? getAdapter()?.getDuration() ?? usePlayerStore.getState().duration);
+        return;
       }
     },
-    [pause, shuttle, stepFrames, togglePlay],
+    [pause, shuttle, stepFrames, togglePlay, getAdapter, seek],
   );
 
   const handlePlaybackKeyUp = useCallback((e: KeyboardEvent) => {
