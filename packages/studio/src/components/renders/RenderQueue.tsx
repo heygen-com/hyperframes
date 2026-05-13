@@ -207,7 +207,7 @@ function FormatExportButton({
   const showQuality = format !== "mov";
 
   return (
-    <div className="flex items-center gap-1">
+    <div className="flex items-center gap-1 flex-wrap justify-end">
       <FormatInfoTooltip format={format} />
       {/* Resolution must remain the leftmost <select> in this row — it
           carries `rounded-l` for the joined-button look. If you ever hide it
@@ -298,7 +298,7 @@ export const RenderQueue = memo(function RenderQueue({
   return (
     <div className="flex flex-col h-full">
       {/* Header — no title, already shown in header button */}
-      <div className="flex items-center justify-end px-3 py-2 border-b border-neutral-800/50 flex-shrink-0">
+      <div className="flex items-center justify-end flex-wrap gap-y-1.5 px-3 py-2 border-b border-neutral-800/50 flex-shrink-0">
         <div className="flex items-center gap-1.5">
           {completedCount > 0 && (
             <button

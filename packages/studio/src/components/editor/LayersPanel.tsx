@@ -120,7 +120,25 @@ export const LayersPanel = memo(function LayersPanel() {
 
       applyDomSelection(selection);
 
-      const matchedId = findMatchingTimelineElementId(selection, timelineElements);
+      let matchedId = findMatchingTimelineElementId(selection, timelineElements);
+
+      // No direct match — walk up DOM ancestors to find the nearest element
+      // that has a timeline entry (e.g. a child of scene1 seeks to scene1.start)
+      if (!matchedId) {
+        const sourceFile = selection.sourceFile ?? "index.html";
+        let ancestor = layer.element.parentElement;
+        while (ancestor && !matchedId) {
+          const elId = ancestor.id;
+          if (elId) {
+            const found = timelineElements.find(
+              (e) => e.domId === elId && (e.sourceFile ?? "index.html") === sourceFile,
+            );
+            if (found) matchedId = found.key ?? found.id;
+          }
+          ancestor = ancestor.parentElement;
+        }
+      }
+
       if (matchedId) {
         const el = timelineElements.find((e) => (e.key ?? e.id) === matchedId);
         if (el) {

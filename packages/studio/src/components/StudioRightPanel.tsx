@@ -107,17 +107,6 @@ export function StudioRightPanel({
                 <>
                   <button
                     type="button"
-                    onClick={() => setRightPanelTab("layers")}
-                    className={`h-8 rounded-xl px-3 text-[11px] font-medium transition-colors ${
-                      rightPanelTab === "layers"
-                        ? "bg-neutral-800 text-white"
-                        : "text-neutral-500 hover:bg-neutral-800/70 hover:text-neutral-200"
-                    }`}
-                  >
-                    Layers
-                  </button>
-                  <button
-                    type="button"
                     onClick={() => setRightPanelTab("design")}
                     className={`h-8 rounded-xl px-3 text-[11px] font-medium transition-colors ${
                       rightPanelTab === "design"
@@ -126,6 +115,17 @@ export function StudioRightPanel({
                     }`}
                   >
                     Design
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRightPanelTab("layers")}
+                    className={`h-8 rounded-xl px-3 text-[11px] font-medium transition-colors ${
+                      rightPanelTab === "layers"
+                        ? "bg-neutral-800 text-white"
+                        : "text-neutral-500 hover:bg-neutral-800/70 hover:text-neutral-200"
+                    }`}
+                  >
+                    Layers
                   </button>
                   {STUDIO_MOTION_PANEL_ENABLED && (
                     <button
