@@ -65,13 +65,19 @@
       (function () {
         function parseVars() {
           const compId = "three-dissolve";
-          const byComp = window.__hfVariablesByComp;
-          if (byComp && byComp[compId]) return byComp[compId];
           const defs = JSON.parse(
             document.documentElement.getAttribute("data-composition-variables") || "[]",
           );
           const defaults = {};
           for (const d of defs) defaults[d.id] = d.default;
+          var byComp = window.__hfVariablesByComp;
+          if (byComp && byComp[compId]) return Object.assign(defaults, byComp[compId]);
+          var el = document.querySelector('[data-composition-id="' + compId + '"][data-variable-values]');
+          if (el) {
+            try {
+              return Object.assign(defaults, JSON.parse(el.getAttribute("data-variable-values")));
+            } catch (e) {}
+          }
           return defaults;
         }
 
