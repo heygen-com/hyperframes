@@ -1,0 +1,925 @@
+<!doctype html>
+<html
+  lang="en"
+  data-composition-variables='[
+    {"id":"modelUrl","type":"string","label":"GLTF Model URL","default":"https://static.heygen.ai/hyperframes-oss/registry/blocks/three-dissolve/scene.gltf"},
+    {"id":"dissolveStart","type":"number","label":"Dissolve Start (s)","default":0.8},
+    {"id":"dissolveEnd","type":"number","label":"Dissolve End (s)","default":7.1},
+    {"id":"particleColor","type":"color","label":"Particle Color","default":"#1a7aff"},
+    {"id":"bgColor","type":"color","label":"Background","default":"#05070d"}
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>3D Dissolve</title>
+    <style>
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+      }
+
+      canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+      }
+      #three-dissolve {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="three-dissolve"
+      data-composition-id="three-dissolve"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="8"
+    ></div>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/loaders/GLTFLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/misc/GPUComputationRenderer.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/postprocessing/EffectComposer.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/postprocessing/RenderPass.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/postprocessing/ShaderPass.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/shaders/CopyShader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/shaders/LuminosityHighPassShader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/postprocessing/UnrealBloomPass.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/shaders/BokehShader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/postprocessing/BokehPass.js"></script>
+    <script>
+      let resolveReady;
+      window.__hyperframes_ready = new Promise((resolve) => {
+        resolveReady = resolve;
+      });
+
+      (function () {
+        function parseVars() {
+          const raw = window.__hfVariables;
+          const defs = JSON.parse(
+            document.documentElement.getAttribute("data-composition-variables") || "[]",
+          );
+          const defaults = {};
+          for (const d of defs) defaults[d.id] = d.default;
+          return Object.assign(defaults, raw || {});
+        }
+
+        function createSeededRandom(initial) {
+          let s = initial;
+          return function () {
+            s = (s + 0x6d2b79f5) | 0;
+            let v = Math.imul(s ^ (s >>> 15), 1 | s);
+            v ^= v + Math.imul(v ^ (v >>> 7), 61 | v);
+            return ((v ^ (v >>> 14)) >>> 0) / 4294967296;
+          };
+        }
+
+        function hexToVec3(hex) {
+          const n = parseInt(hex.replace("#", ""), 16);
+          return new THREE.Vector3(((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255);
+        }
+
+        try {
+          const vars = parseVars();
+          const seededRandom = createSeededRandom(0x4d414749);
+
+          const GLTFLoader = THREE.GLTFLoader;
+          const GPUComputationRenderer = THREE.GPUComputationRenderer;
+          const EffectComposer = THREE.EffectComposer;
+          const RenderPass = THREE.RenderPass;
+          const UnrealBloomPass = THREE.UnrealBloomPass;
+          const BokehPass = THREE.BokehPass;
+
+          const WIDTH = 1920;
+          const HEIGHT = 1080;
+          const DURATION = 8;
+          const PARTICLE_TEXTURE_SIZE = 256;
+          const PARTICLE_COUNT = PARTICLE_TEXTURE_SIZE * PARTICLE_TEXTURE_SIZE;
+          const DISSOLVE_AXIS = new THREE.Vector3(0, 0, -1);
+          const DISSOLVE_EDGE_BEHIND = 0.55;
+          const DISSOLVE_EDGE_AHEAD = 0.18;
+
+          const DISSOLVE_START = Number(vars.dissolveStart) || 0.8;
+          const DISSOLVE_END = Number(vars.dissolveEnd) || 7.1;
+          const PARTICLE_COLOR_VEC = hexToVec3(vars.particleColor || "#1a7aff");
+          const BG_COLOR = vars.bgColor || "#05070d";
+          const MODEL_URL = vars.modelUrl || "https://static.heygen.ai/hyperframes-oss/registry/blocks/three-dissolve/scene.gltf";
+
+          const container = document.querySelector('[data-composition-id="three-dissolve"]');
+          const bgGradient = `radial-gradient(circle at 50% 42%, ${BG_COLOR}44 0%, ${BG_COLOR}cc 44%, ${BG_COLOR} 100%)`;
+          document.body.style.background = BG_COLOR;
+          if (container) container.style.background = bgGradient;
+
+          const scene = new THREE.Scene();
+          scene.fog = new THREE.Fog(new THREE.Color(BG_COLOR).getHex(), 24, 58);
+
+          const camera = new THREE.PerspectiveCamera(38, WIDTH / HEIGHT, 0.1, 120);
+          camera.position.set(0, 3.3, 38);
+
+          const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+          renderer.setPixelRatio(1);
+          renderer.setSize(WIDTH, HEIGHT, false);
+          renderer.outputColorSpace = THREE.SRGBColorSpace;
+          renderer.toneMapping = THREE.ACESFilmicToneMapping;
+          renderer.toneMappingExposure = 1.65;
+          (container || document.body).appendChild(renderer.domElement);
+
+          let composer = null;
+          let bloomPass = null;
+          let bokehPass = null;
+          try {
+            composer = new EffectComposer(renderer);
+            composer.setPixelRatio(1);
+            composer.setSize(WIDTH, HEIGHT);
+            composer.addPass(new RenderPass(scene, camera));
+            bloomPass = new UnrealBloomPass(new THREE.Vector2(WIDTH, HEIGHT), 0.56, 0.52, 0.2);
+            composer.addPass(bloomPass);
+            bokehPass = new BokehPass(scene, camera, {
+              focus: 28,
+              aperture: 0.00006,
+              maxblur: 0.0032,
+              width: WIDTH,
+              height: HEIGHT,
+            });
+            composer.addPass(bokehPass);
+          } catch (e) {
+            composer = null;
+            bloomPass = null;
+            bokehPass = null;
+          }
+
+          scene.add(new THREE.HemisphereLight(0xd8e6ff, 0x26223c, 3.1));
+
+          const keyLight = new THREE.DirectionalLight(0xffffff, 4.4);
+          keyLight.position.set(5, 9, 6);
+          scene.add(keyLight);
+
+          const violetLight = new THREE.PointLight(0x9f8cff, 72, 46);
+          violetLight.position.set(-7, 4, 8);
+          scene.add(violetLight);
+
+          const backgroundGroup = new THREE.Group();
+          backgroundGroup.position.set(-3.6, -2.55, 3.2);
+          backgroundGroup.rotation.x = -Math.PI * 0.5;
+          backgroundGroup.rotation.z = Math.PI * 0.25;
+          scene.add(backgroundGroup);
+
+          const auraLight = new THREE.PointLight(0xb9a7ff, 52, 52);
+          auraLight.position.set(-3.2, 5.4, 2.8);
+          scene.add(auraLight);
+
+          const auraDownLight = new THREE.SpotLight(0xc7deff, 42, 56, Math.PI * 0.34, 0.62, 1.1);
+          auraDownLight.position.set(-3.2, 6.2, 2.8);
+          auraDownLight.target.position.set(0, 0, 0);
+          scene.add(auraDownLight);
+          scene.add(auraDownLight.target);
+
+          const ringMaterial = new THREE.LineBasicMaterial({
+            color: 0xb8d7ff,
+            transparent: true,
+            opacity: 0.62,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+            depthTest: true,
+          });
+          for (let i = 0; i < 4; i++) {
+            const points = new THREE.EllipseCurve(
+              0,
+              0,
+              6.8 + i * 1.25,
+              4.2 + i * 0.82,
+              0,
+              Math.PI * 2,
+            ).getPoints(160);
+            const ring = new THREE.LineLoop(
+              new THREE.BufferGeometry().setFromPoints(points),
+              ringMaterial.clone(),
+            );
+            ring.rotation.z = i * 0.42;
+            ring.position.z = -i * 0.05;
+            ring.material.opacity = 0.56 - i * 0.07;
+            ring.userData.baseScale = 1 + i * 0.03;
+            ring.userData.speed = 0.18 + i * 0.05;
+            backgroundGroup.add(ring);
+
+            const glowRing = ring.clone();
+            glowRing.material = ring.material.clone();
+            glowRing.material.color = new THREE.Color(i % 2 === 0 ? 0x6ee8ff : 0xc69bff);
+            glowRing.material.opacity = 0.28 - i * 0.035;
+            glowRing.scale.setScalar(1.035);
+            glowRing.userData.baseScale = 1.035 + i * 0.03;
+            glowRing.userData.speed = -0.12 - i * 0.04;
+            backgroundGroup.add(glowRing);
+          }
+
+          const dustCount = 1600;
+          const dustPositions = new Float32Array(dustCount * 3);
+          const dustColors = new Float32Array(dustCount * 3);
+          const dustSizes = new Float32Array(dustCount);
+          for (let i = 0; i < dustCount; i++) {
+            const i3 = i * 3;
+            dustPositions[i3] = (seededRandom() - 0.5) * 34;
+            dustPositions[i3 + 1] = (seededRandom() - 0.5) * 10;
+            dustPositions[i3 + 2] = (seededRandom() - 0.5) * 30;
+            const hueBands = [0.52, 0.58, 0.66, 0.12];
+            const baseHue = hueBands[Math.floor(seededRandom() * hueBands.length)];
+            const color = new THREE.Color().setHSL(
+              baseHue + (seededRandom() - 0.5) * 0.05,
+              0.72,
+              0.56 + seededRandom() * 0.32,
+            );
+            dustColors[i3] = color.r;
+            dustColors[i3 + 1] = color.g;
+            dustColors[i3 + 2] = color.b;
+            dustSizes[i] = seededRandom();
+          }
+          const dustGeometry = new THREE.BufferGeometry();
+          dustGeometry.setAttribute("position", new THREE.BufferAttribute(dustPositions, 3));
+          dustGeometry.setAttribute("color", new THREE.BufferAttribute(dustColors, 3));
+          dustGeometry.setAttribute("aSize", new THREE.BufferAttribute(dustSizes, 1));
+          const dustMaterial = new THREE.ShaderMaterial({
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+            uniforms: {
+              uPixelRatio: { value: 1 },
+              uOpacity: { value: 0.82 },
+              uSizeBase: { value: 1.35 },
+              uSizeRange: { value: 9.2 },
+              uTime: { value: 0 },
+            },
+            vertexShader: `
+          uniform float uPixelRatio;
+          uniform float uSizeBase;
+          uniform float uSizeRange;
+          uniform float uTime;
+          attribute vec3 color;
+          attribute float aSize;
+          varying vec3 vColor;
+          varying float vAlpha;
+
+          void main() {
+            vColor = color;
+            float blink = 0.45 + 0.55 * sin(uTime * (0.7 + aSize * 1.6) + position.x * 0.21 + position.z * 0.13);
+            vAlpha = (0.18 + aSize * 0.82) * blink;
+            vec3 p = position;
+            p.y += sin(uTime * (0.18 + aSize * 0.35) + position.x * 0.12 + position.z * 0.09) * 0.12;
+            vec4 mvPosition = modelViewMatrix * vec4(p, 1.0);
+            gl_Position = projectionMatrix * mvPosition;
+            gl_PointSize = (uSizeBase + aSize * uSizeRange) * uPixelRatio * (32.0 / -mvPosition.z);
+          }
+        `,
+            fragmentShader: `
+          uniform float uOpacity;
+          varying vec3 vColor;
+          varying float vAlpha;
+
+          void main() {
+            vec2 uv = gl_PointCoord - 0.5;
+            float d = length(uv) * 2.0;
+            if (d > 1.0) discard;
+            float alpha = smoothstep(1.0, 0.0, d);
+            alpha *= alpha * vAlpha * uOpacity;
+            gl_FragColor = vec4(vColor * 1.55, alpha);
+          }
+        `,
+          });
+          const magicDust = new THREE.Points(dustGeometry, dustMaterial);
+          backgroundGroup.add(magicDust);
+
+          const largeDustGeometry = dustGeometry.clone();
+          const largeDustMaterial = dustMaterial.clone();
+          largeDustMaterial.uniforms = THREE.UniformsUtils.clone(dustMaterial.uniforms);
+          largeDustMaterial.uniforms.uOpacity.value = 0.42;
+          largeDustMaterial.uniforms.uSizeBase.value = 3.6;
+          largeDustMaterial.uniforms.uSizeRange.value = 13.0;
+          const largeMagicDust = new THREE.Points(largeDustGeometry, largeDustMaterial);
+          largeMagicDust.scale.setScalar(1.06);
+          backgroundGroup.add(largeMagicDust);
+
+          const root = new THREE.Group();
+          root.rotation.x = -0.15;
+          root.rotation.y = -0.38;
+          root.scale.setScalar(0.34);
+          scene.add(root);
+          const rootInverseMatrix = new THREE.Matrix4();
+
+          let modelMesh = null;
+          let particlePoints = null;
+          let gpuCompute = null;
+          let positionVariable = null;
+          let bounds = { min: -1, max: 1 };
+          let dissolveProgress = 0;
+          let elapsedTime = 0;
+          let lastRenderedTime = 0;
+
+          window.__timelines = window.__timelines || {};
+          const tl = gsap.timeline({ paused: true });
+          tl.to(
+            { t: 0 },
+            {
+              t: DURATION,
+              duration: DURATION,
+              ease: "none",
+              onUpdate() {
+                renderAt(this.targets()[0].t);
+              },
+            },
+          );
+          window.__timelines["three-dissolve"] = tl;
+
+          const loader = new GLTFLoader();
+          loader.load(
+            MODEL_URL,
+            (gltf) => {
+              modelMesh = gltf.scene;
+              modelMesh.traverse((child) => {
+                if (!child.isMesh) return;
+                child.material = child.material.clone();
+                child.material.transparent = false;
+                child.material.depthWrite = true;
+                child.material.side = THREE.DoubleSide;
+                child.material.onBeforeCompile = (shader) => {
+                  shader.uniforms.uDissolveProgress = { value: 0 };
+                  shader.uniforms.uBounds = { value: new THREE.Vector2(bounds.min, bounds.max) };
+                  shader.uniforms.uDissolveAxis = { value: DISSOLVE_AXIS };
+                  shader.uniforms.uRootInverseMatrix = { value: rootInverseMatrix };
+                  child.material.userData.shader = shader;
+                  shader.vertexShader = shader.vertexShader
+                    .replace(
+                      "#include <common>",
+                      `#include <common>
+                 uniform mat4 uRootInverseMatrix;
+                 varying vec3 vDissolveWorldPosition;`,
+                    )
+                    .replace(
+                      "#include <begin_vertex>",
+                      `#include <begin_vertex>
+                 vDissolveWorldPosition = (uRootInverseMatrix * modelMatrix * vec4(transformed, 1.0)).xyz;`,
+                    );
+                  shader.fragmentShader = shader.fragmentShader
+                    .replace(
+                      "#include <common>",
+                      `#include <common>
+                 uniform float uDissolveProgress;
+                 uniform vec2 uBounds;
+                 uniform vec3 uDissolveAxis;
+                 varying vec3 vDissolveWorldPosition;
+
+                 float dissolveHash13(vec3 p) {
+                   p = fract(p * 0.1031);
+                   p += dot(p, p.yzx + 33.33);
+                   return fract((p.x + p.y) * p.z);
+                 }
+
+                 float dissolveNoise3(vec3 x) {
+                   vec3 i = floor(x);
+                   vec3 f = fract(x);
+                   f = f * f * (3.0 - 2.0 * f);
+                   float n000 = dissolveHash13(i + vec3(0.0, 0.0, 0.0));
+                   float n100 = dissolveHash13(i + vec3(1.0, 0.0, 0.0));
+                   float n010 = dissolveHash13(i + vec3(0.0, 1.0, 0.0));
+                   float n110 = dissolveHash13(i + vec3(1.0, 1.0, 0.0));
+                   float n001 = dissolveHash13(i + vec3(0.0, 0.0, 1.0));
+                   float n101 = dissolveHash13(i + vec3(1.0, 0.0, 1.0));
+                   float n011 = dissolveHash13(i + vec3(0.0, 1.0, 1.0));
+                   float n111 = dissolveHash13(i + vec3(1.0, 1.0, 1.0));
+                   float nx00 = mix(n000, n100, f.x);
+                   float nx10 = mix(n010, n110, f.x);
+                   float nx01 = mix(n001, n101, f.x);
+                   float nx11 = mix(n011, n111, f.x);
+                   return mix(mix(nx00, nx10, f.y), mix(nx01, nx11, f.y), f.z);
+                 }
+
+                 float dissolveFbm(vec3 p) {
+                   float value = 0.0;
+                   float amp = 0.5;
+                   for (int i = 0; i < 3; i++) {
+                     value += dissolveNoise3(p) * amp;
+                     p = p * 2.07 + vec3(11.7, 5.2, 8.3);
+                     amp *= 0.5;
+                   }
+                   return value;
+                 }`,
+                    )
+                    .replace(
+                      "#include <alphatest_fragment>",
+                      `#include <alphatest_fragment>
+                 if (uDissolveProgress > 0.995) discard;
+                 if (uDissolveProgress > 0.001) {
+                   float dissolveLine = mix(uBounds.x, uBounds.y + ${DISSOLVE_EDGE_BEHIND.toFixed(2)}, uDissolveProgress);
+                   float dissolveCoord = dot(vDissolveWorldPosition, normalize(uDissolveAxis));
+                   float coord01 = smoothstep(uBounds.x, uBounds.y, dissolveCoord);
+                   vec3 noisePosition = vDissolveWorldPosition;
+                   float broadNoise = dissolveFbm(noisePosition * 0.16 + vec3(3.1, 7.4, 1.7)) - 0.5;
+                   float detailNoise = dissolveFbm(noisePosition * 0.68 + vec3(13.7, 2.4, 9.6)) - 0.5;
+                   float shardNoise = dissolveNoise3(noisePosition * 1.85 + vec3(4.2, 15.1, 8.4));
+                   float edgeTurbulence = broadNoise * 1.85 + detailNoise * 0.72;
+                   float directionThreshold = coord01 + broadNoise * 0.18 + detailNoise * 0.08;
+                   float directionAge = smoothstep(directionThreshold - 0.04, directionThreshold + 0.18, uDissolveProgress);
+                   float randomThreshold = 0.06 + dissolveFbm(noisePosition * 0.24 + vec3(19.2, 4.1, 7.7)) * 0.66;
+                   float randomAge = smoothstep(randomThreshold, randomThreshold + 0.26, uDissolveProgress);
+                   float dissolveAge = max(directionAge, randomAge);
+                   if (dissolveAge > 0.24) discard;
+                   float noisyLine = dissolveLine + edgeTurbulence;
+                   float edgeWidth = mix(0.34, 0.72, dissolveFbm(noisePosition * 0.31 + vec3(8.2, 1.5, 11.9)));
+                   float edge = smoothstep(noisyLine - edgeWidth, noisyLine + ${DISSOLVE_EDGE_AHEAD.toFixed(2)}, dissolveCoord);
+                   float chippedEdge = edge - (1.0 - edge) * smoothstep(0.48, 0.92, shardNoise) * 0.22;
+                   if (chippedEdge < 0.035) discard;
+                   float ember = smoothstep(0.0, 0.22, chippedEdge) * (1.0 - smoothstep(0.20, 0.46, chippedEdge));
+                   diffuseColor.rgb += vec3(0.95, 0.45, 1.25) * ember * (2.1 + shardNoise * 1.2);
+                 }`,
+                    );
+                };
+              });
+
+              root.add(modelMesh);
+              modelMesh.updateMatrixWorld(true);
+              root.updateMatrixWorld(true);
+
+              const sampled = sampleSurface(modelMesh, root, PARTICLE_COUNT);
+              bounds = sampled.bounds;
+              particlePoints = createGpuParticles(
+                sampled.positions,
+                sampled.randoms,
+                sampled.bounds,
+              );
+              root.add(particlePoints);
+              renderAt(lastRenderedTime);
+              resolveReady();
+            },
+            undefined,
+            (error) => {
+              console.error("GLTF load failed:", error);
+              resolveReady();
+            },
+          );
+
+          function sampleSurface(model, parentSpace, count) {
+            const triangles = [];
+            let totalArea = 0;
+            const min = new THREE.Vector3(Infinity, Infinity, Infinity);
+            const max = new THREE.Vector3(-Infinity, -Infinity, -Infinity);
+            const a = new THREE.Vector3();
+            const b = new THREE.Vector3();
+            const c = new THREE.Vector3();
+            const parentInverse = new THREE.Matrix4().copy(parentSpace.matrixWorld).invert();
+
+            model.updateMatrixWorld(true);
+            model.traverse((mesh) => {
+              if (!mesh.isMesh) return;
+              const geometry = mesh.geometry;
+              const position = geometry.attributes.position;
+              const index = geometry.index;
+              const matrix = new THREE.Matrix4().multiplyMatrices(parentInverse, mesh.matrixWorld);
+              const triangleCount = index ? index.count / 3 : position.count / 3;
+
+              for (let i = 0; i < triangleCount; i++) {
+                const ia = index ? index.getX(i * 3) : i * 3;
+                const ib = index ? index.getX(i * 3 + 1) : i * 3 + 1;
+                const ic = index ? index.getX(i * 3 + 2) : i * 3 + 2;
+                a.fromBufferAttribute(position, ia).applyMatrix4(matrix);
+                b.fromBufferAttribute(position, ib).applyMatrix4(matrix);
+                c.fromBufferAttribute(position, ic).applyMatrix4(matrix);
+                min.min(a).min(b).min(c);
+                max.max(a).max(b).max(c);
+                const area = new THREE.Triangle(a, b, c).getArea();
+                if (area <= 0.000001) continue;
+                totalArea += area;
+                triangles.push({ a: a.clone(), b: b.clone(), c: c.clone(), cumulative: totalArea });
+              }
+            });
+
+            const positions = new Float32Array(count * 4);
+            const randoms = new Float32Array(count * 4);
+            for (let i = 0; i < count; i++) {
+              const triangle = pickTriangle(triangles, seededRandom() * totalArea);
+              const point = randomPointInTriangle(triangle.a, triangle.b, triangle.c);
+              positions[i * 4] = point.x;
+              positions[i * 4 + 1] = point.y;
+              positions[i * 4 + 2] = point.z;
+              positions[i * 4 + 3] = 1;
+              randoms[i * 4] = seededRandom();
+              randoms[i * 4 + 1] = seededRandom();
+              randoms[i * 4 + 2] = seededRandom();
+              randoms[i * 4 + 3] = seededRandom();
+            }
+
+            const corners = [
+              new THREE.Vector3(min.x, min.y, min.z),
+              new THREE.Vector3(min.x, min.y, max.z),
+              new THREE.Vector3(min.x, max.y, min.z),
+              new THREE.Vector3(min.x, max.y, max.z),
+              new THREE.Vector3(max.x, min.y, min.z),
+              new THREE.Vector3(max.x, min.y, max.z),
+              new THREE.Vector3(max.x, max.y, min.z),
+              new THREE.Vector3(max.x, max.y, max.z),
+            ];
+            let axisMin = Infinity;
+            let axisMax = -Infinity;
+            for (const corner of corners) {
+              const value = corner.dot(DISSOLVE_AXIS);
+              axisMin = Math.min(axisMin, value);
+              axisMax = Math.max(axisMax, value);
+            }
+
+            return { positions, randoms, bounds: { min: axisMin, max: axisMax } };
+          }
+
+          function pickTriangle(triangles, target) {
+            let low = 0;
+            let high = triangles.length - 1;
+            while (low < high) {
+              const mid = (low + high) >> 1;
+              if (target <= triangles[mid].cumulative) high = mid;
+              else low = mid + 1;
+            }
+            return triangles[low];
+          }
+
+          function randomPointInTriangle(a, b, c) {
+            let r1 = seededRandom();
+            let r2 = seededRandom();
+            if (r1 + r2 > 1) {
+              r1 = 1 - r1;
+              r2 = 1 - r2;
+            }
+            return new THREE.Vector3()
+              .copy(a)
+              .addScaledVector(new THREE.Vector3().subVectors(b, a), r1)
+              .addScaledVector(new THREE.Vector3().subVectors(c, a), r2);
+          }
+
+          function createGpuParticles(basePositions, randoms, modelBounds) {
+            gpuCompute = new GPUComputationRenderer(
+              PARTICLE_TEXTURE_SIZE,
+              PARTICLE_TEXTURE_SIZE,
+              renderer,
+            );
+
+            const positionTexture = gpuCompute.createTexture();
+            const baseTexture = gpuCompute.createTexture();
+            const randomTexture = gpuCompute.createTexture();
+            positionTexture.image.data.set(basePositions);
+            baseTexture.image.data.set(basePositions);
+            randomTexture.image.data.set(randoms);
+
+            positionVariable = gpuCompute.addVariable(
+              "texturePosition",
+              positionFragmentShader(),
+              positionTexture,
+            );
+            gpuCompute.setVariableDependencies(positionVariable, [positionVariable]);
+            positionVariable.material.uniforms.uBasePositions = { value: baseTexture };
+            positionVariable.material.uniforms.uRandoms = { value: randomTexture };
+            positionVariable.material.uniforms.uTime = { value: 0 };
+            positionVariable.material.uniforms.uDissolveProgress = { value: 0 };
+            positionVariable.material.uniforms.uBounds = {
+              value: new THREE.Vector2(modelBounds.min, modelBounds.max),
+            };
+            positionVariable.material.uniforms.uDissolveAxis = { value: DISSOLVE_AXIS };
+
+            const error = gpuCompute.init();
+            if (error) console.error(error);
+
+            const geometry = new THREE.BufferGeometry();
+            const references = new Float32Array(PARTICLE_COUNT * 2);
+            for (let i = 0; i < PARTICLE_COUNT; i++) {
+              references[i * 2] = (i % PARTICLE_TEXTURE_SIZE) / (PARTICLE_TEXTURE_SIZE - 1);
+              references[i * 2 + 1] =
+                Math.floor(i / PARTICLE_TEXTURE_SIZE) / (PARTICLE_TEXTURE_SIZE - 1);
+            }
+
+            geometry.setAttribute(
+              "position",
+              new THREE.BufferAttribute(new Float32Array(PARTICLE_COUNT * 3), 3),
+            );
+            geometry.setAttribute("aReference", new THREE.BufferAttribute(references, 2));
+
+            const pColor = PARTICLE_COLOR_VEC;
+            const material = new THREE.ShaderMaterial({
+              transparent: true,
+              depthWrite: false,
+              blending: THREE.AdditiveBlending,
+              uniforms: {
+                uPositions: { value: null },
+                uBasePositions: { value: baseTexture },
+                uRandoms: { value: randomTexture },
+                uBounds: { value: new THREE.Vector2(modelBounds.min, modelBounds.max) },
+                uDissolveAxis: { value: DISSOLVE_AXIS },
+                uDissolveProgress: { value: 0 },
+                uPixelRatio: { value: 1 },
+                uParticleColor: { value: new THREE.Vector3(pColor.x, pColor.y, pColor.z) },
+              },
+              vertexShader: `
+            uniform sampler2D uPositions;
+            uniform sampler2D uBasePositions;
+            uniform sampler2D uRandoms;
+            uniform vec2 uBounds;
+            uniform vec3 uDissolveAxis;
+            uniform float uDissolveProgress;
+            uniform float uPixelRatio;
+            uniform vec3 uParticleColor;
+            attribute vec2 aReference;
+            varying float vEvaporated;
+            varying float vGlow;
+            varying float vLife;
+            varying float vBirth;
+            varying float vShardMask;
+            varying vec3 vColor;
+
+            float particleHash13(vec3 p) {
+              p = fract(p * 0.1031);
+              p += dot(p, p.yzx + 33.33);
+              return fract((p.x + p.y) * p.z);
+            }
+
+            float particleNoise3(vec3 x) {
+              vec3 i = floor(x);
+              vec3 f = fract(x);
+              f = f * f * (3.0 - 2.0 * f);
+              float n000 = particleHash13(i + vec3(0.0, 0.0, 0.0));
+              float n100 = particleHash13(i + vec3(1.0, 0.0, 0.0));
+              float n010 = particleHash13(i + vec3(0.0, 1.0, 0.0));
+              float n110 = particleHash13(i + vec3(1.0, 1.0, 0.0));
+              float n001 = particleHash13(i + vec3(0.0, 0.0, 1.0));
+              float n101 = particleHash13(i + vec3(1.0, 0.0, 1.0));
+              float n011 = particleHash13(i + vec3(0.0, 1.0, 1.0));
+              float n111 = particleHash13(i + vec3(1.0, 1.0, 1.0));
+              float nx00 = mix(n000, n100, f.x);
+              float nx10 = mix(n010, n110, f.x);
+              float nx01 = mix(n001, n101, f.x);
+              float nx11 = mix(n011, n111, f.x);
+              return mix(mix(nx00, nx10, f.y), mix(nx01, nx11, f.y), f.z);
+            }
+
+            float particleFbm(vec3 p) {
+              float value = 0.0;
+              float amp = 0.5;
+              for (int i = 0; i < 3; i++) {
+                value += particleNoise3(p) * amp;
+                p = p * 2.07 + vec3(11.7, 5.2, 8.3);
+                amp *= 0.5;
+              }
+              return value;
+            }
+
+            void main() {
+              vec3 pos = texture2D(uPositions, aReference).xyz;
+              vec3 base = texture2D(uBasePositions, aReference).xyz;
+              vec4 rnd = texture2D(uRandoms, aReference);
+              float dissolveCoord = dot(base, normalize(uDissolveAxis));
+              float coord01 = smoothstep(uBounds.x, uBounds.y, dissolveCoord);
+              float directionBroadNoise = particleFbm(base * 0.16 + vec3(3.1, 7.4, 1.7)) - 0.5;
+              float directionDetailNoise = particleFbm(base * 0.68 + vec3(13.7, 2.4, 9.6)) - 0.5;
+              float directionThreshold = coord01 + directionBroadNoise * 0.18 + directionDetailNoise * 0.08 + (rnd.w - 0.5) * 0.035;
+              float directionAge = smoothstep(directionThreshold - 0.04, directionThreshold + 0.18, uDissolveProgress);
+              float randomThreshold = 0.06 + particleFbm(base * 0.24 + vec3(19.2, 4.1, 7.7)) * 0.66;
+              float randomAge = smoothstep(randomThreshold, randomThreshold + 0.26, uDissolveProgress);
+              float dissolveAge = max(directionAge, randomAge) * step(0.001, uDissolveProgress);
+              float particleAge = smoothstep(0.10, 1.0, dissolveAge);
+              vShardMask = smoothstep(0.08, 0.18, dissolveAge);
+              particleAge = mix(particleAge, 1.0, step(0.999, uDissolveProgress));
+              vBirth = smoothstep(0.0, 0.16, particleAge) * vShardMask;
+              float deathStart = mix(0.62, 0.84, rnd.z);
+              float death = smoothstep(deathStart, 1.0, particleAge);
+              vLife = vBirth * (1.0 - death);
+              vEvaporated = particleAge;
+              float dissolveLine = mix(uBounds.x, uBounds.y + ${DISSOLVE_EDGE_BEHIND.toFixed(2)}, uDissolveProgress);
+              float frontDistance = abs(dissolveLine - dissolveCoord);
+              vGlow = max(0.0, 1.0 - frontDistance * (1.3 + rnd.w * 0.55)) * step(0.001, uDissolveProgress) * vShardMask;
+              vec3 colorA = uParticleColor;
+              vec3 colorB = mix(uParticleColor, vec3(1.0), 0.45);
+              vec3 colorC = mix(uParticleColor, vec3(0.62, 0.58, 1.0), 0.4);
+              vec3 cold = mix(colorA, colorB, rnd.x);
+              vec3 bright = mix(cold, colorC, rnd.z * 0.55);
+              vColor = mix(cold, bright, clamp(vEvaporated * 0.55 + rnd.w * 0.35, 0.0, 1.0));
+              vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
+              gl_Position = projectionMatrix * mvPosition;
+              float sizeJitter = mix(0.95, 4.65, rnd.y);
+              float agePulse = sin(pow(particleAge, 0.78) * 3.14159265);
+              float tailFade = pow(max(1.0 - particleAge, 0.0), 0.92);
+              float evaporateBloom = mix(0.9, 3.25 + rnd.x * 2.35, agePulse) * tailFade;
+              gl_PointSize = max((sizeJitter * evaporateBloom + vGlow * 2.8) * vLife * uPixelRatio * (42.0 / -mvPosition.z), 0.0);
+            }
+          `,
+              fragmentShader: `
+            varying float vEvaporated;
+            varying float vGlow;
+            varying float vLife;
+            varying float vBirth;
+            varying float vShardMask;
+            varying vec3 vColor;
+
+            void main() {
+              vec2 uv = gl_PointCoord - 0.5;
+              float d = dot(uv, uv);
+              if (vLife < 0.008 || vBirth < 0.01 || vShardMask < 0.02) discard;
+              float alpha = smoothstep(0.25, 0.02, d) * pow(vLife, 1.8);
+              vec3 color = vColor + vec3(0.35, 0.72, 1.0) * max(vGlow, 0.0);
+              gl_FragColor = vec4(color, alpha * (0.08 + vEvaporated * 0.22 + vGlow * 0.05));
+            }
+          `,
+            });
+
+            return new THREE.Points(geometry, material);
+          }
+
+          function positionFragmentShader() {
+            return `
+          uniform sampler2D uBasePositions;
+          uniform sampler2D uRandoms;
+          uniform float uTime;
+          uniform float uDissolveProgress;
+          uniform vec2 uBounds;
+          uniform vec3 uDissolveAxis;
+
+          float hash13(vec3 p) {
+            p = fract(p * 0.1031);
+            p += dot(p, p.yzx + 33.33);
+            return fract((p.x + p.y) * p.z);
+          }
+
+          float noise3(vec3 x) {
+            vec3 i = floor(x);
+            vec3 f = fract(x);
+            f = f * f * (3.0 - 2.0 * f);
+
+            float n000 = hash13(i + vec3(0.0, 0.0, 0.0));
+            float n100 = hash13(i + vec3(1.0, 0.0, 0.0));
+            float n010 = hash13(i + vec3(0.0, 1.0, 0.0));
+            float n110 = hash13(i + vec3(1.0, 1.0, 0.0));
+            float n001 = hash13(i + vec3(0.0, 0.0, 1.0));
+            float n101 = hash13(i + vec3(1.0, 0.0, 1.0));
+            float n011 = hash13(i + vec3(0.0, 1.0, 1.0));
+            float n111 = hash13(i + vec3(1.0, 1.0, 1.0));
+
+            float nx00 = mix(n000, n100, f.x);
+            float nx10 = mix(n010, n110, f.x);
+            float nx01 = mix(n001, n101, f.x);
+            float nx11 = mix(n011, n111, f.x);
+            float nxy0 = mix(nx00, nx10, f.y);
+            float nxy1 = mix(nx01, nx11, f.y);
+            return mix(nxy0, nxy1, f.z);
+          }
+
+          float fbm(vec3 p) {
+            float value = 0.0;
+            float amplitude = 0.5;
+            for (int i = 0; i < 4; i++) {
+              value += noise3(p) * amplitude;
+              p = p * 2.03 + vec3(17.1, 9.2, 13.7);
+              amplitude *= 0.5;
+            }
+            return value;
+          }
+
+          void main() {
+            vec2 uv = gl_FragCoord.xy / resolution.xy;
+            vec3 base = texture2D(uBasePositions, uv).xyz;
+            vec4 rnd = texture2D(uRandoms, uv);
+            float dissolveCoord = dot(base, normalize(uDissolveAxis));
+            float speed = mix(0.45, 1.05, rnd.x);
+            float coord01 = smoothstep(uBounds.x, uBounds.y, dissolveCoord);
+            float directionBroadNoise = fbm(base * 0.16 + vec3(3.1, 7.4, 1.7)) - 0.5;
+            float directionDetailNoise = fbm(base * 0.68 + vec3(13.7, 2.4, 9.6)) - 0.5;
+            float directionThreshold = coord01 + directionBroadNoise * 0.18 + directionDetailNoise * 0.08 + (rnd.w - 0.5) * 0.035;
+            float directionAge = smoothstep(directionThreshold - 0.04, directionThreshold + 0.18, uDissolveProgress);
+            float randomThreshold = 0.06 + fbm(base * 0.24 + vec3(19.2, 4.1, 7.7)) * 0.66;
+            float randomAge = smoothstep(randomThreshold, randomThreshold + 0.26, uDissolveProgress);
+            float dissolveAge = max(directionAge, randomAge) * step(0.001, uDissolveProgress);
+            float age = smoothstep(0.10, 1.0, dissolveAge);
+            float shardMask = smoothstep(0.08, 0.18, dissolveAge);
+            age = mix(age, 1.0, step(0.999, uDissolveProgress));
+            float birth = smoothstep(0.0, 0.16, age) * shardMask;
+            float deathStart = mix(0.62, 0.84, rnd.z);
+            float death = smoothstep(deathStart, 1.0, age);
+            float life = birth * (1.0 - death);
+            float travel = birth * age * speed;
+            float vanish = death;
+
+            vec3 axisA = normalize(vec3(rnd.x - 0.5, rnd.y - 0.5, rnd.z - 0.5));
+            vec3 axisB = normalize(cross(axisA, vec3(0.0, 1.0, 0.25)) + vec3(0.001, 0.0, 0.0));
+            vec3 axisC = normalize(cross(axisA, axisB));
+            vec3 dissolveDirection = normalize(uDissolveAxis);
+            vec3 upDirection = vec3(0.0, 1.0, 0.0);
+            vec3 sideA = normalize(cross(dissolveDirection, vec3(0.0, 1.0, 0.0)) + vec3(0.001, 0.0, 0.0));
+            vec3 sideB = normalize(cross(dissolveDirection, sideA));
+            float phase = rnd.w * 6.2831853;
+            vec3 idleDrift = axisA * sin(uTime * (0.9 + rnd.x) + phase) * 0.08;
+            idleDrift += axisB * cos(uTime * (1.2 + rnd.y) + phase) * 0.055;
+
+            float forward = travel * travel * (8.5 + rnd.x * 24.0);
+            float curl = travel * (0.7 + rnd.y * 2.25);
+            float spiral = travel * (0.65 + rnd.z * 1.9);
+            vec3 noiseSeed = base * 0.12 + dissolveDirection * (age * 4.2 + rnd.w * 7.0) + vec3(uTime * 0.18, -uTime * 0.11, uTime * 0.14);
+            vec3 noiseVec = vec3(
+              fbm(noiseSeed + vec3(11.3, 0.0, 0.0)),
+              fbm(noiseSeed + vec3(0.0, 7.1, 0.0)),
+              fbm(noiseSeed + vec3(0.0, 0.0, 5.7))
+            ) * 2.0 - 1.0;
+            vec3 noiseFlow = sideA * noiseVec.x + sideB * noiseVec.y + axisA * noiseVec.z;
+            noiseFlow += upDirection * max(0.0, -dot(noiseFlow, upDirection));
+            noiseFlow = normalize(noiseFlow + vec3(0.001, 0.0, 0.0));
+            vec3 swirlSeed = vec3(
+              fbm(noiseSeed * 1.7 + vec3(3.1, 9.2, 4.7)),
+              fbm(noiseSeed * 1.9 + vec3(8.2, 1.3, 6.4)),
+              fbm(noiseSeed * 1.5 + vec3(2.4, 5.8, 10.1))
+            ) * 2.0 - 1.0;
+            vec3 swirl = normalize(swirlSeed + vec3(0.001, 0.0, 0.0));
+            swirl += upDirection * max(0.0, -dot(swirl, upDirection));
+            swirl = normalize(swirl + vec3(0.001, 0.0, 0.0));
+            vec3 vapor = dissolveDirection * forward;
+            vapor += sideA * sin(uTime * (1.6 + rnd.x * 1.8) + phase + base.y * 0.12) * curl;
+            vapor += sideB * cos(uTime * (1.1 + rnd.z * 2.0) + phase + base.x * 0.08) * curl;
+            vapor += axisA * sin(uTime * (2.4 + rnd.y * 2.6) + phase * 1.7) * spiral * 0.55;
+            vapor += axisB * cos(uTime * (2.1 + rnd.w * 2.4) + phase * 0.8) * spiral * 0.45;
+            vapor += axisC * sin(uTime * (3.0 + rnd.x * 3.2) + phase * 2.1) * spiral * 0.3;
+            vapor += noiseFlow * travel * (4.9 + rnd.x * 5.8);
+            vapor += swirl * travel * (2.6 + rnd.z * 3.4);
+
+            vec3 finalPos = base + idleDrift * life + vapor;
+            finalPos += dissolveDirection * vanish * vanish * (6.0 + rnd.y * 12.0);
+            finalPos += noiseFlow * vanish * (5.8 + rnd.y * 7.0);
+            finalPos += sideA * vanish * (2.0 + rnd.x * 4.4);
+            finalPos += sideB * vanish * (1.8 + rnd.z * 4.1);
+
+            gl_FragColor = vec4(finalPos, 1.0);
+          }
+        `;
+          }
+
+          function renderAt(time) {
+            lastRenderedTime = time;
+            elapsedTime = time;
+            dissolveProgress = THREE.MathUtils.smoothstep(time, DISSOLVE_START, DISSOLVE_END);
+            root.position.y = Math.sin(elapsedTime * 0.8) * 0.12;
+            backgroundGroup.rotation.z = Math.PI * 0.25 + elapsedTime * 0.025;
+            backgroundGroup.children.forEach((child, index) => {
+              if (!child.isLineLoop) return;
+              const pulse =
+                child.userData.baseScale + Math.sin(elapsedTime * (0.42 + index * 0.08)) * 0.025;
+              child.scale.setScalar(pulse);
+              child.rotation.z =
+                index * 0.42 + elapsedTime * child.userData.speed * (index % 2 === 0 ? 1 : -1);
+              child.material.opacity =
+                0.28 + Math.sin(elapsedTime * (0.6 + index * 0.11)) * 0.07 + (index % 4) * 0.025;
+            });
+            dustMaterial.uniforms.uTime.value = elapsedTime;
+            largeDustMaterial.uniforms.uTime.value = elapsedTime * 0.86;
+            magicDust.rotation.z = -elapsedTime * 0.018;
+            magicDust.position.y = Math.sin(elapsedTime * 0.45) * 0.12;
+            magicDust.position.x = Math.cos(elapsedTime * 0.3) * 0.1;
+            largeMagicDust.rotation.z = elapsedTime * 0.012;
+            largeMagicDust.position.y = Math.cos(elapsedTime * 0.35) * 0.1;
+
+            if (modelMesh) {
+              modelMesh.traverse((child) => {
+                const shader = child.isMesh && child.material.userData.shader;
+                if (!shader) return;
+                shader.uniforms.uDissolveProgress.value = dissolveProgress;
+                shader.uniforms.uBounds.value.set(bounds.min, bounds.max);
+                shader.uniforms.uDissolveAxis.value.copy(DISSOLVE_AXIS);
+                shader.uniforms.uRootInverseMatrix.value.copy(root.matrixWorld).invert();
+              });
+            }
+
+            if (gpuCompute && particlePoints) {
+              positionVariable.material.uniforms.uTime.value = elapsedTime;
+              positionVariable.material.uniforms.uDissolveProgress.value = dissolveProgress;
+              gpuCompute.compute();
+              particlePoints.material.uniforms.uPositions.value =
+                gpuCompute.getCurrentRenderTarget(positionVariable).texture;
+              particlePoints.material.uniforms.uDissolveProgress.value = dissolveProgress;
+            }
+
+            if (composer) {
+              composer.render();
+            } else {
+              renderer.render(scene, camera);
+            }
+          }
+
+          window.addEventListener("hf-seek", (event) => {
+            renderAt(event.detail.time);
+          });
+
+          renderAt(window.__hfThreeTime || 0);
+        } catch (error) {
+          console.error("three-dissolve init error:", error);
+        } finally {
+          resolveReady();
+        }
+      })();
+    </script>
+  </body>
+</html>

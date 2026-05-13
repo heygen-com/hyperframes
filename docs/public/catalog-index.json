@@ -231,18 +231,18 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/macos-notification.png"
   },
   {
-    "name": "magic-book",
+    "name": "three-dissolve",
     "type": "block",
-    "title": "Magic Book",
-    "description": "A cinematic 3D spellbook dissolve with glowing rings, magical dust, and GPGPU particle vapor.",
+    "title": "3D Dissolve",
+    "description": "A cinematic 3D dissolve effect with glowing rings, particle dust, and GPGPU vapor. Works with any GLTF model.",
     "tags": [
       "vfx",
       "3d",
       "particles",
-      "cinematic"
+      "dissolve"
     ],
-    "href": "/catalog/blocks/magic-book",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/magic-book.png"
+    "href": "/catalog/blocks/three-dissolve",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/three-dissolve.png"
   },
   {
     "name": "north-korea-locked-down",

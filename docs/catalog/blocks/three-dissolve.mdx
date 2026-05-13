@@ -1,0 +1,86 @@
+---
+title: "3D Dissolve"
+description: "A cinematic 3D dissolve effect with glowing rings, particle dust, and GPGPU vapor. Works with any GLTF model."
+---
+
+# 3D Dissolve
+
+A cinematic 3D dissolve effect with glowing rings, particle dust, and GPGPU vapor. Point it at any GLTF model — the dissolve adapts to mesh geometry automatically.
+
+`vfx` `3d` `particles` `dissolve`
+
+<video className="w-full aspect-video rounded-xl object-cover bg-zinc-100 dark:bg-zinc-800" src="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/three-dissolve.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/three-dissolve.png" autoPlay muted loop playsInline />
+
+## Install
+
+<CodeGroup>
+
+```bash Terminal
+npx hyperframes add three-dissolve
+```
+
+</CodeGroup>
+
+## Details
+
+| Property | Value |
+| --- | --- |
+| Type | Block |
+| Dimensions | 1920 x 1080 |
+| Duration | 8s |
+
+## Variables
+
+| Variable | Type | Default | Description |
+| --- | --- | --- | --- |
+| `modelUrl` | string | CDN spellbook | URL to a GLTF model. Any `.gltf` or `.glb` with textures works. |
+| `dissolveStart` | number | `0.8` | Time (s) when the dissolve begins. |
+| `dissolveEnd` | number | `7.1` | Time (s) when the dissolve completes. |
+| `particleColor` | color | `#1a7aff` | Base color for dissolve particles. |
+| `bgColor` | color | `#05070d` | Scene background color. |
+
+## Files
+
+| File | Target | Type |
+| --- | --- | --- |
+| `three-dissolve.html` | `compositions/three-dissolve.html` | hyperframes:composition |
+
+## Swapping the Model
+
+Replace `modelUrl` with any GLTF model URL. The dissolve effect samples the mesh surface for particle emission, so it adapts to any geometry:
+
+```html
+<div
+  data-composition-id="three-dissolve"
+  data-composition-src="compositions/three-dissolve.html"
+  data-start="0"
+  data-duration="8"
+  data-track-index="1"
+  data-width="1920"
+  data-height="1080"
+  data-var-modelUrl="https://example.com/my-model.gltf"
+  data-var-particleColor="#ff4400"
+></div>
+```
+
+If using a local model, place it alongside the composition and use a relative path:
+
+```html
+data-var-modelUrl="./my-model.gltf"
+```
+
+## Usage
+
+After installing, add the block to your host composition:
+
+```html
+<div
+  data-composition-id="three-dissolve"
+  data-composition-src="compositions/three-dissolve.html"
+  data-start="0"
+  data-duration="8"
+  data-track-index="1"
+  data-width="1920"
+  data-height="1080"
+></div>
+```
