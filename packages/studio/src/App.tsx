@@ -282,13 +282,23 @@ export function StudioApp() {
           domEditSession.domEditSelection,
         )
       : null;
+  const selectedTimelineElement = useMemo(
+    () =>
+      selectedTimelineElementId
+        ? (timelineElements.find((el) => getTimelineElementKey(el) === selectedTimelineElementId) ??
+          null)
+        : null,
+    [selectedTimelineElementId, timelineElements],
+  );
+  const layersPanelActive =
+    STUDIO_INSPECTOR_PANELS_ENABLED && panelLayout.rightPanelTab === "layers";
   const designPanelActive =
     STUDIO_INSPECTOR_PANELS_ENABLED && panelLayout.rightPanelTab === "design";
   const motionPanelActive =
     STUDIO_INSPECTOR_PANELS_ENABLED &&
     STUDIO_MOTION_PANEL_ENABLED &&
     panelLayout.rightPanelTab === "motion";
-  const inspectorPanelActive = designPanelActive || motionPanelActive;
+  const inspectorPanelActive = layersPanelActive || designPanelActive || motionPanelActive;
   const shouldShowSelectedDomBounds =
     inspectorPanelActive && !panelLayout.rightCollapsed && !isPlaying;
   const inspectorButtonActive =

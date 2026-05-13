@@ -50,7 +50,11 @@ export interface UseDomSelectionReturn {
   // Callbacks
   applyDomSelection: (
     selection: DomEditSelection | null,
-    options?: { revealPanel?: boolean; additive?: boolean; preserveGroup?: boolean },
+    options?: {
+      revealPanel?: boolean;
+      additive?: boolean;
+      preserveGroup?: boolean;
+    },
   ) => void;
   clearDomSelection: () => void;
   buildDomSelectionFromTarget: (
@@ -108,7 +112,11 @@ export function useDomSelection({
   const applyDomSelection = useCallback(
     (
       selection: DomEditSelection | null,
-      options?: { revealPanel?: boolean; additive?: boolean; preserveGroup?: boolean },
+      options?: {
+        revealPanel?: boolean;
+        additive?: boolean;
+        preserveGroup?: boolean;
+      },
     ) => {
       if (!selection) {
         domEditSelectionRef.current = null;
@@ -157,7 +165,9 @@ export function useDomSelection({
       if (nextSelection) {
         if (options?.revealPanel !== false) {
           setRightCollapsed(false);
-          setRightPanelTab("design");
+          if (rightPanelTab !== "layers") {
+            setRightPanelTab("design");
+          }
         }
         const nextSelectedTimelineId = findMatchingTimelineElementId(
           nextSelection,
@@ -169,7 +179,13 @@ export function useDomSelection({
 
       setSelectedTimelineElementId(null);
     },
-    [setSelectedTimelineElementId, timelineElements, setRightCollapsed, setRightPanelTab],
+    [
+      setSelectedTimelineElementId,
+      timelineElements,
+      setRightCollapsed,
+      setRightPanelTab,
+      rightPanelTab,
+    ],
   );
 
   const clearDomSelection = useCallback(() => {
@@ -223,7 +239,9 @@ export function useDomSelection({
         isMasterView,
       });
       return targetElement
-        ? buildDomSelectionFromTarget(targetElement, { preferClipAncestor: false })
+        ? buildDomSelectionFromTarget(targetElement, {
+            preferClipAncestor: false,
+          })
         : null;
     },
     [activeCompPath, buildDomSelectionFromTarget, compIdToSrc, isMasterView, previewIframeRef],
@@ -259,7 +277,10 @@ export function useDomSelection({
 
       const nextSelection = buildDomSelectionFromTarget(element);
       if (nextSelection) {
-        applyDomSelection(nextSelection, { revealPanel: false, preserveGroup: true });
+        applyDomSelection(nextSelection, {
+          revealPanel: false,
+          preserveGroup: true,
+        });
       }
     },
     [activeCompPath, applyDomSelection, buildDomSelectionFromTarget, previewIframeRef],
