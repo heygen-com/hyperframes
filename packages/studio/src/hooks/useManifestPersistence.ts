@@ -77,6 +77,8 @@ export function useManifestPersistence({
       options?: { forceFromDisk?: boolean; readFromDiskFirst?: boolean },
     ) => Promise<void>
   >(async () => {});
+  const manifestBootstrappedRef = useRef(false);
+  const motionBootstrappedRef = useRef(false);
   const studioManualEditProjectRef = useRef<string | null>(projectId);
 
   // Keep a ref to the latest projectId so async save callbacks always read the
@@ -144,12 +146,12 @@ export function useManifestPersistence({
       iframe: HTMLIFrameElement | null = previewIframeRef.current,
       options?: { forceFromDisk?: boolean; readFromDiskFirst?: boolean },
     ) => {
-      // Auto-bootstrap: on page refresh the in-memory manifest starts empty, so
-      // saved positions are never restored. Read from disk on the first call.
+      // Bootstrap from disk on first apply per session; explicit flag avoids
+      // re-reading disk after the user deletes all edits (async write race).
+      const needsBootstrap = !manifestBootstrappedRef.current;
+      if (needsBootstrap) manifestBootstrappedRef.current = true;
       const readFromDiskFirst = Boolean(
-        options?.forceFromDisk ||
-        options?.readFromDiskFirst ||
-        studioManualEditManifestRef.current.edits.length === 0,
+        options?.forceFromDisk || options?.readFromDiskFirst || needsBootstrap,
       );
       if (!readFromDiskFirst) {
         applyCurrentStudioManualEditsToPreview(iframe);
@@ -216,7 +218,11 @@ export function useManifestPersistence({
       iframe: HTMLIFrameElement | null = previewIframeRef.current,
       options?: { forceFromDisk?: boolean; readFromDiskFirst?: boolean },
     ) => {
-      const readFromDiskFirst = Boolean(options?.forceFromDisk || options?.readFromDiskFirst);
+      const needsBootstrap = !motionBootstrappedRef.current;
+      if (needsBootstrap) motionBootstrappedRef.current = true;
+      const readFromDiskFirst = Boolean(
+        options?.forceFromDisk || options?.readFromDiskFirst || needsBootstrap,
+      );
       if (!readFromDiskFirst) {
         applyCurrentStudioMotionToPreview(iframe);
         return;
@@ -433,6 +439,7 @@ export function useManifestPersistence({
     studioMotionManifestRef.current = emptyStudioMotionManifest();
     studioMotionRevisionRef.current += 1;
     setStudioMotionRevision((revision) => revision + 1);
+    manifestBootstrappedRef.current = motionBootstrappedRef.current = false;
   }, [projectId]);
 
   // ── Listen for external file changes (HMR / SSE) ──

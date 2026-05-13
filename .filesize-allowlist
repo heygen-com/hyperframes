@@ -1,1 +1,2 @@
 packages/studio/src/player/hooks/useTimelinePlayer.ts
+packages/studio/src/hooks/useManifestPersistence.ts
