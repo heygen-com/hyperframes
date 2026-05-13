@@ -131,11 +131,16 @@ async function transformPreviewHtml(
   activeCompositionPath: string,
 ): Promise<string> {
   if (!adapter.transformPreviewHtml) return html;
-  return adapter.transformPreviewHtml({
-    html,
-    project,
-    activeCompositionPath,
-  });
+  try {
+    return await adapter.transformPreviewHtml({
+      html,
+      project,
+      activeCompositionPath,
+    });
+  } catch (err) {
+    console.warn("[Studio] preview transform failed, using original HTML:", err);
+    return html;
+  }
 }
 
 export function registerPreviewRoutes(api: Hono, adapter: StudioApiAdapter): void {
