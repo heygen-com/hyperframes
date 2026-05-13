@@ -142,7 +142,7 @@ export const LayersPanel = memo(function LayersPanel() {
       if (matchedId) {
         const el = timelineElements.find((e) => (e.key ?? e.id) === matchedId);
         if (el) {
-          usePlayerStore.getState().setCurrentTime(el.start);
+          usePlayerStore.getState().setCurrentTime(el.start + el.duration / 2);
         }
       }
     },
