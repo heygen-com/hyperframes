@@ -282,14 +282,6 @@ export function StudioApp() {
           domEditSession.domEditSelection,
         )
       : null;
-  const selectedTimelineElement = useMemo(
-    () =>
-      selectedTimelineElementId
-        ? (timelineElements.find((el) => getTimelineElementKey(el) === selectedTimelineElementId) ??
-          null)
-        : null,
-    [selectedTimelineElementId, timelineElements],
-  );
   const layersPanelActive =
     STUDIO_INSPECTOR_PANELS_ENABLED && panelLayout.rightPanelTab === "layers";
   const designPanelActive =
