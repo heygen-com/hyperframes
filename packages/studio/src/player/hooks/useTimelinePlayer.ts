@@ -186,8 +186,10 @@ export function useTimelinePlayer() {
         const dur = adapter.getDuration();
         liveTime.notify(time); // direct DOM updates, no React re-render
         const { inPoint, outPoint } = usePlayerStore.getState();
-        const loopEnd = outPoint !== null ? outPoint : dur;
-        const loopStart = inPoint !== null ? inPoint : 0;
+        const rawLoopEnd = outPoint !== null ? outPoint : dur;
+        const rawLoopStart = inPoint !== null ? inPoint : 0;
+        const loopEnd = rawLoopStart < rawLoopEnd ? rawLoopEnd : dur;
+        const loopStart = rawLoopStart < rawLoopEnd ? rawLoopStart : 0;
         if (time >= loopEnd && !adapter.isPlaying()) {
           if (usePlayerStore.getState().loopEnabled && dur > 0) {
             adapter.seek(loopStart);
@@ -273,8 +275,10 @@ export function useTimelinePlayer() {
         const elapsed = ((now - startedAt) / 1000) * speed;
         let nextTime = startTime - elapsed;
         const { inPoint, outPoint } = usePlayerStore.getState();
-        const loopEnd = outPoint !== null ? outPoint : duration;
-        const loopStart = inPoint !== null ? inPoint : 0;
+        const rawLoopEnd = outPoint !== null ? outPoint : duration;
+        const rawLoopStart = inPoint !== null ? inPoint : 0;
+        const loopEnd = rawLoopStart < rawLoopEnd ? rawLoopEnd : duration;
+        const loopStart = rawLoopStart < rawLoopEnd ? rawLoopStart : 0;
         if (nextTime <= loopStart) {
           if (usePlayerStore.getState().loopEnabled && duration > 0) {
             startTime = loopEnd;
