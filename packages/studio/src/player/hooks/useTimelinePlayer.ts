@@ -190,7 +190,7 @@ export function useTimelinePlayer() {
         const rawLoopStart = inPoint !== null ? inPoint : 0;
         const loopEnd = rawLoopStart < rawLoopEnd ? rawLoopEnd : dur;
         const loopStart = rawLoopStart < rawLoopEnd ? rawLoopStart : 0;
-        if (time >= loopEnd && !adapter.isPlaying()) {
+        if (time >= loopEnd) {
           if (usePlayerStore.getState().loopEnabled && dur > 0) {
             adapter.seek(loopStart);
             liveTime.notify(loopStart);
@@ -199,6 +199,7 @@ export function useTimelinePlayer() {
             rafRef.current = requestAnimationFrame(tick);
             return;
           }
+          if (adapter.isPlaying()) adapter.pause();
           setCurrentTime(time); // sync Zustand once at end
           setIsPlaying(false);
           cancelAnimationFrame(rafRef.current);
@@ -246,7 +247,7 @@ export function useTimelinePlayer() {
     const adapter = getAdapter();
     if (!adapter) return;
     if (adapter.getTime() >= adapter.getDuration()) {
-      adapter.seek(0);
+      adapter.seek(usePlayerStore.getState().inPoint ?? 0);
     }
     unmutePreviewMedia(iframeRef.current);
     applyPlaybackRate(usePlayerStore.getState().playbackRate);

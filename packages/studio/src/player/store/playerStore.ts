@@ -113,8 +113,23 @@ export const usePlayerStore = create<PlayerState>((set) => ({
   },
   setLoopEnabled: (enabled) => set({ loopEnabled: enabled }),
   setZoomMode: (mode) => set({ zoomMode: mode }),
-  setInPoint: (time) => set({ inPoint: time !== null && Number.isFinite(time) ? time : null }),
-  setOutPoint: (time) => set({ outPoint: time !== null && Number.isFinite(time) ? time : null }),
+  setInPoint: (time) =>
+    set((state) => {
+      const t = time !== null && Number.isFinite(time) ? time : null;
+      return {
+        inPoint: t,
+        outPoint:
+          t !== null && state.outPoint !== null && t >= state.outPoint ? null : state.outPoint,
+      };
+    }),
+  setOutPoint: (time) =>
+    set((state) => {
+      const t = time !== null && Number.isFinite(time) ? time : null;
+      return {
+        outPoint: t,
+        inPoint: t !== null && state.inPoint !== null && t <= state.inPoint ? null : state.inPoint,
+      };
+    }),
   setManualZoomPercent: (percent) =>
     set({ manualZoomPercent: Math.max(10, Math.min(2000, Math.round(percent))) }),
   setCurrentTime: (time) => set({ currentTime: Number.isFinite(time) ? time : 0 }),
