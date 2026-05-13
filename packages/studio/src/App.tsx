@@ -1,5 +1,4 @@
 import { useState, useCallback, useRef, useMemo } from "react";
-import { useMountEffect } from "./hooks/useMountEffect";
 import type { LeftSidebarHandle } from "./components/sidebar/LeftSidebar";
 import { useRenderQueue } from "./components/renders/useRenderQueue";
 import { usePlayerStore } from "./player";
@@ -21,7 +20,6 @@ import { useFrameCapture } from "./hooks/useFrameCapture";
 import { useLintModal } from "./hooks/useLintModal";
 import { useCompositionDimensions } from "./hooks/useCompositionDimensions";
 import { useToast } from "./hooks/useToast";
-import { buildProjectHash, parseProjectIdFromHash } from "./utils/projectRouting";
 import {
   STUDIO_INSPECTOR_PANELS_ENABLED,
   STUDIO_MOTION_PANEL_ENABLED,
@@ -39,42 +37,10 @@ import { PanelLayoutProvider } from "./contexts/PanelLayoutContext";
 import { FileManagerProvider } from "./contexts/FileManagerContext";
 import { DomEditProvider } from "./contexts/DomEditContext";
 import { StudioSplash } from "./components/StudioSplash";
+import { useServerConnection } from "./hooks/useServerConnection";
 
 export function StudioApp() {
-  const [projectId, setProjectId] = useState<string | null>(null);
-  const [resolving, setResolving] = useState(true);
-  const [waitingForServer, setWaitingForServer] = useState(false);
-  useMountEffect(() => {
-    const hashProjectId = parseProjectIdFromHash(window.location.hash);
-    if (hashProjectId) {
-      setProjectId(hashProjectId);
-      setResolving(false);
-      return;
-    }
-
-    function tryConnect() {
-      fetch("/api/projects")
-        .then((r) => r.json())
-        .then((data) => {
-          const first = (data.projects ?? [])[0];
-          if (first) {
-            setProjectId(first.id);
-            setWaitingForServer(false);
-            window.location.hash = buildProjectHash(first.id);
-          } else {
-            scheduleRetry();
-          }
-        })
-        .catch(() => scheduleRetry())
-        .finally(() => setResolving(false));
-    }
-
-    function scheduleRetry() {
-      setWaitingForServer(true);
-      window.setTimeout(tryConnect, 2000);
-    }
-    tryConnect();
-  });
+  const { projectId, resolving, waitingForServer } = useServerConnection();
 
   const [activeCompPath, setActiveCompPath] = useState<string | null>(null);
   const [compIdToSrc, setCompIdToSrc] = useState<Map<string, string>>(new Map());
