@@ -103,6 +103,13 @@ export const LayersPanel = memo(function LayersPanel() {
     }
   }, [compositionLoading, collectLayers]);
 
+  useEffect(() => {
+    const ref = hoverSeekTimerRef;
+    return () => {
+      if (ref.current) clearTimeout(ref.current);
+    };
+  }, []);
+
   const resolveSelection = useCallback(
     (layer: DomEditLayerItem) =>
       resolveDomEditSelection(layer.element, {
@@ -113,12 +120,12 @@ export const LayersPanel = memo(function LayersPanel() {
     [activeCompPath, isMasterView],
   );
 
-  const handleSelectLayer = useCallback(
+  const hoverSeekTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const seekToLayer = useCallback(
     (layer: DomEditLayerItem) => {
       const selection = resolveSelection(layer);
       if (!selection) return;
-
-      applyDomSelection(selection);
 
       let matchedId = findMatchingTimelineElementId(selection, timelineElements);
 
@@ -146,19 +153,33 @@ export const LayersPanel = memo(function LayersPanel() {
         }
       }
     },
-    [resolveSelection, applyDomSelection, timelineElements],
+    [resolveSelection, timelineElements],
+  );
+
+  const handleSelectLayer = useCallback(
+    (layer: DomEditLayerItem) => {
+      const selection = resolveSelection(layer);
+      if (!selection) return;
+      applyDomSelection(selection);
+      seekToLayer(layer);
+    },
+    [resolveSelection, applyDomSelection, seekToLayer],
   );
 
   const handleLayerHover = useCallback(
     (layer: DomEditLayerItem | null) => {
       if (!layer) {
+        if (hoverSeekTimerRef.current) clearTimeout(hoverSeekTimerRef.current);
         updateDomEditHoverSelection(null);
         return;
       }
       const selection = resolveSelection(layer);
       updateDomEditHoverSelection(selection);
+      // Debounce hover seeks so brushing past items doesn't thrash the player
+      if (hoverSeekTimerRef.current) clearTimeout(hoverSeekTimerRef.current);
+      hoverSeekTimerRef.current = setTimeout(() => seekToLayer(layer), 300);
     },
-    [resolveSelection, updateDomEditHoverSelection],
+    [resolveSelection, updateDomEditHoverSelection, seekToLayer],
   );
 
   const toggleCollapse = useCallback((key: string, e: React.MouseEvent) => {
