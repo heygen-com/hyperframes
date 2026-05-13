@@ -156,8 +156,8 @@ export function StudioHeader({
       {/* Left: logo + project name */}
       <div className="flex items-center gap-3">
         <HyperframesLogo />
-        <span className="text-neutral-600 select-none" aria-hidden="true">
-          ·
+        <span className="text-neutral-700 select-none" aria-hidden="true">
+          |
         </span>
         <span className="text-[11px] font-medium text-neutral-300">{projectId}</span>
       </div>
