@@ -51,7 +51,7 @@ export function useFrameCapture({
         document.body.appendChild(link);
         link.click();
         link.remove();
-        setTimeout(() => URL.revokeObjectURL(blobUrl), 0);
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
       } catch (err) {
         showToast(err instanceof Error ? err.message : "Capture failed");
       }

@@ -5,15 +5,24 @@
     "moduleResolution": "bundler",
     "baseUrl": ".",
     "paths": {
-      "@hyperframes/producer": ["../producer/src/index.ts"]
+      "@hyperframes/producer": [
+        "../producer/src/index.ts"
+      ]
     },
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "outDir": "./dist",
-    "declaration": true
+    "declaration": true,
+    "ignoreDeprecations": "5.0",
+    "rootDir": ".."
   },
-  "include": ["src"],
-  "exclude": ["node_modules", "dist"]
+  "include": [
+    "src"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist"
+  ]
 }

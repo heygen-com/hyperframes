@@ -5,7 +5,9 @@
     "moduleResolution": "bundler",
     "baseUrl": ".",
     "paths": {
-      "@hyperframes/player": ["../player/src/hyperframes-player.ts"]
+      "@hyperframes/player": [
+        "../player/src/hyperframes-player.ts"
+      ]
     },
     "jsx": "react-jsx",
     "strict": true,
@@ -17,14 +19,27 @@
     "sourceMap": true,
     "outDir": "dist",
     "rootDir": "..",
-    "types": ["vite/client"],
-    "lib": ["dom", "dom.iterable", "esnext"],
+    "types": [
+      "vite/client"
+    ],
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "esnext"
+    ],
     "allowJs": true,
     "noEmit": true,
     "incremental": true,
     "resolveJsonModule": true,
-    "isolatedModules": true
+    "isolatedModules": true,
+    "ignoreDeprecations": "5.0"
   },
-  "include": ["src"],
-  "exclude": ["dist", "node_modules", "src/**/*.test.ts"]
+  "include": [
+    "src"
+  ],
+  "exclude": [
+    "dist",
+    "node_modules",
+    "src/**/*.test.ts"
+  ]
 }
