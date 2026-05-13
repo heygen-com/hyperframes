@@ -264,7 +264,7 @@ export const NLEPreview = memo(function NLEPreview({
     <div className="flex flex-col h-full min-h-0">
       <div
         ref={viewportRef}
-        className="relative flex-1 flex items-center justify-center p-2 overflow-hidden min-h-0 outline-none focus:ring-1 focus:ring-studio-accent/40"
+        className="relative flex-1 flex items-center justify-center p-2 overflow-hidden min-h-0 outline-none focus:ring-1 focus:ring-studio-accent/40 bg-neutral-900"
         tabIndex={0}
         aria-label="Composition preview"
         onPointerDown={handlePointerDown}
@@ -279,6 +279,9 @@ export const NLEPreview = memo(function NLEPreview({
             zoom: toDomPrecision(initial.zoomPercent / 100),
             transform: `translate(${toDomPrecision(initial.panX)}px, ${toDomPrecision(initial.panY)}px)`,
             transformOrigin: "0 0",
+            outline: "1px solid rgba(255,255,255,0.12)",
+            outlineOffset: "0px",
+            boxShadow: "0 4px 32px rgba(0,0,0,0.55)",
           }}
           data-testid="preview-zoom-stage"
         >
