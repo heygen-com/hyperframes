@@ -42,6 +42,154 @@ function isCompositionHost(el: HTMLElement): boolean {
   return el.hasAttribute("data-composition-src") || el.hasAttribute("data-composition-file");
 }
 
+const TEXT_TAGS = new Set(["h1", "h2", "h3", "h4", "h5", "h6", "p", "span", "a", "li", "button"]);
+const MEDIA_TAGS = new Set(["img", "video", "canvas", "svg"]);
+
+interface ElementPreviewInfo {
+  bgColor: string;
+  textColor: string;
+  textSnippet: string;
+  isMedia: boolean;
+  isText: boolean;
+  hasBorder: boolean;
+  borderColor: string;
+  imgSrc: string | null;
+}
+
+function getElementPreviewInfo(el: HTMLElement): ElementPreviewInfo {
+  const win = el.ownerDocument.defaultView;
+  const computed = win?.getComputedStyle(el);
+  const tag = el.tagName.toLowerCase();
+
+  const bgColor = computed?.backgroundColor ?? "transparent";
+  const textColor = computed?.color ?? "#fff";
+  const borderWidth = parseFloat(computed?.borderWidth ?? "0");
+  const hasBorder = borderWidth > 0;
+  const borderColor = computed?.borderColor ?? "transparent";
+  const isMedia = MEDIA_TAGS.has(tag);
+  const isText = TEXT_TAGS.has(tag);
+
+  let textSnippet = "";
+  if (isText) {
+    const walker = el.ownerDocument.createTreeWalker(el, NodeFilter.SHOW_TEXT, null);
+    let node: Node | null;
+    while ((node = walker.nextNode())) {
+      const t = (node.textContent ?? "").trim();
+      if (t) {
+        textSnippet = t.slice(0, 12);
+        break;
+      }
+    }
+  }
+
+  let imgSrc: string | null = null;
+  if (tag === "img") {
+    imgSrc = el.getAttribute("src");
+  }
+
+  return { bgColor, textColor, textSnippet, isMedia, isText, hasBorder, borderColor, imgSrc };
+}
+
+function isTransparentOrNone(color: string): boolean {
+  return (
+    color === "transparent" || color === "rgba(0, 0, 0, 0)" || color === "none" || color === ""
+  );
+}
+
+function LayerPreview({ el, selected }: { el: HTMLElement; selected: boolean }) {
+  const info = getElementPreviewInfo(el);
+  const hasBg = !isTransparentOrNone(info.bgColor);
+  const hasBorderVisible = info.hasBorder && !isTransparentOrNone(info.borderColor);
+
+  if (info.imgSrc) {
+    return (
+      <span
+        className="flex-shrink-0 overflow-hidden rounded"
+        style={{
+          width: 28,
+          height: 20,
+          backgroundImage: `url(${info.imgSrc})`,
+          backgroundSize: "cover",
+          backgroundPosition: "center",
+          border: "1px solid rgba(255,255,255,0.1)",
+        }}
+      />
+    );
+  }
+
+  if (info.isText && info.textSnippet) {
+    return (
+      <span
+        className="flex flex-shrink-0 items-center justify-center overflow-hidden rounded"
+        style={{
+          width: 28,
+          height: 20,
+          backgroundColor: hasBg ? info.bgColor : "rgba(255,255,255,0.06)",
+          border: hasBorderVisible
+            ? `1px solid ${info.borderColor}`
+            : "1px solid rgba(255,255,255,0.08)",
+        }}
+      >
+        <span
+          style={{
+            color: info.textColor,
+            fontSize: 7,
+            lineHeight: 1,
+            fontWeight: 600,
+            overflow: "hidden",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {info.textSnippet}
+        </span>
+      </span>
+    );
+  }
+
+  if (info.isMedia) {
+    return (
+      <span
+        className="flex flex-shrink-0 items-center justify-center rounded"
+        style={{
+          width: 28,
+          height: 20,
+          backgroundColor: "rgba(255,255,255,0.06)",
+          border: "1px solid rgba(255,255,255,0.08)",
+        }}
+      >
+        <svg
+          width="12"
+          height="12"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke={selected ? "currentColor" : "#666"}
+          strokeWidth="1.5"
+        >
+          <rect x="2" y="2" width="20" height="20" rx="2" />
+          <circle cx="8" cy="8" r="2" />
+          <path d="m21 15-5-5L5 21" />
+        </svg>
+      </span>
+    );
+  }
+
+  return (
+    <span
+      className="flex-shrink-0 rounded"
+      style={{
+        width: 28,
+        height: 20,
+        backgroundColor: hasBg ? info.bgColor : "rgba(255,255,255,0.04)",
+        border: hasBorderVisible
+          ? `1px solid ${info.borderColor}`
+          : hasBg
+            ? "1px solid rgba(255,255,255,0.1)"
+            : "1px dashed rgba(255,255,255,0.12)",
+      }}
+    />
+  );
+}
+
 interface CollapsedState {
   [key: string]: boolean;
 }
@@ -192,6 +340,7 @@ export const LayersPanel = memo(function LayersPanel() {
               >
                 {getTagBadge(layer.tagName)}
               </span>
+              <LayerPreview el={layer.element} selected={selected} />
               <span className="min-w-0 flex-1 truncate text-[11px]">{layer.label}</span>
               {hasChildren && (
                 <span className="text-[9px] tabular-nums text-neutral-600">{layer.childCount}</span>
