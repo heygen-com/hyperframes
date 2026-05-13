@@ -334,24 +334,43 @@ export function Section({
   icon,
   children,
   accessory,
+  defaultCollapsed = false,
 }: {
   title: string;
   icon: ReactNode;
   children: ReactNode;
   accessory?: ReactNode;
+  defaultCollapsed?: boolean;
 }) {
+  const [collapsed, setCollapsed] = useState(defaultCollapsed);
+
   return (
-    <section className="min-w-0 border-t border-neutral-800/80 px-4 py-4">
-      <div className="mb-3 flex min-w-0 flex-wrap items-center justify-between gap-2">
+    <section className="min-w-0 border-t border-neutral-800/80">
+      <button
+        type="button"
+        onClick={() => setCollapsed((v) => !v)}
+        className="flex w-full items-center justify-between gap-2 px-4 py-3"
+      >
         <div className="flex min-w-0 items-center gap-2.5">
           <span className="flex-shrink-0 text-neutral-500">{icon}</span>
           <h3 className="text-[11px] font-semibold uppercase tracking-[0.12em] text-neutral-300">
             {title}
           </h3>
         </div>
-        {accessory}
-      </div>
-      {children}
+        <div className="flex items-center gap-2">
+          {accessory}
+          <svg
+            width="10"
+            height="10"
+            viewBox="0 0 10 10"
+            fill="currentColor"
+            className={`flex-shrink-0 text-neutral-500 transition-transform ${collapsed ? "-rotate-90" : ""}`}
+          >
+            <path d="M2 3l3 4 3-4z" />
+          </svg>
+        </div>
+      </button>
+      {!collapsed && <div className="px-4 pb-4">{children}</div>}
     </section>
   );
 }

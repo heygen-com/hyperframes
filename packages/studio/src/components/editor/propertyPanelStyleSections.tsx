@@ -109,7 +109,7 @@ export function StyleSections({
   return (
     <>
       {isFlex && (
-        <Section title="Flex" icon={<Layers size={15} />}>
+        <Section title="Flex" icon={<Layers size={15} />} defaultCollapsed>
           <div className="space-y-4">
             <SegmentedControl
               disabled={styleEditingDisabled}
@@ -154,7 +154,7 @@ export function StyleSections({
       )}
 
       {hasVisualBackground && (
-        <Section title="Radius" icon={<Settings size={15} />}>
+        <Section title="Radius" icon={<Settings size={15} />} defaultCollapsed>
           <SliderControl
             value={radiusValue}
             min={0}
@@ -168,7 +168,7 @@ export function StyleSections({
         </Section>
       )}
 
-      <Section title="Stroke" icon={<Square size={15} />}>
+      <Section title="Stroke" icon={<Square size={15} />} defaultCollapsed>
         <div className="space-y-4">
           <div className={RESPONSIVE_GRID}>
             <MetricField
@@ -226,7 +226,7 @@ export function StyleSections({
         </div>
       </Section>
 
-      <Section title="Effects" icon={<Zap size={15} />}>
+      <Section title="Effects" icon={<Zap size={15} />} defaultCollapsed>
         <div className="space-y-4">
           <SelectField
             label="Shadow"
@@ -279,7 +279,7 @@ export function StyleSections({
         </div>
       </Section>
 
-      <Section title="Clip" icon={<Layers size={15} />}>
+      <Section title="Clip" icon={<Layers size={15} />} defaultCollapsed>
         <div className="space-y-4">
           <div className={RESPONSIVE_GRID}>
             <SelectField
@@ -325,7 +325,7 @@ export function StyleSections({
         </div>
       </Section>
 
-      <Section title="Transparency" icon={<Eye size={15} />}>
+      <Section title="Transparency" icon={<Eye size={15} />} defaultCollapsed>
         <div className="space-y-4">
           <SliderControl
             value={opacityValue}
