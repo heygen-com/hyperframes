@@ -76,6 +76,14 @@ export const NLEPreview = memo(function NLEPreview({
     originY: number;
   } | null>(null);
 
+  useEffect(() => {
+    return () => {
+      if (settleTimerRef.current) clearTimeout(settleTimerRef.current);
+      if (hudTimerRef.current) clearTimeout(hudTimerRef.current);
+      if (retiringTimerRef.current) clearTimeout(retiringTimerRef.current);
+    };
+  }, []);
+
   const writeTransform = useCallback((state: PreviewZoomState) => {
     const stage = stageRef.current;
     if (!stage) return;
