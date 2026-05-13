@@ -6,6 +6,7 @@ import { createAnimeJsAdapter } from "./adapters/animejs";
 import { createLottieAdapter } from "./adapters/lottie";
 import { createThreeAdapter } from "./adapters/three";
 import { createTypegpuAdapter } from "./adapters/typegpu";
+import { patchVideoTextureCompat } from "./adapters/video-texture-compat";
 import { createWaapiAdapter } from "./adapters/waapi";
 import { refreshRuntimeMediaCache, syncRuntimeMedia } from "./media";
 import { createPickerModule } from "./picker";
@@ -1638,6 +1639,7 @@ export function initSandboxRuntimeModular(): void {
     createTypegpuAdapter(),
     createGsapAdapter({ getTimeline: () => state.capturedTimeline }),
   ] as RuntimeDeterministicAdapter[];
+  patchVideoTextureCompat();
   installRuntimeErrorDiagnostics();
   runAdapters("discover");
   bindMediaMetadataListeners();
