@@ -144,7 +144,13 @@ export function useManifestPersistence({
       iframe: HTMLIFrameElement | null = previewIframeRef.current,
       options?: { forceFromDisk?: boolean; readFromDiskFirst?: boolean },
     ) => {
-      const readFromDiskFirst = Boolean(options?.forceFromDisk || options?.readFromDiskFirst);
+      // Auto-bootstrap: on page refresh the in-memory manifest starts empty, so
+      // saved positions are never restored. Read from disk on the first call.
+      const readFromDiskFirst = Boolean(
+        options?.forceFromDisk ||
+        options?.readFromDiskFirst ||
+        studioManualEditManifestRef.current.edits.length === 0,
+      );
       if (!readFromDiskFirst) {
         applyCurrentStudioManualEditsToPreview(iframe);
         return;
