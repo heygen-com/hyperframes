@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { LintFinding } from "../components/LintModal";
 
 /**
@@ -9,10 +9,10 @@ export function useConsoleErrorCapture(previewIframe: HTMLIFrameElement | null) 
   const [consoleErrors, setConsoleErrors] = useState<LintFinding[] | null>(null);
   const consoleErrorsRef = useRef<LintFinding[]>([]);
 
-  const resetErrors = () => {
+  const resetErrors = useCallback(() => {
     consoleErrorsRef.current = [];
     setConsoleErrors(null);
-  };
+  }, []);
 
   // eslint-disable-next-line no-restricted-syntax
   useEffect(() => {
