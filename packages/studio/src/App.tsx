@@ -26,7 +26,6 @@ import {
   STUDIO_MOTION_PANEL_ENABLED,
 } from "./components/editor/manualEditingAvailability";
 import { getStudioMotionForSelection } from "./components/editor/studioMotion";
-import { getTimelineElementKey, isTimelineElementActiveAtTime } from "./utils/timelineInspector";
 import type { DomEditSelection } from "./components/editor/domEditing";
 import { AskAgentModal } from "./components/AskAgentModal";
 import { StudioHeader } from "./components/StudioHeader";
@@ -79,7 +78,6 @@ export function StudioApp() {
   const captionSync = useCaptionSync(projectId);
   const currentTime = usePlayerStore((s) => s.currentTime);
   const timelineElements = usePlayerStore((s) => s.elements);
-  const selectedTimelineElementId = usePlayerStore((s) => s.selectedElementId);
   const setSelectedTimelineElementId = usePlayerStore((s) => s.setSelectedElementId);
   const timelineDuration = usePlayerStore((s) => s.duration);
   const isPlaying = usePlayerStore((s) => s.isPlaying);
@@ -284,14 +282,6 @@ export function StudioApp() {
           domEditSession.domEditSelection,
         )
       : null;
-  const selectedTimelineElement = useMemo(
-    () =>
-      selectedTimelineElementId
-        ? (timelineElements.find((el) => getTimelineElementKey(el) === selectedTimelineElementId) ??
-          null)
-        : null,
-    [selectedTimelineElementId, timelineElements],
-  );
   const designPanelActive =
     STUDIO_INSPECTOR_PANELS_ENABLED && panelLayout.rightPanelTab === "design";
   const motionPanelActive =
@@ -300,11 +290,7 @@ export function StudioApp() {
     panelLayout.rightPanelTab === "motion";
   const inspectorPanelActive = designPanelActive || motionPanelActive;
   const shouldShowSelectedDomBounds =
-    inspectorPanelActive &&
-    !panelLayout.rightCollapsed &&
-    !isPlaying &&
-    (!selectedTimelineElement ||
-      isTimelineElementActiveAtTime(currentTime, selectedTimelineElement));
+    inspectorPanelActive && !panelLayout.rightCollapsed && !isPlaying;
   const inspectorButtonActive =
     STUDIO_INSPECTOR_PANELS_ENABLED && !panelLayout.rightCollapsed && inspectorPanelActive;
 
