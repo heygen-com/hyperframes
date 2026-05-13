@@ -303,14 +303,14 @@ function generateJs(model: CaptionModel): string {
 
     // Build word spans
     const wordLines: string[] = groupSegments.map((seg) => {
-      const escaped = seg.text.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+      const escaped = JSON.stringify(seg.text);
       const segVar = `w_${seg.id.replace(/[^a-zA-Z0-9_]/g, "_")}`;
       const idLine = seg.wordId ? `\n  ${segVar}.id = ${JSON.stringify(seg.wordId)};` : "";
       return (
         `  const ${segVar} = document.createElement('span');` +
         `\n  ${segVar}.className = 'word clip';` +
         idLine +
-        `\n  ${segVar}.textContent = '${escaped}';` +
+        `\n  ${segVar}.textContent = ${escaped};` +
         `\n  ${segVar}.dataset.start = '${seg.start}';` +
         `\n  ${segVar}.dataset.end = '${seg.end}';` +
         `\n  groupEl_${groupVar}.appendChild(${segVar});`
