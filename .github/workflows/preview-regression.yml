@@ -70,7 +70,7 @@ jobs:
         run: bun run --cwd packages/producer parity:fixtures:ci
 
       - name: Install ffmpeg
-        uses: FedericoCarboni/setup-ffmpeg@36c6454b5a2348e7794ba2d82a21506605921e3d # v3
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends ffmpeg
 
       - name: Set up Chrome
         id: setup-chrome
