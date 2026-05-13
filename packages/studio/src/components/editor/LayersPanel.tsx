@@ -103,13 +103,6 @@ export const LayersPanel = memo(function LayersPanel() {
     }
   }, [compositionLoading, collectLayers]);
 
-  useEffect(() => {
-    const ref = hoverSeekTimerRef;
-    return () => {
-      if (ref.current) clearTimeout(ref.current);
-    };
-  }, []);
-
   const resolveSelection = useCallback(
     (layer: DomEditLayerItem) =>
       resolveDomEditSelection(layer.element, {
@@ -119,8 +112,6 @@ export const LayersPanel = memo(function LayersPanel() {
       }),
     [activeCompPath, isMasterView],
   );
-
-  const hoverSeekTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const seekToLayer = useCallback(
     (layer: DomEditLayerItem) => {
@@ -169,17 +160,13 @@ export const LayersPanel = memo(function LayersPanel() {
   const handleLayerHover = useCallback(
     (layer: DomEditLayerItem | null) => {
       if (!layer) {
-        if (hoverSeekTimerRef.current) clearTimeout(hoverSeekTimerRef.current);
         updateDomEditHoverSelection(null);
         return;
       }
       const selection = resolveSelection(layer);
       updateDomEditHoverSelection(selection);
-      // Debounce hover seeks so brushing past items doesn't thrash the player
-      if (hoverSeekTimerRef.current) clearTimeout(hoverSeekTimerRef.current);
-      hoverSeekTimerRef.current = setTimeout(() => seekToLayer(layer), 300);
     },
-    [resolveSelection, updateDomEditHoverSelection, seekToLayer],
+    [resolveSelection, updateDomEditHoverSelection],
   );
 
   const toggleCollapse = useCallback((key: string, e: React.MouseEvent) => {
