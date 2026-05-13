@@ -1,6 +1,11 @@
-import { describe, expect, it } from "vitest";
+// @vitest-environment happy-dom
+
+import React, { act } from "react";
+import { createRoot } from "react-dom/client";
+import { describe, expect, it, vi } from "vitest";
 import { Window } from "happy-dom";
 import {
+  DomEditOverlay,
   filterNestedDomEditGroupItems,
   focusDomEditOverlayElement,
   hasDomEditRotationChanged,
@@ -9,6 +14,75 @@ import {
   resolveDomEditResizeGesture,
   resolveDomEditRotationGesture,
 } from "./DomEditOverlay";
+import type { DomEditSelection } from "./domEditing";
+
+// React 19 warns unless the test environment opts into act().
+globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+
+vi.mock("./useDomEditOverlayGestures", () => ({
+  createDomEditOverlayGestureHandlers: () => ({
+    startGesture: () => true,
+    startGroupDrag: () => {},
+    onPointerMove: () => {},
+    onPointerUp: () => {},
+    clearPointerState: () => {},
+  }),
+}));
+
+vi.mock("./useDomEditOverlayRects", async () => {
+  const React = await import("react");
+  const { rectsEqual } = await import("./domEditOverlayGeometry");
+
+  return {
+    useDomEditOverlayRects: () => {
+      const [overlayRect, setOverlayRectState] = React.useState(null);
+      const overlayRectRef = React.useRef(null);
+      const [groupOverlayItems, setGroupOverlayItemsState] = React.useState([]);
+      const groupOverlayItemsRef = React.useRef([]);
+
+      const setOverlayRect = (next: unknown) => {
+        if (rectsEqual(overlayRectRef.current, next)) return;
+        overlayRectRef.current = next;
+        setOverlayRectState(next);
+      };
+
+      const setGroupOverlayItems = (next: unknown[]) => {
+        groupOverlayItemsRef.current = next;
+        setGroupOverlayItemsState(next);
+      };
+
+      return {
+        overlayRect,
+        overlayRectRef,
+        setOverlayRect,
+        hoverRect: null,
+        hoverRectRef: { current: null },
+        setHoverRect: () => {},
+        groupOverlayItems,
+        groupOverlayItemsRef,
+        setGroupOverlayItems,
+      };
+    },
+  };
+});
+
+vi.mock("./domEditOverlayGeometry", async () => {
+  const actual = await vi.importActual<typeof import("./domEditOverlayGeometry")>(
+    "./domEditOverlayGeometry",
+  );
+
+  return {
+    ...actual,
+    toOverlayRect: () => ({
+      left: 24,
+      top: 36,
+      width: 180,
+      height: 72,
+      editScaleX: 1,
+      editScaleY: 1,
+    }),
+  };
+});
 
 describe("focusDomEditOverlayElement", () => {
   it("focuses the canvas overlay without scrolling", () => {
@@ -18,6 +92,96 @@ describe("focusDomEditOverlayElement", () => {
     });
 
     expect(calls).toEqual([{ preventScroll: true }]);
+  });
+});
+
+describe("DomEditOverlay", () => {
+  it("renders selected bounds right after clicking a movable selection", () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    const selection: DomEditSelection = {
+      element: document.createElement("div"),
+      id: "hero-title",
+      selector: ".hero-title",
+      selectorIndex: 0,
+      sourceFile: "index.html",
+      tagName: "div",
+      label: "Hero Title",
+      textContent: "Hello",
+      textFields: [],
+      capabilities: {
+        canEditText: true,
+        canEditLayout: true,
+        canApplyManualOffset: true,
+        canApplyManualSize: false,
+        canApplyManualRotation: false,
+        canAdjustOpacity: true,
+        canAdjustFill: true,
+        canAdjustBorderRadius: true,
+        canAdjustStroke: true,
+        canAdjustShadow: true,
+        canAdjustZIndex: true,
+      },
+      computedStyle: {
+        display: "block",
+        position: "absolute",
+      },
+    };
+
+    let currentSelection: DomEditSelection | null = null;
+    const iframeRef = { current: document.createElement("iframe") as HTMLIFrameElement | null };
+    const originalPointerCapture = HTMLDivElement.prototype.setPointerCapture;
+    HTMLDivElement.prototype.setPointerCapture = () => {};
+
+    function Harness() {
+      const [selected, setSelected] = React.useState<DomEditSelection | null>(null);
+      currentSelection = selected;
+
+      return React.createElement(DomEditOverlay, {
+        iframeRef,
+        activeCompositionPath: null,
+        selection: selected,
+        hoverSelection: null,
+        groupSelections: [],
+        onCanvasMouseDown: () => {},
+        onCanvasPointerMove: () => selection,
+        onCanvasPointerLeave: () => {},
+        onSelectionChange: (next: DomEditSelection) => setSelected(next),
+        onBlockedMove: () => {},
+        onPathOffsetCommit: () => {},
+        onGroupPathOffsetCommit: () => {},
+        onBoxSizeCommit: () => {},
+        onRotationCommit: () => {},
+      });
+    }
+
+    act(() => {
+      root.render(React.createElement(Harness));
+    });
+
+    const overlay = host.querySelector('[aria-label="Composition canvas"]') as HTMLDivElement;
+    expect(overlay).toBeTruthy();
+
+    act(() => {
+      overlay.dispatchEvent(
+        new PointerEvent("pointerdown", {
+          bubbles: true,
+          button: 0,
+          clientX: 120,
+          clientY: 80,
+        }),
+      );
+    });
+
+    expect(currentSelection).toBe(selection);
+    expect(host.querySelector('[data-dom-edit-selection-box="true"]')).toBeTruthy();
+
+    act(() => {
+      root.unmount();
+    });
+    HTMLDivElement.prototype.setPointerCapture = originalPointerCapture;
+    host.remove();
   });
 });
 

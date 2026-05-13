@@ -23,12 +23,7 @@ import {
   restoreStudioPathOffset,
   restoreStudioRotation,
 } from "./manualEdits";
-import {
-  type GroupOverlayItem,
-  type OverlayRect,
-  groupOverlayItemsEqual,
-  rectsEqual,
-} from "./domEditOverlayGeometry";
+import { type GroupOverlayItem, type OverlayRect } from "./domEditOverlayGeometry";
 import {
   BLOCKED_MOVE_THRESHOLD_PX,
   type BlockedMoveState,
@@ -87,8 +82,6 @@ export type UseDomEditOverlayGesturesOptions = {
 
 export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGesturesOptions) {
   const setDraftOverlayRect = (next: OverlayRect) => {
-    if (rectsEqual(opts.overlayRectRef.current, next)) return;
-    opts.overlayRectRef.current = next;
     opts.setOverlayRect(next);
   };
   const restoreGestureOverlayRect = (g: GestureState) => {
@@ -102,8 +95,6 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
     });
   };
   const setDraftGroupOverlayItems = (next: GroupOverlayItem[]) => {
-    if (groupOverlayItemsEqual(opts.groupOverlayItemsRef.current, next)) return;
-    opts.groupOverlayItemsRef.current = next;
     opts.setGroupOverlayItems(next);
   };
 

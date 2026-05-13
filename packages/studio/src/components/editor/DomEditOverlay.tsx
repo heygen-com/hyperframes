@@ -223,7 +223,6 @@ export const DomEditOverlay = memo(function DomEditOverlay({
 
     suppressNextOverlayMouseDownRef.current = true;
     selectionRef.current = candidate;
-    overlayRectRef.current = candidateRect;
     setOverlayRect(candidateRect);
     const didStartGesture = gestures.startGesture("drag", event, {
       selection: candidate,
