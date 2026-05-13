@@ -317,7 +317,6 @@
           const root = new THREE.Group();
           root.rotation.x = -0.15;
           root.rotation.y = -0.38;
-          root.scale.setScalar(0.34);
           scene.add(root);
           const rootInverseMatrix = new THREE.Matrix4();
 
@@ -451,6 +450,17 @@
               });
 
               root.add(modelMesh);
+              modelMesh.updateMatrixWorld(true);
+              var box = new THREE.Box3().setFromObject(modelMesh);
+              var bSize = new THREE.Vector3();
+              var bCenter = new THREE.Vector3();
+              box.getSize(bSize);
+              box.getCenter(bCenter);
+              modelMesh.position.sub(bCenter);
+              var maxDim = Math.max(bSize.x, bSize.y, bSize.z);
+              var visibleHeight = 2 * camera.position.z * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+              var targetSize = visibleHeight * 0.32;
+              root.scale.setScalar(maxDim > 0 ? targetSize / maxDim : 1);
               modelMesh.updateMatrixWorld(true);
               root.updateMatrixWorld(true);
 
