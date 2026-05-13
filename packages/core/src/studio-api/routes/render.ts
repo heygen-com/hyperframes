@@ -1,7 +1,7 @@
 import type { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { existsSync, readFileSync, mkdirSync, unlinkSync, readdirSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import type { StudioApiAdapter, RenderJobState } from "../types.js";
 import { VALID_CANVAS_RESOLUTIONS, parseFps, type CanvasResolution } from "../../core.types.js";
 
@@ -201,8 +201,10 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
     if (!project) return c.json({ error: "not found" }, 404);
     const filename = c.req.path.split("/renders/file/")[1];
     if (!filename) return c.json({ error: "missing filename" }, 400);
+    if (filename.includes("..")) return c.json({ error: "forbidden" }, 403);
     const rendersDir = adapter.rendersDir(project);
     const fp = join(rendersDir, filename);
+    if (!fp.startsWith(resolve(rendersDir))) return c.json({ error: "forbidden" }, 403);
     if (!existsSync(fp)) return c.json({ error: "not found" }, 404);
     const contentType = renderContentType(fp);
     const content = readFileSync(fp);
