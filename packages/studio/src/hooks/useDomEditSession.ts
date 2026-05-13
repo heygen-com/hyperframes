@@ -334,6 +334,7 @@ export function useDomEditSession({
     handleDomManualDragStart,
     handleDomEditElementDelete,
     buildDomSelectionForTimelineElement,
+    updateDomEditHoverSelection,
     resolveImportedFontAsset,
     setAgentModalOpen,
     setAgentPromptSelectionContext,
