@@ -420,6 +420,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
   };
   app.get("/assets/*", serveStudioStaticFile);
   app.get("/icons/*", serveStudioStaticFile);
+  app.get("/favicon.svg", serveStudioStaticFile);
 
   // SPA fallback
   app.get("*", (c) => {
