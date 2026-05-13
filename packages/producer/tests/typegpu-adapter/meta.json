@@ -1,0 +1,13 @@
+{
+  "name": "typegpu-adapter",
+  "description": "Regression guard for the TypeGPU/WebGPU runtime adapter. Verifies that WebGPU fragment shaders driven by hf-seek render deterministically via window.__hfTypegpuTime + the shared seek-dispatch deduplication.",
+  "tags": ["regression", "adapter"],
+  "minPsnr": 30,
+  "maxFrameFailures": 0,
+  "minAudioCorrelation": 0,
+  "maxAudioLagWindows": 1,
+  "renderConfig": {
+    "fps": 30,
+    "workers": 1
+  }
+}

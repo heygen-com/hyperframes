@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+  body { margin: 0; background: #080818; }
+  [data-composition-id="typegpu-test"] { position: relative; overflow: hidden; font-family: "Inter", sans-serif; }
+  #label { position: absolute; top: 40px; left: 60px; color: rgba(255,255,255,0.5); font-size: 14px; font-weight: 700; letter-spacing: 0.2em; text-transform: uppercase; }
+  .cap { position: absolute; bottom: 100px; left: 0; right: 0; text-align: center; font-size: 72px; font-weight: 800; color: #fff; letter-spacing: -0.03em; }
+</style>
+</head>
+<body>
+<div id="root" data-composition-id="typegpu-test" data-width="1920" data-height="1080" data-start="0" data-duration="6">
+
+  <canvas id="gpu-canvas" style="position:absolute;top:0;left:0;width:1920px;height:1080px"></canvas>
+  <div id="label">TypeGPU adapter test</div>
+  <div id="cap-1" class="cap">WebGPU is seekable.</div>
+  <div id="cap-2" class="cap">GPU rendering works.</div>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <script>
+    window.__timelines = window.__timelines || {};
+
+    gsap.set('.cap', { opacity: 0 });
+    var tl = gsap.timeline({ paused: true });
+    tl.to('#cap-1', { opacity: 1, duration: 0.3 }, 0.5);
+    tl.to('#cap-1', { opacity: 0, duration: 0.2 }, 2.8);
+    tl.to('#cap-2', { opacity: 1, duration: 0.3 }, 3.2);
+    tl.to('#cap-2', { opacity: 0, duration: 0.3 }, 5.5);
+    window.__timelines['typegpu-test'] = tl;
+
+    // ── WebGPU: procedural gradient + animated ring (no video dependency) ──
+    var WGSL = `
+struct U { time: f32, _p1: f32, _p2: f32, _p3: f32 }
+@group(0) @binding(0) var<uniform> u: U;
+
+struct Vo { @builtin(position) pos: vec4f, @location(0) uv: vec2f }
+
+@vertex fn vs(@builtin(vertex_index) vi: u32) -> Vo {
+  let ps = array<vec2f,3>(vec2f(-1,-1), vec2f(3,-1), vec2f(-1,3));
+  let ts = array<vec2f,3>(vec2f(0,1), vec2f(2,1), vec2f(0,-1));
+  return Vo(vec4f(ps[vi],0,1), ts[vi]);
+}
+
+fn hsv(h: f32, s: f32, v: f32) -> vec3f {
+  let k = vec4f(1.0, 2.0/3.0, 1.0/3.0, 3.0);
+  let p = abs(fract(vec3f(h) + k.xyz) * 6.0 - k.www);
+  return v * mix(k.xxx, clamp(p - k.xxx, vec3f(0.0), vec3f(1.0)), s);
+}
+
+@fragment fn fs(in: Vo) -> @location(0) vec4f {
+  let center = vec2f(0.5, 0.5);
+  let p = in.uv - center;
+  let dist = length(p);
+  let angle = atan2(p.y, p.x);
+
+  // Animated ring
+  let ring = smoothstep(0.28, 0.3, dist) * (1.0 - smoothstep(0.32, 0.34, dist));
+  let hue = fract(angle / 6.283 + u.time * 0.15);
+  let ring_color = hsv(hue, 0.9, 1.0) * ring;
+
+  // Background gradient
+  let bg = mix(
+    vec3f(0.03, 0.03, 0.09),
+    vec3f(0.08, 0.04, 0.18),
+    in.uv.y
+  );
+
+  // Pulsing center glow
+  let glow = exp(-dist * dist * 18.0) * 0.3 * (0.8 + 0.2 * sin(u.time * 2.0));
+  let glow_color = vec3f(0.4, 0.2, 0.9) * glow;
+
+  return vec4f(bg + ring_color + glow_color, 1.0);
+}`;
+
+    (async function() {
+      if (!navigator.gpu) return;
+      var adapter = await navigator.gpu.requestAdapter();
+      if (!adapter) return;
+      var device = await adapter.requestDevice();
+      var canvas = document.getElementById('gpu-canvas');
+      canvas.width = 1920; canvas.height = 1080;
+      var ctx = canvas.getContext('webgpu');
+      var fmt = navigator.gpu.getPreferredCanvasFormat();
+      ctx.configure({ device: device, format: fmt, alphaMode: 'opaque' });
+
+      var uData = new Float32Array([0, 0, 0, 0]);
+      var uBuf = device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+      device.queue.writeBuffer(uBuf, 0, uData);
+
+      var mod = device.createShaderModule({ code: WGSL });
+      var bgl = device.createBindGroupLayout({
+        entries: [{ binding: 0, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } }],
+      });
+      var pipeline = device.createRenderPipeline({
+        layout: device.createPipelineLayout({ bindGroupLayouts: [bgl] }),
+        vertex: { module: mod, entryPoint: 'vs' },
+        fragment: { module: mod, entryPoint: 'fs', targets: [{ format: fmt }] },
+        primitive: { topology: 'triangle-list' },
+      });
+      var bg = device.createBindGroup({ layout: bgl, entries: [{ binding: 0, resource: { buffer: uBuf } }] });
+
+      function render(t) {
+        uData[0] = t;
+        device.queue.writeBuffer(uBuf, 0, uData);
+        var enc = device.createCommandEncoder();
+        var pass = enc.beginRenderPass({
+          colorAttachments: [{ view: ctx.getCurrentTexture().createView(), loadOp: 'clear', clearValue: { r: 0, g: 0, b: 0, a: 1 }, storeOp: 'store' }],
+        });
+        pass.setPipeline(pipeline);
+        pass.setBindGroup(0, bg);
+        pass.draw(3);
+        pass.end();
+        device.queue.submit([enc.finish()]);
+      }
+
+      render(0);
+      window.addEventListener('hf-seek', function(e) { render(e.detail.time); });
+    })();
+  </script>
+</div>
+</body>
+</html>
