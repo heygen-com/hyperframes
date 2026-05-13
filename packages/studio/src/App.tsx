@@ -303,8 +303,7 @@ export function StudioApp() {
     inspectorPanelActive &&
     !panelLayout.rightCollapsed &&
     !isPlaying &&
-    (!selectedTimelineElement ||
-      isTimelineElementActiveAtTime(currentTime, selectedTimelineElement));
+    selectedTimelineElement != null;
   const inspectorButtonActive =
     STUDIO_INSPECTOR_PANELS_ENABLED && !panelLayout.rightCollapsed && inspectorPanelActive;
 
