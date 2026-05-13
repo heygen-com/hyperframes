@@ -41,7 +41,7 @@ async function resolveProjectFile(
     return { error: c.json({ error: "not found" }, 404) } as const;
   }
 
-  const filePath = decodeURIComponent(c.req.path.replace(`/projects/${project.id}/files/`, ""));
+  const filePath = c.req.path.replace(`/projects/${project.id}/files/`, "");
   if (filePath.includes("\0")) {
     return { error: c.json({ error: "forbidden" }, 403) } as const;
   }
@@ -193,9 +193,8 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     const project = await adapter.resolveProject(id);
     if (!project) return c.json({ error: "not found" }, 404);
 
-    const filePath = decodeURIComponent(
-      c.req.path.replace(`/projects/${project.id}/file-mutations/remove-element/`, ""),
-    );
+    const filePath =
+      c.req.path.replace(`/projects/${project.id}/file-mutations/remove-element/`, "");
     if (filePath.includes("\0")) {
       return c.json({ error: "forbidden" }, 403);
     }
