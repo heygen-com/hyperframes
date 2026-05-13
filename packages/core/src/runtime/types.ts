@@ -10,6 +10,7 @@ export type RuntimeBridgeControlAction =
   | "play"
   | "pause"
   | "seek"
+  | "tick"
   | "set-muted"
   | "set-volume"
   | "set-media-output-muted"

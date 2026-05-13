@@ -55,6 +55,7 @@ class HyperframesPlayer extends HTMLElement {
   private _compositionHeight = 1080;
   private _directTimelineAdapter: DirectTimelineAdapter | null = null;
   private _directTimelineClock: DirectTimelineClock;
+  private _parentTickRaf: number | null = null;
   private _media: ParentMediaManager;
 
   constructor() {
@@ -134,6 +135,7 @@ class HyperframesPlayer extends HTMLElement {
     this.iframe.removeEventListener("load", this._onIframeLoad);
     this.probe.stop();
     this._directTimelineClock.stop();
+    this._stopParentTickClock();
     this._directTimelineAdapter = null;
     this.shaderLoader.destroy();
     this._media.destroy();
@@ -217,10 +219,21 @@ class HyperframesPlayer extends HTMLElement {
     this.posterEl?.remove();
     this.posterEl = null;
     if (this._duration > 0 && this._currentTime >= this._duration) this.seek(0);
-    const directTimelineStarted = this._tryDirectTimelinePlay();
-    if (!directTimelineStarted) this._sendControl("play");
-    if (this._media.audioOwner === "parent") this._media.playAll();
+    // Must be set before _startParentTickClock so the RAF loop's `_paused`
+    // check doesn't immediately self-terminate on the first callback.
     this._paused = false;
+    const directTimelineStarted = this._tryDirectTimelinePlay();
+    if (!directTimelineStarted) {
+      this._sendControl("play");
+      // Only start the parent tick clock once the composition is ready and
+      // confirmed on the runtime bridge path (not the direct-timeline path).
+      // Guards against firing ticks into an uninitialized iframe when play()
+      // is called before the probe has resolved.
+      if (this._ready && !this._directTimelineAdapter) {
+        this._startParentTickClock();
+      }
+    }
+    if (this._media.audioOwner === "parent") this._media.playAll();
     this.controlsApi?.updatePlaying(true);
     this.dispatchEvent(new Event("play"));
     if (directTimelineStarted && this._directTimelineAdapter) {
@@ -236,6 +249,7 @@ class HyperframesPlayer extends HTMLElement {
   pause() {
     if (!this._tryDirectTimelinePause()) this._sendControl("pause");
     this._directTimelineClock.stop();
+    this._stopParentTickClock();
     if (this._media.audioOwner === "parent") this._media.pauseAll();
     this._paused = true;
     this.controlsApi?.updatePlaying(false);
@@ -247,6 +261,7 @@ class HyperframesPlayer extends HTMLElement {
       this._sendControl("seek", { frame: Math.round(timeInSeconds * 30) });
     }
     this._directTimelineClock.stop();
+    this._stopParentTickClock();
     this._currentTime = timeInSeconds;
     if (this._media.audioOwner === "parent") this._media.seekAll(timeInSeconds);
     this._paused = true;
@@ -378,6 +393,33 @@ class HyperframesPlayer extends HTMLElement {
     return this._withDirectTimeline((tl) => void tl.pause());
   }
 
+  /**
+   * Widget-frame RAF loop that sends "tick" postMessages to the composition
+   * iframe on every frame. Used for the runtime bridge path so that animation
+   * advances even when the composition iframe's own rAF is throttled by
+   * Chromium (e.g. deeply nested cross-origin iframes in Electron / Claude desktop).
+   * The runtime's own rAF loop still runs — ticking GSAP twice per frame is
+   * harmless because seekTimelineAndAdapters is idempotent.
+   */
+  private _startParentTickClock(): void {
+    this._stopParentTickClock();
+    const tick = () => {
+      if (this._paused) {
+        this._parentTickRaf = null;
+        return;
+      }
+      this._sendControl("tick");
+      this._parentTickRaf = requestAnimationFrame(tick);
+    };
+    this._parentTickRaf = requestAnimationFrame(tick);
+  }
+
+  private _stopParentTickClock(): void {
+    if (this._parentTickRaf === null) return;
+    cancelAnimationFrame(this._parentTickRaf);
+    this._parentTickRaf = null;
+  }
+
   private _onMessage(e: MessageEvent) {
     handleRuntimeMessage(e, this.iframe.contentWindow, {
       getPlaybackState: () => ({
@@ -438,6 +480,7 @@ class HyperframesPlayer extends HTMLElement {
   private _onIframeLoad() {
     this._directTimelineAdapter = null;
     this._directTimelineClock.stop();
+    this._stopParentTickClock();
     this.shaderLoader.reset();
     this._media.resetForIframeLoad();
     this.probe.start();
