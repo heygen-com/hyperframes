@@ -52,6 +52,16 @@ export interface StudioApiAdapter {
   /** URL to the hyperframe runtime JS (injected into preview HTML). */
   runtimeUrl: string;
 
+  /**
+   * Optional: post-process preview HTML before Studio augments it.
+   * Useful when preview must mirror render-time compilation steps.
+   */
+  transformPreviewHtml?: (opts: {
+    html: string;
+    project: ResolvedProject;
+    activeCompositionPath: string;
+  }) => Promise<string> | string;
+
   /** Directory where render output files are stored. */
   rendersDir(project: ResolvedProject): string;
 

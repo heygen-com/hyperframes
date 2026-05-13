@@ -209,6 +209,12 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
       }
     },
 
+    async transformPreviewHtml({ html }) {
+      const { injectDeterministicFontFaces } =
+        await import("../../../producer/src/services/deterministicFonts.js");
+      return injectDeterministicFontFaces(html);
+    },
+
     getProjectSignature(dir: string): string {
       if (resolve(dir) !== resolve(projectDir)) return createProjectSignature(dir);
       cachedProjectSignature ??= createProjectSignature(projectDir);

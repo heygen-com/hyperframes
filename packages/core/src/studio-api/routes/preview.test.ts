@@ -143,6 +143,56 @@ describe("registerPreviewRoutes", () => {
     expect(html).toContain("compositions/scene.html");
   });
 
+  it("applies adapter preview transforms to bundled root previews", async () => {
+    const projectDir = createProjectDir();
+    const app = new Hono();
+    registerPreviewRoutes(
+      app,
+      createAdapter(projectDir, {
+        bundle: async () => "<!doctype html><html><head></head><body>Preview</body></html>",
+        transformPreviewHtml: async ({ html, activeCompositionPath }) =>
+          html.replace(
+            "</head>",
+            `<meta name="preview-path" content="${activeCompositionPath}"></head>`,
+          ),
+      }),
+    );
+
+    const response = await app.request("http://localhost/projects/demo/preview");
+    const html = await response.text();
+
+    expect(response.status).toBe(200);
+    expect(html).toContain('<meta name="preview-path" content="index.html">');
+  });
+
+  it("applies adapter preview transforms to sub-composition previews", async () => {
+    const projectDir = createProjectDir();
+    mkdirSync(join(projectDir, "compositions"), { recursive: true });
+    writeFileSync(
+      join(projectDir, "compositions/scene.html"),
+      `<template><section data-composition-id="scene" data-width="1280" data-height="720"></section></template>`,
+    );
+    const app = new Hono();
+    registerPreviewRoutes(
+      app,
+      createAdapter(projectDir, {
+        transformPreviewHtml: async ({ html, activeCompositionPath }) =>
+          html.replace(
+            "</head>",
+            `<meta name="preview-path" content="${activeCompositionPath}"></head>`,
+          ),
+      }),
+    );
+
+    const response = await app.request(
+      "http://localhost/projects/demo/preview/comp/compositions/scene.html",
+    );
+    const html = await response.text();
+
+    expect(response.status).toBe(200);
+    expect(html).toContain('<meta name="preview-path" content="compositions/scene.html">');
+  });
+
   it("uses the adapter project signature when available", async () => {
     const projectDir = createProjectDir();
     const getProjectSignature = vi.fn(() => "cached-signature");

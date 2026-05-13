@@ -154,6 +154,11 @@ export function createViteAdapter(dataDir: string, server: ViteDevServer): Studi
       return html;
     },
 
+    async transformPreviewHtml({ html }) {
+      const producer = await import("../producer/src/services/deterministicFonts.js");
+      return producer.injectDeterministicFontFaces(html);
+    },
+
     getProjectSignature(projectDir: string): string {
       const cacheKey = resolve(projectDir);
       const cached = projectSignatureCache.get(cacheKey);

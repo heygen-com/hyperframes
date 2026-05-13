@@ -124,6 +124,20 @@ function injectStudioPreviewAugmentations(
   );
 }
 
+async function transformPreviewHtml(
+  html: string,
+  adapter: StudioApiAdapter,
+  project: { id: string; dir: string; title?: string; sessionId?: string },
+  activeCompositionPath: string,
+): Promise<string> {
+  if (!adapter.transformPreviewHtml) return html;
+  return adapter.transformPreviewHtml({
+    html,
+    project,
+    activeCompositionPath,
+  });
+}
+
 export function registerPreviewRoutes(api: Hono, adapter: StudioApiAdapter): void {
   const previewCacheHeaders = (etag: string) => ({
     "Cache-Control": "private, no-cache",
@@ -167,14 +181,19 @@ export function registerPreviewRoutes(api: Hono, adapter: StudioApiAdapter): voi
         bundled = bundled.replace(/<head>/i, `<head><base href="${baseHref}">`);
       }
 
-      bundled = injectStudioPreviewAugmentations(bundled, adapter, project.dir, "index.html");
+      bundled = injectStudioPreviewAugmentations(
+        await transformPreviewHtml(bundled, adapter, project, "index.html"),
+        adapter,
+        project.dir,
+        "index.html",
+      );
       return c.html(bundled, 200, previewCacheHeaders(etag));
     } catch {
       const file = resolve(project.dir, "index.html");
       if (existsSync(file)) {
         return c.html(
           injectStudioPreviewAugmentations(
-            readFileSync(file, "utf-8"),
+            await transformPreviewHtml(readFileSync(file, "utf-8"), adapter, project, "index.html"),
             adapter,
             project.dir,
             "index.html",
@@ -214,6 +233,7 @@ export function registerPreviewRoutes(api: Hono, adapter: StudioApiAdapter): voi
     const baseHref = `/api/projects/${project.id}/preview/`;
     let html = buildSubCompositionHtml(project.dir, compPath, adapter.runtimeUrl, baseHref);
     if (!html) return c.text("not found", 404);
+    html = await transformPreviewHtml(html, adapter, project, compPath);
     return c.html(
       injectStudioPreviewAugmentations(html, adapter, project.dir, compPath),
       200,
