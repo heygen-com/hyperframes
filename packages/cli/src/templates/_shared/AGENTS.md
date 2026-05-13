@@ -13,12 +13,16 @@ Skills encode patterns like `window.__timelines` registration, `data-*` attribut
 ## Commands
 
 ```bash
-npm run dev          # preview in browser (studio editor)
+npm run dev          # start the preview server (long-running — keep it alive in background)
 npm run check        # lint + validate + inspect
 npm run render       # render to MP4
 npm run publish      # publish and get a shareable link
 npx hyperframes docs <topic> # reference docs in terminal
 ```
+
+> **`npm run dev` is a long-running server, not a one-shot command.** It blocks until stopped.
+> Always run it as a background process so it stays alive while you edit compositions.
+> Running it in the foreground will time out and kill the server, breaking the browser preview.
 
 ## Project Structure
 

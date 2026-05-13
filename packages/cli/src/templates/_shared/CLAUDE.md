@@ -25,7 +25,7 @@
 ## Commands
 
 ```bash
-npm run dev          # preview in browser (studio editor)
+npm run dev          # start the preview server (long-running — keep it alive in background)
 npm run check        # lint + validate + inspect
 npm run render       # render to MP4
 npm run publish      # publish and get a shareable link
@@ -33,6 +33,10 @@ npx hyperframes lint --verbose  # include info-level findings
 npx hyperframes lint --json     # machine-readable output for CI
 npx hyperframes docs <topic> # reference docs in terminal
 ```
+
+> **`npm run dev` is a long-running server, not a one-shot command.** It blocks until stopped.
+> In Claude Code, always run it with `run_in_background: true`. Never run it as a foreground
+> command — it will time out and the server will die, breaking the browser preview.
 
 ## Documentation
 

@@ -38,10 +38,12 @@ import { StudioProvider, type StudioContextValue } from "./contexts/StudioContex
 import { PanelLayoutProvider } from "./contexts/PanelLayoutContext";
 import { FileManagerProvider } from "./contexts/FileManagerContext";
 import { DomEditProvider } from "./contexts/DomEditContext";
+import { StudioSplash } from "./components/StudioSplash";
 
 export function StudioApp() {
   const [projectId, setProjectId] = useState<string | null>(null);
   const [resolving, setResolving] = useState(true);
+  const [waitingForServer, setWaitingForServer] = useState(false);
   useMountEffect(() => {
     const hashProjectId = parseProjectIdFromHash(window.location.hash);
     if (hashProjectId) {
@@ -49,17 +51,29 @@ export function StudioApp() {
       setResolving(false);
       return;
     }
-    fetch("/api/projects")
-      .then((r) => r.json())
-      .then((data) => {
-        const first = (data.projects ?? [])[0];
-        if (first) {
-          setProjectId(first.id);
-          window.location.hash = buildProjectHash(first.id);
-        }
-      })
-      .catch(() => {})
-      .finally(() => setResolving(false));
+
+    function tryConnect() {
+      fetch("/api/projects")
+        .then((r) => r.json())
+        .then((data) => {
+          const first = (data.projects ?? [])[0];
+          if (first) {
+            setProjectId(first.id);
+            setWaitingForServer(false);
+            window.location.hash = buildProjectHash(first.id);
+          } else {
+            scheduleRetry();
+          }
+        })
+        .catch(() => scheduleRetry())
+        .finally(() => setResolving(false));
+    }
+
+    function scheduleRetry() {
+      setWaitingForServer(true);
+      window.setTimeout(tryConnect, 2000);
+    }
+    tryConnect();
   });
 
   const [activeCompPath, setActiveCompPath] = useState<string | null>(null);
@@ -341,12 +355,8 @@ export function StudioApp() {
     toggleTimelineVisibility,
   };
 
-  if (resolving || !projectId) {
-    return (
-      <div className="h-full w-full bg-neutral-950 flex items-center justify-center">
-        <div className="w-4 h-4 rounded-full bg-studio-accent animate-pulse" />
-      </div>
-    );
+  if (resolving || waitingForServer || !projectId) {
+    return <StudioSplash waiting={waitingForServer} />;
   }
 
   const timelineToolbar = <TimelineToolbar toggleTimelineVisibility={toggleTimelineVisibility} />;
