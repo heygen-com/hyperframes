@@ -64,13 +64,15 @@
 
       (function () {
         function parseVars() {
-          const raw = window.__hfVariables;
+          const compId = "three-dissolve";
+          const byComp = window.__hfVariablesByComp;
+          if (byComp && byComp[compId]) return byComp[compId];
           const defs = JSON.parse(
             document.documentElement.getAttribute("data-composition-variables") || "[]",
           );
           const defaults = {};
           for (const d of defs) defaults[d.id] = d.default;
-          return Object.assign(defaults, raw || {});
+          return defaults;
         }
 
         function createSeededRandom(initial) {
