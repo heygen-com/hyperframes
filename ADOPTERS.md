@@ -24,6 +24,6 @@ If you'd rather not be listed publicly, that's fine — drop a note in [our Disc
 
 _Open a PR to add your organization here if you're trying HyperFrames in a non-production context._
 
-| Organization | Contact | How HyperFrames is used |
-| --- | --- | --- |
-| WadydX | [@WadydX](https://github.com/WadydX) | Personal testing for promotional video workflows; active contributor via issues and PRs. |
+| Organization | Contact                                  | How HyperFrames is used                                                             |
+| ------------ | ---------------------------------------- | ----------------------------------------------------------------------------------- |
+| WadydX       | [@WadydX](https://github.com/WadydX)     | Personal testing for promotional video workflows; active contributor via issues and PRs. |
