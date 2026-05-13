@@ -1,0 +1,170 @@
+---
+title: Variables
+description: "Parameterize compositions so the same source can render different content."
+---
+
+Variables let you declare named, typed slots in a composition and fill them at render time — from a parent composition, from the CLI, or from an API call. A card composition that takes `title` and `color` can be embedded a hundred times with a hundred different values without duplicating any HTML.
+
+## Declaring Variables
+
+Add `data-composition-variables` to the `<html>` root of any composition. Its value is a JSON array of variable declarations — one object per variable:
+
+```html compositions/card.html
+<html data-composition-variables='[
+  {"id":"title",  "type":"string",  "label":"Title",  "default":"Hello"},
+  {"id":"color",  "type":"color",   "label":"Color",  "default":"#111827"},
+  {"id":"price",  "type":"number",  "label":"Price",  "default":0,        "unit":"$"},
+  {"id":"featured","type":"boolean","label":"Featured","default":false},
+  {"id":"plan",   "type":"enum",    "label":"Plan",   "default":"pro",
+   "options":[{"value":"pro","label":"Pro"},{"value":"enterprise","label":"Enterprise"}]}
+]'>
+```
+
+Every declaration requires four fields: `id`, `type`, `label`, and `default`. `id` must be unique within the composition.
+
+## Variable Types
+
+| Type | `default` value | Extra options |
+|------|----------------|---------------|
+| `string` | `"some text"` | `placeholder?: string`, `maxLength?: number` |
+| `number` | `0` | `min?: number`, `max?: number`, `step?: number`, `unit?: string` |
+| `color` | `"#rrggbb"` | — |
+| `boolean` | `true` / `false` | — |
+| `enum` | one of the option values | `options: [{value: string, label: string}]` |
+
+The Studio editing UI uses `label`, `type`, and the type-specific options to render the right input widget for each variable.
+
+## Reading Variables at Runtime
+
+Inside any composition script, call `window.__hyperframes.getVariables()` to get the resolved variable values. The return type is `Partial<Record<string, unknown>>` — use destructuring with defaults matching the declared `default` values:
+
+```html compositions/card.html
+<html data-composition-variables='[
+  {"id":"title","type":"string","label":"Title","default":"Untitled"},
+  {"id":"color","type":"color","label":"Color","default":"#111827"}
+]'>
+  <body>
+    <div data-composition-id="card" data-width="1920" data-height="1080">
+      <h1 class="card-title"></h1>
+
+      <style>
+        [data-composition-id="card"] { --card-color: #111827; }
+        [data-composition-id="card"] .card-title { color: var(--card-color); }
+      </style>
+
+      <script>
+        const { title = "Untitled", color = "#111827" } = __hyperframes.getVariables();
+        const root = document.querySelector('[data-composition-id="card"]');
+        root.querySelector(".card-title").textContent = title;
+        root.style.setProperty("--card-color", color);
+      </script>
+    </div>
+  </body>
+</html>
+```
+
+`__hyperframes.getVariables()` is a shorthand for `window.__hyperframes.getVariables()` and works in both top-level and sub-composition scripts. The runtime automatically scopes sub-compositions so each instance sees its own resolved values.
+
+## Per-instance Overrides (Sub-compositions)
+
+When embedding a composition inside another, use `data-variable-values` on the host element to pass a JSON object of override values for that particular instance:
+
+```html index.html
+<div
+  data-composition-id="card-pro"
+  data-composition-src="compositions/card.html"
+  data-start="0"
+  data-track-index="1"
+  data-variable-values='{"title":"Pro","color":"#ff4d4f"}'
+></div>
+<div
+  data-composition-id="card-enterprise"
+  data-composition-src="compositions/card.html"
+  data-start="card-pro"
+  data-track-index="1"
+  data-variable-values='{"title":"Enterprise","color":"#22c55e"}'
+></div>
+```
+
+Both host elements point to the same `card.html` source, but each instance receives different values. The runtime merges the host's `data-variable-values` over the sub-comp's declared defaults on a per-instance basis — the same sub-composition can run with completely different content simultaneously.
+
+## CLI Overrides (Top-level Renders)
+
+Pass variable values at render time with `--variables` or `--variables-file`. These override the declared defaults for the top-level composition:
+
+```bash Terminal
+# Inline JSON
+npx hyperframes render --variables '{"title":"Q4 Report","color":"#1d4ed8"}' --output q4.mp4
+
+# JSON file
+npx hyperframes render --variables-file ./vars.json --output out.mp4
+
+# Fail on undeclared or mistyped variables
+npx hyperframes render --variables '{"title":"Q4 Report"}' --strict-variables --output out.mp4
+```
+
+`--strict-variables` turns variable warnings into errors. Any variable in `--variables` that is not declared in `data-composition-variables`, or whose value does not match the declared type, causes the render to exit non-zero. Useful in CI pipelines where an undeclared variable key likely indicates a typo or a schema mismatch.
+
+<Note>
+  CLI overrides apply only to the top-level composition. Sub-composition variables are controlled by `data-variable-values` on each host element.
+</Note>
+
+## Layering and Precedence
+
+Variable values are resolved by merging three sources, lowest to highest precedence:
+
+| Source | Precedence | Where declared |
+|--------|-----------|---------------|
+| Declared defaults | Lowest | `data-composition-variables` on `<html>` |
+| Per-instance host overrides | Middle | `data-variable-values` on the sub-comp host element |
+| CLI `--variables` flag | Highest | `hyperframes render --variables '{...}'` |
+
+A missing key at any layer falls through to the next lower layer. If no layer provides a value, the declared `default` is used.
+
+## Validation
+
+The linter checks variable declarations statically:
+
+```bash Terminal
+npx hyperframes lint
+```
+
+It catches malformed JSON, missing required fields (`id`, `type`, `label`, `default`), and type mismatches between `type` and the `default` value. Fix lint errors before rendering — they indicate the runtime will be unable to resolve variables correctly.
+
+At render time, the CLI validates `--variables` against the schema and reports issues as warnings (or errors with `--strict-variables`):
+
+- **undeclared** — a key in `--variables` has no matching `id` in `data-composition-variables`
+- **type-mismatch** — the value's JavaScript type does not match the declared `type` (e.g. a string where a number is expected)
+- **enum-out-of-range** — an enum value is not in the declared `options` list
+
+## Inspecting Variables Programmatically
+
+If you are building tooling on top of `@hyperframes/core`, the variable declarations are readable without rendering:
+
+```typescript
+import { extractCompositionMetadata } from "@hyperframes/core";
+import { readFileSync } from "node:fs";
+
+const html = readFileSync("compositions/card.html", "utf8");
+const { variables } = extractCompositionMetadata(html);
+// variables is CompositionVariable[]
+```
+
+This is the same API the Studio editing UI uses to build the variables panel for each composition.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Data Attributes" icon="code" href="/concepts/data-attributes">
+    Full reference for data-composition-variables and data-variable-values attributes
+  </Card>
+  <Card title="Compositions" icon="layer-group" href="/concepts/compositions">
+    How nested compositions use variables for reuse
+  </Card>
+  <Card title="Rendering" icon="play" href="/guides/rendering">
+    CLI flags for passing variables at render time
+  </Card>
+  <Card title="CLI Reference" icon="terminal" href="/packages/cli">
+    All CLI commands and flags
+  </Card>
+</CardGroup>

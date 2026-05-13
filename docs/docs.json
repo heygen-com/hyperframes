@@ -63,6 +63,7 @@
             "pages": [
               "concepts/compositions",
               "concepts/data-attributes",
+              "concepts/variables",
               "concepts/frame-adapters",
               "concepts/determinism"
             ]
