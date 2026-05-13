@@ -1,4 +1,4 @@
-import { useRef, useCallback, memo } from "react";
+import { useRef, useCallback, useEffect, memo } from "react";
 import {
   EditorView,
   keymap,
@@ -69,6 +69,9 @@ export const SourceEditor = memo(function SourceEditor({
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
 
+  const contentRef = useRef(content);
+  contentRef.current = content;
+
   const mountEditor = useCallback(
     (node: HTMLDivElement | null) => {
       if (editorRef.current) {
@@ -87,7 +90,7 @@ export const SourceEditor = memo(function SourceEditor({
       });
 
       const state = EditorState.create({
-        doc: content,
+        doc: contentRef.current,
         extensions: [
           lineNumbers(),
           highlightActiveLine(),
@@ -112,8 +115,22 @@ export const SourceEditor = memo(function SourceEditor({
 
       editorRef.current = new EditorView({ state, parent: node });
     },
-    [content, filePath, language, readOnly],
+    [filePath, language, readOnly],
   );
+
+  // Sync external content changes (file switches, server refreshes) into the
+  // existing editor without destroying/recreating it, preserving cursor
+  // position, undo history, and focus.
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    const externalContent = content;
+    const currentContent = editor.state.doc.toString();
+    if (externalContent === currentContent) return;
+    editor.dispatch({
+      changes: { from: 0, to: currentContent.length, insert: externalContent },
+    });
+  }, [content]);
 
   return <div ref={mountEditor} className="h-full w-full overflow-hidden" />;
 });
