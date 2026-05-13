@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { readStudioUiPreferences, writeStudioUiPreferences } from "../../utils/studioUiPreferences";
 
 export interface TimelineElement {
   id: string;
@@ -88,7 +89,7 @@ export const usePlayerStore = create<PlayerState>((set) => ({
   timelineReady: false,
   elements: [],
   selectedElementId: null,
-  playbackRate: 1,
+  playbackRate: readStudioUiPreferences().playbackRate ?? 1,
   loopEnabled: false,
   zoomMode: "fit",
   manualZoomPercent: 100,
@@ -98,7 +99,10 @@ export const usePlayerStore = create<PlayerState>((set) => ({
   clearSeekRequest: () => set({ requestedSeekTime: null }),
 
   setIsPlaying: (playing) => set({ isPlaying: playing }),
-  setPlaybackRate: (rate) => set({ playbackRate: rate }),
+  setPlaybackRate: (rate) => {
+    writeStudioUiPreferences({ playbackRate: rate });
+    set({ playbackRate: rate });
+  },
   setLoopEnabled: (enabled) => set({ loopEnabled: enabled }),
   setZoomMode: (mode) => set({ zoomMode: mode }),
   setManualZoomPercent: (percent) =>

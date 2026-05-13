@@ -1,10 +1,13 @@
 import { useState, useCallback, useRef } from "react";
 import type { RightPanelTab } from "../utils/studioHelpers";
+import { readStudioUiPreferences, writeStudioUiPreferences } from "../utils/studioUiPreferences";
 
 export function usePanelLayout() {
   const [leftWidth, setLeftWidth] = useState(240);
   const [rightWidth, setRightWidth] = useState(400);
-  const [leftCollapsed, setLeftCollapsed] = useState(false);
+  const [leftCollapsed, setLeftCollapsed] = useState(
+    () => readStudioUiPreferences().leftCollapsed ?? false,
+  );
   const [rightCollapsed, setRightCollapsed] = useState(true);
   const [rightPanelTab, setRightPanelTab] = useState<RightPanelTab>("renders");
   const panelDragRef = useRef<{
@@ -14,7 +17,10 @@ export function usePanelLayout() {
   } | null>(null);
 
   const toggleLeftSidebar = useCallback(() => {
-    setLeftCollapsed((collapsed) => !collapsed);
+    setLeftCollapsed((collapsed) => {
+      writeStudioUiPreferences({ leftCollapsed: !collapsed });
+      return !collapsed;
+    });
   }, []);
 
   const handlePanelResizeStart = useCallback(

@@ -13,6 +13,7 @@ import { useManifestPersistence } from "./hooks/useManifestPersistence";
 import { useTimelineEditing } from "./hooks/useTimelineEditing";
 import { useDomEditSession } from "./hooks/useDomEditSession";
 import { useAppHotkeys } from "./hooks/useAppHotkeys";
+import { readStudioUiPreferences, writeStudioUiPreferences } from "./utils/studioUiPreferences";
 import { useCaptionDetection } from "./hooks/useCaptionDetection";
 import { useRenderClipContent } from "./hooks/useRenderClipContent";
 import { useConsoleErrorCapture } from "./hooks/useConsoleErrorCapture";
@@ -98,8 +99,15 @@ export function StudioApp() {
     window.setTimeout(() => setPreviewDocumentVersion((v) => v + 1), 300);
   }, []);
 
-  const [timelineVisible, setTimelineVisible] = useState(true);
-  const toggleTimelineVisibility = useCallback(() => setTimelineVisible((v) => !v), []);
+  const [timelineVisible, setTimelineVisible] = useState(
+    () => readStudioUiPreferences().timelineVisible ?? true,
+  );
+  const toggleTimelineVisibility = useCallback(() => {
+    setTimelineVisible((v) => {
+      writeStudioUiPreferences({ timelineVisible: !v });
+      return !v;
+    });
+  }, []);
   const { appToast, showToast } = useToast();
   const panelLayout = usePanelLayout();
   const editHistory = usePersistentEditHistory({ projectId });
