@@ -58,6 +58,14 @@ interface PlayerState {
   setZoomMode: (mode: ZoomMode) => void;
   setManualZoomPercent: (percent: number) => void;
   reset: () => void;
+
+  /**
+   * Request a seek from outside the player loop (e.g. Layers panel).
+   * useTimelinePlayer subscribes and calls adapter.seek() + liveTime.notify().
+   */
+  requestedSeekTime: number | null;
+  requestSeek: (time: number) => void;
+  clearSeekRequest: () => void;
 }
 
 // Lightweight pub-sub for current time during playback.
@@ -84,6 +92,10 @@ export const usePlayerStore = create<PlayerState>((set) => ({
   loopEnabled: false,
   zoomMode: "fit",
   manualZoomPercent: 100,
+
+  requestedSeekTime: null,
+  requestSeek: (time) => set({ requestedSeekTime: time }),
+  clearSeekRequest: () => set({ requestedSeekTime: null }),
 
   setIsPlaying: (playing) => set({ isPlaying: playing }),
   setPlaybackRate: (rate) => set({ playbackRate: rate }),

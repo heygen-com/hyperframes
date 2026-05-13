@@ -1,4 +1,4 @@
-import { useRef, useCallback } from "react";
+import { useRef, useCallback, useEffect } from "react";
 import { usePlayerStore, liveTime, type TimelineElement } from "../store/playerStore";
 import { useMountEffect } from "../../hooks/useMountEffect";
 import { usePlaybackKeyboard } from "./usePlaybackKeyboard";
@@ -326,6 +326,16 @@ export function useTimelinePlayer() {
     },
     [getAdapter, setCurrentTime, setIsPlaying, stopRAFLoop, stopReverseLoop],
   );
+
+  // Handle seek requests from outside the player loop (e.g. LayersPanel).
+  useEffect(() => {
+    return usePlayerStore.subscribe((state, prev) => {
+      if (state.requestedSeekTime !== null && state.requestedSeekTime !== prev.requestedSeekTime) {
+        seek(state.requestedSeekTime);
+        usePlayerStore.getState().clearSeekRequest();
+      }
+    });
+  }, [seek]);
 
   const { playbackKeyDownRef, playbackKeyUpRef, attachIframeShortcutListeners, togglePlay } =
     usePlaybackKeyboard({
