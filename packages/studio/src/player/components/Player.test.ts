@@ -1,7 +1,79 @@
 // @vitest-environment happy-dom
 
-import { describe, expect, it } from "vitest";
-import { hasUnloadedAssets, shouldShowCompositionLoadingOverlay } from "./Player";
+import React, { act } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { describe, expect, it, vi } from "vitest";
+import { Player, hasUnloadedAssets, shouldShowCompositionLoadingOverlay } from "./Player";
+
+// React 19 warns unless the test environment opts into act().
+globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+
+vi.mock("@hyperframes/player", () => ({}));
+
+interface StubHyperframesPlayerElement extends HTMLElement {
+  iframeElement: HTMLIFrameElement;
+}
+
+function installHyperframesPlayerStub(): {
+  iframes: HTMLIFrameElement[];
+  restore: () => void;
+} {
+  const originalCreateElement = document.createElement.bind(document);
+  const iframes: HTMLIFrameElement[] = [];
+
+  vi.spyOn(document, "createElement").mockImplementation(
+    (tagName: string, options?: ElementCreationOptions) => {
+      if (tagName !== "hyperframes-player") {
+        return originalCreateElement(tagName, options);
+      }
+
+      const player = originalCreateElement("div") as StubHyperframesPlayerElement;
+      const iframe = originalCreateElement("iframe");
+      Object.defineProperty(player, "iframeElement", {
+        configurable: true,
+        value: iframe,
+      });
+      iframes.push(iframe);
+      return player;
+    },
+  );
+
+  return {
+    iframes,
+    restore: () => vi.mocked(document.createElement).mockRestore(),
+  };
+}
+
+function renderPlayer({
+  key,
+  ref,
+  onLoad = () => {},
+}: {
+  key: string;
+  ref?: React.Ref<HTMLIFrameElement>;
+  onLoad?: () => void;
+}) {
+  return React.createElement(Player, {
+    key,
+    ref,
+    projectId: "timeline-edit-playground",
+    onLoad,
+  });
+}
+
+async function flushMountedPlayer(): Promise<void> {
+  await act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+}
+
+async function renderWithAct(root: Root, node: React.ReactNode): Promise<void> {
+  await act(async () => {
+    root.render(node);
+  });
+  await flushMountedPlayer();
+}
 
 describe("composition loading overlay", () => {
   it("shows while the composition is loading", () => {
@@ -54,5 +126,65 @@ describe("composition loading overlay", () => {
     expect(hasUnloadedAssets(iframe, false)).toBe(false);
 
     iframe.remove();
+  });
+});
+
+describe("Player forwarded iframe ref", () => {
+  it("preserves a shared object ref when a retiring Player unmounts after a new Player claims it", async () => {
+    const { iframes, restore } = installHyperframesPlayerStub();
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    const iframeRef = React.createRef<HTMLIFrameElement>();
+
+    try {
+      await renderWithAct(root, renderPlayer({ key: "old", ref: iframeRef }));
+      const oldIframe = iframes[0];
+      expect(iframeRef.current).toBe(oldIframe);
+
+      await renderWithAct(
+        root,
+        React.createElement(
+          React.Fragment,
+          null,
+          renderPlayer({ key: "old" }),
+          renderPlayer({ key: "new", ref: iframeRef }),
+        ),
+      );
+      const newIframe = iframes[1];
+      expect(iframeRef.current).toBe(newIframe);
+
+      await renderWithAct(root, renderPlayer({ key: "new", ref: iframeRef }));
+
+      expect(iframeRef.current).toBe(newIframe);
+    } finally {
+      await act(async () => {
+        root.unmount();
+      });
+      host.remove();
+      restore();
+    }
+  });
+
+  it("clears the object ref when the unmounting Player still owns it", async () => {
+    const { iframes, restore } = installHyperframesPlayerStub();
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    const iframeRef = React.createRef<HTMLIFrameElement>();
+
+    try {
+      await renderWithAct(root, renderPlayer({ key: "only", ref: iframeRef }));
+      expect(iframeRef.current).toBe(iframes[0]);
+
+      await act(async () => {
+        root.unmount();
+      });
+
+      expect(iframeRef.current).toBeNull();
+    } finally {
+      host.remove();
+      restore();
+    }
   });
 });
