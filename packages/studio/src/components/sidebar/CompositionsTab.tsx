@@ -8,6 +8,8 @@ interface CompositionsTabProps {
 }
 
 const DEFAULT_PREVIEW_STAGE = { width: 1920, height: 1080 };
+const CARD_W = 80;
+const CARD_H = 45;
 const THUMBNAIL_SEEK_TIME_SECONDS = 3;
 const THUMBNAIL_PLAYBACK_SYNC_ATTEMPTS = 10;
 
@@ -132,11 +134,13 @@ function CompCard({
   const name = comp.replace(/^compositions\//, "").replace(/\.html$/, "");
   const previewUrl = `/api/projects/${projectId}/preview/comp/${comp}`;
   const previewScale = resolveCompositionPreviewScale({
-    cardWidth: 80,
-    cardHeight: 45,
+    cardWidth: CARD_W,
+    cardHeight: CARD_H,
     stageWidth: stageSize.width,
     stageHeight: stageSize.height,
   });
+  const thumbnailOffsetX = (CARD_W - stageSize.width * previewScale) / 2;
+  const thumbnailOffsetY = (CARD_H - stageSize.height * previewScale) / 2;
 
   useEffect(() => {
     requestIframePlaybackSync(hovered);
@@ -166,11 +170,13 @@ function CompCard({
           src={previewUrl}
           sandbox="allow-scripts allow-same-origin"
           loading="lazy"
-          className="absolute left-0 top-0 border-none pointer-events-none"
+          className="absolute border-none pointer-events-none"
           style={{
             transformOrigin: "0 0",
             width: stageSize.width,
             height: stageSize.height,
+            left: thumbnailOffsetX,
+            top: thumbnailOffsetY,
             transform: `scale(${previewScale})`,
           }}
           onLoad={(e) => {
