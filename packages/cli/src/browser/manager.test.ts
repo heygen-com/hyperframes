@@ -20,15 +20,30 @@
  * `background-removal/manager.test.ts`) so we don't touch the real
  * `HOME` cache.
  */
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const FAKE_HOME = "/fake/home";
-
-// Cache-relative paths (kept in lock-step with manager.ts).
-const HF_CACHE = `${FAKE_HOME}/.cache/hyperframes/chrome`;
-const PUPPETEER_CACHE = `${FAKE_HOME}/.cache/puppeteer/chrome-headless-shell`;
-const PUPPETEER_BINARY = `${PUPPETEER_CACHE}/linux-148.0.7778.97/chrome-headless-shell-linux64/chrome-headless-shell`;
-const HF_BINARY = `${HF_CACHE}/chrome-headless-shell/linux-131.0.6778.85/chrome-headless-shell-linux64/chrome-headless-shell`;
+// Use `path.join` so the fake paths line up with whatever separator Node's
+// real `path.join` produces in `manager.ts` on the host running the test
+// (forward slashes on Linux/macOS, backslashes on Windows CI). Hardcoded
+// `/fake/home/...` literals would fail on Windows because the set lookup
+// would never match the `\\`-joined real paths.
+const FAKE_HOME = join("/", "fake", "home");
+const HF_CACHE = join(FAKE_HOME, ".cache", "hyperframes", "chrome");
+const PUPPETEER_CACHE = join(FAKE_HOME, ".cache", "puppeteer", "chrome-headless-shell");
+const PUPPETEER_BINARY = join(
+  PUPPETEER_CACHE,
+  "linux-148.0.7778.97",
+  "chrome-headless-shell-linux64",
+  "chrome-headless-shell",
+);
+const HF_BINARY = join(
+  HF_CACHE,
+  "chrome-headless-shell",
+  "linux-131.0.6778.85",
+  "chrome-headless-shell-linux64",
+  "chrome-headless-shell",
+);
 const SYSTEM_CHROME = "/usr/bin/google-chrome";
 
 interface FsMockOptions {
