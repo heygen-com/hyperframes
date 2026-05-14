@@ -22,4 +22,8 @@ If you'd rather not be listed publicly, that's fine — drop a note in [our Disc
 
 ## Evaluating
 
-_Open a PR to add your organization here if you're trying HyperFrames in a non-production context._
+| Organization                             | Contact                                      | How HyperFrames is used                                                                    |
+| ---------------------------------------- | -------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| [HeyGen](https://www.heygen.com)         | [@jrusso1020](https://github.com/jrusso1020) | Powers AI-generated video composition and rendering across HeyGen's video product surface. |
+| [TanStack](https://tanstack.com)         | [@AlemTuzlak](https://github.com/AlemTuzlak) | Exploring HyperFrames for video content and documentation.                                 |
+| [OptinMonster](https://optinmonster.com) | Angie Meeker                                 | Exploring HyperFrames for marketing and product video content.                             |
