@@ -268,11 +268,18 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
           if (assetPollRef.current) clearInterval(assetPollRef.current);
           assetPollRef.current = null;
           container.removeChild(player);
-          // Clear the forwarded ref
-          if (typeof ref === "function") {
-            ref(null);
-          } else if (ref) {
-            (ref as React.MutableRefObject<HTMLIFrameElement | null>).current = null;
+          // Clear the forwarded ref ONLY if it still points at our iframe.
+          // During the cross-fade in NLEPreview, the retiring Player unmounts
+          // after the new Player has already claimed the shared ref. Without
+          // this guard, the retiring Player's cleanup would null out the
+          // active Player's iframe ref, breaking the source filter on
+          // hf-preview postMessages and letting sidebar composition iframes'
+          // timeline messages flood the main player store.
+          if (typeof ref !== "function" && ref) {
+            const objectRef = ref as React.MutableRefObject<HTMLIFrameElement | null>;
+            if (objectRef.current === iframe) {
+              objectRef.current = null;
+            }
           }
         };
       });
