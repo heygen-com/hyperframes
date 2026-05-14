@@ -93,7 +93,7 @@ describe("usePlaybackKeyboard — keyboard layout independence (#834)", () => {
       dispatch(keydown({ code: "KeyA", key: "a" }));
     });
 
-    expect(spies.seek).toHaveBeenCalledWith(1.5);
+    expect(spies.seek).toHaveBeenCalledWith(1.5, { keepPlaying: true });
   });
 
   it("'Jump to in-point' fires on AZERTY (physical KeyQ produces e.key='a')", () => {
@@ -104,7 +104,7 @@ describe("usePlaybackKeyboard — keyboard layout independence (#834)", () => {
       dispatch(keydown({ code: "KeyQ", key: "a" }));
     });
 
-    expect(spies.seek).toHaveBeenCalledWith(2.5);
+    expect(spies.seek).toHaveBeenCalledWith(2.5, { keepPlaying: true });
   });
 
   it("AZERTY 'A' physical key (e.key='q') no longer triggers in-point seek", () => {
