@@ -1316,26 +1316,11 @@ export function initSandboxRuntimeModular(): void {
         postRuntimeMessage({ source: "hf-preview", type: "media-autoplay-blocked" });
       },
     });
-    const rootCompId =
-      document.querySelector("[data-composition-id]")?.getAttribute("data-composition-id") ?? null;
     const visibilityNodes = Array.from(document.querySelectorAll("[data-start]"));
     for (const rawNode of visibilityNodes) {
       if (!(rawNode instanceof HTMLElement)) continue;
       const tag = rawNode.tagName.toLowerCase();
       if (tag === "script" || tag === "style" || tag === "link" || tag === "meta") continue;
-
-      // Skip elements INSIDE sub-compositions — their visibility is managed by GSAP,
-      // not the global time-based adapter. Only manage visibility for:
-      // 1. Composition host elements (have data-composition-id themselves)
-      // 2. Direct children of root composition (audio, etc.)
-      // Skip: elements whose nearest composition ancestor is NOT the root
-      const ownCompId = rawNode.getAttribute("data-composition-id");
-      if (!ownCompId) {
-        // Not a composition host — check if it's inside a sub-composition
-        const parentComp = rawNode.closest("[data-composition-id]");
-        const parentCompId = parentComp?.getAttribute("data-composition-id") ?? null;
-        if (parentCompId && parentCompId !== rootCompId) continue;
-      }
 
       const start = resolveStartForElement(rawNode, 0);
       let duration = resolveDurationForElement(rawNode);

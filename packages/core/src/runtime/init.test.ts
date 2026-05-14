@@ -263,6 +263,58 @@ describe("initSandboxRuntimeModular", () => {
     expect(video.currentTime).toBe(9);
   });
 
+  it("updates visibility for timed elements inside nested compositions", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+
+    const child = document.createElement("div");
+    child.setAttribute("data-composition-id", "nested");
+    child.setAttribute("data-start", "10");
+    child.setAttribute("data-duration", "10");
+    root.appendChild(child);
+
+    const sceneA = document.createElement("section");
+    sceneA.id = "scene-a";
+    sceneA.setAttribute("data-start", "0");
+    sceneA.setAttribute("data-duration", "4");
+    child.appendChild(sceneA);
+
+    const sceneB = document.createElement("section");
+    sceneB.id = "scene-b";
+    sceneB.setAttribute("data-start", "4");
+    sceneB.setAttribute("data-duration", "4");
+    child.appendChild(sceneB);
+
+    (window as Window & { __timelines?: Record<string, RuntimeTimelineLike> }).__timelines = {
+      main: createMockTimeline(20),
+      nested: createMockTimeline(8),
+    };
+
+    initSandboxRuntimeModular();
+
+    const player = (
+      window as Window & {
+        __player?: { seek: (timeSeconds: number) => void };
+      }
+    ).__player;
+    expect(player).toBeDefined();
+
+    player?.seek(11);
+
+    expect(sceneA.style.visibility).toBe("visible");
+    expect(sceneB.style.visibility).toBe("hidden");
+
+    player?.seek(15);
+
+    expect(sceneA.style.visibility).toBe("hidden");
+    expect(sceneB.style.visibility).toBe("visible");
+  });
+
   it("clamps nested media to the authored host window on seek", () => {
     const root = document.createElement("div");
     root.setAttribute("data-composition-id", "main");
