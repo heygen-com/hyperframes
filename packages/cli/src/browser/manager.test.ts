@@ -102,7 +102,10 @@ describe("findBrowser — cache resolution", () => {
     vi.doUnmock("@puppeteer/browsers");
   });
 
-  it("resolves to the hyperframes-managed cache when present", async () => {
+  it("resolves to the hyperframes-managed cache when puppeteer cache is empty", async () => {
+    // Only HF cache populated. Puppeteer cache is the higher-priority path
+    // (see "prefers puppeteer cache" test below), so this exercises the
+    // last-resort fallback.
     installFsMocks({ existing: new Set([HF_CACHE, HF_BINARY]) });
     installPuppeteerBrowsersMock({
       installedInHfCache: [{ browser: "chrome-headless-shell", executablePath: HF_BINARY }],
@@ -129,11 +132,64 @@ describe("findBrowser — cache resolution", () => {
     expect(result).toEqual({ executablePath: PUPPETEER_BINARY, source: "cache" });
   });
 
+  it("prefers the puppeteer cache over the hyperframes cache when BOTH are populated", async () => {
+    // The HF cache is pinned to `CHROME_VERSION` (131-era) which lags upstream
+    // by many releases. The engine's `resolveHeadlessShellPath` scans the
+    // puppeteer cache and selects newest-version-first; if the CLI handed
+    // engine the older HF-cache binary while a newer puppeteer-cache binary
+    // exists, the two would silently disagree on which binary to use.
+    // This test pins the priority: puppeteer cache wins when both are populated.
+    installFsMocks({
+      existing: new Set([HF_CACHE, HF_BINARY, PUPPETEER_CACHE, PUPPETEER_BINARY]),
+      dirs: { [PUPPETEER_CACHE]: ["linux-148.0.7778.97"] },
+    });
+    installPuppeteerBrowsersMock({
+      installedInHfCache: [{ browser: "chrome-headless-shell", executablePath: HF_BINARY }],
+    });
+
+    const { findBrowser } = await import("./manager.js");
+    const result = await findBrowser();
+
+    expect(result?.executablePath).toBe(PUPPETEER_BINARY);
+    expect(result?.source).toBe("cache");
+  });
+
   it("picks the newest version when multiple chrome-headless-shell builds are cached", async () => {
-    const olderBinary = `${PUPPETEER_CACHE}/linux-131.0.6778.85/chrome-headless-shell-linux64/chrome-headless-shell`;
+    const olderBinary = join(
+      PUPPETEER_CACHE,
+      "linux-131.0.6778.85",
+      "chrome-headless-shell-linux64",
+      "chrome-headless-shell",
+    );
     installFsMocks({
       existing: new Set([PUPPETEER_CACHE, PUPPETEER_BINARY, olderBinary]),
       dirs: { [PUPPETEER_CACHE]: ["linux-131.0.6778.85", "linux-148.0.7778.97"] },
+    });
+    installPuppeteerBrowsersMock();
+
+    const { findBrowser } = await import("./manager.js");
+    const result = await findBrowser();
+
+    expect(result?.executablePath).toBe(PUPPETEER_BINARY);
+  });
+
+  it("uses numeric (not lexicographic) version ordering — linux-148 beats linux-99", async () => {
+    // Regression guard for the lexicographic-sort bug: `"linux-99..."` sorts
+    // after `"linux-148..."` character-by-character (because `'9' > '1'`),
+    // which would have caused the CLI to hand engine an ancient 99-era binary
+    // when a fresh 148 was sitting right next to it. Numeric semver-style
+    // ordering is the only correct semantic.
+    const linux99Binary = join(
+      PUPPETEER_CACHE,
+      "linux-99.0.6533.123",
+      "chrome-headless-shell-linux64",
+      "chrome-headless-shell",
+    );
+    installFsMocks({
+      existing: new Set([PUPPETEER_CACHE, PUPPETEER_BINARY, linux99Binary]),
+      // Intentionally list the entries in an order that would expose the bug
+      // under naive `.sort().reverse()` (which puts `linux-99...` first).
+      dirs: { [PUPPETEER_CACHE]: ["linux-99.0.6533.123", "linux-148.0.7778.97"] },
     });
     installPuppeteerBrowsersMock();
 
