@@ -222,9 +222,11 @@ export const PropertyPanel = memo(function PropertyPanel({
     );
   }
 
+  const needsToggleForElement = !element.capabilities.canMove && !manualEditsEnabled;
   const manualOffsetEditingDisabled =
-    !element.capabilities.canApplyManualOffset || !manualEditsEnabled;
-  const manualSizeEditingDisabled = !element.capabilities.canApplyManualSize || !manualEditsEnabled;
+    !element.capabilities.canApplyManualOffset || needsToggleForElement;
+  const manualSizeEditingDisabled =
+    !element.capabilities.canApplyManualSize || needsToggleForElement;
   const sourceLabel = element.id ? `#${element.id}` : element.selector;
   const showEditableSections = element.capabilities.canEditStyles;
   const manualOffset = readStudioPathOffset(element.element);
@@ -367,7 +369,7 @@ export const PropertyPanel = memo(function PropertyPanel({
             <MetricField
               label="R"
               value={`${manualRotation.angle}°`}
-              disabled={!manualEditsEnabled}
+              disabled={needsToggleForElement}
               onCommit={(next) => commitManualRotation(next.replace("°", ""))}
             />
           </div>

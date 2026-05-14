@@ -36,6 +36,7 @@ interface DomEditOverlayProps {
   groupSelections?: DomEditSelection[];
   hoverSelection: DomEditSelection | null;
   allowCanvasMovement?: boolean;
+  manualEditsEnabled?: boolean;
   onCanvasMouseDown: (
     event: React.MouseEvent<HTMLDivElement>,
     options?: { preferClipAncestor?: boolean },
@@ -70,6 +71,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   groupSelections = [],
   hoverSelection,
   allowCanvasMovement = true,
+  manualEditsEnabled = false,
   onCanvasMouseDown,
   onCanvasPointerMove,
   onCanvasPointerLeave,
@@ -214,6 +216,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
       onCanvasPointerMoveRef.current(event, { preferClipAncestor: false }) ??
       hoverSelectionRef.current;
     if (!candidate?.capabilities.canApplyManualOffset) return;
+    if (!candidate.capabilities.canMove && !manualEditsEnabled) return;
 
     const overlayEl = overlayRef.current;
     const iframe = iframeRef.current;
@@ -353,13 +356,18 @@ export const DomEditOverlay = memo(function DomEditOverlay({
               width: overlayRect.width,
               height: overlayRect.height,
               cursor:
-                allowCanvasMovement && selection.capabilities.canApplyManualOffset
+                allowCanvasMovement &&
+                selection.capabilities.canApplyManualOffset &&
+                (selection.capabilities.canMove || manualEditsEnabled)
                   ? "move"
                   : "default",
             }}
             onPointerDown={(e) => {
               if (!allowCanvasMovement || e.shiftKey) return;
-              if (selection.capabilities.canApplyManualOffset) {
+              if (
+                selection.capabilities.canApplyManualOffset &&
+                (selection.capabilities.canMove || manualEditsEnabled)
+              ) {
                 gestures.startGesture("drag", e);
                 return;
               }

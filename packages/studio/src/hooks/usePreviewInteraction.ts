@@ -124,6 +124,10 @@ export function usePreviewInteraction({
 
   const handleBlockedDomMove = useCallback(
     (selection: DomEditSelection) => {
+      if (selection.capabilities.canApplyManualOffset && !selection.capabilities.canMove) {
+        showToast("Enable 'Manual positioning' in the Design panel to move this element.", "info");
+        return;
+      }
       showToast(
         selection.capabilities.reasonIfDisabled ??
           "This element can't be adjusted directly from the preview.",

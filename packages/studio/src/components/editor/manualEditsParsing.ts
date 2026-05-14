@@ -129,7 +129,7 @@ export function parseStudioManualEditManifest(content: string): StudioManualEdit
     const record = parsed as Record<string, unknown>;
     return {
       version: 1,
-      enabled: record.enabled !== false,
+      enabled: record.enabled === true,
       edits: edits.map(parseManualEdit).filter((edit): edit is StudioManualEdit => edit !== null),
     };
   } catch {
