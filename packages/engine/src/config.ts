@@ -177,7 +177,7 @@ export const DEFAULT_CONFIG: EngineConfig = {
   browserTimeout: 120_000,
   protocolTimeout: 300_000,
   forceScreenshot: false,
-  enablePageSideCompositing: false,
+  enablePageSideCompositing: true,
 
   enableChunkedEncode: false,
   chunkSizeFrames: 360,

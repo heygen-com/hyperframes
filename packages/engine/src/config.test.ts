@@ -140,22 +140,15 @@ describe("resolveConfig", () => {
   });
 
   describe("enablePageSideCompositing (HF_PAGE_SIDE_COMPOSITING)", () => {
-    it("defaults to false", () => {
-      const config = resolveConfig();
-      expect(config.enablePageSideCompositing).toBe(false);
-    });
-
-    it("flips to true when HF_PAGE_SIDE_COMPOSITING=true", () => {
-      setEnv("HF_PAGE_SIDE_COMPOSITING", "true");
+    it("defaults to true", () => {
       const config = resolveConfig();
       expect(config.enablePageSideCompositing).toBe(true);
     });
 
-    it("ignores any non-'true' value", () => {
-      setEnv("HF_PAGE_SIDE_COMPOSITING", "1");
-      expect(resolveConfig().enablePageSideCompositing).toBe(false);
-      setEnv("HF_PAGE_SIDE_COMPOSITING", "yes");
-      expect(resolveConfig().enablePageSideCompositing).toBe(false);
+    it("disabled when HF_PAGE_SIDE_COMPOSITING=false", () => {
+      setEnv("HF_PAGE_SIDE_COMPOSITING", "false");
+      const config = resolveConfig();
+      expect(config.enablePageSideCompositing).toBe(false);
     });
 
     it("explicit override wins over the env var", () => {

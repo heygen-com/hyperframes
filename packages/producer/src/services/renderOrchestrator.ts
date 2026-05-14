@@ -1762,7 +1762,8 @@ export async function executeRenderJob(
       compiled.hasShaderTransitions &&
       !hasHdrContent &&
       !isPngSequence &&
-      !needsAlpha;
+      !needsAlpha &&
+      composition.videos.length === 0;
     if (usePageSideCompositingForTransitions) {
       fileServer.addPreHeadScript(HF_PAGE_SIDE_COMPOSITING_STUB);
       log.info(

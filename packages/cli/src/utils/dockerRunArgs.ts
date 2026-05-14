@@ -81,6 +81,6 @@ export function buildDockerRunArgs(input: DockerRunArgsInput): string[] {
       : []),
     ...(options.entryFile ? ["--composition", options.entryFile] : []),
     ...(options.outputResolution ? ["--resolution", options.outputResolution] : []),
-    ...(options.pageSideCompositing ? ["--page-side-compositing"] : []),
+    ...(options.pageSideCompositing === false ? ["--no-page-side-compositing"] : []),
   ];
 }

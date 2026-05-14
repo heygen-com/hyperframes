@@ -225,12 +225,11 @@ export default defineCommand({
     "page-side-compositing": {
       type: "boolean",
       description:
-        "EXPERIMENTAL. Run shader transitions on a page-side WebGL canvas " +
-        "inside Chrome instead of the Node-side layered blend. ~6× faster " +
-        "for SDR shader-transition renders on Mac. HDR/alpha content forces " +
-        "the existing path. Scenes with <video> or live <canvas> elements " +
-        "may render those elements as black during transition windows.",
-      default: false,
+        "Run shader transitions on a page-side WebGL canvas inside Chrome " +
+        "instead of the Node-side layered blend. ~6× faster for SDR " +
+        "shader-transition renders. HDR/alpha/video content auto-disables. " +
+        "Use --no-page-side-compositing to force the layered path.",
+      default: true,
     },
   },
   async run({ args }) {
@@ -304,13 +303,8 @@ export default defineCommand({
     }
 
     // ── Wire opt-in: page-side compositing ───────────────────────────────
-    // EXPERIMENTAL — the engine reads HF_PAGE_SIDE_COMPOSITING via
-    // `resolveConfig()` (engine `EngineConfig.enablePageSideCompositing`).
-    // Set the env var BEFORE `loadProducer()` runs so producer's first call
-    // to `resolveConfig()` picks it up. Same pattern as
-    // PRODUCER_HEADLESS_SHELL_PATH below.
-    if (args["page-side-compositing"]) {
-      process.env.HF_PAGE_SIDE_COMPOSITING = "true";
+    if (args["page-side-compositing"] === false) {
+      process.env.HF_PAGE_SIDE_COMPOSITING = "false";
     }
 
     // ── Validate max-concurrent-renders ─────────────────────────────────
@@ -558,7 +552,7 @@ export default defineCommand({
         variables,
         entryFile,
         outputResolution,
-        pageSideCompositing: !!args["page-side-compositing"],
+        pageSideCompositing: args["page-side-compositing"] !== false,
         exitAfterComplete: true,
       });
     } else {
