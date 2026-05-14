@@ -321,7 +321,10 @@ export function useTimelinePlayer() {
   }, [getAdapter, setCurrentTime, setIsPlaying, stopRAFLoop, stopReverseLoop]);
 
   const seek = useCallback(
-    (time: number) => {
+    (time: number, options?: { keepPlaying?: boolean }) => {
+      // Reverse shuttle is always stopped: the RAF reverse tick can't survive
+      // a seek anyway, so `keepPlaying` only preserves forward playback.
+      const wasReverseShuttle = shuttleDirectionRef.current === "backward";
       stopReverseLoop();
       const adapter = getAdapter();
       if (!adapter) {
@@ -330,16 +333,27 @@ export function useTimelinePlayer() {
       }
       const duration = Math.max(0, adapter.getDuration());
       const nextTime = Math.max(0, duration > 0 ? Math.min(duration, time) : time);
-      adapter.seek(nextTime);
+      adapter.seek(nextTime, options);
       liveTime.notify(nextTime); // Direct DOM updates (playhead, timecode, progress) — no re-render
       setCurrentTime(nextTime); // sync store so Split/Delete have accurate time
-      stopRAFLoop();
-      if (usePlayerStore.getState().isPlaying) setIsPlaying(false);
-      shuttleDirectionRef.current = null;
-      shuttleSpeedIndexRef.current = 0;
+      if (!options?.keepPlaying || wasReverseShuttle) {
+        stopRAFLoop();
+        if (usePlayerStore.getState().isPlaying) setIsPlaying(false);
+        shuttleDirectionRef.current = null;
+        shuttleSpeedIndexRef.current = 0;
+      }
       return true;
     },
-    [getAdapter, pendingSeekRef, setCurrentTime, setIsPlaying, stopRAFLoop, stopReverseLoop],
+    [
+      getAdapter,
+      pendingSeekRef,
+      setCurrentTime,
+      setIsPlaying,
+      stopRAFLoop,
+      stopReverseLoop,
+      shuttleDirectionRef,
+      shuttleSpeedIndexRef,
+    ],
   );
 
   // Handle seek requests from outside the player loop (e.g. LayersPanel).

@@ -22,7 +22,7 @@ interface UsePlaybackKeyboardParams {
   play: () => void;
   playBackward: (rate: number) => void;
   pause: () => void;
-  seek: (time: number) => void;
+  seek: (time: number, options?: { keepPlaying?: boolean }) => void;
 }
 
 export function usePlaybackKeyboard({
@@ -144,13 +144,15 @@ export function usePlaybackKeyboard({
       }
       if (e.code === "KeyA") {
         e.preventDefault();
-        seek(usePlayerStore.getState().inPoint ?? 0);
+        seek(usePlayerStore.getState().inPoint ?? 0, { keepPlaying: true });
         return;
       }
       if (e.code === "KeyE") {
         e.preventDefault();
         const { outPoint } = usePlayerStore.getState();
-        seek(outPoint ?? getAdapter()?.getDuration() ?? usePlayerStore.getState().duration);
+        seek(outPoint ?? getAdapter()?.getDuration() ?? usePlayerStore.getState().duration, {
+          keepPlaying: true,
+        });
         return;
       }
     },
