@@ -163,7 +163,21 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
         player.style.width = "100%";
         player.style.height = "100%";
         player.style.display = "block";
+        player.style.background = "transparent";
         container.appendChild(player);
+
+        // Inject pasteboard shadow: let the shadow around the canvas bleed
+        // into the surrounding pasteboard area (overflow: visible on the container)
+        // and add a subtle outline + drop-shadow so the canvas boundary reads
+        // against the gray pasteboard, consistent with professional editors.
+        if (player.shadowRoot) {
+          const pasteboardStyle = document.createElement("style");
+          pasteboardStyle.textContent =
+            ".hfp-container{overflow:visible}" +
+            ".hfp-iframe{box-shadow:0 0 0 1px rgba(255,255,255,0.08),0 4px 32px rgba(0,0,0,.7)}";
+          player.shadowRoot.appendChild(pasteboardStyle);
+        }
+
         enableInteractiveIframe(player);
 
         // Bridge the inner iframe to the forwarded ref for useTimelinePlayer.
@@ -309,7 +323,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
 
     return (
       <div
-        className="relative w-full h-full max-w-full max-h-full overflow-hidden bg-black flex items-center justify-center"
+        className="relative w-full h-full max-w-full max-h-full overflow-hidden flex items-center justify-center"
         style={style}
       >
         <div ref={containerRef} className="w-full h-full" />
