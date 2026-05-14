@@ -26,11 +26,7 @@ describe("isPageSideCompositingSupported", () => {
     vi.stubGlobal("document", {
       createElement: () => ({
         getContext: (type: string) =>
-          type === "webgl"
-            ? {
-                /* mock WebGL context */
-              }
-            : null,
+          type === "webgl" ? { getExtension: () => ({ loseContext: () => undefined }) } : null,
       }),
     });
     expect(isPageSideCompositingSupported()).toBe(true);

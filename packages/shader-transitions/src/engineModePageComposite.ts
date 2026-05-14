@@ -54,11 +54,12 @@ import {
   setupQuad,
   createProgram,
   createTexture,
-  uploadTextureSource,
+  uploadTexture,
   renderShader,
   type AccentColors,
 } from "./webgl.js";
 import { getFragSource, type ShaderName } from "./shaders/registry.js";
+import { stabilizeTransformedBoxShadows } from "./capture.js";
 
 // Locally redeclared — see the same pattern in hyper-shader.ts. The package
 // must not depend on @hyperframes/engine.
@@ -80,7 +81,6 @@ export interface PageCompositorInstallOptions {
 }
 
 interface ResolvedTransition {
-  index: number;
   time: number;
   duration: number;
   shader: string;
@@ -115,7 +115,9 @@ export function isPageSideCompositingSupported(): boolean {
   if (typeof window === "undefined" || typeof document === "undefined") return false;
   const probe = document.createElement("canvas");
   const gl = probe.getContext("webgl") || probe.getContext("experimental-webgl");
-  return gl != null;
+  if (!gl) return false;
+  (gl as WebGLRenderingContext).getExtension("WEBGL_lose_context")?.loseContext();
+  return true;
 }
 
 /**
@@ -178,7 +180,6 @@ export function installPageSideCompositor(options: PageCompositorInstallOptions)
     const prog = programs.get(t.shader);
     if (!fromSceneId || !toSceneId || !prog) continue;
     resolved.push({
-      index: i,
       time: t.time,
       duration: t.duration ?? defaultDuration,
       shader: t.shader,
@@ -206,8 +207,13 @@ export function installPageSideCompositor(options: PageCompositorInstallOptions)
         foreignObjectRendering: false,
         useCORS: true,
         allowTaint: true,
+        onclone: (_doc, clone) => {
+          if (clone instanceof HTMLElement) stabilizeTransformedBoxShadows(clone);
+        },
+        ignoreElements: (el: Element) =>
+          el.tagName === "CANVAS" || el.hasAttribute("data-no-capture"),
       });
-      uploadTextureSource(gl as WebGLRenderingContext, tex, canvas);
+      uploadTexture(gl as WebGLRenderingContext, tex, canvas);
       return true;
     } catch (err) {
       // eslint-disable-next-line no-console
@@ -260,32 +266,37 @@ export function installPageSideCompositor(options: PageCompositorInstallOptions)
         glCanvas.style.display = "none";
         return result;
       }
-      const fromOk = await captureSceneToTexture(fromEl, fromTex);
-      const toOk = await captureSceneToTexture(toEl, toTex);
+      const [fromOk, toOk] = await Promise.all([
+        captureSceneToTexture(fromEl, fromTex),
+        captureSceneToTexture(toEl, toTex),
+      ]);
       if (!fromOk || !toOk) {
         glCanvas.style.display = "none";
         return result;
       }
-      const progress =
-        active.duration === 0
-          ? 1
-          : Math.min(1, Math.max(0, (time - active.time) / active.duration));
-      renderShader(
-        gl as WebGLRenderingContext,
-        quadBuf,
-        active.prog,
-        fromTex,
-        toTex,
-        progress,
-        accentColors,
-        width,
-        height,
-      );
-      fromEl.style.opacity = "0";
-      toEl.style.opacity = "0";
-      prevFromEl = fromEl;
-      prevToEl = toEl;
-      glCanvas.style.display = "block";
+      try {
+        const progress =
+          active.duration === 0
+            ? 1
+            : Math.min(1, Math.max(0, (time - active.time) / active.duration));
+        renderShader(
+          gl as WebGLRenderingContext,
+          quadBuf,
+          active.prog,
+          fromTex,
+          toTex,
+          progress,
+          accentColors,
+          width,
+          height,
+        );
+        glCanvas.style.display = "block";
+      } finally {
+        fromEl.style.opacity = "0";
+        toEl.style.opacity = "0";
+        prevFromEl = fromEl;
+        prevToEl = toEl;
+      }
       return result;
     };
     hfWin.__hf.seek = wrapped;
