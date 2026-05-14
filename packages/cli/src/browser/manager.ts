@@ -1,11 +1,17 @@
 import { execSync, spawnSync } from "node:child_process";
-import { existsSync, rmSync } from "node:fs";
+import { existsSync, readdirSync, rmSync } from "node:fs";
+import { basename } from "node:path";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { Browser, detectBrowserPlatform, getInstalledBrowsers, install } from "@puppeteer/browsers";
 
 const CHROME_VERSION = "131.0.6778.85";
 const CACHE_DIR = join(homedir(), ".cache", "hyperframes", "chrome");
+// Puppeteer's managed cache — where `@puppeteer/browsers install
+// chrome-headless-shell` (and `puppeteer install`) drop binaries. The engine's
+// `resolveHeadlessShellPath` scans the same directory; the CLI must look here
+// too or it silently picks system Chrome over a perfectly good headless-shell.
+const PUPPETEER_CACHE_DIR = join(homedir(), ".cache", "puppeteer", "chrome-headless-shell");
 
 /** Override browser path via --browser-path flag. Takes priority over env var. */
 let _browserPathOverride: string | undefined;
@@ -67,17 +73,99 @@ function findFromEnv(): BrowserResult | undefined {
 }
 
 async function findFromCache(): Promise<BrowserResult | undefined> {
-  if (!existsSync(CACHE_DIR)) {
-    return undefined;
+  // 1) Hyperframes-managed cache (populated by `clearBrowser` + `install` below).
+  if (existsSync(CACHE_DIR)) {
+    const installed = await getInstalledBrowsers({ cacheDir: CACHE_DIR });
+    const match = installed.find((b) => b.browser === Browser.CHROMEHEADLESSSHELL);
+    if (match) {
+      return { executablePath: match.executablePath, source: "cache" };
+    }
   }
 
-  const installed = await getInstalledBrowsers({ cacheDir: CACHE_DIR });
-  const match = installed.find((b) => b.browser === Browser.CHROMEHEADLESSSHELL);
-  if (match) {
-    return { executablePath: match.executablePath, source: "cache" };
+  // 2) Puppeteer's managed cache — where `npx @puppeteer/browsers install
+  // chrome-headless-shell` lands, and where `puppeteer install` from a project
+  // that depends on full `puppeteer` (not `puppeteer-core`) lands. The engine
+  // already reads from here (`resolveHeadlessShellPath`); without this branch
+  // the CLI would skip past a perfectly good chrome-headless-shell and fall
+  // through to `findFromSystem()`, picking regular Chrome which has dropped
+  // `HeadlessExperimental.enable` and disables the perf-optimized capture
+  // path.
+  const fromPuppeteer = findFromPuppeteerCache();
+  if (fromPuppeteer) {
+    return fromPuppeteer;
   }
 
   return undefined;
+}
+
+function findFromPuppeteerCache(): BrowserResult | undefined {
+  if (!existsSync(PUPPETEER_CACHE_DIR)) return undefined;
+  let versions: string[];
+  try {
+    versions = readdirSync(PUPPETEER_CACHE_DIR).sort().reverse(); // newest first
+  } catch {
+    return undefined;
+  }
+  for (const version of versions) {
+    // Same shape as `resolveHeadlessShellPath` in engine/browserManager.ts —
+    // keep them aligned. If puppeteer ever changes the on-disk layout the two
+    // need to move together.
+    const candidates = [
+      join(PUPPETEER_CACHE_DIR, version, "chrome-headless-shell-linux64", "chrome-headless-shell"),
+      join(
+        PUPPETEER_CACHE_DIR,
+        version,
+        "chrome-headless-shell-mac-arm64",
+        "chrome-headless-shell",
+      ),
+      join(PUPPETEER_CACHE_DIR, version, "chrome-headless-shell-mac-x64", "chrome-headless-shell"),
+      join(
+        PUPPETEER_CACHE_DIR,
+        version,
+        "chrome-headless-shell-win64",
+        "chrome-headless-shell.exe",
+      ),
+    ];
+    for (const binary of candidates) {
+      if (existsSync(binary)) {
+        return { executablePath: binary, source: "cache" };
+      }
+    }
+  }
+  return undefined;
+}
+
+/**
+ * True iff the binary at `executablePath` is `chrome-headless-shell` (i.e. the
+ * Chromium build that still exposes `HeadlessExperimental.enable` /
+ * `beginFrame`). Regular Chrome and `chromium` have dropped those domains, so
+ * the engine's perf-optimized BeginFrame capture path silently degrades to
+ * screenshot mode when those are used.
+ */
+function isHeadlessShellBinary(executablePath: string): boolean {
+  const name = basename(executablePath).toLowerCase();
+  return name === "chrome-headless-shell" || name === "chrome-headless-shell.exe";
+}
+
+/**
+ * Emit a one-time warning when the CLI selects a non-headless-shell binary on
+ * Linux. Idempotent across repeated `findBrowser()` calls so a long-running
+ * `hyperframes studio` process doesn't get spammed.
+ */
+let _warnedSystemFallback = false;
+function warnSystemFallbackOnce(executablePath: string): void {
+  if (_warnedSystemFallback) return;
+  if (process.platform !== "linux") return;
+  if (isHeadlessShellBinary(executablePath)) return;
+  _warnedSystemFallback = true;
+  console.warn(
+    `[hyperframes] Using system Chrome at ${executablePath}; HeadlessExperimental.beginFrame is unavailable in regular Chrome builds, so the perf-optimized capture path falls back to screenshot mode. Install chrome-headless-shell for the optimized path:\n  npx @puppeteer/browsers install chrome-headless-shell`,
+  );
+}
+
+/** Test-only: reset the one-shot warn latch. */
+export function _resetSystemFallbackWarnForTests(): void {
+  _warnedSystemFallback = false;
 }
 
 function findFromSystem(): BrowserResult | undefined {
@@ -108,7 +196,11 @@ export async function findBrowser(): Promise<BrowserResult | undefined> {
   const fromCache = await findFromCache();
   if (fromCache) return fromCache;
 
-  return findFromSystem();
+  const fromSystem = findFromSystem();
+  if (fromSystem) {
+    warnSystemFallbackOnce(fromSystem.executablePath);
+  }
+  return fromSystem;
 }
 
 /**
