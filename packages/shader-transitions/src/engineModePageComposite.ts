@@ -193,14 +193,23 @@ export function installPageSideCompositor(options: PageCompositorInstallOptions)
 
   function resolveComposite(): boolean {
     const active = currentActive;
-    if (!active) return false;
+    if (!active) {
+      pWin.__hf_page_composite_pending = false;
+      return false;
+    }
     const fromChild = fromStaging.firstElementChild;
     const toChild = toStaging.firstElementChild;
-    if (!fromChild || !toChild) return false;
+    if (!fromChild || !toChild) {
+      pWin.__hf_page_composite_pending = false;
+      return false;
+    }
 
     const fromCtx = fromStaging.getContext("2d") as DrawElementImageCtx | null;
     const toCtx = toStaging.getContext("2d") as DrawElementImageCtx | null;
-    if (!fromCtx?.drawElementImage || !toCtx?.drawElementImage) return false;
+    if (!fromCtx?.drawElementImage || !toCtx?.drawElementImage) {
+      pWin.__hf_page_composite_pending = false;
+      return false;
+    }
 
     try {
       fromCtx.fillStyle = options.bgColor;
@@ -213,6 +222,7 @@ export function installPageSideCompositor(options: PageCompositorInstallOptions)
     } catch (err) {
       // eslint-disable-next-line no-console
       console.warn("[HyperShader] page-side compositor: drawElementImage failed:", err);
+      pWin.__hf_page_composite_pending = false;
       return false;
     }
 
@@ -275,6 +285,8 @@ export function installPageSideCompositor(options: PageCompositorInstallOptions)
       if (!active) {
         glCanvas.style.display = "none";
         pWin.__hf_page_composite_pending = false;
+        while (fromStaging.firstChild) fromStaging.removeChild(fromStaging.firstChild);
+        while (toStaging.firstChild) toStaging.removeChild(toStaging.firstChild);
         return result;
       }
       const fromEl = document.getElementById(active.fromSceneId);

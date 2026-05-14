@@ -225,11 +225,11 @@ export default defineCommand({
     "page-side-compositing": {
       type: "boolean",
       description:
-        "EXPERIMENTAL (opt-in spike). Run shader transitions on a page-side " +
-        "WebGL canvas inside Chrome instead of the Node-side layered blend. " +
-        "Mac-viable lever to push past the hf#677 1.95× baseline on shader-" +
-        "transition renders. SDR only; HDR content forces the existing path. " +
-        "Pin a PSNR-based correctness check, not byte-equality, when using this.",
+        "EXPERIMENTAL. Run shader transitions on a page-side WebGL canvas " +
+        "inside Chrome instead of the Node-side layered blend. ~6× faster " +
+        "for SDR shader-transition renders on Mac. HDR/alpha content forces " +
+        "the existing path. Scenes with <video> or live <canvas> elements " +
+        "may render those elements as black during transition windows.",
       default: false,
     },
   },

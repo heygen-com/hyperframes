@@ -709,7 +709,7 @@ async function prepareFrameForCapture(
   // staging canvases with cloned scenes, force the browser to paint them
   // via a micro-screenshot, then call the page-side resolve function to
   // run drawElementImage + shader composite.
-  if (hasPendingComposite) {
+  if (hasPendingComposite && session.captureMode !== "beginframe") {
     const cdp = await getCdpSession(page);
     await cdp.send("Page.captureScreenshot", {
       format: "jpeg",
