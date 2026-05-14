@@ -55,7 +55,7 @@ export function useManifestPersistence({
   activeCompPathRef,
 }: UseManifestPersistenceParams) {
   const [, setStudioMotionRevision] = useState(0);
-  const [manualEditsEnabled, setManualEditsEnabledState] = useState(false);
+  const [manualEditsEnabled, setManualEditsEnabledState] = useState(true);
 
   const domEditSaveTimestampRef = useRef(0);
   const domTextCommitVersionRef = useRef(0);
@@ -172,7 +172,7 @@ export function useManifestPersistence({
       if (options?.forceFromDisk || readRevision === studioManualEditRevisionRef.current) {
         const parsed = parseStudioManualEditManifest(content);
         studioManualEditManifestRef.current = parsed;
-        setManualEditsEnabledState(parsed.enabled ?? false);
+        setManualEditsEnabledState(parsed.enabled ?? true);
         if (options?.forceFromDisk) studioManualEditRevisionRef.current += 1;
       }
       applyCurrentStudioManualEditsToPreview(iframe);
@@ -438,7 +438,7 @@ export function useManifestPersistence({
     studioManualEditProjectRef.current = projectId;
     if (!previousProjectId || previousProjectId === projectId) return;
     studioManualEditManifestRef.current = emptyStudioManualEditManifest();
-    setManualEditsEnabledState(false);
+    setManualEditsEnabledState(true);
     studioManualEditRevisionRef.current += 1;
     studioMotionManifestRef.current = emptyStudioMotionManifest();
     studioMotionRevisionRef.current += 1;
@@ -519,7 +519,7 @@ export function useManifestPersistence({
       void queueDomEditSave(save).catch((error) => {
         studioManualEditManifestRef.current = previousManifest;
         studioManualEditRevisionRef.current += 1;
-        setManualEditsEnabledState(previousManifest.enabled ?? false);
+        setManualEditsEnabledState(previousManifest.enabled ?? true);
         const message = error instanceof Error ? error.message : "Failed to save setting";
         showToast(message);
       });
