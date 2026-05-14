@@ -16,14 +16,15 @@ If you'd rather not be listed publicly, that's fine — drop a note in [our Disc
 
 ## Production
 
-| Organization                     | Contact                                      | How HyperFrames is used                                                                    |
-| -------------------------------- | -------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| [HeyGen](https://www.heygen.com) | [@jrusso1020](https://github.com/jrusso1020) | Powers AI-generated video composition and rendering across HeyGen's video product surface. |
+| Organization                     | Contact                                        | How HyperFrames is used                                                                    |
+| -------------------------------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| [HeyGen](https://www.heygen.com) | [@jrusso1020](https://github.com/jrusso1020)   | Powers AI-generated video composition and rendering across HeyGen's video product surface. |
+| [tldraw](https://tldraw.com)     | [@steveruizok](https://github.com/steveruizok) | Exploring HyperFrames for diagramming and canvas-based video export.                       |
 
 ## Evaluating
 
-| Organization                             | Contact                                        | How HyperFrames is used                                              |
-| ---------------------------------------- | ---------------------------------------------- | -------------------------------------------------------------------- |
-| [TanStack](https://tanstack.com)         | [@AlemTuzlak](https://github.com/AlemTuzlak)   | Exploring HyperFrames for video content and documentation.           |
-| [OptinMonster](https://optinmonster.com) | Angie Meeker                                   | Exploring HyperFrames for marketing and product video content.       |
-| [tldraw](https://tldraw.com)             | [@steveruizok](https://github.com/steveruizok) | Exploring HyperFrames for diagramming and canvas-based video export. |
+| Organization                             | Contact                                      | How HyperFrames is used                                                                    |
+| ---------------------------------------- | -------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| [HeyGen](https://www.heygen.com)         | [@jrusso1020](https://github.com/jrusso1020) | Powers AI-generated video composition and rendering across HeyGen's video product surface. |
+| [TanStack](https://tanstack.com)         | [@AlemTuzlak](https://github.com/AlemTuzlak) | Exploring HyperFrames for video content and documentation.                                 |
+| [OptinMonster](https://optinmonster.com) | Angie Meeker                                 | Exploring HyperFrames for marketing and product video content.                             |
