@@ -1,0 +1,13 @@
+{
+  "name": "render-video-overlay-stretch",
+  "description": "Regression fixture for #837. Renders two full-bleed MP4 clips with position:absolute/inset:0 and an image overlay across the cut. The injected video-frame <img> must preserve the source video's measured 16:9 box instead of inheriting opposing inset constraints that can stretch the frame during overlay transitions.",
+  "tags": ["regression", "video", "overlay"],
+  "minPsnr": 30,
+  "maxFrameFailures": 0,
+  "minAudioCorrelation": 0,
+  "maxAudioLagWindows": 1,
+  "renderConfig": {
+    "fps": 30,
+    "workers": 1
+  }
+}

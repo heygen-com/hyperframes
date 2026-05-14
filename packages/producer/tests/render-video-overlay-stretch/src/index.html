@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=480, height=270" />
+    <title>Video Overlay Stretch Regression</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        width: 480px;
+        height: 270px;
+        overflow: hidden;
+        background: #000;
+      }
+
+      #root {
+        position: relative;
+        width: 480px;
+        height: 270px;
+        overflow: hidden;
+        background: #000;
+      }
+
+      .scene-video {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        object-position: center center;
+      }
+
+      .transition-overlay {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        opacity: 0.82;
+      }
+
+      .cut-label {
+        position: absolute;
+        right: 12px;
+        bottom: 12px;
+        z-index: 20;
+        padding: 5px 8px;
+        border: 2px solid rgba(255, 255, 255, 0.88);
+        color: #fff;
+        background: rgba(0, 0, 0, 0.68);
+        font: 700 13px Arial, Helvetica, sans-serif;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="video-overlay-stretch"
+      data-start="0"
+      data-duration="4"
+      data-width="480"
+      data-height="270"
+    >
+      <video
+        id="clip-a"
+        class="clip scene-video"
+        src="clip.mp4"
+        data-start="0"
+        data-duration="2"
+        data-track-index="0"
+        muted
+        playsinline
+      ></video>
+
+      <video
+        id="clip-b"
+        class="clip scene-video"
+        src="clip.mp4"
+        data-start="2"
+        data-duration="2"
+        data-track-index="1"
+        muted
+        playsinline
+      ></video>
+
+      <img
+        id="transition"
+        class="clip transition-overlay"
+        src="transition-overlay.png"
+        data-start="1.6"
+        data-duration="0.8"
+        data-track-index="10"
+        alt=""
+      />
+
+      <div class="clip cut-label" data-start="0" data-duration="2" data-track-index="20">
+        CLIP A
+      </div>
+      <div class="clip cut-label" data-start="2" data-duration="2" data-track-index="21">
+        CLIP B
+      </div>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+    </script>
+  </body>
+</html>
