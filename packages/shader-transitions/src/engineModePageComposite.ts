@@ -33,7 +33,7 @@ import {
   setupQuad,
   createProgram,
   createTexture,
-  uploadTexture,
+  uploadTextureSource,
   renderShader,
   type AccentColors,
 } from "./webgl.js";
@@ -180,7 +180,10 @@ export function installPageSideCompositor(options: PageCompositorInstallOptions)
     return null;
   }
 
-  // ── Phase 2: resolve the pending composite after engine forces paint ──
+  let currentActive: ResolvedTransition | null = null;
+  let currentProgress = 0;
+  let prevFromId: string | null = null;
+  let prevToId: string | null = null;
 
   type PendingWindow = Window & {
     __hf_page_composite_pending?: boolean;
@@ -213,14 +216,8 @@ export function installPageSideCompositor(options: PageCompositorInstallOptions)
       return false;
     }
 
-    uploadTexture(gl as WebGLRenderingContext, fromTex, fromStaging);
-    uploadTexture(gl as WebGLRenderingContext, toTex, toStaging);
-
-    // uploadTexture zeroes canvas dimensions — restore for next frame
-    fromStaging.width = width;
-    fromStaging.height = height;
-    toStaging.width = width;
-    toStaging.height = height;
+    uploadTextureSource(gl as WebGLRenderingContext, fromTex, fromStaging);
+    uploadTextureSource(gl as WebGLRenderingContext, toTex, toStaging);
 
     try {
       renderShader(
@@ -235,26 +232,22 @@ export function installPageSideCompositor(options: PageCompositorInstallOptions)
         height,
       );
       glCanvas.style.display = "block";
-    } finally {
       const fromEl = document.getElementById(active.fromSceneId);
       const toEl = document.getElementById(active.toSceneId);
       if (fromEl) fromEl.style.opacity = "0";
       if (toEl) toEl.style.opacity = "0";
       prevFromId = active.fromSceneId;
       prevToId = active.toSceneId;
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn("[HyperShader] page-side compositor: renderShader failed:", err);
+      glCanvas.style.display = "none";
     }
     pWin.__hf_page_composite_pending = false;
     return true;
   }
 
   pWin.__hf_page_composite_resolve = resolveComposite;
-
-  // ── Phase 1: seek wrapper sets up clones and signals pending ──
-
-  let currentActive: ResolvedTransition | null = null;
-  let currentProgress = 0;
-  let prevFromId: string | null = null;
-  let prevToId: string | null = null;
 
   type HfWindow = Window & {
     __hf?: { seek?: (t: number) => unknown };

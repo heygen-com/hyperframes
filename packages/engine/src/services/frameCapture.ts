@@ -696,22 +696,20 @@ async function prepareFrameForCapture(
   const seekStart = Date.now();
   // Seek via the __hf protocol. The page's seek() implementation handles
   // all framework-specific logic (GSAP stepping, CSS animation sync, etc.)
-  await page.evaluate((t: number) => {
+  // Seek + check page-side composite pending flag in one round-trip.
+  const hasPendingComposite = await page.evaluate((t: number) => {
     if (window.__hf && typeof window.__hf.seek === "function") {
-      return window.__hf.seek(t);
+      window.__hf.seek(t);
     }
+    return !!(window as unknown as { __hf_page_composite_pending?: boolean })
+      .__hf_page_composite_pending;
   }, quantizedTime);
 
   // Page-side compositing two-phase protocol: if the seek wrapper set up
   // staging canvases with cloned scenes, force the browser to paint them
   // via a micro-screenshot, then call the page-side resolve function to
   // run drawElementImage + shader composite.
-  const hasPending = await page.evaluate(
-    () =>
-      !!(window as unknown as { __hf_page_composite_pending?: boolean })
-        .__hf_page_composite_pending,
-  );
-  if (hasPending) {
+  if (hasPendingComposite) {
     const cdp = await getCdpSession(page);
     await cdp.send("Page.captureScreenshot", {
       format: "jpeg",
