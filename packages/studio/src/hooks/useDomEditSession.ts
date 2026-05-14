@@ -66,6 +66,8 @@ export interface UseDomEditSessionParams {
   syncPreviewHistoryHotkey: (iframe: HTMLIFrameElement | null) => void;
   reloadPreview: () => void;
   setRefreshKey: React.Dispatch<React.SetStateAction<number>>;
+  manualEditsEnabled: boolean;
+  setManualEditsEnabled: (enabled: boolean) => void;
 }
 
 // ── Hook ──
@@ -105,6 +107,8 @@ export function useDomEditSession({
   syncPreviewHistoryHotkey,
   reloadPreview,
   setRefreshKey: _setRefreshKey,
+  manualEditsEnabled,
+  setManualEditsEnabled,
 }: UseDomEditSessionParams) {
   void _setRefreshKey;
   // ── Selection (delegated to useDomSelection) ──
@@ -340,5 +344,7 @@ export function useDomEditSession({
     setAgentModalOpen,
     setAgentPromptSelectionContext,
     setAgentModalAnchorPoint,
+    manualEditsEnabled,
+    setManualEditsEnabled,
   };
 }

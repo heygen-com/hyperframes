@@ -75,6 +75,7 @@ export type StudioManualEdit = StudioPathOffsetEdit | StudioBoxSizeEdit | Studio
 
 export interface StudioManualEditManifest {
   version: 1;
+  enabled?: boolean;
   edits: StudioManualEdit[];
 }
 

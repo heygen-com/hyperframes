@@ -220,6 +220,8 @@ export function StudioApp() {
     syncPreviewHistoryHotkey: appHotkeys.syncPreviewHistoryHotkey,
     reloadPreview,
     setRefreshKey,
+    manualEditsEnabled: manifestPersistence.manualEditsEnabled,
+    setManualEditsEnabled: manifestPersistence.setManualEditsEnabled,
   });
 
   domEditSelectionBridgeRef.current = domEditSession.domEditSelection;

@@ -64,6 +64,8 @@ export function StudioRightPanel({
     handleDomMotionCommit,
     handleDomMotionClear,
     applyDomSelection,
+    manualEditsEnabled,
+    setManualEditsEnabled,
   } = useDomEditContext();
 
   const { assets, fontAssets, handleImportFiles, handleImportFonts } = useFileManagerContext();
@@ -180,6 +182,8 @@ export function StudioRightPanel({
                   onImportFonts={handleImportFonts}
                   activeCompositionPath={activeCompPath}
                   onSelectLayer={handleSelectLayer}
+                  manualEditsEnabled={manualEditsEnabled}
+                  onSetManualEditsEnabled={setManualEditsEnabled}
                 />
               ) : motionPanelActive ? (
                 <MotionPanel

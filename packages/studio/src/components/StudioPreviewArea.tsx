@@ -75,6 +75,7 @@ export function StudioPreviewArea({
     domEditHoverSelection,
     domEditSelection,
     domEditGroupSelections,
+    manualEditsEnabled,
     handleTimelineElementSelect,
     handlePreviewCanvasMouseDown,
     handlePreviewCanvasPointerMove,
@@ -133,7 +134,7 @@ export function StudioPreviewArea({
               }
               selection={shouldShowSelectedDomBounds ? domEditSelection : null}
               groupSelections={shouldShowSelectedDomBounds ? domEditGroupSelections : []}
-              allowCanvasMovement={STUDIO_PREVIEW_MANUAL_EDITING_ENABLED}
+              allowCanvasMovement={STUDIO_PREVIEW_MANUAL_EDITING_ENABLED && manualEditsEnabled}
               onCanvasMouseDown={handlePreviewCanvasMouseDown}
               onCanvasPointerMove={handlePreviewCanvasPointerMove}
               onCanvasPointerLeave={handlePreviewCanvasPointerLeave}

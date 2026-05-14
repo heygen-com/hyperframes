@@ -126,8 +126,10 @@ export function parseStudioManualEditManifest(content: string): StudioManualEdit
     if (!parsed || typeof parsed !== "object") return emptyStudioManualEditManifest();
     const edits = (parsed as { edits?: unknown }).edits;
     if (!Array.isArray(edits)) return emptyStudioManualEditManifest();
+    const record = parsed as Record<string, unknown>;
     return {
       version: 1,
+      enabled: record.enabled === true,
       edits: edits.map(parseManualEdit).filter((edit): edit is StudioManualEdit => edit !== null),
     };
   } catch {

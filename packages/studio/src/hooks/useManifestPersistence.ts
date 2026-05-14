@@ -55,6 +55,7 @@ export function useManifestPersistence({
   activeCompPathRef,
 }: UseManifestPersistenceParams) {
   const [, setStudioMotionRevision] = useState(0);
+  const [manualEditsEnabled, setManualEditsEnabledState] = useState(false);
 
   const domEditSaveTimestampRef = useRef(0);
   const domTextCommitVersionRef = useRef(0);
@@ -169,7 +170,9 @@ export function useManifestPersistence({
         return;
       }
       if (options?.forceFromDisk || readRevision === studioManualEditRevisionRef.current) {
-        studioManualEditManifestRef.current = parseStudioManualEditManifest(content);
+        const parsed = parseStudioManualEditManifest(content);
+        studioManualEditManifestRef.current = parsed;
+        setManualEditsEnabledState(parsed.enabled ?? false);
         if (options?.forceFromDisk) studioManualEditRevisionRef.current += 1;
       }
       applyCurrentStudioManualEditsToPreview(iframe);
@@ -435,6 +438,7 @@ export function useManifestPersistence({
     studioManualEditProjectRef.current = projectId;
     if (!previousProjectId || previousProjectId === projectId) return;
     studioManualEditManifestRef.current = emptyStudioManualEditManifest();
+    setManualEditsEnabledState(false);
     studioManualEditRevisionRef.current += 1;
     studioMotionManifestRef.current = emptyStudioMotionManifest();
     studioMotionRevisionRef.current += 1;
@@ -481,6 +485,55 @@ export function useManifestPersistence({
     return () => es.close();
   });
 
+  const setManualEditsEnabled = useCallback(
+    (enabled: boolean) => {
+      const previousManifest = studioManualEditManifestRef.current;
+      const nextManifest = { ...previousManifest, enabled };
+      studioManualEditManifestRef.current = nextManifest;
+      studioManualEditRevisionRef.current += 1;
+      setManualEditsEnabledState(enabled);
+
+      const save = async () => {
+        const originalContent = await readOptionalProjectFile(STUDIO_MANUAL_EDITS_PATH);
+        const diskManifest = parseStudioManualEditManifest(originalContent);
+        const nextDiskManifest = { ...diskManifest, enabled };
+        const nextDiskContent = serializeStudioManualEditManifest(nextDiskManifest);
+        if (nextDiskContent === originalContent) return;
+
+        const pid = projectIdRef.current;
+        if (!pid) throw new Error("No active project");
+        domEditSaveTimestampRef.current = Date.now();
+        await saveProjectFilesWithHistory({
+          projectId: pid,
+          label: enabled ? "Enable manual positioning" : "Disable manual positioning",
+          kind: "manual",
+          coalesceKey: "manual-edits-enabled",
+          files: { [STUDIO_MANUAL_EDITS_PATH]: nextDiskContent },
+          readFile: async () => originalContent,
+          writeFile: writeProjectFile,
+          recordEdit,
+        });
+        domEditSaveTimestampRef.current = Date.now();
+      };
+
+      void queueDomEditSave(save).catch((error) => {
+        studioManualEditManifestRef.current = previousManifest;
+        studioManualEditRevisionRef.current += 1;
+        setManualEditsEnabledState(previousManifest.enabled ?? false);
+        const message = error instanceof Error ? error.message : "Failed to save setting";
+        showToast(message);
+      });
+    },
+    [
+      queueDomEditSave,
+      readOptionalProjectFile,
+      writeProjectFile,
+      recordEdit,
+      showToast,
+      domEditSaveTimestampRef,
+    ],
+  );
+
   return {
     domEditSaveTimestampRef,
     domTextCommitVersionRef,
@@ -501,5 +554,7 @@ export function useManifestPersistence({
     commitStudioManualEditManifestOptimistically,
     commitStudioMotionManifestOptimistically,
     syncHistoryPreviewAfterApply,
+    manualEditsEnabled,
+    setManualEditsEnabled,
   };
 }

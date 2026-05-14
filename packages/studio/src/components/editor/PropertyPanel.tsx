@@ -53,6 +53,8 @@ interface PropertyPanelProps {
   onImportFonts?: (files: FileList | File[]) => Promise<ImportedFontAsset[]>;
   activeCompositionPath?: string | null;
   onSelectLayer?: (layer: DomEditLayerItem) => void;
+  manualEditsEnabled?: boolean;
+  onSetManualEditsEnabled?: (enabled: boolean) => void;
 }
 
 /* ------------------------------------------------------------------ */
@@ -116,6 +118,42 @@ function LayerTree({
 }
 
 /* ------------------------------------------------------------------ */
+/*  ManualPositioningToggle                                            */
+/* ------------------------------------------------------------------ */
+
+function ManualPositioningToggle({
+  enabled,
+  onToggle,
+}: {
+  enabled: boolean;
+  onToggle: (enabled: boolean) => void;
+}) {
+  return (
+    <div className="flex-shrink-0 border-t border-neutral-800 px-4 py-3">
+      <div className="flex items-center justify-between">
+        <span className="text-[11px] text-neutral-400">Manual positioning</span>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={enabled}
+          onClick={() => onToggle(!enabled)}
+          title={enabled ? "Disable drag-to-reposition" : "Enable drag-to-reposition"}
+          className={`relative inline-flex h-5 w-9 flex-shrink-0 rounded-full transition-colors focus-visible:outline-none ${
+            enabled ? "bg-studio-accent" : "bg-neutral-700"
+          }`}
+        >
+          <span
+            className={`pointer-events-none mt-0.5 inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform ${
+              enabled ? "translate-x-[18px]" : "translate-x-[2px]"
+            }`}
+          />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /*  PropertyPanel                                                      */
 /* ------------------------------------------------------------------ */
 
@@ -141,41 +179,52 @@ export const PropertyPanel = memo(function PropertyPanel({
   onImportFonts,
   activeCompositionPath = null,
   onSelectLayer,
+  manualEditsEnabled = true,
+  onSetManualEditsEnabled,
 }: PropertyPanelProps) {
   const styles = element?.computedStyles ?? EMPTY_STYLES;
 
   if (!element) {
     return (
-      <div className="flex h-full flex-col items-center justify-center bg-neutral-900 px-6 text-center">
-        {multiSelectCount > 1 ? (
-          <>
-            <Layers size={18} className="mb-3 text-neutral-600" />
-            <p className="text-sm font-medium text-neutral-200">
-              {multiSelectCount} elements selected
-            </p>
-            <p className="mt-2 max-w-[260px] text-xs leading-5 text-neutral-500">
-              Select a single element to edit its properties. Click an element in the preview or use
-              the timeline layer panel.
-            </p>
-          </>
-        ) : (
-          <>
-            <Eye size={18} className="mb-3 text-neutral-600" />
-            <p className="text-sm font-medium text-neutral-200">
-              Select an element in the preview.
-            </p>
-            <p className="mt-2 max-w-[260px] text-xs leading-5 text-neutral-500">
-              The inspector is tuned for element edits with safer geometry controls, color picking,
-              and cleaner grouped layer controls.
-            </p>
-          </>
+      <div className="flex h-full flex-col bg-neutral-900">
+        <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
+          {multiSelectCount > 1 ? (
+            <>
+              <Layers size={18} className="mb-3 text-neutral-600" />
+              <p className="text-sm font-medium text-neutral-200">
+                {multiSelectCount} elements selected
+              </p>
+              <p className="mt-2 max-w-[260px] text-xs leading-5 text-neutral-500">
+                Select a single element to edit its properties. Click an element in the preview or
+                use the timeline layer panel.
+              </p>
+            </>
+          ) : (
+            <>
+              <Eye size={18} className="mb-3 text-neutral-600" />
+              <p className="text-sm font-medium text-neutral-200">
+                Select an element in the preview.
+              </p>
+              <p className="mt-2 max-w-[260px] text-xs leading-5 text-neutral-500">
+                The inspector is tuned for element edits with safer geometry controls, color
+                picking, and cleaner grouped layer controls.
+              </p>
+            </>
+          )}
+        </div>
+        {onSetManualEditsEnabled && (
+          <ManualPositioningToggle
+            enabled={manualEditsEnabled}
+            onToggle={onSetManualEditsEnabled}
+          />
         )}
       </div>
     );
   }
 
-  const manualOffsetEditingDisabled = !element.capabilities.canApplyManualOffset;
-  const manualSizeEditingDisabled = !element.capabilities.canApplyManualSize;
+  const manualOffsetEditingDisabled =
+    !element.capabilities.canApplyManualOffset || !manualEditsEnabled;
+  const manualSizeEditingDisabled = !element.capabilities.canApplyManualSize || !manualEditsEnabled;
   const sourceLabel = element.id ? `#${element.id}` : element.selector;
   const showEditableSections = element.capabilities.canEditStyles;
   const manualOffset = readStudioPathOffset(element.element);
@@ -318,6 +367,7 @@ export const PropertyPanel = memo(function PropertyPanel({
             <MetricField
               label="R"
               value={`${manualRotation.angle}°`}
+              disabled={!manualEditsEnabled}
               onCommit={(next) => commitManualRotation(next.replace("°", ""))}
             />
           </div>
@@ -342,6 +392,9 @@ export const PropertyPanel = memo(function PropertyPanel({
           />
         )}
       </div>
+      {onSetManualEditsEnabled && (
+        <ManualPositioningToggle enabled={manualEditsEnabled} onToggle={onSetManualEditsEnabled} />
+      )}
     </div>
   );
 });
