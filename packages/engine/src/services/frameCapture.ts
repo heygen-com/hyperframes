@@ -698,7 +698,7 @@ async function prepareFrameForCapture(
   // all framework-specific logic (GSAP stepping, CSS animation sync, etc.)
   await page.evaluate((t: number) => {
     if (window.__hf && typeof window.__hf.seek === "function") {
-      window.__hf.seek(t);
+      return window.__hf.seek(t);
     }
   }, quantizedTime);
   const seekMs = Date.now() - seekStart;

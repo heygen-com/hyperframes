@@ -11,38 +11,44 @@
  *  1. We install a fullscreen `<canvas id="__hf-gl-compositor">` overlay
  *     (z-index above everything; pointer-events:none).
  *  2. We wrap `window.__hf.seek` so each seek into a transition window:
- *       a. Captures the FROM-scene element to a GL texture.
- *       b. Captures the TO-scene element to a GL texture.
+ *       a. Captures the FROM-scene element to a GL texture via html2canvas.
+ *       b. Captures the TO-scene element to a GL texture via html2canvas.
  *       c. Renders the active transition's fragment shader on the overlay
  *          canvas with both textures + computed progress + accent colours.
- *       d. Hides the FROM-scene element's contribution (so the screenshot
- *          taken by the engine after the seek sees only the GL overlay's
- *          composited result, not the DOM's own opacity-blended layers).
+ *       d. Hides the FROM/TO scene elements (so the screenshot taken by the
+ *          engine after the seek sees only the GL overlay's composited result).
  *     Outside a transition window the overlay is hidden and the seek runs
  *     verbatim — the engine captures the DOM as usual.
  *
  * The result: the engine takes ONE opaque RGB `Page.captureScreenshot` per
- * frame; the shader blend math runs in Chrome's WebGL on the GPU (Metal on
- * Mac via CoreAnimation, ANGLE/D3D on Windows, SwiftShader as the software
- * fallback on Linux headless). Wall-time savings vs. the Node-side path
- * come from (a) eliminating the two per-frame transparent-alpha screenshots
- * (one per scene), (b) eliminating the rgb48le ↔ rgba8 transfer-space
- * conversion, (c) eliminating the Node-side per-pixel shader-blend loop
- * (the worker pool from hf#677 #758).
+ * frame; the shader blend math runs in Chrome's WebGL on the GPU.
  *
- * Determinism note: WebGL shaders execute in f32 on the GPU; the Node-side
- * path executes in f64 on the CPU. The two are NOT bit-identical. Fixture
- * pins that assume byte-exact MP4 output (the published harness baseline)
- * must use the default-off path. PSNR ≥ 50dB pins are the correctness gate
- * for the page-side path.
+ * Why html2canvas instead of the preview-path's drawElementImage (capture.ts):
  *
- * Why the producer can't just take a screenshot of the gl-canvas only:
- * the streaming capture path snaps the whole page, which is what we want —
- * the overlay sits on top, opaque inside the transition window, fully
- * transparent (display:none) outside. The composition's DOM still renders
- * the static parts (e.g. background, header chrome) outside transitions.
+ * In engine render mode the virtual-time shim (fileServer.ts) replaces
+ * requestAnimationFrame with a queue that only flushes during seekToTime().
+ * The preview-path capture in capture.ts waits for two real rAFs so the
+ * browser compositor paints the cloned element before drawElementImage reads
+ * its paint record. Inside a seek wrapper we can't await shimmed rAFs
+ * (deadlock — they flush on the *next* seek) and original rAFs don't produce
+ * paint records under virtual-time control. drawElementImage returns
+ * "InvalidStateError: No cached paint record" for any element that wasn't
+ * painted by the browser's own compositor pass — which includes every clone
+ * we create at capture time.
+ *
+ * html2canvas avoids the problem entirely: it clones the DOM, reads computed
+ * styles, and renders to a canvas using its own JS drawing pipeline with no
+ * dependency on the browser's paint/compositor cycle. This is the same
+ * renderer used by the preview-mode fallback path (capture.ts,
+ * foreignObjectRendering: false).
+ *
+ * Determinism note: html2canvas rendering differs slightly from native
+ * Chromium rendering (text-shadow, gradient antialiasing, sub-pixel). The
+ * WebGL shader also executes in f32 vs f64 on the Node-side path. Fixture
+ * pins that assume byte-exact MP4 output must use the default-off path.
  */
 
+import html2canvas from "html2canvas";
 import {
   createContext,
   setupQuad,
@@ -53,7 +59,6 @@ import {
   type AccentColors,
 } from "./webgl.js";
 import { getFragSource, type ShaderName } from "./shaders/registry.js";
-import { isHtmlInCanvasCaptureSupported } from "./capture.js";
 
 // Locally redeclared — see the same pattern in hyper-shader.ts. The package
 // must not depend on @hyperframes/engine.
@@ -102,21 +107,21 @@ export const PAGE_COMPOSITOR_CANVAS_ID = "__hf-page-side-compositor";
 export const PAGE_COMPOSITOR_BUILD_CANARY = "__hf_page_compositor_v1__";
 
 /**
- * Returns true iff this Chromium build exposes the HTML-in-Canvas
- * `drawElementImage` API. Re-exported here so the engine-mode wrapper has
- * a single import surface; the underlying probe is the existing one in
- * `capture.ts` (used by the preview path).
+ * Returns true iff the runtime supports page-side compositing. Requires
+ * a browser environment with WebGL. (html2canvas handles the DOM capture
+ * without needing drawElementImage.)
  */
 export function isPageSideCompositingSupported(): boolean {
   if (typeof window === "undefined" || typeof document === "undefined") return false;
-  return isHtmlInCanvasCaptureSupported();
+  const probe = document.createElement("canvas");
+  const gl = probe.getContext("webgl") || probe.getContext("experimental-webgl");
+  return gl != null;
 }
 
 /**
  * Install the page-side compositor. Idempotent — second calls are no-ops.
- * Returns `true` when installation succeeded, `false` when the Chromium
- * runtime does not support the required `drawElementImage` API (caller
- * should fall back to opacity-flip mode).
+ * Returns `true` when installation succeeded, `false` when the runtime
+ * does not support WebGL (caller should fall back to opacity-flip mode).
  */
 export function installPageSideCompositor(options: PageCompositorInstallOptions): boolean {
   // Canary string — kept on the runtime path so the bundle keeps it.
@@ -126,8 +131,8 @@ export function installPageSideCompositor(options: PageCompositorInstallOptions)
   if (!isPageSideCompositingSupported()) {
     // eslint-disable-next-line no-console
     console.warn(
-      "[HyperShader] page-side compositing requested but drawElementImage is not " +
-        "supported in this Chromium build; falling back to opacity-flip mode " +
+      "[HyperShader] page-side compositing requested but WebGL is not " +
+        "available; falling back to opacity-flip mode " +
         "(Node-side layered pipeline will handle the blend).",
     );
     return false;
@@ -136,8 +141,6 @@ export function installPageSideCompositor(options: PageCompositorInstallOptions)
 
   const { scenes, transitions, accentColors, width, height, defaultDuration } = options;
 
-  // Fullscreen GL canvas overlay. `display:none` by default — only made
-  // visible while a transition is active.
   const glCanvas = document.createElement("canvas");
   glCanvas.id = PAGE_COMPOSITOR_CANVAS_ID;
   glCanvas.width = width;
@@ -155,9 +158,6 @@ export function installPageSideCompositor(options: PageCompositorInstallOptions)
   }
   const quadBuf = setupQuad(gl);
 
-  // Pre-compile + cache fragment programs per shader name. Compiling on
-  // first transition would stall the very first transition frame; the
-  // engine's deterministic seek loop is sensitive to that.
   const programs = new Map<string, WebGLProgram>();
   for (const t of transitions) {
     if (programs.has(t.shader)) continue;
@@ -169,7 +169,6 @@ export function installPageSideCompositor(options: PageCompositorInstallOptions)
     }
   }
 
-  // Resolve transitions to fully-typed records the seek wrapper consults.
   const resolved: ResolvedTransition[] = [];
   for (let i = 0; i < transitions.length; i++) {
     const t = transitions[i];
@@ -193,49 +192,28 @@ export function installPageSideCompositor(options: PageCompositorInstallOptions)
     return false;
   }
 
-  // Per-scene background canvases. We capture each scene element to its own
-  // backing canvas via `drawElementImage`, then upload to a GL texture.
-  // The two textures persist across frames; only the texture *contents*
-  // change per frame.
   const fromTex = createTexture(gl);
   const toTex = createTexture(gl);
-  const sceneCaptureCanvas = document.createElement("canvas");
-  sceneCaptureCanvas.width = width;
-  sceneCaptureCanvas.height = height;
-  // Layout-attached canvas (so drawElementImage has live layout to sample).
-  // Kept off-screen; never inserted into the document layout flow.
-  const stagingCanvas = document.createElement("canvas") as HTMLCanvasElement & {
-    layoutSubtree?: boolean;
-  };
-  stagingCanvas.width = width;
-  stagingCanvas.height = height;
-  stagingCanvas.setAttribute("layoutsubtree", "");
-  stagingCanvas.style.cssText =
-    "position:fixed;top:0;left:0;width:" +
-    String(width) +
-    "px;height:" +
-    String(height) +
-    "px;z-index:-9999;pointer-events:none;opacity:0;";
-  document.body.appendChild(stagingCanvas);
 
-  type DrawElementImageCtx = CanvasRenderingContext2D & {
-    drawElementImage: (el: Element, x: number, y: number, w: number, h: number) => void;
-  };
-
-  function captureSceneToTexture(sceneEl: HTMLElement, tex: WebGLTexture): boolean {
-    const ctx = stagingCanvas.getContext("2d") as DrawElementImageCtx | null;
-    if (!ctx || typeof ctx.drawElementImage !== "function") return false;
-    ctx.fillStyle = options.bgColor;
-    ctx.fillRect(0, 0, width, height);
+  async function captureSceneToTexture(sceneEl: HTMLElement, tex: WebGLTexture): Promise<boolean> {
     try {
-      ctx.drawElementImage(sceneEl, 0, 0, width, height);
+      const canvas = await html2canvas(sceneEl, {
+        width,
+        height,
+        scale: 1,
+        backgroundColor: options.bgColor,
+        logging: false,
+        foreignObjectRendering: false,
+        useCORS: true,
+        allowTaint: true,
+      });
+      uploadTextureSource(gl as WebGLRenderingContext, tex, canvas);
+      return true;
     } catch (err) {
       // eslint-disable-next-line no-console
-      console.warn("[HyperShader] page-side compositor: drawElementImage threw:", err);
+      console.warn("[HyperShader] page-side compositor: scene capture failed:", err);
       return false;
     }
-    uploadTextureSource(gl as WebGLRenderingContext, tex, stagingCanvas);
-    return true;
   }
 
   function findActive(time: number): ResolvedTransition | null {
@@ -245,10 +223,8 @@ export function installPageSideCompositor(options: PageCompositorInstallOptions)
     return null;
   }
 
-  // Wrap window.__hf.seek so each seek into a transition window does the
-  // page-side compose BEFORE returning (the engine's capture awaits the
-  // seek promise then immediately screenshots). Outside the window we hide
-  // the overlay and let the engine see the bare DOM.
+  // The seek wrapper returns a Promise so the engine's page.evaluate (which
+  // now `return`s the seek result) awaits compositing before screenshotting.
   type HfWindow = Window & {
     __hf?: { seek?: (t: number) => unknown };
   };
@@ -257,10 +233,21 @@ export function installPageSideCompositor(options: PageCompositorInstallOptions)
     if (!hfWin.__hf) return;
     const originalSeek = hfWin.__hf.seek;
     if (typeof originalSeek !== "function") return;
-    const wrapped = (time: number): unknown => {
-      // Run the engine's original seek first — populates the DOM at the
-      // correct timeline position so element computed styles + GSAP-driven
-      // transforms are valid before we sample.
+    let prevFromEl: HTMLElement | null = null;
+    let prevToEl: HTMLElement | null = null;
+    const wrapped = async (time: number): Promise<unknown> => {
+      // Restore opacity on scenes hidden by the previous frame's compositor
+      // pass BEFORE running GSAP seek — GSAP caches inline values and won't
+      // re-write opacity if it thinks the value hasn't changed.
+      if (prevFromEl) {
+        prevFromEl.style.opacity = "";
+        prevFromEl = null;
+      }
+      if (prevToEl) {
+        prevToEl.style.opacity = "";
+        prevToEl = null;
+      }
+
       const result = originalSeek.call(hfWin.__hf, time);
       const active = findActive(time);
       if (!active) {
@@ -273,15 +260,8 @@ export function installPageSideCompositor(options: PageCompositorInstallOptions)
         glCanvas.style.display = "none";
         return result;
       }
-      // The opacity-flip timeline in initEngineMode has set both scenes
-      // to opacity 1 during the transition window. We need to render
-      // each one in isolation to texture, then composite via shader.
-      // Briefly force each scene visible-and-alone during its own capture
-      // by reading via drawElementImage with the live DOM (drawElementImage
-      // captures THIS element subtree with its current computed style;
-      // siblings outside the subtree don't bleed in).
-      const fromOk = captureSceneToTexture(fromEl, fromTex);
-      const toOk = captureSceneToTexture(toEl, toTex);
+      const fromOk = await captureSceneToTexture(fromEl, fromTex);
+      const toOk = await captureSceneToTexture(toEl, toTex);
       if (!fromOk || !toOk) {
         glCanvas.style.display = "none";
         return result;
@@ -301,21 +281,16 @@ export function installPageSideCompositor(options: PageCompositorInstallOptions)
         width,
         height,
       );
-      // Hide both DOM scenes during the overlay-visible window so they
-      // don't double-paint under the screenshot. Original opacity is
-      // restored on the next out-of-window seek.
       fromEl.style.opacity = "0";
       toEl.style.opacity = "0";
+      prevFromEl = fromEl;
+      prevToEl = toEl;
       glCanvas.style.display = "block";
       return result;
     };
     hfWin.__hf.seek = wrapped;
   };
 
-  // window.__hf.seek is wired up only after the producer's bridge script
-  // runs (which itself fires only after window.__player is ready). Poll
-  // for it briefly. Once wrapped, the wrapper is permanent for the page
-  // lifetime — the engine never re-wraps `seek`.
   let attempts = 0;
   const ivHandle = window.setInterval(() => {
     attempts += 1;

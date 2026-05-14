@@ -21,25 +21,26 @@ describe("isPageSideCompositingSupported", () => {
     expect(isPageSideCompositingSupported()).toBe(false);
   });
 
-  it("returns true when drawElementImage is exposed", () => {
+  it("returns true when WebGL is available", () => {
     vi.stubGlobal("window", {});
     vi.stubGlobal("document", {
       createElement: () => ({
-        setAttribute: () => undefined,
-        layoutSubtree: true,
-        getContext: () => ({ drawElementImage: () => undefined }),
+        getContext: (type: string) =>
+          type === "webgl"
+            ? {
+                /* mock WebGL context */
+              }
+            : null,
       }),
     });
     expect(isPageSideCompositingSupported()).toBe(true);
   });
 
-  it("returns false when drawElementImage is missing", () => {
+  it("returns false when WebGL is unavailable", () => {
     vi.stubGlobal("window", {});
     vi.stubGlobal("document", {
       createElement: () => ({
-        setAttribute: () => undefined,
-        layoutSubtree: true,
-        getContext: () => ({}),
+        getContext: () => null,
       }),
     });
     expect(isPageSideCompositingSupported()).toBe(false);
@@ -47,10 +48,6 @@ describe("isPageSideCompositingSupported", () => {
 });
 
 describe("page-side compositor exported constants", () => {
-  // These constants are load-bearing for the bundled-CLI smoke: the
-  // validation script greps the shipped bundle for the canary to confirm
-  // the page-side path is in the production tsup output, not just the
-  // source tree.
   it("exports a stable canary string used by the bundled-CLI smoke", () => {
     expect(PAGE_COMPOSITOR_BUILD_CANARY).toBe("__hf_page_compositor_v1__");
   });
