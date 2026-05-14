@@ -21,22 +21,48 @@ describe("isPageSideCompositingSupported", () => {
     expect(isPageSideCompositingSupported()).toBe(false);
   });
 
-  it("returns true when WebGL is available", () => {
+  it("returns true when drawElementImage and WebGL are both available", () => {
+    vi.stubGlobal("window", {});
+    vi.stubGlobal("document", {
+      createElement: (tag: string) => {
+        if (tag === "canvas") {
+          return {
+            setAttribute: () => undefined,
+            layoutSubtree: true,
+            getContext: (type: string) => {
+              if (type === "2d") return { drawElementImage: () => undefined };
+              if (type === "webgl")
+                return { getExtension: () => ({ loseContext: () => undefined }) };
+              return null;
+            },
+          };
+        }
+        return {};
+      },
+    });
+    expect(isPageSideCompositingSupported()).toBe(true);
+  });
+
+  it("returns false when drawElementImage is missing", () => {
     vi.stubGlobal("window", {});
     vi.stubGlobal("document", {
       createElement: () => ({
+        setAttribute: () => undefined,
         getContext: (type: string) =>
-          type === "webgl" ? { getExtension: () => ({ loseContext: () => undefined }) } : null,
+          type === "webgl" ? { getExtension: () => ({ loseContext: () => undefined }) } : {},
       }),
     });
-    expect(isPageSideCompositingSupported()).toBe(true);
+    expect(isPageSideCompositingSupported()).toBe(false);
   });
 
   it("returns false when WebGL is unavailable", () => {
     vi.stubGlobal("window", {});
     vi.stubGlobal("document", {
       createElement: () => ({
-        getContext: () => null,
+        setAttribute: () => undefined,
+        layoutSubtree: true,
+        getContext: (type: string) =>
+          type === "2d" ? { drawElementImage: () => undefined } : null,
       }),
     });
     expect(isPageSideCompositingSupported()).toBe(false);

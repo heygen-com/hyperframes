@@ -701,6 +701,30 @@ async function prepareFrameForCapture(
       return window.__hf.seek(t);
     }
   }, quantizedTime);
+
+  // Page-side compositing two-phase protocol: if the seek wrapper set up
+  // staging canvases with cloned scenes, force the browser to paint them
+  // via a micro-screenshot, then call the page-side resolve function to
+  // run drawElementImage + shader composite.
+  const hasPending = await page.evaluate(
+    () =>
+      !!(window as unknown as { __hf_page_composite_pending?: boolean })
+        .__hf_page_composite_pending,
+  );
+  if (hasPending) {
+    const cdp = await getCdpSession(page);
+    await cdp.send("Page.captureScreenshot", {
+      format: "jpeg",
+      quality: 1,
+      clip: { x: 0, y: 0, width: 1, height: 1, scale: 1 },
+    });
+    await page.evaluate(() => {
+      const w = window as unknown as { __hf_page_composite_resolve?: () => boolean };
+      if (typeof w.__hf_page_composite_resolve === "function") {
+        w.__hf_page_composite_resolve();
+      }
+    });
+  }
   const seekMs = Date.now() - seekStart;
 
   // Before-capture hook (e.g. video frame injection)

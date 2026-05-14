@@ -6,49 +6,28 @@
  * off, hyper-shader's engine-mode path stays on the opacity-flip-only timeline
  * and the producer's hf#677 Node-side layered pipeline runs the shader blend.
  *
- * When the flag is ON:
+ * Two-phase capture protocol:
  *
- *  1. We install a fullscreen `<canvas id="__hf-gl-compositor">` overlay
- *     (z-index above everything; pointer-events:none).
- *  2. We wrap `window.__hf.seek` so each seek into a transition window:
- *       a. Captures the FROM-scene element to a GL texture via html2canvas.
- *       b. Captures the TO-scene element to a GL texture via html2canvas.
- *       c. Renders the active transition's fragment shader on the overlay
- *          canvas with both textures + computed progress + accent colours.
- *       d. Hides the FROM/TO scene elements (so the screenshot taken by the
- *          engine after the seek sees only the GL overlay's composited result).
- *     Outside a transition window the overlay is hidden and the seek runs
- *     verbatim — the engine captures the DOM as usual.
+ *  Phase 1 (seek wrapper, runs inside page.evaluate):
+ *    - Runs original GSAP seek to position the timeline
+ *    - If inside a transition window, clones FROM/TO scene elements into
+ *      layoutsubtree staging canvases
+ *    - Sets window.__hf_page_composite_pending with transition metadata
+ *    - Returns immediately (seek resolves)
  *
- * The result: the engine takes ONE opaque RGB `Page.captureScreenshot` per
- * frame; the shader blend math runs in Chrome's WebGL on the GPU.
+ *  Paint force (engine-side, frameCapture.ts):
+ *    - Engine detects the pending flag and fires a micro Page.captureScreenshot
+ *      to force the browser compositor to paint the staging canvas clones
  *
- * Why html2canvas instead of the preview-path's drawElementImage (capture.ts):
+ *  Phase 2 (engine calls window.__hf_page_composite_resolve):
+ *    - drawElementImage reads the now-valid paint records from the clones
+ *    - Uploads textures to WebGL, runs the shader, shows the GL overlay
+ *    - Cleans up staging canvases
  *
- * In engine render mode the virtual-time shim (fileServer.ts) replaces
- * requestAnimationFrame with a queue that only flushes during seekToTime().
- * The preview-path capture in capture.ts waits for two real rAFs so the
- * browser compositor paints the cloned element before drawElementImage reads
- * its paint record. Inside a seek wrapper we can't await shimmed rAFs
- * (deadlock — they flush on the *next* seek) and original rAFs don't produce
- * paint records under virtual-time control. drawElementImage returns
- * "InvalidStateError: No cached paint record" for any element that wasn't
- * painted by the browser's own compositor pass — which includes every clone
- * we create at capture time.
- *
- * html2canvas avoids the problem entirely: it clones the DOM, reads computed
- * styles, and renders to a canvas using its own JS drawing pipeline with no
- * dependency on the browser's paint/compositor cycle. This is the same
- * renderer used by the preview-mode fallback path (capture.ts,
- * foreignObjectRendering: false).
- *
- * Determinism note: html2canvas rendering differs slightly from native
- * Chromium rendering (text-shadow, gradient antialiasing, sub-pixel). The
- * WebGL shader also executes in f32 vs f64 on the Node-side path. Fixture
- * pins that assume byte-exact MP4 output must use the default-off path.
+ * This gives native-fidelity capture (identical to preview-path
+ * drawElementImage) without depending on requestAnimationFrame for paint.
  */
 
-import html2canvas from "html2canvas";
 import {
   createContext,
   setupQuad,
@@ -59,10 +38,8 @@ import {
   type AccentColors,
 } from "./webgl.js";
 import { getFragSource, type ShaderName } from "./shaders/registry.js";
-import { stabilizeTransformedBoxShadows } from "./capture.js";
+import { isHtmlInCanvasCaptureSupported } from "./capture.js";
 
-// Locally redeclared — see the same pattern in hyper-shader.ts. The package
-// must not depend on @hyperframes/engine.
 interface PageCompositeTransitionConfig {
   time: number;
   shader: ShaderName;
@@ -76,7 +53,6 @@ export interface PageCompositorInstallOptions {
   accentColors: AccentColors;
   width: number;
   height: number;
-  /** Default duration in seconds for transitions that don't declare one. */
   defaultDuration: number;
 }
 
@@ -89,30 +65,12 @@ interface ResolvedTransition {
   prog: WebGLProgram;
 }
 
-/**
- * Sentinel id for the engine to recognize that page-side compositing is
- * actively running (vs. merely opted in). The presence of this id on the
- * page is independent of the active-transition state; the engine doesn't
- * need to read it — it's used by tests and by the bundled-CLI canary
- * check in the validation script.
- */
 export const PAGE_COMPOSITOR_CANVAS_ID = "__hf-page-side-compositor";
-
-/**
- * Search string the bundled-CLI smoke greps for, to confirm the page-side
- * compositor module is present in the shipped bundle (not just the source
- * tree). Keep this string in the runtime path so dead-code elimination
- * cannot remove it.
- */
 export const PAGE_COMPOSITOR_BUILD_CANARY = "__hf_page_compositor_v1__";
 
-/**
- * Returns true iff the runtime supports page-side compositing. Requires
- * a browser environment with WebGL. (html2canvas handles the DOM capture
- * without needing drawElementImage.)
- */
 export function isPageSideCompositingSupported(): boolean {
   if (typeof window === "undefined" || typeof document === "undefined") return false;
+  if (!isHtmlInCanvasCaptureSupported()) return false;
   const probe = document.createElement("canvas");
   const gl = probe.getContext("webgl") || probe.getContext("experimental-webgl");
   if (!gl) return false;
@@ -120,20 +78,14 @@ export function isPageSideCompositingSupported(): boolean {
   return true;
 }
 
-/**
- * Install the page-side compositor. Idempotent — second calls are no-ops.
- * Returns `true` when installation succeeded, `false` when the runtime
- * does not support WebGL (caller should fall back to opacity-flip mode).
- */
 export function installPageSideCompositor(options: PageCompositorInstallOptions): boolean {
-  // Canary string — kept on the runtime path so the bundle keeps it.
   if (typeof window === "undefined") return false;
   (window as unknown as { __HF_PAGE_COMPOSITOR_CANARY__?: string }).__HF_PAGE_COMPOSITOR_CANARY__ =
     PAGE_COMPOSITOR_BUILD_CANARY;
   if (!isPageSideCompositingSupported()) {
     // eslint-disable-next-line no-console
     console.warn(
-      "[HyperShader] page-side compositing requested but WebGL is not " +
+      "[HyperShader] page-side compositing requested but drawElementImage/WebGL is not " +
         "available; falling back to opacity-flip mode " +
         "(Node-side layered pipeline will handle the blend).",
     );
@@ -196,29 +148,29 @@ export function installPageSideCompositor(options: PageCompositorInstallOptions)
   const fromTex = createTexture(gl);
   const toTex = createTexture(gl);
 
-  async function captureSceneToTexture(sceneEl: HTMLElement, tex: WebGLTexture): Promise<boolean> {
-    try {
-      const canvas = await html2canvas(sceneEl, {
-        width,
-        height,
-        scale: 1,
-        backgroundColor: options.bgColor,
-        logging: false,
-        foreignObjectRendering: false,
-        useCORS: true,
-        allowTaint: true,
-        onclone: (_doc, clone) => {
-          if (clone instanceof HTMLElement) stabilizeTransformedBoxShadows(clone);
-        },
-        ignoreElements: (el: Element) => el.hasAttribute("data-no-capture"),
-      });
-      uploadTexture(gl as WebGLRenderingContext, tex, canvas);
-      return true;
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.warn("[HyperShader] page-side compositor: scene capture failed:", err);
-      return false;
-    }
+  type DrawElementImageCtx = CanvasRenderingContext2D & {
+    drawElementImage: (el: Element, x: number, y: number, w: number, h: number) => void;
+  };
+
+  interface StagingCanvas extends HTMLCanvasElement {
+    layoutSubtree?: boolean;
+  }
+
+  // Persistent staging canvases — children are swapped per transition frame.
+  // Kept in the DOM so the compositor paints them on the next frame.
+  const fromStaging = document.createElement("canvas") as StagingCanvas;
+  const toStaging = document.createElement("canvas") as StagingCanvas;
+  for (const s of [fromStaging, toStaging]) {
+    s.width = width;
+    s.height = height;
+    s.setAttribute("layoutsubtree", "");
+    s.style.cssText =
+      "position:fixed;top:0;left:0;width:" +
+      width +
+      "px;height:" +
+      height +
+      "px;z-index:-9998;pointer-events:none;";
+    document.body.appendChild(s);
   }
 
   function findActive(time: number): ResolvedTransition | null {
@@ -228,8 +180,82 @@ export function installPageSideCompositor(options: PageCompositorInstallOptions)
     return null;
   }
 
-  // The seek wrapper returns a Promise so the engine's page.evaluate (which
-  // now `return`s the seek result) awaits compositing before screenshotting.
+  // ── Phase 2: resolve the pending composite after engine forces paint ──
+
+  type PendingWindow = Window & {
+    __hf_page_composite_pending?: boolean;
+    __hf_page_composite_resolve?: () => boolean;
+  };
+  const pWin = window as PendingWindow;
+
+  function resolveComposite(): boolean {
+    const active = currentActive;
+    if (!active) return false;
+    const fromChild = fromStaging.firstElementChild;
+    const toChild = toStaging.firstElementChild;
+    if (!fromChild || !toChild) return false;
+
+    const fromCtx = fromStaging.getContext("2d") as DrawElementImageCtx | null;
+    const toCtx = toStaging.getContext("2d") as DrawElementImageCtx | null;
+    if (!fromCtx?.drawElementImage || !toCtx?.drawElementImage) return false;
+
+    try {
+      fromCtx.fillStyle = options.bgColor;
+      fromCtx.fillRect(0, 0, width, height);
+      fromCtx.drawElementImage(fromChild, 0, 0, width, height);
+
+      toCtx.fillStyle = options.bgColor;
+      toCtx.fillRect(0, 0, width, height);
+      toCtx.drawElementImage(toChild, 0, 0, width, height);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn("[HyperShader] page-side compositor: drawElementImage failed:", err);
+      return false;
+    }
+
+    uploadTexture(gl as WebGLRenderingContext, fromTex, fromStaging);
+    uploadTexture(gl as WebGLRenderingContext, toTex, toStaging);
+
+    // uploadTexture zeroes canvas dimensions — restore for next frame
+    fromStaging.width = width;
+    fromStaging.height = height;
+    toStaging.width = width;
+    toStaging.height = height;
+
+    try {
+      renderShader(
+        gl as WebGLRenderingContext,
+        quadBuf,
+        active.prog,
+        fromTex,
+        toTex,
+        currentProgress,
+        accentColors,
+        width,
+        height,
+      );
+      glCanvas.style.display = "block";
+    } finally {
+      const fromEl = document.getElementById(active.fromSceneId);
+      const toEl = document.getElementById(active.toSceneId);
+      if (fromEl) fromEl.style.opacity = "0";
+      if (toEl) toEl.style.opacity = "0";
+      prevFromId = active.fromSceneId;
+      prevToId = active.toSceneId;
+    }
+    pWin.__hf_page_composite_pending = false;
+    return true;
+  }
+
+  pWin.__hf_page_composite_resolve = resolveComposite;
+
+  // ── Phase 1: seek wrapper sets up clones and signals pending ──
+
+  let currentActive: ResolvedTransition | null = null;
+  let currentProgress = 0;
+  let prevFromId: string | null = null;
+  let prevToId: string | null = null;
+
   type HfWindow = Window & {
     __hf?: { seek?: (t: number) => unknown };
   };
@@ -238,64 +264,47 @@ export function installPageSideCompositor(options: PageCompositorInstallOptions)
     if (!hfWin.__hf) return;
     const originalSeek = hfWin.__hf.seek;
     if (typeof originalSeek !== "function") return;
-    let prevFromEl: HTMLElement | null = null;
-    let prevToEl: HTMLElement | null = null;
-    const wrapped = async (time: number): Promise<unknown> => {
-      // Restore opacity on scenes hidden by the previous frame's compositor
-      // pass BEFORE running GSAP seek — GSAP caches inline values and won't
-      // re-write opacity if it thinks the value hasn't changed.
-      if (prevFromEl) {
-        prevFromEl.style.opacity = "";
-        prevFromEl = null;
+    const wrapped = (time: number): unknown => {
+      // Restore opacity on scenes hidden by previous frame
+      if (prevFromId) {
+        const el = document.getElementById(prevFromId);
+        if (el) el.style.opacity = "";
+        prevFromId = null;
       }
-      if (prevToEl) {
-        prevToEl.style.opacity = "";
-        prevToEl = null;
+      if (prevToId) {
+        const el = document.getElementById(prevToId);
+        if (el) el.style.opacity = "";
+        prevToId = null;
       }
 
       const result = originalSeek.call(hfWin.__hf, time);
       const active = findActive(time);
       if (!active) {
         glCanvas.style.display = "none";
+        pWin.__hf_page_composite_pending = false;
         return result;
       }
       const fromEl = document.getElementById(active.fromSceneId);
       const toEl = document.getElementById(active.toSceneId);
       if (!(fromEl instanceof HTMLElement) || !(toEl instanceof HTMLElement)) {
         glCanvas.style.display = "none";
+        pWin.__hf_page_composite_pending = false;
         return result;
       }
-      const [fromOk, toOk] = await Promise.all([
-        captureSceneToTexture(fromEl, fromTex),
-        captureSceneToTexture(toEl, toTex),
-      ]);
-      if (!fromOk || !toOk) {
-        glCanvas.style.display = "none";
-        return result;
-      }
-      try {
-        const progress =
-          active.duration === 0
-            ? 1
-            : Math.min(1, Math.max(0, (time - active.time) / active.duration));
-        renderShader(
-          gl as WebGLRenderingContext,
-          quadBuf,
-          active.prog,
-          fromTex,
-          toTex,
-          progress,
-          accentColors,
-          width,
-          height,
-        );
-        glCanvas.style.display = "block";
-      } finally {
-        fromEl.style.opacity = "0";
-        toEl.style.opacity = "0";
-        prevFromEl = fromEl;
-        prevToEl = toEl;
-      }
+
+      // Clone scenes into staging canvases for the engine to paint
+      while (fromStaging.firstChild) fromStaging.removeChild(fromStaging.firstChild);
+      while (toStaging.firstChild) toStaging.removeChild(toStaging.firstChild);
+      fromStaging.appendChild(fromEl.cloneNode(true));
+      toStaging.appendChild(toEl.cloneNode(true));
+
+      currentActive = active;
+      currentProgress =
+        active.duration === 0
+          ? 1
+          : Math.min(1, Math.max(0, (time - active.time) / active.duration));
+      pWin.__hf_page_composite_pending = true;
+
       return result;
     };
     hfWin.__hf.seek = wrapped;
