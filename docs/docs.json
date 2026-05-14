@@ -180,7 +180,8 @@
               "catalog/components/grain-overlay",
               "catalog/components/grid-pixelate-wipe",
               "catalog/components/shimmer-sweep",
-              "catalog/components/texture-mask-text"
+              "catalog/components/texture-mask-text",
+              "catalog/components/vignette"
             ]
           },
           {

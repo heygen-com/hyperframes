@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Vignette — Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="vignette-demo"
+      data-width="1920"
+      data-height="1080"
+      data-duration="6"
+    >
+      <div class="demo-bg">
+        <div
+          class="demo-title"
+          style="font-size: 96px; font-weight: 700; color: #f4ecd6; opacity: 0"
+        >
+          Vignette
+        </div>
+        <div
+          class="demo-subtitle"
+          style="
+            font-size: 32px;
+            color: rgba(244, 236, 214, 0.7);
+            margin-top: 16px;
+            letter-spacing: 0.04em;
+            opacity: 0;
+          "
+        >
+          Pulls focus toward the center
+        </div>
+      </div>
+
+      <!-- The vignette component -->
+      <div
+        id="hf-vignette"
+        style="
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          pointer-events: none;
+          z-index: 90;
+        "
+      ></div>
+
+      <style>
+        .demo-bg {
+          width: 1920px;
+          height: 1080px;
+          background: radial-gradient(circle at 30% 30%, #c98a4b, #6d3a18 60%, #2a160a 100%);
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
+          align-items: center;
+          font-family: "Inter", sans-serif;
+          position: relative;
+        }
+
+        #hf-vignette {
+          background: radial-gradient(
+            var(--vignette-shape, ellipse) at center,
+            transparent var(--vignette-size, 45%),
+            var(--vignette-color, rgba(0, 0, 0, 0.7)) var(--vignette-edge, 100%)
+          );
+        }
+      </style>
+
+      <script>
+        (function () {
+          const tl = gsap.timeline({ paused: true });
+
+          // Fade in title and subtitle
+          tl.to(".demo-title", { opacity: 1, y: -10, duration: 1, ease: "power3.out" }, 0.3);
+          tl.to(".demo-subtitle", { opacity: 1, y: -5, duration: 0.8, ease: "power3.out" }, 0.7);
+
+          // Fade vignette in from transparent
+          tl.fromTo(
+            "#hf-vignette",
+            { "--vignette-color": "rgba(0, 0, 0, 0)" },
+            {
+              "--vignette-color": "rgba(0, 0, 0, 0.75)",
+              duration: 1.5,
+              ease: "power2.out",
+            },
+            1.2,
+          );
+
+          // Breathe the size in and out
+          tl.to(
+            "#hf-vignette",
+            { "--vignette-size": "35%", duration: 1.0, ease: "sine.inOut" },
+            3.0,
+          );
+          tl.to(
+            "#hf-vignette",
+            { "--vignette-size": "45%", duration: 1.0, ease: "sine.inOut" },
+            4.0,
+          );
+
+          window.__timelines = window.__timelines || {};
+          window.__timelines["vignette-demo"] = tl;
+        })();
+      </script>
+    </div>
+  </body>
+</html>
