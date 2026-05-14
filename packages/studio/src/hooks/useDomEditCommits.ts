@@ -6,12 +6,21 @@ import { saveProjectFilesWithHistory } from "../utils/studioFileHistory";
 import { primaryFontFamilyValue } from "../utils/studioFontHelpers";
 import { getDomEditTargetKey, type DomEditSelection } from "../components/editor/domEditing";
 import {
-  removeStudioManualEditsForSelection,
-  type StudioManualEditManifest,
-  upsertStudioBoxSizeEdit,
-  upsertStudioPathOffsetEdit,
-  upsertStudioRotationEdit,
+  applyStudioPathOffset,
+  applyStudioBoxSize,
+  applyStudioRotation,
+  clearStudioPathOffset,
+  clearStudioBoxSize,
+  clearStudioRotation,
 } from "../components/editor/manualEdits";
+import {
+  buildPathOffsetPatches,
+  buildBoxSizePatches,
+  buildRotationPatches,
+  buildClearPathOffsetPatches,
+  buildClearBoxSizePatches,
+  buildClearRotationPatches,
+} from "../components/editor/manualEditsDom";
 import {
   removeStudioMotionForSelection,
   type StudioGsapMotion,
@@ -48,15 +57,11 @@ export interface UseDomEditCommitsParams {
   activeCompPath: string | null;
   previewIframeRef: React.MutableRefObject<HTMLIFrameElement | null>;
   showToast: (message: string, tone?: "error" | "info") => void;
-  commitStudioManualEditManifestOptimistically: (
-    updateManifest: (manifest: StudioManualEditManifest) => StudioManualEditManifest,
-    options: { label: string; coalesceKey: string },
-  ) => void;
+  queueDomEditSave: (save: () => Promise<void>) => Promise<void>;
   commitStudioMotionManifestOptimistically: (
     updateManifest: (manifest: StudioMotionManifest) => StudioMotionManifest,
     options: { label: string; coalesceKey: string },
   ) => void;
-  applyCurrentStudioManualEditsToPreview: (iframe: HTMLIFrameElement | null) => void;
   applyCurrentStudioMotionToPreview: (iframe: HTMLIFrameElement | null) => void;
   writeProjectFile: (path: string, content: string) => Promise<void>;
   domEditSaveTimestampRef: React.MutableRefObject<number>;
@@ -69,7 +74,6 @@ export interface UseDomEditCommitsParams {
 
   // From useDomSelection
   domEditSelection: DomEditSelection | null;
-  domEditSelectionRef: React.MutableRefObject<DomEditSelection | null>;
   domEditGroupSelectionsRef: React.MutableRefObject<DomEditSelection[]>;
   applyDomSelection: (
     selection: DomEditSelection | null,
@@ -90,9 +94,8 @@ export function useDomEditCommits({
   activeCompPath,
   previewIframeRef,
   showToast,
-  commitStudioManualEditManifestOptimistically,
+  queueDomEditSave,
   commitStudioMotionManifestOptimistically,
-  applyCurrentStudioManualEditsToPreview,
   applyCurrentStudioMotionToPreview,
   writeProjectFile,
   domEditSaveTimestampRef,
@@ -211,45 +214,60 @@ export function useDomEditCommits({
     resolveImportedFontAsset,
   });
 
-  // ── Manifest commits ──
+  // ── Position patch helper ──
+
+  const commitPositionPatchToHtml = useCallback(
+    (
+      selection: DomEditSelection,
+      patches: Parameters<typeof applyPatchByTarget>[2][],
+      options: { label: string; coalesceKey: string; skipRefresh?: boolean },
+    ) => {
+      void queueDomEditSave(async () => {
+        await persistDomEditOperations(selection, patches, {
+          label: options.label,
+          coalesceKey: options.coalesceKey,
+          skipRefresh: options.skipRefresh ?? true,
+        });
+      }).catch((error) => {
+        const message = error instanceof Error ? error.message : "Failed to save position";
+        showToast(message);
+      });
+    },
+    [persistDomEditOperations, queueDomEditSave, showToast],
+  );
+
+  // ── Position commits ──
 
   const handleDomPathOffsetCommit = useCallback(
     (selection: DomEditSelection, next: { x: number; y: number }) => {
-      commitStudioManualEditManifestOptimistically(
-        (manifest) => upsertStudioPathOffsetEdit(manifest, selection, next),
-        {
-          label: "Move layer",
-          coalesceKey: `path-offset:${getDomEditTargetKey(selection)}`,
-        },
-      );
+      applyStudioPathOffset(selection.element, next);
+      commitPositionPatchToHtml(selection, buildPathOffsetPatches(selection.element), {
+        label: "Move layer",
+        coalesceKey: `path-offset:${getDomEditTargetKey(selection)}`,
+      });
       refreshDomEditSelectionFromPreview(selection);
     },
-    [commitStudioManualEditManifestOptimistically, refreshDomEditSelectionFromPreview],
+    [commitPositionPatchToHtml, refreshDomEditSelectionFromPreview],
   );
 
   const handleDomGroupPathOffsetCommit = useCallback(
     (updates: DomEditGroupPathOffsetCommit[]) => {
       if (updates.length === 0) return;
       const coalesceKey = updates
-        .map((update) => getDomEditTargetKey(update.selection))
+        .map((u) => getDomEditTargetKey(u.selection))
         .sort()
         .join(":");
-      commitStudioManualEditManifestOptimistically(
-        (manifest) =>
-          updates.reduce(
-            (nextManifest, update) =>
-              upsertStudioPathOffsetEdit(nextManifest, update.selection, update.next),
-            manifest,
-          ),
-        {
+      for (const { selection, next } of updates) {
+        applyStudioPathOffset(selection.element, next);
+        commitPositionPatchToHtml(selection, buildPathOffsetPatches(selection.element), {
           label: `Move ${updates.length} layers`,
           coalesceKey: `group-path-offset:${coalesceKey}`,
-        },
-      );
+        });
+      }
       refreshDomEditGroupSelectionsFromPreview(domEditGroupSelectionsRef.current);
     },
     [
-      commitStudioManualEditManifestOptimistically,
+      commitPositionPatchToHtml,
       domEditGroupSelectionsRef,
       refreshDomEditGroupSelectionsFromPreview,
     ],
@@ -257,51 +275,50 @@ export function useDomEditCommits({
 
   const handleDomBoxSizeCommit = useCallback(
     (selection: DomEditSelection, next: { width: number; height: number }) => {
-      commitStudioManualEditManifestOptimistically(
-        (manifest) => upsertStudioBoxSizeEdit(manifest, selection, next),
-        {
-          label: "Resize layer box",
-          coalesceKey: `box-size:${getDomEditTargetKey(selection)}`,
-        },
-      );
+      applyStudioBoxSize(selection.element, next);
+      commitPositionPatchToHtml(selection, buildBoxSizePatches(selection.element), {
+        label: "Resize layer box",
+        coalesceKey: `box-size:${getDomEditTargetKey(selection)}`,
+      });
       refreshDomEditSelectionFromPreview(selection);
     },
-    [commitStudioManualEditManifestOptimistically, refreshDomEditSelectionFromPreview],
+    [commitPositionPatchToHtml, refreshDomEditSelectionFromPreview],
   );
 
   const handleDomRotationCommit = useCallback(
     (selection: DomEditSelection, next: { angle: number }) => {
-      commitStudioManualEditManifestOptimistically(
-        (manifest) => upsertStudioRotationEdit(manifest, selection, next),
-        {
-          label: "Rotate layer",
-          coalesceKey: `rotation:${getDomEditTargetKey(selection)}`,
-        },
-      );
+      applyStudioRotation(selection.element, next);
+      commitPositionPatchToHtml(selection, buildRotationPatches(selection.element), {
+        label: "Rotate layer",
+        coalesceKey: `rotation:${getDomEditTargetKey(selection)}`,
+      });
       refreshDomEditSelectionFromPreview(selection);
     },
-    [commitStudioManualEditManifestOptimistically, refreshDomEditSelectionFromPreview],
+    [commitPositionPatchToHtml, refreshDomEditSelectionFromPreview],
   );
 
   const handleDomManualEditsReset = useCallback(
     (selection: DomEditSelection) => {
-      commitStudioManualEditManifestOptimistically(
-        (manifest) => removeStudioManualEditsForSelection(manifest, selection),
-        {
-          label: "Reset layer edits",
-          coalesceKey: `manual-reset:${getDomEditTargetKey(selection)}`,
-        },
-      );
-      applyCurrentStudioManualEditsToPreview(previewIframeRef.current);
+      const element = selection.element;
+      const clearPatches = [
+        ...buildClearPathOffsetPatches(element),
+        ...buildClearBoxSizePatches(element),
+        ...buildClearRotationPatches(element),
+      ];
+      clearStudioPathOffset(element);
+      clearStudioBoxSize(element);
+      clearStudioRotation(element);
+      commitPositionPatchToHtml(selection, clearPatches, {
+        label: "Reset layer edits",
+        coalesceKey: `manual-reset:${getDomEditTargetKey(selection)}`,
+        skipRefresh: false,
+      });
       refreshDomEditSelectionFromPreview(selection);
     },
-    [
-      applyCurrentStudioManualEditsToPreview,
-      commitStudioManualEditManifestOptimistically,
-      refreshDomEditSelectionFromPreview,
-      previewIframeRef,
-    ],
+    [commitPositionPatchToHtml, refreshDomEditSelectionFromPreview],
   );
+
+  // ── Motion commits ──
 
   const handleDomMotionCommit = useCallback(
     (

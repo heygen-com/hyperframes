@@ -2,7 +2,6 @@ import { useEffect } from "react";
 import type { TimelineElement } from "../player";
 import { STUDIO_INSPECTOR_PANELS_ENABLED } from "../components/editor/manualEditingAvailability";
 import { findElementForSelection } from "../components/editor/domEditing";
-import type { StudioManualEditManifest } from "../components/editor/manualEdits";
 import type { StudioMotionManifest } from "../components/editor/studioMotion";
 import type { ImportedFontAsset } from "../components/editor/fontAssets";
 import type { EditHistoryKind } from "../utils/editHistory";
@@ -36,15 +35,11 @@ export interface UseDomEditSessionParams {
   setRightPanelTab: (tab: RightPanelTab) => void;
   showToast: (message: string, tone?: "error" | "info") => void;
   refreshPreviewDocumentVersion: () => void;
-  commitStudioManualEditManifestOptimistically: (
-    updateManifest: (manifest: StudioManualEditManifest) => StudioManualEditManifest,
-    options: { label: string; coalesceKey: string },
-  ) => void;
+  queueDomEditSave: (save: () => Promise<void>) => Promise<void>;
   commitStudioMotionManifestOptimistically: (
     updateManifest: (manifest: StudioMotionManifest) => StudioMotionManifest,
     options: { label: string; coalesceKey: string },
   ) => void;
-  applyCurrentStudioManualEditsToPreview: (iframe: HTMLIFrameElement | null) => void;
   applyCurrentStudioMotionToPreview: (iframe: HTMLIFrameElement | null) => void;
   readProjectFile: (path: string) => Promise<string>;
   writeProjectFile: (path: string, content: string) => Promise<void>;
@@ -66,8 +61,6 @@ export interface UseDomEditSessionParams {
   syncPreviewHistoryHotkey: (iframe: HTMLIFrameElement | null) => void;
   reloadPreview: () => void;
   setRefreshKey: React.Dispatch<React.SetStateAction<number>>;
-  manualEditsEnabled: boolean;
-  setManualEditsEnabled: (enabled: boolean) => void;
 }
 
 // ── Hook ──
@@ -87,9 +80,8 @@ export function useDomEditSession({
   setRightPanelTab,
   showToast,
   refreshPreviewDocumentVersion,
-  commitStudioManualEditManifestOptimistically,
+  queueDomEditSave,
   commitStudioMotionManifestOptimistically,
-  applyCurrentStudioManualEditsToPreview,
   applyCurrentStudioMotionToPreview,
   readProjectFile: _readProjectFile,
   writeProjectFile,
@@ -107,8 +99,6 @@ export function useDomEditSession({
   syncPreviewHistoryHotkey,
   reloadPreview,
   setRefreshKey: _setRefreshKey,
-  manualEditsEnabled,
-  setManualEditsEnabled,
 }: UseDomEditSessionParams) {
   void _setRefreshKey;
   // ── Selection (delegated to useDomSelection) ──
@@ -180,7 +170,6 @@ export function useDomEditSession({
     captionEditMode,
     compositionLoading,
     previewIframeRef,
-    activeCompPath,
     showToast,
     applyDomSelection,
     resolveDomSelectionFromPreviewPoint,
@@ -212,9 +201,8 @@ export function useDomEditSession({
     activeCompPath,
     previewIframeRef,
     showToast,
-    commitStudioManualEditManifestOptimistically,
+    queueDomEditSave,
     commitStudioMotionManifestOptimistically,
-    applyCurrentStudioManualEditsToPreview,
     applyCurrentStudioMotionToPreview,
     writeProjectFile,
     domEditSaveTimestampRef,
@@ -225,7 +213,6 @@ export function useDomEditSession({
     projectIdRef,
     reloadPreview,
     domEditSelection,
-    domEditSelectionRef,
     domEditGroupSelectionsRef,
     applyDomSelection,
     clearDomSelection,
@@ -344,7 +331,5 @@ export function useDomEditSession({
     setAgentModalOpen,
     setAgentPromptSelectionContext,
     setAgentModalAnchorPoint,
-    manualEditsEnabled,
-    setManualEditsEnabled,
   };
 }

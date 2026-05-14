@@ -113,6 +113,7 @@ describe("DomEditOverlay", () => {
       capabilities: {
         canEditText: true,
         canEditLayout: true,
+        canMove: true,
         canApplyManualOffset: true,
         canApplyManualSize: false,
         canApplyManualRotation: false,

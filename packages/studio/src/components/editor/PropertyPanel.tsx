@@ -53,8 +53,6 @@ interface PropertyPanelProps {
   onImportFonts?: (files: FileList | File[]) => Promise<ImportedFontAsset[]>;
   activeCompositionPath?: string | null;
   onSelectLayer?: (layer: DomEditLayerItem) => void;
-  manualEditsEnabled?: boolean;
-  onSetManualEditsEnabled?: (enabled: boolean) => void;
 }
 
 /* ------------------------------------------------------------------ */
@@ -118,42 +116,6 @@ function LayerTree({
 }
 
 /* ------------------------------------------------------------------ */
-/*  ManualPositioningToggle                                            */
-/* ------------------------------------------------------------------ */
-
-function ManualPositioningToggle({
-  enabled,
-  onToggle,
-}: {
-  enabled: boolean;
-  onToggle: (enabled: boolean) => void;
-}) {
-  return (
-    <div className="flex-shrink-0 border-t border-neutral-800 px-4 py-3">
-      <div className="flex items-center justify-between">
-        <span className="text-[11px] text-neutral-400">Manual positioning</span>
-        <button
-          type="button"
-          role="switch"
-          aria-checked={enabled}
-          onClick={() => onToggle(!enabled)}
-          title={enabled ? "Disable drag-to-reposition" : "Enable drag-to-reposition"}
-          className={`relative inline-flex h-5 w-9 flex-shrink-0 rounded-full transition-colors focus-visible:outline-none ${
-            enabled ? "bg-studio-accent" : "bg-neutral-700"
-          }`}
-        >
-          <span
-            className={`pointer-events-none mt-0.5 inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform ${
-              enabled ? "translate-x-[18px]" : "translate-x-[2px]"
-            }`}
-          />
-        </button>
-      </div>
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
 /*  PropertyPanel                                                      */
 /* ------------------------------------------------------------------ */
 
@@ -179,8 +141,6 @@ export const PropertyPanel = memo(function PropertyPanel({
   onImportFonts,
   activeCompositionPath = null,
   onSelectLayer,
-  manualEditsEnabled = true,
-  onSetManualEditsEnabled,
 }: PropertyPanelProps) {
   const styles = element?.computedStyles ?? EMPTY_STYLES;
 
@@ -212,21 +172,12 @@ export const PropertyPanel = memo(function PropertyPanel({
             </>
           )}
         </div>
-        {onSetManualEditsEnabled && (
-          <ManualPositioningToggle
-            enabled={manualEditsEnabled}
-            onToggle={onSetManualEditsEnabled}
-          />
-        )}
       </div>
     );
   }
 
-  const needsToggleForElement = !element.capabilities.canMove && !manualEditsEnabled;
-  const manualOffsetEditingDisabled =
-    !element.capabilities.canApplyManualOffset || needsToggleForElement;
-  const manualSizeEditingDisabled =
-    !element.capabilities.canApplyManualSize || needsToggleForElement;
+  const manualOffsetEditingDisabled = !element.capabilities.canApplyManualOffset;
+  const manualSizeEditingDisabled = !element.capabilities.canApplyManualSize;
   const sourceLabel = element.id ? `#${element.id}` : element.selector;
   const showEditableSections = element.capabilities.canEditStyles;
   const manualOffset = readStudioPathOffset(element.element);
@@ -369,7 +320,6 @@ export const PropertyPanel = memo(function PropertyPanel({
             <MetricField
               label="R"
               value={`${manualRotation.angle}°`}
-              disabled={needsToggleForElement}
               onCommit={(next) => commitManualRotation(next.replace("°", ""))}
             />
           </div>
@@ -394,9 +344,6 @@ export const PropertyPanel = memo(function PropertyPanel({
           />
         )}
       </div>
-      {onSetManualEditsEnabled && (
-        <ManualPositioningToggle enabled={manualEditsEnabled} onToggle={onSetManualEditsEnabled} />
-      )}
     </div>
   );
 });

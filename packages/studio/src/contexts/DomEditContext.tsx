@@ -51,8 +51,6 @@ export function DomEditProvider({
     setAgentModalOpen,
     setAgentPromptSelectionContext,
     setAgentModalAnchorPoint,
-    manualEditsEnabled,
-    setManualEditsEnabled,
   },
   children,
 }: {
@@ -99,8 +97,6 @@ export function DomEditProvider({
       setAgentModalOpen,
       setAgentPromptSelectionContext,
       setAgentModalAnchorPoint,
-      manualEditsEnabled,
-      setManualEditsEnabled,
     }),
     [
       domEditSelection,
@@ -141,8 +137,6 @@ export function DomEditProvider({
       setAgentModalOpen,
       setAgentPromptSelectionContext,
       setAgentModalAnchorPoint,
-      manualEditsEnabled,
-      setManualEditsEnabled,
     ],
   );
   return <DomEditContext value={stable}>{children}</DomEditContext>;

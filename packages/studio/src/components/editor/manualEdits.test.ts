@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
 import { Window } from "happy-dom";
-import type { DomEditSelection } from "./domEditing";
 import {
   STUDIO_OFFSET_X_PROP,
   STUDIO_OFFSET_Y_PROP,
@@ -8,7 +7,6 @@ import {
   STUDIO_WIDTH_PROP,
   applyStudioBoxSize,
   applyStudioBoxSizeDraft,
-  applyStudioManualEditManifest,
   applyStudioPathOffset,
   applyStudioPathOffsetDraft,
   applyStudioRotation,
@@ -16,58 +14,23 @@ import {
   beginStudioManualEditGesture,
   captureStudioBoxSize,
   captureStudioRotation,
-  emptyStudioManualEditManifest,
+  clearStudioBoxSize,
+  clearStudioPathOffset,
+  clearStudioRotation,
   endStudioManualEditGesture,
   installStudioManualEditSeekReapply,
-  isStudioManualEditManifestPath,
-  parseStudioManualEditManifest,
-  readStudioFileChangePath,
   readStudioBoxSize,
+  readStudioFileChangePath,
   readStudioPathOffset,
   readStudioRotation,
-  removeStudioManualEditsForSelection,
   restoreStudioBoxSize,
   restoreStudioRotation,
-  serializeStudioManualEditManifest,
-  upsertStudioBoxSizeEdit,
-  upsertStudioPathOffsetEdit,
-  upsertStudioRotationEdit,
 } from "./manualEdits";
 
 function createDocument(markup: string): Document {
   const window = new Window();
   window.document.body.innerHTML = markup;
   return window.document;
-}
-
-function createSelection(): DomEditSelection {
-  return {
-    element: {} as HTMLElement,
-    id: "card",
-    selector: "#card",
-    selectorIndex: undefined,
-    sourceFile: "index.html",
-    compositionPath: "index.html",
-    compositionSrc: undefined,
-    isCompositionHost: false,
-    label: "Card",
-    tagName: "div",
-    boundingBox: { x: 0, y: 0, width: 100, height: 100 },
-    textContent: null,
-    dataAttributes: {},
-    inlineStyles: {},
-    computedStyles: {},
-    textFields: [],
-    capabilities: {
-      canSelect: true,
-      canEditStyles: true,
-      canMove: false,
-      canResize: false,
-      canApplyManualOffset: true,
-      canApplyManualSize: true,
-      canApplyManualRotation: true,
-    },
-  };
 }
 
 function mockBoundingRect(element: HTMLElement, width: number, height: number): void {
@@ -95,149 +58,13 @@ function mockComputedStyle(element: HTMLElement, values: Record<string, string>)
 }
 
 describe("studio manual edits", () => {
-  it("upserts path offsets by stable target", () => {
-    const manifest = upsertStudioPathOffsetEdit(
-      emptyStudioManualEditManifest(),
-      createSelection(),
-      {
-        x: 12.4,
-        y: 30.6,
-      },
-    );
-    const updated = upsertStudioPathOffsetEdit(manifest, createSelection(), {
-      x: 20,
-      y: 42,
-    });
-
-    expect(updated.edits).toHaveLength(1);
-    expect(updated.edits[0]).toMatchObject({
-      kind: "path-offset",
-      target: { sourceFile: "index.html", selector: "#card", id: "card" },
-      x: 20,
-      y: 42,
-    });
-  });
-
-  it("upserts box sizes without replacing path offsets for the same target", () => {
-    const selection = createSelection();
-    const manifest = upsertStudioPathOffsetEdit(emptyStudioManualEditManifest(), selection, {
-      x: 12,
-      y: 30,
-    });
-    const updated = upsertStudioBoxSizeEdit(manifest, selection, {
-      width: 240.4,
-      height: 120.6,
-    });
-    const resized = upsertStudioBoxSizeEdit(updated, selection, {
-      width: 260,
-      height: 140,
-    });
-
-    expect(resized.edits).toHaveLength(2);
-    expect(resized.edits).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ kind: "path-offset", x: 12, y: 30 }),
-        expect.objectContaining({ kind: "box-size", width: 260, height: 140 }),
-      ]),
-    );
-  });
-
-  it("upserts rotations without replacing other manual edits for the same target", () => {
-    const selection = createSelection();
-    const manifest = upsertStudioPathOffsetEdit(emptyStudioManualEditManifest(), selection, {
-      x: 12,
-      y: 30,
-    });
-    const resized = upsertStudioBoxSizeEdit(manifest, selection, {
-      width: 240,
-      height: 120,
-    });
-    const rotated = upsertStudioRotationEdit(resized, selection, { angle: 32.34 });
-    const updated = upsertStudioRotationEdit(rotated, selection, { angle: -14.96 });
-
-    expect(updated.edits).toHaveLength(3);
-    expect(updated.edits).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ kind: "path-offset", x: 12, y: 30 }),
-        expect.objectContaining({ kind: "box-size", width: 240, height: 120 }),
-        expect.objectContaining({ kind: "rotation", angle: -15 }),
-      ]),
-    );
-  });
-
-  it("removes all manual edits for the selected target", () => {
-    const selection = createSelection();
-    const otherSelection = {
-      ...createSelection(),
-      id: "other-card",
-      selector: "#other-card",
-      label: "Other card",
-    };
-    const moved = upsertStudioPathOffsetEdit(emptyStudioManualEditManifest(), selection, {
-      x: 12,
-      y: 30,
-    });
-    const resized = upsertStudioBoxSizeEdit(moved, selection, {
-      width: 240,
-      height: 120,
-    });
-    const rotated = upsertStudioRotationEdit(resized, selection, { angle: 32 });
-    const manifest = upsertStudioPathOffsetEdit(rotated, otherSelection, { x: 4, y: 8 });
-
-    const updated = removeStudioManualEditsForSelection(manifest, selection);
-
-    expect(updated.edits).toHaveLength(1);
-    expect(updated.edits[0]).toMatchObject({
-      kind: "path-offset",
-      target: { id: "other-card", selector: "#other-card" },
-      x: 4,
-      y: 8,
-    });
-  });
-
-  it("round-trips valid manifest entries and drops invalid entries", () => {
-    const content = serializeStudioManualEditManifest({
-      version: 1,
-      edits: [
-        {
-          kind: "path-offset",
-          target: { sourceFile: "index.html", selector: "#card", id: "card" },
-          x: 10,
-          y: 20,
-        },
-        {
-          kind: "box-size",
-          target: { sourceFile: "index.html", selector: "#card", id: "card" },
-          width: 320,
-          height: 180,
-        },
-        {
-          kind: "rotation",
-          target: { sourceFile: "index.html", selector: "#card", id: "card" },
-          angle: 22.5,
-        },
-      ],
-    });
-
-    expect(parseStudioManualEditManifest(content).edits).toHaveLength(3);
-    expect(parseStudioManualEditManifest('{ "edits": [{ "kind": "path-offset" }] }').edits).toEqual(
-      [],
-    );
-  });
-
-  it("recognizes manual edit manifest file-change payloads", () => {
+  it("recognizes studio file-change payloads", () => {
     expect(readStudioFileChangePath({ path: ".hyperframes/studio-manual-edits.json" })).toBe(
       ".hyperframes/studio-manual-edits.json",
     );
     expect(readStudioFileChangePath({ data: '{"path":"nested/file.html"}' })).toBe(
       "nested/file.html",
     );
-    expect(
-      isStudioManualEditManifestPath(
-        "/Users/example/project/.hyperframes/studio-manual-edits.json",
-      ),
-    ).toBe(true);
-    expect(isStudioManualEditManifestPath("index.html")).toBe(false);
   });
 
   it("applies offsets through CSS translate longhand", () => {
@@ -293,9 +120,8 @@ describe("studio manual edits", () => {
     applyStudioPathOffset(card, { x: 14, y: -8 });
     applyStudioRotation(card, { angle: 12 });
 
-    expect(
-      applyStudioManualEditManifest(document, emptyStudioManualEditManifest(), "index.html"),
-    ).toBe(0);
+    clearStudioPathOffset(card);
+    clearStudioRotation(card);
 
     expect(card.style.getPropertyValue("translate")).toBe("");
     expect(card.style.getPropertyValue("rotate")).toBe("");
@@ -381,54 +207,6 @@ describe("studio manual edits", () => {
     expect(readStudioRotation(card)).toEqual({ angle: -12.3 });
     expect(card.style.getPropertyValue("rotate")).toBe("calc(8deg + -12.3deg)");
     expect(card.style.getPropertyValue("transform-origin")).toBe("center center");
-  });
-
-  it("does not recapture a studio rotation draft as the authored base", () => {
-    const document = createDocument(`<div id="card" style="rotate: 8deg"></div>`);
-    const card = document.getElementById("card") as HTMLElement;
-    const manifest = parseStudioManualEditManifest(`{
-      "version": 1,
-      "edits": [
-        {
-          "kind": "rotation",
-          "target": { "sourceFile": "index.html", "selector": "#card", "id": "card" },
-          "angle": 35
-        }
-      ]
-    }`);
-
-    applyStudioRotation(card, { angle: 12 });
-    applyStudioRotationDraft(card, { angle: 35 });
-    expect(card.style.getPropertyValue("rotate")).toBe("calc(8deg + 35deg)");
-
-    expect(applyStudioManualEditManifest(document, manifest, "index.html")).toBe(1);
-
-    expect(card.style.getPropertyValue("rotate")).toBe(
-      `calc(8deg + var(${STUDIO_ROTATION_PROP}, 0deg))`,
-    );
-  });
-
-  it("does not treat a base-free studio rotation draft as authored rotation", () => {
-    const document = createDocument(`<div id="card"></div>`);
-    const card = document.getElementById("card") as HTMLElement;
-    const manifest = parseStudioManualEditManifest(`{
-      "version": 1,
-      "edits": [
-        {
-          "kind": "rotation",
-          "target": { "sourceFile": "index.html", "selector": "#card", "id": "card" },
-          "angle": 35
-        }
-      ]
-    }`);
-
-    applyStudioRotation(card, { angle: 12 });
-    applyStudioRotationDraft(card, { angle: 35 });
-    expect(card.style.getPropertyValue("rotate")).toBe("35deg");
-
-    expect(applyStudioManualEditManifest(document, manifest, "index.html")).toBe(1);
-
-    expect(card.style.getPropertyValue("rotate")).toBe(`var(${STUDIO_ROTATION_PROP}, 0deg)`);
   });
 
   it("uses height for flex-basis inside column flex containers", () => {
@@ -523,9 +301,7 @@ describe("studio manual edits", () => {
     expect(tween._startAt.vars).toEqual({ x: -240, y: -20 });
     expect(card.style.getPropertyValue("translate")).toContain(STUDIO_OFFSET_X_PROP);
 
-    expect(
-      applyStudioManualEditManifest(document, emptyStudioManualEditManifest(), "index.html"),
-    ).toBe(0);
+    clearStudioPathOffset(card);
     expect(tween.vars).toMatchObject({
       x: 0,
       y: 10,
@@ -537,197 +313,48 @@ describe("studio manual edits", () => {
     expect(card.style.getPropertyValue("translate")).toBe("");
   });
 
-  it("applies manifest offsets to matching preview elements", () => {
+  it("clears path offsets and restores authored inline translate", () => {
+    const document = createDocument(`<div id="card" style="translate: 10px 20px"></div>`);
+    const card = document.getElementById("card") as HTMLElement;
+
+    applyStudioPathOffset(card, { x: 24, y: 12 });
+    expect(card.style.getPropertyValue("translate")).toContain(STUDIO_OFFSET_X_PROP);
+
+    clearStudioPathOffset(card);
+
+    expect(card.style.getPropertyValue("translate")).toBe("10px 20px");
+  });
+
+  it("clears stale offsets applied directly to the DOM", () => {
     const document = createDocument(`<div id="card"></div>`);
-    const manifest = parseStudioManualEditManifest(`{
-      "version": 1,
-      "edits": [
-        {
-          "kind": "path-offset",
-          "target": { "sourceFile": "index.html", "selector": "#card", "id": "card" },
-          "x": 32,
-          "y": 18
-        }
-      ]
-    }`);
+    const card = document.getElementById("card") as HTMLElement;
 
-    expect(applyStudioManualEditManifest(document, manifest, "index.html")).toBe(1);
-    expect(readStudioPathOffset(document.getElementById("card") as HTMLElement)).toEqual({
-      x: 32,
-      y: 18,
-    });
+    applyStudioPathOffset(card, { x: 24, y: 12 });
+    expect(readStudioPathOffset(card)).toEqual({ x: 24, y: 12 });
+
+    clearStudioPathOffset(card);
+
+    expect(readStudioPathOffset(card)).toEqual({ x: 0, y: 0 });
+    expect(card.style.getPropertyValue(STUDIO_OFFSET_X_PROP)).toBe("");
+    expect(card.style.getPropertyValue(STUDIO_OFFSET_Y_PROP)).toBe("");
+    expect(card.style.getPropertyValue("translate")).toBe("");
   });
 
-  it("resolves manifest targets within the matching source file", () => {
-    const document = createDocument(`
-      <div data-composition-id="root">
-        <div id="card" class="tile"></div>
-        <div data-composition-id="nested" data-composition-file="scenes/nested.html">
-          <div id="card" class="tile"></div>
-          <div class="tile"></div>
-        </div>
-      </div>
-    `);
-    const htmlElement = document.defaultView?.HTMLElement;
-    if (!htmlElement) throw new Error("HTMLElement fixture missing");
-    const cards = Array.from(document.getElementsByTagName("*")).filter(
-      (element): element is HTMLElement => element instanceof htmlElement && element.id === "card",
-    );
-    const rootCard = cards[0];
-    const nestedCard = cards[1];
-    const tiles = Array.from(document.getElementsByTagName("*")).filter(
-      (element): element is HTMLElement =>
-        element instanceof htmlElement && element.classList.contains("tile"),
-    );
-    const nestedSecondTile = tiles[2];
-    if (!rootCard || !nestedCard || !nestedSecondTile) {
-      throw new Error("source-scoped fixture missing");
-    }
-
-    const manifest = parseStudioManualEditManifest(`{
-      "version": 1,
-      "edits": [
-        {
-          "kind": "path-offset",
-          "target": {
-            "sourceFile": "scenes/nested.html",
-            "selector": "#card",
-            "id": "card"
-          },
-          "x": 48,
-          "y": 16
-        },
-        {
-          "kind": "box-size",
-          "target": {
-            "sourceFile": "scenes/nested.html",
-            "selector": ".tile",
-            "selectorIndex": 1
-          },
-          "width": 220,
-          "height": 80
-        }
-      ]
-    }`);
-
-    expect(applyStudioManualEditManifest(document, manifest, "index.html")).toBe(2);
-    expect(readStudioPathOffset(rootCard)).toEqual({ x: 0, y: 0 });
-    expect(readStudioPathOffset(nestedCard)).toEqual({ x: 48, y: 16 });
-    expect(readStudioBoxSize(nestedSecondTile)).toEqual({ width: 220, height: 80 });
-  });
-
-  it("resolves manifest targets inside composition-file hosts without composition ids", () => {
-    const document = createDocument(`
-      <div data-composition-id="root">
-        <div id="card"></div>
-        <div data-composition-file="scenes/anonymous.html">
-          <div id="card"></div>
-        </div>
-      </div>
-    `);
-    const htmlElement = document.defaultView?.HTMLElement;
-    if (!htmlElement) throw new Error("HTMLElement fixture missing");
-    const cards = Array.from(document.getElementsByTagName("*")).filter(
-      (element): element is HTMLElement => element instanceof htmlElement && element.id === "card",
-    );
-    const rootCard = cards[0];
-    const nestedCard = cards[1];
-    if (!rootCard || !nestedCard) {
-      throw new Error("anonymous composition fixture missing");
-    }
-
-    const manifest = parseStudioManualEditManifest(`{
-      "version": 1,
-      "edits": [
-        {
-          "kind": "path-offset",
-          "target": {
-            "sourceFile": "scenes/anonymous.html",
-            "selector": "#card",
-            "id": "card"
-          },
-          "x": 24,
-          "y": 12
-        }
-      ]
-    }`);
-
-    expect(applyStudioManualEditManifest(document, manifest, "index.html")).toBe(1);
-    expect(readStudioPathOffset(rootCard)).toEqual({ x: 0, y: 0 });
-    expect(readStudioPathOffset(nestedCard)).toEqual({ x: 24, y: 12 });
-  });
-
-  it("applies nested source edits while previewing a non-index parent composition", () => {
-    const document = createDocument(`
-      <div data-composition-id="parent">
-        <div id="parent-card"></div>
-        <div data-composition-file="scenes/child.html">
-          <div id="child-card"></div>
-        </div>
-      </div>
-    `);
-    const parentCard = document.getElementById("parent-card") as HTMLElement;
-    const childCard = document.getElementById("child-card") as HTMLElement;
-    const manifest = parseStudioManualEditManifest(`{
-      "version": 1,
-      "edits": [
-        {
-          "kind": "path-offset",
-          "target": {
-            "sourceFile": "scenes/parent.html",
-            "selector": "#parent-card",
-            "id": "parent-card"
-          },
-          "x": 12,
-          "y": 8
-        },
-        {
-          "kind": "path-offset",
-          "target": {
-            "sourceFile": "scenes/child.html",
-            "selector": "#child-card",
-            "id": "child-card"
-          },
-          "x": 36,
-          "y": 18
-        }
-      ]
-    }`);
-
-    expect(applyStudioManualEditManifest(document, manifest, "scenes/parent.html")).toBe(2);
-    expect(readStudioPathOffset(parentCard)).toEqual({ x: 12, y: 8 });
-    expect(readStudioPathOffset(childCard)).toEqual({ x: 36, y: 18 });
-  });
-
-  it("applies and clears manifest box sizes while restoring authored inline size", () => {
+  it("clears box sizes and restores authored inline size", () => {
     const document = createDocument(`
       <div style="display: flex; flex-direction: row">
         <div id="card" style="width: 160px; height: 90px"></div>
       </div>
     `);
-    const manifest = parseStudioManualEditManifest(`{
-      "version": 1,
-      "edits": [
-        {
-          "kind": "box-size",
-          "target": { "sourceFile": "index.html", "selector": "#card", "id": "card" },
-          "width": 320,
-          "height": 180
-        }
-      ]
-    }`);
     const card = document.getElementById("card") as HTMLElement;
     mockBoundingRect(card, 160, 90);
 
-    expect(applyStudioManualEditManifest(document, manifest, "index.html")).toBe(1);
+    applyStudioBoxSize(card, { width: 320, height: 180 });
     expect(readStudioBoxSize(card)).toEqual({ width: 320, height: 180 });
     expect(card.style.getPropertyValue("width")).toBe("320px");
-    expect(card.style.getPropertyValue("height")).toBe("180px");
     expect(card.style.getPropertyValue("flex-basis")).toBe("320px");
 
-    expect(
-      applyStudioManualEditManifest(document, emptyStudioManualEditManifest(), "index.html"),
-    ).toBe(0);
+    clearStudioBoxSize(card);
     expect(readStudioBoxSize(card)).toEqual({ width: 0, height: 0 });
     expect(card.style.getPropertyValue("width")).toBe("160px");
     expect(card.style.getPropertyValue("height")).toBe("90px");
@@ -737,93 +364,39 @@ describe("studio manual edits", () => {
     expect(card.style.getPropertyValue("scale")).toBe("");
   });
 
-  it("applies and clears manifest rotations while restoring authored inline rotation", () => {
+  it("clears rotations and restores authored inline rotation", () => {
     const document = createDocument(
       `<div id="card" style="rotate: 8deg; transform-origin: left top"></div>`,
     );
-    const manifest = parseStudioManualEditManifest(`{
-      "version": 1,
-      "edits": [
-        {
-          "kind": "rotation",
-          "target": { "sourceFile": "index.html", "selector": "#card", "id": "card" },
-          "angle": 37.5
-        }
-      ]
-    }`);
     const card = document.getElementById("card") as HTMLElement;
 
-    expect(applyStudioManualEditManifest(document, manifest, "index.html")).toBe(1);
+    applyStudioRotation(card, { angle: 37.5 });
     expect(readStudioRotation(card)).toEqual({ angle: 37.5 });
     expect(card.style.getPropertyValue("rotate")).toContain(STUDIO_ROTATION_PROP);
     expect(card.style.getPropertyValue("rotate")).toContain("8deg");
     expect(card.style.getPropertyValue("transform-origin")).toBe("center center");
 
-    expect(
-      applyStudioManualEditManifest(document, emptyStudioManualEditManifest(), "index.html"),
-    ).toBe(0);
+    clearStudioRotation(card);
     expect(readStudioRotation(card)).toEqual({ angle: 0 });
     expect(card.style.getPropertyValue("rotate")).toBe("8deg");
     expect(card.style.getPropertyValue("transform-origin")).toBe("left top");
   });
 
-  it("clears stale preview offsets that are no longer in the manifest", () => {
+  it("does not replay a gesture-guarded offset during active gesture", () => {
     const document = createDocument(`<div id="card"></div>`);
     const card = document.getElementById("card") as HTMLElement;
-
-    applyStudioPathOffset(card, { x: 24, y: 12 });
-    expect(readStudioPathOffset(card)).toEqual({ x: 24, y: 12 });
-
-    expect(
-      applyStudioManualEditManifest(document, emptyStudioManualEditManifest(), "index.html"),
-    ).toBe(0);
-
-    expect(readStudioPathOffset(card)).toEqual({ x: 0, y: 0 });
-    expect(card.style.getPropertyValue(STUDIO_OFFSET_X_PROP)).toBe("");
-    expect(card.style.getPropertyValue(STUDIO_OFFSET_Y_PROP)).toBe("");
-    expect(card.style.getPropertyValue("translate")).toBe("");
-  });
-
-  it("restores authored inline translate when clearing offsets", () => {
-    const document = createDocument(`<div id="card" style="translate: 10px 20px"></div>`);
-    const card = document.getElementById("card") as HTMLElement;
-
-    applyStudioPathOffset(card, { x: 24, y: 12 });
-    expect(card.style.getPropertyValue("translate")).toContain(STUDIO_OFFSET_X_PROP);
-
-    expect(
-      applyStudioManualEditManifest(document, emptyStudioManualEditManifest(), "index.html"),
-    ).toBe(0);
-
-    expect(card.style.getPropertyValue("translate")).toBe("10px 20px");
-  });
-
-  it("does not replay the manifest over an active manual edit gesture", () => {
-    const document = createDocument(`<div id="card"></div>`);
-    const card = document.getElementById("card") as HTMLElement;
-    const manifest = parseStudioManualEditManifest(`{
-      "version": 1,
-      "edits": [
-        {
-          "kind": "path-offset",
-          "target": { "sourceFile": "index.html", "selector": "#card", "id": "card" },
-          "x": 8,
-          "y": 4
-        }
-      ]
-    }`);
 
     applyStudioPathOffset(card, { x: 40, y: 24 });
     const firstToken = beginStudioManualEditGesture(card);
     const secondToken = beginStudioManualEditGesture(card);
     endStudioManualEditGesture(card, firstToken);
 
-    expect(applyStudioManualEditManifest(document, manifest, "index.html")).toBe(0);
+    // Gesture still active — offset should remain
     expect(readStudioPathOffset(card)).toEqual({ x: 40, y: 24 });
 
     endStudioManualEditGesture(card, secondToken);
-    expect(applyStudioManualEditManifest(document, manifest, "index.html")).toBe(1);
-    expect(readStudioPathOffset(card)).toEqual({ x: 8, y: 4 });
+    // After gesture ends, offset remains (we don't auto-clear in this path)
+    expect(readStudioPathOffset(card)).toEqual({ x: 40, y: 24 });
   });
 
   it("reapplies the latest preview manifest after wrapped seeks", () => {

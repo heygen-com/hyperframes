@@ -3,7 +3,6 @@ import { usePlayerStore } from "../player";
 import type { TimelineElement } from "../player";
 import type { DomEditSelection } from "../components/editor/domEditing";
 import type { LeftSidebarHandle } from "../components/sidebar/LeftSidebar";
-import { STUDIO_MANUAL_EDITS_PATH } from "../components/editor/manualEdits";
 import { STUDIO_MOTION_PATH } from "../components/editor/studioMotion";
 import { shouldHandleTimelineToggleHotkey, isEditableTarget } from "../utils/timelineDiscovery";
 import { shouldIgnoreHistoryShortcut } from "../utils/studioHelpers";
@@ -85,9 +84,7 @@ export function useAppHotkeys({
 
   const readHistoryProjectFile = useCallback(
     async (path: string): Promise<string> => {
-      return path === STUDIO_MANUAL_EDITS_PATH || path === STUDIO_MOTION_PATH
-        ? readOptionalProjectFile(path)
-        : readProjectFile(path);
+      return path === STUDIO_MOTION_PATH ? readOptionalProjectFile(path) : readProjectFile(path);
     },
     [readOptionalProjectFile, readProjectFile],
   );

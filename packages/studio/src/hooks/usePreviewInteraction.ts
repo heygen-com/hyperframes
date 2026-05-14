@@ -18,7 +18,6 @@ export interface UsePreviewInteractionParams {
   captionEditMode: boolean;
   compositionLoading: boolean;
   previewIframeRef: React.MutableRefObject<HTMLIFrameElement | null>;
-  activeCompPath: string | null;
   showToast: (message: string, tone?: "error" | "info") => void;
 
   // From useDomSelection
@@ -124,10 +123,6 @@ export function usePreviewInteraction({
 
   const handleBlockedDomMove = useCallback(
     (selection: DomEditSelection) => {
-      if (selection.capabilities.canApplyManualOffset && !selection.capabilities.canMove) {
-        showToast("Enable 'Manual positioning' in the Design panel to move this element.", "info");
-        return;
-      }
       showToast(
         selection.capabilities.reasonIfDisabled ??
           "This element can't be adjusted directly from the preview.",

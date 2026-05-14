@@ -1,15 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useMountEffect } from "./useMountEffect";
 import {
-  STUDIO_MANUAL_EDITS_PATH,
-  applyStudioManualEditManifest,
-  emptyStudioManualEditManifest,
   installStudioManualEditSeekReapply,
-  isStudioManualEditManifestPath,
-  parseStudioManualEditManifest,
+  reapplyPositionEditsAfterSeek,
   readStudioFileChangePath,
-  serializeStudioManualEditManifest,
-  type StudioManualEditManifest,
 } from "../components/editor/manualEdits";
 import {
   STUDIO_MOTION_PATH,
@@ -48,22 +42,19 @@ interface UseManifestPersistenceParams {
 export function useManifestPersistence({
   projectId,
   showToast,
-  readOptionalProjectFile,
+  readOptionalProjectFile: _readOptionalProjectFile,
   writeProjectFile,
   recordEdit,
   previewIframeRef,
   activeCompPathRef,
 }: UseManifestPersistenceParams) {
+  void _readOptionalProjectFile;
+
   const [, setStudioMotionRevision] = useState(0);
-  const [manualEditsEnabled, setManualEditsEnabledState] = useState(false);
 
   const domEditSaveTimestampRef = useRef(0);
   const domTextCommitVersionRef = useRef(0);
   const domEditSaveQueueRef = useRef(Promise.resolve());
-  const studioManualEditManifestRef = useRef<StudioManualEditManifest>(
-    emptyStudioManualEditManifest(),
-  );
-  const studioManualEditRevisionRef = useRef(0);
   const studioMotionManifestRef = useRef<StudioMotionManifest>(emptyStudioMotionManifest());
   const studioMotionRevisionRef = useRef(0);
   const applyStudioManualEditsToPreviewRef = useRef<
@@ -78,9 +69,7 @@ export function useManifestPersistence({
       options?: { forceFromDisk?: boolean; readFromDiskFirst?: boolean },
     ) => Promise<void>
   >(async () => {});
-  const manifestBootstrappedRef = useRef(false);
   const motionBootstrappedRef = useRef(false);
-  const studioManualEditProjectRef = useRef<string | null>(projectId);
 
   // Keep a ref to the latest projectId so async save callbacks always read the
   // current value, even when the callback was captured in a stale closure.
@@ -102,7 +91,7 @@ export function useManifestPersistence({
     await domEditSaveQueueRef.current.catch(() => undefined);
   }, []);
 
-  // ── Apply manual edits ──
+  // ── Apply manual edits (HTML-baked — just install seek hooks) ──
 
   const applyCurrentStudioManualEditsToPreview = useCallback(
     (iframe: HTMLIFrameElement | null = previewIframeRef.current) => {
@@ -114,70 +103,38 @@ export function useManifestPersistence({
         return;
       }
       if (!doc) return;
-      const previewDoc = doc;
 
-      const applyManifest = () => {
-        applyStudioManualEditManifest(
-          previewDoc,
-          studioManualEditManifestRef.current,
-          activeCompPathRef.current,
-        );
-      };
-      const applyAndInstallSeekHooks = () => {
-        applyManifest();
-        if (iframe.contentWindow) {
-          installStudioManualEditSeekReapply(iframe.contentWindow, applyManifest);
+      const reapply = () => {
+        let d: Document | null = null;
+        try {
+          d = iframe.contentDocument;
+        } catch {
+          return;
         }
+        if (d) reapplyPositionEditsAfterSeek(d);
+      };
+      const install = () => {
+        reapply();
+        if (iframe.contentWindow) installStudioManualEditSeekReapply(iframe.contentWindow, reapply);
       };
 
       const win = iframe.contentWindow;
-      applyAndInstallSeekHooks();
-      win?.requestAnimationFrame?.(applyAndInstallSeekHooks);
-      win?.setTimeout?.(applyAndInstallSeekHooks, 80);
-      win?.setTimeout?.(applyAndInstallSeekHooks, 250);
-      win?.setTimeout?.(applyAndInstallSeekHooks, 500);
-      win?.setTimeout?.(applyAndInstallSeekHooks, 1000);
-      win?.setTimeout?.(applyAndInstallSeekHooks, 2000);
+      install();
+      win?.requestAnimationFrame?.(install);
+      win?.setTimeout?.(install, 80);
+      win?.setTimeout?.(install, 250);
+      win?.setTimeout?.(install, 500);
+      win?.setTimeout?.(install, 1000);
+      win?.setTimeout?.(install, 2000);
     },
-    [activeCompPathRef, previewIframeRef],
+    [previewIframeRef],
   );
 
   const applyStudioManualEditsToPreview = useCallback(
-    async (
-      iframe: HTMLIFrameElement | null = previewIframeRef.current,
-      options?: { forceFromDisk?: boolean; readFromDiskFirst?: boolean },
-    ) => {
-      // Bootstrap from disk on first apply per session; explicit flag avoids
-      // re-reading disk after the user deletes all edits (async write race).
-      const needsBootstrap = !manifestBootstrappedRef.current;
-      if (needsBootstrap) manifestBootstrappedRef.current = true;
-      const readFromDiskFirst = Boolean(
-        options?.forceFromDisk || options?.readFromDiskFirst || needsBootstrap,
-      );
-      if (!readFromDiskFirst) {
-        applyCurrentStudioManualEditsToPreview(iframe);
-        return;
-      }
-      const readRevision = studioManualEditRevisionRef.current;
-      let content: string;
-      try {
-        content = await readOptionalProjectFile(STUDIO_MANUAL_EDITS_PATH);
-      } catch (error) {
-        const message =
-          error instanceof Error ? error.message : "Failed to read manual edit manifest";
-        showToast(message);
-        applyCurrentStudioManualEditsToPreview(iframe);
-        return;
-      }
-      if (options?.forceFromDisk || readRevision === studioManualEditRevisionRef.current) {
-        const parsed = parseStudioManualEditManifest(content);
-        studioManualEditManifestRef.current = parsed;
-        setManualEditsEnabledState(parsed.enabled ?? false);
-        if (options?.forceFromDisk) studioManualEditRevisionRef.current += 1;
-      }
+    async (iframe: HTMLIFrameElement | null = previewIframeRef.current) => {
       applyCurrentStudioManualEditsToPreview(iframe);
     },
-    [applyCurrentStudioManualEditsToPreview, previewIframeRef, readOptionalProjectFile, showToast],
+    [applyCurrentStudioManualEditsToPreview, previewIframeRef],
   );
   applyStudioManualEditsToPreviewRef.current = applyStudioManualEditsToPreview;
 
@@ -233,7 +190,7 @@ export function useManifestPersistence({
       const readRevision = studioMotionRevisionRef.current;
       let content: string;
       try {
-        content = await readOptionalProjectFile(STUDIO_MOTION_PATH);
+        content = await _readOptionalProjectFile(STUDIO_MOTION_PATH);
       } catch (error) {
         const message = error instanceof Error ? error.message : "Failed to read motion manifest";
         showToast(message);
@@ -247,80 +204,11 @@ export function useManifestPersistence({
       }
       applyCurrentStudioMotionToPreview(iframe);
     },
-    [applyCurrentStudioMotionToPreview, previewIframeRef, readOptionalProjectFile, showToast],
+    [applyCurrentStudioMotionToPreview, previewIframeRef, _readOptionalProjectFile, showToast],
   );
   applyStudioMotionToPreviewRef.current = applyStudioMotionToPreview;
 
-  // ── Optimistic commits ──
-
-  const commitStudioManualEditManifestOptimistically = useCallback(
-    (
-      updateManifest: (manifest: StudioManualEditManifest) => StudioManualEditManifest,
-      options: { label: string; coalesceKey: string },
-    ) => {
-      const previousManifest = studioManualEditManifestRef.current;
-      const nextManifest = updateManifest(previousManifest);
-      const previousContent = serializeStudioManualEditManifest(previousManifest);
-      const nextContent = serializeStudioManualEditManifest(nextManifest);
-      if (nextContent === previousContent) {
-        return;
-      }
-
-      const revision = studioManualEditRevisionRef.current + 1;
-      studioManualEditRevisionRef.current = revision;
-      studioManualEditManifestRef.current = nextManifest;
-      applyCurrentStudioManualEditsToPreview(previewIframeRef.current);
-
-      const save = async () => {
-        const originalContent = await readOptionalProjectFile(STUDIO_MANUAL_EDITS_PATH);
-        const diskManifest = parseStudioManualEditManifest(originalContent);
-        const nextDiskManifest = updateManifest(diskManifest);
-        const nextDiskContent = serializeStudioManualEditManifest(nextDiskManifest);
-        if (nextDiskContent === originalContent) {
-          return;
-        }
-
-        const pid = projectIdRef.current;
-        if (!pid) throw new Error("No active project");
-        domEditSaveTimestampRef.current = Date.now();
-        await saveProjectFilesWithHistory({
-          projectId: pid,
-          label: options.label,
-          kind: "manual",
-          coalesceKey: options.coalesceKey,
-          files: { [STUDIO_MANUAL_EDITS_PATH]: nextDiskContent },
-          readFile: async () => originalContent,
-          writeFile: writeProjectFile,
-          recordEdit,
-        });
-        domEditSaveTimestampRef.current = Date.now();
-
-        if (studioManualEditRevisionRef.current === revision) {
-          studioManualEditManifestRef.current = nextDiskManifest;
-          applyCurrentStudioManualEditsToPreview(previewIframeRef.current);
-        }
-      };
-
-      void queueDomEditSave(save).catch((error) => {
-        if (studioManualEditRevisionRef.current === revision) {
-          studioManualEditRevisionRef.current += 1;
-          studioManualEditManifestRef.current = previousManifest;
-          applyCurrentStudioManualEditsToPreview(previewIframeRef.current);
-        }
-        const message = error instanceof Error ? error.message : "Failed to save manual edit";
-        showToast(message);
-      });
-    },
-    [
-      applyCurrentStudioManualEditsToPreview,
-      recordEdit,
-      queueDomEditSave,
-      readOptionalProjectFile,
-      showToast,
-      writeProjectFile,
-      previewIframeRef,
-    ],
-  );
+  // ── Optimistic motion commit ──
 
   const commitStudioMotionManifestOptimistically = useCallback(
     (
@@ -342,7 +230,7 @@ export function useManifestPersistence({
       applyCurrentStudioMotionToPreview(previewIframeRef.current);
 
       const save = async () => {
-        const originalContent = await readOptionalProjectFile(STUDIO_MOTION_PATH);
+        const originalContent = await _readOptionalProjectFile(STUDIO_MOTION_PATH);
         const diskManifest = parseStudioMotionManifest(originalContent);
         const nextDiskManifest = updateManifest(diskManifest);
         const nextDiskContent = serializeStudioMotionManifest(nextDiskManifest);
@@ -387,7 +275,7 @@ export function useManifestPersistence({
       applyCurrentStudioMotionToPreview,
       recordEdit,
       queueDomEditSave,
-      readOptionalProjectFile,
+      _readOptionalProjectFile,
       showToast,
       writeProjectFile,
       previewIframeRef,
@@ -399,70 +287,48 @@ export function useManifestPersistence({
   const syncHistoryPreviewAfterApply = useCallback(
     async (paths: string[] | undefined) => {
       const changedPaths = paths ?? [];
-      const manualManifestOnly =
-        changedPaths.length > 0 && changedPaths.every((path) => path === STUDIO_MANUAL_EDITS_PATH);
       const motionManifestOnly =
         changedPaths.length > 0 && changedPaths.every((path) => path === STUDIO_MOTION_PATH);
 
-      if (manualManifestOnly) {
-        await applyStudioManualEditsToPreview(previewIframeRef.current, { forceFromDisk: true });
-        return;
-      }
       if (motionManifestOnly) {
         await applyStudioMotionToPreview(previewIframeRef.current, { forceFromDisk: true });
         return;
       }
 
       // Reload the iframe in-place rather than recreating the Player component.
-      // This preserves the <hyperframes-player> web component and its shader
-      // transition cache — only the iframe document reloads, so transitions that
-      // weren't touched by the undo/redo don't need to rebuild from scratch.
       const iframe = previewIframeRef.current;
       if (iframe?.contentWindow) {
         try {
           iframe.contentWindow.location.reload();
           return;
         } catch {
-          // Cross-origin or detached — fall through to full refresh
+          // Cross-origin or detached — fall through
         }
       }
     },
-    [applyStudioManualEditsToPreview, applyStudioMotionToPreview, previewIframeRef],
+    [applyStudioMotionToPreview, previewIframeRef],
   );
 
   // ── Reset manifests when project changes ──
 
+  const projectTrackerRef = useRef<string | null>(projectId);
+
   // eslint-disable-next-line no-restricted-syntax
   useEffect(() => {
-    const previousProjectId = studioManualEditProjectRef.current;
-    studioManualEditProjectRef.current = projectId;
+    const previousProjectId = projectTrackerRef.current;
+    projectTrackerRef.current = projectId;
     if (!previousProjectId || previousProjectId === projectId) return;
-    studioManualEditManifestRef.current = emptyStudioManualEditManifest();
-    setManualEditsEnabledState(false);
-    studioManualEditRevisionRef.current += 1;
     studioMotionManifestRef.current = emptyStudioMotionManifest();
     studioMotionRevisionRef.current += 1;
     setStudioMotionRevision((revision) => revision + 1);
-    manifestBootstrappedRef.current = motionBootstrappedRef.current = false;
+    motionBootstrappedRef.current = false;
   }, [projectId]);
 
   // ── Listen for external file changes (HMR / SSE) ──
-  // In dev: use Vite HMR. In embedded/production: use SSE from /api/events.
-  // Suppress file-change events that echo back from a recent DOM edit save —
-  // those changes are already applied to the iframe DOM and a full reload
-  // would flash the preview.
   useMountEffect(() => {
     const handler = (payload?: unknown) => {
       const changedPath = readStudioFileChangePath(payload);
       const recentDomEditSave = Date.now() - domEditSaveTimestampRef.current < 1200;
-      if (isStudioManualEditManifestPath(changedPath)) {
-        if (!recentDomEditSave) {
-          void applyStudioManualEditsToPreviewRef.current(previewIframeRef.current, {
-            forceFromDisk: true,
-          });
-        }
-        return;
-      }
       if (isStudioMotionManifestPath(changedPath)) {
         if (!recentDomEditSave) {
           void applyStudioMotionToPreviewRef.current(previewIframeRef.current, {
@@ -471,7 +337,7 @@ export function useManifestPersistence({
         }
         return;
       }
-      // Non-manifest file changes are not handled here — the caller is
+      // Non-motion file changes are not handled here — the caller is
       // responsible for triggering a preview refresh via onExternalFileChange
       // if needed. This hook only suppresses echoes and handles manifest reloads.
     };
@@ -485,76 +351,21 @@ export function useManifestPersistence({
     return () => es.close();
   });
 
-  const setManualEditsEnabled = useCallback(
-    (enabled: boolean) => {
-      const previousManifest = studioManualEditManifestRef.current;
-      const nextManifest = { ...previousManifest, enabled };
-      studioManualEditManifestRef.current = nextManifest;
-      studioManualEditRevisionRef.current += 1;
-      setManualEditsEnabledState(enabled);
-
-      const save = async () => {
-        const originalContent = await readOptionalProjectFile(STUDIO_MANUAL_EDITS_PATH);
-        const diskManifest = parseStudioManualEditManifest(originalContent);
-        const nextDiskManifest = { ...diskManifest, enabled };
-        const nextDiskContent = serializeStudioManualEditManifest(nextDiskManifest);
-        if (nextDiskContent === originalContent) return;
-
-        const pid = projectIdRef.current;
-        if (!pid) throw new Error("No active project");
-        domEditSaveTimestampRef.current = Date.now();
-        await saveProjectFilesWithHistory({
-          projectId: pid,
-          label: enabled ? "Enable manual positioning" : "Disable manual positioning",
-          kind: "manual",
-          coalesceKey: "manual-edits-enabled",
-          files: { [STUDIO_MANUAL_EDITS_PATH]: nextDiskContent },
-          readFile: async () => originalContent,
-          writeFile: writeProjectFile,
-          recordEdit,
-        });
-        domEditSaveTimestampRef.current = Date.now();
-      };
-
-      void queueDomEditSave(save).catch((error) => {
-        studioManualEditManifestRef.current = previousManifest;
-        studioManualEditRevisionRef.current += 1;
-        setManualEditsEnabledState(previousManifest.enabled ?? false);
-        const message = error instanceof Error ? error.message : "Failed to save setting";
-        showToast(message);
-      });
-    },
-    [
-      queueDomEditSave,
-      readOptionalProjectFile,
-      writeProjectFile,
-      recordEdit,
-      showToast,
-      domEditSaveTimestampRef,
-    ],
-  );
-
   return {
     domEditSaveTimestampRef,
     domTextCommitVersionRef,
     domEditSaveQueueRef,
-    studioManualEditManifestRef,
-    studioManualEditRevisionRef,
     studioMotionManifestRef,
     studioMotionRevisionRef,
     applyStudioManualEditsToPreviewRef,
     applyStudioMotionToPreviewRef,
-    studioManualEditProjectRef,
     queueDomEditSave,
     waitForPendingDomEditSaves,
     applyCurrentStudioManualEditsToPreview,
     applyStudioManualEditsToPreview,
     applyCurrentStudioMotionToPreview,
     applyStudioMotionToPreview,
-    commitStudioManualEditManifestOptimistically,
     commitStudioMotionManifestOptimistically,
     syncHistoryPreviewAfterApply,
-    manualEditsEnabled,
-    setManualEditsEnabled,
   };
 }
