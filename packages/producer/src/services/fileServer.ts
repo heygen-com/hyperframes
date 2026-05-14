@@ -548,6 +548,7 @@ export interface FileServerHandle {
   url: string;
   port: number;
   close: () => void;
+  addPreHeadScript: (script: string) => void;
 }
 
 export function createFileServer(options: FileServerOptions): Promise<FileServerHandle> {
@@ -654,6 +655,9 @@ export function createFileServer(options: FileServerOptions): Promise<FileServer
       resolve({
         url: `http://localhost:${info.port}`,
         port: info.port,
+        addPreHeadScript: (script: string) => {
+          preHeadScripts.push(script);
+        },
         close: () => {
           for (const socket of connections) socket.destroy();
           connections.clear();

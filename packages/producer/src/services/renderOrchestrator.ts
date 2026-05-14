@@ -1623,20 +1623,15 @@ export async function executeRenderJob(
     const stage4Start = Date.now();
     updateJobStatus(job, "rendering", "Starting frame capture", 25, onProgress);
 
-    // Start file server (may already be running from duration discovery)
+    // Start file server (may already be running from duration discovery).
+    // The page-side compositing stub is injected later (after hasHdrContent
+    // is known) via addPreHeadScript — see usePageSideCompositingForTransitions.
     if (!fileServer) {
-      // Inject the page-side compositing opt-in flag stub BEFORE the virtual
-      // time shim when the engine config opts in. The shim itself does not
-      // depend on the flag; ordering is arbitrary but stable.
-      const preHeadScripts: string[] = [VIRTUAL_TIME_SHIM];
-      if (cfg.enablePageSideCompositing) {
-        preHeadScripts.unshift(HF_PAGE_SIDE_COMPOSITING_STUB);
-      }
       fileServer = await createFileServer({
         projectDir,
         compiledDir: join(workDir, "compiled"),
         port: 0,
-        preHeadScripts,
+        preHeadScripts: [VIRTUAL_TIME_SHIM],
       });
       assertNotAborted();
     }
@@ -1766,8 +1761,10 @@ export async function executeRenderJob(
       cfg.enablePageSideCompositing &&
       compiled.hasShaderTransitions &&
       !hasHdrContent &&
-      !isPngSequence;
+      !isPngSequence &&
+      !needsAlpha;
     if (usePageSideCompositingForTransitions) {
+      fileServer.addPreHeadScript(HF_PAGE_SIDE_COMPOSITING_STUB);
       log.info(
         "[Render] Page-side compositing enabled — bypassing Node-side layered " +
           "shader-blend path. Engine will capture one opaque RGB frame per output frame.",

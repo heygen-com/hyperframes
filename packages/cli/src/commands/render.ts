@@ -558,6 +558,7 @@ export default defineCommand({
         variables,
         entryFile,
         outputResolution,
+        pageSideCompositing: !!args["page-side-compositing"],
         exitAfterComplete: true,
       });
     } else {
@@ -604,6 +605,7 @@ interface RenderOptions {
   exitAfterComplete?: boolean;
   /** Output resolution preset; see `resolveDeviceScaleFactor` for constraints. */
   outputResolution?: CanvasResolution;
+  pageSideCompositing?: boolean;
 }
 
 export type VariablesParseError =
@@ -898,6 +900,7 @@ async function renderDocker(
       variables: options.variables,
       entryFile: options.entryFile,
       outputResolution: options.outputResolution,
+      pageSideCompositing: options.pageSideCompositing,
     },
   });
 

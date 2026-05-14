@@ -210,8 +210,7 @@ export function installPageSideCompositor(options: PageCompositorInstallOptions)
         onclone: (_doc, clone) => {
           if (clone instanceof HTMLElement) stabilizeTransformedBoxShadows(clone);
         },
-        ignoreElements: (el: Element) =>
-          el.tagName === "CANVAS" || el.hasAttribute("data-no-capture"),
+        ignoreElements: (el: Element) => el.hasAttribute("data-no-capture"),
       });
       uploadTexture(gl as WebGLRenderingContext, tex, canvas);
       return true;
