@@ -48,6 +48,35 @@ export interface EngineConfig {
   expectedChromiumMajor?: number;
   /** Force screenshot capture mode (skip BeginFrame even on Linux). */
   forceScreenshot: boolean;
+  /**
+   * Opt-in: page-side shader-transition compositing.
+   *
+   * When `true`, shader transitions for SDR compositions run their blend
+   * inside Chrome via WebGL on a page-side compositor canvas instead of
+   * Node-side per-pixel blending (the hf#677 layered pipeline). The engine
+   * then captures ONE opaque RGB frame per output frame via the streaming
+   * capture path, skipping per-scene transparent screenshots and the
+   * Node-side shader-blend worker pool entirely.
+   *
+   * The feature stacks on top of the hf#677 chain — it does not undo it.
+   * When this flag is OFF (the default), behaviour is byte-identical to the
+   * current path. When ON and the composition has no shader transitions or
+   * has HDR content (which forces the layered path regardless), this flag
+   * is a no-op.
+   *
+   * Mac viability: Chrome on Mac accelerates page-side WebGL canvases via
+   * Metal/CoreAnimation natively. This is the lever for Mac users who
+   * cannot use `--enable-begin-frame-control` (Chromium structural limit,
+   * crbug.com/40656275).
+   *
+   * Determinism: page-side WebGL is f32, not f64. Byte-equality fixture
+   * pins are NOT compatible with this path; the new path's correctness
+   * pin is PSNR-based. Default OFF preserves the existing pins for the
+   * hf#677 chain.
+   *
+   * Env fallback: `HF_PAGE_SIDE_COMPOSITING=true`.
+   */
+  enablePageSideCompositing: boolean;
 
   // ── Encoding ─────────────────────────────────────────────────────────
   enableChunkedEncode: boolean;
@@ -148,6 +177,7 @@ export const DEFAULT_CONFIG: EngineConfig = {
   browserTimeout: 120_000,
   protocolTimeout: 300_000,
   forceScreenshot: false,
+  enablePageSideCompositing: false,
 
   enableChunkedEncode: false,
   chunkSizeFrames: 360,
@@ -221,6 +251,10 @@ export function resolveConfig(overrides?: Partial<EngineConfig>): EngineConfig {
       : undefined,
 
     forceScreenshot: envBool("PRODUCER_FORCE_SCREENSHOT", DEFAULT_CONFIG.forceScreenshot),
+    enablePageSideCompositing: envBool(
+      "HF_PAGE_SIDE_COMPOSITING",
+      DEFAULT_CONFIG.enablePageSideCompositing,
+    ),
 
     enableChunkedEncode: envBool(
       "PRODUCER_ENABLE_CHUNKED_ENCODE",

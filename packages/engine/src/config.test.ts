@@ -138,4 +138,30 @@ describe("resolveConfig", () => {
     const config = resolveConfig();
     expect(config.frameDataUriCacheLimit).toBe(32);
   });
+
+  describe("enablePageSideCompositing (HF_PAGE_SIDE_COMPOSITING)", () => {
+    it("defaults to false", () => {
+      const config = resolveConfig();
+      expect(config.enablePageSideCompositing).toBe(false);
+    });
+
+    it("flips to true when HF_PAGE_SIDE_COMPOSITING=true", () => {
+      setEnv("HF_PAGE_SIDE_COMPOSITING", "true");
+      const config = resolveConfig();
+      expect(config.enablePageSideCompositing).toBe(true);
+    });
+
+    it("ignores any non-'true' value", () => {
+      setEnv("HF_PAGE_SIDE_COMPOSITING", "1");
+      expect(resolveConfig().enablePageSideCompositing).toBe(false);
+      setEnv("HF_PAGE_SIDE_COMPOSITING", "yes");
+      expect(resolveConfig().enablePageSideCompositing).toBe(false);
+    });
+
+    it("explicit override wins over the env var", () => {
+      setEnv("HF_PAGE_SIDE_COMPOSITING", "true");
+      const config = resolveConfig({ enablePageSideCompositing: false });
+      expect(config.enablePageSideCompositing).toBe(false);
+    });
+  });
 });

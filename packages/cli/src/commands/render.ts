@@ -222,6 +222,16 @@ export default defineCommand({
       description:
         "Output resolution preset: landscape (1920x1080), portrait (1080x1920), landscape-4k (3840x2160), portrait-4k (2160x3840), square (1080x1080), square-4k (2160x2160). Aliases: 1080p, 4k, uhd, 1080p-square, square-1080p, 4k-square. The composition is unchanged — Chrome renders at higher DPR (deviceScaleFactor) so the captured screenshot lands at the requested dimensions. Aspect ratio must match the composition; the scale must be an integer multiple. Not yet supported with --hdr.",
     },
+    "page-side-compositing": {
+      type: "boolean",
+      description:
+        "EXPERIMENTAL (opt-in spike). Run shader transitions on a page-side " +
+        "WebGL canvas inside Chrome instead of the Node-side layered blend. " +
+        "Mac-viable lever to push past the hf#677 1.95× baseline on shader-" +
+        "transition renders. SDR only; HDR content forces the existing path. " +
+        "Pin a PSNR-based correctness check, not byte-equality, when using this.",
+      default: false,
+    },
   },
   async run({ args }) {
     // ── Resolve project ────────────────────────────────────────────────────
@@ -291,6 +301,16 @@ export default defineCommand({
         process.exit(1);
       }
       workers = parsed;
+    }
+
+    // ── Wire opt-in: page-side compositing ───────────────────────────────
+    // EXPERIMENTAL — the engine reads HF_PAGE_SIDE_COMPOSITING via
+    // `resolveConfig()` (engine `EngineConfig.enablePageSideCompositing`).
+    // Set the env var BEFORE `loadProducer()` runs so producer's first call
+    // to `resolveConfig()` picks it up. Same pattern as
+    // PRODUCER_HEADLESS_SHELL_PATH below.
+    if (args["page-side-compositing"]) {
+      process.env.HF_PAGE_SIDE_COMPOSITING = "true";
     }
 
     // ── Validate max-concurrent-renders ─────────────────────────────────

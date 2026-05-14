@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>page-side-compositing-smoke</title>
+    <!--
+      Loaded at smoke time: copy ../packages/shader-transitions/dist/index.global.js
+      into the fixture's working directory so the composition uses the LOCAL build
+      (containing the page-side compositor canary) instead of a CDN release.
+    -->
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="./shader-transitions.global.js"></script>
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background: #000;
+      }
+      #main {
+        position: relative;
+        width: 1280px;
+        height: 720px;
+        overflow: hidden;
+        background: #000;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+      .scene {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 200px;
+        font-weight: 800;
+        color: #fff;
+        letter-spacing: 0.08em;
+      }
+      /* Visually distinctive so a Mac viewer can eyeball parity between
+         the two paths: scene A is warm orange, scene B is cool blue,
+         the transition shader morphs UV space — the result should look
+         clearly intermediate at the midpoint. */
+      #scene-a {
+        background: linear-gradient(135deg, #e85d04, #f48c06);
+        opacity: 1;
+      }
+      #scene-b {
+        background: linear-gradient(135deg, #03045e, #0077b6);
+        opacity: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="main"
+      data-composition-id="page-side-compositing-smoke"
+      data-start="0"
+      data-duration="2"
+      data-width="1280"
+      data-height="720"
+    >
+      <div id="scene-a" class="scene">A</div>
+      <div id="scene-b" class="scene">B</div>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+      // 2s composition; shader fires at t=1.0s, runs 0.5s.
+      // `cross-warp-morph` is FBM-warp + noise-mask — visually distinctive at
+      // the midpoint, exercises NQ noise helpers in the fragment shader.
+      HyperShader.init({
+        bgColor: "#000000",
+        accentColor: "#ffb703",
+        scenes: ["scene-a", "scene-b"],
+        transitions: [{ time: 1.0, shader: "cross-warp-morph", duration: 0.5 }],
+        timeline: tl,
+      });
+      window.__timelines["page-side-compositing-smoke"] = tl;
+    </script>
+  </body>
+</html>
