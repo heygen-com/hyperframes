@@ -36,6 +36,7 @@ export function useFileManager({
   const [editingFile, setEditingFile] = useState<EditingFile | null>(null);
   const [projectDir, setProjectDir] = useState<string | null>(null);
   const [fileTree, setFileTree] = useState<string[]>([]);
+  const [fileTreeLoaded, setFileTreeLoaded] = useState(false);
 
   // ── Refs ──
 
@@ -53,8 +54,12 @@ export function useFileManager({
 
   // eslint-disable-next-line no-restricted-syntax
   useEffect(() => {
-    if (!projectId) return;
+    if (!projectId) {
+      setFileTreeLoaded(false);
+      return;
+    }
     let cancelled = false;
+    setFileTreeLoaded(false);
     fetch(`/api/projects/${projectId}`)
       .then((r) => r.json())
       .then((data: { files?: string[]; dir?: string }) => {
@@ -63,6 +68,9 @@ export function useFileManager({
       })
       .catch(() => {
         if (!cancelled) setProjectDir(null);
+      })
+      .finally(() => {
+        if (!cancelled) setFileTreeLoaded(true);
       });
     return () => {
       cancelled = true;
@@ -396,6 +404,7 @@ export function useFileManager({
     setEditingFile,
     projectDir,
     fileTree,
+    fileTreeLoaded,
     setFileTree,
 
     // Refs

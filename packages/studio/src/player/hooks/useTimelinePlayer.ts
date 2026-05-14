@@ -324,7 +324,10 @@ export function useTimelinePlayer() {
     (time: number) => {
       stopReverseLoop();
       const adapter = getAdapter();
-      if (!adapter) return;
+      if (!adapter) {
+        pendingSeekRef.current = Math.max(0, time);
+        return false;
+      }
       const duration = Math.max(0, adapter.getDuration());
       const nextTime = Math.max(0, duration > 0 ? Math.min(duration, time) : time);
       adapter.seek(nextTime);
@@ -334,8 +337,9 @@ export function useTimelinePlayer() {
       if (usePlayerStore.getState().isPlaying) setIsPlaying(false);
       shuttleDirectionRef.current = null;
       shuttleSpeedIndexRef.current = 0;
+      return true;
     },
-    [getAdapter, setCurrentTime, setIsPlaying, stopRAFLoop, stopReverseLoop],
+    [getAdapter, pendingSeekRef, setCurrentTime, setIsPlaying, stopRAFLoop, stopReverseLoop],
   );
 
   // Handle seek requests from outside the player loop (e.g. LayersPanel).

@@ -333,6 +333,7 @@ export function useDomEditSession({
     handleBlockedDomMove,
     handleDomManualDragStart,
     handleDomEditElementDelete,
+    buildDomSelectionFromTarget,
     buildDomSelectionForTimelineElement,
     updateDomEditHoverSelection,
     resolveImportedFontAsset,

@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useMemo } from "react";
+import { useState, useCallback, useRef, useMemo, useEffect } from "react";
 import type { LeftSidebarHandle } from "./components/sidebar/LeftSidebar";
 import { useRenderQueue } from "./components/renders/useRenderQueue";
 import { usePlayerStore } from "./player";
@@ -20,6 +20,7 @@ import { useFrameCapture } from "./hooks/useFrameCapture";
 import { useLintModal } from "./hooks/useLintModal";
 import { useCompositionDimensions } from "./hooks/useCompositionDimensions";
 import { useToast } from "./hooks/useToast";
+import { useStudioUrlState } from "./hooks/useStudioUrlState";
 import {
   STUDIO_INSPECTOR_PANELS_ENABLED,
   STUDIO_MOTION_PANEL_ENABLED,
@@ -27,6 +28,7 @@ import {
 import { getStudioMotionForSelection } from "./components/editor/studioMotion";
 import type { DomEditSelection } from "./components/editor/domEditing";
 import { AskAgentModal } from "./components/AskAgentModal";
+import { StudioGlobalDragOverlay } from "./components/StudioGlobalDragOverlay";
 import { StudioHeader } from "./components/StudioHeader";
 import { StudioLeftSidebar } from "./components/StudioLeftSidebar";
 import { StudioPreviewArea } from "./components/StudioPreviewArea";
@@ -38,11 +40,19 @@ import { FileManagerProvider } from "./contexts/FileManagerContext";
 import { DomEditProvider } from "./contexts/DomEditContext";
 import { StudioSplash } from "./components/StudioSplash";
 import { useServerConnection } from "./hooks/useServerConnection";
+import {
+  normalizeStudioCompositionPath,
+  readStudioUrlStateFromWindow,
+} from "./utils/studioUrlState";
 
 export function StudioApp() {
   const { projectId, resolving, waitingForServer } = useServerConnection();
+  const initialUrlStateRef = useRef(readStudioUrlStateFromWindow());
 
   const [activeCompPath, setActiveCompPath] = useState<string | null>(null);
+  const [activeCompPathHydrated, setActiveCompPathHydrated] = useState(
+    () => initialUrlStateRef.current.activeCompPath == null,
+  );
   const [compIdToSrc, setCompIdToSrc] = useState<Map<string, string>>(new Map());
   const [previewIframe, setPreviewIframe] = useState<HTMLIFrameElement | null>(null);
   const [compositionLoading, setCompositionLoading] = useState(true);
@@ -80,7 +90,10 @@ export function StudioApp() {
   }, []);
 
   const [timelineVisible, setTimelineVisible] = useState(
-    () => readStudioUiPreferences().timelineVisible ?? true,
+    () =>
+      initialUrlStateRef.current.timelineVisible ??
+      readStudioUiPreferences().timelineVisible ??
+      true,
   );
   const toggleTimelineVisibility = useCallback(() => {
     setTimelineVisible((v) => {
@@ -89,7 +102,10 @@ export function StudioApp() {
     });
   }, []);
   const { appToast, showToast } = useToast();
-  const panelLayout = usePanelLayout();
+  const panelLayout = usePanelLayout({
+    rightCollapsed: initialUrlStateRef.current.rightCollapsed,
+    rightPanelTab: initialUrlStateRef.current.rightPanelTab,
+  });
   const editHistory = usePersistentEditHistory({ projectId });
   const domEditSaveTimestampRef = useRef(0);
   const reloadPreview = useCallback(() => {
@@ -107,6 +123,18 @@ export function StudioApp() {
     domEditSaveTimestampRef,
     setRefreshKey,
   });
+
+  useEffect(() => {
+    if (activeCompPathHydrated) return;
+    if (!fileManager.fileTreeLoaded) return;
+
+    const nextCompPath = normalizeStudioCompositionPath(
+      initialUrlStateRef.current.activeCompPath,
+      fileManager.fileTree,
+    );
+    setActiveCompPath((current) => (current === nextCompPath ? current : nextCompPath));
+    setActiveCompPathHydrated(true);
+  }, [activeCompPathHydrated, fileManager.fileTree, fileManager.fileTreeLoaded]);
 
   const manifestPersistence = useManifestPersistence({
     projectId,
@@ -284,6 +312,25 @@ export function StudioApp() {
   const inspectorButtonActive =
     STUDIO_INSPECTOR_PANELS_ENABLED && !panelLayout.rightCollapsed && inspectorPanelActive;
 
+  useStudioUrlState({
+    projectId,
+    activeCompPath,
+    currentTime,
+    duration: effectiveTimelineDuration,
+    isPlaying,
+    compositionLoading,
+    refreshKey,
+    previewIframeRef,
+    rightPanelTab: panelLayout.rightPanelTab,
+    rightCollapsed: panelLayout.rightCollapsed,
+    timelineVisible,
+    activeCompPathHydrated,
+    domEditSelection: domEditSession.domEditSelection,
+    buildDomSelectionFromTarget: domEditSession.buildDomSelectionFromTarget,
+    applyDomSelection: domEditSession.applyDomSelection,
+    initialState: initialUrlStateRef.current,
+  });
+
   // StudioProvider performs its own useMemo — no need for a second memo here.
   const studioCtxValue: StudioContextValue = {
     projectId: projectId!,
@@ -420,30 +467,7 @@ export function StudioApp() {
                 />
               )}
 
-              {globalDragOver && (
-                <div className="absolute inset-0 z-[90] flex items-center justify-center bg-black/50 backdrop-blur-sm pointer-events-none">
-                  <div className="flex flex-col items-center gap-3 px-8 py-6 rounded-xl border-2 border-dashed border-studio-accent/60 bg-studio-accent/[0.06]">
-                    <svg
-                      width="32"
-                      height="32"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.5"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      className="text-studio-accent"
-                    >
-                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                      <polyline points="7 10 12 15 17 10" />
-                      <line x1="12" y1="15" x2="12" y2="3" />
-                    </svg>
-                    <span className="text-sm font-medium text-studio-accent">
-                      Drop files to import into project
-                    </span>
-                  </div>
-                </div>
-              )}
+              {globalDragOver && <StudioGlobalDragOverlay />}
 
               {appToast && (
                 <div

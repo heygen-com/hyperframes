@@ -9,7 +9,7 @@
  */
 
 import { useCallback } from "react";
-import { usePlayerStore } from "../store/playerStore";
+import { liveTime, usePlayerStore } from "../store/playerStore";
 import type { TimelineElement } from "../store/playerStore";
 import type { PlaybackAdapter, ClipManifestClip, IframeWindow } from "../lib/playbackTypes";
 import {
@@ -158,6 +158,9 @@ export function useTimelineSyncCallbacks({
     const startTime = seekTo != null ? Math.min(seekTo, adapter.getDuration()) : 0;
 
     adapter.seek(startTime);
+    // Keep non-React listeners such as the capture link and time display in sync
+    // with the initial adapter seek on iframe load.
+    liveTime.notify(startTime);
     const adapterDur = adapter.getDuration();
     if (
       Number.isFinite(adapterDur) &&
