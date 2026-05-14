@@ -16,10 +16,10 @@ If you'd rather not be listed publicly, that's fine — drop a note in [our Disc
 
 ## Production
 
-| Organization                     | Contact                                        | How HyperFrames is used                                                                    |
-| -------------------------------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| [HeyGen](https://www.heygen.com) | [@jrusso1020](https://github.com/jrusso1020)   | Powers AI-generated video composition and rendering across HeyGen's video product surface. |
-| [tldraw](https://tldraw.com)     | [@steveruizok](https://github.com/steveruizok) | Exploring HyperFrames for diagramming and canvas-based video export.                       |
+| Organization                     | Contact                                        | How HyperFrames is used                                                                                     |
+| -------------------------------- | ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| [HeyGen](https://www.heygen.com) | [@jrusso1020](https://github.com/jrusso1020)   | Powers AI-generated video composition and rendering across HeyGen's video product surface.                  |
+| [tldraw](https://tldraw.com)     | [@steveruizok](https://github.com/steveruizok) | Generates automated pull-request walkthrough videos with GSAP-animated code diffs, narration, and captions. |
 
 ## Evaluating
 
