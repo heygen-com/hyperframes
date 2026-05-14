@@ -209,12 +209,39 @@ function writeStudioPathOffsetVars(
 }
 
 /* ── Path offset apply ────────────────────────────────────────────── */
+
+// GSAP 3.x reads the resolved CSS `translate` individual property at initialization and bakes it
+// into element.style.transform (as a matrix) on every seek. When the studio's reapply hook also
+// writes `translate`, both properties compose additively, doubling the visual offset. This helper
+// zeroes out only the translate component (m41/m42) so the `translate` prop isn't double-counted.
+function stripGsapTranslateFromTransform(element: HTMLElement): void {
+  const transform = element.style.getPropertyValue("transform");
+  if (!transform || transform === "none") return;
+  const win = element.ownerDocument.defaultView as (Window & typeof globalThis) | null;
+  const DOMMatrixCtor = (win as unknown as { DOMMatrix?: typeof DOMMatrix })?.DOMMatrix;
+  if (!DOMMatrixCtor) return;
+  try {
+    const m = new DOMMatrixCtor(transform);
+    if (m.m41 === 0 && m.m42 === 0) return;
+    m.m41 = 0;
+    m.m42 = 0;
+    if (m.is2D && m.a === 1 && m.b === 0 && m.c === 0 && m.d === 1) {
+      element.style.removeProperty("transform");
+    } else {
+      element.style.setProperty("transform", m.toString());
+    }
+  } catch {
+    // non-parseable transform or DOMMatrix unavailable — leave as-is
+  }
+}
+
 export function applyStudioPathOffset(
   element: HTMLElement,
   offset: { x: number; y: number },
+  options: { updateBase?: boolean } = {},
 ): void {
   promoteInlineForTransform(element);
-  writeStudioPathOffsetVars(element, offset);
+  writeStudioPathOffsetVars(element, offset, { updateBase: options.updateBase ?? true });
   element.style.setProperty(
     "translate",
     composeTranslateValue(
@@ -223,6 +250,7 @@ export function applyStudioPathOffset(
       `var(${STUDIO_OFFSET_Y_PROP}, 0px)`,
     ),
   );
+  stripGsapTranslateFromTransform(element);
 }
 
 export function applyStudioPathOffsetDraft(
@@ -235,6 +263,7 @@ export function applyStudioPathOffsetDraft(
     "translate",
     composeTranslateValue(element, `${Math.round(offset.x)}px`, `${Math.round(offset.y)}px`),
   );
+  stripGsapTranslateFromTransform(element);
 }
 
 /* ── Box size apply ───────────────────────────────────────────────── */
