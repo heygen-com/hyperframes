@@ -48,7 +48,9 @@ export class TransportClock {
       } else {
         const { el, compositionStart, mediaStart } = this._audioSource;
         if (!el.paused && Number.isFinite(el.currentTime)) {
-          audioTime = (el.currentTime - mediaStart) / this._rate + compositionStart;
+          audioTime =
+            ((el.currentTime - mediaStart) / (el.playbackRate || 1)) * this._rate +
+            compositionStart;
         }
       }
       if (audioTime !== null) {

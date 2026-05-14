@@ -24,6 +24,8 @@ export interface DirectTimelineAdapter {
   seek: (timeInSeconds: number) => unknown;
   play: () => unknown;
   pause: () => unknown;
+  /** Optional: set playback rate (e.g. GSAP's timeScale). Called when the player's playbackRate changes. */
+  timeScale?: (scale: number) => unknown;
 }
 
 export type PlaybackDurationAdapter =

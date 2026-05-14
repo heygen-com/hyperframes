@@ -177,6 +177,7 @@ class HyperframesPlayer extends HTMLElement {
         const rate = parseFloat(val || "1");
         this._media.updatePlaybackRate(rate);
         this._sendControl("set-playback-rate", { playbackRate: rate });
+        this._directTimelineAdapter?.timeScale?.(rate);
         this.controlsApi?.updateSpeed(rate);
         this.dispatchEvent(new Event("ratechange"));
         break;
