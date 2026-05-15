@@ -31,8 +31,8 @@
     },
     "./runtime": "./dist/hyperframe.runtime.iife.js",
     "./runtime/lottie-readiness": {
-      "import": "./src/runtime/adapters/lottieReadiness.ts",
-      "types": "./src/runtime/adapters/lottieReadiness.ts"
+      "import": "./src/lottieReadiness.ts",
+      "types": "./src/lottieReadiness.ts"
     },
     "./studio-api": {
       "import": "./src/studio-api/index.ts",
@@ -78,8 +78,8 @@
       },
       "./runtime": "./dist/hyperframe.runtime.iife.js",
       "./runtime/lottie-readiness": {
-        "import": "./dist/runtime/adapters/lottieReadiness.js",
-        "types": "./dist/runtime/adapters/lottieReadiness.d.ts"
+        "import": "./dist/lottieReadiness.js",
+        "types": "./dist/lottieReadiness.d.ts"
       },
       "./studio-api": {
         "import": "./dist/studio-api/index.js",
