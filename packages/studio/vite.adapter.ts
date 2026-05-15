@@ -201,6 +201,7 @@ export function createViteAdapter(dataDir: string, server: ViteDevServer): Studi
             format: opts.format,
             ...(renderBodyScripts.length > 0 ? { renderBodyScripts } : {}),
             outputResolution: opts.outputResolution,
+            ...(opts.composition ? { entryFile: opts.composition } : {}),
           });
           const onProgress = (j: { progress: number; currentStage?: string }) => {
             state.progress = j.progress;

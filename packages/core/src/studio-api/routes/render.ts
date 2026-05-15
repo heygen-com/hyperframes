@@ -59,6 +59,7 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
       quality?: string;
       format?: string;
       resolution?: string;
+      composition?: string;
     };
     const VALID_FORMATS = new Set(["mp4", "webm", "mov"]);
     const FORMAT_EXT: Record<string, string> = { mp4: ".mp4", webm: ".webm", mov: ".mov" };
@@ -76,6 +77,10 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
     const outputResolution = VALID_RESOLUTIONS.has(body.resolution ?? "")
       ? (body.resolution as CanvasResolution)
       : undefined;
+    const composition =
+      typeof body.composition === "string" && body.composition.length > 0
+        ? body.composition
+        : undefined;
 
     const now = new Date();
     const datePart = now.toISOString().slice(0, 10);
@@ -94,6 +99,7 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
       quality,
       jobId,
       outputResolution,
+      composition,
     });
     (jobState as RenderJobState & { createdAt: number }).createdAt = Date.now();
     renderJobs.set(jobId, jobState as RenderJobState & { createdAt: number });

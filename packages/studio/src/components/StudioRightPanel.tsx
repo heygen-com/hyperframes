@@ -195,7 +195,17 @@ export function StudioRightPanel({
                   onClearCompleted={renderQueue.clearCompleted}
                   onStartRender={async (format, quality, resolution, fps) => {
                     await waitForPendingDomEditSaves();
-                    await renderQueue.startRender({ fps, quality, format, resolution });
+                    const composition =
+                      activeCompPath && activeCompPath !== "index.html"
+                        ? activeCompPath
+                        : undefined;
+                    await renderQueue.startRender({
+                      fps,
+                      quality,
+                      format,
+                      resolution,
+                      composition,
+                    });
                   }}
                   compositionDimensions={compositionDimensions}
                   isRendering={renderQueue.isRendering}

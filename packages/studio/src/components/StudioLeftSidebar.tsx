@@ -1,4 +1,4 @@
-import type { RefObject } from "react";
+import { useCallback, type RefObject } from "react";
 import { SourceEditor } from "./editor/SourceEditor";
 import { LeftSidebar, type LeftSidebarHandle } from "./sidebar/LeftSidebar";
 import { MediaPreview } from "./MediaPreview";
@@ -28,7 +28,7 @@ export function StudioLeftSidebar({
     handlePanelResizeMove,
     handlePanelResizeEnd,
   } = usePanelLayoutContext();
-  const { projectId } = useStudioContext();
+  const { projectId, renderQueue, waitForPendingDomEditSaves } = useStudioContext();
   const {
     compositions,
     assets,
@@ -44,6 +44,14 @@ export function StudioLeftSidebar({
     handleImportFiles,
     handleContentChange,
   } = useFileManagerContext();
+
+  const handleRenderComposition = useCallback(
+    async (comp: string) => {
+      await waitForPendingDomEditSaves();
+      await renderQueue.startRender({ composition: comp });
+    },
+    [renderQueue, waitForPendingDomEditSaves],
+  );
 
   if (leftCollapsed) {
     return (
@@ -107,6 +115,8 @@ export function StudioLeftSidebar({
             )
           ) : undefined
         }
+        onRenderComposition={handleRenderComposition}
+        isRendering={renderQueue.isRendering}
         onLint={onLint}
         linting={linting}
         onToggleCollapse={toggleLeftSidebar}
