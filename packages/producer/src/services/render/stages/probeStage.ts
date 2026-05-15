@@ -105,7 +105,9 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
   let lastBrowserConsole: string[] = [];
 
   const probeStart = Date.now();
-  const needsBrowser = composition.duration <= 0 || compiled.unresolvedCompositions.length > 0;
+  const hasAutoStartVideos = compiled.html.includes("data-hf-auto-start");
+  const needsBrowser =
+    composition.duration <= 0 || compiled.unresolvedCompositions.length > 0 || hasAutoStartVideos;
 
   if (needsBrowser) {
     const reasons = [];
