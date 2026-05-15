@@ -1,0 +1,16 @@
+.git
+.github
+.idea
+.vscode
+node_modules
+packages/*/node_modules
+packages/*/dist
+packages/*/.debug
+packages/*/tests/output
+packages/*/tests/.artifacts
+packages/*/tests/golden
+coverage
+tmp
+dist
+*.log
+*.tsbuildinfo

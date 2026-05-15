@@ -1,0 +1,27 @@
+{
+  "name": "@hyperframes/amplifier-video-worker",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Amplifier explainer-video worker powered by Hyperframes",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.1021.0",
+    "@aws-sdk/client-s3": "^3.1021.0",
+    "@aws-sdk/client-sqs": "^3.1021.0",
+    "@aws-sdk/lib-dynamodb": "^3.1021.0",
+    "@hyperframes/producer": "workspace:^"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.10",
+    "typescript": "^5.7.2"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

@@ -1,0 +1,1115 @@
+import { createServer, type Server } from "node:http";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { createHash } from "node:crypto";
+import { DeleteMessageCommand, ReceiveMessageCommand, SQSClient } from "@aws-sdk/client-sqs";
+import { createRenderJob, executeRenderJob } from "@hyperframes/producer";
+import {
+  getExplainerVideoJob,
+  mergeExplainerVideoJob,
+  uploadBufferArtifact,
+  uploadFileArtifact,
+  uploadJsonArtifact,
+  readJsonArtifact,
+} from "./amplifier.js";
+import { synthesizeSpeechWithTimestamps } from "./elevenlabs.js";
+import type {
+  AmplifierQueueMessage,
+  ExplainerScript,
+  ExplainerSourceArtifact,
+  ExplainerVideoBrief,
+  ExplainerVideoRenderPlan,
+  RenderSceneCard,
+  ScriptSegment,
+  TimedWord,
+} from "./types.js";
+
+const sqs = new SQSClient({ region: process.env.AWS_REGION || "us-east-1" });
+const queueUrl = process.env.AMPLIFIER_VIDEO_QUEUE_URL?.trim() || "";
+const pollWaitSeconds = Number.parseInt(process.env.WORKER_POLL_WAIT_SECONDS || "20", 10);
+const visibilityTimeout = Number.parseInt(
+  process.env.WORKER_VISIBILITY_TIMEOUT_SECONDS || "3600",
+  10,
+);
+const healthPort = Number.parseInt(process.env.PORT || "3000", 10);
+const renderWorkers = Math.max(
+  1,
+  Number.parseInt(process.env.HYPERFRAMES_RENDER_WORKERS || "1", 10),
+);
+
+let currentJobId: string | null = null;
+let processedJobs = 0;
+let failedJobs = 0;
+let shuttingDown = false;
+
+function titleCase(text: string) {
+  return text
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(" ");
+}
+
+function splitSentences(text: string) {
+  return text
+    .split(/(?<=[.!?])\s+/)
+    .map((sentence) => sentence.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+}
+
+function trimToWords(text: string, maxWords: number) {
+  const words = text.split(/\s+/).filter(Boolean);
+  if (words.length <= maxWords) return words.join(" ");
+  return `${words.slice(0, maxWords).join(" ")}...`;
+}
+
+function pickParagraphs(source: ExplainerSourceArtifact) {
+  return source.article.paragraphs
+    .map((paragraph) => paragraph.replace(/\s+/g, " ").trim())
+    .filter((paragraph) => paragraph.length > 70)
+    .slice(0, 6);
+}
+
+function deriveSceneTitle(paragraph: string, fallback: string) {
+  const sentence = splitSentences(paragraph)[0] || paragraph;
+  const words = sentence
+    .replace(/[^A-Za-z0-9\s-]/g, " ")
+    .split(/\s+/)
+    .filter((word) => word.length > 2)
+    .slice(0, 5);
+  return words.length ? titleCase(words.join(" ")) : fallback;
+}
+
+function fitNarration(maxWords: number, ...parts: Array<string | null | undefined>) {
+  const joined = parts
+    .map((part) => (part || "").replace(/\s+/g, " ").trim())
+    .filter(Boolean)
+    .join(" ");
+  return trimToWords(joined, maxWords);
+}
+
+function buildExplainerScript(args: {
+  brief: ExplainerVideoBrief;
+  plan: ExplainerVideoRenderPlan;
+  source: ExplainerSourceArtifact;
+}): ExplainerScript {
+  const paragraphs = pickParagraphs(args.source);
+  const primaryAuthor = args.brief.article.primaryAuthor;
+  const ctaUrl = args.plan.cta.url || args.brief.article.url;
+  const scenes: RenderSceneCard[] = [];
+  const segments: ScriptSegment[] = [];
+  let cursor = 0;
+
+  args.plan.scenes.forEach((scene, index) => {
+    const paragraph =
+      paragraphs[index] ||
+      paragraphs[Math.max(0, index - 1)] ||
+      args.brief.article.description ||
+      args.brief.article.subtitle ||
+      args.brief.article.title;
+    const narrationBudget = Math.max(10, Math.round(scene.durationSeconds * 2.5));
+    const alignment = index % 2 === 0 ? "left" : "right";
+
+    let eyebrow = "Amplifier";
+    let title = deriveSceneTitle(paragraph, titleCase(scene.id.replace(/-/g, " ")));
+    let body = trimToWords(paragraph, 24);
+    let meta: string | null = null;
+    let ctaLabel: string | null = null;
+    let narration = trimToWords(paragraph, narrationBudget);
+    let kind: RenderSceneCard["kind"] =
+      scene.id === "hook"
+        ? "hook"
+        : scene.id === "context"
+          ? "context"
+          : scene.id === "author"
+            ? "author"
+            : scene.id === "cta"
+              ? "cta"
+              : "insight";
+
+    switch (scene.id) {
+      case "hook":
+        eyebrow = args.brief.article.publication?.name || "Article explainer";
+        title = args.brief.article.title;
+        body = trimToWords(
+          args.brief.article.subtitle ||
+            args.brief.article.description ||
+            paragraphs[0] ||
+            args.brief.article.title,
+          24,
+        );
+        narration = fitNarration(
+          narrationBudget,
+          args.brief.article.title,
+          args.brief.article.subtitle || args.brief.article.description,
+          paragraphs[0],
+        );
+        meta = args.brief.article.primaryAuthor?.name || null;
+        break;
+      case "context":
+        eyebrow = "Why it matters";
+        title = "The setup";
+        body = trimToWords(paragraphs[0] || paragraph, 24);
+        narration = fitNarration(narrationBudget, "Here is the setup.", paragraphs[0] || paragraph);
+        break;
+      case "insight-1":
+        eyebrow = "Key point";
+        title = deriveSceneTitle(paragraphs[1] || paragraph, "First insight");
+        body = trimToWords(paragraphs[1] || paragraph, 24);
+        narration = fitNarration(narrationBudget, "First insight.", paragraphs[1] || paragraph);
+        break;
+      case "insight-2":
+        eyebrow = "What changes";
+        title = deriveSceneTitle(paragraphs[2] || paragraph, "Second insight");
+        body = trimToWords(paragraphs[2] || paragraph, 24);
+        narration = fitNarration(narrationBudget, "Second insight.", paragraphs[2] || paragraph);
+        break;
+      case "author":
+        eyebrow = "About the author";
+        title = primaryAuthor ? primaryAuthor.name : "Author perspective";
+        body = trimToWords(
+          primaryAuthor?.bio ||
+            [primaryAuthor?.role, args.brief.article.publication?.name]
+              .filter(Boolean)
+              .join(" · ") ||
+            "The article comes from a practitioner perspective grounded in real operating work.",
+          24,
+        );
+        narration = fitNarration(
+          narrationBudget,
+          primaryAuthor
+            ? `${primaryAuthor.name}${primaryAuthor.role ? `, ${primaryAuthor.role}` : ""}.`
+            : "This perspective comes from the author behind the article.",
+          primaryAuthor?.bio,
+        );
+        meta =
+          [primaryAuthor?.linkedin, primaryAuthor?.website].filter(Boolean).join(" · ") || null;
+        break;
+      case "cta":
+        eyebrow = "Read the full piece";
+        title = args.plan.cta.label;
+        body = trimToWords(
+          args.brief.article.bookletLink?.shortUrl
+            ? "The booklet keeps the argument, examples, and author context together in one link."
+            : "The full article has the complete argument and examples.",
+          24,
+        );
+        narration = fitNarration(
+          narrationBudget,
+          `${args.plan.cta.label}.`,
+          args.brief.article.bookletLink?.shortUrl
+            ? "Use the booklet link for the full argument and examples."
+            : "Use the article link for the full argument and examples.",
+        );
+        meta = ctaUrl;
+        ctaLabel = args.plan.cta.label;
+        break;
+      default:
+        break;
+    }
+
+    scenes.push({
+      id: scene.id,
+      kind,
+      eyebrow,
+      title,
+      body,
+      meta,
+      ctaLabel,
+      alignment,
+      startSeconds: cursor,
+      durationSeconds: scene.durationSeconds,
+    });
+
+    segments.push({
+      id: scene.id,
+      title,
+      narration,
+      durationSeconds: scene.durationSeconds,
+    });
+
+    cursor += scene.durationSeconds;
+  });
+
+  return {
+    version: "2026-05-15",
+    targetDurationSeconds: cursor,
+    fullNarration: segments.map((segment) => segment.narration).join(" "),
+    scenes,
+    segments,
+  };
+}
+
+function buildSyntheticWordTimings(segments: ScriptSegment[]) {
+  const words: TimedWord[] = [];
+  let cursor = 0;
+
+  for (const segment of segments) {
+    const segmentWords = segment.narration.split(/\s+/).filter(Boolean);
+    const step = segmentWords.length
+      ? Math.max(0.16, segment.durationSeconds / segmentWords.length)
+      : segment.durationSeconds;
+    segmentWords.forEach((word, index) => {
+      const start = cursor + index * step;
+      words.push({
+        text: word,
+        start,
+        end: Math.min(cursor + segment.durationSeconds, start + step * 0.82),
+      });
+    });
+    cursor += segment.durationSeconds;
+  }
+
+  return words;
+}
+
+function timestampForSrt(totalSeconds: number) {
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = Math.floor(totalSeconds % 60);
+  const millis = Math.round((totalSeconds - Math.floor(totalSeconds)) * 1000);
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(
+    seconds,
+  ).padStart(2, "0")},${String(millis).padStart(3, "0")}`;
+}
+
+function buildCaptionGroups(words: TimedWord[]) {
+  const groups: Array<{ text: string; start: number; end: number }> = [];
+  let current: TimedWord[] = [];
+
+  const flush = () => {
+    if (!current.length) return;
+    groups.push({
+      text: current.map((word) => word.text).join(" "),
+      start: current[0]?.start ?? 0,
+      end: current[current.length - 1]?.end ?? current[0]?.end ?? 0,
+    });
+    current = [];
+  };
+
+  words.forEach((word) => {
+    current.push(word);
+    if (
+      current.length >= 6 ||
+      /[.!?]$/.test(word.text) ||
+      (current[0] && word.end - current[0].start >= 2.4)
+    ) {
+      flush();
+    }
+  });
+
+  flush();
+  return groups;
+}
+
+function buildSrt(words: TimedWord[]) {
+  return buildCaptionGroups(words)
+    .map(
+      (group, index) =>
+        `${index + 1}\n${timestampForSrt(group.start)} --> ${timestampForSrt(group.end)}\n${
+          group.text
+        }\n`,
+    )
+    .join("\n");
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function buildHtmlTemplate(args: {
+  brief: ExplainerVideoBrief;
+  plan: ExplainerVideoRenderPlan;
+  script: ExplainerScript;
+  transcript: TimedWord[];
+  durationSeconds: number;
+  narrationSrc?: string | null;
+}) {
+  const palette =
+    args.brief.interview.visualMode === "motion_social"
+      ? {
+          bgA: "#130f40",
+          bgB: "#2b1055",
+          accent: "#fb923c",
+          accentAlt: "#f472b6",
+          text: "#fff7ed",
+          muted: "#fed7aa",
+          panel: "rgba(20, 17, 52, 0.74)",
+        }
+      : args.brief.interview.visualMode === "documentary"
+        ? {
+            bgA: "#0f172a",
+            bgB: "#1e293b",
+            accent: "#f59e0b",
+            accentAlt: "#fcd34d",
+            text: "#f8fafc",
+            muted: "#cbd5e1",
+            panel: "rgba(15, 23, 42, 0.76)",
+          }
+        : args.brief.interview.visualMode === "captions_only"
+          ? {
+              bgA: "#020617",
+              bgB: "#0f172a",
+              accent: "#22c55e",
+              accentAlt: "#34d399",
+              text: "#f8fafc",
+              muted: "#cbd5e1",
+              panel: "rgba(2, 6, 23, 0.78)",
+            }
+          : {
+              bgA: "#07111f",
+              bgB: "#16324f",
+              accent: "#7dd3fc",
+              accentAlt: "#a78bfa",
+              text: "#f8fafc",
+              muted: "#cbd5e1",
+              panel: "rgba(8, 19, 36, 0.74)",
+            };
+
+  const sceneMarkup = args.script.scenes
+    .map((scene, index) => {
+      const authorImage =
+        scene.kind === "author" && args.brief.article.primaryAuthor?.imageUrl
+          ? `<img class="author-photo" src="${escapeHtml(
+              args.brief.article.primaryAuthor.imageUrl,
+            )}" alt="${escapeHtml(args.brief.article.primaryAuthor.name)}" />`
+          : "";
+      const meta = scene.meta ? `<div class="scene-meta">${escapeHtml(scene.meta)}</div>` : "";
+      const cta =
+        scene.ctaLabel && args.plan.cta.url
+          ? `<div class="scene-cta">${escapeHtml(scene.ctaLabel)}</div>`
+          : "";
+      return `
+        <section
+          id="scene-${index}"
+          class="scene clip align-${scene.alignment} kind-${scene.kind}"
+          data-start="${scene.startSeconds}"
+          data-duration="${scene.durationSeconds}"
+          data-track-index="1"
+          style="visibility:hidden;opacity:0"
+        >
+          <div class="scene-shell">
+            <div class="accent-bar"></div>
+            <div class="scene-panel">
+              <div class="scene-eyebrow">${escapeHtml(scene.eyebrow)}</div>
+              <h1 class="scene-title">${escapeHtml(scene.title)}</h1>
+              <p class="scene-body">${escapeHtml(scene.body)}</p>
+              ${meta}
+              ${cta}
+            </div>
+            ${authorImage}
+          </div>
+        </section>`;
+    })
+    .join("\n");
+
+  const coverImage =
+    args.brief.article.coverImage && args.brief.article.coverImage.trim()
+      ? `<img
+          id="cover-image"
+          class="clip cover-image"
+          data-start="0"
+          data-duration="${args.durationSeconds}"
+          data-track-index="0"
+          src="${escapeHtml(args.brief.article.coverImage)}"
+          alt=""
+        />`
+      : "";
+  const narrationTrack =
+    args.narrationSrc && args.narrationSrc.trim()
+      ? `<audio
+          id="narration-track"
+          src="${escapeHtml(args.narrationSrc)}"
+          data-start="0"
+          data-duration="${args.durationSeconds}"
+          data-track-index="8"
+        ></audio>`
+      : "";
+
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>${escapeHtml(args.brief.article.title)}</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background:
+          radial-gradient(circle at top left, ${palette.bgB} 0%, ${palette.bgA} 55%, #020617 100%);
+        color: ${palette.text};
+        font-family: "Helvetica Neue", Arial, sans-serif;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      [data-composition-id="amplifier-explainer"] {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background:
+          radial-gradient(circle at top left, rgba(255, 255, 255, 0.08), transparent 38%),
+          radial-gradient(circle at bottom right, rgba(255, 255, 255, 0.05), transparent 32%);
+      }
+
+      .cover-image {
+        position: absolute;
+        inset: 0;
+        width: 1920px;
+        height: 1080px;
+        object-fit: cover;
+        filter: brightness(0.32) saturate(1.05);
+      }
+
+      .canvas-wash {
+        position: absolute;
+        inset: 0;
+        background:
+          linear-gradient(135deg, rgba(2, 6, 23, 0.14), rgba(2, 6, 23, 0.58)),
+          linear-gradient(0deg, rgba(2, 6, 23, 0.55), transparent 50%);
+        pointer-events: none;
+      }
+
+      .grain {
+        position: absolute;
+        inset: 0;
+        opacity: 0.14;
+        mix-blend-mode: screen;
+        background-image:
+          radial-gradient(circle at 20% 20%, rgba(255,255,255,0.65) 0 1px, transparent 1px),
+          radial-gradient(circle at 80% 65%, rgba(255,255,255,0.55) 0 1px, transparent 1px),
+          radial-gradient(circle at 40% 80%, rgba(255,255,255,0.4) 0 1px, transparent 1px);
+        background-size: 160px 160px;
+      }
+
+      .brand-lockup {
+        position: absolute;
+        top: 48px;
+        left: 56px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        z-index: 12;
+      }
+
+      .brand-kicker {
+        display: inline-flex;
+        width: fit-content;
+        padding: 10px 16px;
+        border-radius: 999px;
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        background: rgba(255, 255, 255, 0.06);
+        text-transform: uppercase;
+        letter-spacing: 0.18em;
+        font-size: 15px;
+        font-weight: 700;
+        color: ${palette.muted};
+      }
+
+      .brand-title {
+        font-size: 22px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+      }
+
+      .scene {
+        position: absolute;
+        inset: 0;
+        padding: 140px 72px 170px;
+      }
+
+      .scene-shell {
+        position: relative;
+        width: 100%;
+        height: 100%;
+      }
+
+      .accent-bar {
+        position: absolute;
+        top: 0;
+        width: 220px;
+        height: 10px;
+        border-radius: 999px;
+        background: linear-gradient(90deg, ${palette.accent}, ${palette.accentAlt});
+        transform-origin: left center;
+        box-shadow: 0 12px 42px rgba(0, 0, 0, 0.32);
+      }
+
+      .scene.align-left .accent-bar,
+      .scene.align-left .scene-panel {
+        left: 0;
+      }
+
+      .scene.align-right .accent-bar,
+      .scene.align-right .scene-panel {
+        right: 0;
+      }
+
+      .scene-panel {
+        position: absolute;
+        top: 42px;
+        width: 960px;
+        padding: 42px 48px 38px;
+        border-radius: 34px;
+        background: ${palette.panel};
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        backdrop-filter: blur(18px);
+        box-shadow: 0 28px 90px rgba(0, 0, 0, 0.3);
+      }
+
+      .scene.kind-hook .scene-panel {
+        padding-top: 50px;
+      }
+
+      .scene.kind-cta .scene-panel {
+        border-color: rgba(255, 255, 255, 0.2);
+      }
+
+      .scene-eyebrow {
+        font-size: 16px;
+        font-weight: 700;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: ${palette.muted};
+      }
+
+      .scene-title {
+        margin: 18px 0 0;
+        font-size: 68px;
+        line-height: 1.02;
+        letter-spacing: -0.04em;
+        max-width: 10ch;
+      }
+
+      .scene-body {
+        margin: 24px 0 0;
+        font-size: 28px;
+        line-height: 1.38;
+        color: rgba(248, 250, 252, 0.92);
+        max-width: 30ch;
+      }
+
+      .scene-meta {
+        margin-top: 24px;
+        font-size: 18px;
+        line-height: 1.5;
+        color: ${palette.muted};
+        max-width: 30ch;
+      }
+
+      .scene-cta {
+        margin-top: 28px;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 14px 22px;
+        border-radius: 999px;
+        font-size: 18px;
+        font-weight: 700;
+        color: #020617;
+        background: linear-gradient(90deg, ${palette.accent}, ${palette.accentAlt});
+      }
+
+      .author-photo {
+        position: absolute;
+        right: 96px;
+        bottom: 40px;
+        width: 320px;
+        height: 400px;
+        object-fit: cover;
+        border-radius: 28px;
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        box-shadow: 0 24px 80px rgba(0, 0, 0, 0.34);
+      }
+
+      .scene.align-right .author-photo {
+        left: 96px;
+        right: auto;
+      }
+
+      #captions-overlay {
+        position: absolute;
+        left: 72px;
+        right: 72px;
+        bottom: 48px;
+        min-height: 120px;
+        z-index: 14;
+        pointer-events: none;
+      }
+
+      .caption-chip {
+        position: absolute;
+        left: 50%;
+        bottom: 0;
+        transform: translateX(-50%);
+        display: inline-flex;
+        padding: 18px 28px;
+        border-radius: 28px;
+        background: rgba(2, 6, 23, 0.84);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        box-shadow: 0 20px 56px rgba(0, 0, 0, 0.34);
+        font-size: 30px;
+        line-height: 1.28;
+        font-weight: 700;
+        text-align: center;
+        color: ${palette.text};
+        max-width: 1200px;
+      }
+
+      .footer-link {
+        position: absolute;
+        right: 56px;
+        bottom: 46px;
+        z-index: 16;
+        font-size: 17px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: ${palette.muted};
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="amplifier-explainer"
+      data-width="1920"
+      data-height="1080"
+      data-duration="${args.durationSeconds}"
+    >
+      ${coverImage}
+      <div class="canvas-wash"></div>
+      <div class="grain"></div>
+      ${narrationTrack}
+      <div class="brand-lockup">
+        <div class="brand-kicker">${escapeHtml(
+          args.brief.article.publication?.name || "Amplify explainer",
+        )}</div>
+        <div class="brand-title">${escapeHtml(
+          args.brief.article.primaryAuthor?.name || args.brief.article.title,
+        )}</div>
+      </div>
+      ${sceneMarkup}
+      <div id="captions-overlay"></div>
+      <div class="footer-link">${escapeHtml(args.plan.cta.url || args.brief.article.url)}</div>
+    </div>
+
+    <script>
+      const SCENES = ${JSON.stringify(args.script.scenes)};
+      const TRANSCRIPT = ${JSON.stringify(args.transcript)};
+      const DURATION = ${JSON.stringify(args.durationSeconds)};
+      window.__timelines = window.__timelines || {};
+
+      const tl = gsap.timeline({ paused: true });
+      tl.set(".scene", { autoAlpha: 0 }, 0);
+
+      if (document.getElementById("cover-image")) {
+        tl.to(
+          "#cover-image",
+          {
+            scale: 1.08,
+            duration: DURATION,
+            ease: "none",
+          },
+          0,
+        );
+      }
+
+      SCENES.forEach((scene, index) => {
+        const selector = "#scene-" + index;
+        const panel = selector + " .scene-panel";
+        const accent = selector + " .accent-bar";
+        const title = selector + " .scene-title";
+        const copy = selector + " .scene-body";
+        const meta = selector + " .scene-meta";
+        const cta = selector + " .scene-cta";
+        const start = scene.startSeconds;
+        const hold = Math.max(scene.durationSeconds - 0.85, 0.25);
+
+        tl.set(selector, { autoAlpha: 1 }, start);
+        tl.fromTo(
+          accent,
+          { scaleX: 0, opacity: 0 },
+          { scaleX: 1, opacity: 1, duration: 0.45, ease: "power2.out" },
+          start + 0.02,
+        );
+        tl.fromTo(
+          panel,
+          { y: 40, opacity: 0, scale: 0.98 },
+          { y: 0, opacity: 1, scale: 1, duration: 0.55, ease: "power2.out" },
+          start + 0.04,
+        );
+        tl.fromTo(
+          [title, copy, meta, cta],
+          { y: 24, opacity: 0 },
+          { y: 0, opacity: 1, duration: 0.42, stagger: 0.06, ease: "power2.out" },
+          start + 0.14,
+        );
+        tl.to(
+          panel,
+          { y: -10, duration: hold, ease: "sine.inOut" },
+          start + 0.56,
+        );
+        tl.to(
+          selector,
+          { autoAlpha: 0, duration: 0.28, ease: "power2.in" },
+          Math.max(start + scene.durationSeconds - 0.28, start + 0.8),
+        );
+      });
+
+      function buildCaptionGroups(words) {
+        const groups = [];
+        let current = [];
+        const flush = () => {
+          if (!current.length) return;
+          groups.push({
+            text: current.map((word) => word.text).join(" "),
+            start: current[0].start,
+            end: current[current.length - 1].end,
+          });
+          current = [];
+        };
+
+        words.forEach((word) => {
+          current.push(word);
+          if (
+            current.length >= 6 ||
+            /[.!?]$/.test(word.text) ||
+            word.end - current[0].start >= 2.4
+          ) {
+            flush();
+          }
+        });
+
+        flush();
+        return groups;
+      }
+
+      const captionRoot = document.getElementById("captions-overlay");
+      const captionGroups = buildCaptionGroups(TRANSCRIPT);
+      captionGroups.forEach((group, index) => {
+        const node = document.createElement("div");
+        node.className = "caption-chip";
+        node.id = "caption-group-" + index;
+        node.textContent = group.text;
+        captionRoot.appendChild(node);
+        tl.fromTo(
+          node,
+          { autoAlpha: 0, y: 18, scale: 0.98 },
+          { autoAlpha: 1, y: 0, scale: 1, duration: 0.16, ease: "power2.out" },
+          group.start,
+        );
+        tl.to(
+          node,
+          { autoAlpha: 0, y: 10, duration: 0.16, ease: "power2.in" },
+          group.end + 0.04,
+        );
+      });
+
+      window.__timelines["amplifier-explainer"] = tl;
+    </script>
+  </body>
+</html>`;
+}
+
+async function processRenderJob(message: AmplifierQueueMessage) {
+  let job = await getExplainerVideoJob(message.jobId);
+  const source = await readJsonArtifact<ExplainerSourceArtifact>(
+    message.assetsBucket,
+    message.sourceKey,
+  );
+
+  job = await mergeExplainerVideoJob(message.jobId, {
+    status: "planning",
+    stage: "loading_assets",
+    progress: 0.18,
+    workerStatus: "processing",
+    message: "Worker claimed the job and is loading the render inputs.",
+  });
+
+  const script = buildExplainerScript({
+    brief: job.videoBrief,
+    plan: job.plan,
+    source,
+  });
+  const scriptArtifact = await uploadJsonArtifact(
+    message.assetsBucket,
+    `${message.baseKey}/script.json`,
+    script,
+  );
+
+  job = await mergeExplainerVideoJob(message.jobId, {
+    status: "storyboarding",
+    stage: "script_ready",
+    progress: 0.32,
+    artifacts: {
+      ...job.artifacts,
+      script: scriptArtifact,
+    },
+    message: "Narration script and scene cards are ready.",
+  });
+
+  let transcriptWords: TimedWord[] = [];
+  let voiceoverArtifact = job.artifacts.voiceover ?? null;
+  const workDir = mkdtempSync(join(tmpdir(), "amplifier-video-worker-"));
+  const projectDir = join(workDir, "project");
+  mkdirSync(projectDir, { recursive: true });
+
+  try {
+    let narrationSrc: string | null = null;
+    if (job.plan.voice.enabled) {
+      const voiceStyle = job.plan.voice.style || "documentary";
+      job = await mergeExplainerVideoJob(message.jobId, {
+        status: "voiceover",
+        stage: "synthesizing_voiceover",
+        progress: 0.46,
+        message: "Generating voiceover with ElevenLabs.",
+        billingSurfaceId: "elevenlabs:text-to-speech",
+        rawBillingSurfaceKey: process.env.ELEVENLABS_MODEL_ID || "eleven_multilingual_v2",
+      });
+
+      const tts = await synthesizeSpeechWithTimestamps({
+        text: script.fullNarration,
+        style: voiceStyle,
+        seed: Number.parseInt(createHash("sha256").update(job.jobId).digest("hex").slice(0, 8), 16),
+      });
+      const narrationPath = join(projectDir, "narration.mp3");
+      writeFileSync(narrationPath, tts.audio);
+      voiceoverArtifact = await uploadBufferArtifact(
+        message.assetsBucket,
+        `${message.baseKey}/voiceover.mp3`,
+        tts.audio,
+        tts.mimeType,
+      );
+      narrationSrc = "narration.mp3";
+      transcriptWords = tts.words;
+    } else if (job.plan.captions.enabled) {
+      transcriptWords = buildSyntheticWordTimings(script.segments);
+    }
+
+    const transcriptArtifact =
+      transcriptWords.length > 0
+        ? await uploadJsonArtifact(
+            message.assetsBucket,
+            `${message.baseKey}/transcript.json`,
+            transcriptWords,
+          )
+        : null;
+    const captionsArtifact =
+      transcriptWords.length > 0 && job.plan.captions.exportSrt
+        ? await uploadBufferArtifact(
+            message.assetsBucket,
+            `${message.baseKey}/captions.srt`,
+            Buffer.from(buildSrt(transcriptWords), "utf-8"),
+            "application/x-subrip",
+          )
+        : null;
+
+    job = await mergeExplainerVideoJob(message.jobId, {
+      status: "rendering",
+      stage: "building_composition",
+      progress: 0.62,
+      artifacts: {
+        ...job.artifacts,
+        script: scriptArtifact,
+        transcript: transcriptArtifact,
+        captions: captionsArtifact,
+        voiceover: voiceoverArtifact,
+      },
+      message: "Composition ready. Rendering explainer video with Hyperframes.",
+    });
+
+    const durationSeconds = transcriptWords.length
+      ? Math.max(
+          script.targetDurationSeconds,
+          transcriptWords[transcriptWords.length - 1]?.end || 0,
+        )
+      : script.targetDurationSeconds;
+    writeFileSync(
+      join(projectDir, "index.html"),
+      buildHtmlTemplate({
+        brief: job.videoBrief,
+        plan: job.plan,
+        script,
+        transcript: transcriptWords,
+        durationSeconds,
+        narrationSrc,
+      }),
+      "utf-8",
+    );
+
+    const outputPath = join(workDir, "output.mp4");
+    const renderJob = createRenderJob({
+      fps: { num: 30, den: 1 },
+      quality: "high",
+      format: "mp4",
+      workers: renderWorkers,
+      debug: false,
+    });
+
+    await executeRenderJob(renderJob, projectDir, outputPath);
+
+    job = await mergeExplainerVideoJob(message.jobId, {
+      status: "uploading",
+      stage: "uploading_artifacts",
+      progress: 0.9,
+      message: "Uploading the finished MP4 and final artifacts.",
+    });
+
+    const videoArtifact = await uploadFileArtifact(
+      message.assetsBucket,
+      `${message.baseKey}/video.mp4`,
+      outputPath,
+      "video/mp4",
+    );
+
+    await mergeExplainerVideoJob(message.jobId, {
+      status: "completed",
+      stage: "complete",
+      progress: 1,
+      workerStatus: "completed",
+      message: "Explainer video rendered successfully.",
+      artifacts: {
+        ...job.artifacts,
+        script: scriptArtifact,
+        transcript: transcriptArtifact,
+        captions: captionsArtifact,
+        voiceover: voiceoverArtifact,
+        video: videoArtifact,
+      },
+    });
+  } catch (error) {
+    const messageText = error instanceof Error ? error.message : String(error);
+    await mergeExplainerVideoJob(message.jobId, {
+      status: "failed",
+      stage: "worker_failed",
+      progress: 0,
+      workerStatus: "failed",
+      failureCode: "worker_render_failed",
+      message: messageText,
+    });
+    throw error;
+  } finally {
+    rmSync(workDir, { recursive: true, force: true });
+  }
+}
+
+async function deleteMessage(receiptHandle: string) {
+  await sqs.send(
+    new DeleteMessageCommand({
+      QueueUrl: queueUrl,
+      ReceiptHandle: receiptHandle,
+    }),
+  );
+}
+
+async function pollOnce() {
+  const response = await sqs.send(
+    new ReceiveMessageCommand({
+      QueueUrl: queueUrl,
+      MaxNumberOfMessages: 1,
+      WaitTimeSeconds: pollWaitSeconds,
+      VisibilityTimeout: visibilityTimeout,
+    }),
+  );
+
+  const message = response.Messages?.[0];
+  if (!message?.ReceiptHandle || !message.Body) {
+    return;
+  }
+
+  let parsed: AmplifierQueueMessage;
+  try {
+    parsed = JSON.parse(message.Body) as AmplifierQueueMessage;
+  } catch (error) {
+    console.error("Invalid queue message body", error);
+    await deleteMessage(message.ReceiptHandle);
+    return;
+  }
+
+  currentJobId = parsed.jobId;
+  try {
+    await processRenderJob(parsed);
+    processedJobs += 1;
+    await deleteMessage(message.ReceiptHandle);
+  } catch (error) {
+    failedJobs += 1;
+    console.error("Failed to process Amplifier explainer job", {
+      jobId: parsed.jobId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    await deleteMessage(message.ReceiptHandle);
+  } finally {
+    currentJobId = null;
+  }
+}
+
+async function runLoop() {
+  if (!queueUrl) {
+    throw new Error("Missing AMPLIFIER_VIDEO_QUEUE_URL");
+  }
+
+  while (!shuttingDown) {
+    try {
+      await pollOnce();
+    } catch (error) {
+      console.error("Worker poll failure", error);
+      await new Promise((resolve) => setTimeout(resolve, 5000));
+    }
+  }
+}
+
+export function startHealthServer() {
+  const server = createServer((req, res) => {
+    if (!req.url || req.url === "/health") {
+      const body = JSON.stringify({
+        ok: true,
+        queueUrlConfigured: Boolean(queueUrl),
+        currentJobId,
+        processedJobs,
+        failedJobs,
+      });
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(body);
+      return;
+    }
+
+    res.writeHead(404, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "not_found" }));
+  });
+
+  server.listen(healthPort, () => {
+    console.log(`Amplifier video worker health server listening on ${healthPort}`);
+  });
+  return server;
+}
+
+export async function startWorker() {
+  const server = startHealthServer();
+
+  const stop = () => {
+    shuttingDown = true;
+    server.close();
+  };
+
+  process.on("SIGINT", stop);
+  process.on("SIGTERM", stop);
+
+  await runLoop();
+}
+
+export type AmplifierWorkerHealthServer = Server;

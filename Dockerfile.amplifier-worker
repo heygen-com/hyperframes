@@ -1,0 +1,69 @@
+FROM node:22-bookworm-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
+    unzip \
+    ffmpeg \
+    chromium \
+    libgbm1 \
+    libnss3 \
+    libatk-bridge2.0-0 \
+    libdrm2 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxrandr2 \
+    libcups2 \
+    libasound2 \
+    libpangocairo-1.0-0 \
+    libxshmfence1 \
+    libgtk-3-0 \
+    fonts-liberation \
+    fonts-noto-color-emoji \
+    fonts-noto-cjk \
+    fonts-noto-core \
+    fonts-noto-extra \
+    fonts-noto-ui-core \
+    fonts-freefont-ttf \
+    fonts-dejavu-core \
+    fontconfig \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean \
+    && fc-cache -fv
+
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+ENV CONTAINER=true
+
+RUN npx --yes @puppeteer/browsers install chrome-headless-shell@stable \
+      --path /root/.cache/puppeteer \
+    && find /root/.cache/puppeteer/chrome-headless-shell -name "chrome-headless-shell" -type f
+
+WORKDIR /app
+
+RUN curl -fsSL https://bun.sh/install | bash
+ENV PATH="/root/.bun/bin:$PATH"
+
+COPY package.json bun.lock ./
+COPY packages/core/package.json packages/core/package.json
+COPY packages/engine/package.json packages/engine/package.json
+COPY packages/player/package.json packages/player/package.json
+COPY packages/producer/package.json packages/producer/package.json
+COPY packages/cli/package.json packages/cli/package.json
+COPY packages/studio/package.json packages/studio/package.json
+COPY packages/shader-transitions/package.json packages/shader-transitions/package.json
+COPY packages/amplifier-video-worker/package.json packages/amplifier-video-worker/package.json
+
+RUN bun install --frozen-lockfile
+
+COPY packages/core/ packages/core/
+COPY packages/engine/ packages/engine/
+COPY packages/producer/ packages/producer/
+COPY packages/amplifier-video-worker/ packages/amplifier-video-worker/
+
+RUN bun run --filter @hyperframes/producer build
+RUN bun run --filter @hyperframes/amplifier-video-worker build
+
+EXPOSE 3000
+
+CMD ["node", "packages/amplifier-video-worker/dist/index.js"]
