@@ -1,0 +1,14 @@
+{
+  "Action": "plan",
+  "ProjectS3Uri": "s3://example-bucket/projects/sample-composition.tar.gz",
+  "PlanOutputS3Prefix": "s3://example-bucket/renders/sample/",
+  "Config": {
+    "fps": 30,
+    "width": 1920,
+    "height": 1080,
+    "format": "mp4",
+    "chunkSize": 240,
+    "maxParallelChunks": 8,
+    "runtimeCap": "lambda"
+  }
+}

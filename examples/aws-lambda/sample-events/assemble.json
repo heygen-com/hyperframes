@@ -1,0 +1,13 @@
+{
+  "Action": "assemble",
+  "PlanS3Uri": "s3://example-bucket/renders/sample/plan.tar.gz",
+  "ChunkS3Uris": [
+    "s3://example-bucket/renders/sample/chunks/0000.mp4",
+    "s3://example-bucket/renders/sample/chunks/0001.mp4",
+    "s3://example-bucket/renders/sample/chunks/0002.mp4",
+    "s3://example-bucket/renders/sample/chunks/0003.mp4"
+  ],
+  "AudioS3Uri": null,
+  "OutputS3Uri": "s3://example-bucket/renders/sample/output.mp4",
+  "Format": "mp4"
+}

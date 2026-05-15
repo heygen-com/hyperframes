@@ -1,0 +1,8 @@
+{
+  "Action": "renderChunk",
+  "PlanS3Uri": "s3://example-bucket/renders/sample/plan.tar.gz",
+  "PlanHash": "0000000000000000000000000000000000000000000000000000000000000000",
+  "ChunkIndex": 0,
+  "ChunkOutputS3Prefix": "s3://example-bucket/renders/sample/",
+  "Format": "mp4"
+}

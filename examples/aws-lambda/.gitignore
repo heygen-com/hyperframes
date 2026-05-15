@@ -1,0 +1,3 @@
+# SAM CLI state — written by `sam deploy --guided`, contains user choices.
+samconfig.toml
+.aws-sam/

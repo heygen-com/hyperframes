@@ -67,7 +67,10 @@ packages/producer/src/services/fontData.generated.ts
 # Local proof / test artifacts
 qa-artifacts/
 my-video/
-examples/
+examples/*
+# Tracked OSS examples — negations override the blanket `examples/*` ignore.
+!examples/aws-lambda
+!examples/aws-lambda/**
 packages/studio/data/
 .desloppify/
 .worktrees/
