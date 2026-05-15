@@ -106,7 +106,8 @@ export function createViteAdapter(dataDir: string, server: ViteDevServer): Studi
         .filter(
           (d) =>
             (d.isDirectory() || d.isSymbolicLink()) &&
-            existsSync(join(dataDir, d.name, "index.html")),
+            (existsSync(join(dataDir, d.name, "index.html")) ||
+              existsSync(join(dataDir, d.name, `${d.name}.html`))),
         )
         .map((d) => {
           const session = sessionMap.get(d.name);
