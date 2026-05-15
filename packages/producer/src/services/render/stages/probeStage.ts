@@ -38,6 +38,7 @@ import { fpsToNumber } from "@hyperframes/core";
 import type { CompiledComposition } from "../../htmlCompiler.js";
 import {
   discoverMediaFromBrowser,
+  discoverVideoVisibilityFromTimeline,
   recompileWithResolutions,
   resolveCompositionDurations,
 } from "../../htmlCompiler.js";
@@ -284,6 +285,28 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
             });
             existingAudioIds.add(el.id);
           }
+        }
+      }
+    }
+
+    // Runtime video discovery: for videos with auto-injected timing (data-hf-auto-start),
+    // seek the GSAP timeline to find actual scene visibility windows and override start/end.
+    if (composition.videos.length > 0) {
+      const visibilityWindows = await discoverVideoVisibilityFromTimeline(
+        probeSession.page,
+        composition.duration,
+      );
+      assertNotAborted();
+
+      for (const win of visibilityWindows) {
+        const video = composition.videos.find((v) => v.id === win.videoId);
+        if (!video) continue;
+        if (win.visibleStart >= 0 && win.visibleEnd > win.visibleStart) {
+          video.start = win.visibleStart;
+          video.end = win.visibleEnd;
+          log.info(
+            `[Probe] Runtime video discovery: ${video.id} visible ${win.visibleStart.toFixed(2)}s–${win.visibleEnd.toFixed(2)}s`,
+          );
         }
       }
     }
