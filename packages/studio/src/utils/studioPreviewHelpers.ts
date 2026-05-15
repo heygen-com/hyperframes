@@ -1,5 +1,6 @@
 import type { DomEditViewport, DomEditSelection } from "../components/editor/domEditing";
 import { resolveVisualDomEditSelectionTarget } from "../components/editor/domEditing";
+import { getDomLayerPatchTarget } from "../components/editor/domEditingElement";
 import { usePlayerStore, liveTime } from "../player";
 import { getEventTargetElement } from "./studioHelpers";
 
@@ -85,7 +86,9 @@ export function getPreviewTargetFromPointer(
     if (visualTarget) return visualTarget;
   }
 
-  return getEventTargetElement(doc.elementFromPoint(localPointer.x, localPointer.y));
+  const fallback = getEventTargetElement(doc.elementFromPoint(localPointer.x, localPointer.y));
+  if (!fallback || !getDomLayerPatchTarget(fallback, activeCompositionPath)) return null;
+  return fallback;
 }
 
 export function buildRasterClickSelectionContext(

@@ -118,6 +118,7 @@ export function getDomLayerPatchTarget(
   activeCompositionPath: string | null,
 ): Pick<DomEditSelection, "id" | "selector" | "selectorIndex" | "sourceFile"> | null {
   if (!isInspectableLayerElement(el)) return null;
+  if (el.hasAttribute("data-composition-id")) return null;
 
   const selector = buildStableSelector(el);
   if (!selector) return null;

@@ -138,6 +138,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
 
   const gestures = createDomEditOverlayGestureHandlers({
     overlayRef,
+    iframeRef,
     boxRef,
     selectionRef,
     overlayRectRef,

@@ -23,7 +23,7 @@ import {
   restoreStudioPathOffset,
   restoreStudioRotation,
 } from "./manualEdits";
-import { type GroupOverlayItem, type OverlayRect } from "./domEditOverlayGeometry";
+import { type GroupOverlayItem, type OverlayRect, toOverlayRect } from "./domEditOverlayGeometry";
 import {
   BLOCKED_MOVE_THRESHOLD_PX,
   type BlockedMoveState,
@@ -43,6 +43,7 @@ import {
 // Refs are stable across renders; values are read via .current.
 export type UseDomEditOverlayGesturesOptions = {
   overlayRef: RefObject<HTMLDivElement | null>;
+  iframeRef: RefObject<HTMLIFrameElement | null>;
   boxRef: RefObject<HTMLDivElement | null>;
   selectionRef: RefObject<DomEditSelection | null>;
   overlayRectRef: RefObject<OverlayRect | null>;
@@ -205,6 +206,27 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
       box.style.width = `${nextSize.overlayWidth}px`;
       box.style.height = `${nextSize.overlayHeight}px`;
       applyStudioBoxSizeDraft(sel.element, nextSize);
+
+      // After applying dimensions, the element's visual top-left may drift when
+      // transform-origin is center (e.g. GSAP scale tween). Re-read BCR to
+      // correct the overlay position.
+      const overlayEl = opts.overlayRef.current;
+      const iframe = opts.iframeRef.current;
+      if (overlayEl && iframe) {
+        const refreshed = toOverlayRect(overlayEl, iframe, sel.element);
+        if (refreshed) {
+          box.style.left = `${refreshed.left}px`;
+          box.style.top = `${refreshed.top}px`;
+          setDraftOverlayRect({
+            left: refreshed.left,
+            top: refreshed.top,
+            width: nextSize.overlayWidth,
+            height: nextSize.overlayHeight,
+            editScaleX: g.editScaleX,
+            editScaleY: g.editScaleY,
+          });
+        }
+      }
     }
   };
 
