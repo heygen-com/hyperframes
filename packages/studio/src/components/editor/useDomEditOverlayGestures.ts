@@ -195,38 +195,31 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
         dy,
         uniform: e.shiftKey,
       });
+      applyStudioBoxSizeDraft(sel.element, nextSize);
+
+      // Re-read BCR after applying dimensions. For elements with a GSAP
+      // scale transform and centered transform-origin the visual top-left
+      // drifts and the visual size diverges from the raw CSS size, so BCR
+      // is the only accurate source for both.
+      const overlayEl = opts.overlayRef.current;
+      const iframe = opts.iframeRef.current;
+      const refreshed = overlayEl && iframe ? toOverlayRect(overlayEl, iframe, sel.element) : null;
+      const overlayLeft = refreshed ? refreshed.left : g.originLeft;
+      const overlayTop = refreshed ? refreshed.top : g.originTop;
+      const overlayWidth = refreshed ? refreshed.width : nextSize.overlayWidth;
+      const overlayHeight = refreshed ? refreshed.height : nextSize.overlayHeight;
+      box.style.left = `${overlayLeft}px`;
+      box.style.top = `${overlayTop}px`;
+      box.style.width = `${overlayWidth}px`;
+      box.style.height = `${overlayHeight}px`;
       setDraftOverlayRect({
-        left: g.originLeft,
-        top: g.originTop,
-        width: nextSize.overlayWidth,
-        height: nextSize.overlayHeight,
+        left: overlayLeft,
+        top: overlayTop,
+        width: overlayWidth,
+        height: overlayHeight,
         editScaleX: g.editScaleX,
         editScaleY: g.editScaleY,
       });
-      box.style.width = `${nextSize.overlayWidth}px`;
-      box.style.height = `${nextSize.overlayHeight}px`;
-      applyStudioBoxSizeDraft(sel.element, nextSize);
-
-      // After applying dimensions, the element's visual top-left may drift when
-      // transform-origin is center (e.g. GSAP scale tween). Re-read BCR to
-      // correct the overlay position.
-      const overlayEl = opts.overlayRef.current;
-      const iframe = opts.iframeRef.current;
-      if (overlayEl && iframe) {
-        const refreshed = toOverlayRect(overlayEl, iframe, sel.element);
-        if (refreshed) {
-          box.style.left = `${refreshed.left}px`;
-          box.style.top = `${refreshed.top}px`;
-          setDraftOverlayRect({
-            left: refreshed.left,
-            top: refreshed.top,
-            width: nextSize.overlayWidth,
-            height: nextSize.overlayHeight,
-            editScaleX: g.editScaleX,
-            editScaleY: g.editScaleY,
-          });
-        }
-      }
     }
   };
 
