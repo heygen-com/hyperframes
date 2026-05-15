@@ -1,33 +1,7 @@
-import { memo, useState, useRef, useEffect, useCallback } from "react";
+import { memo, useState, useRef, useEffect } from "react";
 import { RenderQueueItem } from "./RenderQueueItem";
 import type { RenderJob, ResolutionPreset } from "./useRenderQueue";
-
-const RENDER_SETTINGS_KEY = "hf-studio-render-settings";
-
-interface PersistedRenderSettings {
-  format: "mp4" | "webm" | "mov";
-  quality: "draft" | "standard" | "high";
-  fps: 24 | 30 | 60;
-}
-
-export function getPersistedRenderSettings(): PersistedRenderSettings {
-  try {
-    const raw = localStorage.getItem(RENDER_SETTINGS_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      return {
-        format: ["mp4", "webm", "mov"].includes(parsed.format) ? parsed.format : "mp4",
-        quality: ["draft", "standard", "high"].includes(parsed.quality)
-          ? parsed.quality
-          : "standard",
-        fps: [24, 30, 60].includes(parsed.fps) ? parsed.fps : 30,
-      };
-    }
-  } catch {
-    /* ignore */
-  }
-  return { format: "mp4", quality: "standard", fps: 30 };
-}
+import { getPersistedRenderSettings, persistRenderSettings } from "./renderSettings";
 
 export interface CompositionDimensions {
   width: number;
@@ -231,14 +205,6 @@ function FormatExportButton({
   const [resolution, setResolution] = useState<ResolutionPreset | "auto">("auto");
   const [fps, setFps] = useState<24 | 30 | 60>(persisted.fps);
 
-  const persistSettings = useCallback((f: typeof format, q: typeof quality, fp: typeof fps) => {
-    try {
-      localStorage.setItem(RENDER_SETTINGS_KEY, JSON.stringify({ format: f, quality: q, fps: fp }));
-    } catch {
-      /* ignore */
-    }
-  }, []);
-
   // MOV (ProRes) is a fixed-quality codec — quality selector has no effect.
   const showQuality = format !== "mov";
 
@@ -267,7 +233,7 @@ function FormatExportButton({
           onChange={(e) => {
             const v = e.target.value as "draft" | "standard" | "high";
             setQuality(v);
-            persistSettings(format, v, fps);
+            persistRenderSettings(format, v, fps);
           }}
           disabled={isRendering}
           title={QUALITY_OPTIONS.find((q) => q.value === quality)?.title}
@@ -285,7 +251,7 @@ function FormatExportButton({
         onChange={(e) => {
           const v = Number(e.target.value) as 24 | 30 | 60;
           setFps(v);
-          persistSettings(format, quality, v);
+          persistRenderSettings(format, quality, v);
         }}
         disabled={isRendering}
         title="Frames per second"
@@ -300,7 +266,7 @@ function FormatExportButton({
         onChange={(e) => {
           const v = e.target.value as "mp4" | "webm" | "mov";
           setFormat(v);
-          persistSettings(v, quality, fps);
+          persistRenderSettings(v, quality, fps);
         }}
         disabled={isRendering}
         className="h-5 px-1 text-[10px] bg-neutral-800 border border-neutral-700 text-neutral-300 outline-none disabled:opacity-50"

@@ -6,7 +6,7 @@ import { isMediaFile } from "../utils/mediaTypes";
 import { usePanelLayoutContext } from "../contexts/PanelLayoutContext";
 import { useStudioContext } from "../contexts/StudioContext";
 import { useFileManagerContext } from "../contexts/FileManagerContext";
-import { getPersistedRenderSettings } from "./renders/RenderQueue";
+import { getPersistedRenderSettings } from "./renders/renderSettings";
 
 export interface StudioLeftSidebarProps {
   leftSidebarRef: RefObject<LeftSidebarHandle | null>;
