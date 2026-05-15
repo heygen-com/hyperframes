@@ -124,6 +124,10 @@
       "type": "hyperframes:block"
     },
     {
+      "name": "three-dissolve",
+      "type": "hyperframes:block"
+    },
+    {
       "name": "domain-warp-dissolve",
       "type": "hyperframes:block"
     },

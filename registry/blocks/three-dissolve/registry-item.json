@@ -1,0 +1,20 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "three-dissolve",
+  "type": "hyperframes:block",
+  "title": "3D Dissolve",
+  "description": "A cinematic 3D dissolve effect with glowing rings, particle dust, and GPGPU vapor. Bring your own GLTF model.",
+  "tags": ["vfx", "3d", "particles", "dissolve"],
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 8,
+  "files": [
+    {
+      "path": "three-dissolve.html",
+      "target": "compositions/three-dissolve.html",
+      "type": "hyperframes:composition"
+    }
+  ]
+}
