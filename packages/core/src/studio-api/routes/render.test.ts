@@ -117,6 +117,83 @@ describe("POST /projects/:id/render — outputResolution forwarding", () => {
   });
 });
 
+describe("POST /projects/:id/render — composition forwarding", () => {
+  it("forwards a valid composition path to the adapter", async () => {
+    const spy = vi.fn();
+    const { app, cleanup } = buildApp(spy);
+    try {
+      const res = await app.request("http://localhost/projects/demo/render", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          fps: 30,
+          quality: "standard",
+          format: "mp4",
+          composition: "compositions/intro.html",
+        }),
+      });
+      expect(res.status).toBe(200);
+      expect(spy).toHaveBeenCalledOnce();
+      expect(spy.mock.calls[0][0].composition).toBe("compositions/intro.html");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("omits composition when not specified", async () => {
+    const spy = vi.fn();
+    const { app, cleanup } = buildApp(spy);
+    try {
+      const res = await app.request("http://localhost/projects/demo/render", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ fps: 30, quality: "standard", format: "mp4" }),
+      });
+      expect(res.status).toBe(200);
+      expect(spy.mock.calls[0][0].composition).toBeUndefined();
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("omits composition when empty string", async () => {
+    const spy = vi.fn();
+    const { app, cleanup } = buildApp(spy);
+    try {
+      const res = await app.request("http://localhost/projects/demo/render", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ fps: 30, quality: "standard", format: "mp4", composition: "" }),
+      });
+      expect(res.status).toBe(200);
+      expect(spy.mock.calls[0][0].composition).toBeUndefined();
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("rejects path-traversal attempts with 400", async () => {
+    const spy = vi.fn();
+    const { app, cleanup } = buildApp(spy);
+    try {
+      const res = await app.request("http://localhost/projects/demo/render", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          fps: 30,
+          quality: "standard",
+          format: "mp4",
+          composition: "../../../etc/passwd",
+        }),
+      });
+      expect(res.status).toBe(400);
+      expect(spy).not.toHaveBeenCalled();
+    } finally {
+      cleanup();
+    }
+  });
+});
+
 describe("POST /projects/:id/render — fps wire format", () => {
   // The fps fraction-syntax feature accepts JSON `number` (integer fps) and
   // JSON `string` (ffmpeg-style rational) on the wire, normalizing both to

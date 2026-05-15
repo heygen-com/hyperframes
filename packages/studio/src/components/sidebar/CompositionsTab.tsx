@@ -210,6 +210,7 @@ function CompCard({
         <button
           type="button"
           title={isRendering ? "Rendering..." : `Render ${name}`}
+          aria-label={isRendering ? "Rendering..." : `Render ${name}`}
           disabled={isRendering}
           onClick={(e) => {
             e.stopPropagation();

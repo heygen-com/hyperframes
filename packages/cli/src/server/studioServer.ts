@@ -263,6 +263,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
             format: opts.format,
             outputResolution: opts.outputResolution,
             ...(manualEditsRenderScript ? { renderBodyScripts: [manualEditsRenderScript] } : {}),
+            ...(opts.composition ? { entryFile: opts.composition } : {}),
           });
           const startTime = Date.now();
           const onProgress = (j: { progress: number; currentStage?: string }) => {

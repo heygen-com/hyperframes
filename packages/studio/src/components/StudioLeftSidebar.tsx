@@ -6,6 +6,7 @@ import { isMediaFile } from "../utils/mediaTypes";
 import { usePanelLayoutContext } from "../contexts/PanelLayoutContext";
 import { useStudioContext } from "../contexts/StudioContext";
 import { useFileManagerContext } from "../contexts/FileManagerContext";
+import { getPersistedRenderSettings } from "./renders/RenderQueue";
 
 export interface StudioLeftSidebarProps {
   leftSidebarRef: RefObject<LeftSidebarHandle | null>;
@@ -48,7 +49,8 @@ export function StudioLeftSidebar({
   const handleRenderComposition = useCallback(
     async (comp: string) => {
       await waitForPendingDomEditSaves();
-      await renderQueue.startRender({ composition: comp });
+      const { format, quality, fps } = getPersistedRenderSettings();
+      await renderQueue.startRender({ composition: comp, format, quality, fps });
     },
     [renderQueue, waitForPendingDomEditSaves],
   );
