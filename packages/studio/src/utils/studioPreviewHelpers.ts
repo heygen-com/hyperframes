@@ -60,6 +60,28 @@ export function getPreviewLocalPointer(
   return resolvePreviewLocalPointer(iframe, doc, win, clientX, clientY);
 }
 
+const POINTER_EVENTS_OVERRIDE_ID = "__hf_studio_pointer_events_override__";
+
+function forcePointerEventsAuto(doc: Document): HTMLStyleElement | null {
+  try {
+    const style = doc.createElement("style");
+    style.id = POINTER_EVENTS_OVERRIDE_ID;
+    style.textContent = "* { pointer-events: auto !important; }";
+    doc.head.appendChild(style);
+    return style;
+  } catch {
+    return null;
+  }
+}
+
+function removePointerEventsOverride(style: HTMLStyleElement | null): void {
+  try {
+    style?.remove();
+  } catch {
+    // cross-origin or detached doc
+  }
+}
+
 export function getPreviewTargetFromPointer(
   iframe: HTMLIFrameElement,
   clientX: number,
@@ -79,20 +101,25 @@ export function getPreviewTargetFromPointer(
   const localPointer = resolvePreviewLocalPointer(iframe, doc, win, clientX, clientY);
   if (!localPointer) return null;
 
-  if (typeof doc.elementsFromPoint === "function") {
-    const visualTarget = resolveVisualDomEditSelectionTarget(
-      doc.elementsFromPoint(localPointer.x, localPointer.y),
-      {
-        activeCompositionPath,
-      },
-    );
-    if (visualTarget) return visualTarget;
-  }
+  const overrideStyle = forcePointerEventsAuto(doc);
+  try {
+    if (typeof doc.elementsFromPoint === "function") {
+      const visualTarget = resolveVisualDomEditSelectionTarget(
+        doc.elementsFromPoint(localPointer.x, localPointer.y),
+        {
+          activeCompositionPath,
+        },
+      );
+      if (visualTarget) return visualTarget;
+    }
 
-  const fallback = getEventTargetElement(doc.elementFromPoint(localPointer.x, localPointer.y));
-  if (!fallback || !getDomLayerPatchTarget(fallback, activeCompositionPath)) return null;
-  if (!isElementComputedVisible(fallback)) return null;
-  return fallback;
+    const fallback = getEventTargetElement(doc.elementFromPoint(localPointer.x, localPointer.y));
+    if (!fallback || !getDomLayerPatchTarget(fallback, activeCompositionPath)) return null;
+    if (!isElementComputedVisible(fallback)) return null;
+    return fallback;
+  } finally {
+    removePointerEventsOverride(overrideStyle);
+  }
 }
 
 export function buildRasterClickSelectionContext(
