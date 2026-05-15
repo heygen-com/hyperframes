@@ -206,7 +206,7 @@ export type RuntimePlayer = {
   _timeline: RuntimeTimelineLike | null;
   play: () => void;
   pause: () => void;
-  seek: (timeSeconds: number) => void;
+  seek: (timeSeconds: number, options?: { keepPlaying?: boolean }) => void;
   renderSeek: (timeSeconds: number) => void;
   getTime: () => number;
   getDuration: () => number;

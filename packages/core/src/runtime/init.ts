@@ -84,7 +84,7 @@ export function initSandboxRuntimeModular(): void {
     _timeline: RuntimeTimelineLike | null;
     play: () => void;
     pause: () => void;
-    seek: (timeSeconds: number) => void;
+    seek: (timeSeconds: number, options?: { keepPlaying?: boolean }) => void;
     getTime: () => number;
     getDuration: () => number;
     isPlaying: () => boolean;

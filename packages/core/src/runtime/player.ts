@@ -144,10 +144,11 @@ export function createRuntimePlayer(deps: PlayerDeps): RuntimePlayer {
       deps.onRenderFrameSeek(time);
       deps.onStatePost(true);
     },
-    seek: (timeSeconds: number) => {
+    seek: (timeSeconds: number, options?: { keepPlaying?: boolean }) => {
       const timeline = deps.getTimeline();
       if (!timeline) return;
       const safeTime = Math.max(0, Number(timeSeconds) || 0);
+      const wasPlaying = deps.getIsPlaying();
       const quantized = seekMasterAndSiblingTimelinesDeterministically(
         deps.getTimelineRegistry?.(),
         timeline,
@@ -155,8 +156,24 @@ export function createRuntimePlayer(deps: PlayerDeps): RuntimePlayer {
         deps.getCanonicalFps(),
       );
       deps.onDeterministicSeek(quantized);
-      deps.setIsPlaying(false);
-      deps.onSyncMedia(quantized, false);
+      if (options?.keepPlaying && wasPlaying) {
+        // The deterministic seek helper pauses the master and rearmed siblings.
+        // Resume them so the caller's playback state survives the seek.
+        if (typeof timeline.timeScale === "function") {
+          timeline.timeScale(deps.getPlaybackRate());
+        }
+        timeline.play();
+        forEachSiblingTimeline(deps.getTimelineRegistry?.(), timeline, (tl) => {
+          if (typeof tl.timeScale === "function") tl.timeScale(deps.getPlaybackRate());
+          tl.play();
+        });
+        deps.onDeterministicPlay();
+        deps.onShowNativeVideos();
+        deps.onSyncMedia(quantized, true);
+      } else {
+        deps.setIsPlaying(false);
+        deps.onSyncMedia(quantized, false);
+      }
       deps.onRenderFrameSeek(quantized);
       deps.onStatePost(true);
     },

@@ -368,6 +368,91 @@ describe("createRuntimePlayer", () => {
       expect(deps.onDeterministicSeek).toHaveBeenCalledWith(8);
       expect(deps.onSyncMedia).toHaveBeenCalledWith(8, false);
     });
+
+    // Regression: A/E Jump-to-in/out shortcuts (PR #842) send
+    // `{ keepPlaying: true }` so playback survives the seek. Before this fix the
+    // runtime always called setIsPlaying(false), so the shortcut paused playback
+    // on every press in compositions backed by the `__player` runtime adapter.
+    describe("keepPlaying option", () => {
+      it("preserves play state when keepPlaying is true and playback was active", () => {
+        const timeline = createMockTimeline({ duration: 10 });
+        const deps = createMockDeps(timeline);
+        deps.getIsPlaying.mockReturnValue(true);
+        const player = createRuntimePlayer(deps);
+        player.seek(3, { keepPlaying: true });
+        expect(deps.setIsPlaying).not.toHaveBeenCalledWith(false);
+        expect(deps.onDeterministicPlay).toHaveBeenCalled();
+        expect(deps.onShowNativeVideos).toHaveBeenCalled();
+        expect(deps.onSyncMedia).toHaveBeenCalledWith(expect.any(Number), true);
+      });
+
+      it("resumes the master timeline after the deterministic seek pauses it", () => {
+        const timeline = createMockTimeline({ duration: 10 });
+        const deps = createMockDeps(timeline);
+        deps.getIsPlaying.mockReturnValue(true);
+        const player = createRuntimePlayer(deps);
+        player.seek(3, { keepPlaying: true });
+        // The helper pauses then seeks; the keep-playing branch must call
+        // play() afterwards so the timeline is left running.
+        const playMock = timeline.play as ReturnType<typeof vi.fn>;
+        const pauseMock = timeline.pause as ReturnType<typeof vi.fn>;
+        expect(playMock).toHaveBeenCalledTimes(1);
+        expect(pauseMock).toHaveBeenCalled();
+        expect(playMock.mock.invocationCallOrder[0]).toBeGreaterThan(
+          pauseMock.mock.invocationCallOrder[pauseMock.mock.invocationCallOrder.length - 1],
+        );
+      });
+
+      it("applies playbackRate to master and siblings on resume", () => {
+        const master = createMockTimeline({ duration: 10 });
+        const scene1 = createMockTimeline();
+        const deps = createMockDeps(master);
+        deps.getIsPlaying.mockReturnValue(true);
+        deps.getPlaybackRate.mockReturnValue(2);
+        const player = createRuntimePlayer({
+          ...deps,
+          getTimelineRegistry: () => ({ main: master, scene1 }),
+        });
+        player.seek(3, { keepPlaying: true });
+        expect(master.timeScale).toHaveBeenCalledWith(2);
+        expect(scene1.timeScale).toHaveBeenCalledWith(2);
+        expect(scene1.play).toHaveBeenCalled();
+      });
+
+      it("stays paused when keepPlaying is true but playback was not active", () => {
+        const timeline = createMockTimeline({ duration: 10 });
+        const deps = createMockDeps(timeline);
+        deps.getIsPlaying.mockReturnValue(false);
+        const player = createRuntimePlayer(deps);
+        player.seek(3, { keepPlaying: true });
+        expect(deps.setIsPlaying).toHaveBeenCalledWith(false);
+        expect(deps.onSyncMedia).toHaveBeenCalledWith(expect.any(Number), false);
+        expect(deps.onDeterministicPlay).not.toHaveBeenCalled();
+        expect(deps.onShowNativeVideos).not.toHaveBeenCalled();
+      });
+
+      it("pauses on seek when keepPlaying is false (explicit)", () => {
+        const timeline = createMockTimeline({ duration: 10 });
+        const deps = createMockDeps(timeline);
+        deps.getIsPlaying.mockReturnValue(true);
+        const player = createRuntimePlayer(deps);
+        player.seek(3, { keepPlaying: false });
+        expect(deps.setIsPlaying).toHaveBeenCalledWith(false);
+        expect(deps.onSyncMedia).toHaveBeenCalledWith(expect.any(Number), false);
+        expect(deps.onDeterministicPlay).not.toHaveBeenCalled();
+      });
+
+      it("pauses on seek when no options are passed (default behavior unchanged)", () => {
+        const timeline = createMockTimeline({ duration: 10 });
+        const deps = createMockDeps(timeline);
+        deps.getIsPlaying.mockReturnValue(true);
+        const player = createRuntimePlayer(deps);
+        player.seek(3);
+        expect(deps.setIsPlaying).toHaveBeenCalledWith(false);
+        expect(deps.onSyncMedia).toHaveBeenCalledWith(expect.any(Number), false);
+        expect(deps.onDeterministicPlay).not.toHaveBeenCalled();
+      });
+    });
   });
 
   describe("renderSeek", () => {
