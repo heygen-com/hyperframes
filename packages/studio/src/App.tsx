@@ -144,6 +144,7 @@ export function StudioApp() {
     recordEdit: editHistory.recordEdit,
     previewIframeRef,
     activeCompPathRef,
+    reloadPreview: () => setRefreshKey((k) => k + 1),
   });
 
   const timelineEditing = useTimelineEditing({

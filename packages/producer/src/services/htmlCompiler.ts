@@ -38,6 +38,7 @@ import {
 import { downloadToTemp, isHttpUrl } from "../utils/urlDownloader.js";
 import type { Page } from "puppeteer-core";
 import { injectDeterministicFontFaces } from "./deterministicFonts.js";
+import { createStudioPositionSeekReapplyScript } from "@hyperframes/core/studio-api/manual-edits-render-script";
 
 export interface CompiledComposition {
   html: string;
@@ -993,7 +994,20 @@ export async function compileForRender(
   // Collect assets that resolve outside projectDir (e.g. ../shared-assets/hero.png).
   // These can't be served by the file server, so we map them to paths the
   // orchestrator will copy into the compiled output directory.
-  const { html, externalAssets } = collectExternalAssets(assembledHtml, projectDir);
+  const { html: htmlWithAssets, externalAssets } = collectExternalAssets(assembledHtml, projectDir);
+
+  // Inject studio position seek re-apply script when positions are baked into HTML.
+  // GSAP overwrites the `translate` CSS property on every frame seek; this script
+  // re-asserts the CSS custom property var() form after each seek so dragged
+  // positions survive frame-by-frame rendering without a JSON sidecar.
+  const HF_POSITION_ATTRS = ['data-hf-studio-path-offset="true"', 'data-hf-studio-rotation="true"'];
+  const hasPositionEdits = HF_POSITION_ATTRS.some((attr) => htmlWithAssets.includes(attr));
+  const html = hasPositionEdits
+    ? htmlWithAssets.replace(
+        /<\/body>/i,
+        `<script>${createStudioPositionSeekReapplyScript()}</script></body>`,
+      )
+    : htmlWithAssets;
 
   // Parse main HTML elements
   const mainVideos = parseVideoElements(html);

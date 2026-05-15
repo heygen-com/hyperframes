@@ -35,6 +35,8 @@ interface UseManifestPersistenceParams {
   recordEdit: (entry: RecordEditInput) => Promise<void>;
   previewIframeRef: React.MutableRefObject<HTMLIFrameElement | null>;
   activeCompPathRef: React.MutableRefObject<string | null>;
+  /** Called to reload the preview after undo/redo. Must go through refreshKey so seek position is preserved. */
+  reloadPreview: () => void;
 }
 
 // ── Hook ──
@@ -47,6 +49,7 @@ export function useManifestPersistence({
   recordEdit,
   previewIframeRef,
   activeCompPathRef,
+  reloadPreview,
 }: UseManifestPersistenceParams) {
   void _readOptionalProjectFile;
 
@@ -295,18 +298,10 @@ export function useManifestPersistence({
         return;
       }
 
-      // Reload the iframe in-place rather than recreating the Player component.
-      const iframe = previewIframeRef.current;
-      if (iframe?.contentWindow) {
-        try {
-          iframe.contentWindow.location.reload();
-          return;
-        } catch {
-          // Cross-origin or detached — fall through
-        }
-      }
+      // Reload via refreshKey so NLELayout saves seek position before the iframe reloads.
+      reloadPreview();
     },
-    [applyStudioMotionToPreview, previewIframeRef],
+    [applyStudioMotionToPreview, previewIframeRef, reloadPreview],
   );
 
   // ── Reset manifests when project changes ──

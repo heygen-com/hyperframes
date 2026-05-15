@@ -74,14 +74,12 @@ export interface UseDomEditCommitsParams {
 
   // From useDomSelection
   domEditSelection: DomEditSelection | null;
-  domEditGroupSelectionsRef: React.MutableRefObject<DomEditSelection[]>;
   applyDomSelection: (
     selection: DomEditSelection | null,
     options?: { revealPanel?: boolean; additive?: boolean; preserveGroup?: boolean },
   ) => void;
   clearDomSelection: () => void;
   refreshDomEditSelectionFromPreview: (selection: DomEditSelection) => void;
-  refreshDomEditGroupSelectionsFromPreview: (selections: DomEditSelection[]) => void;
   buildDomSelectionFromTarget: (
     target: HTMLElement,
     options?: { preferClipAncestor?: boolean },
@@ -106,11 +104,9 @@ export function useDomEditCommits({
   projectIdRef,
   reloadPreview,
   domEditSelection,
-  domEditGroupSelectionsRef,
   applyDomSelection,
   clearDomSelection,
   refreshDomEditSelectionFromPreview,
-  refreshDomEditGroupSelectionsFromPreview,
   buildDomSelectionFromTarget,
 }: UseDomEditCommitsParams) {
   const resolveImportedFontAsset = useCallback(
@@ -245,9 +241,8 @@ export function useDomEditCommits({
         label: "Move layer",
         coalesceKey: `path-offset:${getDomEditTargetKey(selection)}`,
       });
-      refreshDomEditSelectionFromPreview(selection);
     },
-    [commitPositionPatchToHtml, refreshDomEditSelectionFromPreview],
+    [commitPositionPatchToHtml],
   );
 
   const handleDomGroupPathOffsetCommit = useCallback(
@@ -264,13 +259,8 @@ export function useDomEditCommits({
           coalesceKey: `group-path-offset:${coalesceKey}`,
         });
       }
-      refreshDomEditGroupSelectionsFromPreview(domEditGroupSelectionsRef.current);
     },
-    [
-      commitPositionPatchToHtml,
-      domEditGroupSelectionsRef,
-      refreshDomEditGroupSelectionsFromPreview,
-    ],
+    [commitPositionPatchToHtml],
   );
 
   const handleDomBoxSizeCommit = useCallback(
@@ -280,9 +270,8 @@ export function useDomEditCommits({
         label: "Resize layer box",
         coalesceKey: `box-size:${getDomEditTargetKey(selection)}`,
       });
-      refreshDomEditSelectionFromPreview(selection);
     },
-    [commitPositionPatchToHtml, refreshDomEditSelectionFromPreview],
+    [commitPositionPatchToHtml],
   );
 
   const handleDomRotationCommit = useCallback(
@@ -292,9 +281,8 @@ export function useDomEditCommits({
         label: "Rotate layer",
         coalesceKey: `rotation:${getDomEditTargetKey(selection)}`,
       });
-      refreshDomEditSelectionFromPreview(selection);
     },
-    [commitPositionPatchToHtml, refreshDomEditSelectionFromPreview],
+    [commitPositionPatchToHtml],
   );
 
   const handleDomManualEditsReset = useCallback(
@@ -308,14 +296,14 @@ export function useDomEditCommits({
       clearStudioPathOffset(element);
       clearStudioBoxSize(element);
       clearStudioRotation(element);
+      // skipRefresh:false triggers reloadPreview() which re-syncs selection on load
       commitPositionPatchToHtml(selection, clearPatches, {
         label: "Reset layer edits",
         coalesceKey: `manual-reset:${getDomEditTargetKey(selection)}`,
         skipRefresh: false,
       });
-      refreshDomEditSelectionFromPreview(selection);
     },
-    [commitPositionPatchToHtml, refreshDomEditSelectionFromPreview],
+    [commitPositionPatchToHtml],
   );
 
   // ── Motion commits ──

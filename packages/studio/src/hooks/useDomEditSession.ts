@@ -108,7 +108,6 @@ export function useDomEditSession({
     domEditGroupSelections,
     domEditHoverSelection,
     domEditSelectionRef,
-    domEditGroupSelectionsRef,
     applyDomSelection,
     clearDomSelection,
     buildDomSelectionFromTarget,
@@ -117,7 +116,6 @@ export function useDomEditSession({
     buildDomSelectionForTimelineElement,
     handleTimelineElementSelect,
     refreshDomEditSelectionFromPreview,
-    refreshDomEditGroupSelectionsFromPreview,
   } = useDomSelection({
     projectId,
     activeCompPath,
@@ -213,11 +211,9 @@ export function useDomEditSession({
     projectIdRef,
     reloadPreview,
     domEditSelection,
-    domEditGroupSelectionsRef,
     applyDomSelection,
     clearDomSelection,
     refreshDomEditSelectionFromPreview,
-    refreshDomEditGroupSelectionsFromPreview,
     buildDomSelectionFromTarget,
   });
 
