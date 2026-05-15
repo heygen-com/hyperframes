@@ -353,6 +353,11 @@ jobs:
   # invocations, CRLF, file URLs, etc.) in existing vitest suites.
   # The producer package is skipped because its tests require Docker /
   # Linux-only tooling (Dockerfile.test, LFS golden MP4 baselines).
+  # The aws-lambda package is skipped because it targets the AWS Lambda
+  # Linux runtime exclusively (`@sparticuz/chromium` is Linux-only; the
+  # ZIP layout is for `/var/task` on AL2023). Its handler.test.ts also
+  # trips a bun-on-Windows workspace-symlink quirk reading the
+  # producer's transitive `hono` dep.
   # -------------------------------------------------------------------
   test-windows:
     name: Tests on windows-latest
@@ -407,9 +412,9 @@ jobs:
         shell: pwsh
         run: bun run build
 
-      - name: Run tests (all packages except producer)
+      - name: Run tests (all packages except producer + aws-lambda)
         shell: pwsh
-        run: bun run --filter "!@hyperframes/producer" test
+        run: bun run --filter "!@hyperframes/producer" --filter "!@hyperframes/aws-lambda" test
 
       - name: Run runtime contract test
         shell: pwsh

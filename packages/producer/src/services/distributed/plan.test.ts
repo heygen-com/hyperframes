@@ -18,6 +18,7 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { recomputePlanHashFromPlanDir } from "../render/stages/freezePlan.js";
 import {
   buildChunkSlices,
   DEFAULT_CHUNK_SIZE,
@@ -205,6 +206,111 @@ describe("plan() — golden planDir + planHash determinism", () => {
       const encoderA = readFileSync(join(planDirA, "meta", "encoder.json"));
       const encoderB = readFileSync(join(planDirB, "meta", "encoder.json"));
       expect(encoderA.equals(encoderB)).toBe(true);
+    },
+    TIMEOUT_MS,
+  );
+
+  it(
+    "plan.json.planHash matches recomputePlanHashFromPlanDir(planDir) on the same disk",
+    async () => {
+      // Regression guard for a real-world bug observed on audio-bearing
+      // fixtures: plan() left a temporary `.plan-work/` subtree inside
+      // planDir while freezePlan walked it, so the hash baked into
+      // plan.json included artifacts the chunk worker would never see.
+      // The chunk worker's `recomputePlanHashFromPlanDir` walk then
+      // returned a different hash, tripping PLAN_HASH_MISMATCH at the
+      // first chunk invocation.
+      //
+      // This test verifies that the hash plan() writes matches the hash
+      // recomputed from the on-disk planDir contents — i.e. the chunk
+      // worker's view. Holds for any plan, audio or not.
+      const planDir = join(runRoot, "plan-hash-recompute");
+      mkdirSync(planDir, { recursive: true });
+      const result = await plan(
+        projectDir,
+        { fps: 30, width: 320, height: 240, format: "mp4" },
+        planDir,
+      );
+      const recomputed = recomputePlanHashFromPlanDir(planDir);
+      expect(recomputed).toBe(result.planHash);
+      const planJson = JSON.parse(readFileSync(join(planDir, "plan.json"), "utf-8")) as {
+        planHash: string;
+      };
+      expect(planJson.planHash).toBe(result.planHash);
+    },
+    TIMEOUT_MS,
+  );
+
+  // Audio-bearing variant of the planHash recompute test. The pre-fix bug
+  // surfaced because `runAudioStage` downloads/mixes source audio into
+  // `<planDir>/.plan-work/`, and `freezePlan` walked that subtree before
+  // plan.ts cleaned it up. A composition without `<audio>` short-circuits
+  // the audio stage and never materialises `.plan-work/downloads/`, so
+  // the no-audio test above would pass even on the broken code. This
+  // variant generates a 1s silent wav via `ffmpeg`, references it from
+  // the composition, and runs plan() — exercising the audio-mix path
+  // that produced the original bug.
+  const HAS_FFMPEG = (() => {
+    const { spawnSync } = require("node:child_process") as typeof import("node:child_process");
+    return spawnSync("ffmpeg", ["-version"]).status === 0;
+  })();
+
+  it.skipIf(!HAS_FFMPEG)(
+    "plan.json.planHash matches recompute on an audio-bearing composition",
+    async () => {
+      const audioProjectDir = join(runRoot, "project-with-audio");
+      mkdirSync(audioProjectDir, { recursive: true });
+      // Generate a 1s mono silent wav. PCM keeps the file tiny without
+      // pulling in an audio asset fixture.
+      const audioPath = join(audioProjectDir, "silence.wav");
+      const { spawnSync } = require("node:child_process") as typeof import("node:child_process");
+      const ffmpeg = spawnSync("ffmpeg", [
+        "-nostdin",
+        "-v",
+        "error",
+        "-f",
+        "lavfi",
+        "-i",
+        "anullsrc=channel_layout=mono:sample_rate=44100",
+        "-t",
+        "1",
+        "-c:a",
+        "pcm_s16le",
+        audioPath,
+      ]);
+      if (ffmpeg.status !== 0) {
+        throw new Error(`ffmpeg silence-wav generation failed: ${ffmpeg.stderr?.toString()}`);
+      }
+      writeFileSync(
+        join(audioProjectDir, "index.html"),
+        `<!doctype html>
+<html><head><meta charset="utf-8"></head><body>
+  <div data-composition-id="root" data-width="320" data-height="240" data-duration="1">
+    <audio data-composition-audio src="silence.wav"></audio>
+    <p>audio-bearing fixture</p>
+  </div>
+</body></html>`,
+        "utf-8",
+      );
+
+      const planDir = join(runRoot, "plan-hash-recompute-audio");
+      mkdirSync(planDir, { recursive: true });
+      const result = await plan(
+        audioProjectDir,
+        { fps: 30, width: 320, height: 240, format: "mp4" },
+        planDir,
+      );
+      const recomputed = recomputePlanHashFromPlanDir(planDir);
+      // This assertion fails on the pre-fix code: freezePlan saw
+      // `.plan-work/downloads/` (or whatever the audio stage leaves
+      // behind) inside planDir, baked it into plan.json's planHash,
+      // and then plan.ts rm'd it — so recompute walks a different
+      // file set than freezePlan did.
+      expect(recomputed).toBe(result.planHash);
+      // Verify the audio stage actually fired (otherwise the test
+      // pins the wrong path — the same false-pass mode as the
+      // no-audio variant above).
+      expect(existsSync(join(planDir, "audio.aac"))).toBe(true);
     },
     TIMEOUT_MS,
   );

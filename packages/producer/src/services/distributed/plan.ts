@@ -788,6 +788,26 @@ export async function plan(
     height,
     format: config.format,
   };
+  // Clean up the temp work tree BEFORE freezePlan. `.plan-work/` holds
+  // intermediate compileStage + audio-mix artifacts (downloaded source
+  // mp3s, scratch frames) that are now either promoted into `planDir/`
+  // proper or no longer needed. Leaving it past freezePlan would:
+  //   (1) inflate the planDir-size check below,
+  //   (2) confuse chunk workers' file walks,
+  //   (3) — load-bearing — pollute the planHash. freezePlan walks the
+  //       planDir to compute the hash; chunk workers receive a planDir
+  //       with `.plan-work/` already gone (the controller can also
+  //       prune before transit), so their recomputed hash would not
+  //       match if .plan-work/* were included on the controller side.
+  try {
+    rmSync(workDir, { recursive: true, force: true });
+  } catch (err) {
+    log.warn("[plan] failed to remove temp work dir", {
+      workDir,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+
   const freezeResult = await freezePlan({
     planDir,
     composition: compositionJson,
@@ -801,19 +821,6 @@ export async function plan(
     hasAudio: audioResult.hasAudio,
   });
   const planHash = freezeResult.planHash;
-
-  // Clean up the temp work tree. `.plan-work/` holds intermediate
-  // compileStage artifacts that are now promoted into `planDir/`; leaving
-  // it would inflate the planDir-size check below and confuse chunk
-  // workers' file walks.
-  try {
-    rmSync(workDir, { recursive: true, force: true });
-  } catch (err) {
-    log.warn("[plan] failed to remove temp work dir", {
-      workDir,
-      error: err instanceof Error ? err.message : String(err),
-    });
-  }
 
   // 2 GB hard cap so the planDir fits inside Lambda's 10 GB /tmp budget
   // alongside the chunk worker's frame buffer + ffmpeg working set. The

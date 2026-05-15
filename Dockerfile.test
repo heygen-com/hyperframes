@@ -73,6 +73,7 @@ COPY packages/producer/package.json packages/producer/package.json
 COPY packages/cli/package.json packages/cli/package.json
 COPY packages/studio/package.json packages/studio/package.json
 COPY packages/shader-transitions/package.json packages/shader-transitions/package.json
+COPY packages/aws-lambda/package.json packages/aws-lambda/package.json
 RUN bun install --frozen-lockfile
 
 # Copy source
