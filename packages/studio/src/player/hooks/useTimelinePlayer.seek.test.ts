@@ -2,7 +2,7 @@
 
 import React, { act, useEffect } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { useTimelinePlayer } from "./useTimelinePlayer";
 import { liveTime, usePlayerStore } from "../store/playerStore";
 
@@ -30,7 +30,13 @@ afterEach(() => {
   resetPlayerStore();
 });
 
-function attachIframeAdapter(api: ReturnType<typeof useTimelinePlayer>) {
+function attachIframeAdapter(
+  api: ReturnType<typeof useTimelinePlayer>,
+  options: {
+    postMessage?: (message: unknown, targetOrigin: string) => void;
+    timelines?: Record<string, unknown>;
+  } = {},
+) {
   const iframe = document.createElement("iframe");
   let currentTime = 0;
   const adapter = {
@@ -46,7 +52,8 @@ function attachIframeAdapter(api: ReturnType<typeof useTimelinePlayer>) {
   Object.defineProperty(iframe, "contentWindow", {
     value: {
       __player: adapter,
-      postMessage: () => {},
+      __timelines: options.timelines,
+      postMessage: options.postMessage ?? (() => {}),
       scrollTo: () => {},
       addEventListener: () => {},
       removeEventListener: () => {},
@@ -130,6 +137,107 @@ describe("useTimelinePlayer seek hydration", () => {
       root.unmount();
     });
     unsubscribe();
+  });
+});
+
+describe("useTimelinePlayer audio controls (#835)", () => {
+  it("applies playback-rate changes immediately and auto-mutes audio above 1x", () => {
+    let api: ReturnType<typeof useTimelinePlayer> | null = null;
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    const postMessage = vi.fn();
+    const timeScale = vi.fn();
+
+    act(() => {
+      root.render(
+        React.createElement(TimelinePlayerHarness, { onValue: (value) => (api = value) }),
+      );
+    });
+    attachIframeAdapter(api!, {
+      postMessage,
+      timelines: {
+        root: { timeScale },
+      },
+    });
+    postMessage.mockClear();
+    timeScale.mockClear();
+
+    act(() => {
+      usePlayerStore.getState().setAudioMuted(false);
+      usePlayerStore.getState().setPlaybackRate(2);
+    });
+
+    expect(postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: "hf-parent",
+        type: "control",
+        action: "set-playback-rate",
+        playbackRate: 2,
+      }),
+      "*",
+    );
+    expect(postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: "hf-parent",
+        type: "control",
+        action: "set-muted",
+        muted: true,
+      }),
+      "*",
+    );
+    expect(timeScale).toHaveBeenCalledWith(2);
+
+    postMessage.mockClear();
+
+    act(() => {
+      usePlayerStore.getState().setPlaybackRate(1);
+    });
+
+    expect(postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "set-muted",
+        muted: false,
+      }),
+      "*",
+    );
+
+    act(() => {
+      root.unmount();
+    });
+  });
+
+  it("keeps explicit Studio mute active at 1x", () => {
+    let api: ReturnType<typeof useTimelinePlayer> | null = null;
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    const postMessage = vi.fn();
+
+    act(() => {
+      root.render(
+        React.createElement(TimelinePlayerHarness, { onValue: (value) => (api = value) }),
+      );
+    });
+    attachIframeAdapter(api!, { postMessage });
+    postMessage.mockClear();
+
+    act(() => {
+      usePlayerStore.getState().setPlaybackRate(1);
+      usePlayerStore.getState().setAudioMuted(true);
+    });
+
+    expect(postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "set-muted",
+        muted: true,
+      }),
+      "*",
+    );
+
+    act(() => {
+      root.unmount();
+    });
   });
 });
 

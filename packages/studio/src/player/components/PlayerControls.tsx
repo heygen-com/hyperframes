@@ -1,6 +1,7 @@
 import { useRef, useState, useCallback, useEffect, memo } from "react";
 import { useMountEffect } from "../../hooks/useMountEffect";
 import { formatFrameTime, frameToSeconds, stepFrameTime, formatTime } from "../lib/time";
+import { shouldMutePreviewAudio } from "../lib/timelineIframeHelpers";
 import { usePlayerStore, liveTime } from "../store/playerStore";
 
 const SPEED_OPTIONS = [0.25, 0.5, 1, 1.5, 2] as const;
@@ -57,8 +58,10 @@ export const PlayerControls = memo(function PlayerControls({
   const duration = usePlayerStore((s) => s.duration);
   const timelineReady = usePlayerStore((s) => s.timelineReady);
   const playbackRate = usePlayerStore((s) => s.playbackRate);
+  const audioMuted = usePlayerStore((s) => s.audioMuted);
   const loopEnabled = usePlayerStore((s) => s.loopEnabled);
   const setPlaybackRate = usePlayerStore.getState().setPlaybackRate;
+  const setAudioMuted = usePlayerStore.getState().setAudioMuted;
   const setLoopEnabled = usePlayerStore.getState().setLoopEnabled;
   const inPoint = usePlayerStore((s) => s.inPoint);
   const outPoint = usePlayerStore((s) => s.outPoint);
@@ -84,6 +87,13 @@ export const PlayerControls = memo(function PlayerControls({
   const durationRef = useRef(duration);
   durationRef.current = duration;
   const controlsDisabled = disabled || !timelineReady;
+  const audioAutoMuted = playbackRate > 1;
+  const effectiveAudioMuted = shouldMutePreviewAudio(audioMuted, playbackRate);
+  const muteButtonLabel = audioAutoMuted
+    ? "Audio muted above 1x speed"
+    : audioMuted
+      ? "Unmute audio"
+      : "Mute audio";
   useMountEffect(() => {
     const updateProgress = (t: number) => {
       currentTimeRef.current = t;
@@ -419,6 +429,57 @@ export const PlayerControls = memo(function PlayerControls({
           />
         </div>
       </div>
+
+      {/* Mute toggle */}
+      <button
+        type="button"
+        onClick={() => {
+          if (!audioAutoMuted) setAudioMuted(!audioMuted);
+        }}
+        disabled={controlsDisabled || audioAutoMuted}
+        title={muteButtonLabel}
+        aria-label={muteButtonLabel}
+        aria-pressed={effectiveAudioMuted}
+        className={`h-7 w-7 flex-shrink-0 flex items-center justify-center rounded-md border transition-colors disabled:pointer-events-none ${
+          effectiveAudioMuted
+            ? "text-studio-accent bg-studio-accent/10 border-studio-accent/30"
+            : "border-neutral-700 text-neutral-400 hover:border-neutral-500 hover:bg-neutral-800"
+        } ${audioAutoMuted ? "opacity-70" : ""}`}
+      >
+        {effectiveAudioMuted ? (
+          <svg
+            width="13"
+            height="13"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M11 5 6 9H3v6h3l5 4V5Z" />
+            <path d="m19 9-6 6" />
+            <path d="m13 9 6 6" />
+          </svg>
+        ) : (
+          <svg
+            width="13"
+            height="13"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M11 5 6 9H3v6h3l5 4V5Z" />
+            <path d="M15.5 8.5a5 5 0 0 1 0 7" />
+            <path d="M18.5 5.5a9 9 0 0 1 0 13" />
+          </svg>
+        )}
+      </button>
 
       {/* Speed control */}
       <div ref={speedMenuContainerRef} className="relative flex-shrink-0">

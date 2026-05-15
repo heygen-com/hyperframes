@@ -73,18 +73,74 @@ export function autoHealMissingCompositionIds(doc: Document): void {
 }
 
 // ---------------------------------------------------------------------------
-// Muting / iframe resolution
+// Audio / iframe resolution
 // ---------------------------------------------------------------------------
 
-export function unmutePreviewMedia(iframe: HTMLIFrameElement | null): void {
+type PreviewPlayerHost = HTMLElement & {
+  muted?: boolean;
+  playbackRate?: number;
+};
+
+function isPreviewPlayerHost(value: unknown): value is PreviewPlayerHost {
+  return value instanceof HTMLElement;
+}
+
+function resolvePreviewPlayerHost(iframe: HTMLIFrameElement): PreviewPlayerHost | null {
+  const root = iframe.getRootNode();
+  if (
+    typeof ShadowRoot !== "undefined" &&
+    root instanceof ShadowRoot &&
+    isPreviewPlayerHost(root.host)
+  ) {
+    return root.host;
+  }
+  return null;
+}
+
+function postPreviewControl(
+  iframe: HTMLIFrameElement,
+  action: string,
+  payload: Record<string, unknown>,
+): void {
+  iframe.contentWindow?.postMessage(
+    { source: "hf-parent", type: "control", action, ...payload },
+    "*",
+  );
+}
+
+export function shouldMutePreviewAudio(audioMuted: boolean, playbackRate: number): boolean {
+  return audioMuted || playbackRate > 1;
+}
+
+export function setPreviewMediaMuted(iframe: HTMLIFrameElement | null, muted: boolean): void {
   if (!iframe) return;
   try {
-    iframe.contentWindow?.postMessage(
-      { source: "hf-parent", type: "control", action: "set-muted", muted: false },
-      "*",
-    );
+    const host = resolvePreviewPlayerHost(iframe);
+    if (host && typeof host.muted === "boolean") {
+      host.muted = muted;
+      return;
+    }
+    postPreviewControl(iframe, "set-muted", { muted });
   } catch (err) {
-    console.warn("[useTimelinePlayer] Failed to unmute preview media", err);
+    console.warn("[useTimelinePlayer] Failed to set preview media mute state", err);
+  }
+}
+
+export function setPreviewPlaybackRate(
+  iframe: HTMLIFrameElement | null,
+  playbackRate: number,
+): void {
+  if (!iframe) return;
+  const rate = Number.isFinite(playbackRate) && playbackRate > 0 ? playbackRate : 1;
+  try {
+    const host = resolvePreviewPlayerHost(iframe);
+    if (host && typeof host.playbackRate === "number") {
+      host.playbackRate = rate;
+      return;
+    }
+    postPreviewControl(iframe, "set-playback-rate", { playbackRate: rate });
+  } catch (err) {
+    console.warn("[useTimelinePlayer] Failed to set preview playback rate", err);
   }
 }
 

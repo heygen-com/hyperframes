@@ -2,7 +2,7 @@
  * Higher-level timeline DOM operations: element factories, DOM-to-element
  * parsing, timeline merging, and standalone composition helpers.
  *
- * Preview iframe utilities (normaliseViewport, autoHeal, unmute, resolveIframe,
+ * Preview iframe utilities (normaliseViewport, autoHeal, audio controls, resolveIframe,
  * buildMissingCompositionElements) live in timelineIframeHelpers.ts.
  *
  * Pure functions (no React, no store reads) — testable in isolation.
@@ -42,7 +42,9 @@ export {
 export {
   normalizePreviewViewport,
   autoHealMissingCompositionIds,
-  unmutePreviewMedia,
+  setPreviewMediaMuted,
+  setPreviewPlaybackRate,
+  shouldMutePreviewAudio,
   resolveIframe,
   buildMissingCompositionElements,
 } from "./timelineIframeHelpers";

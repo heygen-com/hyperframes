@@ -37,7 +37,11 @@ import {
   mergeTimelineElementsPreservingDowngrades,
   parseTimelineFromDOM,
 } from "../lib/timelineDOM";
-import { unmutePreviewMedia } from "../lib/timelineIframeHelpers";
+import {
+  setPreviewMediaMuted,
+  setPreviewPlaybackRate,
+  shouldMutePreviewAudio,
+} from "../lib/timelineIframeHelpers";
 
 // ---------------------------------------------------------------------------
 // Hook
@@ -218,11 +222,7 @@ export function useTimelinePlayer() {
   const applyPlaybackRate = useCallback((rate: number) => {
     const iframe = iframeRef.current;
     if (!iframe) return;
-    // Send to runtime via bridge (works with both new and CDN runtime)
-    iframe.contentWindow?.postMessage(
-      { source: "hf-parent", type: "control", action: "set-playback-rate", playbackRate: rate },
-      "*",
-    );
+    setPreviewPlaybackRate(iframe, rate);
     // Also set directly on GSAP timeline if accessible
     try {
       const win = iframe.contentWindow as IframeWindow | null;
@@ -241,6 +241,15 @@ export function useTimelinePlayer() {
     }
   }, []);
 
+  const applyPreviewAudioState = useCallback((playbackRateOverride?: number) => {
+    const { audioMuted, playbackRate } = usePlayerStore.getState();
+    const effectivePlaybackRate = playbackRateOverride ?? playbackRate;
+    setPreviewMediaMuted(
+      iframeRef.current,
+      shouldMutePreviewAudio(audioMuted, effectivePlaybackRate),
+    );
+  }, []);
+
   const play = useCallback(() => {
     stopRAFLoop();
     stopReverseLoop();
@@ -249,13 +258,21 @@ export function useTimelinePlayer() {
     if (adapter.getTime() >= adapter.getDuration()) {
       adapter.seek(usePlayerStore.getState().inPoint ?? 0);
     }
-    unmutePreviewMedia(iframeRef.current);
     applyPlaybackRate(usePlayerStore.getState().playbackRate);
+    applyPreviewAudioState();
     adapter.play();
     shuttleDirectionRef.current = "forward";
     setIsPlaying(true);
     startRAFLoop();
-  }, [getAdapter, setIsPlaying, startRAFLoop, applyPlaybackRate, stopRAFLoop, stopReverseLoop]);
+  }, [
+    getAdapter,
+    setIsPlaying,
+    startRAFLoop,
+    applyPlaybackRate,
+    applyPreviewAudioState,
+    stopRAFLoop,
+    stopReverseLoop,
+  ]);
 
   const playBackward = useCallback(
     (rate: number) => {
@@ -267,8 +284,9 @@ export function useTimelinePlayer() {
       const initialTime = adapter.getTime() <= 0 && duration > 0 ? duration : adapter.getTime();
       adapter.pause();
       if (initialTime !== adapter.getTime()) adapter.seek(initialTime);
-      unmutePreviewMedia(iframeRef.current);
       const speed = Math.max(0.1, Math.min(4, rate));
+      applyPlaybackRate(speed);
+      applyPreviewAudioState(speed);
       let startTime = initialTime;
       let startedAt = performance.now();
 
@@ -305,7 +323,15 @@ export function useTimelinePlayer() {
       shuttleDirectionRef.current = "backward";
       reverseRafRef.current = requestAnimationFrame(tick);
     },
-    [getAdapter, setCurrentTime, setIsPlaying, stopRAFLoop, stopReverseLoop],
+    [
+      getAdapter,
+      setCurrentTime,
+      setIsPlaying,
+      applyPlaybackRate,
+      applyPreviewAudioState,
+      stopRAFLoop,
+      stopReverseLoop,
+    ],
   );
 
   const pause = useCallback(() => {
@@ -392,6 +418,7 @@ export function useTimelinePlayer() {
       setTimelineReady,
       setIsPlaying,
       attachIframeShortcutListeners,
+      applyPreviewAudioState,
     });
 
   const saveSeekPosition = useCallback(() => {
@@ -515,6 +542,19 @@ export function useTimelinePlayer() {
     if (probeIntervalRef.current) clearInterval(probeIntervalRef.current);
     usePlayerStore.getState().reset();
   }, [stopRAFLoop, stopReverseLoop]);
+
+  useEffect(() => {
+    return usePlayerStore.subscribe((state, prev) => {
+      const playbackRateChanged = state.playbackRate !== prev.playbackRate;
+      const audioMutedChanged = state.audioMuted !== prev.audioMuted;
+      if (!playbackRateChanged && !audioMutedChanged) return;
+
+      if (playbackRateChanged) {
+        applyPlaybackRate(state.playbackRate);
+      }
+      applyPreviewAudioState();
+    });
+  }, [applyPlaybackRate, applyPreviewAudioState]);
 
   return {
     iframeRef,
