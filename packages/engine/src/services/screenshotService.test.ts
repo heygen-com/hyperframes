@@ -25,7 +25,7 @@ describe("pageScreenshotCapture supersample plumbing", () => {
   const ONE_PIXEL_PNG_B64 =
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkAAIAAAoAAv/lxKUAAAAASUVORK5CYII=";
 
-  it("omits `clip` when deviceScaleFactor is undefined (default 1)", async () => {
+  it("passes `clip` with scale 1 when deviceScaleFactor is undefined (default 1)", async () => {
     const send = vi.fn().mockResolvedValue({ data: ONE_PIXEL_PNG_B64 });
     const page = makeFakePageWithCdp(send);
 
@@ -39,11 +39,13 @@ describe("pageScreenshotCapture supersample plumbing", () => {
 
     expect(send).toHaveBeenCalledWith(
       "Page.captureScreenshot",
-      expect.not.objectContaining({ clip: expect.anything() }),
+      expect.objectContaining({
+        clip: { x: 0, y: 0, width: 1920, height: 1080, scale: 1 },
+      }),
     );
   });
 
-  it("omits `clip` when deviceScaleFactor is exactly 1", async () => {
+  it("passes `clip` with scale 1 when deviceScaleFactor is exactly 1", async () => {
     const send = vi.fn().mockResolvedValue({ data: ONE_PIXEL_PNG_B64 });
     const page = makeFakePageWithCdp(send);
 
@@ -55,8 +57,8 @@ describe("pageScreenshotCapture supersample plumbing", () => {
       deviceScaleFactor: 1,
     });
 
-    const params = send.mock.calls[0]?.[1] as { clip?: unknown };
-    expect(params.clip).toBeUndefined();
+    const params = send.mock.calls[0]?.[1] as { clip?: { scale: number } };
+    expect(params.clip).toEqual({ x: 0, y: 0, width: 1920, height: 1080, scale: 1 });
   });
 
   it("passes `clip` with `scale = dpr` when deviceScaleFactor > 1 (the supersample contract)", async () => {

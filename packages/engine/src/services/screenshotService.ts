@@ -130,19 +130,14 @@ export async function pageScreenshotCapture(page: Page, options: CaptureOptions)
   const client = await getCdpSession(page);
   const isPng = options.format === "png";
   const dpr = options.deviceScaleFactor ?? 1;
-  // When supersampling, pass an explicit clip with `scale` so Chrome emits a
-  // screenshot at device-pixel dimensions (`width × height × dpr`). Without
-  // this, `Page.captureScreenshot` returns at CSS dimensions regardless of
-  // the viewport's deviceScaleFactor.
-  const clip =
-    dpr > 1 ? { x: 0, y: 0, width: options.width, height: options.height, scale: dpr } : undefined;
+  const clip = { x: 0, y: 0, width: options.width, height: options.height, scale: dpr };
   const result = await client.send("Page.captureScreenshot", {
     format: isPng ? "png" : "jpeg",
     quality: isPng ? undefined : (options.quality ?? 80),
     fromSurface: true,
     captureBeyondViewport: false,
     optimizeForSpeed: !isPng,
-    ...(clip ? { clip } : {}),
+    clip,
   });
   return Buffer.from(result.data, "base64");
 }
