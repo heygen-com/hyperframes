@@ -112,6 +112,44 @@ three actions. They reference fake S3 URIs — useful for sanity-checking
 the handler's dispatch logic; not for full end-to-end testing (real S3
 calls require credentials and a project zip to actually exist).
 
+## End-to-end smoke + benchmark
+
+For full end-to-end validation against real AWS — the gate that proves
+the architecture works on a deployed Lambda — use the local smoke
+script:
+
+```bash
+# All defaults (mp4-h264-sdr fixture, chunk counts 2/4/8, PSNR >= 40 dB).
+./scripts/smoke.sh
+
+# Customised:
+./scripts/smoke.sh \
+  --fixture mp4-h264-sdr \
+  --chunk-counts 2,4,8,16 \
+  --psnr-threshold 40
+
+# Keep the stack alive for inspection afterward:
+./scripts/smoke.sh --keep-stack
+```
+
+The script builds the handler ZIP, deploys this template under a
+per-run stack name, renders the fixture at each chunk count via the
+Step Functions state machine, PSNR-compares against the in-process
+baseline (which is git-LFS tracked under
+`packages/producer/tests/distributed/<fixture>/output/`), captures
+per-execution Step Functions history, and tears the stack down.
+
+Outputs land under `<repo-root>/lambda-smoke-artifacts/`:
+
+- `results.json` — `chunkCount × wallClockMs × psnrAvgDb`
+- `renders/N<N>-output.mp4` — each rendered chunk count
+- `renders/N<N>-history.json` — full Step Functions execution history
+
+Prerequisites: `aws` (v2), `sam` (≥ 1.100), `bun` (≥ 1.3), `ffmpeg`,
+`jq`, `zip`. AWS credentials come from the standard resolution chain
+(env vars → `~/.aws/credentials` → SSO → IMDS). Pin a specific profile
+with `--profile <name>` or `AWS_PROFILE=<name>`.
+
 ## Parameters
 
 | Parameter                       | Default       | Notes                                                                                           |
