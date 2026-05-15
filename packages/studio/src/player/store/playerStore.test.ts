@@ -77,6 +77,100 @@ describe("usePlayerStore", () => {
     });
   });
 
+  describe("setInPoint", () => {
+    it("updates inPoint", () => {
+      usePlayerStore.getState().setInPoint(1.5);
+      expect(usePlayerStore.getState().inPoint).toBe(1.5);
+    });
+
+    it("clears inPoint when given null", () => {
+      usePlayerStore.getState().setInPoint(1.5);
+      usePlayerStore.getState().setInPoint(null);
+      expect(usePlayerStore.getState().inPoint).toBeNull();
+    });
+
+    it("rejects non-finite values", () => {
+      usePlayerStore.getState().setInPoint(Number.NaN);
+      expect(usePlayerStore.getState().inPoint).toBeNull();
+    });
+
+    it("nullifies outPoint when new inPoint is at or past existing outPoint", () => {
+      usePlayerStore.getState().setOutPoint(2);
+      usePlayerStore.getState().setInPoint(3);
+      expect(usePlayerStore.getState().outPoint).toBeNull();
+      expect(usePlayerStore.getState().inPoint).toBe(3);
+    });
+
+    it("preserves outPoint when new inPoint is before it", () => {
+      usePlayerStore.getState().setOutPoint(5);
+      usePlayerStore.getState().setInPoint(2);
+      expect(usePlayerStore.getState().outPoint).toBe(5);
+    });
+
+    it("auto-enables loopEnabled when set to a non-null value", () => {
+      usePlayerStore.getState().setLoopEnabled(false);
+      usePlayerStore.getState().setInPoint(1.5);
+      expect(usePlayerStore.getState().loopEnabled).toBe(true);
+    });
+
+    it("preserves loopEnabled when cleared with null", () => {
+      usePlayerStore.getState().setLoopEnabled(true);
+      usePlayerStore.getState().setInPoint(null);
+      expect(usePlayerStore.getState().loopEnabled).toBe(true);
+
+      usePlayerStore.getState().setLoopEnabled(false);
+      usePlayerStore.getState().setInPoint(null);
+      expect(usePlayerStore.getState().loopEnabled).toBe(false);
+    });
+  });
+
+  describe("setOutPoint", () => {
+    it("updates outPoint", () => {
+      usePlayerStore.getState().setOutPoint(4.2);
+      expect(usePlayerStore.getState().outPoint).toBe(4.2);
+    });
+
+    it("clears outPoint when given null", () => {
+      usePlayerStore.getState().setOutPoint(4.2);
+      usePlayerStore.getState().setOutPoint(null);
+      expect(usePlayerStore.getState().outPoint).toBeNull();
+    });
+
+    it("rejects non-finite values", () => {
+      usePlayerStore.getState().setOutPoint(Number.POSITIVE_INFINITY);
+      expect(usePlayerStore.getState().outPoint).toBeNull();
+    });
+
+    it("nullifies inPoint when new outPoint is at or before existing inPoint", () => {
+      usePlayerStore.getState().setInPoint(5);
+      usePlayerStore.getState().setOutPoint(3);
+      expect(usePlayerStore.getState().inPoint).toBeNull();
+      expect(usePlayerStore.getState().outPoint).toBe(3);
+    });
+
+    it("preserves inPoint when new outPoint is after it", () => {
+      usePlayerStore.getState().setInPoint(2);
+      usePlayerStore.getState().setOutPoint(5);
+      expect(usePlayerStore.getState().inPoint).toBe(2);
+    });
+
+    it("auto-enables loopEnabled when set to a non-null value", () => {
+      usePlayerStore.getState().setLoopEnabled(false);
+      usePlayerStore.getState().setOutPoint(4.2);
+      expect(usePlayerStore.getState().loopEnabled).toBe(true);
+    });
+
+    it("preserves loopEnabled when cleared with null", () => {
+      usePlayerStore.getState().setLoopEnabled(true);
+      usePlayerStore.getState().setOutPoint(null);
+      expect(usePlayerStore.getState().loopEnabled).toBe(true);
+
+      usePlayerStore.getState().setLoopEnabled(false);
+      usePlayerStore.getState().setOutPoint(null);
+      expect(usePlayerStore.getState().loopEnabled).toBe(false);
+    });
+  });
+
   describe("setTimelineReady", () => {
     it("updates timelineReady", () => {
       usePlayerStore.getState().setTimelineReady(true);

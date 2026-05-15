@@ -127,6 +127,9 @@ export const usePlayerStore = create<PlayerState>((set) => ({
         inPoint: t,
         outPoint:
           t !== null && state.outPoint !== null && t >= state.outPoint ? null : state.outPoint,
+        // Setting a work-area marker implies the user wants playback bounded by it.
+        // Auto-enable loop so the playhead respects the marker instead of running past.
+        loopEnabled: t !== null ? true : state.loopEnabled,
       };
     }),
   setOutPoint: (time) =>
@@ -135,6 +138,7 @@ export const usePlayerStore = create<PlayerState>((set) => ({
       return {
         outPoint: t,
         inPoint: t !== null && state.inPoint !== null && t <= state.inPoint ? null : state.inPoint,
+        loopEnabled: t !== null ? true : state.loopEnabled,
       };
     }),
   setManualZoomPercent: (percent) =>
