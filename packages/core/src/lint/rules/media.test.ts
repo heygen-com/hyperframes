@@ -220,46 +220,4 @@ describe("media rules", () => {
     const finding = result.findings.find((f) => f.code === "imperative_media_control");
     expect(finding).toBeUndefined();
   });
-
-  it("reports error for video missing id, data-start, or data-end", () => {
-    const html = `
-<html><body>
-  <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
-    <video src="clip.mp4" muted playsinline></video>
-  </div>
-</body></html>`;
-    const result = lintHyperframeHtml(html);
-    const finding = result.findings.find((f) => f.code === "video_missing_timing_attrs");
-    expect(finding).toBeDefined();
-    expect(finding!.message).toContain("id");
-    expect(finding!.message).toContain("data-start");
-    expect(finding!.message).toContain("data-end");
-  });
-
-  it("reports error for video with id but missing data-start and data-end", () => {
-    const html = `
-<html><body>
-  <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
-    <video id="hero" src="clip.mp4" muted></video>
-  </div>
-</body></html>`;
-    const result = lintHyperframeHtml(html);
-    const finding = result.findings.find((f) => f.code === "video_missing_timing_attrs");
-    expect(finding).toBeDefined();
-    expect(finding!.message).toContain("data-start");
-    expect(finding!.message).toContain("data-end");
-    expect(finding!.message).not.toContain(", id");
-  });
-
-  it("does not report video_missing_timing_attrs when all attributes present", () => {
-    const html = `
-<html><body>
-  <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
-    <video id="hero" src="clip.mp4" muted data-start="0" data-end="5"></video>
-  </div>
-</body></html>`;
-    const result = lintHyperframeHtml(html);
-    const finding = result.findings.find((f) => f.code === "video_missing_timing_attrs");
-    expect(finding).toBeUndefined();
-  });
 });

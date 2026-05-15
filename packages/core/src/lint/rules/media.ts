@@ -500,32 +500,4 @@ export const mediaRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = 
 
   // imperative_media_control
   findImperativeMediaControlFindings,
-
-  // video_missing_timing_attrs
-  ({ tags }) => {
-    const findings: HyperframeLintFinding[] = [];
-    for (const tag of tags) {
-      if (tag.name !== "video") continue;
-      const src = readAttr(tag.raw, "src");
-      if (!src) continue;
-      const id = readAttr(tag.raw, "id");
-      const dataStart = readAttr(tag.raw, "data-start");
-      const dataEnd = readAttr(tag.raw, "data-end");
-      const missing: string[] = [];
-      if (!id) missing.push("id");
-      if (!dataStart) missing.push("data-start");
-      if (!dataEnd) missing.push("data-end");
-      if (missing.length === 0) continue;
-      findings.push({
-        code: "video_missing_timing_attrs",
-        severity: "error",
-        message: `<video${id ? ` id="${id}"` : ""}> is missing ${missing.join(", ")}. Without these attributes the renderer cannot extract or inject video frames — the video will appear frozen.`,
-        elementId: id || undefined,
-        fixHint:
-          'Add id="unique-id", data-start="<seconds>", and data-end="<seconds>" so the engine can extract and inject video frames at the correct times.',
-        snippet: truncateSnippet(tag.raw),
-      });
-    }
-    return findings;
-  },
 ];
