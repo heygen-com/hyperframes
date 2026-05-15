@@ -25,7 +25,7 @@ import {
   STUDIO_INSPECTOR_PANELS_ENABLED,
   STUDIO_MOTION_PANEL_ENABLED,
 } from "./components/editor/manualEditingAvailability";
-import { getStudioMotionForSelection } from "./components/editor/studioMotion";
+import { readStudioMotionFromElement } from "./components/editor/studioMotion";
 import type { DomEditSelection } from "./components/editor/domEditing";
 import { AskAgentModal } from "./components/AskAgentModal";
 import { StudioGlobalDragOverlay } from "./components/StudioGlobalDragOverlay";
@@ -200,9 +200,6 @@ export function StudioApp() {
     showToast,
     refreshPreviewDocumentVersion,
     queueDomEditSave: manifestPersistence.queueDomEditSave,
-    commitStudioMotionManifestOptimistically:
-      manifestPersistence.commitStudioMotionManifestOptimistically,
-    applyCurrentStudioMotionToPreview: manifestPersistence.applyCurrentStudioMotionToPreview,
     readProjectFile: fileManager.readProjectFile,
     writeProjectFile: fileManager.writeProjectFile,
     domEditSaveTimestampRef,
@@ -215,7 +212,6 @@ export function StudioApp() {
     refreshKey,
     rightPanelTab: panelLayout.rightPanelTab,
     applyStudioManualEditsToPreviewRef: manifestPersistence.applyStudioManualEditsToPreviewRef,
-    applyStudioMotionToPreviewRef: manifestPersistence.applyStudioMotionToPreviewRef,
     syncPreviewHistoryHotkey: appHotkeys.syncPreviewHistoryHotkey,
     reloadPreview,
     setRefreshKey,
@@ -292,10 +288,7 @@ export function StudioApp() {
 
   const selectedStudioMotion =
     STUDIO_INSPECTOR_PANELS_ENABLED && domEditSession.domEditSelection
-      ? getStudioMotionForSelection(
-          manifestPersistence.studioMotionManifestRef.current,
-          domEditSession.domEditSelection,
-        )
+      ? readStudioMotionFromElement(domEditSession.domEditSelection.element)
       : null;
   const layersPanelActive =
     STUDIO_INSPECTOR_PANELS_ENABLED && panelLayout.rightPanelTab === "layers";

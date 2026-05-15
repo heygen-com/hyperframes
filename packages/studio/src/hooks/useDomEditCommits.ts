@@ -20,12 +20,14 @@ import {
   buildClearPathOffsetPatches,
   buildClearBoxSizePatches,
   buildClearRotationPatches,
+  buildMotionPatches,
+  buildClearMotionPatches,
 } from "../components/editor/manualEditsDom";
 import {
-  removeStudioMotionForSelection,
+  writeStudioMotionToElement,
+  clearStudioMotionFromElement,
+  applyStudioMotionFromDom,
   type StudioGsapMotion,
-  type StudioMotionManifest,
-  upsertStudioGsapMotion,
 } from "../components/editor/studioMotion";
 import { fontFamilyFromAssetPath, type ImportedFontAsset } from "../components/editor/fontAssets";
 import type { DomEditGroupPathOffsetCommit } from "../components/editor/DomEditOverlay";
@@ -58,11 +60,6 @@ export interface UseDomEditCommitsParams {
   previewIframeRef: React.MutableRefObject<HTMLIFrameElement | null>;
   showToast: (message: string, tone?: "error" | "info") => void;
   queueDomEditSave: (save: () => Promise<void>) => Promise<void>;
-  commitStudioMotionManifestOptimistically: (
-    updateManifest: (manifest: StudioMotionManifest) => StudioMotionManifest,
-    options: { label: string; coalesceKey: string },
-  ) => void;
-  applyCurrentStudioMotionToPreview: (iframe: HTMLIFrameElement | null) => void;
   writeProjectFile: (path: string, content: string) => Promise<void>;
   domEditSaveTimestampRef: React.MutableRefObject<number>;
   editHistory: { recordEdit: (entry: RecordEditInput) => Promise<void> };
@@ -93,8 +90,6 @@ export function useDomEditCommits({
   previewIframeRef,
   showToast,
   queueDomEditSave,
-  commitStudioMotionManifestOptimistically,
-  applyCurrentStudioMotionToPreview,
   writeProjectFile,
   domEditSaveTimestampRef,
   editHistory,
@@ -306,42 +301,69 @@ export function useDomEditCommits({
     [commitPositionPatchToHtml],
   );
 
-  // ── Motion commits ──
+  // ── Motion commits (HTML-attribute–backed) ──
 
   const handleDomMotionCommit = useCallback(
     (
       selection: DomEditSelection,
       motion: Omit<StudioGsapMotion, "kind" | "target" | "updatedAt">,
     ) => {
-      commitStudioMotionManifestOptimistically(
-        (manifest) => upsertStudioGsapMotion(manifest, selection, motion),
-        {
-          label: "Set GSAP motion",
-          coalesceKey: `motion:${getDomEditTargetKey(selection)}`,
-        },
-      );
+      // 1. Write motion data as JSON attribute on the element
+      writeStudioMotionToElement(selection.element, motion);
+      // 2. Apply the GSAP timeline from DOM attributes
+      let doc: Document | null = null;
+      try {
+        doc = previewIframeRef.current?.contentDocument ?? null;
+      } catch {
+        // cross-origin guard
+      }
+      if (doc) applyStudioMotionFromDom(doc, activeCompPath);
+      // 3. Build patches and persist to HTML
+      const patches = buildMotionPatches(selection.element);
+      commitPositionPatchToHtml(selection, patches, {
+        label: "Set GSAP motion",
+        coalesceKey: `motion:${getDomEditTargetKey(selection)}`,
+      });
       refreshDomEditSelectionFromPreview(selection);
     },
-    [commitStudioMotionManifestOptimistically, refreshDomEditSelectionFromPreview],
+    [
+      activeCompPath,
+      commitPositionPatchToHtml,
+      previewIframeRef,
+      refreshDomEditSelectionFromPreview,
+    ],
   );
 
   const handleDomMotionClear = useCallback(
     (selection: DomEditSelection) => {
-      commitStudioMotionManifestOptimistically(
-        (manifest) => removeStudioMotionForSelection(manifest, selection),
-        {
-          label: "Clear GSAP motion",
-          coalesceKey: `motion:${getDomEditTargetKey(selection)}`,
-        },
-      );
-      applyCurrentStudioMotionToPreview(previewIframeRef.current);
+      const clearPatches = buildClearMotionPatches(selection.element);
+      // Get gsap from the preview window for proper cleanup
+      let gsap: { set?: (target: HTMLElement, vars: Record<string, unknown>) => void } | undefined;
+      try {
+        gsap = (previewIframeRef.current?.contentWindow as { gsap?: typeof gsap })?.gsap;
+      } catch {
+        // cross-origin guard
+      }
+      clearStudioMotionFromElement(selection.element, gsap);
+      let doc: Document | null = null;
+      try {
+        doc = previewIframeRef.current?.contentDocument ?? null;
+      } catch {
+        // cross-origin guard
+      }
+      if (doc) applyStudioMotionFromDom(doc, activeCompPath);
+      commitPositionPatchToHtml(selection, clearPatches, {
+        label: "Clear GSAP motion",
+        coalesceKey: `motion:${getDomEditTargetKey(selection)}`,
+        skipRefresh: false,
+      });
       refreshDomEditSelectionFromPreview(selection);
     },
     [
-      applyCurrentStudioMotionToPreview,
-      commitStudioMotionManifestOptimistically,
-      refreshDomEditSelectionFromPreview,
+      activeCompPath,
+      commitPositionPatchToHtml,
       previewIframeRef,
+      refreshDomEditSelectionFromPreview,
     ],
   );
 

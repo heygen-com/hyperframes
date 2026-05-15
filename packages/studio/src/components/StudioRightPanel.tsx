@@ -9,6 +9,9 @@ import {
   STUDIO_INSPECTOR_PANELS_ENABLED,
   STUDIO_MOTION_PANEL_ENABLED,
 } from "./editor/manualEditingAvailability";
+
+/** Motion data without targeting metadata. */
+type StudioMotionData = Omit<StudioGsapMotion, "kind" | "target" | "updatedAt">;
 import { useCallback } from "react";
 import { resolveDomEditSelection, type DomEditLayerItem } from "./editor/domEditing";
 import { useStudioContext } from "../contexts/StudioContext";
@@ -17,7 +20,7 @@ import { useFileManagerContext } from "../contexts/FileManagerContext";
 import { useDomEditContext } from "../contexts/DomEditContext";
 
 export interface StudioRightPanelProps {
-  selectedStudioMotion: StudioGsapMotion | null;
+  selectedStudioMotion: StudioMotionData | null;
   designPanelActive: boolean;
   motionPanelActive: boolean;
 }

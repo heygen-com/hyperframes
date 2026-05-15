@@ -2,7 +2,6 @@ import { useEffect } from "react";
 import type { TimelineElement } from "../player";
 import { STUDIO_INSPECTOR_PANELS_ENABLED } from "../components/editor/manualEditingAvailability";
 import { findElementForSelection } from "../components/editor/domEditing";
-import type { StudioMotionManifest } from "../components/editor/studioMotion";
 import type { ImportedFontAsset } from "../components/editor/fontAssets";
 import type { EditHistoryKind } from "../utils/editHistory";
 import type { RightPanelTab } from "../utils/studioHelpers";
@@ -36,11 +35,6 @@ export interface UseDomEditSessionParams {
   showToast: (message: string, tone?: "error" | "info") => void;
   refreshPreviewDocumentVersion: () => void;
   queueDomEditSave: (save: () => Promise<void>) => Promise<void>;
-  commitStudioMotionManifestOptimistically: (
-    updateManifest: (manifest: StudioMotionManifest) => StudioMotionManifest,
-    options: { label: string; coalesceKey: string },
-  ) => void;
-  applyCurrentStudioMotionToPreview: (iframe: HTMLIFrameElement | null) => void;
   readProjectFile: (path: string) => Promise<string>;
   writeProjectFile: (path: string, content: string) => Promise<void>;
   domEditSaveTimestampRef: React.MutableRefObject<number>;
@@ -53,9 +47,6 @@ export interface UseDomEditSessionParams {
   refreshKey: number;
   rightPanelTab: RightPanelTab;
   applyStudioManualEditsToPreviewRef: React.MutableRefObject<
-    (iframe: HTMLIFrameElement) => Promise<void>
-  >;
-  applyStudioMotionToPreviewRef: React.MutableRefObject<
     (iframe: HTMLIFrameElement) => Promise<void>
   >;
   syncPreviewHistoryHotkey: (iframe: HTMLIFrameElement | null) => void;
@@ -81,8 +72,6 @@ export function useDomEditSession({
   showToast,
   refreshPreviewDocumentVersion,
   queueDomEditSave,
-  commitStudioMotionManifestOptimistically,
-  applyCurrentStudioMotionToPreview,
   readProjectFile: _readProjectFile,
   writeProjectFile,
   domEditSaveTimestampRef,
@@ -95,7 +84,6 @@ export function useDomEditSession({
   refreshKey,
   rightPanelTab,
   applyStudioManualEditsToPreviewRef,
-  applyStudioMotionToPreviewRef,
   syncPreviewHistoryHotkey,
   reloadPreview,
   setRefreshKey: _setRefreshKey,
@@ -200,8 +188,6 @@ export function useDomEditSession({
     previewIframeRef,
     showToast,
     queueDomEditSave,
-    commitStudioMotionManifestOptimistically,
-    applyCurrentStudioMotionToPreview,
     writeProjectFile,
     domEditSaveTimestampRef,
     editHistory,
@@ -249,19 +235,13 @@ export function useDomEditSession({
     };
 
     syncPreviewHistoryHotkey(previewIframe);
-    void (async () => {
-      await applyStudioManualEditsToPreviewRef.current(previewIframe);
-      await applyStudioMotionToPreviewRef.current(previewIframe);
-    })();
+    void applyStudioManualEditsToPreviewRef.current(previewIframe);
     syncSelectionFromDocument();
     refreshPreviewDocumentVersion();
 
     const handleLoad = () => {
       syncPreviewHistoryHotkey(previewIframe);
-      void (async () => {
-        await applyStudioManualEditsToPreviewRef.current(previewIframe);
-        await applyStudioMotionToPreviewRef.current(previewIframe);
-      })();
+      void applyStudioManualEditsToPreviewRef.current(previewIframe);
       syncSelectionFromDocument();
       refreshPreviewDocumentVersion();
     };
@@ -280,7 +260,6 @@ export function useDomEditSession({
     refreshPreviewDocumentVersion,
     syncPreviewHistoryHotkey,
     applyStudioManualEditsToPreviewRef,
-    applyStudioMotionToPreviewRef,
   ]);
 
   return {

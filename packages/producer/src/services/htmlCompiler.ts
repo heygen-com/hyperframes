@@ -1000,7 +1000,11 @@ export async function compileForRender(
   // GSAP overwrites the `translate` CSS property on every frame seek; this script
   // re-asserts the CSS custom property var() form after each seek so dragged
   // positions survive frame-by-frame rendering without a JSON sidecar.
-  const HF_POSITION_ATTRS = ['data-hf-studio-path-offset="true"', 'data-hf-studio-rotation="true"'];
+  const HF_POSITION_ATTRS = [
+    'data-hf-studio-path-offset="true"',
+    'data-hf-studio-rotation="true"',
+    "data-hf-studio-motion=",
+  ];
   const hasPositionEdits = HF_POSITION_ATTRS.some((attr) => htmlWithAssets.includes(attr));
   const html = hasPositionEdits
     ? htmlWithAssets.replace(

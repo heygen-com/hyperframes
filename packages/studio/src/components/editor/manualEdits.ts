@@ -30,6 +30,8 @@ export {
   clearStudioRotation,
   clearStudioBoxSize,
   reapplyPositionEditsAfterSeek,
+  buildMotionPatches,
+  buildClearMotionPatches,
 } from "./manualEditsDom";
 
 export {

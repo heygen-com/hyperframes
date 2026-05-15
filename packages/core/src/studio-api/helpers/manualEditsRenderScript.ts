@@ -30,11 +30,14 @@ function studioPositionSeekReapplyRuntime(): void {
   const ROTATION_ATTR = "data-hf-studio-rotation";
   const ORIGINAL_TRANSLATE_ATTR = "data-hf-studio-original-translate";
   const ORIGINAL_ROTATE_ATTR = "data-hf-studio-original-rotate";
+  const MOTION_ATTR = "data-hf-studio-motion";
+  const MOTION_TL_KEY = "studio-motion";
   const WRAPPED_PROP = "__hfStudioPositionSeekReapplyWrapped";
 
   if (
     !document.querySelector("[" + PATH_OFFSET_ATTR + '="true"]') &&
-    !document.querySelector("[" + ROTATION_ATTR + '="true"]')
+    !document.querySelector("[" + ROTATION_ATTR + '="true"]') &&
+    !document.querySelector("[" + MOTION_ATTR + "]")
   )
     return;
 
@@ -77,6 +80,87 @@ function studioPositionSeekReapplyRuntime(): void {
     return "calc(" + original + " + " + rotationValue + ")";
   };
 
+  let lastSeekTime = 0;
+
+  const finiteNum = (v: unknown): number | null =>
+    typeof v === "number" && Number.isFinite(v) ? v : null;
+
+  const reapplyMotionTimeline = (): void => {
+    const motionEls = document.querySelectorAll("[" + MOTION_ATTR + "]");
+    if (motionEls.length === 0) return;
+    const win = window as Window & {
+      gsap?: {
+        timeline?: (opts: Record<string, unknown>) => Record<string, unknown>;
+        set?: (el: HTMLElement, vars: Record<string, unknown>) => void;
+        registerPlugin?: (plugin: unknown) => void;
+      };
+      CustomEase?: { create?: (id: string, data: string) => void };
+      __timelines?: Record<string, Record<string, unknown>>;
+    };
+    const gsap = win.gsap;
+    if (!gsap || typeof gsap.timeline !== "function") return;
+    win.__timelines = win.__timelines || {};
+    const existing = win.__timelines[MOTION_TL_KEY];
+    if (existing && typeof existing.kill === "function") (existing.kill as () => void)();
+    const tl = gsap.timeline({ paused: true, defaults: { overwrite: "auto" } });
+    const fromTo = tl.fromTo as (
+      el: HTMLElement,
+      from: Record<string, unknown>,
+      to: Record<string, unknown>,
+      pos: number,
+    ) => void;
+    if (typeof fromTo !== "function") return;
+    let applied = 0;
+    for (let i = 0; i < motionEls.length; i++) {
+      const el = motionEls[i] as HTMLElement;
+      if (!(el instanceof HTMLElement)) continue;
+      const json = el.getAttribute(MOTION_ATTR);
+      if (!json) continue;
+      try {
+        const m = JSON.parse(json) as Record<string, unknown>;
+        const start = finiteNum(m.start);
+        const duration = finiteNum(m.duration);
+        if (start == null || duration == null || duration <= 0) continue;
+        const ease = typeof m.ease === "string" ? m.ease : "none";
+        const from = (m.from && typeof m.from === "object" ? m.from : {}) as Record<
+          string,
+          unknown
+        >;
+        const to = (m.to && typeof m.to === "object" ? m.to : {}) as Record<string, unknown>;
+        const customEase = m.customEase as { id?: string; data?: string } | null | undefined;
+        let resolvedEase = ease;
+        if (customEase?.id && customEase?.data && win.CustomEase?.create) {
+          try {
+            gsap.registerPlugin?.(win.CustomEase);
+            win.CustomEase.create(customEase.id, customEase.data);
+            resolvedEase = customEase.id;
+          } catch {
+            /* use default ease */
+          }
+        }
+        fromTo.call(
+          tl,
+          el,
+          { ...from },
+          { ...to, duration, ease: resolvedEase, overwrite: "auto", immediateRender: false },
+          start,
+        );
+        applied += 1;
+      } catch {
+        /* malformed JSON — skip */
+      }
+    }
+    if (applied === 0) {
+      if (typeof (tl as { kill?: () => void }).kill === "function")
+        (tl as { kill: () => void }).kill();
+      return;
+    }
+    win.__timelines[MOTION_TL_KEY] = tl;
+    if (typeof tl.pause === "function") (tl.pause as () => void)();
+    if (typeof tl.totalTime === "function")
+      (tl.totalTime as (t: number, s: boolean) => void)(lastSeekTime, false);
+  };
+
   const reapplyAll = (): void => {
     const offsetEls = document.querySelectorAll("[" + PATH_OFFSET_ATTR + '="true"]');
     for (let i = 0; i < offsetEls.length; i++) {
@@ -104,6 +188,7 @@ function studioPositionSeekReapplyRuntime(): void {
         el.style.setProperty("rotate", composeRotation(el, "var(" + ROTATION_PROP + ", 0deg)"));
       }
     }
+    reapplyMotionTimeline();
   };
 
   const runtimeWindow = window as Window & {
@@ -139,6 +224,7 @@ function studioPositionSeekReapplyRuntime(): void {
       return true;
     }
     const wrapped = function (this: unknown, time: number): unknown {
+      lastSeekTime = typeof time === "number" && Number.isFinite(time) ? Math.max(0, time) : 0;
       const result = seek.call(this, time);
       reapplyAll();
       return result;
