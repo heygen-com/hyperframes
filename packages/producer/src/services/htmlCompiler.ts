@@ -1133,6 +1133,109 @@ export async function discoverMediaFromBrowser(page: Page): Promise<BrowserMedia
   return elements as BrowserMediaElement[];
 }
 
+export interface VideoVisibilityWindow {
+  videoId: string;
+  visibleStart: number;
+  visibleEnd: number;
+}
+
+/**
+ * Seek the GSAP timeline to discover when each video's parent scene is visible.
+ * Only processes videos with the data-hf-auto-start sentinel (auto-injected timing).
+ */
+export async function discoverVideoVisibilityFromTimeline(
+  page: Page,
+  compositionDuration: number,
+): Promise<VideoVisibilityWindow[]> {
+  if (compositionDuration <= 0) return [];
+
+  return page.evaluate((duration: number) => {
+    const results: { videoId: string; visibleStart: number; visibleEnd: number }[] = [];
+    const videos = document.querySelectorAll("video[data-hf-auto-start]");
+    if (videos.length === 0) return results;
+
+    const timelines = (window as unknown as { __timelines?: Record<string, unknown> }).__timelines;
+    if (!timelines) return results;
+
+    const rootEl = document.querySelector("[data-composition-id]");
+    const compId = rootEl?.getAttribute("data-composition-id");
+    if (!compId) return results;
+
+    const tl = timelines[compId] as
+      | {
+          totalTime?: (t: number, suppressEvents?: boolean) => unknown;
+          seek?: (t: number, suppressEvents?: boolean) => unknown;
+        }
+      | undefined;
+    if (!tl) return results;
+
+    const seekTl = (t: number) => {
+      if (typeof tl.totalTime === "function") {
+        tl.totalTime(t, true);
+      } else if (typeof tl.seek === "function") {
+        tl.seek(t, true);
+      }
+    };
+
+    const SAMPLE_STEP = 0.1;
+    const BINARY_PRECISION = 1 / 60;
+
+    for (const videoEl of videos) {
+      const id = videoEl.id;
+      if (!id) continue;
+
+      const sceneEl = videoEl.closest(".scene") || videoEl;
+
+      let firstVisible: number | null = null;
+      let lastVisible: number | null = null;
+
+      for (let t = 0; t <= duration; t += SAMPLE_STEP) {
+        seekTl(t);
+        const opacity = parseFloat(window.getComputedStyle(sceneEl).opacity);
+        if (opacity > 0) {
+          if (firstVisible === null) firstVisible = t;
+          lastVisible = t;
+        }
+      }
+
+      if (firstVisible === null || lastVisible === null) continue;
+
+      // Binary search left boundary
+      let lo = Math.max(0, firstVisible - SAMPLE_STEP);
+      let hi = firstVisible;
+      while (hi - lo > BINARY_PRECISION) {
+        const mid = (lo + hi) / 2;
+        seekTl(mid);
+        const opacity = parseFloat(window.getComputedStyle(sceneEl).opacity);
+        if (opacity > 0) hi = mid;
+        else lo = mid;
+      }
+      const exactStart = hi;
+
+      // Binary search right boundary
+      lo = lastVisible;
+      hi = Math.min(duration, lastVisible + SAMPLE_STEP);
+      while (hi - lo > BINARY_PRECISION) {
+        const mid = (lo + hi) / 2;
+        seekTl(mid);
+        const opacity = parseFloat(window.getComputedStyle(sceneEl).opacity);
+        if (opacity > 0) lo = mid;
+        else hi = mid;
+      }
+      const exactEnd = lo;
+
+      results.push({
+        videoId: id,
+        visibleStart: Math.max(0, exactStart),
+        visibleEnd: Math.min(duration, exactEnd),
+      });
+    }
+
+    seekTl(0);
+    return results;
+  }, compositionDuration);
+}
+
 /**
  * Resolve composition durations via Puppeteer by querying window.__timelines.
  * The page must already have the interceptor loaded and timelines registered.
