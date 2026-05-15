@@ -525,28 +525,64 @@ export async function queryElementStacking(
         if (!htmlEl) continue;
         mat = mat.translate(htmlEl.offsetLeft, htmlEl.offsetTop);
         const cs = window.getComputedStyle(htmlEl);
-        if (cs.transform && cs.transform !== "none") {
-          const origin = cs.transformOrigin.split(" ");
-          const ox = resolveLength(origin[0] ?? "0", htmlEl.offsetWidth);
-          const oy = resolveLength(origin[1] ?? "0", htmlEl.offsetHeight);
-          try {
-            const t = new DOMMatrix(cs.transform);
-            if (
-              Number.isFinite(t.a) &&
-              Number.isFinite(t.b) &&
-              Number.isFinite(t.c) &&
-              Number.isFinite(t.d) &&
-              Number.isFinite(t.e) &&
-              Number.isFinite(t.f)
-            ) {
-              mat = mat.translate(ox, oy).multiply(t).translate(-ox, -oy);
+        const origin = cs.transformOrigin.split(" ");
+        const ox = resolveLength(origin[0] ?? "0", htmlEl.offsetWidth);
+        const oy = resolveLength(origin[1] ?? "0", htmlEl.offsetHeight);
+        const individualTransform = composeIndividualTransforms(cs);
+        const hasIndividual = individualTransform !== null;
+        const hasTransform = cs.transform && cs.transform !== "none";
+        if (hasIndividual || hasTransform) {
+          mat = mat.translate(ox, oy);
+          if (hasIndividual) mat = mat.multiply(individualTransform);
+          if (hasTransform) {
+            try {
+              const t = new DOMMatrix(cs.transform);
+              if (
+                Number.isFinite(t.a) &&
+                Number.isFinite(t.b) &&
+                Number.isFinite(t.c) &&
+                Number.isFinite(t.d) &&
+                Number.isFinite(t.e) &&
+                Number.isFinite(t.f)
+              ) {
+                mat = mat.multiply(t);
+              }
+            } catch {
+              // DOMMatrix constructor throws on malformed input — skip.
             }
-          } catch {
-            // DOMMatrix constructor throws on malformed input — skip ancestor.
           }
+          mat = mat.translate(-ox, -oy);
         }
       }
       return mat.toString();
+    }
+
+    function composeIndividualTransforms(cs: CSSStyleDeclaration): DOMMatrix | null {
+      const translate = cs.getPropertyValue("translate").trim();
+      const rotate = cs.getPropertyValue("rotate").trim();
+      const scale = cs.getPropertyValue("scale").trim();
+      const hasTranslate = translate && translate !== "none";
+      const hasRotate = rotate && rotate !== "none";
+      const hasScale = scale && scale !== "none";
+      if (!hasTranslate && !hasRotate && !hasScale) return null;
+      let m = new DOMMatrix();
+      if (hasTranslate) {
+        const parts = translate.split(/\s+/);
+        const tx = parseFloat(parts[0] ?? "0") || 0;
+        const ty = parseFloat(parts[1] ?? "0") || 0;
+        if (tx !== 0 || ty !== 0) m = m.translate(tx, ty);
+      }
+      if (hasRotate) {
+        const deg = parseFloat(rotate) || 0;
+        if (deg !== 0) m = m.rotate(deg);
+      }
+      if (hasScale) {
+        const parts = scale.split(/\s+/);
+        const sx = parseFloat(parts[0] ?? "1") || 1;
+        const sy = parseFloat(parts[1] ?? String(sx)) || sx;
+        if (sx !== 1 || sy !== 1) m = m.scale(sx, sy);
+      }
+      return m;
     }
 
     function resolveLength(value: string, basis: number): number {

@@ -24,6 +24,9 @@ export const MEDIA_VISUAL_STYLE_PROPERTIES = [
   "mask-repeat",
   "transform",
   "transform-origin",
+  "translate",
+  "rotate",
+  "scale",
   "box-sizing",
 ] as const;
 

@@ -165,6 +165,33 @@ function studioPositionSeekReapplyRuntime(): void {
     return a || b;
   };
 
+  const installSeekTrap = (
+    obj: Record<string, unknown> | undefined,
+    key: string,
+    getter: () => unknown,
+    setter: (fn: (time: number) => unknown) => void,
+  ): void => {
+    if (!obj) return;
+    try {
+      let current = obj[key];
+      Object.defineProperty(obj, key, {
+        configurable: true,
+        enumerable: true,
+        get() {
+          return current;
+        },
+        set(value: unknown) {
+          current = value;
+          if (typeof value === "function" && !isWrapped(value as (time: number) => unknown)) {
+            wrapFn(getter, setter);
+          }
+        },
+      });
+    } catch {
+      /* non-configurable — fall back to polling */
+    }
+  };
+
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", () => reapplyAll(), { once: true });
   } else {
@@ -172,6 +199,22 @@ function studioPositionSeekReapplyRuntime(): void {
   }
 
   wrapSeekFunctions();
+  installSeekTrap(
+    runtimeWindow.__hf,
+    "seek",
+    () => runtimeWindow.__hf?.["seek"],
+    (fn) => {
+      if (runtimeWindow.__hf) runtimeWindow.__hf["seek"] = fn;
+    },
+  );
+  installSeekTrap(
+    runtimeWindow.__player as Record<string, unknown> | undefined,
+    "renderSeek",
+    () => runtimeWindow.__player?.["renderSeek"],
+    (fn) => {
+      if (runtimeWindow.__player) runtimeWindow.__player["renderSeek"] = fn;
+    },
+  );
   let remaining = 120;
   const interval = setInterval(() => {
     wrapSeekFunctions();
