@@ -168,12 +168,15 @@ export interface ExplainerVideoJobRecord {
 
 export interface RenderSceneCard {
   id: string;
-  kind: "hook" | "context" | "insight" | "author" | "cta";
+  kind: "hook" | "context" | "insight" | "quote" | "author" | "cta";
+  layout: "hero" | "split" | "quote" | "author" | "cta";
   eyebrow: string;
   title: string;
   body: string;
+  highlight?: string | null;
   meta?: string | null;
   ctaLabel?: string | null;
+  supportingPoints?: string[];
   alignment: "left" | "right";
   startSeconds: number;
   durationSeconds: number;
