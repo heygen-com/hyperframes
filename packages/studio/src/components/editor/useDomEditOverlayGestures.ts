@@ -296,6 +296,7 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
         box.style.height = `${g.originHeight}px`;
       }
       restoreGestureOverlayRect(g);
+      opts.suppressNextBoxClickRef.current = true;
       return;
     }
 
@@ -356,6 +357,7 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
           if (g.pathOffsetMember) endManualOffsetDragMembers([g.pathOffsetMember]);
         });
     } else {
+      opts.suppressNextBoxClickRef.current = true;
       const finalSize = readStudioBoxSize(sel.element);
       applyStudioBoxSize(sel.element, finalSize);
       void Promise.resolve(opts.onBoxSizeCommitRef.current(sel, finalSize))
