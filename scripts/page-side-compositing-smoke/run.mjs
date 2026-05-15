@@ -23,20 +23,21 @@
  *
  * Outputs:
  *
- *   /tmp/hf-page-side-smoke/raw.mp4              (baseline path, flag off)
- *   /tmp/hf-page-side-smoke/page-side.mp4        (page-side path, flag on)
- *   /tmp/hf-page-side-smoke/wall-times.json      (wall-time pair for the PR)
+ *   <tmpdir>/raw.mp4              (baseline path, flag off)
+ *   <tmpdir>/page-side.mp4        (page-side path, flag on)
+ *   <tmpdir>/wall-times.json      (wall-time pair for the PR)
  */
 
 import { execFileSync, spawnSync } from "node:child_process";
-import { copyFileSync, existsSync, mkdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
+import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, "..", "..");
 const FIXTURE_SRC = join(HERE, "fixture");
-const WORK_DIR = "/tmp/hf-page-side-smoke";
+const WORK_DIR = mkdtempSync(join(tmpdir(), "hf-page-side-smoke-"));
 const FIXTURE_RUN_DIR = join(WORK_DIR, "fixture");
 const CLI_PATH = join(REPO_ROOT, "packages", "cli", "dist", "cli.js");
 const SHADER_BUNDLE = join(REPO_ROOT, "packages", "shader-transitions", "dist", "index.global.js");
