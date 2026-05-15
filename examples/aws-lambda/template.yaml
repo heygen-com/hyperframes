@@ -1,0 +1,393 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >-
+  HyperFrames distributed rendering — Step Functions standard workflow with
+  one Lambda function handling Plan, RenderChunk (fan-out via Map state),
+  and Assemble. One S3 bucket, one CloudWatch alarm for runaway concurrency.
+
+  Built from the Phase 6.1 ZIP at packages/aws-lambda/dist/handler.zip.
+
+  See:
+    - DISTRIBUTED-RENDERING-PLAN.md §15 (Lambda turnkey deployment)
+    - packages/aws-lambda/README.md (handler architecture)
+    - examples/aws-lambda/README.md (this directory's deploy guide)
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: hyperframes
+    Description: Name prefix applied to all created resources.
+
+  LambdaMemoryMb:
+    Type: Number
+    Default: 10240
+    AllowedValues: [2048, 3072, 4096, 5120, 6144, 7168, 8192, 9216, 10240]
+    Description: >-
+      Lambda memory in MB. Render workloads are CPU-bound; bumping memory
+      proportionally bumps the CPU share Lambda gives the function. 10 GB
+      (the max) is recommended for 1080p renders.
+
+  LambdaTimeoutSec:
+    Type: Number
+    Default: 900
+    MinValue: 60
+    MaxValue: 900
+    Description: >-
+      Per-invocation Lambda timeout. Render chunks at the default
+      chunkSize=240 frames complete in seconds; 15 minutes is the Lambda
+      hard ceiling and the default here to absorb cold-start variance.
+
+  ReservedConcurrency:
+    Type: Number
+    Default: -1
+    Description: >-
+      Lambda reserved concurrency cap. Set to a positive integer to bound
+      simultaneous chunk renders (e.g. 50 to limit cost). -1 means
+      unreserved (account default).
+
+  ChromeSource:
+    Type: String
+    Default: sparticuz
+    AllowedValues: [sparticuz, chrome-headless-shell]
+    Description: >-
+      Which Chrome runtime the bundled ZIP was built with. Must match the
+      `--source=` flag passed to `build-zip.ts`. The handler reads this
+      via the HYPERFRAMES_LAMBDA_CHROME_SOURCE env var at boot.
+
+  ChunkInvocationAlarmThreshold:
+    Type: Number
+    Default: 1000
+    Description: >-
+      CloudWatch alarm threshold for total RenderChunk invocations per
+      hour. The runaway-Map state pathology would fan out far more
+      chunks than expected; an alarm at 10× the typical workload
+      protects against billing surprises.
+
+Conditions:
+  HasReservedConcurrency: !Not [!Equals [!Ref ReservedConcurrency, -1]]
+
+Globals:
+  Function:
+    Runtime: nodejs22.x
+    MemorySize: !Ref LambdaMemoryMb
+    Timeout: !Ref LambdaTimeoutSec
+    Architectures: [x86_64]
+    Environment:
+      Variables:
+        NODE_OPTIONS: "--enable-source-maps"
+        HYPERFRAMES_LAMBDA_CHROME_SOURCE: !Ref ChromeSource
+
+Resources:
+  # ── S3 bucket for plan tarballs, chunk outputs, and final renders ───────
+  RenderBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      # BucketName omitted — CloudFormation generates a unique name like
+      # "<stack-name>-renderbucket-<random>". S3 bucket names are capped at
+      # 63 chars; a static !Sub expression including ProjectName +
+      # AWS::AccountId + AWS::Region trips that limit when ProjectName
+      # carries a timestamp (e.g. the smoke script's per-run stack name).
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Suspended
+      LifecycleConfiguration:
+        Rules:
+          - Id: ExpireIntermediates
+            Status: Enabled
+            Prefix: renders/
+            # Plan tarballs and chunk outputs are intermediate artifacts.
+            # Users keep the final mp4 (different key prefix); the rest
+            # can age out after a week to keep storage costs flat.
+            ExpirationInDays: 7
+
+  # ── Single Lambda function handling all three roles ──────────────────────
+  RenderFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ProjectName}-render"
+      Description: >-
+        HyperFrames distributed render handler. Dispatches on event.Action.
+      Handler: handler.handler
+      # Local path is resolved by `sam build` + `sam deploy --resolve-s3`
+      # (or `--s3-bucket`); the resulting CodeUri rewrites to s3://.
+      CodeUri: ../../packages/aws-lambda/dist/handler.zip
+      PackageType: Zip
+      ReservedConcurrentExecutions: !If
+        - HasReservedConcurrency
+        - !Ref ReservedConcurrency
+        - !Ref AWS::NoValue
+      EphemeralStorage:
+        Size: 10240
+      Environment:
+        Variables:
+          # Lambda's Node 22 runtime sets these by default; explicit for
+          # clarity + so users can override during local SAM invoke.
+          TMPDIR: /tmp
+      Policies:
+        - S3CrudPolicy:
+            BucketName: !Ref RenderBucket
+      # CloudWatch Logs perms are covered by SAM's default
+      # AWSLambdaBasicExecutionRole — explicit `CloudWatchLogsFullAccess`
+      # would be overscope (`logs:*` on `*`, including DeleteLogGroup +
+      # CreateExportTask). Reference templates shouldn't leak overbroad
+      # IAM into adopters' accounts.
+
+  # ── CloudWatch log group for the state machine ──────────────────────────
+  # SAM doesn't auto-create one when `LoggingConfiguration` is set, so we
+  # define it explicitly — that way the IAM grant on the state-machine
+  # role has a destination to write to.
+  RenderStateMachineLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/states/${ProjectName}-render"
+      RetentionInDays: 30
+
+  # ── Step Functions state machine: Plan → Map(N) RenderChunk → Assemble ──
+  RenderStateMachine:
+    Type: AWS::Serverless::StateMachine
+    Properties:
+      Name: !Sub "${ProjectName}-render"
+      Type: STANDARD
+      Tracing:
+        Enabled: true
+      Logging:
+        # Without this, the `WriteCloudwatchLogs` grant on the state
+        # machine role would be unused — operators would see zero
+        # execution history outside the Step Functions console.
+        # `Level: ERROR` keeps log volume low; bump to `ALL` for
+        # heavy debugging.
+        Level: ERROR
+        IncludeExecutionData: false
+        Destinations:
+          - CloudWatchLogsLogGroup:
+              LogGroupArn: !GetAtt RenderStateMachineLogGroup.Arn
+      Definition:
+        Comment: >-
+          HyperFrames distributed render orchestration. See
+          DISTRIBUTED-RENDERING-PLAN.md §2.5 for the architecture.
+        StartAt: Plan
+        States:
+          Plan:
+            Type: Task
+            Resource: arn:aws:states:::lambda:invoke
+            Parameters:
+              FunctionName: !GetAtt RenderFunction.Arn
+              Payload:
+                Action: plan
+                ProjectS3Uri.$: "$.ProjectS3Uri"
+                PlanOutputS3Prefix.$: "$.PlanOutputS3Prefix"
+                Config.$: "$.Config"
+            ResultSelector:
+              PlanS3Uri.$: "$.Payload.PlanS3Uri"
+              PlanHash.$: "$.Payload.PlanHash"
+              ChunkCount.$: "$.Payload.ChunkCount"
+              Format.$: "$.Payload.Format"
+              HasAudio.$: "$.Payload.HasAudio"
+              AudioS3Uri.$: "$.Payload.AudioS3Uri"
+            ResultPath: $.Plan
+            Retry:
+              - ErrorEquals:
+                  # Per §9.3, these are non-retryable plan-time failures.
+                  - FFMPEG_VERSION_MISMATCH
+                  - PLAN_HASH_MISMATCH
+                  - BROWSER_GPU_NOT_SOFTWARE
+                  - FONT_FETCH_FAILED
+                  - PLAN_TOO_LARGE
+                  - FORMAT_NOT_SUPPORTED_IN_DISTRIBUTED
+                MaxAttempts: 0
+              - ErrorEquals: [States.ALL]
+                IntervalSeconds: 2
+                MaxAttempts: 4
+                BackoffRate: 2
+                MaxDelaySeconds: 60
+            Next: BuildChunkList
+
+          BuildChunkList:
+            # Translate ChunkCount into an array `[0, 1, ..., N-1]` so the
+            # Map state below has something to iterate. Range is the
+            # idiomatic Step Functions intrinsic for this; no Lambda call
+            # required.
+            Type: Pass
+            Parameters:
+              ChunkIndexes.$: "States.ArrayRange(0, States.MathAdd($.Plan.ChunkCount, -1), 1)"
+            ResultPath: $.Iterator
+            Next: RenderChunks
+
+          RenderChunks:
+            Type: Map
+            ItemsPath: $.Iterator.ChunkIndexes
+            ItemSelector:
+              ChunkIndex.$: "$$.Map.Item.Value"
+              PlanS3Uri.$: "$.Plan.PlanS3Uri"
+              PlanHash.$: "$.Plan.PlanHash"
+              ChunkOutputS3Prefix.$: "$.PlanOutputS3Prefix"
+              Format.$: "$.Plan.Format"
+            # Map fan-out cap derives from the Plan's chunkCount so
+            # caller-supplied `Config.maxParallelChunks` (which
+            # `plan()` honours when sizing the chunk list) is the
+            # single source of truth. A hardcoded value here would
+            # silently throttle adopters who scale up the chunk count
+            # in their event payload.
+            MaxConcurrencyPath: $.Plan.ChunkCount
+            ResultPath: $.Chunks
+            ItemProcessor:
+              ProcessorConfig:
+                Mode: INLINE
+              StartAt: RenderChunk
+              States:
+                RenderChunk:
+                  Type: Task
+                  Resource: arn:aws:states:::lambda:invoke
+                  Parameters:
+                    FunctionName: !GetAtt RenderFunction.Arn
+                    Payload:
+                      Action: renderChunk
+                      ChunkIndex.$: "$.ChunkIndex"
+                      PlanS3Uri.$: "$.PlanS3Uri"
+                      PlanHash.$: "$.PlanHash"
+                      ChunkOutputS3Prefix.$: "$.ChunkOutputS3Prefix"
+                      Format.$: "$.Format"
+                  ResultSelector:
+                    ChunkS3Uri.$: "$.Payload.ChunkS3Uri"
+                    ChunkIndex.$: "$.Payload.ChunkIndex"
+                    Sha256.$: "$.Payload.Sha256"
+                  Retry:
+                    - ErrorEquals:
+                        - FFMPEG_VERSION_MISMATCH
+                        - PLAN_HASH_MISMATCH
+                        - BROWSER_GPU_NOT_SOFTWARE
+                      MaxAttempts: 0
+                    - ErrorEquals: [States.ALL]
+                      IntervalSeconds: 2
+                      MaxAttempts: 4
+                      BackoffRate: 2
+                      MaxDelaySeconds: 60
+                  End: true
+            Next: Assemble
+
+          Assemble:
+            Type: Task
+            Resource: arn:aws:states:::lambda:invoke
+            Parameters:
+              FunctionName: !GetAtt RenderFunction.Arn
+              Payload:
+                Action: assemble
+                PlanS3Uri.$: "$.Plan.PlanS3Uri"
+                ChunkS3Uris.$: "$.Chunks[*].ChunkS3Uri"
+                AudioS3Uri.$: "$.Plan.AudioS3Uri"
+                OutputS3Uri.$: "$.OutputS3Uri"
+                Format.$: "$.Plan.Format"
+            ResultSelector:
+              OutputS3Uri.$: "$.Payload.OutputS3Uri"
+              FramesEncoded.$: "$.Payload.FramesEncoded"
+              FileSize.$: "$.Payload.FileSize"
+            ResultPath: $.Output
+            Retry:
+              - ErrorEquals:
+                  # Per §9.3, these are non-retryable failures that
+                  # surface at assemble time too — ffmpeg-driven concat
+                  # picks up version drift, plan-hash re-verification
+                  # at assemble, and format checks. Skip the retry
+                  # storm; fail fast.
+                  - FFMPEG_VERSION_MISMATCH
+                  - PLAN_HASH_MISMATCH
+                  - FORMAT_NOT_SUPPORTED_IN_DISTRIBUTED
+                MaxAttempts: 0
+              - ErrorEquals: [States.ALL]
+                IntervalSeconds: 2
+                MaxAttempts: 4
+                BackoffRate: 2
+                MaxDelaySeconds: 60
+            End: true
+      Role: !GetAtt RenderStateMachineRole.Arn
+
+  RenderStateMachineRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: states.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: InvokeRenderFunction
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: lambda:InvokeFunction
+                Resource: !GetAtt RenderFunction.Arn
+        - PolicyName: WriteCloudwatchLogs
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogDelivery
+                  - logs:GetLogDelivery
+                  - logs:UpdateLogDelivery
+                  - logs:DeleteLogDelivery
+                  - logs:ListLogDeliveries
+                  - logs:PutResourcePolicy
+                  - logs:DescribeResourcePolicies
+                  - logs:DescribeLogGroups
+                Resource: "*"
+        - PolicyName: XRayTracing
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - xray:PutTraceSegments
+                  - xray:PutTelemetryRecords
+                Resource: "*"
+
+  # ── CloudWatch alarm: runaway chunk invocations ─────────────────────────
+  RenderChunkInvocationAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${ProjectName}-runaway-chunk-invocations"
+      AlarmDescription: >-
+        Fires if RenderChunk Lambda invocations exceed the configured
+        threshold in a 1-hour window. The Map state's MaxConcurrency cap
+        protects against simultaneous fan-out, but a runaway state
+        machine that triggers many sequential renders would still rack
+        up cost; this alarm catches that pattern.
+      Namespace: AWS/Lambda
+      MetricName: Invocations
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref RenderFunction
+      Statistic: Sum
+      Period: 3600
+      EvaluationPeriods: 1
+      Threshold: !Ref ChunkInvocationAlarmThreshold
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+
+Outputs:
+  RenderBucketName:
+    Description: S3 bucket for plan tarballs, chunk outputs, and final renders.
+    Value: !Ref RenderBucket
+    Export:
+      Name: !Sub "${AWS::StackName}-RenderBucket"
+
+  RenderFunctionArn:
+    Description: ARN of the Lambda function. Pass to `aws lambda invoke` for local testing.
+    Value: !GetAtt RenderFunction.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-RenderFunctionArn"
+
+  RenderStateMachineArn:
+    Description: ARN of the Step Functions state machine. Pass to `aws stepfunctions start-execution`.
+    Value: !Ref RenderStateMachine
+    Export:
+      Name: !Sub "${AWS::StackName}-RenderStateMachineArn"
