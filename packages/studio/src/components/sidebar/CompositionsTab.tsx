@@ -218,7 +218,7 @@ function CompCard({
           className={`flex-shrink-0 p-1 rounded transition-colors ${
             isRendering
               ? "text-neutral-600 cursor-not-allowed"
-              : "text-neutral-500 hover:text-studio-accent hover:bg-neutral-800 opacity-0 group-hover/card:opacity-100"
+              : "text-neutral-600 hover:text-studio-accent hover:bg-neutral-800"
           }`}
         >
           <svg
