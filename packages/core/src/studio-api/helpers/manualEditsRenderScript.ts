@@ -81,13 +81,26 @@ function studioPositionSeekReapplyRuntime(): void {
   };
 
   let lastSeekTime = 0;
+  let cachedMotionKey = "";
 
   const finiteNum = (v: unknown): number | null =>
     typeof v === "number" && Number.isFinite(v) ? v : null;
 
+  const computeMotionKey = (motionEls: NodeListOf<Element>): string => {
+    let key = "";
+    for (let i = 0; i < motionEls.length; i++) {
+      const json = (motionEls[i] as HTMLElement).getAttribute?.(MOTION_ATTR);
+      if (json) key += (key ? "\n" : "") + json;
+    }
+    return key;
+  };
+
   const reapplyMotionTimeline = (): void => {
     const motionEls = document.querySelectorAll("[" + MOTION_ATTR + "]");
-    if (motionEls.length === 0) return;
+    if (motionEls.length === 0) {
+      cachedMotionKey = "";
+      return;
+    }
     const win = window as Window & {
       gsap?: {
         timeline?: (opts: Record<string, unknown>) => Record<string, unknown>;
@@ -100,7 +113,22 @@ function studioPositionSeekReapplyRuntime(): void {
     const gsap = win.gsap;
     if (!gsap || typeof gsap.timeline !== "function") return;
     win.__timelines = win.__timelines || {};
+
+    // Cache the timeline keyed by the concatenated motion JSON strings.
+    // On each seek, if the key hasn't changed, just seek the existing timeline
+    // instead of rebuilding it (avoids kill+recreate on every frame).
+    const motionKey = computeMotionKey(motionEls);
     const existing = win.__timelines[MOTION_TL_KEY];
+    if (
+      motionKey &&
+      motionKey === cachedMotionKey &&
+      existing &&
+      typeof existing.totalTime === "function"
+    ) {
+      (existing.totalTime as (t: number, s: boolean) => void)(lastSeekTime, false);
+      return;
+    }
+
     if (existing && typeof existing.kill === "function") (existing.kill as () => void)();
     const tl = gsap.timeline({ paused: true, defaults: { overwrite: "auto" } });
     const fromTo = tl.fromTo as (
@@ -151,10 +179,12 @@ function studioPositionSeekReapplyRuntime(): void {
       }
     }
     if (applied === 0) {
+      cachedMotionKey = "";
       if (typeof (tl as { kill?: () => void }).kill === "function")
         (tl as { kill: () => void }).kill();
       return;
     }
+    cachedMotionKey = motionKey;
     win.__timelines[MOTION_TL_KEY] = tl;
     if (typeof tl.pause === "function") (tl.pause as () => void)();
     if (typeof tl.totalTime === "function")

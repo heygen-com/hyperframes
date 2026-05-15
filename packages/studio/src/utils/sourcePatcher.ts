@@ -11,6 +11,24 @@ function escapeStyleAttributeValue(value: string, quote: string): string {
   return quote === '"' ? value.replace(/"/g, "&quot;") : value.replace(/'/g, "&#39;");
 }
 
+/** Escape a string for safe use inside a double-quoted HTML attribute. */
+function escapeHtmlAttribute(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+/** Reverse escapeHtmlAttribute so callers get the original value. */
+function unescapeHtmlAttribute(value: string): string {
+  return value
+    .replace(/&quot;/g, '"')
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&");
+}
+
 function splitInlineStyleDeclarations(style: string): string[] {
   const declarations: string[] = [];
   let current = "";
@@ -281,7 +299,7 @@ export function readAttributeByTarget(
 
   const fullAttr = attr.startsWith("data-") ? attr : `data-${attr}`;
   const valueMatch = new RegExp(`\\b${fullAttr}=(["'])([^"']*)\\1`).exec(match.tag);
-  return valueMatch?.[2];
+  return valueMatch?.[2] != null ? unescapeHtmlAttribute(valueMatch[2]) : undefined;
 }
 
 export function readTagSnippetByTarget(html: string, target: PatchTarget): string | undefined {
@@ -310,12 +328,13 @@ function patchAttributeByTarget(
     return replaceTagAtMatch(html, match, newTag);
   }
 
+  const escaped = escapeHtmlAttribute(value);
   if (attrPattern.test(tag)) {
-    const newTag = tag.replace(attrPattern, `${fullAttr}="${value}"`);
+    const newTag = tag.replace(attrPattern, `${fullAttr}="${escaped}"`);
     return replaceTagAtMatch(html, match, newTag);
   }
 
-  const newTag = tag + ` ${fullAttr}="${value}"`;
+  const newTag = tag + ` ${fullAttr}="${escaped}"`;
   return replaceTagAtMatch(html, match, newTag);
 }
 
@@ -343,13 +362,14 @@ function patchAttribute(
     return html.replace(tag, newTag);
   }
 
+  const escaped = escapeHtmlAttribute(value);
   if (attrPattern.test(tag)) {
     // Update existing attribute
-    const newTag = tag.replace(attrPattern, `${fullAttr}="${value}"`);
+    const newTag = tag.replace(attrPattern, `${fullAttr}="${escaped}"`);
     return html.replace(tag, newTag);
   } else {
     // Add new attribute
-    const newTag = tag + ` ${fullAttr}="${value}"`;
+    const newTag = tag + ` ${fullAttr}="${escaped}"`;
     return html.replace(tag, newTag);
   }
 }

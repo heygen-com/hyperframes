@@ -5,6 +5,7 @@ import {
   reapplyPositionEditsAfterSeek,
   readStudioFileChangePath,
 } from "../components/editor/manualEdits";
+import { STUDIO_MOTION_PATH } from "../components/editor/studioMotion";
 import type { EditHistoryKind } from "../utils/editHistory";
 
 // ── Types ──
@@ -45,8 +46,6 @@ export function useManifestPersistence({
   reloadPreview,
 }: UseManifestPersistenceParams) {
   void _showToast;
-  void _readOptionalProjectFile;
-  void _writeProjectFile;
   void _recordEdit;
   void _activeCompPathRef;
 
@@ -134,6 +133,29 @@ export function useManifestPersistence({
     },
     [reloadPreview],
   );
+
+  // ── Migrate legacy studio-motion.json ──
+  // Projects that used the old JSON-file approach may still have a populated
+  // `.hyperframes/studio-motion.json`. The studio no longer reads from it, but
+  // the legacy render-script injection in `preview.ts` / `vite.studioMotion.ts`
+  // could still fire alongside the new seek-reapply runtime. Empty the file so
+  // the legacy codepath no-ops.
+  useMountEffect(() => {
+    _readOptionalProjectFile(STUDIO_MOTION_PATH)
+      .then((content) => {
+        if (!content) return;
+        try {
+          const parsed = JSON.parse(content) as { motions?: unknown[] };
+          if (!Array.isArray(parsed.motions) || parsed.motions.length === 0) return;
+        } catch {
+          return;
+        }
+        return _writeProjectFile(STUDIO_MOTION_PATH, JSON.stringify({ version: 1, motions: [] }));
+      })
+      .catch(() => {
+        /* best-effort migration — ignore failures */
+      });
+  });
 
   // ── Listen for external file changes (HMR / SSE) ──
   useMountEffect(() => {

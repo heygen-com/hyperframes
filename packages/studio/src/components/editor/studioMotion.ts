@@ -230,11 +230,7 @@ export function applyStudioMotionManifest(
  * builds a GSAP timeline, and seeks to the current time.
  * This replaces the manifest-based `applyStudioMotionManifest` for the studio preview.
  */
-export function applyStudioMotionFromDom(
-  document: Document,
-  activeCompositionPath?: string | null,
-  currentTime?: number,
-): number {
+export function applyStudioMotionFromDom(document: Document, currentTime?: number): number {
   const win = document.defaultView as StudioMotionWindow | null;
   if (!win) return 0;
   const gsap = win.gsap;

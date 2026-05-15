@@ -1003,7 +1003,7 @@ export async function compileForRender(
   const HF_POSITION_ATTRS = [
     'data-hf-studio-path-offset="true"',
     'data-hf-studio-rotation="true"',
-    "data-hf-studio-motion=",
+    'data-hf-studio-motion="',
   ];
   const hasPositionEdits = HF_POSITION_ATTRS.some((attr) => htmlWithAssets.includes(attr));
   const html = hasPositionEdits

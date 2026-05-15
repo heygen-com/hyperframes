@@ -208,4 +208,289 @@ describe("applyPatchByTarget", () => {
     expect(patched).toContain(`<div class="headline clip" data-start="0"></div>`);
     expect(patched).toContain(`<div class="headline clip" data-start="2.5"></div>`);
   });
+
+  it("escapes JSON attribute values containing double-quotes and round-trips them", () => {
+    const html = `<div id="card" data-start="0"></div>`;
+    const motionJson = JSON.stringify({ preset: "fadeIn", start: 0, duration: 1.5 });
+
+    const patched = applyPatch(html, "card", {
+      type: "attribute",
+      property: "data-hf-studio-motion",
+      value: motionJson,
+    });
+
+    // The raw HTML must NOT contain unescaped quotes inside the attribute
+    expect(patched).not.toMatch(/data-hf-studio-motion="[^"]*"[^"]*"/);
+    // Entities should be present
+    expect(patched).toContain("&quot;");
+
+    // Reading the attribute back should return the original JSON
+    const readBack = readAttributeByTarget(patched, { id: "card" }, "data-hf-studio-motion");
+    expect(readBack).toBe(motionJson);
+  });
+
+  it("escapes and round-trips data-hf-studio-motion-original-transform with quotes", () => {
+    const html = `<div id="hero" data-start="0"></div>`;
+    const transform = `rotate(15deg) translate("50px", "100px")`;
+
+    const patched = applyPatchByTarget(
+      html,
+      { id: "hero" },
+      {
+        type: "attribute",
+        property: "data-hf-studio-motion-original-transform",
+        value: transform,
+      },
+    );
+
+    // No broken attribute boundary
+    expect(patched).not.toMatch(/data-hf-studio-motion-original-transform="[^"]*"[^"]*"/);
+
+    const readBack = readAttributeByTarget(
+      patched,
+      { id: "hero" },
+      "data-hf-studio-motion-original-transform",
+    );
+    expect(readBack).toBe(transform);
+  });
+
+  it("escapes ampersands and angle brackets in attribute values", () => {
+    const html = `<div id="el" data-start="0"></div>`;
+    const value = `a&b<c>d"e`;
+
+    const patched = applyPatch(html, "el", {
+      type: "attribute",
+      property: "data-custom",
+      value,
+    });
+
+    expect(patched).toContain("a&amp;b&lt;c&gt;d&quot;e");
+
+    const readBack = readAttributeByTarget(patched, { id: "el" }, "data-custom");
+    expect(readBack).toBe(value);
+  });
+
+  it("updates an already-escaped attribute value to a new escaped value", () => {
+    const html = `<div id="card" data-start="0"></div>`;
+    const first = JSON.stringify({ preset: "fadeIn" });
+    const second = JSON.stringify({ preset: "slideUp", easing: "ease-out" });
+
+    const patched1 = applyPatch(html, "card", {
+      type: "attribute",
+      property: "data-hf-studio-motion",
+      value: first,
+    });
+    const patched2 = applyPatch(patched1, "card", {
+      type: "attribute",
+      property: "data-hf-studio-motion",
+      value: second,
+    });
+
+    const readBack = readAttributeByTarget(patched2, { id: "card" }, "data-hf-studio-motion");
+    expect(readBack).toBe(second);
+  });
+});
+
+describe("motion attribute round-trip via sourcePatcher", () => {
+  it("round-trips data-hf-studio-motion JSON through patch and read", () => {
+    const html = `<div id="hero" style="position: absolute">Hero</div>`;
+    const motion = {
+      start: 0.5,
+      duration: 1,
+      ease: "power3.out",
+      from: { opacity: 0, y: 40 },
+      to: { opacity: 1, y: 0 },
+    };
+    const motionJson = JSON.stringify(motion);
+
+    const patched = applyPatchByTarget(
+      html,
+      { id: "hero" },
+      { type: "attribute", property: "data-hf-studio-motion", value: motionJson },
+    );
+
+    const readBack = readAttributeByTarget(patched, { id: "hero" }, "data-hf-studio-motion");
+    expect(readBack).toBeDefined();
+    expect(JSON.parse(readBack!)).toEqual(motion);
+  });
+
+  it("round-trips motion with customEase containing SVG path data", () => {
+    const html = `<div id="card" class="clip" data-start="0" data-duration="10">Card</div>`;
+    const motion = {
+      start: 0.25,
+      duration: 0.8,
+      ease: "studio-card-bounce",
+      customEase: { id: "studio-card-bounce", data: "M0,0 C0.18,0.9 0.32,1 1,1" },
+      from: { y: 44, autoAlpha: 0 },
+      to: { y: 0, autoAlpha: 1 },
+    };
+    const motionJson = JSON.stringify(motion);
+
+    const patched = applyPatchByTarget(
+      html,
+      { id: "card" },
+      { type: "attribute", property: "data-hf-studio-motion", value: motionJson },
+    );
+
+    const readBack = readAttributeByTarget(patched, { id: "card" }, "data-hf-studio-motion");
+    expect(readBack).toBeDefined();
+    expect(JSON.parse(readBack!)).toEqual(motion);
+  });
+
+  it("round-trips all four motion attributes (motion + three originals)", () => {
+    const html = `<div id="hero" style="transform: rotate(5deg); opacity: 0.8; visibility: visible">Hero</div>`;
+    const motion = {
+      start: 0,
+      duration: 0.6,
+      ease: "power2.out",
+      from: { autoAlpha: 0, y: 32 },
+      to: { autoAlpha: 1, y: 0 },
+    };
+
+    let result = html;
+    result = applyPatchByTarget(
+      result,
+      { id: "hero" },
+      { type: "attribute", property: "data-hf-studio-motion", value: JSON.stringify(motion) },
+    );
+    result = applyPatchByTarget(
+      result,
+      { id: "hero" },
+      {
+        type: "attribute",
+        property: "data-hf-studio-motion-original-transform",
+        value: "rotate(5deg)",
+      },
+    );
+    result = applyPatchByTarget(
+      result,
+      { id: "hero" },
+      { type: "attribute", property: "data-hf-studio-motion-original-opacity", value: "0.8" },
+    );
+    result = applyPatchByTarget(
+      result,
+      { id: "hero" },
+      {
+        type: "attribute",
+        property: "data-hf-studio-motion-original-visibility",
+        value: "visible",
+      },
+    );
+
+    expect(
+      JSON.parse(readAttributeByTarget(result, { id: "hero" }, "data-hf-studio-motion")!),
+    ).toEqual(motion);
+    expect(
+      readAttributeByTarget(result, { id: "hero" }, "data-hf-studio-motion-original-transform"),
+    ).toBe("rotate(5deg)");
+    expect(
+      readAttributeByTarget(result, { id: "hero" }, "data-hf-studio-motion-original-opacity"),
+    ).toBe("0.8");
+    expect(
+      readAttributeByTarget(result, { id: "hero" }, "data-hf-studio-motion-original-visibility"),
+    ).toBe("visible");
+  });
+
+  it("removes all four motion attributes when clearing", () => {
+    const html = `<div id="hero" style="position: absolute">Hero</div>`;
+    const motion = {
+      start: 0,
+      duration: 1,
+      ease: "none",
+      from: { opacity: 0 },
+      to: { opacity: 1 },
+    };
+
+    let result = html;
+    result = applyPatchByTarget(
+      result,
+      { id: "hero" },
+      { type: "attribute", property: "data-hf-studio-motion", value: JSON.stringify(motion) },
+    );
+    result = applyPatchByTarget(
+      result,
+      { id: "hero" },
+      { type: "attribute", property: "data-hf-studio-motion-original-transform", value: "" },
+    );
+    result = applyPatchByTarget(
+      result,
+      { id: "hero" },
+      { type: "attribute", property: "data-hf-studio-motion-original-opacity", value: "1" },
+    );
+    result = applyPatchByTarget(
+      result,
+      { id: "hero" },
+      { type: "attribute", property: "data-hf-studio-motion-original-visibility", value: "" },
+    );
+
+    // Verify all four attributes exist
+    expect(readAttributeByTarget(result, { id: "hero" }, "data-hf-studio-motion")).toBeDefined();
+    expect(
+      readAttributeByTarget(result, { id: "hero" }, "data-hf-studio-motion-original-transform"),
+    ).toBeDefined();
+    expect(
+      readAttributeByTarget(result, { id: "hero" }, "data-hf-studio-motion-original-opacity"),
+    ).toBeDefined();
+    expect(
+      readAttributeByTarget(result, { id: "hero" }, "data-hf-studio-motion-original-visibility"),
+    ).toBeDefined();
+
+    // Remove all four
+    result = applyPatchByTarget(
+      result,
+      { id: "hero" },
+      { type: "attribute", property: "data-hf-studio-motion", value: null },
+    );
+    result = applyPatchByTarget(
+      result,
+      { id: "hero" },
+      { type: "attribute", property: "data-hf-studio-motion-original-transform", value: null },
+    );
+    result = applyPatchByTarget(
+      result,
+      { id: "hero" },
+      { type: "attribute", property: "data-hf-studio-motion-original-opacity", value: null },
+    );
+    result = applyPatchByTarget(
+      result,
+      { id: "hero" },
+      { type: "attribute", property: "data-hf-studio-motion-original-visibility", value: null },
+    );
+
+    expect(readAttributeByTarget(result, { id: "hero" }, "data-hf-studio-motion")).toBeUndefined();
+    expect(
+      readAttributeByTarget(result, { id: "hero" }, "data-hf-studio-motion-original-transform"),
+    ).toBeUndefined();
+    expect(
+      readAttributeByTarget(result, { id: "hero" }, "data-hf-studio-motion-original-opacity"),
+    ).toBeUndefined();
+    expect(
+      readAttributeByTarget(result, { id: "hero" }, "data-hf-studio-motion-original-visibility"),
+    ).toBeUndefined();
+  });
+
+  it("round-trips motion via selector when element has no id", () => {
+    const html = `<div class="headline clip" style="position: absolute">Title</div>`;
+    const motion = {
+      start: 0.3,
+      duration: 0.5,
+      ease: "sine.out",
+      from: { scale: 0.88, autoAlpha: 0 },
+      to: { scale: 1, autoAlpha: 1 },
+    };
+
+    const patched = applyPatchByTarget(
+      html,
+      { selector: ".headline" },
+      { type: "attribute", property: "data-hf-studio-motion", value: JSON.stringify(motion) },
+    );
+
+    const readBack = readAttributeByTarget(
+      patched,
+      { selector: ".headline" },
+      "data-hf-studio-motion",
+    );
+    expect(readBack).toBeDefined();
+    expect(JSON.parse(readBack!)).toEqual(motion);
+  });
 });
