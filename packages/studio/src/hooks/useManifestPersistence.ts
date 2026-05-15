@@ -35,7 +35,10 @@ interface UseManifestPersistenceParams {
   recordEdit: (entry: RecordEditInput) => Promise<void>;
   previewIframeRef: React.MutableRefObject<HTMLIFrameElement | null>;
   activeCompPathRef: React.MutableRefObject<string | null>;
-  /** Called to reload the preview after undo/redo. Must go through refreshKey so seek position is preserved. */
+  /** Shared timestamp ref — written by any studio save (code tab, timeline, DOM edits).
+   *  Used to suppress SSE echoes so we don't double-reload after our own saves. */
+  domEditSaveTimestampRef: React.MutableRefObject<number>;
+  /** Called to reload the preview after undo/redo or external file changes. */
   reloadPreview: () => void;
 }
 
@@ -49,13 +52,12 @@ export function useManifestPersistence({
   recordEdit,
   previewIframeRef,
   activeCompPathRef,
+  domEditSaveTimestampRef,
   reloadPreview,
 }: UseManifestPersistenceParams) {
   void _readOptionalProjectFile;
 
   const [, setStudioMotionRevision] = useState(0);
-
-  const domEditSaveTimestampRef = useRef(0);
   const domTextCommitVersionRef = useRef(0);
   const domEditSaveQueueRef = useRef(Promise.resolve());
   const studioMotionManifestRef = useRef<StudioMotionManifest>(emptyStudioMotionManifest());
@@ -282,6 +284,7 @@ export function useManifestPersistence({
       showToast,
       writeProjectFile,
       previewIframeRef,
+      domEditSaveTimestampRef,
     ],
   );
 
@@ -332,9 +335,10 @@ export function useManifestPersistence({
         }
         return;
       }
-      // Non-motion file changes are not handled here — the caller is
-      // responsible for triggering a preview refresh via onExternalFileChange
-      // if needed. This hook only suppresses echoes and handles manifest reloads.
+      // Non-motion external file change — reload unless it's an echo of our own save.
+      if (!recentDomEditSave) {
+        reloadPreview();
+      }
     };
     if (import.meta.hot) {
       import.meta.hot.on("hf:file-change", handler);
@@ -347,7 +351,6 @@ export function useManifestPersistence({
   });
 
   return {
-    domEditSaveTimestampRef,
     domTextCommitVersionRef,
     domEditSaveQueueRef,
     studioMotionManifestRef,

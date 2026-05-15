@@ -144,6 +144,7 @@ export function StudioApp() {
     recordEdit: editHistory.recordEdit,
     previewIframeRef,
     activeCompPathRef,
+    domEditSaveTimestampRef,
     reloadPreview: () => setRefreshKey((k) => k + 1),
   });
 
