@@ -317,7 +317,7 @@ export function useDomEditCommits({
       } catch {
         // cross-origin guard
       }
-      if (doc) applyStudioMotionFromDom(doc);
+      if (doc) applyStudioMotionFromDom(doc, activeCompPath);
       // 3. Build patches and persist to HTML
       const patches = buildMotionPatches(selection.element);
       commitPositionPatchToHtml(selection, patches, {
@@ -326,7 +326,12 @@ export function useDomEditCommits({
       });
       refreshDomEditSelectionFromPreview(selection);
     },
-    [commitPositionPatchToHtml, previewIframeRef, refreshDomEditSelectionFromPreview],
+    [
+      activeCompPath,
+      commitPositionPatchToHtml,
+      previewIframeRef,
+      refreshDomEditSelectionFromPreview,
+    ],
   );
 
   const handleDomMotionClear = useCallback(
@@ -346,7 +351,7 @@ export function useDomEditCommits({
       } catch {
         // cross-origin guard
       }
-      if (doc) applyStudioMotionFromDom(doc);
+      if (doc) applyStudioMotionFromDom(doc, activeCompPath);
       commitPositionPatchToHtml(selection, clearPatches, {
         label: "Clear GSAP motion",
         coalesceKey: `motion:${getDomEditTargetKey(selection)}`,
@@ -354,7 +359,12 @@ export function useDomEditCommits({
       });
       refreshDomEditSelectionFromPreview(selection);
     },
-    [commitPositionPatchToHtml, previewIframeRef, refreshDomEditSelectionFromPreview],
+    [
+      activeCompPath,
+      commitPositionPatchToHtml,
+      previewIframeRef,
+      refreshDomEditSelectionFromPreview,
+    ],
   );
 
   const handleDomEditElementDelete = useCallback(
