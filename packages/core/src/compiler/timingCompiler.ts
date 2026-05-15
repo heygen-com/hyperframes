@@ -88,6 +88,7 @@ function compileTag(
   let startStr = getAttr(result, "data-start");
   if (startStr === null) {
     result = injectAttr(result, "data-start", "0");
+    result = injectAttr(result, "data-hf-auto-start", "");
     startStr = "0";
   }
   const start = parseFloat(startStr);
