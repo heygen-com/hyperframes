@@ -182,8 +182,6 @@ export function installPageSideCompositor(options: PageCompositorInstallOptions)
 
   let currentActive: ResolvedTransition | null = null;
   let currentProgress = 0;
-  let prevFromId: string | null = null;
-  let prevToId: string | null = null;
 
   type PendingWindow = Window & {
     __hf_page_composite_pending?: boolean;
@@ -191,12 +189,52 @@ export function installPageSideCompositor(options: PageCompositorInstallOptions)
   };
   const pWin = window as PendingWindow;
 
+  // Phase 2a: clone scenes into staging canvases. Called after video frame
+  // injection so cloneNode picks up <img> replacements for <video> elements.
+  // Awaits decode on cloned data-URI images so drawElementImage reads
+  // the current frame, not a stale paint cache entry.
+  async function prepareComposite(): Promise<boolean> {
+    const active = currentActive;
+    if (!active) {
+      pWin.__hf_page_composite_pending = false;
+      return false;
+    }
+
+    const fromEl = document.getElementById(active.fromSceneId);
+    const toEl = document.getElementById(active.toSceneId);
+    if (!(fromEl instanceof HTMLElement) || !(toEl instanceof HTMLElement)) {
+      pWin.__hf_page_composite_pending = false;
+      return false;
+    }
+    while (fromStaging.firstChild) fromStaging.removeChild(fromStaging.firstChild);
+    while (toStaging.firstChild) toStaging.removeChild(toStaging.firstChild);
+    fromStaging.appendChild(fromEl.cloneNode(true));
+    toStaging.appendChild(toEl.cloneNode(true));
+
+    // Decode any data-URI images in clones so the browser has current
+    // bitmaps before the micro-screenshot forces a paint pass.
+    const decodes: Promise<void>[] = [];
+    for (const staging of [fromStaging, toStaging]) {
+      for (const img of staging.querySelectorAll("img")) {
+        if (img.src && img.src.startsWith("data:") && typeof img.decode === "function") {
+          decodes.push(img.decode().catch(() => {}));
+        }
+      }
+    }
+    if (decodes.length > 0) await Promise.all(decodes);
+
+    return true;
+  }
+
+  // Phase 2b: drawElementImage from painted clones + shader composite.
+  // Called after micro-screenshot forces the browser to paint the clones.
   function resolveComposite(): boolean {
     const active = currentActive;
     if (!active) {
       pWin.__hf_page_composite_pending = false;
       return false;
     }
+
     const fromChild = fromStaging.firstElementChild;
     const toChild = toStaging.firstElementChild;
     if (!fromChild || !toChild) {
@@ -242,12 +280,6 @@ export function installPageSideCompositor(options: PageCompositorInstallOptions)
         height,
       );
       glCanvas.style.display = "block";
-      const fromEl = document.getElementById(active.fromSceneId);
-      const toEl = document.getElementById(active.toSceneId);
-      if (fromEl) fromEl.style.opacity = "0";
-      if (toEl) toEl.style.opacity = "0";
-      prevFromId = active.fromSceneId;
-      prevToId = active.toSceneId;
     } catch (err) {
       // eslint-disable-next-line no-console
       console.warn("[HyperShader] page-side compositor: renderShader failed:", err);
@@ -258,6 +290,9 @@ export function installPageSideCompositor(options: PageCompositorInstallOptions)
   }
 
   pWin.__hf_page_composite_resolve = resolveComposite;
+  (
+    pWin as unknown as { __hf_page_composite_prepare?: () => Promise<boolean> }
+  ).__hf_page_composite_prepare = prepareComposite;
 
   type HfWindow = Window & {
     __hf?: { seek?: (t: number) => unknown };
@@ -268,18 +303,6 @@ export function installPageSideCompositor(options: PageCompositorInstallOptions)
     const originalSeek = hfWin.__hf.seek;
     if (typeof originalSeek !== "function") return;
     const wrapped = (time: number): unknown => {
-      // Restore opacity on scenes hidden by previous frame
-      if (prevFromId) {
-        const el = document.getElementById(prevFromId);
-        if (el) el.style.opacity = "";
-        prevFromId = null;
-      }
-      if (prevToId) {
-        const el = document.getElementById(prevToId);
-        if (el) el.style.opacity = "";
-        prevToId = null;
-      }
-
       const result = originalSeek.call(hfWin.__hf, time);
       const active = findActive(time);
       if (!active) {
@@ -289,20 +312,6 @@ export function installPageSideCompositor(options: PageCompositorInstallOptions)
         while (toStaging.firstChild) toStaging.removeChild(toStaging.firstChild);
         return result;
       }
-      const fromEl = document.getElementById(active.fromSceneId);
-      const toEl = document.getElementById(active.toSceneId);
-      if (!(fromEl instanceof HTMLElement) || !(toEl instanceof HTMLElement)) {
-        glCanvas.style.display = "none";
-        pWin.__hf_page_composite_pending = false;
-        return result;
-      }
-
-      // Clone scenes into staging canvases for the engine to paint
-      while (fromStaging.firstChild) fromStaging.removeChild(fromStaging.firstChild);
-      while (toStaging.firstChild) toStaging.removeChild(toStaging.firstChild);
-      fromStaging.appendChild(fromEl.cloneNode(true));
-      toStaging.appendChild(toEl.cloneNode(true));
-
       currentActive = active;
       currentProgress =
         active.duration === 0

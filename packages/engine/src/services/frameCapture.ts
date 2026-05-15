@@ -705,11 +705,28 @@ async function prepareFrameForCapture(
       .__hf_page_composite_pending;
   }, quantizedTime);
 
-  // Page-side compositing two-phase protocol: if the seek wrapper set up
-  // staging canvases with cloned scenes, force the browser to paint them
-  // via a micro-screenshot, then call the page-side resolve function to
-  // run drawElementImage + shader composite.
+  const seekMs = Date.now() - seekStart;
+
+  // Before-capture hook (e.g. video frame injection) — runs before
+  // page-side compositor clones so cloneNode picks up injected <img>
+  // replacements for <video> elements.
+  const beforeCaptureStart = Date.now();
+  if (session.onBeforeCapture) {
+    await session.onBeforeCapture(page, quantizedTime);
+  }
+  const beforeCaptureMs = Date.now() - beforeCaptureStart;
+
+  // Page-side compositing three-phase protocol:
+  //  1. prepare — clone scenes (now containing injected video <img>s)
+  //  2. micro-screenshot — force browser to paint cloned elements
+  //  3. resolve — drawElementImage reads paint records, shader composites
   if (hasPendingComposite && session.captureMode !== "beginframe") {
+    await page.evaluate(async () => {
+      const w = window as unknown as { __hf_page_composite_prepare?: () => Promise<boolean> };
+      if (typeof w.__hf_page_composite_prepare === "function") {
+        await w.__hf_page_composite_prepare();
+      }
+    });
     const cdp = await getCdpSession(page);
     await cdp.send("Page.captureScreenshot", {
       format: "jpeg",
@@ -723,14 +740,6 @@ async function prepareFrameForCapture(
       }
     });
   }
-  const seekMs = Date.now() - seekStart;
-
-  // Before-capture hook (e.g. video frame injection)
-  const beforeCaptureStart = Date.now();
-  if (session.onBeforeCapture) {
-    await session.onBeforeCapture(page, quantizedTime);
-  }
-  const beforeCaptureMs = Date.now() - beforeCaptureStart;
 
   return { quantizedTime, seekMs, beforeCaptureMs };
 }

@@ -16,6 +16,7 @@ import { installPageSideCompositor } from "./engineModePageComposite.js";
 
 declare const gsap: {
   timeline: (opts: Record<string, unknown>) => GsapTimeline;
+  set: (target: HTMLElement | string, vars: Record<string, unknown>) => unknown;
   to: (target: HTMLElement | string, vars: Record<string, unknown>) => unknown;
   fromTo: (
     target: HTMLElement | string,
