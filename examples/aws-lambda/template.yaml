@@ -3,12 +3,12 @@ Transform: AWS::Serverless-2016-10-31
 Description: >-
   HyperFrames distributed rendering — Step Functions standard workflow with
   one Lambda function handling Plan, RenderChunk (fan-out via Map state),
-  and Assemble. One S3 bucket, one CloudWatch alarm for runaway concurrency.
+  and Assemble. One S3 bucket, alarms for runaway concurrency, Lambda
+  errors, and Step Functions execution failures.
 
-  Built from the Phase 6.1 ZIP at packages/aws-lambda/dist/handler.zip.
+  Built from the handler ZIP at packages/aws-lambda/dist/handler.zip.
 
   See:
-    - DISTRIBUTED-RENDERING-PLAN.md §15 (Lambda turnkey deployment)
     - packages/aws-lambda/README.md (handler architecture)
     - examples/aws-lambda/README.md (this directory's deploy guide)
 
@@ -198,8 +198,8 @@ Resources:
               LogGroupArn: !GetAtt RenderStateMachineLogGroup.Arn
       Definition:
         Comment: >-
-          HyperFrames distributed render orchestration. See
-          DISTRIBUTED-RENDERING-PLAN.md §2.5 for the architecture.
+          HyperFrames distributed render orchestration: Plan → Map(N)
+          RenderChunk → Assemble.
         # Defensive 1-hour ceiling on the whole choreography. The
         # individual states already have retries + per-task timeouts;
         # this catches pathological runaways (Plan-retry storm,
@@ -229,7 +229,11 @@ Resources:
             ResultPath: $.Plan
             Retry:
               - ErrorEquals:
-                  # Per §9.3, these are non-retryable plan-time failures.
+                  # These error names are thrown by the producer's plan
+                  # stage when retrying can never help — version skew,
+                  # determinism violations, GPU misconfiguration, font
+                  # fetch failures, plan-size cap, unsupported format.
+                  # Fail fast rather than burning ~120s of retry budget.
                   - FFMPEG_VERSION_MISMATCH
                   - PLAN_HASH_MISMATCH
                   - BROWSER_GPU_NOT_SOFTWARE
@@ -344,11 +348,11 @@ Resources:
             ResultPath: $.Output
             Retry:
               - ErrorEquals:
-                  # Per §9.3, these are non-retryable failures that
-                  # surface at assemble time too — ffmpeg-driven concat
-                  # picks up version drift, plan-hash re-verification
-                  # at assemble, and format checks. Skip the retry
-                  # storm; fail fast.
+                  # Same non-retryable error names as the Plan state's
+                  # gate — these surface at assemble time too because
+                  # ffmpeg-driven concat picks up version drift and we
+                  # re-verify plan hash + format at assemble. Skip the
+                  # retry storm; fail fast.
                   - FFMPEG_VERSION_MISMATCH
                   - PLAN_HASH_MISMATCH
                   - FORMAT_NOT_SUPPORTED_IN_DISTRIBUTED

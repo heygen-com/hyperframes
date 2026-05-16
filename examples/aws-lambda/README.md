@@ -6,9 +6,7 @@ choreographed by a Step Functions standard workflow with a Map state for
 parallel chunk rendering.
 
 See [`packages/aws-lambda/README.md`](../../packages/aws-lambda/README.md)
-for the Lambda handler architecture and
-[`DISTRIBUTED-RENDERING-PLAN.md`](../../DISTRIBUTED-RENDERING-PLAN.md#15-aws-lambda-turnkey-deployment)
-§15 for the design context.
+for the Lambda handler architecture.
 
 ## Prerequisites
 
@@ -146,7 +144,8 @@ fully tear down.
 
 A 60-second 1080p30 composition at default chunkSize=240 (8 chunks)
 typically costs ~$0.04 in Lambda time + ~$0.001 in Step Functions.
-Validate with PR 6.3's real-AWS benchmark once it lands.
+The eval script under `scripts/eval.sh` produces real per-fixture cost
+numbers when you run it against your own AWS account.
 
 ## Troubleshooting
 
@@ -161,10 +160,9 @@ Validate with PR 6.3's real-AWS benchmark once it lands.
   the state machine execution history for an unintended Map fan-out, or
   raise the threshold if your workload genuinely exceeds it.
 
-## What's NOT in this PR
+## What's NOT in this directory
 
-- A real-AWS deploy + benchmark workflow (PR 6.3).
-- CDK construct shipping the same topology programmatically (PR 6.4).
-- `hyperframes lambda deploy / render / progress / destroy` CLI (PR 6.5).
-- Migration guide (PR 6.8).
-- Lambda RIE local smoke harness mode (PR 6.6).
+- CDK construct shipping the same topology programmatically — follow-up.
+- `hyperframes lambda deploy / render / progress / destroy` CLI — follow-up.
+- Migration guide — follow-up.
+- Lambda RIE local smoke harness mode — follow-up.
