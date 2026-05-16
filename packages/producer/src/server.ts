@@ -628,8 +628,10 @@ export function startServer(options: ServerOptions = {}) {
   (server as unknown as import("node:http").Server).requestTimeout = 0;
   (server as unknown as import("node:http").Server).keepAliveTimeout = 0;
 
-  function shutdown(signal: string) {
+  async function shutdown(signal: string) {
     log.info(`Received ${signal}, shutting down`);
+    const { drainBrowserPool } = await import("@hyperframes/engine");
+    await drainBrowserPool().catch(() => {});
     server.close(() => {
       log.info("Server closed");
       process.exit(0);

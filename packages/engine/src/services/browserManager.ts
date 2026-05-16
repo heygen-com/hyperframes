@@ -250,6 +250,22 @@ function logResolvedBrowserGpuMode(resolved: "hardware" | "software", reason: st
   console.error(`[hyperframes] browserGpuMode auto → ${resolved} (${reason})`);
 }
 
+/**
+ * Resolve the capture mode the caller expects, WITHOUT launching a browser.
+ * Used to validate pool compatibility before returning a cached instance.
+ */
+function resolveRequestedCaptureMode(
+  config?: Partial<Pick<EngineConfig, "chromePath" | "forceScreenshot">>,
+): CaptureMode {
+  const headlessShell = resolveHeadlessShellPath(config);
+  // BeginFrame requires chrome-headless-shell AND Linux — crashes on
+  // macOS/Windows (crbug.com/40656275).
+  const isLinux = process.platform === "linux";
+  const forceScreenshot = config?.forceScreenshot ?? DEFAULT_CONFIG.forceScreenshot;
+  if (headlessShell && isLinux && !forceScreenshot) return "beginframe";
+  return "screenshot";
+}
+
 export async function acquireBrowser(
   chromeArgs: string[],
   config?: Partial<
@@ -262,13 +278,23 @@ export async function acquireBrowser(
   const enablePool = config?.enableBrowserPool ?? DEFAULT_CONFIG.enableBrowserPool;
 
   if (enablePool && pooledBrowser) {
-    if (pooledBrowser.connected) {
-      pooledBrowserRefCount += 1;
-      return { browser: pooledBrowser, captureMode: pooledCaptureMode };
+    if (!pooledBrowser.connected) {
+      pooledBrowser = null;
+      pooledBrowserRefCount = 0;
+      _pooledBrowserLaunchPromise = null;
+    } else {
+      // Validate mode compatibility: a caller that needs screenshot mode
+      // (forceScreenshot, alpha output, BeginFrame timeout retry) must not
+      // receive a beginframe browser — the BeginFrame-only flags make the
+      // compositor wait for frames the screenshot path never sends.
+      const requestedMode = resolveRequestedCaptureMode(config);
+      if (pooledCaptureMode === requestedMode) {
+        pooledBrowserRefCount += 1;
+        return { browser: pooledBrowser, captureMode: pooledCaptureMode };
+      }
+      // Mode mismatch — skip pool, launch a dedicated browser for this caller.
+      // Don't evict the pooled browser: other sessions may still hold refs.
     }
-    pooledBrowser = null;
-    pooledBrowserRefCount = 0;
-    _pooledBrowserLaunchPromise = null;
   }
 
   // Dedup concurrent launches: when the pool is enabled and multiple callers
@@ -278,13 +304,17 @@ export async function acquireBrowser(
   // second+ callers await the same one instead of launching again.
   if (enablePool && _pooledBrowserLaunchPromise) {
     const result = await _pooledBrowserLaunchPromise;
-    pooledBrowserRefCount += 1;
-    return result;
+    const requestedMode = resolveRequestedCaptureMode(config);
+    if (result.captureMode === requestedMode) {
+      pooledBrowserRefCount += 1;
+      return result;
+    }
+    // Mode mismatch with pending launch — launch a dedicated browser.
   }
 
   const launchPromise = launchBrowser(chromeArgs, config);
 
-  if (enablePool) {
+  if (enablePool && !pooledBrowser && !_pooledBrowserLaunchPromise) {
     _pooledBrowserLaunchPromise = launchPromise;
     try {
       const result = await launchPromise;
@@ -306,8 +336,11 @@ async function launchBrowser(
     Pick<EngineConfig, "browserTimeout" | "protocolTimeout" | "chromePath" | "forceScreenshot">
   >,
 ): Promise<AcquiredBrowser> {
+  // Config chromePath overrides env var / auto-detection.
   const headlessShell = resolveHeadlessShellPath(config);
 
+  // BeginFrame requires chrome-headless-shell AND Linux (crashes on
+  // macOS/Windows — crbug.com/40656275).
   const isLinux = process.platform === "linux";
   const forceScreenshot = config?.forceScreenshot ?? DEFAULT_CONFIG.forceScreenshot;
   let captureMode: CaptureMode;
@@ -317,6 +350,7 @@ async function launchBrowser(
     captureMode = "beginframe";
     executablePath = headlessShell;
   } else {
+    // Screenshot mode with renderSeek: works on all platforms.
     captureMode = "screenshot";
     executablePath = headlessShell ?? undefined;
   }
@@ -378,6 +412,13 @@ export async function releaseBrowser(
 
 export function forceReleaseBrowser(browser: Browser): void {
   if (pooledBrowser && pooledBrowser === browser) {
+    // If other sessions still hold refs, just drop ours — don't kill the
+    // shared Chrome out from under them. The browser will be cleaned up when
+    // the last session releases or drainBrowserPool is called.
+    if (pooledBrowserRefCount > 1) {
+      pooledBrowserRefCount -= 1;
+      return;
+    }
     pooledBrowserRefCount = 0;
     pooledBrowser = null;
     _pooledBrowserLaunchPromise = null;

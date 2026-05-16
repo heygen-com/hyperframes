@@ -144,6 +144,16 @@ async function getThumbnailBrowser(): Promise<import("puppeteer-core").Browser |
         _thumbnailBrowser = null;
         _thumbnailBrowserInitializing = null;
       });
+      // Release the pool ref on process exit so the browser closes cleanly.
+      const onExit = async () => {
+        const { releaseBrowser } = await import("@hyperframes/engine");
+        if (_thumbnailBrowser) {
+          await releaseBrowser(_thumbnailBrowser).catch(() => {});
+          _thumbnailBrowser = null;
+        }
+      };
+      process.once("SIGTERM", () => void onExit());
+      process.once("SIGINT", () => void onExit());
       return _thumbnailBrowser;
     } catch {
       _thumbnailBrowserInitializing = null;

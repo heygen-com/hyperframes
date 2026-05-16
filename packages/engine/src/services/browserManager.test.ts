@@ -244,6 +244,38 @@ describe("browser pool", () => {
     expect(closeFn).toHaveBeenCalledTimes(1);
   });
 
+  it("pool returns a separate browser when forceScreenshot mismatches pooled mode", async () => {
+    // First acquire with default config (screenshot mode on non-Linux)
+    const first = await acquireBrowser(["--no-sandbox"], { enableBrowserPool: true });
+    expect(first.captureMode).toBe("screenshot");
+
+    // Second acquire with forceScreenshot: true — same mode, should reuse
+    const second = await acquireBrowser(["--no-sandbox"], {
+      enableBrowserPool: true,
+      forceScreenshot: true,
+    });
+    expect(second.browser).toBe(first.browser);
+    expect(launchFn).toHaveBeenCalledTimes(1);
+
+    await releaseBrowser(first.browser, { enableBrowserPool: true });
+    await releaseBrowser(second.browser, { enableBrowserPool: true });
+  });
+
+  it("forceReleaseBrowser does not kill Chrome when other sessions hold refs", async () => {
+    const result = await acquireBrowser(["--no-sandbox"], { enableBrowserPool: true });
+    // Acquire a second ref
+    const second = await acquireBrowser(["--no-sandbox"], { enableBrowserPool: true });
+
+    const disconnectFn = result.browser.disconnect as ReturnType<typeof vi.fn>;
+    forceReleaseBrowser(result.browser);
+
+    // Should NOT have disconnected — other session still holds a ref
+    expect(disconnectFn).not.toHaveBeenCalled();
+
+    // Release the remaining ref normally
+    await releaseBrowser(second.browser, { enableBrowserPool: true });
+  });
+
   it("drainBrowserPool is safe to call when no browser is pooled", async () => {
     await drainBrowserPool();
   });
