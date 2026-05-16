@@ -6,6 +6,7 @@ import {
   type ClipboardPayload,
   serializeClipboardPayload,
   deduplicateIds,
+  insertAsSibling,
 } from "../utils/clipboardPayload";
 import { copyTextToClipboard } from "../utils/clipboard";
 import { collectHtmlIds } from "../utils/studioHelpers";
@@ -131,7 +132,13 @@ export function useClipboard({
         return false;
       }
       const targetPath = domSelection.sourceFile || activeCompPath || "index.html";
-      const payload: ClipboardPayload = { kind: "dom-element", html, sourceFile: targetPath };
+      const payload: ClipboardPayload = {
+        kind: "dom-element",
+        html,
+        sourceFile: targetPath,
+        originSelector: domSelection.selector,
+        originSelectorIndex: domSelection.selectorIndex,
+      };
       clipboardRef.current = payload;
       void copyTextToClipboard(serializeClipboardPayload(payload));
       showToast("Copied element", "info");
@@ -165,7 +172,12 @@ export function useClipboard({
         );
         patchedContent = insertTimelineAssetIntoSource(originalContent, withNewStart);
       } else {
-        patchedContent = insertTimelineAssetIntoSource(originalContent, deduped);
+        patchedContent = insertAsSibling(
+          originalContent,
+          deduped,
+          payload.originSelector,
+          payload.originSelectorIndex,
+        );
       }
 
       domEditSaveTimestampRef.current = Date.now();
