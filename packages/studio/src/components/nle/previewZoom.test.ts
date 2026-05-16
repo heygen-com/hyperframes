@@ -13,6 +13,7 @@ import {
   ownsPreviewPanTarget,
   PREVIEW_PAN_OVERSCROLL_PX,
   PREVIEW_PAN_SURFACE_SELECTOR,
+  resolvePreviewWheelPan,
   resolvePreviewWheelZoom,
   toDomPrecision,
 } from "./previewZoom";
@@ -185,5 +186,34 @@ describe("resolvePreviewWheelZoom", () => {
     expect(next.zoomPercent).toBeCloseTo(MIN_PREVIEW_ZOOM_PERCENT, 0);
     expect(next.panX).toBe(20);
     expect(next.panY).toBe(20);
+  });
+});
+
+describe("resolvePreviewWheelPan", () => {
+  it("moves preview pan from wheel deltas", () => {
+    const next = resolvePreviewWheelPan({
+      state: DEFAULT_PREVIEW_ZOOM,
+      deltaX: 18,
+      deltaY: -12,
+      viewportWidth: 800,
+      viewportHeight: 600,
+    });
+
+    expect(next.zoomPercent).toBe(100);
+    expect(next.panX).toBe(-18);
+    expect(next.panY).toBe(12);
+  });
+
+  it("keeps wheel pan inside overscroll bounds", () => {
+    const next = resolvePreviewWheelPan({
+      state: DEFAULT_PREVIEW_ZOOM,
+      deltaX: -900,
+      deltaY: 900,
+      viewportWidth: 800,
+      viewportHeight: 600,
+    });
+
+    expect(next.panX).toBe(PREVIEW_PAN_OVERSCROLL_PX);
+    expect(next.panY).toBe(-PREVIEW_PAN_OVERSCROLL_PX);
   });
 });

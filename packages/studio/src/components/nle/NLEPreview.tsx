@@ -6,6 +6,7 @@ import {
   clampPreviewPan,
   clampPreviewZoomPercent,
   ownsPreviewPanTarget,
+  resolvePreviewWheelPan,
   resolvePreviewWheelZoom,
   toDomPrecision,
   type PreviewZoomState,
@@ -210,8 +211,6 @@ export const NLEPreview = memo(function NLEPreview({
     const viewport = viewportRef.current;
     if (!viewport) return;
 
-    let lastZoomTime = 0;
-
     const handleWheel = (event: WheelEvent) => {
       const rect = viewport.getBoundingClientRect();
       if (
@@ -226,7 +225,6 @@ export const NLEPreview = memo(function NLEPreview({
       const isZoomGesture = event.ctrlKey || event.metaKey;
 
       if (isZoomGesture) {
-        lastZoomTime = Date.now();
         event.preventDefault();
         event.stopPropagation();
 
@@ -242,10 +240,21 @@ export const NLEPreview = memo(function NLEPreview({
         return;
       }
 
-      if (Date.now() - lastZoomTime < 400) {
-        event.preventDefault();
-        event.stopPropagation();
-      }
+      if (!ownsPreviewPanTarget(event.target, stageRef.current)) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+
+      const next = resolvePreviewWheelPan({
+        state: zoomRef.current,
+        deltaX: event.deltaX,
+        deltaY: event.deltaY,
+        viewportWidth: rect.width,
+        viewportHeight: rect.height,
+        contentWidth: stageSize.width,
+        contentHeight: stageSize.height,
+      });
+      applyZoom(next);
     };
 
     document.addEventListener("wheel", handleWheel, { passive: false, capture: true });

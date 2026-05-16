@@ -105,3 +105,28 @@ export function resolvePreviewWheelZoom(input: {
     ...pan,
   };
 }
+
+export function resolvePreviewWheelPan(input: {
+  state: PreviewZoomState;
+  deltaX: number;
+  deltaY: number;
+  viewportWidth: number;
+  viewportHeight: number;
+  contentWidth?: number;
+  contentHeight?: number;
+}): PreviewZoomState {
+  const pan = clampPreviewPan({
+    panX: input.state.panX - input.deltaX,
+    panY: input.state.panY - input.deltaY,
+    zoomPercent: input.state.zoomPercent,
+    viewportWidth: input.viewportWidth,
+    viewportHeight: input.viewportHeight,
+    contentWidth: input.contentWidth,
+    contentHeight: input.contentHeight,
+  });
+
+  return {
+    zoomPercent: clampPreviewZoomPercent(input.state.zoomPercent),
+    ...pan,
+  };
+}
