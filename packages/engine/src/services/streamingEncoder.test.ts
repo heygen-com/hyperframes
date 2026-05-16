@@ -605,4 +605,38 @@ describe("spawnStreamingEncoder lifecycle and cleanup", () => {
       vi.useRealTimers();
     }
   });
+
+  it("inactivity timeout still fires when stdin is backpressured (stalled ffmpeg, live producer)", async () => {
+    vi.useFakeTimers();
+    try {
+      // Simulate the FFmpeg-hangs-but-Chrome-keeps-producing case: stdin.write
+      // always returns false (Node has to buffer because ffmpeg isn't draining
+      // the pipe). The heartbeat must NOT reset on those buffered writes —
+      // otherwise a hung ffmpeg with a steady frame producer would never
+      // SIGTERM and we'd grow Node's stdin buffer until OOM.
+      const { spawn, calls } = createSpawnSpy();
+      vi.resetModules();
+      vi.doMock("child_process", () => ({ spawn }));
+
+      const { spawnStreamingEncoder } = await import("./streamingEncoder.js");
+      const dir = mkdtempSync(join(tmpdir(), "se-backpressure-"));
+      const encoder = await spawnStreamingEncoder(join(dir, "out.mp4"), baseOptions, undefined, {
+        ffmpegStreamingTimeout: 1000,
+      });
+
+      const proc = calls[0]!.proc;
+      proc.stdin.write = (_chunk: Buffer) => false;
+
+      // Pump 9 frames at 900ms intervals — all returning false. The reset
+      // should NOT fire (every write was buffered, not accepted), so the
+      // 1000ms timer (last reset on spawn) elapses near the start.
+      for (let i = 0; i < 9; i++) {
+        encoder.writeFrame(Buffer.from([i]));
+        vi.advanceTimersByTime(900);
+      }
+      expect(proc.kill).toHaveBeenCalledWith("SIGTERM");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

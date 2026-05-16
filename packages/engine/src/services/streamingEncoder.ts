@@ -449,12 +449,16 @@ export async function spawnStreamingEncoder(
       // and flicker.
       const copy = Buffer.from(buffer);
       const accepted = ffmpeg.stdin.write(copy);
-      // Reset inactivity timer: each successful frame write is a sign of
-      // forward progress. We reset even on `accepted === false` (backpressure
-      // means FFmpeg is consuming slower than we're producing, but data is
-      // still flowing into its stdin buffer) so that a sustained slow-consumer
-      // scenario doesn't get killed mid-encode.
-      resetTimer();
+      // Reset inactivity timer ONLY on `accepted === true`. `true` means the
+      // write went through to the kernel pipe without buffering in Node —
+      // proof FFmpeg is actually consuming. `false` means Node's writable
+      // stream had to buffer (FFmpeg hasn't drained the pipe yet); we deliberately
+      // don't reset on `false` so a hung FFmpeg with a still-producing Chrome
+      // can't keep us alive forever while Node's stdin buffer grows to OOM. In
+      // steady state with a slower-but-alive FFmpeg, writes alternate between
+      // true and false as the buffer drains and refills; the trues are enough
+      // to keep the heartbeat ticking.
+      if (accepted) resetTimer();
       return accepted;
     },
 
