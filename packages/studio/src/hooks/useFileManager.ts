@@ -106,8 +106,9 @@ export function useFileManager({
   const readOptionalProjectFile = useCallback(async (path: string): Promise<string> => {
     const pid = projectIdRef.current;
     if (!pid) throw new Error("No active project");
-    const response = await fetch(`/api/projects/${pid}/files/${encodeURIComponent(path)}`);
-    if (response.status === 404) return "";
+    const response = await fetch(
+      `/api/projects/${pid}/files/${encodeURIComponent(path)}?optional=1`,
+    );
     if (!response.ok) throw new Error(`Failed to read ${path}`);
     const data = (await response.json()) as { content?: string };
     return typeof data.content === "string" ? data.content : "";
