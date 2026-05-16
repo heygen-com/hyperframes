@@ -65,7 +65,7 @@ export interface DomEditTextField {
   attributes: Array<{ name: string; value: string }>;
   inlineStyles: Record<string, string>;
   computedStyles: Record<string, string>;
-  source: "self" | "child";
+  source: "self" | "child" | "text-node";
 }
 
 export interface DomEditSelection extends PatchTarget {

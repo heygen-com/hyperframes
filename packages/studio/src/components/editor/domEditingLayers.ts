@@ -73,10 +73,41 @@ function buildTextField(
 }
 
 export function collectDomEditTextFields(el: HTMLElement): DomEditTextField[] {
-  const childFields = Array.from(el.children).filter(isHtmlElement).filter(isEditableTextLeaf);
-  if (childFields.length > 0) {
-    return childFields.map((child, index) =>
-      buildTextField(child, index, childFields.length, "child"),
+  const childElements = Array.from(el.children).filter(isHtmlElement).filter(isEditableTextLeaf);
+
+  if (childElements.length > 0) {
+    const hasMixedContent = Array.from(el.childNodes).some(
+      (node) => node.nodeType === 3 && node.textContent?.trim(),
+    );
+
+    if (hasMixedContent) {
+      const fields: DomEditTextField[] = [];
+      let childIdx = 0;
+      for (const node of el.childNodes) {
+        if (node.nodeType === 3) {
+          const text = node.textContent ?? "";
+          if (!text.trim()) continue;
+          fields.push({
+            key: `text-node:${childIdx}`,
+            label: `Text ${childIdx + 1}`,
+            value: text,
+            tagName: "#text",
+            attributes: [],
+            inlineStyles: {},
+            computedStyles: {},
+            source: "text-node",
+          });
+          childIdx++;
+        } else if (isHtmlElement(node) && isEditableTextLeaf(node)) {
+          fields.push(buildTextField(node, childIdx, childElements.length, "child"));
+          childIdx++;
+        }
+      }
+      return fields;
+    }
+
+    return childElements.map((child, index) =>
+      buildTextField(child, index, childElements.length, "child"),
     );
   }
 
@@ -99,8 +130,11 @@ function serializeTextFieldStyle(field: DomEditTextField): string {
 
 export function serializeDomEditTextFields(fields: DomEditTextField[]): string {
   return fields
-    .filter((field) => field.source === "child")
+    .filter((field) => field.source === "child" || field.source === "text-node")
     .map((field) => {
+      if (field.source === "text-node") {
+        return escapeHtmlText(field.value);
+      }
       const attrs = [
         ...field.attributes.filter((attribute) => attribute.name !== "data-hf-text-key"),
         { name: "data-hf-text-key", value: field.key },
