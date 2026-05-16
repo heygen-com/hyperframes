@@ -1,8 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { Browser, PuppeteerNode } from "puppeteer-core";
+
 import {
   _resetAutoBrowserGpuModeCacheForTests,
   _resetBrowserPoolForTests,
+  _setPuppeteerForTests,
   acquireBrowser,
   buildChromeArgs,
   drainBrowserPool,
@@ -163,34 +166,110 @@ describe("forceReleaseBrowser", () => {
 });
 
 describe("browser pool", () => {
+  function makeMockBrowser(): Browser {
+    return {
+      connected: true,
+      newPage: vi.fn(),
+      version: vi.fn().mockResolvedValue("HeadlessChrome/131.0.0.0"),
+      close: vi.fn().mockResolvedValue(undefined),
+      disconnect: vi.fn(),
+      process: () => ({ kill: vi.fn(), killed: false }),
+    } as unknown as Browser;
+  }
+
+  let launchFn: ReturnType<typeof vi.fn>;
+
   beforeEach(() => {
     _resetBrowserPoolForTests();
+    const mockBrowser = makeMockBrowser();
+    launchFn = vi.fn().mockResolvedValue(mockBrowser);
+    _setPuppeteerForTests({ launch: launchFn } as unknown as PuppeteerNode);
   });
 
   afterEach(async () => {
     await drainBrowserPool();
+    _setPuppeteerForTests(undefined);
   });
 
   it("sequential acquires with pool enabled return the same browser", async () => {
-    // In test env without real puppeteer, the launch will fail — that's
-    // expected. This test verifies that the pool dedup path exists and
-    // doesn't throw on its own (the _pooledBrowserLaunchPromise path).
-    try {
-      const first = await acquireBrowser(["--no-sandbox"], { enableBrowserPool: true });
-      const second = await acquireBrowser(["--no-sandbox"], { enableBrowserPool: true });
+    const first = await acquireBrowser(["--no-sandbox"], { enableBrowserPool: true });
+    const second = await acquireBrowser(["--no-sandbox"], { enableBrowserPool: true });
 
-      expect(first.browser).toBe(second.browser);
+    expect(first.browser).toBe(second.browser);
+    expect(launchFn).toHaveBeenCalledTimes(1);
 
-      await releaseBrowser(first.browser, { enableBrowserPool: true });
-      await releaseBrowser(second.browser, { enableBrowserPool: true });
-    } catch {
-      // Expected in CI without Chrome — the pool logic is exercised
-      // but the actual launch fails. The important thing is no unhandled
-      // rejection from the dedup path.
-    }
+    await releaseBrowser(first.browser, { enableBrowserPool: true });
+    await releaseBrowser(second.browser, { enableBrowserPool: true });
+  });
+
+  it("concurrent acquires via Promise.all trigger exactly one launch", async () => {
+    const [a, b, c] = await Promise.all([
+      acquireBrowser(["--no-sandbox"], { enableBrowserPool: true }),
+      acquireBrowser(["--no-sandbox"], { enableBrowserPool: true }),
+      acquireBrowser(["--no-sandbox"], { enableBrowserPool: true }),
+    ]);
+
+    expect(launchFn).toHaveBeenCalledTimes(1);
+    expect(a.browser).toBe(b.browser);
+    expect(b.browser).toBe(c.browser);
+
+    await releaseBrowser(a.browser, { enableBrowserPool: true });
+    await releaseBrowser(b.browser, { enableBrowserPool: true });
+    await releaseBrowser(c.browser, { enableBrowserPool: true });
+  });
+
+  it("pool recovers from a disconnected browser", async () => {
+    const first = await acquireBrowser(["--no-sandbox"], { enableBrowserPool: true });
+    await releaseBrowser(first.browser, { enableBrowserPool: true });
+
+    // Simulate Chrome crash
+    (first.browser as unknown as { connected: boolean }).connected = false;
+
+    const freshBrowser = makeMockBrowser();
+    launchFn.mockResolvedValue(freshBrowser);
+
+    const second = await acquireBrowser(["--no-sandbox"], { enableBrowserPool: true });
+    expect(second.browser).toBe(freshBrowser);
+    expect(second.browser).not.toBe(first.browser);
+    expect(launchFn).toHaveBeenCalledTimes(2);
+
+    await releaseBrowser(second.browser, { enableBrowserPool: true });
+  });
+
+  it("release at refCount 0 closes the browser", async () => {
+    const result = await acquireBrowser(["--no-sandbox"], { enableBrowserPool: true });
+    const closeFn = result.browser.close as ReturnType<typeof vi.fn>;
+
+    await releaseBrowser(result.browser, { enableBrowserPool: true });
+    expect(closeFn).toHaveBeenCalledTimes(1);
   });
 
   it("drainBrowserPool is safe to call when no browser is pooled", async () => {
     await drainBrowserPool();
+  });
+
+  it("drainBrowserPool awaits in-flight launch before closing", async () => {
+    let resolveDeferred!: (browser: Browser) => void;
+    const deferred = new Promise<Browser>((resolve) => {
+      resolveDeferred = resolve;
+    });
+    launchFn.mockReturnValue(deferred);
+
+    // Start acquire — it will be pending
+    const acquirePromise = acquireBrowser(["--no-sandbox"], { enableBrowserPool: true });
+
+    // Drain while launch is in-flight
+    const drainPromise = drainBrowserPool();
+
+    // Resolve the pending launch
+    const mockBrowser = makeMockBrowser();
+    resolveDeferred(mockBrowser);
+
+    await drainPromise;
+    const closeFn = mockBrowser.close as ReturnType<typeof vi.fn>;
+    expect(closeFn).toHaveBeenCalled();
+
+    // The acquire should still resolve (the launch completed before drain closed it)
+    await acquirePromise.catch(() => {});
   });
 });

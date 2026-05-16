@@ -407,7 +407,13 @@ export function forceReleaseBrowser(browser: Browser): void {
  * that should not share browser state.
  */
 export async function drainBrowserPool(): Promise<void> {
+  // Await any in-flight launch first — otherwise the launch resolves after we
+  // drain and produces a browser that nobody references (orphan).
+  const pending = _pooledBrowserLaunchPromise;
   _pooledBrowserLaunchPromise = null;
+  if (pending) {
+    await pending.then((r) => r.browser.close()).catch(() => {});
+  }
   if (pooledBrowser) {
     const browser = pooledBrowser;
     pooledBrowser = null;
@@ -422,6 +428,11 @@ export function _resetBrowserPoolForTests(): void {
   pooledBrowserRefCount = 0;
   pooledCaptureMode = "screenshot";
   _pooledBrowserLaunchPromise = null;
+}
+
+/** Test-only: inject a mock PuppeteerNode so tests bypass the dynamic import. */
+export function _setPuppeteerForTests(mock: PuppeteerNode | undefined): void {
+  _puppeteer = mock;
 }
 
 export interface BuildChromeArgsOptions {
