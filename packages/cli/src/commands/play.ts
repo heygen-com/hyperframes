@@ -13,7 +13,7 @@ import { resolve, dirname } from "node:path";
 import * as clack from "@clack/prompts";
 import { c } from "../ui/colors.js";
 import { resolveProject } from "../utils/project.js";
-import { openBrowser } from "../utils/openBrowser.js";
+import { openBrowser, parseRemoteDebuggingPort } from "../utils/openBrowser.js";
 
 export default defineCommand({
   meta: { name: "play", description: "Play a composition in a lightweight browser player" },
@@ -33,6 +33,10 @@ export default defineCommand({
       type: "string",
       description: "Chromium-compatible user data directory (requires --browser-path)",
     },
+    "remote-debugging-port": {
+      type: "string",
+      description: "Chromium remote debugging port (requires --browser-path and --user-data-dir)",
+    },
   },
   async run({ args }) {
     const project = resolveProject(args.dir);
@@ -43,6 +47,19 @@ export default defineCommand({
       clack.log.error("--user-data-dir requires --browser-path");
       process.exitCode = 1;
       return;
+    }
+    // Validation: --remote-debugging-port requires --browser-path and --user-data-dir
+    if (args["remote-debugging-port"]) {
+      if (!args["browser-path"]) {
+        clack.log.error("--remote-debugging-port requires --browser-path");
+        process.exitCode = 1;
+        return;
+      }
+      if (!args["user-data-dir"]) {
+        clack.log.error("--remote-debugging-port requires --user-data-dir");
+        process.exitCode = 1;
+        return;
+      }
     }
 
     // Resolve runtime path — same logic as studioServer.ts
@@ -168,10 +185,22 @@ export default defineCommand({
     console.log();
     console.log(`  ${c.dim("Press Ctrl+C to stop")}`);
     console.log();
+    let remoteDebuggingPort: number | undefined;
+    if (args["remote-debugging-port"]) {
+      try {
+        remoteDebuggingPort = parseRemoteDebuggingPort(args["remote-debugging-port"]);
+      } catch (err) {
+        clack.log.error((err as Error).message);
+        process.exitCode = 1;
+        return;
+      }
+    }
+
     if (args.open) {
       void openBrowser(url, {
         browserPath: args["browser-path"] as string | undefined,
         userDataDir: args["user-data-dir"] as string | undefined,
+        remoteDebuggingPort,
       });
     }
 

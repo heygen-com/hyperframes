@@ -19,7 +19,7 @@ import { createRequire } from "node:module";
 import * as clack from "@clack/prompts";
 import { c } from "../ui/colors.js";
 import { isDevMode } from "../utils/env.js";
-import { openBrowser } from "../utils/openBrowser.js";
+import { openBrowser, parseRemoteDebuggingPort } from "../utils/openBrowser.js";
 import { lintProject } from "../utils/lintProject.js";
 import { formatLintFindings } from "../utils/lintFormat.js";
 import {
@@ -61,6 +61,10 @@ export default defineCommand({
     "user-data-dir": {
       type: "string",
       description: "Chromium-compatible user data directory (requires --browser-path)",
+    },
+    "remote-debugging-port": {
+      type: "string",
+      description: "Chromium remote debugging port (requires --browser-path and --user-data-dir)",
     },
   },
   async run({ args }) {
@@ -122,18 +126,53 @@ export default defineCommand({
       process.exitCode = 1;
       return;
     }
+    // Validation: --remote-debugging-port requires --browser-path and --user-data-dir
+    if (args["remote-debugging-port"]) {
+      if (!args["browser-path"]) {
+        clack.log.error("--remote-debugging-port requires --browser-path");
+        process.exitCode = 1;
+        return;
+      }
+      if (!args["user-data-dir"]) {
+        clack.log.error("--remote-debugging-port requires --user-data-dir");
+        process.exitCode = 1;
+        return;
+      }
+    }
 
     const noOpen = !args.open;
     const browserPath = args["browser-path"] as string | undefined;
     const userDataDir = args["user-data-dir"] as string | undefined;
+    let remoteDebuggingPort: number | undefined;
+    if (args["remote-debugging-port"]) {
+      try {
+        remoteDebuggingPort = parseRemoteDebuggingPort(args["remote-debugging-port"]);
+      } catch (err) {
+        clack.log.error((err as Error).message);
+        process.exitCode = 1;
+        return;
+      }
+    }
 
     if (isDevMode()) {
-      return runDevMode(dir, { projectName, noOpen, browserPath, userDataDir });
+      return runDevMode(dir, {
+        projectName,
+        noOpen,
+        browserPath,
+        userDataDir,
+        remoteDebuggingPort,
+      });
     }
 
     // If @hyperframes/studio is installed locally, use Vite for full HMR
     if (hasLocalStudio(dir)) {
-      return runLocalStudioMode(dir, { projectName, noOpen, browserPath, userDataDir });
+      return runLocalStudioMode(dir, {
+        projectName,
+        noOpen,
+        browserPath,
+        userDataDir,
+        remoteDebuggingPort,
+      });
     }
 
     const forceNew = !!args["force-new"];
@@ -143,6 +182,7 @@ export default defineCommand({
       noOpen,
       browserPath,
       userDataDir,
+      remoteDebuggingPort,
     });
   },
 });
@@ -152,7 +192,13 @@ export default defineCommand({
  */
 async function runDevMode(
   dir: string,
-  options?: { projectName?: string; noOpen?: boolean; browserPath?: string; userDataDir?: string },
+  options?: {
+    projectName?: string;
+    noOpen?: boolean;
+    browserPath?: string;
+    userDataDir?: string;
+    remoteDebuggingPort?: number;
+  },
 ): Promise<void> {
   // Find monorepo root by navigating from packages/cli/src/commands/
   const thisFile = fileURLToPath(import.meta.url);
@@ -222,6 +268,7 @@ async function runDevMode(
         openBrowser(urlToOpen, {
           browserPath: options?.browserPath,
           userDataDir: options?.userDataDir,
+          remoteDebuggingPort: options?.remoteDebuggingPort,
         });
       }
 
@@ -275,7 +322,13 @@ function hasLocalStudio(dir: string): boolean {
  */
 async function runLocalStudioMode(
   dir: string,
-  options?: { projectName?: string; noOpen?: boolean; browserPath?: string; userDataDir?: string },
+  options?: {
+    projectName?: string;
+    noOpen?: boolean;
+    browserPath?: string;
+    userDataDir?: string;
+    remoteDebuggingPort?: number;
+  },
 ): Promise<void> {
   const req = createRequire(join(dir, "package.json"));
   const studioPkgPath = dirname(req.resolve("@hyperframes/studio/package.json"));
@@ -327,6 +380,7 @@ async function runLocalStudioMode(
         openBrowser(`${url}#project/${pName}`, {
           browserPath: options?.browserPath,
           userDataDir: options?.userDataDir,
+          remoteDebuggingPort: options?.remoteDebuggingPort,
         });
       }
     }
@@ -370,6 +424,7 @@ async function runEmbeddedMode(
     noOpen?: boolean;
     browserPath?: string;
     userDataDir?: string;
+    remoteDebuggingPort?: number;
   },
 ): Promise<void> {
   const { createStudioServer, resolveStudioBundle } = await import("../server/studioServer.js");
@@ -424,6 +479,7 @@ async function runEmbeddedMode(
       openBrowser(`${url}#project/${pName}`, {
         browserPath: options?.browserPath,
         userDataDir: options?.userDataDir,
+        remoteDebuggingPort: options?.remoteDebuggingPort,
       });
     }
     return;
@@ -448,6 +504,7 @@ async function runEmbeddedMode(
     openBrowser(`${url}#project/${pName}`, {
       browserPath: options?.browserPath,
       userDataDir: options?.userDataDir,
+      remoteDebuggingPort: options?.remoteDebuggingPort,
     });
   }
 
