@@ -138,7 +138,10 @@ async function getThumbnailBrowser(): Promise<import("puppeteer-core").Browser |
         /* continue — acquireBrowser will try its own resolution */
       }
 
-      const acquired = await acquireBrowser(buildChromeArgs({ width: 1920, height: 1080 }));
+      const acquired = await acquireBrowser(
+        buildChromeArgs({ width: 1920, height: 1080, captureMode: "screenshot" }),
+        { forceScreenshot: true },
+      );
       _thumbnailBrowser = acquired.browser;
       _thumbnailBrowser.on("disconnected", () => {
         _thumbnailBrowser = null;
