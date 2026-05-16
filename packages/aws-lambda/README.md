@@ -5,16 +5,10 @@ AWS Lambda adapter for HyperFrames distributed rendering. Wraps the OSS
 that Step Functions can dispatch on, plus a build pipeline that bundles
 the handler + Chrome runtime + ffmpeg into a deployable ZIP.
 
-This is part of [Phase 6 of the distributed rendering
-plan](../../DISTRIBUTED-RENDERING-PLAN.md#15-aws-lambda-turnkey-deployment).
-Phase 6a (this PR) validates the architecture on real AWS; Phase 6b ships
-the user-facing CLI and CDK construct.
-
-## Status
-
-- **6.1 (current)** Lambda handler + ZIP bundling + Chromium runtime probe.
-- 6.2 SAM template (`examples/aws-lambda/`).
-- 6.3 Real-AWS benchmark workflow.
+The Lambda adapter ships in two parts: the foundation (this package + the
+SAM example) validates the architecture end-to-end on real AWS; the
+user-facing surface (CLI, CDK construct, migration guide) lands in
+follow-up PRs.
 
 ## Architecture
 
@@ -112,8 +106,8 @@ bun run --cwd packages/aws-lambda probe:beginframe   # local probe (Linux only)
 
 ## What's NOT in this PR
 
-- `examples/aws-lambda/template.yaml` (SAM template — PR 6.2).
-- Real-AWS deploy workflow (PR 6.3).
-- `npx hyperframes lambda deploy` CLI (Phase 6b, PR 6.5).
-- CDK construct (Phase 6b, PR 6.4).
-- Migration guide (Phase 6b, PR 6.8).
+- `examples/aws-lambda/template.yaml` (SAM template — separate PR).
+- Real-AWS deploy + smoke workflow (separate PR).
+- `npx hyperframes lambda deploy` CLI — follow-up.
+- CDK construct (`HyperframesRenderStack`) — follow-up.
+- Migration guide — follow-up.
