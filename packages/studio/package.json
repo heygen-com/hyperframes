@@ -23,7 +23,8 @@
     "build": "vite build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:e2e": "playwright test --config e2e/playwright.config.ts"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.1",
@@ -44,6 +45,7 @@
   },
   "devDependencies": {
     "@hyperframes/producer": "workspace:*",
+    "@playwright/test": "^1.52.0",
     "@types/react": "19",
     "@types/react-dom": "19",
     "@vitejs/plugin-react": "^4.0.0",

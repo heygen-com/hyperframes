@@ -228,6 +228,10 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
       return cachedProjectSignature;
     },
 
+    onProjectFileWrite() {
+      cachedProjectSignature = null;
+    },
+
     async lint(html: string, opts?: { filePath?: string }) {
       const { lintHyperframeHtml } = await import("@hyperframes/core/lint");
       return lintHyperframeHtml(html, opts);

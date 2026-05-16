@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Parity Project</title>
+    <script>
+      window.__timelines = window.__timelines || {};
+    </script>
+    <script data-hyperframes-preview-runtime="1" src=""></script>
+    <style>
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #1a1a2e;
+      }
+
+      #root {
+        width: 1920px;
+        height: 1080px;
+        position: relative;
+        overflow: hidden;
+      }
+
+      #title {
+        position: absolute;
+        top: 200px;
+        left: 200px;
+        margin: 0;
+        font-family: sans-serif;
+        font-size: 80px;
+        font-weight: 700;
+        color: #ffffff;
+        line-height: 1.2;
+        white-space: nowrap;
+      }
+
+      #photo {
+        position: absolute;
+        top: 100px;
+        right: 200px;
+        width: 400px;
+        height: 300px;
+        object-fit: cover;
+      }
+
+      #clip {
+        position: absolute;
+        bottom: 100px;
+        left: 200px;
+        width: 600px;
+        height: 338px;
+        object-fit: cover;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="parity-main"
+      data-width="1920"
+      data-height="1080"
+      data-duration="3"
+      data-fps="30"
+      data-start="0"
+    >
+      <p id="title" class="clip" data-start="0" data-duration="3">Hello Parity</p>
+      <img id="photo" class="clip" src="assets/photo.jpg" data-start="0" data-duration="3" alt="" />
+      <video
+        id="clip"
+        class="clip"
+        src="assets/clip.mp4"
+        data-start="0"
+        data-duration="3"
+        muted
+      ></video>
+    </div>
+  </body>
+</html>

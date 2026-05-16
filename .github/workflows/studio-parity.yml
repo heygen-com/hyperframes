@@ -1,0 +1,212 @@
+name: studio-parity
+
+permissions:
+  contents: write
+  pull-requests: write
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: studio-parity-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      affected: ${{ steps.filter.outputs.affected }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+      - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4
+        id: filter
+        with:
+          token: ""
+          filters: |
+            affected:
+              - "packages/studio/**"
+              - "packages/core/**"
+              - "packages/player/**"
+              - "packages/producer/**"
+              - "packages/cli/**"
+              - "packages/engine/**"
+              - ".github/workflows/studio-parity.yml"
+
+  parity:
+    name: Preview/render parity
+    needs: changes
+    if: needs.changes.outputs.affected == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          lfs: true
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build all packages
+        run: bun run build
+
+      - name: Build hyperframes runtime
+        run: bun run --cwd packages/core build:hyperframes-runtime
+
+      - name: Install ffmpeg
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends ffmpeg
+
+      - name: Install Playwright browsers
+        run: bunx playwright install chromium --with-deps
+
+      - name: Export Playwright Chromium path for renderer
+        run: |
+          CHROME=$(bun --cwd packages/studio -e "import { chromium } from '@playwright/test'; console.log(chromium.executablePath())")
+          echo "HYPERFRAMES_BROWSER_PATH=${CHROME}" >> "$GITHUB_ENV"
+
+      - name: Run studio parity E2E
+        run: bun run --cwd packages/studio test:e2e
+
+      - name: Upload screenshots and diffs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: studio-parity-screenshots
+          path: packages/studio/e2e/.debug/
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Publish diff thumbnails to parity-screens branch
+        if: github.event_name == 'pull_request' && always()
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -e
+          DEBUG_DIR="packages/studio/e2e/.debug"
+          WORK_DIR=$(mktemp -d)
+
+          # Resize preview, render, and diff images to 480x270 thumbnails
+          for t in 0 1 2; do
+            for kind in preview render diff; do
+              src="${DEBUG_DIR}/${kind}_t${t}.png"
+              if [ -f "${src}" ]; then
+                ffmpeg -hide_banner -loglevel error -y -i "${src}" \
+                  -vf scale=480:270 "${WORK_DIR}/${kind}_t${t}.png"
+              fi
+            done
+          done
+
+          # Skip if no images were produced
+          ls "${WORK_DIR}"/*.png 2>/dev/null || exit 0
+
+          # Push as orphan commit to parity-screens/pr-{N} branch
+          git -C "${WORK_DIR}" init
+          git -C "${WORK_DIR}" config user.email "github-actions[bot]@users.noreply.github.com"
+          git -C "${WORK_DIR}" config user.name "github-actions[bot]"
+          git -C "${WORK_DIR}" add .
+          git -C "${WORK_DIR}" commit -m "parity screenshots PR #${PR_NUMBER} run ${{ github.run_id }}"
+          git -C "${WORK_DIR}" push --force \
+            "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" \
+            "HEAD:refs/heads/parity-screens/pr-${PR_NUMBER}"
+
+      - name: Post parity results as PR comment
+        if: github.event_name == 'pull_request' && always()
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7
+        with:
+          script: |
+            const { readFileSync } = await import('fs');
+
+            let scores = {};
+            try {
+              scores = JSON.parse(readFileSync('packages/studio/e2e/.debug/yavg.json', 'utf8'));
+            } catch {}
+
+            const threshold = 2.0;
+            const passed = Object.values(scores).every(v => v <= threshold);
+            const header = passed ? '✅ Studio parity passed' : '❌ Studio parity failed';
+
+            const rows = [0, 1, 2].map(t => {
+              const yavg = scores[`t${t}`];
+              if (yavg == null) return `| t=${t}s | — | — |`;
+              const pct = ((yavg / 255) * 100).toFixed(2);
+              const status = yavg <= threshold ? '✅' : '❌';
+              return `| t=${t}s | ${yavg.toFixed(2)} / 255 (${pct}%) | ${status} |`;
+            }).join('\n');
+
+            const artifactUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const branch = `parity-screens/pr-${context.issue.number}`;
+            const rawBase = `https://raw.githubusercontent.com/${context.repo.owner}/${context.repo.repo}/${branch}`;
+
+            const diffRow = [0, 1, 2]
+              .map(t => `![diff t=${t}s](${rawBase}/diff_t${t}.png)`)
+              .join(' | ');
+
+            const body = [
+              `## ${header}`,
+              '',
+              '| Frame | YAVG diff | Status |',
+              '|-------|-----------|--------|',
+              rows,
+              '',
+              `Threshold: ${threshold} / 255 (≈ 0.78%). [Download all images](${artifactUrl}).`,
+              '',
+              '<details><summary>Diff images (luma difference, preview ↔ render)</summary>',
+              '',
+              `| t=0s | t=1s | t=2s |`,
+              `|------|------|------|`,
+              `| ${diffRow} |`,
+              '',
+              '</details>',
+            ].join('\n');
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            });
+
+  gate:
+    name: Studio parity gate
+    needs: [changes, parity]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check result
+        env:
+          FILTER: ${{ needs.changes.outputs.affected }}
+          RESULT: ${{ needs.parity.result }}
+        run: |
+          {
+            echo "## Studio parity gate"
+            echo ""
+            echo "- paths-filter \`affected\` matched: \`${FILTER}\`"
+            echo "- parity result: \`${RESULT}\`"
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "${FILTER}" != "true" ]; then
+            echo "::notice title=Studio parity::SKIPPED — no affected changes"
+            echo "**Status:** SKIPPED" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          if [ "${RESULT}" != "success" ]; then
+            echo "**Status:** FAILED" >> "$GITHUB_STEP_SUMMARY"
+            echo "Studio parity check failed"
+            exit 1
+          fi
+
+          echo "**Status:** PASSED" >> "$GITHUB_STEP_SUMMARY"

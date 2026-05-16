@@ -11,6 +11,10 @@ import {
   createStudioMotionRenderBodyScript,
   STUDIO_MOTION_PATH,
 } from "../helpers/studioMotionRenderScript.js";
+import {
+  createStudioManualEditsRenderBodyScript,
+  STUDIO_MANUAL_EDITS_PATH,
+} from "../helpers/manualEditsRenderScript.js";
 
 const PROJECT_SIGNATURE_META = "hyperframes-project-signature";
 const GSAP_CDN_VERSION = "3.15.0";
@@ -31,6 +35,29 @@ function injectProjectSignature(html: string, signature: string): string {
   }
   if (html.includes("</head>")) return html.replace("</head>", `${tag}\n</head>`);
   return `${tag}\n${html}`;
+}
+
+function readStudioManualEditManifestContent(projectDir: string): string {
+  const manifestPath = join(projectDir, STUDIO_MANUAL_EDITS_PATH);
+  if (!existsSync(manifestPath)) return "";
+  try {
+    return readFileSync(manifestPath, "utf-8");
+  } catch {
+    return "";
+  }
+}
+
+function injectStudioManualEditsScript(
+  html: string,
+  projectDir: string,
+  activeCompositionPath: string,
+): string {
+  const manifestContent = readStudioManualEditManifestContent(projectDir);
+  const script = createStudioManualEditsRenderBodyScript(manifestContent, {
+    activeCompositionPath,
+  });
+  if (!script) return html;
+  return injectScriptsIntoHtml(html, [], [script], false);
 }
 
 function readStudioMotionManifestContent(projectDir: string): string {
@@ -118,7 +145,11 @@ function injectStudioPreviewAugmentations(
   activeCompositionPath: string,
 ): string {
   return injectStudioMotionScript(
-    injectProjectSignature(html, resolveProjectSignature(adapter, projectDir)),
+    injectStudioManualEditsScript(
+      injectProjectSignature(html, resolveProjectSignature(adapter, projectDir)),
+      projectDir,
+      activeCompositionPath,
+    ),
     projectDir,
     activeCompositionPath,
   );

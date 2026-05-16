@@ -166,6 +166,9 @@ function devProjectApi(): Plugin {
 
 export default defineConfig({
   plugins: [react(), devProjectApi()],
+  test: {
+    exclude: ["e2e/**", "node_modules/**"],
+  },
   resolve: {
     alias: {
       "@hyperframes/player": resolve(__dirname, "../player/src/hyperframes-player.ts"),

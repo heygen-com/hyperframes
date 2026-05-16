@@ -14,6 +14,9 @@ packages/producer/tests/distributed/*/output/output.webm filter=lfs diff=lfs mer
 packages/producer/tests/*/src/*.mp4 filter=lfs diff=lfs merge=lfs -text
 packages/producer/tests/distributed/*/src/*.mp4 filter=lfs diff=lfs merge=lfs -text
 
+# Studio E2E parity fixture videos
+packages/studio/e2e/fixtures/**/*.mp4 filter=lfs diff=lfs merge=lfs -text
+
 # Source image assets for regression test fixtures (HDR PNGs, screenshot fixtures, etc.)
 packages/producer/tests/*/src/*.png filter=lfs diff=lfs merge=lfs -text
 packages/producer/tests/distributed/*/src/*.png filter=lfs diff=lfs merge=lfs -text

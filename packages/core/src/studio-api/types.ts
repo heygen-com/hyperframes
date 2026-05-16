@@ -107,4 +107,7 @@ export interface StudioApiAdapter {
 
   /** Optional: resolve session ID to project (multi-project mode). */
   resolveSession?: (sessionId: string) => Promise<{ projectId: string; title: string } | null>;
+
+  /** Optional: called after any project file is written via the files API. */
+  onProjectFileWrite?: (filePath: string) => void;
 }
