@@ -22,6 +22,14 @@ describe("deduplicateIds", () => {
     const result = deduplicateIds(html, ["other"]);
     expect(result).toBe(html);
   });
+
+  it("does not rewrite data-composition-id or other data-*-id attributes", () => {
+    const html = '<div data-composition-id="hero" data-clip-id="hero" id="hero">content</div>';
+    const result = deduplicateIds(html, ["hero"]);
+    expect(result).toContain('data-composition-id="hero"');
+    expect(result).toContain('data-clip-id="hero"');
+    expect(result).toMatch(/\sid="hero-\d+"/);
+  });
 });
 
 describe("serializeClipboardPayload / deserializeClipboardPayload", () => {

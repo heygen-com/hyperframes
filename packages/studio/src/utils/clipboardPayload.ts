@@ -81,7 +81,7 @@ export function insertAsSibling(
       searchPattern = new RegExp(`<[a-z][^>]*\\bclass="[^"]*\\b${cls}\\b[^"]*"[^>]*>`, "gi");
     } else if (selector.startsWith("[")) {
       const inner = selector.slice(1, -1);
-      searchPattern = new RegExp(`<[a-z][^>]*\\b${inner.replace(/"/g, '"')}[^>]*>`, "gi");
+      searchPattern = new RegExp(`<[a-z][^>]*\\b${inner}[^>]*>`, "gi");
     }
 
     if (searchPattern) {
@@ -157,7 +157,7 @@ function findClosingTagPosition(html: string, openTagStart: number): number {
 
 export function deduplicateIds(html: string, existingIds: string[]): string {
   const existingSet = new Set(existingIds);
-  return html.replace(/\bid="([^"]+)"/g, (full, id: string) => {
+  return html.replace(/(?<=\s)id="([^"]+)"/g, (full, id: string) => {
     if (!existingSet.has(id)) return full;
     let counter = 2;
     while (existingSet.has(`${id}-${counter}`)) counter++;

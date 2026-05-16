@@ -210,23 +210,39 @@ export function useAppHotkeys({
         return;
       }
 
-      // Cmd/Ctrl+C — copy
+      // Cmd/Ctrl+C — copy (only preventDefault if we actually have something to copy)
       const copyPasteKey = event.key.toLowerCase();
-      if (copyPasteKey === "c" && !event.shiftKey && !isEditableTarget(event.target)) {
-        event.preventDefault();
-        handleCopyRef.current();
+      if (
+        copyPasteKey === "c" &&
+        !event.shiftKey &&
+        !event.altKey &&
+        !isEditableTarget(event.target)
+      ) {
+        if (handleCopyRef.current()) {
+          event.preventDefault();
+        }
         return;
       }
 
       // Cmd/Ctrl+V — paste
-      if (copyPasteKey === "v" && !event.shiftKey && !isEditableTarget(event.target)) {
+      if (
+        copyPasteKey === "v" &&
+        !event.shiftKey &&
+        !event.altKey &&
+        !isEditableTarget(event.target)
+      ) {
         event.preventDefault();
         void handlePasteRef.current();
         return;
       }
 
       // Cmd/Ctrl+X — cut
-      if (copyPasteKey === "x" && !event.shiftKey && !isEditableTarget(event.target)) {
+      if (
+        copyPasteKey === "x" &&
+        !event.shiftKey &&
+        !event.altKey &&
+        !isEditableTarget(event.target)
+      ) {
         event.preventDefault();
         void handleCutRef.current();
         return;
