@@ -25,6 +25,7 @@ import {
   renderChunk,
 } from "@hyperframes/producer/distributed";
 import { resolveChromeExecutablePath } from "./chromium.js";
+import { formatExtension } from "./formatExtension.js";
 import type {
   AssembleEvent,
   AssembleLambdaResult,
@@ -470,22 +471,6 @@ function pad(n: number): string {
 
 function trimTrailingSlash(prefix: string): string {
   return prefix.endsWith("/") ? prefix.slice(0, -1) : prefix;
-}
-
-function formatExtension(format: "mp4" | "mov" | "png-sequence"): string {
-  switch (format) {
-    case "mp4":
-      return ".mp4";
-    case "mov":
-      return ".mov";
-    case "png-sequence":
-      return "";
-    default: {
-      // Compile-time exhaustiveness — a future Format member trips here.
-      const _exhaustive: never = format;
-      throw new Error(`[handler] unsupported format: ${_exhaustive as string}`);
-    }
-  }
 }
 
 function cleanupDir(dir: string): void {

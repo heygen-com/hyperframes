@@ -166,7 +166,7 @@ export interface PlanResult {
  * whose absolute path happens to contain one of these names (e.g.
  * `~/work/output/comp/`) doesn't false-positive-skip the entire copy.
  */
-const PLAN_PROJECT_DIR_SKIP_SEGMENTS = new Set([
+export const PLAN_PROJECT_DIR_SKIP_SEGMENTS: ReadonlySet<string> = new Set([
   "node_modules",
   ".git",
   ".cache",

@@ -21,6 +21,8 @@ import { randomUUID } from "node:crypto";
 import { SFNClient, StartExecutionCommand } from "@aws-sdk/client-sfn";
 import type { S3Client } from "@aws-sdk/client-s3";
 import type { SerializableDistributedRenderConfig } from "../events.js";
+import { formatExtension } from "../formatExtension.js";
+import { formatS3Uri } from "../s3Transport.js";
 import { deploySite, type SiteHandle } from "./deploySite.js";
 import { validateDistributedRenderConfig } from "./validateConfig.js";
 
@@ -84,8 +86,11 @@ export async function renderToLambda(opts: RenderToLambdaOptions): Promise<Rende
   const executionName = opts.executionName ?? `hf-render-${randomUUID()}`;
   const ext = formatExtension(opts.config.format);
   const outputKey = opts.outputKey ?? `renders/${executionName}/output${ext}`;
-  const planOutputS3Prefix = `s3://${opts.bucketName}/renders/${executionName}/`;
-  const outputS3Uri = `s3://${opts.bucketName}/${outputKey}`;
+  const planOutputS3Prefix = formatS3Uri({
+    bucket: opts.bucketName,
+    key: `renders/${executionName}/`,
+  });
+  const outputS3Uri = formatS3Uri({ bucket: opts.bucketName, key: outputKey });
 
   const site =
     opts.siteHandle ??
@@ -126,19 +131,4 @@ export async function renderToLambda(opts: RenderToLambdaOptions): Promise<Rende
     projectS3Uri: site.projectS3Uri,
     startedAt,
   };
-}
-
-function formatExtension(format: SerializableDistributedRenderConfig["format"]): string {
-  switch (format) {
-    case "mp4":
-      return ".mp4";
-    case "mov":
-      return ".mov";
-    case "png-sequence":
-      return "";
-    default: {
-      const _exhaustive: never = format;
-      throw new Error(`[renderToLambda] unsupported format: ${_exhaustive as string}`);
-    }
-  }
 }

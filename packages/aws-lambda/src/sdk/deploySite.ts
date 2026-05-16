@@ -17,7 +17,8 @@ import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { HeadObjectCommand, S3Client } from "@aws-sdk/client-s3";
-import { tarDirectory, uploadFileToS3 } from "../s3Transport.js";
+import { PLAN_PROJECT_DIR_SKIP_SEGMENTS } from "@hyperframes/producer/distributed";
+import { formatS3Uri, tarDirectory, uploadFileToS3 } from "../s3Transport.js";
 
 /** Options for {@link deploySite}. */
 export interface DeploySiteOptions {
@@ -52,24 +53,6 @@ export interface SiteHandle {
 }
 
 /**
- * Top-level entries skipped by the content-hash AND the tar pack. Matches
- * the producer's plan-stage skip set so a `deploySite` upload contains
- * exactly the bytes the plan stage would read. Keeping the two lists in
- * sync is what makes the content-addressed `siteId` stable across CI
- * runs that produce different stray dotfiles.
- */
-const SKIP_TOP_LEVEL = new Set([
-  "node_modules",
-  ".git",
-  ".cache",
-  "output",
-  "failures",
-  "dist",
-  ".next",
-  ".turbo",
-]);
-
-/**
  * Upload `projectDir` to `s3://bucketName/sites/<siteId>/project.tar.gz`.
  *
  * Short-circuits when an object with the same key already exists in the
@@ -83,7 +66,7 @@ export async function deploySite(opts: DeploySiteOptions): Promise<SiteHandle> {
 
   const siteId = opts.siteId ?? hashProjectDir(opts.projectDir);
   const key = `sites/${siteId}/project.tar.gz`;
-  const projectS3Uri = `s3://${opts.bucketName}/${key}`;
+  const projectS3Uri = formatS3Uri({ bucket: opts.bucketName, key });
   const s3 = opts.s3 ?? new S3Client({ region: opts.region });
 
   // HeadObject short-circuit. Adopters re-rendering the same project on
@@ -142,7 +125,7 @@ function hashProjectDir(projectDir: string): string {
     for (const entry of readdirSync(dir, { withFileTypes: true }).sort((a, b) =>
       a.name < b.name ? -1 : a.name > b.name ? 1 : 0,
     )) {
-      if (isRoot && SKIP_TOP_LEVEL.has(entry.name)) continue;
+      if (isRoot && PLAN_PROJECT_DIR_SKIP_SEGMENTS.has(entry.name)) continue;
       const full = join(dir, entry.name);
       if (entry.isDirectory()) walk(full, false);
       else if (entry.isFile()) files.push(full);

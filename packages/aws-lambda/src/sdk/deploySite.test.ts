@@ -2,60 +2,9 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { HeadObjectCommand, PutObjectCommand, type S3Client } from "@aws-sdk/client-s3";
+import type { S3Client } from "@aws-sdk/client-s3";
+import { asS3Client, FakeS3 } from "./__fixtures__/fakeS3.js";
 import { deploySite } from "./deploySite.js";
-
-interface FakeOp {
-  kind: "head" | "put";
-  bucket: string;
-  key: string;
-}
-
-class FakeS3 {
-  ops: FakeOp[] = [];
-  existing = new Set<string>();
-  async send(command: unknown): Promise<unknown> {
-    const cmdName = (command as { constructor: { name: string } }).constructor.name;
-    const input = (command as { input: { Bucket: string; Key: string } }).input;
-    if (cmdName === "HeadObjectCommand") {
-      this.ops.push({ kind: "head", bucket: input.Bucket, key: input.Key });
-      if (this.existing.has(`${input.Bucket}/${input.Key}`)) {
-        return { ContentLength: 123, LastModified: new Date("2026-05-16T00:00:00Z") };
-      }
-      const err = new Error("Not Found") as Error & {
-        $metadata: { httpStatusCode: number };
-        name: string;
-      };
-      err.name = "NotFound";
-      err.$metadata = { httpStatusCode: 404 };
-      throw err;
-    }
-    if (cmdName === "PutObjectCommand") {
-      this.ops.push({ kind: "put", bucket: input.Bucket, key: input.Key });
-      this.existing.add(`${input.Bucket}/${input.Key}`);
-      // Drain the body stream so its underlying file descriptor opens
-      // (and closes) while the source file still exists. Without this,
-      // the lazy `createReadStream` would attempt to open the workdir
-      // tarball after `deploySite`'s `finally` block has rmSync'd the
-      // workdir, surfacing as an "Unhandled error between tests".
-      await drainBody((command as { input: { Body: NodeJS.ReadableStream | Buffer } }).input.Body);
-      return {};
-    }
-    throw new Error(`FakeS3: unexpected command ${cmdName}`);
-  }
-}
-
-async function drainBody(body: NodeJS.ReadableStream | Buffer): Promise<void> {
-  if (Buffer.isBuffer(body)) return;
-  // Consume to completion or error; either way, the FD lifecycle is
-  // bounded to this `send()` call.
-  await new Promise<void>((resolve, reject) => {
-    body.on("data", () => {});
-    body.on("end", () => resolve());
-    body.on("close", () => resolve());
-    body.on("error", reject);
-  });
-}
 
 let projectDir: string;
 
@@ -76,7 +25,7 @@ describe("deploySite", () => {
     const result = await deploySite({
       projectDir,
       bucketName: "test-bucket",
-      s3: s3 as unknown as S3Client,
+      s3: asS3Client(s3),
     });
 
     expect(result.uploaded).toBe(true);
@@ -94,13 +43,13 @@ describe("deploySite", () => {
     const a = await deploySite({
       projectDir,
       bucketName: "test-bucket",
-      s3: s3a as unknown as S3Client,
+      s3: asS3Client(s3a),
     });
     const s3b = new FakeS3();
     const b = await deploySite({
       projectDir,
       bucketName: "test-bucket",
-      s3: s3b as unknown as S3Client,
+      s3: asS3Client(s3b),
     });
     expect(a.siteId).toBe(b.siteId);
   });
@@ -110,7 +59,7 @@ describe("deploySite", () => {
     const before = await deploySite({
       projectDir,
       bucketName: "test-bucket",
-      s3: s3 as unknown as S3Client,
+      s3: asS3Client(s3),
     });
 
     writeFileSync(join(projectDir, "index.html"), "<html><body>changed</body></html>");
@@ -118,7 +67,7 @@ describe("deploySite", () => {
     const after = await deploySite({
       projectDir,
       bucketName: "test-bucket",
-      s3: s3b as unknown as S3Client,
+      s3: asS3Client(s3b),
     });
     expect(after.siteId).not.toBe(before.siteId);
   });
@@ -128,13 +77,13 @@ describe("deploySite", () => {
     const first = await deploySite({
       projectDir,
       bucketName: "test-bucket",
-      s3: s3 as unknown as S3Client,
+      s3: asS3Client(s3),
     });
 
     const second = await deploySite({
       projectDir,
       bucketName: "test-bucket",
-      s3: s3 as unknown as S3Client,
+      s3: asS3Client(s3),
     });
 
     expect(second.uploaded).toBe(false);
@@ -150,7 +99,7 @@ describe("deploySite", () => {
       projectDir,
       bucketName: "test-bucket",
       siteId: "release-v1.2.3",
-      s3: s3 as unknown as S3Client,
+      s3: asS3Client(s3),
     });
     expect(result.siteId).toBe("release-v1.2.3");
     expect(result.projectS3Uri).toBe("s3://test-bucket/sites/release-v1.2.3/project.tar.gz");
@@ -180,7 +129,7 @@ describe("deploySite", () => {
     const before = await deploySite({
       projectDir,
       bucketName: "test-bucket",
-      s3: s3 as unknown as S3Client,
+      s3: asS3Client(s3),
     });
 
     mkdirSync(join(projectDir, "node_modules"));
@@ -189,15 +138,10 @@ describe("deploySite", () => {
     const after = await deploySite({
       projectDir,
       bucketName: "test-bucket",
-      s3: s3b as unknown as S3Client,
+      s3: asS3Client(s3b),
     });
 
     // node_modules contents shouldn't move the hash.
     expect(after.siteId).toBe(before.siteId);
   });
 });
-
-// Suppress unused-import lint complaints when these are only referenced via
-// `constructor.name` checks in the fake's `send` method.
-void HeadObjectCommand;
-void PutObjectCommand;
