@@ -73,7 +73,7 @@ export function usePreviewInteraction({
         ? getPreviewLocalPointer(previewIframeRef.current, e.clientX, e.clientY)
         : null;
       applyDomSelection(nextSelection, { additive: e.shiftKey });
-      if (!e.shiftKey && onClickToSource) {
+      if (!e.shiftKey && e.altKey && onClickToSource) {
         onClickToSource(nextSelection);
       }
       if (

@@ -272,8 +272,11 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
           // During crossfade refreshes the retiring Player unmounts after the
           // new Player has already assigned its iframe to the same ref — blindly
           // nulling it would break seeking in the new Player.
+          // Callback refs are skipped — we can't read back the current value to
+          // guard against clobbering a newer assignment. The mutable-ref branch
+          // (the only path used today) is guarded by identity check.
           if (typeof ref === "function") {
-            ref(null);
+            // no-op: can't safely guard callback refs
           } else if (ref) {
             const mutableRef = ref as React.MutableRefObject<HTMLIFrameElement | null>;
             if (mutableRef.current === iframe) {

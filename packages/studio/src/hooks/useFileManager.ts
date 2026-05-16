@@ -173,34 +173,36 @@ export function useFileManager({
 
   // ── Open source for selection (click-to-source) ──
 
-  const pendingRevealRef = useRef<PatchTarget | null>(null);
+  const revealRequestIdRef = useRef(0);
+  const revealAbortRef = useRef<AbortController | null>(null);
 
   const openSourceForSelection = useCallback(
     (sourceFile: string, target: PatchTarget) => {
       const pid = projectIdRef.current;
       if (!pid || !sourceFile) return;
+      revealAbortRef.current?.abort();
+      revealAbortRef.current = null;
       if (editingPathRef.current === sourceFile && editingFile?.content != null) {
         const match = findTagByTarget(editingFile.content, target);
         setRevealSourceOffset(match ? match.start : null);
         return;
       }
-      pendingRevealRef.current = target;
-      fetch(`/api/projects/${pid}/files/${encodeURIComponent(sourceFile)}`)
+      const requestId = ++revealRequestIdRef.current;
+      const controller = new AbortController();
+      revealAbortRef.current = controller;
+      fetch(`/api/projects/${pid}/files/${encodeURIComponent(sourceFile)}`, {
+        signal: controller.signal,
+      })
         .then((r) => r.json())
         .then((data: { content?: string }) => {
+          if (requestId !== revealRequestIdRef.current) return;
           if (data.content != null) {
             setEditingFile({ path: sourceFile, content: data.content });
-            const pending = pendingRevealRef.current;
-            pendingRevealRef.current = null;
-            if (pending) {
-              const match = findTagByTarget(data.content, pending);
-              setRevealSourceOffset(match ? match.start : null);
-            }
+            const match = findTagByTarget(data.content, target);
+            setRevealSourceOffset(match ? match.start : null);
           }
         })
-        .catch(() => {
-          pendingRevealRef.current = null;
-        });
+        .catch(() => {});
     },
     [editingFile?.content],
   );

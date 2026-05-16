@@ -6,6 +6,7 @@ import type { ImportedFontAsset } from "../components/editor/fontAssets";
 import type { EditHistoryKind } from "../utils/editHistory";
 import type { RightPanelTab } from "../utils/studioHelpers";
 import type { PatchTarget } from "../utils/sourcePatcher";
+import type { SidebarTab } from "../components/sidebar/LeftSidebar";
 import { useAskAgentModal } from "./useAskAgentModal";
 import { useDomSelection } from "./useDomSelection";
 import { usePreviewInteraction } from "./usePreviewInteraction";
@@ -54,7 +55,7 @@ export interface UseDomEditSessionParams {
   reloadPreview: () => void;
   setRefreshKey: React.Dispatch<React.SetStateAction<number>>;
   openSourceForSelection?: (sourceFile: string, target: PatchTarget) => void;
-  selectSidebarTab?: (tab: "code" | "compositions" | "assets") => void;
+  selectSidebarTab?: (tab: SidebarTab) => void;
 }
 
 // ── Hook ──

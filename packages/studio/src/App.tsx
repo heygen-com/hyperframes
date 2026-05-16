@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useMemo, useEffect } from "react";
-import type { LeftSidebarHandle } from "./components/sidebar/LeftSidebar";
+import type { LeftSidebarHandle, SidebarTab } from "./components/sidebar/LeftSidebar";
 import { useRenderQueue } from "./components/renders/useRenderQueue";
 import { usePlayerStore } from "./player";
 import { LintModal } from "./components/LintModal";
@@ -216,8 +216,7 @@ export function StudioApp() {
     reloadPreview,
     setRefreshKey,
     openSourceForSelection: fileManager.openSourceForSelection,
-    selectSidebarTab: (tab: "code" | "compositions" | "assets") =>
-      leftSidebarRef.current?.selectTab(tab),
+    selectSidebarTab: (tab: SidebarTab) => leftSidebarRef.current?.selectTab(tab),
   });
 
   domEditSelectionBridgeRef.current = domEditSession.domEditSelection;
