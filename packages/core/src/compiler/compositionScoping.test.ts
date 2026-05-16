@@ -75,6 +75,33 @@ body { margin: 0; }
     expect(fakeWindow.__captured).toEqual({ title: "Pro", price: "$29" });
   });
 
+  it("scoped getVariables reads from the runtime composition id when it differs", () => {
+    const { document } = parseHTML(`<div data-composition-id="scene"></div>`);
+    const fakeWindow: Record<string, unknown> = {
+      document,
+      __timelines: {},
+      __hfVariablesByComp: {
+        scene: { title: "Wrong" },
+        scene__hf1: { title: "Right" },
+      },
+      __hyperframes: {
+        getVariables: () => ({ title: "TOP-LEVEL-LEAK" }),
+        fitTextFontSize: () => undefined,
+      },
+    };
+    const wrapped = wrapScopedCompositionScript(
+      `window.__captured = __hyperframes.getVariables();`,
+      "scene",
+      "[HyperFrames] composition script error:",
+      undefined,
+      "scene__hf1",
+    );
+
+    new Function("window", wrapped)(fakeWindow);
+
+    expect(fakeWindow.__captured).toEqual({ title: "Right" });
+  });
+
   it("scoped getVariables returns {} when __hfVariablesByComp has no entry for the comp", () => {
     const { document } = parseHTML(`<div data-composition-id="missing"></div>`);
     const fakeWindow: Record<string, unknown> = {
@@ -206,6 +233,124 @@ window.__selectedComp =
     new Function("window", wrapped)(fakeWindow);
 
     expect(fakeWindow.__selectedComp).toBe("scene-b");
+  });
+
+  it("scopes authored root id lookups after the flattened root drops its literal id", () => {
+    const { document } = parseHTML(`
+      <div data-composition-id="scene">
+        <div data-hf-authored-id="scene-root">
+          <h1 class="title">Scene</h1>
+        </div>
+      </div>
+    `);
+    const fakeWindow = {
+      document,
+      __selectedTitle: "",
+      __timelines: {},
+    };
+    const wrapped = wrapScopedCompositionScript(
+      `
+window.__selectedTitle =
+  document.getElementById("scene-root")
+    ?.querySelector(".title")
+    ?.textContent || "missing";
+`,
+      "scene",
+      "[HyperFrames] composition script error:",
+      undefined,
+      "scene",
+      "scene-root",
+    );
+
+    new Function("window", wrapped)(fakeWindow);
+
+    expect(fakeWindow.__selectedTitle).toBe("Scene");
+  });
+
+  it("does not rewrite authored root hash text inside CSS attribute values", () => {
+    const scoped = scopeCssToComposition(
+      'a[href="#scene-root"] { color: red; }',
+      "scene",
+      undefined,
+      "scene-root",
+    );
+
+    expect(scoped).toContain('[data-composition-id="scene"] a[href="#scene-root"]');
+    expect(scoped).not.toContain('[href="[data-hf-authored-id=');
+  });
+
+  it("does not rewrite authored root hash text inside querySelector attribute values", () => {
+    const { document } = parseHTML(`
+      <div data-composition-id="scene">
+        <a class="jump" href="#scene-root">Jump</a>
+        <div data-hf-authored-id="scene-root"></div>
+      </div>
+    `);
+    const fakeWindow = {
+      document,
+      __selectedHref: "",
+      __timelines: {},
+    };
+    const wrapped = wrapScopedCompositionScript(
+      `
+window.__selectedHref =
+  document.querySelector('a[href="#scene-root"]')
+    ?.getAttribute("href") || "missing";
+`,
+      "scene",
+      "[HyperFrames] composition script error:",
+      undefined,
+      "scene",
+      "scene-root",
+    );
+
+    new Function("window", wrapped)(fakeWindow);
+
+    expect(fakeWindow.__selectedHref).toBe("#scene-root");
+  });
+
+  it("normalizes gsap.utils.selector() selectors for authored root ids and root timing attrs", () => {
+    const { document } = parseHTML(`
+      <div data-composition-id="scene" data-start="0">
+        <div data-hf-authored-id="scene-root">
+          <h1 class="title">Scene</h1>
+        </div>
+      </div>
+      <div data-composition-id="other" data-start="0">
+        <div data-hf-authored-id="scene-root">
+          <h1 class="title">Other</h1>
+        </div>
+      </div>
+    `);
+    const fakeWindow = {
+      document,
+      __selectedRootCount: 0,
+      __selectedTimedCount: 0,
+      __selectedTitle: "",
+      __timelines: {},
+      gsap: {
+        utils: {},
+      },
+    };
+    const wrapped = wrapScopedCompositionScript(
+      `
+const select = gsap.utils.selector(document.querySelector('[data-composition-id="scene"]'));
+window.__selectedRootCount = select('#scene-root').length;
+window.__selectedTimedCount = select('[data-composition-id="scene"][data-start="0"] .title').length;
+window.__selectedTitle = select('#scene-root .title')[0]?.textContent || "missing";
+`,
+      "scene",
+      "[HyperFrames] composition script error:",
+      undefined,
+      "scene",
+      "scene-root",
+    );
+
+    new Function("window", "gsap", wrapped)(fakeWindow, fakeWindow.gsap);
+
+    expect(fakeWindow.__selectedRootCount).toBe(1);
+    expect(fakeWindow.__selectedTimedCount).toBe(1);
+    expect(fakeWindow.__selectedTitle).toBe("Scene");
   });
 
   it("reads scoped proxy accessors with the original target receiver", () => {

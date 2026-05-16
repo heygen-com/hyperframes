@@ -1,5 +1,7 @@
 import postcss, { type AtRule, type Node, type Rule } from "postcss";
 
+const AUTHORED_ROOT_ID_ATTR = "data-hf-authored-id";
+
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -8,9 +10,101 @@ function escapeCssAttributeValue(value: string): string {
   return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
 
-function scopeSelector(selector: string, scope: string, compositionId: string): string {
-  const selectorWithoutRootTiming = normalizeCompositionRootSelector(
+function escapeCssIdentifier(value: string): string {
+  if (!value) return value;
+  const escaped = value.replace(/[^a-zA-Z0-9_-]/g, (char) => `\\${char}`);
+  return escaped.replace(/^-?\d/, (match) => `\\${match}`);
+}
+
+function getAuthoredRootIdSelectorForms(authoredRootId: string): string[] {
+  const trimmed = authoredRootId.trim();
+  if (!trimmed) return [];
+  return Array.from(new Set([trimmed, escapeCssIdentifier(trimmed)])).filter(Boolean);
+}
+
+function isSelectorNameChar(char: string | undefined): boolean {
+  return !!char && /[\w-]/.test(char);
+}
+
+function replaceAuthoredRootIdSelectors(
+  selector: string,
+  authoredRootId: string,
+  replacement: string,
+): string {
+  const forms = getAuthoredRootIdSelectorForms(authoredRootId).sort((a, b) => b.length - a.length);
+  if (forms.length === 0) return selector;
+
+  let result = "";
+  let bracketDepth = 0;
+  let quote: '"' | "'" | null = null;
+
+  for (let index = 0; index < selector.length; index += 1) {
+    const char = selector[index];
+    const previousChar = index > 0 ? selector[index - 1] : "";
+
+    if (quote) {
+      result += char;
+      if (char === quote && previousChar !== "\\") {
+        quote = null;
+      }
+      continue;
+    }
+
+    if (char === '"' || char === "'") {
+      quote = char;
+      result += char;
+      continue;
+    }
+
+    if (char === "[") {
+      bracketDepth += 1;
+      result += char;
+      continue;
+    }
+
+    if (char === "]") {
+      bracketDepth = Math.max(0, bracketDepth - 1);
+      result += char;
+      continue;
+    }
+
+    if (char === "#" && bracketDepth === 0) {
+      const matchedForm = forms.find((form) => selector.startsWith(form, index + 1));
+      if (matchedForm) {
+        const nextChar = selector[index + 1 + matchedForm.length];
+        if (!isSelectorNameChar(nextChar)) {
+          result += replacement;
+          index += matchedForm.length;
+          continue;
+        }
+      }
+    }
+
+    result += char;
+  }
+
+  return result;
+}
+
+function normalizeAuthoredRootIdSelector(selector: string, authoredRootId?: string | null): string {
+  const trimmed = authoredRootId?.trim();
+  if (!trimmed) return selector;
+  return replaceAuthoredRootIdSelectors(
     selector,
+    trimmed,
+    `[${AUTHORED_ROOT_ID_ATTR}="${escapeCssAttributeValue(trimmed)}"]`,
+  );
+}
+
+function scopeSelector(
+  selector: string,
+  scope: string,
+  compositionId: string,
+  authoredRootId?: string | null,
+): string {
+  const selectorWithoutAuthoredRootId = normalizeAuthoredRootIdSelector(selector, authoredRootId);
+  const selectorWithoutRootTiming = normalizeCompositionRootSelector(
+    selectorWithoutAuthoredRootId,
     scope,
     compositionId,
   );
@@ -63,6 +157,7 @@ export function scopeCssToComposition(
   css: string,
   compositionId: string,
   scopeSelectorOverride?: string,
+  authoredRootId?: string | null,
 ): string {
   const trimmedCompositionId = compositionId.trim();
   if (!css || !trimmedCompositionId) return css;
@@ -74,7 +169,7 @@ export function scopeCssToComposition(
   root.walkRules((rule) => {
     if (isInsideGlobalAtRule(rule)) return;
     rule.selectors = rule.selectors.map((selector) =>
-      scopeSelector(selector, scope, trimmedCompositionId),
+      scopeSelector(selector, scope, trimmedCompositionId, authoredRootId),
     );
   });
 
@@ -87,11 +182,13 @@ export function wrapScopedCompositionScript(
   errorLabel = "[HyperFrames] composition script error:",
   scopeSelectorOverride?: string,
   timelineCompositionId = compositionId,
+  authoredRootId?: string | null,
 ): string {
   const compositionIdLiteral = JSON.stringify(compositionId);
   const timelineCompositionIdLiteral = JSON.stringify(timelineCompositionId);
   const errorLabelLiteral = JSON.stringify(errorLabel);
   const escapedCompositionId = escapeRegExp(compositionId);
+  const authoredRootIdLiteral = JSON.stringify(authoredRootId?.trim() || null);
   const scopeSelectorLiteral = JSON.stringify(scopeSelectorOverride ?? null);
   const rootSelectorPatternLiteral = JSON.stringify(
     String.raw`\[\s*data-composition-id\s*=\s*(?:"${escapedCompositionId}"|'${escapedCompositionId}')\s*\]`,
@@ -99,10 +196,15 @@ export function wrapScopedCompositionScript(
   const timingSelectorPatternLiteral = JSON.stringify(
     String.raw`\s*\[\s*data-(?:start|duration)\s*=\s*(?:"[^"]*"|'[^']*')\s*\]`,
   );
+  const authoredRootIdFormsLiteral = JSON.stringify(
+    getAuthoredRootIdSelectorForms(authoredRootId?.trim() || ""),
+  );
   return `(function(){
   var __hfCompId = ${compositionIdLiteral};
   var __hfTimelineCompId = ${timelineCompositionIdLiteral};
   var __hfErrorLabel = ${errorLabelLiteral};
+  var __hfAuthoredRootId = ${authoredRootIdLiteral};
+  var __hfAuthoredRootAttr = ${JSON.stringify(AUTHORED_ROOT_ID_ATTR)};
   var __hfEscapeAttr = function(value) {
     return (value + "").replace(/\\\\/g, "\\\\\\\\").replace(/"/g, "\\\\\\"");
   };
@@ -112,11 +214,76 @@ export function wrapScopedCompositionScript(
   var __hfRoot = null;
   var __hfRootSelectorPattern = ${rootSelectorPatternLiteral};
   var __hfTimingSelectorPattern = ${timingSelectorPatternLiteral};
+  var __hfAuthoredRootIdForms = ${authoredRootIdFormsLiteral};
+  var __hfAuthoredRootSelector = __hfAuthoredRootId
+    ? "[" + __hfAuthoredRootAttr + '="' + __hfEscapeAttr(__hfAuthoredRootId) + '"]'
+    : "";
+  var __hfIsSelectorNameChar = function(char) {
+    return !!char && /[\\w-]/.test(char);
+  };
+  var __hfReplaceAuthoredRootIdSelectors = function(selector) {
+    if (!__hfAuthoredRootSelector || !__hfAuthoredRootIdForms.length || typeof selector !== "string") {
+      return selector;
+    }
+    var result = "";
+    var bracketDepth = 0;
+    var quote = null;
+    for (var index = 0; index < selector.length; index += 1) {
+      var char = selector[index];
+      var previousChar = index > 0 ? selector[index - 1] : "";
+      if (quote) {
+        result += char;
+        if (char === quote && previousChar !== "\\\\") {
+          quote = null;
+        }
+        continue;
+      }
+      if (char === '"' || char === "'") {
+        quote = char;
+        result += char;
+        continue;
+      }
+      if (char === "[") {
+        bracketDepth += 1;
+        result += char;
+        continue;
+      }
+      if (char === "]") {
+        bracketDepth = Math.max(0, bracketDepth - 1);
+        result += char;
+        continue;
+      }
+      if (char === "#" && bracketDepth === 0) {
+        var matchedForm = null;
+        for (var formIndex = 0; formIndex < __hfAuthoredRootIdForms.length; formIndex += 1) {
+          var form = __hfAuthoredRootIdForms[formIndex];
+          if (selector.slice(index + 1, index + 1 + form.length) === form) {
+            matchedForm = form;
+            break;
+          }
+        }
+        if (matchedForm) {
+          var nextChar = selector[index + 1 + matchedForm.length];
+          if (!__hfIsSelectorNameChar(nextChar)) {
+            result += __hfAuthoredRootSelector;
+            index += matchedForm.length;
+            continue;
+          }
+        }
+      }
+      result += char;
+    }
+    return result;
+  };
   var __hfNormalizeSelector = function(selector) {
     if (!__hfCompId || typeof selector !== "string") return selector;
-    return selector
+    var normalized = selector
       .replace(new RegExp(__hfRootSelectorPattern + '(?:' + __hfTimingSelectorPattern + ')+', 'g'), __hfRootSelector)
       .replace(new RegExp('(?:' + __hfTimingSelectorPattern + ')+' + __hfRootSelectorPattern, 'g'), __hfRootSelector);
+    if (__hfAuthoredRootSelector) {
+      normalized = __hfReplaceAuthoredRootIdSelectors(normalized);
+    }
+    return normalized;
   };
   var __hfFindRoot = function() {
     if (!__hfRoot && __hfRootSelector) {
@@ -147,8 +314,15 @@ export function wrapScopedCompositionScript(
     var root = __hfFindRoot();
     if (!root) return found || null;
     var idValue = id + "";
+    if (__hfAuthoredRootId && __hfAuthoredRootId === idValue && root.getAttribute && root.getAttribute(__hfAuthoredRootAttr) === idValue) {
+      return root;
+    }
     if (root.id === idValue) return root;
     if (typeof root.querySelector !== "function") return null;
+    try {
+      var authoredRootMatch = root.querySelector('[' + __hfAuthoredRootAttr + '="' + __hfEscapeAttr(idValue) + '"]');
+      if (authoredRootMatch) return authoredRootMatch;
+    } catch {}
     if (typeof CSS !== "undefined" && CSS && typeof CSS.escape === "function") {
       try {
         return root.querySelector("#" + CSS.escape(idValue)) || null;
@@ -265,7 +439,12 @@ export function wrapScopedCompositionScript(
                     var root = baseEl || __hfFindRoot();
                     return function(selector) {
                       if (!root || typeof selector !== "string") return [];
-                      return Array.prototype.slice.call(root.querySelectorAll(selector));
+                      return Array.prototype.filter.call(
+                        window.document.querySelectorAll(__hfNormalizeSelector(selector)),
+                        function(node) {
+                          return node === root || (typeof root.contains === "function" && root.contains(node));
+                        },
+                      );
                     };
                   };
                 }
@@ -284,7 +463,7 @@ export function wrapScopedCompositionScript(
     : Object.assign({}, __hfBaseHyperframes, {
         getVariables: function() {
           var byComp = window.__hfVariablesByComp;
-          var scoped = byComp && __hfCompId ? byComp[__hfCompId] : null;
+          var scoped = byComp && __hfTimelineCompId ? byComp[__hfTimelineCompId] : null;
           return scoped ? Object.assign({}, scoped) : {};
         },
       });

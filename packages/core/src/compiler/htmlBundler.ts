@@ -15,6 +15,7 @@ import {
 import { scopeCssToComposition, wrapScopedCompositionScript } from "./compositionScoping";
 import { validateHyperframeHtmlContract } from "./staticGuard";
 import { getHyperframeRuntimeScript } from "../generated/runtime-inline";
+import { readDeclaredDefaults } from "../runtime/getVariables";
 
 /** Resolve a relative path within projectDir, rejecting traversal outside it. */
 function safePath(projectDir: string, relativePath: string): string | null {
@@ -184,6 +185,138 @@ function cssAttributeSelector(attr: string, value: string): string {
 
 function uniqueCompositionId(baseId: string, index: number): string {
   return `${baseId}__hf${index}`;
+}
+
+type BundledHostCompositionIdentity = {
+  authoredCompositionId: string | null;
+  runtimeCompositionId: string | null;
+};
+
+function getBundledHostCompositionIdentity(host: Element): BundledHostCompositionIdentity {
+  const currentCompositionId = (host.getAttribute("data-composition-id") || "").trim() || null;
+  const authoredCompositionId =
+    (host.getAttribute("data-hf-original-composition-id") || currentCompositionId || "").trim() ||
+    null;
+  return {
+    authoredCompositionId,
+    runtimeCompositionId: currentCompositionId,
+  };
+}
+
+function getBundledTrackedCompositionHosts(document: Document): Element[] {
+  const hosts = Array.from(
+    document.querySelectorAll<Element>("[data-composition-src], [data-composition-id]"),
+  );
+  return hosts.filter((host) => {
+    if (host.hasAttribute("data-composition-src")) return true;
+    const authoredCompositionId = getBundledHostCompositionIdentity(host).authoredCompositionId;
+    if (!authoredCompositionId) return false;
+    return !!document.getElementById(`${authoredCompositionId}-template`);
+  });
+}
+
+function shouldAssignBundledRuntimeCompositionId(host: Element, document: Document): boolean {
+  if (host.hasAttribute("data-composition-src")) return true;
+  const authoredCompositionId = getBundledHostCompositionIdentity(host).authoredCompositionId;
+  if (!authoredCompositionId) return false;
+  if (!document.getElementById(`${authoredCompositionId}-template`)) return false;
+  return host.children.length === 0;
+}
+
+function countBundledAuthoredCompositionIds(hosts: Element[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const host of hosts) {
+    const authoredCompositionId = getBundledHostCompositionIdentity(host).authoredCompositionId;
+    if (!authoredCompositionId) continue;
+    counts.set(authoredCompositionId, (counts.get(authoredCompositionId) || 0) + 1);
+  }
+  return counts;
+}
+
+function assignBundledRuntimeCompositionIds(
+  hosts: Element[],
+  counts: Map<string, number> = countBundledAuthoredCompositionIds(hosts),
+): Map<Element, BundledHostCompositionIdentity> {
+  const instanceByCompositionId = new Map<string, number>();
+  const identities = new Map<Element, BundledHostCompositionIdentity>();
+
+  for (const host of hosts) {
+    const { authoredCompositionId, runtimeCompositionId: previousRuntimeCompositionId } =
+      getBundledHostCompositionIdentity(host);
+    const shouldAssign = shouldAssignBundledRuntimeCompositionId(host, host.ownerDocument);
+    if (!authoredCompositionId) {
+      identities.set(host, {
+        authoredCompositionId: null,
+        runtimeCompositionId: previousRuntimeCompositionId,
+      });
+      continue;
+    }
+
+    const duplicateInstance = (counts.get(authoredCompositionId) || 0) > 1;
+    let runtimeCompositionId = previousRuntimeCompositionId || authoredCompositionId;
+    if (shouldAssign) {
+      const instanceIndex = duplicateInstance
+        ? (instanceByCompositionId.get(authoredCompositionId) || 0) + 1
+        : 0;
+      if (duplicateInstance) {
+        instanceByCompositionId.set(authoredCompositionId, instanceIndex);
+        host.setAttribute("data-hf-original-composition-id", authoredCompositionId);
+      } else {
+        host.removeAttribute("data-hf-original-composition-id");
+      }
+
+      runtimeCompositionId = duplicateInstance
+        ? uniqueCompositionId(authoredCompositionId, instanceIndex)
+        : authoredCompositionId;
+      host.setAttribute("data-composition-id", runtimeCompositionId);
+    }
+    identities.set(host, {
+      authoredCompositionId,
+      runtimeCompositionId,
+    });
+  }
+
+  return identities;
+}
+
+function parseHostVariableValues(host: Element): Record<string, unknown> {
+  const raw = host.getAttribute("data-variable-values");
+  if (!raw) return {};
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return {};
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+  return parsed as Record<string, unknown>;
+}
+
+const FLATTENED_INNER_ROOT_STRIP_ATTRS = [
+  "data-composition-id",
+  "data-composition-file",
+  "data-start",
+  "data-duration",
+  "data-end",
+  "data-track-index",
+  "data-track",
+  "data-composition-src",
+  "data-hf-authored-duration",
+  "data-hf-authored-end",
+];
+
+function prepareFlattenedInnerRoot(innerRoot: Element): Element {
+  const prepared = innerRoot.cloneNode(true) as Element;
+  const authoredRootId = prepared.getAttribute("id")?.trim();
+  for (const attrName of FLATTENED_INNER_ROOT_STRIP_ATTRS) {
+    prepared.removeAttribute(attrName);
+  }
+  if (authoredRootId) {
+    prepared.removeAttribute("id");
+    prepared.setAttribute("data-hf-authored-id", authoredRootId);
+  }
+  prepared.setAttribute("data-hf-inner-root", "true");
+  return prepared;
 }
 
 function enforceCompositionPixelSizing(document: Document): void {
@@ -452,14 +585,12 @@ export async function bundleToSingleHtml(
   const compStyleChunks: string[] = [];
   const compScriptChunks: string[] = [];
   const compExternalScriptSrcs: string[] = [];
-  const subCompositionHosts = [...document.querySelectorAll("[data-composition-src]")];
-  const hostCountsByCompositionId = new Map<string, number>();
-  for (const hostEl of subCompositionHosts) {
-    const compId = (hostEl.getAttribute("data-composition-id") || "").trim();
-    if (!compId) continue;
-    hostCountsByCompositionId.set(compId, (hostCountsByCompositionId.get(compId) || 0) + 1);
-  }
-  const hostInstanceByCompositionId = new Map<string, number>();
+  const compVariablesByComp: Record<string, Record<string, unknown>> = {};
+  const trackedCompositionHosts = getBundledTrackedCompositionHosts(document);
+  const hostIdentityByElement = assignBundledRuntimeCompositionIds(trackedCompositionHosts);
+  const subCompositionHosts = trackedCompositionHosts.filter((host) =>
+    host.hasAttribute("data-composition-src"),
+  );
   for (const hostEl of subCompositionHosts) {
     const src = hostEl.getAttribute("data-composition-src");
     if (!src || !isRelativeUrl(src)) continue;
@@ -471,7 +602,9 @@ export async function bundleToSingleHtml(
     }
 
     const compDoc = parseHTMLContent(compHtml);
-    const compId = hostEl.getAttribute("data-composition-id");
+    const hostIdentity = hostIdentityByElement.get(hostEl);
+    const compId = hostIdentity?.authoredCompositionId || null;
+    const runtimeCompId = hostIdentity?.runtimeCompositionId || compId || "";
     const contentRoot = compDoc.querySelector("template");
     const contentHtml = contentRoot ? contentRoot.innerHTML || "" : compDoc.body.innerHTML || "";
     const contentDoc = parseHTMLContent(contentHtml);
@@ -479,22 +612,19 @@ export async function bundleToSingleHtml(
       ? contentDoc.querySelector(`[data-composition-id="${compId}"]`)
       : contentDoc.querySelector("[data-composition-id]");
     const inferredCompId = innerRoot?.getAttribute("data-composition-id")?.trim() || "";
+    const authoredRootId = innerRoot?.getAttribute("id")?.trim() || null;
     const scopeCompId = compId || inferredCompId;
-    const duplicateInstance = scopeCompId && (hostCountsByCompositionId.get(scopeCompId) || 0) > 1;
-    const instanceIndex = duplicateInstance
-      ? (hostInstanceByCompositionId.get(scopeCompId) || 0) + 1
-      : 0;
-    if (duplicateInstance) hostInstanceByCompositionId.set(scopeCompId, instanceIndex);
-    const runtimeCompId =
-      duplicateInstance && scopeCompId
-        ? uniqueCompositionId(scopeCompId, instanceIndex)
-        : scopeCompId;
     const runtimeScope = runtimeCompId
       ? cssAttributeSelector("data-composition-id", runtimeCompId)
       : "";
-    if (duplicateInstance && runtimeCompId) {
-      hostEl.setAttribute("data-hf-original-composition-id", scopeCompId);
-      hostEl.setAttribute("data-composition-id", runtimeCompId);
+    const mergedVariables = runtimeCompId
+      ? {
+          ...readDeclaredDefaults(compDoc.documentElement),
+          ...parseHostVariableValues(hostEl),
+        }
+      : {};
+    if (runtimeCompId && Object.keys(mergedVariables).length > 0) {
+      compVariablesByComp[runtimeCompId] = mergedVariables;
     }
 
     // When a sub-composition is a full HTML document (no <template>), styles
@@ -505,7 +635,7 @@ export async function bundleToSingleHtml(
       for (const s of [...compDoc.head.querySelectorAll("style")]) {
         const css = rewriteCssAssetUrls(s.textContent || "", src);
         compStyleChunks.push(
-          scopeCompId ? scopeCssToComposition(css, scopeCompId, runtimeScope) : css,
+          scopeCompId ? scopeCssToComposition(css, scopeCompId, runtimeScope, authoredRootId) : css,
         );
       }
       for (const s of [...compDoc.head.querySelectorAll("script")]) {
@@ -519,7 +649,7 @@ export async function bundleToSingleHtml(
     for (const s of [...contentDoc.querySelectorAll("style")]) {
       const css = rewriteCssAssetUrls(s.textContent || "", src);
       compStyleChunks.push(
-        scopeCompId ? scopeCssToComposition(css, scopeCompId, runtimeScope) : css,
+        scopeCompId ? scopeCssToComposition(css, scopeCompId, runtimeScope, authoredRootId) : css,
       );
       s.remove();
     }
@@ -540,6 +670,7 @@ export async function bundleToSingleHtml(
                 "[HyperFrames] composition script error:",
                 runtimeScope,
                 runtimeCompId || scopeCompId,
+                authoredRootId,
               )
             : `(function(){ try { ${s.textContent || ""} } catch (_err) { console.error('[HyperFrames] composition script error:', _err); } })();`,
         );
@@ -579,7 +710,8 @@ export async function bundleToSingleHtml(
       if (innerH && !hostEl.getAttribute("data-height")) hostEl.setAttribute("data-height", innerH);
       innerRoot.setAttribute("data-composition-file", src);
       for (const child of [...innerRoot.querySelectorAll("style, script")]) child.remove();
-      hostEl.innerHTML = compId ? innerRoot.innerHTML || "" : innerRoot.outerHTML || "";
+      const preparedInnerRoot = prepareFlattenedInnerRoot(innerRoot);
+      hostEl.innerHTML = preparedInnerRoot.outerHTML || "";
     } else {
       for (const child of [...contentDoc.querySelectorAll("style, script")]) child.remove();
       hostEl.innerHTML = contentDoc.body.innerHTML || "";
@@ -590,88 +722,110 @@ export async function bundleToSingleHtml(
 
   // Inline template compositions: inject <template id="X-template"> content into
   // matching empty host elements with data-composition-id="X" (no data-composition-src)
+  const candidateInlineHosts = trackedCompositionHosts.filter(
+    (host) => !host.hasAttribute("data-composition-src"),
+  );
   for (const templateEl of [...document.querySelectorAll("template[id]")]) {
     const templateId = templateEl.getAttribute("id") || "";
     const match = templateId.match(/^(.+)-template$/);
     if (!match) continue;
     const compId = match[1];
+    if (!compId) continue;
 
-    // Find the matching host element (must have data-composition-id, no data-composition-src,
-    // and must NOT be inside a <template> element).
-    const hostSelector = `[data-composition-id="${compId}"]:not([data-composition-src])`;
-    // linkedom follows the DOM spec: querySelectorAll does not reach inside <template>
-    // content, so no isInsideTemplate filter is needed.
-    const host = document.querySelector(hostSelector);
-    if (!host) continue;
-    if (host.children.length > 0) continue; // already has content
+    const hosts = candidateInlineHosts.filter(
+      (host) =>
+        hostIdentityByElement.get(host)?.authoredCompositionId === compId &&
+        host.children.length === 0,
+    );
+    if (hosts.length === 0) continue;
 
-    // Get template content and inject into host
     const templateHtml = templateEl.innerHTML || "";
-    const innerDoc = parseHTMLContent(templateHtml);
-    const innerRoot = innerDoc.querySelector(`[data-composition-id="${compId}"]`);
 
-    if (innerRoot) {
-      // Hoist styles into the collected style chunks
-      for (const styleEl of [...innerRoot.querySelectorAll("style")]) {
-        const css = styleEl.textContent || "";
-        compStyleChunks.push(compId ? scopeCssToComposition(css, compId) : css);
-        styleEl.remove();
+    for (const host of hosts) {
+      const hostIdentity = hostIdentityByElement.get(host);
+      const runtimeCompId = hostIdentity?.runtimeCompositionId || compId;
+      const innerDoc = parseHTMLContent(templateHtml);
+      const innerRoot = innerDoc.querySelector(`[data-composition-id="${compId}"]`);
+      const authoredRootId = innerRoot?.getAttribute("id")?.trim() || null;
+      const runtimeScope = runtimeCompId
+        ? cssAttributeSelector("data-composition-id", runtimeCompId)
+        : "";
+      const mergedVariables = runtimeCompId ? parseHostVariableValues(host) : {};
+      if (runtimeCompId && Object.keys(mergedVariables).length > 0) {
+        compVariablesByComp[runtimeCompId] = mergedVariables;
       }
-      // Hoist scripts into the collected script chunks
-      for (const scriptEl of [...innerRoot.querySelectorAll("script")]) {
-        const externalSrc = (scriptEl.getAttribute("src") || "").trim();
-        if (externalSrc) {
-          if (!compExternalScriptSrcs.includes(externalSrc)) {
-            compExternalScriptSrcs.push(externalSrc);
-          }
-        } else {
-          compScriptChunks.push(
-            compId
-              ? wrapScopedCompositionScript(
-                  scriptEl.textContent || "",
-                  compId,
-                  "[HyperFrames] composition script error:",
-                )
-              : `(function(){ try { ${scriptEl.textContent || ""} } catch (_err) { console.error('[HyperFrames] composition script error:', _err); } })();`,
+
+      if (innerRoot) {
+        // Hoist styles into the collected style chunks
+        for (const styleEl of [...innerRoot.querySelectorAll("style")]) {
+          const css = styleEl.textContent || "";
+          compStyleChunks.push(
+            compId ? scopeCssToComposition(css, compId, runtimeScope, authoredRootId) : css,
           );
+          styleEl.remove();
         }
-        scriptEl.remove();
-      }
-
-      // Copy dimension attributes from inner root to host if not already set
-      const innerW = innerRoot.getAttribute("data-width");
-      const innerH = innerRoot.getAttribute("data-height");
-      if (innerW && !host.getAttribute("data-width")) host.setAttribute("data-width", innerW);
-      if (innerH && !host.getAttribute("data-height")) host.setAttribute("data-height", innerH);
-
-      host.innerHTML = innerRoot.innerHTML || "";
-    } else {
-      // No matching inner root — inject all template content directly
-      for (const styleEl of [...innerDoc.querySelectorAll("style")]) {
-        const css = styleEl.textContent || "";
-        compStyleChunks.push(compId ? scopeCssToComposition(css, compId) : css);
-        styleEl.remove();
-      }
-      for (const scriptEl of [...innerDoc.querySelectorAll("script")]) {
-        const externalSrc = (scriptEl.getAttribute("src") || "").trim();
-        if (externalSrc) {
-          if (!compExternalScriptSrcs.includes(externalSrc)) {
-            compExternalScriptSrcs.push(externalSrc);
+        // Hoist scripts into the collected script chunks
+        for (const scriptEl of [...innerRoot.querySelectorAll("script")]) {
+          const externalSrc = (scriptEl.getAttribute("src") || "").trim();
+          if (externalSrc) {
+            if (!compExternalScriptSrcs.includes(externalSrc)) {
+              compExternalScriptSrcs.push(externalSrc);
+            }
+          } else {
+            compScriptChunks.push(
+              compId
+                ? wrapScopedCompositionScript(
+                    scriptEl.textContent || "",
+                    compId,
+                    "[HyperFrames] composition script error:",
+                    runtimeScope,
+                    runtimeCompId || compId,
+                    authoredRootId,
+                  )
+                : `(function(){ try { ${scriptEl.textContent || ""} } catch (_err) { console.error('[HyperFrames] composition script error:', _err); } })();`,
+            );
           }
-        } else {
-          compScriptChunks.push(
-            compId
-              ? wrapScopedCompositionScript(
-                  scriptEl.textContent || "",
-                  compId,
-                  "[HyperFrames] composition script error:",
-                )
-              : `(function(){ try { ${scriptEl.textContent || ""} } catch (_err) { console.error('[HyperFrames] composition script error:', _err); } })();`,
-          );
+          scriptEl.remove();
         }
-        scriptEl.remove();
+
+        // Copy dimension attributes from inner root to host if not already set
+        const innerW = innerRoot.getAttribute("data-width");
+        const innerH = innerRoot.getAttribute("data-height");
+        if (innerW && !host.getAttribute("data-width")) host.setAttribute("data-width", innerW);
+        if (innerH && !host.getAttribute("data-height")) host.setAttribute("data-height", innerH);
+        const preparedInnerRoot = prepareFlattenedInnerRoot(innerRoot);
+        host.innerHTML = preparedInnerRoot.outerHTML || "";
+      } else {
+        // No matching inner root — inject all template content directly
+        for (const styleEl of [...innerDoc.querySelectorAll("style")]) {
+          const css = styleEl.textContent || "";
+          compStyleChunks.push(compId ? scopeCssToComposition(css, compId, runtimeScope) : css);
+          styleEl.remove();
+        }
+        for (const scriptEl of [...innerDoc.querySelectorAll("script")]) {
+          const externalSrc = (scriptEl.getAttribute("src") || "").trim();
+          if (externalSrc) {
+            if (!compExternalScriptSrcs.includes(externalSrc)) {
+              compExternalScriptSrcs.push(externalSrc);
+            }
+          } else {
+            compScriptChunks.push(
+              compId
+                ? wrapScopedCompositionScript(
+                    scriptEl.textContent || "",
+                    compId,
+                    "[HyperFrames] composition script error:",
+                    runtimeScope,
+                    runtimeCompId || compId,
+                  )
+                : `(function(){ try { ${scriptEl.textContent || ""} } catch (_err) { console.error('[HyperFrames] composition script error:', _err); } })();`,
+            );
+          }
+          scriptEl.remove();
+        }
+
+        host.innerHTML = innerDoc.body.innerHTML || "";
       }
-      host.innerHTML = innerDoc.body.innerHTML || "";
     }
 
     // Remove the template element from the document
@@ -692,6 +846,11 @@ export async function bundleToSingleHtml(
     const style = document.createElement("style");
     style.textContent = compStyleChunks.join("\n\n");
     document.head.appendChild(style);
+  }
+  if (Object.keys(compVariablesByComp).length > 0) {
+    compScriptChunks.unshift(
+      `window.__hfVariablesByComp = Object.assign({}, window.__hfVariablesByComp || {}, ${JSON.stringify(compVariablesByComp)});`,
+    );
   }
   if (compScriptChunks.length) {
     const compScript = document.createElement("script");

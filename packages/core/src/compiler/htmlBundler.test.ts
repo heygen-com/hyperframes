@@ -381,6 +381,221 @@ describe("bundleToSingleHtml", () => {
     expect(bundled).toContain("__hfNormalizeSelector");
   });
 
+  it("keeps an authored inner root wrapper for root id and class selectors", async () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html>
+<html><head></head><body>
+  <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+    <div
+      id="scene-host"
+      data-composition-id="scene"
+      data-composition-src="compositions/scene.html"
+      data-start="0"
+      data-duration="5"></div>
+  </div>
+  <script>window.__timelines={};</script>
+</body></html>`,
+      "compositions/scene.html": `<template id="scene-template">
+  <div id="scene-root" class="scene-root" data-composition-id="scene" data-width="1920" data-height="1080">
+    <style>
+      .scene-root .title { opacity: 0; }
+      #scene-root { font-family: Inter, sans-serif; }
+    </style>
+    <h1 class="title">Scene</h1>
+  </div>
+</template>`,
+    });
+
+    const bundled = await bundleToSingleHtml(dir);
+    const { document } = parseHTML(bundled);
+    const host = document.querySelector("#scene-host");
+    const authoredRoot = host?.querySelector('[data-hf-authored-id="scene-root"]');
+
+    expect(host).toBeTruthy();
+    expect(authoredRoot).toBeTruthy();
+    expect(authoredRoot?.id).toBe("");
+    expect(authoredRoot?.getAttribute("data-composition-id")).toBeNull();
+    expect(authoredRoot?.getAttribute("data-hf-inner-root")).toBe("true");
+    expect(authoredRoot?.getAttribute("data-hf-authored-id")).toBe("scene-root");
+    expect(bundled).toContain('[data-composition-id="scene"] .scene-root .title');
+    expect(bundled).toContain('[data-composition-id="scene"] [data-hf-authored-id="scene-root"]');
+  });
+
+  it("does not keep duplicate authored root ids when the same external composition mounts twice", async () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html>
+<html><head></head><body>
+  <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+    <div
+      id="scene-host-a"
+      data-composition-id="scene"
+      data-composition-src="compositions/scene.html"
+      data-start="0"
+      data-duration="5"></div>
+    <div
+      id="scene-host-b"
+      data-composition-id="scene"
+      data-composition-src="compositions/scene.html"
+      data-start="5"
+      data-duration="5"></div>
+  </div>
+  <script>window.__timelines={};</script>
+</body></html>`,
+      "compositions/scene.html": `<template id="scene-template">
+  <div id="scene-root" class="scene-root" data-composition-id="scene" data-width="1920" data-height="1080">
+    <h1 class="title">Scene</h1>
+  </div>
+</template>`,
+    });
+
+    const bundled = await bundleToSingleHtml(dir);
+    const { document } = parseHTML(bundled);
+    const authoredRoots = document.querySelectorAll('[data-hf-authored-id="scene-root"]');
+
+    expect(authoredRoots).toHaveLength(2);
+    expect(document.querySelectorAll("#scene-root")).toHaveLength(0);
+    expect(Array.from(authoredRoots).every((root) => !root.getAttribute("id"))).toBe(true);
+  });
+
+  it("mounts duplicate inline-template hosts instead of only the first one", async () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html>
+<html><head></head><body>
+  <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+    <div id="scene-host-a" data-composition-id="scene"></div>
+    <div id="scene-host-b" data-composition-id="scene"></div>
+  </div>
+  <template id="scene-template">
+    <div id="scene-root" data-composition-id="scene" data-width="1920" data-height="1080">
+      <h1 class="title">Scene</h1>
+    </div>
+  </template>
+  <script>window.__timelines={};</script>
+</body></html>`,
+    });
+
+    const bundled = await bundleToSingleHtml(dir);
+    const { document } = parseHTML(bundled);
+    const hostA = document.querySelector("#scene-host-a");
+    const hostB = document.querySelector("#scene-host-b");
+
+    expect(hostA?.querySelector(".title")?.textContent).toBe("Scene");
+    expect(hostB?.querySelector(".title")?.textContent).toBe("Scene");
+    expect(hostA?.getAttribute("data-composition-id")).toBe("scene__hf1");
+    expect(hostB?.getAttribute("data-composition-id")).toBe("scene__hf2");
+    expect(hostA?.getAttribute("data-hf-original-composition-id")).toBe("scene");
+    expect(hostB?.getAttribute("data-hf-original-composition-id")).toBe("scene");
+  });
+
+  it("emits scoped style and script chunks for each duplicate inline-template host", async () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html>
+<html><head></head><body>
+  <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+    <div id="scene-host-a" data-composition-id="scene"></div>
+    <div id="scene-host-b" data-composition-id="scene"></div>
+  </div>
+  <template id="scene-template">
+    <div id="scene-root" data-composition-id="scene" data-width="1920" data-height="1080">
+      <style>.title { opacity: 0; }</style>
+      <h1 class="title">Scene</h1>
+      <script>
+        window.__timelines = window.__timelines || {};
+        window.__timelines.scene = { marker: "scene" };
+      </script>
+    </div>
+  </template>
+  <script>window.__timelines={};</script>
+</body></html>`,
+    });
+
+    const bundled = await bundleToSingleHtml(dir);
+
+    expect(bundled).toContain('[data-composition-id="scene__hf1"] .title');
+    expect(bundled).toContain('[data-composition-id="scene__hf2"] .title');
+    expect(bundled).toContain('var __hfTimelineCompId = "scene__hf1"');
+    expect(bundled).toContain('var __hfTimelineCompId = "scene__hf2"');
+  });
+
+  it("uniquifies duplicate sub-compositions across inline-template and external hosts", async () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html>
+<html><head></head><body>
+  <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+    <div id="scene-host-inline" data-composition-id="scene"></div>
+    <div
+      id="scene-host-external"
+      data-composition-id="scene"
+      data-composition-src="compositions/scene.html"></div>
+  </div>
+  <template id="scene-template">
+    <div data-composition-id="scene" data-width="1920" data-height="1080">
+      <p>Inline scene</p>
+    </div>
+  </template>
+  <script>window.__timelines={};</script>
+</body></html>`,
+      "compositions/scene.html": `<template id="scene-template">
+  <div data-composition-id="scene" data-width="1920" data-height="1080">
+    <p>External scene</p>
+  </div>
+</template>`,
+    });
+
+    const bundled = await bundleToSingleHtml(dir);
+    const { document } = parseHTML(bundled);
+    const inlineHost = document.querySelector("#scene-host-inline");
+    const externalHost = document.querySelector("#scene-host-external");
+
+    expect(inlineHost?.getAttribute("data-composition-id")).toBe("scene__hf1");
+    expect(externalHost?.getAttribute("data-composition-id")).toBe("scene__hf2");
+    expect(inlineHost?.getAttribute("data-hf-original-composition-id")).toBe("scene");
+    expect(externalHost?.getAttribute("data-hf-original-composition-id")).toBe("scene");
+    expect(inlineHost?.querySelector("p")?.textContent).toBe("Inline scene");
+    expect(externalHost?.querySelector("p")?.textContent).toBe("External scene");
+  });
+
+  it("emits per-instance scoped variables for bundled sub-compositions", async () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html>
+<html><head></head><body>
+  <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+    <div
+      id="card-a"
+      data-composition-id="card"
+      data-composition-src="compositions/card.html"
+      data-variable-values='{"title":"Pro"}'></div>
+    <div
+      id="card-b"
+      data-composition-id="card"
+      data-composition-src="compositions/card.html"
+      data-variable-values='{"title":"Enterprise"}'></div>
+  </div>
+  <script>window.__timelines={};</script>
+</body></html>`,
+      "compositions/card.html": `<!doctype html>
+<html data-composition-variables='[
+  {"id":"title","type":"string","label":"Title","default":"Default Title"},
+  {"id":"theme","type":"string","label":"Theme","default":"light"}
+]'>
+  <body>
+    <div id="card-root" data-composition-id="card" data-width="1920" data-height="1080">
+      <script>
+        window.__timelines = window.__timelines || {};
+        window.__timelines[document.currentScript?.dataset.slot || "missing"] = __hyperframes.getVariables();
+      </script>
+    </div>
+  </body>
+</html>`,
+    });
+
+    const bundled = await bundleToSingleHtml(dir);
+
+    expect(bundled).toContain("window.__hfVariablesByComp");
+    expect(bundled).toMatch(/card__hf1[\s\S]*Pro[\s\S]*light/);
+    expect(bundled).toMatch(/card__hf2[\s\S]*Enterprise[\s\S]*light/);
+  });
+
   it("scopes external sub-composition styles and classic scripts", async () => {
     const dir = makeTempProject({
       "index.html": `<!doctype html>
