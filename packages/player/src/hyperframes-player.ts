@@ -264,7 +264,15 @@ class HyperframesPlayer extends HTMLElement {
     this._directTimelineClock.stop();
     this._stopParentTickClock();
     this._currentTime = timeInSeconds;
-    if (this._media.audioOwner === "parent") this._media.seekAll(timeInSeconds);
+    if (this._media.audioOwner === "parent") {
+      // Pause BEFORE seek: leaving the proxy playing turns the next
+      // `mirrorTime` drift-correction tick into a perpetual seek→play→drift→seek
+      // stutter loop, where ~80ms of audio plays past the (now frozen) timeline,
+      // then mirrorTime yanks `currentTime` back to match it. Symmetric with
+      // `pause()` below.
+      this._media.pauseAll();
+      this._media.seekAll(timeInSeconds);
+    }
     this._paused = true;
     this.controlsApi?.updatePlaying(false);
     this.controlsApi?.updateTime(this._currentTime, this._duration);
