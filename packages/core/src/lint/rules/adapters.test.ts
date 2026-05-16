@@ -140,4 +140,87 @@ describe("adapter rules", () => {
     );
     expect(adapterFindings).toHaveLength(0);
   });
+
+  it("warns when WebGPU usage does not register frame readiness", () => {
+    const html = `
+<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080">
+    <canvas id="gpu"></canvas>
+  </div>
+  <script>
+    async function init() {
+      const adapter = await navigator.gpu.requestAdapter();
+      const device = await adapter.requestDevice();
+      const context = document.querySelector("#gpu").getContext("webgpu");
+      context.configure({ device, format: navigator.gpu.getPreferredCanvasFormat() });
+      device.queue.submit([]);
+    }
+  </script>
+</body></html>`;
+    const result = lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "webgpu_missing_frame_fence");
+    expect(finding).toBeDefined();
+    expect(finding?.severity).toBe("warning");
+    expect(finding?.fixHint).toContain("__hfWebGpu.registerDevice");
+  });
+
+  it("does not warn for WebGPU usage that registers the device or frame promise", () => {
+    const html = `
+<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080">
+    <canvas id="gpu"></canvas>
+  </div>
+  <script>
+    async function init() {
+      const adapter = await navigator.gpu.requestAdapter();
+      const device = await adapter.requestDevice();
+      window.__hfWebGpu?.registerDevice(device);
+      const context = document.querySelector("#gpu").getContext("webgpu");
+      context.configure({ device, format: navigator.gpu.getPreferredCanvasFormat() });
+      device.queue.submit([]);
+      window.__hfWebGpu?.registerFrame(device.queue.onSubmittedWorkDone());
+    }
+  </script>
+</body></html>`;
+    const result = lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "webgpu_missing_frame_fence");
+    expect(finding).toBeUndefined();
+  });
+
+  it("ignores WebGPU tokens that appear only in comments", () => {
+    const html = `
+<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080"></div>
+  <script>
+    // navigator.gpu.requestAdapter();
+    /* canvas.getContext("webgpu"); */
+  </script>
+</body></html>`;
+    const result = lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "webgpu_missing_frame_fence");
+    expect(finding).toBeUndefined();
+  });
+
+  it("warns for WebGPU usage in provided local external script contents", () => {
+    const html = `
+<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080">
+    <canvas id="gpu"></canvas>
+  </div>
+  <script src="./scene.js"></script>
+</body></html>`;
+    const result = lintHyperframeHtml(html, {
+      externalScripts: [
+        {
+          src: "./scene.js",
+          content: `
+            const adapter = await navigator.gpu.requestAdapter();
+            document.querySelector("#gpu").getContext("webgpu");
+          `,
+        },
+      ],
+    });
+    const finding = result.findings.find((f) => f.code === "webgpu_missing_frame_fence");
+    expect(finding).toBeDefined();
+  });
 });

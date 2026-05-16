@@ -10,8 +10,10 @@
  *   - Decodes 16-bit HDR PNGs once and blits them as image layers.
  *   - Queries Chrome z-order at layout-change boundaries and groups
  *     elements into DOM / HDR video / HDR image layers.
- *   - Composites bottom-to-top in Node memory, writing rgb48le buffers
- *     to the encoder's stdin.
+ *   - Dispatches per-frame work to either the sequential layered loop
+ *     (HDR-content, single-worker, all-transition edge cases) or the
+ *     hybrid parallel loop introduced in hf#732 (multi-worker SDR with
+ *     `worker_threads`-pool shader blend).
  *
  * Cleanup invariants the design doc explicitly flags as risky —
  * preserved verbatim from the in-process renderer:
@@ -19,23 +21,35 @@
  *     paths so they don't run twice when the success path already closed.
  *   - `hdrVideoFrameSources` is drained + cleared in the outer `finally`
  *     regardless of how the body exits.
- *   - `cfg.forceScreenshot = true` is set unconditionally inside the
- *     layered path because `captureAlphaPng` hangs under
- *     `--enable-begin-frame-control`.
+ *   - The layered path unconditionally captures in screenshot mode
+ *     because `captureAlphaPng` hangs under `--enable-begin-frame-control`.
+ *     Previously the stage mutated `cfg.forceScreenshot = true` directly;
+ *     the value is now derived into a local `hdrCfg` so the caller-owned
+ *     `cfg` survives the stage unchanged. The sequencer is expected to
+ *     pass `forceScreenshot: true` for the layered branch as a contract
+ *     check.
  *
- * Known follow-up: same runtime import cycle pattern as the other
- * capture stages — the stage imports HDR helpers from
- * `renderOrchestrator.ts` (runtime), which imports the stage back.
- * Safe at runtime; a future PR will consolidate these helpers.
+ * Resource setup (HDR video extraction, image decode, dim probing) lives
+ * in `captureHdrResources.ts`; per-frame work lives in
+ * `captureHdrSequentialLoop.ts` and `captureHdrHybridLoop.ts`. Shared
+ * primitives across both loops live in `captureHdrFrameShared.ts`.
  */
 import { type BeforeCaptureHook, type CaptureOptions, type EngineConfig, type HdrTransfer, getEncoderPreset } from "@hyperframes/engine";
 import type { FileServerHandle } from "../../fileServer.js";
 import type { ProducerLogger } from "../../../logger.js";
 import { type HdrDiagnostics, type HdrPerfCollector, type ProgressCallback, type RenderJob } from "../../renderOrchestrator.js";
-import { type CompositionMetadata } from "../shared.js";
+import type { CompositionMetadata } from "../shared.js";
 export interface CaptureHdrStageInput {
     job: RenderJob;
     cfg: EngineConfig;
+    /**
+     * Capture-mode flag threaded from `compileStage`. The HDR layered
+     * branch requires `true` (see file header for the
+     * `captureAlphaPng` / `--enable-begin-frame-control` constraint);
+     * the stage throws if called with `false`. Stored locally as
+     * `hdrCfg.forceScreenshot` so the caller-owned `cfg` is not mutated.
+     */
+    forceScreenshot: boolean;
     log: ProducerLogger;
     projectDir: string;
     compiledDir: string;
@@ -62,6 +76,12 @@ export interface CaptureHdrStageInput {
     createRenderVideoFrameInjector: () => BeforeCaptureHook | null;
     /** Mutated in place (counters incremented). */
     hdrDiagnostics: HdrDiagnostics;
+    /**
+     * Worker budget for the hybrid layered path. Only consulted when the
+     * gating predicate (`shouldUseHybridLayeredPath`) returns true. The
+     * sequential loop always runs on a single DOM session.
+     */
+    workerCount?: number;
     abortSignal: AbortSignal | undefined;
     assertNotAborted: () => void;
     onProgress?: ProgressCallback;

@@ -6,6 +6,7 @@ import { resolveProject } from "../utils/project.js";
 import { resolveCompositionViewportFromHtml } from "../utils/compositionViewport.js";
 import { c } from "../ui/colors.js";
 import { withMeta } from "../utils/updateCheck.js";
+import { waitForOptionalWebGpuFrame } from "../utils/webgpuFrame.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -64,6 +65,7 @@ async function seekTo(page: import("puppeteer-core").Page, time: number): Promis
       }
     }
   }, time);
+  await waitForOptionalWebGpuFrame(page, time);
   await new Promise((r) => setTimeout(r, SEEK_SETTLE_MS));
 }
 
@@ -159,7 +161,10 @@ async function validateInBrowser(
     const chromeBrowser = await puppeteer.default.launch({
       headless: true,
       executablePath: browser.executablePath,
-      args: buildChromeArgs({ ...viewport, captureMode: "screenshot" }, { browserGpuMode }),
+      args: buildChromeArgs(
+        { ...viewport, captureMode: "screenshot" },
+        { browserGpuMode, browserWebGpuMode: "auto" },
+      ),
     });
 
     const page = await chromeBrowser.newPage();

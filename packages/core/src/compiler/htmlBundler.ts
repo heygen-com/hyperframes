@@ -11,6 +11,7 @@ import {
   rewriteAssetPaths,
   rewriteCssAssetUrls,
   rewriteInlineStyleAssetUrls,
+  rewriteSubCompositionScriptSrc,
 } from "./rewriteSubCompPaths";
 import { scopeCssToComposition, wrapScopedCompositionScript } from "./compositionScoping";
 import { validateHyperframeHtmlContract } from "./staticGuard";
@@ -509,7 +510,10 @@ export async function bundleToSingleHtml(
         );
       }
       for (const s of [...compDoc.head.querySelectorAll("script")]) {
-        const externalSrc = (s.getAttribute("src") || "").trim();
+        const rawExternalSrc = (s.getAttribute("src") || "").trim();
+        const externalSrc = rawExternalSrc
+          ? rewriteSubCompositionScriptSrc(src, rawExternalSrc)
+          : "";
         if (externalSrc && !compExternalScriptSrcs.includes(externalSrc)) {
           compExternalScriptSrcs.push(externalSrc);
         }
@@ -524,7 +528,8 @@ export async function bundleToSingleHtml(
       s.remove();
     }
     for (const s of [...contentDoc.querySelectorAll("script")]) {
-      const externalSrc = (s.getAttribute("src") || "").trim();
+      const rawExternalSrc = (s.getAttribute("src") || "").trim();
+      const externalSrc = rawExternalSrc ? rewriteSubCompositionScriptSrc(src, rawExternalSrc) : "";
       if (externalSrc) {
         // External CDN/remote script — collect for deduped injection into the document.
         // Do NOT try to inline the content (external scripts have no innerHTML).

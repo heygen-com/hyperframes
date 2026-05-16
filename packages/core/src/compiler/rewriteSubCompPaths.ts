@@ -28,6 +28,7 @@ function isAbsoluteOrSpecial(val: string): boolean {
     !val ||
     val.startsWith("http://") ||
     val.startsWith("https://") ||
+    val.startsWith("blob:") ||
     val.startsWith("//") ||
     val.startsWith("data:") ||
     val.startsWith("#")
@@ -61,6 +62,28 @@ export function rewriteAssetPath(compSrcPath: string, relativePath: string): str
   const resolved = join(compDir, relativePath);
   const normalized = resolve("/", resolved).slice(1);
   return normalized;
+}
+
+/**
+ * Rewrite a script src from a sub-composition document context to the root
+ * document context. Script URLs follow normal HTML resolution rules, so even
+ * plain relative values like "./scene.js" are sub-composition-relative before
+ * hoisting and must be rewritten when the script tag moves to the root page.
+ */
+export function rewriteSubCompositionScriptSrc(compSrcPath: string, scriptSrc: string): string {
+  const trimmed = scriptSrc.trim();
+  if (!trimmed || isAbsoluteOrSpecial(trimmed) || trimmed.startsWith("/")) return scriptSrc;
+
+  const match = trimmed.match(/^([^?#]*)([?#].*)?$/);
+  const pathPart = match?.[1] ?? "";
+  const suffix = match?.[2] ?? "";
+  if (!pathPart) return scriptSrc;
+
+  const compDir = dirname(compSrcPath);
+  if (!compDir || compDir === ".") return scriptSrc;
+
+  const normalized = resolve("/", join(compDir, pathPart)).slice(1);
+  return `${normalized}${suffix}`;
 }
 
 /**

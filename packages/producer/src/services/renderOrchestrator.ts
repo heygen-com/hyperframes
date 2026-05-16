@@ -87,6 +87,7 @@ import {
 import { defaultLogger, type ProducerLogger } from "../logger.js";
 import { type HdrImageTransferCache } from "./hdrImageTransferCache.js";
 import {
+  applyWebGpuRenderModeHints,
   createCompiledFrameSrcResolver,
   createMemorySampler,
   type MemorySampler,
@@ -1534,6 +1535,15 @@ export async function executeRenderJob(
     const { deviceScaleFactor, outputWidth, outputHeight } = compileResult;
     const { width, height } = composition;
     perfStages.compileOnlyMs = compileResult.compileOnlyMs;
+    applyWebGpuRenderModeHints(cfg, compiled, log, {
+      allowBrowserGpuModeAuto:
+        job.config.producerConfig === undefined &&
+        process.env.PRODUCER_BROWSER_GPU_MODE === undefined &&
+        process.env.PRODUCER_DISABLE_GPU === undefined,
+      allowBrowserWebGpuModeAuto:
+        job.config.producerConfig === undefined &&
+        process.env.PRODUCER_BROWSER_WEBGPU_MODE === undefined,
+    });
     // Snapshot of `cfg.forceScreenshot` resolved by compileStage. The
     // BeginFrame auto-worker calibration may flip this to `true` at
     // runtime if the calibration session times out under BeginFrame

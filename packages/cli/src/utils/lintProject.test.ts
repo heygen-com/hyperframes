@@ -121,6 +121,35 @@ describe("lintProject", () => {
     expect(finding?.selector).toBe('[data-composition-id="scene"] .title');
   });
 
+  it("lints local external script contents for WebGPU frame readiness", () => {
+    const project = makeProject(`<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080">
+    <canvas id="gpu"></canvas>
+  </div>
+  <script src="./scene.js"></script>
+</body></html>`);
+    writeFileSync(
+      join(project.dir, "scene.js"),
+      `
+        async function boot() {
+          const adapter = await navigator.gpu.requestAdapter();
+          const device = await adapter.requestDevice();
+          document.querySelector("#gpu").getContext("webgpu");
+          device.queue.submit([]);
+        }
+      `,
+    );
+
+    const { totalWarnings, results } = lintProject(project);
+    const finding = results[0]?.result.findings.find(
+      (item) => item.code === "webgpu_missing_frame_fence",
+    );
+
+    expect(totalWarnings).toBeGreaterThan(0);
+    expect(finding).toBeDefined();
+    expect(finding?.severity).toBe("warning");
+  });
+
   it("aggregates errors across index.html and sub-compositions", () => {
     const project = makeProject(htmlWithMissingMediaId(), {
       "overlay.html": htmlWithMissingMediaId(),

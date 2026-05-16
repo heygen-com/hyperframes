@@ -30,6 +30,9 @@ describe("resolveConfig", () => {
     expect(config.format).toBe("jpeg");
     expect(config.jpegQuality).toBe(80);
     expect(config.browserGpuMode).toBe("software");
+    expect(config.browserWebGpuMode).toBe("off");
+    expect(config.browserWebGpuUnsafe).toBe(false);
+    expect(config.webGpuFrameTimeout).toBe(5000);
     expect(config.enableStreamingEncode).toBe(true);
     expect(config.streamingEncodeMaxDurationSeconds).toBe(240);
     expect(config.audioGain).toBe(1);
@@ -109,6 +112,24 @@ describe("resolveConfig", () => {
 
     const config = resolveConfig();
     expect(config.browserGpuMode).toBe("software");
+  });
+
+  it("reads browser WebGPU mode and unsafe opt-in from env", () => {
+    setEnv("PRODUCER_BROWSER_WEBGPU_MODE", "required");
+    setEnv("PRODUCER_BROWSER_WEBGPU_UNSAFE", "true");
+    setEnv("PRODUCER_WEBGPU_FRAME_TIMEOUT_MS", "9000");
+
+    const config = resolveConfig();
+    expect(config.browserWebGpuMode).toBe("required");
+    expect(config.browserWebGpuUnsafe).toBe(true);
+    expect(config.webGpuFrameTimeout).toBe(9000);
+  });
+
+  it("falls back to off browser WebGPU mode for invalid env values", () => {
+    setEnv("PRODUCER_BROWSER_WEBGPU_MODE", "maybe");
+
+    const config = resolveConfig();
+    expect(config.browserWebGpuMode).toBe("off");
   });
 
   it("explicit overrides take precedence over env vars", () => {

@@ -40,6 +40,17 @@ npx hyperframes init my-video --example <name>
     <video className="w-full aspect-video object-cover block" src="https://static.heygen.ai/hyperframes-oss/docs/images/templates/nyt-graph.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/templates/nyt-graph.png" muted loop playsInline preload="metadata" />
     <div className="absolute bottom-0 left-0 right-0 pt-6 pb-2 px-3" style={{background: "linear-gradient(transparent, rgba(0,0,0,0.75))"}}><strong className="text-sm font-semibold text-white block">NYT Graph</strong><span className="text-xs text-zinc-300">Data stories</span></div>
   </div>
+  <div className="tpl-card relative rounded-xl overflow-hidden bg-zinc-950 transition-transform hover:-translate-y-0.5 hover:shadow-xl">
+    <div className="w-full aspect-video block relative overflow-hidden" style={{background: "#080b12"}}>
+      <div className="absolute inset-0" style={{background: "linear-gradient(135deg, #111827, #020617)"}} />
+      <div className="absolute inset-0 opacity-50" style={{backgroundImage: "linear-gradient(rgba(255,255,255,0.08) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.08) 1px, transparent 1px)", backgroundSize: "48px 48px"}} />
+      <div className="absolute inset-x-8 top-10 h-28 rounded" style={{background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.16)"}} />
+      <div className="absolute left-10 bottom-12 h-3 w-48 rounded-full" style={{background: "#2dd4bf"}} />
+      <div className="absolute left-10 bottom-20 h-7 w-80 rounded-sm" style={{background: "rgba(255,255,255,0.88)"}} />
+      <div className="absolute right-12 bottom-14 h-24 w-24 rotate-12 rounded-sm" style={{background: "linear-gradient(135deg, #2dd4bf, #f472b6 54%, #fde68a)"}} />
+    </div>
+    <div className="absolute bottom-0 left-0 right-0 pt-6 pb-2 px-3" style={{background: "linear-gradient(transparent, rgba(0,0,0,0.75))"}}><strong className="text-sm font-semibold text-white block">WebGPU Showcase</strong><span className="text-xs text-zinc-300">Mixed DOM and GPU canvas</span></div>
+  </div>
 </div>
 
 ## Portrait Templates
@@ -70,6 +81,7 @@ npx hyperframes init my-video --example <name>
 | `decision-tree` | Diagrammatic | Landscape | Explainers, tutorials |
 | `product-promo` | Multi-scene | Landscape | Product showcases, demos |
 | `nyt-graph` | Editorial data | Landscape | Data stories, reports |
+| `webgpu-showcase` | GPU canvas + DOM | Landscape | WebGPU, TypeGPU, shader-backed scenes |
 | `vignelli` | Bold, typographic | Portrait | Headlines, announcements |
 | `blank` | Minimal scaffolding | — | Full control, agent-generated |
 
@@ -197,6 +209,17 @@ npx hyperframes init my-video --example <name>
     ├── index.html
     └── compositions/
         └── nyt-chart.html
+    ```
+  </Tab>
+  <Tab title="webgpu-showcase">
+    ### webgpu-showcase
+
+    Mixed DOM and WebGPU canvas composition that uses the same seek-driven render path as ordinary HTML scenes.
+
+    ```
+    my-video/
+    ├── meta.json
+    └── index.html
     ```
   </Tab>
   <Tab title="blank">

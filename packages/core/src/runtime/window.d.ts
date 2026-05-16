@@ -24,6 +24,30 @@ type ThreeLike = {
   };
 };
 
+type HyperframesWebGpuDeviceLike = {
+  queue?: {
+    onSubmittedWorkDone?: () => Promise<unknown>;
+  };
+};
+
+type HyperframesWebGpuWork =
+  | boolean
+  | PromiseLike<unknown>
+  | ((time?: number) => unknown | PromiseLike<unknown>)
+  | null
+  | undefined;
+
+type HyperframesWebGpuRuntime = {
+  readonly devices: readonly HyperframesWebGpuDeviceLike[];
+  readonly pendingFrameCount: number;
+  registerDevice: (device: HyperframesWebGpuDeviceLike) => void;
+  registerFrame: (work: HyperframesWebGpuWork) => Promise<unknown>;
+  setReady: (work: HyperframesWebGpuWork) => Promise<unknown>;
+  waitUntilReady: () => Promise<void>;
+  waitForFrame: (time?: number) => Promise<void>;
+  discardPendingFrames: () => void;
+};
+
 declare global {
   interface Window {
     __timelines: Record<string, RuntimeTimelineLike>;
@@ -44,6 +68,28 @@ declare global {
      * imperative push signal: `window.addEventListener("hf-seek", e => render(e.detail.time))`.
      */
     __hfTypegpuTime?: number;
+    /**
+     * WebGPU/TypeGPU frame fence helper installed by the runtime adapter.
+     *
+     * Register a device once with `registerDevice(device)`, or register each
+     * submitted frame with `registerFrame(device.queue.onSubmittedWorkDone())`.
+     * The renderer waits for this helper before screenshot capture so WebGPU
+     * canvases compose with DOM/canvas layers the same way regular scenes do.
+     */
+    __hfWebGpu?: HyperframesWebGpuRuntime;
+    /**
+     * Optional author-provided initial readiness hook for async WebGPU setup.
+     * Can be a Promise, thenable, boolean, or function returning a Promise.
+     */
+    __hfWebGpuReady?: HyperframesWebGpuWork;
+    /**
+     * Optional author-provided per-frame readiness hook. Prefer
+     * `window.__hfWebGpu.registerFrame(...)` for new compositions.
+     */
+    __hfWebGpuFrameReady?: HyperframesWebGpuWork;
+    __hfWebGpuWaitForFrame?: (time?: number) => unknown | PromiseLike<unknown>;
+    __hfRegisterWebGpuDevice?: (device: HyperframesWebGpuDeviceLike) => void;
+    __hfRegisterWebGpuFrame?: (work: HyperframesWebGpuWork) => Promise<unknown>;
     __HF_PICKER_API?: HyperframePickerApi;
     gsap?: {
       timeline: (params?: { paused?: boolean }) => RuntimeTimelineLike;

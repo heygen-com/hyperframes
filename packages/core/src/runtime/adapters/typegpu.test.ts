@@ -2,11 +2,26 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createTypegpuAdapter } from "./typegpu";
 import { resetSeekDispatchState } from "./seek-dispatch";
 
-const gpuWindow = window as Window & { __hfTypegpuTime?: number };
+const gpuWindow = window as Window & {
+  __hfTypegpuTime?: number;
+  __hfWebGpu?: {
+    readonly devices: readonly { queue?: { onSubmittedWorkDone?: () => Promise<unknown> } }[];
+    readonly pendingFrameCount: number;
+    registerDevice: (device: { queue?: { onSubmittedWorkDone?: () => Promise<unknown> } }) => void;
+    registerFrame: (work: PromiseLike<unknown>) => Promise<unknown>;
+    waitForFrame: (time?: number) => Promise<void>;
+    discardPendingFrames: () => void;
+  };
+  __hfRegisterWebGpuDevice?: unknown;
+  __hfRegisterWebGpuFrame?: unknown;
+};
 
 describe("typegpu adapter", () => {
   beforeEach(() => {
     delete gpuWindow.__hfTypegpuTime;
+    delete gpuWindow.__hfWebGpu;
+    delete gpuWindow.__hfRegisterWebGpuDevice;
+    delete gpuWindow.__hfRegisterWebGpuFrame;
     // Reset shared dedup state so each test starts with a clean dispatch history
     resetSeekDispatchState();
   });
@@ -85,5 +100,101 @@ describe("typegpu adapter", () => {
   it("discover is a no-op and does not throw", () => {
     const adapter = createTypegpuAdapter();
     expect(() => adapter.discover()).not.toThrow();
+  });
+
+  it("installs a shared WebGPU frame fence helper", () => {
+    const adapter = createTypegpuAdapter();
+    adapter.discover();
+
+    expect(gpuWindow.__hfWebGpu).toBeDefined();
+    expect(typeof gpuWindow.__hfWebGpu?.registerDevice).toBe("function");
+    expect(typeof gpuWindow.__hfWebGpu?.registerFrame).toBe("function");
+    expect(typeof gpuWindow.__hfWebGpu?.waitForFrame).toBe("function");
+    expect(typeof gpuWindow.__hfRegisterWebGpuDevice).toBe("function");
+    expect(typeof gpuWindow.__hfRegisterWebGpuFrame).toBe("function");
+  });
+
+  it("waits for registered frame promises without also polling device queues", async () => {
+    const originalRaf = window.requestAnimationFrame;
+    window.requestAnimationFrame = ((callback: FrameRequestCallback) => {
+      callback(0);
+      return 1;
+    }) as typeof window.requestAnimationFrame;
+
+    try {
+      const adapter = createTypegpuAdapter();
+      adapter.discover();
+
+      let resolveFrame: (() => void) | undefined;
+      const framePromise = new Promise<void>((resolve) => {
+        resolveFrame = resolve;
+      });
+      const queueDone = vi.fn(async () => undefined);
+
+      gpuWindow.__hfWebGpu!.registerDevice({ queue: { onSubmittedWorkDone: queueDone } });
+      gpuWindow.__hfWebGpu!.registerFrame(framePromise);
+
+      expect(gpuWindow.__hfWebGpu!.pendingFrameCount).toBe(1);
+
+      const wait = gpuWindow.__hfWebGpu!.waitForFrame(1);
+      resolveFrame!();
+      await wait;
+
+      expect(queueDone).not.toHaveBeenCalled();
+      expect(gpuWindow.__hfWebGpu!.pendingFrameCount).toBe(0);
+    } finally {
+      window.requestAnimationFrame = originalRaf;
+    }
+  });
+
+  it("uses registered device queues as a fallback when no frame promise is registered", async () => {
+    const originalRaf = window.requestAnimationFrame;
+    window.requestAnimationFrame = ((callback: FrameRequestCallback) => {
+      callback(0);
+      return 1;
+    }) as typeof window.requestAnimationFrame;
+
+    try {
+      const adapter = createTypegpuAdapter();
+      adapter.discover();
+      const queueDone = vi.fn(async () => undefined);
+
+      gpuWindow.__hfWebGpu!.registerDevice({ queue: { onSubmittedWorkDone: queueDone } });
+      await gpuWindow.__hfWebGpu!.waitForFrame(1);
+
+      expect(queueDone).toHaveBeenCalledOnce();
+    } finally {
+      window.requestAnimationFrame = originalRaf;
+    }
+  });
+
+  it("falls back when requestAnimationFrame does not fire during capture", async () => {
+    vi.useFakeTimers();
+    const originalRaf = window.requestAnimationFrame;
+    window.requestAnimationFrame = (() => 1) as typeof window.requestAnimationFrame;
+
+    try {
+      const adapter = createTypegpuAdapter();
+      adapter.discover();
+
+      const wait = gpuWindow.__hfWebGpu!.waitForFrame(1);
+      await vi.advanceTimersByTimeAsync(50);
+      await vi.advanceTimersByTimeAsync(50);
+
+      await wait;
+    } finally {
+      window.requestAnimationFrame = originalRaf;
+      vi.useRealTimers();
+    }
+  });
+
+  it("can discard stale pending frame promises", () => {
+    const adapter = createTypegpuAdapter();
+    adapter.discover();
+    gpuWindow.__hfWebGpu!.registerFrame(new Promise(() => {}));
+
+    expect(gpuWindow.__hfWebGpu!.pendingFrameCount).toBe(1);
+    gpuWindow.__hfWebGpu!.discardPendingFrames();
+    expect(gpuWindow.__hfWebGpu!.pendingFrameCount).toBe(0);
   });
 });

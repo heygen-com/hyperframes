@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>WebGPU Showcase</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #071013;
+        font-family: Inter, Arial, sans-serif;
+      }
+      #webgpu-showcase {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        color: white;
+      }
+      #gpu-canvas,
+      #fallback {
+        position: absolute;
+        inset: 0;
+        width: 1920px;
+        height: 1080px;
+      }
+      #fallback {
+        background:
+          radial-gradient(circle at 30% 40%, rgba(74, 222, 128, 0.28), transparent 28%),
+          radial-gradient(circle at 72% 48%, rgba(56, 189, 248, 0.2), transparent 30%),
+          linear-gradient(135deg, #071013, #17212b 54%, #0f172a);
+      }
+      .hud {
+        position: absolute;
+        left: 72px;
+        right: 72px;
+        top: 62px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 24px;
+        font-weight: 800;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+      }
+      .title {
+        position: absolute;
+        left: 72px;
+        bottom: 116px;
+        width: 1020px;
+        font-size: 108px;
+        line-height: 0.92;
+        font-weight: 900;
+        color: #031114;
+      }
+      .badge {
+        position: absolute;
+        right: 72px;
+        bottom: 122px;
+        width: 430px;
+        border: 1px solid rgba(3, 17, 20, 0.35);
+        padding: 28px 32px;
+        font-size: 30px;
+        line-height: 1.18;
+        font-weight: 700;
+        color: #031114;
+        background: rgba(226, 255, 248, 0.72);
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="webgpu-showcase"
+      data-composition-id="webgpu-showcase"
+      data-start="0"
+      data-duration="6"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div id="fallback"></div>
+      <canvas id="gpu-canvas"></canvas>
+      <div class="hud">
+        <span>Mixed Scene</span>
+        <span>DOM + WebGPU</span>
+      </div>
+      <div class="title">Seekable GPU frames</div>
+      <div class="badge">The CLI waits for WebGPU work before every capture.</div>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+      tl.from(".title", { y: 80, opacity: 0, duration: 0.8, ease: "power3.out" }, 0.2);
+      tl.from(".badge", { y: 48, opacity: 0, duration: 0.7, ease: "power3.out" }, 0.8);
+      tl.to(".title", { x: 70, duration: 3.8, ease: "none" }, 1.2);
+      tl.to(".badge", { y: -24, duration: 3.2, ease: "sine.inOut" }, 1.6);
+      tl.set({}, {}, 6);
+      window.__timelines["webgpu-showcase"] = tl;
+
+      const WGSL = `
+struct U { time: f32, _pad0: f32, _pad1: f32, _pad2: f32 }
+@group(0) @binding(0) var<uniform> u: U;
+
+struct Vo { @builtin(position) pos: vec4f, @location(0) uv: vec2f }
+
+@vertex fn vs(@builtin(vertex_index) vi: u32) -> Vo {
+  let ps = array<vec2f, 3>(vec2f(-1.0, -1.0), vec2f(3.0, -1.0), vec2f(-1.0, 3.0));
+  let uv = array<vec2f, 3>(vec2f(0.0, 1.0), vec2f(2.0, 1.0), vec2f(0.0, -1.0));
+  return Vo(vec4f(ps[vi], 0.0, 1.0), uv[vi]);
+}
+
+@fragment fn fs(in: Vo) -> @location(0) vec4f {
+  let p = in.uv - vec2f(0.5);
+  let r = length(p);
+  let wave = sin((p.x * 8.0 + p.y * 5.0) + u.time * 2.2);
+  let ring = smoothstep(0.36, 0.34, abs(r - 0.22 - 0.04 * sin(u.time)));
+  let grid = 0.08 * sin((in.uv.x + u.time * 0.05) * 48.0) * sin((in.uv.y - u.time * 0.04) * 30.0);
+  let base = mix(vec3f(0.02, 0.07, 0.08), vec3f(0.05, 0.15, 0.22), in.uv.y);
+  let color = base + vec3f(0.08, 0.8, 0.55) * ring + vec3f(0.08, 0.22, 0.42) * (wave * 0.5 + 0.5) * 0.35 + grid;
+  return vec4f(color, 1.0);
+}`;
+
+      (async () => {
+        if (!navigator.gpu) return;
+        const adapter = await navigator.gpu.requestAdapter();
+        if (!adapter) return;
+        const device = await adapter.requestDevice();
+        window.__hfWebGpu?.registerDevice(device);
+
+        const canvas = document.getElementById("gpu-canvas");
+        canvas.width = 1920;
+        canvas.height = 1080;
+        const context = canvas.getContext("webgpu");
+        const format = navigator.gpu.getPreferredCanvasFormat();
+        context.configure({ device, format, alphaMode: "opaque" });
+
+        const uniformData = new Float32Array(4);
+        const uniformBuffer = device.createBuffer({
+          size: 16,
+          usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+        });
+        const module = device.createShaderModule({ code: WGSL });
+        const bindGroupLayout = device.createBindGroupLayout({
+          entries: [
+            {
+              binding: 0,
+              visibility: GPUShaderStage.FRAGMENT,
+              buffer: { type: "uniform" },
+            },
+          ],
+        });
+        const pipeline = device.createRenderPipeline({
+          layout: device.createPipelineLayout({ bindGroupLayouts: [bindGroupLayout] }),
+          vertex: { module, entryPoint: "vs" },
+          fragment: { module, entryPoint: "fs", targets: [{ format }] },
+          primitive: { topology: "triangle-list" },
+        });
+        const bindGroup = device.createBindGroup({
+          layout: bindGroupLayout,
+          entries: [{ binding: 0, resource: { buffer: uniformBuffer } }],
+        });
+
+        function render(timeSeconds) {
+          uniformData[0] = timeSeconds;
+          device.queue.writeBuffer(uniformBuffer, 0, uniformData);
+          const encoder = device.createCommandEncoder();
+          const pass = encoder.beginRenderPass({
+            colorAttachments: [
+              {
+                view: context.getCurrentTexture().createView(),
+                loadOp: "clear",
+                clearValue: { r: 0, g: 0, b: 0, a: 1 },
+                storeOp: "store",
+              },
+            ],
+          });
+          pass.setPipeline(pipeline);
+          pass.setBindGroup(0, bindGroup);
+          pass.draw(3);
+          pass.end();
+          device.queue.submit([encoder.finish()]);
+          window.__hfWebGpu?.registerFrame(device.queue.onSubmittedWorkDone());
+        }
+
+        render(window.__hfTypegpuTime ?? 0);
+        window.addEventListener("hf-seek", (event) => render(event.detail.time));
+      })();
+    </script>
+  </body>
+</html>

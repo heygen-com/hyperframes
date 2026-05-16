@@ -78,6 +78,7 @@
               "guides/prompting",
               "guides/hyperframes-vs-remotion",
               "guides/gsap-animation",
+              "guides/webgpu",
               "guides/rendering",
               "guides/deploy",
               "guides/remove-background",

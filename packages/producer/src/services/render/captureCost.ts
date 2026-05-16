@@ -76,6 +76,10 @@ export function estimateCaptureCostMultiplier(
     multiplier += 1;
     reasons.push("requestAnimationFrame");
   }
+  if (reasonCodes.has("webgpu")) {
+    multiplier += 1;
+    reasons.push("webgpu");
+  }
   if (reasonCodes.has("iframe")) {
     multiplier += 0.5;
     reasons.push("iframe");

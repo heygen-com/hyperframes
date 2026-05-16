@@ -41,6 +41,19 @@ export interface EngineConfig {
    *   Cost: one extra Chrome launch (~1-2 s) per process; result cached.
    */
   browserGpuMode: "software" | "hardware" | "auto";
+  /**
+   * Browser WebGPU policy.
+   * - "off": do not add WebGPU-specific Chrome flags.
+   * - "auto": use Chromium's built-in WebGPU support when available.
+   * - "required": opt into WebGPU-enabling flags and fail at the scene level
+   *   if the composition cannot acquire a WebGPU adapter.
+   */
+  browserWebGpuMode: "off" | "auto" | "required";
+  /**
+   * Add Chrome's unsafe WebGPU opt-in flag. Useful for local Linux or blocked
+   * adapters, but intentionally separate from `browserWebGpuMode="auto"`.
+   */
+  browserWebGpuUnsafe: boolean;
   enableBrowserPool: boolean;
   browserTimeout: number;
   protocolTimeout: number;
@@ -124,6 +137,8 @@ export interface EngineConfig {
   // ── Timeouts ─────────────────────────────────────────────────────────
   playerReadyTimeout: number;
   renderReadyTimeout: number;
+  /** Max time to wait for author/runtime WebGPU frame fences before capture. */
+  webGpuFrameTimeout: number;
 
   // ── Runtime ──────────────────────────────────────────────────────────
   /** Verify Hyperframe runtime SHA256 checksums. */
@@ -173,6 +188,8 @@ export const DEFAULT_CONFIG: EngineConfig = {
 
   disableGpu: false,
   browserGpuMode: "software",
+  browserWebGpuMode: "off",
+  browserWebGpuUnsafe: false,
   enableBrowserPool: true,
   browserTimeout: 120_000,
   protocolTimeout: 300_000,
@@ -197,6 +214,7 @@ export const DEFAULT_CONFIG: EngineConfig = {
 
   playerReadyTimeout: 45_000,
   renderReadyTimeout: 15_000,
+  webGpuFrameTimeout: 5_000,
 
   verifyRuntime: true,
 
@@ -226,6 +244,11 @@ export function resolveConfig(overrides?: Partial<EngineConfig>): EngineConfig {
     if (raw === "hardware" || raw === "software" || raw === "auto") return raw;
     return DEFAULT_CONFIG.browserGpuMode;
   };
+  const envBrowserWebGpuMode = (): EngineConfig["browserWebGpuMode"] => {
+    const raw = env("PRODUCER_BROWSER_WEBGPU_MODE");
+    if (raw === "off" || raw === "auto" || raw === "required") return raw;
+    return DEFAULT_CONFIG.browserWebGpuMode;
+  };
 
   // Env-var layer (backward compat)
   const fromEnv: Partial<EngineConfig> = {
@@ -240,6 +263,11 @@ export function resolveConfig(overrides?: Partial<EngineConfig>): EngineConfig {
     chromePath: env("PRODUCER_HEADLESS_SHELL_PATH"),
     disableGpu: envBool("PRODUCER_DISABLE_GPU", DEFAULT_CONFIG.disableGpu),
     browserGpuMode: envBrowserGpuMode(),
+    browserWebGpuMode: envBrowserWebGpuMode(),
+    browserWebGpuUnsafe: envBool(
+      "PRODUCER_BROWSER_WEBGPU_UNSAFE",
+      DEFAULT_CONFIG.browserWebGpuUnsafe,
+    ),
     enableBrowserPool: envBool("PRODUCER_ENABLE_BROWSER_POOL", DEFAULT_CONFIG.enableBrowserPool),
     browserTimeout: envNum("PRODUCER_PUPPETEER_LAUNCH_TIMEOUT_MS", DEFAULT_CONFIG.browserTimeout),
     protocolTimeout: envNum(
@@ -310,6 +338,10 @@ export function resolveConfig(overrides?: Partial<EngineConfig>): EngineConfig {
     renderReadyTimeout: envNum(
       "PRODUCER_RENDER_READY_TIMEOUT_MS",
       DEFAULT_CONFIG.renderReadyTimeout,
+    ),
+    webGpuFrameTimeout: envNum(
+      "PRODUCER_WEBGPU_FRAME_TIMEOUT_MS",
+      DEFAULT_CONFIG.webGpuFrameTimeout,
     ),
 
     verifyRuntime: env("PRODUCER_VERIFY_HYPERFRAME_RUNTIME") !== "false",

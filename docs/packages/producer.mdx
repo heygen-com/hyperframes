@@ -229,14 +229,16 @@ npx hyperframes doctor
 The CLI enables local Chrome/WebGL GPU capture automatically and supports `--no-browser-gpu` as an opt-out. When using the producer API directly, pass an engine config override:
 
 ```typescript
-import { resolveConfig } from '@hyperframes/producer';
+import { createRenderJob, resolveConfig } from "@hyperframes/producer";
 
 const job = createRenderJob({
   fps: 30,
-  quality: 'standard',
-  producerConfig: resolveConfig({ browserGpuMode: 'hardware' }),
+  quality: "standard",
+  producerConfig: resolveConfig({ browserGpuMode: "hardware" }),
 });
 ```
+
+WebGPU and TypeGPU compositions are auto-detected during compile. Direct producer renders lift the default browser capture config to `browserGpuMode: "auto"` and `browserWebGpuMode: "auto"` when static hints prove the scene uses WebGPU, unless you provided an explicit `producerConfig` or env override. Pin `browserWebGpuMode: "required"` when a render must fail fast if Chrome cannot expose WebGPU.
 
 ## Additional Exports
 

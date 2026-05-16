@@ -24,6 +24,11 @@ interface CssSource {
   rootRelativePath?: string;
 }
 
+interface ScriptSource {
+  src: string;
+  content: string;
+}
+
 export interface ProjectLintResult {
   results: Array<{ file: string; result: HyperframeLintResult }>;
   totalErrors: number;
@@ -67,6 +72,28 @@ function collectExternalStyles(
     styles.push({ href, content: readFileSync(resolved, "utf-8") });
   }
   return styles;
+}
+
+function collectExternalScripts(
+  projectDir: string,
+  html: string,
+  compSrcPath?: string,
+): ScriptSource[] {
+  const scripts: ScriptSource[] = [];
+  const scriptRe = /<script\b[^>]*>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = scriptRe.exec(html)) !== null) {
+    const tag = match[0];
+    const src = readHtmlAttr(tag, "src");
+    if (!src || isRemoteOrInlineUrl(src)) continue;
+    const cleanSrc = cleanAssetUrl(src);
+    if (!cleanSrc) continue;
+    const rootRelative = compSrcPath ? join(dirname(compSrcPath), cleanSrc) : cleanSrc;
+    const resolved = resolve(projectDir, rootRelative);
+    if (!existsSync(resolved)) continue;
+    scripts.push({ src, content: readFileSync(resolved, "utf-8") });
+  }
+  return scripts;
 }
 
 function collectCssSources(projectDir: string, html: string, compSrcPath?: string): CssSource[] {
@@ -140,6 +167,7 @@ export function lintProject(project: ProjectDir): ProjectLintResult {
   const rootResult = lintHyperframeHtml(rootHtml, {
     filePath: project.indexPath,
     externalStyles: collectExternalStyles(project.dir, rootHtml),
+    externalScripts: collectExternalScripts(project.dir, rootHtml),
   });
   results.push({ file: "index.html", result: rootResult });
   totalErrors += rootResult.errorCount;
@@ -160,6 +188,7 @@ export function lintProject(project: ProjectDir): ProjectLintResult {
         filePath,
         isSubComposition: true,
         externalStyles: collectExternalStyles(project.dir, html, compSrcPath),
+        externalScripts: collectExternalScripts(project.dir, html, compSrcPath),
       });
       results.push({ file: `compositions/${file}`, result });
       totalErrors += result.errorCount;

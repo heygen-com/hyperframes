@@ -134,6 +134,7 @@ export {
   rewriteAssetPaths,
   rewriteAssetPath,
   rewriteCssAssetUrls,
+  rewriteSubCompositionScriptSrc,
 } from "./compiler/rewriteSubCompPaths";
 
 // Inline scripts

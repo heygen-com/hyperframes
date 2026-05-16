@@ -35,9 +35,11 @@ describe("renderLocal browser GPU config", () => {
   // `beforeAll` keeps every test fast and isolated.
   let renderLocal: typeof import("./render.js").renderLocal;
   let resolveBrowserGpuForCli: typeof import("./render.js").resolveBrowserGpuForCli;
+  let resolveBrowserWebGpuForCli: typeof import("./render.js").resolveBrowserWebGpuForCli;
 
   beforeAll(async () => {
-    ({ renderLocal, resolveBrowserGpuForCli } = await import("./render.js"));
+    ({ renderLocal, resolveBrowserGpuForCli, resolveBrowserWebGpuForCli } =
+      await import("./render.js"));
   });
 
   function setEnv(key: string, value: string) {
@@ -77,7 +79,11 @@ describe("renderLocal browser GPU config", () => {
       quiet: true,
     });
 
-    expect(producerState.resolveConfigCalls).toContainEqual({ browserGpuMode: "software" });
+    expect(producerState.resolveConfigCalls).toContainEqual({
+      browserGpuMode: "software",
+      browserWebGpuMode: "off",
+      browserWebGpuUnsafe: false,
+    });
     expect(producerState.createdJobs[0]?.producerConfig).toMatchObject({
       browserGpuMode: "software",
       resolved: true,
@@ -95,7 +101,11 @@ describe("renderLocal browser GPU config", () => {
       quiet: true,
     });
 
-    expect(producerState.resolveConfigCalls).toContainEqual({ browserGpuMode: "auto" });
+    expect(producerState.resolveConfigCalls).toContainEqual({
+      browserGpuMode: "auto",
+      browserWebGpuMode: "off",
+      browserWebGpuUnsafe: false,
+    });
     expect(producerState.createdJobs[0]?.producerConfig).toMatchObject({
       browserGpuMode: "auto",
       resolved: true,
@@ -113,7 +123,11 @@ describe("renderLocal browser GPU config", () => {
       quiet: true,
     });
 
-    expect(producerState.resolveConfigCalls).toContainEqual({ browserGpuMode: "hardware" });
+    expect(producerState.resolveConfigCalls).toContainEqual({
+      browserGpuMode: "hardware",
+      browserWebGpuMode: "off",
+      browserWebGpuUnsafe: false,
+    });
     expect(producerState.createdJobs[0]?.producerConfig).toMatchObject({
       browserGpuMode: "hardware",
       resolved: true,
@@ -133,6 +147,16 @@ describe("renderLocal browser GPU config", () => {
     // Docker forces software regardless of flags/env
     expect(resolveBrowserGpuForCli(true, undefined, "hardware")).toBe("software");
     expect(resolveBrowserGpuForCli(true, undefined, "auto")).toBe("software");
+  });
+
+  it("resolves browser WebGPU mode from CLI flags, Docker mode, and env fallback", () => {
+    expect(resolveBrowserWebGpuForCli(false, undefined, undefined)).toBe("auto");
+    expect(resolveBrowserWebGpuForCli(false, undefined, "required")).toBe("required");
+    expect(resolveBrowserWebGpuForCli(false, "off", "required")).toBe("off");
+    expect(resolveBrowserWebGpuForCli(false, "auto", "off")).toBe("auto");
+    expect(resolveBrowserWebGpuForCli(false, "required", "off")).toBe("required");
+    expect(resolveBrowserWebGpuForCli(true, undefined, "required")).toBe("off");
+    expect(resolveBrowserWebGpuForCli(true, "required", "off")).toBe("off");
   });
 
   it("forwards parsed --variables payload to createRenderJob", async () => {

@@ -7,6 +7,7 @@ import { c } from "../ui/colors.js";
 import { resolveProject } from "../utils/project.js";
 import { serveStaticProjectHtml } from "../utils/staticProjectServer.js";
 import { withMeta } from "../utils/updateCheck.js";
+import { waitForOptionalWebGpuFrame } from "../utils/webgpuFrame.js";
 import {
   buildLayoutSampleTimes,
   collapseStaticLayoutIssues,
@@ -87,6 +88,7 @@ async function seekTo(page: import("puppeteer-core").Page, time: number): Promis
       }
     }
   }, time);
+  await waitForOptionalWebGpuFrame(page, time);
   await page.evaluate(
     () =>
       new Promise<void>((resolveFrame) =>
@@ -147,17 +149,16 @@ async function runLayoutAudit(
 
   try {
     const browser = await ensureBrowser();
+    const { buildChromeArgs } = await import("@hyperframes/engine");
+    const browserGpuMode =
+      process.env.PRODUCER_BROWSER_GPU_MODE === "software" ? "software" : "hardware";
     chromeBrowser = await puppeteer.default.launch({
       headless: true,
       executablePath: browser.executablePath,
-      args: [
-        "--no-sandbox",
-        "--disable-gpu",
-        "--disable-dev-shm-usage",
-        "--enable-webgl",
-        "--use-gl=angle",
-        "--use-angle=swiftshader",
-      ],
+      args: buildChromeArgs(
+        { width: 1920, height: 1080, captureMode: "screenshot" },
+        { browserGpuMode, browserWebGpuMode: "auto" },
+      ),
     });
 
     const page = await chromeBrowser.newPage();

@@ -26,6 +26,7 @@
     "lint:fix": "oxlint --fix .",
     "format": "oxfmt .",
     "test": "bun run --filter '*' test",
+    "test:webgpu": "bun run --filter @hyperframes/producer test:webgpu",
     "player:perf": "bun run --filter @hyperframes/player perf",
     "format:check": "oxfmt --check .",
     "knip": "knip",

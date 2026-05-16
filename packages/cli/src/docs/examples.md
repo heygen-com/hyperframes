@@ -1,18 +1,26 @@
-# Templates
+# Examples
 
-Built-in templates available via `npx hyperframes init --example <name>`.
+Examples available via `npx hyperframes init --example <name>`.
 
 ## blank
 
 Empty 1920x1080 composition with GSAP timeline wired up. Start from scratch.
 
-## title-card
+## warm-grain
 
-Animated title and subtitle with GSAP fade-in/out. Good for intro cards.
+Warm editorial texture, captions, and intro graphics.
 
-## video-edit
+## play-mode
 
-Video element with trimming, audio, and track controls. Starting point for video editing.
+Elastic social promo template.
+
+## swiss-grid
+
+Structured typographic grid.
+
+## webgpu-showcase
+
+Mixed DOM and WebGPU canvas scene. Render locally with `--webgpu required` when the scene must fail fast on browsers without WebGPU.
 
 ## Custom Templates
 

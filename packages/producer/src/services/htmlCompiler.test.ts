@@ -348,6 +348,64 @@ describe("detectRenderModeHints", () => {
     expect(result.reasons).toEqual([]);
   });
 
+  it("recommends screenshot mode for inline WebGPU or TypeGPU scenes", () => {
+    const html = `<!DOCTYPE html>
+<html><body>
+  <canvas id="gpu"></canvas>
+  <script type="module">
+    const adapter = await navigator.gpu.requestAdapter();
+    const device = await adapter.requestDevice();
+    window.__hfWebGpu?.registerDevice(device);
+    const context = document.querySelector("#gpu").getContext("webgpu");
+    function render() {
+      window.__hfWebGpu?.registerFrame(device.queue.onSubmittedWorkDone());
+    }
+  </script>
+</body></html>`;
+
+    const result = detectRenderModeHints(html);
+
+    expect(result.recommendScreenshot).toBe(true);
+    expect(result.reasons.map((reason) => reason.code)).toEqual(["webgpu"]);
+  });
+
+  it("ignores WebGPU tokens inside comments and external scripts", () => {
+    const html = `<!DOCTYPE html>
+<html><body>
+  <script src="./typegpu-scene.js"></script>
+  <script>
+    // navigator.gpu.requestAdapter();
+    /* canvas.getContext("webgpu"); */
+    const label = "safe";
+  </script>
+</body></html>`;
+
+    const result = detectRenderModeHints(html);
+
+    expect(result.recommendScreenshot).toBe(false);
+    expect(result.reasons).toEqual([]);
+  });
+
+  it("recommends screenshot mode when local external script contents use WebGPU", () => {
+    const html = `<!DOCTYPE html>
+<html><body>
+  <script src="./typegpu-scene.js"></script>
+</body></html>`;
+
+    const result = detectRenderModeHints(html, {
+      externalScriptContents: [
+        `
+          const adapter = await navigator.gpu.requestAdapter();
+          const context = canvas.getContext("webgpu");
+          window.__hfWebGpu?.registerDevice(device);
+        `,
+      ],
+    });
+
+    expect(result.recommendScreenshot).toBe(true);
+    expect(result.reasons.map((reason) => reason.code)).toEqual(["webgpu"]);
+  });
+
   it("ignores compiler-generated nested mount wrappers when detecting requestAnimationFrame", () => {
     const html = `<!DOCTYPE html>
 <html><body>
@@ -457,6 +515,86 @@ describe("detectRenderModeHints", () => {
     } finally {
       globalThis.fetch = originalFetch;
     }
+  });
+
+  it("compileForRender recommends screenshot mode for local external WebGPU scripts", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-webgpu-local-script-"));
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!doctype html>
+<html><body>
+  <div data-composition-id="root" data-width="1920" data-height="1080" data-duration="1">
+    <canvas id="gpu"></canvas>
+  </div>
+  <script src="./scene.js"></script>
+</body></html>`,
+    );
+    writeFileSync(
+      join(projectDir, "scene.js"),
+      `
+        async function boot() {
+          const adapter = await navigator.gpu.requestAdapter();
+          const device = await adapter.requestDevice();
+          window.__hfWebGpu?.registerDevice(device);
+          const context = document.querySelector("#gpu").getContext("webgpu");
+          context.configure({ device, format: navigator.gpu.getPreferredCanvasFormat() });
+        }
+      `,
+    );
+
+    const result = await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
+
+    expect(result.renderModeHints.recommendScreenshot).toBe(true);
+    expect(result.renderModeHints.reasons.map((reason) => reason.code)).toEqual(["webgpu"]);
+  });
+
+  it("compileForRender rewrites and detects local WebGPU scripts from sub-compositions", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-webgpu-subcomp-script-"));
+    const compositionsDir = join(projectDir, "compositions");
+    mkdirSync(compositionsDir, { recursive: true });
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!doctype html>
+<html><body>
+  <div data-composition-id="root" data-width="1920" data-height="1080" data-duration="1">
+    <div
+      data-composition-id="gpu"
+      data-composition-src="compositions/gpu.html"
+      data-start="0"
+      data-duration="1"></div>
+  </div>
+</body></html>`,
+    );
+    writeFileSync(
+      join(compositionsDir, "gpu.html"),
+      `<template id="gpu-template">
+  <div data-composition-id="gpu" data-width="1920" data-height="1080">
+    <canvas id="gpu-canvas"></canvas>
+    <script src="./scene.js"></script>
+  </div>
+</template>`,
+    );
+    writeFileSync(
+      join(compositionsDir, "scene.js"),
+      `
+        async function bootWebGpuScene() {
+          const adapter = await navigator.gpu.requestAdapter();
+          const device = await adapter.requestDevice();
+          window.__hfWebGpu?.registerDevice(device);
+          const canvas = document.querySelector("#gpu-canvas");
+          const context = canvas.getContext("webgpu");
+          context.configure({ device, format: navigator.gpu.getPreferredCanvasFormat() });
+          window.__hfWebGpu?.registerFrame(device.queue.onSubmittedWorkDone());
+        }
+      `,
+    );
+
+    const result = await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
+
+    expect(result.html).toContain('src="compositions/scene.js"');
+    expect(result.html).not.toContain('src="./scene.js"');
+    expect(result.renderModeHints.recommendScreenshot).toBe(true);
+    expect(result.renderModeHints.reasons.map((reason) => reason.code)).toEqual(["webgpu"]);
   });
 });
 

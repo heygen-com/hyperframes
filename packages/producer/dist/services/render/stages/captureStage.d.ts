@@ -52,6 +52,16 @@ export interface CaptureStageInput {
      */
     totalFrames: number;
     cfg: EngineConfig;
+    /**
+     * Capture-mode flag threaded from `compileStage`. The stage derives a
+     * local copy of `cfg` with this value applied to `forceScreenshot`
+     * before any engine call, so the caller-owned `cfg` is never mutated.
+     * The sequencer may override `compileResult.forceScreenshot` after a
+     * BeginFrame calibration timeout — passing the override through this
+     * parameter keeps the decision visible at the call site instead of
+     * hiding it inside a shared mutable config.
+     */
+    forceScreenshot: boolean;
     log: ProducerLogger;
     /** Initial worker count from `resolveRenderWorkerCount`; adaptive retry may reduce it. */
     workerCount: number;
@@ -66,6 +76,30 @@ export interface CaptureStageInput {
     abortSignal: AbortSignal | undefined;
     assertNotAborted: () => void;
     onProgress?: ProgressCallback;
+    /**
+     * Capture a sub-range `[startFrame, endFrame)` of the composition's
+     * timeline. Used by distributed `renderChunk` workers to render only
+     * their assigned chunk. Captured frames are written with file names
+     * normalized to start at zero (`frame_000000.{ext}`) so the encoder
+     * doesn't need an `-start_number` override; per-frame TIMES still
+     * reflect the absolute frame index via `(absIdx * fps.den) / fps.num`,
+     * keeping the page's virtual clock identical to what an in-process
+     * render at that frame would see.
+     *
+     * Only honored on the sequential capture branch (workerCount === 1).
+     * The parallel branch in this stage targets in-process renders where
+     * adaptive retry across the whole timeline is the contract, and chunk
+     * workers fan out at the activity layer instead. Passing `frameRange`
+     * with `workerCount > 1` throws — the caller should reduce
+     * `workerCount` to 1.
+     *
+     * Default `undefined`: the stage captures `[0, totalFrames)` (the
+     * in-process contract).
+     */
+    frameRange?: {
+        startFrame: number;
+        endFrame: number;
+    };
 }
 export interface CaptureStageResult {
     /** Final worker count after any adaptive retry. */

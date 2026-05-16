@@ -33,6 +33,7 @@ export interface DockerRenderOptions {
   workers?: number;
   gpu: boolean;
   browserGpu: boolean;
+  browserWebGpu?: "off" | "auto" | "required";
   hdrMode: "auto" | "force-hdr" | "force-sdr";
   crf?: number;
   videoBitrate?: string;
@@ -74,6 +75,7 @@ export function buildDockerRunArgs(input: DockerRunArgsInput): string[] {
     ...(options.quiet ? ["--quiet"] : []),
     ...(options.gpu ? ["--gpu"] : []),
     ...(options.browserGpu ? [] : ["--no-browser-gpu"]),
+    ...(options.browserWebGpu ? ["--webgpu", options.browserWebGpu] : []),
     ...(options.hdrMode === "force-hdr" ? ["--hdr"] : []),
     ...(options.hdrMode === "force-sdr" ? ["--sdr"] : []),
     ...(options.variables && Object.keys(options.variables).length > 0

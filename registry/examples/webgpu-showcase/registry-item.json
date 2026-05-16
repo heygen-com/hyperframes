@@ -1,0 +1,20 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "webgpu-showcase",
+  "type": "hyperframes:example",
+  "title": "WebGPU Showcase",
+  "description": "Mixed DOM and WebGPU canvas composition",
+  "tags": ["webgpu", "typegpu", "canvas", "mixed-scene"],
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 6,
+  "files": [
+    {
+      "path": "index.html",
+      "target": "index.html",
+      "type": "hyperframes:composition"
+    }
+  ]
+}

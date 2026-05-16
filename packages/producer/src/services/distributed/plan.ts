@@ -543,6 +543,8 @@ export async function plan(
   const cfg: EngineConfig = {
     ...(config.producerConfig ?? resolveConfig()),
     browserGpuMode: "software",
+    browserWebGpuMode: "off",
+    browserWebGpuUnsafe: false,
     forceScreenshot: false,
   };
 

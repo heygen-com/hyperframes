@@ -68,6 +68,8 @@ packages/producer/src/services/fontData.generated.ts
 qa-artifacts/
 my-video/
 examples/
+!registry/examples/
+!registry/examples/**
 packages/studio/data/
 .desloppify/
 .worktrees/

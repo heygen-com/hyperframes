@@ -3,6 +3,7 @@ import {
   rewriteAssetPath,
   rewriteCssAssetUrls,
   rewriteInlineStyleAssetUrls,
+  rewriteSubCompositionScriptSrc,
 } from "./rewriteSubCompPaths.js";
 
 describe("rewriteAssetPath", () => {
@@ -18,6 +19,9 @@ describe("rewriteAssetPath", () => {
     expect(rewriteAssetPath("compositions/scene.html", "https://x/y")).toBe("https://x/y");
     expect(rewriteAssetPath("compositions/scene.html", "data:image/png;base64,AA")).toBe(
       "data:image/png;base64,AA",
+    );
+    expect(rewriteAssetPath("compositions/scene.html", "blob:https://x/y")).toBe(
+      "blob:https://x/y",
     );
     expect(rewriteAssetPath("compositions/scene.html", "#hash")).toBe("#hash");
   });
@@ -54,5 +58,41 @@ describe("rewriteAssetPath", () => {
     );
 
     expect(elements[0]?.style).toBe(`background-image: url("cover.png")`);
+  });
+});
+
+describe("rewriteSubCompositionScriptSrc", () => {
+  it("rewrites plain and dot-relative script paths from the sub-composition directory", () => {
+    expect(rewriteSubCompositionScriptSrc("compositions/scene.html", "./scene.js")).toBe(
+      "compositions/scene.js",
+    );
+    expect(rewriteSubCompositionScriptSrc("compositions/nested/scene.html", "boot.js")).toBe(
+      "compositions/nested/boot.js",
+    );
+  });
+
+  it("rewrites parent-relative script paths and preserves query/hash suffixes", () => {
+    expect(
+      rewriteSubCompositionScriptSrc(
+        "compositions/nested/scene.html",
+        "../shared/webgpu.js?mode=fast#init",
+      ),
+    ).toBe("compositions/shared/webgpu.js?mode=fast#init");
+  });
+
+  it("leaves remote, special, and root-absolute script sources untouched", () => {
+    expect(rewriteSubCompositionScriptSrc("compositions/scene.html", "https://x/y.js")).toBe(
+      "https://x/y.js",
+    );
+    expect(
+      rewriteSubCompositionScriptSrc("compositions/scene.html", "data:text/javascript,x"),
+    ).toBe("data:text/javascript,x");
+    expect(rewriteSubCompositionScriptSrc("compositions/scene.html", "blob:https://x/y")).toBe(
+      "blob:https://x/y",
+    );
+    expect(rewriteSubCompositionScriptSrc("compositions/scene.html", "/shared.js")).toBe(
+      "/shared.js",
+    );
+    expect(rewriteSubCompositionScriptSrc("compositions/scene.html", "#loader")).toBe("#loader");
   });
 });

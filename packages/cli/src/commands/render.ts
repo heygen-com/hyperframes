@@ -19,6 +19,10 @@ export const examples: Example[] = [
   ["Deterministic render via Docker", "hyperframes render --docker --output deterministic.mp4"],
   ["Parallel rendering with 6 workers", "hyperframes render --workers 6 --output fast.mp4"],
   ["Opt out of browser GPU render", "hyperframes render --no-browser-gpu --output cpu.mp4"],
+  [
+    "Require WebGPU for a TypeGPU composition",
+    "hyperframes render --webgpu required --output gpu.mp4",
+  ],
   ["HDR output (auto-detected)", "hyperframes render --output hdr-output.mp4"],
   [
     "Override composition variables (parametrized render)",
@@ -182,6 +186,17 @@ export default defineCommand({
       description:
         "Force host GPU acceleration for Chrome/WebGL capture. Default: auto (probe on first launch; fall back to software if no GPU). Use --no-browser-gpu to force software (SwiftShader).",
     },
+    webgpu: {
+      type: "string",
+      description:
+        "Browser WebGPU policy for WebGPU/TypeGPU scenes: auto, required, or off. Default: auto locally, off in Docker.",
+    },
+    "webgpu-unsafe": {
+      type: "boolean",
+      description:
+        "Pass Chrome's --enable-unsafe-webgpu flag for local adapters that require explicit WebGPU opt-in.",
+      default: false,
+    },
     quiet: {
       type: "boolean",
       description: "Suppress verbose output",
@@ -337,6 +352,8 @@ export default defineCommand({
     const useGpu = args.gpu ?? false;
     const browserGpuArg = args["browser-gpu"];
     const browserGpuMode = resolveBrowserGpuForCli(useDocker, browserGpuArg);
+    const browserWebGpuMode = resolveBrowserWebGpuForCli(useDocker, args.webgpu);
+    const browserWebGpuUnsafe = args["webgpu-unsafe"] ?? false;
     const quiet = args.quiet ?? false;
     const strictAll = args["strict-all"] ?? false;
     const strictErrors = (args.strict ?? false) || strictAll;
@@ -353,6 +370,28 @@ export default defineCommand({
         "Browser GPU is local-only",
         "--browser-gpu uses the host Chrome GPU backend. Docker mode keeps browser rendering deterministic and does not expose a cross-platform Chrome GPU backend.",
         "Run without --docker, or use --gpu for Docker GPU encoding where your Docker host supports GPU passthrough.",
+      );
+      process.exit(1);
+    }
+    if (useDocker && args.webgpu != null && args.webgpu !== "off") {
+      errorBox(
+        "WebGPU browser capture is local-only",
+        "--webgpu uses the host Chrome WebGPU backend. Docker mode does not expose a portable WebGPU backend for browser capture.",
+        "Run without --docker for WebGPU/TypeGPU scenes, or pass --webgpu off for deterministic Docker renders.",
+      );
+      process.exit(1);
+    }
+    if (useDocker && browserWebGpuUnsafe) {
+      errorBox(
+        "Unsafe WebGPU is local-only",
+        "--webgpu-unsafe passes a local Chrome flag and is not supported in deterministic Docker renders.",
+      );
+      process.exit(1);
+    }
+    if (browserWebGpuUnsafe && browserWebGpuMode === "off") {
+      errorBox(
+        "Conflicting WebGPU flags",
+        "--webgpu-unsafe requires WebGPU to be enabled. Use --webgpu auto or --webgpu required.",
       );
       process.exit(1);
     }
@@ -418,13 +457,20 @@ export default defineCommand({
         // CLI, so describe the intent rather than the mechanism.
         console.log(c.dim("   Output resolution: " + outputResolution));
       }
-      if (useGpu || browserGpuMode !== "software") {
+      if (useGpu || browserGpuMode !== "software" || browserWebGpuMode !== "off") {
         const gpuModes = [
           useGpu ? "encoder GPU" : null,
           browserGpuMode === "hardware"
             ? "browser GPU (forced)"
             : browserGpuMode === "auto"
               ? "browser GPU (auto-detect)"
+              : null,
+          browserWebGpuMode === "required"
+            ? "WebGPU (required)"
+            : browserWebGpuMode === "auto"
+              ? browserWebGpuUnsafe
+                ? "WebGPU (auto + unsafe flag)"
+                : "WebGPU (auto)"
               : null,
         ].filter(Boolean);
         console.log(c.dim("   GPU: " + gpuModes.join(" + ")));
@@ -545,6 +591,8 @@ export default defineCommand({
         workers,
         gpu: useGpu,
         browserGpuMode,
+        browserWebGpuMode,
+        browserWebGpuUnsafe,
         hdrMode: args.sdr ? "force-sdr" : args.hdr ? "force-hdr" : "auto",
         crf,
         videoBitrate,
@@ -563,6 +611,8 @@ export default defineCommand({
         workers,
         gpu: useGpu,
         browserGpuMode,
+        browserWebGpuMode,
+        browserWebGpuUnsafe,
         hdrMode: args.sdr ? "force-sdr" : args.hdr ? "force-hdr" : "auto",
         crf,
         videoBitrate,
@@ -589,6 +639,8 @@ interface RenderOptions {
    * stay backwards-compatible with callers that pre-date the tri-state.
    */
   browserGpuMode?: "auto" | "hardware" | "software";
+  browserWebGpuMode?: "off" | "auto" | "required";
+  browserWebGpuUnsafe?: boolean;
   hdrMode: "auto" | "force-hdr" | "force-sdr";
   crf?: number;
   videoBitrate?: string;
@@ -769,6 +821,23 @@ export function resolveBrowserGpuForCli(
   return "auto";
 }
 
+export function resolveBrowserWebGpuForCli(
+  useDocker: boolean,
+  webGpuArg: string | undefined,
+  envMode = process.env.PRODUCER_BROWSER_WEBGPU_MODE,
+): "off" | "auto" | "required" {
+  if (webGpuArg === "off" || webGpuArg === "auto" || webGpuArg === "required") {
+    return useDocker ? "off" : webGpuArg;
+  }
+  if (webGpuArg != null) {
+    errorBox("Invalid webgpu mode", `Got "${webGpuArg}". Must be auto, required, or off.`);
+    process.exit(1);
+  }
+  if (useDocker) return "off";
+  if (envMode === "off" || envMode === "auto" || envMode === "required") return envMode;
+  return "auto";
+}
+
 const DOCKER_IMAGE_PREFIX = "hyperframes-renderer";
 
 function dockerImageTag(version: string): string {
@@ -887,6 +956,7 @@ async function renderDocker(
       workers: options.workers,
       gpu: options.gpu,
       browserGpu: options.browserGpuMode === "hardware",
+      browserWebGpu: options.browserWebGpuMode ?? "off",
       hdrMode: options.hdrMode,
       crf: options.crf,
       videoBitrate: options.videoBitrate,
@@ -960,6 +1030,8 @@ export async function renderLocal(
     useGpu: options.gpu,
     producerConfig: producer.resolveConfig({
       browserGpuMode: options.browserGpuMode ?? "software",
+      browserWebGpuMode: options.browserWebGpuMode ?? "off",
+      browserWebGpuUnsafe: options.browserWebGpuUnsafe ?? false,
     }),
     hdrMode: options.hdrMode,
     crf: options.crf,

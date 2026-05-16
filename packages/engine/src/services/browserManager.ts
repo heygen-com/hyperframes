@@ -73,6 +73,7 @@ export function resolveHeadlessShellPath(
 let pooledBrowser: Browser | null = null;
 let pooledBrowserRefCount = 0;
 let pooledCaptureMode: CaptureMode = "screenshot";
+let pooledBrowserArgKey = "";
 let _pooledBrowserLaunchPromise: Promise<AcquiredBrowser> | null = null;
 
 // Preserve the producer-era export so re-export shims keep the same public API.
@@ -281,6 +282,7 @@ export async function acquireBrowser(
     if (!pooledBrowser.connected) {
       pooledBrowser = null;
       pooledBrowserRefCount = 0;
+      pooledBrowserArgKey = "";
       _pooledBrowserLaunchPromise = null;
     } else {
       // Validate mode compatibility: a caller that needs screenshot mode
@@ -288,7 +290,8 @@ export async function acquireBrowser(
       // receive a beginframe browser — the BeginFrame-only flags make the
       // compositor wait for frames the screenshot path never sends.
       const requestedMode = resolveRequestedCaptureMode(config);
-      if (pooledCaptureMode === requestedMode) {
+      const requestedArgKey = chromeArgs.join("\n");
+      if (pooledCaptureMode === requestedMode && pooledBrowserArgKey === requestedArgKey) {
         pooledBrowserRefCount += 1;
         return { browser: pooledBrowser, captureMode: pooledCaptureMode };
       }
@@ -305,7 +308,8 @@ export async function acquireBrowser(
   if (enablePool && _pooledBrowserLaunchPromise) {
     const result = await _pooledBrowserLaunchPromise;
     const requestedMode = resolveRequestedCaptureMode(config);
-    if (result.captureMode === requestedMode) {
+    const requestedArgKey = chromeArgs.join("\n");
+    if (result.captureMode === requestedMode && pooledBrowserArgKey === requestedArgKey) {
       pooledBrowserRefCount += 1;
       return result;
     }
@@ -321,6 +325,7 @@ export async function acquireBrowser(
       pooledBrowser = result.browser;
       pooledBrowserRefCount = 1;
       pooledCaptureMode = result.captureMode;
+      pooledBrowserArgKey = chromeArgs.join("\n");
       return result;
     } finally {
       _pooledBrowserLaunchPromise = null;
@@ -403,6 +408,7 @@ export async function releaseBrowser(
     if (pooledBrowserRefCount === 0) {
       await browser.close().catch(() => {});
       pooledBrowser = null;
+      pooledBrowserArgKey = "";
       _pooledBrowserLaunchPromise = null;
     }
     return;
@@ -421,6 +427,7 @@ export function forceReleaseBrowser(browser: Browser): void {
     }
     pooledBrowserRefCount = 0;
     pooledBrowser = null;
+    pooledBrowserArgKey = "";
     _pooledBrowserLaunchPromise = null;
   }
   const proc = (
@@ -452,6 +459,7 @@ export async function drainBrowserPool(): Promise<void> {
   // drain and produces a browser that nobody references (orphan).
   const pending = _pooledBrowserLaunchPromise;
   _pooledBrowserLaunchPromise = null;
+  pooledBrowserArgKey = "";
   if (pending) {
     await pending.then((r) => r.browser.close()).catch(() => {});
   }
@@ -459,6 +467,7 @@ export async function drainBrowserPool(): Promise<void> {
     const browser = pooledBrowser;
     pooledBrowser = null;
     pooledBrowserRefCount = 0;
+    pooledBrowserArgKey = "";
     await browser.close().catch(() => {});
   }
 }
@@ -468,6 +477,7 @@ export function _resetBrowserPoolForTests(): void {
   pooledBrowser = null;
   pooledBrowserRefCount = 0;
   pooledCaptureMode = "screenshot";
+  pooledBrowserArgKey = "";
   _pooledBrowserLaunchPromise = null;
 }
 
@@ -483,17 +493,28 @@ export interface BuildChromeArgsOptions {
   platform?: NodeJS.Platform;
 }
 
-const CANVAS_DRAW_ELEMENT_FEATURE_FLAG = "--enable-features=CanvasDrawElement";
+const CANVAS_DRAW_ELEMENT_FEATURE = "CanvasDrawElement";
 
 export function buildChromeArgs(
   options: BuildChromeArgsOptions,
-  config?: Partial<Pick<EngineConfig, "browserGpuMode" | "disableGpu" | "chromePath">>,
+  config?: Partial<
+    Pick<
+      EngineConfig,
+      "browserGpuMode" | "disableGpu" | "chromePath" | "browserWebGpuMode" | "browserWebGpuUnsafe"
+    >
+  >,
 ): string[] {
   const platform = options.platform ?? process.platform;
   const gpuDisabled = config?.disableGpu ?? DEFAULT_CONFIG.disableGpu;
   const browserGpuMode = gpuDisabled
     ? "software"
     : (config?.browserGpuMode ?? DEFAULT_CONFIG.browserGpuMode);
+  const browserWebGpuMode = config?.browserWebGpuMode ?? DEFAULT_CONFIG.browserWebGpuMode;
+  const browserWebGpuUnsafe = config?.browserWebGpuUnsafe ?? DEFAULT_CONFIG.browserWebGpuUnsafe;
+  const enabledFeatures = [CANVAS_DRAW_ELEMENT_FEATURE];
+  if (browserWebGpuMode === "required" || browserWebGpuUnsafe) {
+    enabledFeatures.push("Vulkan", "VulkanFromANGLE");
+  }
   // Chrome flags tuned for headless rendering performance. The set below is a
   // fairly standard "headless-for-capture" configuration — similar profiles
   // appear in Puppeteer's defaults, Playwright, Remotion, and Chrome's own
@@ -502,10 +523,11 @@ export function buildChromeArgs(
     "--no-sandbox",
     "--disable-setuid-sandbox",
     "--disable-dev-shm-usage",
-    CANVAS_DRAW_ELEMENT_FEATURE_FLAG,
+    `--enable-features=${enabledFeatures.join(",")}`,
     "--enable-webgl",
     "--ignore-gpu-blocklist",
     ...getBrowserGpuArgs(browserGpuMode, platform),
+    ...getBrowserWebGpuArgs(browserWebGpuMode, browserWebGpuUnsafe),
     "--font-render-hinting=none",
     "--force-color-profile=srgb",
     `--window-size=${options.width},${options.height}`,
@@ -555,6 +577,12 @@ export function buildChromeArgs(
     chromeArgs.push("--disable-gpu");
   }
   return chromeArgs;
+}
+
+function getBrowserWebGpuArgs(mode: EngineConfig["browserWebGpuMode"], unsafe: boolean): string[] {
+  if (mode === "off") return [];
+  if (mode === "required" || unsafe) return ["--enable-unsafe-webgpu"];
+  return [];
 }
 
 function getBrowserGpuArgs(

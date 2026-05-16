@@ -456,6 +456,8 @@ export async function renderChunk(
     const cfg: EngineConfig = {
       ...resolveConfig(),
       browserGpuMode: "software",
+      browserWebGpuMode: "off",
+      browserWebGpuUnsafe: false,
       forceScreenshot: encoder.forceScreenshot,
     };
 

@@ -200,6 +200,37 @@ describe("bundleToSingleHtml", () => {
     expect(hostEl?.hasAttribute("data-composition-src")).toBe(false);
   });
 
+  it("rewrites local external script sources from external sub-compositions", async () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html>
+<html><body>
+  <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+    <div id="gpu-host"
+      data-composition-id="gpu"
+      data-composition-src="compositions/gpu.html"
+      data-start="0"
+      data-duration="2"></div>
+  </div>
+  <script>window.__timelines={};</script>
+</body></html>`,
+      "compositions/gpu.html": `<template id="gpu-template">
+  <div data-composition-id="gpu" data-width="1920" data-height="1080">
+    <canvas id="gpu-canvas"></canvas>
+    <script src="./scene.js?version=1#boot"></script>
+  </div>
+</template>`,
+    });
+
+    const bundled = await bundleToSingleHtml(dir);
+    const { document } = parseHTML(bundled);
+    const scriptSrcs = Array.from(document.querySelectorAll("script[src]")).map((script) =>
+      script.getAttribute("src"),
+    );
+
+    expect(scriptSrcs).toContain("compositions/scene.js?version=1#boot");
+    expect(scriptSrcs).not.toContain("./scene.js?version=1#boot");
+  });
+
   it("does not duplicate CDN scripts already present in the main document", async () => {
     const dir = makeTempProject({
       "index.html": `<!doctype html>

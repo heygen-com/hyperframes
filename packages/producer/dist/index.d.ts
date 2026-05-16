@@ -15,4 +15,5 @@ export { createRenderHandlers, createProducerApp, startServer, type HandlerOptio
 export { quantizeTimeToFrame } from "./utils/parityContract.js";
 export { resolveRenderPaths, type RenderPaths } from "./utils/paths.js";
 export { prepareHyperframeLintBody, runHyperframeLint, type PreparedHyperframeLintInput, } from "./services/hyperframeLint.js";
+export { assemble, plan, renderChunk, type AssembleResult, type ChunkResult, type DistributedRenderConfig, type PlanResult, } from "./distributed.js";
 //# sourceMappingURL=index.d.ts.map

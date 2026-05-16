@@ -123,6 +123,22 @@ If your issue is about a specific coding mistake (animations not working, video 
     - **Image pull fails:** Check your internet connection; the first render downloads the Hyperframes Docker image
   </Accordion>
 
+  <Accordion title="WebGPU render says WebGPU is unavailable">
+    WebGPU and TypeGPU renders use local Chrome's WebGPU adapter. Use required mode when the scene cannot fall back:
+
+    ```bash Terminal
+    npx hyperframes render --webgpu required --output output.mp4
+    ```
+
+    If Chrome exposes the adapter only behind an opt-in flag, add:
+
+    ```bash Terminal
+    npx hyperframes render --webgpu required --webgpu-unsafe --output output.mp4
+    ```
+
+    Docker mode keeps WebGPU off because browser WebGPU passthrough is not portable across Docker hosts. Render WebGPU compositions locally, or use `--webgpu off` only for scenes with a non-WebGPU fallback.
+  </Accordion>
+
   <Accordion title="Render is slow">
     Try these optimizations:
 

@@ -27,6 +27,7 @@ import {
 } from "./render/captureCost.js";
 import {
   applyRenderModeHints,
+  applyWebGpuRenderModeHints,
   createCompiledFrameSrcResolver,
   materializeExtractedFramesForCompiledDir,
   projectBrowserEndToCompositionTimeline,
@@ -362,7 +363,7 @@ describe("writeCompiledArtifacts — external assets on Windows drive-letter pat
 });
 
 function createCompiledComposition(
-  reasonCodes: Array<"iframe" | "requestAnimationFrame">,
+  reasonCodes: Array<"iframe" | "requestAnimationFrame" | "webgpu">,
 ): CompiledComposition {
   return {
     html: "<html></html>",
@@ -397,6 +398,8 @@ function createConfig(): EngineConfig {
     largeRenderThreshold: 1000,
     disableGpu: false,
     browserGpuMode: "software",
+    browserWebGpuMode: "off",
+    browserWebGpuUnsafe: false,
     enableBrowserPool: false,
     browserTimeout: 120000,
     protocolTimeout: 300000,
@@ -415,6 +418,7 @@ function createConfig(): EngineConfig {
     frameDataUriCacheBytesLimitMb: 1500,
     playerReadyTimeout: 45000,
     renderReadyTimeout: 15000,
+    webGpuFrameTimeout: 5000,
     verifyRuntime: true,
     debug: false,
   };
@@ -464,6 +468,68 @@ describe("applyRenderModeHints", () => {
 
     expect(result).toEqual({ forceScreenshot: false, autoSelected: false });
     expect(log.warn).not.toHaveBeenCalled();
+  });
+});
+
+describe("applyWebGpuRenderModeHints", () => {
+  it("upgrades default direct-render browser config for WebGPU compositions", () => {
+    const cfg = createConfig();
+    const compiled = createCompiledComposition(["webgpu"]);
+    const log = {
+      error: vi.fn(),
+      warn: vi.fn(),
+      info: vi.fn(),
+      debug: vi.fn(),
+    };
+
+    const result = applyWebGpuRenderModeHints(cfg, compiled, log, {
+      allowBrowserGpuModeAuto: true,
+      allowBrowserWebGpuModeAuto: true,
+    });
+
+    expect(result).toEqual({
+      changed: true,
+      browserGpuModeChanged: true,
+      browserWebGpuModeChanged: true,
+    });
+    expect(cfg.browserGpuMode).toBe("auto");
+    expect(cfg.browserWebGpuMode).toBe("auto");
+    expect(log.warn).toHaveBeenCalledOnce();
+  });
+
+  it("honors explicit browser config choices", () => {
+    const cfg = createConfig();
+    const compiled = createCompiledComposition(["webgpu"]);
+    const log = {
+      error: vi.fn(),
+      warn: vi.fn(),
+      info: vi.fn(),
+      debug: vi.fn(),
+    };
+
+    const result = applyWebGpuRenderModeHints(cfg, compiled, log, {
+      allowBrowserGpuModeAuto: false,
+      allowBrowserWebGpuModeAuto: false,
+    });
+
+    expect(result.changed).toBe(false);
+    expect(cfg.browserGpuMode).toBe("software");
+    expect(cfg.browserWebGpuMode).toBe("off");
+    expect(log.warn).not.toHaveBeenCalled();
+  });
+
+  it("does not change non-WebGPU compositions", () => {
+    const cfg = createConfig();
+    const compiled = createCompiledComposition(["iframe"]);
+
+    const result = applyWebGpuRenderModeHints(cfg, compiled, undefined, {
+      allowBrowserGpuModeAuto: true,
+      allowBrowserWebGpuModeAuto: true,
+    });
+
+    expect(result.changed).toBe(false);
+    expect(cfg.browserGpuMode).toBe("software");
+    expect(cfg.browserWebGpuMode).toBe("off");
   });
 });
 

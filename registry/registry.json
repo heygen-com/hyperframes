@@ -36,6 +36,10 @@
       "type": "hyperframes:example"
     },
     {
+      "name": "webgpu-showcase",
+      "type": "hyperframes:example"
+    },
+    {
       "name": "data-chart",
       "type": "hyperframes:block"
     },

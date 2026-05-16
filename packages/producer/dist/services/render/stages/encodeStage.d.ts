@@ -44,8 +44,13 @@ export interface EncodeStageInput {
     needsAlpha: boolean;
     /** True iff the composition has audio. Drives the sidecar copy. */
     hasAudio: boolean;
-    /** Path to the mixed audio (only read when `hasAudio` is true). */
-    audioOutputPath: string;
+    /**
+     * Path to the mixed audio. Required when `hasAudio` is `true` (the
+     * png-sequence sidecar copy reads it); ignored when `hasAudio` is
+     * `false`. Distributed chunk workers mux audio once at assemble time
+     * and pass `hasAudio: false` here, so the field is left optional.
+     */
+    audioOutputPath?: string;
     /** Mp4 vs png-sequence vs … gates the entire stage branch. */
     isPngSequence: boolean;
     /** Encoder preset (codec, preset, pixelFormat, hdr). Only used on the non-png path. */
@@ -58,6 +63,16 @@ export interface EncodeStageInput {
     abortSignal: AbortSignal | undefined;
     assertNotAborted: () => void;
     onProgress?: ProgressCallback;
+    /**
+     * Pass-through of `EncoderOptions.lockGopForChunkConcat`. When `true`,
+     * the encode emits closed-GOP keyframes at every `gopSize` boundary so
+     * downstream `ffmpeg -f concat -c copy` round-trips losslessly. Only the
+     * distributed chunk worker (`renderChunk`) sets this — the in-process
+     * renderer's call site omits it, preserving the existing open-GOP output.
+     */
+    lockGopForChunkConcat?: boolean;
+    /** Required when `lockGopForChunkConcat === true`. Number of frames per GOP — set to the chunk's frame count by `renderChunk`. */
+    gopSize?: number;
 }
 export interface EncodeStageResult {
     /** Wall-clock ms for the encode (or png-copy) phase. */

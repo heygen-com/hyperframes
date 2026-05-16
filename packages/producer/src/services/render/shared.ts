@@ -15,6 +15,7 @@ import { basename, dirname, isAbsolute, join, relative, resolve } from "node:pat
 import { CANVAS_DIMENSIONS, type CanvasResolution } from "@hyperframes/core";
 import type {
   AudioElement,
+  EngineConfig,
   ExtractedFrames,
   ImageElement,
   VideoElement,
@@ -222,6 +223,63 @@ export function applyRenderModeHints(
     reasons: compiled.renderModeHints.reasons.map((reason) => reason.message),
   });
   return { forceScreenshot: true, autoSelected: true };
+}
+
+export interface WebGpuRenderModeHintOptions {
+  allowBrowserGpuModeAuto: boolean;
+  allowBrowserWebGpuModeAuto: boolean;
+}
+
+export interface WebGpuRenderModeHintResult {
+  changed: boolean;
+  browserGpuModeChanged: boolean;
+  browserWebGpuModeChanged: boolean;
+}
+
+/**
+ * WebGPU compositions need both a non-software browser GPU profile and browser
+ * WebGPU exposure. Direct producer callers historically received the engine
+ * defaults (`browserGpuMode: "software"`, `browserWebGpuMode: "off"`), which
+ * made WebGPU fixtures render without adapters unless the caller knew to pass
+ * a full producerConfig. Keep explicit config/env choices intact and only lift
+ * default direct-render jobs when static compile hints prove the scene uses
+ * WebGPU or TypeGPU.
+ */
+export function applyWebGpuRenderModeHints(
+  cfg: EngineConfig,
+  compiled: CompiledComposition,
+  log: ProducerLogger = defaultLogger,
+  options: WebGpuRenderModeHintOptions,
+): WebGpuRenderModeHintResult {
+  const hasWebGpu = compiled.renderModeHints.reasons.some((reason) => reason.code === "webgpu");
+  if (!hasWebGpu) {
+    return {
+      changed: false,
+      browserGpuModeChanged: false,
+      browserWebGpuModeChanged: false,
+    };
+  }
+
+  let browserGpuModeChanged = false;
+  let browserWebGpuModeChanged = false;
+  if (options.allowBrowserGpuModeAuto && !cfg.disableGpu && cfg.browserGpuMode === "software") {
+    cfg.browserGpuMode = "auto";
+    browserGpuModeChanged = true;
+  }
+  if (options.allowBrowserWebGpuModeAuto && cfg.browserWebGpuMode === "off") {
+    cfg.browserWebGpuMode = "auto";
+    browserWebGpuModeChanged = true;
+  }
+
+  const changed = browserGpuModeChanged || browserWebGpuModeChanged;
+  if (changed) {
+    log.warn("Auto-enabled browser WebGPU capability for WebGPU composition", {
+      browserGpuMode: cfg.browserGpuMode,
+      browserWebGpuMode: cfg.browserWebGpuMode,
+    });
+  }
+
+  return { changed, browserGpuModeChanged, browserWebGpuModeChanged };
 }
 
 /**

@@ -63,6 +63,16 @@ export interface CaptureStreamingStageInput {
      */
     totalFrames: number;
     cfg: EngineConfig;
+    /**
+     * Capture-mode flag threaded from `compileStage`. The stage derives a
+     * local copy of `cfg` with this value applied to `forceScreenshot`
+     * before any engine call, so the caller-owned `cfg` is never mutated.
+     * The sequencer may override `compileResult.forceScreenshot` after a
+     * BeginFrame calibration timeout — passing the override through this
+     * parameter keeps the decision visible at the call site instead of
+     * hiding it inside a shared mutable config.
+     */
+    forceScreenshot: boolean;
     log: ProducerLogger;
     workerCount: number;
     probeSession: CaptureSession | null;

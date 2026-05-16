@@ -59,6 +59,21 @@ describe("buildChromeArgs browser GPU mode", () => {
     expect(args).toContain("--use-angle=swiftshader");
     expect(args).not.toContain("--use-angle=metal");
   });
+
+  it("adds WebGPU opt-in flags only when WebGPU is required or unsafe", () => {
+    const autoArgs = buildChromeArgs(base, { browserWebGpuMode: "auto" });
+    expect(autoArgs).not.toContain("--enable-unsafe-webgpu");
+
+    const requiredArgs = buildChromeArgs(base, { browserWebGpuMode: "required" });
+    expect(requiredArgs).toContain("--enable-unsafe-webgpu");
+    expect(requiredArgs).toContain("--enable-features=CanvasDrawElement,Vulkan,VulkanFromANGLE");
+
+    const unsafeArgs = buildChromeArgs(base, {
+      browserWebGpuMode: "auto",
+      browserWebGpuUnsafe: true,
+    });
+    expect(unsafeArgs).toContain("--enable-unsafe-webgpu");
+  });
 });
 
 describe("resolveBrowserGpuMode", () => {

@@ -22,6 +22,7 @@ import {
   type UnresolvedElement,
   rewriteAssetPaths,
   rewriteCssAssetUrls,
+  rewriteSubCompositionScriptSrc,
 } from "@hyperframes/core";
 import { scopeCssToComposition, wrapScopedCompositionScript } from "@hyperframes/core/compiler";
 import { extractMediaMetadata, extractAudioMetadata } from "../utils/ffprobe.js";
@@ -56,7 +57,7 @@ export interface CompiledComposition {
   hasShaderTransitions: boolean;
 }
 
-export type RenderModeHintCode = "iframe" | "requestAnimationFrame";
+export type RenderModeHintCode = "iframe" | "requestAnimationFrame" | "webgpu";
 
 export interface RenderModeHint {
   code: RenderModeHintCode;
@@ -79,6 +80,8 @@ function dedupeElementsById<T extends { id: string }>(elements: T[]): T[] {
 const INLINE_SCRIPT_PATTERN = /<script\b([^>]*)>([\s\S]*?)<\/script>/gi;
 const COMPILER_MOUNT_BLOCK_START = "/* __HF_COMPILER_MOUNT_START__ */";
 const COMPILER_MOUNT_BLOCK_END = "/* __HF_COMPILER_MOUNT_END__ */";
+const WEBGPU_USAGE_PATTERN =
+  /\bnavigator\s*\.\s*gpu\b|\.getContext\s*\(\s*["']webgpu["']\s*\)|\bGPU(?:Buffer|Texture|ShaderStage|MapMode|ColorWrite|CanvasContext|Device|Adapter|Queue)\b|\b__hfWebGpu\b|\b__hfTypegpuTime\b/i;
 
 function stripJsComments(source: string): string {
   return source.replace(/\/\/.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "");
@@ -94,7 +97,35 @@ function stripCompilerMountBootstrap(source: string): string {
   );
 }
 
-export function detectRenderModeHints(html: string): RenderModeHints {
+function isLocalScriptSrc(src: string): boolean {
+  return !!src && !/^(?:https?:|data:|blob:|\/\/|#)/i.test(src);
+}
+
+function collectLocalScriptContents(html: string, projectDir: string): string[] {
+  const { document } = parseHTML(html);
+  const contents: string[] = [];
+  const seen = new Set<string>();
+
+  for (const scriptEl of Array.from(document.querySelectorAll("script[src]"))) {
+    const src = (scriptEl.getAttribute("src") || "").trim();
+    if (!isLocalScriptSrc(src)) continue;
+    const cleanSrc = src.split(/[?#]/, 1)[0] ?? "";
+    if (!cleanSrc) continue;
+    const resolved = cleanSrc.startsWith("/")
+      ? resolve(projectDir, cleanSrc.slice(1))
+      : resolve(projectDir, cleanSrc);
+    if (seen.has(resolved) || !existsSync(resolved)) continue;
+    seen.add(resolved);
+    contents.push(readFileSync(resolved, "utf-8"));
+  }
+
+  return contents;
+}
+
+export function detectRenderModeHints(
+  html: string,
+  options: { externalScriptContents?: string[] } = {},
+): RenderModeHints {
   const reasons: RenderModeHint[] = [];
   const { document } = parseHTML(html);
 
@@ -108,17 +139,38 @@ export function detectRenderModeHints(html: string): RenderModeHints {
 
   let scriptMatch: RegExpExecArray | null;
   const scriptPattern = new RegExp(INLINE_SCRIPT_PATTERN.source, INLINE_SCRIPT_PATTERN.flags);
+  let hasRequestAnimationFrame = false;
+  let hasWebGpu = false;
+  const scriptContents: string[] = [];
   while ((scriptMatch = scriptPattern.exec(html)) !== null) {
     const attrs = scriptMatch[1] || "";
     if (/\bsrc\s*=/i.test(attrs)) continue;
-    const content = stripJsComments(stripCompilerMountBootstrap(scriptMatch[2] || ""));
-    if (!/requestAnimationFrame\s*\(/.test(content)) continue;
+    scriptContents.push(scriptMatch[2] || "");
+  }
+  scriptContents.push(...(options.externalScriptContents ?? []));
+
+  for (const script of scriptContents) {
+    const content = stripJsComments(stripCompilerMountBootstrap(script));
+    hasRequestAnimationFrame =
+      hasRequestAnimationFrame || /requestAnimationFrame\s*\(/.test(content);
+    hasWebGpu = hasWebGpu || WEBGPU_USAGE_PATTERN.test(content);
+    if (hasRequestAnimationFrame && hasWebGpu) break;
+  }
+
+  if (hasRequestAnimationFrame) {
     reasons.push({
       code: "requestAnimationFrame",
       message:
         "Detected raw requestAnimationFrame() in an inline script. This render is routed through screenshot capture mode with virtual time enabled.",
     });
-    break;
+  }
+
+  if (hasWebGpu) {
+    reasons.push({
+      code: "webgpu",
+      message:
+        "Detected WebGPU or TypeGPU usage. This render is routed through screenshot capture mode so Chromium can composite DOM, canvas, and WebGPU layers together.",
+    });
   }
 
   return {
@@ -617,7 +669,8 @@ function inlineSubCompositions(
           }
         }
         for (const scriptEl of compHead.querySelectorAll("script")) {
-          const src = (scriptEl.getAttribute("src") || "").trim();
+          const rawSrc = (scriptEl.getAttribute("src") || "").trim();
+          const src = rawSrc ? rewriteSubCompositionScriptSrc(srcPath, rawSrc) : "";
           if (src && !collectedExternalScriptSrcs.includes(src)) {
             collectedExternalScriptSrcs.push(src);
           }
@@ -641,7 +694,8 @@ function inlineSubCompositions(
     }
 
     for (const scriptEl of contentDoc.querySelectorAll("script")) {
-      const src = (scriptEl.getAttribute("src") || "").trim();
+      const rawSrc = (scriptEl.getAttribute("src") || "").trim();
+      const src = rawSrc ? rewriteSubCompositionScriptSrc(srcPath, rawSrc) : "";
       if (src) {
         // External CDN/remote script — collect for deduped injection into the
         // parent document, mirroring the bundler's hoisting behavior.
@@ -976,7 +1030,9 @@ export async function compileForRender(
     /(<(?:video|audio)\b[^>]*?)\s+preload\s*=\s*["']none["']/gi,
     "$1",
   );
-  const renderModeHints = detectRenderModeHints(sanitizedHtml);
+  const renderModeHints = detectRenderModeHints(sanitizedHtml, {
+    externalScriptContents: collectLocalScriptContents(sanitizedHtml, projectDir),
+  });
   const hasShaderTransitions = detectShaderTransitionUsage(sanitizedHtml);
 
   const coalescedHtml = await injectDeterministicFontFaces(

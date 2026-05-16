@@ -7,6 +7,7 @@ import { resolveProject } from "../utils/project.js";
 import { resolveCompositionViewportFromHtml } from "../utils/compositionViewport.js";
 import { serveStaticProjectHtml } from "../utils/staticProjectServer.js";
 import { c } from "../ui/colors.js";
+import { waitForOptionalWebGpuFrame } from "../utils/webgpuFrame.js";
 import type { Example } from "./_examples.js";
 
 /** Maximum time a single-frame FFmpeg extract is allowed to run. Mirrors the
@@ -109,17 +110,16 @@ async function captureSnapshots(
     // 3. Launch headless Chrome
     const browser = await ensureBrowser();
     const puppeteer = await import("puppeteer-core");
+    const { buildChromeArgs } = await import("@hyperframes/engine");
+    const browserGpuMode =
+      process.env.PRODUCER_BROWSER_GPU_MODE === "software" ? "software" : "hardware";
     const chromeBrowser = await puppeteer.default.launch({
       headless: true,
       executablePath: browser.executablePath,
-      args: [
-        "--no-sandbox",
-        "--disable-gpu",
-        "--disable-dev-shm-usage",
-        "--enable-webgl",
-        "--use-gl=angle",
-        "--use-angle=swiftshader",
-      ],
+      args: buildChromeArgs(
+        { width: 1920, height: 1080, captureMode: "screenshot" },
+        { browserGpuMode, browserWebGpuMode: "auto" },
+      ),
     });
 
     try {
@@ -252,6 +252,7 @@ async function captureSnapshots(
             }
           }
         }, time);
+        await waitForOptionalWebGpuFrame(page, time);
 
         // Wait for rendering to settle after seek
         await page.evaluate(

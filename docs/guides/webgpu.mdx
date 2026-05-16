@@ -1,0 +1,90 @@
+---
+title: WebGPU and TypeGPU
+description: Build seekable WebGPU and TypeGPU compositions that render through the HyperFrames CLI.
+---
+
+# WebGPU and TypeGPU
+
+HyperFrames supports raw WebGPU and TypeGPU through the `typegpu` runtime adapter. WebGPU scenes use the same seek-driven model as GSAP, Three.js, canvas, and HTML scenes: render the exact frame requested by HyperFrames, then let the CLI capture Chromium's composited output.
+
+## Runtime Contract
+
+Use HyperFrames time, not wall-clock time:
+
+```js
+function render(timeSeconds) {
+  // update uniforms, encode commands, submit work
+}
+
+window.addEventListener("hf-seek", (event) => {
+  render(event.detail.time);
+});
+
+render(window.__hfTypegpuTime ?? 0);
+```
+
+Register GPU work so the renderer waits before screenshot capture:
+
+```js
+const adapter = await navigator.gpu.requestAdapter();
+if (!adapter) throw new Error("WebGPU unavailable");
+
+const device = await adapter.requestDevice();
+window.__hfWebGpu?.registerDevice(device);
+
+function render(timeSeconds) {
+  device.queue.writeBuffer(timeBuffer, 0, new Float32Array([timeSeconds]));
+
+  const encoder = device.createCommandEncoder();
+  // render pass...
+  device.queue.submit([encoder.finish()]);
+
+  window.__hfWebGpu?.registerFrame(device.queue.onSubmittedWorkDone());
+}
+```
+
+`registerDevice(device)` is enough for most scenes. Use `registerFrame(promise)` when your renderer has a more specific per-frame completion promise.
+
+## Async Setup
+
+If the first captured frame depends on async pipeline setup, register readiness:
+
+```js
+window.__hfWebGpu?.setReady(
+  (async () => {
+    const adapter = await navigator.gpu.requestAdapter();
+    if (!adapter) throw new Error("WebGPU unavailable");
+    const device = await adapter.requestDevice();
+    window.__hfWebGpu?.registerDevice(device);
+    return device;
+  })(),
+);
+```
+
+## Rendering
+
+Local renders enable WebGPU automatically when Chromium supports it:
+
+```bash
+hyperframes render --output out.mp4
+```
+
+Use required mode for WebGPU-only compositions:
+
+```bash
+hyperframes render --webgpu required --output out.mp4
+```
+
+If your local Chrome needs explicit WebGPU opt-in:
+
+```bash
+hyperframes render --webgpu required --webgpu-unsafe --output out.mp4
+```
+
+Docker renders keep browser WebGPU off because there is no portable cross-platform WebGPU passthrough for deterministic container capture.
+
+## Mixing Scene Types
+
+WebGPU canvases can be layered with DOM, HTML canvas, SVG, video frame injection, GSAP timelines, and other adapters. The producer detects WebGPU/TypeGPU usage and routes those compositions through screenshot capture so Chromium composites all layers together.
+
+Keep the DOM and GPU layers in the same composition tree and seek everything from the same `hf-seek` event. Do not run a free-running `requestAnimationFrame` loop for rendered output.

@@ -78,6 +78,13 @@ export interface CaptureSession {
 const BROWSER_CONSOLE_BUFFER_SIZE = 200;
 const CAPTURE_SESSION_CLOSE_TIMEOUT_MS = 5_000;
 
+class WebGpuFenceTimeoutError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "WebGpuFenceTimeoutError";
+  }
+}
+
 /**
  * Fixed warmup-loop iteration count used when `CaptureOptions.lockWarmupTicks`
  * is `true`. Picked to roughly match the median tick count observed by the
@@ -430,6 +437,157 @@ async function waitForOptionalTailwindReady(page: Page, timeoutMs: number): Prom
   }
 }
 
+async function waitForWebGpuFence<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  message: string,
+): Promise<T> {
+  if (timeoutMs <= 0) return promise;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new WebGpuFenceTimeoutError(message)), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+async function waitForOptionalWebGpuReady(page: Page, timeoutMs: number): Promise<void> {
+  await waitForWebGpuFence(
+    page.evaluate(async () => {
+      const w = window as unknown as {
+        __hfWebGpu?: { waitUntilReady?: () => Promise<void> };
+        __hfWebGpuReady?: boolean | PromiseLike<unknown> | (() => unknown | PromiseLike<unknown>);
+      };
+      const waits: Promise<unknown>[] = [];
+
+      if (typeof w.__hfWebGpu?.waitUntilReady === "function") {
+        waits.push(w.__hfWebGpu.waitUntilReady());
+      }
+
+      const ready = w.__hfWebGpuReady;
+      if (ready !== undefined && ready !== true) {
+        waits.push(Promise.resolve(typeof ready === "function" ? ready() : ready));
+      }
+
+      if (waits.length === 0) return;
+      await Promise.all(waits);
+    }),
+    timeoutMs,
+    `[FrameCapture] WebGPU initialization did not finish after ${timeoutMs}ms. Resolve window.__hfWebGpuReady or call window.__hfWebGpu.setReady(...) once GPU setup is complete.`,
+  );
+}
+
+type WebGpuAvailabilityResult = { ok: true } | { ok: false; reason: string };
+
+export async function assertRequiredWebGpuAvailable(
+  page: Pick<Page, "evaluate">,
+  timeoutMs: number,
+): Promise<void> {
+  const result = await waitForWebGpuFence(
+    page.evaluate(async () => {
+      const nav = navigator as unknown as {
+        gpu?: { requestAdapter?: () => Promise<unknown> };
+      };
+
+      if (!nav.gpu || typeof nav.gpu.requestAdapter !== "function") {
+        return {
+          ok: false,
+          reason: "navigator.gpu is not available in this Chromium session",
+        } satisfies WebGpuAvailabilityResult;
+      }
+
+      try {
+        const adapter = await nav.gpu.requestAdapter();
+        if (!adapter) {
+          return {
+            ok: false,
+            reason: "navigator.gpu.requestAdapter() returned null",
+          } satisfies WebGpuAvailabilityResult;
+        }
+        return { ok: true } satisfies WebGpuAvailabilityResult;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return {
+          ok: false,
+          reason: `navigator.gpu.requestAdapter() failed: ${message}`,
+        } satisfies WebGpuAvailabilityResult;
+      }
+    }) as Promise<WebGpuAvailabilityResult>,
+    timeoutMs,
+    `[FrameCapture] WebGPU capability probe did not finish after ${timeoutMs}ms.`,
+  );
+
+  if (!result.ok) {
+    throw new Error(
+      `[FrameCapture] WebGPU is required but unavailable: ${result.reason}. Use --webgpu auto/off for fallback-capable scenes, or --webgpu required --webgpu-unsafe if this Chrome adapter needs explicit unsafe WebGPU opt-in.`,
+    );
+  }
+}
+
+async function waitForWebGpuFrame(page: Page, time: number, timeoutMs: number): Promise<void> {
+  try {
+    await waitForWebGpuFence(
+      page.evaluate(async (frameTime: number) => {
+        const w = window as unknown as {
+          __hfWebGpu?: {
+            devices?: readonly unknown[];
+            pendingFrameCount?: number;
+            waitForFrame?: (time?: number) => Promise<void>;
+            discardPendingFrames?: () => void;
+          };
+          __hfWebGpuFrameReady?:
+            | boolean
+            | PromiseLike<unknown>
+            | ((time?: number) => unknown | PromiseLike<unknown>);
+          __hfWebGpuWaitForFrame?: (time?: number) => unknown | PromiseLike<unknown>;
+        };
+
+        if (typeof w.__hfWebGpuWaitForFrame === "function") {
+          await w.__hfWebGpuWaitForFrame(frameTime);
+          return;
+        }
+
+        const frameReady = w.__hfWebGpuFrameReady;
+        if (frameReady !== undefined && frameReady !== true) {
+          await Promise.resolve(
+            typeof frameReady === "function" ? frameReady(frameTime) : frameReady,
+          );
+          return;
+        }
+
+        const runtime = w.__hfWebGpu;
+        const hasRuntimeWork =
+          !!runtime &&
+          ((Array.isArray(runtime.devices) && runtime.devices.length > 0) ||
+            Number(runtime.pendingFrameCount) > 0);
+        if (hasRuntimeWork && typeof runtime.waitForFrame === "function") {
+          await runtime.waitForFrame(frameTime);
+        }
+      }, time),
+      timeoutMs,
+      `[FrameCapture] WebGPU frame fence did not finish after ${timeoutMs}ms at t=${time.toFixed(
+        3,
+      )}s. Register per-frame work with window.__hfWebGpu.registerFrame(...) or make the hook resolve.`,
+    );
+  } catch (error) {
+    if (!(error instanceof WebGpuFenceTimeoutError)) throw error;
+    console.warn(error.message);
+    await page
+      .evaluate(() => {
+        const w = window as unknown as {
+          __hfWebGpu?: { discardPendingFrames?: () => void };
+        };
+        w.__hfWebGpu?.discardPendingFrames?.();
+      })
+      .catch(() => {});
+  }
+}
+
 export async function initializeSession(session: CaptureSession): Promise<void> {
   const { page, serverUrl } = session;
 
@@ -526,6 +684,16 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
 
     await page.evaluate(`document.fonts?.ready`);
     await waitForOptionalTailwindReady(page, pageReadyTimeout);
+    if ((session.config?.browserWebGpuMode ?? DEFAULT_CONFIG.browserWebGpuMode) === "required") {
+      await assertRequiredWebGpuAvailable(
+        page,
+        session.config?.webGpuFrameTimeout ?? DEFAULT_CONFIG.webGpuFrameTimeout,
+      );
+    }
+    await waitForOptionalWebGpuReady(
+      page,
+      session.config?.webGpuFrameTimeout ?? DEFAULT_CONFIG.webGpuFrameTimeout,
+    );
 
     // For PNG captures, force the page background fully transparent so the
     // captured screenshots carry a real alpha channel. Must run AFTER
@@ -627,6 +795,16 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
   // Font check (no rAF dependency — uses fonts.ready API directly)
   await page.evaluate(`document.fonts?.ready`);
   await waitForOptionalTailwindReady(page, pageReadyTimeout);
+  if ((session.config?.browserWebGpuMode ?? DEFAULT_CONFIG.browserWebGpuMode) === "required") {
+    await assertRequiredWebGpuAvailable(
+      page,
+      session.config?.webGpuFrameTimeout ?? DEFAULT_CONFIG.webGpuFrameTimeout,
+    );
+  }
+  await waitForOptionalWebGpuReady(
+    page,
+    session.config?.webGpuFrameTimeout ?? DEFAULT_CONFIG.webGpuFrameTimeout,
+  );
 
   // Stop warmup. Unlocked mode exits on this flag; locked mode keeps ticking
   // until LOCKED_WARMUP_TICKS, so we await its promise to ensure the count is
@@ -757,6 +935,12 @@ async function prepareFrameForCapture(
       }
     });
   }
+
+  await waitForWebGpuFrame(
+    page,
+    quantizedTime,
+    session.config?.webGpuFrameTimeout ?? DEFAULT_CONFIG.webGpuFrameTimeout,
+  );
 
   return { quantizedTime, seekMs, beforeCaptureMs };
 }

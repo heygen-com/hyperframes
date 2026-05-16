@@ -23,6 +23,7 @@ import {
 } from "@hyperframes/core/studio-api";
 import { getElementScreenshotClip } from "@hyperframes/core/studio-api/screenshot-clip";
 import type { ScreenshotClip } from "@hyperframes/core/studio-api/screenshot-clip";
+import { waitForOptionalWebGpuFrame } from "../utils/webgpuFrame.js";
 
 const STUDIO_MANUAL_EDITS_PATH = ".hyperframes/studio-manual-edits.json";
 
@@ -138,7 +139,14 @@ async function getThumbnailBrowser(): Promise<import("puppeteer-core").Browser |
         /* continue — acquireBrowser will try its own resolution */
       }
 
-      const acquired = await acquireBrowser(buildChromeArgs({ width: 1920, height: 1080 }));
+      const browserGpuMode =
+        process.env.PRODUCER_BROWSER_GPU_MODE === "software" ? "software" : "hardware";
+      const acquired = await acquireBrowser(
+        buildChromeArgs(
+          { width: 1920, height: 1080, captureMode: "screenshot" },
+          { browserGpuMode, browserWebGpuMode: "auto" },
+        ),
+      );
       _thumbnailBrowser = acquired.browser;
       _thumbnailBrowser.on("disconnected", () => {
         _thumbnailBrowser = null;
@@ -327,6 +335,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
             win.__timeline.seek(t);
           }
         }, opts.seekTime);
+        await waitForOptionalWebGpuFrame(page, opts.seekTime);
         const manifestContent = readStudioManualEditManifestContent(opts.project.dir);
         await applyStudioManualEditsToThumbnailPage(page, manifestContent, opts.compPath);
         // Let the seek render settle.

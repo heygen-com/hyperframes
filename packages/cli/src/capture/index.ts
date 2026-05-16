@@ -72,20 +72,18 @@ export async function captureWebsite(
   const { ensureBrowser } = await import("../browser/manager.js");
   const browser = await ensureBrowser();
   const puppeteer = await import("puppeteer-core");
+  const { buildChromeArgs } = await import("@hyperframes/engine");
+  const browserGpuMode =
+    process.env.PRODUCER_BROWSER_GPU_MODE === "software" ? "software" : "hardware";
   const chromeBrowser = await puppeteer.default.launch({
     headless: true,
     executablePath: browser.executablePath,
     args: [
-      "--no-sandbox",
-      "--disable-dev-shm-usage",
-      "--enable-webgl",
-      "--ignore-gpu-blocklist",
-      "--use-gl=angle",
-      "--use-angle=swiftshader",
+      ...buildChromeArgs(
+        { width: viewportWidth, height: viewportHeight, captureMode: "screenshot" },
+        { browserGpuMode, browserWebGpuMode: "auto" },
+      ),
       "--disable-blink-features=AutomationControlled",
-      "--disable-background-timer-throttling",
-      "--disable-renderer-backgrounding",
-      `--window-size=${viewportWidth},${viewportHeight}`,
     ],
   });
 

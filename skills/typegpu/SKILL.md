@@ -13,9 +13,9 @@ HyperFrames supports TypeGPU and raw WebGPU through its `typegpu` runtime adapte
 - Render from HyperFrames time, not `performance.now()`.
 - Listen for the `hf-seek` event and re-render at exactly that time.
 - Guard against environments where WebGPU is unavailable — the adapter does not check for you.
-- For video renders, call `await device.queue.onSubmittedWorkDone()` after submitting GPU work to ensure the canvas is flushed before the frame is captured.
+- Register WebGPU readiness with `window.__hfWebGpu` so the renderer waits for GPU work before screenshot capture.
 
-The adapter sets `window.__hfTypegpuTime` and dispatches `new CustomEvent("hf-seek", { detail: { time } })` on each seek.
+The adapter sets `window.__hfTypegpuTime`, installs `window.__hfWebGpu`, and dispatches `new CustomEvent("hf-seek", { detail: { time } })` on each seek.
 
 ## Basic Pattern
 
@@ -27,6 +27,7 @@ The adapter sets `window.__hfTypegpuTime` and dispatches `new CustomEvent("hf-se
     const adapter = await navigator.gpu.requestAdapter();
     if (!adapter) return;
     const device = await adapter.requestDevice();
+    window.__hfWebGpu?.registerDevice(device);
     const canvas = document.getElementById("gpu-layer");
     canvas.width = 1920;
     canvas.height = 1080;
@@ -60,6 +61,7 @@ The adapter sets `window.__hfTypegpuTime` and dispatches `new CustomEvent("hf-se
       pass.draw(3);
       pass.end();
       device.queue.submit([enc.finish()]);
+      window.__hfWebGpu?.registerFrame(device.queue.onSubmittedWorkDone());
     }
 
     render(0);
@@ -67,6 +69,24 @@ The adapter sets `window.__hfTypegpuTime` and dispatches `new CustomEvent("hf-se
   })();
 </script>
 ```
+
+`registerDevice(device)` is enough for most raw WebGPU and TypeGPU scenes: HyperFrames will call `device.queue.onSubmittedWorkDone()` before frame capture. Use `registerFrame(promise)` when one seek submits multiple queues or when TypeGPU gives you a specific per-frame completion promise.
+
+For async setup that must finish before the first captured frame:
+
+```js
+window.__hfWebGpu?.setReady(
+  (async () => {
+    const adapter = await navigator.gpu.requestAdapter();
+    if (!adapter) throw new Error("WebGPU unavailable");
+    const device = await adapter.requestDevice();
+    window.__hfWebGpu?.registerDevice(device);
+    return device;
+  })(),
+);
+```
+
+For CLI renders, local WebGPU is enabled automatically when Chromium supports it. Use `hyperframes render --webgpu required` to fail fast for WebGPU scenes, or `hyperframes render --webgpu required --webgpu-unsafe` on local machines that need Chrome's explicit unsafe WebGPU opt-in. Docker renders intentionally use `--webgpu off`.
 
 ## Timeline Registration
 
@@ -171,4 +191,4 @@ Use this to define inside/ring/outside zones for glass effects. Negative values 
 - No `Math.random()` — use a seeded PRNG.
 - No `requestAnimationFrame` for the render loop — render only in response to `hf-seek`.
 - No `performance.now()` for animation time — read `window.__hfTypegpuTime` or `e.detail.time`.
-- After GPU submit, call `await device.queue.onSubmittedWorkDone()` for render-mode frame capture.
+- After GPU submit, call `window.__hfWebGpu?.registerFrame(device.queue.onSubmittedWorkDone())` or register the device once with `window.__hfWebGpu?.registerDevice(device)`.

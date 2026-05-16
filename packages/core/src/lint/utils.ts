@@ -153,6 +153,70 @@ export function getInlineScriptSyntaxError(source: string): string | null {
   }
 }
 
+export function stripJsComments(source: string): string {
+  let out = "";
+  let i = 0;
+  let quote: "'" | '"' | "`" | null = null;
+  let escaped = false;
+
+  while (i < source.length) {
+    const ch = source[i] ?? "";
+    const next = source[i + 1] ?? "";
+
+    if (quote) {
+      out += ch;
+      if (escaped) {
+        escaped = false;
+      } else if (ch === "\\") {
+        escaped = true;
+      } else if (ch === quote) {
+        quote = null;
+      }
+      i += 1;
+      continue;
+    }
+
+    if (ch === "'" || ch === '"' || ch === "`") {
+      quote = ch;
+      out += ch;
+      i += 1;
+      continue;
+    }
+
+    if (ch === "/" && next === "/") {
+      out += "  ";
+      i += 2;
+      while (i < source.length && source[i] !== "\n" && source[i] !== "\r") {
+        out += " ";
+        i += 1;
+      }
+      continue;
+    }
+
+    if (ch === "/" && next === "*") {
+      out += "  ";
+      i += 2;
+      while (i < source.length) {
+        const blockCh = source[i] ?? "";
+        const blockNext = source[i + 1] ?? "";
+        if (blockCh === "*" && blockNext === "/") {
+          out += "  ";
+          i += 2;
+          break;
+        }
+        out += blockCh === "\n" || blockCh === "\r" ? blockCh : " ";
+        i += 1;
+      }
+      continue;
+    }
+
+    out += ch;
+    i += 1;
+  }
+
+  return out;
+}
+
 export function isMediaTag(tagName: string): boolean {
   return tagName === "video" || tagName === "audio" || tagName === "img";
 }

@@ -157,6 +157,7 @@ describe("buildDockerRunArgs", () => {
         workers: 8,
         gpu: true,
         browserGpu: false,
+        browserWebGpu: "off",
         hdrMode: "force-hdr",
         crf: 16,
         videoBitrate: undefined,
@@ -176,6 +177,8 @@ describe("buildDockerRunArgs", () => {
     expect(args).toContain("--quiet");
     expect(args).toContain("--gpu");
     expect(args).toContain("--no-browser-gpu");
+    expect(args).toContain("--webgpu");
+    expect(args).toContain("off");
     expect(args).toContain("--hdr");
     expect(args).toContain("--composition");
     expect(args).toContain("compositions/intro.html");
@@ -289,5 +292,15 @@ describe("buildDockerRunArgs", () => {
   it("omits --no-page-side-compositing when pageSideCompositing is not explicitly false", () => {
     const args = buildDockerRunArgs({ ...FIXED_INPUT, options: BASE });
     expect(args).not.toContain("--no-page-side-compositing");
+  });
+
+  it("forwards --webgpu when browser WebGPU mode is pinned", () => {
+    const args = buildDockerRunArgs({
+      ...FIXED_INPUT,
+      options: { ...BASE, browserWebGpu: "off" },
+    });
+    const idx = args.indexOf("--webgpu");
+    expect(idx).toBeGreaterThan(-1);
+    expect(args[idx + 1]).toBe("off");
   });
 });

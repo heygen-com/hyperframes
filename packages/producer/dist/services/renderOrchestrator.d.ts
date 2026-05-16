@@ -30,10 +30,10 @@
  * diagnostics).
  */
 import { type CanvasResolution, type Fps } from "@hyperframes/core";
-import { type EngineConfig, type ExtractedFrames, type ExtractionPhaseBreakdown, type HdrTransfer, type CaptureOptions, type CaptureVideoMetadataHint, type CaptureSession, type BeforeCaptureHook, type ParallelProgress, type WorkerTask, type ElementStackingInfo, type HfTransitionMeta } from "@hyperframes/engine";
-import { type CompiledComposition } from "./htmlCompiler.js";
+import { type EngineConfig, type ExtractionPhaseBreakdown, type HdrTransfer, type CaptureOptions, type CaptureVideoMetadataHint, type CaptureSession, type BeforeCaptureHook, type ParallelProgress, type WorkerTask, type ElementStackingInfo, type HfTransitionMeta } from "@hyperframes/engine";
 import { type ProducerLogger } from "../logger.js";
 import { type HdrImageTransferCache } from "./hdrImageTransferCache.js";
+import { type HdrPerfCollector, type HdrPerfSummary } from "./render/hdrPerf.js";
 /**
  * Metadata for a shader transition between two scenes, extracted from
  * `window.__hf.transitions`. Re-exported from the engine so the producer
@@ -185,37 +185,8 @@ export interface HdrDiagnostics {
     videoExtractionFailures: number;
     imageDecodeFailures: number;
 }
-export interface HdrPerfSummary {
-    frames: number;
-    normalFrames: number;
-    transitionFrames: number;
-    domLayerCaptures: number;
-    hdrVideoLayerBlits: number;
-    hdrImageLayerBlits: number;
-    timings: Record<string, number>;
-    avgMs: Record<string, number>;
-}
-export type HdrPerfTimingKey = "frameSeekMs" | "frameInjectMs" | "stackingQueryMs" | "canvasClearMs" | "normalCompositeMs" | "transitionCompositeMs" | "encoderWriteMs" | "hdrVideoReadDecodeMs" | "hdrVideoTransferMs" | "hdrVideoBlitMs" | "hdrImageTransferMs" | "hdrImageBlitMs" | "domLayerSeekMs" | "domLayerInjectMs" | "domMaskApplyMs" | "domScreenshotMs" | "domMaskRemoveMs" | "domPngDecodeMs" | "domBlitMs";
-export interface HdrPerfCollector {
-    frames: number;
-    normalFrames: number;
-    transitionFrames: number;
-    domLayerCaptures: number;
-    hdrVideoLayerBlits: number;
-    hdrImageLayerBlits: number;
-    timings: Record<HdrPerfTimingKey, number>;
-}
-export declare function createHdrPerfCollector(): HdrPerfCollector;
-export declare function addHdrTiming(perf: HdrPerfCollector | undefined, key: HdrPerfTimingKey, startMs: number): void;
-export interface CaptureCostEstimate {
-    multiplier: number;
-    reasons: string[];
-    p95Ms?: number;
-}
-export interface CaptureCalibrationSample {
-    frameIndex: number;
-    captureTimeMs: number;
-}
+export { type HdrPerfCollector, type HdrPerfSummary, type HdrPerfTimingKey, addHdrTiming, createHdrPerfCollector, finalizeHdrPerf, } from "./render/hdrPerf.js";
+export { type CaptureCalibrationOutcome, type CaptureCalibrationSample, type CaptureCostEstimate, createCaptureCalibrationConfig, createFailedCaptureCalibrationEstimate, estimateCaptureCostMultiplier, estimateMeasuredCaptureCostMultiplier, logCaptureCalibrationResult, measureCaptureCostFromSession, resolveRenderWorkerCount, runCaptureCalibration, selectCaptureCalibrationFrames, } from "./render/captureCost.js";
 export interface FrameRange {
     startFrame: number;
     endFrame: number;
@@ -257,39 +228,7 @@ export declare class RenderCancelledError extends Error {
     reason: "user_cancelled" | "timeout" | "aborted";
     constructor(message?: string, reason?: "user_cancelled" | "timeout" | "aborted");
 }
-export declare function createCompiledFrameSrcResolver(compiledDir: string): (framePath: string) => string | null;
-type MaterializedExtractedFrames = Pick<ExtractedFrames, "videoId" | "outputDir" | "framePaths">;
-type MaterializePathModule = {
-    resolve: (...segments: string[]) => string;
-    join: (...segments: string[]) => string;
-    dirname: (path: string) => string;
-    basename: (path: string) => string;
-    relative: (from: string, to: string) => string;
-    isAbsolute: (path: string) => boolean;
-};
-type MaterializeFileSystem = {
-    existsSync: (path: string) => boolean;
-    mkdirSync: (path: string, options: {
-        recursive: true;
-    }) => unknown;
-    symlinkSync: (target: string, path: string) => unknown;
-    cpSync: (src: string, dest: string, options: {
-        recursive: true;
-    }) => unknown;
-};
-type MaterializeExtractedFramesOptions = {
-    pathModule?: MaterializePathModule;
-    fileSystem?: MaterializeFileSystem;
-    /**
-     * When `true`, recursively copy frames into `compiledDir` as real files
-     * instead of creating a single symlink per video. Required for
-     * distributed plan() output where the planDir must be self-contained
-     * across machines (symlinks don't survive S3 / GCS round-trips).
-     * Default `false` preserves the in-process renderer's symlink behavior.
-     */
-    materializeSymlinks?: boolean;
-};
-export declare function materializeExtractedFramesForCompiledDir(extracted: MaterializedExtractedFrames[], compiledDir: string, options?: MaterializeExtractedFramesOptions): void;
+export { createCompiledFrameSrcResolver, materializeExtractedFramesForCompiledDir, } from "./render/shared.js";
 export declare function collectVideoReadinessSkipIds(nativeHdrVideoIds: ReadonlySet<string>, extractedVideos: readonly ExtractedVideoReadinessInput[]): string[];
 interface ExtractedVideoReadinessInput {
     videoId: string;
@@ -299,16 +238,11 @@ interface ExtractedVideoReadinessInput {
     };
 }
 export declare function collectVideoMetadataHints(extractedVideos: readonly ExtractedVideoReadinessInput[]): CaptureVideoMetadataHint[];
-export declare function resolveRenderWorkerCount(totalFrames: number, requestedWorkers: number | undefined, cfg: EngineConfig, compiled: Pick<CompiledComposition, "hasShaderTransitions" | "renderModeHints">, log?: ProducerLogger, measuredCaptureCost?: CaptureCostEstimate): number;
-export declare function estimateCaptureCostMultiplier(compiled: Pick<CompiledComposition, "hasShaderTransitions" | "renderModeHints">): CaptureCostEstimate;
-export declare function createCaptureCalibrationConfig(cfg: EngineConfig): EngineConfig;
-export declare function estimateMeasuredCaptureCostMultiplier(samples: CaptureCalibrationSample[]): CaptureCostEstimate;
-export declare function selectCaptureCalibrationFrames(totalFrames: number): number[];
 export declare function findMissingFrameRanges(totalFrames: number, framesDir: string, frameExt: "jpg" | "png"): FrameRange[];
 export declare function buildMissingFrameRetryBatches(ranges: FrameRange[], maxWorkers: number, workDir: string, attempt: number): WorkerTask[][];
 export declare function getNextRetryWorkerCount(currentWorkers: number): number;
 export declare function isRecoverableParallelCaptureError(error: unknown): boolean;
-export declare function shouldFallbackToScreenshotAfterCalibrationError(error: unknown): boolean;
+export { shouldFallbackToScreenshotAfterCalibrationError } from "./render/captureCost.js";
 export declare function executeDiskCaptureWithAdaptiveRetry(options: {
     serverUrl: string;
     workDir: string;
@@ -442,5 +376,4 @@ export declare function extractStandaloneEntryFromIndex(indexHtml: string, entry
  * error (with a diagnostic summary written to `perf-summary.json`).
  */
 export declare function executeRenderJob(job: RenderJob, projectDir: string, outputPath: string, onProgress?: ProgressCallback, abortSignal?: AbortSignal): Promise<void>;
-export {};
 //# sourceMappingURL=renderOrchestrator.d.ts.map
