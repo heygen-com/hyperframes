@@ -41,6 +41,7 @@ ${c.bold("SUBCOMMANDS:")}
   ${c.accent("render")}            ${c.dim("Start a distributed render (returns a renderId)")}
   ${c.accent("progress")}          ${c.dim("Print progress + cost for an in-flight or finished render")}
   ${c.accent("destroy")}           ${c.dim("Tear the stack down (S3 bucket is retained)")}
+  ${c.accent("policies")}          ${c.dim("Print or validate the IAM permissions the CLI needs")}
 
 ${c.bold("FIRST RUN:")}
   ${c.accent("hyperframes lambda deploy")}
@@ -110,6 +111,13 @@ export default defineCommand({
     "wait-interval-ms": {
       type: "string",
       description: "Poll cadence in ms when --wait is set (default: 5000)",
+    },
+
+    // policies
+    principal: {
+      type: "string",
+      description:
+        "Trust principal for `policies role` (lambda | cloudformation; default cloudformation)",
     },
 
     // shared
@@ -257,6 +265,23 @@ export default defineCommand({
         await runDestroy({ stackName, awsProfile: args.profile as string | undefined });
         return;
       }
+      case "policies": {
+        const verb = args.target as string | undefined;
+        if (verb !== "role" && verb !== "user" && verb !== "validate") {
+          console.error(
+            `[lambda policies] usage: hyperframes lambda policies <role|user|validate> [args]`,
+          );
+          process.exit(1);
+        }
+        const { runPolicies } = await import("./lambda/policies.js");
+        await runPolicies({
+          verb,
+          inputPath: args.extra as string | undefined,
+          principal: parsePrincipal(args.principal),
+          json: Boolean(args.json),
+        });
+        return;
+      }
       default:
         console.error(`${c.error("Unknown subcommand:")} ${subcommand}\n${HELP}`);
         process.exit(1);
@@ -306,6 +331,7 @@ const FORMATS = ["mp4", "mov", "png-sequence"] as const;
 const CODECS = ["h264", "h265"] as const;
 const QUALITIES = ["draft", "standard", "high"] as const;
 const CHROME_SOURCES = ["sparticuz", "chrome-headless-shell"] as const;
+const PRINCIPALS = ["lambda", "cloudformation"] as const;
 
 const parseFormat = (raw: unknown): (typeof FORMATS)[number] =>
   parseEnum(raw, FORMATS, "[lambda render] --format", "mp4")!;
@@ -315,3 +341,5 @@ const parseQuality = (raw: unknown): (typeof QUALITIES)[number] | undefined =>
   parseEnum(raw, QUALITIES, "[lambda render] --quality", undefined);
 const parseChromeSource = (raw: unknown): (typeof CHROME_SOURCES)[number] =>
   parseEnum(raw, CHROME_SOURCES, "[lambda deploy] --chrome-source", "sparticuz")!;
+const parsePrincipal = (raw: unknown): (typeof PRINCIPALS)[number] =>
+  parseEnum(raw, PRINCIPALS, "[lambda policies role] --principal", "cloudformation")!;

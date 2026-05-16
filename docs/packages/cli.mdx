@@ -930,6 +930,25 @@ hyperframes lambda progress hf-render-abcd1234
 
 Calls `sam delete --no-prompts` and drops the local state file. The render S3 bucket is configured with CloudFormation `Retain` so it survives destruction — empty and delete it via the AWS console / CLI if you want the storage back.
 
+#### `lambda policies role | user | validate`
+
+Print or validate the minimum IAM policy the CLI needs to deploy / invoke / destroy the stack.
+
+```bash
+# Print an inline-policy doc you can attach to an IAM user that runs the CLI.
+hyperframes lambda policies user
+
+# Print { TrustRelationship, InlinePolicy } for an IAM role (default: cloudformation principal).
+hyperframes lambda policies role --principal=cloudformation
+
+# Validate a checked-in policy still covers the CLI's needs.
+hyperframes lambda policies validate ./infra/iam/hyperframes-deploy.json
+```
+
+`validate` reads the JSON doc and checks the union of its `Effect: Allow` actions against the CLI's required action set, expanding `s3:*` / `s3:Get*` / `*` wildcards. Missing actions print to stderr and the command exits non-zero — wire it into CI to catch drift before the next deploy fails.
+
+The actions list is deliberately broad (`Resource: "*"`) because CloudFormation creates new function / state-machine / bucket ARNs on every adopter's first deploy. Adopters with stricter security postures should narrow `Resource` to the deployed ARNs after the first successful run.
+
 ### State files
 
 `hyperframes lambda` keeps per-stack metadata under `<cwd>/.hyperframes/lambda-stack-<name>.json` so the verbs don't need to call `describe-stacks` every time. Commit the file to a repo or `.gitignore` it depending on your workflow — it contains the bucket name, state-machine ARN, and region, none of which are secrets but all of which are AWS-account-identifying.
