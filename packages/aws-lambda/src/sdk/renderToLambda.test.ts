@@ -1,0 +1,235 @@
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { HeadObjectCommand, PutObjectCommand, type S3Client } from "@aws-sdk/client-s3";
+import { type SFNClient, StartExecutionCommand } from "@aws-sdk/client-sfn";
+import type { SerializableDistributedRenderConfig } from "../events.js";
+import { InvalidConfigError } from "./validateConfig.js";
+import { renderToLambda } from "./renderToLambda.js";
+import type { SiteHandle } from "./deploySite.js";
+
+interface CapturedStart {
+  stateMachineArn: string;
+  name: string;
+  input: unknown;
+}
+
+class FakeSFN {
+  starts: CapturedStart[] = [];
+  async send(command: unknown): Promise<unknown> {
+    const cmdName = (command as { constructor: { name: string } }).constructor.name;
+    if (cmdName === "StartExecutionCommand") {
+      const input = (command as { input: { stateMachineArn: string; name: string; input: string } })
+        .input;
+      this.starts.push({
+        stateMachineArn: input.stateMachineArn,
+        name: input.name,
+        input: JSON.parse(input.input),
+      });
+      return {
+        executionArn: `arn:aws:states:us-east-1:1234:execution:hf:${input.name}`,
+        startDate: new Date(),
+      };
+    }
+    throw new Error(`FakeSFN: unexpected command ${cmdName}`);
+  }
+}
+
+class FakeS3 {
+  existing = new Set<string>();
+  async send(command: unknown): Promise<unknown> {
+    const cmdName = (command as { constructor: { name: string } }).constructor.name;
+    const input = (command as { input: { Bucket: string; Key: string } }).input;
+    if (cmdName === "HeadObjectCommand") {
+      if (this.existing.has(`${input.Bucket}/${input.Key}`)) {
+        return { ContentLength: 1, LastModified: new Date() };
+      }
+      const err = new Error("Not Found") as Error & {
+        $metadata: { httpStatusCode: number };
+        name: string;
+      };
+      err.name = "NotFound";
+      err.$metadata = { httpStatusCode: 404 };
+      throw err;
+    }
+    if (cmdName === "PutObjectCommand") {
+      this.existing.add(`${input.Bucket}/${input.Key}`);
+      await drainBody((command as { input: { Body: NodeJS.ReadableStream | Buffer } }).input.Body);
+      return {};
+    }
+    throw new Error(`FakeS3: unexpected command ${cmdName}`);
+  }
+}
+
+async function drainBody(body: NodeJS.ReadableStream | Buffer): Promise<void> {
+  if (Buffer.isBuffer(body)) return;
+  await new Promise<void>((resolve, reject) => {
+    body.on("data", () => {});
+    body.on("end", () => resolve());
+    body.on("close", () => resolve());
+    body.on("error", reject);
+  });
+}
+
+const baseConfig: SerializableDistributedRenderConfig = {
+  fps: 30,
+  width: 1280,
+  height: 720,
+  format: "mp4",
+};
+
+let projectDir: string;
+
+beforeEach(() => {
+  projectDir = mkdtempSync(join(tmpdir(), "hf-render-test-"));
+  writeFileSync(join(projectDir, "index.html"), "<html></html>");
+});
+
+afterEach(() => {
+  rmSync(projectDir, { recursive: true, force: true });
+});
+
+describe("renderToLambda", () => {
+  it("returns a handle and starts a state-machine execution with the right input", async () => {
+    const sfn = new FakeSFN();
+    const s3 = new FakeS3();
+    const handle = await renderToLambda({
+      projectDir,
+      bucketName: "test-bucket",
+      stateMachineArn: "arn:aws:states:us-east-1:1234:stateMachine:hf",
+      config: baseConfig,
+      executionName: "smoke-1",
+      sfn: sfn as unknown as SFNClient,
+      s3: s3 as unknown as S3Client,
+    });
+
+    expect(handle.renderId).toBe("smoke-1");
+    expect(handle.executionArn).toContain("smoke-1");
+    expect(handle.bucketName).toBe("test-bucket");
+    expect(handle.outputS3Uri).toBe("s3://test-bucket/renders/smoke-1/output.mp4");
+    expect(handle.projectS3Uri).toMatch(
+      /^s3:\/\/test-bucket\/sites\/[0-9a-f]{16}\/project\.tar\.gz$/,
+    );
+
+    expect(sfn.starts).toHaveLength(1);
+    const start = sfn.starts[0]!;
+    expect(start.name).toBe("smoke-1");
+    expect(start.stateMachineArn).toBe("arn:aws:states:us-east-1:1234:stateMachine:hf");
+    expect(start.input).toEqual({
+      ProjectS3Uri: handle.projectS3Uri,
+      PlanOutputS3Prefix: "s3://test-bucket/renders/smoke-1/",
+      OutputS3Uri: "s3://test-bucket/renders/smoke-1/output.mp4",
+      Config: baseConfig,
+    });
+  });
+
+  it("derives the file extension from config.format", async () => {
+    const sfn = new FakeSFN();
+    const s3 = new FakeS3();
+    const handle = await renderToLambda({
+      projectDir,
+      bucketName: "test-bucket",
+      stateMachineArn: "arn:aws:states:us-east-1:1234:stateMachine:hf",
+      config: { ...baseConfig, format: "mov" },
+      executionName: "smoke-mov",
+      sfn: sfn as unknown as SFNClient,
+      s3: s3 as unknown as S3Client,
+    });
+    expect(handle.outputS3Uri).toBe("s3://test-bucket/renders/smoke-mov/output.mov");
+  });
+
+  it("reuses a supplied siteHandle (no deploy)", async () => {
+    const sfn = new FakeSFN();
+    const s3 = new FakeS3();
+    const prebuilt: SiteHandle = {
+      siteId: "prebaked",
+      projectS3Uri: "s3://test-bucket/sites/prebaked/project.tar.gz",
+      bytes: 4096,
+      uploadedAt: "2026-05-16T00:00:00Z",
+      uploaded: true,
+    };
+    const handle = await renderToLambda({
+      siteHandle: prebuilt,
+      bucketName: "test-bucket",
+      stateMachineArn: "arn:aws:states:us-east-1:1234:stateMachine:hf",
+      config: baseConfig,
+      executionName: "smoke-reuse",
+      sfn: sfn as unknown as SFNClient,
+      s3: s3 as unknown as S3Client,
+    });
+    expect(handle.projectS3Uri).toBe(prebuilt.projectS3Uri);
+    // No HEAD/PUT means s3.existing stayed empty.
+    expect(s3.existing.size).toBe(0);
+  });
+
+  it("rejects invalid configs synchronously before any AWS call", async () => {
+    const sfn = new FakeSFN();
+    const s3 = new FakeS3();
+    try {
+      await renderToLambda({
+        projectDir,
+        bucketName: "test-bucket",
+        stateMachineArn: "arn:aws:states:us-east-1:1234:stateMachine:hf",
+        config: { ...baseConfig, fps: 25 as 24 | 30 | 60 },
+        sfn: sfn as unknown as SFNClient,
+        s3: s3 as unknown as S3Client,
+      });
+      throw new Error("expected throw");
+    } catch (err) {
+      expect(err).toBeInstanceOf(InvalidConfigError);
+    }
+    expect(sfn.starts).toHaveLength(0);
+  });
+
+  it("requires either siteHandle or projectDir", async () => {
+    const sfn = new FakeSFN();
+    const s3 = new FakeS3();
+    await expect(
+      renderToLambda({
+        bucketName: "test-bucket",
+        stateMachineArn: "arn:aws:states:us-east-1:1234:stateMachine:hf",
+        config: baseConfig,
+        sfn: sfn as unknown as SFNClient,
+        s3: s3 as unknown as S3Client,
+      }),
+    ).rejects.toThrow(/either siteHandle or projectDir/);
+  });
+
+  it("auto-generates an executionName when omitted", async () => {
+    const sfn = new FakeSFN();
+    const s3 = new FakeS3();
+    const handle = await renderToLambda({
+      projectDir,
+      bucketName: "test-bucket",
+      stateMachineArn: "arn:aws:states:us-east-1:1234:stateMachine:hf",
+      config: baseConfig,
+      sfn: sfn as unknown as SFNClient,
+      s3: s3 as unknown as S3Client,
+    });
+    expect(handle.renderId).toMatch(/^hf-render-[0-9a-f-]{36}$/);
+  });
+
+  it("propagates a missing executionArn as an error", async () => {
+    const sfn = {
+      async send(_cmd: unknown): Promise<unknown> {
+        return { executionArn: undefined };
+      },
+    };
+    const s3 = new FakeS3();
+    await expect(
+      renderToLambda({
+        projectDir,
+        bucketName: "test-bucket",
+        stateMachineArn: "arn:aws:states:us-east-1:1234:stateMachine:hf",
+        config: baseConfig,
+        sfn: sfn as unknown as SFNClient,
+        s3: s3 as unknown as S3Client,
+      }),
+    ).rejects.toThrow(/no executionArn/);
+  });
+});
+
+void HeadObjectCommand;
+void PutObjectCommand;
+void StartExecutionCommand;

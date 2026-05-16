@@ -1,14 +1,20 @@
 # @hyperframes/aws-lambda
 
-AWS Lambda adapter for HyperFrames distributed rendering. Wraps the OSS
-`plan` / `renderChunk` / `assemble` primitives into a single Lambda handler
-that Step Functions can dispatch on, plus a build pipeline that bundles
-the handler + Chrome runtime + ffmpeg into a deployable ZIP.
+AWS Lambda adapter for HyperFrames distributed rendering. Ships three
+things together:
 
-The Lambda adapter ships in two parts: the foundation (this package + the
-SAM example) validates the architecture end-to-end on real AWS; the
-user-facing surface (CLI, CDK construct, migration guide) lands in
-follow-up PRs.
+1. The **Lambda handler** that wraps the OSS `plan` / `renderChunk` /
+   `assemble` primitives behind a single dispatch boundary Step Functions
+   can drive (`src/handler.ts`).
+2. A **client-side SDK** — `renderToLambda`, `getRenderProgress`,
+   `deploySite`, plus `validateDistributedRenderConfig` and
+   `computeRenderCost` (`src/sdk/`).
+3. An **`aws-cdk-lib` L2 construct** (`HyperframesRenderStack`) that
+   provisions the same topology as `examples/aws-lambda/template.yaml`
+   inside an adopter's own CDK app (`src/cdk/`).
+
+The handler ZIP and the SAM template still drive a maintainer-run real-AWS
+smoke flow; the SDK + CDK are the supported public surface for adopters.
 
 ## Architecture
 
@@ -104,10 +110,82 @@ bun run --cwd packages/aws-lambda test               # unit tests (no Chrome)
 bun run --cwd packages/aws-lambda probe:beginframe   # local probe (Linux only)
 ```
 
-## What's NOT in this PR
+## Using the SDK
 
-- `examples/aws-lambda/template.yaml` (SAM template — separate PR).
-- Real-AWS deploy + smoke workflow (separate PR).
-- `npx hyperframes lambda deploy` CLI — follow-up.
-- CDK construct (`HyperframesRenderStack`) — follow-up.
-- Migration guide — follow-up.
+After deploying the stack (via the SAM template, CDK construct below, or
+your own CFN of choice), drive renders from Node:
+
+```ts
+import { deploySite, getRenderProgress, renderToLambda } from "@hyperframes/aws-lambda";
+
+// One-time upload per project version.
+const site = await deploySite({
+  projectDir: "./my-composition",
+  bucketName: "hyperframes-render-bucket",
+});
+
+// Start a render. Returns immediately — does NOT poll.
+const handle = await renderToLambda({
+  siteHandle: site,
+  bucketName: site.projectS3Uri.split("/")[2]!,
+  stateMachineArn: "arn:aws:states:us-east-1:123:stateMachine:hyperframes-render",
+  config: {
+    fps: 30,
+    width: 1920,
+    height: 1080,
+    format: "mp4",
+    chunkSize: 240,
+    maxParallelChunks: 16,
+    runtimeCap: "lambda",
+  },
+});
+
+// Poll progress + cost on your own cadence.
+const progress = await getRenderProgress({ executionArn: handle.executionArn });
+console.log(progress.overallProgress, progress.costs.displayCost);
+if (progress.status === "SUCCEEDED" && progress.outputFile) {
+  console.log("Render landed at", progress.outputFile.s3Uri);
+}
+```
+
+`renderToLambda` validates the config client-side via
+`validateDistributedRenderConfig` and throws a typed `InvalidConfigError`
+before the Step Functions execution starts, so shape errors surface
+synchronously instead of as opaque `ExecutionFailed` results.
+
+`getRenderProgress` reports an approximate per-render cost
+(`accruedSoFarUsd` plus a formatted `displayCost`) derived from Lambda
+billed-duration × memory × the us-east-1 on-demand rate plus the Step
+Functions transition price. The math is documented in
+`src/sdk/costAccounting.ts`; numbers are best-effort and exclude S3
+transfer.
+
+## Using the CDK construct
+
+```ts
+import { App, Stack } from "aws-cdk-lib";
+import { HyperframesRenderStack } from "@hyperframes/aws-lambda/cdk";
+
+const app = new App();
+const stack = new Stack(app, "MyApp");
+const render = new HyperframesRenderStack(stack, "Render", {
+  // optional: reservedConcurrency: 8,
+  // optional: lambdaMemoryMb: 10240,
+  // optional: chromeSource: "sparticuz",
+});
+
+// Re-export so an adopter app can wire dashboards / SNS topics.
+new CfnOutput(stack, "RenderBucketName", { value: render.bucket.bucketName });
+new CfnOutput(stack, "StateMachineArn", { value: render.stateMachine.stateMachineArn });
+```
+
+`aws-cdk-lib` and `constructs` are **optional peer dependencies**: SDK-only
+consumers don't pull them at runtime. The construct itself imports from
+`@hyperframes/aws-lambda/cdk`.
+
+## What's still ahead
+
+- `hyperframes lambda` CLI (deploy / sites create / render / progress / destroy) — PR 6.5.
+- IAM bootstrap subcommand (`policies role | user | validate`) — PR 6.9.
+- Lambda-local regression harness (`--mode=lambda-local`) — PR 6.6.
+- Adopter-facing migration guide — PR 6.8.

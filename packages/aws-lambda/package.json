@@ -1,7 +1,7 @@
 {
   "name": "@hyperframes/aws-lambda",
   "version": "0.0.1",
-  "description": "AWS Lambda adapter for HyperFrames distributed rendering — Plan/RenderChunk/Assemble handler + ZIP bundling.",
+  "description": "AWS Lambda adapter for HyperFrames distributed rendering — handler, client-side SDK, and CDK construct.",
   "repository": {
     "type": "git",
     "url": "https://github.com/heygen-com/hyperframes",
@@ -17,7 +17,8 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
-    "./handler": "./src/handler.ts"
+    "./handler": "./src/handler.ts",
+    "./cdk": "./src/cdk/index.ts"
   },
   "publishConfig": {
     "access": "public",
@@ -34,6 +35,7 @@
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.700.0",
+    "@aws-sdk/client-sfn": "^3.700.0",
     "@hyperframes/producer": "workspace:^",
     "@sparticuz/chromium": "148.0.0",
     "ffmpeg-static": "^5.2.0",
@@ -45,9 +47,23 @@
     "@types/aws-lambda": "^8.10.146",
     "@types/node": "^25.0.10",
     "@types/tar": "^6.1.13",
+    "aws-cdk-lib": "^2.130.0",
+    "constructs": "^10.3.0",
     "esbuild": "^0.25.12",
     "tsx": "^4.21.0",
     "typescript": "^5.7.2"
+  },
+  "peerDependencies": {
+    "aws-cdk-lib": "^2.130.0",
+    "constructs": "^10.3.0"
+  },
+  "peerDependenciesMeta": {
+    "aws-cdk-lib": {
+      "optional": true
+    },
+    "constructs": {
+      "optional": true
+    }
   },
   "engines": {
     "node": ">=22"
