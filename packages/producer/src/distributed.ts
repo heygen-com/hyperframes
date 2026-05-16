@@ -1,9 +1,9 @@
 /**
  * `@hyperframes/producer/distributed` — the distributed render primitives.
  *
- * See `DISTRIBUTED-RENDERING-PLAN.md` for the full architecture. The three
- * activities (`plan` → `renderChunk` × N → `assemble`) are pure functions
- * over local file paths; networking + orchestration live in adapters.
+ * The three activities (`plan` → `renderChunk` × N → `assemble`) are pure
+ * functions over local file paths; networking + orchestration live in
+ * adapters.
  *
  * Adopters (AWS Lambda, Cloud Run Jobs, Temporal, K8s Jobs, plain SSH):
  *

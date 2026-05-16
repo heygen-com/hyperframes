@@ -18,11 +18,11 @@
  * pass the same quality bar the in-process renderer passes against the
  * same frozen baseline. A separate {@link DISTRIBUTED_SIMULATED_MIN_PSNR_DB}
  * pathology floor catches the case where a fixture authored a permissive
- * threshold and distributed regresses to fully-black output. The §5.1
- * 50 dB target was written for per-render comparison (fresh in-process vs
- * fresh distributed); against the frozen baseline file it's unreachable
- * for either mode due to shared encoder/JPEG-capture jitter, so the
- * harness can't use it as a per-test gate.
+ * threshold and distributed regresses to fully-black output. The 50 dB
+ * "distributed vs in-process" contract is a per-render comparison
+ * (fresh in-process vs fresh distributed); against the frozen baseline
+ * file it's unreachable for either mode due to shared encoder/JPEG-
+ * capture jitter, so the harness can't use it as a per-test gate.
  *
  * Not every fixture can run in distributed-simulated mode. Distributed mode
  * refuses webm, HDR mp4, NTSC framerates, and non-{24,30,60} fps at plan
@@ -44,8 +44,9 @@ export type HarnessMode = "in-process" | "distributed-simulated";
  * a chunk that renders fully-black against a fixture authored with a
  * permissive `minPsnr`. Non-pathological drift is caught by the fixture's
  * own threshold; both modes share the same encoder/JPEG-capture jitter
- * floor against the frozen baseline file, so the §5.1 50 dB target is
- * unreachable for either mode and isn't a useful per-test gate.
+ * floor against the frozen baseline file, so the 50 dB distributed-vs-
+ * in-process contract value is unreachable for either mode and isn't a
+ * useful per-test gate.
  */
 export const DISTRIBUTED_SIMULATED_MIN_PSNR_DB = 10;
 

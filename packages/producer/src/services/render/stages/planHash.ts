@@ -1,7 +1,7 @@
 /**
  * planHash — content-addressed hash for distributed render plans.
  *
- * See DISTRIBUTED-RENDERING-PLAN.md §4.2 for the contract:
+ * Hash contract:
  *
  *   planHash = sha256(
  *     SCHEMA_PREFIX
@@ -14,9 +14,10 @@
  *     ⊕ fps ⊕ width ⊕ height ⊕ format
  *   )
  *
- * Two invocations with identical inputs MUST produce the same hash. Adapters
- * use this to short-circuit `plan()` on workflow replay and to detect
- * cross-version mismatches (§9.3 PLAN_HASH_MISMATCH).
+ * Two invocations with identical inputs MUST produce the same hash.
+ * Adapters use this to short-circuit `plan()` on workflow replay and to
+ * detect cross-version mismatches via a typed PLAN_HASH_MISMATCH error
+ * (defined in `errors.ts` and enumerated in `events.ts`).
  *
  * Pure utility; no caller exists yet — the distributed-render
  * `services/distributed/plan.ts` will compose it.

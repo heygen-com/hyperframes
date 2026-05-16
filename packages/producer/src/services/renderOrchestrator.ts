@@ -1452,8 +1452,8 @@ export async function executeRenderJob(
   // returned on `compileResult.forceScreenshot`. The sequencer stores it
   // in a local `captureForceScreenshot` below; the BeginFrame calibration
   // fallback updates the local — not `cfg` — and capture stages receive
-  // the value as an explicit parameter. See DISTRIBUTED-RENDERING-PLAN.md
-  // §4.3 (`LockedRenderConfig.forceScreenshot`).
+  // the value as an explicit parameter. This keeps `cfg` immutable for
+  // the rest of the pipeline.
   const enableChunkedEncode = cfg.enableChunkedEncode;
   const chunkedEncodeSize = cfg.chunkSizeFrames;
   // Declared outside the try so `finally` can stop the interval, but

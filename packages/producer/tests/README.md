@@ -98,14 +98,16 @@ passing in the summary):
 
 Both modes use the fixture's authored `minPsnr` as the per-test
 threshold — distributed must clear the same quality bar in-process
-clears against the same frozen baseline. (`DISTRIBUTED-RENDERING-PLAN.md`
-§5.1's 50 dB target is a per-render distributed-vs-in-process contract;
-against the frozen baseline file, neither mode reaches it consistently
-due to shared encoder/JPEG-capture jitter.) An absolute 10 dB pathology
-floor catches fully-black-output regressions when a fixture authors a
-permissive threshold. A distributed failure at the fixture's own
-threshold means the distributed pipeline has drifted — file an issue
-rather than relaxing the fixture.
+clears against the same frozen baseline. (Internal contract: distributed
+vs in-process renders of the same fixture should clear 50 dB PSNR
+against each other within the same Docker image. Against the frozen
+committed baseline, neither mode reaches that consistently due to
+shared encoder/JPEG-capture jitter — that's why the fixture's authored
+threshold gates here, not the 50 dB contract value.) An absolute 10 dB
+pathology floor catches fully-black-output regressions when a fixture
+authors a permissive threshold. A distributed failure at the fixture's
+own threshold means the distributed pipeline has drifted — file an
+issue rather than relaxing the fixture.
 
 `--update` is incompatible with `--mode=distributed-simulated`: the
 in-process renderer is the source of truth for baselines, and the
@@ -145,8 +147,8 @@ exercises one of:
 - per-format chunk-boundary correctness (mp4 H.264, mp4 H.265, ProRes, png-sequence)
 - per-adapter chunk-seam state preservation (GSAP, Anime.js, Three.js, Lottie, CSS, WAAPI)
 
-See `DISTRIBUTED-RENDERING-PLAN.md` §10.2 for the equivalence axes each
-distributed fixture covers.
+Each distributed fixture covers one or more equivalence axes — see the
+`meta.json` `description` field for what a given fixture is locking in.
 
 ### Fixture pattern (4.2 onward)
 

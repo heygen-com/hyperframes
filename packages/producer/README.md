@@ -136,8 +136,6 @@ await assemble(
 
 The three activity functions plus their result types are also re-exported from `@hyperframes/producer` so callers that pin the main package don't need a separate subpath import. Supported formats: `mp4` SDR, `mov` ProRes 4444, and `png-sequence`. webm and HDR mp4 trip a typed `FormatNotSupportedInDistributedError` — use the in-process renderer (`executeRenderJob`) for those.
 
-See [`DISTRIBUTED-RENDERING-PLAN.md`](../../DISTRIBUTED-RENDERING-PLAN.md) for the full architecture.
-
 ## How it works
 
 1. **Serve** — spins up a local file server for the HTML composition

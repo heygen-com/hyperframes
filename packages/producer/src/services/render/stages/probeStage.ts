@@ -8,9 +8,11 @@
  * clean them up in its `finally` block.
  *
  * Hard constraints preserved verbatim from the in-process renderer:
- *   - `recompileWithResolutions` runs inside this stage because it depends
- *     on browser-resolved durations, even though §2.1 of the distributed
- *     plan lists recompile as a sibling phase.
+ *   - `recompileWithResolutions` runs inside this stage because it
+ *     depends on browser-resolved durations. (Distributed-pipeline
+ *     callers can think of recompile as logically separate from probe,
+ *     but the implementation co-locates them here because they share
+ *     the browser session.)
  *   - `composition` (videos/audios/duration) is mutated in place — callers
  *     downstream see the reconciled view through the same object reference.
  *   - The stage computes the final composition `duration` and `totalFrames`
