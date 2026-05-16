@@ -2,10 +2,10 @@
 # Real-AWS smoke + benchmark for the HyperFrames Lambda adapter.
 #
 # Run this from a workstation with `aws` CLI credentials. Builds the
-# Phase 6.1 ZIP, deploys the Phase 6.2 SAM template to your AWS account,
-# renders a fixture composition through the Step Functions state machine
-# at several chunk counts, PSNR-compares each output against the
-# in-process baseline, and tears the stack down.
+# handler ZIP, deploys the SAM template at examples/aws-lambda/ to your
+# AWS account, renders a fixture composition through the Step Functions
+# state machine at several chunk counts, PSNR-compares each output
+# against the in-process baseline, and tears the stack down.
 #
 # Usage:
 #   ./smoke.sh                                   # all defaults
@@ -55,15 +55,16 @@ SAM_DIR="$SCRIPT_DIR/.."
 # ── Defaults ──────────────────────────────────────────────────────────────
 FIXTURE="${FIXTURE:-mp4-h264-sdr}"
 CHUNK_COUNTS="${CHUNK_COUNTS:-2,4,8}"
-# The plan's PSNR floor (§5.1) is 50 dB for distributed-vs-in-process
-# within the SAME runtime — e.g. the OSS regression harness which renders
-# both modes inside the same Dockerfile.test image. Real Lambda runs
-# against a different ffmpeg build (`ffmpeg-static`) and a different
-# Chromium build (`@sparticuz/chromium`) than the in-process baseline
-# (Debian-bookworm-slim's apt ffmpeg + Puppeteer-managed chrome-headless-
-# shell). Expected drift across those environments is ~3 dB on simple
-# fixtures, more on font-heavy ones. The gate defaults to 40 dB to absorb
-# that drift; tighten it via --psnr-threshold for a stricter check.
+# The producer regression harness uses 50 dB as its PSNR floor for
+# distributed-vs-in-process renders within the SAME runtime — both
+# modes execute inside the same Dockerfile.test image, so pixel drift
+# is minimal. Real Lambda runs against a different ffmpeg build
+# (`ffmpeg-static`) and a different Chromium build (`@sparticuz/chromium`)
+# than the in-process baseline (Debian-bookworm-slim's apt ffmpeg +
+# Puppeteer-managed chrome-headless-shell). Expected drift across those
+# environments is ~3 dB on simple fixtures, more on font-heavy ones.
+# The gate defaults to 40 dB to absorb that drift; tighten it via
+# --psnr-threshold for a stricter check.
 PSNR_THRESHOLD="${PSNR_THRESHOLD:-40}"
 STACK_NAME="${STACK_NAME:-hyperframes-lambda-smoke-$(date +%s)}"
 AWS_REGION="${AWS_REGION:-us-east-1}"
