@@ -55,6 +55,32 @@ describe("compileTimingAttrs", () => {
     expect(unresolved[0].start).toBe(1);
   });
 
+  it("auto-injects data-start='0' when missing so video is discoverable", () => {
+    const html = '<video src="clip.mp4" muted>';
+    const { html: compiled, unresolved } = compileTimingAttrs(html);
+
+    expect(compiled).toContain('data-start="0"');
+    expect(compiled).toContain('id="hf-video-0"');
+    expect(unresolved).toHaveLength(1);
+    expect(unresolved[0].start).toBe(0);
+  });
+
+  it("marks auto-injected data-start with data-hf-auto-start sentinel", () => {
+    const html = '<video src="clip.mp4" muted>';
+    const { html: compiled } = compileTimingAttrs(html);
+
+    expect(compiled).toContain('data-start="0"');
+    expect(compiled).toContain("data-hf-auto-start");
+  });
+
+  it("does not add data-hf-auto-start when author provides data-start", () => {
+    const html = '<video id="v1" src="clip.mp4" data-start="5" muted>';
+    const { html: compiled } = compileTimingAttrs(html);
+
+    expect(compiled).toContain('data-start="5"');
+    expect(compiled).not.toContain("data-hf-auto-start");
+  });
+
   it("compiles audio tags the same as video (minus data-has-audio)", () => {
     const html = '<audio id="a1" src="music.mp3" data-start="0" data-duration="10">';
     const { html: compiled } = compileTimingAttrs(html);

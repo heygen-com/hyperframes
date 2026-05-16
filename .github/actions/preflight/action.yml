@@ -1,0 +1,31 @@
+name: Preflight
+description: |
+  Cheap lint + format gate that runs before expensive CI jobs (regression
+  shards, perf shards, parity renders, Windows renders, catalog previews).
+  Single source of truth for the gate's bun/node/cache/lint/format steps —
+  tweak here and every preflight job picks it up.
+
+runs:
+  using: composite
+  steps:
+    - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+
+    - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      with:
+        node-version: 22
+
+    - uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4
+      with:
+        path: ~/.bun/install/cache
+        key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+        restore-keys: |
+          bun-${{ runner.os }}-
+
+    - shell: bash
+      run: bun install --frozen-lockfile
+
+    - shell: bash
+      run: bun run lint
+
+    - shell: bash
+      run: bun run format:check

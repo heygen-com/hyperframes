@@ -21,6 +21,7 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { HOST_CHROME_FAILURE_PATTERNS } from "./__test_utils__/hostChromeFailures.js";
 import { plan } from "./plan.js";
 import {
   CHUNK_INDEX_OUT_OF_RANGE,
@@ -29,6 +30,7 @@ import {
   PLAN_HASH_MISMATCH,
   renderChunk,
   RenderChunkValidationError,
+  resolvePresetForLockedEncoder,
 } from "./renderChunk.js";
 
 // Tiny fixture: 5 frames at 30fps. Captures finish in a few seconds on the
@@ -167,23 +169,7 @@ describe("renderChunk()", () => {
         a = await renderChunk(planDir, 0, outA);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        // Soft-skip patterns we've observed on dev/CI hosts where Chrome's
-        // GL stack can't initialize:
-        //   - `BROWSER_GPU_NOT_SOFTWARE` / `chrome://gpu` / SwiftShader text:
-        //     the SwiftShader assertion can't read the gpu info table.
-        //   - `Target closed` during a `HeadlessExperimental.beginFrame`:
-        //     chrome-headless-shell's GL process exited because the build
-        //     doesn't honor `--use-gl=swiftshader` on this distro
-        //     (`gl_factory.cc:111` errors out before BeginFrame can run).
-        // Production-shaped Docker images (`Dockerfile.test` /
-        // `Dockerfile.chunk-runner`) carry a chrome-headless-shell build
-        // matched to the planDir's `ffmpegVersion`, so the determinism
-        // contract is exercised there.
-        if (
-          /chrome:\/\/gpu|BROWSER_GPU_NOT_SOFTWARE|SwiftShader|HeadlessExperimental\.beginFrame|Target closed/i.test(
-            message,
-          )
-        ) {
+        if (HOST_CHROME_FAILURE_PATTERNS.test(message)) {
           console.warn(
             "[renderChunk.test] skipping byte-identical retry test — host Chrome stack can't render. ",
             "Docker harness covers the determinism contract. Diagnostic:",
@@ -308,4 +294,42 @@ describe("renderChunk()", () => {
     },
     TIMEOUT_MS,
   );
+});
+
+describe("resolvePresetForLockedEncoder", () => {
+  // Tiny fast tests for the codec-override helper. No Chrome, no ffmpeg —
+  // exists so a refactor that moves the override (e.g. into
+  // `getEncoderPreset` itself) gets caught here before the heavyweight
+  // Docker fixture is even run.
+  it("flips codec from h264 to h265 when encoder is libx265-software", () => {
+    const base = { preset: "medium", quality: 18, codec: "h264" as const, pixelFormat: "yuv420p" };
+    const out = resolvePresetForLockedEncoder(base, "libx265-software");
+    expect(out.codec).toBe("h265");
+    expect(out.preset).toBe("medium");
+    expect(out.quality).toBe(18);
+    expect(out.pixelFormat).toBe("yuv420p");
+  });
+
+  it("leaves the preset unchanged for libx264-software", () => {
+    const base = { preset: "medium", quality: 18, codec: "h264" as const, pixelFormat: "yuv420p" };
+    const out = resolvePresetForLockedEncoder(base, "libx264-software");
+    expect(out).toBe(base);
+  });
+
+  it("leaves the preset unchanged for prores-software", () => {
+    const base = {
+      preset: "4444",
+      quality: 18,
+      codec: "prores" as const,
+      pixelFormat: "yuva444p10le",
+    };
+    const out = resolvePresetForLockedEncoder(base, "prores-software");
+    expect(out).toBe(base);
+  });
+
+  it("leaves the preset unchanged for png-sequence", () => {
+    const base = { preset: "medium", quality: 18, codec: "h264" as const, pixelFormat: "yuv420p" };
+    const out = resolvePresetForLockedEncoder(base, "png-sequence");
+    expect(out).toBe(base);
+  });
 });

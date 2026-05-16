@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/producer",
-  "version": "0.6.6",
+  "version": "0.6.12",
   "description": "HTML-to-video rendering engine using Chrome's BeginFrame API",
   "repository": {
     "type": "git",
@@ -44,10 +44,12 @@
     "bench:hdr": "tsx src/benchmark.ts --tags hdr",
     "test": "tsx src/regression-harness.ts --exclude-tags transparency",
     "test:update": "tsx src/regression-harness.ts --update --exclude-tags transparency",
+    "test:distributed": "tsx src/regression-harness.ts --exclude-tags transparency --mode=distributed-simulated",
     "test:transparency": "tsx src/transparency-test.ts",
     "docker:build:test": "docker build -f ../../Dockerfile.test -t hyperframes-producer:test ../..",
     "docker:test": "docker run --rm --security-opt seccomp=unconfined --shm-size=2g -v ./tests:/app/packages/producer/tests hyperframes-producer:test",
     "docker:test:update": "docker run --rm --security-opt seccomp=unconfined --shm-size=2g -v ./tests:/app/packages/producer/tests hyperframes-producer:test --update",
+    "docker:test:distributed": "docker run --rm --security-opt seccomp=unconfined --shm-size=2g -v ./tests:/app/packages/producer/tests hyperframes-producer:test --mode=distributed-simulated",
     "prepublishOnly": "echo skip"
   },
   "dependencies": {

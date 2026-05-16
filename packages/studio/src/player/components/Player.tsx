@@ -229,13 +229,19 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
           // data arrives), but the overlay communicates why the first frame
           // or first audio beat may lag.
           //
+          // Skip the overlay on subsequent loads (content refreshes via
+          // refreshPlayer). The browser has already cached the assets from
+          // the first load, so they resolve near-instantly and the overlay
+          // just creates a disruptive flash.
+          //
           // Poll with a 10 s safety cap (100 ticks × 100 ms). If the cap
           // trips we hide the overlay so the UI doesn't appear stuck forever,
           // but we log a debug warning so the case is diagnosable — a long
           // cold video or a broken asset can legitimately exceed 10 s on a
           // slow network.
           if (assetPollRef.current) clearInterval(assetPollRef.current);
-          let lastUnloaded = hasUnloadedAssets(iframe, false);
+          const isContentRefresh = loadCountRef.current > 1;
+          let lastUnloaded = isContentRefresh ? false : hasUnloadedAssets(iframe, false);
           if (lastUnloaded) {
             setAssetsLoading(true);
             let attempts = 0;
@@ -268,17 +274,19 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
           if (assetPollRef.current) clearInterval(assetPollRef.current);
           assetPollRef.current = null;
           container.removeChild(player);
-          // Clear the forwarded ref ONLY if it still points at our iframe.
-          // During the cross-fade in NLEPreview, the retiring Player unmounts
-          // after the new Player has already claimed the shared ref. Without
-          // this guard, the retiring Player's cleanup would null out the
-          // active Player's iframe ref, breaking the source filter on
-          // hf-preview postMessages and letting sidebar composition iframes'
-          // timeline messages flood the main player store.
-          if (typeof ref !== "function" && ref) {
-            const objectRef = ref as React.MutableRefObject<HTMLIFrameElement | null>;
-            if (objectRef.current === iframe) {
-              objectRef.current = null;
+          // Clear the forwarded ref only if it still points to THIS iframe.
+          // During crossfade refreshes the retiring Player unmounts after the
+          // new Player has already assigned its iframe to the same ref — blindly
+          // nulling it would break seeking in the new Player.
+          // Callback refs are skipped — we can't read back the current value to
+          // guard against clobbering a newer assignment. The mutable-ref branch
+          // (the only path used today) is guarded by identity check.
+          if (typeof ref === "function") {
+            // no-op: can't safely guard callback refs
+          } else if (ref) {
+            const mutableRef = ref as React.MutableRefObject<HTMLIFrameElement | null>;
+            if (mutableRef.current === iframe) {
+              mutableRef.current = null;
             }
           }
         };

@@ -22,7 +22,7 @@ interface UsePlaybackKeyboardParams {
   play: () => void;
   playBackward: (rate: number) => void;
   pause: () => void;
-  seek: (time: number) => void;
+  seek: (time: number, options?: { keepPlaying?: boolean }) => void;
 }
 
 export function usePlaybackKeyboard({
@@ -36,7 +36,7 @@ export function usePlaybackKeyboard({
   pause,
   seek,
 }: UsePlaybackKeyboardParams) {
-  const pressedCodesRef = useRef(new Set<string>());
+  const pressedKeysRef = useRef(new Set<string>());
   const playbackKeyDownRef = useRef<(e: KeyboardEvent) => void>(() => {});
   const playbackKeyUpRef = useRef<(e: KeyboardEvent) => void>(() => {});
 
@@ -90,7 +90,8 @@ export function usePlaybackKeyboard({
       ) {
         return;
       }
-      pressedCodesRef.current.add(e.code);
+      const key = e.key.toLowerCase();
+      pressedKeysRef.current.add(key);
       if (e.code === "Space") {
         e.preventDefault();
         togglePlay();
@@ -107,50 +108,52 @@ export function usePlaybackKeyboard({
         return;
       }
       if (e.repeat) return;
-      if (e.code === "KeyK") {
+      if (key === "k") {
         e.preventDefault();
         pause();
         return;
       }
-      if (e.code === "KeyJ") {
+      if (key === "j") {
         e.preventDefault();
-        if (pressedCodesRef.current.has("KeyK")) {
+        if (pressedKeysRef.current.has("k")) {
           stepFrames(-1);
           return;
         }
         shuttle("backward");
         return;
       }
-      if (e.code === "KeyL") {
+      if (key === "l") {
         e.preventDefault();
-        if (pressedCodesRef.current.has("KeyK")) {
+        if (pressedKeysRef.current.has("k")) {
           stepFrames(1);
           return;
         }
         shuttle("forward");
         return;
       }
-      if (e.code === "KeyI") {
+      if (key === "i") {
         e.preventDefault();
         const t = getAdapter()?.getTime() ?? usePlayerStore.getState().currentTime;
         usePlayerStore.getState().setInPoint(e.shiftKey ? null : t);
         return;
       }
-      if (e.code === "KeyO") {
+      if (key === "o") {
         e.preventDefault();
         const t = getAdapter()?.getTime() ?? usePlayerStore.getState().currentTime;
         usePlayerStore.getState().setOutPoint(e.shiftKey ? null : t);
         return;
       }
-      if (e.code === "KeyA") {
+      if (key === "a") {
         e.preventDefault();
-        seek(usePlayerStore.getState().inPoint ?? 0);
+        seek(usePlayerStore.getState().inPoint ?? 0, { keepPlaying: true });
         return;
       }
-      if (e.code === "KeyE") {
+      if (key === "e") {
         e.preventDefault();
         const { outPoint } = usePlayerStore.getState();
-        seek(outPoint ?? getAdapter()?.getDuration() ?? usePlayerStore.getState().duration);
+        seek(outPoint ?? getAdapter()?.getDuration() ?? usePlayerStore.getState().duration, {
+          keepPlaying: true,
+        });
         return;
       }
     },
@@ -158,7 +161,7 @@ export function usePlaybackKeyboard({
   );
 
   const handlePlaybackKeyUp = useCallback((e: KeyboardEvent) => {
-    pressedCodesRef.current.delete(e.code);
+    pressedKeysRef.current.delete(e.key.toLowerCase());
   }, []);
 
   playbackKeyDownRef.current = handlePlaybackKeyDown;

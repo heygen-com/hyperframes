@@ -143,6 +143,21 @@ async function transformPreviewHtml(
   }
 }
 
+function resolveProjectMainHtml(
+  projectDir: string,
+  projectId: string,
+): { html: string; compositionPath: string } | null {
+  const indexPath = join(projectDir, "index.html");
+  if (existsSync(indexPath)) {
+    return { html: readFileSync(indexPath, "utf-8"), compositionPath: "index.html" };
+  }
+  const blockHtmlPath = join(projectDir, `${projectId}.html`);
+  if (existsSync(blockHtmlPath)) {
+    return { html: readFileSync(blockHtmlPath, "utf-8"), compositionPath: `${projectId}.html` };
+  }
+  return null;
+}
+
 export function registerPreviewRoutes(api: Hono, adapter: StudioApiAdapter): void {
   const previewCacheHeaders = (etag: string) => ({
     "Cache-Control": "private, no-cache",
@@ -163,10 +178,12 @@ export function registerPreviewRoutes(api: Hono, adapter: StudioApiAdapter): voi
 
     try {
       let bundled = await adapter.bundle(project.dir);
+      let mainCompositionPath = "index.html";
       if (!bundled) {
-        const indexPath = resolve(project.dir, "index.html");
-        if (!existsSync(indexPath)) return c.text("not found", 404);
-        bundled = readFileSync(indexPath, "utf-8");
+        const main = resolveProjectMainHtml(project.dir, project.id);
+        if (!main) return c.text("not found", 404);
+        bundled = main.html;
+        mainCompositionPath = main.compositionPath;
       }
 
       // Inject runtime if not already present (check URL pattern and bundler attribute)
@@ -187,21 +204,21 @@ export function registerPreviewRoutes(api: Hono, adapter: StudioApiAdapter): voi
       }
 
       bundled = injectStudioPreviewAugmentations(
-        await transformPreviewHtml(bundled, adapter, project, "index.html"),
+        await transformPreviewHtml(bundled, adapter, project, mainCompositionPath),
         adapter,
         project.dir,
-        "index.html",
+        mainCompositionPath,
       );
       return c.html(bundled, 200, previewCacheHeaders(etag));
     } catch {
-      const file = resolve(project.dir, "index.html");
-      if (existsSync(file)) {
+      const main = resolveProjectMainHtml(project.dir, project.id);
+      if (main) {
         return c.html(
           injectStudioPreviewAugmentations(
-            await transformPreviewHtml(readFileSync(file, "utf-8"), adapter, project, "index.html"),
+            await transformPreviewHtml(main.html, adapter, project, main.compositionPath),
             adapter,
             project.dir,
-            "index.html",
+            main.compositionPath,
           ),
           200,
           previewCacheHeaders(etag),

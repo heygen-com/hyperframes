@@ -24,8 +24,17 @@
  * never have to handle them.
  */
 
-import { existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync } from "node:fs";
-import { join } from "node:path";
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  renameSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
+import { join, relative, sep } from "node:path";
 import { type CanvasResolution } from "@hyperframes/core";
 import { type EngineConfig, resolveConfig } from "@hyperframes/engine";
 import { defaultLogger, type ProducerLogger } from "../../logger.js";
@@ -46,7 +55,13 @@ import {
 } from "../render/stages/planHash.js";
 import { validateNoGpuEncode, validateNoSystemFonts } from "../render/planValidation.js";
 import { snapshotRuntimeEnv } from "../render/runtimeEnvSnapshot.js";
-import { buildSyntheticRenderJob, readFfmpegVersion, readProducerVersion } from "./shared.js";
+import {
+  buildSyntheticRenderJob,
+  PLAN_VIDEOS_META_RELATIVE_PATH,
+  type PlanVideosJson,
+  readFfmpegVersion,
+  readProducerVersion,
+} from "./shared.js";
 
 /**
  * Caller-supplied configuration for a distributed render. `fps`, `width`,
@@ -65,6 +80,17 @@ export interface DistributedRenderConfig {
    * supports both.
    */
   format: "mp4" | "mov" | "png-sequence";
+  /**
+   * Codec selection for `format: "mp4"`. `"h264"` (the default) → libx264 +
+   * yuv420p; `"h265"` → libx265 + yuv420p with closed-GOP keyint params
+   * (`min-keyint=N:scenecut=0:open-gop=0:repeat-headers=1`) so chunked
+   * concat-copy round-trips losslessly the same way h264 does. Ignored for
+   * `format: "mov"` (always ProRes 4444) and `format: "png-sequence"`
+   * (no encoder). Passing `codec` with a non-mp4 format throws at plan
+   * time so caller errors surface immediately rather than producing a
+   * silently-wrong planDir.
+   */
+  codec?: "h264" | "h265";
   quality?: "draft" | "standard" | "high";
   /** Constant-rate-factor override; mutually exclusive with `bitrate`. */
   crf?: number;
@@ -130,6 +156,26 @@ export interface PlanResult {
   ffmpegVersion: string;
   producerVersion: string;
 }
+
+/**
+ * Top-level directory names skipped by the `projectDir → planDir/compiled/`
+ * pre-seed copy. Real projects often contain `node_modules/`, VCS metadata,
+ * and harness artifacts that have no business in a planDir — they bloat
+ * the 2 GB planDir cap and slow the S3/Lambda round-trip for no benefit.
+ * Matched against the path relative to `projectDir` so a `projectDir`
+ * whose absolute path happens to contain one of these names (e.g.
+ * `~/work/output/comp/`) doesn't false-positive-skip the entire copy.
+ */
+const PLAN_PROJECT_DIR_SKIP_SEGMENTS = new Set([
+  "node_modules",
+  ".git",
+  ".cache",
+  "output",
+  "failures",
+  "dist",
+  ".next",
+  ".turbo",
+]);
 
 /** Default chunk size in frames (~8s @ 30fps; fits Lambda's 15-min cap). */
 export const DEFAULT_CHUNK_SIZE = 240;
@@ -390,7 +436,7 @@ function buildLockedRenderConfig(input: {
   runtimeEnv: Record<string, string>;
 }): LockedRenderConfig {
   const { config, forceScreenshot, deviceScaleFactor, ffmpegVersion } = input;
-  const { encoder, pixelFormat, preset } = FORMAT_ENCODER_TABLE[config.format];
+  const { encoder, pixelFormat, preset } = resolveEncoderTriple(config);
   return {
     captureMode: forceScreenshot ? "screenshot" : "beginframe",
     forceScreenshot,
@@ -420,18 +466,50 @@ function buildLockedRenderConfig(input: {
 }
 
 /**
- * Per-format encoder + pixel-format + preset triple. Distributed mode is
- * SDR-only: H.264 8-bit for mp4, ProRes 4444 for mov, raw RGBA for
- * png-sequence.
+ * Resolve the encoder + pixel-format + preset triple for a distributed
+ * render. Distributed mode is SDR-only: H.264 or H.265 8-bit for mp4,
+ * ProRes 4444 for mov, raw RGBA for png-sequence.
+ *
+ * `config.codec` is consulted only when `config.format === "mp4"`. Passing
+ * `codec` with a non-mp4 format throws at plan time — surfaces the
+ * caller error immediately rather than producing a silently-wrong planDir
+ * whose chunk worker would override the codec choice.
  */
-const FORMAT_ENCODER_TABLE: Record<
-  DistributedRenderConfig["format"],
-  { encoder: LockedRenderConfig["encoder"]; pixelFormat: string; preset: string }
-> = {
-  mp4: { encoder: "libx264-software", pixelFormat: "yuv420p", preset: "medium" },
-  mov: { encoder: "prores-software", pixelFormat: "yuva444p10le", preset: "4444" },
-  "png-sequence": { encoder: "png-sequence", pixelFormat: "rgba", preset: "lossless" },
-};
+function resolveEncoderTriple(config: DistributedRenderConfig): {
+  encoder: LockedRenderConfig["encoder"];
+  pixelFormat: string;
+  preset: string;
+} {
+  if (config.format === "mp4") {
+    const codec = config.codec ?? "h264";
+    // Explicit unknown-codec throw rather than silent fall-through to h264.
+    // A JS caller building config from JSON who passes `codec: "h266"` or
+    // `codec: "H265"` (typo / wrong case) would otherwise produce h264
+    // output with no signal. The non-mp4-format branch below already throws
+    // for the symmetric "wrong combination" case — match that shape.
+    if (codec !== "h264" && codec !== "h265") {
+      throw new Error(
+        `[plan] DistributedRenderConfig.codec must be "h264" or "h265" for format="mp4"; ` +
+          `received ${JSON.stringify(codec)}. Omit codec to default to h264.`,
+      );
+    }
+    if (codec === "h265") {
+      return { encoder: "libx265-software", pixelFormat: "yuv420p", preset: "medium" };
+    }
+    return { encoder: "libx264-software", pixelFormat: "yuv420p", preset: "medium" };
+  }
+  if (config.codec !== undefined) {
+    throw new Error(
+      `[plan] DistributedRenderConfig.codec is only valid for format="mp4"; received ` +
+        `codec=${JSON.stringify(config.codec)} with format=${JSON.stringify(config.format)}. ` +
+        `Omit codec for non-mp4 formats — mov is always ProRes 4444 and png-sequence has no encoder.`,
+    );
+  }
+  if (config.format === "mov") {
+    return { encoder: "prores-software", pixelFormat: "yuva444p10le", preset: "4444" };
+  }
+  return { encoder: "png-sequence", pixelFormat: "rgba", preset: "lossless" };
+}
 
 /**
  * Activity A of the distributed render pipeline. Produces a self-contained
@@ -491,6 +569,28 @@ export async function plan(
   const workDir = join(planDir, ".plan-work");
   if (!existsSync(workDir)) mkdirSync(workDir, { recursive: true });
   const compiledDir = join(workDir, "compiled");
+
+  // Pre-seed the compiled directory with `projectDir`'s local assets
+  // (style.css, script.js, images, etc.). The chunk worker's file server
+  // serves ONLY from `<planDir>/compiled/`, so without this copy a
+  // composition's `<link rel=stylesheet href=style.css>` 404s and the
+  // first capture lands an unstyled fallback frame. `compileStage`
+  // overwrites the entry HTML afterwards. `dereference: true` resolves
+  // symlinks so the planDir survives S3 / Lambda /tmp round-trips.
+  mkdirSync(compiledDir, { recursive: true });
+  cpSync(projectDir, compiledDir, {
+    recursive: true,
+    dereference: true,
+    filter: (src) => {
+      // cpSync passes the absolute source path. Compare relative-to-projectDir
+      // so a parent directory of projectDir matching a skip name doesn't
+      // false-positive every descendant.
+      const rel = relative(projectDir, src);
+      if (rel === "" || rel.startsWith("..")) return true;
+      const firstSegment = rel.split(sep, 1)[0];
+      return firstSegment === undefined || !PLAN_PROJECT_DIR_SKIP_SEGMENTS.has(firstSegment);
+    },
+  });
 
   // The compiled directory lives at `<planDir>/compiled/` in the final
   // layout. The stages write under `<planDir>/.plan-work/compiled/`; we
@@ -582,7 +682,9 @@ export async function plan(
     assertNotAborted,
     materializeSymlinks: true,
   });
-  if (extractResult.frameLookup) extractResult.frameLookup.cleanup();
+  // Skip `extractResult.frameLookup.cleanup()`: it would rm-rf each
+  // video's outputDir, but in `plan()` those directories ARE the source
+  // material the renames below move into `planDir/video-frames/`.
 
   // ── Audio ──
   const audioResult = await runAudioStage({
@@ -612,6 +714,30 @@ export async function plan(
 
   if (existsSync(finalCompiledDir)) rmSync(finalCompiledDir, { recursive: true, force: true });
   renameSync(compiledDir, finalCompiledDir);
+
+  // `meta/videos.json` is the contract that makes distributed renders
+  // pixel-comparable to in-process for compositions with video sources —
+  // without it, renderChunk can't rebuild the BeforeCaptureHook and the
+  // page's native `<video>` element decodes the source mp4 ~1 frame
+  // off the pre-extracted images the in-process baseline was captured
+  // from.
+  const planVideosJson: PlanVideosJson = {
+    videos: composition.videos,
+    extracted: (extractResult.extractionResult?.extracted ?? []).map((ext) => ({
+      videoId: ext.videoId,
+      srcPath: ext.srcPath,
+      framePattern: ext.framePattern,
+      fps: ext.fps,
+      totalFrames: ext.totalFrames,
+      metadata: ext.metadata,
+    })),
+  };
+  mkdirSync(join(planDir, "meta"), { recursive: true });
+  writeFileSync(
+    join(planDir, PLAN_VIDEOS_META_RELATIVE_PATH),
+    JSON.stringify(planVideosJson, null, 2),
+    "utf-8",
+  );
 
   const planAudioPath = join(planDir, "audio.aac");
   if (audioResult.hasAudio && existsSync(audioResult.audioOutputPath)) {

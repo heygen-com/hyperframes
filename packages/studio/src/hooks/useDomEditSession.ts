@@ -1,12 +1,12 @@
-import { useEffect } from "react";
+import { useCallback, useEffect } from "react";
 import type { TimelineElement } from "../player";
 import { STUDIO_INSPECTOR_PANELS_ENABLED } from "../components/editor/manualEditingAvailability";
-import { findElementForSelection } from "../components/editor/domEditing";
-import type { StudioManualEditManifest } from "../components/editor/manualEdits";
-import type { StudioMotionManifest } from "../components/editor/studioMotion";
+import { findElementForSelection, type DomEditSelection } from "../components/editor/domEditing";
 import type { ImportedFontAsset } from "../components/editor/fontAssets";
 import type { EditHistoryKind } from "../utils/editHistory";
 import type { RightPanelTab } from "../utils/studioHelpers";
+import type { PatchTarget } from "../utils/sourcePatcher";
+import type { SidebarTab } from "../components/sidebar/LeftSidebar";
 import { useAskAgentModal } from "./useAskAgentModal";
 import { useDomSelection } from "./useDomSelection";
 import { usePreviewInteraction } from "./usePreviewInteraction";
@@ -36,16 +36,7 @@ export interface UseDomEditSessionParams {
   setRightPanelTab: (tab: RightPanelTab) => void;
   showToast: (message: string, tone?: "error" | "info") => void;
   refreshPreviewDocumentVersion: () => void;
-  commitStudioManualEditManifestOptimistically: (
-    updateManifest: (manifest: StudioManualEditManifest) => StudioManualEditManifest,
-    options: { label: string; coalesceKey: string },
-  ) => void;
-  commitStudioMotionManifestOptimistically: (
-    updateManifest: (manifest: StudioMotionManifest) => StudioMotionManifest,
-    options: { label: string; coalesceKey: string },
-  ) => void;
-  applyCurrentStudioManualEditsToPreview: (iframe: HTMLIFrameElement | null) => void;
-  applyCurrentStudioMotionToPreview: (iframe: HTMLIFrameElement | null) => void;
+  queueDomEditSave: (save: () => Promise<void>) => Promise<void>;
   readProjectFile: (path: string) => Promise<string>;
   writeProjectFile: (path: string, content: string) => Promise<void>;
   domEditSaveTimestampRef: React.MutableRefObject<number>;
@@ -60,12 +51,11 @@ export interface UseDomEditSessionParams {
   applyStudioManualEditsToPreviewRef: React.MutableRefObject<
     (iframe: HTMLIFrameElement) => Promise<void>
   >;
-  applyStudioMotionToPreviewRef: React.MutableRefObject<
-    (iframe: HTMLIFrameElement) => Promise<void>
-  >;
   syncPreviewHistoryHotkey: (iframe: HTMLIFrameElement | null) => void;
   reloadPreview: () => void;
   setRefreshKey: React.Dispatch<React.SetStateAction<number>>;
+  openSourceForSelection?: (sourceFile: string, target: PatchTarget) => void;
+  selectSidebarTab?: (tab: SidebarTab) => void;
 }
 
 // ── Hook ──
@@ -85,10 +75,7 @@ export function useDomEditSession({
   setRightPanelTab,
   showToast,
   refreshPreviewDocumentVersion,
-  commitStudioManualEditManifestOptimistically,
-  commitStudioMotionManifestOptimistically,
-  applyCurrentStudioManualEditsToPreview,
-  applyCurrentStudioMotionToPreview,
+  queueDomEditSave,
   readProjectFile: _readProjectFile,
   writeProjectFile,
   domEditSaveTimestampRef,
@@ -101,12 +88,28 @@ export function useDomEditSession({
   refreshKey,
   rightPanelTab,
   applyStudioManualEditsToPreviewRef,
-  applyStudioMotionToPreviewRef,
   syncPreviewHistoryHotkey,
   reloadPreview,
   setRefreshKey: _setRefreshKey,
+  openSourceForSelection,
+  selectSidebarTab,
 }: UseDomEditSessionParams) {
   void _setRefreshKey;
+
+  const onClickToSource = useCallback(
+    (selection: DomEditSelection) => {
+      if (!openSourceForSelection || !selectSidebarTab) return;
+      if (!selection.sourceFile) return;
+      selectSidebarTab("code");
+      openSourceForSelection(selection.sourceFile, {
+        id: selection.id,
+        selector: selection.selector,
+        selectorIndex: selection.selectorIndex,
+      });
+    },
+    [openSourceForSelection, selectSidebarTab],
+  );
+
   // ── Selection (delegated to useDomSelection) ──
 
   const {
@@ -114,7 +117,6 @@ export function useDomEditSession({
     domEditGroupSelections,
     domEditHoverSelection,
     domEditSelectionRef,
-    domEditGroupSelectionsRef,
     applyDomSelection,
     clearDomSelection,
     buildDomSelectionFromTarget,
@@ -123,7 +125,6 @@ export function useDomEditSession({
     buildDomSelectionForTimelineElement,
     handleTimelineElementSelect,
     refreshDomEditSelectionFromPreview,
-    refreshDomEditGroupSelectionsFromPreview,
   } = useDomSelection({
     projectId,
     activeCompPath,
@@ -176,7 +177,6 @@ export function useDomEditSession({
     captionEditMode,
     compositionLoading,
     previewIframeRef,
-    activeCompPath,
     showToast,
     applyDomSelection,
     resolveDomSelectionFromPreviewPoint,
@@ -185,6 +185,7 @@ export function useDomEditSession({
     setAgentPromptSelectionContext,
     setAgentModalAnchorPoint,
     setAgentModalOpen,
+    onClickToSource,
   });
 
   // ── Commit handlers (delegated to useDomEditCommits) ──
@@ -192,6 +193,7 @@ export function useDomEditSession({
   const {
     resolveImportedFontAsset,
     handleDomStyleCommit,
+    handleDomAttributeCommit,
     handleDomTextCommit,
     handleDomTextFieldStyleCommit,
     handleDomAddTextField,
@@ -208,10 +210,7 @@ export function useDomEditSession({
     activeCompPath,
     previewIframeRef,
     showToast,
-    commitStudioManualEditManifestOptimistically,
-    commitStudioMotionManifestOptimistically,
-    applyCurrentStudioManualEditsToPreview,
-    applyCurrentStudioMotionToPreview,
+    queueDomEditSave,
     writeProjectFile,
     domEditSaveTimestampRef,
     editHistory,
@@ -221,12 +220,9 @@ export function useDomEditSession({
     projectIdRef,
     reloadPreview,
     domEditSelection,
-    domEditSelectionRef,
-    domEditGroupSelectionsRef,
     applyDomSelection,
     clearDomSelection,
     refreshDomEditSelectionFromPreview,
-    refreshDomEditGroupSelectionsFromPreview,
     buildDomSelectionFromTarget,
   });
 
@@ -262,19 +258,13 @@ export function useDomEditSession({
     };
 
     syncPreviewHistoryHotkey(previewIframe);
-    void (async () => {
-      await applyStudioManualEditsToPreviewRef.current(previewIframe);
-      await applyStudioMotionToPreviewRef.current(previewIframe);
-    })();
+    void applyStudioManualEditsToPreviewRef.current(previewIframe);
     syncSelectionFromDocument();
     refreshPreviewDocumentVersion();
 
     const handleLoad = () => {
       syncPreviewHistoryHotkey(previewIframe);
-      void (async () => {
-        await applyStudioManualEditsToPreviewRef.current(previewIframe);
-        await applyStudioMotionToPreviewRef.current(previewIframe);
-      })();
+      void applyStudioManualEditsToPreviewRef.current(previewIframe);
       syncSelectionFromDocument();
       refreshPreviewDocumentVersion();
     };
@@ -293,7 +283,6 @@ export function useDomEditSession({
     refreshPreviewDocumentVersion,
     syncPreviewHistoryHotkey,
     applyStudioManualEditsToPreviewRef,
-    applyStudioMotionToPreviewRef,
   ]);
 
   return {
@@ -317,6 +306,7 @@ export function useDomEditSession({
     applyDomSelection,
     clearDomSelection,
     handleDomStyleCommit,
+    handleDomAttributeCommit,
     handleDomPathOffsetCommit,
     handleDomGroupPathOffsetCommit,
     handleDomBoxSizeCommit,
@@ -333,6 +323,7 @@ export function useDomEditSession({
     handleBlockedDomMove,
     handleDomManualDragStart,
     handleDomEditElementDelete,
+    buildDomSelectionFromTarget,
     buildDomSelectionForTimelineElement,
     updateDomEditHoverSelection,
     resolveImportedFontAsset,

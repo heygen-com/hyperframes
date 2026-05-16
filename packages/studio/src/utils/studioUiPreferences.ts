@@ -8,6 +8,7 @@ export interface StudioUiPreferences {
   leftCollapsed?: boolean;
   timelineVisible?: boolean;
   playbackRate?: number;
+  audioMuted?: boolean;
   previewZoom?: StoredPreviewZoomState;
 }
 
@@ -43,6 +44,9 @@ function readStorage(storage: Storage | null): StudioUiPreferences {
     }
     if (typeof parsed.playbackRate === "number" && Number.isFinite(parsed.playbackRate)) {
       preferences.playbackRate = parsed.playbackRate;
+    }
+    if (typeof parsed.audioMuted === "boolean") {
+      preferences.audioMuted = parsed.audioMuted;
     }
     if (isRecord(parsed.previewZoom)) {
       const { zoomPercent, panX, panY } = parsed.previewZoom;

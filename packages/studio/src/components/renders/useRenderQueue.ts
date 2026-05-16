@@ -29,6 +29,8 @@ export interface StartRenderOptions {
   format?: "mp4" | "webm" | "mov";
   /** `"auto"` (default) renders at the composition's authored dimensions. */
   resolution?: ResolutionPreset | "auto";
+  /** Render a specific composition file instead of index.html. */
+  composition?: string;
 }
 
 export function useRenderQueue(projectId: string | null) {
@@ -86,17 +88,25 @@ export function useRenderQueue(projectId: string | null) {
       const quality = opts.quality ?? "standard";
       const format = opts.format ?? "mp4";
       const resolution = opts.resolution;
+      const composition = opts.composition;
 
       const startTime = Date.now();
       // "auto" / undefined means "render at the composition's authored size".
       // Omit the field entirely — sending "auto" would trip the route's
       // enum validation set.
-      const body: { fps: number; quality: string; format: string; resolution?: string } = {
+      const body: {
+        fps: number;
+        quality: string;
+        format: string;
+        resolution?: string;
+        composition?: string;
+      } = {
         fps,
         quality,
         format,
       };
       if (resolution && resolution !== "auto") body.resolution = resolution;
+      if (composition) body.composition = composition;
       let res: Response;
       try {
         res = await fetch(`/api/projects/${projectId}/render`, {

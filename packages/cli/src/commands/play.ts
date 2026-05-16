@@ -6,6 +6,7 @@ export const examples: Example[] = [
   ["Play the current project", "hyperframes play"],
   ["Play a specific project directory", "hyperframes play ./my-video"],
   ["Use a custom port", "hyperframes play --port 8080"],
+  ["Start without opening the browser", "hyperframes play --no-open"],
 ];
 import { resolve, dirname } from "node:path";
 import * as clack from "@clack/prompts";
@@ -17,6 +18,11 @@ export default defineCommand({
   args: {
     dir: { type: "positional", description: "Project directory", required: false },
     port: { type: "string", description: "Port to run the player server on", default: "3003" },
+    open: {
+      type: "boolean",
+      default: true,
+      description: "Open browser automatically",
+    },
   },
   async run({ args }) {
     const project = resolveProject(args.dir);
@@ -145,7 +151,9 @@ export default defineCommand({
     console.log();
     console.log(`  ${c.dim("Press Ctrl+C to stop")}`);
     console.log();
-    import("open").then((mod) => mod.default(url)).catch(() => {});
+    if (args.open) {
+      import("open").then((mod) => mod.default(url)).catch(() => {});
+    }
 
     return new Promise<void>(() => {});
   },

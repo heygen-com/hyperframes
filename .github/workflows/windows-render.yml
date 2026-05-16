@@ -57,9 +57,21 @@ jobs:
               - "bun.lock"
               - ".github/workflows/windows-render.yml"
 
+  preflight:
+    name: Preflight (lint + format)
+    needs: changes
+    if: needs.changes.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ github.event.inputs.ref }}
+      - uses: ./.github/actions/preflight
+
   render-windows:
     name: Render on windows-latest
-    needs: changes
+    needs: [changes, preflight]
     if: needs.changes.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: windows-latest
     timeout-minutes: 30
@@ -344,7 +356,7 @@ jobs:
   # -------------------------------------------------------------------
   test-windows:
     name: Tests on windows-latest
-    needs: changes
+    needs: [changes, preflight]
     if: needs.changes.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: windows-latest
     timeout-minutes: 20

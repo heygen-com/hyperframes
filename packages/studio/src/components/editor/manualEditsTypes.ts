@@ -1,5 +1,4 @@
 /* ── Public constants ──────────────────────────────────────────────── */
-export const STUDIO_MANUAL_EDITS_PATH = ".hyperframes/studio-manual-edits.json";
 export const STUDIO_OFFSET_X_PROP = "--hf-studio-offset-x";
 export const STUDIO_OFFSET_Y_PROP = "--hf-studio-offset-y";
 export const STUDIO_WIDTH_PROP = "--hf-studio-width";
@@ -40,44 +39,6 @@ export const STUDIO_MANUAL_EDITS_PLAYBACK_FRAME_PROP = "__hfStudioManualEditsPla
 
 export const STUDIO_ROTATION_TRANSFORM_ORIGIN = "center center";
 
-/* ── Edit types ───────────────────────────────────────────────────── */
-export interface StudioManualEditTarget {
-  sourceFile: string;
-  selector?: string;
-  selectorIndex?: number;
-  id?: string;
-}
-
-export interface StudioPathOffsetEdit {
-  kind: "path-offset";
-  target: StudioManualEditTarget;
-  x: number;
-  y: number;
-  updatedAt?: string;
-}
-
-export interface StudioBoxSizeEdit {
-  kind: "box-size";
-  target: StudioManualEditTarget;
-  width: number;
-  height: number;
-  updatedAt?: string;
-}
-
-export interface StudioRotationEdit {
-  kind: "rotation";
-  target: StudioManualEditTarget;
-  angle: number;
-  updatedAt?: string;
-}
-
-export type StudioManualEdit = StudioPathOffsetEdit | StudioBoxSizeEdit | StudioRotationEdit;
-
-export interface StudioManualEditManifest {
-  version: 1;
-  edits: StudioManualEdit[];
-}
-
 export type StudioManualEditSeekWindow = Window & {
   __hf?: Record<string, unknown>;
   __player?: Record<string, unknown>;
@@ -87,7 +48,7 @@ export type StudioManualEditSeekWindow = Window & {
   __hfStudioManualEditsPlaybackFrame?: number | null;
 };
 
-/* ── Snapshot types ───────────────────────────────────────────────── */
+/* ── Snapshot types (used by drag/drop restore) ───────────────────── */
 export interface StudioBoxSizeSnapshot {
   width: string;
   height: string;

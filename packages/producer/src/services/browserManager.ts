@@ -5,6 +5,7 @@
 export {
   acquireBrowser,
   releaseBrowser,
+  drainBrowserPool,
   resolveHeadlessShellPath,
   buildChromeArgs,
   ENABLE_BROWSER_POOL,

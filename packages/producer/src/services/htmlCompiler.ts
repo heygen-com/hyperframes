@@ -38,6 +38,7 @@ import {
 import { downloadToTemp, isHttpUrl } from "../utils/urlDownloader.js";
 import type { Page } from "puppeteer-core";
 import { injectDeterministicFontFaces } from "./deterministicFonts.js";
+import { createStudioPositionSeekReapplyScript } from "@hyperframes/core/studio-api/manual-edits-render-script";
 
 export interface CompiledComposition {
   html: string;
@@ -993,7 +994,24 @@ export async function compileForRender(
   // Collect assets that resolve outside projectDir (e.g. ../shared-assets/hero.png).
   // These can't be served by the file server, so we map them to paths the
   // orchestrator will copy into the compiled output directory.
-  const { html, externalAssets } = collectExternalAssets(assembledHtml, projectDir);
+  const { html: htmlWithAssets, externalAssets } = collectExternalAssets(assembledHtml, projectDir);
+
+  // Inject studio position seek re-apply script when positions are baked into HTML.
+  // GSAP overwrites the `translate` CSS property on every frame seek; this script
+  // re-asserts the CSS custom property var() form after each seek so dragged
+  // positions survive frame-by-frame rendering without a JSON sidecar.
+  const HF_POSITION_ATTRS = [
+    'data-hf-studio-path-offset="true"',
+    'data-hf-studio-rotation="true"',
+    'data-hf-studio-motion="',
+  ];
+  const hasPositionEdits = HF_POSITION_ATTRS.some((attr) => htmlWithAssets.includes(attr));
+  const html = hasPositionEdits
+    ? htmlWithAssets.replace(
+        /<\/body>/i,
+        `<script>${createStudioPositionSeekReapplyScript()}</script></body>`,
+      )
+    : htmlWithAssets;
 
   // Parse main HTML elements
   const mainVideos = parseVideoElements(html);
@@ -1131,6 +1149,109 @@ export async function discoverMediaFromBrowser(page: Page): Promise<BrowserMedia
   });
 
   return elements as BrowserMediaElement[];
+}
+
+export interface VideoVisibilityWindow {
+  videoId: string;
+  visibleStart: number;
+  visibleEnd: number;
+}
+
+/**
+ * Seek the GSAP timeline to discover when each video's parent scene is visible.
+ * Only processes videos with the data-hf-auto-start sentinel (auto-injected timing).
+ */
+export async function discoverVideoVisibilityFromTimeline(
+  page: Page,
+  compositionDuration: number,
+): Promise<VideoVisibilityWindow[]> {
+  if (compositionDuration <= 0) return [];
+
+  return page.evaluate((duration: number) => {
+    const results: { videoId: string; visibleStart: number; visibleEnd: number }[] = [];
+    const videos = document.querySelectorAll("video[data-hf-auto-start]");
+    if (videos.length === 0) return results;
+
+    const timelines = (window as unknown as { __timelines?: Record<string, unknown> }).__timelines;
+    if (!timelines) return results;
+
+    const rootEl = document.querySelector("[data-composition-id]");
+    const compId = rootEl?.getAttribute("data-composition-id");
+    if (!compId) return results;
+
+    const tl = timelines[compId] as
+      | {
+          totalTime?: (t: number, suppressEvents?: boolean) => unknown;
+          seek?: (t: number, suppressEvents?: boolean) => unknown;
+        }
+      | undefined;
+    if (!tl) return results;
+
+    const seekTl = (t: number) => {
+      if (typeof tl.totalTime === "function") {
+        tl.totalTime(t, true);
+      } else if (typeof tl.seek === "function") {
+        tl.seek(t, true);
+      }
+    };
+
+    const SAMPLE_STEP = 0.1;
+    const BINARY_PRECISION = 1 / 60;
+
+    for (const videoEl of videos) {
+      const id = videoEl.id;
+      if (!id) continue;
+
+      const sceneEl = videoEl.closest(".scene") || videoEl;
+
+      let firstVisible: number | null = null;
+      let lastVisible: number | null = null;
+
+      for (let t = 0; t <= duration; t += SAMPLE_STEP) {
+        seekTl(t);
+        const opacity = parseFloat(window.getComputedStyle(sceneEl).opacity);
+        if (opacity > 0) {
+          if (firstVisible === null) firstVisible = t;
+          lastVisible = t;
+        }
+      }
+
+      if (firstVisible === null || lastVisible === null) continue;
+
+      // Binary search left boundary
+      let lo = Math.max(0, firstVisible - SAMPLE_STEP);
+      let hi = firstVisible;
+      while (hi - lo > BINARY_PRECISION) {
+        const mid = (lo + hi) / 2;
+        seekTl(mid);
+        const opacity = parseFloat(window.getComputedStyle(sceneEl).opacity);
+        if (opacity > 0) hi = mid;
+        else lo = mid;
+      }
+      const exactStart = hi;
+
+      // Binary search right boundary
+      lo = lastVisible;
+      hi = Math.min(duration, lastVisible + SAMPLE_STEP);
+      while (hi - lo > BINARY_PRECISION) {
+        const mid = (lo + hi) / 2;
+        seekTl(mid);
+        const opacity = parseFloat(window.getComputedStyle(sceneEl).opacity);
+        if (opacity > 0) lo = mid;
+        else hi = mid;
+      }
+      const exactEnd = lo;
+
+      results.push({
+        videoId: id,
+        visibleStart: Math.max(0, exactStart),
+        visibleEnd: Math.min(duration, exactEnd),
+      });
+    }
+
+    seekTl(0);
+    return results;
+  }, compositionDuration);
 }
 
 /**

@@ -4,6 +4,7 @@ import {
   buildProjectApiPath,
   buildProjectHash,
   encodeProjectId,
+  parseProjectHashRoute,
   parseProjectIdFromHash,
 } from "./projectRouting";
 
@@ -59,6 +60,20 @@ describe("project routing utilities", () => {
 
     expect(hash).toBe("#project/Ma%C3%B1ana%20demo");
     expect(parseProjectIdFromHash(hash)).toBe("Mañana demo");
+  });
+
+  it("parses project hash routes with query params", () => {
+    const route = parseProjectHashRoute("#project/Notion%20Showcase?tab=design&t=4.2");
+
+    expect(route?.projectId).toBe("Notion Showcase");
+    expect(route?.params.get("tab")).toBe("design");
+    expect(route?.params.get("t")).toBe("4.2");
+  });
+
+  it("builds hash routes with query params", () => {
+    expect(buildProjectHash("Notion Showcase", { tab: "design", t: "4.2" })).toBe(
+      "#project/Notion%20Showcase?tab=design&t=4.2",
+    );
   });
 
   it("encodes project ids as one API path segment", () => {

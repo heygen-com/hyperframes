@@ -41,6 +41,7 @@ export interface DockerRenderOptions {
   entryFile?: string;
   /** Output resolution preset (e.g. "landscape-4k"). Forwarded as `--resolution`. */
   outputResolution?: string;
+  pageSideCompositing?: boolean;
 }
 
 export function buildDockerRunArgs(input: DockerRunArgsInput): string[] {
@@ -80,5 +81,6 @@ export function buildDockerRunArgs(input: DockerRunArgsInput): string[] {
       : []),
     ...(options.entryFile ? ["--composition", options.entryFile] : []),
     ...(options.outputResolution ? ["--resolution", options.outputResolution] : []),
+    ...(options.pageSideCompositing === false ? ["--no-page-side-compositing"] : []),
   ];
 }

@@ -1,0 +1,55 @@
+# CodeQL advanced setup. Replaces GitHub's default code-scanning setup; the
+# repo must have default setup disabled in Security → Code scanning → "Set up"
+# before this workflow can run.
+#
+# Languages were taken from the existing default-setup config (JS/TS, Python,
+# Actions). Triggers mirror what default setup ran: push to main, every PR
+# against main, and a weekly schedule.
+#
+# The rules and path filters live in .github/codeql/codeql-config.yml so policy
+# changes show up as a normal PR diff.
+name: CodeQL
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Mondays at 14:39 UTC — matches the cadence default setup was running on.
+    - cron: "39 14 * * 1"
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      packages: read
+      actions: read
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: actions
+            build-mode: none
+          - language: javascript-typescript
+            build-mode: none
+          - language: python
+            build-mode: none
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@9e0d7b8d25671d64c341c19c0152d693099fb5ba # v4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+          config-file: ./.github/codeql/codeql-config.yml
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@9e0d7b8d25671d64c341c19c0152d693099fb5ba # v4
+        with:
+          category: "/language:${{ matrix.language }}"

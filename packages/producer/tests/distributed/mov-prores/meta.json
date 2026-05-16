@@ -1,0 +1,17 @@
+{
+  "name": "Distributed: mov ProRes",
+  "description": "60-frame composition (2s @ 30fps) with transparent background, text, and a rotating SVG icon. Output is mov + ProRes 4444 with alpha. ProRes is intra-only (every frame is a keyframe), so concat-copy at assemble time is structurally trivial — this fixture pins the orthogonal contract: that `-c copy` across N=4 chunks preserves QuickTime atoms (moov, mvhd, trak, mdia) intact so the assembled file plays in editors that consume mov directly (Premiere, FCPX, DaVinci).",
+  "tags": ["distributed", "mov", "prores", "alpha"],
+
+  "minPsnr": 30,
+  "maxFrameFailures": 0,
+
+  "minAudioCorrelation": 0.9,
+  "maxAudioLagWindows": 120,
+
+  "renderConfig": {
+    "fps": 30,
+    "format": "mov",
+    "chunkSize": 15
+  }
+}

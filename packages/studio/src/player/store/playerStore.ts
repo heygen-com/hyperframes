@@ -38,6 +38,7 @@ interface PlayerState {
   elements: TimelineElement[];
   selectedElementId: string | null;
   playbackRate: number;
+  audioMuted: boolean;
   loopEnabled: boolean;
   /** Timeline zoom: 'fit' auto-scales to viewport, 'manual' uses manualZoomPercent */
   zoomMode: ZoomMode;
@@ -52,6 +53,7 @@ interface PlayerState {
   setCurrentTime: (time: number) => void;
   setDuration: (duration: number) => void;
   setPlaybackRate: (rate: number) => void;
+  setAudioMuted: (muted: boolean) => void;
   setLoopEnabled: (enabled: boolean) => void;
   setTimelineReady: (ready: boolean) => void;
   setElements: (elements: TimelineElement[]) => void;
@@ -96,6 +98,7 @@ export const usePlayerStore = create<PlayerState>((set) => ({
   elements: [],
   selectedElementId: null,
   playbackRate: readStudioUiPreferences().playbackRate ?? 1,
+  audioMuted: readStudioUiPreferences().audioMuted ?? false,
   loopEnabled: false,
   zoomMode: "fit",
   manualZoomPercent: 100,
@@ -111,6 +114,10 @@ export const usePlayerStore = create<PlayerState>((set) => ({
     writeStudioUiPreferences({ playbackRate: rate });
     set({ playbackRate: rate });
   },
+  setAudioMuted: (muted) => {
+    writeStudioUiPreferences({ audioMuted: muted });
+    set({ audioMuted: muted });
+  },
   setLoopEnabled: (enabled) => set({ loopEnabled: enabled }),
   setZoomMode: (mode) => set({ zoomMode: mode }),
   setInPoint: (time) =>
@@ -120,6 +127,9 @@ export const usePlayerStore = create<PlayerState>((set) => ({
         inPoint: t,
         outPoint:
           t !== null && state.outPoint !== null && t >= state.outPoint ? null : state.outPoint,
+        // Setting a work-area marker implies the user wants playback bounded by it.
+        // Auto-enable loop so the playhead respects the marker instead of running past.
+        loopEnabled: t !== null ? true : state.loopEnabled,
       };
     }),
   setOutPoint: (time) =>
@@ -128,6 +138,7 @@ export const usePlayerStore = create<PlayerState>((set) => ({
       return {
         outPoint: t,
         inPoint: t !== null && state.inPoint !== null && t <= state.inPoint ? null : state.inPoint,
+        loopEnabled: t !== null ? true : state.loopEnabled,
       };
     }),
   setManualZoomPercent: (percent) =>
@@ -144,7 +155,7 @@ export const usePlayerStore = create<PlayerState>((set) => ({
       ),
     })),
   // Resets project-specific state when switching compositions.
-  // playbackRate, loopEnabled, zoomMode, and manualZoomPercent are intentionally preserved
+  // playbackRate, audioMuted, loopEnabled, zoomMode, and manualZoomPercent are intentionally preserved
   // because they are user preferences that should survive project switches.
   reset: () =>
     set({

@@ -5,6 +5,8 @@ interface CompositionsTabProps {
   compositions: string[];
   activeComposition: string | null;
   onSelect: (comp: string) => void;
+  onRenderComposition?: (comp: string) => void;
+  isRendering?: boolean;
 }
 
 const DEFAULT_PREVIEW_STAGE = { width: 1920, height: 1080 };
@@ -94,11 +96,15 @@ function CompCard({
   comp,
   isActive,
   onSelect,
+  onRender,
+  isRendering,
 }: {
   projectId: string;
   comp: string;
   isActive: boolean;
   onSelect: () => void;
+  onRender?: () => void;
+  isRendering?: boolean;
 }) {
   const [hovered, setHovered] = useState(false);
   const [stageSize, setStageSize] = useState(DEFAULT_PREVIEW_STAGE);
@@ -158,7 +164,7 @@ function CompCard({
       onClick={onSelect}
       onPointerEnter={handleEnter}
       onPointerLeave={handleLeave}
-      className={`w-full text-left px-2 py-1.5 flex items-center gap-2.5 transition-colors cursor-pointer ${
+      className={`group/card w-full text-left px-2 py-1.5 flex items-center gap-2.5 transition-colors cursor-pointer ${
         isActive
           ? "bg-studio-accent/10 border-l-2 border-studio-accent"
           : "border-l-2 border-transparent hover:bg-neutral-800/50"
@@ -200,6 +206,38 @@ function CompCard({
         <span className="text-[11px] font-medium text-neutral-300 truncate block">{name}</span>
         <span className="text-[9px] text-neutral-600 truncate block">{comp}</span>
       </div>
+      {onRender && (
+        <button
+          type="button"
+          title={isRendering ? "Rendering..." : `Render ${name}`}
+          aria-label={isRendering ? "Rendering..." : `Render ${name}`}
+          disabled={isRendering}
+          onClick={(e) => {
+            e.stopPropagation();
+            onRender();
+          }}
+          className={`flex-shrink-0 p-1 rounded transition-colors ${
+            isRendering
+              ? "text-neutral-600 cursor-not-allowed"
+              : "text-neutral-600 hover:text-studio-accent hover:bg-neutral-800"
+          }`}
+        >
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+            <polyline points="7 10 12 15 17 10" />
+            <line x1="12" y1="15" x2="12" y2="3" />
+          </svg>
+        </button>
+      )}
     </div>
   );
 }
@@ -209,6 +247,8 @@ export const CompositionsTab = memo(function CompositionsTab({
   compositions,
   activeComposition,
   onSelect,
+  onRenderComposition,
+  isRendering,
 }: CompositionsTabProps) {
   if (compositions.length === 0) {
     return (
@@ -227,6 +267,8 @@ export const CompositionsTab = memo(function CompositionsTab({
           comp={comp}
           isActive={activeComposition === comp}
           onSelect={() => onSelect(comp)}
+          onRender={onRenderComposition ? () => onRenderComposition(comp) : undefined}
+          isRendering={isRendering}
         />
       ))}
     </div>

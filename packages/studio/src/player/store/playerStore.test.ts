@@ -16,6 +16,7 @@ describe("usePlayerStore", () => {
       expect(state.elements).toEqual([]);
       expect(state.selectedElementId).toBeNull();
       expect(state.playbackRate).toBe(1);
+      expect(state.audioMuted).toBe(false);
       expect(state.loopEnabled).toBe(false);
       expect(state.zoomMode).toBe("fit");
       expect(state.manualZoomPercent).toBe(100);
@@ -62,10 +63,111 @@ describe("usePlayerStore", () => {
     });
   });
 
+  describe("setAudioMuted", () => {
+    it("updates audioMuted", () => {
+      usePlayerStore.getState().setAudioMuted(true);
+      expect(usePlayerStore.getState().audioMuted).toBe(true);
+    });
+  });
+
   describe("setLoopEnabled", () => {
     it("updates loopEnabled", () => {
       usePlayerStore.getState().setLoopEnabled(true);
       expect(usePlayerStore.getState().loopEnabled).toBe(true);
+    });
+  });
+
+  describe("setInPoint", () => {
+    it("updates inPoint", () => {
+      usePlayerStore.getState().setInPoint(1.5);
+      expect(usePlayerStore.getState().inPoint).toBe(1.5);
+    });
+
+    it("clears inPoint when given null", () => {
+      usePlayerStore.getState().setInPoint(1.5);
+      usePlayerStore.getState().setInPoint(null);
+      expect(usePlayerStore.getState().inPoint).toBeNull();
+    });
+
+    it("rejects non-finite values", () => {
+      usePlayerStore.getState().setInPoint(Number.NaN);
+      expect(usePlayerStore.getState().inPoint).toBeNull();
+    });
+
+    it("nullifies outPoint when new inPoint is at or past existing outPoint", () => {
+      usePlayerStore.getState().setOutPoint(2);
+      usePlayerStore.getState().setInPoint(3);
+      expect(usePlayerStore.getState().outPoint).toBeNull();
+      expect(usePlayerStore.getState().inPoint).toBe(3);
+    });
+
+    it("preserves outPoint when new inPoint is before it", () => {
+      usePlayerStore.getState().setOutPoint(5);
+      usePlayerStore.getState().setInPoint(2);
+      expect(usePlayerStore.getState().outPoint).toBe(5);
+    });
+
+    it("auto-enables loopEnabled when set to a non-null value", () => {
+      usePlayerStore.getState().setLoopEnabled(false);
+      usePlayerStore.getState().setInPoint(1.5);
+      expect(usePlayerStore.getState().loopEnabled).toBe(true);
+    });
+
+    it("preserves loopEnabled when cleared with null", () => {
+      usePlayerStore.getState().setLoopEnabled(true);
+      usePlayerStore.getState().setInPoint(null);
+      expect(usePlayerStore.getState().loopEnabled).toBe(true);
+
+      usePlayerStore.getState().setLoopEnabled(false);
+      usePlayerStore.getState().setInPoint(null);
+      expect(usePlayerStore.getState().loopEnabled).toBe(false);
+    });
+  });
+
+  describe("setOutPoint", () => {
+    it("updates outPoint", () => {
+      usePlayerStore.getState().setOutPoint(4.2);
+      expect(usePlayerStore.getState().outPoint).toBe(4.2);
+    });
+
+    it("clears outPoint when given null", () => {
+      usePlayerStore.getState().setOutPoint(4.2);
+      usePlayerStore.getState().setOutPoint(null);
+      expect(usePlayerStore.getState().outPoint).toBeNull();
+    });
+
+    it("rejects non-finite values", () => {
+      usePlayerStore.getState().setOutPoint(Number.POSITIVE_INFINITY);
+      expect(usePlayerStore.getState().outPoint).toBeNull();
+    });
+
+    it("nullifies inPoint when new outPoint is at or before existing inPoint", () => {
+      usePlayerStore.getState().setInPoint(5);
+      usePlayerStore.getState().setOutPoint(3);
+      expect(usePlayerStore.getState().inPoint).toBeNull();
+      expect(usePlayerStore.getState().outPoint).toBe(3);
+    });
+
+    it("preserves inPoint when new outPoint is after it", () => {
+      usePlayerStore.getState().setInPoint(2);
+      usePlayerStore.getState().setOutPoint(5);
+      expect(usePlayerStore.getState().inPoint).toBe(2);
+    });
+
+    it("auto-enables loopEnabled when set to a non-null value", () => {
+      usePlayerStore.getState().setLoopEnabled(false);
+      usePlayerStore.getState().setOutPoint(4.2);
+      expect(usePlayerStore.getState().loopEnabled).toBe(true);
+    });
+
+    it("preserves loopEnabled when cleared with null", () => {
+      usePlayerStore.getState().setLoopEnabled(true);
+      usePlayerStore.getState().setOutPoint(null);
+      expect(usePlayerStore.getState().loopEnabled).toBe(true);
+
+      usePlayerStore.getState().setLoopEnabled(false);
+      usePlayerStore.getState().setOutPoint(null);
+      expect(usePlayerStore.getState().loopEnabled).toBe(false);
     });
   });
 
@@ -213,9 +315,10 @@ describe("usePlayerStore", () => {
       expect(state.selectedElementId).toBeNull();
     });
 
-    it("does not reset playbackRate, loopEnabled, zoomMode, or manualZoomPercent", () => {
+    it("does not reset playbackRate, audioMuted, loopEnabled, zoomMode, or manualZoomPercent", () => {
       const store = usePlayerStore.getState();
       store.setPlaybackRate(2);
+      store.setAudioMuted(true);
       store.setLoopEnabled(true);
       store.setZoomMode("manual");
       store.setManualZoomPercent(200);
@@ -225,6 +328,7 @@ describe("usePlayerStore", () => {
       const state = usePlayerStore.getState();
       // reset() only resets the fields explicitly listed in the reset function
       expect(state.playbackRate).toBe(2);
+      expect(state.audioMuted).toBe(true);
       expect(state.loopEnabled).toBe(true);
       expect(state.zoomMode).toBe("manual");
       expect(state.manualZoomPercent).toBe(200);

@@ -9,7 +9,7 @@
  */
 
 import { useCallback } from "react";
-import { usePlayerStore } from "../store/playerStore";
+import { liveTime, usePlayerStore } from "../store/playerStore";
 import type { TimelineElement } from "../store/playerStore";
 import type { PlaybackAdapter, ClipManifestClip, IframeWindow } from "../lib/playbackTypes";
 import {
@@ -24,7 +24,6 @@ import {
 import {
   normalizePreviewViewport,
   autoHealMissingCompositionIds,
-  unmutePreviewMedia,
   buildMissingCompositionElements,
 } from "../lib/timelineIframeHelpers";
 import { getTimelineElementIdentity } from "../lib/timelineElementHelpers";
@@ -41,6 +40,7 @@ interface UseTimelineSyncCallbacksParams {
   setTimelineReady: (v: boolean) => void;
   setIsPlaying: (v: boolean) => void;
   attachIframeShortcutListeners: () => void;
+  applyPreviewAudioState: () => void;
 }
 
 export function useTimelineSyncCallbacks({
@@ -55,6 +55,7 @@ export function useTimelineSyncCallbacks({
   setTimelineReady,
   setIsPlaying,
   attachIframeShortcutListeners,
+  applyPreviewAudioState,
 }: UseTimelineSyncCallbacksParams) {
   // Convert a runtime timeline message (from iframe postMessage) into TimelineElements
   const processTimelineMessage = useCallback(
@@ -158,6 +159,9 @@ export function useTimelineSyncCallbacks({
     const startTime = seekTo != null ? Math.min(seekTo, adapter.getDuration()) : 0;
 
     adapter.seek(startTime);
+    // Keep non-React listeners such as the capture link and time display in sync
+    // with the initial adapter seek on iframe load.
+    liveTime.notify(startTime);
     const adapterDur = adapter.getDuration();
     if (
       Number.isFinite(adapterDur) &&
@@ -189,6 +193,7 @@ export function useTimelineSyncCallbacks({
         processTimelineMessage(manifest);
       }
       enrichMissingCompositions();
+      applyPreviewAudioState();
 
       if (usePlayerStore.getState().elements.length === 0 && doc) {
         const els = parseTimelineFromDOM(doc, adapter.getDuration());
@@ -222,13 +227,14 @@ export function useTimelineSyncCallbacks({
     enrichMissingCompositions,
     syncTimelineElements,
     attachIframeShortcutListeners,
+    applyPreviewAudioState,
     iframeRef,
     isRefreshingRef,
     pendingSeekRef,
   ]);
 
   const onIframeLoad = useCallback(() => {
-    unmutePreviewMedia(iframeRef.current);
+    applyPreviewAudioState();
     if (probeIntervalRef.current) clearInterval(probeIntervalRef.current);
 
     // Fast path: adapter already available (in-place reloads, cached compositions)
@@ -267,7 +273,7 @@ export function useTimelineSyncCallbacks({
       }
       window.removeEventListener("message", onMessage);
     }, 5000) as unknown as ReturnType<typeof setInterval>;
-  }, [initializeAdapter, iframeRef, probeIntervalRef]);
+  }, [initializeAdapter, iframeRef, probeIntervalRef, applyPreviewAudioState]);
 
   // Stable refs so mount-effect closures always call the latest version
   const processTimelineMessageRef = { current: processTimelineMessage };

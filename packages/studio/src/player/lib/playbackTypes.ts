@@ -7,7 +7,7 @@
 export interface PlaybackAdapter {
   play: () => void;
   pause: () => void;
-  seek: (time: number) => void;
+  seek: (time: number, options?: { keepPlaying?: boolean }) => void;
   getTime: () => number;
   getDuration: () => number;
   isPlaying: () => boolean;

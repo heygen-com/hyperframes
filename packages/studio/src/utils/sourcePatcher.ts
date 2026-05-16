@@ -11,6 +11,24 @@ function escapeStyleAttributeValue(value: string, quote: string): string {
   return quote === '"' ? value.replace(/"/g, "&quot;") : value.replace(/'/g, "&#39;");
 }
 
+/** Escape a string for safe use inside a double-quoted HTML attribute. */
+function escapeHtmlAttribute(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+/** Reverse escapeHtmlAttribute so callers get the original value. */
+function unescapeHtmlAttribute(value: string): string {
+  return value
+    .replace(/&quot;/g, '"')
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&");
+}
+
 function splitInlineStyleDeclarations(style: string): string[] {
   const declarations: string[] = [];
   let current = "";
@@ -71,7 +89,7 @@ function splitInlineStyleDeclarations(style: string): string[] {
 export interface PatchOperation {
   type: "inline-style" | "attribute" | "text-content";
   property: string;
-  value: string;
+  value: string | null;
 }
 
 export interface PatchTarget {
@@ -133,7 +151,12 @@ export function resolveSourceFile(
 /**
  * Apply a style property change to an element's inline style in the HTML source.
  */
-function patchInlineStyle(html: string, elementId: string, prop: string, value: string): string {
+function patchInlineStyle(
+  html: string,
+  elementId: string,
+  prop: string,
+  value: string | null,
+): string {
   // Find the element tag with this id
   const idPattern = new RegExp(`(<[^>]*\\bid=(["'])${escapeRegex(elementId)}\\2[^>]*)>`, "i");
   const match = idPattern.exec(html);
@@ -143,7 +166,12 @@ function patchInlineStyle(html: string, elementId: string, prop: string, value: 
   return patchInlineStyleInTag(html, tag, prop, value);
 }
 
-function patchInlineStyleInTag(html: string, tag: string, prop: string, value: string): string {
+function patchInlineStyleInTag(
+  html: string,
+  tag: string,
+  prop: string,
+  value: string | null,
+): string {
   if (!tag) return html;
 
   // Check if there's an existing style attribute
@@ -160,16 +188,22 @@ function patchInlineStyleInTag(html: string, tag: string, prop: string, value: s
       const val = part.slice(colon + 1).trim();
       if (key) props.set(key, val);
     }
-    // Update/add the property
-    props.set(prop, value);
-    // Rebuild style string
+    // Update/add or remove the property
+    if (value === null) {
+      props.delete(prop);
+    } else {
+      props.set(prop, value);
+    }
+    // Rebuild style string; keep style="" if empty (harmless)
     const newStyle = Array.from(props.entries())
       .map(([k, v]) => `${k}: ${escapeStyleAttributeValue(v, quote)}`)
       .join("; ");
     const newTag = tag.replace(styleMatch[0], `style=${quote}${newStyle}${quote}`);
     return html.replace(tag, newTag);
   } else {
-    // No existing style — add one
+    // No existing style attribute
+    if (value === null) return html; // nothing to remove
+    // Add one
     const newTag =
       tag.replace(/>$/, "") + ` style="${prop}: ${escapeStyleAttributeValue(value, '"')}"`;
     return html.replace(tag, newTag);
@@ -180,7 +214,7 @@ function patchInlineStyleByTarget(
   html: string,
   target: PatchTarget,
   prop: string,
-  value: string,
+  value: string | null,
 ): string {
   const match = findTagByTarget(html, target);
   if (!match) return html;
@@ -198,7 +232,7 @@ function replaceTagAtMatch(html: string, match: TagMatch, newTag: string): strin
   return `${html.slice(0, match.start)}${newTag}${html.slice(match.end)}`;
 }
 
-function findTagByTarget(html: string, target: PatchTarget): TagMatch | null {
+export function findTagByTarget(html: string, target: PatchTarget): TagMatch | null {
   if (target.id) {
     const idPattern = new RegExp(`(<[^>]*\\bid=(["'])${escapeRegex(target.id)}\\2[^>]*)>`, "i");
     const match = idPattern.exec(html);
@@ -265,7 +299,7 @@ export function readAttributeByTarget(
 
   const fullAttr = attr.startsWith("data-") ? attr : `data-${attr}`;
   const valueMatch = new RegExp(`\\b${fullAttr}=(["'])([^"']*)\\1`).exec(match.tag);
-  return valueMatch?.[2];
+  return valueMatch?.[2] != null ? unescapeHtmlAttribute(valueMatch[2]) : undefined;
 }
 
 export function readTagSnippetByTarget(html: string, target: PatchTarget): string | undefined {
@@ -277,43 +311,65 @@ function patchAttributeByTarget(
   html: string,
   target: PatchTarget,
   attr: string,
-  value: string,
+  value: string | null,
 ): string {
   const match = findTagByTarget(html, target);
   if (!match) return html;
 
   const fullAttr = attr.startsWith("data-") ? attr : `data-${attr}`;
-  const attrPattern = new RegExp(`\\b${fullAttr}=(["'])([^"']*)\\1`);
+  const attrPattern = new RegExp(`\\b${escapeRegex(fullAttr)}=(["'])([^"']*)\\1`);
   const tag = match.tag;
 
-  if (attrPattern.test(tag)) {
-    const newTag = tag.replace(attrPattern, `${fullAttr}="${value}"`);
+  if (value === null) {
+    // Remove the attribute if present
+    if (!attrPattern.test(tag)) return html;
+    const removePattern = new RegExp(`\\s+${escapeRegex(fullAttr)}=(["'])[^"']*\\1`);
+    const newTag = tag.replace(removePattern, "");
     return replaceTagAtMatch(html, match, newTag);
   }
 
-  const newTag = tag + ` ${fullAttr}="${value}"`;
+  const escaped = escapeHtmlAttribute(value);
+  if (attrPattern.test(tag)) {
+    const newTag = tag.replace(attrPattern, `${fullAttr}="${escaped}"`);
+    return replaceTagAtMatch(html, match, newTag);
+  }
+
+  const newTag = tag + ` ${fullAttr}="${escaped}"`;
   return replaceTagAtMatch(html, match, newTag);
 }
 
 /**
  * Apply an attribute change to an element in the HTML source.
  */
-function patchAttribute(html: string, elementId: string, attr: string, value: string): string {
+function patchAttribute(
+  html: string,
+  elementId: string,
+  attr: string,
+  value: string | null,
+): string {
   const idPattern = new RegExp(`(<[^>]*\\bid=(["'])${escapeRegex(elementId)}\\2[^>]*)>`, "i");
   const match = idPattern.exec(html);
   if (!match) return html;
 
   const tag = match[1];
   const fullAttr = attr.startsWith("data-") ? attr : `data-${attr}`;
-  const attrPattern = new RegExp(`\\b${fullAttr}=(["'])([^"']*)\\1`);
+  const attrPattern = new RegExp(`\\b${escapeRegex(fullAttr)}=(["'])([^"']*)\\1`);
 
+  if (value === null) {
+    if (!attrPattern.test(tag)) return html;
+    const removePattern = new RegExp(`\\s+${escapeRegex(fullAttr)}=(["'])[^"']*\\1`);
+    const newTag = tag.replace(removePattern, "");
+    return html.replace(tag, newTag);
+  }
+
+  const escaped = escapeHtmlAttribute(value);
   if (attrPattern.test(tag)) {
     // Update existing attribute
-    const newTag = tag.replace(attrPattern, `${fullAttr}="${value}"`);
+    const newTag = tag.replace(attrPattern, `${fullAttr}="${escaped}"`);
     return html.replace(tag, newTag);
   } else {
     // Add new attribute
-    const newTag = tag + ` ${fullAttr}="${value}"`;
+    const newTag = tag + ` ${fullAttr}="${escaped}"`;
     return html.replace(tag, newTag);
   }
 }
@@ -381,7 +437,7 @@ export function applyPatch(html: string, elementId: string, op: PatchOperation):
     case "attribute":
       return patchAttribute(html, elementId, op.property, op.value);
     case "text-content":
-      return patchTextContent(html, elementId, op.value);
+      return op.value !== null ? patchTextContent(html, elementId, op.value) : html;
     default:
       return html;
   }
@@ -401,7 +457,7 @@ export function applyPatchByTarget(html: string, target: PatchTarget, op: PatchO
     case "attribute":
       return patchAttributeByTarget(html, target, op.property, op.value);
     case "text-content":
-      return patchTextContentByTarget(html, target, op.value);
+      return op.value !== null ? patchTextContentByTarget(html, target, op.value) : html;
     default:
       return html;
   }

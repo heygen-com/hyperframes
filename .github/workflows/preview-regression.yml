@@ -41,9 +41,19 @@ jobs:
               - "bun.lock"
               - ".github/workflows/preview-regression.yml"
 
+  preflight:
+    name: Preflight (lint + format)
+    needs: changes
+    if: needs.changes.outputs.preview == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: ./.github/actions/preflight
+
   preview-parity:
     name: Preview parity
-    needs: changes
+    needs: [changes, preflight]
     if: needs.changes.outputs.preview == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20

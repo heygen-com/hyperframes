@@ -1,0 +1,18 @@
+{
+  "name": "Distributed: mp4 H.265 SDR",
+  "description": "60-frame composition (2s @ 30fps) with text, a crossfade transition, and a small rotating SVG icon. renderConfig.format=mp4 + codec=h265 routes the distributed pipeline through libx265 with closed-GOP keyint params (min-keyint=N:scenecut=0:open-gop=0:repeat-headers=1). The in-process baseline is rendered as h264 because the in-process renderer doesn't expose a codec hint — the harness's PSNR comparison therefore measures 'libx265 chunked + concat' against 'libx264 single-pass', catching gross codec failures while accepting normal cross-codec PSNR drift (~30-35 dB at standard quality).",
+  "tags": ["distributed", "mp4", "h265", "hevc", "sdr"],
+
+  "minPsnr": 30,
+  "maxFrameFailures": 0,
+
+  "minAudioCorrelation": 0.9,
+  "maxAudioLagWindows": 120,
+
+  "renderConfig": {
+    "fps": 30,
+    "format": "mp4",
+    "codec": "h265",
+    "chunkSize": 15
+  }
+}

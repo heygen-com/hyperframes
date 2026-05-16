@@ -222,6 +222,15 @@ export default defineCommand({
       description:
         "Output resolution preset: landscape (1920x1080), portrait (1080x1920), landscape-4k (3840x2160), portrait-4k (2160x3840), square (1080x1080), square-4k (2160x2160). Aliases: 1080p, 4k, uhd, 1080p-square, square-1080p, 4k-square. The composition is unchanged — Chrome renders at higher DPR (deviceScaleFactor) so the captured screenshot lands at the requested dimensions. Aspect ratio must match the composition; the scale must be an integer multiple. Not yet supported with --hdr.",
     },
+    "page-side-compositing": {
+      type: "boolean",
+      description:
+        "Run shader transitions on a page-side WebGL canvas inside Chrome " +
+        "instead of the Node-side layered blend. ~6× faster for SDR " +
+        "shader-transition renders. HDR/alpha/video content auto-disables. " +
+        "Use --no-page-side-compositing to force the layered path.",
+      default: true,
+    },
   },
   async run({ args }) {
     // ── Resolve project ────────────────────────────────────────────────────
@@ -291,6 +300,11 @@ export default defineCommand({
         process.exit(1);
       }
       workers = parsed;
+    }
+
+    // ── Wire opt-in: page-side compositing ───────────────────────────────
+    if (args["page-side-compositing"] === false) {
+      process.env.HF_PAGE_SIDE_COMPOSITING = "false";
     }
 
     // ── Validate max-concurrent-renders ─────────────────────────────────
@@ -538,6 +552,7 @@ export default defineCommand({
         variables,
         entryFile,
         outputResolution,
+        pageSideCompositing: args["page-side-compositing"] !== false,
         exitAfterComplete: true,
       });
     } else {
@@ -584,6 +599,7 @@ interface RenderOptions {
   exitAfterComplete?: boolean;
   /** Output resolution preset; see `resolveDeviceScaleFactor` for constraints. */
   outputResolution?: CanvasResolution;
+  pageSideCompositing?: boolean;
 }
 
 export type VariablesParseError =
@@ -878,6 +894,7 @@ async function renderDocker(
       variables: options.variables,
       entryFile: options.entryFile,
       outputResolution: options.outputResolution,
+      pageSideCompositing: options.pageSideCompositing,
     },
   });
 

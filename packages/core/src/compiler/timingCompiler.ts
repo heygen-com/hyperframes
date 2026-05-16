@@ -85,8 +85,13 @@ function compileTag(
     id = `${isVideo ? "hf-video" : "hf-audio"}-${generateId()}`;
     result = injectAttr(result, "id", id);
   }
-  const startStr = getAttr(result, "data-start");
-  const start = startStr !== null ? parseFloat(startStr) : 0;
+  let startStr = getAttr(result, "data-start");
+  if (startStr === null) {
+    result = injectAttr(result, "data-start", "0");
+    result = injectAttr(result, "data-hf-auto-start", "");
+    startStr = "0";
+  }
+  const start = parseFloat(startStr);
   const mediaStartStr = getAttr(result, "data-media-start");
   const mediaStart = mediaStartStr ? parseFloat(mediaStartStr) : 0;
 

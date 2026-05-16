@@ -243,7 +243,7 @@ async function generateThumbnail(item: CatalogItem, projectDir: string): Promise
     const session = await createCaptureSession(fileServer.url, framesDir, {
       width,
       height,
-      fps: 30,
+      fps: { num: 30, den: 1 },
       format: "png",
     });
     await initializeSession(session);
@@ -276,7 +276,7 @@ async function generateVideo(item: CatalogItem, projectDir: string): Promise<voi
 
   const outMp4 = join(outDir, `${item.name}.mp4`);
   const job = createRenderJob({
-    fps: 24,
+    fps: { num: 24, den: 1 },
     quality: "draft",
     format: "mp4",
   });

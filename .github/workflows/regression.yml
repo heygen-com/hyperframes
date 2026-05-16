@@ -34,35 +34,47 @@ jobs:
               - "packages/engine/**"
               - "Dockerfile*"
 
-  regression-shards:
+  preflight:
+    name: Preflight (lint + format)
     needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: ./.github/actions/preflight
+
+  regression-shards:
+    needs: [changes, preflight]
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     strategy:
-      fail-fast: false
+      fail-fast: true
       matrix:
+        # Shards are bin-packed by measured per-test duration (LPT heuristic on
+        # CI run 25893372795) so each row carries ~15-16 min of work. When a
+        # new fixture lands, drop it into the currently-lightest shard or
+        # re-balance against fresh `test_suite_summary` timings. Worst-shard
+        # work time was 19.3 min under the old tag-based split (styles-e);
+        # the rebalance brings every shard within ~40s of the others.
         include:
-          - shard: fast
-            args: "--sequential --exclude-tags slow,render-compat,hdr"
-          - shard: render-compat
-            args: "--sequential gsap-letters-render-compat css-spinner-render-compat raf-ball-render-compat iframe-render-compat"
-          - shard: hdr
-            args: "--sequential hdr-regression hdr-hlg-regression"
-          - shard: styles-a
-            args: "style-1-prod style-2-prod style-3-prod"
-          - shard: styles-b
-            args: "style-4-prod style-5-prod style-6-prod"
-          - shard: styles-c
-            args: "style-7-prod style-8-prod style-9-prod"
-          - shard: styles-d
-            args: "style-10-prod style-11-prod style-12-prod"
-          - shard: styles-e
-            args: "style-13-prod style-15-prod style-16-prod"
-          - shard: styles-f
-            args: "style-17-prod style-18-prod"
-          - shard: styles-g
-            args: "overlay-montage-prod"
+          - shard: shard-1
+            args: "hdr-regression style-5-prod style-3-prod mov-prores"
+          - shard: shard-2
+            args: "style-15-prod hdr-hlg-regression style-1-prod many-cuts vfr-screen-recording render-symlinked-assets"
+          - shard: shard-3
+            args: "style-7-prod style-8-prod style-10-prod css-spinner-render-compat webm-transparency mp4-h264-sdr"
+          - shard: shard-4
+            args: "style-16-prod style-9-prod style-17-prod iframe-render-compat variables-prod mp4-h265-sdr"
+          - shard: shard-5
+            args: "style-4-prod style-11-prod style-2-prod animejs-adapter typegpu-adapter"
+          - shard: shard-6
+            args: "overlay-montage-prod style-12-prod chat missing-host-comp-id png-sequence"
+          - shard: shard-7
+            args: "sub-composition-video style-18-prod raf-ball-render-compat font-variant-numeric"
+          - shard: shard-8
+            args: "style-13-prod style-6-prod vignelli-stacking gsap-letters-render-compat"
     steps:
       - name: Checkout (with LFS)
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -94,7 +106,7 @@ jobs:
           load: true
           tags: hyperframes-producer:test
           cache-from: type=gha,scope=regression-test-image
-          cache-to: type=gha,mode=min,scope=regression-test-image
+          cache-to: type=gha,mode=max,scope=regression-test-image
 
       - name: "Run regression shard: ${{ matrix.shard }}"
         run: |

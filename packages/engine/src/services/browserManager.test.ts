@@ -1,9 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { Browser, PuppeteerNode } from "puppeteer-core";
+
 import {
   _resetAutoBrowserGpuModeCacheForTests,
+  _resetBrowserPoolForTests,
+  _setPuppeteerForTests,
+  acquireBrowser,
   buildChromeArgs,
+  drainBrowserPool,
   forceReleaseBrowser,
+  releaseBrowser,
   resolveBrowserGpuMode,
 } from "./browserManager.js";
 
@@ -155,5 +162,147 @@ describe("forceReleaseBrowser", () => {
 
     expect(killFn).not.toHaveBeenCalled();
     expect(disconnectFn).toHaveBeenCalled();
+  });
+});
+
+describe("browser pool", () => {
+  function makeMockBrowser(): Browser {
+    return {
+      connected: true,
+      newPage: vi.fn(),
+      version: vi.fn().mockResolvedValue("HeadlessChrome/131.0.0.0"),
+      close: vi.fn().mockResolvedValue(undefined),
+      disconnect: vi.fn(),
+      process: () => ({ kill: vi.fn(), killed: false }),
+    } as unknown as Browser;
+  }
+
+  // forceScreenshot: true bypasses the BeginFrame probe path, which on Linux
+  // CI would trigger a second ppt.launch() when the mock's newPage() doesn't
+  // return a real page and the probe falls back to screenshot mode.
+  const poolCfg = { enableBrowserPool: true, forceScreenshot: true } as const;
+
+  let launchFn: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    _resetBrowserPoolForTests();
+    const mockBrowser = makeMockBrowser();
+    launchFn = vi.fn().mockResolvedValue(mockBrowser);
+    _setPuppeteerForTests({ launch: launchFn } as unknown as PuppeteerNode);
+  });
+
+  afterEach(async () => {
+    await drainBrowserPool();
+    _setPuppeteerForTests(undefined);
+  });
+
+  it("sequential acquires with pool enabled return the same browser", async () => {
+    const first = await acquireBrowser(["--no-sandbox"], poolCfg);
+    const second = await acquireBrowser(["--no-sandbox"], poolCfg);
+
+    expect(first.browser).toBe(second.browser);
+    expect(launchFn).toHaveBeenCalledTimes(1);
+
+    await releaseBrowser(first.browser, poolCfg);
+    await releaseBrowser(second.browser, poolCfg);
+  });
+
+  it("concurrent acquires via Promise.all trigger exactly one launch", async () => {
+    const [a, b, c] = await Promise.all([
+      acquireBrowser(["--no-sandbox"], poolCfg),
+      acquireBrowser(["--no-sandbox"], poolCfg),
+      acquireBrowser(["--no-sandbox"], poolCfg),
+    ]);
+
+    expect(launchFn).toHaveBeenCalledTimes(1);
+    expect(a.browser).toBe(b.browser);
+    expect(b.browser).toBe(c.browser);
+
+    await releaseBrowser(a.browser, poolCfg);
+    await releaseBrowser(b.browser, poolCfg);
+    await releaseBrowser(c.browser, poolCfg);
+  });
+
+  it("pool recovers from a disconnected browser", async () => {
+    const first = await acquireBrowser(["--no-sandbox"], poolCfg);
+    await releaseBrowser(first.browser, poolCfg);
+
+    // Simulate Chrome crash
+    (first.browser as unknown as { connected: boolean }).connected = false;
+
+    const freshBrowser = makeMockBrowser();
+    launchFn.mockResolvedValue(freshBrowser);
+
+    const second = await acquireBrowser(["--no-sandbox"], poolCfg);
+    expect(second.browser).toBe(freshBrowser);
+    expect(second.browser).not.toBe(first.browser);
+    expect(launchFn).toHaveBeenCalledTimes(2);
+
+    await releaseBrowser(second.browser, poolCfg);
+  });
+
+  it("release at refCount 0 closes the browser", async () => {
+    const result = await acquireBrowser(["--no-sandbox"], poolCfg);
+    const closeFn = result.browser.close as ReturnType<typeof vi.fn>;
+
+    await releaseBrowser(result.browser, poolCfg);
+    expect(closeFn).toHaveBeenCalledTimes(1);
+  });
+
+  it("pool returns a separate browser when forceScreenshot mismatches pooled mode", async () => {
+    const first = await acquireBrowser(["--no-sandbox"], poolCfg);
+    expect(first.captureMode).toBe("screenshot");
+
+    // Second acquire with same forceScreenshot — same mode, should reuse
+    const second = await acquireBrowser(["--no-sandbox"], poolCfg);
+    expect(second.browser).toBe(first.browser);
+    expect(launchFn).toHaveBeenCalledTimes(1);
+
+    await releaseBrowser(first.browser, poolCfg);
+    await releaseBrowser(second.browser, poolCfg);
+  });
+
+  it("forceReleaseBrowser does not kill Chrome when other sessions hold refs", async () => {
+    const result = await acquireBrowser(["--no-sandbox"], poolCfg);
+    // Acquire a second ref
+    const second = await acquireBrowser(["--no-sandbox"], poolCfg);
+
+    const disconnectFn = result.browser.disconnect as ReturnType<typeof vi.fn>;
+    forceReleaseBrowser(result.browser);
+
+    // Should NOT have disconnected — other session still holds a ref
+    expect(disconnectFn).not.toHaveBeenCalled();
+
+    // Release the remaining ref normally
+    await releaseBrowser(second.browser, poolCfg);
+  });
+
+  it("drainBrowserPool is safe to call when no browser is pooled", async () => {
+    await drainBrowserPool();
+  });
+
+  it("drainBrowserPool awaits in-flight launch before closing", async () => {
+    let resolveDeferred!: (browser: Browser) => void;
+    const deferred = new Promise<Browser>((resolve) => {
+      resolveDeferred = resolve;
+    });
+    launchFn.mockReturnValue(deferred);
+
+    // Start acquire — it will be pending
+    const acquirePromise = acquireBrowser(["--no-sandbox"], poolCfg);
+
+    // Drain while launch is in-flight
+    const drainPromise = drainBrowserPool();
+
+    // Resolve the pending launch
+    const mockBrowser = makeMockBrowser();
+    resolveDeferred(mockBrowser);
+
+    await drainPromise;
+    const closeFn = mockBrowser.close as ReturnType<typeof vi.fn>;
+    expect(closeFn).toHaveBeenCalled();
+
+    // The acquire should still resolve (the launch completed before drain closed it)
+    await acquirePromise.catch(() => {});
   });
 });

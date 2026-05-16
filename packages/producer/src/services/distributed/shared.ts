@@ -10,8 +10,40 @@ import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { type Fps } from "@hyperframes/core";
+import { type VideoElement, type VideoMetadata } from "@hyperframes/engine";
 import { type RenderConfig, type RenderJob, createRenderJob } from "../renderOrchestrator.js";
 import { defaultLogger, type ProducerLogger } from "../../logger.js";
+
+/**
+ * Filename of the per-video extraction manifest written by `plan()` into
+ * `<planDir>/meta/` and consumed by `renderChunk()` to rebuild the
+ * BeforeCaptureHook that injects pre-extracted frames into the page.
+ * Absence is fine — compositions with no `<video>` elements never
+ * produce the file.
+ */
+export const PLAN_VIDEOS_META_RELATIVE_PATH = "meta/videos.json";
+
+/**
+ * On-disk shape of `<planDir>/meta/videos.json`. The engine's
+ * `ExtractedFrames` shape carries an absolute `outputDir`, a `framePaths`
+ * Map, and potentially an open file descriptor — none of those survive
+ * a serialize → re-deserialize round trip across processes. The
+ * serialized form keeps only what plan-time produced; `renderChunk` re-
+ * derives `outputDir` (always `<planDir>/video-frames/<videoId>`) and
+ * `framePaths` (re-listed from that directory) when reconstructing the
+ * `FrameLookupTable`.
+ */
+export interface PlanVideosJson {
+  videos: VideoElement[];
+  extracted: Array<{
+    videoId: string;
+    srcPath: string;
+    framePattern: string;
+    fps: number;
+    totalFrames: number;
+    metadata: VideoMetadata;
+  }>;
+}
 
 const execFile = promisify(execFileCallback);
 

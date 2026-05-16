@@ -1,0 +1,56 @@
+name: "Hyperframes CodeQL config"
+
+# Use GitHub's default security-extended suite — it's a strict superset of the
+# default suite (more queries, slightly higher false-positive rate). Pair it with
+# the query-filters below so the extra queries don't drown the dashboard.
+queries:
+  - uses: security-extended
+
+# Per-rule path filters. The intent is to silence rules that have known false
+# positives on specific file shapes (generated test artifacts, CDN-script test
+# fixtures, functional-cleanup regex) WITHOUT excluding those paths from all
+# analysis — a malicious contributor adding e.g. a command-injection sink into
+# a "test fixture" would still get caught.
+#
+# To audit what changed: look at PR diffs touching this file. Reviewers should
+# treat it like CODEOWNERS — adding a new path exclusion is a policy change.
+query-filters:
+  # Generated test artifacts (golden baselines written by the producer test
+  # harness). Every compiled.html re-rasterizes the regex-stripped composition;
+  # the same alerts fire on every fixture and on every re-render.
+  - exclude:
+      id: js/incomplete-sanitization
+      paths:
+        - "packages/producer/tests/**/output/compiled.html"
+        - "packages/producer/tests/**/failures/*.html"
+
+  # Test fixtures and skill test corpora intentionally load CDN scripts without
+  # SRI — pinning hashes there would fight the test's purpose (we want the test
+  # to use whatever the registry hands back, the same way a composition would).
+  - exclude:
+      id: js/functionality-from-untrusted-source
+      paths:
+        - "packages/producer/tests/**"
+        - "skills/**/test-corpus/**"
+        - "skills/**/assets/test-corpus/**"
+
+  # The hand-rolled HTML cleanup regex in our build-time tooling looks like a
+  # sanitizer to CodeQL but isn't one — it strips framework bootstraps from
+  # captured pages before they're fed back into our own renderer (Puppeteer,
+  # not a user-facing DOM). Same for the text normalizer in the whisper path
+  # (caption text → SRT/VTT, no DOM emission). Scope these exclusions to the
+  # exact files that contain functional regex, not to whole directories, so
+  # any new code in cli/, core/, or producer/ that LOOKS like a sanitizer
+  # still trips the rules.
+  - exclude:
+      id: js/bad-tag-filter
+      paths:
+        - "packages/cli/src/capture/index.ts"
+        - "packages/cli/src/whisper/normalize.ts"
+        - "packages/core/src/lint/utils.ts"
+        - "packages/producer/src/services/htmlCompiler.ts"
+  - exclude:
+      id: js/incomplete-multi-character-sanitization
+      paths:
+        - "packages/cli/src/capture/index.ts"
+        - "packages/cli/src/whisper/normalize.ts"

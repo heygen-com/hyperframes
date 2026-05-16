@@ -1,5 +1,5 @@
-import { useState, useCallback, useRef, useMemo } from "react";
-import type { LeftSidebarHandle } from "./components/sidebar/LeftSidebar";
+import { useState, useCallback, useRef, useMemo, useEffect } from "react";
+import type { LeftSidebarHandle, SidebarTab } from "./components/sidebar/LeftSidebar";
 import { useRenderQueue } from "./components/renders/useRenderQueue";
 import { usePlayerStore } from "./player";
 import { LintModal } from "./components/LintModal";
@@ -12,6 +12,7 @@ import { useManifestPersistence } from "./hooks/useManifestPersistence";
 import { useTimelineEditing } from "./hooks/useTimelineEditing";
 import { useDomEditSession } from "./hooks/useDomEditSession";
 import { useAppHotkeys } from "./hooks/useAppHotkeys";
+import { useClipboard } from "./hooks/useClipboard";
 import { readStudioUiPreferences, writeStudioUiPreferences } from "./utils/studioUiPreferences";
 import { useCaptionDetection } from "./hooks/useCaptionDetection";
 import { useRenderClipContent } from "./hooks/useRenderClipContent";
@@ -20,13 +21,15 @@ import { useFrameCapture } from "./hooks/useFrameCapture";
 import { useLintModal } from "./hooks/useLintModal";
 import { useCompositionDimensions } from "./hooks/useCompositionDimensions";
 import { useToast } from "./hooks/useToast";
+import { useStudioUrlState } from "./hooks/useStudioUrlState";
 import {
   STUDIO_INSPECTOR_PANELS_ENABLED,
   STUDIO_MOTION_PANEL_ENABLED,
 } from "./components/editor/manualEditingAvailability";
-import { getStudioMotionForSelection } from "./components/editor/studioMotion";
+import { readStudioMotionFromElement } from "./components/editor/studioMotion";
 import type { DomEditSelection } from "./components/editor/domEditing";
 import { AskAgentModal } from "./components/AskAgentModal";
+import { StudioGlobalDragOverlay } from "./components/StudioGlobalDragOverlay";
 import { StudioHeader } from "./components/StudioHeader";
 import { StudioLeftSidebar } from "./components/StudioLeftSidebar";
 import { StudioPreviewArea } from "./components/StudioPreviewArea";
@@ -38,11 +41,19 @@ import { FileManagerProvider } from "./contexts/FileManagerContext";
 import { DomEditProvider } from "./contexts/DomEditContext";
 import { StudioSplash } from "./components/StudioSplash";
 import { useServerConnection } from "./hooks/useServerConnection";
+import {
+  normalizeStudioCompositionPath,
+  readStudioUrlStateFromWindow,
+} from "./utils/studioUrlState";
 
 export function StudioApp() {
   const { projectId, resolving, waitingForServer } = useServerConnection();
+  const initialUrlStateRef = useRef(readStudioUrlStateFromWindow());
 
   const [activeCompPath, setActiveCompPath] = useState<string | null>(null);
+  const [activeCompPathHydrated, setActiveCompPathHydrated] = useState(
+    () => initialUrlStateRef.current.activeCompPath == null,
+  );
   const [compIdToSrc, setCompIdToSrc] = useState<Map<string, string>>(new Map());
   const [previewIframe, setPreviewIframe] = useState<HTMLIFrameElement | null>(null);
   const [compositionLoading, setCompositionLoading] = useState(true);
@@ -80,7 +91,10 @@ export function StudioApp() {
   }, []);
 
   const [timelineVisible, setTimelineVisible] = useState(
-    () => readStudioUiPreferences().timelineVisible ?? true,
+    () =>
+      initialUrlStateRef.current.timelineVisible ??
+      readStudioUiPreferences().timelineVisible ??
+      true,
   );
   const toggleTimelineVisibility = useCallback(() => {
     setTimelineVisible((v) => {
@@ -89,7 +103,10 @@ export function StudioApp() {
     });
   }, []);
   const { appToast, showToast } = useToast();
-  const panelLayout = usePanelLayout();
+  const panelLayout = usePanelLayout({
+    rightCollapsed: initialUrlStateRef.current.rightCollapsed,
+    rightPanelTab: initialUrlStateRef.current.rightPanelTab,
+  });
   const editHistory = usePersistentEditHistory({ projectId });
   const domEditSaveTimestampRef = useRef(0);
   const reloadPreview = useCallback(() => {
@@ -108,6 +125,18 @@ export function StudioApp() {
     setRefreshKey,
   });
 
+  useEffect(() => {
+    if (activeCompPathHydrated) return;
+    if (!fileManager.fileTreeLoaded) return;
+
+    const nextCompPath = normalizeStudioCompositionPath(
+      initialUrlStateRef.current.activeCompPath,
+      fileManager.fileTree,
+    );
+    setActiveCompPath((current) => (current === nextCompPath ? current : nextCompPath));
+    setActiveCompPathHydrated(true);
+  }, [activeCompPathHydrated, fileManager.fileTree, fileManager.fileTreeLoaded]);
+
   const manifestPersistence = useManifestPersistence({
     projectId,
     showToast,
@@ -116,6 +145,8 @@ export function StudioApp() {
     recordEdit: editHistory.recordEdit,
     previewIframeRef,
     activeCompPathRef,
+    domEditSaveTimestampRef,
+    reloadPreview: () => setRefreshKey((k) => k + 1),
   });
 
   const timelineEditing = useTimelineEditing({
@@ -132,15 +163,28 @@ export function StudioApp() {
 
   const clearDomSelectionRef = useRef<() => void>(() => {});
   const domEditSelectionBridgeRef = useRef<DomEditSelection | null>(null);
-  const handleDomEditElementDeleteRef = useRef<(selection: DomEditSelection) => Promise<void>>(
+  const handleDomEditElementDeleteRef = useRef<(s: DomEditSelection) => Promise<void>>(
     async () => {},
   );
-
+  const domEditDeleteBridge = async (s: DomEditSelection) =>
+    handleDomEditElementDeleteRef.current(s);
+  const { handleCopy, handlePaste, handleCut } = useClipboard({
+    projectId,
+    activeCompPath,
+    domEditSelectionRef: domEditSelectionBridgeRef,
+    showToast,
+    writeProjectFile: fileManager.writeProjectFile,
+    recordEdit: editHistory.recordEdit,
+    domEditSaveTimestampRef,
+    reloadPreview,
+    handleTimelineElementDelete: timelineEditing.handleTimelineElementDelete,
+    handleDomEditElementDelete: domEditDeleteBridge,
+    previewIframeRef,
+  });
   const appHotkeys = useAppHotkeys({
     toggleTimelineVisibility,
     handleTimelineElementDelete: timelineEditing.handleTimelineElementDelete,
-    handleDomEditElementDelete: async (s: DomEditSelection) =>
-      handleDomEditElementDeleteRef.current(s),
+    handleDomEditElementDelete: domEditDeleteBridge,
     domEditSelectionRef: domEditSelectionBridgeRef,
     clearDomSelectionRef,
     editHistory,
@@ -152,6 +196,9 @@ export function StudioApp() {
     syncHistoryPreviewAfterApply: manifestPersistence.syncHistoryPreviewAfterApply,
     waitForPendingDomEditSaves: manifestPersistence.waitForPendingDomEditSaves,
     leftSidebarRef,
+    handleCopy,
+    handlePaste,
+    handleCut,
   });
 
   const domEditSession = useDomEditSession({
@@ -169,13 +216,7 @@ export function StudioApp() {
     setRightPanelTab: panelLayout.setRightPanelTab,
     showToast,
     refreshPreviewDocumentVersion,
-    commitStudioManualEditManifestOptimistically:
-      manifestPersistence.commitStudioManualEditManifestOptimistically,
-    commitStudioMotionManifestOptimistically:
-      manifestPersistence.commitStudioMotionManifestOptimistically,
-    applyCurrentStudioManualEditsToPreview:
-      manifestPersistence.applyCurrentStudioManualEditsToPreview,
-    applyCurrentStudioMotionToPreview: manifestPersistence.applyCurrentStudioMotionToPreview,
+    queueDomEditSave: manifestPersistence.queueDomEditSave,
     readProjectFile: fileManager.readProjectFile,
     writeProjectFile: fileManager.writeProjectFile,
     domEditSaveTimestampRef,
@@ -188,10 +229,11 @@ export function StudioApp() {
     refreshKey,
     rightPanelTab: panelLayout.rightPanelTab,
     applyStudioManualEditsToPreviewRef: manifestPersistence.applyStudioManualEditsToPreviewRef,
-    applyStudioMotionToPreviewRef: manifestPersistence.applyStudioMotionToPreviewRef,
     syncPreviewHistoryHotkey: appHotkeys.syncPreviewHistoryHotkey,
     reloadPreview,
     setRefreshKey,
+    openSourceForSelection: fileManager.openSourceForSelection,
+    selectSidebarTab: (tab: SidebarTab) => leftSidebarRef.current?.selectTab(tab),
   });
 
   domEditSelectionBridgeRef.current = domEditSession.domEditSelection;
@@ -265,10 +307,7 @@ export function StudioApp() {
 
   const selectedStudioMotion =
     STUDIO_INSPECTOR_PANELS_ENABLED && domEditSession.domEditSelection
-      ? getStudioMotionForSelection(
-          manifestPersistence.studioMotionManifestRef.current,
-          domEditSession.domEditSelection,
-        )
+      ? readStudioMotionFromElement(domEditSession.domEditSelection.element)
       : null;
   const layersPanelActive =
     STUDIO_INSPECTOR_PANELS_ENABLED && panelLayout.rightPanelTab === "layers";
@@ -283,6 +322,25 @@ export function StudioApp() {
     inspectorPanelActive && !panelLayout.rightCollapsed && !isPlaying;
   const inspectorButtonActive =
     STUDIO_INSPECTOR_PANELS_ENABLED && !panelLayout.rightCollapsed && inspectorPanelActive;
+
+  useStudioUrlState({
+    projectId,
+    activeCompPath,
+    currentTime,
+    duration: effectiveTimelineDuration,
+    isPlaying,
+    compositionLoading,
+    refreshKey,
+    previewIframeRef,
+    rightPanelTab: panelLayout.rightPanelTab,
+    rightCollapsed: panelLayout.rightCollapsed,
+    timelineVisible,
+    activeCompPathHydrated,
+    domEditSelection: domEditSession.domEditSelection,
+    buildDomSelectionFromTarget: domEditSession.buildDomSelectionFromTarget,
+    applyDomSelection: domEditSession.applyDomSelection,
+    initialState: initialUrlStateRef.current,
+  });
 
   // StudioProvider performs its own useMemo — no need for a second memo here.
   const studioCtxValue: StudioContextValue = {
@@ -420,30 +478,7 @@ export function StudioApp() {
                 />
               )}
 
-              {globalDragOver && (
-                <div className="absolute inset-0 z-[90] flex items-center justify-center bg-black/50 backdrop-blur-sm pointer-events-none">
-                  <div className="flex flex-col items-center gap-3 px-8 py-6 rounded-xl border-2 border-dashed border-studio-accent/60 bg-studio-accent/[0.06]">
-                    <svg
-                      width="32"
-                      height="32"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.5"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      className="text-studio-accent"
-                    >
-                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                      <polyline points="7 10 12 15 17 10" />
-                      <line x1="12" y1="15" x2="12" y2="3" />
-                    </svg>
-                    <span className="text-sm font-medium text-studio-accent">
-                      Drop files to import into project
-                    </span>
-                  </div>
-                </div>
-              )}
+              {globalDragOver && <StudioGlobalDragOverlay />}
 
               {appToast && (
                 <div

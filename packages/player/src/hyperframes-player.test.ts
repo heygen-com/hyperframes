@@ -198,6 +198,26 @@ describe("HyperframesPlayer parent-frame media", () => {
     expect(mockAudio.pause).toHaveBeenCalled();
   });
 
+  it("seek() while playing pauses parent proxy (prevents mirrorTime stutter loop)", () => {
+    // Regression: previously `seek()` only called `seekAll()`, leaving the
+    // proxy playing. With the timeline frozen at the new seek target, the
+    // parent's `mirrorTime` drift-correction would yank `currentTime` back
+    // every ~80ms of accumulated drift, producing an audible audio stutter
+    // loop while the video frame stayed frozen. `seek()` must be symmetric
+    // with `pause()` for the parent-owned audio path.
+    player.setAttribute("audio-src", "https://cdn.example.com/narration.mp3");
+    document.body.appendChild(player);
+
+    player._promoteToParentProxy?.();
+    player.play();
+    expect(mockAudio.play).toHaveBeenCalled();
+    mockAudio.pause.mockClear();
+
+    player.seek(12.5);
+    expect(mockAudio.pause).toHaveBeenCalled();
+    expect(mockAudio.currentTime).toBe(12.5);
+  });
+
   it("promotion is idempotent", () => {
     player.setAttribute("audio-src", "https://cdn.example.com/narration.mp3");
     document.body.appendChild(player);

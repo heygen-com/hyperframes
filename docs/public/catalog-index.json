@@ -651,6 +651,20 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/vfx-text-cursor.png"
   },
   {
+    "name": "vignette",
+    "type": "component",
+    "title": "Vignette",
+    "description": "Cinematic radial vignette overlay using a pure-CSS gradient — darkens the edges to pull focus toward the center",
+    "tags": [
+      "vignette",
+      "overlay",
+      "cinematic",
+      "effect"
+    ],
+    "href": "/catalog/components/vignette",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/vignette.png"
+  },
+  {
     "name": "vpn-youtube-spot",
     "type": "block",
     "title": "VPN YouTube Spot",

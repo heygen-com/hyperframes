@@ -16,6 +16,91 @@ function makeTempProject(files: Record<string, string>): string {
 }
 
 describe("buildSubCompositionHtml", () => {
+  it("handles full HTML document compositions without nesting <html> in <body>", () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html>
+<html><head><title>Host</title></head><body></body></html>`,
+      "compositions/map-block.html": `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <link rel="stylesheet" href="../styles/theme.css" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      .map { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="map-block" data-width="1920" data-height="1080">
+      <img class="map" src="assets/map.png" alt="" />
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines["map-block"] = gsap.timeline({ paused: true });
+    </script>
+  </body>
+</html>`,
+    });
+
+    const html = buildSubCompositionHtml(
+      dir,
+      "compositions/map-block.html",
+      "/api/runtime.js",
+      "/api/projects/demo/preview/",
+    );
+
+    expect(html).not.toBeNull();
+    // Must not nest a full HTML document inside <body>
+    const bodyStart = html!.indexOf("<body>");
+    const afterBody = html!.slice(bodyStart);
+    expect(afterBody).not.toContain("<html");
+    expect(afterBody).not.toContain("<head>");
+    // Composition styles must be in <head>, not lost
+    expect(html).toContain(".map {");
+    expect(html).toContain("#root {");
+    // Image src preserved (no ../ rewrite needed for bare relative paths)
+    expect(html).toContain('src="assets/map.png"');
+    // Base tag for asset resolution
+    expect(html).toContain('<base href="/api/projects/demo/preview/">');
+    // GSAP from the composition's own <head> must be preserved
+    expect(html).toContain("gsap@3.14.2");
+    // Body script content preserved
+    expect(html).toContain('__timelines["map-block"]');
+    // <link> and <meta> from composition head must not be dropped
+    expect(html).toContain('rel="stylesheet"');
+    expect(html).toContain('href="styles/theme.css"');
+    expect(html).toContain('name="viewport"');
+    // <html lang="en"> attribute forwarded to the output
+    expect(html).toContain('lang="en"');
+  });
+
+  it("handles raw fragment compositions (no template, no full document)", () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html>
+<html><head><title>Host</title></head><body></body></html>`,
+      "compositions/card.html": `<div data-composition-id="card" data-width="400" data-height="300">
+  <img src="../icon.svg" alt="" />
+  <p>Hello</p>
+</div>`,
+    });
+
+    const html = buildSubCompositionHtml(
+      dir,
+      "compositions/card.html",
+      "/api/runtime.js",
+      "/api/projects/demo/preview/",
+    );
+
+    expect(html).not.toBeNull();
+    expect(html).toContain('<base href="/api/projects/demo/preview/">');
+    // ../icon.svg from compositions/ rewrites to icon.svg at project root
+    expect(html).toContain('src="icon.svg"');
+    expect(html).not.toContain('src="../icon.svg"');
+    expect(html).toContain("<p>Hello</p>");
+  });
+
   it("rewrites sub-composition asset paths against the project root preview base", () => {
     const dir = makeTempProject({
       "index.html": `<!doctype html>

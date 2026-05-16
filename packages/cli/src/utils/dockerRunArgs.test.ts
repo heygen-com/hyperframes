@@ -277,4 +277,17 @@ describe("buildDockerRunArgs", () => {
     const args = buildDockerRunArgs({ ...FIXED_INPUT, options: BASE });
     expect(args).not.toContain("--resolution");
   });
+
+  it("forwards --no-page-side-compositing when pageSideCompositing is false", () => {
+    const args = buildDockerRunArgs({
+      ...FIXED_INPUT,
+      options: { ...BASE, pageSideCompositing: false },
+    });
+    expect(args).toContain("--no-page-side-compositing");
+  });
+
+  it("omits --no-page-side-compositing when pageSideCompositing is not explicitly false", () => {
+    const args = buildDockerRunArgs({ ...FIXED_INPUT, options: BASE });
+    expect(args).not.toContain("--no-page-side-compositing");
+  });
 });

@@ -319,4 +319,56 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
     }
     return findings;
   },
+
+  // pointer_events_none
+  ({ tags, styles }) => {
+    const findings: HyperframeLintFinding[] = [];
+    const reported = new Set<string>();
+
+    for (const tag of tags) {
+      if (["script", "style", "link", "meta", "template", "noscript"].includes(tag.name)) continue;
+      const inlineStyle = readAttr(tag.raw, "style") ?? "";
+      if (!/pointer-events\s*:\s*none/i.test(inlineStyle)) continue;
+      const id = readAttr(tag.raw, "id");
+      const key = id ?? tag.raw;
+      if (reported.has(key)) continue;
+      reported.add(key);
+      findings.push({
+        code: "pointer_events_none",
+        severity: "info",
+        message: `<${tag.name}${id ? ` id="${id}"` : ""}> has \`pointer-events: none\` in its inline style. Elements with this property are harder to select in the Studio preview.`,
+        elementId: id || undefined,
+        fixHint:
+          "If this element should be selectable in the Studio, remove `pointer-events: none` or move it to a wrapper that doesn't contain editable content.",
+        snippet: truncateSnippet(tag.raw),
+      });
+    }
+
+    for (const style of styles) {
+      let root: postcss.Root;
+      try {
+        root = postcss.parse(style.content);
+      } catch {
+        continue;
+      }
+      root.walkDecls("pointer-events", (decl) => {
+        if (decl.value.trim().toLowerCase() !== "none") return;
+        const rule = decl.parent;
+        if (!rule || rule.type !== "rule") return;
+        const selector = (rule as postcss.Rule).selector;
+        if (reported.has(selector)) return;
+        reported.add(selector);
+        findings.push({
+          code: "pointer_events_none",
+          severity: "info",
+          message: `\`${selector}\` sets \`pointer-events: none\`. Elements matching this selector are harder to select in the Studio preview.`,
+          selector,
+          fixHint:
+            "If these elements should be selectable in the Studio, remove `pointer-events: none` or move it to a wrapper that doesn't contain editable content.",
+        });
+      });
+    }
+
+    return findings;
+  },
 ];

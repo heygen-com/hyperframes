@@ -64,6 +64,10 @@
       "type": "hyperframes:component"
     },
     {
+      "name": "vignette",
+      "type": "hyperframes:component"
+    },
+    {
       "name": "instagram-follow",
       "type": "hyperframes:block"
     },

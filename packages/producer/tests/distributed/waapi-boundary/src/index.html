@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>chunk-boundary: WAAPI</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    <style>
+      body,
+      html {
+        margin: 0;
+        padding: 0;
+        width: 320px;
+        height: 180px;
+        background: #0f172a;
+        overflow: hidden;
+      }
+      #main-comp {
+        position: relative;
+        width: 320px;
+        height: 180px;
+      }
+      #box {
+        position: absolute;
+        left: 0;
+        top: 70px;
+        width: 40px;
+        height: 40px;
+        background: #22c55e;
+        border-radius: 6px;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="main-comp"
+      data-composition-id="main-comp"
+      data-width="320"
+      data-height="180"
+      data-start="0"
+      data-duration="2"
+    >
+      <div id="box"></div>
+    </div>
+
+    <script>
+      // Element.animate() / KeyframeEffect — the WAAPI surface. The
+      // HyperFrames runtime drives the animation's currentTime each frame.
+      // A boundary regression would manifest as box position discontinuity
+      // at chunk seam frames (15, 30, 45).
+      const box = document.getElementById("box");
+      const anim = box.animate(
+        [
+          { transform: "translateX(0px) rotate(0deg)" },
+          { transform: "translateX(280px) rotate(360deg)" },
+        ],
+        { duration: 2000, fill: "forwards", easing: "linear" },
+      );
+      anim.pause();
+      // The empty GSAP timeline owns the composition's duration; WAAPI is
+      // the actual animation under test.
+      const tl = gsap.timeline({ paused: true });
+      window.__timelines = window.__timelines || {};
+      window.__timelines["main-comp"] = tl;
+      tl.to({}, { duration: 2 }, 0);
+    </script>
+  </body>
+</html>

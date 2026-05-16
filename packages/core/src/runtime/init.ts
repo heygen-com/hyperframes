@@ -1586,6 +1586,7 @@ export function initSandboxRuntimeModular(): void {
     onSetPlaybackRate: (rate) => {
       applyPlaybackRate(rate);
       if (state.transportClock) state.transportClock.setRate(state.playbackRate);
+      webAudio.setRate(state.playbackRate);
     },
     onTick: () => {
       if (state.tornDown || !clock.isPlaying()) return;
@@ -1927,6 +1928,7 @@ export function initSandboxRuntimeModular(): void {
             clock.now(),
             vol * state.bridgeVolume,
             gen,
+            state.playbackRate,
           );
         });
       }
@@ -1997,6 +1999,7 @@ export function initSandboxRuntimeModular(): void {
   player.setPlaybackRate = (rate: number) => {
     applyPlaybackRate(rate);
     clock.setRate(state.playbackRate);
+    webAudio.setRate(state.playbackRate);
   };
 
   // Sync clock duration from any captured timeline

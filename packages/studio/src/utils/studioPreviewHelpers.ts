@@ -1,5 +1,9 @@
 import type { DomEditViewport, DomEditSelection } from "../components/editor/domEditing";
 import { resolveVisualDomEditSelectionTarget } from "../components/editor/domEditing";
+import {
+  getDomLayerPatchTarget,
+  isElementComputedVisible,
+} from "../components/editor/domEditingElement";
 import { usePlayerStore, liveTime } from "../player";
 import { getEventTargetElement } from "./studioHelpers";
 
@@ -56,6 +60,28 @@ export function getPreviewLocalPointer(
   return resolvePreviewLocalPointer(iframe, doc, win, clientX, clientY);
 }
 
+const POINTER_EVENTS_OVERRIDE_ID = "__hf_studio_pointer_events_override__";
+
+function forcePointerEventsAuto(doc: Document): HTMLStyleElement | null {
+  try {
+    const style = doc.createElement("style");
+    style.id = POINTER_EVENTS_OVERRIDE_ID;
+    style.textContent = "* { pointer-events: auto !important; }";
+    doc.head.appendChild(style);
+    return style;
+  } catch {
+    return null;
+  }
+}
+
+function removePointerEventsOverride(style: HTMLStyleElement | null): void {
+  try {
+    style?.remove();
+  } catch {
+    // cross-origin or detached doc
+  }
+}
+
 export function getPreviewTargetFromPointer(
   iframe: HTMLIFrameElement,
   clientX: number,
@@ -75,17 +101,25 @@ export function getPreviewTargetFromPointer(
   const localPointer = resolvePreviewLocalPointer(iframe, doc, win, clientX, clientY);
   if (!localPointer) return null;
 
-  if (typeof doc.elementsFromPoint === "function") {
-    const visualTarget = resolveVisualDomEditSelectionTarget(
-      doc.elementsFromPoint(localPointer.x, localPointer.y),
-      {
-        activeCompositionPath,
-      },
-    );
-    if (visualTarget) return visualTarget;
-  }
+  const overrideStyle = forcePointerEventsAuto(doc);
+  try {
+    if (typeof doc.elementsFromPoint === "function") {
+      const visualTarget = resolveVisualDomEditSelectionTarget(
+        doc.elementsFromPoint(localPointer.x, localPointer.y),
+        {
+          activeCompositionPath,
+        },
+      );
+      if (visualTarget) return visualTarget;
+    }
 
-  return getEventTargetElement(doc.elementFromPoint(localPointer.x, localPointer.y));
+    const fallback = getEventTargetElement(doc.elementFromPoint(localPointer.x, localPointer.y));
+    if (!fallback || !getDomLayerPatchTarget(fallback, activeCompositionPath)) return null;
+    if (!isElementComputedVisible(fallback)) return null;
+    return fallback;
+  } finally {
+    removePointerEventsOverride(overrideStyle);
+  }
 }
 
 export function buildRasterClickSelectionContext(
@@ -160,11 +194,15 @@ export function pauseStudioPreviewPlayback(iframe: HTMLIFrameElement | null): nu
   if (!win) return null;
 
   try {
-    let pausedTime: number | null = null;
     const player = objectLike(Reflect.get(win, "__player"));
-    pausedTime = readPlaybackTime(player, "getTime") ?? pausedTime;
-    callPlaybackMethod(player, "pause");
+    const playerPausedTime = readPlaybackTime(player, "getTime");
+    const playerPause = player ? Reflect.get(player, "pause") : null;
+    if (typeof playerPause === "function") {
+      callPlaybackMethod(player, "pause");
+      return playerPausedTime;
+    }
 
+    let pausedTime: number | null = null;
     const timeline = objectLike(Reflect.get(win, "__timeline"));
     pausedTime = pausedTime ?? readPlaybackTime(timeline, "time");
     callPlaybackMethod(timeline, "pause");

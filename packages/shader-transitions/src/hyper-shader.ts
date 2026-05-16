@@ -12,9 +12,11 @@ import {
 } from "./webgl.js";
 import { getFragSource, type ShaderName } from "./shaders/registry.js";
 import { initCapture, captureScene } from "./capture.js";
+import { installPageSideCompositor } from "./engineModePageComposite.js";
 
 declare const gsap: {
   timeline: (opts: Record<string, unknown>) => GsapTimeline;
+  set: (target: HTMLElement | string, vars: Record<string, unknown>) => unknown;
   to: (target: HTMLElement | string, vars: Record<string, unknown>) => unknown;
   fromTo: (
     target: HTMLElement | string,
@@ -2214,6 +2216,41 @@ function initEngineMode(
     // so it stops contributing to the normal-frame layer composite.
     tl.set(`#${toId}`, { opacity: 1 }, T);
     tl.set(`#${fromId}`, { opacity: 0 }, T + dur);
+  }
+
+  // Page-side compositing opt-in (default OFF). When the producer launches
+  // with `EngineConfig.enablePageSideCompositing: true`, it sets the
+  // sentinel `window.__HF_PAGE_SIDE_COMPOSITING__` via an early stub. We
+  // detect it here and install the WebGL-on-page composite path on top of
+  // the opacity-flip timeline. The opacity timeline still runs (the
+  // installer wraps `window.__hf.seek` AFTER the timeline runs, so DOM
+  // state at the sampled time is correct before texture capture) but the
+  // installed compositor overrides the seek's final visible state during
+  // each transition window with a single shader-composited overlay canvas.
+  const pageCompositingFlag =
+    typeof window !== "undefined" &&
+    Boolean(
+      (window as unknown as { __HF_PAGE_SIDE_COMPOSITING__?: boolean })
+        .__HF_PAGE_SIDE_COMPOSITING__,
+    );
+  if (pageCompositingFlag) {
+    const bgColor = config.bgColor ?? "#000";
+    const accentColors: AccentColors = config.accentColor
+      ? deriveAccentColors(config.accentColor)
+      : { accent: [1, 0.6, 0.2], dark: [0.4, 0.15, 0], bright: [1, 0.85, 0.5] };
+    const rawW = Number(root?.getAttribute("data-width"));
+    const rawH = Number(root?.getAttribute("data-height"));
+    const compWidth = Number.isFinite(rawW) && rawW > 0 ? rawW : 1920;
+    const compHeight = Number.isFinite(rawH) && rawH > 0 ? rawH : 1080;
+    installPageSideCompositor({
+      scenes,
+      transitions,
+      bgColor,
+      accentColors,
+      width: compWidth,
+      height: compHeight,
+      defaultDuration: DEFAULT_DURATION,
+    });
   }
 
   registerTimeline(compId, tl, config.timeline);

@@ -24,14 +24,14 @@ import {
 } from "./MotionPanelFields";
 import { EaseCurveEditor } from "./EaseCurveEditor";
 
+/** Motion data without targeting metadata (kind/target/updatedAt are derived from context). */
+type StudioMotionData = Omit<StudioGsapMotion, "kind" | "target" | "updatedAt">;
+
 interface MotionPanelProps {
   element: DomEditSelection | null;
-  motion: StudioGsapMotion | null;
+  motion: StudioMotionData | null;
   onClearSelection: () => void;
-  onSetMotion: (
-    element: DomEditSelection,
-    motion: Omit<StudioGsapMotion, "kind" | "target" | "updatedAt">,
-  ) => void;
+  onSetMotion: (element: DomEditSelection, motion: StudioMotionData) => void;
   onClearMotion: (element: DomEditSelection) => void;
 }
 
@@ -43,19 +43,19 @@ const MOTION_PRESET_OPTIONS: Array<{ label: string; value: StudioGsapMotionPrese
 
 const MOTION_DIRECTION_OPTIONS: StudioGsapMotionDirection[] = ["up", "down", "left", "right"];
 
-function motionValueDistance(motion: StudioGsapMotion | null): number {
+function motionValueDistance(motion: StudioMotionData | null): number {
   if (!motion) return 32;
   return Math.max(Math.abs(motion.from.x ?? 0), Math.abs(motion.from.y ?? 0), 1);
 }
 
-function inferMotionPreset(motion: StudioGsapMotion | null): StudioGsapMotionPreset {
+function inferMotionPreset(motion: StudioMotionData | null): StudioGsapMotionPreset {
   if (!motion) return "fade-up";
   if (motion.from.scale != null || motion.to.scale != null) return "pop";
   if (motion.from.x != null || motion.to.x != null) return "slide";
   return "fade-up";
 }
 
-function inferMotionDirection(motion: StudioGsapMotion | null): StudioGsapMotionDirection {
+function inferMotionDirection(motion: StudioMotionData | null): StudioGsapMotionDirection {
   if (!motion) return "up";
   const x = motion.from.x ?? 0;
   const y = motion.from.y ?? 0;

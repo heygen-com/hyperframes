@@ -88,6 +88,8 @@ export interface StudioApiAdapter {
      * the producer for the integer-scale + aspect + HDR constraints.
      */
     outputResolution?: CanvasResolution;
+    /** Entry file relative to projectDir (e.g. "compositions/intro.html"). Defaults to index.html. */
+    composition?: string;
   }): RenderJobState;
 
   /** Optional: generate a JPEG thumbnail via Puppeteer or similar. */

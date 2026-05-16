@@ -1,7 +1,7 @@
 import type { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { existsSync, readFileSync, mkdirSync, unlinkSync, readdirSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve, sep } from "node:path";
 import type { StudioApiAdapter, RenderJobState } from "../types.js";
 import { VALID_CANVAS_RESOLUTIONS, parseFps, type CanvasResolution } from "../../core.types.js";
 
@@ -59,6 +59,7 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
       quality?: string;
       format?: string;
       resolution?: string;
+      composition?: string;
     };
     const VALID_FORMATS = new Set(["mp4", "webm", "mov"]);
     const FORMAT_EXT: Record<string, string> = { mp4: ".mp4", webm: ".webm", mov: ".mov" };
@@ -76,6 +77,14 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
     const outputResolution = VALID_RESOLUTIONS.has(body.resolution ?? "")
       ? (body.resolution as CanvasResolution)
       : undefined;
+    let composition: string | undefined;
+    if (typeof body.composition === "string" && body.composition.length > 0) {
+      const resolved = resolve(project.dir, body.composition);
+      if (!resolved.startsWith(resolve(project.dir) + sep)) {
+        return c.json({ error: "composition path must be within the project directory" }, 400);
+      }
+      composition = body.composition;
+    }
 
     const now = new Date();
     const datePart = now.toISOString().slice(0, 10);
@@ -94,6 +103,7 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
       quality,
       jobId,
       outputResolution,
+      composition,
     });
     (jobState as RenderJobState & { createdAt: number }).createdAt = Date.now();
     renderJobs.set(jobId, jobState as RenderJobState & { createdAt: number });

@@ -78,7 +78,12 @@ import {
 import { join, dirname, resolve } from "path";
 import { randomUUID } from "crypto";
 import { fileURLToPath } from "url";
-import { createFileServer, type FileServerHandle, VIRTUAL_TIME_SHIM } from "./fileServer.js";
+import {
+  createFileServer,
+  type FileServerHandle,
+  HF_PAGE_SIDE_COMPOSITING_STUB,
+  VIRTUAL_TIME_SHIM,
+} from "./fileServer.js";
 import { defaultLogger, type ProducerLogger } from "../logger.js";
 import { type HdrImageTransferCache } from "./hdrImageTransferCache.js";
 import {
@@ -1618,7 +1623,9 @@ export async function executeRenderJob(
     const stage4Start = Date.now();
     updateJobStatus(job, "rendering", "Starting frame capture", 25, onProgress);
 
-    // Start file server (may already be running from duration discovery)
+    // Start file server (may already be running from duration discovery).
+    // The page-side compositing stub is injected later (after hasHdrContent
+    // is known) via addPreHeadScript — see usePageSideCompositingForTransitions.
     if (!fileServer) {
       fileServer = await createFileServer({
         projectDir,
@@ -1742,11 +1749,34 @@ export async function executeRenderJob(
     // issues (orange shift) with no quality benefit.
     const nativeHdrIds = new Set([...nativeHdrVideoIds, ...nativeHdrImageIds]);
     const hasHdrContent = Boolean(effectiveHdr && nativeHdrIds.size > 0);
-    const useLayeredComposite = shouldUseLayeredComposite({
-      hasHdrContent,
-      hasShaderTransitions: compiled.hasShaderTransitions,
-      isPngSequence,
-    });
+    // Page-side compositing opt-in: when the engine is configured to run the
+    // shader blend inside Chrome via a page-side WebGL canvas, the layered
+    // Node-side composite path is unnecessary for SDR shader transitions.
+    // The streaming path takes ONE opaque RGB screenshot per output frame —
+    // exactly the single capture the page-side compositor produces. HDR
+    // content still forces the layered path (HDR layers need per-layer
+    // alpha + native HDR raw frame compositing in Node; that's out of scope
+    // for this opt-in).
+    const usePageSideCompositingForTransitions =
+      cfg.enablePageSideCompositing &&
+      compiled.hasShaderTransitions &&
+      !hasHdrContent &&
+      !isPngSequence &&
+      !needsAlpha;
+    if (usePageSideCompositingForTransitions) {
+      fileServer.addPreHeadScript(HF_PAGE_SIDE_COMPOSITING_STUB);
+      log.info(
+        "[Render] Page-side compositing enabled — bypassing Node-side layered " +
+          "shader-blend path. Engine will capture one opaque RGB frame per output frame.",
+      );
+    }
+    const useLayeredComposite =
+      !usePageSideCompositingForTransitions &&
+      shouldUseLayeredComposite({
+        hasHdrContent,
+        hasShaderTransitions: compiled.hasShaderTransitions,
+        isPngSequence,
+      });
     const encoderHdr = hasHdrContent ? effectiveHdr : undefined;
     // png-sequence has no encoder, but the rest of the orchestrator still
     // reads `preset.quality` for `effectiveQuality` and `preset.codec` for

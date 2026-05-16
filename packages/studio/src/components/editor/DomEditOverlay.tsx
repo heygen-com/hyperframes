@@ -138,6 +138,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
 
   const gestures = createDomEditOverlayGestureHandlers({
     overlayRef,
+    iframeRef,
     boxRef,
     selectionRef,
     overlayRectRef,
@@ -307,7 +308,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
               cursor: allowCanvasMovement && groupCanMove ? "move" : "default",
             }}
             onPointerDown={(e) => {
-              if (!allowCanvasMovement || e.shiftKey) return;
+              if (!allowCanvasMovement || !groupCanMove || e.shiftKey) return;
               gestures.startGroupDrag(e);
             }}
             onMouseDown={suppressBoxMouseDown}

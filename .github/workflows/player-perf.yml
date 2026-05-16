@@ -37,14 +37,24 @@ jobs:
               - "bun.lock"
               - ".github/workflows/player-perf.yml"
 
+  preflight:
+    name: Preflight (lint + format)
+    needs: changes
+    if: needs.changes.outputs.perf == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: ./.github/actions/preflight
+
   perf-shards:
     name: "Perf: ${{ matrix.shard }}"
-    needs: changes
+    needs: [changes, preflight]
     if: needs.changes.outputs.perf == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
-      fail-fast: false
+      fail-fast: true
       matrix:
         include:
           - shard: load

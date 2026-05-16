@@ -1,11 +1,17 @@
 import { execSync, spawnSync } from "node:child_process";
-import { existsSync, rmSync } from "node:fs";
+import { existsSync, readdirSync, rmSync } from "node:fs";
+import { basename } from "node:path";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { Browser, detectBrowserPlatform, getInstalledBrowsers, install } from "@puppeteer/browsers";
 
 const CHROME_VERSION = "131.0.6778.85";
 const CACHE_DIR = join(homedir(), ".cache", "hyperframes", "chrome");
+// Puppeteer's managed cache — where `@puppeteer/browsers install
+// chrome-headless-shell` (and `puppeteer install`) drop binaries. The engine's
+// `resolveHeadlessShellPath` scans the same directory; the CLI must look here
+// too or it silently picks system Chrome over a perfectly good headless-shell.
+const PUPPETEER_CACHE_DIR = join(homedir(), ".cache", "puppeteer", "chrome-headless-shell");
 
 /** Override browser path via --browser-path flag. Takes priority over env var. */
 let _browserPathOverride: string | undefined;
@@ -67,17 +73,152 @@ function findFromEnv(): BrowserResult | undefined {
 }
 
 async function findFromCache(): Promise<BrowserResult | undefined> {
-  if (!existsSync(CACHE_DIR)) {
-    return undefined;
+  // 1) Puppeteer's managed cache — where `npx @puppeteer/browsers install
+  // chrome-headless-shell` lands, and where `puppeteer install` from a project
+  // depending on full `puppeteer` (not `puppeteer-core`) lands. The engine's
+  // `resolveHeadlessShellPath` reads from here and selects newest-version-
+  // first; the CLI must match that semantic or it will silently hand the
+  // engine an older binary than the engine itself would pick.
+  //
+  // We intentionally check puppeteer BEFORE the hyperframes-managed cache:
+  // the HF cache is pinned to `CHROME_VERSION` (above) which lags behind
+  // upstream Chrome by many releases. If a user installed chrome-headless-shell
+  // separately (via `@puppeteer/browsers install`) we want to use that
+  // newer binary, not the pinned-stale fallback.
+  const fromPuppeteer = findFromPuppeteerCache();
+  if (fromPuppeteer) {
+    return fromPuppeteer;
   }
 
-  const installed = await getInstalledBrowsers({ cacheDir: CACHE_DIR });
-  const match = installed.find((b) => b.browser === Browser.CHROMEHEADLESSSHELL);
-  if (match) {
-    return { executablePath: match.executablePath, source: "cache" };
+  // 2) Hyperframes-managed cache (populated by `ensureBrowser` below as a
+  // download-of-last-resort). This is the fallback path: only reached when
+  // no puppeteer-cache binary exists.
+  if (existsSync(CACHE_DIR)) {
+    const installed = await getInstalledBrowsers({ cacheDir: CACHE_DIR });
+    const match = installed.find((b) => b.browser === Browser.CHROMEHEADLESSSHELL);
+    if (match) {
+      return { executablePath: match.executablePath, source: "cache" };
+    }
   }
 
   return undefined;
+}
+
+/**
+ * Parse a puppeteer-cache version directory name (`linux-148.0.7778.97`,
+ * `mac_arm-131.0.6778.85`, etc.) into a numeric tuple for ordering.
+ *
+ * Lexicographic sort on these strings is buggy because `"99"` > `"148"` (the
+ * `9` outranks the `1` character-wise), so a 99-era binary would beat a
+ * 148-era binary in `.sort().reverse()`. We split on `-` to drop the platform
+ * prefix, then on `.` to get integer segments. Returns `undefined` for names
+ * that don't have at least one parseable numeric segment so they sort last.
+ */
+function parseVersionSegments(versionDir: string): number[] | undefined {
+  const dashIdx = versionDir.indexOf("-");
+  const versionPart = dashIdx >= 0 ? versionDir.slice(dashIdx + 1) : versionDir;
+  const segments = versionPart.split(".");
+  const parsed: number[] = [];
+  for (const seg of segments) {
+    const n = parseInt(seg, 10);
+    if (!Number.isFinite(n)) {
+      // Stop at the first non-numeric segment but keep what we've collected.
+      break;
+    }
+    parsed.push(n);
+  }
+  return parsed.length > 0 ? parsed : undefined;
+}
+
+/** Numeric semver-style descending comparator for puppeteer cache dirs. */
+function compareVersionDirsDescending(a: string, b: string): number {
+  const pa = parseVersionSegments(a);
+  const pb = parseVersionSegments(b);
+  // Unparseable names sort after parseable ones (so we still try them, just last).
+  if (!pa && !pb) return 0;
+  if (!pa) return 1;
+  if (!pb) return -1;
+  const len = Math.max(pa.length, pb.length);
+  for (let i = 0; i < len; i += 1) {
+    const av = pa[i] ?? 0;
+    const bv = pb[i] ?? 0;
+    if (av !== bv) return bv - av; // descending (newest first)
+  }
+  return 0;
+}
+
+function findFromPuppeteerCache(): BrowserResult | undefined {
+  if (!existsSync(PUPPETEER_CACHE_DIR)) return undefined;
+  let versions: string[];
+  try {
+    // Numeric semver-style sort, newest first. Lexicographic `.sort().reverse()`
+    // (the previous implementation, still in engine `resolveHeadlessShellPath`)
+    // mis-orders `linux-99...` ahead of `linux-148...` because character `'9'`
+    // outranks `'1'`. See `parseVersionSegments` above.
+    versions = [...readdirSync(PUPPETEER_CACHE_DIR)].sort(compareVersionDirsDescending);
+  } catch {
+    return undefined;
+  }
+  for (const version of versions) {
+    // Same shape as `resolveHeadlessShellPath` in engine/browserManager.ts —
+    // keep them aligned. If puppeteer ever changes the on-disk layout the two
+    // need to move together.
+    const candidates = [
+      join(PUPPETEER_CACHE_DIR, version, "chrome-headless-shell-linux64", "chrome-headless-shell"),
+      join(
+        PUPPETEER_CACHE_DIR,
+        version,
+        "chrome-headless-shell-mac-arm64",
+        "chrome-headless-shell",
+      ),
+      join(PUPPETEER_CACHE_DIR, version, "chrome-headless-shell-mac-x64", "chrome-headless-shell"),
+      join(
+        PUPPETEER_CACHE_DIR,
+        version,
+        "chrome-headless-shell-win64",
+        "chrome-headless-shell.exe",
+      ),
+    ];
+    for (const binary of candidates) {
+      if (existsSync(binary)) {
+        return { executablePath: binary, source: "cache" };
+      }
+    }
+  }
+  return undefined;
+}
+
+/**
+ * True iff the binary at `executablePath` is `chrome-headless-shell` (i.e. the
+ * Chromium build that still exposes `HeadlessExperimental.enable` /
+ * `beginFrame`). Regular Chrome and `chromium` have dropped those domains, so
+ * the engine's perf-optimized BeginFrame capture path silently degrades to
+ * screenshot mode when those are used.
+ */
+function isHeadlessShellBinary(executablePath: string): boolean {
+  const name = basename(executablePath).toLowerCase();
+  return name === "chrome-headless-shell" || name === "chrome-headless-shell.exe";
+}
+
+/**
+ * Emit a one-time warning when the CLI selects a non-headless-shell binary on
+ * Linux. Idempotent across repeated `findBrowser()` calls so a long-running
+ * `hyperframes studio` process doesn't get spammed.
+ */
+let _warnedSystemFallback = false;
+function warnSystemFallbackOnce(executablePath: string): void {
+  if (_warnedSystemFallback) return;
+  if (process.platform !== "linux") return;
+  if (isHeadlessShellBinary(executablePath)) return;
+  _warnedSystemFallback = true;
+  console.warn(
+    `[hyperframes] Using system Chrome at ${executablePath}; HeadlessExperimental.beginFrame is unavailable in regular Chrome builds, so the perf-optimized capture path falls back to screenshot mode. Install chrome-headless-shell for the optimized path:\n  npx @puppeteer/browsers install chrome-headless-shell\n(Or set HYPERFRAMES_BROWSER_PATH to point at an existing chrome-headless-shell binary.)`,
+  );
+}
+
+/** Test-only: reset the one-shot warn latch. */
+export function _resetSystemFallbackWarnForTests(): void {
+  _warnedSystemFallback = false;
 }
 
 function findFromSystem(): BrowserResult | undefined {
@@ -108,7 +249,11 @@ export async function findBrowser(): Promise<BrowserResult | undefined> {
   const fromCache = await findFromCache();
   if (fromCache) return fromCache;
 
-  return findFromSystem();
+  const fromSystem = findFromSystem();
+  if (fromSystem) {
+    warnSystemFallbackOnce(fromSystem.executablePath);
+  }
+  return fromSystem;
 }
 
 /**

@@ -32,6 +32,7 @@ coverage/
 
 # Producer regression test failures (generated debugging artifacts)
 packages/producer/tests/*/failures/
+packages/producer/tests/distributed/*/failures/
 packages/producer/tests/parity/fixtures/hyperframe.runtime.iife.js
 
 # Player perf test results (generated each run, attached as CI artifact)
@@ -41,6 +42,7 @@ packages/player/tests/perf/results/
 output/
 renders/
 !packages/producer/tests/*/output/
+!packages/producer/tests/distributed/*/output/
 
 # Composition source media (large binaries)
 compositions/**/*.mp4

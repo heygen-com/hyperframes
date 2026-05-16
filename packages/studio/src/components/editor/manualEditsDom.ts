@@ -31,6 +31,13 @@ import {
   STUDIO_ROTATION_TRANSFORM_ORIGIN,
 } from "./manualEditsTypes";
 import { roundRotationAngle } from "./manualEditsParsing";
+import {
+  STUDIO_MOTION_ATTR,
+  STUDIO_MOTION_ORIGINAL_TRANSFORM_ATTR,
+  STUDIO_MOTION_ORIGINAL_OPACITY_ATTR,
+  STUDIO_MOTION_ORIGINAL_VISIBILITY_ATTR,
+} from "./studioMotionTypes";
+import { applyStudioMotionFromDom } from "./studioMotion";
 
 /* ── Gesture tracking ─────────────────────────────────────────────── */
 let studioManualEditGestureId = 0;
@@ -209,12 +216,39 @@ function writeStudioPathOffsetVars(
 }
 
 /* ── Path offset apply ────────────────────────────────────────────── */
+
+// GSAP 3.x reads the resolved CSS `translate` individual property at initialization and bakes it
+// into element.style.transform (as a matrix) on every seek. When the studio's reapply hook also
+// writes `translate`, both properties compose additively, doubling the visual offset. This helper
+// zeroes out only the translate component (m41/m42) so the `translate` prop isn't double-counted.
+function stripGsapTranslateFromTransform(element: HTMLElement): void {
+  const transform = element.style.getPropertyValue("transform");
+  if (!transform || transform === "none") return;
+  const win = element.ownerDocument.defaultView as (Window & typeof globalThis) | null;
+  const DOMMatrixCtor = (win as unknown as { DOMMatrix?: typeof DOMMatrix })?.DOMMatrix;
+  if (!DOMMatrixCtor) return;
+  try {
+    const m = new DOMMatrixCtor(transform);
+    if (m.m41 === 0 && m.m42 === 0) return;
+    m.m41 = 0;
+    m.m42 = 0;
+    if (m.is2D && m.a === 1 && m.b === 0 && m.c === 0 && m.d === 1) {
+      element.style.removeProperty("transform");
+    } else {
+      element.style.setProperty("transform", m.toString());
+    }
+  } catch {
+    // non-parseable transform or DOMMatrix unavailable — leave as-is
+  }
+}
+
 export function applyStudioPathOffset(
   element: HTMLElement,
   offset: { x: number; y: number },
+  options: { updateBase?: boolean } = {},
 ): void {
   promoteInlineForTransform(element);
-  writeStudioPathOffsetVars(element, offset);
+  writeStudioPathOffsetVars(element, offset, { updateBase: options.updateBase ?? true });
   element.style.setProperty(
     "translate",
     composeTranslateValue(
@@ -223,6 +257,7 @@ export function applyStudioPathOffset(
       `var(${STUDIO_OFFSET_Y_PROP}, 0px)`,
     ),
   );
+  stripGsapTranslateFromTransform(element);
 }
 
 export function applyStudioPathOffsetDraft(
@@ -235,6 +270,7 @@ export function applyStudioPathOffsetDraft(
     "translate",
     composeTranslateValue(element, `${Math.round(offset.x)}px`, `${Math.round(offset.y)}px`),
   );
+  stripGsapTranslateFromTransform(element);
 }
 
 /* ── Box size apply ───────────────────────────────────────────────── */
@@ -434,3 +470,383 @@ export {
   clearStudioRotation,
   clearStudioBoxSize,
 } from "./manualEditsSnapshot";
+
+/* ── HTML patch builders ──────────────────────────────────────────── */
+import type { PatchOperation } from "../../utils/sourcePatcher";
+
+export function buildPathOffsetPatches(element: HTMLElement): PatchOperation[] {
+  const x = element.style.getPropertyValue(STUDIO_OFFSET_X_PROP);
+  const y = element.style.getPropertyValue(STUDIO_OFFSET_Y_PROP);
+  const translate = element.style.getPropertyValue("translate");
+  const originalTranslate = element.getAttribute(STUDIO_ORIGINAL_TRANSLATE_ATTR);
+  const originalInlineTranslate = element.getAttribute(STUDIO_ORIGINAL_INLINE_TRANSLATE_ATTR);
+  const displayVal = element.style.getPropertyValue("display");
+  const transformDisplayAttr = element.getAttribute(STUDIO_ORIGINAL_TRANSFORM_DISPLAY_ATTR);
+  const ops: PatchOperation[] = [];
+  if (x) ops.push({ type: "inline-style", property: STUDIO_OFFSET_X_PROP, value: x });
+  if (y) ops.push({ type: "inline-style", property: STUDIO_OFFSET_Y_PROP, value: y });
+  if (translate) ops.push({ type: "inline-style", property: "translate", value: translate });
+  ops.push({ type: "attribute", property: STUDIO_PATH_OFFSET_ATTR, value: "true" });
+  if (originalTranslate !== null)
+    ops.push({
+      type: "attribute",
+      property: STUDIO_ORIGINAL_TRANSLATE_ATTR,
+      value: originalTranslate,
+    });
+  if (originalInlineTranslate !== null)
+    ops.push({
+      type: "attribute",
+      property: STUDIO_ORIGINAL_INLINE_TRANSLATE_ATTR,
+      value: originalInlineTranslate,
+    });
+  if (displayVal) ops.push({ type: "inline-style", property: "display", value: displayVal });
+  if (transformDisplayAttr !== null)
+    ops.push({
+      type: "attribute",
+      property: STUDIO_ORIGINAL_TRANSFORM_DISPLAY_ATTR,
+      value: transformDisplayAttr,
+    });
+  return ops;
+}
+
+export function buildClearPathOffsetPatches(element: HTMLElement): PatchOperation[] {
+  const originalInlineTranslate = element.getAttribute(STUDIO_ORIGINAL_INLINE_TRANSLATE_ATTR);
+  const ops: PatchOperation[] = [
+    { type: "inline-style", property: STUDIO_OFFSET_X_PROP, value: null },
+    { type: "inline-style", property: STUDIO_OFFSET_Y_PROP, value: null },
+    {
+      type: "inline-style",
+      property: "translate",
+      value: originalInlineTranslate || null,
+    },
+    { type: "attribute", property: STUDIO_PATH_OFFSET_ATTR, value: null },
+    { type: "attribute", property: STUDIO_ORIGINAL_TRANSLATE_ATTR, value: null },
+    { type: "attribute", property: STUDIO_ORIGINAL_INLINE_TRANSLATE_ATTR, value: null },
+  ];
+  const origDisplay = element.getAttribute(STUDIO_ORIGINAL_TRANSFORM_DISPLAY_ATTR);
+  if (origDisplay !== null) {
+    ops.push({ type: "inline-style", property: "display", value: origDisplay || null });
+    ops.push({ type: "attribute", property: STUDIO_ORIGINAL_TRANSFORM_DISPLAY_ATTR, value: null });
+  }
+  return ops;
+}
+
+export function buildBoxSizePatches(element: HTMLElement): PatchOperation[] {
+  const ops: PatchOperation[] = [];
+
+  const studioWidth = element.style.getPropertyValue(STUDIO_WIDTH_PROP);
+  const studioHeight = element.style.getPropertyValue(STUDIO_HEIGHT_PROP);
+  if (studioWidth)
+    ops.push({ type: "inline-style", property: STUDIO_WIDTH_PROP, value: studioWidth });
+  if (studioHeight)
+    ops.push({ type: "inline-style", property: STUDIO_HEIGHT_PROP, value: studioHeight });
+
+  const width = element.style.getPropertyValue("width");
+  const height = element.style.getPropertyValue("height");
+  const minWidth = element.style.getPropertyValue("min-width");
+  const minHeight = element.style.getPropertyValue("min-height");
+  const maxWidth = element.style.getPropertyValue("max-width");
+  const maxHeight = element.style.getPropertyValue("max-height");
+  const flexBasis = element.style.getPropertyValue("flex-basis");
+  const flexGrow = element.style.getPropertyValue("flex-grow");
+  const flexShrink = element.style.getPropertyValue("flex-shrink");
+  const boxSizing = element.style.getPropertyValue("box-sizing");
+  const scale = element.style.getPropertyValue("scale");
+  const transformOrigin = element.style.getPropertyValue("transform-origin");
+  const displayVal = element.style.getPropertyValue("display");
+
+  if (width) ops.push({ type: "inline-style", property: "width", value: width });
+  if (height) ops.push({ type: "inline-style", property: "height", value: height });
+  if (minWidth) ops.push({ type: "inline-style", property: "min-width", value: minWidth });
+  if (minHeight) ops.push({ type: "inline-style", property: "min-height", value: minHeight });
+  if (maxWidth) ops.push({ type: "inline-style", property: "max-width", value: maxWidth });
+  if (maxHeight) ops.push({ type: "inline-style", property: "max-height", value: maxHeight });
+  if (flexBasis) ops.push({ type: "inline-style", property: "flex-basis", value: flexBasis });
+  if (flexGrow) ops.push({ type: "inline-style", property: "flex-grow", value: flexGrow });
+  if (flexShrink) ops.push({ type: "inline-style", property: "flex-shrink", value: flexShrink });
+  if (boxSizing) ops.push({ type: "inline-style", property: "box-sizing", value: boxSizing });
+  if (scale) ops.push({ type: "inline-style", property: "scale", value: scale });
+  if (transformOrigin)
+    ops.push({ type: "inline-style", property: "transform-origin", value: transformOrigin });
+  if (displayVal) ops.push({ type: "inline-style", property: "display", value: displayVal });
+
+  ops.push({ type: "attribute", property: STUDIO_BOX_SIZE_ATTR, value: "true" });
+
+  const origWidth = element.getAttribute(STUDIO_ORIGINAL_WIDTH_ATTR);
+  const origHeight = element.getAttribute(STUDIO_ORIGINAL_HEIGHT_ATTR);
+  const origMinWidth = element.getAttribute(STUDIO_ORIGINAL_MIN_WIDTH_ATTR);
+  const origMinHeight = element.getAttribute(STUDIO_ORIGINAL_MIN_HEIGHT_ATTR);
+  const origMaxWidth = element.getAttribute(STUDIO_ORIGINAL_MAX_WIDTH_ATTR);
+  const origMaxHeight = element.getAttribute(STUDIO_ORIGINAL_MAX_HEIGHT_ATTR);
+  const origFlexBasis = element.getAttribute(STUDIO_ORIGINAL_FLEX_BASIS_ATTR);
+  const origFlexGrow = element.getAttribute(STUDIO_ORIGINAL_FLEX_GROW_ATTR);
+  const origFlexShrink = element.getAttribute(STUDIO_ORIGINAL_FLEX_SHRINK_ATTR);
+  const origBoxSizing = element.getAttribute(STUDIO_ORIGINAL_BOX_SIZING_ATTR);
+  const origScale = element.getAttribute(STUDIO_ORIGINAL_SCALE_ATTR);
+  const origTransformOrigin = element.getAttribute(STUDIO_ORIGINAL_TRANSFORM_ORIGIN_ATTR);
+  const origDisplay = element.getAttribute(STUDIO_ORIGINAL_DISPLAY_ATTR);
+  const origTransformDisplay = element.getAttribute(STUDIO_ORIGINAL_TRANSFORM_DISPLAY_ATTR);
+
+  if (origWidth !== null)
+    ops.push({ type: "attribute", property: STUDIO_ORIGINAL_WIDTH_ATTR, value: origWidth });
+  if (origHeight !== null)
+    ops.push({ type: "attribute", property: STUDIO_ORIGINAL_HEIGHT_ATTR, value: origHeight });
+  if (origMinWidth !== null)
+    ops.push({ type: "attribute", property: STUDIO_ORIGINAL_MIN_WIDTH_ATTR, value: origMinWidth });
+  if (origMinHeight !== null)
+    ops.push({
+      type: "attribute",
+      property: STUDIO_ORIGINAL_MIN_HEIGHT_ATTR,
+      value: origMinHeight,
+    });
+  if (origMaxWidth !== null)
+    ops.push({ type: "attribute", property: STUDIO_ORIGINAL_MAX_WIDTH_ATTR, value: origMaxWidth });
+  if (origMaxHeight !== null)
+    ops.push({
+      type: "attribute",
+      property: STUDIO_ORIGINAL_MAX_HEIGHT_ATTR,
+      value: origMaxHeight,
+    });
+  if (origFlexBasis !== null)
+    ops.push({
+      type: "attribute",
+      property: STUDIO_ORIGINAL_FLEX_BASIS_ATTR,
+      value: origFlexBasis,
+    });
+  if (origFlexGrow !== null)
+    ops.push({ type: "attribute", property: STUDIO_ORIGINAL_FLEX_GROW_ATTR, value: origFlexGrow });
+  if (origFlexShrink !== null)
+    ops.push({
+      type: "attribute",
+      property: STUDIO_ORIGINAL_FLEX_SHRINK_ATTR,
+      value: origFlexShrink,
+    });
+  if (origBoxSizing !== null)
+    ops.push({
+      type: "attribute",
+      property: STUDIO_ORIGINAL_BOX_SIZING_ATTR,
+      value: origBoxSizing,
+    });
+  if (origScale !== null)
+    ops.push({ type: "attribute", property: STUDIO_ORIGINAL_SCALE_ATTR, value: origScale });
+  if (origTransformOrigin !== null)
+    ops.push({
+      type: "attribute",
+      property: STUDIO_ORIGINAL_TRANSFORM_ORIGIN_ATTR,
+      value: origTransformOrigin,
+    });
+  if (origDisplay !== null)
+    ops.push({ type: "attribute", property: STUDIO_ORIGINAL_DISPLAY_ATTR, value: origDisplay });
+  if (origTransformDisplay !== null)
+    ops.push({
+      type: "attribute",
+      property: STUDIO_ORIGINAL_TRANSFORM_DISPLAY_ATTR,
+      value: origTransformDisplay,
+    });
+
+  return ops;
+}
+
+export function buildClearBoxSizePatches(element: HTMLElement): PatchOperation[] {
+  const ops: PatchOperation[] = [
+    { type: "inline-style", property: STUDIO_WIDTH_PROP, value: null },
+    { type: "inline-style", property: STUDIO_HEIGHT_PROP, value: null },
+    { type: "attribute", property: STUDIO_BOX_SIZE_ATTR, value: null },
+  ];
+
+  const origAttrs: Array<[string, string]> = [
+    [STUDIO_ORIGINAL_WIDTH_ATTR, "width"],
+    [STUDIO_ORIGINAL_HEIGHT_ATTR, "height"],
+    [STUDIO_ORIGINAL_MIN_WIDTH_ATTR, "min-width"],
+    [STUDIO_ORIGINAL_MIN_HEIGHT_ATTR, "min-height"],
+    [STUDIO_ORIGINAL_MAX_WIDTH_ATTR, "max-width"],
+    [STUDIO_ORIGINAL_MAX_HEIGHT_ATTR, "max-height"],
+    [STUDIO_ORIGINAL_FLEX_BASIS_ATTR, "flex-basis"],
+    [STUDIO_ORIGINAL_FLEX_GROW_ATTR, "flex-grow"],
+    [STUDIO_ORIGINAL_FLEX_SHRINK_ATTR, "flex-shrink"],
+    [STUDIO_ORIGINAL_BOX_SIZING_ATTR, "box-sizing"],
+    [STUDIO_ORIGINAL_SCALE_ATTR, "scale"],
+    [STUDIO_ORIGINAL_TRANSFORM_ORIGIN_ATTR, "transform-origin"],
+    [STUDIO_ORIGINAL_DISPLAY_ATTR, "display"],
+  ];
+
+  for (const [attrName, styleProp] of origAttrs) {
+    const origVal = element.getAttribute(attrName);
+    if (origVal !== null) {
+      ops.push({ type: "inline-style", property: styleProp, value: origVal || null });
+    }
+    ops.push({ type: "attribute", property: attrName, value: null });
+  }
+
+  const origTransformDisplay = element.getAttribute(STUDIO_ORIGINAL_TRANSFORM_DISPLAY_ATTR);
+  if (origTransformDisplay !== null) {
+    ops.push({ type: "inline-style", property: "display", value: origTransformDisplay || null });
+    ops.push({ type: "attribute", property: STUDIO_ORIGINAL_TRANSFORM_DISPLAY_ATTR, value: null });
+  }
+
+  return ops;
+}
+
+export function buildRotationPatches(element: HTMLElement): PatchOperation[] {
+  const ops: PatchOperation[] = [];
+
+  const studioRotation = element.style.getPropertyValue(STUDIO_ROTATION_PROP);
+  const rotate = element.style.getPropertyValue("rotate");
+  const transformOrigin = element.style.getPropertyValue("transform-origin");
+  const displayVal = element.style.getPropertyValue("display");
+
+  if (studioRotation)
+    ops.push({ type: "inline-style", property: STUDIO_ROTATION_PROP, value: studioRotation });
+  if (rotate) ops.push({ type: "inline-style", property: "rotate", value: rotate });
+  if (transformOrigin)
+    ops.push({ type: "inline-style", property: "transform-origin", value: transformOrigin });
+  if (displayVal) ops.push({ type: "inline-style", property: "display", value: displayVal });
+
+  ops.push({ type: "attribute", property: STUDIO_ROTATION_ATTR, value: "true" });
+
+  const origRotate = element.getAttribute(STUDIO_ORIGINAL_ROTATE_ATTR);
+  const origInlineRotate = element.getAttribute(STUDIO_ORIGINAL_INLINE_ROTATE_ATTR);
+  const origRotationTransformOrigin = element.getAttribute(
+    STUDIO_ORIGINAL_ROTATION_TRANSFORM_ORIGIN_ATTR,
+  );
+  const origTransformDisplay = element.getAttribute(STUDIO_ORIGINAL_TRANSFORM_DISPLAY_ATTR);
+
+  if (origRotate !== null)
+    ops.push({ type: "attribute", property: STUDIO_ORIGINAL_ROTATE_ATTR, value: origRotate });
+  if (origInlineRotate !== null)
+    ops.push({
+      type: "attribute",
+      property: STUDIO_ORIGINAL_INLINE_ROTATE_ATTR,
+      value: origInlineRotate,
+    });
+  if (origRotationTransformOrigin !== null)
+    ops.push({
+      type: "attribute",
+      property: STUDIO_ORIGINAL_ROTATION_TRANSFORM_ORIGIN_ATTR,
+      value: origRotationTransformOrigin,
+    });
+  if (origTransformDisplay !== null)
+    ops.push({
+      type: "attribute",
+      property: STUDIO_ORIGINAL_TRANSFORM_DISPLAY_ATTR,
+      value: origTransformDisplay,
+    });
+
+  return ops;
+}
+
+export function buildClearRotationPatches(element: HTMLElement): PatchOperation[] {
+  const origInlineRotate = element.getAttribute(STUDIO_ORIGINAL_INLINE_ROTATE_ATTR);
+  const origRotationTransformOrigin = element.getAttribute(
+    STUDIO_ORIGINAL_ROTATION_TRANSFORM_ORIGIN_ATTR,
+  );
+  const ops: PatchOperation[] = [
+    { type: "inline-style", property: STUDIO_ROTATION_PROP, value: null },
+    { type: "inline-style", property: "rotate", value: origInlineRotate || null },
+    {
+      type: "inline-style",
+      property: "transform-origin",
+      value: origRotationTransformOrigin !== null ? origRotationTransformOrigin || null : null,
+    },
+    { type: "attribute", property: STUDIO_ROTATION_ATTR, value: null },
+    { type: "attribute", property: STUDIO_ROTATION_DRAFT_ATTR, value: null },
+    { type: "attribute", property: STUDIO_ORIGINAL_ROTATE_ATTR, value: null },
+    { type: "attribute", property: STUDIO_ORIGINAL_INLINE_ROTATE_ATTR, value: null },
+    { type: "attribute", property: STUDIO_ORIGINAL_ROTATION_TRANSFORM_ORIGIN_ATTR, value: null },
+  ];
+  const origTransformDisplay = element.getAttribute(STUDIO_ORIGINAL_TRANSFORM_DISPLAY_ATTR);
+  if (origTransformDisplay !== null) {
+    ops.push({ type: "inline-style", property: "display", value: origTransformDisplay || null });
+    ops.push({ type: "attribute", property: STUDIO_ORIGINAL_TRANSFORM_DISPLAY_ATTR, value: null });
+  }
+  return ops;
+}
+
+/* ── Motion HTML patch builders ──────────────────────────────────── */
+
+export function buildMotionPatches(element: HTMLElement): PatchOperation[] {
+  const motionJson = element.getAttribute(STUDIO_MOTION_ATTR);
+  if (!motionJson) return [];
+  const ops: PatchOperation[] = [
+    { type: "attribute", property: STUDIO_MOTION_ATTR, value: motionJson },
+  ];
+  const origTransform = element.getAttribute(STUDIO_MOTION_ORIGINAL_TRANSFORM_ATTR);
+  if (origTransform !== null) {
+    ops.push({
+      type: "attribute",
+      property: STUDIO_MOTION_ORIGINAL_TRANSFORM_ATTR,
+      value: origTransform,
+    });
+  }
+  const origOpacity = element.getAttribute(STUDIO_MOTION_ORIGINAL_OPACITY_ATTR);
+  if (origOpacity !== null) {
+    ops.push({
+      type: "attribute",
+      property: STUDIO_MOTION_ORIGINAL_OPACITY_ATTR,
+      value: origOpacity,
+    });
+  }
+  const origVisibility = element.getAttribute(STUDIO_MOTION_ORIGINAL_VISIBILITY_ATTR);
+  if (origVisibility !== null) {
+    ops.push({
+      type: "attribute",
+      property: STUDIO_MOTION_ORIGINAL_VISIBILITY_ATTR,
+      value: origVisibility,
+    });
+  }
+  return ops;
+}
+
+export function buildClearMotionPatches(_element: HTMLElement): PatchOperation[] {
+  return [
+    { type: "attribute", property: STUDIO_MOTION_ATTR, value: null },
+    { type: "attribute", property: STUDIO_MOTION_ORIGINAL_TRANSFORM_ATTR, value: null },
+    { type: "attribute", property: STUDIO_MOTION_ORIGINAL_OPACITY_ATTR, value: null },
+    { type: "attribute", property: STUDIO_MOTION_ORIGINAL_VISIBILITY_ATTR, value: null },
+  ];
+}
+
+/* ── Seek reapply (position + motion) ────────────────────────────── */
+
+export function reapplyPositionEditsAfterSeek(doc: Document): void {
+  const htmlElement = doc.defaultView?.HTMLElement;
+  if (!htmlElement) return;
+
+  const offsetEls = Array.from(doc.querySelectorAll(`[${STUDIO_PATH_OFFSET_ATTR}="true"]`)).filter(
+    (el): el is HTMLElement => el instanceof htmlElement,
+  );
+  for (const el of offsetEls) {
+    const x = el.style.getPropertyValue(STUDIO_OFFSET_X_PROP);
+    const y = el.style.getPropertyValue(STUDIO_OFFSET_Y_PROP);
+    if (x || y) {
+      applyStudioPathOffset(el, {
+        x: Number.parseFloat(x) || 0,
+        y: Number.parseFloat(y) || 0,
+      });
+    }
+  }
+
+  const boxSizeEls = Array.from(doc.querySelectorAll(`[${STUDIO_BOX_SIZE_ATTR}="true"]`)).filter(
+    (el): el is HTMLElement => el instanceof htmlElement,
+  );
+  for (const el of boxSizeEls) {
+    const w = Number.parseFloat(el.style.getPropertyValue(STUDIO_WIDTH_PROP));
+    const h = Number.parseFloat(el.style.getPropertyValue(STUDIO_HEIGHT_PROP));
+    if (Number.isFinite(w) && Number.isFinite(h) && w > 0 && h > 0) {
+      applyStudioBoxSize(el, { width: w, height: h });
+    }
+  }
+
+  const rotationEls = Array.from(doc.querySelectorAll(`[${STUDIO_ROTATION_ATTR}="true"]`)).filter(
+    (el): el is HTMLElement => el instanceof htmlElement,
+  );
+  for (const el of rotationEls) {
+    const angle = Number.parseFloat(el.style.getPropertyValue(STUDIO_ROTATION_PROP));
+    if (Number.isFinite(angle)) {
+      applyStudioRotation(el, { angle });
+    }
+  }
+
+  // Reapply DOM-backed motion timeline after seek
+  applyStudioMotionFromDom(doc);
+}

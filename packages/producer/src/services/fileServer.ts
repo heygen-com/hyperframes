@@ -429,6 +429,29 @@ const HF_EARLY_STUB = `(function() {
 })();`;
 
 /**
+ * Page-side compositing opt-in flag stub.
+ *
+ * When the engine is launched with `enablePageSideCompositing: true`, the
+ * orchestrator injects this stub into the very top of every served HTML
+ * page. The flag is read by `@hyperframes/shader-transitions`' engine-mode
+ * `init()` to switch from the default opacity-flip mode (which leaves
+ * shader blending to the Node side via the hf#677 layered pipeline) to a
+ * page-side WebGL compositor that runs the shader inside Chrome and
+ * exposes a single opaque RGB frame for the engine to capture.
+ *
+ * Sentinel ONLY — no logic here. The compositor itself ships inside
+ * `@hyperframes/shader-transitions` and is loaded by the composition's
+ * regular script bundle.
+ *
+ * Default OFF: when the flag is not set, behavior is byte-identical to
+ * the existing layered path.
+ */
+export const HF_PAGE_SIDE_COMPOSITING_STUB = `(function() {
+  if (typeof window === "undefined") return;
+  window.__HF_PAGE_SIDE_COMPOSITING__ = true;
+})();`;
+
+/**
  * Bridge script: maps window.__player (Hyperframe runtime) → window.__hf (engine protocol).
  * Injected after RENDER_MODE_SCRIPT so the engine's frameCapture can find window.__hf.
  *
@@ -525,6 +548,7 @@ export interface FileServerHandle {
   url: string;
   port: number;
   close: () => void;
+  addPreHeadScript: (script: string) => void;
 }
 
 export function createFileServer(options: FileServerOptions): Promise<FileServerHandle> {
@@ -631,6 +655,9 @@ export function createFileServer(options: FileServerOptions): Promise<FileServer
       resolve({
         url: `http://localhost:${info.port}`,
         port: info.port,
+        addPreHeadScript: (script: string) => {
+          preHeadScripts.push(script);
+        },
         close: () => {
           for (const socket of connections) socket.destroy();
           connections.clear();

@@ -4,6 +4,7 @@ import { FONT_EXT, isMediaFile } from "../utils/mediaTypes";
 import { fontFamilyFromAssetPath, type ImportedFontAsset } from "../components/editor/fontAssets";
 import { saveProjectFilesWithHistory } from "../utils/studioFileHistory";
 import type { EditHistoryKind } from "../utils/editHistory";
+import { findTagByTarget, type PatchTarget } from "../utils/sourcePatcher";
 
 // ── Types ──
 
@@ -36,6 +37,8 @@ export function useFileManager({
   const [editingFile, setEditingFile] = useState<EditingFile | null>(null);
   const [projectDir, setProjectDir] = useState<string | null>(null);
   const [fileTree, setFileTree] = useState<string[]>([]);
+  const [fileTreeLoaded, setFileTreeLoaded] = useState(false);
+  const [revealSourceOffset, setRevealSourceOffset] = useState<number | null>(null);
 
   // ── Refs ──
 
@@ -53,8 +56,12 @@ export function useFileManager({
 
   // eslint-disable-next-line no-restricted-syntax
   useEffect(() => {
-    if (!projectId) return;
+    if (!projectId) {
+      setFileTreeLoaded(false);
+      return;
+    }
     let cancelled = false;
+    setFileTreeLoaded(false);
     fetch(`/api/projects/${projectId}`)
       .then((r) => r.json())
       .then((data: { files?: string[]; dir?: string }) => {
@@ -63,6 +70,9 @@ export function useFileManager({
       })
       .catch(() => {
         if (!cancelled) setProjectDir(null);
+      })
+      .finally(() => {
+        if (!cancelled) setFileTreeLoaded(true);
       });
     return () => {
       cancelled = true;
@@ -98,8 +108,9 @@ export function useFileManager({
   const readOptionalProjectFile = useCallback(async (path: string): Promise<string> => {
     const pid = projectIdRef.current;
     if (!pid) throw new Error("No active project");
-    const response = await fetch(`/api/projects/${pid}/files/${encodeURIComponent(path)}`);
-    if (response.status === 404) return "";
+    const response = await fetch(
+      `/api/projects/${pid}/files/${encodeURIComponent(path)}?optional=1`,
+    );
     if (!response.ok) throw new Error(`Failed to read ${path}`);
     const data = (await response.json()) as { content?: string };
     return typeof data.content === "string" ? data.content : "";
@@ -159,6 +170,42 @@ export function useFileManager({
       }, 600);
     },
     [domEditSaveTimestampRef, readProjectFile, recordEdit, setRefreshKey, writeProjectFile],
+  );
+
+  // ── Open source for selection (click-to-source) ──
+
+  const revealRequestIdRef = useRef(0);
+  const revealAbortRef = useRef<AbortController | null>(null);
+
+  const openSourceForSelection = useCallback(
+    (sourceFile: string, target: PatchTarget) => {
+      const pid = projectIdRef.current;
+      if (!pid || !sourceFile) return;
+      revealAbortRef.current?.abort();
+      revealAbortRef.current = null;
+      if (editingPathRef.current === sourceFile && editingFile?.content != null) {
+        const match = findTagByTarget(editingFile.content, target);
+        setRevealSourceOffset(match ? match.start : null);
+        return;
+      }
+      const requestId = ++revealRequestIdRef.current;
+      const controller = new AbortController();
+      revealAbortRef.current = controller;
+      fetch(`/api/projects/${pid}/files/${encodeURIComponent(sourceFile)}`, {
+        signal: controller.signal,
+      })
+        .then((r) => r.json())
+        .then((data: { content?: string }) => {
+          if (requestId !== revealRequestIdRef.current) return;
+          if (data.content != null) {
+            setEditingFile({ path: sourceFile, content: data.content });
+            const match = findTagByTarget(data.content, target);
+            setRevealSourceOffset(match ? match.start : null);
+          }
+        })
+        .catch(() => {});
+    },
+    [editingFile?.content],
   );
 
   // ── File tree refresh ──
@@ -396,6 +443,7 @@ export function useFileManager({
     setEditingFile,
     projectDir,
     fileTree,
+    fileTreeLoaded,
     setFileTree,
 
     // Refs
@@ -408,6 +456,10 @@ export function useFileManager({
     readProjectFile,
     writeProjectFile,
     readOptionalProjectFile,
+
+    // Click-to-source
+    revealSourceOffset,
+    openSourceForSelection,
 
     // Callbacks
     handleFileSelect,

@@ -1,27 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef } from "react";
 import { useMountEffect } from "./useMountEffect";
 import {
-  STUDIO_MANUAL_EDITS_PATH,
-  applyStudioManualEditManifest,
-  emptyStudioManualEditManifest,
   installStudioManualEditSeekReapply,
-  isStudioManualEditManifestPath,
-  parseStudioManualEditManifest,
+  reapplyPositionEditsAfterSeek,
   readStudioFileChangePath,
-  serializeStudioManualEditManifest,
-  type StudioManualEditManifest,
 } from "../components/editor/manualEdits";
-import {
-  STUDIO_MOTION_PATH,
-  applyStudioMotionManifest,
-  emptyStudioMotionManifest,
-  installStudioMotionSeekReapply,
-  isStudioMotionManifestPath,
-  parseStudioMotionManifest,
-  serializeStudioMotionManifest,
-  type StudioMotionManifest,
-} from "../components/editor/studioMotion";
-import { saveProjectFilesWithHistory } from "../utils/studioFileHistory";
+import { STUDIO_MOTION_PATH } from "../components/editor/studioMotion";
 import type { EditHistoryKind } from "../utils/editHistory";
 
 // ── Types ──
@@ -41,45 +25,35 @@ interface UseManifestPersistenceParams {
   recordEdit: (entry: RecordEditInput) => Promise<void>;
   previewIframeRef: React.MutableRefObject<HTMLIFrameElement | null>;
   activeCompPathRef: React.MutableRefObject<string | null>;
+  /** Shared timestamp ref — written by any studio save (code tab, timeline, DOM edits).
+   *  Used to suppress SSE echoes so we don't double-reload after our own saves. */
+  domEditSaveTimestampRef: React.MutableRefObject<number>;
+  /** Called to reload the preview after undo/redo or external file changes. */
+  reloadPreview: () => void;
 }
 
 // ── Hook ──
 
 export function useManifestPersistence({
   projectId,
-  showToast,
-  readOptionalProjectFile,
-  writeProjectFile,
-  recordEdit,
+  showToast: _showToast,
+  readOptionalProjectFile: _readOptionalProjectFile,
+  writeProjectFile: _writeProjectFile,
+  recordEdit: _recordEdit,
   previewIframeRef,
-  activeCompPathRef,
+  activeCompPathRef: _activeCompPathRef,
+  domEditSaveTimestampRef,
+  reloadPreview,
 }: UseManifestPersistenceParams) {
-  const [, setStudioMotionRevision] = useState(0);
+  void _showToast;
+  void _recordEdit;
+  void _activeCompPathRef;
 
-  const domEditSaveTimestampRef = useRef(0);
   const domTextCommitVersionRef = useRef(0);
   const domEditSaveQueueRef = useRef(Promise.resolve());
-  const studioManualEditManifestRef = useRef<StudioManualEditManifest>(
-    emptyStudioManualEditManifest(),
-  );
-  const studioManualEditRevisionRef = useRef(0);
-  const studioMotionManifestRef = useRef<StudioMotionManifest>(emptyStudioMotionManifest());
-  const studioMotionRevisionRef = useRef(0);
   const applyStudioManualEditsToPreviewRef = useRef<
-    (
-      iframe?: HTMLIFrameElement | null,
-      options?: { forceFromDisk?: boolean; readFromDiskFirst?: boolean },
-    ) => Promise<void>
+    (iframe?: HTMLIFrameElement | null) => Promise<void>
   >(async () => {});
-  const applyStudioMotionToPreviewRef = useRef<
-    (
-      iframe?: HTMLIFrameElement | null,
-      options?: { forceFromDisk?: boolean; readFromDiskFirst?: boolean },
-    ) => Promise<void>
-  >(async () => {});
-  const manifestBootstrappedRef = useRef(false);
-  const motionBootstrappedRef = useRef(false);
-  const studioManualEditProjectRef = useRef<string | null>(projectId);
 
   // Keep a ref to the latest projectId so async save callbacks always read the
   // current value, even when the callback was captured in a stale closure.
@@ -101,7 +75,8 @@ export function useManifestPersistence({
     await domEditSaveQueueRef.current.catch(() => undefined);
   }, []);
 
-  // ── Apply manual edits ──
+  // ── Apply manual edits (HTML-baked — install seek hooks) ──
+  // reapplyPositionEditsAfterSeek now also handles motion reapply from DOM attributes.
 
   const applyCurrentStudioManualEditsToPreview = useCallback(
     (iframe: HTMLIFrameElement | null = previewIframeRef.current) => {
@@ -113,363 +88,85 @@ export function useManifestPersistence({
         return;
       }
       if (!doc) return;
-      const previewDoc = doc;
 
-      const applyManifest = () => {
-        applyStudioManualEditManifest(
-          previewDoc,
-          studioManualEditManifestRef.current,
-          activeCompPathRef.current,
-        );
-      };
-      const applyAndInstallSeekHooks = () => {
-        applyManifest();
-        if (iframe.contentWindow) {
-          installStudioManualEditSeekReapply(iframe.contentWindow, applyManifest);
+      const reapply = () => {
+        let d: Document | null = null;
+        try {
+          d = iframe.contentDocument;
+        } catch {
+          return;
         }
+        if (d) reapplyPositionEditsAfterSeek(d);
+      };
+      const install = () => {
+        reapply();
+        if (iframe.contentWindow) installStudioManualEditSeekReapply(iframe.contentWindow, reapply);
       };
 
       const win = iframe.contentWindow;
-      applyAndInstallSeekHooks();
-      win?.requestAnimationFrame?.(applyAndInstallSeekHooks);
-      win?.setTimeout?.(applyAndInstallSeekHooks, 80);
-      win?.setTimeout?.(applyAndInstallSeekHooks, 250);
-      win?.setTimeout?.(applyAndInstallSeekHooks, 500);
-      win?.setTimeout?.(applyAndInstallSeekHooks, 1000);
-      win?.setTimeout?.(applyAndInstallSeekHooks, 2000);
+      install();
+      win?.requestAnimationFrame?.(install);
+      win?.setTimeout?.(install, 80);
+      win?.setTimeout?.(install, 250);
+      win?.setTimeout?.(install, 500);
+      win?.setTimeout?.(install, 1000);
+      win?.setTimeout?.(install, 2000);
     },
-    [activeCompPathRef, previewIframeRef],
+    [previewIframeRef],
   );
 
   const applyStudioManualEditsToPreview = useCallback(
-    async (
-      iframe: HTMLIFrameElement | null = previewIframeRef.current,
-      options?: { forceFromDisk?: boolean; readFromDiskFirst?: boolean },
-    ) => {
-      // Bootstrap from disk on first apply per session; explicit flag avoids
-      // re-reading disk after the user deletes all edits (async write race).
-      const needsBootstrap = !manifestBootstrappedRef.current;
-      if (needsBootstrap) manifestBootstrappedRef.current = true;
-      const readFromDiskFirst = Boolean(
-        options?.forceFromDisk || options?.readFromDiskFirst || needsBootstrap,
-      );
-      if (!readFromDiskFirst) {
-        applyCurrentStudioManualEditsToPreview(iframe);
-        return;
-      }
-      const readRevision = studioManualEditRevisionRef.current;
-      let content: string;
-      try {
-        content = await readOptionalProjectFile(STUDIO_MANUAL_EDITS_PATH);
-      } catch (error) {
-        const message =
-          error instanceof Error ? error.message : "Failed to read manual edit manifest";
-        showToast(message);
-        applyCurrentStudioManualEditsToPreview(iframe);
-        return;
-      }
-      if (options?.forceFromDisk || readRevision === studioManualEditRevisionRef.current) {
-        studioManualEditManifestRef.current = parseStudioManualEditManifest(content);
-        if (options?.forceFromDisk) studioManualEditRevisionRef.current += 1;
-      }
+    async (iframe: HTMLIFrameElement | null = previewIframeRef.current) => {
       applyCurrentStudioManualEditsToPreview(iframe);
     },
-    [applyCurrentStudioManualEditsToPreview, previewIframeRef, readOptionalProjectFile, showToast],
+    [applyCurrentStudioManualEditsToPreview, previewIframeRef],
   );
   applyStudioManualEditsToPreviewRef.current = applyStudioManualEditsToPreview;
-
-  // ── Apply motion ──
-
-  const applyCurrentStudioMotionToPreview = useCallback(
-    (iframe: HTMLIFrameElement | null = previewIframeRef.current) => {
-      if (!iframe) return;
-      let doc: Document | null = null;
-      try {
-        doc = iframe.contentDocument;
-      } catch {
-        return;
-      }
-      if (!doc) return;
-      const previewDoc = doc;
-
-      const applyManifest = () => {
-        applyStudioMotionManifest(
-          previewDoc,
-          studioMotionManifestRef.current,
-          activeCompPathRef.current,
-        );
-      };
-      const applyAndInstallSeekHooks = () => {
-        applyManifest();
-        if (iframe.contentWindow) {
-          installStudioMotionSeekReapply(iframe.contentWindow, applyManifest);
-        }
-      };
-
-      const win = iframe.contentWindow;
-      win?.requestAnimationFrame?.(applyAndInstallSeekHooks);
-      win?.setTimeout?.(applyAndInstallSeekHooks, 120);
-    },
-    [activeCompPathRef, previewIframeRef],
-  );
-
-  const applyStudioMotionToPreview = useCallback(
-    async (
-      iframe: HTMLIFrameElement | null = previewIframeRef.current,
-      options?: { forceFromDisk?: boolean; readFromDiskFirst?: boolean },
-    ) => {
-      const needsBootstrap = !motionBootstrappedRef.current;
-      if (needsBootstrap) motionBootstrappedRef.current = true;
-      const readFromDiskFirst = Boolean(
-        options?.forceFromDisk || options?.readFromDiskFirst || needsBootstrap,
-      );
-      if (!readFromDiskFirst) {
-        applyCurrentStudioMotionToPreview(iframe);
-        return;
-      }
-      const readRevision = studioMotionRevisionRef.current;
-      let content: string;
-      try {
-        content = await readOptionalProjectFile(STUDIO_MOTION_PATH);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "Failed to read motion manifest";
-        showToast(message);
-        applyCurrentStudioMotionToPreview(iframe);
-        return;
-      }
-      if (options?.forceFromDisk || readRevision === studioMotionRevisionRef.current) {
-        studioMotionManifestRef.current = parseStudioMotionManifest(content);
-        if (options?.forceFromDisk) studioMotionRevisionRef.current += 1;
-        setStudioMotionRevision((revision) => revision + 1);
-      }
-      applyCurrentStudioMotionToPreview(iframe);
-    },
-    [applyCurrentStudioMotionToPreview, previewIframeRef, readOptionalProjectFile, showToast],
-  );
-  applyStudioMotionToPreviewRef.current = applyStudioMotionToPreview;
-
-  // ── Optimistic commits ──
-
-  const commitStudioManualEditManifestOptimistically = useCallback(
-    (
-      updateManifest: (manifest: StudioManualEditManifest) => StudioManualEditManifest,
-      options: { label: string; coalesceKey: string },
-    ) => {
-      const previousManifest = studioManualEditManifestRef.current;
-      const nextManifest = updateManifest(previousManifest);
-      const previousContent = serializeStudioManualEditManifest(previousManifest);
-      const nextContent = serializeStudioManualEditManifest(nextManifest);
-      if (nextContent === previousContent) {
-        return;
-      }
-
-      const revision = studioManualEditRevisionRef.current + 1;
-      studioManualEditRevisionRef.current = revision;
-      studioManualEditManifestRef.current = nextManifest;
-      applyCurrentStudioManualEditsToPreview(previewIframeRef.current);
-
-      const save = async () => {
-        const originalContent = await readOptionalProjectFile(STUDIO_MANUAL_EDITS_PATH);
-        const diskManifest = parseStudioManualEditManifest(originalContent);
-        const nextDiskManifest = updateManifest(diskManifest);
-        const nextDiskContent = serializeStudioManualEditManifest(nextDiskManifest);
-        if (nextDiskContent === originalContent) {
-          return;
-        }
-
-        const pid = projectIdRef.current;
-        if (!pid) throw new Error("No active project");
-        domEditSaveTimestampRef.current = Date.now();
-        await saveProjectFilesWithHistory({
-          projectId: pid,
-          label: options.label,
-          kind: "manual",
-          coalesceKey: options.coalesceKey,
-          files: { [STUDIO_MANUAL_EDITS_PATH]: nextDiskContent },
-          readFile: async () => originalContent,
-          writeFile: writeProjectFile,
-          recordEdit,
-        });
-        domEditSaveTimestampRef.current = Date.now();
-
-        if (studioManualEditRevisionRef.current === revision) {
-          studioManualEditManifestRef.current = nextDiskManifest;
-          applyCurrentStudioManualEditsToPreview(previewIframeRef.current);
-        }
-      };
-
-      void queueDomEditSave(save).catch((error) => {
-        if (studioManualEditRevisionRef.current === revision) {
-          studioManualEditRevisionRef.current += 1;
-          studioManualEditManifestRef.current = previousManifest;
-          applyCurrentStudioManualEditsToPreview(previewIframeRef.current);
-        }
-        const message = error instanceof Error ? error.message : "Failed to save manual edit";
-        showToast(message);
-      });
-    },
-    [
-      applyCurrentStudioManualEditsToPreview,
-      recordEdit,
-      queueDomEditSave,
-      readOptionalProjectFile,
-      showToast,
-      writeProjectFile,
-      previewIframeRef,
-    ],
-  );
-
-  const commitStudioMotionManifestOptimistically = useCallback(
-    (
-      updateManifest: (manifest: StudioMotionManifest) => StudioMotionManifest,
-      options: { label: string; coalesceKey: string },
-    ) => {
-      const previousManifest = studioMotionManifestRef.current;
-      const nextManifest = updateManifest(previousManifest);
-      const previousContent = serializeStudioMotionManifest(previousManifest);
-      const nextContent = serializeStudioMotionManifest(nextManifest);
-      if (nextContent === previousContent) {
-        return;
-      }
-
-      const revision = studioMotionRevisionRef.current + 1;
-      studioMotionRevisionRef.current = revision;
-      studioMotionManifestRef.current = nextManifest;
-      setStudioMotionRevision((current) => current + 1);
-      applyCurrentStudioMotionToPreview(previewIframeRef.current);
-
-      const save = async () => {
-        const originalContent = await readOptionalProjectFile(STUDIO_MOTION_PATH);
-        const diskManifest = parseStudioMotionManifest(originalContent);
-        const nextDiskManifest = updateManifest(diskManifest);
-        const nextDiskContent = serializeStudioMotionManifest(nextDiskManifest);
-        if (nextDiskContent === originalContent) {
-          return;
-        }
-
-        const pid = projectIdRef.current;
-        if (!pid) throw new Error("No active project");
-        domEditSaveTimestampRef.current = Date.now();
-        await saveProjectFilesWithHistory({
-          projectId: pid,
-          label: options.label,
-          kind: "motion",
-          coalesceKey: options.coalesceKey,
-          files: { [STUDIO_MOTION_PATH]: nextDiskContent },
-          readFile: async () => originalContent,
-          writeFile: writeProjectFile,
-          recordEdit,
-        });
-        domEditSaveTimestampRef.current = Date.now();
-
-        if (studioMotionRevisionRef.current === revision) {
-          studioMotionManifestRef.current = nextDiskManifest;
-          setStudioMotionRevision((current) => current + 1);
-          applyCurrentStudioMotionToPreview(previewIframeRef.current);
-        }
-      };
-
-      void queueDomEditSave(save).catch((error) => {
-        if (studioMotionRevisionRef.current === revision) {
-          studioMotionRevisionRef.current += 1;
-          studioMotionManifestRef.current = previousManifest;
-          setStudioMotionRevision((current) => current + 1);
-          applyCurrentStudioMotionToPreview(previewIframeRef.current);
-        }
-        const message = error instanceof Error ? error.message : "Failed to save motion edit";
-        showToast(message);
-      });
-    },
-    [
-      applyCurrentStudioMotionToPreview,
-      recordEdit,
-      queueDomEditSave,
-      readOptionalProjectFile,
-      showToast,
-      writeProjectFile,
-      previewIframeRef,
-    ],
-  );
 
   // ── Sync preview after undo/redo ──
 
   const syncHistoryPreviewAfterApply = useCallback(
-    async (paths: string[] | undefined) => {
-      const changedPaths = paths ?? [];
-      const manualManifestOnly =
-        changedPaths.length > 0 && changedPaths.every((path) => path === STUDIO_MANUAL_EDITS_PATH);
-      const motionManifestOnly =
-        changedPaths.length > 0 && changedPaths.every((path) => path === STUDIO_MOTION_PATH);
-
-      if (manualManifestOnly) {
-        await applyStudioManualEditsToPreview(previewIframeRef.current, { forceFromDisk: true });
-        return;
-      }
-      if (motionManifestOnly) {
-        await applyStudioMotionToPreview(previewIframeRef.current, { forceFromDisk: true });
-        return;
-      }
-
-      // Reload the iframe in-place rather than recreating the Player component.
-      // This preserves the <hyperframes-player> web component and its shader
-      // transition cache — only the iframe document reloads, so transitions that
-      // weren't touched by the undo/redo don't need to rebuild from scratch.
-      const iframe = previewIframeRef.current;
-      if (iframe?.contentWindow) {
-        try {
-          iframe.contentWindow.location.reload();
-          return;
-        } catch {
-          // Cross-origin or detached — fall through to full refresh
-        }
-      }
+    async (_paths: string[] | undefined) => {
+      // Motion data is now stored in HTML attributes — any undo/redo that touches HTML
+      // files triggers a full reload which picks up the changes automatically.
+      reloadPreview();
     },
-    [applyStudioManualEditsToPreview, applyStudioMotionToPreview, previewIframeRef],
+    [reloadPreview],
   );
 
-  // ── Reset manifests when project changes ──
-
-  // eslint-disable-next-line no-restricted-syntax
-  useEffect(() => {
-    const previousProjectId = studioManualEditProjectRef.current;
-    studioManualEditProjectRef.current = projectId;
-    if (!previousProjectId || previousProjectId === projectId) return;
-    studioManualEditManifestRef.current = emptyStudioManualEditManifest();
-    studioManualEditRevisionRef.current += 1;
-    studioMotionManifestRef.current = emptyStudioMotionManifest();
-    studioMotionRevisionRef.current += 1;
-    setStudioMotionRevision((revision) => revision + 1);
-    manifestBootstrappedRef.current = motionBootstrappedRef.current = false;
-  }, [projectId]);
+  // ── Migrate legacy studio-motion.json ──
+  // Projects that used the old JSON-file approach may still have a populated
+  // `.hyperframes/studio-motion.json`. The studio no longer reads from it, but
+  // the legacy render-script injection in `preview.ts` / `vite.studioMotion.ts`
+  // could still fire alongside the new seek-reapply runtime. Empty the file so
+  // the legacy codepath no-ops.
+  useMountEffect(() => {
+    _readOptionalProjectFile(STUDIO_MOTION_PATH)
+      .then((content) => {
+        if (!content) return;
+        try {
+          const parsed = JSON.parse(content) as { motions?: unknown[] };
+          if (!Array.isArray(parsed.motions) || parsed.motions.length === 0) return;
+        } catch {
+          return;
+        }
+        return _writeProjectFile(STUDIO_MOTION_PATH, JSON.stringify({ version: 1, motions: [] }));
+      })
+      .catch(() => {
+        /* best-effort migration — ignore failures */
+      });
+  });
 
   // ── Listen for external file changes (HMR / SSE) ──
-  // In dev: use Vite HMR. In embedded/production: use SSE from /api/events.
-  // Suppress file-change events that echo back from a recent DOM edit save —
-  // those changes are already applied to the iframe DOM and a full reload
-  // would flash the preview.
   useMountEffect(() => {
     const handler = (payload?: unknown) => {
       const changedPath = readStudioFileChangePath(payload);
+      if (!changedPath) return;
       const recentDomEditSave = Date.now() - domEditSaveTimestampRef.current < 1200;
-      if (isStudioManualEditManifestPath(changedPath)) {
-        if (!recentDomEditSave) {
-          void applyStudioManualEditsToPreviewRef.current(previewIframeRef.current, {
-            forceFromDisk: true,
-          });
-        }
-        return;
+      // External file change — reload unless it's an echo of our own save.
+      if (!recentDomEditSave) {
+        reloadPreview();
       }
-      if (isStudioMotionManifestPath(changedPath)) {
-        if (!recentDomEditSave) {
-          void applyStudioMotionToPreviewRef.current(previewIframeRef.current, {
-            forceFromDisk: true,
-          });
-        }
-        return;
-      }
-      // Non-manifest file changes are not handled here — the caller is
-      // responsible for triggering a preview refresh via onExternalFileChange
-      // if needed. This hook only suppresses echoes and handles manifest reloads.
     };
     if (import.meta.hot) {
       import.meta.hot.on("hf:file-change", handler);
@@ -482,24 +179,13 @@ export function useManifestPersistence({
   });
 
   return {
-    domEditSaveTimestampRef,
     domTextCommitVersionRef,
     domEditSaveQueueRef,
-    studioManualEditManifestRef,
-    studioManualEditRevisionRef,
-    studioMotionManifestRef,
-    studioMotionRevisionRef,
     applyStudioManualEditsToPreviewRef,
-    applyStudioMotionToPreviewRef,
-    studioManualEditProjectRef,
     queueDomEditSave,
     waitForPendingDomEditSaves,
     applyCurrentStudioManualEditsToPreview,
     applyStudioManualEditsToPreview,
-    applyCurrentStudioMotionToPreview,
-    applyStudioMotionToPreview,
-    commitStudioManualEditManifestOptimistically,
-    commitStudioMotionManifestOptimistically,
     syncHistoryPreviewAfterApply,
   };
 }

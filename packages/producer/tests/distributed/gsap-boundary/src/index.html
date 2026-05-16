@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>chunk-boundary: GSAP</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    <style>
+      body,
+      html {
+        margin: 0;
+        padding: 0;
+        width: 320px;
+        height: 180px;
+        background: #0f172a;
+        overflow: hidden;
+      }
+      #main-comp {
+        position: relative;
+        width: 320px;
+        height: 180px;
+      }
+      #box {
+        position: absolute;
+        left: 0;
+        top: 70px;
+        width: 40px;
+        height: 40px;
+        background: #6366f1;
+        border-radius: 6px;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="main-comp"
+      data-composition-id="main-comp"
+      data-width="320"
+      data-height="180"
+      data-start="0"
+      data-duration="2"
+    >
+      <div id="box"></div>
+    </div>
+
+    <script>
+      // Single GSAP timeline tween that straddles every chunk seam at
+      // chunkSize=15 (frames 15, 30, 45). Box translates from x=0 to x=280
+      // continuously across the 2s duration. Identical state on every
+      // frame regardless of chunk count.
+      const tl = gsap.timeline({ paused: true });
+      window.__timelines = window.__timelines || {};
+      window.__timelines["main-comp"] = tl;
+      tl.to("#box", { x: 280, duration: 2, ease: "none" }, 0);
+      tl.to("#box", { rotation: 360, duration: 2, ease: "none" }, 0);
+    </script>
+  </body>
+</html>

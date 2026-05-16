@@ -209,3 +209,81 @@ describe("plan() — golden planDir + planHash determinism", () => {
     TIMEOUT_MS,
   );
 });
+
+describe("plan() — codec knob", () => {
+  const TIMEOUT_MS = 30_000;
+
+  it(
+    "defaults `codec` to h264 (libx264-software) for mp4",
+    async () => {
+      const planDir = join(runRoot, "plan-codec-default");
+      mkdirSync(planDir, { recursive: true });
+      await plan(projectDir, { fps: 30, width: 320, height: 240, format: "mp4" }, planDir);
+      const encoder = JSON.parse(
+        readFileSync(join(planDir, "meta", "encoder.json"), "utf-8"),
+      ) as Record<string, unknown>;
+      expect(encoder.encoder).toBe("libx264-software");
+      expect(encoder.pixelFormat).toBe("yuv420p");
+    },
+    TIMEOUT_MS,
+  );
+
+  it(
+    'maps `codec: "h265"` to libx265-software for mp4',
+    async () => {
+      const planDir = join(runRoot, "plan-codec-h265");
+      mkdirSync(planDir, { recursive: true });
+      await plan(
+        projectDir,
+        { fps: 30, width: 320, height: 240, format: "mp4", codec: "h265" },
+        planDir,
+      );
+      const encoder = JSON.parse(
+        readFileSync(join(planDir, "meta", "encoder.json"), "utf-8"),
+      ) as Record<string, unknown>;
+      expect(encoder.encoder).toBe("libx265-software");
+      // SDR 8-bit yuv420p, same as h264 — distributed mode is SDR-only and
+      // 10-bit / HDR pixelFormat selection is not exposed on this surface.
+      expect(encoder.pixelFormat).toBe("yuv420p");
+    },
+    TIMEOUT_MS,
+  );
+
+  it("rejects `codec` with format other than mp4", async () => {
+    const planDir = join(runRoot, "plan-codec-bad-format");
+    mkdirSync(planDir, { recursive: true });
+    let caught: unknown;
+    try {
+      await plan(
+        projectDir,
+        // @ts-expect-error — runtime check is the test's purpose.
+        { fps: 30, width: 320, height: 240, format: "mov", codec: "h265" },
+        planDir,
+      );
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(Error);
+    expect((caught as Error).message).toMatch(/codec.*only valid for format="mp4"/);
+  });
+
+  it("rejects unknown codec strings for format=mp4 (no silent fall-through to h264)", async () => {
+    const planDir = join(runRoot, "plan-codec-unknown");
+    mkdirSync(planDir, { recursive: true });
+    let caught: unknown;
+    try {
+      await plan(
+        projectDir,
+        // @ts-expect-error — runtime check is the test's purpose. Catches
+        // typos ("H265") and future codec additions ("av1") that a JS
+        // caller building config from JSON might pass.
+        { fps: 30, width: 320, height: 240, format: "mp4", codec: "h266" },
+        planDir,
+      );
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(Error);
+    expect((caught as Error).message).toMatch(/codec must be "h264" or "h265"/);
+  });
+});

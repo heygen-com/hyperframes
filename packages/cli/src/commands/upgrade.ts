@@ -1,7 +1,7 @@
 import { defineCommand } from "citty";
 import type { Example } from "./_examples.js";
 import * as clack from "@clack/prompts";
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { c } from "../ui/colors.js";
 
 export const examples: Example[] = [
@@ -67,13 +67,29 @@ export default defineCommand({
       }
     }
 
-    const installCmd = `npm install -g hyperframes@${result.latest}`;
+    // Reject anything that isn't a strict semver-shaped string before it reaches
+    // the install command. A poisoned npm registry response could otherwise put
+    // shell metacharacters into `result.latest`; rejecting up front means the
+    // version flows through execFile (and the displayed command) as an opaque
+    // token, not something the shell might re-parse.
+    const SAFE_VERSION = /^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
+    if (!SAFE_VERSION.test(result.latest)) {
+      clack.outro(c.dim("Refusing to install: unexpected version string from npm registry."));
+      process.exitCode = 1;
+      return;
+    }
+
+    const installArgs = ["install", "-g", `hyperframes@${result.latest}`];
+    const installCmd = `npm ${installArgs.join(" ")}`;
     if (autoYes) {
       console.log();
       console.log(`   ${c.dim("Running:")} ${c.accent(installCmd)}`);
       console.log();
       try {
-        execSync(installCmd, { stdio: "inherit" });
+        // execFileSync with shell:false — the version is now provably safe per
+        // SAFE_VERSION above, but keep the no-shell call so future edits can't
+        // regress the shell-injection surface area.
+        execFileSync("npm", installArgs, { stdio: "inherit", shell: false });
         clack.outro(c.success(`Upgraded to v${result.latest}`));
       } catch {
         clack.outro(c.dim("Install failed. Try running manually:"));

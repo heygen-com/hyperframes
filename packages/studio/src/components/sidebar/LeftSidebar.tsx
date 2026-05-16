@@ -43,6 +43,8 @@ interface LeftSidebarProps {
   onDuplicateFile?: (path: string) => void;
   onMoveFile?: (oldPath: string, newPath: string) => void;
   codeChildren?: ReactNode;
+  onRenderComposition?: (comp: string) => void;
+  isRendering?: boolean;
   onLint?: () => void;
   linting?: boolean;
   onToggleCollapse?: () => void;
@@ -69,6 +71,8 @@ export const LeftSidebar = memo(
       onDuplicateFile,
       onMoveFile,
       codeChildren,
+      onRenderComposition,
+      isRendering,
       onLint,
       linting,
       onToggleCollapse,
@@ -169,6 +173,8 @@ export const LeftSidebar = memo(
                 compositions={compositions}
                 activeComposition={activeComposition}
                 onSelect={onSelectComposition}
+                onRenderComposition={onRenderComposition}
+                isRendering={isRendering}
               />
             )}
             {tab === "assets" && (

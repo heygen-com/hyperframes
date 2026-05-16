@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>chunk-boundary: CSS @keyframes</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    <style>
+      body,
+      html {
+        margin: 0;
+        padding: 0;
+        width: 320px;
+        height: 180px;
+        background: #0f172a;
+        overflow: hidden;
+      }
+      #main-comp {
+        position: relative;
+        width: 320px;
+        height: 180px;
+      }
+      @keyframes slide {
+        from {
+          transform: translateX(0px) rotate(0deg);
+        }
+        to {
+          transform: translateX(280px) rotate(360deg);
+        }
+      }
+      #box {
+        position: absolute;
+        left: 0;
+        top: 70px;
+        width: 40px;
+        height: 40px;
+        background: #f97316;
+        border-radius: 6px;
+        animation: slide 2s linear forwards;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="main-comp"
+      data-composition-id="main-comp"
+      data-width="320"
+      data-height="180"
+      data-start="0"
+      data-duration="2"
+    >
+      <div id="box"></div>
+    </div>
+
+    <script>
+      // CSS animation is seek-driven by the HyperFrames CSS adapter — at
+      // each frame the runtime sets `animation-delay` so the keyframe
+      // playhead lands on the right point. A boundary regression here
+      // would show up as box position drift at frames 15, 30, 45.
+      // The empty GSAP timeline is just to satisfy the composition's
+      // duration-driver requirement.
+      const tl = gsap.timeline({ paused: true });
+      window.__timelines = window.__timelines || {};
+      window.__timelines["main-comp"] = tl;
+      tl.to({}, { duration: 2 }, 0);
+    </script>
+  </body>
+</html>

@@ -6,17 +6,28 @@ import { saveProjectFilesWithHistory } from "../utils/studioFileHistory";
 import { primaryFontFamilyValue } from "../utils/studioFontHelpers";
 import { getDomEditTargetKey, type DomEditSelection } from "../components/editor/domEditing";
 import {
-  removeStudioManualEditsForSelection,
-  type StudioManualEditManifest,
-  upsertStudioBoxSizeEdit,
-  upsertStudioPathOffsetEdit,
-  upsertStudioRotationEdit,
+  applyStudioPathOffset,
+  applyStudioBoxSize,
+  applyStudioRotation,
+  clearStudioPathOffset,
+  clearStudioBoxSize,
+  clearStudioRotation,
 } from "../components/editor/manualEdits";
 import {
-  removeStudioMotionForSelection,
+  buildPathOffsetPatches,
+  buildBoxSizePatches,
+  buildRotationPatches,
+  buildClearPathOffsetPatches,
+  buildClearBoxSizePatches,
+  buildClearRotationPatches,
+  buildMotionPatches,
+  buildClearMotionPatches,
+} from "../components/editor/manualEditsDom";
+import {
+  writeStudioMotionToElement,
+  clearStudioMotionFromElement,
+  applyStudioMotionFromDom,
   type StudioGsapMotion,
-  type StudioMotionManifest,
-  upsertStudioGsapMotion,
 } from "../components/editor/studioMotion";
 import { fontFamilyFromAssetPath, type ImportedFontAsset } from "../components/editor/fontAssets";
 import type { DomEditGroupPathOffsetCommit } from "../components/editor/DomEditOverlay";
@@ -48,16 +59,7 @@ export interface UseDomEditCommitsParams {
   activeCompPath: string | null;
   previewIframeRef: React.MutableRefObject<HTMLIFrameElement | null>;
   showToast: (message: string, tone?: "error" | "info") => void;
-  commitStudioManualEditManifestOptimistically: (
-    updateManifest: (manifest: StudioManualEditManifest) => StudioManualEditManifest,
-    options: { label: string; coalesceKey: string },
-  ) => void;
-  commitStudioMotionManifestOptimistically: (
-    updateManifest: (manifest: StudioMotionManifest) => StudioMotionManifest,
-    options: { label: string; coalesceKey: string },
-  ) => void;
-  applyCurrentStudioManualEditsToPreview: (iframe: HTMLIFrameElement | null) => void;
-  applyCurrentStudioMotionToPreview: (iframe: HTMLIFrameElement | null) => void;
+  queueDomEditSave: (save: () => Promise<void>) => Promise<void>;
   writeProjectFile: (path: string, content: string) => Promise<void>;
   domEditSaveTimestampRef: React.MutableRefObject<number>;
   editHistory: { recordEdit: (entry: RecordEditInput) => Promise<void> };
@@ -69,15 +71,12 @@ export interface UseDomEditCommitsParams {
 
   // From useDomSelection
   domEditSelection: DomEditSelection | null;
-  domEditSelectionRef: React.MutableRefObject<DomEditSelection | null>;
-  domEditGroupSelectionsRef: React.MutableRefObject<DomEditSelection[]>;
   applyDomSelection: (
     selection: DomEditSelection | null,
     options?: { revealPanel?: boolean; additive?: boolean; preserveGroup?: boolean },
   ) => void;
   clearDomSelection: () => void;
   refreshDomEditSelectionFromPreview: (selection: DomEditSelection) => void;
-  refreshDomEditGroupSelectionsFromPreview: (selections: DomEditSelection[]) => void;
   buildDomSelectionFromTarget: (
     target: HTMLElement,
     options?: { preferClipAncestor?: boolean },
@@ -90,10 +89,7 @@ export function useDomEditCommits({
   activeCompPath,
   previewIframeRef,
   showToast,
-  commitStudioManualEditManifestOptimistically,
-  commitStudioMotionManifestOptimistically,
-  applyCurrentStudioManualEditsToPreview,
-  applyCurrentStudioMotionToPreview,
+  queueDomEditSave,
   writeProjectFile,
   domEditSaveTimestampRef,
   editHistory,
@@ -103,11 +99,9 @@ export function useDomEditCommits({
   projectIdRef,
   reloadPreview,
   domEditSelection,
-  domEditGroupSelectionsRef,
   applyDomSelection,
   clearDomSelection,
   refreshDomEditSelectionFromPreview,
-  refreshDomEditGroupSelectionsFromPreview,
   buildDomSelectionFromTarget,
 }: UseDomEditCommitsParams) {
   const resolveImportedFontAsset = useCallback(
@@ -195,6 +189,7 @@ export function useDomEditCommits({
 
   const {
     handleDomStyleCommit,
+    handleDomAttributeCommit,
     handleDomTextCommit,
     commitDomTextFields,
     handleDomTextFieldStyleCommit,
@@ -211,133 +206,156 @@ export function useDomEditCommits({
     resolveImportedFontAsset,
   });
 
-  // ── Manifest commits ──
+  // ── Position patch helper ──
+
+  const commitPositionPatchToHtml = useCallback(
+    (
+      selection: DomEditSelection,
+      patches: Parameters<typeof applyPatchByTarget>[2][],
+      options: { label: string; coalesceKey: string; skipRefresh?: boolean },
+    ) => {
+      void queueDomEditSave(async () => {
+        await persistDomEditOperations(selection, patches, {
+          label: options.label,
+          coalesceKey: options.coalesceKey,
+          skipRefresh: options.skipRefresh ?? true,
+        });
+      }).catch((error) => {
+        const message = error instanceof Error ? error.message : "Failed to save position";
+        showToast(message);
+      });
+    },
+    [persistDomEditOperations, queueDomEditSave, showToast],
+  );
+
+  // ── Position commits ──
 
   const handleDomPathOffsetCommit = useCallback(
     (selection: DomEditSelection, next: { x: number; y: number }) => {
-      commitStudioManualEditManifestOptimistically(
-        (manifest) => upsertStudioPathOffsetEdit(manifest, selection, next),
-        {
-          label: "Move layer",
-          coalesceKey: `path-offset:${getDomEditTargetKey(selection)}`,
-        },
-      );
-      refreshDomEditSelectionFromPreview(selection);
+      applyStudioPathOffset(selection.element, next);
+      commitPositionPatchToHtml(selection, buildPathOffsetPatches(selection.element), {
+        label: "Move layer",
+        coalesceKey: `path-offset:${getDomEditTargetKey(selection)}`,
+      });
     },
-    [commitStudioManualEditManifestOptimistically, refreshDomEditSelectionFromPreview],
+    [commitPositionPatchToHtml],
   );
 
   const handleDomGroupPathOffsetCommit = useCallback(
     (updates: DomEditGroupPathOffsetCommit[]) => {
       if (updates.length === 0) return;
       const coalesceKey = updates
-        .map((update) => getDomEditTargetKey(update.selection))
+        .map((u) => getDomEditTargetKey(u.selection))
         .sort()
         .join(":");
-      commitStudioManualEditManifestOptimistically(
-        (manifest) =>
-          updates.reduce(
-            (nextManifest, update) =>
-              upsertStudioPathOffsetEdit(nextManifest, update.selection, update.next),
-            manifest,
-          ),
-        {
+      for (const { selection, next } of updates) {
+        applyStudioPathOffset(selection.element, next);
+        commitPositionPatchToHtml(selection, buildPathOffsetPatches(selection.element), {
           label: `Move ${updates.length} layers`,
           coalesceKey: `group-path-offset:${coalesceKey}`,
-        },
-      );
-      refreshDomEditGroupSelectionsFromPreview(domEditGroupSelectionsRef.current);
+        });
+      }
     },
-    [
-      commitStudioManualEditManifestOptimistically,
-      domEditGroupSelectionsRef,
-      refreshDomEditGroupSelectionsFromPreview,
-    ],
+    [commitPositionPatchToHtml],
   );
 
   const handleDomBoxSizeCommit = useCallback(
     (selection: DomEditSelection, next: { width: number; height: number }) => {
-      commitStudioManualEditManifestOptimistically(
-        (manifest) => upsertStudioBoxSizeEdit(manifest, selection, next),
-        {
-          label: "Resize layer box",
-          coalesceKey: `box-size:${getDomEditTargetKey(selection)}`,
-        },
-      );
-      refreshDomEditSelectionFromPreview(selection);
+      applyStudioBoxSize(selection.element, next);
+      commitPositionPatchToHtml(selection, buildBoxSizePatches(selection.element), {
+        label: "Resize layer box",
+        coalesceKey: `box-size:${getDomEditTargetKey(selection)}`,
+      });
     },
-    [commitStudioManualEditManifestOptimistically, refreshDomEditSelectionFromPreview],
+    [commitPositionPatchToHtml],
   );
 
   const handleDomRotationCommit = useCallback(
     (selection: DomEditSelection, next: { angle: number }) => {
-      commitStudioManualEditManifestOptimistically(
-        (manifest) => upsertStudioRotationEdit(manifest, selection, next),
-        {
-          label: "Rotate layer",
-          coalesceKey: `rotation:${getDomEditTargetKey(selection)}`,
-        },
-      );
-      refreshDomEditSelectionFromPreview(selection);
+      applyStudioRotation(selection.element, next);
+      commitPositionPatchToHtml(selection, buildRotationPatches(selection.element), {
+        label: "Rotate layer",
+        coalesceKey: `rotation:${getDomEditTargetKey(selection)}`,
+      });
     },
-    [commitStudioManualEditManifestOptimistically, refreshDomEditSelectionFromPreview],
+    [commitPositionPatchToHtml],
   );
 
   const handleDomManualEditsReset = useCallback(
     (selection: DomEditSelection) => {
-      commitStudioManualEditManifestOptimistically(
-        (manifest) => removeStudioManualEditsForSelection(manifest, selection),
-        {
-          label: "Reset layer edits",
-          coalesceKey: `manual-reset:${getDomEditTargetKey(selection)}`,
-        },
-      );
-      applyCurrentStudioManualEditsToPreview(previewIframeRef.current);
-      refreshDomEditSelectionFromPreview(selection);
+      const element = selection.element;
+      const clearPatches = [
+        ...buildClearPathOffsetPatches(element),
+        ...buildClearBoxSizePatches(element),
+        ...buildClearRotationPatches(element),
+      ];
+      clearStudioPathOffset(element);
+      clearStudioBoxSize(element);
+      clearStudioRotation(element);
+      // skipRefresh:false triggers reloadPreview() which re-syncs selection on load
+      commitPositionPatchToHtml(selection, clearPatches, {
+        label: "Reset layer edits",
+        coalesceKey: `manual-reset:${getDomEditTargetKey(selection)}`,
+        skipRefresh: false,
+      });
     },
-    [
-      applyCurrentStudioManualEditsToPreview,
-      commitStudioManualEditManifestOptimistically,
-      refreshDomEditSelectionFromPreview,
-      previewIframeRef,
-    ],
+    [commitPositionPatchToHtml],
   );
+
+  // ── Motion commits (HTML-attribute–backed) ──
 
   const handleDomMotionCommit = useCallback(
     (
       selection: DomEditSelection,
       motion: Omit<StudioGsapMotion, "kind" | "target" | "updatedAt">,
     ) => {
-      commitStudioMotionManifestOptimistically(
-        (manifest) => upsertStudioGsapMotion(manifest, selection, motion),
-        {
-          label: "Set GSAP motion",
-          coalesceKey: `motion:${getDomEditTargetKey(selection)}`,
-        },
-      );
+      // 1. Write motion data as JSON attribute on the element
+      writeStudioMotionToElement(selection.element, motion);
+      // 2. Apply the GSAP timeline from DOM attributes
+      let doc: Document | null = null;
+      try {
+        doc = previewIframeRef.current?.contentDocument ?? null;
+      } catch {
+        // cross-origin guard
+      }
+      if (doc) applyStudioMotionFromDom(doc);
+      // 3. Build patches and persist to HTML
+      const patches = buildMotionPatches(selection.element);
+      commitPositionPatchToHtml(selection, patches, {
+        label: "Set GSAP motion",
+        coalesceKey: `motion:${getDomEditTargetKey(selection)}`,
+      });
       refreshDomEditSelectionFromPreview(selection);
     },
-    [commitStudioMotionManifestOptimistically, refreshDomEditSelectionFromPreview],
+    [commitPositionPatchToHtml, previewIframeRef, refreshDomEditSelectionFromPreview],
   );
 
   const handleDomMotionClear = useCallback(
     (selection: DomEditSelection) => {
-      commitStudioMotionManifestOptimistically(
-        (manifest) => removeStudioMotionForSelection(manifest, selection),
-        {
-          label: "Clear GSAP motion",
-          coalesceKey: `motion:${getDomEditTargetKey(selection)}`,
-        },
-      );
-      applyCurrentStudioMotionToPreview(previewIframeRef.current);
+      const clearPatches = buildClearMotionPatches(selection.element);
+      // Get gsap from the preview window for proper cleanup
+      let gsap: { set?: (target: HTMLElement, vars: Record<string, unknown>) => void } | undefined;
+      try {
+        gsap = (previewIframeRef.current?.contentWindow as { gsap?: typeof gsap })?.gsap;
+      } catch {
+        // cross-origin guard
+      }
+      clearStudioMotionFromElement(selection.element, gsap);
+      let doc: Document | null = null;
+      try {
+        doc = previewIframeRef.current?.contentDocument ?? null;
+      } catch {
+        // cross-origin guard
+      }
+      if (doc) applyStudioMotionFromDom(doc);
+      commitPositionPatchToHtml(selection, clearPatches, {
+        label: "Clear GSAP motion",
+        coalesceKey: `motion:${getDomEditTargetKey(selection)}`,
+        skipRefresh: false,
+      });
       refreshDomEditSelectionFromPreview(selection);
     },
-    [
-      applyCurrentStudioMotionToPreview,
-      commitStudioMotionManifestOptimistically,
-      refreshDomEditSelectionFromPreview,
-      previewIframeRef,
-    ],
+    [commitPositionPatchToHtml, previewIframeRef, refreshDomEditSelectionFromPreview],
   );
 
   const handleDomEditElementDelete = useCallback(
@@ -420,6 +438,7 @@ export function useDomEditCommits({
   return {
     resolveImportedFontAsset,
     handleDomStyleCommit,
+    handleDomAttributeCommit,
     handleDomTextCommit,
     commitDomTextFields,
     handleDomTextFieldStyleCommit,

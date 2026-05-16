@@ -327,5 +327,29 @@ describe("TransportClock", () => {
       audioEl.currentTime = 3.5;
       expect(clock.now()).toBe(3.5);
     });
+
+    it("at 2x rate, audio-derived time advances at 2x (not 1x)", () => {
+      // el.playbackRate=2 means el.currentTime advances at 2x wall-clock speed.
+      // With rate=2, composition time should also advance at 2x — so
+      // composition_time = (el.currentTime - mediaStart) + compositionStart.
+      // The old bug divided by rate instead, yielding 1x speed.
+      const { clock } = createClock({ rate: 2, duration: 20 });
+      const audioEl = { currentTime: 4, paused: false, playbackRate: 2 } as HTMLMediaElement;
+      clock.play();
+      clock.attachAudioSource({ el: audioEl, compositionStart: 0, mediaStart: 0 });
+      // After 1 wall-clock second at 2x: el.currentTime=4, composition should be at 4.
+      expect(clock.now()).toBe(4);
+    });
+
+    it("composition time is correct when el.playbackRate differs from clock rate", () => {
+      // General formula: wall_elapsed = (el.currentTime - mediaStart) / el.playbackRate
+      // composition_time = compositionStart + wall_elapsed * clockRate
+      const { clock } = createClock({ rate: 2, duration: 20 });
+      // Audio at 1x, clock at 2x: after 1s wall, el.currentTime=1, comp should be 2.
+      const audioEl = { currentTime: 1, paused: false, playbackRate: 1 } as HTMLMediaElement;
+      clock.play();
+      clock.attachAudioSource({ el: audioEl, compositionStart: 0, mediaStart: 0 });
+      expect(clock.now()).toBe(2);
+    });
   });
 });

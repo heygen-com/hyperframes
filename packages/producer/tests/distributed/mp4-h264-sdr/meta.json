@@ -1,0 +1,16 @@
+{
+  "name": "Distributed: mp4 H.264 SDR",
+  "description": "60-frame composition (2s @ 30fps) with text, a crossfade transition, and a small inline-SVG image. renderConfig.chunkSize=15 produces exactly N=4 chunks, exercising libx264's closed-GOP + concat-copy contract end-to-end.",
+  "tags": ["distributed", "mp4", "h264", "sdr"],
+
+  "minPsnr": 30,
+  "maxFrameFailures": 0,
+
+  "minAudioCorrelation": 0.9,
+  "maxAudioLagWindows": 120,
+
+  "renderConfig": {
+    "fps": 30,
+    "chunkSize": 15
+  }
+}

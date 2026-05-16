@@ -1,0 +1,15 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "vignette",
+  "type": "hyperframes:component",
+  "title": "Vignette",
+  "description": "Cinematic radial vignette overlay using a pure-CSS gradient — darkens the edges to pull focus toward the center",
+  "tags": ["vignette", "overlay", "cinematic", "effect"],
+  "files": [
+    {
+      "path": "vignette.html",
+      "target": "compositions/components/vignette.html",
+      "type": "hyperframes:snippet"
+    }
+  ]
+}

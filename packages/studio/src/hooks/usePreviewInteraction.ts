@@ -18,7 +18,6 @@ export interface UsePreviewInteractionParams {
   captionEditMode: boolean;
   compositionLoading: boolean;
   previewIframeRef: React.MutableRefObject<HTMLIFrameElement | null>;
-  activeCompPath: string | null;
   showToast: (message: string, tone?: "error" | "info") => void;
 
   // From useDomSelection
@@ -38,6 +37,8 @@ export interface UsePreviewInteractionParams {
   setAgentPromptSelectionContext: (context: string | undefined) => void;
   setAgentModalAnchorPoint: (point: AgentModalAnchorPoint | null) => void;
   setAgentModalOpen: (open: boolean) => void;
+
+  onClickToSource?: (selection: DomEditSelection) => void;
 }
 
 // ── Hook ──
@@ -54,6 +55,7 @@ export function usePreviewInteraction({
   setAgentPromptSelectionContext,
   setAgentModalAnchorPoint,
   setAgentModalOpen,
+  onClickToSource,
 }: UsePreviewInteractionParams) {
   const handlePreviewCanvasMouseDown = useCallback(
     (e: React.MouseEvent<HTMLDivElement>, options?: { preferClipAncestor?: boolean }) => {
@@ -71,6 +73,9 @@ export function usePreviewInteraction({
         ? getPreviewLocalPointer(previewIframeRef.current, e.clientX, e.clientY)
         : null;
       applyDomSelection(nextSelection, { additive: e.shiftKey });
+      if (!e.shiftKey && e.altKey && onClickToSource) {
+        onClickToSource(nextSelection);
+      }
       if (
         !e.shiftKey &&
         localPointer &&
@@ -88,6 +93,7 @@ export function usePreviewInteraction({
       applyDomSelection,
       captionEditMode,
       compositionLoading,
+      onClickToSource,
       preloadAgentPromptSnippet,
       resolveDomSelectionFromPreviewPoint,
       previewIframeRef,

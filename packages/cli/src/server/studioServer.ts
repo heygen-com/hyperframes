@@ -113,10 +113,9 @@ async function reapplyStudioManualEditsToThumbnailPage(
   });
 }
 
-// ── Shared thumbnail browser (singleton per process) ────────────────────────
-// One browser instance is reused across all composition thumbnail requests.
-// Spawning a new Puppeteer process per request adds 2-5s overhead and causes
-// contention when the sidebar requests multiple thumbnails simultaneously.
+// ── Shared thumbnail browser (pool-backed) ──────────────────────────────────
+// Uses the engine's browser pool so the thumbnail browser and render workers
+// share a single Chrome process instead of running two independent ones.
 
 let _thumbnailBrowser: import("puppeteer-core").Browser | null = null;
 let _thumbnailBrowserInitializing: Promise<import("puppeteer-core").Browser | null> | null = null;
@@ -139,14 +138,22 @@ async function getThumbnailBrowser(): Promise<import("puppeteer-core").Browser |
         /* continue — acquireBrowser will try its own resolution */
       }
 
-      const acquired = await acquireBrowser(buildChromeArgs({ width: 1920, height: 1080 }), {
-        enableBrowserPool: false,
-      });
+      const acquired = await acquireBrowser(buildChromeArgs({ width: 1920, height: 1080 }));
       _thumbnailBrowser = acquired.browser;
       _thumbnailBrowser.on("disconnected", () => {
         _thumbnailBrowser = null;
         _thumbnailBrowserInitializing = null;
       });
+      // Release the pool ref on process exit so the browser closes cleanly.
+      const onExit = async () => {
+        const { releaseBrowser } = await import("@hyperframes/engine");
+        if (_thumbnailBrowser) {
+          await releaseBrowser(_thumbnailBrowser).catch(() => {});
+          _thumbnailBrowser = null;
+        }
+      };
+      process.once("SIGTERM", () => void onExit());
+      process.once("SIGINT", () => void onExit());
       return _thumbnailBrowser;
     } catch {
       _thumbnailBrowserInitializing = null;
@@ -263,6 +270,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
             format: opts.format,
             outputResolution: opts.outputResolution,
             ...(manualEditsRenderScript ? { renderBodyScripts: [manualEditsRenderScript] } : {}),
+            ...(opts.composition ? { entryFile: opts.composition } : {}),
           });
           const startTime = Date.now();
           const onProgress = (j: { progress: number; currentStage?: string }) => {

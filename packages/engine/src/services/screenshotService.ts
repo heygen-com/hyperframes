@@ -130,19 +130,14 @@ export async function pageScreenshotCapture(page: Page, options: CaptureOptions)
   const client = await getCdpSession(page);
   const isPng = options.format === "png";
   const dpr = options.deviceScaleFactor ?? 1;
-  // When supersampling, pass an explicit clip with `scale` so Chrome emits a
-  // screenshot at device-pixel dimensions (`width × height × dpr`). Without
-  // this, `Page.captureScreenshot` returns at CSS dimensions regardless of
-  // the viewport's deviceScaleFactor.
-  const clip =
-    dpr > 1 ? { x: 0, y: 0, width: options.width, height: options.height, scale: dpr } : undefined;
+  const clip = { x: 0, y: 0, width: options.width, height: options.height, scale: dpr };
   const result = await client.send("Page.captureScreenshot", {
     format: isPng ? "png" : "jpeg",
     quality: isPng ? undefined : (options.quality ?? 80),
     fromSurface: true,
     captureBeyondViewport: false,
     optimizeForSpeed: !isPng,
-    ...(clip ? { clip } : {}),
+    clip,
   });
   return Buffer.from(result.data, "base64");
 }
@@ -382,6 +377,15 @@ export async function injectVideoFramesBatch(
   await page.evaluate(
     async (items: Array<{ videoId: string; dataUri: string }>, visualProperties: string[]) => {
       const pendingDecodes: Array<Promise<void>> = [];
+      const replacementLayoutProperties = new Set([
+        "width",
+        "height",
+        "top",
+        "left",
+        "right",
+        "bottom",
+        "inset",
+      ]);
       for (const item of items) {
         const video = document.getElementById(item.videoId) as HTMLVideoElement | null;
         if (!video) continue;
@@ -395,7 +399,6 @@ export async function injectVideoFramesBatch(
         // and accurately reflects the user's intent on every frame.
         const opacityParsed = parseFloat(computedStyle.opacity);
         const computedOpacity = Number.isNaN(opacityParsed) ? 1 : opacityParsed;
-        const sourceIsStatic = !computedStyle.position || computedStyle.position === "static";
 
         if (isNewImage) {
           img = document.createElement("img");
@@ -406,10 +409,35 @@ export async function injectVideoFramesBatch(
         }
         if (!img) continue;
 
+        for (const property of visualProperties) {
+          // Opacity is handled explicitly via `computedOpacity` below — copying
+          // via the generic loop would race against the opacity:0 hide applied
+          // to the <video> at the end of this function. GSAP may animate
+          // opacity either on a wrapper (the <img> inherits via the stacking
+          // context) or directly on the <video> (we must copy it to the <img>
+          // since they are siblings). Reading computedStyle.opacity before
+          // hiding the <video> handles both cases correctly.
+          if (property === "opacity") continue;
+          // Layout is set from the video's used box below. Copying authored
+          // opposing constraints such as `inset: 0` / `right: 0` onto the
+          // replacement <img> can overconstrain replaced-image sizing and make
+          // some Chrome capture paths resample the frame anisotropically.
+          if (replacementLayoutProperties.has(property)) {
+            continue;
+          }
+          const value = computedStyle.getPropertyValue(property);
+          if (value) {
+            img.style.setProperty(property, value);
+          }
+        }
+
         // Always use absolute positioning so the <img> overlays the <video>
         // instead of flowing below it. With position:relative, both elements
         // stack vertically — the <img> lands below the video and gets clipped
         // by any overflow:hidden ancestor (e.g., border-radius wrappers).
+        //
+        // Apply this after visual style copying so the measured used box is
+        // the final authority for replacement frame geometry.
         {
           const videoRect = video.getBoundingClientRect();
           const offsetLeft = Number.isFinite(video.offsetLeft) ? video.offsetLeft : 0;
@@ -429,30 +457,6 @@ export async function injectVideoFramesBatch(
         img.style.objectPosition = computedStyle.objectPosition;
         img.style.zIndex = computedStyle.zIndex;
 
-        for (const property of visualProperties) {
-          // Opacity is handled explicitly via `computedOpacity` below — copying
-          // via the generic loop would race against the opacity:0 hide applied
-          // to the <video> at the end of this function. GSAP may animate
-          // opacity either on a wrapper (the <img> inherits via the stacking
-          // context) or directly on the <video> (we must copy it to the <img>
-          // since they are siblings). Reading computedStyle.opacity before
-          // hiding the <video> handles both cases correctly.
-          if (property === "opacity") continue;
-          if (
-            sourceIsStatic &&
-            (property === "top" ||
-              property === "left" ||
-              property === "right" ||
-              property === "bottom" ||
-              property === "inset")
-          ) {
-            continue;
-          }
-          const value = computedStyle.getPropertyValue(property);
-          if (value) {
-            img.style.setProperty(property, value);
-          }
-        }
         img.decoding = "sync";
         if (img.getAttribute("src") !== item.dataUri) {
           img.src = item.dataUri;

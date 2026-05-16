@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>chunk-boundary: anime.js</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.0.2/lib/anime.iife.min.js"></script>
+    <style>
+      body,
+      html {
+        margin: 0;
+        padding: 0;
+        width: 320px;
+        height: 180px;
+        background: #0f172a;
+        overflow: hidden;
+      }
+      #main-comp {
+        position: relative;
+        width: 320px;
+        height: 180px;
+      }
+      #box {
+        position: absolute;
+        left: 0;
+        top: 70px;
+        width: 40px;
+        height: 40px;
+        background: #ec4899;
+        border-radius: 6px;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="main-comp"
+      data-composition-id="main-comp"
+      data-width="320"
+      data-height="180"
+      data-start="0"
+      data-duration="2"
+    >
+      <div id="box"></div>
+    </div>
+
+    <script>
+      window.__hfAnime = window.__hfAnime || [];
+      const tl = anime.createTimeline({ autoplay: false });
+      tl.add(
+        "#box",
+        { translateX: [0, 280], rotate: [0, 360], duration: 2000, ease: "linear" },
+        0,
+      );
+      window.__hfAnime.push({
+        seek: function (globalTimeMs) {
+          tl.seek(globalTimeMs);
+        },
+        pause: function () {
+          tl.pause();
+        },
+        play: function () {
+          tl.play();
+        },
+      });
+      const dur = gsap.timeline({ paused: true });
+      window.__timelines = window.__timelines || {};
+      window.__timelines["main-comp"] = dur;
+      dur.to({}, { duration: 2 }, 0);
+    </script>
+  </body>
+</html>

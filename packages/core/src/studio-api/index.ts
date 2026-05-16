@@ -8,6 +8,7 @@ export { getElementScreenshotClip, type ScreenshotClip } from "./helpers/screens
 export {
   STUDIO_MANUAL_EDITS_PATH,
   createStudioManualEditsRenderBodyScript,
+  createStudioPositionSeekReapplyScript,
   type StudioManualEditsRenderScriptOptions,
 } from "./helpers/manualEditsRenderScript.js";
 export {

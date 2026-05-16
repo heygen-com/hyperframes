@@ -1,3 +1,5 @@
 packages/studio/src/player/hooks/useTimelinePlayer.ts
 packages/studio/src/hooks/useManifestPersistence.ts
 packages/studio/src/player/components/PlayerControls.tsx
+packages/studio/src/components/editor/manualEdits.test.ts
+packages/studio/src/components/editor/manualEditsDom.ts

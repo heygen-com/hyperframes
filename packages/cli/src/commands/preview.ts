@@ -7,6 +7,7 @@ export const examples: Example[] = [
   ["Preview a specific project directory", "hyperframes preview ./my-video"],
   ["Use a custom port", "hyperframes preview --port 8080"],
   ["Force a new server even if one is already running", "hyperframes preview --force-new"],
+  ["Start without opening the browser", "hyperframes preview --no-open"],
   ["List all active preview servers", "hyperframes preview --list"],
   ["Kill all active preview servers", "hyperframes preview --kill-all"],
 ];
@@ -45,6 +46,11 @@ export default defineCommand({
       type: "boolean",
       description: "Kill all active preview servers and exit",
       default: false,
+    },
+    open: {
+      type: "boolean",
+      default: true,
+      description: "Open browser automatically",
     },
   },
   async run({ args }) {
@@ -100,31 +106,36 @@ export default defineCommand({
       }
     }
 
+    const noOpen = !args.open;
+
     if (isDevMode()) {
-      return runDevMode(dir, projectName);
+      return runDevMode(dir, { projectName, noOpen });
     }
 
     // If @hyperframes/studio is installed locally, use Vite for full HMR
     if (hasLocalStudio(dir)) {
-      return runLocalStudioMode(dir, projectName);
+      return runLocalStudioMode(dir, { projectName, noOpen });
     }
 
     const forceNew = !!args["force-new"];
-    return runEmbeddedMode(dir, startPort, projectName, forceNew);
+    return runEmbeddedMode(dir, startPort, { projectName, forceNew, noOpen });
   },
 });
 
 /**
  * Dev mode: spawn the studio dev server from the monorepo.
  */
-async function runDevMode(dir: string, projectName?: string): Promise<void> {
+async function runDevMode(
+  dir: string,
+  options?: { projectName?: string; noOpen?: boolean },
+): Promise<void> {
   // Find monorepo root by navigating from packages/cli/src/commands/
   const thisFile = fileURLToPath(import.meta.url);
   const repoRoot = resolve(dirname(thisFile), "..", "..", "..", "..");
 
   // Symlink project into the studio's data directory
   const projectsDir = join(repoRoot, "packages", "studio", "data", "projects");
-  const pName = projectName ?? basename(dir);
+  const pName = options?.projectName ?? basename(dir);
   const symlinkPath = join(projectsDir, pName);
 
   mkdirSync(projectsDir, { recursive: true });
@@ -181,8 +192,10 @@ async function runDevMode(dir: string, projectName?: string): Promise<void> {
       console.log(`  ${c.dim("Press Ctrl+C to stop")}`);
       console.log();
 
-      const urlToOpen = `${frontendUrl}#project/${pName}`;
-      import("open").then((mod) => mod.default(urlToOpen)).catch(() => {});
+      if (!options?.noOpen) {
+        const urlToOpen = `${frontendUrl}#project/${pName}`;
+        import("open").then((mod) => mod.default(urlToOpen)).catch(() => {});
+      }
 
       child.stdout?.removeListener("data", handleOutput);
       child.stderr?.removeListener("data", handleOutput);
@@ -232,10 +245,13 @@ function hasLocalStudio(dir: string): boolean {
  * Local studio mode: spawn Vite using a locally installed @hyperframes/studio.
  * Provides full Vite HMR and the complete studio experience.
  */
-async function runLocalStudioMode(dir: string, projectName?: string): Promise<void> {
+async function runLocalStudioMode(
+  dir: string,
+  options?: { projectName?: string; noOpen?: boolean },
+): Promise<void> {
   const req = createRequire(join(dir, "package.json"));
   const studioPkgPath = dirname(req.resolve("@hyperframes/studio/package.json"));
-  const pName = projectName ?? basename(dir);
+  const pName = options?.projectName ?? basename(dir);
 
   // Symlink project into studio's data directory
   const projectsDir = join(studioPkgPath, "data", "projects");
@@ -279,7 +295,9 @@ async function runLocalStudioMode(dir: string, projectName?: string): Promise<vo
       console.log();
       console.log(`  ${c.dim("Press Ctrl+C to stop")}`);
       console.log();
-      import("open").then((mod) => mod.default(`${url}#project/${pName}`)).catch(() => {});
+      if (!options?.noOpen) {
+        import("open").then((mod) => mod.default(`${url}#project/${pName}`)).catch(() => {});
+      }
     }
   }
 
@@ -315,12 +333,11 @@ async function runLocalStudioMode(dir: string, projectName?: string): Promise<vo
 async function runEmbeddedMode(
   dir: string,
   startPort: number,
-  projectName?: string,
-  forceNew = false,
+  options?: { projectName?: string; forceNew?: boolean; noOpen?: boolean },
 ): Promise<void> {
   const { createStudioServer, resolveStudioBundle } = await import("../server/studioServer.js");
 
-  const pName = projectName ?? basename(dir);
+  const pName = options?.projectName ?? basename(dir);
   const studioBundle = resolveStudioBundle();
 
   clack.intro(c.bold("hyperframes preview"));
@@ -345,7 +362,7 @@ async function runEmbeddedMode(
 
   let result: FindPortResult;
   try {
-    result = await findPortAndServe(app.fetch, startPort, dir, forceNew);
+    result = await findPortAndServe(app.fetch, startPort, dir, !!options?.forceNew);
   } catch (err: unknown) {
     s.stop(c.error("Failed to start studio"));
     console.error();
@@ -366,7 +383,9 @@ async function runEmbeddedMode(
       `  ${c.dim("Reusing existing server. Use --force-new to start a fresh instance.")}`,
     );
     console.log();
-    import("open").then((mod) => mod.default(`${url}#project/${pName}`)).catch(() => {});
+    if (!options?.noOpen) {
+      import("open").then((mod) => mod.default(`${url}#project/${pName}`)).catch(() => {});
+    }
     return;
   }
 
@@ -385,7 +404,9 @@ async function runEmbeddedMode(
   console.log();
   console.log(`  ${c.dim("Press Ctrl+C to stop")}`);
   console.log();
-  import("open").then((mod) => mod.default(`${url}#project/${pName}`)).catch(() => {});
+  if (!options?.noOpen) {
+    import("open").then((mod) => mod.default(`${url}#project/${pName}`)).catch(() => {});
+  }
 
   // Block until Ctrl+C. Node would normally exit on SIGINT, but the listening
   // HTTP server keeps handles open, so the event loop stays alive after the
