@@ -12,6 +12,7 @@ import { useManifestPersistence } from "./hooks/useManifestPersistence";
 import { useTimelineEditing } from "./hooks/useTimelineEditing";
 import { useDomEditSession } from "./hooks/useDomEditSession";
 import { useAppHotkeys } from "./hooks/useAppHotkeys";
+import { useClipboard } from "./hooks/useClipboard";
 import { readStudioUiPreferences, writeStudioUiPreferences } from "./utils/studioUiPreferences";
 import { useCaptionDetection } from "./hooks/useCaptionDetection";
 import { useRenderClipContent } from "./hooks/useRenderClipContent";
@@ -162,15 +163,28 @@ export function StudioApp() {
 
   const clearDomSelectionRef = useRef<() => void>(() => {});
   const domEditSelectionBridgeRef = useRef<DomEditSelection | null>(null);
-  const handleDomEditElementDeleteRef = useRef<(selection: DomEditSelection) => Promise<void>>(
+  const handleDomEditElementDeleteRef = useRef<(s: DomEditSelection) => Promise<void>>(
     async () => {},
   );
-
+  const domEditDeleteBridge = async (s: DomEditSelection) =>
+    handleDomEditElementDeleteRef.current(s);
+  const { handleCopy, handlePaste, handleCut } = useClipboard({
+    projectId,
+    activeCompPath,
+    domEditSelectionRef: domEditSelectionBridgeRef,
+    showToast,
+    writeProjectFile: fileManager.writeProjectFile,
+    recordEdit: editHistory.recordEdit,
+    domEditSaveTimestampRef,
+    reloadPreview,
+    handleTimelineElementDelete: timelineEditing.handleTimelineElementDelete,
+    handleDomEditElementDelete: domEditDeleteBridge,
+    previewIframeRef,
+  });
   const appHotkeys = useAppHotkeys({
     toggleTimelineVisibility,
     handleTimelineElementDelete: timelineEditing.handleTimelineElementDelete,
-    handleDomEditElementDelete: async (s: DomEditSelection) =>
-      handleDomEditElementDeleteRef.current(s),
+    handleDomEditElementDelete: domEditDeleteBridge,
     domEditSelectionRef: domEditSelectionBridgeRef,
     clearDomSelectionRef,
     editHistory,
@@ -182,6 +196,9 @@ export function StudioApp() {
     syncHistoryPreviewAfterApply: manifestPersistence.syncHistoryPreviewAfterApply,
     waitForPendingDomEditSaves: manifestPersistence.waitForPendingDomEditSaves,
     leftSidebarRef,
+    handleCopy,
+    handlePaste,
+    handleCut,
   });
 
   const domEditSession = useDomEditSession({

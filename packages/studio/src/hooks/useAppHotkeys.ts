@@ -45,6 +45,9 @@ interface UseAppHotkeysParams {
   syncHistoryPreviewAfterApply: (paths: string[] | undefined) => Promise<void>;
   waitForPendingDomEditSaves: () => Promise<void>;
   leftSidebarRef: React.RefObject<LeftSidebarHandle | null>;
+  handleCopy: () => boolean;
+  handlePaste: () => Promise<void>;
+  handleCut: () => Promise<void>;
 }
 
 // ── Hook ──
@@ -64,6 +67,9 @@ export function useAppHotkeys({
   syncHistoryPreviewAfterApply,
   waitForPendingDomEditSaves,
   leftSidebarRef,
+  handleCopy,
+  handlePaste,
+  handleCut,
 }: UseAppHotkeysParams) {
   const previewHotkeyWindowRef = useRef<Window | null>(null);
   const handleAppKeyDownRef = useRef<((event: KeyboardEvent) => void) | undefined>(undefined);
@@ -161,6 +167,12 @@ export function useAppHotkeys({
   handleUndoRef.current = handleUndo;
   const handleRedoRef = useRef(handleRedo);
   handleRedoRef.current = handleRedo;
+  const handleCopyRef = useRef(handleCopy);
+  handleCopyRef.current = handleCopy;
+  const handlePasteRef = useRef(handlePaste);
+  handlePasteRef.current = handlePaste;
+  const handleCutRef = useRef(handleCut);
+  handleCutRef.current = handleCut;
 
   // ── Consolidated keydown handler ──
 
@@ -195,6 +207,28 @@ export function useAppHotkeys({
       if (event.key === "2") {
         event.preventDefault();
         leftSidebarRef.current?.selectTab("assets");
+        return;
+      }
+
+      // Cmd/Ctrl+C — copy
+      const copyPasteKey = event.key.toLowerCase();
+      if (copyPasteKey === "c" && !event.shiftKey && !isEditableTarget(event.target)) {
+        event.preventDefault();
+        handleCopyRef.current();
+        return;
+      }
+
+      // Cmd/Ctrl+V — paste
+      if (copyPasteKey === "v" && !event.shiftKey && !isEditableTarget(event.target)) {
+        event.preventDefault();
+        void handlePasteRef.current();
+        return;
+      }
+
+      // Cmd/Ctrl+X — cut
+      if (copyPasteKey === "x" && !event.shiftKey && !isEditableTarget(event.target)) {
+        event.preventDefault();
+        void handleCutRef.current();
         return;
       }
     }
