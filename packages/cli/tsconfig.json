@@ -5,7 +5,9 @@
     "moduleResolution": "bundler",
     "baseUrl": ".",
     "paths": {
-      "@hyperframes/producer": ["../producer/src/index.ts"]
+      "@hyperframes/producer": ["../producer/src/index.ts"],
+      "@hyperframes/producer/distributed": ["../producer/src/distributed.ts"],
+      "@hyperframes/aws-lambda/sdk": ["../aws-lambda/src/sdk/index.ts"]
     },
     "strict": true,
     "noUncheckedIndexedAccess": true,

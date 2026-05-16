@@ -18,6 +18,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./handler": "./src/handler.ts",
+    "./sdk": "./src/sdk/index.ts",
     "./cdk": "./src/cdk/index.ts"
   },
   "publishConfig": {

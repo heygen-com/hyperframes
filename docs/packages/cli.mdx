@@ -860,6 +860,80 @@ This is suppressed in CI environments, non-TTY shells, and when `HYPERFRAMES_NO_
   </Tab>
 </Tabs>
 
+## hyperframes lambda
+
+Deploy HyperFrames distributed rendering to AWS Lambda and drive renders from your laptop or CI.
+
+The `hyperframes lambda` command group wraps the `@hyperframes/aws-lambda` SDK plus AWS SAM so an end-to-end render is three commands:
+
+```bash
+hyperframes lambda deploy
+hyperframes lambda render ./my-project --width 1920 --height 1080 --wait
+hyperframes lambda destroy   # when you're done
+```
+
+### Prerequisites
+
+- AWS credentials configured (env vars, `~/.aws/credentials`, SSO, or IMDS).
+- [AWS SAM CLI](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html) on `PATH`.
+- `bun` on `PATH` (used to build the Lambda handler ZIP).
+
+### Subcommands
+
+#### `lambda deploy`
+
+Builds `packages/aws-lambda/dist/handler.zip` and SAM-deploys the stack at `examples/aws-lambda/template.yaml`. On success, writes `<cwd>/.hyperframes/lambda-stack-<stackName>.json` so the other subcommands don't need to re-derive the bucket / state-machine ARN.
+
+```bash
+hyperframes lambda deploy \
+  --stack-name=hyperframes-prod \
+  --region=us-east-1 \
+  --concurrency=8 \
+  --memory=10240
+```
+
+Idempotent — re-running on the same `--stack-name` resolves to a no-op when nothing changed.
+
+#### `lambda sites create <projectDir>`
+
+Tars + uploads `<projectDir>` to S3 with a content-addressed key. Returns a `siteId` you can reuse across multiple renders so a re-render of the same tree skips the upload.
+
+```bash
+hyperframes lambda sites create ./my-project
+# → siteId: abc1234deadbeef0  (stable across re-runs of the same tree)
+
+hyperframes lambda render ./my-project --site-id=abc1234deadbeef0 --width 1920 --height 1080
+```
+
+#### `lambda render <projectDir>`
+
+Starts a Step Functions execution. Returns immediately with a `renderId` (use `lambda progress` to poll) unless `--wait` is set, in which case the CLI blocks until the render finishes and streams per-chunk progress lines.
+
+```bash
+hyperframes lambda render ./my-project \
+  --width=1920 --height=1080 --fps=30 --format=mp4 \
+  --chunk-size=240 --max-parallel-chunks=16 \
+  --wait
+```
+
+`--json` swaps the human-readable output for a machine-parseable JSON snapshot.
+
+#### `lambda progress <renderId | executionArn>`
+
+Prints one progress snapshot — overall percent, frames rendered, Lambda invocations, accrued cost, and any errors. Accepts either a bare `renderId` (resolved against the stack's state-machine ARN) or a full SFN execution ARN.
+
+```bash
+hyperframes lambda progress hf-render-abcd1234
+```
+
+#### `lambda destroy`
+
+Calls `sam delete --no-prompts` and drops the local state file. The render S3 bucket is configured with CloudFormation `Retain` so it survives destruction — empty and delete it via the AWS console / CLI if you want the storage back.
+
+### State files
+
+`hyperframes lambda` keeps per-stack metadata under `<cwd>/.hyperframes/lambda-stack-<name>.json` so the verbs don't need to call `describe-stacks` every time. Commit the file to a repo or `.gitignore` it depending on your workflow — it contains the bucket name, state-machine ARN, and region, none of which are secrets but all of which are AWS-account-identifying.
+
 ## hyperframes.json
 
 `hyperframes init` writes a `hyperframes.json` file at the root of every new project. `hyperframes add` reads it to know which registry to pull items from and where to drop them. Edit the file (or delete it to fall back to defaults) to reshape your project layout or point at a custom registry.

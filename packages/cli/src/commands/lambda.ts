@@ -1,0 +1,260 @@
+/**
+ * `hyperframes lambda` — top-level dispatcher for AWS Lambda subcommands.
+ *
+ * Each subverb lives in `./lambda/<name>.ts` and exports a single
+ * `runXxx(args)` async function. The subcommand surface is intentionally
+ * thin glue: argument parsing + help text here; the actual work
+ * (`renderToLambda` / `getRenderProgress` / `deploySite` / SAM driver)
+ * lives in `@hyperframes/aws-lambda/sdk`.
+ */
+
+import { defineCommand } from "citty";
+import type { Example } from "./_examples.js";
+import { c } from "../ui/colors.js";
+
+export const examples: Example[] = [
+  ["Deploy the Lambda render stack to AWS", "hyperframes lambda deploy"],
+  [
+    "Render a composition on the deployed stack",
+    "hyperframes lambda render ./my-project --width 1920 --height 1080",
+  ],
+  [
+    "Render and stream progress until done",
+    "hyperframes lambda render ./my-project --width 1920 --height 1080 --wait",
+  ],
+  ["Check progress for a started render", "hyperframes lambda progress hf-render-abcd1234"],
+  [
+    "Pre-upload a project so multiple renders share the upload",
+    "hyperframes lambda sites create ./my-project",
+  ],
+  ["Tear the stack down", "hyperframes lambda destroy"],
+];
+
+const HELP = `
+${c.bold("hyperframes lambda")} ${c.dim("<subcommand> [args]")}
+
+Deploy + drive distributed video renders on AWS Lambda.
+
+${c.bold("SUBCOMMANDS:")}
+  ${c.accent("deploy")}            ${c.dim("Provision the Lambda + Step Functions + S3 stack via SAM")}
+  ${c.accent("sites create")}      ${c.dim("Tar + upload a project to S3 (reusable across renders)")}
+  ${c.accent("render")}            ${c.dim("Start a distributed render (returns a renderId)")}
+  ${c.accent("progress")}          ${c.dim("Print progress + cost for an in-flight or finished render")}
+  ${c.accent("destroy")}           ${c.dim("Tear the stack down (S3 bucket is retained)")}
+
+${c.bold("FIRST RUN:")}
+  ${c.accent("hyperframes lambda deploy")}
+  ${c.accent("hyperframes lambda render ./my-project --width 1920 --height 1080 --wait")}
+
+${c.bold("REQUIREMENTS:")}
+  • AWS CLI configured (env vars, ~/.aws/credentials, or SSO)
+  • AWS SAM CLI installed (https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html)
+  • bun on PATH (used to build the handler ZIP)
+`;
+
+export default defineCommand({
+  meta: { name: "lambda", description: "Deploy and drive renders on AWS Lambda" },
+  args: {
+    subcommand: {
+      type: "positional",
+      required: false,
+      description: "deploy | sites | render | progress | destroy",
+    },
+    target: {
+      type: "positional",
+      required: false,
+      description: "Subcommand-specific positional (project dir, render id, etc.)",
+    },
+    extra: {
+      type: "positional",
+      required: false,
+      description: "Extra positional (e.g. `sites create <projectDir>`)",
+    },
+
+    // Stack identity
+    "stack-name": {
+      type: "string",
+      description: "CloudFormation stack name (default: hyperframes-default)",
+    },
+    region: { type: "string", description: "AWS region (default: AWS_REGION env or us-east-1)" },
+    profile: { type: "string", description: "AWS profile name (default: AWS_PROFILE env)" },
+
+    // deploy
+    concurrency: { type: "string", description: "Lambda reserved concurrency (default: 8)" },
+    "chrome-source": {
+      type: "string",
+      description: "sparticuz | chrome-headless-shell (default: sparticuz)",
+    },
+    memory: { type: "string", description: "Lambda memory MB (default: 10240)" },
+    "skip-build": { type: "boolean", description: "Reuse existing handler.zip (deploy)" },
+
+    // sites / render
+    "site-id": { type: "string", description: "Explicit site id (overrides content hash)" },
+    width: { type: "string", description: "Render width in pixels" },
+    height: { type: "string", description: "Render height in pixels" },
+    fps: { type: "string", description: "Render fps (24 | 30 | 60)" },
+    format: { type: "string", description: "mp4 | mov | png-sequence (default: mp4)" },
+    codec: { type: "string", description: "h264 | h265 (mp4 only)" },
+    quality: { type: "string", description: "draft | standard | high" },
+    "chunk-size": { type: "string", description: "Frames per chunk (default: 240)" },
+    "max-parallel-chunks": { type: "string", description: "Max concurrent chunks (default: 16)" },
+    "execution-name": {
+      type: "string",
+      description: "Step Functions execution name (default: hf-render-<uuid>)",
+    },
+    "output-key": {
+      type: "string",
+      description: "Final output S3 key (default: renders/<exec>/output.<ext>)",
+    },
+    wait: { type: "boolean", description: "Block until the render finishes" },
+    "wait-interval-ms": {
+      type: "string",
+      description: "Poll cadence in ms when --wait is set (default: 5000)",
+    },
+
+    // shared
+    json: { type: "boolean", description: "Emit machine-readable JSON" },
+  },
+  async run({ args }) {
+    const subcommand = args.subcommand;
+    if (!subcommand) {
+      console.log(HELP);
+      return;
+    }
+
+    const stackName = (args["stack-name"] as string | undefined) ?? "hyperframes-default";
+
+    switch (subcommand) {
+      case "deploy": {
+        const { runDeploy } = await import("./lambda/deploy.js");
+        await runDeploy({
+          stackName,
+          region: args.region as string | undefined,
+          awsProfile: args.profile as string | undefined,
+          reservedConcurrency: parseIntFlag(args.concurrency),
+          chromeSource: parseChromeSource(args["chrome-source"]),
+          lambdaMemoryMb: parseIntFlag(args.memory),
+          skipBuild: Boolean(args["skip-build"]),
+        });
+        return;
+      }
+      case "sites": {
+        if (args.target !== "create") {
+          console.error(
+            `[lambda sites] unknown verb "${String(args.target)}". Only "create" is supported.`,
+          );
+          process.exit(1);
+        }
+        const projectDir = args.extra as string | undefined;
+        if (!projectDir) {
+          console.error(
+            "[lambda sites create] usage: hyperframes lambda sites create <projectDir>",
+          );
+          process.exit(1);
+        }
+        const { runSitesCreate } = await import("./lambda/sites.js");
+        await runSitesCreate({
+          projectDir,
+          stackName,
+          siteId: args["site-id"] as string | undefined,
+          json: Boolean(args.json),
+        });
+        return;
+      }
+      case "render": {
+        const projectDir = args.target as string | undefined;
+        if (!projectDir) {
+          console.error(
+            "[lambda render] usage: hyperframes lambda render <projectDir> --width <px> --height <px>",
+          );
+          process.exit(1);
+        }
+        const width = parseIntFlag(args.width);
+        const height = parseIntFlag(args.height);
+        if (!width || !height) {
+          console.error("[lambda render] --width and --height are required.");
+          process.exit(1);
+        }
+        const fpsRaw = parseIntFlag(args.fps) ?? 30;
+        if (fpsRaw !== 24 && fpsRaw !== 30 && fpsRaw !== 60) {
+          console.error(`[lambda render] --fps must be 24, 30, or 60; got ${fpsRaw}.`);
+          process.exit(1);
+        }
+        const { runRender } = await import("./lambda/render.js");
+        await runRender({
+          projectDir,
+          stackName,
+          siteId: args["site-id"] as string | undefined,
+          fps: fpsRaw,
+          width,
+          height,
+          format: parseFormat(args.format),
+          codec: parseCodec(args.codec),
+          quality: parseQuality(args.quality),
+          chunkSize: parseIntFlag(args["chunk-size"]),
+          maxParallelChunks: parseIntFlag(args["max-parallel-chunks"]),
+          executionName: args["execution-name"] as string | undefined,
+          outputKey: args["output-key"] as string | undefined,
+          json: Boolean(args.json),
+          wait: Boolean(args.wait),
+          waitIntervalMs: parseIntFlag(args["wait-interval-ms"]) ?? 5000,
+        });
+        return;
+      }
+      case "progress": {
+        const target = args.target as string | undefined;
+        if (!target) {
+          console.error(
+            "[lambda progress] usage: hyperframes lambda progress <renderId | executionArn>",
+          );
+          process.exit(1);
+        }
+        const { runProgress } = await import("./lambda/progress.js");
+        await runProgress({ target, stackName, json: Boolean(args.json) });
+        return;
+      }
+      case "destroy": {
+        const { runDestroy } = await import("./lambda/destroy.js");
+        await runDestroy({ stackName, awsProfile: args.profile as string | undefined });
+        return;
+      }
+      default:
+        console.error(`${c.error("Unknown subcommand:")} ${subcommand}\n${HELP}`);
+        process.exit(1);
+    }
+  },
+});
+
+function parseIntFlag(raw: unknown): number | undefined {
+  if (raw === undefined || raw === null || raw === "") return undefined;
+  const n = Number.parseInt(String(raw), 10);
+  return Number.isFinite(n) ? n : undefined;
+}
+
+function parseFormat(raw: unknown): "mp4" | "mov" | "png-sequence" {
+  const s = String(raw ?? "mp4");
+  if (s === "mp4" || s === "mov" || s === "png-sequence") return s;
+  throw new Error(`[lambda render] --format must be mp4|mov|png-sequence; got ${s}`);
+}
+
+function parseCodec(raw: unknown): "h264" | "h265" | undefined {
+  if (raw === undefined || raw === null || raw === "") return undefined;
+  const s = String(raw);
+  if (s === "h264" || s === "h265") return s;
+  throw new Error(`[lambda render] --codec must be h264|h265; got ${s}`);
+}
+
+function parseQuality(raw: unknown): "draft" | "standard" | "high" | undefined {
+  if (raw === undefined || raw === null || raw === "") return undefined;
+  const s = String(raw);
+  if (s === "draft" || s === "standard" || s === "high") return s;
+  throw new Error(`[lambda render] --quality must be draft|standard|high; got ${s}`);
+}
+
+function parseChromeSource(raw: unknown): "sparticuz" | "chrome-headless-shell" {
+  const s = String(raw ?? "sparticuz");
+  if (s === "sparticuz" || s === "chrome-headless-shell") return s;
+  throw new Error(
+    `[lambda deploy] --chrome-source must be sparticuz|chrome-headless-shell; got ${s}`,
+  );
+}

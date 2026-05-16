@@ -52,6 +52,10 @@ const GROUPS: Group[] = [
     ],
   },
   {
+    title: "Deploy",
+    commands: [["lambda", "Deploy and drive distributed renders on AWS Lambda"]],
+  },
+  {
     title: "AI & Integrations",
     commands: [
       ["skills", "Install HyperFrames and GSAP skills for AI coding tools"],
