@@ -70,7 +70,43 @@ AWS_REGION="${AWS_REGION:-us-east-1}"
 AWS_PROFILE="${AWS_PROFILE:-}"
 KEEP_STACK="false"
 SKIP_BUILD="false"
+# Lambda Map-state concurrency cap. 16 fans out the chunks aggressively
+# at the cost of a higher peak Lambda bill. Drop to 2-4 for cheaper runs;
+# raise as far as your AWS account's regional concurrency quota allows.
+RESERVED_CONCURRENCY="${RESERVED_CONCURRENCY:-16}"
 ARTIFACT_DIR="$REPO_ROOT/lambda-smoke-artifacts"
+
+usage() {
+  cat <<'EOF'
+Usage: smoke.sh [flags]
+
+Real-AWS smoke + benchmark for the HyperFrames Lambda adapter. Builds the
+handler ZIP, deploys the SAM stack to your AWS account, renders a fixture
+through Step Functions at several chunk counts, PSNR-compares each
+output against the in-process baseline, and tears the stack down.
+
+Flags:
+  --fixture <name>              fixture under packages/producer/tests/distributed/ (default: mp4-h264-sdr)
+  --chunk-counts <list>         comma-separated chunk counts to benchmark (default: 2,4,8)
+  --psnr-threshold <db>         PSNR floor in dB for visual equivalence (default: 40)
+  --stack-name <name>           SAM stack name (default: hyperframes-lambda-smoke-<timestamp>)
+  --region <region>             AWS region (default: $AWS_REGION or us-east-1)
+  --profile <name>              AWS profile (default: $AWS_PROFILE)
+  --reserved-concurrency <N>    Lambda Map MaxConcurrency cap (default: 16)
+  --keep-stack                  skip `sam delete` at the end (manual teardown later)
+  --skip-build                  reuse existing dist/handler.zip
+  -h, --help                    show this help and exit
+
+Cost notes:
+  Each run: build (free) + SAM deploy (~$0.01 in CFN ops) + per-chunk
+  Lambda invocations × MemorySize (default 10240 MB) × wall-clock seconds.
+  At 10 GB Lambda + ~30s per chunk × 8 chunks × 3 chunk-counts ≈ $0.04
+  per run before S3 PUT/GET. Set --reserved-concurrency lower for
+  cost-conscious accounts.
+
+Required tools on PATH: aws (v2), sam (>= 1.100), bun (>= 1.3), ffmpeg, jq, zip.
+EOF
+}
 
 # ── Arg parsing ───────────────────────────────────────────────────────────
 while [ $# -gt 0 ]; do
@@ -83,7 +119,8 @@ while [ $# -gt 0 ]; do
     --profile)        AWS_PROFILE="$2"; shift 2 ;;
     --keep-stack)     KEEP_STACK="true"; shift ;;
     --skip-build)     SKIP_BUILD="true"; shift ;;
-    -h|--help)        sed -n '2,40p' "$0"; exit 0 ;;
+    --reserved-concurrency) RESERVED_CONCURRENCY="$2"; shift 2 ;;
+    -h|--help)        usage; exit 0 ;;
     *) echo "Unknown flag: $1" >&2; exit 1 ;;
   esac
 done
@@ -201,7 +238,7 @@ if ! (cd "$SAM_DIR" && sam deploy \
         --no-fail-on-empty-changeset \
         --parameter-overrides \
           ChromeSource=sparticuz \
-          ReservedConcurrency=16); then
+          "ReservedConcurrency=$RESERVED_CONCURRENCY"); then
   echo "ERROR: sam deploy failed; tearing down rollback'd stack..." >&2
   cleanup_and_exit 3
 fi

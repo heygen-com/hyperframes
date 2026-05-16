@@ -9,14 +9,15 @@
 # This is a maintainer-run benchmark, not a CI gate. It deploys a real
 # Lambda stack (same template as smoke.sh) and tears it down at the end.
 #
-# Usage:
-#   ./eval.sh                                                 # defaults
-#   ./eval.sh --fixtures mp4-h264-sdr,many-cuts --chunk-count 4
-#   ./eval.sh --fixtures heygen-promo-preview-assets --keep-stack
-#   AWS_PROFILE=<your-profile> ./eval.sh
-#
-# Defaults pick a representative set spanning short → long fixtures so
-# the Lambda-overhead-vs-speedup curve is visible.
+# Wall-clock methodology caveat:
+#   The "local" timing includes `bun` + `tsx` + harness startup
+#   scaffolding, not just renderer-internal time. Lambda timing measures
+#   pure Step-Functions execution. The "speedup" column therefore biases
+#   AGAINST Lambda on tiny fixtures (where harness boot dominates) and
+#   IN FAVOUR of Lambda on larger ones. Treat the speedup as a rough
+#   "what does the end-to-end CLI experience feel like" number, not as
+#   "renderer-vs-renderer." Use --iterations N to get medians instead of
+#   single-sample readings — cold-start variance is ±5-10s.
 
 set -euo pipefail
 
@@ -39,7 +40,48 @@ AWS_PROFILE="${AWS_PROFILE:-}"
 KEEP_STACK="false"
 SKIP_BUILD="false"
 SKIP_LOCAL="false"
+# Lambda Map-state concurrency cap. 16 is aggressive; lower for cheaper
+# runs, raise as far as your account's regional quota allows.
+RESERVED_CONCURRENCY="${RESERVED_CONCURRENCY:-16}"
+# Number of Lambda renders per fixture. Cold-start variance is ±5-10s
+# per chunk; a single sample is noisy. With --iterations 3+ we report
+# the median Lambda wall-clock and use it for the speedup calculation.
+ITERATIONS="${ITERATIONS:-1}"
 ARTIFACT_DIR="$REPO_ROOT/lambda-eval-artifacts"
+
+usage() {
+  cat <<'EOF'
+Usage: eval.sh [flags]
+
+Maintainer-run benchmark comparing local in-process rendering to Lambda
+distributed rendering across a set of fixtures. Deploys a real Lambda
+stack, renders each fixture twice (locally + via Step Functions), and
+tears the stack down.
+
+Flags:
+  --fixtures <comma-sep>        fixture names (default: mp4-h264-sdr,many-cuts,gsap-letters-render-compat,heygen-promo-preview-assets)
+  --chunk-count <N>             chunk fan-out per Lambda render (default: 4)
+  --chunk-size <frames>         frames per chunk; pinned across fixtures (default: 60)
+  --psnr-threshold <db>         PSNR floor in dB for visual equivalence (default: 40)
+  --iterations <N>              Lambda renders per fixture; report median (default: 1)
+  --stack-name <name>           SAM stack name (default: hyperframes-lambda-eval-<timestamp>)
+  --region <region>             AWS region (default: $AWS_REGION or us-east-1)
+  --profile <name>              AWS profile (default: $AWS_PROFILE)
+  --reserved-concurrency <N>    Lambda Map MaxConcurrency cap (default: 16)
+  --keep-stack                  skip `sam delete` at the end
+  --skip-build                  reuse existing dist/handler.zip
+  --skip-local                  skip the in-process local render (Lambda-only)
+  -h, --help                    show this help and exit
+
+Cost notes:
+  Each pass: SAM deploy (~$0.01) + N fixtures × ITERATIONS × CHUNK_COUNT
+  Lambda invocations at MemorySize (default 10240 MB) × per-chunk wall
+  clock. With defaults (4 fixtures, 1 iteration, chunk-count 4) the
+  Lambda spend is roughly $0.10-$0.20 per pass before S3 PUT/GET. Drop
+  --reserved-concurrency for cost-conscious accounts; bump --iterations
+  for stable median timing at proportional cost.
+EOF
+}
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -47,16 +89,29 @@ while [ $# -gt 0 ]; do
     --chunk-count)     CHUNK_COUNT="$2"; shift 2 ;;
     --chunk-size)      CHUNK_SIZE="$2"; shift 2 ;;
     --psnr-threshold)  PSNR_THRESHOLD="$2"; shift 2 ;;
+    --iterations)      ITERATIONS="$2"; shift 2 ;;
     --stack-name)      STACK_NAME="$2"; shift 2 ;;
     --region)          AWS_REGION="$2"; shift 2 ;;
     --profile)         AWS_PROFILE="$2"; shift 2 ;;
+    --reserved-concurrency) RESERVED_CONCURRENCY="$2"; shift 2 ;;
     --keep-stack)      KEEP_STACK="true"; shift ;;
     --skip-build)      SKIP_BUILD="true"; shift ;;
     --skip-local)      SKIP_LOCAL="true"; shift ;;
-    -h|--help)         sed -n '2,30p' "$0"; exit 0 ;;
+    -h|--help)         usage; exit 0 ;;
     *) echo "Unknown flag: $1" >&2; exit 1 ;;
   esac
 done
+
+# Validate ITERATIONS is a positive integer (used as awk numeric input
+# in the median computation; a non-numeric value would silently produce
+# garbage timings).
+case "$ITERATIONS" in
+  ''|*[!0-9]*) echo "ERROR: --iterations must be a positive integer (got '$ITERATIONS')" >&2; exit 1 ;;
+esac
+if [ "$ITERATIONS" -lt 1 ]; then
+  echo "ERROR: --iterations must be >= 1 (got $ITERATIONS)" >&2
+  exit 1
+fi
 
 # AWS_DEFAULT_REGION is required for SAM (it doesn't honour AWS_REGION
 # alone). Export both so any sub-tool resolves the same region.
@@ -123,7 +178,7 @@ echo "→ SAM deploy (stack=$STACK_NAME)"
   --no-fail-on-empty-changeset \
   --parameter-overrides \
     ChromeSource=sparticuz \
-    ReservedConcurrency=16) || cleanup_and_exit 3
+    "ReservedConcurrency=$RESERVED_CONCURRENCY") || cleanup_and_exit 3
 
 BUCKET=$(aws cloudformation describe-stacks \
   --stack-name "$STACK_NAME" \
@@ -181,7 +236,7 @@ for FIXTURE in "${FIXTURE_LIST[@]}"; do
   fi
 
   # ── 2b. Lambda render ───────────────────────────────────────────────────
-  echo "→ Lambda render (N=$CHUNK_COUNT)"
+  echo "→ Lambda render (N=$CHUNK_COUNT, iterations=$ITERATIONS)"
   FIXTURE_META="$FIXTURE_DIR/meta.json"
   # Some fixtures store fps as a number (e.g. 30), others as {num,den}.
   # Pick the integer fps the Lambda config wants out of either shape.
@@ -193,53 +248,90 @@ for FIXTURE in "${FIXTURE_LIST[@]}"; do
   BASE_W=$(jq -r '.renderConfig.width // 640' "$FIXTURE_META")
   BASE_H=$(jq -r '.renderConfig.height // 360' "$FIXTURE_META")
 
-  # Pack + upload (tar.gz; Lambda image has no unzip)
+  # Pack + upload once per fixture (the project tarball is content-
+  # addressable; iterations reuse the same S3 object).
   TMP=$(mktemp -d)
   tar -czf "$TMP/project.tar.gz" -C "$FIXTURE_DIR/src" .
   aws s3 cp "$TMP/project.tar.gz" "s3://$BUCKET/projects/$FIXTURE.tar.gz" >/dev/null
   rm -rf "$TMP"
 
-  EXEC_NAME="eval-$FIXTURE-$(date +%s)"
-  OUTPUT_KEY="renders/$EXEC_NAME/output.mp4"
-  INPUT_JSON=$(jq -n \
-    --arg project "s3://$BUCKET/projects/$FIXTURE.tar.gz" \
-    --arg prefix "s3://$BUCKET/renders/$EXEC_NAME/" \
-    --arg output "s3://$BUCKET/$OUTPUT_KEY" \
-    --argjson n "$CHUNK_COUNT" \
-    --argjson cs "$CHUNK_SIZE" \
-    --argjson fps "$BASE_FPS" \
-    --argjson w "$BASE_W" \
-    --argjson h "$BASE_H" \
-    '{ProjectS3Uri:$project,PlanOutputS3Prefix:$prefix,OutputS3Uri:$output,Config:{fps:$fps,width:$w,height:$h,format:"mp4",chunkSize:$cs,maxParallelChunks:$n,runtimeCap:"lambda"}}')
+  ITER_TIMINGS=()
+  ITER_FAILED=0
+  for ITER in $(seq 1 "$ITERATIONS"); do
+    if [ "$ITERATIONS" -gt 1 ]; then
+      echo "  iter $ITER/$ITERATIONS"
+    fi
+    EXEC_NAME="eval-$FIXTURE-$(date +%s)-${ITER}"
+    OUTPUT_KEY="renders/$EXEC_NAME/output.mp4"
+    INPUT_JSON=$(jq -n \
+      --arg project "s3://$BUCKET/projects/$FIXTURE.tar.gz" \
+      --arg prefix "s3://$BUCKET/renders/$EXEC_NAME/" \
+      --arg output "s3://$BUCKET/$OUTPUT_KEY" \
+      --argjson n "$CHUNK_COUNT" \
+      --argjson cs "$CHUNK_SIZE" \
+      --argjson fps "$BASE_FPS" \
+      --argjson w "$BASE_W" \
+      --argjson h "$BASE_H" \
+      '{ProjectS3Uri:$project,PlanOutputS3Prefix:$prefix,OutputS3Uri:$output,Config:{fps:$fps,width:$w,height:$h,format:"mp4",chunkSize:$cs,maxParallelChunks:$n,runtimeCap:"lambda"}}')
 
-  LAMBDA_START=$(date +%s%3N)
-  EXEC_ARN=$(aws stepfunctions start-execution \
-    --state-machine-arn "$STATE_MACHINE_ARN" \
-    --name "$EXEC_NAME" \
-    --input "$INPUT_JSON" \
-    --query executionArn --output text)
-  STATUS="RUNNING"
-  for _ in $(seq 1 360); do
-    sleep 5
-    STATUS=$(aws stepfunctions describe-execution \
-      --execution-arn "$EXEC_ARN" --query status --output text)
-    if [ "$STATUS" != "RUNNING" ]; then break; fi
+    LAMBDA_START=$(date +%s%3N)
+    EXEC_ARN=$(aws stepfunctions start-execution \
+      --state-machine-arn "$STATE_MACHINE_ARN" \
+      --name "$EXEC_NAME" \
+      --input "$INPUT_JSON" \
+      --query executionArn --output text)
+    STATUS="RUNNING"
+    for _ in $(seq 1 360); do
+      sleep 5
+      STATUS=$(aws stepfunctions describe-execution \
+        --execution-arn "$EXEC_ARN" --query status --output text)
+      if [ "$STATUS" != "RUNNING" ]; then break; fi
+    done
+    LAMBDA_END=$(date +%s%3N)
+    ITER_MS=$((LAMBDA_END - LAMBDA_START))
+
+    if [ "$STATUS" != "SUCCEEDED" ]; then
+      echo "WARN: Lambda render of $FIXTURE (iter $ITER) failed ($STATUS); saving execution history" >&2
+      aws stepfunctions describe-execution --execution-arn "$EXEC_ARN" \
+        > "$ARTIFACT_DIR/lambda/$FIXTURE.iter${ITER}.execution.json" 2>/dev/null || true
+      aws stepfunctions get-execution-history --execution-arn "$EXEC_ARN" --max-results 1000 --output json \
+        > "$ARTIFACT_DIR/lambda/$FIXTURE.iter${ITER}.history.json" 2>/dev/null || true
+      cause=$(jq -r '.events[] | select(.type=="ExecutionFailed" or .type=="TaskFailed") | (.executionFailedEventDetails // .taskFailedEventDetails) | .cause // .error' "$ARTIFACT_DIR/lambda/$FIXTURE.iter${ITER}.history.json" 2>/dev/null | head -1)
+      [ -n "$cause" ] && echo "  cause: $(echo "$cause" | head -c 300)" >&2
+      ITER_FAILED=1
+      break
+    fi
+
+    # Keep the last successful iteration's mp4 as the PSNR/audio input.
+    aws s3 cp "s3://$BUCKET/$OUTPUT_KEY" "$LAMBDA_MP4" >/dev/null
+    ITER_TIMINGS+=("$ITER_MS")
+    if [ "$ITERATIONS" -gt 1 ]; then
+      echo "    iter $ITER wall=${ITER_MS}ms"
+    fi
   done
-  LAMBDA_END=$(date +%s%3N)
-  LAMBDA_MS=$((LAMBDA_END - LAMBDA_START))
 
-  if [ "$STATUS" != "SUCCEEDED" ]; then
-    echo "WARN: Lambda render of $FIXTURE failed ($STATUS); saving execution history" >&2
-    aws stepfunctions describe-execution --execution-arn "$EXEC_ARN" \
-      > "$ARTIFACT_DIR/lambda/$FIXTURE.execution.json" 2>/dev/null || true
-    aws stepfunctions get-execution-history --execution-arn "$EXEC_ARN" --max-results 1000 --output json \
-      > "$ARTIFACT_DIR/lambda/$FIXTURE.history.json" 2>/dev/null || true
-    cause=$(jq -r '.events[] | select(.type=="ExecutionFailed" or .type=="TaskFailed") | (.executionFailedEventDetails // .taskFailedEventDetails) | .cause // .error' "$ARTIFACT_DIR/lambda/$FIXTURE.history.json" 2>/dev/null | head -1)
-    [ -n "$cause" ] && echo "  cause: $(echo "$cause" | head -c 300)" >&2
+  if [ "$ITER_FAILED" -eq 1 ] || [ ${#ITER_TIMINGS[@]} -eq 0 ]; then
     continue
   fi
-  aws s3 cp "s3://$BUCKET/$OUTPUT_KEY" "$LAMBDA_MP4" >/dev/null
-  echo "  lambda wall=${LAMBDA_MS}ms"
+
+  # Median of the iteration wall-clocks. Awk handles both odd (middle
+  # element) and even (mean of middle two) sample counts without
+  # bash-side branching. For ITERATIONS=1 the median is just the sample.
+  LAMBDA_MS=$(printf '%s\n' "${ITER_TIMINGS[@]}" \
+    | sort -n \
+    | awk '
+        { a[NR] = $1 }
+        END {
+          n = NR
+          if (n % 2 == 1) print a[int((n + 1) / 2)]
+          else printf("%.0f\n", (a[n/2] + a[n/2 + 1]) / 2)
+        }
+      ')
+  if [ "$ITERATIONS" -gt 1 ]; then
+    echo "  lambda median wall=${LAMBDA_MS}ms (samples: ${ITER_TIMINGS[*]})"
+  else
+    echo "  lambda wall=${LAMBDA_MS}ms"
+  fi
 
   # ── 2c. PSNR comparisons ───────────────────────────────────────────────
   psnr_of() {
@@ -292,8 +384,15 @@ for FIXTURE in "${FIXTURE_LIST[@]}"; do
     local rms
     rms=$(printf '%s\n' "$out" | grep -oE "Overall RMS level(\s*dB)?\s*:\s*(-?inf|[-0-9.]+)" | head -1 | sed -E 's/.*:\s*//')
     if [ -z "$rms" ]; then
-      # Fallback: per-channel RMS level lines (no "Overall" prefix on some builds)
+      # Fallback 1: per-channel "RMS level dB:" lines, which most modern
+      # ffmpeg builds emit. Picks the first (most pessimistic).
       rms=$(printf '%s\n' "$out" | grep -oE "RMS level\s*dB\s*:\s*(-?inf|[-0-9.]+)" | head -1 | sed -E 's/.*:\s*//')
+    fi
+    if [ -z "$rms" ]; then
+      # Fallback 2: very old ffmpeg builds emit `RMS level:` with no `dB`
+      # suffix and the unit trailing the value (e.g. `RMS level: -42.3 dB`).
+      # Use word boundaries to avoid eating `RMS peak level` lines.
+      rms=$(printf '%s\n' "$out" | grep -oE "\bRMS level\b\s*:\s*(-?inf|[-0-9.]+)" | head -1 | sed -E 's/.*:\s*//')
     fi
     if [ -z "$rms" ]; then
       rms="0"

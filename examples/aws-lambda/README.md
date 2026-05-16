@@ -126,10 +126,14 @@ script:
 ./scripts/smoke.sh \
   --fixture mp4-h264-sdr \
   --chunk-counts 2,4,8,16 \
-  --psnr-threshold 40
+  --psnr-threshold 40 \
+  --reserved-concurrency 8
 
 # Keep the stack alive for inspection afterward:
 ./scripts/smoke.sh --keep-stack
+
+# Show all flags including cost notes:
+./scripts/smoke.sh --help
 ```
 
 The script builds the handler ZIP, deploys this template under a
@@ -138,6 +142,23 @@ Step Functions state machine, PSNR-compares against the in-process
 baseline (which is git-LFS tracked under
 `packages/producer/tests/distributed/<fixture>/output/`), captures
 per-execution Step Functions history, and tears the stack down.
+
+**Wall-clock methodology caveat (`eval.sh` only).** `eval.sh` reports a
+local-vs-Lambda "speedup" column. The local timing includes `bun` +
+`tsx` + harness scaffolding (not just renderer-internal time); the
+Lambda timing measures Step Functions execution only. This biases the
+speedup against Lambda on tiny fixtures and in favour of Lambda on
+larger ones. Treat the number as "end-to-end CLI experience," not as a
+renderer-vs-renderer benchmark. Cold-start variance is ±5-10s per
+chunk; run with `--iterations 3+` to report medians.
+
+**Cost per pass.** Each `eval.sh` invocation runs `SAM deploy` (~$0.01
+in CFN operations) plus N fixtures × ITERATIONS × CHUNK_COUNT Lambda
+invocations at `MemorySize` (default 10 GiB) × per-chunk wall clock.
+With defaults (4 fixtures, 1 iteration, chunk-count 4) the Lambda
+spend is roughly $0.10-$0.20 per pass before S3 transfer. Lower
+`--reserved-concurrency` for cost-conscious accounts; higher
+`--iterations` improves median stability at proportional cost.
 
 Outputs land under `<repo-root>/lambda-smoke-artifacts/`:
 
