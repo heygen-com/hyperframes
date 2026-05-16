@@ -96,25 +96,15 @@ export interface CaptureStageInput {
   onProgress?: ProgressCallback;
   /**
    * Capture a sub-range `[startFrame, endFrame)` of the composition's
-   * timeline. Used by distributed `renderChunk` workers to render only
-   * their assigned chunk. Captured frames are written with file names
-   * normalized to start at zero (`frame_000000.{ext}`) so the encoder
-   * doesn't need an `-start_number` override; per-frame TIMES still
-   * reflect the absolute frame index via `(absIdx * fps.den) / fps.num`,
-   * keeping the page's virtual clock identical to what an in-process
-   * render at that frame would see.
+   * timeline. Used by distributed `renderChunk` to render only its chunk.
+   * Captured file names are 0-indexed within the range; per-frame TIMES use
+   * the absolute frame index so the page's virtual clock matches an
+   * in-process render at that frame. Supported on both the sequential and
+   * parallel branches; the parallel branch threads `frameRange.startFrame`
+   * through as `frameRangeStart`. See `WorkerTask.outputFrameOffset`.
    *
-   * Supported on both the sequential (`workerCount === 1`) and parallel
-   * (`workerCount > 1`) branches. The parallel branch forwards
-   * `frameRange.startFrame` to `executeDiskCaptureWithAdaptiveRetry` as
-   * `frameRangeStart` so each worker's `WorkerTask` lands on absolute
-   * composition indices for time and 0-indexed file names within the
-   * chunk range. `mergeWorkerFrames` then stitches each worker's slice
-   * into a contiguous `0..rangeFrames-1` framesDir, matching what the
-   * sequential path already produces.
-   *
-   * Default `undefined`: the stage captures `[0, totalFrames)` (the
-   * in-process contract).
+   * Default `undefined`: capture `[0, totalFrames)` (in-process contract).
+   * When set, `endFrame - startFrame` MUST equal `totalFrames`.
    */
   frameRange?: { startFrame: number; endFrame: number };
 }
@@ -167,6 +157,18 @@ export async function runCaptureStage(input: CaptureStageInput): Promise<Capture
       throw new Error(
         `[captureStage] invalid frameRange: ${JSON.stringify(frameRange)}. ` +
           `Expected non-negative startFrame strictly less than endFrame.`,
+      );
+    }
+    // The parallel branch passes `totalFrames` to executeDiskCaptureWithAdaptiveRetry
+    // (which drives `distributeFrames` partitioning and `findMissingFrameRanges`
+    // completion checks) AND `frameRangeStart` separately. They must describe the
+    // same window: callers passing `totalFrames=100, frameRange={50, 200}` would
+    // get a silently wrong distribution.
+    const rangeFrames = frameRange.endFrame - frameRange.startFrame;
+    if (rangeFrames !== totalFrames) {
+      throw new Error(
+        `[captureStage] frameRange size (${rangeFrames}) must equal totalFrames (${totalFrames}). ` +
+          `Received frameRange=${JSON.stringify(frameRange)}.`,
       );
     }
   }

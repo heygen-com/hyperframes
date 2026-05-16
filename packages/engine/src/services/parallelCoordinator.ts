@@ -30,16 +30,12 @@ export interface WorkerTask {
   endFrame: number;
   outputDir: string;
   /**
-   * Offset to subtract from the absolute frame index when computing the
-   * captured file's name. Default 0: file name equals absolute index (the
-   * in-process contract — workers writing into a shared framesDir indexed
-   * `0..totalFrames-1`). Distributed chunks set this to the chunk's
-   * absolute startFrame so file names land 0-indexed within the chunk's
-   * range, matching the sequential chunk-capture contract and the encoder's
-   * expectation that frames are read sequentially without an
-   * `-start_number` override. The per-frame TIME calculation still uses
-   * the absolute frame index so the page's virtual clock matches an
-   * in-process render at that frame.
+   * Offset subtracted from the absolute frame index when naming the captured
+   * file (`frame_<i - outputFrameOffset>.{ext}`). Default 0. Distributed
+   * chunks set this to the chunk's absolute startFrame so file names land
+   * 0-indexed within the chunk's range — the encoder reads frames
+   * sequentially without an `-start_number` override. The per-frame TIME
+   * calculation still uses the absolute frame index.
    */
   outputFrameOffset?: number;
 }
@@ -220,23 +216,15 @@ async function executeWorkerTask(
       // frame-index → time math. The 1-in-1001 ULP loss for NTSC is invisible
       // at our scales (frame count tops out at single-digit thousands).
       const time = (i * captureOptions.fps.den) / captureOptions.fps.num;
-      // File NAME uses the offset-adjusted index so chunk renders end up with
-      // `frame_0..frame_(chunkSize-1)` in the framesDir (matching the
-      // sequential chunk contract); time uses the absolute index `i` so the
-      // page's virtual clock matches what an in-process render at the same
-      // frame would see. For in-process renders `outputOffset` is 0 so the
-      // file name equals the absolute index — the prior contract is unchanged.
       const fileFrameIdx = i - outputOffset;
 
       if (onFrameBuffer) {
-        // Streaming mode: capture to buffer and invoke callback. The
-        // callback still receives the absolute index `i` so the streaming
-        // encoder sequences frames against the composition's timeline; only
-        // the disk file name uses the offset.
+        // The streaming-encode callback receives the absolute index `i`
+        // (not `fileFrameIdx`) so the encoder sequences frames against the
+        // composition's timeline.
         const { buffer } = await captureFrameToBuffer(session, fileFrameIdx, time);
         await onFrameBuffer(i, buffer);
       } else {
-        // Disk mode: capture to file
         await captureFrame(session, fileFrameIdx, time);
       }
       framesCaptured++;

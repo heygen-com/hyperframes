@@ -532,35 +532,12 @@ export async function renderChunk(
       // would deadlock Chrome's compositor by issuing a second beginFrame
       // at a `frameTimeTicks` it had just advanced to.
 
-      // ── Capture the chunk's range via runCaptureStage ──
-      //
-      // Auto-size the chunk's intra-pod worker count via the same
-      // `calculateOptimalWorkers` helper the in-process renderer uses. The
-      // distributed primitive previously hardcoded `workerCount: 1`, leaving
-      // ~18 of a typical 22-vCPU pod's cores idle while a single Chrome
-      // session rendered the chunk: chunk-level fan-out at the orchestration
-      // layer (Temporal / Lambda / K8s Jobs) gave each pod one chunk at a
-      // time, but the chunk render itself was single-threaded. Matching the
-      // in-process renderer's worker selection lifts that ceiling and lets
-      // chunks saturate the pod they land on (typically 2-6 workers based on
-      // pod CPU + frame count).
-      //
-      // The framesDir contract is unchanged: the sequential and parallel
-      // branches of `runCaptureStage` both emit a contiguous, 0-indexed
-      // `frame_<i>.{ext}` directory within the chunk's range, so the encoder
-      // downstream is unaffected. The pre-warmed `probeSession` is consumed
-      // only by the sequential branch; the parallel branch closes it during
-      // stage entry and creates its own worker sessions. The ~3-5s warmup is
-      // wasted when the auto-sized worker count is >1 — kept for now because
-      // the per-chunk render-time win dwarfs it; a follow-up can skip
-      // probeSession creation when the resolved workerCount > 1.
-      //
-      // `requestedWorkers` is `undefined` so the auto path computes the
-      // worker count from `framesInChunk` + `cfg.concurrency` (default
-      // "auto") + pod CPU. Capture-cost calibration based on shader
-      // transitions / renderModeHints is not threaded through yet; the
-      // chunk's compiled metadata could be plumbed if heavy shader work
-      // starts trigging compositor contention.
+      // Capture-cost calibration based on shader transitions /
+      // renderModeHints is not threaded through to chunks yet; the in-process
+      // renderer's `resolveRenderWorkerCount` wraps this with that reduction,
+      // but `PlanJson` doesn't carry the compiled hints needed to call it
+      // directly. The existing adaptive-retry path reduces workers if
+      // compositor contention surfaces as CDP timeouts.
       const chunkWorkerCount = calculateOptimalWorkers(framesInChunk, undefined, cfg);
       await runCaptureStage({
         fileServer,
@@ -572,11 +549,9 @@ export async function renderChunk(
         forceScreenshot: encoder.forceScreenshot,
         log,
         workerCount: chunkWorkerCount,
-        // Pass the pre-warmed session through as `probeSession` so captureStage
-        // reuses it via `prepareCaptureSessionForReuse` instead of spinning up
-        // a fresh browser (sequential path only). The stage closes the session
-        // in its `finally`, so we MUST clear our own reference here to avoid
-        // a double-close.
+        // The parallel branch closes this session and spins up its own
+        // worker sessions, wasting the ~3-5s of pre-warmed setup. Worth a
+        // follow-up to skip pre-warmup when the resolved workerCount > 1.
         probeSession: session,
         needsAlpha: plan.dimensions.format !== "mp4",
         captureAttempts: [],
