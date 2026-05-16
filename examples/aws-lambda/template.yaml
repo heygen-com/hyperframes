@@ -71,7 +71,24 @@ Globals:
     Runtime: nodejs22.x
     MemorySize: !Ref LambdaMemoryMb
     Timeout: !Ref LambdaTimeoutSec
+    # x86_64 is required for @sparticuz/chromium — its prebuilt
+    # Chromium ships x86_64-only. Adopters who switch to a custom
+    # ARM-built chrome-headless-shell can change this to `arm64`, but
+    # the default ZIP build will fail to launch on Graviton.
     Architectures: [x86_64]
+    # Lambda function-level X-Ray tracing. The state machine already
+    # has Tracing.Enabled: true; without this, X-Ray traces would
+    # terminate at the Step Functions → Lambda boundary instead of
+    # following into per-function spans.
+    Tracing: Active
+    # Cost-allocation tags. Setting these at the Globals level applies
+    # to every AWS::Serverless::Function in the template — there's
+    # only one today, but the contract is portable to multi-function
+    # variants. Bucket + state-machine carry the same tags resource-
+    # locally because Globals only covers functions.
+    Tags:
+      Project: !Ref ProjectName
+      HyperFramesComponent: lambda-renderer
     Environment:
       Variables:
         NODE_OPTIONS: "--enable-source-maps"
@@ -95,6 +112,13 @@ Resources:
         IgnorePublicAcls: true
         RestrictPublicBuckets: true
       VersioningConfiguration:
+        # `Suspended` keeps storage costs flat — versions are not
+        # retained on overwrites. Tradeoff: if an adopter writes their
+        # final rendered mp4 to this bucket and a re-render overwrites
+        # the same key, the prior version is gone. Adopters who treat
+        # the final mp4 as user-keepable should set this to `Enabled`
+        # (intermediates under `renders/` still expire via the
+        # lifecycle rule below regardless).
         Status: Suspended
       LifecycleConfiguration:
         Rules:
@@ -105,6 +129,11 @@ Resources:
             # Users keep the final mp4 (different key prefix); the rest
             # can age out after a week to keep storage costs flat.
             ExpirationInDays: 7
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: HyperFramesComponent
+          Value: lambda-renderer
 
   # ── Single Lambda function handling all three roles ──────────────────────
   RenderFunction:
@@ -171,6 +200,13 @@ Resources:
         Comment: >-
           HyperFrames distributed render orchestration. See
           DISTRIBUTED-RENDERING-PLAN.md §2.5 for the architecture.
+        # Defensive 1-hour ceiling on the whole choreography. The
+        # individual states already have retries + per-task timeouts;
+        # this catches pathological runaways (Plan-retry storm,
+        # stuck-state-machine bugs) at the top before per-task budgets
+        # compound into a multi-hour execution. The longest legitimate
+        # render observed in PR 880's eval was ~3 minutes.
+        TimeoutSeconds: 3600
         StartAt: Plan
         States:
           Plan:
@@ -217,7 +253,25 @@ Resources:
             Parameters:
               ChunkIndexes.$: "States.ArrayRange(0, States.MathAdd($.Plan.ChunkCount, -1), 1)"
             ResultPath: $.Iterator
-            Next: RenderChunks
+            Next: AssertChunkCount
+
+          AssertChunkCount:
+            # Defensive gate: `resolveChunkPlan` guarantees ChunkCount ≥ 1,
+            # but if some future regression let a zero-chunk plan through,
+            # `RenderChunks` (Map state) would iterate zero times and
+            # `Assemble` would receive an empty `ChunkS3Uris` array — silently
+            # producing an empty output. Fail fast instead.
+            Type: Choice
+            Choices:
+              - Variable: $.Plan.ChunkCount
+                NumericGreaterThan: 0
+                Next: RenderChunks
+            Default: PlanProducedZeroChunks
+
+          PlanProducedZeroChunks:
+            Type: Fail
+            Error: PLAN_TOO_LARGE
+            Cause: Plan returned ChunkCount=0 — non-retryable producer-side invariant violation.
 
           RenderChunks:
             Type: Map
@@ -371,6 +425,58 @@ Resources:
       EvaluationPeriods: 1
       Threshold: !Ref ChunkInvocationAlarmThreshold
       ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+
+  # ── CloudWatch alarm: Lambda function errors ────────────────────────────
+  # Fires on any non-zero error rate. The invocation alarm above catches
+  # *too many calls*; this catches *calls that failed*. Without it,
+  # silent per-chunk failures (a non-retryable error inside the
+  # producer) would only surface by reading Step Functions execution
+  # history.
+  RenderFunctionErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${ProjectName}-render-function-errors"
+      AlarmDescription: >-
+        Fires if the render Lambda reports any errors in a 5-minute
+        window. Set EvaluationPeriods=1 so a single failure pages.
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref RenderFunction
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+
+  # ── CloudWatch alarm: Step Functions execution failures ─────────────────
+  # Fires when a state-machine execution reaches a terminal failure
+  # state (typed non-retryable, retry-exhausted, or top-level timeout).
+  # Complementary to the Lambda Errors alarm: SFN failures include
+  # Choice-state Fail branches (PlanProducedZeroChunks) that bypass
+  # Lambda entirely, plus retry-exhaustion of transient errors that
+  # individual Lambda invocations counted as successful "retries".
+  RenderStateMachineFailedAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${ProjectName}-render-state-machine-failed"
+      AlarmDescription: >-
+        Fires when the render state machine reports a failed
+        execution. Catches retry-exhaustion + typed non-retryable +
+        TimeoutSeconds cases that the Lambda Errors metric misses.
+      Namespace: AWS/States
+      MetricName: ExecutionsFailed
+      Dimensions:
+        - Name: StateMachineArn
+          Value: !Ref RenderStateMachine
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
       TreatMissingData: notBreaching
 
 Outputs:
