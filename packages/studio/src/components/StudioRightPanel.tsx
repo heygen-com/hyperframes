@@ -55,6 +55,7 @@ export function StudioRightPanel({
     copiedAgentPrompt,
     clearDomSelection,
     handleDomStyleCommit,
+    handleDomAttributeCommit,
     handleDomPathOffsetCommit,
     handleDomBoxSizeCommit,
     handleDomRotationCommit,
@@ -168,6 +169,7 @@ export function StudioRightPanel({
                   copiedAgentPrompt={copiedAgentPrompt}
                   onClearSelection={clearDomSelection}
                   onSetStyle={handleDomStyleCommit}
+                  onSetAttribute={handleDomAttributeCommit}
                   onSetManualOffset={handleDomPathOffsetCommit}
                   onSetManualSize={handleDomBoxSizeCommit}
                   onSetManualRotation={handleDomRotationCommit}

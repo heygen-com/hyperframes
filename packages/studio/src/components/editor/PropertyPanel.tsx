@@ -1,5 +1,5 @@
 import { memo } from "react";
-import { Eye, Layers, MessageSquare, Move, X } from "../../icons/SystemIcons";
+import { Clock, Eye, Layers, MessageSquare, Move, X } from "../../icons/SystemIcons";
 import {
   collectDomEditLayerItems,
   getDomEditLayerKey,
@@ -39,6 +39,7 @@ interface PropertyPanelProps {
   copiedAgentPrompt: boolean;
   onClearSelection: () => void;
   onSetStyle: (prop: string, value: string) => void | Promise<void>;
+  onSetAttribute: (attr: string, value: string) => void | Promise<void>;
   onSetManualOffset: (element: DomEditSelection, next: { x: number; y: number }) => void;
   onSetManualSize: (element: DomEditSelection, next: { width: number; height: number }) => void;
   onSetManualRotation: (element: DomEditSelection, next: { angle: number }) => void;
@@ -115,6 +116,68 @@ function LayerTree({
 }
 
 /* ------------------------------------------------------------------ */
+/*  TimingSection                                                      */
+/* ------------------------------------------------------------------ */
+
+function formatTimingValue(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds < 0) return "0.00s";
+  return `${seconds.toFixed(2)}s`;
+}
+
+function parseTimingValue(input: string): number | null {
+  const cleaned = input.replace(/s$/i, "").trim();
+  const parsed = Number.parseFloat(cleaned);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function TimingSection({
+  element,
+  onSetAttribute,
+}: {
+  element: DomEditSelection;
+  onSetAttribute: (attr: string, value: string) => void | Promise<void>;
+}) {
+  const start = Number.parseFloat(element.dataAttributes.start ?? "0") || 0;
+  const duration = Number.parseFloat(element.dataAttributes.duration ?? "0") || 0;
+  const end = start + duration;
+
+  const commitStart = (nextValue: string) => {
+    const parsed = parseTimingValue(nextValue);
+    if (parsed == null) return;
+    void onSetAttribute("start", parsed.toFixed(2));
+  };
+
+  const commitDuration = (nextValue: string) => {
+    const parsed = parseTimingValue(nextValue);
+    if (parsed == null || parsed <= 0) return;
+    void onSetAttribute("duration", parsed.toFixed(2));
+  };
+
+  const commitEnd = (nextValue: string) => {
+    const parsed = parseTimingValue(nextValue);
+    if (parsed == null || parsed <= start) return;
+    void onSetAttribute("duration", (parsed - start).toFixed(2));
+  };
+
+  return (
+    <Section title="Timing" icon={<Clock size={15} />}>
+      <div className={RESPONSIVE_GRID}>
+        <MetricField label="Start" value={formatTimingValue(start)} scrub onCommit={commitStart} />
+        <MetricField label="End" value={formatTimingValue(end)} scrub onCommit={commitEnd} />
+      </div>
+      <div className="mt-3">
+        <MetricField
+          label="Duration"
+          value={formatTimingValue(duration)}
+          scrub
+          onCommit={commitDuration}
+        />
+      </div>
+    </Section>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /*  PropertyPanel                                                      */
 /* ------------------------------------------------------------------ */
 
@@ -126,6 +189,7 @@ export const PropertyPanel = memo(function PropertyPanel({
   copiedAgentPrompt,
   onClearSelection,
   onSetStyle,
+  onSetAttribute,
   onSetManualOffset,
   onSetManualSize,
   onSetManualRotation,
@@ -321,6 +385,10 @@ export const PropertyPanel = memo(function PropertyPanel({
             />
           </div>
         </Section>
+
+        {element.dataAttributes.start != null && (
+          <TimingSection element={element} onSetAttribute={onSetAttribute} />
+        )}
 
         {showEditableSections && (
           <StyleSections

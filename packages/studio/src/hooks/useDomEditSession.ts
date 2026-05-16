@@ -193,6 +193,7 @@ export function useDomEditSession({
   const {
     resolveImportedFontAsset,
     handleDomStyleCommit,
+    handleDomAttributeCommit,
     handleDomTextCommit,
     handleDomTextFieldStyleCommit,
     handleDomAddTextField,
@@ -305,6 +306,7 @@ export function useDomEditSession({
     applyDomSelection,
     clearDomSelection,
     handleDomStyleCommit,
+    handleDomAttributeCommit,
     handleDomPathOffsetCommit,
     handleDomGroupPathOffsetCommit,
     handleDomBoxSizeCommit,
