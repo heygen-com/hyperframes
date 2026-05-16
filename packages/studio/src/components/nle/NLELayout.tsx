@@ -99,7 +99,7 @@ export const NLELayout = memo(function NLELayout({
     togglePlay,
     seek,
     onIframeLoad: baseOnIframeLoad,
-    saveSeekPosition,
+    refreshPlayer,
   } = useTimelinePlayer();
 
   // Reset timeline state when the project changes
@@ -109,13 +109,16 @@ export const NLELayout = memo(function NLELayout({
     usePlayerStore.getState().reset();
   }
 
-  // Save seek position before refresh
+  // Lightweight reload: change iframe src instead of destroying the Player.
+  // refreshPlayer() saves the seek position and appends a cache-busting _t
+  // param, avoiding the full web-component teardown + crossfade that the
+  // key-based path uses.
   const prevRefreshKeyRef = useRef(refreshKey);
   useEffect(() => {
     if (refreshKey === prevRefreshKeyRef.current) return;
     prevRefreshKeyRef.current = refreshKey;
-    saveSeekPosition();
-  }, [refreshKey, saveSeekPosition]);
+    refreshPlayer();
+  }, [refreshKey, refreshPlayer]);
 
   const onIframeLoad = useCallback(() => {
     baseOnIframeLoad();

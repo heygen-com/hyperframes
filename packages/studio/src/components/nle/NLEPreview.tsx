@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useRef, useState, type Ref } from "react";
+import { memo, useCallback, useEffect, useRef, type Ref } from "react";
 import { Player } from "../../player";
 import {
   DEFAULT_PREVIEW_ZOOM,
@@ -53,15 +53,14 @@ export const NLEPreview = memo(function NLEPreview({
   onCompositionLoadingChange,
   portrait,
   directUrl,
-  refreshKey,
   suppressLoadingOverlay,
 }: NLEPreviewProps) {
-  const baseKey = getPreviewPlayerKey({ projectId, directUrl, refreshKey });
-  const prevRefreshKeyRef = useRef(refreshKey);
+  // Player key only changes for structural changes (project switch, composition
+  // drill-down), NOT for content refreshes. Content refreshes use the lighter
+  // iframe.src reload path handled by NLELayout → refreshPlayer().
+  const activeKey = getPreviewPlayerKey({ projectId, directUrl });
   const viewportRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
-  const [retiringKey, setRetiringKey] = useState<string | null>(null);
-  const retiringTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const zoomRef = useRef<PreviewZoomState>(loadInitialZoom());
   const hudRef = useRef<HTMLDivElement>(null);
@@ -80,7 +79,6 @@ export const NLEPreview = memo(function NLEPreview({
     return () => {
       if (settleTimerRef.current) clearTimeout(settleTimerRef.current);
       if (hudTimerRef.current) clearTimeout(hudTimerRef.current);
-      if (retiringTimerRef.current) clearTimeout(retiringTimerRef.current);
     };
   }, []);
 
@@ -130,30 +128,12 @@ export const NLEPreview = memo(function NLEPreview({
     [writeTransform],
   );
 
-  if (refreshKey !== prevRefreshKeyRef.current) {
-    const oldKey = `${baseKey}:${prevRefreshKeyRef.current ?? 0}`;
-    prevRefreshKeyRef.current = refreshKey;
-    setRetiringKey(oldKey);
-  }
-
-  const activeKey = `${baseKey}:${refreshKey ?? 0}`;
-
   const applyInitialZoom = useCallback(() => {
     const z = zoomRef.current;
     if (Math.abs(z.zoomPercent - 100) > 0.5 || Math.abs(z.panX) > 0.1 || Math.abs(z.panY) > 0.1) {
       writeTransform(z);
     }
   }, [writeTransform]);
-
-  const handleNewPlayerLoad = () => {
-    onIframeLoad();
-    applyInitialZoom();
-    if (retiringTimerRef.current) clearTimeout(retiringTimerRef.current);
-    retiringTimerRef.current = setTimeout(() => {
-      setRetiringKey(null);
-      retiringTimerRef.current = null;
-    }, 160);
-  };
 
   useEffect(() => {
     const viewport = viewportRef.current;
@@ -282,32 +262,17 @@ export const NLEPreview = memo(function NLEPreview({
           }}
           data-testid="preview-zoom-stage"
         >
-          {retiringKey && (
-            <Player
-              key={retiringKey}
-              projectId={directUrl ? undefined : projectId}
-              directUrl={directUrl}
-              onLoad={() => {}}
-              portrait={portrait}
-              style={{ position: "absolute", inset: 0, zIndex: 0, opacity: 1 }}
-            />
-          )}
           <Player
             key={activeKey}
             ref={iframeRef}
             projectId={directUrl ? undefined : projectId}
             directUrl={directUrl}
-            onLoad={
-              retiringKey
-                ? handleNewPlayerLoad
-                : () => {
-                    onIframeLoad();
-                    applyInitialZoom();
-                  }
-            }
+            onLoad={() => {
+              onIframeLoad();
+              applyInitialZoom();
+            }}
             onCompositionLoadingChange={onCompositionLoadingChange}
             portrait={portrait}
-            style={retiringKey ? { position: "absolute", inset: 0, zIndex: 1 } : undefined}
             suppressLoadingOverlay={suppressLoadingOverlay}
           />
         </div>
