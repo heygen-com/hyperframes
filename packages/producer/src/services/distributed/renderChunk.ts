@@ -532,6 +532,26 @@ export async function renderChunk(
       // at a `frameTimeTicks` it had just advanced to.
 
       // ── Capture the chunk's range via runCaptureStage ──
+      //
+      // `workerCount: 2` parallelizes the chunk's capture across two Chrome
+      // sessions on this worker. Adopters that deploy chunks onto multi-core
+      // hosts (the standard pattern — Temporal pods, Lambda containers, K8s
+      // Jobs at 8-24 vCPU) previously pinned only ~3-4 cores per chunk while
+      // the rest sat idle: chunk-level fan-out at the orchestration layer
+      // gave each pod one chunk at a time, and the chunk render itself was
+      // single-threaded. Doubling to two intra-chunk workers approximately
+      // halves per-chunk wall time on per-frame-heavy compositions (where
+      // the slowest chunk gates total distributed wall-clock), without
+      // changing the chunk's byte-identical-retry contract — the sequential
+      // and parallel branches of `runCaptureStage` both produce a
+      // contiguous, 0-indexed `frame_<i>.{ext}` framesDir within the chunk's
+      // range, so the encoder downstream is unchanged.
+      //
+      // The pre-warmed `probeSession` is consumed only by the sequential
+      // branch; the parallel branch closes it during stage entry and creates
+      // its own worker sessions. The ~3-5s warmup is therefore wasted under
+      // parallel — kept for now because the chunk-render speedup dwarfs it;
+      // a follow-up can skip probeSession creation when workerCount > 1.
       await runCaptureStage({
         fileServer,
         workDir,
@@ -541,11 +561,12 @@ export async function renderChunk(
         cfg,
         forceScreenshot: encoder.forceScreenshot,
         log,
-        workerCount: 1,
+        workerCount: 2,
         // Pass the pre-warmed session through as `probeSession` so captureStage
         // reuses it via `prepareCaptureSessionForReuse` instead of spinning up
-        // a fresh browser. The stage closes the session in its `finally`,
-        // so we MUST clear our own reference here to avoid a double-close.
+        // a fresh browser (sequential path only). The stage closes the session
+        // in its `finally`, so we MUST clear our own reference here to avoid
+        // a double-close.
         probeSession: session,
         needsAlpha: plan.dimensions.format !== "mp4",
         captureAttempts: [],

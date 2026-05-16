@@ -536,17 +536,27 @@ export function buildMissingFrameRetryBatches(
   maxWorkers: number,
   workDir: string,
   attempt: number,
+  rangeStart: number = 0,
 ): WorkerTask[][] {
   const workersPerBatch = Math.max(1, Math.floor(maxWorkers));
   const batches: WorkerTask[][] = [];
 
+  // `ranges` come from `findMissingFrameRanges` which walks file names in
+  // the framesDir — those names are 0-indexed within the chunk's frame range
+  // (or within the in-process render when `rangeStart === 0`). Translate to
+  // ABSOLUTE composition frame indices for `WorkerTask.startFrame/endFrame`
+  // (so the per-frame TIME math `(i * fps.den) / fps.num` lands on the same
+  // virtual clock the page already saw), and set `outputFrameOffset` so the
+  // worker writes the captured file back at the local name the missing-range
+  // scan was looking for.
   for (let i = 0; i < ranges.length; i += workersPerBatch) {
     const batchIndex = batches.length;
     const batch = ranges.slice(i, i + workersPerBatch).map((range, workerId) => ({
       workerId,
-      startFrame: range.startFrame,
-      endFrame: range.endFrame,
+      startFrame: rangeStart + range.startFrame,
+      endFrame: rangeStart + range.endFrame,
       outputDir: join(workDir, `retry-${attempt}-batch-${batchIndex}-worker-${workerId}`),
+      outputFrameOffset: rangeStart,
     }));
     batches.push(batch);
   }
@@ -605,11 +615,23 @@ export async function executeDiskCaptureWithAdaptiveRetry(options: {
   onProgress?: (progress: ParallelProgress) => void;
   cfg: EngineConfig;
   log: ProducerLogger;
+  /**
+   * Absolute composition frame index of the first frame this call should
+   * capture. Default 0 (the in-process contract: `[0, totalFrames)`).
+   * Distributed `renderChunk` workers set this to the chunk's startFrame so
+   * the workers' per-frame TIME math lands on the page's actual virtual clock
+   * at that frame, while the captured file names are still 0-indexed within
+   * the chunk's range (so `findMissingFrameRanges` / `countCapturedFrames`
+   * see a contiguous `0..totalFrames-1` namespace and the encoder reads
+   * frames sequentially without an `-start_number` override).
+   */
+  frameRangeStart?: number;
 }): Promise<CaptureAttemptSummary[]> {
   const attempts: CaptureAttemptSummary[] = [];
   let currentWorkers = options.initialWorkerCount;
   let missingRanges: FrameRange[] | null = null;
   let attempt = 0;
+  const rangeStart = options.frameRangeStart ?? 0;
 
   while (true) {
     const frameCount = missingRanges ? countFrameRanges(missingRanges) : options.totalFrames;
@@ -622,8 +644,14 @@ export async function executeDiskCaptureWithAdaptiveRetry(options: {
 
     const attemptWorkDir = join(options.workDir, `capture-attempt-${attempt}`);
     const batches = missingRanges
-      ? buildMissingFrameRetryBatches(missingRanges, currentWorkers, attemptWorkDir, attempt)
-      : [distributeFrames(options.totalFrames, currentWorkers, attemptWorkDir)];
+      ? buildMissingFrameRetryBatches(
+          missingRanges,
+          currentWorkers,
+          attemptWorkDir,
+          attempt,
+          rangeStart,
+        )
+      : [distributeFrames(options.totalFrames, currentWorkers, attemptWorkDir, rangeStart)];
 
     try {
       for (const tasks of batches) {

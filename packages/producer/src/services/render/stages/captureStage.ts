@@ -104,12 +104,14 @@ export interface CaptureStageInput {
    * keeping the page's virtual clock identical to what an in-process
    * render at that frame would see.
    *
-   * Only honored on the sequential capture branch (workerCount === 1).
-   * The parallel branch in this stage targets in-process renders where
-   * adaptive retry across the whole timeline is the contract, and chunk
-   * workers fan out at the activity layer instead. Passing `frameRange`
-   * with `workerCount > 1` throws — the caller should reduce
-   * `workerCount` to 1.
+   * Supported on both the sequential (`workerCount === 1`) and parallel
+   * (`workerCount > 1`) branches. The parallel branch forwards
+   * `frameRange.startFrame` to `executeDiskCaptureWithAdaptiveRetry` as
+   * `frameRangeStart` so each worker's `WorkerTask` lands on absolute
+   * composition indices for time and 0-indexed file names within the
+   * chunk range. `mergeWorkerFrames` then stitches each worker's slice
+   * into a contiguous `0..rangeFrames-1` framesDir, matching what the
+   * sequential path already produces.
    *
    * Default `undefined`: the stage captures `[0, totalFrames)` (the
    * in-process contract).
@@ -155,12 +157,6 @@ export async function runCaptureStage(input: CaptureStageInput): Promise<Capture
   const captureCfg: EngineConfig =
     cfg.forceScreenshot === forceScreenshot ? cfg : { ...cfg, forceScreenshot };
 
-  if (frameRange !== undefined && workerCount > 1) {
-    throw new Error(
-      `[captureStage] frameRange capture requires workerCount === 1 (received workerCount=${workerCount}). ` +
-        `Distributed chunk workers fan out at the activity layer; reduce workerCount to 1 when passing frameRange.`,
-    );
-  }
   if (frameRange !== undefined) {
     if (
       !Number.isFinite(frameRange.startFrame) ||
@@ -176,7 +172,9 @@ export async function runCaptureStage(input: CaptureStageInput): Promise<Capture
   }
 
   if (workerCount > 1) {
-    // Parallel capture
+    // Parallel capture. When `frameRange` is set (distributed chunk), pass
+    // `frameRangeStart` so workers land on absolute composition frame indices
+    // for time math while file names stay 0-indexed within the chunk range.
     const attempts = await executeDiskCaptureWithAdaptiveRetry({
       serverUrl: fileServer.url,
       workDir,
@@ -188,6 +186,7 @@ export async function runCaptureStage(input: CaptureStageInput): Promise<Capture
       captureOptions: buildCaptureOptions(),
       createBeforeCaptureHook: createRenderVideoFrameInjector,
       abortSignal,
+      frameRangeStart: frameRange?.startFrame,
       onProgress: (progress) => {
         job.framesRendered = progress.capturedFrames;
         const frameProgress = progress.capturedFrames / progress.totalFrames;
