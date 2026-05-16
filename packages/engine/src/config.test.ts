@@ -32,6 +32,7 @@ describe("resolveConfig", () => {
     expect(config.browserGpuMode).toBe("software");
     expect(config.browserWebGpuMode).toBe("off");
     expect(config.browserWebGpuUnsafe).toBe(false);
+    expect(config.webGpuExpected).toBe(false);
     expect(config.webGpuFrameTimeout).toBe(5000);
     expect(config.enableStreamingEncode).toBe(true);
     expect(config.streamingEncodeMaxDurationSeconds).toBe(240);
@@ -117,11 +118,13 @@ describe("resolveConfig", () => {
   it("reads browser WebGPU mode and unsafe opt-in from env", () => {
     setEnv("PRODUCER_BROWSER_WEBGPU_MODE", "required");
     setEnv("PRODUCER_BROWSER_WEBGPU_UNSAFE", "true");
+    setEnv("PRODUCER_WEBGPU_EXPECTED", "true");
     setEnv("PRODUCER_WEBGPU_FRAME_TIMEOUT_MS", "9000");
 
     const config = resolveConfig();
     expect(config.browserWebGpuMode).toBe("required");
     expect(config.browserWebGpuUnsafe).toBe(true);
+    expect(config.webGpuExpected).toBe(true);
     expect(config.webGpuFrameTimeout).toBe(9000);
   });
 

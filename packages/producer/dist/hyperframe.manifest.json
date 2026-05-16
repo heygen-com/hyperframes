@@ -1,7 +1,7 @@
 {
   "version": "0.1.0",
   "buildId": "dev",
-  "sha256": "79bb44da3b63ea191ddef5489b0923380c75e94572892009607517054d93f341",
+  "sha256": "95c1f401ef36b9427e235aa55095f8aced271f491de78c5613da4ef22e1afb2e",
   "artifacts": {
     "iife": "hyperframe.runtime.iife.js",
     "esm": "hyperframe.runtime.mjs"

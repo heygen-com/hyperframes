@@ -400,6 +400,7 @@ function createConfig(): EngineConfig {
     browserGpuMode: "software",
     browserWebGpuMode: "off",
     browserWebGpuUnsafe: false,
+    webGpuExpected: false,
     enableBrowserPool: false,
     browserTimeout: 120000,
     protocolTimeout: 300000,

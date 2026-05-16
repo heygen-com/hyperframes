@@ -17,6 +17,8 @@ HyperFrames supports TypeGPU and raw WebGPU through its `typegpu` runtime adapte
 
 The adapter sets `window.__hfTypegpuTime`, installs `window.__hfWebGpu`, and dispatches `new CustomEvent("hf-seek", { detail: { time } })` on each seek.
 
+The runtime auto-instruments main-thread devices created through `navigator.gpu.requestAdapter().requestDevice()` and wraps `device.queue.submit(...)` when it loads before the WebGPU code. Still prefer the explicit calls below in generated compositions; they make async setup and per-frame readiness obvious and they are required for worker/offscreen paths that the main thread cannot observe directly.
+
 ## Basic Pattern
 
 ```html
@@ -70,7 +72,7 @@ The adapter sets `window.__hfTypegpuTime`, installs `window.__hfWebGpu`, and dis
 </script>
 ```
 
-`registerDevice(device)` is enough for most raw WebGPU and TypeGPU scenes: HyperFrames will call `device.queue.onSubmittedWorkDone()` before frame capture. Use `registerFrame(promise)` when one seek submits multiple queues or when TypeGPU gives you a specific per-frame completion promise.
+`registerDevice(device)` is enough for most raw WebGPU and TypeGPU scenes: HyperFrames will call `device.queue.onSubmittedWorkDone()` before frame capture, and the runtime also wraps main-thread `queue.submit(...)` to observe actual submissions. Use `registerFrame(promise)` when one seek submits multiple queues or when TypeGPU gives you a specific per-frame completion promise.
 
 For async setup that must finish before the first captured frame:
 

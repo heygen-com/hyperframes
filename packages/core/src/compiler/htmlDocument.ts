@@ -14,8 +14,6 @@ const RUNTIME_INLINE_MARKERS = [
   "__hyperframeRuntime",
   "__hyperframeRuntimeTeardown",
   "window.__player =",
-  "window.__playerReady",
-  "window.__renderReady",
 ];
 
 /**

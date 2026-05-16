@@ -1535,6 +1535,9 @@ export async function executeRenderJob(
     const { deviceScaleFactor, outputWidth, outputHeight } = compileResult;
     const { width, height } = composition;
     perfStages.compileOnlyMs = compileResult.compileOnlyMs;
+    cfg.webGpuExpected = compiled.renderModeHints.reasons.some(
+      (reason) => reason.code === "webgpu",
+    );
     applyWebGpuRenderModeHints(cfg, compiled, log, {
       allowBrowserGpuModeAuto:
         job.config.producerConfig === undefined &&

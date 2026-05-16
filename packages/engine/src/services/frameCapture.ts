@@ -529,54 +529,85 @@ export async function assertRequiredWebGpuAvailable(
   }
 }
 
-async function waitForWebGpuFrame(page: Page, time: number, timeoutMs: number): Promise<void> {
+async function waitForWebGpuFrame(
+  page: Page,
+  time: number,
+  timeoutMs: number,
+  webGpuExpected: boolean,
+): Promise<void> {
   try {
     await waitForWebGpuFence(
-      page.evaluate(async (frameTime: number) => {
-        const w = window as unknown as {
-          __hfWebGpu?: {
-            devices?: readonly unknown[];
-            pendingFrameCount?: number;
-            waitForFrame?: (time?: number) => Promise<void>;
-            discardPendingFrames?: () => void;
+      page.evaluate(
+        async (frameTime: number, expected: boolean) => {
+          const w = window as unknown as {
+            __hfWebGpu?: {
+              devices?: readonly unknown[];
+              pendingFrameCount?: number;
+              waitForFrame?: (time?: number, requireSubmission?: boolean) => Promise<void>;
+              discardPendingFrames?: () => void;
+            };
+            __hfWebGpuFrameReady?:
+              | boolean
+              | PromiseLike<unknown>
+              | ((time?: number) => unknown | PromiseLike<unknown>);
+            __hfWebGpuWaitForFrame?: (time?: number) => unknown | PromiseLike<unknown>;
           };
-          __hfWebGpuFrameReady?:
-            | boolean
-            | PromiseLike<unknown>
-            | ((time?: number) => unknown | PromiseLike<unknown>);
-          __hfWebGpuWaitForFrame?: (time?: number) => unknown | PromiseLike<unknown>;
-        };
 
-        if (typeof w.__hfWebGpuWaitForFrame === "function") {
-          await w.__hfWebGpuWaitForFrame(frameTime);
-          return;
-        }
+          if (typeof w.__hfWebGpuWaitForFrame === "function") {
+            await w.__hfWebGpuWaitForFrame(frameTime);
+            return;
+          }
 
-        const frameReady = w.__hfWebGpuFrameReady;
-        if (frameReady !== undefined && frameReady !== true) {
-          await Promise.resolve(
-            typeof frameReady === "function" ? frameReady(frameTime) : frameReady,
-          );
-          return;
-        }
+          const frameReady = w.__hfWebGpuFrameReady;
+          if (frameReady !== undefined && frameReady !== true) {
+            await Promise.resolve(
+              typeof frameReady === "function" ? frameReady(frameTime) : frameReady,
+            );
+            return;
+          }
 
-        const runtime = w.__hfWebGpu;
-        const hasRuntimeWork =
-          !!runtime &&
-          ((Array.isArray(runtime.devices) && runtime.devices.length > 0) ||
-            Number(runtime.pendingFrameCount) > 0);
-        if (hasRuntimeWork && typeof runtime.waitForFrame === "function") {
-          await runtime.waitForFrame(frameTime);
-        }
-      }, time),
+          const runtime = w.__hfWebGpu;
+          const hasRuntimeWork = () =>
+            !!runtime &&
+            ((Array.isArray(runtime.devices) && runtime.devices.length > 0) ||
+              Number(runtime.pendingFrameCount) > 0);
+
+          if (expected && !hasRuntimeWork()) {
+            await new Promise<void>((resolve) => {
+              const poll = () => {
+                if (hasRuntimeWork() || typeof w.__hfWebGpuWaitForFrame === "function") {
+                  resolve();
+                  return;
+                }
+                window.setTimeout(poll, 25);
+              };
+              poll();
+            });
+          }
+
+          if (hasRuntimeWork() && typeof runtime?.waitForFrame === "function") {
+            await runtime.waitForFrame(frameTime, expected);
+          }
+        },
+        time,
+        webGpuExpected,
+      ),
       timeoutMs,
       `[FrameCapture] WebGPU frame fence did not finish after ${timeoutMs}ms at t=${time.toFixed(
         3,
-      )}s. Register per-frame work with window.__hfWebGpu.registerFrame(...) or make the hook resolve.`,
+      )}s. Register async setup with window.__hfWebGpuReady/window.__hfWebGpu.setReady(...), and register per-frame work with window.__hfWebGpu.registerFrame(...).`,
     );
   } catch (error) {
     if (!(error instanceof WebGpuFenceTimeoutError)) throw error;
     console.warn(error.message);
+    const submittedFrameCount = await page
+      .evaluate(() => {
+        const w = window as unknown as {
+          __hfWebGpu?: { submittedFrameCount?: number };
+        };
+        return Number(w.__hfWebGpu?.submittedFrameCount ?? 0);
+      })
+      .catch(() => 0);
     await page
       .evaluate(() => {
         const w = window as unknown as {
@@ -585,6 +616,7 @@ async function waitForWebGpuFrame(page: Page, time: number, timeoutMs: number): 
         w.__hfWebGpu?.discardPendingFrames?.();
       })
       .catch(() => {});
+    if (webGpuExpected && submittedFrameCount === 0) throw error;
   }
 }
 
@@ -940,6 +972,7 @@ async function prepareFrameForCapture(
     page,
     quantizedTime,
     session.config?.webGpuFrameTimeout ?? DEFAULT_CONFIG.webGpuFrameTimeout,
+    session.config?.webGpuExpected ?? DEFAULT_CONFIG.webGpuExpected,
   );
 
   return { quantizedTime, seekMs, beforeCaptureMs };

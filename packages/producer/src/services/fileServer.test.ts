@@ -217,6 +217,48 @@ describe("createFileServer", () => {
       rmSync(projectDir, { recursive: true, force: true });
     }
   });
+
+  it("preserves authored readiness scripts while replacing embedded runtimes", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-file-server-authored-readiness-"));
+
+    try {
+      writeFileSync(
+        join(projectDir, "index.html"),
+        `<!doctype html>
+<html>
+  <head></head>
+  <body>
+    <div data-composition-id="main" data-duration="1"></div>
+    <script>
+      window.__renderReady = false;
+      window.__renderFrame = function renderFrame() {};
+      initWebGpu();
+      window.__playerReady = true;
+    </script>
+  </body>
+</html>`,
+      );
+
+      const server = await createFileServer({
+        projectDir,
+        preHeadScripts: [],
+        headScripts: [],
+        bodyScripts: [],
+      });
+
+      try {
+        const html = await fetch(`${server.url}/index.html`).then((response) => response.text());
+
+        expect(html).toContain("initWebGpu();");
+        expect(html).toContain("window.__renderReady = false;");
+        expect(html).toContain("window.__playerReady = true;");
+      } finally {
+        server.close();
+      }
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("HF_EARLY_STUB + HF_BRIDGE_SCRIPT integration", () => {

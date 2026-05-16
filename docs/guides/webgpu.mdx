@@ -23,7 +23,10 @@ window.addEventListener("hf-seek", (event) => {
 render(window.__hfTypegpuTime ?? 0);
 ```
 
-Register GPU work so the renderer waits before screenshot capture:
+HyperFrames auto-instruments main-thread devices created with
+`navigator.gpu.requestAdapter().requestDevice()` and wraps `device.queue.submit(...)` when the
+runtime is loaded before your WebGPU code. Explicit registration is still recommended when you
+control the code because it makes the render contract obvious:
 
 ```js
 const adapter = await navigator.gpu.requestAdapter();
@@ -87,4 +90,4 @@ Docker renders keep browser WebGPU off because there is no portable cross-platfo
 
 WebGPU canvases can be layered with DOM, HTML canvas, SVG, video frame injection, GSAP timelines, and other adapters. The producer detects WebGPU/TypeGPU usage and routes those compositions through screenshot capture so Chromium composites all layers together.
 
-Keep the DOM and GPU layers in the same composition tree and seek everything from the same `hf-seek` event. Do not run a free-running `requestAnimationFrame` loop for rendered output.
+Keep the DOM and GPU layers in the same composition tree and seek everything from the same `hf-seek` event. A main-thread `requestAnimationFrame` loop that submits WebGPU work is captured, but it must render from `window.__hfTypegpuTime` or another seek-driven value instead of wall-clock time if the export needs to be deterministic. Worker or `OffscreenCanvas` WebGPU paths need an explicit main-thread `window.__hfWebGpuWaitForFrame(time)` bridge because the runtime cannot observe queue submissions inside the worker.

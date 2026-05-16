@@ -3,8 +3,19 @@ import { dispatchSeekEvent } from "./seek-dispatch";
 
 type WebGpuDeviceLike = {
   queue?: {
+    submit?: (...args: unknown[]) => unknown;
     onSubmittedWorkDone?: () => Promise<unknown>;
   };
+};
+
+type WebGpuAdapterLike = {
+  requestDevice?: (...args: unknown[]) => WebGpuDeviceLike | PromiseLike<WebGpuDeviceLike>;
+};
+
+type WebGpuLike = {
+  requestAdapter?: (
+    ...args: unknown[]
+  ) => WebGpuAdapterLike | null | PromiseLike<WebGpuAdapterLike | null>;
 };
 
 type WebGpuWork =
@@ -17,11 +28,12 @@ type WebGpuWork =
 type WebGpuRuntime = {
   readonly devices: readonly WebGpuDeviceLike[];
   readonly pendingFrameCount: number;
+  readonly submittedFrameCount: number;
   registerDevice: (device: WebGpuDeviceLike) => void;
   registerFrame: (work: WebGpuWork) => Promise<unknown>;
   setReady: (work: WebGpuWork) => Promise<unknown>;
   waitUntilReady: () => Promise<void>;
-  waitForFrame: (time?: number) => Promise<void>;
+  waitForFrame: (time?: number, requireSubmission?: boolean) => Promise<void>;
   discardPendingFrames: () => void;
 };
 
@@ -88,12 +100,23 @@ function installWebGpuRuntime(): void {
   if (w.__hfWebGpu) return;
 
   const devices = new Set<WebGpuDeviceLike>();
+  const instrumentedAdapters = new WeakSet<object>();
+  const instrumentedGpuObjects = new WeakSet<object>();
+  const instrumentedQueues = new WeakSet<object>();
   const pendingFrames = new Set<Promise<unknown>>();
+  let submittedFrameCount = 0;
   let readyPromise: Promise<unknown> | null = null;
   let warnedQueueFenceTimeout = false;
+  let resolveFirstSubmission: (() => void) | null = null;
+  const firstSubmissionPromise = new Promise<void>((resolve) => {
+    resolveFirstSubmission = resolve;
+  });
 
   const trackFrame = (work: WebGpuWork): Promise<unknown> => {
     const promise = resolveWork(work) ?? Promise.resolve();
+    submittedFrameCount += 1;
+    resolveFirstSubmission?.();
+    resolveFirstSubmission = null;
     pendingFrames.add(promise);
     void promise
       .finally(() => {
@@ -101,6 +124,85 @@ function installWebGpuRuntime(): void {
       })
       .catch(() => {});
     return promise;
+  };
+
+  const instrumentDeviceQueue = (device: WebGpuDeviceLike): void => {
+    const queue = device.queue;
+    if (!queue || typeof queue !== "object" || typeof queue.submit !== "function") return;
+    if (instrumentedQueues.has(queue)) return;
+    instrumentedQueues.add(queue);
+
+    const originalSubmit = queue.submit.bind(queue);
+    try {
+      queue.submit = (...args: unknown[]) => {
+        const result = originalSubmit(...args);
+        const fence = queue.onSubmittedWorkDone?.();
+        if (fence) trackFrame(fence);
+        return result;
+      };
+    } catch {
+      // Some browser implementations may expose submit as non-writable. In
+      // that case explicit registerFrame(...) calls still provide the fence.
+    }
+  };
+
+  const registerDevice = (device: WebGpuDeviceLike): void => {
+    if (device) {
+      devices.add(device);
+      instrumentDeviceQueue(device);
+    }
+  };
+
+  const instrumentAdapter = (adapter: WebGpuAdapterLike | null | undefined): void => {
+    if (!adapter || typeof adapter !== "object" || typeof adapter.requestDevice !== "function") {
+      return;
+    }
+    if (instrumentedAdapters.has(adapter)) return;
+    instrumentedAdapters.add(adapter);
+
+    const originalRequestDevice = adapter.requestDevice.bind(adapter);
+    try {
+      adapter.requestDevice = (...args: unknown[]) => {
+        const deviceOrPromise = originalRequestDevice(...args);
+        const registerResolvedDevice = (device: WebGpuDeviceLike): WebGpuDeviceLike => {
+          registerDevice(device);
+          return device;
+        };
+        return isThenable(deviceOrPromise)
+          ? Promise.resolve(deviceOrPromise).then(registerResolvedDevice)
+          : registerResolvedDevice(deviceOrPromise);
+      };
+    } catch {
+      // Some browser implementations may expose requestDevice as non-writable.
+      // In that case explicit registerDevice(...) calls still provide the hook.
+    }
+  };
+
+  const instrumentNavigatorGpu = (): void => {
+    const nav = window.navigator as Navigator & { gpu?: WebGpuLike };
+    const gpu = nav.gpu;
+    if (!gpu || typeof gpu !== "object" || typeof gpu.requestAdapter !== "function") return;
+    if (instrumentedGpuObjects.has(gpu)) return;
+    instrumentedGpuObjects.add(gpu);
+
+    const originalRequestAdapter = gpu.requestAdapter.bind(gpu);
+    try {
+      gpu.requestAdapter = (...args: unknown[]) => {
+        const adapterOrPromise = originalRequestAdapter(...args);
+        const instrumentResolvedAdapter = (
+          adapter: WebGpuAdapterLike | null,
+        ): WebGpuAdapterLike | null => {
+          instrumentAdapter(adapter);
+          return adapter;
+        };
+        return isThenable(adapterOrPromise)
+          ? Promise.resolve(adapterOrPromise).then(instrumentResolvedAdapter)
+          : instrumentResolvedAdapter(adapterOrPromise);
+      };
+    } catch {
+      // If navigator.gpu is not patchable, authored registerDevice/registerFrame
+      // calls remain the deterministic capture contract.
+    }
   };
 
   const runtime: WebGpuRuntime = {
@@ -112,9 +214,11 @@ function installWebGpuRuntime(): void {
       return pendingFrames.size;
     },
 
-    registerDevice: (device) => {
-      if (device) devices.add(device);
+    get submittedFrameCount() {
+      return submittedFrameCount;
     },
+
+    registerDevice,
 
     registerFrame: (work) => trackFrame(work),
 
@@ -132,7 +236,7 @@ function installWebGpuRuntime(): void {
       await Promise.all([readyPromise, authorReady].filter(Boolean));
     },
 
-    waitForFrame: async (time) => {
+    waitForFrame: async (time, requireSubmission = false) => {
       const explicitWait = w.__hfWebGpuWaitForFrame;
       if (typeof explicitWait === "function") {
         await explicitWait(time);
@@ -153,6 +257,10 @@ function installWebGpuRuntime(): void {
             );
           }
         }
+      }
+
+      if (requireSubmission && submittedFrameCount === 0 && devices.size > 0) {
+        await firstSubmissionPromise;
       }
 
       if (inFlight.length === 0) {
@@ -178,6 +286,7 @@ function installWebGpuRuntime(): void {
   w.__hfWebGpu = runtime;
   w.__hfRegisterWebGpuDevice = runtime.registerDevice;
   w.__hfRegisterWebGpuFrame = runtime.registerFrame;
+  instrumentNavigatorGpu();
 }
 
 if (typeof window !== "undefined") {

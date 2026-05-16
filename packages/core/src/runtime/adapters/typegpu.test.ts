@@ -5,11 +5,22 @@ import { resetSeekDispatchState } from "./seek-dispatch";
 const gpuWindow = window as Window & {
   __hfTypegpuTime?: number;
   __hfWebGpu?: {
-    readonly devices: readonly { queue?: { onSubmittedWorkDone?: () => Promise<unknown> } }[];
+    readonly devices: readonly {
+      queue?: {
+        submit?: (...args: unknown[]) => unknown;
+        onSubmittedWorkDone?: () => Promise<unknown>;
+      };
+    }[];
     readonly pendingFrameCount: number;
-    registerDevice: (device: { queue?: { onSubmittedWorkDone?: () => Promise<unknown> } }) => void;
+    readonly submittedFrameCount: number;
+    registerDevice: (device: {
+      queue?: {
+        submit?: (...args: unknown[]) => unknown;
+        onSubmittedWorkDone?: () => Promise<unknown>;
+      };
+    }) => void;
     registerFrame: (work: PromiseLike<unknown>) => Promise<unknown>;
-    waitForFrame: (time?: number) => Promise<void>;
+    waitForFrame: (time?: number, requireSubmission?: boolean) => Promise<void>;
     discardPendingFrames: () => void;
   };
   __hfRegisterWebGpuDevice?: unknown;
@@ -17,11 +28,18 @@ const gpuWindow = window as Window & {
 };
 
 describe("typegpu adapter", () => {
+  const originalNavigatorGpu = Object.getOwnPropertyDescriptor(Navigator.prototype, "gpu");
+
   beforeEach(() => {
     delete gpuWindow.__hfTypegpuTime;
     delete gpuWindow.__hfWebGpu;
     delete gpuWindow.__hfRegisterWebGpuDevice;
     delete gpuWindow.__hfRegisterWebGpuFrame;
+    if (originalNavigatorGpu) {
+      Object.defineProperty(Navigator.prototype, "gpu", originalNavigatorGpu);
+    } else {
+      delete (Navigator.prototype as { gpu?: unknown }).gpu;
+    }
     // Reset shared dedup state so each test starts with a clean dispatch history
     resetSeekDispatchState();
   });
@@ -163,6 +181,73 @@ describe("typegpu adapter", () => {
       await gpuWindow.__hfWebGpu!.waitForFrame(1);
 
       expect(queueDone).toHaveBeenCalledOnce();
+    } finally {
+      window.requestAnimationFrame = originalRaf;
+    }
+  });
+
+  it("auto-registers main-thread devices returned by navigator.gpu.requestDevice", async () => {
+    const adapter = createTypegpuAdapter();
+    const submit = vi.fn();
+    const onSubmittedWorkDone = vi.fn(async () => undefined);
+    const device = { queue: { submit, onSubmittedWorkDone } };
+    const gpuAdapter = {
+      requestDevice: vi.fn(async () => device),
+    };
+    Object.defineProperty(window.navigator, "gpu", {
+      configurable: true,
+      value: {
+        requestAdapter: vi.fn(async () => gpuAdapter),
+      },
+    });
+
+    adapter.discover();
+
+    const resolvedAdapter = await window.navigator.gpu!.requestAdapter();
+    const resolvedDevice = await resolvedAdapter!.requestDevice();
+    resolvedDevice.queue.submit([]);
+
+    expect(gpuWindow.__hfWebGpu!.devices).toContain(device);
+    expect(submit).toHaveBeenCalledOnce();
+    expect(onSubmittedWorkDone).toHaveBeenCalledOnce();
+    expect(gpuWindow.__hfWebGpu!.submittedFrameCount).toBe(1);
+  });
+
+  it("waits for a requestAnimationFrame-only submit after auto-registration", async () => {
+    const originalRaf = window.requestAnimationFrame;
+    window.requestAnimationFrame = ((callback: FrameRequestCallback) => {
+      setTimeout(() => callback(0), 0);
+      return 1;
+    }) as typeof window.requestAnimationFrame;
+
+    try {
+      const adapter = createTypegpuAdapter();
+      const submit = vi.fn();
+      const onSubmittedWorkDone = vi.fn(async () => undefined);
+      const device = { queue: { submit, onSubmittedWorkDone } };
+      const gpuAdapter = {
+        requestDevice: vi.fn(async () => device),
+      };
+      Object.defineProperty(window.navigator, "gpu", {
+        configurable: true,
+        value: {
+          requestAdapter: vi.fn(async () => gpuAdapter),
+        },
+      });
+
+      adapter.discover();
+
+      const resolvedAdapter = await window.navigator.gpu!.requestAdapter();
+      const resolvedDevice = await resolvedAdapter!.requestDevice();
+      window.requestAnimationFrame(() => {
+        resolvedDevice.queue.submit([]);
+      });
+
+      await gpuWindow.__hfWebGpu!.waitForFrame(0, true);
+
+      expect(submit).toHaveBeenCalledOnce();
+      expect(onSubmittedWorkDone).toHaveBeenCalled();
+      expect(gpuWindow.__hfWebGpu!.submittedFrameCount).toBe(1);
     } finally {
       window.requestAnimationFrame = originalRaf;
     }

@@ -141,7 +141,7 @@ describe("adapter rules", () => {
     expect(adapterFindings).toHaveLength(0);
   });
 
-  it("warns when WebGPU usage does not register frame readiness", () => {
+  it("does not warn when main-thread WebGPU requestDevice and queue.submit can be auto-instrumented", () => {
     const html = `
 <html><body>
   <div data-composition-id="main" data-width="1920" data-height="1080">
@@ -159,9 +159,27 @@ describe("adapter rules", () => {
 </body></html>`;
     const result = lintHyperframeHtml(html);
     const finding = result.findings.find((f) => f.code === "webgpu_missing_frame_fence");
+    expect(finding).toBeUndefined();
+  });
+
+  it("warns when WebGPU usage has no observable main-thread submission or fence", () => {
+    const html = `
+<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080">
+    <canvas id="gpu"></canvas>
+  </div>
+  <script>
+    async function init() {
+      const context = document.querySelector("#gpu").getContext("webgpu");
+      console.log(context);
+    }
+  </script>
+</body></html>`;
+    const result = lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "webgpu_missing_frame_fence");
     expect(finding).toBeDefined();
     expect(finding?.severity).toBe("warning");
-    expect(finding?.fixHint).toContain("__hfWebGpu.registerDevice");
+    expect(finding?.fixHint).toContain("queue.onSubmittedWorkDone");
   });
 
   it("does not warn for WebGPU usage that registers the device or frame promise", () => {
@@ -214,7 +232,6 @@ describe("adapter rules", () => {
         {
           src: "./scene.js",
           content: `
-            const adapter = await navigator.gpu.requestAdapter();
             document.querySelector("#gpu").getContext("webgpu");
           `,
         },
@@ -222,5 +239,27 @@ describe("adapter rules", () => {
     });
     const finding = result.findings.find((f) => f.code === "webgpu_missing_frame_fence");
     expect(finding).toBeDefined();
+  });
+
+  it("errors for WebGPU worker or OffscreenCanvas render paths", () => {
+    const html = `
+<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080">
+    <canvas id="gpu"></canvas>
+  </div>
+  <script>
+    async function init() {
+      if (!navigator.gpu) return;
+      const offscreen = document.querySelector("#gpu").transferControlToOffscreen();
+      const worker = new Worker("./gpu-worker.js", { type: "module" });
+      worker.postMessage({ canvas: offscreen }, [offscreen]);
+    }
+  </script>
+</body></html>`;
+    const result = lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "webgpu_unsupported_worker_path");
+    expect(finding).toBeDefined();
+    expect(finding?.severity).toBe("error");
+    expect(finding?.fixHint).toContain("__hfWebGpuWaitForFrame");
   });
 });

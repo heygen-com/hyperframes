@@ -26,6 +26,7 @@ type ThreeLike = {
 
 type HyperframesWebGpuDeviceLike = {
   queue?: {
+    submit?: (...args: unknown[]) => unknown;
     onSubmittedWorkDone?: () => Promise<unknown>;
   };
 };
@@ -40,11 +41,12 @@ type HyperframesWebGpuWork =
 type HyperframesWebGpuRuntime = {
   readonly devices: readonly HyperframesWebGpuDeviceLike[];
   readonly pendingFrameCount: number;
+  readonly submittedFrameCount: number;
   registerDevice: (device: HyperframesWebGpuDeviceLike) => void;
   registerFrame: (work: HyperframesWebGpuWork) => Promise<unknown>;
   setReady: (work: HyperframesWebGpuWork) => Promise<unknown>;
   waitUntilReady: () => Promise<void>;
-  waitForFrame: (time?: number) => Promise<void>;
+  waitForFrame: (time?: number, requireSubmission?: boolean) => Promise<void>;
   discardPendingFrames: () => void;
 };
 
@@ -71,10 +73,13 @@ declare global {
     /**
      * WebGPU/TypeGPU frame fence helper installed by the runtime adapter.
      *
-     * Register a device once with `registerDevice(device)`, or register each
-     * submitted frame with `registerFrame(device.queue.onSubmittedWorkDone())`.
-     * The renderer waits for this helper before screenshot capture so WebGPU
-     * canvases compose with DOM/canvas layers the same way regular scenes do.
+     * Main-thread devices returned by `navigator.gpu.requestAdapter().requestDevice()`
+     * are auto-registered when the runtime is loaded before the WebGPU code.
+     * You can also register a device explicitly with `registerDevice(device)`,
+     * or register each submitted frame with
+     * `registerFrame(device.queue.onSubmittedWorkDone())`. The renderer waits
+     * for this helper before screenshot capture so WebGPU canvases compose
+     * with DOM/canvas layers the same way regular scenes do.
      */
     __hfWebGpu?: HyperframesWebGpuRuntime;
     /**

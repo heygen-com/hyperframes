@@ -10,7 +10,10 @@
  *      auto-enables browser WebGPU capability when no explicit producerConfig
  *      is supplied.
  *   2. The screenshot compositor captures mixed DOM + WebGPU layers.
- *   3. GPU frame fences complete before PNG capture.
+ *   3. GPU frame fences complete before PNG capture for explicit and
+ *      auto-instrumented main-thread WebGPU devices.
+ *   4. A WebGPU composition that never submits GPU work fails clearly instead
+ *      of producing a blank export.
  *
  * Run from this package with:
  *   bun run test:webgpu
@@ -21,7 +24,7 @@ import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSyn
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { decodePng } from "@hyperframes/engine";
+import { decodePng, resolveConfig } from "@hyperframes/engine";
 import { createRenderJob, executeRenderJob } from "./services/renderOrchestrator.js";
 
 const WIDTH = 320;
@@ -29,6 +32,8 @@ const HEIGHT = 180;
 const FPS: import("@hyperframes/core").Fps = { num: 2, den: 1 };
 const DURATION_SECONDS = 2;
 const EXPECTED_FRAMES = FPS.num * DURATION_SECONDS;
+
+type FixtureMode = "explicit-seek" | "auto-raf" | "delayed-init" | "no-submit";
 
 function pixelOffset(x: number, y: number, width: number): number {
   return (y * width + x) * 4;
@@ -58,7 +63,7 @@ function assertGpuCenterPixel(png: { data: Uint8Array; width: number; height: nu
   );
 }
 
-function createFixture(projectDir: string): void {
+function createFixture(projectDir: string, mode: FixtureMode): void {
   writeFileSync(
     join(projectDir, "index.html"),
     `<!doctype html>
@@ -116,6 +121,7 @@ function createFixture(projectDir: string): void {
       pause: function() {}
     };
 
+    const MODE = "${mode}";
     const WGSL = \`
 struct U { time: f32, _pad0: f32, _pad1: f32, _pad2: f32 }
 @group(0) @binding(0) var<uniform> u: U;
@@ -133,12 +139,17 @@ struct Vo { @builtin(position) pos: vec4f, @location(0) uv: vec2f }
   return vec4f(0.08 + 0.12 * wave, 0.62 + 0.18 * wave, 0.22 + 0.16 * wave, 1.0);
 }\`;
 
-    (async function() {
+    const setupPromise = (async function() {
+      if (MODE === "delayed-init") {
+        await new Promise((resolve) => setTimeout(resolve, 120));
+      }
       if (!navigator.gpu) return;
       const adapter = await navigator.gpu.requestAdapter();
       if (!adapter) return;
       const device = await adapter.requestDevice();
-      window.__hfWebGpu?.registerDevice(device);
+      if (MODE !== "auto-raf") {
+        window.__hfWebGpu?.registerDevice(device);
+      }
 
       const canvas = document.getElementById("gpu");
       canvas.width = ${WIDTH};
@@ -172,6 +183,7 @@ struct Vo { @builtin(position) pos: vec4f, @location(0) uv: vec2f }
       });
 
       function render(timeSeconds) {
+        if (MODE === "no-submit") return;
         uniformData[0] = timeSeconds;
         device.queue.writeBuffer(uniformBuffer, 0, uniformData);
         const encoder = device.createCommandEncoder();
@@ -188,12 +200,23 @@ struct Vo { @builtin(position) pos: vec4f, @location(0) uv: vec2f }
         pass.draw(3);
         pass.end();
         device.queue.submit([encoder.finish()]);
-        window.__hfWebGpu?.registerFrame(device.queue.onSubmittedWorkDone());
+        if (MODE !== "auto-raf") {
+          window.__hfWebGpu?.registerFrame(device.queue.onSubmittedWorkDone());
+        }
       }
 
-      render(window.__hfTypegpuTime ?? 0);
-      window.addEventListener("hf-seek", (event) => render(event.detail.time));
+      if (MODE === "auto-raf") {
+        function loop() {
+          render(window.__hfTypegpuTime ?? 0);
+          requestAnimationFrame(loop);
+        }
+        requestAnimationFrame(loop);
+      } else {
+        render(window.__hfTypegpuTime ?? 0);
+        window.addEventListener("hf-seek", (event) => render(event.detail.time));
+      }
     })();
+    window.__hfWebGpu?.setReady(setupPromise);
   </script>
 </body>
 </html>`,
@@ -201,50 +224,89 @@ struct Vo { @builtin(position) pos: vec4f, @location(0) uv: vec2f }
   );
 }
 
+async function renderSuccessCase(workRoot: string, mode: FixtureMode): Promise<void> {
+  const projectDir = join(workRoot, mode);
+  const outputDir = join(workRoot, `${mode}-frames`);
+  mkdirSync(projectDir, { recursive: true });
+  createFixture(projectDir, mode);
+
+  const job = createRenderJob({
+    fps: FPS,
+    quality: "draft",
+    format: "png-sequence",
+    workers: 1,
+    hdrMode: "force-sdr",
+  });
+
+  await executeRenderJob(job, projectDir, outputDir);
+  assert.equal(job.status, "complete", `${mode}: render did not complete: status=${job.status}`);
+
+  const frames = readdirSync(outputDir)
+    .filter((name) => name.startsWith("frame_") && name.endsWith(".png"))
+    .sort();
+  assert.equal(
+    frames.length,
+    EXPECTED_FRAMES,
+    `${mode}: expected ${EXPECTED_FRAMES} PNG frames, got ${frames.length}: ${frames.join(",")}`,
+  );
+  const first = frames[0];
+  const last = frames[frames.length - 1];
+  assert.ok(first && last, `${mode}: expected first and last frames`);
+
+  for (const frameName of [first, last]) {
+    const decoded = decodePng(readFileSync(join(outputDir, frameName)));
+    assert.equal(decoded.width, WIDTH, `${mode}/${frameName}: width mismatch`);
+    assert.equal(decoded.height, HEIGHT, `${mode}/${frameName}: height mismatch`);
+    assertGpuCenterPixel(decoded);
+    assertDomProofPixel(decoded);
+  }
+
+  console.log(`WebGPU smoke PASS - ${mode}: ${frames.length} mixed DOM/WebGPU frames.`);
+}
+
+async function renderNoSubmitFailure(workRoot: string): Promise<void> {
+  const mode: FixtureMode = "no-submit";
+  const projectDir = join(workRoot, mode);
+  const outputDir = join(workRoot, `${mode}-frames`);
+  mkdirSync(projectDir, { recursive: true });
+  createFixture(projectDir, mode);
+
+  const job = createRenderJob({
+    fps: FPS,
+    quality: "draft",
+    format: "png-sequence",
+    workers: 1,
+    hdrMode: "force-sdr",
+    producerConfig: resolveConfig({
+      browserGpuMode: "auto",
+      browserWebGpuMode: "required",
+      webGpuFrameTimeout: 500,
+    }),
+  });
+
+  try {
+    await executeRenderJob(job, projectDir, outputDir);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    assert.match(message, /WebGPU frame fence did not finish/);
+    assert.equal(job.status, "failed");
+    console.log("WebGPU smoke PASS - no-submit: failed with clear frame-fence error.");
+    return;
+  }
+
+  assert.fail("no-submit fixture unexpectedly rendered without a WebGPU frame fence");
+}
+
 async function main(): Promise<void> {
   const workRoot = mkdtempSync(join(tmpdir(), "hf-webgpu-smoke-"));
-  const projectDir = join(workRoot, "project");
-  const outputDir = join(workRoot, "frames");
   const keepWork = process.env.KEEP_TEMP === "1";
-  mkdirSync(projectDir, { recursive: true });
-  createFixture(projectDir);
 
   console.log(`work dir: ${workRoot}${keepWork ? " (KEEP_TEMP=1)" : ""}`);
   try {
-    const job = createRenderJob({
-      fps: FPS,
-      quality: "draft",
-      format: "png-sequence",
-      workers: 1,
-      hdrMode: "force-sdr",
-    });
-
-    await executeRenderJob(job, projectDir, outputDir);
-    assert.equal(job.status, "complete", `render did not complete: status=${job.status}`);
-
-    const frames = readdirSync(outputDir)
-      .filter((name) => name.startsWith("frame_") && name.endsWith(".png"))
-      .sort();
-    assert.equal(
-      frames.length,
-      EXPECTED_FRAMES,
-      `expected ${EXPECTED_FRAMES} PNG frames, got ${frames.length}: ${frames.join(",")}`,
-    );
-    const first = frames[0];
-    const last = frames[frames.length - 1];
-    assert.ok(first && last, "expected first and last frames");
-
-    for (const frameName of [first, last]) {
-      const decoded = decodePng(readFileSync(join(outputDir, frameName)));
-      assert.equal(decoded.width, WIDTH, `${frameName}: width mismatch`);
-      assert.equal(decoded.height, HEIGHT, `${frameName}: height mismatch`);
-      assertGpuCenterPixel(decoded);
-      assertDomProofPixel(decoded);
-    }
-
-    console.log(
-      `WebGPU smoke PASS - ${frames.length} mixed DOM/WebGPU frames rendered via direct producer API.`,
-    );
+    await renderSuccessCase(workRoot, "explicit-seek");
+    await renderSuccessCase(workRoot, "auto-raf");
+    await renderSuccessCase(workRoot, "delayed-init");
+    await renderNoSubmitFailure(workRoot);
   } finally {
     if (!keepWork) {
       rmSync(workRoot, { recursive: true, force: true });

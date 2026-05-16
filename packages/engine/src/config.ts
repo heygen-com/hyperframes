@@ -54,6 +54,13 @@ export interface EngineConfig {
    * adapters, but intentionally separate from `browserWebGpuMode="auto"`.
    */
   browserWebGpuUnsafe: boolean;
+  /**
+   * True when static compilation detected WebGPU/TypeGPU content. This lets
+   * capture wait for scene-owned async device/frame registration without
+   * blocking ordinary DOM renders that run with browserWebGpuMode="required"
+   * for app-wide capability probing.
+   */
+  webGpuExpected: boolean;
   enableBrowserPool: boolean;
   browserTimeout: number;
   protocolTimeout: number;
@@ -190,6 +197,7 @@ export const DEFAULT_CONFIG: EngineConfig = {
   browserGpuMode: "software",
   browserWebGpuMode: "off",
   browserWebGpuUnsafe: false,
+  webGpuExpected: false,
   enableBrowserPool: true,
   browserTimeout: 120_000,
   protocolTimeout: 300_000,
@@ -268,6 +276,7 @@ export function resolveConfig(overrides?: Partial<EngineConfig>): EngineConfig {
       "PRODUCER_BROWSER_WEBGPU_UNSAFE",
       DEFAULT_CONFIG.browserWebGpuUnsafe,
     ),
+    webGpuExpected: envBool("PRODUCER_WEBGPU_EXPECTED", DEFAULT_CONFIG.webGpuExpected),
     enableBrowserPool: envBool("PRODUCER_ENABLE_BROWSER_POOL", DEFAULT_CONFIG.enableBrowserPool),
     browserTimeout: envNum("PRODUCER_PUPPETEER_LAUNCH_TIMEOUT_MS", DEFAULT_CONFIG.browserTimeout),
     protocolTimeout: envNum(
