@@ -99,7 +99,10 @@ export function registerThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): v
         selectorIndex,
       });
       if (!buffer) {
-        return c.json({ error: "Thumbnail generation returned null" }, 500);
+        return c.json(
+          { error: "Thumbnail generation failed — Chrome browser may not be available" },
+          500,
+        );
       }
       if (!existsSync(cacheDir)) mkdirSync(cacheDir, { recursive: true });
       writeFileSync(cachePath, buffer);

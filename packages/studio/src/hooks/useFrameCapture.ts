@@ -31,29 +31,54 @@ export function useFrameCapture({
     async (event: MouseEvent<HTMLAnchorElement>) => {
       if (!projectId) return;
       event.preventDefault();
-      const time = usePlayerStore.getState().currentTime;
-      setCaptureFrameTime(time);
-      await waitForPendingDomEditSaves();
-      const href = buildFrameCaptureUrl({
-        projectId,
-        compositionPath: activeCompPath,
-        currentTime: time,
-      });
-      const filename = buildFrameCaptureFilename(activeCompPath, time);
       try {
-        const response = await fetch(href, { cache: "no-store" });
-        if (!response.ok) throw new Error(`Capture failed (${response.status})`);
-        const blob = await response.blob();
-        const blobUrl = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.href = blobUrl;
-        link.download = filename;
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        setTimeout(() => URL.revokeObjectURL(blobUrl), 0);
+        const time = usePlayerStore.getState().currentTime;
+        setCaptureFrameTime(time);
+        await Promise.race([
+          waitForPendingDomEditSaves(),
+          new Promise<void>((_, reject) =>
+            setTimeout(() => reject(new Error("Save queue timed out")), 5000),
+          ),
+        ]);
+        const href = buildFrameCaptureUrl({
+          projectId,
+          compositionPath: activeCompPath,
+          currentTime: time,
+        });
+        const filename = buildFrameCaptureFilename(activeCompPath, time);
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 30000);
+        try {
+          const response = await fetch(href, { cache: "no-store", signal: controller.signal });
+          clearTimeout(timeout);
+          if (!response.ok) {
+            let msg = `Capture failed (${response.status})`;
+            try {
+              const json = await response.json();
+              if (json?.error) msg = json.error;
+            } catch {
+              /* non-JSON response — use default message */
+            }
+            throw new Error(msg);
+          }
+          const blob = await response.blob();
+          const blobUrl = URL.createObjectURL(blob);
+          const link = document.createElement("a");
+          link.href = blobUrl;
+          link.download = filename;
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+          setTimeout(() => URL.revokeObjectURL(blobUrl), 0);
+        } catch (fetchErr) {
+          clearTimeout(timeout);
+          if (fetchErr instanceof DOMException && fetchErr.name === "AbortError") {
+            throw new Error("Capture timed out — the server took too long to respond");
+          }
+          throw fetchErr;
+        }
       } catch (err) {
-        showToast(err instanceof Error ? err.message : "Capture failed");
+        showToast(err instanceof Error ? err.message : "Capture failed", "error");
       }
     },
     [activeCompPath, projectId, showToast, waitForPendingDomEditSaves],
