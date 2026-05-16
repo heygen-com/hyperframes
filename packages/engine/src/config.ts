@@ -173,7 +173,7 @@ export const DEFAULT_CONFIG: EngineConfig = {
 
   disableGpu: false,
   browserGpuMode: "software",
-  enableBrowserPool: false,
+  enableBrowserPool: true,
   browserTimeout: 120_000,
   protocolTimeout: 300_000,
   forceScreenshot: false,
