@@ -177,6 +177,11 @@ describe("browser pool", () => {
     } as unknown as Browser;
   }
 
+  // forceScreenshot: true bypasses the BeginFrame probe path, which on Linux
+  // CI would trigger a second ppt.launch() when the mock's newPage() doesn't
+  // return a real page and the probe falls back to screenshot mode.
+  const poolCfg = { enableBrowserPool: true, forceScreenshot: true } as const;
+
   let launchFn: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
@@ -192,35 +197,35 @@ describe("browser pool", () => {
   });
 
   it("sequential acquires with pool enabled return the same browser", async () => {
-    const first = await acquireBrowser(["--no-sandbox"], { enableBrowserPool: true });
-    const second = await acquireBrowser(["--no-sandbox"], { enableBrowserPool: true });
+    const first = await acquireBrowser(["--no-sandbox"], poolCfg);
+    const second = await acquireBrowser(["--no-sandbox"], poolCfg);
 
     expect(first.browser).toBe(second.browser);
     expect(launchFn).toHaveBeenCalledTimes(1);
 
-    await releaseBrowser(first.browser, { enableBrowserPool: true });
-    await releaseBrowser(second.browser, { enableBrowserPool: true });
+    await releaseBrowser(first.browser, poolCfg);
+    await releaseBrowser(second.browser, poolCfg);
   });
 
   it("concurrent acquires via Promise.all trigger exactly one launch", async () => {
     const [a, b, c] = await Promise.all([
-      acquireBrowser(["--no-sandbox"], { enableBrowserPool: true }),
-      acquireBrowser(["--no-sandbox"], { enableBrowserPool: true }),
-      acquireBrowser(["--no-sandbox"], { enableBrowserPool: true }),
+      acquireBrowser(["--no-sandbox"], poolCfg),
+      acquireBrowser(["--no-sandbox"], poolCfg),
+      acquireBrowser(["--no-sandbox"], poolCfg),
     ]);
 
     expect(launchFn).toHaveBeenCalledTimes(1);
     expect(a.browser).toBe(b.browser);
     expect(b.browser).toBe(c.browser);
 
-    await releaseBrowser(a.browser, { enableBrowserPool: true });
-    await releaseBrowser(b.browser, { enableBrowserPool: true });
-    await releaseBrowser(c.browser, { enableBrowserPool: true });
+    await releaseBrowser(a.browser, poolCfg);
+    await releaseBrowser(b.browser, poolCfg);
+    await releaseBrowser(c.browser, poolCfg);
   });
 
   it("pool recovers from a disconnected browser", async () => {
-    const first = await acquireBrowser(["--no-sandbox"], { enableBrowserPool: true });
-    await releaseBrowser(first.browser, { enableBrowserPool: true });
+    const first = await acquireBrowser(["--no-sandbox"], poolCfg);
+    await releaseBrowser(first.browser, poolCfg);
 
     // Simulate Chrome crash
     (first.browser as unknown as { connected: boolean }).connected = false;
@@ -228,43 +233,39 @@ describe("browser pool", () => {
     const freshBrowser = makeMockBrowser();
     launchFn.mockResolvedValue(freshBrowser);
 
-    const second = await acquireBrowser(["--no-sandbox"], { enableBrowserPool: true });
+    const second = await acquireBrowser(["--no-sandbox"], poolCfg);
     expect(second.browser).toBe(freshBrowser);
     expect(second.browser).not.toBe(first.browser);
     expect(launchFn).toHaveBeenCalledTimes(2);
 
-    await releaseBrowser(second.browser, { enableBrowserPool: true });
+    await releaseBrowser(second.browser, poolCfg);
   });
 
   it("release at refCount 0 closes the browser", async () => {
-    const result = await acquireBrowser(["--no-sandbox"], { enableBrowserPool: true });
+    const result = await acquireBrowser(["--no-sandbox"], poolCfg);
     const closeFn = result.browser.close as ReturnType<typeof vi.fn>;
 
-    await releaseBrowser(result.browser, { enableBrowserPool: true });
+    await releaseBrowser(result.browser, poolCfg);
     expect(closeFn).toHaveBeenCalledTimes(1);
   });
 
   it("pool returns a separate browser when forceScreenshot mismatches pooled mode", async () => {
-    // First acquire with default config (screenshot mode on non-Linux)
-    const first = await acquireBrowser(["--no-sandbox"], { enableBrowserPool: true });
+    const first = await acquireBrowser(["--no-sandbox"], poolCfg);
     expect(first.captureMode).toBe("screenshot");
 
-    // Second acquire with forceScreenshot: true — same mode, should reuse
-    const second = await acquireBrowser(["--no-sandbox"], {
-      enableBrowserPool: true,
-      forceScreenshot: true,
-    });
+    // Second acquire with same forceScreenshot — same mode, should reuse
+    const second = await acquireBrowser(["--no-sandbox"], poolCfg);
     expect(second.browser).toBe(first.browser);
     expect(launchFn).toHaveBeenCalledTimes(1);
 
-    await releaseBrowser(first.browser, { enableBrowserPool: true });
-    await releaseBrowser(second.browser, { enableBrowserPool: true });
+    await releaseBrowser(first.browser, poolCfg);
+    await releaseBrowser(second.browser, poolCfg);
   });
 
   it("forceReleaseBrowser does not kill Chrome when other sessions hold refs", async () => {
-    const result = await acquireBrowser(["--no-sandbox"], { enableBrowserPool: true });
+    const result = await acquireBrowser(["--no-sandbox"], poolCfg);
     // Acquire a second ref
-    const second = await acquireBrowser(["--no-sandbox"], { enableBrowserPool: true });
+    const second = await acquireBrowser(["--no-sandbox"], poolCfg);
 
     const disconnectFn = result.browser.disconnect as ReturnType<typeof vi.fn>;
     forceReleaseBrowser(result.browser);
@@ -273,7 +274,7 @@ describe("browser pool", () => {
     expect(disconnectFn).not.toHaveBeenCalled();
 
     // Release the remaining ref normally
-    await releaseBrowser(second.browser, { enableBrowserPool: true });
+    await releaseBrowser(second.browser, poolCfg);
   });
 
   it("drainBrowserPool is safe to call when no browser is pooled", async () => {
@@ -288,7 +289,7 @@ describe("browser pool", () => {
     launchFn.mockReturnValue(deferred);
 
     // Start acquire — it will be pending
-    const acquirePromise = acquireBrowser(["--no-sandbox"], { enableBrowserPool: true });
+    const acquirePromise = acquireBrowser(["--no-sandbox"], poolCfg);
 
     // Drain while launch is in-flight
     const drainPromise = drainBrowserPool();
