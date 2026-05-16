@@ -18,7 +18,11 @@ import { createRenderJob, executeRenderJob } from "./services/renderOrchestrator
 import { compileForRender } from "./services/htmlCompiler.js";
 import { validateCompilation } from "./services/compilationTester.js";
 import { extractMediaMetadata } from "./utils/ffprobe.js";
-import { buildRmsEnvelope, compareAudioEnvelopes } from "./utils/audioRegression.js";
+import {
+  buildRmsEnvelope,
+  compareAudioEnvelopes,
+  computeAudioResidualRmsDb,
+} from "./utils/audioRegression.js";
 import { parseFps, fpsToNumber } from "@hyperframes/core";
 import {
   checkDistributedSupport,
@@ -38,6 +42,15 @@ type TestMetadata = {
   maxFrameFailures: number;
   minAudioCorrelation: number;
   maxAudioLagWindows: number;
+  /**
+   * Optional Rio-style residual-RMS check. Subtracts the rendered audio
+   * from the baseline and reads the residual Overall RMS via `astats`.
+   * A value of `-50` (Rio's convention) treats residuals at-or-below
+   * -50 dBFS as effectively-silent — i.e. the streams are sample-level
+   * equivalent. Omit (undefined) to skip the check; in-process renders
+   * authored before this field was introduced have implicit `undefined`.
+   */
+  maxAudioResidualRmsDb?: number;
   renderConfig: {
     /**
      * Frame rate. Stored on disk as a JSON number (integer fps, e.g. `30`)
@@ -228,6 +241,12 @@ function validateMetadata(meta: unknown): TestMetadata {
   }
   if (typeof m.maxAudioLagWindows !== "number" || m.maxAudioLagWindows < 1) {
     throw new Error("meta.json: 'maxAudioLagWindows' must be >= 1");
+  }
+  if (
+    m.maxAudioResidualRmsDb !== undefined &&
+    (typeof m.maxAudioResidualRmsDb !== "number" || !Number.isFinite(m.maxAudioResidualRmsDb))
+  ) {
+    throw new Error("meta.json: 'maxAudioResidualRmsDb' must be a finite number when present");
   }
   if (!m.renderConfig || typeof m.renderConfig !== "object") {
     throw new Error("meta.json: 'renderConfig' must be an object");
@@ -1051,6 +1070,7 @@ async function runTestSuite(
     let audioPassed = true;
     let audioCorrelation = 1;
     let audioLagWindows = 0;
+    let audioResidualRmsDb: number | null = null;
 
     if (!isPngSequence) {
       logPretty("Comparing audio quality...", "🔊");
@@ -1068,6 +1088,24 @@ async function runTestSuite(
         audioCorrelation = audio.correlation;
         audioLagWindows = audio.lagWindows;
         audioPassed = audio.correlation >= suite.meta.minAudioCorrelation;
+
+        // Rio-style residual RMS check, sample-level rather than
+        // envelope-level. Only runs when the fixture opts in by
+        // setting `maxAudioResidualRmsDb`; the envelope-correlation
+        // gate above stays in place either way for legacy fixtures
+        // (correlation is shape similarity; residual RMS is exact
+        // cancellation — both surface different drift classes).
+        if (suite.meta.maxAudioResidualRmsDb !== undefined) {
+          const residual = computeAudioResidualRmsDb(
+            renderedOutputPath,
+            snapshotVideoPath,
+            suite.meta.maxAudioResidualRmsDb,
+          );
+          audioResidualRmsDb = residual.overallDb;
+          if (!residual.ok) {
+            audioPassed = false;
+          }
+        }
       }
     }
 
@@ -1084,17 +1122,24 @@ async function runTestSuite(
         passed: audioPassed,
         correlation: audioCorrelation,
         lagWindows: audioLagWindows,
+        residualRmsDb: audioResidualRmsDb,
       }),
     );
 
+    const residualSuffix =
+      audioResidualRmsDb === null
+        ? ""
+        : `, residualRMS: ${
+            Number.isFinite(audioResidualRmsDb) ? audioResidualRmsDb.toFixed(2) : "-inf"
+          } dBFS`;
     if (audioPassed) {
       logPretty(
-        `Audio quality: PASSED (correlation: ${audioCorrelation.toFixed(3)}, lag: ${audioLagWindows})`,
+        `Audio quality: PASSED (correlation: ${audioCorrelation.toFixed(3)}, lag: ${audioLagWindows}${residualSuffix})`,
         "✓",
       );
     } else {
       logPretty(
-        `Audio quality: FAILED (correlation: ${audioCorrelation.toFixed(3)}, threshold: ${suite.meta.minAudioCorrelation})`,
+        `Audio quality: FAILED (correlation: ${audioCorrelation.toFixed(3)}, threshold: ${suite.meta.minAudioCorrelation}${residualSuffix})`,
         "✗",
       );
     }
