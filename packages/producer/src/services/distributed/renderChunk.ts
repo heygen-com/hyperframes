@@ -42,6 +42,7 @@ import {
   assertSwiftShader,
   type BeforeCaptureHook,
   BROWSER_GPU_NOT_SOFTWARE,
+  calculateOptimalWorkers,
   type CaptureOptions,
   type CaptureSession,
   closeCaptureSession,
@@ -533,25 +534,34 @@ export async function renderChunk(
 
       // ── Capture the chunk's range via runCaptureStage ──
       //
-      // `workerCount: 2` parallelizes the chunk's capture across two Chrome
-      // sessions on this worker. Adopters that deploy chunks onto multi-core
-      // hosts (the standard pattern — Temporal pods, Lambda containers, K8s
-      // Jobs at 8-24 vCPU) previously pinned only ~3-4 cores per chunk while
-      // the rest sat idle: chunk-level fan-out at the orchestration layer
-      // gave each pod one chunk at a time, and the chunk render itself was
-      // single-threaded. Doubling to two intra-chunk workers approximately
-      // halves per-chunk wall time on per-frame-heavy compositions (where
-      // the slowest chunk gates total distributed wall-clock), without
-      // changing the chunk's byte-identical-retry contract — the sequential
-      // and parallel branches of `runCaptureStage` both produce a
-      // contiguous, 0-indexed `frame_<i>.{ext}` framesDir within the chunk's
-      // range, so the encoder downstream is unchanged.
+      // Auto-size the chunk's intra-pod worker count via the same
+      // `calculateOptimalWorkers` helper the in-process renderer uses. The
+      // distributed primitive previously hardcoded `workerCount: 1`, leaving
+      // ~18 of a typical 22-vCPU pod's cores idle while a single Chrome
+      // session rendered the chunk: chunk-level fan-out at the orchestration
+      // layer (Temporal / Lambda / K8s Jobs) gave each pod one chunk at a
+      // time, but the chunk render itself was single-threaded. Matching the
+      // in-process renderer's worker selection lifts that ceiling and lets
+      // chunks saturate the pod they land on (typically 2-6 workers based on
+      // pod CPU + frame count).
       //
-      // The pre-warmed `probeSession` is consumed only by the sequential
-      // branch; the parallel branch closes it during stage entry and creates
-      // its own worker sessions. The ~3-5s warmup is therefore wasted under
-      // parallel — kept for now because the chunk-render speedup dwarfs it;
-      // a follow-up can skip probeSession creation when workerCount > 1.
+      // The framesDir contract is unchanged: the sequential and parallel
+      // branches of `runCaptureStage` both emit a contiguous, 0-indexed
+      // `frame_<i>.{ext}` directory within the chunk's range, so the encoder
+      // downstream is unaffected. The pre-warmed `probeSession` is consumed
+      // only by the sequential branch; the parallel branch closes it during
+      // stage entry and creates its own worker sessions. The ~3-5s warmup is
+      // wasted when the auto-sized worker count is >1 — kept for now because
+      // the per-chunk render-time win dwarfs it; a follow-up can skip
+      // probeSession creation when the resolved workerCount > 1.
+      //
+      // `requestedWorkers` is `undefined` so the auto path computes the
+      // worker count from `framesInChunk` + `cfg.concurrency` (default
+      // "auto") + pod CPU. Capture-cost calibration based on shader
+      // transitions / renderModeHints is not threaded through yet; the
+      // chunk's compiled metadata could be plumbed if heavy shader work
+      // starts trigging compositor contention.
+      const chunkWorkerCount = calculateOptimalWorkers(framesInChunk, undefined, cfg);
       await runCaptureStage({
         fileServer,
         workDir,
@@ -561,7 +571,7 @@ export async function renderChunk(
         cfg,
         forceScreenshot: encoder.forceScreenshot,
         log,
-        workerCount: 2,
+        workerCount: chunkWorkerCount,
         // Pass the pre-warmed session through as `probeSession` so captureStage
         // reuses it via `prepareCaptureSessionForReuse` instead of spinning up
         // a fresh browser (sequential path only). The stage closes the session
