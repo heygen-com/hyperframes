@@ -27,7 +27,12 @@ export function resolveStudioBooleanEnvFlag(
   return fallback;
 }
 
-const env = import.meta.env as StudioFeatureFlagEnv;
+// `import.meta.env` is a Vite-only extension. In non-Vite ESM hosts
+// (Next.js / Turbopack, Node, jest in some configs) it's undefined,
+// and downstream `env[name]` reads would crash. Fall back to `{}` so
+// every flag resolves to its declared default outside Vite. Direct
+// property access keeps Vite's compile-time transform happy.
+const env = (import.meta.env ?? {}) as StudioFeatureFlagEnv;
 
 export const STUDIO_PREVIEW_MANUAL_EDITING_ENABLED = resolveStudioBooleanEnvFlag(
   env,
