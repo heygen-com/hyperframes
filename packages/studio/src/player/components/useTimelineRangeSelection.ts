@@ -38,6 +38,9 @@ export function useTimelineRangeSelection({
     anchorY: number;
   } | null>(null);
 
+  const seekRafRef = useRef(0);
+  const pendingClientXRef = useRef(0);
+
   const handlePointerDown = useCallback(
     (e: React.PointerEvent) => {
       if (e.button !== 0) return;
@@ -80,8 +83,27 @@ export function useTimelineRangeSelection({
         return;
       }
       if (!isDragging.current) return;
-      seekFromX(e.clientX);
-      autoScrollDuringDrag(e.clientX);
+      pendingClientXRef.current = e.clientX;
+      // Update the playhead visual immediately via liveTime for smooth feedback,
+      // then RAF-throttle the full seek (adapter + React state sync).
+      const el = scrollRef.current;
+      if (el) {
+        const rect = el.getBoundingClientRect();
+        const x = e.clientX - rect.left + el.scrollLeft - GUTTER;
+        if (x >= 0) {
+          const dur = el.scrollWidth / pps;
+          liveTime.notify(Math.max(0, Math.min(dur, x / pps)));
+        }
+      }
+      if (!seekRafRef.current) {
+        seekRafRef.current = requestAnimationFrame(() => {
+          seekRafRef.current = 0;
+          if (isDragging.current) {
+            seekFromX(pendingClientXRef.current);
+            autoScrollDuringDrag(pendingClientXRef.current);
+          }
+        });
+      }
     },
     [seekFromX, autoScrollDuringDrag, pps, scrollRef, isDragging],
   );
@@ -104,9 +126,14 @@ export function useTimelineRangeSelection({
       });
       return;
     }
+    if (seekRafRef.current) {
+      cancelAnimationFrame(seekRafRef.current);
+      seekRafRef.current = 0;
+    }
+    seekFromX(pendingClientXRef.current);
     isDragging.current = false;
     cancelAnimationFrame(dragScrollRaf.current);
-  }, [isDragging, dragScrollRaf, setShowPopover]);
+  }, [isDragging, dragScrollRaf, setShowPopover, seekFromX]);
 
   return {
     rangeSelection,

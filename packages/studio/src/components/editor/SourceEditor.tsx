@@ -55,6 +55,7 @@ interface SourceEditorProps {
   language?: string;
   onChange?: (content: string) => void;
   readOnly?: boolean;
+  revealOffset?: number | null;
 }
 
 export const SourceEditor = memo(function SourceEditor({
@@ -63,6 +64,7 @@ export const SourceEditor = memo(function SourceEditor({
   language,
   onChange,
   readOnly = false,
+  revealOffset,
 }: SourceEditorProps) {
   const editorRef = useRef<EditorView | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -131,6 +133,18 @@ export const SourceEditor = memo(function SourceEditor({
       });
     }
   }, [content]);
+
+  useEffect(() => {
+    const view = editorRef.current;
+    if (!view || revealOffset == null || revealOffset < 0) return;
+    const docLen = view.state.doc.length;
+    const pos = Math.min(revealOffset, docLen);
+    view.dispatch({
+      selection: { anchor: pos },
+      effects: EditorView.scrollIntoView(pos, { y: "center" }),
+    });
+    view.focus();
+  }, [revealOffset]);
 
   return <div ref={mountEditor} className="h-full w-full overflow-hidden" />;
 });

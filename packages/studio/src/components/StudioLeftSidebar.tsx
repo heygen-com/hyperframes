@@ -35,6 +35,7 @@ export function StudioLeftSidebar({
     assets,
     editingFile,
     fileTree,
+    revealSourceOffset,
     handleFileSelect,
     handleCreateFile,
     handleCreateFolder,
@@ -113,6 +114,7 @@ export function StudioLeftSidebar({
                 content={editingFile.content ?? ""}
                 filePath={editingFile.path}
                 onChange={handleContentChange}
+                revealOffset={revealSourceOffset}
               />
             )
           ) : undefined

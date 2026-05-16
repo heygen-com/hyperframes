@@ -215,6 +215,9 @@ export function StudioApp() {
     syncPreviewHistoryHotkey: appHotkeys.syncPreviewHistoryHotkey,
     reloadPreview,
     setRefreshKey,
+    openSourceForSelection: fileManager.openSourceForSelection,
+    selectSidebarTab: (tab: "code" | "compositions" | "assets") =>
+      leftSidebarRef.current?.selectTab(tab),
   });
 
   domEditSelectionBridgeRef.current = domEditSession.domEditSelection;

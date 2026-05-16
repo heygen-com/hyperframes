@@ -268,11 +268,17 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
           if (assetPollRef.current) clearInterval(assetPollRef.current);
           assetPollRef.current = null;
           container.removeChild(player);
-          // Clear the forwarded ref
+          // Clear the forwarded ref only if it still points to THIS iframe.
+          // During crossfade refreshes the retiring Player unmounts after the
+          // new Player has already assigned its iframe to the same ref — blindly
+          // nulling it would break seeking in the new Player.
           if (typeof ref === "function") {
             ref(null);
           } else if (ref) {
-            (ref as React.MutableRefObject<HTMLIFrameElement | null>).current = null;
+            const mutableRef = ref as React.MutableRefObject<HTMLIFrameElement | null>;
+            if (mutableRef.current === iframe) {
+              mutableRef.current = null;
+            }
           }
         };
       });

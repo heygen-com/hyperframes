@@ -4,6 +4,7 @@ import { FONT_EXT, isMediaFile } from "../utils/mediaTypes";
 import { fontFamilyFromAssetPath, type ImportedFontAsset } from "../components/editor/fontAssets";
 import { saveProjectFilesWithHistory } from "../utils/studioFileHistory";
 import type { EditHistoryKind } from "../utils/editHistory";
+import { findTagByTarget, type PatchTarget } from "../utils/sourcePatcher";
 
 // ── Types ──
 
@@ -37,6 +38,7 @@ export function useFileManager({
   const [projectDir, setProjectDir] = useState<string | null>(null);
   const [fileTree, setFileTree] = useState<string[]>([]);
   const [fileTreeLoaded, setFileTreeLoaded] = useState(false);
+  const [revealSourceOffset, setRevealSourceOffset] = useState<number | null>(null);
 
   // ── Refs ──
 
@@ -167,6 +169,40 @@ export function useFileManager({
       }, 600);
     },
     [domEditSaveTimestampRef, readProjectFile, recordEdit, setRefreshKey, writeProjectFile],
+  );
+
+  // ── Open source for selection (click-to-source) ──
+
+  const pendingRevealRef = useRef<PatchTarget | null>(null);
+
+  const openSourceForSelection = useCallback(
+    (sourceFile: string, target: PatchTarget) => {
+      const pid = projectIdRef.current;
+      if (!pid || !sourceFile) return;
+      if (editingPathRef.current === sourceFile && editingFile?.content != null) {
+        const match = findTagByTarget(editingFile.content, target);
+        setRevealSourceOffset(match ? match.start : null);
+        return;
+      }
+      pendingRevealRef.current = target;
+      fetch(`/api/projects/${pid}/files/${encodeURIComponent(sourceFile)}`)
+        .then((r) => r.json())
+        .then((data: { content?: string }) => {
+          if (data.content != null) {
+            setEditingFile({ path: sourceFile, content: data.content });
+            const pending = pendingRevealRef.current;
+            pendingRevealRef.current = null;
+            if (pending) {
+              const match = findTagByTarget(data.content, pending);
+              setRevealSourceOffset(match ? match.start : null);
+            }
+          }
+        })
+        .catch(() => {
+          pendingRevealRef.current = null;
+        });
+    },
+    [editingFile?.content],
   );
 
   // ── File tree refresh ──
@@ -417,6 +453,10 @@ export function useFileManager({
     readProjectFile,
     writeProjectFile,
     readOptionalProjectFile,
+
+    // Click-to-source
+    revealSourceOffset,
+    openSourceForSelection,
 
     // Callbacks
     handleFileSelect,

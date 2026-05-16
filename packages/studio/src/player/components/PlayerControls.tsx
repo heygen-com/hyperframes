@@ -207,12 +207,39 @@ export const PlayerControls = memo(function PlayerControls({
 
       seekFromClientX(e.clientX);
 
+      // During drag, update the slider visual immediately on every pointer
+      // event but RAF-throttle the actual onSeek call. The seek path triggers
+      // adapter.seek + setCurrentTime + React re-renders which can take >16ms
+      // on complex compositions — keeping visual feedback on the raw event and
+      // batching the expensive work to one call per frame keeps scrubbing at
+      // 60 fps.
+      let seekRafId = 0;
+      let pendingClientX = e.clientX;
       const onMove = (ev: PointerEvent) => {
-        if (ev.pointerId !== pointerId) return;
-        if (isDraggingRef.current) seekFromClientX(ev.clientX);
+        if (ev.pointerId !== pointerId || !isDraggingRef.current) return;
+        pendingClientX = ev.clientX;
+        const bar = seekBarRef.current;
+        const dur = durationRef.current;
+        if (bar && dur > 0) {
+          const rect = bar.getBoundingClientRect();
+          const pct = resolveSeekPercent(ev.clientX, rect.left, rect.width) * 100;
+          if (progressFillRef.current) progressFillRef.current.style.width = `${pct}%`;
+          if (progressThumbRef.current) progressThumbRef.current.style.left = `${pct}%`;
+        }
+        if (!seekRafId) {
+          seekRafId = requestAnimationFrame(() => {
+            seekRafId = 0;
+            if (isDraggingRef.current) seekFromClientX(pendingClientX);
+          });
+        }
       };
       const cleanup = () => {
         isDraggingRef.current = false;
+        if (seekRafId) {
+          cancelAnimationFrame(seekRafId);
+          seekRafId = 0;
+        }
+        seekFromClientX(pendingClientX);
         try {
           target.releasePointerCapture(pointerId);
         } catch {

@@ -232,7 +232,7 @@ function replaceTagAtMatch(html: string, match: TagMatch, newTag: string): strin
   return `${html.slice(0, match.start)}${newTag}${html.slice(match.end)}`;
 }
 
-function findTagByTarget(html: string, target: PatchTarget): TagMatch | null {
+export function findTagByTarget(html: string, target: PatchTarget): TagMatch | null {
   if (target.id) {
     const idPattern = new RegExp(`(<[^>]*\\bid=(["'])${escapeRegex(target.id)}\\2[^>]*)>`, "i");
     const match = idPattern.exec(html);

@@ -1,10 +1,11 @@
-import { useEffect } from "react";
+import { useCallback, useEffect } from "react";
 import type { TimelineElement } from "../player";
 import { STUDIO_INSPECTOR_PANELS_ENABLED } from "../components/editor/manualEditingAvailability";
-import { findElementForSelection } from "../components/editor/domEditing";
+import { findElementForSelection, type DomEditSelection } from "../components/editor/domEditing";
 import type { ImportedFontAsset } from "../components/editor/fontAssets";
 import type { EditHistoryKind } from "../utils/editHistory";
 import type { RightPanelTab } from "../utils/studioHelpers";
+import type { PatchTarget } from "../utils/sourcePatcher";
 import { useAskAgentModal } from "./useAskAgentModal";
 import { useDomSelection } from "./useDomSelection";
 import { usePreviewInteraction } from "./usePreviewInteraction";
@@ -52,6 +53,8 @@ export interface UseDomEditSessionParams {
   syncPreviewHistoryHotkey: (iframe: HTMLIFrameElement | null) => void;
   reloadPreview: () => void;
   setRefreshKey: React.Dispatch<React.SetStateAction<number>>;
+  openSourceForSelection?: (sourceFile: string, target: PatchTarget) => void;
+  selectSidebarTab?: (tab: "code" | "compositions" | "assets") => void;
 }
 
 // ── Hook ──
@@ -87,8 +90,25 @@ export function useDomEditSession({
   syncPreviewHistoryHotkey,
   reloadPreview,
   setRefreshKey: _setRefreshKey,
+  openSourceForSelection,
+  selectSidebarTab,
 }: UseDomEditSessionParams) {
   void _setRefreshKey;
+
+  const onClickToSource = useCallback(
+    (selection: DomEditSelection) => {
+      if (!openSourceForSelection || !selectSidebarTab) return;
+      if (!selection.sourceFile) return;
+      selectSidebarTab("code");
+      openSourceForSelection(selection.sourceFile, {
+        id: selection.id,
+        selector: selection.selector,
+        selectorIndex: selection.selectorIndex,
+      });
+    },
+    [openSourceForSelection, selectSidebarTab],
+  );
+
   // ── Selection (delegated to useDomSelection) ──
 
   const {
@@ -164,6 +184,7 @@ export function useDomEditSession({
     setAgentPromptSelectionContext,
     setAgentModalAnchorPoint,
     setAgentModalOpen,
+    onClickToSource,
   });
 
   // ── Commit handlers (delegated to useDomEditCommits) ──
