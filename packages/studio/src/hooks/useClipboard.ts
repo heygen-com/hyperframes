@@ -65,7 +65,7 @@ function getElementOuterHtml(
     const matches = doc.querySelectorAll(selection.selector);
     el = matches[selection.selectorIndex ?? 0] ?? null;
   }
-  return el instanceof HTMLElement ? el.outerHTML : null;
+  return el && "outerHTML" in el ? (el as Element).outerHTML : null;
 }
 
 export function useClipboard({
@@ -104,7 +104,7 @@ export function useClipboard({
             const matches = doc.querySelectorAll(element.selector);
             el = matches[element.selectorIndex ?? 0] ?? null;
           }
-          if (el instanceof HTMLElement) html = el.outerHTML;
+          if (el && "outerHTML" in el) html = (el as Element).outerHTML;
         }
       } catch {
         // cross-origin frame
