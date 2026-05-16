@@ -162,14 +162,13 @@ function TimingSection({
   return (
     <Section title="Timing" icon={<Clock size={15} />}>
       <div className={RESPONSIVE_GRID}>
-        <MetricField label="Start" value={formatTimingValue(start)} scrub onCommit={commitStart} />
-        <MetricField label="End" value={formatTimingValue(end)} scrub onCommit={commitEnd} />
+        <MetricField label="Start" value={formatTimingValue(start)} onCommit={commitStart} />
+        <MetricField label="End" value={formatTimingValue(end)} onCommit={commitEnd} />
       </div>
       <div className="mt-3">
         <MetricField
           label="Duration"
           value={formatTimingValue(duration)}
-          scrub
           onCommit={commitDuration}
         />
       </div>
