@@ -25,8 +25,10 @@ export {
   type RenderChunkLambdaResult,
   type SerializableDistributedRenderConfig,
 } from "./events.js";
+// `_setSparticuzChromiumForTests` is intentionally NOT re-exported from
+// the package barrel — it's a test-only DI seam. Test files import it
+// directly from `./chromium.js`.
 export {
-  _setSparticuzChromiumForTests,
   type ChromeSource,
   resolveChromeArgs,
   resolveChromeExecutablePath,

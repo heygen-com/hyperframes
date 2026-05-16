@@ -11,7 +11,7 @@
  * primitive → S3 upload → return small JSON result.
  */
 
-import { existsSync, mkdirSync, mkdtempSync, rmSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { S3Client } from "@aws-sdk/client-s3";
@@ -315,6 +315,14 @@ async function handleRenderChunk(
     await downloadS3ObjectToFile(s3, event.PlanS3Uri, planTar);
     await untarDirectory(planTar, planDir);
 
+    // Verify the plan's hash matches what Step Functions told us to render.
+    // The producer's renderChunk re-checks internally (defense-in-depth),
+    // but doing it here at the handler boundary lets us fail before paying
+    // the Chrome-launch + render cost on a misrouted chunk. Throws a
+    // typed PLAN_HASH_MISMATCH that Step Functions can route as
+    // non-retryable.
+    verifyPlanHash(planDir, event.PlanHash);
+
     const chunkOutputBase = join(
       work,
       event.Format === "png-sequence"
@@ -487,5 +495,36 @@ function cleanupDir(dir: string): void {
     rmSync(dir, { recursive: true, force: true });
   } catch {
     // Best-effort — leak is preferable to crashing on success path.
+  }
+}
+
+/**
+ * Read the untarred planDir's `plan.json` and assert its `planHash`
+ * matches what the Step Functions event claims. Throws on mismatch with
+ * a typed `PLAN_HASH_MISMATCH` error name so the state machine's typed
+ * non-retryable list routes it correctly.
+ *
+ * This is defense-in-depth — the producer's `renderChunk` does the same
+ * check internally — but performing it here lets us fail before paying
+ * the Chrome-launch + per-frame capture cost on a misrouted chunk.
+ */
+function verifyPlanHash(planDir: string, expected: string): void {
+  const planJsonPath = join(planDir, "plan.json");
+  let parsed: { planHash?: unknown };
+  try {
+    parsed = JSON.parse(readFileSync(planJsonPath, "utf-8")) as { planHash?: unknown };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    const error = new Error(`PLAN_HASH_MISMATCH: failed to read ${planJsonPath}: ${msg}`);
+    error.name = "PLAN_HASH_MISMATCH";
+    throw error;
+  }
+  const actual = parsed.planHash;
+  if (typeof actual !== "string" || actual !== expected) {
+    const error = new Error(
+      `PLAN_HASH_MISMATCH: event PlanHash=${expected} did not match plan.json planHash=${String(actual)}`,
+    );
+    error.name = "PLAN_HASH_MISMATCH";
+    throw error;
   }
 }

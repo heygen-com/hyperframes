@@ -5,7 +5,8 @@
  * Reads `dist/handler.zip.manifest.json` (written by `build-zip.ts`) and
  * exits non-zero if either the unzipped or zipped size exceeds the
  * declared limits. Lambda's hard ceiling for ZIP-deployed functions is
- * 250 MB unzipped; the in-house budget is 240 MB to keep headroom for
+ * 250 MiB unzipped (262144000 bytes — AWS docs label it "250 MB" but use
+ * binary mebibytes); the in-house budget is 248 MiB to keep headroom for
  * the Chrome tarball decompression that happens at cold start.
  */
 
@@ -55,15 +56,15 @@ function main(): void {
   if (manifest.unzippedBytes > IN_HOUSE_UNZIPPED_LIMIT) {
     console.error(
       `[verify-zip-size] FAIL unzipped: ${formatBytes(manifest.unzippedBytes)} > ` +
-        `${formatBytes(IN_HOUSE_UNZIPPED_LIMIT)} (in-house limit; Lambda hard ceiling is 250 MB).`,
+        `${formatBytes(IN_HOUSE_UNZIPPED_LIMIT)} (in-house limit; Lambda hard ceiling is 250 MiB).`,
     );
     failed = true;
   }
   if (actualZipped > IN_HOUSE_ZIPPED_LIMIT) {
     console.error(
       `[verify-zip-size] FAIL zipped: ${formatBytes(actualZipped)} > ` +
-        `${formatBytes(IN_HOUSE_ZIPPED_LIMIT)} (in-house limit; Lambda direct-upload ceiling is 50 MB, ` +
-        `S3-deploy ceiling is 250 MB).`,
+        `${formatBytes(IN_HOUSE_ZIPPED_LIMIT)} (in-house limit; Lambda direct-upload ceiling is 50 MiB, ` +
+        `S3-deploy ceiling is 250 MiB).`,
     );
     failed = true;
   }

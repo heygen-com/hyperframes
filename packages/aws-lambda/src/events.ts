@@ -52,7 +52,13 @@ export interface RenderChunkEvent {
   Action: "renderChunk";
   /** S3 URI of the plan tar produced by a PlanEvent invocation. */
   PlanS3Uri: string;
-  /** `PlanResult.planHash` — checked against the planDir's `plan.json` post-download. */
+  /**
+   * `PlanResult.planHash` from the Plan invocation. The handler verifies
+   * this against the untarred planDir's `plan.json` before invoking the
+   * producer, throwing a typed `PLAN_HASH_MISMATCH` on divergence so the
+   * state machine routes it as non-retryable. Defense-in-depth — the
+   * producer also re-checks internally.
+   */
   PlanHash: string;
   /** 0-based chunk index this invocation should render. */
   ChunkIndex: number;

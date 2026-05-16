@@ -35,6 +35,7 @@ import {
   cpSync,
   existsSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   rmSync,
   statSync,
@@ -52,7 +53,7 @@ const distDir = join(packageRoot, "dist");
 
 interface BuildOptions {
   source: "sparticuz" | "chrome-headless-shell";
-  /** Hard upper bound on the unzipped bundle size in bytes (Lambda limit is 250 MB). */
+  /** Hard upper bound on the unzipped bundle size in bytes (Lambda limit is 250 MiB). */
   maxUnzippedBytes: number;
   /** Hard upper bound on the ZIP file size in bytes. */
   maxZippedBytes: number;
@@ -60,18 +61,19 @@ interface BuildOptions {
 
 const DEFAULT_OPTIONS: BuildOptions = {
   source: "sparticuz",
-  // Lambda's hard ceiling for ZIP-deployed functions is 250 MB unzipped.
-  // We gate at 248 MiB to keep a couple of MiB of headroom — the
-  // sparticuz Chrome (70 MB) + ffmpeg (80 MB) + ffprobe (62 MB) +
-  // bundled Node deps put us close to the ceiling. Chrome itself
+  // Lambda's hard ceiling for ZIP-deployed functions is 250 MiB unzipped
+  // (AWS docs label it "250 MB" but the 262144000-byte value is 250
+  // binary mebibytes). We gate at 248 MiB to keep ~2 MiB of headroom —
+  // the sparticuz Chrome (~70 MiB) + ffmpeg (~80 MiB) + ffprobe (~62
+  // MiB) + bundled Node deps put us close to the ceiling. Chrome itself
   // decompresses into Lambda's `/tmp` at cold start, which has its own
-  // 10 GB budget, so the unzipped /var/task footprint above is what
-  // actually competes with Lambda's 250 MB limit.
+  // 10 GiB budget, so the unzipped /var/task footprint above is what
+  // actually competes with Lambda's 250 MiB limit.
   maxUnzippedBytes: 248 * 1024 * 1024,
-  // Lambda's only zipped-size cap is for direct console/CLI uploads (50 MB);
-  // S3-deployed functions are bounded by the unzipped ceiling. We gate at
-  // 150 MiB to flag a sudden bundle-size regression without false-failing
-  // on the natural ~100 MiB sparticuz + ffmpeg payload.
+  // Lambda's only zipped-size cap is for direct console/CLI uploads (50
+  // MiB); S3-deployed functions are bounded by the unzipped ceiling. We
+  // gate at 150 MiB to flag a sudden bundle-size regression without
+  // false-failing on the natural ~100 MiB sparticuz + ffmpeg payload.
   maxZippedBytes: 150 * 1024 * 1024,
 };
 
@@ -142,7 +144,7 @@ async function main(): Promise<void> {
     throw new Error(
       `[build-zip] unzipped bundle ${formatBytes(unzippedBytes)} exceeds limit ${formatBytes(
         opts.maxUnzippedBytes,
-      )} (Lambda ZIP ceiling: 250 MB unzipped). ` +
+      )} (Lambda ZIP ceiling: 250 MiB unzipped). ` +
         `Switch --source to the lighter option, or move Chrome to a Lambda Layer.`,
     );
   }
@@ -221,14 +223,14 @@ async function bundleHandler(stagingDir: string): Promise<void> {
       "puppeteer-core",
       "puppeteer",
       // AWS SDK v3 is pre-installed in the Lambda Node 22 runtime; mark
-      // external so we don't double-bundle 3+ MB of SDK.
+      // external so we don't double-bundle 3+ MiB of SDK.
       "@aws-sdk/client-s3",
     ],
     plugins: [workspaceAliasPlugin],
     minify: false,
-    // sourcemap=false: the ZIP is tight on Lambda's 250 MB unzipped cap
-    // (Chrome 70 MB + ffmpeg 80 MB + ffprobe 62 MB + Node deps). A 4-5 MB
-    // sourcemap puts us over. Re-enable for local debugging by passing
+    // sourcemap=false: the ZIP is tight on Lambda's 250 MiB unzipped cap
+    // (Chrome ~70 MiB + ffmpeg ~80 MiB + ffprobe ~62 MiB + Node deps). A
+    // 4-5 MiB sourcemap puts us over. Re-enable for local debugging by passing
     // --sourcemap; the bundle's stack traces stay readable enough without
     // it because we don't minify.
     sourcemap: false,
@@ -399,8 +401,11 @@ function stageChromeHeadlessShell(stagingDir: string): void {
         `before --source=chrome-headless-shell.`,
     );
   }
-  const { readdirSync } = require("node:fs") as typeof import("node:fs");
-  const versions = readdirSync(baseDir).sort().reverse();
+  // Sort by numeric semver descending. `sort().reverse()` is lexicographic,
+  // which silently picks "99.0.0" over "131.0.0" once Chrome ships
+  // three-digit majors that aren't strictly width-aligned. `compareSemver`
+  // returns negative/zero/positive on (a, b), so descending = `b - a`.
+  const versions = readdirSync(baseDir).sort((a, b) => compareSemver(b, a));
   for (const v of versions) {
     const candidate = join(baseDir, v, "chrome-headless-shell-linux64", "chrome-headless-shell");
     if (existsSync(candidate)) {
@@ -413,6 +418,28 @@ function stageChromeHeadlessShell(stagingDir: string): void {
     }
   }
   throw new Error(`[build-zip] no linux64 chrome-headless-shell binary found under ${baseDir}.`);
+}
+
+/**
+ * Compare two semver-shaped strings like "131.0.6778.108". Treats any
+ * non-numeric directory name as `-Infinity` so it sorts to the bottom
+ * (Puppeteer's cache layout sometimes includes `latest` or branch tags).
+ * Used by `stageChromeHeadlessShell` to pick the newest cached Chrome
+ * without tripping on the lexicographic "99 > 131" trap.
+ */
+function compareSemver(a: string, b: string): number {
+  const partsA = a.split(".").map((s) => Number.parseInt(s, 10));
+  const partsB = b.split(".").map((s) => Number.parseInt(s, 10));
+  const len = Math.max(partsA.length, partsB.length);
+  for (let i = 0; i < len; i++) {
+    const ai = partsA[i] ?? 0;
+    const bi = partsB[i] ?? 0;
+    if (Number.isNaN(ai) && Number.isNaN(bi)) continue;
+    if (Number.isNaN(ai)) return -1;
+    if (Number.isNaN(bi)) return 1;
+    if (ai !== bi) return ai - bi;
+  }
+  return 0;
 }
 
 function zipDirectory(sourceDir: string, zipPath: string): void {
@@ -437,12 +464,11 @@ function directorySizeBytes(dir: string): number {
 }
 
 function walkSize(dir: string): number {
-  const { readdirSync, statSync: stat } = require("node:fs") as typeof import("node:fs");
   let total = 0;
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const full = join(dir, entry.name);
     if (entry.isDirectory()) total += walkSize(full);
-    else if (entry.isFile()) total += stat(full).size;
+    else if (entry.isFile()) total += statSync(full).size;
   }
   return total;
 }

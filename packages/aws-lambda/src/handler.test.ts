@@ -272,6 +272,56 @@ describe("handler dispatch", () => {
     expect(renderChunkMock).toHaveBeenCalledTimes(1);
   });
 
+  it("rejects renderChunk when event.PlanHash diverges from plan.json", async () => {
+    const tmpRoot = makeTmpRoot();
+    const s3 = new FakeS3Client();
+    // The fixture's plan.json has planHash="fakehash"; the event below
+    // claims something else, so the handler must throw PLAN_HASH_MISMATCH
+    // before invoking the primitive.
+    s3.objects.set("s3://bucket/plan.tar.gz", await makeMinimalPlanTar());
+
+    const renderChunkMock = mock(async () => {
+      throw new Error("primitive should not be called on a hash mismatch");
+    });
+    const planMock = mock(async () => {
+      throw new Error("should not be called");
+    });
+    const assembleMock = mock(async () => {
+      throw new Error("should not be called");
+    });
+
+    const event: RenderChunkEvent = {
+      Action: "renderChunk",
+      PlanS3Uri: "s3://bucket/plan.tar.gz",
+      PlanHash: "not-the-real-hash",
+      ChunkIndex: 0,
+      ChunkOutputS3Prefix: "s3://bucket/renders/abc/",
+      Format: "mp4",
+    };
+
+    let caught: unknown;
+    try {
+      await handler(event, {
+        s3: s3 as unknown as import("@aws-sdk/client-s3").S3Client,
+        primitives: {
+          plan: planMock as unknown as typeof import("@hyperframes/producer/distributed").plan,
+          renderChunk:
+            renderChunkMock as unknown as typeof import("@hyperframes/producer/distributed").renderChunk,
+          assemble:
+            assembleMock as unknown as typeof import("@hyperframes/producer/distributed").assemble,
+        },
+        tmpRoot,
+        skipChromeResolution: true,
+      });
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(Error);
+    expect((caught as Error).name).toBe("PLAN_HASH_MISMATCH");
+    expect((caught as Error).message).toMatch(/not-the-real-hash/);
+    expect(renderChunkMock).not.toHaveBeenCalled();
+  });
+
   it("routes Action='assemble' to the assemble primitive", async () => {
     const tmpRoot = makeTmpRoot();
     const s3 = new FakeS3Client();

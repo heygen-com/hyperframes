@@ -49,10 +49,10 @@ inside Step Functions' history budget (under 200 bytes per chunk).
 
 The package supports two Chromium sources:
 
-| Source                          | Default | Size              | When to pick it                                                                                                       |
-| ------------------------------- | ------- | ----------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `@sparticuz/chromium`           | yes     | ~70 MB compressed | Lambda. Decompresses into `/tmp` at runtime; the rest of the ecosystem already uses it for headless-Chrome-in-Lambda. |
-| Bundled `chrome-headless-shell` | no      | ~140 MB           | Fallback. Used if `@sparticuz/chromium` ever drops `HeadlessExperimental.beginFrame` support.                         |
+| Source                          | Default | Size               | When to pick it                                                                                                       |
+| ------------------------------- | ------- | ------------------ | --------------------------------------------------------------------------------------------------------------------- |
+| `@sparticuz/chromium`           | yes     | ~70 MiB compressed | Lambda. Decompresses into `/tmp` at runtime; the rest of the ecosystem already uses it for headless-Chrome-in-Lambda. |
+| Bundled `chrome-headless-shell` | no      | ~140 MiB           | Fallback. Used if `@sparticuz/chromium` ever drops `HeadlessExperimental.beginFrame` support.                         |
 
 Pick the source at build time:
 
@@ -98,8 +98,8 @@ designed to extract cleanly into Lambda's `/var/task/`.
 
 `verify:zip-size` enforces:
 
-- Unzipped ≤ 248 MB (in-house budget; Lambda hard ceiling is 250 MB unzipped)
-- Zipped ≤ 150 MB (in-house budget; Lambda has no hard zipped cap for S3-deployed functions)
+- Unzipped ≤ 248 MiB (in-house budget; Lambda hard ceiling is 250 MiB unzipped — AWS docs label this "250 MB" but use binary mebibytes)
+- Zipped ≤ 150 MiB (in-house budget; Lambda has no hard zipped cap for S3-deployed functions)
 
 CI fails the PR if either is exceeded.
 
