@@ -43,12 +43,12 @@ type TestMetadata = {
   minAudioCorrelation: number;
   maxAudioLagWindows: number;
   /**
-   * Optional Rio-style residual-RMS check. Subtracts the rendered audio
-   * from the baseline and reads the residual Overall RMS via `astats`.
-   * A value of `-50` (Rio's convention) treats residuals at-or-below
-   * -50 dBFS as effectively-silent — i.e. the streams are sample-level
-   * equivalent. Omit (undefined) to skip the check; in-process renders
-   * authored before this field was introduced have implicit `undefined`.
+   * Optional residual-RMS check. Subtracts the rendered audio from the
+   * baseline and reads the residual Overall RMS via `astats`. A value
+   * of `-50` treats residuals at-or-below -50 dBFS as effectively-
+   * silent — i.e. the streams are sample-level equivalent. Omit
+   * (undefined) to skip the check; fixtures authored before this field
+   * was introduced have implicit `undefined`.
    */
   maxAudioResidualRmsDb?: number;
   renderConfig: {
@@ -153,6 +153,15 @@ type TestResult = {
     passed: boolean;
     correlation: number;
     lagWindows: number;
+    /**
+     * Residual Overall RMS (dBFS) of `rendered - snapshot`. Present only
+     * when the fixture opts in via `meta.maxAudioResidualRmsDb`.
+     * `Number.NEGATIVE_INFINITY` ⇒ perfect cancellation. `NaN` ⇒ residual
+     * check could not run (missing ffmpeg, duration mismatch, ...); see
+     * `audio.residualError` for the reason.
+     */
+    residualRmsDb?: number;
+    residualError?: string;
   };
   renderedOutputPath?: string;
 };
@@ -164,6 +173,28 @@ type TestResult = {
  */
 function logPretty(message: string, emoji = "•") {
   console.error(`${emoji} ${message}`);
+}
+
+/**
+ * Format the residual-RMS suffix used in the audio-quality log line.
+ *
+ * Three states must surface distinctly:
+ *   • `null`            → fixture didn't opt into residual RMS         → "" (no suffix)
+ *   • `NaN`             → check ran but produced no parseable reading  → "(error: ...)"
+ *   • `-Infinity`       → perfect cancellation (identical streams)     → "-inf dBFS"
+ *   • finite number     → measured residual                            → "<value> dBFS"
+ *
+ * Pre-fix this branched on `Number.isFinite()` only, collapsing NaN
+ * (a real-failure signal) into the `-inf` label (a perfect-match signal).
+ */
+function formatResidualSuffix(residualRmsDb: number | null, error: string | undefined): string {
+  if (residualRmsDb === null && !error) return "";
+  if (error) return `, residualRMS: error (${error})`;
+  if (residualRmsDb === null || Number.isNaN(residualRmsDb)) {
+    return ", residualRMS: error (no parseable reading)";
+  }
+  if (!Number.isFinite(residualRmsDb)) return ", residualRMS: -inf dBFS";
+  return `, residualRMS: ${residualRmsDb.toFixed(2)} dBFS`;
 }
 
 function parseArgs(argv: string[]): CliOptions {
@@ -690,16 +721,29 @@ function saveFailureDetails(
 
   // Save audio failures
   if (result.audio && !result.audio.passed) {
+    const residualRmsDb = result.audio.residualRmsDb;
+    const residualError = result.audio.residualError;
+    const residualThreshold = suite.meta.maxAudioResidualRmsDb;
+    const residualExceeds =
+      residualThreshold !== undefined &&
+      typeof residualRmsDb === "number" &&
+      Number.isFinite(residualRmsDb) &&
+      residualRmsDb > residualThreshold;
     const audioReport = {
       summary: {
         correlation: result.audio.correlation,
         lagWindows: result.audio.lagWindows,
         threshold: suite.meta.minAudioCorrelation,
         maxLagWindows: suite.meta.maxAudioLagWindows,
+        ...(residualRmsDb !== undefined ? { residualRmsDb } : {}),
+        ...(residualThreshold !== undefined ? { residualThreshold } : {}),
+        ...(residualError ? { residualError } : {}),
       },
       analysis: {
         correlationBelowThreshold: result.audio.correlation < suite.meta.minAudioCorrelation,
         lagExceedsLimit: Math.abs(result.audio.lagWindows) > suite.meta.maxAudioLagWindows,
+        residualExceedsThreshold: residualExceeds,
+        residualCheckFailed: residualError !== undefined,
       },
     };
 
@@ -1071,6 +1115,7 @@ async function runTestSuite(
     let audioCorrelation = 1;
     let audioLagWindows = 0;
     let audioResidualRmsDb: number | null = null;
+    let audioResidualError: string | undefined;
 
     if (!isPngSequence) {
       logPretty("Comparing audio quality...", "🔊");
@@ -1089,12 +1134,13 @@ async function runTestSuite(
         audioLagWindows = audio.lagWindows;
         audioPassed = audio.correlation >= suite.meta.minAudioCorrelation;
 
-        // Rio-style residual RMS check, sample-level rather than
-        // envelope-level. Only runs when the fixture opts in by
-        // setting `maxAudioResidualRmsDb`; the envelope-correlation
-        // gate above stays in place either way for legacy fixtures
-        // (correlation is shape similarity; residual RMS is exact
-        // cancellation — both surface different drift classes).
+        // Sample-level residual-RMS check (complementary to the
+        // envelope-correlation gate above). Only runs when the fixture
+        // opts in via `maxAudioResidualRmsDb`; the correlation gate
+        // stays in place either way for legacy fixtures. Correlation
+        // measures shape similarity at envelope granularity; residual
+        // RMS measures sample-level cancellation — both surface
+        // different drift classes.
         if (suite.meta.maxAudioResidualRmsDb !== undefined) {
           const residual = computeAudioResidualRmsDb(
             renderedOutputPath,
@@ -1102,6 +1148,7 @@ async function runTestSuite(
             suite.meta.maxAudioResidualRmsDb,
           );
           audioResidualRmsDb = residual.overallDb;
+          audioResidualError = residual.error;
           if (!residual.ok) {
             audioPassed = false;
           }
@@ -1113,6 +1160,8 @@ async function runTestSuite(
       passed: audioPassed,
       correlation: audioCorrelation,
       lagWindows: audioLagWindows,
+      ...(audioResidualRmsDb !== null ? { residualRmsDb: audioResidualRmsDb } : {}),
+      ...(audioResidualError ? { residualError: audioResidualError } : {}),
     };
 
     console.log(
@@ -1123,15 +1172,11 @@ async function runTestSuite(
         correlation: audioCorrelation,
         lagWindows: audioLagWindows,
         residualRmsDb: audioResidualRmsDb,
+        residualError: audioResidualError,
       }),
     );
 
-    const residualSuffix =
-      audioResidualRmsDb === null
-        ? ""
-        : `, residualRMS: ${
-            Number.isFinite(audioResidualRmsDb) ? audioResidualRmsDb.toFixed(2) : "-inf"
-          } dBFS`;
+    const residualSuffix = formatResidualSuffix(audioResidualRmsDb, audioResidualError);
     if (audioPassed) {
       logPretty(
         `Audio quality: PASSED (correlation: ${audioCorrelation.toFixed(3)}, lag: ${audioLagWindows}${residualSuffix})`,
