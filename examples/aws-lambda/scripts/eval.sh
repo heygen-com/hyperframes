@@ -349,12 +349,12 @@ for FIXTURE in "${FIXTURE_LIST[@]}"; do
   # local render could split this back into three comparisons.
   PSNR_LAMBDA_BASE=$(psnr_of "$LAMBDA_MP4" "$BASELINE_MP4")
 
-  # ── 2d. Audio equivalence (Rio-style residual RMS) ────────────────────
+  # ── 2d. Audio equivalence (residual RMS) ──────────────────────────────
   # Subtract baseline audio from Lambda audio; measure residual RMS in
   # dBFS. A perfectly-equivalent track produces residual silence
-  # (≤ -90 dBFS in practice for AAC-vs-AAC); the Rio convention is
-  # ≤ -50 dBFS = "effectively identical." For fixtures with no audio
-  # stream on either side, we emit `n/a` rather than a number.
+  # (≤ -90 dBFS in practice for AAC-vs-AAC); we treat ≤ -50 dBFS as
+  # "effectively identical." For fixtures with no audio stream on either
+  # side, we emit `n/a` rather than a number.
   audio_residual_rms_db() {
     local a="$1" b="$2"
     local has_a has_b
@@ -400,7 +400,7 @@ for FIXTURE in "${FIXTURE_LIST[@]}"; do
     # Normalize ffmpeg's "-inf" / "inf" sentinels to a sortable number well
     # below any sensible threshold so downstream awk comparisons don't trip
     # on the literal string. ("-inf" = perfect cancellation; -200 dBFS is
-    # far below the -50 dBFS Rio gate.) Done in an if/then/fi rather than
+    # far below the -50 dBFS gate.) Done in an if/then/fi rather than
     # `[ A ] || [ B ] && C` — that compound form is parsed as `(A||B)&&C`
     # and silently returns nonzero when both LHS checks fail, which trips
     # `set -e` callers.
