@@ -110,7 +110,11 @@ export function StudioApp() {
   const editHistory = usePersistentEditHistory({ projectId });
   const domEditSaveTimestampRef = useRef(0);
   const reloadPreview = useCallback(() => {
-    setRefreshKey((k) => k + 1);
+    try {
+      previewIframeRef.current?.contentWindow?.location.reload();
+    } catch {
+      setRefreshKey((k) => k + 1);
+    }
   }, []);
 
   const fileManager = useFileManager({

@@ -47,7 +47,7 @@ interface UseAppHotkeysParams {
   leftSidebarRef: React.RefObject<LeftSidebarHandle | null>;
   handleCopy: () => boolean;
   handlePaste: () => Promise<void>;
-  handleCut: () => Promise<void>;
+  handleCut: () => Promise<boolean>;
 }
 
 // ── Hook ──
@@ -236,15 +236,19 @@ export function useAppHotkeys({
         return;
       }
 
-      // Cmd/Ctrl+X — cut
+      // Cmd/Ctrl+X — cut (only preventDefault if there's a selected element to cut)
       if (
         copyPasteKey === "x" &&
         !event.shiftKey &&
         !event.altKey &&
         !isEditableTarget(event.target)
       ) {
-        event.preventDefault();
-        void handleCutRef.current();
+        const hasSelection =
+          !!usePlayerStore.getState().selectedElementId || !!domEditSelectionRef.current;
+        if (hasSelection) {
+          event.preventDefault();
+          void handleCutRef.current();
+        }
         return;
       }
     }
