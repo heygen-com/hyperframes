@@ -317,10 +317,12 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
         await page.goto(opts.previewUrl, { waitUntil: "domcontentloaded", timeout: 10000 });
         await page
           .waitForFunction(
-            () =>
-              !!(
-                (window as any).__timelines && Object.keys((window as any).__timelines).length > 0
-              ),
+            () => {
+              const w = window as Window & {
+                __timelines?: Record<string, unknown>;
+              };
+              return !!(w.__timelines && Object.keys(w.__timelines).length > 0);
+            },
             { timeout: 5000 },
           )
           .catch(() => {});
@@ -341,7 +343,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
         }, opts.seekTime);
         const manifestContent = readStudioManualEditManifestContent(opts.project.dir);
         await applyStudioManualEditsToThumbnailPage(page, manifestContent, opts.compPath);
-        await page.evaluate("document.fonts?.ready");
+        await page.evaluate(() => document.fonts?.ready);
         await new Promise((r) => setTimeout(r, 200));
         await reapplyStudioManualEditsToThumbnailPage(page);
         let clip: ScreenshotClip | undefined;

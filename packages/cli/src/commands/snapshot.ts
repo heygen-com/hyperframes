@@ -237,19 +237,18 @@ async function captureSnapshots(
         const time = positions[i]!;
 
         await page.evaluate((t: number) => {
-          const win = window as any;
-          if (win.__player?.seek) {
-            win.__player.seek(t);
-          } else {
-            const tls = win.__timelines;
-            if (tls) {
-              for (const key in tls) {
-                if (tls[key]?.seek) {
-                  tls[key].pause();
-                  tls[key].seek(t);
-                }
-              }
+          const w = window as Window & {
+            __player?: { seek?: (time: number) => void };
+            __timelines?: Record<string, { pause?: (time?: number) => void }>;
+            gsap?: { ticker?: { tick?: () => void } };
+          };
+          if (typeof w.__player?.seek === "function") {
+            w.__player.seek(t);
+          } else if (w.__timelines) {
+            for (const tl of Object.values(w.__timelines)) {
+              tl?.pause?.(t);
             }
+            w.gsap?.ticker?.tick?.();
           }
         }, time);
 
