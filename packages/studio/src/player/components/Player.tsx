@@ -229,13 +229,19 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
           // data arrives), but the overlay communicates why the first frame
           // or first audio beat may lag.
           //
+          // Skip the overlay on subsequent loads (content refreshes via
+          // refreshPlayer). The browser has already cached the assets from
+          // the first load, so they resolve near-instantly and the overlay
+          // just creates a disruptive flash.
+          //
           // Poll with a 10 s safety cap (100 ticks × 100 ms). If the cap
           // trips we hide the overlay so the UI doesn't appear stuck forever,
           // but we log a debug warning so the case is diagnosable — a long
           // cold video or a broken asset can legitimately exceed 10 s on a
           // slow network.
           if (assetPollRef.current) clearInterval(assetPollRef.current);
-          let lastUnloaded = hasUnloadedAssets(iframe, false);
+          const isContentRefresh = loadCountRef.current > 1;
+          let lastUnloaded = isContentRefresh ? false : hasUnloadedAssets(iframe, false);
           if (lastUnloaded) {
             setAssetsLoading(true);
             let attempts = 0;
