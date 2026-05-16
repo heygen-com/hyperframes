@@ -1796,7 +1796,7 @@
           e.value +
           "</div></div>";
         el.onclick = function () {
-          easeOpts.querySelectorAll(".ease-opt").forEach(function (c) {
+          easeOpts.querySelectorAll(".ease-opt, .bezier-editor").forEach(function (c) {
             c.classList.remove("selected");
           });
           el.classList.add("selected");
@@ -2442,8 +2442,17 @@
           });
         }
 
-        // ── Shader background ──
-        if (typeof window._sgUpdateBg === "function") window._sgUpdateBg();
+        // ── Animate template with selected easing ──
+        if (window._templatePreviewInline && easeObj) {
+          tpAnimateHero(easeObj);
+        }
+
+        // ── Shader background (only rebuild if preset or palette changed) ──
+        var _bgKey = (picks.bg_mode || 0) + "-" + (picks.palette || 0);
+        if (window._lastBgKey !== _bgKey) {
+          window._lastBgKey = _bgKey;
+          if (typeof window._sgUpdateBg === "function") window._sgUpdateBg();
+        }
 
         // ── Motion ──
         var motionLead = easeObj ? easeObj.name + " energy. Entry easing: " + easeObj.value + " — " + easeObj.desc + "." : "Select an easing to preview.";
@@ -2751,6 +2760,100 @@
       }
       window.addEventListener("resize", tpScaleAllIframes);
 
+      var _heroAnimTimeline = null;
+      function tpPreloadGsap(ifr) {
+        if (!ifr || !ifr.contentDocument || !ifr.contentWindow) return;
+        if (ifr.contentWindow.gsap) return;
+        var doc = ifr.contentDocument;
+        var s1 = doc.createElement("script");
+        s1.src = "https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js";
+        s1.onload = function() {
+          var s2 = doc.createElement("script");
+          s2.src = "https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/CustomEase.min.js";
+          s2.onload = function() {
+            ifr.contentWindow.gsap.registerPlugin(ifr.contentWindow.CustomEase);
+          };
+          doc.head.appendChild(s2);
+        };
+        doc.head.appendChild(s1);
+      }
+
+      function tpAnimateHero(easeObj) {
+        if (_heroAnimTimeline) { _heroAnimTimeline.kill(); _heroAnimTimeline = null; }
+        var heroIfr = document.querySelector("#sc-scene-grid iframe");
+        if (!heroIfr || !heroIfr.contentDocument || !heroIfr.contentWindow) return;
+        var win = heroIfr.contentWindow;
+        var doc = heroIfr.contentDocument;
+        if (win.gsap) {
+          _runHeroAnim(win, doc, easeObj);
+        } else {
+          // GSAP not loaded yet — wait for it
+          var check = setInterval(function() {
+            if (win.gsap) { clearInterval(check); _runHeroAnim(win, doc, easeObj); }
+          }, 50);
+          setTimeout(function() { clearInterval(check); }, 3000);
+        }
+      }
+
+      var _heroAnimEls = [];
+      function _runHeroAnim(win, doc, easeObj) {
+        var gsapRef = win.gsap;
+        if (!gsapRef) return;
+        var isCustom = easeObj.value.indexOf("M") === 0;
+        var ease;
+        if (isCustom && win.CustomEase) {
+          win.CustomEase.create("_heroCustom", easeObj.value);
+          ease = "_heroCustom";
+        } else {
+          ease = isCustom ? "power2.out" : easeObj.value;
+        }
+
+        // Reset previous animation elements (set visible, no flash)
+        if (_heroAnimEls.length) {
+          gsapRef.set(_heroAnimEls, { opacity: 1, x: 0 });
+          _heroAnimEls = [];
+        }
+
+        var activeSlide = doc.querySelector(".tp-active") || doc.querySelector(".slide.active") || doc.querySelector(".slide:first-child");
+        if (!activeSlide) return;
+
+        // Collect leaf-ish elements worth animating
+        var els = [];
+        activeSlide.querySelectorAll("*").forEach(function(el) {
+          var cs = win.getComputedStyle(el);
+          if (cs.display === "none" || cs.visibility === "hidden") return;
+          var rect = el.getBoundingClientRect();
+          if (rect.width < 10 || rect.height < 10) return;
+          var tag = el.tagName.toLowerCase();
+          var isLeaf = el.children.length === 0 || tag === "img" || tag === "svg" || tag === "picture";
+          var hasDirectText = false;
+          for (var c = el.firstChild; c; c = c.nextSibling) {
+            if (c.nodeType === 3 && c.textContent.trim().length > 0) { hasDirectText = true; break; }
+          }
+          if (isLeaf || hasDirectText) els.push(el);
+        });
+
+        if (els.length === 0) return;
+        if (els.length > 20) els = els.slice(0, 20);
+        _heroAnimEls = els;
+
+        var tl = gsapRef.timeline();
+        _heroAnimTimeline = tl;
+
+        els.forEach(function(el) {
+          var rect = el.getBoundingClientRect();
+          gsapRef.set(el, { opacity: 0, x: 1920 - rect.left + 20 });
+        });
+        tl.to(els, {
+          opacity: 1,
+          x: 0,
+          duration: 0.8,
+          ease: ease,
+          stagger: 0.08,
+          delay: 0
+        });
+      }
+
       function tpBuildGrid() {
         var grid = document.getElementById("tp-grid");
         grid.innerHTML = "";
@@ -2836,12 +2939,13 @@
             wrap.style.cssText = "grid-column:1/-1;position:relative;width:100%;aspect-ratio:16/9;overflow:hidden;background:#000;border-radius:4px;";
             var ifr = document.createElement("iframe");
             ifr.src = "templates/" + pick.slug + "/template.html";
-            ifr.sandbox = "allow-same-origin";
+            ifr.sandbox = "allow-same-origin allow-scripts";
             ifr.style.cssText = "width:1920px;height:1080px;border:none;transform-origin:top left;pointer-events:none;";
             wrap.appendChild(ifr);
             grid.appendChild(wrap);
             ifr.addEventListener("load", function() {
               tpOnIframeLoad(pick.slug, ifr);
+              tpPreloadGsap(ifr);
               var scale = wrap.offsetWidth / 1920;
               ifr.style.transform = "scale(" + scale + ")";
               // Build specimen grid with ALL slides (including first)
@@ -2873,13 +2977,15 @@
                       specGrid.querySelectorAll(".specimen-cell").forEach(function(c) { c.classList.remove("active"); });
                       cell.classList.add("active");
                       window._heroSlideIdx = slideIdx;
-                      // Update hero iframe to show this slide
                       var heroIfr = document.querySelector("#sc-scene-grid iframe");
                       if (heroIfr && heroIfr.contentDocument) {
                         var hSlides = heroIfr.contentDocument.querySelectorAll("section.slide, div.slide, .slide, deck-stage > section");
                         hSlides.forEach(function(s, i) {
                           s.classList.toggle("tp-active", i === slideIdx);
                         });
+                        // Replay entrance animation on new slide
+                        var easeObj = picks.easing !== null ? EASINGS[picks.easing] : null;
+                        if (easeObj) tpAnimateHero(easeObj);
                       }
                     });
                     specIfr.addEventListener("load", function() {
