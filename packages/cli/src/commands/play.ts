@@ -7,11 +7,13 @@ export const examples: Example[] = [
   ["Play a specific project directory", "hyperframes play ./my-video"],
   ["Use a custom port", "hyperframes play --port 8080"],
   ["Start without opening the browser", "hyperframes play --no-open"],
+  ["Open with a specific browser", "hyperframes play --browser-path /usr/bin/chromium"],
 ];
 import { resolve, dirname } from "node:path";
 import * as clack from "@clack/prompts";
 import { c } from "../ui/colors.js";
 import { resolveProject } from "../utils/project.js";
+import { openBrowser } from "../utils/openBrowser.js";
 
 export default defineCommand({
   meta: { name: "play", description: "Play a composition in a lightweight browser player" },
@@ -23,10 +25,25 @@ export default defineCommand({
       default: true,
       description: "Open browser automatically",
     },
+    "browser-path": {
+      type: "string",
+      description: "Path to the browser executable to open",
+    },
+    "user-data-dir": {
+      type: "string",
+      description: "Chromium-compatible user data directory (requires --browser-path)",
+    },
   },
   async run({ args }) {
     const project = resolveProject(args.dir);
     const startPort = parseInt(args.port ?? "3003", 10);
+
+    // Validation: --user-data-dir requires --browser-path
+    if (args["user-data-dir"] && !args["browser-path"]) {
+      clack.log.error("--user-data-dir requires --browser-path");
+      process.exitCode = 1;
+      return;
+    }
 
     // Resolve runtime path — same logic as studioServer.ts
     const runtimePath = resolveRuntimePath();
@@ -152,7 +169,10 @@ export default defineCommand({
     console.log(`  ${c.dim("Press Ctrl+C to stop")}`);
     console.log();
     if (args.open) {
-      import("open").then((mod) => mod.default(url)).catch(() => {});
+      void openBrowser(url, {
+        browserPath: args["browser-path"] as string | undefined,
+        userDataDir: args["user-data-dir"] as string | undefined,
+      });
     }
 
     return new Promise<void>(() => {});
