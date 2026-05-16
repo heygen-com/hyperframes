@@ -29,7 +29,12 @@ export function buildBrowserArgs(url: string, options: OpenBrowserOptions): stri
 export function openBrowser(url: string, options: OpenBrowserOptions = {}): void {
   if (options.browserPath) {
     const args = buildBrowserArgs(url, options);
-    spawn(options.browserPath, args, { detached: true, stdio: "ignore" }).unref();
+    const child = spawn(options.browserPath, args, {
+      detached: true,
+      stdio: "ignore",
+    });
+    child.on("error", () => {});
+    child.unref();
     return;
   }
 
