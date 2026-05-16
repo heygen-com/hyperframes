@@ -1,9 +1,11 @@
-import { memo, useCallback, useEffect, useRef, type Ref } from "react";
+import { memo, useCallback, useEffect, useRef, useState, type Ref } from "react";
 import { Player } from "../../player";
 import {
   DEFAULT_PREVIEW_ZOOM,
+  canStartPreviewPan,
   clampPreviewPan,
   clampPreviewZoomPercent,
+  ownsPreviewPanTarget,
   resolvePreviewWheelZoom,
   toDomPrecision,
   type PreviewZoomState,
@@ -34,6 +36,15 @@ export function getPreviewPlayerKey({
 
 const ZOOM_HUD_TIMEOUT_MS = 1200;
 const ZOOM_SETTLE_MS = 200;
+const PREVIEW_STAGE_INSET_PX = 16;
+
+function isPreviewAtFit(state: PreviewZoomState): boolean {
+  return (
+    Math.abs(state.zoomPercent - 100) < 0.5 &&
+    Math.abs(state.panX) < 0.1 &&
+    Math.abs(state.panY) < 0.1
+  );
+}
 
 function loadInitialZoom(): PreviewZoomState {
   const stored = readStudioUiPreferences().previewZoom;
@@ -46,6 +57,32 @@ function loadInitialZoom(): PreviewZoomState {
     : DEFAULT_PREVIEW_ZOOM;
 }
 
+function resolvePreviewStageSize(
+  viewportWidth: number,
+  viewportHeight: number,
+  portrait: boolean | undefined,
+): { width: number; height: number } {
+  const availableWidth = Math.max(0, viewportWidth - PREVIEW_STAGE_INSET_PX);
+  const availableHeight = Math.max(0, viewportHeight - PREVIEW_STAGE_INSET_PX);
+  const aspectRatio = portrait ? 9 / 16 : 16 / 9;
+
+  if (availableWidth === 0 || availableHeight === 0) {
+    return { width: 0, height: 0 };
+  }
+
+  let width = availableWidth;
+  let height = width / aspectRatio;
+  if (height > availableHeight) {
+    height = availableHeight;
+    width = height * aspectRatio;
+  }
+
+  return {
+    width: toDomPrecision(width),
+    height: toDomPrecision(height),
+  };
+}
+
 export const NLEPreview = memo(function NLEPreview({
   projectId,
   iframeRef,
@@ -53,14 +90,16 @@ export const NLEPreview = memo(function NLEPreview({
   onCompositionLoadingChange,
   portrait,
   directUrl,
+  refreshKey,
   suppressLoadingOverlay,
 }: NLEPreviewProps) {
-  // Player key only changes for structural changes (project switch, composition
-  // drill-down), NOT for content refreshes. Content refreshes use the lighter
-  // iframe.src reload path handled by NLELayout → refreshPlayer().
-  const activeKey = getPreviewPlayerKey({ projectId, directUrl });
+  const baseKey = getPreviewPlayerKey({ projectId, directUrl, refreshKey });
+  const prevRefreshKeyRef = useRef(refreshKey);
   const viewportRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
+  const [retiringKey, setRetiringKey] = useState<string | null>(null);
+  const [stageSize, setStageSize] = useState(() => resolvePreviewStageSize(0, 0, portrait));
+  const retiringTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const zoomRef = useRef<PreviewZoomState>(loadInitialZoom());
   const hudRef = useRef<HTMLDivElement>(null);
@@ -79,8 +118,24 @@ export const NLEPreview = memo(function NLEPreview({
     return () => {
       if (settleTimerRef.current) clearTimeout(settleTimerRef.current);
       if (hudTimerRef.current) clearTimeout(hudTimerRef.current);
+      if (retiringTimerRef.current) clearTimeout(retiringTimerRef.current);
     };
   }, []);
+
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+
+    const updateStageSize = () => {
+      const rect = viewport.getBoundingClientRect();
+      setStageSize(resolvePreviewStageSize(rect.width, rect.height, portrait));
+    };
+
+    updateStageSize();
+    const observer = new ResizeObserver(updateStageSize);
+    observer.observe(viewport);
+    return () => observer.disconnect();
+  }, [portrait]);
 
   const writeTransform = useCallback((state: PreviewZoomState) => {
     const stage = stageRef.current;
@@ -88,8 +143,7 @@ export const NLEPreview = memo(function NLEPreview({
     const s = toDomPrecision(state.zoomPercent / 100);
     const px = toDomPrecision(state.panX);
     const py = toDomPrecision(state.panY);
-    stage.style.zoom = String(s);
-    stage.style.transform = `translate(${px}px, ${py}px)`;
+    stage.style.transform = `translate(${px}px, ${py}px) scale(${s})`;
   }, []);
 
   const applyZoom = useCallback(
@@ -116,8 +170,7 @@ export const NLEPreview = memo(function NLEPreview({
         writeStudioUiPreferences({ previewZoom: final });
         const hud = hudRef.current;
         if (hud) {
-          const zoomed = Math.abs(final.zoomPercent - 100) > 0.5;
-          hud.textContent = zoomed ? `${Math.round(final.zoomPercent)}%` : "Fit";
+          hud.textContent = isPreviewAtFit(final) ? "Fit" : `${Math.round(final.zoomPercent)}%`;
           if (hudTimerRef.current) clearTimeout(hudTimerRef.current);
           hudTimerRef.current = setTimeout(() => {
             if (hudRef.current) hudRef.current.style.opacity = "0";
@@ -128,12 +181,30 @@ export const NLEPreview = memo(function NLEPreview({
     [writeTransform],
   );
 
+  if (refreshKey !== prevRefreshKeyRef.current) {
+    const oldKey = `${baseKey}:${prevRefreshKeyRef.current ?? 0}`;
+    prevRefreshKeyRef.current = refreshKey;
+    setRetiringKey(oldKey);
+  }
+
+  const activeKey = `${baseKey}:${refreshKey ?? 0}`;
+
   const applyInitialZoom = useCallback(() => {
     const z = zoomRef.current;
     if (Math.abs(z.zoomPercent - 100) > 0.5 || Math.abs(z.panX) > 0.1 || Math.abs(z.panY) > 0.1) {
       writeTransform(z);
     }
   }, [writeTransform]);
+
+  const handleNewPlayerLoad = () => {
+    onIframeLoad();
+    applyInitialZoom();
+    if (retiringTimerRef.current) clearTimeout(retiringTimerRef.current);
+    retiringTimerRef.current = setTimeout(() => {
+      setRetiringKey(null);
+      retiringTimerRef.current = null;
+    }, 160);
+  };
 
   useEffect(() => {
     const viewport = viewportRef.current;
@@ -164,6 +235,8 @@ export const NLEPreview = memo(function NLEPreview({
           deltaY: event.deltaY,
           viewportWidth: rect.width,
           viewportHeight: rect.height,
+          contentWidth: stageSize.width,
+          contentHeight: stageSize.height,
         });
         applyZoom(next);
         return;
@@ -177,14 +250,14 @@ export const NLEPreview = memo(function NLEPreview({
 
     document.addEventListener("wheel", handleWheel, { passive: false, capture: true });
     return () => document.removeEventListener("wheel", handleWheel, { capture: true });
-  }, [applyZoom]);
+  }, [applyZoom, stageSize.height, stageSize.width]);
 
   useEffect(() => {
     const viewport = viewportRef.current;
     if (!viewport) return;
 
     const handleDblClick = (event: MouseEvent) => {
-      if (Math.abs(zoomRef.current.zoomPercent - 100) < 0.5) return;
+      if (isPreviewAtFit(zoomRef.current)) return;
       const rect = viewport.getBoundingClientRect();
       if (
         event.clientX < rect.left ||
@@ -201,20 +274,38 @@ export const NLEPreview = memo(function NLEPreview({
     return () => document.removeEventListener("dblclick", handleDblClick, { capture: true });
   }, [applyZoom]);
 
-  const handlePointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    if (zoomRef.current.zoomPercent <= 100 || event.button !== 0) return;
-    event.currentTarget.setPointerCapture(event.pointerId);
-    dragRef.current = {
-      pointerId: event.pointerId,
-      startX: event.clientX,
-      startY: event.clientY,
-      originX: zoomRef.current.panX,
-      originY: zoomRef.current.panY,
+  useEffect(() => {
+    const isInsideViewport = (clientX: number, clientY: number): DOMRect | null => {
+      const viewport = viewportRef.current;
+      if (!viewport) return null;
+      const rect = viewport.getBoundingClientRect();
+      if (
+        clientX < rect.left ||
+        clientX > rect.right ||
+        clientY < rect.top ||
+        clientY > rect.bottom
+      ) {
+        return null;
+      }
+      return rect;
     };
-  }, []);
 
-  const handlePointerMove = useCallback(
-    (event: React.PointerEvent<HTMLDivElement>) => {
+    const handlePointerDown = (event: PointerEvent) => {
+      const rect = isInsideViewport(event.clientX, event.clientY);
+      if (!rect) return;
+      if (!ownsPreviewPanTarget(event.target, stageRef.current)) return;
+      if (!canStartPreviewPan(event.button)) return;
+      event.preventDefault();
+      dragRef.current = {
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        originX: zoomRef.current.panX,
+        originY: zoomRef.current.panY,
+      };
+    };
+
+    const handlePointerMove = (event: PointerEvent) => {
       const drag = dragRef.current;
       const viewport = viewportRef.current;
       if (!drag || !viewport || drag.pointerId !== event.pointerId) return;
@@ -226,17 +317,38 @@ export const NLEPreview = memo(function NLEPreview({
         zoomPercent: zoomRef.current.zoomPercent,
         viewportWidth: rect.width,
         viewportHeight: rect.height,
+        contentWidth: stageSize.width,
+        contentHeight: stageSize.height,
       });
       applyZoom({ ...zoomRef.current, ...pan });
-    },
-    [applyZoom],
-  );
+    };
 
-  const finishDrag = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    if (dragRef.current?.pointerId === event.pointerId) {
-      dragRef.current = null;
-    }
-  }, []);
+    const finishDrag = (event: PointerEvent) => {
+      if (dragRef.current?.pointerId === event.pointerId) {
+        dragRef.current = null;
+      }
+    };
+
+    const handleAuxClick = (event: MouseEvent) => {
+      if (event.button !== 1) return;
+      if (!isInsideViewport(event.clientX, event.clientY)) return;
+      if (!ownsPreviewPanTarget(event.target, stageRef.current)) return;
+      event.preventDefault();
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown, { capture: true });
+    document.addEventListener("pointermove", handlePointerMove, { capture: true });
+    document.addEventListener("pointerup", finishDrag, { capture: true });
+    document.addEventListener("pointercancel", finishDrag, { capture: true });
+    document.addEventListener("auxclick", handleAuxClick, { capture: true });
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown, { capture: true });
+      document.removeEventListener("pointermove", handlePointerMove, { capture: true });
+      document.removeEventListener("pointerup", finishDrag, { capture: true });
+      document.removeEventListener("pointercancel", finishDrag, { capture: true });
+      document.removeEventListener("auxclick", handleAuxClick, { capture: true });
+    };
+  }, [applyZoom, stageSize.height, stageSize.width]);
 
   const initial = zoomRef.current;
 
@@ -247,34 +359,48 @@ export const NLEPreview = memo(function NLEPreview({
         className="relative flex-1 flex items-center justify-center p-2 overflow-hidden min-h-0 outline-none focus:ring-1 focus:ring-studio-accent/40 bg-neutral-700"
         tabIndex={0}
         aria-label="Composition preview"
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={finishDrag}
-        onPointerCancel={finishDrag}
       >
-        <div
-          ref={stageRef}
-          className="absolute inset-2"
-          style={{
-            zoom: toDomPrecision(initial.zoomPercent / 100),
-            transform: `translate(${toDomPrecision(initial.panX)}px, ${toDomPrecision(initial.panY)}px)`,
-            transformOrigin: "0 0",
-          }}
-          data-testid="preview-zoom-stage"
-        >
-          <Player
-            key={activeKey}
-            ref={iframeRef}
-            projectId={directUrl ? undefined : projectId}
-            directUrl={directUrl}
-            onLoad={() => {
-              onIframeLoad();
-              applyInitialZoom();
+        <div className="absolute inset-2 flex items-center justify-center pointer-events-none">
+          <div
+            ref={stageRef}
+            className="relative shrink-0 pointer-events-auto"
+            style={{
+              width: `${stageSize.width}px`,
+              height: `${stageSize.height}px`,
+              transform: `translate(${toDomPrecision(initial.panX)}px, ${toDomPrecision(initial.panY)}px) scale(${toDomPrecision(initial.zoomPercent / 100)})`,
+              transformOrigin: "center center",
             }}
-            onCompositionLoadingChange={onCompositionLoadingChange}
-            portrait={portrait}
-            suppressLoadingOverlay={suppressLoadingOverlay}
-          />
+            data-testid="preview-zoom-stage"
+          >
+            {retiringKey && (
+              <Player
+                key={retiringKey}
+                projectId={directUrl ? undefined : projectId}
+                directUrl={directUrl}
+                onLoad={() => {}}
+                portrait={portrait}
+                style={{ position: "absolute", inset: 0, zIndex: 0, opacity: 1 }}
+              />
+            )}
+            <Player
+              key={activeKey}
+              ref={iframeRef}
+              projectId={directUrl ? undefined : projectId}
+              directUrl={directUrl}
+              onLoad={
+                retiringKey
+                  ? handleNewPlayerLoad
+                  : () => {
+                      onIframeLoad();
+                      applyInitialZoom();
+                    }
+              }
+              onCompositionLoadingChange={onCompositionLoadingChange}
+              portrait={portrait}
+              style={retiringKey ? { position: "absolute", inset: 0, zIndex: 1 } : undefined}
+              suppressLoadingOverlay={suppressLoadingOverlay}
+            />
+          </div>
         </div>
         <div
           ref={hudRef}

@@ -1,12 +1,18 @@
+// @vitest-environment happy-dom
+
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_PREVIEW_ZOOM,
   MAX_PREVIEW_ZOOM_PERCENT,
   MIN_PREVIEW_ZOOM_PERCENT,
+  canStartPreviewPan,
   clampPreviewPan,
   clampPreviewZoomPercent,
   getNextPreviewZoomPercent,
   getPreviewWheelZoomPercent,
+  ownsPreviewPanTarget,
+  PREVIEW_PAN_OVERSCROLL_PX,
+  PREVIEW_PAN_SURFACE_SELECTOR,
   resolvePreviewWheelZoom,
   toDomPrecision,
 } from "./previewZoom";
@@ -64,16 +70,17 @@ describe("getNextPreviewZoomPercent", () => {
 });
 
 describe("clampPreviewPan", () => {
-  it("centers the preview when fit or zoomed out", () => {
-    expect(
-      clampPreviewPan({
-        panX: 120,
-        panY: -90,
-        zoomPercent: 100,
-        viewportWidth: 800,
-        viewportHeight: 600,
-      }),
-    ).toEqual({ panX: 0, panY: 0 });
+  it("allows a small overscroll margin at fit zoom", () => {
+    const next = clampPreviewPan({
+      panX: 900,
+      panY: -900,
+      zoomPercent: 100,
+      viewportWidth: 800,
+      viewportHeight: 600,
+    });
+
+    expect(next.panX).toBe(PREVIEW_PAN_OVERSCROLL_PX);
+    expect(next.panY).toBe(-PREVIEW_PAN_OVERSCROLL_PX);
   });
 
   it("keeps pan within the zoomed preview bounds", () => {
@@ -85,7 +92,71 @@ describe("clampPreviewPan", () => {
         viewportWidth: 800,
         viewportHeight: 600,
       }),
-    ).toEqual({ panX: 400, panY: -300 });
+    ).toEqual({
+      panX: 400 + PREVIEW_PAN_OVERSCROLL_PX,
+      panY: -(300 + PREVIEW_PAN_OVERSCROLL_PX),
+    });
+  });
+
+  it("allows overscroll even when only one axis overflows", () => {
+    expect(
+      clampPreviewPan({
+        panX: 120,
+        panY: -90,
+        zoomPercent: 107.25,
+        viewportWidth: 1352,
+        viewportHeight: 682,
+        contentWidth: 1184,
+        contentHeight: 666,
+      }),
+    ).toEqual({
+      panX: PREVIEW_PAN_OVERSCROLL_PX,
+      panY: -(16.142499999999984 + PREVIEW_PAN_OVERSCROLL_PX),
+    });
+  });
+});
+
+describe("canStartPreviewPan", () => {
+  it("allows middle mouse pan at fit zoom", () => {
+    expect(canStartPreviewPan(1)).toBe(true);
+  });
+
+  it("allows middle mouse pan when zoomed in", () => {
+    expect(canStartPreviewPan(1)).toBe(true);
+  });
+
+  it("rejects other mouse buttons", () => {
+    expect(canStartPreviewPan(0)).toBe(false);
+    expect(canStartPreviewPan(2)).toBe(false);
+  });
+});
+
+describe("ownsPreviewPanTarget", () => {
+  it("accepts targets inside the preview stage", () => {
+    const stage = document.createElement("div");
+    const child = document.createElement("div");
+    stage.appendChild(child);
+
+    expect(ownsPreviewPanTarget(child, stage)).toBe(true);
+  });
+
+  it("accepts targets inside the shared preview pan surface", () => {
+    const surface = document.createElement("div");
+    surface.setAttribute("data-preview-pan-surface", "true");
+    const overlay = document.createElement("div");
+    surface.appendChild(overlay);
+
+    expect(ownsPreviewPanTarget(overlay, null)).toBe(true);
+  });
+
+  it("rejects targets outside the preview stage and preview pan surface", () => {
+    const outside = document.createElement("div");
+
+    expect(ownsPreviewPanTarget(outside, null)).toBe(false);
+  });
+
+  it("uses the shared preview pan surface selector contract", () => {
+    expect(PREVIEW_PAN_SURFACE_SELECTOR).toBe('[data-preview-pan-surface="true"]');
   });
 });
 
@@ -103,7 +174,7 @@ describe("resolvePreviewWheelZoom", () => {
     expect(next.panY).toBe(0);
   });
 
-  it("clamps pan when zooming out past minimum", () => {
+  it("preserves small pan inside the overscroll margin when zooming out past minimum", () => {
     const next = resolvePreviewWheelZoom({
       state: { zoomPercent: 26, panX: 20, panY: 20 },
       deltaY: 500,
@@ -112,7 +183,7 @@ describe("resolvePreviewWheelZoom", () => {
     });
 
     expect(next.zoomPercent).toBeCloseTo(MIN_PREVIEW_ZOOM_PERCENT, 0);
-    expect(next.panX).toBe(0);
-    expect(next.panY).toBe(0);
+    expect(next.panX).toBe(20);
+    expect(next.panY).toBe(20);
   });
 });

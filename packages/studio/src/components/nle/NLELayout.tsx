@@ -310,7 +310,7 @@ export const NLELayout = memo(function NLELayout({
     >
       {/* Preview + player controls */}
       <div className="flex-1 min-h-0 flex flex-col">
-        <div className="flex-1 min-h-0 relative">
+        <div className="flex-1 min-h-0 relative" data-preview-pan-surface="true">
           <NLEPreview
             projectId={projectId}
             iframeRef={iframeRef}
