@@ -416,13 +416,26 @@ export async function spawnStreamingEncoder(
     }
   }
 
-  // Timeout safety
+  // Inactivity timeout: fires only when no frame has been written for
+  // `ffmpegStreamingTimeout` ms. A slow-but-progressing capture (e.g. a CI
+  // runner under load) keeps resetting the timer on each writeFrame, so total
+  // wall-clock render time is unbounded — only a true hang (Chrome dead,
+  // capture stuck, no frames arriving) trips SIGTERM. The 600s default was
+  // previously a total-render cap, which intermittently killed legitimate
+  // slow renders mid-encode (FFmpeg got SIGTERM after most frames were sent;
+  // libx264 printed its summary and exited 255, observable as
+  // "Streaming encode failed: FFmpeg exited with code 255" with audio:0kB).
   const streamingTimeout = config?.ffmpegStreamingTimeout ?? DEFAULT_CONFIG.ffmpegStreamingTimeout;
-  const timer = setTimeout(() => {
-    if (exitStatus === "running") {
-      ffmpeg.kill("SIGTERM");
-    }
-  }, streamingTimeout);
+  let timer: NodeJS.Timeout | null = null;
+  const resetTimer = () => {
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(() => {
+      if (exitStatus === "running") {
+        ffmpeg.kill("SIGTERM");
+      }
+    }, streamingTimeout);
+  };
+  resetTimer();
 
   const encoder: StreamingEncoder = {
     writeFrame: (buffer: Buffer): boolean => {
@@ -433,11 +446,16 @@ export async function spawnStreamingEncoder(
       // provided buffer and drain it asynchronously. The HDR path's compositor
       // reuses pre-allocated transOutput/normalCanvas buffers across frames,
       // so without this copy the pipe would read partially-overwritten data
-      // and flicker. The SDR path doesn't invoke writeFrame at all (it pipes
-      // PNG files via encodeFramesFromDir), so the memcpy here is HDR-only
-      // and justified by correctness.
+      // and flicker.
       const copy = Buffer.from(buffer);
-      return ffmpeg.stdin.write(copy);
+      const accepted = ffmpeg.stdin.write(copy);
+      // Reset inactivity timer: each successful frame write is a sign of
+      // forward progress. We reset even on `accepted === false` (backpressure
+      // means FFmpeg is consuming slower than we're producing, but data is
+      // still flowing into its stdin buffer) so that a sustained slow-consumer
+      // scenario doesn't get killed mid-encode.
+      resetTimer();
+      return accepted;
     },
 
     close: async (): Promise<StreamingEncoderResult> => {
@@ -455,7 +473,10 @@ export async function spawnStreamingEncoder(
       // repeated calls. If you change this method, preserve idempotency or
       // a regression here will silently double-close ffmpeg and produce
       // harder-to-trace errors at the orchestrator layer.
-      clearTimeout(timer);
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
       if (signal) signal.removeEventListener("abort", onAbort);
 
       const stdin = ffmpeg.stdin;

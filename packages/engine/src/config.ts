@@ -94,7 +94,12 @@ export interface EngineConfig {
   ffmpegEncodeTimeout: number;
   /** Timeout for FFmpeg mux/faststart processes (ms). Default: 300_000 */
   ffmpegProcessTimeout: number;
-  /** Timeout for FFmpeg streaming encode (ms). Default: 600_000 */
+  /**
+   * Inactivity timeout for FFmpeg streaming encode (ms). The timer resets on
+   * every successful `writeFrame` call, so this caps the duration of a
+   * single "no frame arrived" gap (capture hang, dead Chrome), not the total
+   * render time. Default: 600_000 (10 minutes without any frame = dead).
+   */
   ffmpegStreamingTimeout: number;
 
   // ── HDR ──────────────────────────────────────────────────────────────

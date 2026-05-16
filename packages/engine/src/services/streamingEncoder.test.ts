@@ -572,4 +572,37 @@ describe("spawnStreamingEncoder lifecycle and cleanup", () => {
     controller.abort();
     expect(proc.kill).not.toHaveBeenCalled();
   });
+
+  it("inactivity timeout fires only after a no-frame gap exceeds ffmpegStreamingTimeout", async () => {
+    vi.useFakeTimers();
+    try {
+      const { spawn, calls } = createSpawnSpy();
+      vi.resetModules();
+      vi.doMock("child_process", () => ({ spawn }));
+
+      const { spawnStreamingEncoder } = await import("./streamingEncoder.js");
+      const dir = mkdtempSync(join(tmpdir(), "se-heartbeat-"));
+      const encoder = await spawnStreamingEncoder(join(dir, "out.mp4"), baseOptions, undefined, {
+        ffmpegStreamingTimeout: 1000,
+      });
+
+      const proc = calls[0]!.proc;
+
+      // Frames every 900ms — under the 1000ms inactivity threshold — should
+      // keep resetting the timer. After 9× 900ms = 8.1s of "slow but
+      // progressing" capture the encoder must still be alive. The old total-
+      // render timeout would have fired SIGTERM at ~1000ms.
+      for (let i = 0; i < 9; i++) {
+        encoder.writeFrame(Buffer.from([i]));
+        vi.advanceTimersByTime(900);
+      }
+      expect(proc.kill).not.toHaveBeenCalled();
+
+      // Now stall — no writeFrame for longer than the threshold. SIGTERM fires.
+      vi.advanceTimersByTime(1100);
+      expect(proc.kill).toHaveBeenCalledWith("SIGTERM");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
