@@ -23,6 +23,8 @@ import {
   type BeforeCaptureHook,
 } from "./frameCapture.js";
 import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
+import { assertSwiftShader } from "../utils/assertSwiftShader.js";
+import { readWebGlVendorInfoFromCanvas } from "../utils/readWebGlVendorInfoFromCanvas.js";
 
 export interface WorkerTask {
   workerId: number;
@@ -205,6 +207,19 @@ async function executeWorkerTask(
       createBeforeCaptureHook(),
       config,
     );
+    // Per-worker SwiftShader assertion: when the caller declares
+    // `browserGpuMode: "software"`, every worker session must verify Chrome's
+    // WebGL backend is actually SwiftShader before the first frame. Hosts
+    // that fall back to a hardware GL backend (or silently fail to load
+    // SwiftShader) would otherwise produce non-deterministic pixels and
+    // break the distributed byte-identical-retry contract — the parallel
+    // branch wouldn't catch it via the pre-warmup probe (renderChunk now
+    // skips that when chunkWorkerCount > 1). The canvas-based reader works
+    // on both regular Chrome and chrome-headless-shell (which serves
+    // `chrome://gpu` as an empty document).
+    if (config?.browserGpuMode === "software") {
+      await assertSwiftShader(session.page, readWebGlVendorInfoFromCanvas);
+    }
     await initializeSession(session);
 
     const outputOffset = task.outputFrameOffset ?? 0;

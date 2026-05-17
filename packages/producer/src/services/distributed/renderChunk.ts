@@ -37,7 +37,6 @@
 import { randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { extname, join } from "node:path";
-import type { Page } from "puppeteer-core";
 import {
   assertSwiftShader,
   type BeforeCaptureHook,
@@ -53,6 +52,7 @@ import {
   type ExtractedFrames,
   getEncoderPreset,
   initializeSession,
+  readWebGlVendorInfoFromCanvas,
   resolveConfig,
 } from "@hyperframes/engine";
 import { defaultLogger } from "../../logger.js";
@@ -215,55 +215,11 @@ interface PlanJson {
  */
 export { applyRuntimeEnvSnapshot } from "../render/runtimeEnvSnapshot.js";
 
-/**
- * Read SwiftShader vendor/renderer via a 1×1 WebGL canvas + the
- * `WEBGL_debug_renderer_info` extension. Used as the `readInfo` override
- * for {@link assertSwiftShader} when the worker is running on
- * `chrome-headless-shell` — that build serves `chrome://gpu` as an empty
- * document so the default `chrome://gpu`-based info reader trips
- * `net::ERR_FAILED` even when the GL backend is in fact SwiftShader.
- *
- * The canvas-based probe runs against whatever page the caller hands in
- * (we use a fresh `about:blank` so it doesn't depend on the composition
- * URL being navigated yet). The renderer string returned matches the
- * format `assertSwiftShader` expects (substring match against
- * `"swiftshader"`).
- */
-export async function readWebGlVendorInfoFromCanvas(
-  page: Page,
-): Promise<{ vendor: string; renderer: string }> {
-  await page.goto("about:blank", { waitUntil: "domcontentloaded", timeout: 30_000 });
-  return page.evaluate((): { vendor: string; renderer: string } => {
-    try {
-      const canvas = document.createElement("canvas");
-      const gl =
-        (canvas.getContext("webgl") as WebGLRenderingContext | null) ??
-        (canvas.getContext("experimental-webgl") as WebGLRenderingContext | null);
-      if (!gl) {
-        return { vendor: "", renderer: "" };
-      }
-      const ext = gl.getExtension("WEBGL_debug_renderer_info") as {
-        UNMASKED_VENDOR_WEBGL: number;
-        UNMASKED_RENDERER_WEBGL: number;
-      } | null;
-      if (!ext) {
-        return {
-          vendor: String(gl.getParameter(gl.VENDOR) ?? ""),
-          renderer: String(gl.getParameter(gl.RENDERER) ?? ""),
-        };
-      }
-      // Older Chrome builds expose the unmasked strings under the literal
-      // numeric constants 0x9245 / 0x9246. The extension surface above is
-      // identical across builds — read through it.
-      return {
-        vendor: String(gl.getParameter(ext.UNMASKED_VENDOR_WEBGL) ?? ""),
-        renderer: String(gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) ?? ""),
-      };
-    } catch {
-      return { vendor: "", renderer: "" };
-    }
-  });
-}
+// `readWebGlVendorInfoFromCanvas` lives in `@hyperframes/engine` (it's
+// used both here and by `parallelCoordinator.executeWorkerTask`). Re-exported
+// from this subpath so downstream consumers that already import it from
+// `@hyperframes/producer/distributed` keep working.
+export { readWebGlVendorInfoFromCanvas } from "@hyperframes/engine";
 
 /**
  * Compute a deterministic SHA-256 fingerprint for the chunk's output.
@@ -510,35 +466,50 @@ export async function renderChunk(
       lockWarmupTicks: true,
     };
 
+    // Resolve worker count up-front so we can decide whether to bother
+    // pre-warming a probe session at all. The parallel branch
+    // (chunkWorkerCount > 1) closes the probe immediately and creates fresh
+    // per-worker sessions; `executeWorkerTask` now runs its own
+    // `assertSwiftShader` against each worker session (gated on
+    // `cfg.browserGpuMode === "software"`), so the safety contract holds
+    // without the eager pre-probe.
+    //
+    // Capture-cost calibration based on shader transitions / renderModeHints
+    // is not threaded through to chunks yet; the in-process renderer's
+    // `resolveRenderWorkerCount` wraps this with that reduction, but
+    // `PlanJson` doesn't carry the compiled hints needed to call it
+    // directly. The existing adaptive-retry path reduces workers if
+    // compositor contention surfaces as CDP timeouts.
+    const chunkWorkerCount = calculateOptimalWorkers(framesInChunk, undefined, cfg);
+
     // ── Browser + warmup ──
     let session: CaptureSession | null = null;
     let outputKind: "file" | "frame-dir";
     let framesEncoded = 0;
     try {
-      session = await createCaptureSession(fileServer.url, framesDir, captureOptions, null, cfg);
-      // SwiftShader assertion runs BEFORE initializeSession (which navigates to
-      // the composition); on failure we tear down without ever touching the
-      // composition URL. We pass `readWebGlVendorInfoFromCanvas` rather than
-      // letting `assertSwiftShader` use its default `chrome://gpu` reader —
-      // `chrome-headless-shell` serves chrome:// pages as empty documents,
-      // which would trip a false-negative even when the GL backend is in fact
-      // SwiftShader. The canvas + WEBGL_debug_renderer_info probe works on
-      // any page (we navigate to about:blank inside the helper).
-      await assertSwiftShader(session.page, readWebGlVendorInfoFromCanvas);
-      await initializeSession(session);
+      if (chunkWorkerCount === 1) {
+        // Sequential branch reuses the probe session for the actual capture.
+        // SwiftShader assertion runs BEFORE initializeSession (which
+        // navigates to the composition); on failure we tear down without
+        // ever touching the composition URL. We pass
+        // `readWebGlVendorInfoFromCanvas` rather than letting
+        // `assertSwiftShader` use its default `chrome://gpu` reader —
+        // `chrome-headless-shell` serves chrome:// pages as empty documents,
+        // which would trip a false-negative even when the GL backend is in
+        // fact SwiftShader. The canvas + WEBGL_debug_renderer_info probe
+        // works on any page (we navigate to about:blank inside the helper).
+        session = await createCaptureSession(fileServer.url, framesDir, captureOptions, null, cfg);
+        await assertSwiftShader(session.page, readWebGlVendorInfoFromCanvas);
+        await initializeSession(session);
+        // `discardWarmupCapture` is intentionally NOT called: every frame
+        // seeks fresh DOM, so `lastFrameCache` is never read; priming it
+        // would deadlock Chrome's compositor by issuing a second beginFrame
+        // at a `frameTimeTicks` it had just advanced to.
+      }
+      // chunkWorkerCount > 1: skip the probe entirely. Each parallel worker
+      // creates its own session and runs `assertSwiftShader` before its
+      // first frame.
 
-      // `discardWarmupCapture` is intentionally NOT called: every frame
-      // seeks fresh DOM, so `lastFrameCache` is never read; priming it
-      // would deadlock Chrome's compositor by issuing a second beginFrame
-      // at a `frameTimeTicks` it had just advanced to.
-
-      // Capture-cost calibration based on shader transitions /
-      // renderModeHints is not threaded through to chunks yet; the in-process
-      // renderer's `resolveRenderWorkerCount` wraps this with that reduction,
-      // but `PlanJson` doesn't carry the compiled hints needed to call it
-      // directly. The existing adaptive-retry path reduces workers if
-      // compositor contention surfaces as CDP timeouts.
-      const chunkWorkerCount = calculateOptimalWorkers(framesInChunk, undefined, cfg);
       await runCaptureStage({
         fileServer,
         workDir,
@@ -549,9 +520,6 @@ export async function renderChunk(
         forceScreenshot: encoder.forceScreenshot,
         log,
         workerCount: chunkWorkerCount,
-        // The parallel branch closes this session and spins up its own
-        // worker sessions, wasting the ~3-5s of pre-warmed setup. Worth a
-        // follow-up to skip pre-warmup when the resolved workerCount > 1.
         probeSession: session,
         needsAlpha: plan.dimensions.format !== "mp4",
         captureAttempts: [],
