@@ -50,13 +50,22 @@ export function generateAgentPrompt(
   _catalogedAssets?: CatalogedAsset[], // reserved for future asset inventory
   detectedLibraries?: string[],
 ): void {
-  const prompt = buildPrompt(url, tokens, hasScreenshot, hasLottie, hasShaders, detectedLibraries);
+  const prompt = buildPrompt(
+    outputDir,
+    url,
+    tokens,
+    hasScreenshot,
+    hasLottie,
+    hasShaders,
+    detectedLibraries,
+  );
   writeFileSync(join(outputDir, "AGENTS.md"), prompt, "utf-8");
   writeFileSync(join(outputDir, "CLAUDE.md"), prompt, "utf-8");
   writeFileSync(join(outputDir, ".cursorrules"), prompt, "utf-8");
 }
 
 function buildPrompt(
+  outputDir: string,
   url: string,
   tokens: DesignTokens,
   hasScreenshot: boolean,

@@ -90,44 +90,109 @@ Create `index.html` yourself. This is the orchestrator — it holds beat slots, 
 
 SFX were assigned in the storyboard (Step 3) — implement exactly what STORYBOARD.md specifies. Each SFX entry has a file, trigger time, and volume. Wire each one as an `<audio>` element with the exact `data-start`, `data-duration`, and `data-volume` from the storyboard. Do not add, remove, or substitute SFX beyond what the storyboard says.
 
-**Shader transitions**
+**Choose architecture based on pacing (from Step 3)**
 
-If the storyboard specifies shader transitions, copy the local shader-transitions build into the project and reference it directly — the CDN version is behind the local build and doesn't support CSS crossfade mixing:
+| Pacing                        | Architecture                                                                                                                                                                    | Why                                                                                     |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| **Fast** (billboard-per-beat) | Single `index.html`, stacked `<div class="beat">` elements, GSAP opacity sequencing. NO sub-compositions, NO HyperShader. Hard cuts via `tl.set()`. Load `/launch-video` skill. | Sub-compositions add latency; hard cuts need instant swaps. One file = zero load delay. |
+| **Moderate / Slow / Arc**     | Sub-compositions with `HyperShader.init()`. Each beat in `compositions/beat-N.html`. CSS crossfades or shader transitions between scenes.                                       | Transitions need HyperShader's compositing. Sub-agents build each beat independently.   |
+
+If the storyboard says "fast" pacing: use the stacked-beats pattern from `/launch-video`. Do not use HyperShader — it adds scene registration overhead that creates gaps between hard cuts. Every frame is content, no transition frames.
+
+If the storyboard says "slow" or "cinematic": build each beat as a sub-composition. Use long crossfades (0.8–1.2s `duration` with no `shader` key = CSS crossfade). Inside each beat, use continuous subtle motion — nothing is static:
+
+- Ken Burns drift on screenshots: `tl.fromTo(img, {scale:1.05, x:20}, {scale:1, x:-20, duration: BEAT, ease:"none"})`
+- Parallax text layers: `tl.fromTo(text, {y:30}, {y:-30, duration: BEAT, ease:"power1.inOut"})`
+- 1–2s breathing room before text enters (don't animate everything at t=0)
+- Soft easing: `expo.out` for entrances, `power1.inOut` for drifts
+
+**Multi-scene index.html with HyperShader — for moderate/slow/arc pacing**
+
+For videos with sub-composition beats and scene transitions, `index.html` MUST use `HyperShader.init()`. This is the entire scene orchestration layer. Do NOT try to use registry block sub-compositions (e.g. `compositions/domain-warp-dissolve.html`) for transitions — those are standalone showcase demos, not how HyperShader works in multi-scene compositions.
+
+Copy the local shader build first:
 
 ```bash
 cp packages/shader-transitions/dist/index.global.js <project-dir>/hyper-shader-local.js
 ```
 
-Then in `index.html` use the local file:
+Full working `index.html` pattern — every field matters:
 
 ```html
 <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
 <script src="hyper-shader-local.js"></script>
+
+<div id="root" data-composition-id="main" data-start="0" data-duration="TOTAL"
+     data-width="1920" data-height="1080">
+
+  <!-- Host divs: MUST have both id AND data-composition-id matching the same value.
+       HyperShader.init() uses getElementById() — without id="beat-1" it fails with
+       "scene ids not found in DOM". -->
+  <div id="beat-1" class="scene"
+    data-composition-id="beat-1-hook"
+    data-composition-src="compositions/beat-1-hook.html"
+    data-start="0"        <!-- transition INTO this beat starts here -->
+    data-duration="4.5"   <!-- must match the GSAP BEAT constant in the composition -->
+    data-track-index="1"
+    data-width="1920" data-height="1080"
+    style="background: #YOUR_BEAT_BG_COLOR;"><!-- background here OR in sub-comp CSS — both work -->
+  </div>
+
+  <div id="beat-2" class="scene"
+    data-composition-id="beat-2-features"
+    data-composition-src="compositions/beat-2-features.html"
+    data-start="4.0"
+    data-duration="5.5"
+    data-track-index="2"  <!-- use sequential track indices (1,2,3...) to avoid linter errors -->
+    data-width="1920" data-height="1080"
+    style="background: #YOUR_BEAT_BG_COLOR;">
+  </div>
+
+  <!-- ... more beats ... -->
+
+  <!-- ALWAYS add a dummy s-end scene as the LAST entry.
+       HyperShader renders scenes[N-1] as black in some contexts.
+       s-end is invisible — it just prevents your CTA from being last. -->
+  <div id="s-end" class="scene"
+    data-composition-id="s-end"
+    data-start="TOTAL_MINUS_0.1"
+    data-duration="0.1"
+    data-track-index="N"
+    data-width="1920" data-height="1080">
+  </div>
+
+</div>
+
+<script>
+  window.__timelines = window.__timelines || {};
+  var tl = HyperShader.init({
+    bgColor: "#000000",
+    accentColor: "#YOUR_ACCENT",
+    scenes: ["beat-1", "beat-2", "beat-3", ..., "s-end"],
+    transitions: [
+      { time: 4.0, shader: "sdf-iris", duration: 0.7 },    // WebGL shader
+      { time: 9.5, duration: 0.5 },                         // CSS crossfade (no shader)
+      // ... one transition per scene boundary ...
+      { time: TOTAL_MINUS_0.1, duration: 0.1 }              // dummy → s-end
+    ],
+  });
+  // Add ALL beat animations to the returned tl AFTER init()
+  window.__timelines["main"] = tl;
+</script>
 ```
 
-Call `HyperShader.init()` as documented. Read [the shader transitions section in the main hyperframes skill](../../hyperframes/references/transitions.md) for the full API. Key rule: `scenes.length === transitions.length + 1`.
+**Track index and the linter:** Use sequential track indices (`data-track-index="1"`, `"2"`, `"3"`...) for each beat — NOT all on track `"1"`. The linter flags overlapping clips on the same track as an error, and HyperShader compositions always have overlapping beats (the transition window). Using sequential indices silences the linter; HyperShader manages which scene is VISIBLE via opacity regardless of track index.
 
-**Critical: beat host divs must have sequential `data-start` and matching `data-duration`.** Do NOT set `data-start="0"` and `data-duration="[total_video_length]"` on all beats. The render engine seeks each beat's sub-composition timeline to `global_time - beat.data_start`. If `data-start=0` on all beats, each beat's internal timeline is seeked to the GLOBAL time — at global t=10s, a beat whose GSAP timeline lasts 5.5s is seeked to t=10, past its end. The engine makes the sub-composition invisible once its timeline is exhausted. All beats go blank as soon as their individual GSAP timelines end.
+**Scene background colors:** setting `style="background: #3139FB"` on the host `<div id="beat-1">` in index.html is the simplest pattern — it's visible at a glance from the root file. Setting background inside the sub-composition's CSS also works. Either is fine; host div is preferred for clarity.
 
-Correct pattern — `data-start` at the transition point, `data-duration` equal to the beat's GSAP timeline length, all on the same `data-track-index`:
+**Critical: beat host divs must have sequential `data-start` and matching `data-duration`.** Do NOT set `data-start="0"` on all beats — the render engine seeks each beat's GSAP timeline to `global_time - data_start`. At t=10s with `data-start=0`, a 5.5s timeline is seeked past its end and all content disappears.
 
-```html
-<!-- Beat 2: HyperShader transition into it starts at t=4.0 -->
-<!-- Beat 2's GSAP timeline spans 5.5s (BEAT=5.5 constant in the composition) -->
-<div
-  id="beat-2"
-  class="scene"
-  data-composition-id="beat-2-features"
-  data-composition-src="compositions/beat-2-features.html"
-  data-start="4.0"
-  data-duration="5.5"
-  data-track-index="1"
-  data-width="1920"
-  data-height="1080"
-></div>
-```
+`data-duration` must match the GSAP `BEAT` constant in the composition (the length of the sub-composition's internal timeline). If the two disagree, animations get cut off.
 
-All beats should use `data-track-index="1"`. HyperShader manages which scene is visible via opacity — the track system just needs sequential non-conflicting time ranges.
+**Storyboard Beat Timing section** tells you both values — use them directly:
+
+- `data-start` = "Transition in at:" value from the storyboard
+- `data-duration` = "GSAP duration:" value from the storyboard
 
 **Font handling:** Common fonts are auto-resolved by the renderer: use `"Inter"` (not `"Inter Variable"` — the compiler only maps the base name), `"Roboto"`, `"JetBrains Mono"`, `"Poppins"`. If a composition uses `"Inter Variable"` it will log compiler warnings and may fall back incorrectly — always use `"Inter"`. Only brand-specific fonts (GT Walsheim, Aeonik, etc.) need `@font-face`. Check `capture/assets/fonts/` — hashed filenames are Google Fonts subsets that auto-resolve; recognizable filenames (e.g. `BrandSans-Bold.woff2`) are brand fonts that need `@font-face` declarations.
 
@@ -223,9 +288,13 @@ ANY code, read these — targeted reads only, not full files:
 Brand values are in the BRAND VALUES section above — no need to read DESIGN.md.
 
 ═══ RULES ═══
+- ROOT ELEMENT: the root div inside every sub-composition template MUST have `data-composition-id`, `data-width`, and `data-height` attributes matching the host div's values. Sub-agents consistently miss these. Example: `<div id="beat-2-features" data-composition-id="beat-2-features" data-width="1920" data-height="1080">`. Without them the composition fails to register and lint errors fire.
+- GSAP FROM TRAP: never use `gsap.from(el, {opacity:0})` when the element also has CSS `opacity:0`. GSAP reads the current CSS value as the animation target — it animates 0→0, not 0→1. The beat stays invisible. Always use `tl.fromTo(el, {opacity:0}, {opacity:1, ...})` or remove the CSS opacity and let GSAP control it entirely.
+- CHARACTER SPANS AND SPACES: when splitting text into per-character `<span>` elements with `display:inline-block`, NEVER apply inline-block to space characters — they collapse to zero width. "What if your Mac" becomes "WhatifyourMac". Solution: use `&nbsp;` for spaces, or split at word level (per-word spans) instead of per-character.
+- SVG CURRENTCOLOR VIA IMG: SVGs that use `fill="currentColor"` render black (invisible on dark backgrounds) when loaded via `<img src="logo.svg">`. The img tag cannot inherit CSS color into the SVG. Either: (a) inline the SVG directly in the HTML, (b) use `filter: brightness(0) invert(1)` for simple single-color SVGs you want white, or (c) hardcode the fill color in the SVG file.
 - SCRIPT PLACEMENT: scripts MUST be inside the <template> element, not after </template>. The <template> content is inert until HyperFrames injects it — scripts outside see no DOM, every querySelector returns null, GSAP silently does nothing. This is the single most common cause of "all compositions completely static."
-- STYLE PLACEMENT: CSS <style> blocks inside <template> elements are unreliable after injection. Use inline style="" attributes on elements, or set backgrounds/colors on the host divs in index.html instead.
-- DATA-START: never set data-start="0" on all beat host divs. Each beat's GSAP timeline is seeked to global_time - data_start. With all data-start=0, a beat with a 5.5s GSAP timeline is seeked to t=10 at global t=10 — past its end, engine marks it invisible. Set each beat's data-start to its HyperShader transition point. data-duration = beat's GSAP timeline length. All beats on data-track-index="1".
+- STYLE PLACEMENT: CSS `<style>` blocks inside `<template>` are injected into the document and apply correctly. However, avoid setting `opacity: 0` on elements via CSS if GSAP will animate them — the interaction between CSS initial states and the render engine's GSAP seeking can produce black frames in some cases. Setting initial states via GSAP `tl.fromTo(el, {opacity:0,...}, {opacity:1,...})` FROM values is the safest pattern (matches how v4 compositions worked). Background colors, positioning, and layout styles in `<style>` blocks are fine.
+- DATA-START: never set data-start="0" on all beat host divs. Each beat's GSAP timeline is seeked to global_time - data_start. With all data-start=0, a beat with a 5.5s GSAP timeline is seeked to t=10 at global t=10 — past its end, engine marks it invisible. Set each beat's data-start to its HyperShader transition point. data-duration = beat's GSAP timeline length. Use sequential data-track-index values (1, 2, 3...) to avoid linter overlap errors.
 - HYPERSHADER TIMELINE: never pass `timeline: tl` to HyperShader.init(). Let HyperShader create the timeline. Add all tweens to the returned tl AFTER init(). Passing an existing timeline breaks the scrubber and pre-warming.
 - PROXY+ONUPDATE: never use `tl.fromTo(proxy, {}, {val, onUpdate: () => el.textContent = proxy.val})` for counter animations. The onUpdate callback doesn't fire when the render engine seeks directly to a time. Use discrete tl.set(el, {textContent: value}, timestamp) calls instead.
 - SHADER NAMES: block name ≠ shader name. `npx hyperframes add domain-warp-dissolve` installs the BLOCK but the HyperShader runtime name is `domain-warp`. After installing any block, open its showcase HTML in `compositions/` to find the exact shader name used in `HyperShader.init()`. Then delete the showcase file — it triggers lint warnings and isn't part of the video.

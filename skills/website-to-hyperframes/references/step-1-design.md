@@ -8,6 +8,12 @@ DESIGN.md is NOT the creative plan. The STORYBOARD drives creative direction. DE
 
 You read `tokens.json` and `design-styles.json` in Step 0. If you still have that data clearly in context, use it and skip re-reading. If you don't remember the exact values — just re-read them. Don't guess.
 
+**Font availability check — do this before writing typography rules.** Check `capture/assets/fonts/` and cross-reference with what the site actually uses:
+
+- Hashed filenames (`f266e704a846645b-s.p.woff`) = Google Fonts subsets — these auto-resolve, you don't need @font-face
+- Recognizable filenames (`Charlie_Display-Light.woff2`) = brand fonts — but CHECK THE WEIGHT. If the site uses 700/Bold and only Light/Thin was captured, that weight doesn't exist. Write in DESIGN.md: "Charlie Display — only Light (300) captured. Bold (700) unavailable, use DM Sans 700 as fallback." Don't write DESIGN.md claiming "Charlie Display 700" when the file doesn't exist — sub-agents will try to use it and silently fall back to system-ui anyway.
+- Commercial fonts (GT Walsheim, Söhne, Graphik, Canela, etc.) are NEVER captured — they're hosted on brand CDNs, not bundled in the site. Flag these explicitly: "GT Walsheim not available in capture — use Inter 600 as substitute."
+
 - **`capture/extracted/tokens.json`** — colors (top 20 HEX), font families, headings, sections, CSS variables
 - **`capture/extracted/design-styles.json`** — computed styles extracted from live DOM: typography hierarchy with exact font-size/weight/line-height per role, button styles, card styles, nav styles, spacing scale, border-radius scale, box-shadow values
 

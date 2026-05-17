@@ -1,6 +1,6 @@
 # Step 2: Creative Brief
 
-**First, read [capabilities.md](capabilities.md)** — the complete inventory of everything HyperFrames can do (24 sections). At minimum read the Table of Contents to know what's available. You need this to tell users what's possible.
+**First, read [capabilities-overview.md](capabilities-overview.md)** — scan the capabilities table to know what's available. You need this to tell users what's possible.
 
 You've captured the site, read all the data, written DESIGN.md. Now you know what you're working with — the brand's colors, assets, animations, typography. Before making any creative decisions, **ask the user what they want.**
 
@@ -66,7 +66,7 @@ This is the open-ended question, but guide the user toward specificity. Frame it
 > - [Another — e.g., "You have 6 product feature screenshots — these could fly in as a rapid showcase grid or be revealed one by one on rotating cards"]
 > - [If the capture has something unusual: name it specifically]
 >
-> Beyond what's in the capture, I can also search for or create additional assets — 3D models, custom shaders, stock footage — if anything would make the video stronger. Read [capabilities.md](capabilities.md) for the full picture of what's possible.
+> Beyond what's in the capture, I can also search for or create additional assets — 3D models, custom shaders, stock footage — if anything would make the video stronger. Read [capabilities-overview.md](capabilities-overview.md) for the full picture of what's possible.
 >
 > Do you have any specific scenes, moments, or effects you want to see? To help you think about it, here are a few directions that would work for your specific site:
 >

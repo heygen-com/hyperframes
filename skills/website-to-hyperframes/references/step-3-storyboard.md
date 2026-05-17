@@ -87,7 +87,9 @@ ls registry/blocks/ 2>/dev/null | grep vfx || echo "No VFX blocks installed"
 npx hyperframes catalog --type block 2>/dev/null | head -40
 ```
 
-There might be VFX blocks available (vfx-liquid-glass, vfx-iphone-device, vfx-shatter, vfx-portal, etc.), use them for hero treatments instead of basic perspective tilt. You need to install any you want with `npx hyperframes add <name>`. Shader transitions are in the registry, use them between beats instead of basic blur/fade — install with `npx hyperframes add <name>`. Don't use too many shaders — maximum 2 per video unless user wants differently.
+There might be VFX blocks available (vfx-liquid-glass, vfx-iphone-device, vfx-shatter, vfx-portal, etc.), use them for hero treatments instead of basic perspective tilt. You need to install any you want with `npx hyperframes add <name>`. Don't use too many shaders — maximum 2 per video unless user wants differently.
+
+**Shader transitions — block name ≠ shader name.** When you run the commands above and see `domain-warp-dissolve` in `registry/blocks/`, the HyperShader runtime name is `domain-warp` (without "-dissolve"). After installing a block, open its showcase HTML (`compositions/<block-name>.html`) and find the actual shader name used in `HyperShader.init()`. That is what you put in the storyboard. Then delete the showcase file — it's a demo only and will pollute your compositions/ directory with lint warnings.
 
 ### HTML-in-Canvas — plan for it here, build in Step 5
 
@@ -164,9 +166,37 @@ and outline how many assets you have actually read/view from any sources or your
 
 ## Per-Beat Direction
 
-Read [beat-direction.md](../../hyperframes/references/beat-direction.md) for the general beat template: concept, mood, animation choreography (energy verbs), transitions (shader vs CSS vs hard cut decision matrix), depth layers, SFX cues, rhythm planning, and velocity-matched transitions.
+Each beat is a WORLD, not a layout. Write what the viewer EXPERIENCES before you write CSS specs.
 
-Decide the number of beats and their durations based on the script and brand — there is no fixed beat count. Some videos need 3 beats, others need 8+. Let the content dictate structure. **Cut the video to match the narration length** — if the script produces 22 seconds of audio, the video should be 24 seconds with a 2-second CTA hold, not 30 seconds with 8 seconds of dead silence. Empty time at the end where nothing is happening loses the viewer.
+**Motion verbs** — every animated element gets one. Pick from the beat's concept, not from an energy bucket:
+
+- **Impact:** SLAMS, CRASHES, PUNCHES, DROPS, SHATTERS
+- **Directional:** SLIDES, PUSHES, WIPES, CUTS
+- **Reveals:** DRAWS, FILLS, GROWS, ASSEMBLES, COUNTS UP
+- **Organic:** FLOATS, DRIFTS, BREATHES, PULSES, ORBITS
+- **Mechanical:** TYPES ON, CLICKS, LOCKS IN, SNAPS, STEPS
+
+**Transition decision matrix** — shader vs CSS vs hard cut:
+| Shader transition for | CSS crossfade for | Hard cut for |
+|---|---|---|
+| Hero reveals, logo unveils, "wow" moments | Continuous motion between beats, editorial pacing | Rapid-fire lists, percussive edits, comedy timing |
+
+1–2 shader transitions per video (hero + CTA). Too many flatten their impact. Mix shader and CSS crossfade in one HyperShader composition by omitting `shader` on any transition entry.
+
+**Rhythm** — declare your scene rhythm before implementing: fast-fast-SLOW-fast-SHADER-hold. The rhythm comes from the brand and content, not a template.
+
+Decide the number of beats and their durations based on the pacing from the Creative Brief (Step 2). The pacing dimension maps directly to beat count and duration:
+
+| Pacing       | Beat count | Beat duration | Total  | Architecture                                                                                                                                                              | When                                          |
+| ------------ | ---------- | ------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
+| **Fast**     | 8–15       | 0.7–1.8s      | 15–25s | Stacked divs, hard cuts, one focus per frame. Load `/launch-video` skill for the billboard-per-beat pattern.                                                              | Social ads, hype launches, product drops      |
+| **Moderate** | 4–6        | 3–5s          | 20–35s | Sub-compositions with CSS crossfade transitions. Multiple elements per beat, sequential entrances.                                                                        | Product tours, demos, explainers              |
+| **Slow**     | 3–4        | 5–8s          | 20–35s | Sub-compositions with long crossfades (0.8–1.2s). Ken Burns drift, parallax layers, breathing room before text enters. Continuous subtle motion — nothing is ever static. | Cinematic, premium brand, Apple-keynote style |
+| **Arc**      | 5–7        | varies        | 25–40s | Slow opening (5–8s) → building middle beats (3–4s) → fast peak (1–2s) → resolved close (4–6s). Mix architectures per section.                                             | Launch announcements, narrative storytelling  |
+
+**Do not default to moderate.** Read the pacing dimension from the Creative Brief. If the user said "cinematic" or "premium," that's slow — 3–4 beats at 5–8s each. If they said "punchy" or "social ad," that's fast — load `/launch-video`. Most agents default to 5 beats at 3–4s regardless of direction. That's the mushy middle and it produces generic videos.
+
+**Cut the video to match the narration length** — if the script produces 22 seconds of audio, the video should be 24 seconds with a 2-second CTA hold, not 30 seconds with 8 seconds of dead silence. Empty time at the end where nothing is happening loses the viewer.
 
 **Frame-filling rule:** When describing visuals per beat, specify sizes as FRAME FILL PERCENTAGES, not pixels. "Product screenshot fills 80% of frame" not "600px wide card."
 
@@ -339,7 +369,15 @@ The script serves the storyboard — write words that fit the visual plan, not t
 
 The key constraint: don't pad with dead silence where nothing is happening. If a beat has no narration, something visual must be carrying the viewer's attention. Empty frames = lost viewers.
 
-Save as `SCRIPT.md` in the project directory. Read [../../hyperframes/references/narration.md](../../hyperframes/references/narration.md) for the full narration guide.
+Save as `SCRIPT.md` in the project directory.
+
+**Script writing rules:**
+
+- ~2.5 words/sec natural pace. 15s = ~37 words, 30s = ~75 words.
+- Use contractions ("it's", "you'll"). Read it out loud — if it sounds robotic, rewrite.
+- Write numbers as spoken: `$1.9T` → "nearly two trillion dollars", `API` → "A P I", `10x` → "ten times"
+- **Hook first** — bold claim, provocative question, contrast, or shocking number. Never "Welcome to..." or "Introducing..."
+- Structure: Hook → Story → Proof → CTA. 15s ads can skip Story.
 
 ---
 

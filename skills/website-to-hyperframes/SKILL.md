@@ -58,7 +58,7 @@ Write DESIGN.md — a brand cheat sheet with 8 sections: Visual Theme, Color Pal
 
 ## Step 2: Creative Brief 💬
 
-**Read:** [references/step-2-brief.md](references/step-2-brief.md), [references/visual-vocabulary.md](references/visual-vocabulary.md), [references/capabilities.md](references/capabilities.md)
+**Read:** [references/step-2-brief.md](references/step-2-brief.md), [references/visual-vocabulary.md](references/visual-vocabulary.md), [references/capabilities-overview.md](references/capabilities-overview.md)
 
 You now know the brand inside-out. Before making any creative decisions, talk to the user. Show them what you found, what assets are available, what HyperFrames can do with them, and ask what they want. Map their words to concrete visual-vocabulary dimensions.
 
@@ -141,16 +141,16 @@ Beat count is not in this table intentionally — it should come from the storyb
 
 ### Reference Files
 
-| File                                                                | When to read                                                                                                      |
-| ------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| [step-0-capture.md](references/step-0-capture.md)                   | Step 0 — capture, read extracted data, write site summary                                                         |
-| [step-1-design.md](references/step-1-design.md)                     | Step 1 — write DESIGN.md brand cheat sheet (9 sections, 200-400 lines)                                            |
-| [step-2-brief.md](references/step-2-brief.md)                       | Step 2 — creative brief conversation with user                                                                    |
-| [capabilities.md](references/capabilities.md)                       | Step 2 & 5 — complete inventory of everything HyperFrames can do (24 sections). Read Table of Contents at minimum |
-| [visual-vocabulary.md](references/visual-vocabulary.md)             | Step 2 & 3 — translate subjective terms to concrete techniques. Composable building blocks, not rigid presets     |
-| [step-3-storyboard.md](references/step-3-storyboard.md)             | Step 3 — storyboard + script (combined) with user review gate                                                     |
-| [step-4-vo.md](references/step-4-vo.md)                             | Step 4 — TTS provider choice, generation, timing                                                                  |
-| [step-5-build.md](references/step-5-build.md)                       | Step 5 — build index.html + compositions                                                                          |
-| [step-6-validate.md](references/step-6-validate.md)                 | Step 6 — lint, validate, snapshots (scaled to video length), preview                                              |
-| [techniques.md](../hyperframes/references/techniques.md)            | Steps 3 & 5 — 20 visual techniques with code patterns (adapt, don't copy-paste)                                   |
-| [html-in-canvas-patterns.md](references/html-in-canvas-patterns.md) | Step 5 — complete code patterns for HTML-in-Canvas effects                                                        |
+| File                                                                | When to read                                                                                                  |
+| ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| [step-0-capture.md](references/step-0-capture.md)                   | Step 0 — capture, read extracted data, write site summary                                                     |
+| [step-1-design.md](references/step-1-design.md)                     | Step 1 — write DESIGN.md brand cheat sheet (9 sections, 200-400 lines)                                        |
+| [step-2-brief.md](references/step-2-brief.md)                       | Step 2 — creative brief conversation with user                                                                |
+| [capabilities-overview.md](references/capabilities-overview.md)     | Step 2 — what HyperFrames can do (45-line overview). Full 704-line inventory linked inside for deep dives     |
+| [visual-vocabulary.md](references/visual-vocabulary.md)             | Step 2 & 3 — translate subjective terms to concrete techniques. Composable building blocks, not rigid presets |
+| [step-3-storyboard.md](references/step-3-storyboard.md)             | Step 3 — storyboard + script (combined) with user review gate                                                 |
+| [step-4-vo.md](references/step-4-vo.md)                             | Step 4 — TTS provider choice, generation, timing                                                              |
+| [step-5-build.md](references/step-5-build.md)                       | Step 5 — build index.html + compositions                                                                      |
+| [step-6-validate.md](references/step-6-validate.md)                 | Step 6 — lint, validate, snapshots (scaled to video length), preview                                          |
+| [techniques.md](../hyperframes/references/techniques.md)            | Steps 3 & 5 — 20 visual techniques with code patterns (adapt, don't copy-paste)                               |
+| [html-in-canvas-patterns.md](references/html-in-canvas-patterns.md) | Step 5 — complete code patterns for HTML-in-Canvas effects                                                    |

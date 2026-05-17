@@ -20,6 +20,28 @@ Move to Step 5.
 
 ---
 
+## Generate a test clip before full narration — calibrate timing first
+
+Generate a 2-sentence test clip NOW using the script's opening lines. Measure the actual duration. Kokoro compresses scripts by ~40% (35s planned → 19s actual) and HeyGen runs faster than expected. If you discover the audio is 40% shorter than expected, you'll need to revise the storyboard beat timings before investing time in full narration generation.
+
+**Do this before committing to beat count and durations:**
+
+```bash
+# Quick Kokoro test (2 sentences):
+npx hyperframes tts "First sentence. Second sentence." --voice af_nova --output /tmp/test-tts.wav
+# Measure: seconds ÷ words × total script words = estimated full audio length
+```
+
+If the estimate puts your video at ±15% of the planned duration, proceed. If it's more than 15% off, recalibrate the script length first.
+
+## Background music
+
+**Always ask about background music** — even when narration is present:
+
+> "Do you want background music under the narration? (Artlist.io, Musicbed for licensed; Uppbeat/Pixabay for free; or share a reference track). Even a subtle ambient underscore makes pauses between sentences feel intentional rather than empty."
+
+If they want music, note the track in the storyboard for Step 5 to wire into `index.html`.
+
 ## TTS Provider
 
 Ask the user which voice provider they'd like:
