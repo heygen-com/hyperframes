@@ -27,7 +27,7 @@ export interface StackOutputs {
 
 const STATE_DIR_NAME = ".hyperframes";
 const STATE_FILE_PREFIX = "lambda-stack-";
-const DEFAULT_STACK_NAME = "default";
+export const DEFAULT_STACK_NAME = "default";
 
 export function stateFilePath(
   stackName: string = DEFAULT_STACK_NAME,
@@ -92,5 +92,3 @@ export function requireStack(stackName: string, cwd: string = process.cwd()): St
   }
   return stack;
 }
-
-export { DEFAULT_STACK_NAME };

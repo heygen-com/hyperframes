@@ -231,30 +231,34 @@ function parseIntFlag(raw: unknown): number | undefined {
   return Number.isFinite(n) ? n : undefined;
 }
 
-function parseFormat(raw: unknown): "mp4" | "mov" | "png-sequence" {
-  const s = String(raw ?? "mp4");
-  if (s === "mp4" || s === "mov" || s === "png-sequence") return s;
-  throw new Error(`[lambda render] --format must be mp4|mov|png-sequence; got ${s}`);
-}
-
-function parseCodec(raw: unknown): "h264" | "h265" | undefined {
-  if (raw === undefined || raw === null || raw === "") return undefined;
+/**
+ * Parse a string-union flag against a closed set of allowed values.
+ * Returns `defaultValue` (which may be `undefined`) when the input is
+ * empty; throws with a flag-specific message when the value is set
+ * but unrecognised.
+ */
+function parseEnum<T extends string>(
+  raw: unknown,
+  allowed: readonly T[],
+  errorPrefix: string,
+  defaultValue: T | undefined,
+): T | undefined {
+  if (raw === undefined || raw === null || raw === "") return defaultValue;
   const s = String(raw);
-  if (s === "h264" || s === "h265") return s;
-  throw new Error(`[lambda render] --codec must be h264|h265; got ${s}`);
+  if ((allowed as readonly string[]).includes(s)) return s as T;
+  throw new Error(`${errorPrefix} must be ${allowed.join("|")}; got ${s}`);
 }
 
-function parseQuality(raw: unknown): "draft" | "standard" | "high" | undefined {
-  if (raw === undefined || raw === null || raw === "") return undefined;
-  const s = String(raw);
-  if (s === "draft" || s === "standard" || s === "high") return s;
-  throw new Error(`[lambda render] --quality must be draft|standard|high; got ${s}`);
-}
+const FORMATS = ["mp4", "mov", "png-sequence"] as const;
+const CODECS = ["h264", "h265"] as const;
+const QUALITIES = ["draft", "standard", "high"] as const;
+const CHROME_SOURCES = ["sparticuz", "chrome-headless-shell"] as const;
 
-function parseChromeSource(raw: unknown): "sparticuz" | "chrome-headless-shell" {
-  const s = String(raw ?? "sparticuz");
-  if (s === "sparticuz" || s === "chrome-headless-shell") return s;
-  throw new Error(
-    `[lambda deploy] --chrome-source must be sparticuz|chrome-headless-shell; got ${s}`,
-  );
-}
+const parseFormat = (raw: unknown): (typeof FORMATS)[number] =>
+  parseEnum(raw, FORMATS, "[lambda render] --format", "mp4")!;
+const parseCodec = (raw: unknown): (typeof CODECS)[number] | undefined =>
+  parseEnum(raw, CODECS, "[lambda render] --codec", undefined);
+const parseQuality = (raw: unknown): (typeof QUALITIES)[number] | undefined =>
+  parseEnum(raw, QUALITIES, "[lambda render] --quality", undefined);
+const parseChromeSource = (raw: unknown): (typeof CHROME_SOURCES)[number] =>
+  parseEnum(raw, CHROME_SOURCES, "[lambda deploy] --chrome-source", "sparticuz")!;
