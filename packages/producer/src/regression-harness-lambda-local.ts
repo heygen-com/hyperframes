@@ -33,7 +33,6 @@ import {
 import { dirname, join } from "node:path";
 import { pipeline } from "node:stream/promises";
 import { Readable } from "node:stream";
-import type { Fps } from "@hyperframes/core";
 import { downloadS3ObjectToFile, tarDirectory, untarDirectory } from "@hyperframes/aws-lambda";
 import { handler } from "@hyperframes/aws-lambda/handler";
 import type {
@@ -53,6 +52,17 @@ export interface RunLambdaLocalInput {
   tempRoot: string;
   renderedOutputPath: string;
   fps: 24 | 30 | 60;
+  /**
+   * Width/height from the fixture's renderConfig. Forwarded directly to
+   * the Lambda event so this mode catches drift if the handler ever
+   * starts honouring `Config.width/height` for canvas sizing rather
+   * than reading the composition's `data-width`/`data-height`. The
+   * `distributed-simulated` mode hardcodes 1920×1080 because it
+   * bypasses the event-serialization boundary; lambda-local goes
+   * through it, which is the whole point.
+   */
+  width: number;
+  height: number;
   format: "mp4" | "mov" | "png-sequence";
   codec?: "h264" | "h265";
   chunkSize?: number;
@@ -96,11 +106,8 @@ export async function runLambdaLocalRender(input: RunLambdaLocalInput): Promise<
 
   const config: SerializableDistributedRenderConfig = {
     fps: input.fps,
-    // Required-by-type but overridden by the composition's data-width /
-    // data-height attrs; any positive integer works (same trick as
-    // `runDistributedSimulatedRender`).
-    width: 1920,
-    height: 1080,
+    width: input.width,
+    height: input.height,
     format: input.format,
     ...(input.format === "mp4" && input.codec !== undefined ? { codec: input.codec } : {}),
     chunkSize: input.chunkSize,
@@ -218,7 +225,3 @@ class FilesystemBackedFakeS3 {
     throw new Error(`FakeS3: unexpected command ${cmdName}`);
   }
 }
-
-// Re-export the Fps type so callers that pass through this module's
-// boundary don't need a second @hyperframes/core dep declaration.
-export type { Fps };

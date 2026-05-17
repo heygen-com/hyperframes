@@ -942,7 +942,13 @@ async function runTestSuite(
       };
       if (options.mode === "lambda-local") {
         const runLambdaLocalRender = await loadLambdaLocalRender();
-        await runLambdaLocalRender(distributedInput);
+        // The fixture's authored dimensions live in the composition's
+        // `data-width`/`data-height` attributes, not in `meta.json`'s
+        // renderConfig. Until the harness compiles the HTML up-front
+        // to surface them here, pass 1920×1080 — the same placeholder
+        // `runDistributedSimulatedRender` uses internally. The
+        // composition attrs override at plan time.
+        await runLambdaLocalRender({ ...distributedInput, width: 1920, height: 1080 });
       } else {
         await runDistributedSimulatedRender(distributedInput);
       }
