@@ -31,7 +31,18 @@ import {
   resolveMinPsnrForMode,
   runDistributedSimulatedRender,
 } from "./regression-harness-distributed.js";
-import { runLambdaLocalRender } from "./regression-harness-lambda-local.js";
+
+// `regression-harness-lambda-local` statically imports
+// `@hyperframes/aws-lambda`, which depends on @aws-sdk + @sparticuz/chromium.
+// In Dockerfile.test the workspace copy of aws-lambda's src isn't present,
+// so a static import here would fail at module-load time even when
+// running `--mode=in-process`. Load it on demand instead.
+async function loadLambdaLocalRender(): Promise<
+  typeof import("./regression-harness-lambda-local.js").runLambdaLocalRender
+> {
+  const mod = await import("./regression-harness-lambda-local.js");
+  return mod.runLambdaLocalRender;
+}
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -930,6 +941,7 @@ async function runTestSuite(
         variables: suite.meta.renderConfig.variables,
       };
       if (options.mode === "lambda-local") {
+        const runLambdaLocalRender = await loadLambdaLocalRender();
         await runLambdaLocalRender(distributedInput);
       } else {
         await runDistributedSimulatedRender(distributedInput);
