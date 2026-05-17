@@ -1,0 +1,345 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>__NAME__ — Design System</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;700;800;900&family=IBM+Plex+Mono:wght@300;500__FONT_LINK_EXTRA__&display=swap" rel="stylesheet" />
+
+<script type="importmap">
+{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.167.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.167.0/examples/jsm/"}}
+</script>
+
+<style id="ds-tokens">
+:root{
+  --primary:__PRIMARY__; --secondary:__SECONDARY__; --tertiary:__TERTIARY__; --accent:__ACCENT__;
+  --accent-ink:#1a0d05;
+  --ink-dim:color-mix(in srgb,var(--primary) 55%,var(--secondary));
+  --ink-fade:color-mix(in srgb,var(--primary) 28%,var(--secondary));
+  --hairline:color-mix(in srgb,var(--primary) 12%,transparent);
+  --f-disp:"Barlow",sans-serif; --f-mono:"IBM Plex Mono",monospace;
+  --pad-x:clamp(28px,6vw,96px); --pad-y:clamp(48px,7vh,120px);
+}
+</style>
+
+<style>
+*,*::before,*::after{box-sizing:border-box}
+html,body{margin:0;padding:0;background:var(--secondary)}
+body{color:var(--primary);font:300 14px/1.6 var(--f-mono);-webkit-font-smoothing:antialiased;overflow-x:hidden}
+::selection{background:var(--accent);color:var(--accent-ink)}
+
+#design-bg{position:fixed;inset:0;width:100%;height:100%;z-index:-2;opacity:.55;pointer-events:none}
+#bg-veil{position:fixed;inset:0;z-index:-1;pointer-events:none;background:radial-gradient(ellipse at 30% 20%,transparent 0%,var(--secondary) 75%)}
+
+.rail{position:fixed;top:0;left:0;right:0;height:44px;display:flex;align-items:center;justify-content:space-between;padding:0 var(--pad-x);background:color-mix(in srgb,var(--secondary) 78%,transparent);backdrop-filter:blur(14px);border-bottom:1px solid var(--hairline);z-index:100;font:500 11px/1 var(--f-mono);letter-spacing:.14em;text-transform:uppercase}
+.rail .brand{color:var(--accent);display:inline-flex;align-items:center;gap:10px}
+.rail .brand .dot{width:9px;height:9px;background:var(--accent)}
+.rail .brand b{font:900 14px/1 var(--f-disp);letter-spacing:-.02em;text-transform:none;color:var(--accent)}
+.rail nav{display:flex;gap:28px}
+.rail nav a{color:var(--ink-dim);text-decoration:none;transition:color .2s}
+.rail nav a:hover{color:var(--primary)}
+.rail .meta{color:var(--ink-fade)}
+@media(max-width:760px){.rail nav{display:none}}
+
+section{position:relative;padding:var(--pad-y) var(--pad-x)}
+.section-head{display:grid;grid-template-columns:9em 1fr;gap:clamp(24px,4vw,56px);align-items:baseline;border-top:1px solid var(--hairline);padding-top:28px;margin-bottom:clamp(40px,6vh,80px)}
+.section-head .num{font:500 12px/1 var(--f-mono);letter-spacing:.18em;text-transform:uppercase;color:var(--accent)}
+.section-head h2{font:900 clamp(36px,6vw,84px)/.92 var(--f-disp);letter-spacing:-.035em;margin:0;text-transform:lowercase}
+.section-head .lede{grid-column:2;max-width:56ch;color:var(--ink-dim);margin-top:18px;font-size:14px;line-height:1.7}
+
+.cover{background:var(--accent);color:var(--accent-ink);min-height:100vh;padding:80px var(--pad-x) 48px;display:grid;grid-template-rows:auto 1fr auto}
+.cover-chrome{display:flex;justify-content:space-between;font:500 11px/1 var(--f-mono);letter-spacing:.18em;text-transform:uppercase;color:color-mix(in srgb,var(--accent-ink) 60%,transparent)}
+.cover-chrome .dot{width:9px;height:9px;background:var(--accent-ink);display:inline-block;margin-right:10px;vertical-align:middle}
+.cover-headline{align-self:end;margin:0;font:900 clamp(80px,17vw,280px)/.82 var(--f-disp);letter-spacing:-.045em;text-transform:lowercase;color:var(--accent-ink)}
+.cover-headline .stroke{-webkit-text-stroke:2px var(--accent-ink);color:transparent;font-weight:800}
+.cover-foot{margin-top:48px;display:grid;grid-template-columns:repeat(4,1fr);gap:24px;padding-top:20px;border-top:1px solid color-mix(in srgb,var(--accent-ink) 22%,transparent)}
+.cover-foot .cell{display:flex;flex-direction:column;gap:6px}
+.cover-foot .k{font:500 10px/1.4 var(--f-mono);letter-spacing:.18em;text-transform:uppercase;color:color-mix(in srgb,var(--accent-ink) 55%,transparent)}
+.cover-foot .v{font:500 13px/1.4 var(--f-mono);color:var(--accent-ink)}
+.cover-foot .v.big{font:800 28px/1 var(--f-disp);letter-spacing:-.02em}
+@media(max-width:760px){.cover-foot{grid-template-columns:repeat(2,1fr)}}
+
+.manifesto{padding:clamp(60px,10vh,140px) var(--pad-x);border-bottom:1px solid var(--hairline)}
+.manifesto-grid{display:grid;grid-template-columns:9em 1fr;gap:clamp(24px,4vw,56px);align-items:start}
+.manifesto-grid .num{font:500 12px/1 var(--f-mono);letter-spacing:.18em;text-transform:uppercase;color:var(--accent)}
+.manifesto p{font:700 clamp(28px,3.8vw,56px)/1.05 var(--f-disp);letter-spacing:-.025em;max-width:22ch;margin:0;color:var(--primary);text-transform:lowercase}
+.manifesto p em{font-style:normal;color:var(--accent)}
+
+.palette{display:grid;grid-template-columns:repeat(4,1fr);gap:2px;background:var(--hairline);border:1px solid var(--hairline)}
+.swatch{aspect-ratio:3/4;padding:28px 24px;display:flex;flex-direction:column;justify-content:space-between;transition:transform .3s cubic-bezier(.16,1,.3,1)}
+.swatch:hover{transform:translateY(-4px)}
+.swatch .role{font:500 11px/1 var(--f-mono);letter-spacing:.18em;text-transform:uppercase}
+.swatch .name{font:900 clamp(28px,3.4vw,48px)/.95 var(--f-disp);letter-spacing:-.025em;text-transform:lowercase;margin-top:auto}
+.swatch .hex{font:500 12px/1 var(--f-mono);letter-spacing:.06em;margin-top:8px}
+.swatch .usage{font:300 11px/1.5 var(--f-mono);margin-top:4px;opacity:.65}
+.swatch--primary{background:var(--primary);color:var(--secondary)}
+.swatch--secondary{background:var(--secondary);color:var(--primary);border:1px solid var(--hairline)}
+.swatch--tertiary{background:var(--tertiary);color:var(--primary)}
+.swatch--accent{background:var(--accent);color:var(--accent-ink)}
+.swatch--accent .role{color:color-mix(in srgb,var(--accent-ink) 70%,transparent)}
+@media(max-width:880px){.palette{grid-template-columns:repeat(2,1fr)}}
+
+.specimen{display:flex;flex-direction:column}
+.spec-row{display:grid;grid-template-columns:11em 1fr;gap:32px;padding:28px 0;border-top:1px solid var(--hairline);align-items:baseline}
+.spec-row:first-child{border:0;padding-top:0}
+.spec-row .meta{font:500 11px/1.4 var(--f-mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-fade);display:flex;flex-direction:column;gap:4px}
+.spec-row .meta b{color:var(--accent);font-weight:500}
+.spec-row .sample{font-family:var(--f-disp);color:var(--primary)}
+.spec-display{font:900 clamp(56px,10vw,152px)/.88 var(--f-disp);letter-spacing:-.04em;text-transform:lowercase}
+.spec-h1{font:800 clamp(40px,7vw,104px)/.9 var(--f-disp);letter-spacing:-.03em;text-transform:lowercase}
+.spec-h2{font:700 clamp(28px,4.2vw,64px)/1.05 var(--f-disp);letter-spacing:-.02em}
+.spec-lead{font:400 clamp(18px,2vw,28px)/1.45 var(--f-disp)}
+.spec-body{font:400 17px/1.65 var(--f-disp);max-width:60ch}
+.spec-label{font:500 12px/1 var(--f-mono);letter-spacing:.18em;text-transform:uppercase;color:var(--accent)}
+
+.surface-grid{display:grid;grid-template-columns:1.2fr 1fr;gap:48px}
+@media(max-width:880px){.surface-grid{grid-template-columns:1fr}}
+.demo-card{background:var(--primary);color:var(--secondary);border-radius:4px;padding:28px;box-shadow:0 12px 36px rgba(0,0,0,.45);display:flex;flex-direction:column;gap:18px}
+.demo-card .tag{align-self:flex-start;font:500 10px/1 var(--f-mono);letter-spacing:.18em;text-transform:uppercase;color:var(--accent);border:1px solid var(--accent);padding:4px 8px}
+.demo-card h3{margin:0;font:900 36px/1 var(--f-disp);letter-spacing:-.025em;text-transform:lowercase}
+.demo-card p{margin:0;font:300 13px/1.6 var(--f-mono);color:var(--tertiary)}
+.demo-card .num-stat{font:900 72px/1 var(--f-disp);letter-spacing:-.04em;color:var(--accent)}
+.tokens{list-style:none;padding:0;margin:0;border-top:1px solid var(--hairline)}
+.tokens li{display:grid;grid-template-columns:1fr auto auto;gap:18px;align-items:center;padding:18px 0;border-bottom:1px solid var(--hairline)}
+.tokens .name{font:500 12px/1 var(--f-mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim)}
+.tokens .val{font:800 20px/1 var(--f-disp);letter-spacing:-.01em}
+.tokens .bar{height:6px;background:var(--accent)}
+
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:48px}
+@media(max-width:880px){.two-col{grid-template-columns:1fr}}
+.panel{border:1px solid var(--hairline);padding:36px;display:flex;flex-direction:column;gap:24px;background:color-mix(in srgb,var(--secondary) 70%,transparent)}
+.panel h4{margin:0;font:800 32px/1 var(--f-disp);letter-spacing:-.02em;text-transform:lowercase}
+.panel .label-row{font:500 11px/1 var(--f-mono);letter-spacing:.16em;text-transform:uppercase;color:var(--accent)}
+.panel p{margin:0;color:var(--ink-dim);font-size:13px;line-height:1.7;max-width:38ch}
+.bg-preview{border:1px solid var(--hairline);aspect-ratio:4/3;position:relative;overflow:hidden;background:var(--secondary)}
+.bg-preview .mock{position:absolute;inset:0;background:radial-gradient(circle at 30% 40%,var(--accent),transparent 55%),radial-gradient(circle at 70% 70%,var(--tertiary),transparent 50%),var(--secondary);filter:blur(36px);opacity:.7}
+.bg-preview .badge{position:absolute;bottom:12px;left:12px;font:500 10px/1 var(--f-mono);letter-spacing:.18em;text-transform:uppercase;background:color-mix(in srgb,var(--secondary) 75%,transparent);padding:6px 10px;backdrop-filter:blur(8px)}
+
+details.code-block{border:1px solid var(--hairline);background:color-mix(in srgb,var(--secondary) 60%,transparent);margin-top:12px}
+details.code-block summary{cursor:pointer;padding:14px 18px;list-style:none;font:500 11px/1 var(--f-mono);letter-spacing:.16em;text-transform:uppercase;color:var(--accent);display:flex;justify-content:space-between}
+details.code-block summary::-webkit-details-marker{display:none}
+details.code-block summary::after{content:"+";font:800 18px/1 var(--f-disp);color:var(--accent)}
+details.code-block[open] summary::after{content:"\2212"}
+details.code-block pre{margin:0;padding:16px 18px;border-top:1px solid var(--hairline);font:11px/1.6 var(--f-mono);color:var(--ink-dim);background:transparent;overflow-x:auto;white-space:pre-wrap;word-break:break-word;max-height:320px;overflow-y:auto}
+
+.rules-grid{display:grid;grid-template-columns:1fr 1fr;gap:48px}
+@media(max-width:880px){.rules-grid{grid-template-columns:1fr}}
+.rules-col h3{font:900 56px/1 var(--f-disp);letter-spacing:-.03em;margin:0 0 28px;text-transform:lowercase}
+.rules-col.do h3{color:var(--accent)}
+.rules-col.dont h3{color:var(--ink-fade)}
+.rules-col ul{list-style:none;margin:0;padding:0}
+.rules-col li{display:grid;grid-template-columns:2.2em 1fr;gap:8px;padding:16px 0;border-top:1px solid var(--hairline);font:500 18px/1.45 var(--f-disp);color:var(--primary)}
+.rules-col li::before{font:800 22px/1.2 var(--f-disp);align-self:start}
+.rules-col.do li::before{content:"+";color:var(--accent)}
+.rules-col.dont li::before{content:"\2014";color:var(--ink-fade)}
+.rules-col.dont li{color:var(--ink-dim)}
+
+.templates-wrap{background:color-mix(in srgb,var(--secondary) 96%,var(--accent))}
+.templates-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:24px}
+@media(max-width:1100px){.templates-grid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:720px){.templates-grid{grid-template-columns:1fr}}
+.tmpl{background:var(--secondary);border:1px solid var(--hairline);overflow:hidden;transition:border-color .25s,transform .3s cubic-bezier(.16,1,.3,1)}
+.tmpl:hover{border-color:var(--accent);transform:translateY(-2px)}
+.tmpl-thumb{width:100%;aspect-ratio:16/9;overflow:hidden;position:relative;background:#050505}
+.tmpl-thumb .scale-wrap{width:1920px;height:1080px;transform-origin:top left}
+.tmpl-foot{display:flex;justify-content:space-between;padding:14px 18px;border-top:1px solid var(--hairline);font:500 11px/1 var(--f-mono);letter-spacing:.14em;text-transform:uppercase}
+.tmpl-foot .name{color:var(--primary)}
+.tmpl-foot .idx{color:var(--accent)}
+
+footer.endcap{background:var(--accent);color:var(--accent-ink);padding:80px var(--pad-x) 56px;display:grid;grid-template-columns:1fr auto;gap:48px;align-items:end}
+footer.endcap .endmark{font:900 clamp(60px,13vw,220px)/.85 var(--f-disp);letter-spacing:-.045em;text-transform:lowercase;margin:0}
+footer.endcap .meta{font:500 11px/2 var(--f-mono);letter-spacing:.18em;text-transform:uppercase;color:color-mix(in srgb,var(--accent-ink) 60%,transparent);text-align:right}
+footer.endcap .meta b{color:var(--accent-ink)}
+</style>
+
+<!-- TEMPLATE STYLES -->
+<style id="template-css">
+__TEMPLATE_CSS__
+</style>
+</head>
+
+<body>
+
+<canvas id="design-bg"></canvas>
+<div id="bg-veil"></div>
+
+<div class="rail">
+  <div class="brand"><span class="dot"></span><b>__NAME__</b>&nbsp;/&nbsp;design system</div>
+  <nav><a href="#palette">01</a><a href="#type">02</a><a href="#surface">03</a><a href="#motion">04</a><a href="#background">05</a><a href="#guidelines">06</a><a href="#templates">07</a></nav>
+  <div class="meta">v1.0 · 2026</div>
+</div>
+
+<header class="cover" data-screen-label="00 Cover">
+  <div class="cover-chrome">
+    <div><span class="dot"></span>Design System / &#8470; 001</div>
+    <div>HyperFrames · 2026</div>
+  </div>
+  <h1 class="cover-headline">__NAME_LINE1__<span class="stroke">__NAME_LINE2__</span>.</h1>
+  <div class="cover-foot">
+    <div class="cell"><span class="k">Discipline</span><span class="v">Editorial · Motion · Identity</span></div>
+    <div class="cell"><span class="k">Primary type</span><span class="v big">Barlow 900</span></div>
+    <div class="cell"><span class="k">Environment</span><span class="v">__ACCENT_LABEL__</span></div>
+    <div class="cell"><span class="k">Doc</span><span class="v">07 sections · __SLIDE_COUNT__ templates</span></div>
+  </div>
+</header>
+
+<section class="manifesto" data-screen-label="00 Manifesto">
+  <div class="manifesto-grid">
+    <div class="num">&#8212; Manifesto</div>
+    <p>type is the <em>image</em>. accent is the <em>environment</em>. nothing is decorative; everything is structural.</p>
+  </div>
+</section>
+
+<section id="palette" data-screen-label="01 Palette">
+  <div class="section-head">
+    <div class="num">01 &#8212; Palette</div>
+    <h2>four colors.</h2>
+    <p class="lede">__PALETTE_LEDE__</p>
+  </div>
+  <div class="palette">
+    <div class="swatch swatch--primary"><div class="role">Primary · 01</div><div><div class="name">__PRIMARY_NAME__</div><div class="hex">__PRIMARY__</div><div class="usage">Ink on dark surfaces.</div></div></div>
+    <div class="swatch swatch--secondary"><div class="role">Secondary · 02</div><div><div class="name">__SECONDARY_NAME__</div><div class="hex">__SECONDARY__</div><div class="usage">Default canvas. Never pure #000.</div></div></div>
+    <div class="swatch swatch--tertiary"><div class="role">Tertiary · 03</div><div><div class="name">__TERTIARY_NAME__</div><div class="hex">__TERTIARY__</div><div class="usage">Borders, dividers.</div></div></div>
+    <div class="swatch swatch--accent"><div class="role">Accent · 04</div><div><div class="name">__ACCENT_NAME__</div><div class="hex">__ACCENT__</div><div class="usage">The environment. Reserved.</div></div></div>
+  </div>
+</section>
+
+<section id="type" data-screen-label="02 Type">
+  <div class="section-head">
+    <div class="num">02 &#8212; Typography</div>
+    <h2>words become<br/>graphics.</h2>
+    <p class="lede">Barlow at heaviest weights does the work. IBM Plex Mono runs chrome. Two families, no third.</p>
+  </div>
+  <div class="specimen">
+    <div class="spec-row"><div class="meta"><span>Display</span><b>Barlow 900</b><span>13vw · &#8722;0.04em</span></div><div class="sample spec-display">hello world.</div></div>
+    <div class="spec-row"><div class="meta"><span>H1</span><b>Barlow 800</b><span>7.5vw · &#8722;0.03em</span></div><div class="sample spec-h1">chapter one</div></div>
+    <div class="spec-row"><div class="meta"><span>H2</span><b>Barlow 700</b><span>4.5vw · &#8722;0.02em</span></div><div class="sample spec-h2">Slide headlines.</div></div>
+    <div class="spec-row"><div class="meta"><span>Lead</span><b>Barlow 400</b><span>1.6vw</span></div><div class="sample spec-lead">The lead carries the argument.</div></div>
+    <div class="spec-row"><div class="meta"><span>Body</span><b>Barlow 400</b><span>1.2vw · 60ch</span></div><p class="sample spec-body">Body copy below 24px is forbidden in video compositions &#8212; measured at 1080p.</p></div>
+    <div class="spec-row"><div class="meta"><span>Label</span><b>Plex Mono 500</b><span>0.72vw · uppercase</span></div><div class="sample spec-label">// chrome · labels · metadata</div></div>
+  </div>
+</section>
+
+<section id="surface" data-screen-label="03 Surface">
+  <div class="section-head">
+    <div class="num">03 &#8212; Surface</div>
+    <h2>slight corners.<br/>quiet shadows.</h2>
+    <p class="lede">Nearly flat. 4px corners everywhere. Shadows lift a hair &#8212; never advertise.</p>
+  </div>
+  <div class="surface-grid">
+    <div class="demo-card">
+      <span class="tag">// example</span>
+      <h3>example card.</h3>
+      <p>Configured corners, padding, shadow. Accent rationed to one element.</p>
+      <div class="num-stat">+42%</div>
+    </div>
+    <ul class="tokens">
+      <li><span class="name">Corners</span><span class="val">__CORNER_RADIUS__</span><span class="bar" style="width:8px"></span></li>
+      <li><span class="name">Padding</span><span class="val">__PADDING__</span><span class="bar" style="width:32px"></span></li>
+      <li><span class="name">Gap</span><span class="val">__GAP__</span><span class="bar" style="width:32px"></span></li>
+      <li><span class="name">Elevation</span><span class="val">__ELEVATION__</span><span class="bar" style="width:18px;opacity:.5"></span></li>
+      <li><span class="name">Density</span><span class="val">__DENSITY__</span><span class="bar" style="width:48px"></span></li>
+    </ul>
+  </div>
+</section>
+
+<section id="motion" data-screen-label="04 Motion">
+  <div class="section-head">
+    <div class="num">04 &#8212; Motion</div>
+    <h2>__EASING_HEADLINE__</h2>
+    <p class="lede">__EASING_LEDE__</p>
+  </div>
+  <div class="two-col">
+    <div class="panel">
+      <div class="label-row">// easing</div>
+      <h4>__EASING_NAME__</h4>
+      <p>__EASING_DESC__</p>
+      <pre style="margin:0;padding:14px;border:1px solid var(--hairline);font:11px/1.5 var(--f-mono);color:var(--ink-dim)">__EASING_VALUE__</pre>
+    </div>
+    <div class="panel">
+      <div class="label-row">// duration</div>
+      <h4>__DURATION_DEFAULT__</h4>
+      <p>__DURATION_DESC__</p>
+      <pre style="margin:0;padding:14px;border:1px solid var(--hairline);font:11px/1.5 var(--f-mono);color:var(--ink-dim)">__DURATION_VALUES__</pre>
+    </div>
+  </div>
+</section>
+
+<section id="background" data-screen-label="05 Background">
+  <div class="section-head">
+    <div class="num">05 &#8212; Background</div>
+    <h2>__BG_HEADLINE__</h2>
+    <p class="lede">__BG_LEDE__</p>
+  </div>
+  <div class="two-col">
+    <div class="bg-preview"><div class="mock"></div><span class="badge">// __BG_BADGE__</span></div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <ul class="tokens" style="border-top:none">
+        <li><span class="name">Geometry</span><span class="val">__BG_TYPE__</span><span class="bar" style="width:36px"></span></li>
+        <li><span class="name">Density</span><span class="val">__BG_DENSITY__</span><span class="bar" style="width:42px"></span></li>
+        <li><span class="name">Speed</span><span class="val">__BG_SPEED__</span><span class="bar" style="width:18px;opacity:.7"></span></li>
+        <li><span class="name">Strength</span><span class="val">__BG_STRENGTH__</span><span class="bar" style="width:52px"></span></li>
+        <li><span class="name">Grain</span><span class="val">__BG_GRAIN__</span><span class="bar" style="width:24px"></span></li>
+      </ul>
+      <details class="code-block"><summary>// shader config (json)</summary>
+<pre>__SHADER_CONFIG__</pre>
+      </details>
+      <details class="code-block"><summary>// vertex shader (glsl)</summary>
+<pre id="vtx-src">__SHADER_VERTEX__</pre>
+      </details>
+      <details class="code-block"><summary>// fragment shader (glsl)</summary>
+<pre id="frg-src">__SHADER_FRAGMENT__</pre>
+      </details>
+    </div>
+  </div>
+</section>
+
+<section id="guidelines" data-screen-label="06 Guidelines">
+  <div class="section-head">
+    <div class="num">06 &#8212; Guidelines</div>
+    <h2>do and<br/>do not.</h2>
+    <p class="lede">Not preferences. The system breaks the moment any of them slips.</p>
+  </div>
+  <div class="rules-grid">
+    <div class="rules-col do"><h3>do.</h3><ul>__DOS__</ul></div>
+    <div class="rules-col dont"><h3>don't.</h3><ul>__DONTS__</ul></div>
+  </div>
+</section>
+
+<section id="templates" class="templates-wrap" data-screen-label="07 Templates">
+  <div class="section-head">
+    <div class="num">07 &#8212; Templates</div>
+    <h2>__SLIDE_COUNT_WORD__<br/>frames.</h2>
+    <p class="lede">The composition system at 1920&#215;1080. Each thumbnail is the real slide, scaled.</p>
+  </div>
+  <div class="templates-grid" id="templates-grid"></div>
+</section>
+
+<template id="tmpl-source">
+__SLIDE_CARDS__
+</template>
+
+<footer class="endcap" data-screen-label="08 End">
+  <h2 class="endmark">end.</h2>
+  <div class="meta">
+    <div><b>__NAME__</b> · v 1 · 0</div>
+    <div>Barlow / IBM Plex Mono</div>
+    <div>__DATE__</div>
+  </div>
+</footer>
+
+<script>
+(function(){
+  document.getElementById('templates-grid').appendChild(document.getElementById('tmpl-source').content.cloneNode(true));
+  function rescale(){document.querySelectorAll('.tmpl-thumb').forEach(t=>{const w=t.querySelector('.scale-wrap');if(w)w.style.transform='scale('+(t.clientWidth/1920)+')'})}
+  addEventListener('load',rescale);addEventListener('resize',rescale);requestAnimationFrame(rescale);
+  if(document.fonts&&document.fonts.ready)document.fonts.ready.then(rescale);
+})();
+</script>
+
+__SHADER_SCRIPT__
+
+</body>
+</html>

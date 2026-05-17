@@ -2789,7 +2789,231 @@
           ]
         };
 
-        // ── Fetch template summary ──
+        // ── Shader sources ──
+        var _sg = window._sgShaders || {};
+        var vtxSrc = _sg.vertex || '';
+        var fragSrc = bgpObj ? (bgpObj.fragmentShader || _sg[bgpObj.shader] || _sg.defaults || '') : '';
+        var _grainEnabled = bgpObj ? document.getElementById("se-grain").checked : false;
+        var _gr = bgpObj ? (bgpObj._render || { grainRadius:2, grainScatter:1, grainBlending:1 }) : {};
+        var _r = bgpObj ? (bgpObj._render || { brightness:1, contrast:1, saturation:1 }) : {};
+
+        // ── Try per-template design.html ──
+        var designTmpl = null;
+        if (templateSlug) {
+          var dxhr = new XMLHttpRequest();
+          dxhr.open("GET", "templates/" + templateSlug + "/design.html?t=" + Date.now(), false);
+          dxhr.send();
+          if (dxhr.status === 200) designTmpl = dxhr.responseText;
+        }
+
+        if (designTmpl) {
+          // ── Token replacement on design template ──
+          var h = designTmpl;
+
+          // Palette
+          h = h.replace(/__PRIMARY__/g, p.primary);
+          h = h.replace(/__SECONDARY__/g, p.secondary);
+          h = h.replace(/__TERTIARY__/g, p.tertiary);
+          h = h.replace(/__ACCENT__/g, p.accent);
+          h = h.replace(/__PRIMARY_NAME__/g, 'primary');
+          h = h.replace(/__SECONDARY_NAME__/g, 'secondary');
+          h = h.replace(/__TERTIARY_NAME__/g, 'tertiary');
+          h = h.replace(/__ACCENT_NAME__/g, 'accent');
+          h = h.replace(/__ACCENT_LABEL__/g, 'Accent ' + p.accent);
+          h = h.replace(/__PALETTE_LEDE__/g, 'Four tokens. Primary for text on dark, secondary for canvas, tertiary for muted, accent for signal. Decorative colours may supplement but never replace.');
+
+          // Name
+          var nameParts = spec.name.split(/(?=[A-Z])/);
+          h = h.replace(/__NAME__/g, spec.name);
+          h = h.replace(/__NAME_LINE1__/g, nameParts[0] || spec.name);
+          h = h.replace(/__NAME_LINE2__/g, nameParts.slice(1).join('') || '');
+
+          // Surface
+          h = h.replace(/__CORNER_RADIUS__/g, cr.value);
+          h = h.replace(/__PADDING__/g, padVal);
+          h = h.replace(/__GAP__/g, gapVal);
+          h = h.replace(/__ELEVATION__/g, dp.name);
+          h = h.replace(/__DENSITY__/g, dn.name + ' — ' + dn.desc);
+          h = h.replace(/__BORDER__/g, '4px solid');
+          h = h.replace(/__SHADOW__/g, '8 8 0');
+
+          // Motion
+          if (easeObj) {
+            h = h.replace(/__EASING_NAME__/g, easeObj.name.toLowerCase());
+            h = h.replace(/__EASING_VALUE__/g, easeObj.value);
+            h = h.replace(/__EASING_DESC__/g, easeObj.desc);
+            h = h.replace(/__EASING_HEADLINE__/g, easeObj.name.toLowerCase() + '.<br/>fast in.');
+            h = h.replace(/__EASING_LEDE__/g, easeObj.desc + '. Vary entrances by intent.');
+          } else {
+            h = h.replace(/__EASING_NAME__/g, 'default');
+            h = h.replace(/__EASING_VALUE__/g, 'ease');
+            h = h.replace(/__EASING_DESC__/g, 'Standard easing.');
+            h = h.replace(/__EASING_HEADLINE__/g, 'motion.');
+            h = h.replace(/__EASING_LEDE__/g, 'Default motion.');
+          }
+          h = h.replace(/__DURATION_DEFAULT__/g, '0.8s default');
+          h = h.replace(/__DURATION_DESC__/g, 'Slides: 0.8s. Element entrances: 0.5s. Variation across a deck creates rhythm.');
+          h = h.replace(/__DURATION_VALUES__/g, '--dur-slide: 0.8s\n--dur-enter: 0.5s');
+
+          // Background
+          if (bgpObj) {
+            h = h.replace(/__BG_HEADLINE__/g, bgpObj.name.toLowerCase() + '.<br/>' + bgpObj.type + '.');
+            h = h.replace(/__BG_LEDE__/g, bgpObj.name + ' shader — ' + bgpObj.type + ' geometry with noise distortion.');
+            h = h.replace(/__BG_BADGE__/g, bgpObj.name + ' \xb7 ' + bgpObj.type + (_grainEnabled ? ' \xb7 grain' : ''));
+            h = h.replace(/__BG_TYPE__/g, bgpObj.type.charAt(0).toUpperCase() + bgpObj.type.slice(1));
+            h = h.replace(/__BG_DENSITY__/g, String(bgpObj.density));
+            h = h.replace(/__BG_SPEED__/g, String(bgpObj.speed));
+            h = h.replace(/__BG_STRENGTH__/g, String(bgpObj.strength));
+            h = h.replace(/__BG_GRAIN__/g, _grainEnabled ? _gr.grainRadius + ' \xb7 scatter ' + _gr.grainScatter : 'off');
+
+            var shaderConfig = JSON.stringify({
+              type: bgpObj.type, density: bgpObj.density, speed: bgpObj.speed, strength: bgpObj.strength,
+              colors: bgColors, rotation: [bgpObj.rotX, bgpObj.rotY, bgpObj.rotZ],
+              camera: { distance: bgpObj.camDist, azimuth: bgpObj.camAz, polar: bgpObj.camPol, zoom: bgpObj.zoom || 1 },
+              position: [bgpObj.posX||0, bgpObj.posY||0, bgpObj.posZ||0],
+              rendering: { brightness: _r.brightness, contrast: _r.contrast, saturation: _r.saturation },
+              grain: _grainEnabled ? { radius: _gr.grainRadius, scatter: _gr.grainScatter, blending: _gr.grainBlending } : false
+            });
+            h = h.replace(/__SHADER_CONFIG__/g, shaderConfig);
+            var vtxEsc = vtxSrc.replace(/&/g,'&amp;').replace(/</g,'&lt;');
+            var fragEsc = fragSrc.replace(/&/g,'&amp;').replace(/</g,'&lt;');
+            h = h.replace(/__SHADER_VERTEX__/g, vtxEsc);
+            h = h.replace(/__SHADER_FRAGMENT__/g, fragEsc);
+
+            // Build shader script
+            var isSphere = bgpObj.type === "sphere";
+            var dist = isSphere ? 14 : bgpObj.camDist;
+            var camX = (dist*Math.sin(bgpObj.camPol*Math.PI/180)*Math.sin(bgpObj.camAz*Math.PI/180)).toFixed(3);
+            var camY = (dist*Math.cos(bgpObj.camPol*Math.PI/180)).toFixed(3);
+            var camZ = (dist*Math.sin(bgpObj.camPol*Math.PI/180)*Math.cos(bgpObj.camAz*Math.PI/180)).toFixed(3);
+            var ss = '<script type="module">\n';
+            ss += 'import*as THREE from"three";\n';
+            ss += 'import{EffectComposer}from"three/addons/postprocessing/EffectComposer.js";\n';
+            ss += 'import{RenderPass}from"three/addons/postprocessing/RenderPass.js";\n';
+            ss += 'import{HalftonePass}from"three/addons/postprocessing/HalftonePass.js";\n';
+            ss += 'const c=document.getElementById("design-bg"),r=new THREE.WebGLRenderer({canvas:c,antialias:!0,alpha:!0});\n';
+            ss += 'r.setPixelRatio(Math.min(devicePixelRatio,2));\n';
+            ss += 'const s=new THREE.Scene,cam=new THREE.PerspectiveCamera(45,innerWidth/innerHeight,.1,100);\n';
+            ss += 'cam.position.set(' + camX + ',' + camY + ',' + camZ + ');cam.lookAt(0,0,0);';
+            ss += 'cam.zoom=' + (isSphere ? (bgpObj.zoom||1) : 1) + ';cam.updateProjectionMatrix();\n';
+            ss += 's.add(new THREE.AmbientLight(0xffffff,.6));const dl=new THREE.DirectionalLight(0xffffff,.8);dl.position.set(5,5,5);s.add(dl);\n';
+            ss += 'const cs=n=>{const v=getComputedStyle(document.documentElement).getPropertyValue(n).trim();return new THREE.Color(v||"#111")};\n';
+            ss += 'const u={uTime:{value:0},uSpeed:{value:' + bgpObj.speed + '},uDensity:{value:' + bgpObj.density + '},uStrength:{value:' + bgpObj.strength + '},';
+            ss += 'uColor1:{value:cs("--secondary")},uColor2:{value:cs("--accent")},uColor3:{value:cs("--tertiary")},';
+            ss += 'uBrightness:{value:' + _r.brightness + '},uContrast:{value:' + _r.contrast + '},uSaturation:{value:' + _r.saturation + '}};\n';
+            ss += 'const vtx=document.getElementById("vtx-src").textContent,frg=document.getElementById("frg-src").textContent;\n';
+            ss += 'const mat=new THREE.ShaderMaterial({vertexShader:vtx,fragmentShader:frg,uniforms:u,side:THREE.DoubleSide});\n';
+            ss += 'const m=new THREE.Mesh(new THREE.' + (isSphere ? 'SphereGeometry(1,128,128)' : 'PlaneGeometry(10,10,128,128)') + ',mat);\n';
+            ss += 'm.rotation.set(' + (bgpObj.rotX*Math.PI/180).toFixed(3) + ',' + (bgpObj.rotY*Math.PI/180).toFixed(3) + ',' + (bgpObj.rotZ*Math.PI/180).toFixed(3) + ');';
+            ss += 'm.position.set(' + (bgpObj.posX||0) + ',' + (bgpObj.posY||0) + ',' + (bgpObj.posZ||0) + ');s.add(m);\n';
+            ss += 'const comp=new EffectComposer(r);comp.addPass(new RenderPass(s,cam));\n';
+            if (_grainEnabled) {
+              ss += 'comp.addPass(new HalftonePass(innerWidth,innerHeight,{shape:1,radius:' + _gr.grainRadius + ',rotateR:Math.PI/12,rotateG:Math.PI/6,rotateB:Math.PI/4,scatter:' + _gr.grainScatter + ',blending:' + _gr.grainBlending + ',blendingMode:1,greyscale:!1}));\n';
+            }
+            ss += 'function rs(){r.setSize(innerWidth,innerHeight,!1);comp.setSize(innerWidth,innerHeight);cam.aspect=innerWidth/innerHeight;cam.updateProjectionMatrix()}\n';
+            ss += 'addEventListener("resize",rs);rs();\n';
+            ss += 'const t0=performance.now();(function tick(t){u.uTime.value=(t-t0)*.001;comp.render();requestAnimationFrame(tick)})(performance.now());\n';
+            ss += '<\/script>';
+            h = h.replace(/__SHADER_SCRIPT__/g, ss);
+          } else {
+            h = h.replace(/__BG_HEADLINE__/g, 'none.');
+            h = h.replace(/__BG_LEDE__/g, 'No animated background selected.');
+            h = h.replace(/__BG_BADGE__/g, 'none');
+            h = h.replace(/__BG_TYPE__/g, '—');
+            h = h.replace(/__BG_DENSITY__/g, '—');
+            h = h.replace(/__BG_SPEED__/g, '—');
+            h = h.replace(/__BG_STRENGTH__/g, '—');
+            h = h.replace(/__BG_GRAIN__/g, '—');
+            h = h.replace(/__SHADER_CONFIG__/g, '{}');
+            h = h.replace(/__SHADER_VERTEX__/g, '');
+            h = h.replace(/__SHADER_FRAGMENT__/g, '');
+            h = h.replace(/__SHADER_SCRIPT__/g, '');
+          }
+
+          // Guidelines
+          var dosHtml = '', dontsHtml = '';
+          for (var di = 0; di < spec.dos.length; di++) dosHtml += '      <li>' + spec.dos[di] + '</li>\n';
+          for (var di = 0; di < spec.donts.length; di++) dontsHtml += '      <li>' + spec.donts[di] + '</li>\n';
+          h = h.replace(/__DOS__/g, dosHtml);
+          h = h.replace(/__DONTS__/g, dontsHtml);
+
+          // Template CSS + slide cards
+          var templateSummary = "";
+          var summaryXhr = new XMLHttpRequest();
+          summaryXhr.open("GET", "templates/" + templateSlug + "/summary.html?t=" + Date.now(), false);
+          summaryXhr.send();
+          if (summaryXhr.status === 200) templateSummary = summaryXhr.responseText;
+
+          if (templateSummary) {
+            var tmplStyleMatch = templateSummary.match(/<style[\s\S]*?<\/style>/);
+            var tmplSkeletonHtml = templateSummary.replace(/<style[\s\S]*?<\/style>/, '').replace(/<link[^>]*>/g, '').trim();
+
+            // Scope template CSS
+            if (tmplStyleMatch) {
+              var tmplCssRaw = tmplStyleMatch[0].replace(/<\/?style[^>]*>/g, '');
+              tmplCssRaw = tmplCssRaw.replace(/--tp-primary:\s*[^;]+;/g, '--tp-primary: var(--primary);');
+              tmplCssRaw = tmplCssRaw.replace(/--tp-secondary:\s*[^;]+;/g, '--tp-secondary: var(--secondary);');
+              tmplCssRaw = tmplCssRaw.replace(/--tp-tertiary:\s*[^;]+;/g, '--tp-tertiary: var(--tertiary);');
+              tmplCssRaw = tmplCssRaw.replace(/--tp-accent:\s*[^;]+;/g, '--tp-accent: var(--accent);');
+              var scopedCss = tmplCssRaw
+                .replace(/:root\s*\{/g, '.ds-slide-frame {')
+                .replace(/^\s*\*\s*,/gm, '.ds-slide-frame *,')
+                .replace(/^\s*\*\s*\{/gm, '.ds-slide-frame * {')
+                .replace(/\*::before/g, '.ds-slide-frame *::before')
+                .replace(/\*::after/g, '.ds-slide-frame *::after')
+                .replace(/^(\s*)(\.[\w-])/gm, '$1.ds-slide-frame $2')
+                .replace(/^(\s*)(section|h1|h2|h3|p|ul|li|a|span|svg|div)(\s*[{,.])/gm, '$1.ds-slide-frame $2$3')
+                .replace(/\.ds-slide-frame \.ds-slide-frame/g, '.ds-slide-frame');
+              scopedCss += '\n.ds-slide-frame .slide, .ds-slide-frame section { display:flex !important; opacity:1 !important; position:relative !important; width:1920px !important; height:1080px !important; }';
+              scopedCss += '\n.ds-slide-frame .slide.dark { background:' + p.secondary + ' !important; color:' + p.primary + ' !important; }';
+              scopedCss += '\n.ds-slide-frame .slide.orange { background:' + p.accent + ' !important; }';
+              scopedCss += '\n.ds-slide-frame .slide.light { background:' + p.primary + ' !important; color:' + p.secondary + ' !important; }';
+              h = h.replace(/__TEMPLATE_CSS__/g, scopedCss);
+            } else {
+              h = h.replace(/__TEMPLATE_CSS__/g, '');
+            }
+
+            // Build slide cards
+            var slideBlocks = tmplSkeletonHtml.split(/(?=<!-- )/);
+            var cardsHtml = '';
+            var slideIdx = 0;
+            for (var si = 0; si < slideBlocks.length; si++) {
+              var block = slideBlocks[si].trim();
+              if (!block) continue;
+              var nameMatch = block.match(/<!-- ([\w-]+) -->/);
+              if (!nameMatch) continue;
+              var slideName = nameMatch[1];
+              var skeletonHtml = block.replace(/<!-- [\w-]+ -->\s*/, '');
+              if (!skeletonHtml.trim()) continue;
+              slideIdx++;
+              var totalSlides = slideBlocks.filter(function(b) { return b.trim() && /<!-- [\w-]+ -->/.test(b); }).length;
+              cardsHtml += '<div class="tmpl" data-idx="' + String(slideIdx).padStart(2,'0') + '"><div class="tmpl-thumb"><div class="scale-wrap"><div class="ds-slide-frame">\n';
+              cardsHtml += skeletonHtml + '\n';
+              cardsHtml += '</div></div></div><div class="tmpl-foot"><span class="name">' + slideName + '</span><span class="idx">' + String(slideIdx).padStart(2,'0') + ' / ' + totalSlides + '</span></div></div>\n\n';
+            }
+            h = h.replace(/__SLIDE_CARDS__/g, cardsHtml);
+            h = h.replace(/__SLIDE_COUNT__/g, String(slideIdx));
+            var countWords = ['zero','one','two','three','four','five','six','seven','eight','nine','ten','eleven','twelve','thirteen','fourteen','fifteen','sixteen','seventeen','eighteen','nineteen','twenty'];
+            h = h.replace(/__SLIDE_COUNT_WORD__/g, countWords[slideIdx] || String(slideIdx));
+          } else {
+            h = h.replace(/__TEMPLATE_CSS__/g, '');
+            h = h.replace(/__SLIDE_CARDS__/g, '');
+            h = h.replace(/__SLIDE_COUNT__/g, '0');
+            h = h.replace(/__SLIDE_COUNT_WORD__/g, 'zero');
+          }
+
+          // Font link extras
+          h = h.replace(/__FONT_LINK_EXTRA__/g, '');
+
+          // Date
+          h = h.replace(/__DATE__/g, new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' }));
+
+          document.getElementById("md-output").value = h;
+          document.getElementById("md-overlay").classList.add("visible");
+          return;
+        }
+
+        // ── Fallback: fetch template summary for generated output ──
         var templateSummary = "";
         if (templateSlug) {
           var xhr = new XMLHttpRequest();
@@ -2798,13 +3022,7 @@
           if (xhr.status === 200) templateSummary = xhr.responseText;
         }
 
-        // ── Shader sources ──
-        var _sg = window._sgShaders || {};
-        var vtxSrc = _sg.vertex || '';
-        var fragSrc = bgpObj ? (bgpObj.fragmentShader || _sg[bgpObj.shader] || _sg.defaults || '') : '';
-        var _grainEnabled = bgpObj ? document.getElementById("se-grain").checked : false;
-
-        // ── Build DESIGN.html — everything visible ──
+        // ── Fallback: Build generated DESIGN.html ──
         var h = '<!doctype html>\n<html lang="en">\n<head>\n';
         h += '<meta charset="UTF-8">\n';
         h += '<title>Design System — ' + spec.name + '</title>\n';

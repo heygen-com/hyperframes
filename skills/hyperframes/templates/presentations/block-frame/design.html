@@ -1,0 +1,378 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>__NAME__ — Design System</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=DM+Mono:wght@400;500;600&family=Inter:wght@500;700;800;900&family=Space+Grotesk:wght@500;600;700__FONT_LINK_EXTRA__&display=swap" rel="stylesheet" />
+
+<script type="importmap">
+{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.167.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.167.0/examples/jsm/"}}
+</script>
+
+<style id="ds-tokens">
+:root{
+  --primary:__PRIMARY__; --secondary:__SECONDARY__; --tertiary:__TERTIARY__; --accent:__ACCENT__;
+  --pink:#FE90E8; --blue:#C0F7FE; --green:#99E885; --yellow:#F7CB46; --cream:#FFDC8B;
+  --offwhite:#FFFDF5; --black:__SECONDARY__; --white:#FFFFFF;
+  --border:4px solid var(--black);
+  --shadow:8px 8px 0 var(--black);
+  --shadow-sm:4px 4px 0 var(--black);
+  --shadow-lg:12px 12px 0 var(--black);
+  --f-disp:"Anton",sans-serif; --f-head:"Inter",sans-serif; --f-mono:"DM Mono",monospace;
+  --pad-x:clamp(24px,5vw,88px); --pad-y:clamp(40px,6vh,100px);
+}
+</style>
+
+<style>
+*,*::before,*::after{box-sizing:border-box}
+html,body{margin:0;padding:0;background:var(--cream)}
+body{color:var(--black);font:400 14px/1.55 var(--f-mono);-webkit-font-smoothing:antialiased;overflow-x:hidden}
+::selection{background:var(--accent);color:var(--black)}
+
+#design-bg{position:fixed;inset:0;width:100%;height:100%;z-index:-2;opacity:.85;pointer-events:none}
+#bg-grid{position:fixed;inset:0;z-index:-1;pointer-events:none;background-image:radial-gradient(circle,rgba(10,22,40,.12) 1.2px,transparent 1.2px);background-size:24px 24px;mix-blend-mode:multiply}
+
+.rail{position:fixed;top:16px;left:16px;right:16px;height:56px;display:flex;align-items:center;justify-content:space-between;padding:0 18px;background:var(--white);border:var(--border);box-shadow:var(--shadow-sm);z-index:100;font:500 12px/1 var(--f-mono);letter-spacing:.06em;text-transform:uppercase}
+.rail .brand{display:inline-flex;align-items:center;gap:12px;font:400 22px/1 var(--f-disp);letter-spacing:.01em;text-transform:uppercase}
+.rail .brand .square{width:22px;height:22px;background:var(--accent);border:3px solid var(--black);transform:rotate(-6deg)}
+.rail nav{display:flex;gap:6px}
+.rail nav a{color:var(--black);text-decoration:none;padding:6px 10px;border:2px solid transparent;transition:all .12s}
+.rail nav a:hover{background:var(--accent);border-color:var(--black);transform:translate(-1px,-1px);box-shadow:2px 2px 0 var(--black)}
+.rail .ver{background:var(--yellow);border:2px solid var(--black);padding:4px 10px}
+@media(max-width:880px){.rail nav{display:none}}
+
+section{position:relative;padding:var(--pad-y) var(--pad-x)}
+.section-head{display:grid;grid-template-columns:11em 1fr;gap:clamp(24px,4vw,56px);align-items:end;margin-bottom:clamp(36px,5vh,64px)}
+.section-head .num{display:inline-block;border:3px solid var(--black);background:var(--white);padding:6px 14px;font:600 12px/1 var(--f-mono);letter-spacing:.1em;text-transform:uppercase;box-shadow:var(--shadow-sm);justify-self:start;transform:rotate(-3deg)}
+.section-head h2{font:400 clamp(48px,8vw,128px)/.88 var(--f-disp);letter-spacing:.01em;margin:0;text-transform:uppercase}
+.section-head .lede{grid-column:2;max-width:60ch;margin-top:18px;font-size:15px;line-height:1.6}
+
+.cover{min-height:100vh;padding:110px var(--pad-x) 60px;display:flex;flex-direction:column;justify-content:center}
+.cover-frame{border:var(--border);background:var(--offwhite);padding:clamp(36px,6vw,80px);box-shadow:var(--shadow-lg);position:relative;max-width:1400px;margin:0 auto;width:100%}
+.corner{position:absolute;width:28px;height:28px;border:4px solid var(--black)}
+.corner.tl{top:-4px;left:-4px;border-right:none;border-bottom:none}
+.corner.tr{top:-4px;right:-4px;border-left:none;border-bottom:none}
+.corner.bl{bottom:-4px;left:-4px;border-right:none;border-top:none}
+.corner.br{bottom:-4px;right:-4px;border-left:none;border-top:none}
+.cover-label{display:inline-block;border:3px solid var(--black);background:var(--accent);padding:8px 18px;font:600 13px/1 var(--f-mono);letter-spacing:.1em;text-transform:uppercase;box-shadow:var(--shadow-sm);margin-bottom:28px}
+.cover-title{margin:0;font:400 clamp(64px,13vw,200px)/.88 var(--f-disp);letter-spacing:.005em;text-transform:uppercase}
+.cover-title .stack{display:block}
+.cover-title .accent-block{display:inline-block;background:var(--accent);padding:0 .12em;border:4px solid var(--black);box-shadow:var(--shadow-sm);line-height:.88;transform:rotate(-1deg) translateY(-.04em);margin:0 .06em}
+.cover-subtitle{font:500 clamp(16px,1.4vw,20px)/1.55 var(--f-mono);max-width:60ch;margin-top:36px}
+.deco-pink{position:absolute;top:-34px;right:80px;width:110px;height:110px;background:var(--pink);border:var(--border);box-shadow:var(--shadow-sm);transform:rotate(11deg)}
+.deco-green{position:absolute;bottom:60px;right:110px;width:68px;height:68px;background:var(--green);border:var(--border);border-radius:50%}
+.deco-yellow-bar{position:absolute;bottom:-22px;left:80px;width:180px;height:44px;background:var(--yellow);border:var(--border);box-shadow:var(--shadow-sm);transform:rotate(-3deg);display:flex;align-items:center;justify-content:center;font:600 13px/1 var(--f-mono);letter-spacing:.1em;text-transform:uppercase;z-index:5}
+.deco-dots-tl{position:absolute;top:60px;left:60px;width:120px;height:80px;background-image:radial-gradient(circle,var(--black) 2px,transparent 2px);background-size:20px 20px;opacity:.4}
+.cover-foot{margin-top:56px;padding-top:28px;border-top:4px solid var(--black);display:grid;grid-template-columns:repeat(4,1fr);gap:24px}
+.cover-foot .cell{display:flex;flex-direction:column;gap:6px}
+.cover-foot .k{font:600 11px/1 var(--f-mono);letter-spacing:.1em;text-transform:uppercase}
+.cover-foot .v{font:800 18px/1.2 var(--f-head)}
+.cover-foot .v.big{font:400 32px/1 var(--f-disp);letter-spacing:.01em;text-transform:uppercase}
+@media(max-width:760px){.cover-foot{grid-template-columns:1fr 1fr}}
+
+.manifesto{background:var(--pink);border-top:var(--border);border-bottom:var(--border);padding:clamp(60px,9vh,120px) var(--pad-x)}
+.manifesto-grid{display:grid;grid-template-columns:11em 1fr;gap:clamp(24px,4vw,56px);align-items:start;max-width:1400px;margin:0 auto}
+.manifesto-grid .num{display:inline-block;border:3px solid var(--black);background:var(--white);padding:6px 14px;font:600 12px/1 var(--f-mono);letter-spacing:.1em;text-transform:uppercase;box-shadow:var(--shadow-sm);justify-self:start}
+.manifesto p{font:800 clamp(28px,4vw,60px)/1.05 var(--f-head);letter-spacing:-.025em;max-width:22ch;margin:0;text-transform:uppercase}
+.manifesto p em{font-style:normal;background:var(--black);color:var(--accent);padding:0 .15em}
+
+.palette{display:grid;grid-template-columns:repeat(4,1fr);gap:24px;max-width:1400px;margin:0 auto}
+@media(max-width:980px){.palette{grid-template-columns:repeat(2,1fr)}}
+.swatch{border:var(--border);box-shadow:var(--shadow);padding:28px 24px 24px;aspect-ratio:3/4;display:flex;flex-direction:column;justify-content:space-between;transition:transform .15s,box-shadow .15s}
+.swatch:hover{transform:translate(-3px,-3px);box-shadow:11px 11px 0 var(--black)}
+.swatch:nth-child(1){transform:rotate(-1deg)} .swatch:nth-child(2){transform:rotate(.5deg)} .swatch:nth-child(3){transform:rotate(-.5deg)} .swatch:nth-child(4){transform:rotate(1deg)}
+.swatch:nth-child(1):hover{transform:rotate(-1deg) translate(-3px,-3px)} .swatch:nth-child(2):hover{transform:rotate(.5deg) translate(-3px,-3px)} .swatch:nth-child(3):hover{transform:rotate(-.5deg) translate(-3px,-3px)} .swatch:nth-child(4):hover{transform:rotate(1deg) translate(-3px,-3px)}
+.swatch .role{font:600 11px/1 var(--f-mono);letter-spacing:.1em;text-transform:uppercase;padding:4px 8px;background:var(--white);border:2px solid var(--black);align-self:flex-start}
+.swatch .name{font:400 clamp(28px,3.4vw,52px)/.92 var(--f-disp);letter-spacing:.005em;text-transform:uppercase;margin-top:auto}
+.swatch .hex{font:500 13px/1 var(--f-mono);margin-top:8px}
+.swatch .usage{font:400 11px/1.5 var(--f-mono);margin-top:6px;opacity:.75}
+.swatch--primary{background:var(--primary);color:var(--black)}
+.swatch--secondary{background:var(--secondary);color:var(--primary)}
+.swatch--secondary .role{background:var(--primary);color:var(--secondary);border-color:var(--primary)}
+.swatch--tertiary{background:var(--tertiary);color:var(--white)}
+.swatch--tertiary .role{background:var(--white);color:var(--black)}
+.swatch--accent{background:var(--accent);color:var(--black)}
+
+.specimen{border:var(--border);background:var(--white);box-shadow:var(--shadow);max-width:1400px;margin:0 auto}
+.spec-row{display:grid;grid-template-columns:12em 1fr;gap:28px;padding:28px 32px;border-bottom:3px solid var(--black);align-items:baseline}
+.spec-row:last-child{border:0}
+.spec-row .meta{font:500 11px/1.4 var(--f-mono);letter-spacing:.1em;text-transform:uppercase;display:flex;flex-direction:column;gap:4px}
+.spec-row .meta b{font:400 22px/1 var(--f-disp);letter-spacing:.01em;text-transform:uppercase}
+.spec-display{font:400 clamp(64px,11vw,168px)/.88 var(--f-disp);letter-spacing:.005em;text-transform:uppercase}
+.spec-h1{font:900 clamp(40px,7vw,104px)/.92 var(--f-head);letter-spacing:-.03em;text-transform:uppercase}
+.spec-h2{font:800 clamp(28px,4.2vw,64px)/1 var(--f-head);letter-spacing:-.02em;text-transform:uppercase}
+.spec-lead{font:500 clamp(18px,2vw,26px)/1.45 var(--f-head)}
+.spec-body{font:500 17px/1.65 var(--f-head);max-width:60ch}
+.spec-label{font:600 13px/1 var(--f-mono);letter-spacing:.1em;text-transform:uppercase}
+
+.surface-grid{display:grid;grid-template-columns:1.1fr 1fr;gap:32px;max-width:1400px;margin:0 auto}
+@media(max-width:880px){.surface-grid{grid-template-columns:1fr}}
+.demo-card{background:var(--white);padding:32px;border:var(--border);box-shadow:var(--shadow);display:flex;flex-direction:column;gap:18px;position:relative;transform:rotate(-.5deg)}
+.demo-card .card-deco{position:absolute;top:-14px;right:28px;width:56px;height:56px;border:3px solid var(--black);background:var(--yellow)}
+.demo-card .tag{align-self:flex-start;font:600 11px/1 var(--f-mono);letter-spacing:.1em;text-transform:uppercase;border:3px solid var(--black);background:var(--pink);padding:6px 14px;box-shadow:var(--shadow-sm)}
+.demo-card h3{margin:0;font:900 36px/1 var(--f-head);text-transform:uppercase;letter-spacing:-.02em}
+.demo-card p{margin:0;font:500 15px/1.6 var(--f-head)}
+.demo-card .stat-block{display:flex;align-items:flex-end;gap:16px;padding-top:8px;border-top:3px solid var(--black)}
+.demo-card .stat-block .num{font:900 72px/1 var(--f-head)}
+.demo-card .stat-block .pill{border:3px solid var(--black);background:var(--accent);padding:6px 12px;font:600 12px/1 var(--f-mono);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px}
+.tokens{list-style:none;padding:0;margin:0;border:var(--border);background:var(--white);box-shadow:var(--shadow);transform:rotate(.4deg)}
+.tokens li{display:grid;grid-template-columns:1fr auto auto;gap:18px;align-items:center;padding:18px 24px;border-bottom:3px solid var(--black)}
+.tokens li:last-child{border:0}
+.tokens li:nth-child(even){background:var(--blue)}
+.tokens .name{font:600 12px/1 var(--f-mono);letter-spacing:.1em;text-transform:uppercase}
+.tokens .val{font:800 20px/1 var(--f-head)}
+.tokens .bar{height:8px;background:var(--accent);border:2px solid var(--black)}
+
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:32px;max-width:1400px;margin:0 auto}
+@media(max-width:880px){.two-col{grid-template-columns:1fr}}
+.panel{background:var(--white);border:var(--border);box-shadow:var(--shadow);padding:32px;display:flex;flex-direction:column;gap:22px}
+.panel .label-row{display:inline-block;align-self:flex-start;background:var(--green);border:3px solid var(--black);padding:6px 14px;font:600 11px/1 var(--f-mono);letter-spacing:.1em;text-transform:uppercase;box-shadow:var(--shadow-sm)}
+.panel h4{margin:0;font:400 40px/1 var(--f-disp);letter-spacing:.005em;text-transform:uppercase}
+.panel p{margin:0;font:500 14px/1.65 var(--f-head);max-width:42ch}
+.panel pre{margin:0;padding:14px;border:3px solid var(--black);background:var(--offwhite);font:11px/1.5 var(--f-mono);overflow-x:auto}
+
+.bg-preview{border:var(--border);box-shadow:var(--shadow);aspect-ratio:4/3;position:relative;overflow:hidden;background:var(--secondary)}
+.bg-preview .mock{position:absolute;inset:0;background:radial-gradient(circle at 35% 35%,var(--accent),transparent 55%),radial-gradient(circle at 70% 75%,var(--tertiary),transparent 55%),var(--secondary);filter:blur(28px)}
+.bg-preview .grain{position:absolute;inset:0;background-image:radial-gradient(circle,rgba(224,240,255,.3) .5px,transparent .5px);background-size:3px 3px;mix-blend-mode:overlay}
+.bg-preview .badge{position:absolute;bottom:14px;left:14px;font:600 11px/1 var(--f-mono);letter-spacing:.1em;text-transform:uppercase;color:var(--black);background:var(--accent);border:3px solid var(--black);padding:6px 12px}
+
+details.code-block{background:var(--white);border:3px solid var(--black);margin-top:12px}
+details.code-block summary{cursor:pointer;padding:12px 16px;list-style:none;font:600 12px/1 var(--f-mono);letter-spacing:.1em;text-transform:uppercase;display:flex;justify-content:space-between;background:var(--blue)}
+details.code-block summary::-webkit-details-marker{display:none}
+details.code-block summary::after{content:"+";font:900 18px/1 var(--f-head)}
+details.code-block[open] summary::after{content:"\2212"}
+details.code-block pre{margin:0;padding:16px;border-top:3px solid var(--black);font:11px/1.6 var(--f-mono);background:var(--offwhite);overflow-x:auto;white-space:pre-wrap;word-break:break-word;max-height:320px;overflow-y:auto}
+
+.rules-grid{display:grid;grid-template-columns:1fr 1fr;gap:32px;max-width:1400px;margin:0 auto}
+@media(max-width:880px){.rules-grid{grid-template-columns:1fr}}
+.rules-col{border:var(--border);padding:32px;box-shadow:var(--shadow)}
+.rules-col.do{background:var(--green);transform:rotate(-.6deg)}
+.rules-col.dont{background:var(--white);transform:rotate(.6deg)}
+.rules-col h3{font:400 64px/1 var(--f-disp);letter-spacing:.005em;margin:0 0 24px;text-transform:uppercase}
+.rules-col ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:12px}
+.rules-col li{display:grid;grid-template-columns:2em 1fr;gap:12px;padding:14px 16px;background:var(--white);border:3px solid var(--black);box-shadow:var(--shadow-sm);font:500 15px/1.45 var(--f-head)}
+.rules-col.dont li{background:var(--cream)}
+.rules-col li::before{font:900 22px/1 var(--f-head);align-self:center;text-align:center;width:1.6em;height:1.6em;display:flex;align-items:center;justify-content:center;border:2px solid var(--black)}
+.rules-col.do li::before{content:"\2713";background:var(--accent)}
+.rules-col.dont li::before{content:"\2717";background:var(--pink)}
+
+.templates-wrap{background:var(--blue);border-top:var(--border);border-bottom:var(--border)}
+.templates-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:28px;max-width:1400px;margin:0 auto}
+@media(max-width:1100px){.templates-grid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:720px){.templates-grid{grid-template-columns:1fr}}
+.tmpl{background:var(--white);border:var(--border);box-shadow:var(--shadow);overflow:hidden;transition:transform .15s,box-shadow .15s}
+.tmpl:hover{transform:translate(-3px,-3px);box-shadow:11px 11px 0 var(--black)}
+.tmpl-thumb{width:100%;aspect-ratio:16/9;overflow:hidden;position:relative;background:var(--offwhite);border-bottom:3px solid var(--black)}
+.tmpl-thumb .scale-wrap{width:1920px;height:1080px;transform-origin:top left}
+.tmpl-foot{display:flex;justify-content:space-between;padding:12px 16px;font:600 12px/1 var(--f-mono);letter-spacing:.08em;text-transform:uppercase}
+.tmpl-foot .idx{background:var(--accent);border:2px solid var(--black);padding:2px 8px}
+
+footer.endcap{background:var(--black);color:var(--white);padding:80px var(--pad-x) 60px}
+footer.endcap .endcap-grid{display:grid;grid-template-columns:1fr auto;gap:48px;align-items:end;max-width:1400px;margin:0 auto}
+footer.endcap .endmark{font:400 clamp(72px,14vw,220px)/.85 var(--f-disp);letter-spacing:.005em;text-transform:uppercase;margin:0;color:var(--white)}
+footer.endcap .endmark .accent-block{background:var(--accent);color:var(--black);border:4px solid var(--white);padding:0 .1em;box-shadow:8px 8px 0 var(--accent);display:inline-block;transform:rotate(-2deg)}
+footer.endcap .meta{font:500 12px/2 var(--f-mono);letter-spacing:.1em;text-transform:uppercase;color:var(--primary);text-align:right}
+footer.endcap .meta b{color:var(--accent);font-weight:600}
+</style>
+
+<!-- TEMPLATE STYLES -->
+<style id="template-css">
+__TEMPLATE_CSS__
+</style>
+</head>
+
+<body>
+
+<canvas id="design-bg"></canvas>
+<div id="bg-grid"></div>
+
+<div class="rail">
+  <div class="brand"><span class="square"></span>__NAME__</div>
+  <nav><a href="#palette">01</a><a href="#type">02</a><a href="#surface">03</a><a href="#motion">04</a><a href="#background">05</a><a href="#guidelines">06</a><a href="#templates">07</a></nav>
+  <div class="ver">v 1.0 · 2026</div>
+</div>
+
+<header class="cover" data-screen-label="00 Cover">
+  <div class="cover-frame">
+    <span class="corner tl"></span><span class="corner tr"></span><span class="corner bl"></span><span class="corner br"></span>
+    <div class="cover-label">&#9656; DESIGN SYSTEM · &#8470; 002</div>
+    <h1 class="cover-title"><span class="stack">__NAME_LINE1__</span><span class="stack"><span class="accent-block">__NAME_LINE2__</span>.</span></h1>
+    <p class="cover-subtitle">A neo-brutalist composition system. Thick borders. Hard shadows. Every element earns its place.</p>
+    <div class="cover-foot">
+      <div class="cell"><span class="k">Discipline</span><span class="v">Editorial · Web · Identity</span></div>
+      <div class="cell"><span class="k">Primary type</span><span class="v big">Anton 400</span></div>
+      <div class="cell"><span class="k">Signal</span><span class="v">__ACCENT_LABEL__</span></div>
+      <div class="cell"><span class="k">Doc</span><span class="v">07 sections · __SLIDE_COUNT__ templates</span></div>
+    </div>
+    <div class="deco-pink"></div><div class="deco-green"></div>
+    <div class="deco-yellow-bar">&#9656; TYPE LOUD</div><div class="deco-dots-tl"></div>
+  </div>
+</header>
+
+<section class="manifesto" data-screen-label="00 Manifesto">
+  <div class="manifesto-grid">
+    <span class="num">&#8212; Manifesto</span>
+    <p>borders are <em>structural</em>. shadows are <em>weight</em>. tilt is <em>intent</em>.</p>
+  </div>
+</section>
+
+<section id="palette" data-screen-label="01 Palette">
+  <div class="section-head">
+    <span class="num">01 &#8212; Palette</span>
+    <h2>Four<br/>Tokens.</h2>
+    <p class="lede">__PALETTE_LEDE__</p>
+  </div>
+  <div class="palette">
+    <div class="swatch swatch--primary"><div class="role">&#9656; Primary 01</div><div><div class="name">__PRIMARY_NAME__</div><div class="hex">__PRIMARY__</div><div class="usage">Ink on dark surfaces.</div></div></div>
+    <div class="swatch swatch--secondary"><div class="role">&#9656; Secondary 02</div><div><div class="name">__SECONDARY_NAME__</div><div class="hex">__SECONDARY__</div><div class="usage">Default ink. Borders.</div></div></div>
+    <div class="swatch swatch--tertiary"><div class="role">&#9656; Tertiary 03</div><div><div class="name">__TERTIARY_NAME__</div><div class="hex">__TERTIARY__</div><div class="usage">Bridge tone. Muted fills.</div></div></div>
+    <div class="swatch swatch--accent"><div class="role">&#9656; Accent 04</div><div><div class="name">__ACCENT_NAME__</div><div class="hex">__ACCENT__</div><div class="usage">The signature. Reserved.</div></div></div>
+  </div>
+</section>
+
+<section id="type" data-screen-label="02 Type">
+  <div class="section-head">
+    <span class="num">02 &#8212; Typography</span>
+    <h2>Big.<br/>Heavy.</h2>
+    <p class="lede">Anton 400 carries display. Inter 800&#8211;900 for headlines, 500 for body. DM Mono runs chrome.</p>
+  </div>
+  <div class="specimen">
+    <div class="spec-row"><div class="meta"><span>Display</span><b>Anton 400</b><span>11vw · UPPER</span></div><div class="spec-display">HELLO WORLD.</div></div>
+    <div class="spec-row"><div class="meta"><span>H1</span><b>Inter 900</b><span>7vw · &#8722;0.03em</span></div><div class="spec-h1">CHAPTER ONE</div></div>
+    <div class="spec-row"><div class="meta"><span>H2</span><b>Inter 800</b><span>4.2vw · &#8722;0.02em</span></div><div class="spec-h2">SLIDE HEADLINES</div></div>
+    <div class="spec-row"><div class="meta"><span>Lead</span><b>Inter 500</b><span>2vw</span></div><div class="spec-lead">The lead carries the argument.</div></div>
+    <div class="spec-row"><div class="meta"><span>Body</span><b>Inter 500</b><span>17px · 60ch</span></div><p class="spec-body">Body copy below 24px is forbidden in video compositions.</p></div>
+    <div class="spec-row"><div class="meta"><span>Label</span><b>DM Mono 600</b><span>13px · UPPER</span></div><div class="spec-label">&#9656; CHROME · LABELS · METADATA</div></div>
+  </div>
+</section>
+
+<section id="surface" data-screen-label="03 Surface">
+  <div class="section-head">
+    <span class="num">03 &#8212; Surface</span>
+    <h2>Borders.<br/>Hard shadows.</h2>
+    <p class="lede">Every container is a hard 4px black box. Shadows offset, never blurred. Lift comes from displacement.</p>
+  </div>
+  <div class="surface-grid">
+    <div class="demo-card">
+      <div class="card-deco"></div>
+      <span class="tag">&#9656; EXAMPLE</span>
+      <h3>EXAMPLE CARD.</h3>
+      <p>Configured borders, padding, offset shadow. Accent rationed to one element.</p>
+      <div class="stat-block"><div class="num">+42%</div><div class="pill">&#9656; SAMPLE</div></div>
+    </div>
+    <ul class="tokens">
+      <li><span class="name">Border</span><span class="val">__BORDER__</span><span class="bar" style="width:32px"></span></li>
+      <li><span class="name">Radius</span><span class="val">__CORNER_RADIUS__</span><span class="bar" style="width:8px"></span></li>
+      <li><span class="name">Shadow</span><span class="val">__SHADOW__</span><span class="bar" style="width:44px"></span></li>
+      <li><span class="name">Padding</span><span class="val">__PADDING__</span><span class="bar" style="width:36px"></span></li>
+      <li><span class="name">Density</span><span class="val">__DENSITY__</span><span class="bar" style="width:52px"></span></li>
+    </ul>
+  </div>
+</section>
+
+<section id="motion" data-screen-label="04 Motion">
+  <div class="section-head">
+    <span class="num">04 &#8212; Motion</span>
+    <h2>__EASING_HEADLINE__</h2>
+    <p class="lede">__EASING_LEDE__</p>
+  </div>
+  <div class="two-col">
+    <div class="panel">
+      <span class="label-row">&#9656; EASING</span>
+      <h4>__EASING_NAME__</h4>
+      <p>__EASING_DESC__</p>
+      <pre>__EASING_VALUE__</pre>
+    </div>
+    <div class="panel">
+      <span class="label-row">&#9656; DURATION</span>
+      <h4>__DURATION_DEFAULT__</h4>
+      <p>__DURATION_DESC__</p>
+      <pre>__DURATION_VALUES__</pre>
+    </div>
+  </div>
+</section>
+
+<section id="background" data-screen-label="05 Background">
+  <div class="section-head">
+    <span class="num">05 &#8212; Background</span>
+    <h2>__BG_HEADLINE__</h2>
+    <p class="lede">__BG_LEDE__</p>
+  </div>
+  <div class="two-col">
+    <div class="bg-preview">
+      <div class="mock"></div><div class="grain"></div>
+      <span class="badge">&#9656; __BG_BADGE__</span>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <ul class="tokens" style="transform:none">
+        <li><span class="name">Geometry</span><span class="val">__BG_TYPE__</span><span class="bar" style="width:36px"></span></li>
+        <li><span class="name">Density</span><span class="val">__BG_DENSITY__</span><span class="bar" style="width:30px"></span></li>
+        <li><span class="name">Speed</span><span class="val">__BG_SPEED__</span><span class="bar" style="width:18px"></span></li>
+        <li><span class="name">Strength</span><span class="val">__BG_STRENGTH__</span><span class="bar" style="width:22px"></span></li>
+        <li><span class="name">Grain</span><span class="val">__BG_GRAIN__</span><span class="bar" style="width:24px"></span></li>
+      </ul>
+      <details class="code-block"><summary>&#9656; SHADER CONFIG (JSON)</summary>
+<pre>__SHADER_CONFIG__</pre>
+      </details>
+      <details class="code-block"><summary>&#9656; VERTEX SHADER (GLSL)</summary>
+<pre id="vtx-src">__SHADER_VERTEX__</pre>
+      </details>
+      <details class="code-block"><summary>&#9656; FRAGMENT SHADER (GLSL)</summary>
+<pre id="frg-src">__SHADER_FRAGMENT__</pre>
+      </details>
+    </div>
+  </div>
+</section>
+
+<section id="guidelines" data-screen-label="06 Guidelines">
+  <div class="section-head">
+    <span class="num">06 &#8212; Guidelines</span>
+    <h2>Do.<br/>Don't.</h2>
+    <p class="lede">Not preferences. The system collapses the moment any of them slip.</p>
+  </div>
+  <div class="rules-grid">
+    <div class="rules-col do"><h3>DO.</h3><ul>__DOS__</ul></div>
+    <div class="rules-col dont"><h3>DON'T.</h3><ul>__DONTS__</ul></div>
+  </div>
+</section>
+
+<section id="templates" class="templates-wrap" data-screen-label="07 Templates">
+  <div class="section-head">
+    <span class="num">07 &#8212; Templates</span>
+    <h2>__SLIDE_COUNT_WORD__<br/>Frames.</h2>
+    <p class="lede">The library at 1920&#215;1080. Each thumbnail is the real slide, scaled.</p>
+  </div>
+  <div class="templates-grid" id="templates-grid"></div>
+</section>
+
+<template id="tmpl-source">
+__SLIDE_CARDS__
+</template>
+
+<footer class="endcap" data-screen-label="08 End">
+  <div class="endcap-grid">
+    <h2 class="endmark">THE <span class="accent-block">END.</span></h2>
+    <div class="meta">
+      <div><b>__NAME__</b> · v 1 · 0</div>
+      <div>Anton / Inter / DM Mono</div>
+      <div>__DATE__</div>
+    </div>
+  </div>
+</footer>
+
+<script>
+(function(){
+  document.getElementById('templates-grid').appendChild(document.getElementById('tmpl-source').content.cloneNode(true));
+  function rescale(){document.querySelectorAll('.tmpl-thumb').forEach(t=>{const w=t.querySelector('.scale-wrap');if(w)w.style.transform='scale('+(t.clientWidth/1920)+')'})}
+  addEventListener('load',rescale);addEventListener('resize',rescale);requestAnimationFrame(rescale);
+  if(document.fonts&&document.fonts.ready)document.fonts.ready.then(rescale);
+})();
+</script>
+
+__SHADER_SCRIPT__
+
+</body>
+</html>
