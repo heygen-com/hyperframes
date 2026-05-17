@@ -31,6 +31,7 @@ import {
   resolveMinPsnrForMode,
   runDistributedSimulatedRender,
 } from "./regression-harness-distributed.js";
+import { runLambdaLocalRender } from "./regression-harness-lambda-local.js";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -228,13 +229,13 @@ function parseArgs(argv: string[]): CliOptions {
     }
   }
 
-  if (update && mode === "distributed-simulated") {
+  if (update && (mode === "distributed-simulated" || mode === "lambda-local")) {
     // The in-process renderer is the source of truth for golden baselines —
-    // distributed-simulated's job is to verify the contract against the
-    // same baseline, not to author its own. Surfacing this at parse time
-    // saves a multi-minute render before the user notices.
+    // the other two modes verify the contract against the same baseline,
+    // not author their own. Surfacing this at parse time saves a multi-
+    // minute render before the user notices.
     throw new Error(
-      "regression-harness: --update is incompatible with --mode=distributed-simulated. " +
+      `regression-harness: --update is incompatible with --mode=${mode}. ` +
         "Generate baselines with the in-process renderer (the default mode), then re-run " +
         "without --update to verify both modes match.",
     );
@@ -889,13 +890,14 @@ async function runTestSuite(
     copyFixtureSupportFiles(suite, tempRoot);
     cpSync(suite.srcDir, tempSrcDir, { recursive: true });
 
-    if (options.mode === "distributed-simulated") {
+    if (options.mode === "distributed-simulated" || options.mode === "lambda-local") {
       const support = checkDistributedSupport(suite.meta.renderConfig);
       if (!support.supported) {
-        // Skipping is a clean outcome — the distributed pipeline can't
-        // run this fixture, but in-process mode already covers it. Mark
-        // passed so the suite summary doesn't trip CI; the `skipped`
-        // field is what distinguishes a real pass from a skip.
+        // Skipping is a clean outcome — the distributed pipeline (which
+        // both modes go through) can't run this fixture, but in-process
+        // mode already covers it. Mark passed so the suite summary
+        // doesn't trip CI; the `skipped` field is what distinguishes a
+        // real pass from a skip.
         console.log(
           JSON.stringify({
             event: "test_skipped",
@@ -912,21 +914,26 @@ async function runTestSuite(
       // `checkDistributedSupport` already narrowed fps to {24,30,60} and
       // rejected webm; the cast surfaces that guarantee to TS.
       const fpsNum = suite.meta.renderConfig.fps.num as 24 | 30 | 60;
-      // `runDistributedSimulatedRender`'s `format` parameter accepts the
-      // distributed-supported set; the harness type allows `"webm"` too
-      // but `checkDistributedSupport` rejected that above. Narrow the cast
-      // accordingly.
-      await runDistributedSimulatedRender({
+      const distributedInput = {
         projectDir: tempSrcDir,
         tempRoot,
         renderedOutputPath,
         fps: fpsNum,
+        // `runDistributedSimulatedRender` / `runLambdaLocalRender`'s
+        // `format` parameter accepts the distributed-supported set;
+        // the harness type allows `"webm"` too but
+        // `checkDistributedSupport` rejected that above. Narrow.
         format: outputFormat as "mp4" | "mov" | "png-sequence",
         codec: suite.meta.renderConfig.codec,
         chunkSize: suite.meta.renderConfig.chunkSize,
         maxParallelChunks: suite.meta.renderConfig.maxParallelChunks,
         variables: suite.meta.renderConfig.variables,
-      });
+      };
+      if (options.mode === "lambda-local") {
+        await runLambdaLocalRender(distributedInput);
+      } else {
+        await runDistributedSimulatedRender(distributedInput);
+      }
     } else {
       const job = createRenderJob({
         fps: suite.meta.renderConfig.fps,

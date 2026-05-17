@@ -50,6 +50,8 @@
     "docker:test": "docker run --rm --security-opt seccomp=unconfined --shm-size=2g -v ./tests:/app/packages/producer/tests hyperframes-producer:test",
     "docker:test:update": "docker run --rm --security-opt seccomp=unconfined --shm-size=2g -v ./tests:/app/packages/producer/tests hyperframes-producer:test --update",
     "docker:test:distributed": "docker run --rm --security-opt seccomp=unconfined --shm-size=2g -v ./tests:/app/packages/producer/tests hyperframes-producer:test --mode=distributed-simulated",
+    "test:lambda-local": "tsx src/regression-harness.ts --exclude-tags transparency --mode=lambda-local",
+    "docker:test:lambda-local": "docker run --rm --security-opt seccomp=unconfined --shm-size=2g -v ./tests:/app/packages/producer/tests hyperframes-producer:test --mode=lambda-local",
     "prepublishOnly": "echo skip"
   },
   "dependencies": {
@@ -81,6 +83,7 @@
     "@fontsource/poppins": "^5.2.7",
     "@fontsource/roboto": "^5.2.10",
     "@fontsource/source-code-pro": "^5.2.7",
+    "@hyperframes/aws-lambda": "workspace:*",
     "@types/node": "^25.0.10",
     "@webgpu/types": "^0.1.69",
     "esbuild": "^0.25.12",

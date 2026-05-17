@@ -18,6 +18,10 @@ describe("parseHarnessModeFlag()", () => {
     expect(parseHarnessModeFlag("--mode=distributed-simulated")).toBe("distributed-simulated");
   });
 
+  it("parses --mode=lambda-local", () => {
+    expect(parseHarnessModeFlag("--mode=lambda-local")).toBe("lambda-local");
+  });
+
   it("returns null for tokens that aren't --mode", () => {
     expect(parseHarnessModeFlag("--update")).toBeNull();
     expect(parseHarnessModeFlag("font-variant-numeric")).toBeNull();
@@ -27,6 +31,11 @@ describe("parseHarnessModeFlag()", () => {
   it("throws on a known prefix with a bad value", () => {
     expect(() => parseHarnessModeFlag("--mode=foo")).toThrow(/--mode must be/);
     expect(() => parseHarnessModeFlag("--mode=")).toThrow(/--mode must be/);
+  });
+
+  it("error message lists all three accepted modes", () => {
+    expect(() => parseHarnessModeFlag("--mode=foo")).toThrow(/lambda-local/);
+    expect(() => parseHarnessModeFlag("--mode=foo")).toThrow(/distributed-simulated/);
   });
 });
 
@@ -111,6 +120,13 @@ describe("resolveMinPsnrForMode()", () => {
     expect(resolveMinPsnrForMode("distributed-simulated", 5)).toBe(
       DISTRIBUTED_SIMULATED_MIN_PSNR_DB,
     );
+  });
+
+  it("lambda-local mirrors distributed-simulated's pathology floor", () => {
+    // Both non-in-process modes run through the same producer primitives,
+    // so they share the same pathology threshold.
+    expect(resolveMinPsnrForMode("lambda-local", 30)).toBe(30);
+    expect(resolveMinPsnrForMode("lambda-local", 0)).toBe(DISTRIBUTED_SIMULATED_MIN_PSNR_DB);
   });
 
   it("every committed fixture authors a minPsnr above the absolute floor", async () => {

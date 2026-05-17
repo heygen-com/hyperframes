@@ -184,6 +184,7 @@
         "@fontsource/poppins": "^5.2.7",
         "@fontsource/roboto": "^5.2.10",
         "@fontsource/source-code-pro": "^5.2.7",
+        "@hyperframes/aws-lambda": "workspace:*",
         "@types/node": "^25.0.10",
         "@webgpu/types": "^0.1.69",
         "esbuild": "^0.25.12",

@@ -36,8 +36,20 @@ import { join } from "node:path";
 import type { Fps } from "@hyperframes/core";
 import { assemble, plan, renderChunk } from "./distributed.js";
 
-/** Two-mode contract that backs `--mode=<value>` on the regression harness CLI. */
-export type HarnessMode = "in-process" | "distributed-simulated";
+/**
+ * Three-mode contract that backs `--mode=<value>` on the regression
+ * harness CLI:
+ *
+ *   - `in-process` — `executeRenderJob`, the same path the CLI takes.
+ *   - `distributed-simulated` — `plan` → `renderChunk` × N → `assemble`
+ *     in-process. No adapter (no Temporal, no Lambda).
+ *   - `lambda-local` — drives the OSS `@hyperframes/aws-lambda` handler
+ *     dispatch through a filesystem-backed fake S3, so every event
+ *     shape SFN sends in production also lands here. Catches regressions
+ *     in event JSON / S3 path conventions without paying for a real AWS
+ *     round-trip.
+ */
+export type HarnessMode = "in-process" | "distributed-simulated" | "lambda-local";
 
 /**
  * Absolute pathology floor for `--mode=distributed-simulated` — catches
@@ -207,6 +219,8 @@ export async function runDistributedSimulatedRender(
  */
 export function resolveMinPsnrForMode(mode: HarnessMode, fixtureMinPsnr: number): number {
   if (mode === "in-process") return fixtureMinPsnr;
+  // `lambda-local` shares the distributed-simulated pathology floor —
+  // both modes go through the same plan/renderChunk/assemble primitives.
   return Math.max(fixtureMinPsnr, DISTRIBUTED_SIMULATED_MIN_PSNR_DB);
 }
 
@@ -220,10 +234,11 @@ export function resolveMinPsnrForMode(mode: HarnessMode, fixtureMinPsnr: number)
 export function parseHarnessModeFlag(token: string): HarnessMode | null {
   if (token === "--mode=in-process") return "in-process";
   if (token === "--mode=distributed-simulated") return "distributed-simulated";
+  if (token === "--mode=lambda-local") return "lambda-local";
   if (token.startsWith("--mode=")) {
     const value = token.slice("--mode=".length);
     throw new Error(
-      `regression-harness: --mode must be 'in-process' or 'distributed-simulated' (got ${JSON.stringify(value)})`,
+      `regression-harness: --mode must be 'in-process', 'distributed-simulated', or 'lambda-local' (got ${JSON.stringify(value)})`,
     );
   }
   return null;
