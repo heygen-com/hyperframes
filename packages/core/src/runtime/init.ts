@@ -255,9 +255,9 @@ export function initSandboxRuntimeModular(): void {
       if (authoredEnd != null && !node.hasAttribute(AUTHORED_END_ATTR)) {
         node.setAttribute(AUTHORED_END_ATTR, authoredEnd);
       }
-      // Non-root compositions derive visible duration from timeline.
-      // Strip both data-duration AND data-end so the visibility system
-      // falls back to the GSAP timeline duration (parity with preview).
+      // Strip public timing attrs on non-root compositions after preserving
+      // authored values privately. Runtime timing can still distinguish
+      // authored host windows from live child timeline durations.
       node.removeAttribute("data-duration");
       node.removeAttribute("data-end");
     }
@@ -1335,9 +1335,18 @@ export function initSandboxRuntimeModular(): void {
           }
         }
 
-        // Composition hosts must respect both the authored parent clip window
-        // and the child composition's own live timeline duration.
-        if (duration != null && duration > 0 && liveDuration != null) {
+        const usesExternalCompositionSlot = rawNode.hasAttribute("data-composition-src");
+
+        // Generic child compositions retain legacy behavior and respect both
+        // the authored parent clip window and the live child timeline duration.
+        // External composition hosts render into an authored slot, so a shorter
+        // child timeline should hold its final state through that slot.
+        if (
+          duration != null &&
+          duration > 0 &&
+          liveDuration != null &&
+          !usesExternalCompositionSlot
+        ) {
           duration = Math.min(duration, liveDuration);
         } else if ((duration == null || duration <= 0) && liveDuration != null) {
           duration = liveDuration;
