@@ -71,6 +71,8 @@ examples/*
 # Tracked OSS examples — negations override the blanket `examples/*` ignore.
 !examples/aws-lambda
 !examples/aws-lambda/**
+!examples/k8s-jobs
+!examples/k8s-jobs/**
 packages/studio/data/
 .desloppify/
 .worktrees/

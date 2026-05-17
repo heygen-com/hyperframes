@@ -210,7 +210,8 @@
           {
             "group": "Deploy",
             "pages": [
-              "deploy/aws-lambda"
+              "deploy/aws-lambda",
+              "deploy/migrating-to-hyperframes-lambda"
             ]
           }
         ]

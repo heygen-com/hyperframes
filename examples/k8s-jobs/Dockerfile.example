@@ -1,0 +1,123 @@
+# HyperFrames distributed renderer — reference Dockerfile for non-Lambda runtimes.
+#
+# This image bakes Node 22, chrome-headless-shell, ffmpeg-static, and the
+# `@hyperframes/producer/distributed` primitives. One image runs the
+# Plan / RenderChunk / Assemble activities for any non-Lambda orchestrator:
+#
+#   - Kubernetes Jobs (one Job per chunk, Argo Workflows on top)
+#   - AWS ECS Fargate (one task per chunk)
+#   - Google Cloud Run Jobs
+#   - Azure Container Apps Jobs
+#   - Plain `docker run` on a beefy VM
+#
+# We deliberately do NOT publish this image to a registry. The OSS contract
+# is that adopters build it themselves — that way the Chrome / ffmpeg /
+# producer versions are pinned to the source checkout they audited, not a
+# floating tag we'd have to keep in sync with every release.
+#
+# Build from the repo root:
+#
+#   docker build -t hyperframes-chunk-runner:local -f examples/k8s-jobs/Dockerfile.example .
+#
+# Run a chunk worker (an orchestrator script wraps this entry point):
+#
+#   docker run --rm \
+#     -e PRODUCER_HEADLESS_SHELL_PATH=/opt/chrome/chrome-headless-shell \
+#     -v /tmp/hyperframes:/tmp/hyperframes \
+#     hyperframes-chunk-runner:local \
+#     node -e 'import("@hyperframes/producer/distributed").then(({renderChunk})=>renderChunk(...))'
+#
+# Lambda adopters use `packages/aws-lambda/dist/handler.zip` instead;
+# this Dockerfile is the K8s / Cloud Run / ECS path.
+
+# ── Base ─────────────────────────────────────────────────────────────────────
+# Debian bookworm-slim because the chrome-headless-shell dynamic-library set
+# matches what we use in CI. Amazon Linux 2023 also works (Lambda's base
+# image) but is harder to debug locally.
+FROM node:22-bookworm-slim AS base
+
+# ── System deps ──────────────────────────────────────────────────────────────
+# - ffmpeg: the producer's encode + audio mix
+# - libfontconfig / libfreetype / fonts-liberation: Chrome text shaping
+# - chromium-style ABI deps (the minimum set chrome-headless-shell needs):
+#   libnss3, libatk-bridge2.0, libdrm2, libgbm1, libxshmfence1, libxkbcommon0,
+#   libxcomposite1, libxdamage1, libxfixes3, libxrandr2, libasound2,
+#   libpangocairo-1.0-0
+# - tini: clean PID 1 for container teardown signals (Cloud Run / Fargate
+#   send SIGTERM at the 10-min grace boundary).
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      ffmpeg \
+      ca-certificates \
+      fonts-liberation \
+      libasound2 \
+      libatk-bridge2.0-0 \
+      libatk1.0-0 \
+      libc6 \
+      libcairo2 \
+      libcups2 \
+      libdbus-1-3 \
+      libdrm2 \
+      libfontconfig1 \
+      libfreetype6 \
+      libgbm1 \
+      libglib2.0-0 \
+      libnspr4 \
+      libnss3 \
+      libpango-1.0-0 \
+      libpangocairo-1.0-0 \
+      libxcomposite1 \
+      libxdamage1 \
+      libxfixes3 \
+      libxkbcommon0 \
+      libxrandr2 \
+      libxshmfence1 \
+      tini \
+      tzdata \
+      wget \
+      xz-utils \
+    && rm -rf /var/lib/apt/lists/*
+
+# ── Chrome ───────────────────────────────────────────────────────────────────
+# Use `@puppeteer/browsers` to fetch the same chrome-headless-shell version
+# the producer pins. Keep the bun + chrome install in the build context so
+# the runtime image is reproducible.
+ENV CHROME_HEADLESS_SHELL_VERSION=131.0.6778.139
+ENV CHROME_DIR=/opt/chrome
+
+RUN mkdir -p "$CHROME_DIR" && \
+    npm install --global @puppeteer/browsers@2.13.0 && \
+    npx @puppeteer/browsers install "chrome-headless-shell@${CHROME_HEADLESS_SHELL_VERSION}" \
+      --path "$CHROME_DIR" && \
+    npm uninstall --global @puppeteer/browsers && \
+    rm -rf /root/.npm
+
+ENV PRODUCER_HEADLESS_SHELL_PATH=${CHROME_DIR}/chrome-headless-shell/linux-${CHROME_HEADLESS_SHELL_VERSION}/chrome-headless-shell-linux64/chrome-headless-shell
+
+# ── HyperFrames ──────────────────────────────────────────────────────────────
+# Copy the workspace bun-locked package set. We use bun in the build
+# (matches the rest of the repo) but the runtime is plain Node — no bun
+# is needed at run time.
+WORKDIR /app
+COPY package.json bun.lock ./
+COPY packages/aws-lambda/package.json packages/aws-lambda/
+COPY packages/core/package.json packages/core/
+COPY packages/engine/package.json packages/engine/
+COPY packages/producer/package.json packages/producer/
+
+RUN npm install --global bun && \
+    bun install --frozen-lockfile && \
+    npm uninstall --global bun
+
+# Bring in the source. We're not building the producer's dist/ here — bun's
+# workspace + tsx + esm resolution can run the producer straight from
+# `packages/producer/src/**`. Adopters who want a built distribution can
+# `bun run --cwd packages/producer build` against this image.
+COPY packages/core ./packages/core
+COPY packages/engine ./packages/engine
+COPY packages/producer ./packages/producer
+
+# ── Runtime ──────────────────────────────────────────────────────────────────
+ENTRYPOINT ["/usr/bin/tini", "--"]
+# Default CMD prints the producer version + Chrome path; orchestrators
+# typically override CMD with their per-chunk activity invocation.
+CMD ["node", "-e", "console.log(JSON.stringify({producerVersion: require('./packages/producer/package.json').version, chromePath: process.env.PRODUCER_HEADLESS_SHELL_PATH}))"]

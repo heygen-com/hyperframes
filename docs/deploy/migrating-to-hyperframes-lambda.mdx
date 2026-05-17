@@ -1,0 +1,98 @@
+---
+title: Migrating to HyperFrames Lambda
+description: "Side-by-side mapping for adopters coming to HyperFrames from another one-command-deploy video renderer."
+---
+
+If you're already running a different framework that deploys a serverless video renderer with one command, the muscle memory translates cleanly: a single `deploy` provisions the stack, a single `render` starts a render, a single `progress` polls it, and a single `destroy` tears the stack down. This page maps your existing concepts onto HyperFrames' equivalents so you can spend the migration on the parts that actually differ instead of relearning the workflow.
+
+## Concept mapping
+
+| In your current framework you call... | In HyperFrames you call... | Notes |
+|--------------------------------------|----------------------------|-------|
+| One-shot deploy command | `hyperframes lambda deploy` | Builds `packages/aws-lambda/dist/handler.zip` and runs `sam deploy`. Idempotent. |
+| One-shot site upload | `hyperframes lambda sites create ./project` | Content-addressed S3 key — re-uploads of an unchanged tree are skipped via a HeadObject 200. |
+| Trigger a render | `hyperframes lambda render ./project --width 1920 --height 1080` | Returns immediately with a `renderId`; add `--wait` to stream per-chunk progress. |
+| Poll render progress | `hyperframes lambda progress <renderId>` | Includes accrued cost in the same response. |
+| Tear down | `hyperframes lambda destroy` | The S3 bucket is `Retain`'d — documented in the deploy guide. |
+| Print/validate IAM policy | `hyperframes lambda policies user`/`role`/`validate` | Wire `validate` into CI to catch policy drift before the next deploy fails. |
+
+## Composition format
+
+If your current framework is **React-based**, you write JSX components, register them in a `Composition`, and the renderer compiles them at render time.
+
+In HyperFrames, **compositions are plain HTML files**. The `data-duration`, `data-width`, `data-height`, and `data-fps` attributes on the root element drive every render parameter. There is no JSX compilation step — what you write is what the browser renders.
+
+```html
+<!doctype html>
+<html data-duration="10" data-width="1920" data-height="1080" data-fps="30">
+  <body>
+    <h1 style="animation: fade-in 1s">Hello</h1>
+  </body>
+</html>
+```
+
+For framework-agnostic animation, HyperFrames supports first-party adapters for GSAP, Anime.js, CSS keyframes, Lottie, Three.js, and the Web Animations API — covered in the [Concepts](/concepts) and per-skill docs.
+
+## Render config
+
+Most adopters' render config maps directly:
+
+| Concept | HyperFrames equivalent | Where it lives |
+|---------|------------------------|----------------|
+| `fps` | `--fps=30` (CLI) or `config.fps` (SDK) | 24, 30, 60 only — non-integer NTSC rationals are an in-process-only feature. |
+| `width` / `height` | `--width` / `--height` flags, or `config.width` / `config.height` | Even integers ≤ 7680 (yuv420p parity). |
+| `codec: 'h264' / 'h265'` | `--codec=h264` or `--codec=h265` (mp4 only) | h265 uses libx265 with closed-GOP keyint params so chunked concat-copy round-trips losslessly. |
+| Output format | `--format=mp4 / mov / png-sequence` | Distributed mode refuses webm + HDR at plan time. |
+| Quality preset | `--quality=draft / standard / high` | Maps onto ffmpeg encoder presets. |
+| Chunk size in frames | `--chunk-size=240` (default 240) | ~8s at 30 fps; sized to fit Lambda's 15-min cap with headroom. |
+| Max parallel chunks | `--max-parallel-chunks=16` (default 16) | Caps the Map state's fan-out. |
+| Bitrate / CRF | `--bitrate=10M` or `--crf=18` | Mutually exclusive. |
+
+## What HyperFrames does differently
+
+A few areas where the contract is intentionally different from comparable frameworks. Surface them up front so the migration doesn't surprise you mid-deploy.
+
+### Deterministic Chrome path is mandatory
+
+HyperFrames refuses `data-gpu-mode="hardware"` in distributed mode — hardware GL is non-deterministic across chunk boundaries, and the per-chunk concat-copy assumes byte-level reproducibility. Compositions that opt into hardware GL in-process must drop it for Lambda renders. The Lambda handler trips a typed `BROWSER_GPU_NOT_SOFTWARE` non-retryable error on plan that's easy to catch in the progress output.
+
+### Font fetching fails closed
+
+`failClosedFontFetch` is default-on in distributed mode. A composition that references a `font-family` HyperFrames can't fetch will fail at plan time (`FONT_FETCH_FAILED`) rather than silently falling back to the OS default. If you currently lean on system-font fallbacks, list the fonts you need explicitly via `<link rel="stylesheet">` or `@fontsource/*` imports.
+
+### No HDR (yet)
+
+`hdrMode: 'force-hdr'` is rejected at plan time. The v1.5 backlog covers HDR mp4 via `-bsf:v hevc_metadata` re-application; for now, HDR renders use the in-process renderer outside Lambda.
+
+### No webm distributed
+
+VP9 in matroska doesn't round-trip cleanly through concat-copy (the moov-atom keyframe assumptions don't hold). webm renders use the in-process renderer or accept a controlled re-encode at the assemble stage — coming in v1.5. The Lambda handler refuses webm with `FORMAT_NOT_SUPPORTED_IN_DISTRIBUTED` so the failure is loud.
+
+### State files are local by default
+
+`hyperframes lambda deploy` writes `<cwd>/.hyperframes/lambda-stack-<name>.json` so subsequent verbs don't re-derive the bucket / state-machine ARN. Two worktrees produce two distinct state files. If you need a shared default location across CI workers, symlink the directory or pass `--stack-name` explicitly on every call.
+
+### IAM policy is print-then-narrow
+
+The default policy doc emitted by `hyperframes lambda policies user/role` uses `Resource: "*"` because the CloudFormation stack creates new ARNs on every adopter's first deploy. After your first successful deploy, narrow the `Resource` to the deployed ARNs — they're predictable from the CFN outputs. CI users typically check the narrowed policy into source and run `hyperframes lambda policies validate ./infra/policy.json` as a pre-deploy gate.
+
+## Migration checklist
+
+1. **Inventory** the compositions you want to migrate. Filter out anything that needs HDR or webm — those stay on your current framework for now.
+2. **Translate** each composition to plain HTML. The `[Concepts](/concepts)` page covers the data-attribute conventions; the `/hyperframes` skill (`npx skills add heygen-com/hyperframes`) makes Claude / Cursor / Codex aware of them too.
+3. **Wire** the new composition into your build pipeline alongside the old one. HyperFrames doesn't need an external bundler — you can `npx hyperframes preview` against the HTML directly.
+4. **Deploy** in a separate AWS account or with a `--stack-name=hyperframes-staging` first. Run a real render with `--wait`; verify the output bytes.
+5. **Add the policy** to your CI. `hyperframes lambda policies user > infra/iam/hyperframes.json` then `hyperframes lambda policies validate infra/iam/hyperframes.json` on every PR.
+6. **Cut over** by pointing your existing automation at the new render endpoint. Keep the old deployment alive until you've verified rolling renders for a release cycle, then `hyperframes lambda destroy` the staging stack and decommission the previous one.
+
+## Non-Lambda runtimes
+
+If you don't want Lambda specifically, the same `@hyperframes/producer/distributed` primitives run anywhere Node + Chrome + ffmpeg + S3 are available. A reference Dockerfile lives at `examples/k8s-jobs/Dockerfile.example` for adopters running on:
+
+- Google Cloud Run Jobs
+- Azure Container Apps Jobs
+- AWS ECS Fargate
+- Kubernetes Jobs / Argo Workflows
+- Plain Docker on a beefy VM
+
+Build it yourself — we don't publish a Docker image to a registry. The Dockerfile is documented inline and bakes Node 22 + chrome-headless-shell + ffmpeg + the producer at the version your checkout is on.
