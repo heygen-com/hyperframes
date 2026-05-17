@@ -9,13 +9,20 @@
  * the snapshot.
  */
 
-import { describe, it } from "bun:test";
+import { beforeAll, describe, it } from "bun:test";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { App, Stack } from "aws-cdk-lib";
 import { Template } from "aws-cdk-lib/assertions";
 import { HyperframesRenderStack } from "./HyperframesRenderStack.js";
+
+// CDK synth is slow on cold start (~5-8s on the slowest CI runner). The
+// default bun:test 5s timeout trips the first `it()` that calls it. Cache
+// the default-args synth in `beforeAll` so each test is pure assertions.
+// Tests that need non-default props still synth on demand and bump their
+// own per-test timeout.
+let DEFAULT_TEMPLATE: Template;
 
 function synthFixture(): Template {
   const zipDir = mkdtempSync(join(tmpdir(), "hf-cdk-test-"));
@@ -28,8 +35,12 @@ function synthFixture(): Template {
 }
 
 describe("HyperframesRenderStack — contract", () => {
+  beforeAll(() => {
+    DEFAULT_TEMPLATE = synthFixture();
+  }, 30000);
+
   it("provisions exactly one Lambda function on the Node.js 22 runtime, x86_64, 10 GiB /tmp", () => {
-    const t = synthFixture();
+    const t = DEFAULT_TEMPLATE;
     t.resourceCountIs("AWS::Lambda::Function", 1);
     t.hasResourceProperties("AWS::Lambda::Function", {
       Runtime: "nodejs22.x",
@@ -41,7 +52,7 @@ describe("HyperframesRenderStack — contract", () => {
   });
 
   it("provisions exactly one Step Functions state machine of type STANDARD with tracing on", () => {
-    const t = synthFixture();
+    const t = DEFAULT_TEMPLATE;
     t.resourceCountIs("AWS::StepFunctions::StateMachine", 1);
     t.hasResourceProperties("AWS::StepFunctions::StateMachine", {
       StateMachineType: "STANDARD",
@@ -50,7 +61,7 @@ describe("HyperframesRenderStack — contract", () => {
   });
 
   it("provisions exactly one S3 bucket with PublicAccessBlockConfiguration and a 7-day intermediates lifecycle", () => {
-    const t = synthFixture();
+    const t = DEFAULT_TEMPLATE;
     t.resourceCountIs("AWS::S3::Bucket", 1);
     t.hasResourceProperties("AWS::S3::Bucket", {
       PublicAccessBlockConfiguration: {
@@ -73,7 +84,7 @@ describe("HyperframesRenderStack — contract", () => {
   });
 
   it("provisions the three CloudWatch alarms (runaway invocations, Lambda Errors, SFN ExecutionsFailed)", () => {
-    const t = synthFixture();
+    const t = DEFAULT_TEMPLATE;
     t.resourceCountIs("AWS::CloudWatch::Alarm", 3);
     t.hasResourceProperties("AWS::CloudWatch::Alarm", {
       MetricName: "Invocations",
@@ -90,6 +101,9 @@ describe("HyperframesRenderStack — contract", () => {
     });
   });
 
+  // These two synth fresh stacks (non-default props), so they pay the
+  // synth cost individually. Bump per-test timeout so a slow CI runner
+  // doesn't trip the default 5s.
   it("honours reservedConcurrency when supplied", () => {
     const zipDir = mkdtempSync(join(tmpdir(), "hf-cdk-test-"));
     writeFileSync(join(zipDir, "handler.zip"), "fake");
@@ -103,7 +117,7 @@ describe("HyperframesRenderStack — contract", () => {
     t.hasResourceProperties("AWS::Lambda::Function", {
       ReservedConcurrentExecutions: 4,
     });
-  });
+  }, 30000);
 
   it("uses the projectName prefix on function + state-machine names", () => {
     const zipDir = mkdtempSync(join(tmpdir(), "hf-cdk-test-"));
@@ -119,5 +133,5 @@ describe("HyperframesRenderStack — contract", () => {
     t.hasResourceProperties("AWS::StepFunctions::StateMachine", {
       StateMachineName: "demo-render",
     });
-  });
+  }, 30000);
 });

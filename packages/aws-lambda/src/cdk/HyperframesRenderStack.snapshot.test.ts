@@ -19,13 +19,20 @@
  * in the topology.
  */
 
-import { describe, expect, it } from "bun:test";
+import { beforeAll, describe, expect, it } from "bun:test";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { App, Stack } from "aws-cdk-lib";
 import { Template } from "aws-cdk-lib/assertions";
 import { HyperframesRenderStack } from "./HyperframesRenderStack.js";
+
+// CDK synth + Template.fromStack is slow on cold start in CI (~5-8s on
+// the first call). The default bun:test 5s timeout trips it on the
+// first `it()` that calls `synth()`. Run synth once in `beforeAll`
+// and reuse the result — each test is a few µs of pure assertions
+// against the already-synthed template.
+let SYNTHED: ReturnType<typeof doSynth>;
 
 const EXPECTED_RESOURCE_COUNTS: Record<string, number> = {
   "AWS::Lambda::Function": 1,
@@ -60,7 +67,7 @@ const EXPECTED_NON_RETRYABLE_ERRORS = new Set([
   "FORMAT_NOT_SUPPORTED_IN_DISTRIBUTED",
 ]);
 
-function synth(): {
+function doSynth(): {
   template: Template;
   definition: { States: Record<string, unknown>; StartAt: string };
 } {
@@ -94,8 +101,13 @@ function synth(): {
 }
 
 describe("HyperframesRenderStack — snapshot", () => {
+  // 30s is plenty: cold synth on the slowest CI runner has measured ~8s.
+  beforeAll(() => {
+    SYNTHED = doSynth();
+  }, 30000);
+
   it("emits the expected set of AWS resource types in the expected counts", () => {
-    const { template } = synth();
+    const { template } = SYNTHED;
     const actual: Record<string, number> = {};
     const allResources = template.toJSON().Resources as Record<string, { Type: string }>;
     for (const res of Object.values(allResources)) {
@@ -114,14 +126,14 @@ describe("HyperframesRenderStack — snapshot", () => {
   });
 
   it("declares the state machine with the expected state names", () => {
-    const { definition } = synth();
+    const { definition } = SYNTHED;
     expect(definition.StartAt).toBe("Plan");
     const actualStates = Object.keys(definition.States);
     expect(actualStates.sort()).toEqual([...EXPECTED_STATE_NAMES].sort());
   });
 
   it("preserves every typed non-retryable error name across the three Lambda tasks", () => {
-    const { definition } = synth();
+    const { definition } = SYNTHED;
     const collected = new Set<string>();
     // Plan + Assemble are top-level states; RenderChunk is nested inside
     // the Map's Iterator definition.
