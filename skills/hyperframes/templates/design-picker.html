@@ -1278,6 +1278,7 @@
       </div>
       <div class="panel-right" id="preview">
         <div class="preview-empty">Pick a structure to preview</div>
+        <iframe id="design-iframe" sandbox="allow-scripts allow-same-origin" style="display:none;border:none;width:100%;height:100%;"></iframe>
         <div class="showcase" id="showcase" style="display:none;">
 
           <div class="showcase-section" id="sc-overview">
@@ -2460,13 +2461,147 @@
         document.getElementById("md-overlay").classList.remove("visible");
       }
 
+      function renderDesignIframe() {
+        var slug = window._currentTemplateSlug;
+        if (!slug) return;
+        var iframe = document.getElementById("design-iframe");
+        if (!iframe) return;
+
+        var p = picks.palette !== null ? PALETTES[picks.palette] : PALETTES[0];
+        var t = picks.type !== null ? TYPEPAIRS[picks.type] : TYPEPAIRS[0];
+        var e = picks.easing !== null ? EASINGS[picks.easing] : EASINGS[0];
+        var cr = picks.corners !== null ? CORNERS[picks.corners] : CORNERS[1];
+        var dn = picks.density !== null ? DENSITIES[picks.density] : DENSITIES[1];
+        var dp = picks.depth !== null ? DEPTHS[picks.depth] : DEPTHS[1];
+        var bg = picks.bg_mode !== null ? BG_PRESETS[picks.bg_mode] : BG_PRESETS[0];
+        var name = (PROMPT && PROMPT.title) || "Untitled";
+
+        // Fetch design template
+        var xhr = new XMLHttpRequest();
+        xhr.open("GET", "templates/" + slug + "/design.html?t=" + Date.now(), false);
+        xhr.send();
+        if (xhr.status !== 200) return;
+        var h = xhr.responseText;
+
+        // Fetch summary
+        var sxhr = new XMLHttpRequest();
+        sxhr.open("GET", "templates/" + slug + "/summary.html?t=" + Date.now(), false);
+        sxhr.send();
+        var summary = sxhr.status === 200 ? sxhr.responseText : "";
+
+        // Token replacement
+        h = h.replace(/__PRIMARY__/g, p.primary);
+        h = h.replace(/__SECONDARY__/g, p.secondary);
+        h = h.replace(/__TERTIARY__/g, p.tertiary || "#888");
+        h = h.replace(/__ACCENT__/g, p.accent);
+        h = h.replace(/__PRIMARY_NAME__/g, "primary");
+        h = h.replace(/__SECONDARY_NAME__/g, "secondary");
+        h = h.replace(/__TERTIARY_NAME__/g, "tertiary");
+        h = h.replace(/__ACCENT_NAME__/g, "accent");
+        h = h.replace(/__ACCENT_LABEL__/g, "Accent " + p.accent);
+        h = h.replace(/__PALETTE_LEDE__/g, "Four tokens. Primary, secondary, tertiary, accent.");
+        var nameParts = name.match(/[A-Z][a-z]*/g) || [name];
+        h = h.replace(/__NAME__/g, name);
+        h = h.replace(/__NAME_LINE1__/g, nameParts[0] || name);
+        h = h.replace(/__NAME_LINE2__/g, nameParts.slice(1).join("") || "");
+        h = h.replace(/__CORNER_RADIUS__/g, cr.value);
+        h = h.replace(/__PADDING__/g, dn.padding || "16px");
+        h = h.replace(/__GAP__/g, dn.gap || "16px");
+        h = h.replace(/__ELEVATION__/g, dp.name);
+        h = h.replace(/__DENSITY__/g, dn.name + " — " + dn.desc);
+        h = h.replace(/__BORDER__/g, "4px solid");
+        h = h.replace(/__SHADOW__/g, "8 8 0");
+        h = h.replace(/__EASING_NAME__/g, e.name.toLowerCase());
+        h = h.replace(/__EASING_VALUE__/g, e.value);
+        h = h.replace(/__EASING_DESC__/g, e.desc);
+        h = h.replace(/__EASING_HEADLINE__/g, e.name.toLowerCase() + ".<br/>fast in.");
+        h = h.replace(/__EASING_LEDE__/g, e.desc + ". Vary entrances by intent.");
+        h = h.replace(/__DURATION_DEFAULT__/g, "0.8s default");
+        h = h.replace(/__DURATION_DESC__/g, "Slides: 0.8s. Entrances: 0.5s.");
+        h = h.replace(/__DURATION_VALUES__/g, "--dur-slide: 0.8s\n--dur-enter: 0.5s");
+        if (bg && bg.type) {
+          h = h.replace(/__BG_HEADLINE__/g, bg.name.toLowerCase() + ".<br/>" + bg.type + ".");
+          h = h.replace(/__BG_LEDE__/g, bg.name + " shader.");
+          h = h.replace(/__BG_BADGE__/g, bg.name + " \xb7 " + bg.type);
+          h = h.replace(/__BG_TYPE__/g, bg.type.charAt(0).toUpperCase() + bg.type.slice(1));
+          h = h.replace(/__BG_DENSITY__/g, String(bg.density));
+          h = h.replace(/__BG_SPEED__/g, String(bg.speed));
+          h = h.replace(/__BG_STRENGTH__/g, String(bg.strength));
+          h = h.replace(/__BG_GRAIN__/g, "2 \xb7 scatter 1");
+          h = h.replace(/__SHADER_CONFIG__/g, JSON.stringify({ type: bg.type, density: bg.density, speed: bg.speed, strength: bg.strength, colors: [p.secondary, p.accent, p.tertiary || "#888"] }));
+        } else {
+          h = h.replace(/__BG_HEADLINE__/g, "none."); h = h.replace(/__BG_LEDE__/g, "No shader."); h = h.replace(/__BG_BADGE__/g, "none");
+          h = h.replace(/__BG_TYPE__/g, "—"); h = h.replace(/__BG_DENSITY__/g, "—"); h = h.replace(/__BG_SPEED__/g, "—");
+          h = h.replace(/__BG_STRENGTH__/g, "—"); h = h.replace(/__BG_GRAIN__/g, "—");
+          h = h.replace(/__SHADER_CONFIG__/g, "{}");
+        }
+        h = h.replace(/__SHADER_VERTEX__/g, ""); h = h.replace(/__SHADER_FRAGMENT__/g, ""); h = h.replace(/__SHADER_SCRIPT__/g, "");
+        var dos = ["Use accent (" + p.accent + ") for the element to remember", "Maintain corners (" + cr.value + ")", "Keep headline weight consistent", "Use body font for readable text", "Tint neutrals toward accent"];
+        var donts = ["Don't introduce a second accent", "Don't use accent for bg fills", "Don't use body text under 24px", "Don't repeat same entrance animation", "Don't use pure #000 for canvas"];
+        h = h.replace(/__DOS__/g, dos.map(function(d) { return "<li>" + d + "</li>"; }).join("\n"));
+        h = h.replace(/__DONTS__/g, donts.map(function(d) { return "<li>" + d + "</li>"; }).join("\n"));
+
+        // Template CSS + slide cards from summary
+        if (summary) {
+          var styleMatch = summary.match(/<style[\s\S]*?<\/style>/);
+          var skeletonHtml = summary.replace(/<style[\s\S]*?<\/style>/, "").replace(/<link[^>]*>/g, "").trim();
+          if (styleMatch) {
+            var tmplCss = styleMatch[0].replace(/<\/?style[^>]*>/g, "");
+            tmplCss = tmplCss.replace(/--tp-primary:\s*[^;]+;/g, "--tp-primary: var(--primary);");
+            tmplCss = tmplCss.replace(/--tp-secondary:\s*[^;]+;/g, "--tp-secondary: var(--secondary);");
+            tmplCss = tmplCss.replace(/--tp-tertiary:\s*[^;]+;/g, "--tp-tertiary: var(--tertiary);");
+            tmplCss = tmplCss.replace(/--tp-accent:\s*[^;]+;/g, "--tp-accent: var(--accent);");
+            var scoped = tmplCss.replace(/:root\s*\{/g, ".ds-slide-frame {").replace(/^\s*\*\s*,/gm, ".ds-slide-frame *,").replace(/^\s*\*\s*\{/gm, ".ds-slide-frame * {").replace(/\*::before/g, ".ds-slide-frame *::before").replace(/\*::after/g, ".ds-slide-frame *::after").replace(/^(\s*)(\.[\w-])/gm, "$1.ds-slide-frame $2").replace(/^(\s*)(section|h1|h2|h3|p|ul|li|a|span|svg|div)(\s*[{,.])/gm, "$1.ds-slide-frame $2$3").replace(/\.ds-slide-frame \.ds-slide-frame/g, ".ds-slide-frame");
+            scoped += "\n.ds-slide-frame .slide,.ds-slide-frame section{display:flex!important;opacity:1!important;position:relative!important;width:1920px!important;height:1080px!important}";
+            scoped += "\n.ds-slide-frame .slide.dark{background:" + p.secondary + "!important;color:" + p.primary + "!important}";
+            scoped += "\n.ds-slide-frame .slide.orange{background:" + p.accent + "!important}";
+            scoped += "\n.ds-slide-frame .slide.light{background:" + p.primary + "!important;color:" + p.secondary + "!important}";
+            h = h.replace(/__TEMPLATE_CSS__/g, scoped);
+          } else { h = h.replace(/__TEMPLATE_CSS__/g, ""); }
+          var blocks = skeletonHtml.split(/(?=<!-- )/);
+          var cards = "", idx = 0, total = blocks.filter(function(b) { return b.trim() && /<!-- [\w-]+ -->/.test(b); }).length;
+          blocks.forEach(function(block) {
+            block = block.trim(); if (!block) return;
+            var nm = block.match(/<!-- ([\w-]+) -->/); if (!nm) return;
+            var skel = block.replace(/<!-- [\w-]+ -->\s*/, ""); if (!skel.trim()) return;
+            idx++;
+            cards += '<div class="tmpl" data-idx="' + String(idx).padStart(2,"0") + '"><div class="tmpl-thumb"><div class="scale-wrap"><div class="ds-slide-frame">\n' + skel + '\n</div></div></div><div class="tmpl-foot"><span class="name">' + nm[1] + '</span><span class="idx">' + String(idx).padStart(2,"0") + " / " + total + '</span></div></div>\n';
+          });
+          h = h.replace(/__SLIDE_CARDS__/g, cards);
+          h = h.replace(/__SLIDE_COUNT__/g, String(idx));
+          var words = ["zero","one","two","three","four","five","six","seven","eight","nine","ten","eleven","twelve","thirteen","fourteen","fifteen","sixteen","seventeen","eighteen","nineteen","twenty"];
+          h = h.replace(/__SLIDE_COUNT_WORD__/g, words[idx] || String(idx));
+        } else {
+          h = h.replace(/__TEMPLATE_CSS__/g, ""); h = h.replace(/__SLIDE_CARDS__/g, "");
+          h = h.replace(/__SLIDE_COUNT__/g, "0"); h = h.replace(/__SLIDE_COUNT_WORD__/g, "zero");
+        }
+        h = h.replace(/__FONT_LINK_EXTRA__/g, "");
+        h = h.replace(/__DATE__/g, new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" }));
+
+        // Write to iframe
+        var doc = iframe.contentDocument || iframe.contentWindow.document;
+        doc.open(); doc.write(h); doc.close();
+        iframe.style.display = "";
+      }
+
       function renderPreview() {
         var pv = document.getElementById("preview");
         var sc = document.getElementById("showcase");
+        var designIframe = document.getElementById("design-iframe");
         var empty = pv.querySelector(".preview-empty");
+
+        // If a template is selected, render the design.html iframe instead of the old showcase
+        if (window._currentTemplateSlug) {
+          if (empty) empty.style.display = "none";
+          sc.style.display = "none";
+          renderDesignIframe();
+          return;
+        }
+
         if (picks.arch === null) {
           if (empty) empty.style.display = "";
           sc.style.display = "none";
+          if (designIframe) designIframe.style.display = "none";
           return;
         }
         if (empty) empty.style.display = "none";
