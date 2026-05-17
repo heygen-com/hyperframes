@@ -30,6 +30,7 @@ describe("deploySite", () => {
 
     expect(result.uploaded).toBe(true);
     expect(result.siteId).toMatch(/^[0-9a-f]{16}$/);
+    expect(result.bucketName).toBe("test-bucket");
     expect(result.projectS3Uri).toBe(`s3://test-bucket/sites/${result.siteId}/project.tar.gz`);
     expect(result.bytes).toBeGreaterThan(0);
     expect(s3.ops).toEqual([

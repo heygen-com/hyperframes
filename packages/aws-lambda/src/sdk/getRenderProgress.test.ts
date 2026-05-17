@@ -46,6 +46,27 @@ function lambdaSucceeded(payload: unknown): HistoryEvent {
   } as HistoryEvent;
 }
 
+function stateEntered(name: string): HistoryEvent {
+  return {
+    type: "TaskStateEntered",
+    id: 1,
+    timestamp: new Date(),
+    stateEnteredEventDetails: { name },
+  } as HistoryEvent;
+}
+
+function stateExited(name: string, output?: unknown): HistoryEvent {
+  return {
+    type: "TaskStateExited",
+    id: 1,
+    timestamp: new Date(),
+    stateExitedEventDetails: {
+      name,
+      output: output === undefined ? undefined : JSON.stringify(output),
+    },
+  } as HistoryEvent;
+}
+
 describe("getRenderProgress", () => {
   it("reports 0 progress before Plan completes", async () => {
     const sfn = new FakeSFN();
@@ -84,7 +105,9 @@ describe("getRenderProgress", () => {
     const sfn = new FakeSFN();
     sfn.historyPages = [
       [
+        stateEntered("Plan"),
         lambdaSucceeded({ Action: "plan", TotalFrames: 100, DurationMs: 1_000 }),
+        stateEntered("RenderChunk"),
         lambdaSucceeded({ Action: "renderChunk", FramesEncoded: 50, DurationMs: 2_000 }),
       ],
     ];
@@ -101,14 +124,20 @@ describe("getRenderProgress", () => {
     const sfn = new FakeSFN();
     sfn.historyPages = [
       [
+        stateEntered("Plan"),
         lambdaSucceeded({ Action: "plan", TotalFrames: 100, DurationMs: 1_000 }),
+        stateEntered("RenderChunk"),
         lambdaSucceeded({ Action: "renderChunk", FramesEncoded: 100, DurationMs: 2_000 }),
+        stateEntered("Assemble"),
         lambdaSucceeded({
           Action: "assemble",
           FramesEncoded: 100,
           FileSize: 9_000_000,
           OutputS3Uri: "s3://b/k.mp4",
           DurationMs: 1_500,
+        }),
+        stateExited("Assemble", {
+          Output: { OutputS3Uri: "s3://b/k.mp4", FileSize: 9_000_000, FramesEncoded: 100 },
         }),
       ],
     ];
@@ -138,12 +167,6 @@ describe("getRenderProgress", () => {
 
   it("captures Lambda failures with the enclosing state name", async () => {
     const sfn = new FakeSFN();
-    const stateEntered: HistoryEvent = {
-      type: "TaskStateEntered",
-      id: 1,
-      timestamp: new Date(),
-      stateEnteredEventDetails: { name: "RenderChunk" },
-    } as HistoryEvent;
     const failed: HistoryEvent = {
       type: "LambdaFunctionFailed",
       id: 2,
@@ -153,7 +176,7 @@ describe("getRenderProgress", () => {
         cause: "bad plan",
       },
     } as HistoryEvent;
-    sfn.historyPages = [[stateEntered, failed]];
+    sfn.historyPages = [[stateEntered("RenderChunk"), failed]];
     const progress = await getRenderProgress({
       executionArn: "arn",
       sfn: sfn as unknown as SFNClient,
@@ -177,8 +200,14 @@ describe("getRenderProgress", () => {
   it("paginates the history", async () => {
     const sfn = new FakeSFN();
     sfn.historyPages = [
-      [lambdaSucceeded({ Action: "plan", TotalFrames: 4, DurationMs: 1_000 })],
-      [lambdaSucceeded({ Action: "renderChunk", FramesEncoded: 4, DurationMs: 2_000 })],
+      [
+        stateEntered("Plan"),
+        lambdaSucceeded({ Action: "plan", TotalFrames: 4, DurationMs: 1_000 }),
+      ],
+      [
+        stateEntered("RenderChunk"),
+        lambdaSucceeded({ Action: "renderChunk", FramesEncoded: 4, DurationMs: 2_000 }),
+      ],
     ];
     sfn.describe.status = "SUCCEEDED";
     const progress = await getRenderProgress({

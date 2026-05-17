@@ -171,11 +171,14 @@ function summarizeHistory(events: HistoryEvent[], memoryMb: number): HistorySumm
   let lambdasInvoked = 0;
   let assembleComplete = false;
   let outputFile: HistorySummary["outputFile"] = null;
+  let stateTransitions = 0;
   const errors: RenderError[] = [];
   const lambdaInvocations: BilledLambdaInvocation[] = [];
 
-  // Track the state name a Lambda was scheduled inside, so we can attach
-  // it to errors and identify the Assemble step's success.
+  // Track the state name we most recently entered, so we can:
+  //   - attach the enclosing state to LambdaFunctionFailed errors, and
+  //   - identify when the Assemble state finished (StateExited.Assemble)
+  //     without relying on the inner Lambda payload's `Action` field.
   let currentLambdaState: string | null = null;
 
   for (const ev of events) {
@@ -184,6 +187,15 @@ function summarizeHistory(events: HistoryEvent[], memoryMb: number): HistorySumm
       case "MapStateEntered":
       case "PassStateEntered":
       case "ChoiceStateEntered":
+      case "SucceedStateEntered":
+      case "FailStateEntered":
+      case "WaitStateEntered":
+      case "ParallelStateEntered":
+        // Step Functions Standard Workflows bill per *state entry*, not per
+        // history event. Lambda invocations produce ~5-7 history events
+        // each (Scheduled / Started / Succeeded / TaskStateExited / …);
+        // counting every event as a transition over-reports cost by 3-5×.
+        stateTransitions++;
         currentLambdaState = ev.stateEnteredEventDetails?.name ?? currentLambdaState;
         break;
       case "LambdaFunctionScheduled":
@@ -201,22 +213,38 @@ function summarizeHistory(events: HistoryEvent[], memoryMb: number): HistorySumm
           const obj = payload as Record<string, unknown>;
           if (typeof obj.TotalFrames === "number") totalFrames = obj.TotalFrames;
           if (typeof obj.FramesEncoded === "number") {
-            // Plan and Assemble also return FramesEncoded; only count it
-            // here when the action is "renderChunk", so we don't double-
-            // count it as part of the Assemble step.
-            if (obj.Action === "renderChunk") {
+            // Plan and Assemble also return FramesEncoded; count framesRendered
+            // only inside the RenderChunk state so we don't double-count
+            // it on the Assemble pass. Keyed off the enclosing state name
+            // (set by the matching StateEntered) rather than the payload's
+            // `Action` field — `Action` is part of the Lambda event
+            // contract and not load-bearing for state-machine identity.
+            if (currentLambdaState === "RenderChunk") {
               framesRendered += obj.FramesEncoded;
-            }
-            if (obj.Action === "assemble") {
-              assembleComplete = true;
-              const outputS3Uri = typeof obj.OutputS3Uri === "string" ? obj.OutputS3Uri : null;
-              const bytes = typeof obj.FileSize === "number" ? obj.FileSize : null;
-              outputFile = outputS3Uri ? { s3Uri: outputS3Uri, bytes } : null;
             }
           }
         }
         break;
       }
+      case "TaskStateExited":
+      case "MapStateExited":
+        // Mark the assemble step complete on its state-exit, independent
+        // of the inner Lambda payload shape. The Assemble state's
+        // ResultSelector pulls FileSize + OutputS3Uri from the Lambda
+        // result, so we re-extract them here from the state exit's
+        // own output rather than relying on the Lambda payload.
+        if (ev.stateExitedEventDetails?.name === "Assemble") {
+          assembleComplete = true;
+          const exitPayload = parseJson(ev.stateExitedEventDetails?.output);
+          if (exitPayload && typeof exitPayload === "object") {
+            const obj = exitPayload as Record<string, unknown>;
+            const out = obj.Output as Record<string, unknown> | undefined;
+            const outputS3Uri = typeof out?.OutputS3Uri === "string" ? out.OutputS3Uri : null;
+            const bytes = typeof out?.FileSize === "number" ? out.FileSize : null;
+            outputFile = outputS3Uri ? { s3Uri: outputS3Uri, bytes } : outputFile;
+          }
+        }
+        break;
       case "LambdaFunctionFailed":
         errors.push({
           state: currentLambdaState ?? "<unknown>",
@@ -252,7 +280,7 @@ function summarizeHistory(events: HistoryEvent[], memoryMb: number): HistorySumm
 
   return {
     lambdaInvocations,
-    stateTransitions: events.length,
+    stateTransitions,
     framesRendered,
     totalFrames,
     lambdasInvoked,

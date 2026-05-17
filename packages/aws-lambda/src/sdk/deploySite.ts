@@ -42,6 +42,8 @@ export interface DeploySiteOptions {
 export interface SiteHandle {
   /** Content-addressed (or caller-supplied) identifier; stable across re-uploads of the same tree. */
   siteId: string;
+  /** Bucket the site landed in. Surfaced separately so callers don't have to re-parse `projectS3Uri`. */
+  bucketName: string;
   /** Full `s3://bucket/sites/<siteId>/project.tar.gz` URI; pass through to `renderToLambda`. */
   projectS3Uri: string;
   /** Tarball size in bytes; useful for "did we actually skip the upload?" assertions. */
@@ -76,6 +78,7 @@ export async function deploySite(opts: DeploySiteOptions): Promise<SiteHandle> {
   if (existing) {
     return {
       siteId,
+      bucketName: opts.bucketName,
       projectS3Uri,
       bytes: existing.bytes,
       uploadedAt: existing.lastModified,
@@ -96,6 +99,7 @@ export async function deploySite(opts: DeploySiteOptions): Promise<SiteHandle> {
     await uploadFileToS3(s3, tarball, projectS3Uri, "application/gzip");
     return {
       siteId,
+      bucketName: opts.bucketName,
       projectS3Uri,
       bytes: size,
       uploadedAt: new Date().toISOString(),

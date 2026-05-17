@@ -112,6 +112,7 @@ describe("renderToLambda", () => {
     const s3 = new FakeS3();
     const prebuilt: SiteHandle = {
       siteId: "prebaked",
+      bucketName: "test-bucket",
       projectS3Uri: "s3://test-bucket/sites/prebaked/project.tar.gz",
       bytes: 4096,
       uploadedAt: "2026-05-16T00:00:00Z",

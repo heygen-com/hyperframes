@@ -127,7 +127,7 @@ const site = await deploySite({
 // Start a render. Returns immediately — does NOT poll.
 const handle = await renderToLambda({
   siteHandle: site,
-  bucketName: site.projectS3Uri.split("/")[2]!,
+  bucketName: site.bucketName,
   stateMachineArn: "arn:aws:states:us-east-1:123:stateMachine:hyperframes-render",
   config: {
     fps: 30,
