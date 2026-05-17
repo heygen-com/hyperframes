@@ -51,9 +51,14 @@ export async function runRender(args: RenderArgs): Promise<void> {
     runtimeCap: "lambda",
   };
 
+  // When the caller passes only --site-id, synthesise the minimum-shape
+  // SiteHandle pointing at the deterministic content-addressed key. The
+  // `bytes` / `uploadedAt` fields are intentionally placeholders — the
+  // SDK reads only `siteId` + `projectS3Uri` when `uploaded: false`.
   const siteHandle = args.siteId
     ? {
         siteId: args.siteId,
+        bucketName: stack.bucketName,
         projectS3Uri: `s3://${stack.bucketName}/sites/${args.siteId}/project.tar.gz`,
         bytes: 0,
         uploadedAt: "",
@@ -73,9 +78,15 @@ export async function runRender(args: RenderArgs): Promise<void> {
   });
 
   if (args.json) {
-    console.log(JSON.stringify(handle, null, 2));
+    // --wait + --json should emit a single parseable JSON document: the
+    // final progress snapshot. Without --wait, emit the handle (the
+    // caller will poll progress separately). Previously this printed
+    // both, producing two concatenated JSON blobs that `jq -r` would
+    // misparse.
     if (args.wait) {
       await waitForCompletion(handle.executionArn, stack, args.waitIntervalMs, args.json);
+    } else {
+      console.log(JSON.stringify(handle, null, 2));
     }
     return;
   }

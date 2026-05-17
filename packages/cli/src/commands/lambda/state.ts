@@ -27,7 +27,12 @@ export interface StackOutputs {
 
 const STATE_DIR_NAME = ".hyperframes";
 const STATE_FILE_PREFIX = "lambda-stack-";
-export const DEFAULT_STACK_NAME = "default";
+/**
+ * Default CloudFormation stack name used when the caller doesn't pass
+ * `--stack-name`. Centralised so deploy/destroy/sites/dispatcher all
+ * agree on the literal `"hyperframes-default"`.
+ */
+export const DEFAULT_STACK_NAME = "hyperframes-default";
 
 export function stateFilePath(
   stackName: string = DEFAULT_STACK_NAME,

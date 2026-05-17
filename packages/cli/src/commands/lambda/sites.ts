@@ -49,9 +49,7 @@ export async function runSitesCreate(args: SitesCreateArgs): Promise<void> {
   console.log(
     c.dim(
       `Render with: hyperframes lambda render ${args.projectDir} --site-id=${handle.siteId}` +
-        (args.stackName === `hyperframes-${DEFAULT_STACK_NAME}`
-          ? ""
-          : ` --stack-name=${args.stackName}`),
+        (args.stackName === DEFAULT_STACK_NAME ? "" : ` --stack-name=${args.stackName}`),
     ),
   );
 }

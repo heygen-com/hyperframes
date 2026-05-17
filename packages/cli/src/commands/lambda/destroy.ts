@@ -22,11 +22,14 @@ export interface DestroyArgs {
 export async function runDestroy(args: DestroyArgs): Promise<void> {
   const stack = requireStack(args.stackName);
   console.log(c.dim(`→ sam delete (stack=${stack.stackName} region=${stack.region})`));
+  // Mirror deploy.ts's AWS_PROFILE env fallback — `AWS_PROFILE=prod
+  // hyperframes lambda destroy` should hit the same account `deploy`
+  // did, not the default credentials chain.
   samDelete({
     repoRoot: repoRoot(),
     stackName: stack.stackName,
     region: stack.region,
-    awsProfile: args.awsProfile,
+    awsProfile: args.awsProfile ?? process.env.AWS_PROFILE,
   });
   deleteStackOutputs(args.stackName);
   console.log();

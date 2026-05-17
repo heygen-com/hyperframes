@@ -122,7 +122,22 @@ export default defineCommand({
       return;
     }
 
-    const stackName = (args["stack-name"] as string | undefined) ?? "hyperframes-default";
+    const stackName =
+      (args["stack-name"] as string | undefined) ??
+      // Lazy-imported so the dispatcher doesn't pull state.ts (and its
+      // node:fs deps) on every CLI invocation — only on lambda runs.
+      (await import("./lambda/state.js")).DEFAULT_STACK_NAME;
+
+    // Apply --profile globally before any AWS-SDK / `aws` / `sam` call runs.
+    // The AWS SDK + the SAM CLI both read AWS_PROFILE from the environment,
+    // so setting it here threads the value through render / progress / sites
+    // (which don't take an explicit awsProfile arg) without each subverb
+    // having to know about it. Region gets the same treatment so the SDK
+    // clients constructed inside the SDK pick it up too.
+    const profileFlag = args.profile as string | undefined;
+    if (profileFlag) process.env.AWS_PROFILE = profileFlag;
+    const regionFlag = args.region as string | undefined;
+    if (regionFlag) process.env.AWS_REGION = regionFlag;
 
     switch (subcommand) {
       case "deploy": {
@@ -131,9 +146,9 @@ export default defineCommand({
           stackName,
           region: args.region as string | undefined,
           awsProfile: args.profile as string | undefined,
-          reservedConcurrency: parseIntFlag(args.concurrency),
+          reservedConcurrency: parsePositiveInt(args.concurrency, "--concurrency"),
           chromeSource: parseChromeSource(args["chrome-source"]),
-          lambdaMemoryMb: parseIntFlag(args.memory),
+          lambdaMemoryMb: parsePositiveInt(args.memory, "--memory"),
           skipBuild: Boolean(args["skip-build"]),
         });
         return;
@@ -169,9 +184,9 @@ export default defineCommand({
           );
           process.exit(1);
         }
-        const width = parseIntFlag(args.width);
-        const height = parseIntFlag(args.height);
-        if (!width || !height) {
+        const width = parsePositiveInt(args.width, "--width");
+        const height = parsePositiveInt(args.height, "--height");
+        if (width === undefined || height === undefined) {
           console.error("[lambda render] --width and --height are required.");
           process.exit(1);
         }
@@ -191,13 +206,13 @@ export default defineCommand({
           format: parseFormat(args.format),
           codec: parseCodec(args.codec),
           quality: parseQuality(args.quality),
-          chunkSize: parseIntFlag(args["chunk-size"]),
-          maxParallelChunks: parseIntFlag(args["max-parallel-chunks"]),
+          chunkSize: parsePositiveInt(args["chunk-size"], "--chunk-size"),
+          maxParallelChunks: parsePositiveInt(args["max-parallel-chunks"], "--max-parallel-chunks"),
           executionName: args["execution-name"] as string | undefined,
           outputKey: args["output-key"] as string | undefined,
           json: Boolean(args.json),
           wait: Boolean(args.wait),
-          waitIntervalMs: parseIntFlag(args["wait-interval-ms"]) ?? 5000,
+          waitIntervalMs: parsePositiveInt(args["wait-interval-ms"], "--wait-interval-ms") ?? 5000,
         });
         return;
       }
@@ -229,6 +244,20 @@ function parseIntFlag(raw: unknown): number | undefined {
   if (raw === undefined || raw === null || raw === "") return undefined;
   const n = Number.parseInt(String(raw), 10);
   return Number.isFinite(n) ? n : undefined;
+}
+
+/**
+ * Parse a flag that must be a positive integer (>= 1) when supplied.
+ * Negative values or non-integers fail loudly instead of flowing into
+ * the SDK and producing opaque AWS validation errors mid-render.
+ */
+function parsePositiveInt(raw: unknown, flagName: string): number | undefined {
+  const n = parseIntFlag(raw);
+  if (n === undefined) return undefined;
+  if (!Number.isInteger(n) || n < 1) {
+    throw new Error(`[lambda] ${flagName} must be a positive integer; got ${n}`);
+  }
+  return n;
 }
 
 /**

@@ -35,7 +35,7 @@ const DEFAULT_CONCURRENCY = 8;
 
 export async function runDeploy(args: Partial<DeployArgs> = {}): Promise<void> {
   const resolved: DeployArgs = {
-    stackName: args.stackName ?? `hyperframes-${DEFAULT_STACK_NAME}`,
+    stackName: args.stackName ?? DEFAULT_STACK_NAME,
     region: args.region ?? process.env.AWS_REGION ?? DEFAULT_REGION,
     awsProfile: args.awsProfile ?? process.env.AWS_PROFILE,
     reservedConcurrency: args.reservedConcurrency ?? DEFAULT_CONCURRENCY,
@@ -68,6 +68,7 @@ export async function runDeploy(args: Partial<DeployArgs> = {}): Promise<void> {
     region: resolved.region,
     awsProfile: resolved.awsProfile,
     reservedConcurrency: resolved.reservedConcurrency,
+    lambdaMemoryMb: resolved.lambdaMemoryMb,
     chromeSource: resolved.chromeSource,
   });
 

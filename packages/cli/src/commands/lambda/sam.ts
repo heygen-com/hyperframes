@@ -52,6 +52,8 @@ export interface DeployOptions {
   region: string;
   awsProfile?: string;
   reservedConcurrency?: number;
+  /** Lambda memory in MB. Forwarded as the `LambdaMemoryMb` parameter override. */
+  lambdaMemoryMb?: number;
   chromeSource?: "sparticuz" | "chrome-headless-shell";
   /** Pass-through stdio. Defaults to "inherit" so SAM's progress lines stream live. */
   stdio?: "inherit" | "pipe";
@@ -77,6 +79,13 @@ export function locateSamTemplate(repoRoot: string): string {
 /** Run `sam deploy` non-interactively. Returns when SAM exits 0; throws on non-zero. */
 export function samDeploy(opts: DeployOptions): void {
   assertSamAvailable();
+  const paramOverrides = [
+    `ChromeSource=${opts.chromeSource ?? "sparticuz"}`,
+    `ReservedConcurrency=${opts.reservedConcurrency ?? -1}`,
+  ];
+  if (opts.lambdaMemoryMb !== undefined) {
+    paramOverrides.push(`LambdaMemoryMb=${opts.lambdaMemoryMb}`);
+  }
   const args = [
     "deploy",
     "--stack-name",
@@ -89,8 +98,7 @@ export function samDeploy(opts: DeployOptions): void {
     "--no-confirm-changeset",
     "--no-fail-on-empty-changeset",
     "--parameter-overrides",
-    `ChromeSource=${opts.chromeSource ?? "sparticuz"}`,
-    `ReservedConcurrency=${opts.reservedConcurrency ?? -1}`,
+    ...paramOverrides,
   ];
   if (opts.awsProfile) {
     args.push("--profile", opts.awsProfile);
