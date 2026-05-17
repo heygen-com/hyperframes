@@ -73,6 +73,20 @@ The `--wait` flag blocks and streams per-chunk progress + accrued cost; drop it 
 
 See the [CLI reference](/packages/cli#hyperframes-lambda) for full flag documentation.
 
+#### Pre-staging a project with `sites create`
+
+Re-rendering the same project tree on every `lambda render` call re-tars and re-uploads it each time. For tight inner loops (CI smoke jobs, prompt iteration in a demo flow), pre-stage the project once and reuse the upload:
+
+```bash
+hyperframes lambda sites create ./my-project
+# → Site ID: a1b2c3d4e5f6g7h8 (content-addressed)
+
+hyperframes lambda render ./my-project --site-id=a1b2c3d4e5f6g7h8 \
+  --width 1920 --height 1080 --wait
+```
+
+The `siteId` is content-addressed via a SHA-256 of the project tree; re-running `sites create` on an unchanged tree skips the upload via a `HeadObject` short-circuit. Pass the same `--site-id` to as many `lambda render` calls as you like — they all reuse the one S3 PUT.
+
 ### Path 2 — Direct SAM deploy
 
 If you want to read the CloudFormation before you deploy, or you need to customise the topology (extra alarms, SNS subscribers, KMS keys, …), invoke SAM directly against the template at `examples/aws-lambda/template.yaml`:
@@ -95,6 +109,10 @@ The template emits three CloudFormation outputs you'll need to invoke renders:
 - `RenderBucketName` — S3 bucket for plan tarballs + per-chunk outputs + final renders.
 - `RenderStateMachineArn` — the Step Functions standard workflow that orchestrates Plan → Map → Assemble.
 - `RenderFunctionArn` — the single Lambda function the state machine dispatches against.
+
+<Warning>
+The SAM template's own default for `ReservedConcurrency` is `-1` (unreserved, account-default). The Path 1 CLI overrides it to `8` to keep first-time spend bounded; if you drop `ReservedConcurrency` from `--parameter-overrides` here, you get the unreserved default. Set it explicitly unless you've already sized your typical render's fan-out.
+</Warning>
 
 ### Path 3 — CDK construct
 
@@ -170,7 +188,14 @@ Step Functions invoked a `renderChunk` with a plan hash that didn't match the pl
 
 ### `Lambda function failed: BROWSER_GPU_NOT_SOFTWARE`
 
-The compiled composition reads `data-gpu-mode="hardware"` (or similar). Distributed renders require `gpu-mode="software"` — hardware GL is non-deterministic across chunk boundaries. Change the composition's `data-gpu-mode` or omit it (the default is software).
+The handler launched Chromium but the runtime probe found a non-SwiftShader GL backend. Hardware GL is non-deterministic across chunk boundaries, so distributed renders refuse it at the runtime-image / launch-flags layer (not at the composition layer). Rebuild the handler ZIP and redeploy:
+
+```bash
+bun run --cwd packages/aws-lambda build:zip
+hyperframes lambda deploy --stack-name=<your-stack>
+```
+
+The build pipeline pins `@sparticuz/chromium` + the Chrome flags (`--use-gl=swiftshader --use-angle=swiftshader`) so a fresh deploy almost always resolves this. If it persists, your stack's Lambda function is pointing at a stale handler ZIP from a previous deploy — `lambda deploy` always rebuilds, so re-running unsticks it.
 
 ### Render seems stuck at `RUNNING`
 
