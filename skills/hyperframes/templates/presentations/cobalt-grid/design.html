@@ -5,236 +5,280 @@
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>__NAME__ — Design System</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
-<link href="https://fonts.googleapis.com/css2?__FONT_LINK_EXTRA__&display=swap" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600__FONT_LINK_EXTRA__&display=swap" rel="stylesheet" />
+
 <script type="importmap">
 {"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.167.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.167.0/examples/jsm/"}}
 </script>
+
 <style id="ds-tokens">
 :root{
-  --primary:__PRIMARY__; --secondary:__SECONDARY__; --tertiary:__TERTIARY__; --accent:__ACCENT__;
-  --hairline:color-mix(in srgb,var(--primary) 12%,transparent);
-  --f-disp:"system-ui",sans-serif; --f-mono:"monospace",monospace;
-  --pad-x:clamp(24px,5vw,88px); --pad-y:clamp(40px,6vh,100px);
+  --primary:__PRIMARY__;--secondary:__SECONDARY__;--tertiary:__TERTIARY__;--accent:__ACCENT__;
+  --paper:var(--primary);--ink:var(--secondary);--slate:var(--tertiary);--cobalt:var(--accent);--cobalt-2:#0F2BD1;
+  --ink-dim:color-mix(in srgb,var(--ink) 65%,var(--paper));
+  --hairline:color-mix(in srgb,var(--ink) 12%,transparent);
+  --f-disp:"Space Grotesk",sans-serif;--f-body:"Manrope",sans-serif;--f-mono:"JetBrains Mono",monospace;
+  --pad-x:clamp(24px,5vw,72px);--pad-y:clamp(40px,6vh,100px);
 }
 </style>
+
 <style>
-*,*::before,*::after{box-sizing:border-box}
-html,body{margin:0;padding:0;background:var(--secondary)}
-body{color:var(--primary);font:400 14px/1.6 "monospace",monospace;-webkit-font-smoothing:antialiased;overflow-x:hidden}
-::selection{background:var(--accent);color:var(--secondary)}
+*,*::before,*::after{box-sizing:border-box}html,body{margin:0;padding:0;background:var(--paper)}
+body{color:var(--ink);font:500 14px/1.65 var(--f-body);overflow-x:hidden}
+::selection{background:var(--cobalt);color:var(--paper)}
 
-#design-bg{position:fixed;inset:0;width:100%;height:100%;z-index:-2;opacity:.85;pointer-events:none}
-#bg-veil{position:fixed;inset:0;z-index:-1;pointer-events:none;background:none}
+/* Grid background */
+body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;background-image:linear-gradient(var(--hairline) 1px,transparent 1px),linear-gradient(90deg,var(--hairline) 1px,transparent 1px);background-size:48px 48px}
 
-.rail{position:fixed;top:0;left:0;right:0;height:56px;display:flex;align-items:center;justify-content:space-between;padding:0 var(--pad-x);background:var(--primary);border-bottom:1px solid rgba(128,128,128,.15);z-index:100;font:500 12px/1 "monospace",monospace;letter-spacing:.06em;text-transform:uppercase}
-.rail .brand{color:var(--accent);display:inline-flex;align-items:center;gap:10px;font:400 22px/1 "system-ui",sans-serif}
-.rail .brand .dot{width:22px;height:22px;background:var(--accent);}
-.rail nav{display:flex;gap:6px}
-.rail nav a{color:var(--secondary);text-decoration:none;transition:all .15s}
-.rail nav a:hover{color:var(--accent)}
-@media(max-width:880px){.rail nav{display:none}}
+#design-bg{position:fixed;inset:0;width:100%;height:100%;z-index:-2;opacity:.55;pointer-events:none}
+#bg-veil{position:fixed;inset:0;z-index:-1;pointer-events:none;background:radial-gradient(ellipse at 30% 20%,transparent 0%,var(--paper) 75%)}
+
+.rail{position:fixed;top:0;left:0;right:0;height:48px;display:flex;align-items:center;justify-content:space-between;padding:0 var(--pad-x);background:color-mix(in srgb,var(--paper) 90%,transparent);backdrop-filter:blur(12px);border-bottom:1px solid var(--hairline);z-index:100;font:600 11px/1 var(--f-mono);letter-spacing:.04em;color:var(--ink-dim)}
+.rail .brand{display:inline-flex;align-items:center;gap:12px;color:var(--ink)}
+.rail .brand b{font:700 20px/1 var(--f-disp);letter-spacing:-.025em;text-transform:none;color:var(--ink)}
+.rail .brand .box{width:14px;height:14px;background:var(--cobalt);display:inline-block}
+.rail nav{display:flex;gap:22px}.rail nav a{color:var(--ink-dim);text-decoration:none}.rail nav a:hover{color:var(--cobalt)}
+.rail .meta{color:var(--cobalt)}
+@media(max-width:760px){.rail nav{display:none}}
 
 section{position:relative;padding:var(--pad-y) var(--pad-x)}
-.section-head{display:grid;grid-template-columns:9em 1fr;gap:clamp(24px,4vw,56px);align-items:baseline;border-top:1px solid rgba(128,128,128,.15);padding-top:28px;margin-bottom:clamp(36px,5vh,64px)}
-.section-head .num{font:500 12px/1 "monospace",monospace;letter-spacing:.18em;text-transform:uppercase;color:var(--accent)}
-.section-head h2{font:900 clamp(36px,6vw,84px)/.92 "system-ui",sans-serif;letter-spacing:-.035em;margin:0;text-transform:lowercase}
-.section-head .lede{grid-column:2;max-width:60ch;margin-top:18px;font-size:15px;line-height:1.6}
+.section-head{display:grid;grid-template-columns:11em 1fr;gap:clamp(24px,4vw,56px);align-items:end;border-top:1px solid var(--ink);padding-top:28px;margin-bottom:clamp(40px,6vh,72px)}
+.section-head .num{font:600 11px/1 var(--f-mono);letter-spacing:.06em;color:var(--cobalt)}
+.section-head h2{margin:0;font:700 clamp(48px,8vw,116px)/.92 var(--f-disp);letter-spacing:-.045em;color:var(--ink)}
+.section-head h2 em{font-style:normal;background:var(--cobalt);color:var(--paper);padding:0 .06em;display:inline-block;line-height:.92}
+.section-head .lede{grid-column:2;max-width:54ch;margin-top:18px;font:500 15px/1.65 var(--f-body);color:var(--ink-dim)}
 
-.cover{background:var(--primary);color:var(--secondary)};min-height:100vh;padding:110px var(--pad-x) 60px;display:flex;flex-direction:column;justify-content:center}
-.cover-headline{margin:0;font:900 clamp(64px,13vw,200px)/.88 "system-ui",sans-serif;letter-spacing:-.04em;text-transform:uppercase}
-.cover-foot{margin-top:56px;padding-top:28px;border-top:1px solid rgba(128,128,128,.15);display:grid;grid-template-columns:repeat(4,1fr);gap:24px}
-.cover-foot .cell{display:flex;flex-direction:column;gap:6px}
-.cover-foot .k{font:500 11px/1 "monospace",monospace;letter-spacing:.1em;text-transform:uppercase;opacity:.55}
-.cover-foot .v{font:500 13px/1.4 "monospace",monospace}
-.cover-foot .v.big{font:800 32px/1 "system-ui",sans-serif;letter-spacing:-.02em}
+/* Cover */
+.cover{min-height:100vh;padding:96px var(--pad-x) 56px;display:grid;grid-template-rows:auto 1fr auto;position:relative}
+.cover-chrome{display:flex;justify-content:space-between;font:600 11px/1 var(--f-mono);letter-spacing:.06em;color:var(--ink-dim)}
+.cover-chrome .accent{color:var(--cobalt);padding:6px 12px;background:color-mix(in srgb,var(--cobalt) 14%,var(--paper));border:1px solid var(--cobalt)}
+.cover-headline{align-self:end;margin:0;font:700 clamp(88px,18vw,280px)/.88 var(--f-disp);letter-spacing:-.055em;color:var(--ink)}
+.cover-headline em{font-style:normal;background:var(--cobalt);color:var(--paper);padding:0 .06em;display:inline-block;line-height:.88}
+.cover-rule{height:6px;background:var(--cobalt);width:120px;align-self:end;margin-bottom:24px}
+.cover-foot{margin-top:48px;display:grid;grid-template-columns:repeat(4,1fr);gap:0;border:1px solid var(--ink)}
+.cover-foot .cell{padding:18px 20px;border-right:1px solid var(--ink);display:flex;flex-direction:column;gap:6px}
+.cover-foot .cell:last-child{border-right:0}
+.cover-foot .cell:nth-child(2){background:var(--cobalt);color:var(--paper)}
+.cover-foot .k{font:600 11px/1.4 var(--f-mono);letter-spacing:.06em;text-transform:uppercase;color:var(--ink-dim)}
+.cover-foot .cell:nth-child(2) .k{color:color-mix(in srgb,var(--paper) 75%,transparent)}
+.cover-foot .v{font:700 22px/1.1 var(--f-disp);letter-spacing:-.025em}
+.cover-foot .v.plain{font-family:var(--f-body);font-weight:600;font-size:14px;letter-spacing:0}
 @media(max-width:760px){.cover-foot{grid-template-columns:1fr 1fr}}
 
-.manifesto{padding:clamp(60px,9vh,120px) var(--pad-x);border-bottom:1px solid rgba(128,128,128,.15)}
-.manifesto-grid{display:grid;grid-template-columns:9em 1fr;gap:clamp(24px,4vw,56px);align-items:start;max-width:1400px;margin:0 auto}
-.manifesto-grid .num{font:500 12px/1 "monospace",monospace;letter-spacing:.1em;text-transform:uppercase;color:var(--accent)}
-.manifesto p{font:700 clamp(28px,3.8vw,56px)/1.05 "system-ui",sans-serif;letter-spacing:-.025em;max-width:22ch;margin:0;text-transform:lowercase}
-.manifesto p em{font-style:normal;color:var(--accent)}
+/* Manifesto */
+.manifesto{padding:clamp(60px,8vh,120px) var(--pad-x);background:var(--ink);color:var(--paper);border-top:1px solid var(--ink);border-bottom:1px solid var(--ink)}
+.manifesto-grid{display:grid;grid-template-columns:11em 1fr;gap:clamp(24px,4vw,56px);align-items:start}
+.manifesto-grid .num{font:600 11px/1 var(--f-mono);letter-spacing:.06em;color:var(--cobalt)}
+.manifesto p{font:700 clamp(32px,4.5vw,68px)/1.05 var(--f-disp);max-width:24ch;margin:0;color:var(--paper);letter-spacing:-.04em}
+.manifesto p em{font-style:normal;background:var(--cobalt);padding:0 .08em;display:inline-block;line-height:1.05}
 
-.palette{display:grid;grid-template-columns:repeat(4,1fr);gap:2px;background:rgba(128,128,128,.1);border:1px solid rgba(128,128,128,.15)}
-.swatch{padding:28px 24px;aspect-ratio:3/4;display:flex;flex-direction:column;justify-content:space-between;border-radius:0;transition:all .2s}
-.swatch:hover{transform:translateY(-3px);box-shadow:0 8px 24px rgba(0,0,0,.15)}
-.swatch .role{font:500 11px/1 "monospace",monospace;letter-spacing:.1em;text-transform:uppercase}
-.swatch .name{font:900 clamp(28px,3.4vw,48px)/.92 "system-ui",sans-serif;letter-spacing:-.025em;text-transform:lowercase;margin-top:auto}
-.swatch .hex{font:500 12px/1 "monospace",monospace;margin-top:8px}
-.swatch .usage{font:400 11px/1.5 "monospace",monospace;margin-top:6px;opacity:.65}
-.swatch--primary{background:var(--primary);color:var(--secondary)}
-.swatch--secondary{background:var(--secondary);color:var(--primary)}
-.swatch--tertiary{background:var(--tertiary);color:var(--primary)}
-.swatch--accent{background:var(--accent);color:var(--secondary)}
-@media(max-width:880px){.palette{grid-template-columns:repeat(2,1fr)}}
+/* Palette */
+.palette{display:grid;grid-template-columns:repeat(4,1fr);gap:0;border:1px solid var(--ink)}
+.swatch{aspect-ratio:3/4;padding:24px;display:flex;flex-direction:column;justify-content:space-between;border-right:1px solid var(--ink)}
+.swatch:last-child{border-right:0}
+.swatch .role{font:600 11px/1 var(--f-mono);letter-spacing:.06em;text-transform:uppercase}
+.swatch .name{font:700 clamp(28px,3.4vw,48px)/.95 var(--f-disp);letter-spacing:-.035em;margin-top:auto}
+.swatch .hex{font:600 12px/1 var(--f-mono);margin-top:8px}
+.swatch .usage{font:500 13px/1.55 var(--f-body);margin-top:6px;opacity:.8}
+.swatch--paper{background:var(--paper);color:var(--ink)}
+.swatch--ink{background:var(--ink);color:var(--paper)}
+.swatch--slate{background:var(--slate);color:var(--paper)}
+.swatch--cobalt{background:var(--cobalt);color:var(--paper)}
+@media(max-width:880px){.palette{grid-template-columns:repeat(2,1fr)}.swatch:nth-child(2){border-right:0}.swatch:nth-child(-n+2){border-bottom:1px solid var(--ink)}}
 
-.specimen{max-width:1400px;margin:0 auto;display:flex;flex-direction:column}
-.spec-row{display:grid;grid-template-columns:11em 1fr;gap:32px;padding:28px 0;border-top:1px solid rgba(128,128,128,.15);align-items:baseline}
-.spec-row:first-child{border:0;padding-top:0}
-.spec-row .meta{font:500 11px/1.4 "monospace",monospace;letter-spacing:.1em;text-transform:uppercase;display:flex;flex-direction:column;gap:4px;color:var(--primary);opacity:.4}
-.spec-row .meta b{color:var(--accent);font:400 22px/1 "system-ui",sans-serif}
-.spec-display{font:900 clamp(56px,10vw,152px)/.88 "system-ui",sans-serif;letter-spacing:-.04em;text-transform:lowercase}
-.spec-h1{font:800 clamp(40px,7vw,104px)/.9 "system-ui",sans-serif;letter-spacing:-.03em;text-transform:lowercase}
-.spec-h2{font:700 clamp(28px,4.2vw,64px)/1 "system-ui",sans-serif;letter-spacing:-.02em}
-.spec-lead{font:500 clamp(18px,2vw,26px)/1.45 "system-ui",sans-serif}
-.spec-body{font:400 17px/1.65 "system-ui",sans-serif;max-width:60ch}
-.spec-label{font:500 13px/1 "monospace",monospace;letter-spacing:.1em;text-transform:uppercase}
+/* Type specimen */
+.specimen{display:flex;flex-direction:column;border:1px solid var(--ink)}
+.spec-row{display:grid;grid-template-columns:13em 1fr;gap:32px;padding:28px 32px;border-bottom:1px solid var(--hairline);align-items:baseline}
+.spec-row:last-child{border:0}
+.spec-row .meta{font:600 11px/1.5 var(--f-mono);letter-spacing:.06em;text-transform:uppercase;color:var(--ink-dim);display:flex;flex-direction:column;gap:6px}
+.spec-row .meta b{color:var(--cobalt);font-weight:700}
+.spec-display{font:700 clamp(56px,10vw,148px)/.92 var(--f-disp);letter-spacing:-.06em;color:var(--ink)}
+.spec-display em{font-style:normal;background:var(--cobalt);color:var(--paper);padding:0 .06em;display:inline-block;line-height:.92}
+.spec-h1{font:700 clamp(40px,7vw,104px)/.92 var(--f-disp);letter-spacing:-.05em;color:var(--cobalt)}
+.spec-h2{font:600 clamp(28px,4.2vw,60px)/1 var(--f-disp);letter-spacing:-.04em;color:var(--ink)}
+.spec-lead{font:600 clamp(18px,2vw,28px)/1.45 var(--f-body);color:var(--ink);max-width:38ch}
+.spec-body{font:500 16px/1.7 var(--f-body);color:var(--ink);max-width:60ch}
+.spec-label{font:600 12px/1 var(--f-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--paper);background:var(--cobalt);padding:6px 12px;display:inline-block}
 
-.surface-grid{display:grid;grid-template-columns:1.1fr 1fr;gap:48px;max-width:1400px;margin:0 auto}
+/* Surface */
+.surface-grid{display:grid;grid-template-columns:1.2fr 1fr;gap:32px}
 @media(max-width:880px){.surface-grid{grid-template-columns:1fr}}
-.demo-card{background:var(--primary);color:var(--secondary);border-radius:0;padding:28px;box-shadow:0 4px 16px rgba(0,0,0,.12);display:flex;flex-direction:column;gap:18px}
-.demo-card .tag{align-self:flex-start;font:500 10px/1 "monospace",monospace;letter-spacing:.1em;text-transform:uppercase;color:var(--accent);border:1px solid var(--accent);padding:4px 8px}
-.demo-card h3{margin:0;font:900 36px/1 "system-ui",sans-serif;letter-spacing:-.02em;text-transform:lowercase}
-.demo-card p{margin:0;font:400 15px/1.6 "system-ui",sans-serif;opacity:.7}
-.tokens{list-style:none;padding:0;margin:0;border-top:1px solid rgba(128,128,128,.15)}
-.tokens li{display:grid;grid-template-columns:1fr auto auto;gap:18px;align-items:center;padding:18px 0;border-bottom:1px solid rgba(128,128,128,.15)}
+.demo-card{background:var(--paper);color:var(--ink);padding:28px;display:flex;flex-direction:column;gap:14px;border:1px solid var(--ink);position:relative}
+.demo-card::before{content:"";position:absolute;top:0;left:0;width:48px;height:6px;background:var(--cobalt)}
+.demo-card .tag{align-self:flex-start;font:600 11px/1 var(--f-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--paper);background:var(--cobalt);padding:6px 10px;margin-top:6px}
+.demo-card h3{margin:0;font:700 40px/.95 var(--f-disp);letter-spacing:-.045em}
+.demo-card p{margin:0;font:500 14px/1.7 var(--f-body)}
+.demo-card .num-stat{font:700 88px/.95 var(--f-disp);color:var(--cobalt);letter-spacing:-.055em}
+.tokens{list-style:none;padding:0;margin:0;border:1px solid var(--ink)}
+.tokens li{display:grid;grid-template-columns:1fr auto auto;gap:18px;align-items:center;padding:14px 20px;border-bottom:1px solid var(--hairline)}
 .tokens li:last-child{border:0}
-.tokens .name{font:500 12px/1 "monospace",monospace;letter-spacing:.1em;text-transform:uppercase;opacity:.6}
-.tokens .val{font:800 20px/1 "system-ui",sans-serif}
-.tokens .bar{height:6px;background:var(--accent)}
+.tokens .name{font:600 12px/1 var(--f-mono);letter-spacing:.06em;text-transform:uppercase;color:var(--ink-dim)}
+.tokens .val{font:700 22px/1 var(--f-disp);letter-spacing:-.03em;color:var(--cobalt)}
+.tokens .bar{height:6px;background:var(--cobalt)}
 
-.two-col{display:grid;grid-template-columns:1fr 1fr;gap:48px;max-width:1400px;margin:0 auto}
+/* Motion */
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:24px}
 @media(max-width:880px){.two-col{grid-template-columns:1fr}}
-.panel{border:1px solid rgba(128,128,128,.15);background:color-mix(in srgb,var(--secondary) 70%,transparent)};padding:36px;border-radius:0;display:flex;flex-direction:column;gap:22px}
-.panel .label-row{font:500 11px/1 "monospace",monospace;letter-spacing:.1em;text-transform:uppercase;color:var(--accent)}
-.panel h4{margin:0;font:800 32px/1 "system-ui",sans-serif;text-transform:lowercase}
-.panel p{margin:0;font:400 13px/1.7 "system-ui",sans-serif;opacity:.65;max-width:38ch}
+.panel{background:var(--paper);border:1px solid var(--ink);padding:28px;display:flex;flex-direction:column;gap:14px}
+.panel:last-child{background:var(--cobalt);color:var(--paper)}
+.panel .label-row{font:600 11px/1 var(--f-mono);letter-spacing:.06em;text-transform:uppercase;color:var(--paper);background:var(--ink);padding:6px 12px;align-self:flex-start}
+.panel:last-child .label-row{color:var(--cobalt);background:var(--paper)}
+.panel h4{margin:0;font:700 32px/1 var(--f-disp);letter-spacing:-.045em;color:var(--ink)}
+.panel:last-child h4{color:var(--paper)}
+.panel p{margin:0;font:500 14px/1.7 var(--f-body);max-width:38ch}
+.panel pre{margin:0;padding:12px;border:1px solid currentColor;background:transparent;font:500 12px/1.6 var(--f-mono);overflow-x:auto}
 
-.bg-preview{border:1px solid rgba(128,128,128,.15);aspect-ratio:4/3;position:relative;overflow:hidden;background:var(--secondary);border-radius:0}
+/* Background */
+.bg-preview{border:1px solid var(--ink);aspect-ratio:4/3;position:relative;overflow:hidden;background:var(--paper)}
 .bg-preview canvas{width:100%;height:100%;display:block}
-.bg-preview .badge{position:absolute;bottom:12px;left:12px;font:500 10px/1 "monospace",monospace;letter-spacing:.1em;text-transform:uppercase;background:color-mix(in srgb,var(--secondary) 75%,transparent);padding:6px 10px;backdrop-filter:blur(8px)}
+.bg-preview .badge{position:absolute;bottom:12px;left:12px;font:600 10px/1 var(--f-mono);letter-spacing:.06em;text-transform:uppercase;background:color-mix(in srgb,var(--paper) 75%,transparent);padding:6px 10px;backdrop-filter:blur(8px)}
 
-details.code-block{border:1px solid rgba(128,128,128,.15);background:color-mix(in srgb,var(--secondary) 60%,transparent)};margin-top:12px;border-radius:0}
-details.code-block summary{cursor:pointer;padding:14px 18px;list-style:none;font:500 11px/1 "monospace",monospace;letter-spacing:.1em;text-transform:uppercase;color:var(--accent);display:flex;justify-content:space-between}
+details.code-block{border:1px solid var(--ink);background:color-mix(in srgb,var(--paper) 96%,var(--ink));margin-top:12px}
+details.code-block summary{cursor:pointer;padding:14px 18px;list-style:none;font:600 11px/1 var(--f-mono);letter-spacing:.06em;text-transform:uppercase;color:var(--cobalt);display:flex;justify-content:space-between}
 details.code-block summary::-webkit-details-marker{display:none}
-details.code-block summary::after{content:"+";font:900 18px/1 "system-ui",sans-serif;color:var(--accent)}
+details.code-block summary::after{content:"+";font:700 18px/1 var(--f-disp);color:var(--cobalt)}
 details.code-block[open] summary::after{content:"\2212"}
-details.code-block pre{margin:0;padding:16px;border-top:1px solid rgba(128,128,128,.15);font:11px/1.6 "monospace",monospace;color:var(--primary);opacity:.65;background:transparent;overflow-x:auto;white-space:pre-wrap;word-break:break-word;max-height:320px;overflow-y:auto}
+details.code-block pre{margin:0;padding:16px 18px;border-top:1px solid var(--hairline);font:11px/1.6 var(--f-mono);color:var(--ink-dim);background:transparent;overflow-x:auto;white-space:pre-wrap;word-break:break-word;max-height:320px;overflow-y:auto}
 
-.rules-grid{display:grid;grid-template-columns:1fr 1fr;gap:48px;max-width:1400px;margin:0 auto}
+/* Rules */
+.rules-grid{display:grid;grid-template-columns:1fr 1fr;gap:24px}
 @media(max-width:880px){.rules-grid{grid-template-columns:1fr}}
-.rules-col{}
-.rules-col.do{}
-.rules-col.dont{}
-.rules-col h3{font:900 56px/1 "system-ui",sans-serif;letter-spacing:-.03em;margin:0 0 28px;text-transform:lowercase}
-.rules-col.do h3{color:var(--accent)}
-.rules-col.dont h3{opacity:.4}
-.rules-col ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:0px}
-.rules-col li{display:grid;grid-template-columns:2em 1fr;gap:8px;padding:16px 0;border-top:1px solid rgba(128,128,128,.15);font:500 18px/1.45 "system-ui",sans-serif}
-.rules-col li::before{font:800 22px/1.2 "system-ui",sans-serif;align-self:start;}
-.rules-col.do li::before{content:"+";color:var(--accent)}
-.rules-col.dont li::before{content:"\2014";opacity:.4}
+.rules-col{padding:28px;border:1px solid var(--ink)}
+.rules-col h3{font:700 52px/1 var(--f-disp);margin:0 0 20px;letter-spacing:-.05em}
+.rules-col.do h3{color:var(--cobalt)}
+.rules-col.dont h3{color:var(--ink-dim)}
+.rules-col ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.rules-col li{display:grid;grid-template-columns:2em 1fr;gap:12px;padding:12px 14px;background:var(--paper);border:1px solid var(--ink);font:500 14px/1.55 var(--f-body)}
+.rules-col li::before{font:600 14px/1 var(--f-mono);align-self:center;text-align:center}
+.rules-col.do li::before{content:"+";color:var(--cobalt)}
+.rules-col.dont li::before{content:"×";color:var(--ink-dim)}
 
-.templates-wrap{background:color-mix(in srgb,var(--secondary) 96%,var(--accent))}
-.templates-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:24px;max-width:1400px;margin:0 auto}
+/* Templates */
+.templates-wrap{border-top:1px solid var(--ink);background:color-mix(in srgb,var(--cobalt) 4%,var(--paper))}
+.templates-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}
 @media(max-width:1100px){.templates-grid{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:720px){.templates-grid{grid-template-columns:1fr}}
-.tmpl{background:var(--secondary);border:1px solid rgba(128,128,128,.15);overflow:hidden;border-radius:0;transition:all .2s}
-.tmpl:hover{border-color:var(--accent);transform:translateY(-2px)}
-.tmpl-thumb{width:100%;aspect-ratio:16/9;overflow:hidden;position:relative;background:#050505;border-bottom:1px solid rgba(128,128,128,.15)}
+.tmpl{background:var(--paper);border:1px solid var(--ink);overflow:hidden;transition:transform .15s}
+.tmpl:hover{transform:translateY(-2px)}
+.tmpl-thumb{width:100%;aspect-ratio:16/9;overflow:hidden;position:relative;background:var(--paper);border-bottom:1px solid var(--ink)}
 .tmpl-thumb .scale-wrap{width:1920px;height:1080px;transform-origin:top left}
-.tmpl-foot{display:flex;justify-content:space-between;padding:14px 18px;font:500 11px/1 "monospace",monospace;letter-spacing:.14em;text-transform:uppercase}
-.tmpl-foot .idx{color:var(--accent)}
+.tmpl-foot{display:flex;justify-content:space-between;align-items:center;padding:10px 16px;font:600 11px/1 var(--f-mono);letter-spacing:.06em}
+.tmpl-foot .name{color:var(--ink);font-family:var(--f-disp);font-size:18px;letter-spacing:-.025em;text-transform:none}
+.tmpl-foot .idx{color:var(--paper);background:var(--cobalt);padding:4px 10px}
 
-footer.endcap{background:var(--accent);color:var(--secondary);padding:80px var(--pad-x) 60px;display:grid;grid-template-columns:1fr auto;gap:48px;align-items:end}
-footer.endcap .endmark{font:900 clamp(60px,13vw,220px)/.85 "system-ui",sans-serif;letter-spacing:-.04em;text-transform:lowercase;margin:0}
-footer.endcap .meta{font:500 12px/2 "monospace",monospace;letter-spacing:.1em;text-transform:uppercase;opacity:.6;text-align:right}
-footer.endcap .meta b{opacity:1;color:var(--accent)}
+footer.endcap{padding:80px var(--pad-x) 48px;background:var(--cobalt);color:var(--paper);display:grid;grid-template-columns:1fr auto;gap:40px;align-items:end}
+footer.endcap .endmark{font:700 clamp(60px,12vw,200px)/.9 var(--f-disp);letter-spacing:-.06em;margin:0;color:var(--paper)}
+footer.endcap .endmark em{font-style:normal;background:var(--ink);padding:0 .06em;display:inline-block;line-height:.9}
+footer.endcap .meta{font:600 11px/2 var(--f-mono);letter-spacing:.06em;text-transform:uppercase;color:color-mix(in srgb,var(--paper) 75%,transparent);text-align:right}
+footer.endcap .meta b{color:var(--paper)}
 </style>
+
+<!-- TEMPLATE STYLES -->
 <style id="template-css">
 __TEMPLATE_CSS__
 </style>
 </head>
 <body>
+
 <canvas id="design-bg"></canvas>
 <div id="bg-veil"></div>
 
 <div class="rail">
-  <div class="brand"><span class="dot"></span>__NAME__</div>
+  <div class="brand"><span class="box"></span><b>__NAME__</b></div>
   <nav><a href="#palette">01</a><a href="#type">02</a><a href="#surface">03</a><a href="#motion">04</a><a href="#background">05</a><a href="#guidelines">06</a><a href="#templates">07</a></nav>
+  <div class="meta">v 1.0</div>
 </div>
 
-<header class="cover">
-  <h1 class="cover-headline">__NAME_LINE1____NAME_LINE2__.</h1>
+<header class="cover" data-screen-label="00 Cover">
+  <div class="cover-chrome">
+    <div>Design System · No. 031</div>
+    <div class="accent">▢ Grid · 2026</div>
+  </div>
+  <div class="cover-rule"></div>
+  <h1 class="cover-headline">Cobalt<br/><em>Grid</em>.</h1>
   <div class="cover-foot">
-    <div class="cell"><span class="k">Template</span><span class="v">cobalt-grid</span></div>
-    <div class="cell"><span class="k">Type</span><span class="v big">system-ui</span></div>
-    <div class="cell"><span class="k">Accent</span><span class="v">__ACCENT_LABEL__</span></div>
-    <div class="cell"><span class="k">Doc</span><span class="v">07 sections · __SLIDE_COUNT__ templates</span></div>
+    <div class="cell"><span class="k">Discipline</span><span class="v plain">SaaS · Engineering · Product</span></div>
+    <div class="cell"><span class="k">Display</span><span class="v">Space Grotesk 700</span></div>
+    <div class="cell"><span class="k">Signal</span><span class="v">__ACCENT_LABEL__</span></div>
+    <div class="cell"><span class="k">Volume</span><span class="v plain">07 sections · __SLIDE_COUNT__ frames</span></div>
   </div>
 </header>
 
-<section class="manifesto">
+<section class="manifesto" data-screen-label="00 Manifesto">
   <div class="manifesto-grid">
-    <div class="num">&#8212; Manifesto</div>
-    <p>Electric cobalt serifs on a graph-paper canvas, anchored by stair-stepped pixel-glitch decorations and slim hairline rules.</p>
+    <div class="num">+ MANIFESTO</div>
+    <p>the grid is <em>structural</em>. cobalt is <em>position</em>. nothing floats — every block snaps.</p>
   </div>
 </section>
 
-<section id="palette">
+<section id="palette" data-screen-label="01 Palette">
   <div class="section-head">
-    <div class="num">01 &#8212; Palette</div>
-    <h2>four colors.</h2>
+    <span class="num">01 / PALETTE</span>
+    <h2>Four <em>cells</em>.</h2>
     <p class="lede">__PALETTE_LEDE__</p>
   </div>
   <div class="palette">
-    <div class="swatch swatch--primary"><div class="role">Primary</div><div><div class="name">__PRIMARY_NAME__</div><div class="hex">__PRIMARY__</div><div class="usage">Canvas.</div></div></div>
-    <div class="swatch swatch--secondary"><div class="role">Secondary</div><div><div class="name">__SECONDARY_NAME__</div><div class="hex">__SECONDARY__</div><div class="usage">Ink.</div></div></div>
-    <div class="swatch swatch--tertiary"><div class="role">Tertiary</div><div><div class="name">__TERTIARY_NAME__</div><div class="hex">__TERTIARY__</div><div class="usage">Muted. Borders.</div></div></div>
-    <div class="swatch swatch--accent"><div class="role">Accent</div><div><div class="name">__ACCENT_NAME__</div><div class="hex">__ACCENT__</div><div class="usage">Signal. Reserved.</div></div></div>
+    <div class="swatch swatch--paper"><div class="role">01 / paper</div><div><div class="name">__PRIMARY_NAME__</div><div class="hex">__PRIMARY__</div><div class="usage">Warm off-white canvas.</div></div></div>
+    <div class="swatch swatch--ink"><div class="role">02 / ink</div><div><div class="name">__SECONDARY_NAME__</div><div class="hex">__SECONDARY__</div><div class="usage">Near-black. Type and grid.</div></div></div>
+    <div class="swatch swatch--slate"><div class="role">03 / slate</div><div><div class="name">__TERTIARY_NAME__</div><div class="hex">__TERTIARY__</div><div class="usage">Chrome and labels.</div></div></div>
+    <div class="swatch swatch--cobalt"><div class="role">04 / cobalt</div><div><div class="name">__ACCENT_NAME__</div><div class="hex">__ACCENT__</div><div class="usage">The signal. Block fills only.</div></div></div>
   </div>
 </section>
 
-<section id="type">
+<section id="type" data-screen-label="02 Type">
   <div class="section-head">
-    <div class="num">02 &#8212; Typography</div>
-    <h2>type scale.</h2>
+    <span class="num">02 / TYPE</span>
+    <h2>Tight<br/><em>grotesque.</em></h2>
+    <p class="lede">Space Grotesk at 700 with aggressive negative tracking. Manrope handles body. JetBrains Mono runs cell labels and chrome.</p>
   </div>
   <div class="specimen">
-    <div class="spec-row"><div class="meta"><span>Display</span><b>system-ui</b></div><div class="spec-display">hello world.</div></div>
-    <div class="spec-row"><div class="meta"><span>H1</span><b>system-ui</b></div><div class="spec-h1">chapter one</div></div>
-    <div class="spec-row"><div class="meta"><span>H2</span><b>system-ui</b></div><div class="spec-h2">Slide headlines.</div></div>
-    <div class="spec-row"><div class="meta"><span>Body</span><b>system-ui</b></div><p class="spec-body">Body copy below 24px is forbidden in video compositions.</p></div>
-    <div class="spec-row"><div class="meta"><span>Label</span><b>monospace</b></div><div class="spec-label">// chrome · labels · metadata</div></div>
+    <div class="spec-row"><div class="meta"><span>Display</span><b>Space Grotesk 700</b><span>11vw · −0.07em</span></div><div class="spec-display">hello <em>world</em>.</div></div>
+    <div class="spec-row"><div class="meta"><span>H1</span><b>Space Grotesk 700</b><span>7vw · −0.055em</span></div><div class="spec-h1">chapter one</div></div>
+    <div class="spec-row"><div class="meta"><span>H2</span><b>Space Grotesk 600</b><span>4.2vw</span></div><div class="spec-h2">section headlines.</div></div>
+    <div class="spec-row"><div class="meta"><span>Lead</span><b>Manrope 600</b><span>2vw</span></div><div class="spec-lead">The lead carries the brief in one direct sentence.</div></div>
+    <div class="spec-row"><div class="meta"><span>Body</span><b>Manrope 500</b><span>16px · 60ch</span></div><p class="spec-body">Pack my box with five dozen liquor jugs. Body type stays at 500 weight. Below 24px is forbidden in 1080p compositions.</p></div>
+    <div class="spec-row"><div class="meta"><span>Label</span><b>JetBrains Mono 600</b><span>12px · cobalt chip</span></div><div><span class="spec-label">// LABEL · CELL</span></div></div>
   </div>
 </section>
 
-<section id="surface">
+<section id="surface" data-screen-label="03 Surface">
   <div class="section-head">
-    <div class="num">03 &#8212; Surface</div>
-    <h2>corners. depth.</h2>
+    <span class="num">03 / SURFACE</span>
+    <h2>1px grid,<br/><em>hard cells.</em></h2>
+    <p class="lede">Every container snaps to a 96px base grid. 1px ink borders, zero radius. The grid is the chrome.</p>
   </div>
   <div class="surface-grid">
     <div class="demo-card">
-      <span class="tag">// example</span>
-      <h3>example card.</h3>
-      <p>Configured corners, padding, shadow.</p>
+      <span class="tag">// CELL</span>
+      <h3>Example cell.</h3>
+      <p>1px ink border. 6px cobalt tab top-left. Snaps to the grid. The accent appears once per slide.</p>
+      <div class="num-stat">+42%</div>
     </div>
     <ul class="tokens">
-      <li><span class="name">Corners</span><span class="val">__CORNER_RADIUS__</span><span class="bar" style="width:8px"></span></li>
+      <li><span class="name">Corners</span><span class="val">__CORNER_RADIUS__</span><span class="bar" style="width:6px"></span></li>
       <li><span class="name">Padding</span><span class="val">__PADDING__</span><span class="bar" style="width:32px"></span></li>
-      <li><span class="name">Gap</span><span class="val">__GAP__</span><span class="bar" style="width:32px"></span></li>
-      <li><span class="name">Elevation</span><span class="val">__ELEVATION__</span><span class="bar" style="width:18px"></span></li>
-      <li><span class="name">Density</span><span class="val">__DENSITY__</span><span class="bar" style="width:48px"></span></li>
+      <li><span class="name">Gap</span><span class="val">__GAP__</span><span class="bar" style="width:14px"></span></li>
+      <li><span class="name">Elevation</span><span class="val">__ELEVATION__</span><span class="bar" style="width:0;opacity:.2"></span></li>
+      <li><span class="name">Density</span><span class="val">__DENSITY__</span><span class="bar" style="width:44px"></span></li>
     </ul>
   </div>
 </section>
 
-<section id="motion">
+<section id="motion" data-screen-label="04 Motion">
   <div class="section-head">
-    <div class="num">04 &#8212; Motion</div>
+    <span class="num">04 / MOTION</span>
     <h2>__EASING_HEADLINE__</h2>
     <p class="lede">__EASING_LEDE__</p>
   </div>
   <div class="two-col">
     <div class="panel">
-      <div class="label-row">// easing</div>
+      <span class="label-row">// EASING</span>
       <h4>__EASING_NAME__</h4>
       <p>__EASING_DESC__</p>
       <pre>__EASING_VALUE__</pre>
     </div>
     <div class="panel">
-      <div class="label-row">// duration</div>
+      <span class="label-row">// DURATION</span>
       <h4>__DURATION_DEFAULT__</h4>
       <p>__DURATION_DESC__</p>
       <pre>__DURATION_VALUES__</pre>
@@ -242,9 +286,9 @@ __TEMPLATE_CSS__
   </div>
 </section>
 
-<section id="background">
+<section id="background" data-screen-label="05 Background">
   <div class="section-head">
-    <div class="num">05 &#8212; Background</div>
+    <span class="num">05 / BACKGROUND</span>
     <h2>__BG_HEADLINE__</h2>
     <p class="lede">__BG_LEDE__</p>
   </div>
@@ -254,38 +298,40 @@ __TEMPLATE_CSS__
       <ul class="tokens" style="border-top:none">
         <li><span class="name">Geometry</span><span class="val">__BG_TYPE__</span><span class="bar" style="width:36px"></span></li>
         <li><span class="name">Density</span><span class="val">__BG_DENSITY__</span><span class="bar" style="width:42px"></span></li>
-        <li><span class="name">Speed</span><span class="val">__BG_SPEED__</span><span class="bar" style="width:18px"></span></li>
+        <li><span class="name">Speed</span><span class="val">__BG_SPEED__</span><span class="bar" style="width:18px;opacity:.7"></span></li>
         <li><span class="name">Strength</span><span class="val">__BG_STRENGTH__</span><span class="bar" style="width:52px"></span></li>
         <li><span class="name">Grain</span><span class="val">__BG_GRAIN__</span><span class="bar" style="width:24px"></span></li>
       </ul>
-      <details class="code-block"><summary>// shader config</summary>
+      <details class="code-block"><summary>// shader config (json)</summary>
 <pre>__SHADER_CONFIG__</pre>
       </details>
-      <details class="code-block"><summary>// vertex shader</summary>
+      <details class="code-block"><summary>// vertex shader (glsl)</summary>
 <pre id="vtx-src">__SHADER_VERTEX__</pre>
       </details>
-      <details class="code-block"><summary>// fragment shader</summary>
+      <details class="code-block"><summary>// fragment shader (glsl)</summary>
 <pre id="frg-src">__SHADER_FRAGMENT__</pre>
       </details>
     </div>
   </div>
 </section>
 
-<section id="guidelines">
+<section id="guidelines" data-screen-label="06 Guidelines">
   <div class="section-head">
-    <div class="num">06 &#8212; Guidelines</div>
-    <h2>do and don’t.</h2>
+    <span class="num">06 / RULES</span>
+    <h2>Do.<br/><em>Don't.</em></h2>
+    <p class="lede">A short list. The grid loses its structure the moment any slip.</p>
   </div>
   <div class="rules-grid">
-    <div class="rules-col do"><h3>do.</h3><ul>__DOS__</ul></div>
-    <div class="rules-col dont"><h3>don't.</h3><ul>__DONTS__</ul></div>
+    <div class="rules-col do"><h3>Do.</h3><ul>__DOS__</ul></div>
+    <div class="rules-col dont"><h3>Don't.</h3><ul>__DONTS__</ul></div>
   </div>
 </section>
 
-<section id="templates" class="templates-wrap">
+<section id="templates" class="templates-wrap" data-screen-label="07 Templates">
   <div class="section-head">
-    <div class="num">07 &#8212; Templates</div>
-    <h2>__SLIDE_COUNT_WORD__<br/>frames.</h2>
+    <span class="num">07 / TEMPLATES</span>
+    <h2>__SLIDE_COUNT_WORD__<br/><em>frames.</em></h2>
+    <p class="lede">Full library at 1920&#215;1080.</p>
   </div>
   <div class="templates-grid" id="templates-grid"></div>
 </section>
@@ -294,22 +340,17 @@ __TEMPLATE_CSS__
 __SLIDE_CARDS__
 </template>
 
-<footer class="endcap">
-  <h2 class="endmark">end.</h2>
+<footer class="endcap" data-screen-label="08 End">
+  <h2 class="endmark">End of <em>grid.</em></h2>
   <div class="meta">
-    <div><b>__NAME__</b> · v1</div>
-    <div>system-ui / monospace</div>
+    <div><b>__NAME__</b> · v 1.0</div>
+    <div>Space Grotesk · Manrope</div>
     <div>__DATE__</div>
   </div>
 </footer>
 
 <script>
-(function(){
-  document.getElementById('templates-grid').appendChild(document.getElementById('tmpl-source').content.cloneNode(true));
-  function rescale(){document.querySelectorAll('.tmpl-thumb').forEach(t=>{const w=t.querySelector('.scale-wrap');if(w)w.style.transform='scale('+(t.clientWidth/1920)+')'})}
-  addEventListener('load',rescale);addEventListener('resize',rescale);requestAnimationFrame(rescale);
-  if(document.fonts&&document.fonts.ready)document.fonts.ready.then(rescale);
-})();
+(function(){document.getElementById('templates-grid').appendChild(document.getElementById('tmpl-source').content.cloneNode(true));function r(){document.querySelectorAll('.tmpl-thumb').forEach(t=>{const w=t.querySelector('.scale-wrap');if(w)w.style.transform='scale('+(t.clientWidth/1920)+')'})}addEventListener('load',r);addEventListener('resize',r);requestAnimationFrame(r);if(document.fonts&&document.fonts.ready)document.fonts.ready.then(r)})();
 </script>
 
 __SHADER_SCRIPT__
