@@ -1,0 +1,190 @@
+---
+title: AWS Lambda
+description: "Deploy distributed HyperFrames rendering to AWS Lambda and drive renders from a laptop or CI."
+---
+
+HyperFrames ships a first-class AWS Lambda deployment: one Lambda function fronts a Step Functions standard workflow that fans renders out across many parallel chunk workers, with intermediate artifacts in S3. End-to-end is three commands once your AWS credentials are configured.
+
+```bash
+hyperframes lambda deploy
+hyperframes lambda render ./my-project --width 1920 --height 1080 --wait
+hyperframes lambda destroy
+```
+
+## Architecture
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│ Step Functions state machine                                     │
+│   Plan → Map(N) RenderChunk → Assemble                           │
+└──────────────────────────────────────────────────────────────────┘
+                              │ dispatches by event.Action
+                              ▼
+┌──────────────────────────────────────────────────────────────────┐
+│ One Lambda function (packages/aws-lambda/dist/handler.zip)       │
+│   handler.mjs                                                    │
+│     ├─ Action="plan"        → @hyperframes/producer/distributed  │
+│     ├─ Action="renderChunk" → @hyperframes/producer/distributed  │
+│     └─ Action="assemble"    → @hyperframes/producer/distributed  │
+│   bin/ffmpeg                — ffmpeg-static                      │
+│   node_modules/@sparticuz/chromium/ — Lambda-optimised Chromium  │
+└──────────────────────────────────────────────────────────────────┘
+                              │ pure functions over local paths
+                              ▼
+┌──────────────────────────────────────────────────────────────────┐
+│ S3 bucket — plan tarball + per-chunk outputs + final mp4         │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+The Lambda handler is a thin dispatch: parse the Step Functions event, download inputs from S3 into `/tmp`, call the OSS primitive from `@hyperframes/producer/distributed`, upload outputs back, return a small JSON result. Everything heavy — capture, encode, audio mix — happens inside the OSS primitives.
+
+## Prerequisites
+
+| Tool | Why | Install |
+|------|-----|---------|
+| AWS credentials | The CLI and the deploy step both call AWS APIs. | Env vars, `~/.aws/credentials`, SSO, or IMDS — any chain `boto3` would resolve. |
+| AWS SAM CLI | `hyperframes lambda deploy/destroy` shells out to `sam deploy`/`sam delete`. | [Install guide](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html) |
+| `bun` | Used to build `packages/aws-lambda/dist/handler.zip` at deploy time. | `npm install -g bun` or [bun.sh](https://bun.sh) |
+| HyperFrames repo checkout | `lambda deploy` builds the Lambda handler ZIP from source. Adopters who deploy outside a checkout can set `HYPERFRAMES_REPO_ROOT` to point at one. | `git clone https://github.com/heygen-com/hyperframes` |
+
+## Three deployment paths
+
+### Path 1 — `hyperframes lambda` CLI (recommended)
+
+The CLI is a thin wrapper around the SAM template + the `@hyperframes/aws-lambda` SDK. For most adopters this is the right starting point.
+
+```bash
+hyperframes lambda deploy \
+  --stack-name=hyperframes-prod \
+  --region=us-east-1 \
+  --concurrency=8 \
+  --memory=10240
+```
+
+The default `--concurrency=8` is deliberately conservative for first-time users. The Lambda Map state's default would let an unbounded number of chunks fan out in parallel; 8 caps your worst-case spend on a runaway render at roughly `8 × (15 min × 10 GB × $0.0000167/GB-s) ≈ $1.20`. Raise it after you've sized your typical render's chunk count.
+
+After `deploy`, render anything with:
+
+```bash
+hyperframes lambda render ./my-project --width 1920 --height 1080 --wait
+```
+
+The `--wait` flag blocks and streams per-chunk progress + accrued cost; drop it to fire-and-forget, then poll with `hyperframes lambda progress <renderId>` on your own cadence.
+
+See the [CLI reference](/packages/cli#hyperframes-lambda) for full flag documentation.
+
+### Path 2 — Direct SAM deploy
+
+If you want to read the CloudFormation before you deploy, or you need to customise the topology (extra alarms, SNS subscribers, KMS keys, …), invoke SAM directly against the template at `examples/aws-lambda/template.yaml`:
+
+```bash
+cd packages/aws-lambda
+bun run build:zip                     # produces dist/handler.zip
+cd ../../examples/aws-lambda
+sam deploy \
+  --stack-name=hyperframes-prod \
+  --region=us-east-1 \
+  --resolve-s3 \
+  --capabilities CAPABILITY_IAM \
+  --no-confirm-changeset \
+  --parameter-overrides ChromeSource=sparticuz ReservedConcurrency=8
+```
+
+The template emits three CloudFormation outputs you'll need to invoke renders:
+
+- `RenderBucketName` — S3 bucket for plan tarballs + per-chunk outputs + final renders.
+- `RenderStateMachineArn` — the Step Functions standard workflow that orchestrates Plan → Map → Assemble.
+- `RenderFunctionArn` — the single Lambda function the state machine dispatches against.
+
+### Path 3 — CDK construct
+
+For users already running CDK, the `@hyperframes/aws-lambda` package exports a `HyperframesRenderStack` L2 construct that emits the same topology as the SAM template:
+
+```ts
+import { App, CfnOutput, Stack } from "aws-cdk-lib";
+import { HyperframesRenderStack } from "@hyperframes/aws-lambda/cdk";
+
+const app = new App();
+const stack = new Stack(app, "MyApp");
+const render = new HyperframesRenderStack(stack, "Render", {
+  projectName: "hyperframes",
+  lambdaMemoryMb: 10240,
+  reservedConcurrency: 8,
+  chromeSource: "sparticuz",
+});
+
+new CfnOutput(stack, "RenderBucketName", { value: render.bucket.bucketName });
+new CfnOutput(stack, "StateMachineArn", { value: render.stateMachine.stateMachineArn });
+```
+
+`aws-cdk-lib` and `constructs` are declared as **optional peer dependencies** of `@hyperframes/aws-lambda`, so consumers who only need the SDK don't pay the CDK import cost.
+
+The construct exposes `.bucket`, `.renderFunction`, and `.stateMachine` so you can wire dashboards, SNS topics, or other AWS resources alongside it without re-deriving ARNs.
+
+## IAM permissions
+
+The CLI ships a built-in IAM bootstrap to avoid the "User is not authorized to perform iam:CreateRole" first-deploy trap:
+
+```bash
+# Print an inline policy doc to attach to the IAM user that runs the CLI.
+hyperframes lambda policies user
+
+# Print { TrustRelationship, InlinePolicy } for a CloudFormation service role.
+hyperframes lambda policies role --principal=cloudformation
+
+# Validate a checked-in policy still covers the CLI's needs (exit non-zero on missing).
+hyperframes lambda policies validate ./infra/iam/hyperframes-deploy.json
+```
+
+The generated documents grant `Resource: "*"` for the CLI's required action set. After your first successful deploy you can narrow `Resource` to the deployed ARNs — predictable per the CloudFormation outputs above. Adopters running the CLI in CI typically check the policy doc into source control and run `policies validate` as a pre-deploy step to catch drift.
+
+## Cost shape
+
+Lambda renders are billed by GB-seconds (Lambda billed duration × configured memory) plus a tiny per-state-transition fee for Step Functions standard workflows. `hyperframes lambda progress` exposes the running tally:
+
+```bash
+hyperframes lambda progress my-render-id
+# Status:    SUCCEEDED
+# Progress:  100%
+# Frames:    480 / 480
+# Lambdas:   5
+# Cost:      $0.0214 (Lambda $0.0210 + SFN $0.0004)
+# Output:    s3://hyperframes-renders/.../output.mp4
+```
+
+The cost number is best-effort: Lambda billed duration comes from the handler's own `DurationMs` return value (which SFN history surfaces in the success payload) and S3 transfer is not included. The math is in `packages/aws-lambda/src/sdk/costAccounting.ts` if you want to verify; CLI-shown values match what AWS Billing reports within rounding noise.
+
+## Troubleshooting
+
+### `sam deploy` fails with "Stack already exists"
+
+Pass the same `--stack-name` you used the first time. SAM is idempotent — re-running on an existing stack resolves to a no-op or an in-place update.
+
+### `User is not authorized to perform iam:CreateRole`
+
+The IAM credential running `lambda deploy` doesn't have permission to create the service role CloudFormation needs. Run `hyperframes lambda policies user` and attach the printed policy to your IAM user (or take the `policies role` output and have your admin create a deploy role).
+
+### `Lambda function failed: PLAN_HASH_MISMATCH`
+
+Step Functions invoked a `renderChunk` with a plan hash that didn't match the planDir on S3. Almost always means the producer version differs between the local `plan()` build and the deployed Lambda ZIP. Re-run `hyperframes lambda deploy` (which rebuilds the ZIP) and re-render.
+
+### `Lambda function failed: BROWSER_GPU_NOT_SOFTWARE`
+
+The compiled composition reads `data-gpu-mode="hardware"` (or similar). Distributed renders require `gpu-mode="software"` — hardware GL is non-deterministic across chunk boundaries. Change the composition's `data-gpu-mode` or omit it (the default is software).
+
+### Render seems stuck at `RUNNING`
+
+Most often a Lambda cold-start chain on a many-chunk render. The Map state's reserved concurrency caps how many chunks can run in parallel — if you set `--concurrency=4` and your render has 16 chunks, the state machine processes them in batches of 4. `hyperframes lambda progress <id>` shows how many invocations are in flight.
+
+If progress doesn't advance for >10 minutes, check the Step Functions execution in the AWS console — failed Lambda invocations include the typed error name (`FONT_FETCH_FAILED`, `FFMPEG_VERSION_MISMATCH`, etc.) which short-circuits the state machine.
+
+### Tearing down doesn't reclaim S3 storage
+
+The render bucket is created with CloudFormation `Retain` on delete — `hyperframes lambda destroy` (or `sam delete`) tears the function + state machine down but the bucket survives. This is intentional: it protects final-rendered MP4s from being lost when you re-deploy. To fully reclaim storage, empty + delete the bucket via the AWS console / `aws s3 rb`.
+
+## What's NOT in the v1 surface
+
+- **Webhooks on completion.** Not in v1 — poll with `hyperframes lambda progress` or watch the Step Functions execution. A `--webhook` flag with an SNS topic is on the Phase 6c backlog.
+- **`compositions` discovery verb.** Coming separately (PR 6.10 on the plan); for now, point `lambda render` at the project directory containing your `index.html`.
+- **Multi-region.** Each `--region` is an independent stack. There is no built-in cross-region failover.
+- **HDR.** Distributed mode is SDR-only. HDR mp4 with bsf signaling is on the v1.5 backlog.

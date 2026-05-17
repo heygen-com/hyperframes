@@ -206,6 +206,12 @@
               "packages/studio",
               "packages/cli"
             ]
+          },
+          {
+            "group": "Deploy",
+            "pages": [
+              "deploy/aws-lambda"
+            ]
           }
         ]
       },
