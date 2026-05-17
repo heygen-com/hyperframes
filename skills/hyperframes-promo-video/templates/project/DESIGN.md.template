@@ -1,0 +1,26 @@
+# Design System
+
+## Style Prompt
+{{stylePrompt}}
+
+## Color Palette
+| Token | Value |
+|-------|-------|
+| Primary | `{{primary}}` |
+| Accent | `{{accent}}` |
+| Background | `{{background}}` |
+| Text | `{{text}}` |
+| Muted | `{{muted}}` |
+| Success | `{{success}}` |
+| Danger | `{{danger}}` |
+
+## Typography
+- **Font Family:** {{fontFamily}}
+- **Source:** {{fontSource}}
+- **Code Font:** {{codeFontFamily}}
+
+## What NOT to Do
+- Do not use colors outside the palette above
+- Do not use stock syntax highlighting themes — derive from the palette
+- Do not use fade-to-black transitions between scenes
+- Keep decoration spacing consistent: 8px / 16px / 24px / 32px increments

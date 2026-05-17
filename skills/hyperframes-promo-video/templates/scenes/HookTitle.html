@@ -1,0 +1,49 @@
+<section class="scene" data-scene-id="hook" data-duration="3s" data-visual-variant="result">
+  <style>
+    [data-scene-id="hook"] {
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+    }
+    [data-scene-id="hook"] h1 {
+      font-size: 120px;
+      font-weight: 900;
+      line-height: 1.05;
+      max-width: 14ch;
+    }
+  </style>
+
+  <h1>{{hookText}}</h1>
+
+  <script>
+    (function () {
+      const scene = document.querySelector('[data-scene-id="hook"]');
+      const h1 = scene.querySelector("h1");
+      const variant = scene.dataset.visualVariant;
+
+      if (variant === "pattern-interrupt") {
+        const text = h1.textContent;
+        h1.innerHTML = text
+          .split("")
+          .map((ch) => `<span style="display:inline-block">${ch === " " ? "&nbsp;" : ch}</span>`)
+          .join("");
+        const spans = h1.querySelectorAll("span");
+        gsap.from(spans, {
+          opacity: 0,
+          y: 40,
+          rotateX: -90,
+          stagger: 0.03,
+          duration: 0.6,
+          ease: "back.out(1.7)",
+        });
+      } else {
+        gsap.from(h1, {
+          opacity: 0,
+          y: 60,
+          duration: 0.8,
+          ease: "power3.out",
+        });
+      }
+    })();
+  </script>
+</section>

@@ -1,0 +1,73 @@
+<section class="scene" data-scene-id="code" data-duration="7s" data-bg="diagonal">
+  <style>
+    [data-scene-id="code"] .caption-stack {
+      position: absolute;
+      top: 90px;
+      left: 100px;
+      right: 100px;
+    }
+    [data-scene-id="code"] .caption-stack .cap {
+      position: absolute;
+      top: 0;
+      left: 0;
+      font-size: 28px;
+      font-weight: 600;
+      opacity: 0;
+      white-space: nowrap;
+    }
+    [data-scene-id="code"] .code-block {
+      margin-top: 80px;
+      flex: 1;
+      background: color-mix(in srgb, var(--brand-text) 4%, transparent);
+      border-radius: 12px;
+      padding: 32px;
+      overflow: hidden;
+      font-family: "Fira Code", monospace;
+      font-size: 22px;
+      line-height: 1.7;
+    }
+  </style>
+
+  <div class="caption-stack">
+    <!-- captions toggled per chapter -->
+  </div>
+  <div class="code-block">
+    <!-- shiki-highlighted code goes here -->
+  </div>
+
+  <script type="application/json" data-chapters>
+    [
+      { "focusLines": [1, 5], "captionIndex": 0 },
+      { "focusLines": [6, 10], "captionIndex": 1 }
+    ]
+  </script>
+
+  <script>
+    (function () {
+      const scene = document.querySelector('[data-scene-id="code"]');
+      const chapters = JSON.parse(scene.querySelector("[data-chapters]").textContent);
+      const captions = scene.querySelectorAll(".cap");
+      const lines = scene.querySelectorAll(".shiki .line");
+      const dur = parseFloat(scene.dataset.duration);
+      const chapterDur = dur / chapters.length;
+
+      chapters.forEach((ch, i) => {
+        const delay = i * chapterDur;
+        if (captions[ch.captionIndex]) {
+          gsap.to(captions[ch.captionIndex], { opacity: 1, delay, duration: 0.3 });
+          if (i > 0 && captions[chapters[i - 1].captionIndex]) {
+            gsap.to(captions[chapters[i - 1].captionIndex], { opacity: 0, delay, duration: 0.2 });
+          }
+        }
+        lines.forEach((line, li) => {
+          const inRange = li + 1 >= ch.focusLines[0] && li + 1 <= ch.focusLines[1];
+          gsap.to(line, {
+            opacity: inRange ? 1 : 0.3,
+            delay: delay + 0.1,
+            duration: 0.3,
+          });
+        });
+      });
+    })();
+  </script>
+</section>

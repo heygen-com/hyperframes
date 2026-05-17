@@ -1,0 +1,102 @@
+<section class="scene" data-scene-id="library-swap" data-duration="14s" data-bg="diagonal">
+  <style>
+    [data-scene-id="library-swap"] {
+      flex-direction: row;
+    }
+    [data-scene-id="library-swap"] .code-side {
+      flex: 2.2;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    [data-scene-id="library-swap"] .provider-side {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      padding-left: 48px;
+      justify-content: center;
+    }
+    [data-scene-id="library-swap"] .import-line {
+      font-family: "Fira Code", monospace;
+      font-size: 22px;
+      padding: 8px 16px;
+      border-radius: 8px;
+      background: color-mix(in srgb, var(--brand-primary) 8%, transparent);
+      opacity: 0.3;
+      transition: opacity 0.3s ease;
+    }
+    [data-scene-id="library-swap"] .import-line[data-active="true"] {
+      opacity: 1;
+      background: color-mix(in srgb, var(--brand-primary) 20%, transparent);
+    }
+    [data-scene-id="library-swap"] .provider-pill {
+      padding: 16px 24px;
+      border-radius: 12px;
+      font-size: 24px;
+      font-weight: 600;
+      background: color-mix(in srgb, var(--brand-text) 6%, transparent);
+      border: 1px solid color-mix(in srgb, var(--brand-text) 12%, transparent);
+      opacity: 0.4;
+      transition:
+        opacity 0.3s,
+        border-color 0.3s;
+    }
+    [data-scene-id="library-swap"] .provider-pill[data-active="true"] {
+      opacity: 1;
+      border-color: var(--brand-primary);
+    }
+    [data-scene-id="library-swap"] .code-block {
+      flex: 1;
+      background: color-mix(in srgb, var(--brand-text) 4%, transparent);
+      border-radius: 12px;
+      padding: 32px;
+      font-family: "Fira Code", monospace;
+      font-size: 22px;
+      line-height: 1.7;
+    }
+  </style>
+
+  <div class="code-side">
+    <div class="import-stack">
+      <!-- import lines go here -->
+    </div>
+    <div class="code-block">
+      <!-- shared code goes here -->
+    </div>
+  </div>
+  <div class="provider-side">
+    <!-- provider pills go here -->
+  </div>
+
+  <script type="application/json" data-providers>
+    [
+      { "name": "Provider A", "slot": 2.0 },
+      { "name": "Provider B", "slot": 2.0 },
+      { "name": "Provider C", "slot": 2.0 }
+    ]
+  </script>
+
+  <script>
+    (function () {
+      const scene = document.querySelector('[data-scene-id="library-swap"]');
+      const providers = JSON.parse(scene.querySelector("[data-providers]").textContent);
+      const imports = scene.querySelectorAll(".import-line");
+      const pills = scene.querySelectorAll(".provider-pill");
+      let delay = 0.5;
+
+      providers.forEach((p, i) => {
+        const slot = Math.max(1.2, Math.min(3.0, p.slot));
+        gsap.delayedCall(delay, () => {
+          imports.forEach((el, j) => {
+            el.dataset.active = j === i ? "true" : "false";
+          });
+          pills.forEach((el, j) => {
+            el.dataset.active = j === i ? "true" : "false";
+          });
+        });
+        delay += slot;
+      });
+    })();
+  </script>
+</section>

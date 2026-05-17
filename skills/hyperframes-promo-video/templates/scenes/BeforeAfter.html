@@ -1,0 +1,68 @@
+<section
+  class="scene"
+  data-scene-id="before-after"
+  data-duration="12s"
+  data-bg="vignette"
+  data-error-lines=""
+>
+  <style>
+    [data-scene-id="before-after"] {
+      flex-direction: row;
+      gap: 48px;
+    }
+    [data-scene-id="before-after"] .panel {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+    [data-scene-id="before-after"] .panel-label {
+      font-size: 20px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--brand-muted);
+    }
+    [data-scene-id="before-after"] .panel-content {
+      flex: 1;
+      background: color-mix(in srgb, var(--brand-text) 5%, transparent);
+      border-radius: 12px;
+      padding: 32px;
+      font-size: 22px;
+      overflow: hidden;
+    }
+  </style>
+
+  <div class="panel before-after-panel" data-panel="before">
+    <span class="panel-label">Before</span>
+    <div class="panel-content">{{beforeContent}}</div>
+  </div>
+
+  <div class="panel before-after-panel" data-panel="after">
+    <span class="panel-label">After</span>
+    <div class="panel-content">{{afterContent}}</div>
+  </div>
+
+  <script>
+    (function () {
+      const scene = document.querySelector('[data-scene-id="before-after"]');
+      const before = scene.querySelector('[data-panel="before"]');
+      const after = scene.querySelector('[data-panel="after"]');
+      const dur = parseFloat(scene.dataset.duration);
+      const errorLines = scene.dataset.errorLines;
+
+      if (errorLines) {
+        errorLines.split(",").forEach((n) => {
+          const line = before.querySelector(`.shiki .line:nth-child(${n.trim()})`);
+          if (line) line.style.color = "var(--brand-danger)";
+        });
+      }
+
+      gsap.from(before, { opacity: 0, x: -40, duration: 0.6, ease: "power2.out" });
+      gsap.from(after, { opacity: 0, x: 40, duration: 0.6, ease: "power2.out", delay: 0.2 });
+
+      gsap.to(before, { opacity: 0.4, filter: "blur(2px)", delay: dur * 0.55, duration: 0.5 });
+      gsap.to(after, { scale: 1.02, delay: dur * 0.55, duration: 0.5 });
+    })();
+  </script>
+</section>

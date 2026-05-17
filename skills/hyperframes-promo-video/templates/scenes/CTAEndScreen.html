@@ -1,0 +1,61 @@
+<section class="scene" data-scene-id="cta" data-duration="8s">
+  <style>
+    [data-scene-id="cta"] {
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      gap: 32px;
+    }
+    [data-scene-id="cta"] h2 {
+      font-size: 72px;
+      font-weight: 700;
+    }
+    [data-scene-id="cta"] .action {
+      font-size: 160px;
+      font-weight: 900;
+      color: var(--brand-primary);
+      line-height: 1;
+    }
+    [data-scene-id="cta"] .url-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+      background: color-mix(in srgb, var(--brand-primary) 12%, transparent);
+      border: 1px solid color-mix(in srgb, var(--brand-primary) 30%, transparent);
+      border-radius: 999px;
+      padding: 16px 40px;
+      font-size: 28px;
+      font-weight: 500;
+      color: var(--brand-primary);
+    }
+    [data-scene-id="cta"] .url-pill .arrow {
+      font-size: 24px;
+    }
+  </style>
+
+  <h2>{{ctaHeadline}}</h2>
+  <div class="action">{{ctaAction}}</div>
+  <div class="url-pill">
+    <span class="arrow">→</span>
+    <span>{{ctaUrl}}</span>
+  </div>
+
+  <script>
+    (function () {
+      const scene = document.querySelector('[data-scene-id="cta"]');
+      const h2 = scene.querySelector("h2");
+      const action = scene.querySelector(".action");
+      const pill = scene.querySelector(".url-pill");
+
+      gsap.from(h2, { opacity: 0, y: 30, duration: 0.6, ease: "power2.out" });
+      gsap.from(action, {
+        opacity: 0,
+        scale: 0.8,
+        duration: 0.8,
+        delay: 0.3,
+        ease: "back.out(1.7)",
+      });
+      gsap.from(pill, { opacity: 0, y: 20, duration: 0.5, delay: 0.7, ease: "power2.out" });
+    })();
+  </script>
+</section>

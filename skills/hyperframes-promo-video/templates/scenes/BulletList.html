@@ -1,0 +1,62 @@
+<section class="scene" data-scene-id="bullets" data-duration="10s" data-bg="primary-glow">
+  <style>
+    [data-scene-id="bullets"] .items {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 24px;
+      flex: 1;
+      align-content: center;
+    }
+    [data-scene-id="bullets"] .item-card {
+      background: color-mix(in srgb, var(--brand-text) 6%, transparent);
+      border: 1px solid color-mix(in srgb, var(--brand-text) 10%, transparent);
+      border-radius: 16px;
+      padding: 36px 48px;
+      font-size: 36px;
+      font-weight: 600;
+      transform: rotate(var(--tilt, 0deg));
+    }
+    [data-scene-id="bullets"] .item-card:nth-child(odd) {
+      transform: translateX(-20px) rotate(var(--tilt, 0deg));
+    }
+    [data-scene-id="bullets"] .item-card:nth-child(even) {
+      transform: translateX(20px) rotate(var(--tilt, 0deg));
+    }
+    [data-scene-id="bullets"] .tagline {
+      opacity: 0;
+    }
+  </style>
+
+  <div class="items">
+    <!-- item cards go here -->
+  </div>
+  <p class="tagline">{{bulletTagline}}</p>
+
+  <script>
+    (function () {
+      const scene = document.querySelector('[data-scene-id="bullets"]');
+      const cards = scene.querySelectorAll(".item-card");
+      const tagline = scene.querySelector(".tagline");
+      const dur = parseFloat(scene.dataset.duration);
+
+      cards.forEach((c) => {
+        c.style.setProperty("--tilt", (Math.random() * 2 - 1).toFixed(1) + "deg");
+      });
+
+      gsap.from(cards, {
+        opacity: 0,
+        y: 50,
+        stagger: 0.25,
+        duration: 0.6,
+        ease: "power2.out",
+      });
+
+      gsap.to(tagline, {
+        opacity: 1,
+        delay: dur * 0.7,
+        duration: 0.5,
+        ease: "power2.out",
+      });
+    })();
+  </script>
+</section>

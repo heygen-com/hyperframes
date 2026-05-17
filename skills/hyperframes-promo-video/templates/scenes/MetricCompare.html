@@ -1,0 +1,78 @@
+<section class="scene" data-scene-id="metrics" data-duration="10s" data-bg="diagonal">
+  <style>
+    [data-scene-id="metrics"] {
+      justify-content: center;
+      align-items: center;
+      gap: 64px;
+    }
+    [data-scene-id="metrics"] .race-lane {
+      width: 80%;
+      height: 120px;
+      position: relative;
+      background: color-mix(in srgb, var(--brand-text) 6%, transparent);
+      border-radius: 16px;
+      overflow: hidden;
+    }
+    [data-scene-id="metrics"] .marker {
+      position: absolute;
+      top: 0;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 16px;
+      font-size: 48px;
+      font-weight: 900;
+      min-width: 120px;
+    }
+    [data-scene-id="metrics"] .marker[data-tone="left"] {
+      background: color-mix(in srgb, var(--brand-danger) 20%, transparent);
+      color: var(--brand-danger);
+      left: 0;
+    }
+    [data-scene-id="metrics"] .marker[data-tone="right"] {
+      background: color-mix(in srgb, var(--brand-success) 20%, transparent);
+      color: var(--brand-success);
+      right: 0;
+    }
+    [data-scene-id="metrics"] .label-row {
+      display: flex;
+      justify-content: space-between;
+      width: 80%;
+      font-size: 28px;
+      font-weight: 600;
+    }
+  </style>
+
+  <div class="label-row">
+    <span>{{metricLabelBefore}}</span>
+    <span>{{metricLabelAfter}}</span>
+  </div>
+  <div class="race-lane">
+    <div class="marker" data-tone="left" data-fill-percent="{{beforePercent}}">{{beforeValue}}</div>
+    <div class="marker" data-tone="right" data-fill-percent="{{afterPercent}}">{{afterValue}}</div>
+  </div>
+
+  <script>
+    (function () {
+      const scene = document.querySelector('[data-scene-id="metrics"]');
+      const markers = scene.querySelectorAll(".marker");
+
+      markers.forEach((m) => {
+        const pct = parseFloat(m.dataset.fillPercent) || 50;
+        gsap.from(m, {
+          width: 0,
+          duration: 1.5,
+          delay: m.dataset.tone === "left" ? 0.3 : 0.8,
+          ease: "power2.out",
+        });
+        gsap.to(m, {
+          width: pct + "%",
+          duration: 1.5,
+          delay: m.dataset.tone === "left" ? 0.3 : 0.8,
+          ease: "power2.out",
+        });
+      });
+    })();
+  </script>
+</section>

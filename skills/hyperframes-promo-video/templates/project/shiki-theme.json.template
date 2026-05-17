@@ -1,0 +1,38 @@
+{
+  "name": "brand-derived",
+  "type": "dark",
+  "colors": {
+    "editor.background": "#00000000",
+    "editor.foreground": "{{text}}"
+  },
+  "tokenColors": [
+    {
+      "scope": ["keyword", "storage"],
+      "settings": { "foreground": "{{primary}}" }
+    },
+    {
+      "scope": ["entity.name.type", "support.type"],
+      "settings": { "foreground": "{{primary}}" }
+    },
+    {
+      "scope": ["entity.name.function", "support.function"],
+      "settings": { "foreground": "{{primary}}" }
+    },
+    {
+      "scope": ["string", "constant.numeric"],
+      "settings": { "foreground": "{{accent}}" }
+    },
+    {
+      "scope": ["constant", "variable.language"],
+      "settings": { "foreground": "{{accent}}" }
+    },
+    {
+      "scope": ["comment"],
+      "settings": { "foreground": "{{muted}}", "fontStyle": "italic" }
+    },
+    {
+      "scope": ["invalid"],
+      "settings": { "foreground": "{{danger}}" }
+    }
+  ]
+}

@@ -1,0 +1,61 @@
+<section class="scene" data-scene-id="problem" data-duration="5s" data-bg="vignette">
+  <style>
+    [data-scene-id="problem"] h2 {
+      font-size: 64px;
+      font-weight: 700;
+      margin-bottom: 48px;
+    }
+    [data-scene-id="problem"] .evidence-wall {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 24px;
+      flex: 1;
+    }
+    [data-scene-id="problem"] .evidence-card {
+      background: color-mix(in srgb, var(--brand-text) 5%, transparent);
+      border: 1px solid color-mix(in srgb, var(--brand-text) 10%, transparent);
+      border-radius: 12px;
+      padding: 32px;
+      font-size: 24px;
+      transform: rotate(var(--tilt, 0deg));
+    }
+    [data-scene-id="problem"] .tagline {
+      opacity: 0;
+    }
+  </style>
+
+  <h2>{{problemHeadline}}</h2>
+  <div class="evidence-wall">
+    <!-- evidence cards go here -->
+  </div>
+  <p class="tagline">{{problemTagline}}</p>
+
+  <script>
+    (function () {
+      const scene = document.querySelector('[data-scene-id="problem"]');
+      const cards = scene.querySelectorAll(".evidence-card");
+      const tagline = scene.querySelector(".tagline");
+      const dur = parseFloat(scene.dataset.duration);
+
+      cards.forEach((c) => {
+        c.style.setProperty("--tilt", (Math.random() * 4 - 2).toFixed(1) + "deg");
+      });
+
+      gsap.from(cards, {
+        opacity: 0,
+        y: 30,
+        stagger: 0.15,
+        duration: 0.5,
+        ease: "power2.out",
+      });
+
+      gsap.to(tagline, {
+        opacity: 1,
+        y: 0,
+        delay: dur * 0.7,
+        duration: 0.6,
+        ease: "power2.out",
+      });
+    })();
+  </script>
+</section>

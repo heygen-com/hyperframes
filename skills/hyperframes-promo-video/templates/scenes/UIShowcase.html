@@ -1,0 +1,58 @@
+<section class="scene" data-scene-id="ui-showcase" data-duration="12s" data-bg="flat">
+  <!-- flat bg: UI screenshots need a neutral canvas so they read as "real app" -->
+  <style>
+    [data-scene-id="ui-showcase"] {
+      justify-content: center;
+      align-items: center;
+    }
+    [data-scene-id="ui-showcase"] .media-frame {
+      width: 85%;
+      max-height: 75%;
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 24px 80px rgba(0, 0, 0, 0.4);
+      position: relative;
+    }
+    [data-scene-id="ui-showcase"] .media-frame img,
+    [data-scene-id="ui-showcase"] .media-frame video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    [data-scene-id="ui-showcase"] .callout {
+      position: absolute;
+      background: var(--brand-primary);
+      color: var(--brand-bg);
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-size: 20px;
+      font-weight: 600;
+      opacity: 0;
+      white-space: nowrap;
+    }
+  </style>
+
+  <div class="media-frame" data-media-kind="image">
+    <!-- img or video element goes here -->
+    <!-- callout overlays positioned by percentage -->
+  </div>
+
+  <script>
+    (function () {
+      const scene = document.querySelector('[data-scene-id="ui-showcase"]');
+      const callouts = scene.querySelectorAll(".callout");
+      const dur = parseFloat(scene.dataset.duration);
+
+      callouts.forEach((c, i) => {
+        const enterDelay = dur * 0.4 + i * ((dur * 0.2) / callouts.length);
+        gsap.to(c, {
+          opacity: 1,
+          y: -10,
+          delay: enterDelay,
+          duration: 0.5,
+          ease: "power2.out",
+        });
+      });
+    })();
+  </script>
+</section>
