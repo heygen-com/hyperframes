@@ -55,14 +55,10 @@ describe("policies — buildPolicyDocument", () => {
 
 describe("policies — buildRoleTrustPolicy", () => {
   it("returns a sts:AssumeRole statement scoped to the requested service", () => {
-    const trust = buildRoleTrustPolicy("cloudformation") as {
-      Statement: { Action: string; Principal: { Service: string } }[];
-    };
+    const trust = buildRoleTrustPolicy("cloudformation");
     expect(trust.Statement[0]!.Action).toBe("sts:AssumeRole");
     expect(trust.Statement[0]!.Principal.Service).toBe("cloudformation.amazonaws.com");
-    const lambdaTrust = buildRoleTrustPolicy("lambda") as {
-      Statement: { Principal: { Service: string } }[];
-    };
+    const lambdaTrust = buildRoleTrustPolicy("lambda");
     expect(lambdaTrust.Statement[0]!.Principal.Service).toBe("lambda.amazonaws.com");
   });
 });

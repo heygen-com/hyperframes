@@ -37,6 +37,22 @@ interface PolicyDocument {
 }
 
 /**
+ * Trust-policy shape consumed by `policies role`. Has a `Principal`
+ * field (which generic `PolicyStatement` does not model) — keep it as
+ * a separate type rather than polluting the action-policy shape.
+ */
+interface TrustPolicyStatement {
+  Effect: "Allow";
+  Principal: { Service: string };
+  Action: "sts:AssumeRole";
+}
+
+interface TrustPolicyDocument {
+  Version: "2012-10-17";
+  Statement: TrustPolicyStatement[];
+}
+
+/**
  * Actions the CLI needs to deploy/invoke/destroy the stack. Keep this
  * sorted alphabetically inside each service so diffs stay readable.
  */
@@ -166,13 +182,8 @@ export function buildPolicyDocument(): PolicyDocument {
   };
 }
 
-/**
- * Trust policy a service-linked IAM role consumes (used by `policies role`).
- * Returned as a structurally-correct `Allow sts:AssumeRole` with the named
- * service principal attached — the `Principal` field is an IAM-specific
- * extension not modelled by our generic `PolicyStatement` type.
- */
-export function buildRoleTrustPolicy(principal: "lambda" | "cloudformation"): unknown {
+/** Trust policy a service-linked IAM role consumes (used by `policies role`). */
+export function buildRoleTrustPolicy(principal: "lambda" | "cloudformation"): TrustPolicyDocument {
   const Service = principal === "lambda" ? "lambda.amazonaws.com" : "cloudformation.amazonaws.com";
   return {
     Version: "2012-10-17",
