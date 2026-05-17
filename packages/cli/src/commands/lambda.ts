@@ -139,6 +139,30 @@ export default defineCommand({
     const regionFlag = args.region as string | undefined;
     if (regionFlag) process.env.AWS_REGION = regionFlag;
 
+    // The lambda subverbs dynamic-import `@hyperframes/aws-lambda` at call
+    // time. We keep aws-lambda as a workspace devDependency (not a runtime
+    // dep) so the published CLI install stays small for users who don't
+    // deploy to Lambda. Subverbs other than `policies` need aws-lambda;
+    // catch the missing-module error here and turn it into a friendly hint.
+    const verbsNeedingSDK = new Set(["deploy", "sites", "render", "progress", "destroy"]);
+    if (verbsNeedingSDK.has(subcommand)) {
+      try {
+        await import("@hyperframes/aws-lambda/sdk");
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code === "ERR_MODULE_NOT_FOUND") {
+          console.error(
+            `${c.error("@hyperframes/aws-lambda is not installed.")} The ${c.accent(`hyperframes lambda ${subcommand}`)} command needs it at runtime.\n` +
+              `Install it alongside the CLI:\n` +
+              `  ${c.accent("npm install -g @hyperframes/aws-lambda")}\n` +
+              `Or, for an opt-in dev setup:\n` +
+              `  ${c.accent("npm install @hyperframes/aws-lambda")}`,
+          );
+          process.exit(1);
+        }
+        throw err;
+      }
+    }
+
     switch (subcommand) {
       case "deploy": {
         const { runDeploy } = await import("./lambda/deploy.js");

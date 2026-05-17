@@ -5,7 +5,6 @@
  * from the stack's region + state-machine name).
  */
 
-import { getRenderProgress } from "@hyperframes/aws-lambda/sdk";
 import { c } from "../../ui/colors.js";
 import { requireStack } from "./state.js";
 
@@ -26,6 +25,9 @@ export async function runProgress(args: ProgressArgs): Promise<void> {
     ? args.target
     : executionArnFromName(stack.stateMachineArn, args.target);
 
+  // Dynamic-import the SDK so tsup keeps it out of the static-import head
+  // of the CLI bundle. See sites.ts loadSDK() for the full rationale.
+  const { getRenderProgress } = await import("@hyperframes/aws-lambda/sdk");
   const progress = await getRenderProgress({
     executionArn,
     region: stack.region,

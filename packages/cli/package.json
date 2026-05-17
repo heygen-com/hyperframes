@@ -25,7 +25,6 @@
   },
   "dependencies": {
     "@hono/node-server": "^1.8.0",
-    "@hyperframes/aws-lambda": "workspace:*",
     "@puppeteer/browsers": "^2.13.0",
     "adm-zip": "^0.5.16",
     "citty": "^0.2.1",
@@ -43,6 +42,7 @@
   },
   "devDependencies": {
     "@clack/prompts": "^1.1.0",
+    "@hyperframes/aws-lambda": "workspace:*",
     "@hyperframes/core": "workspace:*",
     "@hyperframes/engine": "workspace:*",
     "@hyperframes/producer": "workspace:*",
