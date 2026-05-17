@@ -3,6 +3,7 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
+    "ignoreDeprecations": "5.0",
     "baseUrl": ".",
     "paths": {
       "@hyperframes/producer": ["../producer/src/index.ts"]
@@ -12,7 +13,8 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "outDir": "./dist",
-    "declaration": true
+    "declaration": true,
+    "rootDir": ".."
   },
   "include": ["src"],
   "exclude": ["node_modules", "dist"]
