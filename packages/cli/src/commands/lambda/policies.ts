@@ -72,6 +72,7 @@ export const REQUIRED_ACTIONS = {
     "cloudformation:GetTemplateSummary",
     "cloudformation:ListStacks",
     "cloudformation:UpdateStack",
+    "cloudformation:ValidateTemplate",
   ],
   cloudwatchAlarms: [
     "cloudwatch:DeleteAlarms",
@@ -122,6 +123,7 @@ export const REQUIRED_ACTIONS = {
     "s3:GetBucketTagging",
     "s3:GetBucketVersioning",
     "s3:GetLifecycleConfiguration",
+    "s3:ListAllMyBuckets",
     "s3:ListBucket",
     "s3:PutBucketPolicy",
     "s3:PutBucketTagging",
@@ -144,10 +146,6 @@ export const REQUIRED_ACTIONS = {
     "states:UntagResource",
     "states:UpdateStateMachine",
   ],
-  // The artifact bucket SAM auto-creates via --resolve-s3 needs a few
-  // permissions on the `aws-sam-cli-*` bucket. Adopters who set
-  // --s3-bucket explicitly can drop these.
-  samArtifactBucket: ["s3:CreateBucket", "s3:GetObject", "s3:ListBucket", "s3:PutObject"],
 };
 
 /** All required actions flattened, deduped, sorted. */
@@ -182,15 +180,20 @@ export function buildPolicyDocument(): PolicyDocument {
   };
 }
 
-/** Trust policy a service-linked IAM role consumes (used by `policies role`). */
-export function buildRoleTrustPolicy(principal: "lambda" | "cloudformation"): TrustPolicyDocument {
-  const Service = principal === "lambda" ? "lambda.amazonaws.com" : "cloudformation.amazonaws.com";
+/**
+ * Trust policy for a CloudFormation service role (used by `policies role`).
+ * Lambda execution roles are out of scope here: the SAM template creates
+ * its own scoped execution role, and emitting a `lambda.amazonaws.com`
+ * trust paired with the full deploy-superset inline policy below would
+ * be a confusingly-overscoped runtime role no human should attach.
+ */
+export function buildRoleTrustPolicy(): TrustPolicyDocument {
   return {
     Version: "2012-10-17",
     Statement: [
       {
         Effect: "Allow",
-        Principal: { Service },
+        Principal: { Service: "cloudformation.amazonaws.com" },
         Action: "sts:AssumeRole",
       },
     ],
@@ -201,8 +204,6 @@ export interface PoliciesArgs {
   verb: PoliciesVerb;
   /** For `validate`: path to an IAM policy JSON file. */
   inputPath?: string;
-  /** For `role`: which service the role trusts. */
-  principal: "lambda" | "cloudformation";
   /** Print JSON only. Default true for `role`/`user` (output is JSON by definition); ignored for `validate`. */
   json: boolean;
 }
@@ -222,7 +223,7 @@ export async function runPolicies(args: PoliciesArgs): Promise<void> {
       return;
     }
     case "role": {
-      const trust = buildRoleTrustPolicy(args.principal);
+      const trust = buildRoleTrustPolicy();
       const inline = buildPolicyDocument();
       const wrapped = {
         TrustRelationship: trust,
@@ -233,15 +234,36 @@ export async function runPolicies(args: PoliciesArgs): Promise<void> {
     }
     case "validate": {
       if (!args.inputPath) {
-        throw new Error(
-          "[lambda policies validate] usage: hyperframes lambda policies validate <policy.json>",
-        );
+        const msg =
+          "[lambda policies validate] usage: hyperframes lambda policies validate <policy.json>";
+        if (args.json) {
+          console.log(JSON.stringify({ ok: false, error: msg }, null, 2));
+          process.exitCode = 1;
+          return;
+        }
+        throw new Error(msg);
       }
-      const result = validatePolicy(args.inputPath);
+      let result: ValidateResult;
+      try {
+        result = validatePolicy(args.inputPath);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (args.json) {
+          console.log(JSON.stringify({ ok: false, error: msg }, null, 2));
+          process.exitCode = 1;
+          return;
+        }
+        console.error(c.error(`Failed to validate ${args.inputPath}: ${msg}`));
+        process.exitCode = 1;
+        return;
+      }
       if (args.json) {
-        console.log(JSON.stringify(result, null, 2));
+        console.log(JSON.stringify({ ok: result.missing.length === 0, ...result }, null, 2));
         if (result.missing.length > 0) process.exitCode = 1;
         return;
+      }
+      for (const warning of result.warnings) {
+        console.warn(c.dim(`Warning: ${warning}`));
       }
       if (result.missing.length === 0) {
         console.log(c.success(`Policy covers all ${result.required.length} required actions.`));
@@ -265,6 +287,8 @@ export interface ValidateResult {
   required: string[];
   granted: string[];
   missing: string[];
+  /** Non-fatal warnings about policy shapes we couldn't fully evaluate. */
+  warnings: string[];
 }
 
 /**
@@ -272,26 +296,71 @@ export interface ValidateResult {
  * "granted" actions. Returns the difference vs {@link allRequiredActions}.
  *
  * Supports the common shapes: `Action` as a string or array; `Statement`
- * as a single object or an array; wildcards (`s3:*`, `*`) expand to
- * match anything in the required list.
+ * as a single object or an array; wildcards (`s3:*`, `s3:Get*`, `*`)
+ * expand to match anything in the required list.
+ *
+ * Limitations surfaced as `warnings`:
+ *   - `NotAction` / `NotResource` shapes — IAM grants the complement of
+ *     the listed actions, but a sound check would need to model the
+ *     full IAM action namespace. We flag the statement instead of
+ *     producing a false negative.
+ *   - Mid-string wildcards (`s3:Get*Object`, `?`) — supported by IAM,
+ *     not by our matcher. We end-anchor only.
  */
 export function validatePolicy(policyPath: string): ValidateResult {
   const raw = readFileSync(policyPath, "utf-8");
   const parsed = JSON.parse(raw) as { Statement?: unknown };
-  const statements: Array<{ Effect?: string; Action?: unknown }> = Array.isArray(parsed.Statement)
-    ? (parsed.Statement as { Effect?: string; Action?: unknown }[])
+  const statements: Array<{
+    Effect?: string;
+    Action?: unknown;
+    NotAction?: unknown;
+    NotResource?: unknown;
+  }> = Array.isArray(parsed.Statement)
+    ? (parsed.Statement as {
+        Effect?: string;
+        Action?: unknown;
+        NotAction?: unknown;
+        NotResource?: unknown;
+      }[])
     : parsed.Statement
-      ? [parsed.Statement as { Effect?: string; Action?: unknown }]
+      ? [
+          parsed.Statement as {
+            Effect?: string;
+            Action?: unknown;
+            NotAction?: unknown;
+            NotResource?: unknown;
+          },
+        ]
       : [];
 
   const grantedPatterns: string[] = [];
+  const warnings: string[] = [];
   for (const stmt of statements) {
     if (stmt.Effect !== "Allow") continue;
+    if (stmt.NotAction !== undefined) {
+      warnings.push(
+        "Allow statement uses NotAction; the validator only checks positive Action grants, so this statement is being ignored. Convert to an explicit Action list to validate it.",
+      );
+      continue;
+    }
+    if (stmt.NotResource !== undefined) {
+      warnings.push(
+        "Allow statement uses NotResource; resource-scoping is not modelled by this validator. Treating the statement as fully granted on its Action set.",
+      );
+    }
     const actions = stmt.Action;
     if (typeof actions === "string") {
       grantedPatterns.push(actions);
     } else if (Array.isArray(actions)) {
       for (const a of actions) if (typeof a === "string") grantedPatterns.push(a);
+    }
+  }
+
+  for (const pattern of grantedPatterns) {
+    if (hasMidStringWildcard(pattern)) {
+      warnings.push(
+        `Action pattern ${JSON.stringify(pattern)} contains a mid-string wildcard the validator can't expand; only end-anchored wildcards (\`*\`, \`service:*\`, \`prefix*\`) are honoured.`,
+      );
     }
   }
 
@@ -305,7 +374,16 @@ export function validatePolicy(policyPath: string): ValidateResult {
       missing.push(action);
     }
   }
-  return { required, granted, missing };
+  return { required, granted, missing, warnings };
+}
+
+function hasMidStringWildcard(pattern: string): boolean {
+  // Wildcards we DO support: bare `*`, `service:*`, `prefix*` (single
+  // trailing `*`). Anything else (mid-string `*` or `?`) is mid-string.
+  if (pattern === "*") return false;
+  if (pattern.endsWith(":*")) return false;
+  if (pattern.endsWith("*") && !pattern.slice(0, -1).includes("*")) return false;
+  return pattern.includes("*") || pattern.includes("?");
 }
 
 function actionMatches(pattern: string, action: string): boolean {

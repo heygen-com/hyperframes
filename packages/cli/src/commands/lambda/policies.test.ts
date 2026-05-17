@@ -54,12 +54,10 @@ describe("policies — buildPolicyDocument", () => {
 });
 
 describe("policies — buildRoleTrustPolicy", () => {
-  it("returns a sts:AssumeRole statement scoped to the requested service", () => {
-    const trust = buildRoleTrustPolicy("cloudformation");
+  it("returns a sts:AssumeRole statement for the CloudFormation service principal", () => {
+    const trust = buildRoleTrustPolicy();
     expect(trust.Statement[0]!.Action).toBe("sts:AssumeRole");
     expect(trust.Statement[0]!.Principal.Service).toBe("cloudformation.amazonaws.com");
-    const lambdaTrust = buildRoleTrustPolicy("lambda");
-    expect(lambdaTrust.Statement[0]!.Principal.Service).toBe("lambda.amazonaws.com");
   });
 });
 
@@ -166,6 +164,59 @@ describe("policies — validatePolicy", () => {
     // IAM policy evaluation order is out of scope; we only confirm the
     // Allow set covers required actions.
     expect(result.missing).toEqual([]);
+  });
+
+  it("warns on NotAction shapes instead of producing a false negative", () => {
+    const path = writePolicy({
+      Version: "2012-10-17",
+      Statement: [{ Effect: "Allow", NotAction: ["iam:DeleteUser"], Resource: "*" }],
+    } as unknown as Parameters<typeof writePolicy>[0]);
+    const result = validatePolicy(path);
+    expect(result.warnings.some((w) => /NotAction/.test(w))).toBe(true);
+    // Without the warning, the validator would silently report everything
+    // as missing. With it, the validator skips the statement and reports
+    // honestly.
+    expect(result.missing.length).toBeGreaterThan(0);
+  });
+
+  it("warns on NotResource shapes but still grants the listed actions", () => {
+    const path = writePolicy({
+      Version: "2012-10-17",
+      Statement: [
+        { Effect: "Allow", Action: ["*"], NotResource: ["arn:aws:s3:::secret-bucket/*"] },
+      ],
+    } as unknown as Parameters<typeof writePolicy>[0]);
+    const result = validatePolicy(path);
+    expect(result.warnings.some((w) => /NotResource/.test(w))).toBe(true);
+    expect(result.missing).toEqual([]);
+  });
+
+  it("warns on mid-string wildcard patterns (`s3:Get*Object`)", () => {
+    const path = writePolicy({
+      Version: "2012-10-17",
+      Statement: [{ Effect: "Allow", Action: ["s3:Get*Object"], Resource: "*" }],
+    });
+    const result = validatePolicy(path);
+    expect(result.warnings.some((w) => /mid-string wildcard/.test(w))).toBe(true);
+  });
+
+  it("throws ENOENT for a missing file (caller decides UX)", () => {
+    expect(() => validatePolicy(join(workdir, "does-not-exist.json"))).toThrow();
+  });
+
+  it("throws SyntaxError for malformed JSON (caller decides UX)", () => {
+    const path = join(workdir, "bad.json");
+    writeFileSync(path, "{ not json");
+    expect(() => validatePolicy(path)).toThrow();
+  });
+
+  it("treats an absent Statement field as zero grants", () => {
+    const path = writePolicy({ Version: "2012-10-17" } as unknown as Parameters<
+      typeof writePolicy
+    >[0]);
+    const result = validatePolicy(path);
+    expect(result.granted).toEqual([]);
+    expect(result.missing).toEqual(allRequiredActions());
   });
 });
 
