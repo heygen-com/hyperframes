@@ -23,17 +23,18 @@
  */
 
 import {
-  createReadStream,
   createWriteStream,
   existsSync,
   mkdirSync,
   readFileSync,
   statSync,
+  writeFileSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
 import { pipeline } from "node:stream/promises";
 import { Readable } from "node:stream";
 import type { Fps } from "@hyperframes/core";
+import { downloadS3ObjectToFile, tarDirectory, untarDirectory } from "@hyperframes/aws-lambda";
 import { handler } from "@hyperframes/aws-lambda/handler";
 import type {
   AssembleEvent,
@@ -45,7 +46,6 @@ import type {
   RenderChunkLambdaResult,
   SerializableDistributedRenderConfig,
 } from "@hyperframes/aws-lambda";
-import { downloadS3ObjectToFile, tarDirectory } from "@hyperframes/aws-lambda";
 
 /** Inputs for {@link runLambdaLocalRender}. Same contract as `runDistributedSimulatedRender`. */
 export interface RunLambdaLocalInput {
@@ -153,7 +153,6 @@ export async function runLambdaLocalRender(input: RunLambdaLocalInput): Promise<
   if (input.format === "png-sequence") {
     const tarPath = join(s3Root, finalKey);
     mkdirSync(input.renderedOutputPath, { recursive: true });
-    const { untarDirectory } = await import("@hyperframes/aws-lambda");
     await untarDirectory(tarPath, input.renderedOutputPath);
   } else {
     await downloadS3ObjectToFile(
@@ -195,14 +194,10 @@ class FilesystemBackedFakeS3 {
     if (cmdName === "PutObjectCommand") {
       mkdirSync(dirname(fsPath), { recursive: true });
       const body = input.Body;
-      if (body instanceof Buffer) {
-        const { writeFileSync } = await import("node:fs");
+      if (body instanceof Buffer || typeof body === "string") {
         writeFileSync(fsPath, body);
       } else if (body && typeof (body as NodeJS.ReadableStream).pipe === "function") {
         await pipeline(body as NodeJS.ReadableStream, createWriteStream(fsPath));
-      } else if (typeof body === "string") {
-        const { writeFileSync } = await import("node:fs");
-        writeFileSync(fsPath, body);
       } else {
         throw new Error(`FakeS3: PutObject body shape not supported (${typeof body})`);
       }
@@ -223,12 +218,6 @@ class FilesystemBackedFakeS3 {
     throw new Error(`FakeS3: unexpected command ${cmdName}`);
   }
 }
-
-// Reference `createReadStream` so the dynamic node:fs import above isn't
-// dropped by aggressive bundlers; the handler's tar / S3 transport
-// internally relies on the real createReadStream when it's the one
-// reading.
-void createReadStream;
 
 // Re-export the Fps type so callers that pass through this module's
 // boundary don't need a second @hyperframes/core dep declaration.
