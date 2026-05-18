@@ -234,17 +234,26 @@ export function useTimelineComments({
 
   const cancelAgentRun = useCallback(
     (commentId: string) => {
+      // Owned by this client: aborting the fetch fires the controller's
+      // .catch, which sets the "Stopped." status. A run reattached from a
+      // previous page load (see fetchActiveCommentId) has no local fetch, so
+      // cancel() is a no-op there — we clear its stale status explicitly.
       const wasActive = agentRunController.activeId() === commentId;
       agentRunController.cancel(commentId);
-      if (wasActive && projectId) {
+      if (projectId) {
+        // The server cancels any run matching commentId regardless of which
+        // client started it, so always POST.
         void fetch(`/api/projects/${projectId}/agent/cancel`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ commentId }),
         }).catch(() => null);
       }
+      if (!wasActive) {
+        setStatus(commentId, null);
+      }
     },
-    [agentRunController, projectId],
+    [agentRunController, projectId, setStatus],
   );
 
   const clearTimelineComment = useCallback(
@@ -368,11 +377,12 @@ export function useTimelineComments({
   // The agent is instructed to remove the comment marker when its work is done.
   // If the stream itself doesn't terminate (some agents keep their session
   // alive after completing the task), the marker-gone state is our authoritative
-  // completion signal — cancel the open fetch so the active slot is released.
+  // completion signal — complete() aborts the open fetch to release the active
+  // slot while reporting the run as "Done." rather than "Stopped."
   useEffect(() => {
     const active = agentRunController.activeId();
     if (shouldCompleteActive(active, timelineComments)) {
-      agentRunController.cancel(active!);
+      agentRunController.complete(active!);
     }
   }, [agentRunController, timelineComments]);
 

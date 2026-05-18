@@ -35,6 +35,7 @@ export interface AgentRunControllerOptions {
 export interface AgentRunController {
   run: (comment: TimelineComment, meta?: AgentRunMeta) => boolean;
   cancel: (commentId: string) => void;
+  complete: (commentId: string) => void;
   activeId: () => string | null;
   abortAll: () => void;
 }
@@ -48,6 +49,9 @@ export function createAgentRunController({
 }: AgentRunControllerOptions): AgentRunController {
   let activeId: string | null = null;
   let activeAbort: AbortController | null = null;
+  // Set when a run is aborted because its work succeeded (marker removed)
+  // rather than because the user cancelled it — drives "Done." vs "Stopped."
+  let completingId: string | null = null;
 
   return {
     run(comment, meta = {}) {
@@ -65,7 +69,8 @@ export function createAgentRunController({
             onStatus(comment.id, null);
             onBlocked?.(comment.id, err);
           } else if (controller.signal.aborted) {
-            onStatus(comment.id, { status: "stopped", message: "Stopped." });
+            const message = completingId === comment.id ? "Done." : "Stopped.";
+            onStatus(comment.id, { status: "stopped", message });
           } else {
             const message = err instanceof Error ? err.message : String(err);
             onStatus(comment.id, { status: "error", message });
@@ -74,6 +79,7 @@ export function createAgentRunController({
         .finally(() => {
           activeId = null;
           activeAbort = null;
+          completingId = null;
           try {
             onSettled?.(comment.id);
           } catch {
@@ -84,6 +90,12 @@ export function createAgentRunController({
     },
     cancel(commentId) {
       if (activeId === commentId) {
+        activeAbort?.abort();
+      }
+    },
+    complete(commentId) {
+      if (activeId === commentId) {
+        completingId = commentId;
         activeAbort?.abort();
       }
     },

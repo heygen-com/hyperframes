@@ -125,6 +125,78 @@ describe("createAgentRunController", () => {
     expect(controller.activeId()).toBeNull();
   });
 
+  it("reports a completed run via abort as Done.", async () => {
+    const statuses: Array<[string, AgentRunState | null]> = [];
+    const d = deferred<void>();
+    const signals: AbortSignal[] = [];
+    const controller = createAgentRunController({
+      run: (_c, signal) => {
+        signals.push(signal);
+        signal.addEventListener("abort", () => d.reject(new Error("aborted")));
+        return d.promise;
+      },
+      onStatus: (id, s) => statuses.push([id, s]),
+    });
+
+    controller.run(comment("a"));
+    controller.complete("a");
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(signals[0]!.aborted).toBe(true);
+    expect(statuses).toEqual([
+      ["a", { status: "running" }],
+      ["a", { status: "stopped", message: "Done." }],
+    ]);
+    expect(controller.activeId()).toBeNull();
+  });
+
+  it("ignores complete for an inactive comment", async () => {
+    const statuses: Array<[string, AgentRunState | null]> = [];
+    const d = deferred<void>();
+    const controller = createAgentRunController({
+      run: () => d.promise,
+      onStatus: (id, s) => statuses.push([id, s]),
+    });
+
+    controller.run(comment("a"));
+    controller.complete("b");
+
+    expect(controller.activeId()).toBe("a");
+    expect(statuses).toEqual([["a", { status: "running" }]]);
+
+    d.resolve();
+    await new Promise((r) => setTimeout(r, 0));
+  });
+
+  it("does not carry completingId into a later cancelled run", async () => {
+    const statuses: Array<[string, AgentRunState | null]> = [];
+    const deferreds = [deferred<void>(), deferred<void>()];
+    let runCount = 0;
+    const controller = createAgentRunController({
+      run: (_c, signal) => {
+        const d = deferreds[runCount++]!;
+        signal.addEventListener("abort", () => d.reject(new Error("aborted")));
+        return d.promise;
+      },
+      onStatus: (id, s) => statuses.push([id, s]),
+    });
+
+    controller.run(comment("a"));
+    controller.complete("a");
+    await new Promise((r) => setTimeout(r, 0));
+
+    controller.run(comment("b"));
+    controller.cancel("b");
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(statuses).toEqual([
+      ["a", { status: "running" }],
+      ["a", { status: "stopped", message: "Done." }],
+      ["b", { status: "running" }],
+      ["b", { status: "stopped", message: "Stopped." }],
+    ]);
+  });
+
   it("ignores cancel for an inactive comment", async () => {
     const statuses: Array<[string, AgentRunState | null]> = [];
     const d = deferred<void>();
