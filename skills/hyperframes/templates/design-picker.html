@@ -2672,8 +2672,13 @@
           // Extract font links before stripping
           var fontLinks = summary.match(/<link[^>]*fonts\.googleapis[^>]*>/g) || [];
           var skeletonHtml = summary.replace(/<style[\s\S]*?<\/style>/, "").replace(/<link[^>]*>/g, "").trim();
-          // Inject template font links into design page head
-          if (fontLinks.length) h = h.replace('</head>', fontLinks.join('\n') + '\n</head>');
+          // Inject template font links + picker's selected fonts into design page head
+          var pickerFontLink = '';
+          if (picks.type !== null) {
+            var ft = TYPEPAIRS[picks.type];
+            pickerFontLink = '<link href="https://fonts.googleapis.com/css2?family=' + ft.headline.family.replace(/ /g,'+') + ':wght@' + ft.headline.weight + '&family=' + ft.body.family.replace(/ /g,'+') + ':wght@' + ft.body.weight + '&display=swap" rel="stylesheet">';
+          }
+          h = h.replace('</head>', fontLinks.join('\n') + '\n' + pickerFontLink + '\n</head>');
           if (styleMatch) {
             var tmplCss = styleMatch[0].replace(/<\/?style[^>]*>/g, "");
             tmplCss = tmplCss.replace(/--tp-primary:\s*[^;]+;/g, "--tp-primary: var(--primary);");
@@ -2685,6 +2690,13 @@
             scoped += "\n.ds-slide-frame .slide.dark{background:" + p.secondary + "!important;color:" + p.primary + "!important}";
             scoped += "\n.ds-slide-frame .slide.orange{background:" + p.accent + "!important}";
             scoped += "\n.ds-slide-frame .slide.light{background:" + p.primary + "!important;color:" + p.secondary + "!important}";
+            // Force picker's font choices onto slide content
+            if (picks.type !== null) {
+              var ft = TYPEPAIRS[picks.type];
+              scoped += "\n.ds-slide-frame{--f-display:'" + ft.headline.family + "',sans-serif!important;--f-heading:'" + ft.headline.family + "',sans-serif!important;--f-body:'" + ft.body.family + "',sans-serif!important}";
+              scoped += "\n.ds-slide-frame [class*='heading'],.ds-slide-frame .display,.ds-slide-frame .h1,.ds-slide-frame .h2,.ds-slide-frame .h3,.ds-slide-frame .hero-title,.ds-slide-frame .nb-heading-xl,.ds-slide-frame .nb-heading-lg,.ds-slide-frame .nb-heading-md{font-family:'" + ft.headline.family + "',sans-serif!important;font-weight:" + ft.headline.weight + "!important}";
+              scoped += "\n.ds-slide-frame .lead,.ds-slide-frame .body,.ds-slide-frame p,.ds-slide-frame .nb-body{font-family:'" + ft.body.family + "',sans-serif!important;font-weight:" + ft.body.weight + "!important}";
+            }
             h = h.replace(/__TEMPLATE_CSS__/g, scoped);
           } else { h = h.replace(/__TEMPLATE_CSS__/g, ""); }
           var blocks = skeletonHtml.split(/(?=<!-- )/);
