@@ -77,3 +77,9 @@ Composition authoring (not repo development) is guided by skills installed via `
 - `/hyperframes-tailwind` — Use for projects created with `hyperframes init --tailwind`. Pinned Tailwind v4 browser-runtime contract (distinct from Studio's Tailwind v3 setup).
 - `/hyperframes-media` — Asset preprocessing: `npx hyperframes tts`, `transcribe`, `remove-background`. Has its own skill so the CLI skill stays focused on the dev loop.
 - `/hyperframes-gsap` — GSAP timeline API reference for writing seekable GSAP animations registered on `window.__timelines`, scoped to the HyperFrames runtime contract.
+- `/hyperframes-lottie` — Lottie / dotLottie adapter: embedding lottie-web JSON, .lottie players, `window.__hfLottie` registration, making After Effects exports deterministic.
+- `/hyperframes-three` — Three.js / WebGL adapter: deterministic scenes, `AnimationMixer`, camera motion, shader-driven visuals, `hf-seek` event handling.
+- `/hyperframes-animejs` — Anime.js adapter: timelines registered on `window.__hfAnime`, seek-driven and deterministic.
+- `/hyperframes-css-animations` — Native CSS keyframes adapter: `animation-delay` / `animation-play-state` / `animation-fill-mode` patterns that HyperFrames can seek.
+- `/hyperframes-waapi` — Web Animations API adapter: `element.animate()`, `Animation.currentTime` seeking, `KeyframeEffect` timing, native browser animations.
+- `/hyperframes-typegpu` — TypeGPU / raw WebGPU / WGSL adapter: GPU-rendered canvases driven by `navigator.gpu`, responding to `hf-seek` events.
