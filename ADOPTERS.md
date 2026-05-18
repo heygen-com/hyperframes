@@ -22,3 +22,4 @@ If you'd rather not be listed publicly, that's fine — drop a note in [our Disc
 | [tldraw](https://tldraw.com)             | [@steveruizok](https://github.com/steveruizok) | Generates automated pull-request walkthrough videos with GSAP-animated code diffs, narration, and captions. |
 | [TanStack](https://tanstack.com)         | [@AlemTuzlak](https://github.com/AlemTuzlak)   | Exploring HyperFrames for short-form code demo videos and documentation.                                    |
 | [OptinMonster](https://optinmonster.com) | Angie Meeker                                   | Exploring HyperFrames for marketing and product video content.                                              |
+| [Reap](https://reap.video)               | [@usamaabid](https://github.com/usamaabid)     | Powers lightweight video edits and renders in an AI-driven video processing pipeline for social content.    |
