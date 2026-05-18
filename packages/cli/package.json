@@ -57,7 +57,7 @@
     "vitest": "^3.2.4"
   },
   "optionalDependencies": {
-    "@google/genai": "^1.50.1"
+    "@google/genai": "^1.52.0"
   },
   "engines": {
     "node": ">=22"
