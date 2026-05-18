@@ -12,6 +12,7 @@ import type { TimelineElement } from "../store/playerStore";
 import type { DraggedClipState, ResizingClipState, BlockedClipState } from "./useTimelineClipDrag";
 import { formatTime } from "../lib/time";
 import type { TrackVisualStyle } from "./timelineIcons";
+import type { TimelineComment } from "../../timeline-comments/types";
 
 interface TimelineCanvasProps {
   major: number[];
@@ -23,6 +24,7 @@ interface TimelineCanvasProps {
   majorTickInterval: number;
   shiftHeld: boolean;
   rangeSelection: TimelineRangeSelection | null;
+  comments?: Pick<TimelineComment, "id" | "rangeStart" | "rangeEnd" | "prompt">[];
   theme: TimelineTheme;
   displayTrackOrder: number[];
   trackOrder: number[];
@@ -71,6 +73,7 @@ export const TimelineCanvas = memo(function TimelineCanvas({
   majorTickInterval,
   shiftHeld,
   rangeSelection,
+  comments,
   theme,
   displayTrackOrder,
   trackOrder,
@@ -173,6 +176,7 @@ export const TimelineCanvas = memo(function TimelineCanvas({
         majorTickInterval={majorTickInterval}
         shiftHeld={shiftHeld}
         rangeSelection={rangeSelection}
+        comments={comments}
         theme={theme}
       />
 

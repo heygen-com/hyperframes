@@ -4,6 +4,7 @@ import { usePlayerStore } from "../store/playerStore";
 import { formatTime } from "../lib/time";
 import { buildPromptCopyText, buildTimelineAgentPrompt } from "./timelineEditing";
 import { copyTextToClipboard } from "../../utils/clipboard";
+import type { AgentRunPreview, SendPromptToAgentInput } from "../../timeline-comments/types";
 
 interface EditPopoverProps {
   rangeStart: number;
@@ -11,13 +12,27 @@ interface EditPopoverProps {
   anchorX: number;
   anchorY: number;
   onClose: () => void;
+  onSendPromptToAgent?: (input: SendPromptToAgentInput) => Promise<void> | void;
+  agentRunPreview?: AgentRunPreview | null;
+  onSelectAgent?: (adapterKind: string) => Promise<void> | void;
 }
 
-export function EditPopover({ rangeStart, rangeEnd, anchorX, anchorY, onClose }: EditPopoverProps) {
+export function EditPopover({
+  rangeStart,
+  rangeEnd,
+  anchorX,
+  anchorY,
+  onClose,
+  onSendPromptToAgent,
+  agentRunPreview,
+  onSelectAgent,
+}: EditPopoverProps) {
   const elements = usePlayerStore((s) => s.elements);
   const [prompt, setPrompt] = useState("");
   const [copiedAgentPrompt, setCopiedAgentPrompt] = useState(false);
   const [copiedPromptOnly, setCopiedPromptOnly] = useState(false);
+  const [sendingToAgent, setSendingToAgent] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -83,16 +98,35 @@ export function EditPopover({ rangeStart, rangeEnd, anchorX, anchorY, onClose }:
     }, 800);
   }, [prompt]);
 
+  const handleSendPromptToAgent = useCallback(async () => {
+    if (!onSendPromptToAgent || sendingToAgent) return;
+    setSendingToAgent(true);
+    setSendError(null);
+    try {
+      await onSendPromptToAgent({
+        rangeStart: start,
+        rangeEnd: end,
+        elements: elementsInRange,
+        prompt,
+      });
+      onClose();
+    } catch (err) {
+      setSendError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSendingToAgent(false);
+    }
+  }, [elementsInRange, end, onClose, onSendPromptToAgent, prompt, sendingToAgent, start]);
+
   const style: React.CSSProperties = {
     position: "fixed",
-    left: Math.max(8, Math.min(anchorX - 160, window.innerWidth - 336)),
+    left: Math.max(8, Math.min(anchorX - 240, window.innerWidth - 496)),
     top: Math.max(8, anchorY - 280),
     zIndex: 200,
   };
 
   return (
     <div ref={popoverRef} style={style}>
-      <div className="w-80 bg-neutral-900 border border-neutral-700/60 rounded-xl shadow-2xl shadow-black/40 overflow-hidden">
+      <div className="w-[30rem] max-w-[calc(100vw-16px)] bg-neutral-900 border border-neutral-700/60 rounded-xl shadow-2xl shadow-black/40 overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-2.5 border-b border-neutral-800/60">
           <div className="flex items-center gap-2">
@@ -134,10 +168,11 @@ export function EditPopover({ rangeStart, rangeEnd, anchorX, anchorY, onClose }:
             rows={2}
             className="w-full px-3 py-2 text-xs bg-neutral-800/60 border border-neutral-700/40 rounded-lg text-neutral-200 placeholder:text-neutral-600 resize-none focus:outline-none focus:border-studio-accent/40 transition-colors"
           />
+          {sendError && <div className="mt-2 text-[10px] text-red-400">{sendError}</div>}
         </div>
 
         {/* Action */}
-        <div className="grid grid-cols-2 gap-2 px-3 pb-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 px-3 pb-3">
           <button
             onClick={handleCopyPrompt}
             disabled={!buildPromptCopyText(prompt)}
@@ -162,6 +197,49 @@ export function EditPopover({ rangeStart, rangeEnd, anchorX, anchorY, onClose }:
               <span className="text-[9px] text-studio-accent/50 ml-1.5">Cmd+Enter</span>
             )}
           </button>
+          <button
+            onClick={handleSendPromptToAgent}
+            disabled={!onSendPromptToAgent || sendingToAgent}
+            className="col-span-2 sm:col-span-1 py-1.5 text-[11px] font-medium rounded-lg transition-all border border-studio-accent/25 bg-studio-accent text-black hover:bg-studio-accent/90 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {sendingToAgent ? "Sending..." : "Send to Agent"}
+          </button>
+        </div>
+
+        {/* Agent target */}
+        <div className="px-3 pb-3 -mt-1 space-y-1">
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] text-neutral-500 w-9 flex-shrink-0">Agent</span>
+            {agentRunPreview?.adapters?.some((a) => a.detected) ? (
+              <select
+                value={agentRunPreview.agent ?? ""}
+                onChange={(e) => onSelectAgent?.(e.target.value)}
+                disabled={!onSelectAgent}
+                className="w-auto px-1.5 py-0.5 text-[10px] bg-neutral-800/60 border border-neutral-700/40 rounded text-neutral-300 focus:outline-none focus:border-studio-accent/40 disabled:opacity-50"
+              >
+                {agentRunPreview.adapters
+                  .filter((a) => a.detected)
+                  .map((a) => (
+                    <option key={a.kind} value={a.kind}>
+                      {a.kind}
+                    </option>
+                  ))}
+              </select>
+            ) : (
+              <span className="text-[10px] text-neutral-400 truncate">
+                {agentRunPreview?.agent ?? "unavailable"}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] text-neutral-500 w-9 flex-shrink-0">Path</span>
+            <span
+              className="text-[10px] font-mono text-neutral-400 truncate"
+              title={agentRunPreview?.path ?? undefined}
+            >
+              {agentRunPreview?.path ?? "unavailable"}
+            </span>
+          </div>
         </div>
       </div>
     </div>

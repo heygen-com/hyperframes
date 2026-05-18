@@ -2,6 +2,7 @@ import { memo } from "react";
 import type { TimelineTheme } from "./timelineTheme";
 import type { TimelineRangeSelection } from "./timelineEditing";
 import { GUTTER, RULER_H, formatTimelineTickLabel } from "./timelineLayout";
+import type { TimelineComment } from "../../timeline-comments/types";
 
 interface TimelineRulerProps {
   major: number[];
@@ -13,6 +14,7 @@ interface TimelineRulerProps {
   majorTickInterval: number;
   shiftHeld: boolean;
   rangeSelection: TimelineRangeSelection | null;
+  comments?: Pick<TimelineComment, "id" | "rangeStart" | "rangeEnd" | "prompt">[];
   theme: TimelineTheme;
 }
 
@@ -26,6 +28,7 @@ export const TimelineRuler = memo(function TimelineRuler({
   majorTickInterval,
   shiftHeld,
   rangeSelection,
+  comments = [],
   theme,
 }: TimelineRulerProps) {
   return (
@@ -84,6 +87,19 @@ export const TimelineRuler = memo(function TimelineRuler({
             <div className="w-px h-[5px]" style={{ background: theme.tickMajor }} />
           </div>
         ))}
+        {comments.map((comment) => {
+          const start = Math.max(0, Math.min(effectiveDuration, comment.rangeStart));
+          const end = Math.max(start, Math.min(effectiveDuration, comment.rangeEnd));
+          const width = Math.max(6, (end - start) * pps);
+          return (
+            <div
+              key={comment.id}
+              className="absolute bottom-0 h-[16px] rounded-sm border border-amber-300/50 bg-amber-300/20"
+              style={{ left: start * pps, width }}
+              title={comment.prompt}
+            />
+          );
+        })}
       </div>
     </>
   );

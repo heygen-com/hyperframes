@@ -45,6 +45,8 @@ import {
   normalizeStudioCompositionPath,
   readStudioUrlStateFromWindow,
 } from "./utils/studioUrlState";
+import { TimelineCommentsTray } from "./timeline-comments/TimelineCommentsTray";
+import { useTimelineComments } from "./timeline-comments/useTimelineComments";
 
 export function StudioApp() {
   const { projectId, resolving, waitingForServer } = useServerConnection();
@@ -379,11 +381,26 @@ export function StudioApp() {
     toggleTimelineVisibility,
   };
 
+  const timelineAgent = useTimelineComments({
+    projectId,
+    activeCompPath,
+    editingPathRef: fileManager.editingPathRef,
+    refreshKey,
+    setEditingFile: fileManager.setEditingFile,
+    onProjectContentChanged: () => setRefreshKey((key) => key + 1),
+    onNotify: showToast,
+  });
+
   if (resolving || waitingForServer || !projectId) {
     return <StudioSplash waiting={waitingForServer} />;
   }
 
-  const timelineToolbar = <TimelineToolbar toggleTimelineVisibility={toggleTimelineVisibility} />;
+  const timelineToolbar = (
+    <TimelineToolbar
+      toggleTimelineVisibility={toggleTimelineVisibility}
+      traySlot={<TimelineCommentsTray {...timelineAgent.trayProps} />}
+    />
+  );
   return (
     <StudioProvider value={studioCtxValue}>
       <PanelLayoutProvider value={panelLayout}>
@@ -439,6 +456,10 @@ export function StudioApp() {
                   handleTimelineElementMove={timelineEditing.handleTimelineElementMove}
                   handleTimelineElementResize={timelineEditing.handleTimelineElementResize}
                   handleBlockedTimelineEdit={timelineEditing.handleBlockedTimelineEdit}
+                  onSendPromptToAgent={timelineAgent.sendPromptToAgent}
+                  agentRunPreview={timelineAgent.agentRunPreview}
+                  onSelectAgent={timelineAgent.setPreferredAdapter}
+                  timelineComments={timelineAgent.comments}
                   setCompIdToSrc={setCompIdToSrc}
                   setCompositionLoading={setCompositionLoading}
                   shouldShowSelectedDomBounds={shouldShowSelectedDomBounds}

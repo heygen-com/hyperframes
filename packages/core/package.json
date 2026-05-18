@@ -135,6 +135,7 @@
   },
   "dependencies": {
     "@chenglou/pretext": "^0.0.5",
+    "@nimrobo/superconnector": "^0.2.1",
     "postcss": "^8.5.8"
   },
   "devDependencies": {
