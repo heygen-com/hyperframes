@@ -1,10 +1,20 @@
 import { useState, useCallback, useRef } from "react";
-import type { RightPanelTab } from "../utils/studioHelpers";
+import { isInspectorPanelTab, type RightPanelTab } from "../utils/studioHelpers";
 import { readStudioUiPreferences, writeStudioUiPreferences } from "../utils/studioUiPreferences";
 
 export interface InitialPanelLayoutState {
   rightCollapsed?: boolean | null;
   rightPanelTab?: RightPanelTab | null;
+  rightPanelTabs?: RightPanelTab[] | null;
+}
+
+const MAX_RIGHT_PANEL_TABS = 2;
+
+function clampRightPanelTabs(tabs: RightPanelTab[]): RightPanelTab[] {
+  const deduped = Array.from(new Set(tabs));
+  if (deduped.length === 0) return ["design"];
+  if (deduped.length <= MAX_RIGHT_PANEL_TABS) return deduped;
+  return deduped.slice(-MAX_RIGHT_PANEL_TABS);
 }
 
 export function usePanelLayout(initialState?: InitialPanelLayoutState) {
@@ -14,8 +24,16 @@ export function usePanelLayout(initialState?: InitialPanelLayoutState) {
     () => readStudioUiPreferences().leftCollapsed ?? false,
   );
   const [rightCollapsed, setRightCollapsed] = useState(initialState?.rightCollapsed ?? true);
-  const [rightPanelTab, setRightPanelTab] = useState<RightPanelTab>(
-    initialState?.rightPanelTab ?? "renders",
+  const [rightPanelTabs, setRightPanelTabs] = useState<RightPanelTab[]>(() => {
+    const fromState = initialState?.rightPanelTabs?.filter(Boolean) ?? [];
+    if (fromState.length > 0) return clampRightPanelTabs(fromState);
+    if (initialState?.rightPanelTab) return clampRightPanelTabs([initialState.rightPanelTab]);
+    return clampRightPanelTabs(["design"]);
+  });
+  const [rightPanelFocusTab, setRightPanelFocusTab] = useState<RightPanelTab>(
+    initialState?.rightPanelTab && rightPanelTabs.includes(initialState.rightPanelTab)
+      ? initialState.rightPanelTab
+      : (rightPanelTabs[0] ?? "design"),
   );
   const panelDragRef = useRef<{
     side: "left" | "right";
@@ -63,6 +81,46 @@ export function usePanelLayout(initialState?: InitialPanelLayoutState) {
     panelDragRef.current = null;
   }, []);
 
+  const focusRightPanelTab = useCallback(
+    (tab: RightPanelTab) => {
+      setRightPanelTabs((current) => {
+        if (current.includes(tab)) return current;
+        return clampRightPanelTabs([...current, tab]);
+      });
+      setRightPanelFocusTab(tab);
+    },
+    [setRightPanelTabs, setRightPanelFocusTab],
+  );
+
+  const toggleRightPanelTab = useCallback(
+    (tab: RightPanelTab) => {
+      setRightPanelTabs((current) => {
+        const has = current.includes(tab);
+        if (!has) {
+          const next = clampRightPanelTabs([...current, tab]);
+          setRightPanelFocusTab(tab);
+          return next;
+        }
+        const next = current.filter((item) => item !== tab);
+        if (next.length === 0) {
+          setRightPanelFocusTab("design");
+          return ["design"];
+        }
+        setRightPanelFocusTab((focused) => (focused === tab ? next[next.length - 1]! : focused));
+        return next;
+      });
+    },
+    [setRightPanelTabs, setRightPanelFocusTab],
+  );
+
+  const ensureDesignVisible = useCallback(() => {
+    setRightPanelTabs((current) => {
+      if (current.some((tab) => isInspectorPanelTab(tab))) return current;
+      return clampRightPanelTabs([...current.filter((tab) => tab !== "renders"), "design"]);
+    });
+    setRightPanelFocusTab("design");
+  }, []);
+
   return {
     leftWidth,
     setLeftWidth,
@@ -71,8 +129,11 @@ export function usePanelLayout(initialState?: InitialPanelLayoutState) {
     setLeftCollapsed,
     rightCollapsed,
     setRightCollapsed,
-    rightPanelTab,
-    setRightPanelTab,
+    rightPanelTabs,
+    rightPanelFocusTab,
+    focusRightPanelTab,
+    toggleRightPanelTab,
+    ensureDesignVisible,
     toggleLeftSidebar,
     handlePanelResizeStart,
     handlePanelResizeMove,

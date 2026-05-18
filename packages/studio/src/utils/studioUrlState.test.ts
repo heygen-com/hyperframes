@@ -49,6 +49,7 @@ function renderStudioUrlStateHarness(
     refreshKey: 0,
     previewIframeRef: { current: null },
     rightPanelTab: "renders",
+    rightPanelTabs: ["renders"],
     rightCollapsed: true,
     timelineVisible: true,
     activeCompPathHydrated: true,
@@ -59,6 +60,7 @@ function renderStudioUrlStateHarness(
       activeCompPath: null,
       currentTime: 4.2,
       rightPanelTab: null,
+      rightPanelTabs: null,
       rightCollapsed: null,
       timelineVisible: null,
       selection: null,
@@ -101,6 +103,7 @@ describe("studio url state", () => {
     expect(state.activeCompPath).toBe("compositions/title.html");
     expect(state.currentTime).toBe(4.25);
     expect(state.rightPanelTab).toBe("design");
+    expect(state.rightPanelTabs).toEqual(["design"]);
     expect(state.rightCollapsed).toBe(false);
     expect(state.timelineVisible).toBe(true);
     expect(state.selection).toEqual({
@@ -117,6 +120,7 @@ describe("studio url state", () => {
         activeCompPath: "compositions/title.html",
         currentTime: 4.2571,
         rightPanelTab: "layers",
+        rightPanelTabs: ["layers", "css"],
         rightCollapsed: true,
         timelineVisible: false,
         selection: {
@@ -126,7 +130,7 @@ describe("studio url state", () => {
         },
       }),
     ).toBe(
-      "#project/demo?v=1&comp=compositions%2Ftitle.html&t=4.257&tab=layers&rc=1&tv=0&selFile=index.html&selSelector=.card&selIndex=2",
+      "#project/demo?v=1&comp=compositions%2Ftitle.html&t=4.257&tab=layers&tabs=layers%2Ccss&rc=1&tv=0&selFile=index.html&selSelector=.card&selIndex=2",
     );
   });
 
@@ -136,6 +140,7 @@ describe("studio url state", () => {
     expect(state.activeCompPath).toBeNull();
     expect(state.currentTime).toBeNull();
     expect(state.rightPanelTab).toBeNull();
+    expect(state.rightPanelTabs).toBeNull();
     expect(state.rightCollapsed).toBeNull();
     expect(state.timelineVisible).toBeNull();
     expect(state.selection).toBeNull();
@@ -207,6 +212,7 @@ describe("studio url state", () => {
         current: { contentDocument: previewDoc } as HTMLIFrameElement,
       },
       rightPanelTab: "design",
+      rightPanelTabs: ["design", "css"],
       rightCollapsed: false,
       applyDomSelection,
       buildDomSelectionFromTarget: () => restoredSelection,
@@ -214,6 +220,7 @@ describe("studio url state", () => {
         activeCompPath: null,
         currentTime: 4.2,
         rightPanelTab: "design",
+        rightPanelTabs: ["design", "css"],
         rightCollapsed: false,
         timelineVisible: true,
         selection: { id: "hero" },
@@ -224,6 +231,7 @@ describe("studio url state", () => {
     expect(applyDomSelection).not.toHaveBeenCalled();
     expect(window.location.hash).toContain("t=4.2");
     expect(window.location.hash).toContain("tab=design");
+    expect(window.location.hash).toContain("tabs=design%2Ccss");
 
     act(() => {
       vi.advanceTimersByTime(250);

@@ -1,6 +1,11 @@
 import { useCallback } from "react";
 import { usePlayerStore } from "../player";
 import { FONT_EXT } from "../utils/mediaTypes";
+import {
+  findAuthoredCssRulesInHtml,
+  getAuthoredCssSelectorCandidates,
+  replaceAuthoredCssRuleText,
+} from "../utils/authoredCssRules";
 import { applyPatchByTarget } from "../utils/sourcePatcher";
 import { saveProjectFilesWithHistory } from "../utils/studioFileHistory";
 import { primaryFontFamilyValue } from "../utils/studioFontHelpers";
@@ -35,7 +40,6 @@ import type { EditHistoryKind } from "../utils/editHistory";
 import { useDomEditTextCommits } from "./useDomEditTextCommits";
 
 // ── Types ──
-
 interface RecordEditInput {
   label: string;
   kind: EditHistoryKind;
@@ -60,6 +64,7 @@ export interface UseDomEditCommitsParams {
   previewIframeRef: React.MutableRefObject<HTMLIFrameElement | null>;
   showToast: (message: string, tone?: "error" | "info") => void;
   queueDomEditSave: (save: () => Promise<void>) => Promise<void>;
+  readProjectFile: (path: string) => Promise<string>;
   writeProjectFile: (path: string, content: string) => Promise<void>;
   domEditSaveTimestampRef: React.MutableRefObject<number>;
   editHistory: { recordEdit: (entry: RecordEditInput) => Promise<void> };
@@ -90,6 +95,7 @@ export function useDomEditCommits({
   previewIframeRef,
   showToast,
   queueDomEditSave,
+  readProjectFile,
   writeProjectFile,
   domEditSaveTimestampRef,
   editHistory,
@@ -134,16 +140,7 @@ export function useDomEditCommits({
       if (options?.shouldSave && !options.shouldSave()) return;
 
       const targetPath = selection.sourceFile || activeCompPath || "index.html";
-      const response = await fetch(`/api/projects/${pid}/files/${encodeURIComponent(targetPath)}`);
-      if (!response.ok) {
-        throw new Error(`Failed to read ${targetPath}`);
-      }
-
-      const data = (await response.json()) as { content?: string };
-      const originalContent = data.content;
-      if (typeof originalContent !== "string") {
-        throw new Error(`Missing file contents for ${targetPath}`);
-      }
+      const originalContent = await readProjectFile(targetPath);
 
       let patchedContent = originalContent;
       for (const operation of operations) {
@@ -181,6 +178,7 @@ export function useDomEditCommits({
       writeProjectFile,
       projectIdRef,
       domEditSaveTimestampRef,
+      readProjectFile,
       reloadPreview,
     ],
   );
@@ -436,6 +434,51 @@ export function useDomEditCommits({
     ],
   );
 
+  const handleDomAuthoredCssRuleCommit = useCallback(
+    async (selection: DomEditSelection, matchIndex: number, nextRuleText: string) => {
+      const pid = projectIdRef.current;
+      if (!pid) throw new Error("No active project");
+
+      const targetPath = selection.sourceFile || activeCompPath || "index.html";
+      const originalContent = await readProjectFile(targetPath);
+      const matches = findAuthoredCssRulesInHtml(
+        originalContent,
+        getAuthoredCssSelectorCandidates(selection),
+      );
+      const match = matches[matchIndex];
+      if (!match) throw new Error("Unable to find authored CSS rule for selection");
+
+      const patchedContent = replaceAuthoredCssRuleText(originalContent, match, nextRuleText);
+      if (patchedContent === originalContent) return;
+
+      await queueDomEditSave(async () => {
+        domEditSaveTimestampRef.current = Date.now();
+        await saveProjectFilesWithHistory({
+          projectId: pid,
+          label: "Edit CSS rule",
+          kind: "source",
+          coalesceKey: `css-rule:${targetPath}:${getDomEditTargetKey(selection)}:${matchIndex}`,
+          files: { [targetPath]: patchedContent },
+          readFile: async () => originalContent,
+          writeFile: writeProjectFile,
+          recordEdit: editHistory.recordEdit,
+        });
+
+        reloadPreview();
+      });
+    },
+    [
+      activeCompPath,
+      domEditSaveTimestampRef,
+      editHistory.recordEdit,
+      projectIdRef,
+      queueDomEditSave,
+      readProjectFile,
+      reloadPreview,
+      writeProjectFile,
+    ],
+  );
+
   return {
     resolveImportedFontAsset,
     handleDomStyleCommit,
@@ -454,5 +497,6 @@ export function useDomEditCommits({
     handleDomMotionCommit,
     handleDomMotionClear,
     handleDomEditElementDelete,
+    handleDomAuthoredCssRuleCommit,
   };
 }
