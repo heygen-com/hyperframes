@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
-import { statSync } from "node:fs";
+import { statSync, readFileSync } from "node:fs";
+import { join as joinPath } from "node:path";
 import { lintHyperframeHtml } from "@hyperframes/core";
 import type { LintFinding } from "./types.js";
 import type {
@@ -285,4 +286,27 @@ export function buildAuthoringMessages(args: BuildAuthoringMessagesArgs): Conver
   }
 
   return messages;
+}
+
+// ── Skill bundle loader ───────────────────────────────────────────────────────
+
+function readRequired(filePath: string): string {
+  try {
+    return readFileSync(filePath, "utf-8");
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new Error(`Skill bundle file missing: ${filePath} (${reason})`);
+  }
+}
+
+export function loadSkillBundle(skillsRoot: string): SkillBundle {
+  return {
+    hyperframesSkill: readRequired(joinPath(skillsRoot, "hyperframes", "SKILL.md")),
+    houseStyle: readRequired(joinPath(skillsRoot, "hyperframes", "house-style.md")),
+    patterns: readRequired(joinPath(skillsRoot, "hyperframes", "patterns.md")),
+    visualStyles: readRequired(joinPath(skillsRoot, "hyperframes", "visual-styles.md")),
+    dataInMotion: readRequired(joinPath(skillsRoot, "hyperframes", "data-in-motion.md")),
+    gsapSkill: readRequired(joinPath(skillsRoot, "gsap", "SKILL.md")),
+    amplifierConstraints: readRequired(joinPath(skillsRoot, "amplifier-constraints.md")),
+  };
 }
