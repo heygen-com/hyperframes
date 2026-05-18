@@ -4,12 +4,14 @@ import {
 } from "../player/components/timelineZoom";
 import { getTimelineToggleTitle } from "../utils/timelineDiscovery";
 import { usePlayerStore } from "../player";
+import type { ReactNode } from "react";
 
 interface TimelineToolbarProps {
   toggleTimelineVisibility: () => void;
+  traySlot?: ReactNode;
 }
 
-export function TimelineToolbar({ toggleTimelineVisibility }: TimelineToolbarProps) {
+export function TimelineToolbar({ toggleTimelineVisibility, traySlot }: TimelineToolbarProps) {
   const zoomMode = usePlayerStore((s) => s.zoomMode);
   const manualZoomPercent = usePlayerStore((s) => s.manualZoomPercent);
   const setZoomMode = usePlayerStore((s) => s.setZoomMode);
@@ -17,12 +19,13 @@ export function TimelineToolbar({ toggleTimelineVisibility }: TimelineToolbarPro
   const displayedTimelineZoomPercent = getTimelineZoomPercent(zoomMode, manualZoomPercent);
 
   return (
-    <div className="border-b border-neutral-800/40 bg-neutral-950/96">
+    <div className="relative border-b border-neutral-800/40 bg-neutral-950/96">
       <div className="flex items-center justify-between px-3 py-2">
         <div className="text-[10px] font-medium uppercase tracking-[0.16em] text-neutral-500">
           Timeline
         </div>
         <div className="flex items-center gap-1">
+          {traySlot}
           <button
             type="button"
             onClick={() => setZoomMode("fit")}

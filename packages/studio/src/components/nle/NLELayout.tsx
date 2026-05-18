@@ -10,6 +10,11 @@ import {
   TIMELINE_TOGGLE_SHORTCUT_LABEL,
   getTimelineToggleTitle,
 } from "../../utils/timelineDiscovery";
+import type {
+  AgentRunPreview,
+  SendPromptToAgentInput,
+  TimelineComment,
+} from "../../timeline-comments/types";
 
 interface NLELayoutProps {
   projectId: string;
@@ -53,6 +58,10 @@ interface NLELayoutProps {
   ) => Promise<void> | void;
   onBlockedEditAttempt?: (element: TimelineElement, intent: BlockedTimelineEditIntent) => void;
   onSelectTimelineElement?: (element: TimelineElement | null) => void;
+  onSendPromptToAgent?: (input: SendPromptToAgentInput) => Promise<void> | void;
+  agentRunPreview?: AgentRunPreview | null;
+  onSelectAgent?: (adapterKind: string) => Promise<void> | void;
+  timelineComments?: Pick<TimelineComment, "id" | "rangeStart" | "rangeEnd" | "prompt">[];
   /** Exposes the compIdToSrc map for parent components (e.g., useRenderClipContent) */
   onCompIdToSrcChange?: (map: Map<string, string>) => void;
   /** Whether the timeline panel is visible (default: true) */
@@ -89,6 +98,10 @@ export const NLELayout = memo(function NLELayout({
   onResizeElement,
   onBlockedEditAttempt,
   onSelectTimelineElement,
+  onSendPromptToAgent,
+  agentRunPreview,
+  onSelectAgent,
+  timelineComments,
   onCompIdToSrcChange,
   timelineVisible,
   onToggleTimeline,
@@ -347,10 +360,10 @@ export const NLELayout = memo(function NLELayout({
             <div className="h-px w-full bg-white/10 transition-colors group-hover:bg-white/16 group-active:bg-white/22" />
           </div>
 
-          {/* Timeline section */}
+          {/* Timeline section — fixed height, resizable */}
           <div
             className="relative flex flex-col flex-shrink-0"
-            style={{ height: timelineH }}
+            style={{ height: timelineH, "--timeline-h": `${timelineH}px` } as React.CSSProperties}
             aria-disabled={timelineDisabled || undefined}
           >
             <div
@@ -375,6 +388,10 @@ export const NLELayout = memo(function NLELayout({
                 onResizeElement={onResizeElement}
                 onBlockedEditAttempt={onBlockedEditAttempt}
                 onSelectElement={onSelectTimelineElement}
+                onSendPromptToAgent={onSendPromptToAgent}
+                agentRunPreview={agentRunPreview}
+                onSelectAgent={onSelectAgent}
+                comments={timelineComments}
               />
             </div>
             {timelineFooter && <div className="flex-shrink-0">{timelineFooter}</div>}

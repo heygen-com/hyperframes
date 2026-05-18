@@ -13,6 +13,7 @@ const WATCHER_EXCLUDED_DIRS = new Set([
   ".git",
   ".hyperframes",
   ".next",
+  ".superconnector",
   ".vite",
   "build",
   "coverage",

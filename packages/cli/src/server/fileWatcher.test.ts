@@ -15,5 +15,6 @@ describe("shouldWatchProjectFile", () => {
     expect(shouldWatchProjectFile("renders/output.mp4")).toBe(false);
     expect(shouldWatchProjectFile("dist/index.html")).toBe(false);
     expect(shouldWatchProjectFile(".hyperframes/cache.json")).toBe(false);
+    expect(shouldWatchProjectFile(".superconnector/config.json")).toBe(false);
   });
 });

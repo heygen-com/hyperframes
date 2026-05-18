@@ -20,6 +20,11 @@ import {
   shouldShowTimelineShortcutHint,
   resolveTimelineAssetDrop,
 } from "./timelineLayout";
+import type {
+  AgentRunPreview,
+  SendPromptToAgentInput,
+  TimelineComment,
+} from "../../timeline-comments/types";
 
 // Re-export pure utilities so existing imports from "./Timeline" still resolve.
 export {
@@ -63,6 +68,10 @@ interface TimelineProps {
   ) => Promise<void> | void;
   onBlockedEditAttempt?: (element: TimelineElement, intent: BlockedTimelineEditIntent) => void;
   onSelectElement?: (element: TimelineElement | null) => void;
+  onSendPromptToAgent?: (input: SendPromptToAgentInput) => Promise<void> | void;
+  agentRunPreview?: AgentRunPreview | null;
+  onSelectAgent?: (adapterKind: string) => Promise<void> | void;
+  comments?: Pick<TimelineComment, "id" | "rangeStart" | "rangeEnd" | "prompt">[];
   theme?: Partial<TimelineTheme>;
 }
 
@@ -78,6 +87,10 @@ export const Timeline = memo(function Timeline({
   onResizeElement,
   onBlockedEditAttempt,
   onSelectElement,
+  onSendPromptToAgent,
+  agentRunPreview,
+  onSelectAgent,
+  comments = [],
   theme: themeOverrides,
 }: TimelineProps = {}) {
   const theme = useMemo(() => ({ ...defaultTimelineTheme, ...themeOverrides }), [themeOverrides]);
@@ -422,6 +435,7 @@ export const Timeline = memo(function Timeline({
           majorTickInterval={majorTickInterval}
           shiftHeld={shiftHeld}
           rangeSelection={rangeSelection}
+          comments={comments}
           theme={theme}
           displayTrackOrder={displayTrackOrder}
           trackOrder={trackOrder}
@@ -483,6 +497,9 @@ export const Timeline = memo(function Timeline({
             setShowPopover(false);
             setRangeSelection(null);
           }}
+          onSendPromptToAgent={onSendPromptToAgent}
+          agentRunPreview={agentRunPreview}
+          onSelectAgent={onSelectAgent}
         />
       )}
     </div>

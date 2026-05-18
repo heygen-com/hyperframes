@@ -5,6 +5,11 @@ import { CaptionTimeline } from "../captions/components/CaptionTimeline";
 import { DomEditOverlay } from "./editor/DomEditOverlay";
 import type { TimelineElement } from "../player";
 import type { BlockedTimelineEditIntent } from "../player/components/timelineEditing";
+import type {
+  AgentRunPreview,
+  SendPromptToAgentInput,
+  TimelineComment,
+} from "../timeline-comments/types";
 import {
   STUDIO_INSPECTOR_PANELS_ENABLED,
   STUDIO_PREVIEW_MANUAL_EDITING_ENABLED,
@@ -38,6 +43,10 @@ export interface StudioPreviewAreaProps {
     updates: Pick<TimelineElement, "start" | "duration" | "playbackStart">,
   ) => Promise<void> | void;
   handleBlockedTimelineEdit: (element: TimelineElement, intent: BlockedTimelineEditIntent) => void;
+  onSendPromptToAgent: (input: SendPromptToAgentInput) => Promise<void> | void;
+  agentRunPreview: AgentRunPreview | null;
+  onSelectAgent: (adapterKind: string) => Promise<void> | void;
+  timelineComments: Pick<TimelineComment, "id" | "rangeStart" | "rangeEnd" | "prompt">[];
   setCompIdToSrc: (map: Map<string, string>) => void;
   setCompositionLoading: (loading: boolean) => void;
   shouldShowSelectedDomBounds: boolean;
@@ -52,6 +61,10 @@ export function StudioPreviewArea({
   handleTimelineElementMove,
   handleTimelineElementResize,
   handleBlockedTimelineEdit,
+  onSendPromptToAgent,
+  agentRunPreview,
+  onSelectAgent,
+  timelineComments,
   setCompIdToSrc,
   setCompositionLoading,
   shouldShowSelectedDomBounds,
@@ -103,6 +116,10 @@ export function StudioPreviewArea({
         onResizeElement={handleTimelineElementResize}
         onBlockedEditAttempt={handleBlockedTimelineEdit}
         onSelectTimelineElement={handleTimelineElementSelect}
+        onSendPromptToAgent={onSendPromptToAgent}
+        agentRunPreview={agentRunPreview}
+        onSelectAgent={onSelectAgent}
+        timelineComments={timelineComments}
         onCompIdToSrcChange={setCompIdToSrc}
         onCompositionLoadingChange={setCompositionLoading}
         onCompositionChange={(compPath) => {
