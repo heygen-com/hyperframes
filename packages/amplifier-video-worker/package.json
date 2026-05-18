@@ -16,6 +16,7 @@
     "@aws-sdk/client-s3": "^3.1021.0",
     "@aws-sdk/client-sqs": "^3.1021.0",
     "@aws-sdk/lib-dynamodb": "^3.1021.0",
+    "@hyperframes/core": "workspace:^",
     "@hyperframes/producer": "workspace:^"
   },
   "devDependencies": {
