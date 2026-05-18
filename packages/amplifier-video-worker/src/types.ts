@@ -202,3 +202,53 @@ export interface ExplainerScript {
   scenes: RenderSceneCard[];
   segments: ScriptSegment[];
 }
+
+export interface UserRecord {
+  userId: string;
+  aiBaseUrl?: string | null;
+  aiApiKey?: string | null;
+  aiModel?: string | null;
+  elevenLabsApiKey?: string | null;
+  elevenLabsModelId?: string | null;
+}
+
+export interface CompositionAuthoringSuccess {
+  ok: true;
+  indexHtml: string;
+  narration: Array<{
+    sceneId: string;
+    startSeconds: number;
+    narrationText: string;
+  }>;
+  notes: string | null;
+  attempts: number;
+}
+
+export interface CompositionAuthoringFailure {
+  ok: false;
+  attempts: number;
+  errors: CompositionAttemptError[];
+}
+
+export type CompositionAuthoringResult = CompositionAuthoringSuccess | CompositionAuthoringFailure;
+
+export interface CompositionAttemptError {
+  attempt: number;
+  kind:
+    | "schema_invalid"
+    | "html_invalid"
+    | "lint_failed"
+    | "render_failed"
+    | "sanity_failed"
+    | "llm_timeout"
+    | "llm_error";
+  message: string;
+  detail?: string;
+}
+
+export interface LintFinding {
+  severity: "error" | "warning" | "info";
+  ruleId: string;
+  message: string;
+  line?: number | null;
+}
