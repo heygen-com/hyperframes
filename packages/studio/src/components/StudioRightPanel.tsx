@@ -264,7 +264,9 @@ export function StudioRightPanel({
                   onStartRender={async (format, quality, resolution, fps) => {
                     await waitForPendingDomEditSaves();
                     const composition =
-                      activeCompPath && activeCompPath !== "index.html" ? activeCompPath : undefined;
+                      activeCompPath && activeCompPath !== "index.html"
+                        ? activeCompPath
+                        : undefined;
                     await renderQueue.startRender({
                       fps,
                       quality,
