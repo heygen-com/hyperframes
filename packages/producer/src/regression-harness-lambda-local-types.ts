@@ -26,7 +26,7 @@ export interface RunLambdaLocalInput {
    */
   width: number;
   height: number;
-  format: "mp4" | "mov" | "png-sequence";
+  format: "mp4" | "mov" | "png-sequence" | "webm";
   codec?: "h264" | "h265";
   chunkSize?: number;
   maxParallelChunks?: number;

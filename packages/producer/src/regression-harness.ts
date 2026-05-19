@@ -94,8 +94,8 @@ type TestMetadata = {
      * single video file — the harness branches its comparison logic
      * accordingly (per-frame byte equality instead of PSNR). `"mov"` and
      * `"webm"` are encoded video containers that share the PSNR path with
-     * `"mp4"`. `"webm"` is rejected by the distributed pipeline at plan
-     * time; the in-process renderer accepts it.
+     * `"mp4"`. Distributed mode supports all four — webm goes through
+     * libvpx-vp9 with closed-GOP concat-copy.
      */
     format?: "mp4" | "webm" | "mov" | "png-sequence";
     /**
@@ -163,7 +163,7 @@ type TestResult = {
   passed: boolean;
   /**
    * Set when `--mode=distributed-simulated` skips a fixture that the
-   * distributed pipeline can't run (webm, HDR, NTSC fps, fps∉{24,30,60}).
+   * distributed pipeline can't run (HDR, NTSC fps, fps∉{24,30,60}).
    * `passed` is `true` for skipped fixtures — skipping is a clean outcome,
    * not a failure — but the summary distinguishes them.
    */
@@ -939,19 +939,16 @@ async function runTestSuite(
         result.skipped = { reason: support.reason };
         return result;
       }
-      // `checkDistributedSupport` already narrowed fps to {24,30,60} and
-      // rejected webm; the cast surfaces that guarantee to TS.
+      // `checkDistributedSupport` already narrowed fps to {24,30,60}; the
+      // cast surfaces that guarantee to TS. webm is now distributed-
+      // supported via closed-GOP concat-copy, so the format passes through.
       const fpsNum = suite.meta.renderConfig.fps.num as 24 | 30 | 60;
       const distributedInput = {
         projectDir: tempSrcDir,
         tempRoot,
         renderedOutputPath,
         fps: fpsNum,
-        // `runDistributedSimulatedRender` / `runLambdaLocalRender`'s
-        // `format` parameter accepts the distributed-supported set;
-        // the harness type allows `"webm"` too but
-        // `checkDistributedSupport` rejected that above. Narrow.
-        format: outputFormat as "mp4" | "mov" | "png-sequence",
+        format: outputFormat,
         codec: suite.meta.renderConfig.codec,
         chunkSize: suite.meta.renderConfig.chunkSize,
         maxParallelChunks: suite.meta.renderConfig.maxParallelChunks,

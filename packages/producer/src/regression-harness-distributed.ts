@@ -25,9 +25,9 @@
  * capture jitter, so the harness can't use it as a per-test gate.
  *
  * Not every fixture can run in distributed-simulated mode. Distributed mode
- * refuses webm, HDR mp4, NTSC framerates, and non-{24,30,60} fps at plan
- * time. Fixtures that don't meet the constraints are skipped — the harness
- * logs the reason and the fixture is treated as "passed (skipped)" in
+ * refuses HDR mp4, NTSC framerates, and non-{24,30,60} fps at plan time.
+ * Fixtures that don't meet the constraints are skipped — the harness logs
+ * the reason and the fixture is treated as "passed (skipped)" in
  * distributed-simulated mode.
  */
 
@@ -74,8 +74,6 @@ export type DistributedSupportResult = { supported: true } | { supported: false;
  *     `{ num: 30000, den: 1001 }` (NTSC) trip the type system at the call
  *     site. We surface this gate in code rather than only in TS so the
  *     harness can skip the fixture cleanly instead of throwing.
- *   - format must not be `webm`. `plan()` refuses webm with
- *     `FORMAT_NOT_SUPPORTED_IN_DISTRIBUTED`.
  *   - hdr must not be `true`. Distributed mode is SDR-only at v1.
  *
  * Callers that want the structured reason can read it off the returned
@@ -97,13 +95,6 @@ export function checkDistributedSupport(renderConfig: {
     return {
       supported: false,
       reason: `fps ${fpsNum} not in {24, 30, 60} (DistributedRenderConfig.fps is a closed set)`,
-    };
-  }
-  const format = renderConfig.format ?? "mp4";
-  if (format === "webm") {
-    return {
-      supported: false,
-      reason: "format=webm refused in distributed mode (VP9+matroska concat-copy is unstable)",
     };
   }
   if (renderConfig.hdr === true) {
@@ -129,7 +120,7 @@ export interface RunDistributedSimulatedInput {
   renderedOutputPath: string;
   /** From the fixture's renderConfig — must pass `checkDistributedSupport`. */
   fps: 24 | 30 | 60;
-  format: "mp4" | "mov" | "png-sequence";
+  format: "mp4" | "mov" | "png-sequence" | "webm";
   /**
    * Codec for `format: "mp4"`. Defaults to `"h264"`; pass `"h265"` to
    * exercise the libx265 closed-GOP path. Ignored for non-mp4 formats —
