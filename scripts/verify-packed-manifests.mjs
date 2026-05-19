@@ -53,7 +53,7 @@ function main() {
     const [{ filename }] = parsePackJson(packOutput, workspace);
 
     try {
-      const packedPackageJson = execFileSync("tar", ["-xOf", filename, "package/package.json"], {
+      const packedPackageJson = execFileSync("tar", ["-xOf", join(packDir, filename), "package/package.json"], {
         cwd: ROOT,
         encoding: "utf8",
       });
