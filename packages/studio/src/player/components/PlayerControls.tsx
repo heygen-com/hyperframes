@@ -12,9 +12,12 @@ const SHORTCUT_SECTIONS = [
     title: "Playback",
     hints: [
       { key: "Space", label: "Play / Pause" },
+      { key: "M", label: "Mute / Unmute" },
       { key: "J", label: "Play backward" },
       { key: "K", label: "Stop" },
       { key: "L", label: "Play forward" },
+      { key: "Shift+L", label: "Toggle loop" },
+      { key: "Ctrl+L", label: "Toggle loop" },
       { key: "←/→", label: "Step 1 frame" },
       { key: "⇧←/⇧→", label: "Step 10 frames" },
     ],

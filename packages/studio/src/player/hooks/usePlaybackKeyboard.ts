@@ -8,7 +8,11 @@
 
 import { useRef, useCallback } from "react";
 import { useCaptionStore } from "../../captions/store";
-import { shouldIgnorePlaybackShortcutEvent, SHUTTLE_SPEEDS } from "../lib/playbackShortcuts";
+import {
+  shouldIgnorePlaybackShortcutEvent,
+  shouldIgnorePlaybackShortcutTarget,
+  SHUTTLE_SPEEDS,
+} from "../lib/playbackShortcuts";
 import { usePlayerStore } from "../store/playerStore";
 import { stepFrameTime, STUDIO_PREVIEW_FPS } from "../lib/time";
 import type { PlaybackAdapter } from "../lib/playbackTypes";
@@ -78,10 +82,27 @@ export function usePlaybackKeyboard({
     }
   }, [play, pause]);
 
+  const toggleAudioMuted = useCallback(() => {
+    const { audioMuted, setAudioMuted } = usePlayerStore.getState();
+    setAudioMuted(!audioMuted);
+  }, []);
+
+  const toggleLoop = useCallback(() => {
+    const { loopEnabled, setLoopEnabled } = usePlayerStore.getState();
+    setLoopEnabled(!loopEnabled);
+  }, []);
+
   const handlePlaybackKeyDown = useCallback(
     (e: KeyboardEvent) => {
       if (e.defaultPrevented) return;
       const captionState = useCaptionStore.getState();
+      if (shouldIgnorePlaybackShortcutTarget(e.target)) return;
+      const key = e.key.toLowerCase();
+      if (key === "l" && (e.ctrlKey || e.shiftKey) && !e.altKey && !e.metaKey) {
+        e.preventDefault();
+        toggleLoop();
+        return;
+      }
       if (
         shouldIgnorePlaybackShortcutEvent(e, {
           isCaptionEditMode: captionState.isEditMode,
@@ -90,7 +111,6 @@ export function usePlaybackKeyboard({
       ) {
         return;
       }
-      const key = e.key.toLowerCase();
       pressedKeysRef.current.add(key);
       if (e.code === "Space") {
         e.preventDefault();
@@ -108,6 +128,11 @@ export function usePlaybackKeyboard({
         return;
       }
       if (e.repeat) return;
+      if (key === "m") {
+        e.preventDefault();
+        toggleAudioMuted();
+        return;
+      }
       if (key === "k") {
         e.preventDefault();
         pause();
@@ -157,7 +182,7 @@ export function usePlaybackKeyboard({
         return;
       }
     },
-    [pause, shuttle, stepFrames, togglePlay, getAdapter, seek],
+    [pause, shuttle, stepFrames, toggleAudioMuted, toggleLoop, togglePlay, getAdapter, seek],
   );
 
   const handlePlaybackKeyUp = useCallback((e: KeyboardEvent) => {

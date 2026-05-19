@@ -71,11 +71,17 @@ function setupHook(): HookHandle {
   };
 }
 
-function keydown(init: { code: string; key: string; shiftKey?: boolean }): KeyboardEvent {
+function keydown(init: {
+  code: string;
+  key: string;
+  shiftKey?: boolean;
+  ctrlKey?: boolean;
+}): KeyboardEvent {
   return new KeyboardEvent("keydown", {
     code: init.code,
     key: init.key,
     shiftKey: init.shiftKey ?? false,
+    ctrlKey: init.ctrlKey ?? false,
     cancelable: true,
   });
 }
@@ -170,5 +176,42 @@ describe("usePlaybackKeyboard — keyboard layout independence (#834)", () => {
     });
 
     expect(spies.play).toHaveBeenCalledTimes(1);
+  });
+
+  it("M toggles preview audio mute", () => {
+    const { dispatch } = setupHook();
+    usePlayerStore.setState({ audioMuted: false });
+
+    act(() => {
+      dispatch(keydown({ code: "KeyM", key: "m" }));
+    });
+
+    expect(usePlayerStore.getState().audioMuted).toBe(true);
+  });
+
+  it("Shift+L toggles loop instead of forward shuttle", () => {
+    const { dispatch, spies } = setupHook();
+    usePlayerStore.setState({ loopEnabled: false });
+
+    act(() => {
+      dispatch(keydown({ code: "KeyL", key: "L", shiftKey: true }));
+    });
+
+    expect(usePlayerStore.getState().loopEnabled).toBe(true);
+    expect(spies.play).not.toHaveBeenCalled();
+  });
+
+  it("Ctrl+L toggles loop and prevents the browser location shortcut", () => {
+    const { dispatch, spies } = setupHook();
+    usePlayerStore.setState({ loopEnabled: false });
+    const event = keydown({ code: "KeyL", key: "l", ctrlKey: true });
+
+    act(() => {
+      dispatch(event);
+    });
+
+    expect(usePlayerStore.getState().loopEnabled).toBe(true);
+    expect(event.defaultPrevented).toBe(true);
+    expect(spies.play).not.toHaveBeenCalled();
   });
 });
