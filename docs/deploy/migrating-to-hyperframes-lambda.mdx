@@ -48,6 +48,12 @@ Most adopters' render config maps directly:
 | Max parallel chunks | `--max-parallel-chunks=16` (default 16) | Caps the Map state's fan-out. |
 | Bitrate / CRF | `--bitrate=10M` or `--crf=18` | Mutually exclusive. |
 
+## Variables (inputProps)
+
+Render-time payloads — `inputProps` in some frameworks, `variables` in HyperFrames — are isomorphic. Declare the composition's variable shape on the root `<html>` element via `data-composition-variables`, then pass per-render values with `hyperframes render --variables '{...}'` locally or `hyperframes lambda render --variables` on the Lambda surface. The same 256 KiB execution-input cap and "URL your assets, don't inline base64" convention apply.
+
+The full mapping — `defaultProps` → declarations, `useCurrentFrame()` + `props.<x>` → `__hyperframes.getVariables().<x>`, `renderMediaOnLambda({ inputProps })` → `renderToLambda({ config: { variables } })` — lives in [Templates on Lambda](/deploy/templates-on-lambda#migrating-from-remotion-lambda-inputprops).
+
 ## What HyperFrames does differently
 
 A few areas where the contract is intentionally different from comparable frameworks. Surface them up front so the migration doesn't surprise you mid-deploy.
