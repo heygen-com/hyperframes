@@ -1,218 +1,255 @@
 ---
 name: asr-keyword-glow
-description: Highlight keywords with glow + scale synchronized to ASR word timestamps using an attack-sustain-release envelope. CSS custom property drives the glow; GSAP tweens the property through the envelope.
+description: Keywords glow + scale up when "spoken" — attack/sustain/release envelope synced to per-word timestamps. Even without real audio, hardcoded timings create a "narrator emphasis" effect.
 metadata:
-  tags: asr, audio-sync, highlight, glow, keyword, text, speech, gsap, css-vars
-  adapter: gsap
+  tags: asr, audio-sync, highlight, glow, keyword, text, speech, emphasis
 ---
 
 # ASR Keyword Glow
 
-Words visually activate (glow + scale + color) when spoken, following an attack-sustain-release envelope synced to word-level ASR timestamps. After the word ends, glow drops to a low **rest level** so it stays slightly lit — a "breadcrumb trail" of spoken words.
+Words in a phrase visually activate (glow blur + scale) when "spoken," following an attack-sustain-release (ASR-like) envelope. In a real ASR pipeline these timings come from word-level transcript data; for promotional video, hardcode the timings to control emphasis pacing. The envelope leaves a subtle "rest glow" after the word, creating a breadcrumb of recent emphasis.
 
-## HyperFrames vs. Remotion
+## How It Works
 
-The Remotion version computed the envelope inline each render frame using `interpolate(frame, [...], [...])`. HyperFrames uses **a CSS custom property (`--glow`) on the keyword span** plus **two GSAP tweens per word** that move the property through the envelope. CSS calc expressions then drive `text-shadow` blur, `color`, and `scale` from `--glow`.
+Each word has `{ start, end }` timestamps. At each frame, compute the word's envelope value:
 
-This decouples the _what to render_ (CSS) from _when_ (GSAP), and makes each word's animation a tiny, isolated unit.
+- **Pre-start** → 0 (not yet)
+- **Start → peak** → attack (linear ramp 0 → 1)
+- **Peak → end** → sustain (stays at 1)
+- **End → end+release** → decay (1 → restLevel, typically 0.25)
+- **After release** → restLevel (stays subtly highlighted)
 
-```
-Remotion: per-frame `if (frame >= start) progress = …`
-HyperFrames: tl.to(span, { "--glow": 1 }, wordStart)      // attack
-             tl.to(span, { "--glow": REST_LEVEL }, peakAt) // decay to rest
-```
+The envelope drives `textShadow` blur radius AND `scale`. Higher blur + bigger scale = "speaking" emphasis.
 
-## Core Concept
-
-Three-segment envelope per word, driven by **two chained GSAP tweens**:
-
-1. **Attack** (0 → 1): linear ramp from word's ASR `start` to `peak` (midpoint)
-2. **Decay** (1 → REST_LEVEL): from `peak` to `end + sustain`
-3. **Rest** (= REST_LEVEL): held until end of composition (no further tween — GSAP leaves the value set)
-
-```
-   1.0  ─┐ peak
-         │\
-         │ \
-         │  \
-         │   \────────── REST_LEVEL (e.g. 0.14)
-         │
-   0.0  ─┘
-        ↑   ↑              ↑
-      start peak           rest forever
-```
-
-## Basic Pattern
+## HTML
 
 ```html
-<h1 class="hero-title">
-  <span class="kw" data-glow-start="0.12" data-glow-end="0.28">1</span>
-  <span class="kw" data-glow-start="0.52" data-glow-end="0.72">long</span>
-  <span class="kw" data-glow-start="0.78" data-glow-end="1.44">video,</span>
-  <span class="kw" data-glow-start="1.48" data-glow-end="1.80">10</span>
-  <span class="kw" data-glow-start="1.94" data-glow-end="2.22">viral</span>
-  <span class="kw" data-glow-start="2.28" data-glow-end="2.80">clips.</span>
-</h1>
+<div
+  class="scene"
+  id="asr-scene"
+  data-composition-id="asr-scene"
+  data-start="0"
+  data-duration="6"
+  data-track-index="0"
+>
+  <div class="phrase">
+    <span class="word" data-word="Ship">Ship</span>
+    <span class="word" data-word="a">a</span>
+    <span class="word" data-word="video">video</span>
+    <span class="word" data-word="in">in</span>
+    <span class="word" data-word="one">one</span>
+    <span class="word" data-word="prompt">prompt</span>
+    <span class="word brand" data-word="HEYGENVERSE">HEYGENVERSE</span>
+  </div>
+</div>
+```
 
-<style>
-  .kw {
-    --glow: 0; /* GSAP tweens this */
-    display: inline-block;
-    color: hsl(48, calc(var(--glow) * 80%), calc(50% + var(--glow) * 5%));
-    text-shadow:
-      0 0 calc(var(--glow) * 20px) rgba(237, 203, 80, var(--glow)),
-      0 0 calc(var(--glow) * 40px) rgba(237, 203, 80, calc(var(--glow) * 0.6));
-    transform: scale(calc(1 + var(--glow) * 0.05));
-    transition: color 0.15s linear; /* smooth the color step */
-  }
-</style>
+## CSS
 
+```css
+.scene {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  background: #05060d;
+  font-family: "Inter", sans-serif;
+}
+.phrase {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px;
+  justify-content: center;
+  max-width: 1700px;
+  font-size: 120px;
+  font-weight: 900;
+  letter-spacing: 2px;
+  color: #f5f6fb;
+  text-align: center;
+  line-height: 1.2;
+}
+.word {
+  display: inline-block;
+  transform-origin: 50% 50%;
+  /* Initial subtle rest glow */
+  text-shadow: 0 0 0 rgba(167, 139, 250, 0);
+  will-change: transform, text-shadow;
+}
+.word.brand {
+  color: #cdb8ff;
+  letter-spacing: 12px;
+  text-transform: uppercase;
+}
+```
+
+## GSAP Timeline
+
+```html
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
 <script>
   window.__timelines = window.__timelines || {};
   const tl = gsap.timeline({ paused: true });
 
-  // ============================================================
-  // ENVELOPE CONSTANTS
-  // ============================================================
-  const REST_LEVEL = 0.14; // residual glow after the word ends (range 0.1–0.3 — lower = subtler trail)
-  const SUSTAIN_SECS = 0.5; // sustain after word ASR end before decay completes
+  // Per-word "spoken" times — author these to control narrator pacing
+  // For "Ship a video in one prompt — HEYGENVERSE"
+  const TIMINGS = {
+    Ship: { start: 0.4, end: 0.9 },
+    a: { start: 0.95, end: 1.1 },
+    video: { start: 1.15, end: 1.6 },
+    in: { start: 1.7, end: 1.85 },
+    one: { start: 1.9, end: 2.2 },
+    prompt: { start: 2.25, end: 2.9 },
+    HEYGENVERSE: { start: 3.5, end: 5.0 }, // long emphasis on brand
+  };
 
-  // ============================================================
-  // BUILD A TWEEN PAIR PER KEYWORD
-  // ============================================================
-  document.querySelectorAll(".kw").forEach((kw) => {
-    const start = Number(kw.dataset.glowStart);
-    const end = Number(kw.dataset.glowEnd);
-    const peak = start + (end - start) / 2;
-    const restAt = end + SUSTAIN_SECS;
+  const RELEASE = 0.3; // seconds for decay after end
+  const REST_LEVEL = 0.25;
+  const MAX_BLUR = 22; // px
+  const MAX_SCALE_BOOST = 0.08; // scale 1.0 → 1.08 at peak
 
-    // Attack — ramp from 0 to 1 between start and peak.
-    tl.fromTo(
-      kw,
-      { "--glow": 0 },
-      {
-        "--glow": 1,
-        duration: peak - start,
-        ease: "power2.out", // soft attack — feels like a voice rising
+  function envelope(time, start, end) {
+    const releaseEnd = end + RELEASE;
+    if (time < start) return 0;
+    if (time < end) {
+      // attack — linear ramp first 0.15s then sustain
+      const attack = Math.min((time - start) / 0.15, 1);
+      return attack;
+    }
+    if (time < releaseEnd) {
+      // decay to rest level
+      const decay = (time - end) / RELEASE;
+      return 1 - decay * (1 - REST_LEVEL);
+    }
+    return REST_LEVEL;
+  }
+
+  const words = document.querySelectorAll(".word");
+
+  // Single driver — 0 → composition duration
+  const driver = { t: 0 };
+  tl.to(
+    driver,
+    {
+      t: 6.0,
+      duration: 6.0,
+      ease: "none",
+      onUpdate: () => {
+        words.forEach((el) => {
+          const word = el.dataset.word;
+          const timing = TIMINGS[word];
+          if (!timing) return;
+          const env = envelope(driver.t, timing.start, timing.end);
+          const blur = MAX_BLUR * env;
+          const scale = 1 + MAX_SCALE_BOOST * env;
+          const color = el.classList.contains("brand") ? "167, 139, 250" : "167, 139, 250";
+          el.style.textShadow = `0 0 ${blur}px rgba(${color}, ${0.4 + env * 0.5})`;
+          el.style.transform = `scale(${scale})`;
+        });
       },
-      start,
-    );
+    },
+    0,
+  );
 
-    // Decay — fall from 1 to REST_LEVEL between peak and end+sustain.
-    tl.to(
-      kw,
-      {
-        "--glow": REST_LEVEL,
-        duration: restAt - peak,
-        ease: "power2.out",
-      },
-      peak,
-    );
-    // No tween after this — GSAP leaves --glow at REST_LEVEL until end.
-  });
-
-  window.__timelines["main"] = tl;
+  window.__timelines["asr-scene"] = tl;
 </script>
 ```
 
-## Envelope Shape
-
-The two-tween approach exactly reproduces the Remotion three-segment envelope:
-
-| Segment | Frame range        | GSAP tween                                               |
-| ------- | ------------------ | -------------------------------------------------------- |
-| Attack  | start → peak       | `fromTo({"--glow":0}, {"--glow":1, ease: "power2.out"})` |
-| Decay   | peak → end+sustain | `to({"--glow": REST_LEVEL, ease: "power2.out"})`         |
-| Rest    | end+sustain → ∞    | No tween — GSAP holds the last set value                 |
-
-If you want a **triangle** envelope (no rest level), set `REST_LEVEL = 0`. If you want a **plateau** (sustain at full glow), insert a third tween between attack and decay that holds at 1.
-
-## Why CSS Custom Properties
-
-GSAP can tween numeric CSS custom properties directly: `tl.to(el, { "--glow": 1 })`. This pattern wins over alternatives because:
-
-- **One source of truth**: All visual effects (color, shadow, scale) derive from one variable. Changing the envelope changes everything in sync.
-- **Cheap**: GPU-compositor-friendly. No `onUpdate` needed; the browser's CSS engine drives the renders.
-- **Composable**: A pulsing glow can be added by a separate tween on `--pulse` and combined in CSS with `calc(var(--glow) * (1 + var(--pulse)))`.
-- **Inspectable**: Use DevTools to scrub a frame and read `--glow` directly off the element. Easier to debug than reading interpolated state out of GSAP.
-
 ## Variations
 
-### 3D Pop-Out Synced to Glow
+### Multi-octave glow (more dramatic peaks)
 
-Drive `translateZ` from the same `--glow`:
-
-```css
-.kw {
-  transform: translateZ(calc(var(--glow) * 80px)) scale(calc(1 + var(--glow) * 0.05));
-}
-```
-
-Requires `perspective` on a parent and `transform-style: preserve-3d` on the chain up to that parent.
-
-### Per-Word Color (Different Accents per Keyword)
-
-Add a per-word data attribute and read it in CSS:
-
-```html
-<span class="kw" data-glow-start="..." data-color="#ec2579">viral</span>
-```
-
-```css
-.kw[data-color="#ec2579"] {
-  --accent: #ec2579;
-}
-.kw {
-  text-shadow: 0 0 calc(var(--glow) * 20px) var(--accent, #edcb50);
-}
-```
-
-### Pulse-on-Active
-
-While the word is glowing (≥ 0.5), pulse with a low-amplitude sine:
+Combine the envelope-driven blur with a sin pulse during the sustain phase — high-emphasis words breathe at peak:
 
 ```js
-// Pulse tween on a separate variable, started at attack peak.
-tl.fromTo(
-  kw,
-  { "--pulse": 0 },
-  { "--pulse": 1, duration: 0.6, ease: "sine.inOut", yoyo: true, repeat: 2 },
-  peak,
-);
+const sustain = env * (1 + Math.sin(driver.t * 8) * 0.2);
+const blur = MAX_BLUR * sustain;
 ```
 
-And in CSS:
+### Color shift on the peak
 
-```css
-.kw {
-  text-shadow: 0 0 calc(var(--glow) * (15px + var(--pulse, 0) * 8px)) var(--accent);
+The active word shifts hue from white → brand purple at peak, settles back to white at rest:
+
+```js
+const r = Math.round(245 + (167 - 245) * env);
+const g = Math.round(246 + (139 - 246) * env);
+const b = Math.round(251 + (250 - 251) * env);
+el.style.color = `rgb(${r}, ${g}, ${b})`;
+```
+
+### Karaoke style (dim-rest + bright-active, RECOMMENDED for video narration)
+
+Default amplitudes (`MAX_BLUR=22`, `MAX_SCALE_BOOST=0.08`, rest text full white) read as too subtle in video — the inactive words still dominate. Karaoke style fixes this: **inactive words rendered DIM (e.g. `#4a4f6b` slate)**, active words **lerp toward bright white + larger scale**:
+
+```js
+const REST_RGB = { r: 74, g: 79, b: 107 }; // dim slate
+const ACTIVE_RGB = { r: 245, g: 246, b: 251 }; // white
+const BRAND_RGB = { r: 205, g: 184, b: 255 }; // brand purple
+
+const MAX_BLUR = 36; // bumped from 22
+const MAX_SCALE_BOOST = 0.22; // bumped from 0.08 — 22% size jump reads as karaoke pop
+const REST_LEVEL = 0.18; // dim rest, not 0.3
+
+function lerp(a, b, t) {
+  return Math.round(a + (b - a) * t);
 }
+function colorAt(env, isBrand) {
+  const target = isBrand ? BRAND_RGB : ACTIVE_RGB;
+  return `rgb(${lerp(REST_RGB.r, target.r, env)}, ${lerp(REST_RGB.g, target.g, env)}, ${lerp(REST_RGB.b, target.b, env)})`;
+}
+
+// In onUpdate:
+el.style.color = colorAt(env, el.classList.contains("brand"));
 ```
+
+Visual result: at any moment 1-2 words are bright + glowing (the spoken word + the recently-spoken one's lingering rest), and the rest of the phrase is dim. This is closer to actual karaoke / lyric video aesthetic than the subtle "everyone half-glowing" baseline.
+
+When to use karaoke vs default: short narration phrases (5-10 words) where one word at a time should clearly POP → karaoke. Long dense text where many words emphasize subtly → default subtle.
+
+### 3D pop-out
+
+Combine envelope with `translateZ` for words to "lean toward camera" as they speak:
+
+```js
+const popZ = env * 40;
+el.style.transform = `translateZ(${popZ}px) scale(${scale})`;
+```
+
+Requires `perspective` on the parent.
+
+### From real ASR transcripts
+
+For real ASR-driven scenes, replace hardcoded TIMINGS with transcript JSON (each entry has `word`, `start_ms`, `end_ms`). Convert to seconds and feed in identically.
+
+## Key Principles
+
+- **Envelope shape: attack-sustain-decay-rest** — never zero out after a word. The rest level (0.2-0.4) keeps the recently-spoken words subtly highlighted, creating a "breadcrumb" of attention.
+- **Brand word gets longer emphasis (1.5-2x normal)** — the brand is the headline; let it sustain.
+- **`display: inline-block`** on each word — required for `transform` to apply to `<span>`.
+- **Max blur 15-25px, max scale-boost 0.03-0.08** — bigger and the word becomes "bouncy" rather than "emphasized."
+- **Per-word `text-shadow`** (not `box-shadow`) — text-shadow is the glow around the GLYPH, which is what reads as "speaking emphasis." Box-shadow would glow around the inline-block bounding box (rectangle).
+- **Single driver, multi-word onUpdate** — one tween that loops over all words. Don't create one tween per word — at 60+ words the timeline becomes unwieldy.
+- **❗ Climax dwell ≥1s** — after the final word's emphasis, comp continues ≥1s. The last word IS the headline beat.
 
 ## Critical Constraints
 
-- **Two tweens per keyword, not one**: The attack and decay have different durations and ideally different eases. Don't try to express the whole envelope as one cubic-bezier ease — the rest plateau requires a separate sustain.
-- **Rest level via the final tween's end value**: GSAP holds the last set value indefinitely. Don't add a third tween "to hold at REST_LEVEL" — it's unnecessary.
-- **CSS `calc()` for derived effects**: Don't drive multiple GSAP tweens for shadow + scale + color. One `--glow` per word, all derivations in CSS.
-- **`display: inline-block` on spans**: Required for `transform: scale()` to work on inline content.
-- **Avoid `transition`** on tweened properties: A CSS `transition: text-shadow 0.2s` would double-animate against the GSAP tween. The brief `transition: color 0.15s linear` is OK if you want to soften the color jump, but skip it for tweened properties.
-- **ASR timestamps in seconds, not frames**: HyperFrames is wall-clock. Convert from `frames / fps` if your source data is frame-indexed.
-- **No `Math.random` / `Date.now`**: All envelopes are pure functions of `tl.time()`.
-
-## Tips
-
-- `SUSTAIN_SECS = 0.3–0.5` keeps the highlight visible just past the spoken word
-- `REST_LEVEL = 0.1–0.3` depending on desired ambient glow strength (canonical example uses 0.14 for a subtle trail); `0` for a clean triangle
-- `--glow * 20px` for noticeable but not blinding glow blur; max ~40px
-- Scale boost: `* 0.03–0.08` — subtle emphasis
-- `display: inline-block` is required for `transform` to work on `<span>`
+- **Timeline must be paused**: `gsap.timeline({ paused: true })`
+- **Registry key = `data-composition-id`**
+- **No CSS animation** on word elements
+- **`display: inline-block`** on each `.word`
+- **`will-change: transform, text-shadow`** on `.word`
+- **Timings monotonic** (later start > earlier end) — overlapping words mess up the envelope
 
 ## Combinations
 
-- Pair with [3d-page-scroll](3d-page-scroll.md) — keywords on the scrolled page light up at their voiceover moments.
-- Combine with [sine-wave-loop](sine-wave-loop.md) — pulse the active word via a second CSS variable.
-- Use within [demo-page-scroll-spotlight](../blueprints/demo-page-scroll-spotlight.md) for the keyword-driven feature spotlight.
+- [3d-text-depth-layers.md](3d-text-depth-layers.md) — the active word gets depth-layered emphasis at peak
+- [sine-wave-loop.md](sine-wave-loop.md) — non-active words breathe subtly between emphasis moments
+- [context-sensitive-cursor.md](context-sensitive-cursor.md) — typewriter that types each word matching the ASR cadence
 
-## Examples
+## Pairs with HF skills
 
-- [demo-page-scroll-spotlight.html](../examples/demo-page-scroll-spotlight.html) — six title words (`1 long video, 10 viral clips.`) each glow at their ASR-anchored moment during Phase 1.
+- `/hyperframes-gsap` — single driver, multi-element envelope
+- `/hyperframes-media` — `hyperframes transcribe` outputs real ASR data
+- `/hyperframes-captions` — pair with caption rendering
+- `/hyperframes-core` — composition wiring
+- `/hyperframes-cli` — `hyperframes lint`

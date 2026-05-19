@@ -1,185 +1,245 @@
 ---
 name: physics-press-reaction
-description: Physical click simulation — two GSAP scale tweens at down/up timeline positions create a dip-and-recovery without keyframing intermediate values. Synchronize between target and cursor for tactile contact feel.
+description: Cursor + element synchronized press via subtractive spring forces — cursor lands on element, both compress together, then release. Distinct from press-release-spring (which has no cursor).
 metadata:
-  tags: spring, click, physics, press, interaction, gsap
-  adapter: gsap
+  tags: spring, click, physics, cursor, subtractive, interaction, synchronized
 ---
 
-# Physics-Based Press Reaction
+# Physics Press Reaction (Cursor + Element Synced)
 
-Models a click as a brief scale dip followed by recovery. Apply the same dip pattern to both the target (button) and the cursor to sell the physical contact — they compress together.
+Models a real click: a cursor approaches a button, lands, and both compress IN SYNC, then release together. Two distinct timing events (down-frame and up-frame) bound by spring forces. Distinct from [press-release-spring](press-release-spring.md) (which has no cursor — just a press happening); this rule is the COMBINED cursor + element behavior.
 
-## HyperFrames vs. Remotion
+## How It Works
 
-The Remotion source defined two opposing springs and combined them subtractively:
+A single `pressIntensity` value (0 → 1 → 0) is shared between cursor and button:
 
-```
-pressScale = 1 − (downSpring × intensity) + (upSpring × intensity)
-```
+- **0 → 1** (press down): both compress to `pressedScale` (~0.92)
+- **1 → 0** (release): both spring back to 1.0 with overshoot
 
-When downSpring reaches 1 with upSpring still 0: scale = 1 − 0.1 + 0 = 0.9 (pressed)
-When both reach 1: scale = 1 − 0.1 + 0.1 = 1.0 (recovered)
+The cursor ALSO translates to the button's center during the approach phase BEFORE press starts. After release, the cursor may move on (next interaction) or hold.
 
-HyperFrames doesn't need the subtractive math. Two **sequential GSAP scale tweens** produce the same dip-and-recovery:
-
-```
-Tween at clickDownAt: scale 1 → 0.9 (fast, power3.out)
-Tween at clickUpAt:   scale 0.9 → 1.0 (slightly slower, power2.out)
-```
-
-GSAP's overwrite handles the transition between them. The visual result is identical.
-
-```
-Remotion: pressScale = 1 − downSpring*0.1 + upSpring*0.1     (frame-pure)
-HyperFrames: tl.to(el, { scale: 0.9 }, clickDownAt)
-             tl.to(el, { scale: 1.0 }, clickUpAt)             (sequential)
-```
-
-## Core Concept
-
-Three states:
-
-```
-Before click  (t < clickDownAt):    scale = 1.0   (neutral)
-During press  (clickDownAt < t < clickUpAt):  scale tweens 1 → 0.9
-After release (t > clickUpAt):       scale tweens 0.9 → 1.0
-```
-
-The hold duration (`clickUpAt − clickDownAt`) sets the press feel:
-
-| Hold          | Frames at 30 fps | Feel                             |
-| ------------- | ---------------- | -------------------------------- |
-| < 0.10 s      | < 3 frames       | Quick tap                        |
-| 0.10 – 0.20 s | 3–6 frames       | Snappy click                     |
-| 0.27 – 0.40 s | 8–12 frames      | Deliberate click — feels natural |
-| > 0.65 s      | > 20 frames      | Long press                       |
-
-## Basic Pattern
+## HTML
 
 ```html
-<!-- Both target and cursor get the same press treatment. -->
-<div class="cta" id="cta">Click me</div>
-<div class="cursor" id="cursor">
-  <svg><!-- cursor SVG --></svg>
+<div
+  class="scene"
+  id="press-react-scene"
+  data-composition-id="press-react-scene"
+  data-start="0"
+  data-duration="3"
+  data-track-index="0"
+>
+  <div class="stack">
+    <button class="btn" id="btn">
+      <span class="btn-icon">🚀</span>
+      <span class="btn-label">SHIP NOW</span>
+    </button>
+    <div class="brand">— HEYGENVERSE.COM</div>
+  </div>
+  <!-- Cursor lives at scene-root level so it can translate freely -->
+  <svg class="cursor" id="cursor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+    <path d="M3 2 L21 12 L12 13 L7 22 Z" fill="#f5f6fb" stroke="#0b0d1f" stroke-width="1.5" />
+  </svg>
 </div>
+```
 
+## CSS
+
+```css
+.scene {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(ellipse at center, #161a3a 0%, #0b0d1f 70%);
+  font-family: "Inter", sans-serif;
+  overflow: hidden;
+}
+.stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 64px;
+}
+.btn {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 32px 80px;
+  background: linear-gradient(135deg, #a78bfa 0%, #6366f1 100%);
+  border: none;
+  border-radius: 28px;
+  color: #fff;
+  font-family: "Inter", sans-serif;
+  font-weight: 900;
+  font-size: 80px;
+  letter-spacing: 8px;
+  text-transform: uppercase;
+  cursor: pointer;
+  box-shadow: 0 20px 64px rgba(108, 99, 255, 0.5);
+  transform-origin: 50% 50%;
+  will-change: transform;
+}
+.btn-icon {
+  font-size: 88px;
+  line-height: 1;
+}
+.brand {
+  font-size: 48px;
+  font-weight: 800;
+  letter-spacing: 12px;
+  color: #cdb8ff;
+  text-transform: uppercase;
+}
+/* Cursor — absolute, positioned by GSAP */
+.cursor {
+  position: absolute;
+  width: 64px;
+  height: 64px;
+  pointer-events: none;
+  z-index: 100;
+  /* initial position is set by gsap.set() */
+  transform-origin: 0 0; /* arrow point is the click point */
+  filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.5));
+}
+```
+
+## GSAP Timeline
+
+```html
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
 <script>
   window.__timelines = window.__timelines || {};
   const tl = gsap.timeline({ paused: true });
 
-  const CLICK_DOWN_AT = 3.83; // seconds
-  const CLICK_UP_AT = 4.17; // = down + 0.34 s = ~10 frames at 30 fps
-  const INTENSITY = 0.1; // 0.05 subtle · 0.1 standard · 0.15 heavy
+  // Position cursor initially at top-right offscreen-ish
+  gsap.set("#cursor", { x: 1700, y: 200 });
 
-  /* PRESS DOWN — both target and cursor compress together.
-     Two tweens with the same start time on different selectors. */
+  // The button's screen center (1920x1080 grid place-center).
+  // For SHIP NOW button approx at viewport center: x=960, y=540
+  const BUTTON_CENTER = { x: 960, y: 540 };
+
+  // Phase 1 — cursor approaches button (0.0 → 0.9s)
   tl.to(
-    ["#cta", "#cursor"],
-    {
-      scale: 1 - INTENSITY,
-      duration: 0.15,
-      ease: "power3.out", // spring(stiffness:300, damping:20)
-    },
-    CLICK_DOWN_AT,
+    "#cursor",
+    { x: BUTTON_CENTER.x, y: BUTTON_CENTER.y, duration: 0.9, ease: "power2.inOut" },
+    0,
   );
 
-  /* RELEASE — back to scale 1.0. Slightly slower than the press for the
-     "bounce back" feel. */
+  // Phase 2 — coordinated press down (button + cursor both scale to 0.9)
+  const PRESS_SCALE = 0.9;
   tl.to(
-    ["#cta", "#cursor"],
+    ["#btn", "#cursor"],
     {
-      scale: 1.0,
-      duration: 0.25,
-      ease: "power2.out", // spring(stiffness:200, damping:15)
+      scale: PRESS_SCALE,
+      duration: 0.18,
+      ease: "power1.in",
     },
-    CLICK_UP_AT,
+    1.0,
   );
 
-  window.__timelines["main"] = tl;
+  // Phase 3 — release (both spring back to 1.0 with overshoot)
+  tl.to(
+    ["#btn", "#cursor"],
+    {
+      scale: 1,
+      duration: 0.55,
+      ease: "back.out(2.0)",
+    },
+    1.18,
+  );
+
+  // Phase 4 — inner glow during press (boxShadow change synced to press scale)
+  tl.to(
+    "#btn",
+    {
+      boxShadow: "0 4px 16px rgba(108, 99, 255, 0.25), inset 0 0 32px rgba(255, 255, 255, 0.2)",
+      duration: 0.18,
+      ease: "power1.in",
+    },
+    1.0,
+  );
+  tl.to(
+    "#btn",
+    {
+      boxShadow: "0 20px 64px rgba(108, 99, 255, 0.5)",
+      duration: 0.55,
+      ease: "power2.out",
+    },
+    1.18,
+  );
+
+  // Brand fades in early (context)
+  tl.from(".brand", { opacity: 0, y: 12, duration: 0.6, ease: "power3.out" }, 0.3);
+
+  // Cursor optionally moves off after press (or holds for dwell)
+  tl.to("#cursor", { x: 1500, y: 800, duration: 0.6, ease: "power2.out" }, 2.0);
+
+  window.__timelines["press-react-scene"] = tl;
 </script>
-```
-
-### Passing a tween targets array
-
-GSAP `tl.to(["#cta", "#cursor"], { ... })` applies the same vars to both elements. They tween in perfect lockstep — same eased value at every frame. This is what makes the cursor "push into" the button: they compress identically.
-
-If you've separated them for other reasons (different transform alias compositions), express the tween twice with identical timing:
-
-```js
-tl.to("#cta", { scale: 0.9, duration: 0.15, ease: "power3.out" }, CLICK_DOWN_AT);
-tl.to("#cursor", { scale: 0.9, duration: 0.15, ease: "power3.out" }, CLICK_DOWN_AT);
 ```
 
 ## Variations
 
-### Subtle Tap
+### Multiple-element chain press
+
+Cursor presses button A → button A triggers swap → cursor moves to button B → presses again. Each press is a 0.7s sub-routine.
+
+### Hold press (continuous pressure)
+
+Insert a 0.4-0.6s hold between press-down and release. Cursor scale stays at 0.9, button scale stays at 0.9, inner glow stays on. Suggests "thinking" or "loading."
+
+### Synchronized inner-glow pulse
+
+During the hold phase, the inner glow pulses (sin-driven). Suggests "processing":
 
 ```js
-const INTENSITY = 0.05; // barely visible — for "ack" feedback on a hover-state button
+const holdGlow = { p: 0 };
+tl.to(
+  holdGlow,
+  {
+    p: Math.PI * 4,
+    duration: 0.5,
+    ease: "none",
+    onUpdate: () => {
+      const alpha = 0.2 + Math.sin(holdGlow.p) * 0.15;
+      document.getElementById("btn").style.boxShadow =
+        `inset 0 0 32px rgba(255, 255, 255, ${alpha})`;
+    },
+  },
+  1.2,
+);
 ```
 
-### Heavy Press
+## Key Principles
 
-```js
-const INTENSITY = 0.15;
-// Lengthen hold for an emphatic press:
-const CLICK_UP_AT = CLICK_DOWN_AT + 0.5;
-```
-
-### Inner Glow During Press
-
-Use a CSS class toggle gated by a near-zero-duration GSAP tween on a custom property. The `--press` variable goes from 0 to 1 at down, and from 1 to 0 at up, driving an inset glow:
-
-```css
-.cta {
-  --press: 0;
-  box-shadow: inset 0 0 calc(var(--press) * 80px) rgba(255, 255, 255, 0.4);
-}
-```
-
-```js
-tl.to("#cta", { "--press": 1, duration: 0.05, ease: "power2.out" }, CLICK_DOWN_AT);
-tl.to("#cta", { "--press": 0, duration: 0.15, ease: "power2.out" }, CLICK_UP_AT);
-```
-
-The inset glow brightens during the hold then fades out — like the button "absorbs" the click.
-
-### Color Tint During Press
-
-Same custom-property pattern but driving an overlay color:
-
-```css
-.cta {
-  background-color: rgb(230 0 126);
-}
-.cta::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: rgba(255, 255, 255, calc(var(--press) * 0.18));
-  pointer-events: none;
-}
-```
-
-The button visibly lightens during the hold.
+- **Same `pressScale` on cursor AND button** — physical synchronicity. If only the button scales, the cursor appears to "tap on air"; if only the cursor scales, the button feels disconnected.
+- **Cursor arrives BEFORE press starts** — there must be a clear moment of "cursor over target" before scale change. Otherwise the press is unattributed.
+- **`back.out(1.8-2.2)` for release** — both elements need spring overshoot together. Linear release loses the tactile feel.
+- **Inner glow appears DURING press, fades on release** — visual confirmation of contact. Outer shadow shrinks (pushed-in), inner glow appears (energy concentrated).
+- **Cursor `pointer-events: none`** — the cursor is decorative; if it captures events, hover/click behaviors on button below break.
+- **Cursor `transform-origin: 0 0`** — the arrow's tip is the click point, not its center. Scale around the tip keeps the click point stable.
+- **❗ Climax dwell ≥1s** — after release, the comp must continue ≥1s. The press is a beat; viewer needs time to see the result.
 
 ## Critical Constraints
 
-- **Timing order**: `CLICK_UP_AT > CLICK_DOWN_AT`. Reversed values produce an inverted press (scale up first, then down) which reads as a misplay.
-- **Same tween config for target and cursor**: Same duration, ease, position parameter. Drift breaks the "they're touching" illusion.
-- **Press composes multiplicatively with entrance**: If the target also has an entrance scale (e.g. from [scale-swap-transition](scale-swap-transition.md)), the entrance and press tweens both target `scale`. GSAP overwrite handles the merging: by the time the click arrives, the entrance has settled to scale 1, so press 1 → 0.9 → 1 works cleanly.
-- **Cursor scale 1.0 baseline**: `gsap.set("#cursor", { scale: 1 })` before the timeline if the cursor isn't tweened elsewhere. Otherwise its scale starts at GSAP's auto-detected initial value (which can be `null` if no inline transform).
-- **Hold duration in frames-equivalent seconds**: 8–12 frames at 30 fps = 0.27–0.40 s. Going below 0.10 s skips perception; above 0.65 s reads as a deliberate "long press."
-- **GSAP transform alias only**: `scale`. Never tween `width` / `height` / `transform` directly.
-- **No `Math.random` / `Date.now`**: Click timing is hard-coded, deterministic.
+- **Timeline must be paused**: `gsap.timeline({ paused: true })`
+- **Registry key = `data-composition-id`**
+- **No CSS `transition`** on either cursor or button — competes with GSAP
+- **Cursor SVG with `pointer-events: none`**
+- **`will-change: transform`** on button (and cursor if desired)
+- **`up-frame > down-frame`** — release MUST come after press; otherwise the comp shows release without press
+- **Don't use real `mouseenter` / `click` events** — HF is a render context, not a UI; everything must run via the timeline
 
 ## Combinations
 
-- Pair with [scale-swap-transition](scale-swap-transition.md) — the incoming CTA receives the press after the morph settles.
-- Cursor path: animate the cursor's `x` / `y` to its target position before `CLICK_DOWN_AT`, then the press tween dips its `scale`. The `x` / `y` and `scale` aliases don't overwrite each other.
-- Inner content: text inside the button can also receive the same scale tween via `inherit` (CSS) or a separate tween — usually overkill for short presses.
+- [press-release-spring.md](press-release-spring.md) — the BUTTON-only press variant; this rule layers cursor on top
+- [cursor-click-ripple.md](cursor-click-ripple.md) — adds a ripple effect at the click point
+- [scale-swap-transition.md](scale-swap-transition.md) — the press TRIGGERS the swap
 
-## Examples
+## Pairs with HF skills
 
-- [cta-morph-press.html](../examples/cta-morph-press.html) — "Find out more" CTA button receives a 0.1-intensity press synchronized with the cursor's scale dip.
+- `/hyperframes-gsap` — coordinated multi-target tweens via array
+- `/hyperframes-core` — composition wiring
+- `/hyperframes-cli` — `hyperframes lint`

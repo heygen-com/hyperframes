@@ -1,198 +1,218 @@
 ---
 name: context-sensitive-cursor
-description: Typing cursor whose color reflects the active text segment — primary while typing the lead-in, accent while typing the highlight. Cursor color + square-wave blink + character slicing all live in one master `onUpdate` reading `tl.time()`.
+description: Cursor color and styling that adapt to the current text segment being typed — accent color on highlights, dim on placeholders, etc.
 metadata:
-  tags: cursor, color, context, typewriter, styling, gsap
-  adapter: gsap
+  tags: cursor, color, context, typewriter, styling, segment
 ---
 
 # Context-Sensitive Cursor
 
-A typewriter cursor that **changes color** at segment boundaries (e.g. white while typing the neutral lead-in, accent color while typing the emphasized keyword). The color shift is a visual signal that the "emphasis zone" has been entered — much stronger than the same-colored cursor sliding along.
+In a typewriter sequence, the cursor's color (and optionally height/blink rate) matches the **active text segment**. If the typewriter is currently typing a brand name, the cursor is the brand accent color; on a placeholder, it dims to gray. Enhances visual cohesion vs a single fixed cursor color across all text states.
 
-The specific accent color is a per-composition design choice. The examples below use pink (`#FF1E7A`); the [messaging-multi-phrase.html](../examples/messaging-multi-phrase.html) example uses cyan (`#32FFF6`). Pick whichever matches the brand or scene palette — the pattern is identical.
+## How It Works
 
-## HyperFrames vs. Remotion
+The text is authored as a SEQUENCE of `{text, t, segment}` entries where `segment` is a string identifier ('main' / 'highlight' / 'brand' / 'success'). The driver tween's onUpdate determines the current segment based on `time`, then sets the cursor's CSS color (and optionally other props) to match that segment's palette.
 
-The Remotion version computed `cursorColor` in the render loop and used `frame % blinkCycle` for the blink, both inside a React component that re-rendered every frame.
-
-```tsx
-const charIndex = Math.floor(activeFrame / speed);
-const visibleMain = textMain.slice(0, charIndex);
-const isTypingAccent = visibleMain.length === textMain.length && visibleAccent.length > 0;
-const cursorColor = isTypingAccent ? accentColor : mainColor;
-const opacity = frame % blinkCycle < blinkCycle / 2 ? 1 : 0;
-```
-
-HyperFrames has no per-frame render. All three concerns — character slicing, color switching, blink — fold into one GSAP `onUpdate` that reads `tl.time()`:
-
-| Concern             | HyperFrames mechanism                                                                             |
-| ------------------- | ------------------------------------------------------------------------------------------------- |
-| Character slicing   | `charIdx = Math.floor((tl.time() - phraseStart) / charSpeed)` inside `onUpdate`                   |
-| Cursor color        | `cursorEl.style.background = inAccent ? ACCENT : MAIN` in the same onUpdate                       |
-| Blink (square wave) | `(tl.time() % BLINK_CYCLE) < BLINK_CYCLE / 2 ? "1" : "0"` — modulo gives the square wave for free |
-
-No conditional rendering, no React hooks — just one `onUpdate` writing to three DOM properties.
-
-## Element HTML
+## HTML
 
 ```html
-<div class="type-line">
-  <span class="type-main"></span><span class="type-accent"></span><span class="type-cursor"></span>
+<div
+  class="scene"
+  id="cursor-scene"
+  data-composition-id="cursor-scene"
+  data-start="0"
+  data-duration="6"
+  data-track-index="0"
+>
+  <div class="terminal">
+    <div class="prompt">$</div>
+    <div class="text-wrap">
+      <span class="text" id="text"></span><span class="cursor" id="cursor">_</span>
+    </div>
+  </div>
 </div>
 ```
 
+## CSS
+
 ```css
-.type-line {
+.scene {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  background: #05060d;
+  font-family: "JetBrains Mono", monospace;
+}
+.terminal {
   display: flex;
-  align-items: center;
-  justify-content: center;
-  white-space: pre; /* preserves trailing space in textMain */
-  font:
-    600 100px/1 "Inter",
-    system-ui,
-    sans-serif;
+  align-items: baseline;
+  gap: 24px;
+  font-size: 72px;
+  font-weight: 800;
+  color: #f5f6fb;
+  white-space: pre;
 }
-.type-main {
-  color: #ffffff;
+.prompt {
+  color: #a78bfa;
 }
-.type-accent {
-  color: #ff1e7a;
+.text-wrap {
+  display: inline-flex;
+  align-items: baseline;
+  min-width: 1200px;
 }
-.type-cursor {
+.text {
+  color: #f5f6fb;
+  white-space: pre;
+}
+/* Cursor highlights based on active segment via class swap */
+.cursor {
   display: inline-block;
-  width: 6px;
-  height: 110px; /* ≈ 1.1 × fontSize */
-  background: #ffffff; /* overridden every frame by onUpdate */
-  margin-left: 4px;
-  vertical-align: middle;
-  transform: translateY(8px); /* baseline fine-tune */
-  will-change: opacity, background-color;
+  width: 20px;
+  height: 64px;
+  background: #f5f6fb; /* default */
+  margin-left: 6px;
+  vertical-align: -8px;
 }
 ```
 
-Cursor dimensions scale with font: width ≈ `fontSize × 0.06`, height ≈ `fontSize × 1.1`. Baseline `translateY(8px)` offsets the cursor block to sit on the text baseline — exact value depends on the font's metrics; eyeball it once at the final font size.
+## GSAP Timeline
 
-## Single-Phrase Pattern
+```html
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+<script>
+  window.__timelines = window.__timelines || {};
+  const tl = gsap.timeline({ paused: true });
 
-Use this when you have ONE phrase with main + accent (no sequencing). For multi-phrase scenes, see [dynamic-content-sequencing](dynamic-content-sequencing.md) and combine.
+  // Sequence with per-entry segment label.
+  // Cursor color shifts as segment changes — viewer's eye locks onto the typed brand.
+  const SEQUENCE = [
+    { t: 0.0, text: "", segment: "main", color: "#f5f6fb" },
+    { t: 0.4, text: "bunx ", segment: "main", color: "#f5f6fb" },
+    { t: 0.8, text: "bunx h", segment: "brand", color: "#a78bfa" }, // brand segment starts
+    { t: 1.1, text: "bunx hy", segment: "brand", color: "#a78bfa" },
+    { t: 1.4, text: "bunx hyperframes", segment: "brand", color: "#a78bfa" },
+    { t: 1.7, text: "bunx hyperframes ", segment: "main", color: "#f5f6fb" }, // back to main
+    { t: 2.0, text: "bunx hyperframes render", segment: "cmd", color: "#34d399" }, // command segment (green)
+    { t: 2.4, text: "bunx hyperframes render --out=", segment: "cmd", color: "#34d399" },
+    {
+      t: 2.9,
+      text: "bunx hyperframes render --out=heygenverse.mp4",
+      segment: "brand",
+      color: "#a78bfa",
+    }, // brand again
+    {
+      t: 4.2,
+      text: "bunx hyperframes render --out=heygenverse.mp4 ✓",
+      segment: "success",
+      color: "#34d399",
+    }, // success
+  ];
 
-```js
-const TEXT_MAIN = "Build video with ";
-const TEXT_ACCENT = "HTML";
-const CHAR_SPEED = 0.083; // seconds per character (= 2.5 frames @ 30 fps)
-const BLINK_CYCLE = 1.0; // seconds per full blink cycle
-const TYPE_AT = 0.5; // when typing starts
-const HOLD_DUR = 2.0; // seconds to hold the completed phrase
-const TOTAL = TYPE_AT + (TEXT_MAIN.length + TEXT_ACCENT.length) * CHAR_SPEED + HOLD_DUR;
+  function entryAt(time) {
+    for (let i = SEQUENCE.length - 1; i >= 0; i--) {
+      if (time >= SEQUENCE[i].t) return SEQUENCE[i];
+    }
+    return SEQUENCE[0];
+  }
 
-const MAIN_COLOR = "#FFFFFF";
-const ACCENT_COLOR = "#FF1E7A";
+  const textEl = document.getElementById("text");
+  const cursorEl = document.getElementById("cursor");
 
-const mainEl = document.querySelector(".type-main");
-const accentEl = document.querySelector(".type-accent");
-const cursorEl = document.querySelector(".type-cursor");
-
-window.__timelines = window.__timelines || {};
-const tl = gsap.timeline({ paused: true });
-
-tl.to(
-  { tick: 0 },
-  {
-    tick: 1,
-    duration: TOTAL,
-    ease: "none",
-    onUpdate: () => {
-      const t = tl.time();
-
-      // Blink — square wave via modulo. Runs always, even before typing starts.
-      cursorEl.style.opacity = t % BLINK_CYCLE < BLINK_CYCLE / 2 ? "1" : "0";
-
-      // Typing — gated by TYPE_AT
-      const activeT = t - TYPE_AT;
-      if (activeT < 0) {
-        if (mainEl.textContent !== "") mainEl.textContent = "";
-        if (accentEl.textContent !== "") accentEl.textContent = "";
-        cursorEl.style.background = MAIN_COLOR;
-        return;
-      }
-
-      const charIdx = Math.floor(activeT / CHAR_SPEED);
-      const mainLen = TEXT_MAIN.length;
-      const visMain = TEXT_MAIN.slice(0, Math.min(charIdx, mainLen));
-      const accLen = Math.max(0, charIdx - mainLen);
-      const visAcc = TEXT_ACCENT.slice(0, accLen);
-
-      if (mainEl.textContent !== visMain) mainEl.textContent = visMain;
-      if (accentEl.textContent !== visAcc) accentEl.textContent = visAcc;
-
-      // Color switches when the cursor crosses the segment boundary
-      const inAccent = visMain.length === mainLen && visAcc.length > 0;
-      cursorEl.style.background = inAccent ? ACCENT_COLOR : MAIN_COLOR;
+  // Discrete state driver — writes text + cursor color
+  const driver = { t: 0 };
+  tl.to(
+    driver,
+    {
+      t: 6.0,
+      duration: 6.0,
+      ease: "none",
+      onUpdate: () => {
+        const entry = entryAt(driver.t);
+        textEl.textContent = entry.text;
+        cursorEl.style.background = entry.color;
+      },
     },
-  },
-  0,
-);
+    0,
+  );
 
-window.__timelines["main"] = tl;
+  // Deterministic blink via sin (NOT CSS animation)
+  const blink = { p: 0 };
+  tl.to(
+    blink,
+    {
+      p: Math.PI * 2 * 8,
+      duration: 6.0,
+      ease: "none",
+      onUpdate: () => {
+        cursorEl.style.opacity = Math.sin(blink.p) > 0 ? "1" : "0";
+      },
+    },
+    0,
+  );
+
+  window.__timelines["cursor-scene"] = tl;
+</script>
 ```
-
-### Why `style.background` and not a GSAP `backgroundColor` tween
-
-`backgroundColor` is a discrete switch here — `#FFFFFF` to `#FF1E7A` at one instant. Tweening would smear it over time, which defeats the "color flips when the segment changes" signal. A direct DOM write is correct and matches the source semantic.
-
-If you _do_ want a soft 0.05–0.10 s fade between the two colors (sometimes nicer for very large text), use a separate `tl.to(cursorEl, { backgroundColor: ACCENT_COLOR, duration: 0.08 }, segmentBoundaryTime)` — but compute `segmentBoundaryTime = TYPE_AT + TEXT_MAIN.length * CHAR_SPEED` ahead of time, not on the fly.
 
 ## Variations
 
-### Non-Blinking During Active Typing
+### Non-blinking during active typing
 
-A blink during active typing reads as a "stutter" because the visible character count is already moving every frame. Lock the cursor to fully visible while characters are being added, blink only during hold:
-
-```js
-const isTyping = activeT >= 0 && activeT < (mainLen + TEXT_ACCENT.length) * CHAR_SPEED;
-cursorEl.style.opacity = isTyping ? "1" : t % BLINK_CYCLE < BLINK_CYCLE / 2 ? "1" : "0";
-```
-
-### Smooth Color Fade (Two-Tween Boundary)
-
-If a hard color flip looks too abrupt at very large font sizes:
+When letters are being added (driver moved forward in the last 0.2s), suppress blink — cursor stays solid. When no typing activity (`time - lastChangeTime > 0.2s`), resume blink.
 
 ```js
-const BOUNDARY_T = TYPE_AT + TEXT_MAIN.length * CHAR_SPEED;
-tl.to(cursorEl, { backgroundColor: ACCENT_COLOR, duration: 0.1, ease: "none" }, BOUNDARY_T);
+let lastChangeTime = 0,
+  lastText = "";
+// In onUpdate:
+if (entry.text !== lastText) {
+  lastChangeTime = driver.t;
+  lastText = entry.text;
+}
+const isTyping = driver.t - lastChangeTime < 0.2;
+cursorEl.style.opacity = isTyping ? "1" : Math.sin(blink.p) > 0 ? "1" : "0";
 ```
 
-When you do this, _remove_ the `cursorEl.style.background = …` line from the onUpdate — otherwise the per-frame write and the tween fight each other.
+### Cursor HEIGHT shifts on segment
 
-### Keyword-Based Color (Position, Not Segment)
-
-For a single text string with a _highlighted region_ (not two segments):
+Larger cursor on brand segment for emphasis:
 
 ```js
-const HIGHLIGHT_START = 14; // char index where the highlight begins
-const inHighlight = charIdx > HIGHLIGHT_START && charIdx <= HIGHLIGHT_START + HIGHLIGHT_LEN;
-cursorEl.style.background = inHighlight ? ACCENT_COLOR : MAIN_COLOR;
+cursorEl.style.height = entry.segment === "brand" ? "76px" : "64px";
 ```
+
+### Cursor reverses contrast on dark text
+
+If a segment is rendered DARK text on light bg, cursor should swap to dark too. Manage via `entry.color` as the SOURCE OF TRUTH and read from there.
+
+## Key Principles
+
+- **Cursor color shifts make brand moments POP** — eye lands on the brand name because the cursor color shifts to brand accent. Without it, cursor is visual noise.
+- **`background` property on the cursor div** — NOT `color` (cursor is a colored block, not a glyph)
+- **Deterministic blink via sin** — never CSS `@keyframes blink`. HF seek will desync.
+- **Cursor `display: inline-block`** — `display: inline` ignores width/height.
+- **`vertical-align: -8px`** (or similar) — visually anchor cursor to text baseline, not full line-height.
+- **`white-space: pre`** on text and parent — preserve trailing spaces so cursor sits at end of segment, not after collapsed space.
+- **Color palette aligned with brand system** — 3-4 colors max for segments (main / brand / cmd / success). More and the segmentation reads as random.
 
 ## Critical Constraints
 
-- **Flexbox layout, not absolute positioning** — the cursor sits inline with the text so it naturally follows the typing position. Absolute positioning would require measuring text every frame.
-- **`Math.floor` on `charIdx`** — float indices passed to `slice` produce undefined visual results.
-- **`white-space: pre`** — required when `textMain` ends with a space. Without it the trailing space collapses and the accent joins immediately.
-- **Cursor color matches the segment color, exactly** — using a different accent-cursor color from the accent-text color breaks the visual link.
-- **Cursor `transform: translateY(...)` is static CSS** — don't tween it. The baseline fine-tune is a one-time alignment, not an animation channel.
-- **`textContent !== visible` guard** — avoid redundant DOM writes during hold windows when `charIdx` hasn't advanced.
-- **`will-change: opacity, background-color`** — hints the compositor; without it the per-frame opacity flip may cause layout jitter on weaker GPUs.
-- **No `Math.random` / `Date.now`** — all cursor state is a pure function of `tl.time()`.
+- **Timeline must be paused**: `gsap.timeline({ paused: true })`
+- **Registry key = `data-composition-id`**
+- **No CSS animation** on cursor — must be timeline-driven (blink + color)
+- **Cursor `display: inline-block`** — required for width/height
+- **`white-space: pre`** on text container and text — preserve trailing space
+- **Monospace font** — proportional fonts cause cursor to drift mid-segment
 
 ## Combinations
 
-- [dynamic-content-sequencing](dynamic-content-sequencing.md) — wrap this pattern in a multi-phrase sequencer for the full [messaging-multi-phrase](../blueprints/messaging-multi-phrase.md) blueprint.
-- [discrete-text-sequence](discrete-text-sequence.md) — for typing patterns that aren't strictly character-by-character (typos, pauses, bulk additions). Use that rule's `pickDiscrete` instead of the per-char `slice` here.
-- [camera-cursor-tracking](camera-cursor-tracking.md) — a virtual camera locks to the cursor's screen position so long-typing phrases stay framed.
+- [discrete-text-sequence.md](discrete-text-sequence.md) — uses the same SEQUENCE array pattern; this rule adds the cursor styling layer
+- [camera-cursor-tracking.md](camera-cursor-tracking.md) — camera tracks the cursor across the typing
+- [press-release-spring.md](press-release-spring.md) — after typing completes, a button press confirms the command
 
-## Examples
+## Pairs with HF skills
 
-- [messaging-multi-phrase.html](../examples/messaging-multi-phrase.html) — three phrases ("Build video with HTML", "Seek any frame", "Render to MP4") typed sequentially with the cursor switching between white and cyan accent at each phrase's main → accent boundary.
-- [concept-demo-decode-pan.html](../examples/concept-demo-decode-pan.html) — single-phrase variant; cursor stays the same color but tracks the typing position via camera-cursor-tracking.
+- `/hyperframes-gsap` — onUpdate driving cursor color + sin blink
+- `/hyperframes-core` — composition wiring
+- `/hyperframes-cli` — `hyperframes lint`

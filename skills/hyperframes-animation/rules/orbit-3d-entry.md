@@ -1,263 +1,273 @@
 ---
 name: orbit-3d-entry
-description: Elements flip in from 3D space (rotateX + rotateY + translateZ) then settle into continuous elliptical orbit around a focal point. Two nested wrappers — `.icon-pos` carries the orbit x/y from a master onUpdate; `.icon-entry` carries the 3D-flip from a per-icon fromTo tween.
+description: Elements flip in from 3D space then settle into continuous elliptical orbit around a focal point.
 metadata:
-  tags: orbit, 3d, flip, ellipse, circular, icon, entry, gsap
-  adapter: gsap
+  tags: orbit, 3d, flip, ellipse, circular, icon, entry, continuous
 ---
 
 # Orbit with 3D Entry
 
-Elements flip in from 3D space — `rotateX(90°) → 0°` plus `translateZ(-100) → 0` plus `scale(0) → 1` — then settle into a continuous elliptical orbit around a focal point. The 3D flip is the _entry signature_; the orbit is the _ambient motion that keeps the scene alive_.
+Elements flip in from 3D space (rotateX + rotateY + translateZ) then transition into a continuous elliptical orbit around a focal point. Distinct from one-shot reveals — the orbit keeps running.
 
-## HyperFrames vs. Remotion
+## How It Works
 
-The Remotion source computed everything every frame inside the icon's render function:
+Two phases per element:
 
-```tsx
-const entryProgress = spring({ frame: frame - delay, fps, config });
-const rotateX = interpolate(entryProgress, [0, 1], [90, 0]);
+1. **Entry (0 → ~0.6s per element)**: GSAP tween from hidden 3D orientation (`rotateX: -90deg, rotateY: 90deg, z: -300`) to flat (`rotateX: 0, rotateY: 0, z: 0`). Spring-like ease for the flip-in.
+2. **Orbit (after entry)**: Continuous trigonometric position around a center point. The element's `x` and `y` translate are driven by `cos(t)` and `sin(t)` at a slow angular speed.
 
-const effectiveFrame = Math.max(0, frame - delay);
-const angle = initialAngle + effectiveFrame * orbitSpeed;
-const orbitX = Math.cos(angle) * radiusX;
-```
+The orbit runs **inside the timeline** — not via `requestAnimationFrame` — so HF seek-by-frame stays deterministic.
 
-HyperFrames is seek-driven on a paused timeline, so the same orbit and entry are split across two GSAP mechanisms:
-
-| Concern                           | HyperFrames mechanism                                                                                           |
-| --------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| 3D flip entry (one-shot per icon) | Per-icon `tl.fromTo(".icon-entry", …, ease: "back.out(1.4)")` on a nested entry wrapper                         |
-| Continuous orbit (every frame)    | Single master `tl.to({ tick: 0 }, … onUpdate)` that reads `tl.time()` and writes `x` / `y` to every `.icon-pos` |
-
-The orbit and the entry never collide because they target different wrappers (`.icon-pos` vs `.icon-entry`).
-
-## Two-Wrapper Anatomy
+## HTML
 
 ```html
-<div class="icon-pos">
-  <!-- outer: GSAP writes x/y here (orbit) -->
-  <div class="icon-entry">
-    <!-- inner: GSAP writes rotateX/Y/Z/scale/opacity (entry) -->
-    <svg class="icon-svg">…</svg>
+<div
+  class="scene"
+  id="orbit-scene"
+  data-composition-id="orbit-scene"
+  data-start="0"
+  data-duration="5"
+  data-track-index="0"
+>
+  <div class="orbit-stage">
+    <div class="orbit-item" data-angle="0">★</div>
+    <div class="orbit-item" data-angle="60">●</div>
+    <div class="orbit-item" data-angle="120">◆</div>
+    <div class="orbit-item" data-angle="180">▲</div>
+    <div class="orbit-item" data-angle="240">■</div>
+    <div class="orbit-item" data-angle="300">✦</div>
+    <div class="orbit-center">HEYGEN</div>
   </div>
 </div>
 ```
 
+## CSS
+
 ```css
-.icon-pos {
-  position: absolute;
-  left: 50%; /* baseline at viewport center */
-  top: 50%;
-  width: 120px;
-  height: 120px;
-  margin: -60px 0 0 -60px; /* recenter the box */
-  perspective: 800px; /* enables the 3D flip on the inner wrapper */
-  will-change: transform;
-}
-.icon-entry {
+.scene {
+  position: relative;
   width: 100%;
   height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(ellipse at center, #161a3a 0%, #0b0d1f 70%);
+  perspective: 1800px; /* REQUIRED — without perspective, rotateX/Y flatten */
+}
+.orbit-stage {
+  position: relative;
+  width: 1000px;
+  height: 700px;
+  display: grid;
+  place-items: center;
   transform-style: preserve-3d;
-  will-change: transform, opacity;
+}
+.orbit-item {
+  position: absolute;
+  /* Items live at stage center; GSAP translates them along the orbit. */
+  top: 50%;
+  left: 50%;
+  width: 140px;
+  height: 140px;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(135deg, #a78bfa 0%, #6366f1 100%);
+  border-radius: 50%;
+  font-family: "Inter", sans-serif;
+  font-weight: 900;
+  font-size: 64px;
+  color: #fff;
+  transform-style: preserve-3d;
+  will-change: transform;
+  box-shadow: 0 12px 36px rgba(108, 99, 255, 0.4);
+}
+.orbit-center {
+  position: relative;
+  z-index: 5;
+  font-family: "Inter", sans-serif;
+  font-weight: 900;
+  font-size: 96px;
+  letter-spacing: 8px;
+  color: #f5f6fb;
+  text-transform: uppercase;
 }
 ```
 
-`perspective` lives on `.icon-pos`, not on `.icon-entry` itself — the inner wrapper inherits the perspective space from its parent so the 3D flip has visible depth.
+## GSAP Timeline
 
-## Phase 1 — 3D Flip Entry (Per-Icon Tween)
+```html
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+<script>
+  window.__timelines = window.__timelines || {};
+  const tl = gsap.timeline({ paused: true });
 
-```js
-const ICONS = [
-  { sel: ".icon-music", initialAngle: (0 * Math.PI) / 3, entryDelay: 0.0 },
-  { sel: ".icon-gaming", initialAngle: (1 * Math.PI) / 3, entryDelay: 0.1 },
-  { sel: ".icon-education", initialAngle: (2 * Math.PI) / 3, entryDelay: 0.2 },
-  { sel: ".icon-sports", initialAngle: (3 * Math.PI) / 3, entryDelay: 0.3 },
-  { sel: ".icon-vlog", initialAngle: (4 * Math.PI) / 3, entryDelay: 0.4 },
-  { sel: ".icon-podcast", initialAngle: (5 * Math.PI) / 3, entryDelay: 0.5 },
-];
+  const items = document.querySelectorAll(".orbit-item");
+  const RADIUS_X = 380;
+  const RADIUS_Y = RADIUS_X * 0.5; // perspective-flattened
+  const ORBIT_DURATION = 5; // seconds for one full orbit revolution
 
-const ENTRY_DUR = 0.55;
+  items.forEach((el, i) => {
+    const initialAngleDeg = Number(el.dataset.angle);
+    const initialAngleRad = (initialAngleDeg / 360) * Math.PI * 2;
 
-ICONS.forEach(({ sel, entryDelay }) => {
-  tl.fromTo(
-    `${sel} .icon-entry`,
-    { rotateX: 90, rotateY: -45, z: -100, scale: 0, opacity: 0 },
-    {
-      rotateX: 0,
-      rotateY: 0,
-      z: 0,
-      scale: 1,
-      opacity: 1,
-      duration: ENTRY_DUR,
-      ease: "back.out(1.4)", // spring(stiffness:100-120, damping:14) — mild overshoot
-    },
-    entryDelay,
-  );
-});
+    // Phase 1 — flip in from 3D
+    tl.fromTo(
+      el,
+      {
+        xPercent: -50,
+        yPercent: -50,
+        rotateX: -90,
+        rotateY: 90,
+        z: -300,
+        opacity: 0,
+        scale: 0.4,
+      },
+      {
+        rotateX: 0,
+        rotateY: 0,
+        z: 0,
+        opacity: 1,
+        scale: 1,
+        duration: 0.6,
+        ease: "back.out(1.6)",
+      },
+      i * 0.08, // cascade entry
+    );
+
+    // Phase 2 — continuous orbit driven via a 0→1 progress tween
+    const orbitState = { p: 0 };
+    tl.to(
+      orbitState,
+      {
+        p: 1,
+        duration: ORBIT_DURATION,
+        ease: "none",
+        onUpdate: () => {
+          const angle = initialAngleRad + orbitState.p * Math.PI * 2;
+          const x = Math.cos(angle) * RADIUS_X;
+          const y = Math.sin(angle) * RADIUS_Y;
+          // z-index by orbit Y so bottom-of-orbit items render above center
+          el.style.zIndex = String(Math.round(y + RADIUS_Y));
+          el.style.transform = `translate(-50%, -50%) translate(${x}px, ${y}px)`;
+        },
+      },
+      i * 0.08 + 0.6,
+    ); // after this element's flip-in
+  });
+
+  // Center label fades in once a few orbit items have landed
+  tl.from(".orbit-center", { opacity: 0, scale: 0.6, duration: 0.6, ease: "back.out(1.4)" }, 0.4);
+
+  window.__timelines["orbit-scene"] = tl;
+</script>
 ```
-
-Stagger delays (`0.10 s = 3 frames at 30fps`) cascade the entries. With 6 icons that's a 0.50 s window — short enough that the _last_ icon lands while the _first_ is still settling, so the eye reads a continuous wave.
-
-### Why `back.out(1.4)` and not a stiffer ease
-
-Per the SKILL.md spring → ease table, `stiffness: 100–120, damping: 14` (the Remotion source) maps to `back.out(1.4)` — a 4-frame overshoot at 30 fps. Stiffer eases (`back.out(1.7)+`) snap too hard for an _arrival_ motion; the icons should feel _placed_, not _thrown_.
-
-## Phase 2 — Continuous Orbit (Master onUpdate)
-
-The orbit angle advances every frame from the moment the icon enters. A single master `onUpdate` writes all icons:
-
-```js
-const RADIUS_X = 480;
-const RADIUS_Y = 280; // ≈ 0.58 × X for perspective flattening
-const ORBIT_SPEED = 0.25; // radians per second — full revolution every ~25 s
-const ORBIT_END = 3.0; // stop the engine after the orbit is no longer visible
-
-tl.to(
-  { tick: 0 },
-  {
-    tick: 1, // unused; this is just a clock
-    duration: ORBIT_END,
-    ease: "none",
-    onUpdate: () => {
-      const t = tl.time();
-      ICONS.forEach(({ sel, initialAngle, entryDelay }) => {
-        const localT = Math.max(0, t - entryDelay); // each icon's clock starts at its entry
-        const angle = initialAngle + localT * ORBIT_SPEED;
-        const x = Math.cos(angle) * RADIUS_X;
-        const y = Math.sin(angle) * RADIUS_Y;
-        gsap.set(`${sel}.icon-pos`, { x, y });
-      });
-    },
-  },
-  0,
-);
-```
-
-### Why `Math.max(0, t - entryDelay)`
-
-Without the clamp, an icon's `angle` would be wrong for `t < entryDelay` — it would already have "rotated" off its initial angle before becoming visible. Clamping at 0 holds every icon at `initialAngle` until its entry begins, so the flip-in starts from a known position.
-
-### Why one onUpdate instead of one tween per icon
-
-GSAP doesn't natively tween two trigonometric outputs from one input. We could express the orbit as a linear angle tween + `modifiers`, but the master `onUpdate` is far simpler and the per-frame cost is trivial (`Math.cos` + `Math.sin` per icon = ~6 floats per icon per frame).
-
-## Elliptical Orbit Parameters
-
-| Parameter      | Effect                                                                     | Typical range              |
-| -------------- | -------------------------------------------------------------------------- | -------------------------- |
-| `RADIUS_X`     | Horizontal spread                                                          | 400–600 px on a 1920 stage |
-| `RADIUS_Y`     | Vertical spread — use `RADIUS_X * 0.5–0.6` for perspective-like flattening | 200–360 px                 |
-| `ORBIT_SPEED`  | Radians per **second** — `0.2–0.4` for gentle ambient orbit                | 0.2–0.4 rad/s              |
-| `initialAngle` | Starting angle per icon — distribute evenly: `(i / N) * 2π`                | per-icon                   |
-| `entryDelay`   | Stagger between icon entries (seconds)                                     | 0.08–0.15 s                |
 
 ## Variations
 
-### Collapse to Center (composes with orbit)
+### Collapse to center
 
-Reverse the orbit by scaling the radius from 1 to 0 over a collapse window. The same master `onUpdate` reads a _second_ time-derived value:
+To reverse — orbit then collapse inward — interpolate `RADIUS_X` and `RADIUS_Y` to 0 in a final phase:
 
 ```js
-const CLICK_AT = 2.2;
-const COLLAPSE_DUR = 0.85;
-const COLLAPSE_EASE = gsap.parseEase("back.out(1.6)"); // snappier than the entry
-
+const collapse = { r: 1 };
 tl.to(
-  { tick: 0 },
+  collapse,
   {
-    tick: 1,
-    duration: ORBIT_END,
-    ease: "none",
-    onUpdate: () => {
-      const t = tl.time();
-      const collapseLinear = Math.max(0, Math.min(1, (t - CLICK_AT) / COLLAPSE_DUR));
-      const collapseEased = COLLAPSE_EASE(collapseLinear);
-      const radiusFactor = 1 - collapseEased;
-
-      ICONS.forEach(({ sel, initialAngle, entryDelay }) => {
-        const localT = Math.max(0, t - entryDelay);
-        const angle = initialAngle + localT * ORBIT_SPEED;
-        const x = Math.cos(angle) * RADIUS_X * radiusFactor;
-        const y = Math.sin(angle) * RADIUS_Y * radiusFactor;
-        gsap.set(`${sel}.icon-pos`, { x, y });
-      });
-    },
+    r: 0,
+    duration: 0.8,
+    ease: "power3.inOut",
+    onUpdate: () =>
+      items.forEach((el, i) => {
+        const a = (Number(el.dataset.angle) / 360) * Math.PI * 2;
+        el.style.transform = `translate(-50%,-50%) translate(${Math.cos(a) * RADIUS_X * collapse.r}px,${Math.sin(a) * RADIUS_Y * collapse.r}px) scale(${collapse.r})`;
+      }),
   },
-  0,
+  ORBIT_DURATION + 0.6,
 );
 ```
 
-**The orbit speed is unchanged during collapse — only the radius shrinks.** Slowing the orbit during collapse looks like the icons "freeze and pull"; keeping the speed constant looks like a vortex draining inward, which is the desired "energy converging on the click point" reading.
+### Tilted orbit plane
 
-For collapse scale + opacity on top of the orbit, add a third wrapper:
+For a more dramatic 3D orbit, rotate the entire `.orbit-stage` on the X axis:
 
-```html
-<div class="icon-pos">
-  <!-- orbit x/y -->
-  <div class="icon-collapse">
-    <!-- collapse scale + opacity (during phase 3 only) -->
-    <div class="icon-entry">
-      <!-- 3D flip entry (one-shot) -->
-      <svg class="icon-svg">…</svg>
-    </div>
-  </div>
-</div>
+```css
+.orbit-stage {
+  transform: rotateX(25deg);
+}
 ```
 
-Inside the same master `onUpdate`, write `scale` / `opacity` to `.icon-collapse`. This three-wrapper pattern is what [cta-orbit-collapse](../blueprints/cta-orbit-collapse.md) uses.
+Items rendered above/below the equator visually arc through the plane.
 
-### Z-Index by Orbit Y
+## Key Principles
 
-For depth illusion, icons in the _lower_ half of the orbit (higher screen-Y) should sit _above_ those in the upper half. Add to the master onUpdate:
-
-```js
-const zIndex = Math.round((y + RADIUS_Y) * 0.5); // 0 at top, RADIUS_Y at bottom
-gsap.set(`${sel}.icon-pos`, { x, y, zIndex });
-```
-
-Without this, an icon orbiting in front of the centerpiece during the front half of its loop will get drawn behind it on every screen-Y crossing — a flicker.
-
-### Floating Wobble During Orbit
-
-The Remotion source added `floatY = Math.sin(frame * 0.03 + index) * 5` to give each icon a subtle bob _while_ orbiting. Add to the master onUpdate:
-
-```js
-const float = Math.sin(localT * 1.0 + i * 1.3) * 5;
-const floatRot = Math.sin(localT * 0.6 + i * 2.0) * 3;
-gsap.set(`${sel}.icon-pos`, { x, y: y + float, rotation: floatRot });
-```
-
-`+ i * 1.3` phase-offsets each icon's wobble so they don't bob in unison. Keep amplitude small (±3–6 px); larger looks like turbulence.
-
-## Tips
-
-- **Stagger entries by 0.08–0.15 s** for a cascade feel. Larger gaps (0.25 s+) start to read as separate animations.
-- **High 3D entry rotation (60–90°)** for a dramatic flip-in. The `rotateY: -45` adds a perspective skew so each icon feels like it's flipping in from the upper-right rather than straight forward.
-- **Slow orbit speed (0.2–0.4 rad/s)** — the orbit is _ambient_, not the focal motion. Faster orbits pull attention away from whatever the centerpiece is doing.
-- **4–8 elements** work best. Fewer feels empty; more clusters even at 480 px radius.
-- **Use `back.out(1.4)` for entry, `back.out(1.6)+` for any subsequent collapse** — collapse should feel snappier than arrival.
+- **`perspective` on scene root REQUIRED** — without it, rotateX/Y read as 2D scale and the flip-in looks flat
+- **`transform-style: preserve-3d`** on both the stage and each item — preserves the 3D context as items have their own transforms
+- **Stagger entries by 0.06-0.10s** — cascade reads as "swarm forming," simultaneous reads as "popcorn"
+- **Orbit duration 4-6s for one revolution** — too fast looks frenetic, too slow looks frozen; gentle ambient motion is the goal
+- **Element count 4-12** — fewer feels empty, more crowds the center
+- **❗ Center label clearance — translateZ + capped item z-index** — `z-index` ALONE is unreliable inside a `transform-style: preserve-3d` stage (paint order follows Z position, not stacking-context z-index). For the orbit to NEVER occlude the headline:
+  1. Push the center label forward: `transform: translateZ(220px); z-index: 9999;`
+  2. Cap orbit-item dynamic z-index in `[1, 50]` so bottom-of-orbit items still read as "in front of" top-of-orbit items, but **never above the center label**. e.g.: `el.style.zIndex = String(1 + Math.round((y + RADIUS_Y) / (2 * RADIUS_Y) * 49));`
+  3. **Choose `RADIUS_X` so items also clear the center label HORIZONTALLY at all angles.** If the label's half-width is `L_w` and the item's half-width is `I_w`, then `RADIUS_X` must satisfy `RADIUS_X * min(|cos(θ_minimum)|) ≥ L_w + I_w + breathing_room`. For a 6-item orbit with 60° angular spacing, the worst case is `cos(30°) ≈ 0.866` between items. Empirically, **`RADIUS_X = 700+ for HEYGEN (120px font), 800+ for $5,000-class counter (160px font)`**.
+- **❗ Center element is the headline** — the orbit is ornamental motion around it. If the orbit dominates the eye, increase center element size or fade orbit items down
 
 ## Critical Constraints
 
-- **Two (or three) nested wrappers per icon**: orbit x/y on `.icon-pos`, collapse scale/opacity on `.icon-collapse` (if collapsing), entry 3D rotation on `.icon-entry`. Tweening different properties on the _same_ element from two sources is undefined under GSAP's last-write-wins semantics.
-- **`perspective` on `.icon-pos`, not the body**: A scene-wide `perspective` causes every transformed element to share a vanishing point, which distorts the orbit's circular reading.
-- **`Math.max(0, t - entryDelay)` clamp**: Without it, icons "rotate" before they're visible and pop into the orbit at the wrong angle.
-- **Constant orbit speed, even during collapse**: Only the radius shrinks. The angular velocity is invariant.
-- **GSAP transform aliases only**: `x`, `y`, `scale`, `rotation`, `rotateX`, `rotateY`, `z`, `opacity`. Never `left`/`top`/`width`/`height`.
-- **No `Math.random` / `Date.now`**: All orbit and entry state is a pure function of `tl.time()`.
-- **No infinite repeats**: The master `onUpdate` clock tween has a finite `duration: ORBIT_END`.
+- **No `requestAnimationFrame`** — orbit must run inside the timeline so HF seeks frame-by-frame deterministically
+- **Timeline must be paused**: `gsap.timeline({ paused: true })`
+- **Registry key = `data-composition-id`**
+- **Each item gets its OWN orbit tween** — don't share one tween with `targets: '.orbit-item'` because each starts at a different `initialAngle`
+- **`will-change: transform`** — many simultaneous orbital transforms benefit from compositor hints
+- **Don't animate `left`/`top`** — use `translate()` (composes with `translate(-50%, -50%)` centering)
+- **❗ Entry must flip IN PLACE at orbital position, NOT at center** — a fromTo whose "from" and "to" both have `x: 0, y: 0` keeps the item at the stage center during phase 1, so it collides with the center label during flip-in (and then snaps to orbit on phase 2 start — a visible teleport).
+
+  The correct pattern is to `gsap.set()` each item at `(cos(initialAngle)*RADIUS_X, sin(initialAngle)*RADIUS_Y)` with `opacity: 0` BEFORE adding tweens, then have phase 1 animate only rotation/opacity/scale — NOT translate. The item fades in IN PLACE at its orbital starting point, and phase 2 picks up the orbit smoothly from there.
+
+  ```js
+  items.forEach((el, i) => {
+    const angle = (Number(el.dataset.angle) / 360) * Math.PI * 2;
+    const startX = Math.cos(angle) * RADIUS_X;
+    const startY = Math.sin(angle) * RADIUS_Y;
+
+    // 1) Place at orbital position with opacity 0 — BEFORE any tween fires
+    gsap.set(el, {
+      xPercent: -50,
+      yPercent: -50,
+      x: startX,
+      y: startY,
+      rotateX: -90,
+      rotateY: 90,
+      z: -300,
+      opacity: 0,
+      scale: 0.4,
+    });
+
+    // 2) Phase 1 — flip in IN PLACE (no x/y in the tween)
+    tl.to(
+      el,
+      {
+        rotateX: 0,
+        rotateY: 0,
+        z: 0,
+        opacity: 1,
+        scale: 1,
+        duration: 0.6,
+        ease: "back.out(1.6)",
+      },
+      i * 0.08,
+    );
+
+    // 3) Phase 2 — orbit (onUpdate writes transform with new x/y)
+    // ...
+  });
+  ```
 
 ## Combinations
 
-- [svg-icon-enrichment](svg-icon-enrichment.md) — give each orbiting icon a signature internal motion (rotating clock hand, pulsing record dot, bouncing notes). The enrichment runs on the SVG _inside_ `.icon-entry` and is independent of the orbit math.
-- [center-outward-expansion](center-outward-expansion.md) — alternative entry pattern where icons expand outward from a cluster point rather than flipping in from 3D space. Use one or the other, not both.
-- [cursor-click-ripple](cursor-click-ripple.md) — the click that drives the collapse phase in [cta-orbit-collapse](../blueprints/cta-orbit-collapse.md).
-- [sine-wave-loop](sine-wave-loop.md) — apply to whatever the orbit surrounds (a central CTA, a logo, the demo that emerges from collapse) so the centerpiece breathes while the icons orbit.
+- [center-outward-expansion.md](center-outward-expansion.md) — alternative entry pattern (burst, not orbit)
+- [counting-dynamic-scale.md](counting-dynamic-scale.md) — center counter with orbiting decorations
 
-## Examples
+## Pairs with HF skills
 
-- [cta-orbit-collapse.html](../examples/cta-orbit-collapse.html) — six genre icons enter with 3D flip and orbit a central CTA input; on click they collapse inward. Uses the full three-wrapper pattern (`.icon-pos` orbit + `.icon-collapse` scale/opacity + `.icon-entry` 3D flip) so the orbit, collapse, and entry tweens never collide.
+- `/hyperframes-gsap` — timeline + `onUpdate` API
+- `/hyperframes-core` — composition wiring
+- `/hyperframes-cli` — `hyperframes lint`

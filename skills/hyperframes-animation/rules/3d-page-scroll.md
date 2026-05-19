@@ -1,182 +1,174 @@
 ---
 name: 3d-page-scroll
-description: Full webpage rendered as a tilted 3D card whose internal content scrolls to reveal specific sections. GSAP tweens the scroll-content's `y`; the card's tilt is static.
+description: Full webpage rendered as tilted 3D card that scrolls to reveal specific sections.
 metadata:
-  tags: 3d, page, scroll, webpage, tilt, perspective, product-demo, gsap
-  adapter: gsap
+  tags: 3d, page, scroll, webpage, tilt, product-demo, perspective
 ---
 
 # 3D Page Scroll
 
-A webpage (or long content) presented as a tilted 3D card. GSAP-driven `y` translation reveals specific sections while the 3D perspective adds premium depth. Two layers of motion separated cleanly:
+A webpage (or long content) presented as a tilted 3D card. Spring-eased scroll reveals specific sections while the static 3D perspective adds physical depth.
 
-- **3D tilt**: static `rotateY` + `rotateX` on the outer card (no animation, just CSS)
-- **Scroll**: `y` translation on the inner content (GSAP tween)
+## How It Works
 
-## HyperFrames vs. Remotion
+Two independent transforms combine:
 
-Identical pattern. Both use a fixed-perspective outer container, a clipped tilted card, and a scrollable inner content. The only difference is the scroll driver: Remotion's `spring()` becomes a GSAP tween with `power3.out` / `power2.inOut` ease.
+1. **3D tilt** — Static `rotateY` + `rotateX` with `perspective` on the card. The angle does **not** change during the scene.
+2. **Scroll** — The content inside the card translates vertically (`translateY` / `y` in GSAP) within a clipped container, driven by a GSAP tween. Spring-like deceleration via `ease: "power3.out"` or `"power4.out"`.
 
-## Core Concept
+Optional layer:
 
-```
-.perspective-wrap        perspective: 1200px       fixed CSS
-  .page-card             rotateY(-8deg) rotateX(3deg) scale(...)
-                         transform-style: preserve-3d
-                         overflow: hidden
-    .scroll-content      y: 0 → -scrollDistance     GSAP tween
-       [full page DOM, taller than visible height]
-    .spotlight-overlay   radial-gradient mask        opacity tween in Phase 3
-```
+3. **Spotlight overlay** — A radial-gradient mask dims everything except a focal region after the scroll lands. Use to draw attention to one section.
 
-## Basic Pattern
+For multi-step scrolling (scroll → pause → scroll), use multiple `tl.to(".page-content", { y: -<distance>, ... }, <position>)` calls at different timeline positions.
+
+## HTML
 
 ```html
-<div class="perspective-wrap">
-  <div class="page-card">
-    <div class="scroll-content">
-      <!-- A recreation of your webpage — taller than .page-card. -->
-      <header class="page-navbar">…</header>
-      <section class="page-hero">…</section>
-      <section class="page-features">…</section>
-      <section class="page-carousel">…</section>
+<div
+  class="scene"
+  id="page-scroll-scene"
+  data-composition-id="page-scroll-scene"
+  data-start="0"
+  data-duration="5"
+  data-track-index="0"
+>
+  <div class="tilt-card">
+    <div class="page-content">
+      <!-- Full webpage recreation, taller than card.height so scrolling matters -->
+      <section class="page-hero">Hedronverse — hero section</section>
+      <section class="page-features">Features section</section>
+      <section class="page-pricing" id="target-section">Pricing section (scroll target)</section>
+      <section class="page-cta">CTA section</section>
     </div>
-    <div class="spotlight-overlay"></div>
+
+    <div class="spotlight"></div>
   </div>
 </div>
-
-<style>
-  .perspective-wrap {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    perspective: 1200px;
-  }
-  .page-card {
-    width: 92%;
-    height: 88%;
-    overflow: hidden;
-    border-radius: 20px;
-    background: var(--page-bg, #0a0a0f);
-    transform-style: preserve-3d;
-    transform: rotateY(-8deg) rotateX(3deg) scale(0.95);
-    box-shadow:
-      -30px 30px 60px rgba(0, 0, 0, 0.4),
-      -15px 15px 30px rgba(0, 0, 0, 0.3),
-      0 0 80px rgba(0, 0, 0, 0.2);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-  }
-  .scroll-content {
-    will-change: transform;
-  }
-  .spotlight-overlay {
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-    opacity: 0; /* GSAP tween reveals it during Phase 3 */
-  }
-</style>
-
-<script>
-  window.__timelines = window.__timelines || {};
-  const tl = gsap.timeline({ paused: true });
-
-  // ============================================================
-  // ENTRY — card scales up from 0.95
-  // ============================================================
-  tl.fromTo(".page-card", { scale: 0.95 }, { scale: 1.0, duration: 0.8, ease: "power2.out" }, 0);
-
-  // ============================================================
-  // SCROLL — content translates up to reveal a lower section
-  // ============================================================
-  const SCROLL_START = 3.08;
-  const SCROLL_DISTANCE = 280; // px — depends on the page layout
-
-  tl.fromTo(
-    ".scroll-content",
-    { y: 0 },
-    { y: -SCROLL_DISTANCE, duration: 1.0, ease: "power2.inOut" },
-    // power2.inOut feels like a programmatic scroll (slow in, slow out).
-    // For a more snappy "jump" feel use power3.out.
-    SCROLL_START,
-  );
-
-  // ============================================================
-  // SPOTLIGHT — reveal the radial-gradient mask after scroll
-  // ============================================================
-  tl.to(
-    ".spotlight-overlay",
-    {
-      opacity: 1,
-      duration: 0.5,
-      ease: "power2.out",
-    },
-    SCROLL_START + 0.5,
-  );
-
-  window.__timelines["main"] = tl;
-</script>
 ```
 
-## Spotlight Overlay
-
-Draws attention to the post-scroll target by dimming surroundings. Set the radial-gradient center to the _visible_ target's location, which is its absolute position in the inner content **minus** the scroll offset.
+## CSS (hero-frame layout)
 
 ```css
-.spotlight-overlay {
+.scene {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.tilt-card {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%) perspective(1500px) rotateY(-8deg) rotateX(3deg);
+  transform-style: preserve-3d;
+  width: 1400px;
+  height: 800px;
+  border-radius: 24px;
+  background: #0e1130;
+  overflow: hidden; /* clip the scrolling content */
+  box-shadow: 40px 30px 80px rgba(0, 0, 0, 0.45); /* shadow falls toward right because card leans left */
+}
+
+.page-content {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  /* height is intrinsic from sections — taller than .tilt-card.height */
+}
+
+.page-content section {
+  height: 800px; /* example: each section is one card-height */
+  padding: 64px;
+  /* section-specific styling … */
+}
+
+.spotlight {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
   background: radial-gradient(
-    ellipse 850px 550px at 40% 60%,
-    /* center the highlight on the target */ transparent 0%,
+    ellipse 60% 35% at 50% 50%,
     transparent 50%,
-    rgba(0, 0, 0, 0.65) 100%
+    rgba(0, 0, 0, 0.75) 100%
   );
 }
 ```
 
-For multiple successive spotlights (different target per phase), use multiple overlays each with their own GSAP opacity tween. Don't try to animate the gradient stops — only tween the overlay's `opacity` and let CSS hold the static gradient shape.
+## GSAP Timeline
 
-## Multi-Phase Scroll
+```html
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+<script>
+  window.__timelines = window.__timelines || {};
+  const tl = gsap.timeline({ paused: true });
 
-Scroll to different sections at different times. Each phase is one tween that animates `y` to the new target offset. GSAP overwrite handles the merging:
+  // Phase 1 — Card enters (optional, can skip if card is in from t=0)
+  // Phase 2 — Scroll to the target section
+  // Target section #target-section is offset 1600px down (sections 2 + 3).
+  // To bring it into view centered, scroll content up by 1600px.
+  tl.to(
+    ".page-content",
+    {
+      y: -1600,
+      duration: 1.5,
+      ease: "power3.out",
+    },
+    1.0,
+  );
 
-```js
-tl.to(".scroll-content", { y: -280, duration: 1.0, ease: "power2.inOut" }, 3.08);
-tl.to(".scroll-content", { y: -640, duration: 1.0, ease: "power2.inOut" }, 6.5);
-tl.to(".scroll-content", { y: -280, duration: 1.0, ease: "power2.inOut" }, 9.2); // back up
+  // Phase 3 — Spotlight fades in on the target after scroll settles
+  tl.to(
+    ".spotlight",
+    {
+      opacity: 1,
+      duration: 0.6,
+      ease: "power1.inOut",
+    },
+    2.4,
+  );
+
+  window.__timelines["page-scroll-scene"] = tl;
+</script>
 ```
 
-Don't sum springs like the Remotion source — each tween's _absolute_ target is what GSAP animates to. The math is simpler.
+### Multi-phase scroll variant
 
-## Tilt Reference
+```js
+// Scroll to section A → hold → scroll to section B
+tl.to(".page-content", { y: -800, duration: 1.0, ease: "power3.out" }, 0.5);
+tl.to(".page-content", { y: -2000, duration: 1.2, ease: "power3.out" }, 2.5);
+```
 
-| Tilt                               | rotateY | rotateX | Shadow direction               |
-| ---------------------------------- | ------- | ------- | ------------------------------ |
-| Left-leaning (default)             | `-8deg` | `3deg`  | Shadow falls **right**         |
-| Right-leaning                      | `8deg`  | `3deg`  | Shadow falls **left**          |
-| Forward-tilted (catalog page feel) | `0deg`  | `8deg`  | Shadow falls **down**          |
-| Floating flat                      | `-4deg` | `2deg`  | Subtle, more "iso" perspective |
+GSAP composes successive `y:` tweens additively when targeting the same property — each tween starts from the value left by the previous tween.
 
-`perspective: 1200px` is the standard distance. Lower values (600–800) exaggerate the depth; higher (1500–2000) flatten it.
+## Key Principles
+
+- **Tilt is static**, not animated. The card holds its angle the whole scene.
+- **Shadow direction matches tilt**: left-leaning card (`rotateY: -8deg`) casts shadow to the right (positive X shadow offset). Mismatch breaks the 3D illusion.
+- **Page content is real HTML**, not a screenshot. Screenshots can't be individually highlighted or scrolled-to with precision.
+- **Use real layout for distances**: scroll target distance comes from the actual cumulative section heights, not estimated pixel values.
+- **Spotlight as overlay**, not inside the page-content — overlay sits above scrolling content and stays fixed relative to the card.
 
 ## Critical Constraints
 
-- **Page must be a DOM recreation, not a screenshot**: Screenshots can't have individually highlighted/animated elements. Recreate the layout with real HTML.
-- **`overflow: hidden` on the card**: Scrolling content must clip at card boundaries. Without it, content spills out and the 3D tilt looks wrong.
-- **`transform-style: preserve-3d` on the card**: Required so children with their own `translateZ` (for [asr-keyword-glow](asr-keyword-glow.md) 3D pop-outs) participate in the 3D space.
-- **Shadow direction matches tilt**: Left-leaning card = shadow falls right (positive X). Mismatched shadow reads as a flat layer with a fake shadow filter.
-- **Inner content must be taller than card**: Otherwise there's nothing to scroll. Layout the full page; `overflow: hidden` clips what's off-screen.
-- **`y`, not `top` / `margin-top`**: GSAP transform alias. Layout properties are banned by the HF allowlist and would force a reflow each frame.
-- **Tilt is static, scroll animates**: Don't animate the tilt — it feels like a UI flip rather than a camera setup. Set tilt in CSS once.
-- **Single paused timeline**: Entry + scroll + spotlight all on one `gsap.timeline({ paused: true })`.
+- **`overflow: hidden` on `.tilt-card`** — scrolling content must clip at card boundaries, otherwise it leaks past the rounded corners
+- **`transform-style: preserve-3d`** on `.tilt-card` — required for any 3D children (or for combining `perspective` with rotations cleanly)
+- **Timeline must be paused**: `gsap.timeline({ paused: true })`. Never `tl.play()` — HF seeks frame-by-frame
+- **Registry key = `data-composition-id`**: `window.__timelines["page-scroll-scene"]` must match scene root's `data-composition-id`
+- **Finite scroll distance** — compute from actual content geometry; don't use arbitrary values that may overshoot the content end
+- **Same easing across multi-phase scroll** — mixing `power3.out` and `power1.inOut` looks jerky; pick one for the scene
 
 ## Combinations
 
-- Pair with [asr-keyword-glow](asr-keyword-glow.md) — highlight elements _on_ the scrolled page synced to voiceover words.
-- Wrap inside [multi-phase-camera](multi-phase-camera.md) for a subtle camera push _while_ the page scrolls.
-- Combine with [coordinate-target-zoom](coordinate-target-zoom.md) on the inner content for "zoom into the feature after the scroll lands."
+- [asr-keyword-glow.md](asr-keyword-glow.md) — highlight elements on the page synced to voiceover word timestamps
+- [multi-phase-camera.md](multi-phase-camera.md) — overall camera zoom while the page scrolls (zoom-in to target section as it lands)
+- [cursor-click-ripple.md](cursor-click-ripple.md) — cursor lands on a UI element within the scrolled-into-view section
 
-## Examples
+## Pairs with HF skills
 
-- [demo-page-scroll-spotlight.html](../examples/demo-page-scroll-spotlight.html) — OpusClip landing page as a tilted 3D card, scrolls down 280 px to reveal the video carousel, then a radial spotlight + 3D pop-out highlight the main video.
+- `/hyperframes-gsap` — timeline + ease reference; `y:` tween basics
+- `/hyperframes-core` — composition wiring, `data-*` attributes
+- `/hyperframes-cli` — `hyperframes lint` to verify the registry key + duration

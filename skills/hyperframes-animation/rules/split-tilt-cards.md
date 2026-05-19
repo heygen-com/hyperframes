@@ -1,223 +1,207 @@
 ---
 name: split-tilt-cards
-description: Two cards positioned side-by-side with opposing Y-rotation, creating a symmetric "book-open" 3D split-screen layout. Entry slides inward from both sides; floating motion runs in phase opposition between the two cards.
+description: Two cards side-by-side with opposing Y-rotation creating a symmetric 3D split-screen layout for comparisons or feature pairs.
 metadata:
-  tags: 3d, cards, split, tilt, comparison, symmetric, layout, gsap
-  adapter: gsap
+  tags: 3d, cards, split, tilt, comparison, symmetric, layout
 ---
 
 # Split Tilt Cards
 
-Two cards positioned side-by-side, each rotated in opposite Y directions. Creates a symmetric "book-open" 3D effect for comparisons, features, or before/after layouts. Each card slides in from its own side and then floats out of phase with the other so the pair feels alive.
+Two cards positioned side-by-side, each rotated in opposite Y directions. Creates a symmetric "book-open" 3D effect — natural fit for comparisons, before/after, or feature pairs.
 
-## HyperFrames vs. Remotion
+## How It Works
 
-The Remotion source computed `rotateY(${baseRotateY + floatRotate}deg)` inline every frame and used `Math.sin(frame * speed + phaseOffset)` per render. HyperFrames consolidates the continuous floating into a single `onUpdate` reading `tl.time()`, while the entry slide + scale + opacity use standard GSAP `fromTo` tweens.
+- Left card rotates `+Y` (faces toward the right viewer angle)
+- Right card rotates `-Y` (faces toward the left viewer angle)
+- Both share the same `perspective` parent → opposing rotations balance visually
+- Each card enters from outside (left card slides in from the left, right card from the right) to reinforce its identity
+- Idle phase: gentle counter-phase float (`Math.PI` offset on sine) — cards bob in opposition
 
-```
-Remotion: per-frame transform string with baseRotateY + sin(frame * speed) * amp
-HyperFrames: gsap.set(.tilt, { rotationY: baseRotateY })            // static base
-             tl.fromTo(.pos, { x: ±100, scale: 0.8 }, { x: 0, scale: 1 })  // entry
-             onUpdate: gsap.set(.pos, { y: sin(t)*amp })             // y float
-                        gsap.set(.tilt, { rotationY: base + sin(t+phase)*1 })  // rot float
-```
-
-## Core Concept
-
-Three concerns separated across two nested wrappers per card:
-
-1. **`.card-pos`** — entry slide (`x`, `scale`, `opacity`) + continuous y float
-2. **`.card-tilt`** — static `rotateY` base + small continuous rotation float
-
-The static rotateY lives on the inner wrapper so the card faces inward (left card rotates +Y to face the viewer's right; right card rotates -Y to face left). The outer wrapper handles entry translation without affecting the 3D orientation.
-
-```
-parent {perspective: 1200px}
-  └─ .card-pos        x (entry), scale (entry), opacity (entry), y (float)
-       └─ .card-tilt  rotationY = baseRotateY + tiny float rotation
-            └─ content (image, label, subtitle)
-```
-
-## Basic Pattern
+## HTML
 
 ```html
-<div class="cards-row" style="display: flex; gap: 60px; perspective: 1200px;">
-  <div class="card card-left">
-    <div class="card-pos">
-      <div class="card-tilt" style="transform-style: preserve-3d;">
-        <div class="card-image">...</div>
-        <div class="card-label">Brand Templates</div>
-      </div>
+<div
+  class="scene"
+  id="split-scene"
+  data-composition-id="split-scene"
+  data-start="0"
+  data-duration="4"
+  data-track-index="0"
+>
+  <div class="split-stage">
+    <div class="card card-left">
+      <div class="card-eyebrow">BEFORE</div>
+      <div class="card-headline">Manual edits</div>
+      <div class="card-body">3 hours per video. Frame-by-frame tweaks. Burn the night.</div>
     </div>
-  </div>
-
-  <div class="card card-right">
-    <div class="card-pos">
-      <div class="card-tilt" style="transform-style: preserve-3d;">
-        <div class="card-image">...</div>
-        <div class="card-label">Team Workspace</div>
-      </div>
+    <div class="card card-right">
+      <div class="card-eyebrow">WITH HEYGENVERSE</div>
+      <div class="card-headline">One prompt</div>
+      <div class="card-body">Composition rendered, captioned, and shipped in 90 seconds.</div>
     </div>
   </div>
 </div>
+```
 
+## CSS
+
+```css
+.scene {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(ellipse at center, #161a3a 0%, #0b0d1f 70%);
+  perspective: 1800px; /* REQUIRED — without perspective rotateY flattens */
+}
+.split-stage {
+  display: flex;
+  gap: 80px;
+  transform-style: preserve-3d;
+}
+.card {
+  width: 640px;
+  min-height: 560px;
+  padding: 64px 56px;
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+  border-radius: 32px;
+  background: linear-gradient(160deg, rgba(167, 139, 250, 0.18) 0%, rgba(20, 24, 56, 0.85) 70%);
+  border: 1px solid rgba(167, 139, 250, 0.22);
+  color: #f5f6fb;
+  font-family: "Inter", sans-serif;
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+.card-left {
+  /* Faces right → shadow falls right */
+  box-shadow:
+    -22px 28px 60px rgba(0, 0, 0, 0.6),
+    0 0 24px rgba(167, 139, 250, 0.2);
+}
+.card-right {
+  /* Faces left → shadow falls left */
+  box-shadow:
+    22px 28px 60px rgba(0, 0, 0, 0.6),
+    0 0 24px rgba(167, 139, 250, 0.2);
+}
+.card-eyebrow {
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: 10px;
+  text-transform: uppercase;
+  color: #cdb8ff;
+}
+.card-headline {
+  font-size: 92px;
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: -2px;
+}
+.card-body {
+  font-size: 36px;
+  font-weight: 500;
+  line-height: 1.3;
+  color: #cfd2ff;
+  opacity: 0.85;
+}
+```
+
+## GSAP Timeline
+
+```html
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
 <script>
   window.__timelines = window.__timelines || {};
   const tl = gsap.timeline({ paused: true });
 
-  // ============================================================
-  // CONSTANTS
-  // ============================================================
-  const LEFT_DELAY = 0.5; // seconds
-  const RIGHT_DELAY = 0.83; // stagger ~10 frames at 30 fps
-  const ENTRY_DUR = 0.7;
-  const SLIDE_DIST = 100; // px each side slides inward
-  const BASE_TILT = 18; // degrees — left positive, right negative (10°–20° typical)
+  const TILT = 14; // degrees — Y rotation magnitude
+  const FLOAT_AMP = 6; // pixels — idle vertical bob amplitude
+  const FLOAT_DURATION = 2.4;
 
-  // Float amplitudes / frequencies (continuous)
-  const FLOAT_Y_SPEED = 0.02 * 30; // = 0.6 rad/sec (Remotion's frame*0.02)
-  const FLOAT_Y_AMP = 6;
-  const FLOAT_R_SPEED = 0.015 * 30; // = 0.45 rad/sec
-  const FLOAT_R_AMP = 1;
-
-  // ============================================================
-  // STATIC INITIAL STATES
-  // ============================================================
-  gsap.set(".card-left  .card-pos", { x: -SLIDE_DIST, scale: 0.8, opacity: 0, y: 0 });
-  gsap.set(".card-right .card-pos", { x: SLIDE_DIST, scale: 0.8, opacity: 0, y: 0 });
-  gsap.set(".card-left  .card-tilt", { rotationY: BASE_TILT });
-  gsap.set(".card-right .card-tilt", { rotationY: -BASE_TILT });
-
-  // ============================================================
-  // ENTRY TWEENS
-  // ============================================================
-  tl.to(
-    ".card-left .card-pos",
-    {
-      x: 0,
-      scale: 1,
-      opacity: 1,
-      duration: ENTRY_DUR,
-      ease: "power3.out", // spring(stiffness:100, damping:16)
-    },
-    LEFT_DELAY,
+  // Phase 1 — entry from outside
+  tl.fromTo(
+    ".card-left",
+    { x: -300, rotateY: TILT + 8, opacity: 0 },
+    { x: 0, rotateY: TILT, opacity: 1, duration: 0.9, ease: "power3.out" },
+    0.2,
+  );
+  tl.fromTo(
+    ".card-right",
+    { x: 300, rotateY: -TILT - 8, opacity: 0 },
+    { x: 0, rotateY: -TILT, opacity: 1, duration: 0.9, ease: "power3.out" },
+    0.3,
   );
 
+  // Phase 2 — counter-phase idle bob (cards move in opposition for dynamism)
   tl.to(
-    ".card-right .card-pos",
-    {
-      x: 0,
-      scale: 1,
-      opacity: 1,
-      duration: ENTRY_DUR,
-      ease: "power3.out",
-    },
-    RIGHT_DELAY,
+    ".card-left",
+    { y: -FLOAT_AMP, duration: FLOAT_DURATION / 2, ease: "sine.inOut", yoyo: true, repeat: 1 },
+    1.2,
+  );
+  tl.to(
+    ".card-right",
+    { y: FLOAT_AMP, duration: FLOAT_DURATION / 2, ease: "sine.inOut", yoyo: true, repeat: 1 },
+    1.2,
   );
 
-  // ============================================================
-  // CONTINUOUS FLOATING — single shared onUpdate
-  // ============================================================
-  const TOTAL_DUR = 5.0;
-  const leftPos = document.querySelector(".card-left  .card-pos");
-  const rightPos = document.querySelector(".card-right .card-pos");
-  const leftTilt = document.querySelector(".card-left  .card-tilt");
-  const rightTilt = document.querySelector(".card-right .card-tilt");
-
-  tl.to(
-    { tick: 0 },
-    {
-      tick: 1,
-      duration: TOTAL_DUR,
-      ease: "none",
-      onUpdate: function () {
-        const t = tl.time();
-        // Left card: phase 0
-        const lY = Math.sin(t * FLOAT_Y_SPEED + 0) * FLOAT_Y_AMP;
-        const lR = Math.sin(t * FLOAT_R_SPEED + 0) * FLOAT_R_AMP;
-        // Right card: phase π → opposite-direction floating
-        const rY = Math.sin(t * FLOAT_Y_SPEED + Math.PI) * FLOAT_Y_AMP;
-        const rR = Math.sin(t * FLOAT_R_SPEED + Math.PI) * FLOAT_R_AMP;
-
-        gsap.set(leftPos, { y: lY });
-        gsap.set(rightPos, { y: rY });
-        gsap.set(leftTilt, { rotationY: BASE_TILT + lR });
-        gsap.set(rightTilt, { rotationY: -BASE_TILT + rR });
-      },
-    },
-    0,
+  // Phase 3 — gentle copy reveal (body slides up + fades after cards arrive)
+  tl.from(
+    ".card-eyebrow, .card-headline, .card-body",
+    { opacity: 0, y: 16, stagger: 0.05, duration: 0.5, ease: "power2.out" },
+    0.8,
   );
 
-  window.__timelines["main"] = tl;
+  window.__timelines["split-scene"] = tl;
 </script>
 ```
 
-### Why two `gsap.set()` per element, not combined into one?
+## Variations
 
-`gsap.set` is cheap; what matters is that we only update the _changing_ property. Calling `gsap.set(leftPos, { y: lY })` doesn't touch `x`, `scale`, or `opacity` — those are left at whatever the entry tween set them to. If we wrote `gsap.set(leftPos, { x: 0, y: lY, scale: 1, opacity: 1 })` we'd fight the entry tween during its 0.7 s window.
+### Mid-tilt zoom-through (combined with camera move)
 
-Keep the float onUpdate to **only the float aliases**.
+If a separate camera tween scales `.split-stage`, the cards' tilt reads as the viewer crossing through the gap between them.
 
-## Recommended Values
+### Asymmetric content density (badge / label / icon)
 
-| Parameter              | Left Card                 | Right Card               |
-| ---------------------- | ------------------------- | ------------------------ |
-| `baseTilt` (rotationY) | +10° to +20°              | -10° to -20°             |
-| `slideDistance`        | -80 to -150 px            | +80 to +150 px           |
-| Float Y phase          | 0                         | `Math.PI` (opposed)      |
-| Float rotation phase   | 0                         | `Math.PI` (opposed)      |
-| Shadow direction       | Falls right (`-x offset`) | Falls left (`+x offset`) |
+Add a floating badge near each card for additional context. Position absolutely on the parent — not inside the card, so the badge doesn't inherit the 3D rotation:
 
-## Shadow Matching
-
-Shadow direction must match the tilt to reinforce the 3D illusion. A left-leaning card facing right should drop its shadow to the right:
-
-```css
-.card-left .card-image {
-  box-shadow:
-    -30px 30px 60px rgba(0, 0, 0, 0.4),
-    /* shadow falls RIGHT (negative x offset) */ 0 0 40px rgba(180, 80, 220, 0.3); /* ambient glow */
-}
-.card-right .card-image {
-  box-shadow:
-    30px 30px 60px rgba(0, 0, 0, 0.4),
-    /* shadow falls LEFT (positive x offset) */ 0 0 40px rgba(80, 220, 150, 0.3);
-}
+```html
+<div class="badge badge-left">2026</div>
+<div class="badge badge-right">2027</div>
 ```
 
-Mismatched shadow reads as a flat layer with a wrong drop-shadow filter — the 3D illusion collapses.
+### Stacked variants (3+ cards)
 
-## Why Phase Opposition (`Math.PI`)
+For 3 cards, the center card stays flat (rotateY 0) and the outer two tilt inward — useful for "your old way / nothing in between / our way" comparisons.
 
-If both cards float synchronized, the pair reads as "two cards moving up together, then down together" — a mechanical rhythm. With phase offset `π`, when the left card is at its highest point, the right card is at its lowest. The pair appears to **breathe in opposition**, producing organic motion that doesn't lock to a global beat.
+## Key Principles
 
-The same applies to the rotation float — opposed phase keeps the cards from rocking like a synchronized pair of wipers.
-
-## Tips
-
-- **Equal card widths**: Use the same `width` for both cards. Different sizes break the symmetric balance.
-- **Entry from outside, not center**: `slideDistance: -100 / +100` makes cards slide inward from their own side. This reinforces left/right identity. Cards sliding _outward_ from center looks like they're separating, not arriving.
-- **Stagger entry**: Right card delays ~0.33 s (10 frames at 30 fps) after left. Both arriving simultaneously feels static; staggered feels deliberate.
-- **Add floating badges or labels near cards** ([sine-wave-loop](sine-wave-loop.md)) for additional context — pin them at the cards' inner edges where they read as "attached" to each card.
-- **Single perspective parent**: Both cards share `perspective: 1200 px` on the row container, not per-card. Independent perspectives produce inconsistent depth.
+- **`perspective` on scene root REQUIRED** — without it rotateY flattens and the split-tilt collapses to a flat side-by-side layout
+- **`transform-style: preserve-3d`** on both the stage and each card — preserves the 3D plane as cards have their own transforms
+- **Shadow direction must match tilt** — left card faces right, shadow falls right (positive X), and vice versa. Wrong shadow direction reads as "broken 3D"
+- **Symmetric content weight** — both cards same width, same vertical center, similar line counts. Asymmetric content breaks the comparison metaphor
+- **Counter-phase float (`Math.PI` offset)** — left bobs up while right bobs down. Synchronized bob looks like both cards are on the same conveyor belt; counter-phase looks alive
+- **Slide-in from the outside** — left card from left, right card from right — reinforces "they came from their own worlds and met here"
+- **❗ Tilt magnitude 10-15°** — under 10° looks like a slight perspective offset (almost flat), over 18° looks like the cards are folding shut and copy becomes hard to read
 
 ## Critical Constraints
 
-- **Opposing `rotationY`**: Left positive, right negative. Same-direction tilt destroys balance and reads as "tilted carousel," not "split-screen."
-- **`transform-style: preserve-3d`** on `.card-tilt`: Required for child elements (image, label) to render correctly in 3D space when the parent rotates.
-- **Two cards only**: This pattern doesn't extend to 3+ cards. Three tilted cards in a row creates a confused perspective.
-- **Floating aliases isolated to onUpdate**: The shared scene-ticker only sets `y` on `.card-pos` and `rotationY` on `.card-tilt`. Don't include `x` / `scale` / `opacity` — those are owned by the entry tween.
-- **Phase offset `π` on right card**: For both `y` and rotation. Same phase makes the cards rock together and feel synthetic.
-- **GSAP transform aliases only**: `x`, `y`, `scale`, `rotationY`. Never `width` / `height` / `left` / `top`.
-- **No `Math.random` / `Date.now`**: Float values are pure functions of `tl.time()`.
-- **No infinite repeats**: The floating onUpdate runs over a finite `duration: TOTAL_DUR`. No `repeat: -1`.
+- **Timeline must be paused**: `gsap.timeline({ paused: true })`
+- **Registry key = `data-composition-id`**
+- **No `requestAnimationFrame`** for the idle float — drive it inside the timeline so seek is deterministic
+- **Don't put badges inside the card divs** — they'd inherit the rotateY and tilt off-axis with the card. Float them on the parent
+- **Body copy ≤ 2 lines per card** — tilted text becomes hard to read; long paragraphs collapse into a perspective blur
 
 ## Combinations
 
-- Pair with [sine-wave-loop](sine-wave-loop.md) — the float math here is essentially a Form 2 sine wave; if you want richer dual-frequency motion, combine two sine terms inside the same onUpdate.
-- Pair with [multi-phase-camera](multi-phase-camera.md) — a gentle overall push during the cards' settle adds cinematic weight.
-- Floating pill badges next to each card use the same `onUpdate` pattern with a different phase offset / frequency.
+- [card-morph-anchor.md](card-morph-anchor.md) — both cards could morph into a single unified shape afterward
+- [counting-dynamic-scale.md](counting-dynamic-scale.md) — numbers as the headline content for each side
 
-## Examples
+## Pairs with HF skills
 
-- [comparison-split-cards.html](../examples/comparison-split-cards.html) — "HTML Composition" (left, +18° tilt) and "Render Pipeline" (right, -18° tilt) cards with opposed-phase floating and pill badges anchored at the inner edges.
+- `/hyperframes-gsap` — timeline + `yoyo` for the idle bob
+- `/hyperframes-core` — composition wiring
+- `/hyperframes-cli` — `hyperframes lint`

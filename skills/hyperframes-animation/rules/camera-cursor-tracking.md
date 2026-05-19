@@ -1,232 +1,197 @@
 ---
 name: camera-cursor-tracking
-description: Two-phase virtual camera that locks the viewport to a moving focal point (typing cursor, growing highlight) — static initial framing then focal-point-locked tracking, GSAP-driven and seek-safe in HyperFrames.
+description: Two-phase virtual camera that locks viewport to a moving focal point with configurable initial positioning.
 metadata:
-  tags: camera, tracking, viewport, two-phase, gsap, typing
-  adapter: gsap
+  tags: camera, tracking, viewport, two-phase, spring
 ---
 
 # Two-Phase Camera Cursor Tracking
 
-Keeps a horizontally growing focal point (typing cursor, scrolling highlight, expanding element) visible by switching between two camera modes:
+Keeps a horizontally-growing element (e.g. a search bar with typing text, a long URL animating in) visible by switching between two camera modes.
 
-1. **Phase 1 (Static)**: Container at a fixed initial offset, camera doesn't move.
-2. **Phase 2 (Tracking)**: Activates once the focal point crosses a screen threshold; camera offset follows it.
+## How It Works
 
-## HyperFrames vs. Remotion
+Separate **World Space** (the full target element with all content) from **Screen Space** (the viewport). Two phases:
 
-The Remotion version used `measureText` from `@remotion/layout-utils` — a module that runs synchronously inside the React component body. HyperFrames is a regular browser environment, so we use the browser's native text-measurement APIs **once at composition setup time**, before the timeline is registered. The measured width is baked into a constant and the entire camera path is expressed as GSAP tweens with synchronous-time onUpdate callbacks.
+- **Phase 1 (Static)** — The world container sits at a fixed initial offset. Camera doesn't move. This anchors the viewer's eye to the composition before tracking begins.
+- **Phase 2 (Tracking)** — Activates when the focal point (cursor, highlight, last typed glyph) exceeds a target screen position (e.g. 70% from left). The world container translates leftward (`x: -<delta>`) keeping the focal point pinned at that screen position.
 
-```
-Remotion: measureText() inside component → per-frame interpolate(camera_x) from spring()
-HyperFrames: ctx.measureText() in setup → GSAP tween on .world's x property with an
-             onUpdate that recomputes the camera target from tl.time()
-```
+The offset math is **mathematically continuous** at the phase boundary — at the instant tracking starts, the world position equals what the static phase had. So the transition is seamless.
 
-## Core Concept
-
-Separate **World Space** (the full-width content) from **Screen Space** (the viewport). The world transforms; the viewport doesn't. The phase switch is a piecewise function: while the focal point's projected screen position is still inside the threshold, hold the initial offset; once it crosses, drive the offset so the focal point stays locked at the threshold.
-
-Why two phases:
-
-- Tracking from t=0 would force the camera to "look ahead" before any content is visible, then snap left when content appears — disorienting.
-- A static intro lets the viewer anchor, then the smooth transition reads as the camera "noticing" the focal point growing past the comfort zone.
-- The offset is continuous at the switch boundary (by construction), so the phase change is invisible.
-
-## Browser-Native Text Measurement
-
-Use a one-shot offscreen 2D canvas at setup time. This avoids `@remotion/layout-utils` (Node-only) and avoids the brittle `charWidthRatio` constant.
-
-```js
-function measureTextPx({ text, fontFamily, fontSize, fontWeight = 400, letterSpacing = 0 }) {
-  const canvas = (measureTextPx._canvas ??= document.createElement("canvas"));
-  const ctx = canvas.getContext("2d");
-  ctx.font = `${fontWeight} ${fontSize}px ${fontFamily}`;
-  // Canvas measureText does not respect CSS letter-spacing — add it manually if non-zero.
-  const baseWidth = ctx.measureText(text).width;
-  return baseWidth + letterSpacing * Math.max(0, text.length - 1);
-}
-```
-
-For pixel-perfect alignment with the rendered DOM (which obeys CSS letter-spacing, kerning, font features), measure against a real DOM node instead:
-
-```js
-function measureNodeWidth(html, classNames) {
-  const probe = document.createElement("span");
-  probe.className = classNames;
-  probe.style.cssText = "position:absolute; visibility:hidden; white-space:pre;";
-  probe.innerHTML = html;
-  document.body.appendChild(probe);
-  const width = probe.getBoundingClientRect().width;
-  probe.remove();
-  return width;
-}
-```
-
-Both approaches must run **after** the document's fonts are ready. HyperFrames waits for fonts before rendering, but if you're using a CDN font you should still gate measurements behind `document.fonts.ready`:
-
-```js
-await document.fonts.ready;
-const fullTextWidth = measureNodeWidth(fullText, "search-text");
-```
-
-## Basic Pattern
+## HTML
 
 ```html
-<div class="viewport" style="position: absolute; inset: 0; overflow: hidden;">
-  <div class="world" style="display: flex; height: 100%;">
-    <!-- The growable content lives inside .world. Its width can exceed viewport. -->
-    <div class="search-bar">
-      <span class="search-text">Type here…</span>
-      <span class="search-cursor">_</span>
+<div
+  class="scene"
+  id="tracking-scene"
+  data-composition-id="tracking-scene"
+  data-start="0"
+  data-duration="5"
+  data-track-index="0"
+>
+  <div class="viewport">
+    <div class="world">
+      <div class="search-bar">
+        <span class="text" id="reveal-text">Hedronverse beats Notion for video</span
+        ><span class="cursor">|</span>
+      </div>
     </div>
   </div>
 </div>
+```
 
+## CSS (hero-frame layout)
+
+```css
+.scene {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.viewport {
+  position: absolute;
+  inset: 0;
+  overflow: hidden; /* clip the world content */
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  padding-left: 120px; /* "left margin" — variation: left-aligned init */
+}
+
+.world {
+  display: flex;
+  align-items: center;
+  white-space: nowrap; /* keep text on one line for camera-tracking */
+  transform: translateX(0); /* GSAP will animate this */
+}
+
+.search-bar {
+  font-family: "Inter", sans-serif;
+  font-size: 120px;
+  font-weight: 700;
+  color: #f5f6fb;
+  letter-spacing: -2px;
+}
+
+.search-bar .text {
+  /* Width grows as more characters reveal */
+  display: inline-block;
+  overflow: hidden;
+  vertical-align: bottom;
+}
+
+.search-bar .cursor {
+  display: inline-block;
+  width: 6px;
+  margin-left: 8px;
+  background: #a78bfa;
+  height: 0.9em;
+  vertical-align: bottom;
+  /* No `animation: blink` CSS keyframe here — HF renders by seeking a paused
+     timeline, and CSS animation clocks are NOT synced to that seek. A CSS
+     blink will flicker non-deterministically. Drive cursor blink as a finite
+     yoyo tween on the GSAP timeline instead — see GSAP Timeline section. */
+}
+```
+
+## GSAP Timeline
+
+```html
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
 <script>
   window.__timelines = window.__timelines || {};
   const tl = gsap.timeline({ paused: true });
 
-  /* ============================================================
-     CONSTANTS — baked at setup time, never per-frame.
-     ============================================================ */
-  const W = 1920; // composition width
-  const FULL_TEXT = "Tell me how to target parents";
-  const FONT_SIZE = 120;
-  const FONT_FAMILY = "Inter, system-ui, sans-serif";
+  // Pre-measure target text width to compute tracking distance.
+  // In HF runtime, do this synchronously after fonts have loaded
+  // (use a guard if fonts may not be ready — see Constraints below).
+  const textEl = document.getElementById("reveal-text");
+  const fullText = textEl.textContent;
+  const targetCursorScreenX = 0.7 * 1920; // 70% from left
+  const initialCursorScreenX = 120 + textEl.getBoundingClientRect().width * 0;
+  // Phase 2 needs the cursor to land at targetCursorScreenX, so total world X shift =
+  // initial - target if the cursor is at the END of fully-revealed text.
+  const fullWidth = textEl.scrollWidth; // total text width after full reveal
+  const trackingDelta = Math.max(0, 120 + fullWidth - targetCursorScreenX);
 
-  const PADDING_LEFT = 120;
-  const PADDING_RIGHT = 180;
-  const CURSOR_TARGET = W * 0.7; // screen X where the cursor locks in Phase 2
-  const LEFT_MARGIN = 80; // initial container left margin in Phase 1
+  // Phase 1 (0 -> 1.5s) — text reveals progressively; camera holds.
+  // Reveal via clip-path or max-width tween:
+  tl.fromTo(
+    ".search-bar .text",
+    { maxWidth: 0 },
+    {
+      maxWidth: fullWidth,
+      duration: 1.5,
+      ease: "none", // linear typing rate
+    },
+    0,
+  );
 
-  document.fonts.ready.then(() => {
-    /* Measure once. After this point, all camera math is deterministic. */
-    const fullTextWidth = measureNodeWidth(FULL_TEXT, "search-text");
-    const cursorWidth = FONT_SIZE * 0.6; // visual cursor glyph width
-    const barWidth = PADDING_LEFT + fullTextWidth + cursorWidth + PADDING_RIGHT;
+  // Phase 2 (1.0 -> 2.5s) — camera tracks. Begin BEFORE full reveal so the
+  // boundary feels continuous (text is still revealing as camera starts moving).
+  tl.to(
+    ".world",
+    {
+      x: -trackingDelta,
+      duration: 1.5,
+      ease: "power2.inOut",
+    },
+    1.0,
+  );
 
-    /* Pre-allocate the bar to its FINAL width so the cursor doesn't jitter
-       as more characters appear. */
-    document.querySelector(".search-bar").style.width = barWidth + "px";
+  // Cursor blink — GSAP-driven (NEVER CSS @keyframes infinite, which doesn't
+  // sync with HF's seek-by-frame). Finite yoyo, repeats computed from scene
+  // length so blinks land deterministically across frames.
+  const sceneDurationSec = 5; // match data-duration on the scene root
+  const blinkHalfPeriod = 0.3; // 0.6s full cycle → on 0.3s, off 0.3s
+  tl.to(
+    ".search-bar .cursor",
+    {
+      opacity: 0,
+      duration: blinkHalfPeriod,
+      ease: "steps(1)", // hard on/off, no fade
+      yoyo: true,
+      repeat: Math.ceil(sceneDurationSec / blinkHalfPeriod) - 1,
+    },
+    0,
+  );
 
-    /* ============================================================
-       PIECEWISE CAMERA — single onUpdate-driven tween.
-       The driver tween is just a clock from typingStart to typingEnd;
-       its onUpdate computes the camera x from current typing progress.
-       ============================================================ */
-    const TYPING_START = 3.7; // seconds
-    const CHAR_RATE = 0.083; // seconds per character (~2.5 frames @30fps)
-    const TYPING_DUR = FULL_TEXT.length * CHAR_RATE;
-
-    const worldEl = document.querySelector(".world");
-    const searchText = document.querySelector(".search-text");
-
-    // Phase 1 fixed offset — bar sits left-aligned with LEFT_MARGIN gap.
-    const initialOffset = LEFT_MARGIN;
-
-    tl.fromTo(
-      { progress: 0 },
-      { progress: 0 },
-      {
-        progress: FULL_TEXT.length,
-        duration: TYPING_DUR,
-        ease: "none", // linear typing
-        onUpdate: function () {
-          const charsTyped = Math.min(FULL_TEXT.length, Math.floor(this.targets()[0].progress));
-          const visibleText = FULL_TEXT.slice(0, charsTyped);
-          searchText.textContent = visibleText;
-
-          // Cursor's current X inside the bar
-          const visibleWidth = measureNodeWidth(visibleText || " ", "search-text");
-          const cursorInBar = PADDING_LEFT + visibleWidth + cursorWidth / 2;
-
-          // World-space tracking offset: position bar so cursor lands at CURSOR_TARGET
-          const trackingOffset = CURSOR_TARGET - cursorInBar;
-
-          // Piecewise: hold initialOffset until the cursor would exceed CURSOR_TARGET,
-          // then follow with the tracking offset. Both are equal at the crossover by
-          // construction (we choose initialOffset so the cursor reaches CURSOR_TARGET
-          // exactly when trackingOffset < initialOffset).
-          const cameraX = Math.min(initialOffset, trackingOffset);
-
-          gsap.set(worldEl, { x: cameraX });
-        },
-      },
-      TYPING_START,
-    );
-
-    window.__timelines["main"] = tl;
-  });
+  window.__timelines["tracking-scene"] = tl;
 </script>
 ```
 
-## Why `Math.min(initialOffset, trackingOffset)`?
+### Variations
 
-- At t = TYPING_START: cursor is at `PADDING_LEFT + cursorWidth/2`, near the bar's left edge. `trackingOffset` is large positive → `min(initial, large)` = `initial`. Static phase.
-- As typing proceeds, `visibleWidth` grows → `cursorInBar` grows → `trackingOffset` shrinks → eventually `trackingOffset < initialOffset`, and the camera starts following.
-- The transition is **C0-continuous** at the crossover: same value on both sides. No spring-in needed for the phase switch itself.
-- For a softer feel through the transition zone, run a small `gsap.to(worldEl, { x: cameraX, duration: 0.05 })` instead of `gsap.set(...)`. But this is rarely needed — at typical typing rates the offset changes one character-width per frame, which already reads smoothly.
+- **Centered → Center-Tracked**: set `.viewport { justify-content: center; padding: 0; }`. Camera tracks once the focal point crosses the midline (target screen X = 0.5 \* 1920).
+- **Left-Aligned → Right-Tracked**: as written above. Best when content exceeds viewport width from the start.
 
-## Variations
+## Key Principles
 
-### Centered Initial → Center-Tracked
-
-`LEFT_MARGIN = (W - barWidth) / 2` and `CURSOR_TARGET = W / 2`. Bar starts centered; camera tracks once the cursor crosses the midline. Best when the empty bar fits comfortably on screen.
-
-### Left-Aligned → Right-Tracked (default in example above)
-
-`LEFT_MARGIN` small (60–100 px), `CURSOR_TARGET = W * 0.7`. Strong reading-direction feel: content starts at the left, camera pans right as the cursor approaches a "look-ahead" zone.
-
-### Spring-Settled Tracking
-
-If you want the camera to "spring" into the tracking offset rather than tracking exactly, replace `gsap.set(worldEl, { x: cameraX })` with a one-time `quickTo`:
-
-```js
-const quickPanX = gsap.quickTo(worldEl, "x", { duration: 0.25, ease: "power2.out" });
-// inside onUpdate:
-quickPanX(cameraX);
-```
-
-`quickTo` reuses a single tween instance — efficient and seek-safe.
+- **Measure with `getBoundingClientRect()` after fonts load**, not by character count × font-size. Proportional fonts have variable glyph widths.
+- **`white-space: nowrap`** on the world — text must stay on one line for camera math to work
+- **Pre-allocate the world width** by setting `maxWidth` at full target width — prevents layout shift mid-tween
+- **Eased camera** (`power2.inOut` / `power3.inOut`), not linear — natural pan feel
+- **Spring-like via easing**, not via stiffness/damping params — GSAP doesn't have a built-in spring, but `back.out(1.2)` or `power4.out` approximate the settling feel
 
 ## Critical Constraints
 
-- **Measure with browser APIs, not constants**: `ctx.measureText()` or `getBoundingClientRect()`. The `charWidthRatio` shortcut (`fontSize * 0.58`) is wrong for proportional fonts — Inter, Roboto, etc. have wildly different per-glyph widths. The misalignment compounds over a 30-character string into 20+ px error, which throws the cursor lock off-center.
-- **Measure after `document.fonts.ready`**: Web fonts load asynchronously. Measuring before the font is parsed falls back to the system font and gives the wrong width. Use `await document.fonts.ready` or `.then(...)` before measurement.
-- **Pre-allocate bar width**: Compute final width from full text once; freeze the bar's `width` style. Don't tween width — that's a layout property and HyperFrames forbids it, plus the cursor would jitter as the bar grows.
-- **`overflow: hidden` on the viewport**: Without it, the world's left/right edges spill into adjacent elements during the pan.
-- **`x` (transform alias), never `left`**: GSAP's `x` is a transform — compositor-cheap, no reflow. `left` would trigger layout on every frame and break the HF allowlist.
-- **Single onUpdate-driven tween**: Don't create one tween per character. One driver tween over the typing range, with onUpdate deriving everything from progress, is the seek-safe form.
-- **Hold through the composition end**: If the typing driver ends before the root `data-duration`, add a real visual hold (such as a finite cursor blink) through the remaining time. Studio scrubbing reads the live GSAP duration, so the registered timeline should reach the same end time as the composition.
-- **No `Math.random()`, no `Date.now()`**: All state must be a pure function of `tl.time()`.
-
-## Anti-Patterns
-
-| Avoid                                                     | Why                                                                                                                          |
-| --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| `charWidthRatio = fontSize * 0.58`                        | Proportional fonts have variable widths per char; the assumption is off by tens of pixels over 30 characters.                |
-| Measuring text at module top-level (before `fonts.ready`) | Fallback metrics → bar too narrow → text overflows the bar visually.                                                         |
-| `interpolate` + `Easing` for camera tracking              | Discrete frame steps + variable offset = jerky motion. Use one onUpdate that derives the camera per real time.               |
-| Always tracking from t=0                                  | Camera looks ahead before content exists; user sees the camera "wait" with empty space, then snap back when content arrives. |
-| Absolutely positioned cursor                              | Breaks inline flow with the typed text; cursor X math drifts from the actual rendered position.                              |
-| Tweening `width` to grow the bar with text                | Layout reflow every frame; banned by the HyperFrames allowlist. Pre-allocate.                                                |
-
-## Spring → GSAP Ease Mapping
-
-The original used `spring({ stiffness: 60, damping: 12, mass: 1.2 })` — a cinematic, slow-settling camera. In HyperFrames the camera tracks exactly (not through a spring), so the ease only matters for the _initial_ arrival into Phase 2. If you want a spring-like phase-in:
-
-| Remotion spring                                          | GSAP equivalent               |
-| -------------------------------------------------------- | ----------------------------- |
-| stiffness 40-60, damping 15-20, mass 1.0 (cinematic pan) | `power2.out` over 0.5–0.8s    |
-| stiffness 80-100, damping 18-22, mass 0.8 (responsive)   | `power3.out` over 0.3–0.5s    |
-| stiffness 150+, damping 12-15, mass 0.5 (snappy UI)      | `back.out(1.4)` over 0.2–0.3s |
+- **Build the timeline SYNCHRONOUSLY, no fonts.ready gate** — HF renders frames in parallel workers, each a fresh browser. If you wrap the timeline build in `document.fonts.ready.then(...)`, some workers will seek frames BEFORE the Promise resolves and find no timeline registered → those frames render at CSS initial state (e.g. `max-width: 0` ⇒ empty text), other workers render correctly → visible flicker between empty and filled. Register `window.__timelines[id] = tl` at script-parse time, even if fonts haven't loaded yet — the camera math can tolerate ±5% width error from fallback-font measurement, but worker-race flicker is unacceptable.
+- **If precise post-font measurement matters**, re-measure inside the tween's `onUpdate` (still deterministic per-frame seek), not via a Promise gate. Or set `font-display: block` on the @font-face to force the browser to wait for the font before painting any text.
+- **Timeline must be paused**: `gsap.timeline({ paused: true })`. Never `tl.play()`
+- **Registry key = `data-composition-id`**: `window.__timelines["tracking-scene"]` must match scene root
+- **Continuous math at phase boundary**: the world's `x` at the moment tracking starts must equal the static-phase offset. If you tween from arbitrary values, the camera will visibly jump at the phase boundary.
+- **Inline cursor, not absolutely positioned**: cursor should be a sibling of the text (inline-block) so it follows text flow naturally — absolute positioning misaligns with the camera math
+- **`overflow: hidden` on `.viewport`**: clip the world's left edge as it pans off-screen
+- **❗ Cursor blink via GSAP, NOT CSS `@keyframes ... infinite`** — HF renders by seeking the paused timeline; CSS animation clocks are NOT synchronized with that seek, so any CSS-driven blink will flicker non-deterministically across frames. Always drive blink as a finite yoyo tween on the paused GSAP timeline (repeat count computed from scene length).
 
 ## Combinations
 
-- Pair with [discrete-text-sequence](discrete-text-sequence.md) for non-linear typing (typos, holds, bulk additions).
-- Pair with [hacker-flip-3d](hacker-flip-3d.md) inside Phase 1 of [concept-demo-decode-pan](../blueprints/concept-demo-decode-pan.md) — the camera-tracked typing comes _after_ the pan.
+- [context-sensitive-cursor.md](context-sensitive-cursor.md) — change cursor color/style per text segment during typing
+- [discrete-text-sequence.md](discrete-text-sequence.md) — non-linear text reveals that pair with this camera
 
-## Examples
+## Pairs with HF skills
 
-- [concept-demo-decode-pan.html](../examples/concept-demo-decode-pan.html) — Phase 4 search-bar typing with cursor-locked tracking.
+- `/hyperframes-gsap` — timeline + tween API
+- `/hyperframes-core` — composition wiring + `data-*` attributes
+- `/hyperframes-cli` — `hyperframes lint` to validate the registry key + duration

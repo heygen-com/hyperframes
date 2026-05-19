@@ -1,207 +1,221 @@
 ---
 name: 3d-text-depth-layers
-description: Multiple offset text layers create a stacked 3D shadow/depth illusion on large typography. More impactful than CSS `text-shadow` because each layer is a full DOM element with independent color, opacity, and (optional) animation. JS generates the layers at composition build time.
+description: Multiple offset text layers create a stacked 3D shadow / extrusion effect on large typography — more impactful than CSS text-shadow because each layer is a full DOM element.
 metadata:
-  tags: text, 3d, depth, layers, shadow, typography, stacked
-  adapter: gsap
+  tags: text, 3d, depth, layers, shadow, typography, stacked, extrusion
 ---
 
 # 3D Text Depth Layers
 
-Renders the same text multiple times at increasing pixel offsets to create a physical "stacked" extrusion. The back layers use translucent versions of the front color; the accumulated offset reads as 3D depth.
+Renders the same text N times at increasing offsets, with back layers translucent and the front layer fully opaque. Creates a physical "stacked extrusion" depth illusion. Distinct from `text-shadow` (which can't have per-layer hue / opacity / animation) — each layer is a real DOM element.
 
-## HyperFrames vs. Remotion
+## How It Works
 
-Identical pattern. Both versions generate N copies of the same text at offsets `(i * dx, i * dy)` with decreasing opacity. The Remotion source used JSX `Array.map(...)` inline in the render; HyperFrames builds the layers once at composition setup time with `document.createElement` and lets GSAP tween the parent wrapper for entry/breath effects.
+- N copies of the same text in a single container
+- Each copy positioned absolutely with offset `(i * OFFSET_X, i * OFFSET_Y)`
+- Back layers (high `i`) use translucent or darkened color
+- Front layer (`i = 0`) is full opacity, full brand color
+- Optionally: each layer fades in staggered, creating a "building up" depth animation
 
-```
-Remotion: {[...Array(N)].map((_, i) => <div style={{ top: i*dy, ... }}>text</div>)}
-HyperFrames: for (let i = 0; i < N; i++) { wrapper.appendChild(layerEl(i)); }
-```
-
-The HyperFrames build runs synchronously before the timeline registers; no per-frame layer reconstruction needed.
-
-## Core Concept
-
-N stacked elements containing the same text:
-
-- Last layer (`i === N-1`) is `position: relative` — defines container size and is the **front** (full opacity, accent color).
-- All other layers (`i < N-1`) are `position: absolute`, offset by `(i * dx, i * dy)` from the relative anchor, with **decreasing** opacity moving toward the back.
-- Offset direction implies the light source. `(left: -i*1px, top: +i*2px)` reads as "extruded backward and downward" — light coming from upper-right.
-
-```
-Layer 4 (front, alpha 1.0)  ←── visible text
-Layer 3 (alpha 0.4)         ←── shifted -1x, +2y
-Layer 2 (alpha 0.3)         ←── shifted -2x, +4y
-Layer 1 (alpha 0.2)         ←── shifted -3x, +6y
-Layer 0 (back, alpha 0.1)   ←── shifted -4x, +8y
-```
-
-## Basic Pattern
+## HTML
 
 ```html
-<div class="depth-stack" data-text="97%"></div>
+<div
+  class="scene"
+  id="depth-scene"
+  data-composition-id="depth-scene"
+  data-start="0"
+  data-duration="3"
+  data-track-index="0"
+>
+  <div class="depth-stack">
+    <!-- Layers injected by script — 6 copies of HEYGENVERSE -->
+  </div>
+</div>
+```
 
-<style>
-  .depth-stack {
-    position: relative;
-    display: inline-block;
-    font-size: 380px;
-    font-weight: 900;
-    letter-spacing: -0.03em;
-    line-height: 1;
-  }
-  .depth-stack .depth-layer {
-    color: rgba(34, 197, 94, var(--alpha)); /* same hue, varying alpha */
-  }
-  .depth-stack .depth-layer.front {
-    color: #22c55e; /* front uses full color, no rgba */
-    position: relative;
-  }
-  .depth-stack .depth-layer.back {
-    position: absolute;
-    top: var(--top);
-    left: var(--left);
-  }
-</style>
+## CSS
 
+```css
+.scene {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  background: #0b0d1f;
+}
+.depth-stack {
+  position: relative;
+  /* Container size set by the front layer; back layers stack behind */
+}
+.depth-text {
+  font-family: "Inter", sans-serif;
+  font-weight: 900;
+  font-size: 200px;
+  letter-spacing: -2px;
+  line-height: 1;
+  color: #f5f6fb;
+  text-transform: uppercase;
+}
+/* Back layers — absolute, stacked behind */
+.depth-text.is-back {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+}
+/* Front layer — relative to define container size */
+.depth-text.is-front {
+  position: relative;
+  z-index: 10;
+}
+```
+
+## GSAP Timeline + Layer Setup
+
+```html
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
 <script>
-  /* Build N layers once at composition setup time. */
-  const LAYER_COUNT = 5;
-  const OFFSET_X = 1;
-  const OFFSET_Y = 2;
+  window.__timelines = window.__timelines || {};
 
-  document.querySelectorAll(".depth-stack").forEach((stack) => {
-    const text = stack.dataset.text;
-    for (let i = 0; i < LAYER_COUNT; i++) {
-      const layer = document.createElement("div");
-      layer.className = "depth-layer " + (i === LAYER_COUNT - 1 ? "front" : "back");
-      layer.textContent = text;
-      if (i < LAYER_COUNT - 1) {
-        const alpha = 0.1 * (LAYER_COUNT - i); // 0.5 → 0.1 across back layers
-        layer.style.setProperty("--alpha", alpha);
-        layer.style.setProperty("--top", i * OFFSET_Y + "px");
-        layer.style.setProperty("--left", -i * OFFSET_X + "px");
-      }
-      stack.appendChild(layer);
+  const LAYER_COUNT = 6;
+  const OFFSET_X = 2;
+  const OFFSET_Y = 3;
+  const FRONT_COLOR = "#f5f6fb";
+  const BACK_HUE = "167, 139, 250"; // RGB triplet matching the brand glow
+
+  const TEXT = "HEYGENVERSE";
+  const stack = document.querySelector(".depth-stack");
+
+  // Build layers — back-to-front so the FRONT (i=0) is the LAST appended
+  // and `position: relative` defines container size.
+  for (let i = LAYER_COUNT - 1; i >= 0; i--) {
+    const el = document.createElement("div");
+    el.className = "depth-text " + (i === 0 ? "is-front" : "is-back");
+    el.textContent = TEXT;
+    if (i > 0) {
+      const alpha = 0.85 - i * 0.13;
+      el.style.color = `rgba(${BACK_HUE}, ${Math.max(alpha, 0.1)})`;
+      el.style.transform = `translate(${i * OFFSET_X}px, ${i * OFFSET_Y}px)`;
+    } else {
+      el.style.color = FRONT_COLOR;
     }
+    el.dataset.layer = String(i);
+    stack.appendChild(el);
+  }
+
+  const tl = gsap.timeline({ paused: true });
+
+  // Layered entry — back layers appear first, building forward
+  const allLayers = stack.querySelectorAll(".depth-text");
+  allLayers.forEach((el) => {
+    const i = Number(el.dataset.layer);
+    tl.fromTo(
+      el,
+      { opacity: 0 },
+      {
+        opacity: el.classList.contains("is-front") ? 1 : Math.max(0.85 - i * 0.13, 0.1),
+        duration: 0.4,
+        ease: "power2.out",
+      },
+      0.1 + (LAYER_COUNT - 1 - i) * 0.06, // back-to-front cascade
+    );
   });
+
+  // Optional: depth grows on entry (offset interpolates from 0 → full)
+  const depthState = { p: 0 };
+  tl.to(
+    depthState,
+    {
+      p: 1,
+      duration: 0.5,
+      ease: "power2.out",
+      onUpdate: () => {
+        stack.querySelectorAll(".depth-text.is-back").forEach((el) => {
+          const i = Number(el.dataset.layer);
+          const x = i * OFFSET_X * depthState.p;
+          const y = i * OFFSET_Y * depthState.p;
+          el.style.transform = `translate(${x}px, ${y}px)`;
+        });
+      },
+    },
+    0.1,
+  );
+
+  window.__timelines["depth-scene"] = tl;
 </script>
 ```
 
-The container `.depth-stack` can then receive normal GSAP entry tweens — `scale`, `opacity`, `rotation` — and the whole stack moves as one unit.
-
-## Parameters
-
-| Parameter     | Recommended                                  | Effect                                                      |
-| ------------- | -------------------------------------------- | ----------------------------------------------------------- |
-| `LAYER_COUNT` | 4–6                                          | More layers = deeper extrusion (5 is the visual sweet spot) |
-| `OFFSET_X`    | 1–2 px                                       | Horizontal extrusion direction                              |
-| `OFFSET_Y`    | 2–3 px                                       | Vertical extrusion direction                                |
-| Front color   | Full opacity brand color                     | The visible text                                            |
-| Back layers   | Same hue, decreasing alpha (`0.1 × (N - i)`) | Depth trail                                                 |
-
-| Style    | Layers × Offset | Feel                                  |
-| -------- | --------------- | ------------------------------------- |
-| Subtle   | 4 × (1, 2)      | Light shadow, premium                 |
-| Standard | 5 × (1, 2)      | Visible extrusion, attention-grabbing |
-| Dramatic | 6 × (2, 3)      | Heavy extrusion, screen-filling       |
-
 ## Variations
 
-### Animated Staggered Entry
+### Static depth (no animation, single hero shot)
 
-Stagger layer opacity to "build up" the depth from back to front:
-
-```js
-/* Each back layer has --alpha that GSAP tweens from 0 to its final value.
-   Front layer tweens its opacity from 0 to 1. */
-tl.fromTo(
-  ".depth-layer.back",
-  { "--alpha": 0 },
-  {
-    "--alpha": (i) => 0.1 * (LAYER_COUNT - parseInt(i.dataset.idx, 10)),
-    duration: 0.4,
-    ease: "power2.out",
-    stagger: { each: 0.05, from: "end" },
-  },
-  STAT_AT,
-);
-
-tl.fromTo(
-  ".depth-layer.front",
-  { opacity: 0 },
-  { opacity: 1, duration: 0.4, ease: "power2.out" },
-  STAT_AT + 0.05 * (LAYER_COUNT - 1),
-);
-```
-
-Stagger from `end` so the deepest layer arrives first, building up to the front.
-
-### Dynamic Depth (Breathing Extrusion)
-
-Animate offset based on a shared variable for "depth pulsing":
-
-```css
-.depth-stack {
-  --depth-mul: 1;
-}
-.depth-layer.back {
-  top: calc(var(--top-base) * var(--depth-mul));
-  left: calc(var(--left-base) * var(--depth-mul));
-}
-```
+Skip the cascade — render all layers in their final positions from t=0, optionally fade the entire stack in:
 
 ```js
-/* Pulse depth via GSAP yoyo on the parent's CSS variable. */
-tl.fromTo(
-  ".depth-stack",
-  { "--depth-mul": 1 },
+tl.from(stack, { opacity: 0, scale: 0.96, duration: 0.6, ease: "power3.out" }, 0);
+```
+
+### Dynamic depth pulse
+
+Animate `OFFSET_X` / `OFFSET_Y` based on a heartbeat — depth grows and shrinks rhythmically:
+
+```js
+const beat = { p: 0 };
+tl.to(
+  beat,
   {
-    "--depth-mul": 1.5,
-    duration: 0.8,
-    ease: "sine.inOut",
-    yoyo: true,
-    repeat: Math.floor(IDLE_DUR / 0.8) - 1,
+    p: Math.PI * 2 * 2, // 2 beats over the duration
+    duration: 2.0,
+    ease: "none",
+    onUpdate: () => {
+      const mult = 1 + Math.sin(beat.p) * 0.4;
+      stack.querySelectorAll(".is-back").forEach((el) => {
+        const i = Number(el.dataset.layer);
+        el.style.transform = `translate(${i * OFFSET_X * mult}px, ${i * OFFSET_Y * mult}px)`;
+      });
+    },
   },
-  IDLE_START,
+  0.6,
 );
 ```
 
-When `--depth-mul` is 1.5, the back layers spread further from the front — depth visibly increases. Finite yoyo, never `repeat: -1`.
+### Color-shift back layers
 
-### Glow on Front Layer Only
+Instead of fading to translucent, shift to a different hue — depth reads as "casting a colored shadow":
 
-Apply [asr-keyword-glow](asr-keyword-glow.md)-style text-shadow glow exclusively to the front layer so the back layers stay clean:
-
-```css
-.depth-layer.front {
-  --glow: 0; /* tween via GSAP */
-  text-shadow:
-    0 0 calc(var(--glow) * 30px) currentColor,
-    0 0 calc(var(--glow) * 60px) currentColor;
-}
+```js
+el.style.color = `hsla(${250 - i * 8}, 80%, ${60 - i * 5}%, 1)`;
 ```
 
-Glowing all layers makes the depth illusion fuzzy. Glowing only the front keeps the extrusion crisp.
+## Key Principles
+
+- **Layer count 4-6** — fewer than 4 doesn't read as 3D, more than 6 visually clutters on tight kerning
+- **Offset 1-3 px per axis** — subtle is dramatic. `OFFSET = 6+` looks like a glitch rather than depth
+- **Offset direction implies light direction** — `(+x, +y)` = light from upper-left; `(-x, +y)` = light from upper-right. Pick one and be consistent across the composition
+- **Back layers translucent OR darker** — DON'T make them MORE saturated than the front (looks like a halo). Each back layer should be slightly more transparent (`alpha -= 0.13 per layer`) or slightly darker
+- **Last (front) layer `position: relative`** to define container size; all others `position: absolute` stack behind
+- **Bold/black weight + large size** — 900 weight, 60px+ minimum. Thin text loses the layered illusion
+- **❗ Don't apply per-letter animation on top of layers** — character animations (hacker-flip, typewriter) on top of 6-layer depth = chaos. If you need both effects, drop depth to 2-3 layers OR apply layers only to the static post-reveal state
 
 ## Critical Constraints
 
-- **Last layer is `position: relative`**: Defines container size. Without it, all layers are absolute and the stack has zero height.
-- **All other layers are `position: absolute`**: Float behind the relative front layer at their offset positions.
-- **Same text, same font metrics**: Mismatched fonts/sizes break the depth illusion. All layers inherit the parent's typography settings.
-- **Bold/black weight at large size**: 60 px+ with weight ≥ 700. Lighter fonts at smaller sizes lose the depth effect — the offsets become noise.
-- **Offset direction implies light**: `(top: i*+, left: -i)` = extruded down-and-back, light from upper-right. Reverse for other directions but be consistent across the scene.
-- **Build layers once at setup**: Don't re-create on every frame. The JS construction runs synchronously before the timeline registers.
-- **No `Math.random` / `Date.now`**: Layer count, offsets, alphas are constants.
-- **GSAP transforms only on the container**: Tween `.depth-stack` for entry / breath / exit — never tween individual layers' transforms (the offset stack relies on layout, not transforms).
+- **Timeline must be paused**: `gsap.timeline({ paused: true })`
+- **Registry key = `data-composition-id`**
+- **No CSS `text-shadow`** alongside layered depth — they compound and over-extrude
+- **Use `transform: translate()` for offsets, not `top`/`left`** — translate composes cleanly with parent's centering and avoids reflow
+- **`pointer-events: none` on back layers** — they're decorative; don't catch hover or selection
+- **Set layer color via `rgba()` not opacity** — opacity on the whole element fades the rendered glyph including any shadow; rgba in `color` fades just the glyph
 
 ## Combinations
 
-- Pair with [asr-keyword-glow](asr-keyword-glow.md) — glow the front layer when its associated word is spoken.
-- Pair with [counting-dynamic-scale](counting-dynamic-scale.md) — the entire depth stack scales up as its numeric value grows.
-- Pair with [coordinate-target-zoom](coordinate-target-zoom.md) — the camera zooms into the depth stack for a climax moment.
+- [counting-dynamic-scale.md](counting-dynamic-scale.md) — render the counter number with depth layers
+- [sine-wave-loop.md](sine-wave-loop.md) — idle breathing on the front layer after reveal
+- [center-outward-expansion.md](center-outward-expansion.md) — depth-stacked wordmark reveals after burst lands
 
-## Examples
+## Pairs with HF skills
 
-- [metric-video-text-pivot.html](../examples/metric-video-text-pivot.html) — "97%" rendered as a 5-layer green depth stack on the right side of the screen.
+- `/hyperframes-gsap` — staggered fade-ins + onUpdate for dynamic depth
+- `/hyperframes-core` — composition wiring
+- `/hyperframes-cli` — `hyperframes lint`

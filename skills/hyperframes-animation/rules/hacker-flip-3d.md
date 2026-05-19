@@ -1,161 +1,190 @@
 ---
 name: hacker-flip-3d
-description: Character-level 3D rotation with deterministic glyph substitution for a decryption reveal effect, GSAP-driven and seek-safe in HyperFrames.
+description: Character-level 3D rotation with random glyph substitution for a decryption reveal effect.
 metadata:
-  tags: text, 3d, reveal, randomization, perspective, gsap
-  adapter: gsap
+  tags: text, 3d, reveal, decode, hacker, randomization, perspective
 ---
 
 # Hacker Flip 3D Reveal
 
-Characters hinge down from 90° while cycling through pseudo-random glyphs, then settle on the target character. Creates a "decryption" or "airport flap display" effect.
+Characters flip down from 90° in 3D while cycling through random glyphs, then settle on the target character. Creates a "decryption" or airport flap-display reveal.
 
-In HyperFrames this is implemented as a GSAP timeline that tweens `rotationX` + `opacity` per character, plus a per-character `onUpdate` callback that writes a deterministic glyph into `textContent` until the reveal threshold is crossed. The runtime drives the timeline by seeking — every glyph state must be a pure function of `tl.time()`, never `Math.random()`.
+## How It Works
 
-## Core Concept
+Each character gets its own per-char tween from `rotateX: 90deg` (hidden) to `rotateX: 0deg` (revealed), staggered across the word. During the flip:
 
-A per-character spring-ish ease (`back.out`) controls the flip progress 0→1. A **reveal threshold** (e.g. `0.6`) on that progress flips the displayed text from a pseudo-random glyph to the real target character.
+1. **Phase A (0 → ~60% progress)**: character displays a randomly-substituted glyph that flickers (changes every N frames)
+2. **Phase B (~60% → 100% progress)**: character displays the REAL target character, settling into its final upright position
 
-- **Below threshold** → glyph derived from `(charIndex, floor(time * fps / flickerRate))` via integer hash
-- **At/above threshold** → real target character
+The 0.6 threshold separates "scrambled" from "revealed" — by the time the flip is mostly done, viewer sees the correct letter clicking into place.
 
-Because the glyph derives only from index and time, scrubbing the timeline backwards is reproducible.
-
-## Basic Pattern
-
-The parent must have `perspective` set; otherwise `rotateX` looks like a Y-scale compression. `transformOrigin: bottom` makes characters hinge like a flap display.
+## HTML
 
 ```html
-<!-- Composition root sets perspective for all glyphs -->
-<div class="flip-row" style="display: inline-flex; perspective: 800px;">
-  <!-- One span per character. Each glyph has a ghost copy for stable width. -->
-  <span class="flip-glyph" data-char="O" data-index="0">
-    <span class="ghost">O</span>
-    <span class="anim">O</span>
-  </span>
-  <span class="flip-glyph" data-char="p" data-index="1">
-    <span class="ghost">p</span>
-    <span class="anim">p</span>
-  </span>
-  <!-- … one span per target character -->
+<div
+  class="scene"
+  id="hacker-flip-scene"
+  data-composition-id="hacker-flip-scene"
+  data-start="0"
+  data-duration="3"
+  data-track-index="0"
+>
+  <div class="hacker-text-wrap" id="hacker-text" data-target="HYPERFRAMES">
+    <!-- Per-char spans get injected by setup script below.
+         Ghost placeholder (data-ghost) is rendered identically to reserve width. -->
+  </div>
 </div>
+```
 
-<style>
-  .flip-glyph {
-    position: relative;
-    display: inline-block;
-  }
-  .flip-glyph .ghost {
-    opacity: 0;
-  }
-  .flip-glyph .anim {
-    position: absolute;
-    left: 0;
-    top: 0;
-    width: 100%;
-    color: var(--accent, #fff);
-    opacity: 0;
-    transform-origin: bottom;
-    backface-visibility: hidden;
-    transform: perspective(600px) rotateX(90deg);
-  }
-</style>
+## CSS
 
+```css
+.scene {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  background: #05060d;
+  perspective: 1500px; /* REQUIRED — without this rotateX renders flat */
+}
+
+.hacker-text-wrap {
+  font-family: "JetBrains Mono", "Inter", monospace;
+  font-weight: 900;
+  font-size: 140px;
+  color: #f5f6fb;
+  letter-spacing: 4px;
+  display: flex;
+  /* Ghost / live chars are absolutely stacked; container reserves layout width */
+  position: relative;
+}
+
+.hacker-char {
+  display: inline-block;
+  /* Hinge at the bottom edge — flap-display look */
+  transform-origin: bottom;
+  transform-style: preserve-3d;
+  /* Will-change improves render perf */
+  will-change: transform, opacity;
+}
+
+/* Ghost placeholder is hidden but reserves width for variable-glyph fonts.
+   Without this, "I" (narrow) collapses width when displayed and characters
+   shift horizontally during flicker. */
+.hacker-ghost {
+  opacity: 0;
+  pointer-events: none;
+}
+```
+
+## GSAP Timeline + Random Glyph Logic
+
+```html
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
 <script>
   window.__timelines = window.__timelines || {};
+
+  const wrap = document.getElementById("hacker-text");
+  const targetWord = wrap.dataset.target || "HYPERFRAMES";
+  const GLYPHS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%&*";
+  const FLICKER_RATE = 4; // glyph swaps every 4 frames
+
+  // Build live chars + ghost placeholders (ghost keeps layout width stable)
+  wrap.innerHTML = "";
+  const ghostRow = document.createElement("div");
+  ghostRow.className = "hacker-ghost";
+  ghostRow.style.display = "inline-flex";
+  ghostRow.style.position = "absolute";
+  ghostRow.style.left = "0";
+  ghostRow.style.top = "0";
+  ghostRow.textContent = targetWord;
+  wrap.appendChild(ghostRow);
+
+  const charEls = [];
+  const liveRow = document.createElement("div");
+  liveRow.style.display = "inline-flex";
+  liveRow.style.position = "relative";
+  for (const ch of targetWord) {
+    const span = document.createElement("span");
+    span.className = "hacker-char";
+    span.textContent = ch === " " ? " " : ch;
+    span.dataset.target = ch;
+    liveRow.appendChild(span);
+    charEls.push(span);
+  }
+  wrap.appendChild(liveRow);
+
+  // Deterministic "random" — seeded by char index + frame group so same frame
+  // always yields same glyph (HF seek determinism)
+  function pseudoGlyph(seed) {
+    // simple int hash
+    const h = ((seed * 9301 + 49297) % 233280) / 233280;
+    return GLYPHS[Math.floor(h * GLYPHS.length)];
+  }
+
   const tl = gsap.timeline({ paused: true });
 
-  // Tuning knobs — keep in seconds, not frames
-  const DELAY = 0.1; // wall time before first glyph starts
-  const STAGGER = 0.066; // delay between successive glyphs — 0.033–0.066 s typical
-  //   0.066 ≈ 2 frames @ 30 fps (concept-demo-decode-pan, slower decode)
-  //   0.033 ≈ 2 frames @ 60 fps (proof-logo-chain, more rapid reveal)
-  //   tighter staggers give a more rapid reveal
-  const FLIP_DURATION = 0.55; // per-glyph flip duration
-  const REVEAL_AT = 0.6; // progress threshold to swap random → real
-  const CHAR_POOL = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@#$%&";
-  const FLICKER_RATE = 3; // frames between glyph reshuffles
-  const FPS = 60; // synthetic clock for the flicker hash
-
-  // Cheap integer hash — deterministic, no Math.random()
-  const hash = (i, t) => ((i * 374761393 + t * 668265263) >>> 0) % CHAR_POOL.length;
-
-  document.querySelectorAll(".flip-glyph").forEach((glyph) => {
-    const index = Number(glyph.dataset.index);
-    const real = glyph.dataset.char;
-    const anim = glyph.querySelector(".anim");
-    const start = DELAY + index * STAGGER;
-
-    // A "progress" proxy: tween a CSS variable on the element from 0 → 1.
-    // We read it back in onUpdate to derive both the flicker glyph and the
-    // reveal threshold. Tweening a numeric proxy makes the value a pure
-    // function of timeline time, so seek-back behaves correctly.
-    tl.fromTo(
-      anim,
-      { rotationX: 90, opacity: 0, "--p": 0 },
+  // Per-char flip — stagger across the word
+  charEls.forEach((el, i) => {
+    const state = { p: 0 };
+    tl.to(
+      state,
       {
-        rotationX: 0,
-        opacity: 1,
-        "--p": 1,
-        duration: FLIP_DURATION,
-        ease: "back.out(1.6)", // approximates spring(stiffness:150, damping:14)
-        onUpdate: function () {
-          const p = gsap.getProperty(anim, "--p");
-          if (p >= REVEAL_AT) {
-            anim.textContent = real;
+        p: 1,
+        duration: 0.9,
+        ease: "power3.out",
+        onUpdate: () => {
+          // Phase A: random glyph flickering. Phase B: real character.
+          const progress = state.p;
+          if (progress < 0.6) {
+            // Update glyph every FLICKER_RATE worth of progress
+            const flickerSeed = i * 1000 + Math.floor(progress * 100);
+            el.textContent = pseudoGlyph(flickerSeed);
           } else {
-            // Discrete flicker bucket — same for every frame inside the same bucket
-            const localFrame = Math.floor((tl.time() - start) * FPS);
-            const bucket = Math.floor(localFrame / FLICKER_RATE);
-            anim.textContent = CHAR_POOL[hash(index, bucket)];
+            el.textContent = el.dataset.target === " " ? " " : el.dataset.target;
           }
+          // Flip rotateX from 90 (down) to 0 (upright)
+          const rotateX = 90 - progress * 90;
+          const opacity = Math.min(1, progress * 2);
+          el.style.transform = `rotateX(${rotateX}deg)`;
+          el.style.opacity = opacity;
         },
       },
-      start,
-    );
+      i * 0.06,
+    ); // 0.06s stagger per char
   });
 
-  window.__timelines["main"] = tl; // match data-composition-id
+  window.__timelines["hacker-flip-scene"] = tl;
 </script>
 ```
 
-## Why an onUpdate, not a chain of `gsap.set()` calls
+## Key Principles
 
-You could imagine pre-baking every flicker as discrete `tl.set(anim, { textContent: "X" }, t)` calls. **Don't.** Two reasons:
-
-1. HyperFrames seeks the timeline backwards and forwards. `set()` calls behave reliably only in the forward direction unless paired with `immediateRender`. An `onUpdate` that derives state purely from `tl.time()` is monotonic-safe.
-2. A 9-character flip at 3-frame flicker = ~50 set() calls per glyph. The bookkeeping is brittle and noisy.
-
-The `onUpdate` approach keeps glyph state stateless: it's a function of `(index, floor(time * fps / flickerRate))`.
-
-## Spring → GSAP Ease Mapping
-
-The Remotion source used `spring({ stiffness: 150, damping: 14 })`. HyperFrames doesn't have a Remotion-style spring helper; map to GSAP eases that feel similar:
-
-| Remotion spring                    | GSAP ease equivalent               | Use for                                                               |
-| ---------------------------------- | ---------------------------------- | --------------------------------------------------------------------- |
-| stiffness 150, damping 14 (snappy) | `back.out(1.6)` or `back.out(1.7)` | Glyph flip — what we use here                                         |
-| stiffness 120, damping 14          | `back.out(1.4)`                    | Ticker step (see [vertical-spring-ticker](vertical-spring-ticker.md)) |
-| stiffness 80, damping 18           | `power3.out`                       | Text slide-out                                                        |
-| stiffness 45, damping 22 (gentle)  | `power2.out`                       | Camera recenter                                                       |
-
-These are approximations — visually indistinguishable for the 0.4–0.8s ranges we use. For physically exact springs, use `gsap.registerPlugin(CustomEase)` and `CustomEase.create()` with a Bezier curve fitted to the spring response — overkill for most cases.
+- **Threshold at 0.6** for swap from random → real glyph — close enough to settled that viewer's eye catches the right letter
+- **Hinge at `transform-origin: bottom`** for flap-display look (vs `top` for top-down, vs `center` for spin)
+- **Deterministic random** via seeded hash — HF runtime seeks frame-by-frame, so the same frame must show the same glyph (no `Math.random()`)
+- **Ghost placeholder** sits behind the live chars with identical content + same font, reserving width — without it, narrow glyphs like "I" or numbers shift the layout mid-flicker
+- **Stagger 0.04-0.08s** per char — too fast and chars overlap visually, too slow and effect feels labored
+- **❗ Center the main flip dead-center via `display: grid; place-items: center;`** on the scene root — and DO NOT add decorative headers/footers (timestamp lines, "// AUTH" tags, small green "● DECRYPTED" dots). The flip text IS the focal beat; surrounding clutter dilutes it. If a secondary label is necessary (e.g. "Decrypted" status), promote it to BIG typography in the same stacked layout (56-72px caps + tracking), not a tiny corner annotation.
 
 ## Critical Constraints
 
-- **Perspective required**: Either on the parent (preferred — applies to all glyphs in one go) or inline per-glyph. Without it `rotateX` flattens to a Y-scale.
-- **Ghost placeholder**: The hidden duplicate (`.ghost`) reserves correct width for variable-width fonts. Without it, the row jitters as the random glyph swaps.
-- **Seed stability**: Use `(index, bucket)` not `(index, frame)`. Same bucket = same glyph for `FLICKER_RATE` consecutive frames — that's the flicker rhythm.
-- **`transform-origin: bottom`**: Required for the flap-display hinge feel. `center` looks like a card flip; `top` like a roller blind.
-- **One paused timeline, one register**: All glyphs share `window.__timelines["main"]`. Don't create per-glyph timelines.
-- **No `Math.random()`, no `Date.now()`**: HyperFrames is a deterministic renderer. The integer hash is your only randomness source.
+- **`perspective` on scene root REQUIRED** — without parent perspective, `rotateX` looks like a 2D scale, not a 3D flip
+- **`transform-style: preserve-3d` on each char** — keeps 3D context intact when chars have their own transforms
+- **Timeline must be paused**: `gsap.timeline({ paused: true })`
+- **Registry key = `data-composition-id`**
+- **Deterministic randomness**: don't use `Math.random()`. Use a seed derived from char index + frame group so seek determinism holds
+- **`onUpdate` writes to DOM**: HF seeks every frame, so this runs many times — keep work O(1) per char per frame
+- **Flicker rate ≥ ~3 frames per glyph swap**: faster looks like noise, slower looks like discrete typing
 
 ## Combinations
 
-- Pair with [vertical-spring-ticker](vertical-spring-ticker.md) for a "decode then swap word" effect.
-- Layer with a sine-wave `tl.to(".flip-row", { y: "+=4", duration: 2, repeat: 2, yoyo: true })` for subtle post-reveal breathing.
-- Anchor the row inside [coordinate-target-zoom](coordinate-target-zoom.md) when the camera needs to push into the revealed text.
+- [card-morph-anchor.md](card-morph-anchor.md) — pair: hacker-flip reveals a phrase, then card morphs into the next shot
+- [counting-dynamic-scale.md](counting-dynamic-scale.md) — counterpart for numeric reveals (text vs number)
 
-## Examples
+## Pairs with HF skills
 
-- [proof-logo-chain.html](../examples/proof-logo-chain.html) — full Authority scene with hacker flip on "Opus Clip" at t≈0.32s.
+- `/hyperframes-gsap` — timeline + per-char stagger + `onUpdate`
+- `/hyperframes-core` — composition wiring
+- `/hyperframes-cli` — `hyperframes lint`

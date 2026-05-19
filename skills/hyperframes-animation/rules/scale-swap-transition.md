@@ -1,141 +1,226 @@
 ---
 name: scale-swap-transition
-description: Coordinated shrink-out and bouncy pop-in transition between two elements at the same screen center. Two GSAP tween clusters started at the same morph trigger — exit shrinks + fades the outgoing element, entrance scales the incoming element in from 0 with an overshoot ease.
+description: Coordinated shrink-out + spring pop-in morph-like transition between two elements — no SVG path interpolation needed.
 metadata:
-  tags: transition, morph, scale, swap, gsap
-  adapter: gsap
+  tags: transition, morph, scale, swap, spring, pop
 ---
 
-# Coordinated Scale-Swap Transition
+# Scale-Swap Transition
 
-Simulates a "morph" between two DOM elements by overlapping exit and entrance motions started at the same trigger. The eye reads the swap as a single transformation, not two separate animations. No SVG path morphing needed.
+Simulates a "morph" between two DOM elements by overlapping exit and entrance scale animations. Lighter weight than [card-morph-anchor](card-morph-anchor.md) (which morphs container dimensions) and easier than SVG path interpolation.
 
-## HyperFrames vs. Remotion
+## How It Works
 
-The Remotion source held two springs in scope and conditionally rendered each element based on opacity (`{exitOpacity > 0 && ...}`). Conditional unmount kept the DOM clean during the transition.
+At a single trigger time, two coordinated tweens fire:
 
-HyperFrames doesn't conditionally render in the same way — elements stay in the DOM permanently, and GSAP drives `opacity` / `scale` to zero. The visual result is identical; the rendering model is simpler.
+1. **Outgoing element**: scale 1.0 → 0.7 + opacity 1 → 0 (fast `power2.in`)
+2. **Incoming element**: scale 0.7 → 1.0 + opacity 0 → 1 (bouncy `back.out(1.8)` with overshoot)
 
-```
-Remotion: {exitOpacity > 0 && <Hero />}   +   {frame > trigger && <CTA />}
-HyperFrames: <Hero /> permanently rendered, opacity tweened 1 → 0
-             <CTA  /> permanently rendered, scale 0 → 1 + opacity 0 → 1
-```
+The 0.1-0.2s overlap during which both are mid-tween creates the "morph" illusion. Incoming sits on top via z-index so the outgoing's fade-tail doesn't bleed through.
 
-## Core Concept
-
-Single timeline position `MORPH_AT` triggers two clusters of tweens in parallel:
-
-1. **Exit cluster** (outgoing element): `scale` shrinks (e.g. 1 → 0.6); `opacity` fades fast (faster than scale)
-2. **Entrance cluster** (incoming element): `scale` from 0 → 1 with overshoot ease; `opacity` from 0 → 1
-
-The outgoing fade completes before the incoming reaches full scale — there's a brief moment where both are partially visible, which sells the "morph" illusion.
-
-## Basic Pattern
+## HTML
 
 ```html
 <div
-  class="stage"
-  style="position: absolute; inset: 0;
-     display: flex; align-items: center; justify-content: center;"
+  class="scene"
+  id="swap-scene"
+  data-composition-id="swap-scene"
+  data-start="0"
+  data-duration="3"
+  data-track-index="0"
 >
-  <!-- Outgoing element -->
-  <div class="hero" id="hero">
-    <!-- e.g. logo lockup -->
-  </div>
-
-  <!-- Incoming element. Initial scale: 0 so it's invisible pre-morph. -->
-  <div class="cta" id="cta" style="position: absolute; z-index: 10;">
-    <!-- e.g. CTA button -->
+  <div class="stack">
+    <div class="swap-wrap">
+      <div class="card outgoing" id="outgoing">
+        <div class="icon">📝</div>
+        <div class="title">DRAFT</div>
+      </div>
+      <div class="card incoming" id="incoming">
+        <div class="icon">🚀</div>
+        <div class="title">SHIPPED</div>
+        <div class="sub" id="sub">to heygenverse.com</div>
+      </div>
+    </div>
+    <div class="brand">HEYGENVERSE</div>
   </div>
 </div>
+```
 
+## CSS
+
+```css
+.scene {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(ellipse at center, #161a3a 0%, #0b0d1f 70%);
+  font-family: "Inter", sans-serif;
+}
+.stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 64px;
+}
+.swap-wrap {
+  position: relative;
+  width: 640px;
+  height: 360px;
+}
+.card {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  border-radius: 32px;
+  padding: 48px;
+  /* Both elements share transform-origin so they "morph" around the same anchor */
+  transform-origin: 50% 50%;
+  will-change: transform, opacity;
+}
+.card .icon {
+  font-size: 120px;
+}
+.card .title {
+  font-size: 80px;
+  font-weight: 900;
+  letter-spacing: 8px;
+  text-transform: uppercase;
+}
+.card .sub {
+  font-size: 32px;
+  font-weight: 700;
+  color: #a78bfa;
+  opacity: 0;
+}
+.outgoing {
+  z-index: 1;
+  background: linear-gradient(160deg, rgba(245, 196, 81, 0.4) 0%, rgba(20, 24, 56, 0.85) 70%);
+  border: 1px solid rgba(245, 196, 81, 0.4);
+  color: #f5f6fb;
+}
+.incoming {
+  /* Incoming starts hidden + smaller, will pop in */
+  z-index: 2;
+  background: linear-gradient(160deg, rgba(167, 139, 250, 0.4) 0%, rgba(20, 24, 56, 0.85) 70%);
+  border: 1px solid rgba(167, 139, 250, 0.6);
+  color: #f5f6fb;
+  opacity: 0;
+  transform: scale(0.7);
+}
+.brand {
+  font-size: 56px;
+  font-weight: 900;
+  letter-spacing: 14px;
+  text-transform: uppercase;
+  color: #cdb8ff;
+}
+```
+
+## GSAP Timeline
+
+```html
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
 <script>
   window.__timelines = window.__timelines || {};
   const tl = gsap.timeline({ paused: true });
 
-  const MORPH_AT = 2.17; // seconds
-  const EXIT_SCALE = 0.6; // outgoing shrinks to this fraction
+  const TRIGGER = 0.8; // when the swap happens
+  const OVERLAP = 0.15; // how much exit and entrance overlap (s)
 
-  // Set incoming initial state via GSAP so the timeline tweens can reach it.
-  gsap.set("#cta", { scale: 0, opacity: 0 });
-
-  /* EXIT CLUSTER — outgoing element shrinks + fades fast.
-     Opacity tweens shorter than scale so the fade completes in the
-     first ~30% of the morph and only the shrink residue lingers. */
+  // Outgoing: shrink + fade fast
   tl.to(
-    "#hero",
-    { scale: EXIT_SCALE, duration: 0.5, ease: "power3.out" }, // spring(stiffness:150, damping:18)
-    MORPH_AT,
-  );
-  tl.to(
-    "#hero",
+    "#outgoing",
     {
+      scale: 0.7,
       opacity: 0,
-      duration: 0.15, // 30% of exit duration
-      ease: "power2.out",
+      duration: 0.4,
+      ease: "power2.in",
     },
-    MORPH_AT,
+    TRIGGER,
   );
 
-  /* ENTRANCE CLUSTER — incoming pops in with overshoot.
-     back.out(2) gives ~10% overshoot, matching low-mass spring (mass:0.6). */
+  // Incoming: scale up + fade in with overshoot, starts slightly BEFORE outgoing
+  // finishes (overlap creates the morph illusion).
   tl.to(
-    "#cta",
-    { scale: 1, opacity: 1, duration: 0.45, ease: "back.out(2)" }, // spring(stiffness:200, damping:15, mass:0.6)
-    MORPH_AT,
+    "#incoming",
+    {
+      scale: 1.0,
+      opacity: 1,
+      duration: 0.6,
+      ease: "back.out(1.8)",
+    },
+    TRIGGER + 0.4 - OVERLAP,
   );
 
-  window.__timelines["main"] = tl;
+  // Subline reveals AFTER the incoming card settles
+  tl.fromTo(
+    "#sub",
+    { opacity: 0, y: 12 },
+    { opacity: 1, y: 0, duration: 0.4, ease: "power3.out" },
+    TRIGGER + 1.1,
+  );
+
+  // Brand fades in early for context
+  tl.from(".brand", { opacity: 0, y: 16, duration: 0.6, ease: "power3.out" }, 0.2);
+
+  window.__timelines["swap-scene"] = tl;
 </script>
 ```
 
-### Why `back.out(2)` for the entrance
+## Variations
 
-Remotion's `spring({ stiffness: 200, damping: 15, mass: 0.6 })` produces a bouncy overshoot — the value crosses 1.0 around 60–70 % of the duration, peaks near 1.10–1.15, then settles back to 1.0. `back.out(2)` has the same character. Use:
+### Delayed inner content reveal
 
-- `back.out(1.4)` for mild overshoot (~5 %)
-- `back.out(1.7)` for moderate (~7 %)
-- `back.out(2)` for the bouncy "pop" feel
-- `elastic.out(1, 0.5)` for ringing settle (multiple bounces) — usually too much
+The classic pattern: morph the container, then reveal inner text once the container has settled (as in the example above with `.sub`). The 0.2-0.4s gap between morph end and content reveal lets the viewer's eye land on the new container shape before reading the content.
 
-## Delayed Inner Content Reveal
+### Triple swap (3-state cycle)
 
-If the incoming element contains text or icons, fade them in after the container reaches recognizable scale. This avoids ant-sized text in the spring's early frames.
+Chain: A→B→C with two triggers. Each transition needs its own pair of tweens, and the previous incoming becomes the next outgoing. Useful for state evolution narratives ("DRAFT → REVIEW → SHIPPED").
 
 ```js
-const REVEAL_DELAY = 0.17; // seconds after morph — ~5 frames at 30fps
-
-tl.fromTo(
-  "#cta-text",
-  { opacity: 0, y: 10 },
-  { opacity: 1, y: 0, duration: 0.33, ease: "power2.out" },
-  MORPH_AT + REVEAL_DELAY,
-);
+tl.to("#stateA", { scale: 0.7, opacity: 0, duration: 0.4 }, 0.5);
+tl.to("#stateB", { scale: 1.0, opacity: 1, duration: 0.6, ease: "back.out(1.8)" }, 0.65);
+tl.to("#stateB", { scale: 0.7, opacity: 0, duration: 0.4 }, 1.8);
+tl.to("#stateC", { scale: 1.0, opacity: 1, duration: 0.6, ease: "back.out(1.8)" }, 1.95);
 ```
 
-The container's `back.out(2)` overshoot completes around `MORPH_AT + 0.4 s`; revealing text at `MORPH_AT + 0.17 s` means it appears when the container is ~50 % scale — large enough to read.
+### Color-shift transition (no scale)
 
-## Layering: Z-Index for Clean Residue
+For a flat morph between two same-shape states, drop the scale and keep only opacity + a brief background hue tween. Less dramatic but matches a more product-UI tone.
 
-Set `z-index: 10` (or higher than the outgoing) on the incoming element. As the outgoing element shrinks toward its `EXIT_SCALE`, any visual residue (1-pixel borders, stale text edges) is hidden behind the incoming element.
+## Key Principles
+
+- **Incoming z-index ABOVE outgoing** — without this, the outgoing's fade-tail (opacity 0.3-0.5) bleeds through the incoming's lower opacity and creates a "double-exposed" muddy frame
+- **Both elements share `transform-origin: 50% 50%`** — different origins make the morph feel like one thing teleporting somewhere else
+- **Overlap 0.1-0.2s** — too much overlap (>0.3s) and both are clearly visible together (no morph); too little (<0.05s) and there's a visible empty gap
+- **Bouncy ease ONLY for the incoming** — outgoing uses `power2.in` (rushing away), incoming uses `back.out(1.6-2.0)` (arriving with weight). Reverse it and the swap feels mechanical
+- **Inner content reveals AFTER container settles** — 0.2-0.4s gap. Reveals during the morph compete for attention and lose
+- **❗ Climax dwell ≥1s after final state lands** — see SKILL universal constraints. After incoming + subline both settle, hold for ≥1s
+- **Brand reveal early, not at the swap** — context (brand, eyebrow) sets the stage; the swap is the headline. If brand reveals AT the swap, it competes
 
 ## Critical Constraints
 
-- **Same timeline position for both clusters**: This is what creates the "single trigger" feel. Drift the start times and the swap feels like a relay race.
-- **Opacity exit shorter than scale exit**: ~30% of scale duration. The fade has to land before the shrink, otherwise the shrinking-but-still-visible outgoing element fights the incoming for attention.
-- **Z-index on incoming**: Covers exit residue. Default z-index makes the outgoing edge bleed through during the brief overlap window.
-- **Same transform origin**: Both elements centered at the same screen position. Otherwise the "morph" reveals as "translate + scale-swap" which breaks the illusion.
-- **GSAP `set()` for initial state**: `gsap.set("#cta", { scale: 0, opacity: 0 })` before the timeline runs. This makes the incoming invisible pre-morph without needing conditional rendering.
-- **Entrance ease, not exit ease**: Both clusters need different feels — exit is a clean shrink (`power3.out`), entrance is bouncy (`back.out(2)`). Symmetric eases look dull.
-- **GSAP transform aliases only**: `scale`, `x`, `y`. Never `width` / `height` / `left` / `top`.
+- **Timeline must be paused**: `gsap.timeline({ paused: true })`
+- **Registry key = `data-composition-id`**
+- **No CSS `transition`** on either swap element — competes with GSAP
+- **`will-change: transform, opacity`** on both swap elements
+- **Both elements use `position: absolute; inset: 0`** in the same wrapper — they occupy the same footprint, swap fades one out and pops one in
+- **Don't `display: none` the outgoing** after fade — leave it at `opacity: 0` so layout doesn't reflow
 
 ## Combinations
 
-- After the swap settles, add [physics-press-reaction](physics-press-reaction.md) for a click reaction on the incoming CTA.
-- Layer [sine-wave-loop](sine-wave-loop.md) on the incoming element for breathing idle once it lands.
-- Pair with [hacker-flip-3d](hacker-flip-3d.md) — incoming element contains hacker-flip text that decodes as it scales in.
+- [press-release-spring.md](press-release-spring.md) — button press TRIGGERS the swap (cause and effect)
+- [sine-wave-loop.md](sine-wave-loop.md) — idle breathing on the final state
+- [card-morph-anchor.md](card-morph-anchor.md) — alternative for SHAPE-changing transitions (this rule is for SAME-shape state swaps)
 
-## Examples
+## Pairs with HF skills
 
-- [cta-morph-press.html](../examples/cta-morph-press.html) — "GWI Spark" logo lockup morphs into a pink "Find out more" CTA button.
+- `/hyperframes-gsap` — two coordinated tweens with overlap
+- `/hyperframes-core` — composition wiring
+- `/hyperframes-cli` — `hyperframes lint`

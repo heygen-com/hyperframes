@@ -1,223 +1,240 @@
 ---
 name: discrete-text-sequence
-description: Replace entire text states at time thresholds for non-linear typing — typos, bulk additions, holds, backspaces. GSAP onUpdate-driven and seek-safe in HyperFrames.
+description: Replace entire text states at frame thresholds for non-linear typing effects — typos, bulk additions, pauses, backspaces, simulated thinking.
 metadata:
-  tags: text, typing, discrete, threshold, non-linear, gsap
-  adapter: gsap
+  tags: text, typing, discrete, threshold, non-linear, sequence
 ---
 
 # Discrete Text Sequence
 
-Instead of character-by-character typing, replace whole string states at time boundaries. Enables non-linear effects: typos, bulk additions, pauses, backspaces, "thinking" rhythms.
+Instead of character-by-character typewriter, replace entire string states at time thresholds. Enables non-linear effects (typos, bulk additions, pauses, "thinking" gaps) that smooth per-char typing can't achieve.
 
-## HyperFrames vs. Remotion
+## How It Works
 
-The Remotion version used `frame >= entry.frame` inside a render function evaluated per frame. HyperFrames doesn't have per-frame components — every state must be a pure function of `tl.time()`, evaluated inside a GSAP `onUpdate`.
+An array of `{ text, t }` pairs where `t` is a time in seconds. On every onUpdate, scan the array for the latest entry whose `t` has passed and render that text. The display jumps between states; no animation between them.
 
-```
-Remotion: frame ≥ entry.frame    (frames as integers)
-HyperFrames: tl.time() ≥ entry.t (seconds as floats)
-```
+For continuous per-char typewriter (no pauses, no edits), use the **smooth-slice** variation at the bottom.
 
-The change is mechanical: convert frame numbers to seconds (divide by fps), put the reverse-search inside an `onUpdate` callback that fires whenever the timeline scrubs.
-
-## Core Concept
-
-An array of `{ text, t }` entries, sorted by time. The display element shows the latest entry whose `t` is ≤ current timeline time. Repeating the same `text` at multiple `t` values creates pauses.
-
-Two forms are supported and both are seek-safe in HyperFrames:
-
-- **Form A — `tl.set()` per state.** Emit one `tl.set(textEl, { textContent }, entry.t)` per sequence entry. GSAP records each set at an absolute timeline position; on seek (forward or backward), it recomputes which sets have elapsed and applies them in order. Cheap, declarative, and works because `set` writes the property value as a function of time, not an event side effect.
-- **Form B — single `onUpdate` driver.** One `tl.fromTo({}, {}, { onUpdate })` runs a `pickDiscrete(tl.time())` lookup on every frame and writes the chosen string. More CPU per frame, but lets you compose the lookup with other per-frame derivations (e.g. cursor color, caret offset).
-
-Prefer Form A when the only output is text content. Prefer Form B when the text choice drives additional per-frame state, or when the sequence is generated from an external source the timeline already references via `onUpdate`.
-
-## Basic Pattern
-
-```html
-<div class="discrete-line">
-  <span class="discrete-text"></span><span class="discrete-cursor">_</span>
-</div>
-
-<style>
-  .discrete-line {
-    width: 1200px; /* fixed width prevents layout jitter */
-    display: flex;
-    justify-content: flex-end;
-    white-space: nowrap;
-    font:
-      700 96px/1 Inter,
-      system-ui,
-      sans-serif;
-    color: #fff;
-  }
-  .discrete-cursor {
-    color: #00ff88;
-    margin-left: 4px;
-    font-weight: 300;
-  }
-</style>
-
-<script>
-  window.__timelines = window.__timelines || {};
-  const tl = gsap.timeline({ paused: true });
-
-  /* ============================================================
-     SEQUENCE — { text, t } entries, sorted ascending.
-     Repeat the same text at different t to create pauses.
-     ============================================================ */
-  const SEQUENCE = [
-    { t: 0.0, text: "" },
-    { t: 0.5, text: "Tell me how to " },
-    { t: 1.2, text: "Tell me how to target parents" },
-    { t: 1.4, text: "Tell me how to target parents" }, // ← hold for 0.6s
-    { t: 2.0, text: "Tell me how to target parents who" },
-    { t: 2.8, text: "Tell me how to target parents who shop online" },
-  ];
-
-  // Sort defensively in case the author forgets.
-  SEQUENCE.sort((a, b) => a.t - b.t);
-
-  // Pick the latest entry whose t is ≤ now. Linear scan, fine for ≤20 entries.
-  function pickDiscrete(now) {
-    let chosen = SEQUENCE[0].text;
-    for (const entry of SEQUENCE) {
-      if (entry.t <= now) chosen = entry.text;
-      else break;
-    }
-    return chosen;
-  }
-
-  const textEl = document.querySelector(".discrete-text");
-
-  /* --- Form A: tl.set() per state (preferred for plain text-content swaps) --- */
-  for (const entry of SEQUENCE) {
-    tl.set(textEl, { textContent: entry.text }, entry.t);
-  }
-
-  /* --- Form B: single onUpdate driver (use when you also need per-frame
-     derivations alongside the text choice — cursor color, caret position, etc.) ---
-  const FIRST_T = SEQUENCE[0].t;
-  const LAST_T  = SEQUENCE[SEQUENCE.length - 1].t;
-
-  tl.fromTo({ tick: 0 },
-    { tick: 0 },
-    {
-      tick: 1,
-      duration: LAST_T - FIRST_T,
-      ease: "none",
-      onUpdate: function () {
-        const now = tl.time();
-        const next = pickDiscrete(now);
-        // Avoid touching the DOM if nothing changed (perf + flicker prevention)
-        if (textEl.textContent !== next) textEl.textContent = next;
-      },
-    },
-    FIRST_T,
-  );
-  */
-
-  window.__timelines["main"] = tl;
-</script>
-```
-
-The brand-reveal example uses Form A — see [`brand-reveal-assemble-zoom.html`](../examples/brand-reveal-assemble-zoom.html) lines around the `SEQUENCE` loop where it emits `tl.set(textEl, { textContent: entry.text }, entry.t)` per entry.
-
-## Variations
-
-### Fixed-Width Container
-
-Prevents the container from re-flowing as the string length changes. Right-justified content (search-bar style):
+## HTML
 
 ```html
 <div
-  class="discrete-line"
-  style="
-     width: 1200px;
-     display: flex; justify-content: flex-end;
-     white-space: nowrap; overflow: hidden;"
+  class="scene"
+  id="seq-scene"
+  data-composition-id="seq-scene"
+  data-start="0"
+  data-duration="6"
+  data-track-index="0"
 >
-  <span class="discrete-text"></span>
+  <div class="terminal">
+    <div class="prompt">$</div>
+    <div class="text-wrap">
+      <span class="text" id="text">|</span>
+      <span class="cursor" id="cursor">_</span>
+    </div>
+  </div>
 </div>
 ```
 
-Or center-justified:
+## CSS
 
 ```css
-.discrete-line {
-  justify-content: center;
+.scene {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  background: #05060d;
+  font-family: "JetBrains Mono", monospace;
+}
+.terminal {
+  display: flex;
+  align-items: baseline;
+  gap: 24px;
+  font-weight: 800;
+  font-size: 72px;
+  color: #f5f6fb;
+}
+.prompt {
+  color: #a78bfa;
+}
+.text-wrap {
+  display: inline-flex;
+  align-items: baseline;
+  /* Fixed-width container prevents the right side from jittering as
+     content changes length. Choose width ≥ longest state's width. */
+  min-width: 1100px;
+  white-space: nowrap;
+}
+.text {
+  color: #f5f6fb;
+}
+.cursor {
+  display: inline-block;
+  width: 20px;
+  color: #a78bfa;
+  margin-left: 4px;
 }
 ```
 
-For left-justified that grows from the left, use `justify-content: flex-start` and let `overflow: hidden` clip the right edge as the text gets long.
+## GSAP Timeline + Discrete State Logic
 
-### Smooth Character Slice (Continuous Typing)
+```html
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+<script>
+  window.__timelines = window.__timelines || {};
 
-For continuous typing without pauses, use a GSAP tween over the character count instead of a discrete sequence. This is the inverse pattern — the displayed text is a _function_ of progress, not a lookup table:
+  // State sequence — each entry shows from t to the NEXT entry's t.
+  // Non-linear: typos, corrections, bulk additions, pauses.
+  const SEQUENCE = [
+    { t: 0.0, text: "" },
+    { t: 0.3, text: "b" },
+    { t: 0.5, text: "bu" },
+    { t: 0.7, text: "bun" }, // user starts typing
+    { t: 0.9, text: "bunx" },
+    { t: 1.1, text: "bunx h" },
+    { t: 1.3, text: "bunx hy" },
+    { t: 1.5, text: "bunx hyperfrim" }, // typo
+    { t: 1.9, text: "bunx hyperfri" }, // backspace
+    { t: 2.0, text: "bunx hyperfr" },
+    { t: 2.1, text: "bunx hyperf" },
+    { t: 2.4, text: "bunx hyperframes" }, // correction + bulk
+    { t: 2.7, text: "bunx hyperframes render" },
+    { t: 3.0, text: "bunx hyperframes render ." },
+    { t: 3.5, text: "bunx hyperframes render . --output heygenverse.mp4" }, // bulk paste
+    { t: 5.0, text: "bunx hyperframes render . --output heygenverse.mp4 ✓" }, // completion mark
+  ];
+
+  // Reverse-search for the latest entry whose t has passed.
+  function textAt(time) {
+    for (let i = SEQUENCE.length - 1; i >= 0; i--) {
+      if (time >= SEQUENCE[i].t) return SEQUENCE[i].text;
+    }
+    return "";
+  }
+
+  const textEl = document.getElementById("text");
+  const cursorEl = document.getElementById("cursor");
+  const tl = gsap.timeline({ paused: true });
+
+  // Drive the discrete display via a 0→duration tween's onUpdate
+  const totalDuration = 6.0;
+  const driver = { t: 0 };
+  tl.to(
+    driver,
+    {
+      t: totalDuration,
+      duration: totalDuration,
+      ease: "none",
+      onUpdate: () => {
+        textEl.textContent = textAt(driver.t);
+      },
+    },
+    0,
+  );
+
+  // Cursor blink — deterministic via sin, not CSS animation
+  const blinkDriver = { p: 0 };
+  tl.to(
+    blinkDriver,
+    {
+      p: Math.PI * 2 * 6, // 6 blinks across composition
+      duration: totalDuration,
+      ease: "none",
+      onUpdate: () => {
+        cursorEl.style.opacity = Math.sin(blinkDriver.p) > 0 ? "1" : "0";
+      },
+    },
+    0,
+  );
+
+  window.__timelines["seq-scene"] = tl;
+</script>
+```
+
+## Variations
+
+### Smooth character slice (continuous typewriter — no pauses, no edits)
+
+For straight-forward typewriter without the non-linear chaos:
 
 ```js
-const FULL_TEXT = "Tell me how to target parents";
-const TYPE_START = 0.4;
-const TYPE_RATE = 0.08; // seconds per character
-
+const fullText = "bunx hyperframes render . --output heygenverse.mp4";
+const len = { v: 0 };
 tl.to(
-  { progress: 0 },
+  len,
   {
-    progress: FULL_TEXT.length,
-    duration: FULL_TEXT.length * TYPE_RATE,
-    ease: "none",
-    onUpdate: function () {
-      const len = Math.floor(this.targets()[0].progress);
-      textEl.textContent = FULL_TEXT.slice(0, len);
+    v: fullText.length,
+    duration: 3.5,
+    ease: "power1.inOut",
+    onUpdate: () => {
+      textEl.textContent = fullText.substring(0, Math.floor(len.v));
     },
   },
-  TYPE_START,
+  0,
 );
 ```
 
-Pick _discrete sequence_ when timing of words matters (synced to narration, intentional pauses). Pick _smooth slice_ when the typing rhythm itself is the effect.
+This is faster to author but produces a uniform "machine-typed" feel — missing the human-typing realism.
 
-### Typo + Correction
+### Thinking pause (extended hold on a key state)
 
-A real-feeling typo + backspace + retype:
+Insert a state that holds for 1-2s without changes — feels like the user paused to think:
 
 ```js
-const SEQUENCE = [
-  { t: 0.0, text: "" },
-  { t: 0.5, text: "Hello" },
-  { t: 0.8, text: "Hellos" }, // typo lands
-  { t: 1.0, text: "Hellos" }, // brief hold
-  { t: 1.1, text: "Hello" }, // delete
-  { t: 1.3, text: "Hello," }, // correction
-  { t: 1.6, text: "Hello, world" },
-];
+{ t: 1.4, text: 'bunx hy' }, // start
+// ... no entries between 1.4 and 2.6 ...
+{ t: 2.6, text: 'bunx hyperframes' }, // resume after pause
 ```
 
-The "thinking pause" comes for free from the holds; the backspace is just a string that's shorter than the previous entry.
+### State pulse on completion
 
-## Use Cases
+When the final state lands (e.g. "✓"), pulse-scale the line briefly for emphasis:
 
-- Narration-synced typing where word boundaries matter more than per-character speed
-- Dramatic pacing with intentional holds on key words
-- Simulated "thinking" with stop-and-go rhythm
-- Typo + correction sequences
-- Bulk text additions (whole phrases appearing at once)
+```js
+tl.to(".text", { scale: 1.05, duration: 0.2, yoyo: true, repeat: 1 }, 4.8);
+```
+
+### Per-state color shift
+
+Color-code states (yellow during edit, green after success, red on typo):
+
+```js
+// In onUpdate after setting textContent:
+if (driver.t > 4.8)
+  textEl.style.color = "#34d399"; // success green
+else if (driver.t < 1.8)
+  textEl.style.color = "#f5f6fb"; // typing white
+else textEl.style.color = "#a7adc6"; // mid-edit dim
+```
+
+## Key Principles
+
+- **Threshold sequence drives realism** — group fast successive keystrokes (0.1-0.2s apart), then pause on word breaks (0.3-0.5s), bulk-paste in single jumps (one entry replaces many chars), include a typo or two for human-typing feel
+- **Reverse-search the array each frame** — O(n) per frame, where n is small (≤30 typical). Don't try to index by frame; the sequence is sparse
+- **Fixed-width container is mandatory** — without `min-width`, the right edge of the text wrap jitters as state length changes. Set width ≥ longest expected state
+- **Cursor must be deterministic** — sin-based or sequence-driven blink, NOT a CSS animation. HF seeks frame-by-frame; CSS animations desync
+- **No `transition` on the text element** — discrete jumps should be INSTANT. A CSS transition turns the jump into a smear and ruins the "typing" feel
+- **❗ Distinguish discrete from smooth** — if your effect is "type each character, no edits" → use the smooth-slice variation. Discrete sequence is overkill for that case. Use discrete only when you need non-linear states (typos, pauses, bulk paste)
 
 ## Critical Constraints
 
-- **Pick one form per sequence**: Either N `tl.set()` calls (Form A) _or_ one `tl.fromTo({}, ...)` with `onUpdate` (Form B). Both are seek-safe — GSAP's `tl.set()` is positioned at an absolute timeline time and is re-evaluated on every seek, so it does NOT drift on seek-back the way an event callback (`tl.call`, `onComplete`) would. Don't mix the two forms on the same target element; pick whichever fits the surrounding code.
-- **Sort the sequence**: Guarantee ascending `t` order. Otherwise `pickDiscrete` returns whichever entry the author wrote last.
-- **Avoid touching the DOM if nothing changed**: The `if (textEl.textContent !== next)` guard prevents flicker and tiny GPU/layout costs on every frame.
-- **Fixed-width container**: Without it, the container width changes per entry, causing visible jitter when adjacent elements depend on it.
-- **No `Math.random()` / `Date.now()`**: Everything must be a pure function of `tl.time()`.
-- **Hold-by-repeat**: To pause on a value, repeat it at a later `t`. Don't add an `endT` field — the next entry's `t` already defines when this one ends.
+- **Timeline must be paused**: `gsap.timeline({ paused: true })`
+- **Registry key = `data-composition-id`**
+- **No CSS `transition`** on the text or any of its parents
+- **Cursor `display: inline-block`** — `display: inline` ignores width/transform
+- **Monospace font** for terminal-style effects — proportional fonts cause visual jitter even with fixed-width container
+- **Whitespace: nowrap** on text wrap — wrapping mid-state breaks the illusion
 
 ## Combinations
 
-- Wrap the sequence in [coordinate-target-zoom](coordinate-target-zoom.md) when the text needs to be the zoom target after assembly.
-- Combine with [camera-cursor-tracking](camera-cursor-tracking.md) — the camera tracks the implied cursor at the _end_ of each discrete text state.
-- Pair with a context-sensitive cursor color (different colored cursor per text segment) by reading the same `now` value in a separate onUpdate.
+- [3d-text-depth-layers.md](3d-text-depth-layers.md) — discrete text rendered with layered depth (heavy, dramatic)
+- [counting-dynamic-scale.md](counting-dynamic-scale.md) — discrete text for the LABEL while counter animates smoothly
+- [press-release-spring.md](press-release-spring.md) — after the sequence completes, the line "presses" like a button confirming success
 
-## Examples
+## Pairs with HF skills
 
-- [concept-demo-decode-pan.html](../examples/concept-demo-decode-pan.html) — search-bar typing uses the smooth-slice variation (continuous rhythm). For the discrete-sequence variant see the patterns in this rule.
+- `/hyperframes-gsap` — onUpdate-driven discrete state lookup
+- `/hyperframes-core` — composition wiring
+- `/hyperframes-cli` — `hyperframes lint`

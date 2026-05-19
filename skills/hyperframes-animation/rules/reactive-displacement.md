@@ -1,172 +1,224 @@
 ---
 name: reactive-displacement
-description: Physical collision transition where an entering element's tween drives the exiting element's displacement. Expressed in HyperFrames as multiple GSAP tweens started at the same timeline position so the eye reads them as one causal motion.
+description: Physical collision where an entering element's spring drives the exiting element's displacement — single source of truth makes the motion causally linked.
 metadata:
-  tags: transition, physics, collision, displacement, gsap, push
-  adapter: gsap
+  tags: transition, physics, collision, displacement, spring, causal
 ---
 
-# Reactive Displacement Transition
+# Reactive Displacement
 
-Exit animation of Element A is mathematically derived from the entry of Element B. Creates a causal link the eye reads as: "A moves _because_ B hit it."
+Exit animation of element A is mathematically DERIVED from the entry spring of element B. Creates a causal link: "A moves _because_ B hit it." Distinct from [scale-swap-transition](scale-swap-transition.md) (which overlaps but isn't causal) and [card-morph-anchor](card-morph-anchor.md) (which uses one container morphing dimensions).
 
-## HyperFrames vs. Remotion
+## How It Works
 
-The Remotion source used a **single spring** instance and read it three times — once for the intruder's position, once for the victim's push, once for the victim's opacity. Because spring is a pure function of frame, all three derivations stay in lockstep without explicit synchronization.
+A single 0→1 driver tween (the "entry spring") feeds two derived motions:
 
-HyperFrames uses **multiple GSAP tweens started at the same timeline position parameter**. They run in parallel, share a start time, and use eases tuned to feel like one spring read at different rates. The "single source of truth" becomes a shared **start time + start state** rather than a shared scalar.
+- **Intruder** (B, entering): position interpolated from off-stage to settled
+- **Victim** (A, exiting): position interpolated from settled to off-stage in the OPPOSITE direction, but completing at ~0.4-0.5 of the driver (not 1.0)
 
-```
-Remotion: const s = spring(...);    // one source, three reads
-          intruderX = interp(s, [0,1], [800, 0])
-          victimX   = interp(s, [0, 0.5], [0, -150])    ← completes at 0.5 of driver
-          victimOp  = interp(s, [0, 0.4], [1, 0])       ← completes at 0.4 of driver
+The fact that the victim's exit finishes BEFORE the intruder's entry creates the "hit then settle" rhythm. Both motions share the same eased driver, so the impact moment is mathematically synchronized.
 
-HyperFrames: tl.to(intruder, { x: 0,  duration: 0.85, ease: "power2.out" }, t)
-             tl.to(victim,   { x: -150, duration: 0.43, ease: "power2.out" }, t)
-             tl.to(victim,   { opacity: 0, duration: 0.34, ease: "power2.out" }, t)
-                                       └── 0.5 × 0.85 ────────────┘
-                                                              └── 0.4 × 0.85 ─┘
-```
-
-The shorter victim durations (40–50% of intruder duration) recreate the "immediate impact" feel.
-
-## Core Concept
-
-The intruder's motion is the conceptual driver. Three concurrent tweens at the same timeline position:
-
-1. **Intruder enters**: `x` from off-screen to 0, with overshoot scale + rotation.
-2. **Victim pushed**: `x` moves in the direction opposite the intruder's entry (momentum transfer). Duration ≈ 0.4–0.5 × intruder duration so the impact reads as immediate.
-3. **Victim fades**: `opacity` → 0, slightly faster than the push (0.4 × intruder duration).
-
-## Basic Pattern
+## HTML
 
 ```html
 <div
-  class="stage"
-  style="position: absolute; inset: 0;
-     display: flex; align-items: center; justify-content: center;"
+  class="scene"
+  id="collide-scene"
+  data-composition-id="collide-scene"
+  data-start="0"
+  data-duration="3"
+  data-track-index="0"
 >
-  <!-- Victim — exiting element. Sits behind intruder. -->
-  <div class="victim" style="position: absolute;">
-    <!-- e.g. text or icon being replaced -->
-  </div>
-
-  <!-- Intruder — entering element. z-index above victim during overlap. -->
-  <div
-    class="intruder"
-    style="position: absolute; z-index: 20;
-       transform: translateX(800px) scale(0.5) rotate(-45deg); opacity: 0;"
-  >
-    <!-- e.g. logo / icon taking over -->
+  <div class="stage">
+    <div class="card victim" id="victim">
+      <div class="card-title">$199</div>
+      <div class="card-sub">ENTERPRISE</div>
+    </div>
+    <div class="card intruder" id="intruder">
+      <div class="card-title">FREE</div>
+      <div class="card-sub">FOR HEYGENVERSE BETA</div>
+    </div>
   </div>
 </div>
+```
 
+## CSS
+
+```css
+.scene {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: radial-gradient(ellipse at center, #161a3a 0%, #0b0d1f 70%);
+  font-family: "Inter", sans-serif;
+}
+.stage {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+}
+.card {
+  position: absolute;
+  /* both at center; transform translates them */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  padding: 64px 80px;
+  border-radius: 28px;
+  will-change: transform, opacity;
+}
+.victim {
+  background: linear-gradient(160deg, rgba(245, 196, 81, 0.4) 0%, rgba(20, 24, 56, 0.85) 70%);
+  border: 1px solid rgba(245, 196, 81, 0.4);
+  z-index: 1;
+}
+.intruder {
+  background: linear-gradient(160deg, rgba(167, 139, 250, 0.5) 0%, rgba(20, 24, 56, 0.85) 70%);
+  border: 2px solid rgba(167, 139, 250, 0.7);
+  box-shadow: 0 28px 96px rgba(167, 139, 250, 0.4);
+  z-index: 2;
+}
+.card-title {
+  font-size: 200px;
+  font-weight: 900;
+  color: #f5f6fb;
+  line-height: 1;
+  letter-spacing: -4px;
+}
+.card-sub {
+  font-size: 36px;
+  font-weight: 800;
+  letter-spacing: 10px;
+  text-transform: uppercase;
+  color: #cdb8ff;
+  text-align: center;
+}
+```
+
+## GSAP Timeline
+
+```html
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
 <script>
   window.__timelines = window.__timelines || {};
   const tl = gsap.timeline({ paused: true });
 
-  const DISPLACE_AT = 4.6; // seconds — when the collision starts
-  const INTRUDE_DUR = 0.85; // matches spring(stiffness:100, damping:20, mass:1.5) settle
-  const PUSH_DIST = -150; // px — victim moves THIS direction (negative = left)
-  const OFFSCREEN_X = 800; // px — intruder starts here
+  const STAGE_W = 1920;
+  const INTRUDER_START_X = STAGE_W; // off-stage right
+  const VICTIM_END_X = -STAGE_W; // off-stage left
 
-  // (1) Intruder enters from offscreen-right with rotation + scale impact.
-  // power2.out approximates the heavy spring (mass:1.5) — slow settle, no extra bounce.
-  // For a perceptibly heavier feel use back.out(1.2), which adds ~10% overshoot.
-  tl.fromTo(
-    ".intruder",
-    { x: OFFSCREEN_X, scale: 0.5, rotation: -45, opacity: 0 },
+  // Initial state — victim centered, intruder off-stage right
+  gsap.set("#victim", { x: 0, opacity: 1, rotation: 0 });
+  gsap.set("#intruder", { x: INTRUDER_START_X, opacity: 0, rotation: -10 });
+
+  // Single driver — the entry spring — runs 0→1 over the impact arc
+  const driver = { p: 0 };
+  tl.to(
+    driver,
     {
-      x: 0,
-      scale: 1.3,
-      rotation: 0,
-      opacity: 1,
-      duration: INTRUDE_DUR,
-      ease: "power2.out",
+      p: 1,
+      duration: 1.2,
+      ease: "back.out(1.6)", // intruder spring
+      onUpdate: () => {
+        // Intruder: full 0→1 progress maps to enter (off-stage right → center)
+        const intruderX = INTRUDER_START_X * (1 - driver.p);
+        const intruderOpacity = Math.min(1, driver.p * 5); // fade in fast (first 20%)
+        const intruderRot = -10 * (1 - driver.p); // settle to 0° rotation
+        const intruder = document.getElementById("intruder");
+        intruder.style.transform = `translate(-50%, -50%) translateX(${intruderX}px) rotate(${intruderRot}deg)`;
+        intruder.style.opacity = String(intruderOpacity);
+
+        // Victim: completes exit at ~0.5 of driver (intruder still flying in)
+        // so the impact MOMENT is the visual punch — by the time intruder centers,
+        // victim is already off-stage.
+        const victimP = Math.min(1, driver.p / 0.5);
+        const victimX = VICTIM_END_X * victimP;
+        const victimOpacity = 1 - victimP; // fade in opposite direction
+        const victim = document.getElementById("victim");
+        victim.style.transform = `translate(-50%, -50%) translateX(${victimX}px)`;
+        victim.style.opacity = String(victimOpacity);
+      },
     },
-    DISPLACE_AT,
+    0.4,
   );
 
-  // (2) Victim pushed. Completes at 50% of intruder duration → immediate impact.
-  tl.to(".victim", { x: PUSH_DIST, duration: INTRUDE_DUR * 0.5, ease: "power2.out" }, DISPLACE_AT);
+  // Climax dwell — intruder holds at center after settle (≥1s post-impact)
+  // (no additional motion; the comp continues from 1.6s to 3.0s with intruder at center)
 
-  // (3) Victim fades. Completes at 40% → fades before the push fully lands,
-  //     reinforcing that the victim is "knocked out of frame."
-  tl.to(".victim", { opacity: 0, duration: INTRUDE_DUR * 0.4, ease: "power2.out" }, DISPLACE_AT);
-
-  window.__timelines["main"] = tl;
+  window.__timelines["collide-scene"] = tl;
 </script>
 ```
 
 ## Variations
 
-### Reverse-Direction Push (Intruder from Left)
+### Impact rotation on victim
 
-If the intruder enters from off-screen-left, the victim must be pushed _right_ (positive X). Momentum direction must match — reversing breaks the physical metaphor.
+The victim doesn't just slide off — it ALSO rotates from the impact angle:
 
 ```js
-const OFFSCREEN_X = -800; // intruder starts at left
-const PUSH_DIST = 150; // victim shoved right
+const victimRot = victimP * -20; // rotates -20° as it slides
+victim.style.transform = `translate(-50%, -50%) translateX(${victimX}px) rotate(${victimRot}deg)`;
 ```
 
-### Vertical Collision
+### Vertical collision
 
-For an intruder dropping from above, swap `x` for `y`:
+Intruder enters from top, victim displaced downward. Same math with Y instead of X. Visual feels like "weight dropped on it."
 
-```js
-tl.fromTo(
-  ".intruder",
-  { y: -600, scale: 0.5, rotation: 0, opacity: 0 },
-  { y: 0, scale: 1.0, rotation: 0, opacity: 1, duration: INTRUDE_DUR, ease: "power2.out" },
-  DISPLACE_AT,
-);
-tl.to(".victim", { y: 100, duration: INTRUDE_DUR * 0.5, ease: "power2.out" }, DISPLACE_AT);
-```
+### Wobble after settle
 
-### Rotation on Impact (Drop the Mic)
-
-A small finish-rotation makes the impact feel like a landing. Apply during the intruder's last 30% of motion:
+After the intruder centers, idle-wobble (sin-driven ±2° rotation) for 0.5s before stillness. Adds "impact aftermath" before climax dwell.
 
 ```js
+const wobble = { p: 0 };
 tl.to(
-  ".intruder",
+  wobble,
   {
-    rotation: 5, // 5° tilt at the moment of impact
-    duration: INTRUDE_DUR * 0.3,
-    ease: "power2.out",
+    p: Math.PI * 4,
+    duration: 0.5,
+    ease: "none",
+    onUpdate: () => {
+      const rot = Math.sin(wobble.p) * 2 * (1 - wobble.p / (Math.PI * 4)); // decay
+      intruder.style.transform = `translate(-50%, -50%) rotate(${rot}deg)`;
+    },
   },
-  DISPLACE_AT + INTRUDE_DUR * 0.7,
+  1.6,
 );
-// Followed by a settle back to 0° via the breathing phase.
 ```
+
+### Multi-victim ripple
+
+Intruder displaces 3+ aligned cards, each victim getting a slightly delayed exit (cascade ripple). Each victim's `victimP` uses a different driver phase offset.
+
+## Key Principles
+
+- **Single driver = single source of truth** — the entry spring drives BOTH motions. Independent tweens for intruder and victim destroy the causal link; they'd just happen to be near each other in time, not collided.
+- **Victim completes at ~0.4-0.5 of driver** — by the time the intruder reaches center, the victim is GONE. The "hit" is the moment they overlap; after that the victim is just exiting space the intruder will fill.
+- **Directional momentum transfer** — intruder from positive X → victim moves negative X. Same axis. If they move on different axes, it looks like they passed each other, not collided.
+- **Intruder z-index ABOVE victim** — during overlap (0.1-0.2s), the intruder should appear in FRONT (it's the "winner" of the collision). Otherwise the victim looks like it tunneled through.
+- **Intruder enters with rotation, settles flat** — adds momentum visualization. -10° tilt → 0° at settle reads as "spinning in then planting."
+- **❗ Climax dwell ≥1s after intruder settles** — the impact is the headline beat. Post-impact dwell is where the new content gets read.
 
 ## Critical Constraints
 
-- **Three concurrent tweens, same timeline position**: This is what creates the "single spring" feeling. Drift the start times and the causal link breaks.
-- **Victim duration < intruder duration**: Push completes at 40–50% so the impact lands before the intruder finishes settling.
-- **Z-index layering**: Intruder above victim (`z-index: 20`) during overlap. Otherwise the victim's still-fading edge peeks through the intruder.
-- **Directional consistency**: Intruder from positive X → victim moves negative X. Intruder from negative X → victim moves positive X. Vertical: down → push down; up → push up.
-- **GSAP transform aliases only**: `x`, `y`, `scale`, `rotation`. Never `left` / `top` / `width` / `height` — banned by the HF allowlist.
-- **Single paused timeline**: Hosts all three tweens; HyperFrames seeks it deterministically.
-- **No `Math.random()` / `Date.now()`**: All motion derived from `tl.time()` via the tween durations.
-
-## Spring → GSAP Ease Mapping (this rule)
-
-| Source                                               | Feel                          | GSAP ease                |
-| ---------------------------------------------------- | ----------------------------- | ------------------------ |
-| `spring({ stiffness: 100, damping: 20, mass: 1.5 })` | Heavy, slow settle, no bounce | `power2.out` over ~0.85s |
-| Same, but with perceptible weight on impact          | Slight overshoot on landing   | `back.out(1.2)`          |
-| Aggressive impact                                    | Fast in, hard stop            | `power3.out` over ~0.55s |
-
-`mass: 1.5` in Remotion adds inertia — the heavier feel. In GSAP, the same feel comes from a **longer duration** with a gentler ease (`power2.out`), not from a different spring config. The math is different; the result reads the same.
+- **Timeline must be paused**: `gsap.timeline({ paused: true })`
+- **Registry key = `data-composition-id`**
+- **Single driver, multiple derived values in same onUpdate** — don't tween intruder and victim with separate `tl.to()` calls; use ONE driver and compute both inside its onUpdate
+- **`overflow: hidden` on `.scene`** — off-stage motion exceeds the 1920px frame
+- **`will-change: transform, opacity`** on both cards
+- **z-index intruder=2, victim=1** — explicit, not relying on DOM order alone
 
 ## Combinations
 
-- After the displacement settles, apply [sine-wave-loop](sine-wave-loop.md) for idle breathing — the multiplicative `onUpdate` form is correct here because the intruder lands at a non-1 scale (e.g. 1.3) and the breath should multiply onto that.
-- Pair with [vertical-spring-ticker](vertical-spring-ticker.md) — the ticker is the victim that gets displaced.
-- Combine with [hacker-flip-3d](hacker-flip-3d.md) — the intruder carries decoded text.
+- [hacker-flip-3d.md](hacker-flip-3d.md) — intruder text reveals via hacker-flip during the entry phase
+- [sine-wave-loop.md](sine-wave-loop.md) — idle breathing on intruder during climax dwell
+- [vertical-spring-ticker.md](vertical-spring-ticker.md) — intruder is a ticker that "shoves" the previous content out
 
-## Examples
+## Pairs with HF skills
 
-- [takeover-ticker-displace.html](../examples/takeover-ticker-displace.html) — typewriter + ticker get displaced by a logo entering from off-screen right.
+- `/hyperframes-gsap` — single driver, multi-value onUpdate
+- `/hyperframes-core` — composition wiring
+- `/hyperframes-cli` — `hyperframes lint`

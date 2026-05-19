@@ -182,6 +182,7 @@ Use when you need a specific effect detail, or when no blueprint matches your ta
 <coordinate-target-zoom path="rules/coordinate-target-zoom.md">Zoom into non-centered elements via scale (outer wrapper) + counter-translation (inner wrapper). Tags: camera, zoom, scale, translate</coordinate-target-zoom>
 <camera-cursor-tracking path="rules/camera-cursor-tracking.md">Two-phase virtual camera that locks the viewport to a moving focal point (typing cursor) — static initial framing then focal-point-locked tracking. Uses browser-native `getBoundingClientRect()` / `ctx.measureText()` after `document.fonts.ready`, never `charWidthRatio`. Tags: camera, tracking, viewport, two-phase, typing</camera-cursor-tracking>
 <multi-phase-camera path="rules/multi-phase-camera.md">Sequential camera-zoom system (pull-back / focus / push) plus continuous micro-drift. Expressed as a sequence of GSAP scale tweens on a single wrapper plus a finite yoyo or `onUpdate` for the drift. Tags: camera, zoom, phase, drift, scale, cinematic</multi-phase-camera>
+<viewport-change path="rules/viewport-change.md">Virtual camera — simulate zoom / pan / focus-lock by transforming a single `.world` wrapper containing all scene content. Single-element composite transform `translate(x,y) scale(S)`; counter-translate math is `T = -offset × S` (note: DIFFERENT from coordinate-target-zoom's nested-wrapper formula `T = -offset`, easy to confuse). Background on `.scene` not `.world`; `overflow: hidden` REQUIRED. Tags: viewport, camera, zoom, pan, focus-lock, virtual-camera</viewport-change>
 </rules>
 
 ### Layout & Network
@@ -191,13 +192,15 @@ Use when you need a specific effect detail, or when no blueprint matches your ta
 <3d-page-scroll path="rules/3d-page-scroll.md">Full webpage rendered as a tilted 3D card whose internal content scrolls to reveal specific sections. Tilt is static CSS; GSAP tweens the scroll-content's `y`. Pair with asr-keyword-glow for on-page keyword highlighting. Tags: 3d, page, scroll, webpage, tilt, perspective, product-demo</3d-page-scroll>
 <center-outward-expansion path="rules/center-outward-expansion.md">Elements start clustered at screen center and expand outward to final positions. Each element gets its target position via CSS once; GSAP tweens transform `x` / `y` offsets to 0 in lockstep with a shared driver (e.g. counter). Tags: expansion, scatter, center, reveal, layout, sync</center-outward-expansion>
 <split-tilt-cards path="rules/split-tilt-cards.md">Two cards side-by-side with opposing rotationY tilts (+/- baseTilt) and entry slides from their respective sides. Continuous floating runs in phase opposition (`Math.PI` offset) for organic breathing. Two nested wrappers per card isolate entry from float aliases. Tags: 3d, cards, split, tilt, comparison, symmetric, layout</split-tilt-cards>
-<orbit-3d-entry path="rules/orbit-3d-entry.md">Elements flip in from 3D space (`rotateX` + `rotateY` + `translateZ`) then settle into a continuous elliptical orbit around a focal point. Two/three nested wrappers separate orbit x/y (master `onUpdate` from `tl.time()`) from collapse scale/opacity from 3D-flip entry. Tags: orbit, 3d, flip, ellipse, circular, icon, entry</orbit-3d-entry>
+<orbit-3d-entry path="rules/orbit-3d-entry.md">Elements flip in from 3D space (`rotateX` + `rotateY` + `translateZ`) then settle into a continuous elliptical orbit around a focal point. **Critical**: entry MUST flip in-place at the orbital starting position (`gsap.set(el, {x: cos*R, y: sin*R, opacity:0})` BEFORE phase 1), not at scene center — otherwise items teleport visibly when phase 2 begins. Center label needs `translateZ(220px) + z-index 9999` to stay above orbiting items inside `preserve-3d` stage. Tags: orbit, 3d, flip, ellipse, circular, icon, entry, continuous</orbit-3d-entry>
+<ai-tracking-box path="rules/ai-tracking-box.md">AI detection overlay — yellow `#facc15` L-bracket corners + confidence label (fluctuating 95-99%) following a target on a sine arc path. Box position recomputed per-frame from target position (never tweened separately). Sine-driven label confidence is deterministic. Lost-then-reacquired variant: box chases for 40% of escape window then freezes + opacity drops to 30% + "LOST" label, then snaps to new position with "REACQUIRED · 99%". Tags: ai, tracking, bounding-box, detection, corner, yellow, ml</ai-tracking-box>
 </rules>
 
 ### SVG & Icons
 
 <rules>
-<svg-icon-enrichment path="rules/svg-icon-enrichment.md">Animate internal SVG elements (rotating hands, oscillating blades, pulsing dots, dash-flow lines) so icons feel alive. Per-element GSAP yoyo / linear tween, or a shared scene-ticker `onUpdate` for many sine motions consolidated. Tags: svg, icon, animation, internal, micro-animation, enrichment</svg-icon-enrichment>
+<svg-icon-enrichment path="rules/svg-icon-enrichment.md">Animate internal SVG elements (rotating hands, oscillating blades, pulsing dots, dash-flow lines) so icons feel alive. Per-element GSAP yoyo / linear tween, or a shared scene-ticker `onUpdate` for many sine motions consolidated. **Critical**: use SVG `setAttribute('transform', 'rotate(deg cx cy)')` for explicit center — CSS `transform-origin` + `transform-box: fill-box` interprets origin in bbox-local coords (off-center for thin lines), causes hands to fly around an arc. Tags: svg, icon, animation, internal, micro-animation, rotation, pulse</svg-icon-enrichment>
+<svg-path-draw path="rules/svg-path-draw.md">SVG outline draws itself stroke-by-stroke via `stroke-dasharray` / `stroke-dashoffset`. Measure with `getTotalLength()` at composition setup, set initial dashoffset = length, GSAP tweens to 0. For circular progress rings, rotate the stroke `-90deg` around the circle center so drawing starts at 12 o'clock. Tags: svg, stroke, draw, vector, path, dasharray</svg-path-draw>
 </rules>
 
 ### Idle & Ambient
@@ -217,7 +220,7 @@ Use when you need a specific effect detail, or when no blueprint matches your ta
 <card-morph-anchor path="rules/card-morph-anchor.md">Container morphs apparent size + corner radius + surface treatment between two shots, then fades to reveal the real target underneath. HyperFrames substitutes uniform `scale` for the forbidden `width`/`height` tween, plus paint-only `borderRadius`/`background`/`boxShadow`. Eye-tracking anchor between shots. Tags: morph, anchor, transition, border-radius, container, shape, handoff</card-morph-anchor>
 </rules>
 
-> Additional rules from the Remotion source (svg-path-draw, ai-tracking-box) are pending migration.
+> All Remotion source rules have been migrated and eval-verified (Wenbo 2026-05-19 — 27 rules / 9 cells each via 3-way v1 Remotion / v2 HF-with-rule / v3 HF-base-only comparison).
 
 ## Examples
 

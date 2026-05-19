@@ -1,233 +1,240 @@
 ---
 name: multi-phase-camera
-description: Sequential camera-zoom system with 2-3 phases (pull-back / focus / push) plus continuous micro-drift. Expressed in HyperFrames as a sequence of GSAP scale tweens on a single wrapper plus a finite yoyo drift.
+description: Sequential camera zoom with 2-3 distinct phases (pull-back / focus / push) plus continuous micro-drift for organic cinematic feel.
 metadata:
-  tags: camera, zoom, phase, drift, scale, cinematic, gsap
-  adapter: gsap
+  tags: camera, zoom, phase, drift, scale, cinematic
 ---
 
 # Multi-Phase Camera
 
-A camera wrapper that progresses through discrete zoom phases — each a separate GSAP scale tween on the same element — plus a continuous-feeling sine drift to prevent static feel between phase changes.
+A camera wrapper around the entire scene that progresses through discrete zoom phases at scripted triggers. Continuous sine-driven micro-drift overlays so the camera never feels static between phases. Distinct from a single linear zoom — multi-phase creates "cinematic pacing" (anticipation → reveal → settle).
 
-## HyperFrames vs. Remotion
+## How It Works
 
-The Remotion source held all phase springs in scope simultaneously and chose `currentScale` via piecewise `if (frame >= phaseN)`. The frame-pure model handled the merging.
+The camera is a single wrapping `<div>` whose `transform: scale() translate(x, y)` is driven by:
 
-HyperFrames uses GSAP's natural sequencing: **chain tweens on the same property** at successive timeline positions. GSAP's overwrite behavior plus the seek-driven runtime handles the rest. For the continuous drift, use a finite yoyo or an `onUpdate` reading `tl.time()`.
+1. **Phase scale** — a stepwise scale value that advances through phases at trigger times (e.g. `scale: 0.92` at t=0 → `1.0` at t=1.2 → `1.08` at t=2.4)
+2. **Drift offset** — a continuous sine-based `translateX` / `translateY` (small amplitude, slow frequency) ADDED to the phase transform
 
-```
-Remotion: const sN = spring(...); ...   // N springs in scope
-          let scale = startScale; if (frame >= phase2) scale = scale2; …
-HyperFrames: tl.to(el, { scale: midScale, ease: "power2.out" }, phase1At)
-             tl.to(el, { scale: endScale, ease: "power2.out" }, phase2At)
-             // GSAP overwrite handles which value wins at each timeline position
-```
+Both run inside the GSAP timeline so HF seeks frame-by-frame deterministically.
 
-## Core Concept
-
-Three nested behaviors on one wrapper element:
-
-1. **Scale phases** — sequential `tl.to(.camera, { scale: X })` tweens at specific timeline positions
-2. **Continuous drift** — one of three deterministic forms that adds a few pixels of `x` / `y` to the wrapper:
-   - **Finite yoyo** (`yoyo: true`, finite `repeat`) — multiple cycles within a longer scene
-   - **Single long sine-eased tween** — one drift arc from (0,0) to a small offset over the full scene duration with `ease: "sine.inOut"`; cleanest for short scenes
-   - **`onUpdate` reading `tl.time()`** — for incommensurate sine periods or arbitrary curves
-3. **Transform origin** — center-center for cinematic feel; top-left for UI-style zoom
-
-## Basic Pattern
+## HTML
 
 ```html
-<div class="camera">
-  <!-- scene content -->
+<div
+  class="scene"
+  id="cam-scene"
+  data-composition-id="cam-scene"
+  data-start="0"
+  data-duration="6"
+  data-track-index="0"
+>
+  <div class="camera" id="camera">
+    <div class="content">
+      <div class="hero">HEYGENVERSE</div>
+      <div class="tagline">Ship a video. In one prompt.</div>
+      <div class="cta">heygenverse.com</div>
+    </div>
+  </div>
 </div>
+```
 
-<style>
-  .camera {
-    transform-origin: center center;
-  }
-</style>
+## CSS
 
+```css
+.scene {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: radial-gradient(ellipse at center, #161a3a 0%, #0b0d1f 70%);
+}
+.camera {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  transform-origin: 50% 50%;
+  will-change: transform;
+}
+.content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 32px;
+  text-align: center;
+}
+.hero {
+  font-family: "Inter", sans-serif;
+  font-weight: 900;
+  font-size: 200px;
+  letter-spacing: 8px;
+  color: #f5f6fb;
+  text-transform: uppercase;
+}
+.tagline {
+  font-family: "Inter", sans-serif;
+  font-weight: 600;
+  font-size: 56px;
+  color: #cdb8ff;
+}
+.cta {
+  font-family: "JetBrains Mono", monospace;
+  font-weight: 700;
+  font-size: 40px;
+  letter-spacing: 6px;
+  color: #a78bfa;
+  text-transform: uppercase;
+}
+```
+
+## GSAP Timeline
+
+```html
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
 <script>
   window.__timelines = window.__timelines || {};
   const tl = gsap.timeline({ paused: true });
 
-  // ============================================================
-  // PHASE TIMING (seconds)
-  // ============================================================
-  const TOTAL_DUR = 9.0;
-  const PHASE1_AT = 0.0;
-  const PHASE1_DUR = 0.8;
-  const PHASE2_AT = 3.0;
-  const PHASE2_DUR = 1.0;
-  const PHASE3_AT = 6.0;
-  const PHASE3_DUR = 1.0;
+  const camera = document.getElementById("camera");
 
-  // Scale values per phase boundary
-  const START_SCALE = 0.92;
-  const MID_SCALE = 1.0;
-  const END_SCALE = 1.08;
+  // Three-phase scale plan: pullback (0.92) → focus (1.0) → push (1.08)
+  const phase = { scale: 0.92 };
 
-  // ============================================================
-  // SCALE PHASES — sequenced GSAP tweens
-  // ============================================================
-  gsap.set(".camera", { scale: START_SCALE });
+  // Phase 1 — start pulled back
+  // (no tween needed for the initial value; set via the phase object)
 
+  // Phase 2 — settle to neutral focus
   tl.to(
-    ".camera",
+    phase,
     {
-      scale: MID_SCALE,
-      duration: PHASE1_DUR,
-      ease: "power2.out", // cinematic — low stiffness in Remotion
-    },
-    PHASE1_AT,
-  );
-
-  tl.to(
-    ".camera",
-    {
-      scale: END_SCALE,
-      duration: PHASE2_DUR,
-      ease: "power3.out", // each phase gets HIGHER damping → smoother settle
-    },
-    PHASE2_AT,
-  );
-
-  // Optional: a third phase that pulls back slightly for "exhale"
-  tl.to(
-    ".camera",
-    {
-      scale: MID_SCALE + 0.02,
-      duration: PHASE3_DUR,
+      scale: 1.0,
+      duration: 1.2,
       ease: "power3.out",
     },
-    PHASE3_AT,
+    0.5,
   );
 
-  // ============================================================
-  // CONTINUOUS DRIFT — two equivalent forms.
-  // Both are deterministic and seek-safe. Pick whichever reads
-  // cleanest for the scene length.
-  // ============================================================
+  // Phase 3 — slow push-in for the climax
+  tl.to(
+    phase,
+    {
+      scale: 1.08,
+      duration: 1.6,
+      ease: "power2.inOut",
+    },
+    3.0,
+  );
 
-  /* --- Form A: finite yoyo (NOT repeat: -1) ---
-     yoyo: true bounces back; finite repeat = TOTAL_DUR / halfCycle - 1.
-     Best when you want multiple oscillation cycles within a longer scene. */
-  const DRIFT_HALF_CYCLE = 2.5;
-  const driftRepeats = Math.max(0, Math.floor(TOTAL_DUR / DRIFT_HALF_CYCLE) - 1);
+  // Drift driver — continuous sine motion overlaid on the phase scale
+  const drift = { p: 0 };
+  const TOTAL_DURATION = 6.0;
+  const DRIFT_CYCLES = 1.8; // how many drift cycles across composition
+  const DRIFT_AMP_X = 6; // px
+  const DRIFT_AMP_Y = 3; // px
 
   tl.to(
-    ".camera",
+    drift,
     {
-      x: 4,
-      y: 2,
-      duration: DRIFT_HALF_CYCLE,
-      ease: "sine.inOut",
-      yoyo: true,
-      repeat: driftRepeats,
+      p: Math.PI * 2 * DRIFT_CYCLES,
+      duration: TOTAL_DURATION,
+      ease: "none",
+      onUpdate: () => {
+        const dx = Math.sin(drift.p) * DRIFT_AMP_X;
+        const dy = Math.sin(drift.p * 1.3) * DRIFT_AMP_Y; // slightly different frequency
+        camera.style.transform = `scale(${phase.scale}) translate(${dx}px, ${dy}px)`;
+      },
     },
     0,
   );
 
-  /* --- Form B: single long-duration sine-eased tween ---
-     One tween that drifts from (0,0) to a small offset over the full
-     scene with `ease: "sine.inOut"`. Cleaner when the scene is short
-     (≤ ~4s) and a single drift arc reads better than multiple cycles.
-     The brand-reveal-assemble-zoom example uses this form for its
-     overall camera pan; hook-counter-burst uses it for both .bg and
-     .camera micro-pan.
+  // Content reveals (entry beats inside the camera frame)
+  tl.from(".hero", { opacity: 0, y: 32, scale: 0.96, duration: 0.9, ease: "power3.out" }, 0.6);
+  tl.from(".tagline", { opacity: 0, y: 16, duration: 0.7, ease: "power3.out" }, 1.4);
+  tl.from(".cta", { opacity: 0, y: 8, duration: 0.7, ease: "power3.out" }, 3.2);
 
-  tl.to(".camera", {
-    x: 3,
-    y: 1.6,
-    duration: TOTAL_DUR,
-    ease: "sine.inOut",
-  }, 0);
-  */
-
-  window.__timelines["main"] = tl;
+  window.__timelines["cam-scene"] = tl;
 </script>
 ```
 
-### Why two tweens on `.camera` can co-exist
-
-GSAP `transform` writes are combined: `x`, `y`, and `scale` are independent properties of the same matrix. A tween targeting `scale` doesn't reset `x` (and vice versa). The drift tween and the phase tween animate orthogonal aliases — both apply.
-
-If two tweens target the **same** property at overlapping times, GSAP's overwrite rules apply (`overwrite: "auto"` resolves it). Within this pattern, each phase tween starts when the previous phase has completed, so no overlap occurs on `scale`.
-
 ## Phase Patterns
 
-| Pattern              | Scale sequence     | Feel                            | When to use                           |
-| -------------------- | ------------------ | ------------------------------- | ------------------------------------- |
-| **Focus-in**         | 0.92 → 1.00 → 1.08 | Approach → settle → slight push | Product demo, brand reveal            |
-| **Dramatic reveal**  | 1.10 → 1.00 → 0.95 | Wide → focus → settle back      | Tension build, story open             |
-| **Steady push**      | 1.00 → 1.03 → 1.06 | Gradual forward momentum        | Hype scenes, energy-building          |
-| **Pull-out then in** | 1.05 → 0.92 → 1.00 | Quick recoil, then approach     | Comedy beat, "wait, let's start over" |
+| Pattern             | Scale Sequence      | Feel                            | When to use                   |
+| ------------------- | ------------------- | ------------------------------- | ----------------------------- |
+| **Focus-in**        | `0.92 → 1.0 → 1.08` | Approach → settle → slight push | Default product reveal        |
+| **Dramatic reveal** | `1.1 → 1.0 → 0.95`  | Wide → focus → settle back      | Hero shot with breathing room |
+| **Steady push**     | `1.0 → 1.03 → 1.06` | Gradual forward momentum        | Continuous narrative push     |
+| **Bookend pull**    | `1.0 → 1.15 → 1.0`  | Settle → push → release         | CTA emphasis then release     |
 
-## Drift Configuration
+## Variations
 
-Drift must be imperceptible on any single frame but visible over time.
+### Phase trigger by content beat (not time)
 
-| Parameter           | Recommended Range |
-| ------------------- | ----------------- |
-| Drift X amplitude   | 2–5 px            |
-| Drift Y amplitude   | 1–3 px            |
-| Half-cycle duration | 2–4 seconds       |
+If your composition has content phases (e.g. orbit-3d-entry's flip-in completes, then orbit starts), trigger camera phases to those beats by aligning the camera tween start time with the content tween's end time.
 
-Or pick the single long-tween form when the scene is short enough that one drift arc suffices:
+### Camera shake (panic / impact)
+
+For a brief shake instead of drift, replace the drift tween with a higher-amplitude, higher-frequency one over a short window:
 
 ```js
 tl.to(
-  ".camera",
+  drift,
   {
-    x: 3,
-    y: 1.6,
-    duration: TOTAL_DUR,
-    ease: "sine.inOut",
-  },
-  0,
-);
-```
-
-`sine.inOut` over the full duration produces one half-cycle of motion — the camera eases out to the offset and (because there's no return) holds it. This reads as a slow drift in the same direction, which is often what you want for a 2–4 second hook scene. If you want oscillation (forward then back), use Form A (yoyo) instead.
-
-The same effect via `onUpdate` (smoother if you need exact sine, or multiple incommensurate periods):
-
-```js
-tl.to(
-  { tick: 0 },
-  {
-    tick: 1,
-    duration: TOTAL_DUR,
+    p: Math.PI * 2 * 8, // 8 cycles in short burst
+    duration: 0.6,
     ease: "none",
-    onUpdate: function () {
-      const t = tl.time();
-      const driftX = Math.sin(t * 0.6) * 3; // ~1.7s period
-      const driftY = Math.cos(t * 0.45) * 2; // ~2.3s period — incommensurate
-      gsap.set(".camera", { x: driftX, y: driftY });
+    onUpdate: () => {
+      const dx = Math.sin(drift.p) * 24;
+      const dy = Math.sin(drift.p * 1.7) * 18;
+      camera.style.transform = `scale(${phase.scale}) translate(${dx}px, ${dy}px)`;
     },
   },
-  0,
+  2.0,
 );
 ```
 
-The `onUpdate` form lets you use non-simple-ratio periods (0.6 vs 0.45 are roughly 4:3) for more organic motion — see [sine-wave-loop](sine-wave-loop.md).
+### Targeted zoom into off-center element
+
+If the climax should zoom into a non-centered element, combine scale with counter-translation. Compute the offset so the target ends at viewport center after scale:
+
+```js
+const target = document.querySelector(".cta");
+const targetCenter = target.getBoundingClientRect();
+const viewportCenter = { x: 1920 / 2, y: 1080 / 2 };
+const offsetX = (viewportCenter.x - (targetCenter.left + targetCenter.width / 2)) / phase.scale;
+const offsetY = (viewportCenter.y - (targetCenter.top + targetCenter.height / 2)) / phase.scale;
+// then in onUpdate: translate(offsetX + dx, offsetY + dy)
+```
+
+## Key Principles
+
+- **Drift is imperceptible per-frame, visible over time** — `DRIFT_AMP_X` 2-6px, `DRIFT_AMP_Y` 1-3px, 1-2 cycles per composition duration. If drift is visible as a discrete shake, it's too much
+- **Drift X and Y at slightly different frequencies** — multiplying one by ~1.3 prevents the camera from moving on a perfect diagonal, which reads as mechanical. Different frequencies = organic
+- **Phase springs softer than UI springs** — `power2.inOut` or `power3.out` for cinematic feel; spring/back easing on a camera feels uncomfortable
+- **Each later phase settles "deeper"** — phase 2 ease should imply more settling than phase 1 (longer duration OR more out-easing). Wakes up → settles → settles deeper
+- **Camera wraps EVERYTHING in the scene** — applying camera per-element creates parallax bugs and breaks "this is one viewpoint"
+- **❗ overflow: hidden on .scene** — phases that pull back (`scale < 1`) reveal edges of the inner content. Without `overflow: hidden`, those edges leak outside the 1920×1080 frame and HF renders them as visible content
+- **❗ Hero reveal start AFTER initial pullback ease lands** — if the camera is still pulling back when the headline fades in, the headline feels like it's flying away
 
 ## Critical Constraints
 
-- **Wrap once, animate many**: The `.camera` wrapper holds all child content. Don't apply phase scale per element — apply to the wrapper.
-- **`transform-origin: center center`**: For cinematic feel. `top left` produces a UI-style zoom that anchors the upper-left.
-- **No infinite repeats**: Compute drift repeats from `TOTAL_DUR / halfCycle - 1`. `repeat: -1` is forbidden.
-- **Phase damping increases**: Each successive phase should have a higher-damping ease (`power2.out` → `power3.out` → `power3.inOut`) so later phases settle more gently. Otherwise late phases feel jittery.
-- **Phase springs lower than UI springs**: For "camera" feel use `power2.out` / `power3.out`. `back.out` adds overshoot that reads as a UI bounce.
-- **GSAP transform aliases only**: `scale`, `x`, `y`. Never `transform` directly or layout properties (`width`/`height`).
-- **Single paused timeline**: All phase + drift tweens on one timeline; HF seeks it.
+- **Timeline must be paused**: `gsap.timeline({ paused: true })`
+- **Registry key = `data-composition-id`**
+- **No CSS `transition` on `.camera`** — competes with the GSAP transform
+- **`transform-origin: 50% 50%`** on camera — off-center origin creates unpredictable phase-to-phase drift
+- **`will-change: transform`** on `.camera` — the camera transform updates every frame
+- **`overflow: hidden` on `.scene`** — required when any phase scale < 1
+- **Scene background on `.scene`, not `.camera`** — if background is on camera, scaling/translating it reveals the outer void
 
 ## Combinations
 
-- Wrap [coordinate-target-zoom](coordinate-target-zoom.md) inside a multi-phase camera for "zoom into element while overall scene also pushes forward."
-- Layer with [sine-wave-loop](sine-wave-loop.md) on a child element for hero-only breathing while the camera moves.
+- [orbit-3d-entry.md](orbit-3d-entry.md) — orbit motion inside a slowly drifting camera
+- [counting-dynamic-scale.md](counting-dynamic-scale.md) — climax phase 3 push-in synced to counter peak
+- [3d-text-depth-layers.md](3d-text-depth-layers.md) — depth-stacked hero with cinematic camera moves
+- [sine-wave-loop.md](sine-wave-loop.md) — element idle inside the camera (compound motion)
 
-## Examples
+## Pairs with HF skills
 
-- [demo-page-scroll-spotlight.html](../examples/demo-page-scroll-spotlight.html) — uses the simple form: single page-entry scale tween (0.95 → 1.0) rather than the full multi-phase chain. The full multi-phase pattern is overkill for a 9-second product showcase but useful for longer narrative scenes.
+- `/hyperframes-gsap` — multi-phase tween + drift onUpdate
+- `/hyperframes-core` — composition wiring, scene wrapper
+- `/hyperframes-cli` — `hyperframes lint`

@@ -1,181 +1,267 @@
 ---
 name: dynamic-content-sequencing
-description: Auto-calculate a flat timeline of start/end seconds from script content length and per-item config. Each phrase's duration = `totalChars * charSpeed + hold`. No hardcoded windows — change the script, the timeline reshapes itself. Sequencing lives in one master `onUpdate` reading `tl.time()`.
+description: Auto-calculate timeline start/end times from content length + per-item duration config — longer content gets more screen time without hardcoded numbers.
 metadata:
-  tags: timeline, sequencing, dynamic, duration, gsap
-  adapter: gsap
+  tags: timeline, sequencing, dynamic, duration, content-aware, utility
 ---
 
 # Dynamic Content Sequencing
 
-Pre-compute a timeline so scenes with longer text naturally get more screen time. No `data-start` / `data-duration` per phrase, no hand-tuned tween offsets — change the script, the boundaries shift automatically.
+A utility pattern (not a motion rule in itself) for scenes that show a SEQUENCE of items (cards, phrases, stats). Each item's duration is calculated from its content length + a per-item config; the sequencer assigns absolute start/end times automatically. Distinct from [discrete-text-sequence](discrete-text-sequence.md) (which is one text element changing states) — this rule swaps between distinct content blocks.
 
-## HyperFrames vs. Remotion
+## How It Works
 
-The Remotion source used `useMemo` to reduce the script into a `[{ startFrame, endFrame, ... }]` array, then did `timeline.find(p => frame >= p.startFrame && frame < p.endFrame)` inside the render function every frame.
+1. Define a content array — each entry has `{ text, speedFactor, hold }` (or arbitrary fields)
+2. Pre-compute absolute start times: `start[i] = sum of durations 0..i-1`
+3. In onUpdate, find which entry is active (last entry whose `start ≤ time`) and render it
 
-HyperFrames has no React lifecycle, so the `useMemo` becomes a plain `const` at script setup. The per-frame `find` moves into a GSAP `onUpdate` that reads `tl.time()`:
+The "dynamic" part: items with longer text get more screen time (formula: `baseDuration + textLength * msPerChar`). No hardcoded `from` / `durationInFrames` per item.
 
-```
-Remotion: const timeline = useMemo(() => SCRIPT.reduce(...), []);
-          const current = timeline.find(p => frame ∈ [p.startFrame, p.endFrame));
-
-HyperFrames: const TIMELINE = SCRIPT.reduce(...);        // setup, runs once
-             onUpdate: () => {
-               const current = TIMELINE.find(p => tl.time() ∈ [p.startTime, p.endTime));
-               // ...write DOM
-             };
-```
-
-Frames become seconds: `frames / fps`. Everything else is mechanical.
-
-## Core Concept
-
-1. Define a flat data array — content + per-item timing config.
-2. Reduce into a timeline with absolute `startTime` / `endTime` (seconds).
-3. The master `onUpdate` finds the active entry from `tl.time()` and renders it.
-
-## Basic Pattern
-
-```js
-// 1. Script — content + per-item timing
-const SCRIPT = [
-  { textMain: "Build video with ", textAccent: "HTML", charSpeed: 0.083, hold: 1.0 },
-  { textMain: "Seek ", textAccent: "any frame", charSpeed: 0.083, hold: 1.0 },
-  { textMain: "Render to ", textAccent: "MP4", charSpeed: 0.083, hold: 2.0 },
-];
-
-// 2. Reduce into a flat timeline with absolute seconds. Runs once at setup.
-let acc = 0;
-const TIMELINE = SCRIPT.map((item) => {
-  const totalChars = item.textMain.length + item.textAccent.length;
-  const typingDuration = totalChars * item.charSpeed;
-  const totalDuration = typingDuration + item.hold;
-  const start = acc;
-  const end = start + totalDuration;
-  acc = end;
-  return { ...item, startTime: start, endTime: end, typingDuration };
-});
-const TOTAL = TIMELINE[TIMELINE.length - 1].endTime;
-
-// 3. Master clock tween — onUpdate finds the active entry and renders.
-tl.to(
-  { tick: 0 },
-  {
-    tick: 1,
-    duration: TOTAL,
-    ease: "none",
-    onUpdate: () => {
-      const t = tl.time();
-      const phrase = TIMELINE.find((p) => t >= p.startTime && t < p.endTime);
-      if (!phrase) {
-        // Fallback: before first phrase or after last
-        renderEmpty();
-        return;
-      }
-      const activeT = t - phrase.startTime;
-      renderPhrase(phrase, activeT);
-    },
-  },
-  0,
-);
-```
-
-### `data-duration` and `TOTAL`
-
-The composition root's `data-duration` should be **exactly `TOTAL`** (or a fixed buffer above it). Less truncates the last phrase's hold; more triggers the fallback branch at the end and the user sees a blank stage with a blinking cursor.
+## HTML
 
 ```html
-<div id="root" data-composition-id="main" data-start="0" data-duration="7.5"></div>
+<div
+  class="scene"
+  id="seq-scene"
+  data-composition-id="seq-scene"
+  data-start="0"
+  data-duration="8"
+  data-track-index="0"
+>
+  <div class="display">
+    <div class="eyebrow" id="eyebrow">CHAPTER</div>
+    <div class="title" id="title"></div>
+    <div class="body" id="body"></div>
+    <div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
+  </div>
+  <div class="brand">— HEYGENVERSE</div>
+</div>
 ```
 
-In a real composition compute `data-duration` at build/preview time from the script — easier said than done since it's static HTML. The practical pattern: compute `TOTAL` once, hard-code it into both the `data-duration` attribute and the tween's `duration`. The lint will catch a mismatch.
+## CSS
 
-## Relative Time is Non-Negotiable
-
-`activeT = tl.time() - phrase.startTime` is the _local_ time within the phrase. Pass this to whatever character-slicing logic you use — never `tl.time()` itself.
-
-If you forget the subtraction:
-
-- Phrase 1 (startTime=0) renders correctly.
-- Phrase 2 (startTime=2.74) receives `t = 2.74` on its first frame → `charIdx = Math.floor(2.74 / 0.083) = 33` → 33 characters already typed → phrase appears finished instantly.
-
-This is the single most common bug when porting frame-based render code to the seconds-based onUpdate idiom. **`activeT`, not `t`.**
-
-## Find Performance: Linear Scan vs Binary Search
-
-`TIMELINE.find` is O(N). For typical scenes (3–10 phrases) this is fine — the onUpdate fires every animation frame, but a 10-element scan is ~10 ns. If you ever go beyond ~50 phrases, switch to a cached "last hit" pointer:
-
-```js
-let lastIdx = 0;
-function findPhrase(t) {
-  // Most frames the same phrase is still active — try it first.
-  if (t >= TIMELINE[lastIdx].startTime && t < TIMELINE[lastIdx].endTime) {
-    return TIMELINE[lastIdx];
-  }
-  // Otherwise scan. (Bidirectional for seek-jump safety.)
-  for (let i = 0; i < TIMELINE.length; i++) {
-    if (t >= TIMELINE[i].startTime && t < TIMELINE[i].endTime) {
-      lastIdx = i;
-      return TIMELINE[i];
-    }
-  }
-  return null;
+```css
+.scene {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(ellipse at center, #161a3a 0%, #0b0d1f 70%);
+  font-family: "Inter", sans-serif;
+}
+.display {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 32px;
+  text-align: center;
+  max-width: 1400px;
+}
+.eyebrow {
+  font-size: 32px;
+  font-weight: 800;
+  letter-spacing: 14px;
+  color: #cdb8ff;
+  text-transform: uppercase;
+}
+.title {
+  font-size: 120px;
+  font-weight: 900;
+  letter-spacing: -2px;
+  line-height: 1;
+  color: #f5f6fb;
+}
+.body {
+  font-size: 48px;
+  font-weight: 500;
+  line-height: 1.4;
+  color: #cdb8ff;
+  opacity: 0.9;
+  min-height: 160px; /* reserve space so layout doesn't jump */
+}
+.progress-bar {
+  width: 600px;
+  height: 4px;
+  background: rgba(167, 139, 250, 0.15);
+  border-radius: 2px;
+  margin-top: 16px;
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #a78bfa 0%, #ec4899 100%);
+  width: 0%;
+}
+.brand {
+  position: absolute;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 32px;
+  font-weight: 900;
+  letter-spacing: 12px;
+  color: #a78bfa;
 }
 ```
 
-The bidirectional scan is important for HyperFrames specifically — when the user scrubs the preview backward, the cached `lastIdx` may point past `t`.
+## GSAP Timeline
+
+```html
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+<script>
+  window.__timelines = window.__timelines || {};
+  const tl = gsap.timeline({ paused: true });
+
+  // Content array — each entry has its own pacing config
+  const CONTENT = [
+    {
+      eyebrow: "CHAPTER 1",
+      title: "IDEA",
+      body: "A spark. A direction.",
+      speedFactor: 1.0,
+      hold: 0.6,
+    },
+    {
+      eyebrow: "CHAPTER 2",
+      title: "BUILD",
+      body: "Prototype. Iterate. Refine.",
+      speedFactor: 1.0,
+      hold: 0.6,
+    },
+    {
+      eyebrow: "CHAPTER 3",
+      title: "SHIP",
+      body: "Render. Publish. Share with the world via HEYGENVERSE.",
+      speedFactor: 1.0,
+      hold: 1.0,
+    },
+    {
+      eyebrow: "OUTRO",
+      title: "HEYGENVERSE",
+      body: "Video. In one prompt.",
+      speedFactor: 1.0,
+      hold: 1.5,
+    },
+  ];
+
+  // Pre-compute absolute start times
+  // Duration per entry: base 1.0s + 0.04s per character of body + hold seconds
+  const BASE_DURATION = 1.0;
+  const MS_PER_CHAR = 0.04;
+  let cumulative = 0;
+  const TIMELINE = CONTENT.map((entry) => {
+    const dur = BASE_DURATION + entry.body.length * MS_PER_CHAR + entry.hold;
+    const start = cumulative;
+    cumulative += dur;
+    return { ...entry, start, end: cumulative };
+  });
+
+  // Reverse-search current entry
+  function entryAt(time) {
+    for (let i = TIMELINE.length - 1; i >= 0; i--) {
+      if (time >= TIMELINE[i].start) return TIMELINE[i];
+    }
+    return TIMELINE[0];
+  }
+
+  const eyebrowEl = document.getElementById("eyebrow");
+  const titleEl = document.getElementById("title");
+  const bodyEl = document.getElementById("body");
+  const progressEl = document.getElementById("progress-fill");
+
+  const TOTAL_DURATION = cumulative + 0.5;
+  const driver = { t: 0 };
+  let lastTitle = "";
+
+  tl.to(
+    driver,
+    {
+      t: TOTAL_DURATION,
+      duration: TOTAL_DURATION,
+      ease: "none",
+      onUpdate: () => {
+        const entry = entryAt(driver.t);
+        // Only swap content on transitions (avoid per-frame DOM thrash)
+        if (entry.title !== lastTitle) {
+          eyebrowEl.textContent = entry.eyebrow;
+          titleEl.textContent = entry.title;
+          bodyEl.textContent = entry.body;
+          lastTitle = entry.title;
+        }
+        // Progress bar fills 0% → 100% as composition advances
+        progressEl.style.width = `${(driver.t / TOTAL_DURATION) * 100}%`;
+      },
+    },
+    0,
+  );
+
+  window.__timelines["seq-scene"] = tl;
+</script>
+```
 
 ## Variations
 
-### Cross-Dissolve Between Phrases
+### Crossfade between items (not hard cut)
 
-Default is a hard cut. For a 0.2 s cross-dissolve, broaden the `find` condition so two phrases overlap at the boundary:
-
-```js
-const FADE = 0.2;
-const phrase = TIMELINE.find((p) => t >= p.startTime - FADE && t < p.endTime);
-```
-
-This makes phrase N+1 "active" for the last 0.2 s of phrase N. In `renderPhrase`, compute a cross-fade opacity:
+Add `overlap` to the find function — return BOTH the previous and next entry during the overlap window, render with crossfade opacity:
 
 ```js
-const fadeOpacity = Math.min(1, (t - phrase.startTime + FADE) / FADE);
+function activeEntries(time, overlap = 0.3) {
+  const result = [];
+  TIMELINE.forEach((e) => {
+    if (time >= e.start - overlap && time <= e.end + overlap) result.push(e);
+  });
+  return result;
+}
 ```
 
-Apply to one of two parallel DOM elements (one per phrase) — you can't cross-fade a single shared element.
+Then render the two adjacent entries with computed opacities based on distance from boundary.
 
-### Per-Phrase Hold-Then-Type vs Type-Then-Hold
+### Per-item motion variation
 
-Source order is `type → hold`. To flip to `hold → type` (a deliberate pause before the line types), add a `delay` field:
+Each entry has its own motion style. Map `entry.style` to one of the existing rules: chapter 1 uses [3d-text-depth-layers](3d-text-depth-layers.md), chapter 2 uses [hacker-flip-3d](hacker-flip-3d.md), chapter 3 uses [counting-dynamic-scale](counting-dynamic-scale.md). The sequencer just orchestrates timing; per-entry rendering uses the appropriate rule.
+
+### Auto-extend composition duration
+
+If you don't know upfront how long the sequence will be (dynamic content count), bind `data-duration` to the computed `TOTAL_DURATION`. Do this in script BEFORE the timeline registers:
 
 ```js
-{ textMain: "...", textAccent: "...", charSpeed: 0.083, delay: 0.5, hold: 1.0 },
+document
+  .querySelector("[data-composition-id]")
+  .setAttribute("data-duration", String(Math.ceil(TOTAL_DURATION)));
 ```
 
-Then `totalDuration = delay + typingDuration + hold` and `activeT_for_typing = activeT - phrase.delay`.
+(Caveat: HF reads `data-duration` at composition load; setting after init may not take effect — author the duration manually based on a rough TOTAL calc.)
 
-### Parallel Tracks
+## Key Principles
 
-This pattern is sequential by design. For two parallel text rivers (one typing top, one typing bottom), maintain two timelines and two master `onUpdate`s — or one onUpdate that computes both phrases' state from the same `t` and writes to two element pairs.
+- **Pre-compute timeline once, not per-frame** — building absolute start/end at script init means onUpdate is O(log n) reverse-search, not O(n²).
+- **Per-item duration formula: `base + length × msPerChar + hold`** — longer text needs more reading time. 0.03-0.06s per character is a comfortable read pace for video.
+- **Hold time between items 0.5-1.5s** — the "dwell" between content beats. Shorter feels rushed; longer feels lazy.
+- **Reserve `min-height` on body element** — content height varies per item; without reservation, layout jumps and downstream elements (progress bar, brand) jitter.
+- **DOM update on transition, not every frame** — track `lastTitle` (or whatever key) and only call `textContent =` when it changes. Per-frame textContent assignment causes flicker in HF render.
+- **Optional progress indicator** — a thin bar at the bottom showing 0-100% completes the "this is a sequence" framing.
+- **❗ Climax dwell ≥1s on final entry** — the outro should have hold ≥1.0 so the final brand/CTA reads.
 
 ## Critical Constraints
 
-- **`TIMELINE` is `const` at setup, not inside a tween** — recomputing per frame defeats the purpose.
-- **Seconds, not frames** — `charSpeed: 0.083`, not `charSpeed: 2.5`. If you're translating frame values, divide by `fps`.
-- **Pass `activeT = tl.time() - phrase.startTime`** to renderers, not raw `tl.time()`.
-- **`data-duration` ≥ `TOTAL`** — otherwise the last phrase truncates.
-- **Last phrase's `hold` is the closing beat** — typically 1.5–2× the intermediate holds. The eye expects breathing room before the cut to black.
-- **Linear scan is fine until ~50 entries** — past that, cache `lastIdx` with bidirectional fallback for seek safety.
-- **Hard cuts by default** — if you need cross-dissolves, two DOM elements and overlapping `find` windows; never try to cross-fade `textContent`.
-- **No `Math.random` / `Date.now`** — the timeline reduce is deterministic and the find is pure.
+- **Timeline must be paused**: `gsap.timeline({ paused: true })`
+- **Registry key = `data-composition-id`**
+- **Pre-compute the TIMELINE array** — don't recompute in onUpdate
+- **`min-height` on body** for layout stability
+- **DOM swap only on entry transition** — use lastTitle/lastKey guard
+- **Sequential only** — for parallel tracks, use a different reduction (this rule is sequential)
 
 ## Combinations
 
-- [context-sensitive-cursor](context-sensitive-cursor.md) — the canonical typing renderer that consumes each `phrase` + `activeT`.
-- [discrete-text-sequence](discrete-text-sequence.md) — alternative renderer for non-linear typing (typos, pauses); plug into the same dynamic-sequencing harness.
-- [vertical-spring-ticker](vertical-spring-ticker.md) — for animated word transitions between phrases instead of hard cuts.
+- [discrete-text-sequence.md](discrete-text-sequence.md) — per-entry typewriter on the body
+- [context-sensitive-cursor.md](context-sensitive-cursor.md) — cursor color per chapter segment
+- [vertical-spring-ticker.md](vertical-spring-ticker.md) — animated word transitions between items (instead of hard cut)
+- [scale-swap-transition.md](scale-swap-transition.md) — visual morph between entries
 
-## Examples
+## Pairs with HF skills
 
-- [messaging-multi-phrase.html](../examples/messaging-multi-phrase.html) — three-phrase script sequenced from content length, no hardcoded windows. Master `onUpdate` reads `tl.time()`, finds the active phrase, computes `activeT`, slices characters, and writes both text and cursor color/blink.
+- `/hyperframes-gsap` — single driver, reverse-search dispatch
+- `/hyperframes-core` — composition wiring
+- `/hyperframes-cli` — `hyperframes lint`

@@ -1,318 +1,292 @@
 ---
 name: svg-icon-enrichment
-description: Animate internal SVG elements (rotating hands, oscillating blades, pulsing dots, dash-flow lines) to make icons feel alive. Each icon gets a signature motion that communicates its meaning, driven by GSAP yoyo tweens or a shared `onUpdate` ticker.
+description: Animate internal SVG elements (rotating hands, opening blades, pulsing dots, dash flows) to make icons feel alive without replacing them.
 metadata:
-  tags: svg, icon, animation, internal, micro-animation, enrichment, gsap
-  adapter: gsap
+  tags: svg, icon, animation, internal, micro-animation, pulse, rotation
 ---
 
 # SVG Icon Enrichment
 
-Transforms static SVG icons into living elements by animating their internal parts. A clock hand rotates, scissors open/close, a recording dot pulses, a cutting line flows. Each icon becomes a tiny self-contained motion vignette.
+Treats an SVG icon as a composition of animated PARTS, not an opaque image. Each meaningful internal element (a clock hand, scissor blade, recording dot, data line) gets its own GSAP-driven micro-animation. Distinct from [svg-path-draw](svg-path-draw.md) (which animates the OUTLINE drawing) — enrichment animates INTERNAL PARTS, ideally after the outline has drawn.
 
-## HyperFrames vs. Remotion
+## How It Works
 
-The Remotion source drove every internal animation from `frame` directly inside each component's render. Continuous motion came "for free" because each frame is independently computed.
+The SVG is authored with named `<line>`, `<circle>`, `<path>`, or `<g>` children. The GSAP timeline targets these by selector and applies one of 4 signature motion patterns:
 
-HyperFrames is seek-driven on a paused timeline. Continuous internal motion requires one of:
+1. **Rotation** — clock hand, gear, loading spinner (`transform: rotate(deg)`)
+2. **Oscillation** — scissor blades, wing flap, toggle (`transform: rotate(±sin*amp)` on opposing groups)
+3. **Pulse** — recording dot, heart, notification (`scale + opacity` via sin)
+4. **Dash flow** — moving dashes along a stroke, like a data stream (`strokeDashoffset` linear)
 
-| Approach                                            | When to use                                                                                                                                                                                                                                             |
-| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Shared "scene-ticker" `onUpdate`**                | **Primary form** when the scene has ≥2 sine motions or any dynamic dashoffset flow. One `onUpdate` reads `tl.time()`, anchors each motion to its icon's entry time, and writes all DOM mutations together. Minimizes per-frame overhead.                |
-| **Finite GSAP yoyo**                                | Symmetric oscillation (scissor open/close, pulse) when it's the _only_ continuous motion in the scene. Cheap, declarative. `repeat: -1` is forbidden — compute from `data-duration`.                                                                    |
-| **Linear `tl.to({rotation: N*360}, ease: 'none')`** | Continuous one-direction rotation (clock hand, loader). The total degrees are baked into the tween's `to` value. Use even alongside a shared onUpdate — GSAP handles the linear interpolation more cleanly than re-deriving rotation inside the ticker. |
+All run inside the paused GSAP timeline so HF seeks deterministically.
 
-## Core Concept
-
-Target individual elements (`<line>`, `<circle>`, `<path>`, `<g>`) inside the SVG by giving each a class. Apply GSAP transforms via the same allowed aliases as elsewhere (`rotation`, `scale`, etc.), with `transform-origin` in the **SVG coordinate system** (viewBox units, not CSS pixels).
+## HTML
 
 ```html
-<svg viewBox="0 0 24 24">
-  <circle cx="12" cy="12" r="9" stroke="#fff" fill="none" />
-  <line
-    class="clock-hand"
-    x1="12"
-    y1="12"
-    x2="12"
-    y2="6"
-    stroke="#edcb50"
-    stroke-width="2"
-    stroke-linecap="round"
-    style="transform-origin: 12px 12px;"
-  />
-</svg>
+<div
+  class="scene"
+  id="enrichment-scene"
+  data-composition-id="enrichment-scene"
+  data-start="0"
+  data-duration="4"
+  data-track-index="0"
+>
+  <div class="stack">
+    <div class="row">
+      <!-- Clock icon — minute hand rotates -->
+      <svg class="icon-svg" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="60" cy="60" r="50" fill="none" stroke="#a78bfa" stroke-width="6" />
+        <line
+          class="clock-hand"
+          id="hand-min"
+          x1="60"
+          y1="60"
+          x2="60"
+          y2="22"
+          stroke="#f5f6fb"
+          stroke-width="6"
+          stroke-linecap="round"
+        />
+        <line
+          class="clock-hand"
+          id="hand-sec"
+          x1="60"
+          y1="60"
+          x2="60"
+          y2="30"
+          stroke="#ec4899"
+          stroke-width="3"
+          stroke-linecap="round"
+        />
+        <circle cx="60" cy="60" r="6" fill="#f5f6fb" />
+      </svg>
+
+      <!-- Recording dot — pulses -->
+      <svg class="icon-svg" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
+        <circle
+          id="rec-ring"
+          cx="60"
+          cy="60"
+          r="50"
+          fill="none"
+          stroke="#ec4899"
+          stroke-width="4"
+        />
+        <circle id="rec-dot" cx="60" cy="60" r="22" fill="#ec4899" />
+      </svg>
+
+      <!-- Data stream — dashes flow along the line -->
+      <svg class="icon-svg" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
+        <rect
+          x="14"
+          y="48"
+          width="92"
+          height="24"
+          rx="12"
+          fill="none"
+          stroke="#a78bfa"
+          stroke-width="4"
+        />
+        <line
+          id="data-flow"
+          x1="14"
+          y1="60"
+          x2="106"
+          y2="60"
+          stroke="#a78bfa"
+          stroke-width="6"
+          stroke-linecap="round"
+          stroke-dasharray="14 12"
+        />
+      </svg>
+    </div>
+    <div class="brand">LIVE · ON · HEYGENVERSE</div>
+  </div>
+</div>
 ```
 
-```js
-// Clock hand rotates linearly across the scene.
-tl.to(
-  ".clock-hand",
-  {
-    rotation: 720, // two full rotations over the scene
-    duration: 3.5,
-    ease: "none",
-  },
-  0,
-);
+## CSS
+
+```css
+.scene {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(ellipse at center, #161a3a 0%, #0b0d1f 70%);
+  font-family: "Inter", sans-serif;
+}
+.stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 80px;
+}
+.row {
+  display: flex;
+  gap: 120px;
+}
+.icon-svg {
+  width: 320px;
+  height: 320px;
+  filter: drop-shadow(0 12px 32px rgba(167, 139, 250, 0.3));
+}
+.clock-hand {
+  /* transform-origin in SVG must be in viewBox units, not pixels */
+  transform-origin: 60px 60px;
+  transform-box: fill-box;
+}
+.brand {
+  font-size: 64px;
+  font-weight: 900;
+  letter-spacing: 14px;
+  text-transform: uppercase;
+  color: #f5f6fb;
+}
+```
+
+## GSAP Timeline
+
+```html
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+<script>
+  window.__timelines = window.__timelines || {};
+  const tl = gsap.timeline({ paused: true });
+
+  // Pattern 1 — Rotation (clock hands)
+  // Minute hand: 1 full rotation over 4s = 360°
+  const minState = { deg: 0 };
+  tl.to(
+    minState,
+    {
+      deg: 360,
+      duration: 4.0,
+      ease: "none",
+      onUpdate: () => {
+        document.getElementById("hand-min").style.transform = `rotate(${minState.deg}deg)`;
+      },
+    },
+    0,
+  );
+
+  // Second hand: 6 rotations over 4s = 2160° (faster)
+  const secState = { deg: 0 };
+  tl.to(
+    secState,
+    {
+      deg: 2160,
+      duration: 4.0,
+      ease: "none",
+      onUpdate: () => {
+        document.getElementById("hand-sec").style.transform = `rotate(${secState.deg}deg)`;
+      },
+    },
+    0,
+  );
+
+  // Pattern 2 — Pulse (recording dot, ring opacity inverse)
+  const pulseState = { p: 0 };
+  tl.to(
+    pulseState,
+    {
+      p: Math.PI * 2 * 3, // 3 pulses over 4s
+      duration: 4.0,
+      ease: "none",
+      onUpdate: () => {
+        const dotScale = 1 + Math.sin(pulseState.p) * 0.15;
+        const ringScale = 1 + Math.sin(pulseState.p + Math.PI / 2) * 0.08;
+        const ringOpacity = 0.5 + Math.sin(pulseState.p) * 0.4;
+        const dot = document.getElementById("rec-dot");
+        const ring = document.getElementById("rec-ring");
+        dot.style.transform = `scale(${dotScale})`;
+        dot.style.transformOrigin = "60px 60px";
+        ring.style.transform = `scale(${ringScale})`;
+        ring.style.transformOrigin = "60px 60px";
+        ring.style.opacity = String(ringOpacity);
+      },
+    },
+    0,
+  );
+
+  // Pattern 3 — Dash flow (data stream)
+  const flowState = { offset: 0 };
+  tl.to(
+    flowState,
+    {
+      offset: -260, // negative for left-to-right flow
+      duration: 4.0,
+      ease: "none",
+      onUpdate: () => {
+        document.getElementById("data-flow").style.strokeDashoffset = String(flowState.offset);
+      },
+    },
+    0,
+  );
+
+  // Brand fades in early
+  tl.from(".brand", { opacity: 0, y: 16, duration: 0.6, ease: "power3.out" }, 0.4);
+
+  window.__timelines["enrichment-scene"] = tl;
+</script>
 ```
 
 ## Signature Motion Patterns
 
-### Rotation — clocks, dials, loaders
+| Pattern     | Use For                            | Math                                             | Tip                                 |
+| ----------- | ---------------------------------- | ------------------------------------------------ | ----------------------------------- |
+| Rotation    | Clock, gear, loader, dial          | `transform: rotate(deg)`, linear via sec-counter | `transform-origin` in viewBox units |
+| Oscillation | Scissors, wings, toggle            | `rotate(±sin*amp)` on opposing groups            | Opposite signs on the two parts     |
+| Pulse       | Recording dot, heart, notification | `scale(1 + sin*amp)` + opacity                   | Ring lags dot by π/2 for ripple     |
+| Dash flow   | Cutting line, data stream          | `strokeDashoffset` linear via time               | Negative for L→R, positive for R→L  |
+
+## Variations
+
+### Stroke draw → enrichment chain
+
+Draw the icon outline first (via [svg-path-draw](svg-path-draw.md)), THEN activate enrichment. The internal animation feels like "the icon woke up" after assembly.
 
 ```js
-const SCENE_DUR = 3.5;
-const ROTATION_DEGS_PER_SEC = 120;
-const totalDegs = ROTATION_DEGS_PER_SEC * SCENE_DUR;
-
-tl.to(".clock-hand", { rotation: totalDegs, duration: SCENE_DUR, ease: "none" }, 0);
-```
-
-`ease: "none"` keeps the rotation perfectly linear — the hand never slows. `power2.out` would feel like the hand is "tired" near the end.
-
-### Oscillation — scissors, toggles, wings
-
-**Primary form** (used in [hook-counter-burst.html](../examples/hook-counter-burst.html)): drive the sine inside a shared scene-ticker `onUpdate` — see [Shared Scene-Ticker](#shared-scene-ticker-for-multiple-sine-motions) below. This is the recommended form whenever the same scene already has ≥2 other sine motions (record-dot, play pulse, dash flow), because it consolidates all per-frame DOM writes into one onUpdate.
-
-```js
-// Inside the shared onUpdate:
-const SCISSOR_SPEED = 3.6; // rad/sec
-const SCISSOR_AMP = 15; // degrees
-const sciT = t - SCISSORS_ENTRY_AT;
-const sciAngle = sciT > 0 ? Math.sin(sciT * SCISSOR_SPEED) * SCISSOR_AMP : 0;
-gsap.set(".scissor-upper", { rotation: sciAngle });
-gsap.set(".scissor-lower", { rotation: -sciAngle });
-```
-
-**Alternative form** (per-icon finite yoyo) — declarative, no onUpdate, but can't share frequency state with other motions:
-
-```js
-// Two opposing blades, each a finite yoyo. ±15° amplitude.
-// Period = 2 × half-cycle. Compute repeat to fill scene duration.
-const HALF_CYCLE = 0.43; // seconds for one direction (-15 → +15)
-const repeats = Math.max(0, Math.floor(SCENE_DUR / HALF_CYCLE) - 1);
-
+// Phase 1: outline draws (0 → 1s)
 tl.fromTo(
-  ".scissor-upper",
-  { rotation: -15 },
-  { rotation: 15, duration: HALF_CYCLE, ease: "sine.inOut", yoyo: true, repeat: repeats },
+  "#icon-outline",
+  { strokeDashoffset: 360 },
+  { strokeDashoffset: 0, duration: 1, ease: "power2.inOut" },
   0,
 );
-tl.fromTo(
-  ".scissor-lower",
-  { rotation: 15 },
-  { rotation: -15, duration: HALF_CYCLE, ease: "sine.inOut", yoyo: true, repeat: repeats },
-  0,
-);
+// Phase 2: enrichment starts at 1.0s
 ```
 
-Opposing rotations on the two blades create the open/close illusion. Both elements must have the same pivot (`transform-origin: 12px 12px;`).
+### Per-icon entry stagger
 
-Use the shared-onUpdate form when the scene has multiple sine motions; use yoyo when the oscillation is the only continuous motion in the scene.
+For a row of icons all animating, stagger their entries by 0.15s. Each icon's enrichment starts as it fades in, not synchronized — feels organic.
 
-### Pulse — recording dots, hearts, notifications
+## Key Principles
 
-```js
-// Scale yoyo from 1.0 to 1.15 with sine; opacity to range 0.4–1.0.
-tl.fromTo(
-  ".record-dot",
-  { scale: 1, opacity: 0.7 },
-  {
-    scale: 1.15,
-    opacity: 1.0,
-    duration: 0.5,
-    ease: "sine.inOut",
-    yoyo: true,
-    repeat: Math.floor(SCENE_DUR / 0.5) - 1,
-  },
-  0,
-);
-```
-
-For phase-offset opacity (the original's `sin(t * 0.15)` for opacity vs `sin(t * 0.10)` for scale), use a shared onUpdate (next section) — yoyo alone can't desync the two channels.
-
-### Dash Flow — cutting lines, data streams
-
-**Primary form** (used in [hook-counter-burst.html](../examples/hook-counter-burst.html)): compute dashoffset dynamically inside the shared onUpdate. This makes the flow speed a pure function of `tl.time()` — no fixed end value, no need to recompute when the scene's total duration changes.
-
-```js
-// Inside the shared onUpdate:
-const CUTTING_FLOW_SPEED = 15; // units/sec
-const cutT = t - SCISSORS_ENTRY_AT;
-if (cutT > 0) {
-  gsap.set(".cutting-line", {
-    attr: { "stroke-dashoffset": -cutT * CUTTING_FLOW_SPEED },
-  });
-}
-```
-
-**Alternative form** (fixed-target tween) — simpler when the flow is the only continuous motion and you know the scene duration up front:
-
-```js
-// strokeDashoffset is a CSS-tweenable attribute on stroke-dasharray elements.
-// GSAP can tween it via the `attr` plugin (built-in).
-tl.to(
-  ".cutting-line",
-  {
-    attr: { "stroke-dashoffset": -100 }, // drift to fixed offset; negative = leftward flow
-    duration: 3.5,
-    ease: "none",
-  },
-  0,
-);
-```
-
-For a dashed line with `stroke-dasharray="4 2"`, tweening `stroke-dashoffset` shifts the pattern along the path. Negative values flow in one direction; positive flow the other.
-
-## Shared Scene-Ticker (for Multiple Sine Motions)
-
-When many icons need `Math.sin(...)` motions at different rates / phases / amplitudes — and/or one of them needs a dynamic dashoffset — consolidate into one `onUpdate`. This is the form used in [hook-counter-burst.html](../examples/hook-counter-burst.html), which drives scissors, record dot, play triangle, and cutting-line dash flow from a single ticker:
-
-```js
-const TOTAL = 3.5;
-
-const SCISSORS_ENTRY_AT = 0.3; // when scissors icon enters
-const VIDEO_ENTRY_AT = 0.43;
-const PLAY_ENTRY_AT = 0.57;
-
-const SCISSOR_SPEED = 3.6; // rad/sec
-const SCISSOR_AMP = 15;
-const REC_OPACITY_SPEED = 4.5;
-const REC_SCALE_SPEED = 3.0;
-const REC_OPACITY_AMP = 0.3;
-const REC_OPACITY_BASE = 0.7;
-const REC_SCALE_AMP = 0.15;
-const PLAY_PULSE_SPEED = 2.4;
-const PLAY_PULSE_AMP = 0.08;
-const CUTTING_FLOW_SPEED = 15; // units/sec for stroke-dashoffset
-
-const scissorUpper = document.querySelector(".scissor-upper");
-const scissorLower = document.querySelector(".scissor-lower");
-const recordDot = document.querySelector(".record-dot");
-const playTri = document.querySelector(".play-tri");
-const cuttingLine = document.querySelector(".cutting-line");
-
-tl.to(
-  { tick: 0 },
-  {
-    tick: 1,
-    duration: TOTAL,
-    ease: "none",
-    onUpdate: function () {
-      const t = tl.time();
-
-      // Scissors — symmetric oscillation, anchored to entry time
-      const sciT = t - SCISSORS_ENTRY_AT;
-      const sciAngle = sciT > 0 ? Math.sin(sciT * SCISSOR_SPEED) * SCISSOR_AMP : 0;
-      gsap.set(scissorUpper, { rotation: sciAngle });
-      gsap.set(scissorLower, { rotation: -sciAngle });
-
-      // Cutting line — dynamic dashoffset (linear flow)
-      const cutT = t - SCISSORS_ENTRY_AT;
-      if (cutT > 0) {
-        gsap.set(cuttingLine, {
-          attr: { "stroke-dashoffset": -cutT * CUTTING_FLOW_SPEED },
-        });
-      }
-
-      // Record dot — phase-offset opacity and scale (different speeds)
-      const recT = t - VIDEO_ENTRY_AT;
-      if (recT > 0) {
-        const recOpacity = Math.sin(recT * REC_OPACITY_SPEED) * REC_OPACITY_AMP + REC_OPACITY_BASE;
-        const recScale = 1 + Math.sin(recT * REC_SCALE_SPEED) * REC_SCALE_AMP;
-        gsap.set(recordDot, { opacity: recOpacity, scale: recScale });
-      }
-
-      // Play triangle — slow scale pulse
-      const playT = t - PLAY_ENTRY_AT;
-      if (playT > 0) {
-        const playScale = 1 + Math.sin(playT * PLAY_PULSE_SPEED) * PLAY_PULSE_AMP;
-        gsap.set(playTri, { scale: playScale });
-      }
-    },
-  },
-  0,
-);
-```
-
-The `tick` proxy is just a clock — its value isn't used. The onUpdate fires every time GSAP advances the timeline, which is every render frame during HyperFrames seek.
-
-**Anchor each motion to its icon's entry time** (`t - ENTRY_AT`), gated by `> 0`. This guarantees the motion starts cleanly at phase 0 the moment the icon appears, regardless of the icon's stagger, and avoids visible "in-progress" motion before the icon is visible.
-
-**Mixing tween forms with the shared onUpdate**: continuous one-direction rotations (e.g., a clock hand) are cleaner as a standalone linear `tl.to(..., { rotation: 420, ease: "none" })` because GSAP handles the interpolation. Keep the shared onUpdate for sine-based motions and dynamic dashoffset; keep linear rotations as their own tweens.
-
-## Entry Animation Pairing
-
-Combine internal enrichment with a spring entrance. The internal animation runs from the start of the timeline, but the icon is invisible until the entry tween reveals it.
-
-```html
-<div class="icon-entry">
-  <svg><!-- enriched SVG --></svg>
-</div>
-```
-
-```js
-// Entry: scale + opacity rise from 0.
-tl.fromTo(
-  ".icon-entry",
-  { scale: 0, opacity: 0, rotation: -180 },
-  { scale: 1, opacity: 0.85, rotation: 0, duration: 0.55, ease: "back.out(1.5)" },
-  ICON_ENTRY_AT,
-);
-```
-
-The internal animation tweens (clock hand, scissor angle, etc.) start at timeline position 0 — they're already running when the entry tween makes the icon visible. The user sees a fully-alive icon appear, not a static icon that starts moving after it lands.
-
-## Stroke-Draw Entry
-
-For SVG outlines that should "draw on" during entry, use `strokeDasharray` + `strokeDashoffset` tweened by GSAP:
-
-```html
-<circle
-  class="clock-ring"
-  cx="12"
-  cy="12"
-  r="9"
-  stroke="white"
-  stroke-width="2"
-  stroke-dasharray="56.5"
-  stroke-dashoffset="56.5"
-  fill="none"
-/>
-```
-
-```js
-// Tween the offset from 56.5 (invisible) to 0 (fully drawn).
-// 56.5 = 2π × 9 ≈ circumference of an r=9 circle.
-tl.to(
-  ".clock-ring",
-  {
-    attr: { "stroke-dashoffset": 0 },
-    duration: 0.55,
-    ease: "power2.out",
-  },
-  ICON_ENTRY_AT,
-);
-```
-
-For a square: dasharray ≈ perimeter = 4 × side (or 2(w+h) for rect). Measure your actual path and bake the number in.
+- **❗ For rotation around an explicit point inside SVG, use the SVG `transform` attribute, NOT CSS transform** — `el.setAttribute('transform', `rotate(${deg} ${cx} ${cy})`)`. The CSS combination `transform: rotate(...)` + `transform-origin: 60px 60px` + `transform-box: fill-box` interprets the origin in the element's OWN bbox-local coordinates, NOT in viewBox coordinates. For a thin `<line>` (whose bbox is the line's narrow envelope), `60 60` in bbox-local refers to a point OUTSIDE the line, so the hand flies along an off-center arc instead of rotating in place. Same trap for small inner shapes (rec-dot circle whose bbox is the small circle, not the full 120×120 viewBox).
+- **For scaling around a center point inside SVG**, use `el.setAttribute('transform', `translate(${cx} ${cy}) scale(${s}) translate(-${cx} -${cy})`)`. Same reason — avoids the CSS bbox-local origin trap.
+- **Run continuous animations inside the timeline** — never CSS `@keyframes` or `requestAnimationFrame`. Both desync from HF's frame-by-frame seek.
+- **Amplitudes subtle** — icons are decorative, not headlines. Pulse scale 0.05-0.15, rotation 360° over 2-4s for clocks, oscillation ±8-15°.
+- **Multiple parts of the same icon at different phases** — clock minute vs second hand at different speeds, ring vs dot pulse offset by π/2. Pure-sync looks mechanical; phase-offset looks alive.
+- **❗ Climax dwell ≥1s** — if the enrichment is the headline beat, comp must continue ≥1s after the most dramatic moment.
 
 ## Critical Constraints
 
-- **`transform-origin` in SVG coordinates**: Use viewBox units (e.g., `12px 12px` for a 24-unit viewBox center), not screen pixels.
-- **Keep amplitude subtle**: Icons are decorative, not focal. Scale ±5–15%, rotation 5–20°. Bigger looks like a glitch.
-- **One ticker for many motions**: If you have ≥3 sine-based internal motions, consolidate into one shared onUpdate. Many independent onUpdates each fire per frame.
-- **GSAP transform aliases only on SVG**: `rotation`, `scale`, `x`, `y`. Animate SVG attributes (`x1`, `r`, `stroke-dashoffset`) via the `attr` plugin (built-in to GSAP core).
-- **No `Math.random` / `Date.now`**: All internal motion must be a pure function of `tl.time()`.
-- **No infinite repeats**: All yoyo / repeat counts are finite, computed from `data-duration`.
-- **Per-icon `transform-origin`**: Each animated SVG element needs its own origin. Don't try to share via parent class.
+- **Timeline must be paused**: `gsap.timeline({ paused: true })`
+- **Registry key = `data-composition-id`**
+- **No CSS `animation`** on SVG children — must be timeline-driven
+- **`transform-origin` matters per child** — set explicitly per animated element
+- **`stroke-linecap: round`** on flowing/dashed lines for clean dash edges
+- **Target SVG children by id** — `document.getElementById` is fine; selector chains into `<svg>` work the same as HTML
 
 ## Combinations
 
-- Pair with [center-outward-expansion](center-outward-expansion.md) — icons enter clustered, expand outward, internal motion runs throughout.
-- Pair with [svg-path-draw](svg-path-draw.md) (pending migration) — draw the outline on entry, then the enrichment activates inside.
-- Pair with [sine-wave-loop](sine-wave-loop.md) on the icon wrapper — adds gentle floating to whole icons while internal parts animate.
+- [svg-path-draw.md](svg-path-draw.md) — outline draws first, enrichment activates second
+- [orbit-3d-entry.md](orbit-3d-entry.md) — orbiting items are enriched icons (clock orbit a brand label)
+- [sine-wave-loop.md](sine-wave-loop.md) — entire icon floats while internal parts animate
 
-## Examples
+## Pairs with HF skills
 
-- [hook-counter-burst.html](../examples/hook-counter-burst.html) — four enriched icons (clock with rotating hand, scissors oscillating, video with pulsing record dot, play button with pulse scale) entering with stroke-draw + spring scale.
+- `/hyperframes-gsap` — onUpdate writes transform/opacity per SVG child
+- `/hyperframes-core` — composition wiring
+- `/hyperframes-cli` — `hyperframes lint`

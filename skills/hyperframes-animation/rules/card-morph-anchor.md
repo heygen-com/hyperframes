@@ -1,279 +1,220 @@
 ---
 name: card-morph-anchor
-description: >
-  A container appears to morph between two visual states (rectangle → circle, card → icon)
-  while serving as the viewer's eye-tracking anchor between shots. HyperFrames implementation
-  uses `scale` (uniform when aspect ratios match, or non-uniform `scaleX`/`scaleY` when they
-  don't) + paint-only `borderRadius` / `background` / `boxShadow` tweens, then fades the morph
-  container to hand off to the real target rendered underneath — visually equivalent to the
-  Remotion source's `width` / `height` interpolation, but allowlist-clean.
+description: Container morphs dimensions and border-radius between shots, serving as a visual transition anchor.
 metadata:
-  tags: morph, anchor, transition, border-radius, container, shape, gsap
-  adapter: gsap
+  tags: morph, anchor, transition, border-radius, container, shape
 ---
 
 # Card Morph Anchor
 
-A container smoothly transforms its apparent size, corner-radius, and surface treatment between two visual states. The morph itself **is** the shot transition — no separate transition effect is needed. The morph container also doubles as the viewer's eye-tracking anchor between the outgoing and incoming content.
+A container smoothly transforms its width, height, border-radius, and (optionally) background between two visual states. The morph itself **IS the shot transition** — no separate transition effect needed. The viewer's eye tracks the morphing container as the anchor between shots.
 
-## HyperFrames vs. Remotion
+## How It Works
 
-The Remotion source drove a single `spring()` and fed `morphProgress` into `interpolate(...)` calls for `width`, `height`, and `borderRadius`. Width/height tweens worked fine because Remotion recomputes the layout every frame anyway.
+A single GSAP tween animates multiple container properties simultaneously (width / height / border-radius / background). At the same time:
 
-HyperFrames is seek-driven and forbids tweening `width` / `height` / `left` / `top` — they trigger layout reflows that compound badly across the camera scale wrapper. The morph must achieve the same visual effect using **only** transform aliases (`scale`, `scaleX`, `scaleY`, `x`, `y`, `rotation`) and paint-only properties (`borderRadius`, `background`, `boxShadow`, `opacity`).
+1. **Old content** fades out during the first ~40% of the morph
+2. **New content** fades in during the last ~40% of the morph
+3. **Optional final fade** — the morph container itself fades to 0, revealing the actual next-shot element rendered behind it
 
-| Remotion (source)             | HyperFrames (this rule)                                                               | Why the substitution works                                                                                                |
-| ----------------------------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| `width: W₀ → W₁` tween        | `scaleX: 1 → W₁/W₀` (or uniform `scale` if aspect ratios match)                       | Same visible footprint at every step. Content distortion is masked by the early fade-out.                                 |
-| `height: H₀ → H₁` tween       | `scaleY: 1 → H₁/H₀` (or covered by the same uniform `scale` when aspect ratios match) | When source and target aspect ratios differ, drive X and Y independently. When they match, one `scale` tween covers both. |
-| `borderRadius: r₀ → r₁` tween | `borderRadius: r₀ → r₁` (e.g. `28px → 50%`)                                           | Repaint-only, GSAP can tween CSS length strings and `%` directly.                                                         |
-| `background: dark → gradient` | same — `background` tween via GSAP                                                    | Repaint-only, GSAP can tween color/gradient.                                                                              |
-| `boxShadow: subtle → glow`    | same — `boxShadow` tween via GSAP                                                     | Repaint-only.                                                                                                             |
-| `finalFade: 1 → 0 at 85-100%` | `opacity` tween at `MORPH_START + 0.85 * MORPH_DUR`                                   | Same hand-off pattern. The target element renders underneath and becomes visible when the morph fades.                    |
+The persistent container provides visual continuity even as content and shape change.
 
-The result is visually indistinguishable from a width/height interpolation **provided the content fade-out and the morph-to-target hand-off are timed correctly** (see Content Crossfade below).
-
-## Core Concept
-
-In Remotion, "a single spring driver" was a numeric value that multiple `interpolate(...)` calls consumed. In HyperFrames, the GSAP idiom for "parallel motion under one driver" is **multiple tweens started at the same timeline position with the same `duration`**. GSAP advances them in lockstep automatically.
-
-## Basic Pattern
-
-Two forms — pick based on whether source and target share an aspect ratio.
-
-### Form A — Uniform `scale` (source and target aspect ratios match)
-
-Use when the source container is already roughly square (or whatever aspect the target uses). One `scale` tween covers both dimensions; content distortion is zero.
-
-```js
-const MORPH_START = 3.2; // seconds — when the morph fires
-const MORPH_DUR = 0.6; // seconds — full morph length
-
-const START_W = 300; // px — container intrinsic width (unscaled)
-const START_H = 300; // px — container intrinsic height (unscaled, ~equal to START_W)
-const END_VISUAL_SIZE = 160; // px — the footprint the morph collapses toward
-const END_SCALE = END_VISUAL_SIZE / START_W; // ≈ 0.53 — uniform scale at morph end
-const END_RADIUS_PX = (START_W * END_SCALE) / 2; // ≈ 80px → reads as a circle
-
-// All four tweens at the same timeline position fire in lockstep — GSAP idiom for parallel.
-tl.to(
-  ".morph-container",
-  {
-    scale: END_SCALE,
-    duration: MORPH_DUR,
-    ease: "power3.out", // approximates spring(stiffness:80, damping:18)
-  },
-  MORPH_START,
-);
-
-tl.to(
-  ".morph-container",
-  {
-    borderRadius: END_RADIUS_PX + "px",
-    duration: MORPH_DUR,
-    ease: "power3.out",
-  },
-  MORPH_START,
-);
-
-tl.to(
-  ".morph-container",
-  {
-    background: "linear-gradient(135deg, #14B8A6, #06B6D4, #0EA5E9)",
-    boxShadow: "0 0 50px rgba(20, 184, 166, 0.5), 0 0 100px rgba(6, 182, 212, 0.25)",
-    duration: MORPH_DUR,
-    ease: "power3.out",
-  },
-  MORPH_START,
-);
-
-// Content crossfade — see next section.
-tl.to(
-  ".morph-content",
-  {
-    opacity: 0,
-    duration: MORPH_DUR * 0.4,
-    ease: "power2.out",
-  },
-  MORPH_START,
-);
-
-// Final hand-off fade — at 85-100% of morph, container vanishes to reveal target underneath.
-tl.to(
-  ".morph-container",
-  {
-    opacity: 0,
-    duration: MORPH_DUR * 0.15,
-    ease: "none",
-  },
-  MORPH_START + MORPH_DUR * 0.85,
-);
-```
-
-### Form B — Non-uniform `scaleX` / `scaleY` (source and target aspect ratios differ)
-
-Use when the source is a tall card (e.g. a phone mockup) and the target is a circle or square — the aspect ratios don't match, so a single uniform scale would either overshoot one dimension or undershoot the other. Drive X and Y independently from the source dimensions. This is the canonical case for the avatar-circle-from-mockup-card morph: a 320×650 phone mockup collapsing to a 220px avatar.
-
-```js
-const MORPH_START = 3.2;
-const MORPH_DUR = 0.6;
-
-const MOCKUP_W = 320; // px — source phone mockup width
-const MOCKUP_H = 650; // px — source phone mockup height (tall)
-const AVATAR_DIAMETER = 220; // px — target avatar circle
-
-const MORPH_END_SCALE_X = AVATAR_DIAMETER / MOCKUP_W; // ≈ 0.6875
-const MORPH_END_SCALE_Y = AVATAR_DIAMETER / MOCKUP_H; // ≈ 0.3385
-
-// Drive X and Y separately — they land on the same diameter at morph end despite
-// starting from very different source dimensions.
-tl.to(
-  ".morph-container",
-  {
-    scaleX: MORPH_END_SCALE_X,
-    scaleY: MORPH_END_SCALE_Y,
-    duration: MORPH_DUR,
-    ease: "power3.out",
-  },
-  MORPH_START,
-);
-
-// borderRadius: tween straight to "50%" — the post-scale footprint is square
-// (AVATAR_DIAMETER × AVATAR_DIAMETER), so 50% reads as a clean circle.
-tl.to(
-  ".morph-container",
-  {
-    borderRadius: "50%",
-    duration: MORPH_DUR,
-    ease: "power3.out",
-  },
-  MORPH_START,
-);
-
-// The remaining tweens (background, boxShadow, content fade, container fade)
-// are identical to Form A.
-```
-
-Form B is still paint-only and seek-safe — no `width` / `height` tweens — preserving the rule's core constraint. The aspect-ratio distortion of the source content is masked by the content fade-out at 40% of the morph, exactly as in Form A; by the time the scale ratio diverges visibly, the content is already invisible.
-
-The DOM stays static the entire scene:
+## HTML
 
 ```html
-<!-- Target (rendered first, lower z-index, initially invisible) -->
 <div
-  class="morph-target"
-  style="position: absolute; left: 50%; top: 50%;
-                                  width: 160px; height: 160px; border-radius: 50%;
-                                  z-index: 20; opacity: 0;
-                                  background: linear-gradient(135deg, #14B8A6, #06B6D4, #0EA5E9);"
+  class="scene"
+  id="morph-scene"
+  data-composition-id="morph-scene"
+  data-start="0"
+  data-duration="4"
+  data-track-index="0"
 >
-  <!-- avatar / final icon content -->
-</div>
+  <!-- The persistent morph container -->
+  <div class="morph-card">
+    <div class="content-old">
+      <h2>Hedronverse — wide hero banner</h2>
+      <p>full-width feature card content</p>
+    </div>
+    <div class="content-new">
+      <img src="hedronverse-logo.svg" alt="logo" />
+    </div>
+  </div>
 
-<!-- Morph container (rendered second, higher z-index, visible during the morph) -->
-<div
-  class="morph-container"
-  style="position: absolute; left: 50%; top: 50%;
-                                     width: 300px; height: 540px; border-radius: 28px;
-                                     z-index: 25; overflow: hidden;
-                                     background: #000;"
->
-  <div class="morph-content">
-    <!-- Shot N content — fades out during first 40% of morph -->
+  <!-- Optional: actual next-shot element behind the morph -->
+  <div class="next-shot-anchor">
+    <img src="hedronverse-avatar.png" alt="avatar" />
   </div>
 </div>
+```
 
+## CSS (hero-frame layout)
+
+Card starts as a wide rectangle (shot 1 state). All properties present from the start; only opacities differ:
+
+```css
+.scene {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+}
+
+.morph-card {
+  position: relative;
+  width: 800px;
+  height: 540px;
+  border-radius: 28px;
+  background: #1a1a2e;
+  overflow: hidden;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+  display: grid;
+  place-items: center;
+}
+
+.content-old,
+.content-new {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 32px;
+}
+
+.content-old {
+  opacity: 1;
+}
+.content-new {
+  opacity: 0;
+}
+
+.next-shot-anchor {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  opacity: 0; /* GSAP fades this in as morph card fades out */
+  /* Use DOM ORDER for stacking — render .next-shot-anchor BEFORE .morph-card
+     in markup so the morph card is naturally on top. Do NOT use z-index: -1
+     and then snap it positive mid-fade — that causes a visible pop. */
+}
+```
+
+## GSAP Timeline
+
+```html
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
 <script>
-  // GSAP-owned centering (xPercent/yPercent are GSAP transform aliases, not CSS).
-  gsap.set(".morph-target", { xPercent: -50, yPercent: -50 });
-  gsap.set(".morph-container", { xPercent: -50, yPercent: -50 });
+  window.__timelines = window.__timelines || {};
+  const tl = gsap.timeline({ paused: true });
+
+  // Hold shot 1 — let the viewer register the wide banner.
+  // (Implicit: nothing happens 0 → 1s)
+
+  // Phase 1 (1.0 → 2.0s) — Morph container properties simultaneously
+  tl.to(
+    ".morph-card",
+    {
+      width: 160,
+      height: 160,
+      borderRadius: 80,
+      background: "linear-gradient(135deg, #6366f1 0%, #ec4899 100%)",
+      duration: 1.0,
+      ease: "power2.inOut",
+    },
+    1.0,
+  );
+
+  // Phase 2 — Old content fades during the FIRST 40% of the morph (1.0 → 1.4s)
+  tl.to(
+    ".content-old",
+    {
+      opacity: 0,
+      duration: 0.4,
+      ease: "power1.in",
+    },
+    1.0,
+  );
+
+  // Phase 3 — New content fades in during the LAST 40% of the morph (1.6 → 2.0s)
+  tl.to(
+    ".content-new",
+    {
+      opacity: 1,
+      duration: 0.4,
+      ease: "power1.out",
+    },
+    1.6,
+  );
+
+  // Optional Phase 4 — Final fade: morph container disappears at 2.0 → 2.15s,
+  // revealing the actual next-shot element behind it
+  tl.to(
+    ".morph-card",
+    {
+      opacity: 0,
+      duration: 0.15,
+      ease: "power1.in",
+    },
+    2.0,
+  );
+
+  window.__timelines["morph-scene"] = tl;
 </script>
 ```
 
 ## Key Properties to Morph
 
-| Property                      | Reflow? | Tween in HyperFrames? | Notes                                                                                                                                                                                               |
-| ----------------------------- | ------- | --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `width`, `height`             | yes     | **forbidden**         | Use uniform `scale` instead.                                                                                                                                                                        |
-| `left`, `top`                 | yes     | **forbidden**         | Use GSAP `x`, `y`, or `xPercent` / `yPercent`.                                                                                                                                                      |
-| `borderRadius`                | no      | yes                   | GSAP tweens CSS length strings directly.                                                                                                                                                            |
-| `background` (color/gradient) | no      | yes                   | GSAP color plugin (built-in) handles colors; gradients tween cleanly with matching stop structures.                                                                                                 |
-| `boxShadow`                   | no      | yes                   | GSAP can tween multi-shadow strings; structures must match (same number of shadows on both ends).                                                                                                   |
-| `scale`, `scaleX`, `scaleY`   | no      | yes                   | GSAP transform aliases. Use uniform `scale` when source and target are roughly square; use `scaleX`/`scaleY` only if content can absorb the distortion (it can't, mostly — fade content out first). |
-| `opacity`                     | no      | yes                   | Required for the final hand-off.                                                                                                                                                                    |
-| `rotation`                    | no      | yes                   | Adds visual interest to the morph (e.g. a -5° → 0° settle). Use sparingly.                                                                                                                          |
-| `filter: drop-shadow(...)`    | no      | yes                   | Alternative to `boxShadow` for glow effects on irregular shapes.                                                                                                                                    |
+| Property           | Example                                                 | Visual effect                |
+| ------------------ | ------------------------------------------------------- | ---------------------------- |
+| `width` / `height` | 800×540 → 160×160                                       | wide card shrinks to an icon |
+| `borderRadius`     | 28px → 80px (half of new size)                          | rectangle becomes a circle   |
+| `background`       | `#1a1a2e` → `linear-gradient(135deg, #6366f1, #ec4899)` | container identity shifts    |
+| `boxShadow`        | subtle → colored glow                                   | emphasis changes             |
 
-## Content Crossfade
+GSAP tweens all of these simultaneously when included in one `tl.to(...)` call.
 
-The morph container's content fades out during the first ~40% of the morph. The target's content (rendered underneath) fades in during the last ~15%, exactly when the morph container vanishes. Three tweens, one continuous visual:
+## Key Principles
 
-```js
-const oldContentEnd = MORPH_DUR * 0.4; // 0.24s
-const targetFadeIn = MORPH_DUR * 0.85; // 0.51s
-const finalFadeEnd = MORPH_DUR; // 0.60s
-
-// 1. Old content fades during the first 40%.
-tl.to(
-  ".morph-content",
-  {
-    opacity: 0,
-    duration: oldContentEnd,
-    ease: "power2.out",
-  },
-  MORPH_START,
-);
-
-// 2. Target fades in during the last 15%.
-tl.to(
-  ".morph-target",
-  {
-    opacity: 1,
-    duration: finalFadeEnd - targetFadeIn,
-    ease: "power2.out",
-  },
-  MORPH_START + targetFadeIn,
-);
-
-// 3. Morph container fades out simultaneously with target fade-in.
-tl.to(
-  ".morph-container",
-  {
-    opacity: 0,
-    duration: finalFadeEnd - targetFadeIn,
-    ease: "none",
-  },
-  MORPH_START + targetFadeIn,
-);
-```
-
-By the time the morph container is gone, the target is fully visible at exactly the same screen footprint. The viewer reads this as "the rectangle became the circle" — never as "one element vanished and another appeared".
-
-## Tips
-
-- **Overflow hidden**: The morph container needs `overflow: hidden` to clip content cleanly as `borderRadius` increases. Without it, square content peeks through rounded corners during the transition.
-- **Match the centering**: The morph container and the target must share the same center coordinates. Both use `xPercent: -50, yPercent: -50` for centering; their CSS `left` / `top` must match.
-- **Position adjustments via `x`/`y`**: If the morph should drift slightly during the transition (e.g. settling up by 2%), add an `x` / `y` tween at the same start/duration as the scale tween. Never tween `top` or `left`.
-- **Aspect-ratio mismatch — pick Form A or Form B**: If the source content is decorative and can be hidden by the early fade-out, uniform `scale` (Form A) works even when the source isn't square — viewers never see the distortion. If the morph needs to land exactly on the target's footprint (e.g. a 220px avatar circle from a 320×650 phone mockup), use Form B's `scaleX` / `scaleY` so both dimensions hit the target diameter simultaneously.
-- **Pre-bake the end constants**: For Form A, `END_RADIUS_PX = (START_W * END_SCALE) / 2`. For Form B, `MORPH_END_SCALE_X = TARGET_W / SOURCE_W` and `MORPH_END_SCALE_Y = TARGET_H / SOURCE_H`. Bake these numbers; don't compute them at tween time. If you change source/target dimensions, recompute and edit the constants.
-- **Pair with `x` / `y` for position morph**: A single set of tweens at the same start can simultaneously change shape and screen position. The viewer reads it as a single continuous transform.
+- **All target properties in one tween** — they share a single ease and duration so they morph in lockstep
+- **Old content fades early, new content fades late** — the container shape change happens between, providing a natural "blink" moment
+- **Final fade is optional** — use it when the next shot has a real anchor element to hand off to (e.g. avatar that the icon morphed into "is")
+- **Same easing for shape and crossfade** — avoid mixing `power2.inOut` morph with `bounce.out` content, looks unsynchronized
+- **❗ If you use `.next-shot-anchor` for handoff, its visuals must be pixel-identical to `.morph-card`'s final state** — same `width` / `height`, same `border-radius`, same `background`, same `box-shadow`, same internal icon dimensions. Any visual delta between the two = visible pop during the crossfade. If you can't match exactly, **drop the handoff** and just hold the morph card at its final state (add a breath if needed for life).
 
 ## Critical Constraints
 
-- **No `width` / `height` / `left` / `top` tweens**: Allowlist violation. Use `scale` and `x` / `y` instead.
-- **GSAP owns the transform**: Once GSAP touches the element (via `set()` or `to()`), don't apply CSS `transform:` to the same element. They will fight.
-- **Pre-baked end constants**: `END_SCALE`, `END_RADIUS_PX`, and any positional offsets are computed once at script load. Never read `getBoundingClientRect()` at tween time — sub-pixel drift compounds across the camera scale and produces visible jitter.
-- **Target z-index < morph z-index**: The morph container sits above the target. When the morph fades to 0, the target becomes visible. If you reverse this, the target obscures the morph from the start.
-- **Same center coordinates**: Both elements must share their final screen center. The morph itself doesn't move the center; only the apparent size and shape change.
-- **No infinite repeats**: This rule is a one-shot transition. There's no scenario where a morph should loop.
-- **No nondeterministic state**: The morph progresses as a pure function of `tl.time()`. No `Math.random`, no `Date.now`.
+- **`overflow: hidden`** on the morph container — content must clip during shape change, otherwise content overflows the morphing border radius
+- **Hold a beat before morphing** — let the viewer register shot 1's content before morphing; instant morph reads as glitchy
+- **Timeline must be paused**: `gsap.timeline({ paused: true })`. Never `tl.play()`
+- **Registry key = `data-composition-id`**: `window.__timelines["morph-scene"]` must match scene root
+- **Use `background` tween, not `background-color`**: gradients need `background` (GSAP supports gradient interpolation when targets are gradients with same number of stops). For solid → solid, `backgroundColor` works.
+- **`borderRadius` should be ≤ half the smaller dimension** at end state — otherwise the radius is visually clamped and the morph looks abrupt at the boundary
+- **❗ Don't snap `z-index` mid-fade** — if you need `.next-shot-anchor` to appear from behind the morph card, use **DOM order** (render `.next-shot-anchor` BEFORE `.morph-card` so the morph card is naturally on top), then crossfade their opacities. A `tl.set({ zIndex: ... })` call during an active opacity tween causes a visible flicker as the stacking order flips before the opacity transition finishes.
+
+## Variation: Morphing to a target element's position
+
+When shot 2 isn't centered (e.g. the morph card "lands" on a specific icon in a dock, sidebar, or grid), compute the target `top` / `left` from the **target element's element-position**, not its visual center. Common mistake: subtracting `height/2` to get center, then applying that to the morph-card's `top` — but if `.morph-card` uses absolute positioning with `top` + `margin: 0` (no transform-centering), `top` represents the **element top edge**, not the center.
+
+Math template (example: morph card lands on icon at bottom dock):
+
+```
+target_element_top = viewport_height − dock_bottom_offset − dock_padding_y − icon_height
+                   = 1080 − 60 − 22 − 110 = 888 px
+```
+
+Then tween `.morph-card { top: 888 }` so its element-top aligns with the target icon's element-top. If you mistakenly tween to `888 + icon_height/2 = 943` you'll land below; tweening to a "center" value like `top: 933` (off-by-arithmetic) will be even worse.
+
+Always **measure the target element with `getBoundingClientRect()`** before the timeline starts, and use those numbers — don't hand-compute from CSS values, since paddings, borders, and parent transforms compound.
 
 ## Combinations
 
-- [scale-swap-transition](scale-swap-transition.md) — simpler morph without dimension change, useful when source and target are already the same size.
-- [sine-wave-loop](sine-wave-loop.md) — breathing on the target after the morph settles. Start the breath at `MORPH_START + MORPH_DUR + 0.1` so it doesn't overlap the morph spring's settle.
-- [coordinate-target-zoom](coordinate-target-zoom.md) — if the morph also relocates the focal point, the camera can zoom into the target as the morph completes.
+- [scale-swap-transition.md](scale-swap-transition.md) — simpler morph without dimension change (just scale + content swap)
+- [sine-wave-loop.md](sine-wave-loop.md) — gentle breathing on the final state (e.g. final small circular icon idles with a breath)
 
-## Examples
+## Pairs with HF skills
 
-- [problem-mockup-overwhelm.html](../examples/problem-mockup-overwhelm.html) — the canonical use: a tall mockup card (300×540) morphs into a 220-px avatar circle while non-center mockups and platform icons exit concurrently, then task bubbles enter around the avatar.
+- `/hyperframes-gsap` — timeline + multi-property tween reference
+- `/hyperframes-core` — composition wiring, `data-*` attributes
+- `/hyperframes-cli` — `hyperframes lint` to verify scene structure
