@@ -24,7 +24,10 @@ import type { SerializableDistributedRenderConfig } from "../events.js";
 import { formatExtension } from "../formatExtension.js";
 import { formatS3Uri } from "../s3Transport.js";
 import { deploySite, type SiteHandle } from "./deploySite.js";
-import { validateDistributedRenderConfig } from "./validateConfig.js";
+import {
+  validateDistributedRenderConfig,
+  validateStepFunctionsInputSize,
+} from "./validateConfig.js";
 
 /** Options for {@link renderToLambda}. */
 export interface RenderToLambdaOptions {
@@ -70,6 +73,7 @@ export interface RenderHandle {
   startedAt: string;
 }
 
+// fallow-ignore-next-line complexity
 export async function renderToLambda(opts: RenderToLambdaOptions): Promise<RenderHandle> {
   validateDistributedRenderConfig(opts.config);
 
@@ -107,6 +111,15 @@ export async function renderToLambda(opts: RenderToLambdaOptions): Promise<Rende
     OutputS3Uri: outputS3Uri,
     Config: opts.config,
   };
+
+  // Reject oversize input client-side. Step Functions Standard caps the
+  // execution input at 256 KiB; without this check, the input bloat
+  // (typically from `config.variables` containing inlined media) surfaces
+  // as `States.DataLimitExceeded` 50 ms into the execution, far from the
+  // caller's stack frame. Measured AFTER `deploySite` so the synthesised
+  // `ProjectS3Uri` is counted (a few hundred bytes either way, but the
+  // check should be against the actual wire payload).
+  validateStepFunctionsInputSize(input);
 
   const sfn = opts.sfn ?? new SFNClient({ region: opts.region });
   const startedAt = new Date().toISOString();

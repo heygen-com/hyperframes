@@ -23,6 +23,8 @@ import type { SerializableDistributedRenderConfig } from "../events.js";
 
 /** Thrown for any client-side `SerializableDistributedRenderConfig` violation. */
 export class InvalidConfigError extends Error {
+  // Read via Error.prototype.toString; fallow can't see it.
+  // fallow-ignore-next-line unused-class-member
   override readonly name = "InvalidConfigError";
   /** Dotted JSON-pointer-ish path to the offending field, e.g. `config.fps`. */
   readonly field: string;
@@ -169,7 +171,170 @@ export function validateDistributedRenderConfig(
     );
   }
 
+  if (config.variables !== undefined) {
+    validateVariablesPayload(config.variables);
+  }
+
   return config;
+}
+
+/**
+ * Hard cap on Step Functions Standard workflow execution input — 256 KiB
+ * per the AWS limits page. Express workflows cap at 32 KiB; the render
+ * stack runs Standard for execution-history visibility, so the larger
+ * limit applies. The cap is on the entire serialized input, not just the
+ * variables, because users hit it at the wire boundary regardless of
+ * which field caused the bloat.
+ *
+ * Specific to Step Functions Standard. Other workflow runtimes (Temporal,
+ * Express SFN, raw Lambda invoke) have different caps; this constant
+ * shouldn't be reused for those without confirming the limit.
+ */
+export const MAX_STEP_FUNCTIONS_INPUT_BYTES = 256 * 1024;
+
+/** Pointer to the docs section that explains the URL-your-assets convention. */
+const LARGE_VARIABLES_DOCS_URL =
+  "https://hyperframes.heygen.com/deploy/templates-on-lambda#working-with-large-variables";
+
+/**
+ * Validate that the serialized Step Functions execution input fits inside
+ * the 256 KiB Standard-workflow cap. Measured in UTF-8 bytes (the format
+ * Step Functions uses on the wire) — JS strings count UTF-16 code units,
+ * which under-reports for any multi-byte character.
+ *
+ * Throws {@link InvalidConfigError} with a clear message naming the actual
+ * byte count, the cap, and a pointer to the "working with large variables"
+ * docs section, so users hit the limit at the SDK boundary with actionable
+ * guidance instead of as a `States.DataLimitExceeded` 50 ms into the
+ * execution.
+ */
+// fallow-ignore-next-line complexity
+export function validateStepFunctionsInputSize(input: unknown): void {
+  let serialized: string | undefined;
+  try {
+    serialized = JSON.stringify(input);
+  } catch (err) {
+    // JSON.stringify throws on circular refs and BigInt. The variables
+    // walker catches both inside `config.variables`, but a non-variables
+    // field could hit the same case in a future field addition.
+    throw new InvalidConfigError(
+      "config",
+      `Step Functions execution input is not JSON-serializable: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+  if (serialized === undefined) {
+    // JSON.stringify returns undefined for non-serializable roots
+    // (functions, Symbols at the top level).
+    throw new InvalidConfigError(
+      "config",
+      "Step Functions execution input is not JSON-serializable (JSON.stringify returned undefined). " +
+        "Check that all fields, including config.variables, are plain JSON values.",
+    );
+  }
+  const byteLength = Buffer.byteLength(serialized, "utf8");
+  if (byteLength > MAX_STEP_FUNCTIONS_INPUT_BYTES) {
+    throw new InvalidConfigError(
+      "config",
+      `Step Functions execution input is ${byteLength} bytes, which exceeds the ` +
+        `${MAX_STEP_FUNCTIONS_INPUT_BYTES}-byte (256 KiB) limit for Standard workflows. ` +
+        `Variables are for typed data (strings, numbers, structured records); media assets ` +
+        `(images, audio, video) should be passed as URL references the composition resolves ` +
+        `at render time, not inlined as base64. See ${LARGE_VARIABLES_DOCS_URL} for the ` +
+        `URL-your-assets convention.`,
+    );
+  }
+}
+
+/**
+ * Validate that `variables` is a plain JSON-safe object — no functions,
+ * Symbols, `undefined` leaves, BigInts, non-finite numbers, or non-plain
+ * objects (Dates, Maps, Sets, class instances). Rejected values would
+ * either round-trip incorrectly through Step Functions (`undefined` is
+ * silently dropped by `JSON.stringify`) or throw at the wire boundary
+ * (`bigint`), so we surface the offending path synchronously.
+ *
+ * The check is purely structural — semantic constraints (e.g. "is this
+ * variable declared in `data-composition-variables`?") belong to the CLI
+ * layer where the project's HTML is on disk.
+ */
+export function validateVariablesPayload(value: unknown): void {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new InvalidConfigError(
+      "config.variables",
+      `must be a plain JSON object (got ${describeValue(value)})`,
+    );
+  }
+  walkVariables(value, "config.variables", new WeakSet());
+}
+
+/** Per-typeof rejection messages for JSON-unsafe leaves. */
+const LEAF_REJECTIONS: Partial<Record<string, string>> = {
+  // `JSON.stringify` silently drops `undefined` leaves — caller would never
+  // notice their value isn't actually being sent.
+  undefined:
+    "undefined leaves are silently dropped by JSON.stringify — use null if you mean an absent value",
+  function: "functions are not JSON-serializable",
+  symbol: "Symbols are not JSON-serializable",
+  bigint: "BigInt values throw at JSON.stringify — encode as a string if you need 64-bit integers",
+};
+
+// fallow-ignore-next-line complexity
+function walkVariables(value: unknown, path: string, seen: WeakSet<object>): void {
+  const t = typeof value;
+  if (value === null || t === "string" || t === "boolean") return;
+  if (t === "number") {
+    if (!Number.isFinite(value as number)) {
+      throw new InvalidConfigError(
+        path,
+        `non-finite numbers (NaN / Infinity) are not JSON-serializable; got ${String(value)}`,
+      );
+    }
+    return;
+  }
+  const leafReject = LEAF_REJECTIONS[t];
+  if (leafReject !== undefined) {
+    throw new InvalidConfigError(path, leafReject);
+  }
+  // t === "object" from here on. Reject circular refs up front — recursing
+  // through a back-edge would stack-overflow with no actionable error.
+  if (seen.has(value as object)) {
+    throw new InvalidConfigError(
+      path,
+      "circular reference detected — JSON.stringify cannot serialize cycles",
+    );
+  }
+  seen.add(value as object);
+  if (Array.isArray(value)) {
+    for (let i = 0; i < value.length; i++) {
+      walkVariables(value[i], `${path}[${i}]`, seen);
+    }
+    return;
+  }
+  // Reject non-plain objects (Date, Map, Set, class instances) up front.
+  // Date's `toJSON` does round-trip as a string, but the composition gets a
+  // string, not a Date — explicit reject is clearer than silent type-loss.
+  const proto = Object.getPrototypeOf(value);
+  if (proto !== Object.prototype && proto !== null) {
+    throw new InvalidConfigError(
+      path,
+      `non-plain objects are not supported (got ${describeValue(value)}); use a plain {…} object`,
+    );
+  }
+  for (const key of Object.keys(value as Record<string, unknown>)) {
+    walkVariables((value as Record<string, unknown>)[key], `${path}.${key}`, seen);
+  }
+}
+
+// fallow-ignore-next-line complexity
+function describeValue(value: unknown): string {
+  if (value === null) return "null";
+  if (Array.isArray(value)) return "array";
+  if (typeof value !== "object") return typeof value;
+  // Class instances expose their constructor name; plain objects fall through
+  // to the generic "object" label. `Object.create(null)` has no constructor —
+  // treat its absent name the same as "Object" for reporting.
+  const ctorName = (value as { constructor?: { name?: string } }).constructor?.name ?? "Object";
+  return ctorName === "Object" ? "object" : ctorName;
 }
 
 function validateIntDimension(field: string, value: unknown): void {
