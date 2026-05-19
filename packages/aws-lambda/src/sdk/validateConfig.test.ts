@@ -54,7 +54,7 @@ describe("validateDistributedRenderConfig", () => {
       "unsupported format",
       {
         ...VALID,
-        format: "webm",
+        format: "gif",
       } as unknown as SerializableDistributedRenderConfig,
       "config.format",
     ],

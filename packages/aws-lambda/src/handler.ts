@@ -433,7 +433,7 @@ async function downloadChunkObjects(
   s3: S3Client,
   uris: string[],
   workDir: string,
-  format: "mp4" | "mov" | "png-sequence",
+  format: "mp4" | "mov" | "png-sequence" | "webm",
 ): Promise<string[]> {
   const chunksDir = join(workDir, "chunks");
   mkdirSync(chunksDir, { recursive: true });

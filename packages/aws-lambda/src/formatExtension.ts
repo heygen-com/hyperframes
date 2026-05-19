@@ -6,19 +6,20 @@
  * looks like vs a png-sequence.
  */
 
-export type DistributedFormat = "mp4" | "mov" | "png-sequence";
+export type DistributedFormat = "mp4" | "mov" | "png-sequence" | "webm";
+
+// Closed-enum lookup table. TS enforces exhaustiveness via the
+// `Record<DistributedFormat, string>` annotation — adding a format to
+// `DistributedFormat` without adding the matching key here fails to
+// typecheck, which is the same exhaustiveness guarantee a switch +
+// `_exhaustive: never` arm provides but at lower complexity.
+const FORMAT_EXTENSIONS: Record<DistributedFormat, string> = {
+  mp4: ".mp4",
+  mov: ".mov",
+  webm: ".webm",
+  "png-sequence": "",
+};
 
 export function formatExtension(format: DistributedFormat): string {
-  switch (format) {
-    case "mp4":
-      return ".mp4";
-    case "mov":
-      return ".mov";
-    case "png-sequence":
-      return "";
-    default: {
-      const _exhaustive: never = format;
-      throw new Error(`[formatExtension] unsupported format: ${_exhaustive as string}`);
-    }
-  }
+  return FORMAT_EXTENSIONS[format];
 }

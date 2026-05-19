@@ -65,7 +65,7 @@ export interface RenderChunkEvent {
   /** S3 URI prefix where the chunk output should be uploaded (`s3://bucket/{prefix}/`). */
   ChunkOutputS3Prefix: string;
   /** Output container format from the plan's encoder.json; drives file vs frame-dir handling. */
-  Format: "mp4" | "mov" | "png-sequence";
+  Format: "mp4" | "mov" | "png-sequence" | "webm";
 }
 
 /** Activity C: fetch planDir + all chunks + audio, assemble, upload final. */
@@ -80,7 +80,7 @@ export interface AssembleEvent {
   /** Final output S3 URI (`s3://bucket/key.mp4`). */
   OutputS3Uri: string;
   /** Output container format; drives file vs frame-dir handling. */
-  Format: "mp4" | "mov" | "png-sequence";
+  Format: "mp4" | "mov" | "png-sequence" | "webm";
 }
 
 /**
@@ -106,7 +106,7 @@ export interface PlanLambdaResult {
   Fps: 24 | 30 | 60;
   Width: number;
   Height: number;
-  Format: "mp4" | "mov" | "png-sequence";
+  Format: "mp4" | "mov" | "png-sequence" | "webm";
   HasAudio: boolean;
   AudioS3Uri: string | null;
   FfmpegVersion: string;
