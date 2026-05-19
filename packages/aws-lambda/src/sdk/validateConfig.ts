@@ -12,8 +12,9 @@
  *
  * The check is deliberately narrow — it covers the *shape* errors any
  * caller could have surfaced with `tsc` if they passed a literal, plus
- * the documented `webm`/`force-hdr` rejections from §5.3 of the
- * distributed-rendering plan. Anything deeper (font availability, plan
+ * the `force-hdr` rejection (HDR mp4 isn't supported in distributed
+ * mode). webm was previously rejected here too; v0.7+ supports it via
+ * closed-GOP concat-copy. Anything deeper (font availability, plan
  * size cap, GPU mode at runtime) needs the actual planner.
  */
 
