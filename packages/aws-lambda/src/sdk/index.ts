@@ -24,3 +24,4 @@ export {
 } from "./costAccounting.js";
 export { InvalidConfigError, validateDistributedRenderConfig } from "./validateConfig.js";
 export type { SerializableDistributedRenderConfig } from "../events.js";
+export type { DistributedFormat } from "../formatExtension.js";

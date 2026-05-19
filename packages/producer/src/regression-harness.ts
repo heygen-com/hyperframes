@@ -51,6 +51,7 @@ import {
 // imports) into the program even though the tsconfig `exclude` list
 // nominally hides it. `tsx` resolves the path normally at runtime.
 import type { RunLambdaLocalRender } from "./regression-harness-lambda-local-types.js";
+import type { DistributedFormat } from "./services/distributed/shared.js";
 
 const LAMBDA_LOCAL_MODULE = "./regression-harness-lambda-local.js";
 
@@ -97,7 +98,7 @@ type TestMetadata = {
      * `"mp4"`. Distributed mode supports all four — webm goes through
      * libvpx-vp9 with closed-GOP concat-copy.
      */
-    format?: "mp4" | "webm" | "mov" | "png-sequence";
+    format?: DistributedFormat;
     /**
      * Codec selection for `format: "mp4"`, forwarded to
      * `DistributedRenderConfig.codec`. The in-process renderer doesn't take

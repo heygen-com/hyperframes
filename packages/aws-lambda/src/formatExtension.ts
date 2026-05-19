@@ -6,7 +6,9 @@
  * looks like vs a png-sequence.
  */
 
-export type DistributedFormat = "mp4" | "mov" | "png-sequence" | "webm";
+import type { DistributedFormat } from "@hyperframes/producer/distributed";
+
+export type { DistributedFormat } from "@hyperframes/producer/distributed";
 
 // Closed-enum lookup table. TS enforces exhaustiveness via the
 // `Record<DistributedFormat, string>` annotation — adding a format to

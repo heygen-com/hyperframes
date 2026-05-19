@@ -5,7 +5,10 @@
  */
 
 import { resolve as resolvePath } from "node:path";
-import type { SerializableDistributedRenderConfig } from "@hyperframes/aws-lambda/sdk";
+import type {
+  DistributedFormat,
+  SerializableDistributedRenderConfig,
+} from "@hyperframes/aws-lambda/sdk";
 import { c } from "../../ui/colors.js";
 import { requireStack, stateFilePath } from "./state.js";
 
@@ -23,7 +26,7 @@ export interface RenderArgs {
   fps: 24 | 30 | 60;
   width: number;
   height: number;
-  format: "mp4" | "mov" | "png-sequence" | "webm";
+  format: DistributedFormat;
   codec?: "h264" | "h265";
   quality?: "draft" | "standard" | "high";
   chunkSize?: number;

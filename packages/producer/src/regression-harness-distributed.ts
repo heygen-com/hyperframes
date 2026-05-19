@@ -35,6 +35,7 @@ import { existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import type { Fps } from "@hyperframes/core";
 import { assemble, plan, renderChunk } from "./distributed.js";
+import type { DistributedFormat } from "./services/distributed/shared.js";
 
 /**
  * Three-mode contract that backs `--mode=<value>` on the regression
@@ -81,7 +82,7 @@ export type DistributedSupportResult = { supported: true } | { supported: false;
  */
 export function checkDistributedSupport(renderConfig: {
   fps: Fps;
-  format?: "mp4" | "webm" | "mov" | "png-sequence";
+  format?: DistributedFormat;
   hdr?: boolean;
 }): DistributedSupportResult {
   if (renderConfig.fps.den !== 1) {
@@ -120,7 +121,7 @@ export interface RunDistributedSimulatedInput {
   renderedOutputPath: string;
   /** From the fixture's renderConfig — must pass `checkDistributedSupport`. */
   fps: 24 | 30 | 60;
-  format: "mp4" | "mov" | "png-sequence" | "webm";
+  format: DistributedFormat;
   /**
    * Codec for `format: "mp4"`. Defaults to `"h264"`; pass `"h265"` to
    * exercise the libx265 closed-GOP path. Ignored for non-mp4 formats —

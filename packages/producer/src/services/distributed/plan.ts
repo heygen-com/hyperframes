@@ -57,6 +57,7 @@ import { validateNoGpuEncode, validateNoSystemFonts } from "../render/planValida
 import { snapshotRuntimeEnv } from "../render/runtimeEnvSnapshot.js";
 import {
   buildSyntheticRenderJob,
+  type DistributedFormat,
   PLAN_VIDEOS_META_RELATIVE_PATH,
   type PlanVideosJson,
   readFfmpegVersion,
@@ -86,7 +87,7 @@ export interface DistributedRenderConfig {
    * `tests/distributed/_smoke/webm-concat-copy.test.ts` for the gating
    * experiment that proved the contract.
    */
-  format: "mp4" | "mov" | "png-sequence" | "webm";
+  format: DistributedFormat;
   /**
    * Codec selection for `format: "mp4"`. `"h264"` (the default) → libx264 +
    * yuv420p; `"h265"` → libx265 + yuv420p with closed-GOP keyint params
@@ -176,7 +177,7 @@ export interface PlanResult {
   fps: 24 | 30 | 60;
   width: number;
   height: number;
-  format: "mp4" | "mov" | "png-sequence" | "webm";
+  format: DistributedFormat;
   ffmpegVersion: string;
   producerVersion: string;
 }

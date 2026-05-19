@@ -68,6 +68,7 @@ import { applyRuntimeEnvSnapshot } from "../render/runtimeEnvSnapshot.js";
 import { buildVirtualTimeShim, createFileServer, type FileServerHandle } from "../fileServer.js";
 import {
   buildSyntheticRenderJob,
+  type DistributedFormat,
   PLAN_VIDEOS_META_RELATIVE_PATH,
   type PlanVideosJson,
   readFfmpegVersion,
@@ -199,7 +200,7 @@ interface PlanJson {
     fpsDen: number;
     width: number;
     height: number;
-    format: "mp4" | "mov" | "png-sequence" | "webm";
+    format: DistributedFormat;
   };
   chunkCount: number;
   totalFrames: number;

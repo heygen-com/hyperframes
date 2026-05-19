@@ -9,6 +9,7 @@
  */
 
 import { defineCommand } from "citty";
+import type { DistributedFormat } from "@hyperframes/aws-lambda/sdk";
 import type { Example } from "./_examples.js";
 import { c } from "../ui/colors.js";
 
@@ -325,7 +326,12 @@ function parseEnum<T extends string>(
   throw new Error(`${errorPrefix} must be ${allowed.join("|")}; got ${s}`);
 }
 
-const FORMATS = ["mp4", "mov", "png-sequence", "webm"] as const;
+const FORMATS = [
+  "mp4",
+  "mov",
+  "png-sequence",
+  "webm",
+] as const satisfies readonly DistributedFormat[];
 const CODECS = ["h264", "h265"] as const;
 const QUALITIES = ["draft", "standard", "high"] as const;
 const CHROME_SOURCES = ["sparticuz", "chrome-headless-shell"] as const;

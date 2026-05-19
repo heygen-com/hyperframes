@@ -330,21 +330,17 @@ function warnUnresolvedFonts(unresolved: string[]): void {
 // Google Fonts on-demand fetch + local cache
 // ---------------------------------------------------------------------------
 
-// On AWS Lambda (and other read-only-FS execution environments), $HOME
-// resolves to a directory tree the worker can't write to (`/home/sbx_*`
-// is read-only; only `/tmp` is writable). Fall back to the OS temp dir
-// when we detect we're running inside a Lambda invocation, and honor an
-// explicit `HYPERFRAMES_FONT_CACHE_DIR` for callers who want a different
-// location regardless. The cache lives between invocations on warm
-// containers — Lambda's `/tmp` survives across invocations of the same
-// container — so cache hit rate is unchanged from non-Lambda runs.
+// On AWS Lambda `$HOME` resolves to a `/home/sbx_*` tree that's
+// read-only; only `/tmp` is writable. Route the cache there when
+// running inside Lambda, and honor `HYPERFRAMES_FONT_CACHE_DIR` as
+// an explicit override for any environment.
 function resolveFontCacheRoot(): string {
-  const explicit = process.env.HYPERFRAMES_FONT_CACHE_DIR;
-  if (explicit && explicit.length > 0) return explicit;
-  if (process.env.AWS_LAMBDA_FUNCTION_NAME) {
-    return join(tmpdir(), "hyperframes", "fonts");
-  }
-  return join(homedir(), ".cache", "hyperframes", "fonts");
+  return (
+    process.env.HYPERFRAMES_FONT_CACHE_DIR ??
+    (process.env.AWS_LAMBDA_FUNCTION_NAME
+      ? join(tmpdir(), "hyperframes", "fonts")
+      : join(homedir(), ".cache", "hyperframes", "fonts"))
+  );
 }
 const GOOGLE_FONTS_CACHE_DIR = resolveFontCacheRoot();
 

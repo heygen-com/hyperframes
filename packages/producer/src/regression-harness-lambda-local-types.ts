@@ -9,6 +9,8 @@
  * type-check pass.
  */
 
+import type { DistributedFormat } from "./services/distributed/shared.js";
+
 /** Inputs for {@link runLambdaLocalRender}. Same contract as `runDistributedSimulatedRender`. */
 export interface RunLambdaLocalInput {
   projectDir: string;
@@ -26,7 +28,7 @@ export interface RunLambdaLocalInput {
    */
   width: number;
   height: number;
-  format: "mp4" | "mov" | "png-sequence" | "webm";
+  format: DistributedFormat;
   codec?: "h264" | "h265";
   chunkSize?: number;
   maxParallelChunks?: number;

@@ -38,6 +38,7 @@ import { applyFaststart, muxVideoWithAudio, runFfmpeg } from "@hyperframes/engin
 import { defaultLogger, type ProducerLogger } from "../../logger.js";
 import { padOrTrimAudioToVideoFrameCount } from "../render/audioPadTrim.js";
 import type { ChunkSliceJson } from "../render/stages/freezePlan.js";
+import type { DistributedFormat } from "./shared.js";
 
 /**
  * Result of {@link assemble}. `fileSize` reflects the final file on disk
@@ -61,7 +62,7 @@ interface PlanJsonForAssemble {
     fpsDen: number;
     width: number;
     height: number;
-    format: "mp4" | "mov" | "png-sequence" | "webm";
+    format: DistributedFormat;
   };
 }
 

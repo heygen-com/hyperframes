@@ -25,7 +25,7 @@ import {
   renderChunk,
 } from "@hyperframes/producer/distributed";
 import { resolveChromeExecutablePath } from "./chromium.js";
-import { formatExtension } from "./formatExtension.js";
+import { type DistributedFormat, formatExtension } from "./formatExtension.js";
 import type {
   AssembleEvent,
   AssembleLambdaResult,
@@ -433,7 +433,7 @@ async function downloadChunkObjects(
   s3: S3Client,
   uris: string[],
   workDir: string,
-  format: "mp4" | "mov" | "png-sequence" | "webm",
+  format: DistributedFormat,
 ): Promise<string[]> {
   const chunksDir = join(workDir, "chunks");
   mkdirSync(chunksDir, { recursive: true });

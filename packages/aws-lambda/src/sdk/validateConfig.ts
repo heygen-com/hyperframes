@@ -18,6 +18,7 @@
  * size cap, GPU mode at runtime) needs the actual planner.
  */
 
+import type { DistributedFormat } from "../formatExtension.js";
 import type { SerializableDistributedRenderConfig } from "../events.js";
 
 /** Thrown for any client-side `SerializableDistributedRenderConfig` violation. */
@@ -32,7 +33,12 @@ export class InvalidConfigError extends Error {
 }
 
 const ALLOWED_FPS = [24, 30, 60] as const;
-const ALLOWED_FORMATS = ["mp4", "mov", "png-sequence", "webm"] as const;
+const ALLOWED_FORMATS = [
+  "mp4",
+  "mov",
+  "png-sequence",
+  "webm",
+] as const satisfies readonly DistributedFormat[];
 const ALLOWED_CODECS = ["h264", "h265"] as const;
 const ALLOWED_QUALITIES = ["draft", "standard", "high"] as const;
 const ALLOWED_RUNTIME_CAPS = ["lambda", "temporal", "cloud-run-job", "k8s-job", "none"] as const;
