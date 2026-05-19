@@ -1,6 +1,6 @@
 ---
 name: product-launch-video
-description: End-to-end pipeline that turns a website URL (or product brief) into a 60-90s product-launch / SaaS explainer / promo video as a HyperFrames composition. Orchestrates four subagent phases — web-extraction, creative-planning, aesthetic-direction, hyperframes build — then renders. Use when the user provides a URL and asks for a launch video, a promo video, a SaaS explainer, a feature reveal, or otherwise says "make me a video for <url>". You dispatch subagents via the Agent tool; you do NOT execute phase work yourself.
+description: End-to-end pipeline that turns a website URL (or product brief) into a 60-90s product-launch / SaaS explainer / promo video as a HyperFrames composition. Orchestrates four subagent phases — web-extraction, story-design, visual-design, hyperframes build — then renders. Use when the user provides a URL and asks for a launch video, a promo video, a SaaS explainer, a feature reveal, or otherwise says "make me a video for <url>". You dispatch subagents via the Agent tool; you do NOT execute phase work yourself.
 metadata:
   tags: orchestrator, pipeline, product-launch, promo, saas-explainer, web-to-video
 ---
@@ -11,18 +11,18 @@ You are the orchestrator. You dispatch one specialized subagent per phase, pass 
 
 The pipeline cleanly separates **skills** (reusable domain knowledge) from **subagent prompts** (this pipeline's per-phase contract):
 
-- **Skills** (top-level, reusable) — `/web-extraction`, `/creative-planning`, `/aesthetic-direction`, `/hyperframes-animation` + friends. Each describes how to do that activity in general.
+- **Skills** (top-level, reusable) — `/web-extraction`, `/story-design`, `/visual-design`, `/hyperframes-animation` + friends. Each describes how to do that activity in general.
 - **Subagent prompts** (this skill's `agents/` dir) — pipeline-specific wrappers around the skills. Each one says "you are Phase N of THIS pipeline, here's your cwd contract, here's what to invoke, here's how to report". You inject these as the `prompt` to the Agent tool.
 
 ## Pipeline
 
-| Phase | Subagent prompt file            | Underlying skill(s) the subagent loads via Skill tool                                               | Writes                      |
-| ----- | ------------------------------- | --------------------------------------------------------------------------------------------------- | --------------------------- |
-| 1     | `agents/web-extraction.md`      | `web-extraction`                                                                                    | `extraction/`               |
-| 2     | `agents/creative-planning.md`   | `creative-planning`                                                                                 | `narrator_scripts.json`     |
-| 3     | `agents/aesthetic-direction.md` | `aesthetic-direction`                                                                               | `section_plan.md`           |
-| 4     | `agents/hyperframes-build.md`   | `hyperframes-core` + `hyperframes-cli` + `hyperframes-animation` + `hyperframes-gsap` (+ optionals) | `hyperframes/`              |
-| 5     | (you, not a subagent)           | —                                                                                                   | `hyperframes/out/video.mp4` |
+| Phase | Subagent prompt file          | Underlying skill(s) the subagent loads via Skill tool                                               | Writes                      |
+| ----- | ----------------------------- | --------------------------------------------------------------------------------------------------- | --------------------------- |
+| 1     | `agents/web-extraction.md`    | `web-extraction`                                                                                    | `extraction/`               |
+| 2     | `agents/story-design.md`      | `story-design`                                                                                      | `narrator_scripts.json`     |
+| 3     | `agents/visual-design.md`     | `visual-design`                                                                                     | `section_plan.md`           |
+| 4     | `agents/hyperframes-build.md` | `hyperframes-core` + `hyperframes-cli` + `hyperframes-animation` + `hyperframes-gsap` (+ optionals) | `hyperframes/`              |
+| 5     | (you, not a subagent)         | —                                                                                                   | `hyperframes/out/video.mp4` |
 
 ## Project layout
 
@@ -69,32 +69,32 @@ Read `./context.log` if it exists:
 
 After it returns: read `extraction/report.json` to confirm shape; relay key facts to the user (pages crawled, asset counts). Proceed to Phase 2.
 
-## Phase 2 — dispatch creative-planning
+## Phase 2 — dispatch story-design
 
 ```
-1. Read product-launch-video/agents/creative-planning.md
+1. Read product-launch-video/agents/story-design.md
 2. Compose prompt = <its contents>
                   + "\n\n## Dispatch context\n"
                   + "Phase 1 summary: <one-paragraph: pages crawled, brand colors, fonts noted>\n"
 3. Agent(
      subagent_type: "general-purpose",
-     description: "Phase 2: creative planning",
+     description: "Phase 2: story design",
      prompt: <composed>,
    )
 ```
 
 After it returns: read `narrator_scripts.json` to verify schema (`sceneNumber` / `narrativeIntent` / `estimatedDuration`). Surface archetype + scene list to the user.
 
-## Phase 3 — dispatch aesthetic-direction
+## Phase 3 — dispatch visual-design
 
 ```
-1. Read product-launch-video/agents/aesthetic-direction.md
+1. Read product-launch-video/agents/visual-design.md
 2. Compose prompt = <its contents>
                   + "\n\n## Dispatch context\n"
                   + "Phase 2 summary: <archetype + scene count + emotional arc>\n"
 3. Agent(
      subagent_type: "general-purpose",
-     description: "Phase 3: aesthetic direction",
+     description: "Phase 3: visual design",
      prompt: <composed>,
    )
 ```
@@ -214,5 +214,5 @@ If a phase fails or you abort mid-run, mark `[interrupted]` instead of `[done]`.
 ## See also
 
 - `/hyperframes-animation` — scene blueprints + atomic animation rules (Phase 4's main reference)
-- `/web-extraction`, `/creative-planning`, `/aesthetic-direction` — the reusable domain skills invoked by Phases 1–3
+- `/web-extraction`, `/story-design`, `/visual-design` — the reusable domain skills invoked by Phases 1–3
 - `/hyperframes-core`, `/hyperframes-cli`, `/hyperframes-gsap` — composition contract + dev loop + GSAP API

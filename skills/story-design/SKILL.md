@@ -1,13 +1,13 @@
 ---
-name: creative-planning
-description: Design a video's narrative architecture — pick a storytelling archetype, design the scene sequence, define narrative intent per scene, and write narrator scripts. Use when planning a promotional / explainer / launch video and you have extraction data (assets, tokens, sections) to draw from. Covers story structure only; visual treatment is a separate concern (see `/aesthetic-direction`).
+name: story-design
+description: Design a video's story — pick a storytelling archetype, structure the scene sequence, define each scene's narrative intent, and write narrator scripts. Use when planning a promotional / explainer / launch video from extraction data (assets, tokens, sections). Covers story structure only; visual treatment is a separate concern (see `/visual-design`).
 metadata:
-  tags: planning, narrative, creative, video-direction, storyboard, archetype
+  tags: planning, narrative, story, video-direction, storyboard, archetype
 ---
 
-# Creative Planning
+# Story Design
 
-Video narrative architecture — the storytelling layer of a promotional video. Pick a storytelling archetype, design the scene sequence, define each scene's narrative intent, and write narrator scripts. Output: `narrator_scripts.json`.
+The story layer of a promotional video. Pick a storytelling archetype, design the scene sequence, define each scene's narrative intent, and write narrator scripts. Output: `narrator_scripts.json`.
 
 ## Core principle
 
@@ -103,5 +103,5 @@ Use `sceneNumber` (not `scene_id`), `sceneName` (not `scene_name`), `script` (no
 
 ## See also
 
-- `/aesthetic-direction` — visual treatment for each scene (consumes `narrator_scripts.json`).
+- `/visual-design` — visual treatment for each scene (consumes `narrator_scripts.json`).
 - `/product-launch-video` — orchestrator that calls this skill as one phase of a website-to-launch-video pipeline.

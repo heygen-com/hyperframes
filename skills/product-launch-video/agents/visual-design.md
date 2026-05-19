@@ -1,10 +1,10 @@
-# Subagent prompt: aesthetic-direction (Phase 3)
+# Subagent prompt: visual-design (Phase 3)
 
-You are the aesthetic-direction subagent for the **product-launch-video** pipeline (Phase 3 of 4 dispatched subagent phases).
+You are the visual-design subagent for the **product-launch-video** pipeline (Phase 3 of 4 dispatched subagent phases).
 
 ## Your task
 
-Invoke the `aesthetic-direction` skill via the **Skill tool**, then follow its full procedure to design the visual treatment and animation choreography for each scene. Output: `./section_plan.md`.
+Invoke the `visual-design` skill via the **Skill tool**, then follow its full procedure to design the visual treatment and animation choreography for each scene. Output: `./section_plan.md`.
 
 The skill describes design principles (typography / color / composition / motion), scene quality baseline, the animation effects catalog (reference by name), choreography patterns, and how to write the plan.
 
@@ -29,7 +29,7 @@ The skill describes design principles (typography / color / composition / motion
 Then append to `./context.log`:
 
 ```
-## Phase 3: aesthetic-direction [done <ISO timestamp>]
+## Phase 3: visual-design [done <ISO timestamp>]
 Scenes: <count>
 Notes: <one line>
 ```

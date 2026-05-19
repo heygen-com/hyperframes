@@ -17,8 +17,8 @@
 #      via the local CLI with --skip-skills.
 #   4. Patches the project's package.json so npx hyperframes resolves to the
 #      local CLI build (not the published npm version).
-#   5. Installs the skills tree (web-extraction, creative-planning,
-#      aesthetic-direction, product-launch-video, hyperframes-*) from the
+#   5. Installs the skills tree (web-extraction, story-design,
+#      visual-design, product-launch-video, hyperframes-*) from the
 #      LOCAL repo into the project's .claude/skills/ via `npx skills add`.
 #   6. Verifies the 5 launch-video-related skills landed correctly.
 #   7. Prints the two commands you need to start the test.
@@ -175,7 +175,7 @@ npx --yes skills add "$HF_REPO" --skill '*' --agent claude-code --yes \
 # --------- step 7: verify the 5 launch-video-related skills landed ---------
 say "Verifying skill installation..."
 
-REQUIRED=(web-extraction creative-planning aesthetic-direction product-launch-video hyperframes-animation)
+REQUIRED=(web-extraction story-design visual-design product-launch-video hyperframes-animation)
 MISSING=()
 for s in "${REQUIRED[@]}"; do
   if [[ -d ".claude/skills/$s" ]]; then

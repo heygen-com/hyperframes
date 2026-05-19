@@ -1,10 +1,10 @@
-# Subagent prompt: creative-planning (Phase 2)
+# Subagent prompt: story-design (Phase 2)
 
-You are the creative-planning subagent for the **product-launch-video** pipeline (Phase 2 of 4 dispatched subagent phases).
+You are the story-design subagent for the **product-launch-video** pipeline (Phase 2 of 4 dispatched subagent phases).
 
 ## Your task
 
-Invoke the `creative-planning` skill via the **Skill tool**, then follow its full procedure to design the narrative arc and write `narrator_scripts.json`. The skill describes archetypes, the 5 narrative fields, UI demo requirement, validation checklist, and the canonical JSON schema.
+Invoke the `story-design` skill via the **Skill tool**, then follow its full procedure to design the story arc and write `narrator_scripts.json`. The skill describes archetypes, the 5 narrative fields, UI demo requirement, validation checklist, and the canonical JSON schema.
 
 ## Pipeline contract (this run's specifics)
 
@@ -28,7 +28,7 @@ Invoke the `creative-planning` skill via the **Skill tool**, then follow its ful
 Then append to `./context.log`:
 
 ```
-## Phase 2: creative-planning [done <ISO timestamp>]
+## Phase 2: story-design [done <ISO timestamp>]
 Archetype: <name>
 Scenes: <count>, total ~<duration>
 ```

@@ -1,13 +1,13 @@
 ---
-name: aesthetic-direction
-description: Visual design language for video creative work — typography, color, composition, motion principles, and a catalog of available animation effects described in natural language. Use when designing the visual treatment and animation choreography of a video (after the narrative is decided). Output is a `section_plan.md` of creative intent that a build agent translates into HTML composition + GSAP timeline code.
+name: visual-design
+description: Design a video's visual treatment and animation choreography — typography, color, composition, motion principles, and a catalog of available animation effects described in natural language. Use when designing how the video should look after the story is decided (typically following `/story-design`). Output is a `section_plan.md` of creative intent that a build agent translates into HTML composition + GSAP timeline code.
 metadata:
-  tags: design, typography, color, composition, motion, animation, effects, aesthetic, creative
+  tags: design, typography, color, composition, motion, animation, effects, visual, aesthetic
 ---
 
-# Aesthetic Direction
+# Visual Design
 
-The visual design layer of a promotional video. Given the narrative (typically from `/creative-planning`'s `narrator_scripts.json`) and extraction data, design the visual treatment and animation choreography for each scene. Output: `section_plan.md`.
+The visual layer of a promotional video. Given the story (typically from `/story-design`'s `narrator_scripts.json`) and extraction data, design the visual treatment and animation choreography for each scene. Output: `section_plan.md`.
 
 This skill is about **creative intent**, not code. Describe what you want to see in natural language; a downstream build agent (using `/hyperframes-animation` + `/hyperframes-core` + `/hyperframes-gsap`) translates it into the HTML composition + GSAP timeline.
 
@@ -188,6 +188,6 @@ One section per scene, in scene order. For each scene answer: what does the view
 
 ## See also
 
-- `/creative-planning` — narrative architecture (upstream; produces `narrator_scripts.json`).
+- `/story-design` — story / narrative architecture (upstream; produces `narrator_scripts.json`).
 - `/hyperframes-animation` — the catalog of blueprints + atomic rules a build agent uses to realize this plan.
 - `/product-launch-video` — orchestrator that consumes `section_plan.md` and drives the build phase.
