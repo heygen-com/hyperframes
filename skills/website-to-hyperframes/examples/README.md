@@ -72,12 +72,14 @@ Need a specific technique? Use this table to find the canonical scene.
 | Scramble decrypt (per-char intermediates) | [`01-typography/scene-09-scramble-decrypt/`](01-typography/scene-09-scramble-decrypt/) |
 | Per-word + hand-drawn marker overlay | [`01-typography/scene-10-per-word-emphasis/`](01-typography/scene-10-per-word-emphasis/) |
 | Serif orbital title with SVG accent + tagline | [`01-typography/scene-11-orbital-title/`](01-typography/scene-11-orbital-title/) |
+| Intro kinetic text — large word stacks with gradient sweep fills | [`01-typography/scene-12-intro-kinetic-text/`](01-typography/scene-12-intro-kinetic-text/) |
 | Yellow highlight sweep behind key word | [`02-markers-and-emphasis/scene-01-highlight-sweep/`](02-markers-and-emphasis/scene-01-highlight-sweep/) |
 | Hand-drawn SVG ellipse circle around word | [`02-markers-and-emphasis/scene-02-hand-drawn-circle/`](02-markers-and-emphasis/scene-02-hand-drawn-circle/) |
 | 12-spike radial burst on key word | [`02-markers-and-emphasis/scene-03-burst-radial/`](02-markers-and-emphasis/scene-03-burst-radial/) |
 | Wavy scribble underline | [`02-markers-and-emphasis/scene-04-scribble-underline/`](02-markers-and-emphasis/scene-04-scribble-underline/) |
 | Sketchout X (with replacement phrase) | [`02-markers-and-emphasis/scene-05-sketchout-x/`](02-markers-and-emphasis/scene-05-sketchout-x/) |
 | All 5 markers in cascade | [`02-markers-and-emphasis/scene-06-combined-marker-cascade/`](02-markers-and-emphasis/scene-06-combined-marker-cascade/) |
+| Magnetic WebGL caption (GLSL distortion + chromatic aberration follows cursor) | [`02-markers-and-emphasis/scene-07-magnetic-caption-webgl/`](02-markers-and-emphasis/scene-07-magnetic-caption-webgl/) |
 | 6x3 grid of pure-CSS animations | [`03-easing-variety/scene-01-css-animation-grid/`](03-easing-variety/scene-01-css-animation-grid/) |
 | Animated kanban board with drag | [`04-composed-ui/scene-01-kanban-board/`](04-composed-ui/scene-01-kanban-board/) |
 | Chat with typing dots + reactions (narration-sync gold standard) | [`04-composed-ui/scene-02-chat-with-typing/`](04-composed-ui/scene-02-chat-with-typing/) |
@@ -88,6 +90,8 @@ Need a specific technique? Use this table to find the canonical scene.
 | Code editor typing with syntax + error squiggle + fix | [`04-composed-ui/scene-07-code-editor-typing/`](04-composed-ui/scene-07-code-editor-typing/) |
 | Weekly calendar with events + popover + now-line | [`04-composed-ui/scene-08-calendar-events/`](04-composed-ui/scene-08-calendar-events/) |
 | 3D iPhone mockups with composed app UI | [`04-composed-ui/scene-09-phone-mockups/`](04-composed-ui/scene-09-phone-mockups/) |
+| Terminal + live preview split (`npx create-app` → mockup builds in pane) | [`04-composed-ui/scene-10-terminal-with-preview/`](04-composed-ui/scene-10-terminal-with-preview/) |
+| Video editor UI with timeline scrubber + render HUD | [`04-composed-ui/scene-11-timeline-editor-ui/`](04-composed-ui/scene-11-timeline-editor-ui/) |
 | WebGL fragment shader + Canvas 2D fallback | [`07-html-in-canvas/scene-01-webgl-shader/`](07-html-in-canvas/scene-01-webgl-shader/) |
 | Canvas 2D procedural ASCII art + lightning | [`07-html-in-canvas/scene-02-canvas-ascii/`](07-html-in-canvas/scene-02-canvas-ascii/) |
 | Canvas 2D cursor blur + chromatic aberration text | [`07-html-in-canvas/scene-03-cursor-blur-sweeps/`](07-html-in-canvas/scene-03-cursor-blur-sweeps/) |

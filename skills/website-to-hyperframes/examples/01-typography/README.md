@@ -1,6 +1,6 @@
 # Section 01 — Typography
 
-10 scenes covering the most-used text animation effects from `skills/hyperframes/references/text-effects.md` plus 3 custom techniques (variable-font weight shift, glitch RGB split, scramble decrypt) that aren't in the catalog but are heavily-used in modern marketing video.
+12 scenes covering the most-used text animation effects from `skills/hyperframes/references/text-effects.md` plus 4 custom techniques (variable-font weight shift, glitch RGB split, scramble decrypt, intro kinetic stack) that aren't in the catalog but are heavily-used in modern marketing video.
 
 **When to study this section:** any beat where text is the hero — headlines, statements, eyebrows, call-to-action copy, kinetic typography sequences.
 
@@ -23,6 +23,7 @@ Each scene is its own subdirectory containing `index.html` — standalone, rende
 | [`scene-09-scramble-decrypt/`](scene-09-scramble-decrypt/) | 6s | Character scramble decrypts into final phrase — "intel/hacker" feel | Custom (per-character substitute) |
 | [`scene-10-per-word-emphasis/`](scene-10-per-word-emphasis/) | 8s | Per-word crossfade with a hand-drawn circle marker landing on the key word | `per-word-crossfade.json` + section 02 marker |
 | [`scene-11-orbital-title/`](scene-11-orbital-title/) | 4s | "KINETIC TYPE" Fraunces serif title with per-character alternating-side entrance + SVG accent-line stroke draw + rotating orbital ring with dot + radial glow breathing + 4-segment type-on tagline | Lifted from `claude-design-hyperframes-video/compositions/letters.html` and rebranded (HYPER FRAMES → KINETIC TYPE; HTML in. Video out. → Code in. Motion out.). Combines 5 techniques in one scene. |
+| [`scene-12-intro-kinetic-text/`](scene-12-intro-kinetic-text/) | 5s | Large-scale word stacks with gradient sweep fills — bold kinetic opener for product launches or chapter cards. | Custom — use as the "loud" alternative to scene-01 when the brand wants confidence over restraint. |
 
 ---
 
