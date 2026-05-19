@@ -78,19 +78,45 @@ The same pattern covers the three media element types:
 
 Pass assets as URL references your composition resolves at render time; don't inline base64. URL-shaped assets travel cleanly through both the local renderer and the Lambda surface — see [Templates on Lambda](/deploy/templates-on-lambda#working-with-large-variables) for the 256 KiB execution-input cap on distributed renders.
 
+### Swapping media: do you need to vary duration too?
+
+A common follow-up: if a variable swaps a `<video>` to a different clip, does `data-duration` need to change too? Usually no. `data-duration` is optional on `<video>` and `<audio>` — leave it off and the renderer ffprobes the source and uses its natural length:
+
+```html compositions/hero.html
+<video id="hero" data-start="0" data-track-index="0"></video>
+<script>
+  document.getElementById("hero").src = __hyperframes.getVariables().heroVideo;
+</script>
+```
+
+If you need to clamp or pin the clip to a specific length per render — for example, to keep downstream timing stable across clips of different source lengths — expose duration as its own `number` variable and apply it via the same script:
+
+```html compositions/hero.html
+<video id="hero" data-start="0" data-track-index="0"></video>
+<script>
+  const { heroVideo, heroDuration } = __hyperframes.getVariables();
+  const el = document.getElementById("hero");
+  el.src = heroVideo;
+  if (heroDuration !== undefined) {
+    el.setAttribute("data-duration", String(heroDuration));
+  }
+</script>
+```
+
+The probe phase reads `data-duration` from the live DOM after your script runs, so an attribute written programmatically behaves identically to one baked into the source HTML.
+
 ## What can't be a variable
 
-Some inputs look variable-shaped but are configured elsewhere. The right mechanism for each:
+A small set of inputs are read once from the source HTML or from the CLI / SDK, with no live-DOM re-read — no script (and therefore no variable) can change them:
 
 | What | Mechanism (not a variable) |
 |------|----------------------------|
-| Composition duration | `data-duration` attribute on the composition element |
-| Composition dimensions | `data-width` / `data-height` attributes |
-| Frame rate | `--fps` flag on `hyperframes render` |
-| Output format / codec / quality | `--format` / `--codec` / `--quality` flags |
+| Composition dimensions | `data-width` / `data-height` on the composition element — parsed from the source HTML at compile time, not from the live DOM |
+| Frame rate | `--fps` flag on `hyperframes render`, or `config.fps` in the SDK |
+| Output format / codec / quality | `--format` / `--codec` / `--quality` flags, or the SDK equivalents |
 | A sibling or parent composition's variables | Variables are per-composition; use [`data-variable-values`](#per-instance-overrides-sub-compositions) on each sub-comp host element to pass overrides |
 
-The deeper rule: variables are runtime values, not authoring inputs. A variable can toggle DOM state, swap text, change a color — anything your composition script does with the resolved value. It can't change the composition's structural identity. Two compositions with different `data-composition-id` or different layout markup remain different compositions, even when their variable values are identical.
+The deeper rule: variables are runtime values your script applies to the DOM. They can drive anything the renderer reads from the live DOM after that script runs — text, colors, media `src`, even clip `data-duration` as shown above. They can't change inputs the renderer reads once at compile time (dimensions) or that live entirely outside the composition (CLI flags, encoder settings).
 
 ## Reading Variables at Runtime
 
