@@ -71,6 +71,7 @@ Composition authoring (not repo development) is guided by skills installed via `
 
 - `/hyperframes-core` — HTML composition contract: data attributes, clips, tracks, sub-compositions, variables, media playback, deterministic render rules, and validation of minimal renderable projects.
 - `/hyperframes-creative` — Creative direction: `design.md` handling, palettes, typography, motion principles, scene transitions, beat planning, narration, audio-reactive visuals, title cards, data-in-motion, and advanced recipes.
+- `/hyperframes-animation` — Promo-video scene blueprints (brand-reveal, social-proof, product-demo, comparison) and atomic animation rules (hacker-flip, avatar-cloud, vertical ticker, coordinate-target zoom, etc.) for HyperFrames-native GSAP timelines.
 - `/hyperframes-captions` — Subtitles, lyrics, karaoke, per-word styling, transcript JSON/SRT/VTT import, and caption timing from audio. Consumes transcripts produced by `/hyperframes-media`.
 - `/hyperframes-cli` — CLI dev loop: `init`, `lint`, `validate`, `inspect`, `preview`, `render`, `doctor`, `browser`, `info`, `upgrade`, `compositions`, `docs`, `benchmark`, and environment troubleshooting.
 - `/hyperframes-registry` — Installing registry blocks and components via `hyperframes add`, wiring them into `index.html`, and working with `hyperframes.json`.
