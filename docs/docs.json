@@ -245,6 +245,7 @@
             "group": "Deploy",
             "pages": [
               "deploy/aws-lambda",
+              "deploy/templates-on-lambda",
               "deploy/migrating-to-hyperframes-lambda"
             ]
           }
