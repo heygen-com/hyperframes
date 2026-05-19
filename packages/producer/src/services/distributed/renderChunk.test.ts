@@ -302,10 +302,10 @@ describe("renderChunk() — variables threading", () => {
   const TIMEOUT_MS = 60_000;
 
   // Fixture whose pixels depend on `window.__hfVariables.color`. Read the
-  // variables on `DOMContentLoaded` and write the color onto a fullscreen
-  // element. Two plans with different `variables.color` MUST produce
-  // different chunk fingerprints — proves the controller's snapshotted
-  // variables reach the chunk worker's page.
+  // variables synchronously after DOM load and write the color onto a
+  // fullscreen element. Two plans with different `variables.color` MUST
+  // produce different chunk fingerprints — proves the controller's
+  // snapshotted variables reach the chunk worker's page.
   const VARIABLES_FIXTURE_HTML = `<!doctype html>
 <html data-composition-variables='{"color":"string"}'>
 <head><meta charset="utf-8"><title>renderChunk variables fixture</title></head>
@@ -323,11 +323,34 @@ describe("renderChunk() — variables threading", () => {
 </body>
 </html>`;
 
+  // Wrapper that turns the host-chrome-failure pattern from `renderChunk()`
+  // into the same soft-skip behavior as the byte-identical retry test
+  // above. Returns the chunk result on success, `null` on a soft skip.
+  async function renderChunkSoftSkippable(
+    chunkPlanDir: string,
+    chunkIndex: number,
+    out: string,
+    testName: string,
+  ): Promise<Awaited<ReturnType<typeof renderChunk>> | null> {
+    try {
+      return await renderChunk(chunkPlanDir, chunkIndex, out);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (HOST_CHROME_FAILURE_PATTERNS.test(message)) {
+        console.warn(
+          `[renderChunk.test] skipping ${testName} — host Chrome stack can't render. Docker harness covers the contract. Diagnostic:`,
+          message.slice(0, 240),
+        );
+        return null;
+      }
+      throw err;
+    }
+  }
+
   it(
     "chunks rendered with different variables produce different output fingerprints",
     async () => {
       if (!hasChrome) {
-        // Soft skip — Docker harness covers the real assertion.
         console.warn(
           "[renderChunk.test] skipping variables-threading test — chrome-headless-shell not available on this host",
         );
@@ -338,47 +361,36 @@ describe("renderChunk() — variables threading", () => {
       mkdirSync(variablesProjectDir, { recursive: true });
       writeFileSync(join(variablesProjectDir, "index.html"), VARIABLES_FIXTURE_HTML, "utf-8");
 
-      const planDirRed = join(runRoot, "plan-variables-red");
-      const planDirBlue = join(runRoot, "plan-variables-blue");
-      mkdirSync(planDirRed, { recursive: true });
-      mkdirSync(planDirBlue, { recursive: true });
-
       const baseConfig = {
         fps: 30 as const,
         width: 160,
         height: 120,
         format: "png-sequence" as const,
       };
-      await plan(
-        variablesProjectDir,
-        { ...baseConfig, variables: { color: "#ff0000" } },
+      const planAt = async (slug: string, color: string): Promise<string> => {
+        const dir = join(runRoot, slug);
+        mkdirSync(dir, { recursive: true });
+        await plan(variablesProjectDir, { ...baseConfig, variables: { color } }, dir);
+        return dir;
+      };
+
+      const planDirRed = await planAt("plan-variables-red", "#ff0000");
+      const planDirBlue = await planAt("plan-variables-blue", "#0000ff");
+
+      const red = await renderChunkSoftSkippable(
         planDirRed,
+        0,
+        join(runRoot, "chunk-variables-red"),
+        "variables-threading test",
       );
-      await plan(
-        variablesProjectDir,
-        { ...baseConfig, variables: { color: "#0000ff" } },
+      if (red === null) return;
+      const blue = await renderChunkSoftSkippable(
         planDirBlue,
+        0,
+        join(runRoot, "chunk-variables-blue"),
+        "variables-threading test",
       );
-
-      const outRed = join(runRoot, "chunk-variables-red");
-      const outBlue = join(runRoot, "chunk-variables-blue");
-
-      let red, blue;
-      try {
-        red = await renderChunk(planDirRed, 0, outRed);
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        if (HOST_CHROME_FAILURE_PATTERNS.test(message)) {
-          console.warn(
-            "[renderChunk.test] skipping variables-threading test — host Chrome stack can't render. ",
-            "Docker harness covers the contract. Diagnostic:",
-            message.slice(0, 240),
-          );
-          return;
-        }
-        throw err;
-      }
-      blue = await renderChunk(planDirBlue, 0, outBlue);
+      if (blue === null) return;
 
       expect(red.outputKind).toBe("frame-dir");
       expect(blue.outputKind).toBe("frame-dir");

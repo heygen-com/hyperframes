@@ -22,6 +22,12 @@ export {
   computeRenderCost,
   type RenderCost,
 } from "./costAccounting.js";
-export { InvalidConfigError, validateDistributedRenderConfig } from "./validateConfig.js";
+export {
+  InvalidConfigError,
+  MAX_STEP_FUNCTIONS_INPUT_BYTES,
+  validateDistributedRenderConfig,
+  validateStepFunctionsInputSize,
+  validateVariablesPayload,
+} from "./validateConfig.js";
 export type { SerializableDistributedRenderConfig } from "../events.js";
 export type { DistributedFormat } from "../formatExtension.js";
