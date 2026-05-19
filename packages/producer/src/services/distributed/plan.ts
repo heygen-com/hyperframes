@@ -74,12 +74,19 @@ export interface DistributedRenderConfig {
   width: number;
   height: number;
   /**
-   * Output container format. webm and HDR mp4 are not supported in
-   * distributed mode — `plan()` refuses them up front with a typed
+   * Output container format. HDR mp4 is not supported in distributed
+   * mode — `plan()` refuses it up front with a typed
    * `FormatNotSupportedInDistributedError`. The in-process renderer
-   * supports both.
+   * supports it.
+   *
+   * `"webm"` (VP9 + Opus) is distributed-supported via closed-GOP
+   * concat-copy: `lockGopForChunkConcat=true` forces a keyframe at every
+   * chunk boundary and disables libvpx-vp9's alt-ref frames so chunk
+   * files stitch losslessly. See `chunkEncoder.ts` for the VP9 args and
+   * `tests/distributed/_smoke/webm-concat-copy.test.ts` for the gating
+   * experiment that proved the contract.
    */
-  format: "mp4" | "mov" | "png-sequence";
+  format: "mp4" | "mov" | "png-sequence" | "webm";
   /**
    * Codec selection for `format: "mp4"`. `"h264"` (the default) → libx264 +
    * yuv420p; `"h265"` → libx265 + yuv420p with closed-GOP keyint params
@@ -169,7 +176,7 @@ export interface PlanResult {
   fps: 24 | 30 | 60;
   width: number;
   height: number;
-  format: "mp4" | "mov" | "png-sequence";
+  format: "mp4" | "mov" | "png-sequence" | "webm";
   ffmpegVersion: string;
   producerVersion: string;
 }
@@ -247,8 +254,9 @@ export class PlanTooLargeError extends Error {
 
 /**
  * Non-retryable error code raised when `plan()` is asked for an output
- * format that distributed mode doesn't support (webm, HDR mp4). The same
- * config would fail on every retry, so the failure must not auto-retry.
+ * format that distributed mode doesn't support (currently: HDR mp4). The
+ * same config would fail on every retry, so the failure must not
+ * auto-retry.
  */
 export const FORMAT_NOT_SUPPORTED_IN_DISTRIBUTED = "FORMAT_NOT_SUPPORTED_IN_DISTRIBUTED";
 
@@ -256,13 +264,15 @@ export const FORMAT_NOT_SUPPORTED_IN_DISTRIBUTED = "FORMAT_NOT_SUPPORTED_IN_DIST
  * Typed error raised by `plan()` for outputs that distributed mode
  * refuses to ship.
  *
- *   - webm — VP9 + matroska concat-copy is fragile across libvpx-vp9
- *     builds, and the chunked pipeline can't guarantee bit-identical
- *     concat output across worker versions.
  *   - mp4 + HDR (PQ / HLG) — chunked HDR pre-extract + HDR signaling
  *     re-apply on the assembled file is not implemented yet.
  *
- * The in-process renderer (`executeRenderJob`) handles both natively.
+ * The in-process renderer (`executeRenderJob`) handles it natively.
+ *
+ * WebM was previously refused here; v0.7+ supports it via closed-GOP
+ * concat-copy. See {@link DistributedRenderConfig.format} for the
+ * supported set and {@link rejectUnsupportedDistributedFormat} for the
+ * gate.
  */
 export class FormatNotSupportedInDistributedError extends Error {
   readonly code: typeof FORMAT_NOT_SUPPORTED_IN_DISTRIBUTED = FORMAT_NOT_SUPPORTED_IN_DISTRIBUTED;
@@ -272,8 +282,8 @@ export class FormatNotSupportedInDistributedError extends Error {
     super(
       `[plan] format ${JSON.stringify(format)} is not supported in distributed mode: ${reason}. ` +
         `Render with the in-process renderer (\`executeRenderJob\`) — it has full format ` +
-        `support — or pick a distributed-supported format: mp4 SDR, mov ProRes 4444, or ` +
-        `png-sequence.`,
+        `support — or pick a distributed-supported format: mp4 SDR, mov ProRes 4444, ` +
+        `png-sequence, or webm VP9.`,
     );
     this.name = "FormatNotSupportedInDistributedError";
     this.format = format;
@@ -289,7 +299,9 @@ function formatBytes(bytes: number): string {
 }
 
 /**
- * Reject formats the distributed pipeline cannot ship (webm + HDR mp4).
+ * Reject formats the distributed pipeline cannot ship (HDR mp4 only —
+ * webm is supported as of v0.7 via closed-GOP concat-copy).
+ *
  * Throws {@link FormatNotSupportedInDistributedError} with a message
  * naming the rejected format. Runs at the very top of `plan()` so a
  * banned input never produces a partial planDir.
@@ -302,17 +314,6 @@ function formatBytes(bytes: number): string {
 export function rejectUnsupportedDistributedFormat(
   config: Pick<DistributedRenderConfig, "format" | "hdrMode">,
 ): void {
-  // The TypeScript type for `DistributedRenderConfig.format` already
-  // excludes webm, but a JS caller (or a caller that built the config
-  // dynamically from JSON) can still pass it. Belt-and-suspenders runtime
-  // check at the gate.
-  if ((config.format as string) === "webm") {
-    throw new FormatNotSupportedInDistributedError(
-      "webm",
-      "VP9 + matroska concat-copy is fragile across libvpx-vp9 builds, so chunked output " +
-        "can't be guaranteed byte-identical across workers",
-    );
-  }
   if ((config.hdrMode as string) === "force-hdr") {
     throw new FormatNotSupportedInDistributedError(
       "mp4-hdr",
@@ -513,7 +514,8 @@ function buildLockedRenderConfig(input: {
 /**
  * Resolve the encoder + pixel-format + preset triple for a distributed
  * render. Distributed mode is SDR-only: H.264 or H.265 8-bit for mp4,
- * ProRes 4444 for mov, raw RGBA for png-sequence.
+ * libvpx-vp9 + yuva420p (alpha) for webm, ProRes 4444 for mov, raw RGBA
+ * for png-sequence.
  *
  * `config.codec` is consulted only when `config.format === "mp4"`. Passing
  * `codec` with a non-mp4 format throws at plan time — surfaces the
@@ -547,11 +549,20 @@ function resolveEncoderTriple(config: DistributedRenderConfig): {
     throw new Error(
       `[plan] DistributedRenderConfig.codec is only valid for format="mp4"; received ` +
         `codec=${JSON.stringify(config.codec)} with format=${JSON.stringify(config.format)}. ` +
-        `Omit codec for non-mp4 formats — mov is always ProRes 4444 and png-sequence has no encoder.`,
+        `Omit codec for non-mp4 formats — mov is always ProRes 4444, webm is always ` +
+        `libvpx-vp9, and png-sequence has no encoder.`,
     );
   }
   if (config.format === "mov") {
     return { encoder: "prores-software", pixelFormat: "yuva444p10le", preset: "4444" };
+  }
+  if (config.format === "webm") {
+    // webm distributes via closed-GOP libvpx-vp9 + concat-copy. yuva420p
+    // matches the in-process renderer's webm pixel format (alpha-capable
+    // — the format's main reason for existing). `getEncoderPreset` in
+    // the engine returns "good" for non-draft quality tiers; that becomes
+    // libvpx-vp9's `-deadline good` at encode time.
+    return { encoder: "libvpx-vp9-software", pixelFormat: "yuva420p", preset: "good" };
   }
   return { encoder: "png-sequence", pixelFormat: "rgba", preset: "lossless" };
 }

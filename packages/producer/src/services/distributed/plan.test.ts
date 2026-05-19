@@ -460,3 +460,58 @@ describe("plan() — codec knob", () => {
     expect((caught as Error).message).toMatch(/codec must be "h264" or "h265"/);
   });
 });
+
+describe("plan() — webm format (distributed VP9)", () => {
+  const TIMEOUT_MS = 30_000;
+
+  it(
+    'maps `format: "webm"` to libvpx-vp9-software + yuva420p',
+    async () => {
+      // Webm is distributed-supported via closed-GOP concat-copy (PR 8.1
+      // proved the contract; this test pins the plan-time encoder choice).
+      // yuva420p preserves the format's reason for existing — alpha video
+      // for web playback over colored backgrounds.
+      const planDir = join(runRoot, "plan-webm-vp9");
+      mkdirSync(planDir, { recursive: true });
+      const result = await plan(
+        projectDir,
+        { fps: 30, width: 320, height: 240, format: "webm" },
+        planDir,
+      );
+      expect(result.format).toBe("webm");
+
+      const encoder = JSON.parse(
+        readFileSync(join(planDir, "meta", "encoder.json"), "utf-8"),
+      ) as Record<string, unknown>;
+      expect(encoder.encoder).toBe("libvpx-vp9-software");
+      expect(encoder.pixelFormat).toBe("yuva420p");
+      // Closed-GOP must be on so concat-copy at assemble time works.
+      // gopSize equals the chunkSize so every chunk's first frame is a
+      // keyframe with no alt-ref references reaching back across seams.
+      expect(encoder.closedGop).toBe(true);
+      expect(encoder.gopSize).toBe(encoder.chunkSize);
+    },
+    TIMEOUT_MS,
+  );
+
+  it("rejects `codec` with format=webm", async () => {
+    // webm is always libvpx-vp9 — same shape as mov (always ProRes 4444).
+    // A JS caller building config from JSON who passes `codec: "vp8"` or
+    // `codec: "av1"` must hit a typed error, not silently encode VP9.
+    const planDir = join(runRoot, "plan-webm-bad-codec");
+    mkdirSync(planDir, { recursive: true });
+    let caught: unknown;
+    try {
+      await plan(
+        projectDir,
+        // @ts-expect-error — runtime check is the test's purpose.
+        { fps: 30, width: 320, height: 240, format: "webm", codec: "vp8" },
+        planDir,
+      );
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(Error);
+    expect((caught as Error).message).toMatch(/codec.*only valid for format="mp4"/);
+  });
+});

@@ -401,7 +401,7 @@ export async function renderChunk(
     const job = buildSyntheticRenderJob({
       fps: { num: plan.dimensions.fpsNum, den: plan.dimensions.fpsDen },
       quality: encoder.quality,
-      format: plan.dimensions.format as "mp4" | "mov" | "png-sequence",
+      format: plan.dimensions.format,
       crf: encoder.crf,
       bitrate: encoder.bitrate,
       hdrMode: "force-sdr",
@@ -538,16 +538,16 @@ export async function renderChunk(
       // ── Encode the chunk ──
       const isPngSequence = plan.dimensions.format === "png-sequence";
       outputKind = isPngSequence ? "frame-dir" : "file";
-      // For mp4/mov we use the standard preset machinery; the locked encoder
-      // values come from `meta/encoder.json` and the `lockGopForChunkConcat`
-      // toggle is the only Phase-2 flag that flips on at this site.
-      // png-sequence has no encoder, but `runEncodeStage` still reads
-      // `preset.quality` for bookkeeping (it never reaches ffmpeg on the
-      // pngseq branch). Fall back to the mp4 preset shape — same trick
-      // `renderOrchestrator` plays.
+      // For mp4 / mov / webm we use the standard preset machinery; the
+      // locked encoder values come from `meta/encoder.json` and the
+      // `lockGopForChunkConcat` toggle is the only Phase-2 flag that flips
+      // on at this site. png-sequence has no encoder, but `runEncodeStage`
+      // still reads `preset.quality` for bookkeeping (it never reaches
+      // ffmpeg on the pngseq branch). Fall back to the mp4 preset shape —
+      // same trick `renderOrchestrator` plays.
       const presetFormat: "mp4" | "mov" | "webm" = isPngSequence
         ? "mp4"
-        : (plan.dimensions.format as "mp4" | "mov");
+        : (plan.dimensions.format as "mp4" | "mov" | "webm");
       const basePreset = getEncoderPreset(job.config.quality, presetFormat, undefined);
       const preset = resolvePresetForLockedEncoder(basePreset, encoder.encoder);
       const effectiveQuality = encoder.crf ?? preset.quality;

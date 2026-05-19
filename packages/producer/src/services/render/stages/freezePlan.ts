@@ -36,7 +36,12 @@ export interface LockedRenderConfig {
   warmupTicks: number;
 
   // Encode
-  encoder: "libx264-software" | "libx265-software" | "prores-software" | "png-sequence";
+  encoder:
+    | "libx264-software"
+    | "libx265-software"
+    | "libvpx-vp9-software"
+    | "prores-software"
+    | "png-sequence";
   /**
    * Caller-supplied quality enum, persisted so chunk workers can rebuild
    * the matching `getEncoderPreset(quality, format, …)` instead of
