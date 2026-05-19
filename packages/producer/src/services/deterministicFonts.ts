@@ -430,15 +430,24 @@ async function fetchGoogleFont(
       headers: { "User-Agent": WOFF2_USER_AGENT },
     });
     if (!res.ok) {
-      if (options.failClosedFontFetch) {
+      // 4xx is a *deterministic* answer from Google Fonts that this
+      // family is not served (e.g. HTTP 400 for "Segoe UI", "Arial",
+      // "Futura" — names absent from Google's catalog) or is misnamed.
+      // The render falls back to embedded faces / the composition's
+      // font-family chain; we return [] in both modes. 5xx (and other
+      // transient upstream failures) could return faces on retry, which
+      // would break the byte-identical-retry contract distributed
+      // renders rely on — those still fail closed when requested.
+      if (res.status >= 500 && options.failClosedFontFetch) {
         throw fontFetchError(familyName, url, "Google Fonts CSS", { status: res.status });
       }
       return [];
     }
     cssText = await res.text();
   } catch (err) {
-    // Rethrow typed error untouched. Other errors (network, DNS) get wrapped
-    // when failClosed is on, swallowed otherwise.
+    // Rethrow typed error untouched. Network / DNS / fetch-throws are
+    // non-deterministic infrastructure failures — wrapped when failClosed
+    // is on, swallowed otherwise.
     if (err instanceof FontFetchError) throw err;
     if (options.failClosedFontFetch) {
       throw fontFetchError(familyName, url, "Google Fonts CSS", { error: err });
@@ -467,7 +476,10 @@ async function fetchGoogleFont(
       try {
         const fontRes = await options.fetchImpl(woff2Url);
         if (!fontRes.ok) {
-          if (options.failClosedFontFetch) {
+          // Same 4xx vs 5xx split as the CSS fetch above: 4xx = the
+          // font's woff2 isn't served, skip silently; 5xx = transient
+          // upstream failure, may fail closed.
+          if (fontRes.status >= 500 && options.failClosedFontFetch) {
             throw fontFetchError(familyName, woff2Url, woff2What, { status: fontRes.status });
           }
           continue;
