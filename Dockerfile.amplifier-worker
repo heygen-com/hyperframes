@@ -66,4 +66,4 @@ RUN bun run --filter @hyperframes/amplifier-video-worker build
 
 EXPOSE 3000
 
-CMD ["node", "packages/amplifier-video-worker/dist/index.js"]
+CMD ["bun", "packages/amplifier-video-worker/dist/index.js"]
