@@ -147,16 +147,6 @@ export function createTexture(gl: WebGLRenderingContext): WebGLTexture {
   return tex;
 }
 
-export function uploadTexture(
-  gl: WebGLRenderingContext,
-  tex: WebGLTexture,
-  canvas: HTMLCanvasElement,
-): void {
-  uploadTextureSource(gl, tex, canvas);
-  canvas.width = 0;
-  canvas.height = 0;
-}
-
 export function uploadTextureSource(
   gl: WebGLRenderingContext,
   tex: WebGLTexture,

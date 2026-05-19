@@ -144,19 +144,3 @@ export function useTimelineRangeSelection({
     handlePointerUp,
   };
 }
-
-/* ── Seek + scroll utilities (used in Timeline only) ──────────────── */
-export function seekTimeFromScrollX(
-  scrollEl: HTMLDivElement,
-  clientX: number,
-  effectiveDuration: number,
-  pps: number,
-  onSeek?: (time: number) => void,
-): void {
-  const rect = scrollEl.getBoundingClientRect();
-  const x = clientX - rect.left + scrollEl.scrollLeft - GUTTER;
-  if (x < 0) return;
-  const time = Math.max(0, Math.min(effectiveDuration, x / pps));
-  liveTime.notify(time);
-  onSeek?.(time);
-}

@@ -23,37 +23,15 @@ describe("manual editing availability", () => {
     expect(availability.STUDIO_PREVIEW_SELECTION_ENABLED).toBe(true);
     expect(availability.STUDIO_INSPECTOR_PANELS_ENABLED).toBe(true);
     expect(availability.STUDIO_MOTION_PANEL_ENABLED).toBe(false);
-    expect(availability.STUDIO_TIMELINE_LAYER_INSPECTOR_ENABLED).toBe(true);
   });
 
-  it("keeps explicit truthy inspector env flags enabled", async () => {
-    const availability = await loadAvailabilityWithEnv({
-      VITE_STUDIO_ENABLE_INSPECTOR_PANELS: "1",
-      VITE_STUDIO_ENABLE_TIMELINE_LAYER_INSPECTOR: "true",
-    });
-
-    expect(availability.STUDIO_INSPECTOR_PANELS_ENABLED).toBe(true);
-    expect(availability.STUDIO_TIMELINE_LAYER_INSPECTOR_ENABLED).toBe(true);
-  });
-
-  it("allows explicit env flags to disable default-on inspector layers", async () => {
-    const availability = await loadAvailabilityWithEnv({
-      VITE_STUDIO_ENABLE_TIMELINE_LAYER_INSPECTOR: "off",
-    });
-
-    expect(availability.STUDIO_INSPECTOR_PANELS_ENABLED).toBe(true);
-    expect(availability.STUDIO_TIMELINE_LAYER_INSPECTOR_ENABLED).toBe(false);
-  });
-
-  it("keeps timeline layer inspection off when the parent inspector flag is off", async () => {
+  it("disables preview selection when the inspector panel flag is explicitly off", async () => {
     const availability = await loadAvailabilityWithEnv({
       VITE_STUDIO_ENABLE_INSPECTOR_PANELS: "0",
-      VITE_STUDIO_ENABLE_TIMELINE_LAYER_INSPECTOR: "true",
     });
 
     expect(availability.STUDIO_INSPECTOR_PANELS_ENABLED).toBe(false);
     expect(availability.STUDIO_PREVIEW_SELECTION_ENABLED).toBe(false);
-    expect(availability.STUDIO_TIMELINE_LAYER_INSPECTOR_ENABLED).toBe(false);
   });
 
   it("enables feature flags with explicit truthy env values", () => {

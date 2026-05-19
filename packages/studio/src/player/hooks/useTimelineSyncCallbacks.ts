@@ -18,7 +18,6 @@ import {
   findTimelineDomNodeForClip,
   createImplicitTimelineLayersFromDOM,
   buildStandaloneRootTimelineElement,
-  mergeTimelineElementsPreservingDowngrades,
   getTimelineElementSelector,
 } from "../lib/timelineDOM";
 import {
@@ -26,7 +25,6 @@ import {
   autoHealMissingCompositionIds,
   buildMissingCompositionElements,
 } from "../lib/timelineIframeHelpers";
-import { getTimelineElementIdentity } from "../lib/timelineElementHelpers";
 
 interface UseTimelineSyncCallbacksParams {
   iframeRef: React.RefObject<HTMLIFrameElement | null>;
@@ -288,7 +286,3 @@ export function useTimelineSyncCallbacks({
     onIframeLoad,
   };
 }
-
-// Re-export the merge helper so the hook can use it via this module (avoids
-// adding another import line to the already-large useTimelinePlayer.ts).
-export { mergeTimelineElementsPreservingDowngrades, getTimelineElementIdentity };

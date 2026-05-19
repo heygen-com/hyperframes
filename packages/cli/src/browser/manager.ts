@@ -13,12 +13,6 @@ const CACHE_DIR = join(homedir(), ".cache", "hyperframes", "chrome");
 // too or it silently picks system Chrome over a perfectly good headless-shell.
 const PUPPETEER_CACHE_DIR = join(homedir(), ".cache", "puppeteer", "chrome-headless-shell");
 
-/** Override browser path via --browser-path flag. Takes priority over env var. */
-let _browserPathOverride: string | undefined;
-export function setBrowserPath(path: string): void {
-  _browserPathOverride = path;
-}
-
 export type BrowserSource = "env" | "cache" | "system" | "download";
 
 export interface BrowserResult {
@@ -61,10 +55,6 @@ function whichBinary(name: string): string | undefined {
 }
 
 function findFromEnv(): BrowserResult | undefined {
-  // --browser-path flag takes priority
-  if (_browserPathOverride && existsSync(_browserPathOverride)) {
-    return { executablePath: _browserPathOverride, source: "env" };
-  }
   const envPath = process.env["HYPERFRAMES_BROWSER_PATH"];
   if (envPath && existsSync(envPath)) {
     return { executablePath: envPath, source: "env" };

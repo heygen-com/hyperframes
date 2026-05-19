@@ -158,46 +158,6 @@ export async function initHdrReadback(page: Page, width: number, height: number)
 
 // ── HDR frame conversion ──────────────────────────────────────────────────────
 
-/**
- * Convert raw rgba64le pixels (from FFmpeg) to a base64 string for FFmpeg encoding.
- *
- * For HLG sources: the pixel values are already HLG-encoded. We pass them through
- * as-is (normalized to 16-bit) and tag the output as HLG. No OETF conversion needed —
- * the HLG signal values ARE the correct encoding. Converting to linear and back to
- * PQ produces worse results because every viewer's PQ→display tone-mapping differs
- * from its HLG→display tone-mapping.
- *
- * The WebGPU round-trip is skipped for pass-through — the pixels go directly from
- * FFmpeg extraction to FFmpeg encoding. WebGPU is only needed when transforms
- * (scale, rotate, opacity from GSAP) must be applied to the HDR pixels.
- */
-export function convertHdrFrameToRgb48le(
-  rawRgba64le: Buffer,
-  width: number,
-  height: number,
-): Buffer {
-  const input = new Uint16Array(
-    rawRgba64le.buffer,
-    rawRgba64le.byteOffset,
-    rawRgba64le.byteLength / 2,
-  );
-
-  // Convert RGBA → RGB (drop alpha) for rgb48le output
-  const output = Buffer.alloc(width * height * 6);
-
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const srcIdx = (y * width + x) * 4;
-      const dstIdx = (y * width + x) * 6;
-      output.writeUInt16LE(input[srcIdx] ?? 0, dstIdx);
-      output.writeUInt16LE(input[srcIdx + 1] ?? 0, dstIdx + 2);
-      output.writeUInt16LE(input[srcIdx + 2] ?? 0, dstIdx + 4);
-    }
-  }
-
-  return output;
-}
-
 // ── Frame upload + readback ───────────────────────────────────────────────────
 
 /**

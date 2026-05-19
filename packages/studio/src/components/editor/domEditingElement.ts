@@ -12,9 +12,7 @@ import type {
 import {
   buildStableSelector,
   escapeCssString,
-  findClosestByAttribute,
   getElementDepth,
-  getPreferredClassSelector,
   getSelectorIndex,
   getSourceFileForElement,
   isHtmlElement,
@@ -60,7 +58,7 @@ function isEmptyVisualContainer(el: HTMLElement): boolean {
   return true;
 }
 
-export function hasRenderedBox(el: HTMLElement): boolean {
+function hasRenderedBox(el: HTMLElement): boolean {
   const rect = el.getBoundingClientRect();
   if (rect.width <= 1 || rect.height <= 1) return false;
   if (!isElementComputedVisible(el)) return false;
@@ -324,7 +322,3 @@ export function getDirectLayerChildren(
       isHtmlElement(child) && getDomLayerPatchTarget(child, options.activeCompositionPath) !== null,
   );
 }
-
-// ─── Composition source helpers ───────────────────────────────────────────────
-
-export { findClosestByAttribute, getPreferredClassSelector, getSourceFileForElement };
