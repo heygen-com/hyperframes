@@ -1,0 +1,475 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>scene-03-cursor-blur-sweeps</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      body { background: #000; }
+
+      [data-composition-id="scene-03-cursor-blur-sweeps"] {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #050507;
+        font-family: "Inter", sans-serif;
+      }
+
+      [data-composition-id="scene-03-cursor-blur-sweeps"] #cbs-canvas {
+        position: absolute;
+        inset: 0;
+        width: 1920px;
+        height: 1080px;
+      }
+
+      [data-composition-id="scene-03-cursor-blur-sweeps"] .scene-label {
+        position: absolute;
+        left: 48px;
+        bottom: 48px;
+        font-size: 16px;
+        color: #707070;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        font-weight: 500;
+        z-index: 100;
+        font-family: "Inter", sans-serif;
+      }
+      [data-composition-id="scene-03-cursor-blur-sweeps"] .scene-label .accent {
+        color: #f5f5f5;
+        font-weight: 600;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="scene-03-cursor-blur-sweeps"
+      data-composition-id="scene-03-cursor-blur-sweeps"
+      data-start="0"
+      data-duration="5.5"
+      data-width="1920"
+      data-height="1080"
+      style="width: 1920px; height: 1080px;"
+    >
+      <canvas id="cbs-canvas" width="1920" height="1080"></canvas>
+
+      <div class="scene-label">
+        Scene 03 · <span class="accent">Cursor Blur Sweeps</span> · Canvas 2D directional blur + gradient glow
+      </div>
+    </div>
+
+    <script>
+      (function initCursorBlurSweeps() {
+        var root = document.querySelector('[data-composition-id="scene-03-cursor-blur-sweeps"]');
+        if (!root) { setTimeout(initCursorBlurSweeps, 50); return; }
+        var canvas = root.querySelector("#cbs-canvas");
+        if (!canvas) { setTimeout(initCursorBlurSweeps, 50); return; }
+
+        var W = 1920, H = 1080;
+        var ctx = canvas.getContext("2d");
+
+        // ═══════════════════════════════════════════════════════
+        // OFFSCREEN BUFFERS
+        // ═══════════════════════════════════════════════════════
+        // textBuf: the white-text-on-black master that we sample
+        // sweepBuf: scratchpad for the per-frame composite (blur + glow)
+        var textBuf = document.createElement("canvas");
+        textBuf.width = W; textBuf.height = H;
+        var textCtx = textBuf.getContext("2d");
+
+        // Pre-tinted text layers — pure cyan + pure magenta versions of the text
+        // (hue-rotate on white pixels is identity, so we bake the color in)
+        var textCyanBuf = document.createElement("canvas");
+        textCyanBuf.width = W; textCyanBuf.height = H;
+        var textMagBuf = document.createElement("canvas");
+        textMagBuf.width = W; textMagBuf.height = H;
+
+        // ═══════════════════════════════════════════════════════
+        // BACKGROUND — static dark gradient + faint grid
+        // (no external assets allowed)
+        // ═══════════════════════════════════════════════════════
+        var bgBuf = document.createElement("canvas");
+        bgBuf.width = W; bgBuf.height = H;
+        (function paintBg() {
+          var c = bgBuf.getContext("2d");
+          // base radial vignette
+          var g = c.createRadialGradient(W * 0.5, H * 0.55, 60, W * 0.5, H * 0.55, W * 0.75);
+          g.addColorStop(0, "#0a0a14");
+          g.addColorStop(0.55, "#050509");
+          g.addColorStop(1, "#020203");
+          c.fillStyle = g;
+          c.fillRect(0, 0, W, H);
+
+          // faint grid lines for depth
+          c.strokeStyle = "rgba(120, 140, 200, 0.04)";
+          c.lineWidth = 1;
+          var step = 80;
+          for (var x = 0; x <= W; x += step) {
+            c.beginPath(); c.moveTo(x + 0.5, 0); c.lineTo(x + 0.5, H); c.stroke();
+          }
+          for (var y = 0; y <= H; y += step) {
+            c.beginPath(); c.moveTo(0, y + 0.5); c.lineTo(W, y + 0.5); c.stroke();
+          }
+
+          // deterministic dust specks (no Math.random) — hashed positions
+          c.fillStyle = "rgba(180, 200, 255, 0.08)";
+          for (var i = 0; i < 220; i++) {
+            var h1 = ((i * 374761393) ^ ((i * 668265263) >> 13)) & 0x7fffffff;
+            var h2 = ((i * 1274126177) ^ ((i * 1664525) >> 11)) & 0x7fffffff;
+            var px = (h1 % 1920);
+            var py = (h2 % 1080);
+            var sz = ((h1 >> 8) & 3) * 0.5 + 0.4;
+            c.fillRect(px, py, sz, sz);
+          }
+        })();
+
+        // ═══════════════════════════════════════════════════════
+        // TEXT MASTER — large heading + sub
+        // ═══════════════════════════════════════════════════════
+        var MAIN_TEXT = "MOTION";
+        var SUB_TEXT = "CURSOR BLUR SWEEPS";
+
+        (function paintText() {
+          // Leave background transparent — we want to composite text without erasing the rays beneath.
+          textCtx.clearRect(0, 0, W, H);
+          textCtx.textAlign = "center";
+          textCtx.textBaseline = "middle";
+
+          // Main heading — heavy white
+          textCtx.fillStyle = "#ffffff";
+          textCtx.font = "900 360px Inter, Arial Black, sans-serif";
+          textCtx.fillText(MAIN_TEXT, W * 0.5, H * 0.48);
+
+          // Subtitle — smaller, tracked
+          textCtx.fillStyle = "#ffffff";
+          textCtx.font = "500 38px Inter, sans-serif";
+          // Manual letter spacing via per-char draw
+          var sub = SUB_TEXT;
+          var letterSpacing = 14;
+          // measure width
+          var totalW = 0;
+          for (var ii = 0; ii < sub.length; ii++) {
+            totalW += textCtx.measureText(sub[ii]).width + (ii < sub.length - 1 ? letterSpacing : 0);
+          }
+          var startX = (W - totalW) * 0.5;
+          var subY = H * 0.48 + 250;
+          var cx = startX;
+          for (var jj = 0; jj < sub.length; jj++) {
+            var ch = sub[jj];
+            var cw = textCtx.measureText(ch).width;
+            textCtx.fillText(ch, cx + cw * 0.5, subY);
+            cx += cw + letterSpacing;
+          }
+        })();
+
+        // Build pre-tinted cyan and magenta versions of the text by re-drawing
+        // with explicit fill colors (hue-rotate doesn't work on neutral whites)
+        (function paintTinted() {
+          function drawText(c, color) {
+            c.clearRect(0, 0, W, H);
+            c.textAlign = "center";
+            c.textBaseline = "middle";
+            c.fillStyle = color;
+            c.font = "900 360px Inter, Arial Black, sans-serif";
+            c.fillText(MAIN_TEXT, W * 0.5, H * 0.48);
+
+            c.font = "500 38px Inter, sans-serif";
+            var sub = SUB_TEXT;
+            var letterSpacing = 14;
+            var totalW = 0;
+            for (var ii = 0; ii < sub.length; ii++) {
+              totalW += c.measureText(sub[ii]).width + (ii < sub.length - 1 ? letterSpacing : 0);
+            }
+            var startX = (W - totalW) * 0.5;
+            var subY2 = H * 0.48 + 250;
+            var cx2 = startX;
+            for (var jj2 = 0; jj2 < sub.length; jj2++) {
+              var ch2 = sub[jj2];
+              var cw2 = c.measureText(ch2).width;
+              c.fillText(ch2, cx2 + cw2 * 0.5, subY2);
+              cx2 += cw2 + letterSpacing;
+            }
+          }
+          drawText(textCyanBuf.getContext("2d"), "#49f2ff");
+          drawText(textMagBuf.getContext("2d"), "#ff4fd8");
+        })();
+
+        // Read text alpha into a Uint8Array (row-major) — used to detect "is this pixel text?"
+        // We downsample to a coarser grid to keep the inner loops cheap.
+        var GRID_W = 240; // 1920 / 8
+        var GRID_H = 135; // 1080 / 8
+        var CELL = 8;
+        var textGrid = new Uint8Array(GRID_W * GRID_H);
+        (function buildGrid() {
+          var img = textCtx.getImageData(0, 0, W, H).data;
+          for (var gy = 0; gy < GRID_H; gy++) {
+            for (var gx = 0; gx < GRID_W; gx++) {
+              // sample center pixel of cell
+              var sx = gx * CELL + (CELL >> 1);
+              var sy = gy * CELL + (CELL >> 1);
+              var off = (sy * W + sx) * 4;
+              // any opaque pixel = text
+              textGrid[gy * GRID_W + gx] = img[off + 3] > 64 ? 1 : 0;
+            }
+          }
+        })();
+
+        // ═══════════════════════════════════════════════════════
+        // CURSOR PATH — mechanical, left→right with subtle wave
+        // ═══════════════════════════════════════════════════════
+        function cursorAt(t) {
+          // t in [0, 5.5]
+          // entry from 0.0 → 0.6: cursor enters from left and accelerates
+          // sweep 0.6 → 3.6: cursor moves L→R across the heading
+          // hold 3.6 → 4.4: cursor parks near right edge, glow holds
+          // exit 4.4 → 5.5: cursor pulls back, blur softens
+          var x, y;
+          var amp = 38; // vertical wobble amplitude (mechanical, not random)
+          if (t < 0.6) {
+            var p = t / 0.6;
+            var e = 1 - Math.pow(1 - p, 3); // easeOutCubic
+            x = -120 + e * (W * 0.18 + 120);
+            y = H * 0.5;
+          } else if (t < 3.6) {
+            var p2 = (t - 0.6) / 3.0;
+            // easeInOutQuint to feel deliberate
+            var e2 = p2 < 0.5
+              ? 16 * p2 * p2 * p2 * p2 * p2
+              : 1 - Math.pow(-2 * p2 + 2, 5) / 2;
+            x = W * 0.18 + e2 * W * 0.64;
+            y = H * 0.5 + Math.sin(p2 * Math.PI * 2) * amp;
+          } else if (t < 4.4) {
+            x = W * 0.82;
+            y = H * 0.5 + Math.sin((t - 3.6) * Math.PI * 2) * amp * 0.4;
+          } else {
+            var p3 = (t - 4.4) / 1.1;
+            var e3 = 1 - Math.pow(1 - p3, 2);
+            x = W * 0.82 - e3 * 60;
+            y = H * 0.5 + Math.sin(p3 * Math.PI) * amp * 0.3;
+          }
+          return { x: x, y: y };
+        }
+
+        // Overall effect intensity ramps in/out
+        function effectMix(t) {
+          if (t < 0.3) return Math.max(0, t / 0.3);
+          if (t > 5.0) return Math.max(0, 1 - (t - 5.0) / 0.5);
+          return 1;
+        }
+
+        // ═══════════════════════════════════════════════════════
+        // RENDER
+        // ═══════════════════════════════════════════════════════
+        function renderAtTime(t) {
+          // 1) Paint static background
+          ctx.drawImage(bgBuf, 0, 0);
+
+          var mix = effectMix(t);
+          var cur = cursorAt(t);
+          var cx = cur.x, cy = cur.y;
+
+          // 2) Directional cone rays — long horizontal streaks left/right of cursor
+          //    Use linear gradients so the glow really STREAKS rather than just being a circle.
+          ctx.save();
+          ctx.globalCompositeOperation = "lighter";
+
+          // Long horizontal cyan streak extending LEFT from cursor
+          ctx.globalAlpha = 0.78 * mix;
+          var leftLen = cx + 200;
+          var lg1 = ctx.createLinearGradient(cx, 0, cx - leftLen, 0);
+          lg1.addColorStop(0, "rgba(73, 242, 255, 0.85)");
+          lg1.addColorStop(0.06, "rgba(73, 242, 255, 0.45)");
+          lg1.addColorStop(0.30, "rgba(35, 120, 200, 0.18)");
+          lg1.addColorStop(1, "rgba(0, 0, 0, 0)");
+          ctx.fillStyle = lg1;
+          var bandH = 380;
+          ctx.fillRect(0, cy - bandH, cx, bandH * 2);
+          ctx.globalAlpha = 0.55 * mix;
+          ctx.fillRect(0, cy - bandH * 0.5, cx, bandH);
+
+          // Long horizontal magenta streak extending RIGHT from cursor
+          ctx.globalAlpha = 0.78 * mix;
+          var rightLen = W - cx + 200;
+          var lg2 = ctx.createLinearGradient(cx, 0, cx + rightLen, 0);
+          lg2.addColorStop(0, "rgba(255, 79, 216, 0.78)");
+          lg2.addColorStop(0.08, "rgba(255, 79, 216, 0.42)");
+          lg2.addColorStop(0.35, "rgba(170, 50, 130, 0.16)");
+          lg2.addColorStop(1, "rgba(0, 0, 0, 0)");
+          ctx.fillStyle = lg2;
+          ctx.fillRect(cx, cy - bandH, W - cx, bandH * 2);
+          ctx.globalAlpha = 0.55 * mix;
+          ctx.fillRect(cx, cy - bandH * 0.5, W - cx, bandH);
+
+          // Big radial cyan/magenta wash centered on cursor
+          ctx.globalAlpha = 0.55 * mix;
+          var rayLen = 900;
+          var g1 = ctx.createRadialGradient(cx, cy, 0, cx, cy, rayLen);
+          g1.addColorStop(0, "rgba(110, 220, 255, 0.55)");
+          g1.addColorStop(0.20, "rgba(73, 242, 255, 0.22)");
+          g1.addColorStop(0.55, "rgba(20, 60, 110, 0.08)");
+          g1.addColorStop(1, "rgba(0, 0, 0, 0)");
+          ctx.fillStyle = g1;
+          ctx.fillRect(0, 0, W, H);
+
+          // Spectral yellow hot core right at cursor
+          ctx.globalAlpha = mix;
+          var g3 = ctx.createRadialGradient(cx, cy, 0, cx, cy, 280);
+          g3.addColorStop(0, "rgba(255, 255, 255, 0.95)");
+          g3.addColorStop(0.10, "rgba(246, 255, 122, 0.75)");
+          g3.addColorStop(0.35, "rgba(246, 255, 122, 0.20)");
+          g3.addColorStop(1, "rgba(246, 255, 122, 0)");
+          ctx.fillStyle = g3;
+          ctx.fillRect(0, 0, W, H);
+          ctx.restore();
+
+          // 3) Vertical sweep band — a tall luminous bar centered on cursor X
+          ctx.save();
+          ctx.globalCompositeOperation = "lighter";
+          ctx.globalAlpha = 0.55 * mix;
+          var bandW = 240;
+          var bg1 = ctx.createLinearGradient(cx - bandW, 0, cx + bandW, 0);
+          bg1.addColorStop(0, "rgba(73, 242, 255, 0)");
+          bg1.addColorStop(0.40, "rgba(73, 242, 255, 0.18)");
+          bg1.addColorStop(0.50, "rgba(255, 255, 255, 0.42)");
+          bg1.addColorStop(0.60, "rgba(255, 79, 216, 0.18)");
+          bg1.addColorStop(1, "rgba(255, 79, 216, 0)");
+          ctx.fillStyle = bg1;
+          ctx.fillRect(cx - bandW, 0, bandW * 2, H);
+          ctx.restore();
+
+          // 4) TEXT with chromatic aberration tied to cursor proximity
+          //    Draw three text layers, each a horizontal band slice:
+          //    - pre-tinted cyan, shifted LEFT (more shift near cursor)
+          //    - pre-tinted magenta, shifted RIGHT
+          //    - base white on top
+          var bands = 24;
+          var bandPx = W / bands;
+          ctx.save();
+          for (var b = 0; b < bands; b++) {
+            var bxStart = b * bandPx;
+            var bxCenter = bxStart + bandPx * 0.5;
+            var dx2 = Math.abs(bxCenter - cx);
+            var prox = Math.max(0, 1 - dx2 / 520);
+            var shift = prox * 22 * mix;
+
+            ctx.globalCompositeOperation = "lighter";
+
+            // Cyan layer (shifted LEFT)
+            ctx.globalAlpha = (0.55 + prox * 0.45) * mix;
+            ctx.filter = "blur(" + (0.4 + prox * 2.0).toFixed(2) + "px) brightness(" + (1.1 + prox * 0.5).toFixed(2) + ")";
+            ctx.drawImage(
+              textCyanBuf,
+              bxStart, 0, bandPx, H,
+              bxStart - shift, 0, bandPx, H
+            );
+
+            // Magenta layer (shifted RIGHT)
+            ctx.globalAlpha = (0.55 + prox * 0.45) * mix;
+            ctx.filter = "blur(" + (0.4 + prox * 2.0).toFixed(2) + "px) brightness(" + (1.1 + prox * 0.5).toFixed(2) + ")";
+            ctx.drawImage(
+              textMagBuf,
+              bxStart, 0, bandPx, H,
+              bxStart + shift, 0, bandPx, H
+            );
+          }
+          // Sharp white base text on top, mostly unmoved
+          ctx.globalCompositeOperation = "source-over";
+          ctx.globalAlpha = 1;
+          ctx.filter = "none";
+          ctx.drawImage(textBuf, 0, 0);
+
+          // Extra hot-white highlight on the slice currently under the cursor
+          ctx.globalCompositeOperation = "lighter";
+          ctx.globalAlpha = 0.85 * mix;
+          ctx.filter = "blur(2px) brightness(1.6)";
+          var hotW = 360;
+          ctx.drawImage(
+            textBuf,
+            cx - hotW, 0, hotW * 2, H,
+            cx - hotW, 0, hotW * 2, H
+          );
+          ctx.filter = "none";
+          ctx.globalAlpha = 1;
+          ctx.globalCompositeOperation = "source-over";
+          ctx.restore();
+
+          // 5) Cursor dot — bright core with multi-layer halo, drawn AFTER text
+          ctx.save();
+          ctx.globalCompositeOperation = "lighter";
+          ctx.globalAlpha = mix;
+          // outer halo (large soft)
+          var hg = ctx.createRadialGradient(cx, cy, 0, cx, cy, 140);
+          hg.addColorStop(0, "rgba(255, 255, 255, 0.95)");
+          hg.addColorStop(0.15, "rgba(246, 255, 122, 0.70)");
+          hg.addColorStop(0.45, "rgba(73, 242, 255, 0.30)");
+          hg.addColorStop(0.75, "rgba(255, 79, 216, 0.12)");
+          hg.addColorStop(1, "rgba(73, 242, 255, 0)");
+          ctx.fillStyle = hg;
+          ctx.beginPath();
+          ctx.arc(cx, cy, 140, 0, Math.PI * 2);
+          ctx.fill();
+
+          // mid halo (tight bright)
+          var hg2 = ctx.createRadialGradient(cx, cy, 0, cx, cy, 28);
+          hg2.addColorStop(0, "rgba(255, 255, 255, 1.0)");
+          hg2.addColorStop(0.55, "rgba(255, 255, 220, 0.65)");
+          hg2.addColorStop(1, "rgba(255, 255, 220, 0)");
+          ctx.fillStyle = hg2;
+          ctx.beginPath();
+          ctx.arc(cx, cy, 28, 0, Math.PI * 2);
+          ctx.fill();
+
+          // inner bright dot
+          ctx.fillStyle = "rgba(255, 255, 255, 1.0)";
+          ctx.beginPath();
+          ctx.arc(cx, cy, 7, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+
+          // 6) Scanline overlay — very subtle CRT feel
+          ctx.save();
+          ctx.globalCompositeOperation = "source-over";
+          ctx.fillStyle = "rgba(0, 0, 0, 0.08)";
+          for (var sy = 0; sy < H; sy += 3) {
+            ctx.fillRect(0, sy, W, 1);
+          }
+          ctx.restore();
+
+          // 7) Outer vignette — gentle, don't kill the rays
+          ctx.save();
+          ctx.globalCompositeOperation = "source-over";
+          var vg = ctx.createRadialGradient(W * 0.5, H * 0.5, H * 0.5, W * 0.5, H * 0.5, H * 0.95);
+          vg.addColorStop(0, "rgba(0, 0, 0, 0)");
+          vg.addColorStop(1, "rgba(0, 0, 0, 0.42)");
+          ctx.fillStyle = vg;
+          ctx.fillRect(0, 0, W, H);
+          ctx.restore();
+        }
+
+        renderAtTime(0);
+
+        window.__timelines = window.__timelines || {};
+        var tl = gsap.timeline({ paused: true });
+        // Empty padding tween establishes the timeline duration.
+        tl.to({}, { duration: 5.5 }, 0);
+        window.__timelines["scene-03-cursor-blur-sweeps"] = tl;
+
+        // Drive the canvas render off gsap.ticker by reading tl.time() each frame.
+        // This works for both live playback and seek-based capture (snapshot/render).
+        var lastT = -1;
+        gsap.ticker.add(function () {
+          var t = tl.time();
+          if (t !== lastT) {
+            lastT = t;
+            renderAtTime(t);
+          }
+        });
+      })();
+    </script>
+  </body>
+</html>

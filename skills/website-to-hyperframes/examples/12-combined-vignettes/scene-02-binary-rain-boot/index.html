@@ -1,0 +1,486 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>scene-02-binary-rain-boot</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=VT323&family=IBM+Plex+Mono:wght@400;500;600;700&family=Inter:wght@500;600&display=swap"
+    rel="stylesheet"
+  />
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #000; }
+
+    /* ============================================================
+       Combined vignette: Matrix-style binary rain (Canvas 2D)
+       behind a foreground terminal panel with deterministic
+       char-by-char type-on output. Reads tl.time() from a
+       gsap.ticker so the canvas paints during tl.seek() (snapshot)
+       and during live playback equally.
+       ============================================================ */
+
+    #scene-02-binary-rain-boot {
+      position: relative;
+      width: 1920px;
+      height: 1080px;
+      overflow: hidden;
+      background: #000;
+      font-family: "IBM Plex Mono", "Menlo", monospace;
+      color: #5be584;
+    }
+
+    /* The canvas fills the frame — sits BEHIND the terminal */
+    #scene-02-binary-rain-boot #rain-canvas {
+      position: absolute;
+      inset: 0;
+      width: 1920px;
+      height: 1080px;
+      z-index: 1;
+    }
+
+    /* Foreground terminal panel — centered, glassy on top of the rain */
+    #scene-02-binary-rain-boot .terminal {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 1100px;
+      z-index: 20;
+      border: 1px solid rgba(74, 222, 128, 0.35);
+      border-radius: 14px;
+      background:
+        linear-gradient(180deg, rgba(10, 22, 14, 0.92) 0%, rgba(4, 12, 8, 0.95) 100%);
+      backdrop-filter: blur(3px);
+      box-shadow:
+        0 60px 140px -30px rgba(34, 197, 94, 0.35),
+        0 0 0 1px rgba(74, 222, 128, 0.12),
+        inset 0 1px 0 rgba(255, 255, 255, 0.04);
+      overflow: hidden;
+      will-change: transform, opacity;
+    }
+    #scene-02-binary-rain-boot .terminal-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 16px 22px;
+      border-bottom: 1px solid rgba(74, 222, 128, 0.18);
+      background: rgba(8, 16, 11, 0.65);
+    }
+    #scene-02-binary-rain-boot .dot {
+      width: 12px; height: 12px; border-radius: 50%;
+    }
+    #scene-02-binary-rain-boot .dot.red    { background: #ff5f57; }
+    #scene-02-binary-rain-boot .dot.yellow { background: #ffbd2e; }
+    #scene-02-binary-rain-boot .dot.green  { background: #28c941; }
+    #scene-02-binary-rain-boot .terminal-title {
+      flex: 1;
+      text-align: center;
+      font-family: "Inter", sans-serif;
+      font-size: 13px;
+      font-weight: 500;
+      color: #6f8a99;
+      letter-spacing: 0.02em;
+    }
+
+    #scene-02-binary-rain-boot .terminal-body {
+      padding: 40px 48px 56px;
+      min-height: 460px;
+      position: relative;
+      font-size: 32px;
+      line-height: 1.55;
+      font-family: "IBM Plex Mono", "Menlo", monospace;
+    }
+
+    /* Each output line is its own host with pre-split chars. */
+    #scene-02-binary-rain-boot .out-line {
+      color: #5be584;
+      font-weight: 500;
+      letter-spacing: -0.005em;
+      display: block;
+      white-space: pre-wrap;
+      min-height: 50px;
+      text-shadow: 0 0 12px rgba(74, 222, 128, 0.35);
+    }
+    #scene-02-binary-rain-boot .out-line .char {
+      display: inline-block;
+      white-space: pre;
+      opacity: 0; /* locked initial — GSAP brings them in with steps(1) */
+      will-change: opacity;
+    }
+    #scene-02-binary-rain-boot .out-line.bright {
+      color: #93f7b8;
+      font-weight: 600;
+      text-shadow: 0 0 18px rgba(147, 247, 184, 0.6);
+    }
+    #scene-02-binary-rain-boot .out-line.dim {
+      color: #6f8a99;
+      text-shadow: none;
+    }
+
+    /* The blinking cursor at the end of the last line */
+    #scene-02-binary-rain-boot .cursor {
+      display: inline-block;
+      width: 14px;
+      height: 30px;
+      background: #4ade80;
+      vertical-align: -3px;
+      margin-left: 6px;
+      box-shadow: 0 0 14px rgba(74, 222, 128, 0.55);
+      will-change: opacity;
+      opacity: 0; /* locked, brought up by GSAP */
+    }
+
+    /* CRT scanlines + vignette for ambiance */
+    #scene-02-binary-rain-boot .scanlines {
+      position: absolute;
+      inset: 0;
+      z-index: 50;
+      background: repeating-linear-gradient(
+        0deg,
+        rgba(255, 255, 255, 0) 0px,
+        rgba(255, 255, 255, 0) 2px,
+        rgba(0, 0, 0, 0.18) 2px,
+        rgba(0, 0, 0, 0.18) 4px
+      );
+      pointer-events: none;
+      mix-blend-mode: multiply;
+      will-change: transform;
+    }
+    #scene-02-binary-rain-boot .vignette {
+      position: absolute;
+      inset: 0;
+      z-index: 55;
+      background: radial-gradient(ellipse at center, transparent 35%, rgba(0, 0, 0, 0.65) 100%);
+      pointer-events: none;
+    }
+
+    #scene-02-binary-rain-boot .scene-label {
+      position: absolute;
+      left: 48px;
+      bottom: 48px;
+      font-family: "Inter", sans-serif;
+      font-size: 16px;
+      color: #5be584;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      font-weight: 500;
+      z-index: 100;
+      text-shadow: 0 0 10px rgba(74, 222, 128, 0.35);
+    }
+    #scene-02-binary-rain-boot .scene-label .accent {
+      color: #d6ffe1;
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="scene-02-binary-rain-boot"
+       data-composition-id="scene-02-binary-rain-boot"
+       data-start="0"
+       data-duration="7.5"
+       data-width="1920"
+       data-height="1080"
+       style="width:1920px; height:1080px;">
+
+    <!-- Background: binary rain on Canvas 2D -->
+    <canvas id="rain-canvas" width="1920" height="1080"></canvas>
+
+    <!-- Foreground: terminal panel -->
+    <div class="terminal" id="terminal">
+      <div class="terminal-header">
+        <span class="dot red"></span>
+        <span class="dot yellow"></span>
+        <span class="dot green"></span>
+        <span class="terminal-title">~/system ── tty0</span>
+      </div>
+
+      <div class="terminal-body">
+        <div class="out-line"        id="out-1"></div>
+        <div class="out-line dim"    id="out-2"></div>
+        <div class="out-line"        id="out-3"></div>
+        <div class="out-line"        id="out-4"></div>
+        <div class="out-line bright" id="out-5"><!-- prompt + cursor wired below --></div>
+      </div>
+    </div>
+
+    <!-- CRT overlays -->
+    <div class="scanlines" id="scanlines"></div>
+    <div class="vignette"></div>
+
+    <div class="scene-label">
+      Scene 02 &middot; <span class="accent">Binary Rain + Boot Sequence</span> &middot; Matrix-style columns + terminal type-on
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      var BEAT = 7.5;
+      window.__timelines = window.__timelines || {};
+
+      var root = document.getElementById("scene-02-binary-rain-boot");
+      var canvas = document.getElementById("rain-canvas");
+      var ctx = canvas.getContext("2d");
+
+      // ============================================================
+      // CANVAS 2D — Matrix-style binary rain
+      // Each column has a head whose pixel-y wraps within a virtual
+      // height = H + headroom. We then draw the head + a trail of
+      // characters above it, fading out by index. Every glyph the
+      // rain prints is a 0 or 1 pulled from a per-column glyph table.
+      //
+      // The render function reads tl.time() each tick — fully
+      // deterministic across tl.seek() and live playback.
+      // ============================================================
+      var W = 1920, H = 1080;
+      var CELL_W = 20;   // column width in px
+      var CELL_H = 22;   // row height in px
+      var COLS = Math.floor(W / CELL_W); // ~96
+      var VIRT_H = H + CELL_H * 18;      // head wraps in this virtual range
+
+      // Seeded RNG for deterministic columns
+      function rng(seed) {
+        return function () {
+          seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+          return (seed % 10000) / 10000;
+        };
+      }
+
+      // Pre-bake per-column properties + a 0/1 glyph table per column.
+      var rand = rng(42);
+      var GLYPH_TABLE_LEN = 96; // enough rows for any trail at any wrap point
+      var columns = [];
+      for (var c = 0; c < COLS; c++) {
+        var speedPxPerSec = (22 + rand() * 36) * CELL_H * 0.7; // px / s
+        var startPxOffset = rand() * VIRT_H;
+        var bright = rand() > 0.78;
+        var trailLen = 14 + Math.floor(rand() * 12);
+        var glyphs = new Uint8Array(GLYPH_TABLE_LEN);
+        for (var r = 0; r < GLYPH_TABLE_LEN; r++) {
+          glyphs[r] = rand() > 0.5 ? 1 : 0;
+        }
+        columns.push({
+          speedPx: speedPxPerSec,
+          startPx: startPxOffset,
+          bright: bright,
+          trailLen: trailLen,
+          glyphs: glyphs
+        });
+      }
+
+      // The terminal panel sits in the middle of the frame; dim
+      // columns drawn behind it so they don't fight the text.
+      var dimX1 = 400, dimX2 = 1520;
+      var dimY1 = 250, dimY2 = 830;
+
+      function renderRain(t) {
+        // Black background — deterministic, no decay-fade trickery
+        ctx.fillStyle = "#000";
+        ctx.fillRect(0, 0, W, H);
+
+        ctx.font = "bold 18px \"IBM Plex Mono\", monospace";
+        ctx.textBaseline = "top";
+
+        for (var c = 0; c < COLS; c++) {
+          var col = columns[c];
+          var x = c * CELL_W + 2;
+
+          // Head pixel y wraps in [0, VIRT_H). Most of VIRT_H is
+          // off-screen (below H), so each column visually has a
+          // gap period where it "doesn't rain" — keeps the rain
+          // looking organic.
+          var rawHead = col.startPx + t * col.speedPx;
+          var headPx = ((rawHead % VIRT_H) + VIRT_H) % VIRT_H;
+
+          for (var k = 0; k < col.trailLen; k++) {
+            var drawY = headPx - k * CELL_H;
+            if (drawY < -CELL_H || drawY > H) continue;
+
+            // Glyph index uses a row-stride based on the unwrapped
+            // head, so glyphs change with k AND with t (cycles).
+            var rowIdx = ((Math.floor(rawHead / CELL_H) - k) % GLYPH_TABLE_LEN + GLYPH_TABLE_LEN) % GLYPH_TABLE_LEN;
+            var ch = col.glyphs[rowIdx] ? "1" : "0";
+
+            var alpha;
+            if (k === 0) {
+              alpha = col.bright ? 1.0 : 0.95;
+            } else {
+              alpha = Math.max(0, 1 - k / col.trailLen) * (col.bright ? 0.95 : 0.75);
+            }
+
+            // Dim behind the terminal panel
+            if (drawY > dimY1 && drawY < dimY2 && x > dimX1 && x < dimX2) {
+              alpha *= 0.30;
+            }
+
+            if (k === 0) {
+              // White-hot head
+              ctx.fillStyle = "rgba(220,255,235," + alpha.toFixed(3) + ")";
+            } else if (k < 3) {
+              // Bright green just below the head
+              ctx.fillStyle = "rgba(140,255,170," + alpha.toFixed(3) + ")";
+            } else {
+              // Classic Matrix green tail
+              var g = col.bright ? 255 : 210;
+              ctx.fillStyle = "rgba(51," + g + ",80," + alpha.toFixed(3) + ")";
+            }
+            ctx.fillText(ch, x, drawY);
+          }
+        }
+      }
+
+      renderRain(0);
+
+      // ============================================================
+      // FOREGROUND — terminal type-on
+      // Pre-split each line into per-char spans (no tl.call mutation,
+      // so tl.seek() works). steps(1) stagger = mechanical typing.
+      // ============================================================
+      function splitInto(host, text) {
+        var spans = [];
+        var frag = document.createDocumentFragment();
+        Array.from(text).forEach(function (ch) {
+          var span = document.createElement("span");
+          span.className = "char";
+          span.textContent = ch === " " ? " " : ch;
+          frag.appendChild(span);
+          spans.push(span);
+        });
+        host.replaceChildren(frag);
+        return spans;
+      }
+
+      var line1Chars = splitInto(
+        document.getElementById("out-1"),
+        "> system.init"
+      );
+      var line2Chars = splitInto(
+        document.getElementById("out-2"),
+        "> loading kernel..."
+      );
+      var line3Chars = splitInto(
+        document.getElementById("out-3"),
+        "> [OK] memory mapped"
+      );
+      var line4Chars = splitInto(
+        document.getElementById("out-4"),
+        "> [OK] network ready"
+      );
+
+      // Line 5 is "> ready." followed by a blinking cursor span.
+      // Build it as char spans + an inline cursor (DOM upfront).
+      (function () {
+        var host = document.getElementById("out-5");
+        var frag = document.createDocumentFragment();
+        var text5 = "> ready.";
+        Array.from(text5).forEach(function (ch) {
+          var span = document.createElement("span");
+          span.className = "char";
+          span.textContent = ch === " " ? " " : ch;
+          frag.appendChild(span);
+        });
+        var cursor = document.createElement("span");
+        cursor.className = "cursor";
+        cursor.id = "cursor";
+        frag.appendChild(cursor);
+        host.replaceChildren(frag);
+      })();
+      var line5Chars = root.querySelectorAll("#out-5 .char");
+
+      // ============================================================
+      // TIMELINE
+      // ============================================================
+      var tl = gsap.timeline({ paused: true });
+
+      // ---- Continuous motion: scanlines drift the whole time ----
+      tl.fromTo("#scene-02-binary-rain-boot #scanlines",
+        { y: 0 },
+        { y: 6, duration: 0.8, ease: "none", repeat: Math.ceil(BEAT / 0.8), yoyo: true },
+        0);
+
+      // ---- Terminal panel entrance ----
+      tl.set("#scene-02-binary-rain-boot #terminal",
+        { scale: 0.94, opacity: 0, transformOrigin: "50% 50%" }, 0);
+      tl.fromTo("#scene-02-binary-rain-boot #terminal",
+        { scale: 0.94, opacity: 0 },
+        { scale: 1, opacity: 1, duration: 0.65, ease: "expo.out" },
+        0.45);
+
+      // ---- Line 1: "> system.init" ----
+      // Starts after the panel has landed. Mechanical steps(1) typing.
+      tl.to(line1Chars, {
+        opacity: 1, duration: 0.03,
+        stagger: 0.045,           // 13 chars * 0.045 ≈ 0.58s
+        ease: "steps(1)",
+      }, 1.05);
+
+      // ---- Line 2: "> loading kernel..." ----
+      tl.to(line2Chars, {
+        opacity: 1, duration: 0.03,
+        stagger: 0.038,
+        ease: "steps(1)",
+      }, 1.85);
+
+      // ---- Line 3: "> [OK] memory mapped" ----
+      tl.to(line3Chars, {
+        opacity: 1, duration: 0.03,
+        stagger: 0.034,
+        ease: "steps(1)",
+      }, 2.85);
+
+      // ---- Line 4: "> [OK] network ready" ----
+      tl.to(line4Chars, {
+        opacity: 1, duration: 0.03,
+        stagger: 0.034,
+        ease: "steps(1)",
+      }, 3.85);
+
+      // ---- Line 5: "> ready." — bright green climax ----
+      tl.to(line5Chars, {
+        opacity: 1, duration: 0.04,
+        stagger: 0.05,
+        ease: "steps(1)",
+      }, 4.95);
+
+      // ---- Cursor: comes on after "ready." finishes, then blinks ----
+      tl.to("#scene-02-binary-rain-boot #cursor", {
+        opacity: 1, duration: 0.05, ease: "steps(1)"
+      }, 5.45);
+      tl.to("#scene-02-binary-rain-boot #cursor", {
+        opacity: 0.1, duration: 0.4, repeat: 5, yoyo: true, ease: "steps(1)"
+      }, 5.55);
+
+      // ---- Final glow pulse on the bright "ready." line ----
+      tl.to(line5Chars, {
+        textShadow: "0 0 22px rgba(147, 247, 184, 0.85)",
+        duration: 0.6,
+        ease: "expo.out",
+      }, 5.5);
+
+      // ---- Continuous motion: terminal subtle drift over full beat ----
+      tl.fromTo("#scene-02-binary-rain-boot #terminal",
+        { y: 0 },
+        { y: -10, duration: BEAT - 0.45, ease: "none" },
+        0.45);
+
+      window.__timelines["scene-02-binary-rain-boot"] = tl;
+
+      // ============================================================
+      // gsap.ticker drives the canvas — reads tl.time() each frame.
+      // This is the pattern that works under tl.seek() too.
+      // ============================================================
+      var lastT = -1;
+      gsap.ticker.add(function () {
+        var t = tl.time();
+        if (t !== lastT) {
+          lastT = t;
+          renderRain(t);
+        }
+      });
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,415 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>scene-04-anamorphic-text-crt</title>
+  <link href="https://fonts.googleapis.com/css2?family=VT323&family=IBM+Plex+Mono:wght@400;500;700&display=block" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body, html { background: #000; }
+
+    [data-composition-id="scene-04-anamorphic-text-crt"] {
+      width: 1920px; height: 1080px;
+      position: relative; overflow: hidden;
+      background: #000;
+      font-family: 'IBM Plex Mono', monospace;
+      color: #88FFAA;
+    }
+    [data-composition-id="scene-04-anamorphic-text-crt"] .canvas-holder {
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+    }
+    [data-composition-id="scene-04-anamorphic-text-crt"] .canvas-holder canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      filter: drop-shadow(-3px 0 0 rgba(255, 60, 60, 0.55))
+              drop-shadow(3px 0 0 rgba(60, 200, 255, 0.55));
+      image-rendering: pixelated;
+    }
+    [data-composition-id="scene-04-anamorphic-text-crt"] .scanlines {
+      position: absolute;
+      inset: 0;
+      z-index: 4;
+      pointer-events: none;
+      background: repeating-linear-gradient(
+        to bottom,
+        rgba(0, 0, 0, 0) 0px,
+        rgba(0, 0, 0, 0) 2px,
+        rgba(0, 0, 0, 0.35) 3px,
+        rgba(0, 0, 0, 0.35) 4px
+      );
+      mix-blend-mode: multiply;
+    }
+    [data-composition-id="scene-04-anamorphic-text-crt"] .vignette {
+      position: absolute;
+      inset: 0;
+      z-index: 5;
+      pointer-events: none;
+      background:
+        radial-gradient(ellipse at center, transparent 50%, rgba(0,0,0,0.9) 100%),
+        radial-gradient(ellipse at center, rgba(51, 255, 119, 0.06) 0%, transparent 60%);
+    }
+    [data-composition-id="scene-04-anamorphic-text-crt"] .hud-top,
+    [data-composition-id="scene-04-anamorphic-text-crt"] .hud-bot {
+      position: absolute;
+      left: 60px;
+      right: 60px;
+      z-index: 6;
+      font-family: 'IBM Plex Mono', monospace;
+      font-weight: 500;
+      font-size: 22px;
+      letter-spacing: 0.18em;
+      color: #33FF77;
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      text-transform: uppercase;
+      text-shadow: 0 0 8px rgba(51, 255, 119, 0.55);
+    }
+    [data-composition-id="scene-04-anamorphic-text-crt"] .hud-top { top: 50px; }
+    [data-composition-id="scene-04-anamorphic-text-crt"] .hud-bot {
+      bottom: 50px;
+      justify-content: flex-end;
+      font-size: 20px;
+      opacity: 0.85;
+    }
+    [data-composition-id="scene-04-anamorphic-text-crt"] .hud-sep {
+      opacity: 0.4;
+    }
+    [data-composition-id="scene-04-anamorphic-text-crt"] .hud-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: #FF3344;
+      box-shadow: 0 0 12px rgba(255, 51, 68, 0.9);
+    }
+    [data-composition-id="scene-04-anamorphic-text-crt"] .hud-blink {
+      color: #FF3344;
+      text-shadow: 0 0 8px rgba(255, 51, 68, 0.6);
+    }
+    [data-composition-id="scene-04-anamorphic-text-crt"] .loading {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 7;
+      color: #33FF77;
+      font-family: 'VT323', 'IBM Plex Mono', monospace;
+      font-size: 28px;
+      letter-spacing: 0.2em;
+      text-shadow: 0 0 8px rgba(51, 255, 119, 0.6);
+      pointer-events: none;
+    }
+
+    [data-composition-id="scene-04-anamorphic-text-crt"] .scene-label {
+      position: absolute;
+      left: 48px;
+      bottom: 48px;
+      font-size: 16px;
+      color: #707070;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      font-weight: 500;
+      z-index: 100;
+      font-family: "Inter", sans-serif;
+    }
+    [data-composition-id="scene-04-anamorphic-text-crt"] .scene-label .accent {
+      color: #d0ffe0;
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+  <div id="scene-04-anamorphic-text-crt"
+       data-composition-id="scene-04-anamorphic-text-crt"
+       data-start="0"
+       data-duration="15"
+       data-width="1920"
+       data-height="1080"
+       style="width:1920px; height:1080px;">
+
+    <div class="canvas-holder"></div>
+    <div class="scanlines"></div>
+    <div class="vignette"></div>
+    <div class="hud-top">
+      <span class="hud-dot"></span>
+      <span>HF://ANAMORPHIC</span>
+      <span class="hud-sep">/</span>
+      <span>CHANNEL 01</span>
+      <span class="hud-sep">/</span>
+      <span class="hud-blink">REC</span>
+    </div>
+    <div class="hud-bot">
+      <span>// FRONT&nbsp;&rarr;&nbsp;SIDE</span>
+      <span class="hud-sep">/</span>
+      <span>15.000s</span>
+    </div>
+    <div class="loading">// COMPUTING GEOMETRY &#9608;&#9608;&#9608;</div>
+
+    <div class="scene-label">Scene 04 &middot; <span class="accent">Anamorphic Text CRT</span> &middot; Three.js 3D text + CRT HUD overlay</div>
+  </div>
+
+  <script>
+    (async () => {
+      const log = (...args) => console.log('[anamorphic]', ...args);
+      const root = document.querySelector('[data-composition-id="scene-04-anamorphic-text-crt"]');
+      const errEl = root.querySelector('.loading');
+      const setStatus = (msg) => { if (errEl) errEl.textContent = msg; };
+
+      // Build the timeline immediately so the composition is seekable even
+      // before async imports finish. We attach Three rendering to gsap.ticker
+      // which reads tl.time() each frame — works for both live playback and
+      // tl.seek() driven snapshot/render capture.
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+      // State object the timeline animates; render loop reads it.
+      const state = (window.__anamorphicState = window.__anamorphicState || {
+        rotation: 0,
+        ready: false,
+      });
+      // 0-1s: hold WORD1, 1-14s: rotate 90deg, 14-15s: hold WORD2
+      tl.set(state, { rotation: 0 }, 0);
+      tl.to(state, { rotation: -Math.PI / 2, duration: 13, ease: 'power2.inOut' }, 1);
+      tl.to(state, { rotation: -Math.PI / 2, duration: 1, ease: 'none' }, 14);
+      window.__timelines["scene-04-anamorphic-text-crt"] = tl;
+
+      try {
+        setStatus('Loading three.js...');
+        const THREE = await import('https://cdn.jsdelivr.net/npm/three@0.165.0/+esm');
+        const { FontLoader } = await import('https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/loaders/FontLoader.js/+esm');
+        const { TextGeometry } = await import('https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/geometries/TextGeometry.js/+esm');
+        const { Brush, Evaluator, INTERSECTION } = await import('https://cdn.jsdelivr.net/npm/three-bvh-csg@0.0.18/+esm');
+
+        log('Modules loaded');
+        setStatus('Loading font...');
+
+        // Rebrand: source used HYPERFRAMES <-> HERMES.
+        // Generic equivalents with balanced character counts (both 6 chars)
+        // so the CSG pair algorithm produces a clean 1:1 char-to-char morph.
+        const WORD1 = 'MOTION';
+        const WORD2 = 'DESIGN';
+        const TEXT_SIZE = 260; // slightly larger than source (200) since words are shorter
+        const FONT_URL = 'https://cdn.jsdelivr.net/npm/three@0.165.0/examples/fonts/droid/droid_sans_mono_regular.typeface.json';
+
+        const holder = root.querySelector('.canvas-holder');
+        const loading = root.querySelector('.loading');
+
+        // Renderer
+        const renderer = new THREE.WebGLRenderer({
+          antialias: true,
+          alpha: false,
+          preserveDrawingBuffer: true,
+        });
+        renderer.setSize(1920, 1080, false);
+        renderer.setPixelRatio(1);
+        renderer.setClearColor(0x000000, 1);
+        holder.appendChild(renderer.domElement);
+
+        // Scene + ortho camera
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x000000);
+        const aspect = 1920 / 1080;
+        const camHeight = 1400;
+        const camWidth = camHeight * aspect;
+        const camera = new THREE.OrthographicCamera(
+          -camWidth / 2, camWidth / 2,
+          camHeight / 2, -camHeight / 2,
+          -5000, 5000
+        );
+        camera.position.set(0, 0, 1000);
+        camera.lookAt(0, 0, 0);
+
+        // Lights — phosphor green key, deep cyan rim
+        scene.add(new THREE.AmbientLight(0x114422, 0.6));
+        const keyLight = new THREE.DirectionalLight(0x88FFAA, 1.4);
+        keyLight.position.set(400, 600, 800);
+        scene.add(keyLight);
+        const rimLight = new THREE.DirectionalLight(0x33FFCC, 0.6);
+        rimLight.position.set(-600, -100, 500);
+        scene.add(rimLight);
+
+        // Emissive phosphor material — looks like glowing CRT trace
+        const material = new THREE.MeshStandardMaterial({
+          color: 0x33FF77,
+          emissive: 0x33FF77,
+          emissiveIntensity: 0.55,
+          metalness: 0.0,
+          roughness: 0.8,
+        });
+
+        // Container that GSAP rotates (via state.rotation read in ticker)
+        const stage = new THREE.Group();
+        scene.add(stage);
+
+        // Load font
+        const font = await new Promise((resolve, reject) => {
+          const fl = new FontLoader();
+          fl.load(FONT_URL, resolve, undefined, reject);
+        });
+        log('Font loaded');
+        setStatus('Building geometry...');
+
+        // Strip spaces for CSG
+        const word1Stripped = WORD1.replace(/\s/g, '');
+        const word2Stripped = WORD2.replace(/\s/g, '');
+
+        // Pair characters between the two words
+        const pairWords = (shorter, longer) => {
+          if (shorter.length > longer.length) {
+            return pairWords(longer, shorter).map(([a, b]) => [b, a]);
+          }
+          const result = [];
+          const m = shorter.length;
+          const n = longer.length;
+          let prev = 0;
+          for (let i = 1; i <= m; i++) {
+            const next = Math.round((i * n) / m);
+            const group = longer.slice(prev, next);
+            result.push([[shorter[i - 1]], group]);
+            prev = next;
+          }
+          return result;
+        };
+
+        // Visible bounds (for vertical centering and extrude depth fallback)
+        const measureChunk = (text) => {
+          const shapes = font.generateShapes(text, TEXT_SIZE);
+          const geom = new THREE.ShapeGeometry(shapes);
+          geom.computeBoundingBox();
+          const bb = geom.boundingBox;
+          geom.dispose();
+          return {
+            text,
+            width: bb.max.x - bb.min.x,
+            minX: bb.min.x,
+            minY: bb.min.y,
+            maxY: bb.max.y,
+          };
+        };
+
+        // Font advance for natural kerning between chunks
+        const advanceScale = TEXT_SIZE / font.data.resolution;
+        const advanceOf = (text) => {
+          let total = 0;
+          for (const c of text) {
+            const g = font.data.glyphs[c];
+            if (g) total += g.ha;
+          }
+          return total * advanceScale;
+        };
+
+        // Each chunk's position is the cumulative advance of all preceding chars.
+        const computeMeasurements = (chunks) => {
+          const result = [];
+          let cumulativeAdvance = 0;
+          for (const chunk of chunks) {
+            const text = chunk.join('');
+            const m = measureChunk(text);
+            result.push({ ...m, position: cumulativeAdvance, advance: advanceOf(text) });
+            cumulativeAdvance += advanceOf(text);
+          }
+          return result;
+        };
+
+        const pairs = pairWords(word1Stripped.split(''), word2Stripped.split(''));
+        const [chunks1, chunks2] = (() => {
+          const a = [], b = [];
+          for (const [x, y] of pairs) { a.push(x); b.push(y); }
+          return [a, b];
+        })();
+
+        const m1Arr = computeMeasurements(chunks1);
+        const m2Arr = computeMeasurements(chunks2);
+
+        // Total widths use advance (matches per-chunk positioning)
+        const fullM1 = measureChunk(word1Stripped);
+        const totalWidth1 = advanceOf(word1Stripped);
+        const totalWidth2 = advanceOf(word2Stripped);
+        const extrudeMargin = 30;
+        const charHeight = fullM1.maxY - fullM1.minY;
+
+        log('Pairs:', pairs.map(([a, b]) => a.join('') + '+' + b.join('')).join(' '));
+
+        const makeExtrudedText = (text, depth) => {
+          return new TextGeometry(text, {
+            font,
+            size: TEXT_SIZE,
+            depth,
+            curveSegments: 4,
+            bevelEnabled: false,
+          });
+        };
+
+        const evaluator = new Evaluator();
+        evaluator.useGroups = false;
+
+        // Build each character-pair intersection at the origin, then position the result
+        // at its kerned position within each word.
+        for (let i = 0; i < pairs.length; i++) {
+          const c1 = m1Arr[i];
+          const c2 = m2Arr[i];
+
+          const g1 = makeExtrudedText(c1.text, totalWidth2 + extrudeMargin);
+          g1.translate(0, 0, -(totalWidth2 + extrudeMargin) / 2);
+
+          const g2 = makeExtrudedText(c2.text, totalWidth1 + extrudeMargin);
+          g2.translate(0, 0, -(totalWidth1 + extrudeMargin) / 2);
+
+          const brush1 = new Brush(g1);
+          brush1.updateMatrixWorld();
+
+          const brush2 = new Brush(g2);
+          brush2.rotation.y = Math.PI / 2;
+          brush2.updateMatrixWorld();
+
+          try {
+            const intersected = evaluator.evaluate(brush1, brush2, INTERSECTION);
+            intersected.material = material;
+            // Bake centering into each chunk's position so the rotation pivot
+            // (stage origin) sits at the true center of BOTH words.
+            intersected.position.set(
+              c1.position - totalWidth1 / 2,
+              0,
+              -c2.position + totalWidth2 / 2
+            );
+            stage.add(intersected);
+          } catch (err) {
+            console.warn('CSG failed for pair', i, c1.text, c2.text, err.message);
+          }
+        }
+
+        // Vertical centering only — horizontal centering is baked into chunk positions
+        stage.position.set(0, -charHeight / 2 - fullM1.minY, 0);
+
+        log('CSG done — built', pairs.length, 'intersections');
+
+        state.ready = true;
+        loading.style.display = 'none';
+
+        // Render loop driven by gsap.ticker. Reads tl.time() each frame so it
+        // works under tl.seek() (snapshot/render CLI). We read state.rotation
+        // which GSAP mutates via the timeline tweens.
+        let lastT = -1;
+        gsap.ticker.add(function () {
+          const t = tl.time();
+          if (t !== lastT) {
+            lastT = t;
+          }
+          stage.rotation.y = state.rotation;
+          renderer.render(scene, camera);
+        });
+
+        log('Timeline registered');
+      } catch (err) {
+        console.error('[anamorphic] Failed:', err);
+        setStatus('Error: ' + err.message);
+      }
+    })();
+  </script>
+</body>
+</html>

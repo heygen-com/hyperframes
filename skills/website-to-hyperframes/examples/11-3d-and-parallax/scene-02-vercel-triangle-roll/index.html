@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>scene-02-vercel-triangle-roll</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      body { background: #ffffff; }
+
+      [data-composition-id="scene-02-vercel-triangle-roll"] {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #ffffff;
+        color: #000000;
+        font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+      }
+
+      [data-composition-id="scene-02-vercel-triangle-roll"] .grid {
+        position: absolute;
+        inset: 0;
+        z-index: 0;
+        opacity: 0.74;
+        background:
+          linear-gradient(90deg, transparent calc(100% - 1px), #e7e7e7 0) 0 0 / 120px 100%,
+          linear-gradient(0deg, transparent calc(100% - 1px), #e7e7e7 0) 0 0 / 100% 120px,
+          linear-gradient(90deg, transparent calc(100% - 1px), #f5f5f5 0) 0 0 / 24px 100%,
+          linear-gradient(0deg, transparent calc(100% - 1px), #f5f5f5 0) 0 0 / 100% 24px;
+      }
+
+      [data-composition-id="scene-02-vercel-triangle-roll"] .telemetry {
+        position: absolute;
+        inset: 0;
+        z-index: 1;
+        opacity: 0;
+        color: rgba(0, 0, 0, 0.42);
+        font-family: "SFMono-Regular", Menlo, Consolas, monospace;
+        font-size: 15px;
+        line-height: 1;
+        pointer-events: none;
+      }
+      [data-composition-id="scene-02-vercel-triangle-roll"] .telemetry span {
+        position: absolute;
+        white-space: nowrap;
+      }
+
+      [data-composition-id="scene-02-vercel-triangle-roll"] .shadow {
+        position: absolute;
+        left: 50%;
+        top: 800px;
+        z-index: 1;
+        width: 620px;
+        height: 54px;
+        opacity: 0;
+        margin-left: -310px;
+        background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0.22) 0%, rgba(0, 0, 0, 0.08) 43%, transparent 74%);
+        filter: blur(12px);
+      }
+
+      [data-composition-id="scene-02-vercel-triangle-roll"] #pyramid-canvas {
+        position: absolute;
+        inset: 0;
+        z-index: 2;
+        width: 1920px;
+        height: 1080px;
+        pointer-events: none;
+      }
+
+      [data-composition-id="scene-02-vercel-triangle-roll"] .corner-tag {
+        position: absolute;
+        top: 48px;
+        right: 48px;
+        z-index: 5;
+        font-size: 13px;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: rgba(0, 0, 0, 0.55);
+        font-weight: 500;
+      }
+      [data-composition-id="scene-02-vercel-triangle-roll"] .corner-tag .dot {
+        display: inline-block;
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #000;
+        margin-right: 10px;
+        vertical-align: middle;
+      }
+
+      [data-composition-id="scene-02-vercel-triangle-roll"] .scene-label {
+        position: absolute;
+        left: 48px;
+        bottom: 48px;
+        font-size: 16px;
+        color: #707070;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        font-weight: 500;
+        z-index: 100;
+        font-family: "Inter", sans-serif;
+      }
+      [data-composition-id="scene-02-vercel-triangle-roll"] .scene-label .accent {
+        color: #1a1a1a;
+        font-weight: 600;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="scene-02-vercel-triangle-roll"
+      data-composition-id="scene-02-vercel-triangle-roll"
+      data-start="0"
+      data-duration="5.5"
+      data-width="1920"
+      data-height="1080"
+      style="width: 1920px; height: 1080px;"
+    >
+      <div class="grid" aria-hidden="true"></div>
+
+      <div class="telemetry" id="telemetry" aria-hidden="true">
+        <span style="left: 18%; top: 24%;">EDGE 01 / READY</span>
+        <span style="left: 78%; top: 28%;">BUILD: CLEAN</span>
+        <span style="left: 73%; top: 72%;">FRAME 00030</span>
+        <span style="left: 25%; top: 76%;">ROLL VECTOR +360</span>
+      </div>
+
+      <div class="shadow" id="shadow" aria-hidden="true"></div>
+      <canvas id="pyramid-canvas" width="1920" height="1080" aria-hidden="true"></canvas>
+
+      <div class="corner-tag"><span class="dot"></span>POLYHEDRON / WEBGL</div>
+
+      <div class="scene-label">
+        Scene 02 &middot; <span class="accent">3D Triangle Roll</span> &middot; Three.js polyhedron + multi-material shaders
+      </div>
+    </div>
+
+    <script>
+      (function initTriangleRoll() {
+        var root = document.querySelector('[data-composition-id="scene-02-vercel-triangle-roll"]');
+        if (!root) { setTimeout(initTriangleRoll, 50); return; }
+        if (!window.THREE) { setTimeout(initTriangleRoll, 50); return; }
+        if (!window.gsap) { setTimeout(initTriangleRoll, 50); return; }
+
+        var WIDTH = 1920;
+        var HEIGHT = 1080;
+        var pyramidCanvas = root.querySelector("#pyramid-canvas");
+        var telemetryEl = root.querySelector("#telemetry");
+        var shadowEl = root.querySelector("#shadow");
+
+        // ═══════════════════════════════════════════════════════
+        // THREE.JS — 4-sided pyramid (apex + square base), multi-material faces
+        // ═══════════════════════════════════════════════════════
+        var renderer = new THREE.WebGLRenderer({
+          canvas: pyramidCanvas,
+          alpha: true,
+          antialias: true,
+          preserveDrawingBuffer: true
+        });
+        renderer.setSize(WIDTH, HEIGHT, false);
+        renderer.setPixelRatio(1);
+        renderer.setClearColor(0xffffff, 0);
+
+        var scene = new THREE.Scene();
+        var camera = new THREE.PerspectiveCamera(24, WIDTH / HEIGHT, 0.1, 100);
+        camera.position.set(0, 0, 6.3);
+        camera.lookAt(0, 0, 0);
+
+        var group = new THREE.Group();
+        scene.add(group);
+
+        // Pyramid geometry: 1 apex + 4 base corners = 4 triangular side faces + 2 base triangles
+        var apex = new THREE.Vector3(0, 1.15, 0);
+        var base = [
+          new THREE.Vector3(-1.08, -0.78, 1.08),
+          new THREE.Vector3(1.08, -0.78, 1.08),
+          new THREE.Vector3(1.08, -0.78, -1.08),
+          new THREE.Vector3(-1.08, -0.78, -1.08)
+        ];
+
+        // Each face gets its own color so multi-material shading reads in motion.
+        // Distinct grayscale steps + one accent so rotation is legible per face.
+        var faces = [
+          [apex, base[0], base[1], 0x0e0e0e],
+          [apex, base[1], base[2], 0x2a2a2a],
+          [apex, base[2], base[3], 0x141414],
+          [apex, base[3], base[0], 0x3a3a3a],
+          [base[0], base[3], base[2], 0x202020],
+          [base[0], base[2], base[1], 0x080808]
+        ];
+
+        for (var fi = 0; fi < faces.length; fi++) {
+          var face = faces[fi];
+          var geometry = new THREE.BufferGeometry().setFromPoints([face[0], face[1], face[2]]);
+          geometry.setIndex([0, 1, 2]);
+          geometry.computeVertexNormals();
+
+          var material = new THREE.MeshBasicMaterial({
+            color: face[3],
+            side: THREE.DoubleSide,
+            toneMapped: false
+          });
+
+          group.add(new THREE.Mesh(geometry, material));
+        }
+
+        group.scale.setScalar(1.28);
+
+        // Rotation axis — tilted so the roll shows multiple faces over time
+        var axis = new THREE.Vector3(0.58, 1, 0.42).normalize();
+
+        // State proxy holds the rotation angle the ticker reads each frame
+        var state = {
+          rotation: 0,
+          breath: 0
+        };
+
+        function renderPyramid() {
+          group.quaternion.setFromAxisAngle(axis, state.rotation);
+          // Gentle breathing scale on top of the base 1.28 scale
+          var s = 1.28 * (1 + state.breath);
+          group.scale.setScalar(s);
+          renderer.clear();
+          renderer.render(scene, camera);
+        }
+
+        // ═══════════════════════════════════════════════════════
+        // GSAP TIMELINE — rotation + secondary motion across 5.5s
+        // ═══════════════════════════════════════════════════════
+        window.__timelines = window.__timelines || {};
+        var tl = gsap.timeline({ paused: true });
+
+        // Telemetry + shadow fade in first 0.6s
+        tl.fromTo(telemetryEl,
+          { opacity: 0 },
+          { opacity: 0.34, duration: 0.6, ease: "power2.out" }, 0);
+        tl.fromTo(shadowEl,
+          { opacity: 0, scaleX: 0.85 },
+          { opacity: 0.72, scaleX: 1, duration: 0.6, ease: "power2.out" }, 0);
+
+        // Continuous Three.js rotation — two full revolutions over 5.5s with eased pace
+        tl.fromTo(state,
+          { rotation: 0 },
+          { rotation: Math.PI * 2 * 2, duration: 5.5, ease: "sine.inOut" }, 0);
+
+        // Subtle breathing scale (continuous)
+        tl.fromTo(state,
+          { breath: 0 },
+          { breath: 0.04, duration: 1.4, ease: "sine.inOut", yoyo: true, repeat: 3 }, 0);
+
+        // Shadow rocks side-to-side with the rotation
+        tl.to(shadowEl,
+          { scaleX: 0.78, duration: 1.4, ease: "sine.inOut", yoyo: true, repeat: 3 }, 0.6);
+
+        // Telemetry softens around the midpoint then comes back — secondary life
+        tl.to(telemetryEl,
+          { opacity: 0.18, duration: 1.0, ease: "sine.inOut" }, 2.0);
+        tl.to(telemetryEl,
+          { opacity: 0.34, duration: 1.0, ease: "sine.inOut" }, 3.5);
+
+        window.__timelines["scene-02-vercel-triangle-roll"] = tl;
+
+        // ═══════════════════════════════════════════════════════
+        // CANVAS RENDER LOOP — driven by gsap.ticker reading tl.time()
+        // This pattern is required for snapshot/render (tl.seek() compatible).
+        // tl.to(state, { onUpdate: ... }) does NOT fire under tl.seek().
+        // ═══════════════════════════════════════════════════════
+        renderPyramid();
+        var lastT = -1;
+        gsap.ticker.add(function () {
+          var t = tl.time();
+          if (t !== lastT) {
+            lastT = t;
+            renderPyramid();
+          }
+        });
+      })();
+    </script>
+  </body>
+</html>

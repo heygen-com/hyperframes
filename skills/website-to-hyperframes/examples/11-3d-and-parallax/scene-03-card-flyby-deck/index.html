@@ -1,0 +1,360 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>scene-03-card-flyby-deck</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=block" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #06070d; }
+
+    [data-composition-id="scene-03-card-flyby-deck"] {
+      position: relative;
+      width: 1920px; height: 1080px;
+      background: radial-gradient(1300px 820px at 50% 52%, #0d1018 0%, #06070d 70%, #04050a 100%);
+      overflow: hidden;
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    }
+
+    [data-composition-id="scene-03-card-flyby-deck"] .stage {
+      position: absolute; left: 0; top: 0;
+      width: 1920px; height: 1080px;
+      perspective: 2400px;
+      perspective-origin: 50% 55%;
+    }
+    /* Slight side tilt on the whole scene; the cards' own rotateX
+       drives the tumble-forward motion so the scene only carries
+       the static yaw. */
+    [data-composition-id="scene-03-card-flyby-deck"] .scene {
+      position: absolute; left: 0; top: 0;
+      width: 1920px; height: 1080px;
+      transform-style: preserve-3d;
+      transform: rotateY(-12deg);
+    }
+
+    [data-composition-id="scene-03-card-flyby-deck"] .card {
+      position: absolute;
+      left: calc(50% - 700px);
+      top: calc(50% - 395px);
+      width: 1400px; height: 790px;
+      border-radius: 32px;
+      will-change: transform, opacity;
+      --wipe: 0;
+      --color: #444;
+      transform-origin: 50% 50%;
+    }
+
+    /* Wireframe (always present, opacity tracks slot). */
+    [data-composition-id="scene-03-card-flyby-deck"] .wire {
+      position: absolute; inset: 0;
+      border-radius: 28px;
+      border: 1.5px solid rgba(255,255,255,0.42);
+      box-shadow: inset 0 0 0 0.5px rgba(255,255,255,0.18);
+      background: rgba(255,255,255,0.012);
+      overflow: hidden;
+    }
+    [data-composition-id="scene-03-card-flyby-deck"] .wire .wire-label {
+      position: absolute; left: 68px; top: 60px;
+      font-size: 26px; font-weight: 500;
+      letter-spacing: 0.18em; text-transform: uppercase;
+      color: rgba(255,255,255,0.50);
+    }
+    [data-composition-id="scene-03-card-flyby-deck"] .wire .wire-corner {
+      position: absolute; right: 68px; top: 60px;
+      width: 34px; height: 34px;
+      border: 1.5px solid rgba(255,255,255,0.32);
+      border-radius: 50%;
+    }
+    [data-composition-id="scene-03-card-flyby-deck"] .wire .wire-bar {
+      position: absolute; left: 68px; right: 68px; bottom: 68px;
+      height: 1.5px; background: rgba(255,255,255,0.22);
+    }
+
+    /* Solid colored layer — revealed via angled clip-path wipe driven by
+       --wipe. Polygon sweeps from upper-left to lower-right at ~72°.
+       At wipe=0 the polygon is collapsed off-element; at wipe=1 it covers
+       the full card. */
+    [data-composition-id="scene-03-card-flyby-deck"] .solid {
+      position: absolute; inset: 0;
+      border-radius: 28px;
+      background: var(--color);
+      box-shadow:
+        0 30px 90px rgba(0,0,0,0.55),
+        inset 0 1px 0 rgba(255,255,255,0.12);
+      overflow: hidden;
+      clip-path: polygon(
+        0% 0%,
+        calc(var(--wipe) * 200% - 30%) 0%,
+        calc(var(--wipe) * 200% - 80%) 100%,
+        0% 100%
+      );
+    }
+    [data-composition-id="scene-03-card-flyby-deck"] .solid::before {
+      content: ""; position: absolute; inset: 0; border-radius: 28px;
+      background: linear-gradient(135deg,
+        rgba(255,255,255,0.16) 0%,
+        rgba(255,255,255,0.04) 35%,
+        rgba(0,0,0,0.18) 100%);
+      pointer-events: none;
+    }
+    [data-composition-id="scene-03-card-flyby-deck"] .solid .tag {
+      position: absolute; left: 68px; top: 60px;
+      font-size: 26px; font-weight: 600;
+      letter-spacing: 0.22em; text-transform: uppercase;
+      color: rgba(255,255,255,0.78);
+    }
+    [data-composition-id="scene-03-card-flyby-deck"] .solid .title {
+      position: absolute; left: 68px; top: 130px;
+      font-size: 140px; font-weight: 800;
+      letter-spacing: -0.025em; line-height: 1.0;
+      color: #ffffff; max-width: 1264px;
+    }
+    [data-composition-id="scene-03-card-flyby-deck"] .solid .meta {
+      position: absolute; left: 68px; bottom: 80px;
+      font-size: 30px; font-weight: 500;
+      letter-spacing: 0.04em; color: rgba(255,255,255,0.78);
+    }
+    [data-composition-id="scene-03-card-flyby-deck"] .solid .play {
+      position: absolute; right: 68px; bottom: 70px;
+      width: 80px; height: 80px;
+      border-radius: 50%;
+      background: rgba(0,0,0,0.28);
+      display: flex; align-items: center; justify-content: center;
+    }
+    [data-composition-id="scene-03-card-flyby-deck"] .solid .play::after {
+      content: ""; width: 0; height: 0;
+      border-left: 22px solid #ffffff;
+      border-top: 14px solid transparent;
+      border-bottom: 14px solid transparent;
+      margin-left: 5px;
+    }
+
+    .scene-label {
+      position: absolute;
+      left: 48px;
+      bottom: 48px;
+      font-size: 16px;
+      color: rgba(255,255,255,0.55);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      font-weight: 500;
+      z-index: 1000;
+      font-family: "Inter", sans-serif;
+    }
+    .scene-label .accent {
+      color: #ffffff;
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+  <div id="scene-03-card-flyby-deck"
+       data-composition-id="scene-03-card-flyby-deck"
+       data-start="0"
+       data-duration="6.0"
+       data-width="1920"
+       data-height="1080"
+       style="width:1920px; height:1080px;">
+
+    <div class="stage">
+      <div class="scene">
+        <div class="card" id="card-0" style="--color: #006954;">
+          <div class="wire">
+            <div class="wire-label">001 / Card</div>
+            <div class="wire-corner"></div>
+            <div class="wire-bar"></div>
+          </div>
+          <div class="solid">
+            <div class="tag">Card One</div>
+            <div class="title">EMERALD</div>
+            <div class="meta">slot 01 &middot; 1400 &times; 790</div>
+            <div class="play"></div>
+          </div>
+        </div>
+
+        <div class="card" id="card-1" style="--color: #963831;">
+          <div class="wire">
+            <div class="wire-label">002 / Card</div>
+            <div class="wire-corner"></div>
+            <div class="wire-bar"></div>
+          </div>
+          <div class="solid">
+            <div class="tag">Card Two</div>
+            <div class="title">CRIMSON</div>
+            <div class="meta">slot 02 &middot; 1400 &times; 790</div>
+            <div class="play"></div>
+          </div>
+        </div>
+
+        <div class="card" id="card-2" style="--color: #4A3941;">
+          <div class="wire">
+            <div class="wire-label">003 / Card</div>
+            <div class="wire-corner"></div>
+            <div class="wire-bar"></div>
+          </div>
+          <div class="solid">
+            <div class="tag">Card Three</div>
+            <div class="title">PLUM</div>
+            <div class="meta">slot 03 &middot; 1400 &times; 790</div>
+            <div class="play"></div>
+          </div>
+        </div>
+
+        <div class="card" id="card-3" style="--color: #F7915E;">
+          <div class="wire">
+            <div class="wire-label">004 / Card</div>
+            <div class="wire-corner"></div>
+            <div class="wire-bar"></div>
+          </div>
+          <div class="solid">
+            <div class="tag">Card Four</div>
+            <div class="title">AMBER</div>
+            <div class="meta">slot 04 &middot; 1400 &times; 790</div>
+            <div class="play"></div>
+          </div>
+        </div>
+
+        <div class="card" id="card-4" style="--color: #063447;">
+          <div class="wire">
+            <div class="wire-label">005 / Card</div>
+            <div class="wire-corner"></div>
+            <div class="wire-bar"></div>
+          </div>
+          <div class="solid">
+            <div class="tag">Card Five</div>
+            <div class="title">MIDNIGHT</div>
+            <div class="meta">slot 05 &middot; 1400 &times; 790</div>
+            <div class="play"></div>
+          </div>
+        </div>
+
+        <div class="card" id="card-5" style="--color: #0E5E7A;">
+          <div class="wire">
+            <div class="wire-label">006 / Card</div>
+            <div class="wire-corner"></div>
+            <div class="wire-bar"></div>
+          </div>
+          <div class="solid">
+            <div class="tag">Card Six</div>
+            <div class="title">COBALT</div>
+            <div class="meta">slot 06 &middot; 1400 &times; 790</div>
+            <div class="play"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="scene-label">Scene 03 &middot; <span class="accent">Card Flyby Deck</span> &middot; CSS 3D tumble + clip-path wipe reveal</div>
+
+    <script>
+      (function () {
+        window.__timelines = window.__timelines || {};
+        // Force 3D matrix on every transform so cards never collapse to 2D —
+        // otherwise a card whose rotX/y/z all hit 0 drops out of the 3D
+        // stacking context and gets painted in DOM order, letting back
+        // cards render on top of the front.
+        gsap.defaults({ force3D: true });
+        var tl = gsap.timeline({ paused: true });
+
+        // -----------------------------------------------------------
+        // SLOT poses. rotX is the key — cards behind are tilted BACK
+        // (top edge away from camera, positive rotX), front is upright
+        // (rotX 0), and on exit they continue forward into a face-down
+        // tumble (negative rotX) while dropping down + toward camera.
+        // -----------------------------------------------------------
+        var SLOT = {
+          far:  { x: 360, y: 380, z: -1080, rotX:  84, rotZ: 0, scale: 0.74, opacity: 0,    zi: 60  },
+          s3:   { x: 280, y: 290, z:  -820, rotX:  66, rotZ: 0, scale: 0.80, opacity: 0.32, zi: 70  },
+          s2:   { x: 195, y: 200, z:  -560, rotX:  46, rotZ: 0, scale: 0.86, opacity: 0.58, zi: 80  },
+          s1:   { x: 105, y: 105, z:  -290, rotX:  22, rotZ: 0, scale: 0.93, opacity: 0.85, zi: 90  },
+          s0:   { x:   0, y:   0, z:     0, rotX:   0, rotZ: 0, scale: 1.00, opacity: 1.00, zi: 100 },
+          exit: { x: -90, y: 620, z:   420, rotX: -88, rotZ: 0, scale: 1.10, opacity: 0,    zi: 110 }
+        };
+
+        // Acceleration: dwells decrease as we go, final card holds out the tail.
+        var LANDED    = [0.40, 1.70, 2.70, 3.45, 4.00, 4.40];
+        var TRANS_DUR = [0.40, 0.30, 0.25, 0.20, 0.16, 0.12];
+
+        var NUM_CARDS = 6;
+        var TOTAL = 6.0;
+
+        function poseTween(target, slot, t, dur, ease) {
+          // z-index is set instantly at the start of the swap so painting
+          // order matches the slot. CSS depth-sorting doesn't reliably
+          // order non-intersecting planes, so we drive it explicitly.
+          tl.set(target, { zIndex: slot.zi }, t);
+          tl.to(target, {
+            x: slot.x, y: slot.y, z: slot.z,
+            rotationX: slot.rotX,
+            rotationZ: slot.rotZ,
+            scale: slot.scale,
+            opacity: slot.opacity,
+            duration: dur,
+            ease: ease || "power2.inOut"
+          }, t);
+        }
+
+        // Initial pose. Apply via gsap.set first (so paused renders at
+        // t=0 show the staged stack) AND via tl.set at t=0 (so scrubbing
+        // back to 0 restores it).
+        var initialSlots = ["s1", "s2", "s3", "far", "far", "far"];
+        for (var i = 0; i < NUM_CARDS; i++) {
+          var s = SLOT[initialSlots[i]];
+          var props = {
+            x: s.x, y: s.y, z: s.z,
+            rotationX: s.rotX,
+            rotationZ: s.rotZ,
+            scale: s.scale,
+            opacity: s.opacity,
+            zIndex: s.zi,
+            "--wipe": 0
+          };
+          gsap.set("#card-" + i, props);
+          tl.set("#card-" + i, props, 0);
+        }
+
+        // Per-swap orchestration.
+        var ADVANCE = ["s0", "s1", "s2", "s3"];
+        for (var j = 0; j < NUM_CARDS; j++) {
+          var t = LANDED[j] - TRANS_DUR[j];
+          var dur = TRANS_DUR[j];
+
+          // Card j rolls forward into s0.
+          poseTween("#card-" + j, SLOT.s0, t, dur, "power3.out");
+          tl.to("#card-" + j, {
+            "--wipe": 1,
+            duration: dur * 0.85,
+            ease: "power2.inOut"
+          }, t + dur * 0.15);
+
+          // Card j-1 tumbles forward + falls down + toward camera.
+          if (j > 0) {
+            poseTween("#card-" + (j - 1), SLOT.exit, t, dur, "power2.in");
+          }
+
+          // Cards behind advance one slot toward the front.
+          for (var k = 1; k <= 3; k++) {
+            var idx = j + k;
+            if (idx >= NUM_CARDS) break;
+            poseTween("#card-" + idx, SLOT[ADVANCE[k]], t, dur, "power2.inOut");
+          }
+
+          // Bring a new card in from far → s3.
+          var newIdx = j + 4;
+          if (newIdx < NUM_CARDS) {
+            poseTween("#card-" + newIdx, SLOT.s3, t, dur, "power2.out");
+          }
+        }
+
+        // Pad timeline so duration() ≥ data-duration.
+        tl.to({}, { duration: TOTAL }, 0);
+
+        window.__timelines["scene-03-card-flyby-deck"] = tl;
+      })();
+    </script>
+  </div>
+</body>
+</html>

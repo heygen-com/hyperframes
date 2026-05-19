@@ -1,0 +1,499 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>scene-03-scan-line-grid</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@700;800;900&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap"
+    rel="stylesheet"
+  />
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #0B0D0E; }
+
+    [data-composition-id="scene-03-scan-line-grid"] {
+      position: relative;
+      width: 1920px;
+      height: 1080px;
+      overflow: hidden;
+      background: #0B0D0E;
+      color: #F2F6EF;
+      font-family: "IBM Plex Mono", "SFMono-Regular", Menlo, monospace;
+    }
+
+    /* Deep radial vignette anchors center stage */
+    [data-composition-id="scene-03-scan-line-grid"] .bg-deep {
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(1400px 900px at 50% 55%, #11181A 0%, #0B0D0E 60%, #06090A 100%);
+      pointer-events: none;
+    }
+
+    /* The signature element — grid overlay. 80px squares, faint stroke. */
+    [data-composition-id="scene-03-scan-line-grid"] .grid {
+      position: absolute;
+      inset: -80px;
+      background-image:
+        linear-gradient(rgba(148, 160, 154, 0.085) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(148, 160, 154, 0.085) 1px, transparent 1px);
+      background-size: 80px 80px;
+      opacity: 0.15;
+      pointer-events: none;
+    }
+
+    /* Heavier grid every 5 cells — 400px majors */
+    [data-composition-id="scene-03-scan-line-grid"] .grid-major {
+      position: absolute;
+      inset: -80px;
+      background-image:
+        linear-gradient(rgba(6, 227, 250, 0.06) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(6, 227, 250, 0.06) 1px, transparent 1px);
+      background-size: 400px 400px;
+      opacity: 0.18;
+      pointer-events: none;
+    }
+
+    /* Subtle film noise on top */
+    [data-composition-id="scene-03-scan-line-grid"] .bg-noise {
+      position: absolute;
+      inset: 0;
+      background-image:
+        radial-gradient(circle at 25% 35%, rgba(255,255,255,0.025) 1px, transparent 1px),
+        radial-gradient(circle at 75% 65%, rgba(255,255,255,0.02) 1px, transparent 1px);
+      background-size: 4px 4px, 6px 6px;
+      opacity: 0;
+      pointer-events: none;
+      mix-blend-mode: screen;
+    }
+
+    /* CRT scanline rolling texture — fine horizontal lines that drift */
+    [data-composition-id="scene-03-scan-line-grid"] .scanlines {
+      position: absolute;
+      inset: 0;
+      background-image: repeating-linear-gradient(
+        180deg,
+        rgba(0, 0, 0, 0) 0px,
+        rgba(0, 0, 0, 0) 2px,
+        rgba(0, 0, 0, 0.25) 3px,
+        rgba(0, 0, 0, 0) 4px
+      );
+      opacity: 0;
+      pointer-events: none;
+      mix-blend-mode: multiply;
+    }
+
+    /* THE GEM — vertical scan-line sweep. 2px gradient bar that travels top to bottom. */
+    [data-composition-id="scene-03-scan-line-grid"] .sweep {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: -8px;
+      height: 2px;
+      background: linear-gradient(90deg,
+        transparent 0%,
+        rgba(6, 227, 250, 0) 8%,
+        rgba(6, 227, 250, 0.85) 30%,
+        #4FDB5E 50%,
+        rgba(6, 227, 250, 0.85) 70%,
+        rgba(6, 227, 250, 0) 92%,
+        transparent 100%
+      );
+      opacity: 0;
+      pointer-events: none;
+      box-shadow: 0 0 24px rgba(6, 227, 250, 0.6), 0 0 60px rgba(79, 219, 94, 0.25);
+    }
+
+    /* Trailing afterglow that follows the sweep — a wider, softer band */
+    [data-composition-id="scene-03-scan-line-grid"] .sweep-trail {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: -110px;
+      height: 110px;
+      background: linear-gradient(180deg,
+        transparent 0%,
+        rgba(6, 227, 250, 0.06) 60%,
+        rgba(6, 227, 250, 0.18) 100%
+      );
+      opacity: 0;
+      pointer-events: none;
+      mix-blend-mode: screen;
+    }
+
+    /* Static horizontal accent rails — visual anchors top + bottom of stage */
+    [data-composition-id="scene-03-scan-line-grid"] .rail {
+      position: absolute;
+      left: 0;
+      right: 0;
+      height: 1px;
+      background: linear-gradient(90deg,
+        transparent 0%,
+        rgba(148, 160, 154, 0.18) 18%,
+        rgba(6, 227, 250, 0.55) 50%,
+        rgba(148, 160, 154, 0.18) 82%,
+        transparent 100%
+      );
+      opacity: 0;
+    }
+    [data-composition-id="scene-03-scan-line-grid"] .rail-top { top: 200px; }
+    [data-composition-id="scene-03-scan-line-grid"] .rail-bottom { bottom: 200px; }
+
+    /* Corner registration ticks — like a viewfinder / film leader */
+    [data-composition-id="scene-03-scan-line-grid"] .tick {
+      position: absolute;
+      width: 40px;
+      height: 40px;
+      border: 1.5px solid rgba(6, 227, 250, 0.6);
+      opacity: 0;
+    }
+    [data-composition-id="scene-03-scan-line-grid"] .tick-tl { top: 120px; left: 120px; border-right: none; border-bottom: none; }
+    [data-composition-id="scene-03-scan-line-grid"] .tick-tr { top: 120px; right: 120px; border-left: none; border-bottom: none; }
+    [data-composition-id="scene-03-scan-line-grid"] .tick-bl { bottom: 120px; left: 120px; border-right: none; border-top: none; }
+    [data-composition-id="scene-03-scan-line-grid"] .tick-br { bottom: 120px; right: 120px; border-left: none; border-top: none; }
+
+    /* HUD strip — top-left readout, monospace */
+    [data-composition-id="scene-03-scan-line-grid"] .hud-top {
+      position: absolute;
+      top: 90px;
+      left: 0;
+      right: 0;
+      display: flex;
+      justify-content: space-between;
+      padding: 0 180px;
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 18px;
+      font-weight: 500;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #94A09A;
+      opacity: 0;
+    }
+    [data-composition-id="scene-03-scan-line-grid"] .hud-top .hud-mark {
+      color: #06E3FA;
+    }
+
+    /* Wordmark — center stage. Single word, restrained, monospaced cousin. */
+    [data-composition-id="scene-03-scan-line-grid"] .stage-wrap {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 410px;
+      text-align: center;
+    }
+    [data-composition-id="scene-03-scan-line-grid"] .wordmark {
+      margin: 0;
+      font-family: "Inter Tight", Arial, sans-serif;
+      font-weight: 900;
+      font-size: 220px;
+      line-height: 0.9;
+      letter-spacing: -0.03em;
+      color: #F2F6EF;
+    }
+    [data-composition-id="scene-03-scan-line-grid"] .w-char {
+      display: inline-block;
+      opacity: 0;
+      filter: blur(18px);
+    }
+    /* Mid letter glows cyan as the sweep crosses */
+    [data-composition-id="scene-03-scan-line-grid"] .w-accent {
+      color: #06E3FA;
+    }
+
+    /* Sub-tagline — IBM Plex Mono, all caps, wide tracking */
+    [data-composition-id="scene-03-scan-line-grid"] .tagline {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 690px;
+      text-align: center;
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 28px;
+      font-weight: 500;
+      letter-spacing: 0.32em;
+      text-transform: uppercase;
+      color: rgba(242, 246, 239, 0.7);
+      opacity: 0;
+    }
+    [data-composition-id="scene-03-scan-line-grid"] .tagline .dot {
+      color: #4FDB5E;
+      margin: 0 18px;
+    }
+
+    /* Bottom telemetry — small monospace data bar */
+    [data-composition-id="scene-03-scan-line-grid"] .telemetry {
+      position: absolute;
+      bottom: 90px;
+      left: 0;
+      right: 0;
+      display: flex;
+      justify-content: space-between;
+      padding: 0 180px;
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 18px;
+      font-weight: 500;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #94A09A;
+      opacity: 0;
+    }
+    [data-composition-id="scene-03-scan-line-grid"] .telemetry .val {
+      color: #4FDB5E;
+      margin-left: 8px;
+    }
+
+    /* Scene label — bottom-left identifier, consistent with section 10 examples */
+    [data-composition-id="scene-03-scan-line-grid"] .scene-label {
+      position: absolute;
+      left: 48px;
+      bottom: 36px;
+      font-family: "Inter", "IBM Plex Mono", sans-serif;
+      font-size: 16px;
+      font-weight: 500;
+      color: #5c6c7a;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      z-index: 40;
+    }
+    [data-composition-id="scene-03-scan-line-grid"] .scene-label .accent {
+      color: #d4f1ff;
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+
+  <div
+    id="scene-03-scan-line-grid"
+    data-composition-id="scene-03-scan-line-grid"
+    data-start="0"
+    data-duration="5.6"
+    data-width="1920"
+    data-height="1080"
+    style="width: 1920px; height: 1080px;"
+  >
+    <!-- Layered background -->
+    <div class="bg-deep"></div>
+    <div class="grid"></div>
+    <div class="grid-major"></div>
+    <div class="scanlines"></div>
+    <div class="bg-noise"></div>
+
+    <!-- Viewfinder corner ticks -->
+    <div class="tick tick-tl"></div>
+    <div class="tick tick-tr"></div>
+    <div class="tick tick-bl"></div>
+    <div class="tick tick-br"></div>
+
+    <!-- Horizontal accent rails -->
+    <div class="rail rail-top"></div>
+    <div class="rail rail-bottom"></div>
+
+    <!-- HUD readout -->
+    <div class="hud-top">
+      <div><span class="hud-mark">●</span>&nbsp;&nbsp;SIGNAL · LOCK</div>
+      <div>CH 03 · GRID 80PX</div>
+    </div>
+
+    <!-- THE GEM — vertical sweep bar + soft trailing band -->
+    <div class="sweep-trail"></div>
+    <div class="sweep"></div>
+
+    <!-- Wordmark center stage -->
+    <div class="stage-wrap">
+      <h1 class="wordmark">
+        <span class="w-char">O</span><span class="w-char">B</span><span class="w-char w-accent">S</span><span class="w-char w-accent">E</span><span class="w-char w-accent">R</span><span class="w-char w-accent">V</span><span class="w-char">E</span>
+      </h1>
+    </div>
+
+    <!-- Tagline -->
+    <div class="tagline">
+      <span>Scan</span><span class="dot">·</span><span>Hold</span><span class="dot">·</span><span>Repeat</span>
+    </div>
+
+    <!-- Bottom telemetry -->
+    <div class="telemetry">
+      <div>FRAME&nbsp;<span class="val" id="tel-frame">0000</span></div>
+      <div>SCAN RATE&nbsp;<span class="val">1.0×</span></div>
+      <div>STATUS&nbsp;<span class="val" id="tel-status">IDLE</span></div>
+    </div>
+
+    <div class="scene-label">
+      Scene 03 · <span class="accent">Scan-Line Grid</span> · CRT-adjacent ambient with grid overlay + sweep bar
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      var COMP_ID = "scene-03-scan-line-grid";
+      var root = document.querySelector('[data-composition-id="' + COMP_ID + '"]');
+      if (!root) return;
+
+      var grid = root.querySelector(".grid");
+      var gridMajor = root.querySelector(".grid-major");
+      var scanlines = root.querySelector(".scanlines");
+      var noise = root.querySelector(".bg-noise");
+      var sweep = root.querySelector(".sweep");
+      var sweepTrail = root.querySelector(".sweep-trail");
+      var ticks = root.querySelectorAll(".tick");
+      var railTop = root.querySelector(".rail-top");
+      var railBottom = root.querySelector(".rail-bottom");
+      var hudTop = root.querySelector(".hud-top");
+      var chars = root.querySelectorAll(".w-char");
+      var accentChars = root.querySelectorAll(".w-char.w-accent");
+      var tagline = root.querySelector(".tagline");
+      var telemetry = root.querySelector(".telemetry");
+      var telFrame = root.querySelector("#tel-frame");
+      var telStatus = root.querySelector("#tel-status");
+
+      window.__timelines = window.__timelines || {};
+      var tl = gsap.timeline({ paused: true });
+
+      // 0.0 - 0.6s: Grid + background ambient bloom in (from a faint baseline up to full)
+      tl.fromTo(grid, { opacity: 0.15 }, { opacity: 0.55, duration: 0.55, ease: "power2.out" }, 0.0);
+      tl.fromTo(gridMajor, { opacity: 0.18 }, { opacity: 0.9, duration: 0.7, ease: "power2.out" }, 0.05);
+      tl.to(scanlines, { opacity: 0.35, duration: 0.6, ease: "power2.out" }, 0.1);
+      tl.to(noise, { opacity: 0.5, duration: 0.8, ease: "power2.out" }, 0.15);
+
+      // 0.2 - 0.7s: Corner ticks pop in (registration marks)
+      tl.fromTo(ticks,
+        { opacity: 0, scale: 0.6 },
+        { opacity: 0.85, scale: 1, duration: 0.4, ease: "back.out(2)", stagger: 0.05 },
+        0.2
+      );
+
+      // 0.35 - 0.85s: Accent rails draw in
+      tl.fromTo(railTop, { opacity: 0, scaleX: 0.4 }, { opacity: 0.9, scaleX: 1, duration: 0.5, ease: "power3.out", transformOrigin: "50% 50%" }, 0.35);
+      tl.fromTo(railBottom, { opacity: 0, scaleX: 0.4 }, { opacity: 0.9, scaleX: 1, duration: 0.5, ease: "power3.out", transformOrigin: "50% 50%" }, 0.42);
+
+      // 0.5s: HUD strip fades in
+      tl.to(hudTop, { opacity: 1, duration: 0.5, ease: "power2.out" }, 0.5);
+
+      // ───── THE GEM ─────
+      // Sweep bar travels top to bottom THREE TIMES across the scene.
+      // Each pass is ~1.6s. Bar is hidden between passes via opacity tween.
+      // Sweep pass 1: 0.6 → 2.2s
+      tl.set(sweep, { y: -8, opacity: 0 }, 0);
+      tl.set(sweepTrail, { y: -110, opacity: 0 }, 0);
+      tl.to(sweep, { opacity: 0.95, duration: 0.15, ease: "power1.out" }, 0.6);
+      tl.to(sweepTrail, { opacity: 1, duration: 0.2, ease: "power1.out" }, 0.6);
+      tl.to(sweep, { y: 1090, duration: 1.55, ease: "sine.inOut" }, 0.6);
+      tl.to(sweepTrail, { y: 1090, duration: 1.55, ease: "sine.inOut" }, 0.6);
+      tl.to(sweep, { opacity: 0, duration: 0.15, ease: "power1.in" }, 2.0);
+      tl.to(sweepTrail, { opacity: 0, duration: 0.2, ease: "power1.in" }, 2.0);
+
+      // Sweep pass 2: 2.5 → 4.0s
+      tl.set(sweep, { y: -8 }, 2.45);
+      tl.set(sweepTrail, { y: -110 }, 2.45);
+      tl.to(sweep, { opacity: 0.95, duration: 0.15, ease: "power1.out" }, 2.5);
+      tl.to(sweepTrail, { opacity: 1, duration: 0.2, ease: "power1.out" }, 2.5);
+      tl.to(sweep, { y: 1090, duration: 1.45, ease: "sine.inOut" }, 2.5);
+      tl.to(sweepTrail, { y: 1090, duration: 1.45, ease: "sine.inOut" }, 2.5);
+      tl.to(sweep, { opacity: 0, duration: 0.15, ease: "power1.in" }, 3.85);
+      tl.to(sweepTrail, { opacity: 0, duration: 0.2, ease: "power1.in" }, 3.85);
+
+      // Sweep pass 3 (final, faster): 4.3 → 5.4s
+      tl.set(sweep, { y: -8 }, 4.25);
+      tl.set(sweepTrail, { y: -110 }, 4.25);
+      tl.to(sweep, { opacity: 1, duration: 0.1, ease: "power1.out" }, 4.3);
+      tl.to(sweepTrail, { opacity: 1, duration: 0.15, ease: "power1.out" }, 4.3);
+      tl.to(sweep, { y: 1090, duration: 1.05, ease: "power2.in" }, 4.3);
+      tl.to(sweepTrail, { y: 1090, duration: 1.05, ease: "power2.in" }, 4.3);
+      tl.to(sweep, { opacity: 0, duration: 0.12, ease: "power1.in" }, 5.3);
+      tl.to(sweepTrail, { opacity: 0, duration: 0.18, ease: "power1.in" }, 5.3);
+
+      // 0.95 - 1.6s: Wordmark characters reveal — staggered blur-to-sharp.
+      // Pass 1 sweep is at ~y=600 around t=1.2 (just below midline). Characters
+      // resolve in step with the sweep arriving at the wordmark band.
+      tl.to(chars, {
+        opacity: 1,
+        filter: "blur(0px)",
+        duration: 0.55,
+        ease: "power3.out",
+        stagger: 0.06,
+      }, 0.95);
+
+      // Accent (middle) characters get a cyan glow pulse as sweep passes (~t=1.25)
+      tl.to(accentChars, {
+        textShadow: "0 0 24px rgba(6, 227, 250, 0.85), 0 0 60px rgba(6, 227, 250, 0.4)",
+        duration: 0.4,
+        ease: "power2.out",
+      }, 1.2);
+      tl.to(accentChars, {
+        textShadow: "0 0 0px rgba(6, 227, 250, 0)",
+        duration: 0.9,
+        ease: "power2.out",
+      }, 1.65);
+
+      // 1.8s: Tagline fades in
+      tl.fromTo(tagline,
+        { opacity: 0, y: 12 },
+        { opacity: 1, y: 0, duration: 0.6, ease: "power3.out" },
+        1.8
+      );
+
+      // 2.1s: Telemetry strip in
+      tl.fromTo(telemetry,
+        { opacity: 0, y: -8 },
+        { opacity: 1, y: 0, duration: 0.5, ease: "power2.out" },
+        2.1
+      );
+
+      // Continuous motion: grid drifts slowly (parallax illusion)
+      tl.to(grid, { x: -80, y: -80, duration: 5.6, ease: "none" }, 0.0);
+      tl.to(gridMajor, { x: -40, y: -40, duration: 5.6, ease: "none" }, 0.0);
+
+      // Scanlines roll vertically (CRT illusion)
+      tl.to(scanlines, { backgroundPosition: "0px 200px", duration: 5.6, ease: "none" }, 0.0);
+
+      // Wordmark subtle breath through the scene
+      tl.to(chars, {
+        y: -4,
+        duration: 2.4,
+        ease: "sine.inOut",
+        yoyo: true,
+        repeat: 1,
+        stagger: { each: 0.04, from: "center" },
+      }, 1.7);
+
+      // Corner ticks pulse subtly with each sweep pass
+      tl.to(ticks, { opacity: 1, duration: 0.2, ease: "power2.out" }, 1.2);
+      tl.to(ticks, { opacity: 0.7, duration: 0.4, ease: "power2.in" }, 1.5);
+      tl.to(ticks, { opacity: 1, duration: 0.2, ease: "power2.out" }, 3.0);
+      tl.to(ticks, { opacity: 0.7, duration: 0.4, ease: "power2.in" }, 3.3);
+      tl.to(ticks, { opacity: 1, duration: 0.15, ease: "power2.out" }, 4.8);
+
+      // Rails brighten with each sweep
+      tl.to([railTop, railBottom], { opacity: 1, duration: 0.18, ease: "power2.out" }, 1.15);
+      tl.to([railTop, railBottom], { opacity: 0.7, duration: 0.5, ease: "power2.in" }, 1.5);
+      tl.to([railTop, railBottom], { opacity: 1, duration: 0.18, ease: "power2.out" }, 2.95);
+      tl.to([railTop, railBottom], { opacity: 0.7, duration: 0.5, ease: "power2.in" }, 3.3);
+      tl.to([railTop, railBottom], { opacity: 1, duration: 0.12, ease: "power2.out" }, 4.75);
+
+      // Telemetry counter — frame number ticks up at intervals (discrete set, seekable)
+      var frameVals = [
+        { t: 2.1, v: "0042" },
+        { t: 2.5, v: "0096" },
+        { t: 2.9, v: "0148" },
+        { t: 3.3, v: "0204" },
+        { t: 3.7, v: "0261" },
+        { t: 4.1, v: "0318" },
+        { t: 4.5, v: "0372" },
+        { t: 4.9, v: "0428" },
+        { t: 5.3, v: "0480" },
+      ];
+      frameVals.forEach(function (f) {
+        tl.set(telFrame, { textContent: f.v }, f.t);
+      });
+
+      // Status text shifts: IDLE → SCAN → LOCK
+      tl.set(telStatus, { textContent: "SCAN" }, 2.5);
+      tl.set(telStatus, { textContent: "LOCK", color: "#06E3FA" }, 4.3);
+
+      window.__timelines[COMP_ID] = tl;
+    })();
+  </script>
+</body>
+</html>
