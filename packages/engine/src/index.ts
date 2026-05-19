@@ -93,6 +93,7 @@ export {
 
 // ── Encoding ───────────────────────────────────────────────────────────────────
 export {
+  buildEncoderArgs,
   encodeFramesFromDir,
   encodeFramesChunkedConcat,
   muxVideoWithAudio,

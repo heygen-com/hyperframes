@@ -22,8 +22,15 @@ export interface EncoderOptions {
    * (open-GOP, scenecut-driven keyframes), preserving the in-process
    * renderer's byte-identical output.
    *
-   * Only honored by the SW libx264 / libx265 paths. GPU encoders, vp9, and
-   * prores ignore the flag (their concat-copy story is separate).
+   * Honored by the SW libx264 / libx265 / libvpx-vp9 paths. GPU encoders
+   * and ProRes ignore the flag — GPU concat-copy is a separate story and
+   * ProRes is intra-only (every frame is already a keyframe, so no
+   * closed-GOP forcing is needed).
+   *
+   * For libvpx-vp9, closed-GOP also forces `-auto-alt-ref 0` so the
+   * boundary frame between chunks remains independently decodable —
+   * libvpx-vp9's default alt-ref frames can land anywhere in the GOP
+   * for compression and break concat-copy seams.
    */
   lockGopForChunkConcat?: boolean;
   /**

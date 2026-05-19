@@ -254,8 +254,58 @@ export function buildEncoderArgs(
     args.push("-c:v", "libvpx-vp9", "-b:v", bitrate || "0", "-crf", String(quality));
     args.push("-deadline", preset === "ultrafast" ? "realtime" : "good");
     args.push("-row-mt", "1");
+
+    // Closed-GOP args for distributed chunk concat-copy. Mirrors the
+    // libx264/libx265 branch above: `lockGopForChunkConcat=true` lays a
+    // keyframe at every chunk boundary so `ffmpeg -f concat -c copy` can
+    // stitch sibling chunks losslessly.
+    //
+    // VP9-specific: `-auto-alt-ref 0` is mandatory. Alt-ref (a.k.a.
+    // "ARNR") frames are non-displayable references libvpx-vp9 inserts
+    // anywhere in the GOP for compression; they break concat-copy at
+    // chunk seams because the boundary frame is no longer the first
+    // displayable reference. The alpha branch below already disables
+    // alt-ref for an unrelated reason (alpha + alt-ref is unsupported);
+    // closed-GOP extends that to every pixel format.
+    //
+    // `-cpu-used 2` pins the libvpx-vp9 speed/quality tradeoff so chunks
+    // encoded on workers with different default cpu-used values still
+    // produce visually consistent output across seams. libvpx-vp9's
+    // default with `-deadline good` has drifted across versions
+    // historically — locking it makes the planHash round-trip
+    // deterministic.
+    const lockGopVp9 = options.lockGopForChunkConcat === true;
+    if (lockGopVp9) {
+      if (
+        typeof options.gopSize !== "number" ||
+        !Number.isFinite(options.gopSize) ||
+        options.gopSize <= 0
+      ) {
+        throw new Error(
+          `[chunkEncoder] lockGopForChunkConcat=true requires a positive integer gopSize (received ${String(options.gopSize)})`,
+        );
+      }
+      const gop = Math.floor(options.gopSize);
+      args.push(
+        "-g",
+        String(gop),
+        "-keyint_min",
+        String(gop),
+        "-auto-alt-ref",
+        "0",
+        "-cpu-used",
+        "2",
+      );
+    }
     if (pixelFormat === "yuva420p") {
-      args.push("-auto-alt-ref", "0");
+      // Alpha + alt-ref is unsupported by libvpx-vp9. The closed-GOP
+      // branch above already disables alt-ref; only push the flag for
+      // the non-locked alpha case to keep the args list clean (a second
+      // `-auto-alt-ref 0` is harmless but noisier in `ffmpeg -loglevel`
+      // diagnostics).
+      if (!lockGopVp9) {
+        args.push("-auto-alt-ref", "0");
+      }
       args.push("-metadata:s:v:0", "alpha_mode=1");
     }
   } else if (codec === "prores") {
