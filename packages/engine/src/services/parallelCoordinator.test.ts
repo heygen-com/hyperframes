@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { calculateOptimalWorkers, distributeFrames } from "./parallelCoordinator.js";
+import {
+  calculateOptimalWorkers,
+  distributeFrames,
+  shouldVerifyWorkerGpu,
+} from "./parallelCoordinator.js";
+import type { EngineConfig } from "../config.js";
 
 describe("distributeFrames", () => {
   it("distributes frames evenly across workers", () => {
@@ -66,5 +71,31 @@ describe("calculateOptimalWorkers", () => {
     });
 
     expect(workers).toBe(4);
+  });
+});
+
+describe("shouldVerifyWorkerGpu", () => {
+  const softwareConfig: Partial<EngineConfig> = { browserGpuMode: "software" };
+
+  it("returns true for worker 0 when GPU mode is software", () => {
+    expect(shouldVerifyWorkerGpu(0, softwareConfig)).toBe(true);
+  });
+
+  it("returns false for non-zero workers when GPU mode is software", () => {
+    expect(shouldVerifyWorkerGpu(1, softwareConfig)).toBe(false);
+    expect(shouldVerifyWorkerGpu(5, softwareConfig)).toBe(false);
+    expect(shouldVerifyWorkerGpu(17, softwareConfig)).toBe(false);
+  });
+
+  it("returns false for any worker when GPU mode is not software", () => {
+    expect(shouldVerifyWorkerGpu(0, { browserGpuMode: "hardware" } as Partial<EngineConfig>)).toBe(
+      false,
+    );
+    expect(shouldVerifyWorkerGpu(0, {})).toBe(false);
+  });
+
+  it("returns false when config is undefined", () => {
+    expect(shouldVerifyWorkerGpu(0, undefined)).toBe(false);
+    expect(shouldVerifyWorkerGpu(3, undefined)).toBe(false);
   });
 });

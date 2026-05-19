@@ -181,6 +181,16 @@ export function distributeFrames(
   return tasks;
 }
 
+/**
+ * Decide whether a parallel worker should run the per-worker SwiftShader
+ * assertion. Gated to worker 0 only: workers within a chunk share the same
+ * Chrome binary, flags, and OS/driver state, so one verification per chunk
+ * is sufficient. See `heygen-com/hyperframes#955`.
+ */
+export function shouldVerifyWorkerGpu(workerId: number, config?: Partial<EngineConfig>): boolean {
+  return config?.browserGpuMode === "software" && workerId === 0;
+}
+
 async function executeWorkerTask(
   task: WorkerTask,
   serverUrl: string,
@@ -207,17 +217,22 @@ async function executeWorkerTask(
       createBeforeCaptureHook(),
       config,
     );
-    // Per-worker SwiftShader assertion: when the caller declares
-    // `browserGpuMode: "software"`, every worker session must verify Chrome's
-    // WebGL backend is actually SwiftShader before the first frame. Hosts
-    // that fall back to a hardware GL backend (or silently fail to load
+    // Per-worker SwiftShader assertion, gated to worker 0 only.
+    // When `browserGpuMode: "software"` is declared, the chunk's GL backend
+    // must be verified as SwiftShader before the first frame — a host that
+    // falls back to a hardware GL backend (or silently fails to load
     // SwiftShader) would otherwise produce non-deterministic pixels and
-    // break the distributed byte-identical-retry contract — the parallel
-    // branch wouldn't catch it via the pre-warmup probe (renderChunk now
-    // skips that when chunkWorkerCount > 1). The canvas-based reader works
-    // on both regular Chrome and chrome-headless-shell (which serves
-    // `chrome://gpu` as an empty document).
-    if (config?.browserGpuMode === "software") {
+    // break the distributed byte-identical-retry contract. Running this
+    // probe on every worker means N concurrent navigations to a WebGL
+    // probe page per chunk; with `chunkWorkerCount=6` × 3 chunks, that's
+    // 18 simultaneous CDP page-loads, which inflated c=3 worst-case wall
+    // by ~24s vs c=6/c=8 on the texture-launch bench. Workers in the same
+    // chunk share the same Chrome binary, flags, and OS/driver state, so
+    // worker 0's success is representative — gate it there and skip the
+    // rest. See `heygen-com/hyperframes#955` for the bench data and the
+    // pre-warmup probe interaction (which `renderChunk` already skips
+    // when `chunkWorkerCount > 1`).
+    if (shouldVerifyWorkerGpu(task.workerId, config)) {
       await assertSwiftShader(session.page, readWebGlVendorInfoFromCanvas);
     }
     await initializeSession(session);

@@ -469,10 +469,12 @@ export async function renderChunk(
     // Resolve worker count up-front so we can decide whether to bother
     // pre-warming a probe session at all. The parallel branch
     // (chunkWorkerCount > 1) closes the probe immediately and creates fresh
-    // per-worker sessions; `executeWorkerTask` now runs its own
-    // `assertSwiftShader` against each worker session (gated on
-    // `cfg.browserGpuMode === "software"`), so the safety contract holds
-    // without the eager pre-probe.
+    // per-worker sessions; `executeWorkerTask` runs `assertSwiftShader`
+    // on worker 0 only (gated on `cfg.browserGpuMode === "software"`), so
+    // the safety contract holds without the eager pre-probe and without
+    // every worker concurrently navigating to the GL probe page. See
+    // `heygen-com/hyperframes#955` for the worst-case wall regression that
+    // motivated gating the probe to worker 0.
     //
     // Capture-cost calibration based on shader transitions / renderModeHints
     // is not threaded through to chunks yet; the in-process renderer's
