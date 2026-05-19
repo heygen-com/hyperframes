@@ -12,6 +12,14 @@ pre-commit:
     typecheck:
       glob: "*.{ts,tsx}"
       run: cd packages/core && bunx tsc --noEmit && cd ../studio && bunx tsc --noEmit
+    # Mirrors the CI gate (same `--base origin/main` so the local hook can't
+    # pass on a branch CI would fail). Audits the working tree, which means
+    # unstaged WIP in `packages/**` is part of the diff — stash before
+    # committing if that surprises you. `--gate new-only` (the default) only
+    # fails on issues introduced by the branch, not inherited findings.
+    fallow:
+      glob: "packages/**/*.{ts,tsx,mts,cts,js,jsx,mjs,cjs}"
+      run: bunx fallow audit --base origin/main --fail-on-issues
     filesize:
       # Scoped to packages/studio — the 500 LOC limit is a studio architecture
       # standard enforced as part of the App.tsx decomposition work. Player and
