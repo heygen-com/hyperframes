@@ -67,7 +67,7 @@ export type DistributedSupportResult = { supported: true } | { supported: false;
 
 /**
  * Decide whether a fixture's `renderConfig` is one the distributed pipeline
- * can actually run. The four hard gates:
+ * can actually run. Two hard gates:
  *
  *   - fps must be `{ num: 24|30|60, den: 1 }`. `DistributedRenderConfig.fps`
  *     accepts only the three integer values, and rationals like

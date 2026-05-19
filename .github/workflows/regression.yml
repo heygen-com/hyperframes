@@ -64,7 +64,7 @@ jobs:
           - shard: shard-2
             args: "style-15-prod hdr-hlg-regression style-1-prod many-cuts vfr-screen-recording render-symlinked-assets"
           - shard: shard-3
-            args: "style-7-prod style-8-prod style-10-prod css-spinner-render-compat webm-transparency mp4-h264-sdr"
+            args: "style-7-prod style-8-prod style-10-prod css-spinner-render-compat webm-transparency mp4-h264-sdr webm-vp9"
           - shard: shard-4
             args: "style-16-prod style-9-prod style-17-prod iframe-render-compat variables-prod mp4-h265-sdr"
           - shard: shard-5
