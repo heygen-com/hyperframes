@@ -12,7 +12,14 @@ export interface AppToast {
   tone: "error" | "info";
 }
 
-export type RightPanelTab = "layers" | "design" | "motion" | "renders" | "block-params";
+export type RightPanelTab = "layers" | "design" | "motion" | "css" | "renders" | "block-params";
+export type InspectorPanelTab = Exclude<RightPanelTab, "renders" | "block-params">;
+
+export const INSPECTOR_PANEL_TABS: InspectorPanelTab[] = ["layers", "design", "motion", "css"];
+
+export function isInspectorPanelTab(tab: RightPanelTab): tab is InspectorPanelTab {
+  return tab !== "renders" && tab !== "block-params";
+}
 
 export interface AgentModalAnchorPoint {
   x: number;

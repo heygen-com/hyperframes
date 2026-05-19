@@ -33,7 +33,7 @@ export interface UseDomEditSessionParams {
   currentTime: number;
   setSelectedTimelineElementId: (id: string | null) => void;
   setRightCollapsed: (collapsed: boolean) => void;
-  setRightPanelTab: (tab: RightPanelTab) => void;
+  focusRightPanelTab: (tab: RightPanelTab) => void;
   showToast: (message: string, tone?: "error" | "info") => void;
   refreshPreviewDocumentVersion: () => void;
   queueDomEditSave: (save: () => Promise<void>) => Promise<void>;
@@ -47,7 +47,7 @@ export interface UseDomEditSessionParams {
   projectIdRef: React.MutableRefObject<string | null>;
   previewIframe: HTMLIFrameElement | null;
   refreshKey: number;
-  rightPanelTab: RightPanelTab;
+  rightPanelTabs: RightPanelTab[];
   applyStudioManualEditsToPreviewRef: React.MutableRefObject<
     (iframe: HTMLIFrameElement) => Promise<void>
   >;
@@ -72,7 +72,7 @@ export function useDomEditSession({
   currentTime,
   setSelectedTimelineElementId,
   setRightCollapsed,
-  setRightPanelTab,
+  focusRightPanelTab,
   showToast,
   refreshPreviewDocumentVersion,
   queueDomEditSave,
@@ -86,7 +86,7 @@ export function useDomEditSession({
   projectIdRef,
   previewIframe,
   refreshKey,
-  rightPanelTab,
+  rightPanelTabs,
   applyStudioManualEditsToPreviewRef,
   syncPreviewHistoryHotkey,
   reloadPreview,
@@ -135,10 +135,10 @@ export function useDomEditSession({
     timelineElements,
     setSelectedTimelineElementId,
     setRightCollapsed,
-    setRightPanelTab,
+    focusRightPanelTab,
     previewIframe,
     refreshKey,
-    rightPanelTab,
+    rightPanelTabs,
   });
 
   // ── Agent modal (delegated to useAskAgentModal) ──
@@ -207,11 +207,13 @@ export function useDomEditSession({
     handleDomMotionCommit,
     handleDomMotionClear,
     handleDomEditElementDelete,
+    handleDomAuthoredCssRuleCommit,
   } = useDomEditCommits({
     activeCompPath,
     previewIframeRef,
     showToast,
     queueDomEditSave,
+    readProjectFile: _readProjectFile,
     writeProjectFile,
     domEditSaveTimestampRef,
     editHistory,
@@ -325,6 +327,7 @@ export function useDomEditSession({
     handleBlockedDomMove,
     handleDomManualDragStart,
     handleDomEditElementDelete,
+    handleDomAuthoredCssRuleCommit,
     buildDomSelectionFromTarget,
     buildDomSelectionForTimelineElement,
     updateDomEditHoverSelection,

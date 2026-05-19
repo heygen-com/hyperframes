@@ -114,6 +114,7 @@ export function StudioApp() {
   const panelLayout = usePanelLayout({
     rightCollapsed: initialUrlStateRef.current.rightCollapsed,
     rightPanelTab: initialUrlStateRef.current.rightPanelTab,
+    rightPanelTabs: initialUrlStateRef.current.rightPanelTabs,
   });
   const editHistory = usePersistentEditHistory({ projectId });
   const domEditSaveTimestampRef = useRef(0);
@@ -194,7 +195,7 @@ export function StudioApp() {
             compositionPath: result!.compositionPath,
           });
           panelLayout.setRightCollapsed(false);
-          panelLayout.setRightPanelTab("block-params");
+          panelLayout.focusRightPanelTab("block-params");
         }
       })();
     },
@@ -294,7 +295,7 @@ export function StudioApp() {
     currentTime,
     setSelectedTimelineElementId,
     setRightCollapsed: panelLayout.setRightCollapsed,
-    setRightPanelTab: panelLayout.setRightPanelTab,
+    focusRightPanelTab: panelLayout.focusRightPanelTab,
     showToast,
     refreshPreviewDocumentVersion,
     queueDomEditSave: manifestPersistence.queueDomEditSave,
@@ -308,7 +309,7 @@ export function StudioApp() {
     projectIdRef: fileManager.projectIdRef,
     previewIframe,
     refreshKey,
-    rightPanelTab: panelLayout.rightPanelTab,
+    rightPanelTabs: panelLayout.rightPanelTabs,
     applyStudioManualEditsToPreviewRef: manifestPersistence.applyStudioManualEditsToPreviewRef,
     syncPreviewHistoryHotkey: appHotkeys.syncPreviewHistoryHotkey,
     reloadPreview,
@@ -391,14 +392,17 @@ export function StudioApp() {
       ? readStudioMotionFromElement(domEditSession.domEditSelection.element)
       : null;
   const layersPanelActive =
-    STUDIO_INSPECTOR_PANELS_ENABLED && panelLayout.rightPanelTab === "layers";
+    STUDIO_INSPECTOR_PANELS_ENABLED && panelLayout.rightPanelTabs.includes("layers");
   const designPanelActive =
-    STUDIO_INSPECTOR_PANELS_ENABLED && panelLayout.rightPanelTab === "design";
+    STUDIO_INSPECTOR_PANELS_ENABLED && panelLayout.rightPanelTabs.includes("design");
   const motionPanelActive =
     STUDIO_INSPECTOR_PANELS_ENABLED &&
     STUDIO_MOTION_PANEL_ENABLED &&
-    panelLayout.rightPanelTab === "motion";
-  const inspectorPanelActive = layersPanelActive || designPanelActive || motionPanelActive;
+    panelLayout.rightPanelTabs.includes("motion");
+  const cssPanelActive =
+    STUDIO_INSPECTOR_PANELS_ENABLED && panelLayout.rightPanelTabs.includes("css");
+  const inspectorPanelActive =
+    layersPanelActive || designPanelActive || motionPanelActive || cssPanelActive;
   const shouldShowSelectedDomBounds =
     inspectorPanelActive && !panelLayout.rightCollapsed && !isPlaying;
   const inspectorButtonActive =
@@ -413,7 +417,8 @@ export function StudioApp() {
     compositionLoading,
     refreshKey,
     previewIframeRef,
-    rightPanelTab: panelLayout.rightPanelTab,
+    rightPanelTab: panelLayout.rightPanelFocusTab,
+    rightPanelTabs: panelLayout.rightPanelTabs,
     rightCollapsed: panelLayout.rightCollapsed,
     timelineVisible,
     activeCompPathHydrated,
@@ -526,16 +531,13 @@ export function StudioApp() {
                   setCompositionLoading={setCompositionLoading}
                   shouldShowSelectedDomBounds={shouldShowSelectedDomBounds}
                 />
-
                 {!panelLayout.rightCollapsed && (
                   <StudioRightPanel
                     selectedStudioMotion={selectedStudioMotion}
-                    designPanelActive={designPanelActive}
-                    motionPanelActive={motionPanelActive}
                     activeBlockParams={activeBlockParams}
                     onCloseBlockParams={() => {
                       setActiveBlockParams(null);
-                      panelLayout.setRightPanelTab("design");
+                      panelLayout.focusRightPanelTab("design");
                     }}
                   />
                 )}

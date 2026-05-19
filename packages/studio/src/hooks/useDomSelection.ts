@@ -29,10 +29,10 @@ export interface UseDomSelectionParams {
   timelineElements: TimelineElement[];
   setSelectedTimelineElementId: (id: string | null) => void;
   setRightCollapsed: (collapsed: boolean) => void;
-  setRightPanelTab: (tab: RightPanelTab) => void;
+  focusRightPanelTab: (tab: RightPanelTab) => void;
   previewIframe: HTMLIFrameElement | null;
   refreshKey: number;
-  rightPanelTab: RightPanelTab;
+  rightPanelTabs: RightPanelTab[];
 }
 
 export interface UseDomSelectionReturn {
@@ -85,10 +85,10 @@ export function useDomSelection({
   timelineElements,
   setSelectedTimelineElementId,
   setRightCollapsed,
-  setRightPanelTab,
+  focusRightPanelTab,
   previewIframe,
   refreshKey,
-  rightPanelTab,
+  rightPanelTabs,
 }: UseDomSelectionParams): UseDomSelectionReturn {
   // ── State ──
 
@@ -165,8 +165,8 @@ export function useDomSelection({
       if (nextSelection) {
         if (options?.revealPanel !== false) {
           setRightCollapsed(false);
-          if (rightPanelTab !== "layers") {
-            setRightPanelTab("design");
+          if (!rightPanelTabs.some((tab) => tab !== "renders")) {
+            focusRightPanelTab("design");
           }
         }
         const nextSelectedTimelineId = findMatchingTimelineElementId(
@@ -183,8 +183,8 @@ export function useDomSelection({
       setSelectedTimelineElementId,
       timelineElements,
       setRightCollapsed,
-      setRightPanelTab,
-      rightPanelTab,
+      focusRightPanelTab,
+      rightPanelTabs,
     ],
   );
 
@@ -390,8 +390,8 @@ export function useDomSelection({
     if (STUDIO_INSPECTOR_PANELS_ENABLED) return;
     updateDomEditHoverSelection(null);
     applyDomSelection(null, { revealPanel: false });
-    if (rightPanelTab !== "renders") setRightPanelTab("renders");
-  }, [applyDomSelection, rightPanelTab, updateDomEditHoverSelection, setRightPanelTab]);
+    focusRightPanelTab("renders");
+  }, [applyDomSelection, focusRightPanelTab, updateDomEditHoverSelection]);
 
   return {
     // State

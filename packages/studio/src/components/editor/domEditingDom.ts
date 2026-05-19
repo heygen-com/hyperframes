@@ -163,7 +163,7 @@ export function normalizeTimelineCompositionSource(value: string | undefined): s
 
 // ─── CSS escaping ─────────────────────────────────────────────────────────────
 
-function escapeCssIdentifier(value: string): string {
+export function escapeCssIdentifier(value: string): string {
   const css = globalThis.CSS as { escape?: (input: string) => string } | undefined;
   if (typeof css?.escape === "function") return css.escape(value);
 

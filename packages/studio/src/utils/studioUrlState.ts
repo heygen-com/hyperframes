@@ -16,12 +16,13 @@ export interface StudioUrlState {
   activeCompPath: string | null;
   currentTime: number | null;
   rightPanelTab: RightPanelTab | null;
+  rightPanelTabs: RightPanelTab[] | null;
   rightCollapsed: boolean | null;
   timelineVisible: boolean | null;
   selection: StudioUrlSelectionState | null;
 }
 
-const VALID_TABS: RightPanelTab[] = ["layers", "design", "motion", "renders"];
+const VALID_TABS: RightPanelTab[] = ["layers", "design", "motion", "css", "renders"];
 
 export function normalizeStudioUrlPanelTab(
   tab: RightPanelTab | null,
@@ -64,6 +65,16 @@ function parseTab(value: string | null): RightPanelTab | null {
   return VALID_TABS.includes(value as RightPanelTab) ? (value as RightPanelTab) : null;
 }
 
+function parseTabs(value: string | null): RightPanelTab[] | null {
+  if (!value) return null;
+  const tabs = value
+    .split(",")
+    .map((part) => normalizeStudioUrlPanelTab(parseTab(part.trim())))
+    .filter((tab): tab is RightPanelTab => tab != null);
+  if (tabs.length === 0) return null;
+  return Array.from(new Set(tabs));
+}
+
 function normalizeSelection(params: URLSearchParams): StudioUrlSelectionState | null {
   const sourceFile = params.get("selFile") || undefined;
   const id = params.get("selId") || undefined;
@@ -85,6 +96,7 @@ function defaultStudioUrlState(): StudioUrlState {
     activeCompPath: null,
     currentTime: null,
     rightPanelTab: null,
+    rightPanelTabs: null,
     rightCollapsed: null,
     timelineVisible: null,
     selection: null,
@@ -96,10 +108,13 @@ export function parseStudioUrlStateFromHash(hash: string): StudioUrlState {
   if (!route) return defaultStudioUrlState();
 
   const { params } = route;
+  const rightPanelTabs = parseTabs(params.get("tabs"));
+  const rightPanelTab = normalizeStudioUrlPanelTab(parseTab(params.get("tab")));
   return {
     activeCompPath: params.get("comp") || null,
     currentTime: parseNumber(params.get("t")),
-    rightPanelTab: normalizeStudioUrlPanelTab(parseTab(params.get("tab"))),
+    rightPanelTab,
+    rightPanelTabs: rightPanelTabs ?? (rightPanelTab ? [rightPanelTab] : null),
     rightCollapsed: parseBoolean(params.get("rc")),
     timelineVisible: parseBoolean(params.get("tv")),
     selection: normalizeSelection(params),
@@ -120,6 +135,9 @@ export function buildStudioHash(projectId: string, state: StudioUrlState): strin
     params.set("t", String(Math.max(0, Math.round(state.currentTime * 1000) / 1000)));
   }
   if (state.rightPanelTab) params.set("tab", state.rightPanelTab);
+  if (state.rightPanelTabs && state.rightPanelTabs.length > 0) {
+    params.set("tabs", state.rightPanelTabs.join(","));
+  }
   if (state.rightCollapsed != null) params.set("rc", state.rightCollapsed ? "1" : "0");
   if (state.timelineVisible != null) params.set("tv", state.timelineVisible ? "1" : "0");
   if (state.selection) {

@@ -18,6 +18,7 @@ interface UseStudioUrlStateParams {
   refreshKey: number;
   previewIframeRef: React.MutableRefObject<HTMLIFrameElement | null>;
   rightPanelTab: RightPanelTab;
+  rightPanelTabs: RightPanelTab[];
   rightCollapsed: boolean;
   timelineVisible: boolean;
   activeCompPathHydrated: boolean;
@@ -64,6 +65,7 @@ export function useStudioUrlState({
   refreshKey,
   previewIframeRef,
   rightPanelTab,
+  rightPanelTabs,
   rightCollapsed,
   timelineVisible,
   activeCompPathHydrated,
@@ -83,13 +85,21 @@ export function useStudioUrlState({
       activeCompPath,
       currentTime: stableTimeRef.current,
       rightPanelTab,
+      rightPanelTabs,
       rightCollapsed,
       timelineVisible,
       selection: hydratedSelectionRef.current
         ? toPersistedSelection(domEditSelection)
         : pendingSelectionRef.current,
     }),
-    [activeCompPath, domEditSelection, rightCollapsed, rightPanelTab, timelineVisible],
+    [
+      activeCompPath,
+      domEditSelection,
+      rightCollapsed,
+      rightPanelTab,
+      rightPanelTabs,
+      timelineVisible,
+    ],
   );
 
   useEffect(() => {

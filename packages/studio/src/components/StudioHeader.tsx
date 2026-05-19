@@ -148,7 +148,7 @@ export function StudioHeader({
   inspectorPanelActive,
 }: StudioHeaderProps) {
   const { projectId, editHistory, handleUndo, handleRedo } = useStudioContext();
-  const { rightCollapsed, setRightCollapsed, setRightPanelTab } = usePanelLayoutContext();
+  const { rightCollapsed, setRightCollapsed, ensureDesignVisible } = usePanelLayoutContext();
   const { clearDomSelection } = useDomEditContext();
 
   return (
@@ -217,7 +217,7 @@ export function StudioHeader({
           onClick={() => {
             if (!STUDIO_INSPECTOR_PANELS_ENABLED) return;
             if (rightCollapsed || !inspectorPanelActive) {
-              setRightPanelTab("design");
+              ensureDesignVisible();
               setRightCollapsed(false);
               return;
             }

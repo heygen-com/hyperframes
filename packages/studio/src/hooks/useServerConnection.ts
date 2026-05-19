@@ -26,7 +26,7 @@ export function useServerConnection(): ServerConnectionState {
   useMountEffect(() => {
     const hashProjectId = parseProjectIdFromHash(window.location.hash);
     let cancelled = false;
-    let retryTimer: ReturnType<typeof window.setTimeout> | null = null;
+    let retryTimer: number | null = null;
 
     function scheduleRetry() {
       setWaitingForServer(true);
@@ -63,7 +63,7 @@ export function useServerConnection(): ServerConnectionState {
     tryConnect();
     return () => {
       cancelled = true;
-      if (retryTimer !== null) clearTimeout(retryTimer);
+      if (retryTimer !== null) window.clearTimeout(retryTimer);
     };
   });
 
