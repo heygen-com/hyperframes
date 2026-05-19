@@ -467,10 +467,9 @@ describe("plan() — webm format (distributed VP9)", () => {
   it(
     'maps `format: "webm"` to libvpx-vp9-software + yuva420p',
     async () => {
-      // Webm is distributed-supported via closed-GOP concat-copy (PR 8.1
-      // proved the contract; this test pins the plan-time encoder choice).
-      // yuva420p preserves the format's reason for existing — alpha video
-      // for web playback over colored backgrounds.
+      // Pins the plan-time encoder choice for webm: libvpx-vp9-software
+      // with yuva420p so the format's alpha-channel contract round-trips
+      // through chunked rendering.
       const planDir = join(runRoot, "plan-webm-vp9");
       mkdirSync(planDir, { recursive: true });
       const result = await plan(

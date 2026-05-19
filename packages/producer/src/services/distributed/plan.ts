@@ -36,7 +36,7 @@ import {
 } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { type CanvasResolution } from "@hyperframes/core";
-import { type EngineConfig, resolveConfig } from "@hyperframes/engine";
+import { type EngineConfig, getEncoderPreset, resolveConfig } from "@hyperframes/engine";
 import { defaultLogger, type ProducerLogger } from "../../logger.js";
 import { runAudioStage } from "../render/stages/audioStage.js";
 import { runCompileStage } from "../render/stages/compileStage.js";
@@ -557,12 +557,16 @@ function resolveEncoderTriple(config: DistributedRenderConfig): {
     return { encoder: "prores-software", pixelFormat: "yuva444p10le", preset: "4444" };
   }
   if (config.format === "webm") {
-    // webm distributes via closed-GOP libvpx-vp9 + concat-copy. yuva420p
-    // matches the in-process renderer's webm pixel format (alpha-capable
-    // — the format's main reason for existing). `getEncoderPreset` in
-    // the engine returns "good" for non-draft quality tiers; that becomes
-    // libvpx-vp9's `-deadline good` at encode time.
-    return { encoder: "libvpx-vp9-software", pixelFormat: "yuva420p", preset: "good" };
+    // Defer to `getEncoderPreset` for the libvpx-vp9 preset string so the
+    // draft tier maps to `-deadline realtime` instead of `-deadline good`;
+    // hardcoding "good" here would silently override that mapping for
+    // `quality: "draft"`.
+    const enginePreset = getEncoderPreset(config.quality ?? "standard", "webm");
+    return {
+      encoder: "libvpx-vp9-software",
+      pixelFormat: enginePreset.pixelFormat,
+      preset: enginePreset.preset,
+    };
   }
   return { encoder: "png-sequence", pixelFormat: "rgba", preset: "lossless" };
 }

@@ -129,10 +129,8 @@
         No audio element on purpose. Opus frame quantization at 20ms grain
         pads a 2-second silent track past 2.0s of container time, which
         extends the muxed webm's duration past nb_frames/fps and trips the
-        harness PSNR sampler at the very last checkpoint. The chunk-
-        boundary contracts this fixture pins are video-only; omitting
-        audio keeps container duration == 2.0s exactly. Other webm-with-
-        audio fixtures cover the mux path separately when added.
+        harness PSNR sampler at the very last checkpoint. Omitting audio
+        keeps container duration == 2.0s exactly.
       -->
     </div>
 
