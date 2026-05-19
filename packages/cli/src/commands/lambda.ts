@@ -100,7 +100,7 @@ export default defineCommand({
     width: { type: "string", description: "Render width in pixels" },
     height: { type: "string", description: "Render height in pixels" },
     fps: { type: "string", description: "Render fps (24 | 30 | 60)" },
-    format: { type: "string", description: "mp4 | mov | png-sequence (default: mp4)" },
+    format: { type: "string", description: "mp4 | mov | png-sequence | webm (default: mp4)" },
     codec: { type: "string", description: "h264 | h265 (mp4 only)" },
     quality: { type: "string", description: "draft | standard | high" },
     "chunk-size": { type: "string", description: "Frames per chunk (default: 240)" },
@@ -325,7 +325,7 @@ function parseEnum<T extends string>(
   throw new Error(`${errorPrefix} must be ${allowed.join("|")}; got ${s}`);
 }
 
-const FORMATS = ["mp4", "mov", "png-sequence"] as const;
+const FORMATS = ["mp4", "mov", "png-sequence", "webm"] as const;
 const CODECS = ["h264", "h265"] as const;
 const QUALITIES = ["draft", "standard", "high"] as const;
 const CHROME_SOURCES = ["sparticuz", "chrome-headless-shell"] as const;

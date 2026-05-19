@@ -23,7 +23,7 @@ export interface RenderArgs {
   fps: 24 | 30 | 60;
   width: number;
   height: number;
-  format: "mp4" | "mov" | "png-sequence";
+  format: "mp4" | "mov" | "png-sequence" | "webm";
   codec?: "h264" | "h265";
   quality?: "draft" | "standard" | "high";
   chunkSize?: number;
