@@ -462,6 +462,12 @@ export async function renderChunk(
       format: plan.dimensions.format === "mp4" ? "jpeg" : "png",
       quality: plan.dimensions.format === "mp4" ? 80 : undefined,
       deviceScaleFactor: encoder.deviceScaleFactor,
+      // Re-inject the controller's snapshotted variables so the chunk's
+      // first capture sees the same `window.__hfVariables` the in-process
+      // renderer would have seen. Optional — compositions that don't
+      // declare `data-composition-variables` leave this undefined and the
+      // engine skips the `evaluateOnNewDocument` injection.
+      variables: encoder.variables,
       // lock the BeginFrame warmup loop to a fixed iteration count so
       // `beginFrameTimeTicks` is host-independent. Only chunks ever set this.
       lockWarmupTicks: true,

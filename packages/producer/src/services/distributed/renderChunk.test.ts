@@ -296,6 +296,103 @@ describe("renderChunk()", () => {
   );
 });
 
+describe("renderChunk() — variables threading", () => {
+  // 60s ceiling absorbs Chrome cold-start + 5-frame capture + ffmpeg encode
+  // on slower CI workers.
+  const TIMEOUT_MS = 60_000;
+
+  // Fixture whose pixels depend on `window.__hfVariables.color`. Read the
+  // variables on `DOMContentLoaded` and write the color onto a fullscreen
+  // element. Two plans with different `variables.color` MUST produce
+  // different chunk fingerprints — proves the controller's snapshotted
+  // variables reach the chunk worker's page.
+  const VARIABLES_FIXTURE_HTML = `<!doctype html>
+<html data-composition-variables='{"color":"string"}'>
+<head><meta charset="utf-8"><title>renderChunk variables fixture</title></head>
+<body style="margin:0">
+  <div data-composition-id="root" data-width="160" data-height="120" data-duration="0.16667">
+    <div id="paint" style="width:160px;height:120px;background:#000"></div>
+  </div>
+  <script>
+    (function () {
+      var v = (window.__hfVariables && window.__hfVariables.color) || "#000";
+      var el = document.getElementById("paint");
+      if (el) el.style.background = v;
+    })();
+  </script>
+</body>
+</html>`;
+
+  it(
+    "chunks rendered with different variables produce different output fingerprints",
+    async () => {
+      if (!hasChrome) {
+        // Soft skip — Docker harness covers the real assertion.
+        console.warn(
+          "[renderChunk.test] skipping variables-threading test — chrome-headless-shell not available on this host",
+        );
+        return;
+      }
+
+      const variablesProjectDir = join(runRoot, "project-variables");
+      mkdirSync(variablesProjectDir, { recursive: true });
+      writeFileSync(join(variablesProjectDir, "index.html"), VARIABLES_FIXTURE_HTML, "utf-8");
+
+      const planDirRed = join(runRoot, "plan-variables-red");
+      const planDirBlue = join(runRoot, "plan-variables-blue");
+      mkdirSync(planDirRed, { recursive: true });
+      mkdirSync(planDirBlue, { recursive: true });
+
+      const baseConfig = {
+        fps: 30 as const,
+        width: 160,
+        height: 120,
+        format: "png-sequence" as const,
+      };
+      await plan(
+        variablesProjectDir,
+        { ...baseConfig, variables: { color: "#ff0000" } },
+        planDirRed,
+      );
+      await plan(
+        variablesProjectDir,
+        { ...baseConfig, variables: { color: "#0000ff" } },
+        planDirBlue,
+      );
+
+      const outRed = join(runRoot, "chunk-variables-red");
+      const outBlue = join(runRoot, "chunk-variables-blue");
+
+      let red, blue;
+      try {
+        red = await renderChunk(planDirRed, 0, outRed);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        if (HOST_CHROME_FAILURE_PATTERNS.test(message)) {
+          console.warn(
+            "[renderChunk.test] skipping variables-threading test — host Chrome stack can't render. ",
+            "Docker harness covers the contract. Diagnostic:",
+            message.slice(0, 240),
+          );
+          return;
+        }
+        throw err;
+      }
+      blue = await renderChunk(planDirBlue, 0, outBlue);
+
+      expect(red.outputKind).toBe("frame-dir");
+      expect(blue.outputKind).toBe("frame-dir");
+      // Different variables.color → different rendered pixels → different
+      // fingerprint. The byte-identical-retry contract from the dedicated
+      // test above is what gives this assertion teeth: if variables
+      // weren't actually reaching the page, both chunks would hash the
+      // same #000 fallback.
+      expect(red.sha256).not.toBe(blue.sha256);
+    },
+    TIMEOUT_MS,
+  );
+});
+
 describe("resolvePresetForLockedEncoder", () => {
   // Tiny fast tests for the codec-override helper. No Chrome, no ffmpeg —
   // exists so a refactor that moves the override (e.g. into

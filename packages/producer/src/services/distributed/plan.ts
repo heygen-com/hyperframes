@@ -163,6 +163,26 @@ export interface DistributedRenderConfig {
    * exercise the throw path.
    */
   planDirSizeLimitBytes?: number;
+
+  /**
+   * Render-time variable overrides for the composition. Snapshotted into
+   * `meta/encoder.json` at plan time and re-injected by every chunk
+   * worker as `window.__hfVariables` before the first capture, mirroring
+   * the in-process renderer's
+   * `RenderConfig.variables` → `CaptureOptions.variables` path. The
+   * runtime helper `getVariables()` merges these over the declared
+   * defaults from `<html data-composition-variables="…">`.
+   *
+   * Folded into `planHash`: different variables produce different hashes
+   * because rendered frames depend on the injected values. Must be a
+   * JSON-serializable plain object — `freezePlan`'s canonical-JSON pass
+   * throws on non-serializable values (functions, Symbols, BigInts) when
+   * the variables reach this layer. Adapters that ship to Lambda (the
+   * `@hyperframes/aws-lambda` SDK) also validate the shape client-side
+   * before any AWS call so the rejection lands at the SDK boundary
+   * rather than mid-plan; the producer-side throw is the fallback.
+   */
+  variables?: Record<string, unknown>;
 }
 
 /**
@@ -509,6 +529,7 @@ function buildLockedRenderConfig(input: {
     chunkSize: input.effectiveChunkSize,
     chunkCount: input.chunkCount,
     runtimeEnv: input.runtimeEnv,
+    variables: config.variables,
   };
 }
 

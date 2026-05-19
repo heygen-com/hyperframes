@@ -461,6 +461,111 @@ describe("plan() — codec knob", () => {
   });
 });
 
+describe("plan() — variables", () => {
+  const TIMEOUT_MS = 30_000;
+
+  it(
+    "snapshots variables into meta/encoder.json so chunk workers see the controller's set",
+    async () => {
+      const planDir = join(runRoot, "plan-variables-snapshot");
+      mkdirSync(planDir, { recursive: true });
+      const variables = { title: "Hello", accent: "#ff0000" };
+      await plan(
+        projectDir,
+        { fps: 30, width: 320, height: 240, format: "mp4", variables },
+        planDir,
+      );
+      const encoder = JSON.parse(
+        readFileSync(join(planDir, "meta", "encoder.json"), "utf-8"),
+      ) as Record<string, unknown>;
+      expect(encoder.variables).toEqual(variables);
+    },
+    TIMEOUT_MS,
+  );
+
+  it(
+    "omits the variables key from canonical encoder.json when the caller passes no variables",
+    async () => {
+      // Backwards compat: a no-variables plan must hash identically to
+      // pre-Phase-9 plans. Since the canonical encoder.json strips
+      // `undefined` values, the key must not appear at all.
+      const planDir = join(runRoot, "plan-variables-absent");
+      mkdirSync(planDir, { recursive: true });
+      await plan(projectDir, { fps: 30, width: 320, height: 240, format: "mp4" }, planDir);
+      const encoderRaw = readFileSync(join(planDir, "meta", "encoder.json"), "utf-8");
+      expect(encoderRaw).not.toContain("variables");
+    },
+    TIMEOUT_MS,
+  );
+
+  it(
+    "produces a DIFFERENT planHash when variables differ",
+    async () => {
+      // Variables fold into planHash via meta/encoder.json bytes. Two plans
+      // with different variables must produce different hashes — chunked
+      // output depends on the injected values, and the byte-identical-
+      // retry contract has to bind to the controller's choice.
+      const planDirA = join(runRoot, "plan-variables-different-a");
+      const planDirB = join(runRoot, "plan-variables-different-b");
+      mkdirSync(planDirA, { recursive: true });
+      mkdirSync(planDirB, { recursive: true });
+
+      const base = { fps: 30 as const, width: 320, height: 240, format: "mp4" as const };
+      const a = await plan(projectDir, { ...base, variables: { title: "Alice" } }, planDirA);
+      const b = await plan(projectDir, { ...base, variables: { title: "Bob" } }, planDirB);
+      expect(a.planHash).not.toBe(b.planHash);
+    },
+    TIMEOUT_MS,
+  );
+
+  it(
+    "produces the SAME planHash for two plans with the same variables",
+    async () => {
+      // Canonical-JSON sorts object keys, so the same variables (regardless
+      // of insertion order on the caller side) must round-trip to the
+      // same encoder.json bytes and therefore the same planHash.
+      const planDirA = join(runRoot, "plan-variables-same-a");
+      const planDirB = join(runRoot, "plan-variables-same-b");
+      mkdirSync(planDirA, { recursive: true });
+      mkdirSync(planDirB, { recursive: true });
+
+      const base = { fps: 30 as const, width: 320, height: 240, format: "mp4" as const };
+      const a = await plan(
+        projectDir,
+        { ...base, variables: { title: "Alice", accent: "#ff0000" } },
+        planDirA,
+      );
+      const b = await plan(
+        projectDir,
+        // Same values, opposite insertion order.
+        { ...base, variables: { accent: "#ff0000", title: "Alice" } },
+        planDirB,
+      );
+      expect(a.planHash).toBe(b.planHash);
+    },
+    TIMEOUT_MS,
+  );
+
+  it(
+    "no-variables plan hashes identically to itself (backwards-compat baseline)",
+    async () => {
+      // Pin the no-variables path so adding the new field doesn't silently
+      // change the hash for callers who never opt in. Re-runs the
+      // determinism check from the golden block, scoped to the variables
+      // surface so a future refactor here trips a focused failure.
+      const planDirA = join(runRoot, "plan-no-variables-determinism-a");
+      const planDirB = join(runRoot, "plan-no-variables-determinism-b");
+      mkdirSync(planDirA, { recursive: true });
+      mkdirSync(planDirB, { recursive: true });
+      const config = { fps: 30 as const, width: 320, height: 240, format: "mp4" as const };
+      const a = await plan(projectDir, config, planDirA);
+      const b = await plan(projectDir, config, planDirB);
+      expect(a.planHash).toBe(b.planHash);
+    },
+    TIMEOUT_MS,
+  );
+});
+
 describe("plan() — webm format (distributed VP9)", () => {
   const TIMEOUT_MS = 30_000;
 

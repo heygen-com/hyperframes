@@ -176,6 +176,12 @@ export async function runDistributedSimulatedRender(
       chunkSize: input.chunkSize,
       maxParallelChunks: input.maxParallelChunks,
       hdrMode: "force-sdr",
+      // Forward `variables` to plan() so distributed-simulated fixtures
+      // that declare `renderConfig.variables` produce the same pixels in
+      // distributed mode as in-process. Without this, the harness silently
+      // drops the variables for distributed/lambda-local modes and any
+      // composition that reads `window.__hfVariables` diverges.
+      variables: input.variables,
     },
     planDir,
   );
