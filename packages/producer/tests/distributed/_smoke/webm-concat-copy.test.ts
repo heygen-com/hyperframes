@@ -330,9 +330,13 @@ describe("webm VP9 concat-copy smoke (yuva420p alpha)", () => {
     alphaConcatListPath = join(alphaRoot, "concat-list.txt");
     alphaOutputPath = join(alphaRoot, "output.webm");
 
-    // For alpha frames, generate RGBA PNGs with a transparent background
-    // and an animated solid rect. `color` lavfi source supports alpha
-    // via `c=<color>@<alpha>` syntax.
+    // For alpha frames, generate RGBA PNGs with spatially-varying alpha
+    // so the encoder can't drop the alpha plane as uniform/redundant.
+    // `testsrc2 + format=rgba` (the prior shape) produced uniformly-
+    // opaque alpha and the libvpx-vp9 encoder silently downgraded the
+    // output to yuv420p — masking any bug in the alpha pipeline. Here
+    // `geq=a='X*255/W'` writes a horizontal alpha gradient on top of
+    // the testsrc2 RGB so the alpha track has real per-pixel content.
     const frameGen = runFfmpegSync([
       "-hide_banner",
       "-y",
@@ -341,7 +345,7 @@ describe("webm VP9 concat-copy smoke (yuva420p alpha)", () => {
       "-i",
       `testsrc2=s=${WIDTH}x${HEIGHT}:r=${FPS}:d=${TOTAL_FRAMES / FPS}`,
       "-vf",
-      "format=rgba",
+      "format=rgba,geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='X*255/W'",
       "-frames:v",
       String(TOTAL_FRAMES),
       join(alphaFramesDir, "frame_%04d.png"),
@@ -439,15 +443,6 @@ describe("webm VP9 concat-copy smoke (yuva420p alpha)", () => {
   });
 
   it("decodes alpha-track WebM cleanly without seam errors", () => {
-    // The decode-test is the load-bearing assertion. The actual pixel
-    // format reported by ffprobe depends on the source's alpha
-    // distribution — an RGBA source whose alpha plane is uniformly
-    // opaque can be encoded as yuva420p but ffprobe may report it as
-    // yuv420p if libvpx-vp9 drops the alpha sub-stream as redundant. The
-    // distributed renderer's real compositions (which have meaningful
-    // alpha) get the alpha branch end-to-end; this smoke test only
-    // proves that the closed-GOP encoder args + alpha-pixel-format flag
-    // combination doesn't break concat-copy.
     const decodeResult = runFfmpegSync([
       "-hide_banner",
       "-v",
@@ -458,7 +453,12 @@ describe("webm VP9 concat-copy smoke (yuva420p alpha)", () => {
       "null",
       "-",
     ]);
-    if (decodeResult.exitCode !== 0 || decodeResult.stderr.length > 0) {
+    // Gate only on exit code — `-v error` ffmpeg builds can emit
+    // non-fatal stderr (DTS warnings, container-quirk notes) and we
+    // don't want the test to flake on chatty stderr in a future
+    // libavformat upgrade. Surface stderr in the failure message for
+    // forensic context.
+    if (decodeResult.exitCode !== 0) {
       throw new Error(
         `[alpha smoke decode-test] failed (exit ${decodeResult.exitCode}). ` +
           `Failure fingerprint: ${decodeResult.stderr.slice(-1000) || "(no stderr)"}`,
@@ -470,17 +470,67 @@ describe("webm VP9 concat-copy smoke (yuva420p alpha)", () => {
       "error",
       "-select_streams",
       "v:0",
-      "-show_entries",
-      "stream=codec_name,pix_fmt",
-      "-of",
-      "default=noprint_wrappers=1",
+      "-show_streams",
       alphaOutputPath,
     ]);
     expect(probeResult.exitCode).toBe(0);
     expect(probeResult.stdout).toMatch(/codec_name=vp9/);
-    // Accept either yuv420p or yuva420p — see the comment above the
-    // decode-test for why libvpx-vp9 may downgrade uniformly-opaque
-    // alpha to yuv420p.
-    expect(probeResult.stdout).toMatch(/pix_fmt=yuva?420p/);
+    // libvpx-vp9 stores the alpha plane as a Matroska `BlockAdditional`
+    // sidecar, NOT in the main stream's `pix_fmt` — so `ffprobe` always
+    // reports `pix_fmt=yuv420p` for VP9-with-alpha. The right signal that
+    // alpha encoding was enabled is the stream-level `TAG:ALPHA_MODE=1`
+    // tag the encoder writes when `-metadata:s:v:0 alpha_mode=1` is set
+    // on a yuva420p input.
+    expect(probeResult.stdout).toMatch(/ALPHA_MODE=1/);
+  });
+
+  it("alpha plane round-trips through concat-copy with spatially-varying content", () => {
+    // Decode the concat-copied WebM via the libvpx-vp9 decoder forced to
+    // RGBA, then extract the alpha plane and check it has real spatial
+    // variance — catches the failure mode where the encoder accepted
+    // yuva420p input but dropped the alpha sub-stream silently
+    // (uniform alpha would mask any plan-time bug like the `needsAlpha`
+    // hole that hid this PR's bug before review caught it). The
+    // gradient source produces YMIN ≈ 0 / YMAX ≈ 255 on the alpha
+    // plane; uniform alpha would give YMIN == YMAX. Spread > 100 is a
+    // generous floor that catches the bad case cleanly.
+    //
+    // `-c:v libvpx-vp9` before `-i` is the load-bearing piece: ffmpeg's
+    // default VP9 decoder path strips the BlockAdditional alpha track
+    // when decoding to non-rgba pixel formats; forcing the libvpx-vp9
+    // decoder + `-pix_fmt rgba` is how we get the alpha plane back.
+    const statsResult = runFfmpegSync([
+      "-hide_banner",
+      "-v",
+      "error",
+      "-c:v",
+      "libvpx-vp9",
+      "-i",
+      alphaOutputPath,
+      "-pix_fmt",
+      "rgba",
+      "-vf",
+      "extractplanes=a,signalstats,metadata=mode=print:file=-",
+      "-f",
+      "null",
+      "-",
+    ]);
+    if (statsResult.exitCode !== 0) {
+      throw new Error(
+        `[alpha smoke signalstats] failed (exit ${statsResult.exitCode}): ` +
+          `${statsResult.stderr.slice(-500)}`,
+      );
+    }
+    const yminMatch = statsResult.stdout.match(/lavfi\.signalstats\.YMIN=(\d+)/);
+    const ymaxMatch = statsResult.stdout.match(/lavfi\.signalstats\.YMAX=(\d+)/);
+    if (!yminMatch || !ymaxMatch) {
+      throw new Error(
+        `[alpha smoke signalstats] could not parse YMIN/YMAX from output: ` +
+          `${statsResult.stdout.slice(0, 500)}`,
+      );
+    }
+    const ymin = Number.parseInt(yminMatch[1], 10);
+    const ymax = Number.parseInt(ymaxMatch[1], 10);
+    expect(ymax - ymin).toBeGreaterThan(100);
   });
 });

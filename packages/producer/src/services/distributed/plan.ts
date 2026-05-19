@@ -653,10 +653,17 @@ export async function plan(
   // move the contents over once the staged work completes.
   const finalCompiledDir = join(planDir, "compiled");
 
-  // mov + png-sequence carry alpha — flip force-screenshot so compileStage
-  // takes the alpha-aware capture path (BeginFrame doesn't preserve alpha
-  // on Linux headless-shell).
-  const needsAlpha = config.format === "png-sequence" || config.format === "mov";
+  // webm + mov + png-sequence carry alpha — flip force-screenshot so
+  // compileStage takes the alpha-aware capture path (BeginFrame doesn't
+  // preserve alpha on Linux headless-shell). Must match the in-process
+  // renderer's needsAlpha logic in `renderOrchestrator.ts` so chunked
+  // webm output preserves the same alpha plane the in-process baseline
+  // does. Omitting webm here silently freezes `forceScreenshot: false`
+  // into the planDir and every chunk worker captures opaque RGB — the
+  // libvpx-vp9 alpha sub-stream then encodes either uniform alpha or
+  // gets downgraded by the encoder, producing un-keyable webm output.
+  const needsAlpha =
+    config.format === "png-sequence" || config.format === "mov" || config.format === "webm";
 
   // ── Compile ──
   const compileResult = await runCompileStage({
