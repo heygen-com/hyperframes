@@ -12,7 +12,9 @@ Skip questions the user already answered. Ask only what's missing. If the prompt
 
 ## What to Ask
 
-After presenting the site summary (from Step 0), engage the user with these questions. Use your agent's question/answer UI if available (multi-choice with custom option). If not, ask conversationally.
+Before asking the user anything, ground yourself in the brand: skim `DESIGN.md` (just written in Step 1) for colors / fonts / voice; read `capture/extracted/asset-descriptions.md` for what visual assets exist; skim `capture/extracted/visible-text.txt` for what the site says about itself. Don't summarize all of it back to the user — that's noise; they captured the site, they know what's there. Use it to draft a tight one-paragraph framing of the brand and proceed to the questions.
+
+Engage the user with the questions below. Use your agent's question/answer UI if available (multi-choice with custom option). If not, ask conversationally.
 
 ### Question 1: What's this video for?
 

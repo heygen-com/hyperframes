@@ -10,7 +10,10 @@ DESIGN.md is the brand inflection sub-agents layer on top of every composed beat
 
 **User preferences always override brand rules.** If the user says "make it bright even though the site is dark" or "use serif fonts even though the brand is sans" — follow the user. DESIGN.md describes the captured website. The video might deliberately break that.
 
-You read `tokens.json` and `design-styles.json` in Step 0. If you remember the values, use them; if not, re-read. Don't guess.
+**Read these now** — they're the inputs DESIGN.md is built from. Don't guess colors or sizes from screenshots:
+
+- `capture/extracted/tokens.json` — top brand colors (HEX) and font families with weight ranges.
+- `capture/extracted/design-styles.json` — computed CSS values from the live DOM: typography hierarchy (font-size, weight, line-height, letter-spacing per text role), button variants (background, padding, radius, shadow), card/container/nav styles, spacing scale, border-radius scale, box-shadow values with usage counts. **Primary data source for Sections 3–6 below.**
 
 **Font availability check — do this before writing anything else.** Read `capture/extracted/fonts-manifest.json`. The capture pipeline reads the OpenType `name` table embedded in every downloaded font file, so even hash-renamed Next.js/Webpack fonts are identified by their real family name (Inter, JetBrains Mono, Geist Mono, etc.). No guessing required.
 
