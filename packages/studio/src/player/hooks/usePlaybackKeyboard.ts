@@ -108,6 +108,21 @@ export function usePlaybackKeyboard({
         return;
       }
       if (e.repeat) return;
+      if (key === "m") {
+        e.preventDefault();
+        const state = usePlayerStore.getState();
+        // Audio is force-muted above 1x playback — match the mute button's gating.
+        if (state.playbackRate <= 1) {
+          state.setAudioMuted(!state.audioMuted);
+        }
+        return;
+      }
+      if (key === "l" && e.shiftKey) {
+        e.preventDefault();
+        const state = usePlayerStore.getState();
+        state.setLoopEnabled(!state.loopEnabled);
+        return;
+      }
       if (key === "k") {
         e.preventDefault();
         pause();

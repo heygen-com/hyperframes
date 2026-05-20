@@ -172,3 +172,58 @@ describe("usePlaybackKeyboard — keyboard layout independence (#834)", () => {
     expect(spies.play).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("usePlaybackKeyboard — mute & loop shortcuts (#905)", () => {
+  it("M toggles audioMuted", () => {
+    const { dispatch } = setupHook();
+    expect(usePlayerStore.getState().audioMuted).toBe(false);
+
+    act(() => {
+      dispatch(keydown({ code: "KeyM", key: "m" }));
+    });
+    expect(usePlayerStore.getState().audioMuted).toBe(true);
+
+    act(() => {
+      dispatch(keydown({ code: "KeyM", key: "m" }));
+    });
+    expect(usePlayerStore.getState().audioMuted).toBe(false);
+  });
+
+  it("M does NOT toggle audioMuted above 1x playback (matches button gating)", () => {
+    const { dispatch } = setupHook();
+    usePlayerStore.setState({ playbackRate: 2, audioMuted: false });
+
+    act(() => {
+      dispatch(keydown({ code: "KeyM", key: "m" }));
+    });
+
+    expect(usePlayerStore.getState().audioMuted).toBe(false);
+  });
+
+  it("Shift+L toggles loopEnabled without starting forward shuttle", () => {
+    const { dispatch, spies } = setupHook();
+    expect(usePlayerStore.getState().loopEnabled).toBe(false);
+
+    act(() => {
+      dispatch(keydown({ code: "KeyL", key: "L", shiftKey: true }));
+    });
+    expect(usePlayerStore.getState().loopEnabled).toBe(true);
+    expect(spies.play).not.toHaveBeenCalled();
+
+    act(() => {
+      dispatch(keydown({ code: "KeyL", key: "L", shiftKey: true }));
+    });
+    expect(usePlayerStore.getState().loopEnabled).toBe(false);
+  });
+
+  it("Plain L still starts forward shuttle (regression guard)", () => {
+    const { dispatch, spies } = setupHook();
+
+    act(() => {
+      dispatch(keydown({ code: "KeyL", key: "l" }));
+    });
+
+    expect(spies.play).toHaveBeenCalledTimes(1);
+    expect(usePlayerStore.getState().loopEnabled).toBe(false);
+  });
+});
