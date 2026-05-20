@@ -1,10 +1,33 @@
-import { resolve, sep, join } from "node:path";
-import { readdirSync } from "node:fs";
+import { resolve, sep, join, dirname, basename } from "node:path";
+import { readdirSync, realpathSync } from "node:fs";
 
 /** Reject paths that escape the project directory. */
 export function isSafePath(base: string, resolved: string): boolean {
-  const norm = resolve(base) + sep;
-  return resolved.startsWith(norm) || resolved === resolve(base);
+  try {
+    const baseReal = realpathSync(resolve(base));
+    const target = resolve(resolved);
+    let probe = target;
+    const segments: string[] = [];
+    let targetReal: string;
+
+    while (true) {
+      try {
+        const real = realpathSync(probe);
+        targetReal = segments.length ? join(real, ...segments.reverse()) : real;
+        break;
+      } catch {
+        const parent = dirname(probe);
+        if (parent === probe) return false;
+        segments.push(basename(probe));
+        probe = parent;
+      }
+    }
+
+    const norm = baseReal + sep;
+    return targetReal.startsWith(norm) || targetReal === baseReal;
+  } catch {
+    return false;
+  }
 }
 
 const IGNORE_DIRS = new Set([".thumbnails", "node_modules", ".git"]);
