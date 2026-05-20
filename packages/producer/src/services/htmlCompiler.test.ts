@@ -719,3 +719,50 @@ describe("template-wrapped sub-composition media offsets", () => {
     expect(compiled.html).toContain('var __hfCompId = "scene";');
   });
 });
+
+// ── injectTextRenderingRule (via compileForRender) ─────────────────────────
+//
+// Forces `text-rendering: geometricPrecision` so chrome-headless-shell
+// (BeginFrame) and full Chrome lay text out identically. See
+// `injectTextRenderingRule` in htmlCompiler.ts for full context.
+
+describe("text-rendering rule injection", () => {
+  it("injects a single geometricPrecision rule into <head> for a full-document composition", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-text-rendering-"));
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!DOCTYPE html>
+<html>
+<head><title>t</title></head>
+<body>
+  <div data-composition-id="root" data-width="640" data-height="360" data-duration="1">
+    <h1>Hello</h1>
+  </div>
+</body>
+</html>`,
+    );
+
+    const compiled = await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
+
+    const { document } = parseHTML(compiled.html);
+    const styleEls = document.querySelectorAll("style[data-hyperframes-text-rendering]");
+    expect(styleEls.length).toBe(1);
+    expect((styleEls[0]?.textContent || "").replace(/\s+/g, "")).toContain(
+      "html,body,*{text-rendering:geometricPrecision}",
+    );
+    expect(styleEls[0]?.parentElement?.tagName.toLowerCase()).toBe("head");
+  });
+
+  it("includes geometricPrecision in the fragment-wrap fallback stylesheet", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-text-rendering-frag-"));
+    // Fragment (no <html>/<head>/<body>) — exercises ensureFullDocument.
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<div data-composition-id="root" data-width="640" data-height="360" data-duration="1"><h1>Hi</h1></div>`,
+    );
+
+    const compiled = await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
+
+    expect(compiled.html.replace(/\s+/g, "")).toContain("text-rendering:geometricPrecision");
+  });
+});

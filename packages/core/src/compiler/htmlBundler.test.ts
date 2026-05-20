@@ -939,4 +939,30 @@ describe("bundleToSingleHtml", () => {
     expect(bundled).toContain("/* @import url('./old.css'); */");
     expect(bundled).not.toContain(".old { display: none; }");
   });
+
+  // Forces `text-rendering: geometricPrecision` so headless-shell BeginFrame
+  // renders match full Chrome (which is the snapshot/preview path). See
+  // `injectTextRenderingRule` in htmlBundler.ts.
+  it("injects a single text-rendering:geometricPrecision rule into <head>", async () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html>
+<html>
+<head><title>t</title></head>
+<body>
+  <div data-composition-id="root" data-width="640" data-height="360">
+    <h1>Hello</h1>
+  </div>
+</body></html>`,
+    });
+
+    const bundled = await bundleToSingleHtml(dir);
+    const { document } = parseHTML(bundled);
+    const styleEls = document.querySelectorAll("style[data-hyperframes-text-rendering]");
+
+    expect(styleEls.length).toBe(1);
+    expect((styleEls[0]?.textContent || "").replace(/\s+/g, "")).toContain(
+      "html,body,*{text-rendering:geometricPrecision}",
+    );
+    expect(styleEls[0]?.parentElement?.tagName.toLowerCase()).toBe("head");
+  });
 });
