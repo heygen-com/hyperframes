@@ -2,9 +2,9 @@
 
 DESIGN.md is a **brand-truth cheat sheet** — colors and fonts you'll **weave into your composed builds**. It is NOT a layout spec, not a moodboard, not a 400-line design system audit.
 
-DESIGN.md is the brand inflection sub-agents layer on top of every composed beat: which color is "primary," which font is "headlines," what tone the brand carries — the load-bearing knobs they flip while building. The beats themselves are composed from divs/SVG/CSS at build time; DESIGN.md tells them in which colors and which fonts.
+DESIGN.md is the brand inflection sub-agents apply when building each beat: which color is "primary," which font is for headlines, what tone the brand carries — the load-bearing knobs they flip while building.
 
-**Target length: 250–350 lines.** Sub-agents in Step 5 compose UIs from scratch (divs/SVG/CSS) using your DESIGN.md as the spec — the more precise the component CSS values you encode here, the more brand-faithful the composed beats will look. Going under 200 lines tends to produce generic-looking dark-cinematic videos because sub-agents have no brand component DNA to compose with.
+**Target length: 250–350 lines.** Step 5 sub-agents read DESIGN.md to brand each beat — the more precise the component CSS values you encode here, the more brand-faithful the result. Going under 200 lines tends to produce generic dark-cinematic output because sub-agents have no brand component DNA to work from; going over 350 means you're over-investing in prose.
 
 **Fast-pacing exception:** For billboard-per-beat videos (short social ads where each beat is a single hero element on full-bleed background), a 50-line DESIGN.md with just colors + fonts + 3-5 do's/don'ts is enough. The Step 5 sub-agent prompt pastes brand values inline, so DESIGN.md depth only matters when the beats render full UIs.
 
@@ -94,7 +94,7 @@ That's the whole typography section. If sub-agents need exact line-heights or le
 
 ### `## 3. Component Stylings` (the build-step's spec sheet)
 
-This is the section sub-agents consult most when composing UIs from divs in Step 5. **Without exact per-component CSS, sub-agents fall back to generic "dark bg + glow + centered text" patterns regardless of brand** — which is why every video starts looking the same. Encode the brand's actual component DNA here.
+This is the section sub-agents consult most when building beats in Step 5. **Without exact per-component CSS, sub-agents fall back to generic "dark bg + glow + centered text" patterns regardless of brand** — which is why every video starts looking the same. Encode the brand's actual component DNA here.
 
 Target **6-12 distinct components**. Document what the site actually uses; skip categories the brand doesn't have. For each component, name it descriptively ("Stripe Primary Button" not "Button 1") and provide exact CSS-level properties: background, text color, padding, border-radius, border, font size/weight, height, box-shadow, and any hover/active/disabled states.
 
@@ -158,7 +158,7 @@ Document each distinct card type — Standard, Feature Highlight, Glass, Pricing
 
 #### Distinctive components (anything else the brand actually shows)
 
-Logo marquees, testimonial carousels, pricing tables, gradient overlays, glassmorphism panels, bento grids, code blocks, terminal UIs, dashboard mockups — name and document anything visually distinctive. Sub-agents will reach for these specs when the storyboard calls for "compose the X UI."
+Logo marquees, testimonial carousels, pricing tables, gradient overlays, glassmorphism panels, bento grids, code blocks, terminal UIs, dashboard mockups — name and document anything visually distinctive. Sub-agents will reach for these specs when the storyboard calls for a beat featuring the X.
 
 ```markdown
 #### Glass Container (frosted overlay)
@@ -287,10 +287,9 @@ If your draft has a rule like "all interactive elements require visible focus st
 - Use **exact values** from `capture/extracted/tokens.json`. Cross-reference with screenshots when needed.
 - Name colors and components descriptively — "Stripe Purple" not "Accent 1."
 - When you can't extract exact values, estimate from visual inspection and note it.
-- Target **250–350 lines total.** Component CSS specs and the brand's spacing/depth values are load-bearing — sub-agents need them to compose UIs faithfully. Going much over 350 lines means you're over-investing in prose; going much under 200 means you've under-documented the component DNA and sub-agents will fall back to generic patterns.
 - No "Assets" section — `capture/extracted/asset-descriptions.md` is the asset index.
 - No "Motion" section — the storyboard specifies motion per-beat.
-- No "Components" section beyond what fits in Quick Reference — sub-agents compose UIs at build time from divs/SVG/CSS using the brand colors and fonts from this doc, not from CSS specs encoded here.
+- No separate "Components" section — Quick Reference is where components live.
 - No "Depth & Elevation" tables — shadow language is implied by the brand's mood (heavy shadows for premium, no shadows for flat/clean); sub-agents pick appropriate values without a table.
 
 ---

@@ -1,6 +1,6 @@
 # Step 3: Storyboard + Script
 
-Marketing videos are made concept-first. **The order is: message → narrative arc → beats that serve the arc → which assets and techniques bring each beat to life.** Captured assets (SVG logos, brand illustrations, hero art, gradients) are first-class beat content alongside composed UIs — many of them will carry their own beats. The constraint is only that you shouldn't _start_ from the asset inventory ("we have these screenshots, let's build a slideshow"). Start from the message, then weave in the right captured assets and the right composed elements per beat.
+Marketing videos are made concept-first. **The order is: message → narrative arc → beats that serve the arc → which assets and techniques bring each beat to life.** Captured assets (SVG logos, brand illustrations, hero art, gradients) are first-class beat content alongside composed beats — many of them will carry their own beats. The constraint is only that you shouldn't _start_ from the asset inventory ("we have these screenshots, let's build a slideshow"). Start from the message, then weave in the right captured assets and the right composed elements per beat.
 
 **Read `capture/extracted/asset-descriptions.md` before writing beats.** Know what's in the capture. The brand's actual visual identity — its real logo, its real illustrations, its real gradients, its real hero art — is what makes the video feel like _this_ brand and not a generic dark cinematic template. Most beats will use one or two captured assets layered with composed motion.
 
@@ -273,7 +273,7 @@ Use the pacing you decided at the top of this step. The beat count, duration, an
 
 **Frame-filling rule:** When describing visuals per beat, specify sizes as FRAME FILL PERCENTAGES, not pixels. "Product screenshot fills 80% of frame" not "600px wide card."
 
-**Compose the load-bearing visuals yourself.** Build the kanban from cards-as-divs. Draw the logo with SVG paths. Paint the gradient with shader noise. Animate the counter with `tl.set()`. The video should feel **alive in every frame** — motion that's continuous and tangible, **like things exist in a physical world**. Captured assets (brand logo, hero illustrations, gradient backgrounds, product photography) are accents you layer onto composed beats — they decorate, they don't carry. Find the most suitable combinations: composed UIs grounded in the brand's actual colors and fonts, with captured brand marks stamped in as identity, not as content. For every beat where the storyboard pull is "show the kanban / dashboard / chat / terminal," the answer is build it from divs and CSS, not paste a screenshot.
+**Use whatever primitives the beat needs — alone or in combination.** A beat can layer HTML/CSS, SVG (captured or hand-drawn), WebGL/Canvas shaders, Three.js scenes, captured illustrations and photographs, kinetic typography, captured Lottie — all at once if the scene calls for that. They're inputs to one output (the video frame); there's no rule mapping intent to primitive. The video should feel **alive in every frame** — motion that's continuous and tangible, **like things exist in a physical world**. Narrow no-go: never paste a product-UI screenshot as load-bearing content (the slideshow pattern). Everything else is open.
 
 **Opener default: fast intro to stop the scrollers.** Even a cinematic video should start with a punch — a flash, a shader bloom, a logo strike, a kinetic word build, a particle burst — anything that lands inside the first 1.0–1.5 seconds. Slow intros work for prestige trailers; videos shipping anywhere social or feed-based need a hook that beats the 1.5-second scroll threshold. Plan the opener as the most ambitious beat in the storyboard, not the gentlest one.
 
@@ -376,11 +376,7 @@ Mark assets `SKIP` when a composed equivalent (dashboards, kanban, chat, termina
 
 **Update each beat's Composition + Accents section** based on what this pass produced. Most beats stay accent-free. The few that earn one get a single line under "Accents" with the file, position, opacity, and motion.
 
-**The bar:**
-
-- Every beat's primary visual stays composed from divs / SVG / CSS / GSAP at build time
-- Accents are a thin layer of brand inflection on top — never the carrier
-- A beat with no obvious accent need stays accent-free. The composed visual is enough.
+**The bar:** Every beat's visuals use whatever combination of primitives the scene needs. Accents are optional brand inflections layered on top; brand-floor minimums (logo in opener + closer, signature visual once) are the minimum, not the ceiling.
 
 ---
 

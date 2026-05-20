@@ -101,7 +101,7 @@ If the storyboard says "fast" pacing: use the stacked-beats pattern below. Do no
 
 **Stacked-beats pattern (fast pacing):**
 
-Each beat is a composed scene — composed from divs, SVG, canvas, and CSS. Never a full-bleed screenshot. Each beat's structure (cards, panels, layered text, SVG-drawn mark, etc.) comes from the storyboard's Composition + Accents spec.
+Each beat composes from whatever primitives the storyboard called for — HTML/CSS, SVG, captured assets, WebGL, Canvas, Three.js, kinetic typography, Lottie — alone or in combination. Narrow no-go: never a full-bleed product-UI screenshot as load-bearing content. Each beat's structure comes from the storyboard's Composition + Accents spec.
 
 ```html
 <div
@@ -144,7 +144,7 @@ Each beat is a composed scene — composed from divs, SVG, canvas, and CSS. Neve
 </div>
 ```
 
-If you ever find yourself writing `<img src="capture/assets/...">` as a beat's primary visual, stop. That's the slideshow pattern this skill exists to break. Build the UI element from divs and CSS using the brand colors from DESIGN.md. The only legitimate `<img>` uses are: (a) the brand logo when it's purely raster, (b) a hero illustration layered as ambient depth behind composed content, (c) a gradient/texture image as a background wash. Never a product UI screenshot as the load-bearing visual.
+If you ever find yourself writing `<img src="capture/assets/...">` as a beat's primary visual where the asset is a product-UI screenshot, stop. That's the slideshow pattern this skill exists to break. Build the element from divs and CSS using the brand colors from DESIGN.md. The legitimate `<img>` uses are: (a) the brand logo when it's purely raster, (b) a hero illustration layered as ambient depth behind composed content, (c) a gradient/texture image as a background wash. Never a product UI screenshot as the load-bearing visual.
 
 ```css
 .beat {
