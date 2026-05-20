@@ -2,38 +2,34 @@
 
 The compiler embeds supported fonts — just write `font-family` in CSS.
 
-## Banned fonts
+## Banned
 
-These are the fonts every LLM reaches for. They produce monoculture across compositions even when nothing else about the compositions is similar:
+Training-data defaults that every LLM reaches for. These produce monoculture across compositions.
 
 Inter, Roboto, Open Sans, Noto Sans, Arimo, Lato, Source Sans, PT Sans, Nunito, Poppins, Outfit, Sora, Playfair Display, Cormorant Garamond, Bodoni Moda, EB Garamond, Cinzel, Prata, Syne
 
-**Syne in particular** is the most overused "distinctive" display font. When you see it, it reads as AI-generated before anything else about the composition registers.
+**Syne in particular** is the most overused "distinctive" display font. It is an instant AI design tell.
 
-If a brand's actual identity uses one of these fonts, that's a different situation — use the brand's font. The ban applies to the default-reach, not to the cases where the font is genuinely the right choice.
+## Guardrails
 
-## Defaults to watch for
+You know these rules but you violate them. Stop.
 
-These are the patterns that produce same-looking compositions even when the brands are different:
+- **Don't pair two sans-serifs.** You do this constantly — one for headlines, one for body. Cross the boundary: serif + sans, or sans + mono.
+- **One expressive font per scene.** You pick two interesting fonts trying to make it "better." One performs, one recedes.
+- **Weight contrast must be extreme.** You default to 400 vs 700. Video needs 300 vs 900. The difference must be visible in motion at a glance.
+- **Video sizes, not web sizes.** Body: 20px minimum. Headlines: 60px+. Data labels: 16px. You will try to use 14px. Don't.
 
-- **Two sans-serifs paired together** — one for headlines, one for body. The pairing has no tension because both fonts come from the same family of forms. Cross the boundary: serif + sans, or sans + mono. The pairing should embody some contradiction in the content.
-- **Two expressive fonts in one scene** — one will perform and the other will recede no matter what you do. Pick which font is doing the work and let the other be quiet.
-- **Weight contrast at 400 vs 700** — fine for web, invisible at video distance. Video needs more dramatic contrast: 300 vs 900, or 200 vs 800. The weight difference should be readable in motion at a glance.
-- **Web type sizes** — body text at 14–16px disappears on a 1920×1080 frame. Video minimums: body 20px+, headlines 60px+, data labels 16px+. If a font-size is under 20px in a composition, there should be a specific reason.
+## What You Don't Do Without Being Told
 
-## Principles
-
-What follows isn't a checklist — these are principles for thinking about type in video specifically:
-
-- **Tension should mean something.** When two fonts are paired, the pairing should embody some contradiction the content itself contains — mechanical vs human, public vs private, institutional vs personal. If you can't articulate the tension, the pairing is arbitrary and reads as such.
-- **Register switching.** Different fonts can carry different communicative modes — one voice for statements, another for data, another for attribution. This isn't hierarchy on a page; it's voices in a conversation. Each font is saying something different _about_ the content it carries.
-- **Tension can live inside a single font.** A font that looks familiar but is secretly strange creates tension with the viewer's expectations — no second font required. Some of the strongest type-driven compositions use one font confidently.
-- **One variable changed = dramatic contrast.** Same letterforms, monospaced vs proportional. Same family at different optical sizes. Changing only rhythm while everything else stays constant produces contrast without complexity.
-- **Double personality works when fonts share attitude.** Two expressive fonts can coexist if they share an underlying attitude (both irreverent, both precise, both eccentric) even when their visible forms are completely different.
-- **Time is hierarchy.** The first element to appear is the most important. In video, sequence replaces position — what would be top-of-page on the web is first-to-enter on screen.
-- **Motion is typography.** How a word enters carries as much meaning as the font it's set in. A 0.1s slam and a 2s fade say completely different things with the same letters.
-- **Fixed reading time.** Three seconds on screen means the line has to be readable in two. That forces fewer words and larger type than web type-setting habits assume.
-- **Tracking tighter than web.** Display sizes in video want `-0.03em` to `-0.05em` of letter-spacing. Video encoding compresses fine letter detail, and tighter tracking compensates.
+- **Tension should mean something.** Don't pattern-match pairings. Ask WHY these two fonts disagree. The pairing should embody the content's contradiction — mechanical vs human, public vs private, institutional vs personal. If you can't articulate the tension, it's arbitrary.
+- **Register switching.** Assign different fonts to different communicative modes — one voice for statements, another for data, another for attribution. Not hierarchy on a page. Voices in a conversation.
+- **Tension can live inside a single font.** A font that looks familiar but is secretly strange creates tension with the viewer's expectations, not with another font.
+- **One variable changed = dramatic contrast.** Same letterforms, monospaced vs proportional. Same family at different optical sizes. Changing only rhythm while everything else stays constant.
+- **Double personality works.** Two expressive fonts can coexist if they share an attitude (both irreverent, both precise) even when their forms are completely different.
+- **Time is hierarchy.** The first element to appear is the most important. In video, sequence replaces position.
+- **Motion is typography.** How a word enters carries as much meaning as the font. A 0.1s slam vs a 2s fade — same font, completely different message.
+- **Fixed reading time.** 3 seconds on screen = must be readable in 2. Fewer words, larger type.
+- **Tracking tighter than web.** -0.03em to -0.05em on display sizes. Video encoding compresses letter detail.
 
 ## Finding Fonts
 

@@ -12,7 +12,7 @@ design.md defines what the brand looks like: colors, fonts, personality, constra
 
 ## Density
 
-Density depends on the beat's purpose. A dramatic single-word reveal or a keynote-style hero moment can have 1-2 elements — that's intentional. A data showcase or feature grid should have 8-10. Match the storyboard's intent, not a number target.
+A beat with 3 elements looks empty. A beat with 8-10 feels alive.
 
 Every scene needs:
 
@@ -20,9 +20,7 @@ Every scene needs:
 - **Midground content** — the actual message. Cards, stats, code blocks, images.
 - **Foreground accents** — dividers, labels, data bars, registration marks, monospace metadata. The details that make it feel produced, not generated.
 
-Every scene should have content at all three layers — background, midground, and foreground — even a sparse beat. A 1-element hero moment isn't really 1 element if the background has a radial glow and the foreground has a corner label; it's a 1-element _focal point_ with two layers around it doing quiet work. That's different from a frame with one element and nothing else, which reads as unfinished.
-
-Total element count follows from the storyboard's density spec for that beat. The thing to check for is whether all three layers are present, not whether the count hits a target.
+Aim for 8-10 visual elements per scene. Two of those should be decorative elements the user didn't ask for — you add them because empty frames look broken.
 
 ## Color Presence
 

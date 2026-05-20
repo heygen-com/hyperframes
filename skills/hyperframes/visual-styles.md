@@ -1,143 +1,443 @@
 # Visual Style Library
 
-A collection of design traditions that have produced influential motion and editorial work. **Each entry is a lens, not a recipe.** Read them to expand your vocabulary for what visual identities are possible — not to paste a token block into DESIGN.md and call it done.
+Named visual identities for HyperFrames videos. Each style is grounded in a real graphic design tradition and expressed as a DESIGN.md-compatible token block. Use them as starters — copy the YAML into your project's `design.md` front matter, then customize.
 
-## Why no YAML
+**How to pick:** Match mood first, content second. Ask: _"What should the viewer FEEL?"_
 
-Earlier versions of this file shipped each tradition as a complete YAML token block — colors, typography, motion easings, transition picks. Agents pasted them wholesale and produced one "premium" video that looked like every other "premium" video. The token block was the problem: it made the tradition feel like a stamp rather than a perspective.
+**How to use:** Copy the style's YAML token block into `design.md` front matter. Add `## Overview`, `## Colors`, `## Typography`, `## Elevation`, `## Components`, `## Do's and Don'ts` prose sections to complete the file.
 
-The values in any real DESIGN.md should come from the captured brand — its actual colors, its actual typography, its actual rhythm — not from a stranger's recipe. These traditions can inform _how you think_ about that brand. They should not supply _what you write_.
+## Quick Reference
 
-## How to use this file
-
-1. **Read DESIGN.md first.** What does this brand's visual identity actually look like? Where is the energy? What restraint does it show? What does it amplify?
-2. **Then scan the traditions below.** Do any of them resonate with what the brand is already doing? "This brand has Swiss-tradition discipline" or "this brand has Sagmeister warmth" is a useful observation. It means: I have a precedent for thinking about how this brand could move.
-3. **Translate the lesson, not the values.** If Swiss tradition resonates, the lesson is _grid discipline and content-as-structure_. The values — colors, type sizes, exact easings — still come from this brand, not from Müller-Brockmann.
-
-If none of the eight traditions below resonate with the brand you're working on, that's fine and common. There are more design traditions than fit on one page; this is a starting vocabulary, not a closed set.
-
----
-
-## 1. Swiss / International Typographic — Josef Müller-Brockmann, Emil Ruder, Armin Hofmann
-
-**What it teaches:** Content is structure. The grid is not decoration — it is the design. Type carries the work; ornament weakens it. Information should be findable, not announced.
-
-**Where it resonates:** Brands that already show grid discipline. Sites where typography does the heavy lifting. Dashboards, dev tools, B2B platforms with monospace or tightly-tracked sans-serif. Brands whose homepage uses one bold weight and no decorative elements.
-
-**Pitfalls when borrowing it:** Don't import "minimalism" if the brand actually has personality. Brockmann is restrained because the work demands restraint, not because restraint is universally premium. A brand with playful copy and warm color paired with a Swiss-grid motion treatment reads as cold and confused.
-
-**Tags:** `#grid #editorial-discipline #content-as-structure #high-contrast #restrained-motion`
+| Style           | Mood                  | Best for                           | Transition shader                 |
+| --------------- | --------------------- | ---------------------------------- | --------------------------------- |
+| Swiss Pulse     | Clinical, precise     | SaaS, data, dev tools, metrics     | Cinematic Zoom or SDF Iris        |
+| Velvet Standard | Premium, timeless     | Luxury, enterprise, keynotes       | Cross-Warp Morph                  |
+| Deconstructed   | Industrial, raw       | Tech launches, security, punk      | Glitch or Whip Pan                |
+| Maximalist Type | Loud, kinetic         | Big announcements, launches        | Ridged Burn                       |
+| Data Drift      | Futuristic, immersive | AI, ML, cutting-edge tech          | Gravitational Lens or Domain Warp |
+| Soft Signal     | Intimate, warm        | Wellness, personal stories, brand  | Thermal Distortion                |
+| Folk Frequency  | Cultural, vivid       | Consumer apps, food, communities   | Swirl Vortex or Ripple Waves      |
+| Shadow Cut      | Dark, cinematic       | Dramatic reveals, security, exposé | Domain Warp                       |
 
 ---
 
-## 2. Late-Modernist Editorial — Massimo Vignelli, Unimark
+## 1. Swiss Pulse — Josef Müller-Brockmann
 
-**What it teaches:** Six typefaces are enough for a lifetime. Whitespace is a design element, not an absence of one. Hierarchy is achieved through scale and spacing, not through ornament or color.
+**Mood:** Clinical, precise | **Best for:** SaaS dashboards, developer tools, APIs, metrics
 
-**Where it resonates:** Brands with confident reductive identities — heavy spacing, single-weight wordmarks, architectural composition. Enterprise software with mature design systems. Brands that don't try to seem premium because they already are.
+```yaml
+name: Swiss Pulse
+colors:
+  primary: "#1a1a1a"
+  on-primary: "#ffffff"
+  accent: "#0066FF"
+typography:
+  headline:
+    fontFamily: Helvetica Neue
+    fontSize: 5rem
+    fontWeight: 700
+  label:
+    fontFamily: Inter
+    fontSize: 0.875rem
+    fontWeight: 400
+  stat:
+    fontFamily: Helvetica Neue
+    fontSize: 7rem
+    fontWeight: 700
+rounded:
+  none: 0px
+  sm: 2px
+spacing:
+  sm: 8px
+  md: 16px
+  lg: 32px
+motion:
+  energy: high
+  easing:
+    entry: "expo.out"
+    exit: "power4.in"
+    ambient: "none"
+  duration:
+    entrance: 0.4
+    hold: 1.5
+    transition: 0.6
+  atmosphere:
+    - grid-lines
+    - registration-marks
+  transition: cinematic-zoom
+```
 
-**Pitfalls when borrowing it:** Vignelli's restraint comes from rigorous editing, not from "use less stuff." Pulling out elements until a frame is sparse, without thinking about what's left, produces emptiness rather than restraint. The remaining elements have to earn the space they occupy.
-
-**Tags:** `#architectural-spacing #typographic-confidence #unornamented #slow-deliberate #single-weight-identity`
-
----
-
-## 3. Punk / Post-Modern Print — Neville Brody, David Carson, The Face, Ray Gun
-
-**What it teaches:** Rules can be broken when the breaking is the point. Type can escape its baseline. Imperfection, overlap, and intentional irregularity have a place in mature design. Texture and grain are content, not noise.
-
-**Where it resonates:** Brands with raw edges in their actual identity — dev tools with terminal aesthetics that lean into the rough texture, music platforms, brands that intentionally feel handmade. Sites where the typography is doing something specifically _off_ — a heading at a slight angle, a logo that's deliberately not perfectly aligned.
-
-**Pitfalls when borrowing it:** This is the tradition agents lean toward when they want a video to "feel edgy" for a brand that isn't actually edgy. Adding glitch, scan lines, and overlapping type to a clean fintech brand makes it look like the agent didn't read the brief. The brand has to already contain the irregularity for this lens to amplify what's there.
-
-**Tags:** `#irregular #broken-grid #texture-as-content #post-rules #raw-edges`
-
----
-
-## 4. American Maximalist — Paula Scher, Pentagram, Herb Lubalin
-
-**What it teaches:** Type can be the image. Scale is communication. Filling the frame with one massive word can say more than a layout of small ones. Color saturation is a tool, not a tell.
-
-**Where it resonates:** Brands with confident loud identities — bold wordmarks that dominate their own homepage, hero headlines at 120px+, primary colors used at full saturation. Consumer brands that are unapologetic. Public-facing organizations that need to be readable from the back of a room.
-
-**Pitfalls when borrowing it:** Scher's maximalism is calibrated — every loud element is chosen and the quiet space around it is what makes it land. Loud-on-loud everywhere is noise, not maximalism. If a brand's homepage already uses careful negative space, applying this lens flattens what makes the brand work.
-
-**Tags:** `#type-as-image #massive-scale #saturated #unapologetic #public-facing`
-
----
-
-## 5. Computational / Generative — Refik Anadol, Casey Reas, Joshua Davis
-
-**What it teaches:** Form can emerge from process. Particle systems, fluid simulations, and noise fields are not chrome — they are the work. Continuous motion can carry an entire piece without a single hard cut.
-
-**Where it resonates:** Brands where data, AI, or computation is the actual product. Sites that already use WebGL, shaders, or canvas effects in their hero section. Brands whose color palette is gradient-native rather than flat. Companies whose identity _is_ the simulation of something.
-
-**Pitfalls when borrowing it:** The "AI brand" trap is real — every AI startup gets a particle-field treatment regardless of whether their actual identity is computational. If the captured site is flat, structured, and information-dense, applying generative motion is a contradiction. Particles for the sake of "feeling AI" are decoration the brand didn't ask for.
-
-**Tags:** `#generative #continuous-motion #simulation-as-form #gradient-native #fluid-composition`
-
----
-
-## 6. Humanist / Personal — Stefan Sagmeister, Marian Bantjes, Louise Fili
-
-**What it teaches:** Design can feel made by a person. Handwriting, hand-set serifs, and visible imperfection can communicate intimacy where a system cannot. Close framing — one element filling the frame — invites the viewer in.
-
-**Where it resonates:** Wellness brands, lifestyle products, food, personal services, anything where warmth is the actual proposition. Brands using humanist serifs, organic illustrations, or photography that emphasizes hands and texture. Sites with first-person copy.
-
-**Pitfalls when borrowing it:** This lens softens, which can dilute a brand that wants to feel sharp. Don't import warmth into a brand whose identity is precision. And don't conflate "humanist" with "lowercase serif everywhere" — Sagmeister's work is conceptual first, typographic second.
-
-**Tags:** `#humanist #warm #close-framing #personal-voice #handmade-feel`
+Grid-locked compositions. Every element snaps to an invisible 12-column grid. Numbers dominate the frame at 80–120px. Animated counters count up from 0. Hard cuts, no decorative transitions. Nothing floats.
 
 ---
 
-## 7. Cultural / Vernacular — Eduardo Terrazas, Yusaku Kamekura, Saul Bass
+## 2. Velvet Standard — Massimo Vignelli
 
-**What it teaches:** Pattern is rhythm. Repetition with variation can carry visual interest where a single hero element cannot. Folk and vernacular sources have a richness that "designed" work often lacks. Color combinations from non-Western design traditions read as vivid without reading as childish.
+**Mood:** Premium, timeless | **Best for:** Luxury products, enterprise software, keynotes, investor decks
 
-**Where it resonates:** Consumer apps with cultural specificity, food platforms, community products, festive launches. Brands whose color palette uses multiple saturated primaries rather than one accent. Sites with pattern-as-background rather than gradient-as-background.
+```yaml
+name: Velvet Standard
+colors:
+  primary: "#0a0a0a"
+  on-primary: "#ffffff"
+  accent: "#1a237e"
+typography:
+  headline:
+    fontFamily: Inter
+    fontSize: 3rem
+    fontWeight: 300
+    letterSpacing: 0.15em
+    textTransform: uppercase
+  body:
+    fontFamily: Inter
+    fontSize: 1rem
+    fontWeight: 300
+    lineHeight: 1.6
+rounded:
+  sm: 0px
+  md: 2px
+spacing:
+  sm: 16px
+  md: 32px
+  lg: 64px
+motion:
+  energy: calm
+  easing:
+    entry: "sine.inOut"
+    exit: "power1.in"
+    ambient: "sine.inOut"
+  duration:
+    entrance: 1.2
+    hold: 3.0
+    transition: 1.5
+  atmosphere:
+    - subtle-grain
+    - hairline-rules
+  transition: cross-warp-morph
+```
 
-**Pitfalls when borrowing it:** Vernacular sources are specific to cultures and contexts. Importing Terrazas-style patterns for a generic SaaS launch is appropriation-via-aesthetics. The lens applies when the brand has actual cultural specificity to amplify, not when an agent wants the video to "feel fun."
-
-**Tags:** `#pattern-rhythm #saturated-multi-color #cultural-specificity #celebratory #repetition-with-variation`
+Generous negative space. Symmetrical, centered, architectural precision. Thin sans-serif, ALL CAPS, wide letter-spacing. Sequential reveals with long holds. Nothing snaps — everything glides with intention. Luxury takes its time.
 
 ---
 
-## 8. Cinematic / Title Sequence — Saul Bass, Pablo Ferro, Kyle Cooper
+## 3. Deconstructed — Neville Brody
 
-**What it teaches:** Type and image can be choreographed like film. Reveal is narrative. Darkness is a material — what emerges from it carries weight. Silence between cuts can be as loud as the cuts themselves.
+**Mood:** Industrial, raw | **Best for:** Tech news, developer launches, security products, punk-energy reveals
 
-**Where it resonates:** Dramatic reveals, security and finance products where stakes matter, launch teasers that need a build. Brands with deep neutrals and a single restrained accent. Sites with reduced color palettes and high contrast between hero and background.
+```yaml
+name: Deconstructed
+colors:
+  primary: "#1a1a1a"
+  on-primary: "#f0f0f0"
+  accent: "#D4501E"
+typography:
+  headline:
+    fontFamily: Space Grotesk
+    fontSize: 4rem
+    fontWeight: 700
+  label:
+    fontFamily: Space Mono
+    fontSize: 0.75rem
+    fontWeight: 700
+    textTransform: uppercase
+rounded:
+  none: 0px
+spacing:
+  sm: 4px
+  md: 12px
+  lg: 24px
+motion:
+  energy: high
+  easing:
+    entry: "back.out(2.5)"
+    exit: "steps(8)"
+    ambient: "elastic.out(1.2, 0.4)"
+  duration:
+    entrance: 0.3
+    hold: 1.0
+    transition: 0.5
+  atmosphere:
+    - scan-lines
+    - glitch-artifacts
+    - grain-overlay
+  transition: glitch
+```
 
-**Pitfalls when borrowing it:** "Cinematic" is the most overused word in this whole pipeline. Agents reach for darkness + slow reveal + bass impact as if those three ingredients automatically produce cinema. Cinema requires _structure_ — the buildup has to earn the payoff. A 15-second video with three "cinematic reveals" has zero cinematic moments; it has three hero shots competing for attention.
-
-**Tags:** `#reveal-as-narrative #emerging-from-dark #structured-buildup #restrained-accent #weight-of-pause`
+Type at angles, overlapping edges, escaping frames. Bold industrial weight. Gritty textures: scan-line effects, glitch artifacts baked into design. Text SLAMS and SHATTERS. Letters scramble then snap to final position. Intentional irregularity — nothing should feel polished.
 
 ---
 
-## Choosing a lens
+## 4. Maximalist Type — Paula Scher
 
-There's no table here. The earlier version had a "if your brand suggests X, use style Y" mapping that produced exactly the prescriptive output this file is now trying to avoid.
+**Mood:** Loud, kinetic | **Best for:** Big product launches, milestone announcements, high-energy hype videos
 
-The work is:
+```yaml
+name: Maximalist Type
+colors:
+  primary: "#0a0a0a"
+  on-primary: "#ffffff"
+  accent-red: "#E63946"
+  accent-yellow: "#FFD60A"
+typography:
+  headline:
+    fontFamily: Anton
+    fontSize: 8rem
+    fontWeight: 400
+    textTransform: uppercase
+  subhead:
+    fontFamily: Space Grotesk
+    fontSize: 3rem
+    fontWeight: 700
+rounded:
+  none: 0px
+spacing:
+  sm: 0px
+  md: 8px
+motion:
+  energy: high
+  easing:
+    entry: "expo.out"
+    exit: "back.out(1.8)"
+    ambient: "power3.out"
+  duration:
+    entrance: 0.3
+    hold: 0.8
+    transition: 0.4
+  atmosphere:
+    - type-layers
+    - color-blocks
+  transition: ridged-burn
+```
 
-1. **Describe the brand in your own words first.** Three to five sentences from the captured DESIGN.md. What does it actually look like? Where is the personality? What's it confident about?
-2. **Then ask:** does any tradition above resonate with what I just described? If yes, name it and say _what specifically_ resonates — not the whole tradition, the specific lesson.
-3. **If nothing resonates,** that's a real outcome. Plenty of brands sit between or outside these eight. Note that, and proceed from the brand alone.
-
-Examples of good resonance notes for a storyboard:
-
-- "This brand's homepage shows Swiss-tradition grid discipline in its type hierarchy. The video should honor that — no decorative motion on text, content drives the structure, no ornament. _Lesson borrowed:_ grid as design. _Values stay from this brand:_ the actual colors, the actual font, the actual cadence."
-- "There's some Sagmeister warmth here in the photography and lowercase serif. The video should lean into close framing and unhurried motion. _Lesson borrowed:_ close framing as intimacy. _Values stay from this brand:_ the actual warm-neutral palette, the actual serif weight."
-- "Nothing in the catalog resonates. This brand is its own thing — saturated multi-color, dense feature grid, casual second-person copy. Skip the catalog and design from the brand directly."
-
-The third example is the most important. If you find yourself forcing a tradition to "fit" because the catalog exists, that's the catalog using you, not you using the catalog.
+Text IS the visual. Overlapping type layers at different scales and angles, filling 50–80% of frame. Bold saturated colors — maximum contrast. Everything kinetic: slamming, sliding, scaling. 2–3 second rapid-fire scenes. No static moments. Fast arrivals, hard stops.
 
 ---
 
-## What this file is not
+## 5. Data Drift — Refik Anadol
 
-- **Not a style picker.** There is no "for SaaS use Swiss Pulse, for fintech use Velvet Standard" mapping anywhere in this file by design.
-- **Not a token source.** Don't extract colors, typography, or motion values from the descriptions above. Those values belong to specific historical works — they're not yours to reuse, and the brand you're working on has its own. If you need starting palette inspiration when no DESIGN.md exists, see the `palettes/` directory — each file has named palettes for a color category, but treat them as starting points to derive from, not as finishes.
-- **Not exhaustive.** Eight entries is a starter vocabulary. Vernacular design from Mexico, Japan, India, West Africa, the Middle East, and many other traditions have produced influential motion work and aren't covered here. If you know one and it fits, use it and name it.
+**Mood:** Futuristic, immersive | **Best for:** AI products, ML platforms, data companies, speculative tech
 
-The job is to make a video that's _of this brand_, informed by your knowledge of design history. Not a video that's _of a tradition_, with this brand's logo inserted.
+```yaml
+name: Data Drift
+colors:
+  primary: "#0a0a0a"
+  on-primary: "#e0e0e0"
+  accent-purple: "#7c3aed"
+  accent-cyan: "#06b6d4"
+typography:
+  headline:
+    fontFamily: Inter
+    fontSize: 2.5rem
+    fontWeight: 200
+    letterSpacing: 0.05em
+  body:
+    fontFamily: Inter
+    fontSize: 0.875rem
+    fontWeight: 300
+rounded:
+  sm: 4px
+  md: 12px
+  full: 9999px
+spacing:
+  sm: 16px
+  md: 32px
+  lg: 64px
+motion:
+  energy: moderate
+  easing:
+    entry: "sine.inOut"
+    exit: "power2.out"
+    ambient: "sine.inOut"
+  duration:
+    entrance: 1.0
+    hold: 2.5
+    transition: 1.5
+  atmosphere:
+    - particle-field
+    - light-traces
+    - radial-glow
+  transition: gravitational-lens
+```
+
+Thin futuristic sans-serif — floating, weightless, minimal. Fluid morphing compositions. Extreme scale shifts (micro → macro). Particles coalesce into numbers. Light traces data paths through the frame. Smooth, continuous, organic. Nothing hard.
+
+---
+
+## 6. Soft Signal — Stefan Sagmeister
+
+**Mood:** Intimate, warm | **Best for:** Wellness brands, personal stories, lifestyle products, human-centered apps
+
+```yaml
+name: Soft Signal
+colors:
+  primary: "#FFF8EC"
+  on-primary: "#2a2a2a"
+  accent-amber: "#F5A623"
+  accent-rose: "#C4A3A3"
+  accent-sage: "#8FAF8C"
+typography:
+  headline:
+    fontFamily: Playfair Display
+    fontSize: 3rem
+    fontWeight: 400
+    fontStyle: italic
+  body:
+    fontFamily: Inter
+    fontSize: 1rem
+    fontWeight: 300
+    lineHeight: 1.7
+rounded:
+  sm: 8px
+  md: 16px
+  lg: 24px
+  full: 9999px
+spacing:
+  sm: 12px
+  md: 24px
+  lg: 48px
+motion:
+  energy: calm
+  easing:
+    entry: "sine.inOut"
+    exit: "power1.inOut"
+    ambient: "sine.inOut"
+  duration:
+    entrance: 1.0
+    hold: 3.0
+    transition: 1.5
+  atmosphere:
+    - soft-gradient
+    - warm-grain
+  transition: thermal-distortion
+```
+
+Handwritten-style or humanist serif fonts. Personal, lowercase, delicate. Close-up framing: single element fills the frame. Slow drifts and floats, never snaps. Soft organic motion. Nothing should feel hurried or polished. Intimate, never corporate.
+
+---
+
+## 7. Folk Frequency — Eduardo Terrazas
+
+**Mood:** Cultural, vivid | **Best for:** Consumer apps, food platforms, community products, festive launches
+
+```yaml
+name: Folk Frequency
+colors:
+  primary: "#ffffff"
+  on-primary: "#1a1a1a"
+  accent-pink: "#FF1493"
+  accent-blue: "#0047AB"
+  accent-yellow: "#FFE000"
+  accent-green: "#009B77"
+typography:
+  headline:
+    fontFamily: Fredoka One
+    fontSize: 4rem
+    fontWeight: 400
+  body:
+    fontFamily: Nunito
+    fontSize: 1rem
+    fontWeight: 600
+rounded:
+  sm: 8px
+  md: 16px
+  lg: 32px
+  full: 9999px
+spacing:
+  sm: 8px
+  md: 16px
+  lg: 32px
+motion:
+  energy: high
+  easing:
+    entry: "back.out(1.6)"
+    exit: "elastic.out(1, 0.5)"
+    ambient: "sine.inOut"
+  duration:
+    entrance: 0.5
+    hold: 1.5
+    transition: 0.8
+  atmosphere:
+    - pattern-tiles
+    - confetti-burst
+    - color-blocks
+  transition: swirl-vortex
+```
+
+Bold warm rounded type. Pattern and repetition — folk art rhythm and density. Layered compositions with rich visual texture. Every frame feels handcrafted. Colorful motion: elements bounce, pop, spin into place with joy. Overshoots feel intentional. Celebratory energy.
+
+---
+
+## 8. Shadow Cut — Hans Hillmann
+
+**Mood:** Dark, cinematic | **Best for:** Security products, dramatic reveals, investigative content, intense launches
+
+```yaml
+name: Shadow Cut
+colors:
+  primary: "#0a0a0a"
+  on-primary: "#f0f0f0"
+  surface: "#3a3a3a"
+  accent: "#C1121F"
+typography:
+  headline:
+    fontFamily: Oswald
+    fontSize: 4rem
+    fontWeight: 700
+    textTransform: uppercase
+  body:
+    fontFamily: Inter
+    fontSize: 0.875rem
+    fontWeight: 400
+rounded:
+  none: 0px
+  sm: 2px
+spacing:
+  sm: 8px
+  md: 16px
+  lg: 48px
+motion:
+  energy: moderate
+  easing:
+    entry: "power3.out"
+    exit: "power4.in"
+    ambient: "sine.inOut"
+  duration:
+    entrance: 0.8
+    hold: 2.5
+    transition: 1.2
+  atmosphere:
+    - deep-shadow
+    - vignette
+    - grain-overlay
+  transition: domain-warp
+```
+
+Near-monochrome: deep blacks, cold greys, stark white + one blood accent. Sharp angular text like film noir title cards. Heavy contrast, no softness. Elements emerge from darkness — reveal is the narrative. Slow creeping push-ins, dramatic scale reveals. The pause before the hit matters. Domain Warp dissolves reality before the next scene.
+
+---
+
+## Mood → Style Guide
+
+| If the content feels...            | Use...          |
+| ---------------------------------- | --------------- |
+| Data-driven, analytical, technical | Swiss Pulse     |
+| Premium, enterprise, luxury        | Velvet Standard |
+| Raw, punk, aggressive, rebellious  | Deconstructed   |
+| Hype, loud, high-energy launch     | Maximalist Type |
+| AI, ML, speculative, futuristic    | Data Drift      |
+| Human, warm, personal, wellness    | Soft Signal     |
+| Cultural, fun, consumer, festive   | Folk Frequency  |
+| Dark, dramatic, intense, cinematic | Shadow Cut      |
+
+---
+
+## Creating Custom Styles
+
+These 8 styles are starters — not constraints. Create your own:
+
+1. **Name it** after a designer, art movement, or cultural reference
+2. **Write YAML tokens** — `colors` (2–5 tokens), `typography` (2–3 scales), `rounded`, `spacing`, `motion` (energy + easing + duration + atmosphere + transition)
+3. **Add prose** — one paragraph describing the feel, what to do, what to avoid
+4. **Token references** — use `{colors.accent}`, `{typography.headline}` in component definitions
+
+The pattern: **YAML tokens (what) → prose rationale (why) → components (how they combine).**

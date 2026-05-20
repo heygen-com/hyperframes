@@ -12,29 +12,6 @@ packages/
   studio/    → Browser-based composition editor UI
 ```
 
-## Local CLI
-
-The published `npx hyperframes` is a released version and does **not** include local changes. Use the local CLI for commands where changes are in flight:
-
-```bash
-# Local CLI (use instead of `npx hyperframes` for capture and snapshot):
-npx tsx packages/cli/src/cli.ts <command>
-
-# Examples:
-npx tsx packages/cli/src/cli.ts capture <URL> -o videos/<name>/capture
-npx tsx packages/cli/src/cli.ts snapshot videos/<name> --frames <N>
-```
-
-Commands with local changes: **capture** (paginated contact sheets, fit:contain, SVG root scan), **snapshot** (3-col contact sheet). All other commands (lint, validate, preview, render) can use `npx hyperframes` as-is.
-
-For **shader transitions**, copy the local build into the video project instead of using the CDN — the local build includes CSS crossfade mixing support and other fixes not yet published:
-
-```bash
-cp packages/shader-transitions/dist/index.global.js <project-dir>/hyper-shader-local.js
-```
-
-Then reference `hyper-shader-local.js` instead of the `@hyperframes/shader-transitions` CDN URL in `index.html`.
-
 ## Development
 
 ```bash

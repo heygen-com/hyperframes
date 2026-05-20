@@ -1,6 +1,6 @@
 # House Style
 
-Creative direction for compositions when no `DESIGN.md` is provided. These are starting points — override anything that doesn't serve the content. When a `DESIGN.md` exists, its brand values take precedence; house-style fills gaps.
+Creative direction for compositions when no `design.md` is provided. These are starting points — override anything that doesn't serve the content. When a `design.md` exists, its brand values take precedence; house-style fills gaps.
 
 ## Before Writing HTML
 
@@ -24,7 +24,7 @@ If the content genuinely calls for one of these — centered layout for a solemn
 
 ## Color
 
-- Match light/dark to the brand, not the category. A wellness brand might be dark if its identity is sophisticated. A fintech might be light if it's consumer-first. Check the DESIGN.md or the user's direction before defaulting.
+- Match light/dark to content: food, wellness, kids → light. Tech, cinema, finance → dark.
 - One accent hue. Same background across all scenes.
 - Tint neutrals toward your accent (even subtle warmth/coolness beats dead gray).
 - **Contrast:** enforced by `hyperframes validate` (WCAG AA). Text must be readable with decoratives removed.
@@ -44,7 +44,7 @@ Ideas (mix and match, 2-5 per scene):
 
 All decoratives should have slow ambient GSAP animation — breathing, drift, pulse. Static decoratives feel dead.
 
-**Decorative count vs motion count.** The "2-5 per scene" count refers to decorative _elements_. If a project's `DESIGN.md` says "single ambient motion per scene", it means one looping motion applied to these decoratives (a shared breath/drift/pulse) — not one element total. A scene with 4 decoratives sharing one breathing motion is correct; a scene with 1 decorative is under-dressed.
+**Decorative count vs motion count.** The "2-5 per scene" count refers to decorative _elements_. If a project's `design.md` says "single ambient motion per scene", it means one looping motion applied to these decoratives (a shared breath/drift/pulse) — not one element total. A scene with 4 decoratives sharing one breathing motion is correct; a scene with 1 decorative is under-dressed.
 
 ## Motion
 
