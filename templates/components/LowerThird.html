@@ -1,0 +1,44 @@
+<!--
+  @component LowerThird
+  @props title, subtitle
+  @description Reusable lower-third name/title overlay.
+  Inherits colors and typography from theme.json.
+  Usage: copy this block into your composition and fill in data-title / data-subtitle.
+-->
+<div
+  id="lower-third"
+  class="clip"
+  data-start="2"
+  data-duration="4"
+  data-track-index="3"
+  style="
+    position: absolute;
+    bottom: var(--hf-spacing-margin, 48px);
+    left: var(--hf-spacing-margin, 48px);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  "
+>
+  <span
+    style="
+      font-family: var(--hf-font-family, &quot;Inter&quot;), sans-serif;
+      font-size: var(--hf-heading-size, 48px);
+      font-weight: 700;
+      color: var(--hf-color-primary, #ffffff);
+    "
+    data-bind="title"
+    >Your Name</span
+  >
+
+  <span
+    style="
+      font-family: var(--hf-font-family, &quot;Inter&quot;), sans-serif;
+      font-size: var(--hf-body-size, 28px);
+      font-weight: 400;
+      color: var(--hf-color-accent, #ff5733);
+    "
+    data-bind="subtitle"
+    >Your Title</span
+  >
+</div>
