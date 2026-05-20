@@ -410,10 +410,14 @@ For each `compositions/beat-N.html`:
 
 **Anything off — fix it inline (small CSS / GSAP correction) or re-dispatch the sub-agent with the specific problem quoted.** Do not move to Step 6 until every beat has been read top-to-bottom and the cross-checks pass.
 
-### Brand-floor check (whole-video, after every beat passes its own read)
+### Brand-defaults check (whole-video, after every beat passes its own read)
 
-- First beat references a brand logo / wordmark SVG from `capture/assets/svgs/`
+These are defaults for most brand videos, not hard requirements:
+
+- First beat references the brand logo / wordmark SVG from `capture/assets/svgs/`
 - Last beat references the brand logo / wordmark
-- If either is missing without an explicit STORYBOARD.md override (e.g. "opener is pure kinetic type"), fix it — videos that don't open or close on the brand are failing their job.
+- The site's signature visual (hero illustration, gradient wave, distinctive UI mark) shows up at least once
 
-Once every beat reads clean and the brand-floor check passes, move to Step 6 (Validate & Deliver) for lint, validate, snapshots, and visual review.
+If any are missing, check the storyboard — if STORYBOARD.md deliberately delays brand reveal or omits the signature visual for a concept reason, that's fine. If the omission was unintentional, fix it (or ask the main agent / user before adding).
+
+Once every beat reads clean, move to Step 6 (Validate & Deliver) for lint, validate, snapshots, and visual review.

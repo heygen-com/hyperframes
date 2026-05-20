@@ -297,7 +297,7 @@ Which narration line plays over this beat (Also keep in mind the whole narration
 
 What the viewer sees — described cinematically, not as CSS specs. Use camera language and production motion designer vocabulary (pan, zoom, drift, settle, and more of those words). Think in layers — what's supposed to happen in the foreground, midground, background simultaneously?
 
-**For the rare beat where a captured asset is the primary visual** (e.g., a homepage-reveal beat where the literal site IS the subject, or a customer-photo beat where the photo is the content): specify which asset, how much of the frame it fills (%), and where text/labels go relative to its safe zones. Don't blindly center text over busy product UI. **These beats should be the exception, not the rule** — if every beat's primary visual is a captured asset, you've defaulted to the slideshow pattern this workflow exists to break.
+**When a captured asset is the primary visual** (logo opener / closer, hero illustration with parallax, hero photograph with motion treatment, gradient as full-bleed background, etc.): specify which asset, how much of the frame it fills (%), and where text/labels go relative to its safe zones. Don't blindly center text over busy product UI. The narrow no-go: never paste a product-UI screenshot as full-bleed beat content — that's the slideshow pattern this workflow exists to break. Captured logos, illustrations, hero art, and photography are fine as primary visuals when the concept calls for them.
 
 ### Composition + Accents
 
@@ -348,19 +348,19 @@ Describe the feel precisely: "snappy overshoot bounce settling into place" → b
 
 ## Brand Accents Pass (LAST creative decision — happens after beats are written)
 
-Your beats are now conceptually defined. Each one has a composed visual that carries it. **Now**, do a single pass to decide which captured assets — if any — earn an accent role on which beat.
+Your beats are now conceptually defined. Each one has a primary visual that carries it (composed UI, captured asset, kinetic typography, WebGL, etc.). **Now**, do a single pass to decide which captured assets — if any — earn an accent role on the beats where another primitive carries the visual.
 
-This is the LAST creative pass before file-tree time. It comes here intentionally: assets decorate concept-defined beats; they do not seed them. If you find yourself wanting to add a beat _because_ an asset would look cool, the asset is doing the storyboarding — go back and rewrite that beat from the message instead.
+This is the LAST creative pass before file-tree time. It comes here intentionally: assets serve concept-defined beats — as primary visual or as accent, depending on what each beat needs — but they don't seed beats. If you find yourself wanting to add a beat _because_ an asset would look cool, the asset is doing the storyboarding — go back and rewrite that beat from the message instead.
 
-### The brand-inflection floor (REQUIRED minimums)
+### Brand defaults (nice-to-haves for most brand videos)
 
-Two hard rules — the main agent checks them at Step 5 (reading each beat HTML top-to-bottom for asset references), and the deliverable fails the brand-floor check if they're missing:
+Two defaults that work for most brand-focused videos. Skip them when the concept calls for it; they're not hard requirements.
 
-1. **The brand mark (logo / wordmark SVG) MUST appear in the opener AND the closer beat.** A brand video that doesn't show the brand mark in the first and last frame is failing its job. The only exception is when STORYBOARD.md explicitly overrides this with a written reason (e.g., "opener is pure kinetic typography to delay brand reveal until beat 3 for narrative tension"). If you override, write the reason in that beat's Composition + Accents section so the verifier sees it.
+1. **The brand mark in opener + closer.** For most brand videos, the logo / wordmark SVG lands in the opener (as the entry tag) and the closer (as the sign-off). It gives the viewer the brand at both ends of the watch. Skip when the concept calls for it — e.g., a teaser that deliberately delays the brand reveal until beat 3 for narrative tension, or a video where the brand mark would feel redundant against the captured hero art.
 
-2. **The site's signature visual MUST appear somewhere in the video.** Every captured site has one: the gradient wave, the hero illustration, the distinctive product UI mark, the wordmark animation, the color combination, the hero photograph. It's whatever a viewer who knows the brand would point at and say "that's them." Find it during Step 0; place it as an accent in at least one beat.
+2. **The site's signature visual somewhere in the video.** Every captured site has one: a gradient wave, a hero illustration, a distinctive product UI mark, the wordmark animation, a color combination, a hero photograph. It's whatever a viewer who knows the brand would point at and say "that's them." Find it during Step 0; place it where the concept can use it. Not required — but if a brand video doesn't include this, ask whether the video still feels like _this_ brand.
 
-These are floors, not ceilings. Beyond them, aim for 2-4 brand accents total across the whole video, not per beat. Most beats need 0-1. Everything beyond the floor has to justify itself against the question: _"Does this asset make the beat MORE this brand, or is it filler?"_
+These are defaults, not requirements. Beyond them, aim for 2-4 brand accents total across the whole video, not per beat. Most beats need 0-1. Everything beyond the floor has to justify itself against the question: _"Does this asset make the beat MORE this brand, or is it filler?"_
 
 Print this table once your beats are written:
 
@@ -376,7 +376,7 @@ Mark assets `SKIP` when a composed equivalent (dashboards, kanban, chat, termina
 
 **Update each beat's Composition + Accents section** based on what this pass produced. Most beats stay accent-free. The few that earn one get a single line under "Accents" with the file, position, opacity, and motion.
 
-**The bar:** Every beat's visuals use whatever combination of primitives the scene needs. Accents are optional brand inflections layered on top; brand-floor minimums (logo in opener + closer, signature visual once) are the minimum, not the ceiling.
+**The bar:** Every beat's visuals use whatever combination of primitives the scene needs. Accents are optional brand inflections layered on top; the brand-defaults section above (logo in opener + closer, signature visual once) covers most brand videos but isn't a hard requirement.
 
 ---
 

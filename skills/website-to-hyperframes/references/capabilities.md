@@ -2,6 +2,8 @@
 
 Everything possible in HyperFrames as of today's workspace, synthesized from direct source reads of all 7 packages, 16 skills, and the full registry.
 
+> **How to read this file.** Scan the **Table of Contents** below first. **Do NOT read this file linearly** — it is a 700+ line inventory; reading top-to-bottom every session wastes context. When the storyboard or a specific beat needs a particular capability (HTML-in-Canvas, shader transitions, audio-reactive, dynamic counters, etc.), jump straight to that section.
+
 You are NOT limited to what was captured from the website. You can create shaders from scratch, search for and download registry blocks, build Three.js scenes, write custom WebGL effects, use any web API — anything a browser can render.
 
 For implementation patterns (working code), see `techniques.md`. This file is the WHAT; techniques.md is the HOW.
