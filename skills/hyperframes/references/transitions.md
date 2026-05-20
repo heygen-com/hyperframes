@@ -43,7 +43,7 @@ Use this table to derive what **quality** the transition should have, then look 
 
 ## Narrative Position
 
-Each position in the video has a different job to do. What transition you pick for each should come from the brand's motion character (derived from visual-vocabulary.md) and the storyboard's intent — not from a rule about "climax = boldest."
+Each position in the video has a different job to do. What transition you pick for each should come from the brand's motion character and the storyboard's intent — not from a rule about "climax = boldest."
 
 - **Opening** — establishes the motion language for the entire video. Make a deliberate choice; whatever you pick here sets the viewer's expectation for everything that follows.
 - **Between related points** — should be almost invisible. The content is continuing; the transition shouldn't draw attention to itself. Consistency matters more than distinctiveness here.
