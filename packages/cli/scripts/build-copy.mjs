@@ -68,8 +68,10 @@ async function main() {
     copyDir(join(CLI_ROOT, "src", "templates", tmpl), join(DIST, "templates", tmpl));
   }
 
-  for (const skill of ["hyperframes", "hyperframes-cli", "gsap"]) {
-    copyDir(join(REPO_ROOT, "skills", skill), join(DIST, "skills", skill));
+  const SKILLS_ROOT = join(REPO_ROOT, "skills");
+  for (const entry of readdirSync(SKILLS_ROOT, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    copyDir(join(SKILLS_ROOT, entry.name), join(DIST, "skills", entry.name));
   }
 
   const dockerfile = join(CLI_ROOT, "src", "docker", "Dockerfile.render");
