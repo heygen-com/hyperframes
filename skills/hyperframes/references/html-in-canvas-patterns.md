@@ -98,10 +98,13 @@ var mesh = new THREE.Mesh(
 );
 scene3d.add(mesh);
 
-// Post-processing: bloom for cinematic glow
-var composer = new THREE.EffectComposer(renderer);
-composer.addPass(new THREE.RenderPass(scene3d, camera));
-composer.addPass(new THREE.UnrealBloomPass(new THREE.Vector2(1920, 1080), 0.3, 0.4, 0.85));
+// Post-processing: bloom for cinematic glow.
+// EffectComposer / RenderPass / UnrealBloomPass are ES-module named imports
+// (see the import block below) — they're NOT properties of THREE in modern
+// versions. Three.js r150+ removed the UMD `examples/js/` globals.
+var composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene3d, camera));
+composer.addPass(new UnrealBloomPass(new THREE.Vector2(1920, 1080), 0.3, 0.4, 0.85));
 
 var proxy = { rotY: -0.12, zoom: 4.2 };
 tl.to(

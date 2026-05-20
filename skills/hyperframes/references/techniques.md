@@ -188,16 +188,22 @@ The slide distance DECAYS per word (80→12px) — mimics a camera settling.
 Vector animations that play inside a composition. Use for logos, character animations, icons.
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/@lottiefiles/dotlottie-web/dist/dotlottie-player.js"></script>
-<dotlottie-player
+<!-- The web-component package is `@lottiefiles/dotlottie-wc` (the SDK
+     `@lottiefiles/dotlottie-web` does NOT expose a custom element).
+     The element tag is <dotlottie-wc>. -->
+<script
+  src="https://cdn.jsdelivr.net/npm/@lottiefiles/dotlottie-wc/dist/dotlottie-wc.js"
+  type="module"
+></script>
+<dotlottie-wc
   class="lottie"
-  src="../capture/assets/lottie/animation-0.json"
+  src="capture/assets/lottie/animation-0.json"
   autoplay
   loop
   speed="1.5"
   style="width:500px;height:500px;"
 >
-</dotlottie-player>
+</dotlottie-wc>
 <script>
   gsap.set(".lottie", { scale: 0.3, opacity: 0 });
   tl.to(".lottie", { scale: 1, opacity: 1, duration: 0.35, ease: "back.out(1.6)" }, 0.2);
@@ -212,7 +218,7 @@ var anim = lottie.loadAnimation({
   renderer: "svg",
   loop: false,
   autoplay: false,
-  path: "../capture/assets/lottie/animation-0.json",
+  path: "capture/assets/lottie/animation-0.json",
 });
 ```
 
@@ -226,7 +232,7 @@ Embed real video footage inside compositions. Videos must be `muted` with `plays
 <div class="video-frame" style="width:680px;height:840px;border-radius:16px;overflow:hidden;">
   <video
     id="footage"
-    src="../capture/assets/videos/clip.mp4"
+    src="capture/assets/videos/clip.mp4"
     muted
     playsinline
     style="width:100%;height:100%;object-fit:cover;"
@@ -285,10 +291,10 @@ Animate font-variation-settings to reshape glyphs in real-time. Works with varia
 ```html
 <style>
   /* Load the captured local variable font — do NOT use Google Fonts @import.
-     Replace this placeholder with an @font-face pointing to ../capture/assets/fonts/. */
+     Replace this placeholder with an @font-face pointing to capture/assets/fonts/. */
   @font-face {
     font-family: "Fraunces";
-    src: url("../capture/assets/fonts/Fraunces-Variable.woff2") format("woff2");
+    src: url("capture/assets/fonts/Fraunces-Variable.woff2") format("woff2");
     font-weight: 100 900;
     font-style: normal;
     font-display: block;
