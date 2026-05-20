@@ -29,6 +29,82 @@ export async function captureScrollScreenshots(page: Page, outputDir: string): P
   const filePaths: string[] = [];
 
   try {
+    // Dismiss marketing banners, cookie consents, and popups before scrolling.
+    // These overlay content and contaminate screenshots with UI that doesn't
+    // belong in video compositions (cookie popups, newsletter modals, etc.)
+    await page
+      .evaluate(() => {
+        // Click common dismiss/accept buttons
+        const selectors = [
+          // Cookie consent
+          '[id*="cookie"] button[class*="accept"]',
+          '[id*="cookie"] button[class*="agree"]',
+          '[id*="cookie"] button[class*="allow"]',
+          '[class*="cookie"] button[class*="accept"]',
+          '[class*="consent"] button',
+          // Generic close buttons on overlays/modals
+          '[class*="banner"] [class*="close"]',
+          '[class*="banner"] [class*="dismiss"]',
+          '[class*="popup"] [class*="close"]',
+          '[class*="modal"] [class*="close"]',
+          '[class*="overlay"] [class*="close"]',
+          // Common GDPR patterns — scoped under a cookie/consent/gdpr ancestor
+          // so we don't click "Accept invitation" / "Accept terms" / etc. on
+          // unrelated buttons elsewhere on the page.
+          '[id*="cookie" i] button[id*="accept" i]',
+          '[id*="consent" i] button[id*="accept" i]',
+          '[id*="gdpr" i] button[id*="accept" i]',
+          '[class*="cookie" i] button[class*="accept-all" i]',
+          '[class*="cookie" i] button[class*="acceptAll" i]',
+          '[class*="consent" i] button[class*="accept-all" i]',
+          // Notification prompts
+          'button[class*="decline"]',
+          'button[class*="not-now"]',
+          'button[class*="no-thanks"]',
+        ];
+        for (const sel of selectors) {
+          try {
+            const el = document.querySelector<HTMLElement>(sel);
+            if (el) el.click();
+          } catch {
+            /* ignore */
+          }
+        }
+        // Hide fixed/sticky overlays that aren't the main nav. Scanning every
+        // element with querySelectorAll('*') + getComputedStyle is O(n) DOM
+        // calls and can dominate evaluate() time on large pages. Narrow the
+        // candidate set with a TreeWalker that early-exits on viewport-sized
+        // rect checks (cheap) before reaching the expensive getComputedStyle.
+        const SCAN_CAP = 5000;
+        const minWidth = window.innerWidth * 0.3;
+        const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_ELEMENT);
+        let visited = 0;
+        let node = walker.nextNode();
+        while (node && visited < SCAN_CAP) {
+          visited++;
+          const el = node as HTMLElement;
+          const rect = el.getBoundingClientRect();
+          // Cheap viewport-size filter first — eliminates the vast majority of
+          // tiny / hidden / off-screen elements without touching getComputedStyle.
+          if (rect.height > 80 && rect.width > minWidth) {
+            const tag = el.tagName;
+            if (tag !== "HEADER" && tag !== "NAV" && !el.closest("header") && !el.closest("nav")) {
+              const style = window.getComputedStyle(el);
+              if (
+                (style.position === "fixed" || style.position === "sticky") &&
+                style.zIndex !== "auto" &&
+                parseInt(style.zIndex) > 100
+              ) {
+                el.style.display = "none";
+              }
+            }
+          }
+          node = walker.nextNode();
+        }
+      })
+      .catch(() => {});
+    await new Promise((r) => setTimeout(r, 400));
+
     const scrollHeight = (await page.evaluate(
       `Math.max(document.body.scrollHeight, document.documentElement.scrollHeight)`,
     )) as number;
@@ -74,6 +150,8 @@ export async function captureScrollScreenshots(page: Page, outputDir: string): P
     // Reset scroll
     await page.evaluate(`window.scrollTo(0, 0)`);
     await new Promise((r) => setTimeout(r, 200));
+
+    // full-page.png removed — 1/8 agents read it, contact sheet covers the same content
   } catch {
     /* scroll screenshots are non-critical */
   }
