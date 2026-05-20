@@ -70,17 +70,15 @@ After lint and validate pass, capture snapshot frames to SEE your own output. **
 
 Scale snapshot count to the video — not a fixed number. Formula: `max(beats × 3, ceil(duration_seconds / 2))`. A 3-beat 10s video: max(9, 5) = 9 frames. An 8-beat 60s video: max(24, 30) = 30 frames. Aim for at least 3 frames per beat: entrance, hold, and near-exit.
 
-**⚠ NEVER use `npx hyperframes snapshot`.** The published CLI (0.6.6) is missing critical fixes: sub-comps load before capturing, local-time seek for last beats, Gemini vision descriptions. Always use the local CLI below or all beats after the first may appear black and descriptions.md won't be generated.
-
 ```bash
-# The local CLI auto-loads .env from the current working directory, so a
-# .env file in <project-dir> with GEMINI_API_KEY=... is enough — no explicit
-# export needed. If you've set GEMINI_API_KEY directly in your shell env that
-# also works.
-npx tsx packages/cli/src/cli.ts snapshot <project-dir> --frames <N>
+# The CLI auto-loads .env from the current working directory, so a
+# .env file in <project-dir> with GEMINI_API_KEY=... is enough — no
+# explicit `export` needed. If you've set GEMINI_API_KEY in your shell
+# environment, that works too.
+npx hyperframes snapshot <project-dir> --frames <N>
 
 # Pass a custom question to Gemini instead of the default prompt:
-npx tsx packages/cli/src/cli.ts snapshot <project-dir> --frames <N> \
+npx hyperframes snapshot <project-dir> --frames <N> \
   --describe "Is the brand logo visible in every beat? Is any beat showing a black or blank frame?"
 ```
 

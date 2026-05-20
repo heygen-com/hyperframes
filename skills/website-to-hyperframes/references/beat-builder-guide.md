@@ -95,7 +95,7 @@ Fix ALL errors. Zero errors required.
 ## Step 4: Snapshot and verify
 
 ```bash
-npx tsx packages/cli/src/cli.ts snapshot . --frames 3
+npx hyperframes snapshot . --frames 3
 ```
 
 **READ the contact sheet** (`snapshots/contact-sheet.jpg`). For each frame:

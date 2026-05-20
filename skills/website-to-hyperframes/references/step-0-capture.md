@@ -13,11 +13,10 @@ If the user provides the key or already has one set, proceed. If they skip it, p
 Create a project directory for your video if it doesn't exist yet, then capture the website into a `capture/` subfolder within it:
 
 ```bash
-# ⚠ ALWAYS use the local CLI — never `npx hyperframes capture`:
-npx tsx packages/cli/src/cli.ts capture <URL> -o <project-dir>/capture
+npx hyperframes capture <URL> -o <project-dir>/capture
 ```
 
-Example: `npx tsx packages/cli/src/cli.ts capture https://stripe.com -o videos/stripe-launch/capture`
+Example: `npx hyperframes capture https://stripe.com -o videos/stripe-launch/capture`
 
 Keeping the capture artifacts (`screenshots/`, `assets/`, `extracted/`, `AGENTS.md`, `CLAUDE.md`) in a dedicated `capture/` subfolder keeps them isolated from the later build files (`SCRIPT.md`, `STORYBOARD.md`, `DESIGN.md`, `compositions/`, `index.html`, `narration.wav`, `transcript.json`, `renders/`, `snapshots/`), which all live at `<project-dir>/` root.
 

@@ -302,7 +302,7 @@ FIRST: Read skills/website-to-hyperframes/references/beat-builder-guide.md end t
 It has your full workflow, all rules, easing vocabulary, and file references.
 Follow its workflow exactly:
   build → lint (`npx hyperframes lint .`)
-        → snapshot (`npx tsx packages/cli/src/cli.ts snapshot . --frames 3`)
+        → snapshot (`npx hyperframes snapshot . --frames 3`)
         → view contact sheet AND read snapshots/descriptions.md
         → fix issues
 

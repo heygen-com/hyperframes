@@ -35,7 +35,7 @@ Ask the user to describe what they want — or react to concrete framings that d
 
 Do NOT present a labeled menu of styles with pre-filled descriptions ("Cinematic = dark + glow + Apple keynote energy"). Those descriptions become the brief even when they don't match the brand. "Cinematic" for a wellness brand should look completely different from "cinematic" for a security tool — but a label with a baked-in description collapses that distinction.
 
-Instead, ask them across the six axes from [visual-vocabulary.md](visual-vocabulary.md) — framed as approachable questions, not a form:
+Instead, ask them approachable open-ended questions:
 
 > "A few questions to get the direction right:
 >
@@ -44,7 +44,7 @@ Instead, ask them across the six axes from [visual-vocabulary.md](visual-vocabul
 > - **Narration:** Should a voice guide viewers through the video, or let the visuals carry it?
 > - **Anything specific?** Any moments, techniques, or references you're drawn to? Or say 'surprise me' and I'll work from what I found in the capture."
 
-Their answers modify the brand-derived baseline you built in Step 1. Don't override the brand with their words — let the brand and their direction converge. See [visual-vocabulary.md](visual-vocabulary.md) for how to handle conflicts.
+Their answers modify the brand-derived baseline you built in Step 1. When the user's words conflict with the brand, don't blindly override — let the brand and their direction converge. If the conflict is sharp (user says "dark cinematic" for a brand whose entire identity is white-and-pastel light), surface it and ask before resolving.
 
 ### Question 3: What's the ONE thing this video must communicate?
 
@@ -118,7 +118,7 @@ With that minimum in hand, still write an ambitious storyboard. "Surprise me" me
 
 ### Specific direction
 
-Map their words to visual-vocabulary.md dimensions. If they say something vague ("make it really cool"), push back gently:
+If they say something vague ("make it really cool"), push back gently:
 
 > "I want to make sure I nail what you're imagining. When you say 'cool' — do you mean: dramatic/cinematic(slow reveals and dark atmosphere)? Or high-energy (fast cuts and bold motion)? Or something else entirely?"
 
@@ -157,7 +157,7 @@ Lock all of these before moving to Step 3. The first three are the strategic fra
 3. **Audience** — who's watching, where they're watching. (Required.)
 4. **Video type** — social ad / product demo / launch teaser / brand reel / feature announcement / etc. Infer from prompt.
 5. **Duration** — infer from type if not stated (demo: 30-45s, social: 15-20s, teaser: 15-25s).
-6. **Style direction** — map their words to visual-vocabulary dimensions.
+6. **Style direction** — pace / mood / specifics — from the user's words, layered onto the brand baseline from Step 1.
 7. **Specific requests** — any scenes/effects/beats they explicitly asked for.
 8. **Narration** — yes / no / minimal.
 9. **Format** — landscape unless specified otherwise.
