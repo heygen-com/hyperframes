@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { buildBrowserArgs, parseRemoteDebuggingPort } from "./openBrowser.js";
+import {
+  buildBrowserArgs,
+  parseRemoteDebuggingPort,
+  validateRemoteDebuggingPortDeps,
+} from "./openBrowser.js";
 
 describe("buildBrowserArgs", () => {
   it("returns only the URL when no options are given", () => {
@@ -38,18 +42,16 @@ describe("buildBrowserArgs", () => {
     ).toEqual(["--user-data-dir=C:\\Documents and Settings\\profile", "http://localhost:3002"]);
   });
 
-  it("prepends --remote-debugging-port before the URL", () => {
+  it("omits --remote-debugging-port when userDataDir is missing (defense in depth)", () => {
+    // The CLI validation layer rejects this combination upstream, but
+    // buildBrowserArgs must not leak a CDP endpoint into the user's main
+    // profile even if a caller bypasses that check.
     expect(
       buildBrowserArgs("http://localhost:3002", {
         browserPath: "/usr/bin/chromium",
-        userDataDir: "/tmp/hf-profile",
         remoteDebuggingPort: 9222,
       }),
-    ).toEqual([
-      "--user-data-dir=/tmp/hf-profile",
-      "--remote-debugging-port=9222",
-      "http://localhost:3002",
-    ]);
+    ).toEqual(["http://localhost:3002"]);
   });
 
   it("includes all flags together", () => {
@@ -112,5 +114,47 @@ describe("parseRemoteDebuggingPort", () => {
 
   it("rejects decimals", () => {
     expect(() => parseRemoteDebuggingPort("22.5")).toThrow();
+  });
+});
+
+describe("validateRemoteDebuggingPortDeps", () => {
+  it("returns null when --remote-debugging-port is not set", () => {
+    expect(validateRemoteDebuggingPortDeps({})).toBeNull();
+  });
+
+  it("returns null when all required flags are present", () => {
+    expect(
+      validateRemoteDebuggingPortDeps({
+        browserPath: "/usr/bin/chromium",
+        userDataDir: "/tmp/hf-profile",
+        remoteDebuggingPort: "9222",
+      }),
+    ).toBeNull();
+  });
+
+  it("requires --browser-path when --remote-debugging-port is set", () => {
+    expect(
+      validateRemoteDebuggingPortDeps({
+        userDataDir: "/tmp/hf-profile",
+        remoteDebuggingPort: "9222",
+      }),
+    ).toBe("--remote-debugging-port requires --browser-path");
+  });
+
+  it("requires --user-data-dir when --remote-debugging-port is set", () => {
+    expect(
+      validateRemoteDebuggingPortDeps({
+        browserPath: "/usr/bin/chromium",
+        remoteDebuggingPort: "9222",
+      }),
+    ).toBe("--remote-debugging-port requires --user-data-dir");
+  });
+
+  it("reports --browser-path first when both deps are missing", () => {
+    expect(
+      validateRemoteDebuggingPortDeps({
+        remoteDebuggingPort: "9222",
+      }),
+    ).toBe("--remote-debugging-port requires --browser-path");
   });
 });

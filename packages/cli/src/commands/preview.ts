@@ -9,6 +9,10 @@ export const examples: Example[] = [
   ["Force a new server even if one is already running", "hyperframes preview --force-new"],
   ["Start without opening the browser", "hyperframes preview --no-open"],
   ["Open with a specific browser", "hyperframes preview --browser-path /usr/bin/chromium"],
+  [
+    "Open with CDP enabled (requires browser path + isolated profile)",
+    "hyperframes preview --browser-path /usr/bin/chromium --user-data-dir /tmp/hf-profile --remote-debugging-port 9222",
+  ],
   ["List all active preview servers", "hyperframes preview --list"],
   ["Kill all active preview servers", "hyperframes preview --kill-all"],
 ];
@@ -19,7 +23,11 @@ import { createRequire } from "node:module";
 import * as clack from "@clack/prompts";
 import { c } from "../ui/colors.js";
 import { isDevMode } from "../utils/env.js";
-import { openBrowser, parseRemoteDebuggingPort } from "../utils/openBrowser.js";
+import {
+  openBrowser,
+  parseRemoteDebuggingPort,
+  validateRemoteDebuggingPortDeps,
+} from "../utils/openBrowser.js";
 import { lintProject } from "../utils/lintProject.js";
 import { formatLintFindings } from "../utils/lintFormat.js";
 import {
@@ -126,32 +134,30 @@ export default defineCommand({
       process.exitCode = 1;
       return;
     }
-    // Validation: --remote-debugging-port requires --browser-path and --user-data-dir
-    if (args["remote-debugging-port"]) {
-      if (!args["browser-path"]) {
-        clack.log.error("--remote-debugging-port requires --browser-path");
-        process.exitCode = 1;
-        return;
-      }
-      if (!args["user-data-dir"]) {
-        clack.log.error("--remote-debugging-port requires --user-data-dir");
-        process.exitCode = 1;
-        return;
-      }
+    // Validation: --remote-debugging-port deps
+    const depsError = validateRemoteDebuggingPortDeps({
+      browserPath: args["browser-path"] as string | undefined,
+      userDataDir: args["user-data-dir"] as string | undefined,
+      remoteDebuggingPort: args["remote-debugging-port"] as string | undefined,
+    });
+    if (depsError) {
+      clack.log.error(depsError);
+      process.exitCode = 1;
+      return;
     }
 
     const noOpen = !args.open;
     const browserPath = args["browser-path"] as string | undefined;
     const userDataDir = args["user-data-dir"] as string | undefined;
     let remoteDebuggingPort: number | undefined;
-    if (args["remote-debugging-port"]) {
-      try {
-        remoteDebuggingPort = parseRemoteDebuggingPort(args["remote-debugging-port"]);
-      } catch (err) {
-        clack.log.error((err as Error).message);
-        process.exitCode = 1;
-        return;
-      }
+    try {
+      remoteDebuggingPort = parseRemoteDebuggingPort(
+        args["remote-debugging-port"] as string | undefined,
+      );
+    } catch (err) {
+      clack.log.error((err as Error).message);
+      process.exitCode = 1;
+      return;
     }
 
     if (isDevMode()) {

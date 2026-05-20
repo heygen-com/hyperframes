@@ -6,27 +6,33 @@ export interface OpenBrowserOptions {
   remoteDebuggingPort?: number;
 }
 
-/**
- * Validate and parse a --remote-debugging-port value.
- * Returns the port number or undefined if not provided.
- * Throws if the value is not a valid integer in 1..65535.
- */
-export function parseRemoteDebuggingPort(value: unknown): number | undefined {
-  if (value === undefined || value === null || value === "") return undefined;
-
-  const text = String(value);
-
-  if (!/^\d+$/.test(text)) {
+export function parseRemoteDebuggingPort(value: string | undefined): number | undefined {
+  if (value === undefined || value === "") return undefined;
+  if (!/^\d+$/.test(value)) {
     throw new Error("--remote-debugging-port must be an integer between 1 and 65535");
   }
-
-  const port = Number(text);
-
-  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+  const port = Number(value);
+  if (port < 1 || port > 65535) {
     throw new Error("--remote-debugging-port must be an integer between 1 and 65535");
   }
-
   return port;
+}
+
+export interface RemoteDebuggingPortDeps {
+  browserPath?: string;
+  userDataDir?: string;
+  remoteDebuggingPort?: string;
+}
+
+/**
+ * Returns an error message if --remote-debugging-port is set without its required
+ * dependencies (--browser-path and --user-data-dir), or null if everything is OK.
+ */
+export function validateRemoteDebuggingPortDeps(deps: RemoteDebuggingPortDeps): string | null {
+  if (!deps.remoteDebuggingPort) return null;
+  if (!deps.browserPath) return "--remote-debugging-port requires --browser-path";
+  if (!deps.userDataDir) return "--remote-debugging-port requires --user-data-dir";
+  return null;
 }
 
 /**
@@ -39,7 +45,11 @@ export function buildBrowserArgs(url: string, options: OpenBrowserOptions): stri
   if (options.userDataDir) {
     args.push(`--user-data-dir=${options.userDataDir}`);
   }
-  if (options.remoteDebuggingPort !== undefined) {
+  // Defense-in-depth: only emit --remote-debugging-port when paired with an
+  // isolated --user-data-dir. Without an isolated profile the CDP endpoint
+  // would expose the user's main browser session, which is the whole reason
+  // the CLI validation layer requires both flags together.
+  if (options.remoteDebuggingPort !== undefined && options.userDataDir) {
     args.push(`--remote-debugging-port=${options.remoteDebuggingPort}`);
   }
   args.push(url);
