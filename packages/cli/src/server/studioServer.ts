@@ -12,12 +12,7 @@ import { resolve, join, basename } from "node:path";
 import { createProjectWatcher, type ProjectWatcher } from "./fileWatcher.js";
 import { loadRuntimeSource } from "./runtimeSource.js";
 import { VERSION as version } from "../version.js";
-import { trackRenderComplete, trackRenderError } from "../telemetry/events.js";
-import { fpsToNumber } from "@hyperframes/core";
-import { freemem } from "node:os";
-import { bytesToMb } from "../telemetry/system.js";
-import type { Fps } from "@hyperframes/core";
-import type { RenderPerfSummary } from "@hyperframes/producer";
+import { emitStudioRenderComplete, emitStudioRenderError } from "./studioRenderTelemetry.js";
 import {
   createStudioManualEditsRenderBodyScript,
   createStudioApi,
@@ -85,109 +80,6 @@ function resolveRuntimePath(): string {
   );
   if (existsSync(devPath)) return devPath;
   return builtPath;
-}
-
-interface StudioRenderOpts {
-  fps: Fps;
-  quality: string;
-}
-
-function memSnapshot(): { peakMemoryMb: number; memoryFreeMb: number } {
-  return {
-    peakMemoryMb: bytesToMb(process.memoryUsage.rss()),
-    memoryFreeMb: bytesToMb(freemem()),
-  };
-}
-
-function emitStudioRenderError(
-  opts: StudioRenderOpts,
-  elapsedMs: number,
-  failedStage: string | undefined,
-  err: unknown,
-): void {
-  trackRenderError({
-    fps: fpsToNumber(opts.fps),
-    quality: opts.quality,
-    docker: false,
-    source: "studio",
-    failedStage,
-    errorMessage: err instanceof Error ? err.message : String(err),
-    elapsedMs,
-    ...memSnapshot(),
-  });
-}
-
-type RenderCompleteProps = Parameters<typeof trackRenderComplete>[0];
-
-function stagesPayload(stages: Record<string, number>): Partial<RenderCompleteProps> {
-  return {
-    stageCompileMs: stages.compileMs,
-    stageVideoExtractMs: stages.videoExtractMs,
-    stageAudioProcessMs: stages.audioProcessMs,
-    stageCaptureMs: stages.captureMs,
-    stageEncodeMs: stages.encodeMs,
-    stageAssembleMs: stages.assembleMs,
-  };
-}
-
-function extractPayload(
-  extract: RenderPerfSummary["videoExtractBreakdown"],
-): Partial<RenderCompleteProps> {
-  if (!extract) return {};
-  return {
-    extractResolveMs: extract.resolveMs,
-    extractHdrProbeMs: extract.hdrProbeMs,
-    extractHdrPreflightMs: extract.hdrPreflightMs,
-    extractHdrPreflightCount: extract.hdrPreflightCount,
-    extractVfrProbeMs: extract.vfrProbeMs,
-    extractVfrPreflightMs: extract.vfrPreflightMs,
-    extractVfrPreflightCount: extract.vfrPreflightCount,
-    extractPhase3Ms: extract.extractMs,
-    extractCacheHits: extract.cacheHits,
-    extractCacheMisses: extract.cacheMisses,
-  };
-}
-
-function perfPayload(
-  perf: RenderPerfSummary | undefined,
-  elapsedMs: number,
-): Partial<RenderCompleteProps> {
-  if (!perf) return {};
-  const compositionDurationMs = Math.round(perf.compositionDurationSeconds * 1000);
-  const speedRatio =
-    compositionDurationMs > 0 && elapsedMs > 0
-      ? Math.round((compositionDurationMs / elapsedMs) * 100) / 100
-      : undefined;
-  return {
-    workers: perf.workers,
-    compositionDurationMs,
-    compositionWidth: perf.resolution.width,
-    compositionHeight: perf.resolution.height,
-    totalFrames: perf.totalFrames,
-    speedRatio,
-    captureAvgMs: perf.captureAvgMs,
-    capturePeakMs: perf.capturePeakMs,
-    tmpPeakBytes: perf.tmpPeakBytes,
-    ...stagesPayload(perf.stages),
-    ...extractPayload(perf.videoExtractBreakdown),
-  };
-}
-
-function emitStudioRenderComplete(
-  opts: StudioRenderOpts,
-  elapsedMs: number,
-  perf: RenderPerfSummary | undefined,
-): void {
-  trackRenderComplete({
-    durationMs: elapsedMs,
-    fps: fpsToNumber(opts.fps),
-    quality: opts.quality,
-    docker: false,
-    gpu: false,
-    source: "studio",
-    ...perfPayload(perf, elapsedMs),
-    ...memSnapshot(),
-  });
 }
 
 function readStudioManualEditManifestContent(projectDir: string): string {
