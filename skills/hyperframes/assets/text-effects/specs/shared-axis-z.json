@@ -1,0 +1,44 @@
+{
+  "id": "shared-axis-z",
+  "display_name": "Shared Axis Z",
+  "description": "Scale-based shared-axis transition for focus shifts and context depth.",
+  "inspiration": "Google Material shared axis (Z), adapted for typography swaps.",
+  "target": "whole",
+  "signature_easing": "cubic-bezier(0.2, 0, 0, 1)",
+  "enter": {
+    "duration_ms": 520,
+    "stagger_ms": 0,
+    "easing": "cubic-bezier(0.2, 0, 0, 1)",
+    "from": {
+      "opacity": 0,
+      "scale": 0.9,
+      "blur_px": 2
+    },
+    "to": {
+      "opacity": 1,
+      "scale": 1,
+      "blur_px": 0
+    }
+  },
+  "exit": {
+    "duration_ms": 360,
+    "stagger_ms": 0,
+    "easing": "cubic-bezier(0.4, 0, 1, 1)",
+    "from": {
+      "opacity": 1,
+      "scale": 1,
+      "blur_px": 0
+    },
+    "to": {
+      "opacity": 0,
+      "scale": 1.06,
+      "blur_px": 1
+    }
+  },
+  "swap": {
+    "mode": "crossfade",
+    "overlap_ms": 100,
+    "micro_delay_ms": 20
+  },
+  "usage_notes": "Use for emphasizing focus transitions where scale communicates depth."
+}

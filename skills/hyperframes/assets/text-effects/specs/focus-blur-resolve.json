@@ -1,0 +1,48 @@
+{
+  "id": "focus-blur-resolve",
+  "display_name": "Focus Blur Resolve",
+  "description": "A premium focus pull from heavy blur to crisp text, then a soft blur-out exit.",
+  "inspiration": "Apple-style hero transitions that resolve detail with cinematic restraint.",
+  "target": "whole",
+  "signature_easing": "cubic-bezier(0.22, 1, 0.36, 1)",
+  "enter": {
+    "duration_ms": 760,
+    "stagger_ms": 0,
+    "easing": "cubic-bezier(0.22, 1, 0.36, 1)",
+    "from": {
+      "opacity": 0,
+      "y_px": 14,
+      "blur_px": 14,
+      "scale": 1.01
+    },
+    "to": {
+      "opacity": 1,
+      "y_px": 0,
+      "blur_px": 0,
+      "scale": 1
+    }
+  },
+  "exit": {
+    "duration_ms": 520,
+    "stagger_ms": 0,
+    "easing": "cubic-bezier(0.64, 0, 0.78, 0)",
+    "from": {
+      "opacity": 1,
+      "y_px": 0,
+      "blur_px": 0,
+      "scale": 1
+    },
+    "to": {
+      "opacity": 0,
+      "y_px": -10,
+      "blur_px": 10,
+      "scale": 1
+    }
+  },
+  "swap": {
+    "mode": "crossfade",
+    "overlap_ms": 160,
+    "micro_delay_ms": 35
+  },
+  "usage_notes": "Best on large headlines where blur distance reads as intentional and premium."
+}

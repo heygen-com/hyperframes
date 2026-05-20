@@ -1,0 +1,44 @@
+{
+  "id": "mask-reveal-up",
+  "display_name": "Mask Reveal Up",
+  "description": "Lines reveal upward with a soft masked feel and compact stagger.",
+  "inspiration": "Apple section transitions where multiline copy rises in with control.",
+  "target": "per-line",
+  "signature_easing": "cubic-bezier(0.22, 1, 0.36, 1)",
+  "enter": {
+    "duration_ms": 760,
+    "stagger_ms": 90,
+    "easing": "cubic-bezier(0.22, 1, 0.36, 1)",
+    "from": {
+      "opacity": 0,
+      "y_px": 30,
+      "blur_px": 6
+    },
+    "to": {
+      "opacity": 1,
+      "y_px": 0,
+      "blur_px": 0
+    }
+  },
+  "exit": {
+    "duration_ms": 520,
+    "stagger_ms": 70,
+    "easing": "cubic-bezier(0.64, 0, 0.78, 0)",
+    "from": {
+      "opacity": 1,
+      "y_px": 0,
+      "blur_px": 0
+    },
+    "to": {
+      "opacity": 0,
+      "y_px": -22,
+      "blur_px": 6
+    }
+  },
+  "swap": {
+    "mode": "crossfade",
+    "overlap_ms": 210,
+    "micro_delay_ms": 35
+  },
+  "usage_notes": "Best for two-line and three-line headings where line order should stay readable."
+}

@@ -1,0 +1,60 @@
+{
+  "id": "soft-blur-in",
+  "display_name": "Soft Blur",
+  "description": "Per-character fade-in with a gentle blur and upward motion. Apple's signature hero-title reveal.",
+  "inspiration": "Apple keynote intros; iPhone, Mac, and Vision Pro product page headlines; macOS system UI reveals.",
+  "target": "per-character",
+  "signature_easing": "cubic-bezier(0.22, 1, 0.36, 1)",
+  "enter": {
+    "duration_ms": 900,
+    "stagger_ms": 25,
+    "easing": "cubic-bezier(0.22, 1, 0.36, 1)",
+    "from": {
+      "opacity": 0,
+      "y_px": 16,
+      "blur_px": 12
+    },
+    "to": {
+      "opacity": 1,
+      "y_px": 0,
+      "blur_px": 0
+    }
+  },
+  "exit": {
+    "duration_ms": 600,
+    "stagger_ms": 15,
+    "easing": "cubic-bezier(0.64, 0, 0.78, 0)",
+    "from": {
+      "opacity": 1,
+      "y_px": 0,
+      "blur_px": 0
+    },
+    "to": {
+      "opacity": 0,
+      "y_px": -16,
+      "blur_px": 12
+    }
+  },
+  "swap": {
+    "mode": "crossfade",
+    "overlap_ms": 300,
+    "scenario_spec": {
+      "entry_condition": "Use when text is replaced in the same layout slot and both strings remain visually stable in one block.",
+      "switch_order": [
+        "Start old text exit at t=0ms.",
+        "Start new text enter at t=exit_total_ms-overlap_ms.",
+        "Keep both text layers mounted only during the overlap window."
+      ],
+      "verification": [
+        "No hard-cut frame appears between old and new text.",
+        "Blur stays readable during overlap on desktop and mobile.",
+        "Total swap duration remains below 1300ms for default sample length."
+      ],
+      "fallback": {
+        "if_overlap_looks_heavy": "Reduce overlap_ms to 180 and exit blur_px to 8.",
+        "if_copy_is_long": "Switch target to per-word and reduce enter stagger_ms to 15."
+      }
+    }
+  },
+  "usage_notes": "Works best on hero titles 48px+ against solid backgrounds. On body text (<24px), reduce blur_px to 6 and stagger_ms to 15. Avoid on very long strings (>40 chars) — total stagger becomes too long; in that case switch target to 'per-word'."
+}

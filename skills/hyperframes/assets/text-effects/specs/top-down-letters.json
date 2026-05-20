@@ -1,0 +1,57 @@
+{
+  "id": "top-down-letters",
+  "display_name": "Top-Down Letters",
+  "description": "Letters descend from above in a pronounced staircase, one symbol at a time, with zero blur.",
+  "inspiration": "Apple-style keynote typography, crisp editorial headers, and controlled top-down word reveals.",
+  "target": "per-character",
+  "signature_easing": "cubic-bezier(0.18, 1, 0.32, 1)",
+  "enter": {
+    "duration_ms": 400,
+    "stagger_ms": 88,
+    "easing": "cubic-bezier(0.18, 1, 0.32, 1)",
+    "from": {
+      "opacity": 0,
+      "y_px": -46
+    },
+    "to": {
+      "opacity": 1,
+      "y_px": 0
+    }
+  },
+  "exit": {
+    "duration_ms": 280,
+    "stagger_ms": 28,
+    "easing": "cubic-bezier(0.7, 0, 0.84, 0)",
+    "from": {
+      "opacity": 1,
+      "y_px": 0
+    },
+    "to": {
+      "opacity": 0,
+      "y_px": 14
+    }
+  },
+  "swap": {
+    "mode": "sequential",
+    "overlap_ms": 0,
+    "micro_delay_ms": 35,
+    "scenario_spec": {
+      "entry_condition": "Use when short words or compact headlines should build downward letter by letter with completely crisp glyph edges.",
+      "switch_order": [
+        "Run old text exit first so the slot clears cleanly.",
+        "Wait micro_delay_ms after exit.",
+        "Start new text enter from above with per-character stagger."
+      ],
+      "verification": [
+        "Letters never blur during enter or exit.",
+        "The reveal clearly reads top-down rather than typewriter-left-to-right.",
+        "Spacing remains stable while characters settle."
+      ],
+      "fallback": {
+        "if_motion_feels_too_tall": "Reduce enter from.y_px from -46 to -36.",
+        "if_readability_drops": "Increase stagger_ms from 88 to 100 for even more separation."
+      }
+    }
+  },
+  "usage_notes": "Best for short single words, labels, or compact headline swaps at 40px+. This is the top-down counterpart to bottom-up-letters: very large per-symbol delay, fewer simultaneous letters on screen, and a tall drop from above."
+}

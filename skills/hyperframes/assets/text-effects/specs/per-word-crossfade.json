@@ -1,0 +1,57 @@
+{
+  "id": "per-word-crossfade",
+  "display_name": "Per-Word Crossfade",
+  "description": "Words gently fade into place one after another, with a short vertical drift for a calm keynote rhythm.",
+  "inspiration": "Apple product announcements and section title transitions where words are readable but still alive.",
+  "target": "per-word",
+  "signature_easing": "cubic-bezier(0.16, 1, 0.3, 1)",
+  "enter": {
+    "duration_ms": 700,
+    "stagger_ms": 70,
+    "easing": "cubic-bezier(0.16, 1, 0.3, 1)",
+    "from": {
+      "opacity": 0,
+      "y_px": 8
+    },
+    "to": {
+      "opacity": 1,
+      "y_px": 0
+    }
+  },
+  "exit": {
+    "duration_ms": 500,
+    "stagger_ms": 40,
+    "easing": "cubic-bezier(0.7, 0, 0.84, 0)",
+    "from": {
+      "opacity": 1,
+      "y_px": 0
+    },
+    "to": {
+      "opacity": 0,
+      "y_px": -6
+    }
+  },
+  "swap": {
+    "mode": "crossfade",
+    "overlap_ms": 170,
+    "micro_delay_ms": 70,
+    "scenario_spec": {
+      "entry_condition": "Use when phrase-level content changes and word readability is more important than per-character flair.",
+      "switch_order": [
+        "Start old text exit at t=0ms.",
+        "Start new text enter at t=exit_total_ms-overlap_ms+micro_delay_ms.",
+        "Advance word groups in the same stagger direction for old and new text."
+      ],
+      "verification": [
+        "Word boundaries stay readable during overlap.",
+        "No two identical word positions stay stacked for more than one stagger step.",
+        "Swap cadence stays calm and editorial, without abrupt jumps."
+      ],
+      "fallback": {
+        "if_words_stack_visibly": "Increase micro_delay_ms to 90.",
+        "if_total_swap_is_too_long": "Reduce enter stagger_ms to 55 and overlap_ms to 120."
+      }
+    }
+  },
+  "usage_notes": "Best for medium phrases and headings; for long copy prefer per-word only up to 16–18 words to keep total stagger time readable. micro_delay_ms helps prevent old/new words from visibly stacking during swaps."
+}

@@ -1,0 +1,469 @@
+{
+  "id": "kinetic-center-build",
+  "visibility": "visible",
+  "portable_spec": {
+    "id": "kinetic-center-build",
+    "display_name": "Kinetic Center Build",
+    "description": "A word appears in the center; each new word enters from right to left with a soft blur and pushes the existing line until the full phrase locks centered.",
+    "inspiration": "Apple keynote kinetic editorial typography and sequential phrase builds.",
+    "target": "per-word",
+    "signature_easing": "cubic-bezier(0.2, 0.8, 0.2, 1)",
+    "enter": {
+      "duration_ms": 360,
+      "stagger_ms": 0,
+      "easing": "cubic-bezier(0.2, 0.8, 0.2, 1)",
+      "from": {
+        "opacity": 0,
+        "y_px": 6,
+        "scale": 0.992,
+        "blur_px": 3.5
+      },
+      "to": {
+        "opacity": 1,
+        "y_px": 0,
+        "scale": 1,
+        "blur_px": 0
+      }
+    },
+    "exit": {
+      "duration_ms": 260,
+      "stagger_ms": 0,
+      "easing": "cubic-bezier(0.4, 0, 0.2, 1)",
+      "from": {
+        "opacity": 1,
+        "y_px": 0,
+        "blur_px": 0
+      },
+      "to": {
+        "opacity": 0,
+        "y_px": -6,
+        "blur_px": 2.5
+      }
+    },
+    "swap": {
+      "mode": "sequential",
+      "overlap_ms": 0,
+      "micro_delay_ms": 220,
+      "scenario_spec": {
+        "entry_condition": "Use when a short phrase should be built word-by-word, with each new word entering from the right and physically re-centering the existing line.",
+        "switch_order": [
+          "Show the first word in the center.",
+          "Bring the second word in from right to left while shifting the first word left.",
+          "Bring the third word in from right to left while shifting the first two words so the final phrase stays centered."
+        ],
+        "verification": [
+          "Each new word visibly pushes the existing words rather than simply fading in.",
+          "The completed phrase ends centered and evenly spaced.",
+          "The motion reads as one kinetic line build, not as three isolated reveals."
+        ],
+        "fallback": {
+          "if_push_is_too_subtle": "Increase build.entry_offset_px from 96 to 120.",
+          "if_phrase_feels_too_slow": "Reduce build.push_duration_ms from 480 to 420."
+        }
+      }
+    },
+    "build": {
+      "entry_direction": "from-right",
+      "line_alignment": "center",
+      "first_word_duration_ms": 340,
+      "push_duration_ms": 430,
+      "entry_offset_px": 88,
+      "word_gap_px": 10,
+      "first_word_y_px": 6,
+      "entry_scale": 0.992,
+      "entry_blur_px": 3.5,
+      "reflow_blur_px": 0.8,
+      "exit_y_px": -6,
+      "exit_blur_px": 2.5,
+      "easing": "cubic-bezier(0.2, 0.8, 0.2, 1)",
+      "exit_easing": "cubic-bezier(0.4, 0, 0.2, 1)",
+      "phrase_samples": [
+        ["Words", "push", "left"],
+        ["Type", "locks", "center"],
+        ["Build", "the", "line"]
+      ]
+    },
+    "usage_notes": "Layout-aware effect: each incoming word changes the target x-position of the whole line. Best for short three-word phrases; implementation requires measuring word widths and animating existing words to new positions. A small entry and reflow blur helps the push feel smoother without extending the timing."
+  },
+  "showcase": {
+    "content": {
+      "sample": "Words push left.",
+      "phrases": [
+        ["Words", "push", "left"],
+        ["Type", "locks", "center"],
+        ["Build", "the", "line"]
+      ]
+    },
+    "content_usage": {
+      "default_policy": "When applying an effect to an existing heading or text section, preserve the section text. Do not replace user/application copy with showcase sample text unless the user explicitly asks to reproduce the demo copy.",
+      "showcase_samples": "showcase.content.sample and samples are reference/demo copy used by the generated website examples and useful fallback copy for isolated demos.",
+      "loop_policy": "If the existing section supplies multiple phrases, loop those phrases. If it supplies one phrase, animate that phrase with the same enter/exit playback or use explicitly provided alternate phrases."
+    },
+    "sample_source": {
+      "asset": "assets/samples.json",
+      "key": "kinetic-center-build"
+    },
+    "renderer": {
+      "id": "kinetic-center-build",
+      "source": "catalog-override",
+      "params": {
+        "entry_direction": "from-right",
+        "line_alignment": "center",
+        "first_word_duration_ms": 340,
+        "push_duration_ms": 430,
+        "entry_offset_px": 88,
+        "word_gap_px": 10,
+        "first_word_y_px": 6,
+        "entry_scale": 0.992,
+        "entry_blur_px": 3.5,
+        "reflow_blur_px": 0.8,
+        "exit_y_px": -6,
+        "exit_blur_px": 2.5,
+        "easing": "cubic-bezier(0.2, 0.8, 0.2, 1)",
+        "exit_easing": "cubic-bezier(0.4, 0, 0.2, 1)",
+        "phrase_samples": [
+          ["Words", "push", "left"],
+          ["Type", "locks", "center"],
+          ["Build", "the", "line"]
+        ]
+      },
+      "recipe": {
+        "id": "kinetic-center-build",
+        "summary": "Build a centered horizontal phrase word by word; each incoming word enters from the right and pushes existing words into newly centered positions.",
+        "required_measurements": ["offsetWidth for every word after appending the incoming word"],
+        "algorithm": [
+          "Create a relative kinetic line container using the kinetic-line-host stage preset.",
+          "For each phrase word, append an absolutely centered word span.",
+          "Measure all child widths and compute centered x positions: totalWidth = sum(widths) + word_gap_px * (count - 1); cursor starts at -totalWidth / 2; each word position is cursor + width / 2.",
+          "First word enters at x=0 with first_word_y_px, entry_scale, entry_blur_px, and opacity 0, then settles to x=0/y=0/scale=1/blur=0/opacity=1.",
+          "For later words, animate existing words from previous x positions to next centered x positions while the incoming word starts at targetX + entry_offset_px and lands at targetX.",
+          "Use an intermediate keyframe around offset 0.52 for existing-word reflow blur and 0.6 for incoming-word settle blur.",
+          "After every push, snap all words to exact final poses to avoid accumulated engine drift.",
+          "Exit all words together from current centered x positions with exit_y_px and exit_blur_px, then clear the line."
+        ],
+        "frame_materialization": {
+          "coordinate_space": "x/y values are renderer pixel coordinates and are not multiplied by runtime.y_travel_multiplier.",
+          "transform": "translate(-50%, -50%) translate3d(x, y, 0) scale(scale)",
+          "filter": "blur(blur)",
+          "opacity": "unit opacity"
+        },
+        "keyframe_recipe": {
+          "first_word": [
+            {
+              "offset": 0,
+              "x": 0,
+              "y": "build.first_word_y_px",
+              "scale": "build.entry_scale",
+              "blur": "build.entry_blur_px",
+              "opacity": 0
+            },
+            {
+              "offset": 0.58,
+              "x": 0,
+              "y": "build.first_word_y_px * 0.35",
+              "scale": 0.998,
+              "blur": "build.entry_blur_px * 0.45",
+              "opacity": 0.78
+            },
+            {
+              "offset": 1,
+              "x": 0,
+              "y": 0,
+              "scale": 1,
+              "blur": 0,
+              "opacity": 1
+            }
+          ],
+          "existing_word_push": [
+            {
+              "offset": 0,
+              "x": "currentX",
+              "y": 0,
+              "scale": 1,
+              "blur": 0,
+              "opacity": 1
+            },
+            {
+              "offset": 0.52,
+              "x": "mix(currentX, nextX, 0.58)",
+              "y": 0,
+              "scale": 1,
+              "blur": "build.reflow_blur_px",
+              "opacity": 1
+            },
+            {
+              "offset": 1,
+              "x": "nextX",
+              "y": 0,
+              "scale": 1,
+              "blur": 0,
+              "opacity": 1
+            }
+          ],
+          "incoming_word_push": [
+            {
+              "offset": 0,
+              "x": "targetX + build.entry_offset_px",
+              "y": 0,
+              "scale": "build.entry_scale",
+              "blur": "build.entry_blur_px",
+              "opacity": 0
+            },
+            {
+              "offset": 0.6,
+              "x": "mix(targetX + build.entry_offset_px, targetX, 0.72)",
+              "y": 0,
+              "scale": 0.998,
+              "blur": "build.entry_blur_px * 0.38",
+              "opacity": 0.84
+            },
+            {
+              "offset": 1,
+              "x": "targetX",
+              "y": 0,
+              "scale": 1,
+              "blur": 0,
+              "opacity": 1
+            }
+          ],
+          "exit_word": [
+            {
+              "offset": 0,
+              "x": "position",
+              "y": 0,
+              "scale": 1,
+              "blur": 0,
+              "opacity": 1
+            },
+            {
+              "offset": 0.52,
+              "x": "position",
+              "y": "build.exit_y_px * 0.45",
+              "scale": 1,
+              "blur": "build.exit_blur_px * 0.55",
+              "opacity": 0.62
+            },
+            {
+              "offset": 1,
+              "x": "position",
+              "y": "build.exit_y_px",
+              "scale": 1,
+              "blur": "build.exit_blur_px",
+              "opacity": 0
+            }
+          ]
+        }
+      }
+    },
+    "runtime": {
+      "preset": "website-default",
+      "speed_multiplier": 0.72,
+      "hold_ms": 550,
+      "gap_ms": 320,
+      "y_travel_multiplier": 0.58,
+      "initial_delay_ms": {
+        "mode": "random-range",
+        "min": 0,
+        "max": 400
+      }
+    },
+    "playback": {
+      "kind": "loop",
+      "cycle": ["build-phrase", "hold", "exit-phrase", "gap"],
+      "replacement_behavior": "phrase-loop",
+      "hold_ms": 706,
+      "micro_delay_ms": 0,
+      "gap_ms": 158
+    },
+    "timing": {
+      "first_word": {
+        "source_duration_ms": 340,
+        "scaled_duration_ms": 245,
+        "easing": "cubic-bezier(0.2, 0.8, 0.2, 1)"
+      },
+      "push": {
+        "source_duration_ms": 430,
+        "scaled_duration_ms": 310,
+        "easing": "cubic-bezier(0.2, 0.8, 0.2, 1)"
+      },
+      "exit": {
+        "source_duration_ms": 260,
+        "scaled_duration_ms": 187,
+        "easing": "cubic-bezier(0.4, 0, 0.2, 1)"
+      },
+      "hold_ms": 706,
+      "gap_ms": 158
+    },
+    "stage": {
+      "preset": "kinetic-line-host",
+      "purpose": "Animation-only host requirements. Typography, color, card chrome, padding, and responsive sizing are intentionally excluded so the skill stays portable.",
+      "container": {
+        "requirement": "Provide a host element for the animated title.",
+        "perspective_px": 900,
+        "perspective_note": "Needed when effects use z_px, rotate_x_deg, or rotate_y_deg. Host layout and size are application-owned."
+      },
+      "title": {
+        "requirement": "Animate the phrase container when the renderer recipe uses title frames.",
+        "display": "inline-block",
+        "transform_style": "preserve-3d",
+        "layout_note": "Do not force flex-direction: column on the title globally; line breaks come from span.text-animation-unit.line using display:block."
+      },
+      "unit": {
+        "backface_visibility": "hidden",
+        "display": "inline-block",
+        "line_display": "block",
+        "transform_origin": "50% 55%",
+        "white_space": "pre",
+        "will_change": ["transform", "opacity", "filter"]
+      },
+      "kinetic_container": {
+        "requirement": "Use a relative-positioned inline host large enough for the phrase; exact dimensions belong to the consuming UI.",
+        "position": "relative",
+        "coordinate_origin": "center"
+      },
+      "kinetic_word": {
+        "backface_visibility": "hidden",
+        "left": "50%",
+        "position": "absolute",
+        "top": "50%",
+        "white_space": "nowrap",
+        "absolute_centered": true,
+        "will_change": ["transform", "opacity", "filter"]
+      }
+    },
+    "rendering_contract": {
+      "renderer": "kinetic-center-build",
+      "target": "per-word",
+      "stagger_mode": "normal",
+      "coordinate_space": "renderer-pixels",
+      "y_travel_multiplier": 1,
+      "y_travel_multiplier_note": "runtime.y_travel_multiplier is not applied to kinetic build coordinates; x/y values in build params are final transform pixels.",
+      "transform_order": "translate(-50%, -50%) translate3d(x_px, y_px, 0) scale(scale)",
+      "fill_behavior": "retain final frame after each phase",
+      "initial_delay_ms": {
+        "mode": "random-range",
+        "min": 0,
+        "max": 400
+      },
+      "content_replacement": "follow renderer recipe algorithm"
+    },
+    "library_selection": {
+      "supported_adapters": ["waapi", "motion", "gsap"],
+      "aliases": {
+        "web animations api": "waapi",
+        "waapi": "waapi",
+        "motion": "motion",
+        "motion.dev": "motion",
+        "motion react": "motion",
+        "framer motion": "motion",
+        "gsap": "gsap",
+        "greensock": "gsap"
+      },
+      "rule": "If the user names a target animation library, use only the matching adapter for that effect. Do not silently substitute Motion for GSAP, GSAP for Motion, or WAAPI for either library. If a requested library is unsupported, state that limitation before implementing.",
+      "verification": "For generated code, verify imports and animation calls match the selected adapter: Motion should import/use animate from motion/react and not Element.animate/gsap, GSAP should import/use gsap and CustomEase and not Motion/Element.animate, and WAAPI should use Element.animate without a third-party animation import."
+    },
+    "library_adapters": {
+      "waapi": {
+        "target_library": "Web Animations API",
+        "install": "none; native browser Element.animate",
+        "import_statement": null,
+        "time_unit": "milliseconds",
+        "start_animation": "element.animate(keyframes, { delay: delay_ms, duration: duration_ms, easing, fill: \"forwards\" })",
+        "keyframe_shape": "Use CSS-style Keyframe[] objects with transform, filter, opacity, letterSpacing, and optional offset fields.",
+        "easing": "Pass CSS easing strings directly, including cubic-bezier(...) and steps(...).",
+        "completion": "await animation.finished, then assign the final keyframe styles before replacing content.",
+        "cancellation": "cancel active Animation objects and clear pending timers on teardown.",
+        "renderer_notes": [
+          "Measure word widths after appending each incoming word.",
+          "Compute centered x positions from measured widths and word_gap_px.",
+          "Use raw renderer-pixel build x/y values; do not apply y_travel_multiplier to kinetic coordinates.",
+          "Use renderer.recipe.keyframe_recipe exactly: existing-word reflow x is mix(currentX, nextX, 0.58) at offset 0.52; incoming-word settle x is mix(startX, targetX, 0.72) at offset 0.6.",
+          "Exit uses a three-keyframe path with offset 0.52 at y = exit_y_px * 0.45 and opacity 0.62, not a two-keyframe fade."
+        ]
+      },
+      "motion": {
+        "target_library": "Motion for React / motion.dev",
+        "install": "pnpm add motion",
+        "import_statement": "import { animate, cubicBezier, steps } from \"motion/react\";",
+        "time_unit": "seconds for delay and duration options",
+        "start_animation": "animate(element, propertyKeyframes, { delay: delay_ms / 1000, duration: duration_ms / 1000, ease, times })",
+        "keyframe_shape": "Convert Keyframe[] into property arrays, for example { opacity: [0, 1], transform: [\"...\", \"...\"], filter: [\"...\", \"...\"] }. Convert keyframe offset values into the times array.",
+        "verification": [
+          "When offsets are present, pass times in the Motion options object, not inside the propertyKeyframes object.",
+          "The Motion times array length must match each animated property array length for that tween.",
+          "Motion TypeScript may reject CSS transform/filter property arrays; use a local typed helper/cast at the animate boundary instead of changing the keyframe shape.",
+          "Exact reproduction must include exit/replacement playback, not only initial enter tweens."
+        ],
+        "easing": "Convert cubic-bezier(a,b,c,d) to cubicBezier(a,b,c,d). Convert steps(n,start|end) to steps(n, \"start\"|\"end\"). Map CSS ease-in/ease-out/ease-in-out to Motion easeIn/easeOut/easeInOut.",
+        "completion": "Use controls.then(...) or await the returned controls in an async loop, then assign final styles before content replacement.",
+        "cancellation": "call controls.stop?.() and controls.cancel?.() for active Motion animations when available, and clear timers on teardown.",
+        "renderer_notes": [
+          "Measure word widths after appending each incoming word.",
+          "Compute centered x positions from measured widths and word_gap_px.",
+          "Use raw renderer-pixel build x/y values; do not apply y_travel_multiplier to kinetic coordinates.",
+          "Use renderer.recipe.keyframe_recipe exactly: existing-word reflow x is mix(currentX, nextX, 0.58) at offset 0.52; incoming-word settle x is mix(startX, targetX, 0.72) at offset 0.6.",
+          "Exit uses a three-keyframe path with offset 0.52 at y = exit_y_px * 0.45 and opacity 0.62, not a two-keyframe fade."
+        ]
+      },
+      "gsap": {
+        "target_library": "GSAP",
+        "install": "pnpm add gsap",
+        "import_statement": "import { gsap } from \"gsap\"; import { CustomEase } from \"gsap/CustomEase\"; gsap.registerPlugin(CustomEase);",
+        "time_unit": "seconds for delay and duration options",
+        "start_animation": "gsap.set(element, firstKeyframe); gsap.to(element, { keyframes: remainingKeyframesWithSegmentDurations, delay: delay_ms / 1000, ease, overwrite: \"auto\" })",
+        "keyframe_shape": "Use GSAP property objects with transform, filter, opacity, letterSpacing. For offset keyframes, convert adjacent offset gaps into absolute per-keyframe segment durations in seconds.",
+        "verification": [
+          "Initialize first-frame styles with gsap.set before starting a tween.",
+          "Do not pass both per-keyframe segment durations and a top-level gsap.to duration; that retimes the tween and makes the GSAP reproduction feel slower than the spec.",
+          "For renderer keyframe_recipe offsets, use GSAP keyframes with equivalent segment durations or a timeline that preserves the same absolute offsets.",
+          "For generic-stagger loops, do not enter the same visible phrase twice; after gap, the next action is exit of the current phrase."
+        ],
+        "easing": "Convert cubic-bezier(a,b,c,d) with CustomEase.create(...). Use \"none\" for linear. Convert steps(n,end) to GSAP steps(n).",
+        "completion": "Wrap tweens/timelines in a Promise resolved by onComplete, then assign final styles before replacing content.",
+        "cancellation": "kill active tweens/timelines and clear timers on teardown.",
+        "renderer_notes": [
+          "Measure word widths after appending each incoming word.",
+          "Compute centered x positions from measured widths and word_gap_px.",
+          "Use raw renderer-pixel build x/y values; do not apply y_travel_multiplier to kinetic coordinates.",
+          "Use renderer.recipe.keyframe_recipe exactly: existing-word reflow x is mix(currentX, nextX, 0.58) at offset 0.52; incoming-word settle x is mix(startX, targetX, 0.72) at offset 0.6.",
+          "Exit uses a three-keyframe path with offset 0.52 at y = exit_y_px * 0.45 and opacity 0.62, not a two-keyframe fade."
+        ]
+      }
+    },
+    "engine_notes": [
+      {
+        "engine": "WAAPI",
+        "notes": [
+          "Use Element.animate(keyframes, { delay, duration, easing, fill: \"forwards\" }).",
+          "For multi-keyframe effects, keep offsets on the keyframes and apply easing at the animation options level to match the site runtime."
+        ]
+      },
+      {
+        "engine": "Motion",
+        "notes": [
+          "Use imperative animate(element, keyframes, options) when reproducing the site loops.",
+          "Convert CSS cubic-bezier strings to cubicBezier(x1, y1, x2, y2), convert steps(n, start|end) to steps(n, direction), and pass explicit times for keyframe offsets."
+        ]
+      },
+      {
+        "engine": "GSAP",
+        "notes": [
+          "Register CustomEase for CSS cubic-bezier curves; map linear to ease \"none\" and steps(n, end) to GSAP steps(n).",
+          "For multi-keyframe effects, convert offset gaps into per-keyframe segment durations in seconds and keep one tween-level ease. Do not also pass a top-level duration when segment durations are present."
+        ]
+      },
+      {
+        "engine": "All engines",
+        "notes": [
+          "Do not apply runtime.y_travel_multiplier to kinetic build x/y coordinates; buildKineticFrame uses the build params as final transform pixels.",
+          "Use explicit offset keyframes for the intermediate reflow frames, then snap final styles after each push to avoid layout drift."
+        ]
+      }
+    ],
+    "reproduction_notes": [
+      "On the site this effect is layout-aware. Measure word widths, compute centered x positions for the whole phrase, and animate existing words to their next positions while the incoming word enters from the right.",
+      "For site parity, scale duration and stagger timing by 0.72. Keep kinetic build x/y params as raw renderer pixel coordinates; runtime.y_travel_multiplier applies to generic/title frame conversion, not to buildKineticFrame coordinates.",
+      "For exact animation reproduction, follow `showcase.playback`, `showcase.timing`, `showcase.rendering_contract`, and `showcase.stage` over assumptions inferred from the portable contract alone. Presentation styling such as font size, font weight, color, padding, and card chrome is intentionally application-owned."
+    ]
+  }
+}

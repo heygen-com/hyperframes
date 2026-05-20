@@ -1,0 +1,44 @@
+{
+  "id": "shared-axis-y",
+  "display_name": "Word Cut Staircase",
+  "description": "Per-word hard-cut transition with staircase timing for sharp editorial swaps.",
+  "inspiration": "Hard-cut typography timing with stepped word sequencing.",
+  "target": "per-word",
+  "signature_easing": "steps(1, end)",
+  "enter": {
+    "duration_ms": 180,
+    "stagger_ms": 78,
+    "easing": "steps(1, end)",
+    "from": {
+      "opacity": 0,
+      "y_px": 0,
+      "scale": 1
+    },
+    "to": {
+      "opacity": 1,
+      "y_px": 0,
+      "scale": 1
+    }
+  },
+  "exit": {
+    "duration_ms": 140,
+    "stagger_ms": 78,
+    "easing": "steps(1, end)",
+    "from": {
+      "opacity": 1,
+      "y_px": 0,
+      "scale": 1
+    },
+    "to": {
+      "opacity": 0,
+      "y_px": 0,
+      "scale": 1
+    }
+  },
+  "swap": {
+    "mode": "crossfade",
+    "overlap_ms": 0,
+    "micro_delay_ms": 28
+  },
+  "usage_notes": "Use for bold word-by-word hard cuts. No overlap keeps phrase swaps visually clean."
+}

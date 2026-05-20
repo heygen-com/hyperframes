@@ -1,0 +1,84 @@
+{
+  "id": "kinetic-center-build",
+  "display_name": "Kinetic Center Build",
+  "description": "A word appears in the center; each new word enters from right to left with a soft blur and pushes the existing line until the full phrase locks centered.",
+  "inspiration": "Apple keynote kinetic editorial typography and sequential phrase builds.",
+  "target": "per-word",
+  "signature_easing": "cubic-bezier(0.2, 0.8, 0.2, 1)",
+  "enter": {
+    "duration_ms": 360,
+    "stagger_ms": 0,
+    "easing": "cubic-bezier(0.2, 0.8, 0.2, 1)",
+    "from": {
+      "opacity": 0,
+      "y_px": 6,
+      "scale": 0.992,
+      "blur_px": 3.5
+    },
+    "to": {
+      "opacity": 1,
+      "y_px": 0,
+      "scale": 1,
+      "blur_px": 0
+    }
+  },
+  "exit": {
+    "duration_ms": 260,
+    "stagger_ms": 0,
+    "easing": "cubic-bezier(0.4, 0, 0.2, 1)",
+    "from": {
+      "opacity": 1,
+      "y_px": 0,
+      "blur_px": 0
+    },
+    "to": {
+      "opacity": 0,
+      "y_px": -6,
+      "blur_px": 2.5
+    }
+  },
+  "swap": {
+    "mode": "sequential",
+    "overlap_ms": 0,
+    "micro_delay_ms": 220,
+    "scenario_spec": {
+      "entry_condition": "Use when a short phrase should be built word-by-word, with each new word entering from the right and physically re-centering the existing line.",
+      "switch_order": [
+        "Show the first word in the center.",
+        "Bring the second word in from right to left while shifting the first word left.",
+        "Bring the third word in from right to left while shifting the first two words so the final phrase stays centered."
+      ],
+      "verification": [
+        "Each new word visibly pushes the existing words rather than simply fading in.",
+        "The completed phrase ends centered and evenly spaced.",
+        "The motion reads as one kinetic line build, not as three isolated reveals."
+      ],
+      "fallback": {
+        "if_push_is_too_subtle": "Increase build.entry_offset_px from 96 to 120.",
+        "if_phrase_feels_too_slow": "Reduce build.push_duration_ms from 480 to 420."
+      }
+    }
+  },
+  "build": {
+    "entry_direction": "from-right",
+    "line_alignment": "center",
+    "first_word_duration_ms": 340,
+    "push_duration_ms": 430,
+    "entry_offset_px": 88,
+    "word_gap_px": 10,
+    "first_word_y_px": 6,
+    "entry_scale": 0.992,
+    "entry_blur_px": 3.5,
+    "reflow_blur_px": 0.8,
+    "exit_y_px": -6,
+    "exit_blur_px": 2.5,
+    "easing": "cubic-bezier(0.2, 0.8, 0.2, 1)",
+    "exit_easing": "cubic-bezier(0.4, 0, 0.2, 1)",
+    "phrase_samples": [
+      ["Words", "push", "left"],
+      ["Type", "locks", "center"],
+      ["Build", "the", "line"]
+    ]
+  },
+  "usage_notes": "Layout-aware effect: each incoming word changes the target x-position of the whole line. Best for short three-word phrases; implementation requires measuring word widths and animating existing words to new positions. A small entry and reflow blur helps the push feel smoother without extending the timing."
+}

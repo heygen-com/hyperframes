@@ -1,0 +1,56 @@
+{
+  "id": "per-character-rise",
+  "display_name": "Per-Character Rise",
+  "description": "Letters slide up from below with no blur — crisp, deliberate, kinetic. Apple's clean tvOS-style reveal.",
+  "inspiration": "Apple tvOS, Fitness+ intros, iPadOS home screen title appearances.",
+  "target": "per-character",
+  "signature_easing": "cubic-bezier(0.2, 0.8, 0.2, 1)",
+  "enter": {
+    "duration_ms": 700,
+    "stagger_ms": 24,
+    "easing": "cubic-bezier(0.2, 0.8, 0.2, 1)",
+    "from": {
+      "opacity": 0,
+      "y_px": 32
+    },
+    "to": {
+      "opacity": 1,
+      "y_px": 0
+    }
+  },
+  "exit": {
+    "duration_ms": 420,
+    "stagger_ms": 14,
+    "easing": "cubic-bezier(0.7, 0, 0.84, 0)",
+    "from": {
+      "opacity": 1,
+      "y_px": 0
+    },
+    "to": {
+      "opacity": 0,
+      "y_px": -24
+    }
+  },
+  "swap": {
+    "mode": "crossfade",
+    "overlap_ms": 210,
+    "scenario_spec": {
+      "entry_condition": "Use for headline replacement where each character must remain crisp and readable throughout the switch.",
+      "switch_order": [
+        "Start old text exit at t=0ms.",
+        "Start new text enter at t=exit_total_ms-overlap_ms.",
+        "Use a single active headline layer after enter starts to avoid stacked glyph artifacts."
+      ],
+      "verification": [
+        "Characters never blur during swap.",
+        "No visible pause appears between exit and enter phases.",
+        "Swap keeps staircase rhythm from stagger settings."
+      ],
+      "fallback": {
+        "if_glyphs_collide": "Lower overlap_ms to 140.",
+        "if_motion_feels_slow": "Reduce enter stagger_ms from 24 to 18."
+      }
+    }
+  },
+  "usage_notes": "Works on 40px+ headlines. Zero blur keeps it sharp — that's the key distinction from soft-blur-in. Stagger 24ms gives it quicker momentum; don't go below 16ms or it flattens."
+}

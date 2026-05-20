@@ -1,0 +1,40 @@
+{
+  "id": "micro-scale-fade",
+  "display_name": "Micro Scale Fade",
+  "description": "A calm, tiny scale pop used as subtle premium polish for labels and headings.",
+  "inspiration": "Apple system status copy, secondary UI labels, and lightweight onboarding micro-animations.",
+  "target": "whole",
+  "signature_easing": "cubic-bezier(0.32, 0.72, 0, 1)",
+  "enter": {
+    "duration_ms": 600,
+    "stagger_ms": 0,
+    "easing": "cubic-bezier(0.32, 0.72, 0, 1)",
+    "from": {
+      "opacity": 0,
+      "scale": 0.96
+    },
+    "to": {
+      "opacity": 1,
+      "scale": 1
+    }
+  },
+  "exit": {
+    "duration_ms": 400,
+    "stagger_ms": 0,
+    "easing": "cubic-bezier(0.7, 0, 0.84, 0)",
+    "from": {
+      "opacity": 1,
+      "scale": 1
+    },
+    "to": {
+      "opacity": 0,
+      "scale": 0.96
+    }
+  },
+  "swap": {
+    "mode": "crossfade",
+    "overlap_ms": 0,
+    "micro_delay_ms": 20
+  },
+  "usage_notes": "Use this for single words or short titles. This variant keeps swap non-overlapping to avoid content intersections. For paragraphs, switch target to per-word to avoid perceivable lag."
+}

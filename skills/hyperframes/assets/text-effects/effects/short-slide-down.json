@@ -1,0 +1,464 @@
+{
+  "id": "short-slide-down",
+  "visibility": "visible",
+  "portable_spec": {
+    "id": "short-slide-down",
+    "display_name": "Short Slide Down",
+    "description": "Each new word drops in from above into its own line and pushes the existing stack downward until a centered three-line composition locks in place.",
+    "inspiration": "Keynote-style editorial headings where motion is present but tightly restrained.",
+    "target": "per-word",
+    "custom_renderer": "kinetic-top-build",
+    "signature_easing": "cubic-bezier(0.2, 0.8, 0.2, 1)",
+    "enter": {
+      "duration_ms": 520,
+      "stagger_ms": 0,
+      "easing": "cubic-bezier(0.2, 0.8, 0.2, 1)",
+      "from": {
+        "opacity": 0,
+        "y_px": -24,
+        "blur_px": 2.4,
+        "scale": 0.992
+      },
+      "to": {
+        "opacity": 1,
+        "y_px": 0,
+        "blur_px": 0,
+        "scale": 1
+      }
+    },
+    "exit": {
+      "duration_ms": 320,
+      "stagger_ms": 0,
+      "easing": "cubic-bezier(0.4, 0, 0.2, 1)",
+      "from": {
+        "opacity": 1,
+        "y_px": 0,
+        "blur_px": 0,
+        "scale": 1
+      },
+      "to": {
+        "opacity": 0,
+        "y_px": 10,
+        "blur_px": 1.2,
+        "scale": 1
+      }
+    },
+    "build": {
+      "first_word_duration_ms": 360,
+      "push_duration_ms": 500,
+      "exit_duration_ms": 320,
+      "hold_ms": 1100,
+      "between_phrases_ms": 180,
+      "entry_offset_y_px": -28,
+      "line_gap_px": 12,
+      "first_word_y_px": -14,
+      "entry_scale": 0.992,
+      "entry_blur_px": 2.4,
+      "reflow_blur_px": 0.7,
+      "exit_y_px": 10,
+      "exit_blur_px": 1.2,
+      "easing": "cubic-bezier(0.2, 0.8, 0.2, 1)",
+      "exit_easing": "cubic-bezier(0.4, 0, 0.2, 1)"
+    },
+    "swap": {
+      "mode": "sequential",
+      "overlap_ms": 0,
+      "micro_delay_ms": 70,
+      "scenario_spec": {
+        "entry_condition": "Use when three short words should build into a vertical stack, with each new word dropping from above and physically re-centering the composition.",
+        "switch_order": [
+          "Show the first word in the center with a short top-down drop.",
+          "Bring the second word into a lower line while shifting the first word upward into the stack.",
+          "Bring the third word into the bottom line while shifting the first two words upward so the final three-line stack stays centered."
+        ],
+        "verification": [
+          "Each new word visibly pushes the existing words rather than simply fading in.",
+          "The completed phrase ends as three centered lines with even vertical spacing.",
+          "The motion reads as one kinetic stacked build with a top-down entry direction."
+        ],
+        "fallback": {
+          "if_drop_is_too_subtle": "Increase build.entry_offset_y_px from -28 to -36.",
+          "if_phrase_feels_too_slow": "Reduce build.push_duration_ms from 500 to 460."
+        }
+      }
+    },
+    "usage_notes": "Best on short three-word headings where each word can live on its own line. Keep the vertical drop compact so the motion still feels editorial, and let the stacking displacement carry most of the energy. For longer phrases, reduce entry_offset_y_px or switch to a softer shared-slide pattern."
+  },
+  "showcase": {
+    "content": {
+      "sample": "Build from above.",
+      "phrases": [
+        ["Drop", "into", "place"],
+        ["Words", "settle", "lower"],
+        ["Build", "from", "above"]
+      ]
+    },
+    "content_usage": {
+      "default_policy": "When applying an effect to an existing heading or text section, preserve the section text. Do not replace user/application copy with showcase sample text unless the user explicitly asks to reproduce the demo copy.",
+      "showcase_samples": "showcase.content.sample and samples are reference/demo copy used by the generated website examples and useful fallback copy for isolated demos.",
+      "loop_policy": "If the existing section supplies multiple phrases, loop those phrases. If it supplies one phrase, animate that phrase with the same enter/exit playback or use explicitly provided alternate phrases."
+    },
+    "sample_source": {
+      "asset": "assets/samples.json",
+      "key": "short-slide-down"
+    },
+    "renderer": {
+      "id": "kinetic-top-build",
+      "source": "spec",
+      "params": {
+        "first_word_duration_ms": 360,
+        "push_duration_ms": 500,
+        "exit_duration_ms": 320,
+        "hold_ms": 1100,
+        "between_phrases_ms": 180,
+        "entry_offset_y_px": -28,
+        "line_gap_px": 12,
+        "first_word_y_px": -14,
+        "entry_scale": 0.992,
+        "entry_blur_px": 2.4,
+        "reflow_blur_px": 0.7,
+        "exit_y_px": 10,
+        "exit_blur_px": 1.2,
+        "easing": "cubic-bezier(0.2, 0.8, 0.2, 1)",
+        "exit_easing": "cubic-bezier(0.4, 0, 0.2, 1)"
+      },
+      "recipe": {
+        "id": "kinetic-top-build",
+        "summary": "Build a centered vertical stack word by word; each incoming word drops from above and pushes existing words into newly centered y positions.",
+        "required_measurements": ["offsetHeight for every word after appending the incoming word"],
+        "algorithm": [
+          "Create a relative kinetic stack container using the kinetic-stack-host stage preset.",
+          "For each phrase word, append an absolutely centered word span.",
+          "Measure all child heights and compute centered y positions: totalHeight = sum(heights) + line_gap_px * (count - 1); cursor starts at -totalHeight / 2; each word position is cursor + height / 2.",
+          "First word enters at y=first_word_y_px with entry_scale, entry_blur_px, and opacity 0, then settles to y=0/scale=1/blur=0/opacity=1.",
+          "For later words, animate existing words from previous y positions to next centered y positions while the incoming word starts at targetY + entry_offset_y_px and lands at targetY.",
+          "Use an intermediate keyframe around offset 0.52 for existing-word reflow blur and 0.6 for incoming-word settle blur.",
+          "After every push, snap all words to exact final poses to avoid accumulated engine drift.",
+          "Exit all words together from current centered y positions with exit_y_px and exit_blur_px, then clear the stack."
+        ],
+        "frame_materialization": {
+          "coordinate_space": "x/y values are renderer pixel coordinates and are not multiplied by runtime.y_travel_multiplier.",
+          "transform": "translate(-50%, -50%) translate3d(0, y, 0) scale(scale)",
+          "filter": "blur(blur)",
+          "opacity": "unit opacity"
+        },
+        "keyframe_recipe": {
+          "first_word": [
+            {
+              "offset": 0,
+              "x": 0,
+              "y": "build.first_word_y_px",
+              "scale": "build.entry_scale",
+              "blur": "build.entry_blur_px",
+              "opacity": 0
+            },
+            {
+              "offset": 0.58,
+              "x": 0,
+              "y": "build.first_word_y_px * 0.35",
+              "scale": 0.998,
+              "blur": "build.entry_blur_px * 0.45",
+              "opacity": 0.78
+            },
+            {
+              "offset": 1,
+              "x": 0,
+              "y": 0,
+              "scale": 1,
+              "blur": 0,
+              "opacity": 1
+            }
+          ],
+          "existing_word_push": [
+            {
+              "offset": 0,
+              "x": 0,
+              "y": "currentY",
+              "scale": 1,
+              "blur": 0,
+              "opacity": 1
+            },
+            {
+              "offset": 0.52,
+              "x": 0,
+              "y": "mix(currentY, nextY, 0.58)",
+              "scale": 1,
+              "blur": "build.reflow_blur_px",
+              "opacity": 1
+            },
+            {
+              "offset": 1,
+              "x": 0,
+              "y": "nextY",
+              "scale": 1,
+              "blur": 0,
+              "opacity": 1
+            }
+          ],
+          "incoming_word_push": [
+            {
+              "offset": 0,
+              "x": 0,
+              "y": "targetY + build.entry_offset_y_px",
+              "scale": "build.entry_scale",
+              "blur": "build.entry_blur_px",
+              "opacity": 0
+            },
+            {
+              "offset": 0.6,
+              "x": 0,
+              "y": "mix(targetY + build.entry_offset_y_px, targetY, 0.72)",
+              "scale": 0.998,
+              "blur": "build.entry_blur_px * 0.38",
+              "opacity": 0.84
+            },
+            {
+              "offset": 1,
+              "x": 0,
+              "y": "targetY",
+              "scale": 1,
+              "blur": 0,
+              "opacity": 1
+            }
+          ],
+          "exit_word": [
+            {
+              "offset": 0,
+              "x": 0,
+              "y": "position",
+              "scale": 1,
+              "blur": 0,
+              "opacity": 1
+            },
+            {
+              "offset": 0.52,
+              "x": 0,
+              "y": "position + build.exit_y_px * 0.45",
+              "scale": 1,
+              "blur": "build.exit_blur_px * 0.55",
+              "opacity": 0.62
+            },
+            {
+              "offset": 1,
+              "x": 0,
+              "y": "position + build.exit_y_px",
+              "scale": 1,
+              "blur": "build.exit_blur_px",
+              "opacity": 0
+            }
+          ]
+        }
+      }
+    },
+    "runtime": {
+      "preset": "website-default",
+      "speed_multiplier": 0.72,
+      "hold_ms": 550,
+      "gap_ms": 320,
+      "y_travel_multiplier": 0.58,
+      "initial_delay_ms": {
+        "mode": "random-range",
+        "min": 0,
+        "max": 400
+      }
+    },
+    "playback": {
+      "kind": "loop",
+      "cycle": ["build-phrase", "hold", "exit-phrase", "gap"],
+      "replacement_behavior": "phrase-loop",
+      "hold_ms": 792,
+      "micro_delay_ms": 0,
+      "gap_ms": 130
+    },
+    "timing": {
+      "first_word": {
+        "source_duration_ms": 360,
+        "scaled_duration_ms": 259,
+        "easing": "cubic-bezier(0.2, 0.8, 0.2, 1)"
+      },
+      "push": {
+        "source_duration_ms": 500,
+        "scaled_duration_ms": 360,
+        "easing": "cubic-bezier(0.2, 0.8, 0.2, 1)"
+      },
+      "exit": {
+        "source_duration_ms": 320,
+        "scaled_duration_ms": 230,
+        "easing": "cubic-bezier(0.4, 0, 0.2, 1)"
+      },
+      "hold_ms": 792,
+      "gap_ms": 130
+    },
+    "stage": {
+      "preset": "kinetic-stack-host",
+      "purpose": "Animation-only host requirements. Typography, color, card chrome, padding, and responsive sizing are intentionally excluded so the skill stays portable.",
+      "container": {
+        "requirement": "Provide a host element for the animated title.",
+        "perspective_px": 900,
+        "perspective_note": "Needed when effects use z_px, rotate_x_deg, or rotate_y_deg. Host layout and size are application-owned."
+      },
+      "title": {
+        "requirement": "Animate the phrase container when the renderer recipe uses title frames.",
+        "display": "inline-block",
+        "transform_style": "preserve-3d",
+        "layout_note": "Do not force flex-direction: column on the title globally; line breaks come from span.text-animation-unit.line using display:block."
+      },
+      "unit": {
+        "backface_visibility": "hidden",
+        "display": "inline-block",
+        "line_display": "block",
+        "transform_origin": "50% 55%",
+        "white_space": "pre",
+        "will_change": ["transform", "opacity", "filter"]
+      },
+      "kinetic_container": {
+        "requirement": "Use a relative-positioned block host large enough for the stack; exact dimensions belong to the consuming UI.",
+        "position": "relative",
+        "coordinate_origin": "center"
+      },
+      "kinetic_word": {
+        "backface_visibility": "hidden",
+        "left": "50%",
+        "position": "absolute",
+        "top": "50%",
+        "white_space": "nowrap",
+        "absolute_centered": true,
+        "will_change": ["transform", "opacity", "filter"]
+      }
+    },
+    "rendering_contract": {
+      "renderer": "kinetic-top-build",
+      "target": "per-word",
+      "stagger_mode": "normal",
+      "coordinate_space": "renderer-pixels",
+      "y_travel_multiplier": 1,
+      "y_travel_multiplier_note": "runtime.y_travel_multiplier is not applied to kinetic build coordinates; x/y values in build params are final transform pixels.",
+      "transform_order": "translate(-50%, -50%) translate3d(0, y_px, 0) scale(scale)",
+      "fill_behavior": "retain final frame after each phase",
+      "initial_delay_ms": {
+        "mode": "random-range",
+        "min": 0,
+        "max": 400
+      },
+      "content_replacement": "follow renderer recipe algorithm"
+    },
+    "library_selection": {
+      "supported_adapters": ["waapi", "motion", "gsap"],
+      "aliases": {
+        "web animations api": "waapi",
+        "waapi": "waapi",
+        "motion": "motion",
+        "motion.dev": "motion",
+        "motion react": "motion",
+        "framer motion": "motion",
+        "gsap": "gsap",
+        "greensock": "gsap"
+      },
+      "rule": "If the user names a target animation library, use only the matching adapter for that effect. Do not silently substitute Motion for GSAP, GSAP for Motion, or WAAPI for either library. If a requested library is unsupported, state that limitation before implementing.",
+      "verification": "For generated code, verify imports and animation calls match the selected adapter: Motion should import/use animate from motion/react and not Element.animate/gsap, GSAP should import/use gsap and CustomEase and not Motion/Element.animate, and WAAPI should use Element.animate without a third-party animation import."
+    },
+    "library_adapters": {
+      "waapi": {
+        "target_library": "Web Animations API",
+        "install": "none; native browser Element.animate",
+        "import_statement": null,
+        "time_unit": "milliseconds",
+        "start_animation": "element.animate(keyframes, { delay: delay_ms, duration: duration_ms, easing, fill: \"forwards\" })",
+        "keyframe_shape": "Use CSS-style Keyframe[] objects with transform, filter, opacity, letterSpacing, and optional offset fields.",
+        "easing": "Pass CSS easing strings directly, including cubic-bezier(...) and steps(...).",
+        "completion": "await animation.finished, then assign the final keyframe styles before replacing content.",
+        "cancellation": "cancel active Animation objects and clear pending timers on teardown.",
+        "renderer_notes": [
+          "Measure word heights after appending each incoming word.",
+          "Compute centered y positions from measured heights and line_gap_px.",
+          "Use raw renderer-pixel build x/y values; do not apply y_travel_multiplier to kinetic coordinates.",
+          "Use renderer.recipe.keyframe_recipe exactly: existing-word reflow y is mix(currentY, nextY, 0.58) at offset 0.52; incoming-word settle y is mix(startY, targetY, 0.72) at offset 0.6.",
+          "Exit uses a three-keyframe path with offset 0.52 at y = position + exit_y_px * 0.45 and opacity 0.62, not a two-keyframe fade."
+        ]
+      },
+      "motion": {
+        "target_library": "Motion for React / motion.dev",
+        "install": "pnpm add motion",
+        "import_statement": "import { animate, cubicBezier, steps } from \"motion/react\";",
+        "time_unit": "seconds for delay and duration options",
+        "start_animation": "animate(element, propertyKeyframes, { delay: delay_ms / 1000, duration: duration_ms / 1000, ease, times })",
+        "keyframe_shape": "Convert Keyframe[] into property arrays, for example { opacity: [0, 1], transform: [\"...\", \"...\"], filter: [\"...\", \"...\"] }. Convert keyframe offset values into the times array.",
+        "verification": [
+          "When offsets are present, pass times in the Motion options object, not inside the propertyKeyframes object.",
+          "The Motion times array length must match each animated property array length for that tween.",
+          "Motion TypeScript may reject CSS transform/filter property arrays; use a local typed helper/cast at the animate boundary instead of changing the keyframe shape.",
+          "Exact reproduction must include exit/replacement playback, not only initial enter tweens."
+        ],
+        "easing": "Convert cubic-bezier(a,b,c,d) to cubicBezier(a,b,c,d). Convert steps(n,start|end) to steps(n, \"start\"|\"end\"). Map CSS ease-in/ease-out/ease-in-out to Motion easeIn/easeOut/easeInOut.",
+        "completion": "Use controls.then(...) or await the returned controls in an async loop, then assign final styles before content replacement.",
+        "cancellation": "call controls.stop?.() and controls.cancel?.() for active Motion animations when available, and clear timers on teardown.",
+        "renderer_notes": [
+          "Measure word heights after appending each incoming word.",
+          "Compute centered y positions from measured heights and line_gap_px.",
+          "Use raw renderer-pixel build x/y values; do not apply y_travel_multiplier to kinetic coordinates.",
+          "Use renderer.recipe.keyframe_recipe exactly: existing-word reflow y is mix(currentY, nextY, 0.58) at offset 0.52; incoming-word settle y is mix(startY, targetY, 0.72) at offset 0.6.",
+          "Exit uses a three-keyframe path with offset 0.52 at y = position + exit_y_px * 0.45 and opacity 0.62, not a two-keyframe fade."
+        ]
+      },
+      "gsap": {
+        "target_library": "GSAP",
+        "install": "pnpm add gsap",
+        "import_statement": "import { gsap } from \"gsap\"; import { CustomEase } from \"gsap/CustomEase\"; gsap.registerPlugin(CustomEase);",
+        "time_unit": "seconds for delay and duration options",
+        "start_animation": "gsap.set(element, firstKeyframe); gsap.to(element, { keyframes: remainingKeyframesWithSegmentDurations, delay: delay_ms / 1000, ease, overwrite: \"auto\" })",
+        "keyframe_shape": "Use GSAP property objects with transform, filter, opacity, letterSpacing. For offset keyframes, convert adjacent offset gaps into absolute per-keyframe segment durations in seconds.",
+        "verification": [
+          "Initialize first-frame styles with gsap.set before starting a tween.",
+          "Do not pass both per-keyframe segment durations and a top-level gsap.to duration; that retimes the tween and makes the GSAP reproduction feel slower than the spec.",
+          "For renderer keyframe_recipe offsets, use GSAP keyframes with equivalent segment durations or a timeline that preserves the same absolute offsets.",
+          "For generic-stagger loops, do not enter the same visible phrase twice; after gap, the next action is exit of the current phrase."
+        ],
+        "easing": "Convert cubic-bezier(a,b,c,d) with CustomEase.create(...). Use \"none\" for linear. Convert steps(n,end) to GSAP steps(n).",
+        "completion": "Wrap tweens/timelines in a Promise resolved by onComplete, then assign final styles before replacing content.",
+        "cancellation": "kill active tweens/timelines and clear timers on teardown.",
+        "renderer_notes": [
+          "Measure word heights after appending each incoming word.",
+          "Compute centered y positions from measured heights and line_gap_px.",
+          "Use raw renderer-pixel build x/y values; do not apply y_travel_multiplier to kinetic coordinates.",
+          "Use renderer.recipe.keyframe_recipe exactly: existing-word reflow y is mix(currentY, nextY, 0.58) at offset 0.52; incoming-word settle y is mix(startY, targetY, 0.72) at offset 0.6.",
+          "Exit uses a three-keyframe path with offset 0.52 at y = position + exit_y_px * 0.45 and opacity 0.62, not a two-keyframe fade."
+        ]
+      }
+    },
+    "engine_notes": [
+      {
+        "engine": "WAAPI",
+        "notes": [
+          "Use Element.animate(keyframes, { delay, duration, easing, fill: \"forwards\" }).",
+          "For multi-keyframe effects, keep offsets on the keyframes and apply easing at the animation options level to match the site runtime."
+        ]
+      },
+      {
+        "engine": "Motion",
+        "notes": [
+          "Use imperative animate(element, keyframes, options) when reproducing the site loops.",
+          "Convert CSS cubic-bezier strings to cubicBezier(x1, y1, x2, y2), convert steps(n, start|end) to steps(n, direction), and pass explicit times for keyframe offsets."
+        ]
+      },
+      {
+        "engine": "GSAP",
+        "notes": [
+          "Register CustomEase for CSS cubic-bezier curves; map linear to ease \"none\" and steps(n, end) to GSAP steps(n).",
+          "For multi-keyframe effects, convert offset gaps into per-keyframe segment durations in seconds and keep one tween-level ease. Do not also pass a top-level duration when segment durations are present."
+        ]
+      },
+      {
+        "engine": "All engines",
+        "notes": [
+          "Do not apply runtime.y_travel_multiplier to kinetic build x/y coordinates; buildKineticFrame uses the build params as final transform pixels.",
+          "Use explicit offset keyframes for the intermediate reflow frames, then snap final styles after each push to avoid layout drift."
+        ]
+      }
+    ],
+    "reproduction_notes": [
+      "On the site this effect builds a centered vertical stack. Measure line heights, compute centered y positions for the stack, and animate existing words upward as the incoming word drops into the next line.",
+      "For site parity, scale duration and stagger timing by 0.72. Keep kinetic build x/y params as raw renderer pixel coordinates; runtime.y_travel_multiplier applies to generic/title frame conversion, not to buildKineticFrame coordinates.",
+      "For exact animation reproduction, follow `showcase.playback`, `showcase.timing`, `showcase.rendering_contract`, and `showcase.stage` over assumptions inferred from the portable contract alone. Presentation styling such as font size, font weight, color, padding, and card chrome is intentionally application-owned."
+    ]
+  }
+}

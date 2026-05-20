@@ -1,0 +1,83 @@
+{
+  "id": "short-slide-down",
+  "display_name": "Short Slide Down",
+  "description": "Each new word drops in from above into its own line and pushes the existing stack downward until a centered three-line composition locks in place.",
+  "inspiration": "Keynote-style editorial headings where motion is present but tightly restrained.",
+  "target": "per-word",
+  "custom_renderer": "kinetic-top-build",
+  "signature_easing": "cubic-bezier(0.2, 0.8, 0.2, 1)",
+  "enter": {
+    "duration_ms": 520,
+    "stagger_ms": 0,
+    "easing": "cubic-bezier(0.2, 0.8, 0.2, 1)",
+    "from": {
+      "opacity": 0,
+      "y_px": -24,
+      "blur_px": 2.4,
+      "scale": 0.992
+    },
+    "to": {
+      "opacity": 1,
+      "y_px": 0,
+      "blur_px": 0,
+      "scale": 1
+    }
+  },
+  "exit": {
+    "duration_ms": 320,
+    "stagger_ms": 0,
+    "easing": "cubic-bezier(0.4, 0, 0.2, 1)",
+    "from": {
+      "opacity": 1,
+      "y_px": 0,
+      "blur_px": 0,
+      "scale": 1
+    },
+    "to": {
+      "opacity": 0,
+      "y_px": 10,
+      "blur_px": 1.2,
+      "scale": 1
+    }
+  },
+  "build": {
+    "first_word_duration_ms": 360,
+    "push_duration_ms": 500,
+    "exit_duration_ms": 320,
+    "hold_ms": 1100,
+    "between_phrases_ms": 180,
+    "entry_offset_y_px": -28,
+    "line_gap_px": 12,
+    "first_word_y_px": -14,
+    "entry_scale": 0.992,
+    "entry_blur_px": 2.4,
+    "reflow_blur_px": 0.7,
+    "exit_y_px": 10,
+    "exit_blur_px": 1.2,
+    "easing": "cubic-bezier(0.2, 0.8, 0.2, 1)",
+    "exit_easing": "cubic-bezier(0.4, 0, 0.2, 1)"
+  },
+  "swap": {
+    "mode": "sequential",
+    "overlap_ms": 0,
+    "micro_delay_ms": 70,
+    "scenario_spec": {
+      "entry_condition": "Use when three short words should build into a vertical stack, with each new word dropping from above and physically re-centering the composition.",
+      "switch_order": [
+        "Show the first word in the center with a short top-down drop.",
+        "Bring the second word into a lower line while shifting the first word upward into the stack.",
+        "Bring the third word into the bottom line while shifting the first two words upward so the final three-line stack stays centered."
+      ],
+      "verification": [
+        "Each new word visibly pushes the existing words rather than simply fading in.",
+        "The completed phrase ends as three centered lines with even vertical spacing.",
+        "The motion reads as one kinetic stacked build with a top-down entry direction."
+      ],
+      "fallback": {
+        "if_drop_is_too_subtle": "Increase build.entry_offset_y_px from -28 to -36.",
+        "if_phrase_feels_too_slow": "Reduce build.push_duration_ms from 500 to 460."
+      }
+    }
+  },
+  "usage_notes": "Best on short three-word headings where each word can live on its own line. Keep the vertical drop compact so the motion still feels editorial, and let the stacking displacement carry most of the energy. For longer phrases, reduce entry_offset_y_px or switch to a softer shared-slide pattern."
+}

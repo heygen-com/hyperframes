@@ -1,0 +1,348 @@
+{
+  "id": "per-word-crossfade",
+  "visibility": "visible",
+  "portable_spec": {
+    "id": "per-word-crossfade",
+    "display_name": "Per-Word Crossfade",
+    "description": "Words gently fade into place one after another, with a short vertical drift for a calm keynote rhythm.",
+    "inspiration": "Apple product announcements and section title transitions where words are readable but still alive.",
+    "target": "per-word",
+    "signature_easing": "cubic-bezier(0.16, 1, 0.3, 1)",
+    "enter": {
+      "duration_ms": 700,
+      "stagger_ms": 70,
+      "easing": "cubic-bezier(0.16, 1, 0.3, 1)",
+      "from": {
+        "opacity": 0,
+        "y_px": 8
+      },
+      "to": {
+        "opacity": 1,
+        "y_px": 0
+      }
+    },
+    "exit": {
+      "duration_ms": 500,
+      "stagger_ms": 40,
+      "easing": "cubic-bezier(0.7, 0, 0.84, 0)",
+      "from": {
+        "opacity": 1,
+        "y_px": 0
+      },
+      "to": {
+        "opacity": 0,
+        "y_px": -6
+      }
+    },
+    "swap": {
+      "mode": "crossfade",
+      "overlap_ms": 170,
+      "micro_delay_ms": 70,
+      "scenario_spec": {
+        "entry_condition": "Use when phrase-level content changes and word readability is more important than per-character flair.",
+        "switch_order": [
+          "Start old text exit at t=0ms.",
+          "Start new text enter at t=exit_total_ms-overlap_ms+micro_delay_ms.",
+          "Advance word groups in the same stagger direction for old and new text."
+        ],
+        "verification": [
+          "Word boundaries stay readable during overlap.",
+          "No two identical word positions stay stacked for more than one stagger step.",
+          "Swap cadence stays calm and editorial, without abrupt jumps."
+        ],
+        "fallback": {
+          "if_words_stack_visibly": "Increase micro_delay_ms to 90.",
+          "if_total_swap_is_too_long": "Reduce enter stagger_ms to 55 and overlap_ms to 120."
+        }
+      }
+    },
+    "usage_notes": "Best for medium phrases and headings; for long copy prefer per-word only up to 16–18 words to keep total stagger time readable. micro_delay_ms helps prevent old/new words from visibly stacking during swaps."
+  },
+  "showcase": {
+    "content": {
+      "sample": "Beautifully, unmistakably simple.",
+      "samples": ["Beautifully simple.", "Designed for focus.", "Built for people."]
+    },
+    "content_usage": {
+      "default_policy": "When applying an effect to an existing heading or text section, preserve the section text. Do not replace user/application copy with showcase sample text unless the user explicitly asks to reproduce the demo copy.",
+      "showcase_samples": "showcase.content.sample and samples are reference/demo copy used by the generated website examples and useful fallback copy for isolated demos.",
+      "loop_policy": "If the existing section supplies multiple phrases, loop those phrases. If it supplies one phrase, animate that phrase with the same enter/exit playback or use explicitly provided alternate phrases."
+    },
+    "sample_source": {
+      "asset": "assets/samples.json",
+      "key": "per-word-crossfade"
+    },
+    "renderer": {
+      "id": "generic-stagger",
+      "source": "default",
+      "params": {},
+      "recipe": {
+        "id": "generic-stagger",
+        "summary": "Split text by target, animate each animated unit from enter.from to enter.to, hold, animate current units from exit.from to exit.to, then replace content.",
+        "required_dom": [
+          "one h3.text-animation-title per phrase",
+          "one span.text-animation-unit per split part",
+          "animate only non-space parts for per-word targets",
+          "span.text-animation-unit.line uses display:block for per-line targets"
+        ],
+        "split_rules": {
+          "whole": "single animated unit containing the full text",
+          "per-character": "Array.from(text), preserving punctuation and spaces as animated visual units",
+          "per-word": "regex /(\\S+|\\s+)/g; create spans for words and whitespace, but animate only non-whitespace spans",
+          "per-line": "split on explicit \"\\n\"; each line is an animated block span"
+        },
+        "stagger_rank_algorithms": {
+          "normal": "rank equals DOM unit index",
+          "reverse": "rank 0 starts at last animated unit and proceeds backward",
+          "center-out": "sort animated indices by absolute distance from center, ties by lower index",
+          "edges-in": "alternate left edge, right edge, then move inward"
+        },
+        "frame_materialization": {
+          "transform_order": "translate3d(x_px, y_px * runtime.y_travel_multiplier, z_px) rotateX(rotate_x_deg) rotateY(rotate_y_deg) rotate(rotate_deg) scale(scale)",
+          "filter": "blur(blur_px)",
+          "opacity_default": 1,
+          "scale_default": 1,
+          "letter_spacing": "for per-character targets, split letter_spacing_em across marginLeft/marginRight halves on glyphs; otherwise assign letterSpacing directly",
+          "fill": "final frame must remain applied after each phase completes"
+        },
+        "loop_algorithm": [
+          "Wait initial_delay_ms before starting the first enter.",
+          "Create current phrase, apply enter.from to every animated unit, append it, then animate enter.",
+          "After the first enter completes, wait hold_ms.",
+          "Loop from the visible phrase: animate current units through exit.",
+          "Create next phrase off-DOM and apply enter.from.",
+          "After the exit completes, wait micro_delay_ms.",
+          "Replace the stage contents with the next phrase and animate enter.",
+          "After the next enter completes, wait gap_ms.",
+          "Continue the loop by exiting the currently visible phrase; do not run another enter for a phrase that is already visible."
+        ],
+        "canonical_loop_pseudocode": [
+          "current = createPhrase(firstText); append(current); await enter(current);",
+          "while active:",
+          "  await sleep(hold_ms);",
+          "  await exit(current);",
+          "  next = createPhrase(nextText); applyEnterFrom(next);",
+          "  await sleep(micro_delay_ms);",
+          "  replaceStage(next);",
+          "  current = next;",
+          "  await enter(current);",
+          "  await sleep(gap_ms);",
+          "Do not put await enter(current) at the top of the while loop; that double-enters the phrase that just entered before gap_ms."
+        ],
+        "loop_invariants": [
+          "The initial phrase enters exactly once before the loop body.",
+          "Every later phrase enters exactly once immediately after replacement.",
+          "If implementation awaits an animation or tween promise, do not also sleep for that phase total; use either await completion or sleep(total), not both.",
+          "Do not implement an enter-only demo when exact playback is requested; preserve exit, replacement, micro-delay, gap, cancellation, and final-frame snapping."
+        ],
+        "current_site_swap_support": {
+          "uses_micro_delay_ms": true,
+          "uses_overlap_ms": false,
+          "branches_on_swap_mode": false,
+          "note": "The portable swap block may describe broader intent; the current site showcase uses the playback recipe here as the exact behavior."
+        }
+      }
+    },
+    "runtime": {
+      "preset": "website-default",
+      "speed_multiplier": 0.72,
+      "hold_ms": 550,
+      "gap_ms": 320,
+      "y_travel_multiplier": 0.58,
+      "initial_delay_ms": {
+        "mode": "random-range",
+        "min": 0,
+        "max": 400
+      }
+    },
+    "playback": {
+      "kind": "loop",
+      "cycle": ["enter", "hold", "exit", "micro-delay", "gap"],
+      "replacement_behavior": "exit-before-enter",
+      "hold_ms": 550,
+      "micro_delay_ms": 70,
+      "gap_ms": 320
+    },
+    "timing": {
+      "enter": {
+        "source_duration_ms": 700,
+        "source_stagger_ms": 70,
+        "scaled_duration_ms": 504,
+        "scaled_stagger_ms": 50,
+        "easing": "cubic-bezier(0.16, 1, 0.3, 1)"
+      },
+      "exit": {
+        "source_duration_ms": 500,
+        "source_stagger_ms": 40,
+        "scaled_duration_ms": 360,
+        "scaled_stagger_ms": 29,
+        "easing": "cubic-bezier(0.7, 0, 0.84, 0)"
+      },
+      "total_formulas": {
+        "enter_total_ms": "enter.scaled_duration_ms + max(0, animated_unit_count - 1) * enter.scaled_stagger_ms",
+        "exit_total_ms": "exit.scaled_duration_ms + max(0, animated_unit_count - 1) * exit.scaled_stagger_ms"
+      }
+    },
+    "stage": {
+      "preset": "default-text-host",
+      "purpose": "Animation-only host requirements. Typography, color, card chrome, padding, and responsive sizing are intentionally excluded so the skill stays portable.",
+      "container": {
+        "requirement": "Provide a host element for the animated title.",
+        "perspective_px": 900,
+        "perspective_note": "Needed when effects use z_px, rotate_x_deg, or rotate_y_deg. Host layout and size are application-owned."
+      },
+      "title": {
+        "requirement": "Animate the phrase container when the renderer recipe uses title frames.",
+        "display": "inline-block",
+        "transform_style": "preserve-3d",
+        "layout_note": "Do not force flex-direction: column on the title globally; line breaks come from span.text-animation-unit.line using display:block."
+      },
+      "unit": {
+        "backface_visibility": "hidden",
+        "display": "inline-block",
+        "line_display": "block",
+        "transform_origin": "50% 55%",
+        "white_space": "pre",
+        "will_change": ["transform", "opacity", "filter"]
+      }
+    },
+    "rendering_contract": {
+      "renderer": "generic-stagger",
+      "target": "per-word",
+      "stagger_mode": "normal",
+      "y_travel_multiplier": 0.58,
+      "transform_order": "translate3d(x_px, y_px * y_travel_multiplier, z_px) rotateX(rotate_x_deg) rotateY(rotate_y_deg) rotate(rotate_deg) scale(scale)",
+      "fill_behavior": "retain final frame after each phase",
+      "initial_delay_ms": {
+        "mode": "random-range",
+        "min": 0,
+        "max": 400
+      },
+      "content_replacement": "current phrase is cleared and replaced only after exit_total_ms + micro_delay_ms"
+    },
+    "library_selection": {
+      "supported_adapters": ["waapi", "motion", "gsap"],
+      "aliases": {
+        "web animations api": "waapi",
+        "waapi": "waapi",
+        "motion": "motion",
+        "motion.dev": "motion",
+        "motion react": "motion",
+        "framer motion": "motion",
+        "gsap": "gsap",
+        "greensock": "gsap"
+      },
+      "rule": "If the user names a target animation library, use only the matching adapter for that effect. Do not silently substitute Motion for GSAP, GSAP for Motion, or WAAPI for either library. If a requested library is unsupported, state that limitation before implementing.",
+      "verification": "For generated code, verify imports and animation calls match the selected adapter: Motion should import/use animate from motion/react and not Element.animate/gsap, GSAP should import/use gsap and CustomEase and not Motion/Element.animate, and WAAPI should use Element.animate without a third-party animation import."
+    },
+    "library_adapters": {
+      "waapi": {
+        "target_library": "Web Animations API",
+        "install": "none; native browser Element.animate",
+        "import_statement": null,
+        "time_unit": "milliseconds",
+        "start_animation": "element.animate(keyframes, { delay: delay_ms, duration: duration_ms, easing, fill: \"forwards\" })",
+        "keyframe_shape": "Use CSS-style Keyframe[] objects with transform, filter, opacity, letterSpacing, and optional offset fields.",
+        "easing": "Pass CSS easing strings directly, including cubic-bezier(...) and steps(...).",
+        "completion": "await animation.finished, then assign the final keyframe styles before replacing content.",
+        "cancellation": "cancel active Animation objects and clear pending timers on teardown.",
+        "renderer_notes": [
+          "Create split units from target and animate only the animated units.",
+          "Delay each unit by stagger rank * scaled_stagger_ms.",
+          "Use materialized transform/filter/opacity keyframes from rendering_contract.transform_order.",
+          "Implement the complete playback loop from renderer.recipe.loop_algorithm: initial enter once, hold, exit current, micro-delay, replace next, enter next, gap, then exit that visible phrase.",
+          "Do not restart enter on a phrase that is already visible after gap; the next cycle starts with exit for the current phrase.",
+          "When awaiting animation completion promises, wait hold_ms/micro_delay_ms/gap_ms only; do not also sleep enter_total_ms or exit_total_ms.",
+          "Reject the code shape `while (...) { await enter(current); ... await enter(next); await sleep(gap); }`; it double-enters the visible phrase. Use renderer.recipe.canonical_loop_pseudocode instead."
+        ]
+      },
+      "motion": {
+        "target_library": "Motion for React / motion.dev",
+        "install": "pnpm add motion",
+        "import_statement": "import { animate, cubicBezier, steps } from \"motion/react\";",
+        "time_unit": "seconds for delay and duration options",
+        "start_animation": "animate(element, propertyKeyframes, { delay: delay_ms / 1000, duration: duration_ms / 1000, ease, times })",
+        "keyframe_shape": "Convert Keyframe[] into property arrays, for example { opacity: [0, 1], transform: [\"...\", \"...\"], filter: [\"...\", \"...\"] }. Convert keyframe offset values into the times array.",
+        "verification": [
+          "When offsets are present, pass times in the Motion options object, not inside the propertyKeyframes object.",
+          "The Motion times array length must match each animated property array length for that tween.",
+          "Motion TypeScript may reject CSS transform/filter property arrays; use a local typed helper/cast at the animate boundary instead of changing the keyframe shape.",
+          "Exact reproduction must include exit/replacement playback, not only initial enter tweens."
+        ],
+        "easing": "Convert cubic-bezier(a,b,c,d) to cubicBezier(a,b,c,d). Convert steps(n,start|end) to steps(n, \"start\"|\"end\"). Map CSS ease-in/ease-out/ease-in-out to Motion easeIn/easeOut/easeInOut.",
+        "completion": "Use controls.then(...) or await the returned controls in an async loop, then assign final styles before content replacement.",
+        "cancellation": "call controls.stop?.() and controls.cancel?.() for active Motion animations when available, and clear timers on teardown.",
+        "renderer_notes": [
+          "Create split units from target and animate only the animated units.",
+          "Delay each unit by stagger rank * scaled_stagger_ms.",
+          "Use materialized transform/filter/opacity keyframes from rendering_contract.transform_order.",
+          "Implement the complete playback loop from renderer.recipe.loop_algorithm: initial enter once, hold, exit current, micro-delay, replace next, enter next, gap, then exit that visible phrase.",
+          "Do not restart enter on a phrase that is already visible after gap; the next cycle starts with exit for the current phrase.",
+          "When awaiting animation completion promises, wait hold_ms/micro_delay_ms/gap_ms only; do not also sleep enter_total_ms or exit_total_ms.",
+          "Reject the code shape `while (...) { await enter(current); ... await enter(next); await sleep(gap); }`; it double-enters the visible phrase. Use renderer.recipe.canonical_loop_pseudocode instead."
+        ]
+      },
+      "gsap": {
+        "target_library": "GSAP",
+        "install": "pnpm add gsap",
+        "import_statement": "import { gsap } from \"gsap\"; import { CustomEase } from \"gsap/CustomEase\"; gsap.registerPlugin(CustomEase);",
+        "time_unit": "seconds for delay and duration options",
+        "start_animation": "gsap.set(element, firstKeyframe); gsap.to(element, { keyframes: remainingKeyframesWithSegmentDurations, delay: delay_ms / 1000, ease, overwrite: \"auto\" })",
+        "keyframe_shape": "Use GSAP property objects with transform, filter, opacity, letterSpacing. For offset keyframes, convert adjacent offset gaps into absolute per-keyframe segment durations in seconds.",
+        "verification": [
+          "Initialize first-frame styles with gsap.set before starting a tween.",
+          "Do not pass both per-keyframe segment durations and a top-level gsap.to duration; that retimes the tween and makes the GSAP reproduction feel slower than the spec.",
+          "For renderer keyframe_recipe offsets, use GSAP keyframes with equivalent segment durations or a timeline that preserves the same absolute offsets.",
+          "For generic-stagger loops, do not enter the same visible phrase twice; after gap, the next action is exit of the current phrase."
+        ],
+        "easing": "Convert cubic-bezier(a,b,c,d) with CustomEase.create(...). Use \"none\" for linear. Convert steps(n,end) to GSAP steps(n).",
+        "completion": "Wrap tweens/timelines in a Promise resolved by onComplete, then assign final styles before replacing content.",
+        "cancellation": "kill active tweens/timelines and clear timers on teardown.",
+        "renderer_notes": [
+          "Create split units from target and animate only the animated units.",
+          "Delay each unit by stagger rank * scaled_stagger_ms.",
+          "Use materialized transform/filter/opacity keyframes from rendering_contract.transform_order.",
+          "Implement the complete playback loop from renderer.recipe.loop_algorithm: initial enter once, hold, exit current, micro-delay, replace next, enter next, gap, then exit that visible phrase.",
+          "Do not restart enter on a phrase that is already visible after gap; the next cycle starts with exit for the current phrase.",
+          "When awaiting animation completion promises, wait hold_ms/micro_delay_ms/gap_ms only; do not also sleep enter_total_ms or exit_total_ms.",
+          "Reject the code shape `while (...) { await enter(current); ... await enter(next); await sleep(gap); }`; it double-enters the visible phrase. Use renderer.recipe.canonical_loop_pseudocode instead."
+        ]
+      }
+    },
+    "engine_notes": [
+      {
+        "engine": "WAAPI",
+        "notes": [
+          "Use Element.animate(keyframes, { delay, duration, easing, fill: \"forwards\" }).",
+          "For multi-keyframe effects, keep offsets on the keyframes and apply easing at the animation options level to match the site runtime."
+        ]
+      },
+      {
+        "engine": "Motion",
+        "notes": [
+          "Use imperative animate(element, keyframes, options) when reproducing the site loops.",
+          "Convert CSS cubic-bezier strings to cubicBezier(x1, y1, x2, y2), convert steps(n, start|end) to steps(n, direction), and pass explicit times for keyframe offsets."
+        ]
+      },
+      {
+        "engine": "GSAP",
+        "notes": [
+          "Register CustomEase for CSS cubic-bezier curves; map linear to ease \"none\" and steps(n, end) to GSAP steps(n).",
+          "For multi-keyframe effects, convert offset gaps into per-keyframe segment durations in seconds and keep one tween-level ease. Do not also pass a top-level duration when segment durations are present."
+        ]
+      },
+      {
+        "engine": "CSS",
+        "notes": [
+          "CSS keyframes are viable for simple generic-stagger effects if every unit gets the same keyframes and computed delay.",
+          "CSS alone is usually not sufficient for the site loop unless JavaScript handles content replacement timing."
+        ]
+      }
+    ],
+    "reproduction_notes": [
+      "On the site this effect uses the generic stagger renderer. Apply the portable enter and exit frames per animated unit, preserving the declared target split and stagger ordering.",
+      "For site parity, scale duration and stagger timing by 0.72 and scale vertical travel by 0.58. These runtime transforms materially affect the perceived pace and distance.",
+      "For exact animation reproduction, follow `showcase.playback`, `showcase.timing`, `showcase.rendering_contract`, and `showcase.stage` over assumptions inferred from the portable contract alone. Presentation styling such as font size, font weight, color, padding, and card chrome is intentionally application-owned."
+    ]
+  }
+}

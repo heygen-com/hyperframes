@@ -1,0 +1,40 @@
+{
+  "id": "spring-scale-in",
+  "display_name": "Spring Scale In",
+  "description": "Words pop in with a soft overshoot scale, like a physical spring settling into place.",
+  "inspiration": "iOS app icons bouncing into the home screen, macOS Dock, widget appearances, Vision Pro floating UI pops.",
+  "target": "per-word",
+  "signature_easing": "cubic-bezier(0.34, 1.56, 0.64, 1)",
+  "enter": {
+    "duration_ms": 360,
+    "stagger_ms": 95,
+    "easing": "cubic-bezier(0.34, 1.56, 0.64, 1)",
+    "from": {
+      "opacity": 0,
+      "scale": 0.7
+    },
+    "to": {
+      "opacity": 1,
+      "scale": 1
+    }
+  },
+  "exit": {
+    "duration_ms": 200,
+    "stagger_ms": 80,
+    "easing": "cubic-bezier(0.7, 0, 0.84, 0)",
+    "from": {
+      "opacity": 1,
+      "scale": 1
+    },
+    "to": {
+      "opacity": 0,
+      "scale": 0.8
+    }
+  },
+  "swap": {
+    "mode": "crossfade",
+    "overlap_ms": 0,
+    "micro_delay_ms": 35
+  },
+  "usage_notes": "The overshoot comes from cubic-bezier y2 > 1 (1.56). Per-word is the sweet spot - per-character at this easing feels too bouncy. Stagger is intentionally high here to create a visible staircase effect. This variant uses no overlap on swap to avoid content crossing during transitions."
+}

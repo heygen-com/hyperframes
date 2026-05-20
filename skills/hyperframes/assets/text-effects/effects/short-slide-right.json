@@ -1,0 +1,330 @@
+{
+  "id": "short-slide-right",
+  "visibility": "visible",
+  "portable_spec": {
+    "id": "short-slide-right",
+    "display_name": "Short Slide Right",
+    "description": "The whole phrase glides in from the left as one compact move, while the words themselves are revealed in sequence only through opacity.",
+    "inspiration": "Keynote-style editorial headings where motion is present but tightly restrained.",
+    "target": "per-word",
+    "custom_renderer": "shared-slide-opacity-stage",
+    "signature_easing": "cubic-bezier(0.2, 0.8, 0.2, 1)",
+    "enter": {
+      "duration_ms": 520,
+      "stagger_ms": 92,
+      "easing": "cubic-bezier(0.2, 0.8, 0.2, 1)",
+      "from": {
+        "opacity": 1,
+        "x_px": -24,
+        "blur_px": 1.2
+      },
+      "to": {
+        "opacity": 1,
+        "x_px": 0,
+        "blur_px": 0
+      }
+    },
+    "exit": {
+      "duration_ms": 320,
+      "stagger_ms": 0,
+      "easing": "cubic-bezier(0.4, 0, 0.2, 1)",
+      "from": {
+        "opacity": 1,
+        "x_px": 0,
+        "blur_px": 0
+      },
+      "to": {
+        "opacity": 0,
+        "x_px": 12,
+        "blur_px": 1
+      }
+    },
+    "build": {
+      "word_opacity_duration_ms": 210,
+      "word_opacity_from": 0,
+      "word_opacity_to": 1
+    },
+    "swap": {
+      "mode": "sequential",
+      "overlap_ms": 0,
+      "micro_delay_ms": 70,
+      "scenario_spec": {
+        "entry_condition": "Use when the heading should feel like one shared horizontal motion, but the words should reveal progressively.",
+        "switch_order": [
+          "Start the whole phrase from one shared left offset.",
+          "Animate the phrase transform once, with no per-word positional delay.",
+          "Reveal each word with only opacity stagger so the ordering reads clearly."
+        ],
+        "verification": [
+          "The phrase position starts and ends in sync for all words.",
+          "Only opacity is staggered across the words.",
+          "The amplitude stays compact enough to feel controlled, not swishy."
+        ],
+        "fallback": {
+          "if_motion_feels_too_wide": "Reduce enter.from.x_px from -24 to -18.",
+          "if_reveal_reads_too_fast": "Increase enter.stagger_ms from 92 to 108.",
+          "if_words_feel_too_ghosted": "Increase build.word_opacity_duration_ms from 210 to 240."
+        }
+      }
+    },
+    "usage_notes": "Best on three-word headings where word order matters. Keep the horizontal travel compact and shared; the phrase should read as one move, with staging communicated only by opacity. For longer phrases, reduce stagger_ms or shorten the opacity duration so the cascade does not drag."
+  },
+  "showcase": {
+    "content": {
+      "sample": "Move with intent.",
+      "samples": ["Move with intent.", "Words glide across.", "Build the rhythm."]
+    },
+    "content_usage": {
+      "default_policy": "When applying an effect to an existing heading or text section, preserve the section text. Do not replace user/application copy with showcase sample text unless the user explicitly asks to reproduce the demo copy.",
+      "showcase_samples": "showcase.content.sample and samples are reference/demo copy used by the generated website examples and useful fallback copy for isolated demos.",
+      "loop_policy": "If the existing section supplies multiple phrases, loop those phrases. If it supplies one phrase, animate that phrase with the same enter/exit playback or use explicitly provided alternate phrases."
+    },
+    "sample_source": {
+      "asset": "assets/samples.json",
+      "key": "short-slide-right"
+    },
+    "renderer": {
+      "id": "shared-slide-opacity-stage",
+      "source": "spec",
+      "params": {
+        "word_opacity_duration_ms": 210,
+        "word_opacity_from": 0,
+        "word_opacity_to": 1
+      },
+      "recipe": {
+        "id": "shared-slide-opacity-stage",
+        "summary": "Move the full phrase as one title-level transform while staggering only word opacity.",
+        "required_dom": [
+          "one h3.text-animation-title for the full phrase transform",
+          "word spans are nested inside the title and only receive opacity animation"
+        ],
+        "algorithm": [
+          "Split text as per-word by default.",
+          "Apply titleFrame(enter.from) to the h3 and word_opacity_from to each word span.",
+          "Start the h3 transform animation and every word opacity animation in the same tick; do not wait for the title transform to finish before starting word opacity.",
+          "Animate the h3 once from enter.from to enter.to using scaled enter duration.",
+          "Animate every word opacity from word_opacity_from to word_opacity_to with index * scaled enter.stagger_ms delay.",
+          "Hold, then animate only the h3 from exit.from to exit.to, clear the stage, wait gap_ms, advance to the next phrase, and repeat."
+        ],
+        "frame_materialization": {
+          "title_transform": "translate3d(x_px, y_px * runtime.y_travel_multiplier, 0) scale(scale)",
+          "title_filter": "blur(blur_px)",
+          "word_animation_properties": ["opacity"]
+        },
+        "initial_state": {
+          "before_enter": [
+            "Set the title element to titleFrame(enter.from).",
+            "Set every non-space word span opacity to build.word_opacity_from before starting any enter tween.",
+            "Whitespace spans should preserve layout but do not receive opacity tweens."
+          ],
+          "before_exit": ["Set the title element to titleFrame(exit.from)."]
+        },
+        "verification": [
+          "A GSAP implementation must call gsap.set(wordNodes, { opacity: word_opacity_from }) or assign equivalent inline styles before gsap.to(wordNodes, { opacity: word_opacity_to, ... }).",
+          "A Motion implementation must initialize every word span opacity to word_opacity_from before animate(... opacity: [word_opacity_from, word_opacity_to] ...).",
+          "A loop implementation must preserve exit and gap timing; an enter-only reveal is not an exact reproduction."
+        ]
+      }
+    },
+    "runtime": {
+      "preset": "website-default",
+      "speed_multiplier": 0.72,
+      "hold_ms": 550,
+      "gap_ms": 320,
+      "y_travel_multiplier": 0.58,
+      "initial_delay_ms": {
+        "mode": "random-range",
+        "min": 0,
+        "max": 400
+      }
+    },
+    "playback": {
+      "kind": "loop",
+      "cycle": ["enter", "hold", "exit", "gap"],
+      "replacement_behavior": "exit-before-enter",
+      "hold_ms": 550,
+      "micro_delay_ms": 0,
+      "gap_ms": 320
+    },
+    "timing": {
+      "enter_title": {
+        "source_duration_ms": 520,
+        "source_stagger_ms": 92,
+        "scaled_duration_ms": 374,
+        "scaled_stagger_ms": 66,
+        "easing": "cubic-bezier(0.2, 0.8, 0.2, 1)"
+      },
+      "enter_word_opacity": {
+        "source_duration_ms": 210,
+        "scaled_duration_ms": 151,
+        "delay_step_ms": 66,
+        "easing": "cubic-bezier(0.2, 0.8, 0.2, 1)"
+      },
+      "exit_title": {
+        "source_duration_ms": 320,
+        "source_stagger_ms": 0,
+        "scaled_duration_ms": 230,
+        "scaled_stagger_ms": 0,
+        "easing": "cubic-bezier(0.4, 0, 0.2, 1)"
+      },
+      "total_formulas": {
+        "enter_total_ms": "enter_title.scaled_duration_ms",
+        "exit_total_ms": "exit_title.scaled_duration_ms"
+      }
+    },
+    "stage": {
+      "preset": "default-text-host",
+      "purpose": "Animation-only host requirements. Typography, color, card chrome, padding, and responsive sizing are intentionally excluded so the skill stays portable.",
+      "container": {
+        "requirement": "Provide a host element for the animated title.",
+        "perspective_px": 900,
+        "perspective_note": "Needed when effects use z_px, rotate_x_deg, or rotate_y_deg. Host layout and size are application-owned."
+      },
+      "title": {
+        "requirement": "Animate the phrase container when the renderer recipe uses title frames.",
+        "display": "inline-block",
+        "transform_style": "preserve-3d",
+        "layout_note": "Do not force flex-direction: column on the title globally; line breaks come from span.text-animation-unit.line using display:block."
+      },
+      "unit": {
+        "backface_visibility": "hidden",
+        "display": "inline-block",
+        "line_display": "block",
+        "transform_origin": "50% 55%",
+        "white_space": "pre",
+        "will_change": ["transform", "opacity", "filter"]
+      }
+    },
+    "rendering_contract": {
+      "renderer": "shared-slide-opacity-stage",
+      "target": "per-word",
+      "stagger_mode": "normal",
+      "y_travel_multiplier": 0.58,
+      "transform_order": "translate3d(x_px, y_px * y_travel_multiplier, z_px) rotateX(rotate_x_deg) rotateY(rotate_y_deg) rotate(rotate_deg) scale(scale)",
+      "fill_behavior": "retain final frame after each phase",
+      "initial_delay_ms": {
+        "mode": "random-range",
+        "min": 0,
+        "max": 400
+      },
+      "content_replacement": "follow renderer recipe algorithm"
+    },
+    "library_selection": {
+      "supported_adapters": ["waapi", "motion", "gsap"],
+      "aliases": {
+        "web animations api": "waapi",
+        "waapi": "waapi",
+        "motion": "motion",
+        "motion.dev": "motion",
+        "motion react": "motion",
+        "framer motion": "motion",
+        "gsap": "gsap",
+        "greensock": "gsap"
+      },
+      "rule": "If the user names a target animation library, use only the matching adapter for that effect. Do not silently substitute Motion for GSAP, GSAP for Motion, or WAAPI for either library. If a requested library is unsupported, state that limitation before implementing.",
+      "verification": "For generated code, verify imports and animation calls match the selected adapter: Motion should import/use animate from motion/react and not Element.animate/gsap, GSAP should import/use gsap and CustomEase and not Motion/Element.animate, and WAAPI should use Element.animate without a third-party animation import."
+    },
+    "library_adapters": {
+      "waapi": {
+        "target_library": "Web Animations API",
+        "install": "none; native browser Element.animate",
+        "import_statement": null,
+        "time_unit": "milliseconds",
+        "start_animation": "element.animate(keyframes, { delay: delay_ms, duration: duration_ms, easing, fill: \"forwards\" })",
+        "keyframe_shape": "Use CSS-style Keyframe[] objects with transform, filter, opacity, letterSpacing, and optional offset fields.",
+        "easing": "Pass CSS easing strings directly, including cubic-bezier(...) and steps(...).",
+        "completion": "await animation.finished, then assign the final keyframe styles before replacing content.",
+        "cancellation": "cancel active Animation objects and clear pending timers on teardown.",
+        "renderer_notes": [
+          "Animate the title-level transform and every word opacity animation concurrently.",
+          "Before starting enter animations, set every non-space word span to build.word_opacity_from; otherwise the opacity reveal will be invisible.",
+          "For GSAP, call gsap.set(wordNodes, { opacity: build.word_opacity_from }) before one batched gsap.to(wordNodes, { opacity: build.word_opacity_to, stagger, ... }) tween; do not create one opacity tween per word unless the delays are non-uniform.",
+          "For Motion, assign style.opacity = build.word_opacity_from before animate(wordNode, { opacity: [from, to] }, ...).",
+          "Use enter_title for the phrase transform and enter_word_opacity for word fades.",
+          "Exit animates only the title-level frame, then clears/replaces content according to playback.",
+          "Do not ship an enter-only reveal when exact playback is requested; include hold, exit, gap, phrase advance, cancellation, and final-frame snapping."
+        ]
+      },
+      "motion": {
+        "target_library": "Motion for React / motion.dev",
+        "install": "pnpm add motion",
+        "import_statement": "import { animate, cubicBezier, steps } from \"motion/react\";",
+        "time_unit": "seconds for delay and duration options",
+        "start_animation": "animate(element, propertyKeyframes, { delay: delay_ms / 1000, duration: duration_ms / 1000, ease, times })",
+        "keyframe_shape": "Convert Keyframe[] into property arrays, for example { opacity: [0, 1], transform: [\"...\", \"...\"], filter: [\"...\", \"...\"] }. Convert keyframe offset values into the times array.",
+        "verification": [
+          "When offsets are present, pass times in the Motion options object, not inside the propertyKeyframes object.",
+          "The Motion times array length must match each animated property array length for that tween.",
+          "Motion TypeScript may reject CSS transform/filter property arrays; use a local typed helper/cast at the animate boundary instead of changing the keyframe shape.",
+          "Exact reproduction must include exit/replacement playback, not only initial enter tweens."
+        ],
+        "easing": "Convert cubic-bezier(a,b,c,d) to cubicBezier(a,b,c,d). Convert steps(n,start|end) to steps(n, \"start\"|\"end\"). Map CSS ease-in/ease-out/ease-in-out to Motion easeIn/easeOut/easeInOut.",
+        "completion": "Use controls.then(...) or await the returned controls in an async loop, then assign final styles before content replacement.",
+        "cancellation": "call controls.stop?.() and controls.cancel?.() for active Motion animations when available, and clear timers on teardown.",
+        "renderer_notes": [
+          "Animate the title-level transform and every word opacity animation concurrently.",
+          "Before starting enter animations, set every non-space word span to build.word_opacity_from; otherwise the opacity reveal will be invisible.",
+          "For GSAP, call gsap.set(wordNodes, { opacity: build.word_opacity_from }) before one batched gsap.to(wordNodes, { opacity: build.word_opacity_to, stagger, ... }) tween; do not create one opacity tween per word unless the delays are non-uniform.",
+          "For Motion, assign style.opacity = build.word_opacity_from before animate(wordNode, { opacity: [from, to] }, ...).",
+          "Use enter_title for the phrase transform and enter_word_opacity for word fades.",
+          "Exit animates only the title-level frame, then clears/replaces content according to playback.",
+          "Do not ship an enter-only reveal when exact playback is requested; include hold, exit, gap, phrase advance, cancellation, and final-frame snapping."
+        ]
+      },
+      "gsap": {
+        "target_library": "GSAP",
+        "install": "pnpm add gsap",
+        "import_statement": "import { gsap } from \"gsap\"; import { CustomEase } from \"gsap/CustomEase\"; gsap.registerPlugin(CustomEase);",
+        "time_unit": "seconds for delay and duration options",
+        "start_animation": "gsap.set(element, firstKeyframe); gsap.to(element, { keyframes: remainingKeyframesWithSegmentDurations, delay: delay_ms / 1000, ease, overwrite: \"auto\" })",
+        "keyframe_shape": "Use GSAP property objects with transform, filter, opacity, letterSpacing. For offset keyframes, convert adjacent offset gaps into absolute per-keyframe segment durations in seconds.",
+        "verification": [
+          "Initialize first-frame styles with gsap.set before starting a tween.",
+          "Do not pass both per-keyframe segment durations and a top-level gsap.to duration; that retimes the tween and makes the GSAP reproduction feel slower than the spec.",
+          "For renderer keyframe_recipe offsets, use GSAP keyframes with equivalent segment durations or a timeline that preserves the same absolute offsets.",
+          "For generic-stagger loops, do not enter the same visible phrase twice; after gap, the next action is exit of the current phrase."
+        ],
+        "easing": "Convert cubic-bezier(a,b,c,d) with CustomEase.create(...). Use \"none\" for linear. Convert steps(n,end) to GSAP steps(n).",
+        "completion": "Wrap tweens/timelines in a Promise resolved by onComplete, then assign final styles before replacing content.",
+        "cancellation": "kill active tweens/timelines and clear timers on teardown.",
+        "renderer_notes": [
+          "Animate the title-level transform and every word opacity animation concurrently.",
+          "Before starting enter animations, set every non-space word span to build.word_opacity_from; otherwise the opacity reveal will be invisible.",
+          "For GSAP, call gsap.set(wordNodes, { opacity: build.word_opacity_from }) before one batched gsap.to(wordNodes, { opacity: build.word_opacity_to, stagger, ... }) tween; do not create one opacity tween per word unless the delays are non-uniform.",
+          "For Motion, assign style.opacity = build.word_opacity_from before animate(wordNode, { opacity: [from, to] }, ...).",
+          "Use enter_title for the phrase transform and enter_word_opacity for word fades.",
+          "Exit animates only the title-level frame, then clears/replaces content according to playback.",
+          "Do not ship an enter-only reveal when exact playback is requested; include hold, exit, gap, phrase advance, cancellation, and final-frame snapping."
+        ]
+      }
+    },
+    "engine_notes": [
+      {
+        "engine": "WAAPI",
+        "notes": [
+          "Use Element.animate(keyframes, { delay, duration, easing, fill: \"forwards\" }).",
+          "For multi-keyframe effects, keep offsets on the keyframes and apply easing at the animation options level to match the site runtime."
+        ]
+      },
+      {
+        "engine": "Motion",
+        "notes": [
+          "Use imperative animate(element, keyframes, options) when reproducing the site loops.",
+          "Convert CSS cubic-bezier strings to cubicBezier(x1, y1, x2, y2), convert steps(n, start|end) to steps(n, direction), and pass explicit times for keyframe offsets."
+        ]
+      },
+      {
+        "engine": "GSAP",
+        "notes": [
+          "Register CustomEase for CSS cubic-bezier curves; map linear to ease \"none\" and steps(n, end) to GSAP steps(n).",
+          "For multi-keyframe effects, convert offset gaps into per-keyframe segment durations in seconds and keep one tween-level ease. Do not also pass a top-level duration when segment durations are present."
+        ]
+      }
+    ],
+    "reproduction_notes": [
+      "On the site this effect moves the full phrase as one shared horizontal transform. Preserve a single phrase-level translation and reveal word order only through opacity timing.",
+      "For site parity, scale duration and stagger timing by 0.72 and scale vertical travel by 0.58. These runtime transforms materially affect the perceived pace and distance.",
+      "For exact animation reproduction, follow `showcase.playback`, `showcase.timing`, `showcase.rendering_contract`, and `showcase.stage` over assumptions inferred from the portable contract alone. Presentation styling such as font size, font weight, color, padding, and card chrome is intentionally application-owned."
+    ]
+  }
+}

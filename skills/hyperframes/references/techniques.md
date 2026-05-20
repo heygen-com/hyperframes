@@ -1,8 +1,41 @@
 # Visual Techniques Reference
 
-10 proven techniques from production HyperFrames videos. Use these in your storyboard and compositions to create visually rich, professional output. Each technique includes a minimal code pattern you can adapt.
+20 proven techniques from production HyperFrames videos. Use these in your storyboard and compositions to create visually rich, professional output. Each technique includes a minimal code pattern you can adapt.
 
 These are NOT advanced — they're standard motion design patterns that every composition should use at least 2-3 of.
+
+**These are starting points, not copy-paste templates.** Every code pattern below is a minimal working example from a real production video. Adapt them to your needs — change colors, sizes, timings, easings, element counts, layout. Combine techniques, mix parts from different patterns, invent variations. The goal is to understand the PRINCIPLE behind each technique so you can build something original, not to reproduce these examples exactly.
+
+## Table of Contents
+
+**Named text animation effects** (per-character, per-word, per-line, whole-element) with exact GSAP specs are in [`text-effects.md`](text-effects.md) — 24 bundled effects, no install needed. Use those for all headline and label animations instead of inventing timing from scratch.
+
+**HTML-in-Canvas patterns** (live DOM as GPU texture: iPhone/MacBook mockups, liquid glass, magnetic, portal, shatter, text cursor — using `drawElementImage` + `layoutsubtree`) are in [`html-in-canvas-patterns.md`](html-in-canvas-patterns.md) — 504 lines, one shared boilerplate + ~6 effect recipes. Use for 1–3 hero beats per video, not every beat.
+
+---
+
+| #   | Technique                           | What it does                                                               | Best for                                         |
+| --- | ----------------------------------- | -------------------------------------------------------------------------- | ------------------------------------------------ |
+| 1   | **SVG Path Drawing**                | Logos/icons draw themselves stroke by stroke                               | Logo reveals, diagram builds, connector lines    |
+| 2   | **Canvas 2D Procedural Art**        | Animated noise, particles, data viz — frame-by-frame via GSAP proxy        | Generative backgrounds, ambient texture          |
+| 3   | **CSS 3D Transforms**               | Card flips, perspective grids, folding panels                              | Product reveals, comparison scenes               |
+| 4   | **Per-Word Kinetic Typography**     | Text animates word-by-word with stagger timing                             | Thesis statements, key messages, quotes          |
+| 5   | **Lottie Animation**                | Captured or external Lottie plays as overlay/background                    | Brand animations, micro-interactions             |
+| 6   | **Video Compositing**               | Product videos play inline, masked, overlaid                               | Demo footage, screen recordings                  |
+| 7   | **Character-by-Character Typing**   | Terminal-style code reveals, search bar interactions                       | Developer tools, CLI demos                       |
+| 8   | **Variable Font Axis Animation**    | Weight, width, slant, optical size morph over time                         | Premium typography, brand wordmarks              |
+| 9   | **GSAP MotionPathPlugin**           | Elements follow SVG curves, orbital motion, spirals                        | Dynamic entrances, connector animations          |
+| 10  | **Velocity-Matched Transitions**    | Outgoing blur/translate matches incoming for seamless cuts                 | Beat transitions, scene changes                  |
+| 11  | **Audio-Reactive Animation**        | Elements pulse to narration frequency bands                                | Background textures, text glow, ambient motion   |
+| 12  | **Frosted Glass Panels**            | `backdrop-filter: blur` + translucent backgrounds + inset glow             | Premium UI cards, feature overlays, modals       |
+| 13  | **Clip-Path Reveal Masks**          | Fixed window that content slides through (text/images enter from one side) | Headline intros, image reveals, wipe effects     |
+| 14  | **WebGL Fragment Shader Art**       | Full GPU generative backgrounds — FBM domain warp, cosine palettes         | Hero backgrounds, atmospheric scenes             |
+| 15  | **Impact Line on Text Drop**        | Horizontal line expands at text landing point — physical weight feel       | Title cards, stat reveals, single-word emphasis  |
+| 16  | **Device Mockups (Laptop + Phone)** | CSS-only MacBook/iPhone with realistic chrome, scrolling content           | Product showcases, website demos, app reveals    |
+| 17  | **Aurora Gradient Backgrounds**     | Multi-blob radial gradients that drift — depth without Canvas/WebGL        | Dark cinematic scenes, CTA backgrounds           |
+| 18  | **Floating Particles**              | CSS particles with glow shadows, staggered float                           | Ambient texture, premium atmosphere              |
+| 19  | **Terminal UI with Typing**         | macOS chrome + typed commands + scaffold output lines                      | Developer CTAs, CLI demos, product onboarding    |
+| 20  | **Moodboard / Editorial Layout**    | Paper texture, decorative rules, pinned cards at angles, connecting lines  | Brand reels, design showcases, editorial content |
 
 ---
 
@@ -155,7 +188,7 @@ The slide distance DECAYS per word (80→12px) — mimics a camera settling.
 Vector animations that play inside a composition. Use for logos, character animations, icons.
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/@dotlottie/player-component@2.7.12/dist/dotlottie-player.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@lottiefiles/dotlottie-web/dist/dotlottie-player.js"></script>
 <dotlottie-player
   class="lottie"
   src="../capture/assets/lottie/animation-0.json"
@@ -317,7 +350,7 @@ tl.to(
     duration: 0.33,
     ease: "power2.in", // accelerates
   },
-  beatDuration - 0.33,
+  parseFloat(root.dataset.duration) - 0.33, // start exit 0.33s before beat ends
 );
 
 // ENTRY (in incoming composition): decelerating from blur
@@ -376,12 +409,481 @@ Keep text/logo intensity subtle (≤5% scale, ≤30% glow) — audio-reactive mo
 
 ---
 
-## When to Use What
+## 12. Frosted Glass Panels
 
-| Video energy                   | Techniques to combine                                           |
-| ------------------------------ | --------------------------------------------------------------- |
-| High impact (launches, promos) | Per-word typography + velocity transitions + counter animations |
-| Cinematic (tours, stories)     | SVG path drawing + video compositing + 3D transforms            |
-| Technical (dev tools, APIs)    | Character typing + Canvas 2D procedural + MotionPath            |
-| Premium (luxury, enterprise)   | Variable font animation + Lottie + slow velocity transitions    |
-| Data-driven (stats, metrics)   | Canvas 2D procedural + counter animations + SVG path drawing    |
+macOS-style translucent panels with blur and depth. Premium UI treatment for cards, overlays, and modals.
+
+```html
+<div class="glass-card">
+  <h2>Feature</h2>
+  <p>Description text</p>
+</div>
+<style>
+  .glass-card {
+    background: linear-gradient(
+      160deg,
+      rgba(255, 255, 255, 0.075) 0%,
+      rgba(255, 255, 255, 0.025) 45%,
+      rgba(255, 255, 255, 0.01) 70%,
+      rgba(255, 255, 255, 0.055) 100%
+    );
+    backdrop-filter: blur(14px) saturate(1.12);
+    -webkit-backdrop-filter: blur(14px) saturate(1.12);
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    border-radius: 24px;
+    box-shadow:
+      0 30px 90px rgba(0, 0, 0, 0.42),
+      inset 0 1px 0 rgba(255, 255, 255, 0.22);
+    padding: 40px;
+  }
+</style>
+```
+
+The gradient background provides subtle directional light. The inset shadow adds a top edge highlight. Works on both dark and light backgrounds — adjust rgba values accordingly.
+
+---
+
+## 13. Clip-Path Reveal Masks
+
+A fixed window that content slides through — text or images enter from one side and are clipped by an invisible boundary. Different from SVG path drawing: the mask is static, the content moves.
+
+```html
+<div id="reveal-mask">
+  <div id="reveal-content">Your headline text here</div>
+</div>
+<style>
+  #reveal-mask {
+    position: absolute;
+    inset: 0;
+    clip-path: inset(0 200px 0 0); /* clips 200px from right */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  #reveal-content {
+    font-size: 108px;
+    white-space: nowrap;
+  }
+</style>
+<script>
+  // Content starts offscreen right, slides left through the mask window
+  gsap.set("#reveal-content", { x: 400, opacity: 0 });
+  tl.to("#reveal-content", { x: 0, opacity: 1, duration: 1, ease: "power2.out" }, 0);
+</script>
+```
+
+Variations: `clip-path: circle(0% at 50% 50%)` → `circle(100%)` for iris reveals. `clip-path: polygon(...)` for custom shapes.
+
+---
+
+## 14. WebGL Fragment Shader Art
+
+Full GPU generative backgrounds — domain-warped FBM noise, cosine palette coloring, iridescent organic patterns. Far richer than Canvas 2D.
+
+```html
+<canvas id="shader-bg" width="1920" height="1080"></canvas>
+<script>
+  var canvas = document.getElementById("shader-bg");
+  var gl = canvas.getContext("webgl");
+  if (!gl) {
+    /* fallback to gradient */
+  }
+
+  var fsrc = `
+    precision mediump float;
+    varying vec2 v_uv;
+    uniform float u_time;
+    uniform vec2 u_res;
+
+    float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+    float noise(vec2 p) {
+      vec2 i = floor(p), f = fract(p);
+      f = f * f * (3.0 - 2.0 * f);
+      return mix(mix(hash(i), hash(i+vec2(1,0)), f.x),
+                 mix(hash(i+vec2(0,1)), hash(i+vec2(1,1)), f.x), f.y);
+    }
+    float fbm(vec2 p) {
+      float v = 0.0, a = 0.5;
+      mat2 R = mat2(0.8, 0.6, -0.6, 0.8);
+      for (int i = 0; i < 5; i++) { v += a*noise(p); p = R*p*2.02; a *= 0.5; }
+      return v;
+    }
+    vec3 palette(float t) {
+      return vec3(0.5)+vec3(0.5)*cos(6.28318*(vec3(1)*t+vec3(0.0,0.33,0.67)));
+    }
+    void main() {
+      vec2 uv = v_uv; uv.x *= u_res.x/u_res.y;
+      float t = u_time * 0.4;
+      vec2 q = vec2(fbm(uv*3.0+t*0.3), fbm(uv*3.0+vec2(5.2,1.3)+t*0.2));
+      vec2 r = vec2(fbm(uv*3.0+q*4.0+vec2(1.7,9.2)+t*0.15), fbm(uv*3.0+q*4.0+vec2(8.3,2.8)+t*0.1));
+      float n = fbm(uv*3.0+r*2.0);
+      vec3 col = palette(n*2.0+t*0.2);
+      col = mix(col, palette(length(q)*3.0+t*0.1), 0.4);
+      col *= 0.7+0.3*n;
+      float vig = 1.0-0.4*length(v_uv-0.5);
+      gl_FragColor = vec4(col*vig, 1.0);
+    }
+  `;
+
+  // Compile, link, set up fullscreen quad, then render via GSAP proxy:
+  var proxy = { time: 0.5 };
+  tl.to(
+    proxy,
+    {
+      time: 5,
+      duration: BEAT_DUR,
+      ease: "none",
+      onUpdate: function () {
+        gl.uniform1f(uTime, proxy.time);
+        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+      },
+    },
+    0,
+  );
+</script>
+```
+
+Always include a Canvas 2D gradient fallback for environments without WebGL.
+
+---
+
+## 15. Impact Line on Text Drop
+
+Text drops in with overshoot bounce. At the moment of impact, a thin horizontal line expands outward from the baseline — sells the physical weight of the landing.
+
+```html
+<div class="drop-text">hyperframes</div>
+<div class="drop-line"></div>
+<style>
+  .drop-text {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    font-size: 180px;
+    font-weight: 900;
+  }
+  .drop-line {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 300px;
+    height: 3px;
+    background: rgba(255, 255, 255, 0.25);
+    border-radius: 2px;
+  }
+</style>
+<script>
+  gsap.set(".drop-text", { xPercent: -50, yPercent: -50, y: -300, opacity: 0 });
+  gsap.set(".drop-line", { xPercent: -50, yPercent: -50, y: 80, scaleX: 0 });
+
+  tl.to(".drop-text", { y: 0, opacity: 1, duration: 0.25, ease: "back.out(1.2)" }, 0);
+  tl.to(".drop-line", { scaleX: 1, duration: 0.12, ease: "power3.out" }, 0.15);
+  tl.to(".drop-line", { opacity: 0, scaleX: 1.3, duration: 0.1, ease: "power2.out" }, 0.27);
+</script>
+```
+
+The line appears slightly after the text lands (0.15s offset). It expands, then fades while growing wider — simulating dissipating energy.
+
+---
+
+## 16. Device Mockups (Laptop + Phone)
+
+CSS-only laptop and phone frames with realistic chrome, shadows, and perspective. Content scrolls inside the screen.
+
+```html
+<!-- MacBook mockup -->
+<div class="lap-wrap">
+  <div class="lap-screen-outer">
+    <div class="lap-notch"></div>
+    <div class="lap-screen">
+      <img class="site-img" src="capture/screenshots/scroll-000.png" alt="" />
+    </div>
+  </div>
+  <div class="lap-hinge"></div>
+  <div class="lap-base"></div>
+  <div class="lap-shadow"></div>
+</div>
+<style>
+  .lap-screen-outer {
+    width: 1000px;
+    height: 625px;
+    background: #1a1a1c;
+    border-radius: 18px;
+    padding: 14px 14px 24px;
+    box-shadow:
+      0 2px 0 rgba(255, 255, 255, 0.04) inset,
+      0 30px 60px rgba(11, 11, 15, 0.28);
+  }
+  .lap-notch {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 140px;
+    height: 18px;
+    background: #1a1a1c;
+    border-radius: 0 0 10px 10px;
+  }
+  .lap-screen {
+    width: 100%;
+    height: 100%;
+    background: #0b0b0f;
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  .lap-hinge {
+    width: 105%;
+    height: 5px;
+    background: linear-gradient(to bottom, #5a5d62, #2a2d32);
+    margin-left: -2.5%;
+  }
+  .lap-base {
+    width: 110%;
+    height: 22px;
+    background: linear-gradient(to bottom, #c8ccd4, #8a8d94);
+    border-radius: 0 0 12px 12px;
+    margin-left: -5%;
+    clip-path: polygon(3% 0, 97% 0, 100% 100%, 0 100%);
+  }
+  .lap-shadow {
+    position: absolute;
+    bottom: -28px;
+    left: 4%;
+    right: 4%;
+    height: 32px;
+    background: radial-gradient(ellipse, rgba(0, 0, 0, 0.25), transparent 70%);
+    filter: blur(6px);
+  }
+</style>
+```
+
+Animate the content scrolling inside the screen with `tl.to(".site-img", { y: -SCROLL_DISTANCE, duration: 5, ease: "power1.inOut" })`. Add inspector callout annotations that appear at each scroll stop.
+
+For **phone mockups**: same structure but with dynamic island, status bar, home indicator, and 3D perspective via `transform: perspective(2200px) rotateY(-12deg)`.
+
+---
+
+## 17. Aurora Gradient Backgrounds
+
+Multi-blob radial gradients that drift slowly — creates depth and atmosphere without Canvas/WebGL complexity.
+
+```html
+<div class="bg-aurora"></div>
+<style>
+  .bg-aurora {
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(900px 500px at 22% 38%, rgba(83, 58, 253, 0.28), transparent 65%),
+      radial-gradient(1100px 700px at 78% 42%, rgba(0, 195, 255, 0.22), transparent 60%),
+      radial-gradient(700px 500px at 50% 80%, rgba(62, 207, 142, 0.18), transparent 65%),
+      radial-gradient(600px 400px at 80% 15%, rgba(244, 75, 204, 0.15), transparent 65%);
+    filter: blur(2px);
+  }
+</style>
+<script>
+  gsap.set(".bg-aurora", { opacity: 0 });
+  tl.to(".bg-aurora", { opacity: 1, duration: 2, ease: "power2.inOut" }, 0.5);
+  // Slow drift via background-position or x/y
+  tl.to(".bg-aurora", { x: 30, y: -20, duration: 8, ease: "sine.inOut" }, 0);
+</script>
+```
+
+Derive colors from DESIGN.md's brand palette. 4-5 blobs at different positions create natural color mixing. Use brand accent as one blob, complementary tones for the rest.
+
+---
+
+## 18. Floating Particles
+
+CSS-only particles with absolute positioning, glow shadows, and staggered float animation. Adds premium ambient texture.
+
+```html
+<div class="particles">
+  <div class="pt p1"></div>
+  <div class="pt p2"></div>
+  <div class="pt p3"></div>
+  <!-- ... up to 12 particles -->
+</div>
+<style>
+  .pt {
+    position: absolute;
+    width: 3px;
+    height: 3px;
+    background: #f7f8f8;
+    border-radius: 50%;
+    box-shadow: 0 0 8px rgba(255, 255, 255, 0.8);
+    opacity: 0;
+  }
+  /* Position each particle individually */
+  .p1 {
+    left: 15%;
+    top: 20%;
+  }
+  .p2 {
+    left: 78%;
+    top: 35%;
+    width: 4px;
+    height: 4px;
+  }
+  /* ... */
+</style>
+<script>
+  var pts = root.querySelectorAll(".pt");
+  // Seeded pseudo-random for determinism
+  function mulberry32(a) {
+    return function () {
+      a |= 0;
+      a = (a + 0x6d2b79f5) | 0;
+      var t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t ^= t + Math.imul(t ^ (t >>> 7), 61 | t);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  var rng = mulberry32(42);
+
+  pts.forEach(function (pt, i) {
+    var delay = 0.5 + i * 0.15;
+    tl.to(pt, { opacity: 0.6 + rng() * 0.4, duration: 0.8, ease: "power2.out" }, delay);
+    tl.to(pt, { y: -20 - rng() * 40, duration: 4 + rng() * 3, ease: "sine.inOut" }, delay);
+  });
+</script>
+```
+
+---
+
+## 19. Terminal UI with Typing
+
+macOS-style terminal chrome (traffic light dots) with typed commands, scaffold output lines, and cursor blink. Use for developer-focused videos, CTA sections, and product demos.
+
+```html
+<div class="terminal">
+  <div class="term-chrome">
+    <span class="dot" style="background:#ff5f57"></span>
+    <span class="dot" style="background:#febc2e"></span>
+    <span class="dot" style="background:#28c840"></span>
+    <span class="term-title">Terminal — zsh</span>
+  </div>
+  <div class="term-body">
+    <div class="term-line">
+      <span class="prompt">&#10095;</span>
+      <span class="typed" id="typed-cmd"></span>
+      <span class="cursor">|</span>
+    </div>
+    <div class="scaffold" id="scaffold">
+      <div class="scaffold-line" id="sl-1">Creating project...</div>
+      <div class="scaffold-line" id="sl-2">index.html</div>
+      <div class="scaffold-line" id="sl-3">meta.json</div>
+      <div class="scaffold-line" id="sl-4"><span style="color:#28c840">&#10003;</span> Done</div>
+    </div>
+  </div>
+</div>
+<script>
+  var cmd = "npx hyperframes init my-video";
+  var typed = root.querySelector("#typed-cmd");
+
+  // Type command character by character
+  for (var i = 0; i < cmd.length; i++) {
+    tl.call(
+      function (idx) {
+        typed.textContent = cmd.slice(0, idx + 1);
+      }.bind(null, i),
+      [],
+      0.3 + i * 0.04,
+    );
+  }
+
+  // Scaffold lines appear sequentially
+  var lines = root.querySelectorAll(".scaffold-line");
+  gsap.set(lines, { opacity: 0, y: 4 });
+  lines.forEach(function (line, i) {
+    tl.to(line, { opacity: 1, y: 0, duration: 0.15, ease: "power2.out" }, 1.0 + i * 0.2);
+  });
+</script>
+```
+
+---
+
+## 20. Moodboard / Editorial Layout
+
+Print-inspired compositions with paper texture, decorative rules, pinned cards at angles, and connecting gold lines. Works for brand reels and design-forward content.
+
+```html
+<div class="board">
+  <div class="grain"></div>
+  <div class="crown">
+    <div class="crown-line"></div>
+    <span class="crown-text">BRAND NAME</span>
+    <div class="crown-line"></div>
+  </div>
+  <div class="pin-card card-1">
+    <img src="capture/assets/hero.png" />
+    <div class="pin-label">Hero Section</div>
+  </div>
+  <!-- more cards at organic angles -->
+</div>
+<style>
+  .grain {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 50;
+    opacity: 0.22;
+    background-image:
+      radial-gradient(rgba(20, 24, 31, 0.1) 1px, transparent 1.2px),
+      radial-gradient(rgba(255, 255, 255, 0.18) 1px, transparent 1.2px);
+    background-size:
+      3px 3px,
+      5px 5px;
+    mix-blend-mode: multiply;
+  }
+  .crown {
+    display: flex;
+    align-items: center;
+    gap: 28px;
+  }
+  .crown-line {
+    height: 1px;
+    background: currentColor;
+    width: 480px;
+  }
+  .pin-card {
+    position: absolute;
+    background: #fbf8f1;
+    padding: 12px;
+    border-radius: 4px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+    transform: rotate(-3deg); /* organic angle */
+  }
+</style>
+```
+
+Pin cards at slightly random angles (±2-5deg). Connect related cards with thin gold SVG lines that draw in. Use paper-like warm backgrounds (#f1ece2, #fbf8f1).
+
+---
+
+## Easing Vocabulary
+
+GSAP offers a deep easing library. Every composition should use at least 3 different easings — using `power2.out` for everything produces flat, monotonous motion. Think of easings as tone of voice: a video that only whispers is boring; one that varies between whisper, normal, and punch is engaging.
+
+**The full palette** (each family has `.in`, `.out`, `.inOut` variants):
+
+| Family               | Character                                                                    | Typical use                                                                                        |
+| -------------------- | ---------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `power1`–`power4`    | Gentle (1) to aggressive (4) acceleration curves                             | General purpose. power2 is the workhorse, power4 for dramatic snaps                                |
+| `back(N)`            | Overshoot then settle. N controls how far past the target (1=subtle, 4=wild) | Logo reveals, badge pops, card entrances. `back.out(2.5)` for playful, `back.out(1.2)` for elegant |
+| `elastic(amp, freq)` | Spring bounce. amp=magnitude, freq=oscillation speed                         | Panel scatter, energetic drops, fun reveals                                                        |
+| `bounce`             | Ball-drop bouncing                                                           | Physical interactions, icons landing, score counters                                               |
+| `expo`               | Extreme acceleration curve (much steeper than power4)                        | Premium/luxury reveals, dramatic entrances                                                         |
+| `sine`               | Smooth, organic, no hard edges                                               | Ambient float, breathing, Ken Burns, anything that loops. `.inOut` for yoyo motion                 |
+| `circ`               | Circular acceleration (starts very fast, ends very gentle or vice versa)     | Camera moves, scene transitions, orbital motion                                                    |
+| `steps(N)`           | Discrete N-step jumps, no interpolation                                      | Typing effects, cursor blink, counter ticks, retro/digital aesthetics                              |
+
+**Mood mapping:** Match easing character to the beat's emotional content. Smooth/organic easings (`sine`, `power1`) feel contemplative and drifting. Aggressive deceleration (`power4.out`, `expo.out`) feels snappy and confident. Spring overshoot (`back.out`) feels bouncy and physical. The storyboard's mood description should guide which character fits — not a formula.
+
+---
+
+## Choosing techniques
+
+Don't match techniques to video type on autopilot — match them to the **concept of the specific beat**. Ask: what visual treatment makes this exact idea land? A beat about speed needs motion that communicates speed; a beat about precision needs geometry and structure; a beat about warmth needs texture and organic drift.
+
+Read the storyboard beat's concept and mood, then scan this list for techniques whose _visual character_ serves that concept. Any technique can appear in any video type — the question is whether it earns its place in this beat.

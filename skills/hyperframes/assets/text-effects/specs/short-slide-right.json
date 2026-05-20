@@ -1,0 +1,68 @@
+{
+  "id": "short-slide-right",
+  "display_name": "Short Slide Right",
+  "description": "The whole phrase glides in from the left as one compact move, while the words themselves are revealed in sequence only through opacity.",
+  "inspiration": "Keynote-style editorial headings where motion is present but tightly restrained.",
+  "target": "per-word",
+  "custom_renderer": "shared-slide-opacity-stage",
+  "signature_easing": "cubic-bezier(0.2, 0.8, 0.2, 1)",
+  "enter": {
+    "duration_ms": 520,
+    "stagger_ms": 92,
+    "easing": "cubic-bezier(0.2, 0.8, 0.2, 1)",
+    "from": {
+      "opacity": 1,
+      "x_px": -24,
+      "blur_px": 1.2
+    },
+    "to": {
+      "opacity": 1,
+      "x_px": 0,
+      "blur_px": 0
+    }
+  },
+  "exit": {
+    "duration_ms": 320,
+    "stagger_ms": 0,
+    "easing": "cubic-bezier(0.4, 0, 0.2, 1)",
+    "from": {
+      "opacity": 1,
+      "x_px": 0,
+      "blur_px": 0
+    },
+    "to": {
+      "opacity": 0,
+      "x_px": 12,
+      "blur_px": 1
+    }
+  },
+  "build": {
+    "word_opacity_duration_ms": 210,
+    "word_opacity_from": 0,
+    "word_opacity_to": 1
+  },
+  "swap": {
+    "mode": "sequential",
+    "overlap_ms": 0,
+    "micro_delay_ms": 70,
+    "scenario_spec": {
+      "entry_condition": "Use when the heading should feel like one shared horizontal motion, but the words should reveal progressively.",
+      "switch_order": [
+        "Start the whole phrase from one shared left offset.",
+        "Animate the phrase transform once, with no per-word positional delay.",
+        "Reveal each word with only opacity stagger so the ordering reads clearly."
+      ],
+      "verification": [
+        "The phrase position starts and ends in sync for all words.",
+        "Only opacity is staggered across the words.",
+        "The amplitude stays compact enough to feel controlled, not swishy."
+      ],
+      "fallback": {
+        "if_motion_feels_too_wide": "Reduce enter.from.x_px from -24 to -18.",
+        "if_reveal_reads_too_fast": "Increase enter.stagger_ms from 92 to 108.",
+        "if_words_feel_too_ghosted": "Increase build.word_opacity_duration_ms from 210 to 240."
+      }
+    }
+  },
+  "usage_notes": "Best on three-word headings where word order matters. Keep the horizontal travel compact and shared; the phrase should read as one move, with staging communicated only by opacity. For longer phrases, reduce stagger_ms or shorten the opacity duration so the cascade does not drag."
+}

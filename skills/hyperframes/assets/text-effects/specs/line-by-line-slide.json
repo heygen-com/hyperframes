@@ -1,0 +1,40 @@
+{
+  "id": "line-by-line-slide",
+  "display_name": "Line-by-Line Slide",
+  "description": "Each line enters from the left with a staggered slide and exits to the right for a flowing paragraph reveal.",
+  "inspiration": "Apple landing page subheads and section headers that breathe line by line.",
+  "target": "per-line",
+  "signature_easing": "cubic-bezier(0.22, 1, 0.36, 1)",
+  "enter": {
+    "duration_ms": 900,
+    "stagger_ms": 120,
+    "easing": "cubic-bezier(0.22, 1, 0.36, 1)",
+    "from": {
+      "opacity": 0,
+      "x_px": -48
+    },
+    "to": {
+      "opacity": 1,
+      "x_px": 0
+    }
+  },
+  "exit": {
+    "duration_ms": 600,
+    "stagger_ms": 80,
+    "easing": "cubic-bezier(0.64, 0, 0.78, 0)",
+    "from": {
+      "opacity": 1,
+      "x_px": 0
+    },
+    "to": {
+      "opacity": 0,
+      "x_px": 48
+    }
+  },
+  "swap": {
+    "mode": "crossfade",
+    "overlap_ms": 0,
+    "micro_delay_ms": 20
+  },
+  "usage_notes": "Great for 2-line or 3-line headings. This variant keeps swap non-overlapping to avoid content intersections. Reduce x-distance for narrow layouts to keep motion tight on mobile."
+}

@@ -1,0 +1,48 @@
+{
+  "id": "fade-through",
+  "display_name": "Fade Through",
+  "description": "A Material-style content transition: old fades out, new fades in with a soft delay.",
+  "inspiration": "Google Material fade through transitions for same-level UI changes.",
+  "target": "whole",
+  "signature_easing": "cubic-bezier(0.2, 0, 0, 1)",
+  "enter": {
+    "duration_ms": 420,
+    "stagger_ms": 0,
+    "easing": "cubic-bezier(0.2, 0, 0, 1)",
+    "from": {
+      "opacity": 0,
+      "y_px": 6,
+      "scale": 0.99,
+      "blur_px": 2
+    },
+    "to": {
+      "opacity": 1,
+      "y_px": 0,
+      "scale": 1,
+      "blur_px": 0
+    }
+  },
+  "exit": {
+    "duration_ms": 260,
+    "stagger_ms": 0,
+    "easing": "cubic-bezier(0.4, 0, 1, 1)",
+    "from": {
+      "opacity": 1,
+      "y_px": 0,
+      "scale": 1,
+      "blur_px": 0
+    },
+    "to": {
+      "opacity": 0,
+      "y_px": -4,
+      "scale": 1,
+      "blur_px": 0
+    }
+  },
+  "swap": {
+    "mode": "crossfade",
+    "overlap_ms": 20,
+    "micro_delay_ms": 60
+  },
+  "usage_notes": "Best for replacing content in the same layout slot without directional meaning."
+}

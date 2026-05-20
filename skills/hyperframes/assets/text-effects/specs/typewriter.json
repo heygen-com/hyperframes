@@ -1,0 +1,40 @@
+{
+  "id": "typewriter",
+  "display_name": "Typewriter",
+  "description": "Per-character stepped reveal with a minimal editorial typing rhythm.",
+  "inspiration": "System-like text build patterns in Apple presentation and utility UI.",
+  "target": "per-character",
+  "signature_easing": "steps(1, end)",
+  "enter": {
+    "duration_ms": 240,
+    "stagger_ms": 46,
+    "easing": "steps(1, end)",
+    "from": {
+      "opacity": 0,
+      "y_px": 0
+    },
+    "to": {
+      "opacity": 1,
+      "y_px": 0
+    }
+  },
+  "exit": {
+    "duration_ms": 260,
+    "stagger_ms": 10,
+    "easing": "cubic-bezier(0.7, 0, 0.84, 0)",
+    "from": {
+      "opacity": 1,
+      "y_px": 0
+    },
+    "to": {
+      "opacity": 0,
+      "y_px": -4
+    }
+  },
+  "swap": {
+    "mode": "crossfade",
+    "overlap_ms": 0,
+    "micro_delay_ms": 85
+  },
+  "usage_notes": "Good for short copy. Keep line length moderate so stepping stays intentional."
+}

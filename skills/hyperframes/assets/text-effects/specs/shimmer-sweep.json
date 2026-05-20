@@ -1,0 +1,44 @@
+{
+  "id": "shimmer-sweep",
+  "display_name": "Shimmer Sweep",
+  "description": "A subtle sweep across a clean headline, blending in while gliding from left to center.",
+  "inspiration": "Premium hero copy transitions where a short soft push is used before settle.",
+  "target": "whole",
+  "signature_easing": "cubic-bezier(0.22, 1, 0.36, 1)",
+  "enter": {
+    "duration_ms": 850,
+    "stagger_ms": 0,
+    "easing": "cubic-bezier(0.22, 1, 0.36, 1)",
+    "from": {
+      "opacity": 0,
+      "x_px": -22,
+      "blur_px": 8
+    },
+    "to": {
+      "opacity": 1,
+      "x_px": 0,
+      "blur_px": 0
+    }
+  },
+  "exit": {
+    "duration_ms": 650,
+    "stagger_ms": 0,
+    "easing": "cubic-bezier(0.7, 0, 0.84, 0)",
+    "from": {
+      "opacity": 1,
+      "x_px": 0,
+      "blur_px": 0
+    },
+    "to": {
+      "opacity": 0,
+      "x_px": 22,
+      "blur_px": 8
+    }
+  },
+  "swap": {
+    "mode": "crossfade",
+    "overlap_ms": 0,
+    "micro_delay_ms": 36
+  },
+  "usage_notes": "Use as a premium micro-transition for title swaps and copy refreshes. This variant avoids overlap between outgoing and incoming text."
+}

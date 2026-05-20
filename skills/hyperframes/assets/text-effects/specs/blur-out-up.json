@@ -1,0 +1,44 @@
+{
+  "id": "blur-out-up",
+  "display_name": "Blur Out Up",
+  "description": "Words arrive clean and depart upward with increasing blur for airy exits.",
+  "inspiration": "Apple-style light typography where exit has more character than entry.",
+  "target": "per-word",
+  "signature_easing": "cubic-bezier(0.22, 1, 0.36, 1)",
+  "enter": {
+    "duration_ms": 560,
+    "stagger_ms": 28,
+    "easing": "cubic-bezier(0.22, 1, 0.36, 1)",
+    "from": {
+      "opacity": 0,
+      "y_px": 10,
+      "blur_px": 6
+    },
+    "to": {
+      "opacity": 1,
+      "y_px": 0,
+      "blur_px": 0
+    }
+  },
+  "exit": {
+    "duration_ms": 480,
+    "stagger_ms": 24,
+    "easing": "cubic-bezier(0.64, 0, 0.78, 0)",
+    "from": {
+      "opacity": 1,
+      "y_px": 0,
+      "blur_px": 0
+    },
+    "to": {
+      "opacity": 0,
+      "y_px": -14,
+      "blur_px": 8
+    }
+  },
+  "swap": {
+    "mode": "crossfade",
+    "overlap_ms": 170,
+    "micro_delay_ms": 35
+  },
+  "usage_notes": "Works best on short phrases; avoid very long lines to keep swap time tight."
+}
