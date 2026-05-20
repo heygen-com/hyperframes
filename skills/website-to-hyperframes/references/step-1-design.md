@@ -6,6 +6,8 @@ DESIGN.md is the brand inflection sub-agents layer on top of every composed beat
 
 **Target length: 250–350 lines.** Sub-agents in Step 5 compose UIs from scratch (divs/SVG/CSS) using your DESIGN.md as the spec — the more precise the component CSS values you encode here, the more brand-faithful the composed beats will look. Going under 200 lines tends to produce generic-looking dark-cinematic videos because sub-agents have no brand component DNA to compose with.
 
+**Fast-pacing exception:** For billboard-per-beat videos (short social ads where each beat is a single hero element on full-bleed background), a 50-line DESIGN.md with just colors + fonts + 3-5 do's/don'ts is enough. The Step 5 sub-agent prompt pastes brand values inline, so DESIGN.md depth only matters when the beats render full UIs.
+
 **User preferences always override brand rules.** If the user says "make it bright even though the site is dark" or "use serif fonts even though the brand is sans" — follow the user. DESIGN.md describes the captured website. The video might deliberately break that.
 
 You read `tokens.json` and `design-styles.json` in Step 0. If you remember the values, use them; if not, re-read. Don't guess.

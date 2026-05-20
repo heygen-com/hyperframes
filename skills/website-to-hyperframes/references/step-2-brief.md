@@ -116,6 +116,8 @@ When the user gives no creative direction, default to what the brand's visual id
 
 With that minimum in hand, still write an ambitious storyboard. "Surprise me" means "impress me," not "play it safe." Go bold.
 
+**Autonomous mode propagates.** When the user signals "surprise me" / "decide for me" / "just build it" here at Step 2, that signal kills every downstream 💬 gate too — Step 3's storyboard approval, Step 4's TTS provider choice, captions. Make all creative decisions yourself and present the finished video at the end. Do not ask four separate questions across four separate steps. Read the room once and commit.
+
 ### Specific direction
 
 If they say something vague ("make it really cool"), push back gently:
