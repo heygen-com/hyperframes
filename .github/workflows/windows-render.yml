@@ -3,6 +3,11 @@ name: Windows render verification
 permissions:
   contents: read
 
+# Suppress hyperframes CLI telemetry from HeyGen's own CI runs.
+# External users' CI continues to emit telemetry unless they set this themselves.
+env:
+  HYPERFRAMES_NO_TELEMETRY: "1"
+
 # Manually triggered smoke test that renders a HyperFrames composition on a
 # real Windows runner. Proves the PR #336 `where ffmpeg` fix actually works
 # end-to-end: FFmpeg is discovered natively on Windows, Chrome is installed
