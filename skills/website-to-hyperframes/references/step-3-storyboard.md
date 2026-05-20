@@ -311,8 +311,8 @@ Two things, both required:
 **Accents (decoration only — what brand-inflects the beat):**
 
 - Optional. Most beats need 0-1 accent. Format: `capture/assets/<filename>` — how it appears: position, opacity, treatment, motion (e.g. `capture/assets/logo.svg` — top-left, 60×60, fades in at 0.4s, breathes during hold).
-- Common accent uses: brand logo stamped on composed UI, hero illustration as depth layer, gradient image as ambient bg wash, brand mark on a composed pricing card.
-- If a beat has no obvious accent need, leave this blank. The composed visual is enough.
+- Common accent uses (when the primary visual is something else): brand logo stamped on a UI beat, hero illustration as a depth layer behind kinetic type, gradient image as ambient background wash. When the captured asset IS the primary visual (logo drawing itself on the opener, hero illustration with parallax as a hero beat), it isn't an accent — it's the beat content; document it under Composition, not here.
+- If a beat has no obvious accent need, leave this blank. The primary visual is enough.
 
 Write this section for THIS project's actual brand and the assets audited above — not from memory.
 

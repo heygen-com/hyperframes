@@ -77,9 +77,9 @@ Once those answers exist, **then** sketch the composed-beat directions — but g
 >
 > Brand accents I could layer in: [list 1-3 captured assets that *might* earn a place: the SVG logo for opener/closer, a hero illustration as a depth layer in one scene, a gradient image as an ambient bg wash. Note these are candidates, not assignments — most beats won't need any.]"
 
-**Important:** Lead every direction with **what the beat communicates and what it's composed of** — never with "the [asset] does X." If your first instinct is "the dashboard screenshot flies in," flip it: "Compose the dashboard from divs and animate it inside a 3D MacBook." If your first instinct is "the hero illustration centers the opener," flip it: "Open with kinetic typography of the value prop; the hero illustration can wash behind it as ambient depth."
+**Important:** Lead every direction with **what the beat communicates**, then with **how it's built** (which primitives). The narrow no-go: if your first instinct is "the product-UI screenshot flies in," flip it — compose the UI from divs and CSS instead. That's the slideshow pattern this skill exists to break. For captured logos, illustrations, and hero art, no flip is needed — they're valid primary visuals when the concept calls for them.
 
-The captured assets are a brand toolkit you reach for late, where they serve the concept — never the starting point.
+The captured assets are a brand toolkit you reach for late in the storyboard, where they serve the concept — never as the starting point of the concept itself.
 
 Present options:
 
@@ -146,7 +146,7 @@ Propose 2–3 brief creative directions (3–4 sentences each) with different **
 >
 > **Option C — Demonstration (narrated walkthrough):** Three composed UI scenes — kanban from cards-as-divs, AI chat with typewriter narration sync, command palette with character-typed search — each in the brand palette with the captured logo stamped top-left as identity. CSS crossfades between. Narration walks each one. ~35s, full VO.
 
-Each option states: the arc, the composed visuals carrying it, where (if anywhere) a captured asset shows up as an accent. **Never** an option whose primary content is "the screenshot of X" — if you find yourself writing one, flip it: name what gets composed, then where the brand accent lands on top.
+Each option states: the arc, the primary visuals carrying it (composed or captured — whichever fits the beat), and any brand accents layered on top. **Never** an option whose primary content is a pasted product-UI screenshot — if you find yourself writing one, flip it: name what gets composed instead. Captured SVGs, illustrations, hero art, and brand photography are fine as primary visuals when the concept calls for them.
 
 Let the user pick one or combine elements.
 
