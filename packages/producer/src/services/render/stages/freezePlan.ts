@@ -36,7 +36,12 @@ export interface LockedRenderConfig {
   warmupTicks: number;
 
   // Encode
-  encoder: "libx264-software" | "libx265-software" | "prores-software" | "png-sequence";
+  encoder:
+    | "libx264-software"
+    | "libx265-software"
+    | "libvpx-vp9-software"
+    | "prores-software"
+    | "png-sequence";
   /**
    * Caller-supplied quality enum, persisted so chunk workers can rebuild
    * the matching `getEncoderPreset(quality, format, …)` instead of
@@ -60,6 +65,25 @@ export interface LockedRenderConfig {
 
   /** Snapshot of `PRODUCER_RUNTIME_*` env vars at plan time. */
   runtimeEnv: Record<string, string>;
+
+  /**
+   * Render-time variable overrides snapshotted at plan time. Chunk workers
+   * re-inject these into the page as `window.__hfVariables` before the
+   * first capture, so every chunk sees the same `getVariables()` resolution
+   * the controller used to size the plan.
+   *
+   * Folded into the canonical encoder.json bytes that feed `planHash` —
+   * two plans with different variables produce different hashes (the
+   * intended behavior: different variables can produce different rendered
+   * frames). Two plans with the same variables produce identical hashes
+   * because canonical-JSON sorts object keys.
+   *
+   * Optional: omitted (undefined) when the caller doesn't pass variables;
+   * stripped from the canonical JSON via the same `stripUndefined` pass
+   * that handles `crf`/`bitrate`, so an absent value hashes the same as
+   * before this field existed.
+   */
+  variables?: Record<string, unknown>;
 }
 
 export interface CompositionMetadataJson {

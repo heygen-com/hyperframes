@@ -12,13 +12,9 @@ import type {
 import {
   buildStableSelector,
   escapeCssString,
-  findClosestByAttribute,
-  getElementDepth,
-  getPreferredClassSelector,
   getSelectorIndex,
   getSourceFileForElement,
   isHtmlElement,
-  isTextBearingTag,
   normalizeTimelineCompositionSource,
   querySelectorAllSafely,
 } from "./domEditingDom";
@@ -60,7 +56,7 @@ function isEmptyVisualContainer(el: HTMLElement): boolean {
   return true;
 }
 
-export function hasRenderedBox(el: HTMLElement): boolean {
+function hasRenderedBox(el: HTMLElement): boolean {
   const rect = el.getBoundingClientRect();
   if (rect.width <= 1 || rect.height <= 1) return false;
   if (!isElementComputedVisible(el)) return false;
@@ -69,23 +65,6 @@ export function hasRenderedBox(el: HTMLElement): boolean {
 }
 
 // ─── Visual scoring ──────────────────────────────────────────────────────────
-
-function isEditableTextLeafForScoring(el: HTMLElement): boolean {
-  return isTextBearingTag(el.tagName.toLowerCase()) && el.children.length === 0;
-}
-
-function getVisualElementScore(el: HTMLElement, pointerStackIndex: number): number {
-  const tagName = el.tagName.toLowerCase();
-  const rect = el.getBoundingClientRect();
-  const area = Math.max(1, rect.width * rect.height);
-  const smallerElementBonus = Math.max(0, 1_000_000 - Math.min(area, 1_000_000)) / 1_000;
-  const visualLeafBonus =
-    isEditableTextLeafForScoring(el) || ["img", "video", "canvas", "svg"].includes(tagName)
-      ? 2_000
-      : 0;
-
-  return getElementDepth(el) * 10_000 + visualLeafBonus + smallerElementBonus - pointerStackIndex;
-}
 
 // ─── Layer patch target ──────────────────────────────────────────────────────
 
@@ -174,25 +153,31 @@ export function resolveVisualDomEditSelectionTarget(
   elementsFromPoint: Iterable<Element | null | undefined>,
   options: Pick<DomEditContextOptions, "activeCompositionPath">,
 ): HTMLElement | null {
-  let best: { element: HTMLElement; score: number } | null = null;
-  let pointerStackIndex = 0;
+  const candidates: HTMLElement[] = [];
 
   for (const entry of elementsFromPoint) {
-    if (!isHtmlElement(entry)) {
-      pointerStackIndex += 1;
-      continue;
-    }
-
+    if (!isHtmlElement(entry)) continue;
     if (hasRenderedBox(entry) && getDomLayerPatchTarget(entry, options.activeCompositionPath)) {
-      const score = getVisualElementScore(entry, pointerStackIndex);
-      if (!best || score > best.score) {
-        best = { element: entry, score };
-      }
+      candidates.push(entry);
     }
-    pointerStackIndex += 1;
   }
 
-  return best?.element ?? null;
+  if (candidates.length === 0) return null;
+
+  // candidates are in visual stacking order (topmost first, from elementsFromPoint).
+  // Start with the topmost and only replace with a descendant that is more
+  // specific within the same visual subtree. Never jump to an unrelated
+  // element that happens to be painted behind the current pick.
+  let best = candidates[0];
+
+  for (let i = 1; i < candidates.length; i++) {
+    const candidate = candidates[i];
+    if (best.contains(candidate)) {
+      best = candidate;
+    }
+  }
+
+  return best;
 }
 
 // ─── Raster detection ────────────────────────────────────────────────────────
@@ -324,7 +309,3 @@ export function getDirectLayerChildren(
       isHtmlElement(child) && getDomLayerPatchTarget(child, options.activeCompositionPath) !== null,
   );
 }
-
-// ─── Composition source helpers ───────────────────────────────────────────────
-
-export { findClosestByAttribute, getPreferredClassSelector, getSourceFileForElement };

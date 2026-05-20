@@ -17,7 +17,7 @@ interface RecordEditInput {
   files: Record<string, { before: string; after: string }>;
 }
 
-interface UseManifestPersistenceParams {
+interface UsePreviewPersistenceParams {
   projectId: string | null;
   showToast: (message: string, tone?: "error" | "info") => void;
   readOptionalProjectFile: (path: string) => Promise<string>;
@@ -26,15 +26,18 @@ interface UseManifestPersistenceParams {
   previewIframeRef: React.MutableRefObject<HTMLIFrameElement | null>;
   activeCompPathRef: React.MutableRefObject<string | null>;
   /** Shared timestamp ref — written by any studio save (code tab, timeline, DOM edits).
-   *  Used to suppress SSE echoes so we don't double-reload after our own saves. */
+   *  Used to suppress file-change echoes so we don't reload after our own saves. */
   domEditSaveTimestampRef: React.MutableRefObject<number>;
+  /** Tracks in-flight timeline edits that patch the iframe DOM directly. File-change
+   *  events for these paths are always suppressed since the preview is already up-to-date. */
+  pendingTimelineEditPathRef?: React.MutableRefObject<Set<string>>;
   /** Called to reload the preview after undo/redo or external file changes. */
   reloadPreview: () => void;
 }
 
 // ── Hook ──
 
-export function useManifestPersistence({
+export function usePreviewPersistence({
   projectId,
   showToast: _showToast,
   readOptionalProjectFile: _readOptionalProjectFile,
@@ -44,7 +47,8 @@ export function useManifestPersistence({
   activeCompPathRef: _activeCompPathRef,
   domEditSaveTimestampRef,
   reloadPreview,
-}: UseManifestPersistenceParams) {
+  pendingTimelineEditPathRef,
+}: UsePreviewPersistenceParams) {
   void _showToast;
   void _recordEdit;
   void _activeCompPathRef;
@@ -162,8 +166,11 @@ export function useManifestPersistence({
     const handler = (payload?: unknown) => {
       const changedPath = readStudioFileChangePath(payload);
       if (!changedPath) return;
-      const recentDomEditSave = Date.now() - domEditSaveTimestampRef.current < 1200;
-      // External file change — reload unless it's an echo of our own save.
+      const recentDomEditSave = Date.now() - domEditSaveTimestampRef.current < 4000;
+      if (pendingTimelineEditPathRef?.current.has(changedPath)) {
+        pendingTimelineEditPathRef.current.delete(changedPath);
+        return;
+      }
       if (!recentDomEditSave) {
         reloadPreview();
       }

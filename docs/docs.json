@@ -74,13 +74,14 @@
               "guides/pipeline",
               "guides/html-in-canvas",
               "guides/website-to-video",
+              "guides/antigravity",
+              "guides/copilot-cli",
               "guides/claude-design",
               "guides/open-design",
               "guides/prompting",
               "guides/hyperframes-vs-remotion",
               "guides/gsap-animation",
               "guides/rendering",
-              "guides/deploy",
               "guides/remove-background",
               "guides/hdr",
               "guides/4k-rendering",
@@ -89,6 +90,15 @@
               "guides/video-editor-cheatsheet",
               "guides/common-mistakes",
               "guides/troubleshooting"
+            ]
+          },
+          {
+            "group": "Deploy",
+            "pages": [
+              "guides/deploy",
+              "deploy/aws-lambda",
+              "deploy/templates-on-lambda",
+              "deploy/migrating-to-hyperframes-lambda"
             ]
           }
         ]
@@ -237,13 +247,6 @@
               "packages/producer",
               "packages/studio",
               "packages/cli"
-            ]
-          },
-          {
-            "group": "Deploy",
-            "pages": [
-              "deploy/aws-lambda",
-              "deploy/migrating-to-hyperframes-lambda"
             ]
           }
         ]

@@ -70,6 +70,11 @@ export {
 // ── Assemble (Activity C) ───────────────────────────────────────────────────
 export { assemble, type AssembleResult } from "./services/distributed/assemble.js";
 
+// ── Format union ────────────────────────────────────────────────────────────
+// Canonical output-format type. The aws-lambda package re-exports it so
+// CLI / adopter SDKs can derive runtime allowlists from one source.
+export type { DistributedFormat } from "./services/distributed/shared.js";
+
 // ── Plan-time shared types from `freezePlan` ───────────────────────────────
 // Re-exported so adopters that deserialize a planDir's `meta/encoder.json`
 // or `meta/chunks.json` see the same shapes the producer wrote them as.

@@ -42,11 +42,17 @@ Most adopters' render config maps directly:
 | `fps` | `--fps=30` (CLI) or `config.fps` (SDK) | 24, 30, 60 only — non-integer NTSC rationals are an in-process-only feature. |
 | `width` / `height` | `--width` / `--height` flags, or `config.width` / `config.height` | Even integers ≤ 7680 (yuv420p parity). |
 | `codec: 'h264' / 'h265'` | `--codec=h264` or `--codec=h265` (mp4 only) | h265 uses libx265 with closed-GOP keyint params so chunked concat-copy round-trips losslessly. |
-| Output format | `--format=mp4 / mov / png-sequence` | Distributed mode refuses webm + HDR at plan time. |
+| Output format | `--format=mp4 / mov / webm / png-sequence` | webm uses libvpx-vp9 + closed-GOP concat-copy. Distributed mode still refuses HDR mp4 at plan time. |
 | Quality preset | `--quality=draft / standard / high` | Maps onto ffmpeg encoder presets. |
 | Chunk size in frames | `--chunk-size=240` (default 240) | ~8s at 30 fps; sized to fit Lambda's 15-min cap with headroom. |
 | Max parallel chunks | `--max-parallel-chunks=16` (default 16) | Caps the Map state's fan-out. |
 | Bitrate / CRF | `--bitrate=10M` or `--crf=18` | Mutually exclusive. |
+
+## Variables (inputProps)
+
+Render-time payloads — `inputProps` in some frameworks, `variables` in HyperFrames — are isomorphic. Declare the composition's variable shape on the root `<html>` element via `data-composition-variables`, then pass per-render values with `hyperframes render --variables '{...}'` locally or `hyperframes lambda render --variables` on the Lambda surface. The same 256 KiB execution-input cap and "URL your assets, don't inline base64" convention apply.
+
+The full mapping — `defaultProps` → declarations, `useCurrentFrame()` + `props.<x>` → `__hyperframes.getVariables().<x>`, `renderMediaOnLambda({ inputProps })` → `renderToLambda({ config: { variables } })` — lives in [Templates on Lambda](/deploy/templates-on-lambda#migrating-from-remotion-lambda-inputprops).
 
 ## What HyperFrames does differently
 
@@ -64,9 +70,11 @@ HyperFrames refuses `data-gpu-mode="hardware"` in distributed mode — hardware 
 
 `hdrMode: 'force-hdr'` is rejected at plan time. The v1.5 backlog covers HDR mp4 via `-bsf:v hevc_metadata` re-application; for now, HDR renders use the in-process renderer outside Lambda.
 
-### No webm distributed
+### webm uses closed-GOP VP9
 
-VP9 in matroska doesn't round-trip cleanly through concat-copy (the moov-atom keyframe assumptions don't hold). webm renders use the in-process renderer or accept a controlled re-encode at the assemble stage — coming in v1.5. The Lambda handler refuses webm with `FORMAT_NOT_SUPPORTED_IN_DISTRIBUTED` so the failure is loud.
+webm distributed renders go through libvpx-vp9 with `-g <chunkSize>`, `-keyint_min <chunkSize>`, `-auto-alt-ref 0`, and `-cpu-used 2`. The alt-ref disable is the load-bearing bit: libvpx-vp9's default non-displayable alt-ref frames can land anywhere in a GOP, which breaks concat-copy at chunk seams. Closed-GOP forces a keyframe at every chunk boundary so `ffmpeg -f concat -c copy` round-trips losslessly. Output is `yuva420p` to preserve alpha. Audio is muxed as Opus.
+
+Distributed webm files are typically ~10-25% larger than the same composition rendered in-process at the same CRF, because closed-GOP forces more keyframes than the in-process single-pass would emit. Per-chunk encode is also slower than libvpx-vp9's default speed/quality tradeoff (`-cpu-used 2` is more conservative than the default for `-deadline good`). The single-machine in-process renderer remains the right choice for short webm renders; distributed pays for itself once a render's wall-clock exceeds what one machine delivers.
 
 ### State files are local by default
 
@@ -78,7 +86,7 @@ The default policy doc emitted by `hyperframes lambda policies user/role` uses `
 
 ## Migration checklist
 
-1. **Inventory** the compositions you want to migrate. Filter out anything that needs HDR or webm — those stay on your current framework for now.
+1. **Inventory** the compositions you want to migrate. Filter out anything that needs HDR — that stays on your current framework for now. webm renders distributed via closed-GOP VP9 + concat-copy (see the webm section above).
 2. **Translate** each composition to plain HTML. The `[Concepts](/concepts)` page covers the data-attribute conventions; the `/hyperframes` skill (`npx skills add heygen-com/hyperframes`) makes Claude / Cursor / Codex aware of them too.
 3. **Wire** the new composition into your build pipeline alongside the old one. HyperFrames doesn't need an external bundler — you can `npx hyperframes preview` against the HTML directly.
 4. **Deploy** in a separate AWS account or with a `--stack-name=hyperframes-staging` first. Run a real render with `--wait`; verify the output bytes.

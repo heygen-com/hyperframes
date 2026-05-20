@@ -10,7 +10,6 @@ import type {
   StageZoomKeyframe,
   CompositionVariable,
 } from "../core.types";
-import { CANVAS_DIMENSIONS } from "../core.types";
 import {
   parseGsapScript,
   validateCompositionGsap,
@@ -902,5 +901,3 @@ function extractGsapScript(doc: Document): string | null {
   }
   return null;
 }
-
-export { CANVAS_DIMENSIONS };

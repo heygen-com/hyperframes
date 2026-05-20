@@ -904,6 +904,7 @@ export async function compileForRender(
   // positions survive frame-by-frame rendering without a JSON sidecar.
   const HF_POSITION_ATTRS = [
     'data-hf-studio-path-offset="true"',
+    'data-hf-studio-box-size="true"',
     'data-hf-studio-rotation="true"',
     'data-hf-studio-motion="',
   ];

@@ -260,11 +260,17 @@ export async function runHybridLayeredFrameLoop(input: HybridLoopInput): Promise
           // awaits it. The encoder reorder buffer fences ordering so out-
           // of-order blend completion is fine.
           const frameIdx = i;
+          // When the @hyperframes/shader-transitions composition omits the
+          // shader on a transition entry, it requests a CSS crossfade. The
+          // engine-side path uses applyFallbackTransition() on the page; the
+          // producer's Node-side layered pipeline runs the equivalent here
+          // by routing the blend through `crossfade`.
+          const shaderName = activeTransition.shader;
           const dispatch: Promise<void> = (async () => {
-            if (poolRef) {
+            if (poolRef && shaderName) {
               const blendStart = Date.now();
               const result = await poolRef.run({
-                shader: activeTransition.shader,
+                shader: shaderName,
                 bufferA: buffers.bufferA,
                 bufferB: buffers.bufferB,
                 output: buffers.output,
@@ -277,7 +283,9 @@ export async function runHybridLayeredFrameLoop(input: HybridLoopInput): Promise
               buffers.output = result.output;
               addHdrTiming(hdrPerf, "transitionCompositeMs", blendStart);
             } else {
-              const transitionFn: TransitionFn = TRANSITIONS[activeTransition.shader] ?? crossfade;
+              const transitionFn: TransitionFn = shaderName
+                ? (TRANSITIONS[shaderName] ?? crossfade)
+                : crossfade;
               const blendStart = Date.now();
               transitionFn(
                 buffers.bufferA,

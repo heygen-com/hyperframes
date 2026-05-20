@@ -5,10 +5,7 @@ import {
   resolveTimelineAssetInitialGeometry,
 } from "./timelineAssetDrop";
 import { collectHtmlIds } from "./studioHelpers";
-import {
-  buildTrackZIndexMap,
-  formatTimelineAttributeNumber,
-} from "../player/components/timelineEditing";
+import { formatTimelineAttributeNumber } from "../player/components/timelineEditing";
 import { saveProjectFilesWithHistory } from "./studioFileHistory";
 import type { EditHistoryKind } from "./editHistory";
 
@@ -127,8 +124,7 @@ export async function addBlockToProject(
             ? Math.max(...relevantElements.map((te) => te.track)) + 1
             : 1);
 
-      const trackZIndices = buildTrackZIndexMap([...relevantElements.map((te) => te.track), track]);
-      const zIndex = trackZIndices.get(track) ?? 1;
+      const zIndex = Math.max(1, relevantElements.length + 1);
 
       const width = isBlock
         ? (block as { dimensions: { width: number } }).dimensions.width

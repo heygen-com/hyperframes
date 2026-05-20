@@ -4,8 +4,12 @@
  * Production callers (the in-process `htmlCompiler`) call the function
  * without options and get the legacy behavior: external font fetch failures
  * are swallowed and a warning is logged. Distributed callers pass
- * `failClosedFontFetch: true` so missing fonts surface as typed
- * non-retryable failures before any chunk is rendered.
+ * `failClosedFontFetch: true` so non-deterministic infrastructure failures
+ * (5xx, network errors, DNS) surface as typed non-retryable failures before
+ * any chunk is rendered. 4xx responses are treated as a *deterministic*
+ * "Google Fonts does not serve this family" answer — same outcome on every
+ * retry — and pass through to the embedded-face fallback without
+ * tripping `failClosedFontFetch` in either mode.
  *
  * The tests inject `fetchImpl` so no real network call happens.
  */
@@ -38,6 +42,19 @@ function makeHttp404Fetch(): typeof fetch {
     new Response("", { status: 404, statusText: "Not Found" })) as unknown as typeof fetch;
 }
 
+function makeHttp400Fetch(): typeof fetch {
+  return (async () =>
+    new Response("", { status: 400, statusText: "Bad Request" })) as unknown as typeof fetch;
+}
+
+function makeHttp503Fetch(): typeof fetch {
+  return (async () =>
+    new Response("", {
+      status: 503,
+      statusText: "Service Unavailable",
+    })) as unknown as typeof fetch;
+}
+
 describe("injectDeterministicFontFaces — failClosedFontFetch: false (default)", () => {
   it("swallows a network failure and returns the original HTML (no throw)", async () => {
     const result = await injectDeterministicFontFaces(HTML_REQUESTING_UNRESOLVED_FONT, {
@@ -53,6 +70,14 @@ describe("injectDeterministicFontFaces — failClosedFontFetch: false (default)"
     const result = await injectDeterministicFontFaces(HTML_REQUESTING_UNRESOLVED_FONT, {
       failClosedFontFetch: false,
       fetchImpl: makeHttp404Fetch(),
+    });
+    expect(result.includes("data-hyperframes-deterministic-fonts")).toBe(false);
+  });
+
+  it("swallows a 5xx response and returns the original HTML (no throw)", async () => {
+    const result = await injectDeterministicFontFaces(HTML_REQUESTING_UNRESOLVED_FONT, {
+      failClosedFontFetch: false,
+      fetchImpl: makeHttp503Fetch(),
     });
     expect(result.includes("data-hyperframes-deterministic-fonts")).toBe(false);
   });
@@ -84,28 +109,50 @@ describe("injectDeterministicFontFaces — failClosedFontFetch: true", () => {
     expect((caught as Error).message).toContain("simulated network failure");
   });
 
-  it("throws FontFetchError on a 404 response", async () => {
+  it("does NOT throw on a 4xx response — 4xx means 'Google Fonts does not serve this family', a deterministic answer", async () => {
+    // Google Fonts returns HTTP 400 for non-Google families like
+    // "Segoe UI", "Arial", "Futura". Same response on every retry, so it
+    // doesn't violate the byte-identical-retry contract — the render
+    // falls back to embedded faces / the composition's font-family chain.
+    // No FONT_FETCH_FAILED.
+    const result = await injectDeterministicFontFaces(HTML_REQUESTING_UNRESOLVED_FONT, {
+      failClosedFontFetch: true,
+      fetchImpl: makeHttp400Fetch(),
+    });
+    // No @font-face was injected (no faces returned), but the call resolves.
+    expect(result.includes("data-hyperframes-deterministic-fonts")).toBe(false);
+  });
+
+  it("does NOT throw on a 404 response either — same reasoning as 4xx generally", async () => {
+    const result = await injectDeterministicFontFaces(HTML_REQUESTING_UNRESOLVED_FONT, {
+      failClosedFontFetch: true,
+      fetchImpl: makeHttp404Fetch(),
+    });
+    expect(result.includes("data-hyperframes-deterministic-fonts")).toBe(false);
+  });
+
+  it("throws FontFetchError on a 5xx response — non-deterministic, could differ on retry", async () => {
     let caught: unknown;
     try {
       await injectDeterministicFontFaces(HTML_REQUESTING_UNRESOLVED_FONT, {
         failClosedFontFetch: true,
-        fetchImpl: makeHttp404Fetch(),
+        fetchImpl: makeHttp503Fetch(),
       });
     } catch (err) {
       caught = err;
     }
     expect(caught).toBeInstanceOf(FontFetchError);
     expect((caught as FontFetchError).code).toBe(FONT_FETCH_FAILED);
-    expect((caught as Error).message).toContain("HTTP 404");
+    expect((caught as Error).message).toContain("HTTP 503");
     expect((caught as Error).message).toContain("NotARealFontFamilyForTest");
   });
 
-  it("includes the requested URL in the error", async () => {
+  it("includes the requested URL in 5xx errors", async () => {
     let caught: unknown;
     try {
       await injectDeterministicFontFaces(HTML_REQUESTING_UNRESOLVED_FONT, {
         failClosedFontFetch: true,
-        fetchImpl: makeHttp404Fetch(),
+        fetchImpl: makeHttp503Fetch(),
       });
     } catch (err) {
       caught = err;
@@ -114,15 +161,19 @@ describe("injectDeterministicFontFaces — failClosedFontFetch: true", () => {
     expect((caught as FontFetchError).url).toContain("NotARealFontFamilyForTest");
   });
 
-  it("does NOT throw when the HTML uses a pre-bundled font (no fetch happens)", async () => {
-    // "Inter" is in FONT_ALIASES → uses bundled font data, never reaches
-    // the Google Fonts path → failClosedFontFetch=true is irrelevant here
-    // and shouldn't trip. (The full <html><head> wrap is required because
+  it("does NOT throw when bundled-font Google Fonts supplement returns no extra faces", async () => {
+    // "Inter" is in FONT_ALIASES → uses the embedded font bundle. Since
+    // c8e8fdcf, the resolver also queries Google Fonts to supplement any
+    // weights not in the embedded bundle. A successful empty CSS response
+    // means the bundle was sufficient — `failClosedFontFetch` doesn't
+    // trip. (The full <html><head> wrap is required because
     // injectDeterministicFontFaces injects into <head>.)
     const html = `<!doctype html><html><head><style>body { font-family: "Inter", sans-serif; }</style></head><body></body></html>`;
+    const fetchImpl = (async () =>
+      new Response("/* no faces */", { status: 200 })) as unknown as typeof fetch;
     const result = await injectDeterministicFontFaces(html, {
       failClosedFontFetch: true,
-      fetchImpl: makeFailingFetch(),
+      fetchImpl,
     });
     expect(result).toContain("data-hyperframes-deterministic-fonts");
   });

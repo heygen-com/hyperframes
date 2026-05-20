@@ -2,16 +2,20 @@
  * Activity C of the distributed render pipeline.
  *
  * `assemble(planDir, chunkPaths, audioPath, outputPath)` stitches per-chunk
- * outputs into the final deliverable. For mp4/mov this is `ffmpeg -f concat
- * -c copy` (free of re-encode loss because every chunk's first frame is an
- * IDR keyframe — the chunk encoder sets `lockGopForChunkConcat` to
- * enforce this). For png-sequence chunks (each chunk is a directory of
+ * outputs into the final deliverable. For mp4 / mov / webm this is
+ * `ffmpeg -f concat -c copy` (free of re-encode loss because every
+ * chunk's first frame is an IDR keyframe — the chunk encoder sets
+ * `lockGopForChunkConcat` to enforce this, which for libvpx-vp9 also
+ * disables alt-ref frames so concat seams remain independently
+ * decodable). For png-sequence chunks (each chunk is a directory of
  * frames) this is a straight directory merge with global re-numbering.
  *
- * Mux + faststart for mp4/mov go through the engine's `muxVideoWithAudio`
- * + `applyFaststart` helpers — same path the in-process renderer uses; we
- * just feed concat output rather than streaming-encoder output. Audio
- * length is pad-or-trimmed to `frameCount / fps` via
+ * Mux + faststart for mp4 / mov / webm go through the engine's
+ * `muxVideoWithAudio` + `applyFaststart` helpers — same path the
+ * in-process renderer uses; we just feed concat output rather than
+ * streaming-encoder output. (Faststart is a no-op for webm and mov —
+ * applyFaststart copies the input verbatim.) Audio length is
+ * pad-or-trimmed to `frameCount / fps` via
  * `padOrTrimAudioToVideoFrameCount` so the mux step doesn't introduce
  * sub-millisecond drift at the end of long renders.
  *
@@ -34,6 +38,7 @@ import { applyFaststart, muxVideoWithAudio, runFfmpeg } from "@hyperframes/engin
 import { defaultLogger, type ProducerLogger } from "../../logger.js";
 import { padOrTrimAudioToVideoFrameCount } from "../render/audioPadTrim.js";
 import type { ChunkSliceJson } from "../render/stages/freezePlan.js";
+import type { DistributedFormat } from "./shared.js";
 
 /**
  * Result of {@link assemble}. `fileSize` reflects the final file on disk
@@ -57,7 +62,7 @@ interface PlanJsonForAssemble {
     fpsDen: number;
     width: number;
     height: number;
-    format: "mp4" | "mov" | "png-sequence" | "webm";
+    format: DistributedFormat;
   };
 }
 
@@ -116,7 +121,7 @@ export async function assemble(
     return mergePngFrameDirs(chunkPaths, outputPath, plan.totalFrames, audioPath, start);
   }
 
-  // ── 2b. mp4 / mov: concat-copy then mux + faststart ────────────────────
+  // ── 2b. mp4 / mov / webm: concat-copy then mux + faststart ────────────
   if (!existsSync(dirname(outputPath))) {
     mkdirSync(dirname(outputPath), { recursive: true });
   }

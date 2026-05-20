@@ -4,9 +4,18 @@
  * poll — use `hyperframes lambda progress` for that.
  */
 
-import { resolve as resolvePath } from "node:path";
-import type { SerializableDistributedRenderConfig } from "@hyperframes/aws-lambda/sdk";
+import { existsSync } from "node:fs";
+import { join, resolve as resolvePath } from "node:path";
+import type {
+  DistributedFormat,
+  SerializableDistributedRenderConfig,
+} from "@hyperframes/aws-lambda/sdk";
 import { c } from "../../ui/colors.js";
+import {
+  reportVariableIssues,
+  resolveVariablesArg,
+  validateVariablesAgainstProject,
+} from "../../utils/variables.js";
 import { requireStack, stateFilePath } from "./state.js";
 
 // Dynamic-import the SDK so tsup keeps it out of the static-import head of
@@ -23,13 +32,24 @@ export interface RenderArgs {
   fps: 24 | 30 | 60;
   width: number;
   height: number;
-  format: "mp4" | "mov" | "png-sequence";
+  format: DistributedFormat;
   codec?: "h264" | "h265";
   quality?: "draft" | "standard" | "high";
   chunkSize?: number;
   maxParallelChunks?: number;
   executionName?: string;
   outputKey?: string;
+  /** Inline JSON for `--variables '{...}'`. Mutually exclusive with `variablesFile`. */
+  variables?: string;
+  /** Path to a JSON file for `--variables-file ./vars.json`. */
+  variablesFile?: string;
+  /**
+   * Fail the command if any `--variables` key is undeclared or has a wrong
+   * type vs the composition's `data-composition-variables`. Without this
+   * flag, mismatches are warnings (matches the local `hyperframes render`
+   * behavior).
+   */
+  strictVariables?: boolean;
   /** Print machine-readable JSON instead of the human-friendly summary. */
   json: boolean;
   /** Block until the render finishes. Polls `progress` until SUCCEEDED/FAILED. */
@@ -38,9 +58,42 @@ export interface RenderArgs {
   waitIntervalMs: number;
 }
 
+// fallow-ignore-next-line complexity
 export async function runRender(args: RenderArgs): Promise<void> {
   const stack = requireStack(args.stackName);
   const projectDir = resolvePath(args.projectDir);
+
+  // Resolve --variables / --variables-file using the same parser the local
+  // `hyperframes render` uses. `resolveVariablesArg` exits(1) with a friendly
+  // errorBox on parse errors so callers don't have to.
+  const variables = resolveVariablesArg(args.variables, args.variablesFile);
+
+  // Validate against the composition's `data-composition-variables`
+  // declaration when present. The local CLI silently treats unreadable
+  // index.html as "no declarations" — mirror that. Skip validation
+  // entirely when the project dir is missing on disk (e.g. `--site-id`
+  // pointing at a pre-uploaded site that was packaged on another machine).
+  if (variables && Object.keys(variables).length > 0) {
+    const indexPath = join(projectDir, "index.html");
+    if (existsSync(indexPath)) {
+      const issues = validateVariablesAgainstProject(indexPath, variables);
+      // Suppress the warning block when --json is set; stdout is reserved
+      // for the manifest. The strict-mode errorBox still prints to stderr
+      // and exits, so machine consumers still get a non-zero exit.
+      reportVariableIssues(issues, { strict: args.strictVariables ?? false, quiet: args.json });
+    } else if (args.strictVariables && !args.json) {
+      // --strict-variables asks for typed checking but there's no
+      // index.html to check against (typical with --site-id pointing at a
+      // pre-uploaded site). Make that silent skip visible so the flag
+      // doesn't quietly become a no-op.
+      console.warn(
+        c.warn(
+          `--strict-variables: no ${indexPath} on disk — schema validation skipped. ` +
+            "Variables flow through unchecked. To enable strict checking, run from a project dir that contains the composition.",
+        ),
+      );
+    }
+  }
 
   const config: SerializableDistributedRenderConfig = {
     fps: args.fps,
@@ -52,6 +105,7 @@ export async function runRender(args: RenderArgs): Promise<void> {
     chunkSize: args.chunkSize,
     maxParallelChunks: args.maxParallelChunks,
     runtimeCap: "lambda",
+    variables,
   };
 
   // When the caller passes only --site-id, synthesise the minimum-shape

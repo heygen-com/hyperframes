@@ -674,7 +674,7 @@ export function collectRuntimeTimelinePayload(params: {
   const shouldEmitNonDeterministicInf = timelineLooksLoopInflated && attrDurationCandidate == null;
   const durationInFrames = shouldEmitNonDeterministicInf
     ? Number.POSITIVE_INFINITY
-    : Math.max(1, Math.round(safeDuration * Math.max(1, params.canonicalFps)));
+    : Math.max(1, Math.ceil(safeDuration * Math.max(1, params.canonicalFps)));
   return {
     source: "hf-preview",
     type: "timeline",

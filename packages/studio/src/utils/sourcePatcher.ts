@@ -203,9 +203,9 @@ function patchInlineStyleInTag(
   } else {
     // No existing style attribute
     if (value === null) return html; // nothing to remove
-    // Add one
-    const newTag =
-      tag.replace(/>$/, "") + ` style="${prop}: ${escapeStyleAttributeValue(value, '"')}"`;
+    const selfClosing = /\s*\/$/.test(tag);
+    const base = selfClosing ? tag.replace(/\s*\/$/, "") : tag;
+    const newTag = `${base} style="${prop}: ${escapeStyleAttributeValue(value, '"')}"${selfClosing ? " /" : ""}`;
     return html.replace(tag, newTag);
   }
 }

@@ -5,5 +5,8 @@ packages/studio/src/components/editor/manualEdits.test.ts
 packages/studio/src/player/hooks/useTimelinePlayer.test.ts
 packages/studio/src/components/editor/manualEditsDom.ts
 packages/studio/src/utils/sourcePatcher.ts
+packages/studio/src/utils/sourcePatcher.test.ts
 packages/studio/src/App.tsx
 packages/studio/src/player/components/Timeline.tsx
+packages/studio/src/player/components/timelineEditing.test.ts
+packages/studio/src/components/editor/domEditing.test.ts

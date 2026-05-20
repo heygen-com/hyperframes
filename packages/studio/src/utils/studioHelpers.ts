@@ -23,13 +23,7 @@ export function getTimelineElementLabel(element: TimelineElement): string {
   return element.label || element.id || element.tag;
 }
 
-export function confirmElementDelete(label: string, kind: "timeline clip" | "element"): boolean {
-  return window.confirm(
-    `Delete ${kind} "${label}"?\n\nThis removes it from the project source. You can use Undo to restore it.`,
-  );
-}
-
-export function normalizeProjectAssetPath(value: string): string {
+function normalizeProjectAssetPath(value: string): string {
   const trimmed = value.trim();
   const maybeUrl = /^[a-z]+:\/\//i.test(trimmed) ? new URL(trimmed).pathname : trimmed;
   return decodeURIComponent(maybeUrl)
@@ -51,7 +45,7 @@ export function toRelativeProjectAssetPath(sourceFile: string, assetPath: string
   return [...fromParts.map(() => ".."), ...targetParts].join("/") || assetPath;
 }
 
-export function isAbsoluteFilePath(value: string): boolean {
+function isAbsoluteFilePath(value: string): boolean {
   return /^(?:\/|[A-Za-z]:[\\/]|\\\\)/.test(value);
 }
 
@@ -181,7 +175,7 @@ export function collectHtmlIds(source: string): string[] {
   return Array.from(source.matchAll(/\bid="([^"]+)"/g), (match) => match[1] ?? "");
 }
 
-export const DEFAULT_TIMELINE_ASSET_DURATION: Record<TimelineAssetKind, number> = {
+const DEFAULT_TIMELINE_ASSET_DURATION: Record<TimelineAssetKind, number> = {
   image: 3,
   video: 5,
   audio: 5,

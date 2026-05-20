@@ -35,6 +35,28 @@ describe("applyPatchByTarget", () => {
     );
   });
 
+  it("adds inline style to a self-closing void element without malforming it", () => {
+    const html = `<img id="gif-img" class="clip" data-start="1" src="earth.gif" alt="earth" />`;
+    const op: PatchOperation = { type: "inline-style", property: "z-index", value: "3" };
+
+    const result = applyPatch(html, "gif-img", op);
+    expect(result).toBe(
+      `<img id="gif-img" class="clip" data-start="1" src="earth.gif" alt="earth" style="z-index: 3" />`,
+    );
+    expect(result).not.toContain("/ style");
+  });
+
+  it("adds inline style to a self-closing void element matched by selector", () => {
+    const html = `<img class="clip hero" data-start="0" src="bg.png" alt="" />`;
+    const op: PatchOperation = { type: "inline-style", property: "opacity", value: "0.5" };
+
+    const result = applyPatchByTarget(html, { selector: ".hero" }, op);
+    expect(result).toBe(
+      `<img class="clip hero" data-start="0" src="bg.png" alt="" style="opacity: 0.5" />`,
+    );
+    expect(result).not.toContain("/ style");
+  });
+
   it("patches inline move styles by target", () => {
     const html = `<div id="card" style="position: absolute; left: 108px; top: 112px"></div>`;
 

@@ -1,24 +1,18 @@
-import type { DomEditViewport, DomEditSelection } from "../components/editor/domEditing";
+import type { DomEditViewport } from "../components/editor/domEditing";
 import { resolveVisualDomEditSelectionTarget } from "../components/editor/domEditing";
 import {
   getDomLayerPatchTarget,
   isElementComputedVisible,
 } from "../components/editor/domEditingElement";
-import { usePlayerStore, liveTime } from "../player";
 import { getEventTargetElement } from "./studioHelpers";
 
-export interface PreviewLocalPointer {
+interface PreviewLocalPointer {
   x: number;
   y: number;
   viewport: DomEditViewport;
 }
 
-export interface PreviewPlayerCompat {
-  getTime: () => number;
-  renderSeek: (timeSeconds: number) => void;
-}
-
-export function resolvePreviewLocalPointer(
+function resolvePreviewLocalPointer(
   iframe: HTMLIFrameElement,
   doc: Document,
   win: Window,
@@ -40,24 +34,6 @@ export function resolvePreviewLocalPointer(
     y: (clientY - iframeRect.top) / scaleY,
     viewport: { width: rootWidth, height: rootHeight },
   };
-}
-
-export function getPreviewLocalPointer(
-  iframe: HTMLIFrameElement,
-  clientX: number,
-  clientY: number,
-): PreviewLocalPointer | null {
-  let doc: Document | null = null;
-  let win: Window | null = null;
-  try {
-    doc = iframe.contentDocument;
-    win = iframe.contentWindow;
-  } catch {
-    return null;
-  }
-  if (!doc || !win) return null;
-
-  return resolvePreviewLocalPointer(iframe, doc, win, clientX, clientY);
 }
 
 const POINTER_EVENTS_OVERRIDE_ID = "__hf_studio_pointer_events_override__";
@@ -122,21 +98,6 @@ export function getPreviewTargetFromPointer(
   }
 }
 
-export function buildRasterClickSelectionContext(
-  selection: DomEditSelection,
-  localPointer: PreviewLocalPointer,
-): string {
-  return [
-    "The user clicked a large raster/background element in the Studio preview.",
-    `Preview click: x=${Math.round(localPointer.x)}px, y=${Math.round(localPointer.y)}px in a ${Math.round(
-      localPointer.viewport.width,
-    )}x${Math.round(localPointer.viewport.height)} composition.`,
-    `Selected target: <${selection.tagName}> ${selection.selector ?? selection.id ?? selection.label}.`,
-    "Visible copy or artwork at that point may be baked into the selected image/background rather than a selectable DOM text layer.",
-    "If the request mentions text seen at the click location, inspect or replace the image asset, or recreate that visible copy as editable DOM.",
-  ].join("\n");
-}
-
 function objectLike(value: unknown): object | null {
   return value && (typeof value === "object" || typeof value === "function") ? value : null;
 }
@@ -160,33 +121,6 @@ function readPlaybackTime(target: object | null, key: string): number | null {
   } catch {
     return null;
   }
-}
-
-export function getPreviewPlayer(win: Window | null | undefined): PreviewPlayerCompat | null {
-  const player = objectLike(win ? Reflect.get(win, "__player") : null);
-  if (!player) return null;
-  const getTime = Reflect.get(player, "getTime");
-  const renderSeek = Reflect.get(player, "renderSeek");
-  if (typeof getTime !== "function" || typeof renderSeek !== "function") return null;
-  return {
-    getTime: () => {
-      const value = getTime.call(player);
-      return typeof value === "number" && Number.isFinite(value) ? value : 0;
-    },
-    renderSeek: (timeSeconds: number) => {
-      renderSeek.call(player, timeSeconds);
-    },
-  };
-}
-
-export function seekStudioPreview(iframe: HTMLIFrameElement | null, timeSeconds: number): boolean {
-  const player = getPreviewPlayer(iframe?.contentWindow);
-  if (!player) return false;
-  const nextTime = Math.max(0, timeSeconds);
-  player.renderSeek(nextTime);
-  usePlayerStore.getState().setCurrentTime(nextTime);
-  liveTime.notify(nextTime);
-  return true;
 }
 
 export function pauseStudioPreviewPlayback(iframe: HTMLIFrameElement | null): number | null {

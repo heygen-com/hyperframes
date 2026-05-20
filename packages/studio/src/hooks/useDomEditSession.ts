@@ -151,7 +151,6 @@ export function useDomEditSession({
     setAgentModalOpen,
     setAgentPromptSelectionContext,
     setAgentModalAnchorPoint,
-    preloadAgentPromptSnippet,
     handleAskAgent,
     handleAgentModalSubmit,
   } = useAskAgentModal({
@@ -181,10 +180,6 @@ export function useDomEditSession({
     applyDomSelection,
     resolveDomSelectionFromPreviewPoint,
     updateDomEditHoverSelection,
-    preloadAgentPromptSnippet,
-    setAgentPromptSelectionContext,
-    setAgentModalAnchorPoint,
-    setAgentModalOpen,
     onClickToSource,
   });
 

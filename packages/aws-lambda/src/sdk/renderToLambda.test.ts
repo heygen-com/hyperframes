@@ -179,6 +179,71 @@ describe("renderToLambda", () => {
     expect(handle.renderId).toMatch(/^hf-render-[0-9a-f-]{36}$/);
   });
 
+  it("threads variables through the Step Functions execution input", async () => {
+    const sfn = new FakeSFN();
+    const s3 = new FakeS3();
+    const variables = { title: "Hello Alice", accent: "#ff0000" };
+    await renderToLambda({
+      projectDir,
+      bucketName: "test-bucket",
+      stateMachineArn: "arn:aws:states:us-east-1:1234:stateMachine:hf",
+      config: { ...baseConfig, variables },
+      executionName: "smoke-variables",
+      sfn: asSFNClient(sfn),
+      s3: asS3Client(s3),
+    });
+    expect(sfn.starts).toHaveLength(1);
+    const start = sfn.starts[0]!;
+    // The execution input carries the variables under Config.variables —
+    // the Step Functions state machine forwards `Config` verbatim into the
+    // PlanEvent's `Config` field, where the handler spreads it into the
+    // producer's DistributedRenderConfig.
+    const input = start.input as { Config: { variables?: Record<string, unknown> } };
+    expect(input.Config.variables).toEqual(variables);
+  });
+
+  it("rejects a config whose variables blob would push the execution input over 256 KiB", async () => {
+    const sfn = new FakeSFN();
+    const s3 = new FakeS3();
+    const huge = "x".repeat(260 * 1024);
+    await expect(
+      renderToLambda({
+        projectDir,
+        bucketName: "test-bucket",
+        stateMachineArn: "arn:aws:states:us-east-1:1234:stateMachine:hf",
+        config: { ...baseConfig, variables: { blob: huge } },
+        executionName: "smoke-too-big",
+        sfn: asSFNClient(sfn),
+        s3: asS3Client(s3),
+      }),
+    ).rejects.toThrow(/256.*KiB|templates-on-lambda/);
+    // The reject must happen BEFORE StartExecution — uncaught oversize input
+    // surfaces as States.DataLimitExceeded 50ms in, far from this call site.
+    expect(sfn.starts).toHaveLength(0);
+  });
+
+  it("rejects a config whose variables contain non-JSON-safe values", async () => {
+    const sfn = new FakeSFN();
+    const s3 = new FakeS3();
+    await expect(
+      renderToLambda({
+        projectDir,
+        bucketName: "test-bucket",
+        stateMachineArn: "arn:aws:states:us-east-1:1234:stateMachine:hf",
+        config: {
+          ...baseConfig,
+          // BigInt would throw at JSON.stringify time; catch it at the validator
+          // boundary with a typed error instead.
+          variables: { count: 9_007_199_254_740_993n } as unknown as Record<string, unknown>,
+        },
+        executionName: "smoke-bigint",
+        sfn: asSFNClient(sfn),
+        s3: asS3Client(s3),
+      }),
+    ).rejects.toThrow(InvalidConfigError);
+    expect(sfn.starts).toHaveLength(0);
+  });
+
   it("propagates a missing executionArn as an error", async () => {
     const sfn = {
       async send(_cmd: unknown): Promise<unknown> {

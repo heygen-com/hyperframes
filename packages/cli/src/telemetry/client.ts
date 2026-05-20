@@ -40,11 +40,6 @@ export function shouldTrack(): boolean {
     return false;
   }
 
-  if (process.env["CI"] === "true" || process.env["CI"] === "1") {
-    telemetryEnabled = false;
-    return false;
-  }
-
   if (isDevMode()) {
     telemetryEnabled = false;
     return false;

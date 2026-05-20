@@ -1,0 +1,150 @@
+---
+title: Google Antigravity
+description: "Set up HyperFrames in Google Antigravity — install skills, author compositions, and render video from the agent-first IDE."
+---
+
+Google Antigravity is Google's agent-first IDE built on VS Code. Its agent discovers and loads HyperFrames skills automatically based on your prompts, so you get correct compositions without memorizing framework internals.
+
+## Install skills
+
+Install the HyperFrames skill package into your project:
+
+```bash
+npx skills add heygen-com/hyperframes
+```
+
+This places skill directories inside `.agents/skills/` at your workspace root — the location Antigravity scans for workspace-scoped skills.
+
+<Tip>
+  If you want the skills available across all your Antigravity projects, install them to the global scope instead:
+
+  ```bash
+  npx skills add heygen-com/hyperframes --agent antigravity --global
+  ```
+
+  Global skills live in `~/.gemini/antigravity/skills/` and load in every workspace.
+</Tip>
+
+Verify the skills are installed:
+
+```bash
+ls .agents/skills/
+```
+
+You should see directories like `hyperframes/`, `hyperframes-cli/`, `gsap/`, `tailwind/`, and others — each containing a `SKILL.md` that the agent reads on demand.
+
+## How skills work in Antigravity
+
+Antigravity uses **semantic matching** — when you type a prompt, the agent compares it against the `description` field of every available skill and loads the ones that are relevant. You don't need to invoke skills with a slash command (though you can reference them by name for precision).
+
+| You say | Agent loads |
+|---|---|
+| "Create a 10-second product intro with captions" | `hyperframes`, `hyperframes-cli` |
+| "Add a GSAP scale-pop to the title" | `gsap` |
+| "Use Tailwind for styling" | `tailwind` |
+| "Transcribe this audio and add captions" | `hyperframes-media` |
+| "Add a shimmer sweep transition" | `hyperframes-registry` |
+
+The skill is only injected into the agent's context window when it matches — this keeps the context clean and focused.
+
+<Note>
+  For the best results, mention "HyperFrames" or "composition" in your prompt so the agent matches the right skills immediately instead of guessing at generic web-video conventions.
+</Note>
+
+## Create and preview a video
+
+<Steps>
+  <Step title="Scaffold a project">
+    Open Antigravity's integrated terminal and run:
+
+    ```bash
+    npx hyperframes init my-video
+    cd my-video
+    ```
+
+    The wizard walks you through example selection and media import. Skills are installed automatically inside the new project.
+  </Step>
+
+  <Step title="Start the preview server">
+    ```bash
+    npx hyperframes preview
+    ```
+
+    This launches the HyperFrames Studio in your browser with hot reload — edits to `index.html` appear instantly.
+  </Step>
+
+  <Step title="Prompt the agent">
+    In Antigravity's agent sidebar, describe the video you want:
+
+    > Create a 15-second dark-themed product intro for my SaaS app with a fade-in title, hype-style captions, and a flash transition to the CTA.
+
+    The agent reads the HyperFrames skill, writes valid HTML with `data-*` attributes and GSAP timelines, and saves it to your project files. The preview updates automatically.
+  </Step>
+
+  <Step title="Iterate">
+    Talk to the agent like a video editor — don't re-prompt from scratch:
+
+    > Make the title 2x bigger and swap the transition to a whip pan.
+
+    > Add a lower third at 0:03 with my name.
+
+    > Replace the background with assets/hero.mp4.
+  </Step>
+
+  <Step title="Render">
+    ```bash
+    npx hyperframes render --output output.mp4
+    ```
+  </Step>
+</Steps>
+
+## Using multiple agents in Manager view
+
+Antigravity's [Manager view](https://antigravity.google/docs/agent) lets you orchestrate multiple agents in parallel. For complex multi-scene videos, you can split the work:
+
+- **Agent 1:** Author the intro scene and transitions
+- **Agent 2:** Generate TTS narration and caption timing
+- **Agent 3:** Build the data visualization scene
+
+Each agent picks up the relevant HyperFrames skills independently. Merge the output into a single `index.html` with `data-composition-src` references when all agents finish.
+
+## MCP alternative
+
+If you prefer zero-install cloud authoring, Antigravity supports remote MCP servers. Add the HyperFrames MCP connector to author and render compositions without the CLI — see [Antigravity's MCP documentation](https://antigravity.google/docs/mcp) for the exact setup steps in your version, then use the server URL:
+
+```
+https://mcp.heygen.com/mcp/hyperframes
+```
+
+Authorize via OAuth with your HeyGen account when prompted. See the [HyperFrames MCP guide](/guides/mcp) for full details on tools and prompting. The MCP handles rendering in the cloud; the CLI gives you local control.
+
+## Agent instruction files
+
+HyperFrames projects created with `npx hyperframes init` scaffold both `CLAUDE.md` and `AGENTS.md` automatically — these give the agent additional composition context beyond what the skills provide.
+
+- **`AGENTS.md`** — the cross-agent convention. Antigravity reads this regardless of which model you've selected (Gemini, Claude, or others).
+- **`CLAUDE.md`** — read when Antigravity's agent uses a Claude model (Sonnet or Opus), providing Claude-specific project instructions.
+
+## Tips
+
+- **Mention the skill by name when precision matters.** "Using the hyperframes skill, add a grain overlay" is more reliable than "add a grain overlay" when the agent has many skills loaded.
+- **Use `npx hyperframes lint` before rendering.** The linter catches structural issues (missing `class="clip"`, unregistered timelines, muted video violations) that the agent might miss on complex edits.
+- **Install registry blocks for advanced effects.** Run `npx hyperframes add shimmer-sweep` to install pre-built blocks, then ask the agent to wire them into your composition.
+- **Keep the preview server running.** Antigravity's file watcher + HyperFrames' hot reload means you see every agent edit in real time.
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Prompting guide" icon="message" href="/guides/prompting">
+    Vocabulary and patterns that produce better compositions.
+  </Card>
+  <Card title="Catalog" icon="grid-2" href="/catalog/blocks/data-chart">
+    50+ ready-to-use blocks the agent can install and wire.
+  </Card>
+  <Card title="GSAP Animation" icon="wand-magic-sparkles" href="/guides/gsap-animation">
+    Motion principles and timeline authoring.
+  </Card>
+  <Card title="Pipeline guide" icon="list-check" href="/guides/pipeline">
+    The 7-step structure agents follow for multi-beat videos.
+  </Card>
+</CardGroup>

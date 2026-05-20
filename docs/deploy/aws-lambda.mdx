@@ -11,6 +11,8 @@ hyperframes lambda render ./my-project --width 1920 --height 1080 --wait
 hyperframes lambda destroy
 ```
 
+Templates with [variables](/concepts/variables) work on the same Lambda stack — declare `data-composition-variables` on the composition, then pass values per render with `--variables` or fan a whole batch out with `lambda render-batch`. See the [Templates on Lambda](/deploy/templates-on-lambda) guide for the personalised-render pipeline (single render, batch from JSONL, programmatic SDK) and the 256 KiB Step Functions execution-input cap.
+
 ## Architecture
 
 ```

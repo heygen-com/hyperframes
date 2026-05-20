@@ -45,8 +45,8 @@ export interface HfTransitionMeta {
   time: number;
   /** Transition duration (seconds) */
   duration: number;
-  /** Shader identifier (e.g. "fade", "wipe") */
-  shader: string;
+  /** Shader identifier. Undefined when the transition is a CSS crossfade. */
+  shader?: string;
   /** GSAP easing string (e.g. "power2.inOut") */
   ease: string;
   /** Scene id the transition starts from */

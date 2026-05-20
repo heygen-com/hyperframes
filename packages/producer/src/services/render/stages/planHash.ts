@@ -32,6 +32,7 @@
  */
 
 import { createHash } from "node:crypto";
+import type { DistributedFormat } from "../../distributed/shared.js";
 
 /**
  * Schema-version prefix mixed into every digest. Bump the trailing version
@@ -71,7 +72,7 @@ export interface PlanDimensions {
   fpsDen: number;
   width: number;
   height: number;
-  format: "mp4" | "mov" | "png-sequence" | "webm";
+  format: DistributedFormat;
 }
 
 export interface PlanHashInput {

@@ -305,6 +305,12 @@ export function inlineSubCompositions(
         hostEl.innerHTML = prepared.outerHTML || "";
       } else {
         hostEl.innerHTML = compId ? innerRoot.innerHTML || "" : innerRoot.outerHTML || "";
+        // When the producer path strips the inner root (innerHTML), the
+        // authored id attribute is lost. Propagate it to the host so that
+        // rewritten #ID selectors ([data-hf-authored-id="X"]) still resolve.
+        if (compId && authoredRootId) {
+          hostEl.setAttribute("data-hf-authored-id", authoredRootId);
+        }
       }
     } else {
       for (const child of [...contentDoc.querySelectorAll("style, script")]) child.remove();

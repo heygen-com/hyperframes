@@ -1,0 +1,190 @@
+---
+title: GitHub Copilot CLI
+description: "Set up HyperFrames with GitHub Copilot CLI — install skills, invoke them with slash commands, and render video from the terminal."
+---
+
+GitHub Copilot CLI brings AI-powered coding assistance to your terminal. HyperFrames skills teach it how to write correct compositions, GSAP timelines, and framework-specific patterns — so you get valid video HTML without reading the docs yourself.
+
+## Prerequisites
+
+- **GitHub Copilot subscription** — Free, Pro, Pro+, Business, or Enterprise all include CLI access
+- **Copilot CLI installed** — `npm install -g @github/copilot` (or via the [install script](https://github.com/github/copilot-cli))
+- **Node.js 22+** and **FFmpeg** for the HyperFrames CLI
+
+## Install skills
+
+Install the HyperFrames skill package into your project:
+
+```bash
+npx skills add heygen-com/hyperframes
+```
+
+This writes skill directories to `.agents/skills/` in your project — the path Copilot CLI scans automatically for workspace-scoped skills.
+
+<Tip>
+  To make skills available across all your projects, install them globally:
+
+  ```bash
+  npx skills add heygen-com/hyperframes --agent github-copilot --global
+  ```
+
+  Global skills live in `~/.copilot/skills/` and load in every Copilot CLI session.
+</Tip>
+
+If you install skills during an active session, run `/skills` to open the skills picker and verify they appear. New skills installed to the project directory are picked up automatically on the next prompt.
+
+## Using skills
+
+Copilot CLI supports both **explicit invocation** via slash commands and **automatic detection** based on your prompt.
+
+### Slash commands
+
+Prefix a skill name with `/` to load it explicitly:
+
+```
+/hyperframes Create a 10-second product intro with a fade-in title and dark background.
+```
+
+```
+/gsap Add a scale-pop animation to the title element.
+```
+
+```
+/hyperframes-cli How do I render at 60fps with Docker?
+```
+
+### Auto-detection
+
+Copilot also matches skills based on the `description` field in each `SKILL.md`. If your prompt mentions compositions, timelines, or video rendering, the agent loads the right skills without you specifying them:
+
+```
+Create a 9:16 TikTok hook video about AI productivity with bouncy captions.
+```
+
+Explicit invocation is more reliable when you have many skills installed — with large skill sets, the agent's token budget may not fit every skill description, so naming the skill directly guarantees it loads.
+
+### Skill management
+
+| Command | What it does |
+|---|---|
+| `/skills` | Open the interactive skills picker — browse, enable, or disable skills |
+| `/skills add <path>` | Add an additional skill directory to the current session |
+
+## Create and preview a video
+
+<Steps>
+  <Step title="Scaffold a project">
+    ```bash
+    npx hyperframes init my-video
+    cd my-video
+    ```
+
+    Skills are installed automatically inside the new project.
+  </Step>
+
+  <Step title="Start the preview server">
+    ```bash
+    npx hyperframes preview
+    ```
+
+    Opens the HyperFrames Studio in your browser. Edits reload automatically.
+  </Step>
+
+  <Step title="Start Copilot CLI in the project directory">
+    In a second terminal:
+
+    ```bash
+    copilot
+    ```
+  </Step>
+
+  <Step title="Prompt with the skill">
+    ```
+    /hyperframes Create a 15-second dark-themed product intro with hype-style
+    captions and a flash transition to the CTA.
+    ```
+
+    The agent writes valid HyperFrames HTML — `data-*` attributes, `class="clip"` on timed elements, paused GSAP timelines registered on `window.__timelines`. The preview updates as files are saved.
+  </Step>
+
+  <Step title="Iterate">
+    Keep prompting without re-specifying the full context:
+
+    ```
+    Make the title 2x bigger and add a lower third at 0:03.
+    ```
+
+    ```
+    Swap the transition to a whip pan.
+    ```
+  </Step>
+
+  <Step title="Render">
+    ```bash
+    npx hyperframes render --output output.mp4
+    ```
+
+    Or ask the agent:
+
+    ```
+    /hyperframes-cli Render this composition to output.mp4 at high quality.
+    ```
+  </Step>
+</Steps>
+
+## Agent mode
+
+Copilot CLI's agent mode can handle multi-step tasks autonomously — scaffolding a project, writing the composition, installing registry blocks, and rendering in sequence:
+
+```
+/hyperframes Scaffold a new project called "launch-video", create a 30-second
+product launch video with 5 scenes, install the flash-through-white transition
+block, and render to mp4.
+```
+
+In agent mode, Copilot runs terminal commands (like `npx hyperframes init` and `npx hyperframes render`) on your behalf. Review the commands before approving them — especially if the skill pre-approves `shell` in its `allowed-tools`.
+
+<Warning>
+  Only pre-approve `shell` or `bash` in skill `allowed-tools` for skills you trust. The HyperFrames skills do not pre-approve shell access — the agent will ask for confirmation before running terminal commands.
+</Warning>
+
+## MCP alternative
+
+Copilot CLI also supports MCP servers for cloud-based authoring without the local CLI. Use the `--additional-mcp-config` flag to add the HyperFrames MCP server to your session:
+
+```bash
+copilot --additional-mcp-config '{"mcpServers":{"hyperframes":{"url":"https://mcp.heygen.com/mcp/hyperframes"}}}'
+```
+
+Or save the config to a file and reference it:
+
+```bash
+copilot --additional-mcp-config @mcp-config.json
+```
+
+Authorize via OAuth when prompted. See the [MCP guide](/guides/mcp) for full details.
+
+## Tips
+
+- **Always start with `/hyperframes` for composition work.** This loads the full skill context — composition rules, data attributes, GSAP patterns, caption formats — that generic web knowledge doesn't cover.
+- **Use `/skills` to check skill status.** If output looks wrong, open the skills picker to verify the HyperFrames skills are enabled.
+- **Run `npx hyperframes lint` before rendering.** The linter catches structural issues the agent might miss on complex multi-scene edits.
+- **Keep the preview server running in a separate terminal.** You see every edit reflected in real time while prompting in Copilot CLI.
+- **Install registry blocks for transitions and effects.** `npx hyperframes add shimmer-sweep` installs pre-built blocks, then prompt the agent to wire them in.
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Prompting guide" icon="message" href="/guides/prompting">
+    Vocabulary and patterns that produce better compositions.
+  </Card>
+  <Card title="Catalog" icon="grid-2" href="/catalog/blocks/data-chart">
+    50+ ready-to-use blocks the agent can install and wire.
+  </Card>
+  <Card title="GSAP Animation" icon="wand-magic-sparkles" href="/guides/gsap-animation">
+    Motion principles and timeline authoring.
+  </Card>
+  <Card title="Pipeline guide" icon="list-check" href="/guides/pipeline">
+    The 7-step structure agents follow for multi-beat videos.
+  </Card>
+</CardGroup>

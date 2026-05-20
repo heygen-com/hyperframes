@@ -53,7 +53,8 @@ interface GsapTimeline {
 
 export interface TransitionConfig {
   time: number;
-  shader: ShaderName;
+  /** Omit to use a CSS crossfade instead of a WebGL shader. */
+  shader?: ShaderName;
   duration?: number;
   ease?: string;
 }
@@ -100,7 +101,7 @@ interface CachedTransition {
   duration: number;
   fromId: string;
   toId: string;
-  prog: WebGLProgram;
+  prog: WebGLProgram | null; // null for CSS-fallback transitions
   frames: CachedTransitionFrame[];
   cacheKey: string;
   dirty: boolean;
@@ -825,7 +826,7 @@ export function init(config: HyperShaderConfig): GsapTimeline {
   interface HfTransitionMeta {
     time: number;
     duration: number;
-    shader: string;
+    shader?: string; // undefined = CSS crossfade (no WebGL required)
     ease: string;
     fromScene: string;
     toScene: string;
@@ -902,6 +903,11 @@ export function init(config: HyperShaderConfig): GsapTimeline {
 
   const programs = new Map<string, WebGLProgram>();
   for (const t of transitions) {
+    // Strict undefined check — an explicit empty string from a vanilla-JS
+    // caller (the IIFE bundle is hand-loaded via <script> tags) should NOT
+    // be silently coerced into a CSS crossfade. The shader registry will
+    // throw a clear "unknown shader" error for it.
+    if (t.shader === undefined) continue;
     if (!programs.has(t.shader)) {
       try {
         programs.set(t.shader, createProgram(gl, getFragSource(t.shader)));
@@ -1131,7 +1137,11 @@ export function init(config: HyperShaderConfig): GsapTimeline {
       canvasEl.style.display = "none";
       return;
     }
-    if (cache.fallback) {
+    // CSS-only transitions (prog === null) MUST take the fallback path. The
+    // fallback flag is the normal signal, but we also guard on prog to keep
+    // the invariant even if some path momentarily resets fallback while prog
+    // stays null (it can't be re-created — there is no shader to compile).
+    if (cache.fallback || cache.prog === null) {
       state.active = true;
       state.transitionIndex = activeIndex;
       state.prog = null;
@@ -1145,9 +1155,12 @@ export function init(config: HyperShaderConfig): GsapTimeline {
       return;
     }
 
+    // Narrow cache.prog into a non-null local. The branch above already
+    // returned for prog === null, but TS can't track that across the function.
+    const prog = cache.prog;
     state.active = true;
     state.transitionIndex = activeIndex;
-    state.prog = cache.prog;
+    state.prog = prog;
     state.progress = clampNumber((currentTime - cache.time) / cache.duration, 0, 1);
     markTextureAccess(cache);
 
@@ -1164,7 +1177,7 @@ export function init(config: HyperShaderConfig): GsapTimeline {
     renderShader(
       gl,
       quadBuf,
-      state.prog,
+      prog,
       interpolatedFromTex,
       interpolatedToTex,
       state.progress,
@@ -1293,8 +1306,19 @@ export function init(config: HyperShaderConfig): GsapTimeline {
     const toId = scenes[i + 1];
     if (!fromId || !toId) continue;
 
-    const prog = programs.get(t.shader);
-    if (!prog) continue;
+    // shader omitted → CSS crossfade. shader present but program failed to
+    // compile (logged above) → degrade gracefully to CSS crossfade so the
+    // opacity timeline still runs and scene progression isn't broken. Both
+    // paths land in the always-ready prog=null cache.
+    const requestedShader = t.shader !== undefined;
+    const compiledProg = requestedShader ? (programs.get(t.shader!) ?? null) : null;
+    const isCssFallback = !requestedShader || compiledProg === null;
+    if (requestedShader && compiledProg === null) {
+      console.warn(
+        `[HyperShader] Shader "${t.shader}" failed to compile — falling back to CSS crossfade.`,
+      );
+    }
+    const prog = isCssFallback ? null : compiledProg;
 
     const dur = t.duration ?? DEFAULT_DURATION;
     const ease = t.ease ?? DEFAULT_EASE;
@@ -1309,10 +1333,10 @@ export function init(config: HyperShaderConfig): GsapTimeline {
       prog,
       frames: [],
       cacheKey: "",
-      dirty: true,
-      ready: false,
-      fallback: false,
-      persisted: false,
+      dirty: !isCssFallback,
+      ready: isCssFallback,
+      fallback: isCssFallback,
+      persisted: isCssFallback,
       textureReady: false,
       texturePromise: null,
       textureGeneration: 0,
@@ -1451,15 +1475,28 @@ export function init(config: HyperShaderConfig): GsapTimeline {
     cache.textureReady = false;
   };
 
+  // Caches with prog === null are CSS crossfade transitions and must stay in
+  // the always-ready fallback state. Without this guard, disposeCachedTransition
+  // + markScenesDirty would route them through the WebGL prewarm path and
+  // tickShader would eventually call renderShader(state.prog!) with a null prog.
+  const isCssOnlyTransition = (cache: CachedTransition): boolean => cache.prog === null;
+
   const disposeCachedTransition = (cache: CachedTransition): void => {
     disposeTransitionTextures(cache);
     cache.texturePromise = null;
     cache.frames = [];
+    cache.lastError = undefined;
+    if (isCssOnlyTransition(cache)) {
+      cache.ready = true;
+      cache.fallback = true;
+      cache.persisted = true;
+      cache.textureReady = false;
+      return;
+    }
     cache.ready = false;
     cache.fallback = false;
     cache.persisted = false;
     cache.textureReady = false;
-    cache.lastError = undefined;
   };
 
   const markTextureAccess = (cache: CachedTransition): void => {
@@ -1566,6 +1603,9 @@ export function init(config: HyperShaderConfig): GsapTimeline {
     let changed = false;
     for (const cache of cachedTransitions) {
       if (!sceneIds.has(cache.fromId) && !sceneIds.has(cache.toId)) continue;
+      // Skip CSS-only transitions: there is no shader to recompile and no
+      // texture pyramid to recapture, so they stay permanently ready.
+      if (isCssOnlyTransition(cache)) continue;
       disposeCachedTransition(cache);
       cache.dirty = true;
       cache.cacheKey = "";
@@ -1888,7 +1928,11 @@ export function init(config: HyperShaderConfig): GsapTimeline {
     if (transitionCachePromise) return transitionCachePromise;
 
     transitionCachePromise = (async () => {
-      const work = cachedTransitions.filter((cache) => cache.dirty || !cache.ready);
+      // CSS-only transitions (prog === null) never need prewarming — they
+      // are always ready and route through applyFallbackTransition().
+      const work = cachedTransitions.filter(
+        (cache) => !isCssOnlyTransition(cache) && (cache.dirty || !cache.ready),
+      );
       const workItems = work.map((cache) => ({
         cache,
         sampleCount: sampleCountForCache(cache),
@@ -2209,13 +2253,28 @@ function initEngineMode(
     if (!fromId || !toId) continue;
 
     const dur = t.duration ?? DEFAULT_DURATION;
+    const ease = t.ease ?? DEFAULT_EASE;
     const T = t.time;
 
-    // During the transition both scenes need to be visible so the engine
-    // can composite each side; afterwards the outgoing scene must drop out
-    // so it stops contributing to the normal-frame layer composite.
-    tl.set(`#${toId}`, { opacity: 1 }, T);
-    tl.set(`#${fromId}`, { opacity: 0 }, T + dur);
+    if (t.shader === undefined) {
+      // CSS-crossfade transition: schedule an actual opacity tween so the
+      // page produces a correct blended frame at every seek time. This
+      // matters when the producer captures with page-side compositing
+      // (one opaque screenshot per frame) — there is no Node-side blend
+      // step in that path, so the page must show the correct mix. Even
+      // in the layered Node path the crossfade is harmless (it merely
+      // mirrors what `crossfade()` computes from the per-scene buffers).
+      tl.fromTo(`#${toId}`, { opacity: 0 }, { opacity: 1, duration: dur, ease }, T);
+      tl.fromTo(`#${fromId}`, { opacity: 1 }, { opacity: 0, duration: dur, ease }, T);
+    } else {
+      // Shader transition: both scenes must stay at opacity=1 during the
+      // transition window so the Node-side layered compositor can capture
+      // each scene separately and blend them itself. The from-scene drops
+      // out at T+dur so it stops contributing to the next normal-frame
+      // layer composite.
+      tl.set(`#${toId}`, { opacity: 1 }, T);
+      tl.set(`#${fromId}`, { opacity: 0 }, T + dur);
+    }
   }
 
   // Page-side compositing opt-in (default OFF). When the producer launches
@@ -2242,6 +2301,12 @@ function initEngineMode(
     const rawH = Number(root?.getAttribute("data-height"));
     const compWidth = Number.isFinite(rawW) && rawW > 0 ? rawW : 1920;
     const compHeight = Number.isFinite(rawH) && rawH > 0 ? rawH : 1080;
+    // Pass the full transitions array so transition[i] still pairs with
+    // scenes[i]/scenes[i+1]. The compositor itself skips entries with
+    // `shader === undefined` while preserving the index↔scene mapping.
+    // CSS crossfades produce a correct blended frame via the actual
+    // opacity-crossfade tween scheduled above (search `t.shader === undefined`
+    // in this function).
     installPageSideCompositor({
       scenes,
       transitions,

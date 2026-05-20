@@ -1,0 +1,12 @@
+{
+  "name": "Sub-composition timeline activation at t=0",
+  "description": "Regression for: sub-composition timelines at data-start near 0 were not activated during renderSeek, causing GSAP-animated elements to stay invisible. The fix activates nested child timelines before every render frame seek.",
+  "tags": ["sub-composition", "regression", "timeline"],
+  "minPsnr": 25,
+  "maxFrameFailures": 5,
+  "minAudioCorrelation": 0.0,
+  "maxAudioLagWindows": 120,
+  "renderConfig": {
+    "fps": 24
+  }
+}

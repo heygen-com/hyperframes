@@ -254,8 +254,44 @@ export function buildEncoderArgs(
     args.push("-c:v", "libvpx-vp9", "-b:v", bitrate || "0", "-crf", String(quality));
     args.push("-deadline", preset === "ultrafast" ? "realtime" : "good");
     args.push("-row-mt", "1");
+
+    // `-auto-alt-ref 0` is mandatory for chunk concat-copy: libvpx-vp9's
+    // alt-ref frames can reference frames in either direction inside a
+    // GOP, so a chunk-boundary frame is not guaranteed to be the first
+    // displayable reference when alt-ref is on. `-cpu-used 2` pins the
+    // speed/quality tradeoff against libvpx-vp9 default drift across
+    // versions, so the planHash round-trips deterministically across
+    // worker images.
+    const lockGopVp9 = options.lockGopForChunkConcat === true;
+    if (lockGopVp9) {
+      if (
+        typeof options.gopSize !== "number" ||
+        !Number.isFinite(options.gopSize) ||
+        options.gopSize <= 0
+      ) {
+        throw new Error(
+          `[chunkEncoder] lockGopForChunkConcat=true requires a positive integer gopSize (received ${String(options.gopSize)})`,
+        );
+      }
+      const gop = Math.floor(options.gopSize);
+      args.push(
+        "-g",
+        String(gop),
+        "-keyint_min",
+        String(gop),
+        "-auto-alt-ref",
+        "0",
+        "-cpu-used",
+        "2",
+      );
+    }
     if (pixelFormat === "yuva420p") {
-      args.push("-auto-alt-ref", "0");
+      // Alpha + alt-ref is unsupported by libvpx-vp9. The closed-GOP
+      // branch above already emits `-auto-alt-ref 0`, so skip the
+      // duplicate push.
+      if (!lockGopVp9) {
+        args.push("-auto-alt-ref", "0");
+      }
       args.push("-metadata:s:v:0", "alpha_mode=1");
     }
   } else if (codec === "prores") {

@@ -11,7 +11,6 @@ import {
   STUDIO_HEIGHT_PROP,
   STUDIO_ROTATION_PROP,
   STUDIO_PATH_OFFSET_ATTR,
-  STUDIO_MANUAL_EDIT_GESTURE_ATTR,
   STUDIO_BOX_SIZE_ATTR,
   STUDIO_ROTATION_ATTR,
   STUDIO_ORIGINAL_TRANSLATE_ATTR,
@@ -33,7 +32,6 @@ import {
   STUDIO_ORIGINAL_INLINE_ROTATE_ATTR,
   STUDIO_ORIGINAL_ROTATION_TRANSFORM_ORIGIN_ATTR,
   STUDIO_ROTATION_DRAFT_ATTR,
-  STUDIO_ORIGINAL_TRANSFORM_DISPLAY_ATTR,
 } from "./manualEditsTypes";
 import type {
   StudioBoxSizeSnapshot,
@@ -184,38 +182,6 @@ export function restoreStudioPathOffset(
     element,
     STUDIO_ORIGINAL_INLINE_TRANSLATE_ATTR,
     previous.originalInlineTranslate,
-  );
-}
-
-/* ── DOM element collection ───────────────────────────────────────── */
-export function collectStudioManualEditElements(doc: Document): HTMLElement[] {
-  const htmlElement = doc.defaultView?.HTMLElement;
-  if (!htmlElement) return [];
-
-  const elements = [doc.documentElement, ...Array.from(doc.getElementsByTagName("*"))].filter(
-    (element): element is HTMLElement => element instanceof htmlElement,
-  );
-
-  return elements.filter(
-    (element) =>
-      element.hasAttribute(STUDIO_PATH_OFFSET_ATTR) ||
-      element.hasAttribute(STUDIO_MANUAL_EDIT_GESTURE_ATTR) ||
-      element.hasAttribute(STUDIO_BOX_SIZE_ATTR) ||
-      element.hasAttribute(STUDIO_ROTATION_ATTR) ||
-      element.hasAttribute(STUDIO_ROTATION_DRAFT_ATTR) ||
-      element.hasAttribute(STUDIO_ORIGINAL_TRANSLATE_ATTR) ||
-      element.hasAttribute(STUDIO_ORIGINAL_INLINE_TRANSLATE_ATTR) ||
-      element.hasAttribute(STUDIO_ORIGINAL_TRANSFORM_DISPLAY_ATTR) ||
-      element.hasAttribute(STUDIO_ORIGINAL_MIN_WIDTH_ATTR) ||
-      element.hasAttribute(STUDIO_ORIGINAL_FLEX_BASIS_ATTR) ||
-      element.hasAttribute(STUDIO_ORIGINAL_SCALE_ATTR) ||
-      element.hasAttribute(STUDIO_ORIGINAL_ROTATE_ATTR) ||
-      element.hasAttribute(STUDIO_ORIGINAL_INLINE_ROTATE_ATTR) ||
-      Boolean(element.style.getPropertyValue(STUDIO_OFFSET_X_PROP)) ||
-      Boolean(element.style.getPropertyValue(STUDIO_OFFSET_Y_PROP)) ||
-      Boolean(element.style.getPropertyValue(STUDIO_WIDTH_PROP)) ||
-      Boolean(element.style.getPropertyValue(STUDIO_HEIGHT_PROP)) ||
-      Boolean(element.style.getPropertyValue(STUDIO_ROTATION_PROP)),
   );
 }
 

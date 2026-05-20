@@ -1,0 +1,43 @@
+<template id="later-template">
+  <div id="later" data-composition-id="later" data-width="1920" data-height="1080">
+    <div class="later-heading">Second Scene</div>
+
+    <style>
+      #later {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #0e2c1e;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      #later .later-heading {
+        font-family: Arial, system-ui, sans-serif;
+        font-size: 120px;
+        font-weight: 700;
+        color: #f7f3e8;
+        opacity: 0;
+      }
+    </style>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      (function () {
+        window.__timelines = window.__timelines || {};
+        var tl = gsap.timeline({ paused: true });
+        var scope = "#later";
+
+        tl.fromTo(
+          scope + " .later-heading",
+          { y: 50, opacity: 0 },
+          { y: 0, opacity: 1, duration: 0.5, ease: "power3.out" },
+          0.2,
+        );
+
+        window.__timelines["later"] = tl;
+      })();
+    </script>
+  </div>
+</template>

@@ -70,12 +70,9 @@ describe("checkDistributedSupport()", () => {
     }
   });
 
-  it("rejects format=webm", () => {
+  it("accepts format=webm (distributed-supported via closed-GOP concat-copy)", () => {
     const result = checkDistributedSupport({ fps: { num: 30, den: 1 }, format: "webm" });
-    expect(result.supported).toBe(false);
-    if (!result.supported) {
-      expect(result.reason).toMatch(/webm/);
-    }
+    expect(result.supported).toBe(true);
   });
 
   it("rejects hdr=true", () => {

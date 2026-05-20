@@ -496,4 +496,72 @@ window.__afterTimeline = window.__timelines.scene;
     expect(fakeWindow.__afterTimeline).toBe("updated");
     expect(errorSpy).not.toHaveBeenCalled();
   });
+
+  it("rewrites #id CSS selectors to [data-hf-authored-id] when authoredRootId is provided", () => {
+    const scoped = scopeCssToComposition(
+      `#intro { background: #111; }
+#intro .title { font-size: 120px; color: #fff; }`,
+      "intro",
+      undefined,
+      "intro",
+    );
+
+    // #intro should become [data-hf-authored-id="intro"]
+    expect(scoped).toContain('[data-hf-authored-id="intro"]');
+    expect(scoped).toContain('[data-hf-authored-id="intro"] .title');
+    // Raw #intro selectors should be gone
+    expect(scoped).not.toMatch(/#intro\b/);
+  });
+
+  it('does not rewrite [id="intro"] attribute selectors', () => {
+    // The function only targets #intro hash selectors, not [id="intro"] attribute selectors
+    const result = scopeCssToComposition(
+      '[id="intro"] .title { color: red; }',
+      "intro",
+      undefined,
+      "intro",
+    );
+    expect(result).toContain('[id="intro"]');
+  });
+
+  it("wraps scripts with authored root id normalization for #id GSAP selectors", () => {
+    const { document } = parseHTML(`
+      <div data-composition-id="intro">
+        <div data-hf-authored-id="intro">
+          <div class="title">HELLO</div>
+        </div>
+      </div>
+    `);
+    const gsapTargets: string[][] = [];
+    const fakeWindow = {
+      document,
+      __timelines: {},
+      gsap: {
+        timeline: () => ({
+          fromTo(targets: Element[], _from: unknown, _to: unknown) {
+            gsapTargets.push(Array.from(targets).map((t) => t.textContent || ""));
+            return this;
+          },
+        }),
+      },
+    };
+    const wrapped = wrapScopedCompositionScript(
+      `
+var tl = gsap.timeline({ paused: true });
+tl.fromTo('#intro .title', { opacity: 0 }, { opacity: 1, duration: 0.5 }, 0.2);
+window.__timelines['intro'] = tl;
+`,
+      "intro",
+      "[HyperFrames] composition script error:",
+      undefined,
+      "intro",
+      "intro",
+    );
+
+    new Function("window", "gsap", wrapped)(fakeWindow, fakeWindow.gsap);
+
+    // The scoped script should resolve '#intro .title' against the
+    // data-hf-authored-id="intro" element, finding the .title child.
+    expect(gsapTargets).toEqual([["HELLO"]]);
+  });
 });

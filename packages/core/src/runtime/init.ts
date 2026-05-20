@@ -1724,9 +1724,40 @@ export function initSandboxRuntimeModular(): void {
     }
   };
 
-  const seekTimelineAndAdapters = (t: number) => {
+  // Unpause all non-root timelines registered in window.__timelines (siblings
+  // in the registry, not GSAP child tweens). Matches the naming convention in
+  // player.ts:32 (forEachSiblingTimeline) and player.ts:89 (activateSiblingTimelines).
+  //
+  // Unlike the player's seek path which re-pauses siblings after seeking,
+  // render-seek is one-frame-at-a-time with no transport tick between frames,
+  // so the residual unpaused state is harmless — the next call re-activates
+  // idempotently.
+  const activateSiblingTimelines = (masterTimeline: RuntimeTimelineLike) => {
+    const timelines = (window.__timelines ?? {}) as Record<string, RuntimeTimelineLike | undefined>;
+    for (const tl of Object.values(timelines)) {
+      if (!tl || tl === masterTimeline) continue;
+      try {
+        tl.play();
+      } catch (err) {
+        swallow("runtime.init.activateSiblings", err);
+      }
+    }
+  };
+
+  const seekTimelineAndAdapters = (t: number, opts?: { activateChildren?: boolean }) => {
     const tl = state.capturedTimeline;
     if (tl) {
+      // When rendering frame-by-frame (activateChildren=true), ensure all
+      // sibling timelines are unpaused before seeking the root. GSAP
+      // does not propagate totalTime() to children that are internally
+      // paused, which leaves sub-compositions at their initial CSS state
+      // (typically opacity:0). This mirrors the activateSiblingTimelines
+      // call in player.ts renderSeek and is critical for sub-compositions
+      // whose data-start is at or near 0 — they are added to the root
+      // while it is paused and may never receive an explicit play().
+      if (opts?.activateChildren) {
+        activateSiblingTimelines(tl);
+      }
       try {
         if (typeof tl.totalTime === "function") {
           tl.totalTime(t, false);
@@ -2001,7 +2032,7 @@ export function initSandboxRuntimeModular(): void {
     state.currentTime = clock.now();
     state.isPlaying = false;
     state.mediaForceSyncNextTick = true;
-    seekTimelineAndAdapters(state.currentTime);
+    seekTimelineAndAdapters(state.currentTime, { activateChildren: true });
     syncMediaForCurrentState();
     postState(true);
   };

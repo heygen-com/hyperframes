@@ -36,7 +36,7 @@ import {
 } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { type CanvasResolution } from "@hyperframes/core";
-import { type EngineConfig, resolveConfig } from "@hyperframes/engine";
+import { type EngineConfig, getEncoderPreset, resolveConfig } from "@hyperframes/engine";
 import { defaultLogger, type ProducerLogger } from "../../logger.js";
 import { runAudioStage } from "../render/stages/audioStage.js";
 import { runCompileStage } from "../render/stages/compileStage.js";
@@ -57,6 +57,7 @@ import { validateNoGpuEncode, validateNoSystemFonts } from "../render/planValida
 import { snapshotRuntimeEnv } from "../render/runtimeEnvSnapshot.js";
 import {
   buildSyntheticRenderJob,
+  type DistributedFormat,
   PLAN_VIDEOS_META_RELATIVE_PATH,
   type PlanVideosJson,
   readFfmpegVersion,
@@ -74,12 +75,19 @@ export interface DistributedRenderConfig {
   width: number;
   height: number;
   /**
-   * Output container format. webm and HDR mp4 are not supported in
-   * distributed mode — `plan()` refuses them up front with a typed
+   * Output container format. HDR mp4 is not supported in distributed
+   * mode — `plan()` refuses it up front with a typed
    * `FormatNotSupportedInDistributedError`. The in-process renderer
-   * supports both.
+   * supports it.
+   *
+   * `"webm"` (VP9 + Opus) is distributed-supported via closed-GOP
+   * concat-copy: `lockGopForChunkConcat=true` forces a keyframe at every
+   * chunk boundary and disables libvpx-vp9's alt-ref frames so chunk
+   * files stitch losslessly. See `chunkEncoder.ts` for the VP9 args and
+   * `tests/distributed/_smoke/webm-concat-copy.test.ts` for the gating
+   * experiment that proved the contract.
    */
-  format: "mp4" | "mov" | "png-sequence";
+  format: DistributedFormat;
   /**
    * Codec selection for `format: "mp4"`. `"h264"` (the default) → libx264 +
    * yuv420p; `"h265"` → libx265 + yuv420p with closed-GOP keyint params
@@ -155,6 +163,26 @@ export interface DistributedRenderConfig {
    * exercise the throw path.
    */
   planDirSizeLimitBytes?: number;
+
+  /**
+   * Render-time variable overrides for the composition. Snapshotted into
+   * `meta/encoder.json` at plan time and re-injected by every chunk
+   * worker as `window.__hfVariables` before the first capture, mirroring
+   * the in-process renderer's
+   * `RenderConfig.variables` → `CaptureOptions.variables` path. The
+   * runtime helper `getVariables()` merges these over the declared
+   * defaults from `<html data-composition-variables="…">`.
+   *
+   * Folded into `planHash`: different variables produce different hashes
+   * because rendered frames depend on the injected values. Must be a
+   * JSON-serializable plain object — `freezePlan`'s canonical-JSON pass
+   * throws on non-serializable values (functions, Symbols, BigInts) when
+   * the variables reach this layer. Adapters that ship to Lambda (the
+   * `@hyperframes/aws-lambda` SDK) also validate the shape client-side
+   * before any AWS call so the rejection lands at the SDK boundary
+   * rather than mid-plan; the producer-side throw is the fallback.
+   */
+  variables?: Record<string, unknown>;
 }
 
 /**
@@ -169,7 +197,7 @@ export interface PlanResult {
   fps: 24 | 30 | 60;
   width: number;
   height: number;
-  format: "mp4" | "mov" | "png-sequence";
+  format: DistributedFormat;
   ffmpegVersion: string;
   producerVersion: string;
 }
@@ -247,8 +275,9 @@ export class PlanTooLargeError extends Error {
 
 /**
  * Non-retryable error code raised when `plan()` is asked for an output
- * format that distributed mode doesn't support (webm, HDR mp4). The same
- * config would fail on every retry, so the failure must not auto-retry.
+ * format that distributed mode doesn't support (currently: HDR mp4). The
+ * same config would fail on every retry, so the failure must not
+ * auto-retry.
  */
 export const FORMAT_NOT_SUPPORTED_IN_DISTRIBUTED = "FORMAT_NOT_SUPPORTED_IN_DISTRIBUTED";
 
@@ -256,13 +285,15 @@ export const FORMAT_NOT_SUPPORTED_IN_DISTRIBUTED = "FORMAT_NOT_SUPPORTED_IN_DIST
  * Typed error raised by `plan()` for outputs that distributed mode
  * refuses to ship.
  *
- *   - webm — VP9 + matroska concat-copy is fragile across libvpx-vp9
- *     builds, and the chunked pipeline can't guarantee bit-identical
- *     concat output across worker versions.
  *   - mp4 + HDR (PQ / HLG) — chunked HDR pre-extract + HDR signaling
  *     re-apply on the assembled file is not implemented yet.
  *
- * The in-process renderer (`executeRenderJob`) handles both natively.
+ * The in-process renderer (`executeRenderJob`) handles it natively.
+ *
+ * WebM was previously refused here; v0.7+ supports it via closed-GOP
+ * concat-copy. See {@link DistributedRenderConfig.format} for the
+ * supported set and {@link rejectUnsupportedDistributedFormat} for the
+ * gate.
  */
 export class FormatNotSupportedInDistributedError extends Error {
   readonly code: typeof FORMAT_NOT_SUPPORTED_IN_DISTRIBUTED = FORMAT_NOT_SUPPORTED_IN_DISTRIBUTED;
@@ -272,8 +303,8 @@ export class FormatNotSupportedInDistributedError extends Error {
     super(
       `[plan] format ${JSON.stringify(format)} is not supported in distributed mode: ${reason}. ` +
         `Render with the in-process renderer (\`executeRenderJob\`) — it has full format ` +
-        `support — or pick a distributed-supported format: mp4 SDR, mov ProRes 4444, or ` +
-        `png-sequence.`,
+        `support — or pick a distributed-supported format: mp4 SDR, mov ProRes 4444, ` +
+        `png-sequence, or webm VP9.`,
     );
     this.name = "FormatNotSupportedInDistributedError";
     this.format = format;
@@ -289,7 +320,9 @@ function formatBytes(bytes: number): string {
 }
 
 /**
- * Reject formats the distributed pipeline cannot ship (webm + HDR mp4).
+ * Reject formats the distributed pipeline cannot ship (HDR mp4 only —
+ * webm is supported as of v0.7 via closed-GOP concat-copy).
+ *
  * Throws {@link FormatNotSupportedInDistributedError} with a message
  * naming the rejected format. Runs at the very top of `plan()` so a
  * banned input never produces a partial planDir.
@@ -302,17 +335,6 @@ function formatBytes(bytes: number): string {
 export function rejectUnsupportedDistributedFormat(
   config: Pick<DistributedRenderConfig, "format" | "hdrMode">,
 ): void {
-  // The TypeScript type for `DistributedRenderConfig.format` already
-  // excludes webm, but a JS caller (or a caller that built the config
-  // dynamically from JSON) can still pass it. Belt-and-suspenders runtime
-  // check at the gate.
-  if ((config.format as string) === "webm") {
-    throw new FormatNotSupportedInDistributedError(
-      "webm",
-      "VP9 + matroska concat-copy is fragile across libvpx-vp9 builds, so chunked output " +
-        "can't be guaranteed byte-identical across workers",
-    );
-  }
   if ((config.hdrMode as string) === "force-hdr") {
     throw new FormatNotSupportedInDistributedError(
       "mp4-hdr",
@@ -507,51 +529,79 @@ function buildLockedRenderConfig(input: {
     chunkSize: input.effectiveChunkSize,
     chunkCount: input.chunkCount,
     runtimeEnv: input.runtimeEnv,
+    variables: config.variables,
   };
 }
 
 /**
  * Resolve the encoder + pixel-format + preset triple for a distributed
  * render. Distributed mode is SDR-only: H.264 or H.265 8-bit for mp4,
- * ProRes 4444 for mov, raw RGBA for png-sequence.
+ * libvpx-vp9 + yuva420p (alpha) for webm, ProRes 4444 for mov, raw RGBA
+ * for png-sequence.
  *
  * `config.codec` is consulted only when `config.format === "mp4"`. Passing
  * `codec` with a non-mp4 format throws at plan time — surfaces the
  * caller error immediately rather than producing a silently-wrong planDir
  * whose chunk worker would override the codec choice.
  */
-function resolveEncoderTriple(config: DistributedRenderConfig): {
+type EncoderTriple = {
   encoder: LockedRenderConfig["encoder"];
   pixelFormat: string;
   preset: string;
-} {
+};
+
+function resolveEncoderTriple(config: DistributedRenderConfig): EncoderTriple {
   if (config.format === "mp4") {
-    const codec = config.codec ?? "h264";
-    // Explicit unknown-codec throw rather than silent fall-through to h264.
-    // A JS caller building config from JSON who passes `codec: "h266"` or
-    // `codec: "H265"` (typo / wrong case) would otherwise produce h264
-    // output with no signal. The non-mp4-format branch below already throws
-    // for the symmetric "wrong combination" case — match that shape.
-    if (codec !== "h264" && codec !== "h265") {
-      throw new Error(
-        `[plan] DistributedRenderConfig.codec must be "h264" or "h265" for format="mp4"; ` +
-          `received ${JSON.stringify(codec)}. Omit codec to default to h264.`,
-      );
-    }
-    if (codec === "h265") {
-      return { encoder: "libx265-software", pixelFormat: "yuv420p", preset: "medium" };
-    }
-    return { encoder: "libx264-software", pixelFormat: "yuv420p", preset: "medium" };
+    return resolveMp4EncoderTriple(config.codec);
   }
   if (config.codec !== undefined) {
     throw new Error(
       `[plan] DistributedRenderConfig.codec is only valid for format="mp4"; received ` +
         `codec=${JSON.stringify(config.codec)} with format=${JSON.stringify(config.format)}. ` +
-        `Omit codec for non-mp4 formats — mov is always ProRes 4444 and png-sequence has no encoder.`,
+        `Omit codec for non-mp4 formats — mov is always ProRes 4444, webm is always ` +
+        `libvpx-vp9, and png-sequence has no encoder.`,
     );
   }
-  if (config.format === "mov") {
+  return resolveNonMp4EncoderTriple(config.format, config.quality ?? "standard");
+}
+
+function resolveMp4EncoderTriple(codec: DistributedRenderConfig["codec"]): EncoderTriple {
+  const c = codec ?? "h264";
+  // Explicit unknown-codec throw rather than silent fall-through to h264.
+  // A JS caller building config from JSON who passes `codec: "h266"` or
+  // `codec: "H265"` (typo / wrong case) would otherwise produce h264
+  // output with no signal. The non-mp4-format branch already throws for
+  // the symmetric "wrong combination" case — match that shape.
+  if (c !== "h264" && c !== "h265") {
+    throw new Error(
+      `[plan] DistributedRenderConfig.codec must be "h264" or "h265" for format="mp4"; ` +
+        `received ${JSON.stringify(c)}. Omit codec to default to h264.`,
+    );
+  }
+  if (c === "h265") {
+    return { encoder: "libx265-software", pixelFormat: "yuv420p", preset: "medium" };
+  }
+  return { encoder: "libx264-software", pixelFormat: "yuv420p", preset: "medium" };
+}
+
+function resolveNonMp4EncoderTriple(
+  format: Exclude<DistributedFormat, "mp4">,
+  quality: "draft" | "standard" | "high",
+): EncoderTriple {
+  if (format === "mov") {
     return { encoder: "prores-software", pixelFormat: "yuva444p10le", preset: "4444" };
+  }
+  if (format === "webm") {
+    // Defer to `getEncoderPreset` for the libvpx-vp9 preset string so the
+    // draft tier maps to `-deadline realtime` instead of `-deadline good`;
+    // hardcoding "good" here would silently override that mapping for
+    // `quality: "draft"`.
+    const enginePreset = getEncoderPreset(quality, "webm");
+    return {
+      encoder: "libvpx-vp9-software",
+      pixelFormat: enginePreset.pixelFormat,
+      preset: enginePreset.preset,
+    };
   }
   return { encoder: "png-sequence", pixelFormat: "rgba", preset: "lossless" };
 }
@@ -642,10 +692,17 @@ export async function plan(
   // move the contents over once the staged work completes.
   const finalCompiledDir = join(planDir, "compiled");
 
-  // mov + png-sequence carry alpha — flip force-screenshot so compileStage
-  // takes the alpha-aware capture path (BeginFrame doesn't preserve alpha
-  // on Linux headless-shell).
-  const needsAlpha = config.format === "png-sequence" || config.format === "mov";
+  // webm + mov + png-sequence carry alpha — flip force-screenshot so
+  // compileStage takes the alpha-aware capture path (BeginFrame doesn't
+  // preserve alpha on Linux headless-shell). Must match the in-process
+  // renderer's needsAlpha logic in `renderOrchestrator.ts` so chunked
+  // webm output preserves the same alpha plane the in-process baseline
+  // does. Omitting webm here silently freezes `forceScreenshot: false`
+  // into the planDir and every chunk worker captures opaque RGB — the
+  // libvpx-vp9 alpha sub-stream then encodes either uniform alpha or
+  // gets downgraded by the encoder, producing un-keyable webm output.
+  const needsAlpha =
+    config.format === "png-sequence" || config.format === "mov" || config.format === "webm";
 
   // ── Compile ──
   const compileResult = await runCompileStage({

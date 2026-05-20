@@ -22,11 +22,10 @@ import {
   createWriteStream,
   existsSync,
   mkdirSync,
-  readdirSync,
   rmSync,
   statSync,
 } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname } from "node:path";
 import { pipeline } from "node:stream/promises";
 import { GetObjectCommand, PutObjectCommand, type S3Client } from "@aws-sdk/client-s3";
 import * as tar from "tar";
@@ -137,20 +136,4 @@ export async function untarDirectory(tarballPath: string, destDir: string): Prom
   }
   mkdirSync(destDir, { recursive: true });
   await tar.extract({ file: tarballPath, cwd: destDir });
-}
-
-/** List all regular files under a directory, sorted, returned as absolute paths. */
-export function listFilesInDirectory(dir: string): string[] {
-  const out: string[] = [];
-  function walk(d: string): void {
-    for (const entry of readdirSync(d, { withFileTypes: true }).sort((a, b) =>
-      a.name < b.name ? -1 : a.name > b.name ? 1 : 0,
-    )) {
-      const full = join(d, entry.name);
-      if (entry.isDirectory()) walk(full);
-      else if (entry.isFile()) out.push(full);
-    }
-  }
-  walk(dir);
-  return out;
 }

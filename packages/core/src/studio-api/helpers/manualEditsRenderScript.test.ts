@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { Window } from "happy-dom";
-import { createStudioManualEditsRenderBodyScript } from "./manualEditsRenderScript";
+import {
+  createStudioManualEditsRenderBodyScript,
+  createStudioPositionSeekReapplyScript,
+} from "./manualEditsRenderScript";
 
 function runScript(
   window: Window,
@@ -378,5 +381,184 @@ describe("createStudioManualEditsRenderBodyScript", () => {
     ).__hfStudioManualEditsApply?.();
 
     expect(card.style.getPropertyValue("translate")).toContain("--hf-studio-offset-x");
+  });
+});
+
+describe("createStudioPositionSeekReapplyScript", () => {
+  function runPositionScript(
+    window: Window,
+    timers: {
+      setInterval?: typeof globalThis.setInterval;
+      clearInterval?: typeof globalThis.clearInterval;
+    } = {},
+  ): void {
+    Object.assign(window, { SyntaxError });
+    const script = createStudioPositionSeekReapplyScript();
+    const execute = new Function(
+      "window",
+      "document",
+      "HTMLElement",
+      "DOMMatrix",
+      "setInterval",
+      "clearInterval",
+      script,
+    );
+    execute(
+      window,
+      window.document,
+      window.HTMLElement,
+      globalThis.DOMMatrix,
+      timers.setInterval ??
+        (((callback: TimerHandler) => {
+          void callback;
+          return 0 as never;
+        }) as typeof globalThis.setInterval),
+      timers.clearInterval ?? globalThis.clearInterval,
+    );
+  }
+
+  it("reapplies box-size after seek", () => {
+    const window = new Window();
+    window.document.body.innerHTML = `
+      <div id="card"
+        data-hf-studio-box-size="true"
+        style="--hf-studio-width: 200px; --hf-studio-height: 100px; width: 200px; height: 100px">
+      </div>
+    `;
+    const card = window.document.getElementById("card") as unknown as HTMLElement;
+
+    const originalSeek = () => {
+      card.style.removeProperty("width");
+      card.style.removeProperty("height");
+    };
+    (window as unknown as { __hf: Record<string, unknown> }).__hf = { seek: originalSeek };
+
+    runPositionScript(window);
+    const wrappedSeek = (window as unknown as { __hf: { seek: (t: number) => void } }).__hf.seek;
+    wrappedSeek(1);
+
+    expect(card.style.getPropertyValue("width")).toBe("200px");
+    expect(card.style.getPropertyValue("height")).toBe("100px");
+  });
+
+  it("strips GSAP translate from transform after reapplying path offset", () => {
+    const window = new Window();
+    window.document.body.innerHTML = `
+      <div id="card"
+        data-hf-studio-path-offset="true"
+        data-hf-studio-original-translate=""
+        style="--hf-studio-offset-x: 50px; --hf-studio-offset-y: 30px; translate: var(--hf-studio-offset-x, 0px) var(--hf-studio-offset-y, 0px)">
+      </div>
+    `;
+    const card = window.document.getElementById("card") as unknown as HTMLElement;
+
+    const originalSeek = () => {
+      card.style.setProperty("transform", "matrix(1, 0, 0, 1, 120, 60)");
+    };
+    (window as unknown as { __hf: Record<string, unknown> }).__hf = { seek: originalSeek };
+
+    runPositionScript(window);
+    const wrappedSeek = (window as unknown as { __hf: { seek: (t: number) => void } }).__hf.seek;
+    wrappedSeek(1);
+
+    expect(card.style.getPropertyValue("translate")).toContain("--hf-studio-offset-x");
+    const transform = card.style.getPropertyValue("transform");
+    if (transform && transform !== "none") {
+      const m = new DOMMatrix(transform);
+      expect(m.m41).toBe(0);
+      expect(m.m42).toBe(0);
+    }
+  });
+
+  it("preserves non-translate components when stripping GSAP transform", () => {
+    const window = new Window();
+    window.document.body.innerHTML = `
+      <div id="card"
+        data-hf-studio-path-offset="true"
+        data-hf-studio-original-translate=""
+        style="--hf-studio-offset-x: 10px; --hf-studio-offset-y: 20px; translate: var(--hf-studio-offset-x, 0px) var(--hf-studio-offset-y, 0px)">
+      </div>
+    `;
+    const card = window.document.getElementById("card") as unknown as HTMLElement;
+
+    const originalSeek = () => {
+      card.style.setProperty("transform", "matrix(0.5, 0, 0, 0.5, 80, 40)");
+    };
+    (window as unknown as { __hf: Record<string, unknown> }).__hf = { seek: originalSeek };
+
+    runPositionScript(window);
+    const wrappedSeek = (window as unknown as { __hf: { seek: (t: number) => void } }).__hf.seek;
+    wrappedSeek(1);
+
+    const transform = card.style.getPropertyValue("transform");
+    expect(transform).toBeTruthy();
+    expect(transform).not.toContain("80");
+    expect(transform).not.toContain("40");
+  });
+
+  it("removes transform entirely when it becomes identity after stripping translate", () => {
+    const window = new Window();
+    window.document.body.innerHTML = `
+      <div id="card"
+        data-hf-studio-path-offset="true"
+        data-hf-studio-original-translate=""
+        style="--hf-studio-offset-x: 10px; --hf-studio-offset-y: 20px; translate: var(--hf-studio-offset-x, 0px) var(--hf-studio-offset-y, 0px)">
+      </div>
+    `;
+    const card = window.document.getElementById("card") as unknown as HTMLElement;
+
+    const originalSeek = () => {
+      card.style.setProperty("transform", "matrix(1, 0, 0, 1, 50, 25)");
+    };
+    (window as unknown as { __hf: Record<string, unknown> }).__hf = { seek: originalSeek };
+
+    runPositionScript(window);
+    const wrappedSeek = (window as unknown as { __hf: { seek: (t: number) => void } }).__hf.seek;
+    wrappedSeek(1);
+
+    const transform = card.style.getPropertyValue("transform");
+    expect(!transform || transform === "none" || transform === "").toBe(true);
+  });
+
+  it("no-ops when transform is 'none'", () => {
+    const window = new Window();
+    window.document.body.innerHTML = `
+      <div id="card"
+        data-hf-studio-path-offset="true"
+        data-hf-studio-original-translate=""
+        style="--hf-studio-offset-x: 10px; --hf-studio-offset-y: 20px; translate: var(--hf-studio-offset-x, 0px) var(--hf-studio-offset-y, 0px); transform: none">
+      </div>
+    `;
+    const card = window.document.getElementById("card") as unknown as HTMLElement;
+
+    (window as unknown as { __hf: Record<string, unknown> }).__hf = { seek: () => {} };
+    runPositionScript(window);
+
+    expect(card.style.getPropertyValue("transform")).toBe("none");
+  });
+
+  it("strips GSAP translate for rotation-only elements", () => {
+    const window = new Window();
+    window.document.body.innerHTML = `
+      <div id="card"
+        data-hf-studio-rotation="true"
+        data-hf-studio-original-rotate=""
+        style="--hf-studio-rotation: 45deg; rotate: var(--hf-studio-rotation, 0deg)">
+      </div>
+    `;
+    const card = window.document.getElementById("card") as unknown as HTMLElement;
+
+    const originalSeek = () => {
+      card.style.setProperty("transform", "matrix(1, 0, 0, 1, 100, 50)");
+    };
+    (window as unknown as { __hf: Record<string, unknown> }).__hf = { seek: originalSeek };
+
+    runPositionScript(window);
+    const wrappedSeek = (window as unknown as { __hf: { seek: (t: number) => void } }).__hf.seek;
+    wrappedSeek(1);
+
+    expect(card.style.getPropertyValue("rotate")).toContain("--hf-studio-rotation");
+    const transform = card.style.getPropertyValue("transform");
+    expect(!transform || transform === "none" || transform === "").toBe(true);
   });
 });

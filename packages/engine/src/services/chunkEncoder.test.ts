@@ -551,7 +551,7 @@ describe("buildEncoderArgs lockGopForChunkConcat", () => {
     expect(args.indexOf("-x264-params")).toBe(-1);
   });
 
-  it("true is a no-op on VP9", () => {
+  it("true appends closed-GOP args for libvpx-vp9", () => {
     const args = buildEncoderArgs(
       {
         ...baseOptions,
@@ -564,9 +564,75 @@ describe("buildEncoderArgs lockGopForChunkConcat", () => {
       inputArgs,
       "out.webm",
     );
+    expect(args[args.indexOf("-g") + 1]).toBe("240");
+    expect(args[args.indexOf("-keyint_min") + 1]).toBe("240");
+    expect(args[args.indexOf("-auto-alt-ref") + 1]).toBe("0");
+    expect(args[args.indexOf("-cpu-used") + 1]).toBe("2");
+    expect(args[args.indexOf("-deadline") + 1]).toBe("good");
+    expect(args.indexOf("-x264-params")).toBe(-1);
+    expect(args.indexOf("-x265-params")).toBe(-1);
+    expect(args.indexOf("-sc_threshold")).toBe(-1);
+    expect(args.indexOf("-force_key_frames")).toBe(-1);
+  });
+
+  it("default (false) omits closed-GOP args for libvpx-vp9", () => {
+    const args = buildEncoderArgs(
+      { ...baseOptions, codec: "vp9", preset: "good", quality: 23 },
+      inputArgs,
+      "out.webm",
+    );
     expect(args).not.toContain("-g");
     expect(args).not.toContain("-keyint_min");
-    expect(args).not.toContain("-force_key_frames");
+    expect(args).not.toContain("-cpu-used");
+    // The non-locked, non-alpha VP9 path leaves `-auto-alt-ref` at the
+    // libvpx default. Alpha branches still emit `-auto-alt-ref 0` for an
+    // unrelated reason (alpha + alt-ref is unsupported), but that's a
+    // separate test below.
+    expect(args).not.toContain("-auto-alt-ref");
+  });
+
+  it("true with alpha pixel format keeps alpha metadata and emits -auto-alt-ref once", () => {
+    // Regression: alpha + closed-GOP must NOT double-push `-auto-alt-ref 0`.
+    // Both paths want it disabled; the encoder branch emits it exactly once.
+    const args = buildEncoderArgs(
+      {
+        ...baseOptions,
+        codec: "vp9",
+        preset: "good",
+        quality: 23,
+        pixelFormat: "yuva420p",
+        lockGopForChunkConcat: true,
+        gopSize: 240,
+      },
+      inputArgs,
+      "out.webm",
+    );
+    const autoAltRefIndices = args.reduce<number[]>((acc, a, i) => {
+      if (a === "-auto-alt-ref") acc.push(i);
+      return acc;
+    }, []);
+    expect(autoAltRefIndices.length).toBe(1);
+    expect(args[autoAltRefIndices[0] + 1]).toBe("0");
+    expect(args[args.indexOf("-metadata:s:v:0") + 1]).toBe("alpha_mode=1");
+    expect(args[args.indexOf("-g") + 1]).toBe("240");
+  });
+
+  it("vp9 + lockGopForChunkConcat=true throws on missing gopSize", () => {
+    // Mirrors the libx264/libx265 branch: closed-GOP without a GOP size
+    // makes no sense — surface the caller error eagerly.
+    expect(() =>
+      buildEncoderArgs(
+        {
+          ...baseOptions,
+          codec: "vp9",
+          preset: "good",
+          quality: 23,
+          lockGopForChunkConcat: true,
+        },
+        inputArgs,
+        "out.webm",
+      ),
+    ).toThrow(/lockGopForChunkConcat=true requires a positive integer gopSize/);
   });
 
   it("true is a no-op on ProRes (intra-only — no GOP forcing needed)", () => {

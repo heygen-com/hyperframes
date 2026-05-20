@@ -918,6 +918,62 @@ hyperframes lambda render ./my-project \
 
 `--json` swaps the human-readable output for a machine-parseable JSON snapshot.
 
+The composition can be parameterised with `--variables` / `--variables-file`, mirroring the local `hyperframes render` flags. Variables flow into the Step Functions execution input and reach every chunk worker as `window.__hfVariables`. Mismatches against the composition's `data-composition-variables` declaration print as warnings; pass `--strict-variables` to fail the command instead.
+
+```bash
+hyperframes lambda render ./my-template --site-id=abc1234deadbeef0 \
+  --width=1920 --height=1080 \
+  --variables '{"title":"Hello Alice","accent":"#ff0000"}'
+```
+
+```bash
+hyperframes lambda render ./my-template --site-id=abc1234deadbeef0 \
+  --width=1920 --height=1080 \
+  --variables-file ./alice.json --strict-variables
+```
+
+Variables travel inside the Step Functions Standard execution input, which AWS caps at 256 KiB for the entire payload. Pass typed data (strings, numbers, structured records) through variables; URL-reference media assets (images, audio, video) the composition resolves at render time rather than inlining bytes. The SDK validates the size client-side and rejects oversize inputs with a clear error before any AWS call runs — see the [templates-on-lambda guide](/deploy/templates-on-lambda) for the URL-your-assets convention.
+
+#### `lambda render-batch <projectDir>`
+
+Fans out N personalised renders from a JSONL batch file — the headline ergonomic for automated template-rendering pipelines. Deploys the site once (or skips with `--site-id`), then invokes `renderToLambda` per batch row with per-entry `variables` and `outputKey`. Concurrent Step Functions starts are capped at `--max-concurrent` (default 50) so a 10 000-entry batch doesn't try to spawn 10 000 executions at once and trip AWS account limits.
+
+Batch file format (JSONL — one JSON object per line):
+
+```jsonl
+{"outputKey": "renders/alice.mp4", "variables": {"name": "Alice", "accent": "#ff0000"}}
+{"outputKey": "renders/bob.mp4",   "variables": {"name": "Bob",   "accent": "#0000ff"}}
+{"outputKey": "renders/carol.mp4", "variables": {"name": "Carol"}, "executionName": "hf-carol-001"}
+```
+
+```bash
+hyperframes lambda render-batch ./my-template \
+  --batch ./users.jsonl \
+  --width 1920 --height 1080 \
+  --max-concurrent 10
+```
+
+The verb prints a manifest — one row per input line — with `executionArn` + status:
+
+```
+Batch dispatched: 3 started, 0 failed-to-start.
+
+  ✓ line 1  renders/alice.mp4  arn:aws:states:us-east-1:1234:execution:hf:hf-render-...
+  ✓ line 2  renders/bob.mp4    arn:aws:states:us-east-1:1234:execution:hf:hf-render-...
+  ✓ line 3  renders/carol.mp4  arn:aws:states:us-east-1:1234:execution:hf:hf-carol-001
+```
+
+Pass `--json` for the machine-readable form. Poll each execution via `hyperframes lambda progress <renderId>` (or use the returned `executionArn`).
+
+`--dry-run` skips the AWS calls and prints the manifest with `status: "would-invoke"` for every entry — use it to lint the batch file before committing to N billable executions:
+
+```bash
+hyperframes lambda render-batch ./my-template --batch ./users.jsonl \
+  --width 1920 --height 1080 --dry-run --json
+```
+
+`--max-concurrent` is orchestrator-side only: it caps how many `StartExecution` calls run simultaneously, not how many Lambda invocations the account can run. AWS account-level Lambda concurrency limits live one level up and `render-batch` cannot enforce them; pick `--max-concurrent` based on your account's `concurrent-execution` quota and the Lambda reserved concurrency you provisioned via `lambda deploy --concurrency=<N>`.
+
 #### `lambda progress <renderId | executionArn>`
 
 Prints one progress snapshot — overall percent, frames rendered, Lambda invocations, accrued cost, and any errors. Accepts either a bare `renderId` (resolved against the stack's state-machine ARN) or a full SFN execution ARN.

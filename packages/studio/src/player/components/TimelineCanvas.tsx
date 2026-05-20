@@ -252,6 +252,7 @@ export const TimelineCanvas = memo(function TimelineCanvas({
                     isHovered={hoveredClip === clipKey}
                     isDragging={false}
                     hasCustomContent={!!renderClipContent}
+                    capabilities={capabilities}
                     theme={theme}
                     trackStyle={clipStyle}
                     isComposition={isComposition}
@@ -369,6 +370,7 @@ export const TimelineCanvas = memo(function TimelineCanvas({
             isHovered={false}
             isDragging={true}
             hasCustomContent={!!renderClipContent}
+            capabilities={getTimelineEditCapabilities(activeDraggedElement)}
             theme={theme}
             trackStyle={getTrackStyle(activeDraggedElement.tag)}
             isComposition={!!activeDraggedElement.compositionSrc}
