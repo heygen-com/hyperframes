@@ -15,7 +15,7 @@ set -euo pipefail
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 cd "$REPO_ROOT"
 
-BRANCH_REQUIRED="caleb"
+BRANCH_REQUIRED="refactor/skills-audit"
 REMOTE="origin"
 REMOTE_BRANCH="main"
 SKILLS_DIR="skills"
