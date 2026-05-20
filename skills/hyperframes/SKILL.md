@@ -48,10 +48,11 @@ Before writing HTML, think at a high level:
 
 1. **What** — what should the viewer experience? Identify the narrative arc, key moments, and emotional beats.
 2. **Structure** — how many compositions, which are sub-compositions vs inline, what tracks carry what (video, audio, overlays, captions).
-3. **Rhythm** — declare your scene rhythm before implementing. Which scenes are quick hits, which are holds, where do shaders land, where does energy peak. Name the pattern: fast-fast-SLOW-fast-SHADER-hold. Read [references/beat-direction.md](references/beat-direction.md) for rhythm templates.
-4. **Timing** — which clips drive the duration, where do transitions land, what's the pacing.
-5. **Layout** — build the end-state first. See "Layout Before Animation" below.
-6. **Animate** — then add motion using the rules below.
+3. **Temporal map** — write a one-line-per-second description of what the viewer sees. This is the most important step. If you skip it, you'll build slides. See "Think in Frames" below.
+4. **Rhythm** — declare your scene rhythm before implementing. Which scenes are quick hits, which are holds, where do shaders land, where does energy peak. Name the pattern: fast-fast-SLOW-fast-SHADER-hold. Read [references/beat-direction.md](references/beat-direction.md) for rhythm templates.
+5. **Timing** — which clips drive the duration, where do transitions land, what's the pacing.
+6. **Layout** — build the end-state first. See "Layout Before Animation" below.
+7. **Animate** — then add motion using the rules below.
 
 **Build what was asked.** A request for "a title card" is not a request for "a title card + 3 supporting scenes + ambient music + captions." Every scene, every element, every tween should earn its place. If additional scenes or elements would genuinely improve the piece, propose them — don't add them.
 
@@ -60,6 +61,97 @@ For small edits (fix a color, adjust timing, add one element), skip straight to 
 <HARD-GATE>
 Before writing ANY composition HTML — verify you have a visual identity from Step 1. If you're reaching for `#333`, `#3b82f6`, or `Roboto`, you skipped it.
 </HARD-GATE>
+
+## Think in Frames, Not Pages
+
+You are building video, not a website. The viewer cannot scroll, click, or go back. Every frame gets 1-3 seconds of attention, then it's gone. This changes everything about how you compose.
+
+### Write a temporal map first
+
+Before any HTML, write what the viewer sees at each moment. One line per beat:
+
+```
+0.0s  Black → title fades up: "Reimagine Search"
+1.5s  Hard cut → full-bleed product screenshot, scale settling
+2.5s  Split frame: stat "3x faster" left, gradient mesh right
+4.0s  Kinetic type: words assemble one by one — "Find. Understand. Act."
+6.0s  Dark terminal beat: `npm install denser` typing in
+8.0s  Product UI walkthrough, camera drift across interface
+12.0s CTA: logo + URL, holds to end
+```
+
+If you can't describe what makes each second visually interesting, the video will be boring. Rewrite the map until every beat earns its time.
+
+### The slideshow trap
+
+If every scene is "title + subtitle + decorative glow on dark background," you're building slides, not video. Check your temporal map for these:
+
+- **Same layout repeated** — three scenes in a row with centered text over solid background? Restructure. Use split frames, edge-anchored content, full-bleed images, kinetic type, data panels.
+- **Same animation repeated** — everything fading up from below with the same ease? Each scene needs its own entrance character.
+- **Same color temperature** — all dark, all light, all the same palette weight? Alternate warm/cool, light/dark, dense/minimal.
+- **No visual surprise** — the viewer should never be able to predict what the next beat looks like. Contrast between consecutive scenes is what creates energy.
+
+### Scene variety checklist
+
+Rotate between these layout types — never use the same type twice in a row:
+
+| Type                 | Description                                        | When to use                          |
+| -------------------- | -------------------------------------------------- | ------------------------------------ |
+| **Statement**        | One phrase, giant type, full frame                 | Opening hooks, emotional beats       |
+| **Full-bleed image** | Product screenshot or visual filling 100% of frame | Proof, credibility, "this is real"   |
+| **Split frame**      | Content left + visual right (or top/bottom)        | Data + context, before/after         |
+| **Kinetic type**     | Words or letters animate individually              | Building a phrase, revealing an idea |
+| **Data beat**        | Giant number + small label                         | Statistics, metrics, impact          |
+| **Terminal/code**    | Monospace on dark, typing animation                | Developer content, commands          |
+| **Atmospheric**      | Slow ambient motion, minimal content               | Breathing room, emotional pause      |
+
+### One focus per frame
+
+Each beat shows ONE thing. Not a heading AND a paragraph AND an icon AND a decorative. One visual focus, all the attention, then cut. If you pause the video at any moment and the viewer's eye doesn't know where to look, the frame has too much.
+
+### Beat duration guide
+
+- **Impact beats** (0.7-1.8s): statements, keywords, image reveals — fast, punchy
+- **Content beats** (2-4s): explanations, product shots, demonstrations — enough to absorb
+- **Atmosphere beats** (4-8s): establishing moods, emotional moments — let the viewer feel it
+- **Never** hold a static frame >3s without ambient motion — stillness reads as frozen
+
+## Visual Richness — SVG Over CSS Shapes
+
+CSS rectangles and circles look amateur in rendered video. Use inline SVG for any visual that isn't text. Read [references/techniques.md](references/techniques.md) for full code patterns — every composition should use at least 2-3 techniques.
+
+### SVG patterns to reach for
+
+| Visual need        | SVG approach                                  | GSAP animation                                         |
+| ------------------ | --------------------------------------------- | ------------------------------------------------------ |
+| **Diagrams/flows** | `<path>` with stroke-dasharray                | `strokeDashoffset: 0` draw-on reveal                   |
+| **Node graphs**    | `<circle>` nodes + `<line>` edges             | Staggered scale-in for nodes, stroke draw for edges    |
+| **Data viz**       | `<rect>` bars, `<circle>` donuts              | Height/width tween for bars, strokeDashoffset for arcs |
+| **Icons/marks**    | Multi-path SVG icons                          | Per-path staggered draw-on                             |
+| **Decoratives**    | Bezier curves, constellation dots             | MotionPathPlugin for particles along curves            |
+| **Waveforms**      | `<polyline>` or `<path>` with computed points | Frame-by-frame point updates via proxy                 |
+
+### The 3-layer rule
+
+Every scene needs visual depth — not just content floating on a solid color:
+
+1. **Background**: radial gradient glows, SVG grid/dot patterns with slow drift, large ghost text at 3-5% opacity
+2. **Content**: the focal element (text, diagram, stat)
+3. **Accent**: animated SVG decoratives — connector lines drawing on, floating particles, pulsing rings, circuit traces
+
+A scene with only layer 2 (content on solid bg) looks like a slide. Layers 1 and 3 make it feel like a produced video.
+
+### SVG stroke draw-on (most useful pattern)
+
+```javascript
+// Measure path, set initial state, animate reveal
+var path = document.querySelector("#my-path");
+var len = path.getTotalLength();
+gsap.set(path, { strokeDasharray: len, strokeDashoffset: len });
+tl.to(path, { strokeDashoffset: 0, duration: 0.8, ease: "power2.out" }, 0.3);
+```
+
+Use this for: connector lines, flow arrows, underline reveals, diagram edges, brand marks, circuit traces.
 
 ## Layout Before Animation
 
@@ -355,6 +447,19 @@ tl.from("#s2-heading", { x: -40, opacity: 0, duration: 0.6, ease: "expo.out" }, 
 - Avoid full-screen linear gradients on dark backgrounds (H.264 banding — use radial or solid + localized glow)
 - 60px+ headlines, 20px+ body, 16px+ data labels for rendered video
 - `font-variant-numeric: tabular-nums` on number columns
+
+### Easing communicates intent
+
+Don't use `power2.out` on everything. Choose easing per the emotion you want:
+
+| Intent               | Ease                  | When                                    |
+| -------------------- | --------------------- | --------------------------------------- |
+| Snap (confident)     | `power4.out`          | Hero text landing, decisive actions     |
+| Overshoot (playful)  | `back.out(1.7)`       | Numbers, badges, bouncy elements        |
+| Soft land (elegant)  | `expo.out`            | Per-word text reveals, gentle entrances |
+| Mechanical (precise) | `power1.out`          | Terminal text, code, technical content  |
+| Spring (energetic)   | `elastic.out(1, 0.5)` | Stats, counters, CTA elements           |
+| Dramatic (cinematic) | `expo.inOut`          | Full-screen statements, scene openers   |
 
 If no `design.md` exists, follow [house-style.md](./house-style.md) for aesthetic defaults.
 
