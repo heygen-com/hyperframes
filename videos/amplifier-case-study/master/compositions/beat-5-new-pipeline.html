@@ -150,21 +150,21 @@
         --font-mono: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
       }
 
-      #amplifier-case-study-beat-5 {
+      [data-composition-id="amplifier-case-study-beat-5"] {
         position: absolute;
         inset: 0;
         background: var(--ink);
         color: var(--paper);
-        font-family: var(--font-display);
+        font-family: "Inter Tight", "Inter", system-ui, sans-serif;
         overflow: hidden;
       }
 
       /* Top-right meta label */
-      #amplifier-case-study-beat-5 .b5-meta {
+      [data-composition-id="amplifier-case-study-beat-5"] .b5-meta {
         position: absolute;
         top: 56px;
         right: 96px;
-        font-family: var(--font-mono);
+        font-family: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
         font-size: 14px;
         font-weight: 500;
         letter-spacing: 0.04em;
@@ -173,7 +173,7 @@
 
       /* Stage: 1728px wide content area, centered horizontally, vertically
          positioned roughly y=140..940 (800px tall). */
-      #amplifier-case-study-beat-5 .b5-stage {
+      [data-composition-id="amplifier-case-study-beat-5"] .b5-stage {
         position: absolute;
         left: 96px;
         top: 140px;
@@ -182,7 +182,7 @@
       }
 
       /* SVG connector layer fills the stage. */
-      #amplifier-case-study-beat-5 .b5-svg {
+      [data-composition-id="amplifier-case-study-beat-5"] .b5-svg {
         position: absolute;
         inset: 0;
         width: 100%;
@@ -191,7 +191,7 @@
       }
 
       /* Line styling — drawn via stroke-dashoffset animation. */
-      #amplifier-case-study-beat-5 .b5-line {
+      [data-composition-id="amplifier-case-study-beat-5"] .b5-line {
         stroke: var(--ink-soft);
         stroke-width: 1.5;
         stroke-linecap: round;
@@ -199,7 +199,7 @@
         stroke-dasharray: var(--len);
         stroke-dashoffset: var(--len);
       }
-      #amplifier-case-study-beat-5 .b5-retry {
+      [data-composition-id="amplifier-case-study-beat-5"] .b5-retry {
         stroke: var(--signal);
         stroke-width: 1.5;
         stroke-linecap: round;
@@ -207,7 +207,7 @@
         stroke-dasharray: var(--len);
         stroke-dashoffset: var(--len);
       }
-      #amplifier-case-study-beat-5 .b5-retry-head {
+      [data-composition-id="amplifier-case-study-beat-5"] .b5-retry-head {
         stroke: var(--signal);
         stroke-width: 1.5;
         stroke-linecap: round;
@@ -217,20 +217,20 @@
 
       /* Pill nodes — positioned absolutely with left/top inline. The .b5-pill
          child is what we tween for activation. */
-      #amplifier-case-study-beat-5 .b5-node {
+      [data-composition-id="amplifier-case-study-beat-5"] .b5-node {
         position: absolute;
         height: 32px;
         display: flex;
         align-items: center;
       }
-      #amplifier-case-study-beat-5 .b5-pill {
+      [data-composition-id="amplifier-case-study-beat-5"] .b5-pill {
         height: 32px;
         padding: 0 24px;
         line-height: 32px;
         border: 1px solid var(--ink-line);
         background: var(--ink-elevated);
         border-radius: 999px;
-        font-family: var(--font-mono);
+        font-family: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
         font-size: 18px;
         font-weight: 400;
         color: var(--paper-muted);
@@ -240,11 +240,11 @@
 
       /* Retry arrow label sits centered above the curve apex. SVG curve apex
          is at approx x=535 (mid of 715,355), y=480 in stage coords. */
-      #amplifier-case-study-beat-5 .b5-retry-label {
+      [data-composition-id="amplifier-case-study-beat-5"] .b5-retry-label {
         position: absolute;
         left: 430px;
         top: 460px;
-        font-family: var(--font-mono);
+        font-family: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
         font-size: 14px;
         font-weight: 500;
         letter-spacing: 0.04em;
@@ -255,7 +255,7 @@
       /* Code snippet panel — slides in from left, parked between Row 1 and the
          vertical drop, near the worker→llm step. ~380px wide, lives at the
          top-right of stage to avoid both rows of pills. */
-      #amplifier-case-study-beat-5 .b5-code {
+      [data-composition-id="amplifier-case-study-beat-5"] .b5-code {
         position: absolute;
         left: 1330px;
         top: 340px;
@@ -265,7 +265,7 @@
         background: var(--ink-elevated);
         border: 1px solid var(--code-soft);
         border-radius: 6px;
-        font-family: var(--font-mono);
+        font-family: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
         font-size: 12px;
         line-height: 1.55;
         color: var(--paper);
@@ -274,29 +274,29 @@
         will-change: opacity, transform;
         box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
       }
-      #amplifier-case-study-beat-5 .b5-code-line {
+      [data-composition-id="amplifier-case-study-beat-5"] .b5-code-line {
         white-space: nowrap;
       }
-      #amplifier-case-study-beat-5 .b5-tok-fn {
+      [data-composition-id="amplifier-case-study-beat-5"] .b5-tok-fn {
         color: var(--signal);
       }
-      #amplifier-case-study-beat-5 .b5-tok-id {
+      [data-composition-id="amplifier-case-study-beat-5"] .b5-tok-id {
         color: var(--paper);
       }
-      #amplifier-case-study-beat-5 .b5-tok-key {
+      [data-composition-id="amplifier-case-study-beat-5"] .b5-tok-key {
         color: var(--code);
       }
-      #amplifier-case-study-beat-5 .b5-tok-str {
+      [data-composition-id="amplifier-case-study-beat-5"] .b5-tok-str {
         color: var(--warn);
       }
 
       /* Bottom-left caption: display-m sized 56px (smaller than spec 96px
          because we have lots of diagram above). Word-by-word reveal. */
-      #amplifier-case-study-beat-5 .b5-caption {
+      [data-composition-id="amplifier-case-study-beat-5"] .b5-caption {
         position: absolute;
         left: 96px;
         bottom: 120px;
-        font-family: var(--font-display);
+        font-family: "Inter Tight", "Inter", system-ui, sans-serif;
         font-size: 56px;
         font-weight: 500;
         letter-spacing: -0.01em;
@@ -304,7 +304,7 @@
         color: var(--paper);
         max-width: 1200px;
       }
-      #amplifier-case-study-beat-5 .b5-cap-word {
+      [data-composition-id="amplifier-case-study-beat-5"] .b5-cap-word {
         display: inline-block;
         opacity: 0;
         transform: translateY(24px);
@@ -313,7 +313,7 @@
       }
 
       /* Persistent hairline — passed-along state ~55% width in beat 5 */
-      #amplifier-case-study-beat-5 .b5-hairline {
+      [data-composition-id="amplifier-case-study-beat-5"] .b5-hairline {
         position: absolute;
         bottom: 80px;
         left: 96px;

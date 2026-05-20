@@ -93,17 +93,17 @@
         --font-mono: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
       }
 
-      #amplifier-case-study-beat-4 {
+      [data-composition-id="amplifier-case-study-beat-4"] {
         position: absolute;
         inset: 0;
         background: var(--ink);
         color: var(--paper);
-        font-family: var(--font-display);
+        font-family: "Inter Tight", "Inter", system-ui, sans-serif;
         overflow: hidden;
       }
 
       /* Terminal frame */
-      #amplifier-case-study-beat-4 .b4-terminal {
+      [data-composition-id="amplifier-case-study-beat-4"] .b4-terminal {
         position: absolute;
         left: 50%;
         top: 50%;
@@ -119,7 +119,7 @@
         overflow: hidden;
         box-shadow: 0 30px 80px rgba(0, 0, 0, 0.45);
       }
-      #amplifier-case-study-beat-4 .b4-chrome {
+      [data-composition-id="amplifier-case-study-beat-4"] .b4-chrome {
         display: flex;
         align-items: center;
         height: 44px;
@@ -127,76 +127,76 @@
         border-bottom: 1px solid var(--ink-line);
         background: var(--ink);
       }
-      #amplifier-case-study-beat-4 .b4-dots {
+      [data-composition-id="amplifier-case-study-beat-4"] .b4-dots {
         display: flex;
         gap: 8px;
         width: 200px;
       }
-      #amplifier-case-study-beat-4 .b4-dot {
+      [data-composition-id="amplifier-case-study-beat-4"] .b4-dot {
         width: 12px;
         height: 12px;
         border-radius: 50%;
         background: var(--paper-dim);
       }
-      #amplifier-case-study-beat-4 .b4-title {
+      [data-composition-id="amplifier-case-study-beat-4"] .b4-title {
         flex: 1;
         text-align: center;
-        font-family: var(--font-mono);
+        font-family: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
         font-size: 14px;
         font-weight: 500;
         letter-spacing: 0.04em;
         color: var(--paper-muted);
       }
-      #amplifier-case-study-beat-4 .b4-chrome-spacer {
+      [data-composition-id="amplifier-case-study-beat-4"] .b4-chrome-spacer {
         width: 200px;
       }
 
       /* Terminal body */
-      #amplifier-case-study-beat-4 .b4-body {
+      [data-composition-id="amplifier-case-study-beat-4"] .b4-body {
         flex: 1;
         padding: 36px 40px;
-        font-family: var(--font-mono);
+        font-family: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
         font-size: 22px;
         font-weight: 400;
         line-height: 1.55;
         color: var(--paper);
         overflow: hidden;
       }
-      #amplifier-case-study-beat-4 .b4-line {
+      [data-composition-id="amplifier-case-study-beat-4"] .b4-line {
         display: block;
         white-space: nowrap;
         will-change: opacity;
       }
-      #amplifier-case-study-beat-4 .b4-spacer {
+      [data-composition-id="amplifier-case-study-beat-4"] .b4-spacer {
         height: 10px;
       }
-      #amplifier-case-study-beat-4 .b4-prompt {
+      [data-composition-id="amplifier-case-study-beat-4"] .b4-prompt {
         color: var(--signal);
         margin-right: 8px;
       }
-      #amplifier-case-study-beat-4 .b4-sha {
+      [data-composition-id="amplifier-case-study-beat-4"] .b4-sha {
         color: var(--code);
         margin-right: 12px;
       }
-      #amplifier-case-study-beat-4 .b4-log-row {
+      [data-composition-id="amplifier-case-study-beat-4"] .b4-log-row {
         color: var(--paper-muted);
       }
-      #amplifier-case-study-beat-4 .b4-log-cmd {
+      [data-composition-id="amplifier-case-study-beat-4"] .b4-log-cmd {
         color: var(--paper);
       }
 
       /* Lines that animate in start hidden */
-      #amplifier-case-study-beat-4 .b4-log-cmd,
-      #amplifier-case-study-beat-4 .b4-log-row,
-      #amplifier-case-study-beat-4 .b4-typed-row,
-      #amplifier-case-study-beat-4 .b4-diff-cmd,
-      #amplifier-case-study-beat-4 .b4-diff-row,
-      #amplifier-case-study-beat-4 .b4-commit-row {
+      [data-composition-id="amplifier-case-study-beat-4"] .b4-log-cmd,
+      [data-composition-id="amplifier-case-study-beat-4"] .b4-log-row,
+      [data-composition-id="amplifier-case-study-beat-4"] .b4-typed-row,
+      [data-composition-id="amplifier-case-study-beat-4"] .b4-diff-cmd,
+      [data-composition-id="amplifier-case-study-beat-4"] .b4-diff-row,
+      [data-composition-id="amplifier-case-study-beat-4"] .b4-commit-row {
         opacity: 0;
       }
 
       /* Typed rm line — text is in DOM; reveal via width clip */
-      #amplifier-case-study-beat-4 .b4-rm-text {
+      [data-composition-id="amplifier-case-study-beat-4"] .b4-rm-text {
         color: var(--paper);
         display: inline-block;
         overflow: hidden;
@@ -204,20 +204,20 @@
         vertical-align: bottom;
         width: 0ch;
       }
-      #amplifier-case-study-beat-4 .b4-rm-cursor {
+      [data-composition-id="amplifier-case-study-beat-4"] .b4-rm-cursor {
         color: var(--paper);
         opacity: 0;
         margin-left: 2px;
       }
 
       /* Diff row + counter */
-      #amplifier-case-study-beat-4 .b4-diff-cmd {
+      [data-composition-id="amplifier-case-study-beat-4"] .b4-diff-cmd {
         color: var(--paper);
       }
-      #amplifier-case-study-beat-4 .b4-diff-path {
+      [data-composition-id="amplifier-case-study-beat-4"] .b4-diff-path {
         color: var(--paper-muted);
       }
-      #amplifier-case-study-beat-4 .b4-counter {
+      [data-composition-id="amplifier-case-study-beat-4"] .b4-counter {
         display: inline-block;
         min-width: 80px;
         text-align: right;
@@ -225,7 +225,7 @@
         color: var(--signal);
         font-weight: 500;
       }
-      #amplifier-case-study-beat-4 .b4-dashes {
+      [data-composition-id="amplifier-case-study-beat-4"] .b4-dashes {
         display: inline-block;
         color: var(--signal);
         overflow: hidden;
@@ -236,7 +236,7 @@
       }
 
       /* Commit row */
-      #amplifier-case-study-beat-4 .b4-commit-text {
+      [data-composition-id="amplifier-case-study-beat-4"] .b4-commit-text {
         color: var(--paper);
         display: inline-block;
         overflow: hidden;
@@ -244,14 +244,14 @@
         vertical-align: bottom;
         width: 0ch;
       }
-      #amplifier-case-study-beat-4 .b4-commit-cursor {
+      [data-composition-id="amplifier-case-study-beat-4"] .b4-commit-cursor {
         color: var(--paper);
         opacity: 0;
         margin-left: 2px;
       }
 
       /* Hairline — passed-along state ~45% width in beat 4 */
-      #amplifier-case-study-beat-4 .b4-hairline {
+      [data-composition-id="amplifier-case-study-beat-4"] .b4-hairline {
         position: absolute;
         bottom: 80px;
         left: 96px;

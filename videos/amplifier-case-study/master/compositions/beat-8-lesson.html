@@ -49,12 +49,12 @@
         --font-mono: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
       }
 
-      #amplifier-case-study-beat-8 {
+      [data-composition-id="amplifier-case-study-beat-8"] {
         position: absolute;
         inset: 0;
         background: var(--ink);
         color: var(--paper);
-        font-family: var(--font-display);
+        font-family: "Inter Tight", "Inter", system-ui, sans-serif;
         overflow: hidden;
         will-change: opacity;
       }
@@ -63,45 +63,45 @@
          Spec calls for display-xl (168px). At 168px the sentence overflows
          the 1728px content width — drop to 120px so the two lines fit on
          one line each with breathing room while keeping the headline feel. */
-      #amplifier-case-study-beat-8 .b8-quote {
+      [data-composition-id="amplifier-case-study-beat-8"] .b8-quote {
         position: absolute;
         top: 50%;
         left: 50%;
         transform: translate(-50%, -50%);
         width: 1728px;
         text-align: center;
-        font-family: var(--font-display);
+        font-family: "Inter Tight", "Inter", system-ui, sans-serif;
         font-weight: 600;
         font-size: 120px;
         line-height: 1.05;
         letter-spacing: -0.02em;
         color: var(--paper);
       }
-      #amplifier-case-study-beat-8 .b8-q-line {
+      [data-composition-id="amplifier-case-study-beat-8"] .b8-q-line {
         display: block;
         white-space: nowrap;
       }
-      #amplifier-case-study-beat-8 .b8-q-word {
+      [data-composition-id="amplifier-case-study-beat-8"] .b8-q-word {
         display: inline-block;
         margin: 0 18px 0 0;
         will-change: transform, opacity;
       }
-      #amplifier-case-study-beat-8 .b8-q-shape {
+      [data-composition-id="amplifier-case-study-beat-8"] .b8-q-shape {
         color: var(--signal);
       }
-      #amplifier-case-study-beat-8 .b8-q-ceiling {
+      [data-composition-id="amplifier-case-study-beat-8"] .b8-q-ceiling {
         color: var(--warn);
       }
 
       /* CTA below the quote */
-      #amplifier-case-study-beat-8 .b8-cta {
+      [data-composition-id="amplifier-case-study-beat-8"] .b8-cta {
         position: absolute;
         top: 50%;
         left: 50%;
         /* quote is two lines × 120px × 1.05 ≈ 252px total; half ≈ 126px;
            CTA sits ~64px below that bottom edge */
         transform: translate(-50%, calc(126px + 64px));
-        font-family: var(--font-mono);
+        font-family: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
         font-weight: 400;
         font-size: 22px;
         letter-spacing: 0.02em;
@@ -112,7 +112,7 @@
       }
 
       /* Persistent hairline — final beat, reaches full content width */
-      #amplifier-case-study-beat-8 .b8-hairline {
+      [data-composition-id="amplifier-case-study-beat-8"] .b8-hairline {
         position: absolute;
         bottom: 80px;
         left: 96px;

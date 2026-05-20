@@ -73,21 +73,21 @@
         --font-mono: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
       }
 
-      #amplifier-case-study-beat-6 {
+      [data-composition-id="amplifier-case-study-beat-6"] {
         position: absolute;
         inset: 0;
         background: var(--ink);
         color: var(--paper);
-        font-family: var(--font-display);
+        font-family: "Inter Tight", "Inter", system-ui, sans-serif;
         overflow: hidden;
       }
 
       /* Top-right meta label */
-      #amplifier-case-study-beat-6 .b6-meta {
+      [data-composition-id="amplifier-case-study-beat-6"] .b6-meta {
         position: absolute;
         top: 56px;
         right: 96px;
-        font-family: var(--font-mono);
+        font-family: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
         font-size: 14px;
         font-weight: 500;
         letter-spacing: 0.04em;
@@ -99,7 +99,7 @@
          So canvas y=540 → stage y=400 (divider position).
          Canvas y=580..700 → stage y=440..560 (fallback block).
          Canvas y=708..716 → stage y=568..576 (base plate). */
-      #amplifier-case-study-beat-6 .b6-stage {
+      [data-composition-id="amplifier-case-study-beat-6"] .b6-stage {
         position: absolute;
         left: 96px;
         top: 140px;
@@ -108,7 +108,7 @@
       }
 
       /* SVG connector layer fills the stage. */
-      #amplifier-case-study-beat-6 .b6-svg {
+      [data-composition-id="amplifier-case-study-beat-6"] .b6-svg {
         position: absolute;
         inset: 0;
         width: 100%;
@@ -117,7 +117,7 @@
       }
 
       /* Dotted hairlines descending from offscreen-top into block. */
-      #amplifier-case-study-beat-6 .b6-dotted-connector {
+      [data-composition-id="amplifier-case-study-beat-6"] .b6-dotted-connector {
         stroke: var(--ink-soft);
         stroke-width: 1.5;
         stroke-linecap: round;
@@ -128,7 +128,7 @@
 
       /* Horizontal divider hairline. Full stage width, 1px tall, sits at
          stage-y 400 (canvas y=540). */
-      #amplifier-case-study-beat-6 .b6-divider {
+      [data-composition-id="amplifier-case-study-beat-6"] .b6-divider {
         position: absolute;
         left: 0;
         top: 400px;
@@ -141,7 +141,7 @@
 
       /* Fallback block: full stage width (1728px), 120px tall, sits at
          stage-y 440 (canvas y=580). */
-      #amplifier-case-study-beat-6 .b6-fallback-block {
+      [data-composition-id="amplifier-case-study-beat-6"] .b6-fallback-block {
         position: absolute;
         left: 0;
         top: 440px;
@@ -157,8 +157,8 @@
       }
 
       /* Label inside the fallback block. */
-      #amplifier-case-study-beat-6 .b6-fallback-label {
-        font-family: var(--font-mono);
+      [data-composition-id="amplifier-case-study-beat-6"] .b6-fallback-label {
+        font-family: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
         font-size: 28px;
         font-weight: 500;
         letter-spacing: 0.02em;
@@ -168,7 +168,7 @@
 
       /* Base plate: 8px thick, full stage width, sits at stage-y 568
          (canvas y=708). The "foundation" indicator below the block. */
-      #amplifier-case-study-beat-6 .b6-baseplate {
+      [data-composition-id="amplifier-case-study-beat-6"] .b6-baseplate {
         position: absolute;
         left: 0;
         top: 568px;
@@ -180,11 +180,11 @@
       }
 
       /* Bottom-left caption: display-m sized 96px Inter Tight 500. */
-      #amplifier-case-study-beat-6 .b6-caption {
+      [data-composition-id="amplifier-case-study-beat-6"] .b6-caption {
         position: absolute;
         left: 96px;
         bottom: 120px;
-        font-family: var(--font-display);
+        font-family: "Inter Tight", "Inter", system-ui, sans-serif;
         font-size: 96px;
         font-weight: 500;
         letter-spacing: -0.01em;
@@ -192,19 +192,19 @@
         color: var(--paper);
         max-width: 1600px;
       }
-      #amplifier-case-study-beat-6 .b6-cap-word {
+      [data-composition-id="amplifier-case-study-beat-6"] .b6-cap-word {
         display: inline-block;
         opacity: 0;
         transform: translateY(24px);
         margin-right: 24px;
         will-change: opacity, transform;
       }
-      #amplifier-case-study-beat-6 .b6-cap-ceiling {
+      [data-composition-id="amplifier-case-study-beat-6"] .b6-cap-ceiling {
         color: var(--signal);
       }
 
       /* Persistent hairline — passed-along state ~70% width in beat 6. */
-      #amplifier-case-study-beat-6 .b6-hairline {
+      [data-composition-id="amplifier-case-study-beat-6"] .b6-hairline {
         position: absolute;
         bottom: 80px;
         left: 96px;
