@@ -1,13 +1,13 @@
 ---
 name: hyperframes-animation
-description: Atomic animation rules + scene blueprints for HyperFrames promo videos. Default path is rule composition — pick 2-4 rules from the index and combine them on a single paused GSAP timeline. Multi-phase scene templates (blueprints) and runnable examples live in `blueprints-index.md`, loaded only when authoring a full pre-designed scene. HyperFrames-native: seek-safe, deterministic.
+description: "All animation knowledge for HyperFrames — atomic motion rules, multi-phase scene blueprints, scene transitions, broader motion-design techniques, AND the seven runtime adapters (GSAP default, plus Lottie, Three.js, Anime.js, CSS keyframes, Web Animations API, TypeGPU). Use for any motion or animation task: pick 2-4 rules and compose, or load a blueprint, or look up runtime-specific API (e.g. GSAP eases / Lottie player / Three.js mixer). HyperFrames-native: single paused timeline, seek-safe, deterministic."
 ---
 
 # HyperFrames Animation
 
-Atomic motion **rules** and multi-phase scene **blueprints**.
+All motion knowledge in one skill: **rules** (atomic recipes), **blueprints** (multi-phase scene templates), **transitions** (scene-to-scene), **techniques** (broader motion-design patterns), and **adapters** (per-runtime APIs).
 
-For the composition contract (data attributes, sub-compositions, determinism) see `hyperframes-core`. For GSAP API specifics (eases, transform aliases, allowlist) see `hyperframes-adapters/references/gsap.md`.
+For the composition contract (data attributes, sub-compositions, determinism) see `hyperframes-core`.
 
 ## Default: compose atomic rules
 
@@ -22,24 +22,47 @@ Blueprints live in `blueprints-index.md`. Each entry points to `blueprints/<id>.
 
 ## Routing
 
-| Want to…                                                  | Read                                                |
-| --------------------------------------------------------- | --------------------------------------------------- |
-| Pick an atomic motion pattern by trigger / tag            | `rules-index.md`                                    |
-| Read one rule's full HTML / CSS / GSAP recipe             | `rules/<name>.md`                                   |
-| Pick a multi-phase scene template                         | `blueprints-index.md`                               |
-| Read one blueprint's full recipe                          | `blueprints/<id>.md` + `examples/<id>.html`         |
-| Author a scene transition (CSS-driven, between two clips) | `transitions/overview.md`, `transitions/catalog.md` |
-| Look up a broader motion-design technique                 | `techniques.md`                                     |
-| Analyze an existing composition's animation map           | `scripts/animation-map.mjs`                         |
+| Want to…                                                        | Read                                                |
+| --------------------------------------------------------------- | --------------------------------------------------- |
+| Pick an atomic motion pattern by trigger / tag                  | `rules-index.md`                                    |
+| Read one rule's full HTML / CSS / GSAP recipe                   | `rules/<name>.md`                                   |
+| Pick a multi-phase scene template                               | `blueprints-index.md`                               |
+| Read one blueprint's full recipe                                | `blueprints/<id>.md` + `examples/<id>.html`         |
+| Author a scene transition (CSS-driven, between two clips)       | `transitions/overview.md`, `transitions/catalog.md` |
+| Look up a broader motion-design technique                       | `techniques.md`                                     |
+| Analyze an existing composition's animation map                 | `scripts/animation-map.mjs`                         |
+| GSAP API — timeline / tweens / position parameters              | `adapters/gsap.md`                                  |
+| GSAP — drop-in effect recipes                                   | `adapters/gsap-effects.md`                          |
+| GSAP — transforms / perf                                        | `adapters/gsap-transforms-and-perf.md`              |
+| GSAP — eases / stagger                                          | `adapters/gsap-easing-and-stagger.md`               |
+| GSAP — timeline / labels                                        | `adapters/gsap-timeline-and-labels.md`              |
+| Lottie / dotLottie (After Effects exports, `window.__hfLottie`) | `adapters/lottie.md`                                |
+| Three.js / WebGL (3D scenes, `AnimationMixer`, `hf-seek`)       | `adapters/three.md`                                 |
+| Anime.js (`window.__hfAnime`)                                   | `adapters/animejs.md`                               |
+| CSS keyframes (`animation-delay` / `play-state` / `fill-mode`)  | `adapters/css-animations.md`                        |
+| Web Animations API (`element.animate()`, `currentTime` seek)    | `adapters/waapi.md`                                 |
+| TypeGPU / WebGPU (`navigator.gpu`, WGSL, compute pipelines)     | `adapters/typegpu.md`                               |
 
-## Critical Constraints (apply to every rule and blueprint)
+## Picking a runtime
 
-- **Single paused timeline per composition** — registered to `window.__timelines["composition-id"]`.
-- **`data-duration` on the root** governs render length, not the GSAP timeline's intrinsic length.
-- **Pre-calculated layout constants** — never derive positions from `getBoundingClientRect()` at tween time.
-- **GSAP transform aliases only** (`x`, `y`, `scale`, `rotation`) — `width` / `height` / `left` / `top` are forbidden.
-- **No infinite repeats** — `repeat: -1` is forbidden; compute finite repeats from `data-duration`.
-- **No nondeterministic state** — no `Math.random()`, no `Date.now()`, no `performance.now()`, no network fetches. State must be a pure function of `tl.time()`.
+- **GSAP** is the default for 95% of motion work — covers timeline orchestration, transforms, easing, stagger. All atomic rules in this skill are GSAP-based.
+- **Lottie** when an asset has its own pre-baked timeline (typically After Effects exports).
+- **Three.js** for 3D scenes, camera motion, shader-driven visuals.
+- **Anime.js** for lightweight tweening when GSAP is overkill.
+- **CSS** for simple repeated motifs, decoration, shimmer — no JavaScript animation cost.
+- **WAAPI** for native browser keyframes without a GSAP dependency.
+- **TypeGPU / WebGPU** for GPU-rendered canvases (particles, liquid glass, custom shaders).
+
+Multiple runtimes can coexist in one composition. Each registers its instances on the runtime-specific global so HyperFrames can seek all of them in one pass.
+
+## Critical Constraints
+
+**Prerequisite: `hyperframes-core` → Non-Negotiable Rules** (single paused timeline, `data-duration` governs length, no `Math.random` / `Date.now` / `performance.now`, no `repeat: -1`, no `gsap.set` on later-scene clips, no `display` / `visibility` animation, no timeline construction inside `async` / `setTimeout` / `Promise`). Don't restate those here.
+
+Animation-craft additions on top of core's contract:
+
+- **Pre-calculated layout constants** — never derive positions from `getBoundingClientRect()` at tween time. Tween-time DOM measurements desync because the renderer samples in parallel; compute coordinates once at composition setup and reuse.
+- **Spatial motion uses GSAP transform aliases only** (`x`, `y`, `scale`, `rotation`). Core's allowlist also permits `opacity` / `color` / `backgroundColor` / `borderRadius` for non-spatial property tweens — but never `width` / `height` / `top` / `left` for layout changes.
 
 ## Scripts
 
@@ -53,6 +76,5 @@ Reads every GSAP timeline registered on `window.__timelines`, enumerates tweens,
 ## See Also
 
 - `hyperframes-core` — composition structure, data attributes, sub-compositions, deterministic render contract
-- `hyperframes-adapters` — GSAP / Lottie / Three / Anime.js / CSS / WAAPI / TypeGPU runtime references
 - `hyperframes-creative` — palettes, typography, narration, beat planning (non-animation creative direction)
 - `hyperframes-cli` — `npx hyperframes lint / validate / inspect / preview / render`

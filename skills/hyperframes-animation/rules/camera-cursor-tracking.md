@@ -241,6 +241,6 @@ finalWorldX = Math.min(INITIAL_OFFSET, trackingOffset)
 
 ## Pairs with HF skills
 
-- `/hyperframes-adapters` — timeline + tween API
+- `/hyperframes-animation` — timeline + tween API
 - `/hyperframes-core` — composition wiring + `data-*` attributes
 - `/hyperframes-cli` — `hyperframes lint` to validate the registry key + duration

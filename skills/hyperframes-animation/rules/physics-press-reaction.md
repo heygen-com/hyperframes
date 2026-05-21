@@ -345,6 +345,6 @@ tl.to(
 
 ## Pairs with HF skills
 
-- `/hyperframes-adapters` — coordinated multi-target tweens via array
+- `/hyperframes-animation` — coordinated multi-target tweens via array
 - `/hyperframes-core` — composition wiring
 - `/hyperframes-cli` — `hyperframes lint`

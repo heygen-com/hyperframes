@@ -293,6 +293,6 @@ For a flat morph between two same-shape states, drop the scale and keep only opa
 
 ## Pairs with HF skills
 
-- `/hyperframes-adapters` — two coordinated tweens with overlap
+- `/hyperframes-animation` — two coordinated tweens with overlap
 - `/hyperframes-core` — composition wiring
 - `/hyperframes-cli` — `hyperframes lint`

@@ -257,6 +257,6 @@ Build a paused timeline. Register it on `window.__timelines` with the same key a
 
 ## Pairs with HF skills
 
-- `/hyperframes-adapters` — timeline + tween API reference (eases, stagger, `immediateRender`, etc.)
+- `/hyperframes-animation` — timeline + tween API reference (eases, stagger, `immediateRender`, etc.)
 - `/hyperframes-core` — composition wiring (`data-*` attributes, scene structure, registration contract)
 - `/hyperframes-cli` — `hyperframes lint` to verify the registry key + duration match

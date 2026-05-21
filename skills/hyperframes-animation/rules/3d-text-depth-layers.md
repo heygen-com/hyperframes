@@ -292,6 +292,6 @@ el.style.color = `hsla(${HUE_BASE - i * HUE_STEP}, ${SAT_PCT}%, ${LIGHT_BASE - i
 
 ## Pairs with HF skills
 
-- `/hyperframes-adapters` — staggered fade-ins + onUpdate for dynamic depth
+- `/hyperframes-animation` — staggered fade-ins + onUpdate for dynamic depth
 - `/hyperframes-core` — composition wiring
 - `/hyperframes-cli` — `hyperframes lint`

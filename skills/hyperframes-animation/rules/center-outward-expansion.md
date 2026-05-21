@@ -222,6 +222,6 @@ Pair with `sine-wave-loop` after expansion lands — keeps elements alive instea
 
 ## Pairs with HF skills
 
-- `/hyperframes-adapters` — timeline + stagger
+- `/hyperframes-animation` — timeline + stagger
 - `/hyperframes-core` — composition wiring
 - `/hyperframes-cli` — `hyperframes lint`

@@ -377,6 +377,6 @@ After tracking, the camera (via [viewport-change](viewport-change.md)) zooms int
 
 ## Pairs with HF skills
 
-- `/hyperframes-adapters` — onUpdate writing multi-element positions
+- `/hyperframes-animation` — onUpdate writing multi-element positions
 - `/hyperframes-core` — composition wiring
 - `/hyperframes-cli` — `hyperframes lint`

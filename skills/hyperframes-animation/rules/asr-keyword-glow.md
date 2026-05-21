@@ -279,7 +279,7 @@ Ease family — discrete choice:
 
 ## Pairs with HF skills
 
-- `/hyperframes-adapters` — single driver, multi-element envelope
+- `/hyperframes-animation` — single driver, multi-element envelope
 - `/hyperframes-media` — `hyperframes transcribe` outputs real ASR data
 - `/hyperframes-media` — pair with caption rendering
 - `/hyperframes-core` — composition wiring

@@ -272,6 +272,6 @@ For 3 cards, the center card stays flat (`rotateY 0`) and the outer two tilt inw
 
 ## Pairs with HF skills
 
-- `/hyperframes-adapters` — timeline + `yoyo` for the idle bob
+- `/hyperframes-animation` — timeline + `yoyo` for the idle bob
 - `/hyperframes-core` — composition wiring
 - `/hyperframes-cli` — `hyperframes lint`

@@ -1,13 +1,11 @@
 # GSAP Effects for HyperFrames
 
-Drop-in animation patterns for HyperFrames compositions. Each effect is self-contained with HTML, CSS, and code.
+Drop-in animation patterns. Each effect is self-contained (HTML + CSS + JS) and follows the HyperFrames seek-driven contract — deterministic, no randomness, timeline registered on `window.__timelines`.
 
-All effects follow HyperFrames composition rules — deterministic, no randomness, timelines registered via `window.__timelines`.
+## Index
 
-## Contents
-
-- [Typewriter](#typewriter)
-- [Audio Visualizer](#audio-visualizer)
+- [Typewriter](#typewriter) — character-by-character text reveal with optional cursor / backspace / word rotation
+- [Audio Visualizer](#audio-visualizer) — pre-extract audio data, drive Canvas/DOM rendering from the timeline
 
 ---
 
@@ -101,9 +99,9 @@ function backspace(tl, selector, word, startTime, cps) {
 }
 ```
 
-### Spacing with Static Text
+### Spacing With Static Text
 
-When a typewriter word sits next to static text, use `margin-left` on a wrapper span. Don't use flex gap (spaces cursor from text) or trailing space in static text (collapses when dynamic is empty).
+When a typewriter word sits next to static text, use `margin-left` on a wrapper span. Don't use flex `gap` (it spaces the cursor from the text) and don't put a trailing space in the static text (it collapses when the dynamic span is empty).
 
 ```html
 <div style="display:flex; align-items:baseline;">
@@ -117,18 +115,17 @@ When a typewriter word sits next to static text, use `margin-left` on a wrapper 
 Type → hold → backspace → next word. Cursor blinks during every idle moment (holds, after backspace).
 
 ```js
+let offset = 0;
 words.forEach((word, i) => {
   const typeDur = word.length / 10;
-  // Solid while typing
   tl.call(() => cursor.classList.replace("cursor-blink", "cursor-solid"), [], offset);
   tl.to("#typed-text", { text: { value: word }, duration: typeDur, ease: "none" }, offset);
-  // Blink during hold
   tl.call(() => cursor.classList.replace("cursor-solid", "cursor-blink"), [], offset + typeDur);
   offset += typeDur + 1.5; // hold
 
   if (i < words.length - 1) {
     tl.call(() => cursor.classList.replace("cursor-blink", "cursor-solid"), [], offset);
-    const clearDur = backspace(tl, el, word, offset, 20);
+    const clearDur = backspace(tl, "#typed-text", word, offset, 20);
     tl.call(() => cursor.classList.replace("cursor-solid", "cursor-blink"), [], offset + clearDur);
     offset += clearDur + 0.3;
   }
@@ -141,6 +138,7 @@ Build a sentence word-by-word into the same element:
 
 ```js
 let accumulated = "";
+let offset = 0;
 words.forEach((word) => {
   const target = accumulated + (accumulated ? " " : "") + word;
   const newChars = target.length - accumulated.length;
@@ -152,7 +150,7 @@ words.forEach((word) => {
 
 ### Multi-Line Cursor Handoff
 
-When handing off between typewriter lines: hide previous → blink new → pause → solid when typing. Never go hidden→solid (skips idle state).
+Handing off between typewriter lines: hide previous → blink new → pause → solid when typing. Never go `hidden → solid` (skips the idle blink).
 
 ```js
 tl.call(
@@ -183,51 +181,55 @@ tl.call(() => nextCursor.classList.replace("cursor-solid", "cursor-blink"), [], 
 
 ## Audio Visualizer
 
-Pre-extract audio data, drive canvas/DOM rendering from GSAP timeline.
+Pre-extract audio data, drive Canvas / DOM rendering from a single `tl.call(...)` per frame. **Do not** use the Web Audio API at render time — there's no playback during seek.
 
 ### Extract Audio Data
 
-```bash
-python scripts/extract-audio-data.py audio.mp3 -o audio-data.json
-python scripts/extract-audio-data.py video.mp4 --fps 30 --bands 16 -o audio-data.json
-```
+Use the bundled extractor (requires `ffmpeg` and Python `numpy`):
 
-Requires ffmpeg and numpy.
+```bash
+python skills/hyperframes-creative/scripts/extract-audio-data.py audio.mp3 -o audio-data.json
+python skills/hyperframes-creative/scripts/extract-audio-data.py video.mp4 --fps 30 --bands 16 -o audio-data.json
+```
 
 ### Data Format
 
 ```json
 {
-  "fps": 30, "totalFrames": 5415,
-  "frames": [{ "time": 0.0, "rms": 0.42, "bands": [0.8, 0.6, 0.3, ...] }]
+  "fps": 30,
+  "totalFrames": 5415,
+  "frames": [{ "time": 0.0, "rms": 0.42, "bands": [0.8, 0.6, 0.3] }]
 }
 ```
 
-- **rms** (0-1): overall loudness, normalized across track
-- **bands[]** (0-1): frequency magnitudes. Index 0 = bass, higher = treble. Each normalized independently.
+- **`rms`** (0-1) — overall loudness, normalized across the track.
+- **`bands[]`** (0-1) — frequency magnitudes. Index 0 = bass, higher index = treble. Each band normalized independently.
 
-### Loading the Data
+### Loading the Data (Synchronously)
 
 ```js
-// Option A: inline (small files, under ~500KB)
+// Option A — inline (small files, under ~500 KB)
 var AUDIO_DATA = {
   /* paste audio-data.json contents */
 };
 
-// Option B: sync XHR (large files — must be synchronous for deterministic timeline construction)
+// Option B — sync XHR (large files; must be synchronous for deterministic timeline construction)
 var xhr = new XMLHttpRequest();
 xhr.open("GET", "audio-data.json", false);
 xhr.send();
 var AUDIO_DATA = JSON.parse(xhr.responseText);
 ```
 
-**Do NOT use async `fetch()` to load audio data.** HyperFrames requires synchronous timeline construction — the capture engine reads `window.__timelines` synchronously after page load. Building timelines inside `.then()` callbacks means the timeline isn't ready when capture starts.
+**Do NOT use async `fetch()`.** HyperFrames reads `window.__timelines` synchronously after page load — building the timeline inside `.then()` means the timeline isn't ready when capture starts.
 
-### Rendering Approaches
+### Driving the Timeline
 
-**Canvas 2D** (most common — bars, waveforms, circles, gradients):
+**Canvas 2D** — most common (bars, waveforms, circles, gradients):
 
 ```js
+const canvas = document.getElementById("viz");
+const ctx = canvas.getContext("2d");
+
 for (let f = 0; f < AUDIO_DATA.totalFrames; f++) {
   tl.call(
     () => {
@@ -243,13 +245,7 @@ for (let f = 0; f < AUDIO_DATA.totalFrames; f++) {
 
 **WebGL / Three.js** — HyperFrames patches `THREE.Clock` for deterministic time. Update uniforms from audio data each frame.
 
-**DOM Elements** — fine for < 20 elements, less performant than Canvas for many.
-
-### Spatial Mapping
-
-- **Horizontal**: bass left, treble right (iterate bands left-to-right)
-- **Vertical**: bass bottom, treble top
-- **Circular**: bass at 12 o'clock, wrap clockwise; mirror for full circle
+**DOM elements** — fine for fewer than ~20 elements, slower than Canvas for many.
 
 ### Smoothing
 
@@ -270,13 +266,19 @@ function smooth(f) {
 }
 ```
 
+### Spatial Mapping
+
+- **Horizontal**: bass left, treble right (iterate bands left-to-right)
+- **Vertical**: bass bottom, treble top
+- **Circular**: bass at 12 o'clock, wrap clockwise; mirror for a full circle
+
 ### Motion Principles
 
-- **Bass drives big moves** — scale, glow, position shifts
-- **Treble drives detail** — shimmer, flicker, edge effects
-- **RMS drives globals** — background brightness, overall energy
+- **Bass drives big moves** — scale, glow, position shifts.
+- **Treble drives detail** — shimmer, flicker, edge effects.
+- **RMS drives globals** — background brightness, overall energy.
 - Pick 2-3 properties to animate. More looks noisy.
-- Keep minimums above zero — quiet sections need life.
+- Keep minimums above zero — quiet sections still need life.
 
 ### Band Count
 
@@ -289,7 +291,7 @@ function smooth(f) {
 
 ### Layering
 
-Layer multiple canvases with CSS z-index for depth — a background layer driven by bass/rms and a foreground layer driven by individual bands creates depth without complexity.
+Layer multiple canvases with CSS `z-index` for depth — a background layer driven by bass/rms and a foreground layer driven by individual bands creates depth without per-element complexity.
 
 ```html
 <canvas id="bg-layer" style="position:absolute;top:0;left:0;z-index:1;"></canvas>

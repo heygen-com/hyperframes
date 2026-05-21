@@ -218,6 +218,6 @@ The `REVEAL_THRESHOLD` separates "scrambled" from "revealed" — by the time the
 
 ## Pairs with HF skills
 
-- `/hyperframes-adapters` — timeline + per-char stagger + `onUpdate`
+- `/hyperframes-animation` — timeline + per-char stagger + `onUpdate`
 - `/hyperframes-core` — composition wiring
 - `/hyperframes-cli` — `hyperframes lint`

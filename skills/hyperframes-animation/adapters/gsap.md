@@ -1,5 +1,5 @@
 ---
-name: hyperframes-gsap
+name: hyperframes-gsap-adapter
 description: GSAP animation API reference for HyperFrames. Use when writing seekable GSAP timelines in HyperFrames compositions, including gsap.to(), from(), fromTo(), set(), timeline position parameters, labels, easing, stagger, finite repeats, and transform performance.
 ---
 
@@ -43,15 +43,15 @@ Always use **camelCase** property names (e.g. `backgroundColor`, `rotationX`).
 
 - **duration** — seconds (default 0.5).
 - **delay** — seconds before start.
-- **ease** — `"power1.out"` (default), `"power3.inOut"`, `"back.out(1.7)"`, `"elastic.out(1, 0.3)"`, `"none"`. See `references/easing-and-stagger.md`.
-- **stagger** — number or object. See `references/easing-and-stagger.md`.
+- **ease** — `"power1.out"` (default), `"power3.inOut"`, `"back.out(1.7)"`, `"elastic.out(1, 0.3)"`, `"none"`. See `./gsap-easing-and-stagger.md`.
+- **stagger** — number or object. See `./gsap-easing-and-stagger.md`.
 - **repeat** — finite number; never `-1` in HyperFrames. Compute repeats from the visible duration.
 - **yoyo** — alternates direction with repeat.
 - **overwrite** — `false` (default), `true`, or `"auto"`.
 - **immediateRender** — default `true` for from()/fromTo(). Set `false` on later tweens targeting the same property+element.
 - **onComplete**, **onStart**, **onUpdate** — callbacks.
 
-For transforms, autoAlpha, clearProps, and SVG specifics see `references/transforms-and-perf.md`.
+For transforms, autoAlpha, clearProps, and SVG specifics see `./gsap-transforms-and-perf.md`.
 
 ## Animated Property Allowlist
 
@@ -74,10 +74,10 @@ HyperFrames is stricter than vanilla GSAP. Animate only:
 
 ## References
 
-- `references/timeline-and-labels.md` — timeline creation, position parameter (`+=`, `<`, `>`), labels, nesting, sub-comp `fromTo` preference, playback control.
-- `references/easing-and-stagger.md` — easing families, stagger objects, function-based values, `gsap.matchMedia()`, `gsap.defaults()`.
-- `references/transforms-and-perf.md` — transform aliases, autoAlpha, `quickTo`, `will-change`, performance rules.
-- `references/effects.md` — drop-in recipes: typewriter (with cursor / backspace / word rotation) + audio visualizer (uses `scripts/extract-audio-data.py`).
+- `./gsap-timeline-and-labels.md` — timeline creation, position parameter (`+=`, `<`, `>`), labels, nesting, sub-comp `fromTo` preference, playback control.
+- `./gsap-easing-and-stagger.md` — easing families, stagger objects, function-based values, `gsap.matchMedia()`, `gsap.defaults()`.
+- `./gsap-transforms-and-perf.md` — transform aliases, autoAlpha, `quickTo`, `will-change`, performance rules.
+- `../rules/gsap-effects.md` — drop-in recipes: typewriter (with cursor / backspace / word rotation) + audio visualizer (uses `skills/hyperframes-creative/scripts/extract-audio-data.py`).
 
 ## Best Practices
 
