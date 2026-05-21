@@ -38,7 +38,7 @@
     "postcss": "^8.5.8",
     "prettier": "^3.8.1",
     "puppeteer-core": "^24.39.1",
-    "sharp": "^0.34.0"
+    "sharp": "^0.34.5"
   },
   "devDependencies": {
     "@clack/prompts": "^1.1.0",
