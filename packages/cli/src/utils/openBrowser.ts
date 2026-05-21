@@ -3,6 +3,36 @@ import { spawn } from "node:child_process";
 export interface OpenBrowserOptions {
   browserPath?: string;
   userDataDir?: string;
+  remoteDebuggingPort?: number;
+}
+
+export function parseRemoteDebuggingPort(value: string | undefined): number | undefined {
+  if (value === undefined || value === "") return undefined;
+  if (!/^\d+$/.test(value)) {
+    throw new Error("--remote-debugging-port must be an integer between 1 and 65535");
+  }
+  const port = Number(value);
+  if (port < 1 || port > 65535) {
+    throw new Error("--remote-debugging-port must be an integer between 1 and 65535");
+  }
+  return port;
+}
+
+export interface RemoteDebuggingPortDeps {
+  browserPath?: string;
+  userDataDir?: string;
+  remoteDebuggingPort?: string;
+}
+
+/**
+ * Returns an error message if --remote-debugging-port is set without its required
+ * dependencies (--browser-path and --user-data-dir), or null if everything is OK.
+ */
+export function validateRemoteDebuggingPortDeps(deps: RemoteDebuggingPortDeps): string | null {
+  if (!deps.remoteDebuggingPort) return null;
+  if (!deps.browserPath) return "--remote-debugging-port requires --browser-path";
+  if (!deps.userDataDir) return "--remote-debugging-port requires --user-data-dir";
+  return null;
 }
 
 /**
@@ -15,6 +45,13 @@ export function buildBrowserArgs(url: string, options: OpenBrowserOptions): stri
   if (options.userDataDir) {
     args.push(`--user-data-dir=${options.userDataDir}`);
   }
+  // Defense-in-depth: only emit --remote-debugging-port when paired with an
+  // isolated --user-data-dir. Without an isolated profile the CDP endpoint
+  // would expose the user's main browser session, which is the whole reason
+  // the CLI validation layer requires both flags together.
+  if (options.remoteDebuggingPort !== undefined && options.userDataDir) {
+    args.push(`--remote-debugging-port=${options.remoteDebuggingPort}`);
+  }
   args.push(url);
   return args;
 }
@@ -24,6 +61,7 @@ export function buildBrowserArgs(url: string, options: OpenBrowserOptions): stri
  *
  * - browserPath: spawn the given binary directly (enables Chromium flags)
  * - userDataDir: passed as --user-data-dir (requires browserPath)
+ * - remoteDebuggingPort: passed as --remote-debugging-port (requires browserPath + userDataDir)
  * - otherwise: fall back to the `open` package (default browser)
  */
 export function openBrowser(url: string, options: OpenBrowserOptions = {}): void {
