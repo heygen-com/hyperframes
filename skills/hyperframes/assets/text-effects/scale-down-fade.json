@@ -1,0 +1,20 @@
+{
+  "id": "scale-down-fade",
+  "name": "Scale Down Fade",
+  "description": "Content settles with a slight scale-down on entrance (1.04 → 1.00) and the same on exit. Restrained and premium — the scale gives the element a subtle 'arriving' and 'departing' feel without being theatrical.",
+  "target": "element",
+  "enter": {
+    "durationMs": 380,
+    "easing": "cubic-bezier(0.22, 1, 0.36, 1)",
+    "from": { "opacity": 0, "scale": 1.04 },
+    "to": { "opacity": 1, "scale": 1 }
+  },
+  "exit": {
+    "durationMs": 380,
+    "easing": "cubic-bezier(0.22, 1, 0.36, 1)",
+    "from": { "opacity": 1, "scale": 1 },
+    "to": { "opacity": 0, "scale": 0.96 }
+  },
+  "swap": { "mode": "crossfade", "overlapMs": 140, "microDelayMs": 0 },
+  "notes": "Symmetric durations (380ms in, 380ms out) keep the entrance and exit feeling like the same motion played in reverse. Asymmetric durations work for other effects but read as unsettled here."
+}

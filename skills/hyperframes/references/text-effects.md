@@ -2,104 +2,150 @@
 
 24 named text animation effects, bundled into HyperFrames. No separate install needed.
 
-**Spec files:**
+**One JSON file per effect** at `skills/hyperframes/assets/text-effects/<id>.json`. Each file is the portable contract for that effect — the per-element parameters (durations, staggers, easings, from/to keyframes, swap behavior). The shared GSAP rendering pattern (how to split text, how to stagger, how to wire to a timeline) lives once in this file, below the catalog.
 
-- `skills/hyperframes/assets/text-effects/effects/<id>.json` — exact GSAP implementation recipe
-- `skills/hyperframes/assets/text-effects/specs/<id>.json` — portable motion contract
-
-**How to use:** pick an effect that fits the brand, mood, and content. Read its `.json` file. Use `showcase.library_adapters.gsap` for exact easing strings, durations, stagger values, and keyframe data.
+**How to use:** pick an effect that fits the brand, mood, and content. Read its `.json` to get parameters. Read the shared rendering pattern below to implement.
 
 ---
 
 ## Catalog
 
-### Per-Character
+### Per-character
 
-| ID                    | Enter duration | Stagger | Ease                          | Character                                                                        |
-| --------------------- | -------------- | ------- | ----------------------------- | -------------------------------------------------------------------------------- |
-| `soft-blur-in`        | 648ms          | 18ms    | `cubic-bezier(0.22,1,0.36,1)` | Each letter fades in with a gentle upward drift and blur. Smooth, airy, premium. |
-| `per-character-rise`  | 504ms          | 17ms    | `cubic-bezier(0.2,0.8,0.2,1)` | Letters slide up from below, no blur. Crisp, deliberate, kinetic.                |
-| `typewriter`          | 173ms          | 33ms    | `steps(1,end)`                | Per-character stepped reveal. Discrete, mechanical, editorial.                   |
-| `bottom-up-letters`   | 288ms          | 63ms    | `cubic-bezier(0.18,1,0.32,1)` | Letters rise from below in a pronounced staircase, one symbol at a time.         |
-| `top-down-letters`    | 288ms          | 63ms    | `cubic-bezier(0.18,1,0.32,1)` | Same staircase but descending from above.                                        |
-| `stagger-from-center` | —              | —       | —                             | Characters reveal outward from the center. Emphasizes the keyword core.          |
-| `stagger-from-edges`  | —              | —       | —                             | Characters converge inward from both edges toward the center.                    |
+| ID                    | Enter duration | Stagger | Character                                                                                    |
+| --------------------- | -------------- | ------- | -------------------------------------------------------------------------------------------- |
+| `soft-blur-in`        | 700ms          | 20ms    | Letters fade in with a gentle upward drift and brief blur trail. Premium, atmospheric.       |
+| `per-character-rise`  | 520ms          | 18ms    | Letters slide up from below baseline, no blur. Crisp, deliberate, kinetic.                   |
+| `typewriter`          | 200ms          | 50ms    | Stepped reveal — characters pop into existence at discrete intervals. Mechanical, editorial. |
+| `bottom-up-letters`   | 320ms          | 65ms    | Pronounced staircase rise from below. Confident, audible-feeling rhythm.                     |
+| `top-down-letters`    | 320ms          | 65ms    | Mirror of bottom-up — characters descend from above.                                         |
+| `stagger-from-center` | 480ms          | 32ms    | Middle character reveals first, edges last. Emphasizes the keyword core.                     |
+| `stagger-from-edges`  | 480ms          | 32ms    | Edge characters reveal first, center last. Assembles inward toward the keyword.              |
 
-### Per-Word
+### Per-word
 
-| ID                     | Enter duration | Stagger | Ease                             | Character                                                                                                                          |
-| ---------------------- | -------------- | ------- | -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `per-word-crossfade`   | 504ms          | 50ms    | `cubic-bezier(0.16,1,0.3,1)`     | Words gently fade in with a short vertical drift. Calm, sequential.                                                                |
-| `spring-scale-in`      | 259ms          | 68ms    | `cubic-bezier(0.34,1.56,0.64,1)` | Words pop in with a spring overshoot. Physical, bouncy, playful.                                                                   |
-| `shared-axis-y`        | 140ms          | 56ms    | `steps(1,end)`                   | Hard-cut word-by-word with staircase timing. Sharp, editorial.                                                                     |
-| `blur-out-up`          | 403ms          | 20ms    | `cubic-bezier(0.22,1,0.36,1)`    | Words arrive clean and exit upward with increasing blur. Airy exit.                                                                |
-| `kinetic-center-build` | custom         | —       | custom                           | Each word locks center as phrase builds right-to-left with soft blur. Layout-aware renderer — read `showcase.rendering_contract`.  |
-| `short-slide-right`    | custom         | —       | custom                           | Whole phrase glides in from the left as one move; words reveal only by opacity. Layout-aware — read `showcase.rendering_contract`. |
-| `short-slide-down`     | custom         | —       | custom                           | Each word drops from above and pushes the stack down until centered. Layout-aware — read `showcase.rendering_contract`.            |
-| `depth-parallax-words` | —              | —       | —                                | Per-word depth motion with scale and vertical drift. Layered readability.                                                          |
+| ID                     | Enter duration | Stagger | Character                                                                                       |
+| ---------------------- | -------------- | ------- | ----------------------------------------------------------------------------------------------- |
+| `per-word-crossfade`   | 460ms          | 140ms   | Words fade in sequentially with short vertical drift. Calm, paced.                              |
+| `spring-scale-in`      | 280ms          | 80ms    | Words pop in with spring overshoot (1.06 then settle). Bouncy without being cartoonish.         |
+| `shared-axis-y`        | 160ms          | 60ms    | Hard-cut word-by-word along Y axis. Sharp, editorial.                                           |
+| `blur-out-up`          | 360ms          | 90ms    | Clean entrance, blurry rising exit. Lingers in memory rather than dismisses.                    |
+| `kinetic-center-build` | 480ms          | 220ms   | Phrase builds right-to-left, line stays centered as it grows. **Layout-aware.**                 |
+| `short-slide-right`    | 560ms          | 120ms   | Whole line glides in from the left as one move; words reveal only by opacity. **Layout-aware.** |
+| `short-slide-down`     | 420ms          | 160ms   | Each word drops in from above and pushes the stack down. **Layout-aware.**                      |
+| `depth-parallax-words` | 540ms          | 110ms   | Words enter at varied scales (0.82 → 1.0) reading as layered depth.                             |
 
-### Per-Line
+### Per-line
 
-| ID                   | Enter duration | Stagger | Ease                          | Character                                                          |
-| -------------------- | -------------- | ------- | ----------------------------- | ------------------------------------------------------------------ |
-| `mask-reveal-up`     | 547ms          | 65ms    | `cubic-bezier(0.22,1,0.36,1)` | Lines clip-reveal upward. Contained, intentional, masked feel.     |
-| `line-by-line-slide` | 648ms          | 86ms    | `cubic-bezier(0.22,1,0.36,1)` | Lines slide in from left, exit to right. Flowing paragraph rhythm. |
+| ID                   | Enter duration | Stagger | Character                                                                   |
+| -------------------- | -------------- | ------- | --------------------------------------------------------------------------- |
+| `mask-reveal-up`     | 580ms          | 90ms    | Lines clip-reveal upward through a masked viewport. Contained, masked feel. |
+| `line-by-line-slide` | 640ms          | 110ms   | Lines slide in from left, exit to right. Flowing paragraph rhythm.          |
 
-### Whole Element
+### Whole element
 
-| ID                   | Enter duration | Ease                          | Character                                                                      |
-| -------------------- | -------------- | ----------------------------- | ------------------------------------------------------------------------------ |
-| `micro-scale-fade`   | 432ms          | `cubic-bezier(0.32,0.72,0,1)` | Tiny scale pop and fade. Barely perceptible — premium polish.                  |
-| `shimmer-sweep`      | 612ms          | `cubic-bezier(0.22,1,0.36,1)` | Subtle horizontal sweep glides from left to center.                            |
-| `fade-through`       | 302ms          | `cubic-bezier(0.2,0,0,1)`     | Old content fades out, new fades in with a soft delay. Material-style swap.    |
-| `shared-axis-z`      | 374ms          | `cubic-bezier(0.2,0,0,1)`     | Scale-based depth transition. One context fades out small, next fades in full. |
-| `scale-down-fade`    | 374ms          | `cubic-bezier(0.22,1,0.36,1)` | Content settles with a slight scale-down on exit. Restrained, premium.         |
-| `focus-blur-resolve` | 547ms          | `cubic-bezier(0.22,1,0.36,1)` | Heavy blur resolves to sharp clarity on enter, returns to soft blur on exit.   |
-| `shared-axis-x`      | —              | —                             | Horizontal sibling transition for sequential destinations.                     |
+| ID                   | Enter duration | Character                                                                    |
+| -------------------- | -------------- | ---------------------------------------------------------------------------- |
+| `micro-scale-fade`   | 460ms          | Tiny scale (0.96 → 1.0) + fade. Barely perceptible, reads as polish.         |
+| `shimmer-sweep`      | 680ms          | Horizontal light sweep glides left-to-right. Premium, luxury polish.         |
+| `fade-through`       | 280ms          | Material-style sequential dissolve — old fades out fully, then new fades in. |
+| `shared-axis-z`      | 360ms          | Scale-based depth swap. Outgoing recedes, incoming arrives from depth.       |
+| `scale-down-fade`    | 380ms          | Symmetric scale (1.04 → 1.0) on entrance and exit. Restrained, premium.      |
+| `focus-blur-resolve` | 580ms          | Heavy 16px blur resolves to sharp clarity. Reads as a camera focus pull.     |
+| `shared-axis-x`      | 380ms          | Horizontal sibling transition for sequential destinations (next/prev).       |
 
 ---
 
-## Implementation in GSAP
+## Shared rendering pattern (GSAP)
 
-**Step 1:** Read the effect JSON — `skills/hyperframes/assets/text-effects/effects/<id>.json`
+All non-layout-aware effects render the same way. Implement once, then per-effect just feed in the parameters from the JSON.
 
-**Step 2:** In `showcase.library_adapters.gsap` find:
-
-- `import_statement` — which GSAP plugins to register (`CustomEase` is almost always needed)
-- `easing_conversion` — exact easing string or `CustomEase.create()` call
-- `start_animation` pattern — how to initialize the tween
-
-**Step 3:** Get timing from `showcase.timing.enter`:
-
-- `scaled_duration_ms` → convert to seconds for GSAP (`/ 1000`)
-- `scaled_stagger_ms` → stagger value in seconds
-- `easing` → register as CustomEase
-
-**Step 4:** Split text yourself. Span-wrap each character/word/line before the timeline starts. Apply `gsap.set()` to set initial state, then `tl.to()` for the enter animation with stagger.
-
-**For layout-aware effects** (`kinetic-center-build`, `short-slide-right`, `short-slide-down`): read `showcase.rendering_contract` and `showcase.renderer` in the effect JSON. These have custom layout algorithms that manage DOM position — not just stagger timing.
-
-**Register CustomEase before using cubic-bezier strings:**
+**1. Register CustomEase** (most effects use cubic-bezier strings):
 
 ```js
 gsap.registerPlugin(CustomEase);
-const ease = CustomEase.create("custom", "cubic-bezier(0.22, 1, 0.36, 1)");
 ```
+
+**2. Split the text by `target`:**
+
+| `target`  | Split rule                                                                                       |
+| --------- | ------------------------------------------------------------------------------------------------ |
+| `char`    | `Array.from(text)` — preserve every character including spaces and punctuation as animated units |
+| `word`    | Regex `/(\S+\|\s+)/g` — span-wrap words and whitespace; animate the non-whitespace spans only    |
+| `line`    | Split on `"\n"` — each line is a block-display span                                              |
+| `element` | No split — the whole element is the animated unit                                                |
+
+Wrap each animated unit in a span (e.g., `.text-anim-unit`). For `char` and `word` targets use `display: inline-block`; for `line` use `display: block`.
+
+**3. Set the initial state with `gsap.set()`** from the effect's `enter.from`:
+
+```js
+gsap.set(units, { opacity: 0, y: 14, filter: "blur(8px)" }); // values from <effect>.enter.from
+```
+
+**4. Animate to `enter.to` with a stagger using the effect's easing and duration:**
+
+```js
+const ease = CustomEase.create("custom-in", "cubic-bezier(0.22, 1, 0.36, 1)"); // from enter.easing
+tl.to(
+  units,
+  {
+    opacity: 1,
+    y: 0,
+    filter: "blur(0px)", // values from enter.to
+    duration: enterDurationMs / 1000, // 700ms → 0.7
+    ease,
+    stagger: enterStaggerMs / 1000, // 20ms → 0.02
+  },
+  0,
+);
+```
+
+**5. For exit**, do the same with `exit.from` / `exit.to` / `exit.durationMs` / `exit.easing`. Place it on the timeline at `beatEnd - exit.durationMs - (units.length * exit.staggerMs) / 1000`.
+
+**6. Hard-kill at beat boundaries** (so a later tween or sibling resurrect doesn't bring the element back):
+
+```js
+tl.set(units, { opacity: 0, visibility: "hidden" }, beatEnd + 0.01);
+```
+
+### Custom stagger order
+
+Two effects use ordered staggers (not DOM order):
+
+| Effect                | `staggerOrder` value | Algorithm                                                                           |
+| --------------------- | -------------------- | ----------------------------------------------------------------------------------- |
+| `stagger-from-center` | `center-out`         | Rank = `\|index - centerIndex\|`. Ties: lower index first.                          |
+| `stagger-from-edges`  | `edges-in`           | Rank = `(text.length - 1) / 2 - \|index - centerIndex\|`. Ties: higher index first. |
+
+GSAP's `stagger: { each, from: "center" }` handles `center-out` natively. For `edges-in`, write the function form: `stagger: { each, from: (i, target, list) => /* edges-in rank */ }`.
+
+### Layout-aware effects (3)
+
+Three effects in the catalog (`kinetic-center-build`, `short-slide-right`, `short-slide-down`) animate the LINE container's position separately from each word's reveal. Their JSON includes `layoutAware: true` plus optional `lineFrom` / `lineTo` keyframes for the container.
+
+Implementation pattern:
+
+1. Wrap all word spans in a `.text-anim-line` container.
+2. Animate the line container with `lineFrom` → `lineTo` (or, for `kinetic-center-build`, with a per-word x-offset to keep the line centered as it grows).
+3. Independently stagger the word spans' opacity (and any per-word transform from `enter.from` / `enter.to`).
+
+Each layout-aware effect's `notes` field in its JSON tells you which line-level transform to apply. Don't infer.
 
 ---
 
-## In the Storyboard
+## In the storyboard
 
-Every text element in every beat must name an effect by ID. Not "headline fades in" — read the catalog, pick what fits the brand/mood/beat, and name the specific effect.
+Every text element in every beat names an effect by ID. Not "headline fades in" — read the catalog, pick the effect that fits the brand and beat, and name the specific ID.
 
-Format (these are format placeholders — the effect you choose should fit this specific brand and beat, not default to any particular ID):
+Format:
 
 ```markdown
 **Text Animations:**
 
-- [element, e.g. "main headline"]: `[effect-id]` — skills/hyperframes/assets/text-effects/effects/[id].json
-- [element, e.g. "eyebrow label"]: `[effect-id]` — skills/hyperframes/assets/text-effects/effects/[id].json
-- [element, e.g. "body copy 3 lines"]: `[effect-id]` — skills/hyperframes/assets/text-effects/effects/[id].json
+- [element, e.g. "main headline"]: `[effect-id]` — skills/hyperframes/assets/text-effects/[id].json
+- [element, e.g. "eyebrow label"]: `[effect-id]` — skills/hyperframes/assets/text-effects/[id].json
+- [element, e.g. "body copy 3 lines"]: `[effect-id]` — skills/hyperframes/assets/text-effects/[id].json
 ```
 
-Sub-agents read the named JSON file and implement from `showcase.library_adapters.gsap` — no creative invention needed.
+Sub-agents read the named JSON and implement using the shared rendering pattern above. No creative invention needed — just parameter substitution.

@@ -1,0 +1,22 @@
+{
+  "id": "per-word-crossfade",
+  "name": "Per-Word Crossfade",
+  "description": "Words fade in one at a time with a short vertical drift. The rhythm is calm and sequential — best for sub-headlines, body copy that needs gentle pacing, or value-prop lines where each word should land before the next.",
+  "target": "word",
+  "enter": {
+    "durationMs": 460,
+    "staggerMs": 140,
+    "easing": "cubic-bezier(0.16, 1, 0.3, 1)",
+    "from": { "opacity": 0, "y": 10 },
+    "to": { "opacity": 1, "y": 0 }
+  },
+  "exit": {
+    "durationMs": 320,
+    "staggerMs": 32,
+    "easing": "cubic-bezier(0.7, 0, 0.84, 0)",
+    "from": { "opacity": 1, "y": 0 },
+    "to": { "opacity": 0, "y": -6 }
+  },
+  "swap": { "mode": "crossfade", "overlapMs": 140, "microDelayMs": 0 },
+  "notes": "140ms stagger is the sweet spot for short headlines (3-7 words). For longer lines (8+ words) drop stagger to 80-100ms to keep the total entrance under 1.5 seconds."
+}

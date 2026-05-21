@@ -1,0 +1,22 @@
+{
+  "id": "bottom-up-letters",
+  "name": "Bottom-Up Letters",
+  "description": "Letters rise from below in a pronounced staircase. Each character takes more visual time than per-character-rise — the motion is larger, slower, and reads as confident punctuation rather than ambient build.",
+  "target": "char",
+  "enter": {
+    "durationMs": 320,
+    "staggerMs": 65,
+    "easing": "cubic-bezier(0.18, 1, 0.32, 1)",
+    "from": { "opacity": 0, "y": 56 },
+    "to": { "opacity": 1, "y": 0 }
+  },
+  "exit": {
+    "durationMs": 280,
+    "staggerMs": 14,
+    "easing": "cubic-bezier(0.7, 0, 0.84, 0)",
+    "from": { "opacity": 1, "y": 0 },
+    "to": { "opacity": 0, "y": -22 }
+  },
+  "swap": { "mode": "crossfade", "overlapMs": 80, "microDelayMs": 0 },
+  "notes": "Pair with bold or display-weight headlines. The 65ms stagger creates an audible-feeling rhythm; works well when the headline lands on a beat marker in narration."
+}

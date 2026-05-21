@@ -1,0 +1,22 @@
+{
+  "id": "line-by-line-slide",
+  "name": "Line By Line Slide",
+  "description": "Each line slides in from the left, exits to the right. Reads as flowing paragraph rhythm — best for multi-line body copy or quotes where the lines build sequentially. Different from mask-reveal-up in that the motion is horizontal, not masked.",
+  "target": "line",
+  "enter": {
+    "durationMs": 640,
+    "staggerMs": 110,
+    "easing": "cubic-bezier(0.22, 1, 0.36, 1)",
+    "from": { "opacity": 0, "x": -40 },
+    "to": { "opacity": 1, "x": 0 }
+  },
+  "exit": {
+    "durationMs": 480,
+    "staggerMs": 60,
+    "easing": "cubic-bezier(0.7, 0, 0.84, 0)",
+    "from": { "opacity": 1, "x": 0 },
+    "to": { "opacity": 0, "x": 32 }
+  },
+  "swap": { "mode": "crossfade", "overlapMs": 160, "microDelayMs": 0 },
+  "notes": "Best for 2–4 lines max. Beyond that the cumulative stagger gets noticeably long (110ms × 5 lines = 550ms before the last line starts moving). For long body copy, prefer mask-reveal-up or shorten the stagger."
+}

@@ -1,0 +1,22 @@
+{
+  "id": "depth-parallax-words",
+  "name": "Depth Parallax Words",
+  "description": "Per-word entrance where each word enters at a different scale and slight vertical offset, simulating depth — back words start smaller and lower, front words larger and at baseline. Reads as a 3D-feeling layered headline without needing a real Z-axis transform.",
+  "target": "word",
+  "enter": {
+    "durationMs": 540,
+    "staggerMs": 110,
+    "easing": "cubic-bezier(0.22, 1, 0.36, 1)",
+    "from": { "opacity": 0, "y": 18, "scale": 0.82 },
+    "to": { "opacity": 1, "y": 0, "scale": 1 }
+  },
+  "exit": {
+    "durationMs": 360,
+    "staggerMs": 22,
+    "easing": "cubic-bezier(0.7, 0, 0.84, 0)",
+    "from": { "opacity": 1, "y": 0, "scale": 1 },
+    "to": { "opacity": 0, "y": -8, "scale": 0.92 }
+  },
+  "swap": { "mode": "crossfade", "overlapMs": 120, "microDelayMs": 0 },
+  "notes": "The scale + y combination is what reads as depth. Don't drop scale below 0.7 — at that point the word looks small rather than far. Keep above 0.8 for the parallax illusion to hold."
+}

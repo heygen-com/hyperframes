@@ -1,0 +1,20 @@
+{
+  "id": "micro-scale-fade",
+  "name": "Micro Scale Fade",
+  "description": "Whole-element entrance with a tiny scale change (0.96 → 1.00) and a fade. Barely perceptible — reads as polish rather than animation. Use when you want the element to settle in without drawing attention to the motion itself.",
+  "target": "element",
+  "enter": {
+    "durationMs": 460,
+    "easing": "cubic-bezier(0.32, 0.72, 0, 1)",
+    "from": { "opacity": 0, "scale": 0.96 },
+    "to": { "opacity": 1, "scale": 1 }
+  },
+  "exit": {
+    "durationMs": 320,
+    "easing": "cubic-bezier(0.7, 0, 0.84, 0)",
+    "from": { "opacity": 1, "scale": 1 },
+    "to": { "opacity": 0, "scale": 0.98 }
+  },
+  "swap": { "mode": "crossfade", "overlapMs": 140, "microDelayMs": 0 },
+  "notes": "Don't push scale beyond 0.92 or below 0.94 — at that range the motion stops reading as polish and starts reading as 'something is shrinking.' The whole point is to feel deliberate without feeling animated."
+}

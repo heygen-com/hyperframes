@@ -1,0 +1,20 @@
+{
+  "id": "shared-axis-x",
+  "name": "Shared Axis X",
+  "description": "Horizontal sibling transition — outgoing content slides left and fades, incoming content arrives from the right with a fade. Reads as 'next page' or 'sequential destination,' similar to Material's shared-axis-X pattern.",
+  "target": "element",
+  "enter": {
+    "durationMs": 380,
+    "easing": "cubic-bezier(0.2, 0, 0, 1)",
+    "from": { "opacity": 0, "x": 40 },
+    "to": { "opacity": 1, "x": 0 }
+  },
+  "exit": {
+    "durationMs": 380,
+    "easing": "cubic-bezier(0.4, 0, 1, 1)",
+    "from": { "opacity": 1, "x": 0 },
+    "to": { "opacity": 0, "x": -40 }
+  },
+  "swap": { "mode": "crossfade", "overlapMs": 180, "microDelayMs": 0 },
+  "notes": "Use shared-axis-x for sequential moves (next/previous), shared-axis-y for hierarchical (up/down), shared-axis-z for contextual swaps (zoom in/out). Symmetric ±40px translates."
+}

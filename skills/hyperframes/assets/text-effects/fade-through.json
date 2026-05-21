@@ -1,0 +1,20 @@
+{
+  "id": "fade-through",
+  "name": "Fade Through",
+  "description": "Material-style cross-dissolve where the old content fades out completely before the new content fades in. Different from a normal crossfade — there's a brief moment where neither is visible. Reads as a contextual swap rather than a continuous flow.",
+  "target": "element",
+  "enter": {
+    "durationMs": 280,
+    "easing": "cubic-bezier(0.2, 0, 0, 1)",
+    "from": { "opacity": 0 },
+    "to": { "opacity": 1 }
+  },
+  "exit": {
+    "durationMs": 200,
+    "easing": "cubic-bezier(0.4, 0, 1, 1)",
+    "from": { "opacity": 1 },
+    "to": { "opacity": 0 }
+  },
+  "swap": { "mode": "sequential", "overlapMs": -60, "microDelayMs": 0 },
+  "notes": "The -60ms overlap is intentional: outgoing element finishes fading out, then 60ms of empty space, then incoming starts. The empty moment is what distinguishes this from a crossfade. Implementer: timeline puts the new content's enter AFTER the previous content's exit completes."
+}

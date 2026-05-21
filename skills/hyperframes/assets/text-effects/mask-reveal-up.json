@@ -1,0 +1,22 @@
+{
+  "id": "mask-reveal-up",
+  "name": "Mask Reveal Up",
+  "description": "Each line of text reveals as a `clip-path` mask wipes upward — the text moves up into a fixed viewport. Reads as contained, intentional, and slightly magazine-like; the masked feel separates this from a plain fade.",
+  "target": "line",
+  "enter": {
+    "durationMs": 580,
+    "staggerMs": 90,
+    "easing": "cubic-bezier(0.22, 1, 0.36, 1)",
+    "from": { "y": 36, "clipPath": "inset(100% 0% 0% 0%)" },
+    "to": { "y": 0, "clipPath": "inset(0% 0% 0% 0%)" }
+  },
+  "exit": {
+    "durationMs": 420,
+    "staggerMs": 40,
+    "easing": "cubic-bezier(0.7, 0, 0.84, 0)",
+    "from": { "y": 0, "clipPath": "inset(0% 0% 0% 0%)" },
+    "to": { "y": -12, "clipPath": "inset(0% 0% 100% 0%)" }
+  },
+  "swap": { "mode": "crossfade", "overlapMs": 120, "microDelayMs": 0 },
+  "notes": "Each `.line` element needs `overflow: hidden` on its parent so the clip-path mask reads as a window. Without that the y-translation just shows the text moving below its baseline — the masking effect is lost."
+}

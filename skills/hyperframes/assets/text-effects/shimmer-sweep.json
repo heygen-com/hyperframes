@@ -1,0 +1,20 @@
+{
+  "id": "shimmer-sweep",
+  "name": "Shimmer Sweep",
+  "description": "A subtle horizontal light sweep glides across the element from left to right, leaving the element fully visible after the sweep passes. The text itself doesn't move — only the highlight band does. Reads as premium / luxury polish.",
+  "target": "element",
+  "enter": {
+    "durationMs": 680,
+    "easing": "cubic-bezier(0.22, 1, 0.36, 1)",
+    "from": { "opacity": 0, "backgroundPosition": "-100% 0%" },
+    "to": { "opacity": 1, "backgroundPosition": "100% 0%" }
+  },
+  "exit": {
+    "durationMs": 360,
+    "easing": "cubic-bezier(0.7, 0, 0.84, 0)",
+    "from": { "opacity": 1 },
+    "to": { "opacity": 0 }
+  },
+  "swap": { "mode": "crossfade", "overlapMs": 100, "microDelayMs": 0 },
+  "notes": "Implementer: apply a linear-gradient background to the text (or its container) with `background-clip: text` so the shimmer reveals the text rather than a separate highlight bar. The shimmer band runs from -100% to 100% of background-position-x."
+}

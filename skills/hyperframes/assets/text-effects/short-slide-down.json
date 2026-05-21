@@ -1,0 +1,23 @@
+{
+  "id": "short-slide-down",
+  "name": "Short Slide Down",
+  "description": "Each word drops in from above and pushes the line stack downward — the line never moves; instead each new word arrives at the top of the stack and shoves what's already there. Useful for stacked vertical text where reveal order is meaningful.",
+  "target": "word",
+  "enter": {
+    "durationMs": 420,
+    "staggerMs": 160,
+    "easing": "cubic-bezier(0.18, 1, 0.32, 1)",
+    "from": { "opacity": 0, "y": -36 },
+    "to": { "opacity": 1, "y": 0 }
+  },
+  "exit": {
+    "durationMs": 320,
+    "staggerMs": 30,
+    "easing": "cubic-bezier(0.7, 0, 0.84, 0)",
+    "from": { "opacity": 1, "y": 0 },
+    "to": { "opacity": 0, "y": 14 }
+  },
+  "swap": { "mode": "crossfade", "overlapMs": 100, "microDelayMs": 0 },
+  "layoutAware": true,
+  "notes": "Layout-aware: words must be stacked vertically (one per line), not horizontal. Implementer wraps each word in a block-display container so they push the next word down as they enter."
+}

@@ -1,0 +1,24 @@
+{
+  "id": "stagger-from-edges",
+  "name": "Stagger From Edges",
+  "description": "Mirror of stagger-from-center — edge characters appear first, center last. The headline assembles inward toward its keyword core; emphasizes that the middle word is the destination.",
+  "target": "char",
+  "enter": {
+    "durationMs": 480,
+    "staggerMs": 32,
+    "staggerOrder": "edges-in",
+    "easing": "cubic-bezier(0.22, 1, 0.36, 1)",
+    "from": { "opacity": 0, "y": 12, "scale": 0.92 },
+    "to": { "opacity": 1, "y": 0, "scale": 1 }
+  },
+  "exit": {
+    "durationMs": 340,
+    "staggerMs": 14,
+    "staggerOrder": "edges-in",
+    "easing": "cubic-bezier(0.7, 0, 0.84, 0)",
+    "from": { "opacity": 1, "y": 0, "scale": 1 },
+    "to": { "opacity": 0, "y": -8, "scale": 0.94 }
+  },
+  "swap": { "mode": "crossfade", "overlapMs": 100, "microDelayMs": 0 },
+  "notes": "Implementer-only: stagger order is edges-in. Compute each character's rank as `(text.length - 1) / 2 - |index - centerIndex|`, ties resolved by higher index first."
+}

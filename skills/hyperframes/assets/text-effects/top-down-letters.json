@@ -1,0 +1,22 @@
+{
+  "id": "top-down-letters",
+  "name": "Top-Down Letters",
+  "description": "Mirror of bottom-up-letters — characters descend from above the baseline rather than rising from below. Use when the layout wants downward energy or when the headline is positioned below another anchored element.",
+  "target": "char",
+  "enter": {
+    "durationMs": 320,
+    "staggerMs": 65,
+    "easing": "cubic-bezier(0.18, 1, 0.32, 1)",
+    "from": { "opacity": 0, "y": -56 },
+    "to": { "opacity": 1, "y": 0 }
+  },
+  "exit": {
+    "durationMs": 280,
+    "staggerMs": 14,
+    "easing": "cubic-bezier(0.7, 0, 0.84, 0)",
+    "from": { "opacity": 1, "y": 0 },
+    "to": { "opacity": 0, "y": 22 }
+  },
+  "swap": { "mode": "crossfade", "overlapMs": 80, "microDelayMs": 0 },
+  "notes": "Choose between bottom-up and top-down based on layout pull, not by default. A headline anchored to the bottom of frame benefits from top-down energy; one anchored at top benefits from bottom-up."
+}
