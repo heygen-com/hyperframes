@@ -99,22 +99,22 @@ The runtime registers these adapters in order; each implements `discover()` / `s
 
 ### The 14 shaders
 
-| Name                | Visual                                                                                 | Notes                                  |
-| ------------------- | -------------------------------------------------------------------------------------- | -------------------------------------- |
-| domain-warp         | Multi-octave FBM warps both scenes oppositely; organic dissolve edge with accent flash | Uses NQ noise bundle                   |
-| ridged-burn         | Ridged multifractal mask reveals B; accent → bright → white burn ramp; sparks          | NQ                                     |
-| whip-pan            | 10-sample horizontal motion blur + lateral crossfade                                   | No noise                               |
-| sdf-iris            | Aspect-corrected circle SDF expansion + accent-tinted glow rings                       | —                                      |
-| ripple-waves        | Radial standing-wave UV displacement + tinted crossfade                                | —                                      |
-| gravitational-lens  | Pinch pull toward center + R/B chromatic separation                                    | —                                      |
-| cinematic-zoom      | 12 RGB-offset radial zoom blur samples (chromatic zoom streak)                         | —                                      |
-| chromatic-split     | R/B radial channel shift outward / inward; G fixed                                     | Distinct from CSS chromatic aberration |
-| swirl-vortex        | CCW swirl with FBM noise; reciprocal on incoming                                       | NQ                                     |
-| thermal-distortion  | Vertical sin + FBM horizontal displacement; warm haze                                  | NQ                                     |
-| flash-through-white | Fade through white midpoint; ideal as invisible bridge at `duration: 0.01`             | No accent                              |
-| cross-warp-morph    | FBM vector field displaces both scenes; third FBM biases irregular wipe                | NQ                                     |
-| light-leak          | Fixed off-frame leak with exponential falloff + accent warmth + ridge flare            | Hard-coded leak anchor                 |
-| glitch              | Line displacement + RGB lateral split + scan modulation + posterization + flicker      | Deterministic                          |
+| Name                | Visual                                                                                 | Notes                                                                                                                              |
+| ------------------- | -------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| domain-warp         | Multi-octave FBM warps both scenes oppositely; organic dissolve edge with accent flash | Uses NQ noise bundle                                                                                                               |
+| ridged-burn         | Ridged multifractal mask reveals B; accent → bright → white burn ramp; sparks          | NQ                                                                                                                                 |
+| whip-pan            | 10-sample horizontal motion blur + lateral crossfade                                   | No noise                                                                                                                           |
+| sdf-iris            | Aspect-corrected circle SDF expansion + accent-tinted glow rings                       | —                                                                                                                                  |
+| ripple-waves        | Radial standing-wave UV displacement + tinted crossfade                                | —                                                                                                                                  |
+| gravitational-lens  | Pinch pull toward center + R/B chromatic separation                                    | —                                                                                                                                  |
+| cinematic-zoom      | 12 RGB-offset radial zoom blur samples (chromatic zoom streak)                         | —                                                                                                                                  |
+| chromatic-split     | R/B radial channel shift outward / inward; G fixed                                     | Distinct from CSS chromatic aberration                                                                                             |
+| swirl-vortex        | CCW swirl with FBM noise; reciprocal on incoming                                       | NQ                                                                                                                                 |
+| thermal-distortion  | Vertical sin + FBM horizontal displacement; warm haze                                  | NQ                                                                                                                                 |
+| flash-through-white | Fade through white midpoint — a visible white flash between scenes                     | No accent. Use only when the brand specifically calls for a white-flash beat boundary; this is NOT a neutral "default" transition. |
+| cross-warp-morph    | FBM vector field displaces both scenes; third FBM biases irregular wipe                | NQ                                                                                                                                 |
+| light-leak          | Fixed off-frame leak with exponential falloff + accent warmth + ridge flare            | Hard-coded leak anchor                                                                                                             |
+| glitch              | Line displacement + RGB lateral split + scan modulation + posterization + flicker      | Deterministic                                                                                                                      |
 
 ### Public API
 

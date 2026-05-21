@@ -62,6 +62,8 @@ Some are style suggestions you can safely ignore:
 - **Deprecated attributes** (data-layer, data-end) — still work, just not preferred
 - **Dense tracks** — informational, not a bug
 
+**WCAG contrast false positives** — the validator samples text colors at fixed timestamps. Elements that are at `opacity: 0` (pre-entrance) or mid-fade at those sample timestamps get measured against the background as if they were fully visible, which produces spurious contrast failures. Before changing a color to clear a WCAG warning, verify visually that the element is actually unreadable when on-screen at full opacity. If it's only flagged for pre-entrance / exit moments, the warning is a sampling artifact, not a real failure. Bumping the color to "fix" these false positives changes the brand identity for no real benefit.
+
 Don't blindly ignore 158 warnings. Don't blindly fix all of them either. Read them.
 
 ## Visual Verification (snapshot)

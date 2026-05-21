@@ -180,7 +180,7 @@ If any are missing from the beat spec, the beat is under-defined. Don't fill the
 - DETERMINISTIC: no `Math.random()`, `Date.now()`, `requestAnimationFrame`, `repeat:-1`.
 - Always `tl.fromTo()` not `tl.from()` for entrances.
 - Never stack two transform tweens on same element at same time.
-- FONTS: brand fonts with `capture/assets/fonts/` path need `@font-face` in `<style>`.
+- FONTS: copy the `@font-face` block VERBATIM from DESIGN.md's Fonts section. Do NOT guess which `.woff2` file belongs to which family — capture filenames are content-hashed (`14d7ce3e41dcbb66-s.p.woff2`) and there is no visible mapping. If DESIGN.md doesn't include exact `src:` paths per family, STOP and ask the main agent to add them; never pair an arbitrary `.woff2` file with a family name from memory.
 
 ## Easing — pick per intent
 

@@ -55,38 +55,75 @@ A flat lookup of the values sub-agents grab while composing beats. Two sub-secti
 
 List 8–12 colors with brand-specific names + HEX + role. Not generic ("Accent 1") but evocative ("Stripe Purple", "Deep Navy", "Slate Border"). The name carries meaning; "blue 4" doesn't.
 
+**For each text-on-surface combination the brand uses, compute the WCAG AA contrast ratio and flag failing pairings explicitly.** A real failure mode from prior runs: the brand's secondary-text color (`#68686A`) on its dark panel color (`#18191B`) = 3.16:1, which fails AA's 4.5:1 minimum. Sub-agents faithfully reproduced the brand's color choice and the result was unreadable. Encode the safe / unsafe pairings here so sub-agents pick text colors by surface context, not by "this is the brand's secondary text color." The `/hyperframes-contrast` skill audits ratios — run it before finalizing DESIGN.md.
+
 **Example:**
 
 ```markdown
 #### Colors
 
 - **Stripe Purple** (`#533AFD`): Primary CTA, interactive elements, focus rings — the brand's action signal
-- **Deep Navy** (`#061B31`): Primary text, headings — gravitas color
+  - On Pure White: 6.2:1 ✅ — On Deep Navy: 3.8:1 ⚠ AA-only-Large
+- **Deep Navy** (`#061B31`): Primary text on light surfaces, also a dark surface tier
+  - As text on Pure White: 17.4:1 ✅ — As surface: see Slate-on-Navy pairings below
 - **Pure White** (`#FFFFFF`): Page background, card surfaces
 - **Light Gray** (`#F5F7FA`): Surface tier 2 (cards on white pages, alternating sections)
-- **Slate Blue** (`#273951`): Secondary text, subheadings, lower-emphasis content
-- **Light Slate** (`#64748D`): Metadata, captions, disabled-adjacent text
-- **Subtle Border** (`#D4DEE9`): Card borders, dividers
-- **Vibrant Orange** (`#FF6118`): Energy accent — gradient endpoints, highlight bursts (never primary)
-- **Error Red** (`#FF0022`): Validation errors
-- **Success Green** (`#4CD963`): Confirmation states
+- **Slate Blue** (`#273951`): Secondary text on LIGHT surfaces
+  - On Pure White: 12.6:1 ✅ — On Light Gray: 11.8:1 ✅ — On Deep Navy: 1.4:1 ❌ DO NOT USE
+- **Light Slate** (`#64748D`): Metadata, captions on light surfaces only
+  - On Pure White: 4.8:1 ✅ — On Light Gray: 4.5:1 ✅ — On Deep Navy: 3.0:1 ❌ — On Dark Panel: 2.9:1 ❌
+  - **For dark-surface metadata, use `#9A9A9E` instead: 6.4:1 on Deep Navy ✅, 6.1:1 on Dark Panel ✅**
+- **Subtle Border** (`#D4DEE9`): Card borders, dividers (not text — borders don't need AA)
+- **Vibrant Orange** (`#FF6118`): Energy accent — gradient endpoints, highlight bursts (never primary text)
+- **Error Red** (`#FF0022`): Validation errors. On Pure White: 4.5:1 ✅
+- **Success Green** (`#4CD963`): Confirmation states. On Pure White: 1.7:1 ❌ — must be paired with a darker outline or use as accent on dark surfaces
 ```
+
+**Where the brand's own palette fails WCAG**, document the substitute (like the `#9A9A9E` override above). Sub-agents pick the safe color by surface — and if the deviation matters to the brand identity, the user can revisit at Step 6.
 
 #### Fonts
 
-List font families (with availability notes) + the headline / body / mono trio if applicable:
+List font families with their role AND **the exact file path per family + weight** from `fonts-manifest.json`. Sub-agents will copy the `@font-face` block verbatim — if you only name the family without the path, sub-agents have to guess which `.woff2` file belongs to which family and get it wrong half the time (a real failure mode from prior runs: agents pointed `@font-face` for "ES Build Neutral" at the Inter `.woff2` files and the wordmark rendered in Inter).
 
 **Example:**
 
-```markdown
+````markdown
 #### Fonts
 
-- **Display + Body:** `sohne-var` (variable 100–900, captured ✓) — weights 300 / 400 used in production
-- **Mono:** `"JetBrains Mono"` — code, metadata, technical content
+- **Display:** `"ES Build Neutral"` — wordmarks, headlines
+  - 600: `capture/assets/fonts/14d7ce3e41dcbb66-s.p.woff2`
+  - 700: `capture/assets/fonts/e8b276476c0ac6fa-s.p.woff2`
+- **Body:** `"Inter"` (variable 100–900, captured ✓) — body, labels, UI
+  - 400: `capture/assets/fonts/9a8d3f06c4e89f2b-s.p.woff2`
+  - 600: `capture/assets/fonts/1b0b3615811be75b-s.p.woff2`
+- **Mono:** `"JetBrains Mono"` — code, metadata
+  - 400: `capture/assets/fonts/c7d2e9f5a1b3c8d4-s.p.woff2`
 - **Fallback stack:** `-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`
 
-The brand uses **size for hierarchy, weight for emphasis**. Display 1: 48px/300, Display 2: 32px/300, Body: 14px/400. Never use weights above 400 — this brand has no bold variant in production.
+**`@font-face` block to paste in every composition** (sub-agents copy this verbatim — do not invent file paths):
+
+```css
+@font-face {
+  font-family: "ES Build Neutral";
+  src: url("capture/assets/fonts/14d7ce3e41dcbb66-s.p.woff2") format("woff2");
+  font-weight: 600;
+  font-display: block;
+}
+@font-face {
+  font-family: "Inter";
+  src: url("capture/assets/fonts/9a8d3f06c4e89f2b-s.p.woff2") format("woff2");
+  font-weight: 400;
+  font-display: block;
+}
+/* + any other family/weight combinations the storyboard's beats need */
 ```
+````
+
+The brand uses **size for hierarchy, weight for emphasis**. Display 1: 48px/600, Display 2: 32px/600, Body: 14px/400. (Adjust to the actual brand's hierarchy.)
+
+````
+
+The exact `@font-face` block lets sub-agents copy verbatim instead of constructing one from inference. If a beat needs a weight that isn't in the manifest, flag it explicitly here: e.g., "ES Build Neutral 900 NOT in capture; use ES Build Neutral 700 as substitute, or fall back to Inter 700."
 
 That's the whole typography section. If sub-agents need exact line-heights or letter-spacing, they read `design-styles.json` directly.
 
@@ -132,7 +169,7 @@ Cover every variant the site uses — typically Primary, Secondary/Ghost, and Ic
 - **Font:** sohne-var 14px / 400
 - **Padding:** `12px 0`
 - **Hover:** background `rgba(83, 58, 253, 0.08)`, optional underline
-```
+````
 
 #### Cards & Containers (always required if the site uses any)
 
