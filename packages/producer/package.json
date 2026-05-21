@@ -84,11 +84,11 @@
     "@fontsource/roboto": "^5.2.10",
     "@fontsource/source-code-pro": "^5.2.7",
     "@hyperframes/aws-lambda": "workspace:*",
-    "@types/node": "^25.0.10",
-    "@webgpu/types": "^0.1.69",
-    "esbuild": "^0.25.12",
-    "tsx": "^4.21.0",
-    "typescript": "^5.7.2"
+    "@types/node": "^25.9.1",
+    "@webgpu/types": "^0.1.70",
+    "esbuild": "^0.28.0",
+    "tsx": "^4.22.3",
+    "typescript": "^5.9.3"
   },
   "engines": {
     "node": ">=22"

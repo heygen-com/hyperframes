@@ -29,9 +29,9 @@
     "puppeteer-core": "^24.39.1"
   },
   "devDependencies": {
-    "@types/node": "^25.0.10",
-    "@webgpu/types": "^0.1.69",
-    "typescript": "^5.7.2",
+    "@types/node": "^25.9.1",
+    "@webgpu/types": "^0.1.70",
+    "typescript": "^5.9.3",
     "vitest": "^3.2.4"
   },
   "engines": {

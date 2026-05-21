@@ -35,19 +35,19 @@
     "prepare": "test -d .git && lefthook install || true"
   },
   "devDependencies": {
-    "@commitlint/cli": "^20.5.0",
-    "@commitlint/config-conventional": "^20.5.0",
+    "@commitlint/cli": "^20.5.3",
+    "@commitlint/config-conventional": "^20.5.3",
     "@hyperframes/player": "workspace:*",
-    "@types/node": "^25.0.10",
-    "concurrently": "^8.2.0",
-    "fallow": "^2.75.0",
+    "@types/node": "^25.9.1",
+    "concurrently": "^8.2.2",
+    "fallow": "^2.76.0",
     "happy-dom": "^20.9.0",
-    "knip": "^6.0.3",
-    "lefthook": "^2.1.4",
-    "oxfmt": "^0.41.0",
-    "oxlint": "^1.56.0",
-    "tsx": "^4.21.0",
-    "typescript": "^5.0.0"
+    "knip": "^6.14.1",
+    "lefthook": "^2.1.8",
+    "oxfmt": "^0.51.0",
+    "oxlint": "^1.66.0",
+    "tsx": "^4.22.3",
+    "typescript": "^5.9.3"
   },
   "resolutions": {
     "@types/react": "^19.0.0",

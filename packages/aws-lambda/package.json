@@ -57,14 +57,14 @@
     "tar": "^7.4.3"
   },
   "devDependencies": {
-    "@types/aws-lambda": "^8.10.146",
-    "@types/node": "^25.0.10",
+    "@types/aws-lambda": "^8.10.161",
+    "@types/node": "^25.9.1",
     "@types/tar": "^6.1.13",
-    "aws-cdk-lib": "^2.130.0",
-    "constructs": "^10.3.0",
-    "esbuild": "^0.25.12",
-    "tsx": "^4.21.0",
-    "typescript": "^5.7.2"
+    "aws-cdk-lib": "^2.256.1",
+    "constructs": "^10.6.0",
+    "esbuild": "^0.28.0",
+    "tsx": "^4.22.3",
+    "typescript": "^5.9.3"
   },
   "peerDependencies": {
     "aws-cdk-lib": "^2.130.0",
