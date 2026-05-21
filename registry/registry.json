@@ -342,6 +342,10 @@
     {
       "name": "vfx-shatter",
       "type": "hyperframes:block"
+    },
+    {
+      "name": "parallax-zoom",
+      "type": "hyperframes:component"
     }
   ]
 }
