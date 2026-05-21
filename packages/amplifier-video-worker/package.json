@@ -17,10 +17,12 @@
     "@aws-sdk/client-sqs": "^3.1021.0",
     "@aws-sdk/lib-dynamodb": "^3.1021.0",
     "@hyperframes/core": "workspace:^",
-    "@hyperframes/producer": "workspace:^"
+    "@hyperframes/producer": "workspace:^",
+    "qrcode": "^1.5.4"
   },
   "devDependencies": {
     "@types/node": "^25.0.10",
+    "@types/qrcode": "^1.5.5",
     "typescript": "^5.7.2"
   },
   "engines": {

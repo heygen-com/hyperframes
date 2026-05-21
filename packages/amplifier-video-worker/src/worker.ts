@@ -29,6 +29,12 @@ import {
 } from "./composition.js";
 import type { SkillBundle } from "./composition.js";
 import { synthesizeSpeechWithTimestamps } from "./elevenlabs.js";
+import {
+  briefWithLocalCover,
+  injectQrCode,
+  prefetchCoverImage,
+  stripCrossoriginOnLocalImages,
+} from "./post-process.js";
 import type {
   AmplifierQueueMessage,
   ArtifactRef,
@@ -1492,6 +1498,14 @@ async function processRenderJob(message: AmplifierQueueMessage) {
     const projectDir = join(workDir, "project");
     mkdirSync(projectDir, { recursive: true });
 
+    // Pre-fetch the cover image so the LLM can reference it as a local path —
+    // Chromium's CORS rules reject Substack-hosted images during canvas capture
+    // (no Access-Control-Allow-Origin), so remote URLs render as alt text.
+    const localCoverPath = await prefetchCoverImage(job.videoBrief, projectDir);
+    const briefForLlm = localCoverPath
+      ? briefWithLocalCover(job.videoBrief, localCoverPath)
+      : job.videoBrief;
+
     const script: ExplainerScript = narrationFromLlm
       ? scriptFromNarration(narrationFromLlm, job.plan.targetDurationSeconds)
       : buildExplainerScript({ brief: job.videoBrief, plan: job.plan, source });
@@ -1545,7 +1559,7 @@ async function processRenderJob(message: AmplifierQueueMessage) {
 
     let currentAttemptCounter = 0;
     const loopResult = await runCompositionLoop({
-      brief: job.videoBrief,
+      brief: briefForLlm,
       plan: derivedPlan,
       source,
       skillBundle,
@@ -1650,11 +1664,18 @@ async function processRenderJob(message: AmplifierQueueMessage) {
       // Extend the root, narration track, and last scene so audio plays
       // to completion instead of cutting off mid-sentence.
       const extended = extendCompositionDuration(authoredIndexHtml, durationSeconds);
-      writeFileSync(join(projectDir, "index.html"), extended.html, "utf-8");
+      const withoutCrossorigin = stripCrossoriginOnLocalImages(extended.html);
+      const qr = await injectQrCode(withoutCrossorigin, job.plan.cta.url);
+      writeFileSync(join(projectDir, "index.html"), qr.html, "utf-8");
       if (extended.extended) {
         console.log(
           `[worker] extended LLM composition: ${extended.originalRootDurationSeconds}s → ${extended.newRootDurationSeconds}s`,
           extended.modifications,
+        );
+      }
+      if (qr.injected) {
+        console.log(
+          `[worker] injected qr-code for ${job.plan.cta.url} (fallback=${qr.fallbackAppended})`,
         );
       }
     } else {
