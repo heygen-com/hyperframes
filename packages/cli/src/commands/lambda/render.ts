@@ -10,6 +10,7 @@ import type {
   DistributedFormat,
   SerializableDistributedRenderConfig,
 } from "@hyperframes/aws-lambda/sdk";
+import type { CanvasResolution } from "@hyperframes/core";
 import { c } from "../../ui/colors.js";
 import {
   reportVariableIssues,
@@ -32,6 +33,14 @@ export interface RenderArgs {
   fps: 24 | 30 | 60;
   width: number;
   height: number;
+  /**
+   * Optional output resolution preset that engages Chrome `deviceScaleFactor`
+   * supersampling. When set, the composition is laid out at the canvas size
+   * declared by `data-width`/`data-height` (or `--width`/`--height`) and
+   * supersampled to the preset's dimensions — `landscape-4k` (3840×2160)
+   * from a 1920×1080 layout uses DPR 2, etc.
+   */
+  outputResolution?: CanvasResolution;
   format: DistributedFormat;
   codec?: "h264" | "h265";
   quality?: "draft" | "standard" | "high";
@@ -99,6 +108,7 @@ export async function runRender(args: RenderArgs): Promise<void> {
     fps: args.fps,
     width: args.width,
     height: args.height,
+    outputResolution: args.outputResolution,
     format: args.format,
     codec: args.codec,
     quality: args.quality,

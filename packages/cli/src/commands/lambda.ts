@@ -10,6 +10,11 @@
 
 import { defineCommand } from "citty";
 import type { DistributedFormat } from "@hyperframes/aws-lambda/sdk";
+import {
+  type CanvasResolution,
+  VALID_CANVAS_RESOLUTIONS,
+  normalizeResolutionFlag,
+} from "@hyperframes/core";
 import type { Example } from "./_examples.js";
 import { c } from "../ui/colors.js";
 
@@ -22,6 +27,10 @@ export const examples: Example[] = [
   [
     "Render and stream progress until done",
     "hyperframes lambda render ./my-project --width 1920 --height 1080 --wait",
+  ],
+  [
+    "Supersample a 1080p composition to 4K via Chrome deviceScaleFactor",
+    "hyperframes lambda render ./my-project --width 1920 --height 1080 --output-resolution 4k --wait",
   ],
   [
     "Render with composition variables (personalised template)",
@@ -113,6 +122,11 @@ export default defineCommand({
     "site-id": { type: "string", description: "Explicit site id (overrides content hash)" },
     width: { type: "string", description: "Render width in pixels" },
     height: { type: "string", description: "Render height in pixels" },
+    "output-resolution": {
+      type: "string",
+      description:
+        "Output resolution preset that engages Chrome deviceScaleFactor supersampling. Accepts canonical names (landscape, landscape-4k, portrait, portrait-4k, square, square-4k) and aliases (1080p, 4k, uhd, hd). When set, the composition's authored data-width/data-height is supersampled to the target preset without changing the layout.",
+    },
     fps: { type: "string", description: "Render fps (24 | 30 | 60)" },
     format: { type: "string", description: "mp4 | mov | png-sequence | webm (default: mp4)" },
     codec: { type: "string", description: "h264 | h265 (mp4 only)" },
@@ -291,6 +305,7 @@ export default defineCommand({
           fps: fpsRaw,
           width,
           height,
+          outputResolution: parseOutputResolution(args["output-resolution"]),
           format: parseFormat(args.format),
           codec: parseCodec(args.codec),
           quality: parseQuality(args.quality),
@@ -342,6 +357,7 @@ export default defineCommand({
           fps: fpsRaw,
           width,
           height,
+          outputResolution: parseOutputResolution(args["output-resolution"]),
           format: parseFormat(args.format),
           codec: parseCodec(args.codec),
           quality: parseQuality(args.quality),
@@ -450,3 +466,13 @@ const parseQuality = (raw: unknown): (typeof QUALITIES)[number] | undefined =>
   parseEnum(raw, QUALITIES, "[lambda render] --quality", undefined);
 const parseChromeSource = (raw: unknown): (typeof CHROME_SOURCES)[number] =>
   parseEnum(raw, CHROME_SOURCES, "[lambda deploy] --chrome-source", "sparticuz")!;
+
+function parseOutputResolution(raw: unknown): CanvasResolution | undefined {
+  if (raw == null || raw === "") return undefined;
+  const normalized = normalizeResolutionFlag(String(raw));
+  if (normalized) return normalized;
+  throw new Error(
+    `[lambda render] --output-resolution must be one of ${VALID_CANVAS_RESOLUTIONS.join("|")} ` +
+      `(or an alias: 1080p, 4k, uhd, hd, 1080p-portrait, portrait-1080p, 4k-portrait, 1080p-square, square-1080p, 4k-square); got ${String(raw)}`,
+  );
+}

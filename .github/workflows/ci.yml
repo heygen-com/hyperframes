@@ -467,17 +467,40 @@ jobs:
     timeout-minutes: 1
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
       - name: Check file sizes (max 500 lines)
+        # Scoped to files THIS PR changed under packages/studio. Walking the
+        # whole tree blamed every unrelated PR for pre-existing offenders.
+        # Falls back to a full scan on push events (no base ref available)
+        # so the rule still guards main.
         run: |
+          set -e
+          if [ -n "${{ github.base_ref }}" ]; then
+            mapfile -t files < <(
+              git diff --name-only --diff-filter=ACMR \
+                "origin/${{ github.base_ref }}...HEAD" -- \
+                'packages/studio/**/*.ts' 'packages/studio/**/*.tsx' \
+                | grep -vE '\.(test|spec)\.(ts|tsx)$|\.generated\.' || true
+            )
+          else
+            mapfile -t files < <(
+              find packages/studio -path '*/node_modules' -prune -o \
+                \( -name '*.ts' -o -name '*.tsx' \) -print \
+                | grep -vE '\.(test|spec)\.(ts|tsx)$|\.generated\.'
+            )
+          fi
           EXIT=0
-          while IFS= read -r f; do
+          for f in "${files[@]}"; do
+            [ -z "$f" ] && continue
+            [ -f "$f" ] || continue  # skip files deleted in this PR
             if grep -qxF "$f" .filesize-allowlist 2>/dev/null; then continue; fi
             lines=$(wc -l < "$f")
             if [ "$lines" -gt 500 ]; then
               echo "::error file=$f::$f has $lines lines (max 500)"
               EXIT=1
             fi
-          done < <(find packages/studio -path '*/node_modules' -prune -o \( -name '*.ts' -o -name '*.tsx' \) -print | grep -vE '\.(test|spec)\.(ts|tsx)$|\.generated\.')
+          done
           exit $EXIT
 
   semantic-pr-title:

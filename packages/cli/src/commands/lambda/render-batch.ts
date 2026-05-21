@@ -28,6 +28,7 @@ import type {
   SerializableDistributedRenderConfig,
   SiteHandle,
 } from "@hyperframes/aws-lambda/sdk";
+import type { CanvasResolution } from "@hyperframes/core";
 import { c } from "../../ui/colors.js";
 import { errorBox } from "../../ui/format.js";
 import {
@@ -60,6 +61,8 @@ export interface RenderBatchArgs {
   fps: 24 | 30 | 60;
   width: number;
   height: number;
+  /** See {@link RenderArgs.outputResolution}. */
+  outputResolution?: CanvasResolution;
   format: DistributedFormat;
   codec?: "h264" | "h265";
   quality?: "draft" | "standard" | "high";
@@ -199,6 +202,7 @@ export async function runRenderBatch(args: RenderBatchArgs): Promise<void> {
     fps: args.fps,
     width: args.width,
     height: args.height,
+    outputResolution: args.outputResolution,
     format: args.format,
     codec: args.codec,
     quality: args.quality,
