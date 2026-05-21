@@ -26,6 +26,15 @@ async function loadSDK(): Promise<typeof import("@hyperframes/aws-lambda/sdk")> 
   return import("@hyperframes/aws-lambda/sdk");
 }
 
+// Inlined from `@hyperframes/aws-lambda/sdk` `chunkRuntime.ts` (the source
+// of truth). Importing the constants from the SDK barrel as values would
+// pull in `renderToLambda` / `getRenderProgress` / `deploySite` and their
+// transitive `@aws-sdk/client-sfn` + `@aws-sdk/client-s3` deps at static-
+// import time, defeating the `loadSDK()` lazy-load above. They're plain
+// numbers tied to Lambda's hard cap; the duplication is cheap.
+const LAMBDA_TIMEOUT_MS = 900_000;
+const CHUNK_RUNTIME_WARN_MS = LAMBDA_TIMEOUT_MS * 0.8;
+
 export interface RenderArgs {
   projectDir: string;
   stackName: string;
@@ -161,7 +170,13 @@ export async function runRender(args: RenderArgs): Promise<void> {
     // both, producing two concatenated JSON blobs that `jq -r` would
     // misparse.
     if (args.wait) {
-      await waitForCompletion(handle.executionArn, stack, args.waitIntervalMs, args.json);
+      await waitForCompletion(
+        handle.executionArn,
+        stack,
+        args.waitIntervalMs,
+        args.json,
+        args.maxParallelChunks,
+      );
     } else {
       console.log(JSON.stringify(handle, null, 2));
     }
@@ -176,7 +191,13 @@ export async function runRender(args: RenderArgs): Promise<void> {
   console.log(`  ${c.dim("Stack state:")}   ${stateFilePath(args.stackName)}`);
   console.log();
   if (args.wait) {
-    await waitForCompletion(handle.executionArn, stack, args.waitIntervalMs, args.json);
+    await waitForCompletion(
+      handle.executionArn,
+      stack,
+      args.waitIntervalMs,
+      args.json,
+      args.maxParallelChunks,
+    );
     return;
   }
   console.log(c.dim(`Poll with: hyperframes lambda progress ${handle.renderId}`));
@@ -187,6 +208,7 @@ async function waitForCompletion(
   stack: { region: string; functionName: string; lambdaMemoryMb: number },
   intervalMs: number,
   json: boolean,
+  maxParallelChunks: number | undefined,
 ): Promise<void> {
   // Lazy import to avoid pulling SFN client when only `render --no-wait` is used.
   const { getRenderProgress } = await loadSDK();
@@ -214,6 +236,7 @@ async function waitForCompletion(
         console.log(`  ${c.dim("Output:")}        ${progress.outputFile.s3Uri}`);
         console.log(`  ${c.dim("Size:")}          ${progress.outputFile.bytes ?? "?"} bytes`);
         console.log(`  ${c.dim("Total cost:")}    ${progress.costs.displayCost}`);
+        warnIfChunkRuntimeIsCloseToCap(progress, maxParallelChunks);
       } else {
         console.log();
         console.log(c.error(`Render ended with status ${progress.status}.`));
@@ -227,6 +250,43 @@ async function waitForCompletion(
     await sleep(intervalMs);
   }
 }
+
+/** Warn if the slowest chunk approached the 15-min Lambda cap; suggest a higher fan-out. */
+function warnIfChunkRuntimeIsCloseToCap(
+  progress: { maxChunkDurationMs: number | null },
+  currentMaxParallelChunks: number | undefined,
+): void {
+  const max = progress.maxChunkDurationMs;
+  if (max === null || max < CHUNK_RUNTIME_WARN_MS) return;
+  const slowestSec = Math.round(max / 1000);
+  const capSec = LAMBDA_TIMEOUT_MS / 1000;
+  const suggested = suggestFanOut(currentMaxParallelChunks ?? DEFAULT_MAX_PARALLEL_CHUNKS, max);
+  console.log();
+  console.log(
+    c.warn(
+      `Heads up: slowest chunk ran ${slowestSec}s of the ${capSec}s Lambda cap. ` +
+        `Adding fps, duration, or complexity to this composition will likely trip ` +
+        `Sandbox.Timedout on the next render.\n` +
+        `  Mitigate with: --max-parallel-chunks ${suggested} (shrinks per-chunk work).`,
+    ),
+  );
+}
+
+/**
+ * Pick a fan-out that brings the projected chunk runtime under
+ * {@link CHUNK_RUNTIME_WARN_MS}. Doubles `current` until the projected
+ * per-chunk duration (slowest / multiplier) clears the threshold, rounded
+ * to the next power of two and capped at `MAX_PARALLEL_CHUNKS_CEILING`.
+ */
+function suggestFanOut(current: number, slowestMs: number): number {
+  const targetMultiplier = Math.ceil(slowestMs / CHUNK_RUNTIME_WARN_MS);
+  const target = current * targetMultiplier;
+  const nextPow2 = 2 ** Math.ceil(Math.log2(target));
+  return Math.min(nextPow2, MAX_PARALLEL_CHUNKS_CEILING);
+}
+
+const DEFAULT_MAX_PARALLEL_CHUNKS = 16;
+const MAX_PARALLEL_CHUNKS_CEILING = 256;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((res) => setTimeout(res, ms));

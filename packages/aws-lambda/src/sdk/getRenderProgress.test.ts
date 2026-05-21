@@ -344,6 +344,83 @@ describe("getRenderProgress", () => {
       ]);
     });
 
+    it("tracks the slowest RenderChunk billed duration for the cap warning", async () => {
+      const sfn = new FakeSFN();
+      const renderChunk = (ms: number) => [
+        stateEntered("RenderChunk"),
+        taskScheduled(),
+        taskSucceeded({ Action: "renderChunk", FramesEncoded: 10, DurationMs: ms }),
+      ];
+      sfn.historyPages = [
+        [
+          stateEntered("Plan"),
+          taskScheduled(),
+          taskSucceeded({ Action: "plan", TotalFrames: 30, DurationMs: 1_000 }),
+          ...renderChunk(100_000),
+          ...renderChunk(820_000),
+          ...renderChunk(50_000),
+          stateEntered("Assemble"),
+          taskScheduled(),
+          taskSucceeded({
+            Action: "assemble",
+            FileSize: 1_000,
+            OutputS3Uri: "s3://b/k.mp4",
+            DurationMs: 5_000,
+          }),
+        ],
+      ];
+      sfn.describe.status = "SUCCEEDED";
+      const progress = await getRenderProgress({
+        executionArn: "arn",
+        sfn: sfn as unknown as SFNClient,
+      });
+      expect(progress.maxChunkDurationMs).toBe(820_000);
+    });
+
+    it("ignores Plan/Assemble billed durations in maxChunkDurationMs", async () => {
+      const sfn = new FakeSFN();
+      sfn.historyPages = [
+        [
+          stateEntered("Plan"),
+          taskScheduled(),
+          taskSucceeded({ Action: "plan", TotalFrames: 30, DurationMs: 60_000 }),
+          stateEntered("RenderChunk"),
+          taskScheduled(),
+          taskSucceeded({ Action: "renderChunk", FramesEncoded: 10, DurationMs: 12_000 }),
+          stateEntered("Assemble"),
+          taskScheduled(),
+          taskSucceeded({
+            Action: "assemble",
+            FileSize: 1_000,
+            OutputS3Uri: "s3://b/k.mp4",
+            DurationMs: 90_000,
+          }),
+        ],
+      ];
+      sfn.describe.status = "SUCCEEDED";
+      const progress = await getRenderProgress({
+        executionArn: "arn",
+        sfn: sfn as unknown as SFNClient,
+      });
+      expect(progress.maxChunkDurationMs).toBe(12_000);
+    });
+
+    it("maxChunkDurationMs is null before any RenderChunk completes", async () => {
+      const sfn = new FakeSFN();
+      sfn.historyPages = [
+        [
+          stateEntered("Plan"),
+          taskScheduled(),
+          taskSucceeded({ Action: "plan", TotalFrames: 30, DurationMs: 1_000 }),
+        ],
+      ];
+      const progress = await getRenderProgress({
+        executionArn: "arn",
+        sfn: sfn as unknown as SFNClient,
+      });
+      expect(progress.maxChunkDurationMs).toBeNull();
+    });
+
     it("sums billed seconds across plan + chunks + assemble", async () => {
       const sfn = new FakeSFN();
       const renderChunkSucceeded = (frames: number, ms: number) => [

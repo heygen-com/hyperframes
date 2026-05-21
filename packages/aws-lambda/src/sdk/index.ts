@@ -22,6 +22,7 @@ export {
   computeRenderCost,
   type RenderCost,
 } from "./costAccounting.js";
+export { CHUNK_RUNTIME_WARN_MS, LAMBDA_TIMEOUT_MS } from "./chunkRuntime.js";
 export {
   InvalidConfigError,
   MAX_STEP_FUNCTIONS_INPUT_BYTES,

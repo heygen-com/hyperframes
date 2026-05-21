@@ -76,6 +76,8 @@ export interface RenderProgress {
   /** Total Lambda invocations scheduled so far (both optimized + raw task integrations). */
   lambdasInvoked: number;
   costs: RenderCost;
+  /** Billed duration of the slowest `RenderChunk` invocation; null before any chunk completes. */
+  maxChunkDurationMs: number | null;
   /** Final output object if Assemble succeeded; `null` otherwise. */
   outputFile: { s3Uri: string; bytes: number | null } | null;
   errors: RenderError[];
@@ -120,6 +122,7 @@ export async function getRenderProgress(opts: GetRenderProgressOptions): Promise
     totalFrames: summary.totalFrames,
     lambdasInvoked: summary.lambdasInvoked,
     costs,
+    maxChunkDurationMs: summary.maxChunkDurationMs,
     outputFile: summary.outputFile,
     errors: summary.errors,
     fatalErrorEncountered: isTerminalFailure(status),
@@ -154,6 +157,8 @@ interface HistorySummary {
   totalFrames: number | null;
   lambdasInvoked: number;
   assembleComplete: boolean;
+  /** Slowest billed-duration across `RenderChunk` invocations; null if none observed. */
+  maxChunkDurationMs: number | null;
   outputFile: { s3Uri: string; bytes: number | null } | null;
   errors: RenderError[];
 }
@@ -172,6 +177,7 @@ function summarizeHistory(events: HistoryEvent[], memoryMb: number): HistorySumm
   let assembleComplete = false;
   let outputFile: HistorySummary["outputFile"] = null;
   let stateTransitions = 0;
+  let maxChunkDurationMs: number | null = null;
   const errors: RenderError[] = [];
   const lambdaInvocations: BilledLambdaInvocation[] = [];
 
@@ -221,6 +227,11 @@ function summarizeHistory(events: HistoryEvent[], memoryMb: number): HistorySumm
         applyPayloadFrameCounts(payload, currentLambdaState, (delta) => {
           framesRendered += delta;
         });
+        maxChunkDurationMs = bumpMaxChunkDuration(
+          maxChunkDurationMs,
+          currentLambdaState,
+          billedDurationMs,
+        );
         if (payload && typeof payload === "object") {
           const obj = payload as Record<string, unknown>;
           if (typeof obj.TotalFrames === "number") totalFrames = obj.TotalFrames;
@@ -238,6 +249,11 @@ function summarizeHistory(events: HistoryEvent[], memoryMb: number): HistorySumm
         applyPayloadFrameCounts(payload, currentLambdaState, (delta) => {
           framesRendered += delta;
         });
+        maxChunkDurationMs = bumpMaxChunkDuration(
+          maxChunkDurationMs,
+          currentLambdaState,
+          billedDurationMs,
+        );
         if (payload && typeof payload === "object") {
           const obj = payload as Record<string, unknown>;
           if (typeof obj.TotalFrames === "number") totalFrames = obj.TotalFrames;
@@ -311,6 +327,7 @@ function summarizeHistory(events: HistoryEvent[], memoryMb: number): HistorySumm
     totalFrames,
     lambdasInvoked,
     assembleComplete,
+    maxChunkDurationMs,
     outputFile,
     errors,
   };
@@ -338,6 +355,17 @@ function unwrapLambdaPayload(payload: unknown): unknown {
     if (inner && typeof inner === "object") return inner;
   }
   return payload;
+}
+
+/** Track the slowest `RenderChunk` billed-duration for the cap warning. */
+function bumpMaxChunkDuration(
+  current: number | null,
+  currentLambdaState: string | null,
+  billedDurationMs: number,
+): number | null {
+  if (currentLambdaState !== "RenderChunk") return current;
+  if (billedDurationMs <= 0) return current;
+  return Math.max(current ?? 0, billedDurationMs);
 }
 
 /**
