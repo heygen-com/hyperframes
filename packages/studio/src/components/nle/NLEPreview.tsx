@@ -95,7 +95,6 @@ export const NLEPreview = memo(function NLEPreview({
   suppressLoadingOverlay,
 }: NLEPreviewProps) {
   const baseKey = getPreviewPlayerKey({ projectId, directUrl, refreshKey });
-  const prevRefreshKeyRef = useRef(refreshKey);
   const viewportRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const [retiringKey, setRetiringKey] = useState<string | null>(null);
@@ -205,13 +204,7 @@ export const NLEPreview = memo(function NLEPreview({
     [applyTransform],
   );
 
-  if (refreshKey !== prevRefreshKeyRef.current) {
-    const oldKey = `${baseKey}:${prevRefreshKeyRef.current ?? 0}`;
-    prevRefreshKeyRef.current = refreshKey;
-    setRetiringKey(oldKey);
-  }
-
-  const activeKey = `${baseKey}:${refreshKey ?? 0}`;
+  const activeKey = baseKey;
 
   const applyInitialZoom = useCallback(() => {
     const z = zoomRef.current;
