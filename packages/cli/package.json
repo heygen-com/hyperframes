@@ -41,21 +41,21 @@
     "sharp": "^0.34.0"
   },
   "devDependencies": {
-    "@clack/prompts": "^1.1.0",
+    "@clack/prompts": "^1.4.0",
     "@hyperframes/aws-lambda": "workspace:*",
     "@hyperframes/core": "workspace:*",
     "@hyperframes/engine": "workspace:*",
     "@hyperframes/producer": "workspace:*",
     "@hyperframes/studio": "workspace:*",
-    "@types/adm-zip": "^0.5.7",
+    "@types/adm-zip": "^0.5.8",
     "@types/fontkit": "^2.0.9",
     "@types/mime-types": "^3.0.1",
-    "@types/node": "^25.0.10",
+    "@types/node": "^25.9.1",
     "linkedom": "^0.18.12",
     "picocolors": "^1.1.1",
-    "tsup": "^8.0.0",
-    "tsx": "^4.0.0",
-    "typescript": "^5.0.0",
+    "tsup": "^8.5.1",
+    "tsx": "^4.22.3",
+    "typescript": "^5.9.3",
     "vitest": "^3.2.4"
   },
   "optionalDependencies": {
