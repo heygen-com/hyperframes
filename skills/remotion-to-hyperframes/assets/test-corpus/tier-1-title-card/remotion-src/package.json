@@ -6,9 +6,9 @@
     "render": "remotion render TitleCard out/baseline.mp4"
   },
   "dependencies": {
-    "@remotion/cli": "^4.0.0",
+    "@remotion/cli": "^4.0.464",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "remotion": "^4.0.0"
+    "remotion": "^4.0.464"
   }
 }

@@ -25,19 +25,19 @@
   },
   "dependencies": {
     "@hono/node-server": "^1.8.0",
-    "@puppeteer/browsers": "^2.13.0",
-    "adm-zip": "^0.5.16",
-    "citty": "^0.2.1",
+    "@puppeteer/browsers": "^2.13.2",
+    "adm-zip": "^0.5.17",
+    "citty": "^0.2.2",
     "compare-versions": "^6.1.1",
     "esbuild": "^0.25.12",
     "giget": "^3.2.0",
     "hono": "^4.0.0",
     "onnxruntime-node": "^1.20.0",
     "open": "^10.0.0",
-    "postcss": "^8.5.8",
-    "prettier": "^3.8.1",
+    "postcss": "^8.5.15",
+    "prettier": "^3.8.3",
     "puppeteer-core": "^24.39.1",
-    "sharp": "^0.34.0"
+    "sharp": "^0.34.5"
   },
   "devDependencies": {
     "@clack/prompts": "^1.1.0",
