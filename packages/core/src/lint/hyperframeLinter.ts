@@ -8,6 +8,7 @@ import { captionRules } from "./rules/captions";
 import { compositionRules } from "./rules/composition";
 import { adapterRules } from "./rules/adapters";
 import { textureRules } from "./rules/textures";
+import { fontRules } from "./rules/fonts";
 
 const ALL_RULES = [
   ...coreRules,
@@ -17,6 +18,7 @@ const ALL_RULES = [
   ...compositionRules,
   ...adapterRules,
   ...textureRules,
+  ...fontRules,
 ];
 
 export function lintHyperframeHtml(
