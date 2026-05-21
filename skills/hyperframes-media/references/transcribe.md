@@ -31,6 +31,13 @@ npx hyperframes transcribe openai-response.json
 | `medium`   | 1.5 GB | Slow     | Music with vocals, noisy audio        |
 | `large-v3` | 3.1 GB | Slowest  | Production quality                    |
 
+### Picking a model by content type
+
+1. Speech over silence / light background → `small.en`
+2. Speech over music, or music with vocals → start with `medium.en`
+3. Produced music track (vocals + full instrumentation) → start with `medium.en`; expect to need manual lyrics or an external API ([`captions/transcript-handling.md`](captions/transcript-handling.md) → "Using External Transcription APIs")
+4. Multilingual → `medium` or `large-v3` (no `.en` suffix), pair with `--language`
+
 ## Output Shape
 
 Compositions consume a flat array of word objects. The `id` (`w0`, `w1`, …) is added during normalization for stable references in caption overrides; optional for backwards compatibility.
@@ -42,4 +49,4 @@ Compositions consume a flat array of word objects. The `id` (`w0`, `w1`, …) is
 ]
 ```
 
-For mandatory caption-quality checks, retry rules, and the OpenAI/Groq Whisper API import path, see `captions/transcript-guide.md`.
+For mandatory caption-quality checks, retry rules, and the OpenAI/Groq Whisper API import path, see `captions/transcript-handling.md`.

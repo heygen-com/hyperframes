@@ -17,7 +17,7 @@ For GSAP:
 - **Do not** create empty tweens only to set duration; use `data-duration` on the clip instead.
 - **Do not** `gsap.set()` clip elements from later scenes — they are not in the DOM at page load. Use `tl.set(selector, vars, time)` inside the timeline at or after the clip's `data-start`.
 
-Use the `hyperframes-adapters` skill for tween syntax, position parameters, eases, and performance rules.
+Use the `hyperframes-animation` skill for tween syntax, position parameters, eases, and performance rules.
 
 ## Determinism Rules
 

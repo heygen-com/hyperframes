@@ -147,7 +147,7 @@ grep "data-composition-id\|__timelines\[" compositions/<scene>.html
 #      → all three strings must match exactly per scene
 ```
 
-For the runtime end-to-end check (a fast draft render + per-scene frame eyeball), see the **Smoke render** step in `hyperframes-cli`'s Minimum Completion Gate — that is the only gate that catches these two pitfalls.
+For the runtime end-to-end check (a fast `snapshot` pass + per-scene frame eyeball), see the **Visual smoke test** step in `hyperframes-cli`'s Minimum Completion Gate — that is the only gate that catches these two pitfalls.
 
 ## What HyperFrames Does With the Sub-Composition
 

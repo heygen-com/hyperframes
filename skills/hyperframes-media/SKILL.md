@@ -9,16 +9,16 @@ CLI commands that create assets, plus everything needed to consume and animate t
 
 ## Routing
 
-| Task                                                              | Read                                        |
-| ----------------------------------------------------------------- | ------------------------------------------- |
-| `npx hyperframes tts` — Kokoro narration, voice / language choice | `references/tts.md`                         |
-| `npx hyperframes transcribe` — Whisper, model rules, output shape | `references/transcribe.md`                  |
-| `npx hyperframes remove-background` — transparent cutouts         | `references/remove-background.md`           |
-| TTS → transcription → captions (no recorded voiceover)            | `references/tts-to-captions.md`             |
-| Caption HTML — subtitles, lyrics, karaoke, per-word styling       | `references/captions/styling.md`            |
-| Transcript JSON / SRT / VTT cleanup + quality gates               | `references/captions/transcript-guide.md`   |
-| Caption motion, animated emphasis, dynamic per-word effects       | `references/captions/dynamic-techniques.md` |
-| Model caches, system dependencies, troubleshooting                | `references/requirements.md`                |
+| Task                                                              | Read                                         |
+| ----------------------------------------------------------------- | -------------------------------------------- |
+| `npx hyperframes tts` — Kokoro narration, voice / language choice | `references/tts.md`                          |
+| `npx hyperframes transcribe` — Whisper, model rules, output shape | `references/transcribe.md`                   |
+| `npx hyperframes remove-background` — transparent cutouts         | `references/remove-background.md`            |
+| TTS → transcription → captions (no recorded voiceover)            | `references/tts-to-captions.md`              |
+| Caption authoring — style detection, layout, word grouping, exit  | `references/captions/authoring.md`           |
+| Transcript handling — input formats, quality gates, cleanup, APIs | `references/captions/transcript-handling.md` |
+| Caption motion — karaoke, marker effects, audio-reactive          | `references/captions/motion.md`              |
+| Model caches, system dependencies, troubleshooting                | `references/requirements.md`                 |
 
 ## Non-negotiable rules
 

@@ -1,6 +1,6 @@
 # Transcript Guide
 
-For the `transcribe` CLI invocation, the `.en`-translates-non-English rule, and whisper model selection, see the `hyperframes-media` skill. This file covers what to do with the resulting transcript when authoring captions: input formats, mandatory quality checks, cleaning code, external-API fallbacks.
+For the `transcribe` CLI invocation, the `.en`-translates-non-English rule, and whisper model selection, see [`../transcribe.md`](../transcribe.md). This file covers what to do with the resulting transcript when authoring captions: input formats, mandatory quality checks, cleaning code, external-API fallbacks.
 
 ## Supported Input Formats
 
@@ -57,12 +57,7 @@ var words = raw.filter(function (w) {
 });
 ```
 
-### When to use which model (decision tree)
-
-1. **Is this speech over silence/light background?** → `small.en` is fine
-2. **Is this speech over music, or music with vocals?** → Start with `medium.en`
-3. **Is this a produced music track (vocals + full instrumentation)?** → Start with `medium.en`, expect to need manual lyrics or an external API
-4. **Is this multilingual?** → Use `medium` or `large-v3` (no `.en` suffix)
+For model-selection guidance by content type, see [`../transcribe.md`](../transcribe.md) → "Picking a model by content type".
 
 ## Using External Transcription APIs
 
@@ -97,11 +92,6 @@ npx hyperframes transcribe transcript-groq.json
 
 ## If No Transcript Exists
 
-1. Check the project root for `transcript.json`, `.srt`, or `.vtt` files
-2. If none found, run transcription — pick the starting model based on the content type:
-   - Speech/voiceover → `small.en`
-   - Music with vocals → `medium.en`
-   ```bash
-   npx hyperframes transcribe <audio-or-video-file> --model medium.en
-   ```
-3. **Read the transcript and run the quality check** (see above). If it fails, retry with a larger model or suggest manual lyrics.
+1. Check the project root for `transcript.json`, `.srt`, or `.vtt` files.
+2. If none found, run [`../transcribe.md`](../transcribe.md) — pick the starting model from "Picking a model by content type" there.
+3. Run the quality check above. If it fails, retry with a larger model or fall back to manual lyrics / external API.

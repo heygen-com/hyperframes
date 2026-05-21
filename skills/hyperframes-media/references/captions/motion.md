@@ -16,7 +16,7 @@ You are here because SKILL.md told you to read this file before writing animatio
 
 **Emphasis words always break the pattern.** When a word is flagged as emphasis (emotional keyword, ALL CAPS, brand name), give it a stronger animation than surrounding words (larger scale, accent color, overshoot ease). This creates contrast.
 
-**Marker highlight modes add a visual layer on top of karaoke.** For emphasis words that need more than color/scale, add a marker-style effect: highlight sweep, circle, burst, or scribble. See `hyperframes-creative/references/css-patterns.md` for implementation details. Match mode to energy: burst for hype, circle for key terms, highlight for standard, scribble for subtle.
+**Marker highlight modes add a visual layer on top of karaoke.** For emphasis words that need more than color/scale, add a marker-style effect: highlight sweep, circle, burst, scribble, or sketchout. See `hyperframes-animation/rules/css-marker-patterns.md` for implementation details. Match mode to energy: burst for hype, circle for key terms, highlight for standard, scribble for subtle.
 
 ## Audio-Reactive Captions (Mandatory for Music)
 
@@ -78,13 +78,10 @@ Don't use the same highlight animation on every group — cycle through styles u
 
 **Marker highlight effects** layer well with karaoke — use karaoke for the word-by-word reveal, then add a marker effect on emphasis words only. For example: karaoke highlights each word in white, but brand names get a yellow highlight sweep and stats get a red circle. Cycle marker modes across groups for visual variety.
 
-## Available Tools
+## Runtime Tools
 
-These tools are available in the HyperFrames runtime. Use them when they solve a real problem — not every composition needs all of them.
+Caption motion uses standard HyperFrames runtime APIs. Use the canonical sources:
 
-| Tool                | What it does                                                              | Access                                                                                         | When it's useful                                                             |
-| ------------------- | ------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| **pretext**         | Pure-arithmetic text measurement without DOM reflow. 0.0002ms per call.   | `window.__hyperframes.pretext.prepare(text, font)` / `.layout(prepared, maxWidth, lineHeight)` | Per-frame text reflow, shrinkwrap containers, computing layout before render |
-| **fitTextFontSize** | Finds the largest font size that fits text on one line. Built on pretext. | `window.__hyperframes.fitTextFontSize(text, { maxWidth, fontFamily, fontWeight })`             | Overflow prevention for long phrases, portrait mode, large base sizes        |
-| **audio data**      | Pre-extracted per-frame RMS energy and frequency bands.                   | Extract with `extract-audio-data.py`, load inline or via `fetch("audio-data.json")`            | Audio-reactive visuals — modulate intensity based on the music               |
-| **GSAP**            | Animation timeline with tweens and callbacks.                             | `gsap.to()`, `gsap.set()`, `tl.to()`, `tl.set()`                                               | All caption animation                                                        |
+- **GSAP timeline + tween syntax** — `hyperframes-animation/adapters/gsap.md` (eases, position parameter, performance)
+- **`window.__hyperframes.fitTextFontSize` / `pretext`** — `hyperframes-core/references/determinism-rules.md` → Layout Contract (overflow prevention, per-frame text measurement)
+- **Audio data extraction** — generate via `python3 skills/hyperframes-creative/scripts/extract-audio-data.py audio.mp3 --fps 30 --bands 8 -o audio-data.json`, then load inline as shown in "Audio-Reactive Captions" above

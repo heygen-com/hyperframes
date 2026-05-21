@@ -1,6 +1,6 @@
 ---
 name: hyperframes-skill-authoring
-description: Write or refactor HyperFrames animation skills — rules, blueprints, and examples. Enforces a three-tier abstraction contract: rules teach atomic patterns, blueprints teach scene orchestration, examples are runnable ground truth. Concrete values (brand names, copy, colors, magic numbers, specific timings) are forbidden in rules and blueprints — they live only in examples.
+description: "Write or refactor HyperFrames animation skills — rules, blueprints, and examples. Enforces a three-tier abstraction contract: rules teach atomic patterns, blueprints teach scene orchestration, examples are runnable ground truth. Concrete values (brand names, copy, colors, magic numbers, specific timings) are forbidden in rules and blueprints — they live only in examples."
 metadata:
   tags: skill-authoring, rules, blueprints, examples, refactor, abstraction, hyperframes-animation
 ---

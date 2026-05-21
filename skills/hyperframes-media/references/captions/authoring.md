@@ -1,16 +1,6 @@
 # Captions
 
-## Language Rule (Non-Negotiable)
-
-`.en` models (`tiny.en` / `base.en` / `small.en` / `medium.en`) **translate** non-English audio into English instead of transcribing it. This silently destroys the original language.
-
-1. **Known English** → `--model small.en` (or `medium.en` for music / noisy audio)
-2. **Known non-English** → `--model small --language <iso-code>` (no `.en` suffix)
-3. **Unknown language** → `--model small` (whisper auto-detects)
-
-**CLI default is `small.en`** — do not rely on it; always pass `--model` to make the choice explicit.
-
----
+Before authoring: confirm the transcript came from the right Whisper model. CLI default `small.en` silently translates non-English audio — see [`../transcribe.md`](../transcribe.md) → "Language Rule" and [`transcript-handling.md`](transcript-handling.md) for the mandatory quality check.
 
 Analyze spoken content to determine caption style. If user specifies a style, use that. Otherwise, detect tone from the transcript.
 
@@ -18,12 +8,12 @@ Analyze spoken content to determine caption style. If user specifies a style, us
 
 ```json
 [
-  { "text": "Hello", "start": 0.0, "end": 0.5 },
-  { "text": "world.", "start": 0.6, "end": 1.2 }
+  { "id": "w0", "text": "Hello", "start": 0.0, "end": 0.5 },
+  { "id": "w1", "text": "world.", "start": 0.6, "end": 1.2 }
 ]
 ```
 
-For transcription commands, Whisper models, and external APIs, use the `hyperframes-media` skill and this skill's transcript guide.
+`id` (`w0`, `w1`, …) is the stable reference for per-word overrides and is added by `hyperframes transcribe`. It's optional for backwards compatibility with hand-authored transcripts. See [`../transcribe.md`](../transcribe.md) → "Output Shape" for how this is produced, and [`transcript-handling.md`](transcript-handling.md) for cleanup before consumption.
 
 ## Style Detection (When No Style Specified)
 
@@ -46,7 +36,7 @@ Scan for words deserving distinct treatment:
 - **Numbers/statistics** — bold weight, accent color
 - **Emotional keywords** — exaggerated animation (overshoot, bounce)
 - **Call-to-action** — highlight, underline, color pop
-- **Marker highlight** — for beyond-color emphasis, see `hyperframes-creative/references/css-patterns.md`.
+- **Marker highlight** — for beyond-color emphasis (highlight sweep, circle, burst, scribble, sketchout), see `hyperframes-animation/rules/css-marker-patterns.md`.
 
 ## Script-to-Style Mapping
 
@@ -99,7 +89,9 @@ Every group **must** have a hard kill after exit animation:
 
 ```js
 tl.to(groupEl, { opacity: 0, scale: 0.95, duration: 0.12, ease: "power2.in" }, group.end - 0.12);
-tl.set(groupEl, { opacity: 0, visibility: "hidden" }, group.end); // deterministic kill
+// `tl.set` is an instant flip, not a tween — safe to set `visibility` here (core's "no animating
+// visibility" rule applies to tweens, which can't smoothly interpolate non-numeric values anyway).
+tl.set(groupEl, { opacity: 0, visibility: "hidden" }, group.end);
 ```
 
 Self-lint after building timeline — place **before** `window.__timelines[id] = tl` so it runs at composition init:
@@ -121,9 +113,9 @@ tl.seek(0);
 
 ## Further References
 
-- `references/dynamic-techniques.md` — karaoke, clip-path reveals, slam words, scatter exits, elastic, 3D rotation.
-- `references/transcript-guide.md` — transcript formats, quality checks, and cleanup.
-- `hyperframes-creative/references/css-patterns.md` — marker highlighting (deterministic, fully seekable).
+- [`motion.md`](motion.md) — karaoke, marker effects, audio-reactive modulation, scatter exits.
+- [`transcript-handling.md`](transcript-handling.md) — input formats, quality checks, cleaning, external API fallback.
+- `hyperframes-animation/rules/css-marker-patterns.md` — marker highlighting (deterministic, fully seekable).
 
 ## Constraints
 
