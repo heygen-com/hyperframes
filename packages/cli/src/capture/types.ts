@@ -102,10 +102,12 @@ export interface DesignTokens {
   }>;
   /** CTA button/link text */
   ctas: Array<{ text: string; href?: string }>;
-  /** SVG elements with labels */
+  /** SVG elements with labels (outerHTML kept in memory for asset downloader, stripped from saved JSON) */
   svgs: Array<{
     label?: string;
     viewBox?: string;
+    width: number;
+    height: number;
     outerHTML: string;
     isLogo: boolean;
   }>;
@@ -119,6 +121,45 @@ export interface DesignTokens {
     backgroundColor?: string;
     backgroundImage?: string;
   }>;
+}
+
+// ── Design Styles (computed from live DOM) ──────────────────────────────────
+
+export interface TypographyRole {
+  role: string;
+  fontFamily: string;
+  fontSize: string;
+  fontWeight: string;
+  lineHeight: string;
+  letterSpacing: string;
+  color: string;
+  sampleText: string;
+}
+
+export interface ComponentStyle {
+  label: string;
+  background: string;
+  color: string;
+  padding: string;
+  borderRadius: string;
+  border: string;
+  boxShadow: string;
+  fontSize: string;
+  fontWeight: string;
+  height: string;
+}
+
+export interface DesignStyles {
+  typography: TypographyRole[];
+  spacing: {
+    observed: number[];
+    baseUnit: number;
+  };
+  radius: string[];
+  shadows: Array<{ value: string; count: number }>;
+  buttons: ComponentStyle[];
+  cards: ComponentStyle[];
+  nav: ComponentStyle | null;
 }
 
 // ── Assets ──────────────────────────────────────────────────────────────────

@@ -24,11 +24,21 @@ export async function downloadAssets(
 
   // 1. ALL inline SVGs — save as files (logos get priority naming)
   mkdirSync(join(outputDir, "assets", "svgs"), { recursive: true });
+  const usedSvgNames = new Set<string>();
   for (let i = 0; i < tokens.svgs.length && i < 30; i++) {
     const svg = tokens.svgs[i]!;
     if (!svg.outerHTML || svg.outerHTML.length < 50) continue;
     const label = svg.label?.replace(/[^a-zA-Z0-9-_ ]/g, "").trim();
-    const name = label ? slugify(label) + ".svg" : svg.isLogo ? `logo-${i}.svg` : `icon-${i}.svg`;
+    let slug = label ? slugify(label) : svg.isLogo ? `logo-${i}` : `icon-${i}`;
+    // Deduplicate — two SVGs with same aria-label get suffixed
+    let finalSlug = slug;
+    let suffix = 2;
+    while (usedSvgNames.has(finalSlug)) {
+      finalSlug = `${slug}-${suffix}`;
+      suffix++;
+    }
+    usedSvgNames.add(finalSlug);
+    const name = `${finalSlug}.svg`;
     const localPath = `assets/svgs/${name}`;
     try {
       writeFileSync(join(outputDir, localPath), svg.outerHTML, "utf-8");
@@ -86,55 +96,49 @@ export async function downloadAssets(
     }
   }
 
-  // Download all images (no arbitrary cap) — Claude Code needs to see every asset to use them creatively.
-  // The 10KB minimum size filter handles tracking pixels and tiny icons.
+  // Download all images — use catalog context for human-readable filenames.
   // Pre-filter to deduplicate before downloading.
-  const toDownload: { url: string; isPoster: boolean; normalized: string }[] = [];
+  const toDownload: {
+    url: string;
+    isPoster: boolean;
+    normalized: string;
+    catalog?: CatalogedAsset;
+  }[] = [];
   for (const { url, isPoster } of imageUrls) {
     const normalized = normalizeUrl(url);
     if (downloadedUrls.has(normalized)) continue;
-    downloadedUrls.add(normalized); // Reserve to prevent duplicates in parallel batches
-    toDownload.push({ url, isPoster, normalized });
+    downloadedUrls.add(normalized);
+    const catalog = catalogedAssets?.find((a) => normalizeUrl(a.url) === normalized);
+    toDownload.push({ url, isPoster, normalized, catalog });
   }
 
   // Download in parallel batches of 5
   const BATCH_SIZE = 5;
   let imgIdx = 0;
+  const usedNames = new Set<string>();
   for (let i = 0; i < toDownload.length; i += BATCH_SIZE) {
     const batch = toDownload.slice(i, i + BATCH_SIZE);
     const results = await Promise.allSettled(
-      batch.map(async ({ url, isPoster }) => {
+      batch.map(async ({ url, isPoster, catalog }) => {
         const parsedUrl = new URL(url);
         const pathExt = extname(parsedUrl.pathname);
         const ext = pathExt && pathExt.length <= 5 ? pathExt : ".jpg";
         const buffer = await fetchBuffer(url);
         if (!buffer) return null;
-        // SVGs are inherently small — don't apply the 10KB minimum to them
         const isSvg = ext === ".svg" || url.includes(".svg");
         const minSize = isSvg ? 200 : 10000;
         if (buffer.length < minSize) return null;
-        return { url, isPoster, parsedUrl, ext, buffer };
+        return { url, isPoster, parsedUrl, ext, buffer, catalog };
       }),
     );
     for (const result of results) {
       if (result.status !== "fulfilled" || !result.value) continue;
-      const { url, isPoster, parsedUrl, ext, buffer } = result.value;
+      const { url, isPoster, parsedUrl, ext, buffer, catalog } = result.value;
       try {
-        const prefix = isPoster ? "poster" : "image";
-        const rawName =
-          parsedUrl.pathname
-            .split("/")
-            .pop()
-            ?.replace(/\.[^.]+$/, "") || "";
-        const isMeaningful =
-          rawName.length > 2 &&
-          rawName.length < 50 &&
-          !/^[a-f0-9]{8,}$/i.test(rawName) &&
-          !/^\d+$/.test(rawName) &&
-          !rawName.includes("_next") &&
-          !rawName.includes("?");
-        const slug = isMeaningful ? slugify(rawName) : `${prefix}-${imgIdx}`;
+        // Generate human-readable name from catalog context
+        const slug = deriveAssetName(parsedUrl, catalog, isPoster, imgIdx, usedNames);
         const name = `${slug}${ext}`;
+        usedNames.add(slug);
         const localPath = `assets/${name}`;
         writeFileSync(join(outputDir, localPath), buffer);
         assets.push({ url, localPath, type: "image" });
@@ -302,4 +306,78 @@ function slugify(text: string): string {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "")
     .slice(0, 40);
+}
+
+/**
+ * Derive a human-readable filename from catalog context.
+ * Priority: alt text > nearest heading > meaningful URL path > fallback index.
+ */
+function deriveAssetName(
+  parsedUrl: URL,
+  catalog: CatalogedAsset | undefined,
+  isPoster: boolean,
+  idx: number,
+  usedNames: Set<string>,
+): string {
+  const candidates: string[] = [];
+
+  // 1. Alt text / description from catalog
+  if (catalog?.description) {
+    const desc = catalog.description.replace(/[^a-zA-Z0-9 -]/g, "").trim();
+    if (desc.length > 3 && desc.length < 80) candidates.push(desc);
+  }
+
+  // 2. Nearest heading context
+  if (catalog?.nearestHeading) {
+    const heading = catalog.nearestHeading.replace(/[^a-zA-Z0-9 -]/g, "").trim();
+    if (heading.length > 3 && heading.length < 60) candidates.push(heading);
+  }
+
+  // 3. Meaningful URL path segment
+  const rawName =
+    parsedUrl.pathname
+      .split("/")
+      .pop()
+      ?.replace(/\.[^.]+$/, "") || "";
+  const isMeaningful =
+    rawName.length > 2 &&
+    rawName.length < 50 &&
+    !/^[a-f0-9]{8,}$/i.test(rawName) &&
+    !/^\d+$/.test(rawName) &&
+    !rawName.includes("_next") &&
+    !rawName.includes("?");
+  if (isMeaningful) candidates.push(rawName);
+
+  // 4. Section classes as context
+  if (catalog?.sectionClasses) {
+    const classes = catalog.sectionClasses
+      .split(/\s+/)
+      .filter((c) => c.length > 3 && c.length < 30 && !/^(w-|h-|p-|m-|flex|grid|block)/.test(c))
+      .slice(0, 2)
+      .join("-");
+    if (classes.length > 3) candidates.push(classes);
+  }
+
+  // Pick the best candidate
+  const prefix = isPoster ? "poster" : catalog?.aboveFold ? "hero" : "image";
+  let slug = "";
+
+  for (const c of candidates) {
+    slug = slugify(c);
+    if (slug.length > 3 && !usedNames.has(slug)) break;
+  }
+
+  if (!slug || slug.length <= 3 || usedNames.has(slug)) {
+    slug = `${prefix}-${idx}`;
+  }
+
+  // Deduplicate
+  let final = slug;
+  let suffix = 2;
+  while (usedNames.has(final)) {
+    final = `${slug}-${suffix}`;
+    suffix++;
+  }
+
+  return final;
 }

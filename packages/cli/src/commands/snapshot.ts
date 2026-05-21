@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { defineCommand } from "citty";
-import { existsSync, mkdtempSync, readFileSync, mkdirSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve, join, relative, isAbsolute } from "node:path";
 import { resolveProject } from "../utils/project.js";
@@ -139,24 +139,87 @@ async function captureSnapshots(
         })
         .catch(() => {});
 
-      // Wait for sub-compositions to be mounted by the runtime
-      // (they're fetched and injected asynchronously via data-composition-src)
+      // Wait for ALL sub-compositions to be mounted by the runtime.
+      // The old check resolved when the first sub-timeline registered, causing
+      // "last beat black" bugs: beat-5's sub-comp hadn't loaded yet when the
+      // snapshot seeked into its time range. Now we count data-composition-src
+      // host elements and wait until we have a matching number of sub-timelines.
       await page
         .waitForFunction(
           () => {
             const tls = (window as any).__timelines;
             if (!tls) return false;
-            const keys = Object.keys(tls);
-            // Wait until at least one sub-composition timeline is registered
-            // (not counting "main" or empty registrations)
-            return keys.length >= 2 || keys.some((k) => k !== "main");
+            const hosts = document.querySelectorAll("[data-composition-src]").length;
+            if (hosts === 0) return Object.keys(tls).length >= 1;
+            const subKeys = Object.keys(tls).filter((k) => k !== "main");
+            return subKeys.length >= hosts;
           },
           { timeout: timeoutMs },
         )
         .catch(() => {});
 
+      // Wait for shader transition pre-rendering to complete (if active).
+      //
+      // Two failure modes existed with the previous overlay-only check:
+      //   1. Cold cache: HyperShader creates [data-hyper-shader-loading] but never
+      //      removes it from the DOM — it only sets display:none. Checking for
+      //      element *absence* never resolved, so the wait always timed out at 60s.
+      //   2. Warm cache: HyperShader loads frames from IndexedDB without showing
+      //      the overlay at all. Checking for element absence resolved instantly
+      //      (no element) while hydration was still running in the background.
+      //
+      // Fix: use window.__hf.shaderTransitions[].ready as the primary signal
+      // (set after both warm and cold cache paths complete), with the overlay
+      // display:none as a fallback for older builds that lack the ready state.
+      await page
+        .waitForFunction(
+          () => {
+            const win = window as unknown as {
+              __hf?: { shaderTransitions?: Record<string, { ready?: boolean }> };
+            };
+            // Primary: HyperShader ready state — authoritative for both cache paths
+            const shaderTransitions = win.__hf?.shaderTransitions;
+            if (shaderTransitions !== undefined) {
+              return Object.values(shaderTransitions).every((s) => s.ready === true);
+            }
+            // Fallback: overlay visibility (older builds without ready state).
+            // Check display:none rather than element absence — element stays in
+            // the DOM when hidden.
+            const overlay = document.querySelector(
+              "[data-hyper-shader-loading]",
+            ) as HTMLElement | null;
+            if (!overlay) return true;
+            return window.getComputedStyle(overlay).display === "none";
+          },
+          { timeout: 90_000 },
+        )
+        .catch(() => {});
+
       // Extra settle time for media, fonts, and animations to initialize
       await new Promise((r) => setTimeout(r, 1500));
+
+      // Font verification — report which fonts loaded vs fell back
+      const fontReport = await page
+        .evaluate(() => {
+          const loaded: string[] = [];
+          const failed: string[] = [];
+          (document as any).fonts.forEach((f: any) => {
+            const entry = `${f.family} (${f.weight} ${f.style})`;
+            if (f.status === "loaded") loaded.push(entry);
+            else failed.push(entry + ` [${f.status}]`);
+          });
+          return { loaded, failed };
+        })
+        .catch(() => ({ loaded: [] as string[], failed: [] as string[] }));
+
+      if (fontReport.loaded.length > 0 || fontReport.failed.length > 0) {
+        console.log(
+          `\n   ${c.dim("Fonts loaded:")} ${fontReport.loaded.length > 0 ? fontReport.loaded.join(", ") : "none"}`,
+        );
+        if (fontReport.failed.length > 0) {
+          console.log(`   ${c.error("Fonts FAILED:")} ${fontReport.failed.join(", ")}`);
+        }
+      }
 
       // Get composition duration
       const duration = await page.evaluate(() => {
@@ -186,9 +249,20 @@ async function captureSnapshots(
           ? [duration / 2]
           : Array.from({ length: numFrames }, (_, i) => (i / (numFrames - 1)) * duration);
 
-      // Create output directory
+      // Create output directory and clear previous frames so old captures
+      // don't mix with the current run in contact sheets.
       const snapshotDir = join(projectDir, "snapshots");
       mkdirSync(snapshotDir, { recursive: true });
+      try {
+        const { readdirSync, rmSync } = await import("node:fs");
+        for (const file of readdirSync(snapshotDir)) {
+          if (/\.(png|jpg|jpeg)$/i.test(file)) {
+            rmSync(join(snapshotDir, file), { force: true });
+          }
+        }
+      } catch {
+        /* best-effort clear — proceed even if cleanup fails */
+      }
 
       // Lazily load the engine's <img>-overlay injector. Chrome-headless cannot
       // reliably advance <video>.currentTime mid-seek (the setter is accepted but
@@ -237,18 +311,30 @@ async function captureSnapshots(
         const time = positions[i]!;
 
         await page.evaluate((t: number) => {
-          const w = window as Window & {
-            __player?: { seek?: (time: number) => void };
-            __timelines?: Record<string, { pause?: (time?: number) => void }>;
-            gsap?: { ticker?: { tick?: () => void } };
-          };
-          if (typeof w.__player?.seek === "function") {
-            w.__player.seek(t);
-          } else if (w.__timelines) {
-            for (const tl of Object.values(w.__timelines)) {
-              tl?.pause?.(t);
+          const win = window as any;
+          if (win.__player?.seek) {
+            win.__player.seek(t);
+          } else {
+            const tls = win.__timelines;
+            if (tls) {
+              for (const key in tls) {
+                if (tls[key]?.seek) {
+                  // Sub-composition timelines run in local time relative to
+                  // their data-start. Seeking them to global time causes beats
+                  // with exit animations to appear black (global t clamps past
+                  // the exit). Compute local time: global_t - data_start.
+                  const host = document.querySelector<HTMLElement>(
+                    `[data-composition-id="${key}"]`,
+                  );
+                  const dataStart = host
+                    ? parseFloat(host.getAttribute("data-start") ?? "0") || 0
+                    : 0;
+                  const localTime = Math.max(0, t - dataStart);
+                  tls[key].pause();
+                  tls[key].seek(localTime);
+                }
+              }
             }
-            w.gsap?.ticker?.tick?.();
           }
         }, time);
 
@@ -356,9 +442,7 @@ async function captureSnapshots(
           }
         }
 
-        const timeLabel = opts.at?.length
-          ? `${time.toFixed(1)}s`
-          : `${Math.round((time / duration) * 100)}pct`;
+        const timeLabel = `${time.toFixed(1)}s`;
         const filename = `frame-${String(i).padStart(2, "0")}-at-${timeLabel}.png`;
         const framePath = join(snapshotDir, filename);
 
@@ -400,6 +484,11 @@ export default defineCommand({
       description: "Ms to wait for runtime to initialize (default: 5000)",
       default: "5000",
     },
+    describe: {
+      type: "string",
+      description:
+        "Gemini vision frame analysis. Runs by default when GEMINI_API_KEY is set. Pass a custom question (e.g. --describe 'Is the logo visible in every beat?') to override the default prompt, or --describe false to opt out.",
+    },
   },
   async run({ args }) {
     const project = resolveProject(args.dir);
@@ -411,6 +500,16 @@ export default defineCommand({
           .map((s) => parseFloat(s.trim()))
           .filter((n) => !isNaN(n))
       : undefined;
+    // Gemini frame analysis runs by default (silently skipped if
+    // GEMINI_API_KEY is not set). `--describe "custom question"` overrides
+    // the default prompt with a targeted question. `--describe false` opts
+    // out entirely.
+    const describeArg =
+      args.describe === undefined
+        ? "true"
+        : String(args.describe) === "false"
+          ? null
+          : String(args.describe);
 
     const label = atTimestamps
       ? `${atTimestamps.length} frames at [${atTimestamps.map((t) => t.toFixed(1) + "s").join(", ")}]`
@@ -430,6 +529,121 @@ export default defineCommand({
       console.log(`\n${c.success("◇")}  ${paths.length} snapshots saved to snapshots/`);
       for (const p of paths) {
         console.log(`   ${p}`);
+      }
+
+      // Generate contact sheet for quick AI review
+      try {
+        const { createSnapshotContactSheet } = await import("../capture/contactSheet.js");
+        const snapshotDir = join(project.dir, "snapshots");
+        const sheets = await createSnapshotContactSheet(
+          snapshotDir,
+          join(snapshotDir, "contact-sheet.jpg"),
+        );
+        if (sheets.length > 0) {
+          const label =
+            sheets.length === 1 ? "contact-sheet.jpg" : `contact-sheet-1..${sheets.length}.jpg`;
+          console.log(`   ${c.dim(label)} (grid view for AI review)`);
+        }
+      } catch {
+        /* non-critical */
+      }
+
+      // Gemini vision descriptions. Runs by default — see describeArg
+      // resolution above. `null` means the user explicitly opted out with
+      // `--describe false`; missing GEMINI_API_KEY logs a skip and continues.
+      if (describeArg !== null) {
+        try {
+          const geminiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+          if (!geminiKey) {
+            console.log(`   ${c.dim("--describe: GEMINI_API_KEY not set, skipping")}`);
+          } else if (paths.length > 0) {
+            console.log(`   ${c.dim("Describing frames with Gemini vision...")}`);
+            const { GoogleGenAI } = await import("@google/genai");
+            const ai = new GoogleGenAI({ apiKey: geminiKey });
+            const model = process.env.HYPERFRAMES_GEMINI_MODEL || "gemini-3.1-flash-lite-preview";
+            const snapshotDir = join(project.dir, "snapshots");
+
+            const customQuestion =
+              describeArg === "true"
+                ? "Describe this video composition frame in 1-2 sentences. Be specific and factual: what elements are visible, what text appears, is the frame blank/black/loading, what is the composition. Flag any obvious problems."
+                : describeArg;
+
+            const descriptions: string[] = [
+              `# Snapshot Frame Descriptions`,
+              ``,
+              `**Question asked:** ${customQuestion}`,
+              ``,
+              `Compare each description against your storyboard spec. A "black frame" or "loading screen" for a content beat is a bug.`,
+              ``,
+            ];
+
+            // Scale down PNGs before sending to stay under Gemini's 4 MB inline
+            // limit. Full 1920×1080 PNGs are typically 3-6 MB. Use sharp if
+            // available; otherwise skip files over the limit.
+            type SharpFn = (buf: Buffer) => {
+              resize: (w: number) => { jpeg: () => { toBuffer: () => Promise<Buffer> } };
+            };
+            let sharpFn: SharpFn | null = null;
+            try {
+              const s = await import("sharp");
+              sharpFn = (s.default ?? s) as unknown as SharpFn;
+            } catch {
+              /* sharp not installed — fall back to size check */
+            }
+
+            const results = await Promise.allSettled(
+              paths.map(async (p) => {
+                const filename = p.replace("snapshots/", "");
+                const filePath = join(snapshotDir, filename);
+                if (!existsSync(filePath)) return { filename, desc: "file not found" };
+                const raw = readFileSync(filePath);
+                let imageData: Buffer;
+                let mimeType = "image/png";
+                if (sharpFn) {
+                  imageData = await sharpFn(raw).resize(960).jpeg().toBuffer();
+                  mimeType = "image/jpeg";
+                } else {
+                  if (raw.length > 3_800_000)
+                    return {
+                      filename,
+                      desc: "file too large for Gemini — install sharp to enable auto-resize",
+                    };
+                  imageData = raw;
+                }
+                const base64 = imageData.toString("base64");
+                const response = await ai.models.generateContent({
+                  model,
+                  contents: [
+                    {
+                      role: "user",
+                      parts: [{ inlineData: { mimeType, data: base64 } }, { text: customQuestion }],
+                    },
+                  ],
+                  config: { maxOutputTokens: 250 },
+                });
+                return { filename, desc: response.text?.trim() || "no description" };
+              }),
+            );
+
+            for (const result of results) {
+              if (result.status === "fulfilled") {
+                descriptions.push(`## ${result.value.filename}`, `${result.value.desc}`, ``);
+              } else {
+                // Log first failure so Gemini issues are visible rather than silent
+                const errMsg =
+                  result.reason instanceof Error ? result.reason.message : String(result.reason);
+                descriptions.push(`## (error)`, `Gemini call failed: ${errMsg.slice(0, 120)}`, ``);
+              }
+            }
+
+            const descPath = join(snapshotDir, "descriptions.md");
+            writeFileSync(descPath, descriptions.join("\n"));
+            console.log(`   ${c.dim("descriptions.md")} (Gemini frame analysis)`);
+          }
+        } catch (descErr) {
+          const msg = descErr instanceof Error ? descErr.message : String(descErr);
+          console.log(`   ${c.dim(`--describe failed: ${msg.slice(0, 80)}`)}`);
+        }
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

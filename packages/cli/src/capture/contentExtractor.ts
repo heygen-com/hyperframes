@@ -9,7 +9,7 @@
  */
 
 import type { Page } from "puppeteer-core";
-import { readdirSync, statSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, statSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { CatalogedAsset } from "./assetCataloger.js";
 import type { DesignTokens } from "./types.js";
@@ -231,6 +231,69 @@ export async function captionImagesWithGemini(
       );
     }
     progress("design", `${Object.keys(geminiCaptions).length} images captioned with Gemini`);
+
+    // Caption SVGs by sending source code as text (vision API rejects image/svg+xml).
+    const svgFiles: Array<{ file: string; relPath: string }> = [];
+    const assetsDir = join(outputDir, "assets");
+    for (const f of readdirSync(assetsDir)) {
+      if (/\.svg$/i.test(f)) svgFiles.push({ file: f, relPath: f });
+    }
+    const svgsSubdir = join(assetsDir, "svgs");
+    if (existsSync(svgsSubdir)) {
+      for (const f of readdirSync(svgsSubdir)) {
+        if (/\.svg$/i.test(f)) svgFiles.push({ file: f, relPath: `svgs/${f}` });
+      }
+    }
+
+    if (svgFiles.length > 0) {
+      progress("design", `Captioning ${svgFiles.length} SVGs via code analysis...`);
+      const SVG_BATCH = 20;
+      const MAX_SVG_CHARS = 10_000;
+      for (let i = 0; i < svgFiles.length; i += SVG_BATCH) {
+        const batch = svgFiles.slice(i, i + SVG_BATCH);
+        const results = await Promise.allSettled(
+          batch.map(async ({ relPath }) => {
+            const filePath = join(assetsDir, relPath);
+            let svgText = readFileSync(filePath, "utf-8");
+            if (svgText.length > MAX_SVG_CHARS) {
+              svgText = svgText.slice(0, MAX_SVG_CHARS) + "\n<!-- truncated -->";
+            }
+            const response = await ai.models.generateContent({
+              model,
+              contents: [
+                {
+                  role: "user",
+                  parts: [
+                    {
+                      text:
+                        "This SVG code is from a website. Describe what it renders in ONE short sentence " +
+                        "for a video storyboard. Focus on: what shape/icon/illustration it is, its colors. " +
+                        "Be factual.\n\n" +
+                        svgText,
+                    },
+                  ],
+                },
+              ],
+              config: { maxOutputTokens: 300 },
+            });
+            return { file: relPath, caption: response.text?.trim() || "" };
+          }),
+        );
+        for (const result of results) {
+          if (result.status === "fulfilled" && result.value.caption) {
+            geminiCaptions[result.value.file] = result.value.caption;
+          }
+        }
+        if (i + SVG_BATCH < svgFiles.length) {
+          await new Promise((r) => setTimeout(r, 2000));
+        }
+        progress(
+          "design",
+          `Captioned ${Math.min(i + SVG_BATCH, svgFiles.length)}/${svgFiles.length} SVGs...`,
+        );
+      }
+      progress("design", `${Object.keys(geminiCaptions).length} total assets captioned`);
+    }
   } catch (err) {
     warnings.push(`Gemini captioning failed: ${err}`);
   }
@@ -295,6 +358,11 @@ export function generateAssetDescriptions(
     const svgsPath = join(assetsPath, "svgs");
     for (const file of readdirSync(svgsPath)) {
       if (!file.endsWith(".svg")) continue;
+      const geminiCaption = geminiCaptions[`svgs/${file}`];
+      if (geminiCaption) {
+        svgLines.push(`svgs/${file} — ${geminiCaption}`);
+        continue;
+      }
       const svgMatch = tokens.svgs.find(
         (s) =>
           s.label &&
