@@ -1,0 +1,20 @@
+{
+  "id": "shared-axis-z",
+  "name": "Shared Axis Z",
+  "description": "Scale-based depth transition along the Z axis. One context fades out small (recedes), the next fades in at full scale (arrives). Reads as a contextual shift — best for swapping between hierarchically related sections.",
+  "target": "element",
+  "enter": {
+    "durationMs": 360,
+    "easing": "cubic-bezier(0.2, 0, 0, 1)",
+    "from": { "opacity": 0, "scale": 1.08 },
+    "to": { "opacity": 1, "scale": 1 }
+  },
+  "exit": {
+    "durationMs": 360,
+    "easing": "cubic-bezier(0.4, 0, 1, 1)",
+    "from": { "opacity": 1, "scale": 1 },
+    "to": { "opacity": 0, "scale": 0.92 }
+  },
+  "swap": { "mode": "crossfade", "overlapMs": 180, "microDelayMs": 0 },
+  "notes": "Outgoing scales DOWN (recedes), incoming scales DOWN from above (arrives from depth). The 0.92/1.08 deltas are intentionally subtle — pushing them beyond 0.85/1.15 makes the effect feel theatrical rather than spatial."
+}

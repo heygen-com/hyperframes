@@ -11,50 +11,61 @@ These are non-negotiable for every multi-scene composition:
 3. **Exit animations are BANNED** except on the final scene. Do NOT use `gsap.to()` to animate elements out before a transition fires. The transition IS the exit. Outgoing scene content must be fully visible when the transition starts — the transition handles the visual handoff.
 4. **Final scene exception:** The last scene MAY fade elements out (e.g., fade to black at the end of the composition). This is the only scene where exit animations are allowed.
 
-## Energy → Primary Transition
+## Energy → Transition Character
 
-| Energy                                   | CSS Primary                  | Shader Primary                       | Accent                         | Duration  | Easing                 |
-| ---------------------------------------- | ---------------------------- | ------------------------------------ | ------------------------------ | --------- | ---------------------- |
-| **Calm** (wellness, brand story, luxury) | Blur crossfade, focus pull   | Cross-warp morph, thermal distortion | Light leak, circle iris        | 0.5-0.8s  | `sine.inOut`, `power1` |
-| **Medium** (corporate, SaaS, explainer)  | Push slide, staggered blocks | Whip pan, cinematic zoom             | Squeeze, vertical push         | 0.3-0.5s  | `power2`, `power3`     |
-| **High** (promos, sports, music, launch) | Zoom through, overexposure   | Ridged burn, glitch, chromatic split | Staggered blocks, gravity drop | 0.15-0.3s | `power4`, `expo`       |
+The energy of a beat tells you what motion character the transition should have — not which specific transition to use. The motion character is a quality you derive from the brand and content, then find a transition that has that quality.
 
-Pick ONE primary (60-70% of scene changes) + 1-2 accents. Never use a different transition for every scene.
+**Soft/organic character:** transitions that breathe, dissolve, or drift. Nothing sharp, mechanical, or percussive. Duration 0.5–0.8s, smooth easing curves.
 
-## Mood → Transition Type
+**Directional/purposeful character:** transitions that move content decisively. Clear direction, readable momentum. Duration 0.3–0.5s, clean deceleration.
 
-Think about what the transition _communicates_, not just what it looks like.
+**Percussive/instant character:** transitions that hit like a cut. Immediate, almost hard-cut energy. Duration 0.15–0.3s, aggressive or near-instant easing.
 
-| Mood                     | Transitions                                                                                                                          | Why it works                                                                                |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------- |
-| **Warm / inviting**      | Light leak, blur crossfade, focus pull, film burn · **Shader:** thermal distortion, light leak, cross-warp morph                     | Soft edges, warm color washes. Nothing sharp or mechanical.                                 |
-| **Cold / clinical**      | Squeeze, zoom out, blinds, shutter, grid dissolve · **Shader:** gravitational lens                                                   | Content transforms mechanically — compressed, shrunk, sliced, gridded.                      |
-| **Editorial / magazine** | Push slide, vertical push, diagonal split, shutter · **Shader:** whip pan                                                            | Like turning a page or slicing a layout. Clean directional movement.                        |
-| **Tech / futuristic**    | Grid dissolve, staggered blocks, blinds, chromatic aberration · **Shader:** glitch, chromatic split                                  | Grid dissolve is the core "data" transition. Shader glitch adds posterization + scan lines. |
-| **Tense / edgy**         | Glitch, VHS, chromatic aberration, ripple · **Shader:** ridged burn, glitch, domain warp                                             | Instability, distortion, digital breakdown. Ridged burn adds sharp lightning-crack edges.   |
-| **Playful / fun**        | Elastic push, 3D flip, circle iris, morph circle, clock wipe · **Shader:** ripple waves, swirl vortex                                | Overshoot, bounce, rotation, expansion. Swirl vortex adds organic spiral distortion.        |
-| **Dramatic / cinematic** | Zoom through, zoom out, gravity drop, overexposure, color dip to black · **Shader:** cinematic zoom, gravitational lens, domain warp | Scale, weight, light extremes. Shader transitions add per-pixel depth.                      |
-| **Premium / luxury**     | Focus pull, blur crossfade, color dip to black · **Shader:** cross-warp morph, thermal distortion                                    | Restraint. Cross-warp morph flows both scenes into each other organically.                  |
-| **Retro / analog**       | Film burn, light leak, VHS, clock wipe · **Shader:** light leak                                                                      | Organic imperfection. Warm color bleeds, scan line displacement.                            |
+These are calibration ranges, not recipes. A brand that treats its "high energy" section with restraint might use 0.4s for a moment that another brand transitions in 0.2s — both are correct for their brand. Pick ONE character that defines the video's primary transitions, then use 1–2 contrasting moments as intentional accents. See the **Mood → Motion Quality** section below to find transitions with the right character for a given mood.
+
+## Mood → Motion Quality
+
+Think about what the transition _communicates_, not what it looks like. The question is: **what motion quality serves this mood?** Then find transitions that have that quality in the catalog (`transitions/catalog.md`).
+
+| Mood                     | Motion quality that fits                                                                    | Why                                                                                 |
+| ------------------------ | ------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| **Warm / inviting**      | Soft edges, dissolving, color-temperature washes — nothing sharp, mechanical, or percussive | Warmth reads as continuity and flow; hard cuts or compression feel cold             |
+| **Cold / clinical**      | Mechanical transformation — compression, slicing, gridding, precision                       | The content appears to be processed or structured, reinforcing a systematic quality |
+| **Editorial / magazine** | Clean directional movement — like turning a page                                            | Feels like content is being browsed or curated, not revealed                        |
+| **Tech / futuristic**    | Data-like fragmentation, digital displacement, scan artifacts                               | Transition feels computational rather than physical                                 |
+| **Tense / edgy**         | Instability, distortion, displacement — something slightly wrong about the image            | Introduces friction where smooth transitions would release tension                  |
+| **Playful / fun**        | Overshoot, expansion, rotation — motion with personality and bounce                         | Transitions that feel like objects rather than effects                              |
+| **Dramatic / cinematic** | Scale, weight, light extremes — the cut is an event, not a bridge                           | Every shader and every hard cut carries narrative gravity                           |
+| **Premium / luxury**     | Restraint — transitions that are barely visible, or invisible                               | Luxury communicates through what it withholds                                       |
+| **Retro / analog**       | Organic imperfection — light bleed, scan lines, color wash                                  | Physical film artifacts; imperfection as authenticity                               |
+
+Use this table to derive what **quality** the transition should have, then look at the specific options in `transitions/catalog.md` to find one that has that quality for this brand. The transitions listed in the catalog are all available; none are reserved for a specific mood.
 
 ## Narrative Position
 
-| Position                   | Use                                                                        | Why                                                   |
-| -------------------------- | -------------------------------------------------------------------------- | ----------------------------------------------------- |
-| **Opening**                | Your most distinctive transition. Match the mood. 0.4-0.6s                 | Sets the visual language for the entire piece.        |
-| **Between related points** | Your primary transition. Consistent. 0.3s                                  | Don't distract — the content is continuing.           |
-| **Topic change**           | Something different from your primary. Staggered blocks, shutter, squeeze. | Signals "new section" — the viewer's brain resets.    |
-| **Climax / hero reveal**   | Your boldest accent. Fastest or most dramatic.                             | This is the payoff — spend your best transition here. |
-| **Wind-down**              | Return to gentle. Blur crossfade, crossfade. 0.5-0.7s                      | Let the viewer exhale after the climax.               |
-| **Outro**                  | Slowest, simplest. Crossfade, color dip to black. 0.6-1.0s                 | Closure. Don't introduce new energy at the end.       |
+Each position in the video has a different job to do. What transition you pick for each should come from the brand's motion character and the storyboard's intent — not from a rule about "climax = boldest."
 
-## Blur Intensity by Energy
+- **Opening** — establishes the motion language for the entire video. Make a deliberate choice; whatever you pick here sets the viewer's expectation for everything that follows.
+- **Between related points** — should be almost invisible. The content is continuing; the transition shouldn't draw attention to itself. Consistency matters more than distinctiveness here.
+- **Topic change** — needs enough contrast from your primary that it signals "something different is starting." The contrast is in motion character, not just duration.
+- **Climax / hero reveal** — this is the moment the video has been building to. The transition should feel earned by what came before. "Use your boldest transition here" is a default, not a rule — the climax of a restrained editorial piece might be a hard cut.
+- **Wind-down** — returns to a motion character that allows the viewer to exhale. Matches the opening in tone, not necessarily in technique.
+- **Outro** — no new energy. Slowest and simplest in the video. Closure.
 
-| Energy     | Blur    | Duration | Hold at peak |
-| ---------- | ------- | -------- | ------------ |
-| **Calm**   | 20-30px | 0.8-1.2s | 0.3-0.5s     |
-| **Medium** | 8-15px  | 0.4-0.6s | 0.1-0.2s     |
-| **High**   | 3-6px   | 0.2-0.3s | 0s           |
+## Blur and Motion Intensity
+
+Blur and duration should express the energy of the content, not match a lookup table. The ranges below are calibration references — starting points to adjust from based on what the brand and storyboard call for.
+
+Higher-energy transitions: shorter duration, less blur, no hold at peak. The motion is immediate.
+Lower-energy transitions: longer duration, more blur, longer hold at peak. The motion has weight.
+
+Calibration ranges (not prescriptions):
+
+- Soft/organic: blur 20–30px, duration 0.8–1.2s, hold 0.3–0.5s
+- Directional/purposeful: blur 8–15px, duration 0.4–0.6s, hold 0.1–0.2s
+- Percussive/instant: blur 3–6px, duration 0.2–0.3s, no hold
+
+A brand that uses these as a formula will produce transitions that feel the same across every video. A brand-derived choice asks: what blur and duration expresses the weight this transition should have?
 
 ## Presets
 
@@ -92,7 +103,22 @@ CSS transitions animate scene containers with opacity, transforms, clip-path, an
 
 **Both are first-class options.** Shaders are provided by the `@hyperframes/shader-transitions` package — import from the package instead of writing raw GLSL. CSS transitions are simpler to set up. Choose based on the effect you want, not based on which is easier.
 
-When a composition uses shader transitions, ALL transitions in that composition should be shader-based (the WebGL canvas replaces DOM-based scene switching). Don't mix CSS and shader transitions in the same composition.
+**Mixing is supported.** You can have some transitions use WebGL shaders and others use a CSS crossfade in the same composition. Omit the `shader` field on any `TransitionConfig` entry to get a smooth opacity crossfade instead of a WebGL effect:
+
+```js
+var tl = HyperShader.init({
+  bgColor: "#000",
+  accentColor: "#6366f1",
+  scenes: ["s1", "s2", "s3", "s4"],
+  transitions: [
+    { time: 4.0, shader: "sdf-iris", duration: 0.7 }, // WebGL shader
+    { time: 8.5, duration: 0.8 }, // no shader → CSS crossfade
+    { time: 13.0, shader: "domain-warp", duration: 0.6 }, // WebGL shader
+  ],
+});
+```
+
+HyperShader manages all scene visibility regardless of transition type. Let it create the timeline (don't pass `timeline:` into `init()`) and add your beat animations to the returned `tl` after the call.
 
 ## Shader-Compatible CSS Rules
 

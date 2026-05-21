@@ -8,12 +8,12 @@ Runs AFTER design direction is established (Step 1). The expansion consumes desi
 
 Read before generating:
 
-- `design.md` (if it exists) — extract brand colors, fonts, mood, and constraints. The expansion cites these exact values (hex codes, font names); it does not invent new ones.
+- `DESIGN.md` (if it exists) — extract brand colors, fonts, mood, and constraints. The expansion cites these exact values (hex codes, font names); it does not invent new ones.
 - [beat-direction.md](beat-direction.md) — per-beat planning format (concept, mood, choreography verbs, transitions, depth layers, rhythm). The expansion outputs each scene using this format.
 - [video-composition.md](video-composition.md) — video-medium rules for density, scale, and color presence. The expansion applies these automatically.
 - [../house-style.md](../house-style.md) — its rules for Background Layer (2-5 decoratives), Color, Motion, Typography apply to every scene. The expansion writes output that conforms to them.
 
-If `design.md` doesn't exist yet, run Step 1 (Design system) first. Expansion without a design context produces generic scene breakdowns that later agents ignore.
+If `DESIGN.md` doesn't exist yet, run Step 1 (Design system) first. Expansion without a design context produces generic scene breakdowns that later agents ignore.
 
 ## Why always run it
 
@@ -40,7 +40,7 @@ Expand into a full production prompt with these sections:
 
 1. **Title + style block** — cite design.md's exact hex values, font names, and mood. Do NOT invent a palette — quote what the design provides.
 
-2. **Rhythm declaration** — name the scene rhythm before detailing any scene. Example: `hook-PUNCH-breathe-CTA` or `slow-build-BUILD-PEAK-breathe-CTA`. See [beat-direction.md](beat-direction.md) for rhythm templates by video type.
+2. **Rhythm declaration** — name the scene rhythm before detailing any scene. Example: `hook-PUNCH-breathe-CTA` or `slow-build-BUILD-PEAK-breathe-CTA`. Derive the rhythm from the brand and the storyboard's emotional arc — see [beat-direction.md](beat-direction.md) for the considerations that drive this decision.
 
 3. **Global rules** — parallax layers, micro-motion requirements, transition style, primary + accent transitions. Match energy to mood (calm → slow eases, high → snappy eases).
 

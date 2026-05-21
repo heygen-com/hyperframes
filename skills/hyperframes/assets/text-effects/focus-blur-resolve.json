@@ -1,0 +1,20 @@
+{
+  "id": "focus-blur-resolve",
+  "name": "Focus Blur Resolve",
+  "description": "Heavy blur resolves to sharp clarity on entrance, returns to soft blur on exit. Reads as a camera-focus pull — the element doesn't move; it just comes into focus. Cinematic, attention-pulling.",
+  "target": "element",
+  "enter": {
+    "durationMs": 580,
+    "easing": "cubic-bezier(0.22, 1, 0.36, 1)",
+    "from": { "opacity": 0, "filter": "blur(16px)" },
+    "to": { "opacity": 1, "filter": "blur(0px)" }
+  },
+  "exit": {
+    "durationMs": 420,
+    "easing": "cubic-bezier(0.7, 0, 0.84, 0)",
+    "from": { "opacity": 1, "filter": "blur(0px)" },
+    "to": { "opacity": 0, "filter": "blur(6px)" }
+  },
+  "swap": { "mode": "crossfade", "overlapMs": 160, "microDelayMs": 0 },
+  "notes": "The 16px entrance blur is heavy enough to feel like out-of-focus rather than mild softness. Don't push above 24px — at that point the text is unreadable for too long. Don't drop below 8px — at that point the effect reads as 'gently fades in,' not 'focuses.'"
+}

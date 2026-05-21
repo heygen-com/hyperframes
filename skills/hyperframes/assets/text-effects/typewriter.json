@@ -1,0 +1,22 @@
+{
+  "id": "typewriter",
+  "name": "Typewriter",
+  "description": "Per-character stepped reveal that types each glyph in sequence. No interpolation — characters pop into existence at discrete intervals. Reads as mechanical, editorial, or terminal-style.",
+  "target": "char",
+  "enter": {
+    "durationMs": 200,
+    "staggerMs": 50,
+    "easing": "steps(1, end)",
+    "from": { "opacity": 0 },
+    "to": { "opacity": 1 }
+  },
+  "exit": {
+    "durationMs": 240,
+    "staggerMs": 12,
+    "easing": "cubic-bezier(0.7, 0, 0.84, 0)",
+    "from": { "opacity": 1, "y": 0 },
+    "to": { "opacity": 0, "y": -4 }
+  },
+  "swap": { "mode": "crossfade", "overlapMs": 0, "microDelayMs": 80 },
+  "notes": "Pair with a blinking caret element if you want the full terminal feel. The 50ms stagger lands around 1200 chars/min — fast but legible. Increase to 80-100ms if you want a deliberate typing pace."
+}

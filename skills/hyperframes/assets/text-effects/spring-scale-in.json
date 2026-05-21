@@ -1,0 +1,22 @@
+{
+  "id": "spring-scale-in",
+  "name": "Spring Scale In",
+  "description": "Words pop in with a spring overshoot — scale runs 0.4 → 1.06 → 1.0. Physical and slightly playful; the overshoot reads as bouncy without crossing into cartoonish.",
+  "target": "word",
+  "enter": {
+    "durationMs": 280,
+    "staggerMs": 80,
+    "easing": "cubic-bezier(0.34, 1.56, 0.64, 1)",
+    "from": { "opacity": 0, "scale": 0.4 },
+    "to": { "opacity": 1, "scale": 1 }
+  },
+  "exit": {
+    "durationMs": 240,
+    "staggerMs": 20,
+    "easing": "cubic-bezier(0.7, 0, 0.84, 0)",
+    "from": { "opacity": 1, "scale": 1 },
+    "to": { "opacity": 0, "scale": 0.8 }
+  },
+  "swap": { "mode": "crossfade", "overlapMs": 80, "microDelayMs": 0 },
+  "notes": "The spring easing's overshoot (1.56) lands at ~6% past the target before settling. Pair with playful brands or product launches — avoid for clinical / enterprise contexts."
+}

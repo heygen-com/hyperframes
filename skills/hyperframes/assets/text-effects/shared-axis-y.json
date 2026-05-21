@@ -1,0 +1,22 @@
+{
+  "id": "shared-axis-y",
+  "name": "Shared Axis Y",
+  "description": "Hard-cut word-by-word with staircase timing along the Y axis. No interpolation — each word snaps to its position. Sharp and editorial; pairs with mono or condensed display weights.",
+  "target": "word",
+  "enter": {
+    "durationMs": 160,
+    "staggerMs": 60,
+    "easing": "steps(1, end)",
+    "from": { "opacity": 0, "y": 18 },
+    "to": { "opacity": 1, "y": 0 }
+  },
+  "exit": {
+    "durationMs": 160,
+    "staggerMs": 30,
+    "easing": "steps(1, end)",
+    "from": { "opacity": 1, "y": 0 },
+    "to": { "opacity": 0, "y": -18 }
+  },
+  "swap": { "mode": "crossfade", "overlapMs": 0, "microDelayMs": 60 },
+  "notes": "The steps easing makes this read as a series of discrete cuts, not motion. Don't expect smoothness — that's the point. Use sparingly; one or two beats per video at most."
+}

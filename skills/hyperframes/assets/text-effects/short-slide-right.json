@@ -1,0 +1,27 @@
+{
+  "id": "short-slide-right",
+  "name": "Short Slide Right",
+  "description": "The whole phrase glides in from the left as one shared move; individual words reveal only by opacity, not by sliding independently. The line settles to its centered position as words light up sequentially.",
+  "target": "word",
+  "enter": {
+    "durationMs": 560,
+    "staggerMs": 120,
+    "easing": "cubic-bezier(0.16, 1, 0.3, 1)",
+    "lineFrom": { "x": -48 },
+    "lineTo": { "x": 0 },
+    "from": { "opacity": 0 },
+    "to": { "opacity": 1 }
+  },
+  "exit": {
+    "durationMs": 360,
+    "staggerMs": 24,
+    "easing": "cubic-bezier(0.7, 0, 0.84, 0)",
+    "lineFrom": { "x": 0 },
+    "lineTo": { "x": -16 },
+    "from": { "opacity": 1 },
+    "to": { "opacity": 0 }
+  },
+  "swap": { "mode": "crossfade", "overlapMs": 120, "microDelayMs": 0 },
+  "layoutAware": true,
+  "notes": "Layout-aware: animate the line container's x-position separately from each word's opacity. Words DO NOT slide individually — they only fade. Two GSAP tweens compose this effect: one on the line wrapper, one staggered across the word spans."
+}

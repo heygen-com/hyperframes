@@ -1,0 +1,23 @@
+{
+  "id": "kinetic-center-build",
+  "name": "Kinetic Center Build",
+  "description": "Each word locks to its center position as the phrase builds right-to-left with a soft blur. Layout-aware — the next word arrives at the previous word's left edge while the line stays centered in frame.",
+  "target": "word",
+  "enter": {
+    "durationMs": 480,
+    "staggerMs": 220,
+    "easing": "cubic-bezier(0.22, 1, 0.36, 1)",
+    "from": { "opacity": 0, "x": 24, "filter": "blur(6px)" },
+    "to": { "opacity": 1, "x": 0, "filter": "blur(0px)" }
+  },
+  "exit": {
+    "durationMs": 420,
+    "staggerMs": 40,
+    "easing": "cubic-bezier(0.7, 0, 0.84, 0)",
+    "from": { "opacity": 1, "y": 0, "filter": "blur(0px)" },
+    "to": { "opacity": 0, "y": -10, "filter": "blur(6px)" }
+  },
+  "swap": { "mode": "crossfade", "overlapMs": 160, "microDelayMs": 0 },
+  "layoutAware": true,
+  "notes": "Layout-aware: the implementer must shift each word's x-position so the whole phrase stays horizontally centered as it grows. Without this, words appended to the right push the line off-center. Computed positions, not just stagger timing — read the layout-aware section of text-effects.md."
+}

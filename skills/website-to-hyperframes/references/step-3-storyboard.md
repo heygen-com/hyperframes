@@ -322,10 +322,10 @@ Every text element in this beat must name a specific effect from `skills/hyperfr
 
 Format (FORMAT EXAMPLES of structure, not prescriptions — pick based on brand/mood/context):
 
-- `[element — e.g. "main headline"]`: `[effect-id]` — `skills/hyperframes/assets/text-effects/effects/[id].json`
-- `[element — e.g. "eyebrow label"]`: `[effect-id]` — `skills/hyperframes/assets/text-effects/effects/[id].json`
+- `[element — e.g. "main headline"]`: `[effect-id]` — `skills/hyperframes/assets/text-effects/[id].json`
+- `[element — e.g. "eyebrow label"]`: `[effect-id]` — `skills/hyperframes/assets/text-effects/[id].json`
 
-The sub-agent reads the named JSON file and implements from `showcase.library_adapters.gsap`. No creative decisions at build time.
+The sub-agent reads the named JSON file for the per-effect parameters (durations, staggers, easings, from/to keyframes) and implements using the shared GSAP rendering pattern in `text-effects.md`. No creative decisions at build time — just parameter substitution.
 
 ### Beat Timing
 
