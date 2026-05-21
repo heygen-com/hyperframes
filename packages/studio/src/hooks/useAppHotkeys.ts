@@ -6,6 +6,7 @@ import type { LeftSidebarHandle } from "../components/sidebar/LeftSidebar";
 import { STUDIO_MOTION_PATH } from "../components/editor/studioMotion";
 import { shouldHandleTimelineToggleHotkey, isEditableTarget } from "../utils/timelineDiscovery";
 import { shouldIgnoreHistoryShortcut } from "../utils/studioHelpers";
+import { shouldHandlePreviewFullscreenHotkey } from "../utils/previewFullscreen";
 
 // ── Types ──
 
@@ -48,6 +49,7 @@ interface UseAppHotkeysParams {
   handleCopy: () => boolean;
   handlePaste: () => Promise<void>;
   handleCut: () => Promise<boolean>;
+  togglePreviewFullscreen: () => void;
 }
 
 // ── Hook ──
@@ -69,6 +71,7 @@ export function useAppHotkeys({
   handleCopy,
   handlePaste,
   handleCut,
+  togglePreviewFullscreen,
 }: UseAppHotkeysParams) {
   const previewHotkeyWindowRef = useRef<Window | null>(null);
   const handleAppKeyDownRef = useRef<((event: KeyboardEvent) => void) | undefined>(undefined);
@@ -168,6 +171,8 @@ export function useAppHotkeys({
   handlePasteRef.current = handlePaste;
   const handleCutRef = useRef(handleCut);
   handleCutRef.current = handleCut;
+  const togglePreviewFullscreenRef = useRef(togglePreviewFullscreen);
+  togglePreviewFullscreenRef.current = togglePreviewFullscreen;
 
   // ── Consolidated keydown handler ──
 
@@ -246,6 +251,12 @@ export function useAppHotkeys({
         }
         return;
       }
+    }
+
+    if (shouldHandlePreviewFullscreenHotkey(event)) {
+      event.preventDefault();
+      togglePreviewFullscreenRef.current();
+      return;
     }
 
     // Delete / Backspace — remove selected element (timeline clip or preview selection)

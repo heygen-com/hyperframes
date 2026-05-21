@@ -13,6 +13,7 @@ const SHORTCUT_SECTIONS = [
     title: "Playback",
     hints: [
       { key: "Space", label: "Play / Pause" },
+      { key: "F", label: "Fullscreen preview" },
       { key: "J", label: "Play backward" },
       { key: "K", label: "Stop" },
       { key: "L", label: "Play forward" },
