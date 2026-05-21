@@ -47,6 +47,7 @@ import {
   normalizeStudioCompositionPath,
   readStudioUrlStateFromWindow,
 } from "./utils/studioUrlState";
+import { toggleElementFullscreen } from "./utils/previewFullscreen";
 import { trackStudioSessionStart } from "./telemetry/events";
 import { hasFiredSessionStart, markSessionStartFired } from "./telemetry/config";
 
@@ -124,6 +125,17 @@ export function StudioApp() {
     });
   }, []);
   const { appToast, showToast } = useToast();
+  const togglePreviewFullscreen = useCallback(() => {
+    const iframe = previewIframeRef.current;
+    if (!iframe) {
+      showToast("Preview is still loading.", "info");
+      return;
+    }
+
+    void toggleElementFullscreen(iframe).catch(() => {
+      showToast("Fullscreen preview is not available in this browser.", "error");
+    });
+  }, [showToast]);
   const panelLayout = usePanelLayout({
     rightCollapsed: initialUrlStateRef.current.rightCollapsed,
     rightPanelTab: initialUrlStateRef.current.rightPanelTab,
@@ -293,6 +305,7 @@ export function StudioApp() {
     handleCopy,
     handlePaste,
     handleCut,
+    togglePreviewFullscreen,
   });
 
   const domEditSession = useDomEditSession({
