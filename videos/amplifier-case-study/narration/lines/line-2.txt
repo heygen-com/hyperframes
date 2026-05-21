@@ -1,0 +1,1 @@
+The model only filled in strings. Layout, color, motion — all on us. The schema was the ceiling.

@@ -1,0 +1,1 @@
+Now the worker reads the brief, calls the model, and the model writes the whole composition. We validate. We retry. We ship.
