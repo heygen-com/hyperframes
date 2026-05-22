@@ -386,12 +386,39 @@ export async function injectVideoFramesBatch(
         "bottom",
         "inset",
       ]);
+      // Walk ancestors looking for a host that the page has hidden via
+      // `display:none` or `visibility:hidden`. The runtime hides
+      // `[data-composition-src]` and `[data-start]` hosts that fall outside
+      // their time window using exactly these properties; a nested
+      // `<video data-start>` inside such a host still appears "active" in the
+      // raw time-window check (its own `data-start`/`data-end` cover the
+      // whole clip), so without this guard we would paint a full-bleed
+      // replacement frame over a sibling host that *is* visible.
+      const isVisualAncestorHidden = (el: HTMLElement): boolean => {
+        let parent = el.parentElement;
+        while (parent !== null && parent !== document.documentElement) {
+          const computed = window.getComputedStyle(parent);
+          if (computed.display === "none" || computed.visibility === "hidden") return true;
+          parent = parent.parentElement;
+        }
+        return false;
+      };
       for (const item of items) {
         const video = document.getElementById(item.videoId) as HTMLVideoElement | null;
         if (!video) continue;
 
         let img = video.nextElementSibling as HTMLImageElement | null;
-        const isNewImage = !img || !img.classList.contains("__render_frame__");
+        const hasImg = img !== null && img.classList.contains("__render_frame__");
+
+        if (isVisualAncestorHidden(video)) {
+          // Don't paint a frame over a hidden host — if an existing replacement
+          // <img> is still around from when the host was visible, hide it so it
+          // doesn't bleed through a sibling host that *is* visible on this seek.
+          if (hasImg && img) img.style.visibility = "hidden";
+          continue;
+        }
+
+        const isNewImage = !hasImg;
         const computedStyle = window.getComputedStyle(video);
         // Read the GSAP-controlled opacity directly from the native <video>.
         // We hide the <video> below with `visibility: hidden` only (never
@@ -489,12 +516,28 @@ export async function syncVideoFrameVisibility(
   activeVideoIds: string[],
 ): Promise<void> {
   await page.evaluate((ids: string[]) => {
+    // Mirror the ancestor-visibility guard from `injectVideoFramesBatch`: a
+    // video whose host is `display:none` / `visibility:hidden` (e.g., a
+    // sub-composition that the runtime has marked out-of-window) must not
+    // have its replacement <img> reach `visibility:visible` here, otherwise
+    // it would paint through the hidden host onto whichever sibling host is
+    // currently visible.
+    const isVisualAncestorHidden = (el: HTMLElement): boolean => {
+      let parent = el.parentElement;
+      while (parent !== null && parent !== document.documentElement) {
+        const computed = window.getComputedStyle(parent);
+        if (computed.display === "none" || computed.visibility === "hidden") return true;
+        parent = parent.parentElement;
+      }
+      return false;
+    };
     const active = new Set(ids);
     const videos = Array.from(document.querySelectorAll("video[data-start]")) as HTMLVideoElement[];
     for (const video of videos) {
       const img = video.nextElementSibling as HTMLElement | null;
       const hasImg = img && img.classList.contains("__render_frame__");
-      if (active.has(video.id)) {
+      const ancestorHidden = isVisualAncestorHidden(video);
+      if (active.has(video.id) && !ancestorHidden) {
         // Active video: show injected <img>, hide native <video>.
         // Do NOT clobber inline opacity here — GSAP-controlled opacity must
         // survive until injectVideoFramesBatch reads it via getComputedStyle.
@@ -506,8 +549,8 @@ export async function syncVideoFrameVisibility(
           img.style.visibility = "visible";
         }
       } else {
-        // Inactive video: hide both. Use visibility only (never opacity) so we
-        // never clobber GSAP-controlled inline opacity.
+        // Inactive (or ancestor-hidden) video: hide both. Use visibility only
+        // (never opacity) so we never clobber GSAP-controlled inline opacity.
         video.style.removeProperty("display");
         video.style.setProperty("visibility", "hidden", "important");
         video.style.setProperty("pointer-events", "none", "important");
