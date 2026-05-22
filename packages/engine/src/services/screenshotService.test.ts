@@ -202,7 +202,6 @@ describe("video-frame injection respects ancestor visibility", () => {
   // injected `data-start="0"` + probed full-source duration cover the
   // whole timeline), so the bug produced one full-bleed speaker overlay
   // per inactive sub-comp — covering whichever moment was actually visible.
-  // See: https://github.com/lirian-su-opus/hyperframes branch issue thread.
 
   type StyleLike = {
     display?: string;
