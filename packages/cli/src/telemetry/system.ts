@@ -93,24 +93,26 @@ function detectDocker(): boolean {
   return false;
 }
 
-// Each entry: env var name, optional named CI provider, predicate.
 // Named providers come first so getCIName() picks the most specific match.
-// `truthy` accepts 'true' or '1' to cover both common conventions.
-const CI_PROVIDERS: Array<{ name: string | null; envVar: string; truthy?: true; presence?: true }> =
-  [
-    { name: "github_actions", envVar: "GITHUB_ACTIONS", truthy: true },
-    { name: "gitlab_ci", envVar: "GITLAB_CI", truthy: true },
-    { name: "circleci", envVar: "CIRCLECI", truthy: true },
-    { name: "jenkins", envVar: "JENKINS_URL", presence: true },
-    { name: "buildkite", envVar: "BUILDKITE", truthy: true },
-    { name: "travis", envVar: "TRAVIS", truthy: true },
-    { name: null, envVar: "CONTINUOUS_INTEGRATION", truthy: true },
-    { name: null, envVar: "CI", truthy: true },
-  ];
+// `truthy` accepts 'true' or '1'; `presence` matches any non-null value.
+type CIProvider =
+  | { name: string | null; envVar: string; mode: "truthy" }
+  | { name: string | null; envVar: string; mode: "presence" };
 
-function matchesProvider(p: (typeof CI_PROVIDERS)[number]): boolean {
+const CI_PROVIDERS: CIProvider[] = [
+  { name: "github_actions", envVar: "GITHUB_ACTIONS", mode: "truthy" },
+  { name: "gitlab_ci", envVar: "GITLAB_CI", mode: "truthy" },
+  { name: "circleci", envVar: "CIRCLECI", mode: "truthy" },
+  { name: "jenkins", envVar: "JENKINS_URL", mode: "presence" },
+  { name: "buildkite", envVar: "BUILDKITE", mode: "truthy" },
+  { name: "travis", envVar: "TRAVIS", mode: "truthy" },
+  { name: null, envVar: "CONTINUOUS_INTEGRATION", mode: "truthy" },
+  { name: null, envVar: "CI", mode: "truthy" },
+];
+
+function matchesProvider(p: CIProvider): boolean {
   const v = process.env[p.envVar];
-  if (p.presence) return v != null;
+  if (p.mode === "presence") return v != null;
   return v === "true" || v === "1";
 }
 

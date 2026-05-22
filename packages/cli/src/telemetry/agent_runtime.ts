@@ -106,11 +106,12 @@ const VENDOR_RULES: VendorRule[] = [
   // Nous Research Hermes Agent — cli.py:50 unconditionally executes
   //   os.environ["HERMES_QUIET"] = "1"
   // at module load, so the marker propagates via os.environ to every
-  // subprocess spawned by Hermes.
+  // subprocess spawned by Hermes. Keying on existence (not the literal
+  // "1") so we still match if Hermes ever changes the value.
   // Source: https://github.com/NousResearch/hermes-agent (cli.py:50)
   {
     name: "hermes",
-    check: (env) => env["HERMES_QUIET"] === "1",
+    check: (env) => typeof env["HERMES_QUIET"] === "string",
   },
   // openclaw — multi-channel AI gateway. When openclaw spawns a CLI
   // subprocess it builds the child env with OPENCLAW_STATE_DIR /

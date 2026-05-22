@@ -172,6 +172,57 @@ describe("detectAgentRuntime — Jules / Replit / Devin / Hermes / openclaw", ()
   });
 });
 
+describe("detectSandboxRuntime — file-system path", () => {
+  beforeEach(() => {
+    vi.resetModules();
+  });
+
+  afterEach(() => {
+    vi.resetModules();
+    vi.restoreAllMocks();
+  });
+
+  it("reports docker when /.dockerenv exists", async () => {
+    vi.doMock("node:os", async () => {
+      const actual = await vi.importActual<typeof import("node:os")>("node:os");
+      return { ...actual, release: () => "6.8.0-100-generic", platform: () => "linux" };
+    });
+    vi.doMock("node:fs", async () => {
+      const actual = await vi.importActual<typeof import("node:fs")>("node:fs");
+      return {
+        ...actual,
+        existsSync: (path: string) => path === "/.dockerenv" || actual.existsSync(path),
+        readFileSync: (path: string) =>
+          path === "/proc/version" ? "Linux version 6.8.0-100-generic" : actual.readFileSync(path),
+      };
+    });
+    const { detectSandboxRuntime } = await import("./agent_runtime.js");
+    expect(detectSandboxRuntime()).toBe("docker");
+  });
+
+  it("returns null on a plain non-sandboxed Linux laptop", async () => {
+    vi.doMock("node:os", async () => {
+      const actual = await vi.importActual<typeof import("node:os")>("node:os");
+      return { ...actual, release: () => "6.8.0-100-generic", platform: () => "linux" };
+    });
+    vi.doMock("node:fs", async () => {
+      const actual = await vi.importActual<typeof import("node:fs")>("node:fs");
+      return {
+        ...actual,
+        existsSync: () => false,
+        readFileSync: (path: string) =>
+          path === "/proc/version"
+            ? "Linux version 6.8.0-100-generic (buildd@lcy01)"
+            : path === "/proc/1/cgroup"
+              ? "0::/user.slice/user-1000.slice"
+              : actual.readFileSync(path),
+      };
+    });
+    const { detectSandboxRuntime } = await import("./agent_runtime.js");
+    expect(detectSandboxRuntime()).toBeNull();
+  });
+});
+
 describe("detectSandboxRuntime — kernel-string path", () => {
   beforeEach(() => {
     vi.resetModules();
