@@ -813,7 +813,7 @@ This is suppressed in CI environments, non-TTY shells, and when `HYPERFRAMES_NO_
     npx hyperframes telemetry status
     ```
 
-    Telemetry collects command names, render performance, example choices, and system info. It does **not** collect file paths, project names, video content, or personally identifiable information. Disable with `HYPERFRAMES_NO_TELEMETRY=1` or the command above.
+    Telemetry collects command names, render performance, example choices, and system info — including a coarse environment fingerprint (OS, kernel string, CPU/memory shape, sandbox runtime such as gVisor or Docker, and the *name* of a coding agent driving the CLI when one is detected, e.g. `claude_code` / `codex` / `cursor`). The agent name is derived from the existence of well-known environment variables; their values are never read. Telemetry does **not** collect file paths, project names, video content, environment variable values, or personally identifiable information. Disable with `HYPERFRAMES_NO_TELEMETRY=1` or the command above.
 
     ### `skills`
 
