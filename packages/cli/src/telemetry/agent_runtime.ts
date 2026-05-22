@@ -160,15 +160,19 @@ export function detectAgentRuntime(): AgentRuntime {
 
 /**
  * gVisor reports kernel string `4.19.0-gvisor` (current) or `4.4.0` (legacy
- * Sentry kernel). Both are unambiguous: no production Linux box reports
- * either today. /proc/version is the backup signal.
+ * Sentry kernel).
+ *
+ * `4.19.0-gvisor` is unambiguous — no real Linux box reports that string.
+ * `4.4.0` collides with Ubuntu 16.04 LTS / older real kernels, so we only
+ * accept it as a gVisor signal when /proc/version ALSO contains "gVisor".
  */
 function isGVisor(): boolean {
   const kernel = release();
-  if (kernel === "4.4.0" || kernel.includes("gvisor")) return true;
+  if (kernel.includes("gvisor")) return true;
   if (platform() !== "linux") return false;
   try {
-    return readFileSync("/proc/version", "utf-8").includes("gVisor");
+    const procVersion = readFileSync("/proc/version", "utf-8");
+    return procVersion.includes("gVisor");
   } catch {
     return false;
   }

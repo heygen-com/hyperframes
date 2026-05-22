@@ -191,12 +191,40 @@ describe("detectSandboxRuntime — kernel-string path", () => {
     expect(detectSandboxRuntime()).toBe("gvisor");
   });
 
-  it("reports gvisor for the legacy 4.4.0 Sentry kernel string", async () => {
+  it("reports gvisor for kernel 4.4.0 only when /proc/version confirms gVisor", async () => {
     vi.doMock("node:os", async () => {
       const actual = await vi.importActual<typeof import("node:os")>("node:os");
       return { ...actual, release: () => "4.4.0", platform: () => "linux" };
     });
+    vi.doMock("node:fs", async () => {
+      const actual = await vi.importActual<typeof import("node:fs")>("node:fs");
+      return {
+        ...actual,
+        readFileSync: (path: string) =>
+          path === "/proc/version" ? "Linux version 4.4.0 (gVisor)" : actual.readFileSync(path),
+      };
+    });
     const { detectSandboxRuntime } = await import("./agent_runtime.js");
     expect(detectSandboxRuntime()).toBe("gvisor");
+  });
+
+  it("does NOT report gvisor for kernel 4.4.0 on a real Ubuntu 16.04 box (no gVisor in /proc/version)", async () => {
+    // Ubuntu 16.04 LTS ships kernel 4.4.0 too — make sure we don't false-positive.
+    vi.doMock("node:os", async () => {
+      const actual = await vi.importActual<typeof import("node:os")>("node:os");
+      return { ...actual, release: () => "4.4.0", platform: () => "linux" };
+    });
+    vi.doMock("node:fs", async () => {
+      const actual = await vi.importActual<typeof import("node:fs")>("node:fs");
+      return {
+        ...actual,
+        readFileSync: (path: string) =>
+          path === "/proc/version"
+            ? "Linux version 4.4.0-1128-aws (buildd@lcy01)"
+            : actual.readFileSync(path),
+      };
+    });
+    const { detectSandboxRuntime } = await import("./agent_runtime.js");
+    expect(detectSandboxRuntime()).not.toBe("gvisor");
   });
 });
