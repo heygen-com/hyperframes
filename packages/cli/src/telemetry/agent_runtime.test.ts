@@ -7,28 +7,19 @@ import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
 const VENDOR_ENV_KEYS = [
   "CLAUDECODE",
   "CLAUDE_CODE_ENTRYPOINT",
-  "CODEX_HOME",
-  "CODEX_SANDBOX",
+  "CODEX_THREAD_ID",
+  "CODEX_CI",
   "CODEX_SANDBOX_NETWORK_DISABLED",
-  "CURSOR_TRACE_ID",
-  "CURSOR_AGENT",
   "TERM_PROGRAM",
   "GITHUB_ACTIONS",
   "COPILOT_AGENT_ID",
   "RUNNER_NAME",
-  "JULES_TASK_ID",
-  "JULES_SESSION",
   "REPL_ID",
   "REPLIT_USER",
-  "DEVIN_SESSION_ID",
-  "AIDER_RUN_ID",
-  "GEMINI_CLI",
   "HERMES_QUIET",
-  "_HERMES_GATEWAY",
-  "HERMES_INFERENCE_PROVIDER",
-  "OPENCLAW_CLI",
   "OPENCLAW_STATE_DIR",
   "OPENCLAW_CONFIG_PATH",
+  "PI_CODING_AGENT",
 ] as const;
 
 function stripVendorEnv(): void {
@@ -51,13 +42,13 @@ describe("detectAgentRuntime — base behavior", () => {
     // Claude Code marker set alongside a Codex marker — Claude Code is the
     // first rule, so it wins.
     process.env["CLAUDECODE"] = "1";
-    process.env["CODEX_HOME"] = "/home/codex";
+    process.env["CODEX_THREAD_ID"] = "thread-1";
     const { detectAgentRuntime } = await import("./agent_runtime.js");
     expect(detectAgentRuntime()).toBe("claude_code");
   });
 
   it("never reads env-var values — even API-key-shaped values stay unread", async () => {
-    process.env["CODEX_HOME"] = "/home/codex";
+    process.env["CODEX_THREAD_ID"] = "thread-1";
     process.env["CODEX_API_KEY"] = "sk-supersecret-DO-NOT-LEAK";
     const { detectAgentRuntime } = await import("./agent_runtime.js");
     const result = detectAgentRuntime();
@@ -94,13 +85,19 @@ describe("detectAgentRuntime — OpenAI Codex", () => {
     process.env = { ...savedEnv };
   });
 
-  it("detects via CODEX_HOME", async () => {
-    process.env["CODEX_HOME"] = "/home/codex";
+  it("detects via CODEX_THREAD_ID (set on every spawned shell command)", async () => {
+    process.env["CODEX_THREAD_ID"] = "01234567-89ab-cdef-0123-456789abcdef";
     const { detectAgentRuntime } = await import("./agent_runtime.js");
     expect(detectAgentRuntime()).toBe("codex");
   });
 
-  it("detects via CODEX_SANDBOX_NETWORK_DISABLED", async () => {
+  it("detects via CODEX_CI (hardcoded in UNIFIED_EXEC_ENV)", async () => {
+    process.env["CODEX_CI"] = "1";
+    const { detectAgentRuntime } = await import("./agent_runtime.js");
+    expect(detectAgentRuntime()).toBe("codex");
+  });
+
+  it("detects via CODEX_SANDBOX_NETWORK_DISABLED (default-on)", async () => {
     process.env["CODEX_SANDBOX_NETWORK_DISABLED"] = "1";
     const { detectAgentRuntime } = await import("./agent_runtime.js");
     expect(detectAgentRuntime()).toBe("codex");
@@ -134,17 +131,11 @@ describe("detectAgentRuntime — Cursor / Copilot / cohort", () => {
   });
 });
 
-describe("detectAgentRuntime — Jules / Replit / Devin / Hermes / openclaw", () => {
+describe("detectAgentRuntime — Replit / Hermes / openclaw / Pi", () => {
   const savedEnv = { ...process.env };
   beforeEach(stripVendorEnv);
   afterEach(() => {
     process.env = { ...savedEnv };
-  });
-
-  it("detects Jules via JULES_TASK_ID", async () => {
-    process.env["JULES_TASK_ID"] = "task-1";
-    const { detectAgentRuntime } = await import("./agent_runtime.js");
-    expect(detectAgentRuntime()).toBe("jules");
   });
 
   it("detects Replit via REPL_ID", async () => {
@@ -153,13 +144,7 @@ describe("detectAgentRuntime — Jules / Replit / Devin / Hermes / openclaw", ()
     expect(detectAgentRuntime()).toBe("replit");
   });
 
-  it("detects Devin via DEVIN_SESSION_ID", async () => {
-    process.env["DEVIN_SESSION_ID"] = "sess-1";
-    const { detectAgentRuntime } = await import("./agent_runtime.js");
-    expect(detectAgentRuntime()).toBe("devin");
-  });
-
-  it("detects Hermes via HERMES_QUIET=1 (set unconditionally by cli.py)", async () => {
+  it("detects Hermes via HERMES_QUIET (set unconditionally by cli.py:50)", async () => {
     process.env["HERMES_QUIET"] = "1";
     const { detectAgentRuntime } = await import("./agent_runtime.js");
     expect(detectAgentRuntime()).toBe("hermes");
@@ -169,6 +154,12 @@ describe("detectAgentRuntime — Jules / Replit / Devin / Hermes / openclaw", ()
     process.env["OPENCLAW_STATE_DIR"] = "/tmp/openclaw";
     const { detectAgentRuntime } = await import("./agent_runtime.js");
     expect(detectAgentRuntime()).toBe("openclaw");
+  });
+
+  it("detects Pi via PI_CODING_AGENT (set unconditionally by cli.ts:13)", async () => {
+    process.env["PI_CODING_AGENT"] = "true";
+    const { detectAgentRuntime } = await import("./agent_runtime.js");
+    expect(detectAgentRuntime()).toBe("pi");
   });
 });
 

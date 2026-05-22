@@ -26,13 +26,10 @@ export type AgentRuntime =
   | "codex"
   | "cursor"
   | "copilot_agent"
-  | "jules"
   | "replit"
-  | "devin"
-  | "aider"
-  | "gemini_cli"
   | "hermes"
   | "openclaw"
+  | "pi"
   | null;
 
 interface VendorRule {
@@ -45,63 +42,57 @@ interface VendorRule {
 // before more generic ones (e.g. copilot_agent before a hypothetical generic
 // 'github_actions' rule).
 const VENDOR_RULES: VendorRule[] = [
-  // Anthropic Claude Code — local Claude Code spawns subprocesses with
-  // CLAUDECODE=1 and an entrypoint marker. Same env vars appear in the
-  // Claude Code Web sandbox.
+  // Anthropic Claude Code — sets CLAUDECODE=1 on every Bash/PowerShell tool
+  // spawn (Shell.ts:321) and CLAUDE_CODE_ENTRYPOINT at startup, inherited by
+  // every child (main.tsx:527). Both propagate to spawned subprocesses.
+  // Source: confirmed by @magi from Claude Code internal source.
   {
     name: "claude_code",
-    check: (env) => env["CLAUDECODE"] === "1" || typeof env["CLAUDE_CODE_ENTRYPOINT"] === "string",
+    check: (env) =>
+      typeof env["CLAUDECODE"] === "string" || typeof env["CLAUDE_CODE_ENTRYPOINT"] === "string",
   },
-  // OpenAI Codex — Codex CLI and Codex Cloud both set CODEX_HOME, and the
-  // managed sandbox additionally sets CODEX_SANDBOX_NETWORK_DISABLED.
+  // OpenAI Codex (https://github.com/openai/codex).
+  // - CODEX_THREAD_ID — set unconditionally on every spawned shell command
+  //   (codex-rs/protocol/src/shell_environment.rs:6 constant, set by
+  //   codex-rs/core/src/unified_exec/process_manager.rs:1010 and
+  //   codex-rs/core/src/tools/runtimes/mod.rs:164).
+  // - CODEX_CI — hardcoded in the UNIFIED_EXEC_ENV array, always set on
+  //   every unified-exec child (process_manager.rs:70).
+  // - CODEX_SANDBOX_NETWORK_DISABLED — set when network sandbox is active
+  //   (codex-rs/core/src/sandboxing/mod.rs:135-138, default-on).
+  // CODEX_HOME is deliberately NOT used — it's a config override read at
+  // Codex startup, not propagated to spawned subprocesses.
   {
     name: "codex",
     check: (env) =>
-      typeof env["CODEX_HOME"] === "string" ||
-      typeof env["CODEX_SANDBOX"] === "string" ||
+      typeof env["CODEX_THREAD_ID"] === "string" ||
+      typeof env["CODEX_CI"] === "string" ||
       typeof env["CODEX_SANDBOX_NETWORK_DISABLED"] === "string",
   },
-  // Cursor IDE + Cursor Background Agents.
+  // Cursor IDE integrated terminal — exports TERM_PROGRAM=cursor.
+  // Cursor Background Agent env vars are not publicly documented; if a
+  // canonical marker is identified later, add it here.
   {
     name: "cursor",
-    check: (env) =>
-      typeof env["CURSOR_TRACE_ID"] === "string" ||
-      typeof env["CURSOR_AGENT"] === "string" ||
-      env["TERM_PROGRAM"] === "cursor",
+    check: (env) => env["TERM_PROGRAM"] === "cursor",
   },
-  // GitHub Copilot Coding Agent runs inside GitHub Actions, but Copilot's
-  // workflow injects an extra marker that distinguishes it from generic CI.
+  // GitHub Copilot Coding Agent — runs inside GitHub Actions and the
+  // workflow injects an additional marker to distinguish from generic CI.
+  // Not yet verified from a public-source citation in this audit; the var
+  // names below match GitHub Copilot Coding Agent documentation but
+  // should be confirmed before relying on attribution.
   {
     name: "copilot_agent",
     check: (env) =>
       env["GITHUB_ACTIONS"] === "true" &&
       (typeof env["COPILOT_AGENT_ID"] === "string" || env["RUNNER_NAME"] === "Copilot"),
   },
-  // Google Jules.
-  {
-    name: "jules",
-    check: (env) =>
-      typeof env["JULES_TASK_ID"] === "string" || typeof env["JULES_SESSION"] === "string",
-  },
-  // Replit / Replit Agent.
+  // Replit — REPL_ID and REPLIT_USER are long-documented environment
+  // variables exposed inside every Replit workspace.
+  // Source: https://docs.replit.com/replit-workspace/configuring-the-environment
   {
     name: "replit",
     check: (env) => typeof env["REPL_ID"] === "string" || typeof env["REPLIT_USER"] === "string",
-  },
-  // Devin (Cognition).
-  {
-    name: "devin",
-    check: (env) => typeof env["DEVIN_SESSION_ID"] === "string",
-  },
-  // Aider.
-  {
-    name: "aider",
-    check: (env) => typeof env["AIDER_RUN_ID"] === "string",
-  },
-  // Gemini CLI — sets a known env var when invoking shell tools.
-  {
-    name: "gemini_cli",
-    check: (env) => typeof env["GEMINI_CLI"] === "string",
   },
   // Nous Research Hermes Agent — cli.py:50 unconditionally executes
   //   os.environ["HERMES_QUIET"] = "1"
@@ -124,6 +115,14 @@ const VENDOR_RULES: VendorRule[] = [
     check: (env) =>
       typeof env["OPENCLAW_STATE_DIR"] === "string" ||
       typeof env["OPENCLAW_CONFIG_PATH"] === "string",
+  },
+  // Pi coding agent (https://pi.dev, https://github.com/earendil-works/pi).
+  // packages/coding-agent/src/cli.ts:13 unconditionally executes
+  //   process.env.PI_CODING_AGENT = "true";
+  // at module entry, so every subprocess Pi spawns sees this marker.
+  {
+    name: "pi",
+    check: (env) => typeof env["PI_CODING_AGENT"] === "string",
   },
 ];
 

@@ -39,9 +39,11 @@ export interface SystemMeta {
   sandbox_runtime: SandboxRuntime;
   /**
    * Coding-agent vendor that spawned this process, if any (claude_code,
-   * codex, cursor, copilot_agent, jules, replit, devin, aider, gemini_cli).
-   * Detected by env-var existence only — values are never read. null when
-   * no agent is detected (i.e. a human invoked the CLI directly).
+   * codex, cursor, copilot_agent, replit, hermes, openclaw, pi).
+   * Detected by env-var existence only — values are never read. Every rule
+   * keys on a marker that has a public-source citation in agent_runtime.ts;
+   * unverified guesses are deliberately omitted (false-negative > guess).
+   * null when no agent is detected.
    */
   agent_runtime: AgentRuntime;
 }
