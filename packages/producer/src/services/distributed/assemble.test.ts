@@ -195,6 +195,17 @@ describe("assemble()", () => {
       const probedFrames = Number(videoStream?.nb_read_packets ?? videoStream?.nb_frames);
       expect(probedFrames).toBe(10);
 
+      // ── ffprobe: exact framerate + duration equivalence ────────────────
+      // The container's `r_frame_rate` must match the planDir's exact
+      // rational (30/1 here) — not a PTS-averaged fraction like
+      // `360000/12001`. This guards the `-r` flag on the concat /
+      // mux / faststart steps from regressing.
+      expect(videoStream?.r_frame_rate).toBe("30/1");
+      // Duration must equal `totalFrames * fpsDen / fpsNum` within 1ms.
+      const expectedDuration = (10 * 1) / 30;
+      const probedDuration = Number(videoStream?.duration ?? 0);
+      expect(Math.abs(probedDuration - expectedDuration)).toBeLessThan(0.001);
+
       // ── faststart applied ──────────────────────────────────────────────
       // Bun.file is async; resolve before asserting.
       const buf = await Bun.file(outputPath).arrayBuffer();

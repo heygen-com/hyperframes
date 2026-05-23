@@ -35,6 +35,7 @@ import {
 } from "node:fs";
 import { dirname, join } from "node:path";
 import { applyFaststart, muxVideoWithAudio, runFfmpeg } from "@hyperframes/engine";
+import { fpsToFfmpegArg } from "@hyperframes/core";
 import { defaultLogger, type ProducerLogger } from "../../logger.js";
 import { padOrTrimAudioToVideoFrameCount } from "../render/audioPadTrim.js";
 import type { ChunkSliceJson } from "../render/stages/freezePlan.js";
@@ -138,7 +139,17 @@ export async function assemble(
     writeFileSync(concatListPath, `${concatBody}\n`, "utf-8");
 
     const concatOutputPath = join(workDir, `concat.${plan.dimensions.format}`);
+    const fpsArg = fpsToFfmpegArg({
+      num: plan.dimensions.fpsNum,
+      den: plan.dimensions.fpsDen,
+    });
+    // Set the exact input framerate so the concat demuxer doesn't
+    // PTS-average a fractional rational like `360000/12001` instead
+    // of `30/1` into the output container metadata. `-c copy` is
+    // retained; no re-encode.
     const concatArgs = [
+      "-r",
+      fpsArg,
       "-f",
       "concat",
       "-safe",
@@ -190,6 +201,8 @@ export async function assemble(
         audioForMux,
         muxOutputPath,
         abortSignal,
+        undefined,
+        { num: plan.dimensions.fpsNum, den: plan.dimensions.fpsDen },
       );
       if (!muxResult.success) {
         throw new Error(`[assemble] audio mux failed: ${muxResult.error}`);
@@ -198,7 +211,16 @@ export async function assemble(
 
     // applyFaststart is a no-op for `.mov` (it copies the input to output);
     // we still call it so the success path produces `outputPath` regardless.
-    const faststartResult = await applyFaststart(muxOutputPath, outputPath, abortSignal);
+    const faststartResult = await applyFaststart(
+      muxOutputPath,
+      outputPath,
+      abortSignal,
+      undefined,
+      {
+        num: plan.dimensions.fpsNum,
+        den: plan.dimensions.fpsDen,
+      },
+    );
     if (!faststartResult.success) {
       throw new Error(`[assemble] faststart failed: ${faststartResult.error}`);
     }
