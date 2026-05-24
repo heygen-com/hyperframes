@@ -1,6 +1,6 @@
 ---
 name: hyperframes-media
-description: Asset preprocessing for HyperFrames compositions — text-to-speech narration (Kokoro), audio/video transcription (Whisper), and background removal for transparent overlays (u2net). Use when generating voiceover from text, transcribing speech for captions, removing the background from a video or image to use as a transparent overlay, choosing a TTS voice or whisper model, or chaining these (TTS → transcribe → captions). Each command downloads its own model on first run.
+description: Asset preprocessing for HyperFrames compositions — text-to-speech narration (Kokoro for English/Chinese, Supertonic 3 for 31 languages), audio/video transcription (Whisper), and background removal for transparent overlays (u2net). Use when generating voiceover from text, transcribing speech for captions, removing the background from a video or image to use as a transparent overlay, choosing a TTS engine/voice or whisper model, or chaining these (TTS → transcribe → captions). Each command downloads its own model on first run.
 ---
 
 # HyperFrames Media Preprocessing
@@ -9,13 +9,28 @@ Three CLI commands that produce assets for compositions: `tts` (speech), `transc
 
 ## Text-to-Speech (`tts`)
 
-Generate speech audio locally with Kokoro-82M. No API key.
+Generate speech audio locally. No API key. Two engines, selected with `--engine`:
+
+- **`kokoro`** (default) — Kokoro-82M. 54 named voices, content-matched. Best for **English**; the only engine that supports **Chinese**. Non-English needs Python + `espeak-ng` (see Requirements).
+- **`supertonic`** — Supertonic 3. Runs fully in-process (no Python, no phonemizer). Covers **31 languages**. Preferred for **any non-English language except Chinese**.
 
 ```bash
 npx hyperframes tts "Text here" --voice af_nova --output narration.wav
 npx hyperframes tts script.txt --voice bf_emma --output narration.wav
-npx hyperframes tts --list                       # all 54 voices
+npx hyperframes tts --list                                 # Kokoro's 54 voices
+npx hyperframes tts --list --engine supertonic             # Supertonic's voices
 ```
+
+### Choosing an engine (language routing)
+
+| Language                                                         | Engine                  | Why                              |
+| ---------------------------------------------------------------- | ----------------------- | -------------------------------- |
+| English                                                          | `kokoro` (default)      | Rich, content-matched voices     |
+| Chinese / Mandarin                                               | `kokoro` (`zf_xiaobei`) | **Only** Kokoro supports `zh`    |
+| Any other language (Korean, German, Russian, Arabic, Dutch, …)   | `supertonic`            | Kokoro can't; no extra deps      |
+| Overlap (Spanish, French, Hindi, Italian, Japanese, Portuguese)  | either                  | Supertonic if avoiding espeak-ng |
+
+Rule of thumb: **English or Chinese → Kokoro. Everything else → Supertonic.**
 
 ### Voice Selection
 
@@ -31,14 +46,23 @@ Match voice to content. Default is `af_heart`.
 
 ### Multilingual
 
-Voice IDs encode language in the first letter: `a`=American English, `b`=British English, `e`=Spanish, `f`=French, `h`=Hindi, `i`=Italian, `j`=Japanese, `p`=Brazilian Portuguese, `z`=Mandarin. The CLI auto-detects the phonemizer locale from the prefix — no `--lang` needed when the voice matches the text.
+For non-English (except Chinese), use **Supertonic**. Pass the language with `--lang` and pick a voice (`F1`–`F5`, `M1`–`M5` — multilingual, gender only). No phonemizer or system packages needed.
 
 ```bash
-npx hyperframes tts "La reunión empieza a las nueve" --voice ef_dora --output es.wav
-npx hyperframes tts "今日はいい天気ですね" --voice jf_alpha --output ja.wav
+npx hyperframes tts "안녕하세요, 만나서 반갑습니다" --engine supertonic --lang ko --voice F1 --output ko.wav
+npx hyperframes tts "Guten Tag, schön Sie zu sehen" --engine supertonic --lang de --voice M1 --output de.wav
 ```
 
-Use `--lang` only to override auto-detection (stylized accents). Valid codes: `en-us`, `en-gb`, `es`, `fr-fr`, `hi`, `it`, `pt-br`, `ja`, `zh`. Non-English phonemization requires `espeak-ng` system-wide (`brew install espeak-ng` / `apt-get install espeak-ng`).
+Supertonic `--lang` codes (31): `ar` `bg` `cs` `da` `de` `el` `en` `es` `et` `fi` `fr` `hi` `hr` `hu` `id` `it` `ja` `ko` `lt` `lv` `nl` `pl` `pt` `ro` `ru` `sk` `sl` `sv` `tr` `uk` `vi`. **No Chinese** — use Kokoro for that.
+
+**Kokoro** stays best for English and is the only option for Chinese. Its voice IDs encode language in the first letter: `a`=American English, `b`=British English, `e`=Spanish, `f`=French, `h`=Hindi, `i`=Italian, `j`=Japanese, `p`=Brazilian Portuguese, `z`=Mandarin. The CLI auto-detects the phonemizer locale from the prefix — no `--lang` needed when the voice matches the text.
+
+```bash
+npx hyperframes tts "你好，今天天气很好" --voice zf_xiaobei --output zh.wav   # Chinese → Kokoro
+npx hyperframes tts "La reunión empieza a las nueve" --voice ef_dora --output es.wav
+```
+
+For Kokoro, use `--lang` only to override auto-detection (stylized accents). Valid codes: `en-us`, `en-gb`, `es`, `fr-fr`, `hi`, `it`, `pt-br`, `ja`, `zh`. Kokoro non-English phonemization requires `espeak-ng` system-wide (`brew install espeak-ng` / `apt-get install espeak-ng`) — another reason to prefer Supertonic for those languages.
 
 ### Speed
 
@@ -53,7 +77,8 @@ For more than a few paragraphs, write to a `.txt` file and pass the path. Inputs
 
 ### Requirements
 
-Python 3.8+ with `kokoro-onnx` and `soundfile` (`pip install kokoro-onnx soundfile`). Model downloads on first use (~311 MB + ~27 MB voices, cached in `~/.cache/hyperframes/tts/`).
+- **Kokoro** (`--engine kokoro`, default): Python 3.8+ with `kokoro-onnx` and `soundfile` (`pip install kokoro-onnx soundfile`); non-English also needs `espeak-ng` system-wide. Model downloads on first use (~311 MB + ~27 MB voices, cached in `~/.cache/hyperframes/tts/`).
+- **Supertonic** (`--engine supertonic`): no Python, no system packages — runs in-process via onnxruntime-node. Models (~300 MB) download from Hugging Face on first use, cached in `~/.cache/hyperframes/tts/supertonic/`. Tune quality/speed with `--steps` (default 8; fewer is faster).
 
 ## Transcription (`transcribe`)
 
