@@ -229,6 +229,16 @@ async function handlePlan(event: PlanEvent, deps?: HandlerDeps): Promise<PlanLam
   const s3 = deps?.s3 ?? getS3Client();
   const primitive = deps?.primitives?.plan ?? plan;
 
+  // LOCAL PATCH (typecut): handlePlan calls plan() → runProbeStage() which
+  // launches Chrome. The published handler only set up the Chrome executable
+  // path in handleRenderChunk, so plan invocations errored with
+  // "An `executablePath` or `channel` must be specified for `puppeteer-core`".
+  // Mirror the renderChunk setup here. File upstream PR.
+  if (!deps?.skipChromeResolution && !process.env.PRODUCER_HEADLESS_SHELL_PATH) {
+    const chromePath = await resolveChromeExecutablePath();
+    process.env.PRODUCER_HEADLESS_SHELL_PATH = chromePath;
+  }
+
   const work = mkdtempSync(join(deps?.tmpRoot ?? tmpdir(), "hf-lambda-plan-"));
   // We use `.tar.gz` (not `.zip`) as the project archive's on-the-wire
   // format because Lambda's Amazon Linux base image ships GNU `tar` but
