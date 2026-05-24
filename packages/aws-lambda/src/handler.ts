@@ -407,7 +407,9 @@ async function handleAssemble(
         ? join(work, "output-frames")
         : join(work, `output${formatExtension(event.Format)}`);
 
-    const result: AssembleResult = await primitive(planDir, chunkPaths, audioPath, finalOutput);
+    const result: AssembleResult = await primitive(planDir, chunkPaths, audioPath, finalOutput, {
+      cfr: event.Cfr === true,
+    });
 
     if (event.Format === "png-sequence") {
       const tarball = `${finalOutput}.tar.gz`;

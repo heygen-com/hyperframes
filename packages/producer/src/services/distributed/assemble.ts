@@ -87,11 +87,29 @@ export async function assemble(
   chunkPaths: readonly string[],
   audioPath: string | null,
   outputPath: string,
-  options?: { logger?: ProducerLogger; abortSignal?: AbortSignal },
+  options?: {
+    logger?: ProducerLogger;
+    abortSignal?: AbortSignal;
+    /**
+     * Opt-in exact-CFR re-encode. When `true`, the assembled video is
+     * re-encoded once at the end of the concat/single-chunk step with
+     * `-fps_mode cfr -r <fps>` so the stream-level `avg_frame_rate`
+     * matches the container's `r_frame_rate` exactly (and the file's
+     * duration lands on the requested `frameCount / fps` to ms
+     * precision, with no PTS-derived drift). Trade-off: ~2-5x the
+     * stitch time for a 60s 1080p clip plus second-generation H.264
+     * quality loss (negligible at `-crf 18` but non-zero). Default
+     * `false` preserves the existing `-c copy` behavior. mp4 only
+     * (libx264); webm / mov pass through unchanged because their
+     * stream-copy paths don't exhibit the same avg-frame-rate drift.
+     */
+    cfr?: boolean;
+  },
 ): Promise<AssembleResult> {
   const start = Date.now();
   const log = options?.logger ?? defaultLogger;
   const abortSignal = options?.abortSignal;
+  const cfr = options?.cfr === true;
 
   // ── 1. Validate planDir manifest matches chunkPaths shape ──────────────
   const planJsonPath = join(planDir, "plan.json");
@@ -193,12 +211,66 @@ export async function assemble(
       }
     }
 
+    // ── 2c. Optional exact-CFR re-encode ──────────────────────────────────
+    // The concat / single-chunk step produces a stream-copy intermediate
+    // whose container `r_frame_rate` is exact but whose stream-level
+    // `avg_frame_rate` stays PTS-derived (concat-copy carries each chunk's
+    // original PTS unmodified). For consumers that strict-check
+    // `avg_frame_rate` or ms-precision duration (broadcast workflows,
+    // frame-accurate compositors, some third-party transcoders), an
+    // opt-in re-encode with `-fps_mode cfr -r <fps>` lands the stream's
+    // avg-frame-rate on the requested rational exactly. Restricted to
+    // mp4 / libx264 — webm and mov go through their own stream-copy
+    // paths that don't exhibit the same avg-frame-rate drift.
+    let postConcatPath = concatOutputPath;
+    if (cfr) {
+      if (plan.dimensions.format !== "mp4") {
+        throw new Error(
+          `[assemble] cfr=true is only supported for format="mp4" (got ` +
+            `"${plan.dimensions.format}"). Stream-copy paths for webm and mov ` +
+            `already produce exact avg_frame_rate; cfr re-encode is not needed.`,
+        );
+      }
+      const cfrOutputPath = join(workDir, `cfr.${plan.dimensions.format}`);
+      const cfrArgs = [
+        "-i",
+        concatOutputPath,
+        "-c:v",
+        "libx264",
+        "-preset",
+        "medium",
+        "-crf",
+        "18",
+        "-pix_fmt",
+        "yuv420p",
+        "-fps_mode",
+        "cfr",
+        "-r",
+        fpsArg,
+        "-y",
+        cfrOutputPath,
+      ];
+      const cfrResult = await runFfmpeg(cfrArgs, { signal: abortSignal });
+      if (!cfrResult.success) {
+        throw new Error(
+          `[assemble] ffmpeg cfr re-encode failed (exit ${cfrResult.exitCode}): ` +
+            `${cfrResult.stderr.slice(-400)}`,
+        );
+      }
+      postConcatPath = cfrOutputPath;
+      log.info("[assemble] cfr re-encode applied", {
+        format: plan.dimensions.format,
+        fpsNum: plan.dimensions.fpsNum,
+        fpsDen: plan.dimensions.fpsDen,
+      });
+    }
+
     // ── 3. Audio: pad-or-trim then mux ────────────────────────────────────
     let audioForMux: string | null = null;
     if (audioPath !== null && existsSync(audioPath)) {
       const paddedAudioPath = join(workDir, "audio-padded.aac");
       const padTrimResult = await padOrTrimAudioToVideoFrameCount({
-        videoPath: concatOutputPath,
+        videoPath: postConcatPath,
         audioPath,
         outputPath: paddedAudioPath,
       });
@@ -218,10 +290,10 @@ export async function assemble(
     // because it operates on a `RenderJob` and emits `updateJobStatus`
     // payloads — the distributed activity has no job to thread through.
     const muxOutputPath =
-      audioForMux !== null ? join(workDir, `mux.${plan.dimensions.format}`) : concatOutputPath;
+      audioForMux !== null ? join(workDir, `mux.${plan.dimensions.format}`) : postConcatPath;
     if (audioForMux !== null) {
       const muxResult = await muxVideoWithAudio(
-        concatOutputPath,
+        postConcatPath,
         audioForMux,
         muxOutputPath,
         abortSignal,

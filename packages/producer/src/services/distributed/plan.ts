@@ -146,6 +146,20 @@ export interface DistributedRenderConfig {
   /** HDR is not supported in distributed mode; `force-hdr` trips a `FormatNotSupportedInDistributedError`. Defaults to `force-sdr`. */
   hdrMode?: "auto" | "force-sdr";
 
+  /**
+   * Opt-in exact-CFR re-encode at the assemble stage. When `true`, the
+   * stitched output is re-encoded once with `-fps_mode cfr -r <fps>` so
+   * the stream-level `avg_frame_rate` matches the container's
+   * `r_frame_rate` exactly (and the file duration is exact, not
+   * PTS-derived). Useful for downstream consumers that strict-check
+   * `avg_frame_rate` or ms-precision duration. Default `false` retains
+   * the existing `-c copy` stitch path, which is faster and lossless.
+   * mp4 only — webm / mov stream-copy paths already produce exact
+   * avg_frame_rate. Consumed by `assemble`; does not affect `planHash`
+   * (chunks render identically; only the final stitch step differs).
+   */
+  cfr?: boolean;
+
   logger?: ProducerLogger;
   /** Optional engine config override (env vars are not read when provided). */
   producerConfig?: EngineConfig;
