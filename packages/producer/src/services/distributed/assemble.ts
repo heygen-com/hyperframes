@@ -221,7 +221,10 @@ export async function assemble(
     // opt-in re-encode with `-fps_mode cfr -r <fps>` lands the stream's
     // avg-frame-rate on the requested rational exactly. Restricted to
     // mp4 / libx264 — webm and mov go through their own stream-copy
-    // paths that don't exhibit the same avg-frame-rate drift.
+    // paths that don't exhibit the same avg-frame-rate drift, and h265
+    // mp4 would silently transcode to h264 under the hardcoded
+    // `-c:v libx264` re-encode (a typed throw is preferable to silent
+    // codec loss).
     let postConcatPath = concatOutputPath;
     if (cfr) {
       if (plan.dimensions.format !== "mp4") {
@@ -229,6 +232,25 @@ export async function assemble(
           `[assemble] cfr=true is only supported for format="mp4" (got ` +
             `"${plan.dimensions.format}"). Stream-copy paths for webm and mov ` +
             `already produce exact avg_frame_rate; cfr re-encode is not needed.`,
+        );
+      }
+      // Read `meta/encoder.json` to detect the chunk encoder. The cfr
+      // re-encode hardcodes `-c:v libx264`; pairing it with h265 chunks
+      // would silently transcode them to h264. Throw a typed error so the
+      // caller surfaces the conflict instead of producing a wrong-codec
+      // deliverable.
+      const encoderJsonPath = join(planDir, "meta", "encoder.json");
+      if (!existsSync(encoderJsonPath)) {
+        throw new Error(`[assemble] planDir missing meta/encoder.json: ${encoderJsonPath}`);
+      }
+      const encoderJson = JSON.parse(readFileSync(encoderJsonPath, "utf-8")) as {
+        encoder?: string;
+      };
+      if (encoderJson.encoder === "libx265-software") {
+        throw new Error(
+          `[assemble] cfr=true is not yet supported with codec: "h265". The ` +
+            `cfr re-encode pass uses libx264 and would silently transcode the ` +
+            `h265 chunks. Either disable cfr or render with codec: "h264".`,
         );
       }
       const cfrOutputPath = join(workDir, `cfr.${plan.dimensions.format}`);

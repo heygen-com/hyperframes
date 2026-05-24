@@ -46,6 +46,7 @@ function buildPlanDir(
   chunks: ChunkSliceJson[],
   totalFrames: number,
   hasAudio: boolean,
+  encoder: "libx264-software" | "libx265-software" = "libx264-software",
 ): string {
   const planDir = mkdtempSync(join(runRoot, `plan-${format}-`));
   mkdirSync(join(planDir, "meta"), { recursive: true });
@@ -60,6 +61,10 @@ function buildPlanDir(
     "utf-8",
   );
   writeFileSync(join(planDir, "meta", "chunks.json"), JSON.stringify(chunks), "utf-8");
+  // Minimal encoder.json — assemble reads this when cfr=true to detect h265
+  // chunks (the cfr re-encode hardcodes libx264 and would silently transcode
+  // h265). Tests default to libx264 to match the in-production default.
+  writeFileSync(join(planDir, "meta", "encoder.json"), JSON.stringify({ encoder }), "utf-8");
   return planDir;
 }
 
@@ -458,6 +463,39 @@ describe("assemble()", () => {
       }
       expect(caught).toBeDefined();
       expect((caught as Error).message).toContain("cfr=true is only supported");
+    },
+    TIMEOUT_MS,
+  );
+
+  it(
+    "cfr:true rejects h265 chunks with a clear error",
+    async () => {
+      if (!hasFfmpeg) {
+        console.warn("[assemble.test] skipping cfr-h265 test — ffmpeg not available");
+        return;
+      }
+      // The cfr re-encode hardcodes `-c:v libx264`; pairing it with h265
+      // chunks would silently transcode them to h264. Assemble must throw
+      // a typed error instead of producing a wrong-codec deliverable. We
+      // stage a plan whose `meta/encoder.json` reports `libx265-software`
+      // and chunks built with libx264 (the bytes don't matter — the guard
+      // trips on the encoder discriminant before the re-encode runs).
+      const chunks: ChunkSliceJson[] = [{ index: 0, startFrame: 0, endFrame: 5 }];
+      const planDir = buildPlanDir("mp4", chunks, 5, false, "libx265-software");
+
+      const chunkPath = join(planDir, "chunk-0.mp4");
+      makeMp4Chunk(chunkPath, 5);
+
+      let caught: unknown;
+      try {
+        await assemble(planDir, [chunkPath], null, join(planDir, "out.mp4"), { cfr: true });
+      } catch (err) {
+        caught = err;
+      }
+      expect(caught).toBeDefined();
+      expect((caught as Error).message).toContain(
+        `cfr=true is not yet supported with codec: "h265"`,
+      );
     },
     TIMEOUT_MS,
   );
