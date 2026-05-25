@@ -453,4 +453,58 @@ describe("video-frame injection respects ancestor visibility", () => {
     // <img> to `visibility: visible` so it overrides the ancestor.
     expect(seededImg.style.visibility).toBe("visible");
   });
+
+  // Regression for the layered/HDR mask path: `applyDomLayerMask` writes an
+  // `!important` stylesheet rule `#${showId} *{visibility:visible !important}`
+  // which, if a sub-comp host id appears in the show set, would revive a
+  // plain (non-important) inline `visibility: hidden` on a descendant
+  // `__render_frame__` — the cascade rule is "important stylesheet author
+  // beats non-important inline author". To stay safe regardless of which
+  // layer ends up in `show`, the ancestor-hidden hide must be written with
+  // `!important` so inline `!important` beats stylesheet `!important`.
+  //
+  // linkedom strips `!important` from `cssText`/`getPropertyPriority`, so we
+  // pin the contract on the API call site instead: a `setProperty(name,
+  // value, "important")` invocation on the live `<img>`'s style.
+  it("injectVideoFramesBatch hides a stale <img> with !important so the layer mask cannot revive it", async () => {
+    const { teardown, setup } = withGlobals(setupHostHiddenScenario({ visibility: "hidden" }));
+    const seededImg = setup.document.createElement("img");
+    seededImg.classList.add("__render_frame__");
+    seededImg.style.visibility = "visible";
+    setup.video.parentNode?.insertBefore(seededImg, setup.video.nextSibling);
+    const setPropertySpy = vi.spyOn(seededImg.style, "setProperty");
+
+    try {
+      await injectVideoFramesBatch(passthroughPage(), [
+        {
+          videoId: "pip",
+          dataUri:
+            "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkAAIAAAoAAv/lxKUAAAAASUVORK5CYII=",
+        },
+      ]);
+    } finally {
+      teardown();
+    }
+
+    expect(seededImg.style.visibility).toBe("hidden");
+    expect(setPropertySpy).toHaveBeenCalledWith("visibility", "hidden", "important");
+  });
+
+  it("syncVideoFrameVisibility hides an existing <img> with !important so the layer mask cannot revive it", async () => {
+    const { teardown, setup } = withGlobals(setupHostHiddenScenario({ visibility: "hidden" }));
+    const seededImg = setup.document.createElement("img");
+    seededImg.classList.add("__render_frame__");
+    seededImg.style.visibility = "visible";
+    setup.video.parentNode?.insertBefore(seededImg, setup.video.nextSibling);
+    const setPropertySpy = vi.spyOn(seededImg.style, "setProperty");
+
+    try {
+      await syncVideoFrameVisibility(passthroughPage(), ["pip"]);
+    } finally {
+      teardown();
+    }
+
+    expect(seededImg.style.visibility).toBe("hidden");
+    expect(setPropertySpy).toHaveBeenCalledWith("visibility", "hidden", "important");
+  });
 });

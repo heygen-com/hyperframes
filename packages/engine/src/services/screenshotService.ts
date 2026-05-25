@@ -369,13 +369,22 @@ export async function removeDomLayerMask(page: Page, extraHideIds: string[]): Pr
   );
 }
 
+/**
+ * Returns the subset of `updates.videoId`s that were actually painted in
+ * this call. Videos skipped because of a hidden visual ancestor are NOT
+ * included — the caller relies on this to avoid recording a `lastInjected`
+ * cache entry for a frame that never reached the page, which would otherwise
+ * short-circuit the next inject at the same frameIndex and leave the host's
+ * first visible frame blank.
+ */
 export async function injectVideoFramesBatch(
   page: Page,
   updates: Array<{ videoId: string; dataUri: string }>,
-): Promise<void> {
-  if (updates.length === 0) return;
-  await page.evaluate(
+): Promise<string[]> {
+  if (updates.length === 0) return [];
+  return await page.evaluate(
     async (items: Array<{ videoId: string; dataUri: string }>, visualProperties: string[]) => {
+      const injectedIds: string[] = [];
       const pendingDecodes: Array<Promise<void>> = [];
       const replacementLayoutProperties = new Set([
         "width",
@@ -435,7 +444,13 @@ export async function injectVideoFramesBatch(
           // Don't paint a frame over a hidden host — if an existing replacement
           // <img> is still around from when the host was visible, hide it so it
           // doesn't bleed through a sibling host that *is* visible on this seek.
-          if (hasImg && img) img.style.visibility = "hidden";
+          //
+          // Use `!important` so the inline hide survives `applyDomLayerMask`'s
+          // stylesheet `#${showId} *{visibility:visible !important}` when the
+          // sub-comp host happens to land in the active layer's `show` set —
+          // important stylesheet beats non-important inline, but important
+          // inline beats important stylesheet.
+          if (hasImg && img) img.style.setProperty("visibility", "hidden", "important");
           continue;
         }
 
@@ -522,10 +537,12 @@ export async function injectVideoFramesBatch(
         // GSAP-controlled value.
         video.style.setProperty("visibility", "hidden", "important");
         video.style.setProperty("pointer-events", "none", "important");
+        injectedIds.push(item.videoId);
       }
       if (pendingDecodes.length > 0) {
         await Promise.all(pendingDecodes);
       }
+      return injectedIds;
     },
     updates,
     [...MEDIA_VISUAL_STYLE_PROPERTIES],
@@ -577,11 +594,16 @@ export async function syncVideoFrameVisibility(
       } else {
         // Inactive (or ancestor-hidden) video: hide both. Use visibility only
         // (never opacity) so we never clobber GSAP-controlled inline opacity.
+        // Use `!important` on the <img> hide so `applyDomLayerMask`'s
+        // important stylesheet rule (`#${showId} *{visibility:visible !important}`)
+        // cannot revive a stale frame when the sub-comp host lands in the
+        // active layer's `show` set — same mask-defense reasoning as the
+        // `isVisualAncestorHidden` branch in `injectVideoFramesBatch`.
         video.style.removeProperty("display");
         video.style.setProperty("visibility", "hidden", "important");
         video.style.setProperty("pointer-events", "none", "important");
         if (hasImg) {
-          img.style.visibility = "hidden";
+          img.style.setProperty("visibility", "hidden", "important");
         }
       }
     }

@@ -197,12 +197,22 @@ export function createVideoFrameInjector(
 
     await syncVideoFrameVisibility(page, Array.from(activeIds));
     if (updates.length > 0) {
-      await injectVideoFramesBatch(
-        page,
-        updates.map((u) => ({ videoId: u.videoId, dataUri: u.dataUri })),
+      // Only record cache entries for videos the page actually painted.
+      // injectVideoFramesBatch skips any video whose visual ancestor is
+      // hidden (sub-comp host out-of-window) and returns the subset of ids
+      // it really wrote — recording the rest would short-circuit the next
+      // call at the same frameIndex and leave the host's first visible
+      // frame blank.
+      const injectedIds = new Set(
+        await injectVideoFramesBatch(
+          page,
+          updates.map((u) => ({ videoId: u.videoId, dataUri: u.dataUri })),
+        ),
       );
       for (const update of updates) {
-        lastInjectedFrameByVideo.set(update.videoId, update.frameIndex);
+        if (injectedIds.has(update.videoId)) {
+          lastInjectedFrameByVideo.set(update.videoId, update.frameIndex);
+        }
       }
     }
   };
