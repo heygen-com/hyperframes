@@ -6,6 +6,7 @@
  */
 
 import type { Browser, PuppeteerNode } from "puppeteer-core";
+import { execSync } from "child_process";
 import { existsSync, readdirSync } from "fs";
 import { join } from "path";
 import { homedir, totalmem } from "os";
@@ -485,7 +486,7 @@ let _cachedVramMb: number | null = null;
 function probeNvidiaVramMb(): number | null {
   if (_cachedVramMb !== null) return _cachedVramMb;
   try {
-    const { execSync } = require("child_process") as typeof import("child_process");
+    // Synchronous, runs once per process (cached). ~50ms on typical systems.
     const out = execSync("nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits", {
       timeout: 3000,
       encoding: "utf-8",
@@ -504,7 +505,7 @@ function probeNvidiaVramMb(): number | null {
 
 function getGpuMemBudgetMb(): number {
   const vram = probeNvidiaVramMb();
-  if (vram) return Math.min(vram, 65536);
+  if (vram) return Math.min(vram, 16384);
 
   const total = getTotalMemMb();
   if (total < 4096) return 512;
