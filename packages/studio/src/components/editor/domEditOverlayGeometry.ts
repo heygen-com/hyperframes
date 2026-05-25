@@ -118,8 +118,8 @@ export function toOverlayRect(
   });
 
   return {
-    left: iframeRect.left - overlayRect.left + (elementRect.left - rootRect.left) * rootScaleX,
-    top: iframeRect.top - overlayRect.top + (elementRect.top - rootRect.top) * rootScaleY,
+    left: iframeRect.left - overlayRect.left + elementRect.left * rootScaleX,
+    top: iframeRect.top - overlayRect.top + elementRect.top * rootScaleY,
     width: elementRect.width * rootScaleX,
     height: elementRect.height * rootScaleY,
     editScaleX: editScale.scaleX,
