@@ -572,14 +572,15 @@ window.__afterTimeline = window.__timelines.scene;
     expect(scoped).toContain('[data-composition-id="chrome-overlay"] .child-element');
   });
 
-  it("wraps scoped composition script source as a string literal", () => {
+  it("escapes </script> in scoped composition script source to prevent injection", () => {
     const wrapped = wrapScopedCompositionScript(
       'window.payload = "</script><script>window.pwned = true;</script>";',
       "scene",
     );
 
-    expect(wrapped).toContain('Function("document", "gsap", "window", "__hyperframes", ');
-    expect(wrapped).toContain('\\"</script><script>window.pwned = true;</script>\\"');
+    expect(wrapped).toContain("(function(document, gsap, window, __hyperframes)");
+    expect(wrapped).not.toContain("</script><script>");
+    expect(wrapped).toContain("<\\/script>");
   });
 
   it("wraps unscoped composition script source as a string literal", () => {

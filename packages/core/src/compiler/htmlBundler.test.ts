@@ -758,8 +758,8 @@ describe("bundleToSingleHtml", () => {
     expect(bundled).toContain('[data-composition-id="scene"] .title { color: red; }');
     expect(bundled).toContain("new Proxy(window.document");
     expect(bundled).toContain("new Proxy(__hfBaseGsap");
-    expect(bundled).toContain('Function("document", "gsap", "window", "__hyperframes",');
-    expect(bundled).toContain("tl.to('.title'");
+    expect(bundled).toContain("(function(document, gsap, window, __hyperframes)");
+    expect(bundled).toContain('tl.to(".title"');
   });
 
   it("isolates sibling instances of the same external sub-composition", async () => {

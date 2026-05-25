@@ -486,7 +486,7 @@ export function wrapScopedCompositionScript(
   var __hfRun = function() {
     try {
       (function(document, gsap, window, __hyperframes) {
-${source}
+${source.replace(/<\/(script)/gi, "<\\/$1")}
       }).call(window, __hfScopedDocument, __hfScopedGsap, __hfScopedWindow, __hfScopedHyperframes);
     } catch (_err) {
       console.error(__hfErrorLabel, __hfCompId, _err);
