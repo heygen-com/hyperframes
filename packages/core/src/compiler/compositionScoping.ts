@@ -216,7 +216,6 @@ export function wrapScopedCompositionScript(
   const authoredRootIdFormsLiteral = JSON.stringify(
     getAuthoredRootIdSelectorForms(authoredRootId?.trim() || ""),
   );
-  const sourceLiteral = JSON.stringify(source);
   return `(function(){
   var __hfCompId = ${compositionIdLiteral};
   var __hfTimelineCompId = ${timelineCompositionIdLiteral};
@@ -486,8 +485,9 @@ export function wrapScopedCompositionScript(
       });
   var __hfRun = function() {
     try {
-      var __hfScript = Function("document", "gsap", "window", "__hyperframes", ${sourceLiteral});
-      __hfScript.call(window, __hfScopedDocument, __hfScopedGsap, __hfScopedWindow, __hfScopedHyperframes);
+      (function(document, gsap, window, __hyperframes) {
+${source}
+      }).call(window, __hfScopedDocument, __hfScopedGsap, __hfScopedWindow, __hfScopedHyperframes);
     } catch (_err) {
       console.error(__hfErrorLabel, __hfCompId, _err);
     }
