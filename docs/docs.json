@@ -74,13 +74,14 @@
               "guides/pipeline",
               "guides/html-in-canvas",
               "guides/website-to-video",
+              "guides/antigravity",
+              "guides/copilot-cli",
               "guides/claude-design",
               "guides/open-design",
               "guides/prompting",
               "guides/hyperframes-vs-remotion",
               "guides/gsap-animation",
               "guides/rendering",
-              "guides/deploy",
               "guides/remove-background",
               "guides/hdr",
               "guides/4k-rendering",
@@ -89,6 +90,15 @@
               "guides/video-editor-cheatsheet",
               "guides/common-mistakes",
               "guides/troubleshooting"
+            ]
+          },
+          {
+            "group": "Deploy",
+            "pages": [
+              "guides/deploy",
+              "deploy/aws-lambda",
+              "deploy/templates-on-lambda",
+              "deploy/migrating-to-hyperframes-lambda"
             ]
           }
         ]
@@ -112,16 +122,21 @@
               "catalog/components/caption-parallax-layers",
               "catalog/components/caption-particle-burst",
               "catalog/components/caption-pill-karaoke",
-              "catalog/components/caption-texture-lava",
+              "catalog/components/caption-texture",
               "catalog/components/caption-weight-shift"
             ]
           },
           {
             "group": "HTML-in-Canvas",
             "pages": [
+              "catalog/blocks/ios26-liquid-glass",
+              "catalog/blocks/liquid-glass-context-menu",
+              "catalog/blocks/liquid-glass-media-controls",
+              "catalog/blocks/liquid-glass-notification",
+              "catalog/blocks/liquid-glass-widgets",
+              "catalog/blocks/macos-tahoe-liquid-glass",
               "catalog/blocks/vfx-iphone-device",
               "catalog/blocks/vfx-liquid-background",
-              "catalog/blocks/vfx-liquid-glass",
               "catalog/blocks/vfx-magnetic",
               "catalog/blocks/vfx-portal",
               "catalog/blocks/vfx-shatter",
@@ -190,27 +205,25 @@
             ]
           },
           {
-            "group": "Maps",
-            "pages": [
-              "catalog/blocks/us-map",
-              "catalog/blocks/us-map-bubble",
-              "catalog/blocks/us-map-hex",
-              "catalog/blocks/us-map-flow",
-              "catalog/blocks/world-map",
-              "catalog/blocks/spain-map"
-            ]
-          },
-          {
             "group": "Data",
             "pages": [
-              "catalog/blocks/data-chart"
+              "catalog/blocks/data-chart",
+              "catalog/blocks/spain-map",
+              "catalog/blocks/us-map",
+              "catalog/blocks/us-map-bubble",
+              "catalog/blocks/us-map-flow",
+              "catalog/blocks/us-map-hex",
+              "catalog/blocks/world-map"
             ]
           },
           {
             "group": "Effects",
             "pages": [
+              "catalog/components/caption-blend-difference",
               "catalog/components/grain-overlay",
               "catalog/components/grid-pixelate-wipe",
+              "catalog/components/parallax-unzoom",
+              "catalog/components/parallax-zoom",
               "catalog/components/shimmer-sweep",
               "catalog/components/texture-mask-text",
               "catalog/components/vignette"
@@ -237,13 +250,6 @@
               "packages/producer",
               "packages/studio",
               "packages/cli"
-            ]
-          },
-          {
-            "group": "Deploy",
-            "pages": [
-              "deploy/aws-lambda",
-              "deploy/migrating-to-hyperframes-lambda"
             ]
           }
         ]

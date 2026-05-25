@@ -137,6 +137,35 @@ describe("resolveProjectRelativeSrc — sub-composition path clamping", () => {
       join(compiledDir, "assets/foo.mp4"),
     );
   });
+
+  it("resolves percent-encoded non-Latin filenames across scripts", () => {
+    const projectDir = join(tmp, "project");
+    const cases = [
+      ["arabic", "%D9%87%D9%86%D8%A7-%D9%85%D8%B1%D9%88%D8%A7.mp4"],
+      ["japanese", "%E6%97%A5%E6%9C%AC%E8%AA%9E.mp4"],
+      ["cyrillic", "%D0%BF%D1%80%D0%B8%D0%B2%D0%B5%D1%82.mp4"],
+      ["korean", "%ED%95%9C%EA%B8%80.mp4"],
+    ] as const;
+
+    for (const [, encodedFilename] of cases) {
+      const filename = decodeURIComponent(encodedFilename);
+      writeFileSync(join(projectDir, "assets", filename), "");
+
+      expect(resolveProjectRelativeSrc(`assets/${encodedFilename}`, projectDir)).toBe(
+        join(projectDir, "assets", filename),
+      );
+    }
+  });
+
+  it("falls back to literal filenames when percent sequences are malformed", () => {
+    const projectDir = join(tmp, "project");
+    const filename = "100%-discount.mp4";
+    writeFileSync(join(projectDir, "assets", filename), "");
+
+    expect(resolveProjectRelativeSrc(`assets/${filename}`, projectDir)).toBe(
+      join(projectDir, "assets", filename),
+    );
+  });
 });
 
 describe("parseVideoElements", () => {
@@ -395,8 +424,10 @@ describe.skipIf(!HAS_FFMPEG)("extractAllVideoFrames on a VFR source", () => {
     expect(result.extracted).toHaveLength(1);
     const frames = readdirSync(join(outputDir, "v1")).filter((f) => f.endsWith(".jpg"));
     // Pre-fix behavior produced ~90 frames (a 25% shortfall).
-    expect(frames.length).toBeGreaterThanOrEqual(119);
-    expect(frames.length).toBeLessThanOrEqual(121);
+    // ±3 tolerance: FFmpeg's VFR→CFR normalization yields slightly different
+    // frame counts across versions (timestamp rounding in the fps filter).
+    expect(frames.length).toBeGreaterThanOrEqual(117);
+    expect(frames.length).toBeLessThanOrEqual(123);
 
     expect(result.phaseBreakdown).toBeDefined();
     expect(result.phaseBreakdown.extractMs).toBeGreaterThan(0);
@@ -656,8 +687,9 @@ describe.skipIf(!HAS_FFMPEG)("extractAllVideoFrames on a VFR source", () => {
     const frames = readdirSync(frameDir)
       .filter((f) => f.endsWith(".jpg"))
       .sort();
-    expect(frames.length).toBeGreaterThanOrEqual(299);
-    expect(frames.length).toBeLessThanOrEqual(301);
+    // ±3 tolerance: same FFmpeg VFR→CFR rounding variance as the mid-segment test.
+    expect(frames.length).toBeGreaterThanOrEqual(297);
+    expect(frames.length).toBeLessThanOrEqual(303);
 
     let prevHash: string | null = null;
     let duplicates = 0;

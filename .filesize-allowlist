@@ -1,9 +1,0 @@
-packages/studio/src/player/hooks/useTimelinePlayer.ts
-packages/studio/src/hooks/useManifestPersistence.ts
-packages/studio/src/player/components/PlayerControls.tsx
-packages/studio/src/components/editor/manualEdits.test.ts
-packages/studio/src/player/hooks/useTimelinePlayer.test.ts
-packages/studio/src/components/editor/manualEditsDom.ts
-packages/studio/src/utils/sourcePatcher.ts
-packages/studio/src/App.tsx
-packages/studio/src/player/components/Timeline.tsx

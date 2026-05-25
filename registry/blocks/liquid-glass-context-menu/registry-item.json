@@ -1,0 +1,25 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "liquid-glass-context-menu",
+  "type": "hyperframes:block",
+  "title": "Liquid Glass Context Menu",
+  "description": "Frosted glass context menu panel drifting over an aurora shader background",
+  "stability": "experimental",
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 8,
+  "tags": ["html-in-canvas", "liquid-glass-html-in-canvas", "webgpu"],
+  "files": [
+    {
+      "path": "liquid-glass-context-menu.html",
+      "target": "compositions/liquid-glass-context-menu.html",
+      "type": "hyperframes:composition"
+    }
+  ],
+  "preview": {
+    "video": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/liquid-glass-context-menu.mp4",
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/liquid-glass-context-menu.png"
+  }
+}

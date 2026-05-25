@@ -31,6 +31,7 @@ declare global {
     __clipManifest?: RuntimeTimelineMessage;
     __playerReady?: boolean;
     __renderReady?: boolean;
+    __hfRuntimeTeardown?: (() => void) | null;
     __HF_PARITY_MODE?: boolean;
     __HF_FPS?: number;
     __HF_MAX_DURATION_SEC?: number;

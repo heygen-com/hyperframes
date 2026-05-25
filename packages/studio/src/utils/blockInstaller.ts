@@ -5,18 +5,33 @@ import {
   resolveTimelineAssetInitialGeometry,
 } from "./timelineAssetDrop";
 import { collectHtmlIds } from "./studioHelpers";
-import {
-  buildTrackZIndexMap,
-  formatTimelineAttributeNumber,
-} from "../player/components/timelineEditing";
+import { formatTimelineAttributeNumber } from "../player/components/timelineEditing";
 import { saveProjectFilesWithHistory } from "./studioFileHistory";
 import type { EditHistoryKind } from "./editHistory";
+
+function getMaxZIndexFromIframe(iframe: HTMLIFrameElement | null): number {
+  try {
+    const doc = iframe?.contentDocument;
+    if (!doc) return 0;
+    let max = 0;
+    for (const el of doc.body.querySelectorAll("*")) {
+      const z = parseInt(getComputedStyle(el).zIndex, 10);
+      if (Number.isFinite(z) && z > max) max = z;
+    }
+    return max;
+  } catch {
+    return 0;
+  }
+}
 
 interface AddBlockOptions {
   projectId: string;
   blockName: string;
   activeCompPath: string | null;
   placement?: { start: number; track: number };
+  visualPosition?: { left: number; top: number };
+  previewIframe?: HTMLIFrameElement | null;
+  currentTime?: number;
   timelineElements: TimelineElement[];
   readProjectFile: (path: string) => Promise<string>;
   writeProjectFile: (path: string, content: string) => Promise<void>;
@@ -47,6 +62,7 @@ export async function addBlockToProject(
     blockName,
     activeCompPath,
     placement,
+    visualPosition,
     timelineElements,
     readProjectFile,
     writeProjectFile,
@@ -105,20 +121,18 @@ export async function addBlockToProject(
       const isBlock = block.type === "hyperframes:block";
       const hostDims = resolveTimelineAssetInitialGeometry(originalContent);
 
+      const currentTime = opts.currentTime ?? 0;
       const start = placement
         ? Number(formatTimelineAttributeNumber(placement.start))
-        : isBlock
-          ? relevantElements.reduce(
-              (max, te) => Math.max(max, (te.start ?? 0) + (te.duration ?? 0)),
-              0,
-            )
-          : 0;
-      const duration = isBlock
-        ? (block as { duration: number }).duration
-        : relevantElements.reduce(
-            (max, te) => Math.max(max, (te.start ?? 0) + (te.duration ?? 0)),
-            10,
-          );
+        : Number(formatTimelineAttributeNumber(currentTime));
+      const blockDuration =
+        "duration" in block ? (block as { duration: number }).duration : undefined;
+      const duration =
+        blockDuration ??
+        relevantElements.reduce(
+          (max, te) => Math.max(max, (te.start ?? 0) + (te.duration ?? 0)),
+          10,
+        );
       const track =
         placement?.track ??
         (isBlock
@@ -127,27 +141,42 @@ export async function addBlockToProject(
             ? Math.max(...relevantElements.map((te) => te.track)) + 1
             : 1);
 
-      const trackZIndices = buildTrackZIndexMap([...relevantElements.map((te) => te.track), track]);
-      const zIndex = trackZIndices.get(track) ?? 1;
+      const zIndex = getMaxZIndexFromIframe(opts.previewIframe ?? null) + 1;
 
-      const width = isBlock
-        ? (block as { dimensions: { width: number } }).dimensions.width
-        : hostDims.width;
-      const height = isBlock
-        ? (block as { dimensions: { height: number } }).dimensions.height
-        : hostDims.height;
+      const width = hostDims.width;
+      const height = hostDims.height;
 
-      const subCompHtml =
-        `<div data-composition-id="${compId}" ` +
-        `data-composition-src="${compositionFile}" ` +
-        `data-start="${formatTimelineAttributeNumber(start)}" ` +
-        `data-duration="${formatTimelineAttributeNumber(duration)}" ` +
-        `data-track-index="${track}" ` +
-        `data-width="${width}" data-height="${height}" ` +
-        `style="position: absolute; left: 0px; top: 0px; width: ${width}px; height: ${height}px; z-index: ${zIndex}">` +
-        `</div>`;
+      const left = visualPosition ? Math.round(visualPosition.left) : 0;
+      const top = visualPosition ? Math.round(visualPosition.top) : 0;
 
-      const patchedContent = insertTimelineAssetIntoSource(originalContent, subCompHtml);
+      const subCompHtml = [
+        `<div`,
+        `  data-composition-id="${compId}"`,
+        `  data-composition-src="${compositionFile}"`,
+        `  data-start="${formatTimelineAttributeNumber(start)}"`,
+        `  data-duration="${formatTimelineAttributeNumber(duration)}"`,
+        `  data-track-index="${track}"`,
+        `  data-width="${width}"`,
+        `  data-height="${height}"`,
+        `  style="position: absolute; left: ${left}px; top: ${top}px; width: ${width}px; height: ${height}px; z-index: ${zIndex}"`,
+        `></div>`,
+      ].join("\n");
+
+      let patchedContent = insertTimelineAssetIntoSource(originalContent, subCompHtml);
+
+      const newEnd = start + duration;
+      const rootDurMatch = patchedContent.match(
+        /(<[^>]*data-composition-id="[^"]*"[^>]*data-duration=")([^"]*)(")/,
+      );
+      if (rootDurMatch) {
+        const rootDur = parseFloat(rootDurMatch[2]!);
+        if (newEnd > rootDur) {
+          patchedContent = patchedContent.replace(
+            rootDurMatch[0],
+            `${rootDurMatch[1]}${formatTimelineAttributeNumber(newEnd)}${rootDurMatch[3]}`,
+          );
+        }
+      }
 
       await saveProjectFilesWithHistory({
         projectId,

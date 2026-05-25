@@ -551,10 +551,6 @@ describe("buildEncoderArgs lockGopForChunkConcat", () => {
     expect(args.indexOf("-x264-params")).toBe(-1);
   });
 
-  // Closed-GOP for libvpx-vp9 is required to make `ffmpeg -f concat -c copy`
-  // stitch VP9 chunks losslessly: every chunk's first frame must be an
-  // independently-decodable keyframe with no alt-ref references reaching
-  // back across the seam.
   it("true appends closed-GOP args for libvpx-vp9", () => {
     const args = buildEncoderArgs(
       {
@@ -570,16 +566,9 @@ describe("buildEncoderArgs lockGopForChunkConcat", () => {
     );
     expect(args[args.indexOf("-g") + 1]).toBe("240");
     expect(args[args.indexOf("-keyint_min") + 1]).toBe("240");
-    // Alt-ref frames are non-displayable references that break concat-copy
-    // at chunk seams; closed-GOP must disable them.
     expect(args[args.indexOf("-auto-alt-ref") + 1]).toBe("0");
-    // cpu-used is locked so workers with different libvpx-vp9 defaults
-    // produce visually consistent output across chunk boundaries.
     expect(args[args.indexOf("-cpu-used") + 1]).toBe("2");
-    // libvpx-vp9 uses `-deadline good` for non-ultrafast presets — the
-    // closed-GOP path doesn't change that.
     expect(args[args.indexOf("-deadline") + 1]).toBe("good");
-    // x264/x265-only params must not leak into the VP9 branch.
     expect(args.indexOf("-x264-params")).toBe(-1);
     expect(args.indexOf("-x265-params")).toBe(-1);
     expect(args.indexOf("-sc_threshold")).toBe(-1);

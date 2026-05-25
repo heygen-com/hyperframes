@@ -12,6 +12,7 @@ import {
 } from "./editor/manualEditingAvailability";
 import { useStudioContext } from "../contexts/StudioContext";
 import { useDomEditContext } from "../contexts/DomEditContext";
+import type { BlockPreviewInfo } from "./sidebar/BlocksTab";
 
 export interface StudioPreviewAreaProps {
   timelineToolbar: ReactNode;
@@ -29,6 +30,10 @@ export interface StudioPreviewAreaProps {
     blockName: string,
     placement: Pick<TimelineElement, "start" | "track">,
   ) => Promise<void> | void;
+  handlePreviewBlockDrop?: (
+    blockName: string,
+    position: { left: number; top: number },
+  ) => Promise<void> | void;
   handleTimelineFileDrop: (
     files: File[],
     placement?: Pick<TimelineElement, "start" | "track">,
@@ -45,6 +50,7 @@ export interface StudioPreviewAreaProps {
   setCompIdToSrc: (map: Map<string, string>) => void;
   setCompositionLoading: (loading: boolean) => void;
   shouldShowSelectedDomBounds: boolean;
+  blockPreview?: BlockPreviewInfo | null;
 }
 
 export function StudioPreviewArea({
@@ -53,6 +59,7 @@ export function StudioPreviewArea({
   handleTimelineElementDelete,
   handleTimelineAssetDrop,
   handleTimelineBlockDrop,
+  handlePreviewBlockDrop,
   handleTimelineFileDrop,
   handleTimelineElementMove,
   handleTimelineElementResize,
@@ -60,6 +67,7 @@ export function StudioPreviewArea({
   setCompIdToSrc,
   setCompositionLoading,
   shouldShowSelectedDomBounds,
+  blockPreview,
 }: StudioPreviewAreaProps) {
   const {
     projectId,
@@ -104,6 +112,7 @@ export function StudioPreviewArea({
         onDeleteElement={handleTimelineElementDelete}
         onAssetDrop={handleTimelineAssetDrop}
         onBlockDrop={handleTimelineBlockDrop}
+        onPreviewBlockDrop={handlePreviewBlockDrop}
         onFileDrop={handleTimelineFileDrop}
         onMoveElement={handleTimelineElementMove}
         onResizeElement={handleTimelineElementResize}
@@ -123,7 +132,26 @@ export function StudioPreviewArea({
         }}
         onIframeRef={handlePreviewIframeRef}
         previewOverlay={
-          captionEditMode ? (
+          blockPreview ? (
+            <div className="absolute inset-0 z-30 bg-black pointer-events-none">
+              {blockPreview.videoUrl ? (
+                <video
+                  src={blockPreview.videoUrl}
+                  autoPlay
+                  muted
+                  loop
+                  playsInline
+                  className="w-full h-full object-contain"
+                />
+              ) : blockPreview.posterUrl ? (
+                <img
+                  src={blockPreview.posterUrl}
+                  alt={blockPreview.title}
+                  className="w-full h-full object-contain"
+                />
+              ) : null}
+            </div>
+          ) : captionEditMode ? (
             <CaptionOverlay iframeRef={previewIframeRef} />
           ) : STUDIO_INSPECTOR_PANELS_ENABLED ? (
             <DomEditOverlay

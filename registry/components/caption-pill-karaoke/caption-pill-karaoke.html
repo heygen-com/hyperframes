@@ -24,16 +24,17 @@
         height: 1080px;
         margin: 0;
         overflow: hidden;
-        background: #000000;
+        background: transparent;
         font-family: "Poppins", Arial, sans-serif;
       }
 
       #pill-karaoke {
+        pointer-events: none;
         position: relative;
         width: 1920px;
         height: 1080px;
         overflow: hidden;
-        background: #000000;
+        background: transparent;
       }
 
       #avatar-video {
@@ -126,6 +127,7 @@
     <div
       id="pill-karaoke"
       data-composition-id="caption-pill-karaoke"
+      data-timeline-locked
       data-start="0"
       data-duration="8"
       data-fps="30"

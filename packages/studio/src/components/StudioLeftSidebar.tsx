@@ -7,11 +7,13 @@ import { usePanelLayoutContext } from "../contexts/PanelLayoutContext";
 import { useStudioContext } from "../contexts/StudioContext";
 import { useFileManagerContext } from "../contexts/FileManagerContext";
 import { getPersistedRenderSettings } from "./renders/renderSettings";
+import type { BlockPreviewInfo } from "./sidebar/BlocksTab";
 
 export interface StudioLeftSidebarProps {
   leftSidebarRef: RefObject<LeftSidebarHandle | null>;
   onSelectComposition: (comp: string) => void;
   onAddBlock: (blockName: string) => void;
+  onPreviewBlock?: (preview: BlockPreviewInfo | null) => void;
   onLint: () => void;
   linting: boolean;
 }
@@ -21,6 +23,7 @@ export function StudioLeftSidebar({
   leftSidebarRef,
   onSelectComposition,
   onAddBlock,
+  onPreviewBlock,
   onLint,
   linting,
 }: StudioLeftSidebarProps) {
@@ -128,6 +131,7 @@ export function StudioLeftSidebar({
         linting={linting}
         onToggleCollapse={toggleLeftSidebar}
         onAddBlock={onAddBlock}
+        onPreviewBlock={onPreviewBlock}
       />
       <div
         className="group w-2 flex-shrink-0 cursor-col-resize flex items-center justify-center"

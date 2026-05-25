@@ -1,17 +1,18 @@
 import { refreshRuntimeMediaCache, type RuntimeMediaClip } from "./media";
 
-// Compositions with fewer than 6 timed clips rarely exceed browser memory
-// limits during eager preload. The threshold avoids preload management
-// overhead for typical compositions while catching the heavy-media case
-// (e.g., 20 clips / 6GB reported in heygen-com/hyperframes#729).
-const LAZY_THRESHOLD = 6;
+// Start lazy preload management at 3 clips to keep memory pressure low from
+// the start. The previous threshold of 6 let medium compositions (4–5 heavy
+// videos) saturate browser memory before the preloader kicked in.
+const LAZY_THRESHOLD = 3;
 const LOOKAHEAD_SECONDS = 10;
+const LOOKBEHIND_SECONDS = 3;
 const LOOKAHEAD_MIN_CLIPS = 2;
-// Cap on simultaneously promoted (buffered) clips. When the lookahead window
-// contains more clips than this (e.g., many short clips), all window clips
-// stay promoted — the cap is defense-in-depth, not a hard ceiling. The primary
-// memory bound comes from window-based eviction in syncWindow().
-const MAX_PROMOTED = 5;
+// Adaptive cap: base of 4 for small sets, clamped to 6 for larger ones.
+// The window-based eviction in syncWindow() is the primary memory bound;
+// this cap is defense-in-depth for compositions with many short clips
+// packed into the lookahead window.
+const MAX_PROMOTED_BASE = 4;
+const MAX_PROMOTED_CEIL = 6;
 
 export interface MediaPreloadManager {
   refresh(): void;
@@ -91,23 +92,23 @@ export function createMediaPreloadManager(options?: {
       windowEls.add(clip.el);
     }
 
-    // Evict clips no longer in window, oldest first
     for (const clip of clips) {
       if (promoted.has(clip.el) && !windowEls.has(clip.el)) {
         evictClip(clip);
       }
     }
 
-    // If still over budget after removing out-of-window clips,
-    // evict the oldest promoted that isn't in the current window
-    while (promotionOrder.length > MAX_PROMOTED) {
+    const maxPromoted = Math.min(
+      MAX_PROMOTED_CEIL,
+      MAX_PROMOTED_BASE + Math.floor(clips.length / 10),
+    );
+    while (promotionOrder.length > maxPromoted) {
       const oldest = promotionOrder[0];
-      if (windowEls.has(oldest)) break; // don't evict something currently needed
+      if (windowEls.has(oldest)) break;
       const clip = clips.find((c) => c.el === oldest);
       if (clip) {
         evictClip(clip);
       } else {
-        // Element no longer in clips list, just remove from tracking
         promoted.delete(oldest);
         promotionOrder.shift();
       }
@@ -115,13 +116,15 @@ export function createMediaPreloadManager(options?: {
   }
 
   function getClipsInWindow(timeSeconds: number): Set<RuntimeMediaClip> {
+    const windowStart = timeSeconds - LOOKBEHIND_SECONDS;
     const windowEnd = timeSeconds + LOOKAHEAD_SECONDS;
     const inWindow = new Set<RuntimeMediaClip>();
 
     for (const clip of clips) {
       const active = timeSeconds >= clip.start && timeSeconds < clip.end;
       const inLookahead = clip.start >= timeSeconds && clip.start <= windowEnd;
-      if (active || inLookahead) {
+      const inLookbehind = clip.end > windowStart && clip.end <= timeSeconds;
+      if (active || inLookahead || inLookbehind) {
         inWindow.add(clip);
       }
     }

@@ -152,6 +152,15 @@ body {
   background: rgba(255, 255, 255, 0.1);
 }
 
+@keyframes hf-thumb-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
 .hf-loader-progress__fill {
   width: 100%;
   height: 100%;

@@ -304,9 +304,12 @@ const EXTRACT_SCRIPT = `(() => {
     // Keep SVGs that have a label OR are at least 16px wide OR are inside a logo/brand context
     var inLogoContext = svg.closest('[class*="logo"], [class*="brand"], [class*="partner"], [class*="customer"], [class*="marquee"]') !== null;
     if (!label && !inLogoContext && (!w || parseInt(w) < 16)) return null;
+    var rect = svg.getBoundingClientRect();
     return {
       label: label || undefined,
       viewBox: svg.getAttribute("viewBox") || undefined,
+      width: Math.round(rect.width),
+      height: Math.round(rect.height),
       outerHTML: svg.outerHTML.slice(0, 10000),
       isLogo: (label && label.toLowerCase().indexOf("logo") !== -1) || svg.closest('[class*="logo"], [class*="brand"], [class*="home"], [class*="marquee"], [class*="partner"], [class*="customer"]') !== null
     };

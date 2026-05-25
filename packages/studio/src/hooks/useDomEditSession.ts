@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import type { TimelineElement } from "../player";
 import { STUDIO_INSPECTOR_PANELS_ENABLED } from "../components/editor/manualEditingAvailability";
 import { findElementForSelection, type DomEditSelection } from "../components/editor/domEditing";
@@ -56,6 +56,7 @@ export interface UseDomEditSessionParams {
   setRefreshKey: React.Dispatch<React.SetStateAction<number>>;
   openSourceForSelection?: (sourceFile: string, target: PatchTarget) => void;
   selectSidebarTab?: (tab: SidebarTab) => void;
+  getSidebarTab?: () => SidebarTab;
 }
 
 // ── Hook ──
@@ -93,6 +94,7 @@ export function useDomEditSession({
   setRefreshKey: _setRefreshKey,
   openSourceForSelection,
   selectSidebarTab,
+  getSidebarTab,
 }: UseDomEditSessionParams) {
   void _setRefreshKey;
 
@@ -151,7 +153,6 @@ export function useDomEditSession({
     setAgentModalOpen,
     setAgentPromptSelectionContext,
     setAgentModalAnchorPoint,
-    preloadAgentPromptSnippet,
     handleAskAgent,
     handleAgentModalSubmit,
   } = useAskAgentModal({
@@ -181,10 +182,6 @@ export function useDomEditSession({
     applyDomSelection,
     resolveDomSelectionFromPreviewPoint,
     updateDomEditHoverSelection,
-    preloadAgentPromptSnippet,
-    setAgentPromptSelectionContext,
-    setAgentModalAnchorPoint,
-    setAgentModalOpen,
     onClickToSource,
   });
 
@@ -285,6 +282,22 @@ export function useDomEditSession({
     syncPreviewHistoryHotkey,
     applyStudioManualEditsToPreviewRef,
   ]);
+
+  // Auto-reveal source when an element is selected while the Code tab is active.
+  // Use a ref for the callback so the effect only fires on selection changes,
+  // not when openSourceForSelection is recreated due to editingFile content updates.
+  const openSourceRef = useRef(openSourceForSelection);
+  openSourceRef.current = openSourceForSelection;
+  useEffect(() => {
+    if (!domEditSelection || !openSourceRef.current || !getSidebarTab) return;
+    if (!domEditSelection.sourceFile) return;
+    if (getSidebarTab() !== "code") return;
+    openSourceRef.current(domEditSelection.sourceFile, {
+      id: domEditSelection.id,
+      selector: domEditSelection.selector,
+      selectorIndex: domEditSelection.selectorIndex,
+    });
+  }, [domEditSelection, getSidebarTab]);
 
   return {
     // State

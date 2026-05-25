@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 
@@ -14,6 +15,21 @@ const ARTIFACT_NAMES = ["hyperframe-runtime.js", "hyperframe.runtime.iife.js"];
  */
 export async function loadRuntimeSource(): Promise<string | null> {
   return (await buildFromSource()) ?? (await getInlinedRuntime()) ?? readPrebuiltArtifact();
+}
+
+export async function loadRuntimeSourceSignature(): Promise<string | null> {
+  const source = await loadRuntimeSource();
+  if (!source) return null;
+  return createHash("sha256").update(source).digest("hex");
+}
+
+export function hashSignatureParts(parts: Array<string | null | undefined>): string {
+  const hash = createHash("sha256");
+  for (const part of parts) {
+    hash.update(part ?? "");
+    hash.update("\n--hf-signature-part--\n");
+  }
+  return hash.digest("hex");
 }
 
 // ── Strategy 1: live build from source (dev only) ──────────────────────────

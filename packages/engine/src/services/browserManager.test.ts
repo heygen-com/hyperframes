@@ -20,6 +20,7 @@ describe("buildChromeArgs browser GPU mode", () => {
   it("uses SwiftShader software GL by default for reproducible local renders", () => {
     const args = buildChromeArgs(base);
     expect(args).toContain("--enable-features=CanvasDrawElement");
+    expect(args).not.toContain("--enable-unsafe-webgpu");
     expect(args).toContain("--use-gl=angle");
     expect(args).toContain("--use-angle=swiftshader");
     expect(args).toContain("--enable-unsafe-swiftshader");
@@ -28,6 +29,7 @@ describe("buildChromeArgs browser GPU mode", () => {
 
   it("uses Metal-backed ANGLE for hardware browser GPU mode on macOS", () => {
     const args = buildChromeArgs({ ...base, platform: "darwin" }, { browserGpuMode: "hardware" });
+    expect(args).toContain("--enable-unsafe-webgpu");
     expect(args).toContain("--use-gl=angle");
     expect(args).toContain("--use-angle=metal");
     expect(args).toContain("--enable-gpu-rasterization");

@@ -24,16 +24,17 @@
         height: 1080px;
         margin: 0;
         overflow: hidden;
-        background: #000000;
+        background: transparent;
         font-family: "Montserrat", Arial, sans-serif;
       }
 
       #weight-shift {
+        pointer-events: none;
         position: relative;
         width: 1920px;
         height: 1080px;
         overflow: hidden;
-        background: #000000;
+        background: transparent;
       }
 
       #avatar-video {
@@ -112,6 +113,7 @@
     <div
       id="weight-shift"
       data-composition-id="caption-weight-shift"
+      data-timeline-locked
       data-start="0"
       data-duration="8"
       data-fps="30"

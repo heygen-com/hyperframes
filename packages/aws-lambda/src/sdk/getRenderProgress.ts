@@ -73,7 +73,7 @@ export interface RenderProgress {
   framesRendered: number;
   /** `null` until Plan completes. */
   totalFrames: number | null;
-  /** Count of `LambdaFunctionScheduled` events seen in the history so far. */
+  /** Total Lambda invocations scheduled so far (both optimized + raw task integrations). */
   lambdasInvoked: number;
   costs: RenderCost;
   /** Final output object if Assemble succeeded; `null` otherwise. */
@@ -198,9 +198,35 @@ function summarizeHistory(events: HistoryEvent[], memoryMb: number): HistorySumm
         stateTransitions++;
         currentLambdaState = ev.stateEnteredEventDetails?.name ?? currentLambdaState;
         break;
+      // Optimized `lambda:invoke` task emits Task* events; raw
+      // `lambda:invokeFunction.sync` emits LambdaFunction*. Handle both.
+      case "TaskScheduled":
+        if (ev.taskScheduledEventDetails?.resourceType === "lambda") {
+          lambdasInvoked++;
+        }
+        break;
       case "LambdaFunctionScheduled":
         lambdasInvoked++;
         break;
+      case "TaskSucceeded": {
+        if (ev.taskSucceededEventDetails?.resourceType !== "lambda") break;
+        const wrapped = parseJson(ev.taskSucceededEventDetails?.output);
+        const payload = unwrapLambdaPayload(wrapped);
+        const billedDurationMs = inferBilledMs(payload);
+        lambdaInvocations.push({
+          billedDurationMs,
+          memorySizeMb: memoryMb,
+          estimated: billedDurationMs === 0,
+        });
+        applyPayloadFrameCounts(payload, currentLambdaState, (delta) => {
+          framesRendered += delta;
+        });
+        if (payload && typeof payload === "object") {
+          const obj = payload as Record<string, unknown>;
+          if (typeof obj.TotalFrames === "number") totalFrames = obj.TotalFrames;
+        }
+        break;
+      }
       case "LambdaFunctionSucceeded": {
         const payload = parseJson(ev.lambdaFunctionSucceededEventDetails?.output);
         const billedDurationMs = inferBilledMs(payload);
@@ -209,20 +235,12 @@ function summarizeHistory(events: HistoryEvent[], memoryMb: number): HistorySumm
           memorySizeMb: memoryMb,
           estimated: billedDurationMs === 0,
         });
+        applyPayloadFrameCounts(payload, currentLambdaState, (delta) => {
+          framesRendered += delta;
+        });
         if (payload && typeof payload === "object") {
           const obj = payload as Record<string, unknown>;
           if (typeof obj.TotalFrames === "number") totalFrames = obj.TotalFrames;
-          if (typeof obj.FramesEncoded === "number") {
-            // Plan and Assemble also return FramesEncoded; count framesRendered
-            // only inside the RenderChunk state so we don't double-count
-            // it on the Assemble pass. Keyed off the enclosing state name
-            // (set by the matching StateEntered) rather than the payload's
-            // `Action` field — `Action` is part of the Lambda event
-            // contract and not load-bearing for state-machine identity.
-            if (currentLambdaState === "RenderChunk") {
-              framesRendered += obj.FramesEncoded;
-            }
-          }
         }
         break;
       }
@@ -244,6 +262,14 @@ function summarizeHistory(events: HistoryEvent[], memoryMb: number): HistorySumm
             outputFile = outputS3Uri ? { s3Uri: outputS3Uri, bytes } : outputFile;
           }
         }
+        break;
+      case "TaskFailed":
+        if (ev.taskFailedEventDetails?.resourceType !== "lambda") break;
+        errors.push({
+          state: currentLambdaState ?? "<unknown>",
+          error: ev.taskFailedEventDetails?.error ?? "UNKNOWN",
+          cause: ev.taskFailedEventDetails?.cause ?? "",
+        });
         break;
       case "LambdaFunctionFailed":
         errors.push({
@@ -297,6 +323,37 @@ function parseJson(s: string | undefined): unknown {
   } catch {
     return null;
   }
+}
+
+/**
+ * Optimized `lambda:invoke` wraps the Lambda response as
+ * `{ ExecutedVersion, Payload: {…handler payload…}, StatusCode }`. Raw
+ * `lambda:invokeFunction.sync` puts the handler payload at the root.
+ * Return the inner `Payload` when present so callers read the same fields
+ * either way.
+ */
+function unwrapLambdaPayload(payload: unknown): unknown {
+  if (payload && typeof payload === "object" && "Payload" in payload) {
+    const inner = (payload as { Payload: unknown }).Payload;
+    if (inner && typeof inner === "object") return inner;
+  }
+  return payload;
+}
+
+/**
+ * Bump `framesRendered` only inside the `RenderChunk` state. Plan and
+ * Assemble also report `FramesEncoded`, so a state-blind add would
+ * double-count once Assemble runs.
+ */
+function applyPayloadFrameCounts(
+  payload: unknown,
+  currentLambdaState: string | null,
+  bump: (delta: number) => void,
+): void {
+  if (currentLambdaState !== "RenderChunk") return;
+  if (!payload || typeof payload !== "object") return;
+  const obj = payload as Record<string, unknown>;
+  if (typeof obj.FramesEncoded === "number") bump(obj.FramesEncoded);
 }
 
 /**

@@ -1,0 +1,1472 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Devices Canvas — HTML-in-Canvas API Showcase</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/loaders/DRACOLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/loaders/GLTFLoader.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        background: #050508;
+        overflow: hidden;
+      }
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #050508;
+      }
+      .tahoe-desktop {
+        position: relative;
+        width: 1440px;
+        height: 900px;
+        overflow: hidden;
+        isolation: isolate;
+        background-image:
+          linear-gradient(
+            180deg,
+            rgba(7, 18, 34, 0.08),
+            rgba(7, 18, 34, 0.02) 44%,
+            rgba(7, 18, 34, 0.22)
+          ),
+          url("assets/wallpapers/golden-gate-bridge-san-francisco-5k-0g.jpg");
+        background-size: cover;
+        background-position: center center;
+        color: #fff;
+      }
+      .tahoe-desktop::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        z-index: 0;
+        background:
+          radial-gradient(circle at 18% 22%, rgba(255, 255, 255, 0.2), transparent 28%),
+          linear-gradient(90deg, rgba(0, 0, 0, 0.1), transparent 32%, rgba(255, 255, 255, 0.08));
+      }
+      .tahoe-menu-bar {
+        position: relative;
+        z-index: 6;
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        height: 28px;
+        padding: 5px 14px;
+        background: rgba(20, 47, 83, 0.28);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.22);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.38);
+        font-size: 10px;
+        font-weight: 600;
+        color: rgba(255, 255, 255, 0.94);
+        backdrop-filter: blur(30px) saturate(1.45);
+      }
+      .tahoe-stage {
+        position: relative;
+        z-index: 5;
+        height: 690px;
+      }
+      .tahoe-window {
+        position: absolute;
+        left: 106px;
+        top: 226px;
+        width: 610px;
+        height: 360px;
+        z-index: 5;
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.34);
+        border-radius: 18px;
+        background: rgba(246, 252, 255, 0.7);
+        color: rgba(18, 40, 66, 0.92);
+        backdrop-filter: blur(26px) saturate(1.3);
+        box-shadow:
+          0 22px 58px rgba(6, 38, 82, 0.22),
+          inset 0 1px 0 rgba(255, 255, 255, 0.62);
+      }
+      .tahoe-window-titlebar {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        height: 38px;
+        padding: 9px 14px;
+        background: rgba(255, 255, 255, 0.34);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.28);
+      }
+      .tahoe-traffic-light {
+        display: inline-block;
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+      }
+      .tahoe-finder-body {
+        position: relative;
+        display: flex;
+        height: 322px;
+      }
+      .tahoe-sidebar {
+        width: 158px;
+        padding: 12px;
+        border-right: 1px solid rgba(255, 255, 255, 0.26);
+        background: rgba(255, 255, 255, 0.2);
+        font-size: 10px;
+      }
+      .tahoe-sidebar-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 8px;
+        border-radius: 8px;
+        color: rgba(10, 35, 64, 0.78);
+      }
+      .tahoe-sidebar-row.active {
+        background: rgba(52, 147, 236, 0.26);
+        color: rgba(4, 50, 110, 0.98);
+        font-weight: 700;
+      }
+      .tahoe-sidebar-icon {
+        width: 16px;
+        height: 16px;
+        object-fit: cover;
+        border-radius: 5px;
+        flex: 0 0 auto;
+      }
+      .tahoe-file-grid {
+        flex: 1;
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 10px 8px;
+        align-content: start;
+        padding: 18px 18px;
+      }
+      .tahoe-file {
+        padding: 8px;
+        text-align: center;
+      }
+      .tahoe-folder-icon,
+      .tahoe-document-icon {
+        position: relative;
+        width: 54px;
+        height: 42px;
+        margin: 0 auto 8px;
+        border-radius: 10px;
+        background: linear-gradient(180deg, #9fe1ff 0%, #258dff 100%);
+        box-shadow:
+          inset 0 1px 0 rgba(255, 255, 255, 0.5),
+          0 10px 20px rgba(0, 0, 0, 0.24);
+      }
+      .tahoe-folder-icon::before {
+        content: "";
+        position: absolute;
+        top: -7px;
+        left: 6px;
+        width: 26px;
+        height: 12px;
+        border-radius: 7px 7px 2px 2px;
+        background: linear-gradient(180deg, #9ad8ff 0%, #3ca2ff 100%);
+      }
+      .tahoe-document-icon {
+        width: 40px;
+        height: 52px;
+        border-radius: 8px;
+        background: linear-gradient(180deg, #ffffff 0%, #cfd8e6 100%);
+      }
+      .tahoe-document-icon::after {
+        content: "";
+        position: absolute;
+        top: 9px;
+        left: 9px;
+        width: 22px;
+        height: 3px;
+        border-radius: 2px;
+        background: #7b8796;
+        box-shadow:
+          0 9px 0 #9aa5b2,
+          0 18px 0 #b2bcc8;
+      }
+      .tahoe-file-label {
+        color: rgba(7, 31, 58, 0.94);
+        font-size: 10px;
+        font-weight: 700;
+        line-height: 1.15;
+        text-shadow: 0 1px 4px rgba(255, 255, 255, 0.6);
+      }
+      .tahoe-widgets {
+        position: absolute;
+        left: 28px;
+        top: 44px;
+        z-index: 5;
+        display: grid;
+        grid-template-columns: 92px 92px;
+        gap: 8px;
+      }
+      .tahoe-widget {
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.42);
+        border-radius: 18px;
+        background: rgba(247, 253, 255, 0.72);
+        color: rgba(14, 45, 76, 0.9);
+        backdrop-filter: blur(26px) saturate(1.45);
+        box-shadow:
+          0 18px 34px rgba(13, 61, 115, 0.2),
+          inset 0 1px 0 rgba(255, 255, 255, 0.72);
+      }
+      .tahoe-calendar-widget {
+        width: 92px;
+        height: 110px;
+        padding: 9px;
+      }
+      .tahoe-weather-widget {
+        width: 92px;
+        height: 110px;
+        padding: 9px;
+        background: linear-gradient(160deg, rgba(30, 119, 238, 0.72), rgba(255, 255, 255, 0.44));
+        color: #fff;
+      }
+      .tahoe-media-widget {
+        grid-column: 1 / span 2;
+        width: 192px;
+        height: 96px;
+        background:
+          linear-gradient(140deg, rgba(13, 16, 22, 0.12), rgba(255, 255, 255, 0.24)),
+          radial-gradient(circle at 18% 20%, #ffb88b, transparent 32%),
+          radial-gradient(circle at 76% 28%, #ed2f7a, transparent 34%),
+          linear-gradient(135deg, #451a03, #0f172a);
+      }
+      .tahoe-calendar-days {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        gap: 2px;
+        margin-top: 7px;
+        font-size: 5.5px;
+        font-weight: 800;
+        text-align: center;
+        color: rgba(20, 51, 83, 0.66);
+      }
+      .tahoe-glass-panel {
+        border: 1px solid rgba(255, 255, 255, 0.22);
+        border-radius: 24px;
+        background:
+          linear-gradient(135deg, rgba(255, 255, 255, 0.34), rgba(255, 255, 255, 0.1)),
+          rgba(10, 14, 24, 0.78);
+        box-shadow:
+          inset 0 1px 0 rgba(255, 255, 255, 0.32),
+          0 20px 54px rgba(0, 0, 0, 0.34);
+      }
+      .tahoe-notification {
+        position: absolute;
+        z-index: 7;
+        top: 58px;
+        right: 36px;
+        width: 374px;
+        display: flex;
+        gap: 12px;
+        min-height: 86px;
+        padding: 14px 16px;
+        border: 1px solid rgba(255, 255, 255, 0.42);
+        border-radius: 28px;
+        background:
+          linear-gradient(
+            140deg,
+            rgba(255, 255, 255, 0.62),
+            rgba(255, 255, 255, 0.26) 48%,
+            rgba(255, 255, 255, 0.42)
+          ),
+          rgba(233, 249, 255, 0.56);
+        color: #fff;
+        backdrop-filter: blur(30px) saturate(1.55);
+        box-shadow:
+          0 22px 46px rgba(4, 55, 112, 0.25),
+          inset 0 1px 0 rgba(255, 255, 255, 0.72),
+          inset 0 -18px 38px rgba(255, 255, 255, 0.1);
+      }
+      .tahoe-notification::before {
+        content: "";
+        position: absolute;
+        inset: 1px;
+        border-radius: inherit;
+        pointer-events: none;
+        background: linear-gradient(
+          120deg,
+          rgba(255, 255, 255, 0.58),
+          transparent 34%,
+          rgba(255, 255, 255, 0.22)
+        );
+        mix-blend-mode: screen;
+        opacity: 0.5;
+      }
+      .tahoe-notification img {
+        position: relative;
+        width: 40px;
+        height: 40px;
+        border-radius: 10px;
+        object-fit: cover;
+        flex: 0 0 auto;
+      }
+      .tahoe-panel-title {
+        position: relative;
+        color: rgba(8, 30, 58, 0.98);
+        font-size: 17px;
+        font-weight: 800;
+        line-height: 1.1;
+        text-shadow: 0 1px 6px rgba(255, 255, 255, 0.56);
+      }
+      .tahoe-panel-subtitle {
+        position: relative;
+        margin-top: 4px;
+        color: rgba(9, 36, 66, 0.86);
+        font-size: 12.5px;
+        font-weight: 700;
+        line-height: 1.35;
+        text-shadow: 0 1px 6px rgba(255, 255, 255, 0.48);
+      }
+      .tahoe-control-center {
+        padding: 14px;
+      }
+      .tahoe-toggle-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 10px;
+        margin-top: 12px;
+      }
+      .tahoe-toggle {
+        min-height: 48px;
+        padding: 9px 10px;
+        border-radius: 16px;
+        background: rgba(255, 255, 255, 0.16);
+        color: rgba(255, 255, 255, 0.9);
+        font-size: 12px;
+        font-weight: 760;
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14);
+      }
+      .tahoe-toggle.active {
+        background: linear-gradient(135deg, rgba(0, 122, 255, 0.9), rgba(52, 211, 153, 0.68));
+      }
+      .tahoe-slider {
+        height: 12px;
+        margin-top: 12px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.18);
+        overflow: hidden;
+      }
+      .tahoe-slider::before {
+        content: "";
+        display: block;
+        width: 72%;
+        height: 100%;
+        border-radius: inherit;
+        background: linear-gradient(90deg, #a7f3d0, #38bdf8, #c084fc);
+      }
+      .tahoe-media {
+        padding: 14px;
+      }
+      .tahoe-media-row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-top: 12px;
+      }
+      .tahoe-album {
+        width: 48px;
+        height: 48px;
+        border-radius: 14px;
+        background: linear-gradient(135deg, #ec4899, #f59e0b 48%, #38bdf8);
+        box-shadow: 0 10px 24px rgba(0, 0, 0, 0.3);
+      }
+      .tahoe-dock {
+        position: absolute;
+        z-index: 6;
+        left: 50%;
+        bottom: 24px;
+        width: auto;
+        display: flex;
+        align-items: flex-end;
+        gap: 7px;
+        padding: 8px 12px;
+        border: 1px solid rgba(255, 255, 255, 0.42);
+        border-radius: 22px;
+        background: rgba(255, 255, 255, 0.52);
+        transform: translateX(-50%);
+        backdrop-filter: blur(28px) saturate(1.45);
+        box-shadow:
+          0 22px 44px rgba(6, 38, 82, 0.24),
+          inset 0 1px 0 rgba(255, 255, 255, 0.72);
+      }
+      .tahoe-dock-icon {
+        display: block;
+        width: 46px;
+        height: 46px;
+        object-fit: cover;
+        border-radius: 13px;
+        box-shadow: 0 8px 18px rgba(0, 0, 0, 0.28);
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="macos-tahoe-liquid-glass"
+      data-width="1920"
+      data-height="1080"
+      data-start="0"
+      data-duration="15"
+      data-root="true"
+    >
+      <!-- LIVE HTML captured every frame via drawElementImage  -->
+      <canvas
+        id="cap-phone"
+        layoutsubtree
+        aria-hidden="true"
+        width="390"
+        height="844"
+        style="
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 390px;
+          height: 844px;
+          z-index: -1;
+          pointer-events: none;
+        "
+      >
+        <div
+          id="phone-html"
+          style="
+            width: 390px;
+            height: 844px;
+            overflow: hidden;
+            font-family: Inter, system-ui, sans-serif;
+            color: #e2e8f0;
+          "
+        >
+          <div
+            id="phone-scroll"
+            style="background: linear-gradient(180deg, #0a0a12, #0f0f1a); transform: translateY(0)"
+          >
+            <div
+              style="
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                padding: 14px 18px;
+                border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+              "
+            >
+              <span
+                style="
+                  font-weight: 800;
+                  font-size: 14px;
+                  background: linear-gradient(135deg, #34d399, #3b82f6);
+                  -webkit-background-clip: text;
+                  -webkit-text-fill-color: transparent;
+                "
+                >HyperFrames</span
+              ><span
+                style="
+                  font-size: 10px;
+                  font-weight: 600;
+                  padding: 5px 12px;
+                  border-radius: 6px;
+                  background: #10b981;
+                  color: #fff;
+                "
+                >Log in</span
+              >
+            </div>
+            <div
+              id="phone-title"
+              style="
+                font-size: 26px;
+                font-weight: 800;
+                letter-spacing: -0.5px;
+                padding: 18px 18px 6px;
+                line-height: 1.1;
+                opacity: 0;
+              "
+            >
+              Community Playground
+            </div>
+            <div style="font-size: 11px; color: rgba(255, 255, 255, 0.4); padding: 0 18px 14px">
+              Made with HyperFrames
+            </div>
+            <div style="display: flex; gap: 6px; padding: 0 18px 14px">
+              <span
+                style="
+                  font-size: 9px;
+                  font-weight: 600;
+                  padding: 4px 10px;
+                  border-radius: 16px;
+                  background: rgba(16, 185, 129, 0.15);
+                  color: #10b981;
+                  border: 1px solid rgba(16, 185, 129, 0.3);
+                "
+                >Examples</span
+              ><span
+                id="phone-count"
+                style="
+                  font-size: 9px;
+                  font-weight: 600;
+                  padding: 4px 10px;
+                  border-radius: 16px;
+                  border: 1px solid rgba(255, 255, 255, 0.1);
+                  color: rgba(255, 255, 255, 0.5);
+                "
+                >Catalog 0</span
+              >
+            </div>
+            <div id="phone-cards" style="display: grid; gap: 10px; padding: 0 18px 18px"></div>
+          </div>
+        </div>
+      </canvas>
+
+      <img
+        src="assets/wallpapers/golden-gate-bridge-san-francisco-5k-0g.jpg"
+        alt=""
+        style="position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none"
+      />
+
+      <canvas
+        id="cap-laptop"
+        layoutsubtree
+        aria-hidden="true"
+        width="1440"
+        height="900"
+        style="
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 1440px;
+          height: 900px;
+          z-index: -1;
+          pointer-events: none;
+        "
+      >
+        <div
+          id="laptop-html"
+          style="
+            width: 1440px;
+            height: 900px;
+            overflow: hidden;
+            font-family: Inter, system-ui, sans-serif;
+            color: #e2e8f0;
+          "
+        >
+          <div id="laptop-scroll" class="tahoe-desktop" style="transform: translateY(0)">
+            <div id="laptop-title" style="display: none"></div>
+            <span id="laptop-count" style="display: none"></span>
+            <div id="laptop-cards" style="display: none"></div>
+            <!-- Menu Bar -->
+            <div class="tahoe-menu-bar">
+              <span style="font-weight: 800; font-size: 15px">&#63743;</span>
+              <span style="font-weight: 600">Finder</span>
+              <span>File</span><span>Edit</span><span>View</span><span>Go</span><span>Window</span
+              ><span>Help</span>
+              <div style="flex: 1"></div>
+              <span style="font-size: 10px">CC</span>
+              <span style="font-size: 10px">Search</span>
+              <span style="font-size: 10px">92%</span>
+              <span style="font-size: 10px">Wi-Fi</span>
+              <span style="font-size: 10px; font-variant-numeric: tabular-nums"
+                >Tue Apr 1 9:41 AM</span
+              >
+            </div>
+            <div class="tahoe-widgets">
+              <div class="tahoe-widget tahoe-calendar-widget">
+                <div style="font-size: 6px; font-weight: 900; color: rgba(249, 66, 58, 0.84)">
+                  APRIL
+                </div>
+                <div class="tahoe-calendar-days">
+                  <span>S</span><span>M</span><span>T</span><span>W</span><span>T</span
+                  ><span>F</span><span>S</span> <span></span><span></span
+                  ><span style="color: #fff; background: #f0423a; border-radius: 99px">1</span
+                  ><span>2</span><span>3</span><span>4</span><span>5</span> <span>6</span
+                  ><span>7</span><span>8</span><span>9</span><span>10</span><span>11</span
+                  ><span>12</span> <span>13</span><span>14</span><span>15</span><span>16</span
+                  ><span>17</span><span>18</span><span>19</span> <span>20</span><span>21</span
+                  ><span>22</span><span>23</span><span>24</span><span>25</span><span>26</span>
+                </div>
+              </div>
+              <div class="tahoe-widget tahoe-weather-widget">
+                <div style="font-size: 7px; font-weight: 900">San Francisco</div>
+                <div style="font-size: 28px; font-weight: 800; line-height: 1; margin-top: 4px">
+                  53&deg;
+                </div>
+                <div style="font-size: 7px; font-weight: 800; opacity: 0.9; margin-top: 12px">
+                  Partly Cloudy
+                </div>
+                <div style="font-size: 6px; font-weight: 800; opacity: 0.82">H:58° L:50°</div>
+              </div>
+              <div class="tahoe-widget tahoe-media-widget"></div>
+            </div>
+            <div id="mac-toast" class="tahoe-notification">
+              <img src="assets/icons/toast-messages.jpg" alt="" />
+              <div>
+                <div class="tahoe-panel-title">
+                  <span>Messages</span> <span style="font-size: 11px; opacity: 0.78">now</span>
+                </div>
+                <div class="tahoe-panel-subtitle">Liquid Glass preview is ready for review.</div>
+              </div>
+            </div>
+            <div class="tahoe-stage">
+              <div class="tahoe-window">
+                <div class="tahoe-window-titlebar">
+                  <span class="tahoe-traffic-light" style="background: #ff5f57"></span>
+                  <span class="tahoe-traffic-light" style="background: #febc2e"></span>
+                  <span class="tahoe-traffic-light" style="background: #28c840"></span>
+                  <span
+                    style="
+                      flex: 1;
+                      text-align: center;
+                      font-size: 13px;
+                      font-weight: 600;
+                      color: rgba(20, 46, 76, 0.72);
+                    "
+                    >HyperFrames</span
+                  >
+                </div>
+                <div id="macos-finder-body" class="tahoe-finder-body">
+                  <div class="tahoe-sidebar">
+                    <div class="tahoe-sidebar-row active">
+                      <img class="tahoe-sidebar-icon" src="assets/icons/finder.png" alt="" />
+                      Favorites
+                    </div>
+                    <div class="tahoe-sidebar-row">
+                      <img class="tahoe-sidebar-icon" src="assets/icons/files.jpg" alt="" />
+                      Home
+                    </div>
+                    <div class="tahoe-sidebar-row">
+                      <img class="tahoe-sidebar-icon" src="assets/icons/safari.jpg" alt="" />
+                      Desktop
+                    </div>
+                    <div class="tahoe-sidebar-row">
+                      <img class="tahoe-sidebar-icon" src="assets/icons/mail.jpg" alt="" />
+                      Downloads
+                    </div>
+                    <div class="tahoe-sidebar-row">
+                      <img class="tahoe-sidebar-icon" src="assets/icons/photos.jpg" alt="" />
+                      Pictures
+                    </div>
+                    <div class="tahoe-sidebar-row">
+                      <img class="tahoe-sidebar-icon" src="assets/icons/music.jpg" alt="" />
+                      Music
+                    </div>
+                  </div>
+                  <div class="tahoe-file-grid">
+                    <div class="tahoe-file">
+                      <div class="tahoe-folder-icon"></div>
+                      <div class="tahoe-file-label">packages</div>
+                    </div>
+                    <div class="tahoe-file">
+                      <div class="tahoe-folder-icon"></div>
+                      <div class="tahoe-file-label">registry</div>
+                    </div>
+                    <div class="tahoe-file">
+                      <div class="tahoe-folder-icon"></div>
+                      <div class="tahoe-file-label">docs</div>
+                    </div>
+                    <div class="tahoe-file">
+                      <div class="tahoe-folder-icon"></div>
+                      <div class="tahoe-file-label">skills</div>
+                    </div>
+                    <div class="tahoe-file">
+                      <div class="tahoe-document-icon"></div>
+                      <div class="tahoe-file-label">AGENTS.md</div>
+                    </div>
+                    <div class="tahoe-file">
+                      <div class="tahoe-document-icon"></div>
+                      <div class="tahoe-file-label">package.json</div>
+                    </div>
+                    <div class="tahoe-file">
+                      <div class="tahoe-folder-icon"></div>
+                      <div class="tahoe-file-label">playground</div>
+                    </div>
+                    <div class="tahoe-file">
+                      <div class="tahoe-folder-icon"></div>
+                      <div class="tahoe-file-label">scripts</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="tahoe-dock">
+              <img class="tahoe-dock-icon" src="assets/icons/dock-finder.png" alt="" />
+              <img class="tahoe-dock-icon" src="assets/icons/dock-safari.jpg" alt="" />
+              <img class="tahoe-dock-icon" src="assets/icons/dock-mail.jpg" alt="" />
+              <img class="tahoe-dock-icon" src="assets/icons/calendar.jpg" alt="" />
+              <img class="tahoe-dock-icon" src="assets/icons/dock-photos.jpg" alt="" />
+              <img class="tahoe-dock-icon" src="assets/icons/messages.jpg" alt="" />
+              <img class="tahoe-dock-icon" src="assets/icons/dock-music.jpg" alt="" />
+              <img class="tahoe-dock-icon" src="assets/icons/brave.jpg" alt="" />
+              <img class="tahoe-dock-icon" src="assets/icons/slack.jpg" alt="" />
+            </div>
+          </div>
+        </div>
+      </canvas>
+
+      <canvas
+        id="theater"
+        width="1920"
+        height="1080"
+        style="position: absolute; top: 0; left: 0; width: 1920px; height: 1080px"
+      ></canvas>
+      <div
+        id="driver"
+        class="clip"
+        data-start="0"
+        data-duration="15"
+        data-track-index="0"
+        style="position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none"
+      ></div>
+    </div>
+    <script>
+      var W = 1920,
+        H = 1080,
+        PI = Math.PI;
+
+      // ── Renderer ───────────────────────────────────────────────────────
+      var renderer = new THREE.WebGLRenderer({
+        canvas: document.getElementById("theater"),
+        antialias: true,
+        preserveDrawingBuffer: true,
+      });
+      renderer.setSize(W, H, false);
+      renderer.setPixelRatio(1);
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.15;
+      renderer.outputEncoding = THREE.sRGBEncoding;
+      renderer.setClearColor(0x050508, 1);
+
+      var scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x050508);
+      var camera = new THREE.PerspectiveCamera(34, W / H, 0.1, 100);
+
+      // ── Environment Map ────────────────────────────────────────────────
+      var eC = document.createElement("canvas");
+      eC.width = 1024;
+      eC.height = 512;
+      var ec = eC.getContext("2d");
+      var eg = ec.createLinearGradient(0, 0, 1024, 512);
+      eg.addColorStop(0, "#020307");
+      eg.addColorStop(0.15, "#1a1a2e");
+      eg.addColorStop(0.3, "#ffffff");
+      eg.addColorStop(0.45, "#0a0a1e");
+      eg.addColorStop(0.6, "#ffffff");
+      eg.addColorStop(0.75, "#1e1e2e");
+      eg.addColorStop(1, "#020307");
+      ec.fillStyle = eg;
+      ec.fillRect(0, 0, 1024, 512);
+      ec.globalCompositeOperation = "screen";
+      for (var ei = 0; ei < 7; ei++) {
+        ec.fillStyle = "rgba(255,255,255," + (ei % 2 === 0 ? 0.15 : 0.08) + ")";
+        ec.fillRect((ei % 3) * 100, 60 + ei * 56, 700, 3 + (ei % 2) * 2);
+      }
+      var eT = new THREE.CanvasTexture(eC);
+      eT.mapping = THREE.EquirectangularReflectionMapping;
+      var pm = new THREE.PMREMGenerator(renderer);
+      scene.environment = pm.fromEquirectangular(eT).texture;
+      eT.dispose();
+      pm.dispose();
+
+      // ── Three.js shader backdrop ────────────────────────────────────────
+      var bgUniforms = { uTime: { value: 0 }, uAspect: { value: W / H } };
+      var bgPlane = new THREE.Mesh(
+        new THREE.PlaneGeometry(28, 16),
+        new THREE.ShaderMaterial({
+          uniforms: bgUniforms,
+          vertexShader:
+            "varying vec2 v;void main(){v=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}",
+          fragmentShader:
+            "uniform float uTime;uniform float uAspect;varying vec2 v;float wave(vec2 p,float s,float t){return sin(p.x*s+p.y*s*.57+uTime*t);}void main(){vec2 p=v*2.0-1.0;p.x*=uAspect;float w=wave(p,3.0,.22)+.55*wave(p.yx+vec2(.7,-.2),5.1,.16)+.32*wave(p+vec2(-.4,.5),8.0,-.12);float a=smoothstep(-.75,1.05,w);vec3 navy=vec3(.015,.013,.055);vec3 cyan=vec3(.02,.42,.72);vec3 violet=vec3(.30,.08,.55);vec3 amber=vec3(.95,.42,.04);float ribbon=smoothstep(.22,.95,sin(p.x*2.2-p.y*3.1+uTime*.18));vec3 c=mix(navy,cyan,a);c=mix(c,violet,smoothstep(.16,1.1,wave(p+vec2(.8,.1),2.4,.1)));c+=amber*ribbon*.33;float glow=exp(-dot(p+vec2(.62,-.08),p+vec2(.62,-.08))*1.7);c+=vec3(.10,.45,.55)*glow;float vign=smoothstep(1.85,.25,length(p));gl_FragColor=vec4(c*vign,1.0);}",
+          depthTest: false,
+          depthWrite: false,
+        }),
+      );
+      bgPlane.position.z = -7.5;
+      scene.add(bgPlane);
+
+      var floor = new THREE.Mesh(
+        new THREE.PlaneGeometry(30, 30),
+        new THREE.MeshStandardMaterial({ color: 0x081427, metalness: 0.9, roughness: 0.2 }),
+      );
+      floor.rotation.x = -PI / 2;
+      floor.position.y = -2.5;
+      scene.add(floor);
+
+      scene.add(new THREE.AmbientLight(0x222233, 0.5));
+      var kL = new THREE.DirectionalLight(0xffffff, 2.2);
+      kL.position.set(-3, 4, 5);
+      scene.add(kL);
+      var rL = new THREE.PointLight(0x6366f1, 3, 15);
+      rL.position.set(4, 2, 3);
+      scene.add(rL);
+      var wL = new THREE.PointLight(0xffc8a8, 1.5, 12);
+      wL.position.set(-3, -1, 4);
+      scene.add(wL);
+
+      // ── Live HTML → WebGL Texture  ─
+      var capPhoneCvs = document.getElementById("cap-phone");
+      var capPhoneCtx = capPhoneCvs.getContext("2d");
+      var phoneHtmlEl = document.getElementById("phone-html");
+
+      var capLapCvs = document.getElementById("cap-laptop");
+      var capLapCtx = capLapCvs.getContext("2d");
+      var lapHtmlEl = document.getElementById("laptop-html");
+
+      var apiOk = (function () {
+        var tc = document.createElement("canvas");
+        if (!("layoutSubtree" in tc)) return false;
+        tc.setAttribute("layoutsubtree", "");
+        var ctx = tc.getContext("2d");
+        return ctx && typeof ctx.drawElementImage === "function";
+      })();
+      var paintReady = false;
+
+      function waitForImages() {
+        var images = Array.prototype.slice.call(document.querySelectorAll("img"));
+        return Promise.all(
+          images.map(function (image) {
+            if (image.complete) return Promise.resolve();
+            return new Promise(function (resolveImage) {
+              image.onload = resolveImage;
+              image.onerror = resolveImage;
+            });
+          }),
+        );
+      }
+
+      function waitForPaint(canvas) {
+        return new Promise(function (resolvePaint) {
+          if (!canvas || typeof canvas.requestPaint !== "function") {
+            resolvePaint();
+            return;
+          }
+          var resolved = false;
+          function done() {
+            if (resolved) return;
+            resolved = true;
+            canvas.onpaint = null;
+            resolvePaint();
+          }
+          canvas.onpaint = done;
+          canvas.requestPaint();
+          setTimeout(done, 100);
+        });
+      }
+
+      // Generate card HTML for both screens
+      var cardData = [
+        {
+          bg: "linear-gradient(135deg,#1e3a5f,#2563eb)",
+          text: "100M+ AI team",
+          title: "Notion Showcase",
+          meta: "15s · 1920×1080",
+        },
+        {
+          bg: "linear-gradient(135deg,#4a1942,#db2777)",
+          text: "Design System v4",
+          title: "Dribbble Showcase",
+          meta: "12s · 1920×1080",
+        },
+        {
+          bg: "linear-gradient(135deg,#451a03,#f59e0b)",
+          text: "$1.9T Market Cap",
+          title: "Stripe Showcase",
+          meta: "10s · 1920×1080",
+        },
+        {
+          bg: "linear-gradient(135deg,#064e3b,#10b981)",
+          text: "Ship faster with AI",
+          title: "Vercel Promo",
+          meta: "20s · 1080×1920",
+        },
+        {
+          bg: "linear-gradient(135deg,#1e3a5f,#3b82f6)",
+          text: "Privacy App",
+          title: "iPhone App Store",
+          meta: "8s · 1080×1920",
+        },
+        {
+          bg: "linear-gradient(135deg,#4a1942,#a855f7)",
+          text: "Audio Visualizer",
+          title: "Spotify Remix",
+          meta: "15s · 1920×1080",
+        },
+        {
+          bg: "linear-gradient(135deg,#064e3b,#059669)",
+          text: "Code Animation",
+          title: "Terminal Demo",
+          meta: "12s · 1920×1080",
+        },
+        {
+          bg: "linear-gradient(135deg,#451a03,#d97706)",
+          text: "Launch Video",
+          title: "Product Hunt",
+          meta: "30s · 1920×1080",
+        },
+        {
+          bg: "linear-gradient(135deg,#1e3a5f,#6366f1)",
+          text: "3D Devices",
+          title: "Device Mockups",
+          meta: "15s · 1920×1080",
+        },
+      ];
+      function makeCardHTML(cd, isMobile) {
+        var fs = isMobile ? 12 : 16;
+        return (
+          '<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:' +
+          (isMobile ? 10 : 12) +
+          'px;overflow:hidden;opacity:0" class="anim-card">' +
+          '<div style="width:100%;aspect-ratio:16/9;background:' +
+          cd.bg +
+          ';display:flex;align-items:center;justify-content:center"><span style="font-size:' +
+          fs +
+          'px;font-weight:700;color:rgba(255,255,255,0.7)">' +
+          cd.text +
+          "</span></div>" +
+          '<div style="padding:' +
+          (isMobile ? "8px 10px" : "10px 14px") +
+          '"><div style="font-size:' +
+          (isMobile ? 11 : 13) +
+          'px;font-weight:600;margin-bottom:2px">' +
+          cd.title +
+          '</div><div style="font-size:' +
+          (isMobile ? 9 : 10) +
+          'px;color:rgba(255,255,255,0.3)">' +
+          cd.meta +
+          "</div></div></div>"
+        );
+      }
+      var phoneCardsEl = document.getElementById("phone-cards");
+      var laptopCardsEl = document.getElementById("laptop-cards");
+      for (var ci = 0; ci < cardData.length; ci++) {
+        if (ci < 6) phoneCardsEl.innerHTML += makeCardHTML(cardData[ci], true);
+        laptopCardsEl.innerHTML += makeCardHTML(cardData[ci], false);
+      }
+
+      var phoneTex = new THREE.CanvasTexture(capPhoneCvs);
+      phoneTex.minFilter = THREE.LinearFilter;
+      phoneTex.magFilter = THREE.LinearFilter;
+      phoneTex.generateMipmaps = false;
+      var lapTex = new THREE.CanvasTexture(capLapCvs);
+      lapTex.minFilter = THREE.LinearFilter;
+      lapTex.magFilter = THREE.LinearFilter;
+      lapTex.generateMipmaps = false;
+      var macToastIcon = document.querySelector("#mac-toast img");
+      var macDockIcons = Array.prototype.slice.call(document.querySelectorAll(".tahoe-dock-icon"));
+      var macSidebarIcons = Array.prototype.slice.call(
+        document.querySelectorAll(".tahoe-sidebar-icon"),
+      );
+
+      function roundedRect(ctx, x, y, w, h, r) {
+        ctx.beginPath();
+        ctx.moveTo(x + r, y);
+        ctx.lineTo(x + w - r, y);
+        ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+        ctx.lineTo(x + w, y + h - r);
+        ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+        ctx.lineTo(x + r, y + h);
+        ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+        ctx.lineTo(x, y + r);
+        ctx.quadraticCurveTo(x, y, x + r, y);
+        ctx.closePath();
+      }
+
+      function drawRoundedImage(ctx, image, x, y, w, h, r) {
+        if (!image || !image.complete) return;
+        ctx.save();
+        roundedRect(ctx, x, y, w, h, r);
+        ctx.clip();
+        ctx.drawImage(image, x, y, w, h);
+        ctx.restore();
+      }
+
+      function drawGlassPanel(ctx, x, y, w, h, r) {
+        var g = ctx.createLinearGradient(x, y, x + w, y + h);
+        g.addColorStop(0, "rgba(255,255,255,0.82)");
+        g.addColorStop(0.46, "rgba(245,253,255,0.42)");
+        g.addColorStop(1, "rgba(211,237,255,0.3)");
+        ctx.save();
+        ctx.shadowColor = "rgba(7,47,96,0.2)";
+        ctx.shadowBlur = 24;
+        ctx.shadowOffsetY = 12;
+        roundedRect(ctx, x, y, w, h, r);
+        ctx.fillStyle = g;
+        ctx.fill();
+        ctx.shadowColor = "transparent";
+        ctx.lineWidth = 1.25;
+        ctx.strokeStyle = "rgba(255,255,255,0.72)";
+        ctx.stroke();
+        roundedRect(ctx, x + 2, y + 2, w - 4, h - 4, Math.max(0, r - 2));
+        ctx.strokeStyle = "rgba(255,255,255,0.24)";
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      function drawMenuBar(ctx) {
+        ctx.save();
+        var g = ctx.createLinearGradient(0, 0, 1440, 0);
+        g.addColorStop(0, "rgba(255,255,255,0.34)");
+        g.addColorStop(0.52, "rgba(255,255,255,0.18)");
+        g.addColorStop(1, "rgba(255,255,255,0.3)");
+        ctx.fillStyle = g;
+        ctx.fillRect(0, 0, 1440, 28);
+        ctx.strokeStyle = "rgba(255,255,255,0.46)";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(0, 28);
+        ctx.lineTo(1440, 28);
+        ctx.stroke();
+        ctx.fillStyle = "rgba(255,255,255,0.96)";
+        ctx.font = "800 14px Inter, system-ui, sans-serif";
+        ctx.fillText("Finder", 50, 18);
+        ctx.font = "700 11px Inter, system-ui, sans-serif";
+        var items = ["File", "Edit", "View", "Go", "Window", "Help"];
+        for (var mi = 0; mi < items.length; mi++) ctx.fillText(items[mi], 108 + mi * 46, 18);
+        ctx.textAlign = "right";
+        ctx.fillText("92%   Wi-Fi   Tue Apr 1 9:41 AM", 1414, 18);
+        ctx.textAlign = "left";
+        ctx.restore();
+      }
+
+      function drawDesktopWidgets(ctx) {
+        ctx.save();
+        ctx.textBaseline = "top";
+        drawGlassPanel(ctx, 28, 48, 100, 112, 18);
+        ctx.fillStyle = "rgba(239,68,68,0.92)";
+        ctx.font = "900 8px Inter, system-ui, sans-serif";
+        ctx.fillText("APRIL", 44, 62);
+        ctx.fillStyle = "rgba(15,45,80,0.72)";
+        ctx.font = "800 7px Inter, system-ui, sans-serif";
+        var days = ["S", "M", "T", "W", "T", "F", "S"];
+        for (var di = 0; di < days.length; di++) ctx.fillText(days[di], 42 + di * 10, 82);
+        for (var da = 1; da <= 26; da++) {
+          var dx = 42 + ((da + 1) % 7) * 10;
+          var dy = 98 + Math.floor((da + 1) / 7) * 12;
+          if (da === 1) {
+            ctx.fillStyle = "#ef4444";
+            ctx.beginPath();
+            ctx.arc(dx + 3, dy + 4, 6, 0, PI * 2);
+            ctx.fill();
+            ctx.fillStyle = "#fff";
+          } else {
+            ctx.fillStyle = "rgba(15,45,80,0.62)";
+          }
+          ctx.fillText(String(da), dx, dy);
+        }
+
+        drawGlassPanel(ctx, 138, 48, 112, 112, 18);
+        var wg = ctx.createLinearGradient(138, 48, 250, 160);
+        wg.addColorStop(0, "rgba(43,133,245,0.72)");
+        wg.addColorStop(0.64, "rgba(163,220,255,0.54)");
+        wg.addColorStop(1, "rgba(255,255,255,0.3)");
+        roundedRect(ctx, 138, 48, 112, 112, 18);
+        ctx.fillStyle = wg;
+        ctx.fill();
+        ctx.fillStyle = "rgba(255,255,255,0.96)";
+        ctx.font = "900 9px Inter, system-ui, sans-serif";
+        ctx.fillText("San Francisco", 154, 64);
+        ctx.font = "900 31px Inter, system-ui, sans-serif";
+        ctx.fillText("53°", 154, 84);
+        ctx.font = "800 8px Inter, system-ui, sans-serif";
+        ctx.fillText("Partly Cloudy", 154, 130);
+        ctx.fillText("H:58° L:50°", 154, 142);
+
+        drawGlassPanel(ctx, 28, 170, 222, 92, 22);
+        var pg = ctx.createLinearGradient(44, 188, 130, 244);
+        pg.addColorStop(0, "#ffb27a");
+        pg.addColorStop(0.52, "#ce2b6f");
+        pg.addColorStop(1, "#1d4ed8");
+        roundedRect(ctx, 44, 188, 72, 56, 14);
+        ctx.fillStyle = pg;
+        ctx.fill();
+        ctx.fillStyle = "rgba(18,40,68,0.92)";
+        ctx.font = "900 14px Inter, system-ui, sans-serif";
+        ctx.fillText("Now Playing", 130, 193);
+        ctx.font = "800 10px Inter, system-ui, sans-serif";
+        ctx.fillStyle = "rgba(18,40,68,0.68)";
+        ctx.fillText("Glass preview mix", 130, 216);
+        ctx.restore();
+      }
+
+      function drawFinderWindow(ctx) {
+        var x = 112;
+        var y = 236;
+        var w = 620;
+        var h = 338;
+        drawGlassPanel(ctx, x, y, w, h, 18);
+        roundedRect(ctx, x, y, w, 42, 18);
+        ctx.fillStyle = "rgba(255,255,255,0.38)";
+        ctx.fill();
+        ctx.fillStyle = "#ff5f57";
+        ctx.beginPath();
+        ctx.arc(x + 26, y + 21, 6, 0, PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#febc2e";
+        ctx.beginPath();
+        ctx.arc(x + 46, y + 21, 6, 0, PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#28c840";
+        ctx.beginPath();
+        ctx.arc(x + 66, y + 21, 6, 0, PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "rgba(14,42,74,0.72)";
+        ctx.font = "800 13px Inter, system-ui, sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText("HyperFrames", x + w / 2, y + 25);
+        ctx.textAlign = "left";
+
+        ctx.fillStyle = "rgba(255,255,255,0.23)";
+        ctx.fillRect(x, y + 42, 164, h - 42);
+        var sidebar = ["Favorites", "Home", "Desktop", "Downloads", "Pictures", "Music"];
+        for (var si = 0; si < sidebar.length; si++) {
+          var sy = y + 70 + si * 34;
+          if (si === 0) {
+            roundedRect(ctx, x + 16, sy - 17, 132, 26, 8);
+            ctx.fillStyle = "rgba(43,139,235,0.24)";
+            ctx.fill();
+          }
+          drawRoundedImage(ctx, macSidebarIcons[si], x + 28, sy - 14, 18, 18, 5);
+          ctx.fillStyle = "rgba(18,45,76,0.78)";
+          ctx.font =
+            si === 0
+              ? "900 12px Inter, system-ui, sans-serif"
+              : "800 12px Inter, system-ui, sans-serif";
+          ctx.fillText(sidebar[si], x + 54, sy);
+        }
+
+        var files = [
+          "packages",
+          "registry",
+          "docs",
+          "skills",
+          "AGENTS.md",
+          "package.json",
+          "playground",
+          "scripts",
+        ];
+        for (var fi = 0; fi < files.length; fi++) {
+          var fx = x + 226 + (fi % 4) * 94;
+          var fy = y + 94 + Math.floor(fi / 4) * 112;
+          roundedRect(ctx, fx, fy, 54, 42, 10);
+          ctx.fillStyle =
+            fi === 4 || fi === 5 ? "rgba(255,255,255,0.82)" : "rgba(112,202,255,0.74)";
+          ctx.fill();
+          if (fi < 4 || fi > 5) {
+            roundedRect(ctx, fx + 4, fy - 8, 28, 13, 6);
+            ctx.fillStyle = "rgba(119,204,255,0.78)";
+            ctx.fill();
+          } else {
+            ctx.fillStyle = "rgba(104,122,142,0.46)";
+            ctx.fillRect(fx + 10, fy + 12, 34, 3);
+            ctx.fillRect(fx + 10, fy + 22, 26, 3);
+          }
+          ctx.fillStyle = "rgba(12,38,68,0.9)";
+          ctx.font = "900 11px Inter, system-ui, sans-serif";
+          ctx.textAlign = "center";
+          ctx.fillText(files[fi], fx + 27, fy + 62);
+          ctx.textAlign = "left";
+        }
+      }
+
+      function drawNotification(ctx, x, y) {
+        drawGlassPanel(ctx, x, y, 390, 96, 28);
+        drawRoundedImage(ctx, macToastIcon, x + 20, y + 22, 44, 44, 12);
+        ctx.fillStyle = "rgba(10,34,62,0.96)";
+        ctx.font = "900 18px Inter, system-ui, sans-serif";
+        ctx.fillText("Messages", x + 80, y + 26);
+        ctx.font = "800 12px Inter, system-ui, sans-serif";
+        ctx.fillStyle = "rgba(10,34,62,0.58)";
+        ctx.fillText("now", x + 176, y + 28);
+        ctx.font = "800 13px Inter, system-ui, sans-serif";
+        ctx.fillStyle = "rgba(10,34,62,0.78)";
+        ctx.fillText("Liquid Glass preview is ready for review.", x + 80, y + 54);
+      }
+
+      function drawDock(ctx) {
+        var icons = macDockIcons;
+        var size = 46;
+        var gap = 8;
+        var padX = 14;
+        var padY = 9;
+        var w = icons.length * size + (icons.length - 1) * gap + padX * 2;
+        var x = Math.round((1440 - w) / 2);
+        var y = 792;
+        drawGlassPanel(ctx, x, y, w, size + padY * 2, 23);
+        for (var ii = 0; ii < icons.length; ii++) {
+          var ix = x + padX + ii * (size + gap);
+          drawRoundedImage(ctx, icons[ii], ix, y + padY, size, size, 13);
+        }
+      }
+
+      function drawMacGlassOverlay(ctx) {
+        ctx.save();
+        drawMenuBar(ctx);
+        drawDesktopWidgets(ctx);
+        drawFinderWindow(ctx);
+        ctx.textBaseline = "top";
+        if (S.macToastOpacity > 0.01) {
+          ctx.save();
+          ctx.globalAlpha = S.macToastOpacity;
+          drawNotification(ctx, S.macToastX, S.macToastY);
+          ctx.restore();
+        }
+        drawDock(ctx);
+        ctx.restore();
+      }
+
+      function captureScreens() {
+        if (!apiOk || !paintReady) return;
+        try {
+          capPhoneCtx.clearRect(0, 0, 390, 844);
+          capPhoneCtx.drawElementImage(phoneHtmlEl, 0, 0, 390, 844);
+          capLapCtx.clearRect(0, 0, 1440, 900);
+          capLapCtx.drawElementImage(lapHtmlEl, 0, 0, 1440, 900);
+          drawMacGlassOverlay(capLapCtx);
+          phoneTex.needsUpdate = true;
+          lapTex.needsUpdate = true;
+        } catch (e) {}
+      }
+
+      // ── Turntable Group (both devices rotate together for 360° orbit) ──
+      var turntable = new THREE.Group();
+      scene.add(turntable);
+
+      // ── Model Groups ───────────────────────────────────────────────────
+      var phoneGrp = new THREE.Group();
+      turntable.add(phoneGrp);
+      var lapGrp = new THREE.Group();
+      turntable.add(lapGrp);
+      var ready = 0;
+
+      var draco = new THREE.DRACOLoader();
+      draco.setDecoderPath("https://www.gstatic.com/draco/versioned/decoders/1.5.6/");
+      var loader = new THREE.GLTFLoader();
+      loader.setDRACOLoader(draco);
+
+      // MacBook
+      loader.load("models/macbook.glb", function (gltf) {
+        var m = gltf.scene;
+        var box = new THREE.Box3().setFromObject(m);
+        var sz = box.getSize(new THREE.Vector3());
+        var s = 4.5 / Math.max(sz.x, sz.z);
+        m.scale.setScalar(s);
+        box.setFromObject(m);
+        m.position.sub(box.getCenter(new THREE.Vector3()));
+
+        m.traverse(function (child) {
+          if (child.isMesh && (child.name === "matte" || child.name === "Matte")) {
+            child.material = new THREE.MeshBasicMaterial({ map: lapTex });
+          }
+        });
+
+        // Apple logo on back of lid — exact coords from model inspection:
+        // back mesh center: (0, 0.04, -1.54), matte center: (0, 0.15, -1.56)
+        // Back surface faces -Z. Logo at z = -1.63 (outside back surface), facing -Z.
+        var lc = document.createElement("canvas");
+        lc.width = 256;
+        lc.height = 256;
+        var lx = lc.getContext("2d");
+        lx.clearRect(0, 0, 256, 256);
+        lx.save();
+        lx.translate(128, 128);
+        lx.scale(11, 11);
+        lx.translate(-12, -13);
+        lx.fillStyle = "#b8b8bc";
+        lx.fill(
+          new Path2D(
+            "M18.71,19.5C17.88,20.49 17,21.4 15.66,21.42C14.29,21.45 13.73,20.56 12.18,20.56C10.63,20.56 9.99,21.4 8.74,21.45C7.44,21.5 6.47,20.36 5.62,19.39C3.89,17.39 2.59,13.78 4.37,11.37C5.25,10.17 6.61,9.42 8.08,9.4C9.4,9.37 10.62,10.35 11.43,10.35C12.24,10.35 13.72,9.17 15.32,9.35C15.98,9.38 17.66,9.61 18.72,11.17C18.62,11.23 16.39,12.52 16.42,15.19C16.45,18.37 19.18,19.35 19.21,19.36ZM15.23,7.7C15.96,6.82 16.43,5.6 16.31,4.38C15.25,4.42 13.97,5.09 13.22,5.96C12.55,6.74 11.98,7.99 12.12,9.18C13.29,9.27 14.5,8.57 15.23,7.7Z",
+          ),
+        );
+        lx.restore();
+        var logoTex = new THREE.CanvasTexture(lc);
+        logoTex.minFilter = THREE.LinearFilter;
+        var appleLogoMesh = new THREE.Mesh(
+          new THREE.PlaneGeometry(0.55, 0.55),
+          new THREE.MeshBasicMaterial({
+            map: logoTex,
+            transparent: true,
+            depthWrite: false,
+            side: THREE.DoubleSide,
+          }),
+        );
+        appleLogoMesh.position.set(0, 0.1, -1.63);
+        appleLogoMesh.rotation.y = PI;
+        m.add(appleLogoMesh);
+
+        lapGrp.add(m);
+        ready++;
+        if (ready === 1) onReady();
+      });
+
+      function onReady() {
+        waitForImages()
+          .then(function () {
+            return waitForPaint(capLapCvs);
+          })
+          .then(function () {
+            paintReady = true;
+            captureScreens();
+            render();
+          });
+      }
+
+      // ── Cubic Bezier Implementation ────────────────────────────────────
+      function cbz(p1x, p1y, p2x, p2y) {
+        var ax = 3 * p1x - 3 * p2x + 1,
+          bx = 3 * p2x - 6 * p1x,
+          cx = 3 * p1x;
+        var ay = 3 * p1y - 3 * p2y + 1,
+          by = 3 * p2y - 6 * p1y,
+          cy = 3 * p1y;
+        return function (t) {
+          var s = t;
+          for (var i = 0; i < 12; i++) {
+            var x = ((ax * s + bx) * s + cx) * s - t;
+            var dx = (3 * ax * s + 2 * bx) * s + cx;
+            if (Math.abs(dx) < 1e-10) break;
+            s -= x / dx;
+          }
+          s = Math.max(0, Math.min(1, s));
+          return ((ay * s + by) * s + cy) * s;
+        };
+      }
+
+      var enterEase = cbz(0.16, 1.0, 0.3, 1.0);
+      var spinEase = cbz(0.76, 0.0, 0.18, 1.0);
+      var driftEase = cbz(0.45, 0.0, 0.15, 1.0);
+      var snapEase = cbz(0.22, 1.15, 0.36, 1.0);
+      var breatheEase = cbz(0.37, 0.0, 0.63, 1.0);
+
+      // ── Animation State ────────────────────────────────────────────────
+      var S = {
+        phX: 0,
+        phY: 0.1,
+        phZ: 0.5,
+        phRX: 0,
+        phRY: PI,
+        phRZ: 0,
+        lpX: 10,
+        lpY: -0.2,
+        lpZ: -0.6,
+        lpRX: 0,
+        lpRY: 0,
+        lpRZ: 0,
+        cX: 0,
+        cY: 0.15,
+        cZ: 2.8,
+        clX: 0,
+        clY: 0.1,
+        clZ: 0,
+        drift: 0,
+        turn: 0,
+        cardReveal: 0,
+        titleFade: 0,
+        counter: 0,
+        macToastOpacity: 0,
+        macToastX: 1464,
+        macToastY: 62,
+        macPanel: 0,
+        p: 0,
+      };
+
+      function render() {
+        var d = S.drift;
+
+        // ── Animate live HTML content (captured to texture every frame) ──
+        // Title fade-in
+        document.getElementById("phone-title").style.opacity = S.titleFade;
+        document.getElementById("laptop-title").style.opacity = S.titleFade;
+        // Counter
+        var cnt = Math.round(S.counter);
+        document.getElementById("phone-count").textContent = "Catalog " + cnt;
+        document.getElementById("laptop-count").textContent = "Catalog " + cnt;
+        // Staggered card reveal
+        var allCards = document.querySelectorAll(".anim-card");
+        for (var ci2 = 0; ci2 < allCards.length; ci2++) {
+          var cardProgress = Math.max(0, Math.min(1, (S.cardReveal * allCards.length - ci2) * 1.5));
+          allCards[ci2].style.opacity = cardProgress;
+          allCards[ci2].style.transform = "translateY(" + (1 - cardProgress) * 15 + "px)";
+        }
+        var macToast = document.getElementById("mac-toast");
+        var macControl = document.getElementById("mac-control");
+        var macMedia = document.getElementById("mac-media");
+        if (macToast) {
+          macToast.style.opacity = S.macToastOpacity;
+          macToast.style.transform = "translateX(" + (S.macToastX - 1002) + "px)";
+          macToast.style.filter = "none";
+        }
+        if (macControl) {
+          macControl.style.opacity = 0.5 + S.macPanel * 0.5;
+          macControl.style.transform = "translateY(" + (1 - S.macPanel) * 18 + "px)";
+        }
+        if (macMedia) {
+          macMedia.style.opacity = 0.55 + S.macPanel * 0.45;
+          macMedia.style.transform = "translateY(" + (1 - S.macPanel) * 18 + "px)";
+        }
+        // Re-capture HTML to texture
+        captureScreens();
+
+        phoneGrp.position.set(
+          S.phX + Math.sin(d * 0.5) * 0.015,
+          S.phY + Math.sin(d * 0.7) * 0.008,
+          S.phZ + Math.cos(d * 0.4) * 0.008,
+        );
+        phoneGrp.rotation.set(S.phRX, S.phRY, S.phRZ);
+        lapGrp.position.set(
+          S.lpX - Math.sin(d * 0.4) * 0.012,
+          S.lpY + Math.sin(d * 0.6) * 0.006,
+          S.lpZ + Math.cos(d * 0.35) * 0.008,
+        );
+        lapGrp.rotation.set(S.lpRX, S.lpRY, S.lpRZ);
+        turntable.rotation.y = S.turn;
+        bgUniforms.uTime.value = d;
+        camera.position.set(S.cX, S.cY, S.cZ);
+        camera.lookAt(S.clX, S.clY, S.clZ);
+        renderer.render(scene, camera);
+      }
+
+      // ── GSAP Timeline — Product Review Edit ────────────────────────────
+      var tl = gsap.timeline({ paused: true });
+      window.__timelines = window.__timelines || {};
+      window.__timelines["macos-tahoe-liquid-glass"] = tl;
+
+      tl.to(S, { p: 1, drift: 15, duration: 15, ease: "none", onUpdate: render }, 0);
+
+      // ── macOS Tahoe: MacBook hero — zoomed close, slow pull-back ──
+      // Move iPhone off screen immediately
+      tl.set(S, { phX: 10 }, 0);
+      // Start MacBook centered and close
+      tl.set(S, { lpX: 0, lpRY: 0 }, 0);
+      tl.set(S, { cX: 0, clX: 0, cZ: 4.5, cY: 0.4, clY: -0.1 }, 0);
+
+      // Slow zoom out
+      tl.to(S, { cZ: 7, cY: 0.6, duration: 12, ease: driftEase }, 0.5);
+
+      // Gentle breathing tilt
+      tl.to(S, { lpRY: 0.04, duration: 4, ease: breatheEase }, 1);
+      tl.to(S, { lpRY: -0.03, duration: 4, ease: breatheEase }, 5);
+      tl.to(S, { lpRY: 0.02, duration: 4, ease: breatheEase }, 9);
+
+      // ── Live HTML Animations (captured to 3D textures every frame) ──
+      // Title fade in
+      tl.to(S, { titleFade: 1, duration: 0.8, ease: breatheEase }, 0.3);
+      // Counter animates up
+      tl.to(S, { counter: 43, duration: 2, ease: driftEase }, 0.5);
+      // Cards stagger in (0→1 reveals all cards sequentially)
+      tl.to(S, { cardReveal: 1, duration: 3, ease: breatheEase }, 0.8);
+      tl.set(S, { macToastX: 1464, macToastY: 62, macToastOpacity: 0 }, 0);
+      tl.to(S, { macToastX: 988, macToastOpacity: 1, duration: 0.38, ease: "power3.out" }, 0.45);
+      tl.to(S, { macToastX: 1002, duration: 0.16, ease: "power2.out" }, 0.83);
+      tl.to(S, { macToastY: 72, duration: 0.18, ease: "power2.out" }, 4.25);
+      tl.to(S, { macToastY: 62, duration: 0.22, ease: "power2.out" }, 4.43);
+      tl.to(S, { macPanel: 1, duration: 1.1, ease: breatheEase }, 0.45);
+    </script>
+  </body>
+</html>

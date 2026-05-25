@@ -8,6 +8,7 @@
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, rmSync, readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
+import { trackChildProcess } from "@hyperframes/engine";
 
 export interface AudioElement {
   id: string;
@@ -82,6 +83,7 @@ export function parseAudioElements(html: string): AudioElement[] {
 function runFFmpeg(args: string[]): Promise<void> {
   return new Promise((resolve, reject) => {
     const ffmpeg = spawn("ffmpeg", args);
+    trackChildProcess(ffmpeg);
     let stderr = "";
 
     ffmpeg.stderr.on("data", (data) => {

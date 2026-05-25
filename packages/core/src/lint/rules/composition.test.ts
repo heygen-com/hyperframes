@@ -772,4 +772,50 @@ describe("composition rules", () => {
       expect(finding).toBeUndefined();
     });
   });
+
+  describe("invalid_capture_path", () => {
+    it("errors when an <img> src uses ../capture/", () => {
+      const html = `<html><body>
+        <div data-composition-id="x">
+          <img src="../capture/assets/logo.svg" alt="logo">
+        </div>
+      </body></html>`;
+      const result = lintHyperframeHtml(html, {
+        filePath: "/project/compositions/scene.html",
+      });
+      const finding = result.findings.find((f) => f.code === "invalid_capture_path");
+      expect(finding).toBeDefined();
+      expect(finding?.severity).toBe("error");
+    });
+
+    it("errors when a CSS url() uses ../capture/ (counts all occurrences)", () => {
+      const html = `<html><body>
+        <style>
+          @font-face { font-family: 'Brand'; src: url('../capture/assets/fonts/Brand.woff2'); }
+          .hero { background-image: url('../capture/assets/hero.png'); }
+        </style>
+        <div data-composition-id="x"></div>
+      </body></html>`;
+      const result = lintHyperframeHtml(html, {
+        filePath: "/project/compositions/scene.html",
+      });
+      const finding = result.findings.find((f) => f.code === "invalid_capture_path");
+      expect(finding).toBeDefined();
+      expect(finding?.message).toContain("2 asset path(s)");
+    });
+
+    it("does not flag root-relative capture/ paths", () => {
+      const html = `<html><body>
+        <div data-composition-id="x">
+          <img src="capture/assets/logo.svg" alt="logo">
+        </div>
+        <style>.hero { background-image: url('capture/assets/hero.png'); }</style>
+      </body></html>`;
+      const result = lintHyperframeHtml(html, {
+        filePath: "/project/compositions/scene.html",
+      });
+      const finding = result.findings.find((f) => f.code === "invalid_capture_path");
+      expect(finding).toBeUndefined();
+    });
+  });
 });

@@ -24,16 +24,17 @@
         height: 1080px;
         margin: 0;
         overflow: hidden;
-        background: #000;
+        background: transparent;
         font-family: "Instrument Serif", serif;
       }
 
       #parallax-layers {
+        pointer-events: none;
         position: relative;
         width: 1920px;
         height: 1080px;
         overflow: hidden;
-        background: #000;
+        background: transparent;
       }
 
       #bg-video {
@@ -148,6 +149,7 @@
     <div
       id="parallax-layers"
       data-composition-id="caption-parallax-layers"
+      data-timeline-locked
       data-start="0"
       data-duration="8"
       data-fps="30"

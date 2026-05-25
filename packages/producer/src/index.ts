@@ -12,6 +12,7 @@ export {
   executeRenderJob,
   RenderCancelledError,
   type RenderConfig,
+  type RenderConfigInput,
   type RenderJob,
   type RenderStatus,
   type RenderPerfSummary,

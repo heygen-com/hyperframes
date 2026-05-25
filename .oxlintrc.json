@@ -4,5 +4,11 @@
     "correctness": "error"
   },
   "plugins": ["react", "typescript"],
-  "ignorePatterns": ["dist/", "coverage/", "node_modules/"]
+  "ignorePatterns": [
+    "dist/",
+    "coverage/",
+    "node_modules/",
+    "playground/",
+    "registry/blocks/**/lib/*.iife.js"
+  ]
 }

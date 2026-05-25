@@ -1,15 +1,18 @@
 /**
  * Unit tests for the distributed format banlist.
  *
- * Two formats `plan()` refuses up front:
- *   - webm — VP9 + matroska concat-copy is fragile across libvpx-vp9 builds.
+ * `plan()` refuses one configuration up front:
  *   - mp4 + HDR (`hdrMode === "force-hdr"`) — chunked HDR pre-extract +
  *     HDR signaling re-apply on the assembled file is not implemented.
  *
  * The banlist must trip BEFORE any other work runs (file server, browser,
  * ffprobe) — otherwise a banned config can leak a partial planDir on disk.
- * Each case asserts `existsSync(planDir)` is `false` after the throw to
- * pin the early-exit contract.
+ * The HDR case asserts `existsSync(planDir)` is `false` after the throw
+ * to pin the early-exit contract.
+ *
+ * WebM was previously refused here; v0.7+ supports it via closed-GOP
+ * concat-copy. The "accepts webm" tests below pin the contract that
+ * `rejectUnsupportedDistributedFormat` no longer trips on webm.
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
@@ -44,35 +47,20 @@ afterAll(() => {
 });
 
 describe("rejectUnsupportedDistributedFormat (pure)", () => {
-  it("accepts the v1-supported formats (mp4 / mov / png-sequence)", () => {
+  it("accepts the v1-supported formats (mp4 / mov / png-sequence / webm)", () => {
     expect(() => rejectUnsupportedDistributedFormat({ format: "mp4" })).not.toThrow();
     expect(() => rejectUnsupportedDistributedFormat({ format: "mov" })).not.toThrow();
     expect(() => rejectUnsupportedDistributedFormat({ format: "png-sequence" })).not.toThrow();
+    expect(() => rejectUnsupportedDistributedFormat({ format: "webm" })).not.toThrow();
     expect(() =>
       rejectUnsupportedDistributedFormat({ format: "mp4", hdrMode: "auto" }),
     ).not.toThrow();
     expect(() =>
       rejectUnsupportedDistributedFormat({ format: "mp4", hdrMode: "force-sdr" }),
     ).not.toThrow();
-  });
-
-  it("rejects webm with FORMAT_NOT_SUPPORTED_IN_DISTRIBUTED", () => {
-    let caught: unknown;
-    try {
-      // Cast forces the runtime check even though the type narrows webm out.
-      rejectUnsupportedDistributedFormat({
-        format: "webm" as DistributedRenderConfig["format"],
-      });
-    } catch (err) {
-      caught = err;
-    }
-    expect(caught).toBeInstanceOf(FormatNotSupportedInDistributedError);
-    expect((caught as FormatNotSupportedInDistributedError).code).toBe(
-      FORMAT_NOT_SUPPORTED_IN_DISTRIBUTED,
-    );
-    expect((caught as FormatNotSupportedInDistributedError).format).toBe("webm");
-    expect((caught as Error).message).toMatch(/webm/);
-    expect((caught as Error).message).toMatch(/in-process|executeRenderJob/);
+    expect(() =>
+      rejectUnsupportedDistributedFormat({ format: "webm", hdrMode: "force-sdr" }),
+    ).not.toThrow();
   });
 
   it('rejects HDR mp4 (`hdrMode === "force-hdr"`)', () => {
@@ -92,34 +80,28 @@ describe("rejectUnsupportedDistributedFormat (pure)", () => {
     expect((caught as FormatNotSupportedInDistributedError).format).toBe("mp4-hdr");
     expect((caught as Error).message).toMatch(/HDR/);
   });
-});
 
-describe("plan() banlist (end-to-end)", () => {
-  it("throws on webm and does not create the planDir", async () => {
-    const planDir = join(runRoot, "plandir-webm-bans");
-    // Don't pre-create planDir — plan() shouldn't create it on the throw path.
+  it("rejects HDR + webm combination (HDR is the trip, not webm)", () => {
+    // Belt-and-suspenders: even when webm is the format, force-hdr must
+    // still throw — distributed HDR is unimplemented regardless of format.
     let caught: unknown;
     try {
-      await plan(
-        projectDir,
-        {
-          format: "webm" as DistributedRenderConfig["format"],
-          fps: 30,
-          width: 320,
-          height: 240,
-        },
-        planDir,
-      );
+      rejectUnsupportedDistributedFormat({
+        format: "webm",
+        hdrMode: "force-hdr" as DistributedRenderConfig["hdrMode"],
+      });
     } catch (err) {
       caught = err;
     }
     expect(caught).toBeInstanceOf(FormatNotSupportedInDistributedError);
-    expect((caught as FormatNotSupportedInDistributedError).format).toBe("webm");
-    expect(existsSync(planDir)).toBe(false);
+    expect((caught as FormatNotSupportedInDistributedError).format).toBe("mp4-hdr");
   });
+});
 
+describe("plan() banlist (end-to-end)", () => {
   it("throws on HDR mp4 and does not create the planDir", async () => {
     const planDir = join(runRoot, "plandir-hdr-bans");
+    // Don't pre-create planDir — plan() shouldn't create it on the throw path.
     let caught: unknown;
     try {
       await plan(

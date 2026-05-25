@@ -20,6 +20,8 @@ Thumbs.db
 # non-generated assets (logos, svgs) that should stay in the repo.
 docs/images/
 
+videos/
+
 # IDE
 .vscode/
 .idea/
@@ -74,6 +76,7 @@ examples/*
 !examples/k8s-jobs
 !examples/k8s-jobs/**
 packages/studio/data/
+
 .desloppify/
 .worktrees/
 
@@ -103,10 +106,22 @@ captures/
 cursor-tests/
 basecamp-video/
 launch-video*/
+!skills/launch-video/
 ab-test/
 compositions/
 video-6-2-patched/
 claude-design-hyperframes-video/
+# Per-site video work at the repo root (huly-*, raycast-*, etc.)
+# Anything under videos/ is already covered above, but agents sometimes write
+# project dirs to the repo root when iterating. Catch the common per-brand
+# patterns and any *-demo-N variants the *-demo/ rule above misses.
+huly-*/
+raycast-*/
+*-demo-*/
+test-runs/
+test-outputs/
+
+# Claude Code worktrees + superpowers docs
 .claude/worktrees/
 .claude/
 docs/superpowers/

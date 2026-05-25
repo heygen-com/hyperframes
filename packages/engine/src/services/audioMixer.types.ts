@@ -1,3 +1,8 @@
+export interface AudioVolumeKeyframe {
+  time: number;
+  volume: number;
+}
+
 export interface AudioElement {
   id: string;
   src: string;
@@ -6,6 +11,7 @@ export interface AudioElement {
   mediaStart: number;
   layer: number;
   volume?: number;
+  volumeKeyframes?: AudioVolumeKeyframe[];
   type: "audio" | "video";
 }
 
@@ -17,6 +23,7 @@ export interface AudioTrack {
   mediaStart: number;
   duration: number;
   volume: number;
+  volumeKeyframes?: AudioVolumeKeyframe[];
 }
 
 export interface MixResult {

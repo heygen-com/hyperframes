@@ -7,7 +7,7 @@ import { useTimelineSyncCallbacks } from "./useTimelineSyncCallbacks";
 // Re-export public API consumed by tests and external modules.
 // All of these were previously defined in this file; they now live in focused
 // sub-modules but are re-exported here so existing import sites don't change.
-export type { PlaybackAdapter, ClipManifestClip } from "../lib/playbackTypes";
+export type { ClipManifestClip } from "../lib/playbackTypes";
 export { createStaticSeekPlaybackAdapter } from "../lib/playbackAdapter";
 export {
   getTimelineElementSelector,
@@ -42,6 +42,7 @@ import {
   setPreviewPlaybackRate,
   shouldMutePreviewAudio,
 } from "../lib/timelineIframeHelpers";
+import { probeMediaUrl, getCachedProbe } from "../lib/mediaProbe";
 
 // ---------------------------------------------------------------------------
 // Hook
@@ -105,6 +106,32 @@ export function useTimelinePlayer() {
       }
       if (!state.timelineReady) {
         setTimelineReady(true);
+      }
+
+      // Asynchronously enrich media elements missing sourceDuration via mediabunny.
+      // The probe reads file headers only — no full decode — so this is cheap.
+      const needsProbe = mergedElements.filter(
+        (el) =>
+          el.src &&
+          el.sourceDuration == null &&
+          ["video", "audio"].includes(el.tag.toLowerCase()) &&
+          !getCachedProbe(el.src),
+      );
+      if (needsProbe.length > 0) {
+        void Promise.allSettled(
+          needsProbe.map(async (el) => {
+            const result = await probeMediaUrl(el.src!);
+            if (!result) return;
+            const key = el.key ?? el.id;
+            usePlayerStore.setState((state) => {
+              const idx = state.elements.findIndex((e) => (e.key ?? e.id) === key);
+              if (idx === -1 || state.elements[idx].sourceDuration != null) return {};
+              const patched = state.elements.slice();
+              patched[idx] = { ...state.elements[idx], sourceDuration: result.duration };
+              return { elements: patched };
+            });
+          }),
+        );
       }
     },
     [setElements, setTimelineReady, setDuration],

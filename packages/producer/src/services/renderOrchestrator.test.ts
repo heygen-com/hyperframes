@@ -561,6 +561,58 @@ describe("resolveRenderWorkerCount", () => {
     expect(workers).toBe(1);
   });
 
+  it("forces single worker when html-in-canvas is detected", () => {
+    const log = {
+      error: vi.fn(),
+      warn: vi.fn(),
+      info: vi.fn(),
+      debug: vi.fn(),
+    };
+
+    const workers = resolveRenderWorkerCount(
+      900,
+      undefined,
+      cfg,
+      {
+        hasShaderTransitions: false,
+        renderModeHints: {
+          recommendScreenshot: false,
+          reasons: [{ code: "htmlInCanvas", message: "layoutsubtree canvas" }],
+        },
+      },
+      log,
+    );
+
+    expect(workers).toBe(1);
+    expect(log.warn).toHaveBeenCalledOnce();
+  });
+
+  it("overrides explicit --workers when html-in-canvas is detected", () => {
+    const log = {
+      error: vi.fn(),
+      warn: vi.fn(),
+      info: vi.fn(),
+      debug: vi.fn(),
+    };
+
+    const workers = resolveRenderWorkerCount(
+      900,
+      8,
+      cfg,
+      {
+        hasShaderTransitions: false,
+        renderModeHints: {
+          recommendScreenshot: false,
+          reasons: [{ code: "htmlInCanvas", message: "layoutsubtree canvas" }],
+        },
+      },
+      log,
+    );
+
+    expect(workers).toBe(1);
+    expect(log.warn).toHaveBeenCalledOnce();
+  });
+
   it("keeps baseline auto workers after screenshot fallback when measured capture is cheap", () => {
     const log = {
       error: vi.fn(),

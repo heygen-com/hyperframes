@@ -16,7 +16,7 @@
  * results per §2.4).
  */
 
-import type { DistributedRenderConfig } from "@hyperframes/producer/distributed";
+import type { DistributedFormat, DistributedRenderConfig } from "@hyperframes/producer/distributed";
 
 /** Discriminator for the three roles the one Lambda image fulfills. */
 export type LambdaAction = "plan" | "renderChunk" | "assemble";
@@ -65,7 +65,7 @@ export interface RenderChunkEvent {
   /** S3 URI prefix where the chunk output should be uploaded (`s3://bucket/{prefix}/`). */
   ChunkOutputS3Prefix: string;
   /** Output container format from the plan's encoder.json; drives file vs frame-dir handling. */
-  Format: "mp4" | "mov" | "png-sequence";
+  Format: DistributedFormat;
 }
 
 /** Activity C: fetch planDir + all chunks + audio, assemble, upload final. */
@@ -80,7 +80,17 @@ export interface AssembleEvent {
   /** Final output S3 URI (`s3://bucket/key.mp4`). */
   OutputS3Uri: string;
   /** Output container format; drives file vs frame-dir handling. */
-  Format: "mp4" | "mov" | "png-sequence";
+  Format: DistributedFormat;
+  /**
+   * Optional exact-CFR re-encode at assemble time. When `true`, the final
+   * assembled video is re-encoded with `-fps_mode cfr -r <fps>` so the
+   * stream's `avg_frame_rate` matches the container's `r_frame_rate`
+   * exactly (and the file's duration is exact, not PTS-derived). Trade-off
+   * is ~2-5x the assemble wall-clock. mp4 only — webm / mov stream-copy
+   * paths already produce exact avg_frame_rate. Default `false` /
+   * unset preserves current `-c copy` behavior.
+   */
+  Cfr?: boolean;
 }
 
 /**
@@ -106,7 +116,7 @@ export interface PlanLambdaResult {
   Fps: 24 | 30 | 60;
   Width: number;
   Height: number;
-  Format: "mp4" | "mov" | "png-sequence";
+  Format: DistributedFormat;
   HasAudio: boolean;
   AudioS3Uri: string | null;
   FfmpegVersion: string;

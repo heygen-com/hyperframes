@@ -56,7 +56,11 @@ export function useBlockCatalog() {
     if (search.trim()) {
       const q = search.toLowerCase();
       result = result.filter(
-        (b) => b.title.toLowerCase().includes(q) || b.description.toLowerCase().includes(q),
+        (b) =>
+          b.title.toLowerCase().includes(q) ||
+          b.description.toLowerCase().includes(q) ||
+          b.category.toLowerCase().includes(q) ||
+          b.tags?.some((t) => t.toLowerCase().includes(q)),
       );
     }
     return result;

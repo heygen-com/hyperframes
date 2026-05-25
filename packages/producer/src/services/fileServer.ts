@@ -390,6 +390,8 @@ const RENDER_MODE_SCRIPT = `(function() {
       },
     };
     window.__playerReady = true;
+    // Media-fallback player has no timeline to bind, so render-ready is immediate.
+    // init.ts defers __renderReady until the timeline is bound — different runtime.
     window.__renderReady = true;
     return true;
   }

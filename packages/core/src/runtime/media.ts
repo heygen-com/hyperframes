@@ -103,6 +103,13 @@ function markPlayRequested(el: HTMLMediaElement): void {
   el.addEventListener("error", clear, { once: true });
 }
 
+const lastRuntimeAppliedVolume = new WeakMap<HTMLMediaElement, number>();
+
+function clampVolume(volume: number): number {
+  if (!Number.isFinite(volume)) return 1;
+  return Math.max(0, Math.min(1, volume));
+}
+
 export function syncRuntimeMedia(params: {
   clips: RuntimeMediaClip[];
   timeSeconds: number;
@@ -132,6 +139,7 @@ export function syncRuntimeMedia(params: {
    * outbound message; further invocations are suppressed by the caller.
    */
   onAutoplayBlocked?: () => void;
+  onElementVolume?: (el: HTMLMediaElement, volume: number) => void;
   forceSync?: boolean;
 }): void {
   // Either flag silences output. Combined up front so the per-clip loop is
@@ -151,8 +159,19 @@ export function syncRuntimeMedia(params: {
           relTime = clip.mediaStart + ((relTime - clip.mediaStart) % loopLength);
         }
       }
-      const userVol = params.userVolume ?? 1;
-      el.volume = (clip.volume ?? 1) * userVol;
+      const userVol = clampVolume(params.userVolume ?? 1);
+      const fallbackAuthorVolume = clampVolume(clip.volume ?? 1);
+      const previousRuntimeVolume = lastRuntimeAppliedVolume.get(el);
+      const currentElementVolume = clampVolume(el.volume);
+      const authorVolume =
+        previousRuntimeVolume !== undefined &&
+        Math.abs(currentElementVolume - previousRuntimeVolume) > 0.0001
+          ? currentElementVolume
+          : fallbackAuthorVolume;
+      const effectiveVolume = clampVolume(authorVolume * userVol);
+      el.volume = effectiveVolume;
+      lastRuntimeAppliedVolume.set(el, effectiveVolume);
+      params.onElementVolume?.(el, effectiveVolume);
       if (shouldMute) el.muted = true;
       // Ensure full preload for every active media element. Streaming
       // formats (MP3) may arrive with preload="metadata", which only
@@ -283,6 +302,7 @@ export function syncRuntimeMedia(params: {
     lastOffset.delete(el);
     strictDriftSamples.delete(el);
     seekLoadRetried.delete(el);
+    lastRuntimeAppliedVolume.delete(el);
     if (!el.paused) el.pause();
   }
 }

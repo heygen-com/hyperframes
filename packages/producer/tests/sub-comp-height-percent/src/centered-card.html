@@ -1,0 +1,62 @@
+<template>
+  <div data-composition-id="centered-card" data-width="1920" data-height="1080">
+    <style>
+      [data-composition-id="centered-card"] {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        position: relative;
+        background: #ffffff;
+      }
+      [data-composition-id="centered-card"] .wrapper {
+        width: 100%;
+        height: 100%;
+        position: relative;
+      }
+      [data-composition-id="centered-card"] .center-box {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      [data-composition-id="centered-card"] .card {
+        width: 600px;
+        height: 200px;
+        background: #ea4c89;
+        border-radius: 24px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      [data-composition-id="centered-card"] .card-text {
+        font-family: sans-serif;
+        font-size: 64px;
+        font-weight: 700;
+        color: #ffffff;
+      }
+    </style>
+
+    <div class="wrapper">
+      <div class="center-box">
+        <div class="card">
+          <span class="card-text">Centered</span>
+        </div>
+      </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      (function () {
+        window.__timelines = window.__timelines || {};
+        var tl = gsap.timeline({ paused: true });
+        var S = '[data-composition-id="centered-card"] ';
+        tl.fromTo(S + '.card', { scale: 0.8, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.5, ease: 'power2.out' }, 0);
+        window.__timelines['centered-card'] = tl;
+      })();
+    </script>
+  </div>
+</template>

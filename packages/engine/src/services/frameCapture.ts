@@ -365,14 +365,15 @@ async function pollSubCompositionTimelines(
     }
     return true;
   })()`;
-  const timelinesBeforePoll = Number(
-    await page.evaluate(`Object.keys(window.__timelines || {}).length`),
-  );
   const ready = await pollPageExpression(page, expression, timeoutMs, intervalMs);
-  const timelinesAfterPoll = Number(
-    await page.evaluate(`Object.keys(window.__timelines || {}).length`),
-  );
-  if (ready && timelinesAfterPoll > timelinesBeforePoll) {
+  // Always force a timeline rebind once sub-composition timelines are
+  // confirmed present. The previous implementation only called rebind
+  // when the timeline count grew during the poll, which missed the case
+  // where all sub-comp scripts had already executed before the poll
+  // started — leaving child timelines un-nested in the root and causing
+  // the earliest sub-composition (data-start near 0) to render without
+  // its GSAP animations.
+  if (ready) {
     await page.evaluate(`(function() {
       if (typeof window.__hfForceTimelineRebind === "function") {
         window.__hfForceTimelineRebind();

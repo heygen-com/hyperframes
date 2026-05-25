@@ -15,7 +15,9 @@ import { join } from "node:path";
 import { extractHtml } from "./htmlExtractor.js";
 // captureScreenshots removed — full-page screenshot replaces per-section shots
 import { extractTokens } from "./tokenExtractor.js";
+import { extractDesignStyles } from "./designStyleExtractor.js";
 import { downloadAssets, downloadAndRewriteFonts } from "./assetDownloader.js";
+import { extractFontMetadata } from "./fontMetadataExtractor.js";
 // briefGenerator.ts, visual-style, capture-summary removed — DESIGN.md replaces them
 import {
   setupAnimationCapture,
@@ -316,11 +318,35 @@ export async function captureWebsite(
     // Extract design tokens
     progress("tokens", "Extracting design tokens...");
     const tokens = await extractTokens(page1);
+    // Save tokens.json without SVG outerHTML (kept in memory for asset downloader)
+    const tokensForDisk = {
+      ...tokens,
+      svgs: tokens.svgs.map(({ outerHTML: _, ...rest }) => rest),
+    };
     writeFileSync(
       join(outputDir, "extracted", "tokens.json"),
-      JSON.stringify(tokens, null, 2),
+      JSON.stringify(tokensForDisk, null, 2),
       "utf-8",
     );
+
+    // Extract computed design styles (typography, buttons, cards, spacing, shadows)
+    progress("style", "Extracting design styles...");
+    try {
+      const designStyles = await extractDesignStyles(page1);
+      writeFileSync(
+        join(outputDir, "extracted", "design-styles.json"),
+        JSON.stringify(designStyles, null, 2),
+        "utf-8",
+      );
+      progress(
+        "tokens",
+        `${designStyles.typography.length} typography roles, ${designStyles.buttons.length} button styles, ${designStyles.shadows.length} shadow values extracted`,
+      );
+    } catch (err) {
+      const errMsg = err instanceof Error ? `${err.message}\n${err.stack}` : String(err);
+      console.error(`  ⚠ Design style extraction failed: ${errMsg}`);
+      warnings.push(`Design style extraction failed: ${errMsg}`);
+    }
 
     // Collect animation catalog
     progress("animations", "Cataloging animations...");
@@ -419,6 +445,33 @@ export async function captureWebsite(
     // Download fonts and rewrite URLs to local paths
     extracted.headHtml = await downloadAndRewriteFonts(extracted.headHtml, outputDir);
 
+    // Identify each downloaded font by reading its OpenType name table.
+    // Modern frameworks hash font filenames; this manifest tells the
+    // downstream pipeline (DESIGN.md authoring, beat sub-agents) which file
+    // belongs to which family without guessing from filename patterns.
+    try {
+      const fontsManifest = extractFontMetadata(
+        join(outputDir, "assets", "fonts"),
+        join(outputDir, "extracted", "fonts-manifest.json"),
+      );
+      if (fontsManifest.families.length > 0) {
+        const summary = fontsManifest.families
+          .map((f) => `${f.family}${f.variable ? " (variable)" : ""} × ${f.fileCount}`)
+          .join(", ");
+        console.log(`Font metadata extracted: ${summary}`);
+        if (fontsManifest.unidentified.length > 0) {
+          console.warn(
+            `  ${fontsManifest.unidentified.length} font file(s) could not be identified — DESIGN.md should flag these explicitly.`,
+          );
+        }
+      }
+    } catch (err) {
+      console.warn(
+        "Font metadata extraction failed (non-fatal):",
+        err instanceof Error ? err.message : err,
+      );
+    }
+
     // Save animation catalog — lean version for the agent (not 745 raw CSS declarations)
     if (animationCatalog) {
       // Extract just what's useful: counts, named animations, a few representative keyframed entries
@@ -458,23 +511,7 @@ export async function captureWebsite(
       writeFileSync(join(outputDir, "extracted", "visible-text.txt"), visibleTextContent, "utf-8");
     }
 
-    // Save cataloged assets as JSON for AI agent
-    if (catalogedAssets.length > 0) {
-      writeFileSync(
-        join(outputDir, "extracted", "assets-catalog.json"),
-        JSON.stringify(catalogedAssets, null, 2),
-        "utf-8",
-      );
-    }
-
-    // Save detected libraries
-    if (detectedLibraries.length > 0) {
-      writeFileSync(
-        join(outputDir, "extracted", "detected-libraries.json"),
-        JSON.stringify(detectedLibraries, null, 2),
-        "utf-8",
-      );
-    }
+    // detected-libraries and assets-catalog removed — 0/8 agents read them in v6 testing
 
     // AI-powered image captioning via Gemini (optional — enriches asset descriptions)
     const geminiCaptions = await captionImagesWithGemini(outputDir, progress, warnings);
@@ -499,6 +536,52 @@ export async function captureWebsite(
     }
 
     progress("design", "DESIGN.md will be created by your AI agent");
+
+    // Generate contact sheets (saves AI agents 50-65% tokens vs reading images individually)
+    // All functions return string[] — paginated so every image is covered
+    try {
+      const { createScrollContactSheet, createAssetContactSheet, createSvgContactSheet } =
+        await import("./contactSheet.js");
+
+      const scrollSheets = await createScrollContactSheet(
+        join(outputDir, "screenshots"),
+        join(outputDir, "screenshots", "contact-sheet.jpg"),
+      );
+      if (scrollSheets.length > 0)
+        progress(
+          "design",
+          `Screenshot contact sheet generated (${scrollSheets.length} page${scrollSheets.length > 1 ? "s" : ""})`,
+        );
+
+      const assetsImgDir = join(outputDir, "assets");
+      if (existsSync(assetsImgDir)) {
+        const assetSheets = await createAssetContactSheet(
+          assetsImgDir,
+          join(outputDir, "assets", "contact-sheet.jpg"),
+        );
+        if (assetSheets.length > 0)
+          progress(
+            "design",
+            `Asset contact sheet generated (${assetSheets.length} page${assetSheets.length > 1 ? "s" : ""})`,
+          );
+      }
+
+      // Scan assets/svgs/ (inline SVGs) AND assets/ root (external SVGs from <img src="*.svg">)
+      // so sites like huly.io that only use external SVGs still get a grid
+      const svgsDir = join(outputDir, "assets", "svgs");
+      const assetsRootDir = join(outputDir, "assets");
+      const svgOutputPath = existsSync(svgsDir)
+        ? join(outputDir, "assets", "svgs", "contact-sheet.jpg")
+        : join(outputDir, "assets", "contact-sheet-svgs.jpg");
+      const svgSheets = await createSvgContactSheet(svgsDir, svgOutputPath, assetsRootDir);
+      if (svgSheets.length > 0)
+        progress(
+          "design",
+          `SVG contact sheet generated (${svgSheets.length} page${svgSheets.length > 1 ? "s" : ""})`,
+        );
+    } catch {
+      /* contact sheets are non-critical — agent can still read images individually */
+    }
 
     // Generate project scaffold (index.html, meta.json, CLAUDE.md)
     await generateProjectScaffold(

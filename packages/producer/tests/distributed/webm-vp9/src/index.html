@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+    <title>webm VP9 distributed fixture</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    <style>
+      @import url("https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap");
+
+      body,
+      html {
+        margin: 0;
+        padding: 0;
+        width: 640px;
+        height: 360px;
+        /* Transparent background — webm + yuva420p output preserves alpha,
+         * which is the format's reason for existing. The renderer's
+         * `initTransparentBackground` helper enforces this in production.
+         */
+        background: transparent;
+        overflow: hidden;
+        font-family: "Space Mono", monospace;
+      }
+
+      #main-comp {
+        position: relative;
+        width: 640px;
+        height: 360px;
+      }
+
+      .stage {
+        position: absolute;
+        inset: 0;
+      }
+
+      .label {
+        position: absolute;
+        top: 22%;
+        left: 50%;
+        transform: translateX(-50%);
+        font-size: 18px;
+        letter-spacing: 4px;
+        color: #94a3b8;
+        text-transform: uppercase;
+      }
+
+      .title {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        font-family: "Space Mono", monospace;
+        font-size: 56px;
+        font-weight: 700;
+        color: #6366f1;
+        white-space: nowrap;
+      }
+
+      .icon {
+        position: absolute;
+        bottom: 18%;
+        left: 50%;
+        transform: translate(-50%, 0);
+        width: 48px;
+        height: 48px;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="main-comp"
+      data-composition-id="main-comp"
+      data-width="640"
+      data-height="360"
+      data-start="0"
+      data-duration="2"
+    >
+      <div class="stage" id="stage-a">
+        <div class="label">CHUNK</div>
+        <div class="title" id="title-a">PHASE&nbsp;ONE</div>
+      </div>
+      <div class="stage" id="stage-b" style="opacity: 0">
+        <div class="label">CHUNK</div>
+        <div class="title" id="title-b">PHASE&nbsp;TWO</div>
+      </div>
+      <!-- Small inline SVG icon; no external image fetch required. -->
+      <svg class="icon" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg" id="icon">
+        <circle cx="24" cy="24" r="18" fill="none" stroke="#6366f1" stroke-width="4" />
+        <circle cx="24" cy="24" r="6" fill="#6366f1" />
+      </svg>
+      <!--
+        No audio element on purpose. Opus frame quantization at 20ms grain
+        pads a 2-second silent track past 2.0s of container time, which
+        extends the muxed webm's duration past nb_frames/fps and trips the
+        harness PSNR sampler at the very last checkpoint. Omitting audio
+        keeps container duration == 2.0s exactly.
+      -->
+    </div>
+
+    <script>
+      // Build a single timeline pinned to the composition's wall-clock so
+      // every frame is fully determined by the seek position. Chunk
+      // boundaries at frames {15, 30, 45} sit inside the crossfade window
+      // (frames 27-33 = 0.9s-1.1s) and the icon rotation — both of which
+      // therefore exercise per-chunk state continuity AND VP9 closed-GOP
+      // alpha encoding (`-auto-alt-ref 0` so chunk seams remain
+      // independently decodable).
+      const tl = gsap.timeline({ paused: true });
+      window.__timelines = window.__timelines || {};
+      window.__timelines["main-comp"] = tl;
+
+      const stageA = document.getElementById("stage-a");
+      const stageB = document.getElementById("stage-b");
+      const icon = document.getElementById("icon");
+
+      // Crossfade A → B straddling the frame-30 chunk seam. The opacity
+      // animation goes through the alpha plane in yuva420p output, which
+      // is exactly what we want to test under chunked-concat conditions.
+      tl.to(stageA, { opacity: 0, duration: 0.2, ease: "none" }, 0.9);
+      tl.to(stageB, { opacity: 1, duration: 0.2, ease: "none" }, 0.9);
+      // Continuous icon rotation — the absolute angle at any time must
+      // match across chunk boundaries, so a state-keeping regression in
+      // the engine's virtual clock would show up as a rotation
+      // discontinuity at frame 15, 30, or 45.
+      tl.to(icon, { rotation: 360, duration: 2, ease: "none" }, 0);
+    </script>
+  </body>
+</html>

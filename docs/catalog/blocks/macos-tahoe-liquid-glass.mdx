@@ -1,0 +1,50 @@
+---
+title: "macOS Tahoe Liquid Glass Desktop"
+description: "3D MacBook with a macOS Tahoe-style desktop, glass menu bar, Finder window, dock, and cinematic device camera move."
+---
+
+# macOS Tahoe Liquid Glass Desktop
+
+3D MacBook with a macOS Tahoe-style desktop, glass menu bar, Finder window, dock, and cinematic device camera move.
+
+`html-in-canvas` `3d` `macos` `tahoe` `gltf`
+
+<Warning>
+**Requires Chrome flag.** Enable `chrome://flags/#canvas-draw-element` for live preview. Rendering via CLI enables the flag automatically. [Learn more](/guides/html-in-canvas).
+</Warning>
+
+<video className="w-full aspect-video rounded-xl object-cover bg-zinc-100 dark:bg-zinc-800" src="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/macos-tahoe-liquid-glass.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/macos-tahoe-liquid-glass.png" autoPlay muted loop playsInline />
+
+## Install
+
+<CodeGroup>
+
+```bash Terminal
+npx hyperframes add macos-tahoe-liquid-glass
+```
+
+</CodeGroup>
+
+## Details
+
+| Property | Value |
+| --- | --- |
+| Type | Block |
+| Dimensions | 1920×1080 |
+| Duration | 15s |
+
+## Files
+
+| File | Target | Type |
+| --- | --- | --- |
+| `macos-tahoe-liquid-glass.html` | `compositions/macos-tahoe-liquid-glass.html` | hyperframes:composition |
+| `models/macbook.glb` | `models/macbook.glb` | hyperframes:asset |
+| `models/iphone.glb` | `models/iphone.glb` | hyperframes:asset |
+
+## Usage
+
+After installing, add the block to your host composition:
+
+```html
+<div data-composition-id="macos-tahoe-liquid-glass" data-composition-src="compositions/macos-tahoe-liquid-glass.html" data-start="0" data-duration="15" data-track-index="1" data-width="1920" data-height="1080"></div>
+```

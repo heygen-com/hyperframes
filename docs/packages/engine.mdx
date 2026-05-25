@@ -96,7 +96,7 @@ import {
 } from '@hyperframes/engine';
 
 // 1. Create a capture session
-const session = await createCaptureSession({ fps: 30, width: 1920, height: 1080 });
+const session = await createCaptureSession({ fps: { num: 30, den: 1 }, width: 1920, height: 1080 });
 
 // 2. Initialize with a composition
 await initializeSession(session, './my-video/index.html');
@@ -163,7 +163,7 @@ const webmPreset = getEncoderPreset('standard', 'webm');
 
 // Encode captured frames to video
 await encodeFramesFromDir(framesDir, 'frame_%06d.png', outputPath, {
-  fps: 30,
+  fps: { num: 30, den: 1 },
   ...webmPreset,
 });
 
@@ -195,7 +195,7 @@ import { spawnStreamingEncoder } from '@hyperframes/engine';
 
 const encoder = await spawnStreamingEncoder({
   outputPath: './output.mp4',
-  fps: 30,
+  fps: { num: 30, den: 1 },
   width: 1920,
   height: 1080,
 });

@@ -26,6 +26,8 @@ export interface TimelineElement {
   compositionSrc?: string;
   /** Whether this row came from authored clip timing or Studio's full-duration layer fallback. */
   timingSource?: "authored" | "implicit";
+  /** Set by data-timeline-locked on the host element — disables move and trim in Studio. */
+  timelineLocked?: boolean;
 }
 
 export type ZoomMode = "fit" | "manual";

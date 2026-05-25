@@ -38,6 +38,34 @@ import { existsSync } from "node:fs";
 export type ChromeSource = "sparticuz" | "chrome-headless-shell";
 
 /**
+ * Thrown when the Chrome binary resolver can't produce a usable path.
+ * The class name is the SFN `Retry: { ErrorEquals: [...] }` discriminator —
+ * see {@link HyperframesRenderStack}'s NON_RETRYABLE_* lists.
+ */
+export class ChromeBinaryUnavailableError extends Error {
+  // Lambda's runtime serializes the error envelope's `errorType` from
+  // `err.name`; this class-field override sets it across the structured
+  // clone. Read indirectly; fallow can't follow.
+  // fallow-ignore-next-line unused-class-member
+  override readonly name = "ChromeBinaryUnavailableError";
+  readonly source: ChromeSource;
+  readonly resolvedPath: string | null;
+  constructor(source: ChromeSource, resolvedPath: string | null, hint: string) {
+    super(`[chromium] Chrome binary unavailable (source=${source}): ${hint}`);
+    this.source = source;
+    this.resolvedPath = resolvedPath;
+  }
+}
+
+const SPARTICUZ_WEDGE_HINT =
+  "@sparticuz/chromium.executablePath() returned a falsy value or a path that doesn't exist on disk. " +
+  "This typically happens after a chunk hits `Sandbox.Timedout` mid-extraction and leaves /tmp in a " +
+  "wedged state — subsequent invocations land on the same warm instance and never re-extract. " +
+  "Recycle the function (e.g. `aws lambda update-function-configuration ... --environment ...` with a " +
+  "bumped marker var, or redeploy via `hyperframes lambda deploy --skip-build`) to force fresh " +
+  "execution environments. Tracking: investigate the upstream wedge so this auto-recovers.";
+
+/**
  * Read which Chrome source the bundled ZIP was built against. Defaults to
  * `"sparticuz"` so a fresh build with no env override picks the primary
  * path.
@@ -60,22 +88,40 @@ export function resolveChromeSource(): ChromeSource {
  * `HYPERFRAMES_LAMBDA_CHROME_PATH`. Throws if absent or non-existent so a
  * misconfigured deploy fails loudly at boot rather than at first frame.
  */
+// fallow-ignore-next-line complexity
 export async function resolveChromeExecutablePath(): Promise<string> {
   const source = resolveChromeSource();
   if (source === "sparticuz") {
     const mod = await loadSparticuzChromium();
-    return mod.executablePath();
+    const path = await mod.executablePath();
+    // Guard against the wedge described in ChromeBinaryUnavailableError.
+    // sparticuz's contract is "return the path to a usable binary" — when
+    // it returns null/undefined/"" we can't hand that to puppeteer-core
+    // (which will throw an unrelated-looking assertion). Same when the
+    // returned path doesn't exist (extraction failed but the function
+    // call returned).
+    if (!path || typeof path !== "string") {
+      throw new ChromeBinaryUnavailableError(source, null, SPARTICUZ_WEDGE_HINT);
+    }
+    if (!existsSync(path)) {
+      throw new ChromeBinaryUnavailableError(source, path, SPARTICUZ_WEDGE_HINT);
+    }
+    return path;
   }
   const explicit = process.env.HYPERFRAMES_LAMBDA_CHROME_PATH;
   if (!explicit) {
-    throw new Error(
-      "[chromium] HYPERFRAMES_LAMBDA_CHROME_SOURCE=chrome-headless-shell requires " +
+    throw new ChromeBinaryUnavailableError(
+      source,
+      null,
+      "HYPERFRAMES_LAMBDA_CHROME_SOURCE=chrome-headless-shell requires " +
         "HYPERFRAMES_LAMBDA_CHROME_PATH to be set to the absolute path of the bundled binary.",
     );
   }
   if (!existsSync(explicit)) {
-    throw new Error(
-      `[chromium] HYPERFRAMES_LAMBDA_CHROME_PATH=${JSON.stringify(explicit)} does not exist`,
+    throw new ChromeBinaryUnavailableError(
+      source,
+      explicit,
+      `HYPERFRAMES_LAMBDA_CHROME_PATH=${JSON.stringify(explicit)} does not exist on disk.`,
     );
   }
   return explicit;

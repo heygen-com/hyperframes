@@ -39,6 +39,7 @@ export {
 // the package barrel — it's a test-only DI seam. Test files import it
 // directly from `./chromium.js`.
 export {
+  ChromeBinaryUnavailableError,
   type ChromeSource,
   resolveChromeArgs,
   resolveChromeExecutablePath,

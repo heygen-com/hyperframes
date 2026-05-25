@@ -65,6 +65,7 @@ const EXPECTED_NON_RETRYABLE_ERRORS = new Set([
   "FONT_FETCH_FAILED",
   "PLAN_TOO_LARGE",
   "FORMAT_NOT_SUPPORTED_IN_DISTRIBUTED",
+  "ChromeBinaryUnavailableError",
 ]);
 
 function doSynth(): {

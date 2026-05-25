@@ -67,6 +67,54 @@ function stateExited(name: string, output?: unknown): HistoryEvent {
   } as HistoryEvent;
 }
 
+// Optimized `lambda:invoke` integration's wire shape: Task* events with
+// the handler payload at `.Payload`. Helpers below fabricate these so
+// tests cover the same events a real CDK-deployed render produces.
+function taskScheduled(): HistoryEvent {
+  return {
+    type: "TaskScheduled",
+    id: 1,
+    timestamp: new Date(),
+    taskScheduledEventDetails: {
+      resource: "invoke",
+      resourceType: "lambda",
+      region: "us-east-1",
+      parameters: "{}",
+    },
+  } as HistoryEvent;
+}
+
+function taskSucceeded(payload: unknown): HistoryEvent {
+  return {
+    type: "TaskSucceeded",
+    id: 1,
+    timestamp: new Date(),
+    taskSucceededEventDetails: {
+      resource: "invoke",
+      resourceType: "lambda",
+      output: JSON.stringify({
+        ExecutedVersion: "$LATEST",
+        Payload: payload,
+        StatusCode: 200,
+      }),
+    },
+  } as HistoryEvent;
+}
+
+function taskFailed(error: string, cause: string): HistoryEvent {
+  return {
+    type: "TaskFailed",
+    id: 1,
+    timestamp: new Date(),
+    taskFailedEventDetails: {
+      resource: "invoke",
+      resourceType: "lambda",
+      error,
+      cause,
+    },
+  } as HistoryEvent;
+}
+
 describe("getRenderProgress", () => {
   it("reports 0 progress before Plan completes", async () => {
     const sfn = new FakeSFN();
@@ -221,6 +269,116 @@ describe("getRenderProgress", () => {
 
   it("requires executionArn", async () => {
     await expect(getRenderProgress({ executionArn: "" })).rejects.toThrow(/executionArn/);
+  });
+
+  describe("optimized lambda:invoke integration", () => {
+    it("counts a single TaskSucceeded as one Lambda invocation", async () => {
+      const sfn = new FakeSFN();
+      sfn.historyPages = [
+        [
+          stateEntered("Plan"),
+          taskScheduled(),
+          taskSucceeded({ Action: "plan", TotalFrames: 240, DurationMs: 1_000 }),
+        ],
+      ];
+      const progress = await getRenderProgress({
+        executionArn: "arn",
+        defaultMemorySizeMb: 10_240,
+        sfn: sfn as unknown as SFNClient,
+      });
+      expect(progress.lambdasInvoked).toBe(1);
+      expect(progress.totalFrames).toBe(240);
+      // computeRenderCost rounds to 4 decimals; precision=4 not 6.
+      expect(progress.costs.breakdown.lambdaUsd).toBeCloseTo(0.0002, 4);
+      expect(progress.costs.breakdown.lambdaUsd).toBeGreaterThan(0);
+    });
+
+    it("attributes RenderChunk FramesEncoded but ignores Plan/Assemble FramesEncoded", async () => {
+      const sfn = new FakeSFN();
+      sfn.historyPages = [
+        [
+          stateEntered("Plan"),
+          taskScheduled(),
+          taskSucceeded({ Action: "plan", TotalFrames: 100, DurationMs: 1_000 }),
+          stateEntered("RenderChunk"),
+          taskScheduled(),
+          taskSucceeded({ Action: "renderChunk", FramesEncoded: 50, DurationMs: 2_000 }),
+          stateEntered("Assemble"),
+          taskScheduled(),
+          taskSucceeded({
+            Action: "assemble",
+            FramesEncoded: 100, // would double-count if Assemble's count bled in
+            FileSize: 9_000_000,
+            OutputS3Uri: "s3://b/k.mp4",
+            DurationMs: 1_500,
+          }),
+        ],
+      ];
+      const progress = await getRenderProgress({
+        executionArn: "arn",
+        sfn: sfn as unknown as SFNClient,
+      });
+      expect(progress.framesRendered).toBe(50);
+      expect(progress.lambdasInvoked).toBe(3);
+    });
+
+    it("captures TaskFailed errors with the enclosing state name", async () => {
+      const sfn = new FakeSFN();
+      sfn.historyPages = [
+        [
+          stateEntered("RenderChunk"),
+          taskScheduled(),
+          taskFailed("Sandbox.Timedout", "Task timed out after 900.00 seconds"),
+        ],
+      ];
+      const progress = await getRenderProgress({
+        executionArn: "arn",
+        sfn: sfn as unknown as SFNClient,
+      });
+      expect(progress.errors).toEqual([
+        {
+          state: "RenderChunk",
+          error: "Sandbox.Timedout",
+          cause: "Task timed out after 900.00 seconds",
+        },
+      ]);
+    });
+
+    it("sums billed seconds across plan + chunks + assemble", async () => {
+      const sfn = new FakeSFN();
+      const renderChunkSucceeded = (frames: number, ms: number) => [
+        stateEntered("RenderChunk"),
+        taskScheduled(),
+        taskSucceeded({ Action: "renderChunk", FramesEncoded: frames, DurationMs: ms }),
+      ];
+      // 1 plan + 16 chunks @ 217s + 1 assemble = 3492.7s billed.
+      sfn.historyPages = [
+        [
+          stateEntered("Plan"),
+          taskScheduled(),
+          taskSucceeded({ Action: "plan", TotalFrames: 1349, DurationMs: 13_000 }),
+          ...Array.from({ length: 16 }, () => renderChunkSucceeded(84, 217_000)).flat(),
+          stateEntered("Assemble"),
+          taskScheduled(),
+          taskSucceeded({
+            Action: "assemble",
+            FileSize: 81_000_000,
+            OutputS3Uri: "s3://b/k.mp4",
+            DurationMs: 7_700,
+          }),
+        ],
+      ];
+      sfn.describe.status = "SUCCEEDED";
+      const progress = await getRenderProgress({
+        executionArn: "arn",
+        defaultMemorySizeMb: 10_240,
+        sfn: sfn as unknown as SFNClient,
+      });
+      // 3492.7s × 10GB × $0.0000166667/GB-s ≈ $0.582.
+      expect(progress.costs.breakdown.lambdaUsd).toBeCloseTo(0.582, 2);
+      expect(progress.framesRendered).toBe(84 * 16);
+      expect(progress.lambdasInvoked).toBe(18);
+    });
   });
 });
 

@@ -484,6 +484,7 @@ export interface BuildChromeArgsOptions {
 }
 
 const CANVAS_DRAW_ELEMENT_FEATURE_FLAG = "--enable-features=CanvasDrawElement";
+const WEBGPU_FLAG = "--enable-unsafe-webgpu";
 
 export function buildChromeArgs(
   options: BuildChromeArgsOptions,
@@ -535,6 +536,10 @@ export function buildChromeArgs(
     // Disable features that add overhead
     "--disable-features=AudioServiceOutOfProcess,IsolateOrigins,site-per-process,Translate,BackForwardCache,IntensiveWakeUpThrottling",
   ];
+
+  if (browserGpuMode !== "software") {
+    chromeArgs.push(WEBGPU_FLAG);
+  }
 
   // BeginFrame flags — only when using chrome-headless-shell on Linux
   if (options.captureMode !== "screenshot") {

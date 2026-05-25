@@ -38,6 +38,26 @@ function isCompositionRootOrMount(rawTag: string): boolean {
 }
 
 export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
+  // invalid_capture_path — catches ../capture/ in src/href attributes and scripts.
+  // Sub-compositions live in compositions/ but are served relative to the project
+  // root, so all asset paths must be root-relative ("capture/...").
+  // Using "../capture/..." works on disk but breaks in Studio and renders.
+  ({ rawSource, options }) => {
+    if (isRegistrySourceFile(options.filePath) || isRegistryInstalledFile(rawSource)) return [];
+    // Only flag in sub-compositions and root compositions — not in registry blocks
+    const matches = rawSource.match(/\.\.\/capture\//g);
+    if (!matches || matches.length === 0) return [];
+    return [
+      {
+        code: "invalid_capture_path",
+        severity: "error",
+        message: `Found ${matches.length} asset path(s) using ../capture/ — will 404 in Studio and renders.`,
+        fixHint:
+          'Replace all "../capture/" with "capture/" throughout this file. Compositions are served with the project root as their base URL, so paths must be root-relative, not relative to the compositions/ directory.',
+      },
+    ];
+  },
+
   // composition_file_too_large
   ({ rawSource, options }) => {
     if (isRegistrySourceFile(options.filePath) || isRegistryInstalledFile(rawSource)) return [];

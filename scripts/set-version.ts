@@ -1,6 +1,6 @@
 #!/usr/bin/env tsx
 /**
- * Set the version across all publishable packages in the monorepo,
+ * Set the version across all publishable packages and plugins in the monorepo,
  * then create a git commit and tag.
  *
  * Usage:
@@ -8,7 +8,7 @@
  *   bun run set-version 0.1.1-alpha.1  # pre-release  → npm "alpha" tag
  *   bun run set-version 0.1.1 --no-tag # bump only (no commit or tag)
  *
- * All packages share a single version number (fixed versioning).
+ * All packages and plugins share a single version number (fixed versioning).
  * Pre-release suffixes (-alpha, -beta, -rc, etc.) are detected by the
  * publish workflow and published to the corresponding npm dist-tag.
  */
@@ -27,6 +27,8 @@ const PACKAGES = [
   "packages/cli",
   "packages/aws-lambda",
 ];
+
+const PLUGINS = [".claude-plugin", ".codex-plugin", ".cursor-plugin"];
 
 const ROOT = join(import.meta.dirname, "..");
 
@@ -56,7 +58,21 @@ function main() {
     console.log(`  ${content.name}: ${oldVersion} -> ${version}`);
   }
 
-  console.log(`\nSet ${PACKAGES.length} packages to v${version}`);
+  // Update each plugin.json. Replace just the version string rather than
+  // round-tripping through JSON.parse/stringify: oxfmt keeps these manifests'
+  // short arrays inline, but JSON.stringify expands them, which would fail the
+  // pre-commit format check on the release commit this script creates.
+  for (const plugin of PLUGINS) {
+    const pluginPath = join(ROOT, plugin, "plugin.json");
+    const text = readFileSync(pluginPath, "utf-8");
+    const oldVersion = text.match(/"version"\s*:\s*"([^"]*)"/)?.[1] ?? "unknown";
+    writeFileSync(pluginPath, text.replace(/("version"\s*:\s*)"[^"]*"/, `$1"${version}"`));
+    console.log(`  ${plugin}: ${oldVersion} -> ${version}`);
+  }
+
+  console.log(
+    `\nSet ${PACKAGES.length} packages and ${PLUGINS.length} plugin manifests to v${version}`,
+  );
 
   if (skipTag) {
     console.log(`\nSkipped commit and tag (--no-tag). Remember to commit and tag manually.`);
@@ -70,7 +86,12 @@ function main() {
   }).trim();
   const unexpected = status
     .split("\n")
-    .filter((line) => line && !PACKAGES.some((pkg) => line.includes(pkg)));
+    .filter(
+      (line) =>
+        line &&
+        !PACKAGES.some((pkg) => line.includes(pkg)) &&
+        !PLUGINS.some((plugin) => line.includes(plugin)),
+    );
   if (unexpected.length > 0) {
     console.error("\nUnexpected uncommitted changes:");
     unexpected.forEach((line) => console.error(`  ${line}`));
@@ -78,11 +99,17 @@ function main() {
     process.exit(1);
   }
 
-  execSync(`git add ${PACKAGES.map((p) => join(p, "package.json")).join(" ")}`, {
+  execSync(
+    `git add ${[...PACKAGES.map((p) => join(p, "package.json")), ...PLUGINS.map((p) => join(p, "plugin.json"))].join(" ")}`,
+    {
+      cwd: ROOT,
+      stdio: "inherit",
+    },
+  );
+  execSync(`git commit -m "chore: release v${version}"`, {
     cwd: ROOT,
     stdio: "inherit",
   });
-  execSync(`git commit -m "chore: release v${version}"`, { cwd: ROOT, stdio: "inherit" });
   execSync(`git tag v${version}`, { cwd: ROOT, stdio: "inherit" });
   console.log(`\nCreated commit and tag v${version}`);
 

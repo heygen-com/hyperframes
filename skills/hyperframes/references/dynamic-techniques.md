@@ -4,13 +4,25 @@ You are here because SKILL.md told you to read this file before writing animatio
 
 ## Technique Selection by Energy
 
-| Energy level | Highlight                             | Exit                | Cycle pattern                             |
-| ------------ | ------------------------------------- | ------------------- | ----------------------------------------- |
-| High         | Karaoke with accent glow + scale pop  | Scatter or drop     | Alternate highlight styles every 2 groups |
-| Medium-high  | Karaoke with color pop                | Scatter or collapse | Alternate every 3 groups                  |
-| Medium       | Karaoke (subtle, white only)          | Fade + slide        | Alternate every 3 groups                  |
-| Medium-low   | Karaoke (minimal scale change)        | Fade                | Single style, vary ease per group         |
-| Low          | Karaoke (warm tones, slow transition) | Collapse            | Alternate every 4 groups                  |
+Captions are a constrained surface — the highlight and exit technique is closely tied to how much intensity the spoken content carries. The table below is a calibration reference. If DESIGN.md or the storyboard specifies a caption style, that overrides anything here.
+
+The core principle: **all energy levels use karaoke highlight as the baseline.** The difference is intensity — not the technique type.
+
+**What changes with energy:**
+
+- **Highlight intensity:** high energy gets accent color + glow + 15% scale pop on active words. Low energy gets a gentle white shift with 3% scale. The karaoke behavior is the same; the amplitude is different.
+- **Exit style:** high energy exits scatter or drop (the word leaves with motion). Low energy exits collapse (the word simply fades or shrinks). The exit should express the same energy as the content.
+- **Cycle variation:** high energy alternates highlight styles every 2 groups for variety. Low energy uses a single consistent style, varying only the ease. Variation itself creates energy; consistency creates calm.
+
+Calibration reference (starting points, not rules):
+
+| Energy level | Highlight amplitude                 | Exit                | Cycle variation |
+| ------------ | ----------------------------------- | ------------------- | --------------- |
+| High         | Accent color + glow + 15% scale pop | Scatter or drop     | Every 2 groups  |
+| Medium-high  | Color pop, no glow                  | Scatter or collapse | Every 3 groups  |
+| Medium       | White shift only                    | Fade + slide        | Every 3 groups  |
+| Medium-low   | Minimal scale change                | Fade                | Single style    |
+| Low          | Warm tones, slow transition         | Collapse            | Single style    |
 
 **All energy levels use karaoke highlight as the baseline.** The difference is intensity — high energy gets accent color + glow + 15% scale pop on active words, low energy gets a gentle white shift with 3% scale.
 

@@ -1,3 +1,4 @@
+import { Tooltip } from "./ui";
 import { PropertyPanel } from "./editor/PropertyPanel";
 import { MotionPanel } from "./editor/MotionPanel";
 import { LayersPanel } from "./editor/LayersPanel";
@@ -106,54 +107,62 @@ export function StudioRightPanel({
             <div className="flex items-center gap-1 border-b border-neutral-800 px-3 py-2">
               {STUDIO_INSPECTOR_PANELS_ENABLED && (
                 <>
-                  <button
-                    type="button"
-                    onClick={() => setRightPanelTab("design")}
-                    className={`h-8 rounded-xl px-3 text-[11px] font-medium transition-colors ${
-                      rightPanelTab === "design"
-                        ? "bg-neutral-800 text-white"
-                        : "text-neutral-500 hover:bg-neutral-800/70 hover:text-neutral-200"
-                    }`}
-                  >
-                    Design
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setRightPanelTab("layers")}
-                    className={`h-8 rounded-xl px-3 text-[11px] font-medium transition-colors ${
-                      rightPanelTab === "layers"
-                        ? "bg-neutral-800 text-white"
-                        : "text-neutral-500 hover:bg-neutral-800/70 hover:text-neutral-200"
-                    }`}
-                  >
-                    Layers
-                  </button>
-                  {STUDIO_MOTION_PANEL_ENABLED && (
+                  <Tooltip label="Element styles and properties" side="bottom">
                     <button
                       type="button"
-                      onClick={() => setRightPanelTab("motion")}
+                      onClick={() => setRightPanelTab("design")}
                       className={`h-8 rounded-xl px-3 text-[11px] font-medium transition-colors ${
-                        rightPanelTab === "motion"
+                        rightPanelTab === "design"
                           ? "bg-neutral-800 text-white"
                           : "text-neutral-500 hover:bg-neutral-800/70 hover:text-neutral-200"
                       }`}
                     >
-                      Motion
+                      Design
                     </button>
+                  </Tooltip>
+                  <Tooltip label="Composition layer stack" side="bottom">
+                    <button
+                      type="button"
+                      onClick={() => setRightPanelTab("layers")}
+                      className={`h-8 rounded-xl px-3 text-[11px] font-medium transition-colors ${
+                        rightPanelTab === "layers"
+                          ? "bg-neutral-800 text-white"
+                          : "text-neutral-500 hover:bg-neutral-800/70 hover:text-neutral-200"
+                      }`}
+                    >
+                      Layers
+                    </button>
+                  </Tooltip>
+                  {STUDIO_MOTION_PANEL_ENABLED && (
+                    <Tooltip label="Animation and motion" side="bottom">
+                      <button
+                        type="button"
+                        onClick={() => setRightPanelTab("motion")}
+                        className={`h-8 rounded-xl px-3 text-[11px] font-medium transition-colors ${
+                          rightPanelTab === "motion"
+                            ? "bg-neutral-800 text-white"
+                            : "text-neutral-500 hover:bg-neutral-800/70 hover:text-neutral-200"
+                        }`}
+                      >
+                        Motion
+                      </button>
+                    </Tooltip>
                   )}
                 </>
               )}
-              <button
-                type="button"
-                onClick={() => setRightPanelTab("renders")}
-                className={`h-8 rounded-xl px-3 text-[11px] font-medium transition-colors ${
-                  rightPanelTab === "renders"
-                    ? "bg-neutral-800 text-white"
-                    : "text-neutral-500 hover:bg-neutral-800/70 hover:text-neutral-200"
-                }`}
-              >
-                {renderJobs.length > 0 ? `Renders (${renderJobs.length})` : "Renders"}
-              </button>
+              <Tooltip label="Render queue and exports" side="bottom">
+                <button
+                  type="button"
+                  onClick={() => setRightPanelTab("renders")}
+                  className={`h-8 rounded-xl px-3 text-[11px] font-medium transition-colors ${
+                    rightPanelTab === "renders"
+                      ? "bg-neutral-800 text-white"
+                      : "text-neutral-500 hover:bg-neutral-800/70 hover:text-neutral-200"
+                  }`}
+                >
+                  {renderJobs.length > 0 ? `Renders (${renderJobs.length})` : "Renders"}
+                </button>
+              </Tooltip>
             </div>
             <div className="min-h-0 flex-1">
               {rightPanelTab === "block-params" && activeBlockParams ? (

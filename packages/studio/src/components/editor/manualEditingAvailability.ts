@@ -30,7 +30,16 @@ export function resolveStudioBooleanEnvFlag(
 // and downstream `env[name]` reads would crash. Fall back to `{}` so
 // every flag resolves to its declared default outside Vite. Direct
 // property access keeps Vite's compile-time transform happy.
-const env = (import.meta.env ?? {}) as StudioFeatureFlagEnv;
+//
+// When the studio is served as a pre-built SPA by the embedded Hono server,
+// `import.meta.env` values were baked at build time. The server injects
+// `window.__HF_STUDIO_ENV__` with any `VITE_STUDIO_*` env vars from the
+// user's shell, so runtime overrides take precedence over baked defaults.
+const runtimeEnv =
+  typeof window !== "undefined"
+    ? ((window as Window & { __HF_STUDIO_ENV__?: StudioFeatureFlagEnv }).__HF_STUDIO_ENV__ ?? {})
+    : {};
+const env = { ...(import.meta.env ?? {}), ...runtimeEnv } as StudioFeatureFlagEnv;
 
 export const STUDIO_PREVIEW_MANUAL_EDITING_ENABLED = resolveStudioBooleanEnvFlag(
   env,
@@ -53,7 +62,7 @@ export const STUDIO_MOTION_PANEL_ENABLED = resolveStudioBooleanEnvFlag(
 export const STUDIO_BLOCKS_PANEL_ENABLED = resolveStudioBooleanEnvFlag(
   env,
   ["VITE_STUDIO_ENABLE_BLOCKS_PANEL", "VITE_STUDIO_BLOCKS_PANEL_ENABLED"],
-  false,
+  true,
 );
 
 export const STUDIO_PREVIEW_SELECTION_ENABLED = STUDIO_INSPECTOR_PANELS_ENABLED;

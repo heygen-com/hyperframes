@@ -7,6 +7,35 @@ import { STUDIO_MOTION_PATH } from "../components/editor/studioMotion";
 import { shouldHandleTimelineToggleHotkey, isEditableTarget } from "../utils/timelineDiscovery";
 import { shouldIgnoreHistoryShortcut } from "../utils/studioHelpers";
 
+/** Safely resolves contentWindow for a potentially cross-origin iframe. */
+function iframeContentWindow(iframe: HTMLIFrameElement | null): Window | null {
+  try {
+    return iframe?.contentWindow ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Handles Cmd/Ctrl+Z (undo) and Cmd/Ctrl+Shift+Z / Ctrl+Y (redo) key events.
+ * Returns true if the event was handled, false otherwise.
+ */
+// fallow-ignore-next-line complexity
+function handleUndoRedoKey(event: KeyboardEvent, onUndo: () => void, onRedo: () => void): boolean {
+  const key = event.key.toLowerCase();
+  if (key === "z" && !event.shiftKey) {
+    event.preventDefault();
+    onUndo();
+    return true;
+  }
+  if ((key === "z" && event.shiftKey) || (event.ctrlKey && !event.metaKey && key === "y")) {
+    event.preventDefault();
+    onRedo();
+    return true;
+  }
+  return false;
+}
+
 // ── Types ──
 
 interface EditHistoryHandle {
@@ -177,18 +206,15 @@ export function useAppHotkeys({
 
     // Cmd/Ctrl+Z — undo, Cmd/Ctrl+Shift+Z or Ctrl+Y — redo
     if (event.metaKey || event.ctrlKey) {
-      if (!shouldIgnoreHistoryShortcut(event.target)) {
-        const key = event.key.toLowerCase();
-        if (key === "z" && !event.shiftKey) {
-          event.preventDefault();
-          void handleUndoRef.current();
-          return;
-        }
-        if ((key === "z" && event.shiftKey) || (event.ctrlKey && !event.metaKey && key === "y")) {
-          event.preventDefault();
-          void handleRedoRef.current();
-          return;
-        }
+      if (
+        !shouldIgnoreHistoryShortcut(event.target) &&
+        handleUndoRedoKey(
+          event,
+          () => void handleUndoRef.current(),
+          () => void handleRedoRef.current(),
+        )
+      ) {
+        return;
       }
 
       // Cmd/Ctrl+1 — sidebar: Compositions tab
@@ -248,6 +274,24 @@ export function useAppHotkeys({
       }
     }
 
+    // F — toggle fullscreen preview
+    if (
+      event.key.toLowerCase() === "f" &&
+      !event.metaKey &&
+      !event.ctrlKey &&
+      !event.altKey &&
+      !event.shiftKey &&
+      !isEditableTarget(event.target)
+    ) {
+      event.preventDefault();
+      if (document.fullscreenElement) {
+        void document.exitFullscreen();
+      } else {
+        document.querySelector<HTMLElement>("[data-studio-fullscreen-target]")?.requestFullscreen();
+      }
+      return;
+    }
+
     // Delete / Backspace — remove selected element (timeline clip or preview selection)
     if (
       (event.key === "Delete" || event.key === "Backspace") &&
@@ -292,13 +336,21 @@ export function useAppHotkeys({
 
   const syncPreviewTimelineHotkey = useCallback(
     (iframe: HTMLIFrameElement | null) => {
-      const nextWindow = iframe?.contentWindow ?? null;
+      const nextWindow = iframeContentWindow(iframe);
       if (previewHotkeyWindowRef.current === nextWindow) return;
       if (previewHotkeyWindowRef.current) {
-        previewHotkeyWindowRef.current.removeEventListener("keydown", previewAppKeyDownHandler);
+        try {
+          previewHotkeyWindowRef.current.removeEventListener("keydown", previewAppKeyDownHandler);
+        } catch {
+          /* cross-origin iframe */
+        }
       }
       previewHotkeyWindowRef.current = nextWindow;
-      nextWindow?.addEventListener("keydown", previewAppKeyDownHandler, true);
+      try {
+        nextWindow?.addEventListener("keydown", previewAppKeyDownHandler, true);
+      } catch {
+        /* cross-origin iframe */
+      }
     },
     [previewAppKeyDownHandler],
   );
@@ -306,7 +358,11 @@ export function useAppHotkeys({
   useEffect(
     () => () => {
       if (previewHotkeyWindowRef.current) {
-        previewHotkeyWindowRef.current.removeEventListener("keydown", previewAppKeyDownHandler);
+        try {
+          previewHotkeyWindowRef.current.removeEventListener("keydown", previewAppKeyDownHandler);
+        } catch {
+          /* cross-origin iframe */
+        }
         previewHotkeyWindowRef.current = null;
       }
     },
@@ -318,16 +374,11 @@ export function useAppHotkeys({
   const handleHistoryHotkey = useCallback((event: KeyboardEvent) => {
     if (!(event.metaKey || event.ctrlKey)) return;
     if (shouldIgnoreHistoryShortcut(event.target)) return;
-    const key = event.key.toLowerCase();
-    if (key === "z" && !event.shiftKey) {
-      event.preventDefault();
-      void handleUndoRef.current();
-      return;
-    }
-    if ((key === "z" && event.shiftKey) || (event.ctrlKey && !event.metaKey && key === "y")) {
-      event.preventDefault();
-      void handleRedoRef.current();
-    }
+    handleUndoRedoKey(
+      event,
+      () => void handleUndoRef.current(),
+      () => void handleRedoRef.current(),
+    );
   }, []);
 
   const syncPreviewHistoryHotkey = useCallback(
@@ -335,7 +386,7 @@ export function useAppHotkeys({
       previewHistoryHotkeyCleanupRef.current?.();
       previewHistoryHotkeyCleanupRef.current = null;
 
-      const win = iframe?.contentWindow ?? null;
+      const win = iframeContentWindow(iframe);
       let doc: Document | null = null;
       try {
         doc = iframe?.contentDocument ?? null;
@@ -344,10 +395,18 @@ export function useAppHotkeys({
       }
       if (!win && !doc) return;
 
-      win?.addEventListener("keydown", handleHistoryHotkey, true);
+      try {
+        win?.addEventListener("keydown", handleHistoryHotkey, true);
+      } catch {
+        /* cross-origin */
+      }
       doc?.addEventListener("keydown", handleHistoryHotkey, true);
       previewHistoryHotkeyCleanupRef.current = () => {
-        win?.removeEventListener("keydown", handleHistoryHotkey, true);
+        try {
+          win?.removeEventListener("keydown", handleHistoryHotkey, true);
+        } catch {
+          /* cross-origin */
+        }
         doc?.removeEventListener("keydown", handleHistoryHotkey, true);
       };
     },

@@ -1,0 +1,83 @@
+<!--
+  Blend Difference — auto-inverting captions via mix-blend-mode.
+
+  Text color inverts per-pixel against whatever is behind it:
+  white stays white on dark areas, flips to black on light areas.
+  On color video, white inverts to the complement (blue → orange,
+  red → cyan, green → magenta).
+
+  Setup:
+  1. The composition root (or a shared ancestor of both the video
+     and the caption layer) MUST have `isolation: isolate` so the
+     blend operates against sibling content, not the page background.
+  2. Add class="blend-difference" to any caption container.
+  3. Set caption text color to white. The blend mode handles the rest.
+
+  Works on any element — divs, spans, SVG text, even images.
+
+  Customize:
+  - --blend-caption-color: base text color (default white)
+  - Change blend mode via --blend-mode to 'exclusion' for a softer effect
+
+  Variants:
+  - .blend-difference         → standard per-pixel inversion
+  - .blend-difference-soft    → exclusion mode, less harsh contrast
+  - .blend-difference-screen  → text glows on dark, fades on light
+-->
+
+<style>
+  .blend-difference {
+    mix-blend-mode: var(--blend-mode, difference);
+    color: var(--blend-caption-color, white);
+    pointer-events: none;
+  }
+
+  .blend-difference-soft {
+    mix-blend-mode: exclusion;
+    color: var(--blend-caption-color, white);
+    pointer-events: none;
+  }
+
+  .blend-difference-screen {
+    mix-blend-mode: screen;
+    color: var(--blend-caption-color, white);
+    pointer-events: none;
+  }
+</style>
+
+<!--
+  Composition setup example:
+
+  <div data-composition-id="root" ... style="isolation: isolate;">
+
+    <video id="bg" data-start="0" data-duration="30" data-track-index="0"
+           src="video.mp4" muted playsinline></video>
+
+    <div class="clip blend-difference" data-start="0" data-duration="5" data-track-index="1"
+         style="position: absolute; inset: 0; z-index: 10;
+                display: flex; align-items: center; justify-content: center;">
+      <span style="font-size: 120px; font-weight: 800; text-transform: uppercase;">
+        YOUR CAPTION
+      </span>
+    </div>
+  </div>
+
+
+  Timeline integration — animate captions normally, blend mode is passive:
+
+  tl.from(".caption", {
+    y: 50, opacity: 0, duration: 0.6, ease: "expo.out"
+  }, 0.2);
+
+
+  Notes:
+  - isolation: isolate on the composition root is REQUIRED.
+    Without it, blend mode composes against the page background
+    (usually white or black) and you get no inversion.
+  - Works with any GSAP animation — the blend composites every frame.
+  - For caption containers with multiple text elements, apply the
+    class to the shared parent, not each text element individually.
+  - On pure black backgrounds, white text stays white (difference
+    of white and black = white). The effect is most visible when
+    the background has varied luminance or color.
+-->

@@ -23,14 +23,15 @@
         height: 1080px;
         margin: 0;
         overflow: hidden;
-        background: #0a0a0a;
+        background: transparent;
       }
       #caption-glitch-rgb {
+        pointer-events: none;
         position: relative;
         width: 1920px;
         height: 1080px;
         overflow: hidden;
-        background: #0a0a0a;
+        background: transparent;
       }
       #gl-video {
         position: absolute;
@@ -104,6 +105,7 @@
     <div
       id="caption-glitch-rgb"
       data-composition-id="caption-glitch-rgb"
+      data-timeline-locked
       data-start="0"
       data-duration="8"
       data-fps="30"

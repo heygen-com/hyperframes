@@ -31,14 +31,14 @@
         height: 1080px;
         margin: 0;
         overflow: hidden;
-        background: #0a0805;
+        background: transparent;
       }
       #texture-lava {
         position: relative;
         width: 1920px;
         height: 1080px;
         overflow: hidden;
-        background: #0a0805;
+        background: transparent;
       }
       #lv-video {
         position: absolute;
@@ -51,7 +51,7 @@
       .lv-overlay {
         position: absolute;
         inset: 0;
-        background: rgba(0, 0, 0, 0.55);
+        background: transparent;
         z-index: 1;
         pointer-events: none;
       }
@@ -97,6 +97,7 @@
     <div
       id="caption-texture"
       data-composition-id="caption-texture"
+      data-timeline-locked
       data-start="0"
       data-duration="8"
       data-fps="30"

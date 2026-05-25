@@ -62,33 +62,46 @@ function parsePositiveNumber(value: string | null): number | null {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
+// fallow-ignore-next-line complexity
 function resolveIframeDuration(iframe: HTMLIFrameElement | null): number | null {
-  const win = iframe?.contentWindow as PreviewWindow | null;
-  const playerDuration = win?.__player?.getDuration?.();
-  if (Number.isFinite(playerDuration) && playerDuration != null && playerDuration > 0) {
-    return playerDuration;
+  try {
+    const win = iframe?.contentWindow as PreviewWindow | null;
+    const playerDuration = win?.__player?.getDuration?.();
+    if (Number.isFinite(playerDuration) && playerDuration != null && playerDuration > 0) {
+      return playerDuration;
+    }
+  } catch {
+    /* cross-origin iframe */
   }
 
-  const doc = iframe?.contentDocument;
-  const root = doc?.querySelector("[data-composition-id]") ?? doc?.documentElement ?? null;
-  return (
-    parsePositiveNumber(root?.getAttribute("data-composition-duration") ?? null) ??
-    parsePositiveNumber(root?.getAttribute("data-duration") ?? null)
-  );
+  try {
+    const doc = iframe?.contentDocument;
+    const root = doc?.querySelector("[data-composition-id]") ?? doc?.documentElement ?? null;
+    return (
+      parsePositiveNumber(root?.getAttribute("data-composition-duration") ?? null) ??
+      parsePositiveNumber(root?.getAttribute("data-duration") ?? null)
+    );
+  } catch {
+    return null;
+  }
 }
 
 function syncIframePlayback(iframe: HTMLIFrameElement | null, shouldPlay: boolean): boolean {
-  const player = (iframe?.contentWindow as PreviewWindow | null)?.__player;
-  if (!player) return false;
+  try {
+    const player = (iframe?.contentWindow as PreviewWindow | null)?.__player;
+    if (!player) return false;
 
-  if (shouldPlay) {
-    player.play?.();
+    if (shouldPlay) {
+      player.play?.();
+      return true;
+    }
+
+    player.pause?.();
+    player.seek?.(resolveThumbnailSeekTime(resolveIframeDuration(iframe)));
     return true;
+  } catch {
+    return false;
   }
-
-  player.pause?.();
-  player.seek?.(resolveThumbnailSeekTime(resolveIframeDuration(iframe)));
-  return true;
 }
 
 function CompCard({

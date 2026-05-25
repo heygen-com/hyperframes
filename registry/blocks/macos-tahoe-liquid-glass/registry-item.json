@@ -1,0 +1,115 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "macos-tahoe-liquid-glass",
+  "type": "hyperframes:block",
+  "title": "macOS Tahoe Liquid Glass Desktop",
+  "description": "3D MacBook with a macOS Tahoe-style desktop, glass menu bar, Finder window, dock, and cinematic device camera move.",
+  "stability": "experimental",
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 15,
+  "tags": ["html-in-canvas", "3d", "macos", "tahoe", "gltf"],
+  "files": [
+    {
+      "path": "macos-tahoe-liquid-glass.html",
+      "target": "compositions/macos-tahoe-liquid-glass.html",
+      "type": "hyperframes:composition"
+    },
+    {
+      "path": "models/macbook.glb",
+      "target": "models/macbook.glb",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/wallpapers/golden-gate-bridge-san-francisco-5k-0g.jpg",
+      "target": "assets/wallpapers/golden-gate-bridge-san-francisco-5k-0g.jpg",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/icons/finder.png",
+      "target": "assets/icons/finder.png",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/icons/safari.jpg",
+      "target": "assets/icons/safari.jpg",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/icons/mail.jpg",
+      "target": "assets/icons/mail.jpg",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/icons/calendar.jpg",
+      "target": "assets/icons/calendar.jpg",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/icons/photos.jpg",
+      "target": "assets/icons/photos.jpg",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/icons/messages.jpg",
+      "target": "assets/icons/messages.jpg",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/icons/toast-messages.jpg",
+      "target": "assets/icons/toast-messages.jpg",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/icons/music.jpg",
+      "target": "assets/icons/music.jpg",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/icons/brave.jpg",
+      "target": "assets/icons/brave.jpg",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/icons/slack.jpg",
+      "target": "assets/icons/slack.jpg",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/icons/files.jpg",
+      "target": "assets/icons/files.jpg",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/icons/dock-finder.png",
+      "target": "assets/icons/dock-finder.png",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/icons/dock-safari.jpg",
+      "target": "assets/icons/dock-safari.jpg",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/icons/dock-mail.jpg",
+      "target": "assets/icons/dock-mail.jpg",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/icons/dock-photos.jpg",
+      "target": "assets/icons/dock-photos.jpg",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/icons/dock-music.jpg",
+      "target": "assets/icons/dock-music.jpg",
+      "type": "hyperframes:asset"
+    }
+  ],
+  "preview": {
+    "video": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/macos-tahoe-liquid-glass.mp4",
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/macos-tahoe-liquid-glass.png"
+  }
+}

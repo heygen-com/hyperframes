@@ -321,6 +321,29 @@ describe("resolveVisualDomEditSelectionTarget", () => {
     expect(visualTarget).toBe(headline);
     expect(explicitSelection?.id).toBe("container");
   });
+
+  it("prefers the visually-on-top sibling over a deeper element in a separate visual layer", () => {
+    const document = createDocument(`
+      <div id="comp-root">
+        <div id="sub-comp" class="sub-comp">
+          <img id="sf-chrome" class="sf-chrome" style="width:100%;height:100%" />
+        </div>
+        <video id="pip-studio" class="pip-studio" style="position:absolute;z-index:15" />
+      </div>
+    `);
+    const pipStudio = document.getElementById("pip-studio") as HTMLElement;
+    const sfChrome = document.getElementById("sf-chrome") as HTMLElement;
+    const subComp = document.getElementById("sub-comp") as HTMLElement;
+    setElementRect(pipStudio, { left: 50, top: 50, width: 320, height: 320 });
+    setElementRect(sfChrome, { left: 0, top: 0, width: 1920, height: 1080 });
+    setElementRect(subComp, { left: 0, top: 0, width: 1920, height: 1080 });
+
+    expect(
+      resolveVisualDomEditSelectionTarget([pipStudio, subComp, sfChrome], {
+        activeCompositionPath: "index.html",
+      }),
+    ).toBe(pipStudio);
+  });
 });
 
 describe("isLargeRasterDomEditSelection", () => {

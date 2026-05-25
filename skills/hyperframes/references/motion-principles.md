@@ -1,82 +1,90 @@
 # Motion Principles
 
-## Guardrails
+## Common defaults that produce monoculture
 
-You know these rules but you violate them. Stop.
+These are the patterns LLMs reach for without thinking. None of them are wrong in isolation — they're wrong as defaults. If every scene of every video lands on the same easing, the same speed, and the same entrance direction, the compositions blur into one another no matter what the brand is.
 
-- **Don't use the same ease on every tween.** You default to `power2.out` on everything. Vary eases like you vary font weights — no more than 2 independent tweens with the same ease in a scene.
-- **Don't use the same speed on everything.** You default to 0.4-0.5s for everything. The slowest scene should be 3× slower than the fastest. Vary duration deliberately.
-- **Don't enter everything from the same direction.** You default to `y: 30, opacity: 0` on every element. Vary: from left, from right, from scale, opacity-only, letter-spacing.
-- **Don't use the same stagger on every scene.** Each scene needs its own rhythm.
-- **Don't use ambient zoom on every scene.** Pick different ambient motion per scene: slow pan, subtle rotation, scale push, color shift, or nothing. Stillness after motion is powerful.
-- **Don't start at t=0.** Offset the first animation 0.1-0.3s. Zero-delay feels like a jump cut.
+- **Same ease on every tween.** `power2.out` is the most common default. Aim for variety: no more than two independent tweens sharing an ease within a scene. Eases are like font weights — vary them deliberately.
+- **Same speed on every tween.** 0.4–0.5s is a common default that flattens rhythm. The slowest motion in a scene should be roughly 3× slower than the fastest. Vary duration so the eye can tell what's important.
+- **Same entrance direction.** `y: 30, opacity: 0` is the universal LLM entrance. The same scene can use entrances from left, from right, from scale, from blur, opacity-only, letter-spacing — each one says something different about the element.
+- **Same stagger across scenes.** Each scene should have its own rhythm. A 0.08s stagger in beat 1 and a 0.15s stagger in beat 2 makes the two beats feel like different moments.
+- **Ambient zoom on every scene.** Slow-scale-up is the default ambient motion and it telegraphs "LLM-generated video." Vary the ambient motion per scene: slow pan, subtle rotation, color temperature shift, gentle drift — and sometimes nothing. Stillness after motion has real weight.
+- **First animation at t=0.** Zero-delay feels like a jump cut. Offset the opening 0.1–0.3s so the scene reads as composed rather than thrown together.
 
-## What You Don't Do Without Being Told
+## Easing is emotion, not technique
 
-### Easing is emotion, not technique
+The motion is the verb. The easing is the adverb. A slide-in with `expo.out` feels confident. With `sine.inOut`, dreamy. With `elastic.out`, playful. Same motion, three different meanings. Choose the adverb deliberately.
 
-The transition is the verb. The easing is the adverb. A slide-in with `expo.out` = confident. With `sine.inOut` = dreamy. With `elastic.out` = playful. Same motion, different meaning. Choose the adverb deliberately.
+**Direction rules:**
 
-**Direction rules — these are not optional:**
+- `.out` for elements entering. Starts fast, decelerates. Feels responsive. This is the default for entrances.
+- `.in` for elements leaving. Starts slow, accelerates away. Sends them off with momentum.
+- `.inOut` for elements moving between positions, neither entering nor leaving the scene.
 
-- `.out` for elements entering. Starts fast, decelerates. Feels responsive. This is your default.
-- `.in` for elements leaving. Starts slow, accelerates away. Throws them off.
-- `.inOut` for elements moving between positions.
+Ease-in on an entrance feels sluggish. Ease-out on an exit feels reluctant. These are the most common reversals and they're worth checking your work against.
 
-You get this backwards constantly. Ease-in for entrances feels sluggish. Ease-out for exits feels reluctant.
+## Speed expresses weight
 
-### Speed communicates weight
+Duration is one of the most direct ways a composition communicates what it values. Faster motion reads as confident, urgent, kinetic — it gives the viewer less time to study what's happening, which means the work has to land in fewer frames. Slower motion reads as deliberate, considered, weighty — the viewer has time to take in the element, which means each element has to earn that attention.
 
-- Fast (0.15-0.3s) — energy, urgency, confidence
-- Medium (0.3-0.5s) — professional, most content
-- Slow (0.5-0.8s) — gravity, luxury, contemplation
-- Very slow (0.8-2.0s) — cinematic, emotional, atmospheric
+Useful calibration ranges (not prescriptions — what a duration _expresses_ depends on what surrounds it):
 
-### Scene structure: build / breathe / resolve
+- **0.15–0.3s** — quick, percussive, kinetic. The motion reads as something happening _to_ the frame.
+- **0.3–0.5s** — comfortable, professional. The motion reads as composed and reliable.
+- **0.5–0.8s** — deliberate. The motion has visible weight and asks for attention.
+- **0.8s+** — atmospheric. The motion becomes part of what the scene _is_, not something happening within it.
 
-Every scene has three phases. You dump everything in the build and leave nothing for breathe or resolve.
+A composition that uses only one of these ranges feels one-note. Mix them — a scene where the headline takes 0.7s to settle and the supporting details land in 0.25s creates contrast that reinforces hierarchy without needing different colors or sizes.
 
-- **Build (0-30%)** — elements enter, staggered. Don't dump everything at once.
-- **Breathe (30-70%)** — content visible, alive with ONE ambient motion.
-- **Resolve (70-100%)** — exit or decisive end. Exits are faster than entrances.
+## Scene structure: build, breathe, resolve
 
-### Transitions are meaning
+Every scene has three phases. The most common failure is dumping everything into the build and leaving nothing for the other two.
 
-- **Crossfade** = "this continues"
-- **Hard cut** = "wake up" / disruption
-- **Slow dissolve** = "drift with me"
+- **Build (0–30%)** — elements enter, staggered. Not all at once.
+- **Breathe (30–70%)** — content visible, alive with one ambient motion. The viewer reads, registers, settles.
+- **Resolve (70–100%)** — exit or decisive end. Exits are faster than entrances (see Asymmetry below).
 
-You crossfade everything. Use hard cuts for disruption and register shifts.
+A scene that's all build feels like a slideshow. A scene with no breathe phase doesn't let the content land.
 
-### Choreography is hierarchy
+## Transitions carry meaning
 
-The element that moves first is perceived as most important. Stagger in order of importance, not DOM order. Don't wait for completion — overlap entries. Total stagger sequence under 500ms regardless of item count.
+The transition type tells the viewer how two scenes relate:
 
-### Asymmetry
+- **Crossfade** — "this continues." Connective tissue between related ideas.
+- **Hard cut** — "wake up" or a register shift. Disruption, surprise, percussive emphasis.
+- **Slow dissolve** — "drift with me." Atmospheric, meditative, between-thoughts.
 
-Entrances need longer than exits. A card takes 0.4s to appear but 0.25s to disappear.
+Crossfade is the default and it's defensible most of the time. The thing to watch for is using it for everything — when every transition is a crossfade, the viewer stops registering scene changes as meaningful. Hard cuts and slow dissolves are tools for the moments where the change in scene _is_ the message.
 
-## Visual Composition
+## Choreography is hierarchy
 
-You build for the web. Video frames are not pages.
+The element that moves first is perceived as most important. Stagger in order of importance, not DOM order. Don't wait for one entrance to complete before starting the next — overlap entries. Total stagger sequence under 500ms regardless of item count keeps the scene from feeling like a slow drip.
 
-- **Two focal points minimum per scene.** The eye needs somewhere to travel. Never a single text block floating in empty space.
-- **Fill the frame.** Hero text: 60-80% of width. You will try to use web-sized elements. Don't.
-- **Three layers minimum per scene.** Background treatment (glow, oversized faded type, color panel). Foreground content. Accent elements (dividers, labels, data bars).
-- **Background is not empty.** Radial glows, oversized faded type bleeding off-frame, subtle border panels, hairline rules. Pure solid #000 reads as "nothing loaded."
-- **Anchor to edges.** Pin content to left/top or right/bottom. Centered-and-floating is a web pattern.
-- **Split frames.** Data panel on the left, content on the right. Top bar with metadata, full-width below. Zone-based layouts, not centered stacks.
-- **Use structural elements.** Rules, dividers, border panels. They create paths for the eye and animate well (scaleX from 0).
+## Asymmetry between entrances and exits
 
-## Image Motion Treatment
+Entrances need longer than exits. A card might take 0.4s to appear but 0.25s to disappear — entrances build presence, exits remove it, and remove takes less time than build.
 
-Never embed a raw flat image. Every image must have motion treatment:
+## Visual composition
 
-- **Perspective tilt**: use `gsap.set(el, { transformPerspective: 1200, rotationY: -8 })` + `box-shadow` — creates depth. Do NOT use CSS `transform: perspective(...)` as GSAP will overwrite it.
-- **Slow zoom (Ken Burns)**: GSAP `scale: 1` → `1.04` over beat duration — makes photos cinematic
-- **Device frame**: Wrap in a laptop/phone shape using CSS `border-radius` and `box-shadow`
-- **Floating UI**: Extract a key element and animate it at a different z-depth for parallax
-- **Scroll reveal**: Clip the image to a viewport window and animate `y` position
+Video frames are not web pages. Web layout patterns that work on a scrollable page often look broken in a fixed-frame composition.
+
+- **Two focal points minimum per scene.** The eye needs somewhere to travel. A single text block floating in empty space reads as unfinished.
+- **Fill the frame.** Hero text typically wants 60–80% of frame width. Web type sizes — 16px body, 32px headlines — disappear at video distance.
+- **Three layers minimum.** Background treatment (glow, oversized faded type, color panel), foreground content, accent elements (dividers, labels, data bars). A scene with only one layer reads flat.
+- **Background is not empty.** Radial glows, oversized faded type bleeding off-frame, subtle border panels, hairline rules. Pure solid `#000` reads as "nothing loaded."
+- **Anchor to edges.** Pin content to left/top or right/bottom. Centered-and-floating is a web pattern that looks lost on a 16:9 canvas.
+- **Split frames.** Data panel on the left, content on the right. Top bar with metadata, full-width below. Zone-based layouts beat centered stacks.
+- **Use structural elements.** Rules, dividers, border panels. They create paths for the eye and animate well (`scaleX` from 0).
+
+## Image motion treatment
+
+Embedded images shouldn't sit flat — every image earns some motion treatment:
+
+- **Perspective tilt** — `gsap.set(el, { transformPerspective: 1200, rotationY: -8 })` plus a `box-shadow` creates depth. Do NOT use CSS `transform: perspective(...)`; GSAP will overwrite it.
+- **Slow zoom (Ken Burns)** — GSAP `scale: 1` → `1.04` over beat duration. Makes photos feel cinematic rather than pasted in.
+- **Device frame** — wrap in a laptop or phone shape using `border-radius` and `box-shadow`.
+- **Floating UI** — extract a key element and animate it at a different z-depth for parallax.
+- **Scroll reveal** — clip the image to a viewport window and animate `y` position.
 
 ## Load-Bearing GSAP Rules
 
@@ -132,7 +140,7 @@ Rules below came out of two independent website-to-hyperframes builds (2026-04-2
   tl.to(".aura", { scale: 1.08, yoyo: true, repeat: 5, duration: 1.2 }, 0);
   ```
 
-- **Hard-kill every scene boundary, not just captions.** The caption hard-kill rule above generalizes: any element whose visibility changes at a beat boundary needs a deterministic `tl.set()` kill after its fade, because later tweens on the same element (or `immediateRender` from a sibling tween) can resurrect it. Apply to every element with an exit animation:
+- **Hard-kill every scene boundary, not just captions.** The same hard-kill pattern from `captions.md` generalizes to all elements with exit animations: any element whose visibility changes at a beat boundary needs a deterministic `tl.set()` kill after its fade, because later tweens on the same element (or `immediateRender` from a sibling tween) can resurrect it. Apply to every element with an exit animation:
 
   ```js
   tl.to(el, { opacity: 0, duration: 0.3 }, beatEnd);

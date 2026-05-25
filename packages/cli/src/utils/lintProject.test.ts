@@ -1,14 +1,12 @@
 import { describe, it, expect, afterEach } from "vitest";
-import { mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { lintProject, shouldBlockRender } from "./lintProject.js";
 import type { ProjectDir } from "./project.js";
 
 function tmpProject(name: string): string {
-  const dir = join(tmpdir(), `hf-test-${name}-${Date.now()}`);
-  mkdirSync(dir, { recursive: true });
-  return dir;
+  return mkdtempSync(join(tmpdir(), `hf-test-${name}-`));
 }
 
 function validHtml(compId = "main"): string {
@@ -121,6 +119,29 @@ describe("lintProject", () => {
     expect(finding?.selector).toBe('[data-composition-id="scene"] .title');
   });
 
+  it("lints percent-encoded linked CSS filenames that exist decoded on disk", () => {
+    const encodedFilename = "%E6%97%A5%E6%9C%AC%E8%AA%9E.css";
+    const project = makeProject(validHtml(), {
+      "scene.html": `<html><head><link rel="stylesheet" href="${encodedFilename}"></head><body>
+  <div id="scene" data-composition-id="scene" data-width="1920" data-height="1080" data-start="0" data-duration="2"></div>
+  <script>window.__timelines = window.__timelines || {}; window.__timelines["scene"] = gsap.timeline({ paused: true });</script>
+</body></html>`,
+    });
+    writeFileSync(
+      join(project.dir, "compositions", decodeURIComponent(encodedFilename)),
+      '[data-composition-id="scene"] .title { opacity: 0; }',
+    );
+
+    const { results } = lintProject(project);
+    const subResult = results.find((result) => result.file === "compositions/scene.html");
+    const finding = subResult?.result.findings.find(
+      (item) => item.code === "composition_self_attribute_selector",
+    );
+
+    expect(finding).toBeDefined();
+    expect(finding?.selector).toBe('[data-composition-id="scene"] .title');
+  });
+
   it("aggregates errors across index.html and sub-compositions", () => {
     const project = makeProject(htmlWithMissingMediaId(), {
       "overlay.html": htmlWithMissingMediaId(),
@@ -179,6 +200,29 @@ function validHtmlWithAudio(compId = "main"): string {
     <audio id="music" src="song.mp3" data-start="0" data-track-index="0" data-volume="1"></audio>
   </div>
   <script>window.__timelines = window.__timelines || {}; window.__timelines["${compId}"] = gsap.timeline({ paused: true });</script>
+</body></html>`;
+}
+
+function validHtmlWithAudioSrc(src: string): string {
+  return `<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080">
+    <audio id="music" src="${src}" data-start="0" data-track-index="0" data-volume="1"></audio>
+  </div>
+  <script>window.__timelines = window.__timelines || {}; window.__timelines["main"] = gsap.timeline({ paused: true });</script>
+</body></html>`;
+}
+
+function validHtmlWithMaskImageUrl(url: string): string {
+  return `<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080">
+    <div class="hf-texture-text hf-texture-lava">TEXT</div>
+  </div>
+  <style>
+    .hf-texture-lava {
+      mask-image: url("${url}");
+    }
+  </style>
+  <script>window.__timelines = window.__timelines || {}; window.__timelines["main"] = gsap.timeline({ paused: true });</script>
 </body></html>`;
 }
 
@@ -330,6 +374,46 @@ describe("audio_src_not_found", () => {
     expect(finding).toBeUndefined();
   });
 
+  it("does not error for percent-encoded non-Latin filenames that exist on disk", () => {
+    const encodedFilename =
+      "%D9%87%D9%86%D8%A7%20%D9%85%D8%B1%D9%88%D8%A7%20-%20%D9%85%D8%A8%D8%A7%D8%B1%D9%83.mp4";
+    const project = makeProject(validHtmlWithAudioSrc(`assets/${encodedFilename}`));
+    mkdirSync(join(project.dir, "assets"), { recursive: true });
+    writeFileSync(join(project.dir, "assets", decodeURIComponent(encodedFilename)), "fake");
+
+    const { results } = lintProject(project);
+
+    const first = results[0];
+    expect(first).toBeDefined();
+    const finding = first?.result.findings.find((f) => f.code === "audio_src_not_found");
+    expect(finding).toBeUndefined();
+  });
+
+  it("does not error for malformed percent sequences that are literal filenames", () => {
+    const filename = "100%-discount.mp4";
+    const project = makeProject(validHtmlWithAudioSrc(`assets/${filename}`));
+    mkdirSync(join(project.dir, "assets"), { recursive: true });
+    writeFileSync(join(project.dir, "assets", filename), "fake");
+
+    const { results } = lintProject(project);
+
+    const first = results[0];
+    expect(first).toBeDefined();
+    const finding = first?.result.findings.find((f) => f.code === "audio_src_not_found");
+    expect(finding).toBeUndefined();
+  });
+
+  it("does not treat decoded traversal as an existing file outside the project", () => {
+    const project = makeProject(
+      validHtmlWithAudioSrc("assets/foo/%2E%2E/%2E%2E/%2E%2E/etc/passwd"),
+    );
+
+    const { results } = lintProject(project);
+
+    const finding = results[0]?.result.findings.find((f) => f.code === "audio_src_not_found");
+    expect(finding).toBeDefined();
+  });
+
   it("deduplicates missing files across compositions", () => {
     const project = makeProject(validHtmlWithAudio(), {
       "captions.html": validHtmlWithAudio("captions"),
@@ -467,6 +551,30 @@ describe("texture_mask_asset_not_found", () => {
     expect(finding).toBeUndefined();
   });
 
+  it("checks mask-image URLs inside percent-encoded linked CSS filenames", () => {
+    const encodedFilename = "%E6%97%A5%E6%9C%AC%E8%AA%9E.css";
+    const project = makeProject(validHtml(), {
+      "scene.html": `<html><head><link rel="stylesheet" href="${encodedFilename}"></head><body>
+  <div data-composition-id="scene" data-width="1920" data-height="1080">
+    <div class="hf-texture-text hf-texture-lava">TEXT</div>
+  </div>
+  <script>window.__timelines = window.__timelines || {}; window.__timelines["scene"] = gsap.timeline({ paused: true });</script>
+</body></html>`,
+    });
+    writeFileSync(
+      join(project.dir, "compositions", decodeURIComponent(encodedFilename)),
+      '.hf-texture-lava { mask-image: url("masks/missing.png"); }',
+    );
+
+    const { results } = lintProject(project);
+    const finding = results[0]?.result.findings.find(
+      (item) => item.code === "texture_mask_asset_not_found",
+    );
+
+    expect(finding).toBeDefined();
+    expect(finding?.message).toContain("masks/missing.png");
+  });
+
   it("resolves root-absolute mask-image URLs from the project root", () => {
     const html = `<html><body>
   <div data-composition-id="main" data-width="1920" data-height="1080">
@@ -492,6 +600,33 @@ describe("texture_mask_asset_not_found", () => {
     );
 
     expect(finding).toBeUndefined();
+  });
+
+  it("does not error for percent-encoded non-Latin mask filenames that exist on disk", () => {
+    const encodedFilename = "%E6%97%A5%E6%9C%AC%E8%AA%9E.png";
+    const project = makeProject(validHtmlWithMaskImageUrl(`assets/${encodedFilename}`));
+    mkdirSync(join(project.dir, "assets"), { recursive: true });
+    writeFileSync(join(project.dir, "assets", decodeURIComponent(encodedFilename)), "fake");
+
+    const { results } = lintProject(project);
+    const finding = results[0]?.result.findings.find(
+      (item) => item.code === "texture_mask_asset_not_found",
+    );
+
+    expect(finding).toBeUndefined();
+  });
+
+  it("does not treat decoded mask traversal as an existing file outside the project", () => {
+    const project = makeProject(
+      validHtmlWithMaskImageUrl("assets/foo/%2E%2E/%2E%2E/%2E%2E/etc/passwd"),
+    );
+
+    const { results } = lintProject(project);
+    const finding = results[0]?.result.findings.find(
+      (item) => item.code === "texture_mask_asset_not_found",
+    );
+
+    expect(finding).toBeDefined();
   });
 });
 

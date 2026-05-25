@@ -1,0 +1,12 @@
+{
+  "name": "Sub-composition height:100% centering",
+  "description": "Verifies that sub-compositions using height:100% + flexbox centering render content centered, not stuck at the top. Regression test for the data-hf-inner-root wrapper missing explicit dimensions.",
+  "tags": ["sub-composition", "regression", "layout", "centering"],
+  "minPsnr": 20,
+  "maxFrameFailures": 10,
+  "minAudioCorrelation": 0.0,
+  "maxAudioLagWindows": 120,
+  "renderConfig": {
+    "fps": 24
+  }
+}

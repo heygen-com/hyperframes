@@ -1,0 +1,99 @@
+<!--
+  Parallax Zoom — center card scales up while siblings parallax outward.
+
+  Inspired by the eBay Playbook hero transition: a grid of cards collapses
+  as the focal card grows to fill the frame.
+
+  Usage:
+  1. Wrap your card grid with class="parallax-zoom-grid".
+  2. Mark each card with class="parallax-zoom-card".
+  3. Add data-pz-row="0|1|2|..." and data-pz-col="0|1|2|..." per card
+     so the snippet knows each card's grid offset.
+  4. Mark the focal card with data-pz-focus="true" — this is the one
+     that scales up to fill the frame.
+  5. Drive --pz-progress 0 → 1 on the .parallax-zoom-grid from your
+     composition's paused GSAP timeline (see example at bottom).
+
+  Tunable CSS variables on .parallax-zoom-grid:
+  - --pz-focus-scale  (default 6)      maximum scale of the focused card
+  - --pz-sibling-push (default 900px)  outward translation strength
+  - --pz-sibling-fade (default 1)      sibling opacity falloff (0–1)
+-->
+
+<style>
+  .parallax-zoom-grid {
+    --pz-progress: 0;
+    --pz-focus-scale: 6;
+    --pz-sibling-push: 900px;
+    --pz-sibling-fade: 1;
+    position: relative;
+  }
+
+  .parallax-zoom-card {
+    transform-origin: center center;
+    will-change: transform, opacity;
+    transform: translate3d(
+        calc(var(--pz-dx, 0px) * var(--pz-progress)),
+        calc(var(--pz-dy, 0px) * var(--pz-progress)),
+        0
+      )
+      scale(calc(1 - var(--pz-progress) * 0.4));
+    opacity: calc(1 - var(--pz-progress) * var(--pz-sibling-fade));
+  }
+
+  .parallax-zoom-card[data-pz-focus="true"] {
+    z-index: 10;
+    transform: translate3d(0, 0, 0)
+      scale(calc(1 + var(--pz-progress) * (var(--pz-focus-scale) - 1)));
+    opacity: 1;
+  }
+</style>
+
+<script>
+  (function () {
+    const grids = document.querySelectorAll(".parallax-zoom-grid");
+
+    grids.forEach((grid) => {
+      const cards = Array.from(grid.querySelectorAll(".parallax-zoom-card"));
+      if (cards.length === 0) return;
+
+      let focal = cards.find((c) => c.dataset.pzFocus === "true");
+      if (!focal) {
+        focal = cards[Math.floor(cards.length / 2)];
+        focal.dataset.pzFocus = "true";
+      }
+
+      const focusRow = Number(focal.dataset.pzRow ?? 0);
+      const focusCol = Number(focal.dataset.pzCol ?? 0);
+      const push = parseFloat(getComputedStyle(grid).getPropertyValue("--pz-sibling-push")) || 900;
+
+      cards.forEach((card) => {
+        if (card === focal) return;
+        const row = Number(card.dataset.pzRow ?? 0);
+        const col = Number(card.dataset.pzCol ?? 0);
+        const dCol = col - focusCol;
+        const dRow = row - focusRow;
+        const mag = Math.hypot(dCol, dRow) || 1;
+        const nx = (dCol / mag) * push * mag;
+        const ny = (dRow / mag) * push * mag;
+        card.style.setProperty("--pz-dx", `${nx}px`);
+        card.style.setProperty("--pz-dy", `${ny}px`);
+      });
+    });
+  })();
+</script>
+
+<!--
+  Timeline integration example (paste into your composition's GSAP timeline):
+
+  tl.fromTo(
+    ".parallax-zoom-grid",
+    { "--pz-progress": 0 },
+    {
+      "--pz-progress": 1,
+      duration: 2.4,
+      ease: "power2.inOut",
+    },
+    1.0, // start time in seconds
+  );
+-->

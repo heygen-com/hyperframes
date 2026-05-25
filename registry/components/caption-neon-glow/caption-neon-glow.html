@@ -23,14 +23,15 @@
         height: 1080px;
         margin: 0;
         overflow: hidden;
-        background: #000;
+        background: transparent;
       }
       #neon-glow {
+        pointer-events: none;
         position: relative;
         width: 1920px;
         height: 1080px;
         overflow: hidden;
-        background: #000;
+        background: transparent;
       }
       #ne-video {
         position: absolute;
@@ -43,7 +44,7 @@
       .ne-overlay {
         position: absolute;
         inset: 0;
-        background: rgba(0, 0, 0, 0.75);
+        background: transparent;
         z-index: 1;
         pointer-events: none;
       }
@@ -83,6 +84,7 @@
     <div
       id="neon-glow"
       data-composition-id="caption-neon-glow"
+      data-timeline-locked
       data-start="0"
       data-duration="8"
       data-fps="30"

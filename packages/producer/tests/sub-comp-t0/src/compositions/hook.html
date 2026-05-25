@@ -1,0 +1,70 @@
+<template id="hook-template">
+  <div id="hook" data-composition-id="hook" data-width="1920" data-height="1080">
+    <div class="hook-bg"></div>
+    <div class="hook-title">BREAKING</div>
+    <div class="hook-subtitle">Transfer confirmed</div>
+
+    <style>
+      #hook {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #ef4444;
+      }
+      #hook .hook-bg {
+        position: absolute;
+        inset: 0;
+        background: #ef4444;
+      }
+      #hook .hook-title {
+        position: absolute;
+        top: 250px;
+        left: 0;
+        width: 1920px;
+        text-align: center;
+        font-family: Impact, system-ui, sans-serif;
+        font-size: 280px;
+        font-weight: 900;
+        color: #ffffff;
+        opacity: 0;
+      }
+      #hook .hook-subtitle {
+        position: absolute;
+        top: 600px;
+        left: 0;
+        width: 1920px;
+        text-align: center;
+        font-family: Arial, system-ui, sans-serif;
+        font-size: 80px;
+        color: #ffffff;
+        opacity: 0;
+      }
+    </style>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      (function () {
+        window.__timelines = window.__timelines || {};
+        var tl = gsap.timeline({ paused: true });
+        var scope = "#hook";
+
+        tl.fromTo(
+          scope + " .hook-title",
+          { scale: 3.5, opacity: 0 },
+          { scale: 1, opacity: 1, duration: 0.25, ease: "expo.out" },
+          0.1,
+        );
+
+        tl.fromTo(
+          scope + " .hook-subtitle",
+          { y: 30, opacity: 0 },
+          { y: 0, opacity: 1, duration: 0.4, ease: "power3.out" },
+          0.5,
+        );
+
+        window.__timelines["hook"] = tl;
+      })();
+    </script>
+  </div>
+</template>

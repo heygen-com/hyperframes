@@ -280,6 +280,10 @@ export function parseTimelineFromDOM(doc: Document, rootDuration: number): Timel
       applyMediaMetadataFromElement(entry, el);
     }
 
+    if (el.hasAttribute("data-timeline-locked")) {
+      entry.timelineLocked = true;
+    }
+
     // Sub-compositions
     const compSrc =
       el.getAttribute("data-composition-src") || el.getAttribute("data-composition-file");

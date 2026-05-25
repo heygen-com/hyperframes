@@ -3,6 +3,11 @@ name: regression
 permissions:
   contents: read
 
+# Suppress hyperframes CLI telemetry from HeyGen's own CI runs.
+# External users' CI continues to emit telemetry unless they set this themselves.
+env:
+  HYPERFRAMES_NO_TELEMETRY: "1"
+
 on:
   pull_request:
   push:
@@ -64,7 +69,7 @@ jobs:
           - shard: shard-2
             args: "style-15-prod hdr-hlg-regression style-1-prod many-cuts vfr-screen-recording render-symlinked-assets"
           - shard: shard-3
-            args: "style-7-prod style-8-prod style-10-prod css-spinner-render-compat webm-transparency mp4-h264-sdr"
+            args: "style-7-prod style-8-prod style-10-prod css-spinner-render-compat webm-transparency mp4-h264-sdr webm-vp9"
           - shard: shard-4
             args: "style-16-prod style-9-prod style-17-prod iframe-render-compat variables-prod mp4-h265-sdr"
           - shard: shard-5
@@ -72,7 +77,7 @@ jobs:
           - shard: shard-6
             args: "overlay-montage-prod style-12-prod chat missing-host-comp-id png-sequence"
           - shard: shard-7
-            args: "sub-composition-video style-18-prod raf-ball-render-compat font-variant-numeric"
+            args: "sub-composition-video style-18-prod raf-ball-render-compat font-variant-numeric sub-comp-t0 sub-comp-id-selector"
           - shard: shard-8
             args: "style-13-prod style-6-prod vignelli-stacking gsap-letters-render-compat"
     steps:

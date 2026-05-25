@@ -5,6 +5,23 @@ import type { TimelineElement } from "../player";
 import { AudioWaveform } from "../player/components/AudioWaveform";
 import { getTimelineElementLabel } from "../utils/studioHelpers";
 
+export function normalizeCompositionSrc(
+  compSrc: string,
+  projectId: string,
+  origin: string,
+): string {
+  try {
+    const parsed = new URL(compSrc, origin);
+    const previewPrefix = `/api/projects/${projectId}/preview/`;
+    if (parsed.pathname.startsWith(previewPrefix)) {
+      return parsed.pathname.slice(previewPrefix.length);
+    }
+  } catch {
+    // already relative
+  }
+  return compSrc;
+}
+
 interface UseRenderClipContentOptions {
   projectIdRef: { current: string | null };
   compIdToSrc: Map<string, string>;
@@ -23,8 +40,10 @@ export function useRenderClipContent({
       const pid = projectIdRef.current;
       if (!pid) return null;
 
-      // Resolve composition source path using the compIdToSrc map
       let compSrc = el.compositionSrc;
+      if (compSrc) {
+        compSrc = normalizeCompositionSrc(compSrc, pid, window.location.origin);
+      }
       if (compSrc && compIdToSrc.size > 0) {
         const resolved =
           compIdToSrc.get(el.id) ||
@@ -40,7 +59,7 @@ export function useRenderClipContent({
           previewUrl: `/api/projects/${pid}/preview/comp/${compSrc}`,
           label: getTimelineElementLabel(el),
           labelColor: style.label,
-          accentColor: style.clip,
+
           seekTime: 0,
           duration: el.duration,
         });
@@ -53,7 +72,7 @@ export function useRenderClipContent({
           previewUrl: activePreviewUrl,
           label: getTimelineElementLabel(el),
           labelColor: style.label,
-          accentColor: style.clip,
+
           selector: el.selector,
           selectorIndex: el.selectorIndex,
           seekTime: el.start,
@@ -109,7 +128,7 @@ export function useRenderClipContent({
           previewUrl: `/api/projects/${pid}/preview`,
           label: getTimelineElementLabel(el),
           labelColor: style.label,
-          accentColor: style.clip,
+
           selector: el.selector,
           selectorIndex: el.selectorIndex,
           seekTime: el.start,

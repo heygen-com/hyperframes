@@ -103,7 +103,7 @@ Hyperframes is inspired by [Remotion](https://www.remotion.dev) — we used Remo
 | Build step                                            | None; `index.html` plays as-is | Required (bundler)                |
 | Library-clock animations (GSAP, Anime.js, Motion One) | Seekable, frame-accurate       | Plays at wall-clock during render |
 | Arbitrary HTML / CSS passthrough                      | Paste and animate              | Rewrite as JSX                    |
-| Distributed rendering                                 | Single-machine today           | Lambda, production-ready          |
+| Distributed rendering                                 | AWS Lambda support             | Lambda, production-ready          |
 
 ### Licensing: fully open source vs source-available
 

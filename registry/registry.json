@@ -152,6 +152,10 @@
       "type": "hyperframes:component"
     },
     {
+      "name": "caption-blend-difference",
+      "type": "hyperframes:component"
+    },
+    {
       "name": "instagram-follow",
       "type": "hyperframes:block"
     },
@@ -336,12 +340,40 @@
       "type": "hyperframes:block"
     },
     {
-      "name": "vfx-liquid-glass",
+      "name": "liquid-glass-notification",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "liquid-glass-context-menu",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "liquid-glass-media-controls",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "liquid-glass-widgets",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "ios26-liquid-glass",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "macos-tahoe-liquid-glass",
       "type": "hyperframes:block"
     },
     {
       "name": "vfx-shatter",
       "type": "hyperframes:block"
+    },
+    {
+      "name": "parallax-zoom",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "parallax-unzoom",
+      "type": "hyperframes:component"
     }
   ]
 }

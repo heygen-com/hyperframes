@@ -5,6 +5,7 @@ import { fontFamilyFromAssetPath, type ImportedFontAsset } from "../components/e
 import { saveProjectFilesWithHistory } from "../utils/studioFileHistory";
 import type { EditHistoryKind } from "../utils/editHistory";
 import { findTagByTarget, type PatchTarget } from "../utils/sourcePatcher";
+import { trackStudioEvent } from "../utils/studioTelemetry";
 
 // ── Types ──
 
@@ -48,8 +49,8 @@ export function useFileManager({
   const projectIdRef = useRef(projectId);
   projectIdRef.current = projectId;
 
-  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const saveRafRef = useRef<number | null>(null);
+  const refreshRafRef = useRef<number | null>(null);
   const importedFontAssetsRef = useRef<ImportedFontAsset[]>([]);
 
   // ── Load file tree when projectId changes ──
@@ -121,6 +122,9 @@ export function useFileManager({
   const handleFileSelect = useCallback((path: string) => {
     const pid = projectIdRef.current;
     if (!pid) return;
+    revealAbortRef.current?.abort();
+    revealAbortRef.current = null;
+    revealRequestIdRef.current++;
     // Skip fetching binary content for media files — just set the path for preview
     if (isMediaFile(path)) {
       setEditingFile({ path, content: null });
@@ -145,12 +149,8 @@ export function useFileManager({
       const path = editingPathRef.current;
       if (!path) return;
 
-      // Debounce the server write (600ms)
-      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-      saveTimerRef.current = setTimeout(() => {
-        // Suppress the file-change watcher echo — the save callback triggers
-        // its own refresh, so a second one from the watcher causes a double-reload
-        // race that can leave the player in a non-playable state.
+      if (saveRafRef.current != null) cancelAnimationFrame(saveRafRef.current);
+      saveRafRef.current = requestAnimationFrame(() => {
         domEditSaveTimestampRef.current = Date.now();
         saveProjectFilesWithHistory({
           projectId: pid,
@@ -163,11 +163,16 @@ export function useFileManager({
           recordEdit,
         })
           .then(() => {
-            if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
-            refreshTimerRef.current = setTimeout(() => setRefreshKey((k) => k + 1), 600);
+            if (refreshRafRef.current != null) cancelAnimationFrame(refreshRafRef.current);
+            refreshRafRef.current = requestAnimationFrame(() => setRefreshKey((k) => k + 1));
           })
-          .catch(() => {});
-      }, 600);
+          .catch((error) => {
+            trackStudioEvent("save_failure", {
+              source: "code_editor",
+              error_message: error instanceof Error ? error.message : "unknown",
+            });
+          });
+      });
     },
     [domEditSaveTimestampRef, readProjectFile, recordEdit, setRefreshKey, writeProjectFile],
   );
@@ -449,7 +454,7 @@ export function useFileManager({
     // Refs
     editingPathRef,
     projectIdRef,
-    saveTimerRef,
+    saveRafRef,
     importedFontAssetsRef,
 
     // Core I/O

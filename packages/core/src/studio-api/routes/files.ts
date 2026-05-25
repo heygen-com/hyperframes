@@ -17,7 +17,11 @@ import { isAudioFile } from "../helpers/mime.js";
 import { generateWaveformCache } from "../helpers/waveform.js";
 import { validateUploadedMediaBuffer } from "../helpers/mediaValidation.js";
 import { isSafePath } from "../helpers/safePath.js";
-import { removeElementFromHtml } from "../helpers/sourceMutation.js";
+import {
+  removeElementFromHtml,
+  patchElementInHtml,
+  type PatchOperation,
+} from "../helpers/sourceMutation.js";
 
 // ── Shared helpers ──────────────────────────────────────────────────────────
 
@@ -228,6 +232,45 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
 
     const originalContent = readFileSync(absPath, "utf-8");
     const patchedContent = removeElementFromHtml(originalContent, body.target);
+    if (patchedContent === originalContent) {
+      return c.json({ ok: true, changed: false, content: originalContent });
+    }
+
+    writeFileSync(absPath, patchedContent, "utf-8");
+    return c.json({ ok: true, changed: true, content: patchedContent });
+  });
+
+  api.post("/projects/:id/file-mutations/patch-element/*", async (c) => {
+    const id = c.req.param("id");
+    const project = await adapter.resolveProject(id);
+    if (!project) return c.json({ error: "not found" }, 404);
+
+    const filePath = decodeURIComponent(
+      c.req.path.replace(`/projects/${project.id}/file-mutations/patch-element/`, ""),
+    );
+    if (filePath.includes("\0")) {
+      return c.json({ error: "forbidden" }, 403);
+    }
+
+    const absPath = resolve(project.dir, filePath);
+    if (!isSafePath(project.dir, absPath)) {
+      return c.json({ error: "forbidden" }, 403);
+    }
+    const body = (await c.req.json().catch(() => null)) as {
+      target?: { id?: string | null; selector?: string; selectorIndex?: number };
+      operations?: PatchOperation[];
+    } | null;
+    if (!body?.target || !Array.isArray(body.operations) || body.operations.length === 0) {
+      return c.json({ error: "target and operations required" }, 400);
+    }
+
+    let originalContent: string;
+    try {
+      originalContent = readFileSync(absPath, "utf-8");
+    } catch {
+      return c.json({ error: "not found" }, 404);
+    }
+    const patchedContent = patchElementInHtml(originalContent, body.target, body.operations);
     if (patchedContent === originalContent) {
       return c.json({ ok: true, changed: false, content: originalContent });
     }

@@ -42,6 +42,21 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/blue-sweater-intro-video.png"
   },
   {
+    "name": "caption-blend-difference",
+    "type": "component",
+    "title": "Blend Difference",
+    "description": "Auto-inverting text using mix-blend-mode: difference — flips between white and black per-pixel against the background",
+    "tags": [
+      "text",
+      "effect",
+      "blend-mode",
+      "contrast",
+      "inversion"
+    ],
+    "href": "/catalog/components/caption-blend-difference",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/caption-blend-difference.png"
+  },
+  {
     "name": "caption-clip-wipe",
     "type": "component",
     "title": "Clip Wipe",
@@ -234,19 +249,18 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/caption-pill-karaoke.png"
   },
   {
-    "name": "caption-texture-lava",
+    "name": "caption-texture",
     "type": "component",
-    "title": "Texture Lava",
-    "description": "Flowing lava texture mask over large uppercase text",
+    "title": "Texture",
+    "description": "Flowing texture mask over large uppercase text — ships with 6 textures (lava, marble, metal, wood, concrete, rock), configurable via the texture variable",
     "tags": [
       "captions",
       "caption-style",
       "texture",
-      "lava",
       "mask"
     ],
-    "href": "/catalog/components/caption-texture-lava",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/caption-texture-lava.png"
+    "href": "/catalog/components/caption-texture",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/caption-texture.png"
   },
   {
     "name": "caption-weight-shift",
@@ -414,6 +428,24 @@
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/instagram-follow.png"
   },
   {
+    "name": "ios26-liquid-glass",
+    "type": "block",
+    "title": "iOS 26 Liquid Glass Home Screen",
+    "description": "3D iPhone with a normal iOS 26 home screen, liquid glass app icons, shader wallpaper, dock, and fluid glass notifications that drop from the status area onto a GLTF device model.",
+    "tags": [
+      "liquid-glass-html-in-canvas",
+      "webgpu",
+      "3d",
+      "iphone",
+      "ios26",
+      "notifications",
+      "gltf",
+      "html-in-canvas"
+    ],
+    "href": "/catalog/blocks/ios26-liquid-glass",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/ios26-liquid-glass.png"
+  },
+  {
     "name": "light-leak",
     "type": "block",
     "title": "Light Leak",
@@ -424,6 +456,58 @@
     ],
     "href": "/catalog/blocks/light-leak",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/light-leak.png"
+  },
+  {
+    "name": "liquid-glass-context-menu",
+    "type": "block",
+    "title": "Liquid Glass Context Menu",
+    "description": "Frosted glass context menu panel drifting over an aurora shader background",
+    "tags": [
+      "html-in-canvas",
+      "liquid-glass-html-in-canvas",
+      "webgpu"
+    ],
+    "href": "/catalog/blocks/liquid-glass-context-menu",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/liquid-glass-context-menu.png"
+  },
+  {
+    "name": "liquid-glass-media-controls",
+    "type": "block",
+    "title": "Liquid Glass Media Controls",
+    "description": "Frosted glass media control panels spreading over an aurora shader background",
+    "tags": [
+      "html-in-canvas",
+      "liquid-glass-html-in-canvas",
+      "webgpu"
+    ],
+    "href": "/catalog/blocks/liquid-glass-media-controls",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/liquid-glass-media-controls.png"
+  },
+  {
+    "name": "liquid-glass-notification",
+    "type": "block",
+    "title": "Liquid Glass Notification",
+    "description": "Frosted glass notification cards floating over an aurora shader background",
+    "tags": [
+      "html-in-canvas",
+      "liquid-glass-html-in-canvas",
+      "webgpu"
+    ],
+    "href": "/catalog/blocks/liquid-glass-notification",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/liquid-glass-notification.png"
+  },
+  {
+    "name": "liquid-glass-widgets",
+    "type": "block",
+    "title": "Liquid Glass Widgets",
+    "description": "Frosted glass stat cards, showcase panel and pill chips over an aurora shader background",
+    "tags": [
+      "html-in-canvas",
+      "liquid-glass-html-in-canvas",
+      "webgpu"
+    ],
+    "href": "/catalog/blocks/liquid-glass-widgets",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/liquid-glass-widgets.png"
   },
   {
     "name": "logo-outro",
@@ -450,6 +534,21 @@
     ],
     "href": "/catalog/blocks/macos-notification",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/macos-notification.png"
+  },
+  {
+    "name": "macos-tahoe-liquid-glass",
+    "type": "block",
+    "title": "macOS Tahoe Liquid Glass Desktop",
+    "description": "3D MacBook with a macOS Tahoe-style desktop, glass menu bar, Finder window, dock, and cinematic device camera move.",
+    "tags": [
+      "html-in-canvas",
+      "3d",
+      "macos",
+      "tahoe",
+      "gltf"
+    ],
+    "href": "/catalog/blocks/macos-tahoe-liquid-glass",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/macos-tahoe-liquid-glass.png"
   },
   {
     "name": "north-korea-locked-down",
@@ -480,6 +579,37 @@
     ],
     "href": "/catalog/blocks/nyc-paris-flight",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/nyc-paris-flight.png"
+  },
+  {
+    "name": "parallax-unzoom",
+    "type": "component",
+    "title": "Parallax Unzoom",
+    "description": "Reveal transition — focus card scales down from full frame as siblings parallax in to form a grid (reverse of parallax-zoom)",
+    "tags": [
+      "transition",
+      "reveal",
+      "unzoom",
+      "parallax",
+      "grid",
+      "hero"
+    ],
+    "href": "/catalog/components/parallax-unzoom",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/parallax-unzoom.png"
+  },
+  {
+    "name": "parallax-zoom",
+    "type": "component",
+    "title": "Parallax Zoom",
+    "description": "Center card scales up to fill the frame while siblings parallax outward — inspired by the eBay Playbook hero transition",
+    "tags": [
+      "transition",
+      "zoom",
+      "parallax",
+      "grid",
+      "hero"
+    ],
+    "href": "/catalog/components/parallax-zoom",
+    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/parallax-zoom.png"
   },
   {
     "name": "reddit-post",
@@ -887,18 +1017,6 @@
     ],
     "href": "/catalog/blocks/vfx-liquid-background",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/vfx-liquid-background.png"
-  },
-  {
-    "name": "vfx-liquid-glass",
-    "type": "block",
-    "title": "Liquid Glass",
-    "description": "VFX composition block",
-    "tags": [
-      "html-in-canvas",
-      "webgl"
-    ],
-    "href": "/catalog/blocks/vfx-liquid-glass",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/vfx-liquid-glass.png"
   },
   {
     "name": "vfx-magnetic",

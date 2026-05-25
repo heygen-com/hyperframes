@@ -74,7 +74,10 @@ function TimingSection({
   onSetAttribute: (attr: string, value: string) => void | Promise<void>;
 }) {
   const start = Number.parseFloat(element.dataAttributes.start ?? "0") || 0;
-  const duration = Number.parseFloat(element.dataAttributes.duration ?? "0") || 0;
+  const duration =
+    Number.parseFloat(
+      element.dataAttributes.duration ?? element.dataAttributes["hf-authored-duration"] ?? "0",
+    ) || 0;
   const end = start + duration;
 
   const commitStart = (nextValue: string) => {
@@ -320,7 +323,7 @@ export const PropertyPanel = memo(function PropertyPanel({
           </div>
           <div className="mt-3">
             <MetricField
-              label="Layer"
+              label="Z-index"
               value={String(parseInt(styles["z-index"] || "auto", 10) || 0)}
               scrub
               onCommit={(next) => onSetStyle("z-index", next)}

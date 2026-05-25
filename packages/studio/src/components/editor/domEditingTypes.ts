@@ -78,6 +78,7 @@ export interface DomEditSelection extends PatchTarget {
   compositionPath: string;
   compositionSrc?: string;
   isCompositionHost: boolean;
+  isInsideLockedComposition: boolean;
   boundingBox: { x: number; y: number; width: number; height: number };
   textContent: string | null;
   dataAttributes: Record<string, string>;

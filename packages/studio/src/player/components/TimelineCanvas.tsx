@@ -10,7 +10,6 @@ import { getRenderedTimelineElement, type TimelineTheme } from "./timelineTheme"
 import { GUTTER, TRACK_H, RULER_H, CLIP_Y, CLIP_HANDLE_W } from "./timelineLayout";
 import type { TimelineElement } from "../store/playerStore";
 import type { DraggedClipState, ResizingClipState, BlockedClipState } from "./useTimelineClipDrag";
-import { formatTime } from "../lib/time";
 import type { TrackVisualStyle } from "./timelineIcons";
 
 interface TimelineCanvasProps {
@@ -134,28 +133,16 @@ export const TimelineCanvas = memo(function TimelineCanvas({
         className={
           renderClipContent
             ? "absolute inset-0 overflow-hidden"
-            : "flex flex-col justify-center overflow-hidden flex-1 min-w-0 px-6"
+            : "flex items-center overflow-hidden flex-1 min-w-0 px-3 gap-2"
         }
       >
         {renderClipContent?.(element, clipStyle) ?? (
-          <div className="flex h-full min-h-0 flex-col justify-between py-3">
-            <span
-              className="max-w-full truncate rounded-md px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] leading-none"
-              style={{
-                color: clipStyle.label,
-                background: `${clipStyle.accent}26`,
-                boxShadow: `inset 0 0 0 1px ${clipStyle.accent}33`,
-              }}
-            >
-              {element.tag}
-            </span>
-            <span
-              className="max-w-full truncate rounded-md px-1.5 py-0.5 text-[10px] font-medium tabular-nums leading-none"
-              style={{ color: theme.textSecondary, background: "rgba(255,255,255,0.04)" }}
-            >
-              {formatTime(element.start)} {"→"} {formatTime(element.start + element.duration)}
-            </span>
-          </div>
+          <span
+            className="truncate text-[10px] font-medium leading-none"
+            style={{ color: clipStyle.label }}
+          >
+            {element.label || element.id || element.tag}
+          </span>
         )}
       </div>
     </>
@@ -221,10 +208,9 @@ export const TimelineCanvas = memo(function TimelineCanvas({
                     paddingLeft: 16,
                     color: ts.label,
                     fontSize: 11,
-                    letterSpacing: "0.08em",
+                    letterSpacing: "0.06em",
                     textTransform: "uppercase",
-                    background: `linear-gradient(90deg, ${ts.accent}14, transparent 28%)`,
-                    boxShadow: `inset 0 0 0 1px ${ts.accent}24`,
+                    opacity: 0.5,
                   }}
                 >
                   New track
@@ -252,6 +238,7 @@ export const TimelineCanvas = memo(function TimelineCanvas({
                     isHovered={hoveredClip === clipKey}
                     isDragging={false}
                     hasCustomContent={!!renderClipContent}
+                    capabilities={capabilities}
                     theme={theme}
                     trackStyle={clipStyle}
                     isComposition={isComposition}
@@ -369,6 +356,7 @@ export const TimelineCanvas = memo(function TimelineCanvas({
             isHovered={false}
             isDragging={true}
             hasCustomContent={!!renderClipContent}
+            capabilities={getTimelineEditCapabilities(activeDraggedElement)}
             theme={theme}
             trackStyle={getTrackStyle(activeDraggedElement.tag)}
             isComposition={!!activeDraggedElement.compositionSrc}

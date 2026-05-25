@@ -44,7 +44,7 @@ import {
   appendFileSync,
 } from "fs";
 import { parseHTML } from "linkedom";
-import { type CanvasResolution, type Fps } from "@hyperframes/core";
+import { type CanvasResolution, type Fps, type FpsInput, toFps } from "@hyperframes/core";
 import {
   type EngineConfig,
   resolveConfig,
@@ -1343,10 +1343,12 @@ export async function compositeHdrFrame(
   }
 }
 
-export function createRenderJob(config: RenderConfig): RenderJob {
+export type RenderConfigInput = Omit<RenderConfig, "fps"> & { fps: FpsInput };
+
+export function createRenderJob(config: RenderConfigInput): RenderJob {
   return {
     id: randomUUID(),
-    config,
+    config: { ...config, fps: toFps(config.fps) },
     status: "queued",
     progress: 0,
     currentStage: "Queued",
@@ -1697,7 +1699,10 @@ export async function executeRenderJob(
         }
       | undefined;
 
-    if (job.config.workers === undefined && totalFrames >= 60) {
+    const htmlInCanvasDetected = compiled.renderModeHints.reasons.some(
+      (r) => r.code === "htmlInCanvas",
+    );
+    if (job.config.workers === undefined && totalFrames >= 60 && !htmlInCanvasDetected) {
       const outcome = await runCaptureCalibration({
         cfg,
         fileServer,

@@ -209,6 +209,75 @@ describe("handler dispatch", () => {
     ).toBe(true);
   });
 
+  it("plan honors a pre-set PRODUCER_HEADLESS_SHELL_PATH instead of re-resolving Chrome", async () => {
+    // Mirrors the renderChunk env-var guard — when a caller (e.g. SAM-local
+    // RIE smoke) seeds the path, handlePlan must not overwrite it.
+    const tmpRoot = makeTmpRoot();
+    const s3 = new FakeS3Client();
+    s3.objects.set("s3://bucket/project.tar.gz", await makeMinimalProjectTar());
+
+    const planMock = mock(
+      async (_projectDir: string, _config: unknown, planDir: string): Promise<PlanResult> => {
+        mkdirSync(planDir, { recursive: true });
+        writeFileSync(join(planDir, "plan.json"), JSON.stringify({ planHash: "fakehash" }));
+        mkdirSync(join(planDir, "meta"), { recursive: true });
+        writeFileSync(join(planDir, "meta", "chunks.json"), "[]");
+        return {
+          planDir,
+          planHash: "fakehash",
+          chunkCount: 1,
+          totalFrames: 30,
+          fps: 30 as const,
+          width: 1920,
+          height: 1080,
+          format: "mp4" as const,
+          ffmpegVersion: "6.0",
+          producerVersion: "0.0.0-test",
+        };
+      },
+    );
+    const renderChunkMock = mock(async () => {
+      throw new Error("should not be called");
+    });
+    const assembleMock = mock(async () => {
+      throw new Error("should not be called");
+    });
+
+    const event: PlanEvent = {
+      Action: "plan",
+      ProjectS3Uri: "s3://bucket/project.tar.gz",
+      PlanOutputS3Prefix: "s3://bucket/renders/abc/",
+      Config: { fps: 30, width: 1920, height: 1080, format: "mp4" },
+    };
+
+    const sentinel = "/tmp/test-chrome-sentinel";
+    const prev = process.env.PRODUCER_HEADLESS_SHELL_PATH;
+    process.env.PRODUCER_HEADLESS_SHELL_PATH = sentinel;
+    try {
+      // Note: no skipChromeResolution flag — the guard must short-circuit
+      // because PRODUCER_HEADLESS_SHELL_PATH is already set.
+      await handler(event, {
+        s3: s3 as unknown as import("@aws-sdk/client-s3").S3Client,
+        primitives: {
+          plan: planMock as unknown as typeof import("@hyperframes/producer/distributed").plan,
+          renderChunk:
+            renderChunkMock as unknown as typeof import("@hyperframes/producer/distributed").renderChunk,
+          assemble:
+            assembleMock as unknown as typeof import("@hyperframes/producer/distributed").assemble,
+        },
+        tmpRoot,
+      });
+      expect(process.env.PRODUCER_HEADLESS_SHELL_PATH).toBe(sentinel);
+      expect(planMock).toHaveBeenCalledTimes(1);
+    } finally {
+      if (prev === undefined) {
+        delete process.env.PRODUCER_HEADLESS_SHELL_PATH;
+      } else {
+        process.env.PRODUCER_HEADLESS_SHELL_PATH = prev;
+      }
+    }
+  });
+
   it("routes Action='renderChunk' to the renderChunk primitive", async () => {
     const tmpRoot = makeTmpRoot();
     const s3 = new FakeS3Client();

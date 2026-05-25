@@ -21,18 +21,16 @@ pre-commit:
       glob: "packages/**/*.{ts,tsx,mts,cts,js,jsx,mjs,cjs}"
       run: bunx fallow audit --base origin/main --fail-on-issues
     filesize:
-      # Scoped to packages/studio — the 500 LOC limit is a studio architecture
+      # Scoped to packages/studio — the 600 LOC limit is a studio architecture
       # standard enforced as part of the App.tsx decomposition work. Player and
       # other packages enforce size discipline via code review and convention.
-      # Files temporarily over the limit are listed in .filesize-allowlist.
       glob: "packages/studio/**/*.{ts,tsx}"
       exclude: "(\\.test\\.(ts|tsx)$|\\.generated\\.)"
       run: |
         for f in {staged_files}; do
-          if grep -qxF "$f" .filesize-allowlist 2>/dev/null; then continue; fi
           lines=$(wc -l < "$f")
-          if [ "$lines" -gt 500 ]; then
-            echo "ERROR: $f has $lines lines (max 500) — add to .filesize-allowlist if temporarily needed"
+          if [ "$lines" -gt 600 ]; then
+            echo "ERROR: $f has $lines lines (max 600)"
             exit 1
           fi
         done

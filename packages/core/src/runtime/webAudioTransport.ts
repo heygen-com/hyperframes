@@ -18,6 +18,7 @@ export type ScheduledSource = {
 export class WebAudioTransport {
   private _ctx: AudioContext | null = null;
   private _bufferCache = new Map<string, AudioBuffer>();
+  private _failedSrcs = new Set<string>();
   private _activeSources: ScheduledSource[] = [];
   private _masterGain: GainNode | null = null;
   // Composition-time reference frame: at AudioContext time `_rateAnchorCtx`,
@@ -53,14 +54,21 @@ export class WebAudioTransport {
     const src = el.currentSrc || el.getAttribute("src");
     if (!src) return null;
     if (this._bufferCache.has(src)) return this._bufferCache.get(src)!;
+    if (this._failedSrcs.has(src)) return null;
     if (!this._ctx) return null;
     try {
       const response = await fetch(src);
+      if (!response.ok) {
+        this._failedSrcs.add(src);
+        swallow("webAudioTransport.fetch", new Error(`${response.status} ${src}`));
+        return null;
+      }
       const arrayBuffer = await response.arrayBuffer();
       const audioBuffer = await this._ctx.decodeAudioData(arrayBuffer);
       this._bufferCache.set(src, audioBuffer);
       return audioBuffer;
     } catch (err) {
+      this._failedSrcs.add(src);
       swallow("webAudioTransport.decode", err);
       return null;
     }
@@ -180,6 +188,18 @@ export class WebAudioTransport {
   setVolume(volume: number): void {
     if (this._masterGain) {
       this._masterGain.gain.value = Math.max(0, Math.min(1, volume));
+    }
+  }
+
+  setElementVolume(el: HTMLMediaElement, volume: number): void {
+    const safeVolume = Math.max(0, Math.min(1, volume));
+    for (const source of this._activeSources) {
+      if (source.el !== el) continue;
+      try {
+        source.gainNode.gain.value = safeVolume;
+      } catch (err) {
+        swallow("webAudioTransport.setElementVolume", err);
+      }
     }
   }
 

@@ -1,8 +1,34 @@
 # Visual Techniques Reference
 
-10 proven techniques from production HyperFrames videos. Use these in your storyboard and compositions to create visually rich, professional output. Each technique includes a minimal code pattern you can adapt.
+13 primitive animation techniques from production HyperFrames videos — SVG drawing, kinetic typography, variable fonts, WebGL shaders, motion-path, etc. Compose these into beats; they are the building blocks, not finished recipes. Each entry includes a minimal code pattern you can adapt.
 
-These are NOT advanced — they're standard motion design patterns that every composition should use at least 2-3 of.
+These are NOT advanced — they're standard motion design patterns that every composition should use at least 2-3 of. For pre-built UI templates (terminal chrome, device mockups, moodboard layouts), look in the `registry/blocks/` directory instead — those are recipes, not techniques.
+
+**These are starting points, not copy-paste templates.** Every code pattern below is a minimal working example from a real production video. Adapt them to your needs — change colors, sizes, timings, easings, element counts, layout. Combine techniques, mix parts from different patterns, invent variations. The goal is to understand the PRINCIPLE behind each technique so you can build something original, not to reproduce these examples exactly.
+
+## Table of Contents
+
+**Named text animation effects** (per-character, per-word, per-line, whole-element) — 24 effects with exact GSAP specs come from the separate `pixel-point/animate-text` skill. See [`text-effects.md`](text-effects.md) for the effect-name vocabulary and instructions for loading the upstream skill. Use those for all headline and label animations instead of inventing timing from scratch.
+
+**HTML-in-Canvas patterns** (live DOM as GPU texture: iPhone/MacBook mockups, liquid glass, magnetic, portal, shatter, text cursor — using `drawElementImage` + `layoutsubtree`) are in [`html-in-canvas-patterns.md`](html-in-canvas-patterns.md) — 504 lines, one shared boilerplate + ~6 effect recipes. Use for 1–3 hero beats per video, not every beat.
+
+---
+
+| #   | Technique                         | What it does                                                               | Best for                                       |
+| --- | --------------------------------- | -------------------------------------------------------------------------- | ---------------------------------------------- |
+| 1   | **SVG Path Drawing**              | Logos/icons draw themselves stroke by stroke                               | Logo reveals, diagram builds, connector lines  |
+| 2   | **Canvas 2D Procedural Art**      | Animated noise, particles, data viz — frame-by-frame via GSAP proxy        | Generative backgrounds, ambient texture        |
+| 3   | **CSS 3D Transforms**             | Card flips, perspective grids, folding panels                              | Product reveals, comparison scenes             |
+| 4   | **Per-Word Kinetic Typography**   | Text animates word-by-word with stagger timing                             | Thesis statements, key messages, quotes        |
+| 5   | **Lottie Animation**              | Captured or external Lottie plays as overlay/background                    | Brand animations, micro-interactions           |
+| 6   | **Video Compositing**             | Product videos play inline, masked, overlaid                               | Demo footage, screen recordings                |
+| 7   | **Character-by-Character Typing** | Terminal-style code reveals, search bar interactions                       | Developer tools, CLI demos                     |
+| 8   | **Variable Font Axis Animation**  | Weight, width, slant, optical size morph over time                         | Premium typography, brand wordmarks            |
+| 9   | **GSAP MotionPathPlugin**         | Elements follow SVG curves, orbital motion, spirals                        | Dynamic entrances, connector animations        |
+| 10  | **Velocity-Matched Transitions**  | Outgoing blur/translate matches incoming for seamless cuts                 | Beat transitions, scene changes                |
+| 11  | **Audio-Reactive Animation**      | Elements pulse to narration frequency bands                                | Background textures, text glow, ambient motion |
+| 12  | **Clip-Path Reveal Masks**        | Fixed window that content slides through (text/images enter from one side) | Headline intros, image reveals, wipe effects   |
+| 13  | **WebGL Fragment Shader Art**     | Full GPU generative backgrounds — FBM domain warp, cosine palettes         | Hero backgrounds, atmospheric scenes           |
 
 ---
 
@@ -155,16 +181,22 @@ The slide distance DECAYS per word (80→12px) — mimics a camera settling.
 Vector animations that play inside a composition. Use for logos, character animations, icons.
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/@dotlottie/player-component@2.7.12/dist/dotlottie-player.js"></script>
-<dotlottie-player
+<!-- The web-component package is `@lottiefiles/dotlottie-wc` (the SDK
+     `@lottiefiles/dotlottie-web` does NOT expose a custom element).
+     The element tag is <dotlottie-wc>. -->
+<script
+  src="https://cdn.jsdelivr.net/npm/@lottiefiles/dotlottie-wc/dist/dotlottie-wc.js"
+  type="module"
+></script>
+<dotlottie-wc
   class="lottie"
-  src="../capture/assets/lottie/animation-0.json"
+  src="capture/assets/lottie/animation-0.json"
   autoplay
   loop
   speed="1.5"
   style="width:500px;height:500px;"
 >
-</dotlottie-player>
+</dotlottie-wc>
 <script>
   gsap.set(".lottie", { scale: 0.3, opacity: 0 });
   tl.to(".lottie", { scale: 1, opacity: 1, duration: 0.35, ease: "back.out(1.6)" }, 0.2);
@@ -179,7 +211,7 @@ var anim = lottie.loadAnimation({
   renderer: "svg",
   loop: false,
   autoplay: false,
-  path: "../capture/assets/lottie/animation-0.json",
+  path: "capture/assets/lottie/animation-0.json",
 });
 ```
 
@@ -193,7 +225,7 @@ Embed real video footage inside compositions. Videos must be `muted` with `plays
 <div class="video-frame" style="width:680px;height:840px;border-radius:16px;overflow:hidden;">
   <video
     id="footage"
-    src="../capture/assets/videos/clip.mp4"
+    src="capture/assets/videos/clip.mp4"
     muted
     playsinline
     style="width:100%;height:100%;object-fit:cover;"
@@ -252,10 +284,10 @@ Animate font-variation-settings to reshape glyphs in real-time. Works with varia
 ```html
 <style>
   /* Load the captured local variable font — do NOT use Google Fonts @import.
-     Replace this placeholder with an @font-face pointing to ../capture/assets/fonts/. */
+     Replace this placeholder with an @font-face pointing to capture/assets/fonts/. */
   @font-face {
     font-family: "Fraunces";
-    src: url("../capture/assets/fonts/Fraunces-Variable.woff2") format("woff2");
+    src: url("capture/assets/fonts/Fraunces-Variable.woff2") format("woff2");
     font-weight: 100 900;
     font-style: normal;
     font-display: block;
@@ -317,7 +349,7 @@ tl.to(
     duration: 0.33,
     ease: "power2.in", // accelerates
   },
-  beatDuration - 0.33,
+  parseFloat(root.dataset.duration) - 0.33, // start exit 0.33s before beat ends
 );
 
 // ENTRY (in incoming composition): decelerating from blur
@@ -376,12 +408,133 @@ Keep text/logo intensity subtle (≤5% scale, ≤30% glow) — audio-reactive mo
 
 ---
 
-## When to Use What
+## 12. Clip-Path Reveal Masks
 
-| Video energy                   | Techniques to combine                                           |
-| ------------------------------ | --------------------------------------------------------------- |
-| High impact (launches, promos) | Per-word typography + velocity transitions + counter animations |
-| Cinematic (tours, stories)     | SVG path drawing + video compositing + 3D transforms            |
-| Technical (dev tools, APIs)    | Character typing + Canvas 2D procedural + MotionPath            |
-| Premium (luxury, enterprise)   | Variable font animation + Lottie + slow velocity transitions    |
-| Data-driven (stats, metrics)   | Canvas 2D procedural + counter animations + SVG path drawing    |
+A fixed window that content slides through — text or images enter from one side and are clipped by an invisible boundary. Different from SVG path drawing: the mask is static, the content moves.
+
+```html
+<div id="reveal-mask">
+  <div id="reveal-content">Your headline text here</div>
+</div>
+<style>
+  #reveal-mask {
+    position: absolute;
+    inset: 0;
+    clip-path: inset(0 200px 0 0); /* clips 200px from right */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  #reveal-content {
+    font-size: 108px;
+    white-space: nowrap;
+  }
+</style>
+<script>
+  // Content starts offscreen right, slides left through the mask window
+  gsap.set("#reveal-content", { x: 400, opacity: 0 });
+  tl.to("#reveal-content", { x: 0, opacity: 1, duration: 1, ease: "power2.out" }, 0);
+</script>
+```
+
+Variations: `clip-path: circle(0% at 50% 50%)` → `circle(100%)` for iris reveals. `clip-path: polygon(...)` for custom shapes.
+
+---
+
+## 13. WebGL Fragment Shader Art
+
+Full GPU generative backgrounds — domain-warped FBM noise, cosine palette coloring, iridescent organic patterns. Far richer than Canvas 2D.
+
+```html
+<canvas id="shader-bg" width="1920" height="1080"></canvas>
+<script>
+  var canvas = document.getElementById("shader-bg");
+  var gl = canvas.getContext("webgl");
+  if (!gl) {
+    /* fallback to gradient */
+  }
+
+  var fsrc = `
+    precision mediump float;
+    varying vec2 v_uv;
+    uniform float u_time;
+    uniform vec2 u_res;
+
+    float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+    float noise(vec2 p) {
+      vec2 i = floor(p), f = fract(p);
+      f = f * f * (3.0 - 2.0 * f);
+      return mix(mix(hash(i), hash(i+vec2(1,0)), f.x),
+                 mix(hash(i+vec2(0,1)), hash(i+vec2(1,1)), f.x), f.y);
+    }
+    float fbm(vec2 p) {
+      float v = 0.0, a = 0.5;
+      mat2 R = mat2(0.8, 0.6, -0.6, 0.8);
+      for (int i = 0; i < 5; i++) { v += a*noise(p); p = R*p*2.02; a *= 0.5; }
+      return v;
+    }
+    vec3 palette(float t) {
+      return vec3(0.5)+vec3(0.5)*cos(6.28318*(vec3(1)*t+vec3(0.0,0.33,0.67)));
+    }
+    void main() {
+      vec2 uv = v_uv; uv.x *= u_res.x/u_res.y;
+      float t = u_time * 0.4;
+      vec2 q = vec2(fbm(uv*3.0+t*0.3), fbm(uv*3.0+vec2(5.2,1.3)+t*0.2));
+      vec2 r = vec2(fbm(uv*3.0+q*4.0+vec2(1.7,9.2)+t*0.15), fbm(uv*3.0+q*4.0+vec2(8.3,2.8)+t*0.1));
+      float n = fbm(uv*3.0+r*2.0);
+      vec3 col = palette(n*2.0+t*0.2);
+      col = mix(col, palette(length(q)*3.0+t*0.1), 0.4);
+      col *= 0.7+0.3*n;
+      float vig = 1.0-0.4*length(v_uv-0.5);
+      gl_FragColor = vec4(col*vig, 1.0);
+    }
+  `;
+
+  // Compile, link, set up fullscreen quad, then render via GSAP proxy:
+  var proxy = { time: 0.5 };
+  tl.to(
+    proxy,
+    {
+      time: 5,
+      duration: BEAT_DUR,
+      ease: "none",
+      onUpdate: function () {
+        gl.uniform1f(uTime, proxy.time);
+        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+      },
+    },
+    0,
+  );
+</script>
+```
+
+Always include a Canvas 2D gradient fallback for environments without WebGL.
+
+---
+
+## Easing Vocabulary
+
+GSAP offers a deep easing library. Every composition should use at least 3 different easings — using `power2.out` for everything produces flat, monotonous motion. Think of easings as tone of voice: a video that only whispers is boring; one that varies between whisper, normal, and punch is engaging.
+
+**The full palette** (each family has `.in`, `.out`, `.inOut` variants):
+
+| Family               | Character                                                                    | Typical use                                                                                        |
+| -------------------- | ---------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `power1`–`power4`    | Gentle (1) to aggressive (4) acceleration curves                             | General purpose. power2 is the workhorse, power4 for dramatic snaps                                |
+| `back(N)`            | Overshoot then settle. N controls how far past the target (1=subtle, 4=wild) | Logo reveals, badge pops, card entrances. `back.out(2.5)` for playful, `back.out(1.2)` for elegant |
+| `elastic(amp, freq)` | Spring bounce. amp=magnitude, freq=oscillation speed                         | Panel scatter, energetic drops, fun reveals                                                        |
+| `bounce`             | Ball-drop bouncing                                                           | Physical interactions, icons landing, score counters                                               |
+| `expo`               | Extreme acceleration curve (much steeper than power4)                        | Premium/luxury reveals, dramatic entrances                                                         |
+| `sine`               | Smooth, organic, no hard edges                                               | Ambient float, breathing, Ken Burns, anything that loops. `.inOut` for yoyo motion                 |
+| `circ`               | Circular acceleration (starts very fast, ends very gentle or vice versa)     | Camera moves, scene transitions, orbital motion                                                    |
+| `steps(N)`           | Discrete N-step jumps, no interpolation                                      | Typing effects, cursor blink, counter ticks, retro/digital aesthetics                              |
+
+**Mood mapping:** Match easing character to the beat's emotional content. Smooth/organic easings (`sine`, `power1`) feel contemplative and drifting. Aggressive deceleration (`power4.out`, `expo.out`) feels snappy and confident. Spring overshoot (`back.out`) feels bouncy and physical. The storyboard's mood description should guide which character fits — not a formula.
+
+---
+
+## Choosing techniques
+
+Don't match techniques to video type on autopilot — match them to the **concept of the specific beat**. Ask: what visual treatment makes this exact idea land? A beat about speed needs motion that communicates speed; a beat about precision needs geometry and structure; a beat about warmth needs texture and organic drift.
+
+Read the storyboard beat's concept and mood, then scan this list for techniques whose _visual character_ serves that concept. Any technique can appear in any video type — the question is whether it earns its place in this beat.

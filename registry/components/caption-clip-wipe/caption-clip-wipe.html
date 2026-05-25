@@ -23,14 +23,15 @@
         height: 1080px;
         margin: 0;
         overflow: hidden;
-        background: #0a0a0a;
+        background: transparent;
       }
       #clip-wipe {
+        pointer-events: none;
         position: relative;
         width: 1920px;
         height: 1080px;
         overflow: hidden;
-        background: #0a0a0a;
+        background: transparent;
       }
       #wp-video {
         position: absolute;
@@ -43,7 +44,7 @@
       .wp-overlay {
         position: absolute;
         inset: 0;
-        background: rgba(0, 0, 0, 0.45);
+        background: transparent;
         z-index: 1;
         pointer-events: none;
       }
@@ -84,6 +85,7 @@
     <div
       id="clip-wipe"
       data-composition-id="caption-clip-wipe"
+      data-timeline-locked
       data-start="0"
       data-duration="8"
       data-fps="30"

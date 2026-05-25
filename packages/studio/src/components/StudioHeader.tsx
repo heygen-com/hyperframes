@@ -8,6 +8,7 @@ import { getHistoryShortcutLabel } from "../utils/studioHelpers";
 import { useStudioContext } from "../contexts/StudioContext";
 import { usePanelLayoutContext } from "../contexts/PanelLayoutContext";
 import { useDomEditContext } from "../contexts/DomEditContext";
+import { trackStudioEvent } from "../utils/studioTelemetry";
 
 export interface StudioHeaderProps {
   captureFrameHref: string;
@@ -165,7 +166,10 @@ export function StudioHeader({
       <div className="flex items-center gap-1.5">
         <button
           type="button"
-          onClick={() => void handleUndo()}
+          onClick={() => {
+            trackStudioEvent("toolbar_action", { action: "undo" });
+            void handleUndo();
+          }}
           disabled={!editHistory.canUndo}
           className={`h-7 w-7 flex items-center justify-center rounded-md border transition-colors ${
             editHistory.canUndo
@@ -183,7 +187,10 @@ export function StudioHeader({
         </button>
         <button
           type="button"
-          onClick={() => void handleRedo()}
+          onClick={() => {
+            trackStudioEvent("toolbar_action", { action: "redo" });
+            void handleRedo();
+          }}
           disabled={!editHistory.canRedo}
           className={`h-7 w-7 flex items-center justify-center rounded-md border transition-colors ${
             editHistory.canRedo
@@ -202,7 +209,10 @@ export function StudioHeader({
         <a
           href={captureFrameHref}
           download={captureFrameFilename}
-          onClick={handleCaptureFrameClick}
+          onClick={(e) => {
+            trackStudioEvent("toolbar_action", { action: "capture_frame" });
+            handleCaptureFrameClick(e);
+          }}
           onFocus={refreshCaptureFrameTime}
           onPointerDown={refreshCaptureFrameTime}
           className="h-7 flex items-center gap-1.5 px-2.5 rounded-md text-[11px] font-medium border border-neutral-700 text-neutral-300 transition-colors hover:border-neutral-500 hover:bg-neutral-800"
@@ -217,10 +227,12 @@ export function StudioHeader({
           onClick={() => {
             if (!STUDIO_INSPECTOR_PANELS_ENABLED) return;
             if (rightCollapsed || !inspectorPanelActive) {
+              trackStudioEvent("panel_toggle", { panel: "inspector", collapsed: false });
               setRightPanelTab("design");
               setRightCollapsed(false);
               return;
             }
+            trackStudioEvent("panel_toggle", { panel: "inspector", collapsed: true });
             clearDomSelection();
             setRightCollapsed(true);
           }}

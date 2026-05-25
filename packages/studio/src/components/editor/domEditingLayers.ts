@@ -12,6 +12,7 @@ import type {
 } from "./domEditingTypes";
 import {
   buildStableSelector,
+  findClosestByAttribute,
   getCuratedComputedStyles,
   getDataAttributes,
   getInlineStyles,
@@ -175,18 +176,21 @@ export function resolveDomEditCapabilities(args: {
   inlineStyles: Record<string, string>;
   computedStyles: Record<string, string>;
   isCompositionHost: boolean;
+  isInsideLockedComposition: boolean;
   isMasterView: boolean;
 }): DomEditCapabilities {
-  if (!args.selector) {
+  if (!args.selector || args.isInsideLockedComposition) {
     return {
-      canSelect: false,
+      canSelect: !args.isInsideLockedComposition,
       canEditStyles: false,
       canMove: false,
       canResize: false,
       canApplyManualOffset: false,
       canApplyManualSize: false,
       canApplyManualRotation: false,
-      reasonIfDisabled: "Studio could not resolve a stable patch target for this element.",
+      reasonIfDisabled: args.isInsideLockedComposition
+        ? "This element belongs to a locked composition."
+        : "Studio could not resolve a stable patch target for this element.",
     };
   }
 
@@ -298,6 +302,7 @@ export function resolveDomEditSelection(
     const inlineStyles = getInlineStyles(current);
     const computedStyles = getCuratedComputedStyles(current);
     const textFields = collectDomEditTextFields(current);
+    const isInsideLocked = Boolean(findClosestByAttribute(current, ["data-timeline-locked"]));
     const capabilities = resolveDomEditCapabilities({
       selector,
       tagName: current.tagName.toLowerCase(),
@@ -305,6 +310,7 @@ export function resolveDomEditSelection(
       inlineStyles,
       computedStyles,
       isCompositionHost: Boolean(compositionSrc),
+      isInsideLockedComposition: isInsideLocked,
       isMasterView: options.isMasterView,
     });
     const rect = current.getBoundingClientRect();
@@ -318,6 +324,7 @@ export function resolveDomEditSelection(
       compositionPath,
       compositionSrc,
       isCompositionHost: Boolean(compositionSrc),
+      isInsideLockedComposition: isInsideLocked,
       label: buildElementLabel(current),
       tagName: current.tagName.toLowerCase(),
       boundingBox: {
@@ -488,7 +495,11 @@ export function getDomEditTargetKey(
 }
 
 export function isTextEditableSelection(selection: DomEditSelection): boolean {
-  return selection.textFields.length > 0 && !selection.isCompositionHost;
+  return (
+    selection.textFields.length > 0 &&
+    !selection.isCompositionHost &&
+    !selection.isInsideLockedComposition
+  );
 }
 
 // buildElementAgentPrompt is in domEditingAgentPrompt.ts

@@ -42,7 +42,15 @@ import { isHtmlInCanvasCaptureSupported } from "./capture.js";
 
 interface PageCompositeTransitionConfig {
   time: number;
-  shader: ShaderName;
+  /**
+   * Shader id. Undefined entries are CSS crossfades — the page-side
+   * compositor skips them, and the GSAP timeline in `initEngineMode`
+   * schedules an actual opacity-crossfade tween for those entries so the
+   * single page screenshot contains a correct blended frame. The entry
+   * stays in the array to preserve `transitions[i]` ↔ `scenes[i]`/
+   * `scenes[i+1]` index alignment for the surrounding shader entries.
+   */
+  shader?: ShaderName;
   duration?: number;
 }
 
@@ -114,6 +122,10 @@ export function installPageSideCompositor(options: PageCompositorInstallOptions)
 
   const programs = new Map<string, WebGLProgram>();
   for (const t of transitions) {
+    // CSS crossfade entries (shader undefined) carry no program. Use a
+    // strict undefined check so a misconfigured empty string still fails
+    // loudly through the createProgram path below.
+    if (t.shader === undefined) continue;
     if (programs.has(t.shader)) continue;
     try {
       programs.set(t.shader, createProgram(gl, getFragSource(t.shader)));
@@ -127,6 +139,10 @@ export function installPageSideCompositor(options: PageCompositorInstallOptions)
   for (let i = 0; i < transitions.length; i++) {
     const t = transitions[i];
     if (!t) continue;
+    // CSS-only transitions stay on the GSAP opacity timeline; the page-
+    // side compositor only handles shader entries. Index i is preserved
+    // so subsequent shader transitions still pair with the right scenes.
+    if (t.shader === undefined) continue;
     const fromSceneId = scenes[i];
     const toSceneId = scenes[i + 1];
     const prog = programs.get(t.shader);

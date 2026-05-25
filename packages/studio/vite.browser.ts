@@ -125,8 +125,8 @@ export async function generateThumbnail(opts: GenerateThumbnailOptions): Promise
         });
         await page.goto(opts.previewUrl, { waitUntil: "domcontentloaded", timeout: 10000 });
         await page.evaluate(() => {
-          document.documentElement.style.background = "#000";
-          document.body.style.background = "#000";
+          document.documentElement.style.background = "#1c2028";
+          document.body.style.background = "#1c2028";
           document.body.style.margin = "0";
           document.body.style.overflow = "hidden";
         });

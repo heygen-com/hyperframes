@@ -8,6 +8,7 @@
 import { spawn } from "child_process";
 import { copyFileSync, existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from "fs";
 import { join, dirname } from "path";
+import { trackChildProcess } from "../utils/processTracker.js";
 import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
 import {
   type GpuEncoder,
@@ -17,7 +18,7 @@ import {
 } from "../utils/gpuEncoder.js";
 import { type HdrTransfer, getHdrEncoderColorParams } from "../utils/hdr.js";
 import { formatFfmpegError, runFfmpeg } from "../utils/runFfmpeg.js";
-import { fpsToFfmpegArg } from "@hyperframes/core";
+import { type Fps, fpsToFfmpegArg } from "@hyperframes/core";
 import type { EncoderOptions, EncodeResult, MuxResult } from "./chunkEncoder.types.js";
 
 export type { EncoderOptions, EncodeResult, MuxResult } from "./chunkEncoder.types.js";
@@ -255,25 +256,13 @@ export function buildEncoderArgs(
     args.push("-deadline", preset === "ultrafast" ? "realtime" : "good");
     args.push("-row-mt", "1");
 
-    // Closed-GOP args for distributed chunk concat-copy. Mirrors the
-    // libx264/libx265 branch above: `lockGopForChunkConcat=true` lays a
-    // keyframe at every chunk boundary so `ffmpeg -f concat -c copy` can
-    // stitch sibling chunks losslessly.
-    //
-    // VP9-specific: `-auto-alt-ref 0` is mandatory. Alt-ref (a.k.a.
-    // "ARNR") frames are non-displayable references libvpx-vp9 inserts
-    // anywhere in the GOP for compression; they break concat-copy at
-    // chunk seams because the boundary frame is no longer the first
-    // displayable reference. The alpha branch below already disables
-    // alt-ref for an unrelated reason (alpha + alt-ref is unsupported);
-    // closed-GOP extends that to every pixel format.
-    //
-    // `-cpu-used 2` pins the libvpx-vp9 speed/quality tradeoff so chunks
-    // encoded on workers with different default cpu-used values still
-    // produce visually consistent output across seams. libvpx-vp9's
-    // default with `-deadline good` has drifted across versions
-    // historically — locking it makes the planHash round-trip
-    // deterministic.
+    // `-auto-alt-ref 0` is mandatory for chunk concat-copy: libvpx-vp9's
+    // alt-ref frames can reference frames in either direction inside a
+    // GOP, so a chunk-boundary frame is not guaranteed to be the first
+    // displayable reference when alt-ref is on. `-cpu-used 2` pins the
+    // speed/quality tradeoff against libvpx-vp9 default drift across
+    // versions, so the planHash round-trips deterministically across
+    // worker images.
     const lockGopVp9 = options.lockGopForChunkConcat === true;
     if (lockGopVp9) {
       if (
@@ -299,10 +288,8 @@ export function buildEncoderArgs(
     }
     if (pixelFormat === "yuva420p") {
       // Alpha + alt-ref is unsupported by libvpx-vp9. The closed-GOP
-      // branch above already disables alt-ref; only push the flag for
-      // the non-locked alpha case to keep the args list clean (a second
-      // `-auto-alt-ref 0` is harmless but noisier in `ffmpeg -loglevel`
-      // diagnostics).
+      // branch above already emits `-auto-alt-ref 0`, so skip the
+      // duplicate push.
       if (!lockGopVp9) {
         args.push("-auto-alt-ref", "0");
       }
@@ -418,6 +405,7 @@ export async function encodeFramesFromDir(
 
   return new Promise((resolve) => {
     const ffmpeg = spawn("ffmpeg", args);
+    trackChildProcess(ffmpeg);
     let stderr = "";
     const onAbort = () => {
       ffmpeg.kill("SIGTERM");
@@ -549,6 +537,7 @@ export async function encodeFramesChunkedConcat(
     const args = buildEncoderArgs(options, inputArgs, chunkPath, gpuEncoder);
     const chunkResult = await new Promise<{ success: boolean; error?: string }>((resolve) => {
       const ffmpeg = spawn("ffmpeg", args);
+      trackChildProcess(ffmpeg);
       let stderr = "";
       ffmpeg.stderr.on("data", (d) => {
         stderr += d.toString();
@@ -592,6 +581,7 @@ export async function encodeFramesChunkedConcat(
   ];
   const concatResult = await new Promise<{ success: boolean; error?: string }>((resolve) => {
     const ffmpeg = spawn("ffmpeg", concatArgs);
+    trackChildProcess(ffmpeg);
     let stderr = "";
     ffmpeg.stderr.on("data", (d) => {
       stderr += d.toString();
@@ -632,6 +622,7 @@ export async function muxVideoWithAudio(
   outputPath: string,
   signal?: AbortSignal,
   config?: Partial<Pick<EngineConfig, "ffmpegProcessTimeout">>,
+  fps?: Fps,
 ): Promise<MuxResult> {
   const outputDir = dirname(outputPath);
   if (!existsSync(outputDir)) mkdirSync(outputDir, { recursive: true });
@@ -650,6 +641,12 @@ export async function muxVideoWithAudio(
   // PTS bases can diverge during mux and reintroduce negative DTS. See
   // buildEncoderArgs for the full reasoning on why that breaks playback.
   args.push("-avoid_negative_ts", "make_zero");
+  if (fps !== undefined) {
+    // Set the exact output framerate so the muxer doesn't PTS-average a
+    // fractional rational like `360000/12001` instead of `30/1` into the
+    // output container metadata. `-c:v copy` is retained; no re-encode.
+    args.push("-r", fpsToFfmpegArg(fps));
+  }
   args.push("-shortest", "-y", outputPath);
 
   const processTimeout = config?.ffmpegProcessTimeout ?? DEFAULT_CONFIG.ffmpegProcessTimeout;
@@ -676,6 +673,7 @@ export async function applyFaststart(
   outputPath: string,
   signal?: AbortSignal,
   config?: Partial<Pick<EngineConfig, "ffmpegProcessTimeout">>,
+  fps?: Fps,
 ): Promise<MuxResult> {
   // faststart is MP4-only (moves moov atom to file start for streaming).
   // WebM and MOV don't need it — skip the re-mux.
@@ -683,7 +681,14 @@ export async function applyFaststart(
     if (inputPath !== outputPath) copyFileSync(inputPath, outputPath);
     return { success: true, outputPath, durationMs: 0 };
   }
-  const args = ["-i", inputPath, "-c", "copy", "-movflags", "+faststart", "-y", outputPath];
+  const args = ["-i", inputPath, "-c", "copy", "-movflags", "+faststart"];
+  if (fps !== undefined) {
+    // Set the exact output framerate so the final remux doesn't PTS-average
+    // a fractional rational like `360000/12001` instead of `30/1` into the
+    // output container metadata. `-c copy` is retained; no re-encode.
+    args.push("-r", fpsToFfmpegArg(fps));
+  }
+  args.push("-y", outputPath);
 
   const processTimeout = config?.ffmpegProcessTimeout ?? DEFAULT_CONFIG.ffmpegProcessTimeout;
   const result = await runFfmpeg(args, { signal, timeout: processTimeout });

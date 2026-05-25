@@ -53,6 +53,14 @@
       "file": "packages/producer/src/services/fileServer.ts",
       "exports": ["isPathInside"],
     },
+    // Studio telemetry: `trackStudioRenderStart` is consumed by
+    // useRenderQueue.ts (deep relative import) but fallow's static analyzer
+    // doesn't trace it. `trackStudioSessionStart` from the same file resolves
+    // fine via App.tsx, so this is a path-resolution quirk, not dead code.
+    {
+      "file": "packages/studio/src/telemetry/events.ts",
+      "exports": ["trackStudioRenderStart"],
+    },
   ],
   "ignoreDependencies": [
     // Runtime/dynamic deps not visible to static analysis: tsup `external`,

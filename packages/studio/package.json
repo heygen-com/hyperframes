@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/studio",
-  "version": "0.6.25",
+  "version": "0.6.44",
   "description": "",
   "repository": {
     "type": "git",
@@ -38,7 +38,8 @@
     "@codemirror/view": "6.40.0",
     "@hyperframes/core": "workspace:*",
     "@hyperframes/player": "workspace:*",
-    "@phosphor-icons/react": "^2.1.10"
+    "@phosphor-icons/react": "^2.1.10",
+    "mediabunny": "^1.45.3"
   },
   "devDependencies": {
     "@hyperframes/producer": "workspace:*",

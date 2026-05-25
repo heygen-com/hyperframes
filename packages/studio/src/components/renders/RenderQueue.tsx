@@ -2,6 +2,7 @@ import { memo, useState, useRef, useEffect } from "react";
 import { RenderQueueItem } from "./RenderQueueItem";
 import type { RenderJob, ResolutionPreset } from "./useRenderQueue";
 import { getPersistedRenderSettings, persistRenderSettings } from "./renderSettings";
+import { trackStudioEvent } from "../../utils/studioTelemetry";
 
 export interface CompositionDimensions {
   width: number;
@@ -277,6 +278,7 @@ function FormatExportButton({
       </select>
       <button
         onClick={() => {
+          trackStudioEvent("render_start", { format, quality, resolution, fps });
           void onStartRender(format, quality, resolution, fps);
         }}
         disabled={isRendering}

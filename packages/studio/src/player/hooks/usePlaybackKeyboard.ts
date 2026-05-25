@@ -108,6 +108,21 @@ export function usePlaybackKeyboard({
         return;
       }
       if (e.repeat) return;
+      if (key === "m") {
+        e.preventDefault();
+        const state = usePlayerStore.getState();
+        // Audio is force-muted above 1x playback — match the mute button's gating.
+        if (state.playbackRate <= 1) {
+          state.setAudioMuted(!state.audioMuted);
+        }
+        return;
+      }
+      if (key === "l" && e.shiftKey) {
+        e.preventDefault();
+        const state = usePlayerStore.getState();
+        state.setLoopEnabled(!state.loopEnabled);
+        return;
+      }
       if (key === "k") {
         e.preventDefault();
         pause();
@@ -167,23 +182,38 @@ export function usePlaybackKeyboard({
   playbackKeyDownRef.current = handlePlaybackKeyDown;
   playbackKeyUpRef.current = handlePlaybackKeyUp;
 
+  // fallow-ignore-next-line complexity
   const attachIframeShortcutListeners = useCallback(() => {
     iframeShortcutCleanupRef.current?.();
     iframeShortcutCleanupRef.current = null;
 
-    const iframeWin = iframeRef.current?.contentWindow;
-    const iframeDoc = iframeRef.current?.contentDocument;
+    let iframeWin: Window | null = null;
+    let iframeDoc: Document | null = null;
+    try {
+      iframeWin = iframeRef.current?.contentWindow ?? null;
+      iframeDoc = iframeRef.current?.contentDocument ?? null;
+    } catch {
+      return;
+    }
     if (!iframeWin && !iframeDoc) return;
 
     const handleIframeKeyDown = (e: KeyboardEvent) => playbackKeyDownRef.current(e);
     const handleIframeKeyUp = (e: KeyboardEvent) => playbackKeyUpRef.current(e);
-    iframeWin?.addEventListener("keydown", handleIframeKeyDown, true);
-    iframeWin?.addEventListener("keyup", handleIframeKeyUp, true);
+    try {
+      iframeWin?.addEventListener("keydown", handleIframeKeyDown, true);
+      iframeWin?.addEventListener("keyup", handleIframeKeyUp, true);
+    } catch {
+      /* cross-origin iframe */
+    }
     iframeDoc?.addEventListener("keydown", handleIframeKeyDown, true);
     iframeDoc?.addEventListener("keyup", handleIframeKeyUp, true);
     iframeShortcutCleanupRef.current = () => {
-      iframeWin?.removeEventListener("keydown", handleIframeKeyDown, true);
-      iframeWin?.removeEventListener("keyup", handleIframeKeyUp, true);
+      try {
+        iframeWin?.removeEventListener("keydown", handleIframeKeyDown, true);
+        iframeWin?.removeEventListener("keyup", handleIframeKeyUp, true);
+      } catch {
+        /* cross-origin iframe */
+      }
       iframeDoc?.removeEventListener("keydown", handleIframeKeyDown, true);
       iframeDoc?.removeEventListener("keyup", handleIframeKeyUp, true);
     };

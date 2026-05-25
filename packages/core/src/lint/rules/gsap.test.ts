@@ -746,4 +746,99 @@ describe("GSAP rules", () => {
     const finding = result.findings.find((f) => f.code === "gsap_infinite_repeat");
     expect(finding).toBeUndefined();
   });
+
+  it("errors when CSS opacity:0 + gsap.from({opacity:0}) — invisible forever", () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <div id="title" style="opacity: 0; font-size: 120px;">Hello</div>
+  </div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.from("#title", { opacity: 0, y: 30, duration: 0.5 }, 0.2);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "gsap_from_opacity_noop");
+    expect(finding).toBeDefined();
+    expect(finding!.severity).toBe("error");
+    expect(finding!.selector).toBe("#title");
+  });
+
+  it("errors when style block has opacity:0 + gsap.from({opacity:0})", () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <div id="hero">Hello</div>
+  </div>
+  <style>
+    #hero { font-size: 200px; color: #fff; opacity: 0; }
+  </style>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.from("#hero", { opacity: 0, scale: 3.5, duration: 0.25, ease: "expo.out" }, 0.1);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "gsap_from_opacity_noop");
+    expect(finding).toBeDefined();
+  });
+
+  it("does NOT error when gsap.from({opacity:0}) and CSS has no opacity:0", () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <div id="title" style="font-size: 120px; color: #fff;">Hello</div>
+  </div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.from("#title", { opacity: 0, y: 30, duration: 0.5 }, 0.2);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "gsap_from_opacity_noop");
+    expect(finding).toBeUndefined();
+  });
+
+  it("does NOT error when gsap.fromTo({opacity:0}, {opacity:1}) — destination overrides CSS", () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <div id="title" style="opacity: 0; font-size: 120px;">Hello</div>
+  </div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.fromTo("#title", { opacity: 0, y: 30 }, { opacity: 1, y: 0, duration: 0.5 }, 0.2);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "gsap_from_opacity_noop");
+    expect(finding).toBeUndefined();
+  });
+
+  it("does NOT error when gsap.to() uses opacity:0 (exit animation)", () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <div id="title" style="opacity: 0;">Hello</div>
+  </div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.to("#title", { opacity: 0, duration: 0.5 }, 4.0);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "gsap_from_opacity_noop");
+    expect(finding).toBeUndefined();
+  });
 });

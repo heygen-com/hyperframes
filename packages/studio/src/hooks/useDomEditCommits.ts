@@ -1,7 +1,8 @@
 import { useCallback } from "react";
 import { usePlayerStore } from "../player";
 import { FONT_EXT } from "../utils/mediaTypes";
-import { applyPatchByTarget } from "../utils/sourcePatcher";
+import type { PatchOperation } from "../utils/sourcePatcher";
+import { trackStudioEvent } from "../utils/studioTelemetry";
 import { saveProjectFilesWithHistory } from "../utils/studioFileHistory";
 import { primaryFontFamilyValue } from "../utils/studioFontHelpers";
 import { getDomEditTargetKey, type DomEditSelection } from "../components/editor/domEditing";
@@ -45,7 +46,7 @@ interface RecordEditInput {
 
 export type PersistDomEditOperations = (
   selection: DomEditSelection,
-  operations: Parameters<typeof applyPatchByTarget>[2][],
+  operations: PatchOperation[],
   options?: {
     label?: string;
     coalesceKey?: string;
@@ -134,39 +135,61 @@ export function useDomEditCommits({
       if (options?.shouldSave && !options.shouldSave()) return;
 
       const targetPath = selection.sourceFile || activeCompPath || "index.html";
-      const response = await fetch(`/api/projects/${pid}/files/${encodeURIComponent(targetPath)}`);
-      if (!response.ok) {
-        throw new Error(`Failed to read ${targetPath}`);
-      }
 
-      const data = (await response.json()) as { content?: string };
-      const originalContent = data.content;
+      const readResponse = await fetch(
+        `/api/projects/${pid}/files/${encodeURIComponent(targetPath)}`,
+      );
+      if (!readResponse.ok) throw new Error(`Failed to read ${targetPath}`);
+      const readData = (await readResponse.json()) as { content?: string };
+      const originalContent = readData.content;
       if (typeof originalContent !== "string") {
         throw new Error(`Missing file contents for ${targetPath}`);
       }
 
-      let patchedContent = originalContent;
-      for (const operation of operations) {
-        patchedContent = applyPatchByTarget(patchedContent, selection, operation);
-      }
-      if (options?.prepareContent) {
-        patchedContent = options.prepareContent(patchedContent, targetPath);
-      }
       if (options?.shouldSave && !options.shouldSave()) return;
 
-      if (patchedContent === originalContent) {
+      const patchTarget: { id?: string | null; selector?: string; selectorIndex?: number } = {
+        id: selection.id,
+        selector: selection.selector,
+        selectorIndex: selection.selectorIndex,
+      };
+
+      const patchResponse = await fetch(
+        `/api/projects/${pid}/file-mutations/patch-element/${encodeURIComponent(targetPath)}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ target: patchTarget, operations }),
+        },
+      );
+      if (!patchResponse.ok) throw new Error(`Failed to patch ${targetPath}`);
+
+      const patchData = (await patchResponse.json()) as {
+        ok?: boolean;
+        changed?: boolean;
+        content?: string;
+      };
+
+      if (!patchData.changed) {
         throw new Error(`Unable to patch ${selection.selector ?? selection.id ?? "selection"}`);
       }
 
-      await saveProjectFilesWithHistory({
-        projectId: pid,
+      const patchedContent =
+        typeof patchData.content === "string" ? patchData.content : originalContent;
+
+      let finalContent = patchedContent;
+      if (options?.prepareContent) {
+        finalContent = options.prepareContent(patchedContent, targetPath);
+        if (finalContent !== patchedContent) {
+          await writeProjectFile(targetPath, finalContent);
+        }
+      }
+
+      await editHistory.recordEdit({
         label: options?.label ?? "Edit layer",
         kind: "manual",
         coalesceKey: options?.coalesceKey,
-        files: { [targetPath]: patchedContent },
-        readFile: async () => originalContent,
-        writeFile: writeProjectFile,
-        recordEdit: editHistory.recordEdit,
+        files: { [targetPath]: { before: originalContent, after: finalContent } },
       });
 
       if (options?.skipRefresh) {
@@ -177,7 +200,7 @@ export function useDomEditCommits({
     },
     [
       activeCompPath,
-      editHistory.recordEdit,
+      editHistory,
       writeProjectFile,
       projectIdRef,
       domEditSaveTimestampRef,
@@ -212,7 +235,7 @@ export function useDomEditCommits({
   const commitPositionPatchToHtml = useCallback(
     (
       selection: DomEditSelection,
-      patches: Parameters<typeof applyPatchByTarget>[2][],
+      patches: PatchOperation[],
       options: { label: string; coalesceKey: string; skipRefresh?: boolean },
     ) => {
       void queueDomEditSave(async () => {
@@ -224,6 +247,11 @@ export function useDomEditCommits({
       }).catch((error) => {
         const message = error instanceof Error ? error.message : "Failed to save position";
         showToast(message);
+        trackStudioEvent("save_failure", {
+          source: "dom_edit",
+          label: options.label,
+          error_message: message,
+        });
       });
     },
     [persistDomEditOperations, queueDomEditSave, showToast],

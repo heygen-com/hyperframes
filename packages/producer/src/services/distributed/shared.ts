@@ -15,6 +15,14 @@ import { type RenderConfig, type RenderJob, createRenderJob } from "../renderOrc
 import { defaultLogger, type ProducerLogger } from "../../logger.js";
 
 /**
+ * Output container formats the distributed pipeline supports end-to-end.
+ * Single source of truth for the format union — `plan()`, `renderChunk()`,
+ * `assemble()`, the aws-lambda handler, and the harness all derive from
+ * this type. Adding a new format starts here.
+ */
+export type DistributedFormat = "mp4" | "mov" | "png-sequence" | "webm";
+
+/**
  * Filename of the per-video extraction manifest written by `plan()` into
  * `<planDir>/meta/` and consumed by `renderChunk()` to rebuild the
  * BeforeCaptureHook that injects pre-extracted frames into the page.

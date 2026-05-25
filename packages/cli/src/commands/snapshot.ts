@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { defineCommand } from "citty";
-import { existsSync, mkdtempSync, readFileSync, mkdirSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve, join, relative, isAbsolute } from "node:path";
 import { resolveProject } from "../utils/project.js";
@@ -97,16 +97,12 @@ async function captureSnapshots(
 
   const numFrames = opts.frames ?? 5;
 
-  // 1. Bundle. `bundleToSingleHtml` now inlines the runtime IIFE by default,
-  // so the previous post-bundle runtime substitution is no longer needed.
   const html = await bundleToSingleHtml(projectDir);
-
   const server = await serveStaticProjectHtml(projectDir, html);
 
   const savedPaths: string[] = [];
 
   try {
-    // 3. Launch headless Chrome
     const browser = await ensureBrowser();
     const puppeteer = await import("puppeteer-core");
     const chromeBrowser = await puppeteer.default.launch({
@@ -131,47 +127,82 @@ async function captureSnapshots(
         timeout: 10000,
       });
 
-      // Wait for runtime to initialize and sub-compositions to load
+      // __renderReady is set after the player is constructed AND the root
+      // timeline is bound — waiting for it guarantees renderSeek will work.
       const timeoutMs = opts.timeout ?? 5000;
-      await page
-        .waitForFunction(() => !!(window as any).__timelines || !!(window as any).__playerReady, {
-          timeout: timeoutMs,
-        })
-        .catch(() => {});
+      const runtimeReady = await page
+        .waitForFunction(() => !!(window as any).__renderReady, { timeout: timeoutMs })
+        .then(() => true)
+        .catch(() => false);
 
-      // Wait for sub-compositions to be mounted by the runtime
-      // (they're fetched and injected asynchronously via data-composition-src)
+      if (!runtimeReady) {
+        console.warn(
+          `\n   ${c.warn("⚠")} Runtime did not become render-ready within ${timeoutMs}ms — snapshots may be inaccurate`,
+        );
+      }
+
+      // Wait for shader transition pre-rendering (HyperShader IndexedDB hydration).
+      // Uses the ready state flag as primary signal, with the loading overlay
+      // display:none as a fallback for older builds.
       await page
         .waitForFunction(
           () => {
-            const tls = (window as any).__timelines;
-            if (!tls) return false;
-            const keys = Object.keys(tls);
-            // Wait until at least one sub-composition timeline is registered
-            // (not counting "main" or empty registrations)
-            return keys.length >= 2 || keys.some((k) => k !== "main");
+            const win = window as unknown as {
+              __hf?: { shaderTransitions?: Record<string, { ready?: boolean }> };
+            };
+            const shaderTransitions = win.__hf?.shaderTransitions;
+            if (shaderTransitions !== undefined) {
+              return Object.values(shaderTransitions).every((s) => s.ready === true);
+            }
+            const overlay = document.querySelector(
+              "[data-hyper-shader-loading]",
+            ) as HTMLElement | null;
+            if (!overlay) return true;
+            return window.getComputedStyle(overlay).display === "none";
           },
-          { timeout: timeoutMs },
+          { timeout: 90_000 },
         )
-        .catch(() => {});
+        .catch(() => {
+          console.warn(`   ${c.warn("⚠")} Shader transitions did not finish pre-rendering`);
+        });
 
-      // Extra settle time for media, fonts, and animations to initialize
+      // Wait for fonts to finish loading before capturing
+      await page.evaluate(() => document.fonts.ready).catch(() => {});
+
+      // Extra settle time for media and animations to initialize
       await new Promise((r) => setTimeout(r, 1500));
 
-      // Get composition duration
+      // Font verification — report which fonts loaded vs fell back
+      const fontReport = await page
+        .evaluate(() => {
+          const loaded: string[] = [];
+          const failed: string[] = [];
+          (document as any).fonts.forEach((f: any) => {
+            const entry = `${f.family} (${f.weight} ${f.style})`;
+            if (f.status === "loaded") loaded.push(entry);
+            else failed.push(entry + ` [${f.status}]`);
+          });
+          return { loaded, failed };
+        })
+        .catch(() => ({ loaded: [] as string[], failed: [] as string[] }));
+
+      if (fontReport.loaded.length > 0 || fontReport.failed.length > 0) {
+        console.log(
+          `\n   ${c.dim("Fonts loaded:")} ${fontReport.loaded.length > 0 ? fontReport.loaded.join(", ") : "none"}`,
+        );
+        if (fontReport.failed.length > 0) {
+          console.log(`   ${c.error("Fonts FAILED:")} ${fontReport.failed.join(", ")}`);
+        }
+      }
+
       const duration = await page.evaluate(() => {
         const win = window as any;
-        const pd = win.__player?.duration;
-        if (pd != null) return typeof pd === "function" ? pd() : pd;
+        if (typeof win.__player?.getDuration === "function") {
+          const d = win.__player.getDuration();
+          if (Number.isFinite(d) && d > 0) return d;
+        }
         const root = document.querySelector("[data-composition-id][data-duration]");
         if (root) return parseFloat(root.getAttribute("data-duration") ?? "0");
-        const tls = win.__timelines;
-        if (tls) {
-          for (const key in tls) {
-            const d = tls[key]?.duration;
-            if (d != null) return typeof d === "function" ? d() : d;
-          }
-        }
         return 0;
       });
 
@@ -186,16 +217,21 @@ async function captureSnapshots(
           ? [duration / 2]
           : Array.from({ length: numFrames }, (_, i) => (i / (numFrames - 1)) * duration);
 
-      // Create output directory
       const snapshotDir = join(projectDir, "snapshots");
       mkdirSync(snapshotDir, { recursive: true });
+      try {
+        const { readdirSync } = await import("node:fs");
+        for (const file of readdirSync(snapshotDir)) {
+          if (/\.(png|jpg|jpeg)$/i.test(file)) {
+            rmSync(join(snapshotDir, file), { force: true });
+          }
+        }
+      } catch {
+        /* best-effort — proceed even if cleanup fails */
+      }
 
-      // Lazily load the engine's <img>-overlay injector. Chrome-headless cannot
-      // reliably advance <video>.currentTime mid-seek (the setter is accepted but
-      // the decoder ignores it without user activation), so the render pipeline
-      // already extracts each frame via FFmpeg and injects it as an <img> sibling
-      // over the <video>. We reuse that same primitive here so `snapshot` and
-      // `render` behave identically for timed <video data-start> elements.
+      // Chrome-headless ignores programmatic <video>.currentTime writes, so
+      // we extract frames via FFmpeg and overlay them as <img> elements.
       type InjectFn = (
         page: unknown,
         updates: Array<{ videoId: string; dataUri: string }>,
@@ -232,45 +268,36 @@ async function captureSnapshots(
         return pending;
       };
 
-      // Seek and capture each frame
+      const hasPlayer = await page.evaluate(() => !!(window as any).__player);
+      if (!hasPlayer) {
+        console.warn(`   ${c.warn("⚠")} No player API — seeks will be skipped`);
+      }
+
       for (let i = 0; i < positions.length; i++) {
         const time = positions[i]!;
 
         await page.evaluate((t: number) => {
-          const w = window as Window & {
-            __player?: { seek?: (time: number) => void };
-            __timelines?: Record<string, { pause?: (time?: number) => void }>;
-            gsap?: { ticker?: { tick?: () => void } };
-          };
-          if (typeof w.__player?.seek === "function") {
-            w.__player.seek(t);
-          } else if (w.__timelines) {
-            for (const tl of Object.values(w.__timelines)) {
-              tl?.pause?.(t);
-            }
-            w.gsap?.ticker?.tick?.();
+          const player = (window as any).__player;
+          if (!player) return;
+          const safe = Math.max(0, Number(t) || 0);
+          if (typeof player.renderSeek === "function") {
+            player.renderSeek(safe);
+          } else if (typeof player.seek === "function") {
+            player.seek(safe);
+          }
+          if ((window as any).gsap?.ticker?.tick) {
+            (window as any).gsap.ticker.tick();
           }
         }, time);
 
-        // Wait for rendering to settle after seek
-        await page.evaluate(
-          () =>
-            new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r()))),
-        );
-        await new Promise((r) => setTimeout(r, 200));
+        await page.evaluate(`new Promise(function(r) {
+          var settled = false;
+          function finish() { if (settled) return; settled = true; r(); }
+          window.setTimeout(finish, 100);
+          requestAnimationFrame(function() { requestAnimationFrame(finish); });
+        })`);
 
-        // ─── Inject real video frames over any active <video data-start> ───
-        // Without this, Chrome-headless renders them blank/first-frame because
-        // it silently drops programmatic `currentTime` writes during capture.
-        // No-op when the composition has no timed videos (basecamp, linear, etc.)
         if (injectVideoFramesBatch && syncVideoFrameVisibility) {
-          // Mirror the runtime's media math in packages/core/src/runtime/media.ts
-          // so clips with non-1 `defaultPlaybackRate` get the right active
-          // window and the right `relTime`:
-          //   playbackRate = clamp(defaultPlaybackRate, 0.1, 5) — default 1
-          //   duration fallback = (sourceDuration - mediaStart) / playbackRate
-          //   relTime = (t - start) * playbackRate + mediaStart
-          //   active  = t >= start && t < start+duration && relTime >= 0
           const active = await page.evaluate((t: number) => {
             return Array.from(document.querySelectorAll("video[data-start]"))
               .map((el) => {
@@ -306,11 +333,6 @@ async function captureSnapshots(
 
           const updates: Array<{ videoId: string; dataUri: string }> = [];
           for (const v of active) {
-            // The page-served URL (http://127.0.0.1:PORT/relative/path.mp4)
-            // maps 1:1 to <projectDir>/relative/path.mp4. decodeURIComponent
-            // the pathname — the file server decodes inbound requests, so a
-            // file with spaces in its path lives at the decoded name on disk
-            // while `new URL().pathname` preserves the %-encoding.
             let filePath: string | null = null;
             try {
               const url = new URL(v.src);
@@ -336,12 +358,7 @@ async function captureSnapshots(
             });
           }
 
-          // Always run the visibility sync — even when `active` is empty and
-          // no new updates were injected. Without this, stale __render_frame__
-          // <img> overlays left by a previous seek (where different clips were
-          // active) remain visible in later snapshots, because the runtime's
-          // visibility toggles act on the <video> element but not its injected
-          // <img> sibling.
+          // Sync visibility even when empty — clears stale overlays from prior seeks
           try {
             if (updates.length > 0) {
               await injectVideoFramesBatch(page, updates);
@@ -351,14 +368,11 @@ async function captureSnapshots(
               active.map((a) => a.id),
             );
           } catch {
-            // If either step fails, fall through to the plain screenshot —
-            // no worse than the pre-fix behaviour.
+            /* fall through to plain screenshot */
           }
         }
 
-        const timeLabel = opts.at?.length
-          ? `${time.toFixed(1)}s`
-          : `${Math.round((time / duration) * 100)}pct`;
+        const timeLabel = `${time.toFixed(1)}s`;
         const filename = `frame-${String(i).padStart(2, "0")}-at-${timeLabel}.png`;
         const framePath = join(snapshotDir, filename);
 
@@ -400,6 +414,11 @@ export default defineCommand({
       description: "Ms to wait for runtime to initialize (default: 5000)",
       default: "5000",
     },
+    describe: {
+      type: "string",
+      description:
+        "Gemini vision frame analysis. Runs by default when GEMINI_API_KEY is set. Pass a custom question (e.g. --describe 'Is the logo visible in every beat?') to override the default prompt, or --describe false to opt out.",
+    },
   },
   async run({ args }) {
     const project = resolveProject(args.dir);
@@ -411,6 +430,16 @@ export default defineCommand({
           .map((s) => parseFloat(s.trim()))
           .filter((n) => !isNaN(n))
       : undefined;
+    // Gemini frame analysis runs by default (silently skipped if
+    // GEMINI_API_KEY is not set). `--describe "custom question"` overrides
+    // the default prompt with a targeted question. `--describe false` opts
+    // out entirely.
+    const describeArg =
+      args.describe === undefined
+        ? "true"
+        : String(args.describe) === "false"
+          ? null
+          : String(args.describe);
 
     const label = atTimestamps
       ? `${atTimestamps.length} frames at [${atTimestamps.map((t) => t.toFixed(1) + "s").join(", ")}]`
@@ -430,6 +459,121 @@ export default defineCommand({
       console.log(`\n${c.success("◇")}  ${paths.length} snapshots saved to snapshots/`);
       for (const p of paths) {
         console.log(`   ${p}`);
+      }
+
+      // Generate contact sheet for quick AI review
+      try {
+        const { createSnapshotContactSheet } = await import("../capture/contactSheet.js");
+        const snapshotDir = join(project.dir, "snapshots");
+        const sheets = await createSnapshotContactSheet(
+          snapshotDir,
+          join(snapshotDir, "contact-sheet.jpg"),
+        );
+        if (sheets.length > 0) {
+          const label =
+            sheets.length === 1 ? "contact-sheet.jpg" : `contact-sheet-1..${sheets.length}.jpg`;
+          console.log(`   ${c.dim(label)} (grid view for AI review)`);
+        }
+      } catch {
+        /* non-critical */
+      }
+
+      // Gemini vision descriptions. Runs by default — see describeArg
+      // resolution above. `null` means the user explicitly opted out with
+      // `--describe false`; missing GEMINI_API_KEY logs a skip and continues.
+      if (describeArg !== null) {
+        try {
+          const geminiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+          if (!geminiKey) {
+            console.log(`   ${c.dim("--describe: GEMINI_API_KEY not set, skipping")}`);
+          } else if (paths.length > 0) {
+            console.log(`   ${c.dim("Describing frames with Gemini vision...")}`);
+            const { GoogleGenAI } = await import("@google/genai");
+            const ai = new GoogleGenAI({ apiKey: geminiKey });
+            const model = process.env.HYPERFRAMES_GEMINI_MODEL || "gemini-3.1-flash-lite-preview";
+            const snapshotDir = join(project.dir, "snapshots");
+
+            const customQuestion =
+              describeArg === "true"
+                ? "Describe this video composition frame in 1-2 sentences. Be specific and factual: what elements are visible, what text appears, is the frame blank/black/loading, what is the composition. Flag any obvious problems."
+                : describeArg;
+
+            const descriptions: string[] = [
+              `# Snapshot Frame Descriptions`,
+              ``,
+              `**Question asked:** ${customQuestion}`,
+              ``,
+              `Compare each description against your storyboard spec. A "black frame" or "loading screen" for a content beat is a bug.`,
+              ``,
+            ];
+
+            // Scale down PNGs before sending to stay under Gemini's 4 MB inline
+            // limit. Full 1920×1080 PNGs are typically 3-6 MB. Use sharp if
+            // available; otherwise skip files over the limit.
+            type SharpFn = (buf: Buffer) => {
+              resize: (w: number) => { jpeg: () => { toBuffer: () => Promise<Buffer> } };
+            };
+            let sharpFn: SharpFn | null = null;
+            try {
+              const s = await import("sharp");
+              sharpFn = (s.default ?? s) as unknown as SharpFn;
+            } catch {
+              /* sharp not installed — fall back to size check */
+            }
+
+            const results = await Promise.allSettled(
+              paths.map(async (p) => {
+                const filename = p.replace("snapshots/", "");
+                const filePath = join(snapshotDir, filename);
+                if (!existsSync(filePath)) return { filename, desc: "file not found" };
+                const raw = readFileSync(filePath);
+                let imageData: Buffer;
+                let mimeType = "image/png";
+                if (sharpFn) {
+                  imageData = await sharpFn(raw).resize(960).jpeg().toBuffer();
+                  mimeType = "image/jpeg";
+                } else {
+                  if (raw.length > 3_800_000)
+                    return {
+                      filename,
+                      desc: "file too large for Gemini — install sharp to enable auto-resize",
+                    };
+                  imageData = raw;
+                }
+                const base64 = imageData.toString("base64");
+                const response = await ai.models.generateContent({
+                  model,
+                  contents: [
+                    {
+                      role: "user",
+                      parts: [{ inlineData: { mimeType, data: base64 } }, { text: customQuestion }],
+                    },
+                  ],
+                  config: { maxOutputTokens: 250 },
+                });
+                return { filename, desc: response.text?.trim() || "no description" };
+              }),
+            );
+
+            for (const result of results) {
+              if (result.status === "fulfilled") {
+                descriptions.push(`## ${result.value.filename}`, `${result.value.desc}`, ``);
+              } else {
+                // Log first failure so Gemini issues are visible rather than silent
+                const errMsg =
+                  result.reason instanceof Error ? result.reason.message : String(result.reason);
+                descriptions.push(`## (error)`, `Gemini call failed: ${errMsg.slice(0, 120)}`, ``);
+              }
+            }
+
+            const descPath = join(snapshotDir, "descriptions.md");
+            writeFileSync(descPath, descriptions.join("\n"));
+            console.log(`   ${c.dim("descriptions.md")} (Gemini frame analysis)`);
+          }
+        } catch (descErr) {
+          const msg = descErr instanceof Error ? descErr.message : String(descErr);
+          console.log(`   ${c.dim(`--describe failed: ${msg.slice(0, 80)}`)}`);
+        }
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

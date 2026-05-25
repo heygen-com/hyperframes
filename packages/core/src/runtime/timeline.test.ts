@@ -183,6 +183,21 @@ describe("collectRuntimeTimelinePayload", () => {
     expect(result.durationInFrames).toBe(300); // 10s * 30fps
   });
 
+  it("ceil durationInFrames to match render frame count", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-duration", "1.01");
+    document.body.appendChild(root);
+
+    const clip = document.createElement("div");
+    clip.setAttribute("data-start", "0");
+    clip.setAttribute("data-duration", "1.01");
+    root.appendChild(clip);
+
+    const result = collectRuntimeTimelinePayload(defaultParams);
+    expect(result.durationInFrames).toBe(31); // ceil(1.01s * 30fps), same as render.
+  });
+
   it("preserves the authored root duration when clips end earlier", () => {
     const root = document.createElement("div");
     root.setAttribute("data-composition-id", "main");

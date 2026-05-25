@@ -25,7 +25,7 @@ import {
   renderChunk,
 } from "@hyperframes/producer/distributed";
 import { resolveChromeExecutablePath } from "./chromium.js";
-import { formatExtension } from "./formatExtension.js";
+import { type DistributedFormat, formatExtension } from "./formatExtension.js";
 import type {
   AssembleEvent,
   AssembleLambdaResult,
@@ -229,6 +229,16 @@ async function handlePlan(event: PlanEvent, deps?: HandlerDeps): Promise<PlanLam
   const s3 = deps?.s3 ?? getS3Client();
   const primitive = deps?.primitives?.plan ?? plan;
 
+  // The producer's probe stage launches Chromium whenever the composition
+  // needs a runtime duration probe or has unresolved sub-compositions, so
+  // plan has to resolve Chrome the same way renderChunk does. Without this
+  // the probe throws "An `executablePath` or `channel` must be specified
+  // for `puppeteer-core`" the moment runProbeStage calls puppeteer.launch.
+  if (!deps?.skipChromeResolution && !process.env.PRODUCER_HEADLESS_SHELL_PATH) {
+    const chromePath = await resolveChromeExecutablePath();
+    process.env.PRODUCER_HEADLESS_SHELL_PATH = chromePath;
+  }
+
   const work = mkdtempSync(join(deps?.tmpRoot ?? tmpdir(), "hf-lambda-plan-"));
   // We use `.tar.gz` (not `.zip`) as the project archive's on-the-wire
   // format because Lambda's Amazon Linux base image ships GNU `tar` but
@@ -407,7 +417,9 @@ async function handleAssemble(
         ? join(work, "output-frames")
         : join(work, `output${formatExtension(event.Format)}`);
 
-    const result: AssembleResult = await primitive(planDir, chunkPaths, audioPath, finalOutput);
+    const result: AssembleResult = await primitive(planDir, chunkPaths, audioPath, finalOutput, {
+      cfr: event.Cfr === true,
+    });
 
     if (event.Format === "png-sequence") {
       const tarball = `${finalOutput}.tar.gz`;
@@ -433,7 +445,7 @@ async function downloadChunkObjects(
   s3: S3Client,
   uris: string[],
   workDir: string,
-  format: "mp4" | "mov" | "png-sequence",
+  format: DistributedFormat,
 ): Promise<string[]> {
   const chunksDir = join(workDir, "chunks");
   mkdirSync(chunksDir, { recursive: true });

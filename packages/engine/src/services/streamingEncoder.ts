@@ -13,6 +13,7 @@
  */
 
 import { spawn, type ChildProcess } from "child_process";
+import { trackChildProcess } from "../utils/processTracker.js";
 import { existsSync, mkdirSync, statSync } from "fs";
 import { dirname } from "path";
 
@@ -375,6 +376,7 @@ export async function spawnStreamingEncoder(
   const ffmpeg: ChildProcess = spawn("ffmpeg", args, {
     stdio: ["pipe", "pipe", "pipe"],
   });
+  trackChildProcess(ffmpeg);
 
   let exitStatus: "running" | "success" | "error" = "running";
   let stderr = "";

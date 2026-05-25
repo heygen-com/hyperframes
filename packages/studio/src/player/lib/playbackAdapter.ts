@@ -135,8 +135,10 @@ export function wrapTimeline(tl: TimelineLike): PlaybackAdapter {
     play: () => tl.play(),
     pause: () => tl.pause(),
     seek: (t, options) => {
-      if (!options?.keepPlaying) tl.pause();
+      const shouldPause = !options?.keepPlaying;
+      if (shouldPause) tl.pause();
       tl.seek(t);
+      if (shouldPause) tl.pause();
     },
     getTime: () => tl.time(),
     getDuration: () => tl.duration(),

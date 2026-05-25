@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { parseHTML } from "linkedom";
 import { describe, it, expect } from "vitest";
 import { bundleToSingleHtml } from "./htmlBundler";
+import { getHyperframeRuntimeScript } from "../generated/runtime-inline";
 
 function makeTempProject(files: Record<string, string>): string {
   const dir = mkdtempSync(join(tmpdir(), "hf-bundler-test-"));
@@ -80,6 +81,55 @@ describe("bundleToSingleHtml", () => {
     // Must have a non-trivial inlined body (the runtime IIFE is ~150KB).
     const innerLength = (runtimeBlock!.match(/>([\s\S]*?)<\/script>/)?.[1] ?? "").length;
     expect(innerLength).toBeGreaterThan(1000);
+  });
+
+  it("preserves `$&` replace-pattern characters in the inlined runtime body", async () => {
+    // Regression guard: `injectInterceptor` used to insert the runtime via
+    // `sanitized.replace("</head>", `${tag}\n</head>`)`. `String.prototype.replace`'s
+    // second argument is a substitution template — `$&` expands to the matched
+    // substring (here, `</head>`). The minified runtime IIFE contains legitimate
+    // `$&` sequences (e.g. `if(te&&$&!y.hasAttribute(...))`), so the bundler
+    // silently injected stray `</head>` tags inside the runtime, producing a JS
+    // SyntaxError that broke every timeline in the bundle. Switching to the
+    // function-replacer form passes the runtime body through verbatim.
+    // Use a document with an explicit `<head>` so the bundler takes the
+    // `sanitized.replace("</head>", …)` injection path — the only branch that
+    // exercises the substitution-template behavior. Authoring without a
+    // `<head>` falls back to slice+concat (safe but doesn't catch this bug).
+    const dir = makeTempProject({
+      "index.html": `<!doctype html>
+<html><head></head><body>
+  <div data-composition-id="root" data-width="320" data-height="180"></div>
+</body></html>`,
+    });
+
+    const previousUrl = process.env.HYPERFRAME_RUNTIME_URL;
+    delete process.env.HYPERFRAME_RUNTIME_URL;
+    let bundled: string;
+    try {
+      bundled = await bundleToSingleHtml(dir);
+    } finally {
+      if (previousUrl !== undefined) process.env.HYPERFRAME_RUNTIME_URL = previousUrl;
+    }
+
+    const original = getHyperframeRuntimeScript();
+    // Sanity: the built runtime exercises this regression (no `$&` means the
+    // test would tautologically pass even with the broken implementation).
+    expect(original).toContain("$&");
+
+    const runtimeBlock = bundled.match(
+      /<script\b[^>]*data-hyperframes-preview-runtime[^>]*>([\s\S]*?)<\/script>/i,
+    );
+    expect(runtimeBlock).not.toBeNull();
+    const runtimeBody = runtimeBlock?.[1] ?? "";
+    expect(runtimeBody).toBe(original);
+
+    // Defense in depth: the entire bundled document should contain exactly one
+    // `</head>` — the real closing tag. Before the fix, every `$&` in the
+    // runtime expanded to an extra `</head>` inside the inlined IIFE,
+    // producing a `Unexpected token '<'` SyntaxError at parse time.
+    const headCloses = bundled.match(/<\/head>/g) ?? [];
+    expect(headCloses.length).toBe(1);
   });
 
   it("preserves chunk integrity when a chunk ends with a line comment (ASI hazard guard)", async () => {
@@ -198,6 +248,79 @@ describe("bundleToSingleHtml", () => {
     const hostEl = doc.getElementById("rockets-host");
     expect(hostEl).toBeTruthy();
     expect(hostEl?.hasAttribute("data-composition-src")).toBe(false);
+  });
+
+  it("inlines local scripts referenced by sub-compositions into the bundle", async () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html>
+<html><head>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+</head><body>
+  <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+    <div id="scene-host"
+      data-composition-id="scene"
+      data-composition-src="compositions/scene.html"
+      data-start="0" data-duration="5"></div>
+  </div>
+  <script>window.__timelines={}; const tl=gsap.timeline({paused:true}); window.__timelines["main"]=tl;</script>
+</body></html>`,
+      "compositions/scene.html": `<template id="scene-template">
+  <div data-composition-id="scene" data-width="1920" data-height="1080">
+    <div id="scene-copy">Scene</div>
+    <script src="vendor/effect-plugin.js"></script>
+    <script src="assets/scene-runtime.js"></script>
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines["scene"] = gsap.timeline({ paused: true });
+    </script>
+  </div>
+</template>`,
+      "vendor/effect-plugin.js": `window.PowerGlitch = { glitch(){ return { startGlitch(){}, stopGlitch(){} }; } };`,
+      "assets/scene-runtime.js": `window.__HF_SHARED_TEST__ = "shared-runtime-loaded";`,
+    });
+
+    const bundled = await bundleToSingleHtml(dir);
+
+    expect(bundled).toContain('__HF_SHARED_TEST__ = "shared-runtime-loaded"');
+    expect(bundled).toContain("window.PowerGlitch = { glitch()");
+    expect(bundled).not.toContain('src="assets/scene-runtime.js"');
+    expect(bundled).not.toContain('src="vendor/effect-plugin.js"');
+  });
+
+  it("preserves local sub-composition script order before inline scene scripts", async () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html>
+<html><head>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+</head><body>
+  <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+    <div
+      id="scene-host"
+      data-composition-id="scene"
+      data-composition-src="compositions/scene.html"
+      data-start="0" data-duration="5"></div>
+  </div>
+  <script>window.__timelines={}; const tl=gsap.timeline({paused:true}); window.__timelines["main"]=tl;</script>
+</body></html>`,
+      "compositions/scene.html": `<template id="scene-template">
+  <div data-composition-id="scene" data-width="1920" data-height="1080">
+    <script src="assets/component-runtime.js"></script>
+    <script>
+      window.__HF_COMPONENT_CALL__ = true;
+      window.Component.mount("#scene-host");
+    </script>
+  </div>
+</template>`,
+      "assets/component-runtime.js": `window.__HF_COMPONENT_DEF__ = true; window.Component = { mount(){ window.__HF_COMPONENT_MOUNTED__ = true; } };`,
+    });
+
+    const bundled = await bundleToSingleHtml(dir);
+    const componentIndex = bundled.indexOf("__HF_COMPONENT_DEF__");
+    const sceneIndex = bundled.indexOf("__HF_COMPONENT_CALL__");
+
+    expect(componentIndex).toBeGreaterThan(-1);
+    expect(sceneIndex).toBeGreaterThan(-1);
+    expect(componentIndex).toBeLessThan(sceneIndex);
   });
 
   it("does not duplicate CDN scripts already present in the main document", async () => {
@@ -635,7 +758,8 @@ describe("bundleToSingleHtml", () => {
     expect(bundled).toContain('[data-composition-id="scene"] .title { color: red; }');
     expect(bundled).toContain("new Proxy(window.document");
     expect(bundled).toContain("new Proxy(__hfBaseGsap");
-    expect(bundled).toContain('tl.to(".title"');
+    expect(bundled).toContain('Function("document", "gsap", "window", "__hyperframes",');
+    expect(bundled).toContain("tl.to('.title'");
   });
 
   it("isolates sibling instances of the same external sub-composition", async () => {
@@ -938,5 +1062,31 @@ describe("bundleToSingleHtml", () => {
 
     expect(bundled).toContain("/* @import url('./old.css'); */");
     expect(bundled).not.toContain(".old { display: none; }");
+  });
+
+  // Forces `text-rendering: geometricPrecision` so headless-shell BeginFrame
+  // renders match full Chrome (which is the snapshot/preview path). See
+  // `injectTextRenderingRule` in htmlBundler.ts.
+  it("injects a single text-rendering:geometricPrecision rule into <head>", async () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html>
+<html>
+<head><title>t</title></head>
+<body>
+  <div data-composition-id="root" data-width="640" data-height="360">
+    <h1>Hello</h1>
+  </div>
+</body></html>`,
+    });
+
+    const bundled = await bundleToSingleHtml(dir);
+    const { document } = parseHTML(bundled);
+    const styleEls = document.querySelectorAll("style[data-hyperframes-text-rendering]");
+
+    expect(styleEls.length).toBe(1);
+    expect((styleEls[0]?.textContent || "").replace(/\s+/g, "")).toContain(
+      "html,body,*{text-rendering:geometricPrecision}",
+    );
+    expect(styleEls[0]?.parentElement?.tagName.toLowerCase()).toBe("head");
   });
 });

@@ -843,4 +843,60 @@ export const gsapRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
     }
     return findings;
   },
+
+  // gsap_from_opacity_noop — CSS opacity:0 + gsap.from({opacity:0}) = invisible forever
+  ({ styles, scripts, tags }) => {
+    const findings: HyperframeLintFinding[] = [];
+    const cssOpacityZeroSelectors = new Set<string>();
+
+    for (const style of styles) {
+      for (const [, selector, body] of style.content.matchAll(
+        /([#.][a-zA-Z0-9_-]+)\s*\{([^}]+)\}/g,
+      )) {
+        if (body && /opacity\s*:\s*0\s*[;}]/.test(body)) {
+          cssOpacityZeroSelectors.add((selector ?? "").trim());
+        }
+      }
+    }
+
+    for (const tag of tags) {
+      const inlineStyle = readAttr(tag.raw, "style");
+      if (!inlineStyle || !/opacity\s*:\s*0/.test(inlineStyle)) continue;
+      const id = readAttr(tag.raw, "id");
+      const classes = readAttr(tag.raw, "class")?.split(/\s+/).filter(Boolean) ?? [];
+      if (id) cssOpacityZeroSelectors.add(`#${id}`);
+      for (const cls of classes) cssOpacityZeroSelectors.add(`.${cls}`);
+    }
+
+    if (cssOpacityZeroSelectors.size === 0) return findings;
+
+    for (const script of scripts) {
+      if (!/gsap\.timeline/.test(script.content)) continue;
+      const windows = extractGsapWindows(script.content);
+
+      for (const win of windows) {
+        if (win.method !== "from") continue;
+        if (!win.properties.includes("opacity")) continue;
+        const sel = win.targetSelector;
+        const cssKey = sel.startsWith("#") || sel.startsWith(".") ? sel : `#${sel}`;
+        if (!cssOpacityZeroSelectors.has(cssKey)) continue;
+
+        findings.push({
+          code: "gsap_from_opacity_noop",
+          severity: "error",
+          message:
+            `"${sel}" has CSS \`opacity: 0\` and a gsap.${win.method}() that also sets opacity to 0. ` +
+            `gsap.from() animates FROM the specified value TO the current CSS value — ` +
+            `since CSS is already 0, the element animates from 0→0 and never becomes visible.`,
+          selector: sel,
+          fixHint:
+            `Remove \`opacity: 0\` from the CSS/inline style on "${sel}". ` +
+            `Let gsap.from({opacity: 0}) handle the initial hidden state — ` +
+            `it will animate FROM 0 TO the CSS value (1 by default).`,
+          snippet: truncateSnippet(win.raw),
+        });
+      }
+    }
+    return findings;
+  },
 ];

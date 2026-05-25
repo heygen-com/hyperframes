@@ -1,8 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createServer, type Server } from "node:net";
-import { PORT_PROBE_HOSTS, testPortOnAllHosts } from "./portUtils.js";
+import { resolve } from "node:path";
+import { createServer as createHttpServer, type Server as HttpServer } from "node:http";
+import { PORT_PROBE_HOSTS, detectHyperframesServer, testPortOnAllHosts } from "./portUtils.js";
 
 const openServers: Server[] = [];
+const openHttpServers: HttpServer[] = [];
 
 async function allocFreePort(): Promise<number> {
   const srv = createServer();
@@ -24,8 +27,29 @@ afterEach(async () => {
         }),
     ),
   );
+  await Promise.all(
+    openHttpServers.splice(0).map(
+      (s) =>
+        new Promise<void>((resolve) => {
+          s.close(() => resolve());
+        }),
+    ),
+  );
   vi.restoreAllMocks();
 });
+
+async function startConfigProbeServer(payload: Record<string, unknown>): Promise<number> {
+  const server = createHttpServer((_req, res) => {
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify(payload));
+  });
+  openHttpServers.push(server);
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => resolve());
+  });
+  return (server.address() as import("node:net").AddressInfo).port;
+}
 
 describe("testPortOnAllHosts — real-socket behaviour (OS-dependent)", () => {
   // These exercise the real network stack. On Linux the buggy parallel
@@ -95,5 +119,39 @@ describe("testPortOnAllHosts — sequential contract (platform-agnostic)", () =>
 
     expect(result).toBe(false);
     expect(hostsProbed).toEqual(["127.0.0.1", "0.0.0.0"]);
+  });
+});
+
+describe("detectHyperframesServer", () => {
+  it("treats same-project servers with a different server build signature as mismatch", async () => {
+    const projectDir = "/tmp/demo-project";
+    const port = await startConfigProbeServer({
+      isHyperframes: true,
+      projectName: "demo-project",
+      projectDir,
+      serverBuildSignature: "old-build",
+      version: "0.6.42",
+    });
+
+    const normalizedProjectDir = resolve(projectDir).replace(/\\/g, "/").toLowerCase();
+    const result = await detectHyperframesServer(port, normalizedProjectDir, "new-build");
+
+    expect(result).toEqual({ type: "mismatch", projectName: "demo-project" });
+  });
+
+  it("treats same-project servers with the same server build signature as match", async () => {
+    const projectDir = "/tmp/demo-project";
+    const port = await startConfigProbeServer({
+      isHyperframes: true,
+      projectName: "demo-project",
+      projectDir,
+      serverBuildSignature: "same-build",
+      version: "0.6.42",
+    });
+
+    const normalizedProjectDir = resolve(projectDir).replace(/\\/g, "/").toLowerCase();
+    const result = await detectHyperframesServer(port, normalizedProjectDir, "same-build");
+
+    expect(result).toEqual({ type: "match" });
   });
 });

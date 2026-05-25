@@ -1,15 +1,15 @@
 ---
 title: "US Map"
-description: "Animated US choropleth map with staggered state reveals, value labels, and gradient legend"
+description: "Animated US choropleth map with staggered state reveals, value labels, and gradient legend — pure inline SVG with GSAP"
 ---
 
 # US Map
 
-Animated US choropleth map with staggered state reveals, value labels, and gradient legend — D3 geoAlbersUsa projection with GSAP timeline.
+Animated US choropleth map with staggered state reveals, value labels, and gradient legend — pure inline SVG with GSAP
 
 `data` `map` `geography` `usa` `choropleth`
 
-<video className="w-full aspect-video rounded-xl object-cover bg-zinc-100 dark:bg-zinc-800" src="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/us-map-v1779081660.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/us-map.png" autoPlay muted loop playsInline />
+<video className="w-full aspect-video rounded-xl object-cover bg-zinc-100 dark:bg-zinc-800" src="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/us-map.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/us-map.png" autoPlay muted loop playsInline />
 
 ## Install
 
@@ -41,13 +41,4 @@ After installing, add the block to your host composition:
 
 ```html
 <div data-composition-id="us-map" data-composition-src="compositions/us-map.html" data-start="0" data-duration="12" data-track-index="1" data-width="1920" data-height="1080"></div>
-```
-
-## Composability
-
-Layer `us-map-bubble` or `us-map-flow` on top of this block as a higher track index to combine choropleth + bubble or flow visualizations:
-
-```html
-<div data-composition-id="us-map" data-composition-src="compositions/us-map.html" data-start="0" data-duration="12" data-track-index="1" data-width="1920" data-height="1080"></div>
-<div data-composition-id="us-map-bubble" data-composition-src="compositions/us-map-bubble.html" data-start="0" data-duration="12" data-track-index="2" data-width="1920" data-height="1080"></div>
 ```

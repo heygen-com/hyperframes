@@ -166,6 +166,9 @@ function devProjectApi(): Plugin {
 
 export default defineConfig({
   plugins: [react(), devProjectApi()],
+  define: {
+    __STUDIO_VERSION__: JSON.stringify(process.env.npm_package_version ?? "dev"),
+  },
   resolve: {
     alias: {
       "@hyperframes/player": resolve(__dirname, "../player/src/hyperframes-player.ts"),

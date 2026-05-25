@@ -15,7 +15,67 @@ import { unwrapTemplate } from "../utils/htmlTemplate.js";
 import { resolveProjectRelativeSrc } from "./videoFrameExtractor.js";
 import type { AudioElement, AudioTrack, MixResult } from "./audioMixer.types.js";
 
-export type { AudioElement, AudioTrack, MixResult } from "./audioMixer.types.js";
+export type { AudioElement, MixResult } from "./audioMixer.types.js";
+
+function clampVolume(volume: number): number {
+  if (!Number.isFinite(volume)) return 1;
+  return Math.max(0, Math.min(1, volume));
+}
+
+function formatFilterNumber(value: number): string {
+  return Number(value.toFixed(6)).toString();
+}
+
+function escapeExpressionCommas(expression: string): string {
+  return expression.replace(/\\/g, "\\\\").replace(/,/g, "\\,");
+}
+
+function buildVolumeExpression(track: AudioTrack): string {
+  const trimDuration = track.end - track.start;
+  const staticVolume = clampVolume(track.volume);
+  const keyframes = (track.volumeKeyframes ?? [])
+    .filter((keyframe) => Number.isFinite(keyframe.time) && Number.isFinite(keyframe.volume))
+    .map((keyframe) => ({
+      time: Math.max(0, Math.min(trimDuration, keyframe.time - track.start)),
+      volume: clampVolume(keyframe.volume),
+    }))
+    .sort((a, b) => a.time - b.time);
+
+  if (keyframes.length === 0) return `volume=${formatFilterNumber(staticVolume)}`;
+
+  if (keyframes[0]!.time > 0) {
+    keyframes.unshift({ time: 0, volume: staticVolume });
+  }
+
+  const deduped: typeof keyframes = [];
+  for (const keyframe of keyframes) {
+    const previous = deduped.at(-1);
+    if (previous && Math.abs(previous.time - keyframe.time) < 0.000001) {
+      previous.volume = keyframe.volume;
+    } else {
+      deduped.push(keyframe);
+    }
+  }
+
+  if (deduped.length === 1) {
+    return `volume=${formatFilterNumber(deduped[0]!.volume)}`;
+  }
+
+  let expression = formatFilterNumber(deduped.at(-1)!.volume);
+  for (let i = deduped.length - 2; i >= 0; i -= 1) {
+    const current = deduped[i]!;
+    const next = deduped[i + 1]!;
+    const currentTime = formatFilterNumber(current.time);
+    const nextTime = formatFilterNumber(next.time);
+    const currentVolume = formatFilterNumber(current.volume);
+    const span = Math.max(0.000001, next.time - current.time);
+    const slope = formatFilterNumber((next.volume - current.volume) / span);
+    const segment = `${currentVolume}+(${slope})*(t-${currentTime})`;
+    expression = `if(lt(t,${nextTime}),${segment},${expression})`;
+  }
+
+  return `volume=${escapeExpressionCommas(expression)}:eval=frame`;
+}
 
 interface ExtractResult {
   success: boolean;
@@ -246,8 +306,9 @@ async function mixAudioTracks(
     inputs.push("-i", track.srcPath);
     const delayMs = Math.round(track.start * 1000);
     const trimDuration = track.end - track.start;
+    const volumeFilter = buildVolumeExpression(track);
     filterParts.push(
-      `[${i}:a]atrim=0:${trimDuration},volume=${track.volume},adelay=${delayMs}|${delayMs},apad=whole_dur=${totalDuration}[a${i}]`,
+      `[${i}:a]atrim=0:${trimDuration},${volumeFilter},adelay=${delayMs}|${delayMs},apad=whole_dur=${totalDuration}[a${i}]`,
     );
   });
 
@@ -399,6 +460,7 @@ export async function processCompositionAudio(
           mediaStart: element.mediaStart,
           duration: element.end - element.start,
           volume: element.volume ?? 1.0,
+          volumeKeyframes: element.volumeKeyframes,
         });
       } catch (err: unknown) {
         errors.push(`Error: ${element.id} — ${err instanceof Error ? err.message : String(err)}`);

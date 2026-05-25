@@ -25,8 +25,11 @@ export function createStudioPositionSeekReapplyScript(): string {
 function studioPositionSeekReapplyRuntime(): void {
   const OFFSET_X_PROP = "--hf-studio-offset-x";
   const OFFSET_Y_PROP = "--hf-studio-offset-y";
+  const WIDTH_PROP = "--hf-studio-width";
+  const HEIGHT_PROP = "--hf-studio-height";
   const ROTATION_PROP = "--hf-studio-rotation";
   const PATH_OFFSET_ATTR = "data-hf-studio-path-offset";
+  const BOX_SIZE_ATTR = "data-hf-studio-box-size";
   const ROTATION_ATTR = "data-hf-studio-rotation";
   const ORIGINAL_TRANSLATE_ATTR = "data-hf-studio-original-translate";
   const ORIGINAL_ROTATE_ATTR = "data-hf-studio-original-rotate";
@@ -36,6 +39,7 @@ function studioPositionSeekReapplyRuntime(): void {
 
   if (
     !document.querySelector("[" + PATH_OFFSET_ATTR + '="true"]') &&
+    !document.querySelector("[" + BOX_SIZE_ATTR + '="true"]') &&
     !document.querySelector("[" + ROTATION_ATTR + '="true"]') &&
     !document.querySelector("[" + MOTION_ATTR + "]")
   )
@@ -191,6 +195,27 @@ function studioPositionSeekReapplyRuntime(): void {
       (tl.totalTime as (t: number, s: boolean) => void)(lastSeekTime, false);
   };
 
+  const stripGsapTranslateFromTransform = (el: HTMLElement): void => {
+    const transform = el.style.getPropertyValue("transform");
+    if (!transform || transform === "none") return;
+    const win = el.ownerDocument.defaultView as (Window & typeof globalThis) | null;
+    const MatrixCtor = (win as unknown as { DOMMatrix?: typeof DOMMatrix })?.DOMMatrix;
+    if (!MatrixCtor) return;
+    try {
+      const m = new MatrixCtor(transform);
+      if (m.m41 === 0 && m.m42 === 0) return;
+      m.m41 = 0;
+      m.m42 = 0;
+      if (m.is2D && m.a === 1 && m.b === 0 && m.c === 0 && m.d === 1) {
+        el.style.removeProperty("transform");
+      } else {
+        el.style.setProperty("transform", m.toString());
+      }
+    } catch {
+      /* non-parseable transform — leave as-is */
+    }
+  };
+
   const reapplyAll = (): void => {
     const offsetEls = document.querySelectorAll("[" + PATH_OFFSET_ATTR + '="true"]');
     for (let i = 0; i < offsetEls.length; i++) {
@@ -207,7 +232,17 @@ function studioPositionSeekReapplyRuntime(): void {
             "var(" + OFFSET_Y_PROP + ", 0px)",
           ),
         );
+        stripGsapTranslateFromTransform(el);
       }
+    }
+    const boxSizeEls = document.querySelectorAll("[" + BOX_SIZE_ATTR + '="true"]');
+    for (let i = 0; i < boxSizeEls.length; i++) {
+      const el = boxSizeEls[i] as HTMLElement;
+      if (!(el instanceof HTMLElement)) continue;
+      const w = el.style.getPropertyValue(WIDTH_PROP);
+      const h = el.style.getPropertyValue(HEIGHT_PROP);
+      if (w) el.style.setProperty("width", w);
+      if (h) el.style.setProperty("height", h);
     }
     const rotEls = document.querySelectorAll("[" + ROTATION_ATTR + '="true"]');
     for (let i = 0; i < rotEls.length; i++) {
@@ -216,6 +251,7 @@ function studioPositionSeekReapplyRuntime(): void {
       const rot = el.style.getPropertyValue(ROTATION_PROP);
       if (rot) {
         el.style.setProperty("rotate", composeRotation(el, "var(" + ROTATION_PROP + ", 0deg)"));
+        stripGsapTranslateFromTransform(el);
       }
     }
     reapplyMotionTimeline();

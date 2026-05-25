@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { trackStudioRenderStart } from "../../telemetry/events";
 
 export interface RenderJob {
   id: string;
@@ -89,6 +90,14 @@ export function useRenderQueue(projectId: string | null) {
       const format = opts.format ?? "mp4";
       const resolution = opts.resolution;
       const composition = opts.composition;
+
+      trackStudioRenderStart({
+        fps,
+        quality,
+        format,
+        resolution,
+        composition,
+      });
 
       const startTime = Date.now();
       // "auto" / undefined means "render at the composition's authored size".

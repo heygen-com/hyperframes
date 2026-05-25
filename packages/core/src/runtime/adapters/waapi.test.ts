@@ -1,7 +1,24 @@
-import { describe, it, expect, vi } from "vitest";
+import { beforeEach, afterEach, describe, it, expect, vi } from "vitest";
 import { createWaapiAdapter } from "./waapi";
 
 describe("waapi adapter", () => {
+  const originalDocument = (globalThis as { document?: unknown }).document;
+
+  beforeEach(() => {
+    (globalThis as { document?: unknown }).document = {
+      getAnimations: vi.fn(() => []),
+    };
+  });
+
+  afterEach(() => {
+    if (originalDocument === undefined) {
+      delete (globalThis as { document?: unknown }).document;
+      return;
+    }
+
+    (globalThis as { document?: unknown }).document = originalDocument;
+  });
+
   it("has correct name", () => {
     expect(createWaapiAdapter().name).toBe("waapi");
   });
@@ -86,5 +103,77 @@ describe("waapi adapter", () => {
   it("discover is a no-op", () => {
     const adapter = createWaapiAdapter();
     expect(() => adapter.discover()).not.toThrow();
+  });
+
+  it("anchors newly discovered WAAPI animations to the seek where they first appear", () => {
+    const existing = { pause: vi.fn(), currentTime: 0 };
+    const dynamic = { pause: vi.fn(), currentTime: 0 };
+    let includeDynamic = false;
+    (document as any).getAnimations = vi.fn(() =>
+      includeDynamic ? [existing, dynamic] : [existing],
+    );
+
+    const adapter = createWaapiAdapter();
+    adapter.discover();
+
+    adapter.seek({ time: 0.6 });
+    expect(existing.currentTime).toBe(600);
+
+    includeDynamic = true;
+    adapter.seek({ time: 0.7 });
+    expect(existing.currentTime).toBe(700);
+    expect(dynamic.currentTime).toBe(0);
+
+    adapter.seek({ time: 0.8 });
+    expect(dynamic.currentTime).toBe(100);
+
+    delete (document as any).getAnimations;
+  });
+
+  it("rebases newly discovered WAAPI animations that inherit absolute composition time", () => {
+    const existing = { pause: vi.fn(), currentTime: 0 };
+    const dynamic = { pause: vi.fn(), currentTime: 700 };
+    let includeDynamic = false;
+    (document as any).getAnimations = vi.fn(() =>
+      includeDynamic ? [existing, dynamic] : [existing],
+    );
+
+    const adapter = createWaapiAdapter();
+    adapter.discover();
+
+    adapter.seek({ time: 0.6 });
+    expect(existing.currentTime).toBe(600);
+
+    includeDynamic = true;
+    adapter.seek({ time: 0.7 });
+    expect(dynamic.currentTime).toBe(0);
+
+    adapter.seek({ time: 0.8 });
+    expect(dynamic.currentTime).toBe(100);
+
+    delete (document as any).getAnimations;
+  });
+
+  it("does not double-count inherited absolute time when discover runs again after time has advanced", () => {
+    const existing = { pause: vi.fn(), currentTime: 0 };
+    const dynamic = { pause: vi.fn(), currentTime: 700 };
+    let includeDynamic = false;
+    (document as any).getAnimations = vi.fn(() =>
+      includeDynamic ? [existing, dynamic] : [existing],
+    );
+
+    const adapter = createWaapiAdapter();
+    adapter.discover();
+
+    adapter.seek({ time: 0.6 });
+    expect(existing.currentTime).toBe(600);
+
+    includeDynamic = true;
+    adapter.discover();
+    adapter.seek({ time: 0.7 });
+
+    expect(dynamic.currentTime).toBe(200);
+
+    delete (document as any).getAnimations;
   });
 });

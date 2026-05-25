@@ -60,13 +60,21 @@ export async function runAssembleStage(input: AssembleStageInput): Promise<Assem
       audioOutputPath,
       outputPath,
       abortSignal,
+      undefined,
+      job.config.fps,
     );
     assertNotAborted();
     if (!muxResult.success) {
       throw new Error(`Audio muxing failed: ${muxResult.error}`);
     }
   } else {
-    const faststartResult = await applyFaststart(videoOnlyPath, outputPath, abortSignal);
+    const faststartResult = await applyFaststart(
+      videoOnlyPath,
+      outputPath,
+      abortSignal,
+      undefined,
+      job.config.fps,
+    );
     assertNotAborted();
     if (!faststartResult.success) {
       throw new Error(`Faststart failed: ${faststartResult.error}`);

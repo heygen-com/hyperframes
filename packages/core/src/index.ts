@@ -12,6 +12,7 @@ export type {
   MediaElementType,
   CanvasResolution,
   Fps,
+  FpsInput,
   FpsParseResult,
   MediaFile,
   CompositionAPI,
@@ -42,6 +43,7 @@ export {
   normalizeResolutionFlag,
   parseFps,
   parseFpsWithDefault,
+  toFps,
   fpsToNumber,
   fpsToFfmpegArg,
   TIMELINE_COLORS,
@@ -135,6 +137,7 @@ export {
   rewriteAssetPath,
   rewriteCssAssetUrls,
 } from "./compiler/rewriteSubCompPaths";
+export { decodeUrlPathVariants } from "./utils/urlPath";
 
 // Inline scripts
 export {

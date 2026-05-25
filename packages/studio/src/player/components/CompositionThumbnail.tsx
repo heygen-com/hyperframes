@@ -5,7 +5,6 @@ interface CompositionThumbnailProps {
   previewUrl: string;
   label: string;
   labelColor: string;
-  accentColor?: string;
   selector?: string;
   selectorIndex?: number;
   seekTime?: number;
@@ -16,7 +15,6 @@ interface CompositionThumbnailProps {
 
 const CLIP_HEIGHT = 66;
 const THUMBNAIL_URL_VERSION = "v3";
-const COMPOSITION_THUMBNAIL_LABEL_Z_INDEX = 10;
 
 export function buildCompositionThumbnailUrl({
   previewUrl,
@@ -53,7 +51,6 @@ export const CompositionThumbnail = memo(function CompositionThumbnail({
   previewUrl,
   label,
   labelColor,
-  accentColor = "#6B7280",
   selector,
   selectorIndex,
   seekTime = 2,
@@ -110,8 +107,11 @@ export const CompositionThumbnail = memo(function CompositionThumbnail({
         className="hidden"
       />
 
-      {loaded ? (
-        <div className="absolute inset-0 flex">
+      {loaded && (
+        <div
+          className="absolute inset-0 flex"
+          style={{ animation: "hf-thumb-fade 200ms ease-out", mixBlendMode: "lighten" }}
+        >
           {Array.from({ length: frameCount }).map((_, i) => (
             <div
               key={i}
@@ -122,55 +122,21 @@ export const CompositionThumbnail = memo(function CompositionThumbnail({
                 src={url}
                 alt=""
                 draggable={false}
-                className="absolute inset-0 h-full w-full object-cover opacity-60"
+                className="absolute inset-0 h-full w-full object-cover"
+                style={{ opacity: 0.7 }}
               />
             </div>
           ))}
         </div>
-      ) : (
-        <div
-          className="absolute inset-0 animate-pulse"
-          style={{
-            background:
-              "linear-gradient(90deg, rgba(255,255,255,0.02) 0%, rgba(255,255,255,0.05) 50%, rgba(255,255,255,0.02) 100%)",
-          }}
-        />
       )}
 
-      <div
-        className="absolute inset-0"
-        style={{
-          background: `linear-gradient(120deg, ${accentColor}2e, transparent 34%), linear-gradient(180deg, rgba(255,255,255,0.02), rgba(0,0,0,0.08))`,
-        }}
-      />
-
-      <div
-        className="absolute left-2 top-2"
-        style={{ zIndex: COMPOSITION_THUMBNAIL_LABEL_Z_INDEX }}
-      >
+      <div className="absolute left-3 top-0 bottom-0 flex items-center" style={{ zIndex: 10 }}>
         <span
-          className="block max-w-full truncate rounded-md px-1.5 py-0.5 text-[9px] font-semibold uppercase leading-none"
+          className="block max-w-full truncate text-[10px] font-semibold leading-none"
           style={{
             color: labelColor,
-            background: `${accentColor}2e`,
-            boxShadow: `inset 0 0 0 1px ${accentColor}40`,
+            textShadow: loaded ? "0 1px 4px rgba(0,0,0,0.9), 0 0 8px rgba(0,0,0,0.6)" : "none",
           }}
-        >
-          {label}
-        </span>
-      </div>
-
-      <div
-        className="absolute bottom-0 left-0 right-0 px-1.5 pb-0.5 pt-3"
-        style={{
-          zIndex: COMPOSITION_THUMBNAIL_LABEL_Z_INDEX,
-          background:
-            "linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.4) 60%, transparent 100%)",
-        }}
-      >
-        <span
-          className="block truncate text-[9px] font-semibold leading-tight"
-          style={{ color: labelColor, textShadow: "0 1px 2px rgba(0,0,0,0.9)" }}
         >
           {label}
         </span>

@@ -111,6 +111,33 @@ function injectStudioMotionScript(
   );
 }
 
+const GSAP_CDN_FALLBACK_SCRIPT = `<script data-hf-gsap-fallback>
+(function(){
+  var cdnBase="https://cdn.jsdelivr.net/npm/gsap@${GSAP_CDN_VERSION}/dist/";
+  var loaded={};
+  function loadFallback(file){
+    if(loaded[file])return loaded[file];
+    return loaded[file]=new Promise(function(ok,fail){
+      var s=document.createElement("script");
+      s.src=cdnBase+file;s.onload=ok;s.onerror=fail;
+      document.head.appendChild(s);
+    });
+  }
+  document.addEventListener("error",function(e){
+    var t=e.target;
+    if(!t||t.tagName!=="SCRIPT"||!t.src)return;
+    var m=t.src.match(/gsap[^/]*\\/dist\\/(.+\\.js)/);
+    if(m)loadFallback(m[1]);
+  },true);
+})();
+</script>`;
+
+function injectGsapCdnFallback(html: string): string {
+  if (html.includes("data-hf-gsap-fallback")) return html;
+  if (html.includes("<head>")) return html.replace("<head>", "<head>" + GSAP_CDN_FALLBACK_SCRIPT);
+  return GSAP_CDN_FALLBACK_SCRIPT + html;
+}
+
 function injectStudioPreviewAugmentations(
   html: string,
   adapter: StudioApiAdapter,
@@ -118,7 +145,9 @@ function injectStudioPreviewAugmentations(
   activeCompositionPath: string,
 ): string {
   return injectStudioMotionScript(
-    injectProjectSignature(html, resolveProjectSignature(adapter, projectDir)),
+    injectGsapCdnFallback(
+      injectProjectSignature(html, resolveProjectSignature(adapter, projectDir)),
+    ),
     projectDir,
     activeCompositionPath,
   );

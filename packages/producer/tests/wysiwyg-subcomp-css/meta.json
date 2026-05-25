@@ -1,0 +1,12 @@
+{
+  "name": "wysiwyg-subcomp-css",
+  "description": "Verifies sub-composition CSS is correctly scoped and applied in rendered output. Regression test for compound-selector bug where [data-composition-id] [data-hf-authored-id] used a descendant combinator (space) instead of compound (no space) when both attributes coexist on the same host element after inlining.",
+  "tags": ["regression", "css-scoping", "sub-compositions", "wysiwyg"],
+  "minPsnr": 25,
+  "maxFrameFailures": 2,
+  "minAudioCorrelation": 0,
+  "maxAudioLagWindows": 0,
+  "renderConfig": {
+    "fps": 30
+  }
+}

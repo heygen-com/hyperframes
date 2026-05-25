@@ -1,0 +1,12 @@
+{
+  "name": "Sub-composition #ID selector scoping",
+  "description": "Documents that sub-compositions using #ID selectors may render differently between preview and render due to the producer stripping the inner root element. Workaround: use [data-composition-id] selectors instead of #ID.",
+  "tags": ["sub-composition", "regression", "selector"],
+  "minPsnr": 20,
+  "maxFrameFailures": 10,
+  "minAudioCorrelation": 0.0,
+  "maxAudioLagWindows": 120,
+  "renderConfig": {
+    "fps": 24
+  }
+}

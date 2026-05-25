@@ -1,0 +1,30 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "liquid-glass-notification",
+  "type": "hyperframes:block",
+  "title": "Liquid Glass Notification",
+  "description": "Frosted glass notification cards floating over an aurora shader background",
+  "stability": "experimental",
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 8,
+  "tags": ["html-in-canvas", "liquid-glass-html-in-canvas", "webgpu"],
+  "files": [
+    {
+      "path": "liquid-glass-notification.html",
+      "target": "compositions/liquid-glass-notification.html",
+      "type": "hyperframes:composition"
+    },
+    {
+      "path": "assets/hyperframes-logo-dark.svg",
+      "target": "compositions/assets/hyperframes-logo-dark.svg",
+      "type": "registry:asset"
+    }
+  ],
+  "preview": {
+    "video": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/liquid-glass-notification.mp4",
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/liquid-glass-notification.png"
+  }
+}

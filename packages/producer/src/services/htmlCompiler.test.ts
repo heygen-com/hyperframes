@@ -8,6 +8,7 @@ import {
   compileForRender,
   detectRenderModeHints,
   detectShaderTransitionUsage,
+  discoverAudioVolumeAutomationFromTimeline,
   inlineExternalScripts,
   recompileWithResolutions,
 } from "./htmlCompiler.js";
@@ -413,6 +414,35 @@ describe("detectRenderModeHints", () => {
     expect(result.reasons.map((reason) => reason.code)).toEqual(["requestAnimationFrame"]);
   });
 
+  it("detects html-in-canvas API via layoutsubtree canvas attribute", () => {
+    const html = `<!DOCTYPE html>
+<html><body>
+  <div data-composition-id="root" data-width="1920" data-height="1080">
+    <canvas id="glass-canvas" layoutsubtree width="1920" height="1080">
+      <div class="panel">Glass content</div>
+    </canvas>
+  </div>
+</body></html>`;
+
+    const result = detectRenderModeHints(html);
+
+    expect(result.reasons.map((reason) => reason.code)).toContain("htmlInCanvas");
+    expect(result.recommendScreenshot).toBe(true);
+  });
+
+  it("does not flag htmlInCanvas for plain canvas elements without layoutsubtree", () => {
+    const html = `<!DOCTYPE html>
+<html><body>
+  <div data-composition-id="root" data-width="1920" data-height="1080">
+    <canvas id="my-canvas" width="1920" height="1080"></canvas>
+  </div>
+</body></html>`;
+
+    const result = detectRenderModeHints(html);
+
+    expect(result.reasons.map((reason) => reason.code)).not.toContain("htmlInCanvas");
+  });
+
   it("does not recommend screenshot mode for nested compositions that hoist GSAP from a CDN script", async () => {
     const projectDir = mkdtempSync(join(tmpdir(), "hf-render-mode-"));
     const compositionsDir = join(projectDir, "compositions");
@@ -717,5 +747,121 @@ describe("template-wrapped sub-composition media offsets", () => {
     expect(host?.getAttribute("data-composition-id")).toBeNull();
     expect(host?.querySelector('[data-composition-id="scene"] .title')?.textContent).toBe("Scene");
     expect(compiled.html).toContain('var __hfCompId = "scene";');
+  });
+});
+
+// ── injectTextRenderingRule (via compileForRender) ─────────────────────────
+//
+// Forces `text-rendering: geometricPrecision` so chrome-headless-shell
+// (BeginFrame) and full Chrome lay text out identically. See
+// `injectTextRenderingRule` in htmlCompiler.ts for full context.
+
+describe("text-rendering rule injection", () => {
+  it("injects a single geometricPrecision rule into <head> for a full-document composition", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-text-rendering-"));
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!DOCTYPE html>
+<html>
+<head><title>t</title></head>
+<body>
+  <div data-composition-id="root" data-width="640" data-height="360" data-duration="1">
+    <h1>Hello</h1>
+  </div>
+</body>
+</html>`,
+    );
+
+    const compiled = await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
+
+    const { document } = parseHTML(compiled.html);
+    const styleEls = document.querySelectorAll("style[data-hyperframes-text-rendering]");
+    expect(styleEls.length).toBe(1);
+    expect((styleEls[0]?.textContent || "").replace(/\s+/g, "")).toContain(
+      "html,body,*{text-rendering:geometricPrecision}",
+    );
+    expect(styleEls[0]?.parentElement?.tagName.toLowerCase()).toBe("head");
+  });
+
+  it("includes geometricPrecision in the fragment-wrap fallback stylesheet", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-text-rendering-frag-"));
+    // Fragment (no <html>/<head>/<body>) — exercises ensureFullDocument.
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<div data-composition-id="root" data-width="640" data-height="360" data-duration="1"><h1>Hi</h1></div>`,
+    );
+
+    const compiled = await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
+
+    expect(compiled.html.replace(/\s+/g, "")).toContain("text-rendering:geometricPrecision");
+  });
+});
+
+describe("discoverAudioVolumeAutomationFromTimeline", () => {
+  it("samples video-derived audio volume without firing GSAP callbacks", async () => {
+    class TestAudioElement {}
+    class TestVideoElement {
+      id = "bg-video";
+      dataset = { start: "0", duration: "1", volume: "0" };
+      volume = 0;
+    }
+
+    const video = new TestVideoElement();
+    const seekCalls: { time: number; suppressEvents: boolean | undefined }[] = [];
+    const previousWindow = globalThis.window;
+    const previousDocument = globalThis.document;
+    const previousAudioElement = globalThis.HTMLAudioElement;
+    const previousVideoElement = globalThis.HTMLVideoElement;
+
+    globalThis.window = {
+      __timelines: {
+        root: {
+          totalTime: (time: number, suppressEvents?: boolean) => {
+            seekCalls.push({ time, suppressEvents });
+            video.volume = Math.min(1, Math.max(0, time));
+          },
+        },
+      },
+    } as any;
+    globalThis.document = {
+      querySelector: (selector: string) =>
+        selector === "[data-composition-id]"
+          ? { getAttribute: (name: string) => (name === "data-composition-id" ? "root" : null) }
+          : null,
+      getElementById: (id: string) => (id === "bg-video" ? video : null),
+    } as any;
+    globalThis.HTMLAudioElement = TestAudioElement as any;
+    globalThis.HTMLVideoElement = TestVideoElement as any;
+
+    try {
+      const page = {
+        evaluate: async (fn: (arg: unknown) => unknown, arg: unknown) => fn(arg),
+      } as any;
+
+      const result = await discoverAudioVolumeAutomationFromTimeline(
+        page,
+        ["bg-video-audio"],
+        1,
+        2,
+      );
+
+      expect(result).toEqual([
+        {
+          id: "bg-video-audio",
+          keyframes: [
+            { time: 0, volume: 0 },
+            { time: 0.5, volume: 0.5 },
+            { time: 1, volume: 1 },
+          ],
+        },
+      ]);
+      expect(seekCalls.length).toBeGreaterThan(0);
+      expect(seekCalls.every((call) => call.suppressEvents === true)).toBe(true);
+    } finally {
+      globalThis.window = previousWindow;
+      globalThis.document = previousDocument;
+      globalThis.HTMLAudioElement = previousAudioElement;
+      globalThis.HTMLVideoElement = previousVideoElement;
+    }
   });
 });

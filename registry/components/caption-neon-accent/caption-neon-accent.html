@@ -24,16 +24,17 @@
         height: 1080px;
         margin: 0;
         overflow: hidden;
-        background: #000000;
+        background: transparent;
         font-family: "Montserrat", Arial, sans-serif;
       }
 
       #neon-accent {
+        pointer-events: none;
         position: relative;
         width: 1920px;
         height: 1080px;
         overflow: hidden;
-        background: #000000;
+        background: transparent;
       }
 
       #avatar-video {
@@ -120,6 +121,7 @@
     <div
       id="neon-accent"
       data-composition-id="caption-neon-accent"
+      data-timeline-locked
       data-start="0"
       data-duration="8"
       data-fps="30"

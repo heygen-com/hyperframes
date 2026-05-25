@@ -1,0 +1,174 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "ios26-liquid-glass",
+  "type": "hyperframes:block",
+  "title": "iOS 26 Liquid Glass Home Screen",
+  "description": "3D iPhone with a normal iOS 26 home screen, liquid glass app icons, shader wallpaper, dock, and fluid glass notifications that drop from the status area onto a GLTF device model.",
+  "stability": "experimental",
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 15,
+  "tags": [
+    "liquid-glass-html-in-canvas",
+    "webgpu",
+    "3d",
+    "iphone",
+    "ios26",
+    "notifications",
+    "gltf",
+    "html-in-canvas"
+  ],
+  "files": [
+    {
+      "path": "ios26-liquid-glass.html",
+      "target": "compositions/ios26-liquid-glass.html",
+      "type": "hyperframes:composition"
+    },
+    {
+      "path": "models/iphone.glb",
+      "target": "models/iphone.glb",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "lib/liquid-glass.iife.js",
+      "target": "lib/liquid-glass.iife.js",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/icons/weather.jpg",
+      "target": "assets/icons/weather.jpg",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/icons/stocks.jpg",
+      "target": "assets/icons/stocks.jpg",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/icons/find-my.jpg",
+      "target": "assets/icons/find-my.jpg",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/icons/home.jpg",
+      "target": "assets/icons/home.jpg",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/icons/books.jpg",
+      "target": "assets/icons/books.jpg",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/icons/itunes-store.jpg",
+      "target": "assets/icons/itunes-store.jpg",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/icons/fitness.jpg",
+      "target": "assets/icons/fitness.jpg",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/icons/watch.jpg",
+      "target": "assets/icons/watch.jpg",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/icons/contacts.jpg",
+      "target": "assets/icons/contacts.jpg",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/icons/files.jpg",
+      "target": "assets/icons/files.jpg",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/icons/translate.jpg",
+      "target": "assets/icons/translate.jpg",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/icons/calendar.jpg",
+      "target": "assets/icons/calendar.jpg",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/icons/chatgpt.jpg",
+      "target": "assets/icons/chatgpt.jpg",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/icons/slack.jpg",
+      "target": "assets/icons/slack.jpg",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/icons/instagram.jpg",
+      "target": "assets/icons/instagram.jpg",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/icons/x.jpg",
+      "target": "assets/icons/x.jpg",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/icons/proton-mail.jpg",
+      "target": "assets/icons/proton-mail.jpg",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/icons/gmail.jpg",
+      "target": "assets/icons/gmail.jpg",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/icons/revolut.jpg",
+      "target": "assets/icons/revolut.jpg",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/icons/photos.jpg",
+      "target": "assets/icons/photos.jpg",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/icons/phone.jpg",
+      "target": "assets/icons/phone.jpg",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/icons/brave.jpg",
+      "target": "assets/icons/brave.jpg",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/icons/messages.jpg",
+      "target": "assets/icons/messages.jpg",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/icons/whatsapp.jpg",
+      "target": "assets/icons/whatsapp.jpg",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/icons/notify-messages.jpg",
+      "target": "assets/icons/notify-messages.jpg",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/icons/music.jpg",
+      "target": "assets/icons/music.jpg",
+      "type": "hyperframes:asset"
+    }
+  ],
+  "preview": {
+    "video": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/ios26-liquid-glass.mp4",
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/ios26-liquid-glass.png"
+  }
+}

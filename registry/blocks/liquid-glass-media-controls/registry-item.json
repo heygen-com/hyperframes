@@ -1,0 +1,25 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "liquid-glass-media-controls",
+  "type": "hyperframes:block",
+  "title": "Liquid Glass Media Controls",
+  "description": "Frosted glass media control panels spreading over an aurora shader background",
+  "stability": "experimental",
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 8,
+  "tags": ["html-in-canvas", "liquid-glass-html-in-canvas", "webgpu"],
+  "files": [
+    {
+      "path": "liquid-glass-media-controls.html",
+      "target": "compositions/liquid-glass-media-controls.html",
+      "type": "hyperframes:composition"
+    }
+  ],
+  "preview": {
+    "video": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/liquid-glass-media-controls.mp4",
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/liquid-glass-media-controls.png"
+  }
+}

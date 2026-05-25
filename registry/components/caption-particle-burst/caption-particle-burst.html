@@ -23,14 +23,15 @@
         height: 1080px;
         margin: 0;
         overflow: hidden;
-        background: #0a0a0a;
+        background: transparent;
       }
       #particle-burst {
+        pointer-events: none;
         position: relative;
         width: 1920px;
         height: 1080px;
         overflow: hidden;
-        background: #0a0a0a;
+        background: transparent;
       }
       #bs-video {
         position: absolute;
@@ -43,7 +44,7 @@
       .bs-overlay {
         position: absolute;
         inset: 0;
-        background: rgba(0, 0, 0, 0.45);
+        background: transparent;
         z-index: 1;
         pointer-events: none;
       }
@@ -94,6 +95,7 @@
     <div
       id="particle-burst"
       data-composition-id="caption-particle-burst"
+      data-timeline-locked
       data-start="0"
       data-duration="8"
       data-fps="30"

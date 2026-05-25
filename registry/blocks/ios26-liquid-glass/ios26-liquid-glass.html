@@ -1,0 +1,1298 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Devices Canvas — HTML-in-Canvas API Showcase</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/loaders/DRACOLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/loaders/GLTFLoader.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        background: #050508;
+        overflow: hidden;
+      }
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #050508;
+      }
+      .ios-home {
+        position: relative;
+        height: 844px;
+        overflow: hidden;
+        background: #010101;
+      }
+      .ios-wallpaper {
+        position: absolute;
+        inset: 0;
+        background:
+          radial-gradient(ellipse at 50% 50%, rgba(12, 16, 24, 0.96), transparent 31%),
+          radial-gradient(circle at 50% 54%, rgba(255, 255, 255, 0.06), transparent 8%),
+          linear-gradient(180deg, #020202, #000);
+      }
+      .ios-wallpaper::before,
+      .ios-wallpaper::after {
+        content: "";
+        position: absolute;
+        left: 92px;
+        top: 210px;
+        width: 210px;
+        height: 360px;
+        border-radius: 50% 50% 42% 46%;
+        border: 4px solid transparent;
+        background:
+          linear-gradient(#020202, #020202) padding-box,
+          conic-gradient(
+              from 215deg,
+              rgba(255, 255, 255, 0),
+              rgba(255, 255, 255, 0.92),
+              rgba(53, 131, 255, 0.92),
+              rgba(38, 255, 168, 0.8),
+              rgba(255, 63, 54, 0.72),
+              rgba(255, 255, 255, 0)
+            )
+            border-box;
+        filter: blur(0.35px) saturate(1.25);
+        opacity: 0.82;
+        transform: rotate(7deg);
+      }
+      .ios-wallpaper::after {
+        left: 118px;
+        top: 400px;
+        width: 140px;
+        height: 190px;
+        border-width: 3px;
+        opacity: 0.62;
+        transform: rotate(-27deg);
+      }
+      .ios-status {
+        position: relative;
+        z-index: 2;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 27px 30px 10px;
+        color: #f6f6f6;
+        font-size: 22px;
+        font-weight: 760;
+        letter-spacing: 0;
+        text-shadow: 0 2px 8px rgba(0, 0, 0, 0.55);
+      }
+      .ios-status-left,
+      .ios-status-right {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .ios-location {
+        display: grid;
+        place-items: center;
+        width: 18px;
+        height: 18px;
+        border-radius: 999px;
+        background: #2f80ed;
+        color: #fff;
+        font-size: 12px;
+        line-height: 1;
+      }
+      .ios-signal {
+        display: flex;
+        align-items: end;
+        gap: 3px;
+        height: 18px;
+      }
+      .ios-signal span {
+        width: 5px;
+        border-radius: 3px;
+        background: rgba(255, 255, 255, 0.92);
+      }
+      .ios-signal span:nth-child(1) {
+        height: 7px;
+      }
+      .ios-signal span:nth-child(2) {
+        height: 10px;
+      }
+      .ios-signal span:nth-child(3) {
+        height: 13px;
+      }
+      .ios-signal span:nth-child(4) {
+        height: 17px;
+        background: rgba(255, 255, 255, 0.48);
+      }
+      .ios-wifi {
+        position: relative;
+        width: 23px;
+        height: 17px;
+      }
+      .ios-wifi span {
+        position: absolute;
+        left: 50%;
+        border: 4px solid rgba(255, 255, 255, 0.94);
+        border-color: rgba(255, 255, 255, 0.94) transparent transparent transparent;
+        border-radius: 50%;
+        transform: translateX(-50%);
+      }
+      .ios-wifi span:nth-child(1) {
+        top: 0;
+        width: 28px;
+        height: 28px;
+      }
+      .ios-wifi span:nth-child(2) {
+        top: 6px;
+        width: 18px;
+        height: 18px;
+      }
+      .ios-wifi span:nth-child(3) {
+        top: 13px;
+        width: 7px;
+        height: 7px;
+        border-radius: 999px;
+        background: #fff;
+        border: 0;
+      }
+      .ios-battery {
+        position: relative;
+        min-width: 34px;
+        height: 21px;
+        padding: 1px 5px 0;
+        border-radius: 6px;
+        background: #59d768;
+        color: #fff;
+        font-size: 15px;
+        font-weight: 850;
+        line-height: 20px;
+      }
+      .ios-battery::after {
+        content: "";
+        position: absolute;
+        right: -3px;
+        top: 7px;
+        width: 3px;
+        height: 7px;
+        border-radius: 0 3px 3px 0;
+        background: rgba(255, 255, 255, 0.5);
+      }
+      .ios-app-grid {
+        position: relative;
+        z-index: 2;
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 14px 22px;
+        padding: 20px 28px 0;
+      }
+      .ios-app {
+        position: relative;
+        text-align: center;
+      }
+      .ios-app-icon,
+      .ios-dock-icon {
+        display: block;
+        object-fit: cover;
+        box-shadow:
+          0 8px 20px rgba(0, 0, 0, 0.34),
+          inset 0 1px 0 rgba(255, 255, 255, 0.24);
+        filter: grayscale(1) saturate(0.08) contrast(1.2) brightness(0.86);
+      }
+      .ios-app-icon {
+        width: 62px;
+        height: 62px;
+        margin: 0 auto 7px;
+        border-radius: 18px;
+      }
+      .ios-app-label {
+        color: #fff;
+        font-size: 13px;
+        font-weight: 640;
+        line-height: 1.1;
+        text-shadow: 0 1px 5px rgba(0, 0, 0, 0.65);
+        white-space: nowrap;
+      }
+      .ios-badge {
+        position: absolute;
+        top: -8px;
+        right: -8px;
+        min-width: 24px;
+        padding: 3px 7px;
+        border-radius: 999px;
+        background: #f7f7f7;
+        color: #303030;
+        font-size: 15px;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.32);
+      }
+      .ios-search-pill {
+        position: absolute;
+        z-index: 2;
+        left: 50%;
+        bottom: 105px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 7px;
+        width: 116px;
+        padding: 9px 0;
+        border-radius: 19px;
+        background: rgba(255, 255, 255, 0.11);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        color: rgba(255, 255, 255, 0.72);
+        font-size: 15px;
+        font-weight: 650;
+        text-align: center;
+        transform: translateX(-50%);
+        box-shadow:
+          inset 0 1px 0 rgba(255, 255, 255, 0.17),
+          0 10px 22px rgba(0, 0, 0, 0.34);
+      }
+      .ios-search-pill::before {
+        content: "";
+        width: 12px;
+        height: 12px;
+        border: 3px solid rgba(255, 255, 255, 0.72);
+        border-radius: 999px;
+        box-sizing: border-box;
+      }
+      .ios-search-pill::after {
+        content: "";
+        width: 7px;
+        height: 3px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.72);
+        transform: rotate(45deg) translate(-6px, 6px);
+        margin-left: -10px;
+      }
+      .ios-notification-layer {
+        display: none;
+        position: absolute;
+        z-index: 5;
+        top: 82px;
+        left: 15px;
+        right: 15px;
+        height: 222px;
+        pointer-events: none;
+      }
+      .ios-notification-card {
+        position: absolute;
+        left: 0;
+        right: 0;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        min-height: 60px;
+        padding: 9px 12px;
+        border-radius: 23px;
+        border: 1px solid rgba(255, 255, 255, 0.27);
+        background:
+          linear-gradient(135deg, rgba(255, 255, 255, 0.42), rgba(255, 255, 255, 0.13)),
+          rgba(140, 150, 164, 0.52);
+        -webkit-backdrop-filter: blur(22px) saturate(1.35);
+        backdrop-filter: blur(22px) saturate(1.35);
+        box-shadow:
+          inset 0 1px 0 rgba(255, 255, 255, 0.46),
+          0 14px 34px rgba(0, 0, 0, 0.38);
+        opacity: 0;
+        transform: translateY(-120px) scale(0.98);
+      }
+      .ios-notification-card:nth-child(2) {
+        top: 68px;
+      }
+      .ios-notification-card:nth-child(3) {
+        top: 136px;
+      }
+      .ios-notification-icon {
+        width: 38px;
+        height: 38px;
+        border-radius: 11px;
+        background-position: center;
+        background-size: cover;
+        flex: 0 0 auto;
+      }
+      .ios-notification-messages {
+        background-image: url("assets/icons/notify-messages.jpg");
+      }
+      .ios-notification-hyperframes {
+        background-image: url("assets/icons/slack.jpg");
+      }
+      .ios-notification-gmail {
+        background-image: url("assets/icons/gmail.jpg");
+      }
+      .ios-icon-preload {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        opacity: 0;
+        pointer-events: none;
+      }
+      .ios-notification-copy {
+        min-width: 0;
+        flex: 1;
+      }
+      .ios-notification-title {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        color: #fff;
+        font-size: 12px;
+        font-weight: 750;
+      }
+      .ios-notification-body {
+        margin-top: 2px;
+        color: rgba(255, 255, 255, 0.72);
+        font-size: 11px;
+        line-height: 1.25;
+      }
+      .ios-dock {
+        position: absolute;
+        z-index: 2;
+        left: 14px;
+        right: 14px;
+        bottom: 13px;
+        display: flex;
+        justify-content: space-around;
+        padding: 10px 16px;
+        border-radius: 37px;
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        -webkit-backdrop-filter: blur(18px) saturate(1.2);
+        backdrop-filter: blur(18px) saturate(1.2);
+        box-shadow:
+          inset 0 1px 0 rgba(255, 255, 255, 0.16),
+          0 14px 36px rgba(0, 0, 0, 0.24);
+      }
+      .ios-dock-item {
+        position: relative;
+        width: 62px;
+        height: 62px;
+      }
+      .ios-dock-icon {
+        width: 62px;
+        height: 62px;
+        border-radius: 18px;
+        background-position: center;
+        background-size: cover;
+      }
+      .ios-dock-phone {
+        background-image: url("assets/icons/phone.jpg");
+      }
+      .ios-dock-brave {
+        background-image: url("assets/icons/brave.jpg");
+      }
+      .ios-dock-whatsapp {
+        background-image: url("assets/icons/whatsapp.jpg");
+      }
+      .ios-dock-music {
+        background-image: url("assets/icons/music.jpg");
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="ios26-liquid-glass"
+      data-width="1920"
+      data-height="1080"
+      data-start="0"
+      data-duration="15"
+      data-root="true"
+    >
+      <!-- LIVE HTML captured every frame via drawElementImage  -->
+      <canvas
+        id="cap-phone"
+        layoutsubtree
+        width="390"
+        height="844"
+        style="
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 390px;
+          height: 844px;
+          z-index: -1;
+          pointer-events: none;
+        "
+      >
+        <div
+          id="phone-html"
+          style="
+            width: 390px;
+            height: 844px;
+            overflow: hidden;
+            font-family: Inter, system-ui, sans-serif;
+            color: #e2e8f0;
+          "
+        >
+          <div id="phone-scroll" class="ios-home" style="color: #fff; transform: translateY(0)">
+            <div id="phone-title" style="display: none"></div>
+            <span id="phone-count" style="display: none"></span>
+            <div id="phone-cards" style="display: none"></div>
+            <img
+              id="ios-notify-messages-preload"
+              class="ios-icon-preload"
+              src="assets/icons/notify-messages.jpg"
+              alt=""
+            />
+            <div class="ios-wallpaper"></div>
+            <div class="ios-status">
+              <div class="ios-status-left">
+                <span style="font-variant-numeric: tabular-nums">15:16</span>
+                <span class="ios-location">▲</span>
+              </div>
+              <div class="ios-status-right">
+                <div class="ios-signal"><span></span><span></span><span></span><span></span></div>
+                <div class="ios-wifi"><span></span><span></span><span></span></div>
+                <div class="ios-battery">92</div>
+              </div>
+            </div>
+            <div id="ios-app-grid" class="ios-app-grid">
+              <div class="ios-app">
+                <img class="ios-app-icon" src="assets/icons/weather.jpg" alt="" />
+                <div class="ios-app-label">Weather</div>
+              </div>
+              <div class="ios-app">
+                <img class="ios-app-icon" src="assets/icons/stocks.jpg" alt="" />
+                <div class="ios-app-label">Stocks</div>
+              </div>
+              <div class="ios-app">
+                <img class="ios-app-icon" src="assets/icons/find-my.jpg" alt="" />
+                <div class="ios-app-label">Find My</div>
+              </div>
+              <div class="ios-app">
+                <img class="ios-app-icon" src="assets/icons/home.jpg" alt="" />
+                <div class="ios-app-label">Home</div>
+              </div>
+              <div class="ios-app">
+                <img class="ios-app-icon" src="assets/icons/books.jpg" alt="" />
+                <div class="ios-app-label">Books</div>
+              </div>
+              <div class="ios-app">
+                <img class="ios-app-icon" src="assets/icons/itunes-store.jpg" alt="" />
+                <div class="ios-app-label">iTunes Store</div>
+              </div>
+              <div class="ios-app">
+                <img class="ios-app-icon" src="assets/icons/fitness.jpg" alt="" />
+                <div class="ios-app-label">Fitness</div>
+              </div>
+              <div class="ios-app">
+                <img class="ios-app-icon" src="assets/icons/watch.jpg" alt="" />
+                <div class="ios-app-label">Watch</div>
+              </div>
+              <div class="ios-app">
+                <img class="ios-app-icon" src="assets/icons/contacts.jpg" alt="" />
+                <div class="ios-app-label">Contacts</div>
+              </div>
+              <div class="ios-app">
+                <img class="ios-app-icon" src="assets/icons/files.jpg" alt="" />
+                <div class="ios-app-label">Files</div>
+              </div>
+              <div class="ios-app">
+                <img class="ios-app-icon" src="assets/icons/translate.jpg" alt="" />
+                <div class="ios-app-label">Translate</div>
+              </div>
+              <div class="ios-app">
+                <img class="ios-app-icon" src="assets/icons/calendar.jpg" alt="" />
+                <div class="ios-app-label">Calendar</div>
+              </div>
+              <div class="ios-app">
+                <img class="ios-app-icon" src="assets/icons/photos.jpg" alt="" />
+                <div class="ios-app-label">Photos</div>
+              </div>
+              <div class="ios-app">
+                <img class="ios-app-icon" src="assets/icons/chatgpt.jpg" alt="" />
+                <div class="ios-app-label">ChatGPT</div>
+              </div>
+              <div class="ios-app">
+                <img class="ios-app-icon" src="assets/icons/slack.jpg" alt="" />
+                <div class="ios-app-label">Slack</div>
+              </div>
+              <div class="ios-app">
+                <img class="ios-app-icon" src="assets/icons/instagram.jpg" alt="" />
+                <span class="ios-badge">1</span>
+                <div class="ios-app-label">Instagram</div>
+              </div>
+              <div class="ios-app">
+                <img class="ios-app-icon" src="assets/icons/x.jpg" alt="" />
+                <span class="ios-badge">4</span>
+                <div class="ios-app-label">X</div>
+              </div>
+              <div class="ios-app">
+                <img class="ios-app-icon" src="assets/icons/proton-mail.jpg" alt="" />
+                <span class="ios-badge">797</span>
+                <div class="ios-app-label">Proton Mail</div>
+              </div>
+              <div class="ios-app">
+                <img class="ios-app-icon" src="assets/icons/gmail.jpg" alt="" />
+                <span class="ios-badge">31.8K</span>
+                <div class="ios-app-label">Gmail</div>
+              </div>
+              <div class="ios-app">
+                <img class="ios-app-icon" src="assets/icons/revolut.jpg" alt="" />
+                <div class="ios-app-label">Revolut</div>
+              </div>
+              <div class="ios-app">
+                <img class="ios-app-icon" src="assets/icons/phone.jpg" alt="" />
+                <span class="ios-badge">9+</span>
+                <div class="ios-app-label">Phone</div>
+              </div>
+              <div class="ios-app">
+                <img class="ios-app-icon" src="assets/icons/brave.jpg" alt="" />
+                <div class="ios-app-label">Brave</div>
+              </div>
+              <div class="ios-app">
+                <img class="ios-app-icon" src="assets/icons/whatsapp.jpg" alt="" />
+                <span class="ios-badge">282</span>
+                <div class="ios-app-label">WhatsApp</div>
+              </div>
+              <div class="ios-app">
+                <img class="ios-app-icon" src="assets/icons/music.jpg" alt="" />
+                <div class="ios-app-label">Music</div>
+              </div>
+            </div>
+
+            <div class="ios-notification-layer">
+              <div id="ios-notification-a" class="ios-notification-card">
+                <div class="ios-notification-icon ios-notification-messages"></div>
+                <div class="ios-notification-copy">
+                  <div class="ios-notification-title"><span>Messages</span><span>now</span></div>
+                  <div class="ios-notification-body">Liquid Glass preview is ready for review.</div>
+                </div>
+              </div>
+              <div id="ios-notification-b" class="ios-notification-card">
+                <div class="ios-notification-icon ios-notification-hyperframes"></div>
+                <div class="ios-notification-copy">
+                  <div class="ios-notification-title"><span>HyperFrames</span><span>1m</span></div>
+                  <div class="ios-notification-body">One-worker render is ready.</div>
+                </div>
+              </div>
+              <div id="ios-notification-c" class="ios-notification-card">
+                <div class="ios-notification-icon ios-notification-gmail"></div>
+                <div class="ios-notification-copy">
+                  <div class="ios-notification-title"><span>Gmail</span><span>2m</span></div>
+                  <div class="ios-notification-body">Preview videos are live on CDN.</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="ios-search-pill">Search</div>
+
+            <div id="ios-real-dock" class="ios-dock">
+              <div class="ios-dock-item">
+                <div class="ios-dock-icon ios-dock-phone"></div>
+                <span class="ios-badge">9+</span>
+              </div>
+              <div class="ios-dock-item">
+                <div class="ios-dock-icon ios-dock-brave"></div>
+              </div>
+              <div class="ios-dock-item">
+                <div class="ios-dock-icon ios-dock-whatsapp"></div>
+                <span class="ios-badge">282</span>
+              </div>
+              <div class="ios-dock-item">
+                <div class="ios-dock-icon ios-dock-music"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </canvas>
+
+      <canvas
+        id="cap-laptop"
+        layoutsubtree
+        width="1440"
+        height="900"
+        style="
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 1440px;
+          height: 900px;
+          z-index: -1;
+          pointer-events: none;
+        "
+      >
+        <div
+          id="laptop-html"
+          style="
+            width: 1440px;
+            height: 900px;
+            overflow: hidden;
+            font-family: Inter, system-ui, sans-serif;
+            color: #e2e8f0;
+          "
+        >
+          <div
+            id="laptop-scroll"
+            style="background: linear-gradient(180deg, #0a0a12, #0f0f1a); transform: translateY(0)"
+          >
+            <div
+              style="
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                padding: 18px 36px;
+                border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+              "
+            >
+              <span
+                style="
+                  font-weight: 800;
+                  font-size: 17px;
+                  background: linear-gradient(135deg, #34d399, #3b82f6);
+                  -webkit-background-clip: text;
+                  -webkit-text-fill-color: transparent;
+                "
+                >HyperFrames</span
+              >
+              <div
+                style="display: flex; gap: 20px; font-size: 12px; color: rgba(255, 255, 255, 0.5)"
+              >
+                <span>Docs</span><span>Playground</span><span>Pricing</span>
+              </div>
+              <span
+                style="
+                  font-size: 11px;
+                  font-weight: 600;
+                  padding: 6px 14px;
+                  border-radius: 6px;
+                  background: #10b981;
+                  color: #fff;
+                "
+                >Log in</span
+              >
+            </div>
+            <div
+              id="laptop-title"
+              style="
+                font-size: 40px;
+                font-weight: 800;
+                letter-spacing: -1px;
+                padding: 28px 36px 10px;
+                opacity: 0;
+              "
+            >
+              Community Playground
+            </div>
+            <div style="font-size: 13px; color: rgba(255, 255, 255, 0.4); padding: 0 36px 18px">
+              Create videos with HTML — powered by HyperFrames
+            </div>
+            <div style="display: flex; gap: 8px; padding: 0 36px 20px">
+              <span
+                style="
+                  font-size: 10px;
+                  font-weight: 600;
+                  padding: 5px 12px;
+                  border-radius: 16px;
+                  background: rgba(16, 185, 129, 0.15);
+                  color: #10b981;
+                  border: 1px solid rgba(16, 185, 129, 0.3);
+                "
+                >Examples</span
+              ><span
+                id="laptop-count"
+                style="
+                  font-size: 10px;
+                  font-weight: 600;
+                  padding: 5px 12px;
+                  border-radius: 16px;
+                  border: 1px solid rgba(255, 255, 255, 0.1);
+                  color: rgba(255, 255, 255, 0.5);
+                "
+                >Catalog 0</span
+              >
+            </div>
+            <div
+              id="laptop-cards"
+              style="
+                display: grid;
+                grid-template-columns: repeat(3, 1fr);
+                gap: 14px;
+                padding: 0 36px 36px;
+              "
+            ></div>
+          </div>
+        </div>
+      </canvas>
+
+      <canvas
+        id="theater"
+        width="1920"
+        height="1080"
+        style="position: absolute; top: 0; left: 0; width: 1920px; height: 1080px"
+      ></canvas>
+      <div
+        id="driver"
+        class="clip"
+        data-start="0"
+        data-duration="15"
+        data-track-index="0"
+        style="position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none"
+      ></div>
+    </div>
+    <script>
+      var W = 1920,
+        H = 1080,
+        PI = Math.PI;
+
+      // ── Renderer ───────────────────────────────────────────────────────
+      var renderer = new THREE.WebGLRenderer({
+        canvas: document.getElementById("theater"),
+        antialias: true,
+        preserveDrawingBuffer: true,
+      });
+      renderer.setSize(W, H, false);
+      renderer.setPixelRatio(1);
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.15;
+      renderer.outputEncoding = THREE.sRGBEncoding;
+      renderer.setClearColor(0x050508, 1);
+
+      var scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x050508);
+      var camera = new THREE.PerspectiveCamera(34, W / H, 0.1, 100);
+
+      // ── Environment Map ────────────────────────────────────────────────
+      var eC = document.createElement("canvas");
+      eC.width = 1024;
+      eC.height = 512;
+      var ec = eC.getContext("2d");
+      var eg = ec.createLinearGradient(0, 0, 1024, 512);
+      eg.addColorStop(0, "#020307");
+      eg.addColorStop(0.15, "#1a1a2e");
+      eg.addColorStop(0.3, "#ffffff");
+      eg.addColorStop(0.45, "#0a0a1e");
+      eg.addColorStop(0.6, "#ffffff");
+      eg.addColorStop(0.75, "#1e1e2e");
+      eg.addColorStop(1, "#020307");
+      ec.fillStyle = eg;
+      ec.fillRect(0, 0, 1024, 512);
+      ec.globalCompositeOperation = "screen";
+      for (var ei = 0; ei < 7; ei++) {
+        ec.fillStyle = "rgba(255,255,255," + (ei % 2 === 0 ? 0.15 : 0.08) + ")";
+        ec.fillRect((ei % 3) * 100, 60 + ei * 56, 700, 3 + (ei % 2) * 2);
+      }
+      var eT = new THREE.CanvasTexture(eC);
+      eT.mapping = THREE.EquirectangularReflectionMapping;
+      var pm = new THREE.PMREMGenerator(renderer);
+      scene.environment = pm.fromEquirectangular(eT).texture;
+      eT.dispose();
+      pm.dispose();
+
+      // ── Three.js shader backdrop ────────────────────────────────────────
+      var bgUniforms = { uTime: { value: 0 }, uAspect: { value: W / H } };
+      var bgPlane = new THREE.Mesh(
+        new THREE.PlaneGeometry(28, 16),
+        new THREE.ShaderMaterial({
+          uniforms: bgUniforms,
+          vertexShader:
+            "varying vec2 v;void main(){v=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}",
+          fragmentShader:
+            "uniform float uTime;uniform float uAspect;varying vec2 v;float wave(vec2 p,float s,float t){return sin(p.x*s+p.y*s*.57+uTime*t);}void main(){vec2 p=v*2.0-1.0;p.x*=uAspect;float w=wave(p,3.0,.22)+.55*wave(p.yx+vec2(.7,-.2),5.1,.16)+.32*wave(p+vec2(-.4,.5),8.0,-.12);float a=smoothstep(-.75,1.05,w);vec3 navy=vec3(.015,.013,.055);vec3 cyan=vec3(.02,.42,.72);vec3 violet=vec3(.30,.08,.55);vec3 amber=vec3(.95,.42,.04);float ribbon=smoothstep(.22,.95,sin(p.x*2.2-p.y*3.1+uTime*.18));vec3 c=mix(navy,cyan,a);c=mix(c,violet,smoothstep(.16,1.1,wave(p+vec2(.8,.1),2.4,.1)));c+=amber*ribbon*.33;float glow=exp(-dot(p+vec2(.62,-.08),p+vec2(.62,-.08))*1.7);c+=vec3(.10,.45,.55)*glow;float vign=smoothstep(1.85,.25,length(p));gl_FragColor=vec4(c*vign,1.0);}",
+          depthTest: false,
+          depthWrite: false,
+        }),
+      );
+      bgPlane.position.z = -7.5;
+      scene.add(bgPlane);
+
+      // Vibrant aurora-colored floor
+      var floor = new THREE.Mesh(
+        new THREE.PlaneGeometry(30, 30),
+        new THREE.MeshStandardMaterial({ color: 0x081427, metalness: 0.86, roughness: 0.22 }),
+      );
+      floor.rotation.x = -PI / 2;
+      floor.position.y = -2.5;
+      scene.add(floor);
+
+      scene.add(new THREE.AmbientLight(0x222233, 0.5));
+      var kL = new THREE.DirectionalLight(0xffffff, 2.2);
+      kL.position.set(-3, 4, 5);
+      scene.add(kL);
+      var rL = new THREE.PointLight(0x6366f1, 3, 15);
+      rL.position.set(4, 2, 3);
+      scene.add(rL);
+      var wL = new THREE.PointLight(0xffc8a8, 1.5, 12);
+      wL.position.set(-3, -1, 4);
+      scene.add(wL);
+
+      // ── Live HTML → WebGL Texture  ─
+      var capPhoneCvs = document.getElementById("cap-phone");
+      var capPhoneCtx = capPhoneCvs.getContext("2d");
+      var phoneHtmlEl = document.getElementById("phone-html");
+
+      var capLapCvs = document.getElementById("cap-laptop");
+      var capLapCtx = capLapCvs.getContext("2d");
+      var lapHtmlEl = document.getElementById("laptop-html");
+
+      var apiOk = (function () {
+        var tc = document.createElement("canvas");
+        if (!("layoutSubtree" in tc)) return false;
+        tc.setAttribute("layoutsubtree", "");
+        var ctx = tc.getContext("2d");
+        return ctx && typeof ctx.drawElementImage === "function";
+      })();
+      var paintReady = false;
+
+      function waitForImages() {
+        var images = Array.prototype.slice.call(document.querySelectorAll("img"));
+        return Promise.all(
+          images.map(function (image) {
+            if (image.complete) return Promise.resolve();
+            return new Promise(function (resolveImage) {
+              image.onload = resolveImage;
+              image.onerror = resolveImage;
+            });
+          }),
+        );
+      }
+
+      function waitForPaint(canvas) {
+        return new Promise(function (resolvePaint) {
+          if (!canvas || typeof canvas.requestPaint !== "function") {
+            resolvePaint();
+            return;
+          }
+          var resolved = false;
+          function done() {
+            if (resolved) return;
+            resolved = true;
+            canvas.onpaint = null;
+            resolvePaint();
+          }
+          canvas.onpaint = done;
+          canvas.requestPaint();
+          setTimeout(done, 100);
+        });
+      }
+
+      // Generate card HTML for both screens
+      var cardData = [
+        {
+          bg: "linear-gradient(135deg,#1e3a5f,#2563eb)",
+          text: "100M+ AI team",
+          title: "Notion Showcase",
+          meta: "15s · 1920×1080",
+        },
+        {
+          bg: "linear-gradient(135deg,#4a1942,#db2777)",
+          text: "Design System v4",
+          title: "Dribbble Showcase",
+          meta: "12s · 1920×1080",
+        },
+        {
+          bg: "linear-gradient(135deg,#451a03,#f59e0b)",
+          text: "$1.9T Market Cap",
+          title: "Stripe Showcase",
+          meta: "10s · 1920×1080",
+        },
+        {
+          bg: "linear-gradient(135deg,#064e3b,#10b981)",
+          text: "Ship faster with AI",
+          title: "Vercel Promo",
+          meta: "20s · 1080×1920",
+        },
+        {
+          bg: "linear-gradient(135deg,#1e3a5f,#3b82f6)",
+          text: "Privacy App",
+          title: "iPhone App Store",
+          meta: "8s · 1080×1920",
+        },
+        {
+          bg: "linear-gradient(135deg,#4a1942,#a855f7)",
+          text: "Audio Visualizer",
+          title: "Spotify Remix",
+          meta: "15s · 1920×1080",
+        },
+        {
+          bg: "linear-gradient(135deg,#064e3b,#059669)",
+          text: "Code Animation",
+          title: "Terminal Demo",
+          meta: "12s · 1920×1080",
+        },
+        {
+          bg: "linear-gradient(135deg,#451a03,#d97706)",
+          text: "Launch Video",
+          title: "Product Hunt",
+          meta: "30s · 1920×1080",
+        },
+        {
+          bg: "linear-gradient(135deg,#1e3a5f,#6366f1)",
+          text: "3D Devices",
+          title: "Device Mockups",
+          meta: "15s · 1920×1080",
+        },
+      ];
+      function makeCardHTML(cd, isMobile) {
+        var fs = isMobile ? 12 : 16;
+        return (
+          '<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:' +
+          (isMobile ? 10 : 12) +
+          'px;overflow:hidden;opacity:0" class="anim-card">' +
+          '<div style="width:100%;aspect-ratio:16/9;background:' +
+          cd.bg +
+          ';display:flex;align-items:center;justify-content:center"><span style="font-size:' +
+          fs +
+          'px;font-weight:700;color:rgba(255,255,255,0.7)">' +
+          cd.text +
+          "</span></div>" +
+          '<div style="padding:' +
+          (isMobile ? "8px 10px" : "10px 14px") +
+          '"><div style="font-size:' +
+          (isMobile ? 11 : 13) +
+          'px;font-weight:600;margin-bottom:2px">' +
+          cd.title +
+          '</div><div style="font-size:' +
+          (isMobile ? 9 : 10) +
+          'px;color:rgba(255,255,255,0.3)">' +
+          cd.meta +
+          "</div></div></div>"
+        );
+      }
+      var phoneCardsEl = document.getElementById("phone-cards");
+      var laptopCardsEl = document.getElementById("laptop-cards");
+      for (var ci = 0; ci < cardData.length; ci++) {
+        if (ci < 6) phoneCardsEl.innerHTML += makeCardHTML(cardData[ci], true);
+        laptopCardsEl.innerHTML += makeCardHTML(cardData[ci], false);
+      }
+
+      var phoneTex = new THREE.CanvasTexture(capPhoneCvs);
+      phoneTex.minFilter = THREE.LinearFilter;
+      phoneTex.magFilter = THREE.LinearFilter;
+      phoneTex.generateMipmaps = false;
+      var lapTex = new THREE.CanvasTexture(capLapCvs);
+      lapTex.minFilter = THREE.LinearFilter;
+      lapTex.magFilter = THREE.LinearFilter;
+      lapTex.generateMipmaps = false;
+      var glassBuffer = document.createElement("canvas");
+      glassBuffer.width = 390;
+      glassBuffer.height = 844;
+      var glassBufferCtx = glassBuffer.getContext("2d");
+
+      function pathRoundRect(ctx, x, y, w, h, r) {
+        var rr = Math.min(r, w / 2, h / 2);
+        ctx.beginPath();
+        ctx.moveTo(x + rr, y);
+        ctx.lineTo(x + w - rr, y);
+        ctx.quadraticCurveTo(x + w, y, x + w, y + rr);
+        ctx.lineTo(x + w, y + h - rr);
+        ctx.quadraticCurveTo(x + w, y + h, x + w - rr, y + h);
+        ctx.lineTo(x + rr, y + h);
+        ctx.quadraticCurveTo(x, y + h, x, y + h - rr);
+        ctx.lineTo(x, y + rr);
+        ctx.quadraticCurveTo(x, y, x + rr, y);
+        ctx.closePath();
+      }
+
+      function drawNotificationCard(ctx, progress, top, iconSelector, title, time, body) {
+        var p = Math.max(0, Math.min(1, progress));
+        if (p <= 0.001) return;
+        var q = notificationEase(p);
+        var lift = Math.sin(q * PI);
+        var y = 106 + top + (1 - q) * -58 + lift * 6;
+        var x = 13;
+        var w = 364;
+        var h = 66 + lift * 2;
+        ctx.save();
+        ctx.globalAlpha = q * 0.98;
+        ctx.shadowColor = "rgba(0,0,0,0.54)";
+        ctx.shadowBlur = 22;
+        ctx.shadowOffsetY = 14;
+        pathRoundRect(ctx, x, y, w, h, 23);
+        ctx.clip();
+        ctx.filter = "blur(12px) saturate(1.55) brightness(1.24)";
+        ctx.drawImage(glassBuffer, -4, -4, 398, 852);
+        ctx.filter = "none";
+        pathRoundRect(ctx, x, y, w, h, 23);
+        var fill = ctx.createLinearGradient(x, y, x + w, y + h);
+        fill.addColorStop(0, "rgba(255,255,255,0.54)");
+        fill.addColorStop(0.45, "rgba(188,202,219,0.46)");
+        fill.addColorStop(1, "rgba(94,108,130,0.36)");
+        ctx.fillStyle = fill;
+        ctx.fill();
+        ctx.globalCompositeOperation = "screen";
+        var caustic = ctx.createLinearGradient(x + 40, y, x + w - 20, y + h);
+        caustic.addColorStop(0, "rgba(255,255,255,0.18)");
+        caustic.addColorStop(0.36, "rgba(117,230,255,0.15)");
+        caustic.addColorStop(0.64, "rgba(255,143,220,0.12)");
+        caustic.addColorStop(1, "rgba(255,255,255,0.08)");
+        ctx.fillStyle = caustic;
+        ctx.fillRect(x, y, w, h);
+        ctx.globalCompositeOperation = "source-over";
+        ctx.shadowColor = "transparent";
+        pathRoundRect(ctx, x + 0.5, y + 0.5, w - 1, h - 1, 22.5);
+        ctx.strokeStyle = "rgba(255,255,255,0.72)";
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(x + 24, y + 11);
+        ctx.bezierCurveTo(x + 105, y - 2, x + 220, y + 7, x + w - 42, y + 12);
+        ctx.strokeStyle = "rgba(255,255,255,0.38)";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        pathRoundRect(ctx, x + 10, y + 14, 38, 38, 11);
+        ctx.fillStyle = "rgba(255,255,255,0.58)";
+        ctx.fill();
+        var icon = document.querySelector(iconSelector);
+        if (icon && icon.complete) {
+          ctx.save();
+          pathRoundRect(ctx, x + 10, y + 14, 38, 38, 11);
+          ctx.clip();
+          ctx.drawImage(icon, x + 10, y + 14, 38, 38);
+          ctx.restore();
+        }
+        ctx.fillStyle = "#fff";
+        ctx.shadowColor = "rgba(0,0,0,0.32)";
+        ctx.shadowBlur = 3;
+        ctx.shadowOffsetY = 1;
+        ctx.font = "800 13px Inter, system-ui, sans-serif";
+        ctx.textBaseline = "top";
+        ctx.fillText(title, x + 60, y + 13);
+        ctx.globalAlpha = q * 0.92;
+        ctx.font = "800 12px Inter, system-ui, sans-serif";
+        ctx.fillText(time, x + w - ctx.measureText(time).width - 14, y + 13);
+        ctx.globalAlpha = q * 0.95;
+        ctx.font = "650 12px Inter, system-ui, sans-serif";
+        ctx.fillText(body, x + 60, y + 34);
+        ctx.restore();
+      }
+
+      function drawCanvasNotifications(ctx) {
+        glassBufferCtx.clearRect(0, 0, 390, 844);
+        glassBufferCtx.drawImage(ctx.canvas, 0, 0);
+        drawNotificationCard(
+          ctx,
+          S.iosN1,
+          0,
+          "#ios-notify-messages-preload",
+          "Messages",
+          "now",
+          "Liquid Glass preview is ready for review.",
+        );
+        drawNotificationCard(
+          ctx,
+          S.iosN2,
+          68,
+          'img[src="assets/icons/slack.jpg"]',
+          "HyperFrames",
+          "1m",
+          "One-worker render is ready.",
+        );
+        drawNotificationCard(
+          ctx,
+          S.iosN3,
+          136,
+          'img[src="assets/icons/gmail.jpg"]',
+          "Gmail",
+          "2m",
+          "Preview videos are live on CDN.",
+        );
+      }
+
+      function captureScreens() {
+        if (!apiOk || !paintReady) return;
+        try {
+          capPhoneCtx.clearRect(0, 0, 390, 844);
+          capPhoneCtx.drawElementImage(phoneHtmlEl, 0, 0, 390, 844);
+          drawCanvasNotifications(capPhoneCtx);
+          capLapCtx.clearRect(0, 0, 1440, 900);
+          capLapCtx.drawElementImage(lapHtmlEl, 0, 0, 1440, 900);
+          phoneTex.needsUpdate = true;
+          lapTex.needsUpdate = true;
+        } catch (e) {}
+      }
+
+      // ── Turntable Group (both devices rotate together for 360° orbit) ──
+      var turntable = new THREE.Group();
+      scene.add(turntable);
+
+      // ── Model Groups ───────────────────────────────────────────────────
+      var phoneGrp = new THREE.Group();
+      turntable.add(phoneGrp);
+      var lapGrp = new THREE.Group();
+      turntable.add(lapGrp);
+      var ready = 0;
+
+      var draco = new THREE.DRACOLoader();
+      draco.setDecoderPath("https://www.gstatic.com/draco/versioned/decoders/1.5.6/");
+      var loader = new THREE.GLTFLoader();
+      loader.setDRACOLoader(draco);
+
+      // iPhone
+      loader.load("models/iphone.glb", function (gltf) {
+        var m = gltf.scene;
+        var box = new THREE.Box3().setFromObject(m);
+        var sz = box.getSize(new THREE.Vector3());
+        var s = 3.2 / sz.y;
+        m.scale.setScalar(s);
+        box.setFromObject(m);
+        m.position.sub(box.getCenter(new THREE.Vector3()));
+        m.traverse(function (child) {
+          if (!child.isMesh) return;
+          if (child.material && child.material.emissiveMap) {
+            child.material = new THREE.MeshBasicMaterial({ map: phoneTex });
+          }
+        });
+        phoneGrp.add(m);
+        ready++;
+        if (ready === 1) onReady();
+      });
+
+      function onReady() {
+        waitForImages()
+          .then(function () {
+            return waitForPaint(capPhoneCvs);
+          })
+          .then(function () {
+            paintReady = true;
+            captureScreens();
+            render();
+          });
+      }
+
+      // ── Cubic Bezier Implementation ────────────────────────────────────
+      function cbz(p1x, p1y, p2x, p2y) {
+        var ax = 3 * p1x - 3 * p2x + 1,
+          bx = 3 * p2x - 6 * p1x,
+          cx = 3 * p1x;
+        var ay = 3 * p1y - 3 * p2y + 1,
+          by = 3 * p2y - 6 * p1y,
+          cy = 3 * p1y;
+        return function (t) {
+          var s = t;
+          for (var i = 0; i < 12; i++) {
+            var x = ((ax * s + bx) * s + cx) * s - t;
+            var dx = (3 * ax * s + 2 * bx) * s + cx;
+            if (Math.abs(dx) < 1e-10) break;
+            s -= x / dx;
+          }
+          s = Math.max(0, Math.min(1, s));
+          return ((ay * s + by) * s + cy) * s;
+        };
+      }
+
+      var enterEase = cbz(0.16, 1.0, 0.3, 1.0);
+      var notificationEase = cbz(0.22, 0.0, 0.16, 1.0);
+      var spinEase = cbz(0.76, 0.0, 0.18, 1.0);
+      var driftEase = cbz(0.45, 0.0, 0.15, 1.0);
+      var snapEase = cbz(0.22, 1.15, 0.36, 1.0);
+      var breatheEase = cbz(0.37, 0.0, 0.63, 1.0);
+
+      // ── Animation State ────────────────────────────────────────────────
+      var S = {
+        phX: 0,
+        phY: 0.1,
+        phZ: 0.5,
+        phRX: 0,
+        phRY: PI,
+        phRZ: 0,
+        lpX: 10,
+        lpY: -0.2,
+        lpZ: -0.6,
+        lpRX: 0,
+        lpRY: 0,
+        lpRZ: 0,
+        cX: 0,
+        cY: 0.18,
+        cZ: 6.15,
+        clX: 0,
+        clY: 0.1,
+        clZ: 0,
+        drift: 0,
+        turn: 0,
+        cardReveal: 0,
+        titleFade: 0,
+        counter: 0,
+        iosN1: 0,
+        iosN2: 0,
+        iosN3: 0,
+        p: 0,
+      };
+
+      function render() {
+        var d = S.drift;
+
+        // ── Animate live HTML content (captured to texture every frame) ──
+        // Title fade-in
+        document.getElementById("phone-title").style.opacity = S.titleFade;
+        document.getElementById("laptop-title").style.opacity = S.titleFade;
+        // Counter
+        var cnt = Math.round(S.counter);
+        document.getElementById("phone-count").textContent = "Catalog " + cnt;
+        document.getElementById("laptop-count").textContent = "Catalog " + cnt;
+        // Staggered card reveal
+        var allCards = document.querySelectorAll(".anim-card");
+        for (var ci2 = 0; ci2 < allCards.length; ci2++) {
+          var cardProgress = Math.max(0, Math.min(1, (S.cardReveal * allCards.length - ci2) * 1.5));
+          allCards[ci2].style.opacity = cardProgress;
+          allCards[ci2].style.transform = "translateY(" + (1 - cardProgress) * 15 + "px)";
+        }
+        function dropNotification(id, progress) {
+          var el = document.getElementById(id);
+          if (!el) return;
+          var p = Math.max(0, Math.min(1, progress));
+          var q = notificationEase(p);
+          var overshoot = Math.sin(q * PI) * 5;
+          el.style.opacity = q;
+          el.style.transform =
+            "translateY(" + ((1 - q) * -125 + overshoot) + "px) scale(" + (0.98 + q * 0.02) + ")";
+        }
+        dropNotification("ios-notification-a", S.iosN1);
+        dropNotification("ios-notification-b", S.iosN2);
+        dropNotification("ios-notification-c", S.iosN3);
+        // Re-capture HTML to texture
+        captureScreens();
+
+        phoneGrp.position.set(
+          S.phX + Math.sin(d * 0.5) * 0.015,
+          S.phY + Math.sin(d * 0.7) * 0.008,
+          S.phZ + Math.cos(d * 0.4) * 0.008,
+        );
+        phoneGrp.rotation.set(S.phRX, S.phRY, S.phRZ);
+        lapGrp.position.set(
+          S.lpX - Math.sin(d * 0.4) * 0.012,
+          S.lpY + Math.sin(d * 0.6) * 0.006,
+          S.lpZ + Math.cos(d * 0.35) * 0.008,
+        );
+        lapGrp.rotation.set(S.lpRX, S.lpRY, S.lpRZ);
+        turntable.rotation.y = S.turn;
+        bgUniforms.uTime.value = d;
+        camera.position.set(S.cX, S.cY, S.cZ);
+        camera.lookAt(S.clX, S.clY, S.clZ);
+        renderer.render(scene, camera);
+      }
+
+      // ── GSAP Timeline — Product Review Edit ────────────────────────────
+      var tl = gsap.timeline({ paused: true });
+      window.__timelines = window.__timelines || {};
+      window.__timelines["ios26-liquid-glass"] = tl;
+
+      tl.to(S, { p: 1, drift: 15, duration: 15, ease: "none" }, 0);
+
+      // ── iOS 26 Showcase: full-device hero with a subtle drift-in ──
+      tl.to(S, { cZ: 6.45, duration: 12, ease: driftEase }, 0.5);
+      tl.to(S, { cY: 0.16, duration: 12, ease: driftEase }, 0.5);
+
+      // Very gentle tilt — shows the glass icon refraction from slightly different angles
+      tl.to(S, { phRY: PI + 0.04, phRX: 0.01, duration: 4, ease: breatheEase }, 0.5);
+      tl.to(S, { phRY: PI - 0.03, phRX: -0.008, duration: 4, ease: breatheEase }, 4.5);
+      tl.to(S, { phRY: PI + 0.02, phRX: 0.005, duration: 4, ease: breatheEase }, 8.5);
+
+      // No scroll — keep the home screen static
+      // No 360° turntable — just the gentle zoom out
+
+      // Move MacBook off screen so it doesn't appear
+      tl.set(S, { lpX: 10 }, 0);
+      tl.to(S, { iosN1: 1, duration: 0.72, ease: "none" }, 0.85);
+      tl.to(S, { iosN2: 1, duration: 0.74, ease: "none" }, 1.7);
+      tl.to(S, { iosN3: 1, duration: 0.76, ease: "none" }, 2.55);
+      tl.to({}, { duration: 15, ease: "none", onUpdate: render }, 0);
+    </script>
+  </body>
+</html>

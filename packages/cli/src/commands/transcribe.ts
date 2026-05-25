@@ -10,7 +10,7 @@ export const examples: Example[] = [
   ["Import an existing SRT file", "hyperframes transcribe subtitles.srt"],
   ["Import an OpenAI Whisper JSON response", "hyperframes transcribe response.json"],
 ];
-import { resolve, join, extname } from "node:path";
+import { resolve, join, extname, dirname } from "node:path";
 import * as clack from "@clack/prompts";
 import { c } from "../ui/colors.js";
 import { DEFAULT_MODEL } from "../whisper/manager.js";
@@ -56,7 +56,10 @@ export default defineCommand({
       process.exit(1);
     }
 
-    const dir = resolve(args.dir ?? ".");
+    // Default to the directory containing the input file so transcript.json
+    // lands next to narration.wav regardless of where the command is run from.
+    // Explicit --dir overrides this (e.g. for import mode targeting a project dir).
+    const dir = resolve(args.dir ?? dirname(inputPath));
     const ext = extname(inputPath).toLowerCase();
 
     // ── Import mode: convert existing transcript ──────────────────────────

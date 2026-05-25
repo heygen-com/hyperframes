@@ -10,8 +10,13 @@ import { streamSSE } from "hono/streaming";
 import { existsSync, readFileSync, writeFileSync, statSync } from "node:fs";
 import { resolve, join, basename } from "node:path";
 import { createProjectWatcher, type ProjectWatcher } from "./fileWatcher.js";
-import { loadRuntimeSource } from "./runtimeSource.js";
+import {
+  hashSignatureParts,
+  loadRuntimeSource,
+  loadRuntimeSourceSignature,
+} from "./runtimeSource.js";
 import { VERSION as version } from "../version.js";
+import { emitStudioRenderComplete, emitStudioRenderError } from "./studioRenderTelemetry.js";
 import {
   createStudioManualEditsRenderBodyScript,
   createStudioApi,
@@ -147,16 +152,6 @@ async function getThumbnailBrowser(): Promise<import("puppeteer-core").Browser |
         _thumbnailBrowser = null;
         _thumbnailBrowserInitializing = null;
       });
-      // Release the pool ref on process exit so the browser closes cleanly.
-      const onExit = async () => {
-        const { releaseBrowser } = await import("@hyperframes/engine");
-        if (_thumbnailBrowser) {
-          await releaseBrowser(_thumbnailBrowser).catch(() => {});
-          _thumbnailBrowser = null;
-        }
-      };
-      process.once("SIGTERM", () => void onExit());
-      process.once("SIGINT", () => void onExit());
       return _thumbnailBrowser;
     } catch (err) {
       console.warn(
@@ -171,6 +166,15 @@ async function getThumbnailBrowser(): Promise<import("puppeteer-core").Browser |
   return _thumbnailBrowserInitializing;
 }
 
+export async function closeThumbnailBrowser(): Promise<void> {
+  if (!_thumbnailBrowser) return;
+  const browser = _thumbnailBrowser;
+  _thumbnailBrowser = null;
+  _thumbnailBrowserInitializing = null;
+  const { releaseBrowser } = await import("@hyperframes/engine");
+  await releaseBrowser(browser).catch(() => {});
+}
+
 // ── Server factory ──────────────────────────────────────────────────────────
 
 export interface StudioServerOptions {
@@ -182,6 +186,25 @@ export interface StudioServerOptions {
 export interface StudioServer {
   app: Hono;
   watcher: ProjectWatcher;
+}
+
+export async function loadPreviewServerBuildSignature(): Promise<string> {
+  const runtimeSignature = await loadRuntimeSourceSignature();
+  const studioBundle = resolveStudioBundle();
+  const studioIndex =
+    studioBundle.available && existsSync(studioBundle.indexPath)
+      ? readFileSync(studioBundle.indexPath, "utf-8")
+      : "";
+  return hashSignatureParts([
+    version,
+    runtimeSignature,
+    studioIndex,
+    createStudioServer.toString(),
+    createStudioApi.toString(),
+    createProjectSignature.toString(),
+    getMimeType.toString(),
+    getElementScreenshotClip.toString(),
+  ]);
 }
 
 export function createStudioServer(options: StudioServerOptions): StudioServer {
@@ -253,6 +276,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
       };
 
       // Run render asynchronously, mutating the state object
+      const startTime = Date.now();
       (async () => {
         try {
           const { createRenderJob, executeRenderJob } = await import("@hyperframes/producer");
@@ -279,7 +303,6 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
             ...(manualEditsRenderScript ? { renderBodyScripts: [manualEditsRenderScript] } : {}),
             ...(opts.composition ? { entryFile: opts.composition } : {}),
           });
-          const startTime = Date.now();
           const onProgress = (j: { progress: number; currentStage?: string }) => {
             state.progress = j.progress;
             if (j.currentStage) state.stage = j.currentStage;
@@ -292,9 +315,11 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
             metaPath,
             JSON.stringify({ status: "complete", durationMs: Date.now() - startTime }),
           );
+          emitStudioRenderComplete(opts, Date.now() - startTime, job.perfSummary);
         } catch (err) {
           state.status = "failed";
           state.error = err instanceof Error ? err.message : String(err);
+          emitStudioRenderError(opts, Date.now() - startTime, state.stage, err);
           try {
             const metaPath = opts.outputPath.replace(/\.(mp4|webm|mov)$/, ".meta.json");
             writeFileSync(metaPath, JSON.stringify({ status: "failed" }));
@@ -346,7 +371,13 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
         }, opts.seekTime);
         const manifestContent = readStudioManualEditManifestContent(opts.project.dir);
         await applyStudioManualEditsToThumbnailPage(page, manifestContent, opts.compPath);
-        await page.evaluate(() => document.fonts?.ready);
+        await page.evaluate(() => {
+          void document.fonts?.ready;
+          const body = document.body;
+          if (body && getComputedStyle(body).backgroundColor === "rgba(0, 0, 0, 0)") {
+            body.style.backgroundColor = "#1c2028";
+          }
+        });
         await new Promise((r) => setTimeout(r, 200));
         await reapplyStudioManualEditsToThumbnailPage(page);
         let clip: ScreenshotClip | undefined;
@@ -389,8 +420,38 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
     async installRegistryBlock(opts) {
       const { resolveItem } = await import("../registry/resolver.js");
       const { installItem } = await import("../registry/installer.js");
+      const { readFileSync, writeFileSync, existsSync } = await import("node:fs");
+      const { join } = await import("node:path");
       const item = await resolveItem(opts.blockName);
       const { written } = await installItem(item, { destDir: opts.project.dir });
+
+      const indexPath = join(opts.project.dir, "index.html");
+      if (existsSync(indexPath)) {
+        const indexHtml = readFileSync(indexPath, "utf-8");
+        const hostW = indexHtml.match(/data-width="(\d+)"/)?.[1];
+        const hostH = indexHtml.match(/data-height="(\d+)"/)?.[1];
+        if (hostW && hostH) {
+          for (const absPath of written) {
+            if (!absPath.endsWith(".html")) continue;
+            let content = readFileSync(absPath, "utf-8");
+            content = content.replace(
+              /(<meta\s+name="viewport"\s+content="width=)\d+(,\s*height=)\d+/i,
+              `$1${hostW}$2${hostH}`,
+            );
+            content = content.replace(
+              /(\bwidth:\s*)\d+(px;\s*\n?\s*height:\s*)\d+(px;)/g,
+              (match, pre, mid, post) => {
+                if (match.includes("1920") || match.includes("1080")) {
+                  return `${pre}${hostW}${mid}${hostH}${post}`;
+                }
+                return match;
+              },
+            );
+            writeFileSync(absPath, content, "utf-8");
+          }
+        }
+      }
+
       const relativePaths = written.map((abs) => {
         const rel = abs.startsWith(opts.project.dir) ? abs.slice(opts.project.dir.length + 1) : abs;
         return rel;
@@ -407,12 +468,17 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
   // HyperFrames instances and reuse them instead of spawning duplicates.
   // See portUtils.ts detectHyperframesServer() for the consumer.
   app.get("/__hyperframes_config", (c) => {
-    return c.json({
-      isHyperframes: true,
-      projectName: projectId,
-      projectDir: projectDir,
-      version,
-    });
+    const serve = async () => {
+      const serverBuildSignature = await loadPreviewServerBuildSignature();
+      return c.json({
+        isHyperframes: true,
+        projectName: projectId,
+        projectDir: projectDir,
+        serverBuildSignature,
+        version,
+      });
+    };
+    return serve();
   });
 
   // CLI-specific routes (before shared API)
@@ -471,6 +537,22 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
   app.get("/assets/*", serveStudioStaticFile);
   app.get("/icons/*", serveStudioStaticFile);
   app.get("/favicon.svg", serveStudioStaticFile);
+
+  // ── Runtime env injection ───────────────────────────────────────────────
+  // When the studio is served as a pre-built SPA, Vite `VITE_STUDIO_*` env
+  // vars were baked at build time. Collect any such vars from the current
+  // process.env and inject them as `window.__HF_STUDIO_ENV__` so the client
+  // can pick them up at runtime, overriding the baked defaults.
+  function buildRuntimeEnvScript(): string {
+    const overrides: Record<string, string> = {};
+    for (const [key, value] of Object.entries(process.env)) {
+      if (key.startsWith("VITE_STUDIO_") && value !== undefined) {
+        overrides[key] = value;
+      }
+    }
+    if (Object.keys(overrides).length === 0) return "";
+    return `<script>window.__HF_STUDIO_ENV__=${JSON.stringify(overrides)};</script>`;
+  }
 
   // SPA fallback
   app.get("*", (c) => {
@@ -531,7 +613,12 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
         500,
       );
     }
-    return c.html(readFileSync(indexPath, "utf-8"));
+    let html = readFileSync(indexPath, "utf-8");
+    const envScript = buildRuntimeEnvScript();
+    if (envScript) {
+      html = html.replace("<head>", `<head>${envScript}`);
+    }
+    return c.html(html);
   });
 
   return { app, watcher };

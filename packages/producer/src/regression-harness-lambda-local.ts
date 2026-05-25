@@ -92,6 +92,11 @@ export async function runLambdaLocalRender(input: RunLambdaLocalInput): Promise<
     chunkSize: input.chunkSize,
     maxParallelChunks: input.maxParallelChunks,
     hdrMode: "force-sdr",
+    // Forward `variables` through the event boundary so lambda-local mode
+    // exercises the same variables-in-encoder.json path that real Lambda
+    // executions take. Without this, a fixture's `renderConfig.variables`
+    // would be silently dropped at the harness's serializer.
+    variables: input.variables,
   };
 
   // STEP A: plan

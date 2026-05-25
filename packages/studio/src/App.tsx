@@ -8,10 +8,11 @@ import { useCaptionSync } from "./captions/hooks/useCaptionSync";
 import { usePersistentEditHistory } from "./hooks/usePersistentEditHistory";
 import { usePanelLayout } from "./hooks/usePanelLayout";
 import { useFileManager } from "./hooks/useFileManager";
-import { useManifestPersistence } from "./hooks/useManifestPersistence";
+import { usePreviewPersistence } from "./hooks/usePreviewPersistence";
 import { useTimelineEditing } from "./hooks/useTimelineEditing";
 import { addBlockToProject } from "./utils/blockInstaller";
 import type { BlockParam } from "@hyperframes/core/registry";
+import type { BlockPreviewInfo } from "./components/sidebar/BlocksTab";
 import { useDomEditSession } from "./hooks/useDomEditSession";
 import { useAppHotkeys } from "./hooks/useAppHotkeys";
 import { useClipboard } from "./hooks/useClipboard";
@@ -47,10 +48,23 @@ import {
   normalizeStudioCompositionPath,
   readStudioUrlStateFromWindow,
 } from "./utils/studioUrlState";
+import { trackStudioSessionStart } from "./telemetry/events";
+import { hasFiredSessionStart, markSessionStartFired } from "./telemetry/config";
 
 export function StudioApp() {
   const { projectId, resolving, waitingForServer } = useServerConnection();
   const initialUrlStateRef = useRef(readStudioUrlStateFromWindow());
+
+  // Fire once per browser tab session — sessionStorage-backed so HMR
+  // remounts, route changes, and any future StudioApp remount within the
+  // same tab don't refire `studio_session_start`. `has_project` lets us
+  // tell scratch-open from project-context-open.
+  useEffect(() => {
+    if (resolving || waitingForServer) return;
+    if (hasFiredSessionStart()) return;
+    markSessionStartFired();
+    trackStudioSessionStart({ has_project: projectId != null });
+  }, [projectId, resolving, waitingForServer]);
 
   const [activeCompPath, setActiveCompPath] = useState<string | null>(null);
   const [activeCompPathHydrated, setActiveCompPathHydrated] = useState(
@@ -67,6 +81,7 @@ export function StudioApp() {
     params: BlockParam[];
     compositionPath: string;
   } | null>(null);
+  const [blockPreview, setBlockPreview] = useState<BlockPreviewInfo | null>(null);
 
   const previewIframeRef = useRef<HTMLIFrameElement | null>(null);
   const activeCompPathRef = useRef(activeCompPath);
@@ -117,12 +132,9 @@ export function StudioApp() {
   });
   const editHistory = usePersistentEditHistory({ projectId });
   const domEditSaveTimestampRef = useRef(0);
+  const pendingTimelineEditPathRef = useRef(new Set<string>());
   const reloadPreview = useCallback(() => {
-    try {
-      previewIframeRef.current?.contentWindow?.location.reload();
-    } catch {
-      setRefreshKey((k) => k + 1);
-    }
+    setRefreshKey((k) => k + 1);
   }, []);
 
   const fileManager = useFileManager({
@@ -145,7 +157,7 @@ export function StudioApp() {
     setActiveCompPathHydrated(true);
   }, [activeCompPathHydrated, fileManager.fileTree, fileManager.fileTreeLoaded]);
 
-  const manifestPersistence = useManifestPersistence({
+  const previewPersistence = usePreviewPersistence({
     projectId,
     showToast,
     readOptionalProjectFile: fileManager.readOptionalProjectFile,
@@ -155,6 +167,7 @@ export function StudioApp() {
     activeCompPathRef,
     domEditSaveTimestampRef,
     reloadPreview: () => setRefreshKey((k) => k + 1),
+    pendingTimelineEditPathRef,
   });
 
   const timelineEditing = useTimelineEditing({
@@ -166,6 +179,8 @@ export function StudioApp() {
     recordEdit: editHistory.recordEdit,
     domEditSaveTimestampRef,
     reloadPreview,
+    previewIframeRef,
+    pendingTimelineEditPathRef,
     uploadProjectFiles: fileManager.uploadProjectFiles,
   });
 
@@ -177,6 +192,8 @@ export function StudioApp() {
           projectId,
           blockName,
           activeCompPath,
+          previewIframe: previewIframeRef.current,
+          currentTime: usePlayerStore.getState().currentTime,
           timelineElements,
           readProjectFile: fileManager.readProjectFile,
           writeProjectFile: fileManager.writeProjectFile,
@@ -220,6 +237,40 @@ export function StudioApp() {
         blockName,
         activeCompPath,
         placement,
+        previewIframe: previewIframeRef.current,
+        currentTime: usePlayerStore.getState().currentTime,
+        timelineElements,
+        readProjectFile: fileManager.readProjectFile,
+        writeProjectFile: fileManager.writeProjectFile,
+        recordEdit: editHistory.recordEdit,
+        refreshFileTree: fileManager.refreshFileTree,
+        reloadPreview,
+        showToast,
+      });
+    },
+    [
+      projectId,
+      activeCompPath,
+      timelineElements,
+      fileManager.readProjectFile,
+      fileManager.writeProjectFile,
+      fileManager.refreshFileTree,
+      editHistory.recordEdit,
+      reloadPreview,
+      showToast,
+    ],
+  );
+
+  const handlePreviewBlockDrop = useCallback(
+    (blockName: string, position: { left: number; top: number }) => {
+      if (!projectId) return;
+      void addBlockToProject({
+        projectId,
+        blockName,
+        activeCompPath,
+        visualPosition: position,
+        previewIframe: previewIframeRef.current,
+        currentTime: usePlayerStore.getState().currentTime,
         timelineElements,
         readProjectFile: fileManager.readProjectFile,
         writeProjectFile: fileManager.writeProjectFile,
@@ -274,13 +325,22 @@ export function StudioApp() {
     writeProjectFile: fileManager.writeProjectFile,
     domEditSaveTimestampRef,
     showToast,
-    syncHistoryPreviewAfterApply: manifestPersistence.syncHistoryPreviewAfterApply,
-    waitForPendingDomEditSaves: manifestPersistence.waitForPendingDomEditSaves,
+    syncHistoryPreviewAfterApply: previewPersistence.syncHistoryPreviewAfterApply,
+    waitForPendingDomEditSaves: previewPersistence.waitForPendingDomEditSaves,
     leftSidebarRef,
     handleCopy,
     handlePaste,
     handleCut,
   });
+
+  const selectSidebarTabStable = useCallback(
+    (tab: SidebarTab) => leftSidebarRef.current?.selectTab(tab),
+    [],
+  );
+  const getSidebarTabStable = useCallback(
+    () => leftSidebarRef.current?.getTab() ?? "compositions",
+    [],
+  );
 
   const domEditSession = useDomEditSession({
     projectId,
@@ -297,7 +357,7 @@ export function StudioApp() {
     setRightPanelTab: panelLayout.setRightPanelTab,
     showToast,
     refreshPreviewDocumentVersion,
-    queueDomEditSave: manifestPersistence.queueDomEditSave,
+    queueDomEditSave: previewPersistence.queueDomEditSave,
     readProjectFile: fileManager.readProjectFile,
     writeProjectFile: fileManager.writeProjectFile,
     domEditSaveTimestampRef,
@@ -309,12 +369,13 @@ export function StudioApp() {
     previewIframe,
     refreshKey,
     rightPanelTab: panelLayout.rightPanelTab,
-    applyStudioManualEditsToPreviewRef: manifestPersistence.applyStudioManualEditsToPreviewRef,
+    applyStudioManualEditsToPreviewRef: previewPersistence.applyStudioManualEditsToPreviewRef,
     syncPreviewHistoryHotkey: appHotkeys.syncPreviewHistoryHotkey,
     reloadPreview,
     setRefreshKey,
     openSourceForSelection: fileManager.openSourceForSelection,
-    selectSidebarTab: (tab: SidebarTab) => leftSidebarRef.current?.selectTab(tab),
+    selectSidebarTab: selectSidebarTabStable,
+    getSidebarTab: getSidebarTabStable,
   });
 
   domEditSelectionBridgeRef.current = domEditSession.domEditSelection;
@@ -345,7 +406,7 @@ export function StudioApp() {
     projectId,
     activeCompPath,
     showToast,
-    waitForPendingDomEditSaves: manifestPersistence.waitForPendingDomEditSaves,
+    waitForPendingDomEditSaves: previewPersistence.waitForPendingDomEditSaves,
   });
   const {
     consoleErrors,
@@ -453,7 +514,7 @@ export function StudioApp() {
       startRender: renderQueue.startRender as (options: unknown) => Promise<void>,
     },
     compositionDimensions,
-    waitForPendingDomEditSaves: manifestPersistence.waitForPendingDomEditSaves,
+    waitForPendingDomEditSaves: previewPersistence.waitForPendingDomEditSaves,
     handlePreviewIframeRef,
     refreshPreviewDocumentVersion,
     timelineVisible,
@@ -509,6 +570,7 @@ export function StudioApp() {
                   leftSidebarRef={leftSidebarRef}
                   onSelectComposition={handleSelectComposition}
                   onAddBlock={handleAddBlock}
+                  onPreviewBlock={setBlockPreview}
                   onLint={handleLint}
                   linting={linting}
                 />
@@ -518,6 +580,7 @@ export function StudioApp() {
                   handleTimelineElementDelete={timelineEditing.handleTimelineElementDelete}
                   handleTimelineAssetDrop={timelineEditing.handleTimelineAssetDrop}
                   handleTimelineBlockDrop={handleTimelineBlockDrop}
+                  handlePreviewBlockDrop={handlePreviewBlockDrop}
                   handleTimelineFileDrop={timelineEditing.handleTimelineFileDrop}
                   handleTimelineElementMove={timelineEditing.handleTimelineElementMove}
                   handleTimelineElementResize={timelineEditing.handleTimelineElementResize}
@@ -525,6 +588,7 @@ export function StudioApp() {
                   setCompIdToSrc={setCompIdToSrc}
                   setCompositionLoading={setCompositionLoading}
                   shouldShowSelectedDomBounds={shouldShowSelectedDomBounds}
+                  blockPreview={blockPreview}
                 />
 
                 {!panelLayout.rightCollapsed && (

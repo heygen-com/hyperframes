@@ -1,4 +1,5 @@
 import { ArrowLeft, CaretRight } from "@phosphor-icons/react";
+import { trackStudioEvent } from "../../utils/studioTelemetry";
 
 export interface CompositionLevel {
   /** Unique id — "master" or composition file path */
@@ -25,7 +26,13 @@ export function CompositionBreadcrumb({ stack, onNavigate }: CompositionBreadcru
       {/* Back button — always goes to parent */}
       <button
         type="button"
-        onClick={() => onNavigate(stack.length - 2)}
+        onClick={() => {
+          trackStudioEvent("navigation", {
+            action: "back",
+            target: stack[stack.length - 2]?.label,
+          });
+          onNavigate(stack.length - 2);
+        }}
         className="flex items-center gap-1 px-1.5 py-0.5 rounded text-xs text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors"
         title="Back (Esc)"
       >
@@ -43,7 +50,10 @@ export function CompositionBreadcrumb({ stack, onNavigate }: CompositionBreadcru
             ) : (
               <button
                 type="button"
-                onClick={() => onNavigate(i)}
+                onClick={() => {
+                  trackStudioEvent("navigation", { action: "breadcrumb", target: level.label });
+                  onNavigate(i);
+                }}
                 className="text-xs text-neutral-500 hover:text-neutral-200 transition-colors"
               >
                 {level.label}

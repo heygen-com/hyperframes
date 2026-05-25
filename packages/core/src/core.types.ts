@@ -20,6 +20,15 @@ export interface Fps {
   den: number;
 }
 
+export type FpsInput = number | Fps;
+
+export function toFps(input: FpsInput): Fps {
+  if (typeof input === "number") {
+    return { num: input, den: 1 };
+  }
+  return input;
+}
+
 /**
  * Decimal value of an {@link Fps} rational. Used at sites that need a
  * `number` for arithmetic (frame-index → time, frame intervals, telemetry

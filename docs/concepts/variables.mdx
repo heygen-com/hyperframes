@@ -34,6 +34,90 @@ Every declaration requires four fields: `id`, `type`, `label`, and `default`. `i
 
 The Studio editing UI uses `label`, `type`, and the type-specific options to render the right input widget for each variable.
 
+## What can be a variable
+
+Variables come in two layers. The five [declared types](#variable-types) above cover typed primitive data — strings, numbers, colors, booleans, enums. For everything else, a `string` variable holding a URL is the escape hatch: your composition reads the URL and assigns it to whatever DOM element needs it.
+
+### Parameterizing media assets
+
+The same composition can render different images, video clips, or audio tracks just by swapping URLs through a string variable:
+
+```html compositions/product-card.html
+<html data-composition-variables='[
+  {"id":"productImage","type":"string","label":"Product image URL","default":"https://cdn.example.com/products/default.png"},
+  {"id":"productName","type":"string","label":"Product name","default":"Untitled"}
+]'>
+  <body>
+    <div data-composition-id="product-card" data-width="1920" data-height="1080" data-duration="5">
+      <img class="product-img" alt="" />
+      <h1 class="product-name"></h1>
+
+      <script>
+        const {
+          productImage = "https://cdn.example.com/products/default.png",
+          productName = "Untitled",
+        } = __hyperframes.getVariables();
+        const root = document.querySelector('[data-composition-id="product-card"]');
+        root.querySelector(".product-img").src = productImage;
+        root.querySelector(".product-name").textContent = productName;
+      </script>
+    </div>
+  </body>
+</html>
+```
+
+<Note>
+The runtime probes the DOM after your composition script runs, so a `<video>` or `<audio>` `src` assigned at runtime from a variable is discovered and pre-extracted for the render. No extra wiring required — just set the `src` from your variable.
+</Note>
+
+The same pattern covers the three media element types:
+
+- **`<img src>`** — assign from a string variable. Chrome fetches it during capture like any other image; no extra config.
+- **`<video src>`** — assign from a string variable, but keep the timing attributes (`data-start`, `data-duration`, `data-track-index`, `data-has-audio`) on the element itself. The probe phase scans `video[data-start]` elements after your script runs and reads the resolved `src` for pre-extraction.
+- **`<audio src>`** — same as video. The audio is decoded during capture and mixed into the final output.
+
+Pass assets as URL references your composition resolves at render time; don't inline base64. URL-shaped assets travel cleanly through both the local renderer and the Lambda surface — see [Templates on Lambda](/deploy/templates-on-lambda#working-with-large-variables) for the 256 KiB execution-input cap on distributed renders.
+
+### Swapping media: do you need to vary duration too?
+
+A common follow-up: if a variable swaps a `<video>` to a different clip, does `data-duration` need to change too? Usually no. `data-duration` is optional on `<video>` and `<audio>` — leave it off and the renderer ffprobes the source and uses its natural length:
+
+```html compositions/hero.html
+<video id="hero" data-start="0" data-track-index="0"></video>
+<script>
+  document.getElementById("hero").src = __hyperframes.getVariables().heroVideo;
+</script>
+```
+
+If you need to clamp or pin the clip to a specific length per render — for example, to keep downstream timing stable across clips of different source lengths — expose duration as its own `number` variable and apply it via the same script:
+
+```html compositions/hero.html
+<video id="hero" data-start="0" data-track-index="0"></video>
+<script>
+  const { heroVideo, heroDuration } = __hyperframes.getVariables();
+  const el = document.getElementById("hero");
+  el.src = heroVideo;
+  if (heroDuration !== undefined) {
+    el.setAttribute("data-duration", String(heroDuration));
+  }
+</script>
+```
+
+The probe phase reads `data-duration` from the live DOM after your script runs, so an attribute written programmatically behaves identically to one baked into the source HTML.
+
+## What can't be a variable
+
+A small set of inputs are read once from the source HTML or from the CLI / SDK, with no live-DOM re-read — no script (and therefore no variable) can change them:
+
+| What | Mechanism (not a variable) |
+|------|----------------------------|
+| Composition dimensions | `data-width` / `data-height` on the composition element — parsed from the source HTML at compile time, not from the live DOM |
+| Frame rate | `--fps` flag on `hyperframes render`, or `config.fps` in the SDK |
+| Output format / codec / quality | `--format` / `--codec` / `--quality` flags, or the SDK equivalents |
+| A sibling or parent composition's variables | Variables are per-composition; use [`data-variable-values`](#per-instance-overrides-sub-compositions) on each sub-comp host element to pass overrides |
+
+The deeper rule: variables are runtime values your script applies to the DOM. They can drive anything the renderer reads from the live DOM after that script runs — text, colors, media `src`, even clip `data-duration` as shown above. They can't change inputs the renderer reads once at compile time (dimensions) or that live entirely outside the composition (CLI flags, encoder settings).
+
 ## Reading Variables at Runtime
 
 Inside any composition script, call `window.__hyperframes.getVariables()` to get the resolved variable values. The return type is `Partial<Record<string, unknown>>` — use destructuring with defaults matching the declared `default` values:

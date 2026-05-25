@@ -126,5 +126,12 @@ export function insertTimelineAssetIntoSource(source: string, assetHtml: string)
     throw new Error("No composition root found in target source");
   }
   const insertAt = match.index + match[0].length;
-  return `${source.slice(0, insertAt)}${assetHtml}${source.slice(insertAt)}`;
+  const lineStart = source.lastIndexOf("\n", match.index);
+  const leadingWhitespace = source.slice(lineStart + 1, match.index).match(/^(\s*)/)?.[1] ?? "";
+  const childIndent = leadingWhitespace + "  ";
+  const indented = assetHtml
+    .split("\n")
+    .map((line, i) => (i === 0 ? line : childIndent + line))
+    .join("\n");
+  return `${source.slice(0, insertAt)}\n${childIndent}${indented}${source.slice(insertAt)}`;
 }

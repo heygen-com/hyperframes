@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { buildProjectHash, parseProjectIdFromHash } from "../utils/projectRouting";
 import { useMountEffect } from "./useMountEffect";
 
@@ -66,6 +66,16 @@ export function useServerConnection(): ServerConnectionState {
       if (retryTimer !== null) clearTimeout(retryTimer);
     };
   });
+
+  // eslint-disable-next-line no-restricted-syntax
+  useEffect(() => {
+    const onHashChange = () => {
+      const next = parseProjectIdFromHash(window.location.hash);
+      if (next && next !== projectId) setProjectId(next);
+    };
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, [projectId]);
 
   return { projectId, resolving, waitingForServer };
 }

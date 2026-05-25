@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "parallax-zoom",
+  "type": "hyperframes:component",
+  "title": "Parallax Zoom",
+  "description": "Center card scales up to fill the frame while siblings parallax outward — inspired by the eBay Playbook hero transition",
+  "tags": ["transition", "zoom", "parallax", "grid", "hero"],
+  "files": [
+    {
+      "path": "parallax-zoom.html",
+      "target": "compositions/components/parallax-zoom.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/parallax-zoom.png"
+  }
+}

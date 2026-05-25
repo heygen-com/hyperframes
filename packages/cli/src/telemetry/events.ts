@@ -11,6 +11,9 @@ export function trackRenderComplete(props: {
   workers?: number;
   docker: boolean;
   gpu: boolean;
+  // "cli" when triggered by `hyperframes render` (default), "studio" when
+  // triggered by a studio preview-server render (POST /api/projects/:id/render).
+  source?: "cli" | "studio";
   // Composition metadata
   compositionDurationMs?: number;
   compositionWidth?: number;
@@ -50,6 +53,7 @@ export function trackRenderComplete(props: {
     workers: props.workers,
     docker: props.docker,
     gpu: props.gpu,
+    source: props.source ?? "cli",
     composition_duration_ms: props.compositionDurationMs,
     composition_width: props.compositionWidth,
     composition_height: props.compositionHeight,
@@ -85,6 +89,7 @@ export function trackRenderError(props: {
   docker: boolean;
   workers?: number;
   gpu?: boolean;
+  source?: "cli" | "studio";
   failedStage?: string;
   errorMessage?: string;
   elapsedMs?: number;
@@ -97,6 +102,7 @@ export function trackRenderError(props: {
     docker: props.docker,
     workers: props.workers,
     gpu: props.gpu,
+    source: props.source ?? "cli",
     failed_stage: props.failedStage,
     error_message: props.errorMessage,
     elapsed_ms: props.elapsedMs,

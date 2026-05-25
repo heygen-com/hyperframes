@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef } from "react";
 import type { RightPanelTab } from "../utils/studioHelpers";
 import { readStudioUiPreferences, writeStudioUiPreferences } from "../utils/studioUiPreferences";
+import { trackStudioEvent } from "../utils/studioTelemetry";
 
 export interface InitialPanelLayoutState {
   rightCollapsed?: boolean | null;
@@ -26,6 +27,7 @@ export function usePanelLayout(initialState?: InitialPanelLayoutState) {
   const toggleLeftSidebar = useCallback(() => {
     setLeftCollapsed((collapsed) => {
       writeStudioUiPreferences({ leftCollapsed: !collapsed });
+      trackStudioEvent("panel_toggle", { panel: "left_sidebar", collapsed: !collapsed });
       return !collapsed;
     });
   }, []);
@@ -63,6 +65,14 @@ export function usePanelLayout(initialState?: InitialPanelLayoutState) {
     panelDragRef.current = null;
   }, []);
 
+  const trackedSetRightPanelTab = useCallback(
+    (tab: RightPanelTab) => {
+      setRightPanelTab(tab);
+      trackStudioEvent("tab_switch", { panel: "right_panel", tab });
+    },
+    [setRightPanelTab],
+  );
+
   return {
     leftWidth,
     setLeftWidth,
@@ -72,7 +82,7 @@ export function usePanelLayout(initialState?: InitialPanelLayoutState) {
     rightCollapsed,
     setRightCollapsed,
     rightPanelTab,
-    setRightPanelTab,
+    setRightPanelTab: trackedSetRightPanelTab,
     toggleLeftSidebar,
     handlePanelResizeStart,
     handlePanelResizeMove,

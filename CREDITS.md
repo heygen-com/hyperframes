@@ -22,3 +22,9 @@ Remotion.
 Thanks also to the authors and maintainers of the open-source projects
 HyperFrames builds on, including Puppeteer, FFmpeg, GSAP, Hono, and the
 broader Node.js ecosystem.
+
+## Third-party licenses
+
+- **[mediabunny](https://github.com/nicoch/mediabunny)** — media toolkit used
+  in the studio for fast metadata extraction from file headers. Licensed under
+  the [Mozilla Public License 2.0 (MPL-2.0)](https://mozilla.org/MPL/2.0/).

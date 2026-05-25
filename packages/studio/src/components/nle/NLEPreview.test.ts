@@ -112,17 +112,9 @@ function renderPreview() {
 }
 
 describe("getPreviewPlayerKey", () => {
-  it("keeps the same player identity when only refreshKey changes", () => {
-    expect(
-      getPreviewPlayerKey({
-        projectId: "timeline-edit-playground",
-        refreshKey: 1,
-      }),
-    ).toBe(
-      getPreviewPlayerKey({
-        projectId: "timeline-edit-playground",
-        refreshKey: 2,
-      }),
+  it("uses projectId as key when no directUrl", () => {
+    expect(getPreviewPlayerKey({ projectId: "timeline-edit-playground" })).toBe(
+      "timeline-edit-playground",
     );
   });
 

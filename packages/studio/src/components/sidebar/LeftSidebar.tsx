@@ -3,19 +3,23 @@ import {
   useState,
   useCallback,
   useImperativeHandle,
+  useRef,
   forwardRef,
   type ReactNode,
 } from "react";
 import { CompositionsTab } from "./CompositionsTab";
 import { AssetsTab } from "./AssetsTab";
-import { BlocksTab } from "./BlocksTab";
+import { trackStudioEvent } from "../../utils/studioTelemetry";
+import { BlocksTab, type BlockPreviewInfo } from "./BlocksTab";
 import { FileTree } from "../editor/FileTree";
 import { STUDIO_BLOCKS_PANEL_ENABLED } from "../editor/manualEditingAvailability";
+import { Tooltip } from "../ui";
 
 export type SidebarTab = "compositions" | "assets" | "code" | "blocks";
 
 export interface LeftSidebarHandle {
   selectTab: (tab: SidebarTab) => void;
+  getTab: () => SidebarTab;
 }
 
 const STORAGE_KEY = "hf-studio-sidebar-tab";
@@ -52,6 +56,7 @@ interface LeftSidebarProps {
   linting?: boolean;
   onToggleCollapse?: () => void;
   onAddBlock?: (blockName: string) => void;
+  onPreviewBlock?: (preview: BlockPreviewInfo | null) => void;
   takeoverContent?: ReactNode;
 }
 
@@ -81,18 +86,24 @@ export const LeftSidebar = memo(
       linting,
       onToggleCollapse,
       onAddBlock,
+      onPreviewBlock,
       takeoverContent,
     },
     ref,
   ) {
     const [tab, setTab] = useState<SidebarTab>(getPersistedTab);
+    const tabRef = useRef(tab);
+    tabRef.current = tab;
 
     const selectTab = useCallback((t: SidebarTab) => {
       setTab(t);
       localStorage.setItem(STORAGE_KEY, t);
+      trackStudioEvent("tab_switch", { panel: "left_sidebar", tab: t });
     }, []);
 
-    useImperativeHandle(ref, () => ({ selectTab }), [selectTab]);
+    const getTab = useCallback(() => tabRef.current, []);
+
+    useImperativeHandle(ref, () => ({ selectTab, getTab }), [selectTab, getTab]);
 
     return (
       <div
@@ -114,51 +125,59 @@ export const LeftSidebar = memo(
                       : "1fr 1fr 1fr",
                   }}
                 >
-                  <button
-                    type="button"
-                    onClick={() => selectTab("code")}
-                    className={`rounded-[14px] px-1.5 py-2 text-[10px] font-semibold truncate transition-all ${
-                      tab === "code"
-                        ? "bg-neutral-800 text-white"
-                        : "text-neutral-500 hover:text-neutral-200"
-                    }`}
-                  >
-                    Code
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => selectTab("compositions")}
-                    className={`rounded-[14px] px-1.5 py-2 text-[10px] font-semibold truncate transition-all ${
-                      tab === "compositions"
-                        ? "bg-neutral-800 text-white"
-                        : "text-neutral-500 hover:text-neutral-200"
-                    }`}
-                  >
-                    Comps
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => selectTab("assets")}
-                    className={`rounded-[14px] px-1.5 py-2 text-[10px] font-semibold truncate transition-all ${
-                      tab === "assets"
-                        ? "bg-neutral-800 text-white"
-                        : "text-neutral-500 hover:text-neutral-200"
-                    }`}
-                  >
-                    Assets
-                  </button>
-                  {STUDIO_BLOCKS_PANEL_ENABLED && (
+                  <Tooltip label="Source code editor" side="bottom">
                     <button
                       type="button"
-                      onClick={() => selectTab("blocks")}
+                      onClick={() => selectTab("code")}
                       className={`rounded-[14px] px-1.5 py-2 text-[10px] font-semibold truncate transition-all ${
-                        tab === "blocks"
+                        tab === "code"
                           ? "bg-neutral-800 text-white"
                           : "text-neutral-500 hover:text-neutral-200"
                       }`}
                     >
-                      Blocks
+                      Code
                     </button>
+                  </Tooltip>
+                  <Tooltip label="Compositions and sub-compositions" side="bottom">
+                    <button
+                      type="button"
+                      onClick={() => selectTab("compositions")}
+                      className={`rounded-[14px] px-1.5 py-2 text-[10px] font-semibold truncate transition-all ${
+                        tab === "compositions"
+                          ? "bg-neutral-800 text-white"
+                          : "text-neutral-500 hover:text-neutral-200"
+                      }`}
+                    >
+                      Comps
+                    </button>
+                  </Tooltip>
+                  <Tooltip label="Videos, images, audio, fonts" side="bottom">
+                    <button
+                      type="button"
+                      onClick={() => selectTab("assets")}
+                      className={`rounded-[14px] px-1.5 py-2 text-[10px] font-semibold truncate transition-all ${
+                        tab === "assets"
+                          ? "bg-neutral-800 text-white"
+                          : "text-neutral-500 hover:text-neutral-200"
+                      }`}
+                    >
+                      Assets
+                    </button>
+                  </Tooltip>
+                  {STUDIO_BLOCKS_PANEL_ENABLED && (
+                    <Tooltip label="Browse blocks and components" side="bottom">
+                      <button
+                        type="button"
+                        onClick={() => selectTab("blocks")}
+                        className={`rounded-[14px] px-1.5 py-2 text-[10px] font-semibold truncate transition-all ${
+                          tab === "blocks"
+                            ? "bg-neutral-800 text-white"
+                            : "text-neutral-500 hover:text-neutral-200"
+                        }`}
+                      >
+                        Catalog
+                      </button>
+                    </Tooltip>
                   )}
                 </div>
                 {onToggleCollapse && (
@@ -236,8 +255,8 @@ export const LeftSidebar = memo(
               </div>
             )}
 
-            {STUDIO_BLOCKS_PANEL_ENABLED && tab === "blocks" && onAddBlock && (
-              <BlocksTab onAddBlock={onAddBlock} />
+            {STUDIO_BLOCKS_PANEL_ENABLED && tab === "blocks" && (
+              <BlocksTab onAddBlock={onAddBlock} onPreviewBlock={onPreviewBlock} />
             )}
 
             {/* Lint button pinned at the bottom */}

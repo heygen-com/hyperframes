@@ -23,14 +23,15 @@
         height: 1080px;
         margin: 0;
         overflow: hidden;
-        background: #000;
+        background: transparent;
       }
       #matrix-decode {
+        pointer-events: none;
         position: relative;
         width: 1920px;
         height: 1080px;
         overflow: hidden;
-        background: #000;
+        background: transparent;
       }
       #sc-video {
         position: absolute;
@@ -43,7 +44,7 @@
       .sc-overlay {
         position: absolute;
         inset: 0;
-        background: rgba(0, 0, 0, 0.85);
+        background: transparent;
         z-index: 1;
         pointer-events: none;
       }
@@ -92,6 +93,7 @@
     <div
       id="matrix-decode"
       data-composition-id="caption-matrix-decode"
+      data-timeline-locked
       data-start="0"
       data-duration="8"
       data-fps="30"

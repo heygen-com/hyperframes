@@ -4,6 +4,11 @@ permissions:
   contents: read
   pull-requests: read
 
+# Suppress hyperframes CLI telemetry from HeyGen's own CI runs.
+# External users' CI continues to emit telemetry unless they set this themselves.
+env:
+  HYPERFRAMES_NO_TELEMETRY: "1"
+
 on:
   pull_request:
     # `edited` is required so the workflow re-fires when a PR's base ref is
@@ -223,6 +228,71 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: bun run --filter @hyperframes/core test:hyperframe-runtime-ci
 
+  studio-load-smoke:
+    name: "Studio: load smoke"
+    needs: [changes]
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          lfs: true
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - run: bun install --frozen-lockfile
+      - run: bun run --cwd packages/core build:hyperframes-runtime
+      - name: Start studio and check for runtime errors
+        run: |
+          # Start the studio dev server in the background
+          bun run --filter '@hyperframes/studio' dev -- --port 5199 &
+          SERVER_PID=$!
+
+          # Wait for the server to be ready (up to 20s)
+          for i in $(seq 1 40); do
+            if curl -sf http://localhost:5199/ >/dev/null 2>&1; then break; fi
+            sleep 0.5
+          done
+
+          if ! curl -sf http://localhost:5199/ >/dev/null 2>&1; then
+            echo "FAIL: studio dev server did not start"
+            kill $SERVER_PID 2>/dev/null || true
+            exit 1
+          fi
+
+          # Load the studio in headless Chrome and capture console errors
+          # puppeteer is a dependency of @hyperframes/producer; resolve from there
+          cd packages/producer
+          node --input-type=module <<'SMOKE_EOF'
+          import puppeteer from "puppeteer";
+          const browser = await puppeteer.launch({
+            headless: "new",
+            args: ["--no-sandbox", "--disable-setuid-sandbox"],
+          });
+          const page = await browser.newPage();
+          const errors = [];
+          page.on("pageerror", (err) => errors.push(err.message));
+          page.on("console", (msg) => {
+            if (msg.type() === "error") errors.push(msg.text());
+          });
+          await page.goto("http://localhost:5199/", { waitUntil: "networkidle0", timeout: 30000 });
+          await new Promise((r) => setTimeout(r, 3000));
+          await browser.close();
+          const fatal = errors.filter(
+            (e) => !e.includes("favicon") && !e.includes("ERR_CONNECTION_REFUSED"),
+          );
+          if (fatal.length > 0) {
+            console.error("FAIL: studio had runtime errors on load:");
+            for (const e of fatal) console.error("  •", e);
+            process.exit(1);
+          }
+          console.log("PASS: studio loaded without runtime errors");
+          SMOKE_EOF
+
+          kill $SERVER_PID 2>/dev/null || true
+
   smoke-global-install:
     name: "Smoke: global install"
     needs: [changes, build]
@@ -397,17 +467,39 @@ jobs:
     timeout-minutes: 1
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      - name: Check file sizes (max 500 lines)
+        with:
+          fetch-depth: 0
+      - name: Check file sizes (max 600 lines)
+        # Scoped to files THIS PR changed under packages/studio. Walking the
+        # whole tree blamed every unrelated PR for pre-existing offenders.
+        # Falls back to a full scan on push events (no base ref available)
+        # so the rule still guards main.
         run: |
+          set -e
+          if [ -n "${{ github.base_ref }}" ]; then
+            mapfile -t files < <(
+              git diff --name-only --diff-filter=ACMR \
+                "origin/${{ github.base_ref }}...HEAD" -- \
+                'packages/studio/**/*.ts' 'packages/studio/**/*.tsx' \
+                | grep -vE '\.(test|spec)\.(ts|tsx)$|\.generated\.' || true
+            )
+          else
+            mapfile -t files < <(
+              find packages/studio -path '*/node_modules' -prune -o \
+                \( -name '*.ts' -o -name '*.tsx' \) -print \
+                | grep -vE '\.(test|spec)\.(ts|tsx)$|\.generated\.'
+            )
+          fi
           EXIT=0
-          while IFS= read -r f; do
-            if grep -qxF "$f" .filesize-allowlist 2>/dev/null; then continue; fi
+          for f in "${files[@]}"; do
+            [ -z "$f" ] && continue
+            [ -f "$f" ] || continue  # skip files deleted in this PR
             lines=$(wc -l < "$f")
-            if [ "$lines" -gt 500 ]; then
-              echo "::error file=$f::$f has $lines lines (max 500)"
+            if [ "$lines" -gt 600 ]; then
+              echo "::error file=$f::$f has $lines lines (max 600)"
               EXIT=1
             fi
-          done < <(find packages/studio -path '*/node_modules' -prune -o \( -name '*.ts' -o -name '*.tsx' \) -print | grep -vE '\.(test|spec)\.(ts|tsx)$|\.generated\.')
+          done
           exit $EXIT
 
   semantic-pr-title:

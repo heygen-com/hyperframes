@@ -1,0 +1,47 @@
+<template id="overlay-template">
+  <div id="overlay-root" data-composition-id="overlay" data-start="0" data-width="1280" data-height="720" data-duration="2">
+    <div class="chrome">
+      <div class="brand">WYSIWYG Test</div>
+      <div class="badge">CSS Loaded</div>
+    </div>
+
+    <style>
+      #overlay-root {
+        --accent: #3cE6ac;
+        font-family: system-ui, sans-serif;
+      }
+
+      #overlay-root .chrome {
+        position: absolute;
+        bottom: 40px;
+        left: 40px;
+        right: 40px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 16px 24px;
+        background: rgba(0, 0, 0, 0.7);
+        border: 1px solid var(--accent);
+        border-radius: 12px;
+      }
+
+      #overlay-root .brand {
+        font-size: 24px;
+        font-weight: 700;
+        color: #fff;
+        letter-spacing: 0.05em;
+      }
+
+      #overlay-root .badge {
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--accent);
+        background: rgba(60, 230, 172, 0.15);
+        padding: 6px 16px;
+        border-radius: 20px;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+      }
+    </style>
+  </div>
+</template>

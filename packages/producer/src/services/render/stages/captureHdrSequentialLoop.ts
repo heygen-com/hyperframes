@@ -172,7 +172,13 @@ export async function runSequentialLayeredFrameLoop(input: SequentialLoopInput):
         });
       }
 
-      const transitionFn: TransitionFn = TRANSITIONS[activeTransition.shader] ?? crossfade;
+      // CSS-crossfade transitions (shader omitted in the composition) take
+      // the same Node-side blend path — `crossfade` is the engine's
+      // canonical opacity blend, equivalent to applyFallbackTransition().
+      const shaderName = activeTransition.shader;
+      const transitionFn: TransitionFn = shaderName
+        ? (TRANSITIONS[shaderName] ?? crossfade)
+        : crossfade;
       transitionFn(
         transitionBuffers.bufferA,
         transitionBuffers.bufferB,

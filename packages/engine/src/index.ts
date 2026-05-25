@@ -135,7 +135,12 @@ export {
 export { createVideoFrameInjector } from "./services/videoFrameInjector.js";
 
 export { parseAudioElements, processCompositionAudio } from "./services/audioMixer.js";
-export type { AudioElement, AudioTrack, MixResult } from "./services/audioMixer.types.js";
+export type {
+  AudioElement,
+  AudioTrack,
+  AudioVolumeKeyframe,
+  MixResult,
+} from "./services/audioMixer.types.js";
 
 // ── Parallel rendering ─────────────────────────────────────────────────────────
 export {
@@ -185,6 +190,8 @@ export {
   type RunFfmpegOptions,
   type RunFfmpegResult,
 } from "./utils/runFfmpeg.js";
+
+export { trackChildProcess, killTrackedProcesses } from "./utils/processTracker.js";
 
 export {
   decodePng,

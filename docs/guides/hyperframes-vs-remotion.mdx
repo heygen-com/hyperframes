@@ -37,7 +37,7 @@ We architected Hyperframes to be the most native to agents while making it easy 
 | Build step | None; `index.html` plays as-is | Required (webpack, bundler) |
 | Library-clock animations (GSAP, Anime.js, Motion One) | Seekable; frame-accurate | Plays at wall-clock during render |
 | Arbitrary HTML / CSS passthrough | Paste and animate | Rewrite as JSX |
-| Distributed rendering | Single-machine today | [Remotion Lambda](https://www.remotion.dev/lambda), production-ready |
+| Distributed rendering | [AWS Lambda](/deploy/aws-lambda) support | [Remotion Lambda](https://www.remotion.dev/lambda), mature and production-tested |
 | [HDR output](/guides/hdr) | Supported | Documented as unsupported |
 | Visual editor over render source | Native; same DOM is editable | Source is code plus a build step |
 | License | [Apache 2.0](https://github.com/heygen-com/hyperframes/blob/main/LICENSE) | [Commercial](https://www.remotion.pro/license) |
@@ -109,11 +109,11 @@ In practice: GSAP timelines, CSS `@keyframes` (via the Web Animations API adapte
 
 If your team already has a design system in React components, Remotion lets you compose videos from the same primitives you ship in your app. Type safety, IDE completion, cross-file refactoring — everything React brings to developer ergonomics. For teams with existing React investment, this is a real advantage Hyperframes doesn't try to match.
 
-### Distributed rendering (Remotion's clean lead)
+### Distributed rendering
 
-[Remotion Lambda](https://www.remotion.dev/lambda) splits long videos across hundreds of AWS Lambda functions. It's mature, production-tested, and well-documented — a thing you can pick up today and use at hyperscale.
+[Remotion Lambda](https://www.remotion.dev/lambda) splits long videos across hundreds of AWS Lambda functions. It's mature, production-tested, and well-documented — a thing teams have used in production for years.
 
-Hyperframes' renderer runs on a single machine today. The architecture doesn't block distributed rendering — compositions are stateless HTML, the renderer is stateless — we just haven't gotten there yet. Closing this gap is on our roadmap.
+Hyperframes now ships an [AWS Lambda deployment path](/deploy/aws-lambda): one Lambda function behind a Step Functions workflow that fans renders out across chunk workers, stores intermediates in S3, and exposes `lambda render`, `lambda render-batch`, progress polling, and SDK usage. The surface is newer than Remotion Lambda, so the practical tradeoff is maturity versus Hyperframes' HTML-native composition model.
 
 ### Visual editing over the render source (Hyperframes' natural bet)
 

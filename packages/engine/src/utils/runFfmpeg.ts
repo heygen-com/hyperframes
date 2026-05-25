@@ -6,6 +6,7 @@
  */
 
 import { spawn } from "child_process";
+import { trackChildProcess } from "./processTracker.js";
 
 export interface RunFfmpegOptions {
   signal?: AbortSignal;
@@ -60,6 +61,7 @@ export async function runFfmpeg(args: string[], opts?: RunFfmpegOptions): Promis
 
   return new Promise<RunFfmpegResult>((resolve) => {
     const ffmpeg = spawn("ffmpeg", args);
+    trackChildProcess(ffmpeg);
     let stderr = "";
 
     const onAbort = () => {

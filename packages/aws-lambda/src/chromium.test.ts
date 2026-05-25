@@ -13,6 +13,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   _setSparticuzChromiumForTests,
+  ChromeBinaryUnavailableError,
   resolveChromeArgs,
   resolveChromeExecutablePath,
   resolveChromeSource,
@@ -61,12 +62,64 @@ describe("resolveChromeSource", () => {
 describe("resolveChromeExecutablePath", () => {
   it("returns the path from a stubbed sparticuz module", async () => {
     process.env.HYPERFRAMES_LAMBDA_CHROME_SOURCE = "sparticuz";
+    const dir = mkdtempSync(join(tmpdir(), "hf-chrome-test-"));
+    const binPath = join(dir, "chromium");
+    writeFileSync(binPath, "fake binary");
+    try {
+      _setSparticuzChromiumForTests({
+        args: ["--fake-arg"],
+        executablePath: async () => binPath,
+      });
+      expect(await resolveChromeExecutablePath()).toBe(binPath);
+      expect(await resolveChromeArgs()).toEqual(["--fake-arg"]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  // Real-world wedge: a chunk hits `Sandbox.Timedout` mid-extraction,
+  // leaving sparticuz's internal state inconsistent. On subsequent
+  // invocations executablePath() returns empty/undefined and puppeteer-
+  // core's downstream assertion buries the actionable signal. These
+  // tests pin the typed-error contract so SFN can short-circuit retries.
+  it("throws ChromeBinaryUnavailableError when sparticuz returns empty string", async () => {
+    process.env.HYPERFRAMES_LAMBDA_CHROME_SOURCE = "sparticuz";
     _setSparticuzChromiumForTests({
-      args: ["--fake-arg"],
-      executablePath: async () => "/tmp/sparticuz-chromium",
+      args: [],
+      executablePath: async () => "",
     });
-    expect(await resolveChromeExecutablePath()).toBe("/tmp/sparticuz-chromium");
-    expect(await resolveChromeArgs()).toEqual(["--fake-arg"]);
+    await expect(resolveChromeExecutablePath()).rejects.toBeInstanceOf(
+      ChromeBinaryUnavailableError,
+    );
+  });
+
+  it("throws ChromeBinaryUnavailableError when sparticuz returns a non-existent path", async () => {
+    process.env.HYPERFRAMES_LAMBDA_CHROME_SOURCE = "sparticuz";
+    _setSparticuzChromiumForTests({
+      args: [],
+      executablePath: async () => "/nonexistent/sparticuz/chromium",
+    });
+    await expect(resolveChromeExecutablePath()).rejects.toBeInstanceOf(
+      ChromeBinaryUnavailableError,
+    );
+  });
+
+  it("ChromeBinaryUnavailableError carries the source + resolved path", async () => {
+    process.env.HYPERFRAMES_LAMBDA_CHROME_SOURCE = "sparticuz";
+    _setSparticuzChromiumForTests({
+      args: [],
+      executablePath: async () => "/missing",
+    });
+    try {
+      await resolveChromeExecutablePath();
+      throw new Error("expected throw");
+    } catch (err) {
+      expect(err).toBeInstanceOf(ChromeBinaryUnavailableError);
+      const typed = err as ChromeBinaryUnavailableError;
+      expect(typed.source).toBe("sparticuz");
+      expect(typed.resolvedPath).toBe("/missing");
+      expect(typed.name).toBe("ChromeBinaryUnavailableError");
+    }
   });
 
   it("reads chrome-headless-shell path from HYPERFRAMES_LAMBDA_CHROME_PATH", async () => {
@@ -83,17 +136,19 @@ describe("resolveChromeExecutablePath", () => {
     }
   });
 
-  it("throws if chrome-headless-shell path is missing", async () => {
+  it("throws ChromeBinaryUnavailableError if chrome-headless-shell path is missing", async () => {
     process.env.HYPERFRAMES_LAMBDA_CHROME_SOURCE = "chrome-headless-shell";
     delete process.env.HYPERFRAMES_LAMBDA_CHROME_PATH;
-    await expect(resolveChromeExecutablePath()).rejects.toThrow(
-      /HYPERFRAMES_LAMBDA_CHROME_PATH to be set/,
+    await expect(resolveChromeExecutablePath()).rejects.toBeInstanceOf(
+      ChromeBinaryUnavailableError,
     );
   });
 
-  it("throws if chrome-headless-shell path doesn't exist on disk", async () => {
+  it("throws ChromeBinaryUnavailableError if chrome-headless-shell path doesn't exist on disk", async () => {
     process.env.HYPERFRAMES_LAMBDA_CHROME_SOURCE = "chrome-headless-shell";
     process.env.HYPERFRAMES_LAMBDA_CHROME_PATH = "/nonexistent/path/chrome-headless-shell";
-    await expect(resolveChromeExecutablePath()).rejects.toThrow(/does not exist/);
+    await expect(resolveChromeExecutablePath()).rejects.toBeInstanceOf(
+      ChromeBinaryUnavailableError,
+    );
   });
 });

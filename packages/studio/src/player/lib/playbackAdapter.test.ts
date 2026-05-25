@@ -18,13 +18,13 @@ describe("wrapTimeline seek keepPlaying option (#834)", () => {
     };
   }
 
-  it("default seek pauses the GSAP timeline before seeking", () => {
+  it("default seek pauses the GSAP timeline before and after seeking", () => {
     const tl = mockTimeline();
     const adapter = wrapTimeline(tl);
 
     adapter.seek(5);
 
-    expect(tl.pause).toHaveBeenCalledTimes(1);
+    expect(tl.pause).toHaveBeenCalledTimes(2);
     expect(tl.seek).toHaveBeenCalledWith(5);
   });
 
@@ -44,7 +44,7 @@ describe("wrapTimeline seek keepPlaying option (#834)", () => {
 
     adapter.seek(5, { keepPlaying: false });
 
-    expect(tl.pause).toHaveBeenCalledTimes(1);
+    expect(tl.pause).toHaveBeenCalledTimes(2);
     expect(tl.seek).toHaveBeenCalledWith(5);
   });
 });
