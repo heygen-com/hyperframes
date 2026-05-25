@@ -232,10 +232,16 @@ async function captureSnapshots(
 
       // Chrome-headless ignores programmatic <video>.currentTime writes, so
       // we extract frames via FFmpeg and overlay them as <img> elements.
+      //
+      // The engine's injectVideoFramesBatch returns the subset of videoIds it
+      // actually painted (skipped ancestor-hidden videos are excluded).
+      // Snapshot doesn't use the return value, but the local type must match
+      // the real export — a `Promise<void>` shape rejects the `as` cast on
+      // the dynamic import.
       type InjectFn = (
         page: unknown,
         updates: Array<{ videoId: string; dataUri: string }>,
-      ) => Promise<void>;
+      ) => Promise<string[]>;
       type SyncVisibilityFn = (page: unknown, activeVideoIds: string[]) => Promise<void>;
       type ExtractMediaMetadataFn = (
         filePath: string,
