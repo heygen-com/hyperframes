@@ -226,8 +226,9 @@ export function useTimelinePlayer() {
     const tick = () => {
       const adapter = getAdapter();
       if (adapter) {
-        const time = adapter.getTime();
+        const rawTime = adapter.getTime();
         const dur = adapter.getDuration();
+        const time = dur > 0 ? Math.min(rawTime, dur) : rawTime;
         liveTime.notify(time); // direct DOM updates, no React re-render
         const { inPoint, outPoint } = usePlayerStore.getState();
         const rawLoopEnd = outPoint !== null ? outPoint : dur;
