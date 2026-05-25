@@ -208,26 +208,25 @@ export const DEFAULT_CONFIG: EngineConfig = {
   debug: false,
 };
 
-function getSystemFreeMb(): number {
+function getSystemTotalMb(): number {
   try {
-    const { freemem } = require("os") as typeof import("os");
-    return Math.floor(freemem() / (1024 * 1024));
+    return Math.floor(require("os").totalmem() / (1024 * 1024));
   } catch {
-    return 8192;
+    return 16384;
   }
 }
 
 function memoryAdaptiveCacheLimit(): number {
-  const free = getSystemFreeMb();
-  if (free < 2048) return 32;
-  if (free < 4096) return 64;
+  const total = getSystemTotalMb();
+  if (total < 4096) return 32;
+  if (total < 8192) return 64;
   return DEFAULT_CONFIG.frameDataUriCacheLimit;
 }
 
 function memoryAdaptiveCacheBytesMb(): number {
-  const free = getSystemFreeMb();
-  if (free < 2048) return 128;
-  if (free < 4096) return 256;
+  const total = getSystemTotalMb();
+  if (total < 4096) return 128;
+  if (total < 8192) return 256;
   return DEFAULT_CONFIG.frameDataUriCacheBytesLimitMb;
 }
 

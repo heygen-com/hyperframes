@@ -8,7 +8,7 @@
 import type { Browser, PuppeteerNode } from "puppeteer-core";
 import { existsSync, readdirSync } from "fs";
 import { join } from "path";
-import { freemem, homedir } from "os";
+import { homedir, totalmem } from "os";
 import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
 
 let _puppeteer: PuppeteerNode | undefined;
@@ -476,21 +476,21 @@ export function _setPuppeteerForTests(mock: PuppeteerNode | undefined): void {
   _puppeteer = mock;
 }
 
-function getFreeMb(): number {
-  return Math.floor(freemem() / (1024 * 1024));
+function getTotalMemMb(): number {
+  return Math.floor(totalmem() / (1024 * 1024));
 }
 
 function getGpuMemBudgetMb(): number {
-  const free = getFreeMb();
-  if (free < 2048) return 512;
-  if (free < 4096) return 1024;
+  const total = getTotalMemMb();
+  if (total < 4096) return 512;
+  if (total < 8192) return 1024;
   return 4096;
 }
 
 function getLowMemoryFlags(): string[] {
-  const free = getFreeMb();
-  if (free >= 4096) return [];
-  const heapMb = free < 2048 ? 256 : 512;
+  const total = getTotalMemMb();
+  if (total >= 8192) return [];
+  const heapMb = total < 4096 ? 256 : 512;
   return [`--js-flags=--max-old-space-size=${heapMb}`];
 }
 
