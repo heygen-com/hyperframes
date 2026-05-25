@@ -484,7 +484,7 @@ function getGpuMemBudgetMb(): number {
   const total = getTotalMemMb();
   if (total < 4096) return 512;
   if (total < 8192) return 1024;
-  return 4096;
+  return Math.min(Math.floor(total / 2), 16384);
 }
 
 function getLowMemoryFlags(): string[] {
