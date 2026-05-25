@@ -386,19 +386,40 @@ export async function injectVideoFramesBatch(
         "bottom",
         "inset",
       ]);
-      // Walk ancestors looking for a host that the page has hidden via
-      // `display:none` or `visibility:hidden`. The runtime hides
-      // `[data-composition-src]` and `[data-start]` hosts that fall outside
-      // their time window using exactly these properties; a nested
-      // `<video data-start>` inside such a host still appears "active" in the
-      // raw time-window check (its own `data-start`/`data-end` cover the
-      // whole clip), so without this guard we would paint a full-bleed
-      // replacement frame over a sibling host that *is* visible.
+      // Walk ancestors looking for a host that the page has hidden. The
+      // runtime hides `[data-composition-src]` and `[data-start]` hosts that
+      // fall outside their time window; a nested `<video data-start>` inside
+      // such a host still appears "active" in the raw time-window check (its
+      // own `data-start`/`data-end` cover the whole clip), so without this
+      // guard we would paint a full-bleed replacement frame over a sibling
+      // host that *is* visible.
+      //
+      // `display: none` is always a skip signal — a `display: none` ancestor
+      // takes its whole subtree out of layout, and a child `<img>` cannot
+      // escape that. `visibility: hidden`, by contrast, is escapable: a
+      // descendant with `visibility: visible` overrides an ancestor's
+      // `visibility: hidden` per the CSS spec, and the replacement `<img>`
+      // intentionally sets `visibility: visible`. We therefore only treat
+      // `visibility: hidden` as a skip signal on sub-composition hosts
+      // (`[data-composition-src]` / `[data-composition-file]`), which is the
+      // scenario this guard exists for. Plain `[data-start]` containers may
+      // be hidden with `visibility: hidden` while still wanting their inner
+      // video's final-state frame to paint through (e.g. a GSAP timeline
+      // shorter than the host's authored data-duration, where the runtime
+      // truncates visibility but the replacement <img> must hold its last
+      // frame) — those must NOT be skipped here.
       const isVisualAncestorHidden = (el: HTMLElement): boolean => {
         let parent = el.parentElement;
         while (parent !== null && parent !== document.documentElement) {
           const computed = window.getComputedStyle(parent);
-          if (computed.display === "none" || computed.visibility === "hidden") return true;
+          if (computed.display === "none") return true;
+          if (
+            computed.visibility === "hidden" &&
+            (parent.hasAttribute("data-composition-src") ||
+              parent.hasAttribute("data-composition-file"))
+          ) {
+            return true;
+          }
           parent = parent.parentElement;
         }
         return false;
@@ -516,17 +537,22 @@ export async function syncVideoFrameVisibility(
   activeVideoIds: string[],
 ): Promise<void> {
   await page.evaluate((ids: string[]) => {
-    // Mirror the ancestor-visibility guard from `injectVideoFramesBatch`: a
-    // video whose host is `display:none` / `visibility:hidden` (e.g., a
-    // sub-composition that the runtime has marked out-of-window) must not
-    // have its replacement <img> reach `visibility:visible` here, otherwise
-    // it would paint through the hidden host onto whichever sibling host is
-    // currently visible.
+    // Mirror the ancestor-visibility guard from `injectVideoFramesBatch`.
+    // See that copy for the full rationale on why `visibility: hidden` is
+    // narrowed to sub-composition hosts only — keep these two functions in
+    // sync so the inactive-arm decision matches the inject-time decision.
     const isVisualAncestorHidden = (el: HTMLElement): boolean => {
       let parent = el.parentElement;
       while (parent !== null && parent !== document.documentElement) {
         const computed = window.getComputedStyle(parent);
-        if (computed.display === "none" || computed.visibility === "hidden") return true;
+        if (computed.display === "none") return true;
+        if (
+          computed.visibility === "hidden" &&
+          (parent.hasAttribute("data-composition-src") ||
+            parent.hasAttribute("data-composition-file"))
+        ) {
+          return true;
+        }
         parent = parent.parentElement;
       }
       return false;

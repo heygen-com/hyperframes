@@ -202,6 +202,17 @@ describe("video-frame injection respects ancestor visibility", () => {
   // injected `data-start="0"` + probed full-source duration cover the
   // whole timeline), so the bug produced one full-bleed speaker overlay
   // per inactive sub-comp — covering whichever moment was actually visible.
+  //
+  // The skip is intentionally narrow: `visibility:hidden` on a regular
+  // `[data-start]` container must NOT skip injection, because the
+  // replacement <img>'s explicit `visibility:visible` overrides the
+  // ancestor (CSS spec) and consumers rely on that to hold the final
+  // GSAP-driven frame when an authored `data-duration` outlives the
+  // composition's GSAP timeline. We therefore only treat
+  // `visibility:hidden` as a skip signal on sub-composition hosts
+  // (`[data-composition-src]` / `[data-composition-file]`). `display:none`,
+  // by contrast, takes the whole subtree out of layout regardless of any
+  // child override, so it always triggers the skip.
 
   type StyleLike = {
     display?: string;
@@ -212,9 +223,19 @@ describe("video-frame injection respects ancestor visibility", () => {
     zIndex?: string;
   };
 
-  function setupHostHiddenScenario(hostStyle: StyleLike) {
+  type HostAttribute = "data-composition-src" | "data-composition-file" | "data-start";
+
+  function setupHostHiddenScenario(
+    hostStyle: StyleLike,
+    options: { hostAttribute?: HostAttribute } = {},
+  ) {
+    const hostAttribute = options.hostAttribute ?? "data-composition-src";
+    const hostAttrMarkup =
+      hostAttribute === "data-start"
+        ? 'data-start="0" data-duration="10"'
+        : `${hostAttribute}="sub.html"`;
     const { window, document } = parseHTML(
-      '<html><body><div id="host"><div id="pip-frame"><video id="pip" data-start="0" data-duration="10"></video></div></div></body></html>',
+      `<html><body><div id="host" ${hostAttrMarkup}><div id="pip-frame"><video id="pip" data-start="0" data-duration="10"></video></div></div></body></html>`,
     );
 
     Object.defineProperty(window.HTMLImageElement.prototype, "decode", {
@@ -381,5 +402,55 @@ describe("video-frame injection respects ancestor visibility", () => {
     }
 
     expect(seededImg.style.visibility).toBe("hidden");
+  });
+
+  it("still injects when a plain [data-start] host is visibility:hidden (CSS-escapable)", async () => {
+    // Regression guard for the style-9-prod symptom: a regular
+    // `[data-start]` container whose GSAP timeline is shorter than its
+    // authored `data-duration` ends up `visibility: hidden` past the
+    // timeline end. The replacement <img>'s explicit `visibility: visible`
+    // correctly overrides that per CSS spec, so the injector must NOT
+    // short-circuit — it would otherwise drop the final-state frame and
+    // produce blank tail frames.
+    const { teardown, setup } = withGlobals(
+      setupHostHiddenScenario({ visibility: "hidden" }, { hostAttribute: "data-start" }),
+    );
+
+    try {
+      await injectVideoFramesBatch(passthroughPage(), [
+        {
+          videoId: "pip",
+          dataUri:
+            "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkAAIAAAoAAv/lxKUAAAAASUVORK5CYII=",
+        },
+      ]);
+    } finally {
+      teardown();
+    }
+
+    const sibling = setup.video.nextElementSibling as HTMLElement | null;
+    expect(sibling).not.toBeNull();
+    expect(sibling?.classList.contains("__render_frame__")).toBe(true);
+    expect(sibling?.style.visibility).toBe("visible");
+  });
+
+  it("syncVideoFrameVisibility shows the replacement <img> when a plain [data-start] host is visibility:hidden", async () => {
+    const { teardown, setup } = withGlobals(
+      setupHostHiddenScenario({ visibility: "hidden" }, { hostAttribute: "data-start" }),
+    );
+    const seededImg = setup.document.createElement("img");
+    seededImg.classList.add("__render_frame__");
+    seededImg.style.visibility = "hidden";
+    setup.video.parentNode?.insertBefore(seededImg, setup.video.nextSibling);
+
+    try {
+      await syncVideoFrameVisibility(passthroughPage(), ["pip"]);
+    } finally {
+      teardown();
+    }
+
+    // The host's `visibility: hidden` is escapable; sync must flip the
+    // <img> to `visibility: visible` so it overrides the ancestor.
+    expect(seededImg.style.visibility).toBe("visible");
   });
 });
