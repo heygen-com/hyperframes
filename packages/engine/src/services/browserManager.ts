@@ -480,7 +480,32 @@ function getTotalMemMb(): number {
   return Math.floor(totalmem() / (1024 * 1024));
 }
 
+let _cachedVramMb: number | null = null;
+
+function probeNvidiaVramMb(): number | null {
+  if (_cachedVramMb !== null) return _cachedVramMb;
+  try {
+    const { execSync } = require("child_process") as typeof import("child_process");
+    const out = execSync("nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits", {
+      timeout: 3000,
+      encoding: "utf-8",
+      stdio: ["pipe", "pipe", "pipe"],
+    }).trim();
+    const mb = parseInt(out.split("\n")[0] ?? "", 10);
+    if (Number.isFinite(mb) && mb > 0) {
+      _cachedVramMb = mb;
+      return mb;
+    }
+  } catch {
+    // nvidia-smi not available or no NVIDIA GPU
+  }
+  return null;
+}
+
 function getGpuMemBudgetMb(): number {
+  const vram = probeNvidiaVramMb();
+  if (vram) return Math.min(vram, 65536);
+
   const total = getTotalMemMb();
   if (total < 4096) return 512;
   if (total < 8192) return 1024;
