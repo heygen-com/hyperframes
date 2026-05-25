@@ -6,6 +6,8 @@
  * fallbacks for backward compatibility during migration.
  */
 
+import { totalmem } from "os";
+
 /**
  * Full engine configuration. All fields are wired through the config
  * object; env vars serve as backward-compatible fallbacks resolved
@@ -209,11 +211,7 @@ export const DEFAULT_CONFIG: EngineConfig = {
 };
 
 function getSystemTotalMb(): number {
-  try {
-    return Math.floor(require("os").totalmem() / (1024 * 1024));
-  } catch {
-    return 16384;
-  }
+  return Math.floor(totalmem() / (1024 * 1024));
 }
 
 function memoryAdaptiveCacheLimit(): number {
