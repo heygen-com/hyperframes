@@ -23,10 +23,10 @@ function errorProps(value: unknown): {
 }
 
 // fallow-ignore-next-line complexity
-function isCompositionAssetError(msg: string): boolean {
+function isCompositionAssetError(msg: string, name: string | null): boolean {
   if (msg.includes("Error fetching") && (msg.includes("404") || msg.includes("Not Found")))
     return true;
-  if (msg.includes("unsupported or unrecognizable format")) return true;
+  if (name === "EncodingError" || msg.includes("unsupported or unrecognizable format")) return true;
   if (msg.includes("MEDIA_ERR_SRC_NOT_SUPPORTED")) return true;
   return false;
 }
@@ -62,9 +62,22 @@ window.addEventListener("error", (event) => {
   });
 });
 
+let filteredAssetErrorCount = 0;
+
+// fallow-ignore-next-line complexity
 window.addEventListener("unhandledrejection", (event) => {
   const props = errorProps(event.reason);
-  if (isCompositionAssetError(props.error_message)) return;
+  if (isCompositionAssetError(props.error_message, props.error_name)) {
+    filteredAssetErrorCount++;
+    if (filteredAssetErrorCount === 1 || filteredAssetErrorCount % 100 === 0) {
+      trackStudioEvent("composition_asset_error_filtered", {
+        error_message: props.error_message.slice(0, 200),
+        error_name: props.error_name,
+        total_filtered: filteredAssetErrorCount,
+      });
+    }
+    return;
+  }
 
   rejectionCount++;
   if (rejectionCount > ERROR_CAP) {
