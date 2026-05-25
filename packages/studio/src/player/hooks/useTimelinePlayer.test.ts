@@ -196,6 +196,29 @@ describe("createStaticSeekPlaybackAdapter", () => {
     expect(adapter.getDuration()).toBe(82);
   });
 
+  it("clamps time at the duration boundary during RAF tick", () => {
+    const clock = createManualAnimationClock();
+    const renderedTimes: number[] = [];
+    const adapter = createStaticSeekPlaybackAdapter(
+      {
+        getTime: () => 0,
+        renderSeek: (time: number) => {
+          renderedTimes.push(time);
+        },
+      },
+      2,
+      clock,
+    );
+
+    adapter.seek(0);
+    adapter.play();
+    clock.step(3_000);
+
+    expect(adapter.getTime()).toBe(2);
+    expect(adapter.isPlaying()).toBe(false);
+    expect(renderedTimes).toEqual([0, 2]);
+  });
+
   it("pauses old adapter before replacing with new duration", () => {
     const clock = createManualAnimationClock();
     const adapter = createStaticSeekPlaybackAdapter(
