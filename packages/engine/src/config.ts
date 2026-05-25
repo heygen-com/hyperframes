@@ -208,6 +208,29 @@ export const DEFAULT_CONFIG: EngineConfig = {
   debug: false,
 };
 
+function getSystemFreeMb(): number {
+  try {
+    const { freemem } = require("os") as typeof import("os");
+    return Math.floor(freemem() / (1024 * 1024));
+  } catch {
+    return 8192;
+  }
+}
+
+function memoryAdaptiveCacheLimit(): number {
+  const free = getSystemFreeMb();
+  if (free < 2048) return 32;
+  if (free < 4096) return 64;
+  return DEFAULT_CONFIG.frameDataUriCacheLimit;
+}
+
+function memoryAdaptiveCacheBytesMb(): number {
+  const free = getSystemFreeMb();
+  if (free < 2048) return 128;
+  if (free < 4096) return 256;
+  return DEFAULT_CONFIG.frameDataUriCacheBytesLimitMb;
+}
+
 /**
  * Resolve configuration by merging: defaults ← env vars ← explicit overrides.
  * Env vars provide backward compatibility during migration; explicit config
@@ -298,14 +321,11 @@ export function resolveConfig(overrides?: Partial<EngineConfig>): EngineConfig {
     audioGain: envNum("PRODUCER_AUDIO_GAIN", DEFAULT_CONFIG.audioGain),
     frameDataUriCacheLimit: Math.max(
       32,
-      envNum("PRODUCER_FRAME_DATA_URI_CACHE_LIMIT", DEFAULT_CONFIG.frameDataUriCacheLimit),
+      envNum("PRODUCER_FRAME_DATA_URI_CACHE_LIMIT", memoryAdaptiveCacheLimit()),
     ),
     frameDataUriCacheBytesLimitMb: Math.max(
       64,
-      envNum(
-        "PRODUCER_FRAME_DATA_URI_CACHE_BYTES_MB",
-        DEFAULT_CONFIG.frameDataUriCacheBytesLimitMb,
-      ),
+      envNum("PRODUCER_FRAME_DATA_URI_CACHE_BYTES_MB", memoryAdaptiveCacheBytesMb()),
     ),
 
     playerReadyTimeout: envNum(
