@@ -387,6 +387,14 @@ export function initSandboxRuntimeModular(): void {
     });
     return resolver.resolveDurationForElement(element);
   };
+
+  const resolveMediaStartSeconds = (element: Element, fallback = 0): number => {
+    if (!element.hasAttribute("data-hf-auto-start") && element.hasAttribute("data-start")) {
+      return Math.max(0, Number(element.getAttribute("data-start") ?? 0) || 0);
+    }
+    return resolveStartForElement(element, fallback);
+  };
+
   const hasExternalCompositions = !!document.querySelector("[data-composition-src]");
   let hasInlineTemplateCompositions = false;
   {
@@ -456,7 +464,7 @@ export function initSandboxRuntimeModular(): void {
     if (mediaNodes.length === 0) return null;
     let maxWindowEndSeconds = 0;
     for (const node of mediaNodes) {
-      const start = resolveStartForElement(node, 0);
+      const start = resolveMediaStartSeconds(node, 0);
       if (!Number.isFinite(start)) continue;
       const duration = resolveMediaElementDurationSeconds(node);
       if (duration == null || duration <= MIN_VALID_TIMELINE_DURATION_SECONDS) continue;
@@ -1278,20 +1286,14 @@ export function initSandboxRuntimeModular(): void {
         element.hasAttribute("data-start") ||
         Boolean(resolveMediaCompositionContext(element).compositionRoot),
       resolveStartSeconds: (element) => {
-        if (!element.hasAttribute("data-hf-auto-start") && element.hasAttribute("data-start")) {
-          return Math.max(0, Number(element.getAttribute("data-start") ?? 0) || 0);
-        }
         const context = resolveMediaCompositionContext(
           element as HTMLVideoElement | HTMLAudioElement,
         );
-        return resolveStartForElement(element, context.inheritedStart ?? 0);
+        return resolveMediaStartSeconds(element, context.inheritedStart ?? 0);
       },
       resolveDurationSeconds: (element) => {
         const context = resolveMediaCompositionContext(element);
-        const start =
-          !element.hasAttribute("data-hf-auto-start") && element.hasAttribute("data-start")
-            ? Math.max(0, Number(element.getAttribute("data-start") ?? 0) || 0)
-            : resolveStartForElement(element, context.inheritedStart ?? 0);
+        const start = resolveMediaStartSeconds(element, context.inheritedStart ?? 0);
         const mediaStart =
           Number.parseFloat(element.dataset.playbackStart ?? element.dataset.mediaStart ?? "0") ||
           0;
@@ -1335,16 +1337,10 @@ export function initSandboxRuntimeModular(): void {
       const tag = rawNode.tagName.toLowerCase();
       if (tag === "script" || tag === "style" || tag === "link" || tag === "meta") continue;
 
-      // Media elements with explicitly authored data-start (no data-hf-auto-start
-      // marker) use global coordinates — matching the render pipeline's
-      // discoverMediaFromBrowser. resolveStartForElement would add the host
-      // composition's offset a second time. Auto-injected data-start="0"
-      // (data-hf-auto-start present) is composition-local and needs the resolver.
-      const isGlobalMediaStart =
-        (tag === "video" || tag === "audio") && !rawNode.hasAttribute("data-hf-auto-start");
-      const start = isGlobalMediaStart
-        ? Math.max(0, Number(rawNode.getAttribute("data-start") ?? 0) || 0)
-        : resolveStartForElement(rawNode, 0);
+      const start =
+        tag === "video" || tag === "audio"
+          ? resolveMediaStartSeconds(rawNode, 0)
+          : resolveStartForElement(rawNode, 0);
       let duration = resolveDurationForElement(rawNode);
       const compId = rawNode.getAttribute("data-composition-id");
       if (compId) {
