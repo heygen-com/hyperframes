@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useRef, useState, type Ref } from "react";
+import { memo, useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { Player } from "../../player";
 import {
   DEFAULT_PREVIEW_ZOOM,
@@ -14,7 +14,7 @@ import {
 import { readStudioUiPreferences, writeStudioUiPreferences } from "../../utils/studioUiPreferences";
 interface NLEPreviewProps {
   projectId: string;
-  iframeRef: Ref<HTMLIFrameElement>;
+  iframeRef: RefObject<HTMLIFrameElement | null>;
   onIframeLoad: () => void;
   onCompositionLoadingChange?: (loading: boolean) => void;
   portrait?: boolean;
@@ -37,6 +37,11 @@ const ZOOM_HUD_TIMEOUT_MS = 1200;
 const ZOOM_SETTLE_MS = 200;
 const PREVIEW_STAGE_INSET_PX = 16;
 
+interface PreviewCompositionSize {
+  width: number;
+  height: number;
+}
+
 function isPreviewAtFit(state: PreviewZoomState): boolean {
   return (
     Math.abs(state.zoomPercent - 100) < 0.5 &&
@@ -56,14 +61,41 @@ function loadInitialZoom(): PreviewZoomState {
     : DEFAULT_PREVIEW_ZOOM;
 }
 
-function resolvePreviewStageSize(
+// fallow-ignore-next-line complexity
+function readPreviewCompositionSize(
+  iframe: HTMLIFrameElement | null,
+): PreviewCompositionSize | null {
+  try {
+    const doc = iframe?.contentDocument;
+    const root =
+      doc?.querySelector("[data-composition-id][data-width][data-height]") ??
+      doc?.querySelector("[data-width][data-height]");
+    if (!root) return null;
+    const width = Number.parseInt(root.getAttribute("data-width") ?? "", 10);
+    const height = Number.parseInt(root.getAttribute("data-height") ?? "", 10);
+    if (!Number.isFinite(width) || width <= 0 || !Number.isFinite(height) || height <= 0) {
+      return null;
+    }
+    return { width, height };
+  } catch {
+    return null;
+  }
+}
+
+export function resolvePreviewStageSize(
   viewportWidth: number,
   viewportHeight: number,
+  compositionSize: PreviewCompositionSize | null,
   portrait: boolean | undefined,
 ): { width: number; height: number } {
   const availableWidth = Math.max(0, viewportWidth - PREVIEW_STAGE_INSET_PX);
   const availableHeight = Math.max(0, viewportHeight - PREVIEW_STAGE_INSET_PX);
-  const aspectRatio = portrait ? 9 / 16 : 16 / 9;
+  const aspectRatio =
+    compositionSize && compositionSize.width > 0 && compositionSize.height > 0
+      ? compositionSize.width / compositionSize.height
+      : portrait
+        ? 9 / 16
+        : 16 / 9;
 
   if (availableWidth === 0 || availableHeight === 0) {
     return { width: 0, height: 0 };
@@ -95,10 +127,12 @@ export const NLEPreview = memo(function NLEPreview({
   const activeKey = getPreviewPlayerKey({ projectId, directUrl });
   const viewportRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
+  const previewIframeRef = useRef<HTMLIFrameElement | null>(null);
   useEffect(() => {
     onStageRef?.(stageRef);
   }, [onStageRef]);
-  const [stageSize, setStageSize] = useState(() => resolvePreviewStageSize(0, 0, portrait));
+  const [compositionSize, setCompositionSize] = useState<PreviewCompositionSize | null>(null);
+  const [stageSize, setStageSize] = useState(() => resolvePreviewStageSize(0, 0, null, portrait));
 
   const zoomRef = useRef<PreviewZoomState>(loadInitialZoom());
   const [settledZoom, setSettledZoom] = useState<PreviewZoomState>(() => zoomRef.current);
@@ -127,14 +161,29 @@ export const NLEPreview = memo(function NLEPreview({
 
     const updateStageSize = () => {
       const rect = viewport.getBoundingClientRect();
-      setStageSize(resolvePreviewStageSize(rect.width, rect.height, portrait));
+      setStageSize(resolvePreviewStageSize(rect.width, rect.height, compositionSize, portrait));
     };
 
     updateStageSize();
     const observer = new ResizeObserver(updateStageSize);
     observer.observe(viewport);
     return () => observer.disconnect();
-  }, [portrait]);
+  }, [compositionSize, portrait]);
+
+  const updateCompositionSizeFromPreview = useCallback(() => {
+    const next = readPreviewCompositionSize(previewIframeRef.current);
+    setCompositionSize((prev) =>
+      prev?.width === next?.width && prev?.height === next?.height ? prev : next,
+    );
+  }, []);
+
+  const setPreviewIframeRef = useCallback(
+    (node: HTMLIFrameElement | null) => {
+      previewIframeRef.current = node;
+      iframeRef.current = node;
+    },
+    [iframeRef],
+  );
 
   const stageSizeRef = useRef(stageSize);
   stageSizeRef.current = stageSize;
@@ -403,10 +452,11 @@ export const NLEPreview = memo(function NLEPreview({
             )}
             <Player
               key={activeKey}
-              ref={iframeRef}
+              ref={setPreviewIframeRef}
               projectId={directUrl ? undefined : projectId}
               directUrl={directUrl}
               onLoad={() => {
+                updateCompositionSizeFromPreview();
                 onIframeLoad();
                 applyInitialZoom();
               }}

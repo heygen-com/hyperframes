@@ -3,7 +3,7 @@
 import React, { act, createRef } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { NLEPreview, getPreviewPlayerKey } from "./NLEPreview";
+import { NLEPreview, getPreviewPlayerKey, resolvePreviewStageSize } from "./NLEPreview";
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -130,6 +130,22 @@ describe("getPreviewPlayerKey", () => {
         directUrl: "/api/projects/timeline-edit-playground/preview/comp/compositions/intro.html",
       }),
     );
+  });
+});
+
+describe("resolvePreviewStageSize", () => {
+  it("fits portrait composition dimensions by height in a narrow viewport", () => {
+    expect(resolvePreviewStageSize(512, 402, { width: 1080, height: 1920 }, undefined)).toEqual({
+      width: 217.125,
+      height: 386,
+    });
+  });
+
+  it("uses composition dimensions ahead of the legacy portrait fallback", () => {
+    expect(resolvePreviewStageSize(512, 402, { width: 1920, height: 1080 }, true)).toEqual({
+      width: 496,
+      height: 279,
+    });
   });
 });
 
