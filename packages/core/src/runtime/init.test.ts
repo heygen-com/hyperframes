@@ -573,24 +573,4 @@ describe("initSandboxRuntimeModular", () => {
     expect(window.__playerReady).toBe(true);
     expect(window.__renderReady).toBe(true);
   });
-
-  it("uses plain data-width/data-height elements as the root when no composition id exists", () => {
-    const root = document.createElement("div");
-    root.setAttribute("data-start", "0");
-    root.setAttribute("data-duration", "8");
-    root.setAttribute("data-width", "1080");
-    root.setAttribute("data-height", "1920");
-    document.body.appendChild(root);
-
-    window.__timelines = {
-      main: createMockTimeline(8),
-    };
-
-    initSandboxRuntimeModular();
-
-    expect(root.style.width).toBe("1080px");
-    expect(root.style.height).toBe("1920px");
-    expect(window.__playerReady).toBe(true);
-    expect(window.__renderReady).toBe(true);
-  });
 });

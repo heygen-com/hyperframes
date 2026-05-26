@@ -213,21 +213,10 @@ export function initSandboxRuntimeModular(): void {
     const compositionNodes = Array.from(
       document.querySelectorAll("[data-composition-id]"),
     ) as HTMLElement[];
-    if (compositionNodes.length > 0) {
-      return (
-        compositionNodes.find((node) => !node.parentElement?.closest("[data-composition-id]")) ??
-        compositionNodes[0] ??
-        null
-      );
-    }
-
-    const dimensionNodes = Array.from(
-      document.querySelectorAll("[data-width][data-height]"),
-    ) as HTMLElement[];
-    if (dimensionNodes.length === 0) return null;
+    if (compositionNodes.length === 0) return null;
     return (
-      dimensionNodes.find((node) => !node.parentElement?.closest("[data-width][data-height]")) ??
-      dimensionNodes[0] ??
+      compositionNodes.find((node) => !node.parentElement?.closest("[data-composition-id]")) ??
+      compositionNodes[0] ??
       null
     );
   };
