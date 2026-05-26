@@ -539,6 +539,63 @@ describe("initSandboxRuntimeModular", () => {
     expect(pipVideo.style.visibility).toBe("hidden");
   });
 
+  it("shows auto-injected video at host time, not at t=0", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+
+    const host = document.createElement("div");
+    host.setAttribute("data-composition-id", "intro");
+    host.setAttribute("data-start", "10");
+    host.setAttribute("data-duration", "5");
+    root.appendChild(host);
+
+    const innerRoot = document.createElement("div");
+    innerRoot.setAttribute("data-composition-id", "intro");
+    host.appendChild(innerRoot);
+
+    const video = document.createElement("video");
+    video.setAttribute("data-start", "0");
+    video.setAttribute("data-hf-auto-start", "");
+    video.setAttribute("data-duration", "5");
+    Object.defineProperty(video, "paused", { value: true, configurable: true });
+    Object.defineProperty(video, "readyState", { value: 0, configurable: true });
+    Object.defineProperty(video, "currentTime", {
+      value: 0,
+      writable: true,
+      configurable: true,
+    });
+    video.load = () => {};
+    innerRoot.appendChild(video);
+
+    (window as Window & { __timelines?: Record<string, RuntimeTimelineLike> }).__timelines = {
+      main: createMockTimeline(30),
+      intro: createMockTimeline(5),
+    };
+
+    initSandboxRuntimeModular();
+
+    const player = (
+      window as Window & {
+        __player?: { seek: (timeSeconds: number) => void };
+      }
+    ).__player;
+    expect(player).toBeDefined();
+
+    player?.seek(12);
+    expect(video.style.visibility).toBe("visible");
+
+    player?.seek(5);
+    expect(video.style.visibility).toBe("hidden");
+
+    player?.seek(16);
+    expect(video.style.visibility).toBe("hidden");
+  });
+
   it("plays scheduled child timelines without a captured root timeline when audio has failed", () => {
     const raf = createManualRaf();
     vi.spyOn(performance, "now").mockImplementation(() => raf.now());

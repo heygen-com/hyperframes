@@ -220,7 +220,9 @@ export function collectRuntimeTimelinePayload(params: {
     if (mediaNodes.length === 0) return null;
     let maxWindowEndSeconds = 0;
     for (const mediaNode of mediaNodes) {
-      const start = startResolver.resolveStartForElement(mediaNode, 0);
+      const start = !mediaNode.hasAttribute("data-hf-auto-start")
+        ? Math.max(0, Number(mediaNode.getAttribute("data-start") ?? 0) || 0)
+        : startResolver.resolveStartForElement(mediaNode, 0);
       if (!Number.isFinite(start)) continue;
       const duration = resolveMediaElementDurationSeconds(mediaNode);
       if (duration == null || duration <= 0) continue;
