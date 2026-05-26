@@ -1,0 +1,63 @@
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+<template id="pip-template">
+  <div data-composition-id="pip-scene" data-width="1920" data-height="1080">
+    <!-- Pip video: data-start="3" is global time matching the host start.
+         Before the fix, resolveStartForElement returned 3+3=6, hiding the
+         video for the entire host window (3–6s). -->
+    <video
+      id="pip-video"
+      data-start="3"
+      data-duration="3"
+      data-track-index="0"
+      src="https://gen-os-static.s3.us-east-2.amazonaws.com/astral_assets/uploaded_assets/fb7e48ac_f6bf2ab079394d7ebd0491e7008a9242.mp4"
+      muted
+      playsinline
+      crossorigin="anonymous"
+      style="position: absolute; width: 100%; height: 100%; object-fit: cover;"
+    ></video>
+
+    <!-- Overlay text confirming pip scene is active -->
+    <div
+      id="pip-label"
+      data-start="3"
+      data-duration="3"
+      style="
+        position: absolute;
+        bottom: 80px;
+        left: 0;
+        width: 100%;
+        text-align: center;
+        font-family: system-ui, sans-serif;
+        font-size: 48px;
+        font-weight: 700;
+        color: #fff;
+        text-shadow: 0 2px 8px rgba(0,0,0,0.7);
+        z-index: 10;
+      "
+    >PIP VIDEO (3–6s)</div>
+
+    <style>
+      [data-composition-id="pip-scene"] {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        background: #0a0a23;
+      }
+    </style>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+      var tl = gsap.timeline({ paused: true });
+
+      tl.fromTo("#pip-video", { scale: 1.05 }, { scale: 1, duration: 3, ease: "none" }, 0);
+      tl.fromTo(
+        "#pip-label",
+        { y: 20, opacity: 0 },
+        { y: 0, opacity: 1, duration: 0.4, ease: "power2.out" },
+        0.2,
+      );
+
+      window.__timelines["pip-scene"] = tl;
+    </script>
+  </div>
+</template>
