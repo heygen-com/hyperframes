@@ -19,7 +19,7 @@ Requires: Docker installed and running.
 - `-w, --workers` — Parallel workers 1-8 (default: auto)
 - `--crf` — Override encoder CRF (mutually exclusive with `--video-bitrate`)
 - `--video-bitrate` — Target video bitrate such as `10M` (mutually exclusive with `--crf`)
-- `--gpu` — Use GPU encoding (NVENC, VideoToolbox, VAAPI, QSV)
+- `--gpu` — Use GPU encoding (NVENC, VideoToolbox, AMF, VAAPI, QSV)
 - `--browser-gpu` / `--no-browser-gpu` — Force host GPU or software (SwiftShader) for Chrome/WebGL capture. Default for local renders is `auto` — probe WebGL availability on first launch and fall back to software if no GPU is reachable. Docker mode always uses software.
 - `-o, --output` — Custom output path
 

@@ -123,7 +123,7 @@ Render your Hyperframes [compositions](/concepts/compositions) to MP4, MOV, or W
 | `--video-bitrate` | e.g. `10M`, `5000k` | — | Target bitrate encoding. Cannot combine with `--crf` |
 | `--workers` | 1-8 or `auto` | auto | Parallel render workers (see [Workers](#workers) below) |
 | `--max-concurrent-renders` | 1-10 | 2 | Max simultaneous renders via the producer server (see [Concurrent Renders](#concurrent-renders) below) |
-| `--gpu` | — | off | GPU encoding (NVENC, VideoToolbox, VAAPI, QSV) |
+| `--gpu` | — | off | GPU encoding (NVENC, VideoToolbox, AMF, VAAPI, QSV) |
 | `--browser-gpu` / `--no-browser-gpu` | — | on locally, off in Docker | Use or opt out of host GPU acceleration for local Chrome/WebGL capture |
 | `--hdr` | — | off | Force HDR output even if no HDR sources are detected (MP4 only). See [HDR Rendering](/guides/hdr) |
 | `--sdr` | — | off | Force SDR output even if HDR sources are detected |
@@ -156,7 +156,7 @@ npx hyperframes render --video-bitrate 10M --output controlled.mp4
 
 Hyperframes has two separate GPU acceleration surfaces:
 
-- `--gpu` uses a hardware video encoder in FFmpeg when one is available. Supported backends include VideoToolbox on macOS, NVENC on NVIDIA systems, VAAPI on Linux, and Intel QSV on supported Windows/Linux hosts.
+- `--gpu` uses a hardware video encoder in FFmpeg when one is available. Supported backends include VideoToolbox on macOS, NVENC on NVIDIA systems, AMD AMF on Windows, VAAPI on Linux, and Intel QSV on supported Windows/Linux hosts.
 - Browser GPU uses the host GPU for local Chrome/WebGL capture. It is enabled automatically for local renders and disabled in Docker. Use `--no-browser-gpu` to opt out.
 
 ```bash Terminal

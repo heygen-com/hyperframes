@@ -256,6 +256,28 @@ describe("buildEncoderArgs GPU preset mapping", () => {
     );
     expect(presetArg(args)).toBe("medium");
   });
+
+  it("uses AMD AMF encoder names and quality flags when selected", () => {
+    const h264Args = buildEncoderArgs(
+      { ...baseOptions, codec: "h264", preset: "medium", quality: 23, useGpu: true },
+      inputArgs,
+      "out.mp4",
+      "amf",
+    );
+    expect(h264Args[h264Args.indexOf("-c:v") + 1]).toBe("h264_amf");
+    expect(h264Args[h264Args.indexOf("-qp_i") + 1]).toBe("23");
+    expect(h264Args).toContain("-bf");
+    expect(h264Args[h264Args.indexOf("-bf") + 1]).toBe("0");
+
+    const h265Args = buildEncoderArgs(
+      { ...baseOptions, codec: "h265", preset: "medium", quality: 23, useGpu: true },
+      inputArgs,
+      "out.mp4",
+      "amf",
+    );
+    expect(h265Args[h265Args.indexOf("-c:v") + 1]).toBe("hevc_amf");
+    expect(h265Args[h265Args.indexOf("-qp_i") + 1]).toBe("23");
+  });
 });
 
 describe("buildEncoderArgs color space", () => {
@@ -529,7 +551,7 @@ describe("buildEncoderArgs lockGopForChunkConcat", () => {
 
   it("true is a no-op on GPU encoders", () => {
     // GPU encoders take a separate code path; lockGopForChunkConcat does not
-    // wire `-g` / `-keyint_min` into nvenc/qsv/vaapi.
+    // wire `-g` / `-keyint_min` into nvenc/amf/qsv/vaapi.
     const args = buildEncoderArgs(
       {
         ...baseOptions,
@@ -816,7 +838,7 @@ describe("buildEncoderArgs HDR color space", () => {
   });
 
   it("tags BT.2020 + transfer for HDR GPU H.265 (no mastering metadata via -x265-params)", () => {
-    // GPU encoders (nvenc, videotoolbox, qsv, vaapi) still emit the BT.2020
+    // GPU encoders (nvenc, videotoolbox, amf, qsv, vaapi) still emit the BT.2020
     // color tags via the codec-level -colorspace/-color_primaries/-color_trc
     // flags, but cannot accept x265-params, so HDR static mastering metadata
     // (master-display, max-cll) is not embedded. Acceptable for previews,

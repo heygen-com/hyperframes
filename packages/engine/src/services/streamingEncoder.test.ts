@@ -265,6 +265,26 @@ describe("buildStreamingArgs", () => {
       const args = buildStreamingArgs({ ...baseGpu, preset: "medium" }, "/tmp/out.mp4", "qsv");
       expect(presetArg(args)).toBe("medium");
     });
+
+    it("uses AMD AMF encoder names and quality flags when selected", () => {
+      const h264Args = buildStreamingArgs(
+        { ...baseGpu, preset: "medium", quality: 23 },
+        "/tmp/out.mp4",
+        "amf",
+      );
+      expect(h264Args[h264Args.indexOf("-c:v") + 1]).toBe("h264_amf");
+      expect(h264Args[h264Args.indexOf("-qp_i") + 1]).toBe("23");
+      expect(h264Args).toContain("-bf");
+      expect(h264Args[h264Args.indexOf("-bf") + 1]).toBe("0");
+
+      const h265Args = buildStreamingArgs(
+        { ...baseGpu, codec: "h265", preset: "medium", quality: 23 },
+        "/tmp/out.mp4",
+        "amf",
+      );
+      expect(h265Args[h265Args.indexOf("-c:v") + 1]).toBe("hevc_amf");
+      expect(h265Args[h265Args.indexOf("-qp_i") + 1]).toBe("23");
+    });
   });
 });
 

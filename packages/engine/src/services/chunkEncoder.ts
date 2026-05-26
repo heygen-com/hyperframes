@@ -140,9 +140,13 @@ export function buildEncoderArgs(
           if (bitrate) args.push("-b:v", bitrate);
           else args.push("-global_quality", String(quality));
           break;
+        case "amf":
+          if (bitrate) args.push("-b:v", bitrate);
+          else args.push("-rc", "cqp", "-qp_i", String(quality), "-qp_p", String(quality));
+          break;
       }
 
-      // Same B-frame story as the SW branch below — nvenc emits B-frames
+      // Same B-frame story as the SW branch below — nvenc/amf emit B-frames
       // by default (qsv via b_strategy, vaapi too), and the negative-DTS
       // freeze hits the same downstream players. The unconditional
       // `-avoid_negative_ts make_zero` near the bottom of this function
@@ -153,7 +157,10 @@ export function buildEncoderArgs(
       // negative DTS in practice on macOS Sonoma+.
       if (
         codec === "h264" &&
-        (gpuEncoder === "nvenc" || gpuEncoder === "qsv" || gpuEncoder === "vaapi")
+        (gpuEncoder === "nvenc" ||
+          gpuEncoder === "qsv" ||
+          gpuEncoder === "vaapi" ||
+          gpuEncoder === "amf")
       ) {
         args.push("-bf", "0");
         if (gpuEncoder === "qsv") {

@@ -1,6 +1,71 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { mapPresetForGpuEncoder } from "./gpuEncoder.js";
+import {
+  getCompiledGpuEncoders,
+  getGpuEncoderName,
+  mapPresetForGpuEncoder,
+  selectUsableGpuEncoder,
+} from "./gpuEncoder.js";
+
+afterEach(() => {
+  vi.useRealTimers();
+});
+
+describe("getCompiledGpuEncoders", () => {
+  it("recognizes AMD AMF in FFmpeg's encoder list", () => {
+    expect(
+      getCompiledGpuEncoders(`
+ V....D h264_nvenc           NVIDIA NVENC H.264 encoder
+ V....D h264_amf             AMD AMF H.264 Encoder
+ V....D h264_qsv             H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10 (Intel Quick Sync Video)
+`),
+    ).toEqual(["nvenc", "qsv", "amf"]);
+  });
+});
+
+describe("selectUsableGpuEncoder", () => {
+  it("runs probe checks concurrently while preserving candidate priority", async () => {
+    vi.useFakeTimers();
+    const started: string[] = [];
+    const usable = selectUsableGpuEncoder(["nvenc", "amf"], async (encoder) => {
+      started.push(encoder);
+      await new Promise((resolve) => setTimeout(resolve, encoder === "nvenc" ? 50 : 1));
+      return true;
+    });
+
+    await vi.advanceTimersByTimeAsync(1);
+    expect(started).toEqual(["nvenc", "amf"]);
+
+    await vi.advanceTimersByTimeAsync(49);
+    expect(await usable).toBe("nvenc");
+  });
+
+  it("falls through from compiled-but-unusable NVENC to usable AMD AMF", async () => {
+    const usable = await selectUsableGpuEncoder(["nvenc", "amf"], async (encoder) => {
+      return encoder === "amf";
+    });
+
+    expect(usable).toBe("amf");
+  });
+
+  it("treats rejected probe checks as unusable", async () => {
+    const usable = await selectUsableGpuEncoder(["nvenc", "amf"], async (encoder) => {
+      if (encoder === "nvenc") {
+        throw new Error("driver probe failed");
+      }
+      return encoder === "amf";
+    });
+
+    expect(usable).toBe("amf");
+  });
+});
+
+describe("getGpuEncoderName", () => {
+  it("maps AMD AMF to FFmpeg's h264 and hevc encoder names", () => {
+    expect(getGpuEncoderName("amf", "h264")).toBe("h264_amf");
+    expect(getGpuEncoderName("amf", "h265")).toBe("hevc_amf");
+  });
+});
 
 describe("mapPresetForGpuEncoder", () => {
   describe("nvenc", () => {
@@ -49,7 +114,7 @@ describe("mapPresetForGpuEncoder", () => {
   });
 
   describe("other encoders", () => {
-    it.each(["videotoolbox", "vaapi"] as const)(
+    it.each(["videotoolbox", "vaapi", "amf"] as const)(
       "passes preset through unchanged for %s",
       (encoder) => {
         expect(mapPresetForGpuEncoder(encoder, "medium")).toBe("medium");

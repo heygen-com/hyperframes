@@ -231,14 +231,21 @@ export function buildStreamingArgs(
           if (bitrate) args.push("-b:v", bitrate);
           else args.push("-global_quality", String(quality));
           break;
+        case "amf":
+          if (bitrate) args.push("-b:v", bitrate);
+          else args.push("-rc", "cqp", "-qp_i", String(quality), "-qp_p", String(quality));
+          break;
       }
 
-      // Mirror SW branch: GPU h264 paths emit B-frames by default (nvenc, qsv,
-      // vaapi) and produce the same negative-DTS freeze for downstream players.
+      // Mirror SW branch: GPU h264 paths emit B-frames by default (nvenc, amf,
+      // qsv, vaapi) and produce the same negative-DTS freeze for downstream players.
       // See chunkEncoder.buildEncoderArgs for the full explanation.
       if (
         codec === "h264" &&
-        (gpuEncoder === "nvenc" || gpuEncoder === "qsv" || gpuEncoder === "vaapi")
+        (gpuEncoder === "nvenc" ||
+          gpuEncoder === "qsv" ||
+          gpuEncoder === "vaapi" ||
+          gpuEncoder === "amf")
       ) {
         args.push("-bf", "0");
         if (gpuEncoder === "qsv") {
