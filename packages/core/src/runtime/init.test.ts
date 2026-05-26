@@ -477,6 +477,68 @@ describe("initSandboxRuntimeModular", () => {
     expect(hookHost.style.visibility).toBe("visible");
   });
 
+  it("shows pip video at global start time even when host composition starts late", () => {
+    // Regression: resolveStartForElement used to add the host composition's start on top of
+    // the video's own data-start, causing double-offset. A pip video with data-start="45.40"
+    // inside a host at data-start="45.40" would resolve to 90.80 and stay permanently hidden.
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+
+    const host = document.createElement("div");
+    host.setAttribute("data-composition-id", "scene-pip");
+    host.setAttribute("data-start", "45.40");
+    host.setAttribute("data-duration", "7.06");
+    root.appendChild(host);
+
+    const innerRoot = document.createElement("div");
+    innerRoot.setAttribute("data-composition-id", "scene-pip");
+    host.appendChild(innerRoot);
+
+    // pip-wired video: data-start is authored in global time (same value as host)
+    const pipVideo = document.createElement("video");
+    pipVideo.setAttribute("data-start", "45.40");
+    pipVideo.setAttribute("data-duration", "7.06");
+    Object.defineProperty(pipVideo, "paused", { value: true, configurable: true });
+    Object.defineProperty(pipVideo, "readyState", { value: 0, configurable: true });
+    Object.defineProperty(pipVideo, "currentTime", {
+      value: 0,
+      writable: true,
+      configurable: true,
+    });
+    pipVideo.load = () => {};
+    innerRoot.appendChild(pipVideo);
+
+    (window as Window & { __timelines?: Record<string, RuntimeTimelineLike> }).__timelines = {
+      main: createMockTimeline(60),
+      "scene-pip": createMockTimeline(7.06),
+    };
+
+    initSandboxRuntimeModular();
+
+    const player = (
+      window as Window & {
+        __player?: { seek: (timeSeconds: number) => void };
+      }
+    ).__player;
+    expect(player).toBeDefined();
+
+    // Before the fix: resolveStartForElement(pipVideo) = 45.40 + 45.40 = 90.80, so the
+    // video would be hidden at t=46 (90.80 > 46). After the fix: start = 45.40, visible.
+    player?.seek(46);
+    expect(pipVideo.style.visibility).toBe("visible");
+
+    player?.seek(53);
+    expect(pipVideo.style.visibility).toBe("hidden");
+
+    player?.seek(44);
+    expect(pipVideo.style.visibility).toBe("hidden");
+  });
+
   it("plays scheduled child timelines without a captured root timeline when audio has failed", () => {
     const raf = createManualRaf();
     vi.spyOn(performance, "now").mockImplementation(() => raf.now());

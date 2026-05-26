@@ -1329,7 +1329,15 @@ export function initSandboxRuntimeModular(): void {
       const tag = rawNode.tagName.toLowerCase();
       if (tag === "script" || tag === "style" || tag === "link" || tag === "meta") continue;
 
-      const start = resolveStartForElement(rawNode, 0);
+      // For media elements (video/audio) data-start is authored in global (composition-root)
+      // time — the same contract used by the render pipeline's discoverMediaFromBrowser which
+      // reads the raw attribute directly. Calling resolveStartForElement would add the nearest
+      // ancestor composition's start a second time, creating a double-offset that keeps the
+      // element permanently hidden when its host composition does not start at t=0.
+      const isMediaElement = tag === "video" || tag === "audio";
+      const start = isMediaElement
+        ? Math.max(0, Number(rawNode.getAttribute("data-start") ?? 0) || 0)
+        : resolveStartForElement(rawNode, 0);
       let duration = resolveDurationForElement(rawNode);
       const compId = rawNode.getAttribute("data-composition-id");
       if (compId) {
