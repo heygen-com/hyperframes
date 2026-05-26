@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: #1a1a2e; }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; }
+      .label {
+        position: absolute;
+        font-family: system-ui, sans-serif;
+        font-size: 64px;
+        font-weight: 700;
+        color: #fff;
+        text-align: center;
+        width: 100%;
+        top: 50%;
+        transform: translateY(-50%);
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="6"
+      data-width="1920"
+      data-height="1080"
+    >
+      <!-- Scene 1: visible 0-3s (solid color background) -->
+      <div
+        id="scene-intro"
+        data-start="0"
+        data-duration="3"
+        data-track-index="0"
+        style="position: absolute; inset: 0; background: #16213e;"
+      >
+        <div class="label">INTRO (0–3s)</div>
+      </div>
+
+      <!-- Scene 2: late-starting host with pip video, visible 3-6s -->
+      <div
+        id="scene-pip-host"
+        data-composition-id="pip-scene"
+        data-composition-src="compositions/pip.html"
+        data-start="3"
+        data-duration="3"
+        data-track-index="1"
+        style="position: absolute; inset: 0;"
+      ></div>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+      var tl = gsap.timeline({ paused: true });
+
+      tl.fromTo("#scene-intro", { opacity: 1 }, { opacity: 1, duration: 3 }, 0);
+      tl.to("#scene-intro", { opacity: 0, duration: 0.3 }, 2.7);
+      tl.fromTo(
+        "#scene-pip-host",
+        { opacity: 0 },
+        { opacity: 1, duration: 0.3, ease: "power2.out" },
+        3,
+      );
+
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>

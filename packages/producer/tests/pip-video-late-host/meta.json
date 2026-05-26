@@ -1,0 +1,12 @@
+{
+  "name": "Pip video inside late-starting sub-composition host",
+  "description": "Regression for: resolveStartForElement double-counts the host offset for media elements with explicitly authored data-start. A pip video at data-start='3' inside a host at data-start='3' resolved to 6.0 instead of 3.0, keeping the video permanently hidden during the host's window.",
+  "tags": ["video", "sub-composition", "pip", "regression"],
+  "minPsnr": 25,
+  "maxFrameFailures": 5,
+  "minAudioCorrelation": 0.0,
+  "maxAudioLagWindows": 120,
+  "renderConfig": {
+    "fps": 24
+  }
+}
