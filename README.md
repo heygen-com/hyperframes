@@ -17,6 +17,10 @@
 <p align="center"><b>Write HTML. Render video. Built for agents.</b></p>
 
 <p align="center">
+  <b>English</b> · <a href="README.zh-CN.md">简体中文</a>
+</p>
+
+<p align="center">
   <img src="https://static.heygen.ai/hyperframes-oss/docs/images/hfgif-1280.webp" alt="HyperFrames demo — HTML code on the left transforms into a rendered video on the right" width="800">
 </p>
 
