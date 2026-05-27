@@ -2,6 +2,7 @@ import { Window } from "happy-dom";
 import { describe, expect, it } from "vitest";
 import {
   applyManualOffsetDragMatrix,
+  createManualOffsetDragMember,
   invertManualOffsetDragMatrix,
   measureManualOffsetDragScreenToOffsetMatrix,
   resolveManualOffsetForPointerDelta,
@@ -136,5 +137,85 @@ describe("measureManualOffsetDragScreenToOffsetMatrix", () => {
     const measured = measureManualOffsetDragScreenToOffsetMatrix(element, { x: 0, y: 0 });
 
     expect(measured.ok).toBe(false);
+  });
+});
+
+describe("createManualOffsetDragMember GSAP translate compensation", () => {
+  it("folds GSAP translate from element.style.transform into initialOffset", () => {
+    const window = new Window();
+    const element = window.document.createElement("div");
+    window.document.body.append(element);
+
+    element.style.setProperty("transform", "translate(0px, -20px)");
+
+    element.getBoundingClientRect = () => {
+      const offsetX = Number.parseFloat(element.style.getPropertyValue(STUDIO_OFFSET_X_PROP)) || 0;
+      const offsetY = Number.parseFloat(element.style.getPropertyValue(STUDIO_OFFSET_Y_PROP)) || 0;
+      return new window.DOMRect(10 + offsetX, 20 + offsetY, 100, 50);
+    };
+
+    const result = createManualOffsetDragMember({
+      key: "test",
+      selection: { element } as never,
+      element,
+      rect: { left: 10, top: 20, width: 100, height: 50, editScaleX: 1, editScaleY: 1 },
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.member.initialOffset.x).toBe(0);
+    expect(result.member.initialOffset.y).toBe(-20);
+  });
+
+  it("leaves initialOffset unchanged when no GSAP transform is present", () => {
+    const window = new Window();
+    const element = window.document.createElement("div");
+    window.document.body.append(element);
+
+    element.getBoundingClientRect = () => {
+      const offsetX = Number.parseFloat(element.style.getPropertyValue(STUDIO_OFFSET_X_PROP)) || 0;
+      const offsetY = Number.parseFloat(element.style.getPropertyValue(STUDIO_OFFSET_Y_PROP)) || 0;
+      return new window.DOMRect(10 + offsetX, 20 + offsetY, 100, 50);
+    };
+
+    const result = createManualOffsetDragMember({
+      key: "test",
+      selection: { element } as never,
+      element,
+      rect: { left: 10, top: 20, width: 100, height: 50, editScaleX: 1, editScaleY: 1 },
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.member.initialOffset.x).toBe(0);
+    expect(result.member.initialOffset.y).toBe(0);
+  });
+
+  it("combines existing manual offset with GSAP translate", () => {
+    const window = new Window();
+    const element = window.document.createElement("div");
+    window.document.body.append(element);
+
+    element.style.setProperty(STUDIO_OFFSET_X_PROP, "30px");
+    element.style.setProperty(STUDIO_OFFSET_Y_PROP, "10px");
+    element.style.setProperty("transform", "translate(50px, -15px)");
+
+    element.getBoundingClientRect = () => {
+      const offsetX = Number.parseFloat(element.style.getPropertyValue(STUDIO_OFFSET_X_PROP)) || 0;
+      const offsetY = Number.parseFloat(element.style.getPropertyValue(STUDIO_OFFSET_Y_PROP)) || 0;
+      return new window.DOMRect(10 + offsetX, 20 + offsetY, 100, 50);
+    };
+
+    const result = createManualOffsetDragMember({
+      key: "test",
+      selection: { element } as never,
+      element,
+      rect: { left: 10, top: 20, width: 100, height: 50, editScaleX: 1, editScaleY: 1 },
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.member.initialOffset.x).toBe(80);
+    expect(result.member.initialOffset.y).toBe(-5);
   });
 });

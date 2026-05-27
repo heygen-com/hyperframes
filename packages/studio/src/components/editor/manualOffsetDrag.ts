@@ -14,6 +14,20 @@ const DEFAULT_OFFSET_PROBE_PX = 100;
 const MIN_PROBE_VECTOR_LENGTH_PX = 0.01;
 const MIN_MATRIX_DETERMINANT = 0.000001;
 
+function readGsapTranslateFromTransform(element: HTMLElement): { x: number; y: number } {
+  const transform = element.style.getPropertyValue("transform");
+  if (!transform || transform === "none") return { x: 0, y: 0 };
+  const DOMMatrixCtor = (element.ownerDocument.defaultView as (Window & typeof globalThis) | null)
+    ?.DOMMatrix;
+  if (!DOMMatrixCtor) return { x: 0, y: 0 };
+  try {
+    const m = new DOMMatrixCtor(transform);
+    return { x: m.m41, y: m.m42 };
+  } catch {
+    return { x: 0, y: 0 };
+  }
+}
+
 export interface ManualOffsetDragMatrix {
   a: number;
   b: number;
@@ -231,7 +245,12 @@ export function createManualOffsetDragMember(input: {
   element: HTMLElement;
   rect: ManualOffsetDragRect;
 }): ManualOffsetDragMemberResult {
-  const initialOffset = readStudioPathOffset(input.element);
+  const rawOffset = readStudioPathOffset(input.element);
+  const gsapTranslate = readGsapTranslateFromTransform(input.element);
+  const initialOffset = {
+    x: rawOffset.x + gsapTranslate.x,
+    y: rawOffset.y + gsapTranslate.y,
+  };
   const initialPathOffset = captureStudioPathOffset(input.element);
   const gestureToken = beginStudioManualEditGesture(input.element);
   const measured = measureManualOffsetDragScreenToOffsetMatrix(input.element, initialOffset);
