@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
 <style>
   body {
     margin: 0;
@@ -42,9 +43,9 @@
     top: 0;
     left: 0;
     height: 100%;
+    width: 0%;
     background: linear-gradient(90deg, #58a6ff, #3fb950);
     border-radius: 20px;
-    animation: fill 5s linear forwards;
   }
 
   .counter {
@@ -62,22 +63,12 @@
     height: 280px;
     border: 4px solid rgba(88, 166, 255, 0.3);
     border-radius: 50%;
-    animation: pulse 1s ease-in-out infinite;
+    opacity: 0.3;
     position: absolute;
     top: 50%;
     left: 50%;
-    transform: translate(-50%, -50%);
+    transform: translate(-50%, -50%) scale(1);
     pointer-events: none;
-  }
-
-  @keyframes fill {
-    from { width: 0%; }
-    to { width: 100%; }
-  }
-
-  @keyframes pulse {
-    0%, 100% { opacity: 0.3; transform: translate(-50%, -50%) scale(1); }
-    50% { opacity: 0.8; transform: translate(-50%, -50%) scale(1.15); }
   }
 
   .stripe-bg {
@@ -90,12 +81,6 @@
       rgba(88, 166, 255, 0.03) 80px,
       rgba(88, 166, 255, 0.03) 160px
     );
-    animation: shift-stripes 2s linear infinite;
-  }
-
-  @keyframes shift-stripes {
-    from { background-position: 0 0; }
-    to { background-position: 226px 0; }
   }
 </style>
 </head>
@@ -107,36 +92,50 @@
        data-start="0"
        data-duration="5">
     <div class="stage clip" data-start="0" data-duration="5">
-      <div class="stripe-bg"></div>
-      <div class="pulse-ring"></div>
+      <div class="stripe-bg" id="stripes"></div>
+      <div class="pulse-ring" id="pulse"></div>
       <div class="title">Parallel Capture</div>
       <div class="counter" id="counter">0</div>
       <div class="track">
-        <div class="bar"></div>
+        <div class="bar" id="bar"></div>
       </div>
     </div>
   </div>
   <script>
     window.__timelines = window.__timelines || {};
+    var tl = gsap.timeline({ paused: true });
+    var duration = 5;
 
-    /* Frame counter — updates every frame via rAF so each captured frame
-       shows a unique number, making PSNR comparison meaningful across the
-       full 150-frame (5s @ 30fps) duration. */
-    (function () {
-      var el = document.getElementById("counter");
-      var duration = 5;
-      var startTime = null;
+    tl.to("#bar", { width: "100%", duration: duration, ease: "none" }, 0);
 
-      function tick(ts) {
-        if (startTime === null) startTime = ts;
-        var elapsed = (ts - startTime) / 1000;
-        var pct = Math.min(elapsed / duration, 1);
-        el.textContent = Math.floor(pct * 150);
-        if (pct < 1) requestAnimationFrame(tick);
-      }
+    tl.to("#pulse", {
+      opacity: 0.8,
+      scale: 1.15,
+      duration: 0.5,
+      ease: "sine.inOut",
+      yoyo: true,
+      repeat: Math.ceil(duration / 1) - 1,
+      repeatDelay: 0,
+    }, 0);
 
-      requestAnimationFrame(tick);
-    })();
+    tl.to("#stripes", {
+      backgroundPosition: "226px 0",
+      duration: 2,
+      ease: "none",
+      repeat: Math.ceil(duration / 2) - 1,
+    }, 0);
+
+    var counterObj = { val: 0 };
+    tl.to(counterObj, {
+      val: 150,
+      duration: duration,
+      ease: "none",
+      onUpdate: function () {
+        document.getElementById("counter").textContent = Math.floor(counterObj.val);
+      },
+    }, 0);
+
+    window.__timelines["parallel-capture-regression"] = tl;
   </script>
 </body>
 </html>
