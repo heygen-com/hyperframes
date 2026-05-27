@@ -300,4 +300,20 @@ describe("probeElementInSource", () => {
     const html = `<div class="item">A</div><div class="item">B</div>`;
     expect(probeElementInSource(html, { selector: ".item", selectorIndex: 5 })).toBe(false);
   });
+
+  it("returns false for an element that would only exist after JS execution", () => {
+    const sourceHtml = `<!doctype html><html><head></head><body>
+<div id="root" data-composition-id="main">
+  <div id="canvas"></div>
+  <script>
+    const svg = document.createElement("div");
+    svg.id = "arrows-svg";
+    document.getElementById("canvas").appendChild(svg);
+  </script>
+</div>
+</body></html>`;
+
+    expect(probeElementInSource(sourceHtml, { id: "arrows-svg" })).toBe(false);
+    expect(probeElementInSource(sourceHtml, { id: "canvas" })).toBe(true);
+  });
 });
