@@ -176,56 +176,70 @@ if (!isHelp && !hasJsonFlag && command !== "upgrade") {
   });
 }
 
+let commandFailed = false;
+
 // Async flush for normal exit (beforeExit fires when the event loop drains)
 process.on("beforeExit", () => {
-  import("./telemetry/index.js")
-    .then((mod) => {
-      mod.trackCommandResult({
-        command,
-        success: true,
-        durationMs: Date.now() - commandStart,
-      });
-    })
-    .catch(() => {});
   _flush?.().catch(() => {});
   if (!hasJsonFlag) _printUpdateNotice?.();
 });
 
-// Sync flush for process.exit() calls (exit event only allows synchronous code)
-process.on("exit", () => {
+// Sync flush for process.exit() calls (exit event only allows synchronous code).
+// Also emits cli_command_result with the real exit code.
+process.on("exit", (code) => {
+  try {
+    import("./telemetry/index.js")
+      .then((mod) => {
+        mod.trackCommandResult({
+          command,
+          success: code === 0 && !commandFailed,
+          exitCode: code,
+          durationMs: Date.now() - commandStart,
+        });
+      })
+      .catch(() => {});
+  } catch {
+    // telemetry must never block exit
+  }
   _flushSync?.();
 });
 
 process.on("uncaughtException", (error) => {
+  commandFailed = true;
   try {
-    import("./telemetry/index.js").then((mod) => {
-      mod.trackCliError({
-        error_name: error.name,
-        error_message: error.message,
-        stack_trace: error.stack,
-        command,
-        kind: "uncaught_exception",
-      });
-    });
+    import("./telemetry/index.js")
+      .then((mod) => {
+        mod.trackCliError({
+          error_name: error.name,
+          error_message: error.message,
+          command,
+          kind: "uncaught_exception",
+        });
+      })
+      .catch(() => {});
   } catch {
-    // telemetry must never prevent crash reporting
+    // telemetry must never suppress the crash
   }
+  _flushSync?.();
+  process.exit(1);
 });
 
 process.on("unhandledRejection", (reason) => {
+  commandFailed = true;
   try {
     const error = reason instanceof Error ? reason : new Error(String(reason));
-    import("./telemetry/index.js").then((mod) => {
-      mod.trackCliError({
-        error_name: error.name,
-        error_message: error.message,
-        stack_trace: error.stack,
-        command,
-        kind: "unhandled_rejection",
-      });
-    });
+    import("./telemetry/index.js")
+      .then((mod) => {
+        mod.trackCliError({
+          error_name: error.name,
+          error_message: error.message,
+          command,
+          kind: "unhandled_rejection",
+        });
+      })
+      .catch(() => {});
   } catch {
-    // telemetry must never prevent crash reporting
+    // telemetry must never suppress the crash
   }
 });
 

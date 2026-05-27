@@ -122,14 +122,12 @@ export function trackBrowserInstall(): void {
 export function trackCliError(props: {
   error_name: string;
   error_message: string;
-  stack_trace?: string;
   command?: string;
   kind: "uncaught_exception" | "unhandled_rejection" | "command_error";
 }): void {
   trackEvent("cli_error", {
     error_name: props.error_name,
     error_message: props.error_message.slice(0, 1000),
-    stack_trace: props.stack_trace?.slice(0, 2000),
     command: props.command,
     kind: props.kind,
   });
@@ -138,13 +136,13 @@ export function trackCliError(props: {
 export function trackCommandResult(props: {
   command: string;
   success: boolean;
+  exitCode: number;
   durationMs: number;
-  error_message?: string;
 }): void {
   trackEvent("cli_command_result", {
     command: props.command,
     success: props.success,
+    exit_code: props.exitCode,
     duration_ms: props.durationMs,
-    error_message: props.error_message?.slice(0, 1000),
   });
 }

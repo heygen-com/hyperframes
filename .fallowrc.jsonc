@@ -67,7 +67,12 @@
     // have no downstream consumers yet.
     {
       "file": "packages/studio/src/components/editor/domEditingLayers.ts",
-      "exports": ["isEditableTextLeaf", "collectDomEditTextFields", "buildElementLabel", "refreshDomEditSelection"],
+      "exports": [
+        "isEditableTextLeaf",
+        "collectDomEditTextFields",
+        "buildElementLabel",
+        "refreshDomEditSelection",
+      ],
     },
   ],
   "ignoreDependencies": [

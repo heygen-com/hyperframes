@@ -313,7 +313,7 @@ async function probeSourceElement(
 // fallow-ignore-next-line complexity
 export async function resolveDomEditSelection(
   startEl: HTMLElement | null,
-  options: DomEditContextOptions & { projectId?: string | null },
+  options: DomEditContextOptions & { projectId?: string | null; skipSourceProbe?: boolean },
 ): Promise<DomEditSelection | null> {
   if (!startEl) return null;
   const doc = startEl.ownerDocument;
@@ -346,7 +346,7 @@ export async function resolveDomEditSelection(
     const textFields = collectDomEditTextFields(current);
     const isInsideLocked = Boolean(findClosestByAttribute(current, ["data-timeline-locked"]));
     let existsInSource: boolean | undefined;
-    if (options.projectId && (current.id || selector)) {
+    if (!options.skipSourceProbe && options.projectId && (current.id || selector)) {
       const probeTarget: { id?: string; selector?: string; selectorIndex?: number } = {};
       if (current.id) probeTarget.id = current.id;
       if (selector) probeTarget.selector = selector;

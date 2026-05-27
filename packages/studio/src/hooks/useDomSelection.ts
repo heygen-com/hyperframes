@@ -195,11 +195,15 @@ export function useDomSelection({
   }, [applyDomSelection]);
 
   const buildDomSelectionFromTarget = useCallback(
-    (target: HTMLElement, options?: { preferClipAncestor?: boolean }) => {
+    (
+      target: HTMLElement,
+      options?: { preferClipAncestor?: boolean; skipSourceProbe?: boolean },
+    ) => {
       return resolveDomEditSelection(target, {
         activeCompositionPath: activeCompPath,
         isMasterView,
         preferClipAncestor: options?.preferClipAncestor,
+        skipSourceProbe: options?.skipSourceProbe,
         projectId,
       });
     },
@@ -207,13 +211,18 @@ export function useDomSelection({
   );
 
   const resolveDomSelectionFromPreviewPoint = useCallback(
-    async (clientX: number, clientY: number, options?: { preferClipAncestor?: boolean }) => {
+    async (
+      clientX: number,
+      clientY: number,
+      options?: { preferClipAncestor?: boolean; skipSourceProbe?: boolean },
+    ) => {
       const iframe = previewIframeRef.current;
       if (!iframe || captionEditMode) return null;
       const target = getPreviewTargetFromPointer(iframe, clientX, clientY, activeCompPath);
       if (!target) return null;
       return buildDomSelectionFromTarget(target, {
         preferClipAncestor: options?.preferClipAncestor,
+        skipSourceProbe: options?.skipSourceProbe,
       });
     },
     [activeCompPath, buildDomSelectionFromTarget, captionEditMode, previewIframeRef],

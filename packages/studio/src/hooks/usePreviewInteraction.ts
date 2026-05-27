@@ -20,7 +20,7 @@ export interface UsePreviewInteractionParams {
   resolveDomSelectionFromPreviewPoint: (
     clientX: number,
     clientY: number,
-    options?: { preferClipAncestor?: boolean },
+    options?: { preferClipAncestor?: boolean; skipSourceProbe?: boolean },
   ) => Promise<DomEditSelection | null>;
   updateDomEditHoverSelection: (selection: DomEditSelection | null) => void;
 
@@ -74,6 +74,7 @@ export function usePreviewInteraction({
 
       const nextSelection = await resolveDomSelectionFromPreviewPoint(e.clientX, e.clientY, {
         preferClipAncestor: options?.preferClipAncestor ?? false,
+        skipSourceProbe: true,
       });
       updateDomEditHoverSelection(nextSelection);
       return nextSelection;
