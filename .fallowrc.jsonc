@@ -61,6 +61,14 @@
       "file": "packages/studio/src/telemetry/events.ts",
       "exports": ["trackStudioRenderStart"],
     },
+    // domEditingLayers: these exports are consumed via the browser iframe
+    // runtime context (not traceable by static import analysis from the
+    // studio entry point) or re-exported through the domEditing barrel but
+    // have no downstream consumers yet.
+    {
+      "file": "packages/studio/src/components/editor/domEditingLayers.ts",
+      "exports": ["isEditableTextLeaf", "collectDomEditTextFields", "buildElementLabel", "refreshDomEditSelection"],
+    },
   ],
   "ignoreDependencies": [
     // Runtime/dynamic deps not visible to static analysis: tsup `external`,
