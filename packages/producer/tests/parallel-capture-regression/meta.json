@@ -8,6 +8,6 @@
   "maxAudioLagWindows": 1,
   "renderConfig": {
     "fps": 30,
-    "workers": 2
+    "workers": 4
   }
 }
