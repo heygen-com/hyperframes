@@ -199,3 +199,10 @@ export function patchElementInHtml(
 
   return wrappedFragment ? document.body.innerHTML || "" : document.toString();
 }
+
+export function probeElementInSource(source: string, target: SourceMutationTarget): boolean {
+  if (!target.id && !target.selector) return false;
+  const { document } = parseSourceDocument(source);
+  const el = findTargetElement(document, target);
+  return el != null && isHTMLElement(el);
+}
