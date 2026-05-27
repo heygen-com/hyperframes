@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html>
+<head><style data-hyperframes-text-rendering="true">html,body,*{text-rendering:geometricPrecision}</style>
+<style>
+  body {
+    margin: 0;
+    background: #0d1117;
+    width: 1920px;
+    height: 1080px;
+    font-family: system-ui, -apple-system, sans-serif;
+    color: #e6edf3;
+    overflow: hidden;
+  }
+
+  .stage {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 48px;
+  }
+
+  .title {
+    font-size: 48px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+  }
+
+  .track {
+    width: 960px;
+    height: 40px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 20px;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .bar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100%;
+    background: linear-gradient(90deg, #58a6ff, #3fb950);
+    border-radius: 20px;
+    animation: fill 5s linear forwards;
+  }
+
+  .counter {
+    font-size: 160px;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+    background: linear-gradient(135deg, #58a6ff, #bc8cff);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: count-up 5s steps(5, end) forwards;
+  }
+
+  .pulse-ring {
+    width: 280px;
+    height: 280px;
+    border: 4px solid rgba(88, 166, 255, 0.3);
+    border-radius: 50%;
+    animation: pulse 1s ease-in-out infinite;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+  }
+
+  @keyframes fill {
+    from { width: 0%; }
+    to { width: 100%; }
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 0.3; transform: translate(-50%, -50%) scale(1); }
+    50% { opacity: 0.8; transform: translate(-50%, -50%) scale(1.15); }
+  }
+
+  @keyframes count-up {
+    0%   { content: "0"; }
+    20%  { content: "1"; }
+    40%  { content: "2"; }
+    60%  { content: "3"; }
+    80%  { content: "4"; }
+    100% { content: "5"; }
+  }
+
+  .stripe-bg {
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(
+      45deg,
+      transparent,
+      transparent 80px,
+      rgba(88, 166, 255, 0.03) 80px,
+      rgba(88, 166, 255, 0.03) 160px
+    );
+    animation: shift-stripes 2s linear infinite;
+  }
+
+  @keyframes shift-stripes {
+    from { background-position: 0 0; }
+    to { background-position: 226px 0; }
+  }
+</style>
+</head>
+<body>
+  <div id="root" data-composition-id="parallel-capture-regression" data-width="1920" data-height="1080" data-start="0" data-duration="5">
+    <div class="stage clip" data-start="0" data-duration="5">
+      <div class="stripe-bg"></div>
+      <div class="pulse-ring"></div>
+      <div class="title">Parallel Capture</div>
+      <div class="counter" id="counter">0</div>
+      <div class="track">
+        <div class="bar"></div>
+      </div>
+    </div>
+  </div>
+  
+<script>window.__timelines = window.__timelines || {};
+
+    /* Frame counter — updates every frame via rAF so each captured frame
+       shows a unique number, making PSNR comparison meaningful across the
+       full 150-frame (5s @ 30fps) duration. */
+    (function () {
+      var el = document.getElementById("counter");
+      var duration = 5;
+      var startTime = null;
+
+      function tick(ts) {
+        if (startTime === null) startTime = ts;
+        var elapsed = (ts - startTime) / 1000;
+        var pct = Math.min(elapsed / duration, 1);
+        el.textContent = Math.floor(pct * 150);
+        if (pct < 1) requestAnimationFrame(tick);
+      }
+
+      requestAnimationFrame(tick);
+    })();</script></body>
+</html>
