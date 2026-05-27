@@ -155,6 +155,11 @@ export function useDomEditCommits({
         selectorIndex: selection.selectorIndex,
       };
 
+      // Mark the save timestamp before the file write so the SSE file-change
+      // handler suppresses the reload even if the event arrives before the
+      // response (the server writes the file and emits SSE during the fetch).
+      domEditSaveTimestampRef.current = Date.now();
+
       const patchResponse = await fetch(
         `/api/projects/${pid}/file-mutations/patch-element/${encodeURIComponent(targetPath)}`,
         {
@@ -193,9 +198,7 @@ export function useDomEditCommits({
         files: { [targetPath]: { before: originalContent, after: finalContent } },
       });
 
-      if (options?.skipRefresh) {
-        domEditSaveTimestampRef.current = Date.now();
-      } else {
+      if (!options?.skipRefresh) {
         reloadPreview();
       }
     },

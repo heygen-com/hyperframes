@@ -2,6 +2,7 @@ import { memo } from "react";
 import { Clock, Eye, Layers, MessageSquare, Move, X } from "../../icons/SystemIcons";
 import { type DomEditSelection } from "./domEditing";
 import { readStudioBoxSize, readStudioPathOffset, readStudioRotation } from "./manualEdits";
+import { readGsapTranslateFromTransform } from "./manualOffsetDrag";
 import type { ImportedFontAsset } from "./fontAssets";
 import {
   EMPTY_STYLES,
@@ -181,6 +182,11 @@ export const PropertyPanel = memo(function PropertyPanel({
   const sourceLabel = element.id ? `#${element.id}` : element.selector;
   const showEditableSections = element.capabilities.canEditStyles;
   const manualOffset = readStudioPathOffset(element.element);
+  const gsapTranslate = readGsapTranslateFromTransform(element.element);
+  const visualOffset = {
+    x: manualOffset.x + gsapTranslate.x,
+    y: manualOffset.y + gsapTranslate.y,
+  };
   const manualSize = readStudioBoxSize(element.element);
   const resolvedWidth =
     manualSize.width > 0
@@ -194,10 +200,11 @@ export const PropertyPanel = memo(function PropertyPanel({
   const commitManualOffset = (axis: "x" | "y", nextValue: string) => {
     const parsed = parsePxMetricValue(nextValue);
     if (parsed == null) return;
-    const current = readStudioPathOffset(element.element);
+    const currentRaw = readStudioPathOffset(element.element);
+    const currentGsap = readGsapTranslateFromTransform(element.element);
     onSetManualOffset(element, {
-      x: axis === "x" ? parsed : current.x,
-      y: axis === "y" ? parsed : current.y,
+      x: axis === "x" ? parsed - currentGsap.x : currentRaw.x,
+      y: axis === "y" ? parsed - currentGsap.y : currentRaw.y,
     });
   };
 
@@ -289,14 +296,14 @@ export const PropertyPanel = memo(function PropertyPanel({
           <div className={RESPONSIVE_GRID}>
             <MetricField
               label="X"
-              value={formatPxMetricValue(manualOffset.x)}
+              value={formatPxMetricValue(visualOffset.x)}
               disabled={manualOffsetEditingDisabled}
               scrub
               onCommit={(next) => commitManualOffset("x", next)}
             />
             <MetricField
               label="Y"
-              value={formatPxMetricValue(manualOffset.y)}
+              value={formatPxMetricValue(visualOffset.y)}
               disabled={manualOffsetEditingDisabled}
               scrub
               onCommit={(next) => commitManualOffset("y", next)}
