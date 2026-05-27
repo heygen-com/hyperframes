@@ -172,7 +172,7 @@ export async function captureScreenshotWithAlpha(
     const result = await client.send("Page.captureScreenshot", {
       format: "png",
       fromSurface: true,
-      captureBeyondViewport: true,
+      captureBeyondViewport: true, // see pageScreenshotCapture for rationale
       optimizeForSpeed: false, // `true` uses a zero-alpha-aware fast path that crushes real alpha values — observed empirically, CDP docs don't spell it out
       clip: { x: 0, y: 0, width, height, scale: 1 },
     });
@@ -237,7 +237,7 @@ export async function captureAlphaPng(page: Page, width: number, height: number)
   const result = await client.send("Page.captureScreenshot", {
     format: "png",
     fromSurface: true,
-    captureBeyondViewport: true,
+    captureBeyondViewport: true, // see pageScreenshotCapture for rationale
     optimizeForSpeed: false, // must be false to preserve alpha
     clip: { x: 0, y: 0, width, height, scale: 1 },
   });
