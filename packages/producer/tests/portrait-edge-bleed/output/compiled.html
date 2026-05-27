@@ -17,84 +17,15 @@
 </script>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  html, body { width: 1080px; height: 1920px; overflow: hidden; background: #000; }
-
-  .grid {
-    position: absolute;
-    inset: 0;
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    grid-template-rows: repeat(8, 1fr);
-    gap: 4px;
-    padding: 4px;
-  }
-
-  .cell {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font: bold 36px system-ui;
-    color: rgba(255, 255, 255, 0.9);
-    border-radius: 8px;
-  }
-
-  /* Top rows: dark blues */
-  .cell:nth-child(-n+12) { background: #1a1a2e; }
-  .cell:nth-child(even):nth-child(-n+12) { background: #16213e; }
-
-  /* Bottom rows (19-24): bright magenta — any clipping here is immediately
-     visible as a PSNR drop against the golden baseline. */
-  .cell:nth-child(n+13) { background: #ff00ff; }
-  .cell:nth-child(even):nth-child(n+13) { background: #cc00cc; }
-
-  .label {
-    position: absolute;
-    bottom: 20px;
-    left: 0;
-    right: 0;
-    text-align: center;
-    font: bold 48px system-ui;
-    color: #fff;
-    text-shadow: 0 2px 8px rgba(0,0,0,0.5);
-  }
+  html, body { width: 1080px; height: 1920px; overflow: hidden; background: #fff; }
 </style>
 </head>
 <body>
   <div id="root" data-composition-id="portrait-edge-bleed" data-width="1080" data-height="1920" data-start="0" data-duration="3">
-    <div class="grid clip" data-start="0" data-duration="3">
-      <div class="cell">1</div><div class="cell">2</div><div class="cell">3</div>
-      <div class="cell">4</div><div class="cell">5</div><div class="cell">6</div>
-      <div class="cell">7</div><div class="cell">8</div><div class="cell">9</div>
-      <div class="cell">10</div><div class="cell">11</div><div class="cell">12</div>
-      <div class="cell">13</div><div class="cell">14</div><div class="cell">15</div>
-      <div class="cell">16</div><div class="cell">17</div><div class="cell">18</div>
-      <div class="cell">19</div><div class="cell">20</div><div class="cell">21</div>
-      <div class="cell">22</div><div class="cell">23</div><div class="cell">24</div>
-      <div class="label" id="counter">0</div>
-    </div>
+    <video id="el-v" data-start="0" data-duration="3" data-track-index="0" src="sample.mp4" muted playsinline style="position:absolute;inset:0;width:1080px;height:1920px;object-fit:cover" data-end="3" data-has-audio="false">
+    </video>
   </div>
   
 <script>window.__timelines = window.__timelines || {};
-    var tl = gsap.timeline({ paused: true });
-    var duration = 3;
-
-    var counterObj = { val: 0 };
-    tl.to(counterObj, {
-      val: 90,
-      duration: duration,
-      ease: "none",
-      onUpdate: function () {
-        document.getElementById("counter").textContent = Math.floor(counterObj.val);
-      },
-    }, 0);
-
-    tl.to(".cell:nth-child(n+13)", {
-      backgroundColor: "#ff44ff",
-      duration: 1.5,
-      ease: "sine.inOut",
-      yoyo: true,
-      repeat: 1,
-    }, 0);
-
-    window.__timelines["portrait-edge-bleed"] = tl;</script></body>
+    window.__timelines["portrait-edge-bleed"] = gsap.timeline({ paused: true });</script></body>
 </html>
