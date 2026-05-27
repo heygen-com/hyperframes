@@ -240,12 +240,15 @@ async function executeWorkerTask(
 
   // BeginFrame's compositor is process-global — multiple pages driving
   // beginFrame in the same browser race it and crash with "Target closed".
-  // Only disable the pool when BeginFrame mode would actually be active
-  // (Linux + headless-shell); screenshot mode (macOS/Windows) is safe.
+  // Only disable the pool when BeginFrame mode would actually be active.
+  // Must match the predicate in createCaptureSession (frameCapture.ts):
+  // Linux + headless-shell + !forceScreenshot + !supersampling.
+  const supersampling = (captureOptions.deviceScaleFactor ?? 1) > 1;
   const needsSeparateBrowsers =
     parallel &&
     process.platform === "linux" &&
     !config?.forceScreenshot &&
+    !supersampling &&
     resolveHeadlessShellPath(config) !== undefined;
   const workerConfig: Partial<EngineConfig> | undefined = needsSeparateBrowsers
     ? { ...config, enableBrowserPool: false }
