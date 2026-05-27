@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
-import { wrapTimeline } from "./playbackAdapter";
-import type { TimelineLike } from "./playbackTypes";
+import { createStaticSeekPlaybackAdapter, wrapTimeline } from "./playbackAdapter";
+import type {
+  RuntimePlaybackAdapter,
+  StaticSeekPlaybackClock,
+  TimelineLike,
+} from "./playbackTypes";
 
 describe("wrapTimeline seek keepPlaying option (#834)", () => {
   function mockTimeline(): TimelineLike & {
@@ -46,5 +50,164 @@ describe("wrapTimeline seek keepPlaying option (#834)", () => {
 
     expect(tl.pause).toHaveBeenCalledTimes(2);
     expect(tl.seek).toHaveBeenCalledWith(5);
+  });
+});
+
+describe("createStaticSeekPlaybackAdapter seek keepPlaying option", () => {
+  type StaticSeekPlayer = Pick<RuntimePlaybackAdapter, "getTime"> &
+    Partial<Pick<RuntimePlaybackAdapter, "renderSeek" | "seek">>;
+
+  function makeFakeClock(): StaticSeekPlaybackClock & {
+    runNextFrame: () => boolean;
+    cancelled: number[];
+    scheduled: number;
+    setNow: (ms: number) => void;
+  } {
+    let now = 0;
+    let nextHandle = 0;
+    const pending = new Map<number, FrameRequestCallback>();
+    const cancelled: number[] = [];
+    let scheduled = 0;
+    return {
+      now: () => now,
+      requestAnimationFrame: (cb) => {
+        nextHandle += 1;
+        pending.set(nextHandle, cb);
+        scheduled += 1;
+        return nextHandle;
+      },
+      cancelAnimationFrame: (handle) => {
+        if (pending.delete(handle)) cancelled.push(handle);
+      },
+      runNextFrame: () => {
+        const next = pending.entries().next();
+        if (next.done) return false;
+        const [handle, cb] = next.value;
+        pending.delete(handle);
+        cb(now);
+        return true;
+      },
+      cancelled,
+      get scheduled() {
+        return scheduled;
+      },
+      setNow: (ms) => {
+        now = ms;
+      },
+    };
+  }
+
+  function makePlayer(): StaticSeekPlayer & {
+    renderSeek: ReturnType<typeof vi.fn>;
+  } {
+    return {
+      getTime: () => 0,
+      renderSeek: vi.fn(),
+    };
+  }
+
+  it("default seek stops the RAF ticker so the adapter reports paused", () => {
+    const clock = makeFakeClock();
+    const player = makePlayer();
+    const adapter = createStaticSeekPlaybackAdapter(player, 10, clock);
+
+    adapter.play();
+    expect(adapter.isPlaying()).toBe(true);
+
+    adapter.seek(5);
+
+    expect(adapter.isPlaying()).toBe(false);
+    expect(adapter.getTime()).toBe(5);
+    expect(player.renderSeek).toHaveBeenLastCalledWith(5);
+    expect(clock.cancelled.length).toBeGreaterThan(0);
+  });
+
+  it("default seek prevents the ticker from advancing further", () => {
+    const clock = makeFakeClock();
+    const player = makePlayer();
+    const adapter = createStaticSeekPlaybackAdapter(player, 10, clock);
+
+    adapter.play();
+    player.renderSeek.mockClear();
+
+    adapter.seek(5);
+
+    // Any frame the RAF callback already had queued before cancel should be a no-op.
+    clock.setNow(1000);
+    clock.runNextFrame();
+    expect(player.renderSeek).toHaveBeenCalledTimes(1); // only the seek itself
+    expect(player.renderSeek).toHaveBeenLastCalledWith(5);
+    expect(adapter.getTime()).toBe(5);
+  });
+
+  it("seek with { keepPlaying: true } preserves playback and rebases the ticker", () => {
+    const clock = makeFakeClock();
+    const player = makePlayer();
+    const adapter = createStaticSeekPlaybackAdapter(player, 10, clock);
+
+    adapter.play();
+    clock.setNow(500);
+    expect(adapter.isPlaying()).toBe(true);
+
+    adapter.seek(3, { keepPlaying: true });
+
+    expect(adapter.isPlaying()).toBe(true);
+    expect(adapter.getTime()).toBe(3);
+
+    // Advance 1s of wall-clock time. With playStartTime rebased to 3 and
+    // playStartNow rebased to 500, the next tick should render around t=4.
+    clock.setNow(1500);
+    clock.runNextFrame();
+    expect(player.renderSeek).toHaveBeenLastCalledWith(4);
+  });
+
+  it("seek with { keepPlaying: false } pauses (matches default)", () => {
+    const clock = makeFakeClock();
+    const player = makePlayer();
+    const adapter = createStaticSeekPlaybackAdapter(player, 10, clock);
+
+    adapter.play();
+    adapter.seek(5, { keepPlaying: false });
+
+    expect(adapter.isPlaying()).toBe(false);
+    expect(player.renderSeek).toHaveBeenLastCalledWith(5);
+  });
+
+  it("seek with { keepPlaying: true } does not force playback when adapter is paused", () => {
+    const clock = makeFakeClock();
+    const player = makePlayer();
+    const adapter = createStaticSeekPlaybackAdapter(player, 10, clock);
+
+    adapter.seek(2, { keepPlaying: true });
+
+    expect(adapter.isPlaying()).toBe(false);
+    expect(adapter.getTime()).toBe(2);
+    expect(player.renderSeek).toHaveBeenLastCalledWith(2);
+  });
+
+  it("seek without options stays back-compatible with the previous signature", () => {
+    const clock = makeFakeClock();
+    const player = makePlayer();
+    const adapter = createStaticSeekPlaybackAdapter(player, 10, clock);
+
+    // Caller written before the options parameter existed.
+    adapter.seek(4);
+
+    expect(player.renderSeek).toHaveBeenLastCalledWith(4);
+    expect(adapter.getTime()).toBe(4);
+    expect(adapter.isPlaying()).toBe(false);
+  });
+
+  it("default seek clamps to duration and still pauses", () => {
+    const clock = makeFakeClock();
+    const player = makePlayer();
+    const adapter = createStaticSeekPlaybackAdapter(player, 10, clock);
+
+    adapter.play();
+    adapter.seek(99);
+
+    expect(adapter.getTime()).toBe(10);
+    expect(player.renderSeek).toHaveBeenLastCalledWith(10);
+    expect(adapter.isPlaying()).toBe(false);
   });
 });
