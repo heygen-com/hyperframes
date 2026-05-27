@@ -212,6 +212,7 @@ process.on("uncaughtException", (error) => {
         mod.trackCliError({
           error_name: error.name,
           error_message: error.message,
+          stack_trace: error.stack,
           command,
           kind: "uncaught_exception",
         });
@@ -233,6 +234,7 @@ process.on("unhandledRejection", (reason) => {
         mod.trackCliError({
           error_name: error.name,
           error_message: error.message,
+          stack_trace: error.stack,
           command,
           kind: "unhandled_rejection",
         });
