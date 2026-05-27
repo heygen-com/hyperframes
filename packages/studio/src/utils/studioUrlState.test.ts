@@ -53,7 +53,7 @@ function renderStudioUrlStateHarness(
     timelineVisible: true,
     activeCompPathHydrated: true,
     domEditSelection: null,
-    buildDomSelectionFromTarget: () => null,
+    buildDomSelectionFromTarget: () => Promise.resolve(null),
     applyDomSelection: () => {},
     initialState: {
       activeCompPath: null,
@@ -162,7 +162,7 @@ describe("studio url state", () => {
     expect(normalizeStudioUrlPanelTab("motion", { motionPanelEnabled: false })).toBe("design");
   });
 
-  it("hydrates seek first, preserves the initial url state, then restores selection", () => {
+  it("hydrates seek first, preserves the initial url state, then restores selection", async () => {
     vi.useFakeTimers();
     window.history.replaceState(null, "", "#project/demo?t=4.2&tab=design&selId=hero");
     const requestSeek = vi.fn();
@@ -209,7 +209,7 @@ describe("studio url state", () => {
       rightPanelTab: "design",
       rightCollapsed: false,
       applyDomSelection,
-      buildDomSelectionFromTarget: () => restoredSelection,
+      buildDomSelectionFromTarget: () => Promise.resolve(restoredSelection),
       initialState: {
         activeCompPath: null,
         currentTime: 4.2,
@@ -232,8 +232,10 @@ describe("studio url state", () => {
     expect(applyDomSelection).not.toHaveBeenCalled();
 
     harness.rerender({ currentTime: 4.2 });
-    act(() => {
+    await act(async () => {
       vi.advanceTimersByTime(250);
+      // Flush microtasks so the async buildDomSelectionFromTarget Promise resolves
+      await Promise.resolve();
     });
     expect(applyDomSelection).toHaveBeenCalledWith(restoredSelection, { revealPanel: false });
 

@@ -81,7 +81,7 @@ export interface UseDomEditCommitsParams {
   buildDomSelectionFromTarget: (
     target: HTMLElement,
     options?: { preferClipAncestor?: boolean },
-  ) => DomEditSelection | null;
+  ) => Promise<DomEditSelection | null>;
 }
 
 // ── Hook ──
@@ -233,6 +233,7 @@ export function useDomEditCommits({
 
   // ── Position patch helper ──
 
+  // fallow-ignore-next-line complexity
   const commitPositionPatchToHtml = useCallback(
     (
       selection: DomEditSelection,

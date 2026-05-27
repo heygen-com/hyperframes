@@ -143,10 +143,11 @@ describe("DomEditOverlay", () => {
         iframeRef,
         activeCompositionPath: null,
         selection: selected,
-        hoverSelection: null,
+        // Simulate the element being hovered before pointer-down (real users always hover first)
+        hoverSelection: selection,
         groupSelections: [],
         onCanvasMouseDown: () => {},
-        onCanvasPointerMove: () => selection,
+        onCanvasPointerMove: () => Promise.resolve(selection),
         onCanvasPointerLeave: () => {},
         onSelectionChange: (next: DomEditSelection) => setSelected(next),
         onBlockedMove: () => {},

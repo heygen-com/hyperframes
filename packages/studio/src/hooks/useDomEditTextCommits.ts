@@ -38,7 +38,7 @@ export interface UseDomEditTextCommitsParams {
   buildDomSelectionFromTarget: (
     target: HTMLElement,
     options?: { preferClipAncestor?: boolean },
-  ) => DomEditSelection | null;
+  ) => Promise<DomEditSelection | null>;
   persistDomEditOperations: PersistDomEditOperations;
   resolveImportedFontAsset: (fontFamilyValue: string) => ImportedFontAsset | null;
 }
@@ -231,7 +231,7 @@ export function useDomEditTextCommits({
       if (doc) {
         const refreshed = findElementForSelection(doc, domEditSelection, activeCompPath);
         if (refreshed) {
-          const nextSelection = buildDomSelectionFromTarget(refreshed);
+          const nextSelection = await buildDomSelectionFromTarget(refreshed);
           if (nextSelection) {
             applyDomSelection(nextSelection, { revealPanel: false, preserveGroup: true });
           }
@@ -287,7 +287,7 @@ export function useDomEditTextCommits({
       if (doc) {
         const refreshed = findElementForSelection(doc, selection, activeCompPath);
         if (refreshed) {
-          const nextSelection = buildDomSelectionFromTarget(refreshed);
+          const nextSelection = await buildDomSelectionFromTarget(refreshed);
           if (nextSelection) {
             applyDomSelection(nextSelection, { revealPanel: false, preserveGroup: true });
           }

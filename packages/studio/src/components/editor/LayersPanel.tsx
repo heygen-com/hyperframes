@@ -119,12 +119,13 @@ export const LayersPanel = memo(function LayersPanel() {
         isMasterView,
         preferClipAncestor: false,
       }),
+    // LayersPanel has no projectId; probe is skipped when projectId is absent
     [activeCompPath, isMasterView],
   );
 
   const seekToLayer = useCallback(
-    (layer: DomEditLayerItem) => {
-      const selection = resolveSelection(layer);
+    async (layer: DomEditLayerItem) => {
+      const selection = await resolveSelection(layer);
       if (!selection) return;
 
       let matchedId = findMatchingTimelineElementId(selection, timelineElements);
@@ -158,22 +159,22 @@ export const LayersPanel = memo(function LayersPanel() {
   );
 
   const handleSelectLayer = useCallback(
-    (layer: DomEditLayerItem) => {
-      const selection = resolveSelection(layer);
+    async (layer: DomEditLayerItem) => {
+      const selection = await resolveSelection(layer);
       if (!selection) return;
       applyDomSelection(selection);
-      seekToLayer(layer);
+      await seekToLayer(layer);
     },
     [resolveSelection, applyDomSelection, seekToLayer],
   );
 
   const handleLayerHover = useCallback(
-    (layer: DomEditLayerItem | null) => {
+    async (layer: DomEditLayerItem | null) => {
       if (!layer) {
         updateDomEditHoverSelection(null);
         return;
       }
-      const selection = resolveSelection(layer);
+      const selection = await resolveSelection(layer);
       updateDomEditHoverSelection(selection);
     },
     [resolveSelection, updateDomEditHoverSelection],

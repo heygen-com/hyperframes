@@ -73,7 +73,7 @@ export type UseDomEditOverlayGesturesOptions = {
     (
       e: React.PointerEvent<HTMLDivElement>,
       o?: { preferClipAncestor?: boolean },
-    ) => DomEditSelection | null
+    ) => Promise<DomEditSelection | null>
   >;
   onCanvasMouseDown: (
     e: React.MouseEvent<HTMLDivElement>,

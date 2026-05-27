@@ -21,7 +21,7 @@ export interface UsePreviewInteractionParams {
     clientX: number,
     clientY: number,
     options?: { preferClipAncestor?: boolean },
-  ) => DomEditSelection | null;
+  ) => Promise<DomEditSelection | null>;
   updateDomEditHoverSelection: (selection: DomEditSelection | null) => void;
 
   onClickToSource?: (selection: DomEditSelection) => void;
@@ -40,9 +40,9 @@ export function usePreviewInteraction({
   onClickToSource,
 }: UsePreviewInteractionParams) {
   const handlePreviewCanvasMouseDown = useCallback(
-    (e: React.MouseEvent<HTMLDivElement>, options?: { preferClipAncestor?: boolean }) => {
+    async (e: React.MouseEvent<HTMLDivElement>, options?: { preferClipAncestor?: boolean }) => {
       if (!STUDIO_PREVIEW_SELECTION_ENABLED || captionEditMode || compositionLoading) return;
-      const nextSelection = resolveDomSelectionFromPreviewPoint(e.clientX, e.clientY, {
+      const nextSelection = await resolveDomSelectionFromPreviewPoint(e.clientX, e.clientY, {
         preferClipAncestor: options?.preferClipAncestor ?? false,
       });
       if (!nextSelection) {
@@ -66,13 +66,13 @@ export function usePreviewInteraction({
   );
 
   const handlePreviewCanvasPointerMove = useCallback(
-    (e: React.PointerEvent<HTMLDivElement>, options?: { preferClipAncestor?: boolean }) => {
+    async (e: React.PointerEvent<HTMLDivElement>, options?: { preferClipAncestor?: boolean }) => {
       if (!STUDIO_PREVIEW_SELECTION_ENABLED || captionEditMode || compositionLoading) {
         updateDomEditHoverSelection(null);
         return null;
       }
 
-      const nextSelection = resolveDomSelectionFromPreviewPoint(e.clientX, e.clientY, {
+      const nextSelection = await resolveDomSelectionFromPreviewPoint(e.clientX, e.clientY, {
         preferClipAncestor: options?.preferClipAncestor ?? false,
       });
       updateDomEditHoverSelection(nextSelection);

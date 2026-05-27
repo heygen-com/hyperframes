@@ -231,7 +231,7 @@ export function useDomEditSession({
   useEffect(() => {
     if (!previewIframe) return;
 
-    const syncSelectionFromDocument = () => {
+    const syncSelectionFromDocument = async () => {
       if (!STUDIO_INSPECTOR_PANELS_ENABLED || captionEditMode) return;
       const currentSelection = domEditSelectionRef.current;
       if (!currentSelection) return;
@@ -249,7 +249,7 @@ export function useDomEditSession({
         return;
       }
 
-      const nextSelection = buildDomSelectionFromTarget(nextElement);
+      const nextSelection = await buildDomSelectionFromTarget(nextElement);
       if (nextSelection) {
         applyDomSelection(nextSelection, { revealPanel: false, preserveGroup: true });
       }
@@ -257,13 +257,13 @@ export function useDomEditSession({
 
     syncPreviewHistoryHotkey(previewIframe);
     void applyStudioManualEditsToPreviewRef.current(previewIframe);
-    syncSelectionFromDocument();
+    void syncSelectionFromDocument();
     refreshPreviewDocumentVersion();
 
     const handleLoad = () => {
       syncPreviewHistoryHotkey(previewIframe);
       void applyStudioManualEditsToPreviewRef.current(previewIframe);
-      syncSelectionFromDocument();
+      void syncSelectionFromDocument();
       refreshPreviewDocumentVersion();
     };
 

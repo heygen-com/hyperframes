@@ -25,7 +25,7 @@ interface UseStudioUrlStateParams {
   buildDomSelectionFromTarget: (
     target: HTMLElement,
     options?: { preferClipAncestor?: boolean },
-  ) => DomEditSelection | null;
+  ) => Promise<DomEditSelection | null>;
   applyDomSelection: (
     selection: DomEditSelection | null,
     options?: {
@@ -140,10 +140,11 @@ export function useStudioUrlState({
       return;
     }
 
-    const selection = buildDomSelectionFromTarget(element, { preferClipAncestor: false });
-    applyDomSelection(selection, { revealPanel: false });
     hydratedSelectionRef.current = true;
     pendingSelectionRef.current = null;
+    void buildDomSelectionFromTarget(element, { preferClipAncestor: false }).then((selection) => {
+      applyDomSelection(selection, { revealPanel: false });
+    });
   }, [
     activeCompPath,
     applyDomSelection,

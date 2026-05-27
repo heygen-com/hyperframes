@@ -43,7 +43,7 @@ interface DomEditOverlayProps {
   onCanvasPointerMove: (
     event: React.PointerEvent<HTMLDivElement>,
     options?: { preferClipAncestor?: boolean },
-  ) => DomEditSelection | null;
+  ) => Promise<DomEditSelection | null>;
   onCanvasPointerLeave: () => void;
   onSelectionChange: (
     selection: DomEditSelection,
@@ -195,9 +195,8 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   const handleOverlayPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     if (!allowCanvasMovement || event.button !== 0) return;
     if (event.shiftKey) {
-      const candidate =
-        onCanvasPointerMoveRef.current(event, { preferClipAncestor: false }) ??
-        hoverSelectionRef.current;
+      // Use the already-updated hover selection rather than re-resolving async
+      const candidate = hoverSelectionRef.current;
       if (!candidate) return;
       event.preventDefault();
       event.stopPropagation();
@@ -211,9 +210,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
     const target = event.target as HTMLElement | null;
     if (target?.closest('[data-dom-edit-selection-box="true"]')) return;
 
-    const candidate =
-      onCanvasPointerMoveRef.current(event, { preferClipAncestor: false }) ??
-      hoverSelectionRef.current;
+    const candidate = hoverSelectionRef.current;
     if (!candidate?.capabilities.canApplyManualOffset) return;
 
     const overlayEl = overlayRef.current;

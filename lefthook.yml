@@ -28,6 +28,8 @@ pre-commit:
       exclude: "(\\.test\\.(ts|tsx)$|\\.generated\\.)"
       run: |
         for f in {staged_files}; do
+          # Skip test and generated files (exclude pattern backup in case lefthook doesn't filter)
+          case "$f" in *.test.ts|*.test.tsx|*.generated.*) continue ;; esac
           lines=$(wc -l < "$f")
           if [ "$lines" -gt 600 ]; then
             echo "ERROR: $f has $lines lines (max 600)"

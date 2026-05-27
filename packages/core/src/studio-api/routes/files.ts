@@ -39,9 +39,11 @@ interface RouteContext {
   json: (data: unknown, status?: number) => Response;
 }
 
-async function resolveProjectFile(
+/** Resolve project + safe absolute path for any project-scoped route. */
+async function resolveProjectPath(
   c: RouteContext,
   adapter: StudioApiAdapter,
+  pathPrefix: (projectId: string) => string,
   opts?: { mustExist?: boolean },
 ) {
   const id = c.req.param("id");
@@ -50,7 +52,7 @@ async function resolveProjectFile(
     return { error: c.json({ error: "not found" }, 404) } as const;
   }
 
-  const filePath = decodeURIComponent(c.req.path.replace(`/projects/${project.id}/files/`, ""));
+  const filePath = decodeURIComponent(c.req.path.replace(pathPrefix(project.id), ""));
   if (filePath.includes("\0")) {
     return { error: c.json({ error: "forbidden" }, 403) } as const;
   }
@@ -65,6 +67,48 @@ async function resolveProjectFile(
   }
 
   return { project, filePath, absPath } as const;
+}
+
+function resolveProjectFile(
+  c: RouteContext,
+  adapter: StudioApiAdapter,
+  opts?: { mustExist?: boolean },
+) {
+  return resolveProjectPath(c, adapter, (id) => `/projects/${id}/files/`, opts);
+}
+
+function resolveFileMutationContext(c: RouteContext, adapter: StudioApiAdapter, operation: string) {
+  return resolveProjectPath(c, adapter, (id) => `/projects/${id}/file-mutations/${operation}/`);
+}
+
+type MutationTarget = { id?: string | null; selector?: string; selectorIndex?: number };
+
+/** Write `next` to `absPath` only if it differs from `original`, returning a standardized change response. */
+function writeIfChanged(
+  c: RouteContext,
+  absPath: string,
+  original: string,
+  next: string,
+): Response {
+  if (next === original) {
+    return c.json({ ok: true, changed: false, content: original });
+  }
+  writeFileSync(absPath, next, "utf-8");
+  return c.json({ ok: true, changed: true, content: next });
+}
+
+/**
+ * Parse the request body and validate that `target` is present.
+ * Returns `{ error }` if missing, or `{ target, body }` for the full parsed body.
+ */
+async function parseMutationBody<T extends { target?: MutationTarget }>(
+  c: RouteContext & { req: { json(): Promise<unknown> } },
+): Promise<{ error: Response } | { target: MutationTarget; body: T }> {
+  const body = (await (c.req as { json(): Promise<unknown> }).json().catch(() => null)) as T | null;
+  if (!body?.target) {
+    return { error: c.json({ error: "target required" }, 400) };
+  }
+  return { target: body.target, body };
 }
 
 /** Ensure the parent directory of a path exists. */
@@ -205,113 +249,67 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
   });
 
   api.post("/projects/:id/file-mutations/remove-element/*", async (c) => {
-    const id = c.req.param("id");
-    const project = await adapter.resolveProject(id);
-    if (!project) return c.json({ error: "not found" }, 404);
+    const ctx = await resolveFileMutationContext(c, adapter, "remove-element");
+    if ("error" in ctx) return ctx.error;
 
-    const filePath = decodeURIComponent(
-      c.req.path.replace(`/projects/${project.id}/file-mutations/remove-element/`, ""),
-    );
-    if (filePath.includes("\0")) {
-      return c.json({ error: "forbidden" }, 403);
-    }
-
-    const absPath = resolve(project.dir, filePath);
-    if (!isSafePath(project.dir, absPath)) {
-      return c.json({ error: "forbidden" }, 403);
-    }
-    if (!existsSync(absPath)) {
+    if (!existsSync(ctx.absPath)) {
       return c.json({ error: "not found" }, 404);
     }
 
-    const body = (await c.req.json().catch(() => null)) as {
-      target?: { id?: string | null; selector?: string; selectorIndex?: number };
-    } | null;
-    if (!body?.target) {
-      return c.json({ error: "target required" }, 400);
-    }
+    const parsed = await parseMutationBody<{ target?: MutationTarget }>(c);
+    if ("error" in parsed) return parsed.error;
 
-    const originalContent = readFileSync(absPath, "utf-8");
-    const patchedContent = removeElementFromHtml(originalContent, body.target);
-    if (patchedContent === originalContent) {
-      return c.json({ ok: true, changed: false, content: originalContent });
-    }
-
-    writeFileSync(absPath, patchedContent, "utf-8");
-    return c.json({ ok: true, changed: true, content: patchedContent });
+    const originalContent = readFileSync(ctx.absPath, "utf-8");
+    return writeIfChanged(
+      c,
+      ctx.absPath,
+      originalContent,
+      removeElementFromHtml(originalContent, parsed.target),
+    );
   });
 
   api.post("/projects/:id/file-mutations/patch-element/*", async (c) => {
-    const id = c.req.param("id");
-    const project = await adapter.resolveProject(id);
-    if (!project) return c.json({ error: "not found" }, 404);
+    const ctx = await resolveFileMutationContext(c, adapter, "patch-element");
+    if ("error" in ctx) return ctx.error;
 
-    const filePath = decodeURIComponent(
-      c.req.path.replace(`/projects/${project.id}/file-mutations/patch-element/`, ""),
-    );
-    if (filePath.includes("\0")) {
-      return c.json({ error: "forbidden" }, 403);
-    }
-
-    const absPath = resolve(project.dir, filePath);
-    if (!isSafePath(project.dir, absPath)) {
-      return c.json({ error: "forbidden" }, 403);
-    }
-    const body = (await c.req.json().catch(() => null)) as {
-      target?: { id?: string | null; selector?: string; selectorIndex?: number };
+    const parsed = await parseMutationBody<{
+      target?: MutationTarget;
       operations?: PatchOperation[];
-    } | null;
-    if (!body?.target || !Array.isArray(body.operations) || body.operations.length === 0) {
+    }>(c);
+    if ("error" in parsed) return parsed.error;
+    if (!Array.isArray(parsed.body.operations) || parsed.body.operations.length === 0) {
       return c.json({ error: "target and operations required" }, 400);
     }
 
     let originalContent: string;
     try {
-      originalContent = readFileSync(absPath, "utf-8");
+      originalContent = readFileSync(ctx.absPath, "utf-8");
     } catch {
       return c.json({ error: "not found" }, 404);
     }
-    const patchedContent = patchElementInHtml(originalContent, body.target, body.operations);
-    if (patchedContent === originalContent) {
-      return c.json({ ok: true, changed: false, content: originalContent });
-    }
-
-    writeFileSync(absPath, patchedContent, "utf-8");
-    return c.json({ ok: true, changed: true, content: patchedContent });
+    return writeIfChanged(
+      c,
+      ctx.absPath,
+      originalContent,
+      patchElementInHtml(originalContent, parsed.target, parsed.body.operations),
+    );
   });
 
   api.post("/projects/:id/file-mutations/probe-element/*", async (c) => {
-    const id = c.req.param("id");
-    const project = await adapter.resolveProject(id);
-    if (!project) return c.json({ error: "not found" }, 404);
+    const ctx = await resolveFileMutationContext(c, adapter, "probe-element");
+    if ("error" in ctx) return ctx.error;
 
-    const filePath = decodeURIComponent(
-      c.req.path.replace(`/projects/${project.id}/file-mutations/probe-element/`, ""),
-    );
-    if (filePath.includes("\0")) {
-      return c.json({ error: "forbidden" }, 403);
-    }
-
-    const absPath = resolve(project.dir, filePath);
-    if (!isSafePath(project.dir, absPath)) {
-      return c.json({ error: "forbidden" }, 403);
-    }
-
-    const body = (await c.req.json().catch(() => null)) as {
-      target?: { id?: string | null; selector?: string; selectorIndex?: number };
-    } | null;
-    if (!body?.target) {
-      return c.json({ error: "target required" }, 400);
-    }
+    const parsed = await parseMutationBody<{ target?: MutationTarget }>(c);
+    if ("error" in parsed) return parsed.error;
 
     let content: string;
     try {
-      content = readFileSync(absPath, "utf-8");
+      content = readFileSync(ctx.absPath, "utf-8");
     } catch {
       return c.json({ exists: false });
     }
 
-    const exists = probeElementInSource(content, body.target);
+    const exists = probeElementInSource(content, parsed.target);
     return c.json({ exists });
   });
 

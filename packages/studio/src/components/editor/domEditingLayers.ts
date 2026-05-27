@@ -284,12 +284,37 @@ export function buildElementLabel(el: HTMLElement): string {
   return el.tagName.toLowerCase();
 }
 
+// ─── Source probe ────────────────────────────────────────────────────────────
+
+async function probeSourceElement(
+  projectId: string,
+  sourceFile: string,
+  target: { id?: string; selector?: string; selectorIndex?: number },
+): Promise<boolean> {
+  try {
+    const response = await fetch(
+      `/api/projects/${projectId}/file-mutations/probe-element/${encodeURIComponent(sourceFile)}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ target }),
+      },
+    );
+    if (!response.ok) return true;
+    const data = (await response.json()) as { exists?: boolean };
+    return data.exists !== false;
+  } catch {
+    return true;
+  }
+}
+
 // ─── Selection resolution ────────────────────────────────────────────────────
 
-export function resolveDomEditSelection(
+// fallow-ignore-next-line complexity
+export async function resolveDomEditSelection(
   startEl: HTMLElement | null,
-  options: DomEditContextOptions,
-): DomEditSelection | null {
+  options: DomEditContextOptions & { projectId?: string | null },
+): Promise<DomEditSelection | null> {
   if (!startEl) return null;
   const doc = startEl.ownerDocument;
 
@@ -320,6 +345,14 @@ export function resolveDomEditSelection(
     const computedStyles = getCuratedComputedStyles(current);
     const textFields = collectDomEditTextFields(current);
     const isInsideLocked = Boolean(findClosestByAttribute(current, ["data-timeline-locked"]));
+    let existsInSource: boolean | undefined;
+    if (options.projectId && (current.id || selector)) {
+      const probeTarget: { id?: string; selector?: string; selectorIndex?: number } = {};
+      if (current.id) probeTarget.id = current.id;
+      if (selector) probeTarget.selector = selector;
+      if (selectorIndex != null) probeTarget.selectorIndex = selectorIndex;
+      existsInSource = await probeSourceElement(options.projectId, sourceFile, probeTarget);
+    }
     const capabilities = resolveDomEditCapabilities({
       selector,
       tagName: current.tagName.toLowerCase(),
@@ -329,6 +362,7 @@ export function resolveDomEditSelection(
       isCompositionHost: Boolean(compositionSrc),
       isInsideLockedComposition: isInsideLocked,
       isMasterView: options.isMasterView,
+      existsInSource,
     });
     const rect = current.getBoundingClientRect();
 
@@ -362,10 +396,10 @@ export function resolveDomEditSelection(
   return null;
 }
 
-export function refreshDomEditSelection(
+export async function refreshDomEditSelection(
   selection: DomEditSelection,
   activeCompositionPath: string | null,
-): DomEditSelection | null {
+): Promise<DomEditSelection | null> {
   const doc = selection.element.ownerDocument;
   const nextElement = findElementForSelection(doc, selection, activeCompositionPath);
   return nextElement
