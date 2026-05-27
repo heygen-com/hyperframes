@@ -134,3 +134,17 @@ export function trackCliError(props: {
     kind: props.kind,
   });
 }
+
+export function trackCommandResult(props: {
+  command: string;
+  success: boolean;
+  durationMs: number;
+  error_message?: string;
+}): void {
+  trackEvent("cli_command_result", {
+    command: props.command,
+    success: props.success,
+    duration_ms: props.durationMs,
+    error_message: props.error_message?.slice(0, 1000),
+  });
+}

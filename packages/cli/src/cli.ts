@@ -178,6 +178,15 @@ if (!isHelp && !hasJsonFlag && command !== "upgrade") {
 
 // Async flush for normal exit (beforeExit fires when the event loop drains)
 process.on("beforeExit", () => {
+  import("./telemetry/index.js")
+    .then((mod) => {
+      mod.trackCommandResult({
+        command,
+        success: true,
+        durationMs: Date.now() - commandStart,
+      });
+    })
+    .catch(() => {});
   _flush?.().catch(() => {});
   if (!hasJsonFlag) _printUpdateNotice?.();
 });
@@ -229,4 +238,5 @@ async function showUsage<T extends ArgsDef>(
   return impl(cmd as CommandDef, parent as CommandDef | undefined);
 }
 
+const commandStart = Date.now();
 runMain(main, { showUsage });
