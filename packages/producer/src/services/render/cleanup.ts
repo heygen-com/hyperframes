@@ -9,6 +9,7 @@ import { type CaptureSession, closeCaptureSession } from "@hyperframes/engine";
 import type { FileServerHandle } from "../fileServer.js";
 import { defaultLogger, type ProducerLogger } from "../../logger.js";
 import type { HdrDiagnostics, RenderJob } from "../renderOrchestrator.js";
+import { normalizeErrorMessage } from "../../utils/errorMessage.js";
 
 /**
  * Wrap a cleanup operation so it never throws, but logs any failure.
@@ -80,7 +81,7 @@ export function buildRenderErrorDetails(input: {
   perfStages: Record<string, number>;
   hdrDiagnostics: HdrDiagnostics;
 }): NonNullable<RenderJob["errorDetails"]> {
-  const errorMessage = input.error instanceof Error ? input.error.message : String(input.error);
+  const errorMessage = normalizeErrorMessage(input.error);
   const errorStack = input.error instanceof Error ? input.error.stack : undefined;
   return {
     message: errorMessage,

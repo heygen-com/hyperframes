@@ -93,6 +93,7 @@ import {
   updateJobStatus,
 } from "./render/shared.js";
 import { buildRenderErrorDetails, cleanupRenderResources, safeCleanup } from "./render/cleanup.js";
+import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { resolveEffectiveHdrMode } from "./render/hdrMode.js";
 import { buildRenderPerfSummary } from "./render/perfSummary.js";
 import {
@@ -566,7 +567,7 @@ export function getNextRetryWorkerCount(currentWorkers: number): number {
 }
 
 export function isRecoverableParallelCaptureError(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : String(error);
+  const message = normalizeErrorMessage(error);
   return (
     message.includes("[Parallel] Capture failed") &&
     /Runtime\.callFunctionOn timed out|HeadlessExperimental\.beginFrame timed out|Waiting failed|timeout exceeded|timed out|Navigation timeout|Protocol error|Target closed/i.test(
@@ -2096,7 +2097,7 @@ export async function executeRenderJob(
         ? error
         : new RenderCancelledError("render_cancelled");
     }
-    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorMessage = normalizeErrorMessage(error);
 
     // Suggest single-worker retry on parallel capture timeout.
     // Video-heavy compositions often cause multi-worker timeouts because
