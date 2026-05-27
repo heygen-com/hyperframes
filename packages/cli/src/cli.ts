@@ -148,12 +148,26 @@ const hasJsonFlag = process.argv.includes("--json");
 // exit handler is synchronous-only).
 let _flush: (() => Promise<void>) | undefined;
 let _flushSync: (() => void) | undefined;
+let _trackCliError:
+  | ((props: {
+      error_name: string;
+      error_message: string;
+      stack_trace?: string;
+      command?: string;
+      kind: "uncaught_exception" | "unhandled_rejection" | "command_error";
+    }) => void)
+  | undefined;
+let _trackCommandResult:
+  | ((props: { command: string; success: boolean; exitCode: number; durationMs: number }) => void)
+  | undefined;
 let _printUpdateNotice: (() => void) | undefined;
 
 if (!isHelp && command !== "telemetry" && command !== "unknown") {
   import("./telemetry/index.js").then((mod) => {
     _flush = mod.flush;
     _flushSync = mod.flushSync;
+    _trackCliError = mod.trackCliError;
+    _trackCommandResult = mod.trackCommandResult;
     mod.showTelemetryNotice();
     mod.trackCommand(command);
     if (mod.shouldTrack()) mod.incrementCommandCount();
@@ -176,6 +190,7 @@ if (!isHelp && !hasJsonFlag && command !== "upgrade") {
   });
 }
 
+const commandStart = Date.now();
 let commandFailed = false;
 
 // Async flush for normal exit (beforeExit fires when the event loop drains)
@@ -184,65 +199,45 @@ process.on("beforeExit", () => {
   if (!hasJsonFlag) _printUpdateNotice?.();
 });
 
-// Sync flush for process.exit() calls (exit event only allows synchronous code).
-// Also emits cli_command_result with the real exit code.
+// Sync-only: exit handlers cannot await promises or drain microtasks.
+// _trackCommandResult / _trackCliError are captured references resolved
+// at init time, so they're callable synchronously here.
 process.on("exit", (code) => {
-  try {
-    import("./telemetry/index.js")
-      .then((mod) => {
-        mod.trackCommandResult({
-          command,
-          success: code === 0 && !commandFailed,
-          exitCode: code,
-          durationMs: Date.now() - commandStart,
-        });
-      })
-      .catch(() => {});
-  } catch {
-    // telemetry must never block exit
-  }
+  _trackCommandResult?.({
+    command,
+    success: code === 0 && !commandFailed,
+    exitCode: code,
+    durationMs: Date.now() - commandStart,
+  });
   _flushSync?.();
 });
 
 process.on("uncaughtException", (error) => {
   commandFailed = true;
-  try {
-    import("./telemetry/index.js")
-      .then((mod) => {
-        mod.trackCliError({
-          error_name: error.name,
-          error_message: error.message,
-          stack_trace: error.stack,
-          command,
-          kind: "uncaught_exception",
-        });
-      })
-      .catch(() => {});
-  } catch {
-    // telemetry must never suppress the crash
-  }
+  _trackCliError?.({
+    error_name: error.name,
+    error_message: error.message,
+    stack_trace: error.stack,
+    command,
+    kind: "uncaught_exception",
+  });
   _flushSync?.();
   process.exit(1);
 });
 
+// unhandledRejection does not call process.exit() — Node may continue
+// running if the rejection is non-fatal (e.g. a fire-and-forget promise).
+// The exit handler above will still fire with the real exit code.
 process.on("unhandledRejection", (reason) => {
   commandFailed = true;
-  try {
-    const error = reason instanceof Error ? reason : new Error(String(reason));
-    import("./telemetry/index.js")
-      .then((mod) => {
-        mod.trackCliError({
-          error_name: error.name,
-          error_message: error.message,
-          stack_trace: error.stack,
-          command,
-          kind: "unhandled_rejection",
-        });
-      })
-      .catch(() => {});
-  } catch {
-    // telemetry must never suppress the crash
-  }
+  const error = reason instanceof Error ? reason : new Error(String(reason));
+  _trackCliError?.({
+    error_name: error.name,
+    error_message: error.message,
+    stack_trace: error.stack,
+    command,
+    kind: "unhandled_rejection",
+  });
 });
 
 // Lazy-load help renderer — avoids allocating help data on non-help invocations
@@ -254,5 +249,4 @@ async function showUsage<T extends ArgsDef>(
   return impl(cmd as CommandDef, parent as CommandDef | undefined);
 }
 
-const commandStart = Date.now();
 runMain(main, { showUsage });
