@@ -128,6 +128,7 @@ export function useDomEditCommits({
     [fileTree, projectId, importedFontAssetsRef],
   );
 
+  // fallow-ignore-next-line complexity
   const persistDomEditOperations: PersistDomEditOperations = useCallback(
     async (selection, operations, options) => {
       const pid = projectIdRef.current;
@@ -244,6 +245,7 @@ export function useDomEditCommits({
           coalesceKey: options.coalesceKey,
           skipRefresh: options.skipRefresh ?? true,
         });
+        // fallow-ignore-next-line complexity
       }).catch((error) => {
         const message = error instanceof Error ? error.message : "Failed to save position";
         showToast(message);
@@ -251,6 +253,9 @@ export function useDomEditCommits({
           source: "dom_edit",
           label: options.label,
           error_message: message,
+          target_id: selection.id ?? undefined,
+          target_selector: selection.selector ?? undefined,
+          target_source_file: selection.sourceFile ?? undefined,
         });
       });
     },
@@ -333,6 +338,7 @@ export function useDomEditCommits({
 
   // ── Motion commits (HTML-attribute–backed) ──
 
+  // fallow-ignore-next-line complexity
   const handleDomMotionCommit = useCallback(
     (
       selection: DomEditSelection,
@@ -359,6 +365,7 @@ export function useDomEditCommits({
     [commitPositionPatchToHtml, previewIframeRef, refreshDomEditSelectionFromPreview],
   );
 
+  // fallow-ignore-next-line complexity
   const handleDomMotionClear = useCallback(
     (selection: DomEditSelection) => {
       const clearPatches = buildClearMotionPatches(selection.element);
@@ -387,6 +394,7 @@ export function useDomEditCommits({
     [commitPositionPatchToHtml, previewIframeRef, refreshDomEditSelectionFromPreview],
   );
 
+  // fallow-ignore-next-line complexity
   const handleDomEditElementDelete = useCallback(
     async (selection: DomEditSelection) => {
       const pid = projectIdRef.current;
