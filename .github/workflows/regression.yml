@@ -75,7 +75,7 @@ jobs:
           - shard: shard-5
             args: "style-4-prod style-11-prod style-2-prod animejs-adapter typegpu-adapter parallel-capture-regression"
           - shard: shard-6
-            args: "overlay-montage-prod style-12-prod chat missing-host-comp-id png-sequence"
+            args: "overlay-montage-prod style-12-prod chat missing-host-comp-id png-sequence portrait-edge-bleed"
           - shard: shard-7
             args: "sub-composition-video style-18-prod raf-ball-render-compat font-variant-numeric sub-comp-t0 sub-comp-id-selector"
           - shard: shard-8
