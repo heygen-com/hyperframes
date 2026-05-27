@@ -1,0 +1,13 @@
+{
+  "name": "parallel-capture-regression",
+  "description": "Regression test for multi-worker parallel capture. Exercises the browser-per-worker code path that prevents BeginFrame compositor races. Must render with workers > 1 to be meaningful.",
+  "tags": ["regression", "parallel", "render-compat"],
+  "minPsnr": 30,
+  "maxFrameFailures": 0,
+  "minAudioCorrelation": 0,
+  "maxAudioLagWindows": 1,
+  "renderConfig": {
+    "fps": 30,
+    "workers": 2
+  }
+}
