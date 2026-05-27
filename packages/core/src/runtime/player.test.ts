@@ -488,6 +488,73 @@ describe("createRuntimePlayer", () => {
     });
   });
 
+  describe("tolerates non-conformant timeline objects", () => {
+    it("handles duration as a number property instead of a function", () => {
+      const timeline = {
+        play: vi.fn(),
+        pause: vi.fn(),
+        seek: vi.fn(),
+        totalTime: vi.fn(),
+        time: vi.fn(() => 2),
+        duration: 10,
+        add: vi.fn(),
+        paused: vi.fn(),
+        set: vi.fn(),
+      } as unknown as RuntimeTimelineLike;
+      const deps = createMockDeps(timeline);
+      const player = createRuntimePlayer(deps);
+      expect(player.getDuration()).toBe(10);
+      expect(() => player.play()).not.toThrow();
+    });
+
+    it("handles missing pause method", () => {
+      const timeline = {
+        play: vi.fn(),
+        seek: vi.fn(),
+        time: vi.fn(() => 0),
+        duration: vi.fn(() => 10),
+        add: vi.fn(),
+        paused: vi.fn(),
+        set: vi.fn(),
+      } as unknown as RuntimeTimelineLike;
+      const deps = createMockDeps(timeline);
+      const player = createRuntimePlayer(deps);
+      expect(() => player.pause()).not.toThrow();
+      expect(() => player.seek(3)).not.toThrow();
+    });
+
+    it("handles missing play method", () => {
+      const timeline = {
+        pause: vi.fn(),
+        seek: vi.fn(),
+        time: vi.fn(() => 0),
+        duration: vi.fn(() => 10),
+        add: vi.fn(),
+        paused: vi.fn(),
+        set: vi.fn(),
+      } as unknown as RuntimeTimelineLike;
+      const deps = createMockDeps(timeline);
+      const player = createRuntimePlayer(deps);
+      expect(() => player.play()).not.toThrow();
+    });
+
+    it("handles time as a number property instead of a function", () => {
+      const timeline = {
+        play: vi.fn(),
+        pause: vi.fn(),
+        seek: vi.fn(),
+        time: 5,
+        duration: vi.fn(() => 10),
+        add: vi.fn(),
+        paused: vi.fn(),
+        set: vi.fn(),
+      } as unknown as RuntimeTimelineLike;
+      const deps = createMockDeps(timeline);
+      const player = createRuntimePlayer(deps);
+      expect(player.getTime()).toBe(5);
+    });
+  });
+
   describe("getters", () => {
     it("getTime returns timeline time", () => {
       const timeline = createMockTimeline({ time: 7.5 });
