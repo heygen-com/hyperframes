@@ -6,5 +6,6 @@ export {
   trackRenderError,
   trackInitTemplate,
   trackBrowserInstall,
+  trackCliError,
 } from "./events.js";
 export { getSystemMeta, getShmSizeMb, getFreeDiskMb, bytesToMb } from "./system.js";

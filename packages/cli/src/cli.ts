@@ -187,6 +187,39 @@ process.on("exit", () => {
   _flushSync?.();
 });
 
+process.on("uncaughtException", (error) => {
+  try {
+    import("./telemetry/index.js").then((mod) => {
+      mod.trackCliError({
+        error_name: error.name,
+        error_message: error.message,
+        stack_trace: error.stack,
+        command,
+        kind: "uncaught_exception",
+      });
+    });
+  } catch {
+    // telemetry must never prevent crash reporting
+  }
+});
+
+process.on("unhandledRejection", (reason) => {
+  try {
+    const error = reason instanceof Error ? reason : new Error(String(reason));
+    import("./telemetry/index.js").then((mod) => {
+      mod.trackCliError({
+        error_name: error.name,
+        error_message: error.message,
+        stack_trace: error.stack,
+        command,
+        kind: "unhandled_rejection",
+      });
+    });
+  } catch {
+    // telemetry must never prevent crash reporting
+  }
+});
+
 // Lazy-load help renderer — avoids allocating help data on non-help invocations
 async function showUsage<T extends ArgsDef>(
   cmd: CommandDef<T>,
