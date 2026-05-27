@@ -10,7 +10,6 @@
       "name": "hyperframes",
       "source": "./",
       "description": "HyperFrames by HeyGen. Write HTML, render video. Compositions, GSAP and runtime adapter animations, captions, voiceovers, audio-reactive visuals, and website-to-video capture for HyperFrames.",
-      "version": "0.1.0",
       "homepage": "https://hyperframes.heygen.com",
       "license": "Apache-2.0"
     }
