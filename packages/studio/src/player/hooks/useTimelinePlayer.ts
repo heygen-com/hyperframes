@@ -4,19 +4,16 @@ import { useMountEffect } from "../../hooks/useMountEffect";
 import { usePlaybackKeyboard } from "./usePlaybackKeyboard";
 import { useTimelineSyncCallbacks } from "./useTimelineSyncCallbacks";
 
-// Re-export public API consumed by tests and external modules.
-// All of these were previously defined in this file; they now live in focused
-// sub-modules but are re-exported here so existing import sites don't change.
 export type { ClipManifestClip } from "../lib/playbackTypes";
 export { createStaticSeekPlaybackAdapter } from "../lib/playbackAdapter";
 export {
-  getTimelineElementSelector,
-  readTimelineDurationFromDocument,
-  parseTimelineFromDOM,
+  buildStandaloneRootTimelineElement,
   createTimelineElementFromManifestClip,
   findTimelineDomNodeForClip,
-  buildStandaloneRootTimelineElement,
+  getTimelineElementSelector,
   mergeTimelineElementsPreservingDowngrades,
+  parseTimelineFromDOM,
+  readTimelineDurationFromDocument,
   resolveStandaloneRootCompositionSrc,
   resolveIframe,
 } from "../lib/timelineDOM";
@@ -43,10 +40,7 @@ import {
   shouldMutePreviewAudio,
 } from "../lib/timelineIframeHelpers";
 import { probeMediaUrl, getCachedProbe } from "../lib/mediaProbe";
-
-// ---------------------------------------------------------------------------
-// Hook
-// ---------------------------------------------------------------------------
+import { shouldResumeForwardPlaybackAfterSeek, shouldStopAfterSeek } from "../lib/playbackSeek";
 
 export function useTimelinePlayer() {
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
@@ -65,8 +59,6 @@ export function useTimelinePlayer() {
     adapter: PlaybackAdapter;
   } | null>(null);
 
-  // ZERO store subscriptions — this hook never causes re-renders.
-  // All reads use getState() (point-in-time), all writes use the stable setters.
   const { setIsPlaying, setCurrentTime, setDuration, setTimelineReady, setElements } =
     usePlayerStore.getState();
 
@@ -383,8 +375,6 @@ export function useTimelinePlayer() {
   }, [getAdapter, setCurrentTime, setIsPlaying, stopRAFLoop, stopReverseLoop]);
   const seek = useCallback(
     (time: number, options?: { keepPlaying?: boolean }) => {
-      // Reverse shuttle is always stopped: the RAF reverse tick can't survive
-      // a seek anyway, so `keepPlaying` only preserves forward playback.
       const wasReverseShuttle = shuttleDirectionRef.current === "backward";
       stopReverseLoop();
       const adapter = getAdapter();
@@ -394,10 +384,27 @@ export function useTimelinePlayer() {
       }
       const duration = Math.max(0, adapter.getDuration());
       const nextTime = Math.max(0, duration > 0 ? Math.min(duration, time) : time);
+      const keepPlaying = options?.keepPlaying === true;
+      const shouldResumeAfterSeek = shouldResumeForwardPlaybackAfterSeek({
+        keepPlaying,
+        wasReverseShuttle,
+        storeWasPlaying: usePlayerStore.getState().isPlaying,
+        duration,
+        nextTime,
+      });
       adapter.seek(nextTime, options);
       liveTime.notify(nextTime); // Direct DOM updates (playhead, timecode, progress) — no re-render
       setCurrentTime(nextTime); // sync store so Split/Delete have accurate time
-      if (!options?.keepPlaying || wasReverseShuttle) {
+      if (shouldResumeAfterSeek) {
+        stopRAFLoop();
+        applyPlaybackRate(usePlayerStore.getState().playbackRate);
+        applyPreviewAudioState();
+        adapter.play();
+        setIsPlaying(true);
+        shuttleDirectionRef.current = "forward";
+        shuttleSpeedIndexRef.current = 0;
+        startRAFLoop();
+      } else if (shouldStopAfterSeek({ keepPlaying, wasReverseShuttle })) {
         stopRAFLoop();
         if (usePlayerStore.getState().isPlaying) setIsPlaying(false);
         shuttleDirectionRef.current = null;
@@ -410,14 +417,16 @@ export function useTimelinePlayer() {
       pendingSeekRef,
       setCurrentTime,
       setIsPlaying,
+      startRAFLoop,
       stopRAFLoop,
       stopReverseLoop,
+      applyPlaybackRate,
+      applyPreviewAudioState,
       shuttleDirectionRef,
       shuttleSpeedIndexRef,
     ],
   );
 
-  // Handle seek requests from outside the player loop (e.g. LayersPanel).
   useEffect(() => {
     return usePlayerStore.subscribe((state, prev) => {
       if (state.requestedSeekTime !== null && state.requestedSeekTime !== prev.requestedSeekTime) {
@@ -480,12 +489,8 @@ export function useTimelinePlayer() {
     const handleWindowKeyDown = (e: KeyboardEvent) => playbackKeyDownRef.current(e);
     const handleWindowKeyUp = (e: KeyboardEvent) => playbackKeyUpRef.current(e);
 
-    // Listen for timeline messages from the iframe runtime.
-    // The runtime sends this AFTER all external compositions load,
-    // so we get the complete clip list (not just the first few).
     const handleMessage = (e: MessageEvent) => {
       const data = e.data;
-      // Only process messages from the main preview iframe — ignore MediaPanel/ClipThumbnail iframes
       const ourIframe = iframeRef.current;
       if (e.source && ourIframe && e.source !== ourIframe.contentWindow) {
         return;
@@ -499,10 +504,6 @@ export function useTimelinePlayer() {
               processTimelineMessageRef.current(manifest);
             }
           }
-          // Enrich only when the timeline has settled — skip during the window
-          // right after a "timeline" message to avoid the enrichment adding
-          // elements that fight with the manifest's authoritative element list,
-          // causing duration oscillation.
           const msSinceTimeline = Date.now() - lastTimelineMessageRef.current;
           if (msSinceTimeline > 500) {
             enrichMissingCompositionsRef.current();
@@ -535,7 +536,6 @@ export function useTimelinePlayer() {
       }
     };
 
-    // Pause video when tab loses focus
     const handleVisibilityChange = () => {
       if (document.hidden && usePlayerStore.getState().isPlaying) {
         const adapter = getAdapterRef.current?.();
@@ -564,7 +564,6 @@ export function useTimelinePlayer() {
     };
   });
 
-  /** Reset the player store (elements, duration, etc.) — call when switching sessions. */
   const resetPlayer = useCallback(() => {
     stopRAFLoop();
     stopReverseLoop();

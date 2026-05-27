@@ -25,6 +25,20 @@ function TimelinePlayerHarness({
   return null;
 }
 
+function renderTimelinePlayerHarness() {
+  let api: ReturnType<typeof useTimelinePlayer> | null = null;
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+
+  act(() => {
+    root.render(React.createElement(TimelinePlayerHarness, { onValue: (value) => (api = value) }));
+  });
+
+  if (!api) throw new Error("useTimelinePlayer did not mount");
+  return { api, root };
+}
+
 afterEach(() => {
   document.body.innerHTML = "";
   resetPlayerStore();
@@ -35,19 +49,25 @@ function attachIframeAdapter(
   options: {
     postMessage?: (message: unknown, targetOrigin: string) => void;
     timelines?: Record<string, unknown>;
+    duration?: number;
   } = {},
 ) {
   const iframe = document.createElement("iframe");
   let currentTime = 0;
+  let playing = false;
   const adapter = {
-    play: () => {},
-    pause: () => {},
+    play: vi.fn(() => {
+      playing = true;
+    }),
+    pause: vi.fn(() => {
+      playing = false;
+    }),
     seek: (time: number) => {
       currentTime = time;
     },
     getTime: () => currentTime,
-    getDuration: () => 30,
-    isPlaying: () => false,
+    getDuration: () => options.duration ?? 30,
+    isPlaying: () => playing,
   };
   Object.defineProperty(iframe, "contentWindow", {
     value: {
@@ -71,90 +91,77 @@ function attachIframeAdapter(
   return adapter;
 }
 
+function renderAttachedTimelinePlayer() {
+  const { api, root } = renderTimelinePlayerHarness();
+  const adapter = attachIframeAdapter(api);
+  return { api, root, adapter };
+}
+
+function setStorePlaying() {
+  act(() => {
+    usePlayerStore.setState({ isPlaying: true });
+  });
+}
+
+function seekWithAct(
+  api: ReturnType<typeof useTimelinePlayer>,
+  time: number,
+  options?: { keepPlaying?: boolean },
+) {
+  act(() => {
+    api.seek(time, options);
+  });
+}
+
+function unmountWithAct(root: ReturnType<typeof createRoot>) {
+  act(() => {
+    root.unmount();
+  });
+}
+
+function expectStorePlaybackState(
+  root: ReturnType<typeof createRoot>,
+  expected: { isPlaying: boolean; currentTime: number },
+) {
+  expect(usePlayerStore.getState().isPlaying).toBe(expected.isPlaying);
+  expect(usePlayerStore.getState().currentTime).toBe(expected.currentTime);
+  unmountWithAct(root);
+}
+
 describe("useTimelinePlayer seek hydration", () => {
   it("keeps an external seek request until the iframe adapter is ready", () => {
-    let api: ReturnType<typeof useTimelinePlayer> | null = null;
     const observedTimes: number[] = [];
     const unsubscribe = liveTime.subscribe((time) => {
       observedTimes.push(time);
     });
-    const host = document.createElement("div");
-    document.body.append(host);
-    const root = createRoot(host);
-
-    act(() => {
-      root.render(
-        React.createElement(TimelinePlayerHarness, { onValue: (value) => (api = value) }),
-      );
-    });
+    const { api, root } = renderTimelinePlayerHarness();
 
     act(() => {
       usePlayerStore.getState().requestSeek(4.2);
     });
 
-    expect(api).not.toBeNull();
     expect(usePlayerStore.getState().currentTime).toBe(0);
     expect(usePlayerStore.getState().requestedSeekTime).toBeNull();
 
-    const iframe = document.createElement("iframe");
-    let currentTime = 0;
-    const adapter = {
-      play: () => {},
-      pause: () => {},
-      seek: (time: number) => {
-        currentTime = time;
-      },
-      getTime: () => currentTime,
-      getDuration: () => 30,
-      isPlaying: () => false,
-    };
-    Object.defineProperty(iframe, "contentWindow", {
-      value: {
-        __player: adapter,
-        postMessage: () => {},
-        scrollTo: () => {},
-        addEventListener: () => {},
-        removeEventListener: () => {},
-      },
-      configurable: true,
-    });
-    Object.defineProperty(iframe, "contentDocument", {
-      value: document.implementation.createHTMLDocument("preview"),
-      configurable: true,
-    });
+    const adapter = attachIframeAdapter(api);
 
-    act(() => {
-      api!.iframeRef.current = iframe;
-      api!.onIframeLoad();
-    });
-
-    expect(currentTime).toBe(4.2);
+    expect(adapter.getTime()).toBe(4.2);
     expect(usePlayerStore.getState().currentTime).toBe(4.2);
     expect(usePlayerStore.getState().timelineReady).toBe(true);
     expect(observedTimes).toContain(4.2);
 
-    act(() => {
-      root.unmount();
-    });
+    unmountWithAct(root);
     unsubscribe();
   });
 });
 
 describe("useTimelinePlayer audio controls (#835)", () => {
   it("applies playback-rate changes immediately and auto-mutes audio above 1x", () => {
-    let api: ReturnType<typeof useTimelinePlayer> | null = null;
-    const host = document.createElement("div");
-    document.body.append(host);
-    const root = createRoot(host);
+    const { api, root } = renderTimelinePlayerHarness();
     const postMessage = vi.fn();
     const timeScale = vi.fn();
 
-    act(() => {
-      root.render(
-        React.createElement(TimelinePlayerHarness, { onValue: (value) => (api = value) }),
-      );
-    });
-    attachIframeAdapter(api!, {
+    attachIframeAdapter(api, {
       postMessage,
       timelines: {
         root: { timeScale },
@@ -202,24 +209,14 @@ describe("useTimelinePlayer audio controls (#835)", () => {
       "*",
     );
 
-    act(() => {
-      root.unmount();
-    });
+    unmountWithAct(root);
   });
 
   it("keeps explicit Studio mute active at 1x", () => {
-    let api: ReturnType<typeof useTimelinePlayer> | null = null;
-    const host = document.createElement("div");
-    document.body.append(host);
-    const root = createRoot(host);
+    const { api, root } = renderTimelinePlayerHarness();
     const postMessage = vi.fn();
 
-    act(() => {
-      root.render(
-        React.createElement(TimelinePlayerHarness, { onValue: (value) => (api = value) }),
-      );
-    });
-    attachIframeAdapter(api!, { postMessage });
+    attachIframeAdapter(api, { postMessage });
     postMessage.mockClear();
 
     act(() => {
@@ -235,95 +232,50 @@ describe("useTimelinePlayer audio controls (#835)", () => {
       "*",
     );
 
-    act(() => {
-      root.unmount();
-    });
+    unmountWithAct(root);
   });
 });
 
 describe("useTimelinePlayer seek keepPlaying option (#834)", () => {
   it("default seek() clears isPlaying when the store reports playing", () => {
-    let api: ReturnType<typeof useTimelinePlayer> | null = null;
-    const host = document.createElement("div");
-    document.body.append(host);
-    const root = createRoot(host);
+    const { api, root } = renderAttachedTimelinePlayer();
+    setStorePlaying();
 
-    act(() => {
-      root.render(
-        React.createElement(TimelinePlayerHarness, { onValue: (value) => (api = value) }),
-      );
-    });
-    attachIframeAdapter(api!);
+    seekWithAct(api, 5);
 
-    act(() => {
-      usePlayerStore.setState({ isPlaying: true });
-    });
-
-    act(() => {
-      api!.seek(5);
-    });
-
-    expect(usePlayerStore.getState().isPlaying).toBe(false);
-    expect(usePlayerStore.getState().currentTime).toBe(5);
-
-    act(() => {
-      root.unmount();
-    });
+    expectStorePlaybackState(root, { isPlaying: false, currentTime: 5 });
   });
 
   it("seek(time, { keepPlaying: true }) preserves isPlaying=true so A/E shortcuts don't pause the timeline", () => {
-    let api: ReturnType<typeof useTimelinePlayer> | null = null;
-    const host = document.createElement("div");
-    document.body.append(host);
-    const root = createRoot(host);
+    const { api, root, adapter } = renderAttachedTimelinePlayer();
+    setStorePlaying();
 
-    act(() => {
-      root.render(
-        React.createElement(TimelinePlayerHarness, { onValue: (value) => (api = value) }),
-      );
-    });
-    attachIframeAdapter(api!);
+    seekWithAct(api, 5, { keepPlaying: true });
 
-    act(() => {
-      usePlayerStore.setState({ isPlaying: true });
-    });
-
-    act(() => {
-      api!.seek(5, { keepPlaying: true });
-    });
-
-    expect(usePlayerStore.getState().isPlaying).toBe(true);
-    expect(usePlayerStore.getState().currentTime).toBe(5);
-
-    act(() => {
-      root.unmount();
-    });
+    expect(adapter.play).toHaveBeenCalledTimes(1);
+    expectStorePlaybackState(root, { isPlaying: true, currentTime: 5 });
   });
 
   it("seek(time, { keepPlaying: true }) from paused state stays paused (no spurious resume)", () => {
-    let api: ReturnType<typeof useTimelinePlayer> | null = null;
-    const host = document.createElement("div");
-    document.body.append(host);
-    const root = createRoot(host);
-
-    act(() => {
-      root.render(
-        React.createElement(TimelinePlayerHarness, { onValue: (value) => (api = value) }),
-      );
-    });
-    attachIframeAdapter(api!);
+    const { api, root } = renderAttachedTimelinePlayer();
 
     expect(usePlayerStore.getState().isPlaying).toBe(false);
 
-    act(() => {
-      api!.seek(5, { keepPlaying: true });
-    });
+    seekWithAct(api, 5, { keepPlaying: true });
 
-    expect(usePlayerStore.getState().isPlaying).toBe(false);
-    expect(usePlayerStore.getState().currentTime).toBe(5);
+    expectStorePlaybackState(root, { isPlaying: false, currentTime: 5 });
+  });
 
-    act(() => {
-      root.unmount();
-    });
+  it("seek(time, { keepPlaying: true }) restarts playback when the iframe adapter was paused", () => {
+    const { api, root, adapter } = renderAttachedTimelinePlayer();
+    setStorePlaying();
+
+    expect(adapter.isPlaying()).toBe(false);
+
+    seekWithAct(api, 0, { keepPlaying: true });
+
+    expect(adapter.play).toHaveBeenCalledTimes(1);
+    expect(adapter.isPlaying()).toBe(true);
+    expectStorePlaybackState(root, { isPlaying: true, currentTime: 0 });
   });
 });
