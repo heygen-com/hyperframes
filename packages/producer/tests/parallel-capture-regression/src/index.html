@@ -55,7 +55,6 @@
     background: linear-gradient(135deg, #58a6ff, #bc8cff);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
-    animation: count-up 5s steps(5, end) forwards;
   }
 
   .pulse-ring {
@@ -79,15 +78,6 @@
   @keyframes pulse {
     0%, 100% { opacity: 0.3; transform: translate(-50%, -50%) scale(1); }
     50% { opacity: 0.8; transform: translate(-50%, -50%) scale(1.15); }
-  }
-
-  @keyframes count-up {
-    0%   { content: "0"; }
-    20%  { content: "1"; }
-    40%  { content: "2"; }
-    60%  { content: "3"; }
-    80%  { content: "4"; }
-    100% { content: "5"; }
   }
 
   .stripe-bg {

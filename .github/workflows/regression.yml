@@ -73,7 +73,7 @@ jobs:
           - shard: shard-4
             args: "style-16-prod style-9-prod style-17-prod iframe-render-compat variables-prod mp4-h265-sdr"
           - shard: shard-5
-            args: "style-4-prod style-11-prod style-2-prod animejs-adapter typegpu-adapter"
+            args: "style-4-prod style-11-prod style-2-prod animejs-adapter typegpu-adapter parallel-capture-regression"
           - shard: shard-6
             args: "overlay-montage-prod style-12-prod chat missing-host-comp-id png-sequence"
           - shard: shard-7
