@@ -219,6 +219,20 @@ function isIdentityAfterTranslateStrip(m: DOMMatrix): boolean {
   return m.is2D && m.a === 1 && m.b === 0 && m.c === 0 && m.d === 1;
 }
 
+export function readGsapTranslateFromTransform(element: HTMLElement): { x: number; y: number } {
+  const transform = element.style.getPropertyValue("transform");
+  if (!transform || transform === "none") return { x: 0, y: 0 };
+  const DOMMatrixCtor = (element.ownerDocument.defaultView as (Window & typeof globalThis) | null)
+    ?.DOMMatrix;
+  if (!DOMMatrixCtor) return { x: 0, y: 0 };
+  try {
+    const m = new DOMMatrixCtor(transform);
+    return { x: m.m41, y: m.m42 };
+  } catch {
+    return { x: 0, y: 0 };
+  }
+}
+
 function stripGsapTranslateFromTransform(element: HTMLElement): void {
   const transform = element.style.getPropertyValue("transform");
   if (!transform || transform === "none") return;

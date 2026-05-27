@@ -5,6 +5,7 @@ import {
   beginStudioManualEditGesture,
   captureStudioPathOffset,
   endStudioManualEditGesture,
+  readGsapTranslateFromTransform,
   readStudioPathOffset,
   restoreStudioPathOffset,
   type StudioPathOffsetSnapshot,
@@ -13,20 +14,6 @@ import {
 const DEFAULT_OFFSET_PROBE_PX = 100;
 const MIN_PROBE_VECTOR_LENGTH_PX = 0.01;
 const MIN_MATRIX_DETERMINANT = 0.000001;
-
-export function readGsapTranslateFromTransform(element: HTMLElement): { x: number; y: number } {
-  const transform = element.style.getPropertyValue("transform");
-  if (!transform || transform === "none") return { x: 0, y: 0 };
-  const DOMMatrixCtor = (element.ownerDocument.defaultView as (Window & typeof globalThis) | null)
-    ?.DOMMatrix;
-  if (!DOMMatrixCtor) return { x: 0, y: 0 };
-  try {
-    const m = new DOMMatrixCtor(transform);
-    return { x: m.m41, y: m.m42 };
-  } catch {
-    return { x: 0, y: 0 };
-  }
-}
 
 export interface ManualOffsetDragMatrix {
   a: number;

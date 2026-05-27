@@ -1,8 +1,12 @@
 import { memo } from "react";
 import { Clock, Eye, Layers, MessageSquare, Move, X } from "../../icons/SystemIcons";
 import { type DomEditSelection } from "./domEditing";
-import { readStudioBoxSize, readStudioPathOffset, readStudioRotation } from "./manualEdits";
-import { readGsapTranslateFromTransform } from "./manualOffsetDrag";
+import {
+  readStudioBoxSize,
+  readStudioPathOffset,
+  readStudioRotation,
+  readGsapTranslateFromTransform,
+} from "./manualEdits";
 import type { ImportedFontAsset } from "./fontAssets";
 import {
   EMPTY_STYLES,

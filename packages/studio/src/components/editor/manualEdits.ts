@@ -20,6 +20,7 @@ export {
   readStudioPathOffset,
   readStudioBoxSize,
   readStudioRotation,
+  readGsapTranslateFromTransform,
   applyStudioPathOffset,
   applyStudioPathOffsetDraft,
   applyStudioBoxSize,

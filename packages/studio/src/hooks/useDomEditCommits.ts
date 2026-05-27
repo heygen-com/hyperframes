@@ -430,6 +430,7 @@ export function useDomEditCommits({
           throw new Error("Selected element has no patchable target");
         }
 
+        domEditSaveTimestampRef.current = Date.now();
         const removeResponse = await fetch(
           `/api/projects/${pid}/file-mutations/remove-element/${encodeURIComponent(targetPath)}`,
           {
@@ -443,8 +444,6 @@ export function useDomEditCommits({
         const removeData = (await removeResponse.json()) as { changed?: boolean; content?: string };
         const patchedContent =
           typeof removeData.content === "string" ? removeData.content : originalContent;
-
-        domEditSaveTimestampRef.current = Date.now();
         await saveProjectFilesWithHistory({
           projectId: pid,
           label: "Delete element",
