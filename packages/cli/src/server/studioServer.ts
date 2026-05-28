@@ -512,10 +512,14 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
   // Intercept render requests before they reach the shared API so we can
   // fail fast with an actionable hint instead of burning through the entire
   // capture pipeline before hitting "spawn ffmpeg ENOENT" at encode.
+  let cachedFFmpegPath: string | undefined;
   app.post("/api/projects/:id/render", async (c, next) => {
     const { findFFmpeg, getFFmpegInstallHint } = await import("../browser/ffmpeg.js");
-    if (!findFFmpeg()) {
-      return c.json({ error: "FFmpeg not found", hint: getFFmpegInstallHint() }, 422);
+    if (!cachedFFmpegPath) {
+      cachedFFmpegPath = findFFmpeg();
+    }
+    if (!cachedFFmpegPath) {
+      return c.json({ error: "FFmpeg not found", hint: getFFmpegInstallHint() }, 503);
     }
     return next();
   });
