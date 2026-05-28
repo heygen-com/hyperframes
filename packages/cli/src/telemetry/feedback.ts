@@ -2,6 +2,7 @@ import * as readline from "node:readline";
 import { readConfig, writeConfig } from "./config.js";
 import { shouldTrack } from "./client.js";
 import { trackRenderFeedback } from "./events.js";
+import { detectAgentRuntime } from "./agent_runtime.js";
 import { c } from "../ui/colors.js";
 
 const FEEDBACK_INTERVAL = 15;
@@ -21,6 +22,7 @@ export async function maybePromptRenderFeedback(opts: {
   if (!process.stdin.isTTY) return;
   if (!shouldTrack()) return;
   if (process.env.CI) return;
+  if (detectAgentRuntime()) return;
 
   const config = readConfig();
   config.renderSuccessCount = (config.renderSuccessCount ?? 0) + 1;
