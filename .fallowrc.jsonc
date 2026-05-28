@@ -53,13 +53,13 @@
       "file": "packages/producer/src/services/fileServer.ts",
       "exports": ["isPathInside"],
     },
-    // Studio telemetry: consumed by useRenderQueue.ts / RenderFeedback.tsx
-    // (deep relative imports inside the gitignored renders/ directory) but
-    // fallow's static analyzer doesn't trace them. Same path-resolution
-    // quirk — trackStudioSessionStart from the same file resolves fine.
+    // Studio telemetry: consumed by useRenderQueue.ts / StudioFeedbackBar.tsx
+    // (deep relative imports) but fallow's static analyzer doesn't trace
+    // them. Same path-resolution quirk — trackStudioSessionStart from the
+    // same file resolves fine.
     {
       "file": "packages/studio/src/telemetry/events.ts",
-      "exports": ["trackStudioRenderStart", "trackStudioRenderFeedback"],
+      "exports": ["trackStudioRenderStart", "trackStudioFeedback"],
     },
     // domEditingLayers: these exports are consumed via the browser iframe
     // runtime context (not traceable by static import analysis from the

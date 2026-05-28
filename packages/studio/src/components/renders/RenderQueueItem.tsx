@@ -1,6 +1,5 @@
-import { memo, useCallback, useEffect, useState } from "react";
+import { memo, useCallback, useState } from "react";
 import { VideoFrameThumbnail } from "../ui/VideoFrameThumbnail";
-import { RenderFeedback } from "./RenderFeedback";
 import type { RenderJob } from "./useRenderQueue";
 
 interface RenderQueueItemProps {
@@ -30,28 +29,6 @@ export const RenderQueueItem = memo(function RenderQueueItem({
   onDelete,
 }: RenderQueueItemProps) {
   const [hovered, setHovered] = useState(false);
-  const [showFeedback, setShowFeedback] = useState(false);
-
-  useEffect(() => {
-    if (job.status !== "complete") return;
-
-    const INTERVAL = 5;
-    const countKey = "hyperframes-studio:renderSuccessCount";
-    const lastKey = "hyperframes-studio:lastFeedbackAt";
-
-    try {
-      const count = (parseInt(localStorage.getItem(countKey) || "0", 10) || 0) + 1;
-      localStorage.setItem(countKey, String(count));
-
-      const lastAt = parseInt(localStorage.getItem(lastKey) || "0", 10) || 0;
-      if (count - lastAt >= INTERVAL) {
-        localStorage.setItem(lastKey, String(count));
-        setShowFeedback(true);
-      }
-    } catch {
-      // localStorage unavailable
-    }
-  }, [job.status]);
 
   // Direct file URL — serves from disk, survives server restarts
   const fileSrc = `/api/projects/${projectId}/renders/file/${job.filename}`;
@@ -213,7 +190,6 @@ export const RenderQueueItem = memo(function RenderQueueItem({
           </div>
         )}
       </div>
-      {showFeedback && <RenderFeedback onDismiss={() => setShowFeedback(false)} />}
     </div>
   );
 });

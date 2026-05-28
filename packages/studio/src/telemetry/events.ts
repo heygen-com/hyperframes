@@ -26,9 +26,9 @@ export function trackStudioRenderStart(props: {
   });
 }
 
-export function trackStudioRenderFeedback(props: { rating: number; comment?: string }): void {
+export function trackStudioFeedback(props: { rating: number; comment?: string }): void {
   trackEvent("survey sent", {
-    $survey_id: "render_satisfaction",
+    $survey_id: "studio_experience",
     $survey_response: props.rating,
     $survey_response_2: props.comment,
     source: "studio",
