@@ -205,12 +205,16 @@ export class HyperframesCloudClient {
   async uploadAsset(args: {
     file: Blob | Buffer | Uint8Array;
     filename: string;
+    mimeType?: string;
     idempotencyKey?: string;
     signal?: AbortSignal;
   }): Promise<UploadAssetV3Response> {
     const fd = new FormData();
+    const blobOpts = args.mimeType ? { type: args.mimeType } : undefined;
     const blob =
-      args.file instanceof Blob ? args.file : new Blob([args.file as unknown as BlobPart]);
+      args.file instanceof Blob
+        ? args.file
+        : new Blob([args.file as unknown as BlobPart], blobOpts);
     fd.append("file", blob, args.filename);
     return await this.request<UploadAssetV3Response>({
       method: "POST",
