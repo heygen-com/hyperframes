@@ -198,14 +198,19 @@ The CLI feedback prompt is automatically suppressed when the `CI` environment va
 
 ### Studio
 
-The Studio feedback bar is not affected by the CLI telemetry setting, and there is no build-time flag to disable it — the bar is mounted unconditionally and appears based on the session cadence in `localStorage`.
+The Studio feedback bar is not affected by the CLI telemetry setting. To disable it at build time, set:
 
-If you need to suppress it in a custom Studio build (e.g. embedded or kiosk use), the cadence state lives in two `localStorage` keys:
+```
+VITE_HYPERFRAMES_NO_FEEDBACK=1
+```
 
-- `hyperframes-studio:feedbackSessionCount` — incremented each session
-- `hyperframes-studio:feedbackLastPromptedAt` — the count value when the bar last appeared
+When set to `"1"`, the bar never shows — `shouldShowFeedback()` returns `false` unconditionally regardless of session count or `localStorage` state.
 
-Setting only `feedbackLastPromptedAt` to a large number (e.g. `"9999999"`) will defer the next prompt indefinitely — the gate is `sessionCount - lastPromptedAt >= interval`, so a large `lastPromptedAt` keeps the difference deeply negative regardless of how many sessions accumulate. This is a workaround, not a supported API — a proper opt-out flag is tracked as a follow-up to hf#1101.
+The session interval is still configurable independently:
+
+```
+VITE_HYPERFRAMES_FEEDBACK_INTERVAL=20
+```
 
 ## Related
 

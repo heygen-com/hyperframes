@@ -4,6 +4,14 @@ import { trackStudioFeedback } from "../telemetry/events";
 const DEFAULT_FEEDBACK_INTERVAL = 10;
 const AUTO_DISMISS_MS = 20_000;
 
+function isFeedbackDisabled(): boolean {
+  try {
+    return import.meta.env.VITE_HYPERFRAMES_NO_FEEDBACK === "1";
+  } catch {
+    return false;
+  }
+}
+
 // fallow-ignore-next-line complexity
 function getFeedbackInterval(): number {
   try {
@@ -25,6 +33,7 @@ const STORAGE_KEYS = {
 
 // fallow-ignore-next-line complexity
 function shouldShowFeedback(): boolean {
+  if (isFeedbackDisabled()) return false;
   try {
     const count = parseInt(localStorage.getItem(STORAGE_KEYS.sessionCount) || "0", 10) || 0;
     const lastAt = parseInt(localStorage.getItem(STORAGE_KEYS.lastPromptedAt) || "0", 10) || 0;
