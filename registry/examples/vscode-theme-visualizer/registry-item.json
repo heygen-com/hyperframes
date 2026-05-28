@@ -1,0 +1,115 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "vscode-theme-visualizer",
+  "type": "hyperframes:example",
+  "title": "VS Code Theme Visualizer",
+  "description": "Faithful VS Code workbench recreation with per-character typing animation across 12 built-in themes. Activity bar, sidebar, tabs, editor, terminal, and status bar — all driven by official theme JSON files.",
+  "tags": ["code", "developer", "showcase", "vscode", "themes"],
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 132,
+  "files": [
+    {
+      "path": "index.html",
+      "target": "index.html",
+      "type": "hyperframes:composition"
+    },
+    {
+      "path": "compositions/dark-2026.html",
+      "target": "compositions/dark-2026.html",
+      "type": "hyperframes:composition"
+    },
+    {
+      "path": "compositions/dark-modern.html",
+      "target": "compositions/dark-modern.html",
+      "type": "hyperframes:composition"
+    },
+    {
+      "path": "compositions/dark-plus.html",
+      "target": "compositions/dark-plus.html",
+      "type": "hyperframes:composition"
+    },
+    {
+      "path": "compositions/high-contrast-light.html",
+      "target": "compositions/high-contrast-light.html",
+      "type": "hyperframes:composition"
+    },
+    {
+      "path": "compositions/high-contrast.html",
+      "target": "compositions/high-contrast.html",
+      "type": "hyperframes:composition"
+    },
+    {
+      "path": "compositions/light-2026.html",
+      "target": "compositions/light-2026.html",
+      "type": "hyperframes:composition"
+    },
+    {
+      "path": "compositions/light-modern.html",
+      "target": "compositions/light-modern.html",
+      "type": "hyperframes:composition"
+    },
+    {
+      "path": "compositions/light-plus.html",
+      "target": "compositions/light-plus.html",
+      "type": "hyperframes:composition"
+    },
+    {
+      "path": "compositions/monokai.html",
+      "target": "compositions/monokai.html",
+      "type": "hyperframes:composition"
+    },
+    {
+      "path": "compositions/solarized-light.html",
+      "target": "compositions/solarized-light.html",
+      "type": "hyperframes:composition"
+    },
+    {
+      "path": "compositions/visual-studio-dark.html",
+      "target": "compositions/visual-studio-dark.html",
+      "type": "hyperframes:composition"
+    },
+    {
+      "path": "compositions/visual-studio-light.html",
+      "target": "compositions/visual-studio-light.html",
+      "type": "hyperframes:composition"
+    },
+    {
+      "path": "assets/background.jpeg",
+      "target": "assets/background.jpeg",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/vscode-sequence.css",
+      "target": "assets/vscode-sequence.css",
+      "type": "hyperframes:style"
+    },
+    {
+      "path": "assets/vscode-sequence-runtime.js",
+      "target": "assets/vscode-sequence-runtime.js",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/vscode-theme-registry.js",
+      "target": "assets/vscode-theme-registry.js",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "scripts/build-compositions.mjs",
+      "target": "scripts/build-compositions.mjs",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "scripts/build-theme-registry.mjs",
+      "target": "scripts/build-theme-registry.mjs",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "DESIGN.md",
+      "target": "DESIGN.md",
+      "type": "hyperframes:asset"
+    }
+  ]
+}
