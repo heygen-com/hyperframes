@@ -53,7 +53,10 @@ const GROUPS: Group[] = [
   },
   {
     title: "Deploy",
-    commands: [["lambda", "Deploy and drive distributed renders on AWS Lambda"]],
+    commands: [
+      ["cloud", "Render compositions on HeyGen's cloud (no local Chrome/ffmpeg)"],
+      ["lambda", "Deploy and drive distributed renders on AWS Lambda"],
+    ],
   },
   {
     title: "AI & Integrations",
@@ -94,7 +97,20 @@ const ROOT_EXAMPLES: Example[] = [
 // ── Per-command examples loaded from command files ────────────────────────
 // Each command file exports `examples: Example[]`. This function dynamically
 // imports them so examples live next to the command they document.
-async function loadExamples(name: string): Promise<Example[] | undefined> {
+//
+// For nested subverbs (e.g. `cloud render`), try the parent-scoped path
+// first (`commands/cloud/render.js`) so we don't collide with the
+// top-level command of the same name (`commands/render.js`).
+// fallow-ignore-next-line complexity
+async function loadExamples(name: string, parentName?: string): Promise<Example[] | undefined> {
+  if (parentName) {
+    try {
+      const mod = await import(`./commands/${parentName}/${name}.js`);
+      if (mod.examples) return mod.examples;
+    } catch {
+      // Fall through to the un-nested path.
+    }
+  }
   try {
     const mod = await import(`./commands/${name}.js`);
     return mod.examples;
@@ -153,6 +169,7 @@ function formatExamples(examples: Example[]): string {
 }
 
 // ── Main showUsage override ────────────────────────────────────────────────
+// fallow-ignore-next-line complexity
 export async function showUsage(cmd: CommandDef, parent?: CommandDef): Promise<void> {
   if (!parent) {
     console.log(renderRootHelp() + "\n");
@@ -165,7 +182,9 @@ export async function showUsage(cmd: CommandDef, parent?: CommandDef): Promise<v
 
   const name = meta?.name;
   if (name) {
-    const examples = STATIC_EXAMPLES[name] ?? (await loadExamples(name));
+    const parentMeta = await (typeof parent.meta === "function" ? parent.meta() : parent.meta);
+    const parentName = parentMeta?.name;
+    const examples = STATIC_EXAMPLES[name] ?? (await loadExamples(name, parentName));
     if (examples) {
       console.log(formatExamples(examples) + "\n");
     }

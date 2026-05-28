@@ -917,6 +917,112 @@ hyperframes auth logout --yes            # skip the confirmation prompt
 | `HEYGEN_API_URL` | API base URL (default `https://api.heygen.com`). |
 | `HEYGEN_CONFIG_DIR` | Credentials directory (default `~/.heygen`). |
 
+## hyperframes cloud
+
+Render a HyperFrames composition on HeyGen's hosted cloud — no local Chrome, no local ffmpeg, no AWS to manage. Sign in once with `hyperframes auth login` and the same credential drives every `cloud` subcommand.
+
+```bash
+hyperframes auth login                          # one-time
+hyperframes cloud render ./my-video             # zip + upload + poll + download
+hyperframes cloud render ./my-video --no-wait   # submit and exit with the render_id
+hyperframes cloud list                          # browse recent renders
+```
+
+### Subcommands
+
+#### `cloud render [<projectDir>]`
+
+End-to-end render: zips the project (excluding `.git`, `node_modules`, `dist`, `.next`, `coverage`, dotfiles), uploads it via `POST /v3/assets`, submits `POST /v3/hyperframes/renders`, polls `GET /v3/hyperframes/renders/{id}` until the render completes or fails, and streams the resulting video to disk.
+
+Render parameters mirror the local `hyperframes render` UX where they overlap:
+
+| Flag | Default | Meaning |
+| --- | --- | --- |
+| `--fps` | `30` | Integer 1-240. |
+| `--quality` | `standard` | `draft`, `standard`, or `high`. |
+| `--format` | `mp4` | `mp4`, `webm`, or `mov`. |
+| `--resolution` | composition default | `landscape`, `portrait`, `landscape-4k`, `portrait-4k`, `square`, `square-4k`. |
+| `--composition` / `-c` | `index.html` | Entry HTML file inside the zip. |
+| `--variables` | — | Inline JSON object overriding `data-composition-variables`. |
+| `--variables-file` | — | Path to a JSON file (alternative to `--variables`). |
+| `--strict-variables` | off | Fail when variables are undeclared or have the wrong type. |
+| `--title` | — | Free-text label echoed back in detail responses. |
+| `--output` / `-o` | `renders/<render_id>.<ext>` | Local destination for the downloaded video. |
+
+Lifecycle / control flags:
+
+| Flag | Meaning |
+| --- | --- |
+| `--no-wait` | Submit and exit immediately; print the `render_id` to stdout. |
+| `--callback-url` | HTTPS webhook fired when the render terminates (compose with `--no-wait`). |
+| `--callback-id` | Opaque tracking ID echoed in webhook payloads. |
+| `--asset-id` | Skip zip+upload; submit an already-uploaded composition. Mutually exclusive with the project dir and `--url`. |
+| `--url` | Submit a public HTTPS zip URL. Same mutual-exclusion as `--asset-id`. |
+| `--poll-interval` | Poll cadence in seconds (default `10`). |
+| `--max-wait` | Max poll duration in minutes (default `60`). |
+| `--idempotency-key` | Optional `Idempotency-Key` for safe retries (1-255 chars from `[A-Za-z0-9_:.-]`). |
+| `--json` | Emit machine-readable JSON instead of human-friendly progress. |
+
+```bash
+# Default flow — render the current directory.
+hyperframes cloud render
+
+# Pick a composition + output path.
+hyperframes cloud render . \
+  --composition compositions/intro.html \
+  --output ./renders/intro.mp4
+
+# Higher quality at 60fps.
+hyperframes cloud render --quality high --fps 60
+
+# Fire-and-forget with a webhook (no local polling).
+hyperframes cloud render --callback-url https://example.com/hf-hook --no-wait
+
+# Re-render an already-uploaded composition (skips zip + upload).
+hyperframes cloud render --asset-id asst_abc123
+
+# Render from a public URL (no upload).
+hyperframes cloud render --url https://cdn.example.com/site.zip
+```
+
+#### `cloud list`
+
+Pages through recent renders. Cursor-based: `--limit` caps a single page (1-100), `--token` resumes from a previous `next_token`, `--all` walks the full list until exhausted.
+
+```bash
+hyperframes cloud list
+hyperframes cloud list --limit 50 --json
+hyperframes cloud list --all
+```
+
+#### `cloud get <render_id>`
+
+Fetches the full detail record for one render, including the short-lived signed `video_url` and `thumbnail_url` (presigned S3 URLs — re-fetch on demand rather than cache).
+
+```bash
+hyperframes cloud get hfr_abc123
+hyperframes cloud get hfr_abc123 --json
+```
+
+#### `cloud delete <render_id>`
+
+Soft-deletes a render. Subsequent `GET` calls return 404 and the signed video URL stops working shortly after. Prompts for confirmation interactively; pass `--no-confirm` to bypass for scripts.
+
+```bash
+hyperframes cloud delete hfr_abc123
+hyperframes cloud delete hfr_abc123 --no-confirm --json
+```
+
+### When to pick `cloud` vs `lambda` vs local render
+
+- `hyperframes render` (local): fastest iteration loop. Use during composition authoring.
+- `hyperframes lambda render`: bring-your-own-AWS distributed rendering. Use when you've already invested in AWS and want chunked parallelism on your own account.
+- `hyperframes cloud render`: zero-infra option. HeyGen runs the render; you pay per credit. Use when you don't want to manage Chrome/ffmpeg/AWS locally.
+
+### Auth + base URL
+
+`cloud` reuses the credential resolved by `hyperframes auth status`. Override the API base for staging tests with `HEYGEN_API_URL` (default `https://api.heygen.com`).
+
 ## hyperframes lambda
 
 Deploy HyperFrames distributed rendering to AWS Lambda and drive renders from your laptop or CI.
