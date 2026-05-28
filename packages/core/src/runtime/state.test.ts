@@ -12,7 +12,6 @@ describe("createRuntimeState", () => {
     expect(state.capturedTimeline).toBeNull();
     expect(state.rafId).toBeNull();
     expect(state.tornDown).toBe(false);
-    expect(state.maxTimelineDurationSeconds).toBe(1800);
     expect(state.parityModeEnabled).toBe(true);
   });
 

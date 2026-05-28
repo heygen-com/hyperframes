@@ -538,8 +538,7 @@ export function initSandboxRuntimeModular(): void {
     } else {
       safeDuration = fallbackDuration;
     }
-    const hardDurationCap = Math.max(1, Number(state.maxTimelineDurationSeconds) || 1800);
-    return safeDuration > 0 ? Math.max(0, Math.min(safeDuration, hardDurationCap)) : 0;
+    return safeDuration > 0 ? Math.max(0, safeDuration) : 0;
   };
 
   const resolveRootTimelineFromDocument = (): TimelineResolution => {
@@ -1423,7 +1422,6 @@ export function initSandboxRuntimeModular(): void {
     bindRootTimelineIfAvailable();
     const payload = collectRuntimeTimelinePayload({
       canonicalFps: state.canonicalFps,
-      maxTimelineDurationSeconds: state.maxTimelineDurationSeconds,
     });
     window.__clipManifest = payload;
     postRuntimeMessage(payload);

@@ -72,7 +72,6 @@ export type RuntimeState = {
   cachedVideoClips: RuntimeMediaClip[];
   cachedMediaTimelineDurationSeconds: number;
   tornDown: boolean;
-  maxTimelineDurationSeconds: number;
   nativeVisualWatchdogTick: number;
   /**
    * Single-clock transport. The sole time authority — GSAP is always
@@ -115,7 +114,6 @@ export function createRuntimeState(): RuntimeState {
     cachedVideoClips: [],
     cachedMediaTimelineDurationSeconds: 0,
     tornDown: false,
-    maxTimelineDurationSeconds: 1800,
     nativeVisualWatchdogTick: 0,
     transportClock: null,
     transportRafId: null,
