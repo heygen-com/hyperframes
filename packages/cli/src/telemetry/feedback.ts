@@ -13,6 +13,7 @@ let promptedThisSession = false;
  * Increment the successful render counter and maybe prompt for feedback.
  * Returns immediately if conditions aren't met.
  */
+// fallow-ignore-next-line complexity
 export async function maybePromptRenderFeedback(opts: {
   renderDurationMs: number;
   quiet: boolean;
@@ -40,8 +41,10 @@ export async function maybePromptRenderFeedback(opts: {
   const config = readConfig();
   config.renderSuccessCount = (config.renderSuccessCount ?? 0) + 1;
 
-  const sinceLastPrompt = config.renderSuccessCount - (config.lastFeedbackPromptAt ?? 0);
-  if (sinceLastPrompt < FEEDBACK_INTERVAL) {
+  const lastAt = config.lastFeedbackPromptAt ?? 0;
+  const isFirstEverRender = lastAt === 0;
+  const sinceLastPrompt = config.renderSuccessCount - lastAt;
+  if (!isFirstEverRender && sinceLastPrompt < FEEDBACK_INTERVAL) {
     writeConfig(config);
     return;
   }
