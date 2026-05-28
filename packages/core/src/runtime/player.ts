@@ -9,7 +9,10 @@ import { swallow } from "./diagnostics";
 function safeNum(obj: unknown, prop: string, fallback: number): number {
   const val = (obj as Record<string, unknown>)?.[prop];
   if (typeof val === "function") return Number(val.call(obj)) || fallback;
-  if (typeof val === "number") return val;
+  if (typeof val === "number" && Number.isFinite(val)) return val;
+  if (val !== undefined && val !== null) {
+    swallow("runtime.player.nonConformantNum", { prop, actual: typeof val });
+  }
   return fallback;
 }
 
@@ -19,7 +22,13 @@ function safeNum(obj: unknown, prop: string, fallback: number): number {
  */
 function safeVoid(obj: unknown, method: string): void {
   const fn = (obj as Record<string, unknown>)?.[method];
-  if (typeof fn === "function") fn.call(obj);
+  if (typeof fn === "function") {
+    fn.call(obj);
+    return;
+  }
+  if (fn !== undefined) {
+    swallow("runtime.player.nonConformantVoid", { method, actual: typeof fn });
+  }
 }
 
 type PlayerDeps = {
