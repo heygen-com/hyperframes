@@ -34,12 +34,17 @@ function shouldShowFeedback(): boolean {
   }
 }
 
+const SESSION_COUNTED_KEY = "hyperframes-studio:feedbackSessionCounted";
+
+// fallow-ignore-next-line complexity
 function incrementSessionCount(): void {
   try {
+    if (sessionStorage.getItem(SESSION_COUNTED_KEY)) return;
+    sessionStorage.setItem(SESSION_COUNTED_KEY, "1");
     const count = parseInt(localStorage.getItem(STORAGE_KEYS.sessionCount) || "0", 10) || 0;
     localStorage.setItem(STORAGE_KEYS.sessionCount, String(count + 1));
   } catch {
-    // localStorage unavailable
+    // storage unavailable
   }
 }
 

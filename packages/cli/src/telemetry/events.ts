@@ -144,9 +144,9 @@ export function trackRenderFeedback(props: {
   trackEvent("survey sent", {
     $survey_id: "render_satisfaction",
     $survey_response: props.rating,
-    $survey_response_2: props.comment,
+    ...(props.comment ? { $survey_response_2: props.comment } : {}),
     render_duration_ms: props.renderDurationMs,
-    doctor_summary: props.doctorSummary,
+    ...(props.doctorSummary ? { doctor_summary: props.doctorSummary } : {}),
   });
 }
 

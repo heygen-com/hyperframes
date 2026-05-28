@@ -29,23 +29,8 @@ export async function maybePromptRenderFeedback(opts: {
 }): Promise<void> {
   if (promptedThisSession) return;
   if (opts.quiet) return;
-  if (!process.stdin.isTTY) return;
   if (!shouldTrack()) return;
   if (process.env.CI) return;
-  if (detectAgentRuntime()) {
-    // Agents can't interact with readline — print a hint they can act on
-    const config = readConfig();
-    config.renderSuccessCount = (config.renderSuccessCount ?? 0) + 1;
-    writeConfig(config);
-    if (!opts.quiet) {
-      console.log(
-        c.dim("  [hyperframes] ") +
-          c.dim("Agent feedback: ") +
-          c.accent('hyperframes feedback --rating <1-5> --comment "..."'),
-      );
-    }
-    return;
-  }
 
   const config = readConfig();
   config.renderSuccessCount = (config.renderSuccessCount ?? 0) + 1;
@@ -54,6 +39,23 @@ export async function maybePromptRenderFeedback(opts: {
   const isFirstEverRender = lastAt === 0;
   const sinceLastPrompt = config.renderSuccessCount - lastAt;
   if (!isFirstEverRender && sinceLastPrompt < getFeedbackInterval()) {
+    writeConfig(config);
+    return;
+  }
+
+  if (detectAgentRuntime()) {
+    promptedThisSession = true;
+    config.lastFeedbackPromptAt = config.renderSuccessCount;
+    writeConfig(config);
+    console.log(
+      c.dim("  [hyperframes] ") +
+        c.dim("Agent feedback: ") +
+        c.accent('hyperframes feedback --rating <1-5> --comment "..."'),
+    );
+    return;
+  }
+
+  if (!process.stdin.isTTY) {
     writeConfig(config);
     return;
   }

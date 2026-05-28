@@ -31,9 +31,11 @@ function getBrowserDoctorSummary(): string {
     const nav = navigator as Navigator & {
       deviceMemory?: number;
       connection?: { effectiveType?: string };
+      userAgentData?: { platform?: string };
     };
+    const platform = nav.userAgentData?.platform ?? navigator.platform ?? "unknown";
     const parts = [
-      `ua=${navigator.platform}`,
+      `ua=${platform}`,
       `screen=${screen.width}x${screen.height}@${devicePixelRatio}x`,
       `lang=${navigator.language}`,
     ];
@@ -50,7 +52,7 @@ export function trackStudioFeedback(props: { rating: number; comment?: string })
   trackEvent("survey sent", {
     $survey_id: "studio_experience",
     $survey_response: props.rating,
-    $survey_response_2: props.comment,
+    ...(props.comment ? { $survey_response_2: props.comment } : {}),
     doctor_summary: getBrowserDoctorSummary(),
     source: "studio",
   });
