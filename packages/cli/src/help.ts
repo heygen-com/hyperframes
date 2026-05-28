@@ -69,7 +69,10 @@ const GROUPS: Group[] = [
   },
   {
     title: "Settings",
-    commands: [["telemetry", "Manage anonymous usage telemetry"]],
+    commands: [
+      ["feedback", "Submit anonymous feedback about your experience"],
+      ["telemetry", "Manage anonymous usage telemetry"],
+    ],
   },
 ];
 

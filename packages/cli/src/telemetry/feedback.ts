@@ -22,7 +22,20 @@ export async function maybePromptRenderFeedback(opts: {
   if (!process.stdin.isTTY) return;
   if (!shouldTrack()) return;
   if (process.env.CI) return;
-  if (detectAgentRuntime()) return;
+  if (detectAgentRuntime()) {
+    // Agents can't interact with readline — print a hint they can act on
+    const config = readConfig();
+    config.renderSuccessCount = (config.renderSuccessCount ?? 0) + 1;
+    writeConfig(config);
+    if (!opts.quiet) {
+      console.log(
+        c.dim("  [hyperframes] ") +
+          c.dim("Agent feedback: ") +
+          c.accent('hyperframes feedback --rating <1-5> --comment "..."'),
+      );
+    }
+    return;
+  }
 
   const config = readConfig();
   config.renderSuccessCount = (config.renderSuccessCount ?? 0) + 1;
@@ -58,7 +71,7 @@ export async function maybePromptRenderFeedback(opts: {
   }
 }
 
-async function getDoctorSummary(): Promise<string> {
+export async function getDoctorSummary(): Promise<string> {
   try {
     const [{ getSystemMeta }, { findFFmpeg }] = await Promise.all([
       import("../telemetry/system.js"),
