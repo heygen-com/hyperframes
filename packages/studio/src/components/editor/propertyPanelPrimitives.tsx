@@ -103,6 +103,8 @@ export function MetricField({
   disabled,
   liveCommit,
   scrub,
+  suffix,
+  tooltip,
   onCommit,
 }: {
   label: string;
@@ -110,6 +112,8 @@ export function MetricField({
   disabled?: boolean;
   liveCommit?: boolean;
   scrub?: boolean;
+  suffix?: string;
+  tooltip?: string;
   onCommit: (nextValue: string) => void;
 }) {
   const scrubRef = useRef<{ startX: number; startValue: number; pointerId: number } | null>(null);
@@ -151,7 +155,7 @@ export function MetricField({
       : ({ className: "flex-shrink-0 text-[11px] font-medium text-neutral-500" } as const);
 
   return (
-    <div className={FIELD}>
+    <div className={FIELD} title={tooltip}>
       <div className="flex min-w-0 items-center gap-3">
         <span {...scrubProps}>{label}</span>
         <CommitField
@@ -160,6 +164,7 @@ export function MetricField({
           liveCommit={liveCommit}
           onCommit={onCommit}
         />
+        {suffix && <span className="flex-shrink-0 text-[10px] text-neutral-600">{suffix}</span>}
       </div>
     </div>
   );

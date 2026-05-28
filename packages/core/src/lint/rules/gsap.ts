@@ -1,4 +1,20 @@
-import { parseGsapScript } from "../../parsers/gsapParser";
+interface LintParsedGsap {
+  animations: Array<{
+    targetSelector: string;
+    position: number | string;
+    properties: Record<string, number | string>;
+  }>;
+  timelineVar: string;
+}
+
+// The recast-based GSAP parser lives behind the Node-only
+// `@hyperframes/core/gsap-parser` subpath. The linter runs server-side only
+// (CLI + studio-api `/lint` route), so loading it via dynamic import keeps
+// recast out of any browser/SSR-traced static graph.
+async function loadParseGsapScript(): Promise<(script: string) => LintParsedGsap> {
+  const mod = await import("../../parsers/gsapParser.js");
+  return mod.parseGsapScript as unknown as (script: string) => LintParsedGsap;
+}
 import type { LintContext, HyperframeLintFinding } from "../context";
 import type { OpenTag } from "../utils";
 import { readAttr, truncateSnippet, WINDOW_TIMELINE_ASSIGN_PATTERN } from "../utils";
@@ -108,8 +124,9 @@ function readRegisteredTimelineCompositionId(script: string): string | null {
   return match?.[1] || null;
 }
 
-function extractGsapWindows(script: string): GsapWindow[] {
+async function extractGsapWindows(script: string): Promise<GsapWindow[]> {
   if (!/gsap\.timeline/.test(script)) return [];
+  const parseGsapScript = await loadParseGsapScript();
   const parsed = parseGsapScript(script);
   if (parsed.animations.length === 0) return [];
 
@@ -135,6 +152,9 @@ function extractGsapWindows(script: string): GsapWindow[] {
     const animation = parsed.animations[index];
     index += 1;
     if (!animation) continue;
+    // Skip animations with string positions (e.g. "+=1", "<") — their absolute
+    // timing depends on runtime evaluation and can't be statically linted.
+    if (typeof animation.position !== "number") continue;
     windows.push({
       targetSelector: animation.targetSelector,
       position: animation.position,
@@ -433,9 +453,11 @@ function cssTransformToGsapProps(cssTransform: string): string | null {
 
 // ── GSAP rules ─────────────────────────────────────────────────────────────
 
-export const gsapRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
+export const gsapRules: Array<
+  (ctx: LintContext) => HyperframeLintFinding[] | Promise<HyperframeLintFinding[]>
+> = [
   // overlapping_gsap_tweens + gsap_animates_clip_element + unscoped_gsap_selector
-  ({ source, tags, scripts, rootCompositionId }) => {
+  async ({ source, tags, scripts, rootCompositionId }) => {
     const findings: HyperframeLintFinding[] = [];
 
     // Build clip element selector map
@@ -463,7 +485,7 @@ export const gsapRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
 
     for (const script of scripts) {
       const localTimelineCompId = readRegisteredTimelineCompositionId(script.content);
-      const gsapWindows = extractGsapWindows(script.content);
+      const gsapWindows = await extractGsapWindows(script.content);
       const clipStartBoundaries =
         clipStartBoundariesByComposition.get(localTimelineCompId || rootCompositionId || "") ?? [];
 
@@ -564,7 +586,7 @@ export const gsapRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
   },
 
   // gsap_css_transform_conflict
-  ({ styles, scripts, tags }) => {
+  async ({ styles, scripts, tags }) => {
     const findings: HyperframeLintFinding[] = [];
     const cssTranslateSelectors = new Map<string, string>();
     const cssScaleSelectors = new Map<string, string>();
@@ -610,7 +632,7 @@ export const gsapRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
 
     for (const script of scripts) {
       if (!/gsap\.timeline/.test(script.content)) continue;
-      const windows = extractGsapWindows(script.content);
+      const windows = await extractGsapWindows(script.content);
 
       type Conflict = { cssTransform: string; props: Set<string>; raw: string };
       const conflicts = new Map<string, Conflict>();
@@ -845,7 +867,7 @@ export const gsapRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
   },
 
   // gsap_from_opacity_noop — CSS opacity:0 + gsap.from({opacity:0}) = invisible forever
-  ({ styles, scripts, tags }) => {
+  async ({ styles, scripts, tags }) => {
     const findings: HyperframeLintFinding[] = [];
     const cssOpacityZeroSelectors = new Set<string>();
 
@@ -872,7 +894,7 @@ export const gsapRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
 
     for (const script of scripts) {
       if (!/gsap\.timeline/.test(script.content)) continue;
-      const windows = extractGsapWindows(script.content);
+      const windows = await extractGsapWindows(script.content);
 
       for (const win of windows) {
         if (win.method !== "from") continue;

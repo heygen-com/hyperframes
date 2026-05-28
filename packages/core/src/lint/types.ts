@@ -25,6 +25,8 @@ export type HyperframeLinterOptions = {
   externalStyles?: Array<{ href: string; content: string }>;
 };
 
-// A rule is a pure function: receives parsed context, returns zero or more findings.
-// Rule modules should receive a LintContext (defined in ./context) as the type parameter.
-export type LintRule<TContext> = (ctx: TContext) => HyperframeLintFinding[];
+// A rule is a function: receives parsed context, returns zero or more findings.
+// Rules may be async (e.g. when lazy-loading heavy dependencies like recast).
+export type LintRule<TContext> = (
+  ctx: TContext,
+) => HyperframeLintFinding[] | Promise<HyperframeLintFinding[]>;

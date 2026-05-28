@@ -102,6 +102,7 @@ export function usePreviewPersistence({
         }
         if (d) reapplyPositionEditsAfterSeek(d);
       };
+
       const install = () => {
         reapply();
         if (iframe.contentWindow) installStudioManualEditSeekReapply(iframe.contentWindow, reapply);

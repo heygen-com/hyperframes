@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { lintHyperframeHtml } from "../hyperframeLinter.js";
 
 describe("GSAP rules", () => {
-  it("does NOT error when GSAP animates opacity on a clip element (by id)", () => {
+  it("does NOT error when GSAP animates opacity on a clip element (by id)", async () => {
     const html = `
 <html><body>
   <div data-composition-id="c1" data-width="1920" data-height="1080">
@@ -17,12 +17,12 @@ describe("GSAP rules", () => {
     window.__timelines["c1"] = tl;
   </script>
 </body></html>`;
-    const result = lintHyperframeHtml(html);
+    const result = await lintHyperframeHtml(html);
     const finding = result.findings.find((f) => f.code === "gsap_animates_clip_element");
     expect(finding).toBeUndefined();
   });
 
-  it("does NOT error when GSAP targets a clip element with safe properties (by class)", () => {
+  it("does NOT error when GSAP targets a clip element with safe properties (by class)", async () => {
     const html = `
 <html><body>
   <div data-composition-id="c1" data-width="1920" data-height="1080">
@@ -37,12 +37,12 @@ describe("GSAP rules", () => {
     window.__timelines["c1"] = tl;
   </script>
 </body></html>`;
-    const result = lintHyperframeHtml(html);
+    const result = await lintHyperframeHtml(html);
     const finding = result.findings.find((f) => f.code === "gsap_animates_clip_element");
     expect(finding).toBeUndefined();
   });
 
-  it("does NOT flag GSAP targeting a child of a clip element", () => {
+  it("does NOT flag GSAP targeting a child of a clip element", async () => {
     const html = `
 <html><body>
   <div data-composition-id="c1" data-width="1920" data-height="1080">
@@ -57,12 +57,12 @@ describe("GSAP rules", () => {
     window.__timelines["c1"] = tl;
   </script>
 </body></html>`;
-    const result = lintHyperframeHtml(html);
+    const result = await lintHyperframeHtml(html);
     const finding = result.findings.find((f) => f.code === "gsap_animates_clip_element");
     expect(finding).toBeUndefined();
   });
 
-  it("does NOT flag GSAP targeting a nested selector like '#overlay .title'", () => {
+  it("does NOT flag GSAP targeting a nested selector like '#overlay .title'", async () => {
     const html = `
 <html><body>
   <div data-composition-id="c1" data-width="1920" data-height="1080">
@@ -77,12 +77,12 @@ describe("GSAP rules", () => {
     window.__timelines["c1"] = tl;
   </script>
 </body></html>`;
-    const result = lintHyperframeHtml(html);
+    const result = await lintHyperframeHtml(html);
     const finding = result.findings.find((f) => f.code === "gsap_animates_clip_element");
     expect(finding).toBeUndefined();
   });
 
-  it("does NOT error when GSAP targets a clip element with safe properties (class-only, no id)", () => {
+  it("does NOT error when GSAP targets a clip element with safe properties (class-only, no id)", async () => {
     const html = `
 <html><body>
   <div data-composition-id="c1" data-width="1920" data-height="1080">
@@ -97,12 +97,12 @@ describe("GSAP rules", () => {
     window.__timelines["c1"] = tl;
   </script>
 </body></html>`;
-    const result = lintHyperframeHtml(html);
+    const result = await lintHyperframeHtml(html);
     const finding = result.findings.find((f) => f.code === "gsap_animates_clip_element");
     expect(finding).toBeUndefined();
   });
 
-  it("does NOT error when GSAP animates opacity on a clip element", () => {
+  it("does NOT error when GSAP animates opacity on a clip element", async () => {
     const html = `
 <html><body>
   <div data-composition-id="c1" data-width="1920" data-height="1080">
@@ -117,12 +117,12 @@ describe("GSAP rules", () => {
     window.__timelines["c1"] = tl;
   </script>
 </body></html>`;
-    const result = lintHyperframeHtml(html);
+    const result = await lintHyperframeHtml(html);
     const finding = result.findings.find((f) => f.code === "gsap_animates_clip_element");
     expect(finding).toBeUndefined();
   });
 
-  it("does NOT error when GSAP animates transform props on a clip element", () => {
+  it("does NOT error when GSAP animates transform props on a clip element", async () => {
     const html = `
 <html><body>
   <div data-composition-id="c1" data-width="1920" data-height="1080">
@@ -137,12 +137,12 @@ describe("GSAP rules", () => {
     window.__timelines["c1"] = tl;
   </script>
 </body></html>`;
-    const result = lintHyperframeHtml(html);
+    const result = await lintHyperframeHtml(html);
     const finding = result.findings.find((f) => f.code === "gsap_animates_clip_element");
     expect(finding).toBeUndefined();
   });
 
-  it("does NOT require a local GSAP script for sub-compositions", () => {
+  it("does NOT require a local GSAP script for sub-compositions", async () => {
     const html = `<template id="intro-template">
   <div data-composition-id="intro" data-width="1920" data-height="1080">
     <div class="title">Hello</div>
@@ -155,12 +155,12 @@ describe("GSAP rules", () => {
   </div>
 </template>`;
 
-    const result = lintHyperframeHtml(html, { isSubComposition: true });
+    const result = await lintHyperframeHtml(html, { isSubComposition: true });
     const finding = result.findings.find((f) => f.code === "missing_gsap_script");
     expect(finding).toBeUndefined();
   });
 
-  it("does NOT require a local GSAP script when a template composition is linted in isolation", () => {
+  it("does NOT require a local GSAP script when a template composition is linted in isolation", async () => {
     const html = `<template id="intro-template">
   <div data-composition-id="intro" data-width="1920" data-height="1080">
     <div class="title">Hello</div>
@@ -173,12 +173,12 @@ describe("GSAP rules", () => {
   </div>
 </template>`;
 
-    const result = lintHyperframeHtml(html, { filePath: "compositions/intro.html" });
+    const result = await lintHyperframeHtml(html, { filePath: "compositions/intro.html" });
     const finding = result.findings.find((f) => f.code === "missing_gsap_script");
     expect(finding).toBeUndefined();
   });
 
-  it("ERRORS when GSAP animates visibility on a clip element", () => {
+  it("ERRORS when GSAP animates visibility on a clip element", async () => {
     const html = `
 <html><body>
   <div data-composition-id="c1" data-width="1920" data-height="1080">
@@ -193,7 +193,7 @@ describe("GSAP rules", () => {
     window.__timelines["c1"] = tl;
   </script>
 </body></html>`;
-    const result = lintHyperframeHtml(html);
+    const result = await lintHyperframeHtml(html);
     const finding = result.findings.find((f) => f.code === "gsap_animates_clip_element");
     expect(finding).toBeDefined();
     expect(finding?.severity).toBe("error");
@@ -201,7 +201,7 @@ describe("GSAP rules", () => {
     expect(finding?.message).toContain("visibility");
   });
 
-  it("ERRORS when GSAP animates display on a clip element", () => {
+  it("ERRORS when GSAP animates display on a clip element", async () => {
     const html = `
 <html><body>
   <div data-composition-id="c1" data-width="1920" data-height="1080">
@@ -216,7 +216,7 @@ describe("GSAP rules", () => {
     window.__timelines["c1"] = tl;
   </script>
 </body></html>`;
-    const result = lintHyperframeHtml(html);
+    const result = await lintHyperframeHtml(html);
     const finding = result.findings.find((f) => f.code === "gsap_animates_clip_element");
     expect(finding).toBeDefined();
     expect(finding?.severity).toBe("error");
@@ -224,7 +224,7 @@ describe("GSAP rules", () => {
     expect(finding?.message).toContain("display");
   });
 
-  it("ERRORS when GSAP tween mixes safe properties with visibility on a clip element", () => {
+  it("ERRORS when GSAP tween mixes safe properties with visibility on a clip element", async () => {
     const html = `
 <html><body>
   <div data-composition-id="c1" data-width="1920" data-height="1080">
@@ -239,14 +239,14 @@ describe("GSAP rules", () => {
     window.__timelines["c1"] = tl;
   </script>
 </body></html>`;
-    const result = lintHyperframeHtml(html);
+    const result = await lintHyperframeHtml(html);
     const finding = result.findings.find((f) => f.code === "gsap_animates_clip_element");
     expect(finding).toBeDefined();
     expect(finding?.severity).toBe("error");
     expect(finding?.message).toContain("visibility");
   });
 
-  it("warns when tl.to animates x on an element with CSS translateX", () => {
+  it("warns when tl.to animates x on an element with CSS translateX", async () => {
     const html = `
 <html><body>
   <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
@@ -262,7 +262,7 @@ describe("GSAP rules", () => {
     window.__timelines["c1"] = tl;
   </script>
 </body></html>`;
-    const result = lintHyperframeHtml(html);
+    const result = await lintHyperframeHtml(html);
     const finding = result.findings.find((f) => f.code === "gsap_css_transform_conflict");
     expect(finding).toBeDefined();
     expect(finding?.severity).toBe("warning");
@@ -271,7 +271,7 @@ describe("GSAP rules", () => {
     expect(finding?.fixHint).toMatch(/xPercent/);
   });
 
-  it("warns when tl.to animates scale on an element with CSS scale transform", () => {
+  it("warns when tl.to animates scale on an element with CSS scale transform", async () => {
     const html = `
 <html><body>
   <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
@@ -287,14 +287,14 @@ describe("GSAP rules", () => {
     window.__timelines["c1"] = tl;
   </script>
 </body></html>`;
-    const result = lintHyperframeHtml(html);
+    const result = await lintHyperframeHtml(html);
     const finding = result.findings.find((f) => f.code === "gsap_css_transform_conflict");
     expect(finding).toBeDefined();
     expect(finding?.severity).toBe("warning");
     expect(finding?.selector).toBe("#hero");
   });
 
-  it("does NOT warn when tl.to targets element without CSS transform", () => {
+  it("does NOT warn when tl.to targets element without CSS transform", async () => {
     const html = `
 <html><body>
   <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
@@ -310,12 +310,12 @@ describe("GSAP rules", () => {
     window.__timelines["c1"] = tl;
   </script>
 </body></html>`;
-    const result = lintHyperframeHtml(html);
+    const result = await lintHyperframeHtml(html);
     const conflict = result.findings.find((f) => f.code === "gsap_css_transform_conflict");
     expect(conflict).toBeUndefined();
   });
 
-  it("does NOT warn when tl.fromTo targets element WITH CSS transform (author owns both ends)", () => {
+  it("does NOT warn when tl.fromTo targets element WITH CSS transform (author owns both ends)", async () => {
     const html = `
 <html><body>
   <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
@@ -331,12 +331,12 @@ describe("GSAP rules", () => {
     window.__timelines["c1"] = tl;
   </script>
 </body></html>`;
-    const result = lintHyperframeHtml(html);
+    const result = await lintHyperframeHtml(html);
     const conflict = result.findings.find((f) => f.code === "gsap_css_transform_conflict");
     expect(conflict).toBeUndefined();
   });
 
-  it("emits one warning when a combined CSS transform conflicts with multiple GSAP properties", () => {
+  it("emits one warning when a combined CSS transform conflicts with multiple GSAP properties", async () => {
     const html = `
 <html><body>
   <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
@@ -352,7 +352,7 @@ describe("GSAP rules", () => {
     window.__timelines["c1"] = tl;
   </script>
 </body></html>`;
-    const result = lintHyperframeHtml(html);
+    const result = await lintHyperframeHtml(html);
     const conflicts = result.findings.filter((f) => f.code === "gsap_css_transform_conflict");
     expect(conflicts).toHaveLength(1);
     expect(conflicts[0]?.message).toMatch(/x\/scale|scale\/x/);
@@ -360,7 +360,7 @@ describe("GSAP rules", () => {
 
   // --- Inline style transform detection tests ---
 
-  it("warns when inline style transform: translateX conflicts with GSAP x", () => {
+  it("warns when inline style transform: translateX conflicts with GSAP x", async () => {
     const html = `
 <html><body>
   <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
@@ -373,13 +373,13 @@ describe("GSAP rules", () => {
     window.__timelines["c1"] = tl;
   </script>
 </body></html>`;
-    const result = lintHyperframeHtml(html);
+    const result = await lintHyperframeHtml(html);
     const finding = result.findings.find((f) => f.code === "gsap_css_transform_conflict");
     expect(finding).toBeDefined();
     expect(finding?.selector).toBe("#centered");
   });
 
-  it("warns when inline style transform: scale conflicts with GSAP scale", () => {
+  it("warns when inline style transform: scale conflicts with GSAP scale", async () => {
     const html = `
 <html><body>
   <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
@@ -392,13 +392,13 @@ describe("GSAP rules", () => {
     window.__timelines["c1"] = tl;
   </script>
 </body></html>`;
-    const result = lintHyperframeHtml(html);
+    const result = await lintHyperframeHtml(html);
     const finding = result.findings.find((f) => f.code === "gsap_css_transform_conflict");
     expect(finding).toBeDefined();
     expect(finding?.selector).toBe("#box");
   });
 
-  it("does not false-positive on inline transform: rotate when GSAP uses rotation", () => {
+  it("does not false-positive on inline transform: rotate when GSAP uses rotation", async () => {
     const html = `
 <html><body>
   <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
@@ -411,13 +411,13 @@ describe("GSAP rules", () => {
     window.__timelines["c1"] = tl;
   </script>
 </body></html>`;
-    const result = lintHyperframeHtml(html);
+    const result = await lintHyperframeHtml(html);
     // rotation doesn't conflict with rotate() — GSAP handles rotation separately
     const finding = result.findings.find((f) => f.code === "gsap_css_transform_conflict");
     expect(finding).toBeUndefined();
   });
 
-  it("detects conflict via class selector when element has multiple classes", () => {
+  it("detects conflict via class selector when element has multiple classes", async () => {
     const html = `
 <html><body>
   <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
@@ -430,12 +430,12 @@ describe("GSAP rules", () => {
     window.__timelines["c1"] = tl;
   </script>
 </body></html>`;
-    const result = lintHyperframeHtml(html);
+    const result = await lintHyperframeHtml(html);
     const finding = result.findings.find((f) => f.code === "gsap_css_transform_conflict");
     expect(finding).toBeDefined();
   });
 
-  it("handles both style block and inline style on same selector without crash", () => {
+  it("handles both style block and inline style on same selector without crash", async () => {
     const html = `
 <html><body>
   <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
@@ -451,12 +451,12 @@ describe("GSAP rules", () => {
     window.__timelines["c1"] = tl;
   </script>
 </body></html>`;
-    const result = lintHyperframeHtml(html);
+    const result = await lintHyperframeHtml(html);
     const conflicts = result.findings.filter((f) => f.code === "gsap_css_transform_conflict");
     expect(conflicts.length).toBeGreaterThanOrEqual(1);
   });
 
-  it("reports error when GSAP is used without a GSAP script tag", () => {
+  it("reports error when GSAP is used without a GSAP script tag", async () => {
     const html = `
 <html><body>
   <div data-composition-id="main" data-width="1920" data-height="1080"></div>
@@ -467,14 +467,14 @@ describe("GSAP rules", () => {
     window.__timelines["main"] = tl;
   </script>
 </body></html>`;
-    const result = lintHyperframeHtml(html);
+    const result = await lintHyperframeHtml(html);
     const finding = result.findings.find((f) => f.code === "missing_gsap_script");
     expect(finding).toBeDefined();
     expect(finding?.severity).toBe("error");
     expect(finding?.message).toContain("GSAP");
   });
 
-  it("does not report missing_gsap_script when GSAP CDN script is present", () => {
+  it("does not report missing_gsap_script when GSAP CDN script is present", async () => {
     const html = `
 <html><body>
   <div data-composition-id="main" data-width="1920" data-height="1080"></div>
@@ -486,12 +486,12 @@ describe("GSAP rules", () => {
     window.__timelines["main"] = tl;
   </script>
 </body></html>`;
-    const result = lintHyperframeHtml(html);
+    const result = await lintHyperframeHtml(html);
     const finding = result.findings.find((f) => f.code === "missing_gsap_script");
     expect(finding).toBeUndefined();
   });
 
-  it("does not report missing_gsap_script when GSAP is bundled inline", () => {
+  it("does not report missing_gsap_script when GSAP is bundled inline", async () => {
     // Simulate a large inline GSAP bundle (>5KB) with GreenSock marker
     const fakeGsapLib = "/* GreenSock GSAP */" + " ".repeat(6000);
     const html = `
@@ -505,12 +505,12 @@ describe("GSAP rules", () => {
     window.__timelines["main"] = tl;
   </script>
 </body></html>`;
-    const result = lintHyperframeHtml(html);
+    const result = await lintHyperframeHtml(html);
     const finding = result.findings.find((f) => f.code === "missing_gsap_script");
     expect(finding).toBeUndefined();
   });
 
-  it("does not report missing_gsap_script when producer inlined CDN script", () => {
+  it("does not report missing_gsap_script when producer inlined CDN script", async () => {
     const html = `
 <html><body>
   <div data-composition-id="main" data-width="1920" data-height="1080"></div>
@@ -524,12 +524,12 @@ describe("GSAP rules", () => {
     window.__timelines["main"] = tl;
   </script>
 </body></html>`;
-    const result = lintHyperframeHtml(html);
+    const result = await lintHyperframeHtml(html);
     const finding = result.findings.find((f) => f.code === "missing_gsap_script");
     expect(finding).toBeUndefined();
   });
 
-  it("still reports missing_gsap_script for small inline scripts that use but don't bundle GSAP", () => {
+  it("still reports missing_gsap_script for small inline scripts that use but don't bundle GSAP", async () => {
     const html = `
 <html><body>
   <div data-composition-id="main" data-width="1920" data-height="1080"></div>
@@ -540,13 +540,13 @@ describe("GSAP rules", () => {
     window.__timelines["main"] = tl;
   </script>
 </body></html>`;
-    const result = lintHyperframeHtml(html);
+    const result = await lintHyperframeHtml(html);
     const finding = result.findings.find((f) => f.code === "missing_gsap_script");
     expect(finding).toBeDefined();
     expect(finding?.severity).toBe("error");
   });
 
-  it("errors on repeat: -1 (infinite repeat breaks capture engine)", () => {
+  it("errors on repeat: -1 (infinite repeat breaks capture engine)", async () => {
     const html = `
 <html><body>
   <div data-composition-id="main" data-width="1920" data-height="1080"></div>
@@ -558,14 +558,14 @@ describe("GSAP rules", () => {
     window.__timelines["main"] = tl;
   </script>
 </body></html>`;
-    const result = lintHyperframeHtml(html);
+    const result = await lintHyperframeHtml(html);
     const finding = result.findings.find((f) => f.code === "gsap_infinite_repeat");
     expect(finding).toBeDefined();
     expect(finding?.severity).toBe("error");
     expect(finding?.message).toContain("repeat: -1");
   });
 
-  it("does not error on finite repeat values", () => {
+  it("does not error on finite repeat values", async () => {
     const html = `
 <html><body>
   <div data-composition-id="main" data-width="1920" data-height="1080"></div>
@@ -577,12 +577,12 @@ describe("GSAP rules", () => {
     window.__timelines["main"] = tl;
   </script>
 </body></html>`;
-    const result = lintHyperframeHtml(html);
+    const result = await lintHyperframeHtml(html);
     const finding = result.findings.find((f) => f.code === "gsap_infinite_repeat");
     expect(finding).toBeUndefined();
   });
 
-  it("does not error on repeat: -1 inside JavaScript comments", () => {
+  it("does not error on repeat: -1 inside JavaScript comments", async () => {
     const html = `
 <html><body>
   <div data-composition-id="main" data-width="1920" data-height="1080"></div>
@@ -598,12 +598,12 @@ describe("GSAP rules", () => {
     window.__timelines["main"] = tl;
   </script>
 </body></html>`;
-    const result = lintHyperframeHtml(html);
+    const result = await lintHyperframeHtml(html);
     const finding = result.findings.find((f) => f.code === "gsap_infinite_repeat");
     expect(finding).toBeUndefined();
   });
 
-  it("does NOT report overlapping_gsap_tweens when an object-target tween is interleaved (regression)", () => {
+  it("does NOT report overlapping_gsap_tweens when an object-target tween is interleaved (regression)", async () => {
     // Regression: a non-DOM-targeting tween like `tl.to({ _: 0 }, …)` (used to
     // anchor timeline duration) was matched by the regex but skipped by the
     // parser, drifting the index and making the second tween "see" the first
@@ -624,12 +624,12 @@ describe("GSAP rules", () => {
     window.__timelines["c1"] = tl;
   </script>
 </body></html>`;
-    const result = lintHyperframeHtml(html);
+    const result = await lintHyperframeHtml(html);
     const finding = result.findings.find((f) => f.code === "overlapping_gsap_tweens");
     expect(finding).toBeUndefined();
   });
 
-  it("warns when an opacity exit ends at a clip start boundary without a hard kill", () => {
+  it("warns when an opacity exit ends at a clip start boundary without a hard kill", async () => {
     const html = `
 <html><body>
   <div data-composition-id="c1" data-width="1920" data-height="1080" data-start="0" data-duration="6">
@@ -648,7 +648,7 @@ describe("GSAP rules", () => {
     window.__timelines["c1"] = tl;
   </script>
 </body></html>`;
-    const result = lintHyperframeHtml(html);
+    const result = await lintHyperframeHtml(html);
     const finding = result.findings.find((f) => f.code === "gsap_exit_missing_hard_kill");
     expect(finding).toBeDefined();
     expect(finding?.severity).toBe("warning");
@@ -656,7 +656,7 @@ describe("GSAP rules", () => {
     expect(finding?.message).toContain("3.00s");
   });
 
-  it("does not warn when a boundary exit has a matching hard kill", () => {
+  it("does not warn when a boundary exit has a matching hard kill", async () => {
     const html = `
 <html><body>
   <div data-composition-id="c1" data-width="1920" data-height="1080" data-start="0" data-duration="6">
@@ -676,12 +676,12 @@ describe("GSAP rules", () => {
     window.__timelines["c1"] = tl;
   </script>
 </body></html>`;
-    const result = lintHyperframeHtml(html);
+    const result = await lintHyperframeHtml(html);
     const finding = result.findings.find((f) => f.code === "gsap_exit_missing_hard_kill");
     expect(finding).toBeUndefined();
   });
 
-  it("does not match sub-composition exits against root clip boundaries", () => {
+  it("does not match sub-composition exits against root clip boundaries", async () => {
     const html = `
 <html><body>
   <div data-composition-id="root" data-width="1920" data-height="1080" data-start="0" data-duration="6">
@@ -701,12 +701,12 @@ describe("GSAP rules", () => {
     window.__timelines["sub"] = tl;
   </script>
 </body></html>`;
-    const result = lintHyperframeHtml(html);
+    const result = await lintHyperframeHtml(html);
     const finding = result.findings.find((f) => f.code === "gsap_exit_missing_hard_kill");
     expect(finding).toBeUndefined();
   });
 
-  it("uses the authored hidden property in hard-kill fix hints", () => {
+  it("uses the authored hidden property in hard-kill fix hints", async () => {
     const html = `
 <html><body>
   <div data-composition-id="c1" data-width="1920" data-height="1080" data-start="0" data-duration="6">
@@ -725,12 +725,12 @@ describe("GSAP rules", () => {
     window.__timelines["c1"] = tl;
   </script>
 </body></html>`;
-    const result = lintHyperframeHtml(html);
+    const result = await lintHyperframeHtml(html);
     const finding = result.findings.find((f) => f.code === "gsap_exit_missing_hard_kill");
     expect(finding?.fixHint).toContain("{ autoAlpha: 0 }");
   });
 
-  it("does not false-positive on repeat: -10 (invalid GSAP but not infinite)", () => {
+  it("does not false-positive on repeat: -10 (invalid GSAP but not infinite)", async () => {
     const html = `
 <html><body>
   <div data-composition-id="main" data-width="1920" data-height="1080"></div>
@@ -742,12 +742,12 @@ describe("GSAP rules", () => {
     window.__timelines["main"] = tl;
   </script>
 </body></html>`;
-    const result = lintHyperframeHtml(html);
+    const result = await lintHyperframeHtml(html);
     const finding = result.findings.find((f) => f.code === "gsap_infinite_repeat");
     expect(finding).toBeUndefined();
   });
 
-  it("errors when CSS opacity:0 + gsap.from({opacity:0}) — invisible forever", () => {
+  it("errors when CSS opacity:0 + gsap.from({opacity:0}) — invisible forever", async () => {
     const html = `
 <html><body>
   <div data-composition-id="c1" data-width="1920" data-height="1080">
@@ -760,14 +760,14 @@ describe("GSAP rules", () => {
     window.__timelines["c1"] = tl;
   </script>
 </body></html>`;
-    const result = lintHyperframeHtml(html);
+    const result = await lintHyperframeHtml(html);
     const finding = result.findings.find((f) => f.code === "gsap_from_opacity_noop");
     expect(finding).toBeDefined();
     expect(finding!.severity).toBe("error");
     expect(finding!.selector).toBe("#title");
   });
 
-  it("errors when style block has opacity:0 + gsap.from({opacity:0})", () => {
+  it("errors when style block has opacity:0 + gsap.from({opacity:0})", async () => {
     const html = `
 <html><body>
   <div data-composition-id="c1" data-width="1920" data-height="1080">
@@ -783,12 +783,12 @@ describe("GSAP rules", () => {
     window.__timelines["c1"] = tl;
   </script>
 </body></html>`;
-    const result = lintHyperframeHtml(html);
+    const result = await lintHyperframeHtml(html);
     const finding = result.findings.find((f) => f.code === "gsap_from_opacity_noop");
     expect(finding).toBeDefined();
   });
 
-  it("does NOT error when gsap.from({opacity:0}) and CSS has no opacity:0", () => {
+  it("does NOT error when gsap.from({opacity:0}) and CSS has no opacity:0", async () => {
     const html = `
 <html><body>
   <div data-composition-id="c1" data-width="1920" data-height="1080">
@@ -801,12 +801,12 @@ describe("GSAP rules", () => {
     window.__timelines["c1"] = tl;
   </script>
 </body></html>`;
-    const result = lintHyperframeHtml(html);
+    const result = await lintHyperframeHtml(html);
     const finding = result.findings.find((f) => f.code === "gsap_from_opacity_noop");
     expect(finding).toBeUndefined();
   });
 
-  it("does NOT error when gsap.fromTo({opacity:0}, {opacity:1}) — destination overrides CSS", () => {
+  it("does NOT error when gsap.fromTo({opacity:0}, {opacity:1}) — destination overrides CSS", async () => {
     const html = `
 <html><body>
   <div data-composition-id="c1" data-width="1920" data-height="1080">
@@ -819,12 +819,12 @@ describe("GSAP rules", () => {
     window.__timelines["c1"] = tl;
   </script>
 </body></html>`;
-    const result = lintHyperframeHtml(html);
+    const result = await lintHyperframeHtml(html);
     const finding = result.findings.find((f) => f.code === "gsap_from_opacity_noop");
     expect(finding).toBeUndefined();
   });
 
-  it("does NOT error when gsap.to() uses opacity:0 (exit animation)", () => {
+  it("does NOT error when gsap.to() uses opacity:0 (exit animation)", async () => {
     const html = `
 <html><body>
   <div data-composition-id="c1" data-width="1920" data-height="1080">
@@ -837,7 +837,7 @@ describe("GSAP rules", () => {
     window.__timelines["c1"] = tl;
   </script>
 </body></html>`;
-    const result = lintHyperframeHtml(html);
+    const result = await lintHyperframeHtml(html);
     const finding = result.findings.find((f) => f.code === "gsap_from_opacity_noop");
     expect(finding).toBeUndefined();
   });

@@ -113,6 +113,8 @@ export function prepareHyperframeLintBody(
   return { error: "Missing lint source: provide projectDir, files, or html" };
 }
 
-export function runHyperframeLint(prepared: PreparedHyperframeLintInput): HyperframeLintResult {
+export async function runHyperframeLint(
+  prepared: PreparedHyperframeLintInput,
+): Promise<HyperframeLintResult> {
   return lintHyperframeHtml(prepared.html, { filePath: prepared.entryFile });
 }

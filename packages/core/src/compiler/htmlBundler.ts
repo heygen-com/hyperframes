@@ -623,7 +623,7 @@ export async function bundleToSingleHtml(
   const rawHtml = readFileSync(indexPath, "utf-8");
   const compiled = await compileHtml(rawHtml, projectDir, options?.probeMediaDuration);
 
-  const staticGuard = validateHyperframeHtmlContract(compiled);
+  const staticGuard = await validateHyperframeHtmlContract(compiled);
   if (!staticGuard.isValid) {
     console.warn(
       `[StaticGuard] Invalid HyperFrame contract: ${staticGuard.missingKeys.join("; ")}`,

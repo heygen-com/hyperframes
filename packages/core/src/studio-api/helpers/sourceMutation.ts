@@ -176,10 +176,13 @@ export function patchElementInHtml(
         }
         break;
       case "attribute":
-        if (op.value != null) {
-          htmlEl.setAttribute(`data-${op.property}`, op.value);
-        } else {
-          htmlEl.removeAttribute(`data-${op.property}`);
+        {
+          const fullAttr = op.property.startsWith("data-") ? op.property : `data-${op.property}`;
+          if (op.value != null) {
+            htmlEl.setAttribute(fullAttr, op.value);
+          } else {
+            htmlEl.removeAttribute(fullAttr);
+          }
         }
         break;
       case "html-attribute":

@@ -23,6 +23,7 @@ import {
   probeElementInSource,
   type PatchOperation,
 } from "../helpers/sourceMutation.js";
+import { parseHTML } from "linkedom";
 
 // ── Shared helpers ──────────────────────────────────────────────────────────
 
@@ -180,6 +181,42 @@ function updateReferences(projectDir: string, oldPath: string, newPath: string):
     }
   }
   return updatedCount;
+}
+
+// ── GSAP script extraction ──────────────────────────────────────────────────
+
+/**
+ * Parse an HTML string with linkedom, locate the inline `<script>` that
+ * contains GSAP timeline code, and return both its text content and a
+ * function that replaces that script block and serialises back to HTML.
+ */
+function extractGsapScriptBlock(
+  html: string,
+): { scriptText: string; replaceScript: (newText: string) => string } | null {
+  const { document } = parseHTML(html);
+  const scripts = document.querySelectorAll("script:not([src])");
+  for (const script of scripts) {
+    const content = script.textContent || "";
+    if (
+      content.includes("gsap.timeline") ||
+      content.includes(".set(") ||
+      content.includes(".to(")
+    ) {
+      return {
+        scriptText: content,
+        replaceScript(newText: string): string {
+          script.textContent = newText;
+          return document.toString();
+        },
+      };
+    }
+  }
+  return null;
+}
+
+/** Lazy-load gsapParser to avoid pulling recast into every file-route import. */
+async function loadGsapParser() {
+  return import("../../parsers/gsapParser.js");
 }
 
 // ── Route registration ──────────────────────────────────────────────────────
@@ -458,4 +495,150 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       return c.json({ ok: true, files: uploaded, skipped, invalid }, 201);
     },
   );
+
+  // ── GSAP Animations (parse) ──
+
+  api.get("/projects/:id/gsap-animations/*", async (c) => {
+    const res = await resolveProjectPath(c, adapter, (id) => `/projects/${id}/gsap-animations/`, {
+      mustExist: true,
+    });
+    if ("error" in res) return res.error;
+
+    const html = readFileSync(res.absPath, "utf-8");
+    const block = extractGsapScriptBlock(html);
+    if (!block) {
+      return c.json({
+        animations: [],
+        timelineVar: "tl",
+        preamble: "",
+        postamble: "",
+      });
+    }
+
+    const { parseGsapScript } = await loadGsapParser();
+    const parsed = parseGsapScript(block.scriptText);
+    return c.json(parsed);
+  });
+
+  // ── GSAP Mutations ──
+
+  type GsapMutationRequest =
+    | {
+        type: "update-property";
+        animationId: string;
+        property: string;
+        value: number | string;
+      }
+    | {
+        type: "update-meta";
+        animationId: string;
+        updates: { duration?: number; ease?: string; position?: number };
+      }
+    | {
+        type: "add";
+        targetSelector: string;
+        method: "to" | "from" | "set";
+        position: number;
+        duration?: number;
+        ease?: string;
+        properties: Record<string, number | string>;
+      }
+    | { type: "delete"; animationId: string }
+    | {
+        type: "add-property";
+        animationId: string;
+        property: string;
+        defaultValue: number | string;
+      }
+    | { type: "remove-property"; animationId: string; property: string };
+
+  api.post("/projects/:id/gsap-mutations/*", async (c) => {
+    const res = await resolveProjectPath(c, adapter, (id) => `/projects/${id}/gsap-mutations/`, {
+      mustExist: true,
+    });
+    if ("error" in res) return res.error;
+
+    const body = (await c.req.json().catch(() => null)) as GsapMutationRequest | null;
+    if (!body || !body.type) {
+      return c.json({ error: "mutation type required" }, 400);
+    }
+
+    const html = readFileSync(res.absPath, "utf-8");
+    const block = extractGsapScriptBlock(html);
+    if (!block) {
+      return c.json({ error: "no GSAP script found in file" }, 400);
+    }
+
+    const {
+      parseGsapScript,
+      updateAnimationInScript,
+      addAnimationToScript,
+      removeAnimationFromScript,
+    } = await loadGsapParser();
+
+    let newScript: string;
+
+    switch (body.type) {
+      case "update-property": {
+        const parsed = parseGsapScript(block.scriptText);
+        const anim = parsed.animations.find((a) => a.id === body.animationId);
+        if (!anim) return c.json({ error: "animation not found" }, 404);
+        newScript = updateAnimationInScript(block.scriptText, body.animationId, {
+          properties: { ...anim.properties, [body.property]: body.value },
+        });
+        break;
+      }
+      case "update-meta": {
+        newScript = updateAnimationInScript(block.scriptText, body.animationId, body.updates);
+        break;
+      }
+      case "add": {
+        const result = addAnimationToScript(block.scriptText, {
+          targetSelector: body.targetSelector,
+          method: body.method,
+          position: body.position,
+          duration: body.duration,
+          ease: body.ease,
+          properties: body.properties,
+        });
+        newScript = result.script;
+        break;
+      }
+      case "delete": {
+        newScript = removeAnimationFromScript(block.scriptText, body.animationId);
+        break;
+      }
+      case "add-property": {
+        const parsed = parseGsapScript(block.scriptText);
+        const anim = parsed.animations.find((a) => a.id === body.animationId);
+        if (!anim) return c.json({ error: "animation not found" }, 404);
+        newScript = updateAnimationInScript(block.scriptText, body.animationId, {
+          properties: { ...anim.properties, [body.property]: body.defaultValue },
+        });
+        break;
+      }
+      case "remove-property": {
+        const parsed = parseGsapScript(block.scriptText);
+        const anim = parsed.animations.find((a) => a.id === body.animationId);
+        if (!anim) return c.json({ error: "animation not found" }, 404);
+        const filtered = { ...anim.properties };
+        delete filtered[body.property];
+        newScript = updateAnimationInScript(block.scriptText, body.animationId, {
+          properties: filtered,
+        });
+        break;
+      }
+      default:
+        return c.json({ error: `unknown mutation type: ${(body as { type: string }).type}` }, 400);
+    }
+
+    const newHtml = block.replaceScript(newScript);
+    if (newHtml !== html) {
+      writeFileSync(res.absPath, newHtml, "utf-8");
+    }
+
+    // Re-parse the mutated script so the UI gets fresh state
+    const freshParsed = parseGsapScript(newScript);
+    return c.json({ ok: true, parsed: freshParsed, before: html, after: newHtml });
+  });
 }

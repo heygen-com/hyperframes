@@ -13,8 +13,10 @@ export type HyperframeStaticGuardResult = {
   failureReason: HyperframeStaticFailureReason | null;
 };
 
-export function validateHyperframeHtmlContract(html: string): HyperframeStaticGuardResult {
-  const result = lintHyperframeHtml(html);
+export async function validateHyperframeHtmlContract(
+  html: string,
+): Promise<HyperframeStaticGuardResult> {
+  const result = await lintHyperframeHtml(html);
   const missingKeys = result.findings
     .filter((finding) => finding.severity === "error")
     .map((finding) => finding.message);

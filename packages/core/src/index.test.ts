@@ -97,23 +97,14 @@ describe("@hyperframes/core public API exports", () => {
   });
 
   describe("parser exports", () => {
-    it("exports GSAP parser functions", () => {
-      expect(typeof core.parseGsapScript).toBe("function");
-      expect(typeof core.serializeGsapAnimations).toBe("function");
-      expect(typeof core.updateAnimationInScript).toBe("function");
-      expect(typeof core.addAnimationToScript).toBe("function");
-      expect(typeof core.removeAnimationFromScript).toBe("function");
-      expect(typeof core.getAnimationsForElement).toBe("function");
-      expect(typeof core.validateCompositionGsap).toBe("function");
-      expect(typeof core.keyframesToGsapAnimations).toBe("function");
-      expect(typeof core.gsapAnimationsToKeyframes).toBe("function");
+    it("does NOT re-export GSAP parser functions from barrel (available via gsap-parser subpath)", () => {
+      // GSAP parser uses recast (Node.js fs), so it's excluded from the barrel
+      // to keep browser bundles clean. Use @hyperframes/core/gsap-parser instead.
+      expect(typeof (core as Record<string, unknown>).parseGsapScript).toBe("undefined");
     });
 
-    it("exports GSAP constants", () => {
-      expect(core.SUPPORTED_PROPS).toBeDefined();
-      expect(Array.isArray(core.SUPPORTED_PROPS)).toBe(true);
-      expect(core.SUPPORTED_EASES).toBeDefined();
-      expect(Array.isArray(core.SUPPORTED_EASES)).toBe(true);
+    it("does NOT re-export GSAP constants from barrel (available via gsap-constants subpath)", () => {
+      expect((core as Record<string, unknown>).SUPPORTED_PROPS).toBeUndefined();
     });
 
     it("exports HTML parser functions", () => {

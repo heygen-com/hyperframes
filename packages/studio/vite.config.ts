@@ -181,4 +181,13 @@ export default defineConfig({
   server: {
     port: 5190,
   },
+  ssr: {
+    // recast / @babel/parser are CommonJS and call `require("fs")`. They are
+    // reachable only server-side via the Node-only `@hyperframes/core/gsap-parser`
+    // subpath (studio-api GSAP mutations + the linter), which the dev server loads
+    // through Vite SSR. Externalizing them makes SSR load the native Node modules
+    // instead of esbuild-transforming the `require` into a shim that throws
+    // "Dynamic require of fs is not supported". Browser bundles never reach them.
+    external: ["recast", "@babel/parser", "ast-types"],
+  },
 });

@@ -516,3 +516,104 @@ describe("studio manual edits", () => {
     expect(frames).toHaveLength(0);
   });
 });
+
+describe("applyStudioPathOffset sets correct attribute name", () => {
+  it("sets data-hf-studio-path-offset without double data- prefix", () => {
+    const window = new Window();
+    const el = window.document.createElement("div");
+    window.document.body.append(el);
+
+    applyStudioPathOffset(el, { x: 100, y: 50 });
+
+    expect(el.getAttribute("data-hf-studio-path-offset")).toBe("true");
+    expect(el.getAttribute("data-data-hf-studio-path-offset")).toBeNull();
+  });
+
+  it("stores offset in CSS vars alongside the attribute marker", () => {
+    const window = new Window();
+    const el = window.document.createElement("div");
+    window.document.body.append(el);
+
+    applyStudioPathOffset(el, { x: 50, y: 25 });
+
+    expect(el.getAttribute("data-hf-studio-path-offset")).toBe("true");
+    expect(el.style.getPropertyValue(STUDIO_OFFSET_X_PROP)).toBe("50px");
+    expect(el.style.getPropertyValue(STUDIO_OFFSET_Y_PROP)).toBe("25px");
+    expect(el.style.getPropertyValue("translate")).toContain(STUDIO_OFFSET_X_PROP);
+  });
+
+  it("corrects offset applied on top of legacy double-prefix element", () => {
+    const window = new Window();
+    const el = window.document.createElement("div");
+    el.setAttribute("data-data-hf-studio-path-offset", "true");
+    el.style.setProperty(STUDIO_OFFSET_X_PROP, "200px");
+    el.style.setProperty(STUDIO_OFFSET_Y_PROP, "-30px");
+    window.document.body.append(el);
+
+    applyStudioPathOffset(el, { x: 200, y: -30 });
+
+    expect(el.getAttribute("data-hf-studio-path-offset")).toBe("true");
+    expect(readStudioPathOffset(el)).toEqual({ x: 200, y: -30 });
+    expect(el.style.getPropertyValue("translate")).toContain(STUDIO_OFFSET_X_PROP);
+  });
+});
+
+describe("applyStudioPathOffset strips GSAP double-counted translate", () => {
+  it("strips GSAP transform translate when applying offset", () => {
+    const window = new Window();
+    const element = window.document.createElement("div");
+    window.document.body.append(element);
+
+    // Simulate GSAP having baked translate into the transform matrix
+    element.style.setProperty("transform", "matrix(1, 0, 0, 1, 200, 0)");
+
+    applyStudioPathOffset(element, { x: 200, y: 0 });
+
+    // The transform translate should be stripped (GSAP's 200px removed)
+    const transform = element.style.getPropertyValue("transform");
+    if (transform && transform !== "none") {
+      const m = new window.DOMMatrix(transform);
+      expect(m.m41).toBe(0);
+      expect(m.m42).toBe(0);
+    }
+    // The offset should be stored in CSS vars
+    expect(readStudioPathOffset(element).x).toBe(200);
+  });
+
+  it("subtracts only the studio offset from GSAP transform, preserving animation values", () => {
+    const window = new Window();
+    const element = window.document.createElement("div");
+    window.document.body.append(element);
+
+    // GSAP has scale + baked translate (offset 50) + animation contribution (-70)
+    // Total m42 = 50 + (-70) = -20
+    element.style.setProperty("transform", "matrix(0.5, 0, 0, 0.5, 0, -20)");
+
+    applyStudioPathOffset(element, { x: 0, y: 50 });
+
+    const transform = element.style.getPropertyValue("transform");
+    if (transform && transform !== "none") {
+      const m = new window.DOMMatrix(transform);
+      expect(m.a).toBeCloseTo(0.5);
+      expect(m.d).toBeCloseTo(0.5);
+      // Only the studio offset (50) is subtracted, animation contribution (-70) preserved
+      expect(m.m41).toBe(0);
+      expect(m.m42).toBe(-70);
+    }
+    expect(readStudioPathOffset(element).y).toBe(50);
+  });
+
+  it("offset survives repeated applyStudioPathOffset calls without drift", () => {
+    const window = new Window();
+    const element = window.document.createElement("div");
+    window.document.body.append(element);
+
+    // Apply offset 3 times with same value (simulates reapply hook firing multiple times)
+    applyStudioPathOffset(element, { x: 100, y: -20 });
+    applyStudioPathOffset(element, { x: 100, y: -20 });
+    applyStudioPathOffset(element, { x: 100, y: -20 });
+
+    expect(readStudioPathOffset(element).x).toBe(100);
+    expect(readStudioPathOffset(element).y).toBe(-20);
+  });
+});

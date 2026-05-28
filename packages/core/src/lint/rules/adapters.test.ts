@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { lintHyperframeHtml } from "../hyperframeLinter.js";
 
 describe("adapter rules", () => {
-  it("reports error when GSAP is used without a GSAP script tag", () => {
+  it("reports error when GSAP is used without a GSAP script tag", async () => {
     const html = `
 <html><body>
   <div data-composition-id="main" data-width="1920" data-height="1080"></div>
@@ -13,14 +13,14 @@ describe("adapter rules", () => {
     window.__timelines["main"] = tl;
   </script>
 </body></html>`;
-    const result = lintHyperframeHtml(html);
+    const result = await lintHyperframeHtml(html);
     const finding = result.findings.find((f) => f.code === "missing_gsap_script");
     expect(finding).toBeDefined();
     expect(finding?.severity).toBe("error");
     expect(finding?.message).toContain("GSAP");
   });
 
-  it("does not report missing_gsap_script when GSAP CDN script is present", () => {
+  it("does not report missing_gsap_script when GSAP CDN script is present", async () => {
     const html = `
 <html><body>
   <div data-composition-id="main" data-width="1920" data-height="1080"></div>
@@ -32,12 +32,12 @@ describe("adapter rules", () => {
     window.__timelines["main"] = tl;
   </script>
 </body></html>`;
-    const result = lintHyperframeHtml(html);
+    const result = await lintHyperframeHtml(html);
     const finding = result.findings.find((f) => f.code === "missing_gsap_script");
     expect(finding).toBeUndefined();
   });
 
-  it("reports error when Lottie container exists without a Lottie script tag", () => {
+  it("reports error when Lottie container exists without a Lottie script tag", async () => {
     const html = `
 <html><body>
   <div data-composition-id="main" data-width="1920" data-height="1080">
@@ -48,14 +48,14 @@ describe("adapter rules", () => {
     window.__timelines["main"] = gsap.timeline({ paused: true });
   </script>
 </body></html>`;
-    const result = lintHyperframeHtml(html);
+    const result = await lintHyperframeHtml(html);
     const finding = result.findings.find((f) => f.code === "missing_lottie_script");
     expect(finding).toBeDefined();
     expect(finding?.severity).toBe("error");
     expect(finding?.message).toContain("Lottie");
   });
 
-  it("reports error when lottie.loadAnimation is used without a Lottie script tag", () => {
+  it("reports error when lottie.loadAnimation is used without a Lottie script tag", async () => {
     const html = `
 <html><body>
   <div data-composition-id="main" data-width="1920" data-height="1080"></div>
@@ -65,13 +65,13 @@ describe("adapter rules", () => {
     lottie.loadAnimation({ container: document.getElementById('lottie'), path: 'anim.json' });
   </script>
 </body></html>`;
-    const result = lintHyperframeHtml(html);
+    const result = await lintHyperframeHtml(html);
     const finding = result.findings.find((f) => f.code === "missing_lottie_script");
     expect(finding).toBeDefined();
     expect(finding?.severity).toBe("error");
   });
 
-  it("does not report missing_lottie_script when Lottie CDN script is present", () => {
+  it("does not report missing_lottie_script when Lottie CDN script is present", async () => {
     const html = `
 <html><body>
   <div data-composition-id="main" data-width="1920" data-height="1080">
@@ -83,12 +83,12 @@ describe("adapter rules", () => {
     window.__timelines["main"] = gsap.timeline({ paused: true });
   </script>
 </body></html>`;
-    const result = lintHyperframeHtml(html);
+    const result = await lintHyperframeHtml(html);
     const finding = result.findings.find((f) => f.code === "missing_lottie_script");
     expect(finding).toBeUndefined();
   });
 
-  it("reports error when Three.js is used without a Three.js script tag", () => {
+  it("reports error when Three.js is used without a Three.js script tag", async () => {
     const html = `
 <html><body>
   <div data-composition-id="main" data-width="1920" data-height="1080"></div>
@@ -99,14 +99,14 @@ describe("adapter rules", () => {
     const renderer = new THREE.WebGLRenderer();
   </script>
 </body></html>`;
-    const result = lintHyperframeHtml(html);
+    const result = await lintHyperframeHtml(html);
     const finding = result.findings.find((f) => f.code === "missing_three_script");
     expect(finding).toBeDefined();
     expect(finding?.severity).toBe("error");
     expect(finding?.message).toContain("Three.js");
   });
 
-  it("does not report missing_three_script when Three.js CDN script is present", () => {
+  it("does not report missing_three_script when Three.js CDN script is present", async () => {
     const html = `
 <html><body>
   <div data-composition-id="main" data-width="1920" data-height="1080"></div>
@@ -118,12 +118,12 @@ describe("adapter rules", () => {
     const renderer = new THREE.WebGLRenderer();
   </script>
 </body></html>`;
-    const result = lintHyperframeHtml(html);
+    const result = await lintHyperframeHtml(html);
     const finding = result.findings.find((f) => f.code === "missing_three_script");
     expect(finding).toBeUndefined();
   });
 
-  it("does not report any adapter errors for composition with no adapter usage", () => {
+  it("does not report any adapter errors for composition with no adapter usage", async () => {
     const html = `
 <html><body>
   <div data-composition-id="main" data-width="1920" data-height="1080">
@@ -134,7 +134,7 @@ describe("adapter rules", () => {
     window.__timelines["main"] = { totalDuration: function() { return 3; } };
   </script>
 </body></html>`;
-    const result = lintHyperframeHtml(html);
+    const result = await lintHyperframeHtml(html);
     const adapterFindings = result.findings.filter((f) =>
       ["missing_gsap_script", "missing_lottie_script", "missing_three_script"].includes(f.code),
     );

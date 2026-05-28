@@ -1,8 +1,10 @@
 import { Window } from "happy-dom";
 import { describe, expect, it } from "vitest";
 import {
+  applyManualOffsetDragCommit,
   applyManualOffsetDragMatrix,
   createManualOffsetDragMember,
+  endManualOffsetDragMembers,
   invertManualOffsetDragMatrix,
   measureManualOffsetDragScreenToOffsetMatrix,
   resolveManualOffsetForPointerDelta,
@@ -140,8 +142,8 @@ describe("measureManualOffsetDragScreenToOffsetMatrix", () => {
   });
 });
 
-describe("createManualOffsetDragMember GSAP translate compensation", () => {
-  it("folds GSAP translate from element.style.transform into initialOffset", () => {
+describe("createManualOffsetDragMember uses raw CSS var offset", () => {
+  it("ignores GSAP transform — initialOffset comes from CSS vars only", () => {
     const window = new Window();
     const element = window.document.createElement("div");
     window.document.body.append(element);
@@ -164,34 +166,10 @@ describe("createManualOffsetDragMember GSAP translate compensation", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.member.initialOffset.x).toBe(0);
-    expect(result.member.initialOffset.y).toBe(-20);
-  });
-
-  it("leaves initialOffset unchanged when no GSAP transform is present", () => {
-    const window = new Window();
-    const element = window.document.createElement("div");
-    window.document.body.append(element);
-
-    element.getBoundingClientRect = () => {
-      const offsetX = Number.parseFloat(element.style.getPropertyValue(STUDIO_OFFSET_X_PROP)) || 0;
-      const offsetY = Number.parseFloat(element.style.getPropertyValue(STUDIO_OFFSET_Y_PROP)) || 0;
-      return new window.DOMRect(10 + offsetX, 20 + offsetY, 100, 50);
-    };
-
-    const result = createManualOffsetDragMember({
-      key: "test",
-      selection: { element } as never,
-      element,
-      rect: { left: 10, top: 20, width: 100, height: 50, editScaleX: 1, editScaleY: 1 },
-    });
-
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.member.initialOffset.x).toBe(0);
     expect(result.member.initialOffset.y).toBe(0);
   });
 
-  it("combines existing manual offset with GSAP translate", () => {
+  it("reads only the CSS var offset, not GSAP transform", () => {
     const window = new Window();
     const element = window.document.createElement("div");
     window.document.body.append(element);
@@ -215,7 +193,42 @@ describe("createManualOffsetDragMember GSAP translate compensation", () => {
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.member.initialOffset.x).toBe(80);
-    expect(result.member.initialOffset.y).toBe(-5);
+    expect(result.member.initialOffset.x).toBe(30);
+    expect(result.member.initialOffset.y).toBe(10);
+  });
+
+  it("does not accumulate drift across multiple drag cycles", () => {
+    const window = new Window();
+    const element = window.document.createElement("div");
+    window.document.body.append(element);
+
+    element.getBoundingClientRect = () => {
+      const offsetX = Number.parseFloat(element.style.getPropertyValue(STUDIO_OFFSET_X_PROP)) || 0;
+      const offsetY = Number.parseFloat(element.style.getPropertyValue(STUDIO_OFFSET_Y_PROP)) || 0;
+      return new window.DOMRect(10 + offsetX, 20 + offsetY, 100, 50);
+    };
+
+    // Simulate GSAP baking a translate into transform each cycle
+    for (let cycle = 0; cycle < 3; cycle++) {
+      element.style.setProperty("transform", `translate(${50 * (cycle + 1)}px, 0px)`);
+
+      const result = createManualOffsetDragMember({
+        key: "test",
+        selection: { element } as never,
+        element,
+        rect: { left: 10, top: 20, width: 100, height: 50, editScaleX: 1, editScaleY: 1 },
+      });
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      // initialOffset should always be the CSS var value, never inflated by GSAP transform
+      const currentRawX =
+        Number.parseFloat(element.style.getPropertyValue(STUDIO_OFFSET_X_PROP)) || 0;
+      expect(result.member.initialOffset.x).toBe(currentRawX);
+
+      // Simulate drag commit: apply a small offset
+      applyManualOffsetDragCommit(result.member, 10, 0);
+      endManualOffsetDragMembers([result.member]);
+    }
   });
 });

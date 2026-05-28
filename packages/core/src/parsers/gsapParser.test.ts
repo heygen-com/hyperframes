@@ -8,6 +8,9 @@ import {
   validateCompositionGsap,
   getAnimationsForElement,
   keyframesToGsapAnimations,
+  addAnimationToScript,
+  removeAnimationFromScript,
+  updateAnimationInScript,
 } from "./gsapParser.js";
 import type { GsapAnimation } from "./gsapParser.js";
 import type { Keyframe } from "../core.types";
@@ -79,9 +82,7 @@ describe("parseGsapScript", () => {
     expect(anim.position).toBe(2);
   });
 
-  it("parseObjectLiteral does not match negative numbers (known limitation)", () => {
-    // The regex in parseObjectLiteral only matches [\d.]+, not negative numbers.
-    // Negative values like x: -100 won't be parsed by the object literal parser.
+  it("parses negative numbers in property values", () => {
     const script = `
       const tl = gsap.timeline({ paused: true });
       tl.fromTo("#el5", { opacity: 0, x: -100 }, { opacity: 1, x: 0, duration: 1 }, 0);
@@ -92,8 +93,7 @@ describe("parseGsapScript", () => {
     const anim = result.animations[0];
     expect(anim.fromProperties).toBeDefined();
     expect(anim.fromProperties?.opacity).toBe(0);
-    // -100 is not parseable by the regex, so x won't be in fromProperties
-    expect(anim.fromProperties?.x).toBeUndefined();
+    expect(anim.fromProperties?.x).toBe(-100);
   });
 
   it("handles an empty script", () => {
@@ -142,7 +142,7 @@ describe("parseGsapScript", () => {
     expect(result.animations[2].method).toBe("to");
   });
 
-  it("filters out unsupported properties from animations", () => {
+  it("extracts all GSAP properties including non-standard ones", () => {
     const script = `
       const tl = gsap.timeline({ paused: true });
       tl.to("#el1", { opacity: 1, backgroundColor: "red", x: 50, duration: 0.5 }, 0);
@@ -151,8 +151,7 @@ describe("parseGsapScript", () => {
 
     expect(result.animations[0].properties.opacity).toBe(1);
     expect(result.animations[0].properties.x).toBe(50);
-    // backgroundColor is not in SUPPORTED_PROPS, so it's filtered out
-    expect(result.animations[0].properties.backgroundColor).toBeUndefined();
+    expect(result.animations[0].properties.backgroundColor).toBe("red");
   });
 
   it("extracts ease from properties", () => {
@@ -174,6 +173,197 @@ describe("parseGsapScript", () => {
 
     expect(result.timelineVar).toBe("timeline");
     expect(result.animations).toHaveLength(1);
+  });
+
+  it("preserves string position values like '+=1' and '<'", () => {
+    const script = `
+      const tl = gsap.timeline({ paused: true });
+      tl.to("#el1", { opacity: 1, duration: 0.5 }, "+=1");
+      tl.to("#el2", { x: 100, duration: 1 }, "<");
+      tl.to("#el3", { y: 50, duration: 0.3 }, "-=0.5");
+    `;
+    const result = parseGsapScript(script);
+
+    expect(result.animations).toHaveLength(3);
+    expect(result.animations[0].position).toBe("+=1");
+    expect(result.animations[1].position).toBe("<");
+    expect(result.animations[2].position).toBe("-=0.5");
+  });
+
+  it("resolves variable references from const declarations in the same script", () => {
+    const script = `
+      const FADE = 0.8;
+      const OFFSET = -60;
+      const MY_EASE = "power3.out";
+      const tl = gsap.timeline({ paused: true });
+      tl.from("#el1", { y: OFFSET, opacity: 0, duration: FADE, ease: MY_EASE }, 0);
+    `;
+    const result = parseGsapScript(script);
+
+    expect(result.animations).toHaveLength(1);
+    expect(result.animations[0].properties.y).toBe(-60);
+    expect(result.animations[0].properties.opacity).toBe(0);
+    expect(result.animations[0].duration).toBe(0.8);
+    expect(result.animations[0].ease).toBe("power3.out");
+  });
+
+  it("resolves computed expressions from scope bindings", () => {
+    const script = `
+      const BASE = 100;
+      const HALF = BASE / 2;
+      const tl = gsap.timeline({ paused: true });
+      tl.to("#el1", { x: HALF, duration: 1 }, 0);
+    `;
+    const result = parseGsapScript(script);
+
+    expect(result.animations[0].properties.x).toBe(50);
+  });
+
+  it("preserves unresolvable references as __raw: prefixed strings", () => {
+    const script = `
+      const tl = gsap.timeline({ paused: true });
+      tl.to("#el1", { opacity: someUndefinedVar, x: 50, duration: 1 }, 0);
+    `;
+    const result = parseGsapScript(script);
+
+    expect(result.animations).toHaveLength(1);
+    expect(result.animations[0].properties.x).toBe(50);
+    expect(result.animations[0].properties.opacity).toBe("__raw:someUndefinedVar");
+  });
+
+  it("generates stable content-based IDs", () => {
+    const script = `
+      const tl = gsap.timeline({ paused: true });
+      tl.to("#el1", { opacity: 1, duration: 0.5 }, 0);
+      tl.to("#el2", { x: 100, duration: 1 }, 1);
+    `;
+    const result1 = parseGsapScript(script);
+    const result2 = parseGsapScript(script);
+
+    // IDs are deterministic across parses
+    expect(result1.animations[0].id).toBe(result2.animations[0].id);
+    expect(result1.animations[1].id).toBe(result2.animations[1].id);
+
+    // IDs encode selector, method, and position
+    expect(result1.animations[0].id).toBe("#el1-to-0");
+    expect(result1.animations[1].id).toBe("#el2-to-1000");
+  });
+
+  it("disambiguates colliding IDs with a suffix", () => {
+    const script = `
+      const tl = gsap.timeline({ paused: true });
+      tl.to("#el1", { opacity: 0, duration: 0.3 }, 0);
+      tl.to("#el1", { opacity: 1, duration: 0.5 }, 0);
+    `;
+    const result = parseGsapScript(script);
+
+    expect(result.animations[0].id).toBe("#el1-to-0");
+    expect(result.animations[1].id).toBe("#el1-to-0-2");
+  });
+
+  it("uses string position in ID for relative positions", () => {
+    const script = `
+      const tl = gsap.timeline({ paused: true });
+      tl.to("#el1", { opacity: 1, duration: 0.5 }, "+=1");
+    `;
+    const result = parseGsapScript(script);
+
+    expect(result.animations[0].id).toBe("#el1-to-+=1");
+  });
+});
+
+describe("stagger/yoyo/repeat round-trip", () => {
+  it("preserves stagger as extras on parse", () => {
+    const script = `
+      const tl = gsap.timeline({ paused: true });
+      tl.to(".items", { opacity: 1, duration: 0.5, stagger: 0.1 }, 0);
+    `;
+    const result = parseGsapScript(script);
+
+    expect(result.animations).toHaveLength(1);
+    expect(result.animations[0].extras).toBeDefined();
+    expect(result.animations[0].extras!.stagger).toBe("__raw:0.1");
+    expect(result.animations[0].properties.opacity).toBe(1);
+    // stagger should NOT appear in properties
+    expect(result.animations[0].properties).not.toHaveProperty("stagger");
+  });
+
+  it("preserves complex stagger object on round-trip", () => {
+    const script = `
+      const tl = gsap.timeline({ paused: true });
+      tl.to(".items", { opacity: 1, duration: 0.5, stagger: { each: 0.15, from: "start" } }, 0);
+    `;
+    const parsed = parseGsapScript(script);
+    const serialized = serializeGsapAnimations(parsed.animations, parsed.timelineVar, {
+      preamble: parsed.preamble,
+      postamble: parsed.postamble,
+    });
+
+    expect(serialized).toContain("stagger: {");
+    expect(serialized).toContain("each: 0.15");
+    expect(serialized).toContain('from: "start"');
+  });
+
+  it("preserves yoyo and repeat on round-trip", () => {
+    const script = `
+      const tl = gsap.timeline({ paused: true });
+      tl.to("#el1", { x: 100, duration: 1, yoyo: true, repeat: 3, repeatDelay: 0.2 }, 0);
+    `;
+    const parsed = parseGsapScript(script);
+    const serialized = serializeGsapAnimations(parsed.animations, parsed.timelineVar, {
+      preamble: parsed.preamble,
+      postamble: parsed.postamble,
+    });
+
+    expect(serialized).toContain("yoyo: true");
+    expect(serialized).toContain("repeat: 3");
+    expect(serialized).toContain("repeatDelay: 0.2");
+  });
+
+  it("survives a full parse-edit-serialize round-trip with stagger intact", () => {
+    const script = `
+      const tl = gsap.timeline({ paused: true });
+      tl.to(".items", { opacity: 1, x: 50, duration: 0.5, stagger: 0.1, ease: "power2.out" }, 0);
+    `;
+    const parsed = parseGsapScript(script);
+    const animId = parsed.animations[0].id;
+    // Simulate an edit — change opacity to 0.5
+    const updatedScript = updateAnimationInScript(script, animId, {
+      properties: { opacity: 0.5, x: 50 },
+    });
+    // stagger should still be in the output
+    expect(updatedScript).toContain("stagger: 0.1");
+    expect(updatedScript).toContain("opacity: 0.5");
+  });
+});
+
+describe("unresolvable value round-trip", () => {
+  it("preserves unresolvable property values through serialize", () => {
+    const script = `
+      const tl = gsap.timeline({ paused: true });
+      tl.to("#el1", { opacity: someFn(), x: 50, duration: 1 }, 0);
+    `;
+    const parsed = parseGsapScript(script);
+    const serialized = serializeGsapAnimations(parsed.animations, parsed.timelineVar, {
+      preamble: parsed.preamble,
+      postamble: parsed.postamble,
+    });
+
+    // The raw expression should survive — emitted without quotes
+    expect(serialized).toContain("opacity: someFn()");
+    expect(serialized).toContain("x: 50");
+  });
+
+  it("preserves complex unresolvable expressions", () => {
+    const script = `
+      const tl = gsap.timeline({ paused: true });
+      tl.to("#el1", { x: getOffset() + 10, y: 200, duration: 1 }, 0);
+    `;
+    const parsed = parseGsapScript(script);
+
+    // x is unresolvable (function call in expression), y is resolvable
+    expect(parsed.animations[0].properties.y).toBe(200);
+    expect(String(parsed.animations[0].properties.x)).toMatch(/^__raw:/);
   });
 });
 
@@ -244,7 +434,7 @@ describe("gsapAnimationsToKeyframes", () => {
         targetSelector: "#el1",
         method: "set",
         position: 5,
-        properties: { x: 0, y: 0, scale: 1 },
+        properties: { x: 0, y: 0 },
       },
       {
         id: "anim-2",
@@ -258,7 +448,6 @@ describe("gsapAnimationsToKeyframes", () => {
 
     const keyframes = gsapAnimationsToKeyframes(animations, 5, { skipBaseSet: true });
 
-    // The set at position 5 (time=0) with x=0, y=0, scale=1 (base values) should be skipped
     expect(keyframes).toHaveLength(1);
     expect(keyframes[0].id).toBe("anim-2");
   });
@@ -524,6 +713,83 @@ describe("getAnimationsForElement", () => {
 
     const result = getAnimationsForElement(animations, "el99");
     expect(result).toHaveLength(0);
+  });
+});
+
+describe("mutation functions parse-fail safety", () => {
+  const garbage = "this is not valid javascript @@@ {{{{";
+
+  it("updateAnimationInScript returns original script on parse failure", () => {
+    const result = updateAnimationInScript(garbage, "anim-1", { duration: 2 });
+    expect(result).toBe(garbage);
+  });
+
+  it("addAnimationToScript returns original script on parse failure", () => {
+    const result = addAnimationToScript(garbage, {
+      targetSelector: "#el1",
+      method: "to",
+      position: 0,
+      properties: { opacity: 1 },
+      duration: 1,
+    });
+    expect(result.script).toBe(garbage);
+    expect(result.id).toBe("");
+  });
+
+  it("removeAnimationFromScript returns original script on parse failure", () => {
+    const result = removeAnimationFromScript(garbage, "anim-1");
+    expect(result).toBe(garbage);
+  });
+});
+
+describe("serializeGsapAnimations quote escaping", () => {
+  it("escapes quotes and backslashes in string property values", () => {
+    const animations: GsapAnimation[] = [
+      {
+        id: "anim-1",
+        targetSelector: "#el1",
+        method: "to",
+        position: 0,
+        properties: { content: 'say "hello"' },
+        duration: 1,
+      },
+    ];
+
+    const result = serializeGsapAnimations(animations);
+    // JSON.stringify produces escaped quotes
+    expect(result).toContain('content: "say \\"hello\\""');
+  });
+
+  it("escapes backslashes in string property values", () => {
+    const animations: GsapAnimation[] = [
+      {
+        id: "anim-1",
+        targetSelector: "#el1",
+        method: "to",
+        position: 0,
+        properties: { path: "C:\\Users\\test" },
+        duration: 1,
+      },
+    ];
+
+    const result = serializeGsapAnimations(animations);
+    expect(result).toContain('path: "C:\\\\Users\\\\test"');
+  });
+
+  it("serializes string position values correctly", () => {
+    const animations: GsapAnimation[] = [
+      {
+        id: "anim-1",
+        targetSelector: "#el1",
+        method: "to",
+        position: "+=1",
+        properties: { opacity: 1 },
+        duration: 0.5,
+      },
+    ];
+
+    const result = serializeGsapAnimations(animations);
+    expect(result).toContain('"+=1"');
   });
 });
 

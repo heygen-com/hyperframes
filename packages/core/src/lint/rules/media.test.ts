@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { lintHyperframeHtml } from "../hyperframeLinter.js";
 
 describe("media rules", () => {
-  it("reports error for duplicate media ids", () => {
+  it("reports error for duplicate media ids", async () => {
     const html = `
 <html><body>
   <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
@@ -11,14 +11,14 @@ describe("media rules", () => {
   </div>
   <script>window.__timelines = {};</script>
 </body></html>`;
-    const result = lintHyperframeHtml(html);
+    const result = await lintHyperframeHtml(html);
     const finding = result.findings.find((f) => f.code === "duplicate_media_id");
     expect(finding).toBeDefined();
     expect(finding?.severity).toBe("error");
     expect(finding?.elementId).toBe("v1");
   });
 
-  it("reports error for audio with data-start but no id", () => {
+  it("reports error for audio with data-start but no id", async () => {
     const html = `
 <html><body>
   <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
@@ -26,14 +26,14 @@ describe("media rules", () => {
   </div>
   <script>window.__timelines = window.__timelines || {}; window.__timelines["c1"] = gsap.timeline({ paused: true });</script>
 </body></html>`;
-    const result = lintHyperframeHtml(html);
+    const result = await lintHyperframeHtml(html);
     const finding = result.findings.find((f) => f.code === "media_missing_id");
     expect(finding).toBeDefined();
     expect(finding?.severity).toBe("error");
     expect(finding?.message).toContain("SILENT");
   });
 
-  it("reports error for video with data-start but no id", () => {
+  it("reports error for video with data-start but no id", async () => {
     const html = `
 <html><body>
   <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
@@ -41,14 +41,14 @@ describe("media rules", () => {
   </div>
   <script>window.__timelines = window.__timelines || {}; window.__timelines["c1"] = gsap.timeline({ paused: true });</script>
 </body></html>`;
-    const result = lintHyperframeHtml(html);
+    const result = await lintHyperframeHtml(html);
     const finding = result.findings.find((f) => f.code === "media_missing_id");
     expect(finding).toBeDefined();
     expect(finding?.severity).toBe("error");
     expect(finding?.message).toContain("FROZEN");
   });
 
-  it("does not flag media elements that have id", () => {
+  it("does not flag media elements that have id", async () => {
     const html = `
 <html><body>
   <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
@@ -57,12 +57,12 @@ describe("media rules", () => {
   </div>
   <script>window.__timelines = window.__timelines || {}; window.__timelines["c1"] = gsap.timeline({ paused: true });</script>
 </body></html>`;
-    const result = lintHyperframeHtml(html);
+    const result = await lintHyperframeHtml(html);
     const finding = result.findings.find((f) => f.code === "media_missing_id");
     expect(finding).toBeUndefined();
   });
 
-  it("reports warning for media with preload=none", () => {
+  it("reports warning for media with preload=none", async () => {
     const html = `
 <html><body>
   <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
@@ -70,13 +70,13 @@ describe("media rules", () => {
   </div>
   <script>window.__timelines = window.__timelines || {}; window.__timelines["c1"] = gsap.timeline({ paused: true });</script>
 </body></html>`;
-    const result = lintHyperframeHtml(html);
+    const result = await lintHyperframeHtml(html);
     const finding = result.findings.find((f) => f.code === "media_preload_none");
     expect(finding).toBeDefined();
     expect(finding?.severity).toBe("warning");
   });
 
-  it("reports error for media with id but no src", () => {
+  it("reports error for media with id but no src", async () => {
     const html = `
 <html><body>
   <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
@@ -84,13 +84,13 @@ describe("media rules", () => {
   </div>
   <script>window.__timelines = window.__timelines || {}; window.__timelines["c1"] = gsap.timeline({ paused: true });</script>
 </body></html>`;
-    const result = lintHyperframeHtml(html);
+    const result = await lintHyperframeHtml(html);
     const finding = result.findings.find((f) => f.code === "media_missing_src");
     expect(finding).toBeDefined();
     expect(finding?.severity).toBe("error");
   });
 
-  it("reports error for media with src but no data-start", () => {
+  it("reports error for media with src but no data-start", async () => {
     const html = `
 <html><body>
   <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
@@ -98,14 +98,14 @@ describe("media rules", () => {
   </div>
   <script>window.__timelines = window.__timelines || {}; window.__timelines["c1"] = gsap.timeline({ paused: true });</script>
 </body></html>`;
-    const result = lintHyperframeHtml(html);
+    const result = await lintHyperframeHtml(html);
     const finding = result.findings.find((f) => f.code === "media_missing_data_start");
     expect(finding).toBeDefined();
     expect(finding?.severity).toBe("error");
     expect(finding?.elementId).toBe("demo-video");
   });
 
-  it("allows audible video clips to omit muted when data-has-audio is true", () => {
+  it("allows audible video clips to omit muted when data-has-audio is true", async () => {
     const html = `
 <html><body>
   <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
@@ -113,14 +113,14 @@ describe("media rules", () => {
   </div>
   <script>window.__timelines = window.__timelines || {}; window.__timelines["c1"] = gsap.timeline({ paused: true });</script>
 </body></html>`;
-    const result = lintHyperframeHtml(html);
+    const result = await lintHyperframeHtml(html);
     expect(result.findings.find((f) => f.code === "video_missing_muted")).toBeUndefined();
     expect(
       result.findings.find((f) => f.code === "video_muted_with_declared_audio"),
     ).toBeUndefined();
   });
 
-  it("reports error for videos that declare audio while muted", () => {
+  it("reports error for videos that declare audio while muted", async () => {
     const html = `
 <html><body>
   <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
@@ -128,14 +128,14 @@ describe("media rules", () => {
   </div>
   <script>window.__timelines = window.__timelines || {}; window.__timelines["c1"] = gsap.timeline({ paused: true });</script>
 </body></html>`;
-    const result = lintHyperframeHtml(html);
+    const result = await lintHyperframeHtml(html);
     const finding = result.findings.find((f) => f.code === "video_muted_with_declared_audio");
     expect(finding).toBeDefined();
     expect(finding?.severity).toBe("error");
     expect(finding?.elementId).toBe("demo-video");
   });
 
-  it("does NOT flag <video> as nested in a void element with data-start (regression)", () => {
+  it("does NOT flag <video> as nested in a void element with data-start (regression)", async () => {
     // Regression: void elements like <img> have no closing tag, so the previous
     // implementation kept them on the parent stack indefinitely and flagged any
     // later <video> with data-start as "nested" inside them.
@@ -147,12 +147,12 @@ describe("media rules", () => {
   </div>
   <script>window.__timelines = window.__timelines || {}; window.__timelines["c1"] = gsap.timeline({ paused: true });</script>
 </body></html>`;
-    const result = lintHyperframeHtml(html);
+    const result = await lintHyperframeHtml(html);
     const finding = result.findings.find((f) => f.code === "video_nested_in_timed_element");
     expect(finding).toBeUndefined();
   });
 
-  it("reports imperative play() control on managed media ids", () => {
+  it("reports imperative play() control on managed media ids", async () => {
     const html = `
 <html><body>
   <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
@@ -163,14 +163,14 @@ describe("media rules", () => {
     video.play();
   </script>
 </body></html>`;
-    const result = lintHyperframeHtml(html);
+    const result = await lintHyperframeHtml(html);
     const finding = result.findings.find((f) => f.code === "imperative_media_control");
     expect(finding).toBeDefined();
     expect(finding?.severity).toBe("error");
     expect(finding?.elementId).toBe("demo-video");
   });
 
-  it("reports imperative currentTime writes on query-selected managed media", () => {
+  it("reports imperative currentTime writes on query-selected managed media", async () => {
     const html = `
 <html><body>
   <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
@@ -181,13 +181,13 @@ describe("media rules", () => {
     demo.currentTime = 1.5;
   </script>
 </body></html>`;
-    const result = lintHyperframeHtml(html);
+    const result = await lintHyperframeHtml(html);
     const finding = result.findings.find((f) => f.code === "imperative_media_control");
     expect(finding).toBeDefined();
     expect(finding?.severity).toBe("error");
   });
 
-  it("reports imperative muted/play control on class-selected media without ids", () => {
+  it("reports imperative muted/play control on class-selected media without ids", async () => {
     const html = `
 <template id="scene-template">
   <div data-composition-id="scene" data-width="1920" data-height="1080">
@@ -198,14 +198,14 @@ describe("media rules", () => {
     </script>
   </div>
 </template>`;
-    const result = lintHyperframeHtml(html, { filePath: "compositions/scene.html" });
+    const result = await lintHyperframeHtml(html, { filePath: "compositions/scene.html" });
     const imperativeFindings = result.findings.filter((f) => f.code === "imperative_media_control");
     expect(imperativeFindings.length).toBe(2);
     expect(imperativeFindings.some((f) => f.snippet === "vid.muted =")).toBe(true);
     expect(imperativeFindings.some((f) => f.snippet === "vid.play(")).toBe(true);
   });
 
-  it("does not flag play() on non-media elements", () => {
+  it("does not flag play() on non-media elements", async () => {
     const html = `
 <html><body>
   <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
@@ -216,7 +216,7 @@ describe("media rules", () => {
     panel.play?.();
   </script>
 </body></html>`;
-    const result = lintHyperframeHtml(html);
+    const result = await lintHyperframeHtml(html);
     const finding = result.findings.find((f) => f.code === "imperative_media_control");
     expect(finding).toBeUndefined();
   });

@@ -1,12 +1,7 @@
 import { memo } from "react";
 import { Clock, Eye, Layers, MessageSquare, Move, X } from "../../icons/SystemIcons";
 import { type DomEditSelection } from "./domEditing";
-import {
-  readStudioBoxSize,
-  readStudioPathOffset,
-  readStudioRotation,
-  readGsapTranslateFromTransform,
-} from "./manualEdits";
+import { readStudioBoxSize, readStudioPathOffset, readStudioRotation } from "./manualEdits";
 import type { ImportedFontAsset } from "./fontAssets";
 import {
   EMPTY_STYLES,
@@ -18,12 +13,13 @@ import {
 import { MetricField, Section } from "./propertyPanelPrimitives";
 import { isMediaElement, MediaSection } from "./propertyPanelMediaSection";
 import { TextSection, StyleSections } from "./propertyPanelSections";
+import { GsapAnimationSection } from "./GsapAnimationSection";
+import { STUDIO_GSAP_PANEL_ENABLED } from "./manualEditingAvailability";
 
 // Re-export helpers that external consumers import from this module
 export {
   buildStrokeStyleUpdates,
   buildStrokeWidthStyleUpdates,
-  clampPanelNumber,
   getCssFilterFunctionPx,
   getClipPathInsetPx,
   inferBoxShadowPreset,
@@ -54,6 +50,18 @@ interface PropertyPanelProps {
   onImportAssets?: (files: FileList) => Promise<string[]>;
   fontAssets?: ImportedFontAsset[];
   onImportFonts?: (files: FileList | File[]) => Promise<ImportedFontAsset[]>;
+  gsapAnimations?: import("@hyperframes/core/gsap-parser").GsapAnimation[];
+  gsapMultipleTimelines?: boolean;
+  gsapUnsupportedTimelinePattern?: boolean;
+  onUpdateGsapProperty?: (animId: string, prop: string, value: number | string) => void;
+  onUpdateGsapMeta?: (
+    animId: string,
+    updates: { duration?: number; ease?: string; position?: number },
+  ) => void;
+  onDeleteGsapAnimation?: (animId: string) => void;
+  onAddGsapProperty?: (animId: string, prop: string) => void;
+  onRemoveGsapProperty?: (animId: string, prop: string) => void;
+  onAddGsapAnimation?: (method: "to" | "from" | "set") => void;
 }
 
 /* ------------------------------------------------------------------ */
@@ -146,6 +154,15 @@ export const PropertyPanel = memo(function PropertyPanel({
   onImportAssets,
   fontAssets = [],
   onImportFonts,
+  gsapAnimations = [],
+  gsapMultipleTimelines,
+  gsapUnsupportedTimelinePattern,
+  onUpdateGsapProperty,
+  onUpdateGsapMeta,
+  onDeleteGsapAnimation,
+  onAddGsapProperty,
+  onRemoveGsapProperty,
+  onAddGsapAnimation,
 }: PropertyPanelProps) {
   const styles = element?.computedStyles ?? EMPTY_STYLES;
 
@@ -186,11 +203,6 @@ export const PropertyPanel = memo(function PropertyPanel({
   const sourceLabel = element.id ? `#${element.id}` : element.selector;
   const showEditableSections = element.capabilities.canEditStyles;
   const manualOffset = readStudioPathOffset(element.element);
-  const gsapTranslate = readGsapTranslateFromTransform(element.element);
-  const visualOffset = {
-    x: manualOffset.x + gsapTranslate.x,
-    y: manualOffset.y + gsapTranslate.y,
-  };
   const manualSize = readStudioBoxSize(element.element);
   const resolvedWidth =
     manualSize.width > 0
@@ -204,11 +216,10 @@ export const PropertyPanel = memo(function PropertyPanel({
   const commitManualOffset = (axis: "x" | "y", nextValue: string) => {
     const parsed = parsePxMetricValue(nextValue);
     if (parsed == null) return;
-    const currentRaw = readStudioPathOffset(element.element);
-    const currentGsap = readGsapTranslateFromTransform(element.element);
+    const current = readStudioPathOffset(element.element);
     onSetManualOffset(element, {
-      x: axis === "x" ? parsed - currentGsap.x : currentRaw.x,
-      y: axis === "y" ? parsed - currentGsap.y : currentRaw.y,
+      x: axis === "x" ? parsed : current.x,
+      y: axis === "y" ? parsed : current.y,
     });
   };
 
@@ -300,14 +311,14 @@ export const PropertyPanel = memo(function PropertyPanel({
           <div className={RESPONSIVE_GRID}>
             <MetricField
               label="X"
-              value={formatPxMetricValue(visualOffset.x)}
+              value={formatPxMetricValue(manualOffset.x)}
               disabled={manualOffsetEditingDisabled}
               scrub
               onCommit={(next) => commitManualOffset("x", next)}
             />
             <MetricField
               label="Y"
-              value={formatPxMetricValue(visualOffset.y)}
+              value={formatPxMetricValue(manualOffset.y)}
               disabled={manualOffsetEditingDisabled}
               scrub
               onCommit={(next) => commitManualOffset("y", next)}
@@ -341,6 +352,25 @@ export const PropertyPanel = memo(function PropertyPanel({
             />
           </div>
         </Section>
+
+        {STUDIO_GSAP_PANEL_ENABLED &&
+          onUpdateGsapProperty &&
+          onUpdateGsapMeta &&
+          onDeleteGsapAnimation &&
+          onAddGsapProperty &&
+          onAddGsapAnimation && (
+            <GsapAnimationSection
+              animations={gsapAnimations}
+              multipleTimelines={gsapMultipleTimelines}
+              unsupportedTimelinePattern={gsapUnsupportedTimelinePattern}
+              onUpdateProperty={onUpdateGsapProperty}
+              onUpdateMeta={onUpdateGsapMeta}
+              onDeleteAnimation={onDeleteGsapAnimation}
+              onAddProperty={onAddGsapProperty}
+              onRemoveProperty={onRemoveGsapProperty ?? (() => {})}
+              onAddAnimation={onAddGsapAnimation}
+            />
+          )}
 
         {showEditableSections && (
           <StyleSections

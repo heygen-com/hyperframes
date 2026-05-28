@@ -70,6 +70,44 @@ describe("patchElementInHtml", () => {
     expect(result).toContain('data-hf-studio-path-offset="true"');
   });
 
+  it("does not double data- prefix when property already has it", () => {
+    const result = patchElementInHtml(FIXTURE, { id: "hero" }, [
+      { type: "attribute", property: "data-hf-studio-path-offset", value: "true" },
+    ]);
+
+    expect(result).toContain('data-hf-studio-path-offset="true"');
+    expect(result).not.toContain("data-data-hf-studio-path-offset");
+  });
+
+  it("does not double data- prefix for any studio attribute", () => {
+    const attrs = [
+      "data-hf-studio-path-offset",
+      "data-hf-studio-original-translate",
+      "data-hf-studio-original-inline-translate",
+      "data-hf-studio-box-size",
+      "data-hf-studio-rotation",
+    ];
+    for (const attr of attrs) {
+      const result = patchElementInHtml(FIXTURE, { id: "hero" }, [
+        { type: "attribute", property: attr, value: "true" },
+      ]);
+      expect(result).toContain(`${attr}="true"`);
+      expect(result).not.toContain(`data-${attr}`);
+    }
+  });
+
+  it("removes attribute with data- prefix already present", () => {
+    const withAttr = patchElementInHtml(FIXTURE, { id: "hero" }, [
+      { type: "attribute", property: "data-hf-studio-path-offset", value: "true" },
+    ]);
+    expect(withAttr).toContain('data-hf-studio-path-offset="true"');
+
+    const removed = patchElementInHtml(withAttr, { id: "hero" }, [
+      { type: "attribute", property: "data-hf-studio-path-offset", value: null },
+    ]);
+    expect(removed).not.toContain("hf-studio-path-offset");
+  });
+
   it("patches html attribute", () => {
     const result = patchElementInHtml(FIXTURE, { id: "hero" }, [
       { type: "html-attribute", property: "title", value: "greeting" },

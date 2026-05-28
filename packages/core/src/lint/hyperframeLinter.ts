@@ -21,16 +21,16 @@ const ALL_RULES = [
   ...fontRules,
 ];
 
-export function lintHyperframeHtml(
+export async function lintHyperframeHtml(
   html: string,
   options: HyperframeLinterOptions = {},
-): HyperframeLintResult {
+): Promise<HyperframeLintResult> {
   const ctx = buildLintContext(html, options);
   const findings: HyperframeLintFinding[] = [];
   const seen = new Set<string>();
 
   for (const rule of ALL_RULES) {
-    for (const finding of rule(ctx)) {
+    for (const finding of await Promise.resolve(rule(ctx))) {
       const dedupeKey = [
         finding.code,
         finding.severity,

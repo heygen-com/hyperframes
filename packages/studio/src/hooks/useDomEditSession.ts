@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useRef } from "react";
 import type { TimelineElement } from "../player";
-import { STUDIO_INSPECTOR_PANELS_ENABLED } from "../components/editor/manualEditingAvailability";
+import {
+  STUDIO_INSPECTOR_PANELS_ENABLED,
+  STUDIO_GSAP_PANEL_ENABLED,
+} from "../components/editor/manualEditingAvailability";
 import { findElementForSelection, type DomEditSelection } from "../components/editor/domEditing";
+import { reapplyPositionEditsAfterSeek } from "../components/editor/manualEdits";
 import type { ImportedFontAsset } from "../components/editor/fontAssets";
 import type { EditHistoryKind } from "../utils/editHistory";
 import type { RightPanelTab } from "../utils/studioHelpers";
@@ -11,6 +15,8 @@ import { useAskAgentModal } from "./useAskAgentModal";
 import { useDomSelection } from "./useDomSelection";
 import { usePreviewInteraction } from "./usePreviewInteraction";
 import { useDomEditCommits } from "./useDomEditCommits";
+import { useGsapScriptCommits } from "./useGsapScriptCommits";
+import { useGsapAnimationsForElement, useGsapCacheVersion } from "./useGsapTweenCache";
 
 // ── Types ──
 
@@ -185,6 +191,37 @@ export function useDomEditSession({
     onClickToSource,
   });
 
+  // ── GSAP script editing ──
+
+  const { version: gsapCacheVersion, bump: bumpGsapCache } = useGsapCacheVersion();
+
+  const {
+    animations: selectedGsapAnimations,
+    multipleTimelines: gsapMultipleTimelines,
+    unsupportedTimelinePattern: gsapUnsupportedTimelinePattern,
+  } = useGsapAnimationsForElement(
+    STUDIO_GSAP_PANEL_ENABLED ? (projectId ?? null) : null,
+    domEditSelection?.sourceFile || activeCompPath || "index.html",
+    domEditSelection?.id ?? null,
+    gsapCacheVersion,
+  );
+
+  const {
+    updateGsapProperty,
+    updateGsapMeta,
+    deleteGsapAnimation,
+    addGsapAnimation,
+    addGsapProperty,
+    removeGsapProperty,
+  } = useGsapScriptCommits({
+    projectIdRef,
+    activeCompPath,
+    editHistory,
+    domEditSaveTimestampRef,
+    reloadPreview,
+    onCacheInvalidate: bumpGsapCache,
+  });
+
   // ── Commit handlers (delegated to useDomEditCommits) ──
 
   const {
@@ -224,7 +261,53 @@ export function useDomEditSession({
     buildDomSelectionFromTarget,
   });
 
-  // ── Effects ──
+  const handleGsapUpdateProperty = useCallback(
+    (animId: string, prop: string, value: number | string) => {
+      if (!domEditSelection) return;
+      updateGsapProperty(domEditSelection, animId, prop, value);
+    },
+    [domEditSelection, updateGsapProperty],
+  );
+
+  const handleGsapUpdateMeta = useCallback(
+    (animId: string, updates: { duration?: number; ease?: string; position?: number }) => {
+      if (!domEditSelection) return;
+      updateGsapMeta(domEditSelection, animId, updates);
+    },
+    [domEditSelection, updateGsapMeta],
+  );
+
+  const handleGsapDeleteAnimation = useCallback(
+    (animId: string) => {
+      if (!domEditSelection) return;
+      deleteGsapAnimation(domEditSelection, animId);
+    },
+    [domEditSelection, deleteGsapAnimation],
+  );
+
+  const handleGsapAddAnimation = useCallback(
+    (method: "to" | "from" | "set") => {
+      if (!domEditSelection) return;
+      addGsapAnimation(domEditSelection, method, currentTime);
+    },
+    [domEditSelection, addGsapAnimation, currentTime],
+  );
+
+  const handleGsapAddProperty = useCallback(
+    (animId: string, prop: string) => {
+      if (!domEditSelection) return;
+      addGsapProperty(domEditSelection, animId, prop);
+    },
+    [domEditSelection, addGsapProperty],
+  );
+
+  const handleGsapRemoveProperty = useCallback(
+    (animId: string, prop: string) => {
+      if (!domEditSelection) return;
+      removeGsapProperty(domEditSelection, animId, prop);
+    },
+    [domEditSelection, removeGsapProperty],
+  );
 
   // Sync selection from preview document on load / refresh
   // eslint-disable-next-line no-restricted-syntax
@@ -242,6 +325,8 @@ export function useDomEditSession({
         return;
       }
       if (!doc) return;
+
+      reapplyPositionEditsAfterSeek(doc);
 
       const nextElement = findElementForSelection(doc, currentSelection, activeCompPath);
       if (!nextElement) {
@@ -345,5 +430,16 @@ export function useDomEditSession({
     setAgentModalOpen,
     setAgentPromptSelectionContext,
     setAgentModalAnchorPoint,
+
+    // GSAP script editing
+    selectedGsapAnimations,
+    gsapMultipleTimelines,
+    gsapUnsupportedTimelinePattern,
+    handleGsapUpdateProperty,
+    handleGsapUpdateMeta,
+    handleGsapDeleteAnimation,
+    handleGsapAddAnimation,
+    handleGsapAddProperty,
+    handleGsapRemoveProperty,
   };
 }

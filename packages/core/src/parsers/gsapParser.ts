@@ -1,299 +1,395 @@
-import type { Keyframe, KeyframeProperties, ValidationResult } from "../core.types";
+/**
+ * Node-only GSAP AST parser. Depends on recast / @babel/parser, which compile
+ * to CommonJS that calls `require("fs")` — so this module must never be in the
+ * static import graph of isomorphic/browser code. It is reachable only via the
+ * `@hyperframes/core/gsap-parser` subpath (studio-api mutations + the linter).
+ *
+ * Recast-free helpers (serialization, keyframe conversion, validation, types)
+ * live in `./gsapSerialize` and are re-exported here so this subpath exposes the
+ * full surface for tests and server-side consumers.
+ */
+import * as recast from "recast";
+import { parse as babelParse } from "@babel/parser";
+import {
+  type GsapAnimation,
+  type GsapMethod,
+  type ParsedGsap,
+  serializeGsapAnimations,
+} from "./gsapSerialize";
 
-export type GsapMethod = "set" | "to" | "from" | "fromTo";
-
-export interface GsapAnimation {
-  id: string;
-  targetSelector: string;
-  method: GsapMethod;
-  position: number;
-  properties: Record<string, number | string>;
-  fromProperties?: Record<string, number | string>;
-  duration?: number;
-  ease?: string;
-}
-
-export interface ParsedGsap {
-  animations: GsapAnimation[];
-  timelineVar: string;
-  preamble: string;
-  postamble: string;
-}
+export type { GsapAnimation, GsapMethod, ParsedGsap } from "./gsapSerialize";
+export {
+  serializeGsapAnimations,
+  getAnimationsForElement,
+  validateCompositionGsap,
+  keyframesToGsapAnimations,
+  gsapAnimationsToKeyframes,
+  SUPPORTED_PROPS,
+  SUPPORTED_EASES,
+} from "./gsapSerialize";
 
 const GSAP_METHODS = new Set<string>(["set", "to", "from", "fromTo"]);
 
-export const SUPPORTED_PROPS = [
-  "opacity",
-  "visibility",
-  "x",
-  "y",
-  "scale",
-  "scaleX",
-  "scaleY",
-  "rotation",
-  "autoAlpha",
-  "width",
-  "height",
-];
+// ── Recast AST Helpers ──────────────────────────────────────────────────────
 
-export const SUPPORTED_EASES = [
-  "none",
-  "power1.in",
-  "power1.out",
-  "power1.inOut",
-  "power2.in",
-  "power2.out",
-  "power2.inOut",
-  "power3.in",
-  "power3.out",
-  "power3.inOut",
-  "power4.in",
-  "power4.out",
-  "power4.inOut",
-  "back.in",
-  "back.out",
-  "back.inOut",
-  "elastic.in",
-  "elastic.out",
-  "elastic.inOut",
-  "bounce.in",
-  "bounce.out",
-  "bounce.inOut",
-  "expo.in",
-  "expo.out",
-  "expo.inOut",
-];
+type ScopeBindings = ReadonlyMap<string, number | string | boolean>;
 
-function parseObjectLiteral(str: string): Record<string, number | string> {
-  const result: Record<string, number | string> = {};
+function parseScript(script: string) {
+  return recast.parse(script, {
+    parser: {
+      parse(source: string) {
+        return babelParse(source, { sourceType: "script", plugins: [], tokens: true });
+      },
+    },
+  });
+}
 
-  const cleaned = str.replace(/^\{|\}$/g, "").trim();
-  if (!cleaned) return result;
+function collectScopeBindings(ast: any): ScopeBindings {
+  const bindings = new Map<string, number | string | boolean>();
+  recast.types.visit(ast, {
+    visitVariableDeclarator(path: any) {
+      const name = path.node.id?.name;
+      const init = path.node.init;
+      if (name && init) {
+        const val = resolveNode(init, bindings);
+        if (val !== undefined) bindings.set(name, val);
+      }
+      this.traverse(path);
+    },
+  });
+  return bindings;
+}
 
-  const propRegex = /(\w+)\s*:\s*("[^"]*"|'[^']*'|[\d.]+|[a-zA-Z_][\w.]*)/g;
-  let match;
-
-  while ((match = propRegex.exec(cleaned)) !== null) {
-    const key = match[1] ?? "";
-    let value: string | number = match[2] ?? "";
-
-    if (typeof value === "string") {
-      if (
-        (value.startsWith('"') && value.endsWith('"')) ||
-        (value.startsWith("'") && value.endsWith("'"))
-      ) {
-        value = value.slice(1, -1);
-      } else if (!isNaN(Number(value))) {
-        value = Number(value);
+function resolveNode(
+  node: any,
+  scope: ReadonlyMap<string, number | string | boolean>,
+): number | string | boolean | undefined {
+  if (!node) return undefined;
+  if (node.type === "NumericLiteral" || (node.type === "Literal" && typeof node.value === "number"))
+    return node.value;
+  if (node.type === "StringLiteral" || (node.type === "Literal" && typeof node.value === "string"))
+    return node.value;
+  if (
+    node.type === "BooleanLiteral" ||
+    (node.type === "Literal" && typeof node.value === "boolean")
+  )
+    return node.value;
+  if (node.type === "UnaryExpression" && node.operator === "-" && node.argument) {
+    const val = resolveNode(node.argument, scope);
+    return typeof val === "number" ? -val : undefined;
+  }
+  if (node.type === "BinaryExpression") {
+    const left = resolveNode(node.left, scope);
+    const right = resolveNode(node.right, scope);
+    if (typeof left === "number" && typeof right === "number") {
+      switch (node.operator) {
+        case "+":
+          return left + right;
+        case "-":
+          return left - right;
+        case "*":
+          return left * right;
+        case "/":
+          return right !== 0 ? left / right : undefined;
       }
     }
-
-    result[key] = value;
+    if (typeof left === "string" && node.operator === "+") return left + String(right ?? "");
+    if (typeof right === "string" && node.operator === "+") return String(left ?? "") + right;
   }
+  if (node.type === "Identifier" && scope.has(node.name)) {
+    return scope.get(node.name);
+  }
+  if (node.type === "TemplateLiteral" && node.expressions?.length === 0) {
+    return node.quasis?.[0]?.value?.cooked ?? undefined;
+  }
+  return undefined;
+}
 
+function extractLiteralValue(node: any, scope: ScopeBindings): unknown {
+  return resolveNode(node, scope);
+}
+
+function objectExpressionToRecord(node: any, scope: ScopeBindings): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  if (node?.type !== "ObjectExpression") return result;
+  for (const prop of node.properties ?? []) {
+    if (prop.type !== "ObjectProperty" && prop.type !== "Property") continue;
+    const key = prop.key?.name ?? prop.key?.value;
+    if (!key) continue;
+    const resolved = resolveNode(prop.value, scope);
+    if (resolved !== undefined) {
+      result[key] = resolved;
+    } else {
+      // Preserve unresolvable values as raw source text so they survive round-trips
+      result[key] = `__raw:${recast.print(prop.value).code}`;
+    }
+  }
   return result;
 }
 
-function findMatchingBrace(str: string, startIndex: number): number {
-  let depth = 0;
-  for (let i = startIndex; i < str.length; i++) {
-    if (str[i] === "{") depth++;
-    else if (str[i] === "}") {
-      depth--;
-      if (depth === 0) return i;
-    }
-  }
-  return -1;
+// ── Timeline Variable Detection ─────────────────────────────────────────────
+
+function isGsapTimelineCall(node: any): boolean {
+  return (
+    node?.type === "CallExpression" &&
+    node.callee?.type === "MemberExpression" &&
+    node.callee.object?.name === "gsap" &&
+    node.callee.property?.name === "timeline"
+  );
 }
 
-export function parseGsapScript(script: string): ParsedGsap {
-  const animations: GsapAnimation[] = [];
-  let idCounter = 0;
-
-  const timelineMatch = script.match(/(?:const|let|var)\s+(\w+)\s*=\s*gsap\.timeline/);
-  const timelineVar = timelineMatch ? (timelineMatch[1] ?? "tl") : "tl";
-
-  const preambleMatch = script.match(
-    new RegExp(
-      `^[\\s\\S]*?(?:const|let|var)\\s+${timelineVar}\\s*=\\s*gsap\\.timeline\\s*\\([^)]*\\)\\s*;?`,
-    ),
-  );
-  const preamble = preambleMatch
-    ? preambleMatch[0]
-    : `const ${timelineVar} = gsap.timeline({ paused: true });`;
-
-  const methodPattern = new RegExp(
-    `${timelineVar}\\.(set|to|from|fromTo)\\s*\\(([^)]+(?:\\{[^}]*\\}[^)]*)+)\\)`,
-    "g",
-  );
-
-  let match;
-  while ((match = methodPattern.exec(script)) !== null) {
-    const rawMethod = match[1];
-    if (!rawMethod || !GSAP_METHODS.has(rawMethod)) continue;
-    const method: GsapMethod = rawMethod as GsapMethod;
-    const argsStr = match[2] ?? "";
-
-    const animation = parseGsapCall(method, argsStr, ++idCounter);
-    if (animation) {
-      animations.push(animation);
-    }
-  }
-
-  const lastAnimIdx = script.lastIndexOf(`${timelineVar}.`);
-  let postamble = "";
-  if (lastAnimIdx !== -1) {
-    const afterLastAnim = script.slice(lastAnimIdx);
-    const endOfCall = afterLastAnim.indexOf(";");
-    if (endOfCall !== -1) {
-      postamble = script.slice(lastAnimIdx + endOfCall + 1).trim();
-    }
-  }
-
-  return { animations, timelineVar, preamble, postamble };
+interface TimelineDetection {
+  timelineVar: string | null;
+  timelineCount: number;
 }
 
-function parseGsapCall(method: GsapMethod, argsStr: string, idNum: number): GsapAnimation | null {
-  const selectorMatch = argsStr.match(/^\s*["']([^"']+)["']\s*,/);
-  if (!selectorMatch) return null;
+function findTimelineVar(ast: any): TimelineDetection {
+  let timelineVar: string | null = null;
+  let timelineCount = 0;
+  recast.types.visit(ast, {
+    visitVariableDeclarator(path: any) {
+      if (isGsapTimelineCall(path.node.init)) {
+        timelineCount += 1;
+        if (!timelineVar) timelineVar = path.node.id?.name ?? null;
+      }
+      this.traverse(path);
+    },
+    visitAssignmentExpression(path: any) {
+      if (isGsapTimelineCall(path.node.right)) {
+        timelineCount += 1;
+        if (!timelineVar) {
+          const left = path.node.left;
+          if (left?.type === "Identifier") timelineVar = left.name;
+        }
+      }
+      this.traverse(path);
+    },
+  });
+  return { timelineVar, timelineCount };
+}
 
-  const targetSelector = selectorMatch[1] ?? "";
-  const afterSelector = argsStr.slice(selectorMatch[0].length);
+// ── Find All Tween Calls ────────────────────────────────────────────────────
 
-  let properties: Record<string, number | string> = {};
+interface TweenCallInfo {
+  path: any;
+  node: any;
+  method: GsapMethod;
+  selector: string;
+  varsArg: any;
+  fromArg?: any;
+  positionArg?: any;
+}
+
+function findAllTweenCalls(ast: any, timelineVar: string): TweenCallInfo[] {
+  const results: TweenCallInfo[] = [];
+  recast.types.visit(ast, {
+    visitCallExpression(path: any) {
+      const node = path.node;
+      const callee = node.callee;
+      if (
+        callee?.type === "MemberExpression" &&
+        callee.object?.type === "Identifier" &&
+        callee.object.name === timelineVar &&
+        callee.property?.type === "Identifier"
+      ) {
+        const method = callee.property.name;
+        if (!GSAP_METHODS.has(method)) {
+          this.traverse(path);
+          return;
+        }
+        const args = node.arguments;
+        if (args.length < 2) {
+          this.traverse(path);
+          return;
+        }
+        const selectorArg = args[0];
+        const selectorValue =
+          selectorArg.type === "StringLiteral" || selectorArg.type === "Literal"
+            ? String(selectorArg.value)
+            : null;
+        if (!selectorValue) {
+          this.traverse(path);
+          return;
+        }
+
+        if (method === "fromTo") {
+          results.push({
+            path,
+            node,
+            method: "fromTo",
+            selector: selectorValue,
+            fromArg: args[1],
+            varsArg: args[2],
+            positionArg: args[3],
+          });
+        } else {
+          results.push({
+            path,
+            node,
+            method: method as GsapMethod,
+            selector: selectorValue,
+            varsArg: args[1],
+            positionArg: args[2],
+          });
+        }
+      }
+      this.traverse(path);
+    },
+  });
+  return results;
+}
+
+/** Keys that are stored on dedicated GsapAnimation fields (not in properties/extras). */
+const BUILTIN_VAR_KEYS = new Set(["duration", "ease", "delay"]);
+
+/** Keys that are never preserved (callbacks / advanced patterns). */
+const DROPPED_VAR_KEYS = new Set(["keyframes", "onComplete", "onStart", "onUpdate", "onRepeat"]);
+
+/** Keys that belong in `extras` — non-editable GSAP config that must survive round-trips. */
+const EXTRAS_KEYS = new Set([
+  "stagger",
+  "yoyo",
+  "repeat",
+  "repeatDelay",
+  "snap",
+  "overwrite",
+  "immediateRender",
+]);
+
+/**
+ * Extract raw source text for a property in an ObjectExpression AST node.
+ * Returns the printed source of the value node, suitable for verbatim re-emission.
+ */
+function extractRawPropertySource(varsArgNode: any, key: string): string | undefined {
+  if (varsArgNode?.type !== "ObjectExpression") return undefined;
+  for (const prop of varsArgNode.properties ?? []) {
+    if (prop.type !== "ObjectProperty" && prop.type !== "Property") continue;
+    const propKey = prop.key?.name ?? prop.key?.value;
+    if (propKey === key) {
+      return recast.print(prop.value).code;
+    }
+  }
+  return undefined;
+}
+
+function tweenCallToAnimation(
+  call: TweenCallInfo,
+  scope: ScopeBindings,
+): Omit<GsapAnimation, "id"> {
+  const vars = objectExpressionToRecord(call.varsArg, scope);
+  const properties: Record<string, number | string> = {};
+  const extras: Record<string, unknown> = {};
+
+  for (const [key, val] of Object.entries(vars)) {
+    if (BUILTIN_VAR_KEYS.has(key)) continue;
+    if (DROPPED_VAR_KEYS.has(key)) continue;
+
+    if (EXTRAS_KEYS.has(key)) {
+      // For extras, prefer the raw AST source so complex objects like
+      // `stagger: { each: 0.15, from: "start" }` survive verbatim.
+      const rawSource = extractRawPropertySource(call.varsArg, key);
+      if (rawSource !== undefined) {
+        extras[key] = `__raw:${rawSource}`;
+      } else if (val !== undefined) {
+        extras[key] = val;
+      }
+      continue;
+    }
+
+    if (typeof val === "number" || typeof val === "string") {
+      properties[key] = val;
+    }
+  }
+
   let fromProperties: Record<string, number | string> | undefined;
-  let position = 0;
-
-  if (method === "fromTo") {
-    const firstBrace = afterSelector.indexOf("{");
-    const firstEnd = findMatchingBrace(afterSelector, firstBrace);
-    if (firstBrace === -1 || firstEnd === -1) return null;
-
-    fromProperties = parseObjectLiteral(afterSelector.slice(firstBrace, firstEnd + 1));
-
-    const secondPart = afterSelector.slice(firstEnd + 1);
-    const secondBrace = secondPart.indexOf("{");
-    const secondEnd = findMatchingBrace(secondPart, secondBrace);
-    if (secondBrace === -1 || secondEnd === -1) return null;
-
-    properties = parseObjectLiteral(secondPart.slice(secondBrace, secondEnd + 1));
-
-    const afterProps = secondPart.slice(secondEnd + 1);
-    const posMatch = afterProps.match(/,\s*([\d.]+)/);
-    if (posMatch) position = parseFloat(posMatch[1] ?? "");
-  } else {
-    const braceStart = afterSelector.indexOf("{");
-    const braceEnd = findMatchingBrace(afterSelector, braceStart);
-
-    if (braceStart !== -1 && braceEnd !== -1) {
-      properties = parseObjectLiteral(afterSelector.slice(braceStart, braceEnd + 1));
-
-      const afterProps = afterSelector.slice(braceEnd + 1);
-      const posMatch = afterProps.match(/,\s*([\d.]+)/);
-      if (posMatch) position = parseFloat(posMatch[1] ?? "");
-    }
-  }
-
-  const duration = typeof properties.duration === "number" ? properties.duration : undefined;
-  const ease = typeof properties.ease === "string" ? properties.ease : undefined;
-
-  const filteredProps: Record<string, number | string> = {};
-  for (const [key, value] of Object.entries(properties)) {
-    if (SUPPORTED_PROPS.includes(key)) {
-      filteredProps[key] = value;
-    }
-  }
-
-  let filteredFromProps: Record<string, number | string> | undefined;
-  if (fromProperties) {
-    filteredFromProps = {};
-    for (const [key, value] of Object.entries(fromProperties)) {
-      if (SUPPORTED_PROPS.includes(key)) {
-        filteredFromProps[key] = value;
+  if (call.method === "fromTo" && call.fromArg) {
+    fromProperties = {};
+    const fromVars = objectExpressionToRecord(call.fromArg, scope);
+    for (const [key, val] of Object.entries(fromVars)) {
+      if (typeof val === "number" || typeof val === "string") {
+        fromProperties[key] = val;
       }
     }
   }
 
-  return {
-    id: `anim-${idNum}`,
-    targetSelector,
-    method,
+  const posVal = call.positionArg ? extractLiteralValue(call.positionArg, scope) : 0;
+  const position: number | string =
+    typeof posVal === "number" ? posVal : typeof posVal === "string" ? posVal : 0;
+  const duration = typeof vars.duration === "number" ? vars.duration : undefined;
+  const ease = typeof vars.ease === "string" ? vars.ease : undefined;
+
+  const anim: Omit<GsapAnimation, "id"> = {
+    targetSelector: call.selector,
+    method: call.method,
     position,
-    properties: filteredProps,
-    fromProperties: filteredFromProps,
+    properties,
+    fromProperties,
     duration,
     ease,
   };
+  if (Object.keys(extras).length > 0) anim.extras = extras;
+  return anim;
 }
 
-export function serializeGsapAnimations(
-  animations: GsapAnimation[],
-  timelineVar = "tl",
-  options?: { includeMediaSync?: boolean },
-): string {
-  const sorted = [...animations].sort((a, b) => a.position - b.position);
+// ── Stable ID Generation ───────────────────────────────────────────────────
 
-  const lines = sorted.map((anim) => {
-    const selector = `"${anim.targetSelector}"`;
+function assignStableIds(anims: Omit<GsapAnimation, "id">[]): GsapAnimation[] {
+  const counts = new Map<string, number>();
+  return anims.map((anim) => {
+    const posKey =
+      typeof anim.position === "number"
+        ? String(Math.round(anim.position * 1000))
+        : String(anim.position);
+    const base = `${anim.targetSelector}-${anim.method}-${posKey}`;
+    const count = (counts.get(base) ?? 0) + 1;
+    counts.set(base, count);
+    const id = count === 1 ? base : `${base}-${count}`;
+    return { ...anim, id };
+  });
+}
 
-    const props: Record<string, number | string> = { ...anim.properties };
-    if (anim.duration !== undefined) props.duration = anim.duration;
-    if (anim.ease) props.ease = anim.ease;
+// ── Public API ──────────────────────────────────────────────────────────────
 
-    const propsStr = serializeObject(props);
+export function parseGsapScript(script: string): ParsedGsap {
+  try {
+    const ast = parseScript(script);
+    const scope = collectScopeBindings(ast);
+    const detection = findTimelineVar(ast);
+    const timelineVar = detection.timelineVar ?? "tl";
+    const calls = findAllTweenCalls(ast, timelineVar);
+    const animations = assignStableIds(calls.map((call) => tweenCallToAnimation(call, scope)));
 
-    switch (anim.method) {
-      case "set":
-        return `    ${timelineVar}.set(${selector}, ${propsStr}, ${anim.position});`;
-      case "to":
-        return `    ${timelineVar}.to(${selector}, ${propsStr}, ${anim.position});`;
-      case "from":
-        return `    ${timelineVar}.from(${selector}, ${propsStr}, ${anim.position});`;
-      case "fromTo": {
-        const fromStr = serializeObject(anim.fromProperties || {});
-        return `    ${timelineVar}.fromTo(${selector}, ${fromStr}, ${propsStr}, ${anim.position});`;
+    const timelineMatch = script.match(
+      new RegExp(
+        `^[\\s\\S]*?(?:const|let|var)\\s+${timelineVar}\\s*=\\s*gsap\\.timeline\\s*\\([^)]*\\)\\s*;?`,
+      ),
+    );
+    const preamble =
+      timelineMatch?.[0] ?? `const ${timelineVar} = gsap.timeline({ paused: true });`;
+
+    const lastCallIdx = script.lastIndexOf(`${timelineVar}.`);
+    let postamble = "";
+    if (lastCallIdx !== -1) {
+      const afterLast = script.slice(lastCallIdx);
+      const endOfCall = afterLast.indexOf(";");
+      if (endOfCall !== -1) {
+        postamble = script.slice(lastCallIdx + endOfCall + 1).trim();
       }
     }
-  });
 
-  let mediaSync = "";
-  if (options?.includeMediaSync) {
-    mediaSync = `
-    // Sync media playback
-    ${timelineVar}.eventCallback("onUpdate", function() {
-      const time = ${timelineVar}.time();
-      document.querySelectorAll("video[data-start], audio[data-start]").forEach(function(media) {
-        const start = parseFloat(media.dataset.start);
-        const end = parseFloat(media.dataset.end) || Infinity;
-        const mediaTime = time - start;
-        if (time >= start && time < end) {
-          if (Math.abs(media.currentTime - mediaTime) > 0.1) {
-            media.currentTime = mediaTime;
-          }
-          if (media.paused && !${timelineVar}.paused()) {
-            media.play().catch(function() {});
-          }
-        } else if (!media.paused) {
-          media.pause();
-        }
-      });
-    });`;
+    const result: ParsedGsap = { animations, timelineVar, preamble, postamble };
+    if (detection.timelineCount > 1) result.multipleTimelines = true;
+    if (detection.timelineCount > 0 && detection.timelineVar === null)
+      result.unsupportedTimelinePattern = true;
+    return result;
+  } catch {
+    return { animations: [], timelineVar: "tl", preamble: "", postamble: "" };
   }
-
-  return `
-    const ${timelineVar} = gsap.timeline({ paused: true });
-${lines.join("\n")}${mediaSync}
-  `;
 }
 
-function serializeObject(obj: Record<string, number | string>): string {
-  const entries = Object.entries(obj).map(([key, value]) => {
-    if (typeof value === "string") {
-      return `${key}: "${value}"`;
-    }
-    return `${key}: ${value}`;
-  });
-  return `{ ${entries.join(", ")} }`;
+/** Returns true when the parse result is a failure fallback (no animations, no preamble). */
+function isParseFailure(parsed: ParsedGsap): boolean {
+  return parsed.animations.length === 0 && !parsed.preamble;
 }
 
 export function updateAnimationInScript(
@@ -302,15 +398,14 @@ export function updateAnimationInScript(
   updates: Partial<GsapAnimation>,
 ): string {
   const parsed = parseGsapScript(script);
-
-  const updated = parsed.animations.map((anim) => {
-    if (anim.id === animationId) {
-      return { ...anim, ...updates };
-    }
-    return anim;
+  if (isParseFailure(parsed)) return script;
+  const updated = parsed.animations.map((anim) =>
+    anim.id === animationId ? { ...anim, ...updates } : anim,
+  );
+  return serializeGsapAnimations(updated, parsed.timelineVar, {
+    preamble: parsed.preamble,
+    postamble: parsed.postamble,
   });
-
-  return serializeGsapAnimations(updated, parsed.timelineVar);
 }
 
 export function addAnimationToScript(
@@ -318,203 +413,25 @@ export function addAnimationToScript(
   animation: Omit<GsapAnimation, "id">,
 ): { script: string; id: string } {
   const parsed = parseGsapScript(script);
-
+  if (isParseFailure(parsed)) return { script, id: "" };
   const id = `anim-${Date.now()}`;
   const newAnim: GsapAnimation = { ...animation, id };
-
-  parsed.animations.push(newAnim);
-
+  const allAnimations = [...parsed.animations, newAnim];
   return {
-    script: serializeGsapAnimations(parsed.animations, parsed.timelineVar),
+    script: serializeGsapAnimations(allAnimations, parsed.timelineVar, {
+      preamble: parsed.preamble,
+      postamble: parsed.postamble,
+    }),
     id,
   };
 }
 
 export function removeAnimationFromScript(script: string, animationId: string): string {
   const parsed = parseGsapScript(script);
+  if (isParseFailure(parsed)) return script;
   const filtered = parsed.animations.filter((a) => a.id !== animationId);
-  return serializeGsapAnimations(filtered, parsed.timelineVar);
-}
-
-export function getAnimationsForElement(
-  animations: GsapAnimation[],
-  elementId: string,
-): GsapAnimation[] {
-  const selector = `#${elementId}`;
-  return animations.filter((a) => a.targetSelector === selector);
-}
-
-const FORBIDDEN_GSAP_PATTERNS: Array<{ pattern: RegExp; message: string }> = [
-  { pattern: /\.call\s*\(/, message: "call() method not allowed" },
-  {
-    pattern: /\.add\s*\(\s*function/,
-    message: "add(function) not allowed",
-  },
-  {
-    pattern: /\.add\s*\(\s*\(/,
-    message: "add() with arrow function not allowed",
-  },
-  { pattern: /onComplete\s*:/, message: "onComplete callback not allowed" },
-  { pattern: /onStart\s*:/, message: "onStart callback not allowed" },
-  { pattern: /onUpdate\s*:/, message: "onUpdate callback not allowed" },
-  {
-    pattern: /onRepeat\s*:/,
-    message: "onRepeat callback not allowed",
-  },
-  {
-    pattern: /onReverseComplete\s*:/,
-    message: "onReverseComplete callback not allowed",
-  },
-  {
-    pattern: /repeat\s*:\s*-1/,
-    message: "Infinite repeat (repeat: -1) not allowed",
-  },
-  {
-    pattern: /Math\.random\s*\(/,
-    message: "Random values (Math.random) not allowed",
-  },
-  {
-    pattern: /Date\.now\s*\(/,
-    message: "Date-dependent values (Date.now) not allowed",
-  },
-  { pattern: /new\s+Date\s*\(/, message: "Date constructor not allowed" },
-  { pattern: /setTimeout\s*\(/, message: "setTimeout not allowed" },
-  { pattern: /setInterval\s*\(/, message: "setInterval not allowed" },
-  {
-    pattern: /requestAnimationFrame\s*\(/,
-    message: "requestAnimationFrame not allowed",
-  },
-];
-
-export function validateCompositionGsap(script: string): ValidationResult {
-  const errors: string[] = [];
-  const warnings: string[] = [];
-
-  for (const { pattern, message } of FORBIDDEN_GSAP_PATTERNS) {
-    if (pattern.test(script)) {
-      errors.push(message);
-    }
-  }
-
-  if (/yoyo\s*:\s*true/.test(script)) {
-    warnings.push("yoyo animations may behave unexpectedly when scrubbing");
-  }
-
-  if (/stagger\s*:/.test(script)) {
-    warnings.push("stagger animations may not serialize correctly");
-  }
-
-  return {
-    valid: errors.length === 0,
-    errors,
-    warnings,
-  };
-}
-
-export function keyframesToGsapAnimations(
-  elementId: string,
-  keyframes: Keyframe[],
-  elementStartTime: number,
-  base?: { x?: number; y?: number; scale?: number },
-): GsapAnimation[] {
-  const sorted = [...keyframes].sort((a, b) => a.time - b.time);
-  const animations: GsapAnimation[] = [];
-  const baseX = base?.x ?? 0;
-  const baseY = base?.y ?? 0;
-  const baseScale = base?.scale ?? 1;
-
-  sorted.forEach((kf, i) => {
-    const absoluteTime = elementStartTime + kf.time;
-    const isFirst = i === 0;
-
-    const prevKf = i > 0 ? sorted[i - 1] : null;
-    const duration = prevKf ? kf.time - prevKf.time : undefined;
-    const position = prevKf ? elementStartTime + prevKf.time : absoluteTime;
-
-    const properties: Record<string, number | string> = {};
-    for (const [key, value] of Object.entries(kf.properties)) {
-      if (typeof value !== "number") continue;
-      if (key === "x") properties.x = baseX + value;
-      else if (key === "y") properties.y = baseY + value;
-      else if (key === "scale") properties.scale = baseScale * value;
-      else properties[key] = value;
-    }
-
-    animations.push({
-      id: `${elementId}-kf-${kf.id}`,
-      targetSelector: `#${elementId}`,
-      method: isFirst ? "set" : "to",
-      position,
-      properties,
-      duration: isFirst ? undefined : duration,
-      ease: kf.ease,
-    });
+  return serializeGsapAnimations(filtered, parsed.timelineVar, {
+    preamble: parsed.preamble,
+    postamble: parsed.postamble,
   });
-
-  return animations;
-}
-
-export function gsapAnimationsToKeyframes(
-  animations: GsapAnimation[],
-  elementStartTime: number,
-  options?: {
-    baseX?: number;
-    baseY?: number;
-    baseScale?: number;
-    clampTimeToZero?: boolean;
-    skipBaseSet?: boolean;
-  },
-): Keyframe[] {
-  const validMethods: GsapMethod[] = ["set", "to", "from", "fromTo"];
-  const baseX = options?.baseX ?? 0;
-  const baseY = options?.baseY ?? 0;
-  const baseScale = options?.baseScale ?? 1;
-  const clampTimeToZero = options?.clampTimeToZero ?? true;
-  const skipBaseSet = options?.skipBaseSet ?? false;
-  const baseTimeEpsilon = 0.001;
-  const baseValueEpsilon = 0.00001;
-
-  return animations
-    .filter((a) => validMethods.includes(a.method))
-    .map((a) => {
-      const relativeTimeRaw = a.position - elementStartTime;
-      const time = clampTimeToZero ? Math.max(0, relativeTimeRaw) : relativeTimeRaw;
-
-      const properties: Partial<KeyframeProperties> = {};
-
-      for (const [key, value] of Object.entries(a.properties)) {
-        if (SUPPORTED_PROPS.includes(key) && typeof value === "number") {
-          if (key === "x") {
-            (properties as Record<string, number>).x = value - baseX;
-          } else if (key === "y") {
-            (properties as Record<string, number>).y = value - baseY;
-          } else if (key === "scale") {
-            (properties as Record<string, number>).scale =
-              baseScale !== 0 ? value / baseScale : value;
-          } else {
-            (properties as Record<string, number>)[key] = value;
-          }
-        }
-      }
-
-      if (skipBaseSet && a.method === "set" && Math.abs(time) <= baseTimeEpsilon) {
-        const propKeys = Object.keys(properties);
-        const isOnlyBaseProps = propKeys.every((k) => k === "x" || k === "y" || k === "scale");
-        if (isOnlyBaseProps && propKeys.length > 0) {
-          const hasNonBaseOffset =
-            (properties.x !== undefined && Math.abs(properties.x) > baseValueEpsilon) ||
-            (properties.y !== undefined && Math.abs(properties.y) > baseValueEpsilon) ||
-            (properties.scale !== undefined && Math.abs(properties.scale - 1) > baseValueEpsilon);
-          if (!hasNonBaseOffset) {
-            return null;
-          }
-        }
-      }
-
-      const kf: Keyframe = { id: a.id, time, properties };
-      if (a.ease !== undefined) kf.ease = a.ease;
-      return kf;
-    })
-    .filter((kf): kf is Keyframe => kf !== null)
-    .sort((a, b) => a.time - b.time);
 }

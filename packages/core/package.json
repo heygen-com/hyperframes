@@ -58,6 +58,14 @@
       "import": "./src/registry/index.ts",
       "types": "./src/registry/index.ts"
     },
+    "./gsap-parser": {
+      "import": "./src/parsers/gsapParser.ts",
+      "types": "./src/parsers/gsapParser.ts"
+    },
+    "./gsap-constants": {
+      "import": "./src/parsers/gsapConstants.ts",
+      "types": "./src/parsers/gsapConstants.ts"
+    },
     "./schemas/registry.json": "./schemas/registry.json",
     "./schemas/registry-item.json": "./schemas/registry-item.json"
   },
@@ -105,6 +113,14 @@
         "import": "./dist/registry/index.js",
         "types": "./dist/registry/index.d.ts"
       },
+      "./gsap-parser": {
+        "import": "./dist/parsers/gsapParser.js",
+        "types": "./dist/parsers/gsapParser.d.ts"
+      },
+      "./gsap-constants": {
+        "import": "./dist/parsers/gsapConstants.js",
+        "types": "./dist/parsers/gsapConstants.d.ts"
+      },
       "./schemas/registry.json": "./schemas/registry.json",
       "./schemas/registry-item.json": "./schemas/registry-item.json"
     },
@@ -134,8 +150,10 @@
     "prepublishOnly": "echo skip"
   },
   "dependencies": {
+    "@babel/parser": "^7.27.0",
     "@chenglou/pretext": "^0.0.5",
-    "postcss": "^8.5.8"
+    "postcss": "^8.5.8",
+    "recast": "^0.23.11"
   },
   "devDependencies": {
     "@types/jsdom": "^28.0.0",

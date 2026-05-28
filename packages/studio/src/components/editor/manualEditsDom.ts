@@ -48,7 +48,7 @@ export function endStudioManualEditGesture(element: HTMLElement, token?: string)
   element.removeAttribute(STUDIO_MANUAL_EDIT_GESTURE_ATTR);
 }
 
-export function isStudioManualEditGestureActive(element: HTMLElement): boolean {
+function isStudioManualEditGestureActive(element: HTMLElement): boolean {
   return element.hasAttribute(STUDIO_MANUAL_EDIT_GESTURE_ATTR);
 }
 
@@ -213,24 +213,13 @@ function writeStudioPathOffsetVars(
 
 // GSAP 3.x reads the resolved CSS `translate` individual property at initialization and bakes it
 // into element.style.transform (as a matrix) on every seek. When the studio's reapply hook also
-// writes `translate`, both properties compose additively, doubling the visual offset. This helper
-// zeroes out only the translate component (m41/m42) so the `translate` prop isn't double-counted.
+// writes `translate`, both properties compose additively, doubling the visual offset.
+//
+// This helper subtracts only the baked studio offset from m41/m42, preserving any GSAP animation
+// contribution (e.g. a tween animating y: -20). The studio offset is read from the CSS custom
+// properties which tell us exactly how much was baked from the CSS translate.
 function isIdentityAfterTranslateStrip(m: DOMMatrix): boolean {
   return m.is2D && m.a === 1 && m.b === 0 && m.c === 0 && m.d === 1;
-}
-
-export function readGsapTranslateFromTransform(element: HTMLElement): { x: number; y: number } {
-  const transform = element.style.getPropertyValue("transform");
-  if (!transform || transform === "none") return { x: 0, y: 0 };
-  const DOMMatrixCtor = (element.ownerDocument.defaultView as (Window & typeof globalThis) | null)
-    ?.DOMMatrix;
-  if (!DOMMatrixCtor) return { x: 0, y: 0 };
-  try {
-    const m = new DOMMatrixCtor(transform);
-    return { x: m.m41, y: m.m42 };
-  } catch {
-    return { x: 0, y: 0 };
-  }
 }
 
 function stripGsapTranslateFromTransform(element: HTMLElement): void {
@@ -242,9 +231,11 @@ function stripGsapTranslateFromTransform(element: HTMLElement): void {
   try {
     const m = new DOMMatrixCtor(transform);
     if (m.m41 === 0 && m.m42 === 0) return;
-    m.m41 = 0;
-    m.m42 = 0;
-    if (isIdentityAfterTranslateStrip(m)) {
+    const offsetX = readPxCustomProperty(element, STUDIO_OFFSET_X_PROP);
+    const offsetY = readPxCustomProperty(element, STUDIO_OFFSET_Y_PROP);
+    m.m41 -= offsetX;
+    m.m42 -= offsetY;
+    if (Math.abs(m.m41) < 0.01 && Math.abs(m.m42) < 0.01 && isIdentityAfterTranslateStrip(m)) {
       element.style.removeProperty("transform");
     } else {
       element.style.setProperty("transform", m.toString());
@@ -493,9 +484,19 @@ export {
 function queryStudioElements(doc: Document, attr: string): HTMLElement[] {
   const ctor = doc.defaultView?.HTMLElement;
   if (!ctor) return [];
-  return Array.from(doc.querySelectorAll(`[${attr}="true"]`)).filter(
+  const elements = Array.from(doc.querySelectorAll(`[${attr}="true"]`)).filter(
     (el): el is HTMLElement => el instanceof ctor,
   );
+  // Handle legacy HTML files where attributes were persisted with a double data- prefix
+  const legacyAttr = `data-${attr}`;
+  for (const el of doc.querySelectorAll(`[${legacyAttr}="true"]`)) {
+    if (el instanceof ctor && !el.hasAttribute(attr)) {
+      el.setAttribute(attr, "true");
+      el.removeAttribute(legacyAttr);
+      elements.push(el);
+    }
+  }
+  return elements;
 }
 
 function reapplyPathOffsets(doc: Document): void {

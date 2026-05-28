@@ -16,6 +16,7 @@ import {
   resolveDomEditSelection,
   type DomEditSelection,
 } from "../components/editor/domEditing";
+import { reapplyPositionEditsAfterSeek } from "../components/editor/manualEdits";
 
 // ── Types ──
 
@@ -218,6 +219,11 @@ export function useDomSelection({
     ) => {
       const iframe = previewIframeRef.current;
       if (!iframe || captionEditMode) return null;
+      try {
+        if (iframe.contentDocument) reapplyPositionEditsAfterSeek(iframe.contentDocument);
+      } catch {
+        /* cross-origin guard */
+      }
       const target = getPreviewTargetFromPointer(iframe, clientX, clientY, activeCompPath);
       if (!target) return null;
       return buildDomSelectionFromTarget(target, {
@@ -244,6 +250,8 @@ export function useDomSelection({
         return null;
       }
       if (!doc) return null;
+
+      reapplyPositionEditsAfterSeek(doc);
 
       const targetElement = findElementForTimelineElement(doc, element, {
         activeCompositionPath: activeCompPath,
