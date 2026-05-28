@@ -404,6 +404,13 @@ async function maybeUploadProject(
     uploaded = await client.uploadAsset({
       file: archive.buffer,
       filename: `${project.name}.zip`,
+      // Tag the multipart part with application/zip so downstream
+      // proxies / WAFs / any server-side path that keys off the
+      // part Content-Type see the intended type. The asset
+      // controller currently sniffs magic bytes from the file
+      // bytes, so this is belt-and-suspenders today; without it,
+      // FormData defaults to application/octet-stream.
+      mimeType: "application/zip",
       idempotencyKey,
     });
   } catch (err) {
@@ -512,7 +519,9 @@ async function pollWithProgress(
       );
       process.exit(1);
     }
-    return reportApiError("API error during poll", err);
+    return reportApiError("API error during poll", err, {
+      suggestion: `The render may still be running. Resume with: hyperframes cloud get ${renderId}`,
+    });
   } finally {
     if (!asJson && lastStatus && interactive) process.stdout.write("\n");
   }

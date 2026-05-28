@@ -985,6 +985,16 @@ hyperframes cloud render --asset-id asst_abc123
 hyperframes cloud render --url https://cdn.example.com/site.zip
 ```
 
+##### Safe retries via `--idempotency-key`
+
+The CLI transparently retries on a `401 Unauthorized` by force-refreshing the OAuth token and replaying the failed request. For most reads that's harmless, but `POST /v3/assets` (the zip upload) is *not* idempotent on its own — a retry without an `Idempotency-Key` would create a duplicate asset and bill the workspace twice.
+
+Pass `--idempotency-key <key>` whenever you want safe retries on `cloud render`. The key is forwarded to both the upload and submit calls; the server scopes idempotency per-endpoint, so reusing the same value across the two steps is safe and prevents duplicates on either step. Use a UUID per logical render, or any opaque string in `[A-Za-z0-9_:.-]` (1-255 chars).
+
+```bash
+hyperframes cloud render . --idempotency-key "$(uuidgen)"
+```
+
 #### `cloud list`
 
 Pages through recent renders. Cursor-based: `--limit` caps a single page (1-100), `--token` resumes from a previous `next_token`, `--all` walks the full list until exhausted.

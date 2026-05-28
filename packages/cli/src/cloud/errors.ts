@@ -38,14 +38,26 @@ const ERROR_CODE_HINTS: Record<string, string> = {
  * list cloud renders"). Returns `never` so call sites can `throw` from
  * the catch block without a separate exit.
  *
- * 404 errors get a friendly "not found" message that uses the supplied
- * `notFound` hint (the render-id, asset-id, etc. that wasn't found).
+ * Options:
+ *   - `notFound`: short-circuit on a 404 with this friendly message
+ *     (the render-id, asset-id, etc. that wasn't found).
+ *   - `extraHints`: per-code overrides merged on top of
+ *     `ERROR_CODE_HINTS`.
+ *   - `suggestion`: a fallback line shown when no code-specific hint
+ *     matches. Use this for caller-context that's always actionable
+ *     (e.g. "Resume with: hyperframes cloud get hfr_X" on poll
+ *     errors) so the user can recover without having to remember the
+ *     render_id.
  */
 // fallow-ignore-next-line complexity
 export function reportApiError(
   stage: string,
   err: unknown,
-  options: { notFound?: string; extraHints?: Record<string, string> } = {},
+  options: {
+    notFound?: string;
+    extraHints?: Record<string, string>;
+    suggestion?: string;
+  } = {},
 ): never {
   const hints = { ...ERROR_CODE_HINTS, ...options.extraHints };
   if (err instanceof HyperframesApiError) {
@@ -55,8 +67,14 @@ export function reportApiError(
     }
     const hint = err.code ? hints[err.code] : undefined;
     const title = `${stage} (HTTP ${err.status})`;
+    // Priority: code-specific hint > caller suggestion > bare code
+    // label > no third line. Code-specific hints win because they
+    // address the specific failure mode; the caller suggestion is a
+    // generic-context fallback.
     if (hint) {
       errorBox(title, err.message, hint);
+    } else if (options.suggestion) {
+      errorBox(title, err.message, options.suggestion);
     } else if (err.code) {
       errorBox(title, err.message, `code: ${err.code}`);
     } else {
@@ -65,9 +83,9 @@ export function reportApiError(
     process.exit(1);
   }
   if (err instanceof Error) {
-    errorBox(stage, err.message);
+    errorBox(stage, err.message, options.suggestion);
     process.exit(1);
   }
-  errorBox(stage, String(err));
+  errorBox(stage, String(err), options.suggestion);
   process.exit(1);
 }

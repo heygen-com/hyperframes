@@ -136,9 +136,16 @@ function waitForDrain(file: NodeJS.WritableStream, signal?: AbortSignal): Promis
 
 function closeFile(file: NodeJS.WritableStream): Promise<void> {
   return new Promise<void>((resolve) => {
-    // We catch errors here intentionally: the surrounding finally
-    // block is best-effort cleanup, and any underlying failure has
-    // already been surfaced as the original throw.
-    file.end(() => resolve());
+    // Best-effort cleanup: any underlying failure has already been
+    // surfaced as the original throw from the for-await loop. We
+    // listen for `error` so a failing close (bad fd, late ENOSPC on
+    // flush) doesn't leak an unhandled 'error' onto the stream, and
+    // resolve either way so the finally block proceeds to unlinkSync.
+    const done = (): void => {
+      file.off("error", done);
+      resolve();
+    };
+    file.once("error", done);
+    file.end(() => done());
   });
 }

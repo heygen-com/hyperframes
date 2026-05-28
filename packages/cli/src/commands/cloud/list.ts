@@ -75,7 +75,18 @@ async function fetchAll(
   for (let page = 0; page < MAX_ALL_PAGES; page++) {
     const result = await client.listRenders({ limit: pageSize, token });
     out.push(...(result.data ?? []));
-    if (!result.has_more || !result.next_token) return out;
+    if (!result.has_more) return out;
+    // Defensive: server said `has_more: true` but didn't hand us a
+    // cursor to use. Better to surface the malformed shape than
+    // return a silently-truncated list.
+    if (!result.next_token) {
+      errorBox(
+        "Pagination cursor missing",
+        "Server returned has_more: true with no next_token — incomplete response.",
+        "Retry the command, or report this if it persists.",
+      );
+      process.exit(1);
+    }
     if (seenCursors.has(result.next_token)) {
       errorBox(
         "Pagination loop detected",
