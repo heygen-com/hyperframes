@@ -71,7 +71,6 @@ npx hyperframes init my-video --example <name>
 | `product-promo` | Multi-scene | Landscape | Product showcases, demos |
 | `nyt-graph` | Editorial data | Landscape | Data stories, reports |
 | `vignelli` | Bold, typographic | Portrait | Headlines, announcements |
-| `vscode-theme-visualizer` | Code workbench | Landscape | Dev content, code showcases, tutorials |
 | `blank` | Minimal scaffolding | — | Full control, agent-generated |
 
 ## Example Details
@@ -198,33 +197,6 @@ npx hyperframes init my-video --example <name>
     ├── index.html
     └── compositions/
         └── nyt-chart.html
-    ```
-  </Tab>
-  <Tab title="vscode-theme-visualizer">
-    ### vscode-theme-visualizer
-
-    Full VS Code workbench with per-character typing animation across 12 built-in themes. Activity bar, sidebar, editor tabs, code typing with cursor tracking, terminal panel, and status bar — all driven by official theme JSON files.
-
-    ```
-    my-video/
-    ├── index.html
-    ├── compositions/
-    │   ├── dark-modern.html
-    │   ├── dark-2026.html
-    │   ├── monokai.html
-    │   ├── solarized-light.html
-    │   └── ... (12 themes)
-    ├── render-entries/
-    │   └── ... (per-theme render entries)
-    ├── assets/
-    │   ├── background.jpeg
-    │   ├── vscode-sequence-runtime.js
-    │   ├── vscode-theme-registry.js
-    │   └── vscode-themes/
-    │       └── ... (12 theme JSON files)
-    └── scripts/
-        ├── build-compositions.mjs
-        └── build-theme-registry.mjs
     ```
   </Tab>
   <Tab title="blank">
