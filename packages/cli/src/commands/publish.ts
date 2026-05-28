@@ -38,7 +38,7 @@ export default defineCommand({
 
     const indexPath = join(dir, "index.html");
     if (existsSync(indexPath)) {
-      const lintResult = lintProject({ dir, name: projectName, indexPath });
+      const lintResult = await lintProject({ dir, name: projectName, indexPath });
       if (lintResult.totalErrors > 0 || lintResult.totalWarnings > 0) {
         console.log();
         for (const line of formatLintFindings(lintResult)) console.log(line);

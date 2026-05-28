@@ -35,7 +35,7 @@ function formatHumanOutput(result: HyperframeLintResult, resolvedPath: string): 
   return lines.join("\n");
 }
 
-function main() {
+async function main() {
   const args = process.argv.slice(2);
   const normalizedArgs = args[0] === "--" ? args.slice(1) : args;
   const jsonOutput = normalizedArgs.includes("--json");
@@ -55,7 +55,7 @@ function main() {
   }
 
   const html = fs.readFileSync(resolvedPath, "utf-8");
-  const result = lintHyperframeHtml(html, { filePath: resolvedPath });
+  const result = await lintHyperframeHtml(html, { filePath: resolvedPath });
 
   if (jsonOutput) {
     console.log(JSON.stringify(result, null, 2));

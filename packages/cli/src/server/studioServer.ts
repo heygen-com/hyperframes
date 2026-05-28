@@ -260,7 +260,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
 
     async lint(html: string, opts?: { filePath?: string }) {
       const { lintHyperframeHtml } = await import("@hyperframes/core/lint");
-      return lintHyperframeHtml(html, opts);
+      return await lintHyperframeHtml(html, opts);
     },
 
     runtimeUrl: "/api/runtime.js",

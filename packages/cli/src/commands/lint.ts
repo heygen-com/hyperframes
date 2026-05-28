@@ -38,7 +38,7 @@ export default defineCommand({
   async run({ args }) {
     try {
       const project = resolveProject(args.dir);
-      const lintResult = lintProject(project);
+      const lintResult = await lintProject(project);
 
       if (args.json) {
         const allFindings = lintResult.results.flatMap((r) => r.result.findings);

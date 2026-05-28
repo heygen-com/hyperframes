@@ -59,9 +59,9 @@ afterEach(() => {
 });
 
 describe("lintProject", () => {
-  it("returns zero errors/warnings for a clean project", () => {
+  it("returns zero errors/warnings for a clean project", async () => {
     const project = makeProject(validHtml());
-    const { totalErrors, totalWarnings, results } = lintProject(project);
+    const { totalErrors, totalWarnings, results } = await lintProject(project);
 
     expect(totalErrors).toBe(0);
     expect(totalWarnings).toBe(0);
@@ -71,9 +71,9 @@ describe("lintProject", () => {
     expect(first?.file).toBe("index.html");
   });
 
-  it("detects errors in index.html", () => {
+  it("detects errors in index.html", async () => {
     const project = makeProject(htmlWithMissingMediaId());
-    const { totalErrors, results } = lintProject(project);
+    const { totalErrors, results } = await lintProject(project);
 
     expect(totalErrors).toBeGreaterThan(0);
     const first = results[0];
@@ -82,11 +82,11 @@ describe("lintProject", () => {
     expect(mediaFinding).toBeDefined();
   });
 
-  it("lints sub-compositions in compositions/ directory", () => {
+  it("lints sub-compositions in compositions/ directory", async () => {
     const project = makeProject(validHtml(), {
       "captions.html": htmlWithMissingMediaId(),
     });
-    const { totalErrors, results } = lintProject(project);
+    const { totalErrors, results } = await lintProject(project);
 
     expect(results).toHaveLength(2);
     const second = results[1];
@@ -97,7 +97,7 @@ describe("lintProject", () => {
     expect(subFindings.some((f) => f.code === "media_missing_id")).toBe(true);
   });
 
-  it("lints linked CSS next to sub-compositions", () => {
+  it("lints linked CSS next to sub-compositions", async () => {
     const project = makeProject(validHtml(), {
       "scene.html": `<html><head><link rel="stylesheet" href="scene.css"></head><body>
   <div id="scene" data-composition-id="scene" data-width="1920" data-height="1080" data-start="0" data-duration="2"></div>
@@ -109,7 +109,7 @@ describe("lintProject", () => {
       '[data-composition-id="scene"] .title { opacity: 0; }',
     );
 
-    const { results } = lintProject(project);
+    const { results } = await lintProject(project);
     const subResult = results.find((result) => result.file === "compositions/scene.html");
     const finding = subResult?.result.findings.find(
       (item) => item.code === "composition_self_attribute_selector",
@@ -119,7 +119,7 @@ describe("lintProject", () => {
     expect(finding?.selector).toBe('[data-composition-id="scene"] .title');
   });
 
-  it("lints percent-encoded linked CSS filenames that exist decoded on disk", () => {
+  it("lints percent-encoded linked CSS filenames that exist decoded on disk", async () => {
     const encodedFilename = "%E6%97%A5%E6%9C%AC%E8%AA%9E.css";
     const project = makeProject(validHtml(), {
       "scene.html": `<html><head><link rel="stylesheet" href="${encodedFilename}"></head><body>
@@ -132,7 +132,7 @@ describe("lintProject", () => {
       '[data-composition-id="scene"] .title { opacity: 0; }',
     );
 
-    const { results } = lintProject(project);
+    const { results } = await lintProject(project);
     const subResult = results.find((result) => result.file === "compositions/scene.html");
     const finding = subResult?.result.findings.find(
       (item) => item.code === "composition_self_attribute_selector",
@@ -142,11 +142,11 @@ describe("lintProject", () => {
     expect(finding?.selector).toBe('[data-composition-id="scene"] .title');
   });
 
-  it("aggregates errors across index.html and sub-compositions", () => {
+  it("aggregates errors across index.html and sub-compositions", async () => {
     const project = makeProject(htmlWithMissingMediaId(), {
       "overlay.html": htmlWithMissingMediaId(),
     });
-    const { totalErrors, results } = lintProject(project);
+    const { totalErrors, results } = await lintProject(project);
 
     expect(results).toHaveLength(2);
     const first = results[0];
@@ -159,11 +159,11 @@ describe("lintProject", () => {
     expect(totalErrors).toBe(rootErrors + subErrors);
   });
 
-  it("aggregates warnings from sub-compositions", () => {
+  it("aggregates warnings from sub-compositions", async () => {
     const project = makeProject(validHtml(), {
       "captions.html": htmlWithPreloadNone(),
     });
-    const { totalWarnings, results } = lintProject(project);
+    const { totalWarnings, results } = await lintProject(project);
 
     expect(results).toHaveLength(2);
     expect(totalWarnings).toBeGreaterThan(0);
@@ -173,22 +173,22 @@ describe("lintProject", () => {
     expect(preloadWarning).toBeDefined();
   });
 
-  it("handles project with no compositions/ directory", () => {
+  it("handles project with no compositions/ directory", async () => {
     const project = makeProject(validHtml());
     // No compositions/ dir created
-    const { results } = lintProject(project);
+    const { results } = await lintProject(project);
 
     expect(results).toHaveLength(1);
   });
 
-  it("ignores non-HTML files in compositions/", () => {
+  it("ignores non-HTML files in compositions/", async () => {
     const project = makeProject(validHtml(), {
       "captions.html": validHtml("captions"),
     });
     // Add a non-HTML file
     writeFileSync(join(project.dir, "compositions", "readme.txt"), "not html");
 
-    const { results } = lintProject(project);
+    const { results } = await lintProject(project);
 
     expect(results).toHaveLength(2); // index.html + captions.html, not readme.txt
   });
@@ -227,11 +227,11 @@ function validHtmlWithMaskImageUrl(url: string): string {
 }
 
 describe("audio_file_without_element", () => {
-  it("warns when audio file exists but no <audio> element", () => {
+  it("warns when audio file exists but no <audio> element", async () => {
     const project = makeProject(validHtml());
     writeFileSync(join(project.dir, "music.mp3"), "fake");
 
-    const { totalWarnings, results } = lintProject(project);
+    const { totalWarnings, results } = await lintProject(project);
 
     expect(totalWarnings).toBeGreaterThan(0);
     const first = results[0];
@@ -242,11 +242,11 @@ describe("audio_file_without_element", () => {
     expect(finding?.message).toContain("music.mp3");
   });
 
-  it("does not warn when audio file exists and <audio> element is present", () => {
+  it("does not warn when audio file exists and <audio> element is present", async () => {
     const project = makeProject(validHtmlWithAudio());
     writeFileSync(join(project.dir, "song.mp3"), "fake");
 
-    const { results } = lintProject(project);
+    const { results } = await lintProject(project);
 
     const first = results[0];
     expect(first).toBeDefined();
@@ -254,10 +254,10 @@ describe("audio_file_without_element", () => {
     expect(finding).toBeUndefined();
   });
 
-  it("does not warn when no audio files exist", () => {
+  it("does not warn when no audio files exist", async () => {
     const project = makeProject(validHtml());
 
-    const { results } = lintProject(project);
+    const { results } = await lintProject(project);
 
     const first = results[0];
     expect(first).toBeDefined();
@@ -265,12 +265,12 @@ describe("audio_file_without_element", () => {
     expect(finding).toBeUndefined();
   });
 
-  it("detects multiple audio file extensions", () => {
+  it("detects multiple audio file extensions", async () => {
     const project = makeProject(validHtml());
     writeFileSync(join(project.dir, "narration.wav"), "fake");
     writeFileSync(join(project.dir, "bgm.ogg"), "fake");
 
-    const { results } = lintProject(project);
+    const { results } = await lintProject(project);
 
     const first = results[0];
     expect(first).toBeDefined();
@@ -280,13 +280,13 @@ describe("audio_file_without_element", () => {
     expect(finding?.message).toContain("bgm.ogg");
   });
 
-  it("does not warn when <audio> element is in a sub-composition", () => {
+  it("does not warn when <audio> element is in a sub-composition", async () => {
     const project = makeProject(validHtml(), {
       "captions.html": validHtmlWithAudio("captions"),
     });
     writeFileSync(join(project.dir, "song.mp3"), "fake");
 
-    const { results } = lintProject(project);
+    const { results } = await lintProject(project);
 
     const first = results[0];
     expect(first).toBeDefined();
@@ -296,11 +296,11 @@ describe("audio_file_without_element", () => {
 });
 
 describe("audio_src_not_found", () => {
-  it("errors when <audio> src references a file that does not exist", () => {
+  it("errors when <audio> src references a file that does not exist", async () => {
     const project = makeProject(validHtmlWithAudio());
     // song.mp3 is referenced in validHtmlWithAudio but not on disk
 
-    const { totalErrors, results } = lintProject(project);
+    const { totalErrors, results } = await lintProject(project);
 
     expect(totalErrors).toBeGreaterThan(0);
     const first = results[0];
@@ -311,11 +311,11 @@ describe("audio_src_not_found", () => {
     expect(finding?.message).toContain("song.mp3");
   });
 
-  it("does not error when <audio> src file exists", () => {
+  it("does not error when <audio> src file exists", async () => {
     const project = makeProject(validHtmlWithAudio());
     writeFileSync(join(project.dir, "song.mp3"), "fake");
 
-    const { results } = lintProject(project);
+    const { results } = await lintProject(project);
 
     const first = results[0];
     expect(first).toBeDefined();
@@ -323,7 +323,7 @@ describe("audio_src_not_found", () => {
     expect(finding).toBeUndefined();
   });
 
-  it("does not error when <audio> src is an HTTP URL", () => {
+  it("does not error when <audio> src is an HTTP URL", async () => {
     const html = `<html><body>
   <div data-composition-id="main" data-width="1920" data-height="1080">
     <audio id="music" src="https://cdn.example.com/song.mp3" data-start="0" data-track-index="0" data-volume="1"></audio>
@@ -332,7 +332,7 @@ describe("audio_src_not_found", () => {
 </body></html>`;
     const project = makeProject(html);
 
-    const { results } = lintProject(project);
+    const { results } = await lintProject(project);
 
     const first = results[0];
     expect(first).toBeDefined();
@@ -340,13 +340,13 @@ describe("audio_src_not_found", () => {
     expect(finding).toBeUndefined();
   });
 
-  it("detects missing src in sub-compositions", () => {
+  it("detects missing src in sub-compositions", async () => {
     const project = makeProject(validHtml(), {
       "captions.html": validHtmlWithAudio("captions"),
     });
     // song.mp3 referenced in sub-comp but not on disk
 
-    const { totalErrors, results } = lintProject(project);
+    const { totalErrors, results } = await lintProject(project);
 
     expect(totalErrors).toBeGreaterThan(0);
     const first = results[0];
@@ -355,7 +355,7 @@ describe("audio_src_not_found", () => {
     expect(finding).toBeDefined();
   });
 
-  it("resolves relative paths from project root", () => {
+  it("resolves relative paths from project root", async () => {
     const html = `<html><body>
   <div data-composition-id="main" data-width="1920" data-height="1080">
     <audio id="music" src="assets/bgm.mp3" data-start="0" data-track-index="0" data-volume="1"></audio>
@@ -366,7 +366,7 @@ describe("audio_src_not_found", () => {
     mkdirSync(join(project.dir, "assets"), { recursive: true });
     writeFileSync(join(project.dir, "assets", "bgm.mp3"), "fake");
 
-    const { results } = lintProject(project);
+    const { results } = await lintProject(project);
 
     const first = results[0];
     expect(first).toBeDefined();
@@ -374,14 +374,14 @@ describe("audio_src_not_found", () => {
     expect(finding).toBeUndefined();
   });
 
-  it("does not error for percent-encoded non-Latin filenames that exist on disk", () => {
+  it("does not error for percent-encoded non-Latin filenames that exist on disk", async () => {
     const encodedFilename =
       "%D9%87%D9%86%D8%A7%20%D9%85%D8%B1%D9%88%D8%A7%20-%20%D9%85%D8%A8%D8%A7%D8%B1%D9%83.mp4";
     const project = makeProject(validHtmlWithAudioSrc(`assets/${encodedFilename}`));
     mkdirSync(join(project.dir, "assets"), { recursive: true });
     writeFileSync(join(project.dir, "assets", decodeURIComponent(encodedFilename)), "fake");
 
-    const { results } = lintProject(project);
+    const { results } = await lintProject(project);
 
     const first = results[0];
     expect(first).toBeDefined();
@@ -389,13 +389,13 @@ describe("audio_src_not_found", () => {
     expect(finding).toBeUndefined();
   });
 
-  it("does not error for malformed percent sequences that are literal filenames", () => {
+  it("does not error for malformed percent sequences that are literal filenames", async () => {
     const filename = "100%-discount.mp4";
     const project = makeProject(validHtmlWithAudioSrc(`assets/${filename}`));
     mkdirSync(join(project.dir, "assets"), { recursive: true });
     writeFileSync(join(project.dir, "assets", filename), "fake");
 
-    const { results } = lintProject(project);
+    const { results } = await lintProject(project);
 
     const first = results[0];
     expect(first).toBeDefined();
@@ -403,24 +403,24 @@ describe("audio_src_not_found", () => {
     expect(finding).toBeUndefined();
   });
 
-  it("does not treat decoded traversal as an existing file outside the project", () => {
+  it("does not treat decoded traversal as an existing file outside the project", async () => {
     const project = makeProject(
       validHtmlWithAudioSrc("assets/foo/%2E%2E/%2E%2E/%2E%2E/etc/passwd"),
     );
 
-    const { results } = lintProject(project);
+    const { results } = await lintProject(project);
 
     const finding = results[0]?.result.findings.find((f) => f.code === "audio_src_not_found");
     expect(finding).toBeDefined();
   });
 
-  it("deduplicates missing files across compositions", () => {
+  it("deduplicates missing files across compositions", async () => {
     const project = makeProject(validHtmlWithAudio(), {
       "captions.html": validHtmlWithAudio("captions"),
     });
     // Both reference song.mp3 which doesn't exist
 
-    const { results } = lintProject(project);
+    const { results } = await lintProject(project);
 
     const first = results[0];
     expect(first).toBeDefined();
@@ -431,7 +431,7 @@ describe("audio_src_not_found", () => {
     expect(occurrences).toBe(1);
   });
 
-  it("resolves sub-composition src relative to the sub-composition file (../assets/...)", () => {
+  it("resolves sub-composition src relative to the sub-composition file (../assets/...)", async () => {
     // A sub-composition at compositions/captions.html referencing
     // ../assets/bgm.mp3 means {projectRoot}/assets/bgm.mp3 — the bundler
     // rewrites that path before serving, so the lint check has to mirror it.
@@ -445,7 +445,7 @@ describe("audio_src_not_found", () => {
     mkdirSync(join(project.dir, "assets"), { recursive: true });
     writeFileSync(join(project.dir, "assets", "bgm.mp3"), "fake");
 
-    const { results } = lintProject(project);
+    const { results } = await lintProject(project);
 
     const first = results[0];
     expect(first).toBeDefined();
@@ -453,7 +453,7 @@ describe("audio_src_not_found", () => {
     expect(finding).toBeUndefined();
   });
 
-  it("flags sub-composition src that resolves to a missing file via ../", () => {
+  it("flags sub-composition src that resolves to a missing file via ../", async () => {
     const subComp = `<html><body>
   <div data-composition-id="captions" data-width="1920" data-height="1080">
     <audio id="music" src="../assets/missing.mp3" data-start="0" data-track-index="0" data-volume="1"></audio>
@@ -463,7 +463,7 @@ describe("audio_src_not_found", () => {
     const project = makeProject(validHtml(), { "captions.html": subComp });
     // No assets/ directory at all.
 
-    const { results } = lintProject(project);
+    const { results } = await lintProject(project);
 
     const first = results[0];
     expect(first).toBeDefined();
@@ -476,7 +476,7 @@ describe("audio_src_not_found", () => {
 });
 
 describe("texture_mask_asset_not_found", () => {
-  it("errors when CSS mask-image references a missing local texture", () => {
+  it("errors when CSS mask-image references a missing local texture", async () => {
     const html = `<html><body>
   <div data-composition-id="main" data-width="1920" data-height="1080">
     <div class="hf-texture-text hf-texture-lava">TEXT</div>
@@ -491,7 +491,7 @@ describe("texture_mask_asset_not_found", () => {
 </body></html>`;
     const project = makeProject(html);
 
-    const { totalErrors, results } = lintProject(project);
+    const { totalErrors, results } = await lintProject(project);
     const finding = results[0]?.result.findings.find(
       (item) => item.code === "texture_mask_asset_not_found",
     );
@@ -502,7 +502,7 @@ describe("texture_mask_asset_not_found", () => {
     expect(finding?.message).toContain("masks/lava.png");
   });
 
-  it("does not error when the referenced texture mask exists", () => {
+  it("does not error when the referenced texture mask exists", async () => {
     const html = `<html><body>
   <div data-composition-id="main" data-width="1920" data-height="1080">
     <div class="hf-texture-text hf-texture-lava">TEXT</div>
@@ -519,7 +519,7 @@ describe("texture_mask_asset_not_found", () => {
     mkdirSync(join(project.dir, "masks"), { recursive: true });
     writeFileSync(join(project.dir, "masks", "lava.png"), "fake");
 
-    const { results } = lintProject(project);
+    const { results } = await lintProject(project);
     const finding = results[0]?.result.findings.find(
       (item) => item.code === "texture_mask_asset_not_found",
     );
@@ -527,7 +527,7 @@ describe("texture_mask_asset_not_found", () => {
     expect(finding).toBeUndefined();
   });
 
-  it("resolves mask-image URLs inside linked sub-composition stylesheets", () => {
+  it("resolves mask-image URLs inside linked sub-composition stylesheets", async () => {
     const project = makeProject(validHtml(), {
       "scene.html": `<html><head><link rel="stylesheet" href="scene.css"></head><body>
   <div data-composition-id="scene" data-width="1920" data-height="1080">
@@ -543,7 +543,7 @@ describe("texture_mask_asset_not_found", () => {
     mkdirSync(join(project.dir, "compositions", "masks"), { recursive: true });
     writeFileSync(join(project.dir, "compositions", "masks", "lava.png"), "fake");
 
-    const { results } = lintProject(project);
+    const { results } = await lintProject(project);
     const finding = results[0]?.result.findings.find(
       (item) => item.code === "texture_mask_asset_not_found",
     );
@@ -551,7 +551,7 @@ describe("texture_mask_asset_not_found", () => {
     expect(finding).toBeUndefined();
   });
 
-  it("checks mask-image URLs inside percent-encoded linked CSS filenames", () => {
+  it("checks mask-image URLs inside percent-encoded linked CSS filenames", async () => {
     const encodedFilename = "%E6%97%A5%E6%9C%AC%E8%AA%9E.css";
     const project = makeProject(validHtml(), {
       "scene.html": `<html><head><link rel="stylesheet" href="${encodedFilename}"></head><body>
@@ -566,7 +566,7 @@ describe("texture_mask_asset_not_found", () => {
       '.hf-texture-lava { mask-image: url("masks/missing.png"); }',
     );
 
-    const { results } = lintProject(project);
+    const { results } = await lintProject(project);
     const finding = results[0]?.result.findings.find(
       (item) => item.code === "texture_mask_asset_not_found",
     );
@@ -575,7 +575,7 @@ describe("texture_mask_asset_not_found", () => {
     expect(finding?.message).toContain("masks/missing.png");
   });
 
-  it("resolves root-absolute mask-image URLs from the project root", () => {
+  it("resolves root-absolute mask-image URLs from the project root", async () => {
     const html = `<html><body>
   <div data-composition-id="main" data-width="1920" data-height="1080">
     <div class="hf-texture-text hf-texture-lava">TEXT</div>
@@ -594,7 +594,7 @@ describe("texture_mask_asset_not_found", () => {
     });
     writeFileSync(join(project.dir, "assets", "texture-mask-text", "masks", "lava.png"), "fake");
 
-    const { results } = lintProject(project);
+    const { results } = await lintProject(project);
     const finding = results[0]?.result.findings.find(
       (item) => item.code === "texture_mask_asset_not_found",
     );
@@ -602,13 +602,13 @@ describe("texture_mask_asset_not_found", () => {
     expect(finding).toBeUndefined();
   });
 
-  it("does not error for percent-encoded non-Latin mask filenames that exist on disk", () => {
+  it("does not error for percent-encoded non-Latin mask filenames that exist on disk", async () => {
     const encodedFilename = "%E6%97%A5%E6%9C%AC%E8%AA%9E.png";
     const project = makeProject(validHtmlWithMaskImageUrl(`assets/${encodedFilename}`));
     mkdirSync(join(project.dir, "assets"), { recursive: true });
     writeFileSync(join(project.dir, "assets", decodeURIComponent(encodedFilename)), "fake");
 
-    const { results } = lintProject(project);
+    const { results } = await lintProject(project);
     const finding = results[0]?.result.findings.find(
       (item) => item.code === "texture_mask_asset_not_found",
     );
@@ -616,12 +616,12 @@ describe("texture_mask_asset_not_found", () => {
     expect(finding).toBeUndefined();
   });
 
-  it("does not treat decoded mask traversal as an existing file outside the project", () => {
+  it("does not treat decoded mask traversal as an existing file outside the project", async () => {
     const project = makeProject(
       validHtmlWithMaskImageUrl("assets/foo/%2E%2E/%2E%2E/%2E%2E/etc/passwd"),
     );
 
-    const { results } = lintProject(project);
+    const { results } = await lintProject(project);
     const finding = results[0]?.result.findings.find(
       (item) => item.code === "texture_mask_asset_not_found",
     );
@@ -631,13 +631,13 @@ describe("texture_mask_asset_not_found", () => {
 });
 
 describe("multiple_root_compositions", () => {
-  it("fires when two HTML files have data-composition-id", () => {
+  it("fires when two HTML files have data-composition-id", async () => {
     const project = makeProject(validHtml());
     writeFileSync(
       join(project.dir, "scaffold.html"),
       '<div data-composition-id="scaffold" data-width="1920" data-height="1080" data-duration="10"></div>',
     );
-    const { totalErrors, results } = lintProject(project);
+    const { totalErrors, results } = await lintProject(project);
     const finding = results[0]?.result.findings.find(
       (f) => f.code === "multiple_root_compositions",
     );
@@ -647,19 +647,19 @@ describe("multiple_root_compositions", () => {
     expect(totalErrors).toBeGreaterThan(0);
   });
 
-  it("does NOT fire with a single root composition", () => {
+  it("does NOT fire with a single root composition", async () => {
     const project = makeProject(validHtml());
-    const { results } = lintProject(project);
+    const { results } = await lintProject(project);
     const finding = results[0]?.result.findings.find(
       (f) => f.code === "multiple_root_compositions",
     );
     expect(finding).toBeUndefined();
   });
 
-  it("ignores HTML files without data-composition-id", () => {
+  it("ignores HTML files without data-composition-id", async () => {
     const project = makeProject(validHtml());
     writeFileSync(join(project.dir, "readme.html"), "<html><body>Not a composition</body></html>");
-    const { results } = lintProject(project);
+    const { results } = await lintProject(project);
     const finding = results[0]?.result.findings.find(
       (f) => f.code === "multiple_root_compositions",
     );
@@ -668,7 +668,7 @@ describe("multiple_root_compositions", () => {
 });
 
 describe("duplicate_audio_track", () => {
-  it("detects overlapping audio with attributes in any order", () => {
+  it("detects overlapping audio with attributes in any order", async () => {
     // The original scaffold bug: data-start BEFORE data-track-index
     const html = `<html><body>
   <div data-composition-id="main" data-width="1920" data-height="1080" data-duration="30">
@@ -678,13 +678,13 @@ describe("duplicate_audio_track", () => {
   <script>window.__timelines = window.__timelines || {}; window.__timelines["main"] = gsap.timeline({ paused: true });</script>
 </body></html>`;
     const project = makeProject(html);
-    const { results } = lintProject(project);
+    const { results } = await lintProject(project);
     const finding = results[0]?.result.findings.find((f) => f.code === "duplicate_audio_track");
     expect(finding).toBeDefined();
     expect(finding?.severity).toBe("warning");
   });
 
-  it("does NOT fire for non-overlapping audio on the same track", () => {
+  it("does NOT fire for non-overlapping audio on the same track", async () => {
     const html = `<html><body>
   <div data-composition-id="main" data-width="1920" data-height="1080" data-duration="20">
     <audio id="a" src="a.wav" data-track-index="0" data-start="0" data-duration="10">
@@ -693,12 +693,12 @@ describe("duplicate_audio_track", () => {
   <script>window.__timelines = window.__timelines || {}; window.__timelines["main"] = gsap.timeline({ paused: true });</script>
 </body></html>`;
     const project = makeProject(html);
-    const { results } = lintProject(project);
+    const { results } = await lintProject(project);
     const finding = results[0]?.result.findings.find((f) => f.code === "duplicate_audio_track");
     expect(finding).toBeUndefined();
   });
 
-  it("does NOT fire for audio on different tracks", () => {
+  it("does NOT fire for audio on different tracks", async () => {
     const html = `<html><body>
   <div data-composition-id="main" data-width="1920" data-height="1080" data-duration="20">
     <audio id="a" src="a.wav" data-track-index="0" data-start="0" data-duration="20">
@@ -707,22 +707,22 @@ describe("duplicate_audio_track", () => {
   <script>window.__timelines = window.__timelines || {}; window.__timelines["main"] = gsap.timeline({ paused: true });</script>
 </body></html>`;
     const project = makeProject(html);
-    const { results } = lintProject(project);
+    const { results } = await lintProject(project);
     const finding = results[0]?.result.findings.find((f) => f.code === "duplicate_audio_track");
     expect(finding).toBeUndefined();
   });
 
-  it("deduplicates same audio found in root + sub-composition", () => {
+  it("deduplicates same audio found in root + sub-composition", async () => {
     const project = makeProject(validHtmlWithAudio(), {
       "scene.html": validHtmlWithAudio("scene"),
     });
     writeFileSync(join(project.dir, "song.mp3"), "fake");
-    const { results } = lintProject(project);
+    const { results } = await lintProject(project);
     const finding = results[0]?.result.findings.find((f) => f.code === "duplicate_audio_track");
     expect(finding).toBeUndefined();
   });
 
-  it("detects overlap when data-duration is missing (Infinity fallback)", () => {
+  it("detects overlap when data-duration is missing (Infinity fallback)", async () => {
     const html = `<html><body>
   <div data-composition-id="main" data-width="1920" data-height="1080" data-duration="30">
     <audio id="a" src="a.wav" data-track-index="0" data-start="0" data-duration="20">
@@ -731,12 +731,12 @@ describe("duplicate_audio_track", () => {
   <script>window.__timelines = window.__timelines || {}; window.__timelines["main"] = gsap.timeline({ paused: true });</script>
 </body></html>`;
     const project = makeProject(html);
-    const { results } = lintProject(project);
+    const { results } = await lintProject(project);
     const finding = results[0]?.result.findings.find((f) => f.code === "duplicate_audio_track");
     expect(finding).toBeDefined();
   });
 
-  it("formats Infinity end times as 'end' without crashing", () => {
+  it("formats Infinity end times as 'end' without crashing", async () => {
     const html = `<html><body>
   <div data-composition-id="main" data-width="1920" data-height="1080" data-duration="30">
     <audio id="a" src="a.wav" data-track-index="0" data-start="0">
@@ -745,14 +745,14 @@ describe("duplicate_audio_track", () => {
   <script>window.__timelines = window.__timelines || {}; window.__timelines["main"] = gsap.timeline({ paused: true });</script>
 </body></html>`;
     const project = makeProject(html);
-    const { results } = lintProject(project);
+    const { results } = await lintProject(project);
     const finding = results[0]?.result.findings.find((f) => f.code === "duplicate_audio_track");
     expect(finding).toBeDefined();
     expect(finding?.message).toContain("end");
     expect(finding?.message).not.toContain("Infinity");
   });
 
-  it("finds audio across multiple HTML sources (g-flag regression)", () => {
+  it("finds audio across multiple HTML sources (g-flag regression)", async () => {
     const project = makeProject(validHtmlWithAudio(), {
       "scene.html": `<html><body>
   <div data-composition-id="scene" data-width="1920" data-height="1080">
@@ -763,7 +763,7 @@ describe("duplicate_audio_track", () => {
     });
     writeFileSync(join(project.dir, "song.mp3"), "fake");
     writeFileSync(join(project.dir, "music.wav"), "fake");
-    const { results } = lintProject(project);
+    const { results } = await lintProject(project);
     const finding = results[0]?.result.findings.find((f) => f.code === "duplicate_audio_track");
     // song.mp3@0 (from validHtmlWithAudio, no data-duration → Infinity) and music.wav@5-25 overlap
     expect(finding).toBeDefined();
@@ -771,39 +771,39 @@ describe("duplicate_audio_track", () => {
 });
 
 describe("shouldBlockRender", () => {
-  it("default: does not block on errors", () => {
+  it("default: does not block on errors", async () => {
     expect(shouldBlockRender(false, false, 5, 0)).toBe(false);
   });
 
-  it("default: does not block on warnings", () => {
+  it("default: does not block on warnings", async () => {
     expect(shouldBlockRender(false, false, 0, 3)).toBe(false);
   });
 
-  it("--strict: blocks on errors", () => {
+  it("--strict: blocks on errors", async () => {
     expect(shouldBlockRender(true, false, 1, 0)).toBe(true);
   });
 
-  it("--strict: does not block on warnings only", () => {
+  it("--strict: does not block on warnings only", async () => {
     expect(shouldBlockRender(true, false, 0, 5)).toBe(false);
   });
 
-  it("--strict-all: blocks on errors", () => {
+  it("--strict-all: blocks on errors", async () => {
     expect(shouldBlockRender(true, true, 1, 0)).toBe(true);
   });
 
-  it("--strict-all: blocks on warnings", () => {
+  it("--strict-all: blocks on warnings", async () => {
     expect(shouldBlockRender(true, true, 0, 1)).toBe(true);
   });
 
-  it("--strict-all: does not block when clean", () => {
+  it("--strict-all: does not block when clean", async () => {
     expect(shouldBlockRender(true, true, 0, 0)).toBe(false);
   });
 
-  it("--strict-all alone: blocks on errors", () => {
+  it("--strict-all alone: blocks on errors", async () => {
     expect(shouldBlockRender(false, true, 1, 0)).toBe(true);
   });
 
-  it("--strict-all alone: blocks on warnings", () => {
+  it("--strict-all alone: blocks on warnings", async () => {
     expect(shouldBlockRender(false, true, 0, 1)).toBe(true);
   });
 });

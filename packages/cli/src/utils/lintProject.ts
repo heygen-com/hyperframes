@@ -179,7 +179,7 @@ function resolveCssAssetCandidates(
  * Lint the root index.html and all sub-compositions in the compositions/ directory.
  * Returns aggregated results across all files.
  */
-export function lintProject(project: ProjectDir): ProjectLintResult {
+export async function lintProject(project: ProjectDir): Promise<ProjectLintResult> {
   const results: Array<{ file: string; result: HyperframeLintResult }> = [];
   let totalErrors = 0;
   let totalWarnings = 0;
@@ -187,7 +187,7 @@ export function lintProject(project: ProjectDir): ProjectLintResult {
 
   // Lint root composition
   const rootHtml = readFileSync(project.indexPath, "utf-8");
-  const rootResult = lintHyperframeHtml(rootHtml, {
+  const rootResult = await lintHyperframeHtml(rootHtml, {
     filePath: project.indexPath,
     externalStyles: collectExternalStyles(project.dir, rootHtml),
   });
@@ -206,7 +206,7 @@ export function lintProject(project: ProjectDir): ProjectLintResult {
       const html = readFileSync(filePath, "utf-8");
       const compSrcPath = `compositions/${file}`;
       allHtmlSources.push({ html, compSrcPath });
-      const result = lintHyperframeHtml(html, {
+      const result = await lintHyperframeHtml(html, {
         filePath,
         isSubComposition: true,
         externalStyles: collectExternalStyles(project.dir, html, compSrcPath),

@@ -15,7 +15,8 @@ async function loadParseGsapScript(): Promise<(script: string) => LintParsedGsap
   const mod = await import("../../parsers/gsapParser.js");
   return mod.parseGsapScript as unknown as (script: string) => LintParsedGsap;
 }
-import type { LintContext, HyperframeLintFinding } from "../context";
+import type { LintContext } from "../context";
+import type { HyperframeLintFinding, LintRule } from "../types";
 import type { OpenTag } from "../utils";
 import { readAttr, truncateSnippet, WINDOW_TIMELINE_ASSIGN_PATTERN } from "../utils";
 
@@ -453,9 +454,7 @@ function cssTransformToGsapProps(cssTransform: string): string | null {
 
 // ── GSAP rules ─────────────────────────────────────────────────────────────
 
-export const gsapRules: Array<
-  (ctx: LintContext) => HyperframeLintFinding[] | Promise<HyperframeLintFinding[]>
-> = [
+export const gsapRules: LintRule<LintContext>[] = [
   // overlapping_gsap_tweens + gsap_animates_clip_element + unscoped_gsap_selector
   async ({ source, tags, scripts, rootCompositionId }) => {
     const findings: HyperframeLintFinding[] = [];

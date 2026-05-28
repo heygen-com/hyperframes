@@ -79,6 +79,11 @@
         "refreshDomEditSelection",
       ],
     },
+    // Exported for render.test.ts (exported-for-tests pattern).
+    {
+      "file": "packages/cli/src/commands/render.ts",
+      "exports": ["resolveBrowserGpuForCli", "renderLocal"],
+    },
   ],
   "ignoreDependencies": [
     // Runtime/dynamic deps not visible to static analysis: tsup `external`,
