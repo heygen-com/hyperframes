@@ -279,3 +279,145 @@ describe("useTimelinePlayer seek keepPlaying option (#834)", () => {
     expectStorePlaybackState(root, { isPlaying: true, currentTime: 0 });
   });
 });
+
+describe("useTimelinePlayer RAF loop wrap-around", () => {
+  type SeekCall = { time: number; options?: { keepPlaying?: boolean } };
+
+  function attachInstrumentedAdapter(api: ReturnType<typeof useTimelinePlayer>, duration = 30) {
+    const iframe = document.createElement("iframe");
+    let currentTime = 0;
+    let playing = false;
+    const seekCalls: SeekCall[] = [];
+    const adapter = {
+      play: vi.fn(() => {
+        playing = true;
+      }),
+      pause: vi.fn(() => {
+        playing = false;
+      }),
+      seek: vi.fn((time: number, options?: { keepPlaying?: boolean }) => {
+        currentTime = time;
+        seekCalls.push({ time, options });
+      }),
+      getTime: () => currentTime,
+      getDuration: () => duration,
+      isPlaying: () => playing,
+      setTime: (t: number) => {
+        currentTime = t;
+      },
+    };
+    Object.defineProperty(iframe, "contentWindow", {
+      value: {
+        __player: adapter,
+        postMessage: () => {},
+        scrollTo: () => {},
+        addEventListener: () => {},
+        removeEventListener: () => {},
+      },
+      configurable: true,
+    });
+    Object.defineProperty(iframe, "contentDocument", {
+      value: document.implementation.createHTMLDocument("preview"),
+      configurable: true,
+    });
+    act(() => {
+      api.iframeRef.current = iframe;
+      api.onIframeLoad();
+    });
+    return { adapter, seekCalls };
+  }
+
+  function installRafCapture(): {
+    flushOne: () => boolean;
+    restore: () => void;
+  } {
+    const callbacks: FrameRequestCallback[] = [];
+    const originalRAF = globalThis.requestAnimationFrame;
+    const originalCancel = globalThis.cancelAnimationFrame;
+    globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => {
+      callbacks.push(cb);
+      return callbacks.length;
+    }) as typeof requestAnimationFrame;
+    globalThis.cancelAnimationFrame = (() => {}) as typeof cancelAnimationFrame;
+    return {
+      flushOne: () => {
+        const next = callbacks.shift();
+        if (!next) return false;
+        next(performance.now());
+        return true;
+      },
+      restore: () => {
+        globalThis.requestAnimationFrame = originalRAF;
+        globalThis.cancelAnimationFrame = originalCancel;
+      },
+    };
+  }
+
+  it("passes { keepPlaying: true } when forward playback wraps around loopEnd", () => {
+    const raf = installRafCapture();
+    try {
+      const { api, root } = renderTimelinePlayerHarness();
+      const { adapter, seekCalls } = attachInstrumentedAdapter(api);
+
+      act(() => {
+        usePlayerStore.getState().setInPoint(2);
+        usePlayerStore.getState().setOutPoint(5);
+      });
+      expect(usePlayerStore.getState().loopEnabled).toBe(true);
+
+      act(() => {
+        api.play();
+      });
+      adapter.seek.mockClear();
+      seekCalls.length = 0;
+
+      adapter.setTime(6); // past outPoint=5
+      act(() => {
+        raf.flushOne();
+      });
+
+      const wrapSeek = seekCalls.find((call) => call.time === 2);
+      expect(wrapSeek).toBeDefined();
+      expect(wrapSeek?.options).toEqual({ keepPlaying: true });
+      expect(adapter.play).toHaveBeenCalled();
+      expect(usePlayerStore.getState().isPlaying).toBe(true);
+
+      unmountWithAct(root);
+    } finally {
+      raf.restore();
+    }
+  });
+
+  it("does not seek and pauses cleanly when forward playback reaches the end without loop", () => {
+    const raf = installRafCapture();
+    try {
+      const { api, root } = renderTimelinePlayerHarness();
+      const { adapter, seekCalls } = attachInstrumentedAdapter(api);
+
+      act(() => {
+        usePlayerStore.getState().setLoopEnabled(false);
+      });
+
+      act(() => {
+        api.play();
+      });
+      adapter.seek.mockClear();
+      seekCalls.length = 0;
+      adapter.play.mockClear();
+      adapter.pause.mockClear();
+
+      adapter.setTime(adapter.getDuration() + 1); // past end
+      act(() => {
+        raf.flushOne();
+      });
+
+      expect(seekCalls).toHaveLength(0);
+      expect(adapter.pause).toHaveBeenCalled();
+      expect(usePlayerStore.getState().isPlaying).toBe(false);
+
+      unmountWithAct(root);
+    } finally {
+      raf.restore();
+    }
+  });
+});
