@@ -135,11 +135,18 @@ export function trackCliError(props: {
   });
 }
 
-export function trackRenderFeedback(props: { rating: number; renderDurationMs: number }): void {
+export function trackRenderFeedback(props: {
+  rating: number;
+  renderDurationMs: number;
+  comment?: string;
+  doctorSummary?: string;
+}): void {
   trackEvent("survey sent", {
     $survey_id: "render_satisfaction",
     $survey_response: props.rating,
+    $survey_response_2: props.comment,
     render_duration_ms: props.renderDurationMs,
+    doctor_summary: props.doctorSummary,
   });
 }
 

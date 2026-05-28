@@ -42,11 +42,39 @@ export async function maybePromptRenderFeedback(opts: {
 
   const rating = parseInt(answer.trim(), 10);
   if (rating >= 1 && rating <= 5) {
+    // Ask for optional text feedback
+    const details = await askQuestion(`  ${c.dim("Any details?")} ${c.accent("(enter to skip)")} `);
+    const trimmedDetails = details.trim();
+
     trackRenderFeedback({
       rating,
       renderDurationMs: opts.renderDurationMs,
+      comment: trimmedDetails || undefined,
+      doctorSummary: await getDoctorSummary(),
     });
     console.log(c.dim("  Thanks for the feedback!"));
+  }
+}
+
+async function getDoctorSummary(): Promise<string> {
+  try {
+    const [{ getSystemMeta }, { findFFmpeg }] = await Promise.all([
+      import("../telemetry/system.js"),
+      import("../browser/ffmpeg.js"),
+    ]);
+    const sys = getSystemMeta();
+    const parts = [
+      `os=${process.platform}/${process.arch}`,
+      `node=${process.version}`,
+      `cpu=${sys.cpu_count}cores`,
+      `mem=${(sys.memory_total_mb / 1024).toFixed(0)}GB`,
+      `ffmpeg=${findFFmpeg() ? "yes" : "no"}`,
+    ];
+    if (sys.is_docker) parts.push("docker");
+    if (sys.is_wsl) parts.push("wsl");
+    return parts.join(" ");
+  } catch {
+    return "";
   }
 }
 

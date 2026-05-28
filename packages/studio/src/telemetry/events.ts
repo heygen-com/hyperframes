@@ -25,3 +25,12 @@ export function trackStudioRenderStart(props: {
     composition: props.composition,
   });
 }
+
+export function trackStudioRenderFeedback(props: { rating: number; comment?: string }): void {
+  trackEvent("survey sent", {
+    $survey_id: "render_satisfaction",
+    $survey_response: props.rating,
+    $survey_response_2: props.comment,
+    source: "studio",
+  });
+}
