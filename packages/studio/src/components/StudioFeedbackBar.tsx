@@ -1,26 +1,20 @@
 import { memo, useState, useCallback, useRef, useEffect } from "react";
 import { trackStudioFeedback } from "../telemetry/events";
 
-const SESSIONS_BEFORE_PROMPT = 5;
-const COOLDOWN_DAYS = 30;
+const FEEDBACK_INTERVAL = 10;
 const AUTO_DISMISS_MS = 20_000;
 
 const STORAGE_KEYS = {
   sessionCount: "hyperframes-studio:feedbackSessionCount",
   lastPromptedAt: "hyperframes-studio:feedbackLastPromptedAt",
-  dismissed: "hyperframes-studio:feedbackDismissedAt",
 } as const;
 
 // fallow-ignore-next-line complexity
 function shouldShowFeedback(): boolean {
   try {
-    const dismissed = localStorage.getItem(STORAGE_KEYS.dismissed);
-    if (dismissed) {
-      const daysSince = (Date.now() - parseInt(dismissed, 10)) / (1000 * 60 * 60 * 24);
-      if (daysSince < COOLDOWN_DAYS) return false;
-    }
     const count = parseInt(localStorage.getItem(STORAGE_KEYS.sessionCount) || "0", 10) || 0;
-    return count >= SESSIONS_BEFORE_PROMPT;
+    const lastAt = parseInt(localStorage.getItem(STORAGE_KEYS.lastPromptedAt) || "0", 10) || 0;
+    return count - lastAt >= FEEDBACK_INTERVAL;
   } catch {
     return false;
   }
@@ -35,9 +29,10 @@ function incrementSessionCount(): void {
   }
 }
 
-function markDismissed(): void {
+function markPrompted(): void {
   try {
-    localStorage.setItem(STORAGE_KEYS.dismissed, String(Date.now()));
+    const count = localStorage.getItem(STORAGE_KEYS.sessionCount) || "0";
+    localStorage.setItem(STORAGE_KEYS.lastPromptedAt, count);
   } catch {
     // localStorage unavailable
   }
@@ -86,7 +81,7 @@ export const StudioFeedbackBar = memo(function StudioFeedbackBar() {
 
   const handleDismiss = useCallback(() => {
     setExiting(true);
-    markDismissed();
+    markPrompted();
     setTimeout(() => setVisible(false), 300);
   }, []);
 
@@ -97,7 +92,7 @@ export const StudioFeedbackBar = memo(function StudioFeedbackBar() {
       comment: comment.trim() || undefined,
     });
     setSubmitted(true);
-    markDismissed();
+    markPrompted();
     setTimeout(() => {
       setExiting(true);
       setTimeout(() => setVisible(false), 300);
