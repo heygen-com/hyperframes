@@ -1,7 +1,7 @@
 import { memo, useState, useCallback, useRef, useEffect } from "react";
 import { trackStudioFeedback } from "../telemetry/events";
 
-const FEEDBACK_INTERVAL = 10;
+const FEEDBACK_INTERVAL = 15;
 const AUTO_DISMISS_MS = 20_000;
 
 const STORAGE_KEYS = {
