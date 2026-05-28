@@ -1,0 +1,25 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "code-snippet-monokai",
+  "type": "hyperframes:block",
+  "title": "Code Snippet - Monokai",
+  "description": "VS Code workbench with per-character typing animation in the Monokai theme. Full editor chrome with activity bar, sidebar, tabs, terminal, and status bar.",
+  "tags": ["code", "developer", "showcase", "vscode"],
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 11,
+  "files": [
+    {
+      "path": "code-snippet-monokai.html",
+      "target": "compositions/code-snippet-monokai.html",
+      "type": "hyperframes:composition"
+    },
+    {
+      "path": "background.jpeg",
+      "target": "assets/background.jpeg",
+      "type": "hyperframes:asset"
+    }
+  ]
+}

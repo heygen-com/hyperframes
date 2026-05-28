@@ -1,0 +1,25 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "code-snippet-light-plus",
+  "type": "hyperframes:block",
+  "title": "Code Snippet - Light+",
+  "description": "VS Code workbench with per-character typing animation in the Light+ theme. Full editor chrome with activity bar, sidebar, tabs, terminal, and status bar.",
+  "tags": ["code", "developer", "showcase", "vscode"],
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 11,
+  "files": [
+    {
+      "path": "code-snippet-light-plus.html",
+      "target": "compositions/code-snippet-light-plus.html",
+      "type": "hyperframes:composition"
+    },
+    {
+      "path": "background.jpeg",
+      "target": "assets/background.jpeg",
+      "type": "hyperframes:asset"
+    }
+  ]
+}
