@@ -1,0 +1,94 @@
+---
+title: ElevenLabs TTS
+description: "Use ElevenLabs voices in a HyperFrames project while keeping narration, timing, and captions reproducible."
+---
+
+HyperFrames ships local TTS through Kokoro so projects work without an API key. If you need a cloned voice, a production voice, or a specific ElevenLabs voice library asset, you can still use ElevenLabs for the voiceover and then bring the audio back into the normal HyperFrames pipeline.
+
+The key is to keep three files in sync:
+
+| File | Why it matters |
+|------|----------------|
+| `narration.txt` | The exact spoken text sent to ElevenLabs, including pronunciation substitutions. |
+| `narration.mp3` or `narration.wav` | The generated voiceover audio used by the final render. |
+| `transcript.json` | Word-level timestamps used for captions, beat timing, and storyboard updates. |
+
+## Agent workflow
+
+If your coding agent supports [Agent Skills](https://skills.sh/elevenlabs/skills/setup-api-key), install the ElevenLabs skills next to the HyperFrames skills:
+
+```bash
+npx skills add heygen-com/hyperframes
+npx skills add elevenlabs/skills
+```
+
+Then ask the agent to set up the key and write the narration before spending credits:
+
+```text
+Use ElevenLabs for text-to-speech, but first write narration.txt for me to review.
+After I approve it, generate narration.mp3 with my voice named "Brand Narrator".
+Then run npx hyperframes transcribe narration.mp3 so captions use real word timing.
+```
+
+<Tip>
+  Reviewing `narration.txt` first avoids wasting paid TTS credits on copy that still needs edits.
+</Tip>
+
+## Manual API workflow
+
+You can also generate the audio directly with the ElevenLabs API. Keep the API key in your shell environment and never commit it to the project.
+
+```bash
+export ELEVENLABS_API_KEY="..."
+export ELEVENLABS_VOICE_ID="..."
+
+curl -X POST "https://api.elevenlabs.io/v1/text-to-speech/$ELEVENLABS_VOICE_ID?output_format=mp3_44100_128" \
+  -H "xi-api-key: $ELEVENLABS_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "text": "The first move is what sets everything in motion.",
+    "model_id": "eleven_multilingual_v2"
+  }' \
+  --output narration.mp3
+```
+
+After the audio is generated, import timing into HyperFrames:
+
+```bash
+npx hyperframes transcribe narration.mp3
+```
+
+`transcribe` normalizes the result to HyperFrames' `[{ text, start, end }]` word array and writes `transcript.json`.
+
+## Timing notes
+
+ElevenLabs also offers text-to-speech endpoints with timing data. Those responses return character-level alignment, which is useful for custom tooling, but HyperFrames captions and storyboards expect word-level timing. For most projects, the simplest and most reliable path is:
+
+1. Generate audio with ElevenLabs.
+2. Save the exact spoken text as `narration.txt`.
+3. Run `npx hyperframes transcribe narration.mp3`.
+4. Update `STORYBOARD.md` beat boundaries from `transcript.json`.
+
+If you already have a tool that converts ElevenLabs character alignment into HyperFrames' word array, you can import that JSON with `npx hyperframes transcribe converted-transcript.json`.
+
+## Prompt template
+
+```text
+Use /hyperframes and /hyperframes-media.
+
+Voiceover:
+- Use ElevenLabs for narration.
+- Write narration.txt first and wait for review before generating audio.
+- Use voice: [voice name or voice ID].
+- Save the audio as narration.mp3.
+- Run npx hyperframes transcribe narration.mp3 afterward.
+- Retiming rule: use transcript.json for captions and STORYBOARD.md beat boundaries.
+
+Video:
+- [Describe the video, audience, format, duration, and style.]
+```
+
+## When to use local TTS instead
+
+Use the built-in `npx hyperframes tts` command when you want a free local draft, no external account, or a fast first pass. Swap to ElevenLabs once the script is stable or when the final voice matters.
+
