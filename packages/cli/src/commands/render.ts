@@ -49,7 +49,8 @@ import { bytesToMb } from "../telemetry/system.js";
 import { VERSION } from "../version.js";
 import { isDevMode } from "../utils/env.js";
 import { buildDockerRunArgs } from "../utils/dockerRunArgs.js";
-import { normalizeErrorMessage, type RenderJob } from "@hyperframes/producer";
+import { normalizeErrorMessage } from "../utils/errorMessage.js";
+import type { RenderJob } from "@hyperframes/producer";
 import {
   normalizeResolutionFlag,
   parseFps,
