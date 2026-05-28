@@ -4,17 +4,20 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, "..");
+const repoRoot = path.resolve(projectRoot, "../../..");
 const assetsDir = path.join(projectRoot, "assets");
 const compositionsDir = path.join(projectRoot, "compositions");
 const renderEntriesDir = path.join(projectRoot, "render-entries");
+const blocksDir = path.join(repoRoot, "registry", "blocks");
 
 fs.mkdirSync(compositionsDir, { recursive: true });
 fs.mkdirSync(renderEntriesDir, { recursive: true });
 
 const registrySource = fs.readFileSync(path.join(assetsDir, "vscode-theme-registry.js"), "utf8");
-const registry = JSON.parse(
-  registrySource.match(/window\.VSCODE_THEME_REGISTRY = ([\s\S]*);\s*$/)[1],
-);
+const registryBody = registrySource
+  .replace(/^.*window\.VSCODE_THEME_REGISTRY\s*=\s*/s, "")
+  .replace(/;\s*$/, "");
+const registry = new Function("return (" + registryBody + ")")();
 const clipDuration = 11;
 
 const css = String.raw`* {
@@ -628,7 +631,6 @@ const runtime = String.raw`(() => {
     const editor = root.querySelector(".editor");
     const caret = root.querySelector(".caret");
     const activeLine = root.querySelector(".active-line");
-    const chars = gsap.utils.toArray(root.querySelectorAll(".char"));
     const lineEls = gsap.utils.toArray(root.querySelectorAll(".line"));
     const lineStartTimes = [];
     const charSchedule = [];
@@ -913,8 +915,18 @@ for (const theme of registry) {
     compositionMarkup(compositionId, theme),
   );
   fs.writeFileSync(path.join(renderEntriesDir, `${theme.id}.html`), renderEntryMarkup(theme));
+
+  const blockName = `code-snippet-${theme.id}`;
+  const blockDir = path.join(blocksDir, blockName);
+  fs.mkdirSync(blockDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(blockDir, `${blockName}.html`),
+    compositionMarkup(compositionId, theme),
+  );
 }
 
 fs.writeFileSync(path.join(projectRoot, "index.html"), rootIndexMarkup());
 
-console.log(`Wrote ${registry.length} themed compositions, render entries, and root sequence`);
+console.log(
+  `Wrote ${registry.length} themed compositions, render entries, block HTMLs, and root sequence`,
+);

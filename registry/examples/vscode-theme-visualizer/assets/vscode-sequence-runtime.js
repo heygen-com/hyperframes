@@ -292,7 +292,6 @@
     const editor = root.querySelector(".editor");
     const caret = root.querySelector(".caret");
     const activeLine = root.querySelector(".active-line");
-    const chars = gsap.utils.toArray(root.querySelectorAll(".char")); // eslint-disable-line no-unused-vars
     const lineEls = gsap.utils.toArray(root.querySelectorAll(".line"));
     const lineStartTimes = [];
     const charSchedule = [];

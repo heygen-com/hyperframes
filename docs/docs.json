@@ -239,18 +239,18 @@
           {
             "group": "Code Snippets",
             "pages": [
-              "catalog/blocks/code-snippet-dark-modern",
               "catalog/blocks/code-snippet-dark-2026",
+              "catalog/blocks/code-snippet-dark-modern",
               "catalog/blocks/code-snippet-dark-plus",
-              "catalog/blocks/code-snippet-light-modern",
-              "catalog/blocks/code-snippet-light-2026",
-              "catalog/blocks/code-snippet-light-plus",
-              "catalog/blocks/code-snippet-visual-studio-dark",
-              "catalog/blocks/code-snippet-visual-studio-light",
               "catalog/blocks/code-snippet-high-contrast",
               "catalog/blocks/code-snippet-high-contrast-light",
+              "catalog/blocks/code-snippet-light-2026",
+              "catalog/blocks/code-snippet-light-modern",
+              "catalog/blocks/code-snippet-light-plus",
+              "catalog/blocks/code-snippet-monokai",
               "catalog/blocks/code-snippet-solarized-light",
-              "catalog/blocks/code-snippet-monokai"
+              "catalog/blocks/code-snippet-visual-studio-dark",
+              "catalog/blocks/code-snippet-visual-studio-light"
             ]
           }
         ]
