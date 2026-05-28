@@ -803,6 +803,27 @@ This is suppressed in CI environments, non-TTY shells, and when `HYPERFRAMES_NO_
 
     Available topics: `data-attributes`, `examples`, `rendering`, `gsap`, `troubleshooting`, `compositions`. Run without a topic to see the full list.
 
+    ### `feedback`
+
+    Submit anonymous satisfaction feedback about your experience:
+
+    ```bash
+    # Quick rating (1 = poor, 5 = great)
+    npx hyperframes feedback --rating 5
+
+    # Rating with optional details
+    npx hyperframes feedback --rating 3 --comment "render succeeded but GSAP timeline didn't animate"
+    ```
+
+    | Flag | Description |
+    |------|-------------|
+    | `--rating` | Satisfaction score, 1–5 (required) |
+    | `--comment` | Optional free-text details |
+
+    This command is also available to AI agents after a render — see [Feedback Collection](/guides/feedback#agent-runtimes) for how agent detection and the automatic post-render hint work.
+
+    No-op when telemetry is disabled — prints `Telemetry is disabled. Feedback not sent.` and exits cleanly.
+
     ### `telemetry`
 
     Manage anonymous usage telemetry:
@@ -814,6 +835,8 @@ This is suppressed in CI environments, non-TTY shells, and when `HYPERFRAMES_NO_
     ```
 
     Telemetry collects command names, render performance, example choices, and system info — including a coarse environment fingerprint (OS, kernel string, CPU/memory shape, sandbox runtime such as gVisor or Docker, and the *name* of a coding agent driving the CLI when one is detected, e.g. `claude_code` / `codex` / `cursor`). The agent name is derived from the existence of well-known environment variables; their values are never read. Telemetry does **not** collect file paths, project names, video content, environment variable values, or personally identifiable information. Disable with `HYPERFRAMES_NO_TELEMETRY=1` or the command above.
+
+    See [Feedback Collection](/guides/feedback) for how the periodic post-render prompt and Studio feedback bar work, what data they collect, and how to opt out.
 
     ### `skills`
 

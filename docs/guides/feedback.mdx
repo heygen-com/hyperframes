@@ -1,0 +1,181 @@
+---
+title: Feedback Collection
+description: "How HyperFrames collects feedback, what data is collected, and how to opt out."
+---
+
+HyperFrames prompts for anonymous satisfaction feedback periodically — after CLI renders and in Studio sessions. This page explains when prompts appear, what data is collected, and how to disable them entirely.
+
+## How It Works
+
+### CLI — post-render prompt
+
+After a successful `hyperframes render`, a short satisfaction prompt may appear:
+
+```
+  How was this render? [1=poor 5=great, enter to skip]
+  Any details? (enter to skip)
+```
+
+**When it shows:**
+
+- First ever successful render
+- Then every 15th successful render (15th, 30th, 45th...)
+- At most once per process — re-renders in the same session don't trigger a second prompt
+- Skipped in quiet mode (`--quiet`), non-TTY shells, CI environments, and Docker renders
+
+The prompt has a **10-second auto-timeout** — if you don't respond, it silently disappears and the CLI continues normally.
+
+The render interval is configurable:
+
+```bash
+# Show prompt every 5 renders instead of 15 (useful for testing)
+HYPERFRAMES_FEEDBACK_INTERVAL=5 hyperframes render --output out.mp4
+```
+
+### Studio — session feedback bar
+
+A thin 32px bar slides in at the bottom of the preview area every 10 Studio sessions:
+
+- Never on the first session — only starting from the 10th
+- Then every 10 sessions (10th, 20th, 30th...)
+- Slides in 3 seconds after page load to avoid flash
+- Auto-dismisses after 20 seconds if ignored
+- After any interaction (dismiss, skip, or submit), the counter resets — next prompt after 10 more sessions
+
+The session interval is configurable at build time:
+
+```
+VITE_HYPERFRAMES_FEEDBACK_INTERVAL=3
+```
+
+Invalid values (non-integer, zero, negative) fall back to the default.
+
+### `hyperframes feedback` command
+
+You can submit feedback manually at any time:
+
+```bash
+# Quick rating
+hyperframes feedback --rating 5
+
+# Rating with details
+hyperframes feedback --rating 3 --comment "render succeeded but GSAP timeline didn't animate text overlay"
+```
+
+| Flag | Description |
+|------|-------------|
+| `--rating` | Satisfaction score, 1–5 (required) |
+| `--comment` | Optional free-text details |
+
+This command collects a doctor summary automatically, flushes telemetry, and exits. It appears under the **Settings** group in `hyperframes --help`.
+
+## Agent Runtimes
+
+When an AI agent is detected (Claude Code, Codex, Cursor, Copilot, Replit, and others), HyperFrames **skips the interactive readline prompt** and prints a structured hint instead:
+
+```
+  [hyperframes] Agent feedback: hyperframes feedback --rating <1-5> --comment "..."
+```
+
+Agents can then submit feedback using the `hyperframes feedback` command above. Detection is based on well-known environment variables (`CLAUDE_CODE`, `CODEX`, `CURSOR_TRACE`, etc.) — their values are never read, only their presence.
+
+The same cadence gate applies to agents: the hint only appears on the first render, then every 15th.
+
+## What Is Collected
+
+### CLI feedback
+
+| Field | Value |
+|-------|-------|
+| `$survey_id` | `render_satisfaction` |
+| `$survey_response` | Rating (1–5) |
+| `$survey_response_2` | Free-text comment (if provided) |
+| `render_duration_ms` | Time the render took in milliseconds |
+| `doctor_summary` | System context (see below) |
+
+The `doctor_summary` is a compact string with environment context — included automatically so you don't need to run `hyperframes doctor` when reporting a problem:
+
+```
+os=darwin/arm64 node=v22.11.0 cpu=10cores mem=32GB ffmpeg=yes
+```
+
+It may also include `docker` or `wsl` flags when those environments are detected.
+
+### Studio feedback
+
+| Field | Value |
+|-------|-------|
+| `$survey_id` | `studio_experience` |
+| `$survey_response` | Rating (1–5) |
+| `$survey_response_2` | Free-text comment (if provided) |
+| `source` | `studio` |
+| `doctor_summary` | Browser context (platform, screen, CPU cores, device memory, network type) |
+
+## What Is NOT Collected
+
+- File paths or project names
+- Composition content, HTML, or video files
+- Environment variable values
+- Personally identifiable information
+- IP addresses or precise location
+- Anything when telemetry is disabled
+
+Feedback is anonymous. Each installation has a random UUID (`anonymousId`) — there is no account, login, or email association.
+
+## Config File
+
+The CLI persists feedback state in `~/.hyperframes/config.json`:
+
+```json
+{
+  "telemetryEnabled": true,
+  "anonymousId": "a1b2c3d4-...",
+  "telemetryNoticeShown": true,
+  "commandCount": 47,
+  "renderSuccessCount": 14,
+  "lastFeedbackPromptAt": 1
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `renderSuccessCount` | Total successful renders across all sessions |
+| `lastFeedbackPromptAt` | The `renderSuccessCount` value when the prompt last appeared |
+
+Studio stores the equivalent state in `localStorage` under the `hyperframes-studio:` prefix.
+
+## Opting Out
+
+### Disable telemetry entirely
+
+Disabling telemetry suppresses all feedback prompts (and all other usage tracking):
+
+```bash
+# Via CLI command
+hyperframes telemetry disable
+
+# Or via environment variable (per-session)
+HYPERFRAMES_NO_TELEMETRY=1 hyperframes render --output out.mp4
+
+# Or via DO_NOT_TRACK (respects the global standard)
+DO_NOT_TRACK=1 hyperframes render --output out.mp4
+```
+
+Once disabled, the `hyperframes feedback` command will print `Telemetry is disabled. Feedback not sent.` and exit without sending anything.
+
+### Suppress output without disabling telemetry
+
+```bash
+# Quiet mode: renders without any post-render output (including the feedback prompt)
+hyperframes render --quiet --output out.mp4
+```
+
+### CI environments
+
+The feedback prompt is automatically suppressed when the `CI` environment variable is set (GitHub Actions, CircleCI, etc. set this by default).
+
+## Related
+
+- [Telemetry](/packages/cli#telemetry) — full telemetry settings and what usage data is collected
+- [`hyperframes feedback`](/packages/cli#feedback) — CLI command reference
+- [Troubleshooting](/guides/troubleshooting) — if a prompt is blocking your pipeline unexpectedly
