@@ -205,7 +205,7 @@ If you need to suppress it in a custom Studio build (e.g. embedded or kiosk use)
 - `hyperframes-studio:feedbackSessionCount` — incremented each session
 - `hyperframes-studio:feedbackLastPromptedAt` — the count value when the bar last appeared
 
-Setting both to the same large number (`"99999"`) will defer the next prompt indefinitely. This is a workaround, not a supported API — a proper opt-out flag is tracked as a follow-up to hf#1101.
+Setting only `feedbackLastPromptedAt` to a large number (e.g. `"9999999"`) will defer the next prompt indefinitely — the gate is `sessionCount - lastPromptedAt >= interval`, so a large `lastPromptedAt` keeps the difference deeply negative regardless of how many sessions accumulate. This is a workaround, not a supported API — a proper opt-out flag is tracked as a follow-up to hf#1101.
 
 ## Related
 
