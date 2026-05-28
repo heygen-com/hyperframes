@@ -7,11 +7,20 @@
  */
 
 import { defineCommand } from "citty";
-import { createCloudClient, HyperframesApiError } from "../../cloud/index.js";
+import { createCloudClient } from "../../cloud/index.js";
+import { padEndVisible } from "../../cloud/ansi.js";
+import { reportApiError } from "../../cloud/errors.js";
+import { parseIntFlag } from "../../cloud/parsing.js";
 import { colorStatus } from "../../cloud/statusColor.js";
+import { withMeta } from "../../utils/updateCheck.js";
 import type { HyperframesRenderDetail } from "../../cloud/index.js";
 import { c } from "../../ui/colors.js";
 import { errorBox } from "../../ui/format.js";
+
+// Safety cap on --all to defend against a buggy backend serving the
+// same next_token in a loop. 50 pages at the maximum page size of 100
+// covers 5,000 renders — well past anyone's expected list size.
+const MAX_ALL_PAGES = 50;
 
 export default defineCommand({
   meta: { name: "list", description: "List recent cloud renders" },
@@ -37,19 +46,20 @@ export default defineCommand({
   },
   // fallow-ignore-next-line complexity
   async run({ args }) {
-    const limit = parseLimit(args.limit);
+    const limit = parseIntFlag(args.limit, { flag: "--limit", min: 1, max: 100 });
+
     const client = await createCloudClient();
 
     try {
       if (args.all) {
         const renders = await fetchAll(client, limit);
-        emit(renders, args.json, null);
+        emit(renders, args.json, null, false);
       } else {
         const page = await client.listRenders({ limit, token: args.token });
-        emit(page.data ?? [], args.json, page.next_token ?? null);
+        emit(page.data ?? [], args.json, page.next_token ?? null, Boolean(page.has_more));
       }
     } catch (err) {
-      handleListError(err);
+      reportApiError("Could not list cloud renders", err);
     }
   },
 });
@@ -60,21 +70,42 @@ async function fetchAll(
   pageSize: number | undefined,
 ): Promise<HyperframesRenderDetail[]> {
   const out: HyperframesRenderDetail[] = [];
+  const seenCursors = new Set<string>();
   let token: string | undefined;
-  while (true) {
-    const page = await client.listRenders({ limit: pageSize, token });
-    out.push(...(page.data ?? []));
-    if (!page.has_more || !page.next_token) return out;
-    token = page.next_token;
+  for (let page = 0; page < MAX_ALL_PAGES; page++) {
+    const result = await client.listRenders({ limit: pageSize, token });
+    out.push(...(result.data ?? []));
+    if (!result.has_more || !result.next_token) return out;
+    if (seenCursors.has(result.next_token)) {
+      errorBox(
+        "Pagination loop detected",
+        `Server returned the same next_token (${result.next_token}) twice.`,
+        "Retry the command, or report this if it persists.",
+      );
+      process.exit(1);
+    }
+    seenCursors.add(result.next_token);
+    token = result.next_token;
   }
+  errorBox(
+    "Pagination cap reached",
+    `Stopped after ${MAX_ALL_PAGES} pages to avoid an unbounded loop.`,
+    `Re-run with a higher --limit, or paginate manually with --token.`,
+  );
+  process.exit(1);
 }
 
 // fallow-ignore-next-line complexity
-function emit(renders: HyperframesRenderDetail[], asJson: boolean, nextToken: string | null): void {
+function emit(
+  renders: HyperframesRenderDetail[],
+  asJson: boolean,
+  nextToken: string | null,
+  hasMore: boolean,
+): void {
   if (asJson) {
-    const payload: Record<string, unknown> = { renders };
+    const payload: Record<string, unknown> = { renders, has_more: hasMore };
     if (nextToken !== null) payload["next_token"] = nextToken;
-    console.log(JSON.stringify(payload, null, 2));
+    console.log(JSON.stringify(withMeta(payload), null, 2));
     return;
   }
   if (renders.length === 0) {
@@ -84,51 +115,19 @@ function emit(renders: HyperframesRenderDetail[], asJson: boolean, nextToken: st
   const idWidth = Math.max(8, ...renders.map((r) => r.render_id.length));
   const statusWidth = Math.max(6, ...renders.map((r) => r.status.length));
   for (const r of renders) {
-    const id = r.render_id.padEnd(idWidth);
-    const status = colorStatus(r.status).padEnd(
-      statusWidth + visibleAnsiOverhead(colorStatus(r.status)),
-    );
-    const created = r.created_at ? new Date(r.created_at * 1000).toISOString() : "—";
+    const id = c.accent(r.render_id);
+    const status = colorStatus(r.status);
+    const created =
+      r.created_at !== undefined && r.created_at !== null
+        ? new Date(r.created_at * 1000).toISOString()
+        : "—";
     const title = r.title ? `  ${c.dim(r.title)}` : "";
-    console.log(`${c.accent(id)}  ${status}  ${c.dim(created)}${title}`);
+    console.log(
+      `${padEndVisible(id, idWidth)}  ${padEndVisible(status, statusWidth)}  ${c.dim(created)}${title}`,
+    );
   }
   if (nextToken) {
     console.log("");
     console.log(c.dim(`More results — pass --token ${nextToken} to continue.`));
   }
-}
-
-// Padding helper: padEnd counts ANSI escape codes as printable, which
-// throws off column alignment. Subtract the escape-code overhead so the
-// rendered output lines up.
-function visibleAnsiOverhead(s: string): number {
-  return s.length - s.replace(/\[\d+m/g, "").length;
-}
-
-// fallow-ignore-next-line complexity
-function parseLimit(raw: string | undefined): number | undefined {
-  if (raw === undefined) return undefined;
-  const n = Number.parseInt(raw, 10);
-  if (!Number.isInteger(n) || n < 1 || n > 100) {
-    errorBox("Invalid --limit", `Got "${raw}". Must be a positive integer between 1 and 100.`);
-    process.exit(1);
-  }
-  return n;
-}
-
-function handleListError(err: unknown): never {
-  if (err instanceof HyperframesApiError) {
-    errorBox(
-      `API error (HTTP ${err.status})`,
-      err.message,
-      err.code ? `code: ${err.code}` : undefined,
-    );
-    process.exit(1);
-  }
-  if (err instanceof Error) {
-    errorBox("Could not list cloud renders", err.message);
-    process.exit(1);
-  }
-  errorBox("Could not list cloud renders", String(err));
-  process.exit(1);
 }

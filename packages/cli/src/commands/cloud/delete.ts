@@ -6,7 +6,9 @@
  */
 
 import { defineCommand } from "citty";
-import { createCloudClient, HyperframesApiError } from "../../cloud/index.js";
+import { createCloudClient } from "../../cloud/index.js";
+import { reportApiError } from "../../cloud/errors.js";
+import { withMeta } from "../../utils/updateCheck.js";
 import { c } from "../../ui/colors.js";
 import { errorBox } from "../../ui/format.js";
 
@@ -25,46 +27,52 @@ export default defineCommand({
     },
     "no-confirm": {
       type: "boolean",
-      description: "Skip the interactive confirmation prompt (for scripts)",
+      description: "Skip the interactive confirmation prompt (required for scripts and --json)",
       default: false,
     },
   },
   // fallow-ignore-next-line complexity
   async run({ args }) {
-    if (!args["no-confirm"] && !args.json && process.stdin.isTTY) {
+    if (!args["no-confirm"]) {
+      // Don't auto-bypass the prompt just because stdin isn't a TTY
+      // or `--json` was passed — both used to silently skip the
+      // safety check. Force the caller to opt in via `--no-confirm`
+      // so cron jobs, CI shells, and JSON consumers can't soft-delete
+      // by accident.
+      if (args.json || !process.stdin.isTTY) {
+        errorBox(
+          "Confirmation required",
+          "delete cannot prompt for confirmation here — stdin isn't a TTY or --json was passed.",
+          "Re-run with --no-confirm to acknowledge the irreversible delete.",
+        );
+        process.exit(1);
+      }
       const ok = await confirmDelete(args.id);
       if (!ok) {
+        // Distinct exit code so wrapper scripts can tell an explicit
+        // decline apart from an API/system error.
         console.log(c.dim("Aborted."));
-        process.exit(1);
+        process.exit(2);
       }
     }
     const client = await createCloudClient();
     try {
       const response = await client.deleteRender({ render_id: args.id });
       if (args.json) {
-        console.log(JSON.stringify(response, null, 2));
+        console.log(
+          JSON.stringify(
+            withMeta({ render: { render_id: response.render_id }, deleted: true }),
+            null,
+            2,
+          ),
+        );
         return;
       }
       console.log(`${c.success("✓")}  Deleted ${c.accent(response.render_id)}`);
     } catch (err) {
-      if (err instanceof HyperframesApiError && err.status === 404) {
-        errorBox("Render not found", `No render found with id "${args.id}".`);
-        process.exit(1);
-      }
-      if (err instanceof HyperframesApiError) {
-        errorBox(
-          `API error (HTTP ${err.status})`,
-          err.message,
-          err.code ? `code: ${err.code}` : undefined,
-        );
-        process.exit(1);
-      }
-      if (err instanceof Error) {
-        errorBox("Could not delete render", err.message);
-        process.exit(1);
-      }
-      errorBox("Could not delete render", String(err));
-      process.exit(1);
+      reportApiError("Could not delete render", err, {
+        notFound: `No render found with id "${args.id}".`,
+      });
     }
   },
 });

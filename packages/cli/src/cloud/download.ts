@@ -5,9 +5,15 @@
  * S3 URLs scoped per-request — they don't take any HeyGen auth header.
  * That's why this lives separate from the cloud client: the client
  * threads auth headers, the download path explicitly does NOT.
+ *
+ * Failure behavior is "all or nothing": on any error we (1) listen for
+ * stream errors / aborts so awaits resolve promptly instead of hanging,
+ * (2) verify the final byte count matches `content-length` when the
+ * server supplied one, and (3) `unlinkSync` the partial output so a
+ * subsequent retry doesn't pick up a corrupted file.
  */
 
-import { createWriteStream, mkdirSync } from "node:fs";
+import { createWriteStream, mkdirSync, unlinkSync } from "node:fs";
 import { dirname } from "node:path";
 
 export interface DownloadOptions {
@@ -25,16 +31,11 @@ export interface DownloadResult {
 
 /**
  * Stream `url` into `destPath`. Creates the parent directory if needed,
- * never overwrites without truncating — i.e. the existing file is
- * replaced wholesale. Bubbles the response status code via a thrown
- * Error when the response is not 2xx.
- *
- * Implementation uses a `for await` loop over `res.body` rather than
- * `pipeline` + `Readable.fromWeb` because the cross-stream typing
- * between `node:stream/web` and the global `ReadableStream` types is
- * fragile (varies across Node minor versions). Throughput is the same;
- * chunk-level await is dwarfed by network latency.
+ * truncates any existing file at the destination, and deletes the
+ * partial output on any error so the caller never observes a corrupt
+ * file at the returned path.
  */
+// fallow-ignore-next-line complexity
 export async function downloadToFile(
   url: string,
   destPath: string,
@@ -57,19 +58,87 @@ export async function downloadToFile(
 
   const file = createWriteStream(destPath);
   let bytes = 0;
+  let errored = false;
   try {
     for await (const chunk of res.body as unknown as AsyncIterable<Uint8Array>) {
+      if (options.signal?.aborted) {
+        throw options.signal.reason instanceof Error
+          ? options.signal.reason
+          : new Error("Download aborted");
+      }
       bytes += chunk.byteLength;
       options.onProgress?.(bytes, totalOpt);
-      // Apply backpressure: pause when the kernel buffer is full.
       if (!file.write(chunk)) {
-        await new Promise<void>((resolve) => file.once("drain", () => resolve()));
+        await waitForDrain(file, options.signal);
       }
     }
+    if (totalOpt !== undefined && bytes !== totalOpt) {
+      throw new Error(
+        `Truncated download: got ${bytes} bytes, expected ${totalOpt} (content-length). ` +
+          `The presigned URL may have expired mid-transfer — refetch via \`hyperframes cloud get\`.`,
+      );
+    }
+  } catch (err) {
+    errored = true;
+    throw err;
   } finally {
-    await new Promise<void>((resolve, reject) => {
-      file.end((err: Error | null | undefined) => (err ? reject(err) : resolve()));
-    });
+    await closeFile(file);
+    if (errored) {
+      // Don't let a partial file pose as the final artifact. Best-
+      // effort unlink — if it fails (already gone, permission), we
+      // re-throw the original error.
+      try {
+        unlinkSync(destPath);
+      } catch {
+        /* swallow */
+      }
+    }
   }
   return { path: destPath, bytes };
+}
+
+/**
+ * Resolve when the write stream emits `drain`, or reject on `error` /
+ * `close` / signal abort — avoids the hang from awaiting a one-shot
+ * `drain` event that never fires because the stream tore down first.
+ */
+function waitForDrain(file: NodeJS.WritableStream, signal?: AbortSignal): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    const cleanup = () => {
+      file.off("drain", onDrain);
+      file.off("error", onError);
+      file.off("close", onClose);
+      signal?.removeEventListener("abort", onAbort);
+    };
+    const onDrain = (): void => {
+      cleanup();
+      resolve();
+    };
+    const onError = (err: Error): void => {
+      cleanup();
+      reject(err);
+    };
+    const onClose = (): void => {
+      cleanup();
+      reject(new Error("write stream closed before drain"));
+    };
+    const onAbort = (): void => {
+      cleanup();
+      const reason = signal?.reason;
+      reject(reason instanceof Error ? reason : new Error("Download aborted"));
+    };
+    file.once("drain", onDrain);
+    file.once("error", onError);
+    file.once("close", onClose);
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+function closeFile(file: NodeJS.WritableStream): Promise<void> {
+  return new Promise<void>((resolve) => {
+    // We catch errors here intentionally: the surrounding finally
+    // block is best-effort cleanup, and any underlying failure has
+    // already been surfaced as the original throw.
+    file.end(() => resolve());
+  });
 }

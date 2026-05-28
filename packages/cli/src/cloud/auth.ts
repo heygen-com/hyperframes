@@ -46,7 +46,32 @@ async function refreshIfNeeded(credential: ResolvedCredential): Promise<Resolved
   return {
     ...credential,
     access_token: fresh.access_token,
+    expires_at: parseDateOrUndef(fresh.expires_at),
     refreshable: false,
     ...(fresh.refresh_token ? { refresh_token: fresh.refresh_token } : {}),
   };
+}
+
+function parseDateOrUndef(value: string | undefined): Date | undefined {
+  if (!value) return undefined;
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? undefined : d;
+}
+
+/**
+ * Force-refresh the OAuth access token regardless of locally-known
+ * expiry. Used by `createCloudClient`'s 401-retry path when the server
+ * rejects a token that the local resolver thought was still valid (e.g.
+ * server-side revocation, clock skew, IdP rotation). No-op for API-key
+ * credentials.
+ *
+ * Throws if the credential can't be refreshed (no refresh_token, or the
+ * IdP refresh call itself fails). Callers should let the throw surface
+ * — the original 401 is what the user needs to see, not a confusing
+ * "refresh failed" message.
+ */
+export async function forceRefreshCredentials(): Promise<void> {
+  const credential = await resolveCredential();
+  if (credential.type !== "oauth" || !credential.refresh_token) return;
+  await refreshTokens(credential.refresh_token);
 }

@@ -7,11 +7,12 @@
  */
 
 import { defineCommand } from "citty";
-import { createCloudClient, HyperframesApiError } from "../../cloud/index.js";
+import { createCloudClient } from "../../cloud/index.js";
+import { reportApiError } from "../../cloud/errors.js";
 import { colorStatus } from "../../cloud/statusColor.js";
+import { withMeta } from "../../utils/updateCheck.js";
 import type { HyperframesRenderDetail } from "../../cloud/index.js";
 import { c } from "../../ui/colors.js";
-import { errorBox } from "../../ui/format.js";
 
 export default defineCommand({
   meta: { name: "get", description: "Fetch detail for one cloud render" },
@@ -27,35 +28,19 @@ export default defineCommand({
       default: false,
     },
   },
-  // fallow-ignore-next-line complexity
   async run({ args }) {
     const client = await createCloudClient();
     try {
       const detail = await client.getRender({ render_id: args.id });
       if (args.json) {
-        console.log(JSON.stringify(detail, null, 2));
+        console.log(JSON.stringify(withMeta({ render: detail }), null, 2));
         return;
       }
       printHuman(detail);
     } catch (err) {
-      if (err instanceof HyperframesApiError && err.status === 404) {
-        errorBox("Render not found", `No render found with id "${args.id}".`);
-        process.exit(1);
-      }
-      if (err instanceof HyperframesApiError) {
-        errorBox(
-          `API error (HTTP ${err.status})`,
-          err.message,
-          err.code ? `code: ${err.code}` : undefined,
-        );
-        process.exit(1);
-      }
-      if (err instanceof Error) {
-        errorBox("Could not fetch render", err.message);
-        process.exit(1);
-      }
-      errorBox("Could not fetch render", String(err));
-      process.exit(1);
+      reportApiError("Could not fetch render", err, {
+        notFound: `No render found with id "${args.id}".`,
+      });
     }
   },
 });
@@ -72,14 +57,23 @@ function printHuman(detail: HyperframesRenderDetail): void {
     ["Composition:", detail.composition ?? undefined],
     ["Title:    ", detail.title ?? undefined],
     ["Callback ID:", detail.callback_id ?? undefined],
-    ["Duration: ", detail.duration ? `${detail.duration.toFixed(2)}s` : undefined],
+    [
+      "Duration: ",
+      detail.duration !== undefined && detail.duration !== null
+        ? `${detail.duration.toFixed(2)}s`
+        : undefined,
+    ],
     [
       "Created:  ",
-      detail.created_at ? new Date(detail.created_at * 1000).toISOString() : undefined,
+      detail.created_at !== undefined && detail.created_at !== null
+        ? new Date(detail.created_at * 1000).toISOString()
+        : undefined,
     ],
     [
       "Completed:",
-      detail.completed_at ? new Date(detail.completed_at * 1000).toISOString() : undefined,
+      detail.completed_at !== undefined && detail.completed_at !== null
+        ? new Date(detail.completed_at * 1000).toISOString()
+        : undefined,
     ],
     ["Video URL:", detail.video_url ?? undefined],
     ["Thumbnail:", detail.thumbnail_url ?? undefined],

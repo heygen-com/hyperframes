@@ -10,9 +10,12 @@
  *      branches on the detected `application/zip` MIME.
  *   4. Submit the render via `POST /v3/hyperframes/renders` with a
  *      `project: {type:"asset_id", asset_id}` shape.
- *   5. If `--no-wait` or `--callback-url`: return the render_id and
- *      exit. Otherwise poll `GET /v3/hyperframes/renders/{id}` every
- *      `--poll-interval` (default 10s, max 60min).
+ *   5. If `--no-wait`: print the `render_id` and exit immediately.
+ *      Otherwise poll `GET /v3/hyperframes/renders/{id}` every
+ *      `--poll-interval` (default 10s, max 60min). `--callback-url`
+ *      can be combined with either mode: the webhook always fires when
+ *      the server-side render terminates, independent of whether the
+ *      CLI is still polling.
  *   6. On `completed`: stream the signed `video_url` to disk.
  *   7. On `failed`: print `failure_message` and exit 1.
  *
@@ -22,8 +25,6 @@
  */
 
 import { defineCommand } from "citty";
-import { mkdirSync, statSync } from "node:fs";
-import { dirname, isAbsolute, resolve as resolvePath } from "node:path";
 
 import { c } from "../../ui/colors.js";
 import { errorBox, formatBytes, formatDuration } from "../../ui/format.js";
@@ -34,49 +35,39 @@ import {
   resolveVariablesArg,
   validateVariablesAgainstProject,
 } from "../../utils/variables.js";
+import { withMeta } from "../../utils/updateCheck.js";
 import type { Example } from "../_examples.js";
 
 import {
   DEFAULT_MAX_WAIT_MS,
   DEFAULT_POLL_INTERVAL_MS,
-  HyperframesApiError,
   PollTimeoutError,
   createCloudClient,
   downloadToFile,
   pollUntilTerminal,
 } from "../../cloud/index.js";
+import { reportApiError } from "../../cloud/errors.js";
+import { parseEnumFlag, parseIntFlag, parseNumericFlag } from "../../cloud/parsing.js";
 import { colorStatus } from "../../cloud/statusColor.js";
 import type {
   CreateHyperframesRenderRequest,
   HyperframesCloudClient,
   HyperframesRenderDetail,
 } from "../../cloud/index.js";
+import { isAbsolute, resolve as resolvePath } from "node:path";
 
-const VALID_QUALITY = new Set(["draft", "standard", "high"]);
-const VALID_FORMAT = new Set(["mp4", "webm", "mov"]);
-const VALID_RESOLUTION = new Set([
+const VALID_QUALITY = ["draft", "standard", "high"] as const;
+const VALID_FORMAT = ["mp4", "webm", "mov"] as const;
+const VALID_RESOLUTION = [
   "landscape",
   "portrait",
   "landscape-4k",
   "portrait-4k",
   "square",
   "square-4k",
-]);
+] as const;
 
 const FORMAT_EXT: Record<string, string> = { mp4: ".mp4", webm: ".webm", mov: ".mov" };
-
-// Surface the most-common API error codes with actionable hints.
-// Anything not listed here falls through to a generic "API error" box.
-const ERROR_CODE_HINTS: Record<string, string> = {
-  hyperframes_project_invalid:
-    "The uploaded zip didn't validate. Confirm it contains index.html at the root (or matches --composition), and that all referenced assets are present.",
-  hyperframes_project_too_large:
-    "The zip exceeded the 32 MB limit. Trim large media (or pre-host them and reference by URL), then try again.",
-  hyperframes_render_not_found:
-    "The render_id no longer exists — either soft-deleted or never created.",
-  invalid_parameter:
-    "Check the listed parameter against `hyperframes cloud render --help` for the accepted values.",
-};
 
 export const examples: Example[] = [
   ["Render the current directory in the cloud", "hyperframes cloud render"],
@@ -86,7 +77,7 @@ export const examples: Example[] = [
   ],
   ["Higher quality, 60fps", "hyperframes cloud render --quality high --fps 60"],
   [
-    "Fire-and-forget via webhook",
+    "Submit and exit; webhook fires when the render terminates",
     "hyperframes cloud render --callback-url https://example.com/hook --no-wait",
   ],
   [
@@ -133,7 +124,8 @@ export default defineCommand({
     },
     "callback-url": {
       type: "string",
-      description: "HTTPS webhook fired when the render terminates",
+      description:
+        "HTTPS webhook fired when the render terminates. Fires regardless of whether the CLI is still polling — combine with --no-wait for true fire-and-forget.",
     },
     "callback-id": {
       type: "string",
@@ -180,26 +172,31 @@ export default defineCommand({
   // fallow-ignore-next-line complexity
   async run({ args }) {
     const asJson = Boolean(args.json);
-    const fps = parseFps(args.fps);
-    const quality = parseQuality(args.quality);
-    const format = parseFormat(args.format);
-    const resolution = parseResolution(args.resolution);
+    const fps = parseIntFlag(args.fps, { flag: "--fps", min: 1, max: 240 });
+    const quality = parseEnumFlag(args.quality, VALID_QUALITY, { flag: "--quality" });
+    const format = parseEnumFlag(args.format, VALID_FORMAT, { flag: "--format" });
+    const resolution = parseEnumFlag(args.resolution, VALID_RESOLUTION, {
+      flag: "--resolution",
+    });
     const pollIntervalMs = parsePollIntervalMs(args["poll-interval"]);
     const maxWaitMs = parseMaxWaitMs(args["max-wait"]);
-    const variables = resolveVariablesAndValidateIfLocal(
-      args.variables,
-      args["variables-file"],
-      args["strict-variables"] ?? false,
-      args.dir,
-      args["asset-id"],
-      args.url,
-    );
+    validateIdempotencyKey(args["idempotency-key"]);
 
+    // Project resolution runs BEFORE variables resolution so a user
+    // passing conflicting inputs (`dir + --asset-id`) sees the
+    // structural error before any variable parsing errors.
     const project = resolveProjectInput({
       dir: args.dir,
       assetId: args["asset-id"],
       url: args.url,
     });
+
+    const variables = resolveVariablesAndValidateIfLocal(
+      args.variables,
+      args["variables-file"],
+      args["strict-variables"] ?? false,
+      project,
+    );
 
     const client = await createCloudClient();
 
@@ -221,7 +218,13 @@ export default defineCommand({
     const renderId = submitted.render_id;
     if (args["no-wait"]) {
       if (asJson) {
-        console.log(JSON.stringify({ render_id: renderId, status: "queued" }, null, 2));
+        console.log(
+          JSON.stringify(
+            withMeta({ render: { render_id: renderId, status: "queued" as const } }),
+            null,
+            2,
+          ),
+        );
       } else {
         console.log("");
         console.log(`${c.success("✓")}  Submitted ${c.accent(renderId)}`);
@@ -253,79 +256,46 @@ export default defineCommand({
     }
 
     const outputPath = resolveOutputPath(args.output, renderId, detail.format);
-    await streamVideo(detail.video_url, outputPath, asJson);
+    const downloadResult = await streamVideo(detail.video_url, outputPath, asJson);
 
     if (asJson) {
-      console.log(JSON.stringify({ render: detail, output_path: outputPath }, null, 2));
+      console.log(
+        JSON.stringify(
+          withMeta({
+            render: detail,
+            output_path: outputPath,
+            bytes_written: downloadResult.bytes,
+          }),
+          null,
+          2,
+        ),
+      );
     }
   },
 });
 
 // ---------------------------------------------------------------------------
-// Argument parsing
+// Argument parsing — defers to cloud/parsing.ts for strict validators
 // ---------------------------------------------------------------------------
 
-// fallow-ignore-next-line complexity
-function parseFps(raw: string | undefined): number | undefined {
-  if (raw === undefined) return undefined;
-  const n = Number.parseInt(raw, 10);
-  if (!Number.isInteger(n) || n < 1 || n > 240) {
-    errorBox("Invalid --fps", `Got "${raw}". Must be an integer between 1 and 240.`);
-    process.exit(1);
-  }
-  return n;
-}
-
-function parseQuality(raw: string | undefined): "draft" | "standard" | "high" | undefined {
-  if (raw === undefined) return undefined;
-  if (!VALID_QUALITY.has(raw)) {
-    errorBox("Invalid --quality", `Got "${raw}". Must be draft, standard, or high.`);
-    process.exit(1);
-  }
-  return raw as "draft" | "standard" | "high";
-}
-
-function parseFormat(raw: string | undefined): "mp4" | "webm" | "mov" | undefined {
-  if (raw === undefined) return undefined;
-  if (!VALID_FORMAT.has(raw)) {
-    errorBox("Invalid --format", `Got "${raw}". Must be mp4, webm, or mov.`);
-    process.exit(1);
-  }
-  return raw as "mp4" | "webm" | "mov";
-}
-
-function parseResolution(
-  raw: string | undefined,
-): CreateHyperframesRenderRequest["resolution"] | undefined {
-  if (raw === undefined) return undefined;
-  if (!VALID_RESOLUTION.has(raw)) {
-    errorBox(
-      "Invalid --resolution",
-      `Got "${raw}". Must be one of: ${[...VALID_RESOLUTION].join(", ")}.`,
-    );
-    process.exit(1);
-  }
-  return raw as CreateHyperframesRenderRequest["resolution"];
-}
-
 function parsePollIntervalMs(raw: string | undefined): number {
-  if (raw === undefined) return DEFAULT_POLL_INTERVAL_MS;
-  const n = Number.parseFloat(raw);
-  if (!Number.isFinite(n) || n < 1) {
-    errorBox("Invalid --poll-interval", `Got "${raw}". Must be a positive number of seconds.`);
-    process.exit(1);
-  }
-  return Math.round(n * 1000);
+  const n = parseNumericFlag(raw, { flag: "--poll-interval", min: 1 });
+  return n === undefined ? DEFAULT_POLL_INTERVAL_MS : Math.round(n * 1000);
 }
 
 function parseMaxWaitMs(raw: string | undefined): number {
-  if (raw === undefined) return DEFAULT_MAX_WAIT_MS;
-  const n = Number.parseFloat(raw);
-  if (!Number.isFinite(n) || n <= 0) {
-    errorBox("Invalid --max-wait", `Got "${raw}". Must be a positive number of minutes.`);
+  const n = parseNumericFlag(raw, { flag: "--max-wait", min: 0.0001 });
+  return n === undefined ? DEFAULT_MAX_WAIT_MS : Math.round(n * 60_000);
+}
+
+const IDEMPOTENCY_KEY_RE = /^[A-Za-z0-9_:.-]{1,255}$/;
+
+function validateIdempotencyKey(key: string | undefined): void {
+  if (key === undefined) return;
+  if (!IDEMPOTENCY_KEY_RE.test(key)) {
+    errorBox("Invalid --idempotency-key", `Got "${key}". Must be 1-255 chars from [A-Za-z0-9_:.-]`);
     process.exit(1);
   }
-  return Math.round(n * 60_000);
 }
 
 // ---------------------------------------------------------------------------
@@ -345,24 +315,29 @@ function resolveProjectInput(opts: {
   assetId: string | undefined;
   url: string | undefined;
 }): ProjectInputSource {
-  const sources = [opts.assetId, opts.url].filter((v) => v !== undefined && v !== "");
-  if (sources.length > 1) {
+  // Count every source the user explicitly supplied. The positional
+  // `dir` defaults to `undefined` when omitted (not to "."), so we
+  // can detect "user actually typed something" vs. "default to cwd".
+  const explicit = {
+    dir: opts.dir !== undefined && opts.dir !== "",
+    assetId: opts.assetId !== undefined && opts.assetId !== "",
+    url: opts.url !== undefined && opts.url !== "",
+  };
+  const count = Number(explicit.dir) + Number(explicit.assetId) + Number(explicit.url);
+  if (count > 1) {
     errorBox("Conflicting inputs", "Pass only one of: project dir, --asset-id, --url.");
     process.exit(1);
   }
-  if (opts.assetId) return { kind: "asset_id", assetId: opts.assetId };
-  if (opts.url) return { kind: "url", url: opts.url };
+  if (explicit.assetId) return { kind: "asset_id", assetId: opts.assetId };
+  if (explicit.url) return { kind: "url", url: opts.url };
   return { kind: "dir", dir: opts.dir ?? "." };
 }
 
-// fallow-ignore-next-line complexity
 function resolveVariablesAndValidateIfLocal(
   inline: string | undefined,
   filePath: string | undefined,
   strict: boolean,
-  dirArg: string | undefined,
-  assetId: string | undefined,
-  url: string | undefined,
+  source: ProjectInputSource,
 ): Record<string, unknown> | undefined {
   const variables = resolveVariablesArg(inline, filePath);
   if (!variables || Object.keys(variables).length === 0) return variables;
@@ -370,14 +345,13 @@ function resolveVariablesAndValidateIfLocal(
   // a local project on disk. For --asset-id / --url paths the schema
   // lives on the server side, so we send the variables as-is and let
   // the API surface any mismatch via `hyperframes_project_invalid`.
-  if (assetId || url) return variables;
-  try {
-    const { indexPath } = resolveProject(dirArg);
-    const issues = validateVariablesAgainstProject(indexPath, variables);
-    reportVariableIssues(issues, { strict, quiet: false });
-  } catch {
-    // resolveProject errors are handled later in the main flow.
-  }
+  if (source.kind !== "dir") return variables;
+  // `resolveProject` calls process.exit on a missing/invalid dir, so
+  // there's no need to wrap this in try/catch — if it returns, the
+  // index.html is present. The earlier impl had a dead try/catch.
+  const { indexPath } = resolveProject(source.dir);
+  const issues = validateVariablesAgainstProject(indexPath, variables);
+  reportVariableIssues(issues, { strict, quiet: false });
   return variables;
 }
 
@@ -408,7 +382,14 @@ async function maybeUploadProject(
     console.log("");
     console.log(`${c.accent("◆")}  Zipping ${c.accent(project.name)}`);
   }
-  const archive = createPublishArchive(project.dir);
+  let archive;
+  try {
+    archive = createPublishArchive(project.dir);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    errorBox("Zip failed", msg, "Check the project for missing files or unreadable permissions.");
+    process.exit(1);
+  }
   if (!asJson) {
     console.log(c.dim(`   ${archive.fileCount} files · ${formatBytes(archive.buffer.byteLength)}`));
   }
@@ -418,15 +399,16 @@ async function maybeUploadProject(
     console.log(`${c.accent("◆")}  Uploading to /v3/assets`);
   }
   const uploadStart = Date.now();
-  const uploaded = await client
-    .uploadAsset({
+  let uploaded;
+  try {
+    uploaded = await client.uploadAsset({
       file: archive.buffer,
       filename: `${project.name}.zip`,
       idempotencyKey,
-    })
-    .catch((err) => {
-      throwUploadError(err);
     });
+  } catch (err) {
+    reportApiError("Upload failed", err);
+  }
   if (!asJson) {
     console.log(
       c.dim(
@@ -435,24 +417,6 @@ async function maybeUploadProject(
     );
   }
   return { projectInput: { type: "asset_id", asset_id: uploaded.asset_id } };
-}
-
-// fallow-ignore-next-line complexity
-function throwUploadError(err: unknown): never {
-  if (err instanceof HyperframesApiError) {
-    if (err.code && ERROR_CODE_HINTS[err.code]) {
-      errorBox(`Upload failed (HTTP ${err.status})`, err.message, ERROR_CODE_HINTS[err.code]);
-    } else {
-      errorBox(`Upload failed (HTTP ${err.status})`, err.message);
-    }
-    process.exit(1);
-  }
-  if (err instanceof Error) {
-    errorBox("Upload failed", err.message);
-    process.exit(1);
-  }
-  errorBox("Upload failed", String(err));
-  process.exit(1);
 }
 
 // ---------------------------------------------------------------------------
@@ -473,11 +437,20 @@ interface SubmitOptions {
   idempotencyKey: string | undefined;
 }
 
-// fallow-ignore-next-line complexity
 async function submitRender(
   client: HyperframesCloudClient,
   opts: SubmitOptions,
 ): Promise<{ render_id: string }> {
+  const body = buildRenderBody(opts);
+  try {
+    return await client.createRender({ body, idempotencyKey: opts.idempotencyKey });
+  } catch (err) {
+    reportApiError("Submit failed", err);
+  }
+}
+
+// fallow-ignore-next-line complexity
+function buildRenderBody(opts: SubmitOptions): CreateHyperframesRenderRequest {
   const body: CreateHyperframesRenderRequest = { project: opts.projectInput };
   if (opts.fps !== undefined) body.fps = opts.fps;
   if (opts.quality !== undefined) body.quality = opts.quality;
@@ -488,26 +461,7 @@ async function submitRender(
   if (opts.title !== undefined) body.title = opts.title;
   if (opts.callbackUrl !== undefined) body.callback_url = opts.callbackUrl;
   if (opts.callbackId !== undefined) body.callback_id = opts.callbackId;
-
-  try {
-    return await client.createRender({ body, idempotencyKey: opts.idempotencyKey });
-  } catch (err) {
-    throwSubmitError(err);
-  }
-}
-
-function throwSubmitError(err: unknown): never {
-  if (err instanceof HyperframesApiError) {
-    const hint = err.code ? ERROR_CODE_HINTS[err.code] : undefined;
-    errorBox(`Submit failed (HTTP ${err.status})`, err.message, hint);
-    process.exit(1);
-  }
-  if (err instanceof Error) {
-    errorBox("Submit failed", err.message);
-    process.exit(1);
-  }
-  errorBox("Submit failed", String(err));
-  process.exit(1);
+  return body;
 }
 
 // ---------------------------------------------------------------------------
@@ -521,25 +475,36 @@ async function pollWithProgress(
   asJson: boolean,
   poll: { intervalMs: number; maxWaitMs: number },
 ): Promise<HyperframesRenderDetail> {
+  // ANSI carriage-return redraws only make sense on a TTY. CI logs and
+  // file redirects get one append per status change instead, and JSON
+  // mode stays silent altogether.
+  const interactive = !asJson && process.stdout.isTTY === true;
   let lastStatus = "";
   try {
     return await pollUntilTerminal(client, renderId, {
       intervalMs: poll.intervalMs,
       maxWaitMs: poll.maxWaitMs,
+      // fallow-ignore-next-line complexity
       onTick: (detail, elapsedMs) => {
         if (asJson) return;
-        if (detail.status === lastStatus) {
-          process.stdout.write(`\r\x1b[2K  ${formatTickLine(detail, elapsedMs)}`);
-        } else {
-          if (lastStatus) process.stdout.write("\n");
-          process.stdout.write(`  ${formatTickLine(detail, elapsedMs)}`);
+        if (interactive) {
+          if (detail.status === lastStatus) {
+            process.stdout.write(`\r\x1b[2K  ${formatTickLine(detail, elapsedMs)}`);
+          } else {
+            if (lastStatus) process.stdout.write("\n");
+            process.stdout.write(`  ${formatTickLine(detail, elapsedMs)}`);
+            lastStatus = detail.status;
+          }
+        } else if (detail.status !== lastStatus) {
+          // Non-TTY: one line per status transition, no carriage returns.
+          console.log(`  ${formatTickLine(detail, elapsedMs)}`);
           lastStatus = detail.status;
         }
       },
     });
   } catch (err) {
+    if (!asJson && lastStatus && interactive) process.stdout.write("\n");
     if (err instanceof PollTimeoutError) {
-      if (!asJson) process.stdout.write("\n");
       errorBox(
         "Poll timed out",
         err.message,
@@ -547,23 +512,9 @@ async function pollWithProgress(
       );
       process.exit(1);
     }
-    if (err instanceof HyperframesApiError) {
-      if (!asJson) process.stdout.write("\n");
-      errorBox(
-        `API error during poll (HTTP ${err.status})`,
-        err.message,
-        err.code ? `code: ${err.code}` : undefined,
-      );
-      process.exit(1);
-    }
-    if (err instanceof Error) {
-      if (!asJson) process.stdout.write("\n");
-      errorBox("Poll failed", err.message);
-      process.exit(1);
-    }
-    throw err;
+    return reportApiError("API error during poll", err);
   } finally {
-    if (!asJson && lastStatus) process.stdout.write("\n");
+    if (!asJson && lastStatus && interactive) process.stdout.write("\n");
   }
 }
 
@@ -578,7 +529,7 @@ function formatTickLine(detail: HyperframesRenderDetail, elapsedMs: number): str
 
 function handleFailedRender(detail: HyperframesRenderDetail, asJson: boolean): never {
   if (asJson) {
-    console.log(JSON.stringify({ render: detail }, null, 2));
+    console.log(JSON.stringify(withMeta({ render: detail }), null, 2));
     process.exit(1);
   }
   errorBox(
@@ -598,8 +549,13 @@ function resolveOutputPath(output: string | undefined, renderId: string, format:
 }
 
 // fallow-ignore-next-line complexity
-async function streamVideo(url: string, destPath: string, asJson: boolean): Promise<void> {
-  mkdirSync(dirname(destPath), { recursive: true });
+async function streamVideo(
+  url: string,
+  destPath: string,
+  asJson: boolean,
+): Promise<{ bytes: number }> {
+  // `downloadToFile` already creates the parent directory and cleans
+  // up the partial file on error — no pre-mkdir needed here.
   if (!asJson) {
     console.log("");
     console.log(`${c.accent("◆")}  Downloading to ${c.accent(destPath)}`);
@@ -607,9 +563,9 @@ async function streamVideo(url: string, destPath: string, asJson: boolean): Prom
   try {
     const result = await downloadToFile(url, destPath);
     if (!asJson) {
-      const stat = statSync(result.path);
-      console.log(c.dim(`   ${formatBytes(stat.size)} written`));
+      console.log(c.dim(`   ${formatBytes(result.bytes)} written`));
     }
+    return { bytes: result.bytes };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     errorBox(

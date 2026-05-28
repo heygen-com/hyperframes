@@ -103,19 +103,26 @@ const ROOT_EXAMPLES: Example[] = [
 // top-level command of the same name (`commands/render.js`).
 // fallow-ignore-next-line complexity
 async function loadExamples(name: string, parentName?: string): Promise<Example[] | undefined> {
-  if (parentName) {
-    try {
-      const mod = await import(`./commands/${parentName}/${name}.js`);
-      if (mod.examples) return mod.examples;
-    } catch {
-      // Fall through to the un-nested path.
-    }
+  // Skip the parent-scoped lookup for the root command — `parentName`
+  // is `'hyperframes'` for every top-level subcommand and no
+  // `./commands/hyperframes/<name>.js` directory will ever exist.
+  if (parentName && parentName !== "hyperframes") {
+    const examples = await tryLoadExamples(`./commands/${parentName}/${name}.js`);
+    if (examples) return examples;
   }
+  return await tryLoadExamples(`./commands/${name}.js`);
+}
+
+async function tryLoadExamples(modulePath: string): Promise<Example[] | undefined> {
   try {
-    const mod = await import(`./commands/${name}.js`);
+    const mod = await import(modulePath);
     return mod.examples;
-  } catch {
-    return undefined;
+  } catch (err) {
+    // Only swallow "file doesn't exist" — re-throw real load errors
+    // (syntax error, broken import, init-time throw) so a developer
+    // sees the diagnostic instead of getting silently wrong help.
+    if ((err as NodeJS.ErrnoException).code === "ERR_MODULE_NOT_FOUND") return undefined;
+    throw err;
   }
 }
 

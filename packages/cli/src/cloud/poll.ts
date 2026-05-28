@@ -61,16 +61,16 @@ export async function pollUntilTerminal(
   const intervalMs = options.intervalMs ?? DEFAULT_POLL_INTERVAL_MS;
   const maxWaitMs = options.maxWaitMs ?? DEFAULT_MAX_WAIT_MS;
   const now = options.now ?? (() => Date.now());
-  const sleep =
-    options.sleep ?? ((ms: number) => new Promise((resolve) => setTimeout(resolve, ms)));
+  // Default sleep honors the abort signal so Ctrl+C feels immediate
+  // instead of waiting out the full interval. Tests inject a no-op
+  // sleep that ignores the signal — that's fine, they don't abort.
+  const sleep = options.sleep ?? defaultAbortableSleep(options.signal);
 
   const started = now();
 
   while (true) {
     if (options.signal?.aborted) {
-      throw options.signal.reason instanceof Error
-        ? options.signal.reason
-        : new Error("Poll aborted");
+      throw signalAbortError(options.signal);
     }
     const detail = await client.getRender({ render_id: renderId, signal: options.signal });
     const elapsed = now() - started;
@@ -84,4 +84,25 @@ export async function pollUntilTerminal(
     }
     await sleep(intervalMs);
   }
+}
+
+function signalAbortError(signal: AbortSignal): Error {
+  const reason = signal.reason;
+  return reason instanceof Error ? reason : new Error("Poll aborted");
+}
+
+function defaultAbortableSleep(signal?: AbortSignal): (ms: number) => Promise<void> {
+  // fallow-ignore-next-line complexity
+  return (ms: number) =>
+    new Promise<void>((resolve, reject) => {
+      const onAbort = (): void => {
+        clearTimeout(timer);
+        reject(signalAbortError(signal!));
+      };
+      const timer = setTimeout(() => {
+        signal?.removeEventListener("abort", onAbort);
+        resolve();
+      }, ms);
+      signal?.addEventListener("abort", onAbort, { once: true });
+    });
 }

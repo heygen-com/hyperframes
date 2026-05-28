@@ -73,4 +73,40 @@ describe("cloud/download", () => {
       }),
     ).rejects.toThrow(/HTTP 404/);
   });
+
+  it("rejects truncated downloads when bytes received < content-length", async () => {
+    // Returns 10 bytes but declares content-length: 20.
+    const dest = join(dir, "truncated.bin");
+    const lyingFetch: typeof fetch = (async () =>
+      new Response(new Blob([new Uint8Array(10) as unknown as BlobPart]), {
+        status: 200,
+        headers: { "content-length": "20" },
+      })) as unknown as typeof fetch;
+    await expect(
+      downloadToFile("https://example/x", dest, { fetchImpl: lyingFetch }),
+    ).rejects.toThrow(/Truncated download/);
+    // Partial file must be cleaned up.
+    expect(() => statSync(dest)).toThrow();
+  });
+
+  it("deletes the partial file when the abort signal fires mid-stream", async () => {
+    const dest = join(dir, "aborted.bin");
+    // 1 MB payload should give the abort time to land mid-stream.
+    const payload = new Uint8Array(1024 * 1024);
+    const controller = new AbortController();
+    const fetchImpl: typeof fetch = (async () =>
+      new Response(new Blob([payload as unknown as BlobPart]), {
+        status: 200,
+        headers: { "content-length": String(payload.length) },
+      })) as unknown as typeof fetch;
+    // Abort almost immediately.
+    queueMicrotask(() => controller.abort(new Error("user cancelled")));
+    await expect(
+      downloadToFile("https://example/x", dest, {
+        fetchImpl,
+        signal: controller.signal,
+      }),
+    ).rejects.toThrow();
+    expect(() => statSync(dest)).toThrow();
+  });
 });
