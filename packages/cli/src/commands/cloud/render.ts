@@ -141,10 +141,17 @@ export default defineCommand({
       description:
         "Public HTTPS URL of a composition zip. Mutually exclusive with --asset-id and the project dir.",
     },
-    "no-wait": {
+    // Citty parses `--no-FOO` as `--FOO=false`. A flag literally named
+    // "no-wait" gets routed as `args.wait=false`, leaving
+    // `args["no-wait"]` undefined and the early-return for
+    // fire-and-forget mode unreachable. Named the arg `wait` so the
+    // user-facing `--no-wait` flag works via citty's negation; the
+    // run() body checks `if (!args.wait)`.
+    wait: {
       type: "boolean",
-      description: "Submit and exit; print the render_id to stdout",
-      default: false,
+      description:
+        "Poll until completion and download the video (default: true). Pass `--no-wait` for fire-and-forget — submits and exits with the render_id.",
+      default: true,
     },
     output: {
       type: "string",
@@ -216,7 +223,7 @@ export default defineCommand({
     });
 
     const renderId = submitted.render_id;
-    if (args["no-wait"]) {
+    if (!args.wait) {
       if (asJson) {
         console.log(
           JSON.stringify(

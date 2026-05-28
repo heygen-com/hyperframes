@@ -25,15 +25,23 @@ export default defineCommand({
       description: "Emit machine-readable JSON",
       default: false,
     },
-    "no-confirm": {
+    // Citty intercepts the `--no-` prefix as a negation of the base
+    // flag, so a flag literally named "no-confirm" gets parsed as
+    // `--confirm=false` and the `args["no-confirm"]` lookup never
+    // sees `true`. Naming the flag `confirm` with `default: true` lets
+    // citty's negation handle `--no-confirm` correctly — same
+    // user-facing flag (`--no-confirm` to skip the prompt), correct
+    // runtime semantics.
+    confirm: {
       type: "boolean",
-      description: "Skip the interactive confirmation prompt (required for scripts and --json)",
-      default: false,
+      description:
+        "Prompt before deleting (default: true). Pass `--no-confirm` to skip — required for scripts and --json.",
+      default: true,
     },
   },
   // fallow-ignore-next-line complexity
   async run({ args }) {
-    if (!args["no-confirm"]) {
+    if (args.confirm) {
       // Don't auto-bypass the prompt just because stdin isn't a TTY
       // or `--json` was passed — both used to silently skip the
       // safety check. Force the caller to opt in via `--no-confirm`
