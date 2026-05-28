@@ -5,7 +5,16 @@ import { trackRenderFeedback } from "./events.js";
 import { detectAgentRuntime } from "./agent_runtime.js";
 import { c } from "../ui/colors.js";
 
-const FEEDBACK_INTERVAL = 15;
+const DEFAULT_FEEDBACK_INTERVAL = 15;
+
+function getFeedbackInterval(): number {
+  const env = process.env.HYPERFRAMES_FEEDBACK_INTERVAL;
+  if (env) {
+    const n = parseInt(env, 10);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  return DEFAULT_FEEDBACK_INTERVAL;
+}
 
 let promptedThisSession = false;
 
@@ -18,7 +27,6 @@ export async function maybePromptRenderFeedback(opts: {
   renderDurationMs: number;
   quiet: boolean;
 }): Promise<void> {
-  if (process.env.HYPERFRAMES_NO_FEEDBACK === "1") return;
   if (promptedThisSession) return;
   if (opts.quiet) return;
   if (!process.stdin.isTTY) return;
@@ -45,7 +53,7 @@ export async function maybePromptRenderFeedback(opts: {
   const lastAt = config.lastFeedbackPromptAt ?? 0;
   const isFirstEverRender = lastAt === 0;
   const sinceLastPrompt = config.renderSuccessCount - lastAt;
-  if (!isFirstEverRender && sinceLastPrompt < FEEDBACK_INTERVAL) {
+  if (!isFirstEverRender && sinceLastPrompt < getFeedbackInterval()) {
     writeConfig(config);
     return;
   }

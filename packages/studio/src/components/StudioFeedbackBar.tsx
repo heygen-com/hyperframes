@@ -1,30 +1,34 @@
 import { memo, useState, useCallback, useRef, useEffect } from "react";
 import { trackStudioFeedback } from "../telemetry/events";
 
-const FEEDBACK_INTERVAL = 10;
+const DEFAULT_FEEDBACK_INTERVAL = 10;
 const AUTO_DISMISS_MS = 20_000;
+
+// fallow-ignore-next-line complexity
+function getFeedbackInterval(): number {
+  try {
+    const v = import.meta.env.VITE_HYPERFRAMES_FEEDBACK_INTERVAL as string | undefined;
+    if (v) {
+      const n = parseInt(v, 10);
+      if (Number.isFinite(n) && n > 0) return n;
+    }
+  } catch {
+    // import.meta.env unavailable
+  }
+  return DEFAULT_FEEDBACK_INTERVAL;
+}
 
 const STORAGE_KEYS = {
   sessionCount: "hyperframes-studio:feedbackSessionCount",
   lastPromptedAt: "hyperframes-studio:feedbackLastPromptedAt",
 } as const;
 
-function isFeedbackDisabled(): boolean {
-  try {
-    const v = import.meta.env.VITE_HYPERFRAMES_NO_FEEDBACK as string | undefined;
-    return v === "1" || v === "true";
-  } catch {
-    return false;
-  }
-}
-
 // fallow-ignore-next-line complexity
 function shouldShowFeedback(): boolean {
-  if (isFeedbackDisabled()) return false;
   try {
     const count = parseInt(localStorage.getItem(STORAGE_KEYS.sessionCount) || "0", 10) || 0;
     const lastAt = parseInt(localStorage.getItem(STORAGE_KEYS.lastPromptedAt) || "0", 10) || 0;
-    return count - lastAt >= FEEDBACK_INTERVAL;
+    return count - lastAt >= getFeedbackInterval();
   } catch {
     return false;
   }
