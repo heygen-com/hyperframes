@@ -3,13 +3,19 @@ title: Feedback Collection
 description: "How HyperFrames collects feedback, what data is collected, and how to opt out."
 ---
 
-HyperFrames prompts for anonymous satisfaction feedback periodically — after CLI renders and in Studio sessions. This page explains when prompts appear, what data is collected, and how to disable them entirely.
+HyperFrames occasionally asks how a render went or how a Studio session felt. This page explains why we do it, when prompts appear, what data is collected, and how to disable them.
+
+## Why We Ask
+
+We use anonymous satisfaction scores to understand whether the tool is actually working well — not just whether it runs without errors. A render that takes 10 minutes and produces a broken file counts as a success in logs but a failure in practice. The feedback prompt is the only signal we have for that gap.
+
+No account, email, or identity is tied to responses. Each installation generates a random UUID at setup; that is the only identifier.
 
 ## How It Works
 
 ### CLI — post-render prompt
 
-After a successful `hyperframes render`, a short satisfaction prompt may appear:
+After a successful `hyperframes render`, a short prompt may appear:
 
 ```
   How was this render? [1=poor 5=great, enter to skip]
@@ -19,9 +25,9 @@ After a successful `hyperframes render`, a short satisfaction prompt may appear:
 **When it shows:**
 
 - First ever successful render
-- Then every 15th successful render (15th, 30th, 45th...)
+- Then every 15 renders after that (16th, 31st, 46th...)
 - At most once per process — re-renders in the same session don't trigger a second prompt
-- Skipped in quiet mode (`--quiet`), non-TTY shells, CI environments, and Docker renders
+- Automatically suppressed in quiet mode (`--quiet`), non-TTY shells, and CI environments
 
 The prompt has a **10-second auto-timeout** — if you don't respond, it silently disappears and the CLI continues normally.
 
@@ -34,13 +40,13 @@ HYPERFRAMES_FEEDBACK_INTERVAL=5 hyperframes render --output out.mp4
 
 ### Studio — session feedback bar
 
-A thin 32px bar slides in at the bottom of the preview area every 10 Studio sessions:
+A thin 32px bar slides in at the bottom of the preview area periodically:
 
 - Never on the first session — only starting from the 10th
 - Then every 10 sessions (10th, 20th, 30th...)
 - Slides in 3 seconds after page load to avoid flash
 - Auto-dismisses after 20 seconds if ignored
-- After any interaction (dismiss, skip, or submit), the counter resets — next prompt after 10 more sessions
+- After any interaction (dismiss or submit), the session counter resets — next prompt after 10 more sessions
 
 The session interval is configurable at build time:
 
@@ -49,6 +55,8 @@ VITE_HYPERFRAMES_FEEDBACK_INTERVAL=3
 ```
 
 Invalid values (non-integer, zero, negative) fall back to the default.
+
+**Note:** Disabling CLI telemetry (`hyperframes telemetry disable`) does not suppress the Studio bar — Studio feedback is gated separately. The submitted data is still sent through the same anonymous PostHog pipeline, so the same privacy guarantees apply.
 
 ### `hyperframes feedback` command
 
@@ -71,15 +79,30 @@ This command collects a doctor summary automatically, flushes telemetry, and exi
 
 ## Agent Runtimes
 
-When an AI agent is detected (Claude Code, Codex, Cursor, Copilot, Replit, and others), HyperFrames **skips the interactive readline prompt** and prints a structured hint instead:
+When an AI agent is detected, HyperFrames **skips the interactive readline prompt** and prints a structured hint instead:
 
 ```
   [hyperframes] Agent feedback: hyperframes feedback --rating <1-5> --comment "..."
 ```
 
-Agents can then submit feedback using the `hyperframes feedback` command above. Detection is based on well-known environment variables (`CLAUDE_CODE`, `CODEX`, `CURSOR_TRACE`, etc.) — their values are never read, only their presence.
+Agents can then submit feedback using the `hyperframes feedback` command above.
 
-The same cadence gate applies to agents: the hint only appears on the first render, then every 15th.
+The same cadence gate applies: the hint only appears on the first render, then every 15th.
+
+**Detected agents and their markers:**
+
+| Agent | Environment markers |
+|-------|---------------------|
+| Claude Code | `CLAUDECODE` present, or `CLAUDE_CODE_ENTRYPOINT` present |
+| Codex | `CODEX_THREAD_ID`, `CODEX_CI`, or `CODEX_SANDBOX_NETWORK_DISABLED` present |
+| Cursor | `TERM_PROGRAM` equals `cursor` |
+| GitHub Copilot Agent | `GITHUB_ACTIONS` equals `true` and (`COPILOT_AGENT_ID` present or `RUNNER_NAME` equals `Copilot`) |
+| Replit | `REPL_ID` or `REPLIT_USER` present |
+| Hermes | `HERMES_QUIET` present |
+| openclaw | `OPENCLAW_STATE_DIR` or `OPENCLAW_CONFIG_PATH` present |
+| Pi | `PI_CODING_AGENT` present |
+
+Only the existence (or in some cases the value) of these variables is checked — API keys and secrets that happen to share a prefix are never read.
 
 ## What Is Collected
 
@@ -89,7 +112,7 @@ The same cadence gate applies to agents: the hint only appears on the first rend
 |-------|-------|
 | `$survey_id` | `render_satisfaction` |
 | `$survey_response` | Rating (1–5) |
-| `$survey_response_2` | Free-text comment (if provided) |
+| `$survey_response_2` | Free-text comment (only when provided) |
 | `render_duration_ms` | Time the render took in milliseconds |
 | `doctor_summary` | System context (see below) |
 
@@ -99,7 +122,7 @@ The `doctor_summary` is a compact string with environment context — included a
 os=darwin/arm64 node=v22.11.0 cpu=10cores mem=32GB ffmpeg=yes
 ```
 
-It may also include `docker` or `wsl` flags when those environments are detected.
+It may also include `wsl` or sandbox runtime flags when those environments are detected.
 
 ### Studio feedback
 
@@ -107,7 +130,7 @@ It may also include `docker` or `wsl` flags when those environments are detected
 |-------|-------|
 | `$survey_id` | `studio_experience` |
 | `$survey_response` | Rating (1–5) |
-| `$survey_response_2` | Free-text comment (if provided) |
+| `$survey_response_2` | Free-text comment (only when provided) |
 | `source` | `studio` |
 | `doctor_summary` | Browser context (platform, screen, CPU cores, device memory, network type) |
 
@@ -118,7 +141,6 @@ It may also include `docker` or `wsl` flags when those environments are detected
 - Environment variable values
 - Personally identifiable information
 - IP addresses or precise location
-- Anything when telemetry is disabled
 
 Feedback is anonymous. Each installation has a random UUID (`anonymousId`) — there is no account, login, or email association.
 
@@ -140,18 +162,18 @@ The CLI persists feedback state in `~/.hyperframes/config.json`:
 | Field | Description |
 |-------|-------------|
 | `renderSuccessCount` | Total successful renders across all sessions |
-| `lastFeedbackPromptAt` | The `renderSuccessCount` value when the prompt last appeared |
+| `lastFeedbackPromptAt` | The `renderSuccessCount` value when the prompt last appeared — used to compute whether 15 renders have passed |
 
 Studio stores the equivalent state in `localStorage` under the `hyperframes-studio:` prefix.
 
 ## Opting Out
 
-### Disable telemetry entirely
+### CLI — disable telemetry entirely
 
-Disabling telemetry suppresses all feedback prompts (and all other usage tracking):
+Disabling telemetry suppresses the CLI feedback prompt and all other CLI usage tracking:
 
 ```bash
-# Via CLI command
+# Via CLI command (persisted to ~/.hyperframes/config.json)
 hyperframes telemetry disable
 
 # Or via environment variable (per-session)
@@ -163,7 +185,7 @@ DO_NOT_TRACK=1 hyperframes render --output out.mp4
 
 Once disabled, the `hyperframes feedback` command will print `Telemetry is disabled. Feedback not sent.` and exit without sending anything.
 
-### Suppress output without disabling telemetry
+### CLI — suppress output without disabling telemetry
 
 ```bash
 # Quiet mode: renders without any post-render output (including the feedback prompt)
@@ -172,7 +194,11 @@ hyperframes render --quiet --output out.mp4
 
 ### CI environments
 
-The feedback prompt is automatically suppressed when the `CI` environment variable is set (GitHub Actions, CircleCI, etc. set this by default).
+The CLI feedback prompt is automatically suppressed when the `CI` environment variable is set (GitHub Actions, CircleCI, etc. set this by default).
+
+### Studio
+
+The Studio feedback bar is not affected by the CLI telemetry setting. To suppress it, set `VITE_HYPERFRAMES_FEEDBACK_INTERVAL=0` at build time or remove the `VITE_HYPERFRAMES_FEEDBACK` feature flag from your Studio build.
 
 ## Related
 
