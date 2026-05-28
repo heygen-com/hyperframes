@@ -18,8 +18,9 @@
 
 <p align="center">
   <a href="https://hyperframes.heygen.com/quickstart">Quickstart</a> |
+  <a href="https://hyperframes.heygen.com/showcase">Showcase</a> |
+  <a href="https://www.hyperframes.dev/">Playground</a> |
   <a href="https://hyperframes.heygen.com/catalog/blocks/data-chart">Catalog</a> |
-  <a href="https://hyperframes.heygen.com/examples">Examples</a> |
   <a href="https://hyperframes.heygen.com/introduction">Docs</a> |
   <a href="https://discord.gg/EbK98HBPdk">Discord</a>
 </p>
@@ -60,6 +61,8 @@ npx hyperframes render       # render to MP4
 **Requirements:** Node.js 22+, FFmpeg
 
 ## What You Can Build
+
+Need ideas? Browse the [Showcase](https://hyperframes.heygen.com/showcase) for finished videos you can watch, read, run, and remix.
 
 - Product launch videos and feature announcements
 - PR walkthroughs with animated code diffs, narration, and captions
@@ -162,6 +165,7 @@ Read the full comparison in the [HyperFrames vs Remotion guide](https://hyperfra
 Full documentation: [hyperframes.heygen.com/introduction](https://hyperframes.heygen.com/introduction)
 
 - [Quickstart](https://hyperframes.heygen.com/quickstart)
+- [Showcase](https://hyperframes.heygen.com/showcase)
 - [Guides](https://hyperframes.heygen.com/guides/gsap-animation)
 - [API Reference](https://hyperframes.heygen.com/packages/core)
 - [Catalog](https://hyperframes.heygen.com/catalog/blocks/data-chart)
