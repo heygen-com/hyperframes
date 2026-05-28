@@ -135,6 +135,14 @@ export function trackCliError(props: {
   });
 }
 
+export function trackRenderFeedback(props: { rating: number; renderDurationMs: number }): void {
+  trackEvent("survey sent", {
+    $survey_id: "render_satisfaction",
+    $survey_response: props.rating,
+    render_duration_ms: props.renderDurationMs,
+  });
+}
+
 export function trackCommandResult(props: {
   command: string;
   success: boolean;

@@ -19,6 +19,10 @@ export interface HyperframesConfig {
   telemetryNoticeShown: boolean;
   /** Total CLI command invocations (for engagement prompts) */
   commandCount: number;
+  /** Total successful renders (for feedback prompt gating) */
+  renderSuccessCount: number;
+  /** The renderSuccessCount at which feedback was last shown */
+  lastFeedbackPromptAt: number;
   /** ISO timestamp of the last npm registry version check */
   lastUpdateCheck?: string;
   /** Latest version found on npm */
@@ -58,6 +62,8 @@ const DEFAULT_CONFIG: HyperframesConfig = {
   anonymousId: "",
   telemetryNoticeShown: false,
   commandCount: 0,
+  renderSuccessCount: 0,
+  lastFeedbackPromptAt: 0,
 };
 
 let cachedConfig: HyperframesConfig | null = null;
@@ -84,6 +90,8 @@ export function readConfig(): HyperframesConfig {
       anonymousId: parsed.anonymousId || randomUUID(),
       telemetryNoticeShown: parsed.telemetryNoticeShown ?? DEFAULT_CONFIG.telemetryNoticeShown,
       commandCount: parsed.commandCount ?? DEFAULT_CONFIG.commandCount,
+      renderSuccessCount: parsed.renderSuccessCount ?? DEFAULT_CONFIG.renderSuccessCount,
+      lastFeedbackPromptAt: parsed.lastFeedbackPromptAt ?? DEFAULT_CONFIG.lastFeedbackPromptAt,
       lastUpdateCheck: parsed.lastUpdateCheck,
       latestVersion: parsed.latestVersion,
       pendingUpdate: parsed.pendingUpdate,

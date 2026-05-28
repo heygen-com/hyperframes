@@ -45,6 +45,7 @@ import { c } from "../ui/colors.js";
 import { formatBytes, formatDuration, errorBox } from "../ui/format.js";
 import { renderProgress } from "../ui/progress.js";
 import { trackRenderComplete, trackRenderError } from "../telemetry/events.js";
+import { maybePromptRenderFeedback } from "../telemetry/feedback.js";
 import { bytesToMb } from "../telemetry/system.js";
 import { VERSION } from "../version.js";
 import { isDevMode } from "../utils/env.js";
@@ -827,6 +828,10 @@ export async function renderLocal(
   const elapsed = Date.now() - startTime;
   trackRenderMetrics(job, elapsed, options, false);
   printRenderComplete(outputPath, elapsed, options.quiet);
+  await maybePromptRenderFeedback({
+    renderDurationMs: elapsed,
+    quiet: options.quiet,
+  });
   if (options.exitAfterComplete) scheduleRenderProcessExit();
 }
 
