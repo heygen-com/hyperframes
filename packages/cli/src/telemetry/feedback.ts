@@ -18,6 +18,7 @@ export async function maybePromptRenderFeedback(opts: {
   renderDurationMs: number;
   quiet: boolean;
 }): Promise<void> {
+  if (process.env.HYPERFRAMES_NO_FEEDBACK === "1") return;
   if (promptedThisSession) return;
   if (opts.quiet) return;
   if (!process.stdin.isTTY) return;

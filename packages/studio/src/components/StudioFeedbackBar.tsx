@@ -9,8 +9,18 @@ const STORAGE_KEYS = {
   lastPromptedAt: "hyperframes-studio:feedbackLastPromptedAt",
 } as const;
 
+function isFeedbackDisabled(): boolean {
+  try {
+    const v = import.meta.env.VITE_HYPERFRAMES_NO_FEEDBACK as string | undefined;
+    return v === "1" || v === "true";
+  } catch {
+    return false;
+  }
+}
+
 // fallow-ignore-next-line complexity
 function shouldShowFeedback(): boolean {
+  if (isFeedbackDisabled()) return false;
   try {
     const count = parseInt(localStorage.getItem(STORAGE_KEYS.sessionCount) || "0", 10) || 0;
     const lastAt = parseInt(localStorage.getItem(STORAGE_KEYS.lastPromptedAt) || "0", 10) || 0;
