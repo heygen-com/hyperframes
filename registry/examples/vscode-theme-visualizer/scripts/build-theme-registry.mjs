@@ -103,11 +103,11 @@ function stripJsonComments(source) {
     if (inString) {
       output += char;
       escaped = char === "\\" && !escaped;
-      if (char === "\"" && !escaped) inString = false;
+      if (char === '"' && !escaped) inString = false;
       if (char !== "\\") escaped = false;
       continue;
     }
-    if (char === "\"") {
+    if (char === '"') {
       inString = true;
       output += char;
       continue;
@@ -137,11 +137,11 @@ function stripTrailingCommas(source) {
     if (inString) {
       output += char;
       escaped = char === "\\" && !escaped;
-      if (char === "\"" && !escaped) inString = false;
+      if (char === '"' && !escaped) inString = false;
       if (char !== "\\") escaped = false;
       continue;
     }
-    if (char === "\"") {
+    if (char === '"') {
       inString = true;
       output += char;
       continue;
@@ -184,7 +184,9 @@ function readTheme(fileName, seen = new Set()) {
 function scopeList(scope) {
   if (!scope) return [];
   if (Array.isArray(scope)) return scope;
-  return String(scope).split(",").map((item) => item.trim());
+  return String(scope)
+    .split(",")
+    .map((item) => item.trim());
 }
 
 function scopeMatches(actual, wanted) {

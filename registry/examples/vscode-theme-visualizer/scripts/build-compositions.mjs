@@ -12,7 +12,9 @@ fs.mkdirSync(compositionsDir, { recursive: true });
 fs.mkdirSync(renderEntriesDir, { recursive: true });
 
 const registrySource = fs.readFileSync(path.join(assetsDir, "vscode-theme-registry.js"), "utf8");
-const registry = JSON.parse(registrySource.match(/window\.VSCODE_THEME_REGISTRY = ([\s\S]*);\s*$/)[1]);
+const registry = JSON.parse(
+  registrySource.match(/window\.VSCODE_THEME_REGISTRY = ([\s\S]*);\s*$/)[1],
+);
 const clipDuration = 11;
 
 const css = String.raw`* {
@@ -800,9 +802,10 @@ function workbenchMarkup() {
 }
 
 function rootIndexMarkup() {
-  const clips = registry.map((theme, index) => {
-    const compositionId = `vscode-${theme.id}`;
-    return `      <div
+  const clips = registry
+    .map((theme, index) => {
+      const compositionId = `vscode-${theme.id}`;
+      return `      <div
         id="clip-${theme.id}"
         data-composition-id="${compositionId}"
         data-composition-src="compositions/${theme.id}.html"
@@ -810,7 +813,8 @@ function rootIndexMarkup() {
         data-duration="${clipDuration}"
         data-track-index="1"
       ></div>`;
-  }).join("\n");
+    })
+    .join("\n");
 
   return `<!doctype html>
 <html lang="en">
@@ -904,7 +908,10 @@ fs.writeFileSync(path.join(assetsDir, "vscode-sequence-runtime.js"), runtime);
 
 for (const theme of registry) {
   const compositionId = `vscode-${theme.id}`;
-  fs.writeFileSync(path.join(compositionsDir, `${theme.id}.html`), compositionMarkup(compositionId, theme));
+  fs.writeFileSync(
+    path.join(compositionsDir, `${theme.id}.html`),
+    compositionMarkup(compositionId, theme),
+  );
   fs.writeFileSync(path.join(renderEntriesDir, `${theme.id}.html`), renderEntryMarkup(theme));
 }
 
