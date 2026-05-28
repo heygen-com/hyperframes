@@ -20,7 +20,11 @@ export function normalizeErrorMessage(error: unknown): string {
     try {
       return JSON.stringify(error);
     } catch {
-      /* circular reference or toJSON throwing — fall through */
+      try {
+        return `{${Object.keys(error as object).join(", ")}}`;
+      } catch {
+        /* truly opaque object */
+      }
     }
   }
   return String(error ?? "unknown error");

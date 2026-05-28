@@ -68,6 +68,7 @@ export {
 } from "./server.js";
 
 // ── Utilities ───────────────────────────────────────────────────────────────
+export { normalizeErrorMessage } from "./utils/errorMessage.js";
 export { quantizeTimeToFrame } from "./utils/parityContract.js";
 export { resolveRenderPaths, type RenderPaths } from "./utils/paths.js";
 

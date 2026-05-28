@@ -26,6 +26,7 @@ import type { CompiledComposition } from "../htmlCompiler.js";
 import type { FileServerHandle } from "../fileServer.js";
 import { defaultLogger, type ProducerLogger } from "../../logger.js";
 import type { RenderJob } from "../renderOrchestrator.js";
+import { normalizeErrorMessage } from "../../utils/errorMessage.js";
 
 export interface CaptureCostEstimate {
   multiplier: number;
@@ -417,7 +418,7 @@ export async function runCaptureCalibration(input: {
  * protocol errors that recover cleanly under screenshot mode.
  */
 export function shouldFallbackToScreenshotAfterCalibrationError(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : String(error);
+  const message = normalizeErrorMessage(error);
   return /HeadlessExperimental\.beginFrame timed out|beginFrame probe timeout|Another frame is pending|Frame still pending|Protocol error.*HeadlessExperimental\.beginFrame|Runtime\.callFunctionOn timed out|Runtime\.evaluate timed out/i.test(
     message,
   );

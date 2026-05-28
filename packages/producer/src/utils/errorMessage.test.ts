@@ -37,7 +37,7 @@ describe("normalizeErrorMessage", () => {
   it("handles circular references gracefully", () => {
     const obj: Record<string, unknown> = {};
     obj.self = obj;
-    // Falls through JSON.stringify failure to String()
-    expect(normalizeErrorMessage(obj)).toBe("[object Object]");
+    // Falls through JSON.stringify failure to Object.keys()
+    expect(normalizeErrorMessage(obj)).toBe("{self}");
   });
 });
