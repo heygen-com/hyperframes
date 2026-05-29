@@ -18,8 +18,6 @@ import { HyperframesApiError } from "./_gen/client.js";
  * say, leave the code out and let the message stand on its own.
  */
 const ERROR_CODE_HINTS: Record<string, string> = {
-  hyperframes_project_invalid:
-    "The uploaded zip didn't validate. Confirm it contains index.html at the root (or matches --composition), and that all referenced assets are present.",
   hyperframes_project_too_large:
     "The zip exceeded the 32 MB limit. Trim large media (or pre-host them and reference by URL), then try again.",
   hyperframes_render_not_found:
