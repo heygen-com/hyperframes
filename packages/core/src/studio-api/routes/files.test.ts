@@ -327,6 +327,34 @@ const tl = gsap.timeline();
     expect(anim.properties.opacity).toBe(1);
   });
 
+  it("add mutation returns 400 when fromProperties provided for non-fromTo method", async () => {
+    const projectDir = createProjectDir();
+    const EMPTY_COMP = `<!DOCTYPE html><html><body><div id="el"></div><script data-hyperframes-gsap>
+const tl = gsap.timeline();
+</script></body></html>`;
+    writeHtml(projectDir, "empty.html", EMPTY_COMP);
+    const app = new Hono();
+    registerFileRoutes(app, createAdapter(projectDir));
+
+    const res = await app.request("http://localhost/projects/demo/gsap-mutations/empty.html", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        type: "add",
+        targetSelector: "#el",
+        method: "to",
+        position: 0,
+        duration: 0.5,
+        ease: "power2.out",
+        properties: { opacity: 1 },
+        fromProperties: { opacity: 0 },
+      }),
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toContain("fromProperties");
+  });
+
   it("edits a template-wrapped tween in place, preserving gsap.set and the IIFE", async () => {
     const projectDir = createProjectDir();
     writeComp(projectDir, "scene.html", TEMPLATE_COMP);

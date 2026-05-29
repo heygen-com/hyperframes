@@ -17,6 +17,7 @@ import { isAudioFile } from "../helpers/mime.js";
 import { generateWaveformCache } from "../helpers/waveform.js";
 import { validateUploadedMediaBuffer } from "../helpers/mediaValidation.js";
 import { isSafePath } from "../helpers/safePath.js";
+import type { GsapAnimation } from "../../parsers/gsapSerialize.js";
 import {
   removeElementFromHtml,
   patchElementInHtml,
@@ -600,26 +601,44 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       removeAnimationFromScript,
     } = await loadGsapParser();
 
+    function requireAnimation(
+      scriptText: string,
+      animationId: string,
+    ): { anim: GsapAnimation } | { err: Response } {
+      const parsed = parseGsapScript(scriptText);
+      const anim = parsed.animations.find((a) => a.id === animationId);
+      if (!anim) return { err: c.json({ error: "animation not found" }, 404) };
+      return { anim };
+    }
+
+    function requireFromToAnimation(
+      scriptText: string,
+      animationId: string,
+    ): { anim: GsapAnimation } | { err: Response } {
+      const result = requireAnimation(scriptText, animationId);
+      if ("err" in result) return result;
+      if (result.anim.method !== "fromTo")
+        return { err: c.json({ error: "animation is not a fromTo" }, 400) };
+      return result;
+    }
+
     let newScript: string;
 
     // fallow-ignore-next-line complexity
     switch (body.type) {
       case "update-property": {
-        const parsed = parseGsapScript(block.scriptText);
-        const anim = parsed.animations.find((a) => a.id === body.animationId);
-        if (!anim) return c.json({ error: "animation not found" }, 404);
+        const r = requireAnimation(block.scriptText, body.animationId);
+        if ("err" in r) return r.err;
         newScript = updateAnimationInScript(block.scriptText, body.animationId, {
-          properties: { ...anim.properties, [body.property]: body.value },
+          properties: { ...r.anim.properties, [body.property]: body.value },
         });
         break;
       }
       case "update-from-property": {
-        const parsed = parseGsapScript(block.scriptText);
-        const anim = parsed.animations.find((a) => a.id === body.animationId);
-        if (!anim) return c.json({ error: "animation not found" }, 404);
-        if (anim.method !== "fromTo") return c.json({ error: "animation is not a fromTo" }, 400);
+        const r = requireFromToAnimation(block.scriptText, body.animationId);
+        if ("err" in r) return r.err;
         newScript = updateAnimationInScript(block.scriptText, body.animationId, {
-          fromProperties: { ...(anim.fromProperties ?? {}), [body.property]: body.value },
+          fromProperties: { ...(r.anim.fromProperties ?? {}), [body.property]: body.value },
         });
         break;
       }
@@ -628,6 +647,9 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
         break;
       }
       case "add": {
+        if (body.fromProperties && body.method !== "fromTo") {
+          return c.json({ error: "fromProperties is only valid for method=fromTo" }, 400);
+        }
         const result = addAnimationToScript(block.scriptText, {
           targetSelector: body.targetSelector,
           method: body.method,
@@ -645,29 +667,25 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
         break;
       }
       case "add-property": {
-        const parsed = parseGsapScript(block.scriptText);
-        const anim = parsed.animations.find((a) => a.id === body.animationId);
-        if (!anim) return c.json({ error: "animation not found" }, 404);
+        const r = requireAnimation(block.scriptText, body.animationId);
+        if ("err" in r) return r.err;
         newScript = updateAnimationInScript(block.scriptText, body.animationId, {
-          properties: { ...anim.properties, [body.property]: body.defaultValue },
+          properties: { ...r.anim.properties, [body.property]: body.defaultValue },
         });
         break;
       }
       case "add-from-property": {
-        const parsed = parseGsapScript(block.scriptText);
-        const anim = parsed.animations.find((a) => a.id === body.animationId);
-        if (!anim) return c.json({ error: "animation not found" }, 404);
-        if (anim.method !== "fromTo") return c.json({ error: "animation is not a fromTo" }, 400);
+        const r = requireFromToAnimation(block.scriptText, body.animationId);
+        if ("err" in r) return r.err;
         newScript = updateAnimationInScript(block.scriptText, body.animationId, {
-          fromProperties: { ...(anim.fromProperties ?? {}), [body.property]: body.defaultValue },
+          fromProperties: { ...(r.anim.fromProperties ?? {}), [body.property]: body.defaultValue },
         });
         break;
       }
       case "remove-property": {
-        const parsed = parseGsapScript(block.scriptText);
-        const anim = parsed.animations.find((a) => a.id === body.animationId);
-        if (!anim) return c.json({ error: "animation not found" }, 404);
-        const filtered = { ...anim.properties };
+        const r = requireAnimation(block.scriptText, body.animationId);
+        if ("err" in r) return r.err;
+        const filtered = { ...r.anim.properties };
         delete filtered[body.property];
         newScript = updateAnimationInScript(block.scriptText, body.animationId, {
           properties: filtered,
@@ -675,11 +693,9 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
         break;
       }
       case "remove-from-property": {
-        const parsed = parseGsapScript(block.scriptText);
-        const anim = parsed.animations.find((a) => a.id === body.animationId);
-        if (!anim) return c.json({ error: "animation not found" }, 404);
-        if (anim.method !== "fromTo") return c.json({ error: "animation is not a fromTo" }, 400);
-        const filtered = { ...(anim.fromProperties ?? {}) };
+        const r = requireFromToAnimation(block.scriptText, body.animationId);
+        if ("err" in r) return r.err;
+        const filtered = { ...(r.anim.fromProperties ?? {}) };
         delete filtered[body.property];
         newScript = updateAnimationInScript(block.scriptText, body.animationId, {
           fromProperties: filtered,
