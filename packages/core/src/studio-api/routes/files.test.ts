@@ -109,6 +109,224 @@ describe("registerFileRoutes", () => {
     expect(payload.animations[0].targetSelector).toBe(".kicker");
   });
 
+  // A composition with a fromTo tween — used by the fromProperties mutation tests.
+  const FROMTO_COMP = `<!DOCTYPE html><html><body data-duration="3">
+<div id="box" data-start="0" data-duration="3" style="opacity:0"></div>
+<script data-hyperframes-gsap>
+const tl = gsap.timeline();
+tl.fromTo("#box", { opacity: 0, x: -50 }, { opacity: 1, x: 0, duration: 1.5, ease: "power2.out" }, 0);
+</script>
+</body></html>`;
+
+  function writeHtml(projectDir: string, name: string, html: string): void {
+    writeFileSync(join(projectDir, name), html);
+  }
+
+  async function getFirstAnimation(
+    app: Hono,
+    file: string,
+  ): Promise<{ id: string; method: string; fromProperties?: Record<string, number | string> }> {
+    const res = await app.request(`http://localhost/projects/demo/gsap-animations/${file}`);
+    const payload = (await res.json()) as {
+      animations: Array<{
+        id: string;
+        method: string;
+        fromProperties?: Record<string, number | string>;
+      }>;
+    };
+    return payload.animations[0];
+  }
+
+  it("update-from-property updates a fromTo start value in place", async () => {
+    const projectDir = createProjectDir();
+    writeHtml(projectDir, "comp.html", FROMTO_COMP);
+    const app = new Hono();
+    registerFileRoutes(app, createAdapter(projectDir));
+
+    const anim = await getFirstAnimation(app, "comp.html");
+    expect(anim.method).toBe("fromTo");
+    expect(anim.fromProperties?.opacity).toBe(0);
+
+    const res = await app.request("http://localhost/projects/demo/gsap-mutations/comp.html", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        type: "update-from-property",
+        animationId: anim.id,
+        property: "opacity",
+        value: 0.2,
+      }),
+    });
+    const result = (await res.json()) as {
+      ok: boolean;
+      after: string;
+      parsed: { animations: Array<{ fromProperties?: Record<string, number | string> }> };
+    };
+
+    expect(res.status).toBe(200);
+    expect(result.ok).toBe(true);
+    expect(result.after).toContain("opacity: 0.2");
+    expect(result.parsed.animations[0].fromProperties?.opacity).toBe(0.2);
+    // x unchanged
+    expect(result.parsed.animations[0].fromProperties?.x).toBe(-50);
+  });
+
+  it("update-from-property returns 400 for a non-fromTo animation", async () => {
+    const projectDir = createProjectDir();
+    const TO_COMP = `<!DOCTYPE html><html><body><script data-hyperframes-gsap>
+const tl = gsap.timeline();
+tl.to("#box", { opacity: 1, duration: 1 }, 0);
+</script></body></html>`;
+    writeHtml(projectDir, "to.html", TO_COMP);
+    const app = new Hono();
+    registerFileRoutes(app, createAdapter(projectDir));
+
+    const anim = await getFirstAnimation(app, "to.html");
+    expect(anim.method).toBe("to");
+
+    const res = await app.request("http://localhost/projects/demo/gsap-mutations/to.html", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        type: "update-from-property",
+        animationId: anim.id,
+        property: "opacity",
+        value: 0,
+      }),
+    });
+
+    expect(res.status).toBe(400);
+  });
+
+  it("add-from-property merges a new key into existing fromProperties", async () => {
+    const projectDir = createProjectDir();
+    writeHtml(projectDir, "comp.html", FROMTO_COMP);
+    const app = new Hono();
+    registerFileRoutes(app, createAdapter(projectDir));
+
+    const anim = await getFirstAnimation(app, "comp.html");
+
+    const res = await app.request("http://localhost/projects/demo/gsap-mutations/comp.html", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        type: "add-from-property",
+        animationId: anim.id,
+        property: "scale",
+        defaultValue: 0.5,
+      }),
+    });
+    const result = (await res.json()) as {
+      ok: boolean;
+      parsed: { animations: Array<{ fromProperties?: Record<string, number | string> }> };
+    };
+
+    expect(res.status).toBe(200);
+    expect(result.ok).toBe(true);
+    // Existing keys preserved, new key added
+    const fp = result.parsed.animations[0].fromProperties ?? {};
+    expect(fp.opacity).toBe(0);
+    expect(fp.x).toBe(-50);
+    expect(fp.scale).toBe(0.5);
+  });
+
+  it("remove-from-property deletes one key, leaving others intact", async () => {
+    const projectDir = createProjectDir();
+    writeHtml(projectDir, "comp.html", FROMTO_COMP);
+    const app = new Hono();
+    registerFileRoutes(app, createAdapter(projectDir));
+
+    const anim = await getFirstAnimation(app, "comp.html");
+
+    const res = await app.request("http://localhost/projects/demo/gsap-mutations/comp.html", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        type: "remove-from-property",
+        animationId: anim.id,
+        property: "x",
+      }),
+    });
+    const result = (await res.json()) as {
+      ok: boolean;
+      after: string;
+      parsed: { animations: Array<{ fromProperties?: Record<string, number | string> }> };
+    };
+
+    expect(res.status).toBe(200);
+    expect(result.ok).toBe(true);
+    const fp = result.parsed.animations[0].fromProperties ?? {};
+    expect(fp.x).toBeUndefined();
+    expect(fp.opacity).toBe(0); // untouched
+  });
+
+  it("remove-from-property returns 400 for a non-fromTo animation", async () => {
+    const projectDir = createProjectDir();
+    const TO_COMP = `<!DOCTYPE html><html><body><script data-hyperframes-gsap>
+const tl = gsap.timeline();
+tl.to("#box", { opacity: 1, duration: 1 }, 0);
+</script></body></html>`;
+    writeHtml(projectDir, "to.html", TO_COMP);
+    const app = new Hono();
+    registerFileRoutes(app, createAdapter(projectDir));
+
+    const anim = await getFirstAnimation(app, "to.html");
+
+    const res = await app.request("http://localhost/projects/demo/gsap-mutations/to.html", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        type: "remove-from-property",
+        animationId: anim.id,
+        property: "opacity",
+      }),
+    });
+
+    expect(res.status).toBe(400);
+  });
+
+  it("add mutation with fromTo method creates a fromTo tween with fromProperties", async () => {
+    const projectDir = createProjectDir();
+    const EMPTY_COMP = `<!DOCTYPE html><html><body><div id="el"></div><script data-hyperframes-gsap>
+const tl = gsap.timeline();
+</script></body></html>`;
+    writeHtml(projectDir, "empty.html", EMPTY_COMP);
+    const app = new Hono();
+    registerFileRoutes(app, createAdapter(projectDir));
+
+    const res = await app.request("http://localhost/projects/demo/gsap-mutations/empty.html", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        type: "add",
+        targetSelector: "#el",
+        method: "fromTo",
+        position: 0,
+        duration: 0.5,
+        ease: "power2.out",
+        properties: { opacity: 1 },
+        fromProperties: { opacity: 0 },
+      }),
+    });
+    const result = (await res.json()) as {
+      ok: boolean;
+      parsed: {
+        animations: Array<{
+          method: string;
+          fromProperties?: Record<string, number | string>;
+          properties: Record<string, number | string>;
+        }>;
+      };
+    };
+
+    expect(res.status).toBe(200);
+    expect(result.ok).toBe(true);
+    const anim = result.parsed.animations[0];
+    expect(anim.method).toBe("fromTo");
+    expect(anim.fromProperties?.opacity).toBe(0);
+    expect(anim.properties.opacity).toBe(1);
+  });
+
   it("edits a template-wrapped tween in place, preserving gsap.set and the IIFE", async () => {
     const projectDir = createProjectDir();
     writeComp(projectDir, "scene.html", TEMPLATE_COMP);
