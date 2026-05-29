@@ -38,6 +38,7 @@ export function useFileManager({
   const [editingFile, setEditingFile] = useState<EditingFile | null>(null);
   const [projectDir, setProjectDir] = useState<string | null>(null);
   const [fileTree, setFileTree] = useState<string[]>([]);
+  const [compositionPaths, setCompositionPaths] = useState<string[]>([]);
   const [fileTreeLoaded, setFileTreeLoaded] = useState(false);
   const [revealSourceOffset, setRevealSourceOffset] = useState<number | null>(null);
 
@@ -65,8 +66,9 @@ export function useFileManager({
     setFileTreeLoaded(false);
     fetch(`/api/projects/${projectId}`)
       .then((r) => r.json())
-      .then((data: { files?: string[]; dir?: string }) => {
+      .then((data: { files?: string[]; dir?: string; compositions?: string[] }) => {
         if (!cancelled && data.files) setFileTree(data.files);
+        if (!cancelled && data.compositions) setCompositionPaths(data.compositions);
         if (!cancelled) setProjectDir(typeof data.dir === "string" ? data.dir : null);
       })
       .catch(() => {
@@ -417,7 +419,7 @@ export function useFileManager({
 
   // ── Derived state ──
 
-  const compositions = useMemo(() => fileTree.filter((f) => f.endsWith(".html")), [fileTree]);
+  const compositions = compositionPaths;
 
   const assets = useMemo(
     () =>

@@ -1,6 +1,18 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import type { Hono } from "hono";
 import type { StudioApiAdapter } from "../types.js";
 import { walkDir } from "../helpers/safePath.js";
+
+function isCompositionFile(projectDir: string, relPath: string): boolean {
+  if (!relPath.endsWith(".html")) return false;
+  try {
+    const content = readFileSync(join(projectDir, relPath), "utf-8");
+    return content.includes("data-composition-id");
+  } catch {
+    return false;
+  }
+}
 
 export function registerProjectRoutes(api: Hono, adapter: StudioApiAdapter): void {
   // List all projects
@@ -25,6 +37,7 @@ export function registerProjectRoutes(api: Hono, adapter: StudioApiAdapter): voi
     const project = await adapter.resolveProject(c.req.param("id"));
     if (!project) return c.json({ error: "not found" }, 404);
     const files = walkDir(project.dir);
-    return c.json({ id: project.id, dir: project.dir, title: project.title, files });
+    const compositions = files.filter((f) => isCompositionFile(project.dir, f));
+    return c.json({ id: project.id, dir: project.dir, title: project.title, files, compositions });
   });
 }
