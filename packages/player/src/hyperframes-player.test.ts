@@ -1496,3 +1496,121 @@ describe("HyperframesPlayer volume and mute", () => {
     expect(zeroVolumeHtml).not.toBe(mutedHtml);
   });
 });
+
+// ── Playback rate ──
+
+describe("HyperframesPlayer playback rate", () => {
+  let player: HTMLElement & {
+    playbackRate: number;
+    iframeElement: HTMLIFrameElement;
+  };
+  let mockAudio: {
+    preload: string;
+    src: string;
+    muted: boolean;
+    volume: number;
+    playbackRate: number;
+    currentTime: number;
+    load: ReturnType<typeof vi.fn>;
+    play: ReturnType<typeof vi.fn>;
+    pause: ReturnType<typeof vi.fn>;
+  };
+
+  beforeEach(async () => {
+    await import("./hyperframes-player.js");
+
+    mockAudio = {
+      preload: "",
+      src: "",
+      muted: false,
+      volume: 1,
+      playbackRate: 1,
+      currentTime: 0,
+      load: vi.fn(),
+      play: vi.fn().mockResolvedValue(undefined),
+      pause: vi.fn(),
+    };
+    vi.spyOn(globalThis, "Audio").mockImplementation(
+      () => mockAudio as unknown as HTMLAudioElement,
+    );
+
+    player = document.createElement("hyperframes-player") as typeof player;
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    document.body.innerHTML = "";
+  });
+
+  it("defaults playbackRate to 1", () => {
+    document.body.appendChild(player);
+    expect(player.playbackRate).toBe(1);
+  });
+
+  it("clamps playbackRate to [0.1, 5]", () => {
+    document.body.appendChild(player);
+
+    player.playbackRate = 100;
+    expect(player.playbackRate).toBe(5);
+    // Assert the reflected attribute directly so the setter clamp is pinned
+    // independently of the getter clamp.
+    expect(player.getAttribute("playback-rate")).toBe("5");
+
+    player.playbackRate = 0.01;
+    expect(player.playbackRate).toBe(0.1);
+    expect(player.getAttribute("playback-rate")).toBe("0.1");
+  });
+
+  it("falls back to 1 for a non-positive or non-finite playbackRate", () => {
+    document.body.appendChild(player);
+
+    player.playbackRate = -2;
+    expect(player.playbackRate).toBe(1);
+    expect(player.getAttribute("playback-rate")).toBe("1");
+
+    player.playbackRate = 0;
+    expect(player.playbackRate).toBe(1);
+
+    player.playbackRate = NaN;
+    expect(player.playbackRate).toBe(1);
+  });
+
+  it("propagates the clamped rate to parent media, never an out-of-range value", () => {
+    player.setAttribute("audio-src", "https://cdn.example.com/narration.mp3");
+    document.body.appendChild(player);
+
+    player.setAttribute("playback-rate", "50");
+    expect(mockAudio.playbackRate).toBe(5);
+
+    player.setAttribute("playback-rate", "0.01");
+    expect(mockAudio.playbackRate).toBe(0.1);
+  });
+
+  it("sends the clamped rate as a set-playback-rate control to the iframe", () => {
+    document.body.appendChild(player);
+
+    const postMessageSpy = vi.fn();
+    Object.defineProperty(player.iframeElement, "contentWindow", {
+      value: { postMessage: postMessageSpy },
+      configurable: true,
+    });
+
+    player.setAttribute("playback-rate", "50");
+    expect(postMessageSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: "hf-parent",
+        type: "control",
+        action: "set-playback-rate",
+        playbackRate: 5,
+      }),
+      "*",
+    );
+  });
+
+  it("clamps an out-of-range value set directly via the attribute on read", () => {
+    document.body.appendChild(player);
+
+    player.setAttribute("playback-rate", "999");
+    expect(player.playbackRate).toBe(5);
+  });
+});

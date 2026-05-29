@@ -18,6 +18,21 @@ import { ShaderLoaderState } from "./shader-loader-state.js";
 import { PLAYER_STYLES } from "./styles.js";
 import { type DirectTimelineAdapter } from "./timeline-adapters.js";
 
+// Playback-rate bounds mirror the runtime clamp in
+// packages/core/src/runtime/init.ts (applyPlaybackRate) and media.ts so the
+// player accepts the same range as the in-iframe runtime: an out-of-range rate
+// would otherwise drive the parent-proxied <audio> outside the bounds the
+// timeline itself respects. Clamping here also shields the native
+// HTMLMediaElement.playbackRate setter, which throws for extreme values in
+// production browsers.
+const MIN_PLAYBACK_RATE = 0.1;
+const MAX_PLAYBACK_RATE = 5;
+
+function clampPlaybackRate(rate: number): number {
+  if (!Number.isFinite(rate) || rate <= 0) return 1;
+  return Math.max(MIN_PLAYBACK_RATE, Math.min(MAX_PLAYBACK_RATE, rate));
+}
+
 class HyperframesPlayer extends HTMLElement {
   static get observedAttributes() {
     return [
@@ -174,7 +189,7 @@ class HyperframesPlayer extends HTMLElement {
         this.posterEl = setupPoster(this.shadow, val, this.posterEl);
         break;
       case "playback-rate": {
-        const rate = parseFloat(val || "1");
+        const rate = clampPlaybackRate(parseFloat(val || "1"));
         this._media.updatePlaybackRate(rate);
         this._sendControl("set-playback-rate", { playbackRate: rate });
         this._directTimelineAdapter?.timeScale?.(rate);
@@ -296,10 +311,10 @@ class HyperframesPlayer extends HTMLElement {
   }
 
   get playbackRate() {
-    return parseFloat(this.getAttribute("playback-rate") || "1");
+    return clampPlaybackRate(parseFloat(this.getAttribute("playback-rate") || "1"));
   }
   set playbackRate(r: number) {
-    this.setAttribute("playback-rate", String(r));
+    this.setAttribute("playback-rate", String(clampPlaybackRate(r)));
   }
 
   get shaderCaptureScale() {
