@@ -26,11 +26,13 @@ function getAgentModalPositionStyle(
 
 export function AskAgentModal({
   selectionLabel,
+  contextPreview,
   anchorPoint = null,
   onSubmit,
   onClose,
 }: {
   selectionLabel: string;
+  contextPreview?: string;
   anchorPoint?: AgentModalAnchorPoint | null;
   onSubmit: (instruction: string) => void;
   onClose: () => void;
@@ -66,7 +68,7 @@ export function AskAgentModal({
       >
         <div className="flex items-center justify-between px-5 py-4 border-b border-neutral-800/60">
           <div>
-            <h3 className="text-sm font-medium text-neutral-200">Ask agent</h3>
+            <h3 className="text-sm font-medium text-neutral-200">Copy prompt to AI agent</h3>
             <p className="text-xs text-neutral-500 mt-0.5">
               {selectionLabel.length > 50 ? `${selectionLabel.slice(0, 49)}…` : selectionLabel}
             </p>
@@ -89,7 +91,7 @@ export function AskAgentModal({
             </svg>
           </button>
         </div>
-        <div className="px-5 py-4">
+        <div className="px-5 py-4 space-y-3">
           <textarea
             ref={inputRef}
             className="w-full h-24 px-3 py-2 rounded-lg border border-neutral-800 bg-neutral-900/60 text-sm text-neutral-200 placeholder-neutral-600 resize-none focus:outline-none focus:border-studio-accent/60 focus:ring-1 focus:ring-studio-accent/30"
@@ -101,6 +103,16 @@ export function AskAgentModal({
               if (e.key === "Escape") onClose();
             }}
           />
+          {contextPreview && (
+            <details className="group">
+              <summary className="text-[11px] text-neutral-500 cursor-pointer select-none hover:text-neutral-400">
+                Context included in prompt
+              </summary>
+              <pre className="mt-2 max-h-40 overflow-auto rounded-lg bg-neutral-900/80 px-3 py-2 text-[11px] leading-relaxed text-neutral-500 whitespace-pre-wrap break-words border border-neutral-800/50">
+                {contextPreview}
+              </pre>
+            </details>
+          )}
         </div>
         <div className="flex items-center justify-between px-5 py-3 border-t border-neutral-800/60">
           <span className="text-[11px] text-neutral-600">
