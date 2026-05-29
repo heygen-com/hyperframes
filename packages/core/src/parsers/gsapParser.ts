@@ -15,7 +15,7 @@ import { type GsapAnimation, type GsapMethod, type ParsedGsap } from "./gsapSeri
 export type { GsapAnimation, GsapMethod, ParsedGsap } from "./gsapSerialize";
 export {
   serializeGsapAnimations,
-  getAnimationsForElement,
+  getAnimationsForElementId,
   validateCompositionGsap,
   keyframesToGsapAnimations,
   gsapAnimationsToKeyframes,
@@ -107,17 +107,27 @@ function extractLiteralValue(node: any, scope: ScopeBindings): unknown {
 // ── Element-target resolution ───────────────────────────────────────────────
 //
 // Real compositions target tweens through element variables resolved from the
-// DOM (`const kicker = root.querySelector(".kicker"); tl.to(kicker, …)`) rather
-// than inline string selectors. To make those tweens editable we map each such
-// variable back to the CSS selector it was queried with.
+// DOM (`const kicker = root.querySelector(".kicker"); tl.to(kicker, …)`), arrays
+// of them (`tl.to([a, b], …)`), `gsap.utils.toArray(".sel")`, and per-element
+// loop variables (`items.forEach(el => tl.to(el, …))`) — not inline string
+// selectors. To make those tweens editable we resolve each target back to the
+// CSS selector(s) it addresses. Resolution is lexically scoped: the same
+// variable name can mean different elements in different IIFEs.
 
 const QUERY_METHODS = new Set(["querySelector", "querySelectorAll"]);
+const ITERATION_METHODS = new Set(["forEach", "map"]);
+const SCOPE_NODE_TYPES = new Set([
+  "Program",
+  "FunctionDeclaration",
+  "FunctionExpression",
+  "ArrowFunctionExpression",
+]);
 
 /**
- * If `node` is a DOM lookup call (`x.querySelector(".sel")`,
- * `document.querySelectorAll(".sel")`, `document.getElementById("id")`),
- * return the CSS selector it resolves to. `getElementById("id")` maps to
- * `#id`. Returns null for anything else.
+ * If `node` is a DOM lookup call — `x.querySelector(".sel")`,
+ * `document.querySelectorAll(".sel")`, `document.getElementById("id")`, or
+ * `gsap.utils.toArray(".sel")` — return the CSS selector it resolves to.
+ * `getElementById("id")` maps to `#id`. Returns null for anything else.
  */
 function selectorFromQueryCall(node: any, scope: ScopeBindings): string | null {
   if (node?.type !== "CallExpression") return null;
@@ -126,55 +136,161 @@ function selectorFromQueryCall(node: any, scope: ScopeBindings): string | null {
   const method = callee.property.name;
   const argValue = resolveNode(node.arguments?.[0], scope);
   if (typeof argValue !== "string" || argValue.length === 0) return null;
-  if (QUERY_METHODS.has(method)) return argValue;
+  if (QUERY_METHODS.has(method) || method === "toArray") return argValue;
   if (method === "getElementById") return `#${argValue}`;
   return null;
 }
 
-type TargetBindings = ReadonlyMap<string, string>;
+/** The nearest enclosing function/program node — the binding scope of `path`. */
+function enclosingScopeNode(path: any): any {
+  let p = path?.parentPath;
+  while (p) {
+    if (SCOPE_NODE_TYPES.has(p.node?.type)) return p.node;
+    p = p.parentPath;
+  }
+  return null;
+}
 
-/** Map element variables (assigned from a DOM lookup) to their CSS selector. */
+/** Scope nodes enclosing `path`, innermost first. */
+function scopeChainOf(path: any): any[] {
+  const chain: any[] = [];
+  let p = path;
+  while (p) {
+    if (SCOPE_NODE_TYPES.has(p.node?.type)) chain.push(p.node);
+    p = p.parentPath;
+  }
+  return chain;
+}
+
+/** Per-scope element bindings: scopeNode → (variable name → selector). */
+type TargetBindings = Map<any, Map<string, string>>;
+
+function addBinding(
+  bindings: TargetBindings,
+  scopeNode: any,
+  name: string,
+  selector: string,
+): void {
+  let scoped = bindings.get(scopeNode);
+  if (!scoped) {
+    scoped = new Map();
+    bindings.set(scopeNode, scoped);
+  }
+  if (!scoped.has(name)) scoped.set(name, selector);
+}
+
+/**
+ * Build a lexically-scoped index of element variables → selector. Two passes:
+ * (1) direct DOM-lookup assignments (`const x = root.querySelector(...)`), then
+ * (2) iteration callback params (`coll.forEach(el => …)`), whose element type is
+ * the collection's selector — resolved against the pass-1 bindings.
+ */
 function collectTargetBindings(ast: any, scope: ScopeBindings): TargetBindings {
-  const bindings = new Map<string, string>();
+  const bindings: TargetBindings = new Map();
+
   recast.types.visit(ast, {
     visitVariableDeclarator(path: any) {
       const name = path.node.id?.name;
       const selector = selectorFromQueryCall(path.node.init, scope);
-      if (name && selector !== null) bindings.set(name, selector);
+      if (name && selector !== null) addBinding(bindings, enclosingScopeNode(path), name, selector);
       this.traverse(path);
     },
     visitAssignmentExpression(path: any) {
       const left = path.node.left;
       const selector = selectorFromQueryCall(path.node.right, scope);
-      if (left?.type === "Identifier" && selector !== null && !bindings.has(left.name)) {
-        bindings.set(left.name, selector);
+      if (left?.type === "Identifier" && selector !== null) {
+        addBinding(bindings, enclosingScopeNode(path), left.name, selector);
       }
       this.traverse(path);
     },
   });
+
+  // Pass 2: forEach/map callback params take the collection's selector.
+  recast.types.visit(ast, {
+    visitCallExpression(path: any) {
+      const node = path.node;
+      const callee = node.callee;
+      if (
+        callee?.type === "MemberExpression" &&
+        callee.property?.type === "Identifier" &&
+        ITERATION_METHODS.has(callee.property.name)
+      ) {
+        const collectionSelector = resolveCollectionSelector(callee.object, path, scope, bindings);
+        const fn = node.arguments?.[0];
+        const param = fn?.params?.[0];
+        if (collectionSelector && param?.type === "Identifier" && isFunctionNode(fn)) {
+          addBinding(bindings, fn, param.name, collectionSelector);
+        }
+      }
+      this.traverse(path);
+    },
+  });
+
   return bindings;
+}
+
+function isFunctionNode(node: any): boolean {
+  return (
+    node?.type === "ArrowFunctionExpression" ||
+    node?.type === "FunctionExpression" ||
+    node?.type === "FunctionDeclaration"
+  );
+}
+
+/** Resolve the selector a `.forEach`/`.map` is iterating over (variable or inline call). */
+function resolveCollectionSelector(
+  node: any,
+  callPath: any,
+  scope: ScopeBindings,
+  bindings: TargetBindings,
+): string | null {
+  if (node?.type === "Identifier") return lookupBinding(node.name, callPath, bindings);
+  if (node?.type === "CallExpression") return selectorFromQueryCall(node, scope);
+  return null;
+}
+
+/** Resolve a variable name to its selector using the lexical scope chain of `path`. */
+function lookupBinding(name: string, path: any, bindings: TargetBindings): string | null {
+  for (const scopeNode of scopeChainOf(path)) {
+    const selector = bindings.get(scopeNode)?.get(name);
+    if (selector !== undefined) return selector;
+  }
+  return null;
 }
 
 /**
  * Resolve a tween's first argument to a CSS selector. Handles inline string
- * literals, element variables (via {@link collectTargetBindings}), and inline
- * DOM lookup calls. Returns null when the target can't be resolved statically
- * (e.g. an object-target duration anchor `tl.to({ _: 0 }, …)`).
+ * literals, element variables (lexically scoped), arrays of elements (joined
+ * into a CSS group selector), inline DOM lookup / `toArray` calls, and indexed
+ * access (`items[i]`). Returns null when the target can't be resolved
+ * statically (e.g. an object-target duration anchor `tl.to({ _: 0 }, …)`, or a
+ * runtime-computed selector).
  */
 function resolveTargetSelector(
   node: any,
+  path: any,
   scope: ScopeBindings,
-  targetBindings: TargetBindings,
+  bindings: TargetBindings,
 ): string | null {
   if (!node) return null;
   if (node.type === "StringLiteral" || node.type === "Literal") {
     return typeof node.value === "string" ? node.value : null;
   }
   if (node.type === "Identifier") {
-    return targetBindings.get(node.name) ?? null;
+    return lookupBinding(node.name, path, bindings);
   }
   if (node.type === "CallExpression") {
     return selectorFromQueryCall(node, scope);
+  }
+  if (node.type === "ArrayExpression") {
+    const parts = node.elements
+      .map((el: any) => resolveTargetSelector(el, path, scope, bindings))
+      .filter((s: string | null): s is string => typeof s === "string" && s.length > 0);
+    return parts.length > 0 ? parts.join(", ") : null;
+  }
+  if (node.type === "MemberExpression" && node.object?.type === "Identifier") {
+    // `items[i]` — the element type is the collection's selector.
+    return lookupBinding(node.object.name, path, bindings);
   }
   return null;
 }
@@ -250,6 +366,18 @@ interface TweenCallInfo {
   positionArg?: any;
 }
 
+/**
+ * True when the member chain of `callNode.callee` is rooted at the timeline
+ * variable — `tl.to(...)` and every link of a chain `tl.to(...).to(...)`.
+ */
+function isTimelineRootedCall(callNode: any, timelineVar: string): boolean {
+  let obj = callNode.callee?.object;
+  while (obj?.type === "CallExpression") {
+    obj = obj.callee?.object;
+  }
+  return obj?.type === "Identifier" && obj.name === timelineVar;
+}
+
 function findAllTweenCalls(
   ast: any,
   timelineVar: string,
@@ -263,9 +391,8 @@ function findAllTweenCalls(
       const callee = node.callee;
       if (
         callee?.type === "MemberExpression" &&
-        callee.object?.type === "Identifier" &&
-        callee.object.name === timelineVar &&
-        callee.property?.type === "Identifier"
+        callee.property?.type === "Identifier" &&
+        isTimelineRootedCall(node, timelineVar)
       ) {
         const method = callee.property.name;
         if (!GSAP_METHODS.has(method)) {
@@ -277,7 +404,7 @@ function findAllTweenCalls(
           this.traverse(path);
           return;
         }
-        const selectorValue = resolveTargetSelector(args[0], scope, targetBindings);
+        const selectorValue = resolveTargetSelector(args[0], path, scope, targetBindings);
         if (!selectorValue) {
           this.traverse(path);
           return;
@@ -597,7 +724,8 @@ function findStatementPath(path: any): any {
 function buildTweenStatementCode(timelineVar: string, anim: Omit<GsapAnimation, "id">): string {
   const selector = JSON.stringify(anim.targetSelector);
   const props: Record<string, number | string> = { ...anim.properties };
-  if (anim.duration !== undefined) props.duration = anim.duration;
+  // `set` is instantaneous — GSAP ignores duration on it, so don't emit one.
+  if (anim.method !== "set" && anim.duration !== undefined) props.duration = anim.duration;
   if (anim.ease) props.ease = anim.ease;
   const entries = Object.entries(props).map(([k, v]) => `${safeKey(k)}: ${valueToCode(v)}`);
   if (anim.extras) {
@@ -627,7 +755,8 @@ export function updateAnimationInScript(
   let parsed: ParsedGsapAst;
   try {
     parsed = parseGsapAst(script);
-  } catch {
+  } catch (e) {
+    console.warn("[gsap-parser] updateAnimationInScript parse failed:", e);
     return script;
   }
   const target = parsed.located.find((l) => l.id === animationId);
@@ -643,7 +772,8 @@ export function addAnimationToScript(
   let parsed: ParsedGsapAst;
   try {
     parsed = parseGsapAst(script);
-  } catch {
+  } catch (e) {
+    console.warn("[gsap-parser] addAnimationToScript parse failed:", e);
     return { script, id: "" };
   }
   // Nothing to anchor against and no timeline to target — treat as parse failure.
@@ -686,17 +816,46 @@ function findTimelineDeclarationPath(ast: any, timelineVar: string): any {
   return found;
 }
 
+/** Find the call that chains off `targetNode` (i.e. whose callee object IS it). */
+function findChainParentCall(stmtNode: any, targetNode: any): any {
+  let found: any = null;
+  recast.types.visit(stmtNode, {
+    visitCallExpression(p: any) {
+      if (found) return false;
+      if (p.node.callee?.type === "MemberExpression" && p.node.callee.object === targetNode) {
+        found = p.node;
+        return false;
+      }
+      this.traverse(p);
+    },
+  });
+  return found;
+}
+
 export function removeAnimationFromScript(script: string, animationId: string): string {
   let parsed: ParsedGsapAst;
   try {
     parsed = parseGsapAst(script);
-  } catch {
+  } catch (e) {
+    console.warn("[gsap-parser] removeAnimationFromScript parse failed:", e);
     return script;
   }
   const target = parsed.located.find((l) => l.id === animationId);
   if (!target) return script;
+  const node = target.call.node;
   const stmtPath = findStatementPath(target.call.path);
   if (!stmtPath) return script;
-  stmtPath.prune();
+
+  const parentCall = findChainParentCall(stmtPath.node, node);
+  if (parentCall) {
+    // Inner link of a chain — splice it out by re-pointing the next link.
+    parentCall.callee.object = node.callee.object;
+  } else if (node.callee?.object?.type === "CallExpression") {
+    // Outermost link of a chain with earlier links — drop just this link.
+    stmtPath.node.expression = node.callee.object;
+  } else {
+    // Standalone tween — remove the whole statement.
+    stmtPath.prune();
+  }
   return recast.print(parsed.ast).code;
 }

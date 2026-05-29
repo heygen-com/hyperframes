@@ -9,9 +9,11 @@ export interface GsapElementTarget {
 
 /**
  * A tween belongs to the selected element when its target selector addresses
- * that element — either by id (`#id`) or by the exact CSS selector the element
- * was selected through (`.kicker`). Real compositions target tweens by class
- * via `querySelector`, so id-only matching misses them.
+ * that element — by id (`#id`), by the exact CSS selector the element was
+ * selected through (`.kicker`), or as one member of a group selector
+ * (`.clock-face, .clock-hand`, emitted for array/`toArray` targets). Real
+ * compositions target tweens by class via `querySelector`, so id-only matching
+ * misses them.
  */
 export function getAnimationsForElement(
   animations: GsapAnimation[],
@@ -21,7 +23,9 @@ export function getAnimationsForElement(
   if (target.id) matchers.add(`#${target.id}`);
   if (target.selector) matchers.add(target.selector);
   if (matchers.size === 0) return [];
-  return animations.filter((a) => matchers.has(a.targetSelector));
+  return animations.filter((a) =>
+    a.targetSelector.split(",").some((part) => matchers.has(part.trim())),
+  );
 }
 
 async function fetchParsedAnimations(

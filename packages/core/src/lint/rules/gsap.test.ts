@@ -629,6 +629,30 @@ describe("GSAP rules", () => {
     expect(finding).toBeUndefined();
   });
 
+  it("detects overlapping_gsap_tweens between variable-target tweens", async () => {
+    // Both tweens target the same element via a querySelector variable and their
+    // windows overlap on `opacity`. The structure-driven window builder must see
+    // through the variable target to flag the conflict.
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <div id="hero" class="hero" data-start="0" data-duration="5" data-track-index="0"></div>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    const hero = document.querySelector("#hero");
+    tl.to(hero, { opacity: 1, duration: 1 }, 0);
+    tl.to(hero, { opacity: 0.5, duration: 1 }, 0.5);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "overlapping_gsap_tweens");
+    expect(finding).toBeDefined();
+  });
+
   it("warns when an opacity exit ends at a clip start boundary without a hard kill", async () => {
     const html = `
 <html><body>

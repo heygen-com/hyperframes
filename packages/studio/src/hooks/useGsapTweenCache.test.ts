@@ -37,4 +37,13 @@ describe("getAnimationsForElement", () => {
     expect(getAnimationsForElement(animations, {})).toEqual([]);
     expect(getAnimationsForElement(animations, { id: null, selector: null })).toEqual([]);
   });
+
+  it("matches an element that is one member of a group-selector tween", () => {
+    // Array/toArray targets serialize as a CSS group selector; selecting either
+    // member element should surface the shared tween.
+    const grouped = [anim(".clock-face, .clock-hand")];
+    expect(getAnimationsForElement(grouped, { selector: ".clock-face" })).toHaveLength(1);
+    expect(getAnimationsForElement(grouped, { selector: ".clock-hand" })).toHaveLength(1);
+    expect(getAnimationsForElement(grouped, { selector: ".unrelated" })).toHaveLength(0);
+  });
 });

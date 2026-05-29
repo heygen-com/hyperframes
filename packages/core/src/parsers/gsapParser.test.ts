@@ -6,7 +6,7 @@ import {
   SUPPORTED_EASES,
   serializeGsapAnimations,
   validateCompositionGsap,
-  getAnimationsForElement,
+  getAnimationsForElementId,
   keyframesToGsapAnimations,
   addAnimationToScript,
   removeAnimationFromScript,
@@ -679,7 +679,7 @@ describe("validateCompositionGsap", () => {
   });
 });
 
-describe("getAnimationsForElement", () => {
+describe("getAnimationsForElementId", () => {
   it("filters animations by element id", () => {
     const animations: GsapAnimation[] = [
       { id: "a1", targetSelector: "#el1", method: "set", position: 0, properties: { opacity: 0 } },
@@ -701,7 +701,7 @@ describe("getAnimationsForElement", () => {
       },
     ];
 
-    const result = getAnimationsForElement(animations, "el1");
+    const result = getAnimationsForElementId(animations, "el1");
     expect(result).toHaveLength(2);
     expect(result.every((a) => a.targetSelector === "#el1")).toBe(true);
   });
@@ -711,7 +711,7 @@ describe("getAnimationsForElement", () => {
       { id: "a1", targetSelector: "#el1", method: "set", position: 0, properties: { opacity: 0 } },
     ];
 
-    const result = getAnimationsForElement(animations, "el99");
+    const result = getAnimationsForElementId(animations, "el99");
     expect(result).toHaveLength(0);
   });
 });
@@ -1019,5 +1019,169 @@ describe("in-place AST mutation preserves surrounding code", () => {
     expect(updated).toContain("opacity: 0.25");
     // second tween untouched
     expect(updated).toContain('tl.to("#el2", { x: 100, duration: 1 }, 1)');
+  });
+});
+
+// ── Advanced target resolution + chained calls (editor limitations) ─────────
+
+describe("array targets", () => {
+  it("resolves an array of element variables to a CSS group selector", () => {
+    const script = `
+      const root = document.querySelector('#s');
+      const face = root.querySelector(".clock-face");
+      const hand = root.querySelector(".clock-hand");
+      const tl = gsap.timeline({ paused: true });
+      tl.to([face, hand], { opacity: 1, duration: 0.5 }, 0);
+    `;
+    const result = parseGsapScript(script);
+    expect(result.animations).toHaveLength(1);
+    expect(result.animations[0].targetSelector).toBe(".clock-face, .clock-hand");
+  });
+
+  it("does not rewrite the array argument when editing the tween", () => {
+    const script = `
+      const a = document.querySelector(".a");
+      const b = document.querySelector(".b");
+      const tl = gsap.timeline({ paused: true });
+      tl.to([a, b], { opacity: 1, duration: 0.5 }, 0);
+    `;
+    const parsed = parseGsapScript(script);
+    const updated = updateAnimationInScript(script, parsed.animations[0].id, {
+      properties: { opacity: 0.3 },
+    });
+    expect(updated).toContain("tl.to([a, b],");
+    expect(updated).toContain("opacity: 0.3");
+  });
+});
+
+describe("chained tween calls", () => {
+  const CHAIN = `
+    const tl = gsap.timeline({ paused: true });
+    const flash = document.querySelector(".flash");
+    tl.to(flash, { opacity: 0.5, duration: 0.16 }, 2.06)
+      .to(flash, { opacity: 0, duration: 0.5 }, 2.22);
+  `;
+
+  it("captures every link of a chained call", () => {
+    const result = parseGsapScript(CHAIN);
+    expect(result.animations).toHaveLength(2);
+    expect(result.animations.every((a) => a.targetSelector === ".flash")).toBe(true);
+    expect(result.animations.map((a) => a.position).sort()).toEqual([2.06, 2.22]);
+  });
+
+  it("edits one link of a chain in place, leaving the other intact", () => {
+    const parsed = parseGsapScript(CHAIN);
+    const second = parsed.animations.find((a) => a.position === 2.22)!;
+    const updated = updateAnimationInScript(CHAIN, second.id, { properties: { opacity: 0.9 } });
+    expect(updated).toContain("opacity: 0.9");
+    expect(updated).toContain("opacity: 0.5"); // first link untouched
+  });
+
+  it("deletes one link of a chain, keeping the other (chain-aware removal)", () => {
+    const parsed = parseGsapScript(CHAIN);
+    const first = parsed.animations.find((a) => a.position === 2.06)!;
+    const updated = removeAnimationFromScript(CHAIN, first.id);
+    const reparsed = parseGsapScript(updated);
+    expect(reparsed.animations).toHaveLength(1);
+    expect(reparsed.animations[0].position).toBe(2.22);
+  });
+});
+
+describe("gsap.utils.toArray targets", () => {
+  it("resolves an inline toArray selector", () => {
+    const script = `
+      const tl = gsap.timeline({ paused: true });
+      tl.to(gsap.utils.toArray(".item"), { opacity: 1, duration: 0.5, stagger: 0.1 }, 0);
+    `;
+    const result = parseGsapScript(script);
+    expect(result.animations).toHaveLength(1);
+    expect(result.animations[0].targetSelector).toBe(".item");
+  });
+
+  it("resolves a toArray result stored in a variable", () => {
+    const script = `
+      const items = gsap.utils.toArray(".item");
+      const tl = gsap.timeline({ paused: true });
+      tl.to(items, { opacity: 1, duration: 0.5 }, 0);
+    `;
+    const result = parseGsapScript(script);
+    expect(result.animations[0].targetSelector).toBe(".item");
+  });
+});
+
+describe("lexical scoping of element bindings", () => {
+  it("resolves the same variable name to different selectors per IIFE scope", () => {
+    const script = `
+      (function () {
+        const tl = gsap.timeline({ paused: true });
+        const kicker = document.querySelector(".scene-a-kicker");
+        tl.to(kicker, { opacity: 1, duration: 0.5 }, 0);
+      })();
+      (function () {
+        const tl = gsap.timeline({ paused: true });
+        const kicker = document.querySelector(".scene-b-kicker");
+        tl.to(kicker, { opacity: 1, duration: 0.5 }, 0);
+      })();
+    `;
+    const result = parseGsapScript(script);
+    const selectors = result.animations.map((a) => a.targetSelector);
+    expect(selectors).toContain(".scene-a-kicker");
+    expect(selectors).toContain(".scene-b-kicker");
+  });
+});
+
+describe("forEach / map callback targets", () => {
+  it("resolves a forEach callback param to the collection's selector", () => {
+    const script = `
+      const tl = gsap.timeline({ paused: true });
+      const items = document.querySelectorAll(".item");
+      items.forEach((el) => {
+        tl.to(el, { opacity: 1, duration: 0.4 }, 0);
+      });
+    `;
+    const result = parseGsapScript(script);
+    expect(result.animations).toHaveLength(1);
+    expect(result.animations[0].targetSelector).toBe(".item");
+  });
+
+  it("resolves an inline querySelectorAll().forEach callback param", () => {
+    const script = `
+      const tl = gsap.timeline({ paused: true });
+      document.querySelectorAll(".dot").forEach((dot) => {
+        tl.to(dot, { scale: 1, duration: 0.3 }, 0);
+      });
+    `;
+    const result = parseGsapScript(script);
+    expect(result.animations[0].targetSelector).toBe(".dot");
+  });
+});
+
+describe("fromTo in-place mutation", () => {
+  const FROMTO = `
+    const tl = gsap.timeline({ paused: true });
+    const ring = document.querySelector(".ring");
+    tl.fromTo(ring, { scale: 0.6, opacity: 0.65 }, { scale: 2.2, opacity: 0, duration: 0.8 }, 2.08);
+  `;
+
+  it("edits the to-vars of a fromTo in place", () => {
+    const parsed = parseGsapScript(FROMTO);
+    const updated = updateAnimationInScript(FROMTO, parsed.animations[0].id, {
+      properties: { scale: 3, opacity: 0 },
+    });
+    expect(updated).toContain("scale: 3");
+    // from-vars left intact, target not flattened
+    expect(updated).toContain("{ scale: 0.6, opacity: 0.65 }");
+    expect(updated).toContain("tl.fromTo(ring,");
+  });
+
+  it("edits the from-vars of a fromTo in place", () => {
+    const parsed = parseGsapScript(FROMTO);
+    const updated = updateAnimationInScript(FROMTO, parsed.animations[0].id, {
+      fromProperties: { scale: 0.2, opacity: 1 },
+    });
+    const reparsed = parseGsapScript(updated);
+    expect(reparsed.animations[0].fromProperties?.scale).toBe(0.2);
+    // to-vars untouched
+    expect(reparsed.animations[0].properties.scale).toBe(2.2);
   });
 });

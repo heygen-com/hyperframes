@@ -79,7 +79,7 @@ export type { GsapAnimation, GsapMethod, ParsedGsap } from "./parsers/gsapSerial
 
 export {
   serializeGsapAnimations,
-  getAnimationsForElement,
+  getAnimationsForElementId,
   validateCompositionGsap,
   keyframesToGsapAnimations,
   gsapAnimationsToKeyframes,

@@ -338,21 +338,20 @@ describe("5. Deeply nested objects", () => {
 // ── 6. Chained Method Calls ────────────────────────────────────────────────
 
 describe("6. Chained method calls", () => {
-  it("chained tl.to().to().from() — only top-level calls detected", () => {
-    // Chaining like tl.to(...).to(...) means the second .to() is called on the
-    // return value of the first .to(), which is the timeline itself. However,
-    // the parser checks `callee.object.name === timelineVar`, so chained calls
-    // where the callee.object is a CallExpression (not an Identifier) are skipped.
+  it("chained tl.to().to().from() — every link is detected", () => {
+    // Each link of a chain is called on the return value of the previous one
+    // (ultimately the timeline). The parser walks the member chain to its root,
+    // so every link is captured, not just the first.
     const script = `
       const tl = gsap.timeline({ paused: true });
       tl.to("#a", { x: 100, duration: 0.5 }, 0).to("#b", { y: 200, duration: 0.5 }, 1).from("#c", { scale: 0, duration: 1 }, 2);
     `;
     const result = parseGsapScript(script);
-    // Only the first call in the chain has `tl` as the callee object directly
-    // The rest are chained on the return value — parser may or may not catch them
-    expect(result.animations.length).toBeGreaterThanOrEqual(1);
-    expect(result.animations[0].targetSelector).toBe("#a");
-    expect(result.animations[0].properties.x).toBe(100);
+    expect(result.animations).toHaveLength(3);
+    const bySelector = Object.fromEntries(result.animations.map((a) => [a.targetSelector, a]));
+    expect(bySelector["#a"]?.properties.x).toBe(100);
+    expect(bySelector["#b"]?.properties.y).toBe(200);
+    expect(bySelector["#c"]?.method).toBe("from");
   });
 
   it("separate statements all parse", () => {

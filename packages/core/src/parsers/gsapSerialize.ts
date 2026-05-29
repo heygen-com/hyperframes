@@ -135,7 +135,12 @@ function serializeExtras(extras: Record<string, unknown>): string {
 
 // ── Element filtering ─────────────────────────────────────────────────────────
 
-export function getAnimationsForElement(
+/**
+ * Filter animations to those targeting `#<elementId>` (id-only match). For the
+ * studio panel's id-OR-selector matching, see `getAnimationsForElement` in
+ * `useGsapTweenCache.ts` — distinct on purpose, hence the distinct name.
+ */
+export function getAnimationsForElementId(
   animations: GsapAnimation[],
   elementId: string,
 ): GsapAnimation[] {
