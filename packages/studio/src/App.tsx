@@ -437,7 +437,7 @@ export function StudioApp() {
 
   const handleSelectComposition = useCallback(
     (comp: string) => {
-      setActiveCompPath(comp === "index.html" || comp.startsWith("compositions/") ? comp : null);
+      setActiveCompPath(comp.endsWith(".html") ? comp : null);
       fileManager.setEditingFile({ path: comp, content: null });
       fetch(`/api/projects/${projectId}/files/${comp}`)
         .then((r) => r.json())

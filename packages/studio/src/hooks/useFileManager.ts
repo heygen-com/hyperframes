@@ -417,10 +417,7 @@ export function useFileManager({
 
   // ── Derived state ──
 
-  const compositions = useMemo(
-    () => fileTree.filter((f) => f === "index.html" || f.startsWith("compositions/")),
-    [fileTree],
-  );
+  const compositions = useMemo(() => fileTree.filter((f) => f.endsWith(".html")), [fileTree]);
 
   const assets = useMemo(
     () =>
