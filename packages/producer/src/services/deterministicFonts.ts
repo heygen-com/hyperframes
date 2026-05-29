@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
@@ -234,7 +235,13 @@ function extractRequestedFontFamilies(html: string): Map<string, string> {
   return requested;
 }
 
-function buildFontFaceRule(familyName: string, src: string, weight: string, style: string): string {
+function buildFontFaceRule(
+  familyName: string,
+  src: string,
+  weight: string,
+  style: string,
+  unicodeRange?: string,
+): string {
   return [
     "@font-face {",
     `  font-family: "${familyName}";`,
@@ -242,6 +249,9 @@ function buildFontFaceRule(familyName: string, src: string, weight: string, styl
     `  font-style: ${style};`,
     `  font-weight: ${weight};`,
     "  font-display: block;",
+    // Preserve the subset's unicode-range so the browser selects the right
+    // per-codepoint subset (matching Google Fonts' own CSS semantics).
+    ...(unicodeRange ? [`  unicode-range: ${unicodeRange};`] : []),
     "}",
   ].join("\n");
 }
@@ -278,11 +288,19 @@ async function buildFontFaceCss(
       // if the bundle only ships 400/700/900.
       const googleFaces = await fetchGoogleFont(originalCaseFamily, options);
       for (const face of googleFaces) {
-        const key = `${face.weight}:${face.style}`;
-        if (!coveredWeights.has(key)) {
-          rules.push(buildFontFaceRule(originalCaseFamily, face.dataUri, face.weight, face.style));
-          coveredWeights.add(key);
-        }
+        // A weight covered by the embedded bundle is already full-coverage —
+        // skip it. For weights the bundle lacks, add EVERY subset face (a
+        // weight has one face per unicode-range subset), not just the first.
+        if (coveredWeights.has(`${face.weight}:${face.style}`)) continue;
+        rules.push(
+          buildFontFaceRule(
+            originalCaseFamily,
+            face.dataUri,
+            face.weight,
+            face.style,
+            face.unicodeRange,
+          ),
+        );
       }
       continue;
     }
@@ -291,7 +309,15 @@ async function buildFontFaceCss(
     const googleFaces = await fetchGoogleFont(originalCaseFamily, options);
     if (googleFaces.length > 0) {
       for (const face of googleFaces) {
-        rules.push(buildFontFaceRule(originalCaseFamily, face.dataUri, face.weight, face.style));
+        rules.push(
+          buildFontFaceRule(
+            originalCaseFamily,
+            face.dataUri,
+            face.weight,
+            face.style,
+            face.unicodeRange,
+          ),
+        );
       }
       continue;
     }
@@ -363,14 +389,26 @@ function fontCacheDir(slug: string): string {
   return dir;
 }
 
-function cachedWoff2Path(slug: string, weight: string, style: string): string {
-  return join(fontCacheDir(slug), `${weight}-${style}.woff2`);
+// A short, stable discriminator for a single subset's woff2. Google Fonts'
+// css2 API returns one @font-face per (weight × unicode-range subset) — e.g.
+// `vietnamese`, `latin-ext`, and `latin` faces for the SAME weight, each with
+// a distinct woff2 URL and glyph set. Keying the cache by weight+style alone
+// collides every subset onto one filename, so only the first subset in the
+// CSS gets downloaded and the rest read it back. Derive the cache key from the
+// (subset-unique, version-stable) woff2 URL so each subset is cached on its own.
+function subsetToken(woff2Url: string): string {
+  return createHash("sha1").update(woff2Url).digest("hex").slice(0, 12);
+}
+
+function cachedWoff2Path(slug: string, weight: string, style: string, subset: string): string {
+  return join(fontCacheDir(slug), `${weight}-${style}-${subset}.woff2`);
 }
 
 type GoogleFontFace = {
   weight: string;
   style: string;
   dataUri: string;
+  unicodeRange?: string;
 };
 
 /**
@@ -428,6 +466,44 @@ function fontFetchError(
   return new FontFetchError(familyName, url, message, "error" in cause ? cause.error : undefined);
 }
 
+/**
+ * Ensure one subset's woff2 is cached on disk (downloading if absent) and
+ * return it as a `data:` URI. Returns `null` when the woff2 isn't served
+ * (4xx) so the caller skips that face. Throws {@link FontFetchError} on
+ * transient (5xx / network) failures when `failClosedFontFetch` is set.
+ */
+async function ensureWoff2DataUri(
+  cachePath: string,
+  woff2Url: string,
+  familyName: string,
+  weight: string,
+  style: string,
+  options: InternalFontFetchOptions,
+): Promise<string | null> {
+  if (!existsSync(cachePath)) {
+    const woff2What = `Google Fonts woff2 (${weight}/${style})` as const;
+    try {
+      const fontRes = await options.fetchImpl(woff2Url);
+      if (!fontRes.ok) {
+        // 4xx = this woff2 isn't served, skip silently; 5xx = transient
+        // upstream failure, may fail closed (same split as the CSS fetch).
+        if (fontRes.status >= 500 && options.failClosedFontFetch) {
+          throw fontFetchError(familyName, woff2Url, woff2What, { status: fontRes.status });
+        }
+        return null;
+      }
+      writeFileSync(cachePath, Buffer.from(await fontRes.arrayBuffer()));
+    } catch (err) {
+      if (err instanceof FontFetchError) throw err;
+      if (options.failClosedFontFetch) {
+        throw fontFetchError(familyName, woff2Url, woff2What, { error: err });
+      }
+      return null;
+    }
+  }
+  return `data:font/woff2;base64,${readFileSync(cachePath).toString("base64")}`;
+}
+
 async function fetchGoogleFont(
   familyName: string,
   options: InternalFontFetchOptions,
@@ -467,9 +543,12 @@ async function fetchGoogleFont(
     return [];
   }
 
-  // Parse @font-face blocks from the CSS response
+  // Parse @font-face blocks from the CSS response. The optional trailing
+  // capture grabs each face's `unicode-range` (Google emits it after `src`)
+  // so the injected face only claims the codepoints the subset actually
+  // covers — without it the face would advertise full coverage it lacks.
   const faceRegex =
-    /@font-face\s*\{[^}]*font-style:\s*(normal|italic)[^}]*font-weight:\s*(\d+)[^}]*src:\s*url\(([^)]+)\)\s*format\(['"]woff2['"]\)[^}]*\}/gi;
+    /@font-face\s*\{[^}]*font-style:\s*(normal|italic)[^}]*font-weight:\s*(\d+)[^}]*src:\s*url\(([^)]+)\)\s*format\(['"]woff2['"]\)(?:[^}]*?unicode-range:\s*([^;}]+))?[^}]*\}/gi;
 
   const faces: GoogleFontFace[] = [];
 
@@ -477,39 +556,20 @@ async function fetchGoogleFont(
     const style = match[1] || "normal";
     const weight = match[2] || "400";
     const woff2Url = match[3] || "";
+    const unicodeRange = match[4]?.trim() || undefined;
 
     if (!woff2Url) continue;
 
-    const cachePath = cachedWoff2Path(slug, weight, style);
-
-    // Check cache first
-    if (!existsSync(cachePath)) {
-      const woff2What = `Google Fonts woff2 (${weight}/${style})` as const;
-      try {
-        const fontRes = await options.fetchImpl(woff2Url);
-        if (!fontRes.ok) {
-          // Same 4xx vs 5xx split as the CSS fetch above: 4xx = the
-          // font's woff2 isn't served, skip silently; 5xx = transient
-          // upstream failure, may fail closed.
-          if (fontRes.status >= 500 && options.failClosedFontFetch) {
-            throw fontFetchError(familyName, woff2Url, woff2What, { status: fontRes.status });
-          }
-          continue;
-        }
-        const buffer = Buffer.from(await fontRes.arrayBuffer());
-        writeFileSync(cachePath, buffer);
-      } catch (err) {
-        if (err instanceof FontFetchError) throw err;
-        if (options.failClosedFontFetch) {
-          throw fontFetchError(familyName, woff2Url, woff2What, { error: err });
-        }
-        continue;
-      }
-    }
-
-    const fontBytes = readFileSync(cachePath);
-    const dataUri = `data:font/woff2;base64,${fontBytes.toString("base64")}`;
-    faces.push({ weight, style, dataUri });
+    const cachePath = cachedWoff2Path(slug, weight, style, subsetToken(woff2Url));
+    const dataUri = await ensureWoff2DataUri(
+      cachePath,
+      woff2Url,
+      familyName,
+      weight,
+      style,
+      options,
+    );
+    if (dataUri) faces.push({ weight, style, dataUri, unicodeRange });
   }
 
   if (faces.length > 0) {
