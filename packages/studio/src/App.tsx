@@ -620,6 +620,16 @@ export function StudioApp() {
               {domEditSession.agentModalOpen && domEditSession.domEditSelection && (
                 <AskAgentModal
                   selectionLabel={domEditSession.domEditSelection.label}
+                  contextPreview={[
+                    `Composition: ${domEditSession.domEditSelection.compositionPath}`,
+                    `Source: ${domEditSession.domEditSelection.sourceFile || activeCompPath || "index.html"}`,
+                    `Selector: ${domEditSession.domEditSelection.selector ?? "(none)"}  Tag: <${domEditSession.domEditSelection.tagName}>`,
+                    domEditSession.domEditSelection.textContent
+                      ? `Text: ${domEditSession.domEditSelection.textContent}`
+                      : "",
+                  ]
+                    .filter(Boolean)
+                    .join("\n")}
                   anchorPoint={domEditSession.agentModalAnchorPoint}
                   onSubmit={domEditSession.handleAgentModalSubmit}
                   onClose={() => {
