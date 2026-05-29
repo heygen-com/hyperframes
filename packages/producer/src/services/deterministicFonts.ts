@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { parseHTML } from "linkedom";
@@ -364,7 +364,7 @@ function resolveFontCacheRoot(): string {
   return (
     process.env.HYPERFRAMES_FONT_CACHE_DIR ??
     (process.env.AWS_LAMBDA_FUNCTION_NAME
-      ? "/tmp/hyperframes/fonts"
+      ? join(tmpdir(), "hyperframes", "fonts")
       : join(homedir(), ".cache", "hyperframes", "fonts"))
   );
 }
