@@ -480,24 +480,31 @@ async function ensureWoff2DataUri(
   style: string,
   options: InternalFontFetchOptions,
 ): Promise<string | null> {
-  if (!existsSync(cachePath)) {
-    const woff2What = `Google Fonts woff2 (${weight}/${style})` as const;
-    try {
-      const fontRes = await options.fetchImpl(woff2Url);
-      if (!fontRes.ok) {
-        // 4xx = this woff2 isn't served, skip silently; 5xx = transient
-        // upstream failure, may fail closed (same split as the CSS fetch).
-        if (fontRes.status >= 500 && options.failClosedFontFetch) {
-          throw fontFetchError(familyName, woff2Url, woff2What, { status: fontRes.status });
-        }
-        return null;
+  try {
+    return `data:font/woff2;base64,${readFileSync(cachePath).toString("base64")}`;
+  } catch {
+    // Not cached yet — fall through to fetch.
+  }
+
+  const woff2What = `Google Fonts woff2 (${weight}/${style})` as const;
+  try {
+    const fontRes = await options.fetchImpl(woff2Url);
+    if (!fontRes.ok) {
+      if (fontRes.status >= 500 && options.failClosedFontFetch) {
+        throw fontFetchError(familyName, woff2Url, woff2What, { status: fontRes.status });
       }
-      writeFileSync(cachePath, Buffer.from(await fontRes.arrayBuffer()));
-    } catch (err) {
-      if (err instanceof FontFetchError) throw err;
-      if (options.failClosedFontFetch) {
-        throw fontFetchError(familyName, woff2Url, woff2What, { error: err });
-      }
+      return null;
+    }
+    // wx = O_CREAT|O_EXCL: atomic create, rejects symlinks, fails with
+    // EEXIST if a concurrent call cached it between our read and write.
+    writeFileSync(cachePath, Buffer.from(await fontRes.arrayBuffer()), { flag: "wx", mode: 0o644 });
+  } catch (err) {
+    if (err instanceof FontFetchError) throw err;
+    if ((err as NodeJS.ErrnoException).code === "EEXIST") {
+      // Concurrent call wrote it — read their result below.
+    } else if (options.failClosedFontFetch) {
+      throw fontFetchError(familyName, woff2Url, woff2What, { error: err });
+    } else {
       return null;
     }
   }
