@@ -18,6 +18,7 @@
 import { readFileSync, renameSync, writeFileSync } from "fs";
 import { randomBytes } from "crypto";
 import type { AudioVolumeKeyframe } from "./audioMixer.types.js";
+import { normaliseEnvelope, interpolateVolumeGain } from "@hyperframes/core/media-volume-envelope";
 
 const PCM_FORMAT = 1; // WAVE_FORMAT_PCM
 const SUPPORTED_BITS = 16;
@@ -74,38 +75,6 @@ function parseWavLayout(buffer: Buffer): WavLayout | null {
 }
 
 /**
- * Normalise keyframes to track-relative seconds, sorted and de-duplicated, with
- * `baseVolume` filling any gap before the first keyframe. Returns the breakpoints
- * the gain envelope is linearly interpolated between.
- */
-function toRelativeEnvelope(
-  keyframes: AudioVolumeKeyframe[],
-  trackStart: number,
-  baseVolume: number,
-): { time: number; volume: number }[] {
-  const points = keyframes
-    .filter((k) => Number.isFinite(k.time) && Number.isFinite(k.volume))
-    .map((k) => ({
-      time: Math.max(0, k.time - trackStart),
-      volume: Math.max(0, Math.min(1, k.volume)),
-    }))
-    .sort((a, b) => a.time - b.time);
-
-  const deduped: { time: number; volume: number }[] = [];
-  for (const point of points) {
-    const previous = deduped.at(-1);
-    if (previous && Math.abs(previous.time - point.time) < 1e-9) previous.volume = point.volume;
-    else deduped.push(point);
-  }
-
-  if (deduped.length === 0) return deduped;
-  if (deduped[0]!.time > 0) {
-    deduped.unshift({ time: 0, volume: Math.max(0, Math.min(1, baseVolume)) });
-  }
-  return deduped;
-}
-
-/**
  * Multiply a prepared WAV's samples by a time-varying gain envelope in place.
  *
  * @returns `true` if the envelope was applied; `false` if the file isn't the
@@ -117,7 +86,7 @@ export function applyVolumeEnvelopeToWav(
   trackStart: number,
   baseVolume: number,
 ): boolean {
-  const envelope = toRelativeEnvelope(keyframes, trackStart, baseVolume);
+  const envelope = normaliseEnvelope(keyframes, trackStart, baseVolume);
   if (envelope.length === 0) return false;
 
   try {
@@ -130,16 +99,9 @@ export function applyVolumeEnvelopeToWav(
     const frameBytes = numChannels * bytesPerSample;
     const frameCount = Math.floor(dataSize / frameBytes);
 
-    let segment = 0;
     for (let frame = 0; frame < frameCount; frame += 1) {
       const time = frame / sampleRate;
-      while (segment < envelope.length - 2 && time >= envelope[segment + 1]!.time) segment += 1;
-
-      const a = envelope[segment]!;
-      const b = envelope[segment + 1] ?? a;
-      const span = b.time - a.time;
-      const progress = span <= 0 ? 0 : Math.min(1, Math.max(0, (time - a.time) / span));
-      const gain = a.volume + (b.volume - a.volume) * progress;
+      const gain = interpolateVolumeGain(envelope, time);
 
       const base = dataOffset + frame * frameBytes;
       for (let channel = 0; channel < numChannels; channel += 1) {

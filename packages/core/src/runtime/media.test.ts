@@ -167,6 +167,13 @@ describe("syncRuntimeMedia", () => {
     // Default: audio has been playing — so drift-seek forward is allowed.
     // Tests that exercise the "cold first play" guard call fakePlayedRanges(el, []).
     fakePlayedRanges(el, [[0, 1]]);
+    // Mirror bindMediaMetadataListeners: pre-set el.volume to data-volume so the
+    // first-tick path in syncRuntimeMedia sees the correct baseline (not the browser
+    // default of 1) and GSAP-change detection works correctly from the first tick.
+    const dataVolume = overrides?.volume;
+    if (dataVolume != null && Number.isFinite(dataVolume)) {
+      el.volume = Math.max(0, Math.min(1, dataVolume));
+    }
     return {
       el,
       start: 0,
