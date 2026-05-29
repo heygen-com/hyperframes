@@ -62,6 +62,9 @@ export function DomEditProvider({
     handleGsapAddAnimation,
     handleGsapAddProperty,
     handleGsapRemoveProperty,
+    handleGsapUpdateFromProperty,
+    handleGsapAddFromProperty,
+    handleGsapRemoveFromProperty,
   },
   children,
 }: {
@@ -119,6 +122,9 @@ export function DomEditProvider({
       handleGsapAddAnimation,
       handleGsapAddProperty,
       handleGsapRemoveProperty,
+      handleGsapUpdateFromProperty,
+      handleGsapAddFromProperty,
+      handleGsapRemoveFromProperty,
     }),
     [
       domEditSelection,
@@ -170,6 +176,9 @@ export function DomEditProvider({
       handleGsapAddAnimation,
       handleGsapAddProperty,
       handleGsapRemoveProperty,
+      handleGsapUpdateFromProperty,
+      handleGsapAddFromProperty,
+      handleGsapRemoveFromProperty,
     ],
   );
   return <DomEditContext value={stable}>{children}</DomEditContext>;

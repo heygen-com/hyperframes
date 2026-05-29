@@ -210,7 +210,11 @@ export function useGsapScriptCommits({
   );
 
   const addGsapAnimation = useCallback(
-    async (selection: DomEditSelection, method: "to" | "from" | "set", currentTime?: number) => {
+    async (
+      selection: DomEditSelection,
+      method: "to" | "from" | "set" | "fromTo",
+      currentTime?: number,
+    ) => {
       const { selector, autoId } = ensureElementAddressable(selection);
 
       if (autoId) {
@@ -238,10 +242,11 @@ export function useGsapScriptCommits({
       }
 
       const start = currentTime ?? (Number.parseFloat(selection.dataAttributes.start ?? "0") || 0);
-      const defaults: Record<string, Record<string, number>> = {
+      const toDefaults: Record<string, Record<string, number>> = {
         from: { opacity: 0 },
         to: { opacity: 1 },
         set: { opacity: 1 },
+        fromTo: { opacity: 1 },
       };
 
       await commitMutation(
@@ -253,7 +258,8 @@ export function useGsapScriptCommits({
           position: start,
           duration: method === "set" ? undefined : 0.5,
           ease: method === "set" ? undefined : "power2.out",
-          properties: defaults[method] ?? { opacity: 1 },
+          properties: toDefaults[method] ?? { opacity: 1 },
+          fromProperties: method === "fromTo" ? { opacity: 0 } : undefined,
         },
         { label: `Add GSAP ${method} animation` },
       );
@@ -292,6 +298,48 @@ export function useGsapScriptCommits({
     [commitMutation],
   );
 
+  const updateGsapFromProperty = useCallback(
+    (
+      selection: DomEditSelection,
+      animationId: string,
+      property: string,
+      value: number | string,
+    ) => {
+      void commitMutation(
+        selection,
+        { type: "update-from-property", animationId, property, value },
+        {
+          label: `Edit GSAP from-${property}`,
+          coalesceKey: `gsap:${animationId}:from:${property}`,
+        },
+      );
+    },
+    [commitMutation],
+  );
+
+  const addGsapFromProperty = useCallback(
+    (selection: DomEditSelection, animationId: string, property: string) => {
+      const defaultValue = PROPERTY_DEFAULTS[property] ?? 0;
+      void commitMutation(
+        selection,
+        { type: "add-from-property", animationId, property, defaultValue },
+        { label: `Add GSAP from-${property}` },
+      );
+    },
+    [commitMutation],
+  );
+
+  const removeGsapFromProperty = useCallback(
+    (selection: DomEditSelection, animationId: string, property: string) => {
+      void commitMutation(
+        selection,
+        { type: "remove-from-property", animationId, property },
+        { label: `Remove GSAP from-${property}` },
+      );
+    },
+    [commitMutation],
+  );
+
   return {
     updateGsapProperty,
     updateGsapMeta,
@@ -299,5 +347,8 @@ export function useGsapScriptCommits({
     addGsapAnimation,
     addGsapProperty,
     removeGsapProperty,
+    updateGsapFromProperty,
+    addGsapFromProperty,
+    removeGsapFromProperty,
   };
 }

@@ -19,6 +19,112 @@ function isPercentProp(prop: string): boolean {
   return PERCENT_PROPS.has(prop);
 }
 
+function displayValue(prop: string, val: number | string): string {
+  return isPercentProp(prop) ? String(Math.round(Number(val) * 100)) : String(val);
+}
+
+function adjustedValue(prop: string, raw: string): string {
+  return isPercentProp(prop) ? String(Number(raw) / 100) : raw;
+}
+
+function PropertyRow({
+  prop,
+  val,
+  onCommit,
+  onRemove,
+  removeTitle,
+}: {
+  prop: string;
+  val: number | string;
+  onCommit: (adjusted: string) => void;
+  onRemove: () => void;
+  removeTitle: string;
+}) {
+  return (
+    <div className="flex items-center gap-1">
+      <div className="min-w-0 flex-1">
+        <MetricField
+          label={PROP_LABELS[prop] ?? prop}
+          value={displayValue(prop, val)}
+          suffix={PROP_UNITS[prop]}
+          tooltip={PROP_TOOLTIPS[prop]}
+          scrub
+          liveCommit
+          onCommit={(raw) => onCommit(adjustedValue(prop, raw))}
+        />
+      </div>
+      <button
+        type="button"
+        onClick={onRemove}
+        className="flex-shrink-0 rounded p-0.5 text-neutral-600 transition-colors hover:bg-neutral-800 hover:text-red-400"
+        title={removeTitle}
+      >
+        <svg
+          width="12"
+          height="12"
+          viewBox="0 0 12 12"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+        >
+          <path d="M3 3l6 6M9 3l-6 6" />
+        </svg>
+      </button>
+    </div>
+  );
+}
+
+function AddPropertyTrigger({
+  adding,
+  available,
+  addLabel,
+  addTitle,
+  onAdd,
+  onOpen,
+  onClose,
+  buttonClassName,
+}: {
+  adding: boolean;
+  available: string[];
+  addLabel: string;
+  addTitle: string;
+  onAdd: (prop: string) => void;
+  onOpen: () => void;
+  onClose: () => void;
+  buttonClassName: string;
+}) {
+  if (adding && available.length > 0) {
+    return (
+      <select
+        autoFocus
+        className="min-w-0 rounded-lg border border-neutral-700 bg-neutral-900 px-2 py-1 text-[11px] text-neutral-100 outline-none"
+        defaultValue=""
+        onChange={(e) => {
+          if (e.target.value) onAdd(e.target.value);
+          onClose();
+        }}
+        onBlur={onClose}
+      >
+        <option value="" disabled>
+          Choose property…
+        </option>
+        {available.map((p) => (
+          <option key={p} value={p}>
+            {PROP_LABELS[p] ?? p}
+          </option>
+        ))}
+      </select>
+    );
+  }
+  if (available.length === 0) return null;
+  return (
+    <button type="button" onClick={onOpen} className={buttonClassName} title={addTitle}>
+      {addLabel}
+    </button>
+  );
+}
+
+// fallow-ignore-next-line complexity
 function buildTweenSummary(animation: GsapAnimation): string {
   const easeName = animation.ease ?? "none";
   const ease = EASE_LABELS[easeName] ?? easeName;
@@ -35,6 +141,16 @@ function buildTweenSummary(animation: GsapAnimation): string {
   if (animation.method === "set") return `At ${pos}s, instantly set ${target}'s ${propText}.`;
   if (animation.method === "from")
     return `Starting at ${pos}s, over ${dur}s, ${target} enters from ${propText} using a ${ease.toLowerCase()} curve.`;
+  if (animation.method === "fromTo") {
+    const fromProps = Object.entries(animation.fromProperties ?? {});
+    const fromDescs = fromProps.map(([p, v]) => {
+      const label = (PROP_LABELS[p] ?? p).toLowerCase();
+      const unit = PROP_UNITS[p] ?? "";
+      return `${label} ${v}${unit}`;
+    });
+    const fromText = fromDescs.length > 0 ? fromDescs.join(", ") : "—";
+    return `Starting at ${pos}s, over ${dur}s, ${target} animates from [${fromText}] to [${propText}] using a ${ease.toLowerCase()} curve.`;
+  }
   return `Starting at ${pos}s, over ${dur}s, animate ${target}'s ${propText} using a ${ease.toLowerCase()} curve.`;
 }
 
@@ -54,6 +170,9 @@ interface AnimationCardProps {
   onDeleteAnimation: (animationId: string) => void;
   onAddProperty: (animationId: string, property: string) => void;
   onRemoveProperty: (animationId: string, property: string) => void;
+  onUpdateFromProperty?: (animationId: string, property: string, value: number | string) => void;
+  onAddFromProperty?: (animationId: string, property: string) => void;
+  onRemoveFromProperty?: (animationId: string, property: string) => void;
   onLivePreview?: (property: string, value: number | string) => void;
   onLivePreviewEnd?: () => void;
 }
@@ -67,11 +186,15 @@ export const AnimationCard = memo(function AnimationCard({
   onDeleteAnimation,
   onAddProperty,
   onRemoveProperty,
+  onUpdateFromProperty,
+  onAddFromProperty,
+  onRemoveFromProperty,
   onLivePreview,
   onLivePreviewEnd,
 }: AnimationCardProps) {
   const [expanded, setExpanded] = useState(defaultExpanded);
   const [addingProp, setAddingProp] = useState(false);
+  const [addingFromProp, setAddingFromProp] = useState(false);
 
   const usedProps = useMemo(
     () => new Set(Object.keys(animation.properties)),
@@ -80,6 +203,15 @@ export const AnimationCard = memo(function AnimationCard({
   const availableProps = useMemo(
     () => SUPPORTED_PROPS.filter((p) => !usedProps.has(p)),
     [usedProps],
+  );
+
+  const usedFromProps = useMemo(
+    () => new Set(Object.keys(animation.fromProperties ?? {})),
+    [animation.fromProperties],
+  );
+  const availableFromProps = useMemo(
+    () => SUPPORTED_PROPS.filter((p) => !usedFromProps.has(p)),
+    [usedFromProps],
   );
 
   const commitProperty = useCallback(
@@ -96,6 +228,15 @@ export const AnimationCard = memo(function AnimationCard({
       onLivePreview?.(prop, parseNumericOrString(raw));
     },
     [onLivePreview],
+  );
+
+  const commitFromProperty = useCallback(
+    (prop: string, raw: string) => {
+      const value = parseNumericOrString(raw);
+      onUpdateFromProperty?.(animation.id, prop, value);
+      onLivePreviewEnd?.();
+    },
+    [animation.id, onUpdateFromProperty, onLivePreviewEnd],
   );
 
   const commitDuration = useCallback(
@@ -232,82 +373,73 @@ export const AnimationCard = memo(function AnimationCard({
               </>
             )}
 
+            {animation.method === "fromTo" && (
+              <div className="space-y-1">
+                <p className="text-[9px] font-semibold uppercase tracking-wider text-orange-400/70">
+                  From
+                </p>
+                <div className="space-y-1.5">
+                  {Object.entries(animation.fromProperties ?? {}).map(([prop, val]) => (
+                    <PropertyRow
+                      key={prop}
+                      prop={prop}
+                      val={val}
+                      onCommit={(adjusted) => commitFromProperty(prop, adjusted)}
+                      onRemove={() => onRemoveFromProperty?.(animation.id, prop)}
+                      removeTitle={`Remove from-${PROP_LABELS[prop] ?? prop}`}
+                    />
+                  ))}
+                </div>
+                <div className="pt-0.5">
+                  <AddPropertyTrigger
+                    adding={addingFromProp}
+                    available={availableFromProps}
+                    addLabel="+ From property"
+                    addTitle="Add a from-state property"
+                    onAdd={(prop) => onAddFromProperty?.(animation.id, prop)}
+                    onOpen={() => setAddingFromProp(true)}
+                    onClose={() => setAddingFromProp(false)}
+                    buttonClassName="text-[11px] font-medium text-orange-400/70 transition-colors hover:text-orange-300"
+                  />
+                </div>
+              </div>
+            )}
+
+            {animation.method === "fromTo" && Object.keys(animation.properties).length > 0 && (
+              <p className="text-[9px] font-semibold uppercase tracking-wider text-emerald-400/70">
+                To
+              </p>
+            )}
+
             {Object.keys(animation.properties).length > 0 && (
               <div className="space-y-1.5">
                 {Object.entries(animation.properties).map(([prop, val]) => (
-                  <div key={prop} className="flex items-center gap-1">
-                    <div className="min-w-0 flex-1">
-                      <MetricField
-                        label={PROP_LABELS[prop] ?? prop}
-                        value={
-                          isPercentProp(prop) ? String(Math.round(Number(val) * 100)) : String(val)
-                        }
-                        suffix={PROP_UNITS[prop]}
-                        tooltip={PROP_TOOLTIPS[prop]}
-                        scrub
-                        liveCommit
-                        onCommit={(raw) => {
-                          const adjusted = isPercentProp(prop) ? String(Number(raw) / 100) : raw;
-                          scrubProperty(prop, adjusted);
-                          commitProperty(prop, adjusted);
-                        }}
-                      />
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => onRemoveProperty(animation.id, prop)}
-                      className="flex-shrink-0 rounded p-0.5 text-neutral-600 transition-colors hover:bg-neutral-800 hover:text-red-400"
-                      title={`Remove ${PROP_LABELS[prop] ?? prop}`}
-                    >
-                      <svg
-                        width="12"
-                        height="12"
-                        viewBox="0 0 12 12"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="1.5"
-                      >
-                        <path d="M3 3l6 6M9 3l-6 6" />
-                      </svg>
-                    </button>
-                  </div>
+                  <PropertyRow
+                    key={prop}
+                    prop={prop}
+                    val={val}
+                    onCommit={(adjusted) => {
+                      scrubProperty(prop, adjusted);
+                      commitProperty(prop, adjusted);
+                    }}
+                    onRemove={() => onRemoveProperty(animation.id, prop)}
+                    removeTitle={`Remove ${PROP_LABELS[prop] ?? prop}`}
+                  />
                 ))}
               </div>
             )}
 
             <div className="flex items-center gap-2 pt-1">
-              {addingProp && availableProps.length > 0 ? (
-                <select
-                  autoFocus
-                  className="min-w-0 rounded-lg border border-neutral-700 bg-neutral-900 px-2 py-1 text-[11px] text-neutral-100 outline-none"
-                  defaultValue=""
-                  onChange={(e) => {
-                    if (e.target.value) onAddProperty(animation.id, e.target.value);
-                    setAddingProp(false);
-                  }}
-                  onBlur={() => setAddingProp(false)}
-                >
-                  <option value="" disabled>
-                    Choose effect…
-                  </option>
-                  {availableProps.map((p) => (
-                    <option key={p} value={p}>
-                      {PROP_LABELS[p] ?? p}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                availableProps.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => setAddingProp(true)}
-                    className="text-[11px] font-medium text-neutral-400 transition-colors hover:text-neutral-200"
-                    title="Add another animated property to this effect"
-                  >
-                    + Effect
-                  </button>
-                )
-              )}
+              <AddPropertyTrigger
+                adding={addingProp}
+                available={availableProps}
+                addLabel="+ Effect"
+                addTitle="Add another animated property to this effect"
+                onAdd={(prop) => onAddProperty(animation.id, prop)}
+                onOpen={() => setAddingProp(true)}
+                onClose={() => setAddingProp(false)}
+                buttonClassName="text-[11px] font-medium text-neutral-400 transition-colors hover:text-neutral-200"
+              />
               <button
                 type="button"
                 onClick={() => onDeleteAnimation(animation.id)}

@@ -61,7 +61,10 @@ interface PropertyPanelProps {
   onDeleteGsapAnimation?: (animId: string) => void;
   onAddGsapProperty?: (animId: string, prop: string) => void;
   onRemoveGsapProperty?: (animId: string, prop: string) => void;
-  onAddGsapAnimation?: (method: "to" | "from" | "set") => void;
+  onUpdateGsapFromProperty?: (animId: string, prop: string, value: number | string) => void;
+  onAddGsapFromProperty?: (animId: string, prop: string) => void;
+  onRemoveGsapFromProperty?: (animId: string, prop: string) => void;
+  onAddGsapAnimation?: (method: "to" | "from" | "set" | "fromTo") => void;
 }
 
 /* ------------------------------------------------------------------ */
@@ -162,6 +165,9 @@ export const PropertyPanel = memo(function PropertyPanel({
   onDeleteGsapAnimation,
   onAddGsapProperty,
   onRemoveGsapProperty,
+  onUpdateGsapFromProperty,
+  onAddGsapFromProperty,
+  onRemoveGsapFromProperty,
   onAddGsapAnimation,
 }: PropertyPanelProps) {
   const styles = element?.computedStyles ?? EMPTY_STYLES;
@@ -368,6 +374,9 @@ export const PropertyPanel = memo(function PropertyPanel({
               onDeleteAnimation={onDeleteGsapAnimation}
               onAddProperty={onAddGsapProperty}
               onRemoveProperty={onRemoveGsapProperty ?? (() => {})}
+              onUpdateFromProperty={onUpdateGsapFromProperty}
+              onAddFromProperty={onAddGsapFromProperty}
+              onRemoveFromProperty={onRemoveGsapFromProperty}
               onAddAnimation={onAddGsapAnimation}
             />
           )}

@@ -215,6 +215,9 @@ export function useDomEditSession({
     addGsapAnimation,
     addGsapProperty,
     removeGsapProperty,
+    updateGsapFromProperty,
+    addGsapFromProperty,
+    removeGsapFromProperty,
   } = useGsapScriptCommits({
     projectIdRef,
     activeCompPath,
@@ -288,7 +291,7 @@ export function useDomEditSession({
   );
 
   const handleGsapAddAnimation = useCallback(
-    (method: "to" | "from" | "set") => {
+    (method: "to" | "from" | "set" | "fromTo") => {
       if (!domEditSelection) return;
       addGsapAnimation(domEditSelection, method, currentTime);
     },
@@ -309,6 +312,30 @@ export function useDomEditSession({
       removeGsapProperty(domEditSelection, animId, prop);
     },
     [domEditSelection, removeGsapProperty],
+  );
+
+  const handleGsapUpdateFromProperty = useCallback(
+    (animId: string, prop: string, value: number | string) => {
+      if (!domEditSelection) return;
+      updateGsapFromProperty(domEditSelection, animId, prop, value);
+    },
+    [domEditSelection, updateGsapFromProperty],
+  );
+
+  const handleGsapAddFromProperty = useCallback(
+    (animId: string, prop: string) => {
+      if (!domEditSelection) return;
+      addGsapFromProperty(domEditSelection, animId, prop);
+    },
+    [domEditSelection, addGsapFromProperty],
+  );
+
+  const handleGsapRemoveFromProperty = useCallback(
+    (animId: string, prop: string) => {
+      if (!domEditSelection) return;
+      removeGsapFromProperty(domEditSelection, animId, prop);
+    },
+    [domEditSelection, removeGsapFromProperty],
   );
 
   // Sync selection from preview document on load / refresh
@@ -443,5 +470,8 @@ export function useDomEditSession({
     handleGsapAddAnimation,
     handleGsapAddProperty,
     handleGsapRemoveProperty,
+    handleGsapUpdateFromProperty,
+    handleGsapAddFromProperty,
+    handleGsapRemoveFromProperty,
   };
 }

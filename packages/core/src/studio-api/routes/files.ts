@@ -540,6 +540,12 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
         value: number | string;
       }
     | {
+        type: "update-from-property";
+        animationId: string;
+        property: string;
+        value: number | string;
+      }
+    | {
         type: "update-meta";
         animationId: string;
         updates: { duration?: number; ease?: string; position?: number };
@@ -547,11 +553,12 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     | {
         type: "add";
         targetSelector: string;
-        method: "to" | "from" | "set";
+        method: "to" | "from" | "set" | "fromTo";
         position: number;
         duration?: number;
         ease?: string;
         properties: Record<string, number | string>;
+        fromProperties?: Record<string, number | string>;
       }
     | { type: "delete"; animationId: string }
     | {
@@ -560,7 +567,14 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
         property: string;
         defaultValue: number | string;
       }
-    | { type: "remove-property"; animationId: string; property: string };
+    | {
+        type: "add-from-property";
+        animationId: string;
+        property: string;
+        defaultValue: number | string;
+      }
+    | { type: "remove-property"; animationId: string; property: string }
+    | { type: "remove-from-property"; animationId: string; property: string };
 
   api.post("/projects/:id/gsap-mutations/*", async (c) => {
     const res = await resolveProjectPath(c, adapter, (id) => `/projects/${id}/gsap-mutations/`, {
@@ -588,6 +602,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
 
     let newScript: string;
 
+    // fallow-ignore-next-line complexity
     switch (body.type) {
       case "update-property": {
         const parsed = parseGsapScript(block.scriptText);
@@ -595,6 +610,16 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
         if (!anim) return c.json({ error: "animation not found" }, 404);
         newScript = updateAnimationInScript(block.scriptText, body.animationId, {
           properties: { ...anim.properties, [body.property]: body.value },
+        });
+        break;
+      }
+      case "update-from-property": {
+        const parsed = parseGsapScript(block.scriptText);
+        const anim = parsed.animations.find((a) => a.id === body.animationId);
+        if (!anim) return c.json({ error: "animation not found" }, 404);
+        if (anim.method !== "fromTo") return c.json({ error: "animation is not a fromTo" }, 400);
+        newScript = updateAnimationInScript(block.scriptText, body.animationId, {
+          fromProperties: { ...(anim.fromProperties ?? {}), [body.property]: body.value },
         });
         break;
       }
@@ -610,6 +635,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
           duration: body.duration,
           ease: body.ease,
           properties: body.properties,
+          fromProperties: body.fromProperties,
         });
         newScript = result.script;
         break;
@@ -627,6 +653,16 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
         });
         break;
       }
+      case "add-from-property": {
+        const parsed = parseGsapScript(block.scriptText);
+        const anim = parsed.animations.find((a) => a.id === body.animationId);
+        if (!anim) return c.json({ error: "animation not found" }, 404);
+        if (anim.method !== "fromTo") return c.json({ error: "animation is not a fromTo" }, 400);
+        newScript = updateAnimationInScript(block.scriptText, body.animationId, {
+          fromProperties: { ...(anim.fromProperties ?? {}), [body.property]: body.defaultValue },
+        });
+        break;
+      }
       case "remove-property": {
         const parsed = parseGsapScript(block.scriptText);
         const anim = parsed.animations.find((a) => a.id === body.animationId);
@@ -635,6 +671,18 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
         delete filtered[body.property];
         newScript = updateAnimationInScript(block.scriptText, body.animationId, {
           properties: filtered,
+        });
+        break;
+      }
+      case "remove-from-property": {
+        const parsed = parseGsapScript(block.scriptText);
+        const anim = parsed.animations.find((a) => a.id === body.animationId);
+        if (!anim) return c.json({ error: "animation not found" }, 404);
+        if (anim.method !== "fromTo") return c.json({ error: "animation is not a fromTo" }, 400);
+        const filtered = { ...(anim.fromProperties ?? {}) };
+        delete filtered[body.property];
+        newScript = updateAnimationInScript(block.scriptText, body.animationId, {
+          fromProperties: filtered,
         });
         break;
       }

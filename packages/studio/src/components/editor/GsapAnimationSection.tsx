@@ -17,7 +17,10 @@ interface GsapAnimationSectionProps {
   onDeleteAnimation: (animationId: string) => void;
   onAddProperty: (animationId: string, property: string) => void;
   onRemoveProperty: (animationId: string, property: string) => void;
-  onAddAnimation: (method: "to" | "from" | "set") => void;
+  onUpdateFromProperty?: (animationId: string, property: string, value: number | string) => void;
+  onAddFromProperty?: (animationId: string, property: string) => void;
+  onRemoveFromProperty?: (animationId: string, property: string) => void;
+  onAddAnimation: (method: "to" | "from" | "set" | "fromTo") => void;
   onLivePreview?: (property: string, value: number | string) => void;
   onLivePreviewEnd?: () => void;
 }
@@ -31,6 +34,9 @@ export const GsapAnimationSection = memo(function GsapAnimationSection({
   onDeleteAnimation,
   onAddProperty,
   onRemoveProperty,
+  onUpdateFromProperty,
+  onAddFromProperty,
+  onRemoveFromProperty,
   onAddAnimation,
   onLivePreview,
   onLivePreviewEnd,
@@ -64,6 +70,9 @@ export const GsapAnimationSection = memo(function GsapAnimationSection({
               onDeleteAnimation={onDeleteAnimation}
               onAddProperty={onAddProperty}
               onRemoveProperty={onRemoveProperty}
+              onUpdateFromProperty={onUpdateFromProperty}
+              onAddFromProperty={onAddFromProperty}
+              onRemoveFromProperty={onRemoveFromProperty}
               onLivePreview={onLivePreview}
               onLivePreviewEnd={onLivePreviewEnd}
             />
