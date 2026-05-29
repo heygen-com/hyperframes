@@ -18,7 +18,7 @@
 import { readFileSync, renameSync, writeFileSync } from "fs";
 import { randomBytes } from "crypto";
 import type { AudioVolumeKeyframe } from "./audioMixer.types.js";
-import { normaliseEnvelope, interpolateVolumeGain } from "@hyperframes/core/media-volume-envelope";
+import { normaliseEnvelope } from "@hyperframes/core/media-volume-envelope";
 
 const PCM_FORMAT = 1; // WAVE_FORMAT_PCM
 const SUPPORTED_BITS = 16;
@@ -99,9 +99,20 @@ export function applyVolumeEnvelopeToWav(
     const frameBytes = numChannels * bytesPerSample;
     const frameCount = Math.floor(dataSize / frameBytes);
 
+    // Maintain an incremental segment cursor so the per-frame envelope lookup
+    // is O(N+M) overall, not O(N×M). interpolateVolumeGain restarts from 0 on
+    // each call — fine for the preview path (one call per RAF tick) but not for
+    // the PCM path (one call per sample, 48k×duration frames total).
+    let segment = 0;
     for (let frame = 0; frame < frameCount; frame += 1) {
       const time = frame / sampleRate;
-      const gain = interpolateVolumeGain(envelope, time);
+      while (segment < envelope.length - 2 && time >= envelope[segment + 1]!.time) segment += 1;
+
+      const a = envelope[segment]!;
+      const b = envelope[segment + 1] ?? a;
+      const span = b.time - a.time;
+      const progress = span <= 0 ? 0 : Math.min(1, Math.max(0, (time - a.time) / span));
+      const gain = a.volume + (b.volume - a.volume) * progress;
 
       const base = dataOffset + frame * frameBytes;
       for (let channel = 0; channel < numChannels; channel += 1) {

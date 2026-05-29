@@ -967,9 +967,10 @@ export function initSandboxRuntimeModular(): void {
         mediaDurationFloorSeconds: resolution.mediaDurationFloorSeconds ?? null,
       },
     });
-    // (Re-)probe all already-bound media elements now that a timeline is available.
-    // Elements bound before this point couldn't be probed in bindMediaMetadataListeners.
+    // (Re-)probe all already-bound media elements against the new timeline.
+    // Clear the cache first so elements probed against a prior timeline get fresh keyframes.
     for (const el of metadataBoundMedia) {
+      volumeKeyframeCache.delete(el);
       probeAndCacheVolumeKeyframes(el);
     }
     return true;
@@ -1283,6 +1284,7 @@ export function initSandboxRuntimeModular(): void {
   };
 
   const probeAndCacheVolumeKeyframes = (mediaEl: HTMLMediaElement) => {
+    if (volumeKeyframeCache.has(mediaEl)) return;
     probeAndCacheElementVolume(
       mediaEl,
       state.capturedTimeline,
