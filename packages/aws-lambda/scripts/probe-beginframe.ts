@@ -2,7 +2,7 @@
 /**
  * BeginFrame regression guard for `@sparticuz/chromium`.
  *
- * The load-bearing assumption of `@hyperframes/aws-lambda` is that the
+ * The core assumption of `@hyperframes/aws-lambda` is that the
  * Chromium build shipped by `@sparticuz/chromium` honours CDP
  * `HeadlessExperimental.beginFrame` with `screenshot: true`. This script
  * boots that Chromium build (decompressing into `/tmp` per the library's

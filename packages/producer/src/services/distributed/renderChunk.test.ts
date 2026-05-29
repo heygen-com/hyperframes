@@ -1,7 +1,7 @@
 /**
  * Unit tests for `services/distributed/renderChunk.ts`.
  *
- * The byte-identical-retry contract is the load-bearing
+ * The byte-identical-retry contract is the central
  * test here: rendering the same `(planDir, chunkIndex)` twice must produce
  * a byte-identical output file. Without this, Temporal/Step-Functions
  * retries can't safely overwrite a partial chunk — and the entire
