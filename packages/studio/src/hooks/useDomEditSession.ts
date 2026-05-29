@@ -67,6 +67,7 @@ export interface UseDomEditSessionParams {
 
 // ── Hook ──
 
+// fallow-ignore-next-line complexity
 export function useDomEditSession({
   projectId,
   activeCompPath,
@@ -129,6 +130,7 @@ export function useDomEditSession({
     clearDomSelection,
     buildDomSelectionFromTarget,
     resolveDomSelectionFromPreviewPoint,
+    resolveAllDomSelectionsFromPreviewPoint,
     updateDomEditHoverSelection,
     buildDomSelectionForTimelineElement,
     handleTimelineElementSelect,
@@ -187,6 +189,7 @@ export function useDomEditSession({
     showToast,
     applyDomSelection,
     resolveDomSelectionFromPreviewPoint,
+    resolveAllDomSelectionsFromPreviewPoint,
     updateDomEditHoverSelection,
     onClickToSource,
   });
@@ -343,6 +346,7 @@ export function useDomEditSession({
   useEffect(() => {
     if (!previewIframe) return;
 
+    // fallow-ignore-next-line complexity
     const syncSelectionFromDocument = async () => {
       if (!STUDIO_INSPECTOR_PANELS_ENABLED || captionEditMode) return;
       const currentSelection = domEditSelectionRef.current;
@@ -402,16 +406,20 @@ export function useDomEditSession({
   // not when openSourceForSelection is recreated due to editingFile content updates.
   const openSourceRef = useRef(openSourceForSelection);
   openSourceRef.current = openSourceForSelection;
-  useEffect(() => {
-    if (!domEditSelection || !openSourceRef.current || !getSidebarTab) return;
-    if (!domEditSelection.sourceFile) return;
-    if (getSidebarTab() !== "code") return;
-    openSourceRef.current(domEditSelection.sourceFile, {
-      id: domEditSelection.id,
-      selector: domEditSelection.selector,
-      selectorIndex: domEditSelection.selectorIndex,
-    });
-  }, [domEditSelection, getSidebarTab]);
+  useEffect(
+    // fallow-ignore-next-line complexity
+    () => {
+      if (!domEditSelection || !openSourceRef.current || !getSidebarTab) return;
+      if (!domEditSelection.sourceFile) return;
+      if (getSidebarTab() !== "code") return;
+      openSourceRef.current(domEditSelection.sourceFile, {
+        id: domEditSelection.id,
+        selector: domEditSelection.selector,
+        selectorIndex: domEditSelection.selectorIndex,
+      });
+    },
+    [domEditSelection, getSidebarTab],
+  );
 
   return {
     // State

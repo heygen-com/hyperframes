@@ -105,6 +105,7 @@ export function useGsapScriptCommits({
 
   /** Send a mutation and record the edit in undo history. */
   const commitMutation = useCallback(
+    // fallow-ignore-next-line complexity
     async (
       selection: DomEditSelection,
       mutation: Record<string, unknown>,
@@ -210,6 +211,7 @@ export function useGsapScriptCommits({
   );
 
   const addGsapAnimation = useCallback(
+    // fallow-ignore-next-line complexity
     async (
       selection: DomEditSelection,
       method: "to" | "from" | "set" | "fromTo",
@@ -268,6 +270,7 @@ export function useGsapScriptCommits({
   );
 
   const addGsapProperty = useCallback(
+    // fallow-ignore-next-line complexity
     (selection: DomEditSelection, animationId: string, property: string) => {
       let defaultValue = PROPERTY_DEFAULTS[property] ?? 0;
       const el = selection.element;

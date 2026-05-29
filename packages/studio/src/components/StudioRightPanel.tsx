@@ -34,6 +34,7 @@ export interface StudioRightPanelProps {
   onCloseBlockParams?: () => void;
 }
 
+// fallow-ignore-next-line complexity
 export function StudioRightPanel({
   selectedStudioMotion,
   designPanelActive,

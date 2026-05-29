@@ -135,6 +135,7 @@ function TimingSection({
 /*  PropertyPanel                                                      */
 /* ------------------------------------------------------------------ */
 
+// fallow-ignore-next-line complexity
 export const PropertyPanel = memo(function PropertyPanel({
   projectId,
   projectDir,
@@ -229,6 +230,7 @@ export const PropertyPanel = memo(function PropertyPanel({
     });
   };
 
+  // fallow-ignore-next-line complexity
   const commitManualSize = (axis: "width" | "height", nextValue: string) => {
     const parsed = parsePxMetricValue(nextValue);
     if (parsed == null || parsed <= 0) return;

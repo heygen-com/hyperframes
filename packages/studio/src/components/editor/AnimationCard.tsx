@@ -15,16 +15,42 @@ import {
 import { EaseCurveSection } from "./EaseCurveSection";
 
 const PERCENT_PROPS = new Set(["opacity", "autoAlpha"]);
+const BOOLEAN_PROPS = new Set(["visibility"]);
+
 function isPercentProp(prop: string): boolean {
   return PERCENT_PROPS.has(prop);
 }
 
 function displayValue(prop: string, val: number | string): string {
-  return isPercentProp(prop) ? String(Math.round(Number(val) * 100)) : String(val);
+  if (isPercentProp(prop)) return String(Math.round(Math.max(0, Math.min(1, Number(val))) * 100));
+  return String(val);
 }
 
 function adjustedValue(prop: string, raw: string): string {
-  return isPercentProp(prop) ? String(Number(raw) / 100) : raw;
+  if (isPercentProp(prop)) return String(Math.max(0, Math.min(1, Number(raw) / 100)));
+  return raw;
+}
+
+function RemoveButton({ onClick, title }: { onClick: () => void; title: string }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex-shrink-0 rounded p-0.5 text-neutral-600 transition-colors hover:bg-neutral-800 hover:text-red-400"
+      title={title}
+    >
+      <svg
+        width="12"
+        height="12"
+        viewBox="0 0 12 12"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+      >
+        <path d="M3 3l6 6M9 3l-6 6" />
+      </svg>
+    </button>
+  );
 }
 
 function PropertyRow({
@@ -40,6 +66,30 @@ function PropertyRow({
   onRemove: () => void;
   removeTitle: string;
 }) {
+  if (BOOLEAN_PROPS.has(prop)) {
+    const isVisible = val === "visible" || val === 1;
+    return (
+      <div className="flex items-center gap-1">
+        <div className="min-w-0 flex-1 flex items-center gap-2 px-2 py-1 rounded-lg bg-neutral-900 border border-neutral-800">
+          <span className="flex-1 text-[11px] font-medium text-neutral-500">
+            {PROP_LABELS[prop] ?? prop}
+          </span>
+          <button
+            type="button"
+            onClick={() => onCommit(isVisible ? "hidden" : "visible")}
+            className={`flex-shrink-0 w-7 h-4 rounded-full transition-colors relative ${isVisible ? "bg-emerald-500/30" : "bg-neutral-700"}`}
+            title={isVisible ? "Visible — click to hide" : "Hidden — click to show"}
+          >
+            <span
+              className={`absolute top-0.5 h-3 w-3 rounded-full transition-transform ${isVisible ? "bg-emerald-400 translate-x-3.5" : "bg-neutral-500 translate-x-0.5"}`}
+            />
+          </button>
+        </div>
+        <RemoveButton onClick={onRemove} title={removeTitle} />
+      </div>
+    );
+  }
+
   return (
     <div className="flex items-center gap-1">
       <div className="min-w-0 flex-1">
@@ -53,23 +103,7 @@ function PropertyRow({
           onCommit={(raw) => onCommit(adjustedValue(prop, raw))}
         />
       </div>
-      <button
-        type="button"
-        onClick={onRemove}
-        className="flex-shrink-0 rounded p-0.5 text-neutral-600 transition-colors hover:bg-neutral-800 hover:text-red-400"
-        title={removeTitle}
-      >
-        <svg
-          width="12"
-          height="12"
-          viewBox="0 0 12 12"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.5"
-        >
-          <path d="M3 3l6 6M9 3l-6 6" />
-        </svg>
-      </button>
+      <RemoveButton onClick={onRemove} title={removeTitle} />
     </div>
   );
 }
@@ -201,8 +235,11 @@ export const AnimationCard = memo(function AnimationCard({
     [animation.properties],
   );
   const availableProps = useMemo(
-    () => SUPPORTED_PROPS.filter((p) => !usedProps.has(p)),
-    [usedProps],
+    () =>
+      SUPPORTED_PROPS.filter(
+        (p) => !usedProps.has(p) && (animation.method === "set" || !BOOLEAN_PROPS.has(p)),
+      ),
+    [usedProps, animation.method],
   );
 
   const usedFromProps = useMemo(
@@ -210,7 +247,7 @@ export const AnimationCard = memo(function AnimationCard({
     [animation.fromProperties],
   );
   const availableFromProps = useMemo(
-    () => SUPPORTED_PROPS.filter((p) => !usedFromProps.has(p)),
+    () => SUPPORTED_PROPS.filter((p) => !usedFromProps.has(p) && !BOOLEAN_PROPS.has(p)),
     [usedFromProps],
   );
 

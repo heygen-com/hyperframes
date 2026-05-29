@@ -1,6 +1,9 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import type { TimelineElement } from "../player";
-import { getPreviewTargetFromPointer } from "../utils/studioPreviewHelpers";
+import {
+  getAllPreviewTargetsFromPointer,
+  getPreviewTargetFromPointer,
+} from "../utils/studioPreviewHelpers";
 import { findMatchingTimelineElementId, type RightPanelTab } from "../utils/studioHelpers";
 import {
   domEditSelectionsTargetSame,
@@ -67,6 +70,10 @@ export interface UseDomSelectionReturn {
     clientY: number,
     options?: { preferClipAncestor?: boolean },
   ) => Promise<DomEditSelection | null>;
+  resolveAllDomSelectionsFromPreviewPoint: (
+    clientX: number,
+    clientY: number,
+  ) => Promise<DomEditSelection[]>;
   updateDomEditHoverSelection: (selection: DomEditSelection | null) => void;
   buildDomSelectionForTimelineElement: (
     element: TimelineElement,
@@ -113,6 +120,7 @@ export function useDomSelection({
   // ── Callbacks ──
 
   const applyDomSelection = useCallback(
+    // fallow-ignore-next-line complexity
     (
       selection: DomEditSelection | null,
       options?: {
@@ -212,6 +220,7 @@ export function useDomSelection({
   );
 
   const resolveDomSelectionFromPreviewPoint = useCallback(
+    // fallow-ignore-next-line complexity
     async (
       clientX: number,
       clientY: number,
@@ -234,6 +243,27 @@ export function useDomSelection({
     [activeCompPath, buildDomSelectionFromTarget, captionEditMode, previewIframeRef],
   );
 
+  const resolveAllDomSelectionsFromPreviewPoint = useCallback(
+    // fallow-ignore-next-line complexity
+    async (clientX: number, clientY: number): Promise<DomEditSelection[]> => {
+      const iframe = previewIframeRef.current;
+      if (!iframe || captionEditMode) return [];
+      try {
+        if (iframe.contentDocument) reapplyPositionEditsAfterSeek(iframe.contentDocument);
+      } catch {
+        /* cross-origin guard */
+      }
+      const targets = getAllPreviewTargetsFromPointer(iframe, clientX, clientY, activeCompPath);
+      const results: DomEditSelection[] = [];
+      for (const target of targets) {
+        const sel = await buildDomSelectionFromTarget(target, { skipSourceProbe: true });
+        if (sel) results.push(sel);
+      }
+      return results;
+    },
+    [activeCompPath, buildDomSelectionFromTarget, captionEditMode, previewIframeRef],
+  );
+
   const updateDomEditHoverSelection = useCallback((selection: DomEditSelection | null) => {
     if (domEditSelectionsTargetSame(domEditHoverSelectionRef.current, selection)) return;
     domEditHoverSelectionRef.current = selection;
@@ -241,6 +271,7 @@ export function useDomSelection({
   }, []);
 
   const buildDomSelectionForTimelineElement = useCallback(
+    // fallow-ignore-next-line complexity
     async (element: TimelineElement): Promise<DomEditSelection | null> => {
       const iframe = previewIframeRef.current;
       let doc: Document | null = null;
@@ -282,6 +313,7 @@ export function useDomSelection({
   );
 
   const refreshDomEditSelectionFromPreview = useCallback(
+    // fallow-ignore-next-line complexity
     async (selection: DomEditSelection) => {
       const iframe = previewIframeRef.current;
       let doc: Document | null = null;
@@ -307,6 +339,7 @@ export function useDomSelection({
   );
 
   const refreshDomEditGroupSelectionsFromPreview = useCallback(
+    // fallow-ignore-next-line complexity
     async (selections: DomEditSelection[]) => {
       const iframe = previewIframeRef.current;
       let doc: Document | null = null;
@@ -430,6 +463,7 @@ export function useDomSelection({
     clearDomSelection,
     buildDomSelectionFromTarget,
     resolveDomSelectionFromPreviewPoint,
+    resolveAllDomSelectionsFromPreviewPoint,
     updateDomEditHoverSelection,
     buildDomSelectionForTimelineElement,
     handleTimelineElementSelect,

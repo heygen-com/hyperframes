@@ -4,7 +4,7 @@ export const METHOD_LABELS: Record<string, string> = {
   set: "Set",
   to: "Animate",
   from: "Animate In",
-  fromTo: "Animate",
+  fromTo: "From → To",
 };
 
 export const METHOD_TOOLTIPS: Record<string, string> = {

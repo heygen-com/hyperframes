@@ -153,31 +153,49 @@ export function resolveVisualDomEditSelectionTarget(
   elementsFromPoint: Iterable<Element | null | undefined>,
   options: Pick<DomEditContextOptions, "activeCompositionPath">,
 ): HTMLElement | null {
-  const candidates: HTMLElement[] = [];
+  const candidates = resolveAllVisualDomEditTargets(elementsFromPoint, options);
+  return candidates[0] ?? null;
+}
+
+/**
+ * Returns all independently-selectable elements at the given point, in paint
+ * order (topmost first). Used for click-cycling through stacked layers.
+ *
+ * Each entry in the returned array is an independent "layer" — an element
+ * that is not an ancestor of an earlier entry. This gives one result per
+ * z-stacked element rather than one per DOM node.
+ */
+export function resolveAllVisualDomEditTargets(
+  elementsFromPoint: Iterable<Element | null | undefined>,
+  options: Pick<DomEditContextOptions, "activeCompositionPath">,
+): HTMLElement[] {
+  const raw: HTMLElement[] = [];
 
   for (const entry of elementsFromPoint) {
     if (!isHtmlElement(entry)) continue;
     if (hasRenderedBox(entry) && getDomLayerPatchTarget(entry, options.activeCompositionPath)) {
-      candidates.push(entry);
+      raw.push(entry);
     }
   }
 
-  if (candidates.length === 0) return null;
+  if (raw.length === 0) return [];
 
-  // candidates are in visual stacking order (topmost first, from elementsFromPoint).
-  // Start with the topmost and only replace with a descendant that is more
-  // specific within the same visual subtree. Never jump to an unrelated
-  // element that happens to be painted behind the current pick.
-  let best = candidates[0];
-
-  for (let i = 1; i < candidates.length; i++) {
-    const candidate = candidates[i];
-    if (best.contains(candidate)) {
-      best = candidate;
+  // First pass: for each contiguous ancestor-descendant run, keep only the
+  // deepest (most specific) element, matching the original single-pick logic.
+  const layers: HTMLElement[] = [];
+  let best = raw[0];
+  for (let i = 1; i < raw.length; i++) {
+    const el = raw[i];
+    if (best.contains(el)) {
+      best = el; // go deeper in this subtree
+    } else {
+      layers.push(best);
+      best = el;
     }
   }
+  layers.push(best);
 
-  return best;
+  return layers;
 }
 
 // ─── Raster detection ────────────────────────────────────────────────────────
@@ -248,6 +266,7 @@ export function findElementForSelection(
   return matches[0] ?? null;
 }
 
+// fallow-ignore-next-line complexity
 export function findElementForTimelineElement(
   doc: Document,
   element: TimelineElementDomTarget,

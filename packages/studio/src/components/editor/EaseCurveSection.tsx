@@ -118,11 +118,14 @@ export function EaseCurveSection({
           {progress !== null ? "Playing…" : "Preview"}
         </button>
       </div>
-      <div className="overflow-hidden rounded pt-[72px] -mt-[72px]">
+      <div
+        className="overflow-hidden rounded pt-[72px] -mt-[72px]"
+        style={{ aspectRatio: `${w}/${h}` }}
+      >
         <svg
           ref={svgRef}
           width="100%"
-          height={h}
+          height="100%"
           viewBox={`0 0 ${w} ${h}`}
           preserveAspectRatio="none"
           style={{ overflow: "visible" }}

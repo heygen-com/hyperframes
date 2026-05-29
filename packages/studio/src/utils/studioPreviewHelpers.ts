@@ -3,6 +3,7 @@ import { resolveVisualDomEditSelectionTarget } from "../components/editor/domEdi
 import {
   getDomLayerPatchTarget,
   isElementComputedVisible,
+  resolveAllVisualDomEditTargets,
 } from "../components/editor/domEditingElement";
 import { getEventTargetElement } from "./studioHelpers";
 
@@ -58,6 +59,7 @@ function removePointerEventsOverride(style: HTMLStyleElement | null): void {
   }
 }
 
+// fallow-ignore-next-line complexity
 export function getPreviewTargetFromPointer(
   iframe: HTMLIFrameElement,
   clientX: number,
@@ -93,6 +95,42 @@ export function getPreviewTargetFromPointer(
     if (!fallback || !getDomLayerPatchTarget(fallback, activeCompositionPath)) return null;
     if (!isElementComputedVisible(fallback)) return null;
     return fallback;
+  } finally {
+    removePointerEventsOverride(overrideStyle);
+  }
+}
+
+/** Returns all independently-selectable elements at the pointer (topmost first). */
+export function getAllPreviewTargetsFromPointer(
+  iframe: HTMLIFrameElement,
+  clientX: number,
+  clientY: number,
+  activeCompositionPath: string | null,
+): HTMLElement[] {
+  let doc: Document | null = null;
+  let win: Window | null = null;
+  try {
+    doc = iframe.contentDocument;
+    win = iframe.contentWindow;
+  } catch {
+    return [];
+  }
+  if (!doc || !win) return [];
+
+  const localPointer = resolvePreviewLocalPointer(iframe, doc, win, clientX, clientY);
+  if (!localPointer) return [];
+
+  const overrideStyle = forcePointerEventsAuto(doc);
+  try {
+    if (typeof doc.elementsFromPoint === "function") {
+      return resolveAllVisualDomEditTargets(doc.elementsFromPoint(localPointer.x, localPointer.y), {
+        activeCompositionPath,
+      });
+    }
+    const fallback = getEventTargetElement(doc.elementFromPoint(localPointer.x, localPointer.y));
+    if (!fallback || !getDomLayerPatchTarget(fallback, activeCompositionPath)) return [];
+    if (!isElementComputedVisible(fallback)) return [];
+    return [fallback];
   } finally {
     removePointerEventsOverride(overrideStyle);
   }

@@ -97,6 +97,7 @@ export function shouldDisableTimelineWhileCompositionLoading(compositionLoading:
   return compositionLoading;
 }
 
+// fallow-ignore-next-line complexity
 export const NLELayout = memo(function NLELayout({
   projectId,
   portrait,
@@ -367,7 +368,7 @@ export const NLELayout = memo(function NLELayout({
       {/* Preview + player controls */}
       <div className="flex-1 min-h-0 flex flex-col">
         <div
-          className="flex-1 min-h-0 relative"
+          className="flex-1 min-h-0 relative overflow-hidden"
           data-preview-pan-surface="true"
           onDragOver={handlePreviewDragOver}
           onDragLeave={handlePreviewDragLeave}

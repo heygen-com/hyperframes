@@ -29,7 +29,7 @@ function CommitField({
     const el = inputRef.current;
     if (!el) return;
     const handler = (e: WheelEvent) => {
-      if (disabled) return;
+      if (disabled || document.activeElement !== el) return;
       const delta = e.deltaY === 0 ? e.deltaX : e.deltaY;
       if (delta === 0) return;
       const nextDraft = adjustNumericToken(draftRef.current, delta < 0 ? 1 : -1, e);
