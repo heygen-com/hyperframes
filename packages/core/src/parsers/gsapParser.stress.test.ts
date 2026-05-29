@@ -856,7 +856,7 @@ describe("Additional edge cases", () => {
     expect(result.animations[0].targetSelector).toBe("#el2");
   });
 
-  it("non-string selector (variable reference) is skipped", () => {
+  it("resolves a variable reference selector to its queried CSS selector", () => {
     const script = `
       const el = document.querySelector("#el");
       const tl = gsap.timeline({ paused: true });
@@ -864,7 +864,20 @@ describe("Additional edge cases", () => {
       tl.to("#el2", { x: 100, duration: 0.5 }, 0);
     `;
     const result = parseGsapScript(script);
-    // First tween has a variable reference as selector, not a string literal — skipped
+    // `el` is bound to `document.querySelector("#el")`, so it resolves to "#el".
+    expect(result.animations).toHaveLength(2);
+    expect(result.animations[0].targetSelector).toBe("#el");
+    expect(result.animations[1].targetSelector).toBe("#el2");
+  });
+
+  it("skips a variable target that is not bound to a DOM lookup", () => {
+    const script = `
+      const tl = gsap.timeline({ paused: true });
+      tl.to(mysteryTarget, { opacity: 1, duration: 0.5 }, 0);
+      tl.to("#el2", { x: 100, duration: 0.5 }, 0);
+    `;
+    const result = parseGsapScript(script);
+    // mysteryTarget has no resolvable selector binding — only the literal survives.
     expect(result.animations).toHaveLength(1);
     expect(result.animations[0].targetSelector).toBe("#el2");
   });

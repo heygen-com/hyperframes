@@ -194,7 +194,17 @@ function extractGsapScriptBlock(
   html: string,
 ): { scriptText: string; replaceScript: (newText: string) => string } | null {
   const { document } = parseHTML(html);
-  const scripts = document.querySelectorAll("script:not([src])");
+  // linkedom's querySelectorAll doesn't descend into <template> content, but
+  // sub-compositions wrap their markup (and the GSAP <script>) in a <template>.
+  // Search top-level scripts first, then each template's own scripts. Operate
+  // on the template element directly (NOT .content) so textContent writes are
+  // reflected in document.toString().
+  const scripts = [
+    ...document.querySelectorAll("script:not([src])"),
+    ...Array.from(document.querySelectorAll("template")).flatMap((tmpl) =>
+      Array.from(tmpl.querySelectorAll("script:not([src])")),
+    ),
+  ];
   for (const script of scripts) {
     const content = script.textContent || "";
     if (

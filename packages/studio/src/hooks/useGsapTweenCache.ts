@@ -1,8 +1,27 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { GsapAnimation, ParsedGsap } from "@hyperframes/core/gsap-parser";
 
-function getAnimationsForElement(animations: GsapAnimation[], elementId: string): GsapAnimation[] {
-  return animations.filter((a) => a.targetSelector === `#${elementId}`);
+/** The selected element's identity for matching tweens to it. */
+export interface GsapElementTarget {
+  id?: string | null;
+  selector?: string | null;
+}
+
+/**
+ * A tween belongs to the selected element when its target selector addresses
+ * that element — either by id (`#id`) or by the exact CSS selector the element
+ * was selected through (`.kicker`). Real compositions target tweens by class
+ * via `querySelector`, so id-only matching misses them.
+ */
+export function getAnimationsForElement(
+  animations: GsapAnimation[],
+  target: GsapElementTarget,
+): GsapAnimation[] {
+  const matchers = new Set<string>();
+  if (target.id) matchers.add(`#${target.id}`);
+  if (target.selector) matchers.add(target.selector);
+  if (matchers.size === 0) return [];
+  return animations.filter((a) => matchers.has(a.targetSelector));
 }
 
 async function fetchParsedAnimations(
@@ -22,7 +41,7 @@ async function fetchParsedAnimations(
 export function useGsapAnimationsForElement(
   projectId: string | null,
   sourceFile: string,
-  elementId: string | null,
+  target: GsapElementTarget | null,
   version: number,
 ): {
   animations: GsapAnimation[];
@@ -65,9 +84,14 @@ export function useGsapAnimationsForElement(
     };
   }, [projectId, sourceFile, version]);
 
+  const targetId = target?.id ?? null;
+  const targetSelector = target?.selector ?? null;
   const animations = useMemo(
-    () => (elementId ? getAnimationsForElement(allAnimations, elementId) : []),
-    [allAnimations, elementId],
+    () =>
+      targetId || targetSelector
+        ? getAnimationsForElement(allAnimations, { id: targetId, selector: targetSelector })
+        : [],
+    [allAnimations, targetId, targetSelector],
   );
 
   return { animations, multipleTimelines, unsupportedTimelinePattern };

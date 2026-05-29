@@ -813,3 +813,211 @@ describe("SUPPORTED_EASES", () => {
     expect(SUPPORTED_EASES).toContain("elastic.inOut");
   });
 });
+
+// ── Variable-target resolution + in-place mutation ──────────────────────────
+//
+// Real compositions (and everything the hyperframes skill generates) target
+// tweens via element variables resolved from querySelector, wrapped in an IIFE,
+// with gsap.set() calls interleaved between tl.to() calls. The parser must
+// resolve those variable targets to selectors (read) and edits must preserve
+// every surrounding statement (write).
+
+const REAL_WORLD_SCRIPT = `(function () {
+  window.__timelines = window.__timelines || {};
+  const tl = gsap.timeline({ paused: true });
+  const root = document.querySelector('#cold-open');
+  const kicker = root.querySelector(".co-kicker");
+  const glyph = root.querySelector(".co-new");
+  const items = root.querySelectorAll(".co-item");
+
+  gsap.set(kicker, { y: 16, opacity: 0 });
+  tl.to(kicker, { y: 0, opacity: 1, duration: 0.45, ease: "expo.out" }, 0.3);
+
+  gsap.set(glyph, { rotationX: 90, opacity: 0 });
+  tl.to(glyph, { rotationX: 0, opacity: 1, duration: 0.5, ease: "power3.inOut" }, 2.06);
+
+  tl.to(items, { opacity: 1, duration: 0.4, stagger: 0.1 }, 1.0);
+
+  window.__timelines["cold-open"] = tl;
+})();`;
+
+describe("variable-target resolution (querySelector pattern)", () => {
+  it("resolves a const element variable to its selector", () => {
+    const script = `
+      const root = document.querySelector('#scene');
+      const kicker = root.querySelector(".co-kicker");
+      const tl = gsap.timeline({ paused: true });
+      tl.to(kicker, { y: 0, opacity: 1, duration: 0.45, ease: "expo.out" }, 0.3);
+    `;
+    const result = parseGsapScript(script);
+    expect(result.animations).toHaveLength(1);
+    expect(result.animations[0].targetSelector).toBe(".co-kicker");
+    expect(result.animations[0].properties.opacity).toBe(1);
+    expect(result.animations[0].duration).toBe(0.45);
+    expect(result.animations[0].ease).toBe("expo.out");
+  });
+
+  it("resolves document.querySelector and querySelectorAll targets", () => {
+    const script = `
+      const tl = gsap.timeline({ paused: true });
+      const title = document.querySelector("#title");
+      const items = document.querySelectorAll(".item");
+      tl.to(title, { opacity: 1, duration: 0.5 }, 0);
+      tl.to(items, { y: 0, duration: 0.5, stagger: 0.1 }, 0.5);
+    `;
+    const result = parseGsapScript(script);
+    expect(result.animations).toHaveLength(2);
+    expect(result.animations[0].targetSelector).toBe("#title");
+    expect(result.animations[1].targetSelector).toBe(".item");
+  });
+
+  it("resolves getElementById targets to an id selector", () => {
+    const script = `
+      const tl = gsap.timeline({ paused: true });
+      const el = document.getElementById("hero");
+      tl.to(el, { opacity: 1, duration: 0.5 }, 0);
+    `;
+    const result = parseGsapScript(script);
+    expect(result.animations).toHaveLength(1);
+    expect(result.animations[0].targetSelector).toBe("#hero");
+  });
+
+  it("resolves an inline querySelector call passed directly as the target", () => {
+    const script = `
+      const root = document.querySelector('#scene');
+      const tl = gsap.timeline({ paused: true });
+      tl.to(root.querySelector(".inline"), { opacity: 1, duration: 0.5 }, 0);
+    `;
+    const result = parseGsapScript(script);
+    expect(result.animations).toHaveLength(1);
+    expect(result.animations[0].targetSelector).toBe(".inline");
+  });
+
+  it("parses mixed string-literal and variable targets in one timeline", () => {
+    const script = `
+      const tl = gsap.timeline({ paused: true });
+      const kicker = document.querySelector(".kicker");
+      tl.to(".literal", { opacity: 1, duration: 0.5 }, 0);
+      tl.to(kicker, { y: 0, duration: 0.5 }, 0.5);
+    `;
+    const result = parseGsapScript(script);
+    expect(result.animations.map((a) => a.targetSelector)).toEqual([".literal", ".kicker"]);
+  });
+
+  it("parses every tween in a real-world IIFE composition with interleaved gsap.set", () => {
+    const result = parseGsapScript(REAL_WORLD_SCRIPT);
+    expect(result.animations.map((a) => a.targetSelector)).toEqual([
+      ".co-kicker",
+      ".co-new",
+      ".co-item",
+    ]);
+    // stagger preserved as extras
+    expect(result.animations[2].extras?.stagger).toBe("__raw:0.1");
+  });
+
+  it("leaves unresolvable variable targets out of the animation list", () => {
+    const script = `
+      const tl = gsap.timeline({ paused: true });
+      tl.to(someUnknownThing, { opacity: 1, duration: 0.5 }, 0);
+      tl.to(".real", { opacity: 1, duration: 0.5 }, 1);
+    `;
+    const result = parseGsapScript(script);
+    expect(result.animations.map((a) => a.targetSelector)).toEqual([".real"]);
+  });
+});
+
+describe("in-place AST mutation preserves surrounding code", () => {
+  it("updateAnimationInScript edits one tween and preserves gsap.set + var decls + IIFE", () => {
+    const parsed = parseGsapScript(REAL_WORLD_SCRIPT);
+    const kickerAnim = parsed.animations.find((a) => a.targetSelector === ".co-kicker")!;
+    const updated = updateAnimationInScript(REAL_WORLD_SCRIPT, kickerAnim.id, {
+      properties: { y: 0, opacity: 0.5 },
+    });
+
+    // The edit landed
+    expect(updated).toContain("opacity: 0.5");
+    // Surrounding code survived verbatim
+    expect(updated).toContain('const kicker = root.querySelector(".co-kicker")');
+    expect(updated).toContain("gsap.set(kicker, { y: 16, opacity: 0 })");
+    expect(updated).toContain("gsap.set(glyph, { rotationX: 90, opacity: 0 })");
+    expect(updated).toContain('window.__timelines["cold-open"] = tl;');
+    expect(updated).toContain("(function () {");
+    // The variable target was NOT rewritten to a string literal
+    expect(updated).toContain("tl.to(kicker,");
+    expect(updated).not.toContain('tl.to(".co-kicker"');
+    // The other tweens are untouched
+    expect(updated).toContain("tl.to(glyph,");
+    expect(updated).toContain("tl.to(items,");
+  });
+
+  it("updateAnimationInScript re-parses to the edited value (round-trip)", () => {
+    const parsed = parseGsapScript(REAL_WORLD_SCRIPT);
+    const glyphAnim = parsed.animations.find((a) => a.targetSelector === ".co-new")!;
+    const updated = updateAnimationInScript(REAL_WORLD_SCRIPT, glyphAnim.id, {
+      properties: { rotationX: 0, opacity: 1, scale: 1.2 },
+    });
+    const reparsed = parseGsapScript(updated);
+    const reGlyph = reparsed.animations.find((a) => a.targetSelector === ".co-new")!;
+    expect(reGlyph.properties.scale).toBe(1.2);
+    // unrelated tweens still present
+    expect(reparsed.animations).toHaveLength(3);
+  });
+
+  it("update-meta edits duration/ease/position in place", () => {
+    const parsed = parseGsapScript(REAL_WORLD_SCRIPT);
+    const kickerAnim = parsed.animations.find((a) => a.targetSelector === ".co-kicker")!;
+    const updated = updateAnimationInScript(REAL_WORLD_SCRIPT, kickerAnim.id, {
+      duration: 0.9,
+      ease: "power1.in",
+    });
+    const reparsed = parseGsapScript(updated);
+    const reKicker = reparsed.animations.find((a) => a.targetSelector === ".co-kicker")!;
+    expect(reKicker.duration).toBe(0.9);
+    expect(reKicker.ease).toBe("power1.in");
+    // surrounding code intact
+    expect(updated).toContain("gsap.set(kicker, { y: 16, opacity: 0 })");
+  });
+
+  it("removeAnimationFromScript removes one tween and keeps the rest + setup", () => {
+    const parsed = parseGsapScript(REAL_WORLD_SCRIPT);
+    const glyphAnim = parsed.animations.find((a) => a.targetSelector === ".co-new")!;
+    const updated = removeAnimationFromScript(REAL_WORLD_SCRIPT, glyphAnim.id);
+    const reparsed = parseGsapScript(updated);
+    expect(reparsed.animations.map((a) => a.targetSelector)).toEqual([".co-kicker", ".co-item"]);
+    // the removed tween's gsap.set setup is left untouched (not the parser's job to remove)
+    expect(updated).toContain('const kicker = root.querySelector(".co-kicker")');
+    expect(updated).toContain('window.__timelines["cold-open"] = tl;');
+  });
+
+  it("addAnimationToScript inserts a tween and preserves the IIFE body", () => {
+    const { script: updated, id } = addAnimationToScript(REAL_WORLD_SCRIPT, {
+      targetSelector: "#new-el",
+      method: "to",
+      position: 3,
+      duration: 0.5,
+      ease: "power2.out",
+      properties: { opacity: 1 },
+    });
+    expect(id).not.toBe("");
+    expect(updated).toContain('window.__timelines["cold-open"] = tl;');
+    expect(updated).toContain('const kicker = root.querySelector(".co-kicker")');
+    const reparsed = parseGsapScript(updated);
+    expect(reparsed.animations.some((a) => a.targetSelector === "#new-el")).toBe(true);
+    expect(reparsed.animations).toHaveLength(4);
+  });
+
+  it("still edits classic string-literal timelines in place", () => {
+    const script = `
+      const tl = gsap.timeline({ paused: true });
+      tl.to("#el1", { opacity: 1, duration: 0.5 }, 0);
+      tl.to("#el2", { x: 100, duration: 1 }, 1);
+    `;
+    const parsed = parseGsapScript(script);
+    const updated = updateAnimationInScript(script, parsed.animations[0].id, {
+      properties: { opacity: 0.25 },
+    });
+    expect(updated).toContain("opacity: 0.25");
+    // second tween untouched
+    expect(updated).toContain('tl.to("#el2", { x: 100, duration: 1 }, 1)');
+  });
+});

@@ -202,7 +202,9 @@ export function useDomEditSession({
   } = useGsapAnimationsForElement(
     STUDIO_GSAP_PANEL_ENABLED ? (projectId ?? null) : null,
     domEditSelection?.sourceFile || activeCompPath || "index.html",
-    domEditSelection?.id ?? null,
+    domEditSelection
+      ? { id: domEditSelection.id ?? null, selector: domEditSelection.selector ?? null }
+      : null,
     gsapCacheVersion,
   );
 

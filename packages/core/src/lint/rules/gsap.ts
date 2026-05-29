@@ -1,8 +1,12 @@
 interface LintParsedGsap {
   animations: Array<{
     targetSelector: string;
+    method: string;
     position: number | string;
     properties: Record<string, number | string>;
+    duration?: number;
+    ease?: string;
+    extras?: Record<string, unknown>;
   }>;
   timelineVar: string;
 }
@@ -39,7 +43,6 @@ type CompositionRange = {
   end: number;
 };
 
-const META_GSAP_KEYS = new Set(["duration", "ease", "repeat", "yoyo", "overwrite", "delay"]);
 const SCENE_BOUNDARY_EPSILON_SECONDS = 0.05;
 
 // ── GSAP parsing utilities ─────────────────────────────────────────────────
@@ -125,6 +128,39 @@ function readRegisteredTimelineCompositionId(script: string): string | null {
   return match?.[1] || null;
 }
 
+/** Strip a `__raw:` prefix the parser adds to unresolvable values. */
+function unwrapRaw(value: unknown): string | number | undefined {
+  if (typeof value === "number") return value;
+  if (typeof value !== "string") return undefined;
+  const code = value.startsWith("__raw:") ? value.slice(6) : value;
+  return code.replace(/^\s*["']|["']\s*$/g, "");
+}
+
+function extrasNumber(value: unknown): number {
+  const unwrapped = unwrapRaw(value);
+  const numeric = typeof unwrapped === "number" ? unwrapped : Number(unwrapped);
+  return Number.isFinite(numeric) ? numeric : 0;
+}
+
+/** A readable single-line snippet of a tween for finding messages. */
+function synthesizeWindowRaw(
+  timelineVar: string,
+  anim: LintParsedGsap["animations"][number],
+): string {
+  const entries = Object.entries(anim.properties).map(([k, v]) => {
+    if (typeof v === "string" && v.startsWith("__raw:")) return `${k}: ${v.slice(6)}`;
+    return `${k}: ${typeof v === "string" ? JSON.stringify(v) : v}`;
+  });
+  if (anim.duration !== undefined) entries.push(`duration: ${anim.duration}`);
+  if (anim.ease) entries.push(`ease: ${JSON.stringify(anim.ease)}`);
+  const pos = typeof anim.position === "number" ? anim.position : JSON.stringify(anim.position);
+  return `${timelineVar}.${anim.method}("${anim.targetSelector}", { ${entries.join(", ")} }, ${pos})`;
+}
+
+// Build lint windows straight from the parser's structured animations. The
+// parser already resolves variable targets (`tl.to(kicker, …)`) to selectors
+// and excludes non-DOM object-target anchors (`tl.to({ _: 0 }, …)`), so there's
+// no fragile positional pairing between a regex walk and the parsed list.
 async function extractGsapWindows(script: string): Promise<GsapWindow[]> {
   if (!/gsap\.timeline/.test(script)) return [];
   const parseGsapScript = await loadParseGsapScript();
@@ -132,142 +168,26 @@ async function extractGsapWindows(script: string): Promise<GsapWindow[]> {
   if (parsed.animations.length === 0) return [];
 
   const windows: GsapWindow[] = [];
-  const timelineVar = parsed.timelineVar;
-  const methodPattern = new RegExp(
-    `${timelineVar}\\.(set|to|from|fromTo)\\s*\\(([^)]+(?:\\{[^}]*\\}[^)]*)+)\\)`,
-    "g",
-  );
-
-  let match: RegExpExecArray | null;
-  let index = 0;
-  while ((match = methodPattern.exec(script)) !== null && index < parsed.animations.length) {
-    const raw = match[0];
-    const args = match[2] ?? "";
-    // Skip calls whose first argument is not a quoted selector (e.g. object
-    // targets like `tl.to({ _: 0 }, …)` used to anchor timeline duration).
-    // `parseGsapScript` ignores those, so we must too — otherwise the regex
-    // match index drifts ahead of `parsed.animations[index]` and every
-    // subsequent window picks up the wrong animation's selector/position.
-    if (!/^\s*["']/.test(args)) continue;
-    const meta = parseGsapWindowMeta(match[1] ?? "", args);
-    const animation = parsed.animations[index];
-    index += 1;
-    if (!animation) continue;
+  for (const animation of parsed.animations) {
     // Skip animations with string positions (e.g. "+=1", "<") — their absolute
     // timing depends on runtime evaluation and can't be statically linted.
     if (typeof animation.position !== "number") continue;
+    const repeat = extrasNumber(animation.extras?.repeat);
+    const cycleCount = repeat > 0 ? repeat + 1 : 1;
+    const effectiveDuration =
+      animation.method === "set" ? 0 : (animation.duration ?? 0) * cycleCount;
     windows.push({
       targetSelector: animation.targetSelector,
       position: animation.position,
-      end: animation.position + meta.effectiveDuration,
-      properties: meta.properties.length > 0 ? meta.properties : Object.keys(animation.properties),
-      propertyValues: meta.propertyValues,
-      overwriteAuto: meta.overwriteAuto,
-      method: match[1] ?? "to",
-      raw,
+      end: animation.position + effectiveDuration,
+      properties: Object.keys(animation.properties),
+      propertyValues: animation.properties,
+      overwriteAuto: unwrapRaw(animation.extras?.overwrite) === "auto",
+      method: animation.method,
+      raw: synthesizeWindowRaw(parsed.timelineVar, animation),
     });
   }
   return windows;
-}
-
-function parseGsapWindowMeta(
-  method: string,
-  argsStr: string,
-): {
-  effectiveDuration: number;
-  properties: string[];
-  propertyValues: Record<string, string | number>;
-  overwriteAuto: boolean;
-} {
-  const emptyMeta = {
-    effectiveDuration: 0,
-    properties: [],
-    propertyValues: {},
-    overwriteAuto: false,
-  };
-  const selectorMatch = argsStr.match(/^\s*["']([^"']+)["']\s*,/);
-  if (!selectorMatch) return emptyMeta;
-
-  const afterSelector = argsStr.slice(selectorMatch[0].length);
-  let properties: Record<string, string | number> = {};
-  let fromProperties: Record<string, string | number> = {};
-
-  if (method === "fromTo") {
-    const firstBrace = afterSelector.indexOf("{");
-    const firstEnd = findMatchingBrace(afterSelector, firstBrace);
-    if (firstBrace !== -1 && firstEnd !== -1) {
-      fromProperties = parseLooseObjectLiteral(afterSelector.slice(firstBrace, firstEnd + 1));
-      const secondPart = afterSelector.slice(firstEnd + 1);
-      const secondBrace = secondPart.indexOf("{");
-      const secondEnd = findMatchingBrace(secondPart, secondBrace);
-      if (secondBrace !== -1 && secondEnd !== -1) {
-        properties = parseLooseObjectLiteral(secondPart.slice(secondBrace, secondEnd + 1));
-      }
-    }
-  } else {
-    const braceStart = afterSelector.indexOf("{");
-    const braceEnd = findMatchingBrace(afterSelector, braceStart);
-    if (braceStart !== -1 && braceEnd !== -1) {
-      properties = parseLooseObjectLiteral(afterSelector.slice(braceStart, braceEnd + 1));
-    }
-  }
-
-  const duration = numberValue(properties.duration) || 0;
-  const repeat = numberValue(properties.repeat) || 0;
-  const cycleCount = repeat > 0 ? repeat + 1 : 1;
-  const effectiveDuration = duration * cycleCount;
-  const overwriteAuto = stringValue(properties.overwrite) === "auto";
-
-  const propertyNames = new Set<string>();
-  for (const key of Object.keys(fromProperties)) {
-    if (!META_GSAP_KEYS.has(key)) propertyNames.add(key);
-  }
-  for (const key of Object.keys(properties)) {
-    if (!META_GSAP_KEYS.has(key)) propertyNames.add(key);
-  }
-
-  return {
-    effectiveDuration: method === "set" ? 0 : effectiveDuration,
-    properties: [...propertyNames],
-    propertyValues: properties,
-    overwriteAuto,
-  };
-}
-
-function parseLooseObjectLiteral(source: string): Record<string, string | number> {
-  const result: Record<string, string | number> = {};
-  const cleaned = source.replace(/^\{|\}$/g, "").trim();
-  if (!cleaned) return result;
-  const propertyPattern = /(\w+)\s*:\s*("[^"]*"|'[^']*'|true|false|-?[\d.]+|[a-zA-Z_][\w.]*)/g;
-  let match: RegExpExecArray | null;
-  while ((match = propertyPattern.exec(cleaned)) !== null) {
-    const key = match[1];
-    const rawValue = match[2];
-    if (!key || rawValue == null) continue;
-    if (
-      (rawValue.startsWith('"') && rawValue.endsWith('"')) ||
-      (rawValue.startsWith("'") && rawValue.endsWith("'"))
-    ) {
-      result[key] = rawValue.slice(1, -1);
-      continue;
-    }
-    const numeric = Number(rawValue);
-    result[key] = Number.isFinite(numeric) ? numeric : rawValue;
-  }
-  return result;
-}
-
-function findMatchingBrace(source: string, startIndex: number): number {
-  if (startIndex < 0) return -1;
-  let depth = 0;
-  for (let i = startIndex; i < source.length; i++) {
-    if (source[i] === "{") depth += 1;
-    else if (source[i] === "}") {
-      depth -= 1;
-      if (depth === 0) return i;
-    }
-  }
-  return -1;
 }
 
 function numberValue(value: string | number | undefined): number | null {

@@ -10,12 +10,7 @@
  */
 import * as recast from "recast";
 import { parse as babelParse } from "@babel/parser";
-import {
-  type GsapAnimation,
-  type GsapMethod,
-  type ParsedGsap,
-  serializeGsapAnimations,
-} from "./gsapSerialize";
+import { type GsapAnimation, type GsapMethod, type ParsedGsap } from "./gsapSerialize";
 
 export type { GsapAnimation, GsapMethod, ParsedGsap } from "./gsapSerialize";
 export {
@@ -109,6 +104,81 @@ function extractLiteralValue(node: any, scope: ScopeBindings): unknown {
   return resolveNode(node, scope);
 }
 
+// ── Element-target resolution ───────────────────────────────────────────────
+//
+// Real compositions target tweens through element variables resolved from the
+// DOM (`const kicker = root.querySelector(".kicker"); tl.to(kicker, …)`) rather
+// than inline string selectors. To make those tweens editable we map each such
+// variable back to the CSS selector it was queried with.
+
+const QUERY_METHODS = new Set(["querySelector", "querySelectorAll"]);
+
+/**
+ * If `node` is a DOM lookup call (`x.querySelector(".sel")`,
+ * `document.querySelectorAll(".sel")`, `document.getElementById("id")`),
+ * return the CSS selector it resolves to. `getElementById("id")` maps to
+ * `#id`. Returns null for anything else.
+ */
+function selectorFromQueryCall(node: any, scope: ScopeBindings): string | null {
+  if (node?.type !== "CallExpression") return null;
+  const callee = node.callee;
+  if (callee?.type !== "MemberExpression" || callee.property?.type !== "Identifier") return null;
+  const method = callee.property.name;
+  const argValue = resolveNode(node.arguments?.[0], scope);
+  if (typeof argValue !== "string" || argValue.length === 0) return null;
+  if (QUERY_METHODS.has(method)) return argValue;
+  if (method === "getElementById") return `#${argValue}`;
+  return null;
+}
+
+type TargetBindings = ReadonlyMap<string, string>;
+
+/** Map element variables (assigned from a DOM lookup) to their CSS selector. */
+function collectTargetBindings(ast: any, scope: ScopeBindings): TargetBindings {
+  const bindings = new Map<string, string>();
+  recast.types.visit(ast, {
+    visitVariableDeclarator(path: any) {
+      const name = path.node.id?.name;
+      const selector = selectorFromQueryCall(path.node.init, scope);
+      if (name && selector !== null) bindings.set(name, selector);
+      this.traverse(path);
+    },
+    visitAssignmentExpression(path: any) {
+      const left = path.node.left;
+      const selector = selectorFromQueryCall(path.node.right, scope);
+      if (left?.type === "Identifier" && selector !== null && !bindings.has(left.name)) {
+        bindings.set(left.name, selector);
+      }
+      this.traverse(path);
+    },
+  });
+  return bindings;
+}
+
+/**
+ * Resolve a tween's first argument to a CSS selector. Handles inline string
+ * literals, element variables (via {@link collectTargetBindings}), and inline
+ * DOM lookup calls. Returns null when the target can't be resolved statically
+ * (e.g. an object-target duration anchor `tl.to({ _: 0 }, …)`).
+ */
+function resolveTargetSelector(
+  node: any,
+  scope: ScopeBindings,
+  targetBindings: TargetBindings,
+): string | null {
+  if (!node) return null;
+  if (node.type === "StringLiteral" || node.type === "Literal") {
+    return typeof node.value === "string" ? node.value : null;
+  }
+  if (node.type === "Identifier") {
+    return targetBindings.get(node.name) ?? null;
+  }
+  if (node.type === "CallExpression") {
+    return selectorFromQueryCall(node, scope);
+  }
+  return null;
+}
+
 function objectExpressionToRecord(node: any, scope: ScopeBindings): Record<string, unknown> {
   const result: Record<string, unknown> = {};
   if (node?.type !== "ObjectExpression") return result;
@@ -180,7 +250,12 @@ interface TweenCallInfo {
   positionArg?: any;
 }
 
-function findAllTweenCalls(ast: any, timelineVar: string): TweenCallInfo[] {
+function findAllTweenCalls(
+  ast: any,
+  timelineVar: string,
+  scope: ScopeBindings,
+  targetBindings: TargetBindings,
+): TweenCallInfo[] {
   const results: TweenCallInfo[] = [];
   recast.types.visit(ast, {
     visitCallExpression(path: any) {
@@ -202,11 +277,7 @@ function findAllTweenCalls(ast: any, timelineVar: string): TweenCallInfo[] {
           this.traverse(path);
           return;
         }
-        const selectorArg = args[0];
-        const selectorValue =
-          selectorArg.type === "StringLiteral" || selectorArg.type === "Literal"
-            ? String(selectorArg.value)
-            : null;
+        const selectorValue = resolveTargetSelector(args[0], scope, targetBindings);
         if (!selectorValue) {
           this.traverse(path);
           return;
@@ -348,16 +419,45 @@ function assignStableIds(anims: Omit<GsapAnimation, "id">[]): GsapAnimation[] {
   });
 }
 
+// ── Shared parse (AST + located tween calls) ────────────────────────────────
+
+interface ParsedGsapAst {
+  ast: any;
+  scope: ScopeBindings;
+  timelineVar: string;
+  detection: TimelineDetection;
+  /** Tween calls in document order, each paired with its stable animation id. */
+  located: Array<{ id: string; call: TweenCallInfo; animation: GsapAnimation }>;
+}
+
+/**
+ * Parse a script to its recast AST plus the located tween calls. The mutation
+ * functions reuse this so they can edit the exact call node in place (recast
+ * preserves all surrounding source — interleaved `gsap.set`, element variable
+ * declarations, the IIFE wrapper, comments and formatting).
+ */
+function parseGsapAst(script: string): ParsedGsapAst {
+  const ast = parseScript(script);
+  const scope = collectScopeBindings(ast);
+  const targetBindings = collectTargetBindings(ast, scope);
+  const detection = findTimelineVar(ast);
+  const timelineVar = detection.timelineVar ?? "tl";
+  const calls = findAllTweenCalls(ast, timelineVar, scope, targetBindings);
+  const animations = assignStableIds(calls.map((call) => tweenCallToAnimation(call, scope)));
+  const located = animations.map((animation, i) => ({
+    id: animation.id,
+    call: calls[i]!,
+    animation,
+  }));
+  return { ast, scope, timelineVar, detection, located };
+}
+
 // ── Public API ──────────────────────────────────────────────────────────────
 
 export function parseGsapScript(script: string): ParsedGsap {
   try {
-    const ast = parseScript(script);
-    const scope = collectScopeBindings(ast);
-    const detection = findTimelineVar(ast);
-    const timelineVar = detection.timelineVar ?? "tl";
-    const calls = findAllTweenCalls(ast, timelineVar);
-    const animations = assignStableIds(calls.map((call) => tweenCallToAnimation(call, scope)));
+    const { detection, timelineVar, located } = parseGsapAst(script);
+    const animations = located.map((l) => l.animation);
 
     const timelineMatch = script.match(
       new RegExp(
@@ -387,9 +487,136 @@ export function parseGsapScript(script: string): ParsedGsap {
   }
 }
 
-/** Returns true when the parse result is a failure fallback (no animations, no preamble). */
-function isParseFailure(parsed: ParsedGsap): boolean {
-  return parsed.animations.length === 0 && !parsed.preamble;
+// ── In-place AST mutation helpers ───────────────────────────────────────────
+//
+// Edits operate directly on the located call's AST node and reprint via recast,
+// which preserves every untouched statement. This is what lets us edit tweens
+// in real compositions (variable targets, interleaved `gsap.set`, IIFE wrapper)
+// without regenerating — and discarding — the surrounding code.
+
+/** Render a model value to the JS source it should emit as. Mirrors gsapSerialize. */
+function valueToCode(value: number | string): string {
+  if (typeof value === "string" && value.startsWith("__raw:")) return value.slice(6);
+  if (typeof value === "string") return JSON.stringify(value);
+  return String(value);
+}
+
+function safeKey(key: string): string {
+  return /^[A-Za-z_$][\w$]*$/.test(key) ? key : JSON.stringify(key);
+}
+
+/**
+ * Parse a value/expression snippet into a standalone AST expression node.
+ * Uses an assignment (`__hf__ = <code>`) rather than wrapping in parens so an
+ * object literal parses as an expression without recast re-emitting the
+ * surrounding parentheses.
+ */
+function parseExpr(code: string): any {
+  return parseScript(`__hf__ = ${code};`).program.body[0].expression.right;
+}
+
+function propKeyName(prop: any): string | undefined {
+  return prop?.key?.name ?? prop?.key?.value;
+}
+
+function isObjectProperty(prop: any): boolean {
+  return prop?.type === "ObjectProperty" || prop?.type === "Property";
+}
+
+/** A key the inspector treats as an editable transform/style property. */
+function isEditablePropertyKey(key: string): boolean {
+  return !BUILTIN_VAR_KEYS.has(key) && !DROPPED_VAR_KEYS.has(key) && !EXTRAS_KEYS.has(key);
+}
+
+function makeObjectProperty(key: string, value: number | string): any {
+  const obj = parseExpr(`{ ${safeKey(key)}: ${valueToCode(value)} }`);
+  return obj.properties[0];
+}
+
+/** Set (or insert) a single key on an ObjectExpression, preserving sibling keys. */
+function setVarsKey(varsArg: any, key: string, value: number | string): void {
+  if (varsArg?.type !== "ObjectExpression") return;
+  const existing = varsArg.properties.find(
+    (p: any) => isObjectProperty(p) && propKeyName(p) === key,
+  );
+  if (existing) {
+    existing.value = parseExpr(valueToCode(value));
+  } else {
+    varsArg.properties.push(makeObjectProperty(key, value));
+  }
+}
+
+/**
+ * Replace the editable-property keys on an ObjectExpression with `newProps`,
+ * leaving `duration`, `ease`, `stagger`, callbacks and other non-editable keys
+ * untouched.
+ */
+function reconcileEditableProperties(
+  varsArg: any,
+  newProps: Record<string, number | string>,
+): void {
+  if (varsArg?.type !== "ObjectExpression") return;
+  // Drop editable props no longer present.
+  varsArg.properties = varsArg.properties.filter((p: any) => {
+    if (!isObjectProperty(p)) return true;
+    const key = propKeyName(p);
+    if (typeof key !== "string") return true;
+    if (!isEditablePropertyKey(key)) return true;
+    return key in newProps;
+  });
+  // Upsert each new prop, preserving the order keys first appeared.
+  for (const [key, value] of Object.entries(newProps)) {
+    setVarsKey(varsArg, key, value);
+  }
+}
+
+function applyUpdatesToCall(call: TweenCallInfo, updates: Partial<GsapAnimation>): void {
+  if (updates.properties) reconcileEditableProperties(call.varsArg, updates.properties);
+  if (updates.fromProperties && call.method === "fromTo") {
+    reconcileEditableProperties(call.fromArg, updates.fromProperties);
+  }
+  if (updates.duration !== undefined) setVarsKey(call.varsArg, "duration", updates.duration);
+  if (updates.ease !== undefined) setVarsKey(call.varsArg, "ease", updates.ease);
+  if (updates.position !== undefined) {
+    const posIdx = call.method === "fromTo" ? 3 : 2;
+    call.node.arguments[posIdx] = parseExpr(valueToCode(updates.position));
+  }
+}
+
+/** Walk up to the enclosing ExpressionStatement path (for prune / insertAfter). */
+function findStatementPath(path: any): any {
+  let p = path;
+  while (p) {
+    if (p.node?.type === "ExpressionStatement") return p;
+    p = p.parentPath;
+  }
+  return null;
+}
+
+/** Build the source for a single `tl.method(selector, vars, position)` call. */
+function buildTweenStatementCode(timelineVar: string, anim: Omit<GsapAnimation, "id">): string {
+  const selector = JSON.stringify(anim.targetSelector);
+  const props: Record<string, number | string> = { ...anim.properties };
+  if (anim.duration !== undefined) props.duration = anim.duration;
+  if (anim.ease) props.ease = anim.ease;
+  const entries = Object.entries(props).map(([k, v]) => `${safeKey(k)}: ${valueToCode(v)}`);
+  if (anim.extras) {
+    for (const [k, v] of Object.entries(anim.extras)) {
+      entries.push(`${safeKey(k)}: ${valueToCode(v as number | string)}`);
+    }
+  }
+  const objCode = `{ ${entries.join(", ")} }`;
+  const posCode = valueToCode(
+    typeof anim.position === "number" ? anim.position : (anim.position ?? 0),
+  );
+  if (anim.method === "fromTo") {
+    const fromEntries = Object.entries(anim.fromProperties ?? {}).map(
+      ([k, v]) => `${safeKey(k)}: ${valueToCode(v)}`,
+    );
+    const fromCode = `{ ${fromEntries.join(", ")} }`;
+    return `${timelineVar}.fromTo(${selector}, ${fromCode}, ${objCode}, ${posCode});`;
+  }
+  return `${timelineVar}.${anim.method}(${selector}, ${objCode}, ${posCode});`;
 }
 
 export function updateAnimationInScript(
@@ -397,41 +624,79 @@ export function updateAnimationInScript(
   animationId: string,
   updates: Partial<GsapAnimation>,
 ): string {
-  const parsed = parseGsapScript(script);
-  if (isParseFailure(parsed)) return script;
-  const updated = parsed.animations.map((anim) =>
-    anim.id === animationId ? { ...anim, ...updates } : anim,
-  );
-  return serializeGsapAnimations(updated, parsed.timelineVar, {
-    preamble: parsed.preamble,
-    postamble: parsed.postamble,
-  });
+  let parsed: ParsedGsapAst;
+  try {
+    parsed = parseGsapAst(script);
+  } catch {
+    return script;
+  }
+  const target = parsed.located.find((l) => l.id === animationId);
+  if (!target) return script;
+  applyUpdatesToCall(target.call, updates);
+  return recast.print(parsed.ast).code;
 }
 
 export function addAnimationToScript(
   script: string,
   animation: Omit<GsapAnimation, "id">,
 ): { script: string; id: string } {
-  const parsed = parseGsapScript(script);
-  if (isParseFailure(parsed)) return { script, id: "" };
+  let parsed: ParsedGsapAst;
+  try {
+    parsed = parseGsapAst(script);
+  } catch {
+    return { script, id: "" };
+  }
+  // Nothing to anchor against and no timeline to target — treat as parse failure.
+  if (parsed.located.length === 0 && parsed.detection.timelineVar === null) {
+    return { script, id: "" };
+  }
+
   const id = `anim-${Date.now()}`;
-  const newAnim: GsapAnimation = { ...animation, id };
-  const allAnimations = [...parsed.animations, newAnim];
-  return {
-    script: serializeGsapAnimations(allAnimations, parsed.timelineVar, {
-      preamble: parsed.preamble,
-      postamble: parsed.postamble,
-    }),
-    id,
-  };
+  const statementCode = buildTweenStatementCode(parsed.timelineVar, animation);
+  const newStatement = parseScript(statementCode).program.body[0];
+
+  const lastCall = parsed.located[parsed.located.length - 1]?.call;
+  const anchorPath = lastCall
+    ? findStatementPath(lastCall.path)
+    : findTimelineDeclarationPath(parsed.ast, parsed.timelineVar);
+
+  if (anchorPath) {
+    anchorPath.insertAfter(newStatement);
+  } else {
+    parsed.ast.program.body.push(newStatement);
+  }
+  return { script: recast.print(parsed.ast).code, id };
+}
+
+/** Find the statement path of `const <timelineVar> = gsap.timeline(...)`. */
+function findTimelineDeclarationPath(ast: any, timelineVar: string): any {
+  let found: any = null;
+  recast.types.visit(ast, {
+    visitVariableDeclaration(path: any) {
+      if (found) return false;
+      for (const decl of path.node.declarations ?? []) {
+        if (decl.id?.name === timelineVar && isGsapTimelineCall(decl.init)) {
+          found = path;
+          return false;
+        }
+      }
+      this.traverse(path);
+    },
+  });
+  return found;
 }
 
 export function removeAnimationFromScript(script: string, animationId: string): string {
-  const parsed = parseGsapScript(script);
-  if (isParseFailure(parsed)) return script;
-  const filtered = parsed.animations.filter((a) => a.id !== animationId);
-  return serializeGsapAnimations(filtered, parsed.timelineVar, {
-    preamble: parsed.preamble,
-    postamble: parsed.postamble,
-  });
+  let parsed: ParsedGsapAst;
+  try {
+    parsed = parseGsapAst(script);
+  } catch {
+    return script;
+  }
+  const target = parsed.located.find((l) => l.id === animationId);
+  if (!target) return script;
+  const stmtPath = findStatementPath(target.call.path);
+  if (!stmtPath) return script;
+  stmtPath.prune();
+  return recast.print(parsed.ast).code;
 }
