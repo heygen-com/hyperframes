@@ -14,6 +14,7 @@ import { runFfmpeg } from "../utils/runFfmpeg.js";
 import { unwrapTemplate } from "../utils/htmlTemplate.js";
 import { resolveProjectRelativeSrc } from "./videoFrameExtractor.js";
 import type { AudioElement, AudioTrack, MixResult } from "./audioMixer.types.js";
+import { applyVolumeEnvelopeToWav } from "./audioVolumeEnvelope.js";
 
 export type { AudioElement, MixResult } from "./audioMixer.types.js";
 
@@ -30,10 +31,89 @@ function escapeExpressionCommas(expression: string): string {
   return expression.replace(/\\/g, "\\\\").replace(/,/g, "\\,");
 }
 
-function buildVolumeExpression(track: AudioTrack): string {
+/**
+ * Upper bound on volume-automation keyframes folded into the FFmpeg `volume`
+ * expression. The expression nests one `if(lt(...))` per keyframe, and
+ * FFmpeg's expression evaluator has a finite nesting depth: past ~95 levels
+ * (build-dependent — lower on some Linux ffmpeg builds) `volume=...:eval=frame`
+ * fails filter-graph init, which fails the whole mix and drops the audio track
+ * entirely. The 60 Hz timeline probe routinely emits 100–300 keyframes for a
+ * multi-second fade (GH #1066 follow-up: a 171-keyframe GSAP fade rendered with
+ * no audio). 32 segments keeps a wide safety margin and is far more resolution
+ * than a piecewise-linear volume envelope needs.
+ */
+const MAX_VOLUME_SEGMENTS = 32;
+
+/**
+ * Volume delta below which a keyframe is collinear enough to drop. Kept tight
+ * (0.5% linear) so the rendered piecewise-linear envelope tracks the GSAP curve
+ * the browser plays in preview to within ~0.2 dB across the audible range — well
+ * under the ~1 dB loudness JND, so render stays WYSIWYG with preview. A full
+ * ease-in/ease-out fade still reduces to ~25 segments, inside MAX_VOLUME_SEGMENTS.
+ */
+const VOLUME_SIMPLIFY_EPSILON = 0.005;
+
+/**
+ * Reduce a sorted keyframe list to a perceptually-equivalent piecewise-linear
+ * envelope with a bounded segment count.
+ *
+ * Ramer–Douglas–Peucker drops control points lying within
+ * `VOLUME_SIMPLIFY_EPSILON` of the line through their neighbours (a linear fade
+ * collapses to its two endpoints; an eased fade to a handful). A uniform
+ * downsample backstop then bounds pathological inputs (e.g. audio-rate volume
+ * oscillation) to `MAX_VOLUME_SEGMENTS`. Endpoints are always preserved so the
+ * envelope still spans the full clip.
+ */
+function simplifyVolumeKeyframes(
+  keyframes: { time: number; volume: number }[],
+): { time: number; volume: number }[] {
+  if (keyframes.length < 3) return keyframes;
+
+  const keep = new Array<boolean>(keyframes.length).fill(false);
+  keep[0] = true;
+  keep[keyframes.length - 1] = true;
+  const stack: [number, number][] = [[0, keyframes.length - 1]];
+  while (stack.length > 0) {
+    const [startIndex, endIndex] = stack.pop()!;
+    const start = keyframes[startIndex]!;
+    const end = keyframes[endIndex]!;
+    const span = end.time - start.time;
+    let maxDistance = VOLUME_SIMPLIFY_EPSILON;
+    let splitIndex = -1;
+    for (let i = startIndex + 1; i < endIndex; i += 1) {
+      const point = keyframes[i]!;
+      const interpolated =
+        span === 0
+          ? start.volume
+          : start.volume + ((end.volume - start.volume) * (point.time - start.time)) / span;
+      const distance = Math.abs(point.volume - interpolated);
+      if (distance > maxDistance) {
+        maxDistance = distance;
+        splitIndex = i;
+      }
+    }
+    if (splitIndex !== -1) {
+      keep[splitIndex] = true;
+      stack.push([startIndex, splitIndex], [splitIndex, endIndex]);
+    }
+  }
+
+  const simplified = keyframes.filter((_, i) => keep[i]);
+  if (simplified.length <= MAX_VOLUME_SEGMENTS) return simplified;
+
+  const step = (simplified.length - 1) / (MAX_VOLUME_SEGMENTS - 1);
+  const sampled: { time: number; volume: number }[] = [];
+  for (let i = 0; i < MAX_VOLUME_SEGMENTS; i += 1) {
+    const point = simplified[Math.round(i * step)]!;
+    if (sampled.length === 0 || point.time > sampled.at(-1)!.time) sampled.push(point);
+  }
+  return sampled;
+}
+
+function buildVolumeExpression(track: AudioTrack, ignoreKeyframes = false): string {
   const trimDuration = track.end - track.start;
   const staticVolume = clampVolume(track.volume);
-  const keyframes = (track.volumeKeyframes ?? [])
+  const keyframes = (ignoreKeyframes ? [] : (track.volumeKeyframes ?? []))
     .filter((keyframe) => Number.isFinite(keyframe.time) && Number.isFinite(keyframe.volume))
     .map((keyframe) => ({
       time: Math.max(0, Math.min(trimDuration, keyframe.time - track.start)),
@@ -57,14 +137,19 @@ function buildVolumeExpression(track: AudioTrack): string {
     }
   }
 
-  if (deduped.length === 1) {
-    return `volume=${formatFilterNumber(deduped[0]!.volume)}`;
+  // Collapse the densely-sampled probe output to a bounded piecewise-linear
+  // envelope. Without this, the nested-if expression below grows one level per
+  // keyframe and overflows FFmpeg's expression evaluator (see MAX_VOLUME_SEGMENTS).
+  const simplified = simplifyVolumeKeyframes(deduped);
+
+  if (simplified.length === 1) {
+    return `volume=${formatFilterNumber(simplified[0]!.volume)}`;
   }
 
-  let expression = formatFilterNumber(deduped.at(-1)!.volume);
-  for (let i = deduped.length - 2; i >= 0; i -= 1) {
-    const current = deduped[i]!;
-    const next = deduped[i + 1]!;
+  let expression = formatFilterNumber(simplified.at(-1)!.volume);
+  for (let i = simplified.length - 2; i >= 0; i -= 1) {
+    const current = simplified[i]!;
+    const next = simplified[i + 1]!;
     const currentTime = formatFilterNumber(current.time);
     const nextTime = formatFilterNumber(next.time);
     const currentVolume = formatFilterNumber(current.volume);
@@ -299,42 +384,58 @@ async function mixAudioTracks(
   const outputDir = dirname(outputPath);
   if (!existsSync(outputDir)) mkdirSync(outputDir, { recursive: true });
 
-  const inputs: string[] = [];
-  const filterParts: string[] = [];
+  const buildArgs = (ignoreAutomation: boolean): string[] => {
+    const inputs: string[] = [];
+    const filterParts: string[] = [];
+    tracks.forEach((track, i) => {
+      inputs.push("-i", track.srcPath);
+      const delayMs = Math.round(track.start * 1000);
+      const trimDuration = track.end - track.start;
+      const volumeFilter = buildVolumeExpression(track, ignoreAutomation);
+      filterParts.push(
+        `[${i}:a]atrim=0:${trimDuration},${volumeFilter},adelay=${delayMs}|${delayMs},apad=whole_dur=${totalDuration}[a${i}]`,
+      );
+    });
 
-  tracks.forEach((track, i) => {
-    inputs.push("-i", track.srcPath);
-    const delayMs = Math.round(track.start * 1000);
-    const trimDuration = track.end - track.start;
-    const volumeFilter = buildVolumeExpression(track);
-    filterParts.push(
-      `[${i}:a]atrim=0:${trimDuration},${volumeFilter},adelay=${delayMs}|${delayMs},apad=whole_dur=${totalDuration}[a${i}]`,
-    );
-  });
+    const mixInputs = tracks.map((_, i) => `[a${i}]`).join("");
+    const weights = tracks.map(() => "1").join(" ");
+    const mixFilter = `${mixInputs}amix=inputs=${tracks.length}:duration=longest:dropout_transition=0:normalize=0:weights='${weights}'[mixed]`;
+    const postMixGainFilter = `[mixed]volume=${masterOutputGain}[out]`;
+    const fullFilter = [...filterParts, mixFilter, postMixGainFilter].join(";");
 
-  const mixInputs = tracks.map((_, i) => `[a${i}]`).join("");
-  const weights = tracks.map(() => "1").join(" ");
-  const mixFilter = `${mixInputs}amix=inputs=${tracks.length}:duration=longest:dropout_transition=0:normalize=0:weights='${weights}'[mixed]`;
-  const postMixGainFilter = `[mixed]volume=${masterOutputGain}[out]`;
-  const fullFilter = [...filterParts, mixFilter, postMixGainFilter].join(";");
+    return [
+      ...inputs,
+      "-filter_complex",
+      fullFilter,
+      "-map",
+      "[out]",
+      "-acodec",
+      "aac",
+      "-b:a",
+      "192k",
+      "-t",
+      String(totalDuration),
+      "-y",
+      outputPath,
+    ];
+  };
 
-  const args = [
-    ...inputs,
-    "-filter_complex",
-    fullFilter,
-    "-map",
-    "[out]",
-    "-acodec",
-    "aac",
-    "-b:a",
-    "192k",
-    "-t",
-    String(totalDuration),
-    "-y",
-    outputPath,
-  ];
+  let result = await runFfmpeg(buildArgs(false), { signal, timeout: ffmpegProcessTimeout });
 
-  const result = await runFfmpeg(args, { signal, timeout: ffmpegProcessTimeout });
+  // Defense in depth: volume automation is folded into an FFmpeg `volume`
+  // expression whose evaluator limits are build-dependent (see
+  // MAX_VOLUME_SEGMENTS). If that ever fails the mix, retry once without the
+  // automation so the track renders at its base volume rather than being
+  // dropped from the output entirely — a missing fade beats missing audio.
+  let degradedAutomation = false;
+  const hasAutomation = tracks.some((track) => (track.volumeKeyframes?.length ?? 0) > 0);
+  if (!result.success && !signal?.aborted && hasAutomation) {
+    const retry = await runFfmpeg(buildArgs(true), { signal, timeout: ffmpegProcessTimeout });
+    if (retry.success) {
+      result = retry;
+      degradedAutomation = true;
+    }
+  }
 
   if (signal?.aborted) {
     return {
@@ -360,6 +461,9 @@ async function mixAudioTracks(
     outputPath,
     durationMs: result.durationMs,
     tracksProcessed: tracks.length,
+    error: degradedAutomation
+      ? "Volume automation exceeded this ffmpeg build's expression limits; rendered at base volume"
+      : undefined,
   };
 }
 
@@ -452,6 +556,19 @@ export async function processCompositionAudio(
           audioSrcPath = trimmedPath;
         }
 
+        // Primary volume-automation path: bake the envelope into the PCM samples
+        // (sample-accurate, no keyframe ceiling). If the WAV isn't the expected
+        // 16-bit PCM, fall back to the ffmpeg expression path by leaving the
+        // keyframes on the track for buildVolumeExpression to handle.
+        let bakedEnvelope = false;
+        if (element.volumeKeyframes && element.volumeKeyframes.length > 0) {
+          bakedEnvelope = applyVolumeEnvelopeToWav(
+            audioSrcPath,
+            element.volumeKeyframes,
+            element.start,
+            element.volume ?? 1.0,
+          );
+        }
         tracks.push({
           id: element.id,
           srcPath: audioSrcPath,
@@ -459,8 +576,9 @@ export async function processCompositionAudio(
           end: element.end,
           mediaStart: element.mediaStart,
           duration: element.end - element.start,
-          volume: element.volume ?? 1.0,
-          volumeKeyframes: element.volumeKeyframes,
+          // Gain is already in the samples when baked, so mix at unity.
+          volume: bakedEnvelope ? 1.0 : (element.volume ?? 1.0),
+          volumeKeyframes: bakedEnvelope ? undefined : element.volumeKeyframes,
         });
       } catch (err: unknown) {
         errors.push(`Error: ${element.id} — ${err instanceof Error ? err.message : String(err)}`);
