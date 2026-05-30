@@ -428,7 +428,8 @@ export const Timeline = memo(function Timeline({
     >
       <div
         ref={scrollRef}
-        className={`${zoomMode === "fit" ? "overflow-x-hidden" : "overflow-x-auto"} overflow-y-auto h-full`}
+        tabIndex={-1}
+        className={`${zoomMode === "fit" ? "overflow-x-hidden" : "overflow-x-auto"} overflow-y-auto h-full outline-none`}
         onDragOver={handleAssetDragOver}
         onDragLeave={() => setIsDragOver(false)}
         onDrop={handleAssetDrop}

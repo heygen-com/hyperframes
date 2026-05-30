@@ -282,7 +282,7 @@ const SeekBar = memo(function SeekBar({
       aria-valuemin={0}
       aria-valuemax={Math.round(duration)}
       aria-valuenow={0}
-      className={`min-w-[96px] flex-1 h-6 flex items-center group ${
+      className={`min-w-[96px] flex-1 h-6 flex items-center group outline-none focus-visible:ring-1 focus-visible:ring-white/30 focus-visible:rounded ${
         disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"
       }`}
       style={{ touchAction: "none" }}

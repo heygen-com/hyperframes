@@ -110,6 +110,7 @@ export function useSeekBarDrag(
         window.removeEventListener("pointercancel", onUp);
         document.removeEventListener("visibilitychange", onVisibilityChange);
         window.removeEventListener("blur", cleanup);
+        target.blur();
       };
       const onUp = (ev: PointerEvent) => {
         if (ev.pointerId !== pointerId) return;
