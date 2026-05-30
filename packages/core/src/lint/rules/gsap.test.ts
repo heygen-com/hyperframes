@@ -865,4 +865,57 @@ describe("GSAP rules", () => {
     const finding = result.findings.find((f) => f.code === "gsap_from_opacity_noop");
     expect(finding).toBeUndefined();
   });
+
+  it("warns when gsap.timeline is created but not registered in __timelines", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="root" data-width="1920" data-height="1080">
+    <div id="box">Hello</div>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+  <script>
+    const tl = gsap.timeline({ paused: true });
+    tl.to("#box", { opacity: 0.5, duration: 2 });
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "gsap_timeline_not_registered");
+    expect(finding).toBeDefined();
+    expect(finding?.severity).toBe("warning");
+  });
+
+  it("does NOT warn when timeline is registered in __timelines", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="root" data-width="1920" data-height="1080">
+    <div id="box">Hello</div>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.to("#box", { opacity: 0.5, duration: 2 });
+    window.__timelines["root"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "gsap_timeline_not_registered");
+    expect(finding).toBeUndefined();
+  });
+
+  it("does NOT warn for sub-compositions (template-based)", async () => {
+    const html = `
+<template>
+  <div data-composition-id="sub" data-width="1920" data-height="1080">
+    <div id="box">Hello</div>
+  </div>
+  <script>
+    const tl = gsap.timeline({ paused: true });
+    tl.to("#box", { opacity: 0.5, duration: 2 });
+  </script>
+</template>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "gsap_timeline_not_registered");
+    expect(finding).toBeUndefined();
+  });
 });
