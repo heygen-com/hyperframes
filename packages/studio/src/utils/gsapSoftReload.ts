@@ -7,21 +7,37 @@ type IframeWindow = Window & {
   gsap?: { timeline?: (...args: unknown[]) => unknown };
 };
 
-function findGsapScriptElement(doc: Document): HTMLScriptElement | null {
-  const scripts = doc.querySelectorAll<HTMLScriptElement>("script:not([src])");
-  for (const script of scripts) {
-    const text = script.textContent || "";
-    if (
-      text.includes("gsap.timeline") ||
-      text.includes("__timelines") ||
-      text.includes(".to(") ||
-      text.includes(".set(")
-    )
-      return script;
-  }
-  return null;
+function isGsapScript(text: string): boolean {
+  return (
+    text.includes("gsap.timeline") ||
+    text.includes("__timelines") ||
+    text.includes(".to(") ||
+    text.includes(".set(")
+  );
 }
 
+function findGsapScriptElements(doc: Document): HTMLScriptElement[] {
+  const results: HTMLScriptElement[] = [];
+  const scripts = doc.querySelectorAll<HTMLScriptElement>("script:not([src])");
+  for (const script of scripts) {
+    if (isGsapScript(script.textContent || "")) results.push(script);
+  }
+  return results;
+}
+
+/**
+ * Replace the GSAP script in the live iframe without reloading. This preserves
+ * the WebGL context and shader transition cache.
+ *
+ * Scoped to root-document GSAP scripts only — scripts inside `<template>`
+ * elements (sub-compositions) are not visible to `querySelectorAll` and will
+ * fall back to a full iframe reload.
+ *
+ * Returns false (triggering a full reload fallback) when:
+ * - The iframe or GSAP runtime isn't available
+ * - Multiple GSAP scripts are found (ambiguous which to replace)
+ * - No matching GSAP script element exists in the live DOM
+ */
 export function applySoftReload(iframe: HTMLIFrameElement | null, scriptText: string): boolean {
   if (!iframe || !scriptText) return false;
 
@@ -30,8 +46,9 @@ export function applySoftReload(iframe: HTMLIFrameElement | null, scriptText: st
   if (!win || !doc) return false;
   if (!win.gsap || !win.__hfForceTimelineRebind) return false;
 
-  const oldScriptEl = findGsapScriptElement(doc);
-  if (!oldScriptEl) return false;
+  const gsapScripts = findGsapScriptElements(doc);
+  if (gsapScripts.length !== 1) return false;
+  const oldScriptEl = gsapScripts[0]!;
 
   const currentTime = win.__player?.getTime?.() ?? 0;
 
@@ -48,6 +65,9 @@ export function applySoftReload(iframe: HTMLIFrameElement | null, scriptText: st
 
     oldScriptEl.remove();
     const newScript = doc.createElement("script");
+    // IIFE prevents const/let redeclaration errors across consecutive edits.
+    // Top-level declarations are scoped to the IIFE; window.* assignments
+    // (e.g. window.__timelines["root"] = tl) still reach the global scope.
     newScript.textContent = `(function(){${scriptText}\n})();`;
     doc.body.appendChild(newScript);
 

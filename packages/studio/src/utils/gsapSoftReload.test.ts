@@ -83,4 +83,22 @@ describe("applySoftReload", () => {
     expect(result).toBe(true);
     expect(suppressionCalled).toBe(true);
   });
+
+  it("returns false when multiple GSAP scripts exist (ambiguous)", () => {
+    const script1 = document.createElement("script");
+    script1.textContent = "const tl = gsap.timeline({ paused: true });";
+    const script2 = document.createElement("script");
+    script2.textContent = 'tl.to("#other", { x: 10 });';
+    const container = document.createElement("div");
+    container.appendChild(script1);
+    container.appendChild(script2);
+
+    const { iframe } = buildMockIframe();
+    (iframe as unknown as { contentDocument: unknown }).contentDocument = {
+      querySelectorAll: (sel: string) => (sel === "script:not([src])" ? [script1, script2] : []),
+      createElement: (tag: string) => document.createElement(tag),
+      body: container,
+    };
+    expect(applySoftReload(iframe, SCRIPT_TEXT)).toBe(false);
+  });
 });
