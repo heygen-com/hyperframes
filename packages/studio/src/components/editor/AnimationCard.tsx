@@ -8,14 +8,13 @@ import {
   EASE_LABELS,
   METHOD_LABELS,
   METHOD_TOOLTIPS,
+  PERCENT_PROPS,
   PROP_LABELS,
   PROP_TOOLTIPS,
   PROP_UNITS,
 } from "./gsapAnimationConstants";
 import { buildTweenSummary } from "./gsapAnimationHelpers";
 import { EaseCurveSection } from "./EaseCurveSection";
-
-const PERCENT_PROPS = new Set(["opacity", "autoAlpha"]);
 const BOOLEAN_PROPS = new Set(["visibility"]);
 
 function isPercentProp(prop: string): boolean {

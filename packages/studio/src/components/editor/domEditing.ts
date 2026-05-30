@@ -41,4 +41,4 @@ export {
 } from "./domEditingLayers";
 
 // Agent prompt
-export { buildElementAgentPrompt } from "./domEditingAgentPrompt";
+export { buildElementAgentPrompt, buildAgentContextPreview } from "./domEditingAgentPrompt";

@@ -1,17 +1,24 @@
-import { readFileSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Hono } from "hono";
 import type { StudioApiAdapter } from "../types.js";
 import { walkDir } from "../helpers/safePath.js";
 
-function isCompositionFile(projectDir: string, relPath: string): boolean {
-  if (!relPath.endsWith(".html")) return false;
-  try {
-    const content = readFileSync(join(projectDir, relPath), "utf-8");
-    return content.includes("data-composition-id");
-  } catch {
-    return false;
-  }
+const COMPOSITION_ID_RE = /data-composition-id\s*=/;
+
+async function filterCompositionFiles(projectDir: string, files: string[]): Promise<string[]> {
+  const htmlFiles = files.filter((f) => f.endsWith(".html"));
+  const checks = await Promise.all(
+    htmlFiles.map(async (f) => {
+      try {
+        const content = await readFile(join(projectDir, f), "utf-8");
+        return COMPOSITION_ID_RE.test(content);
+      } catch {
+        return false;
+      }
+    }),
+  );
+  return htmlFiles.filter((_, i) => checks[i]);
 }
 
 export function registerProjectRoutes(api: Hono, adapter: StudioApiAdapter): void {
@@ -37,7 +44,7 @@ export function registerProjectRoutes(api: Hono, adapter: StudioApiAdapter): voi
     const project = await adapter.resolveProject(c.req.param("id"));
     if (!project) return c.json({ error: "not found" }, 404);
     const files = walkDir(project.dir);
-    const compositions = files.filter((f) => isCompositionFile(project.dir, f));
+    const compositions = await filterCompositionFiles(project.dir, files);
     return c.json({ id: project.id, dir: project.dir, title: project.title, files, compositions });
   });
 }

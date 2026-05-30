@@ -95,3 +95,17 @@ export function buildElementAgentPrompt({
 
   return lines.join("\n");
 }
+
+export function buildAgentContextPreview(
+  selection: DomEditSelection,
+  activeCompPath: string | null,
+): string {
+  return [
+    `Composition: ${selection.compositionPath}`,
+    `Source: ${selection.sourceFile || activeCompPath || "index.html"}`,
+    `Selector: ${selection.selector ?? "(none)"}  Tag: <${selection.tagName}>`,
+    selection.textContent ? `Text: ${selection.textContent}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}

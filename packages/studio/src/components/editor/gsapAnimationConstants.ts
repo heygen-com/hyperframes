@@ -121,6 +121,8 @@ export function parseCustomEaseFromString(ease: string): {
   return { x1: nums[2], y1: nums[3], x2: nums[4], y2: nums[5] };
 }
 
+export const PERCENT_PROPS = new Set(["opacity", "autoAlpha"]);
+
 export const ADD_METHODS = ["to", "from", "fromTo", "set"] as const;
 
 export const ADD_METHOD_LABELS: Record<string, string> = {

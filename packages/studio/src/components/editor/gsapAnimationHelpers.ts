@@ -1,7 +1,5 @@
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
-import { EASE_LABELS, PROP_LABELS, PROP_UNITS } from "./gsapAnimationConstants";
-
-const PERCENT_PROPS = new Set(["opacity", "autoAlpha"]);
+import { EASE_LABELS, PERCENT_PROPS, PROP_LABELS, PROP_UNITS } from "./gsapAnimationConstants";
 
 function formatPropValue(prop: string, v: number | string): string {
   const unit = PROP_UNITS[prop] ?? "";

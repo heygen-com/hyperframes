@@ -692,4 +692,23 @@ describe("initSandboxRuntimeModular", () => {
     expect(window.__playerReady).toBe(true);
     expect(window.__renderReady).toBe(true);
   });
+
+  it("seeks captured timeline to currentTime on initial bind", () => {
+    const seekTimes: number[] = [];
+    const tl = createMockTimeline(5);
+    const origTotalTime = tl.totalTime;
+    tl.totalTime = ((time: number, ...rest: unknown[]) => {
+      seekTimes.push(time);
+      (origTotalTime as Function).call(tl, time, ...rest);
+    }) as RuntimeTimelineLike["totalTime"];
+
+    document.body.innerHTML = `
+      <div data-composition-id="root" data-duration="5" data-width="1920" data-height="1080"></div>
+    `;
+    window.__timelines = { root: tl };
+    initSandboxRuntimeModular();
+
+    expect(seekTimes.length).toBeGreaterThan(0);
+    expect(seekTimes[0]).toBe(0);
+  });
 });

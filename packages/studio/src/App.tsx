@@ -30,7 +30,7 @@ import {
   STUDIO_MOTION_PANEL_ENABLED,
 } from "./components/editor/manualEditingAvailability";
 import { readStudioMotionFromElement } from "./components/editor/studioMotion";
-import type { DomEditSelection } from "./components/editor/domEditing";
+import { buildAgentContextPreview, type DomEditSelection } from "./components/editor/domEditing";
 import { AskAgentModal } from "./components/AskAgentModal";
 import { StudioGlobalDragOverlay } from "./components/StudioGlobalDragOverlay";
 import { StudioHeader } from "./components/StudioHeader";
@@ -620,16 +620,10 @@ export function StudioApp() {
               {domEditSession.agentModalOpen && domEditSession.domEditSelection && (
                 <AskAgentModal
                   selectionLabel={domEditSession.domEditSelection.label}
-                  contextPreview={[
-                    `Composition: ${domEditSession.domEditSelection.compositionPath}`,
-                    `Source: ${domEditSession.domEditSelection.sourceFile || activeCompPath || "index.html"}`,
-                    `Selector: ${domEditSession.domEditSelection.selector ?? "(none)"}  Tag: <${domEditSession.domEditSelection.tagName}>`,
-                    domEditSession.domEditSelection.textContent
-                      ? `Text: ${domEditSession.domEditSelection.textContent}`
-                      : "",
-                  ]
-                    .filter(Boolean)
-                    .join("\n")}
+                  contextPreview={buildAgentContextPreview(
+                    domEditSession.domEditSelection,
+                    activeCompPath,
+                  )}
                   anchorPoint={domEditSession.agentModalAnchorPoint}
                   onSubmit={domEditSession.handleAgentModalSubmit}
                   onClose={() => {
