@@ -50,10 +50,10 @@ export function applySoftReload(iframe: HTMLIFrameElement | null, afterHtml: str
       }
     }
 
-    const newScript = doc.createElement("script");
-    newScript.textContent = newScriptText;
-    oldScriptEl.parentNode?.insertBefore(newScript, oldScriptEl);
     oldScriptEl.remove();
+    const newScript = doc.createElement("script");
+    newScript.textContent = `(function(){${newScriptText}\n})();`;
+    doc.body.appendChild(newScript);
 
     win.__hfForceTimelineRebind?.();
     win.__player?.seek?.(currentTime);
