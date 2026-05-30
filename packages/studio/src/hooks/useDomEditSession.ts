@@ -224,6 +224,7 @@ export function useDomEditSession({
   } = useGsapScriptCommits({
     projectIdRef,
     activeCompPath,
+    previewIframeRef,
     editHistory,
     domEditSaveTimestampRef,
     reloadPreview,

@@ -245,6 +245,16 @@ function getDocumentStyleSignature(doc: Document): string {
   return stableHash(`${styleText}\n${linkedStyles}`);
 }
 
+// fallow-ignore-next-line complexity
+function isGsapAnimationOnlyScript(text: string): boolean {
+  return (
+    (text.includes("gsap.timeline") || text.includes("__timelines")) &&
+    !text.includes("HyperShader") &&
+    !text.includes("hyper-shader") &&
+    !text.includes("hyperShader")
+  );
+}
+
 function getDocumentScriptSignature(doc: Document): string {
   const projectSignature = Array.from(
     doc.querySelectorAll<HTMLMetaElement>('meta[name="hyperframes-project-signature"]'),
@@ -252,6 +262,12 @@ function getDocumentScriptSignature(doc: Document): string {
     .map((meta) => meta.getAttribute("content") || "")
     .join("\n");
   const scriptText = Array.from(doc.querySelectorAll<HTMLScriptElement>("script"))
+    .filter((script) => {
+      if (script.src) return true;
+      const text = script.textContent || "";
+      if (!text.trim()) return false;
+      return !isGsapAnimationOnlyScript(text);
+    })
     .map((script) => {
       const attrs = [
         script.type,
@@ -2191,6 +2207,10 @@ export function init(config: HyperShaderConfig): GsapTimeline {
   const hfWin = window as unknown as { __hf?: { shaderTransitionsReady?: Promise<void> } };
   hfWin.__hf = hfWin.__hf || {};
   hfWin.__hf.shaderTransitionsReady = prewarmPromise;
+
+  (
+    window as Window & { __hfSuppressSceneMutations?: <T>(fn: () => T) => T }
+  ).__hfSuppressSceneMutations = <T>(fn: () => T): T => suppressSceneMutationTracking(fn);
 
   registerTimeline(compId, tl, config.timeline);
   return tl;

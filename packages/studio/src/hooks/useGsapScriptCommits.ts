@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef } from "react";
 import type { ParsedGsap } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import type { EditHistoryKind } from "../utils/editHistory";
+import { applySoftReload } from "../utils/gsapSoftReload";
 
 const PROPERTY_DEFAULTS: Record<string, number> = {
   opacity: 1,
@@ -71,6 +72,7 @@ async function mutateGsapScript(
 interface GsapScriptCommitsParams {
   projectIdRef: React.MutableRefObject<string | null>;
   activeCompPath: string | null;
+  previewIframeRef: React.RefObject<HTMLIFrameElement | null>;
   editHistory: {
     recordEdit: (entry: {
       label: string;
@@ -90,6 +92,7 @@ const DEBOUNCE_MS = 150;
 export function useGsapScriptCommits({
   projectIdRef,
   activeCompPath,
+  previewIframeRef,
   editHistory,
   domEditSaveTimestampRef,
   reloadPreview,
@@ -131,13 +134,18 @@ export function useGsapScriptCommits({
 
       onCacheInvalidate();
 
-      if (!options.softReload) {
+      if (options.softReload && result.after) {
+        if (!applySoftReload(previewIframeRef.current, result.after)) {
+          reloadPreview();
+        }
+      } else {
         reloadPreview();
       }
     },
     [
       projectIdRef,
       activeCompPath,
+      previewIframeRef,
       editHistory,
       domEditSaveTimestampRef,
       reloadPreview,
@@ -156,6 +164,7 @@ export function useGsapScriptCommits({
       {
         label: `Edit GSAP ${property}`,
         coalesceKey: `gsap:${animationId}:${property}`,
+        softReload: true,
       },
     );
   }, [commitMutation]);
