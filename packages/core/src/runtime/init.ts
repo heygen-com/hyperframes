@@ -948,6 +948,10 @@ export function initSandboxRuntimeModular(): void {
         // clock not yet initialized — duration will be set during TransportClock setup
       }
       state.capturedTimeline.pause();
+      const seekTime = Math.max(0, state.currentTime || 0);
+      if (typeof state.capturedTimeline.totalTime === "function") {
+        state.capturedTimeline.totalTime(seekTime, false);
+      }
     }
     if (resolution.diagnostics) {
       postRuntimeMessage({
