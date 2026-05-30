@@ -79,7 +79,7 @@ describe("testPortOnAllHosts — real-socket behaviour (OS-dependent)", () => {
 
 describe("testPortOnAllHosts — sequential contract (platform-agnostic)", () => {
   /**
-   * Regression test for the required behavior. Injects a recording fake probe that
+   * Regression test for sequential probing. Injects a recording fake probe that
    * holds each call open for a few ms and tracks how many are in flight.
    * The parallel (buggy) implementation would drive overlap to 4; the
    * sequential fix keeps it at 1. Deterministic on every OS.
