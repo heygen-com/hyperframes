@@ -80,6 +80,9 @@ function ColorSlider({
           event.currentTarget.setPointerCapture(event.pointerId);
           commitFromClientX(event.clientX);
         }}
+        onPointerUp={(event) => {
+          event.currentTarget.blur();
+        }}
         onPointerMove={(event) => {
           if (disabled || event.buttons !== 1) return;
           commitFromClientX(event.clientX);
