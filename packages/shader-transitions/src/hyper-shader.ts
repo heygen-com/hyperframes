@@ -247,11 +247,14 @@ function getDocumentStyleSignature(doc: Document): string {
 
 // fallow-ignore-next-line complexity
 function isGsapAnimationOnlyScript(text: string): boolean {
+  const hasGsap =
+    text.includes("gsap.timeline") ||
+    text.includes("__timelines") ||
+    text.includes(".to(") ||
+    text.includes(".set(");
+  if (!hasGsap) return false;
   return (
-    (text.includes("gsap.timeline") || text.includes("__timelines")) &&
-    !text.includes("HyperShader") &&
-    !text.includes("hyper-shader") &&
-    !text.includes("hyperShader")
+    !text.includes("HyperShader") && !text.includes("hyper-shader") && !text.includes("hyperShader")
   );
 }
 
