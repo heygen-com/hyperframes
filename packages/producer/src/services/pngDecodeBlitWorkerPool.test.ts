@@ -321,4 +321,64 @@ describe("PngDecodeBlitWorkerPool", () => {
     // both are acceptable.
     expect(r1).toBeDefined();
   });
+
+  describe("crash recovery", () => {
+    const CRASH_WORKER = resolve(
+      dirname(fileURLToPath(import.meta.url)),
+      "__fixtures__",
+      "crashOnMessageWorker.mjs",
+    );
+
+    async function makeCrashPool(size: number): Promise<PngDecodeBlitWorkerPool> {
+      const p = await createPngDecodeBlitWorkerPool({ size, workerEntryPath: CRASH_WORKER });
+      pools.push(p);
+      return p;
+    }
+
+    function blitReq(): Parameters<PngDecodeBlitWorkerPool["run"]>[0] {
+      return {
+        png: Buffer.from([0]),
+        dest: Buffer.alloc(RGB48_BYTES),
+        width: W,
+        height: H,
+        transfer: "srgb",
+      };
+    }
+
+    function settledWithin(p: Promise<unknown>, ms = 3000): Promise<string> {
+      return Promise.race([
+        p.then(
+          () => "resolved",
+          () => "rejected",
+        ),
+        new Promise<string>((r) => setTimeout(() => r("hung"), ms)),
+      ]);
+    }
+
+    it("rejects the in-flight task when its only worker crashes, then fails subsequent runs fast", async () => {
+      const pool = await makeCrashPool(1);
+      expect(await settledWithin(pool.run(blitReq()))).toBe("rejected");
+      // Dead slot must be excluded; a later run fails fast rather than hanging
+      // on a postMessage to the terminated worker.
+      expect(await settledWithin(pool.run(blitReq()))).toBe("rejected");
+    });
+
+    it("rejects a queued task on crash instead of leaving it to hang", async () => {
+      const pool = await makeCrashPool(1);
+      const inFlight = settledWithin(pool.run(blitReq()));
+      const queued = settledWithin(pool.run(blitReq()));
+      expect(await inFlight).toBe("rejected");
+      expect(await queued).toBe("rejected");
+    });
+
+    it("never wedges the pool when slots die", async () => {
+      const pool = await makeCrashPool(2);
+      const results = await Promise.all([
+        settledWithin(pool.run(blitReq())),
+        settledWithin(pool.run(blitReq())),
+        settledWithin(pool.run(blitReq())),
+      ]);
+      expect(results).not.toContain("hung");
+    });
+  });
 });

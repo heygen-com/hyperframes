@@ -316,4 +316,74 @@ describe("ShaderTransitionWorkerPool", () => {
     // Remove from `pools` so afterEach doesn't double-terminate.
     pools.pop();
   });
+
+  describe("crash recovery", () => {
+    const CRASH_WORKER = resolve(
+      dirname(fileURLToPath(import.meta.url)),
+      "__fixtures__",
+      "crashOnMessageWorker.mjs",
+    );
+
+    async function makeCrashPool(size: number): Promise<ShaderTransitionWorkerPool> {
+      const p = await createShaderTransitionWorkerPool({ size, workerEntryPath: CRASH_WORKER });
+      pools.push(p);
+      return p;
+    }
+
+    function blendReq(): Parameters<ShaderTransitionWorkerPool["run"]>[0] {
+      return {
+        shader: "crossfade",
+        bufferA: fillSolid(WIDTH, HEIGHT, 0, 0, 0),
+        bufferB: fillSolid(WIDTH, HEIGHT, 1, 1, 1),
+        output: Buffer.alloc(BUF_SIZE),
+        width: WIDTH,
+        height: HEIGHT,
+        progress: 0.5,
+      };
+    }
+
+    // Resolves to "hung" if `p` doesn't settle within `ms`. The crash paths
+    // settle near-instantly; "hung" only appears if the regression (dispatch
+    // to a dead worker) comes back.
+    function settledWithin(p: Promise<unknown>, ms = 3000): Promise<string> {
+      return Promise.race([
+        p.then(
+          () => "resolved",
+          () => "rejected",
+        ),
+        new Promise<string>((r) => setTimeout(() => r("hung"), ms)),
+      ]);
+    }
+
+    it("rejects the in-flight task when its only worker crashes, then fails subsequent runs fast", async () => {
+      const pool = await makeCrashPool(1);
+      // The worker throws on receipt: the in-flight task must reject, not hang.
+      expect(await settledWithin(pool.run(blendReq()))).toBe("rejected");
+      // The slot is now dead. A later run must fail fast rather than dispatch
+      // to the terminated worker (postMessage there is a silent no-op → hang).
+      expect(await settledWithin(pool.run(blendReq()))).toBe("rejected");
+    });
+
+    it("rejects a queued task on crash instead of leaving it to hang", async () => {
+      const pool = await makeCrashPool(1);
+      // First occupies the single worker (which crashes); second is queued
+      // behind it. When the worker dies, both must settle — never hang.
+      const inFlight = settledWithin(pool.run(blendReq()));
+      const queued = settledWithin(pool.run(blendReq()));
+      expect(await inFlight).toBe("rejected");
+      expect(await queued).toBe("rejected");
+    });
+
+    it("keeps serving on surviving workers after one slot dies", async () => {
+      // Size 2: both slots run the crashing fixture, so a real blend can't be
+      // asserted here, but the pool must not wedge — every run settles.
+      const pool = await makeCrashPool(2);
+      const results = await Promise.all([
+        settledWithin(pool.run(blendReq())),
+        settledWithin(pool.run(blendReq())),
+        settledWithin(pool.run(blendReq())),
+      ]);
+      expect(results).not.toContain("hung");
+    });
+  });
 });

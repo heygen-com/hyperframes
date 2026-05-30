@@ -123,6 +123,14 @@ interface WorkerSlot {
   worker: Worker;
   busy: boolean;
   current: PendingTask | null;
+  /**
+   * Set once the worker has crashed (`error`) or exited unexpectedly. A dead
+   * slot must never be dispatched to again: `postMessage` to a terminated
+   * Worker is a silent no-op (no throw, no reply), so a task routed to it
+   * would hang forever. The pool does not respawn mid-render, so a dead slot
+   * stays dead until teardown.
+   */
+  dead: boolean;
 }
 
 interface WorkerReply {
@@ -215,8 +223,18 @@ export async function createPngDecodeBlitWorkerPool(
 
   const execArgv = buildExecArgv(entryIsTs);
 
+  // When every worker has died there is no live thread left to drain the
+  // queue, so any waiting tasks would hang forever. Reject them instead.
+  const failQueueIfNoLiveSlots = (): void => {
+    if (slots.some((s) => !s.dead)) return;
+    while (queue.length > 0) {
+      const t = queue.shift();
+      if (t) t.reject(new Error("png-decode-blit pool has no live workers; task abandoned"));
+    }
+  };
+
   const dispatchNext = (slot: WorkerSlot): void => {
-    if (terminated || slot.busy) return;
+    if (terminated || slot.busy || slot.dead) return;
     const task = queue.shift();
     if (!task) return;
     slot.busy = true;
@@ -347,28 +365,35 @@ export async function createPngDecodeBlitWorkerPool(
     const task = slot.current;
     slot.current = null;
     slot.busy = false;
+    // Mark dead BEFORE anything else so this slot is excluded from future
+    // dispatch; postMessage to its terminated worker would be a silent no-op
+    // and any task routed here would hang.
+    slot.dead = true;
     if (task) {
       task.reject(
         new Error(`png-decode-blit worker crashed mid-task: ${err.message}; dest buffer lost`),
       );
     }
     log.warn?.("[pngDecodeBlitWorkerPool] worker errored", { err: err.message });
+    failQueueIfNoLiveSlots();
   };
 
   const onWorkerExit = (slot: WorkerSlot, code: number): void => {
     if (terminated) return;
+    slot.dead = true;
     if (slot.current) {
       slot.current.reject(new Error(`png-decode-blit worker exited (code=${code}) mid-task`));
       slot.current = null;
       slot.busy = false;
     }
     log.warn?.("[pngDecodeBlitWorkerPool] worker exited unexpectedly", { code });
+    failQueueIfNoLiveSlots();
   };
 
   try {
     for (let i = 0; i < size; i++) {
       const worker = new Worker(entry, { execArgv });
-      const slot: WorkerSlot = { worker, busy: false, current: null };
+      const slot: WorkerSlot = { worker, busy: false, current: null, dead: false };
       worker.on("message", (msg: WorkerReply) => onWorkerMessage(slot, msg));
       worker.on("error", (err: unknown) =>
         onWorkerError(slot, err instanceof Error ? err : new Error(String(err))),
@@ -394,12 +419,17 @@ export async function createPngDecodeBlitWorkerPool(
         const task: PendingTask = traceEnabled
           ? { req, resolve, reject, enqueuedAtMs: Date.now(), traceId: ++nextTaskId }
           : { req, resolve, reject };
-        const idle = slots.find((s) => !s.busy);
+        const idle = slots.find((s) => !s.busy && !s.dead);
         if (idle) {
           queue.unshift(task);
           dispatchNext(idle);
-        } else {
+        } else if (slots.some((s) => !s.dead)) {
+          // A live worker is busy; it drains the queue when it completes.
           queue.push(task);
+        } else {
+          // Every worker has died — don't hang waiting for a dispatch that
+          // can never happen.
+          reject(new Error("png-decode-blit pool has no live workers"));
         }
       });
     },

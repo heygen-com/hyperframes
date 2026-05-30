@@ -99,6 +99,15 @@ interface WorkerSlot {
   worker: Worker;
   busy: boolean;
   current: PendingTask | null;
+  /**
+   * Set once the worker has crashed (`error`) or exited unexpectedly. A dead
+   * slot must never be dispatched to again: `postMessage` to a terminated
+   * Worker is a silent no-op (no throw, no reply), so a task routed to it
+   * would hang forever. The pool does not respawn mid-render (the lost
+   * transferList buffers can't be reconstructed), so a dead slot stays dead
+   * until teardown.
+   */
+  dead: boolean;
 }
 
 interface WorkerReply {
@@ -214,8 +223,18 @@ export async function createShaderTransitionWorkerPool(
   // appends one so the `.ts` worker entry still loads.
   const execArgv = buildExecArgv(entryIsTs);
 
+  // When every worker has died there is no live thread left to drain the
+  // queue, so any waiting tasks would hang forever. Reject them instead.
+  const failQueueIfNoLiveSlots = (): void => {
+    if (slots.some((s) => !s.dead)) return;
+    while (queue.length > 0) {
+      const t = queue.shift();
+      if (t) t.reject(new Error("shader-blend pool has no live workers; task abandoned"));
+    }
+  };
+
   const dispatchNext = (slot: WorkerSlot): void => {
-    if (terminated || slot.busy) return;
+    if (terminated || slot.busy || slot.dead) return;
     const task = queue.shift();
     if (!task) return;
     slot.busy = true;
@@ -289,6 +308,10 @@ export async function createShaderTransitionWorkerPool(
     const task = slot.current;
     slot.current = null;
     slot.busy = false;
+    // Mark dead BEFORE anything else: this slot's worker can no longer accept
+    // a dispatch (postMessage would be a silent no-op), so it must be excluded
+    // from future slot selection or a later task would hang on it.
+    slot.dead = true;
     if (task) {
       // The in-flight task's buffers were transferred to the worker. They're
       // lost on the worker crash — the caller's original Buffers are
@@ -297,20 +320,24 @@ export async function createShaderTransitionWorkerPool(
       task.reject(new Error(`shader-blend worker crashed mid-task: ${err.message}; buffers lost`));
     }
     log.warn?.("[shaderTransitionWorkerPool] worker errored", { err: err.message });
+    failQueueIfNoLiveSlots();
   };
 
   const onWorkerExit = (slot: WorkerSlot, code: number): void => {
     if (terminated) return;
-    // Unexpected exit — fail any in-flight task and drop the slot. We don't
-    // auto-respawn in the middle of a render because the lost transferList
-    // buffers can't be reconstructed, and silently shrinking the pool would
-    // mask the real failure. Pool teardown handles graceful shutdown.
+    // Unexpected exit — fail any in-flight task and mark the slot dead. We
+    // don't auto-respawn in the middle of a render because the lost
+    // transferList buffers can't be reconstructed, and silently shrinking the
+    // pool would mask the real failure. Pool teardown handles graceful
+    // shutdown.
+    slot.dead = true;
     if (slot.current) {
       slot.current.reject(new Error(`shader-blend worker exited (code=${code}) mid-task`));
       slot.current = null;
       slot.busy = false;
     }
     log.warn?.("[shaderTransitionWorkerPool] worker exited unexpectedly", { code });
+    failQueueIfNoLiveSlots();
   };
 
   // Spawn workers. If any throws synchronously we still want to terminate
@@ -318,7 +345,7 @@ export async function createShaderTransitionWorkerPool(
   try {
     for (let i = 0; i < size; i++) {
       const worker = new Worker(entry, { execArgv });
-      const slot: WorkerSlot = { worker, busy: false, current: null };
+      const slot: WorkerSlot = { worker, busy: false, current: null, dead: false };
       worker.on("message", (msg: WorkerReply) => onWorkerMessage(slot, msg));
       worker.on("error", (err: unknown) =>
         onWorkerError(slot, err instanceof Error ? err : new Error(String(err))),
@@ -344,13 +371,18 @@ export async function createShaderTransitionWorkerPool(
         const task: PendingTask = traceEnabled
           ? { req, resolve, reject, enqueuedAtMs: Date.now(), traceId: ++nextTaskId }
           : { req, resolve, reject };
-        // Find an idle slot; otherwise queue.
-        const idle = slots.find((s) => !s.busy);
+        // Find a live idle slot; otherwise queue behind the live busy ones.
+        const idle = slots.find((s) => !s.busy && !s.dead);
         if (idle) {
           queue.unshift(task);
           dispatchNext(idle);
-        } else {
+        } else if (slots.some((s) => !s.dead)) {
+          // A live worker is busy; it drains the queue when it completes.
           queue.push(task);
+        } else {
+          // Every worker has died — don't hang waiting for a dispatch that
+          // can never happen.
+          reject(new Error("shader-blend pool has no live workers"));
         }
       });
     },
