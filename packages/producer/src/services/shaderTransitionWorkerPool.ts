@@ -308,9 +308,10 @@ export async function createShaderTransitionWorkerPool(
     const task = slot.current;
     slot.current = null;
     slot.busy = false;
-    // Mark dead BEFORE anything else: this slot's worker can no longer accept
-    // a dispatch (postMessage would be a silent no-op), so it must be excluded
-    // from future slot selection or a later task would hang on it.
+    // Mark dead before rejecting and before draining the queue: this slot's
+    // worker can no longer accept a dispatch (postMessage would be a silent
+    // no-op), so it must be excluded from future slot selection or a later
+    // task would hang on it.
     slot.dead = true;
     if (task) {
       // The in-flight task's buffers were transferred to the worker. They're

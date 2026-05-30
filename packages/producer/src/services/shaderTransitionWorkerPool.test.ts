@@ -374,9 +374,9 @@ describe("ShaderTransitionWorkerPool", () => {
       expect(await queued).toBe("rejected");
     });
 
-    it("keeps serving on surviving workers after one slot dies", async () => {
-      // Size 2: both slots run the crashing fixture, so a real blend can't be
-      // asserted here, but the pool must not wedge — every run settles.
+    it("never wedges the pool when all slots die", async () => {
+      // Size 2: both slots run the crashing fixture, so there are no surviving
+      // workers; the pool must still never wedge — every run settles.
       const pool = await makeCrashPool(2);
       const results = await Promise.all([
         settledWithin(pool.run(blendReq())),

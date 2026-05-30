@@ -365,9 +365,9 @@ export async function createPngDecodeBlitWorkerPool(
     const task = slot.current;
     slot.current = null;
     slot.busy = false;
-    // Mark dead BEFORE anything else so this slot is excluded from future
-    // dispatch; postMessage to its terminated worker would be a silent no-op
-    // and any task routed here would hang.
+    // Mark dead before rejecting and before draining the queue so this slot is
+    // excluded from future dispatch; postMessage to its terminated worker would
+    // be a silent no-op and any task routed here would hang.
     slot.dead = true;
     if (task) {
       task.reject(
