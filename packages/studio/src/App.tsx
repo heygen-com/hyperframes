@@ -26,11 +26,12 @@ import { useCompositionDimensions } from "./hooks/useCompositionDimensions";
 import { useToast } from "./hooks/useToast";
 import { useStudioUrlState } from "./hooks/useStudioUrlState";
 import {
-  STUDIO_INSPECTOR_PANELS_ENABLED,
-  STUDIO_MOTION_PANEL_ENABLED,
-} from "./components/editor/manualEditingAvailability";
-import { readStudioMotionFromElement } from "./components/editor/studioMotion";
-import { buildAgentContextPreview, type DomEditSelection } from "./components/editor/domEditing";
+  buildStudioContextValue,
+  useDragOverlay,
+  useInspectorState,
+} from "./hooks/useStudioContextValue";
+import { buildAgentContextPreview } from "./components/editor/domEditingAgentPrompt";
+import type { DomEditSelection } from "./components/editor/domEditing";
 import { AskAgentModal } from "./components/AskAgentModal";
 import { StudioGlobalDragOverlay } from "./components/StudioGlobalDragOverlay";
 import { StudioHeader } from "./components/StudioHeader";
@@ -38,7 +39,7 @@ import { StudioLeftSidebar } from "./components/StudioLeftSidebar";
 import { StudioPreviewArea } from "./components/StudioPreviewArea";
 import { StudioRightPanel } from "./components/StudioRightPanel";
 import { TimelineToolbar } from "./components/TimelineToolbar";
-import { StudioProvider, type StudioContextValue } from "./contexts/StudioContext";
+import { StudioProvider } from "./contexts/StudioContext";
 import { PanelLayoutProvider } from "./contexts/PanelLayoutContext";
 import { FileManagerProvider } from "./contexts/FileManagerContext";
 import { DomEditProvider } from "./contexts/DomEditContext";
@@ -51,6 +52,7 @@ import {
 import { trackStudioSessionStart } from "./telemetry/events";
 import { hasFiredSessionStart, markSessionStartFired } from "./telemetry/config";
 
+// fallow-ignore-next-line complexity
 export function StudioApp() {
   const { projectId, resolving, waitingForServer } = useServerConnection();
   const initialUrlStateRef = useRef(readStudioUrlStateFromWindow());
@@ -184,6 +186,26 @@ export function StudioApp() {
     uploadProjectFiles: fileManager.uploadProjectFiles,
   });
 
+  const blockCtx = useMemo(
+    () => ({
+      activeCompPath,
+      timelineElements,
+      readProjectFile: fileManager.readProjectFile,
+      writeProjectFile: fileManager.writeProjectFile,
+      recordEdit: editHistory.recordEdit,
+      refreshFileTree: fileManager.refreshFileTree,
+      reloadPreview,
+      showToast,
+    }),
+    [
+      activeCompPath,
+      timelineElements,
+      fileManager,
+      editHistory.recordEdit,
+      reloadPreview,
+      showToast,
+    ],
+  );
   const handleAddBlock = useCallback(
     (blockName: string) => {
       if (!projectId) return;
@@ -191,16 +213,9 @@ export function StudioApp() {
         const result = await addBlockToProject({
           projectId,
           blockName,
-          activeCompPath,
+          ...blockCtx,
           previewIframe: previewIframeRef.current,
           currentTime: usePlayerStore.getState().currentTime,
-          timelineElements,
-          readProjectFile: fileManager.readProjectFile,
-          writeProjectFile: fileManager.writeProjectFile,
-          recordEdit: editHistory.recordEdit,
-          refreshFileTree: fileManager.refreshFileTree,
-          reloadPreview,
-          showToast,
         });
         const params = result?.block.type === "hyperframes:block" ? result.block.params : undefined;
         if (params?.length) {
@@ -215,82 +230,35 @@ export function StudioApp() {
         }
       })();
     },
-    [
-      projectId,
-      activeCompPath,
-      timelineElements,
-      fileManager.readProjectFile,
-      fileManager.writeProjectFile,
-      fileManager.refreshFileTree,
-      editHistory.recordEdit,
-      reloadPreview,
-      showToast,
-      panelLayout,
-    ],
+    [projectId, blockCtx, panelLayout],
   );
-
   const handleTimelineBlockDrop = useCallback(
     (blockName: string, placement: { start: number; track: number }) => {
       if (!projectId) return;
       void addBlockToProject({
         projectId,
         blockName,
-        activeCompPath,
         placement,
+        ...blockCtx,
         previewIframe: previewIframeRef.current,
         currentTime: usePlayerStore.getState().currentTime,
-        timelineElements,
-        readProjectFile: fileManager.readProjectFile,
-        writeProjectFile: fileManager.writeProjectFile,
-        recordEdit: editHistory.recordEdit,
-        refreshFileTree: fileManager.refreshFileTree,
-        reloadPreview,
-        showToast,
       });
     },
-    [
-      projectId,
-      activeCompPath,
-      timelineElements,
-      fileManager.readProjectFile,
-      fileManager.writeProjectFile,
-      fileManager.refreshFileTree,
-      editHistory.recordEdit,
-      reloadPreview,
-      showToast,
-    ],
+    [projectId, blockCtx],
   );
-
   const handlePreviewBlockDrop = useCallback(
     (blockName: string, position: { left: number; top: number }) => {
       if (!projectId) return;
       void addBlockToProject({
         projectId,
         blockName,
-        activeCompPath,
         visualPosition: position,
+        ...blockCtx,
         previewIframe: previewIframeRef.current,
         currentTime: usePlayerStore.getState().currentTime,
-        timelineElements,
-        readProjectFile: fileManager.readProjectFile,
-        writeProjectFile: fileManager.writeProjectFile,
-        recordEdit: editHistory.recordEdit,
-        refreshFileTree: fileManager.refreshFileTree,
-        reloadPreview,
-        showToast,
       });
     },
-    [
-      projectId,
-      activeCompPath,
-      timelineElements,
-      fileManager.readProjectFile,
-      fileManager.writeProjectFile,
-      fileManager.refreshFileTree,
-      editHistory.recordEdit,
-      reloadPreview,
-      showToast,
-    ],
+    [projectId, blockCtx],
   );
 
   const clearDomSelectionRef = useRef<() => void>(() => {});
@@ -414,27 +382,19 @@ export function StudioApp() {
     resetErrors: resetConsoleErrors,
   } = useConsoleErrorCapture(previewIframe);
 
-  const [globalDragOver, setGlobalDragOver] = useState(false);
-  const dragCounterRef = useRef(0);
+  const dragOverlay = useDragOverlay(fileManager.handleImportFiles);
 
-  const { syncPreviewTimelineHotkey, syncPreviewHistoryHotkey } = appHotkeys;
   const handlePreviewIframeRef = useCallback(
     (iframe: HTMLIFrameElement | null) => {
       previewIframeRef.current = iframe;
       setPreviewIframe(iframe);
-      syncPreviewTimelineHotkey(iframe);
-      syncPreviewHistoryHotkey(iframe);
+      appHotkeys.syncPreviewTimelineHotkey(iframe);
+      appHotkeys.syncPreviewHistoryHotkey(iframe);
       resetConsoleErrors();
       refreshPreviewDocumentVersion();
     },
-    [
-      refreshPreviewDocumentVersion,
-      resetConsoleErrors,
-      syncPreviewHistoryHotkey,
-      syncPreviewTimelineHotkey,
-    ],
+    [appHotkeys, resetConsoleErrors, refreshPreviewDocumentVersion],
   );
-
   const handleSelectComposition = useCallback(
     (comp: string) => {
       setActiveCompPath(comp.endsWith(".html") ? comp : null);
@@ -447,23 +407,19 @@ export function StudioApp() {
     [projectId, fileManager],
   );
 
-  const selectedStudioMotion =
-    STUDIO_INSPECTOR_PANELS_ENABLED && domEditSession.domEditSelection
-      ? readStudioMotionFromElement(domEditSession.domEditSelection.element)
-      : null;
-  const layersPanelActive =
-    STUDIO_INSPECTOR_PANELS_ENABLED && panelLayout.rightPanelTab === "layers";
-  const designPanelActive =
-    STUDIO_INSPECTOR_PANELS_ENABLED && panelLayout.rightPanelTab === "design";
-  const motionPanelActive =
-    STUDIO_INSPECTOR_PANELS_ENABLED &&
-    STUDIO_MOTION_PANEL_ENABLED &&
-    panelLayout.rightPanelTab === "motion";
-  const inspectorPanelActive = layersPanelActive || designPanelActive || motionPanelActive;
-  const shouldShowSelectedDomBounds =
-    inspectorPanelActive && !panelLayout.rightCollapsed && !isPlaying;
-  const inspectorButtonActive =
-    STUDIO_INSPECTOR_PANELS_ENABLED && !panelLayout.rightCollapsed && inspectorPanelActive;
+  const {
+    selectedStudioMotion,
+    designPanelActive,
+    motionPanelActive,
+    inspectorPanelActive,
+    inspectorButtonActive,
+    shouldShowSelectedDomBounds,
+  } = useInspectorState(
+    panelLayout.rightPanelTab,
+    panelLayout.rightCollapsed,
+    isPlaying,
+    domEditSession.domEditSelection,
+  );
 
   useStudioUrlState({
     projectId,
@@ -484,8 +440,7 @@ export function StudioApp() {
     initialState: initialUrlStateRef.current,
   });
 
-  // StudioProvider performs its own useMemo — no need for a second memo here.
-  const studioCtxValue: StudioContextValue = {
+  const studioCtxValue = buildStudioContextValue({
     projectId: projectId!,
     activeCompPath,
     setActiveCompPath,
@@ -498,12 +453,7 @@ export function StudioApp() {
     currentTime,
     timelineElements,
     isPlaying,
-    editHistory: {
-      canUndo: editHistory.canUndo,
-      canRedo: editHistory.canRedo,
-      undoLabel: editHistory.undoLabel,
-      redoLabel: editHistory.redoLabel,
-    },
+    editHistory,
     handleUndo: appHotkeys.handleUndo,
     handleRedo: appHotkeys.handleRedo,
     renderQueue: {
@@ -519,7 +469,7 @@ export function StudioApp() {
     refreshPreviewDocumentVersion,
     timelineVisible,
     toggleTimelineVisibility,
-  };
+  });
 
   if (resolving || waitingForServer || !projectId) {
     return <StudioSplash waiting={waitingForServer} />;
@@ -533,28 +483,10 @@ export function StudioApp() {
           <DomEditProvider value={domEditSession}>
             <div
               className="flex flex-col h-full w-full bg-neutral-950 relative"
-              onDragOver={(e) => {
-                if (!e.dataTransfer.types.includes("Files")) return;
-                e.preventDefault();
-              }}
-              onDragEnter={(e) => {
-                if (!e.dataTransfer.types.includes("Files")) return;
-                e.preventDefault();
-                dragCounterRef.current++;
-                setGlobalDragOver(true);
-              }}
-              onDragLeave={() => {
-                dragCounterRef.current--;
-                if (dragCounterRef.current === 0) setGlobalDragOver(false);
-              }}
-              onDrop={(e) => {
-                dragCounterRef.current = 0;
-                setGlobalDragOver(false);
-                if (e.defaultPrevented) return;
-                e.preventDefault();
-                if (e.dataTransfer.files.length)
-                  fileManager.handleImportFiles(e.dataTransfer.files);
-              }}
+              onDragOver={dragOverlay.onDragOver}
+              onDragEnter={dragOverlay.onDragEnter}
+              onDragLeave={dragOverlay.onDragLeave}
+              onDrop={dragOverlay.onDrop}
             >
               <StudioHeader
                 captureFrameHref={frameCapture.captureFrameHref}
@@ -634,7 +566,7 @@ export function StudioApp() {
                 />
               )}
 
-              {globalDragOver && <StudioGlobalDragOverlay />}
+              {dragOverlay.active && <StudioGlobalDragOverlay />}
 
               {appToast && (
                 <div

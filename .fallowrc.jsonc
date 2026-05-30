@@ -79,6 +79,12 @@
         "refreshDomEditSelection",
       ],
     },
+    // domEditing barrel: re-exports consumed throughout the studio but
+    // fallow's static analyzer can't trace re-exports through barrel files.
+    {
+      "file": "packages/studio/src/components/editor/domEditing.ts",
+      "exports": ["*"],
+    },
     // Exported for render.test.ts (exported-for-tests pattern).
     {
       "file": "packages/cli/src/commands/render.ts",
