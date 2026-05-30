@@ -713,6 +713,12 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
 
     // Re-parse the mutated script so the UI gets fresh state
     const freshParsed = parseGsapScript(newScript);
-    return c.json({ ok: true, parsed: freshParsed, before: html, after: newHtml });
+    return c.json({
+      ok: true,
+      parsed: freshParsed,
+      before: html,
+      after: newHtml,
+      scriptText: newScript,
+    });
   });
 }

@@ -3,14 +3,12 @@
 import { describe, it, expect, vi } from "vitest";
 import { applySoftReload } from "./gsapSoftReload";
 
-const AFTER_HTML = `<html><body>
-<div data-composition-id="root"></div>
-<script>
+const SCRIPT_TEXT = `
+window.__timelines = window.__timelines || {};
 const tl = gsap.timeline({ paused: true });
 tl.to("#box", { opacity: 0.8 });
 window.__timelines["root"] = tl;
-</script>
-</body></html>`;
+`;
 
 function buildMockIframe(overrides: Record<string, unknown> = {}) {
   const scriptEl = document.createElement("script");
@@ -33,6 +31,7 @@ function buildMockIframe(overrides: Record<string, unknown> = {}) {
   const contentDocument = {
     querySelectorAll: (sel: string) => (sel === "script:not([src])" ? [scriptEl] : []),
     createElement: (tag: string) => document.createElement(tag),
+    body: container,
   };
 
   return {
@@ -44,27 +43,27 @@ function buildMockIframe(overrides: Record<string, unknown> = {}) {
 
 describe("applySoftReload", () => {
   it("returns false when iframe is null", () => {
-    expect(applySoftReload(null, AFTER_HTML)).toBe(false);
+    expect(applySoftReload(null, SCRIPT_TEXT)).toBe(false);
+  });
+
+  it("returns false when scriptText is empty", () => {
+    const { iframe } = buildMockIframe();
+    expect(applySoftReload(iframe, "")).toBe(false);
   });
 
   it("returns false when gsap is not on iframe window", () => {
     const { iframe } = buildMockIframe({ gsap: undefined });
-    expect(applySoftReload(iframe, AFTER_HTML)).toBe(false);
+    expect(applySoftReload(iframe, SCRIPT_TEXT)).toBe(false);
   });
 
   it("returns false when __hfForceTimelineRebind is missing", () => {
     const { iframe } = buildMockIframe({ __hfForceTimelineRebind: undefined });
-    expect(applySoftReload(iframe, AFTER_HTML)).toBe(false);
-  });
-
-  it("returns false when afterHtml has no GSAP script", () => {
-    const { iframe } = buildMockIframe();
-    expect(applySoftReload(iframe, "<html><body><p>no script</p></body></html>")).toBe(false);
+    expect(applySoftReload(iframe, SCRIPT_TEXT)).toBe(false);
   });
 
   it("kills existing timelines, rebinds, and re-seeks on success", () => {
     const { iframe, contentWindow, mockTimeline } = buildMockIframe();
-    const result = applySoftReload(iframe, AFTER_HTML);
+    const result = applySoftReload(iframe, SCRIPT_TEXT);
     expect(result).toBe(true);
     expect(mockTimeline.kill).toHaveBeenCalled();
     expect(contentWindow.__hfForceTimelineRebind).toHaveBeenCalled();
@@ -80,7 +79,7 @@ describe("applySoftReload", () => {
         return fn();
       },
     });
-    const result = applySoftReload(iframe, AFTER_HTML);
+    const result = applySoftReload(iframe, SCRIPT_TEXT);
     expect(result).toBe(true);
     expect(suppressionCalled).toBe(true);
   });

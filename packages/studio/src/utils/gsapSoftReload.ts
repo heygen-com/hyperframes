@@ -16,23 +16,13 @@ function findGsapScriptElement(doc: Document): HTMLScriptElement | null {
   return null;
 }
 
-function extractGsapScriptFromHtml(html: string): string | null {
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(html, "text/html");
-  const script = findGsapScriptElement(doc);
-  return script?.textContent || null;
-}
-
-export function applySoftReload(iframe: HTMLIFrameElement | null, afterHtml: string): boolean {
-  if (!iframe) return false;
+export function applySoftReload(iframe: HTMLIFrameElement | null, scriptText: string): boolean {
+  if (!iframe || !scriptText) return false;
 
   const win = iframe.contentWindow as IframeWindow | null;
   const doc = iframe.contentDocument;
   if (!win || !doc) return false;
   if (!win.gsap || !win.__hfForceTimelineRebind) return false;
-
-  const newScriptText = extractGsapScriptFromHtml(afterHtml);
-  if (!newScriptText) return false;
 
   const oldScriptEl = findGsapScriptElement(doc);
   if (!oldScriptEl) return false;
@@ -52,7 +42,7 @@ export function applySoftReload(iframe: HTMLIFrameElement | null, afterHtml: str
 
     oldScriptEl.remove();
     const newScript = doc.createElement("script");
-    newScript.textContent = `(function(){${newScriptText}\n})();`;
+    newScript.textContent = `(function(){${scriptText}\n})();`;
     doc.body.appendChild(newScript);
 
     win.__hfForceTimelineRebind?.();

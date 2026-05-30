@@ -46,6 +46,7 @@ interface MutationResult {
   parsed?: ParsedGsap;
   before?: string;
   after?: string;
+  scriptText?: string;
 }
 
 async function mutateGsapScript(
@@ -134,8 +135,8 @@ export function useGsapScriptCommits({
 
       onCacheInvalidate();
 
-      if (options.softReload && result.after) {
-        if (!applySoftReload(previewIframeRef.current, result.after)) {
+      if (options.softReload && result.scriptText) {
+        if (!applySoftReload(previewIframeRef.current, result.scriptText)) {
           reloadPreview();
         }
       } else {
