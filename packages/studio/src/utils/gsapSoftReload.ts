@@ -11,7 +11,13 @@ function findGsapScriptElement(doc: Document): HTMLScriptElement | null {
   const scripts = doc.querySelectorAll<HTMLScriptElement>("script:not([src])");
   for (const script of scripts) {
     const text = script.textContent || "";
-    if (text.includes("gsap.timeline") || text.includes("__timelines")) return script;
+    if (
+      text.includes("gsap.timeline") ||
+      text.includes("__timelines") ||
+      text.includes(".to(") ||
+      text.includes(".set(")
+    )
+      return script;
   }
   return null;
 }
