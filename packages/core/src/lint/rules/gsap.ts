@@ -125,7 +125,7 @@ function countClassUsage(tags: OpenTag[]): Map<string, number> {
 
 function readRegisteredTimelineCompositionId(script: string): string | null {
   const match = script.match(WINDOW_TIMELINE_ASSIGN_PATTERN);
-  return match?.[1] || null;
+  return match?.[1] || match?.[2] || null;
 }
 
 /** Strip a `__raw:` prefix the parser adds to unresolvable values. */

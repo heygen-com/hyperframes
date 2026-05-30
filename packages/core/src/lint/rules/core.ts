@@ -4,6 +4,7 @@ import {
   readAttr,
   truncateSnippet,
   extractCompositionIdsFromCss,
+  extractTimelineRegistryKeys,
   getInlineScriptSyntaxError,
   TIMELINE_REGISTRY_INIT_PATTERN,
   TIMELINE_REGISTRY_ASSIGN_PATTERN,
@@ -118,13 +119,12 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
     const htmlCompIds = new Set<string>();
     const timelineRegKeys = new Set<string>();
     const compIdRe = /data-composition-id\s*=\s*["']([^"']+)["']/gi;
-    const tlKeyRe = /window\.__timelines\[\s*["']([^"']+)["']\s*\]/g;
     let m: RegExpExecArray | null;
     while ((m = compIdRe.exec(source)) !== null) {
       if (m[1]) htmlCompIds.add(m[1]);
     }
-    while ((m = tlKeyRe.exec(source)) !== null) {
-      if (m[1]) timelineRegKeys.add(m[1]);
+    for (const key of extractTimelineRegistryKeys(source)) {
+      timelineRegKeys.add(key);
     }
     for (const key of timelineRegKeys) {
       if (!htmlCompIds.has(key)) {

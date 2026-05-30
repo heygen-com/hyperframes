@@ -71,6 +71,24 @@ describe("core rules", () => {
     expect(finding?.message).toContain("without initializing");
   });
 
+  it("reports error when dot timeline registry is assigned without initializing", async () => {
+    const html = `
+<html><body>
+  <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
+    <div id="stage"></div>
+  </div>
+  <script>
+    const tl = gsap.timeline({ paused: true });
+    tl.to("#stage", { opacity: 1, duration: 1 }, 0);
+    window.__timelines.c1 = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "timeline_registry_missing_init");
+    expect(finding).toBeDefined();
+    expect(finding?.severity).toBe("error");
+  });
+
   it("does not flag timeline assignment when init guard is present", async () => {
     const validComposition = `
 <html>
@@ -90,6 +108,54 @@ describe("core rules", () => {
     const result = await lintHyperframeHtml(validComposition);
     const finding = result.findings.find((f) => f.code === "timeline_registry_missing_init");
     expect(finding).toBeUndefined();
+  });
+
+  describe("timeline_id_mismatch", () => {
+    it("accepts dot timeline registration", async () => {
+      const html = `
+<html><body>
+  <div data-composition-id="launch" data-width="1920" data-height="1080"></div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    window.__timelines.launch = tl;
+  </script>
+</body></html>`;
+      const result = await lintHyperframeHtml(html);
+      const finding = result.findings.find((f) => f.code === "timeline_id_mismatch");
+      expect(finding).toBeUndefined();
+    });
+
+    it("reports mismatched dot timeline registration", async () => {
+      const html = `
+<html><body>
+  <div data-composition-id="launch" data-width="1920" data-height="1080"></div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    window.__timelines.intro = tl;
+  </script>
+</body></html>`;
+      const result = await lintHyperframeHtml(html);
+      const finding = result.findings.find((f) => f.code === "timeline_id_mismatch");
+      expect(finding).toBeDefined();
+      expect(finding?.message).toContain('Timeline registered as "intro"');
+    });
+
+    it("accepts bracket timeline registration for hyphenated ids", async () => {
+      const html = `
+<html><body>
+  <div data-composition-id="product-launch" data-width="1920" data-height="1080"></div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    window.__timelines["product-launch"] = tl;
+  </script>
+</body></html>`;
+      const result = await lintHyperframeHtml(html);
+      const finding = result.findings.find((f) => f.code === "timeline_id_mismatch");
+      expect(finding).toBeUndefined();
+    });
   });
 
   it("warns when a timeline-visible element has no stable id for Studio editing", async () => {
