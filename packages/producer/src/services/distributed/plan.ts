@@ -400,6 +400,7 @@ export function measurePlanDirBytes(planDir: string): number {
  *     resolvedChunkSize   = configChunkSize ?? max(MIN_CHUNK_SIZE, ceil(totalFrames / maxParallelChunks))
  *     chunkCount          = min(maxParallelChunks, ceil(totalFrames / resolvedChunkSize))
  *     effectiveChunkSize  = max(resolvedChunkSize, ceil(totalFrames / chunkCount))
+ *     chunkCount          = min(chunkCount, ceil(totalFrames / effectiveChunkSize))  // drop empty trailing slice
  *
  * Long renders auto-rescale to fewer-but-longer chunks rather than
  * fragmenting infinitely. Returned `chunkCount >= 1` (`totalFrames === 0`
@@ -434,7 +435,17 @@ export function resolveChunkPlan(
   const naiveCount = Math.ceil(totalFrames / resolvedChunkSize);
   const chunkCount = Math.min(maxParallelChunks, Math.max(1, naiveCount));
   const effectiveChunkSize = Math.max(resolvedChunkSize, Math.ceil(totalFrames / chunkCount));
-  return { chunkCount, effectiveChunkSize };
+  // Rounding effectiveChunkSize up can let the first (chunkCount - 1) chunks
+  // already cover every frame, leaving an empty/inverted trailing slice that
+  // buildChunkSlices would still emit and renderChunk would then reject
+  // (framesInChunk <= 0), failing the whole distributed render. Tighten
+  // chunkCount to the number of chunks effectiveChunkSize actually needs so the
+  // union stays exactly [0, totalFrames) with no empty tail. This only ever
+  // lowers chunkCount in the explicit-small-chunkSize case; the auto-sized and
+  // large-chunkSize paths already satisfy ceil(totalFrames / effectiveChunkSize)
+  // >= chunkCount, so it's a no-op there.
+  const tightChunkCount = Math.min(chunkCount, Math.ceil(totalFrames / effectiveChunkSize));
+  return { chunkCount: tightChunkCount, effectiveChunkSize };
 }
 
 function assertPositiveInteger(name: string, value: number): void {

@@ -125,6 +125,43 @@ describe("resolveChunkPlan", () => {
     expect(result.chunkCount).toBe(5);
     expect(result.effectiveChunkSize).toBe(MIN_CHUNK_SIZE);
   });
+
+  it("tightens chunkCount so an explicit small chunkSize leaves no empty trailing slice", () => {
+    // 121 frames, chunkSize=10, maxParallelChunks=12: ceil(121/10)=13 naive →
+    // capped at 12, but effectiveChunkSize rounds up to ceil(121/12)=11. Eleven
+    // 11-frame chunks already cover [0,121), so a 12th would be the empty slice
+    // [121,121) that renderChunk rejects (framesInChunk <= 0). chunkCount must
+    // tighten to 11.
+    const result = resolveChunkPlan(121, 10, 12);
+    expect(result.effectiveChunkSize).toBe(11);
+    expect(result.chunkCount).toBe(11);
+    const slices = buildChunkSlices(121, result.chunkCount, result.effectiveChunkSize);
+    expect(slices).toHaveLength(11);
+    expect(slices[slices.length - 1]).toEqual({ index: 10, startFrame: 110, endFrame: 121 });
+  });
+
+  it("never emits an empty or inverted slice across a grid of explicit chunk sizes", () => {
+    for (const totalFrames of [37, 50, 121, 333, 1000, 4001]) {
+      for (const maxParallel of [2, 4, 12, 16, 40]) {
+        for (const chunkSize of [10, 11, 15, 24, 100]) {
+          const { chunkCount, effectiveChunkSize } = resolveChunkPlan(
+            totalFrames,
+            chunkSize,
+            maxParallel,
+          );
+          expect(chunkCount).toBeLessThanOrEqual(maxParallel);
+          const slices = buildChunkSlices(totalFrames, chunkCount, effectiveChunkSize);
+          let cursor = 0;
+          for (const s of slices) {
+            expect(s.startFrame).toBe(cursor); // contiguous from 0
+            expect(s.endFrame).toBeGreaterThan(s.startFrame); // non-empty
+            cursor = s.endFrame;
+          }
+          expect(cursor).toBe(totalFrames); // union is exactly [0, totalFrames)
+        }
+      }
+    }
+  });
 });
 
 describe("buildChunkSlices", () => {
