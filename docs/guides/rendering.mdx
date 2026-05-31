@@ -122,6 +122,7 @@ Render your Hyperframes [compositions](/concepts/compositions) to MP4, MOV, WebM
 | `--quality` | draft, standard, high | standard | Encoding quality preset |
 | `--crf` | 0–51 | — | Override CRF (lower = higher quality). Cannot combine with `--video-bitrate` |
 | `--video-bitrate` | e.g. `10M`, `5000k` | — | Target bitrate encoding. Cannot combine with `--crf` |
+| `--video-frame-format` | auto, jpg, png | auto | Source video frame extraction format. Use `png` for UI recordings, screen captures, and color-sensitive source videos |
 | `--workers` | 1-8 or `auto` | auto | Parallel render workers (see [Workers](#workers) below) |
 | `--max-concurrent-renders` | 1-10 | 2 | Max simultaneous renders via the producer server (see [Concurrent Renders](#concurrent-renders) below) |
 | `--batch` | path | — | JSON array of variable rows (or `{ "rows": [...] }`), rendering one output per row |
@@ -167,6 +168,8 @@ npx hyperframes render --format gif --fps 15 --gif-loop 0 --output demo.gif
 GIF output uses a two-pass FFmpeg palette encode (`palettegen` with diff statistics, then `paletteuse` with Sierra dithering) for better gradients and text edges than a single-pass conversion. GIFs are still much larger than MP4/WebM at the same dimensions, so prefer short compositions. GIF renders are capped at 30fps; pass `--fps 15` for smaller files.
 
 GIF does not carry audio and only has 1-bit transparency. For transparent overlays, use `--format webm`, `--format mov`, or `--format png-sequence` instead.
+
+For UI recordings, screen captures, or other source videos where saturated interface colors matter, pass `--video-frame-format png` to extract source video layers as PNG before browser capture. The default `auto` mode preserves the historical behavior: alpha-capable sources use PNG, opaque sources use JPG.
 
 ## GPU Acceleration
 

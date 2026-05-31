@@ -194,6 +194,7 @@ export async function runExtractVideosStage(
       {
         fps: fpsToNumber(job.config.fps),
         outputDir: join(compiledDir, "__hyperframes_video_frames"),
+        format: job.config.videoFrameFormat ?? "auto",
       },
       abortSignal,
       { extractCacheDir: cfg.extractCacheDir },

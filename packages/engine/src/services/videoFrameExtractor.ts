@@ -61,11 +61,13 @@ export interface ExtractedFrames {
   ownedByLookup?: boolean;
 }
 
+export type VideoFrameFormat = "auto" | "jpg" | "png";
+
 export interface ExtractionOptions {
   fps: number;
   outputDir: string;
   quality?: number;
-  format?: "jpg" | "png";
+  format?: VideoFrameFormat;
 }
 
 /**
@@ -433,9 +435,12 @@ export function decoderForCodec(codec: string | undefined): string {
   return c;
 }
 
-function resolveFrameFormat(metadata: VideoMetadata, requested?: "jpg" | "png"): CacheFrameFormat {
-  if (requested) return requested;
+export function resolveFrameFormat(
+  metadata: VideoMetadata,
+  requested?: VideoFrameFormat,
+): CacheFrameFormat {
   if (metadata.hasAlpha || codecMayHaveAlpha(metadata.videoCodec)) return "png";
+  if (requested === "png" || requested === "jpg") return requested;
   return "jpg";
 }
 

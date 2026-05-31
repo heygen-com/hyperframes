@@ -52,6 +52,7 @@ const ALLOWED_FORMATS = [
 ] as const satisfies readonly DistributedFormat[];
 const ALLOWED_CODECS = ["h264", "h265"] as const;
 const ALLOWED_QUALITIES = ["draft", "standard", "high"] as const;
+const ALLOWED_VIDEO_FRAME_FORMATS = ["auto", "jpg", "png"] as const;
 const ALLOWED_RUNTIME_CAPS = ["lambda", "temporal", "cloud-run-job", "k8s-job", "none"] as const;
 const ALLOWED_HDR_MODES = ["auto", "force-sdr"] as const;
 
@@ -111,6 +112,16 @@ export function validateDistributedRenderConfig(
     throw new InvalidConfigError(
       "config.quality",
       `must be one of ${ALLOWED_QUALITIES.join(", ")}; got ${String(config.quality)}`,
+    );
+  }
+
+  if (
+    config.videoFrameFormat !== undefined &&
+    !ALLOWED_VIDEO_FRAME_FORMATS.includes(config.videoFrameFormat)
+  ) {
+    throw new InvalidConfigError(
+      "config.videoFrameFormat",
+      `must be one of ${ALLOWED_VIDEO_FRAME_FORMATS.join(", ")}; got ${String(config.videoFrameFormat)}`,
     );
   }
 

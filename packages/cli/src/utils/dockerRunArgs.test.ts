@@ -168,6 +168,7 @@ describe("buildDockerRunArgs", () => {
         hdrMode: "force-hdr",
         crf: 16,
         videoBitrate: undefined,
+        videoFrameFormat: "png",
         quiet: true,
         entryFile: "compositions/intro.html",
       },
@@ -181,6 +182,8 @@ describe("buildDockerRunArgs", () => {
     expect(args).toContain("8");
     expect(args).toContain("--crf");
     expect(args).toContain("16");
+    expect(args).toContain("--video-frame-format");
+    expect(args).toContain("png");
     expect(args).toContain("--quiet");
     expect(args).toContain("--gpu");
     expect(args).toContain("--no-browser-gpu");
@@ -222,6 +225,27 @@ describe("buildDockerRunArgs", () => {
     expect(args).toContain("--video-bitrate");
     expect(args).toContain("10M");
     expect(args).not.toContain("--crf");
+  });
+
+  it("forwards --video-frame-format to the container when set to png", () => {
+    const args = buildDockerRunArgs({
+      ...FIXED_INPUT,
+      options: { ...BASE, videoFrameFormat: "png" },
+    });
+    expect(args).toContain("--video-frame-format");
+    expect(args).toContain("png");
+  });
+
+  it("omits --video-frame-format when it is auto or unset", () => {
+    expect(buildDockerRunArgs({ ...FIXED_INPUT, options: BASE })).not.toContain(
+      "--video-frame-format",
+    );
+    expect(
+      buildDockerRunArgs({
+        ...FIXED_INPUT,
+        options: { ...BASE, videoFrameFormat: "auto" },
+      }),
+    ).not.toContain("--video-frame-format");
   });
 
   it("forwards --variables JSON to the container when set", () => {

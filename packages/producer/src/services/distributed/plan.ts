@@ -36,7 +36,12 @@ import {
 } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { type CanvasResolution } from "@hyperframes/core";
-import { type EngineConfig, getEncoderPreset, resolveConfig } from "@hyperframes/engine";
+import {
+  type EngineConfig,
+  type VideoFrameFormat,
+  getEncoderPreset,
+  resolveConfig,
+} from "@hyperframes/engine";
 import { defaultLogger, type ProducerLogger } from "../../logger.js";
 import { closeFileServerSafely } from "../fileServer.js";
 import { runAudioStage } from "../render/stages/audioStage.js";
@@ -105,6 +110,12 @@ export interface DistributedRenderConfig {
   crf?: number;
   /** Target video bitrate (e.g. `"10M"`); mutually exclusive with `crf`. */
   bitrate?: string;
+  /**
+   * Source-video frame extraction format. Defaults to `"auto"`, matching the
+   * in-process renderer: alpha/alpha-capable sources extract as PNG, other
+   * sources extract as JPG unless the caller explicitly requests `"png"`.
+   */
+  videoFrameFormat?: VideoFrameFormat;
   /** Output resolution preset; engages Chrome `deviceScaleFactor` supersampling. */
   outputResolution?: CanvasResolution;
 
@@ -711,6 +722,7 @@ export async function plan(
     format: config.format,
     crf: config.crf,
     bitrate: config.bitrate,
+    videoFrameFormat: config.videoFrameFormat,
     outputResolution: config.outputResolution,
     // HDR is banned in distributed mode. force-sdr keeps the
     // extract / encoder paths off the HDR branches entirely.

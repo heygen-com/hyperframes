@@ -82,6 +82,13 @@ import {
 } from "@hyperframes/core";
 
 const VALID_QUALITY = new Set(["draft", "standard", "high"]);
+const VIDEO_FRAME_FORMATS = ["auto", "jpg", "png"] as const;
+type VideoFrameFormat = (typeof VIDEO_FRAME_FORMATS)[number];
+const VALID_VIDEO_FRAME_FORMAT = new Set<string>(VIDEO_FRAME_FORMATS);
+
+function isVideoFrameFormat(value: string): value is VideoFrameFormat {
+  return VALID_VIDEO_FRAME_FORMAT.has(value);
+}
 
 /**
  * Map a {@link FpsParseResult} failure reason to a human-friendly
@@ -180,6 +187,14 @@ export default defineCommand({
     "gif-loop": {
       type: "string",
       description: "GIF loop count, 0 = infinite. Range: 0-65535. Only used with --format gif.",
+    },
+    "video-frame-format": {
+      type: "string",
+      description:
+        "Source video frame extraction format: auto, jpg, png (default: auto). " +
+        "Use png for UI recordings, screen captures, and color-sensitive source videos; " +
+        "alpha-capable sources always extract as PNG.",
+      default: "auto",
     },
     workers: {
       type: "string",
@@ -374,6 +389,16 @@ export default defineCommand({
       process.exit(1);
     }
     const gifLoop = gifLoopParse.value ?? (format === "gif" ? 0 : undefined);
+
+    const videoFrameFormatRaw = args["video-frame-format"] ?? "auto";
+    if (!isVideoFrameFormat(videoFrameFormatRaw)) {
+      errorBox(
+        "Invalid video-frame-format",
+        `Got "${videoFrameFormatRaw}". Must be auto, jpg, or png.`,
+      );
+      process.exit(1);
+    }
+    const videoFrameFormat = videoFrameFormatRaw;
 
     // ── Validate resolution ────────────────────────────────────────────────
     let outputResolution: CanvasResolution | undefined;
@@ -768,6 +793,7 @@ export default defineCommand({
         hdrMode: args.sdr ? "force-sdr" : args.hdr ? "force-hdr" : "auto",
         crf,
         videoBitrate,
+        videoFrameFormat,
         quiet,
         variables,
         entryFile,
@@ -790,6 +816,7 @@ export default defineCommand({
         hdrMode: args.sdr ? "force-sdr" : args.hdr ? "force-hdr" : "auto",
         crf,
         videoBitrate,
+        videoFrameFormat,
         quiet,
         browserPath,
         variables,
@@ -825,6 +852,7 @@ interface RenderOptions {
   hdrMode: "auto" | "force-hdr" | "force-sdr";
   crf?: number;
   videoBitrate?: string;
+  videoFrameFormat?: VideoFrameFormat;
   quiet: boolean;
   browserPath?: string;
   variables?: Record<string, unknown>;
@@ -1067,6 +1095,7 @@ async function renderDocker(
       hdrMode: options.hdrMode,
       crf: options.crf,
       videoBitrate: options.videoBitrate,
+      videoFrameFormat: options.videoFrameFormat,
       quiet: options.quiet,
       variables: options.variables,
       entryFile: options.entryFile,
@@ -1176,6 +1205,7 @@ export async function renderLocal(
     hdrMode: options.hdrMode,
     crf: options.crf,
     videoBitrate: options.videoBitrate,
+    videoFrameFormat: options.videoFrameFormat,
     variables: options.variables,
     entryFile: options.entryFile,
     outputResolution: options.outputResolution,
