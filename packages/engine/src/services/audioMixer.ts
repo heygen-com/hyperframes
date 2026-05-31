@@ -398,9 +398,11 @@ async function mixAudioTracks(
     });
 
     const mixInputs = tracks.map((_, i) => `[a${i}]`).join("");
-    const weights = tracks.map(() => "1").join(" ");
-    const mixFilter = `${mixInputs}amix=inputs=${tracks.length}:duration=longest:dropout_transition=0:normalize=0:weights='${weights}'[mixed]`;
-    const postMixGainFilter = `[mixed]volume=${masterOutputGain}[out]`;
+    const mixFilter = `${mixInputs}amix=inputs=${tracks.length}:duration=longest:dropout_transition=0[mixed]`;
+    // amix divides output by inputs count (default normalize=true). Multiply master
+    // gain by track count so per-track volumes authored in data-volume are preserved.
+    const compensatedGain = masterOutputGain * tracks.length;
+    const postMixGainFilter = `[mixed]volume=${formatFilterNumber(compensatedGain)}[out]`;
     const fullFilter = [...filterParts, mixFilter, postMixGainFilter].join(";");
 
     return [
