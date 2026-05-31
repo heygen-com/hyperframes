@@ -260,6 +260,12 @@ async function compileHtmlFile(
   // origins (e.g. S3 without CORS headers) keep readyState=0, blocking page setup.
   compiledHtml = compiledHtml.replace(/(<video\b[^>]*)\s+crossorigin(?:=["'][^"']*["'])?/gi, "$1");
 
+  // Strip crossorigin from img elements. The renderer captures DOM frames visually —
+  // no canvas readback — so CORS compliance is unnecessary. External images from
+  // CORS-restricted origins (e.g. S3) render blank when crossorigin forces a failed
+  // CORS request against the renderer's localhost file server.
+  compiledHtml = compiledHtml.replace(/(<img\b[^>]*)\s+crossorigin(?:=["'][^"']*["'])?/gi, "$1");
+
   return { html: compiledHtml, unresolvedCompositions };
 }
 

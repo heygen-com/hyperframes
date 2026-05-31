@@ -211,8 +211,11 @@ async function mixTracks(
   });
 
   const mixInputs = tracks.map((_, i) => `[a${i}]`).join("");
-  const mixFilter = `${mixInputs}amix=inputs=${tracks.length}:duration=longest:normalize=0[out]`;
-  const fullFilter = [...filterParts, mixFilter].join(";");
+  // amix divides by track count by default (normalize=true). Compensate with
+  // a volume gain to preserve per-track levels across all FFmpeg versions.
+  const mixFilter = `${mixInputs}amix=inputs=${tracks.length}:duration=longest[mixed]`;
+  const postMixGain = `[mixed]volume=${tracks.length}[out]`;
+  const fullFilter = [...filterParts, mixFilter, postMixGain].join(";");
 
   const args = [
     ...inputs,
