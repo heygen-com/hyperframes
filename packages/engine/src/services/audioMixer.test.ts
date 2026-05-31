@@ -63,6 +63,66 @@ describe("processCompositionAudio", () => {
 
     expect(filter).toContain("volume=0");
     expect(filter).toContain("[mixed]volume=1[out]");
+    expect(filter).not.toContain("normalize=");
+    expect(filter).not.toContain("weights=");
+  });
+
+  it("compensates amix normalization so multi-track master gain equals track count", async () => {
+    const baseDir = mkdtempSync(join(tmpdir(), "hf-audio-base-"));
+    const workDir = mkdtempSync(join(tmpdir(), "hf-audio-work-"));
+    tempDirs.push(baseDir, workDir);
+
+    writeFileSync(join(baseDir, "a.wav"), "stub");
+    writeFileSync(join(baseDir, "b.wav"), "stub");
+    writeFileSync(join(baseDir, "c.wav"), "stub");
+
+    const result = await processCompositionAudio(
+      [
+        {
+          id: "a",
+          src: "a.wav",
+          start: 0,
+          end: 2,
+          mediaStart: 0,
+          layer: 0,
+          volume: 0.8,
+          type: "audio",
+        },
+        {
+          id: "b",
+          src: "b.wav",
+          start: 0,
+          end: 2,
+          mediaStart: 0,
+          layer: 1,
+          volume: 1,
+          type: "audio",
+        },
+        {
+          id: "c",
+          src: "c.wav",
+          start: 0,
+          end: 2,
+          mediaStart: 0,
+          layer: 2,
+          volume: 0.5,
+          type: "audio",
+        },
+      ],
+      baseDir,
+      workDir,
+      join(baseDir, "out.m4a"),
+      2,
+    );
+
+    expect(result.success).toBe(true);
+    const mixArgs = runFfmpegMock.mock.calls[1]?.[0];
+    const filter = mixArgs[mixArgs.indexOf("-filter_complex") + 1];
+
+    expect(filter).toContain("amix=inputs=3");
+    expect(filter).not.toContain("normalize=");
+    // masterOutputGain(1) × tracks(3) = 3
+    expect(filter).toContain("[mixed]volume=3[out]");
   });
 
   it("uses frame-evaluated volume automation when keyframes are present", async () => {

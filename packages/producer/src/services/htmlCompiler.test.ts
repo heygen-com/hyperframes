@@ -797,6 +797,51 @@ describe("text-rendering rule injection", () => {
   });
 });
 
+// ── crossorigin stripping ───────────────────────────────────────────────────
+//
+// External images/videos with crossorigin="anonymous" force CORS-mode requests
+// against the renderer's localhost file server. S3 and similar origins reject
+// those requests, so the element renders blank. The strip removes the attribute
+// so the browser falls back to no-cors (visual-only) mode.
+
+describe("crossorigin attribute stripping", () => {
+  it("strips crossorigin from <img> elements", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-crossorigin-img-"));
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!DOCTYPE html><html><body>
+  <div data-composition-id="root" data-width="640" data-height="360" data-duration="1">
+    <img id="hero" src="https://example.com/photo.jpg" crossorigin="anonymous" alt="" />
+    <img id="plain" src="local.jpg" alt="" />
+  </div>
+</body></html>`,
+    );
+
+    const compiled = await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
+
+    expect(compiled.html).not.toContain('crossorigin="anonymous"');
+    expect(compiled.html).toContain('id="hero"');
+    expect(compiled.html).toContain('id="plain"');
+  });
+
+  it("strips crossorigin from <video> elements", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-crossorigin-video-"));
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!DOCTYPE html><html><body>
+  <div data-composition-id="root" data-width="640" data-height="360" data-duration="1">
+    <video id="clip" src="https://example.com/clip.mp4" crossorigin="anonymous" data-start="0" data-duration="1"></video>
+  </div>
+</body></html>`,
+    );
+
+    const compiled = await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
+
+    expect(compiled.html).not.toContain("crossorigin");
+    expect(compiled.html).toContain('id="clip"');
+  });
+});
+
 describe("discoverAudioVolumeAutomationFromTimeline", () => {
   it("samples video-derived audio volume without firing GSAP callbacks", async () => {
     class TestAudioElement {}
