@@ -36,6 +36,7 @@ export interface DockerRenderOptions {
   hdrMode: "auto" | "force-hdr" | "force-sdr";
   crf?: number;
   videoBitrate?: string;
+  videoFrameFormat?: "auto" | "jpg" | "png";
   quiet: boolean;
   variables?: Record<string, unknown>;
   entryFile?: string;
@@ -71,6 +72,9 @@ export function buildDockerRunArgs(input: DockerRunArgsInput): string[] {
     ...(options.workers != null ? ["--workers", String(options.workers)] : []),
     ...(options.crf != null ? ["--crf", String(options.crf)] : []),
     ...(options.videoBitrate ? ["--video-bitrate", options.videoBitrate] : []),
+    ...(options.videoFrameFormat && options.videoFrameFormat !== "auto"
+      ? ["--video-frame-format", options.videoFrameFormat]
+      : []),
     ...(options.quiet ? ["--quiet"] : []),
     ...(options.gpu ? ["--gpu"] : []),
     ...(options.browserGpu ? [] : ["--no-browser-gpu"]),

@@ -33,6 +33,7 @@ import {
   RenderCancelledError,
   createRenderJob,
   executeRenderJob,
+  type RenderConfig,
 } from "./services/renderOrchestrator.js";
 import { prepareHyperframeLintBody, runHyperframeLint } from "./services/hyperframeLint.js";
 import { resolveRenderPaths } from "./utils/paths.js";
@@ -72,6 +73,7 @@ interface RenderInput {
   fps: import("@hyperframes/core").Fps;
   quality: "draft" | "standard" | "high";
   format?: "mp4" | "webm" | "mov";
+  videoFrameFormat?: RenderConfig["videoFrameFormat"];
   workers?: number;
   useGpu: boolean;
   debug: boolean;
@@ -112,9 +114,24 @@ function parseRenderOptions(body: Record<string, unknown>): Omit<RenderInput, "p
 
   const format = (
     ["mp4", "webm", "mov"].includes(body.format as string) ? body.format : undefined
-  ) as "mp4" | "webm" | "mov" | undefined;
+  ) as RenderInput["format"];
+  const videoFrameFormat = (
+    ["auto", "jpg", "png"].includes(body.videoFrameFormat as string)
+      ? body.videoFrameFormat
+      : undefined
+  ) as RenderConfig["videoFrameFormat"];
 
-  return { outputPath, fps, quality, workers, useGpu, debug, entryFile, format };
+  return {
+    outputPath,
+    fps,
+    quality,
+    workers,
+    useGpu,
+    debug,
+    entryFile,
+    format,
+    videoFrameFormat,
+  };
 }
 
 async function prepareRenderBody(
@@ -349,6 +366,7 @@ export function createRenderHandlers(options: HandlerOptions = {}): RenderHandle
       useGpu: input.useGpu,
       debug: input.debug,
       entryFile: input.entryFile,
+      videoFrameFormat: input.videoFrameFormat,
       logger: log,
     });
 
@@ -463,6 +481,7 @@ export function createRenderHandlers(options: HandlerOptions = {}): RenderHandle
         useGpu: input.useGpu,
         debug: input.debug,
         entryFile: input.entryFile,
+        videoFrameFormat: input.videoFrameFormat,
         logger: log,
       });
       const abortController = new AbortController();

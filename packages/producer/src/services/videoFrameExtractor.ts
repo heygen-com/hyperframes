@@ -11,6 +11,7 @@ export {
   FrameLookupTable,
   type VideoElement,
   type ExtractedFrames,
+  type VideoFrameFormat,
   type ExtractionOptions,
   type ExtractionResult,
   type ExtractionPhaseBreakdown,
