@@ -116,7 +116,10 @@ describe("processCompositionAudio", () => {
     );
 
     expect(result.success).toBe(true);
-    const mixArgs = runFfmpegMock.mock.calls[1]?.[0];
+    // 3 prepare calls (one per track via Promise.all) precede the mix call,
+    // so the mix is at index 3, not index 1.
+    expect(runFfmpegMock).toHaveBeenCalledTimes(4);
+    const mixArgs = runFfmpegMock.mock.calls[3]?.[0];
     const filter = mixArgs[mixArgs.indexOf("-filter_complex") + 1];
 
     expect(filter).toContain("amix=inputs=3");
