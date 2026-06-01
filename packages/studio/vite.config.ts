@@ -21,6 +21,8 @@ async function loadRuntimeSourceForDev(
   return null;
 }
 
+const studioPkg = JSON.parse(readFileSync(resolve(__dirname, "package.json"), "utf-8"));
+
 // ── Bridge Hono fetch → Node http response ───────────────────────────────────
 
 async function bridgeHonoResponse(
@@ -167,7 +169,7 @@ function devProjectApi(): Plugin {
 export default defineConfig({
   plugins: [react(), devProjectApi()],
   define: {
-    __STUDIO_VERSION__: JSON.stringify(process.env.npm_package_version ?? "dev"),
+    __STUDIO_VERSION__: JSON.stringify(studioPkg.version),
   },
   resolve: {
     alias: {

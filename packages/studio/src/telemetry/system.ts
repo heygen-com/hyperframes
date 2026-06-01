@@ -12,6 +12,7 @@ export interface BrowserSystemMeta {
   device_pixel_ratio: number;
   timezone_offset_minutes: number;
   is_mobile: boolean;
+  studio_version: string;
 }
 
 const EMPTY_META: BrowserSystemMeta = {
@@ -22,6 +23,7 @@ const EMPTY_META: BrowserSystemMeta = {
   device_pixel_ratio: 0,
   timezone_offset_minutes: 0,
   is_mobile: false,
+  studio_version: "dev",
 };
 
 let cached: BrowserSystemMeta | null = null;
@@ -43,6 +45,9 @@ export function getBrowserSystemMeta(): BrowserSystemMeta {
     device_pixel_ratio: window.devicePixelRatio,
     timezone_offset_minutes: new Date().getTimezoneOffset(),
     is_mobile: /Android|iPhone|iPad/i.test(ua),
+    studio_version: typeof __STUDIO_VERSION__ !== "undefined" ? __STUDIO_VERSION__ : "dev",
   };
   return cached;
 }
+
+declare const __STUDIO_VERSION__: string;
