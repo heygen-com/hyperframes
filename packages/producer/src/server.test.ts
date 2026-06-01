@@ -51,6 +51,24 @@ describe("prepareRenderBody — validation", () => {
     expect((result as { error: string }).error).toContain("Invalid outputResolution");
   });
 
+  it("rejects a non-string outputResolution instead of silently dropping it", async () => {
+    const result = await prepareRenderBody({ outputResolution: 123, html: "<html></html>" });
+    expect(result).toHaveProperty("error");
+    expect((result as { error: string }).error).toContain("must be a string preset");
+  });
+
+  it("rejects outputResolution combined with an alpha format (webm/mov)", async () => {
+    for (const format of ["webm", "mov"]) {
+      const result = await prepareRenderBody({
+        outputResolution: "4k",
+        format,
+        html: "<html></html>",
+      });
+      expect(result).toHaveProperty("error");
+      expect((result as { error: string }).error).toContain("can't supersample");
+    }
+  });
+
   it("threads variables + outputResolution into the prepared render input", async () => {
     const dir = mkdtempSync(join(tmpdir(), "hf-server-test-"));
     writeFileSync(join(dir, "index.html"), "<html><body></body></html>", "utf-8");
