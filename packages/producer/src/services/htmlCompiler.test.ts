@@ -840,6 +840,23 @@ describe("crossorigin attribute stripping", () => {
     expect(compiled.html).not.toContain("crossorigin");
     expect(compiled.html).toContain('id="clip"');
   });
+
+  it("strips crossorigin from <audio> elements", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-crossorigin-audio-"));
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!DOCTYPE html><html><body>
+  <div data-composition-id="root" data-width="640" data-height="360" data-duration="5">
+    <audio id="bgm" src="https://example.com/bgm.mp3" crossorigin="anonymous" data-start="0" data-duration="5" data-volume="0.8"></audio>
+  </div>
+</body></html>`,
+    );
+
+    const compiled = await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
+
+    expect(compiled.html).not.toContain("crossorigin");
+    expect(compiled.html).toContain('id="bgm"');
+  });
 });
 
 describe("discoverAudioVolumeAutomationFromTimeline", () => {

@@ -266,6 +266,15 @@ async function compileHtmlFile(
   // CORS request against the renderer's localhost file server.
   compiledHtml = compiledHtml.replace(/(<img\b[^>]*)\s+crossorigin(?:=["'][^"']*["'])?/gi, "$1");
 
+  // Strip crossorigin from audio elements. Audio is processed out-of-band via
+  // FFmpeg; the browser's CORS policy for audio elements is irrelevant to
+  // rendering. Leaving crossorigin="anonymous" causes the browser to issue a
+  // CORS-mode preflight from localhost, which S3 buckets without explicit CORS
+  // headers reject — leaving audio elements in a failed network state. The
+  // FFmpeg audio path reads the src URL directly and is unaffected by browser
+  // CORS, so stripping the attribute has no side effects.
+  compiledHtml = compiledHtml.replace(/(<audio\b[^>]*)\s+crossorigin(?:=["'][^"']*["'])?/gi, "$1");
+
   return { html: compiledHtml, unresolvedCompositions };
 }
 
@@ -871,6 +880,90 @@ export function collectExternalAssets(
   };
 }
 
+const REMOTE_MEDIA_SUBDIR = "_remote_media";
+// Match opening tags of <video> or <audio> elements that carry an HTTP(S) src.
+// Uses [^>]* to span attributes — safe for composition elements that won't
+// have `>` inside quoted attribute values (data-title etc.).
+const REMOTE_MEDIA_TAG_RE =
+  /<(?:video|audio)\b[^>]*?\bsrc\s*=\s*["'](https?:\/\/[^"']+)["'][^>]*>/gi;
+
+/**
+ * Download any remote `src` URLs on `<video>` and `<audio>` elements into a
+ * local subdirectory of `downloadDir`, rewrite the HTML src attributes to
+ * relative paths, and return the updated HTML along with a map of
+ * `{ relativePath → absoluteLocalPath }` for callers to add to `externalAssets`.
+ *
+ * Skips URLs that fail to download (warns and preserves the original URL so
+ * the browser can still attempt the remote fetch as a fallback).
+ *
+ * Why: remote S3 sources require Chrome to buffer every video file over the
+ * network before `readyState >= 2` (HAVE_CURRENT_DATA). With 10+ large clips
+ * this reliably exhausts `pageReadyTimeout`, producing blank black frames for
+ * every clip. Localising the sources before the file server starts eliminates
+ * the race entirely and keeps the render hermetic.
+ */
+async function localizeRemoteMediaSources(
+  html: string,
+  downloadDir: string,
+): Promise<{ html: string; remoteMediaAssets: Map<string, string> }> {
+  const remoteDir = join(downloadDir, REMOTE_MEDIA_SUBDIR);
+
+  // Collect unique HTTP URLs from <video>/<audio> src attributes.
+  const urlSet = new Set<string>();
+  const re = new RegExp(REMOTE_MEDIA_TAG_RE.source, REMOTE_MEDIA_TAG_RE.flags);
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(html)) !== null) {
+    if (m[1]) urlSet.add(m[1]);
+  }
+
+  if (urlSet.size === 0) return { html, remoteMediaAssets: new Map() };
+
+  if (!existsSync(remoteDir)) mkdirSync(remoteDir, { recursive: true });
+
+  // Download all unique URLs in parallel; collect {url → localPath} for successes.
+  const urlToLocal = new Map<string, string>();
+  await Promise.all(
+    [...urlSet].map(async (url) => {
+      try {
+        const localPath = await downloadToTemp(url, remoteDir);
+        urlToLocal.set(url, localPath);
+      } catch (err) {
+        console.warn(
+          `[Compiler] Remote media download failed for ${url} — using original URL as fallback. ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      }
+    }),
+  );
+
+  if (urlToLocal.size === 0) return { html, remoteMediaAssets: new Map() };
+
+  // Build externalAssets map: relative key → local abs path.
+  // The relative key ("_remote_media/<file>") becomes the path under compiledDir
+  // that writeCompiledArtifacts copies the file to and the file server exposes.
+  const remoteMediaAssets = new Map<string, string>();
+  const urlToRelPath = new Map<string, string>();
+  for (const [url, absPath] of urlToLocal) {
+    const relPath = `${REMOTE_MEDIA_SUBDIR}/${absPath.split("/").at(-1)}`;
+    remoteMediaAssets.set(relPath, absPath);
+    urlToRelPath.set(url, relPath);
+  }
+
+  // Rewrite src attributes in HTML.
+  let result = html;
+  for (const [url, relPath] of urlToRelPath) {
+    // Replace both quote styles; URLs are long enough to be unique without
+    // anchoring to the surrounding attribute context.
+    result = result.replaceAll(`"${url}"`, `"${relPath}"`).replaceAll(`'${url}'`, `'${relPath}'`);
+  }
+
+  console.log(
+    `[Compiler] Localized ${urlToLocal.size} remote media source(s) to ${REMOTE_MEDIA_SUBDIR}/`,
+  );
+  return { html: result, remoteMediaAssets };
+}
+
 /**
  * Optional behavior toggles for {@link compileForRender}. All fields are
  * additive; omitting `options` preserves the in-process renderer's defaults.
@@ -908,6 +1001,7 @@ function rewriteUnresolvableGsapToCdn(html: string, projectDir: string): string 
  * Compile an HTML composition project into a single self-contained HTML string
  * with all media metadata resolved.
  */
+// fallow-ignore-next-line complexity
 export async function compileForRender(
   projectDir: string,
   htmlPath: string,
@@ -981,12 +1075,25 @@ export async function compileForRender(
     'data-hf-studio-motion="',
   ];
   const hasPositionEdits = HF_POSITION_ATTRS.some((attr) => htmlWithAssets.includes(attr));
-  const html = hasPositionEdits
+  const htmlWithPositionScript = hasPositionEdits
     ? htmlWithAssets.replace(
         /<\/body>/i,
         `<script>${createStudioPositionSeekReapplyScript()}</script></body>`,
       )
     : htmlWithAssets;
+
+  // Download remote <video> and <audio> sources to compiledDir and rewrite the
+  // src attributes so the renderer reads from localhost. Remote S3 URLs cause
+  // Chrome to spend the entire pageReadyTimeout buffering 10+ large video files
+  // over the network; any that don't reach readyState >= 2 in time render as
+  // blank black frames. Localising them eliminates the race.
+  const { html, remoteMediaAssets } = await localizeRemoteMediaSources(
+    htmlWithPositionScript,
+    downloadDir,
+  );
+  for (const [relPath, absPath] of remoteMediaAssets) {
+    externalAssets.set(relPath, absPath);
+  }
 
   // Parse main HTML elements
   const mainVideos = parseVideoElements(html);
