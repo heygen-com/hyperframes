@@ -26,6 +26,10 @@
 
 import { defineCommand } from "citty";
 
+import {
+  detectAspectRatioFromHtml,
+  type AspectRatioDetection,
+} from "../../cloud/detectAspectRatio.js";
 import { c } from "../../ui/colors.js";
 import { errorBox, formatBytes, formatDuration } from "../../ui/format.js";
 import { resolveProject } from "../../utils/project.js";
@@ -182,7 +186,7 @@ export default defineCommand({
     const resolution = parseEnumFlag(args.resolution, VALID_RESOLUTION, {
       flag: "--resolution",
     });
-    const aspectRatio = parseEnumFlag(args["aspect-ratio"], VALID_ASPECT_RATIO, {
+    const explicitAspectRatio = parseEnumFlag(args["aspect-ratio"], VALID_ASPECT_RATIO, {
       flag: "--aspect-ratio",
     });
     const pollIntervalMs = parsePollIntervalMs(args["poll-interval"]);
@@ -197,6 +201,14 @@ export default defineCommand({
       assetId: args["asset-id"],
       url: args.url,
     });
+
+    // When the user didn't pass --aspect-ratio explicitly AND the project is
+    // a local dir, parse the entry HTML's root composition div for
+    // data-width/data-height and pick the matching supported ratio. Saves
+    // the user from having to specify a value that's already implicit in
+    // the composition they authored. Explicit flag always wins.
+    const aspectRatio =
+      explicitAspectRatio ?? maybeAutoDetectAspectRatio(project, args.composition, asJson);
 
     const variables = resolveVariablesAndValidateIfLocal(
       args.variables,
@@ -339,6 +351,70 @@ function resolveProjectInput(opts: {
   if (explicit.assetId) return { kind: "asset_id", assetId: opts.assetId };
   if (explicit.url) return { kind: "url", url: opts.url };
   return { kind: "dir", dir: opts.dir ?? "." };
+}
+
+/**
+ * Best-effort aspect-ratio detection for the cloud-render submit body when
+ * the user hasn't passed `--aspect-ratio`. Returns the detected value (one
+ * of `"16:9" | "9:16" | "1:1"`) or `undefined` to let the server's default
+ * (16:9) apply.
+ *
+ * Detection only fires when the project source is a local directory — for
+ * `--asset-id` and `--url` the composition zip isn't on disk and parsing
+ * it client-side isn't worth the extra fetch. The user gets a one-line
+ * note explaining the fallback.
+ *
+ * Logs to stdout in human-readable mode; suppressed in `--json` mode so the
+ * machine-readable output stays clean.
+ */
+// fallow-ignore-next-line complexity
+function maybeAutoDetectAspectRatio(
+  project: ProjectInputSource,
+  compositionArg: string | undefined,
+  asJson: boolean,
+): "16:9" | "9:16" | "1:1" | undefined {
+  if (project.kind !== "dir") {
+    const reason = project.kind === "asset_id" ? "--asset-id" : "--url";
+    logDetection(asJson, `Auto-detect skipped (project is ${reason})`);
+    return undefined;
+  }
+
+  const dir = project.dir ?? ".";
+  const entryRelative = compositionArg ?? "index.html";
+  const entryPath = resolvePath(dir, entryRelative);
+
+  const detection = detectAspectRatioFromHtml(entryPath);
+  logDetection(asJson, summarizeDetection(detection, entryRelative));
+  return detection.kind === "matched" ? detection.aspectRatio : undefined;
+}
+
+const ASPECT_FALLBACK_HINT =
+  "server will default aspect_ratio to 16:9. Pass --aspect-ratio to override.";
+
+function logDetection(asJson: boolean, message: string): void {
+  if (asJson) return;
+  // `matched` is the only branch with its own affirmative phrasing; the
+  // rest share the fallback hint to keep the user oriented after a miss.
+  const suffix = message.startsWith("Detected aspect ratio") ? "" : `; ${ASPECT_FALLBACK_HINT}`;
+  console.log(c.dim(`   ${message}${suffix}`));
+}
+
+// fallow-ignore-next-line complexity
+function summarizeDetection(detection: AspectRatioDetection, entryRelative: string): string {
+  switch (detection.kind) {
+    case "matched":
+      return `Detected aspect ratio: ${detection.aspectRatio} (from ${entryRelative} dims ${detection.width}×${detection.height})`;
+    case "no-root-div":
+      return `No <div data-composition-id> found in ${entryRelative}`;
+    case "no-dims":
+      return `${entryRelative} root composition has no data-width / data-height`;
+    case "invalid-dims":
+      return `${entryRelative} root has invalid dims (${detection.width}×${detection.height})`;
+    case "no-match":
+      return `${entryRelative} dims ${detection.width}×${detection.height} (ratio ${detection.ratio.toFixed(2)}) don't match 16:9, 9:16, or 1:1`;
+    case "read-error":
+      return `Couldn't read ${entryRelative} for aspect-ratio detection (${detection.error})`;
+  }
 }
 
 function resolveVariablesAndValidateIfLocal(
