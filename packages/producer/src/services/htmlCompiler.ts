@@ -888,6 +888,63 @@ const REMOTE_MEDIA_TAG_RE =
   /<(?:video|audio)\b[^>]*?\bsrc\s*=\s*["'](https?:\/\/[^"']+)["'][^>]*>/gi;
 
 /**
+ * Download a set of remote URLs in parallel into `remoteDir`, build the
+ * `{ relPath → absPath }` asset map, and rewrite every occurrence of each
+ * URL inside `html` with its relative local path.
+ *
+ * The `warnLabel` appears in console.warn messages for download failures.
+ * The `logLabel` appears in the success console.log line.
+ * `extraRewrite`, if provided, is called per URL pair after the standard
+ * double/single-quote rewrite — used for url(...) CSS rewriting.
+ */
+async function downloadAndRewriteUrls(
+  urlSet: Set<string>,
+  html: string,
+  remoteDir: string,
+  warnLabel: string,
+  logLabel: string,
+  extraRewrite?: (html: string, url: string, relPath: string) => string,
+): Promise<{ html: string; remoteMediaAssets: Map<string, string> }> {
+  if (urlSet.size === 0) return { html, remoteMediaAssets: new Map() };
+  if (!existsSync(remoteDir)) mkdirSync(remoteDir, { recursive: true });
+
+  const urlToLocal = new Map<string, string>();
+  await Promise.all(
+    [...urlSet].map(async (url) => {
+      try {
+        const localPath = await downloadToTemp(url, remoteDir);
+        urlToLocal.set(url, localPath);
+      } catch (err) {
+        console.warn(
+          `[Compiler] ${warnLabel} ${url} — using original URL as fallback. ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      }
+    }),
+  );
+
+  if (urlToLocal.size === 0) return { html, remoteMediaAssets: new Map() };
+
+  const remoteMediaAssets = new Map<string, string>();
+  const urlToRelPath = new Map<string, string>();
+  for (const [url, absPath] of urlToLocal) {
+    const relPath = `${REMOTE_MEDIA_SUBDIR}/${basename(absPath)}`;
+    remoteMediaAssets.set(relPath, absPath);
+    urlToRelPath.set(url, relPath);
+  }
+
+  let result = html;
+  for (const [url, relPath] of urlToRelPath) {
+    result = result.replaceAll(`"${url}"`, `"${relPath}"`).replaceAll(`'${url}'`, `'${relPath}'`);
+    if (extraRewrite) result = extraRewrite(result, url, relPath);
+  }
+
+  console.log(`[Compiler] ${logLabel} ${urlToLocal.size} to ${REMOTE_MEDIA_SUBDIR}/`);
+  return { html: result, remoteMediaAssets };
+}
+
+/**
  * Download any remote `src` URLs on `<video>` and `<audio>` elements into a
  * local subdirectory of `downloadDir`, rewrite the HTML src attributes to
  * relative paths, and return the updated HTML along with a map of
@@ -907,8 +964,6 @@ export async function localizeRemoteMediaSources(
   html: string,
   downloadDir: string,
 ): Promise<{ html: string; remoteMediaAssets: Map<string, string> }> {
-  const remoteDir = join(downloadDir, REMOTE_MEDIA_SUBDIR);
-
   // Collect unique HTTP URLs from <video>/<audio> src attributes.
   const urlSet = new Set<string>();
   const re = new RegExp(REMOTE_MEDIA_TAG_RE.source, REMOTE_MEDIA_TAG_RE.flags);
@@ -916,53 +971,70 @@ export async function localizeRemoteMediaSources(
   while ((m = re.exec(html)) !== null) {
     if (m[1]) urlSet.add(m[1]);
   }
+  return downloadAndRewriteUrls(
+    urlSet,
+    html,
+    join(downloadDir, REMOTE_MEDIA_SUBDIR),
+    "Remote media download failed for",
+    "Localized remote media source(s)",
+  );
+}
 
-  if (urlSet.size === 0) return { html, remoteMediaAssets: new Map() };
+// Match url("https://...") or url('https://...') inside @font-face blocks.
+// We scan the full HTML (which includes <style> blocks) — matching against
+// @font-face context precisely would require a CSS parser; instead we match
+// any url(https?://...) that appears inside a @font-face rule by looking for
+// the surrounding context. Simple pattern: capture all HTTP url() references
+// that follow a @font-face opener (before the closing brace). The regex is
+// applied to the CSS text extracted from <style> blocks so it can't
+// accidentally match JavaScript string literals.
+const REMOTE_FONTFACE_URL_RE = /url\(["']?(https?:\/\/[^"')]+)["']?\)/gi;
 
-  if (!existsSync(remoteDir)) mkdirSync(remoteDir, { recursive: true });
+/**
+ * Download any remote font URLs from `@font-face` src declarations, rewrite
+ * the CSS `url(...)` references to local paths, and return a map of assets.
+ *
+ * Why: `@font-face { src: url("https://s3.../font.ttf") }` fails in the
+ * renderer because Chrome makes a CORS-mode fetch from the local file server
+ * origin (http://localhost:PORT) and S3 does not echo that origin back in
+ * Access-Control-Allow-Origin. The font load is rejected, Chrome falls back
+ * to the next font in the stack (e.g. Arial). Downloading the font file
+ * before render and rewriting to a local path eliminates the CORS race.
+ */
+/** @internal exported for unit testing only */
+export async function localizeRemoteFontFaces(
+  html: string,
+  downloadDir: string,
+): Promise<{ html: string; remoteMediaAssets: Map<string, string> }> {
+  // Only scan inside <style> blocks to avoid false-positive matches in JS.
+  const styleBlockRe = /<style\b[^>]*>([\s\S]*?)<\/style>/gi;
+  const fontFaceRe = /@font-face\s*\{([^}]*)\}/gi;
+  const urlSet = new Set<string>();
 
-  // Download all unique URLs in parallel; collect {url → localPath} for successes.
-  const urlToLocal = new Map<string, string>();
-  await Promise.all(
-    [...urlSet].map(async (url) => {
-      try {
-        const localPath = await downloadToTemp(url, remoteDir);
-        urlToLocal.set(url, localPath);
-      } catch (err) {
-        console.warn(
-          `[Compiler] Remote media download failed for ${url} — using original URL as fallback. ${
-            err instanceof Error ? err.message : String(err)
-          }`,
-        );
+  let styleMatch: RegExpExecArray | null;
+  while ((styleMatch = styleBlockRe.exec(html)) !== null) {
+    const cssText = styleMatch[1] ?? "";
+    const ffRe = new RegExp(fontFaceRe.source, fontFaceRe.flags);
+    let ffMatch: RegExpExecArray | null;
+    while ((ffMatch = ffRe.exec(cssText)) !== null) {
+      const block = ffMatch[1] ?? "";
+      const urlRe = new RegExp(REMOTE_FONTFACE_URL_RE.source, REMOTE_FONTFACE_URL_RE.flags);
+      let urlMatch: RegExpExecArray | null;
+      while ((urlMatch = urlRe.exec(block)) !== null) {
+        if (urlMatch[1]) urlSet.add(urlMatch[1]);
       }
-    }),
-  );
-
-  if (urlToLocal.size === 0) return { html, remoteMediaAssets: new Map() };
-
-  // Build externalAssets map: relative key → local abs path.
-  // The relative key ("_remote_media/<file>") becomes the path under compiledDir
-  // that writeCompiledArtifacts copies the file to and the file server exposes.
-  const remoteMediaAssets = new Map<string, string>();
-  const urlToRelPath = new Map<string, string>();
-  for (const [url, absPath] of urlToLocal) {
-    const relPath = `${REMOTE_MEDIA_SUBDIR}/${basename(absPath)}`;
-    remoteMediaAssets.set(relPath, absPath);
-    urlToRelPath.set(url, relPath);
+    }
   }
 
-  // Rewrite src attributes in HTML.
-  let result = html;
-  for (const [url, relPath] of urlToRelPath) {
-    // Replace both quote styles; URLs are long enough to be unique without
-    // anchoring to the surrounding attribute context.
-    result = result.replaceAll(`"${url}"`, `"${relPath}"`).replaceAll(`'${url}'`, `'${relPath}'`);
-  }
-
-  console.log(
-    `[Compiler] Localized ${urlToLocal.size} remote media source(s) to ${REMOTE_MEDIA_SUBDIR}/`,
+  return downloadAndRewriteUrls(
+    urlSet,
+    html,
+    join(downloadDir, REMOTE_MEDIA_SUBDIR),
+    "Remote font download failed for",
+    "Localized remote font face(s)",
+    // Also rewrite unquoted url(https://...) CSS syntax.
+    (h, url, relPath) => h.replaceAll(`url(${url})`, `url("${relPath}")`),
   );
-  return { html: result, remoteMediaAssets };
 }
 
 /**
@@ -1088,11 +1160,23 @@ export async function compileForRender(
   // Chrome to spend the entire pageReadyTimeout buffering 10+ large video files
   // over the network; any that don't reach readyState >= 2 in time render as
   // blank black frames. Localising them eliminates the race.
-  const { html, remoteMediaAssets } = await localizeRemoteMediaSources(
+  const { html: htmlWithLocalMedia, remoteMediaAssets } = await localizeRemoteMediaSources(
     htmlWithPositionScript,
     downloadDir,
   );
   for (const [relPath, absPath] of remoteMediaAssets) {
+    externalAssets.set(relPath, absPath);
+  }
+
+  // Download remote @font-face src URLs and rewrite to local paths.
+  // Remote font URLs fail with a CORS rejection at render time (S3 does not
+  // allow http://localhost:PORT as origin), causing Chrome to silently fall
+  // back to the next font in the stack.
+  const { html, remoteMediaAssets: remoteFontAssets } = await localizeRemoteFontFaces(
+    htmlWithLocalMedia,
+    downloadDir,
+  );
+  for (const [relPath, absPath] of remoteFontAssets) {
     externalAssets.set(relPath, absPath);
   }
 

@@ -11,6 +11,7 @@ import {
   discoverAudioVolumeAutomationFromTimeline,
   inlineExternalScripts,
   localizeRemoteMediaSources,
+  localizeRemoteFontFaces,
   recompileWithResolutions,
 } from "./htmlCompiler.js";
 
@@ -946,6 +947,108 @@ describe("localizeRemoteMediaSources", () => {
     // OS-aware and extracts the filename correctly on both platforms.
     const { basename: b } = require("node:path");
     expect(b("/tmp/_remote_media/download_abc123.mp4")).toBe("download_abc123.mp4");
+  });
+});
+
+// ── localizeRemoteFontFaces ──────────────────────────────────────────────────
+
+describe("localizeRemoteFontFaces", () => {
+  const FONT_URL = "https://gen-os-static.s3.us-east-2.amazonaws.com/fonts/komika-axis.ttf";
+
+  it("rewrites @font-face url() inside <style> to _remote_media/ path", async () => {
+    const orig = globalThis.fetch;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (globalThis as any).fetch = async () => new Response(new Uint8Array(16), { status: 200 });
+    try {
+      const dl = mkdtempSync(join(tmpdir(), "hf-ff-"));
+      const html = `<style>
+@font-face {
+  font-family: "Komika Axis";
+  src: url("${FONT_URL}") format("truetype");
+}
+</style>`;
+      const { html: result, remoteMediaAssets } = await localizeRemoteFontFaces(html, dl);
+      expect(result).not.toContain(FONT_URL);
+      expect(result).toContain("_remote_media/");
+      expect(remoteMediaAssets.size).toBe(1);
+    } finally {
+      globalThis.fetch = orig;
+    }
+  });
+
+  it("ignores url() references outside @font-face (e.g. background-image)", async () => {
+    const orig = globalThis.fetch;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (globalThis as any).fetch = async () => new Response(new Uint8Array(16), { status: 200 });
+    try {
+      const dl = mkdtempSync(join(tmpdir(), "hf-ff-bg-"));
+      const BG_URL = "https://cdn.example.com/bg.png";
+      const html = `<style>
+body { background-image: url("${BG_URL}"); }
+@font-face { font-family: "F"; src: url("${FONT_URL}") format("truetype"); }
+</style>`;
+      const { html: result } = await localizeRemoteFontFaces(html, dl);
+      // Font URL rewritten, background URL untouched
+      expect(result).not.toContain(FONT_URL);
+      expect(result).toContain(BG_URL);
+    } finally {
+      globalThis.fetch = orig;
+    }
+  });
+
+  it("preserves original URL when download fails", async () => {
+    const orig = globalThis.fetch;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (globalThis as any).fetch = async () => new Response(null, { status: 403 });
+    try {
+      const dl = mkdtempSync(join(tmpdir(), "hf-ff-fail-"));
+      const FAIL_URL = "https://fail-font.example.com/f.ttf";
+      const html = `<style>@font-face { font-family: "F"; src: url("${FAIL_URL}") format("truetype"); }</style>`;
+      const { html: result, remoteMediaAssets } = await localizeRemoteFontFaces(html, dl);
+      expect(result).toContain(FAIL_URL);
+      expect(remoteMediaAssets.size).toBe(0);
+    } finally {
+      globalThis.fetch = orig;
+    }
+  });
+
+  it("deduplicates: same font URL in two @font-face blocks → 1 download", async () => {
+    const orig = globalThis.fetch;
+    let fetchCount = 0;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (globalThis as any).fetch = async () => {
+      fetchCount++;
+      return new Response(new Uint8Array(16), { status: 200 });
+    };
+    try {
+      const dl = mkdtempSync(join(tmpdir(), "hf-ff-dedup-"));
+      const DEDUP_URL = "https://dedup-font.example.com/d.ttf";
+      const html = `<style>
+@font-face { font-family: "F1"; src: url("${DEDUP_URL}") format("truetype"); font-weight: 400; }
+@font-face { font-family: "F2"; src: url("${DEDUP_URL}") format("truetype"); font-weight: 700; }
+</style>`;
+      const { remoteMediaAssets } = await localizeRemoteFontFaces(html, dl);
+      expect(fetchCount).toBe(1);
+      expect(remoteMediaAssets.size).toBe(1);
+    } finally {
+      globalThis.fetch = orig;
+    }
+  });
+
+  it("no-ops when no @font-face blocks are present", async () => {
+    const dl = mkdtempSync(join(tmpdir(), "hf-ff-noop-"));
+    const html = `<style>body { color: red; }</style>`;
+    const { html: result, remoteMediaAssets } = await localizeRemoteFontFaces(html, dl);
+    expect(result).toBe(html);
+    expect(remoteMediaAssets.size).toBe(0);
+  });
+
+  it("ignores local (non-HTTP) @font-face src URLs", async () => {
+    const dl = mkdtempSync(join(tmpdir(), "hf-ff-local-"));
+    const html = `<style>@font-face { font-family: "F"; src: url("assets/fonts/f.ttf") format("truetype"); }</style>`;
+    const { html: result, remoteMediaAssets } = await localizeRemoteFontFaces(html, dl);
+    expect(result).toBe(html);
+    expect(remoteMediaAssets.size).toBe(0);
   });
 });
 
