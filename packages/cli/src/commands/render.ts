@@ -435,19 +435,6 @@ export default defineCommand({
       console.log("");
     }
 
-    // ── Check FFmpeg for local renders ───────────────────────────────────
-    if (!useDocker) {
-      const { findFFmpeg, getFFmpegInstallHint } = await import("../browser/ffmpeg.js");
-      if (!findFFmpeg()) {
-        errorBox(
-          "FFmpeg not found",
-          "Rendering requires FFmpeg for video encoding.",
-          `Install: ${getFFmpegInstallHint()}`,
-        );
-        process.exit(1);
-      }
-    }
-
     // ── Ensure browser for local renders ────────────────────────────────
     let browserPath: string | undefined;
     if (!useDocker) {
