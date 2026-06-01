@@ -10,6 +10,7 @@ import {
   detectShaderTransitionUsage,
   discoverAudioVolumeAutomationFromTimeline,
   inlineExternalScripts,
+  localizeRemoteMediaSources,
   recompileWithResolutions,
 } from "./htmlCompiler.js";
 
@@ -856,6 +857,95 @@ describe("crossorigin attribute stripping", () => {
 
     expect(compiled.html).not.toContain("crossorigin");
     expect(compiled.html).toContain('id="bgm"');
+  });
+});
+
+// ── remote media localization ────────────────────────────────────────────────
+//
+// Tests run on localizeRemoteMediaSources directly (exported for testing) to
+// avoid invoking ffprobe / the full compileForRender pipeline. fetch is patched
+// in-process for success cases; real 404s from example.com cover fallback.
+
+describe("localizeRemoteMediaSources", () => {
+  it("rewrites remote <video> src to _remote_media path when download succeeds", async () => {
+    const orig = globalThis.fetch;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (globalThis as any).fetch = async () => new Response(new Uint8Array(100), { status: 200 });
+    try {
+      const dl = mkdtempSync(join(tmpdir(), "hf-dl-ok-"));
+      const html = `<video id="v1" src="https://media-ok.example.com/a/clip.mp4" data-start="0" data-end="10" muted></video>`;
+      const { html: result, remoteMediaAssets } = await localizeRemoteMediaSources(html, dl);
+      expect(result).not.toContain("https://media-ok.example.com/");
+      expect(result).toContain("_remote_media/");
+      expect(remoteMediaAssets.size).toBe(1);
+    } finally {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (globalThis as any).fetch = orig;
+    }
+  });
+
+  it("preserves original URL on download failure without throwing", async () => {
+    const dl = mkdtempSync(join(tmpdir(), "hf-dl-fail-"));
+    const url = "https://example.com/will-404-localize-test.mp4";
+    const html = `<video id="v1" src="${url}" data-start="0" data-end="10" muted></video>`;
+    const { html: result, remoteMediaAssets } = await localizeRemoteMediaSources(html, dl);
+    expect(result).toContain(url);
+    expect(remoteMediaAssets.size).toBe(0);
+  });
+
+  it("deduplicates: two tags with the same src URL → one download", async () => {
+    const orig = globalThis.fetch;
+    let fetchCount = 0;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (globalThis as any).fetch = async () => {
+      fetchCount++;
+      return new Response(new Uint8Array(100), { status: 200 });
+    };
+    try {
+      const dl = mkdtempSync(join(tmpdir(), "hf-dl-dedup-"));
+      const html = `<video id="v1" src="https://dedup.example.com/b/shared.mp4" data-start="0" data-end="10" muted></video>
+<video id="v2" src="https://dedup.example.com/b/shared.mp4" data-start="10" data-end="20" muted></video>`;
+      await localizeRemoteMediaSources(html, dl);
+      expect(fetchCount).toBe(1);
+    } finally {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (globalThis as any).fetch = orig;
+    }
+  });
+
+  it("does not rewrite local (non-HTTP) src paths", async () => {
+    const dl = mkdtempSync(join(tmpdir(), "hf-dl-local-"));
+    const html = `<video id="v1" src="assets/local.mp4" data-start="0" data-end="10" muted></video>`;
+    const { html: result, remoteMediaAssets } = await localizeRemoteMediaSources(html, dl);
+    expect(result).toContain("assets/local.mp4");
+    expect(result).not.toContain("_remote_media/");
+    expect(remoteMediaAssets.size).toBe(0);
+  });
+
+  it("rewrites src in both double-quoted and single-quoted attributes", async () => {
+    const orig = globalThis.fetch;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (globalThis as any).fetch = async () => new Response(new Uint8Array(100), { status: 200 });
+    try {
+      const dl = mkdtempSync(join(tmpdir(), "hf-dl-quotes-"));
+      const html = `<video id="v1" src="https://q.example.com/c/dq.mp4" data-start="0" data-end="10" muted></video>
+<audio id="a1" src='https://q.example.com/c/sq.mp3' data-start="0" data-end="10"></audio>`;
+      const { html: result } = await localizeRemoteMediaSources(html, dl);
+      expect(result).not.toContain("https://q.example.com/");
+      expect(result.match(/_remote_media\//g)?.length).toBe(2);
+    } finally {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (globalThis as any).fetch = orig;
+    }
+  });
+
+  it("uses path.basename for OS-portable filename extraction from downloaded path", () => {
+    // Guards against the prior absPath.split('/').at(-1) pattern. On Windows
+    // path.join uses `\` separators; splitting on `/` would return the entire
+    // path as a single element, producing a garbage relPath. path.basename is
+    // OS-aware and extracts the filename correctly on both platforms.
+    const { basename: b } = require("node:path");
+    expect(b("/tmp/_remote_media/download_abc123.mp4")).toBe("download_abc123.mp4");
   });
 });
 

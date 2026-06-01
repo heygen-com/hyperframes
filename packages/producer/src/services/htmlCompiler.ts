@@ -10,7 +10,7 @@
  */
 
 import { readFileSync, existsSync, mkdirSync } from "fs";
-import { join, dirname, resolve } from "path";
+import { join, dirname, resolve, basename } from "path";
 import { parseHTML } from "linkedom";
 import {
   compileTimingAttrs,
@@ -902,7 +902,8 @@ const REMOTE_MEDIA_TAG_RE =
  * every clip. Localising the sources before the file server starts eliminates
  * the race entirely and keeps the render hermetic.
  */
-async function localizeRemoteMediaSources(
+/** @internal exported for unit testing only */
+export async function localizeRemoteMediaSources(
   html: string,
   downloadDir: string,
 ): Promise<{ html: string; remoteMediaAssets: Map<string, string> }> {
@@ -945,7 +946,7 @@ async function localizeRemoteMediaSources(
   const remoteMediaAssets = new Map<string, string>();
   const urlToRelPath = new Map<string, string>();
   for (const [url, absPath] of urlToLocal) {
-    const relPath = `${REMOTE_MEDIA_SUBDIR}/${absPath.split("/").at(-1)}`;
+    const relPath = `${REMOTE_MEDIA_SUBDIR}/${basename(absPath)}`;
     remoteMediaAssets.set(relPath, absPath);
     urlToRelPath.set(url, relPath);
   }
