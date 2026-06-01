@@ -413,10 +413,22 @@ export function resolveAspectRatioForSubmit(
   const detection = detectAspectRatioFromHtml(entryPath);
 
   if (explicit) {
-    if (detection.kind === "matched" && detection.aspectRatio !== explicit) {
+    // The renderer matches the composition's authored aspect ratio — it can't
+    // reshape. Both a `matched` ratio that differs from `explicit` AND a
+    // `no-match` (dims are known but the ratio isn't 16:9/9:16/1:1, so it can
+    // never equal the requested supported ratio) are definite conflicts.
+    // Other kinds (no-dims / no-root-div / invalid-dims / read-error) leave the
+    // ratio unknown, so we can't prove a conflict and forward the explicit value.
+    const conflictDetail =
+      detection.kind === "matched" && detection.aspectRatio !== explicit
+        ? `${detection.width}×${detection.height} → ${detection.aspectRatio}`
+        : detection.kind === "no-match"
+          ? `${detection.width}×${detection.height}, ratio ${detection.ratio.toFixed(2)} — not a supported ratio`
+          : undefined;
+    if (conflictDetail) {
       errorBox(
         "Aspect ratio mismatch",
-        `--aspect-ratio ${explicit} doesn't match the composition (${detection.width}×${detection.height} → ${detection.aspectRatio}).`,
+        `--aspect-ratio ${explicit} doesn't match the composition (${conflictDetail}).`,
         "The renderer matches the composition's authored aspect ratio — it can't reshape it. Drop --aspect-ratio (it's auto-detected) or re-author the composition at the target ratio.",
       );
       process.exit(1);
