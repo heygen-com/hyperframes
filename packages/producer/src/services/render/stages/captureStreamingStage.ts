@@ -160,6 +160,7 @@ export async function runCaptureStreamingStage(
       videoOnlyPath,
       streamingEncoderOptions,
       abortSignal,
+      cfg,
     );
     assertNotAborted();
   } catch (err) {
