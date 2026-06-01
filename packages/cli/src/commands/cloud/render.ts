@@ -58,14 +58,8 @@ import { isAbsolute, resolve as resolvePath } from "node:path";
 
 const VALID_QUALITY = ["draft", "standard", "high"] as const;
 const VALID_FORMAT = ["mp4", "webm", "mov"] as const;
-const VALID_RESOLUTION = [
-  "landscape",
-  "portrait",
-  "landscape-4k",
-  "portrait-4k",
-  "square",
-  "square-4k",
-] as const;
+const VALID_RESOLUTION = ["1080p", "4k"] as const;
+const VALID_ASPECT_RATIO = ["16:9", "9:16", "1:1"] as const;
 
 const FORMAT_EXT: Record<string, string> = { mp4: ".mp4", webm: ".webm", mov: ".mov" };
 
@@ -96,8 +90,11 @@ export default defineCommand({
     format: { type: "string", description: "mp4 | webm | mov (default: mp4)" },
     resolution: {
       type: "string",
-      description:
-        "Resolution preset: landscape | portrait | landscape-4k | portrait-4k | square | square-4k",
+      description: "Resolution tier: 1080p | 4k (default: 1080p; 4k is billed at 1.5x)",
+    },
+    "aspect-ratio": {
+      type: "string",
+      description: "Aspect ratio: 16:9 | 9:16 | 1:1 (default: 16:9)",
     },
     composition: {
       type: "string",
@@ -185,6 +182,9 @@ export default defineCommand({
     const resolution = parseEnumFlag(args.resolution, VALID_RESOLUTION, {
       flag: "--resolution",
     });
+    const aspectRatio = parseEnumFlag(args["aspect-ratio"], VALID_ASPECT_RATIO, {
+      flag: "--aspect-ratio",
+    });
     const pollIntervalMs = parsePollIntervalMs(args["poll-interval"]);
     const maxWaitMs = parseMaxWaitMs(args["max-wait"]);
     validateIdempotencyKey(args["idempotency-key"]);
@@ -214,6 +214,7 @@ export default defineCommand({
       quality,
       format,
       resolution,
+      aspectRatio,
       composition: args.composition,
       variables,
       title: args.title,
@@ -443,6 +444,7 @@ interface SubmitOptions {
   quality: "draft" | "standard" | "high" | undefined;
   format: "mp4" | "webm" | "mov" | undefined;
   resolution: CreateHyperframesRenderRequest["resolution"] | undefined;
+  aspectRatio: CreateHyperframesRenderRequest["aspect_ratio"] | undefined;
   composition: string | undefined;
   variables: Record<string, unknown> | undefined;
   title: string | undefined;
@@ -470,6 +472,7 @@ function buildRenderBody(opts: SubmitOptions): CreateHyperframesRenderRequest {
   if (opts.quality !== undefined) body.quality = opts.quality;
   if (opts.format !== undefined) body.format = opts.format;
   if (opts.resolution !== undefined) body.resolution = opts.resolution;
+  if (opts.aspectRatio !== undefined) body.aspect_ratio = opts.aspectRatio;
   if (opts.composition !== undefined) body.composition = opts.composition;
   if (opts.variables !== undefined) body.variables = opts.variables;
   if (opts.title !== undefined) body.title = opts.title;

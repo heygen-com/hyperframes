@@ -79,17 +79,15 @@ export interface CreateHyperframesRenderRequest {
    */
   format?: "mp4" | "webm" | "mov";
   /**
-   * Optional resolution preset. If omitted, the composition's own declared
-   * dimensions are used.
+   * Output resolution tier. Defaults to '1080p'. Pass '4k' for 4K renders
+   * (billed at 1.5x).
    */
-  resolution?:
-    | "landscape"
-    | "portrait"
-    | "landscape-4k"
-    | "portrait-4k"
-    | "square"
-    | "square-4k"
-    | null;
+  resolution?: HyperframesResolution;
+  /**
+   * Output aspect ratio. Defaults to '16:9' (landscape). Pass '9:16' for
+   * portrait or '1:1' for square.
+   */
+  aspect_ratio?: HyperframesAspectRatio;
   /**
    * Entry HTML file relative to the project root (e.g. compositions/intro.html).
    * Defaults to index.html when omitted.
@@ -134,6 +132,15 @@ export interface DeleteHyperframesRenderResponse {
    */
   render_id: string;
 }
+
+/**
+ * Output aspect ratio. Only the three ratios already supported end-to-end by
+ * the render pipeline are exposed today: ``16:9`` (landscape), ``9:16``
+ * (portrait), ``1:1`` (square). ``auto`` and other social-media ratios (4:5,
+ * 5:4) are reserved for a follow-up PR that wires composition-dim inference at
+ * the controller boundary.
+ */
+export type HyperframesAspectRatio = "16:9" | "9:16" | "1:1";
 
 /**
  * Detailed HyperFrames render resource.
@@ -181,16 +188,13 @@ export interface HyperframesRenderDetail {
    */
   format: "mp4" | "webm" | "mov";
   /**
-   * Resolution preset, if one was set.
+   * Resolution tier, if one was set.
    */
-  resolution?:
-    | "landscape"
-    | "portrait"
-    | "landscape-4k"
-    | "portrait-4k"
-    | "square"
-    | "square-4k"
-    | null;
+  resolution?: HyperframesResolution | null;
+  /**
+   * Aspect ratio, if one was set.
+   */
+  aspect_ratio?: HyperframesAspectRatio | null;
   /**
    * Composition entry file path.
    */
@@ -214,6 +218,13 @@ export interface HyperframesRenderDetail {
  * Lifecycle status of a HyperFrames render.
  */
 export type HyperframesRenderStatus = "queued" | "rendering" | "completed" | "failed";
+
+/**
+ * Output resolution tier. Pricing diverges only at 4K (1.5x multiplier). The
+ * render-pipeline value set is intentionally narrow at launch; 720p and other
+ * tiers will follow once the producer/CLI surface catches up.
+ */
+export type HyperframesResolution = "1080p" | "4k";
 
 export interface StandardAPIError {
   /**
