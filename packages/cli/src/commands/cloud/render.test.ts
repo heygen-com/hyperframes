@@ -89,6 +89,16 @@ describe("resolveAspectRatioForSubmit — local dir", () => {
     expect(exit).toHaveBeenCalled();
   });
 
+  it("rejects an explicit flag when the composition ratio is unsupported (no-match)", () => {
+    const exit = trapExit();
+    // 1080×1350 is 4:5 — not one of 16:9 / 9:16 / 1:1, so detection is `no-match`.
+    const dir = writeComposition(1080, 1350);
+    expect(() =>
+      resolveAspectRatioForSubmit({ kind: "dir", dir }, undefined, "9:16", true),
+    ).toThrow("process.exit:1");
+    expect(exit).toHaveBeenCalled();
+  });
+
   it("fails fast when the --composition entry is missing", () => {
     const exit = trapExit();
     const dir = writeComposition(1920, 1080);
