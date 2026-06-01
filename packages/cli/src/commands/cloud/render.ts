@@ -59,6 +59,7 @@ import type {
   HyperframesRenderDetail,
 } from "../../cloud/index.js";
 import { isAbsolute, resolve as resolvePath } from "node:path";
+import { existsSync } from "node:fs";
 
 const VALID_QUALITY = ["draft", "standard", "high"] as const;
 const VALID_FORMAT = ["mp4", "webm", "mov"] as const;
@@ -202,13 +203,23 @@ export default defineCommand({
       url: args.url,
     });
 
-    // When the user didn't pass --aspect-ratio explicitly AND the project is
-    // a local dir, parse the entry HTML's root composition div for
-    // data-width/data-height and pick the matching supported ratio. Saves
-    // the user from having to specify a value that's already implicit in
-    // the composition they authored. Explicit flag always wins.
-    const aspectRatio =
-      explicitAspectRatio ?? maybeAutoDetectAspectRatio(project, args.composition, asJson);
+    // 4k supersampling runs through the alpha-incompatible screenshot path;
+    // reject the combination client-side instead of failing mid-render.
+    validateResolutionFormatCombo(resolution, format);
+
+    // Aspect ratio is derived from the composition's authored dimensions: for
+    // a local dir we parse the entry HTML and auto-detect, so the user rarely
+    // needs --aspect-ratio at all. When they DO pass it, we validate it
+    // matches the composition (the renderer can't reshape, only supersample to
+    // a matching ratio) and fail fast on a mismatch. This also fails fast when
+    // the --composition entry file is missing, rather than uploading a zip the
+    // render rejects with a generic server-side error.
+    const aspectRatio = resolveAspectRatioForSubmit(
+      project,
+      args.composition,
+      explicitAspectRatio,
+      asJson,
+    );
 
     const variables = resolveVariablesAndValidateIfLocal(
       args.variables,
@@ -322,7 +333,7 @@ function validateIdempotencyKey(key: string | undefined): void {
 // Project resolution (dir | asset-id | url) — exactly one source
 // ---------------------------------------------------------------------------
 
-interface ProjectInputSource {
+export interface ProjectInputSource {
   kind: "dir" | "asset_id" | "url";
   dir?: string;
   assetId?: string;
@@ -354,38 +365,86 @@ function resolveProjectInput(opts: {
 }
 
 /**
- * Best-effort aspect-ratio detection for the cloud-render submit body when
- * the user hasn't passed `--aspect-ratio`. Returns the detected value (one
- * of `"16:9" | "9:16" | "1:1"`) or `undefined` to let the server's default
- * (16:9) apply.
+ * Resolve the aspect ratio for the submit body, validating local inputs.
  *
- * Detection only fires when the project source is a local directory — for
- * `--asset-id` and `--url` the composition zip isn't on disk and parsing
- * it client-side isn't worth the extra fetch. The user gets a one-line
- * note explaining the fallback.
+ * Aspect ratio is a property of the composition (its `data-width`/
+ * `data-height`), not an independent render knob — the pipeline supersamples
+ * to a *matching* ratio and can't reshape. So for a local dir we auto-detect
+ * from the entry HTML and the user rarely needs `--aspect-ratio`. Behaviour:
  *
- * Logs to stdout in human-readable mode; suppressed in `--json` mode so the
- * machine-readable output stays clean.
+ *   - Local dir, no explicit flag → auto-detect and log the result.
+ *   - Local dir, explicit flag that conflicts with the detected dims → hard
+ *     error (the render would otherwise fail or silently ignore the request).
+ *   - Local dir with a missing `--composition` entry → hard error before
+ *     upload, instead of a generic server-side render failure.
+ *   - `--asset-id` / `--url` → the zip isn't on disk; trust an explicit flag,
+ *     otherwise let the server default (16:9) apply.
+ *
+ * Logs are suppressed in `--json` mode so machine output stays clean.
  */
 // fallow-ignore-next-line complexity
-function maybeAutoDetectAspectRatio(
+export function resolveAspectRatioForSubmit(
   project: ProjectInputSource,
   compositionArg: string | undefined,
+  explicit: "16:9" | "9:16" | "1:1" | undefined,
   asJson: boolean,
 ): "16:9" | "9:16" | "1:1" | undefined {
   if (project.kind !== "dir") {
-    const reason = project.kind === "asset_id" ? "--asset-id" : "--url";
-    logDetection(asJson, `Auto-detect skipped (project is ${reason})`);
-    return undefined;
+    if (!explicit) {
+      const reason = project.kind === "asset_id" ? "--asset-id" : "--url";
+      logDetection(asJson, `Auto-detect skipped (project is ${reason})`);
+    }
+    return explicit;
   }
 
   const dir = project.dir ?? ".";
   const entryRelative = compositionArg ?? "index.html";
   const entryPath = resolvePath(dir, entryRelative);
 
+  if (!existsSync(entryPath)) {
+    errorBox(
+      "Composition not found",
+      `Entry file "${entryRelative}" does not exist in ${dir}.`,
+      "Pass --composition with a path that exists inside the project, or omit it to use index.html.",
+    );
+    process.exit(1);
+  }
+
   const detection = detectAspectRatioFromHtml(entryPath);
+
+  if (explicit) {
+    if (detection.kind === "matched" && detection.aspectRatio !== explicit) {
+      errorBox(
+        "Aspect ratio mismatch",
+        `--aspect-ratio ${explicit} doesn't match the composition (${detection.width}×${detection.height} → ${detection.aspectRatio}).`,
+        "The renderer matches the composition's authored aspect ratio — it can't reshape it. Drop --aspect-ratio (it's auto-detected) or re-author the composition at the target ratio.",
+      );
+      process.exit(1);
+    }
+    return explicit;
+  }
+
   logDetection(asJson, summarizeDetection(detection, entryRelative));
   return detection.kind === "matched" ? detection.aspectRatio : undefined;
+}
+
+/**
+ * 4k output is produced by supersampling through the screenshot capture path,
+ * which doesn't support an alpha channel. webm/mov carry alpha, so the
+ * combination can't be satisfied — reject it before upload.
+ */
+export function validateResolutionFormatCombo(
+  resolution: "1080p" | "4k" | undefined,
+  format: "mp4" | "webm" | "mov" | undefined,
+): void {
+  if (resolution === "4k" && (format === "webm" || format === "mov")) {
+    errorBox(
+      "Unsupported combination",
+      `--resolution 4k cannot be combined with --format ${format}.`,
+      "The alpha (webm/mov) capture path doesn't support 4k supersampling. Render 4k as mp4, or render alpha at composition resolution.",
+    );
+    process.exit(1);
+  }
 }
 
 const ASPECT_FALLBACK_HINT =
