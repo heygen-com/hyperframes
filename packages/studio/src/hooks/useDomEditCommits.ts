@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useRef } from "react";
 import { usePlayerStore } from "../player";
 import { FONT_EXT } from "../utils/mediaTypes";
 import type { PatchOperation } from "../utils/sourcePatcher";
@@ -128,6 +128,8 @@ export function useDomEditCommits({
     [fileTree, projectId, importedFontAssetsRef],
   );
 
+  const reportedUnresolvableRef = useRef(new Set<string>());
+
   // fallow-ignore-next-line complexity
   const persistDomEditOperations: PersistDomEditOperations = useCallback(
     async (selection, operations, options) => {
@@ -179,15 +181,20 @@ export function useDomEditCommits({
 
       if (!patchData.changed) {
         if (patchData.matched === false) {
-          trackStudioEvent("save_skipped_unresolvable", {
-            target_id: selection.id ?? undefined,
-            target_selector: selection.selector ?? undefined,
-            target_source_file: selection.sourceFile ?? undefined,
-          });
-          console.warn(
-            `[studio] Element not found in source: ${selection.selector ?? selection.id ?? "selection"}. ` +
-              "This element may be generated at runtime and cannot be persisted.",
-          );
+          const targetKey = selection.selector ?? selection.id ?? "selection";
+          if (!reportedUnresolvableRef.current.has(targetKey)) {
+            reportedUnresolvableRef.current.add(targetKey);
+            trackStudioEvent("save_skipped_unresolvable", {
+              target_id: selection.id ?? undefined,
+              target_selector: selection.selector ?? undefined,
+              target_source_file: selection.sourceFile ?? undefined,
+              composition: activeCompPath ?? undefined,
+            });
+            console.warn(
+              `[studio] Element not found in source: ${targetKey}. ` +
+                "This element may be generated at runtime and cannot be persisted.",
+            );
+          }
         }
         return;
       }
