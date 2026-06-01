@@ -24,6 +24,11 @@ vi.mock("../telemetry/events.js", () => ({
   trackRenderError: vi.fn(),
 }));
 
+vi.mock("../browser/ffmpeg.js", () => ({
+  findFFmpeg: vi.fn(() => "/usr/bin/ffmpeg"),
+  getFFmpegInstallHint: vi.fn(() => "brew install ffmpeg"),
+}));
+
 describe("renderLocal browser GPU config", () => {
   const savedEnv = new Map<string, string | undefined>();
   // Pre-resolve once. The first dynamic `import("./render.js")` in this file
