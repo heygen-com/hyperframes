@@ -335,12 +335,16 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     } catch {
       return c.json({ error: "not found" }, 404);
     }
-    return writeIfChanged(
-      c,
-      ctx.absPath,
+    const { html: patched, matched } = patchElementInHtml(
       originalContent,
-      patchElementInHtml(originalContent, parsed.target, parsed.body.operations),
+      parsed.target,
+      parsed.body.operations,
     );
+    if (patched === originalContent) {
+      return c.json({ ok: true, changed: false, matched, content: originalContent });
+    }
+    writeFileSync(ctx.absPath, patched, "utf-8");
+    return c.json({ ok: true, changed: true, matched, content: patched });
   });
 
   api.post("/projects/:id/file-mutations/probe-element/*", async (c) => {

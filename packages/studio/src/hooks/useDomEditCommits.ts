@@ -173,11 +173,23 @@ export function useDomEditCommits({
       const patchData = (await patchResponse.json()) as {
         ok?: boolean;
         changed?: boolean;
+        matched?: boolean;
         content?: string;
       };
 
       if (!patchData.changed) {
-        throw new Error(`Unable to patch ${selection.selector ?? selection.id ?? "selection"}`);
+        if (patchData.matched === false) {
+          trackStudioEvent("save_skipped_unresolvable", {
+            target_id: selection.id ?? undefined,
+            target_selector: selection.selector ?? undefined,
+            target_source_file: selection.sourceFile ?? undefined,
+          });
+          console.warn(
+            `[studio] Element not found in source: ${selection.selector ?? selection.id ?? "selection"}. ` +
+              "This element may be generated at runtime and cannot be persisted.",
+          );
+        }
+        return;
       }
 
       const patchedContent =

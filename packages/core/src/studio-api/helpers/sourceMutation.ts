@@ -160,10 +160,10 @@ export function patchElementInHtml(
   source: string,
   target: SourceMutationTarget,
   operations: PatchOperation[],
-): string {
+): { html: string; matched: boolean } {
   const { document, wrappedFragment } = parseSourceDocument(source);
   const el = findTargetElement(document, target);
-  if (!el || !isHTMLElement(el)) return source;
+  if (!el || !isHTMLElement(el)) return { html: source, matched: false };
   const htmlEl = el as unknown as HTMLElement;
 
   for (const op of operations) {
@@ -200,7 +200,10 @@ export function patchElementInHtml(
     }
   }
 
-  return wrappedFragment ? document.body.innerHTML || "" : document.toString();
+  return {
+    html: wrappedFragment ? document.body.innerHTML || "" : document.toString(),
+    matched: true,
+  };
 }
 
 export function probeElementInSource(source: string, target: SourceMutationTarget): boolean {
