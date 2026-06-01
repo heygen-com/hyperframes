@@ -30,6 +30,7 @@ describe("validateDistributedRenderConfig", () => {
       maxParallelChunks: 16,
       runtimeCap: "lambda",
       hdrMode: "force-sdr",
+      videoFrameFormat: "png",
     };
     expect(validateDistributedRenderConfig(cfg)).toBe(cfg);
   });
@@ -91,6 +92,14 @@ describe("validateDistributedRenderConfig", () => {
       "malformed bitrate",
       { ...VALID, bitrate: "fast" } satisfies SerializableDistributedRenderConfig,
       "config.bitrate",
+    ],
+    [
+      "unsupported videoFrameFormat",
+      {
+        ...VALID,
+        videoFrameFormat: "webp",
+      } as unknown as SerializableDistributedRenderConfig,
+      "config.videoFrameFormat",
     ],
     [
       "non-positive chunkSize",

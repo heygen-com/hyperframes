@@ -121,6 +121,7 @@ Render your Hyperframes [compositions](/concepts/compositions) to MP4, MOV, or W
 | `--quality` | draft, standard, high | standard | Encoding quality preset |
 | `--crf` | 0–51 | — | Override CRF (lower = higher quality). Cannot combine with `--video-bitrate` |
 | `--video-bitrate` | e.g. `10M`, `5000k` | — | Target bitrate encoding. Cannot combine with `--crf` |
+| `--video-frame-format` | auto, jpg, png | auto | Source video frame extraction format. Use `png` for UI recordings, screen captures, and color-sensitive source videos |
 | `--workers` | 1-8 or `auto` | auto | Parallel render workers (see [Workers](#workers) below) |
 | `--max-concurrent-renders` | 1-10 | 2 | Max simultaneous renders via the producer server (see [Concurrent Renders](#concurrent-renders) below) |
 | `--gpu` | — | off | GPU encoding (NVENC, VideoToolbox, AMF, VAAPI, QSV) |
@@ -151,6 +152,8 @@ npx hyperframes render --video-bitrate 10M --output controlled.mp4
 ```
 
 **Tip**: The default `standard` preset (CRF 18) is visually lossless at 1080p — most people cannot distinguish it from the source. Use `--quality draft` for faster iteration, or `--quality high` / `--crf 10` when file size is no concern.
+
+For UI recordings, screen captures, or other source videos where saturated interface colors matter, pass `--video-frame-format png` to extract source video layers as PNG before browser capture. The default `auto` mode preserves the historical behavior: alpha-capable sources use PNG, opaque sources use JPG.
 
 ## GPU Acceleration
 
