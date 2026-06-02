@@ -4,7 +4,14 @@
   "type": "hyperframes:block",
   "title": "Code Snippet - Apple Terminal Clear Light",
   "description": "Apple Terminal Clear Light profile: semi-transparent light background, per-character typing animation of a shell session.",
-  "tags": ["code", "developer", "showcase", "terminal", "apple"],
+  "tags": [
+    "code",
+    "developer",
+    "showcase",
+    "terminal",
+    "apple",
+    "apple-terminal"
+  ],
   "dimensions": {
     "width": 1920,
     "height": 1080
