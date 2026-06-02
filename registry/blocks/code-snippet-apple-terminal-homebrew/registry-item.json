@@ -4,7 +4,13 @@
   "type": "hyperframes:block",
   "title": "Code Snippet - Apple Terminal Homebrew",
   "description": "Apple Terminal Homebrew profile: black background with bright green text and lime cursor, per-character typing animation of a shell session.",
-  "tags": ["code", "developer", "showcase", "terminal", "apple"],
+  "tags": [
+    "code",
+    "developer",
+    "showcase",
+    "terminal",
+    "apple"
+  ],
   "dimensions": {
     "width": 1920,
     "height": 1080
@@ -16,9 +22,5 @@
       "target": "compositions/code-snippet-apple-terminal-homebrew.html",
       "type": "hyperframes:composition"
     }
-  ],
-  "preview": {
-    "video": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/code-snippet-apple-terminal-homebrew.mp4",
-    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/code-snippet-apple-terminal-homebrew.png"
-  }
+  ]
 }
