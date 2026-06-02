@@ -1413,7 +1413,7 @@ export function initSandboxRuntimeModular(): void {
         duration != null && duration > 0 ? start + duration : Number.POSITIVE_INFINITY;
       const isVisibleNow =
         state.currentTime >= start &&
-        (Number.isFinite(computedEnd) ? state.currentTime < computedEnd : true);
+        (Number.isFinite(computedEnd) ? state.currentTime <= computedEnd : true);
       rawNode.style.visibility = isVisibleNow ? "visible" : "hidden";
     }
   };
