@@ -21,7 +21,7 @@ The release workflow keeps both audiences in sync while preserving a human editi
 
 Each reviewed release note lives in `releases/vX.Y.Z.md`.
 
-The docs changelog lives in `docs/changelog.mdx` and uses Mintlify `<Update>` entries. The draft generator can prepend a docs entry, but maintainers should edit the generated copy before tagging the release.
+The docs changelog lives in `docs/changelog.mdx` and uses Mintlify `<Update>` entries. The draft generator can prepend a docs entry, but maintainers should edit the generated copy before tagging the release. After any manual rewrite, keep `releases/vX.Y.Z.md` and the matching docs `<Update>` entry in sync.
 
 ## Release note workflow
 
@@ -34,6 +34,8 @@ The docs changelog lives in `docs/changelog.mdx` and uses Mintlify `<Update>` en
     This creates or updates:
     - `releases/v0.6.53.md`
     - `docs/changelog.mdx`
+
+    Use `--force` only when regenerating a draft before review. It overwrites `releases/vX.Y.Z.md`; if the docs changelog already has that version, edit the existing docs entry manually.
   </Step>
   <Step title="Review and rewrite">
     Read the generated notes and rewrite them for users. Prioritize impact over implementation detail.
@@ -50,6 +52,8 @@ The docs changelog lives in `docs/changelog.mdx` and uses Mintlify `<Update>` en
     ```bash
     bun run set-version 0.6.53
     ```
+    For stable releases, `set-version` checks that `releases/v0.6.53.md` exists and that `docs/changelog.mdx` has a matching `HyperFrames v0.6.53` entry before it updates package versions or creates the tag. Prereleases and `--no-tag` version bumps skip this check. Use `--skip-changelog-check` only for emergency stable releases.
+
     The release commit can include the version bump, `releases/v0.6.53.md`, and the docs changelog update.
   </Step>
   <Step title="Publish">
@@ -58,6 +62,8 @@ The docs changelog lives in `docs/changelog.mdx` and uses Mintlify `<Update>` en
     git push origin main --tags
     ```
     The publish workflow uses `releases/v0.6.53.md` as the GitHub Release body when the file exists. If no reviewed release file is present, it falls back to GitHub-generated notes.
+
+    The generated compare link points to the future `v0.6.53` tag. It may not resolve between the PR merge and the final tag push.
   </Step>
 </Steps>
 

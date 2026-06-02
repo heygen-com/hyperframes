@@ -3,6 +3,7 @@
 import { execFileSync } from "child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
+import { pathToFileURL } from "url";
 
 const ROOT = join(import.meta.dirname, "..");
 const REPO_URL = "https://github.com/heygen-com/hyperframes";
@@ -29,14 +30,14 @@ type Options = {
   force: boolean;
 };
 
-type RawCommit = {
+export type RawCommit = {
   sha: string;
   shortSha: string;
   author: string;
   subject: string;
 };
 
-type ParsedCommit = RawCommit & {
+export type ParsedCommit = RawCommit & {
   type: string;
   scope?: string;
   summary: string;
@@ -117,7 +118,7 @@ function outputDraft(options: Options, draft: DraftOutput) {
   prependDocsUpdate(options.version, draft.docsUpdate);
 }
 
-function parseArgs(args: string[]): Options {
+export function parseArgs(args: string[]): Options {
   const parsed = createDefaultOptions();
 
   for (let index = 0; index < args.length; index += 1) {
@@ -300,7 +301,7 @@ function getCommits(from: string, to: string): RawCommit[] {
   });
 }
 
-function shouldSkipCommit(commit: RawCommit) {
+export function shouldSkipCommit(commit: RawCommit) {
   const subject = commit.subject.toLowerCase();
   return (
     subject.includes("[skip changelog]") ||
@@ -309,7 +310,7 @@ function shouldSkipCommit(commit: RawCommit) {
   );
 }
 
-function parseCommit(commit: RawCommit): ParsedCommit {
+export function parseCommit(commit: RawCommit): ParsedCommit {
   const prNumber = extractPrNumber(commit.subject);
   const subjectWithoutPr = commit.subject.replace(/\s+\(#\d+\)$/, "");
   const parsedSubject = parseConventionalSubject(subjectWithoutPr);
@@ -323,7 +324,7 @@ function parseCommit(commit: RawCommit): ParsedCommit {
   };
 }
 
-function parseConventionalSubject(subject: string): ParsedSubject {
+export function parseConventionalSubject(subject: string): ParsedSubject {
   const match = /^([a-z]+)(?:\(([^)]+)\))?(!)?:\s+(.+)$/.exec(subject);
   if (!match) {
     return {
@@ -345,7 +346,7 @@ function extractPrNumber(subject: string) {
   return /\(#(\d+)\)$/.exec(subject)?.[1];
 }
 
-function categorizeCommit(subject: ParsedSubject) {
+export function categorizeCommit(subject: ParsedSubject) {
   if (subject.breaking) {
     return "Breaking Changes";
   }
@@ -387,7 +388,7 @@ function internalCategoryFor(type: string) {
 }
 
 function renderReleaseNotes(version: string, date: string, from: string, commits: ParsedCommit[]) {
-  const sections = renderSections(commits);
+  const sections = renderSections(commits, renderCommitBullet);
   const compareUrl = `${REPO_URL}/compare/${from}...v${version}`;
 
   return [
@@ -395,7 +396,7 @@ function renderReleaseNotes(version: string, date: string, from: string, commits
     "",
     `Released on ${date}.`,
     "",
-    "This release includes the changes below.",
+    "<!-- TODO: write a 1-2 sentence release summary here. -->",
     "",
     sections,
     "",
@@ -406,7 +407,7 @@ function renderReleaseNotes(version: string, date: string, from: string, commits
 }
 
 function renderDocsUpdate(version: string, date: string, from: string, commits: ParsedCommit[]) {
-  const sections = renderSections(commits);
+  const sections = renderSections(commits, renderMdxCommitBullet);
   const compareUrl = `${REPO_URL}/compare/${from}...v${version}`;
   const tags = renderTags(commits);
 
@@ -416,7 +417,7 @@ function renderDocsUpdate(version: string, date: string, from: string, commits: 
     `  description="Released - ${date}"`,
     `  tags={${renderTagsLiteral(tags)}}`,
     ">",
-    "This release includes the changes below.",
+    "<!-- TODO: write a 1-2 sentence release summary here. -->",
     "",
     sections,
     "",
@@ -425,7 +426,7 @@ function renderDocsUpdate(version: string, date: string, from: string, commits: 
   ].join("\n");
 }
 
-function renderSections(commits: ParsedCommit[]) {
+function renderSections(commits: ParsedCommit[], renderBullet: (commit: ParsedCommit) => string) {
   if (commits.length === 0) {
     return "No notable changes were found in the selected commit range.";
   }
@@ -436,13 +437,13 @@ function renderSections(commits: ParsedCommit[]) {
       return [];
     }
 
-    return [`## ${category}`, "", ...commitsInCategory.map(renderCommitBullet), ""];
+    return [`## ${category}`, "", ...commitsInCategory.map(renderBullet), ""];
   })
     .join("\n")
     .trim();
 }
 
-function renderCommitBullet(commit: ParsedCommit) {
+export function renderCommitBullet(commit: ParsedCommit) {
   const scope = commit.scope ? `**${formatScope(commit.scope)}:** ` : "";
   const links = [`[${commit.shortSha}](${REPO_URL}/commit/${commit.sha})`];
   if (commit.prNumber) {
@@ -450,6 +451,16 @@ function renderCommitBullet(commit: ParsedCommit) {
   }
 
   return `- ${scope}${capitalize(commit.summary)} (${links.join(", ")})`;
+}
+
+export function renderMdxCommitBullet(commit: ParsedCommit) {
+  const scope = commit.scope ? `**${escapeForMdx(formatScope(commit.scope))}:** ` : "";
+  const links = [`[${commit.shortSha}](${REPO_URL}/commit/${commit.sha})`];
+  if (commit.prNumber) {
+    links.push(`[#${commit.prNumber}](${REPO_URL}/pull/${commit.prNumber})`);
+  }
+
+  return `- ${scope}${escapeForMdx(capitalize(commit.summary))} (${links.join(", ")})`;
 }
 
 function renderTags(commits: ParsedCommit[]) {
@@ -464,7 +475,7 @@ function scopeTagsForCommit(commit: ParsedCommit) {
   return commit.scope ? [formatScope(commit.scope)] : [];
 }
 
-function formatScope(scope: string) {
+export function formatScope(scope: string) {
   const knownScopes = new Map([
     ["api", "API"],
     ["aws", "AWS"],
@@ -499,6 +510,15 @@ function capitalize(value: string) {
 
 function renderTagsLiteral(tags: string[]) {
   return `[${tags.map((tag) => JSON.stringify(tag)).join(", ")}]`;
+}
+
+export function escapeForMdx(text: string) {
+  return text
+    .replace(/\\/g, "\\\\")
+    .replace(/</g, "\\<")
+    .replace(/>/g, "\\>")
+    .replace(/\{/g, "\\{")
+    .replace(/\}/g, "\\}");
 }
 
 function writeReleaseNotes(version: string, releaseNotes: string, force: boolean) {
@@ -539,4 +559,6 @@ function prependDocsUpdate(version: string, docsUpdate: string) {
   console.log(`Prepended v${version} to ${changelogPath}`);
 }
 
-main();
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main();
+}
