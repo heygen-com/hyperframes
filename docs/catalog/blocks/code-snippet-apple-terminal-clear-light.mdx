@@ -1,0 +1,67 @@
+---
+title: "Apple Terminal Clear Light"
+description: "Apple Terminal Clear Light profile with semi-transparent white background and black text, per-character typing animation."
+---
+
+# Apple Terminal Clear Light
+
+macOS Terminal.app window in the built-in Clear Light profile — translucent white background with black text and a grey cursor. Per-character typing animation with output reveal.
+
+`code` `developer` `showcase` `terminal` `apple`
+
+<video className="w-full aspect-video rounded-xl object-cover bg-zinc-100 dark:bg-zinc-800" src="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/code-snippet-apple-terminal-clear-light.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/code-snippet-apple-terminal-clear-light.png" autoPlay muted loop playsInline />
+
+## Install
+
+<CodeGroup>
+
+```bash Terminal
+npx hyperframes add code-snippet-apple-terminal-clear-light
+```
+
+</CodeGroup>
+
+Install all Apple Terminal themes at once:
+
+```bash Terminal
+npx hyperframes add apple-terminal
+```
+
+## Details
+
+| Property | Value |
+| --- | --- |
+| Type | Block |
+| Dimensions | 1920×1080 |
+| Duration | 12s |
+
+## Files
+
+| File | Target | Type |
+| --- | --- | --- |
+| `code-snippet-apple-terminal-clear-light.html` | `compositions/code-snippet-apple-terminal-clear-light.html` | hyperframes:composition |
+
+## Usage
+
+After installing, add the block to your host composition:
+
+```html
+<div
+  data-composition-id="code-snippet-apple-terminal-clear-light"
+  data-composition-src="compositions/code-snippet-apple-terminal-clear-light.html"
+  data-start="0"
+  data-duration="12"
+  data-track-index="1"
+  data-width="1920"
+  data-height="1080"
+></div>
+```
+
+## Features
+
+- Faithful recreation of macOS Terminal.app Clear Light profile — semi-transparent white background with black text
+- macOS window chrome with traffic light buttons and centered title bar
+- Per-character GSAP typing animation — command types out character by character
+- Output lines reveal sequentially after command executes
+- Cursor blinks three times at the end then holds steady
+- Self-contained HTML — no external assets, only GSAP CDN

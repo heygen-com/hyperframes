@@ -241,6 +241,18 @@
           {
             "group": "Code Snippets",
             "pages": [
+              "catalog/blocks/code-snippet-apple-terminal-basic",
+              "catalog/blocks/code-snippet-apple-terminal-clear-dark",
+              "catalog/blocks/code-snippet-apple-terminal-clear-light",
+              "catalog/blocks/code-snippet-apple-terminal-grass",
+              "catalog/blocks/code-snippet-apple-terminal-homebrew",
+              "catalog/blocks/code-snippet-apple-terminal-man-page",
+              "catalog/blocks/code-snippet-apple-terminal-novel",
+              "catalog/blocks/code-snippet-apple-terminal-ocean",
+              "catalog/blocks/code-snippet-apple-terminal-pro",
+              "catalog/blocks/code-snippet-apple-terminal-red-sands",
+              "catalog/blocks/code-snippet-apple-terminal-silver-aerogel",
+              "catalog/blocks/code-snippet-apple-terminal-solid-colors",
               "catalog/blocks/code-snippet-dark-2026",
               "catalog/blocks/code-snippet-dark-modern",
               "catalog/blocks/code-snippet-dark-plus",

@@ -1,0 +1,67 @@
+---
+title: "Apple Terminal Grass"
+description: "Apple Terminal Grass profile with black background and bright green text, per-character typing animation."
+---
+
+# Apple Terminal Grass
+
+macOS Terminal.app window in the built-in Grass profile — pitch-black background with pure green text and a matching cursor. Classic terminal aesthetic with per-character typing animation.
+
+`code` `developer` `showcase` `terminal` `apple`
+
+<video className="w-full aspect-video rounded-xl object-cover bg-zinc-100 dark:bg-zinc-800" src="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/code-snippet-apple-terminal-grass.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/code-snippet-apple-terminal-grass.png" autoPlay muted loop playsInline />
+
+## Install
+
+<CodeGroup>
+
+```bash Terminal
+npx hyperframes add code-snippet-apple-terminal-grass
+```
+
+</CodeGroup>
+
+Install all Apple Terminal themes at once:
+
+```bash Terminal
+npx hyperframes add apple-terminal
+```
+
+## Details
+
+| Property | Value |
+| --- | --- |
+| Type | Block |
+| Dimensions | 1920×1080 |
+| Duration | 12s |
+
+## Files
+
+| File | Target | Type |
+| --- | --- | --- |
+| `code-snippet-apple-terminal-grass.html` | `compositions/code-snippet-apple-terminal-grass.html` | hyperframes:composition |
+
+## Usage
+
+After installing, add the block to your host composition:
+
+```html
+<div
+  data-composition-id="code-snippet-apple-terminal-grass"
+  data-composition-src="compositions/code-snippet-apple-terminal-grass.html"
+  data-start="0"
+  data-duration="12"
+  data-track-index="1"
+  data-width="1920"
+  data-height="1080"
+></div>
+```
+
+## Features
+
+- Faithful recreation of macOS Terminal.app Grass profile — black background with #00C100 green text
+- macOS window chrome with green-accented title bar and traffic light buttons
+- Per-character GSAP typing animation — command types out character by character
+- Output lines reveal sequentially after command executes
+- Cursor blinks three times at the end then holds steady
+- Self-contained HTML — no external assets, only GSAP CDN
