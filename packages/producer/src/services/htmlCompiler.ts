@@ -18,6 +18,8 @@ import {
   extractResolvedMedia,
   clampDurations,
   shouldClampMediaDuration,
+  CSS_URL_RE,
+  isNonRelativeUrl,
   type ResolvedDuration,
   type UnresolvedElement,
 } from "@hyperframes/core";
@@ -804,21 +806,10 @@ export function collectExternalAssets(
 ): { html: string; externalAssets: Map<string, string> } {
   const absProjectDir = resolve(projectDir);
   const externalAssets = new Map<string, string>();
-  const CSS_URL_RE = /\burl\(\s*(["']?)([^)"']+)\1\s*\)/g;
 
   function processPath(rawPath: string): string | null {
     const trimmed = rawPath.trim();
-    if (
-      !trimmed ||
-      trimmed.startsWith("/") ||
-      trimmed.startsWith("http://") ||
-      trimmed.startsWith("https://") ||
-      trimmed.startsWith("//") ||
-      trimmed.startsWith("data:") ||
-      trimmed.startsWith("#")
-    ) {
-      return null;
-    }
+    if (isNonRelativeUrl(trimmed)) return null;
     const absPath = resolve(absProjectDir, trimmed);
     if (isPathInside(absPath, absProjectDir)) {
       return null; // inside projectDir, file server handles this

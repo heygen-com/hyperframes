@@ -18,21 +18,9 @@
 import { posix } from "path";
 const { join, resolve, dirname } = posix;
 
-/** Attributes that may contain relative asset paths. */
-const PATH_ATTRS = ["src", "href"] as const;
-const CSS_URL_RE = /\burl\(\s*(["']?)([^)"']+)\1\s*\)/g;
+import { CSS_URL_RE, PATH_ATTRS, isNonRelativeUrl } from "./assetPaths.js";
 
-/** Protocols and prefixes that should never be rewritten. */
-function isAbsoluteOrSpecial(val: string): boolean {
-  return (
-    !val ||
-    val.startsWith("http://") ||
-    val.startsWith("https://") ||
-    val.startsWith("//") ||
-    val.startsWith("data:") ||
-    val.startsWith("#")
-  );
-}
+const isAbsoluteOrSpecial = isNonRelativeUrl;
 
 /**
  * Returns true only for paths that traverse up with `../`.

@@ -134,6 +134,7 @@ export {
   rewriteAssetPath,
   rewriteCssAssetUrls,
 } from "./compiler/rewriteSubCompPaths";
+export { CSS_URL_RE, isNonRelativeUrl, isPathInside } from "./compiler/assetPaths";
 export { decodeUrlPathVariants } from "./utils/urlPath";
 
 // Inline scripts

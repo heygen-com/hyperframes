@@ -1,6 +1,8 @@
-import { basename, join, relative } from "node:path";
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { basename, dirname, join, posix, relative, resolve } from "node:path";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { parseHTML } from "linkedom";
 import AdmZip from "adm-zip";
+import { CSS_URL_RE, isNonRelativeUrl, isPathInside } from "@hyperframes/core";
 
 const IGNORED_DIRS = new Set([".git", "node_modules", "dist", ".next", "coverage"]);
 const IGNORED_FILES = new Set([".DS_Store", "Thumbs.db"]);
@@ -178,21 +180,188 @@ function collectProjectFiles(rootDir: string, currentDir: string, paths: string[
   }
 }
 
+const EXT_ASSETS_PREFIX = "_ext";
+
+interface ExternalAssetContext {
+  absProjectDir: string;
+  fileContents: Map<string, Buffer>;
+  externalMap: Map<string, string>;
+  usedArchivePaths: Set<string>;
+}
+
+function addExternalAsset(ctx: ExternalAssetContext, absPath: string): string {
+  const existing = ctx.externalMap.get(absPath);
+  if (existing) return existing;
+
+  const rel = relative(ctx.absProjectDir, absPath).replaceAll("\\", "/");
+  const stripped = rel.replace(/^(?:\.\.\/)+/, "");
+  let archivePath = `${EXT_ASSETS_PREFIX}/${stripped}`;
+
+  if (ctx.usedArchivePaths.has(archivePath)) {
+    const ext = posix.extname(archivePath);
+    const base = archivePath.slice(0, archivePath.length - ext.length);
+    let i = 2;
+    while (ctx.usedArchivePaths.has(`${base}_${i}${ext}`)) i++;
+    archivePath = `${base}_${i}${ext}`;
+  }
+
+  ctx.fileContents.set(archivePath, readFileSync(absPath));
+  ctx.externalMap.set(absPath, archivePath);
+  ctx.usedArchivePaths.add(archivePath);
+  return archivePath;
+}
+
+function tryResolveExternal(
+  ctx: ExternalAssetContext,
+  rawPath: string,
+  referrerAbsDir: string,
+): string | null {
+  if (isNonRelativeUrl(rawPath)) return null;
+  const absPath = resolve(referrerAbsDir, rawPath);
+  if (isPathInside(absPath, ctx.absProjectDir)) return null;
+  try {
+    if (!existsSync(absPath) || !statSync(absPath).isFile()) return null;
+  } catch {
+    return null;
+  }
+  return addExternalAsset(ctx, absPath);
+}
+
+function rewriteCssUrls(
+  ctx: ExternalAssetContext,
+  css: string,
+  referrerAbsDir: string,
+  entryPath: string,
+): { css: string; modified: boolean } {
+  let modified = false;
+  const rewritten = css.replace(CSS_URL_RE, (full, quote: string, rawUrl: string) => {
+    const archivePath = tryResolveExternal(ctx, (rawUrl || "").trim(), referrerAbsDir);
+    if (!archivePath) return full;
+    modified = true;
+    return `url(${quote || ""}${posix.relative(posix.dirname(entryPath), archivePath)}${quote || ""})`;
+  });
+  return { css: rewritten, modified };
+}
+
+function rewriteHtmlAttributes(
+  ctx: ExternalAssetContext,
+  document: Document,
+  referrerAbsDir: string,
+  entryPath: string,
+): boolean {
+  let modified = false;
+  for (const el of document.querySelectorAll("[src], [href]")) {
+    for (const attr of ["src", "href"]) {
+      const val = (el.getAttribute(attr) || "").trim();
+      if (!val) continue;
+      const archivePath = tryResolveExternal(ctx, val, referrerAbsDir);
+      if (!archivePath) continue;
+      el.setAttribute(attr, posix.relative(posix.dirname(entryPath), archivePath));
+      modified = true;
+    }
+  }
+  return modified;
+}
+
+function rewriteStyleBlocks(
+  ctx: ExternalAssetContext,
+  document: Document,
+  referrerAbsDir: string,
+  entryPath: string,
+): boolean {
+  let modified = false;
+  for (const styleEl of document.querySelectorAll("style")) {
+    const css = styleEl.textContent || "";
+    if (!css.includes("url(")) continue;
+    const result = rewriteCssUrls(ctx, css, referrerAbsDir, entryPath);
+    if (result.modified) {
+      styleEl.textContent = result.css;
+      modified = true;
+    }
+  }
+  for (const el of document.querySelectorAll("[style]")) {
+    const style = el.getAttribute("style") || "";
+    if (!style.includes("url(")) continue;
+    const result = rewriteCssUrls(ctx, style, referrerAbsDir, entryPath);
+    if (result.modified) {
+      el.setAttribute("style", result.css);
+      modified = true;
+    }
+  }
+  return modified;
+}
+
+function localizeHtmlEntry(ctx: ExternalAssetContext, entryPath: string, content: Buffer): void {
+  const referrerAbsDir = resolve(ctx.absProjectDir, dirname(entryPath));
+  const { document } = parseHTML(content.toString("utf-8"));
+  const attrsChanged = rewriteHtmlAttributes(ctx, document, referrerAbsDir, entryPath);
+  const stylesChanged = rewriteStyleBlocks(ctx, document, referrerAbsDir, entryPath);
+  if (attrsChanged || stylesChanged) {
+    ctx.fileContents.set(entryPath, Buffer.from(document.toString(), "utf-8"));
+  }
+}
+
+function localizeCssEntry(ctx: ExternalAssetContext, entryPath: string, content: Buffer): void {
+  const referrerAbsDir = resolve(ctx.absProjectDir, dirname(entryPath));
+  const css = content.toString("utf-8");
+  if (!css.includes("url(")) return;
+  const result = rewriteCssUrls(ctx, css, referrerAbsDir, entryPath);
+  if (result.modified) {
+    ctx.fileContents.set(entryPath, Buffer.from(result.css, "utf-8"));
+  }
+}
+
+/**
+ * Scan HTML and CSS files for asset references that resolve outside the
+ * project directory. Copy those files into the archive under `_ext/` and
+ * rewrite the references so the published project is self-contained.
+ */
+export function localizeExternalAssets(
+  absProjectDir: string,
+  fileContents: Map<string, Buffer>,
+): number {
+  const ctx: ExternalAssetContext = {
+    absProjectDir,
+    fileContents,
+    externalMap: new Map(),
+    usedArchivePaths: new Set(),
+  };
+
+  for (const [entryPath, content] of [...fileContents.entries()]) {
+    if (entryPath.startsWith(EXT_ASSETS_PREFIX + "/")) continue;
+    if (entryPath.endsWith(".html") || entryPath.endsWith(".htm")) {
+      localizeHtmlEntry(ctx, entryPath, content);
+    } else if (entryPath.endsWith(".css")) {
+      localizeCssEntry(ctx, entryPath, content);
+    }
+  }
+
+  return ctx.externalMap.size;
+}
+
 export function createPublishArchive(projectDir: string): PublishArchiveResult {
+  const absProjectDir = resolve(projectDir);
   const filePaths: string[] = [];
-  collectProjectFiles(projectDir, projectDir, filePaths);
+  collectProjectFiles(absProjectDir, absProjectDir, filePaths);
   if (!filePaths.includes("index.html")) {
     throw new Error("Project must include an index.html file at the root before publish.");
   }
 
-  const archive = new AdmZip();
+  const fileContents = new Map<string, Buffer>();
   for (const filePath of filePaths) {
-    archive.addFile(filePath, readFileSync(join(projectDir, filePath)));
+    fileContents.set(filePath, readFileSync(join(absProjectDir, filePath)));
+  }
+
+  localizeExternalAssets(absProjectDir, fileContents);
+
+  const archive = new AdmZip();
+  for (const [filePath, content] of fileContents) {
+    archive.addFile(filePath, content);
   }
 
   return {
     buffer: archive.toBuffer(),
-    fileCount: filePaths.length,
+    fileCount: fileContents.size,
   };
 }
 
