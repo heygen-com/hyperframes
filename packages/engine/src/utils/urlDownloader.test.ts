@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 import { assertPublicHttpsUrl } from "./urlDownloader.js";
 
 describe("assertPublicHttpsUrl — SSRF guard", () => {
