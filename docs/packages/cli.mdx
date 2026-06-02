@@ -16,6 +16,7 @@ npx hyperframes <command>
 **Use the CLI when you want to:**
 - Capture a website for video production (`capture`)
 - Create a new composition project from an example (`init`)
+- Search and copy reusable local assets (`assets`)
 - Preview compositions with live hot reload (`preview`)
 - Render compositions to MP4 locally or in Docker (`render`)
 - Lint compositions for structural issues (`lint`)
@@ -220,6 +221,36 @@ This is suppressed in CI environments, non-TTY shells, and when `HYPERFRAMES_NO_
     Output for a block or component is a set of files plus a **paste snippet** — the `<iframe>` tag (for blocks) or the fragment path (for components) to include in your host composition. The snippet is copied to the clipboard by default; add `--no-clipboard` for CI or headless environments.
 
     Trying `add` with an example's name (e.g. `hyperframes add warm-grain`) emits a clear error pointing you at `init --example`.
+
+    ### `assets`
+
+    Search configured local asset libraries and copy selected files into the current project:
+
+    ```bash
+    # List or search reusable assets
+    npx hyperframes assets
+    npx hyperframes assets openai --kind image
+
+    # Agent-readable search
+    npx hyperframes assets founder --kind image --json
+
+    # Copy the best match into paths.assets
+    npx hyperframes assets openai --copy
+    npx hyperframes assets openai --copy --to logos/openai.svg
+    ```
+
+    | Flag | Description |
+    |------|-------------|
+    | `<query>` (positional) | File name, folder, library name, or tag-like search words |
+    | `--dir` | Project directory (defaults to the current working directory) |
+    | `--kind` | Filter by `image`, `video`, `audio`, `font`, `lottie`, or `data` |
+    | `--limit` | Maximum number of matches to print |
+    | `--copy` | Copy the best matching asset into the configured `paths.assets` directory |
+    | `--to` | Copy target path relative to `paths.assets` |
+    | `--force` | Allow `--copy` to overwrite an existing file |
+    | `--json` | Print a machine-readable summary |
+
+    Configure libraries with `hyperframes.json#assetLibraries`, `HYPERFRAMES_ASSET_LIBRARY`, or `~/.hyperframes/assets`. See [Pro Asset Libraries](/guides/pro-asset-libraries).
 
     ### `catalog`
 

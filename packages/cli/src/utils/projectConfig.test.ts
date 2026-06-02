@@ -36,6 +36,7 @@ describe("projectConfig", () => {
           $schema: DEFAULT_PROJECT_CONFIG.$schema,
           registry: "https://example.com/my-registry",
           paths: { blocks: "src/blocks", components: "src/fx", assets: "media" },
+          assetLibraries: [{ name: "Brand", path: "~/Brand Assets" }],
         };
         writeProjectConfig(dir, custom);
         const read = readProjectConfig(dir);
@@ -52,6 +53,7 @@ describe("projectConfig", () => {
       expect(result.registry).toBe("https://alt.example.com");
       expect(result.paths).toEqual(DEFAULT_PROJECT_CONFIG.paths);
       expect(result.$schema).toBe(DEFAULT_PROJECT_CONFIG.$schema);
+      expect(result.assetLibraries).toEqual([]);
     });
 
     it("preserves partial paths objects", () => {
@@ -59,6 +61,21 @@ describe("projectConfig", () => {
       expect(result.paths.blocks).toBe("x");
       expect(result.paths.components).toBe(DEFAULT_PROJECT_CONFIG.paths.components);
       expect(result.paths.assets).toBe(DEFAULT_PROJECT_CONFIG.paths.assets);
+    });
+
+    it("keeps valid asset library entries and drops malformed ones", () => {
+      const result = normalizeConfig({
+        assetLibraries: [
+          { name: "Pro", path: "~/Pro Assets" },
+          { name: "", path: "/tmp/assets" },
+          { name: "Broken" } as never,
+        ],
+      });
+
+      expect(result.assetLibraries).toEqual([
+        { name: "Pro", path: "~/Pro Assets" },
+        { path: "/tmp/assets" },
+      ]);
     });
   });
 

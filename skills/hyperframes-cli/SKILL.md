@@ -35,6 +35,21 @@ Templates: `blank`, `warm-grain`, `play-mode`, `swiss-grid`, `vignelli`, `decisi
 
 When using `--tailwind`, invoke the `tailwind` skill before editing classes or theme tokens. The scaffold uses Tailwind v4.2 via the browser runtime, not Studio's Tailwind v3 setup.
 
+## Pro Asset Libraries
+
+Use `assets` to find reusable local media before making placeholders:
+
+```bash
+npx hyperframes assets                              # list configured assets
+npx hyperframes assets openai --kind image --json   # agent-readable search
+npx hyperframes assets openai --copy                # copy best match into project
+npx hyperframes assets openai --copy --to logos/openai.svg
+```
+
+Libraries come from `hyperframes.json#assetLibraries`, `HYPERFRAMES_ASSET_LIBRARY`, `HYPERFRAMES_ASSET_LIBRARIES`, or `~/.hyperframes/assets`.
+
+Always use the copied project-local `src` path in composition HTML. Never reference absolute library paths directly.
+
 ## Linting
 
 ```bash

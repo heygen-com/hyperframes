@@ -23,12 +23,21 @@ export interface ProjectConfigPaths {
   assets: string;
 }
 
+export interface ProjectAssetLibraryConfig {
+  /** Human-readable library name used in `hyperframes assets` output. */
+  name?: string;
+  /** Absolute path, `~/` path, env-expanded path, or project-relative path. */
+  path: string;
+}
+
 export interface ProjectConfig {
   $schema?: string;
   /** Base URL of the registry to pull items from. */
   registry: string;
   /** Target paths for each item type. */
   paths: ProjectConfigPaths;
+  /** Reusable local asset libraries to search before creating placeholders. */
+  assetLibraries: ProjectAssetLibraryConfig[];
 }
 
 export const DEFAULT_PROJECT_CONFIG: ProjectConfig = {
@@ -39,6 +48,7 @@ export const DEFAULT_PROJECT_CONFIG: ProjectConfig = {
     components: "compositions/components",
     assets: "assets",
   },
+  assetLibraries: [],
 };
 
 /** Path to the config file for a project rooted at `projectDir`. */
@@ -72,6 +82,22 @@ export function normalizeConfig(partial: Partial<ProjectConfig>): ProjectConfig 
       components: partial.paths?.components ?? DEFAULT_PROJECT_CONFIG.paths.components,
       assets: partial.paths?.assets ?? DEFAULT_PROJECT_CONFIG.paths.assets,
     },
+    assetLibraries: Array.isArray(partial.assetLibraries)
+      ? partial.assetLibraries
+          .filter(
+            (library): library is ProjectAssetLibraryConfig =>
+              typeof library === "object" &&
+              library !== null &&
+              typeof library.path === "string" &&
+              library.path.length > 0,
+          )
+          .map((library) => ({
+            ...(typeof library.name === "string" && library.name.length > 0
+              ? { name: library.name }
+              : {}),
+            path: library.path,
+          }))
+      : DEFAULT_PROJECT_CONFIG.assetLibraries,
   };
 }
 

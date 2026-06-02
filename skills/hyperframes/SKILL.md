@@ -61,6 +61,29 @@ For small edits (fix a color, adjust timing, add one element), skip straight to 
 Before writing ANY composition HTML — verify you have a visual identity from Step 1. If you're reaching for `#333`, `#3b82f6`, or `Roboto`, you skipped it.
 </HARD-GATE>
 
+For motion defaults, sizing, entrance patterns, and easing — follow [house-style.md](./house-style.md). The house style handles HOW things move. The DESIGN.md handles WHAT things look like.
+
+### Reusable Asset Gate
+
+Before creating placeholder media or drawing generic stand-ins, search the project's reusable asset libraries. This applies to logos, app icons, headshots, product shots, screenshots, textures, overlays, fonts, music, voice beds, and short clips.
+
+Use the CLI because it respects `hyperframes.json#assetLibraries`, `HYPERFRAMES_ASSET_LIBRARY`, and the local `~/.hyperframes/assets` fallback:
+
+```bash
+npx hyperframes assets "<query>" --kind image --json
+npx hyperframes assets "<query>" --copy
+```
+
+Workflow:
+
+1. Search with a concrete query from the requested brand, person, product, platform, or visual object.
+2. Prefer exact matches from configured libraries over generated assets.
+3. Copy selected assets into the project with `--copy` so the composition uses project-local paths.
+4. Reference the printed `src` path in HTML.
+5. If no suitable match exists, then generate or design a new asset and place it under the project's configured assets path.
+
+Do not reference absolute local library paths from composition HTML. Rendered projects should only point at files inside the project.
+
 ## Layout Before Animation
 
 Position every element where it should be at its **most visible moment** — the frame where it's fully entered, correctly placed, and not yet exiting. Write this as static HTML+CSS first. No GSAP yet.

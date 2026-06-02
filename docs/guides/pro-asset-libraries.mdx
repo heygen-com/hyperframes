@@ -1,0 +1,95 @@
+---
+title: Pro Asset Libraries
+description: "Search and reuse curated local media before creating placeholder assets."
+---
+
+Pro asset libraries are local folders of reusable media: logos, icons, portraits, product shots, fonts, audio beds, overlays, data files, and short video clips.
+
+Use them when a composition needs real brand or production assets. The assets stay local. Hyperframes only copies the selected file into the current project when you ask it to.
+
+## Configure a Library
+
+Add local folders to `hyperframes.json`:
+
+```json
+{
+  "$schema": "https://hyperframes.heygen.com/schema/hyperframes.json",
+  "registry": "https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry",
+  "paths": {
+    "blocks": "compositions",
+    "components": "compositions/components",
+    "assets": "assets"
+  },
+  "assetLibraries": [
+    {
+      "name": "Brand Assets",
+      "path": "~/Brand Assets"
+    }
+  ]
+}
+```
+
+You can also set an environment variable:
+
+```bash
+export HYPERFRAMES_ASSET_LIBRARY="$HOME/Brand Assets"
+```
+
+Multiple paths use your shell's path separator:
+
+```bash
+export HYPERFRAMES_ASSET_LIBRARIES="$HOME/Brand Assets:$HOME/Stock Media"
+```
+
+Hyperframes also checks `~/.hyperframes/assets` when that folder exists.
+
+## Search
+
+```bash
+npx hyperframes assets
+npx hyperframes assets openai --kind image
+npx hyperframes assets founder --kind image --json
+```
+
+Supported kinds:
+
+| Kind | Examples |
+|------|----------|
+| `image` | `.png`, `.jpg`, `.jpeg`, `.webp`, `.gif`, `.svg`, `.avif` |
+| `video` | `.mp4`, `.mov`, `.m4v`, `.webm`, `.avi` |
+| `audio` | `.mp3`, `.wav`, `.m4a`, `.aac`, `.ogg`, `.flac` |
+| `font` | `.otf`, `.ttf`, `.woff`, `.woff2` |
+| `lottie` | `.lottie`, or `.json` inside a lottie path |
+| `data` | `.csv`, `.json`, `.srt`, `.tsv`, `.vtt` |
+
+## Copy
+
+Copy the best match into the project's configured `paths.assets` directory:
+
+```bash
+npx hyperframes assets openai --copy
+```
+
+Copy to a specific target under `paths.assets`:
+
+```bash
+npx hyperframes assets openai --copy --to logos/openai.svg
+```
+
+The command prints the `src` path to use in HTML:
+
+```html
+<img src="assets/logos/openai.svg" alt="OpenAI" />
+```
+
+Use `--force` only when you intentionally want to overwrite an existing copied asset.
+
+## Agent Workflow
+
+When an AI agent authors a composition:
+
+1. Search the asset library before inventing icons, logos, headshots, app screenshots, textures, music, or overlays.
+2. Use `--json` for candidate selection.
+3. Copy the selected asset into the project with `--copy`.
+4. Reference the copied project-local path in HTML.
+5. If no match exists, then generate or design a new asset and put it in the project `assets` folder.

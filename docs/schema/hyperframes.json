@@ -40,6 +40,27 @@
           "description": "Where asset files (images, fonts, videos) land. Defaults to `assets`."
         }
       }
+    },
+    "assetLibraries": {
+      "type": "array",
+      "description": "Reusable local asset libraries that `hyperframes assets` searches before agents create placeholder media.",
+      "items": {
+        "type": "object",
+        "required": ["path"],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Human-readable library name shown in CLI output."
+          },
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Absolute path, `~/` path, env-expanded path, or project-relative path to a local asset folder."
+          }
+        }
+      }
     }
   }
 }
