@@ -19,6 +19,7 @@
     "verify:packed-manifests": "node scripts/verify-packed-manifests.mjs",
     "validate:release-channel": "node scripts/validate-release-channel.mjs",
     "set-version": "tsx scripts/set-version.ts",
+    "changelog:draft": "tsx scripts/draft-changelog.ts",
     "sync-schemas": "tsx scripts/sync-schemas.ts",
     "sync-schemas:check": "tsx scripts/sync-schemas.ts --check",
     "lint": "oxlint . && tsx scripts/lint-skills.ts",

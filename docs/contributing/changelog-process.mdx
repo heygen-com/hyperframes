@@ -1,0 +1,78 @@
+---
+title: Changelog process
+description: How HyperFrames drafts, reviews, and publishes release notes.
+---
+
+HyperFrames changelogs have two audiences:
+
+- Developers reading the docs changelog for user-facing changes, migration notes, and reasons to upgrade.
+- Maintainers publishing GitHub Releases during the npm release process.
+
+The release workflow keeps both audiences in sync while preserving a human editing step.
+
+## Goals
+
+- Make every stable release easy to scan from the docs site.
+- Publish useful GitHub Release notes without relying only on raw commit logs.
+- Keep release notes editable before publishing.
+- Avoid over-documenting internal-only commits that do not change user behavior.
+
+## Source of truth
+
+Each reviewed release note lives in `releases/vX.Y.Z.md`.
+
+The docs changelog lives in `docs/changelog.mdx` and uses Mintlify `<Update>` entries. The draft generator can prepend a docs entry, but maintainers should edit the generated copy before tagging the release.
+
+## Release note workflow
+
+<Steps>
+  <Step title="Draft the release notes">
+    Run the draft command from the repository root:
+    ```bash
+    bun run changelog:draft 0.6.53 --write
+    ```
+    This creates or updates:
+    - `releases/v0.6.53.md`
+    - `docs/changelog.mdx`
+  </Step>
+  <Step title="Review and rewrite">
+    Read the generated notes and rewrite them for users. Prioritize impact over implementation detail.
+
+    Call out:
+    - Breaking changes and required migration steps
+    - New capabilities
+    - Important bug fixes
+    - Performance or reliability improvements
+    - Security fixes
+  </Step>
+  <Step title="Create the release commit">
+    Run the existing fixed-version release command:
+    ```bash
+    bun run set-version 0.6.53
+    ```
+    The release commit can include the version bump, `releases/v0.6.53.md`, and the docs changelog update.
+  </Step>
+  <Step title="Publish">
+    Push the release tag:
+    ```bash
+    git push origin main --tags
+    ```
+    The publish workflow uses `releases/v0.6.53.md` as the GitHub Release body when the file exists. If no reviewed release file is present, it falls back to GitHub-generated notes.
+  </Step>
+</Steps>
+
+## Writing style
+
+Use plain, user-facing language. Prefer "Fixed Studio render failures when FFmpeg is missing" over "Added pre-flight check in render activity." Link to relevant docs, migration guides, or pull requests when they help users act.
+
+Group changes in this order when applicable:
+
+1. Breaking Changes
+2. Features
+3. Fixes
+4. Performance
+5. Docs & Examples
+6. Catalog
+7. Internal
+
+Avoid listing release commits, dependency-only updates, generated file churn, and changes labeled `skip-changelog`.

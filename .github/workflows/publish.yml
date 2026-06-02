@@ -166,11 +166,19 @@ jobs:
           PRERELEASE: ${{ steps.version.outputs.prerelease }}
           REPO: ${{ github.repository }}
         run: |
+          NOTES_FILE="releases/v${VERSION}.md"
+
           # Skip if release already exists (idempotent re-runs)
           if gh release view "v${VERSION}" --repo "$REPO" >/dev/null 2>&1; then
             echo "Release v${VERSION} already exists — skipping"
           else
-            FLAGS=(--repo "$REPO" --title "v${VERSION}" --generate-notes)
+            FLAGS=(--repo "$REPO" --title "v${VERSION}")
+            if [ -f "$NOTES_FILE" ]; then
+              FLAGS+=(--notes-file "$NOTES_FILE")
+            else
+              echo "No reviewed release notes found at $NOTES_FILE — using GitHub generated notes"
+              FLAGS+=(--generate-notes)
+            fi
             if [ "$PRERELEASE" = "true" ]; then
               FLAGS+=(--prerelease)
             fi

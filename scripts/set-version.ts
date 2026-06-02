@@ -13,7 +13,7 @@
  * publish workflow and published to the corresponding npm dist-tag.
  */
 
-import { readFileSync, writeFileSync } from "fs";
+import { existsSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 import { execSync } from "child_process";
 
@@ -32,8 +32,31 @@ const PLUGINS = [".claude-plugin", ".codex-plugin", ".cursor-plugin"];
 
 const ROOT = join(import.meta.dirname, "..");
 
+type ReleaseOptions = {
+  version: string;
+  skipTag: boolean;
+};
+
 function main() {
-  const args = process.argv.slice(2);
+  const options = parseReleaseOptions(process.argv.slice(2));
+
+  updatePackageVersions(options.version);
+  updatePluginVersions(options.version);
+
+  console.log(
+    `\nSet ${PACKAGES.length} packages and ${PLUGINS.length} plugin manifests to v${options.version}`,
+  );
+
+  if (options.skipTag) {
+    console.log(`\nSkipped commit and tag (--no-tag). Remember to commit and tag manually.`);
+    return;
+  }
+
+  createReleaseCommitAndTag(options.version);
+  printReleaseNextSteps(options.version);
+}
+
+function parseReleaseOptions(args: string[]): ReleaseOptions {
   const version = args.find((a) => !a.startsWith("--"));
   const skipTag = args.includes("--no-tag");
 
@@ -48,7 +71,10 @@ function main() {
     process.exit(1);
   }
 
-  // Update each package.json
+  return { version, skipTag };
+}
+
+function updatePackageVersions(version: string) {
   for (const pkg of PACKAGES) {
     const pkgPath = join(ROOT, pkg, "package.json");
     const content = JSON.parse(readFileSync(pkgPath, "utf-8"));
@@ -57,7 +83,9 @@ function main() {
     writeFileSync(pkgPath, JSON.stringify(content, null, 2) + "\n");
     console.log(`  ${content.name}: ${oldVersion} -> ${version}`);
   }
+}
 
+function updatePluginVersions(version: string) {
   // Update each plugin.json. Replace just the version string rather than
   // round-tripping through JSON.parse/stringify: oxfmt keeps these manifests'
   // short arrays inline, but JSON.stringify expands them, which would fail the
@@ -69,50 +97,53 @@ function main() {
     writeFileSync(pluginPath, text.replace(/("version"\s*:\s*)"[^"]*"/, `$1"${version}"`));
     console.log(`  ${plugin}: ${oldVersion} -> ${version}`);
   }
+}
 
-  console.log(
-    `\nSet ${PACKAGES.length} packages and ${PLUGINS.length} plugin manifests to v${version}`,
-  );
-
-  if (skipTag) {
-    console.log(`\nSkipped commit and tag (--no-tag). Remember to commit and tag manually.`);
-    return;
-  }
-
-  // Verify working tree is clean (aside from the version bumps we just made)
+function createReleaseCommitAndTag(version: string) {
   const status = execSync("git status --porcelain", {
     cwd: ROOT,
     encoding: "utf-8",
   }).trim();
-  const unexpected = status
-    .split("\n")
-    .filter(
-      (line) =>
-        line &&
-        !PACKAGES.some((pkg) => line.includes(pkg)) &&
-        !PLUGINS.some((plugin) => line.includes(plugin)),
-    );
-  if (unexpected.length > 0) {
-    console.error("\nUnexpected uncommitted changes:");
-    unexpected.forEach((line) => console.error(`  ${line}`));
-    console.error("Commit or stash these before releasing.");
-    process.exit(1);
-  }
+  const allowedPaths = releaseAllowedPaths(version);
+  assertNoUnexpectedChanges(status, allowedPaths);
 
-  execSync(
-    `git add ${[...PACKAGES.map((p) => join(p, "package.json")), ...PLUGINS.map((p) => join(p, "plugin.json"))].join(" ")}`,
-    {
-      cwd: ROOT,
-      stdio: "inherit",
-    },
-  );
+  execSync(`git add ${allowedPaths.filter((path) => existsSync(join(ROOT, path))).join(" ")}`, {
+    cwd: ROOT,
+    stdio: "inherit",
+  });
   execSync(`git commit -m "chore: release v${version}"`, {
     cwd: ROOT,
     stdio: "inherit",
   });
   execSync(`git tag v${version}`, { cwd: ROOT, stdio: "inherit" });
   console.log(`\nCreated commit and tag v${version}`);
+}
 
+function releaseAllowedPaths(version: string) {
+  return [
+    ...PACKAGES.map((pkg) => join(pkg, "package.json")),
+    ...PLUGINS.map((plugin) => join(plugin, "plugin.json")),
+    "docs/changelog.mdx",
+    join("releases", `v${version}.md`),
+  ];
+}
+
+function assertNoUnexpectedChanges(status: string, allowedPaths: string[]) {
+  const unexpected = status
+    .split("\n")
+    .filter(
+      (line) => line && !allowedPaths.some((allowedPath) => gitStatusPath(line) === allowedPath),
+    );
+
+  if (unexpected.length > 0) {
+    console.error("\nUnexpected uncommitted changes:");
+    unexpected.forEach((line) => console.error(`  ${line}`));
+    console.error("Commit or stash these before releasing.");
+    process.exit(1);
+  }
+}
+
+function printReleaseNextSteps(version: string) {
   const isPrerelease = version.includes("-");
   if (isPrerelease) {
     const distTag = version.replace(/^.*-([a-zA-Z]+).*$/, "$1");
@@ -122,6 +153,10 @@ function main() {
   } else {
     console.log(`Run 'git push origin main --tags' to trigger the publish workflow.`);
   }
+}
+
+function gitStatusPath(line: string) {
+  return line.slice(3).replace(/^"|"$/g, "");
 }
 
 main();

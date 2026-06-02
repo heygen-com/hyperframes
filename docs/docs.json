@@ -53,6 +53,7 @@
             "group": "Getting Started",
             "pages": [
               "introduction",
+              "changelog",
               "quickstart",
               "showcase",
               "examples",
@@ -300,6 +301,7 @@
               "contributing",
               "contributing/catalog",
               "contributing/release-channels",
+              "contributing/changelog-process",
               "contributing/testing-local-changes",
               "contributing/studio-manual-dom-editing"
             ]

@@ -1,0 +1,43 @@
+changelog:
+  exclude:
+    labels:
+      - skip-changelog
+      - dependencies
+    authors:
+      - dependabot
+      - dependabot[bot]
+  categories:
+    - title: Breaking Changes
+      labels:
+        - breaking-change
+        - breaking
+    - title: Features
+      labels:
+        - enhancement
+        - feature
+    - title: Fixes
+      labels:
+        - bug
+        - fix
+    - title: Docs & Examples
+      labels:
+        - documentation
+        - docs
+        - examples
+    - title: Catalog
+      labels:
+        - catalog
+        - registry
+    - title: Performance
+      labels:
+        - performance
+        - perf
+    - title: Internal
+      labels:
+        - internal
+        - refactor
+        - tests
+        - ci
+    - title: Other Changes
+      labels:
+        - "*"
