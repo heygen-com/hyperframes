@@ -416,6 +416,62 @@
       "type": "hyperframes:block"
     },
     {
+      "name": "code-snippet-dark-2026",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "code-snippet-dark-modern",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "code-snippet-dark-plus",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "code-snippet-high-contrast",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "code-snippet-high-contrast-light",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "code-snippet-light-2026",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "code-snippet-light-modern",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "code-snippet-light-plus",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "code-snippet-monokai",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "code-snippet-solarized-light",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "code-snippet-visual-studio-dark",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "code-snippet-visual-studio-light",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "flowchart-vertical",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "vfx-liquid-glass",
+      "type": "hyperframes:block"
+    },
+    {
       "name": "parallax-zoom",
       "type": "hyperframes:component"
     },
