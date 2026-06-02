@@ -162,18 +162,19 @@
         </div>
         <div class="terminal-canvas">
           <div class="output-lines">
-            <span class="output-line dim">Last login: Mon Jun  2 09:14:22 on ttys004</span>
+            <span class="output-line dim">Last login: Mon Jun 2 09:14:22 on ttys004</span>
             <span class="output-line">Running test suite...</span>
-            <span class="output-line dim">  ✓ should initialize with defaults (2ms)</span>
-            <span class="output-line dim">  ✓ should parse config correctly (4ms)</span>
-            <span class="output-line dim">  ✓ should handle empty input (1ms)</span>
-            <span class="output-line dim">  ✓ should reject invalid tokens (3ms)</span>
-            <span class="output-line dim">  ✓ should emit events on change (5ms)</span>
-            <span class="output-line dim">  ✓ should clean up on destroy (2ms)</span>
-            <span class="output-line bold">  6 passing (18ms)</span>
+            <span class="output-line dim"> ✓ should initialize with defaults (2ms)</span>
+            <span class="output-line dim"> ✓ should parse config correctly (4ms)</span>
+            <span class="output-line dim"> ✓ should handle empty input (1ms)</span>
+            <span class="output-line dim"> ✓ should reject invalid tokens (3ms)</span>
+            <span class="output-line dim"> ✓ should emit events on change (5ms)</span>
+            <span class="output-line dim"> ✓ should clean up on destroy (2ms)</span>
+            <span class="output-line bold"> 6 passing (18ms)</span>
           </div>
           <div class="input-line">
-            <span class="prompt">user@Mac ~ % </span><span class="typed-command"></span><span class="cursor-block"></span>
+            <span class="prompt">user@Mac ~ % </span><span class="typed-command"></span
+            ><span class="cursor-block"></span>
           </div>
         </div>
       </div>
@@ -194,9 +195,12 @@
 
       const charDuration = 1.5 / command.length;
       command.split("").forEach((char, i) => {
-        tl.add(() => {
-          typedEl.textContent = command.slice(0, i + 1);
-        }, 0.5 + i * charDuration);
+        tl.add(
+          () => {
+            typedEl.textContent = command.slice(0, i + 1);
+          },
+          0.5 + i * charDuration,
+        );
       });
 
       tl.set(cursorEl, { opacity: 0 }, 2.2);

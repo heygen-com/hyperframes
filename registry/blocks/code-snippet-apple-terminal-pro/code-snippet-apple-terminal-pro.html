@@ -167,17 +167,18 @@
         </div>
         <div class="terminal-canvas">
           <div class="output-lines">
-            <span class="output-line dim">Last login: Mon Jun  2 09:14:22 on ttys008</span>
+            <span class="output-line dim">Last login: Mon Jun 2 09:14:22 on ttys008</span>
             <span class="output-line dim">Building production bundle...</span>
-            <span class="output-line">  vite v5.3.1 building for production...</span>
-            <span class="output-line">  ✓ 142 modules transformed.</span>
-            <span class="output-line">  dist/index.html             0.48 kB</span>
-            <span class="output-line">  dist/assets/index-Cv3rN.js  284.12 kB</span>
-            <span class="output-line">  dist/assets/index-Du4mP.css  42.08 kB</span>
-            <span class="output-line accent">  ✓ built in 2.31s</span>
+            <span class="output-line"> vite v5.3.1 building for production...</span>
+            <span class="output-line"> ✓ 142 modules transformed.</span>
+            <span class="output-line"> dist/index.html 0.48 kB</span>
+            <span class="output-line"> dist/assets/index-Cv3rN.js 284.12 kB</span>
+            <span class="output-line"> dist/assets/index-Du4mP.css 42.08 kB</span>
+            <span class="output-line accent"> ✓ built in 2.31s</span>
           </div>
           <div class="input-line">
-            <span class="prompt">user@Mac myapp % </span><span class="typed-command"></span><span class="cursor-block"></span>
+            <span class="prompt">user@Mac myapp % </span><span class="typed-command"></span
+            ><span class="cursor-block"></span>
           </div>
         </div>
       </div>
@@ -198,9 +199,12 @@
 
       const charDuration = 1.5 / command.length;
       command.split("").forEach((char, i) => {
-        tl.add(() => {
-          typedEl.textContent = command.slice(0, i + 1);
-        }, 0.5 + i * charDuration);
+        tl.add(
+          () => {
+            typedEl.textContent = command.slice(0, i + 1);
+          },
+          0.5 + i * charDuration,
+        );
       });
 
       tl.set(cursorEl, { opacity: 0 }, 2.2);

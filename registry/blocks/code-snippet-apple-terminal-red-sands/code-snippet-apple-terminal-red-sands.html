@@ -162,19 +162,20 @@
         </div>
         <div class="terminal-canvas">
           <div class="output-lines">
-            <span class="output-line dim">Last login: Mon Jun  2 09:14:22 on ttys009</span>
+            <span class="output-line dim">Last login: Mon Jun 2 09:14:22 on ttys009</span>
             <span class="output-line">Fetching https://api.example.com/status</span>
-            <span class="output-line dim">  HTTP/2 200</span>
-            <span class="output-line dim">  content-type: application/json</span>
-            <span class="output-line dim">  x-request-id: a3f9c21e-04b2-4d78</span>
+            <span class="output-line dim"> HTTP/2 200</span>
+            <span class="output-line dim"> content-type: application/json</span>
+            <span class="output-line dim"> x-request-id: a3f9c21e-04b2-4d78</span>
             <span class="output-line">{</span>
-            <span class="output-line">  "status": "healthy",</span>
-            <span class="output-line">  "version": "2.4.1",</span>
-            <span class="output-line bold">  "uptime": "14d 6h 32m"</span>
+            <span class="output-line"> "status": "healthy",</span>
+            <span class="output-line"> "version": "2.4.1",</span>
+            <span class="output-line bold"> "uptime": "14d 6h 32m"</span>
             <span class="output-line">}</span>
           </div>
           <div class="input-line">
-            <span class="prompt">user@Mac ~ % </span><span class="typed-command"></span><span class="cursor-block"></span>
+            <span class="prompt">user@Mac ~ % </span><span class="typed-command"></span
+            ><span class="cursor-block"></span>
           </div>
         </div>
       </div>
@@ -195,9 +196,12 @@
 
       const charDuration = 1.5 / command.length;
       command.split("").forEach((char, i) => {
-        tl.add(() => {
-          typedEl.textContent = command.slice(0, i + 1);
-        }, 0.5 + i * charDuration);
+        tl.add(
+          () => {
+            typedEl.textContent = command.slice(0, i + 1);
+          },
+          0.5 + i * charDuration,
+        );
       });
 
       tl.set(cursorEl, { opacity: 0 }, 2.2);

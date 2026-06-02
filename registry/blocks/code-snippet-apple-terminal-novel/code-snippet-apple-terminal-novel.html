@@ -161,9 +161,11 @@
         </div>
         <div class="terminal-canvas">
           <div class="output-lines">
-            <span class="output-line muted">Last login: Mon Jun  2 09:14:22 on ttys006</span>
+            <span class="output-line muted">Last login: Mon Jun 2 09:14:22 on ttys006</span>
             <span class="output-line muted">Python 3.12.4 (main, Jun 6 2024, 18:26:44)</span>
-            <span class="output-line muted">Type "help", "copyright", "credits" or "license" for more information.</span>
+            <span class="output-line muted"
+              >Type "help", "copyright", "credits" or "license" for more information.</span
+            >
             <span class="output-line bold">>>> import hyperframes</span>
             <span class="output-line bold">>>> hf = hyperframes.Composition("intro.html")</span>
             <span class="output-line">>>> hf.duration</span>
@@ -172,7 +174,8 @@
             <span class="output-line">Dimensions(width=1920, height=1080)</span>
           </div>
           <div class="input-line">
-            <span class="prompt">user@Mac ~ % </span><span class="typed-command"></span><span class="cursor-block"></span>
+            <span class="prompt">user@Mac ~ % </span><span class="typed-command"></span
+            ><span class="cursor-block"></span>
           </div>
         </div>
       </div>
@@ -193,9 +196,12 @@
 
       const charDuration = 1.5 / command.length;
       command.split("").forEach((char, i) => {
-        tl.add(() => {
-          typedEl.textContent = command.slice(0, i + 1);
-        }, 0.5 + i * charDuration);
+        tl.add(
+          () => {
+            typedEl.textContent = command.slice(0, i + 1);
+          },
+          0.5 + i * charDuration,
+        );
       });
 
       tl.set(cursorEl, { opacity: 0 }, 2.2);

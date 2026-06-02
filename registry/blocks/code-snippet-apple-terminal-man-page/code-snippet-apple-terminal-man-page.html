@@ -166,7 +166,7 @@
         </div>
         <div class="terminal-canvas">
           <div class="output-lines">
-            <span class="output-line section">CURL(1)                   General Commands Manual                  CURL(1)</span>
+            <span class="output-line section">CURL(1) General Commands Manual CURL(1)</span>
             <span class="output-line"></span>
             <span class="output-line section">NAME</span>
             <span class="output-line indent">curl -- transfer a URL</span>
@@ -175,10 +175,13 @@
             <span class="output-line indent">curl [options / URLs]</span>
             <span class="output-line"></span>
             <span class="output-line section">DESCRIPTION</span>
-            <span class="output-line indent">curl is a tool for transferring data from or to a server using URLs.</span>
+            <span class="output-line indent"
+              >curl is a tool for transferring data from or to a server using URLs.</span
+            >
           </div>
           <div class="input-line">
-            <span class="prompt">user@Mac ~ % </span><span class="typed-command"></span><span class="cursor-block"></span>
+            <span class="prompt">user@Mac ~ % </span><span class="typed-command"></span
+            ><span class="cursor-block"></span>
           </div>
         </div>
       </div>
@@ -199,9 +202,12 @@
 
       const charDuration = 1.5 / command.length;
       command.split("").forEach((char, i) => {
-        tl.add(() => {
-          typedEl.textContent = command.slice(0, i + 1);
-        }, 0.5 + i * charDuration);
+        tl.add(
+          () => {
+            typedEl.textContent = command.slice(0, i + 1);
+          },
+          0.5 + i * charDuration,
+        );
       });
 
       tl.set(cursorEl, { opacity: 0 }, 2.2);

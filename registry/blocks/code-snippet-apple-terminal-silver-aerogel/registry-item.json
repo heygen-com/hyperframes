@@ -4,14 +4,7 @@
   "type": "hyperframes:block",
   "title": "Code Snippet - Apple Terminal Silver Aerogel",
   "description": "Apple Terminal Silver Aerogel profile: dark grey background with white text, per-character typing animation of a shell session.",
-  "tags": [
-    "code",
-    "developer",
-    "showcase",
-    "terminal",
-    "apple",
-    "apple-terminal"
-  ],
+  "tags": ["code", "developer", "showcase", "terminal", "apple", "apple-terminal"],
   "dimensions": {
     "width": 1920,
     "height": 1080

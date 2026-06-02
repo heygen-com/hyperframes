@@ -162,7 +162,7 @@
         </div>
         <div class="terminal-canvas">
           <div class="output-lines">
-            <span class="output-line muted">Last login: Mon Jun  2 09:14:22 on ttys003</span>
+            <span class="output-line muted">Last login: Mon Jun 2 09:14:22 on ttys003</span>
             <span class="output-line bold">git log --oneline -8</span>
             <span class="output-line">a3f2c19 fix: correct off-by-one in pagination</span>
             <span class="output-line">b7e8d04 feat: add dark mode toggle</span>
@@ -174,7 +174,8 @@
             <span class="output-line">3c5f012 init: project bootstrap</span>
           </div>
           <div class="input-line">
-            <span class="prompt">user@Mac myproject % </span><span class="typed-command"></span><span class="cursor-block"></span>
+            <span class="prompt">user@Mac myproject % </span><span class="typed-command"></span
+            ><span class="cursor-block"></span>
           </div>
         </div>
       </div>
@@ -195,9 +196,12 @@
 
       const charDuration = 1.5 / command.length;
       command.split("").forEach((char, i) => {
-        tl.add(() => {
-          typedEl.textContent = command.slice(0, i + 1);
-        }, 0.5 + i * charDuration);
+        tl.add(
+          () => {
+            typedEl.textContent = command.slice(0, i + 1);
+          },
+          0.5 + i * charDuration,
+        );
       });
 
       tl.set(cursorEl, { opacity: 0 }, 2.2);

@@ -167,17 +167,24 @@
         </div>
         <div class="terminal-canvas">
           <div class="output-lines">
-            <span class="output-line dim">Last login: Mon Jun  2 09:14:22 on ttys007</span>
+            <span class="output-line dim">Last login: Mon Jun 2 09:14:22 on ttys007</span>
             <span class="output-line bold">docker ps</span>
-            <span class="output-line dim">CONTAINER ID   IMAGE           COMMAND                  CREATED</span>
-            <span class="output-line">a1b2c3d4e5f6   nginx:latest    "/docker-entrypoint.…"   2 hours ago</span>
-            <span class="output-line">b2c3d4e5f6a7   postgres:15     "docker-entrypoint.s…"   2 hours ago</span>
-            <span class="output-line">c3d4e5f6a7b8   redis:alpine    "docker-entrypoint.s…"   2 hours ago</span>
+            <span class="output-line dim">CONTAINER ID IMAGE COMMAND CREATED</span>
+            <span class="output-line"
+              >a1b2c3d4e5f6 nginx:latest "/docker-entrypoint.…" 2 hours ago</span
+            >
+            <span class="output-line"
+              >b2c3d4e5f6a7 postgres:15 "docker-entrypoint.s…" 2 hours ago</span
+            >
+            <span class="output-line"
+              >c3d4e5f6a7b8 redis:alpine "docker-entrypoint.s…" 2 hours ago</span
+            >
             <span class="output-line success">3 containers running</span>
             <span class="output-line dim">Use 'docker logs CONTAINER' to view output</span>
           </div>
           <div class="input-line">
-            <span class="prompt">user@Mac ~ % </span><span class="typed-command"></span><span class="cursor-block"></span>
+            <span class="prompt">user@Mac ~ % </span><span class="typed-command"></span
+            ><span class="cursor-block"></span>
           </div>
         </div>
       </div>
@@ -198,9 +205,12 @@
 
       const charDuration = 1.5 / command.length;
       command.split("").forEach((char, i) => {
-        tl.add(() => {
-          typedEl.textContent = command.slice(0, i + 1);
-        }, 0.5 + i * charDuration);
+        tl.add(
+          () => {
+            typedEl.textContent = command.slice(0, i + 1);
+          },
+          0.5 + i * charDuration,
+        );
       });
 
       tl.set(cursorEl, { opacity: 0 }, 2.2);

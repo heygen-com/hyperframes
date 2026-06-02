@@ -167,17 +167,18 @@
         </div>
         <div class="terminal-canvas">
           <div class="output-lines">
-            <span class="output-line dim">Last login: Mon Jun  2 09:14:22 on ttys011</span>
+            <span class="output-line dim">Last login: Mon Jun 2 09:14:22 on ttys011</span>
             <span class="output-line">Initializing HyperFrames project...</span>
-            <span class="output-line dim">  Creating project structure</span>
-            <span class="output-line dim">  Copying template files</span>
-            <span class="output-line dim">  Installing dependencies</span>
-            <span class="output-line">  added 142 packages in 3.4s</span>
-            <span class="output-line accent">  ✓ Project ready at ./my-video</span>
-            <span class="output-line bold">  Run: cd my-video && npx hyperframes preview</span>
+            <span class="output-line dim"> Creating project structure</span>
+            <span class="output-line dim"> Copying template files</span>
+            <span class="output-line dim"> Installing dependencies</span>
+            <span class="output-line"> added 142 packages in 3.4s</span>
+            <span class="output-line accent"> ✓ Project ready at ./my-video</span>
+            <span class="output-line bold"> Run: cd my-video && npx hyperframes preview</span>
           </div>
           <div class="input-line">
-            <span class="prompt">user@Mac ~ % </span><span class="typed-command"></span><span class="cursor-block"></span>
+            <span class="prompt">user@Mac ~ % </span><span class="typed-command"></span
+            ><span class="cursor-block"></span>
           </div>
         </div>
       </div>
@@ -198,9 +199,12 @@
 
       const charDuration = 1.5 / command.length;
       command.split("").forEach((char, i) => {
-        tl.add(() => {
-          typedEl.textContent = command.slice(0, i + 1);
-        }, 0.5 + i * charDuration);
+        tl.add(
+          () => {
+            typedEl.textContent = command.slice(0, i + 1);
+          },
+          0.5 + i * charDuration,
+        );
       });
 
       tl.set(cursorEl, { opacity: 0 }, 2.2);

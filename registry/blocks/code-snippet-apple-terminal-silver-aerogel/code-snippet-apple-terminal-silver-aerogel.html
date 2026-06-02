@@ -170,17 +170,18 @@
         </div>
         <div class="terminal-canvas">
           <div class="output-lines">
-            <span class="output-line dim">Last login: Mon Jun  2 09:14:22 on ttys010</span>
+            <span class="output-line dim">Last login: Mon Jun 2 09:14:22 on ttys010</span>
             <span class="output-line">Checking system resources...</span>
-            <span class="output-line">Filesystem          Size    Used   Avail  Use%</span>
-            <span class="output-line">/dev/disk3s1s1     460G    142G    302G   32%</span>
-            <span class="output-line dim">/dev/disk3s6       460G    5.0G    302G    2%</span>
-            <span class="output-line">/dev/disk3s2       460G     11G    302G    4%</span>
+            <span class="output-line">Filesystem Size Used Avail Use%</span>
+            <span class="output-line">/dev/disk3s1s1 460G 142G 302G 32%</span>
+            <span class="output-line dim">/dev/disk3s6 460G 5.0G 302G 2%</span>
+            <span class="output-line">/dev/disk3s2 460G 11G 302G 4%</span>
             <span class="output-line warn">Memory: 14.2 GB / 16.0 GB used (89%)</span>
             <span class="output-line success">CPU: 8-core, 12% load average</span>
           </div>
           <div class="input-line">
-            <span class="prompt">user@Mac ~ % </span><span class="typed-command"></span><span class="cursor-block"></span>
+            <span class="prompt">user@Mac ~ % </span><span class="typed-command"></span
+            ><span class="cursor-block"></span>
           </div>
         </div>
       </div>
@@ -201,9 +202,12 @@
 
       const charDuration = 1.5 / command.length;
       command.split("").forEach((char, i) => {
-        tl.add(() => {
-          typedEl.textContent = command.slice(0, i + 1);
-        }, 0.5 + i * charDuration);
+        tl.add(
+          () => {
+            typedEl.textContent = command.slice(0, i + 1);
+          },
+          0.5 + i * charDuration,
+        );
       });
 
       tl.set(cursorEl, { opacity: 0 }, 2.2);

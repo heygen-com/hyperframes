@@ -159,19 +159,22 @@
         </div>
         <div class="terminal-canvas">
           <div class="output-lines">
-            <span class="output-line">Last login: Mon Jun  2 09:14:22 on ttys001</span>
+            <span class="output-line">Last login: Mon Jun 2 09:14:22 on ttys001</span>
             <span class="output-line">total 48</span>
-            <span class="output-line bold">drwxr-xr-x   8 user  staff   256 Jun  2 09:10 .</span>
-            <span class="output-line">drwxr-xr-x  42 user  staff  1344 Jun  1 18:22 ..</span>
-            <span class="output-line">-rw-r--r--   1 user  staff   872 May 30 14:05 README.md</span>
-            <span class="output-line bold">drwxr-xr-x   5 user  staff   160 Jun  2 09:10 dist</span>
-            <span class="output-line bold">drwxr-xr-x  12 user  staff   384 Jun  2 09:10 node_modules</span>
-            <span class="output-line">-rw-r--r--   1 user  staff  1204 Jun  2 09:08 package.json</span>
-            <span class="output-line bold">drwxr-xr-x   6 user  staff   192 Jun  2 09:10 src</span>
-            <span class="output-line">-rw-r--r--   1 user  staff   348 May 29 11:42 tsconfig.json</span>
+            <span class="output-line bold">drwxr-xr-x 8 user staff 256 Jun 2 09:10 .</span>
+            <span class="output-line">drwxr-xr-x 42 user staff 1344 Jun 1 18:22 ..</span>
+            <span class="output-line">-rw-r--r-- 1 user staff 872 May 30 14:05 README.md</span>
+            <span class="output-line bold">drwxr-xr-x 5 user staff 160 Jun 2 09:10 dist</span>
+            <span class="output-line bold"
+              >drwxr-xr-x 12 user staff 384 Jun 2 09:10 node_modules</span
+            >
+            <span class="output-line">-rw-r--r-- 1 user staff 1204 Jun 2 09:08 package.json</span>
+            <span class="output-line bold">drwxr-xr-x 6 user staff 192 Jun 2 09:10 src</span>
+            <span class="output-line">-rw-r--r-- 1 user staff 348 May 29 11:42 tsconfig.json</span>
           </div>
           <div class="input-line">
-            <span class="prompt">user@Mac ~ % </span><span class="typed-command"></span><span class="cursor-block"></span>
+            <span class="prompt">user@Mac ~ % </span><span class="typed-command"></span
+            ><span class="cursor-block"></span>
           </div>
         </div>
       </div>
@@ -194,9 +197,12 @@
       // Phase 2 (0.5–2s): type command char by char
       const charDuration = 1.5 / command.length;
       command.split("").forEach((char, i) => {
-        tl.add(() => {
-          typedEl.textContent = command.slice(0, i + 1);
-        }, 0.5 + i * charDuration);
+        tl.add(
+          () => {
+            typedEl.textContent = command.slice(0, i + 1);
+          },
+          0.5 + i * charDuration,
+        );
       });
 
       // Phase 3 (2.2s): hide cursor, show first output line (login message)
