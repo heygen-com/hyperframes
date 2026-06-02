@@ -15,7 +15,7 @@
 
 import { existsSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
-import { execSync } from "child_process";
+import { execFileSync } from "child_process";
 
 const PACKAGES = [
   "packages/core",
@@ -100,22 +100,22 @@ function updatePluginVersions(version: string) {
 }
 
 function createReleaseCommitAndTag(version: string) {
-  const status = execSync("git status --porcelain", {
+  const status = execFileSync("git", ["status", "--porcelain"], {
     cwd: ROOT,
     encoding: "utf-8",
   }).trim();
   const allowedPaths = releaseAllowedPaths(version);
   assertNoUnexpectedChanges(status, allowedPaths);
 
-  execSync(`git add ${allowedPaths.filter((path) => existsSync(join(ROOT, path))).join(" ")}`, {
+  // Pass git arguments as an array (execFileSync, no shell) so the interpolated
+  // version and paths can never be interpreted as shell commands.
+  const pathsToAdd = allowedPaths.filter((path) => existsSync(join(ROOT, path)));
+  execFileSync("git", ["add", ...pathsToAdd], { cwd: ROOT, stdio: "inherit" });
+  execFileSync("git", ["commit", "-m", `chore: release v${version}`], {
     cwd: ROOT,
     stdio: "inherit",
   });
-  execSync(`git commit -m "chore: release v${version}"`, {
-    cwd: ROOT,
-    stdio: "inherit",
-  });
-  execSync(`git tag v${version}`, { cwd: ROOT, stdio: "inherit" });
+  execFileSync("git", ["tag", `v${version}`], { cwd: ROOT, stdio: "inherit" });
   console.log(`\nCreated commit and tag v${version}`);
 }
 

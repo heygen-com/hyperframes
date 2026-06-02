@@ -1,7 +1,7 @@
 #!/usr/bin/env tsx
 
 import { execFileSync } from "child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
+import { mkdirSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 
 const ROOT = join(import.meta.dirname, "..");
@@ -506,11 +506,16 @@ function writeReleaseNotes(version: string, releaseNotes: string, force: boolean
   const releasePath = join(releasesDir, `v${version}.md`);
   mkdirSync(releasesDir, { recursive: true });
 
-  if (existsSync(releasePath) && !force) {
-    fail(`${releasePath} already exists. Pass --force to overwrite it.`);
+  // Use an exclusive-write flag rather than a separate existsSync check so the
+  // "already exists" guard is atomic with the write (no TOCTOU race).
+  try {
+    writeFileSync(releasePath, `${releaseNotes}\n`, { flag: force ? "w" : "wx" });
+  } catch (error) {
+    if (!force && (error as NodeJS.ErrnoException).code === "EEXIST") {
+      fail(`${releasePath} already exists. Pass --force to overwrite it.`);
+    }
+    throw error;
   }
-
-  writeFileSync(releasePath, `${releaseNotes}\n`);
   console.log(`Wrote ${releasePath}`);
 }
 
