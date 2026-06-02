@@ -139,11 +139,11 @@ All packages use **fixed versioning** — every release bumps all packages to th
 ### Stable releases
 
 ```bash
-bun run set-version 0.2.0            # bumps all packages, commits, and creates git tag
+bun run release:prepare 0.2.0        # drafts changelog if needed, then creates the release commit/tag after review
 git push origin main --tags           # triggers the publish workflow
 ```
 
-The `set-version` script automatically creates a `chore: release v<version>` commit and a `v<version>` git tag. Pushing the tag triggers CI to publish all packages to npm and create a GitHub Release.
+The `release:prepare` script drafts missing release notes on the first run and stops for manual review. After the generated TODO summary is rewritten, rerun the same command; it delegates to `set-version`, which creates a `chore: release v<version>` commit and a `v<version>` git tag. Pushing the tag triggers CI to publish all packages to npm and create a GitHub Release.
 
 ### Pre-releases (alpha / beta / rc)
 

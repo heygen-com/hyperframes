@@ -22,16 +22,18 @@ If a feature should ship in alpha only, merge or retarget that PR to a prereleas
 ## Stable release
 
 Stable releases must be reachable from `origin/main` or `origin/release/v*`.
-Draft and review release notes before creating the release commit:
+Prepare and review release notes before creating the release commit:
 
 ```bash
-bun run changelog:draft <version> --write
+bun run release:prepare <version>
 ```
 
-See [Changelog process](/contributing/changelog-process) for the full workflow. For stable releases, `bun run set-version <version>` enforces this checkpoint before creating the release commit and tag.
+On the first run, `release:prepare` drafts missing changelog artifacts and exits non-zero for review so chained release commands stop before tagging. After the generated TODO summary is rewritten, rerun the same command to create the release commit and tag.
+
+See [Changelog process](/contributing/changelog-process) for the full workflow. For stable releases, `bun run set-version <version>` still enforces this checkpoint when maintainers run the lower-level release command directly.
 
 ```bash
-bun run set-version <version>
+bun run release:prepare <version>
 git push origin main --tags
 ```
 

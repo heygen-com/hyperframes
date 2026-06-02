@@ -4,6 +4,13 @@ import { execFileSync } from "child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 import { pathToFileURL } from "url";
+import {
+  CLI_SEMVER_PATTERN,
+  parseVersionOptionArgument,
+  validateCliDate,
+  validateCliVersion,
+  type InlineValueOption,
+} from "./cli-options.ts";
 
 const ROOT = join(import.meta.dirname, "..");
 const REPO_URL = "https://github.com/heygen-com/hyperframes";
@@ -74,7 +81,7 @@ const INLINE_VALUE_OPTIONS = [
   { prefix: "--from=", key: "from" },
   { prefix: "--to=", key: "to" },
   { prefix: "--date=", key: "date" },
-] satisfies Array<{ prefix: string; key: ValueOptionKey }>;
+] satisfies Array<InlineValueOption<ValueOptionKey>>;
 
 const TYPE_CATEGORIES = new Map([
   ["feat", "Features"],
@@ -137,69 +144,13 @@ function createDefaultOptions(): MutableOptions {
 }
 
 function parseArgument(args: string[], index: number, parsed: MutableOptions) {
-  const arg = args[index];
-  const inlineOption = findInlineValueOption(arg);
-
-  if (inlineOption) {
-    parsed[inlineOption.key] = arg.slice(inlineOption.prefix.length);
-    return index;
-  }
-
-  return parseNamedOrPositionalArg(args, index, parsed, arg);
-}
-
-function findInlineValueOption(arg: string) {
-  return INLINE_VALUE_OPTIONS.find((option) => arg.startsWith(option.prefix));
-}
-
-function parseNamedOrPositionalArg(
-  args: string[],
-  index: number,
-  parsed: MutableOptions,
-  arg: string,
-) {
-  const booleanOption = BOOLEAN_OPTIONS.get(arg);
-  if (booleanOption) {
-    parsed[booleanOption] = true;
-    return index;
-  }
-
-  return parseValueOrPositionalArg(args, index, parsed, arg);
-}
-
-function parseValueOrPositionalArg(
-  args: string[],
-  index: number,
-  parsed: MutableOptions,
-  arg: string,
-) {
-  const valueOption = VALUE_OPTIONS.get(arg);
-  if (valueOption) {
-    parsed[valueOption] = readNextArg(args, index, arg);
-    return index + 1;
-  }
-
-  return parsePositionalArg(arg, parsed, index);
-}
-
-function parsePositionalArg(arg: string, parsed: MutableOptions, index: number) {
-  if (arg === "--help" || arg === "-h") {
-    printUsage();
-    process.exit(0);
-  }
-
-  validatePositionalArg(arg, parsed);
-  parsed.version = arg.replace(/^v/, "");
-  return index;
-}
-
-function validatePositionalArg(arg: string, parsed: MutableOptions) {
-  if (arg.startsWith("--")) {
-    fail(`Unknown option: ${arg}`);
-  }
-  if (parsed.version) {
-    fail(`Unexpected positional argument: ${arg}`);
-  }
+  return parseVersionOptionArgument(args, index, parsed, {
+    inlineValueOptions: INLINE_VALUE_OPTIONS,
+    valueOptions: VALUE_OPTIONS,
+    booleanOptions: BOOLEAN_OPTIONS,
+    printUsage,
+    fail,
+  });
 }
 
 function finalizeOptions(parsed: MutableOptions): Options {
@@ -208,8 +159,8 @@ function finalizeOptions(parsed: MutableOptions): Options {
     process.exit(1);
   }
 
-  validateVersion(parsed.version);
-  validateDate(parsed.date);
+  validateCliVersion(parsed.version, CLI_SEMVER_PATTERN, fail);
+  validateCliDate(parsed.date, fail);
 
   return {
     version: parsed.version,
@@ -219,26 +170,6 @@ function finalizeOptions(parsed: MutableOptions): Options {
     write: parsed.write,
     force: parsed.force,
   };
-}
-
-function validateVersion(version: string) {
-  if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version)) {
-    fail(`Invalid semver: ${version}`);
-  }
-}
-
-function validateDate(date: string) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-    fail(`Invalid date: ${date}. Expected YYYY-MM-DD.`);
-  }
-}
-
-function readNextArg(args: string[], index: number, flag: string) {
-  const value = args[index + 1];
-  if (!value || value.startsWith("--")) {
-    fail(`Missing value for ${flag}`);
-  }
-  return value;
 }
 
 function printUsage() {
@@ -534,7 +465,10 @@ function writeReleaseNotes(version: string, releaseNotes: string, force: boolean
     writeFileSync(releasePath, `${releaseNotes}\n`, { flag: force ? "w" : "wx" });
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "EEXIST") {
-      fail(`${releasePath} already exists. Pass --force to overwrite it.`);
+      console.log(
+        `${releasePath} already exists; leaving it unchanged. Pass --force to overwrite it.`,
+      );
+      return;
     }
     throw error;
   }

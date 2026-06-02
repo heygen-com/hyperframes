@@ -18,6 +18,7 @@ import { existsSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 import { execFileSync } from "child_process";
 import { pathToFileURL } from "url";
+import { CLI_SEMVER_PATTERN } from "./cli-options.ts";
 
 const PACKAGES = [
   "packages/core",
@@ -33,6 +34,7 @@ const PACKAGES = [
 const PLUGINS = [".claude-plugin", ".codex-plugin", ".cursor-plugin"];
 
 const ROOT = join(import.meta.dirname, "..");
+export const CHANGELOG_REVIEW_TODO = "<!-- TODO: write a 1-2 sentence release summary here. -->";
 
 type ReleaseOptions = {
   version: string;
@@ -73,7 +75,7 @@ export function parseReleaseOptions(args: string[]): ReleaseOptions {
     process.exit(1);
   }
 
-  if (!/^\d+\.\d+\.\d+(-[\w.]+)?$/.test(version)) {
+  if (!CLI_SEMVER_PATTERN.test(version)) {
     console.error(`Invalid semver: ${version}`);
     process.exit(1);
   }
@@ -136,13 +138,17 @@ export function isPrerelease(version: string) {
 
 function assertReviewedChangelog(version: string) {
   const missing = missingChangelogArtifacts(version);
+  const unreviewed = unreviewedChangelogArtifacts(version);
 
-  if (missing.length > 0) {
-    console.error("\nMissing reviewed changelog artifacts:");
+  if (missing.length > 0 || unreviewed.length > 0) {
+    console.error("\nChangelog review required:");
     missing.forEach((artifact) => console.error(`  ${artifact}`));
-    console.error(`\nRun: bun run changelog:draft ${version} --write`);
+    unreviewed.forEach((artifact) =>
+      console.error(`  ${artifact} still contains the generated TODO summary`),
+    );
+    console.error(`\nRun: bun run release:prepare ${version}`);
     console.error(
-      "Review and rewrite the generated release notes, then rerun set-version. Use --skip-changelog-check only for emergency releases.",
+      "Review and rewrite the generated release notes, then rerun release:prepare. Use --skip-changelog-check only for emergency releases.",
     );
     process.exit(1);
   }
@@ -156,6 +162,12 @@ export function changelogArtifacts(version: string) {
   return [join("releases", `v${version}.md`), `docs/changelog.mdx#HyperFrames v${version}`];
 }
 
+export function unreviewedChangelogArtifacts(version: string) {
+  return changelogArtifacts(version).filter(
+    (artifact) => artifactExists(artifact) && artifactHasGeneratedTodo(artifact),
+  );
+}
+
 function artifactExists(artifact: string) {
   const [path, marker] = artifact.split("#");
   const absolutePath = join(ROOT, path);
@@ -164,6 +176,36 @@ function artifactExists(artifact: string) {
     return false;
   }
   return marker ? readFileSync(absolutePath, "utf-8").includes(`label="${marker}"`) : true;
+}
+
+function artifactHasGeneratedTodo(artifact: string) {
+  const [path, marker] = artifact.split("#");
+  const content = readFileSync(join(ROOT, path), "utf-8");
+  if (!marker) {
+    return hasGeneratedChangelogTodo(content);
+  }
+
+  return docsChangelogEntryHasGeneratedTodo(content, marker);
+}
+
+export function hasGeneratedChangelogTodo(content: string) {
+  return content.includes(CHANGELOG_REVIEW_TODO);
+}
+
+export function docsChangelogEntryHasGeneratedTodo(content: string, marker: string) {
+  const labelIndex = content.indexOf(`label="${marker}"`);
+  if (labelIndex === -1) {
+    return false;
+  }
+
+  const entryStart = content.lastIndexOf("<Update", labelIndex);
+  const entryEnd = content.indexOf("</Update>", labelIndex);
+  const entry = content.slice(
+    entryStart === -1 ? labelIndex : entryStart,
+    entryEnd === -1 ? undefined : entryEnd + "</Update>".length,
+  );
+
+  return hasGeneratedChangelogTodo(entry);
 }
 
 function releaseAllowedPaths(version: string) {
