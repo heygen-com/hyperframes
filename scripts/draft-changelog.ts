@@ -508,10 +508,12 @@ function writeReleaseNotes(version: string, releaseNotes: string, force: boolean
 
   // Use an exclusive-write flag rather than a separate existsSync check so the
   // "already exists" guard is atomic with the write (no TOCTOU race).
+  // EEXIST is only reachable when force is false (the "wx" flag); with force the
+  // "w" flag overwrites and never throws it, so no separate force check is needed.
   try {
     writeFileSync(releasePath, `${releaseNotes}\n`, { flag: force ? "w" : "wx" });
   } catch (error) {
-    if (!force && (error as NodeJS.ErrnoException).code === "EEXIST") {
+    if ((error as NodeJS.ErrnoException).code === "EEXIST") {
       fail(`${releasePath} already exists. Pass --force to overwrite it.`);
     }
     throw error;
