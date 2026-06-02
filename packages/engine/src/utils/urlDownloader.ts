@@ -33,7 +33,7 @@ function isBlockedHost(hostname: string): boolean {
   // 172.16–172.31
   const m = h.match(/^172\.(\d{1,3})\./);
   if (m) {
-    const octet = parseInt(m[1], 10);
+    const octet = parseInt(m[1] ?? "0", 10);
     if (octet >= BLOCKED_172_RANGE.min && octet <= BLOCKED_172_RANGE.max) return true;
   }
   return false;
