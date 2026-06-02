@@ -13,6 +13,7 @@
     "outDir": "./dist",
     "rootDir": "./src"
   },
+  "files": ["src/runtime/mediaVolumeEnvelope.ts"],
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist", "src/tests", "src/runtime", "**/*.test.ts"]
 }
