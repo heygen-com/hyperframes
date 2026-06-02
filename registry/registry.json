@@ -368,6 +368,54 @@
       "type": "hyperframes:block"
     },
     {
+      "name": "code-snippet-apple-terminal-basic",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "code-snippet-apple-terminal-clear-dark",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "code-snippet-apple-terminal-clear-light",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "code-snippet-apple-terminal-grass",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "code-snippet-apple-terminal-homebrew",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "code-snippet-apple-terminal-man-page",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "code-snippet-apple-terminal-novel",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "code-snippet-apple-terminal-ocean",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "code-snippet-apple-terminal-pro",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "code-snippet-apple-terminal-red-sands",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "code-snippet-apple-terminal-silver-aerogel",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "code-snippet-apple-terminal-solid-colors",
+      "type": "hyperframes:block"
+    },
+    {
       "name": "parallax-zoom",
       "type": "hyperframes:component"
     },
