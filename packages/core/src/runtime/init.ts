@@ -950,6 +950,12 @@ export function initSandboxRuntimeModular(): void {
       state.capturedTimeline.pause();
       const seekTime = Math.max(0, state.currentTime || 0);
       if (typeof state.capturedTimeline.totalTime === "function") {
+        // GSAP 3.x skips rendering when totalTime equals the current _tTime.
+        // A freshly created paused timeline has _tTime=0, so seeking to 0 is a
+        // no-op — percentage-keyframe values at 0% are never applied. Nudge to
+        // a micro-offset first to force GSAP to dirty its internal state, then
+        // seek to the real time so the render produces exact values.
+        state.capturedTimeline.totalTime(seekTime + 0.001, true);
         state.capturedTimeline.totalTime(seekTime, false);
       }
 
