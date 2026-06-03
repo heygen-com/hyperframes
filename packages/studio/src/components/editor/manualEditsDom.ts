@@ -223,6 +223,7 @@ function isIdentityAfterTranslateStrip(m: DOMMatrix): boolean {
 }
 
 function stripGsapTranslateFromTransform(element: HTMLElement): void {
+  if (element.hasAttribute(STUDIO_MANUAL_EDIT_GESTURE_ATTR)) return;
   const transform = element.style.getPropertyValue("transform");
   if (!transform || transform === "none") return;
   const DOMMatrixCtor = (element.ownerDocument.defaultView as (Window & typeof globalThis) | null)

@@ -11,6 +11,10 @@ import { getTimelinePixelsPerSecond } from "./timelineZoom";
 import { TIMELINE_ASSET_MIME, TIMELINE_BLOCK_MIME } from "../../utils/timelineAssetDrop";
 import { TimelineEmptyState } from "./TimelineEmptyState";
 import { TimelineCanvas } from "./TimelineCanvas";
+import {
+  KeyframeDiamondContextMenu,
+  type KeyframeDiamondContextMenuState,
+} from "./KeyframeDiamondContextMenu";
 import { useTimelineClipDrag } from "./useTimelineClipDrag";
 import {
   GUTTER,
@@ -67,6 +71,10 @@ interface TimelineProps {
   ) => Promise<void> | void;
   onBlockedEditAttempt?: (element: TimelineElement, intent: BlockedTimelineEditIntent) => void;
   onSelectElement?: (element: TimelineElement | null) => void;
+  onDeleteKeyframe?: (elementId: string, percentage: number) => void;
+  onChangeKeyframeEase?: (elementId: string, percentage: number, ease: string) => void;
+  onMoveKeyframe?: (element: TimelineElement, oldPct: number, newPct: number) => void;
+  onToggleKeyframeAtPlayhead?: (element: TimelineElement) => void;
   theme?: Partial<TimelineTheme>;
 }
 
@@ -83,6 +91,10 @@ export const Timeline = memo(function Timeline({
   onResizeElement,
   onBlockedEditAttempt,
   onSelectElement,
+  onDeleteKeyframe,
+  onChangeKeyframeEase,
+  onMoveKeyframe,
+  onToggleKeyframeAtPlayhead,
   theme: themeOverrides,
 }: TimelineProps = {}) {
   const theme = useMemo(() => ({ ...defaultTimelineTheme, ...themeOverrides }), [themeOverrides]);
@@ -120,6 +132,7 @@ export const Timeline = memo(function Timeline({
 
   const [showPopover, setShowPopover] = useState(false);
   const [showShortcutHint, setShowShortcutHint] = useState(true);
+  const [kfContextMenu, setKfContextMenu] = useState<KeyframeDiamondContextMenuState | null>(null);
   const [viewportWidth, setViewportWidth] = useState(0);
   const roRef = useRef<ResizeObserver | null>(null);
   const shortcutHintRafRef = useRef(0);
@@ -231,6 +244,10 @@ export const Timeline = memo(function Timeline({
   }, [draggedClip, trackOrder]);
 
   const totalH = getTimelineCanvasHeight(displayTrackOrder.length);
+  const keyframeCache = usePlayerStore((s) => s.keyframeCache);
+  const selectedKeyframes = usePlayerStore((s) => s.selectedKeyframes);
+  const toggleSelectedKeyframe = usePlayerStore((s) => s.toggleSelectedKeyframe);
+
   const selectedElement = useMemo(
     () => elements.find((element) => (element.key ?? element.id) === selectedElementId) ?? null,
     [elements, selectedElementId],
@@ -477,6 +494,42 @@ export const Timeline = memo(function Timeline({
           shiftClickClipRef={shiftClickClipRef}
           getPreviewElement={getPreviewElement}
           getTrackStyle={getTrackStyle}
+          keyframeCache={keyframeCache}
+          selectedKeyframes={selectedKeyframes}
+          currentTime={currentTime}
+          onToggleKeyframeAtPlayhead={onToggleKeyframeAtPlayhead}
+          onClickKeyframe={(el, pct) => {
+            usePlayerStore.getState().clearSelectedKeyframes();
+            const elKey = el.key ?? el.id;
+            setSelectedElementId(elKey);
+            onSelectElement?.(el);
+            const absTime = el.start + (pct / 100) * el.duration;
+            onSeek?.(absTime);
+          }}
+          onShiftClickKeyframe={(elId, pct) => {
+            toggleSelectedKeyframe(`${elId}:${pct}`);
+          }}
+          onDragKeyframe={(el, oldPct, newPct) => {
+            onMoveKeyframe?.(el, oldPct, newPct);
+          }}
+          onContextMenuKeyframe={(e, elId, pct) => {
+            const el = elements.find((x) => (x.key ?? x.id) === elId);
+            if (el) {
+              setSelectedElementId(elId);
+              onSelectElement?.(el);
+              const absTime = el.start + (pct / 100) * el.duration;
+              onSeek?.(absTime);
+            }
+            const kfData = keyframeCache.get(elId);
+            const kf = kfData?.keyframes.find((k) => k.percentage === pct);
+            setKfContextMenu({
+              x: e.clientX,
+              y: e.clientY,
+              elementId: elId,
+              percentage: pct,
+              currentEase: kf?.ease ?? kfData?.ease,
+            });
+          }}
         />
       </div>
 
@@ -508,6 +561,22 @@ export const Timeline = memo(function Timeline({
           onClose={() => {
             setShowPopover(false);
             setRangeSelection(null);
+          }}
+        />
+      )}
+
+      {kfContextMenu && (
+        <KeyframeDiamondContextMenu
+          state={kfContextMenu}
+          onClose={() => setKfContextMenu(null)}
+          onDelete={(elId, pct) => onDeleteKeyframe?.(elId, pct)}
+          onChangeEase={(elId, pct, ease) => onChangeKeyframeEase?.(elId, pct, ease)}
+          onCopyProperties={(elId, pct) => {
+            const kfData = keyframeCache.get(elId);
+            const kf = kfData?.keyframes.find((k) => k.percentage === pct);
+            if (kf) {
+              void navigator.clipboard.writeText(JSON.stringify(kf.properties, null, 2));
+            }
           }}
         />
       )}

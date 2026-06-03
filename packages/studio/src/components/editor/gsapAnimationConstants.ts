@@ -27,6 +27,16 @@ export const PROP_LABELS: Record<string, string> = {
   autoAlpha: "Visibility",
   visibility: "Visible",
   scaleX_alias: "Stretch X",
+  filter: "Filter",
+  clipPath: "Clip Path",
+  color: "Color",
+  backgroundColor: "Background",
+  borderColor: "Border Color",
+  borderRadius: "Radius",
+  fontSize: "Font Size",
+  letterSpacing: "Tracking",
+  skewX: "Skew X",
+  skewY: "Skew Y",
 };
 
 export const PROP_UNITS: Record<string, string> = {
@@ -83,6 +93,11 @@ export const EASE_LABELS: Record<string, string> = {
   "expo.out": "Very snappy stop",
   "expo.in": "Very slow start",
   "expo.inOut": "Dramatic ease",
+  "spring-gentle": "Gentle spring",
+  "spring-bouncy": "Bouncy spring",
+  "spring-stiff": "Stiff spring",
+  "spring-wobbly": "Wobbly spring",
+  "spring-heavy": "Heavy spring",
 };
 
 export const EASE_CURVES: Record<string, [number, number, number, number]> = {
@@ -122,6 +137,33 @@ export function parseCustomEaseFromString(ease: string): {
 }
 
 export const PERCENT_PROPS = new Set(["opacity", "autoAlpha"]);
+
+export const PROP_CONSTRAINTS: Record<string, { min?: number; max?: number; step?: number }> = {
+  opacity: { min: 0, max: 1, step: 0.01 },
+  autoAlpha: { min: 0, max: 1, step: 0.01 },
+  scale: { min: -10, max: 10, step: 0.01 },
+  scaleX: { min: -10, max: 10, step: 0.01 },
+  scaleY: { min: -10, max: 10, step: 0.01 },
+  rotation: { step: 1 },
+  skewX: { min: -90, max: 90, step: 1 },
+  skewY: { min: -90, max: 90, step: 1 },
+  width: { min: 0, step: 1 },
+  height: { min: 0, step: 1 },
+  borderRadius: { min: 0, step: 1 },
+  x: { step: 1 },
+  y: { step: 1 },
+  fontSize: { min: 1, step: 1 },
+  letterSpacing: { step: 0.1 },
+};
+
+export function clampPropertyValue(prop: string, value: number): number {
+  const constraint = PROP_CONSTRAINTS[prop];
+  if (!constraint) return value;
+  let clamped = value;
+  if (constraint.min !== undefined) clamped = Math.max(constraint.min, clamped);
+  if (constraint.max !== undefined) clamped = Math.min(constraint.max, clamped);
+  return clamped;
+}
 
 export const ADD_METHODS = ["to", "from", "fromTo", "set"] as const;
 

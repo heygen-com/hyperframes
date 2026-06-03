@@ -70,6 +70,10 @@ interface NLELayoutProps {
   ) => Promise<void> | void;
   onBlockedEditAttempt?: (element: TimelineElement, intent: BlockedTimelineEditIntent) => void;
   onSelectTimelineElement?: (element: TimelineElement | null) => void;
+  onDeleteKeyframe?: (elementId: string, percentage: number) => void;
+  onChangeKeyframeEase?: (elementId: string, percentage: number, ease: string) => void;
+  onMoveKeyframe?: (element: TimelineElement, oldPct: number, newPct: number) => void;
+  onToggleKeyframeAtPlayhead?: (element: TimelineElement) => void;
   /** Exposes the compIdToSrc map for parent components (e.g., useRenderClipContent) */
   onCompIdToSrcChange?: (map: Map<string, string>) => void;
   /** Whether the timeline panel is visible (default: true) */
@@ -118,6 +122,10 @@ export const NLELayout = memo(function NLELayout({
   onResizeElement,
   onBlockedEditAttempt,
   onSelectTimelineElement,
+  onDeleteKeyframe,
+  onChangeKeyframeEase,
+  onMoveKeyframe,
+  onToggleKeyframeAtPlayhead,
   onCompIdToSrcChange,
   timelineVisible,
   onToggleTimeline,
@@ -448,6 +456,10 @@ export const NLELayout = memo(function NLELayout({
                 onResizeElement={onResizeElement}
                 onBlockedEditAttempt={onBlockedEditAttempt}
                 onSelectElement={onSelectTimelineElement}
+                onDeleteKeyframe={onDeleteKeyframe}
+                onChangeKeyframeEase={onChangeKeyframeEase}
+                onMoveKeyframe={onMoveKeyframe}
+                onToggleKeyframeAtPlayhead={onToggleKeyframeAtPlayhead}
               />
             </div>
             {timelineFooter && <div className="flex-shrink-0">{timelineFooter}</div>}

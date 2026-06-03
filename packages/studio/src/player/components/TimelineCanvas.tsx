@@ -1,5 +1,6 @@
 import { memo, type ReactNode } from "react";
 import { TimelineClip } from "./TimelineClip";
+import { TimelineClipDiamonds } from "./TimelineClipDiamonds";
 import { TimelineRuler } from "./TimelineRuler";
 import {
   getTimelineEditCapabilities,
@@ -8,9 +9,10 @@ import {
 } from "./timelineEditing";
 import { getRenderedTimelineElement, type TimelineTheme } from "./timelineTheme";
 import { GUTTER, TRACK_H, RULER_H, CLIP_Y, CLIP_HANDLE_W } from "./timelineLayout";
-import type { TimelineElement } from "../store/playerStore";
+import type { TimelineElement, KeyframeCacheEntry } from "../store/playerStore";
 import type { DraggedClipState, ResizingClipState, BlockedClipState } from "./useTimelineClipDrag";
 import type { TrackVisualStyle } from "./timelineIcons";
+import { STUDIO_KEYFRAMES_ENABLED } from "../../components/editor/manualEditingAvailability";
 
 interface TimelineCanvasProps {
   major: number[];
@@ -58,6 +60,14 @@ interface TimelineCanvasProps {
   } | null>;
   getPreviewElement: (element: TimelineElement) => TimelineElement;
   getTrackStyle: (tag: string) => TrackVisualStyle;
+  keyframeCache?: Map<string, KeyframeCacheEntry>;
+  selectedKeyframes: Set<string>;
+  currentTime: number;
+  onClickKeyframe?: (element: TimelineElement, percentage: number) => void;
+  onShiftClickKeyframe?: (elementId: string, percentage: number) => void;
+  onDragKeyframe?: (element: TimelineElement, oldPct: number, newPct: number) => void;
+  onContextMenuKeyframe?: (e: React.MouseEvent, elementId: string, percentage: number) => void;
+  onToggleKeyframeAtPlayhead?: (element: TimelineElement) => void;
 }
 
 export const TimelineCanvas = memo(function TimelineCanvas({
@@ -99,6 +109,14 @@ export const TimelineCanvas = memo(function TimelineCanvas({
   shiftClickClipRef,
   getPreviewElement,
   getTrackStyle,
+  keyframeCache,
+  selectedKeyframes,
+  currentTime,
+  onClickKeyframe,
+  onShiftClickKeyframe,
+  onDragKeyframe,
+  onContextMenuKeyframe,
+  onToggleKeyframeAtPlayhead: _onToggleKeyframeAtPlayhead,
 }: TimelineCanvasProps) {
   const draggedElement = draggedClip?.element ?? null;
   const activeDraggedElement =
@@ -328,6 +346,28 @@ export const TimelineCanvas = memo(function TimelineCanvas({
                     }}
                   >
                     {renderClipChildren(previewElement, clipStyle)}
+                    {STUDIO_KEYFRAMES_ENABLED && keyframeCache?.get(elementKey) && (
+                      <TimelineClipDiamonds
+                        keyframesData={keyframeCache.get(elementKey)!}
+                        clipWidthPx={Math.max(previewElement.duration * pps, 4)}
+                        clipHeightPx={TRACK_H - 2 * CLIP_Y}
+                        accentColor={clipStyle.accent}
+                        isSelected={isSelected}
+                        currentPercentage={
+                          previewElement.duration > 0
+                            ? ((currentTime - previewElement.start) / previewElement.duration) * 100
+                            : 0
+                        }
+                        elementId={elementKey}
+                        selectedKeyframes={selectedKeyframes}
+                        onClickKeyframe={(pct) => onClickKeyframe?.(previewElement, pct)}
+                        onShiftClickKeyframe={onShiftClickKeyframe}
+                        onDragKeyframe={(oldPct, newPct) =>
+                          onDragKeyframe?.(previewElement, oldPct, newPct)
+                        }
+                        onContextMenuKeyframe={onContextMenuKeyframe}
+                      />
+                    )}
                   </TimelineClip>
                 );
               })}

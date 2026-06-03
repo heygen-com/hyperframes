@@ -69,7 +69,9 @@ export const TimelineClip = memo(function TimelineClip({
     <div
       data-clip="true"
       className={
-        hasCustomContent ? "absolute overflow-hidden" : "absolute flex items-center overflow-hidden"
+        hasCustomContent
+          ? "absolute overflow-visible"
+          : "absolute flex items-center overflow-visible"
       }
       style={{
         left: leftPx,

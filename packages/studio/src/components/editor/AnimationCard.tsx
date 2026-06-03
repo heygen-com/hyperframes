@@ -9,13 +9,29 @@ import {
   METHOD_LABELS,
   METHOD_TOOLTIPS,
   PERCENT_PROPS,
+  PROP_CONSTRAINTS,
   PROP_LABELS,
   PROP_TOOLTIPS,
   PROP_UNITS,
+  clampPropertyValue,
 } from "./gsapAnimationConstants";
 import { buildTweenSummary } from "./gsapAnimationHelpers";
 import { EaseCurveSection } from "./EaseCurveSection";
 const BOOLEAN_PROPS = new Set(["visibility"]);
+const STRING_PROPS = new Set(["filter", "clipPath"]);
+
+const FILTER_PRESETS = [
+  { label: "Blur", value: "blur(4px)" },
+  { label: "Bright", value: "brightness(1.5)" },
+  { label: "Gray", value: "grayscale(1)" },
+  { label: "None", value: "none" },
+];
+
+const CLIP_PATH_PRESETS = [
+  { label: "Circle", value: "circle(50% at 50% 50%)" },
+  { label: "Inset", value: "inset(10%)" },
+  { label: "None", value: "none" },
+];
 
 function isPercentProp(prop: string): boolean {
   return PERCENT_PROPS.has(prop);
@@ -27,7 +43,11 @@ function displayValue(prop: string, val: number | string): string {
 }
 
 function adjustedValue(prop: string, raw: string): string {
-  if (isPercentProp(prop)) return String(Math.max(0, Math.min(1, Number(raw) / 100)));
+  if (isPercentProp(prop)) return String(clampPropertyValue(prop, Number(raw) / 100));
+  const num = Number(raw);
+  if (!Number.isNaN(num) && PROP_CONSTRAINTS[prop]) {
+    return String(clampPropertyValue(prop, num));
+  }
   return raw;
 }
 
@@ -86,6 +106,48 @@ function PropertyRow({
           </button>
         </div>
         <RemoveButton onClick={onRemove} title={removeTitle} />
+      </div>
+    );
+  }
+
+  if (STRING_PROPS.has(prop)) {
+    const presets =
+      prop === "filter" ? FILTER_PRESETS : prop === "clipPath" ? CLIP_PATH_PRESETS : [];
+    return (
+      <div className="flex flex-col gap-1">
+        <div className="flex items-center gap-1">
+          <div className="min-w-0 flex-1 flex items-center gap-2 px-2 py-1 rounded-lg bg-neutral-900 border border-neutral-800">
+            <span className="flex-shrink-0 text-[11px] font-medium text-neutral-500">
+              {PROP_LABELS[prop] ?? prop}
+            </span>
+            <input
+              type="text"
+              defaultValue={String(val)}
+              className="flex-1 bg-transparent text-[11px] text-neutral-200 outline-none"
+              onBlur={(e) => onCommit(e.currentTarget.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.currentTarget.blur();
+                }
+              }}
+            />
+          </div>
+          <RemoveButton onClick={onRemove} title={removeTitle} />
+        </div>
+        {presets.length > 0 && (
+          <div className="flex gap-1 pl-1">
+            {presets.map((p) => (
+              <button
+                key={p.value}
+                type="button"
+                onClick={() => onCommit(p.value)}
+                className="px-1.5 py-0.5 rounded text-[9px] font-medium text-neutral-500 bg-neutral-800/50 hover:bg-neutral-800 hover:text-neutral-300 transition-colors"
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
     );
   }
@@ -292,8 +354,10 @@ export const AnimationCard = memo(function AnimationCard({
           {methodLabel}
         </span>
         <span className="text-[11px] font-medium text-neutral-400" title="When this effect plays">
-          {typeof animation.position === "number" ? `${animation.position}s` : animation.position} –{" "}
-          {typeof endTime === "number" ? `${endTime.toFixed(1)}s` : endTime}
+          {typeof animation.position === "number"
+            ? `${parseFloat(animation.position.toFixed(3))}s`
+            : animation.position}{" "}
+          – {typeof endTime === "number" ? `${parseFloat(endTime.toFixed(3))}s` : endTime}
         </span>
         <span className="ml-auto text-[10px] text-neutral-500" title={easeName}>
           {easeLabel}
@@ -344,7 +408,7 @@ export const AnimationCard = memo(function AnimationCard({
                 value={
                   typeof animation.position === "string"
                     ? animation.position
-                    : String(Math.max(0, animation.position))
+                    : String(parseFloat(Math.max(0, animation.position).toFixed(3)))
                 }
                 suffix={typeof animation.position === "number" ? "s" : undefined}
                 tooltip="When this effect begins on the timeline"

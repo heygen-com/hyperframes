@@ -68,6 +68,12 @@ export const STUDIO_BLOCKS_PANEL_ENABLED = resolveStudioBooleanEnvFlag(
 export const STUDIO_GSAP_PANEL_ENABLED = resolveStudioBooleanEnvFlag(
   env,
   ["VITE_STUDIO_ENABLE_GSAP_PANEL", "VITE_STUDIO_GSAP_PANEL_ENABLED"],
+  true,
+);
+
+export const STUDIO_KEYFRAMES_ENABLED = resolveStudioBooleanEnvFlag(
+  env,
+  ["VITE_STUDIO_ENABLE_KEYFRAMES", "VITE_STUDIO_KEYFRAMES_ENABLED"],
   false,
 );
 

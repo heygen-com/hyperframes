@@ -14,7 +14,9 @@ import { MetricField, Section } from "./propertyPanelPrimitives";
 import { isMediaElement, MediaSection } from "./propertyPanelMediaSection";
 import { TextSection, StyleSections } from "./propertyPanelSections";
 import { GsapAnimationSection } from "./GsapAnimationSection";
-import { STUDIO_GSAP_PANEL_ENABLED } from "./manualEditingAvailability";
+import { KeyframeNavigation } from "./KeyframeNavigation";
+import { STUDIO_GSAP_PANEL_ENABLED, STUDIO_KEYFRAMES_ENABLED } from "./manualEditingAvailability";
+import { usePlayerStore } from "../../player";
 
 // Re-export helpers that external consumers import from this module
 export {
@@ -65,6 +67,15 @@ interface PropertyPanelProps {
   onAddGsapFromProperty?: (animId: string, prop: string) => void;
   onRemoveGsapFromProperty?: (animId: string, prop: string) => void;
   onAddGsapAnimation?: (method: "to" | "from" | "set" | "fromTo") => void;
+  onAddKeyframe?: (
+    animationId: string,
+    percentage: number,
+    property: string,
+    value: number | string,
+  ) => void;
+  onRemoveKeyframe?: (animationId: string, percentage: number) => void;
+  onConvertToKeyframes?: (animationId: string) => void;
+  onSeekToTime?: (time: number) => void;
 }
 
 /* ------------------------------------------------------------------ */
@@ -170,6 +181,10 @@ export const PropertyPanel = memo(function PropertyPanel({
   onAddGsapFromProperty,
   onRemoveGsapFromProperty,
   onAddGsapAnimation,
+  onAddKeyframe,
+  onRemoveKeyframe,
+  onConvertToKeyframes,
+  onSeekToTime,
 }: PropertyPanelProps) {
   const styles = element?.computedStyles ?? EMPTY_STYLES;
 
@@ -223,6 +238,11 @@ export const PropertyPanel = memo(function PropertyPanel({
   const commitManualOffset = (axis: "x" | "y", nextValue: string) => {
     const parsed = parsePxMetricValue(nextValue);
     if (parsed == null) return;
+    if (gsapKeyframes && gsapAnimId && onAddKeyframe) {
+      const pct = Math.max(0, Math.min(100, Math.round(currentPct * 10) / 10));
+      onAddKeyframe(gsapAnimId, pct, axis, parsed);
+      return;
+    }
     const current = readStudioPathOffset(element.element);
     onSetManualOffset(element, {
       x: axis === "x" ? parsed : current.x,
@@ -255,6 +275,16 @@ export const PropertyPanel = memo(function PropertyPanel({
     if (!Number.isFinite(parsed)) return;
     onSetManualRotation(element, { angle: parsed });
   };
+
+  // Keyframe navigation state
+  const elStart = Number.parseFloat(element?.dataAttributes?.start ?? "0") || 0;
+  const elDuration = Number.parseFloat(element?.dataAttributes?.duration ?? "1") || 0;
+  const currentTime = usePlayerStore((s) => s.currentTime);
+  const currentPct = elDuration > 0 ? ((currentTime - elStart) / elDuration) * 100 : 0;
+
+  const gsapKeyframes = gsapAnimations?.find((a) => a.keyframes)?.keyframes?.keyframes ?? null;
+  const gsapAnimId =
+    gsapAnimations?.find((a) => a.keyframes)?.id ?? gsapAnimations?.[0]?.id ?? null;
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-neutral-900 text-neutral-100">
@@ -317,39 +347,118 @@ export const PropertyPanel = memo(function PropertyPanel({
 
         <Section title="Layout" icon={<Move size={15} />}>
           <div className={RESPONSIVE_GRID}>
-            <MetricField
-              label="X"
-              value={formatPxMetricValue(manualOffset.x)}
-              disabled={manualOffsetEditingDisabled}
-              scrub
-              onCommit={(next) => commitManualOffset("x", next)}
-            />
-            <MetricField
-              label="Y"
-              value={formatPxMetricValue(manualOffset.y)}
-              disabled={manualOffsetEditingDisabled}
-              scrub
-              onCommit={(next) => commitManualOffset("y", next)}
-            />
-            <MetricField
-              label="W"
-              value={formatPxMetricValue(resolvedWidth)}
-              disabled={manualSizeEditingDisabled}
-              scrub
-              onCommit={(next) => commitManualSize("width", next)}
-            />
-            <MetricField
-              label="H"
-              value={formatPxMetricValue(resolvedHeight)}
-              disabled={manualSizeEditingDisabled}
-              scrub
-              onCommit={(next) => commitManualSize("height", next)}
-            />
-            <MetricField
-              label="R"
-              value={`${manualRotation.angle}°`}
-              onCommit={(next) => commitManualRotation(next.replace("°", ""))}
-            />
+            <div className="flex items-center gap-1">
+              <div className="flex-1">
+                <MetricField
+                  label="X"
+                  value={formatPxMetricValue(manualOffset.x)}
+                  disabled={manualOffsetEditingDisabled}
+                  scrub
+                  onCommit={(next) => commitManualOffset("x", next)}
+                />
+              </div>
+              {STUDIO_KEYFRAMES_ENABLED && gsapAnimId && (
+                <KeyframeNavigation
+                  property="x"
+                  keyframes={gsapKeyframes}
+                  currentPercentage={currentPct}
+                  onSeek={(pct) => onSeekToTime?.(elStart + (pct / 100) * elDuration)}
+                  onAddKeyframe={(pct) => onAddKeyframe?.(gsapAnimId, pct, "x", manualOffset.x)}
+                  onRemoveKeyframe={(pct) => onRemoveKeyframe?.(gsapAnimId, pct)}
+                  onConvertToKeyframes={() => onConvertToKeyframes?.(gsapAnimId)}
+                />
+              )}
+            </div>
+            <div className="flex items-center gap-1">
+              <div className="flex-1">
+                <MetricField
+                  label="Y"
+                  value={formatPxMetricValue(manualOffset.y)}
+                  disabled={manualOffsetEditingDisabled}
+                  scrub
+                  onCommit={(next) => commitManualOffset("y", next)}
+                />
+              </div>
+              {STUDIO_KEYFRAMES_ENABLED && gsapAnimId && (
+                <KeyframeNavigation
+                  property="y"
+                  keyframes={gsapKeyframes}
+                  currentPercentage={currentPct}
+                  onSeek={(pct) => onSeekToTime?.(elStart + (pct / 100) * elDuration)}
+                  onAddKeyframe={(pct) => onAddKeyframe?.(gsapAnimId, pct, "y", manualOffset.y)}
+                  onRemoveKeyframe={(pct) => onRemoveKeyframe?.(gsapAnimId, pct)}
+                  onConvertToKeyframes={() => onConvertToKeyframes?.(gsapAnimId)}
+                />
+              )}
+            </div>
+            <div className="flex items-center gap-1">
+              <div className="flex-1">
+                <MetricField
+                  label="W"
+                  value={formatPxMetricValue(resolvedWidth)}
+                  disabled={manualSizeEditingDisabled}
+                  scrub
+                  onCommit={(next) => commitManualSize("width", next)}
+                />
+              </div>
+              {STUDIO_KEYFRAMES_ENABLED && gsapAnimId && (
+                <KeyframeNavigation
+                  property="width"
+                  keyframes={gsapKeyframes}
+                  currentPercentage={currentPct}
+                  onSeek={(pct) => onSeekToTime?.(elStart + (pct / 100) * elDuration)}
+                  onAddKeyframe={(pct) => onAddKeyframe?.(gsapAnimId, pct, "width", resolvedWidth)}
+                  onRemoveKeyframe={(pct) => onRemoveKeyframe?.(gsapAnimId, pct)}
+                  onConvertToKeyframes={() => onConvertToKeyframes?.(gsapAnimId)}
+                />
+              )}
+            </div>
+            <div className="flex items-center gap-1">
+              <div className="flex-1">
+                <MetricField
+                  label="H"
+                  value={formatPxMetricValue(resolvedHeight)}
+                  disabled={manualSizeEditingDisabled}
+                  scrub
+                  onCommit={(next) => commitManualSize("height", next)}
+                />
+              </div>
+              {STUDIO_KEYFRAMES_ENABLED && gsapAnimId && (
+                <KeyframeNavigation
+                  property="height"
+                  keyframes={gsapKeyframes}
+                  currentPercentage={currentPct}
+                  onSeek={(pct) => onSeekToTime?.(elStart + (pct / 100) * elDuration)}
+                  onAddKeyframe={(pct) =>
+                    onAddKeyframe?.(gsapAnimId, pct, "height", resolvedHeight)
+                  }
+                  onRemoveKeyframe={(pct) => onRemoveKeyframe?.(gsapAnimId, pct)}
+                  onConvertToKeyframes={() => onConvertToKeyframes?.(gsapAnimId)}
+                />
+              )}
+            </div>
+            <div className="flex items-center gap-1">
+              <div className="flex-1">
+                <MetricField
+                  label="R"
+                  value={`${manualRotation.angle}°`}
+                  onCommit={(next) => commitManualRotation(next.replace("°", ""))}
+                />
+              </div>
+              {STUDIO_KEYFRAMES_ENABLED && gsapAnimId && (
+                <KeyframeNavigation
+                  property="rotation"
+                  keyframes={gsapKeyframes}
+                  currentPercentage={currentPct}
+                  onSeek={(pct) => onSeekToTime?.(elStart + (pct / 100) * elDuration)}
+                  onAddKeyframe={(pct) =>
+                    onAddKeyframe?.(gsapAnimId, pct, "rotation", manualRotation.angle)
+                  }
+                  onRemoveKeyframe={(pct) => onRemoveKeyframe?.(gsapAnimId, pct)}
+                  onConvertToKeyframes={() => onConvertToKeyframes?.(gsapAnimId)}
+                />
+              )}
+            </div>
           </div>
           <div className="mt-3">
             <MetricField

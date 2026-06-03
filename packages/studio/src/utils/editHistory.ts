@@ -61,7 +61,7 @@ export type EditHistoryTransitionResult =
     };
 
 const DEFAULT_MAX_ENTRIES = 100;
-const DEFAULT_COALESCE_MS = 1500;
+const DEFAULT_COALESCE_MS = 300;
 
 export function hashEditHistoryContent(content: string): string {
   let hash = 2166136261;

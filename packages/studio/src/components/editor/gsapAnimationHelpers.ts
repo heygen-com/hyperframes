@@ -14,7 +14,8 @@ export function buildTweenSummary(animation: GsapAnimation): string {
   const props = Object.entries(animation.properties);
   const target = animation.targetSelector;
   const dur = animation.duration ?? 0;
-  const pos = animation.position;
+  const rawPos = animation.position;
+  const pos = typeof rawPos === "number" ? parseFloat(rawPos.toFixed(3)) : rawPos;
   const propDescs = props.map(([p, v]) => {
     const label = (PROP_LABELS[p] ?? p).toLowerCase();
     return `${label} to ${formatPropValue(p, v)}`;

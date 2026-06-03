@@ -236,9 +236,25 @@ export function createManualOffsetDragMember(input: {
   const gestureToken = beginStudioManualEditGesture(input.element);
   const measured = measureManualOffsetDragScreenToOffsetMatrix(input.element, initialOffset);
   if (!measured.ok) {
-    restoreStudioPathOffset(input.element, initialPathOffset);
-    endStudioManualEditGesture(input.element, gestureToken);
-    return { ok: false, reason: measured.reason, selection: input.selection };
+    // Fallback: when GSAP transforms interfere with probe measurement, use
+    // the preview scale as an approximation. The commit path reads the actual
+    // GSAP position from the iframe runtime, so visual imprecision during
+    // drag is acceptable — the final committed position is always exact.
+    const scaleX = input.rect.editScaleX || 1;
+    const scaleY = input.rect.editScaleY || 1;
+    return {
+      ok: true,
+      member: {
+        key: input.key,
+        selection: input.selection,
+        element: input.element,
+        initialOffset,
+        initialPathOffset,
+        gestureToken,
+        screenToOffset: { a: 1 / scaleX, b: 0, c: 0, d: 1 / scaleY },
+        originRect: input.rect,
+      },
+    };
   }
 
   return {
