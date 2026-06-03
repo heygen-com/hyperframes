@@ -72,6 +72,7 @@ interface TimelineProps {
   onBlockedEditAttempt?: (element: TimelineElement, intent: BlockedTimelineEditIntent) => void;
   onSelectElement?: (element: TimelineElement | null) => void;
   onDeleteKeyframe?: (elementId: string, percentage: number) => void;
+  onDeleteAllKeyframes?: (elementId: string) => void;
   onChangeKeyframeEase?: (elementId: string, percentage: number, ease: string) => void;
   onMoveKeyframe?: (element: TimelineElement, oldPct: number, newPct: number) => void;
   onToggleKeyframeAtPlayhead?: (element: TimelineElement) => void;
@@ -92,6 +93,7 @@ export const Timeline = memo(function Timeline({
   onBlockedEditAttempt,
   onSelectElement,
   onDeleteKeyframe,
+  onDeleteAllKeyframes,
   onChangeKeyframeEase,
   onMoveKeyframe,
   onToggleKeyframeAtPlayhead,
@@ -570,6 +572,7 @@ export const Timeline = memo(function Timeline({
           state={kfContextMenu}
           onClose={() => setKfContextMenu(null)}
           onDelete={(elId, pct) => onDeleteKeyframe?.(elId, pct)}
+          onDeleteAll={(elId) => onDeleteAllKeyframes?.(elId)}
           onChangeEase={(elId, pct, ease) => onChangeKeyframeEase?.(elId, pct, ease)}
           onCopyProperties={(elId, pct) => {
             const kfData = keyframeCache.get(elId);
