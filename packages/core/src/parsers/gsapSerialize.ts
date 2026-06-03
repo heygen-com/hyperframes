@@ -21,6 +21,23 @@ export interface GsapAnimation {
   ease?: string;
   /** Non-editable GSAP config (stagger, yoyo, repeat, etc.) preserved for round-trips. */
   extras?: Record<string, unknown>;
+  /** Native GSAP keyframes data — present when the tween uses keyframes: { ... }. */
+  keyframes?: GsapKeyframesData;
+}
+
+export interface GsapPercentageKeyframe {
+  percentage: number;
+  properties: Record<string, number | string>;
+  ease?: string;
+}
+
+export type GsapKeyframeFormat = "percentage" | "object-array" | "simple-array";
+
+export interface GsapKeyframesData {
+  format: GsapKeyframeFormat;
+  keyframes: GsapPercentageKeyframe[];
+  ease?: string;
+  easeEach?: string;
 }
 
 export interface ParsedGsap {

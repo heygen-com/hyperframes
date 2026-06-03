@@ -6,17 +6,34 @@
  */
 
 export const SUPPORTED_PROPS = [
-  "opacity",
-  "visibility",
+  // Transforms
   "x",
   "y",
   "scale",
   "scaleX",
   "scaleY",
   "rotation",
+  "skewX",
+  "skewY",
+  // Visibility
+  "opacity",
+  "visibility",
   "autoAlpha",
+  // Dimensions
   "width",
   "height",
+  // Colors
+  "color",
+  "backgroundColor",
+  "borderColor",
+  // Box model
+  "borderRadius",
+  // Typography
+  "fontSize",
+  "letterSpacing",
+  // Filter & Clipping
+  "filter",
+  "clipPath",
 ];
 
 export const SUPPORTED_EASES = [
@@ -45,4 +62,9 @@ export const SUPPORTED_EASES = [
   "expo.in",
   "expo.out",
   "expo.inOut",
+  "spring-gentle",
+  "spring-bouncy",
+  "spring-stiff",
+  "spring-wobbly",
+  "spring-heavy",
 ];

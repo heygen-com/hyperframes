@@ -579,7 +579,28 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
         defaultValue: number | string;
       }
     | { type: "remove-property"; animationId: string; property: string }
-    | { type: "remove-from-property"; animationId: string; property: string };
+    | { type: "remove-from-property"; animationId: string; property: string }
+    | {
+        type: "add-keyframe";
+        animationId: string;
+        percentage: number;
+        properties: Record<string, number | string>;
+        ease?: string;
+      }
+    | { type: "remove-keyframe"; animationId: string; percentage: number }
+    | {
+        type: "update-keyframe";
+        animationId: string;
+        percentage: number;
+        properties: Record<string, number | string>;
+        ease?: string;
+      }
+    | {
+        type: "convert-to-keyframes";
+        animationId: string;
+        resolvedFromValues?: Record<string, number | string>;
+      }
+    | { type: "remove-all-keyframes"; animationId: string };
 
   api.post("/projects/:id/gsap-mutations/*", async (c) => {
     const res = await resolveProjectPath(c, adapter, (id) => `/projects/${id}/gsap-mutations/`, {
@@ -704,6 +725,47 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
         newScript = updateAnimationInScript(block.scriptText, body.animationId, {
           fromProperties: filtered,
         });
+        break;
+      }
+      case "add-keyframe": {
+        const { addKeyframeToScript } = await loadGsapParser();
+        newScript = addKeyframeToScript(
+          block.scriptText,
+          body.animationId,
+          body.percentage,
+          body.properties,
+          body.ease,
+        );
+        break;
+      }
+      case "remove-keyframe": {
+        const { removeKeyframeFromScript } = await loadGsapParser();
+        newScript = removeKeyframeFromScript(block.scriptText, body.animationId, body.percentage);
+        break;
+      }
+      case "update-keyframe": {
+        const { updateKeyframeInScript } = await loadGsapParser();
+        newScript = updateKeyframeInScript(
+          block.scriptText,
+          body.animationId,
+          body.percentage,
+          body.properties,
+          body.ease,
+        );
+        break;
+      }
+      case "convert-to-keyframes": {
+        const { convertToKeyframesInScript } = await loadGsapParser();
+        newScript = convertToKeyframesInScript(
+          block.scriptText,
+          body.animationId,
+          body.resolvedFromValues,
+        );
+        break;
+      }
+      case "remove-all-keyframes": {
+        const { removeAllKeyframesFromScript } = await loadGsapParser();
+        newScript = removeAllKeyframesFromScript(block.scriptText, body.animationId);
         break;
       }
       default:
