@@ -305,3 +305,107 @@ async function commitFromToPosition(
     { label: "Move (GSAP to y)", softReload: true, beforeReload },
   );
 }
+
+// ── Resize intercept ──────────────────────────────────────────────────────
+
+export async function tryGsapResizeIntercept(
+  selection: DomEditSelection,
+  size: { width: number; height: number },
+  animations: GsapAnimation[],
+  iframe: HTMLIFrameElement | null,
+  commitMutation: GsapDragCommitCallbacks["commitMutation"],
+  fetchFallbackAnimations?: () => Promise<GsapAnimation[]>,
+): Promise<boolean> {
+  let anim = animations.find(
+    (a) => "width" in a.properties || "height" in a.properties || a.keyframes,
+  );
+  if (!anim && fetchFallbackAnimations) {
+    const fresh = await fetchFallbackAnimations();
+    anim = fresh.find((a) => "width" in a.properties || "height" in a.properties || a.keyframes);
+  }
+  if (!anim) return false;
+
+  const pct = computeCurrentPercentage(selection);
+
+  if (!anim.keyframes) {
+    await commitMutation(
+      selection,
+      { type: "convert-to-keyframes", animationId: anim.id },
+      { label: "Convert to keyframes for resize", skipReload: true },
+    );
+  }
+
+  await commitMutation(
+    selection,
+    {
+      type: "add-keyframe",
+      animationId: anim.id,
+      percentage: pct,
+      properties: { width: Math.round(size.width), height: Math.round(size.height) },
+    },
+    { label: `Resize (keyframe ${pct}%)`, softReload: true },
+  );
+  return true;
+}
+
+// ── Rotation intercept ────────────────────────────────────────────────────
+
+export async function tryGsapRotationIntercept(
+  selection: DomEditSelection,
+  angle: number,
+  animations: GsapAnimation[],
+  iframe: HTMLIFrameElement | null,
+  commitMutation: GsapDragCommitCallbacks["commitMutation"],
+  fetchFallbackAnimations?: () => Promise<GsapAnimation[]>,
+): Promise<boolean> {
+  let anim = animations.find((a) => "rotation" in a.properties || a.keyframes);
+  if (!anim && fetchFallbackAnimations) {
+    const fresh = await fetchFallbackAnimations();
+    anim = fresh.find((a) => "rotation" in a.properties || a.keyframes);
+  }
+  if (!anim) return false;
+
+  const selector = selectorForSelection(selection);
+  if (!selector) return false;
+
+  let gsapRotation = 0;
+  if (iframe?.contentWindow) {
+    try {
+      const gsap = (
+        iframe.contentWindow as unknown as {
+          gsap?: { getProperty: (el: Element, prop: string) => number };
+        }
+      ).gsap;
+      const doc = iframe.contentDocument;
+      const el = doc?.querySelector(selector);
+      if (gsap?.getProperty && el) {
+        gsapRotation = Number(gsap.getProperty(el, "rotation")) || 0;
+      }
+    } catch {
+      /* cross-origin guard */
+    }
+  }
+
+  const pct = computeCurrentPercentage(selection);
+  const newRotation = Math.round(gsapRotation + angle);
+
+  if (!anim.keyframes) {
+    await commitMutation(
+      selection,
+      { type: "convert-to-keyframes", animationId: anim.id },
+      { label: "Convert to keyframes for rotation", skipReload: true },
+    );
+  }
+
+  await commitMutation(
+    selection,
+    {
+      type: "add-keyframe",
+      animationId: anim.id,
+      percentage: pct,
+      properties: { rotation: newRotation },
+    },
+    { label: `Rotate (keyframe ${pct}%)`, softReload: true },
+  );
+  return true;
+}

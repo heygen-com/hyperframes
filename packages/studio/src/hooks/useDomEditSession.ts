@@ -23,7 +23,11 @@ import {
   fetchParsedAnimations,
   getAnimationsForElement,
 } from "./useGsapTweenCache";
-import { tryGsapDragIntercept } from "./gsapRuntimeBridge";
+import {
+  tryGsapDragIntercept,
+  tryGsapResizeIntercept,
+  tryGsapRotationIntercept,
+} from "./gsapRuntimeBridge";
 
 // ── Types ──
 
@@ -326,6 +330,68 @@ export function useDomEditSession({
     ],
   );
 
+  const makeFetchFallback = useCallback(
+    (selection: DomEditSelection) => async () => {
+      const pid = projectId;
+      if (!pid) return [];
+      const parsed = await fetchParsedAnimations(pid, gsapSourceFile);
+      if (!parsed) return [];
+      return getAnimationsForElement(parsed.animations, {
+        id: selection.id ?? null,
+        selector: selection.selector ?? null,
+      });
+    },
+    [projectId, gsapSourceFile],
+  );
+
+  const handleGsapAwareBoxSizeCommit = useCallback(
+    async (selection: DomEditSelection, next: { width: number; height: number }) => {
+      if (gsapCommitMutation) {
+        const handled = await tryGsapResizeIntercept(
+          selection,
+          next,
+          selectedGsapAnimations,
+          previewIframeRef.current,
+          gsapCommitMutation,
+          makeFetchFallback(selection),
+        );
+        if (handled) return;
+      }
+      handleDomBoxSizeCommit(selection, next);
+    },
+    [
+      handleDomBoxSizeCommit,
+      selectedGsapAnimations,
+      gsapCommitMutation,
+      previewIframeRef,
+      makeFetchFallback,
+    ],
+  );
+
+  const handleGsapAwareRotationCommit = useCallback(
+    async (selection: DomEditSelection, next: { angle: number }) => {
+      if (gsapCommitMutation) {
+        const handled = await tryGsapRotationIntercept(
+          selection,
+          next.angle,
+          selectedGsapAnimations,
+          previewIframeRef.current,
+          gsapCommitMutation,
+          makeFetchFallback(selection),
+        );
+        if (handled) return;
+      }
+      handleDomRotationCommit(selection, next);
+    },
+    [
+      handleDomRotationCommit,
+      selectedGsapAnimations,
+      gsapCommitMutation,
+      previewIframeRef,
+      makeFetchFallback,
+    ],
+  );
+
   const handleGsapUpdateProperty = useCallback(
     (animId: string, prop: string, value: number | string) => {
       if (!domEditSelection) return;
@@ -552,8 +618,8 @@ export function useDomEditSession({
     handleDomHtmlAttributeCommit,
     handleDomPathOffsetCommit: handleGsapAwarePathOffsetCommit,
     handleDomGroupPathOffsetCommit,
-    handleDomBoxSizeCommit,
-    handleDomRotationCommit,
+    handleDomBoxSizeCommit: handleGsapAwareBoxSizeCommit,
+    handleDomRotationCommit: handleGsapAwareRotationCommit,
     handleDomManualEditsReset,
     handleDomMotionCommit,
     handleDomMotionClear,

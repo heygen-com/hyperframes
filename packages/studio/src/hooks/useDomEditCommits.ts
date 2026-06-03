@@ -352,23 +352,25 @@ export function useDomEditCommits({
   const handleDomBoxSizeCommit = useCallback(
     (selection: DomEditSelection, next: { width: number; height: number }) => {
       applyStudioBoxSize(selection.element, next);
+      if (isElementGsapTargeted(previewIframeRef.current, selection.element)) return;
       commitPositionPatchToHtml(selection, buildBoxSizePatches(selection.element), {
         label: "Resize layer box",
         coalesceKey: `box-size:${getDomEditTargetKey(selection)}`,
       });
     },
-    [commitPositionPatchToHtml],
+    [commitPositionPatchToHtml, previewIframeRef],
   );
 
   const handleDomRotationCommit = useCallback(
     (selection: DomEditSelection, next: { angle: number }) => {
       applyStudioRotation(selection.element, next);
+      if (isElementGsapTargeted(previewIframeRef.current, selection.element)) return;
       commitPositionPatchToHtml(selection, buildRotationPatches(selection.element), {
         label: "Rotate layer",
         coalesceKey: `rotation:${getDomEditTargetKey(selection)}`,
       });
     },
-    [commitPositionPatchToHtml],
+    [commitPositionPatchToHtml, previewIframeRef],
   );
 
   const handleDomManualEditsReset = useCallback(
