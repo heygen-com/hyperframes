@@ -71,7 +71,6 @@ interface NLELayoutProps {
   onBlockedEditAttempt?: (element: TimelineElement, intent: BlockedTimelineEditIntent) => void;
   onSelectTimelineElement?: (element: TimelineElement | null) => void;
   onDeleteKeyframe?: (elementId: string, percentage: number) => void;
-  onDeleteAllKeyframes?: (elementId: string) => void;
   onChangeKeyframeEase?: (elementId: string, percentage: number, ease: string) => void;
   onMoveKeyframe?: (element: TimelineElement, oldPct: number, newPct: number) => void;
   onToggleKeyframeAtPlayhead?: (element: TimelineElement) => void;
@@ -124,7 +123,6 @@ export const NLELayout = memo(function NLELayout({
   onBlockedEditAttempt,
   onSelectTimelineElement,
   onDeleteKeyframe,
-  onDeleteAllKeyframes,
   onChangeKeyframeEase,
   onMoveKeyframe,
   onToggleKeyframeAtPlayhead,
@@ -459,7 +457,6 @@ export const NLELayout = memo(function NLELayout({
                 onBlockedEditAttempt={onBlockedEditAttempt}
                 onSelectElement={onSelectTimelineElement}
                 onDeleteKeyframe={onDeleteKeyframe}
-                onDeleteAllKeyframes={onDeleteAllKeyframes}
                 onChangeKeyframeEase={onChangeKeyframeEase}
                 onMoveKeyframe={onMoveKeyframe}
                 onToggleKeyframeAtPlayhead={onToggleKeyframeAtPlayhead}

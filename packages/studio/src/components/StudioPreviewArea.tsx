@@ -107,7 +107,6 @@ export function StudioPreviewArea({
     handleGsapUpdateMeta,
     handleGsapAddKeyframe,
     handleGsapConvertToKeyframes,
-    handleGsapRemoveAllKeyframes,
   } = useDomEditContext();
 
   return (
@@ -128,10 +127,6 @@ export function StudioPreviewArea({
           onResizeElement={handleTimelineElementResize}
           onBlockedEditAttempt={handleBlockedTimelineEdit}
           onSelectTimelineElement={handleTimelineElementSelect}
-          onDeleteAllKeyframes={(_elId) => {
-            const anim = selectedGsapAnimations.find((a) => a.keyframes);
-            if (anim) handleGsapRemoveAllKeyframes(anim.id);
-          }}
           onDeleteKeyframe={(_elId, pct) => {
             const anim = selectedGsapAnimations.find((a) => a.keyframes);
             if (anim) handleGsapRemoveKeyframe(anim.id, pct);
