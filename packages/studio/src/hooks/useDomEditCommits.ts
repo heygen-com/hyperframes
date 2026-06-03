@@ -35,6 +35,37 @@ import type { DomEditGroupPathOffsetCommit } from "../components/editor/DomEditO
 import type { EditHistoryKind } from "../utils/editHistory";
 import { useDomEditTextCommits } from "./useDomEditTextCommits";
 
+// ── Helpers ──
+
+type TimelineLike = { getChildren?: (nested: boolean) => Array<{ targets?: () => Element[] }> };
+
+function isElementGsapTargeted(iframe: HTMLIFrameElement | null, element: HTMLElement): boolean {
+  if (!iframe?.contentWindow) return false;
+  let timelines: Record<string, TimelineLike> | undefined;
+  try {
+    timelines = (iframe.contentWindow as Window & { __timelines?: Record<string, TimelineLike> })
+      .__timelines;
+  } catch {
+    return false;
+  }
+  if (!timelines) return false;
+  const id = element.id;
+  for (const tl of Object.values(timelines)) {
+    if (!tl?.getChildren) continue;
+    try {
+      for (const child of tl.getChildren(true)) {
+        if (!child.targets) continue;
+        for (const t of child.targets()) {
+          if (t === element || (id && t.id === id)) return true;
+        }
+      }
+    } catch {
+      continue;
+    }
+  }
+  return false;
+}
+
 // ── Types ──
 
 interface RecordEditInput {
@@ -290,12 +321,13 @@ export function useDomEditCommits({
   const handleDomPathOffsetCommit = useCallback(
     (selection: DomEditSelection, next: { x: number; y: number }) => {
       applyStudioPathOffset(selection.element, next);
+      if (isElementGsapTargeted(previewIframeRef.current, selection.element)) return;
       commitPositionPatchToHtml(selection, buildPathOffsetPatches(selection.element), {
         label: "Move layer",
         coalesceKey: `path-offset:${getDomEditTargetKey(selection)}`,
       });
     },
-    [commitPositionPatchToHtml],
+    [commitPositionPatchToHtml, previewIframeRef],
   );
 
   const handleDomGroupPathOffsetCommit = useCallback(
@@ -307,13 +339,14 @@ export function useDomEditCommits({
         .join(":");
       for (const { selection, next } of updates) {
         applyStudioPathOffset(selection.element, next);
+        if (isElementGsapTargeted(previewIframeRef.current, selection.element)) continue;
         commitPositionPatchToHtml(selection, buildPathOffsetPatches(selection.element), {
           label: `Move ${updates.length} layers`,
           coalesceKey: `group-path-offset:${coalesceKey}`,
         });
       }
     },
-    [commitPositionPatchToHtml],
+    [commitPositionPatchToHtml, previewIframeRef],
   );
 
   const handleDomBoxSizeCommit = useCallback(

@@ -77,6 +77,9 @@ interface UseAppHotkeysParams {
   handleCopy: () => boolean;
   handlePaste: () => Promise<void>;
   handleCut: () => Promise<boolean>;
+  onResetKeyframes: () => boolean;
+  onDeleteSelectedKeyframes: () => void;
+  onAfterUndoRedo?: () => void;
 }
 
 // ── Hook ──
@@ -98,6 +101,9 @@ export function useAppHotkeys({
   handleCopy,
   handlePaste,
   handleCut,
+  onResetKeyframes,
+  onDeleteSelectedKeyframes,
+  onAfterUndoRedo,
 }: UseAppHotkeysParams) {
   const previewHotkeyWindowRef = useRef<Window | null>(null);
   const handleAppKeyDownRef = useRef<((event: KeyboardEvent) => void) | undefined>(undefined);
@@ -144,6 +150,7 @@ export function useAppHotkeys({
       return;
     }
     if (result.ok && result.label) {
+      onAfterUndoRedo?.();
       await syncHistoryPreviewAfterApply(result.paths);
       showToast(`Undid ${result.label}`, "info");
     }
@@ -154,6 +161,7 @@ export function useAppHotkeys({
     syncHistoryPreviewAfterApply,
     waitForPendingDomEditSaves,
     writeHistoryProjectFile,
+    onAfterUndoRedo,
   ]);
 
   const handleRedo = useCallback(async () => {
@@ -167,6 +175,7 @@ export function useAppHotkeys({
       return;
     }
     if (result.ok && result.label) {
+      onAfterUndoRedo?.();
       await syncHistoryPreviewAfterApply(result.paths);
       showToast(`Redid ${result.label}`, "info");
     }
@@ -177,6 +186,7 @@ export function useAppHotkeys({
     syncHistoryPreviewAfterApply,
     waitForPendingDomEditSaves,
     writeHistoryProjectFile,
+    onAfterUndoRedo,
   ]);
 
   // ── Stable refs for the consolidated keydown handler ──
@@ -197,6 +207,10 @@ export function useAppHotkeys({
   handlePasteRef.current = handlePaste;
   const handleCutRef = useRef(handleCut);
   handleCutRef.current = handleCut;
+  const onResetKeyframesRef = useRef(onResetKeyframes);
+  onResetKeyframesRef.current = onResetKeyframes;
+  const onDeleteSelectedKeyframesRef = useRef(onDeleteSelectedKeyframes);
+  onDeleteSelectedKeyframesRef.current = onDeleteSelectedKeyframes;
 
   // ── Consolidated keydown handler ──
 
@@ -292,7 +306,7 @@ export function useAppHotkeys({
       return;
     }
 
-    // Delete / Backspace — remove selected element (timeline clip or preview selection)
+    // Delete / Backspace — remove selected keyframes > reset keyframes > remove element
     if (
       (event.key === "Delete" || event.key === "Backspace") &&
       !event.metaKey &&
@@ -300,6 +314,26 @@ export function useAppHotkeys({
       !event.altKey &&
       !isEditableTarget(event.target)
     ) {
+      // Priority: selected keyframes take precedence over clip deletion
+      const { selectedKeyframes } = usePlayerStore.getState();
+      if (selectedKeyframes.size > 0) {
+        onDeleteSelectedKeyframesRef.current();
+        usePlayerStore.getState().clearSelectedKeyframes();
+        event.preventDefault();
+        return;
+      }
+
+      // Backspace: try resetting keyframes first; fall through to delete if none found
+      if (event.key === "Backspace") {
+        const { selectedElementId, keyframeCache } = usePlayerStore.getState();
+        if (selectedElementId && keyframeCache.has(selectedElementId)) {
+          if (onResetKeyframesRef.current()) {
+            event.preventDefault();
+            return;
+          }
+        }
+      }
+
       const { selectedElementId, elements } = usePlayerStore.getState();
       if (selectedElementId) {
         const element = elements.find((el) => (el.key ?? el.id) === selectedElementId);

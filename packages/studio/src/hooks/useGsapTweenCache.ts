@@ -1,5 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import type { GsapAnimation, ParsedGsap } from "@hyperframes/core/gsap-parser";
+import { usePlayerStore } from "../player/store/playerStore";
+
+function extractIdFromSelector(selector: string): string | null {
+  const match = selector.match(/^#([\w-]+)/);
+  return match ? match[1] : null;
+}
 
 /** The selected element's identity for matching tweens to it. */
 export interface GsapElementTarget {
@@ -28,7 +34,7 @@ export function getAnimationsForElement(
   );
 }
 
-async function fetchParsedAnimations(
+export async function fetchParsedAnimations(
   projectId: string,
   sourceFile: string,
 ): Promise<ParsedGsap | null> {
@@ -98,6 +104,16 @@ export function useGsapAnimationsForElement(
     [allAnimations, targetId, targetSelector],
   );
 
+  // Populate keyframe cache for the selected element.
+  // Key format must match timeline element keys: "sourceFile#domId".
+  const elementId = target?.id ?? null;
+  useEffect(() => {
+    if (!elementId) return;
+    const { setKeyframeCache } = usePlayerStore.getState();
+    const withKeyframes = animations.find((a) => a.keyframes);
+    setKeyframeCache(`${sourceFile}#${elementId}`, withKeyframes?.keyframes ?? undefined);
+  }, [elementId, sourceFile, animations]);
+
   return { animations, multipleTimelines, unsupportedTimelinePattern };
 }
 
@@ -105,4 +121,39 @@ export function useGsapCacheVersion() {
   const [version, setVersion] = useState(0);
   const bump = useCallback(() => setVersion((v) => v + 1), []);
   return { version, bump };
+}
+
+/**
+ * Fetch GSAP animations for a file and populate the keyframe cache for all
+ * elements. Called from the Timeline component so diamonds show without
+ * requiring a selection.
+ */
+export function usePopulateKeyframeCacheForFile(
+  projectId: string | null,
+  sourceFile: string,
+  version: number,
+): void {
+  const lastFetchKeyRef = useRef("");
+
+  useEffect(() => {
+    const fetchKey = `kf-cache:${projectId}:${sourceFile}:${version}`;
+    if (fetchKey === lastFetchKeyRef.current) return;
+    lastFetchKeyRef.current = fetchKey;
+    if (!projectId) return;
+
+    let cancelled = false;
+    fetchParsedAnimations(projectId, sourceFile).then((parsed) => {
+      if (cancelled || !parsed) return;
+      const { setKeyframeCache } = usePlayerStore.getState();
+      for (const anim of parsed.animations) {
+        if (!anim.keyframes) continue;
+        const id = extractIdFromSelector(anim.targetSelector);
+        if (id) setKeyframeCache(`${sourceFile}#${id}`, anim.keyframes);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, sourceFile, version]);
 }

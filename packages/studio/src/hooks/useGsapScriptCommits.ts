@@ -3,6 +3,8 @@ import type { ParsedGsap } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import type { EditHistoryKind } from "../utils/editHistory";
 import { applySoftReload } from "../utils/gsapSoftReload";
+import { executeOptimistic } from "../utils/optimisticUpdate";
+import { usePlayerStore, type KeyframeCacheEntry } from "../player/store/playerStore";
 
 const PROPERTY_DEFAULTS: Record<string, number> = {
   opacity: 1,
@@ -70,6 +72,27 @@ async function mutateGsapScript(
   }
 }
 
+function buildCacheKey(sourceFile: string, elementId: string): string {
+  return `${sourceFile}#${elementId}`;
+}
+
+function readKeyframeSnapshot(
+  sourceFile: string,
+  elementId: string | null | undefined,
+): KeyframeCacheEntry | undefined {
+  if (!elementId) return undefined;
+  return usePlayerStore.getState().keyframeCache.get(buildCacheKey(sourceFile, elementId));
+}
+
+function writeKeyframeCache(
+  sourceFile: string,
+  elementId: string | null | undefined,
+  data: KeyframeCacheEntry | undefined,
+): void {
+  if (!elementId) return;
+  usePlayerStore.getState().setKeyframeCache(buildCacheKey(sourceFile, elementId), data);
+}
+
 interface GsapScriptCommitsParams {
   projectIdRef: React.MutableRefObject<string | null>;
   activeCompPath: string | null;
@@ -113,7 +136,13 @@ export function useGsapScriptCommits({
     async (
       selection: DomEditSelection,
       mutation: Record<string, unknown>,
-      options: { label: string; coalesceKey?: string; softReload?: boolean },
+      options: {
+        label: string;
+        coalesceKey?: string;
+        softReload?: boolean;
+        skipReload?: boolean;
+        beforeReload?: () => void;
+      },
     ) => {
       const pid = projectIdRef.current;
       if (!pid) return;
@@ -134,6 +163,10 @@ export function useGsapScriptCommits({
       }
 
       onCacheInvalidate();
+
+      if (options.skipReload) return;
+
+      options.beforeReload?.();
 
       if (options.softReload && result.scriptText) {
         if (!applySoftReload(previewIframeRef.current, result.scriptText)) {
@@ -225,7 +258,7 @@ export function useGsapScriptCommits({
     async (
       selection: DomEditSelection,
       method: "to" | "from" | "set" | "fromTo",
-      currentTime?: number,
+      _currentTime?: number,
     ) => {
       const { selector, autoId } = ensureElementAddressable(selection);
 
@@ -253,12 +286,15 @@ export function useGsapScriptCommits({
         if (!data.changed) return;
       }
 
-      const start = currentTime ?? (Number.parseFloat(selection.dataAttributes.start ?? "0") || 0);
+      const elStart = Number.parseFloat(selection.dataAttributes?.start ?? "0") || 0;
+      const elDuration = Number.parseFloat(selection.dataAttributes?.duration ?? "1") || 1;
+      const position = Math.round(elStart * 1000) / 1000;
+      const duration = Math.round(elDuration * 1000) / 1000;
       const toDefaults: Record<string, Record<string, number>> = {
         from: { opacity: 0 },
-        to: { opacity: 1 },
+        to: { x: 0, y: 0, opacity: 1 },
         set: { opacity: 1 },
-        fromTo: { opacity: 1 },
+        fromTo: { x: 0, y: 0, opacity: 1 },
       };
 
       await commitMutation(
@@ -267,8 +303,8 @@ export function useGsapScriptCommits({
           type: "add",
           targetSelector: selector,
           method,
-          position: start,
-          duration: method === "set" ? undefined : 0.5,
+          position,
+          duration: method === "set" ? undefined : duration,
           ease: method === "set" ? undefined : "power2.out",
           properties: toDefaults[method] ?? { opacity: 1 },
           fromProperties: method === "fromTo" ? { opacity: 0 } : undefined,
@@ -353,7 +389,93 @@ export function useGsapScriptCommits({
     [commitMutation],
   );
 
+  const addKeyframe = useCallback(
+    (
+      selection: DomEditSelection,
+      animationId: string,
+      percentage: number,
+      property: string,
+      value: number | string,
+    ) => {
+      const sf = selection.sourceFile || activeCompPath || "index.html";
+      const elementId = selection.id;
+      void executeOptimistic<KeyframeCacheEntry | undefined>({
+        apply: () => {
+          const prev = readKeyframeSnapshot(sf, elementId);
+          if (prev) {
+            const newKeyframes = [
+              ...prev.keyframes,
+              { percentage, properties: { [property]: value } },
+            ].sort((a, b) => a.percentage - b.percentage);
+            writeKeyframeCache(sf, elementId, { ...prev, keyframes: newKeyframes });
+          }
+          return prev;
+        },
+        persist: () =>
+          commitMutation(
+            selection,
+            { type: "add-keyframe", animationId, percentage, properties: { [property]: value } },
+            { label: `Add keyframe at ${percentage}%`, softReload: true },
+          ),
+        rollback: (prev) => {
+          writeKeyframeCache(sf, elementId, prev);
+        },
+      });
+    },
+    [commitMutation, activeCompPath],
+  );
+
+  const removeKeyframe = useCallback(
+    (selection: DomEditSelection, animationId: string, percentage: number) => {
+      const sf = selection.sourceFile || activeCompPath || "index.html";
+      const elementId = selection.id;
+      void executeOptimistic<KeyframeCacheEntry | undefined>({
+        apply: () => {
+          const prev = readKeyframeSnapshot(sf, elementId);
+          if (prev) {
+            const newKeyframes = prev.keyframes.filter((kf) => kf.percentage !== percentage);
+            writeKeyframeCache(sf, elementId, { ...prev, keyframes: newKeyframes });
+          }
+          return prev;
+        },
+        persist: () =>
+          commitMutation(
+            selection,
+            { type: "remove-keyframe", animationId, percentage },
+            { label: `Remove keyframe at ${percentage}%`, softReload: true },
+          ),
+        rollback: (prev) => {
+          writeKeyframeCache(sf, elementId, prev);
+        },
+      });
+    },
+    [commitMutation, activeCompPath],
+  );
+
+  const convertToKeyframes = useCallback(
+    (selection: DomEditSelection, animationId: string) => {
+      void commitMutation(
+        selection,
+        { type: "convert-to-keyframes", animationId },
+        { label: "Convert to keyframes" },
+      );
+    },
+    [commitMutation],
+  );
+
+  const removeAllKeyframes = useCallback(
+    (selection: DomEditSelection, animationId: string) => {
+      void commitMutation(
+        selection,
+        { type: "remove-all-keyframes", animationId },
+        { label: "Remove all keyframes", softReload: true },
+      );
+    },
+    [commitMutation],
+  );
+
   return {
+    commitMutation,
     updateGsapProperty,
     updateGsapMeta,
     deleteGsapAnimation,
@@ -363,5 +485,9 @@ export function useGsapScriptCommits({
     updateGsapFromProperty,
     addGsapFromProperty,
     removeGsapFromProperty,
+    addKeyframe,
+    removeKeyframe,
+    convertToKeyframes,
+    removeAllKeyframes,
   };
 }
