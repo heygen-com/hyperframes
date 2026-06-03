@@ -4,7 +4,7 @@ You are here because SKILL.md told you to read this file before writing animatio
 
 ## Technique Selection by Energy
 
-Captions are a constrained surface — the highlight and exit technique is closely tied to how much intensity the spoken content carries. The table below is a calibration reference. If DESIGN.md or the storyboard specifies a caption style, that overrides anything here.
+Captions are a constrained surface — the highlight and exit technique is closely tied to how much intensity the spoken content carries. The table below is a calibration reference. If the design spec (`frame.md` or `design.md`) or the storyboard specifies a caption style, that overrides anything here.
 
 The core principle: **all energy levels use karaoke highlight as the baseline.** The difference is intensity — not the technique type.
 

@@ -24,11 +24,11 @@ For exploratory requests, consider offering 2-3 variations that differ meaningfu
 
 ### Step 1: Design system
 
-If `design.md` or `DESIGN.md` exists in the project, read it first (check both casings — they're different files on Linux). It's the source of truth for brand colors, fonts, and constraints. Use its exact values — don't invent colors or substitute fonts. Any format works (YAML frontmatter, prose, tables — just extract the values).
+If a design spec exists in the project, read it first. Look in precedence order: `frame.md`, then `design.md`, then `DESIGN.md` (check both casings — they're different files on Linux). `frame.md` is the preferred spec for video/hyperframes projects and wins if more than one exists; it uses the same format as `design.md`. It's the source of truth for brand colors, fonts, and constraints. Use its exact values — don't invent colors or substitute fonts. Any format works (YAML frontmatter, prose, tables — just extract the values).
 
-If it names fonts you can't find locally (no `fonts/` directory with `.woff2` files, not a built-in font), warn the user before writing HTML: "design.md specifies [font name] but no font files found. Please add .woff2 files to `fonts/` or I'll fall back to [closest built-in alternative]."
+If it names fonts you can't find locally (no `fonts/` directory with `.woff2` files, not a built-in font), warn the user before writing HTML: "the spec specifies [font name] but no font files found. Please add .woff2 files to `fonts/` or I'll fall back to [closest built-in alternative]."
 
-If no `design.md` exists, offer the user a choice:
+If no `frame.md` or `design.md` exists, offer the user a choice:
 
 1. **User named a style or mood?** → Read [visual-styles.md](./visual-styles.md) for the 8 named presets. Pick the closest match.
 2. **Want to browse options visually?** → Run the design picker: read [references/design-picker.md](references/design-picker.md) for the full workflow. This serves a visual picker page. The user configures mood, palette, typography, and motion in the browser, then copies the generated design.md and pastes it back into the conversation.
@@ -38,7 +38,7 @@ If no `design.md` exists, offer the user a choice:
 
 ### Step 2: Prompt expansion
 
-Always run on every composition (except single-scene pieces and trivial edits). This step grounds the user's intent against `design.md` and `house-style.md` and produces a consistent intermediate that every downstream agent reads the same way.
+Always run on every composition (except single-scene pieces and trivial edits). This step grounds the user's intent against the design spec (`frame.md` or `design.md`) and `house-style.md` and produces a consistent intermediate that every downstream agent reads the same way.
 
 Read [references/prompt-expansion.md](references/prompt-expansion.md) for the full process and output format.
 
@@ -356,12 +356,12 @@ tl.from("#s2-heading", { x: -40, opacity: 0, duration: 0.6, ease: "expo.out" }, 
 - 60px+ headlines, 20px+ body, 16px+ data labels for rendered video
 - `font-variant-numeric: tabular-nums` on number columns
 
-If no `design.md` exists, follow [house-style.md](./house-style.md) for aesthetic defaults.
+If no `frame.md` or `design.md` exists, follow [house-style.md](./house-style.md) for aesthetic defaults.
 
 ## Typography and Assets
 
 - **Built-in fonts:** Write the `font-family` you want in CSS — the compiler embeds supported fonts automatically.
-- **Custom fonts:** If design.md names a font that isn't built-in, the user must provide `.woff2` files in a `fonts/` directory. If missing, warn before writing HTML. When files exist, add `@font-face` declarations pointing to the local files.
+- **Custom fonts:** If the spec (`frame.md` or `design.md`) names a font that isn't built-in, the user must provide `.woff2` files in a `fonts/` directory. If missing, warn before writing HTML. When files exist, add `@font-face` declarations pointing to the local files.
 - Add `crossorigin="anonymous"` to external media
 - For dynamic text overflow, use `window.__hyperframes.fitTextFontSize(text, { maxWidth, fontFamily, fontWeight })`
 - All files live at the project root alongside `index.html`; sub-compositions use `../`
@@ -378,7 +378,7 @@ If no `design.md` exists, follow [house-style.md](./house-style.md) for aestheti
 **Fast (run immediately, block on results):**
 
 - [ ] `npx hyperframes lint` and `npx hyperframes validate` both pass
-- [ ] Design adherence verified if design.md exists
+- [ ] Design adherence verified if a design spec (`frame.md` or `design.md`) exists
 
 **Slow (run in parallel while presenting the preview to the user):**
 
@@ -423,18 +423,18 @@ Use `--no-contrast` to skip if iterating rapidly and you'll check later.
 
 ### Design Adherence
 
-If a `design.md` exists, verify the composition follows it after authoring. Read the HTML and check:
+If a design spec (`frame.md` or `design.md`) exists, verify the composition follows it after authoring. Read the HTML and check:
 
-1. **Colors** — every hex value in the composition appears in design.md's palette section (however the user labeled it: Colors, Palette, Theme, etc.). Flag any invented colors.
-2. **Typography** — font families and weights match design.md's type spec. No substitutions.
+1. **Colors** — every hex value in the composition appears in the spec's palette section (however the user labeled it: Colors, Palette, Theme, etc.). Flag any invented colors.
+2. **Typography** — font families and weights match the spec's type spec. No substitutions.
 3. **Corners** — border-radius values match the declared corner style, if specified.
 4. **Spacing** — padding and gap values fall within the declared density range, if specified.
 5. **Depth** — shadow usage matches the declared depth level, if specified (flat = none, subtle = light, layered = glows).
-6. **Avoidance rules** — if design.md has a section listing things to avoid (commonly "What NOT to Do", "Don'ts", "Anti-patterns", or "Do's and Don'ts"), verify none are present.
+6. **Avoidance rules** — if the spec has a section listing things to avoid (commonly "What NOT to Do", "Don'ts", "Anti-patterns", or "Do's and Don'ts"), verify none are present.
 
 Report violations as a checklist. Fix each one before serving.
 
-If no `design.md` exists (house-style-only path), verify:
+If no design spec exists (house-style-only path), verify:
 
 1. **Palette consistency** — the same bg, fg, and accent colors are used across all scenes. No per-scene color invention.
 2. **No lazy defaults** — check the composition against house-style.md's "Lazy Defaults to Question" list. If any appear, they must be a deliberate choice for the content, not a default.
@@ -476,9 +476,9 @@ Skip on small edits (fixing a color, adjusting one duration). Run on new composi
 - **[references/techniques.md](references/techniques.md)** — 13 primitive animation techniques with code patterns: SVG drawing, Canvas 2D, CSS 3D, kinetic type, Lottie, video compositing, typing, variable fonts, MotionPath, velocity transitions, audio-reactive, clip-path reveals, WebGL shaders. Adapt the patterns — don't copy-paste. (For pre-built UI templates — terminal chrome, device mockups, moodboard layouts — see `registry/blocks/`.)
 - **[references/html-in-canvas-patterns.md](references/html-in-canvas-patterns.md)** — HTML-in-Canvas patterns: live DOM as GPU texture via `drawElementImage` + `layoutsubtree`. Shared boilerplate + ~6 effect recipes (iPhone/MacBook mockups, liquid glass, magnetic, portal, shatter, text cursor). Use for 1–3 hero beats per video.
 - **[references/narration.md](references/narration.md)** — Pacing, tone, script structure, number pronunciation, opening line patterns. Read when the composition includes voiceover or TTS.
-- **[references/design-picker.md](references/design-picker.md)** — Create a design.md via visual picker. Read when no design.md exists and the user wants to create one.
+- **[references/design-picker.md](references/design-picker.md)** — Create a design.md via visual picker. Read when no `frame.md` or `design.md` exists and the user wants to create one.
 - **[visual-styles.md](visual-styles.md)** — 8 named visual styles with hex palettes, GSAP easing signatures, and shader pairings. Read when user names a style or when generating design.md.
-- **[house-style.md](house-style.md)** — Default motion, sizing, and color palettes when no design.md is specified.
+- **[house-style.md](house-style.md)** — Default motion, sizing, and color palettes when no `frame.md` or `design.md` is specified.
 - **[patterns.md](patterns.md)** — PiP, title cards, slide show patterns.
 - **[data-in-motion.md](data-in-motion.md)** — Data, stats, and infographic patterns.
 - **[references/transcript-guide.md](references/transcript-guide.md)** — Caption-side transcript handling: input formats, mandatory quality check, cleaning JS, OpenAI/Groq API fallback, "if no transcript exists" flow. (For the `transcribe` CLI invocation, model selection rules, and the `.en` gotcha, see the `hyperframes-media` skill.)

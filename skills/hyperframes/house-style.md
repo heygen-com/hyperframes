@@ -1,6 +1,6 @@
 # House Style
 
-Creative direction for compositions when no `design.md` is provided. These are starting points — override anything that doesn't serve the content. When a `design.md` exists, its brand values take precedence; house-style fills gaps.
+Creative direction for compositions when no design spec (`frame.md` or `design.md`) is provided. These are starting points — override anything that doesn't serve the content. When a spec exists, its brand values take precedence; house-style fills gaps.
 
 ## Before Writing HTML
 
@@ -44,7 +44,7 @@ Ideas (mix and match, 2-5 per scene):
 
 All decoratives should have slow ambient GSAP animation — breathing, drift, pulse. Static decoratives feel dead.
 
-**Decorative count vs motion count.** The "2-5 per scene" count refers to decorative _elements_. If a project's `design.md` says "single ambient motion per scene", it means one looping motion applied to these decoratives (a shared breath/drift/pulse) — not one element total. A scene with 4 decoratives sharing one breathing motion is correct; a scene with 1 decorative is under-dressed.
+**Decorative count vs motion count.** The "2-5 per scene" count refers to decorative _elements_. If a project's spec (`frame.md` or `design.md`) says "single ambient motion per scene", it means one looping motion applied to these decoratives (a shared breath/drift/pulse) — not one element total. A scene with 4 decoratives sharing one breathing motion is correct; a scene with 1 decorative is under-dressed.
 
 ## Motion
 

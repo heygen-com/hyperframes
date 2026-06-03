@@ -1,19 +1,19 @@
 # Prompt Expansion
 
-Run on every composition. Expansion is not about lengthening a short prompt — it's about grounding the user's intent against `design.md` and `house-style.md` and producing a consistent intermediate that every downstream agent reads the same way.
+Run on every composition. Expansion is not about lengthening a short prompt — it's about grounding the user's intent against the design spec (`frame.md` or `design.md`) and `house-style.md` and producing a consistent intermediate that every downstream agent reads the same way.
 
-Runs AFTER design direction is established (Step 1). The expansion consumes design.md (if present) and produces output that cites its exact values.
+Runs AFTER design direction is established (Step 1). The expansion consumes the design spec (`frame.md` or `design.md`, if present) and produces output that cites its exact values.
 
 ## Prerequisites
 
 Read before generating:
 
-- `DESIGN.md` (if it exists) — extract brand colors, fonts, mood, and constraints. The expansion cites these exact values (hex codes, font names); it does not invent new ones.
+- the design spec — `frame.md`, then `design.md`/`DESIGN.md` (prefer `frame.md` if more than one exists) — extract brand colors, fonts, mood, and constraints. The expansion cites these exact values (hex codes, font names); it does not invent new ones.
 - [beat-direction.md](beat-direction.md) — per-beat planning format (concept, mood, choreography verbs, transitions, depth layers, rhythm). The expansion outputs each scene using this format.
 - [video-composition.md](video-composition.md) — video-medium rules for density, scale, and color presence. The expansion applies these automatically.
 - [../house-style.md](../house-style.md) — its rules for Background Layer (2-5 decoratives), Color, Motion, Typography apply to every scene. The expansion writes output that conforms to them.
 
-If `DESIGN.md` doesn't exist yet, run Step 1 (Design system) first. Expansion without a design context produces generic scene breakdowns that later agents ignore.
+If no design spec exists yet, run Step 1 (Design system) first. Expansion without a design context produces generic scene breakdowns that later agents ignore.
 
 ## Why always run it
 
@@ -26,7 +26,7 @@ Even a detailed 7-scene brief lacks things only the expansion adds:
 - **Micro-details that make a scene feel real** — registration marks, tick indicators, monospace coord labels, typographic accents, code snippets in the background, grid patterns. Things the user didn't think to request.
 - **Transition choreography at the object level** — not "crossfade" but "X expands outward and becomes Y". Specific duration, ease, and morph source/target.
 - **Pacing beats within each scene** — where tension builds, where a hold lets the viewer breathe, where the accent word lands.
-- **Exact hex values, typography parameters, ease choices** from design.md — no vagueness left for the scene subagent to guess.
+- **Exact hex values, typography parameters, ease choices** from the spec — no vagueness left for the scene subagent to guess.
 
 Expansion's job on a detailed prompt is not to summarize or pass through — it's to **take what the user wrote and make it richer**. The user's content stays; the atmosphere, ambient motion, and micro-details are added on top. That's what makes the difference between a scene that matches the brief and a scene that feels alive.
 
@@ -38,7 +38,7 @@ The quality gap between a single-pass composition and a multi-scene-pipeline com
 
 Expand into a full production prompt with these sections:
 
-1. **Title + style block** — cite design.md's exact hex values, font names, and mood. Do NOT invent a palette — quote what the design provides.
+1. **Title + style block** — cite the spec's exact hex values, font names, and mood. Do NOT invent a palette — quote what the design provides.
 
 2. **Rhythm declaration** — name the scene rhythm before detailing any scene. Example: `hook-PUNCH-breathe-CTA` or `slow-build-BUILD-PEAK-breathe-CTA`. Derive the rhythm from the brand and the storyboard's emotional arc — see [beat-direction.md](beat-direction.md) for the considerations that drive this decision.
 
@@ -53,7 +53,7 @@ Expand into a full production prompt with these sections:
 
 5. **Recurring motifs** — visual threads across scenes from the brand palette.
 
-6. **Negative prompt** — what to avoid, informed by design.md's constraints if present.
+6. **Negative prompt** — what to avoid, informed by the spec's constraints if present.
 
 ## Output
 
