@@ -13,6 +13,7 @@ interface KeyframeDiamondContextMenuProps {
   state: KeyframeDiamondContextMenuState;
   onClose: () => void;
   onDelete: (elementId: string, percentage: number) => void;
+  onDeleteAll: (elementId: string) => void;
   onChangeEase: (elementId: string, percentage: number, ease: string) => void;
   onCopyProperties: (elementId: string, percentage: number) => void;
 }
@@ -36,6 +37,7 @@ export const KeyframeDiamondContextMenu = memo(function KeyframeDiamondContextMe
   state,
   onClose,
   onDelete,
+  onDeleteAll,
   onChangeEase,
   onCopyProperties,
 }: KeyframeDiamondContextMenuProps) {
@@ -133,6 +135,17 @@ export const KeyframeDiamondContextMenu = memo(function KeyframeDiamondContextMe
         }}
       >
         Delete Keyframe
+      </button>
+
+      <button
+        type="button"
+        className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-red-400 hover:bg-neutral-800 cursor-pointer text-left"
+        onClick={() => {
+          onDeleteAll(state.elementId);
+          onClose();
+        }}
+      >
+        Delete All Keyframes
       </button>
 
       {/* Copy Properties */}
