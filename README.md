@@ -185,7 +185,7 @@ HyperFrames is the open-source rendering engine, plus a growing set of tools aro
 | Studio                                          | Available, evolving | Browser surface for previewing and editing compositions                                           |
 | AWS Lambda rendering                            | Available           | Deploy a distributed render stack and drive renders from your laptop or CI                        |
 | [hyperframes.dev](https://www.hyperframes.dev/) | Available           | Community playground for previewing, iterating, sharing, and rendering HTML-native video projects |
-| Design.HTML                                     | In development      | Visualize a brand identity and turn it into reusable, video-ready HyperFrames compositions        |
+| [frame.md](https://www.hyperframes.dev/design)  | Available           | Invert your design system for the camera — a DESIGN.md superset an agent can compose video from   |
 
 ## Catalog
 
