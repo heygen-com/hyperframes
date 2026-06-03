@@ -27,6 +27,9 @@
     "packages/producer/src/services/__fixtures__/crashOnMessageWorker.mjs",
     "scripts/*.{ts,mjs,js}",
     "scripts/*/run.mjs",
+    // Keyframe UI components — wired dynamically via EaseCurveSection/MotionPanel.
+    "packages/studio/src/components/editor/KeyframeDiamond.tsx",
+    "packages/studio/src/components/editor/SpringEaseEditor.tsx",
   ],
   "ignorePatterns": [
     "docs/**",

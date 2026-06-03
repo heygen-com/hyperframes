@@ -950,7 +950,41 @@ export function initSandboxRuntimeModular(): void {
       state.capturedTimeline.pause();
       const seekTime = Math.max(0, state.currentTime || 0);
       if (typeof state.capturedTimeline.totalTime === "function") {
+        // GSAP 3.x skips rendering when totalTime equals the current _tTime.
+        // A freshly created paused timeline has _tTime=0, so seeking to 0 is a
+        // no-op — percentage-keyframe values at 0% are never applied. Nudge to
+        // a micro-offset first to force GSAP to dirty its internal state, then
+        // seek to the real time so the render produces exact values.
+        state.capturedTimeline.totalTime(seekTime + 0.001, true);
         state.capturedTimeline.totalTime(seekTime, false);
+      }
+
+      // Strip stale CSS offset artifacts from GSAP-targeted elements.
+      // These leak into the HTML when the CSS offset path fires for a
+      // GSAP-animated element (stale cache race). On reload, both the
+      // offset and GSAP transform stack, doubling the visual position.
+      const staleEls = document.querySelectorAll("[data-hf-studio-path-offset]");
+      if (staleEls.length > 0 && state.capturedTimeline.getChildren) {
+        const tweenTargets = new Set<Element>();
+        try {
+          for (const child of state.capturedTimeline.getChildren(true)) {
+            if (typeof child.targets === "function") {
+              for (const t of child.targets()) tweenTargets.add(t);
+            }
+          }
+        } catch {
+          /* timeline access guard */
+        }
+        for (const el of staleEls) {
+          if (!tweenTargets.has(el)) continue;
+          const htmlEl = el as HTMLElement;
+          htmlEl.removeAttribute("data-hf-studio-path-offset");
+          htmlEl.removeAttribute("data-hf-studio-original-translate");
+          htmlEl.removeAttribute("data-hf-studio-original-inline-translate");
+          htmlEl.style.removeProperty("--hf-studio-offset-x");
+          htmlEl.style.removeProperty("--hf-studio-offset-y");
+          htmlEl.style.removeProperty("translate");
+        }
       }
     }
     if (resolution.diagnostics) {
@@ -1319,19 +1353,11 @@ export function initSandboxRuntimeModular(): void {
         const context = resolveMediaCompositionContext(
           element as HTMLVideoElement | HTMLAudioElement,
         );
-        // resolveStartForElement resolves the element's position on the ROOT
-        // timeline, correctly summing ancestor composition-host offsets via
-        // resolveHostOffsetForElement. For elements WITH explicit data-start,
-        // the fallback is ignored and the host offset is always applied — this
-        // fixes the bug where data-start="0" audio inside a sub-composition at
-        // a non-zero host start was scheduled at global 0.
-        // For elements WITHOUT data-start (inherited timing), the fallback is
-        // set to inheritedStart to preserve the "fill the host window" behavior.
-        return resolveStartForElement(element, context.inheritedStart ?? 0);
+        return resolveMediaStartSeconds(element, context.inheritedStart ?? 0);
       },
       resolveDurationSeconds: (element) => {
         const context = resolveMediaCompositionContext(element);
-        const start = resolveStartForElement(element, context.inheritedStart ?? 0);
+        const start = resolveMediaStartSeconds(element, context.inheritedStart ?? 0);
         const mediaStart =
           Number.parseFloat(element.dataset.playbackStart ?? element.dataset.mediaStart ?? "0") ||
           0;
@@ -1907,7 +1933,7 @@ export function initSandboxRuntimeModular(): void {
           let foundActive = false;
           for (const rawEl of audioEls) {
             if (!(rawEl instanceof HTMLMediaElement) || !rawEl.isConnected) continue;
-            const start = resolveStartForElement(rawEl, 0);
+            const start = Number.parseFloat(rawEl.dataset.start ?? "");
             const durAttr = Number.parseFloat(rawEl.dataset.duration ?? "");
             const end = Number.isFinite(durAttr) && durAttr > 0 ? start + durAttr : Infinity;
             const mediaStart =
@@ -1974,7 +2000,7 @@ export function initSandboxRuntimeModular(): void {
     for (const el of mediaEls) {
       if (!(el instanceof HTMLMediaElement)) continue;
       if (!el.isConnected) continue;
-      const start = resolveStartForElement(el, 0);
+      const start = Number.parseFloat(el.dataset.start ?? "");
       if (!Number.isFinite(start)) continue;
       const durAttr = Number.parseFloat(el.dataset.duration ?? "");
       const end = Number.isFinite(durAttr) && durAttr > 0 ? start + durAttr : Infinity;
@@ -2022,7 +2048,7 @@ export function initSandboxRuntimeModular(): void {
       const audioEls = document.querySelectorAll("audio[data-start]");
       for (const rawEl of audioEls) {
         if (!(rawEl instanceof HTMLMediaElement) || !rawEl.isConnected) continue;
-        const compStart = resolveStartForElement(rawEl, 0);
+        const compStart = Number.parseFloat(rawEl.dataset.start ?? "");
         if (!Number.isFinite(compStart)) continue;
         const mediaStart =
           Number.parseFloat(rawEl.dataset.playbackStart ?? rawEl.dataset.mediaStart ?? "0") || 0;

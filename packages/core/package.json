@@ -70,6 +70,10 @@
       "import": "./src/parsers/gsapConstants.ts",
       "types": "./src/parsers/gsapConstants.ts"
     },
+    "./spring-ease": {
+      "import": "./src/parsers/springEase.ts",
+      "types": "./src/parsers/springEase.ts"
+    },
     "./schemas/registry.json": "./schemas/registry.json",
     "./schemas/registry-item.json": "./schemas/registry-item.json"
   },
@@ -128,6 +132,10 @@
       "./gsap-constants": {
         "import": "./dist/parsers/gsapConstants.js",
         "types": "./dist/parsers/gsapConstants.d.ts"
+      },
+      "./spring-ease": {
+        "import": "./dist/parsers/springEase.js",
+        "types": "./dist/parsers/springEase.d.ts"
       },
       "./schemas/registry.json": "./schemas/registry.json",
       "./schemas/registry-item.json": "./schemas/registry-item.json"

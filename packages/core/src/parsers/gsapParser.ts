@@ -35,6 +35,8 @@ export {
   SUPPORTED_PROPS,
   SUPPORTED_EASES,
 } from "./gsapSerialize";
+export { generateSpringEaseData, SPRING_PRESETS } from "./springEase";
+export type { SpringPreset } from "./springEase";
 
 const GSAP_METHODS = new Set<string>(["set", "to", "from", "fromTo"]);
 
