@@ -310,5 +310,6 @@ export function buildHdrChromeArgs(width: number, height: number): string[] {
     "--disable-sync",
     "--no-zygote",
     "--force-gpu-mem-available-mb=4096",
+    "--autoplay-policy=no-user-gesture-required",
   ];
 }

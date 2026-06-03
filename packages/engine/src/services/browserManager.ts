@@ -580,6 +580,12 @@ export function buildChromeArgs(
     ...getLowMemoryFlags(),
     // Disable features that add overhead
     "--disable-features=AudioServiceOutOfProcess,IsolateOrigins,site-per-process,Translate,BackForwardCache,IntensiveWakeUpThrottling",
+    // Allow AudioContext to start without a user gesture in headless Chrome.
+    // Without this flag, any code path that constructs an AudioContext
+    // (including GSAP tweening an <audio> element's volume) triggers the
+    // autoplay policy and causes the AudioContext to stay suspended. The
+    // frame-capture loop then blocks waiting for it, deadlocking the render.
+    "--autoplay-policy=no-user-gesture-required",
   ];
 
   if (browserGpuMode !== "software") {
