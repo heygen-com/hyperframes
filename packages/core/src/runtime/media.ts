@@ -165,7 +165,7 @@ export function syncRuntimeMedia(params: {
     // (el.ended resets to false when the user scrubs back, so seeks work.)
     const isActive =
       params.timeSeconds >= clip.start &&
-      params.timeSeconds < clip.end &&
+      params.timeSeconds <= clip.end &&
       relTime >= 0 &&
       (!el.ended || clip.loop);
     if (isActive) {
