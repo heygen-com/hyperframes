@@ -173,8 +173,18 @@ async function commitGsapPositionFromDrag(
   gsapPos: { x: number; y: number },
   callbacks: GsapDragCommitCallbacks,
 ): Promise<void> {
-  const newX = Math.round(gsapPos.x + studioOffset.x);
-  const newY = Math.round(gsapPos.y + studioOffset.y);
+  // CSS composition: translate → rotate → transform. The studioOffset is in
+  // pre-rotation space (CSS translate), but GSAP x/y are in post-CSS-rotate
+  // space (CSS transform). Counter-rotate the offset to match GSAP's frame.
+  const rotStyle = selection.element.style.getPropertyValue("--hf-studio-rotation");
+  const rotDeg = Number.parseFloat(rotStyle) || 0;
+  const rad = (-rotDeg * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  const adjX = studioOffset.x * cos - studioOffset.y * sin;
+  const adjY = studioOffset.x * sin + studioOffset.y * cos;
+  const newX = Math.round(gsapPos.x + adjX);
+  const newY = Math.round(gsapPos.y + adjY);
   const clearOffset = () => clearStudioPathOffset(selection.element);
 
   if (anim.keyframes) {
