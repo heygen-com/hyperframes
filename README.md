@@ -71,6 +71,69 @@ Need ideas? Browse the [Showcase](https://hyperframes.heygen.com/showcase) for f
 - Docs-to-video, PDF-to-video, and website-to-video explainers
 - Reusable motion graphics for automated content pipelines
 
+## Frame.md
+
+**frame.md — your design system, ready for video.**
+
+Every brand has a `design.md`. None of them were written for a camera. `frame.md` is the missing translation layer: it takes your web-context design spec and inverts it for the frame — the same tokens, the same rules, but rewritten so an AI agent can compose a promo video without guessing at scale or reaching for web chrome.
+
+The output is a `DESIGN.md` superset your whole toolchain can read. Atoms stay sacred. Composition stays free. Numbers come from the script.
+
+<table>
+  <tr>
+    <td width="50%" align="center">
+      <a href="https://www.hyperframes.dev/design/biennale-yellow"><img src="https://static.heygen.ai/hyperframes-oss/docs/images/design-templates/biennale-yellow.png" alt="Biennale Yellow" width="100%"></a>
+      <br><b><a href="https://www.hyperframes.dev/design/biennale-yellow">Biennale Yellow</a></b>
+    </td>
+    <td width="50%" align="center">
+      <a href="https://www.hyperframes.dev/design/blockframe"><img src="https://static.heygen.ai/hyperframes-oss/docs/images/design-templates/blockframe.png" alt="BlockFrame" width="100%"></a>
+      <br><b><a href="https://www.hyperframes.dev/design/blockframe">BlockFrame</a></b>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" align="center">
+      <a href="https://www.hyperframes.dev/design/blue-professional"><img src="https://static.heygen.ai/hyperframes-oss/docs/images/design-templates/blue-professional.png" alt="Blue Professional" width="100%"></a>
+      <br><b><a href="https://www.hyperframes.dev/design/blue-professional">Blue Professional</a></b>
+    </td>
+    <td width="50%" align="center">
+      <a href="https://www.hyperframes.dev/design/bold-poster"><img src="https://static.heygen.ai/hyperframes-oss/docs/images/design-templates/bold-poster.png" alt="Bold Poster" width="100%"></a>
+      <br><b><a href="https://www.hyperframes.dev/design/bold-poster">Bold Poster</a></b>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" align="center">
+      <a href="https://www.hyperframes.dev/design/broadside"><img src="https://static.heygen.ai/hyperframes-oss/docs/images/design-templates/broadside.png" alt="Broadside" width="100%"></a>
+      <br><b><a href="https://www.hyperframes.dev/design/broadside">Broadside</a></b>
+    </td>
+    <td width="50%" align="center">
+      <a href="https://www.hyperframes.dev/design/capsule"><img src="https://static.heygen.ai/hyperframes-oss/docs/images/design-templates/capsule.png" alt="Capsule" width="100%"></a>
+      <br><b><a href="https://www.hyperframes.dev/design/capsule">Capsule</a></b>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" align="center">
+      <a href="https://www.hyperframes.dev/design/cartesian"><img src="https://static.heygen.ai/hyperframes-oss/docs/images/design-templates/cartesian.png" alt="Cartesian" width="100%"></a>
+      <br><b><a href="https://www.hyperframes.dev/design/cartesian">Cartesian</a></b>
+    </td>
+    <td width="50%" align="center">
+      <a href="https://www.hyperframes.dev/design/cobalt-grid"><img src="https://static.heygen.ai/hyperframes-oss/docs/images/design-templates/cobalt-grid.png" alt="Cobalt Grid" width="100%"></a>
+      <br><b><a href="https://www.hyperframes.dev/design/cobalt-grid">Cobalt Grid</a></b>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" align="center">
+      <a href="https://www.hyperframes.dev/design/coral"><img src="https://static.heygen.ai/hyperframes-oss/docs/images/design-templates/coral.png" alt="Coral" width="100%"></a>
+      <br><b><a href="https://www.hyperframes.dev/design/coral">Coral</a></b>
+    </td>
+    <td width="50%" align="center">
+      <a href="https://www.hyperframes.dev/design/creative-mode"><img src="https://static.heygen.ai/hyperframes-oss/docs/images/design-templates/creative-mode.png" alt="Creative Mode" width="100%"></a>
+      <br><b><a href="https://www.hyperframes.dev/design/creative-mode">Creative Mode</a></b>
+    </td>
+  </tr>
+</table>
+
+Browse and remix them all at [hyperframes.dev/design](https://www.hyperframes.dev/design).
+
 ## How It Works
 
 Define a video as HTML. Add data attributes for timing and tracks. Use GSAP, CSS, Lottie, Three.js, Anime.js, WAAPI, or your own frame adapter for seekable animation.
