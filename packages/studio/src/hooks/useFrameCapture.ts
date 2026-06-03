@@ -69,7 +69,7 @@ export function useFrameCapture({
           document.body.appendChild(link);
           link.click();
           link.remove();
-          setTimeout(() => URL.revokeObjectURL(blobUrl), 0);
+          setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
         } catch (fetchErr) {
           clearTimeout(timeout);
           if (fetchErr instanceof DOMException && fetchErr.name === "AbortError") {
