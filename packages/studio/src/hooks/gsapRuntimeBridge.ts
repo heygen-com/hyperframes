@@ -1,0 +1,307 @@
+/**
+ * Bridge between the Studio drag system and GSAP animations running in the
+ * preview iframe.
+ *
+ * The preview iframe exposes `window.gsap` with a `getProperty(element, prop)`
+ * method that returns the ACTUAL interpolated value at the current seek time.
+ * This module reads those runtime values so that drag commits can write correct
+ * absolute positions back into the GSAP script, regardless of tween type,
+ * easing, or seek position.
+ */
+import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
+import type { DomEditSelection } from "../components/editor/domEditingTypes";
+import { clearStudioPathOffset } from "../components/editor/manualEdits";
+import { usePlayerStore } from "../player/store/playerStore";
+
+// ── Runtime reads ──────────────────────────────────────────────────────────
+
+interface IframeGsap {
+  getProperty: (el: Element, prop: string) => number;
+}
+
+// fallow-ignore-next-line complexity
+function readGsapPositionFromIframe(
+  iframe: HTMLIFrameElement | null,
+  elementSelector: string,
+): { x: number; y: number } | null {
+  if (!iframe?.contentWindow) return null;
+
+  let gsap: IframeGsap | undefined;
+  try {
+    gsap = (iframe.contentWindow as unknown as { gsap?: IframeGsap }).gsap;
+  } catch {
+    return null;
+  }
+  if (!gsap?.getProperty) return null;
+
+  let doc: Document | null = null;
+  try {
+    doc = iframe.contentDocument;
+  } catch {
+    return null;
+  }
+  if (!doc) return null;
+
+  const element = doc.querySelector(elementSelector);
+  if (!element) return null;
+
+  const x = Number(gsap.getProperty(element, "x")) || 0;
+  const y = Number(gsap.getProperty(element, "y")) || 0;
+  return { x, y };
+}
+
+// ── Animation matching ─────────────────────────────────────────────────────
+
+// fallow-ignore-next-line complexity
+function findGsapPositionAnimation(animations: GsapAnimation[]): GsapAnimation | null {
+  // Prefer animations that already have x/y
+  for (const anim of animations) {
+    if (anim.keyframes) {
+      const hasPos = anim.keyframes.keyframes.some(
+        (kf) => "x" in kf.properties || "y" in kf.properties,
+      );
+      if (hasPos) return anim;
+    }
+    const props = anim.properties;
+    const fromProps = anim.fromProperties;
+    if (anim.method === "fromTo") {
+      if ("x" in props || "y" in props || (fromProps && ("x" in fromProps || "y" in fromProps))) {
+        return anim;
+      }
+    } else if ("x" in props || "y" in props) {
+      return anim;
+    }
+  }
+  // Fall back to any keyframed animation — drag will add x/y to it
+  for (const anim of animations) {
+    if (anim.keyframes) return anim;
+  }
+  // Fall back to any animation — will be converted to keyframes
+  return animations[0] ?? null;
+}
+
+// ── Selector resolution ────────────────────────────────────────────────────
+
+function selectorForSelection(selection: DomEditSelection): string | null {
+  if (selection.id) return `#${selection.id}`;
+  if (selection.selector) return selection.selector;
+  return null;
+}
+
+// ── Percentage computation ─────────────────────────────────────────────────
+
+function computeCurrentPercentage(selection: DomEditSelection): number {
+  const elStart = Number.parseFloat(selection.dataAttributes?.start ?? "0") || 0;
+  const elDuration = Number.parseFloat(selection.dataAttributes?.duration ?? "1") || 1;
+  const currentTime = usePlayerStore.getState().currentTime;
+  return elDuration > 0
+    ? Math.max(0, Math.min(100, Math.round(((currentTime - elStart) / elDuration) * 1000) / 10))
+    : 0;
+}
+
+// ── High-level intercept ───────────────────────────────────────────────────
+
+export interface GsapDragCommitCallbacks {
+  commitMutation: (
+    selection: DomEditSelection,
+    mutation: Record<string, unknown>,
+    options: {
+      label: string;
+      coalesceKey?: string;
+      softReload?: boolean;
+      skipReload?: boolean;
+      beforeReload?: () => void;
+    },
+  ) => Promise<void>;
+}
+
+/**
+ * Attempt to handle a drag commit via the GSAP script mutation path.
+ *
+ * Returns a Promise that resolves to true if the drag was handled via GSAP
+ * (caller should skip the CSS path), or false if no GSAP position animation
+ * exists. The promise resolves only AFTER the mutation has been persisted and
+ * the preview soft-reloaded — the CSS offset stays visible until then so the
+ * element doesn't snap back during the async gap.
+ */
+// fallow-ignore-next-line complexity
+export async function tryGsapDragIntercept(
+  selection: DomEditSelection,
+  offset: { x: number; y: number },
+  animations: GsapAnimation[],
+  iframe: HTMLIFrameElement | null,
+  commitMutation: GsapDragCommitCallbacks["commitMutation"],
+  fetchFallbackAnimations?: () => Promise<GsapAnimation[]>,
+): Promise<boolean> {
+  let posAnim = findGsapPositionAnimation(animations);
+  if (!posAnim && fetchFallbackAnimations) {
+    const fresh = await fetchFallbackAnimations();
+    posAnim = findGsapPositionAnimation(fresh);
+  }
+  if (!posAnim) return false;
+
+  const selector = selectorForSelection(selection);
+  if (!selector) return false;
+
+  const gsapPos = readGsapPositionFromIframe(iframe, selector);
+  if (!gsapPos) return false;
+
+  await commitGsapPositionFromDrag(selection, posAnim, offset, gsapPos, { commitMutation });
+  return true;
+}
+
+// ── Commit helpers ─────────────────────────────────────────────────────────
+
+/**
+ * Compute the new GSAP position values from runtime-read positions + drag
+ * offset, then commit the mutation to the GSAP script.
+ *
+ * `gsap.getProperty` reads from GSAP's internal cache (element._gsap), not
+ * from the DOM transform matrix. The strip in `applyStudioPathOffset` does
+ * not affect the cached values, so the formula is simply:
+ *   newValue = cachedGsapValue + dragOffset
+ *
+ * For flat tweens (to/set), the mutation would change the tween endpoint,
+ * which is invisible at t=0. Instead, we convert to keyframes first so the
+ * position is set at the exact seek percentage via a keyframe.
+ */
+// fallow-ignore-next-line complexity
+async function commitGsapPositionFromDrag(
+  selection: DomEditSelection,
+  anim: GsapAnimation,
+  studioOffset: { x: number; y: number },
+  gsapPos: { x: number; y: number },
+  callbacks: GsapDragCommitCallbacks,
+): Promise<void> {
+  const newX = Math.round(gsapPos.x + studioOffset.x);
+  const newY = Math.round(gsapPos.y + studioOffset.y);
+  const clearOffset = () => clearStudioPathOffset(selection.element);
+
+  if (anim.keyframes) {
+    await commitKeyframedPosition(selection, anim, newX, newY, callbacks, clearOffset);
+  } else if (anim.method === "from") {
+    await commitFromPosition(selection, anim, studioOffset, callbacks, clearOffset);
+  } else if (anim.method === "fromTo") {
+    await commitFromToPosition(selection, anim, studioOffset, callbacks, clearOffset);
+  } else {
+    // Flat to()/set() — convert to keyframes first so the drag position
+    // is captured at the current seek time, not just the tween endpoint.
+    await commitFlatViaKeyframes(selection, anim, newX, newY, callbacks, clearOffset);
+  }
+}
+
+// fallow-ignore-next-line complexity
+async function commitKeyframedPosition(
+  selection: DomEditSelection,
+  anim: GsapAnimation,
+  newX: number,
+  newY: number,
+  callbacks: GsapDragCommitCallbacks,
+  beforeReload: () => void,
+): Promise<void> {
+  const pct = computeCurrentPercentage(selection);
+
+  await callbacks.commitMutation(
+    selection,
+    {
+      type: "add-keyframe",
+      animationId: anim.id,
+      percentage: pct,
+      properties: { x: newX, y: newY },
+    },
+    { label: `Move layer (keyframe ${pct}%)`, softReload: true, beforeReload },
+  );
+}
+
+/**
+ * For flat to()/set() tweens, convert to keyframes first so we can place the
+ * drag position at the current percentage. Without conversion, the mutation
+ * only changes the tween endpoint, which is invisible at t=0.
+ */
+// fallow-ignore-next-line complexity
+async function commitFlatViaKeyframes(
+  selection: DomEditSelection,
+  anim: GsapAnimation,
+  newX: number,
+  newY: number,
+  callbacks: GsapDragCommitCallbacks,
+  beforeReload: () => void,
+): Promise<void> {
+  await callbacks.commitMutation(
+    selection,
+    { type: "convert-to-keyframes", animationId: anim.id },
+    { label: "Convert to keyframes for drag", skipReload: true },
+  );
+
+  const pct = computeCurrentPercentage(selection);
+
+  await callbacks.commitMutation(
+    selection,
+    {
+      type: "add-keyframe",
+      animationId: anim.id,
+      percentage: pct,
+      properties: { x: newX, y: newY },
+    },
+    { label: `Move layer (keyframe ${pct}%)`, softReload: true, beforeReload },
+  );
+}
+
+async function commitFromPosition(
+  selection: DomEditSelection,
+  anim: GsapAnimation,
+  delta: { x: number; y: number },
+  callbacks: GsapDragCommitCallbacks,
+  beforeReload: () => void,
+): Promise<void> {
+  const fromX = Math.round(Number(anim.properties.x ?? 0) + delta.x);
+  const fromY = Math.round(Number(anim.properties.y ?? 0) + delta.y);
+
+  await callbacks.commitMutation(
+    selection,
+    { type: "update-property", animationId: anim.id, property: "x", value: fromX },
+    { label: "Move layer (GSAP from x)", skipReload: true },
+  );
+  await callbacks.commitMutation(
+    selection,
+    { type: "update-property", animationId: anim.id, property: "y", value: fromY },
+    { label: "Move layer (GSAP from y)", softReload: true, beforeReload },
+  );
+}
+
+// fallow-ignore-next-line complexity
+async function commitFromToPosition(
+  selection: DomEditSelection,
+  anim: GsapAnimation,
+  delta: { x: number; y: number },
+  callbacks: GsapDragCommitCallbacks,
+  beforeReload: () => void,
+): Promise<void> {
+  if (anim.fromProperties) {
+    const fromX = Math.round(Number(anim.fromProperties.x ?? 0) + delta.x);
+    const fromY = Math.round(Number(anim.fromProperties.y ?? 0) + delta.y);
+    await callbacks.commitMutation(
+      selection,
+      { type: "update-from-property", animationId: anim.id, property: "x", value: fromX },
+      { label: "Move (GSAP from x)", skipReload: true },
+    );
+    await callbacks.commitMutation(
+      selection,
+      { type: "update-from-property", animationId: anim.id, property: "y", value: fromY },
+      { label: "Move (GSAP from y)", skipReload: true },
+    );
+  }
+
+  const toX = Math.round(Number(anim.properties.x ?? 0) + delta.x);
+  const toY = Math.round(Number(anim.properties.y ?? 0) + delta.y);
+  await callbacks.commitMutation(
+    selection,
+    { type: "update-property", animationId: anim.id, property: "x", value: toX },
+    { label: "Move (GSAP to x)", skipReload: true },
+  );
+  await callbacks.commitMutation(
+    selection,
+    { type: "update-property", animationId: anim.id, property: "y", value: toY },
+    { label: "Move (GSAP to y)", softReload: true, beforeReload },
+  );
+}
