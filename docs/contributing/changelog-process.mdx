@@ -77,6 +77,26 @@ bun run changelog:draft 0.6.53 --write --force
 
 Without `--force`, the draft command leaves an existing `releases/vX.Y.Z.md` file unchanged and still adds the docs changelog entry if it is missing. If the docs changelog already has that version, edit the existing docs entry manually.
 
+## Weekly digest workflow
+
+Weekly updates are editorial rollups, not release notes. Keep `docs/changelog.mdx` versioned and use `docs/weekly-updates.mdx` for curated weekly highlights that can also be adapted for Discord and X.
+
+Generate an editable weekly packet from the repository root:
+
+```bash
+bun run changelog:weekly --from 2026-06-01 --to 2026-06-07 --write
+```
+
+Run it from an up-to-date `main` branch so the selected range reflects public history, not a feature branch.
+
+This creates:
+
+- `updates/weekly/2026-06-07.md`
+- `updates/social/2026-06-07.discord.md`
+- `updates/social/2026-06-07.x.md`
+
+It also prepends a matching entry to `docs/weekly-updates.mdx`. Review and rewrite the generated files before publishing. Social drafts are never posted automatically.
+
 ## Writing style
 
 Use plain, user-facing language. Prefer "Fixed Studio render failures when FFmpeg is missing" over "Added pre-flight check in render activity." Link to relevant docs, migration guides, or pull requests when they help users act.
