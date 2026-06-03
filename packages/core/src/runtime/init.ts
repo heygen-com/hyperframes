@@ -1319,11 +1319,19 @@ export function initSandboxRuntimeModular(): void {
         const context = resolveMediaCompositionContext(
           element as HTMLVideoElement | HTMLAudioElement,
         );
-        return resolveMediaStartSeconds(element, context.inheritedStart ?? 0);
+        // resolveStartForElement resolves the element's position on the ROOT
+        // timeline, correctly summing ancestor composition-host offsets via
+        // resolveHostOffsetForElement. For elements WITH explicit data-start,
+        // the fallback is ignored and the host offset is always applied — this
+        // fixes the bug where data-start="0" audio inside a sub-composition at
+        // a non-zero host start was scheduled at global 0.
+        // For elements WITHOUT data-start (inherited timing), the fallback is
+        // set to inheritedStart to preserve the "fill the host window" behavior.
+        return resolveStartForElement(element, context.inheritedStart ?? 0);
       },
       resolveDurationSeconds: (element) => {
         const context = resolveMediaCompositionContext(element);
-        const start = resolveMediaStartSeconds(element, context.inheritedStart ?? 0);
+        const start = resolveStartForElement(element, context.inheritedStart ?? 0);
         const mediaStart =
           Number.parseFloat(element.dataset.playbackStart ?? element.dataset.mediaStart ?? "0") ||
           0;
@@ -1899,7 +1907,7 @@ export function initSandboxRuntimeModular(): void {
           let foundActive = false;
           for (const rawEl of audioEls) {
             if (!(rawEl instanceof HTMLMediaElement) || !rawEl.isConnected) continue;
-            const start = Number.parseFloat(rawEl.dataset.start ?? "");
+            const start = resolveStartForElement(rawEl, 0);
             const durAttr = Number.parseFloat(rawEl.dataset.duration ?? "");
             const end = Number.isFinite(durAttr) && durAttr > 0 ? start + durAttr : Infinity;
             const mediaStart =
@@ -1966,7 +1974,7 @@ export function initSandboxRuntimeModular(): void {
     for (const el of mediaEls) {
       if (!(el instanceof HTMLMediaElement)) continue;
       if (!el.isConnected) continue;
-      const start = Number.parseFloat(el.dataset.start ?? "");
+      const start = resolveStartForElement(el, 0);
       if (!Number.isFinite(start)) continue;
       const durAttr = Number.parseFloat(el.dataset.duration ?? "");
       const end = Number.isFinite(durAttr) && durAttr > 0 ? start + durAttr : Infinity;
@@ -2014,7 +2022,7 @@ export function initSandboxRuntimeModular(): void {
       const audioEls = document.querySelectorAll("audio[data-start]");
       for (const rawEl of audioEls) {
         if (!(rawEl instanceof HTMLMediaElement) || !rawEl.isConnected) continue;
-        const compStart = Number.parseFloat(rawEl.dataset.start ?? "");
+        const compStart = resolveStartForElement(rawEl, 0);
         if (!Number.isFinite(compStart)) continue;
         const mediaStart =
           Number.parseFloat(rawEl.dataset.playbackStart ?? rawEl.dataset.mediaStart ?? "0") || 0;
