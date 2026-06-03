@@ -8,7 +8,7 @@ Runs AFTER design direction is established (Step 1). The expansion consumes the 
 
 Read before generating:
 
-- the design spec — `frame.md`, then `design.md`/`DESIGN.md` (prefer `frame.md` if more than one exists) — extract brand colors, fonts, mood, and constraints. The expansion cites these exact values (hex codes, font names); it does not invent new ones.
+- the design spec — `frame.md` → `design.md` → `DESIGN.md` (prefer `frame.md` if more than one exists) — extract brand colors, fonts, mood, and constraints. The expansion cites these exact values (hex codes, font names); it does not invent new ones.
 - [beat-direction.md](beat-direction.md) — per-beat planning format (concept, mood, choreography verbs, transitions, depth layers, rhythm). The expansion outputs each scene using this format.
 - [video-composition.md](video-composition.md) — video-medium rules for density, scale, and color presence. The expansion applies these automatically.
 - [../house-style.md](../house-style.md) — its rules for Background Layer (2-5 decoratives), Color, Motion, Typography apply to every scene. The expansion writes output that conforms to them.

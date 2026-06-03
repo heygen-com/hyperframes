@@ -24,7 +24,7 @@ For exploratory requests, consider offering 2-3 variations that differ meaningfu
 
 ### Step 1: Design system
 
-If a design spec exists in the project, read it first. Look in precedence order: `frame.md`, then `design.md`, then `DESIGN.md` (check both casings — they're different files on Linux). `frame.md` is the preferred spec for video/hyperframes projects and wins if more than one exists; it uses the same format as `design.md`. It's the source of truth for brand colors, fonts, and constraints. Use its exact values — don't invent colors or substitute fonts. Any format works (YAML frontmatter, prose, tables — just extract the values).
+If a design spec exists in the project, read it first. Look in precedence order: `frame.md` → `design.md` → `DESIGN.md` (`design.md` and `DESIGN.md` are different files on Linux — check both casings; `frame.md` is always lowercase, no `FRAME.md` variant). `frame.md` is the preferred spec for video/hyperframes projects and wins if more than one exists; it uses the same format as `design.md`. It's the source of truth for brand colors, fonts, and constraints. Use its exact values — don't invent colors or substitute fonts. Any format works (YAML frontmatter, prose, tables — just extract the values).
 
 If it names fonts you can't find locally (no `fonts/` directory with `.woff2` files, not a built-in font), warn the user before writing HTML: "the spec specifies [font name] but no font files found. Please add .woff2 files to `fonts/` or I'll fall back to [closest built-in alternative]."
 
@@ -34,7 +34,7 @@ If no `frame.md` or `design.md` exists, offer the user a choice:
 2. **Want to browse options visually?** → Run the design picker: read [references/design-picker.md](references/design-picker.md) for the full workflow. This serves a visual picker page. The user configures mood, palette, typography, and motion in the browser, then copies the generated design.md and pastes it back into the conversation.
 3. **Want to skip and go fast?** → Ask: mood, light or dark, any brand colors/fonts? Then pick a palette from [house-style.md](./house-style.md).
 
-**design.md defines the brand. It does not define video composition rules.** Those come from [references/video-composition.md](references/video-composition.md) and [house-style.md](./house-style.md). Use brand colors at video-appropriate scale — not at web-UI opacity.
+**The design spec defines the brand. It does not define video composition rules.** Those come from [references/video-composition.md](references/video-composition.md) and [house-style.md](./house-style.md). Use brand colors at video-appropriate scale — not at web-UI opacity.
 
 ### Step 2: Prompt expansion
 
@@ -469,7 +469,7 @@ Skip on small edits (fixing a color, adjusting one duration). Run on new composi
 - **[references/captions.md](references/captions.md)** — Captions, subtitles, lyrics, karaoke synced to audio. Tone-adaptive style detection, per-word styling, text overflow prevention, caption exit guarantees, word grouping. Read when adding any text synced to audio timing.
 - **[references/audio-reactive.md](references/audio-reactive.md)** — Audio-reactive animation: map frequency bands and amplitude to GSAP properties. Read when visuals should respond to music, voice, or sound.
 - **[references/css-patterns.md](references/css-patterns.md)** — CSS+GSAP marker highlighting: highlight, circle, burst, scribble, sketchout. Deterministic, fully seekable. Read when adding visual emphasis to text.
-- **[references/video-composition.md](references/video-composition.md)** — Video-medium rules: density, color presence, scale, frame composition, design.md as brand not layout. **Always read** — these override web instincts.
+- **[references/video-composition.md](references/video-composition.md)** — Video-medium rules: density, color presence, scale, frame composition, the design spec as brand not layout. **Always read** — these override web instincts.
 - **[references/beat-direction.md](references/beat-direction.md)** — Beat planning: concept, mood, choreography verbs, rhythm templates, transition decisions, depth layers. **Always read for multi-scene compositions.**
 - **[references/typography.md](references/typography.md)** — Typography: font pairing, OpenType features, dark-background adjustments, font discovery script. **Always read** — every composition has text.
 - **[references/motion-principles.md](references/motion-principles.md)** — Motion design principles, image motion treatment, load-bearing GSAP rules. **Always read** — every composition has motion.
@@ -477,7 +477,7 @@ Skip on small edits (fixing a color, adjusting one duration). Run on new composi
 - **[references/html-in-canvas-patterns.md](references/html-in-canvas-patterns.md)** — HTML-in-Canvas patterns: live DOM as GPU texture via `drawElementImage` + `layoutsubtree`. Shared boilerplate + ~6 effect recipes (iPhone/MacBook mockups, liquid glass, magnetic, portal, shatter, text cursor). Use for 1–3 hero beats per video.
 - **[references/narration.md](references/narration.md)** — Pacing, tone, script structure, number pronunciation, opening line patterns. Read when the composition includes voiceover or TTS.
 - **[references/design-picker.md](references/design-picker.md)** — Create a design.md via visual picker. Read when no `frame.md` or `design.md` exists and the user wants to create one.
-- **[visual-styles.md](visual-styles.md)** — 8 named visual styles with hex palettes, GSAP easing signatures, and shader pairings. Read when user names a style or when generating design.md.
+- **[visual-styles.md](visual-styles.md)** — 8 named visual styles with hex palettes, GSAP easing signatures, and shader pairings. Read when user names a style or when generating a design spec.
 - **[house-style.md](house-style.md)** — Default motion, sizing, and color palettes when no `frame.md` or `design.md` is specified.
 - **[patterns.md](patterns.md)** — PiP, title cards, slide show patterns.
 - **[data-in-motion.md](data-in-motion.md)** — Data, stats, and infographic patterns.

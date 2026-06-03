@@ -1,8 +1,8 @@
 # Video Composition
 
-Video frames are not web pages. These rules apply to every composition regardless of brand, style, or design.md.
+Video frames are not web pages. These rules apply to every composition regardless of brand, style, or design spec.
 
-## design.md Is Brand, Not Layout
+## The Design Spec Is Brand, Not Layout
 
 The design spec (`frame.md` or `design.md`) defines what the brand looks like: colors, fonts, personality, constraints. It does NOT define how to compose a video frame. Use brand colors at video-appropriate intensity — not at web-UI opacity.
 
