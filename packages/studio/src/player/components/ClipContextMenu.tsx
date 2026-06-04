@@ -43,11 +43,15 @@ export const ClipContextMenu = memo(function ClipContextMenu({
   const adjustedX = Math.min(x, window.innerWidth - 200);
   const adjustedY = Math.min(y, window.innerHeight - 200);
 
-  const canSplit = currentTime > element.start && currentTime < element.start + element.duration;
+  const isComposition = !!element.compositionSrc;
+  const canSplit =
+    !isComposition && currentTime > element.start && currentTime < element.start + element.duration;
 
-  const splitLabel = canSplit
-    ? `Split at ${currentTime.toFixed(2)}s`
-    : "Split (move playhead inside clip)";
+  const splitLabel = isComposition
+    ? "Split (not available for compositions)"
+    : canSplit
+      ? `Split at ${currentTime.toFixed(2)}s`
+      : "Split (move playhead inside clip)";
 
   return (
     <div
