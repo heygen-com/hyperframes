@@ -211,6 +211,7 @@ export function StudioRightPanel({
                   onImportAssets={handleImportFiles}
                   fontAssets={fontAssets}
                   onImportFonts={handleImportFonts}
+                  previewIframeRef={previewIframeRef}
                   gsapAnimations={selectedGsapAnimations}
                   gsapMultipleTimelines={gsapMultipleTimelines}
                   gsapUnsupportedTimelinePattern={gsapUnsupportedTimelinePattern}

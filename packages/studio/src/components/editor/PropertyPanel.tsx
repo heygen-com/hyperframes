@@ -52,6 +52,7 @@ interface PropertyPanelProps {
   onImportAssets?: (files: FileList) => Promise<string[]>;
   fontAssets?: ImportedFontAsset[];
   onImportFonts?: (files: FileList | File[]) => Promise<ImportedFontAsset[]>;
+  previewIframeRef?: React.RefObject<HTMLIFrameElement | null>;
   gsapAnimations?: import("@hyperframes/core/gsap-parser").GsapAnimation[];
   gsapMultipleTimelines?: boolean;
   gsapUnsupportedTimelinePattern?: boolean;
@@ -169,6 +170,7 @@ export const PropertyPanel = memo(function PropertyPanel({
   onImportAssets,
   fontAssets = [],
   onImportFonts,
+  previewIframeRef,
   gsapAnimations = [],
   gsapMultipleTimelines,
   gsapUnsupportedTimelinePattern,
@@ -286,6 +288,47 @@ export const PropertyPanel = memo(function PropertyPanel({
   const gsapAnimId =
     gsapAnimations?.find((a) => a.keyframes)?.id ?? gsapAnimations?.[0]?.id ?? null;
 
+  // Read GSAP-interpolated values at the current seek time.
+  // Recomputed on every render (currentTime changes trigger re-render from the store subscription).
+  const gsapRuntimeValues = (() => {
+    if (!gsapAnimId || gsapAnimations.length === 0) return null;
+    const iframe = previewIframeRef?.current;
+    if (!iframe?.contentWindow) return null;
+    const selector = element.id ? `#${element.id}` : element.selector;
+    if (!selector) return null;
+    try {
+      const gsap = (
+        iframe.contentWindow as unknown as {
+          gsap?: { getProperty: (el: Element, prop: string) => number };
+        }
+      ).gsap;
+      if (!gsap?.getProperty) return null;
+      const el = iframe.contentDocument?.querySelector(selector);
+      if (!el) return null;
+      const read = (prop: string) => {
+        const v = Number(gsap.getProperty(el, prop));
+        return Number.isFinite(v) ? Math.round(v * 100) / 100 : null;
+      };
+      return {
+        x: read("x"),
+        y: read("y"),
+        width: read("width"),
+        height: read("height"),
+        rotation: read("rotation"),
+        scale: read("scale"),
+        opacity: read("opacity"),
+      };
+    } catch {
+      return null;
+    }
+  })();
+
+  const displayX = gsapRuntimeValues?.x ?? manualOffset.x;
+  const displayY = gsapRuntimeValues?.y ?? manualOffset.y;
+  const displayW = gsapRuntimeValues?.width ?? resolvedWidth;
+  const displayH = gsapRuntimeValues?.height ?? resolvedHeight;
+  const displayR = gsapRuntimeValues?.rotation ?? manualRotation.angle;
+
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-neutral-900 text-neutral-100">
       <div className="border-b border-neutral-800 px-4 py-5">
@@ -351,7 +394,7 @@ export const PropertyPanel = memo(function PropertyPanel({
               <div className="flex-1">
                 <MetricField
                   label="X"
-                  value={formatPxMetricValue(manualOffset.x)}
+                  value={formatPxMetricValue(displayX)}
                   disabled={manualOffsetEditingDisabled}
                   scrub
                   onCommit={(next) => commitManualOffset("x", next)}
@@ -363,7 +406,7 @@ export const PropertyPanel = memo(function PropertyPanel({
                   keyframes={gsapKeyframes}
                   currentPercentage={currentPct}
                   onSeek={(pct) => onSeekToTime?.(elStart + (pct / 100) * elDuration)}
-                  onAddKeyframe={(pct) => onAddKeyframe?.(gsapAnimId, pct, "x", manualOffset.x)}
+                  onAddKeyframe={(pct) => onAddKeyframe?.(gsapAnimId, pct, "x", displayX)}
                   onRemoveKeyframe={(pct) => onRemoveKeyframe?.(gsapAnimId, pct)}
                   onConvertToKeyframes={() => onConvertToKeyframes?.(gsapAnimId)}
                 />
@@ -373,7 +416,7 @@ export const PropertyPanel = memo(function PropertyPanel({
               <div className="flex-1">
                 <MetricField
                   label="Y"
-                  value={formatPxMetricValue(manualOffset.y)}
+                  value={formatPxMetricValue(displayY)}
                   disabled={manualOffsetEditingDisabled}
                   scrub
                   onCommit={(next) => commitManualOffset("y", next)}
@@ -385,7 +428,7 @@ export const PropertyPanel = memo(function PropertyPanel({
                   keyframes={gsapKeyframes}
                   currentPercentage={currentPct}
                   onSeek={(pct) => onSeekToTime?.(elStart + (pct / 100) * elDuration)}
-                  onAddKeyframe={(pct) => onAddKeyframe?.(gsapAnimId, pct, "y", manualOffset.y)}
+                  onAddKeyframe={(pct) => onAddKeyframe?.(gsapAnimId, pct, "y", displayY)}
                   onRemoveKeyframe={(pct) => onRemoveKeyframe?.(gsapAnimId, pct)}
                   onConvertToKeyframes={() => onConvertToKeyframes?.(gsapAnimId)}
                 />
@@ -395,7 +438,7 @@ export const PropertyPanel = memo(function PropertyPanel({
               <div className="flex-1">
                 <MetricField
                   label="W"
-                  value={formatPxMetricValue(resolvedWidth)}
+                  value={formatPxMetricValue(displayW)}
                   disabled={manualSizeEditingDisabled}
                   scrub
                   onCommit={(next) => commitManualSize("width", next)}
@@ -407,7 +450,7 @@ export const PropertyPanel = memo(function PropertyPanel({
                   keyframes={gsapKeyframes}
                   currentPercentage={currentPct}
                   onSeek={(pct) => onSeekToTime?.(elStart + (pct / 100) * elDuration)}
-                  onAddKeyframe={(pct) => onAddKeyframe?.(gsapAnimId, pct, "width", resolvedWidth)}
+                  onAddKeyframe={(pct) => onAddKeyframe?.(gsapAnimId, pct, "width", displayW)}
                   onRemoveKeyframe={(pct) => onRemoveKeyframe?.(gsapAnimId, pct)}
                   onConvertToKeyframes={() => onConvertToKeyframes?.(gsapAnimId)}
                 />
@@ -417,7 +460,7 @@ export const PropertyPanel = memo(function PropertyPanel({
               <div className="flex-1">
                 <MetricField
                   label="H"
-                  value={formatPxMetricValue(resolvedHeight)}
+                  value={formatPxMetricValue(displayH)}
                   disabled={manualSizeEditingDisabled}
                   scrub
                   onCommit={(next) => commitManualSize("height", next)}
@@ -429,9 +472,7 @@ export const PropertyPanel = memo(function PropertyPanel({
                   keyframes={gsapKeyframes}
                   currentPercentage={currentPct}
                   onSeek={(pct) => onSeekToTime?.(elStart + (pct / 100) * elDuration)}
-                  onAddKeyframe={(pct) =>
-                    onAddKeyframe?.(gsapAnimId, pct, "height", resolvedHeight)
-                  }
+                  onAddKeyframe={(pct) => onAddKeyframe?.(gsapAnimId, pct, "height", displayH)}
                   onRemoveKeyframe={(pct) => onRemoveKeyframe?.(gsapAnimId, pct)}
                   onConvertToKeyframes={() => onConvertToKeyframes?.(gsapAnimId)}
                 />
@@ -441,7 +482,7 @@ export const PropertyPanel = memo(function PropertyPanel({
               <div className="flex-1">
                 <MetricField
                   label="R"
-                  value={`${manualRotation.angle}°`}
+                  value={`${displayR}°`}
                   onCommit={(next) => commitManualRotation(next.replace("°", ""))}
                 />
               </div>
@@ -451,9 +492,7 @@ export const PropertyPanel = memo(function PropertyPanel({
                   keyframes={gsapKeyframes}
                   currentPercentage={currentPct}
                   onSeek={(pct) => onSeekToTime?.(elStart + (pct / 100) * elDuration)}
-                  onAddKeyframe={(pct) =>
-                    onAddKeyframe?.(gsapAnimId, pct, "rotation", manualRotation.angle)
-                  }
+                  onAddKeyframe={(pct) => onAddKeyframe?.(gsapAnimId, pct, "rotation", displayR)}
                   onRemoveKeyframe={(pct) => onRemoveKeyframe?.(gsapAnimId, pct)}
                   onConvertToKeyframes={() => onConvertToKeyframes?.(gsapAnimId)}
                 />

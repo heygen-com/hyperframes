@@ -6,7 +6,7 @@
  */
 
 export const SUPPORTED_PROPS = [
-  // Transforms
+  // 2D Transforms
   "x",
   "y",
   "scale",
@@ -15,6 +15,13 @@ export const SUPPORTED_PROPS = [
   "rotation",
   "skewX",
   "skewY",
+  // 3D Transforms
+  "z",
+  "rotationX",
+  "rotationY",
+  "rotationZ",
+  "perspective",
+  "transformOrigin",
   // Visibility
   "opacity",
   "visibility",
