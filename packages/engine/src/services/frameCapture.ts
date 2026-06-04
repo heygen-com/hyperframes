@@ -425,7 +425,12 @@ async function evaluateHfDiagnostic(page: Page): Promise<HfDiagnostic> {
 async function pollHfReady(page: Page, timeoutMs: number, intervalMs: number = 100): Promise<void> {
   const readyExpr = `!!(window.__hf && typeof window.__hf.seek === "function" && window.__hf.duration > 0)`;
   const FAST_FAIL_AFTER_MS = 10_000;
+  // Throttle diagnostic CDP calls to ~1000ms — running evaluateHfDiagnostic on
+  // every 100ms poll tick after the 10s mark generates ~350 unnecessary CDP
+  // round-trips per failed render. One diagnostic per second is enough.
+  const DIAGNOSTIC_INTERVAL_MS = 1_000;
   const deadline = Date.now() + timeoutMs;
+  let lastDiagnosticAt = 0;
 
   while (Date.now() < deadline) {
     const ready = Boolean(await page.evaluate(readyExpr));
@@ -433,9 +438,19 @@ async function pollHfReady(page: Page, timeoutMs: number, intervalMs: number = 1
 
     const elapsed = timeoutMs - (deadline - Date.now());
     if (elapsed >= FAST_FAIL_AFTER_MS) {
-      const diag = await evaluateHfDiagnostic(page);
-      if (diag.renderReady && diag.hasSeek && diag.duration === 0) {
-        throw new Error(buildZeroDurationDiagnostic(diag));
+      const now = Date.now();
+      if (now - lastDiagnosticAt >= DIAGNOSTIC_INTERVAL_MS) {
+        lastDiagnosticAt = now;
+        const diag = await evaluateHfDiagnostic(page);
+        // Only fast-fail when BOTH signals are permanently zero:
+        //   1. No GSAP timeline registered (GSAP sets duration synchronously
+        //      before __renderReady, so a missing timeline won't self-correct).
+        //   2. No data-duration declared on the root element.
+        // A composition with a GSAP timeline but no data-duration is still
+        // valid — GSAP drives duration via __timelines, not data-duration.
+        if (diag.renderReady && diag.hasSeek && !diag.hasTimeline && diag.declaredDuration <= 0) {
+          throw new Error(buildZeroDurationDiagnostic(diag));
+        }
       }
     }
 
