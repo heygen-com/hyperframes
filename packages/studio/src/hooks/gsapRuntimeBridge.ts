@@ -12,6 +12,7 @@ import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { clearStudioPathOffset } from "../components/editor/manualEdits";
 import { usePlayerStore } from "../player/store/playerStore";
+import { readRuntimeKeyframes, scanAllRuntimeKeyframes } from "./gsapRuntimeKeyframes";
 
 // ── Runtime reads ──────────────────────────────────────────────────────────
 
@@ -97,6 +98,52 @@ function computeCurrentPercentage(selection: DomEditSelection): number {
   return elDuration > 0
     ? Math.max(0, Math.min(100, Math.round(((currentTime - elStart) / elDuration) * 1000) / 10))
     : 0;
+}
+
+// ── Dynamic keyframe materialization ──────────────────────────────────────
+
+async function materializeIfDynamic(
+  anim: GsapAnimation,
+  iframe: HTMLIFrameElement | null,
+  commitMutation: GsapDragCommitCallbacks["commitMutation"],
+  selection: DomEditSelection,
+): Promise<string | void> {
+  if (!anim.hasUnresolvedKeyframes && !anim.hasUnresolvedSelector) return;
+
+  if (anim.hasUnresolvedSelector) {
+    // Unroll: read ALL elements' keyframes from runtime and replace the loop
+    const allScanned = scanAllRuntimeKeyframes(iframe);
+    if (allScanned.size === 0) return;
+    const allElements = Array.from(allScanned.entries()).map(([id, data]) => ({
+      selector: `#${id}`,
+      keyframes: data.keyframes,
+      easeEach: data.easeEach,
+    }));
+    await commitMutation(
+      selection,
+      {
+        type: "materialize-keyframes",
+        animationId: anim.id,
+        keyframes: allScanned.get(selection.id ?? "")?.keyframes ?? [],
+        allElements,
+      },
+      { label: "Unroll dynamic animations", skipReload: true },
+    );
+    return `${anim.targetSelector}-to-0`;
+  }
+
+  const runtime = readRuntimeKeyframes(iframe, anim.targetSelector);
+  if (!runtime || runtime.keyframes.length === 0) return;
+  await commitMutation(
+    selection,
+    {
+      type: "materialize-keyframes",
+      animationId: anim.id,
+      keyframes: runtime.keyframes,
+      easeEach: runtime.easeEach,
+    },
+    { label: "Materialize dynamic keyframes", skipReload: true },
+  );
 }
 
 // ── High-level intercept ───────────────────────────────────────────────────
@@ -192,10 +239,12 @@ async function commitGsapPositionFromDrag(
   const clearOffset = () => clearStudioPathOffset(selection.element);
 
   if (anim.keyframes) {
+    const newId = await materializeIfDynamic(anim, iframe, callbacks.commitMutation, selection);
+    const effectiveAnim = newId ? { ...anim, id: newId } : anim;
     const runtimeProps = readAllAnimatedProperties(iframe, selector, anim);
     await commitKeyframedPosition(
       selection,
-      anim,
+      effectiveAnim,
       { ...runtimeProps, x: newX, y: newY },
       callbacks,
       clearOffset,
@@ -334,6 +383,24 @@ async function commitFromToPosition(
 
 // ── Runtime property reader ───────────────────────────────────────────────
 
+function readGsapProperty(
+  iframe: HTMLIFrameElement | null,
+  selector: string | null,
+  prop: string,
+): number | null {
+  if (!iframe?.contentWindow || !selector) return null;
+  try {
+    const gsap = (iframe.contentWindow as unknown as { gsap?: IframeGsap }).gsap;
+    if (!gsap?.getProperty) return null;
+    const el = iframe.contentDocument?.querySelector(selector);
+    if (!el) return null;
+    const val = Number(gsap.getProperty(el, prop));
+    return Number.isFinite(val) ? Math.round(val) : null;
+  } catch {
+    return null;
+  }
+}
+
 function readAllAnimatedProperties(
   iframe: HTMLIFrameElement | null,
   selector: string,
@@ -396,7 +463,10 @@ export async function tryGsapResizeIntercept(
 
   const pct = computeCurrentPercentage(selection);
 
-  if (!anim.keyframes) {
+  if (anim.hasUnresolvedKeyframes || anim.hasUnresolvedSelector) {
+    const newId = await materializeIfDynamic(anim, iframe, commitMutation, selection);
+    if (newId) anim = { ...anim, id: newId };
+  } else if (!anim.keyframes) {
     await commitMutation(
       selection,
       { type: "convert-to-keyframes", animationId: anim.id },
@@ -406,6 +476,17 @@ export async function tryGsapResizeIntercept(
 
   const selector = selectorForSelection(selection);
   const runtimeProps = selector ? readAllAnimatedProperties(iframe, selector, anim) : {};
+
+  const backfillDefaults: Record<string, number> = { ...runtimeProps };
+  if (!("width" in runtimeProps)) {
+    const cssW = readGsapProperty(iframe, selector, "width");
+    backfillDefaults.width = cssW ?? Math.round(size.width);
+  }
+  if (!("height" in runtimeProps)) {
+    const cssH = readGsapProperty(iframe, selector, "height");
+    backfillDefaults.height = cssH ?? Math.round(size.height);
+  }
+
   const properties = {
     ...runtimeProps,
     width: Math.round(size.width),
@@ -419,6 +500,7 @@ export async function tryGsapResizeIntercept(
       animationId: anim.id,
       percentage: pct,
       properties,
+      backfillDefaults,
     },
     { label: `Resize (keyframe ${pct}%)`, softReload: true },
   );
@@ -466,7 +548,10 @@ export async function tryGsapRotationIntercept(
   const pct = computeCurrentPercentage(selection);
   const newRotation = Math.round(gsapRotation + angle);
 
-  if (!anim.keyframes) {
+  if (anim.hasUnresolvedKeyframes || anim.hasUnresolvedSelector) {
+    const newId = await materializeIfDynamic(anim, iframe, commitMutation, selection);
+    if (newId) anim = { ...anim, id: newId };
+  } else if (!anim.keyframes) {
     await commitMutation(
       selection,
       { type: "convert-to-keyframes", animationId: anim.id },
@@ -475,6 +560,12 @@ export async function tryGsapRotationIntercept(
   }
 
   const runtimeProps = readAllAnimatedProperties(iframe, selector, anim);
+
+  const backfillDefaults: Record<string, number> = { ...runtimeProps };
+  if (!("rotation" in runtimeProps)) {
+    backfillDefaults.rotation = readGsapProperty(iframe, selector, "rotation") ?? 0;
+  }
+
   const properties = { ...runtimeProps, rotation: newRotation };
 
   await commitMutation(
@@ -484,8 +575,11 @@ export async function tryGsapRotationIntercept(
       animationId: anim.id,
       percentage: pct,
       properties,
+      backfillDefaults,
     },
     { label: `Rotate (keyframe ${pct}%)`, softReload: true },
   );
   return true;
 }
+
+export { readRuntimeKeyframes, scanAllRuntimeKeyframes } from "./gsapRuntimeKeyframes";
