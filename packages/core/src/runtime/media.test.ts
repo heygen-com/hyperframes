@@ -339,6 +339,20 @@ describe("syncRuntimeMedia", () => {
     expect(clip.el.play).toHaveBeenCalled();
   });
 
+  it("resumes a previously-ended non-loop clip after a backward seek resets el.ended", () => {
+    // el.ended resets to false when the browser processes a seek (per WHATWG spec).
+    // This test pins the contract: silent at t=62 (ended), playable again at t=30 (seeked back).
+    const clip = createMockClip({ start: 0, end: 68.6, loop: false });
+    Object.defineProperty(clip.el, "paused", { value: true, writable: true });
+    Object.defineProperty(clip.el, "ended", { value: true, writable: true, configurable: true });
+    syncRuntimeMedia({ clips: [clip], timeSeconds: 62, playing: true, playbackRate: 1 });
+    expect(clip.el.play).not.toHaveBeenCalled();
+    // Simulate backward seek: browser resets ended to false before committing new currentTime
+    Object.defineProperty(clip.el, "ended", { value: false, writable: true, configurable: true });
+    syncRuntimeMedia({ clips: [clip], timeSeconds: 30, playing: true, playbackRate: 1 });
+    expect(clip.el.play).toHaveBeenCalledTimes(1);
+  });
+
   it("sets volume when clip has volume", () => {
     const clip = createMockClip({ start: 0, end: 10, volume: 0.7 });
     syncRuntimeMedia({ clips: [clip], timeSeconds: 5, playing: false, playbackRate: 1 });
