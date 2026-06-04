@@ -323,6 +323,7 @@ export function useAppHotkeys({
         const element = elements.find((el) => (el.key ?? el.id) === selectedElementId);
         if (
           element &&
+          ["video", "audio", "img"].includes(element.tag) &&
           currentTime > element.start &&
           currentTime < element.start + element.duration
         ) {

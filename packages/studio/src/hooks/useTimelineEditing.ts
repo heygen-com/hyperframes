@@ -471,10 +471,12 @@ export function useTimelineEditing({
       const pid = projectIdRef.current;
       if (!pid) return;
 
+      const splittableTags = new Set(["video", "audio", "img"]);
       if (
         element.timelineLocked ||
         element.timingSource === "implicit" ||
         element.compositionSrc ||
+        !splittableTags.has(element.tag) ||
         !element.duration ||
         !Number.isFinite(element.duration)
       ) {

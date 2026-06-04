@@ -225,7 +225,9 @@ export function TimelineToolbar({
               const el = selectedElementId
                 ? elements.find((e) => (e.key ?? e.id) === selectedElementId)
                 : null;
-              if (!el || el.compositionSrc) return null;
+              const splittable =
+                el && !el.compositionSrc && ["video", "audio", "img"].includes(el.tag);
+              if (!splittable) return null;
               const canSplit = currentTime > el.start && currentTime < el.start + el.duration;
               return (
                 <Tooltip label="Split clip at playhead (S)">
